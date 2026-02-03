@@ -1,0 +1,175 @@
+fn handle_track(command: GnssCommand) -> Result<()> {
+    let GnssCommand::Track {
+                common,
+                file,
+                sampling_hz,
+                if_hz,
+                code_hz,
+                code_length,
+                doppler_search_hz,
+                doppler_step_hz,
+                offset_bytes,
+                prn,
+            } = command else {
+        bail!("invalid command for handler");
+    };
+
+    set_trace_dir(&common);
+                    let dataset = load_dataset(&common)?;
+                    let mut profile = load_profile(&common)?;
+                    apply_common_overrides(&mut profile, &common);
+                    apply_overrides(&mut profile, sampling_hz, if_hz, code_hz, code_length);
+                    if let Some(entry) = &dataset {
+                        profile.sample_rate_hz = entry.sample_rate_hz;
+                        profile.intermediate_freq_hz = entry.intermediate_freq_hz;
+                    }
+                    profile
+                        .validate()
+                        .map_err(|errs| eyre!("invalid config: {}", errs.join(", ")))?;
+                    let config = profile.to_receiver_config();
+    
+                    let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
+                    let sidecar = load_sidecar(common.sidecar.as_ref())?;
+                    let frame = load_frame(&input_file, &config, offset_bytes, sidecar.as_ref())?;
+    
+                    let acquisition = Acquisition::new(config.clone())
+                        .with_doppler(doppler_search_hz, doppler_step_hz);
+                    let sats = prns_to_sats(&prn);
+                    let acquisitions = acquisition.run_fft(&frame, &sats);
+    
+                    let tracking = bijux_gnss_receiver::tracking::Tracking::new(config.clone());
+                    let tracks = tracking.track_from_acquisition(
+                        &frame,
+                        &acquisitions,
+                        bijux_gnss_core::SignalBand::L1,
+                    );
+    
+                    let report = TrackingReport {
+                        sats: sats.clone(),
+                        epochs: tracks
+                            .iter()
+                            .flat_map(|t| {
+                                t.epochs.iter().map(move |e| TrackingRow {
+                                    epoch_idx: e.epoch.index,
+                                    sample_index: e.sample_index,
+                                    sat: t.sat,
+                                    carrier_hz: t.carrier_hz,
+                                    code_rate_hz: e.code_rate_hz,
+                                    code_phase_samples: t.code_phase_samples,
+                                    prompt_i: e.prompt_i,
+                                    prompt_q: e.prompt_q,
+                                    lock: e.lock,
+                                    cn0_dbhz: e.cn0_dbhz,
+                                    pll_lock: e.pll_lock,
+                                    dll_lock: e.dll_lock,
+                                    fll_lock: e.fll_lock,
+                                    cycle_slip: e.cycle_slip,
+                                    nav_bit_lock: e.nav_bit_lock,
+                                    dll_err: e.dll_err,
+                                    pll_err: e.pll_err,
+                                    fll_err: e.fll_err,
+                                })
+                            })
+                            .collect(),
+                    };
+    
+                    emit_report(&common, "track", &report)?;
+                    write_track_timeseries(&common, &report)?;
+                    write_obs_timeseries(&common, &config, &tracks, profile.navigation.hatch_window)?;
+                    write_manifest(&common, "track", &profile, dataset.as_ref(), &report)?;
+
+    Ok(())
+}
+
+fn handle_inspect(command: GnssCommand) -> Result<()> {
+    let GnssCommand::Inspect {
+                common,
+                file,
+                sampling_hz,
+                max_samples,
+            } = command else {
+        bail!("invalid command for handler");
+    };
+
+    set_trace_dir(&common);
+                    let dataset = load_dataset(&common)?;
+                    let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
+                    let sample_rate_hz = sampling_hz
+                        .or_else(|| dataset.as_ref().map(|d| d.sample_rate_hz))
+                        .unwrap_or(5_000_000.0);
+                    let report = inspect_dataset(&input_file, sample_rate_hz, max_samples)?;
+                    match common.report {
+                        ReportFormat::Table => print_inspect_table(&report),
+                        ReportFormat::Json => emit_report(&common, "inspect", &report)?,
+                    }
+                    write_manifest(
+                        &common,
+                        "inspect",
+                        &ReceiverProfile::default(),
+                        dataset.as_ref(),
+                        &report,
+                    )?;
+
+    Ok(())
+}
+
+fn handle_validateconfig(command: GnssCommand) -> Result<()> {
+    let GnssCommand::ValidateConfig { common, config } = command else {
+        bail!("invalid command for handler");
+    };
+
+    set_trace_dir(&common);
+                    let path = config
+                        .or(common.config.clone())
+                        .context("--config is required")?;
+                    let profile = load_profile_from_path(&path)?;
+                    validate_config_schema(&profile)?;
+                    match profile.validate() {
+                        Ok(()) => {
+                            println!("config valid: {}", path.display());
+                        }
+                        Err(errors) => {
+                            bail!("config invalid: {}", errors.join(", "));
+                        }
+                    }
+
+    Ok(())
+}
+
+fn handle_configschema(command: GnssCommand) -> Result<()> {
+    let GnssCommand::ConfigSchema { common, out } = command else {
+        bail!("invalid command for handler");
+    };
+
+    set_trace_dir(&common);
+                    let schema = schema_for!(ReceiverProfile);
+                    fs::write(&out, serde_json::to_string_pretty(&schema)?)?;
+                    println!("wrote {}", out.display());
+
+    Ok(())
+}
+
+fn handle_rinex(command: GnssCommand) -> Result<()> {
+    let GnssCommand::Rinex {
+                common,
+                obs,
+                eph,
+                strict,
+            } = command else {
+        bail!("invalid command for handler");
+    };
+
+    set_trace_dir(&common);
+                    let obs_epochs = read_obs_epochs(&obs)?;
+                    let ephs = read_ephemeris(&eph)?;
+                    let out_dir = common.out.clone().context("--out is required for rinex")?;
+                    fs::create_dir_all(&out_dir)?;
+                    let obs_path = out_dir.join("obs.rnx");
+                    let nav_path = out_dir.join("nav.rnx");
+                    write_rinex_obs(&obs_path, &obs_epochs, strict)?;
+                    write_rinex_nav(&nav_path, &ephs, strict)?;
+                    println!("wrote {}", obs_path.display());
+                    println!("wrote {}", nav_path.display());
+
+    Ok(())
+}
