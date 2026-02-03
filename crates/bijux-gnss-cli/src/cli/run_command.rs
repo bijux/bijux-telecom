@@ -9,6 +9,7 @@ fn run_command(command: GnssCommand) -> Result<()> {
         cmd @ GnssCommand::Rtk { .. } => handle_rtk(cmd),
         cmd @ GnssCommand::Experiment { .. } => handle_experiment(cmd),
         cmd @ GnssCommand::ValidateConfig { .. } => handle_validateconfig(cmd),
+        cmd @ GnssCommand::Config { .. } => handle_config(cmd),
         cmd @ GnssCommand::ValidateArtifacts { .. } => handle_validateartifacts(cmd),
         cmd @ GnssCommand::ValidateSidecar { .. } => handle_validatesidecar(cmd),
         cmd @ GnssCommand::Artifact { .. } => handle_artifact(cmd),

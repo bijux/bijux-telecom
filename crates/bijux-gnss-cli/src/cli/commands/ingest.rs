@@ -159,6 +159,67 @@ fn handle_validateconfig(command: GnssCommand) -> Result<()> {
     Ok(())
 }
 
+fn handle_config(command: GnssCommand) -> Result<()> {
+    let GnssCommand::Config { command } = command else {
+        bail!("invalid command for handler");
+    };
+
+    match command {
+        ConfigCommand::Validate {
+            common,
+            file,
+            strict,
+        } => {
+            let contents = fs::read_to_string(&file)?;
+            let profile: ReceiverProfile = toml::from_str(&contents)?;
+            let report = <ReceiverProfile as ValidateConfig>::validate(&profile);
+            if !report.errors.is_empty() {
+                for err in report.errors {
+                    eprintln!("error: {}", err.message);
+                }
+                bail!("config validation failed");
+            }
+            if strict && !report.warnings.is_empty() {
+                for warn in report.warnings {
+                    eprintln!("warning: {warn}");
+                }
+                bail!("config validation warnings (strict)");
+            }
+            for warn in report.warnings {
+                eprintln!("warning: {warn}");
+            }
+            let summary = serde_json::json!({ "config": file.display().to_string() });
+            write_manifest(
+                &common,
+                "config_validate",
+                &ReceiverProfile::default(),
+                None,
+                &summary,
+            )?;
+        }
+        ConfigCommand::PrintDefaults { common, out } => {
+            let profile = ReceiverProfile::default();
+            let toml = toml::to_string_pretty(&profile)?;
+            if let Some(out) = out {
+                fs::write(&out, toml)?;
+                println!("wrote {}", out.display());
+            } else {
+                println!("{toml}");
+            }
+            let summary = serde_json::json!({ "defaults": "receiver_profile" });
+            write_manifest(
+                &common,
+                "config_print_defaults",
+                &ReceiverProfile::default(),
+                None,
+                &summary,
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
 fn handle_configschema(command: GnssCommand) -> Result<()> {
     let GnssCommand::ConfigSchema { common, out } = command else {
         bail!("invalid command for handler");
@@ -168,13 +229,12 @@ fn handle_configschema(command: GnssCommand) -> Result<()> {
                     let schema = schema_for!(ReceiverProfile);
                     fs::write(&out, serde_json::to_string_pretty(&schema)?)?;
                     println!("wrote {}", out.display());
-                    let dataset = load_dataset(&common)?;
                     let summary = serde_json::json!({ "schema": out.display().to_string() });
                     write_manifest(
                         &common,
                         "config_schema",
                         &ReceiverProfile::default(),
-                        dataset.as_ref(),
+                        None,
                         &summary,
                     )?;
 
@@ -205,9 +265,8 @@ fn handle_configupgrade(command: GnssCommand) -> Result<()> {
     let data = toml::to_string_pretty(&profile)?;
     fs::write(&output_path, data)?;
     println!("wrote {}", output_path.display());
-    let dataset = load_dataset(&common)?;
     let summary = serde_json::json!({ "output": output_path.display().to_string() });
-    write_manifest(&common, "config_upgrade", &profile, dataset.as_ref(), &summary)?;
+    write_manifest(&common, "config_upgrade", &profile, None, &summary)?;
     Ok(())
 }
 

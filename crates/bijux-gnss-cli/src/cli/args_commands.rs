@@ -187,6 +187,12 @@ pub(crate) enum GnssCommand {
         config: Option<PathBuf>,
     },
 
+    /// Configuration utilities
+    Config {
+        #[command(subcommand)]
+        command: ConfigCommand,
+    },
+
     /// Validate observation or ephemeris artifacts against schemas
     ValidateArtifacts {
         #[command(flatten)]
@@ -403,5 +409,31 @@ pub(crate) enum DiagnosticsCommand {
         /// Max number of codes to print
         #[arg(long, default_value_t = 10)]
         top: usize,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum ConfigCommand {
+    /// Validate a configuration file (prints warnings unless --strict)
+    Validate {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        #[arg(long, value_name = "FILE")]
+        file: PathBuf,
+
+        /// Treat warnings as errors
+        #[arg(long)]
+        strict: bool,
+    },
+
+    /// Print default receiver profile configuration
+    PrintDefaults {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Output path for defaults (TOML). If omitted, prints to stdout.
+        #[arg(long, value_name = "FILE")]
+        out: Option<PathBuf>,
     },
 }

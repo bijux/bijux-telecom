@@ -26,6 +26,9 @@ fn resolve_run_context(
     if let Some(ctx) = RUN_CONTEXT.get() {
         return Ok(ctx);
     }
+    if dataset.is_none() && !common.unregistered_dataset {
+        bail!("dataset id is required (use --dataset or --unregistered-dataset)");
+    }
     let run_dir = if let Some(resume) = &common.resume {
         resume.clone()
     } else if let Some(out) = &common.out {

@@ -20,9 +20,13 @@ struct CommonArgs {
     #[arg(long)]
     config: Option<PathBuf>,
 
-    /// Dataset ID from datasets/registry.yaml
+    /// Dataset ID from datasets/registry.toml
     #[arg(long)]
     dataset: Option<String>,
+
+    /// Allow runs without a registered dataset id
+    #[arg(long)]
+    unregistered_dataset: bool,
 
     /// Output directory for artifacts (run.json, reports)
     #[arg(long, alias = "output")]
@@ -83,6 +87,7 @@ struct DatasetEntry {
     expected_sats: Vec<u8>,
     expected_region: Option<String>,
     expected_time_utc: Option<String>,
+    sidecar: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

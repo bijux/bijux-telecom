@@ -22,12 +22,15 @@ fn load_profile_from_path(path: &Path) -> Result<ReceiverProfile> {
 
 fn load_dataset(common: &CommonArgs) -> Result<Option<DatasetEntry>> {
     let Some(id) = &common.dataset else {
-        return Ok(None);
+        if common.unregistered_dataset {
+            return Ok(None);
+        }
+        bail!("dataset id is required (use --dataset or --unregistered-dataset)");
     };
-    let registry_path = PathBuf::from("datasets/registry.yaml");
+    let registry_path = PathBuf::from("datasets/registry.toml");
     let contents = fs::read_to_string(&registry_path)
         .with_context(|| format!("failed to read {}", registry_path.display()))?;
-    let registry: DatasetRegistry = serde_yaml::from_str(&contents)
+    let registry: DatasetRegistry = toml::from_str(&contents)
         .with_context(|| format!("failed to parse {}", registry_path.display()))?;
     let entry = registry
         .entries
@@ -88,6 +91,8 @@ fn write_manifest<T: Serialize>(
     report: &T,
 ) -> Result<()> {
     let run_dir = run_dir(common, command, dataset)?;
+    let summary_path = run_dir.join("summary.json");
+    fs::write(&summary_path, serde_json::to_string_pretty(&report)?)?;
     let config_hash = hash_config(common.config.as_ref(), profile)?;
     let config_snapshot = common
         .config
