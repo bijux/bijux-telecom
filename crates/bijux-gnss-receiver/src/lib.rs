@@ -6,22 +6,38 @@
 
 #![deny(clippy::unwrap_used)]
 
+#[path = "pipeline/acquisition.rs"]
 pub mod acquisition;
+#[path = "core/ambiguity.rs"]
 pub mod ambiguity;
+#[path = "signal/ca_code.rs"]
 pub mod ca_code;
+#[path = "signal/combinations.rs"]
 pub mod combinations;
+#[path = "core/config.rs"]
 pub mod config;
+#[path = "io/data.rs"]
 pub mod data;
+#[path = "core/differencing.rs"]
 pub mod differencing;
+#[path = "io/logging.rs"]
 pub mod logging;
+#[path = "pipeline/navigation.rs"]
 pub mod navigation;
+#[path = "pipeline/observations.rs"]
 pub mod observations;
 pub mod rtk;
+#[path = "signal/samples.rs"]
 pub mod samples;
+#[path = "signal/signal.rs"]
 pub mod signal;
+#[path = "core/synthetic.rs"]
 pub mod synthetic;
+#[path = "io/trace_dump.rs"]
 pub mod trace_dump;
+#[path = "pipeline/tracking.rs"]
 pub mod tracking;
+#[path = "core/types.rs"]
 pub mod types;
 
 pub use crate::config::ReceiverProfile;

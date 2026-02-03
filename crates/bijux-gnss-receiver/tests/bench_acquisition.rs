@@ -5,17 +5,14 @@ use bijux_gnss_receiver::{
     synthetic::{generate_l1_ca, SyntheticSignalParams},
     types::ReceiverConfig,
 };
-use criterion::{criterion_group, criterion_main, Criterion};
 
-fn bench_code_gen(c: &mut Criterion) {
-    c.bench_function("ca_code_prn1", |b| {
-        b.iter(|| {
-            let _ = generate_ca_code(Prn(1));
-        })
-    });
+#[test]
+fn bench_code_gen_smoke() {
+    let _ = generate_ca_code(Prn(1));
 }
 
-fn bench_fft_acquisition(c: &mut Criterion) {
+#[test]
+fn bench_fft_acquisition_smoke() {
     let config = ReceiverConfig {
         sampling_freq_hz: 4_092_000.0,
         intermediate_freq_hz: 0.0,
@@ -50,13 +47,5 @@ fn bench_fft_acquisition(c: &mut Criterion) {
         constellation: bijux_gnss_core::Constellation::Gps,
         prn: 1,
     };
-
-    c.bench_function("acquisition_fft_prn1", |b| {
-        b.iter(|| {
-            let _ = acquisition.run_fft(&frame, &[sat]);
-        })
-    });
+    let _ = acquisition.run_fft(&frame, &[sat]);
 }
-
-criterion_group!(benches, bench_code_gen, bench_fft_acquisition);
-criterion_main!(benches);
