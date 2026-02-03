@@ -1,7 +1,123 @@
+use std::collections::BTreeMap;
+
+use num_complex::Complex;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{Constellation, Epoch, ObsSatellite, SatId, SigId, SignalBand};
+use crate::{Constellation, Epoch, SampleTime, SatId, SigId, SignalBand, SignalSpec};
+
+pub type Sample = Complex<f32>;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SamplesFrame {
+    pub t0: SampleTime,
+    pub dt_s: f64,
+    pub iq: Vec<Sample>,
+}
+
+impl SamplesFrame {
+    pub fn new(t0: SampleTime, dt_s: f64, iq: Vec<Sample>) -> Self {
+        Self { t0, dt_s, iq }
+    }
+
+    pub fn len(&self) -> usize {
+        self.iq.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.iq.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct AcqRequest {
+    pub sat: SatId,
+    pub doppler_search_hz: i32,
+    pub doppler_step_hz: i32,
+    pub coherent_ms: u32,
+    pub noncoherent: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcqResult {
+    pub sat: SatId,
+    pub carrier_hz: f64,
+    pub code_phase_samples: usize,
+    pub peak: f32,
+    pub second_peak: f32,
+    pub mean: f32,
+    pub peak_mean_ratio: f32,
+    pub peak_second_ratio: f32,
+    pub cn0_proxy: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrackEpoch {
+    pub epoch: Epoch,
+    pub sample_index: u64,
+    pub sat: SatId,
+    pub prompt_i: f32,
+    pub prompt_q: f32,
+    pub carrier_hz: f64,
+    pub code_rate_hz: f64,
+    pub code_phase_samples: f64,
+    pub lock: bool,
+    pub cn0_dbhz: f64,
+    pub pll_lock: bool,
+    pub dll_lock: bool,
+    pub fll_lock: bool,
+    pub cycle_slip: bool,
+    pub nav_bit_lock: bool,
+    pub dll_err: f32,
+    pub pll_err: f32,
+    pub fll_err: f32,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct LockFlags {
+    pub code_lock: bool,
+    pub carrier_lock: bool,
+    pub bit_lock: bool,
+    pub cycle_slip: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ObsMetadata {
+    pub tracking_mode: String,
+    pub integration_ms: u32,
+    pub lock_quality: f64,
+    pub smoothing_window: u32,
+    pub smoothing_age: u32,
+    pub smoothing_resets: u32,
+    pub signal: SignalSpec,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MeasurementErrorModel {
+    pub thermal_noise_m: f64,
+    pub tracking_jitter_m: f64,
+    pub multipath_proxy_m: f64,
+    pub clock_error_m: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ObsSatellite {
+    pub signal_id: SigId,
+    pub pseudorange_m: f64,
+    pub pseudorange_var_m2: f64,
+    pub carrier_phase_cycles: f64,
+    pub carrier_phase_var_cycles2: f64,
+    pub doppler_hz: f64,
+    pub doppler_var_hz2: f64,
+    pub cn0_dbhz: f64,
+    pub lock_flags: LockFlags,
+    pub multipath_suspect: bool,
+    pub elevation_deg: Option<f64>,
+    pub azimuth_deg: Option<f64>,
+    pub weight: Option<f64>,
+    pub error_model: Option<MeasurementErrorModel>,
+    pub metadata: ObsMetadata,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObsEpoch {
@@ -29,7 +145,6 @@ pub struct InterFrequencyAlignmentReport {
 }
 
 pub fn check_inter_frequency_alignment(epochs: &[ObsEpoch]) -> InterFrequencyAlignmentReport {
-    use std::collections::BTreeMap;
     let mut last_seen: BTreeMap<(SatId, SignalBand), u64> = BTreeMap::new();
     let mut events = Vec::new();
     for epoch in epochs {
