@@ -8,6 +8,18 @@ use thiserror::Error;
 
 pub type Sample = Complex<f32>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct SatId {
+    pub constellation: Constellation,
+    pub prn: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct SigId {
+    pub sat: SatId,
+    pub band: SignalBand,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct SampleTime {
     pub sample_index: u64,
@@ -287,7 +299,7 @@ impl SamplesFrame {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct AcqRequest {
-    pub prn: u8,
+    pub sat: SatId,
     pub doppler_search_hz: i32,
     pub doppler_step_hz: i32,
     pub coherent_ms: u32,
@@ -296,7 +308,7 @@ pub struct AcqRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcqResult {
-    pub prn: u8,
+    pub sat: SatId,
     pub carrier_hz: f64,
     pub code_phase_samples: usize,
     pub peak: f32,
@@ -311,7 +323,7 @@ pub struct AcqResult {
 pub struct TrackEpoch {
     pub epoch: Epoch,
     pub sample_index: u64,
-    pub prn: u8,
+    pub sat: SatId,
     pub prompt_i: f32,
     pub prompt_q: f32,
     pub carrier_hz: f64,
@@ -393,10 +405,13 @@ pub struct MeasurementErrorModel {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObsSatellite {
-    pub prn: u8,
+    pub signal_id: SigId,
     pub pseudorange_m: f64,
+    pub pseudorange_var_m2: f64,
     pub carrier_phase_cycles: f64,
+    pub carrier_phase_var_cycles2: f64,
     pub doppler_hz: f64,
+    pub doppler_var_hz2: f64,
     pub cn0_dbhz: f64,
     pub lock_flags: LockFlags,
     pub multipath_suspect: bool,
@@ -414,7 +429,44 @@ pub struct ObsEpoch {
     pub tow_s: Option<f64>,
     pub epoch_idx: u64,
     pub discontinuity: bool,
+    pub role: ReceiverRole,
     pub sats: Vec<ObsSatellite>,
+}
+
+pub fn validate_obs_epochs(epochs: &[ObsEpoch]) -> Result<(), String> {
+    let mut last_t = None;
+    for epoch in epochs {
+        if let Some(prev) = last_t {
+            if epoch.t_rx_s < prev {
+                return Err("non-monotonic t_rx_s".to_string());
+            }
+        }
+        last_t = Some(epoch.t_rx_s);
+        if !epoch.t_rx_s.is_finite() {
+            return Err("t_rx_s is not finite".to_string());
+        }
+        for sat in &epoch.sats {
+            if !sat.pseudorange_m.is_finite()
+                || !sat.carrier_phase_cycles.is_finite()
+                || !sat.doppler_hz.is_finite()
+            {
+                return Err("non-finite observable value".to_string());
+            }
+            if !sat.pseudorange_var_m2.is_finite()
+                || !sat.carrier_phase_var_cycles2.is_finite()
+                || !sat.doppler_var_hz2.is_finite()
+            {
+                return Err("non-finite variance".to_string());
+            }
+            if sat.pseudorange_var_m2 < 0.0
+                || sat.carrier_phase_var_cycles2 < 0.0
+                || sat.doppler_var_hz2 < 0.0
+            {
+                return Err("negative variance".to_string());
+            }
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -432,7 +484,7 @@ pub struct ObsStreamTag {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NavResidual {
-    pub prn: u8,
+    pub sat: SatId,
     pub residual_m: f64,
     pub rejected: bool,
 }
@@ -467,11 +519,17 @@ pub struct NavSolutionEpoch {
     pub ekf_observed_variance: Option<f64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum NavHealthEvent {
+    CovarianceSymmetrized,
+    CovarianceClamped { min_eigenvalue: f64 },
+    CovarianceDiverged { max_variance: f64 },
+    InnovationRejected { reason: String },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct AmbiguityId {
-    pub constellation: Constellation,
-    pub prn: u8,
-    pub band: SignalBand,
+    pub sig: SigId,
     pub signal: String,
 }
 
@@ -512,7 +570,7 @@ pub fn carrier_phase_cycles(terms: &CarrierPhaseTerms) -> f64 {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SingleDifference {
-    pub prn: u8,
+    pub sig: SigId,
     pub code_m: f64,
     pub phase_cycles: f64,
     pub doppler_hz: f64,
@@ -522,8 +580,8 @@ pub struct SingleDifference {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DoubleDifference {
-    pub ref_prn: u8,
-    pub prn: u8,
+    pub ref_sig: SigId,
+    pub sig: SigId,
     pub code_m: f64,
     pub phase_cycles: f64,
     pub doppler_hz: f64,

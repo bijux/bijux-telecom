@@ -2,13 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "ObsEpoch",
   "type": "object",
-  "required": ["t_rx_s", "epoch_idx", "discontinuity", "sats"],
+  "required": ["t_rx_s", "epoch_idx", "discontinuity", "role", "sats"],
   "properties": {
     "t_rx_s": { "type": "number" },
     "gps_week": { "type": ["integer", "null"], "minimum": 0 },
     "tow_s": { "type": ["number", "null"] },
     "epoch_idx": { "type": "integer", "minimum": 0 },
     "discontinuity": { "type": "boolean" },
+    "role": { "type": "string" },
     "sats": {
       "type": "array",
       "items": { "$ref": "#/definitions/ObsSatellite" }
@@ -18,19 +19,25 @@
     "ObsSatellite": {
       "type": "object",
       "required": [
-        "prn",
+        "signal_id",
         "pseudorange_m",
+        "pseudorange_var_m2",
         "carrier_phase_cycles",
+        "carrier_phase_var_cycles2",
         "doppler_hz",
+        "doppler_var_hz2",
         "cn0_dbhz",
         "lock_flags",
         "multipath_suspect"
       ],
       "properties": {
-        "prn": { "type": "integer", "minimum": 1, "maximum": 32 },
+        "signal_id": { "$ref": "#/definitions/SigId" },
         "pseudorange_m": { "type": "number" },
+        "pseudorange_var_m2": { "type": "number" },
         "carrier_phase_cycles": { "type": "number" },
+        "carrier_phase_var_cycles2": { "type": "number" },
         "doppler_hz": { "type": "number" },
+        "doppler_var_hz2": { "type": "number" },
         "cn0_dbhz": { "type": "number" },
         "lock_flags": { "$ref": "#/definitions/LockFlags" },
         "multipath_suspect": { "type": "boolean" },
@@ -95,3 +102,19 @@
     }
   }
 }
+    "SatId": {
+      "type": "object",
+      "required": ["constellation", "prn"],
+      "properties": {
+        "constellation": { "type": "string" },
+        "prn": { "type": "integer" }
+      }
+    },
+    "SigId": {
+      "type": "object",
+      "required": ["sat", "band"],
+      "properties": {
+        "sat": { "$ref": "#/definitions/SatId" },
+        "band": { "type": "string" }
+      }
+    },
