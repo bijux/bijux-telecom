@@ -1,5 +1,18 @@
 # bijux-gnss Architecture
 
+## Dependency Direction
+```
+CLI → receiver → {signal, nav, core}
+signal → core
+nav → core
+core (no dependencies on other workspace crates)
+```
+Rules:
+- `bijux-gnss-cli` must not be depended on by any other crate.
+- `bijux-gnss-nav` must not depend on receiver or CLI.
+- `bijux-gnss-signal` depends only on core.
+- `bijux-gnss-receiver` orchestrates and may depend on signal + nav + core.
+
 ## Crate Responsibilities
 - `bijux-gnss-core`: time, identities, observables schema, shared primitives.
 - `bijux-gnss-signal`: DSP primitives (NCO, mixing, correlators, FFT helpers, code generators).
