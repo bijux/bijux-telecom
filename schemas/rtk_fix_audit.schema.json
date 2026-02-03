@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RtkFixAudit",
+  "type": "object",
+  "required": ["epoch_idx", "ratio", "accepted", "reason", "fixed_count"],
+  "properties": {
+    "epoch_idx": { "type": "integer", "minimum": 0 },
+    "ratio": { "type": ["number", "null"] },
+    "accepted": { "type": "boolean" },
+    "reason": { "type": "string" },
+    "fixed_count": { "type": "integer", "minimum": 0 }
+  }
+}

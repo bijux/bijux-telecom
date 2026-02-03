@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RtkPrecisionTimeline",
+  "type": "object",
+  "required": [
+    "epoch_idx",
+    "fix_accepted",
+    "ratio",
+    "fixed_count",
+    "ref_changed",
+    "slip_count"
+  ],
+  "properties": {
+    "epoch_idx": { "type": "integer", "minimum": 0 },
+    "fix_accepted": { "type": "boolean" },
+    "ratio": { "type": ["number", "null"] },
+    "fixed_count": { "type": "integer", "minimum": 0 },
+    "ref_changed": { "type": "boolean" },
+    "slip_count": { "type": "integer", "minimum": 0 }
+  }
+}
