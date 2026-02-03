@@ -91,6 +91,8 @@ script = [
 
 [tasks.lint]
 dependencies = ["fmt-check", "clippy"]
+workspace = false
+env = { CARGO_MAKE_NO_WORKSPACE = "true", CARGO_MAKE_WORKSPACE_SKIP_MEMBERS = "true" }
 
 [tasks.ci]
 dependencies = ["lint", "audit", "doc", "test", "test-no-default"]
