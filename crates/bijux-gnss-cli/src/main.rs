@@ -5,8 +5,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use bijux_gnss_core::{validate_obs_epochs, Constellation, ObsEpoch, SamplesFrame, SatId};
 use bijux_gnss_nav::{
-    elevation_azimuth_deg, sat_state_gps_l1ca, GpsEphemeris, Matrix, NavClockModel,
-    ProcessNoiseConfig, PseudorangeMeasurement, WeightingConfig,
+    elevation_azimuth_deg, sat_state_gps_l1ca, CodeBiasProvider, GpsEphemeris, Matrix,
+    NavClockModel, PhaseBiasProvider, ProcessNoiseConfig, ProductsProvider, PseudorangeMeasurement,
+    WeightingConfig,
 };
 use bijux_gnss_receiver::{
     acquisition::Acquisition, ca_code::generate_ca_code, ca_code::Prn, data::FileSamples,
@@ -322,6 +323,14 @@ enum GnssCommand {
             value_parser = clap::value_parser!(u8).range(1..=32)
         )]
         prn: Vec<u8>,
+
+        /// Precise ephemeris SP3 file (optional)
+        #[arg(long, value_name = "FILE")]
+        sp3: Option<PathBuf>,
+
+        /// Precise clock CLK file (optional)
+        #[arg(long, value_name = "FILE")]
+        clk: Option<PathBuf>,
     },
 }
 
@@ -477,6 +486,9 @@ struct EkfContext {
     isb: bijux_gnss_nav::InterSystemBiasManager,
     ztd_index: Option<usize>,
     atmosphere: bijux_gnss_nav::AtmosphereConfig,
+    code_bias: bijux_gnss_nav::ZeroBiases,
+    phase_bias: bijux_gnss_nav::ZeroBiases,
+    corrections: bijux_gnss_nav::CorrectionContext,
 }
 
 impl EkfContext {
@@ -515,6 +527,9 @@ impl EkfContext {
             isb: bijux_gnss_nav::InterSystemBiasManager::new(),
             ztd_index,
             atmosphere: bijux_gnss_nav::AtmosphereConfig::default(),
+            code_bias: bijux_gnss_nav::ZeroBiases,
+            phase_bias: bijux_gnss_nav::ZeroBiases,
+            corrections: bijux_gnss_nav::CorrectionContext,
         }
     }
 }
@@ -585,6 +600,16 @@ struct ValidationReport {
     budget_violations: Vec<String>,
     nis_mean: Option<f64>,
     nees_mean: Option<f64>,
+    inter_frequency_alignment: bijux_gnss_core::InterFrequencyAlignmentReport,
+    ppp_readiness: PppReadinessReport,
+}
+
+#[derive(Debug, Serialize)]
+struct PppReadinessReport {
+    multi_freq_present: bool,
+    combinations_valid: bool,
+    products_ok: bool,
+    product_fallbacks: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -746,7 +771,7 @@ fn main() -> Result<()> {
                 let tracks = tracking.track_from_acquisition(
                     &frame,
                     &acquisitions,
-                    profile.tracking.early_late_spacing_chips,
+                    bijux_gnss_core::SignalBand::L1,
                 );
 
                 let report = TrackingReport {
@@ -1185,7 +1210,7 @@ fn main() -> Result<()> {
                     let tracks = tracking.track_from_acquisition(
                         &frame,
                         &acquisitions,
-                        run_profile.tracking.early_late_spacing_chips,
+                        bijux_gnss_core::SignalBand::L1,
                     );
                     let obs = bijux_gnss_receiver::observations::observations_from_tracking_results(
                         &config,
@@ -1305,6 +1330,8 @@ fn main() -> Result<()> {
                 eph,
                 reference,
                 prn,
+                sp3,
+                clk,
             } => {
                 set_trace_dir(&common);
                 let dataset = load_dataset(&common)?;
@@ -1330,7 +1357,7 @@ fn main() -> Result<()> {
                 let tracks = tracking.track_from_acquisition(
                     &frame,
                     &acquisitions,
-                    profile.tracking.early_late_spacing_chips,
+                    bijux_gnss_core::SignalBand::L1,
                 );
                 let obs = bijux_gnss_receiver::observations::observations_from_tracking_results(
                     &config,
@@ -1338,6 +1365,44 @@ fn main() -> Result<()> {
                     profile.navigation.hatch_window,
                 );
                 let ephs = read_ephemeris(&eph)?;
+                let mut products_diag = bijux_gnss_nav::ProductDiagnostics::new();
+                let mut products_ok = false;
+                if sp3.is_some() || clk.is_some() {
+                    let mut products = bijux_gnss_nav::Products::new(
+                        bijux_gnss_nav::BroadcastProductsProvider::new(ephs.clone()),
+                    );
+                    if let Some(sp3_path) = sp3 {
+                        let data = fs::read_to_string(sp3_path)?;
+                        let sp3: bijux_gnss_nav::Sp3Provider = data
+                            .parse()
+                            .map_err(|err| eyre!("SP3 parse failed: {err}"))?;
+                        products = products.with_sp3(sp3);
+                    } else {
+                        products_diag.fallback("SP3 not provided");
+                    }
+                    if let Some(clk_path) = clk {
+                        let data = fs::read_to_string(clk_path)?;
+                        let clk: bijux_gnss_nav::ClkProvider = data
+                            .parse()
+                            .map_err(|err| eyre!("CLK parse failed: {err}"))?;
+                        products = products.with_clk(clk);
+                    } else {
+                        products_diag.fallback("CLK not provided");
+                    }
+                    if let Some(first_epoch) = obs.first() {
+                        if let Some(first_sat) = first_epoch.sats.first() {
+                            let sat = first_sat.signal_id.sat;
+                            let t = first_epoch.t_rx_s;
+                            let state = products.sat_state(sat, t, &mut products_diag);
+                            let clock = products.clock_bias_s(sat, t, &mut products_diag);
+                            products_ok = state.is_some()
+                                && clock.is_some()
+                                && products_diag.fallbacks.is_empty();
+                        }
+                    }
+                } else {
+                    products_diag.fallback("products not provided");
+                }
                 let mut nav = bijux_gnss_receiver::navigation::Navigation::new(config.clone());
 
                 let mut solutions = Vec::new();
@@ -1350,9 +1415,12 @@ fn main() -> Result<()> {
                 let reference_epochs = read_reference_epochs(&reference)?;
                 let report = build_validation_report(
                     &tracks,
+                    &obs,
                     &solutions,
                     &reference_epochs,
                     profile.sample_rate_hz,
+                    products_ok,
+                    products_diag.fallbacks.clone(),
                 )?;
 
                 let out_dir = common
@@ -2040,6 +2108,7 @@ fn solve_epoch_ekf(
             Some(e) => e,
             None => continue,
         };
+        let _corr = bijux_gnss_nav::compute_corrections(&ctx.corrections);
         let state = sat_state_gps_l1ca(eph, obs.t_rx_s, 0.0);
         let state_next = sat_state_gps_l1ca(eph, obs.t_rx_s + 0.1, 0.0);
         let sat_vel = [
@@ -2060,9 +2129,10 @@ fn solve_epoch_ekf(
         } else {
             None
         };
+        let code_bias_m = ctx.code_bias.code_bias_m(sat.signal_id).unwrap_or(0.0);
         let meas = PseudorangeMeasurement {
             sig: sat.signal_id,
-            z_m: sat.pseudorange_m,
+            z_m: sat.pseudorange_m - code_bias_m,
             sat_pos_m: [state.x_m, state.y_m, state.z_m],
             sat_clock_s: state.clock_bias_s,
             tropo_m: 0.0,
@@ -2081,7 +2151,7 @@ fn solve_epoch_ekf(
             z_hz: sat.doppler_hz,
             sat_pos_m: [state.x_m, state.y_m, state.z_m],
             sat_vel_mps: sat_vel,
-            wavelength_m: 299_792_458.0 / sat.metadata.signal.carrier_hz,
+            wavelength_m: 299_792_458.0 / sat.metadata.signal.carrier_hz.value(),
             sigma_hz: 2.0,
         };
         ctx.ekf.update(&doppler_meas);
@@ -2091,14 +2161,18 @@ fn solve_epoch_ekf(
             sat.metadata.signal.constellation, sat.signal_id.sat.prn, sat.metadata.signal.band
         );
         let amb_idx = ctx.ambiguity.get_or_add(&mut ctx.ekf, &amb_key, 0.0, 100.0);
+        let phase_bias_cycles = ctx
+            .phase_bias
+            .phase_bias_cycles(sat.signal_id)
+            .unwrap_or(0.0);
         let carrier_meas = bijux_gnss_nav::CarrierPhaseMeasurement {
             sig: sat.signal_id,
-            z_cycles: sat.carrier_phase_cycles,
+            z_cycles: sat.carrier_phase_cycles - phase_bias_cycles,
             sat_pos_m: [state.x_m, state.y_m, state.z_m],
             sat_clock_s: state.clock_bias_s,
             tropo_m: 0.0,
             iono_m: 0.0,
-            wavelength_m: 299_792_458.0 / sat.metadata.signal.carrier_hz,
+            wavelength_m: 299_792_458.0 / sat.metadata.signal.carrier_hz.value(),
             ambiguity_index: Some(amb_idx),
             sigma_cycles: 0.05,
             elevation_deg: Some(el),
@@ -2187,12 +2261,26 @@ fn write_obs_timeseries(
     );
     let path = out_dir.join("obs.jsonl");
     let mut lines = Vec::new();
-    for epoch in obs {
-        let line = serde_json::to_string(&epoch)?;
+    for epoch in &obs {
+        let line = serde_json::to_string(epoch)?;
         lines.push(line);
     }
     fs::write(&path, lines.join("\n"))?;
     validate_jsonl_schema(&schema_path("obs_epoch.schema.json"), &path, false)?;
+    let combos = bijux_gnss_receiver::combinations::combinations_from_obs_epochs(
+        &obs,
+        bijux_gnss_core::SignalBand::L1,
+        bijux_gnss_core::SignalBand::L2,
+    );
+    if !combos.is_empty() {
+        let combo_path = out_dir.join("combinations.jsonl");
+        let mut combo_lines = Vec::new();
+        for combo in combos {
+            combo_lines.push(serde_json::to_string(&combo)?);
+        }
+        fs::write(&combo_path, combo_lines.join("\n"))?;
+        validate_jsonl_schema(&schema_path("combinations.schema.json"), &combo_path, false)?;
+    }
     Ok(())
 }
 
@@ -2268,9 +2356,12 @@ fn write_ephemeris(common: &CommonArgs, ephs: &[GpsEphemeris]) -> Result<()> {
 
 fn build_validation_report(
     tracks: &[bijux_gnss_receiver::tracking::TrackingResult],
+    obs: &[ObsEpoch],
     solutions: &[bijux_gnss_core::NavSolutionEpoch],
     reference: &[ValidationReferenceEpoch],
     sample_rate_hz: f64,
+    products_ok: bool,
+    product_fallbacks: Vec<String>,
 ) -> Result<ValidationReport> {
     let mut ref_map = std::collections::BTreeMap::new();
     for r in reference {
@@ -2331,6 +2422,24 @@ fn build_validation_report(
     let violations = check_budgets(tracks, solutions, &budgets);
     let time_consistency = check_time_consistency(tracks, sample_rate_hz);
     let consistency = check_solution_consistency(solutions);
+    let inter_frequency_alignment = bijux_gnss_core::check_inter_frequency_alignment(obs);
+    let multi_freq_present = obs.iter().any(|e| {
+        let mut by_sat: std::collections::BTreeMap<SatId, std::collections::BTreeSet<_>> =
+            std::collections::BTreeMap::new();
+        for sat in &e.sats {
+            by_sat
+                .entry(sat.signal_id.sat)
+                .or_default()
+                .insert(sat.signal_id.band);
+        }
+        by_sat.values().any(|bands| bands.len() > 1)
+    });
+    let combos = bijux_gnss_receiver::combinations::combinations_from_obs_epochs(
+        obs,
+        bijux_gnss_core::SignalBand::L1,
+        bijux_gnss_core::SignalBand::L2,
+    );
+    let combinations_valid = combos.iter().all(|c| c.status == "ok") && !combos.is_empty();
     let nis_values: Vec<f64> = solutions
         .iter()
         .filter_map(|s| {
@@ -2365,6 +2474,13 @@ fn build_validation_report(
         budget_violations: violations,
         nis_mean,
         nees_mean,
+        inter_frequency_alignment,
+        ppp_readiness: PppReadinessReport {
+            multi_freq_present,
+            combinations_valid,
+            products_ok,
+            product_fallbacks,
+        },
     })
 }
 
@@ -3009,6 +3125,7 @@ mod tests {
                         prn: 1,
                     },
                     band: bijux_gnss_core::SignalBand::L1,
+                    code: bijux_gnss_core::SignalCode::Ca,
                 },
                 pseudorange_m: 20_000_000.0,
                 pseudorange_var_m2: 1.0,
@@ -3038,8 +3155,9 @@ mod tests {
                     signal: bijux_gnss_core::SignalSpec {
                         constellation: bijux_gnss_core::Constellation::Gps,
                         band: bijux_gnss_core::SignalBand::L1,
+                        code: bijux_gnss_core::SignalCode::Ca,
                         code_rate_hz: 1_023_000.0,
-                        carrier_hz: 1_575_420_000.0,
+                        carrier_hz: bijux_gnss_core::GPS_L1_CA_CARRIER_HZ,
                     },
                 },
             }],
