@@ -8,7 +8,7 @@ use crate::{
 
 /// Artifact header metadata included with every serialized artifact.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ArtifactHeader {
+pub struct ArtifactHeaderV1 {
     /// Schema version for the artifact payload.
     pub schema_version: u32,
     /// Unix timestamp (ms) when the artifact was created.
@@ -25,6 +25,8 @@ pub struct ArtifactHeader {
     pub features: Vec<String>,
     /// Whether deterministic mode was enabled.
     pub deterministic: bool,
+    /// Whether the git worktree was dirty at creation time.
+    pub git_dirty: bool,
 }
 
 /// Artifact kind enumeration used for validation.
@@ -41,9 +43,9 @@ pub enum ArtifactKind {
 }
 
 /// Compatibility policy for artifacts.
-pub struct ArtifactCompatibility;
+pub struct ArtifactReadPolicy;
 
-impl ArtifactCompatibility {
+impl ArtifactReadPolicy {
     /// Latest supported schema version.
     pub const LATEST: u32 = 1;
     /// Oldest supported schema version.
@@ -59,7 +61,7 @@ impl ArtifactCompatibility {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObsEpochV1 {
     /// Artifact header.
-    pub header: ArtifactHeader,
+    pub header: ArtifactHeaderV1,
     /// Observation epoch payload.
     pub epoch: ObsEpoch,
 }
@@ -68,7 +70,7 @@ pub struct ObsEpochV1 {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrackEpochV1 {
     /// Artifact header.
-    pub header: ArtifactHeader,
+    pub header: ArtifactHeaderV1,
     /// Tracking epoch payload.
     pub epoch: TrackEpoch,
 }
@@ -77,7 +79,7 @@ pub struct TrackEpochV1 {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcqResultV1 {
     /// Artifact header.
-    pub header: ArtifactHeader,
+    pub header: ArtifactHeaderV1,
     /// Acquisition payload.
     pub result: AcqResult,
 }
@@ -86,15 +88,66 @@ pub struct AcqResultV1 {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NavSolutionEpochV1 {
     /// Artifact header.
-    pub header: ArtifactHeader,
+    pub header: ArtifactHeaderV1,
     /// Navigation solution payload.
     pub epoch: NavSolutionEpoch,
+}
+
+/// Trait for validating artifact invariants.
+pub trait ArtifactValidate {
+    /// Validate the artifact and return diagnostics.
+    fn validate(&self) -> Vec<DiagnosticEvent>;
+}
+
+impl ArtifactValidate for ObsEpochV1 {
+    fn validate(&self) -> Vec<DiagnosticEvent> {
+        check_obs_epoch_finite(&self.epoch)
+    }
+}
+
+impl ArtifactValidate for TrackEpochV1 {
+    fn validate(&self) -> Vec<DiagnosticEvent> {
+        let mut events = Vec::new();
+        if !self.epoch.carrier_hz.0.is_finite() || !self.epoch.code_rate_hz.0.is_finite() {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "GNSS_NUMERIC_TRACK_INVALID",
+                "tracking epoch contains NaN/Inf",
+            ));
+        }
+        events
+    }
+}
+
+impl ArtifactValidate for AcqResultV1 {
+    fn validate(&self) -> Vec<DiagnosticEvent> {
+        let mut events = Vec::new();
+        if !self.result.carrier_hz.0.is_finite() {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "GNSS_NUMERIC_ACQ_INVALID",
+                "acquisition result contains NaN/Inf",
+            ));
+        }
+        events
+    }
+}
+
+impl ArtifactValidate for NavSolutionEpochV1 {
+    fn validate(&self) -> Vec<DiagnosticEvent> {
+        check_nav_solution_finite(&self.epoch)
+    }
+}
+
+/// Migration placeholder for V1 -> V2.
+pub fn convert_v1_to_v2<T>(_artifact: &T) {
+    // TODO: implement when V2 is defined.
 }
 
 /// Check for NaN/Inf values inside an observation epoch.
 pub fn check_obs_epoch_finite(epoch: &ObsEpoch) -> Vec<DiagnosticEvent> {
     let mut events = Vec::new();
-    if !epoch.t_rx_s.is_finite() {
+    if !epoch.t_rx_s.0.is_finite() {
         events.push(DiagnosticEvent::new(
             DiagnosticSeverity::Error,
             "GNSS_NUMERIC_T_RX_INVALID",
@@ -102,9 +155,9 @@ pub fn check_obs_epoch_finite(epoch: &ObsEpoch) -> Vec<DiagnosticEvent> {
         ));
     }
     for sat in &epoch.sats {
-        if !sat.pseudorange_m.is_finite()
-            || !sat.carrier_phase_cycles.is_finite()
-            || !sat.doppler_hz.is_finite()
+        if !sat.pseudorange_m.0.is_finite()
+            || !sat.carrier_phase_cycles.0.is_finite()
+            || !sat.doppler_hz.0.is_finite()
         {
             events.push(
                 DiagnosticEvent::new(
@@ -122,7 +175,10 @@ pub fn check_obs_epoch_finite(epoch: &ObsEpoch) -> Vec<DiagnosticEvent> {
 /// Check for NaN/Inf values inside a navigation solution epoch.
 pub fn check_nav_solution_finite(epoch: &NavSolutionEpoch) -> Vec<DiagnosticEvent> {
     let mut events = Vec::new();
-    if !epoch.ecef_x_m.is_finite() || !epoch.ecef_y_m.is_finite() || !epoch.ecef_z_m.is_finite() {
+    if !epoch.ecef_x_m.0.is_finite()
+        || !epoch.ecef_y_m.0.is_finite()
+        || !epoch.ecef_z_m.0.is_finite()
+    {
         events.push(DiagnosticEvent::new(
             DiagnosticSeverity::Error,
             "GNSS_NUMERIC_PVT_INVALID",

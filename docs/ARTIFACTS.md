@@ -12,8 +12,8 @@ schema versioning rules. Every artifact includes an `ArtifactHeader` and is vers
 ## Artifact Types
 
 Each artifact includes:
-- `header`: `ArtifactHeader { schema_version, created_at_unix_ms, git_sha, config_hash, dataset_id, toolchain, features, deterministic }`
-- `payload` (named per artifact)
+- `header`: `ArtifactHeaderV1 { schema_version, created_at_unix_ms, git_sha, config_hash, dataset_id, toolchain, features, deterministic, git_dirty }`
+- payload field (named per artifact, e.g. `epoch` or `result`)
 
 ### obs (ObsEpochV1)
 Purpose: observation epochs from tracking.

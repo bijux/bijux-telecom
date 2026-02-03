@@ -3,7 +3,10 @@
 
 use std::collections::BTreeMap;
 
-use crate::{Constellation, Epoch, SampleTime, SatId, SigId, SignalBand, SignalSpec};
+use crate::{
+    Chips, Constellation, Cycles, Epoch, Hertz, Meters, SampleTime, SatId, Seconds, SigId,
+    SignalBand, SignalSpec,
+};
 use num_complex::Complex;
 use serde::{Deserialize, Serialize};
 
@@ -12,12 +15,12 @@ pub type Sample = Complex<f32>;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SamplesFrame {
     pub t0: SampleTime,
-    pub dt_s: f64,
+    pub dt_s: Seconds,
     pub iq: Vec<Sample>,
 }
 
 impl SamplesFrame {
-    pub fn new(t0: SampleTime, dt_s: f64, iq: Vec<Sample>) -> Self {
+    pub fn new(t0: SampleTime, dt_s: Seconds, iq: Vec<Sample>) -> Self {
         Self { t0, dt_s, iq }
     }
 
@@ -42,7 +45,7 @@ pub struct AcqRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcqResult {
     pub sat: SatId,
-    pub carrier_hz: f64,
+    pub carrier_hz: Hertz,
     pub code_phase_samples: usize,
     pub peak: f32,
     pub second_peak: f32,
@@ -59,9 +62,9 @@ pub struct TrackEpoch {
     pub sat: SatId,
     pub prompt_i: f32,
     pub prompt_q: f32,
-    pub carrier_hz: f64,
-    pub code_rate_hz: f64,
-    pub code_phase_samples: f64,
+    pub carrier_hz: Hertz,
+    pub code_rate_hz: Hertz,
+    pub code_phase_samples: Chips,
     pub lock: bool,
     pub cn0_dbhz: f64,
     pub pll_lock: bool,
@@ -95,20 +98,20 @@ pub struct ObsMetadata {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MeasurementErrorModel {
-    pub thermal_noise_m: f64,
-    pub tracking_jitter_m: f64,
-    pub multipath_proxy_m: f64,
-    pub clock_error_m: f64,
+    pub thermal_noise_m: Meters,
+    pub tracking_jitter_m: Meters,
+    pub multipath_proxy_m: Meters,
+    pub clock_error_m: Meters,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObsSatellite {
     pub signal_id: SigId,
-    pub pseudorange_m: f64,
+    pub pseudorange_m: Meters,
     pub pseudorange_var_m2: f64,
-    pub carrier_phase_cycles: f64,
+    pub carrier_phase_cycles: Cycles,
     pub carrier_phase_var_cycles2: f64,
-    pub doppler_hz: f64,
+    pub doppler_hz: Hertz,
     pub doppler_var_hz2: f64,
     pub cn0_dbhz: f64,
     pub lock_flags: LockFlags,
@@ -122,9 +125,9 @@ pub struct ObsSatellite {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObsEpoch {
-    pub t_rx_s: f64,
+    pub t_rx_s: Seconds,
     pub gps_week: Option<u16>,
-    pub tow_s: Option<f64>,
+    pub tow_s: Option<Seconds>,
     pub epoch_idx: u64,
     pub discontinuity: bool,
     pub role: ReceiverRole,
@@ -190,15 +193,15 @@ pub fn check_inter_frequency_alignment(epochs: &[ObsEpoch]) -> InterFrequencyAli
 }
 
 pub fn validate_obs_epochs(epochs: &[ObsEpoch]) -> Result<(), String> {
-    let mut last_t = None;
+    let mut last_t: Option<Seconds> = None;
     for epoch in epochs {
         if let Some(prev) = last_t {
-            if epoch.t_rx_s < prev {
+            if epoch.t_rx_s.0 < prev.0 {
                 return Err("non-monotonic t_rx_s".to_string());
             }
         }
         last_t = Some(epoch.t_rx_s);
-        if !epoch.t_rx_s.is_finite() {
+        if !epoch.t_rx_s.0.is_finite() {
             return Err("t_rx_s is not finite".to_string());
         }
         let mut seen = std::collections::BTreeSet::new();
@@ -206,9 +209,9 @@ pub fn validate_obs_epochs(epochs: &[ObsEpoch]) -> Result<(), String> {
             if !seen.insert(sat.signal_id) {
                 return Err("duplicate signal_id within epoch".to_string());
             }
-            if !sat.pseudorange_m.is_finite()
-                || !sat.carrier_phase_cycles.is_finite()
-                || !sat.doppler_hz.is_finite()
+            if !sat.pseudorange_m.0.is_finite()
+                || !sat.carrier_phase_cycles.0.is_finite()
+                || !sat.doppler_hz.0.is_finite()
             {
                 return Err("non-finite observable value".to_string());
             }
@@ -239,13 +242,13 @@ pub enum ReceiverRole {
 pub struct ObsStreamTag {
     pub role: ReceiverRole,
     pub source_id: String,
-    pub sample_rate_hz: f64,
+    pub sample_rate_hz: Hertz,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NavResidual {
     pub sat: SatId,
-    pub residual_m: f64,
+    pub residual_m: Meters,
     pub rejected: bool,
 }
 
@@ -253,25 +256,25 @@ pub struct NavResidual {
 pub struct InterSystemBias {
     pub constellation: Constellation,
     pub band: Option<SignalBand>,
-    pub bias_s: f64,
+    pub bias_s: Seconds,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NavSolutionEpoch {
     pub epoch: Epoch,
-    pub ecef_x_m: f64,
-    pub ecef_y_m: f64,
-    pub ecef_z_m: f64,
+    pub ecef_x_m: Meters,
+    pub ecef_y_m: Meters,
+    pub ecef_z_m: Meters,
     pub latitude_deg: f64,
     pub longitude_deg: f64,
-    pub altitude_m: f64,
-    pub clock_bias_s: f64,
+    pub altitude_m: Meters,
+    pub clock_bias_s: Seconds,
     pub pdop: f64,
-    pub rms_m: f64,
+    pub rms_m: Meters,
     pub residuals: Vec<NavResidual>,
     pub isb: Vec<InterSystemBias>,
-    pub sigma_h_m: Option<f64>,
-    pub sigma_v_m: Option<f64>,
+    pub sigma_h_m: Option<Meters>,
+    pub sigma_v_m: Option<Meters>,
     pub ekf_innovation_rms: Option<f64>,
     pub ekf_condition_number: Option<f64>,
     pub ekf_whiteness_ratio: Option<f64>,
@@ -304,7 +307,7 @@ pub enum AmbiguityStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AmbiguityState {
     pub id: AmbiguityId,
-    pub float_cycles: f64,
+    pub float_cycles: Cycles,
     pub variance: f64,
     pub status: AmbiguityStatus,
     pub last_update_epoch: u64,
@@ -312,29 +315,29 @@ pub struct AmbiguityState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CarrierPhaseTerms {
-    pub range_m: f64,
-    pub receiver_clock_s: f64,
-    pub sat_clock_s: f64,
-    pub tropo_m: f64,
-    pub iono_m: f64,
-    pub wavelength_m: f64,
-    pub ambiguity_cycles: f64,
+    pub range_m: Meters,
+    pub receiver_clock_s: Seconds,
+    pub sat_clock_s: Seconds,
+    pub tropo_m: Meters,
+    pub iono_m: Meters,
+    pub wavelength_m: Meters,
+    pub ambiguity_cycles: Cycles,
 }
 
 pub fn carrier_phase_cycles(terms: &CarrierPhaseTerms) -> f64 {
-    let corrected = terms.range_m
-        + 299_792_458.0 * (terms.receiver_clock_s - terms.sat_clock_s)
-        + terms.tropo_m
-        - terms.iono_m;
-    corrected / terms.wavelength_m + terms.ambiguity_cycles
+    let corrected_m = terms.range_m.0
+        + 299_792_458.0 * (terms.receiver_clock_s.0 - terms.sat_clock_s.0)
+        + terms.tropo_m.0
+        - terms.iono_m.0;
+    corrected_m / terms.wavelength_m.0 + terms.ambiguity_cycles.0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SingleDifference {
     pub sig: SigId,
-    pub code_m: f64,
-    pub phase_cycles: f64,
-    pub doppler_hz: f64,
+    pub code_m: Meters,
+    pub phase_cycles: Cycles,
+    pub doppler_hz: Hertz,
     pub ambiguity_rover: AmbiguityId,
     pub ambiguity_base: AmbiguityId,
 }
@@ -343,9 +346,9 @@ pub struct SingleDifference {
 pub struct DoubleDifference {
     pub ref_sig: SigId,
     pub sig: SigId,
-    pub code_m: f64,
-    pub phase_cycles: f64,
-    pub doppler_hz: f64,
+    pub code_m: Meters,
+    pub phase_cycles: Cycles,
+    pub doppler_hz: Hertz,
     pub canceled: Vec<AmbiguityId>,
 }
 

@@ -2,13 +2,17 @@
 
 /// Artifact headers and versioned payloads.
 pub use crate::artifact::{
-    check_nav_solution_finite, check_obs_epoch_finite, AcqResultV1, ArtifactCompatibility,
-    ArtifactHeader, ArtifactKind, NavSolutionEpochV1, ObsEpochV1, TrackEpochV1,
+    check_nav_solution_finite, check_obs_epoch_finite, convert_v1_to_v2, AcqResultV1,
+    ArtifactHeaderV1, ArtifactKind, ArtifactReadPolicy, ArtifactValidate, NavSolutionEpochV1,
+    ObsEpochV1, TrackEpochV1,
 };
 /// Configuration composition and validation.
 pub use crate::config::{BijuxGnssConfig, SchemaVersion, ValidateConfig, ValidationReport};
 /// Structured diagnostics.
-pub use crate::diagnostic::{DiagnosticEvent, DiagnosticSeverity};
+pub use crate::diagnostic::{
+    aggregate_diagnostics, lookup_diagnostic, DiagnosticCode, DiagnosticEvent, DiagnosticSeverity,
+    DiagnosticSummary, DiagnosticSummaryEntry, DIAGNOSTIC_CODES,
+};
 /// Canonical error types.
 pub use crate::error::{
     AcqError, ConfigError, InputError, InvariantError, IoError, NavError, ParseError, SignalError,
@@ -32,4 +36,7 @@ pub use crate::obs::{
 /// Time and epoch structures.
 pub use crate::time::{Epoch, GpsTime, LeapSeconds, SampleClock, SampleTime, TaiTime, UtcTime};
 /// Strong units for physical quantities.
-pub use crate::units::{Chips, Cycles, Hertz, Meters, Seconds};
+pub use crate::units::{
+    chips_to_seconds, cycles_to_meters, hz_to_rad_per_sec, Chips, Cycles, Hertz, Meters,
+    MetersPerSecond, Seconds,
+};

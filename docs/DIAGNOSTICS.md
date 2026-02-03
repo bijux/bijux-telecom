@@ -1,46 +1,32 @@
 # Diagnostics
 
-This document defines structured diagnostic events and error codes emitted by the GNSS
-pipeline. Diagnostic codes are stable identifiers for operators and tooling.
+This document defines canonical diagnostic codes and how they are used.
 
-## Event Structure
+## Principles
 
-All events conform to `bijux_gnss_core::DiagnosticEvent`:
+- Every pipeline stage emits `DiagnosticEvent` with a stable `code`.
+- Codes are human-readable and stable across releases.
+- Severity is one of `Info`, `Warning`, `Error`.
+- CLI tooling can gate on severity (`--fail-on WARN` / `--fail-on ERROR`).
 
-- `severity`: `Info | Warning | Error`
-- `code`: stable machine-readable identifier
-- `message`: human-readable summary
-- `context`: optional key/value metadata
+## Code Registry
 
-## Codes
+| Code | Severity | Meaning | Mitigation |
+| --- | --- | --- | --- |
+| `GNSS_NUMERIC_ACQ_INVALID` | Error | Acquisition results contain NaN/Inf | Inspect input IQ scaling and acquisition parameters. |
+| `GNSS_NUMERIC_TRACK_INVALID` | Error | Tracking epoch contains NaN/Inf | Inspect loop configuration and correlator outputs. |
+| `GNSS_NUMERIC_OBS_INVALID` | Error | Observation contains NaN/Inf | Check tracking outputs and observables conversion. |
+| `GNSS_NUMERIC_PVT_INVALID` | Error | Navigation solution contains NaN/Inf | Inspect measurement inputs and solver configuration. |
+| `GNSS_NUMERIC_T_RX_INVALID` | Error | Receiver time tag is not finite | Check sample clock and epoch timing logic. |
+| `GNSS_EPOCH_ALIGN_FAIL` | Warning | Base/rover epoch alignment failed or had gaps | Check dataset timing and alignment tolerance. |
+| `NAV_EPHEMERIS_GAP` | Warning | Ephemeris coverage gap detected | Provide a dataset with complete ephemeris coverage. |
+| `TRACK_LOSS_OF_LOCK` | Warning | Tracking reported loss of lock | Inspect signal strength and tracking loop parameters. |
 
-### Configuration
-- `CONFIG_SCHEMA_MISMATCH`: schema version does not match supported versions.
-- `CONFIG_INVALID_FIELD`: a config field failed validation.
-- `CONFIG_MISSING_REQUIRED`: a required config section is missing.
+## Stage Attribution
 
-### Input / IO
-- `IO_DATASET_NOT_FOUND`: dataset path or ID not found.
-- `IO_DATASET_READ_FAIL`: dataset could not be opened or read.
-- `IO_SCHEMA_INVALID`: file did not match required schema.
+When available, diagnostic events include context entries:
 
-### Signal / Acquisition
-- `ACQ_SEARCH_EMPTY`: acquisition search produced no candidates.
-- `ACQ_PEAK_BELOW_THRESHOLD`: best acquisition metric below threshold.
+- `stage`: pipeline stage name (e.g., `acquisition`, `tracking`, `nav`).
+- `epoch`: epoch index for time-aligned summaries.
 
-### Tracking
-- `TRACK_LOSS_OF_LOCK`: lock detector failed for a channel.
-- `TRACK_CYCLE_SLIP`: cycle slip detected for a channel.
-- `TRACK_EPOCH_GAP`: tracking epochs are not contiguous or exceeded gap limit.
-
-### Navigation / PVT
-- `NAV_EPHEMERIS_GAP`: ephemeris provider has no valid data for time.
-- `NAV_PVT_DIVERGED`: PVT solver failed to converge.
-- `NAV_GEOMETRY_WEAK`: PDOP/condition number above configured threshold.
-- `NAV_OUTLIER_REJECTED`: measurement rejected during residual gating.
-
-### RTK / PPP
-- `RTK_EPOCH_ALIGN_FAIL`: base/rover epochs could not be aligned.
-- `RTK_AMB_RESET`: ambiguity reset due to slip or ref change.
-- `PPP_PRODUCT_GAP`: precise products missing for epoch.
-- `PPP_FILTER_RESET`: PPP filter reset due to integrity failure.
+The diagnostic aggregator groups by `code` and records counts and first/last epochs.

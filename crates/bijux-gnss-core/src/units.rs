@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 #![allow(missing_docs)]
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +21,10 @@ pub struct Chips(pub f64);
 /// Cycles (carrier phase).
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct Cycles(pub f64);
+
+/// Meters per second.
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub struct MetersPerSecond(pub f64);
 
 impl From<f64> for Meters {
     fn from(value: f64) -> Self {
@@ -49,4 +54,43 @@ impl From<f64> for Cycles {
     fn from(value: f64) -> Self {
         Self(value)
     }
+}
+
+impl From<f64> for MetersPerSecond {
+    fn from(value: f64) -> Self {
+        Self(value)
+    }
+}
+
+/// Convert code chips to seconds given code rate in Hz.
+///
+/// ```
+/// use bijux_gnss_core::{Chips, Hertz, Seconds};
+/// use bijux_gnss_core::chips_to_seconds;
+/// assert!((chips_to_seconds(Chips(1023.0), Hertz(1_023_000.0)).0 - 0.001).abs() < 1e-9);
+/// ```
+pub fn chips_to_seconds(chips: Chips, code_rate: Hertz) -> Seconds {
+    Seconds(chips.0 / code_rate.0)
+}
+
+/// Convert carrier cycles to meters given carrier wavelength.
+///
+/// ```
+/// use bijux_gnss_core::{Cycles, Meters};
+/// use bijux_gnss_core::cycles_to_meters;
+/// assert!((cycles_to_meters(Cycles(1.0), Meters(0.19)).0 - 0.19).abs() < 1e-9);
+/// ```
+pub fn cycles_to_meters(cycles: Cycles, wavelength_m: Meters) -> Meters {
+    Meters(cycles.0 * wavelength_m.0)
+}
+
+/// Convert Hertz to radians per second.
+///
+/// ```
+/// use bijux_gnss_core::hz_to_rad_per_sec;
+/// use bijux_gnss_core::Hertz;
+/// assert!((hz_to_rad_per_sec(Hertz(1.0)) - std::f64::consts::TAU).abs() < 1e-9);
+/// ```
+pub fn hz_to_rad_per_sec(freq: Hertz) -> f64 {
+    freq.0 * std::f64::consts::TAU
 }

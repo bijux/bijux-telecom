@@ -20,7 +20,8 @@
         "config_hash",
         "toolchain",
         "features",
-        "deterministic"
+        "deterministic",
+        "git_dirty"
       ],
       "properties": {
         "schema_version": { "type": "integer", "minimum": 1 },
@@ -30,7 +31,8 @@
         "dataset_id": { "type": ["string", "null"] },
         "toolchain": { "type": "string" },
         "features": { "type": "array", "items": { "type": "string" } },
-        "deterministic": { "type": "boolean" }
+        "deterministic": { "type": "boolean" },
+        "git_dirty": { "type": "boolean" }
       }
     }
   }
