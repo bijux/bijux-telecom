@@ -4,7 +4,10 @@ use bijux_gnss_core::{
 use bijux_gnss_nav::Matrix;
 use bijux_gnss_receiver::ambiguity::float_from_state;
 use bijux_gnss_receiver::ambiguity::AmbiguityManager;
-use bijux_gnss_receiver::ambiguity::{ratio_test, FixPolicy, FixState};
+use bijux_gnss_receiver::ambiguity::{
+    decorrelate_lambda, ratio_from_candidates, ratio_test, search_integer_candidates,
+    select_partial_fix, FixPolicy, FixState, FloatAmbiguitySolution,
+};
 
 #[test]
 fn ratio_test_requires_consecutive_accepts() {
@@ -110,4 +113,65 @@ fn float_covariance_is_symmetric_psd() {
             + v[1] * (float.covariance[1][0] * v[0] + float.covariance[1][1] * v[1]);
         assert!(quad >= -1e-6, "non-psd quadratic {quad}");
     }
+}
+
+#[test]
+fn lambda_candidate_search_is_deterministic() {
+    let float = FloatAmbiguitySolution {
+        ids: Vec::new(),
+        float_cycles: vec![10.2, -3.7],
+        covariance: vec![vec![1.0, 0.0], vec![0.0, 1.0]],
+    };
+    let decor = decorrelate_lambda(&float);
+    let cands = search_integer_candidates(&decor.n_prime, &decor.q_prime, 2);
+    assert_eq!(cands.len(), 2);
+    assert_eq!(cands[0].integers, vec![10, -4]);
+    let ratio = ratio_from_candidates(&cands).unwrap();
+    assert!(ratio > 1.0);
+}
+
+#[test]
+fn partial_fix_reduces_ambiguity_count() {
+    let float = FloatAmbiguitySolution {
+        ids: vec![
+            bijux_gnss_core::AmbiguityId {
+                sig: SigId {
+                    sat: SatId {
+                        constellation: Constellation::Gps,
+                        prn: 1,
+                    },
+                    band: SignalBand::L1,
+                },
+                signal: "L1".to_string(),
+            },
+            bijux_gnss_core::AmbiguityId {
+                sig: SigId {
+                    sat: SatId {
+                        constellation: Constellation::Gps,
+                        prn: 2,
+                    },
+                    band: SignalBand::L1,
+                },
+                signal: "L1".to_string(),
+            },
+            bijux_gnss_core::AmbiguityId {
+                sig: SigId {
+                    sat: SatId {
+                        constellation: Constellation::Gps,
+                        prn: 3,
+                    },
+                    band: SignalBand::L1,
+                },
+                signal: "L1".to_string(),
+            },
+        ],
+        float_cycles: vec![1.1, 2.2, 3.3],
+        covariance: vec![
+            vec![1.0, 0.0, 0.0],
+            vec![0.0, 1.0, 0.0],
+            vec![0.0, 0.0, 1.0],
+        ],
+    };
+    let subset = select_partial_fix(&float, 2);
+    assert_eq!(subset.float_cycles.len(), 2);
 }
