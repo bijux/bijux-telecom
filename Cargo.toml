@@ -6,6 +6,7 @@ members = [
   "crates/bijux-gnss-cli",
   "crates/bijux-gnss-signal",
   "crates/bijux-gnss-nav",
+  "crates/bijux-guardrails",
 ]
 
 [workspace.package]
@@ -31,3 +32,4 @@ criterion = "0.5"
 toml = "0.8"
 eyre = "0.6"
 bijux-gnss-core = { path = "crates/bijux-gnss-core" }
+bijux-guardrails = { path = "crates/bijux-guardrails" }
