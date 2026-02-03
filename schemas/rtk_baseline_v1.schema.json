@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RtkBaselineV1",
+  "type": "object",
+  "required": ["header", "payload"],
+  "properties": {
+    "header": { "$ref": "#/definitions/ArtifactHeader" },
+    "payload": { "type": "object" }
+  },
+  "definitions": {
+    "ArtifactHeader": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "created_at_unix_ms",
+        "git_sha",
+        "config_hash",
+        "toolchain",
+        "features",
+        "deterministic"
+      ],
+      "properties": {
+        "schema_version": { "type": "integer", "minimum": 1 },
+        "created_at_unix_ms": { "type": "integer", "minimum": 0 },
+        "git_sha": { "type": "string" },
+        "config_hash": { "type": "string" },
+        "dataset_id": { "type": ["string", "null"] },
+        "toolchain": { "type": "string" },
+        "features": { "type": "array", "items": { "type": "string" } },
+        "deterministic": { "type": "boolean" }
+      }
+    }
+  }
+}
