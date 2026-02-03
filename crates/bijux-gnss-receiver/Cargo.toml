@@ -27,3 +27,4 @@ trace-dump = []
 proptest.workspace = true
 criterion.workspace = true
 toml.workspace = true
+bijux-guardrails.workspace = true
