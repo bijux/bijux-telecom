@@ -1,3 +1,6 @@
+#![allow(missing_docs)]
+#![allow(dead_code)]
+
 use bijux_gnss_core::{Constellation, SatId};
 use thiserror::Error;
 

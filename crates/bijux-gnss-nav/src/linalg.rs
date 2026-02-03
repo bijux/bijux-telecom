@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 #[derive(Debug, Clone)]
 pub struct Matrix {
     rows: usize,

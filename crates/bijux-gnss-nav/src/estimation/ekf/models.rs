@@ -1,9 +1,13 @@
+#![allow(missing_docs)]
+#![allow(dead_code)]
+
 use std::collections::BTreeMap;
 
 use bijux_gnss_core::SigId;
 
-use super::{Ekf, MeasurementKind, MeasurementModel, StateModel};
-use crate::Matrix;
+use super::state::{Ekf, MeasurementKind};
+use super::traits::{MeasurementModel, StateModel};
+use crate::linalg::Matrix;
 
 #[derive(Debug, Clone)]
 pub struct ProcessNoiseConfig {

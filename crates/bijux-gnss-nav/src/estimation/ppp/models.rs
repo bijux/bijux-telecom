@@ -1,6 +1,9 @@
+#![allow(missing_docs)]
+
 use super::config::PppProcessNoise;
-use crate::estimation::ekf::StateModel;
-use crate::{Corrections, Matrix};
+use crate::corrections::Corrections;
+use crate::estimation::ekf::traits::StateModel;
+use crate::linalg::Matrix;
 
 pub(crate) struct PppProcessModel {
     pub(crate) pos: [usize; 3],

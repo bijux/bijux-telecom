@@ -1,8 +1,10 @@
-use crate::estimation::position::solver::invert_4x4;
-use crate::{
-    ecef_to_enu, ecef_to_geodetic, geodetic_to_ecef, GpsEphemeris, PositionObservation,
+#![allow(missing_docs)]
+
+use crate::estimation::position::solver::{
+    ecef_to_enu, ecef_to_geodetic, geodetic_to_ecef, invert_4x4, PositionObservation,
     PositionSolver,
 };
+use crate::orbits::gps::GpsEphemeris;
 use bijux_gnss_core::{Constellation, SatId};
 
 #[test]

@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use serde::{Deserialize, Serialize};
 
 use bijux_gnss_core::SatId;
@@ -133,7 +135,7 @@ fn wrap_time(mut t: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{bit_sync_from_prompt, compute_parity, decode_words};
+    use crate::formats::lnav_bits::{bit_sync_from_prompt, compute_parity, decode_words};
     use bijux_gnss_core::{Constellation, SatId};
 
     fn encode_word(data: u32, prev_d29: u8, prev_d30: u8) -> [u8; 30] {

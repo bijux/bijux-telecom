@@ -1,4 +1,8 @@
-use crate::{GpsEphemeris, GpsWord};
+#![allow(missing_docs)]
+#![allow(dead_code)]
+
+use crate::formats::lnav_bits::GpsWord;
+use crate::orbits::gps::GpsEphemeris;
 use bijux_gnss_core::{Constellation, SatId};
 
 pub(crate) fn parse_subframe1(words: &[GpsWord]) -> Option<EphemerisPart> {

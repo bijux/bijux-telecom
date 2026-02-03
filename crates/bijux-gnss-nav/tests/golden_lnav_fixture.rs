@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use bijux_gnss_nav::decode_rawephem_hex;
 
 #[test]

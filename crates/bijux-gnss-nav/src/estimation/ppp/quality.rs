@@ -1,9 +1,13 @@
+#![allow(missing_docs)]
+
 use bijux_gnss_core::{ObsEpoch, ObsSatellite, SatId};
 
 use super::config::{PppFilter, WlAmbiguity};
 use super::measurements::{ratio_fix, wide_lane_from_obs};
-use crate::estimation::ekf::MeasurementModel;
-use crate::{Ekf, Matrix, PppArMode, PppCheckpoint};
+use crate::estimation::ekf::state::Ekf;
+use crate::estimation::ekf::traits::MeasurementModel;
+use crate::estimation::ppp::config::{PppArMode, PppCheckpoint};
+use crate::linalg::Matrix;
 
 impl PppFilter {
     pub(crate) fn update_convergence(

@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 //! Signal processing utilities.
 
 /// Compute the number of samples per C/A code period (1 ms) given sampling

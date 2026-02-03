@@ -1,7 +1,5 @@
-pub mod math;
-pub mod nco;
-pub mod signal;
+#![allow(missing_docs)]
 
-pub use math::*;
-pub use nco::*;
-pub use signal::*;
+pub(crate) mod math;
+pub(crate) mod nco;
+pub(crate) mod signal;

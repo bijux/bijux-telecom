@@ -1,9 +1,11 @@
+#![allow(missing_docs)]
+
 use std::collections::BTreeMap;
 use std::str::FromStr;
 
 use bijux_gnss_core::{Constellation, SatId};
 
-use crate::GpsSatState;
+use crate::orbits::gps::GpsSatState;
 
 #[derive(Debug, Clone)]
 pub struct Sp3Record {

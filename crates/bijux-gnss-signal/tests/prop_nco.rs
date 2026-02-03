@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use bijux_gnss_signal::Nco;
 use proptest::prelude::*;
 

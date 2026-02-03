@@ -1,3 +1,6 @@
+#![allow(missing_docs)]
+#![allow(dead_code)]
+
 #[derive(Debug, Clone, Copy)]
 pub enum IonoMode {
     Broadcast,

@@ -1,4 +1,8 @@
+#![cfg(feature = "precise-products")]
+#![allow(missing_docs)]
+
 use bijux_gnss_core::{Constellation, SatId};
+
 use bijux_gnss_nav::Sp3Provider;
 
 #[test]

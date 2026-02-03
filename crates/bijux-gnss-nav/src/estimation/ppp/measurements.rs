@@ -1,7 +1,11 @@
+#![allow(missing_docs)]
+
 use bijux_gnss_core::{ObsEpoch, SatId, SignalBand};
 
-use crate::estimation::ekf::{MeasurementKind, MeasurementModel};
-use crate::{Corrections, Matrix};
+use crate::corrections::Corrections;
+use crate::estimation::ekf::state::MeasurementKind;
+use crate::estimation::ekf::traits::MeasurementModel;
+use crate::linalg::Matrix;
 
 use super::config::SPEED_OF_LIGHT_MPS;
 use super::models::PppCodeMeasurement;

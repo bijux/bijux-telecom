@@ -11,5 +11,9 @@ hex.workspace = true
 eyre.workspace = true
 bijux-gnss-core = { path = "../bijux-gnss-core", version = "0.1.0" }
 
+[features]
+default = ["precise-products"]
+precise-products = []
+
 [dev-dependencies]
 bijux-guardrails.workspace = true

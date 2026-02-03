@@ -1,4 +1,6 @@
-use crate::Ekf;
+#![allow(missing_docs)]
+
+use crate::estimation::ekf::state::Ekf;
 
 pub(crate) fn estimate_sigma(ekf: &Ekf, pos_idx: &[usize; 3]) -> (Option<f64>, Option<f64>) {
     if ekf.p.rows() <= pos_idx[2] {

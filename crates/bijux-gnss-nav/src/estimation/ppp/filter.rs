@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use bijux_gnss_core::{Constellation, ObsEpoch, ObsSatellite, SatId, SigId};
@@ -9,11 +11,14 @@ use super::measurements::{
 };
 use super::models::{PppCodeMeasurement, PppProcessModel};
 use super::state::estimate_sigma;
-use crate::{
-    elevation_azimuth_deg, sat_state_gps_l1ca, weight_from_cn0_elev, CodeBiasProvider,
-    CorrectionContext, Ekf, EkfConfig, GpsEphemeris, GpsSatState, Matrix, PhaseBiasProvider,
-    PppConvergenceState, PppHealth, PppSolutionEpoch, ProductsProvider, ZeroBiases,
-};
+use crate::corrections::biases::{CodeBiasProvider, PhaseBiasProvider, ZeroBiases};
+use crate::corrections::CorrectionContext;
+use crate::estimation::ekf::state::{Ekf, EkfConfig};
+use crate::estimation::position::solver::{elevation_azimuth_deg, weight_from_cn0_elev};
+use crate::estimation::ppp::config::{PppConvergenceState, PppHealth, PppSolutionEpoch};
+use crate::formats::precise_products::{ProductDiagnostics, ProductsProvider};
+use crate::linalg::Matrix;
+use crate::orbits::gps::{sat_state_gps_l1ca, GpsEphemeris, GpsSatState};
 
 impl PppFilter {
     pub fn new(config: PppConfig) -> Self {
@@ -295,7 +300,7 @@ impl PppFilter {
         sat: SatId,
         t_s: f64,
     ) -> Option<(GpsSatState, f64, bool)> {
-        let mut diag = crate::ProductDiagnostics::default();
+        let mut diag = ProductDiagnostics::default();
         let state = products
             .sat_state(sat, t_s, &mut diag)
             .or_else(|| Some(sat_state_gps_l1ca(eph, t_s, 0.0)))?;

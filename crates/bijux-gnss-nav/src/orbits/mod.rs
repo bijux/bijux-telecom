@@ -1,5 +1,4 @@
-mod ephemeris;
-mod gps;
+#![allow(missing_docs)]
 
-pub use ephemeris::*;
-pub use gps::*;
+pub(crate) mod ephemeris;
+pub(crate) mod gps;

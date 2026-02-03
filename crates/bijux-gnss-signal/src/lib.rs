@@ -1,4 +1,5 @@
 //! DSP primitives for GNSS signal processing.
+//! See docs/GLOSSARY.md for acronym definitions.
 //!
 //! Module map:
 //! - `codes`: spreading code generators (GPS C/A, etc.)
@@ -10,11 +11,14 @@
 //! - `codes::ca_code`: GPS L1 C/A code implementation
 
 #![deny(clippy::unwrap_used)]
+#![deny(missing_docs)]
 
-pub mod codes;
-pub mod dsp;
-pub mod samples;
+mod codes;
+mod dsp;
+mod samples;
 
-pub use codes::*;
-pub use dsp::*;
-pub use samples::*;
+/// Public API surface for this crate.
+pub mod api;
+
+/// Re-export public API at the crate root.
+pub use api::*;

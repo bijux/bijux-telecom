@@ -1,4 +1,6 @@
-use crate::Matrix;
+#![allow(missing_docs)]
+
+use crate::linalg::Matrix;
 use bijux_gnss_core::NavHealthEvent;
 
 #[derive(Debug, Clone)]

@@ -1,5 +1,7 @@
-use super::MeasurementKind;
-use crate::Matrix;
+#![allow(missing_docs)]
+
+use super::state::MeasurementKind;
+use crate::linalg::Matrix;
 
 pub trait StateModel {
     fn state_dim(&self) -> usize;

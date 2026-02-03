@@ -1,3 +1,6 @@
+#![allow(missing_docs)]
+#![allow(dead_code)]
+
 use bijux_gnss_core::SigId;
 
 #[derive(Debug, Clone)]

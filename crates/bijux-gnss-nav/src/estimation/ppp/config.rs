@@ -1,9 +1,13 @@
+#![allow(missing_docs)]
+
 use std::collections::BTreeMap;
 
 use bijux_gnss_core::{Constellation, SatId, SigId};
 
-use crate::estimation::ekf::Ekf;
-use crate::{CodeBiasProvider, CorrectionContext, PhaseBiasProvider, WeightingConfig};
+use crate::corrections::biases::{CodeBiasProvider, PhaseBiasProvider};
+use crate::corrections::CorrectionContext;
+use crate::estimation::ekf::state::Ekf;
+use crate::estimation::position::solver::WeightingConfig;
 
 pub(crate) const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 

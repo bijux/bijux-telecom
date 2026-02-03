@@ -1,24 +1,30 @@
+#![allow(missing_docs)]
+
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
-use eyre::Result;
+use bijux_gnss_core::IoError;
 
 use bijux_gnss_core::ObsEpoch;
 
-use crate::GpsEphemeris;
+use crate::orbits::gps::GpsEphemeris;
 
-fn write_header_line(writer: &mut BufWriter<File>, line: &str) -> Result<()> {
+fn write_header_line(writer: &mut BufWriter<File>, line: &str) -> Result<(), IoError> {
     let mut out = line.to_string();
     if out.len() > 80 {
         out.truncate(80);
     }
-    writeln!(writer, "{out}")?;
+    writeln!(writer, "{out}").map_err(|e| IoError {
+        message: e.to_string(),
+    })?;
     Ok(())
 }
 
-pub fn write_rinex_obs(path: &Path, epochs: &[ObsEpoch], _strict: bool) -> Result<()> {
-    let file = File::create(path)?;
+pub fn write_rinex_obs(path: &Path, epochs: &[ObsEpoch], _strict: bool) -> Result<(), IoError> {
+    let file = File::create(path).map_err(|e| IoError {
+        message: e.to_string(),
+    })?;
     let mut writer = BufWriter::new(file);
     write_header_line(
         &mut writer,
@@ -42,12 +48,16 @@ pub fn write_rinex_obs(path: &Path, epochs: &[ObsEpoch], _strict: bool) -> Resul
         write_header_line(&mut writer, &line)?;
     }
 
-    writer.flush()?;
+    writer.flush().map_err(|e| IoError {
+        message: e.to_string(),
+    })?;
     Ok(())
 }
 
-pub fn write_rinex_nav(path: &Path, ephs: &[GpsEphemeris], _strict: bool) -> Result<()> {
-    let file = File::create(path)?;
+pub fn write_rinex_nav(path: &Path, ephs: &[GpsEphemeris], _strict: bool) -> Result<(), IoError> {
+    let file = File::create(path).map_err(|e| IoError {
+        message: e.to_string(),
+    })?;
     let mut writer = BufWriter::new(file);
     write_header_line(
         &mut writer,
@@ -67,6 +77,8 @@ pub fn write_rinex_nav(path: &Path, ephs: &[GpsEphemeris], _strict: bool) -> Res
         write_header_line(&mut writer, &line)?;
     }
 
-    writer.flush()?;
+    writer.flush().map_err(|e| IoError {
+        message: e.to_string(),
+    })?;
     Ok(())
 }

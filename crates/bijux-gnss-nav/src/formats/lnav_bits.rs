@@ -1,7 +1,10 @@
+#![allow(missing_docs)]
+#![allow(dead_code)]
+
 use crate::formats::lnav_decode::{
     get_bits, parse_subframe1, parse_subframe2, parse_subframe3, EphemerisBuilder, EphemerisPart,
 };
-use crate::GpsEphemeris;
+use crate::orbits::gps::GpsEphemeris;
 
 const GPS_L1CA_PREAMBLE: [u8; 8] = [1, 0, 0, 0, 1, 0, 1, 1];
 

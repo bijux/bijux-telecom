@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use bijux_gnss_core::{Constellation, SatId};
 use bijux_gnss_nav::{CsvEphemerisProvider, EphemerisProvider};
 

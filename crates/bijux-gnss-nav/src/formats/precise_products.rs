@@ -1,8 +1,11 @@
+#![allow(missing_docs)]
+
 use bijux_gnss_core::SatId;
 
-use crate::{sat_state_gps_l1ca, GpsEphemeris, GpsSatState};
+use crate::orbits::gps::{sat_state_gps_l1ca, GpsEphemeris, GpsSatState};
 
-use crate::{ClkProvider, Sp3Provider};
+use crate::formats::clk::ClkProvider;
+use crate::formats::sp3::Sp3Provider;
 
 #[derive(Debug, Clone)]
 pub struct ProductDiagnostics {

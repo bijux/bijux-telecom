@@ -1,4 +1,5 @@
 //! GNSS navigation domain: ephemeris parsing, corrections, and positioning.
+//! See docs/GLOSSARY.md for acronym definitions.
 //!
 //! Module map:
 //! - `orbits`: broadcast ephemeris and satellite state
@@ -10,16 +11,17 @@
 //! - Start here: `sat_state_gps_l1ca` and `PositionSolver`
 
 #![deny(clippy::unwrap_used)]
+#![deny(missing_docs)]
 
-pub mod corrections;
-pub mod estimation;
-pub mod formats;
-pub mod linalg;
-pub mod orbits;
-pub mod time;
+mod corrections;
+mod estimation;
+mod formats;
+mod linalg;
+mod orbits;
+mod time;
 
-pub use corrections::*;
-pub use estimation::*;
-pub use formats::*;
-pub use linalg::Matrix;
-pub use orbits::*;
+/// Public API surface for this crate.
+pub mod api;
+
+/// Re-export public API at the crate root.
+pub use api::*;

@@ -1,7 +1,8 @@
-use super::{
-    Ekf, EkfConfig, EkfHealth, MeasurementKind, MeasurementModel, RejectionReason, StateModel,
-};
-use crate::Matrix;
+#![allow(missing_docs)]
+
+use super::state::{Ekf, EkfConfig, EkfHealth, MeasurementKind, RejectionReason};
+use super::traits::{MeasurementModel, StateModel};
+use crate::linalg::Matrix;
 use bijux_gnss_core::NavHealthEvent;
 
 impl Ekf {

@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 //! GPS L1 C/A code generation.
 //!
 //! Clean-room implementation based on public interface specifications.

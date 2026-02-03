@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use std::f64::consts::TAU;
 
 /// Numerically controlled oscillator for mixing at a given frequency.
