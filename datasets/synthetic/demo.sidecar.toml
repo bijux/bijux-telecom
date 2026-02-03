@@ -1,0 +1,6 @@
+schema_version = 1
+format = "iq16_le"
+sample_rate_hz = 5_000_000.0
+intermediate_freq_hz = 0.0
+quantization_bits = 16
+notes = "Synthetic demo dataset metadata."

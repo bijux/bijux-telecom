@@ -1,0 +1,4 @@
+id = "rtk_baseline_sanity"
+scenario = "configs/scenarios/multiconst.toml"
+sweep = ["navigation.rtk.enable=true"]
+notes = "RTK baseline sanity run using multiconstellation synthetic data."

@@ -1,0 +1,4 @@
+id = "ppp_convergence_sanity"
+scenario = "configs/scenarios/basic.toml"
+sweep = ["navigation.ppp.enable=true", "navigation.ppp.use_iono_free=true"]
+notes = "PPP convergence sanity sweep on synthetic data."
