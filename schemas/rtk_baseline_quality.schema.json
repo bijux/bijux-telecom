@@ -10,7 +10,9 @@
     "sigma_u",
     "used_sats",
     "residual_rms_m",
-    "predicted_rms_m"
+    "predicted_rms_m",
+    "hpl_m",
+    "vpl_m"
   ],
   "properties": {
     "epoch_idx": { "type": "integer", "minimum": 0 },
@@ -20,6 +22,10 @@
     "sigma_u": { "type": "number" },
     "used_sats": { "type": "integer", "minimum": 0 },
     "residual_rms_m": { "type": "number" },
-    "predicted_rms_m": { "type": "number" }
+    "predicted_rms_m": { "type": "number" },
+    "hpl_m": { "type": "number" },
+    "vpl_m": { "type": "number" },
+    "separation_sig": { "type": "string" },
+    "separation_max_m": { "type": "number" }
   }
 }

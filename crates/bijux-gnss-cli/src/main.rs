@@ -474,34 +474,47 @@ struct EkfContext {
     model: NavClockModel,
     last_t_rx_s: Option<f64>,
     ambiguity: bijux_gnss_nav::AmbiguityManager,
+    isb: bijux_gnss_nav::InterSystemBiasManager,
+    ztd_index: Option<usize>,
+    atmosphere: bijux_gnss_nav::AtmosphereConfig,
 }
 
 impl EkfContext {
     fn new() -> Self {
         let x = vec![0.0_f64; 8];
         let p = Matrix::identity(8);
+        let mut ekf = bijux_gnss_nav::Ekf::new(
+            x,
+            p,
+            bijux_gnss_nav::EkfConfig {
+                gating_chi2_code: Some(200.0),
+                gating_chi2_phase: Some(200.0),
+                gating_chi2_doppler: Some(200.0),
+                huber_k: Some(10.0),
+                square_root: true,
+                covariance_epsilon: 1e-6,
+                divergence_max_variance: 1e12,
+            },
+        );
+        let ztd_index = {
+            let idx = ekf.x.len();
+            ekf.add_state("ztd_m", 2.3, 10.0);
+            Some(idx)
+        };
         Self {
-            ekf: bijux_gnss_nav::Ekf::new(
-                x,
-                p,
-                bijux_gnss_nav::EkfConfig {
-                    gating_chi2_code: Some(200.0),
-                    gating_chi2_phase: Some(200.0),
-                    gating_chi2_doppler: Some(200.0),
-                    huber_k: Some(10.0),
-                    square_root: true,
-                    covariance_epsilon: 1e-6,
-                    divergence_max_variance: 1e12,
-                },
-            ),
+            ekf,
             model: NavClockModel::new(ProcessNoiseConfig {
                 pos_m: 1.0,
                 vel_mps: 1.0,
                 clock_bias_s: 1e-4,
                 clock_drift_s: 1e-5,
+                ztd_m: 0.01,
             }),
             last_t_rx_s: None,
             ambiguity: bijux_gnss_nav::AmbiguityManager::new(),
+            isb: bijux_gnss_nav::InterSystemBiasManager::new(),
+            ztd_index,
+            atmosphere: bijux_gnss_nav::AtmosphereConfig::default(),
         }
     }
 }
@@ -570,6 +583,8 @@ struct ValidationReport {
     consistency: SolutionConsistencyReport,
     budgets: ValidationBudgets,
     budget_violations: Vec<String>,
+    nis_mean: Option<f64>,
+    nees_mean: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -891,6 +906,11 @@ fn main() -> Result<()> {
                     bijux_gnss_receiver::ambiguity::FixPolicy::default(),
                 );
                 let mut last_ref: Option<bijux_gnss_core::SigId> = None;
+                let mut ref_selector = bijux_gnss_receiver::rtk::RefSatSelector::new(5);
+                let mut ref_selectors: std::collections::BTreeMap<
+                    Constellation,
+                    bijux_gnss_receiver::rtk::RefSatSelector,
+                > = std::collections::BTreeMap::new();
 
                 for (base, rover) in aligned {
                     let sd = bijux_gnss_receiver::rtk::build_sd(&base, &rover);
@@ -899,7 +919,7 @@ fn main() -> Result<()> {
                     }
                     let dd = match ref_policy {
                         RefPolicy::Global => {
-                            if let Some(ref_sig) = bijux_gnss_receiver::rtk::choose_ref_sat(&sd) {
+                            if let Some(ref_sig) = ref_selector.choose(&sd) {
                                 bijux_gnss_receiver::rtk::build_dd(&sd, ref_sig)
                             } else {
                                 Vec::new()
@@ -908,7 +928,24 @@ fn main() -> Result<()> {
                         RefPolicy::PerConstellation => {
                             let refs =
                                 bijux_gnss_receiver::rtk::choose_ref_sat_per_constellation(&sd);
-                            bijux_gnss_receiver::rtk::build_dd_per_constellation(&sd, &refs)
+                            let mut chosen = std::collections::BTreeMap::new();
+                            for (constellation, sig) in refs {
+                                let selector =
+                                    ref_selectors.entry(constellation).or_insert_with(|| {
+                                        bijux_gnss_receiver::rtk::RefSatSelector::new(5)
+                                    });
+                                let subset: Vec<_> = sd
+                                    .iter()
+                                    .filter(|s| s.sig.sat.constellation == constellation)
+                                    .cloned()
+                                    .collect();
+                                if let Some(picked) = selector.choose(&subset) {
+                                    chosen.insert(constellation, picked);
+                                } else {
+                                    chosen.insert(constellation, sig);
+                                }
+                            }
+                            bijux_gnss_receiver::rtk::build_dd_per_constellation(&sd, &chosen)
                         }
                     };
                     for item in &dd {
@@ -943,11 +980,35 @@ fn main() -> Result<()> {
                     fix_audit_lines.push(serde_json::to_string(&audit)?);
 
                     if let Some(baseline_val) = baseline.take() {
+                        let before_rms = bijux_gnss_receiver::rtk::dd_residual_metrics(
+                            &dd,
+                            base_xyz,
+                            baseline_val.enu_m,
+                            &ephs,
+                            rover.t_rx_s,
+                        )
+                        .map(|(rms, _pred, _)| rms);
                         let mut adjusted = bijux_gnss_receiver::rtk::apply_fix_hold(
                             baseline_val,
                             fix_result.accepted,
                         );
-                        adjusted.fixed = fix_result.accepted;
+                        let after_rms = bijux_gnss_receiver::rtk::dd_residual_metrics(
+                            &dd,
+                            base_xyz,
+                            adjusted.enu_m,
+                            &ephs,
+                            rover.t_rx_s,
+                        )
+                        .map(|(rms, _pred, _)| rms);
+                        if let (Some(before), Some(after)) = (before_rms, after_rms) {
+                            if after > before * 1.1 {
+                                adjusted.fixed = false;
+                            } else {
+                                adjusted.fixed = fix_result.accepted;
+                            }
+                        } else {
+                            adjusted.fixed = fix_result.accepted;
+                        }
                         let (rms_obs, rms_pred, used_sats) =
                             if let Some((rms_obs, rms_pred, count)) =
                                 bijux_gnss_receiver::rtk::dd_residual_metrics(
@@ -962,22 +1023,60 @@ fn main() -> Result<()> {
                             } else {
                                 (0.0, 0.0, 0)
                             };
+                        let separation = bijux_gnss_receiver::rtk::solution_separation(
+                            &dd,
+                            base_xyz,
+                            &ephs,
+                            rover.t_rx_s,
+                        );
+                        let mut sep_sig = None;
+                        let mut sep_max = None;
+                        if let Some(seps) = separation {
+                            if let Some(max) = seps
+                                .iter()
+                                .max_by(|a, b| a.delta_enu_m.partial_cmp(&b.delta_enu_m).unwrap())
+                            {
+                                sep_sig = Some(format!("{:?}", max.sig));
+                                sep_max = Some(max.delta_enu_m);
+                            }
+                        }
                         if let Some(cov) = adjusted.covariance_m2 {
                             let sigma_e = cov[0][0].abs().sqrt();
                             let sigma_n = cov[1][1].abs().sqrt();
                             let sigma_u = cov[2][2].abs().sqrt();
-                            baseline_quality_lines.push(serde_json::to_string(
-                                &serde_json::json!({
-                                    "epoch_idx": rover.epoch_idx,
-                                    "fixed": adjusted.fixed,
-                                    "sigma_e": sigma_e,
-                                    "sigma_n": sigma_n,
-                                    "sigma_u": sigma_u,
-                                    "used_sats": used_sats,
-                                    "residual_rms_m": rms_obs,
-                                    "predicted_rms_m": rms_pred
-                                }),
-                            )?);
+                            let sigma_h = (sigma_e * sigma_e + sigma_n * sigma_n).sqrt();
+                            let hpl = sigma_h * 6.0;
+                            let vpl = sigma_u * 6.0;
+                            let mut obj = serde_json::json!({
+                                "epoch_idx": rover.epoch_idx,
+                                "fixed": adjusted.fixed,
+                                "sigma_e": sigma_e,
+                                "sigma_n": sigma_n,
+                                "sigma_u": sigma_u,
+                                "used_sats": used_sats,
+                                "residual_rms_m": rms_obs,
+                                "predicted_rms_m": rms_pred,
+                                "hpl_m": hpl,
+                                "vpl_m": vpl
+                            });
+                            if let serde_json::Value::Object(map) = &mut obj {
+                                if let Some(sig) = sep_sig {
+                                    map.insert(
+                                        "separation_sig".to_string(),
+                                        serde_json::Value::String(sig),
+                                    );
+                                }
+                                if let Some(val) = sep_max {
+                                    map.insert(
+                                        "separation_max_m".to_string(),
+                                        serde_json::Value::Number(
+                                            serde_json::Number::from_f64(val)
+                                                .unwrap_or_else(|| serde_json::Number::from(0)),
+                                        ),
+                                    );
+                                }
+                            }
+                            baseline_quality_lines.push(serde_json::to_string(&obj)?);
                         }
                         baseline_lines.push(serde_json::to_string(&adjusted)?);
                     }
@@ -1264,6 +1363,12 @@ fn main() -> Result<()> {
                 let path = out_dir.join("validation_report.json");
                 fs::write(&path, serde_json::to_string_pretty(&report)?)?;
                 println!("wrote {}", path.display());
+
+                let (rows, stats) = reference_compare(&solutions, &reference_epochs);
+                let compare_path = out_dir.join("reference_compare.json");
+                fs::write(&compare_path, serde_json::to_string_pretty(&stats)?)?;
+                let compare_csv = out_dir.join("reference_compare.csv");
+                fs::write(&compare_csv, rows.join("\n"))?;
             }
             GnssCommand::Run {
                 common,
@@ -1949,6 +2054,12 @@ fn solve_epoch_ekf(
         let weight =
             bijux_gnss_nav::weight_from_cn0_elev(sat.cn0_dbhz, el, WeightingConfig::default());
         let sigma_m = (5.0 / weight.max(0.1)).max(1.0);
+        let isb_index = if sat.signal_id.sat.constellation != Constellation::Gps {
+            let key = format!("isb_{:?}", sat.signal_id.sat.constellation);
+            Some(ctx.isb.get_or_add(&mut ctx.ekf, &key, 0.0, 1e-6))
+        } else {
+            None
+        };
         let meas = PseudorangeMeasurement {
             sig: sat.signal_id,
             z_m: sat.pseudorange_m,
@@ -1958,7 +2069,8 @@ fn solve_epoch_ekf(
             iono_m: 0.0,
             sigma_m,
             elevation_deg: Some(el),
-            ztd_index: None,
+            ztd_index: ctx.ztd_index,
+            isb_index,
         };
         if ctx.ekf.update(&meas) {
             used += 1;
@@ -1990,9 +2102,27 @@ fn solve_epoch_ekf(
             ambiguity_index: Some(amb_idx),
             sigma_cycles: 0.05,
             elevation_deg: Some(el),
-            ztd_index: None,
+            ztd_index: ctx.ztd_index,
+            isb_index,
         };
         ctx.ekf.update(&carrier_meas);
+    }
+
+    if let Some(idx) = ctx.ztd_index {
+        if idx < ctx.ekf.x.len() {
+            let before = ctx.ekf.x[idx];
+            let after = bijux_gnss_nav::clamp_ztd(before, &ctx.atmosphere);
+            if (after - before).abs() > 1e-6 {
+                ctx.ekf.x[idx] = after;
+                ctx.ekf
+                    .health
+                    .events
+                    .push(bijux_gnss_core::NavHealthEvent::ZtdClamped {
+                        before_m: before,
+                        after_m: after,
+                    });
+            }
+        }
     }
 
     if used < 4 {
@@ -2150,6 +2280,7 @@ fn build_validation_report(
     let mut horiz_errors = Vec::new();
     let mut vert_errors = Vec::new();
     let mut residuals = Vec::new();
+    let mut nees_values = Vec::new();
 
     for sol in solutions {
         if let Some(r) = ref_map.get(&sol.epoch.index) {
@@ -2161,6 +2292,20 @@ fn build_validation_report(
             let vert = dz.abs();
             horiz_errors.push(horiz);
             vert_errors.push(vert);
+            if let (Some(sig_h), Some(sig_v)) = (sol.sigma_h_m, sol.sigma_v_m) {
+                if sig_h > 0.0 && sig_v > 0.0 {
+                    let (e, n, u) = bijux_gnss_nav::ecef_to_enu(
+                        sol.ecef_x_m,
+                        sol.ecef_y_m,
+                        sol.ecef_z_m,
+                        r.latitude_deg,
+                        r.longitude_deg,
+                        r.altitude_m,
+                    );
+                    let nees = (e * e + n * n) / (sig_h * sig_h) + (u * u) / (sig_v * sig_v);
+                    nees_values.push(nees);
+                }
+            }
         }
         let mut per_sat = Vec::new();
         let mut rejected = Vec::new();
@@ -2186,6 +2331,27 @@ fn build_validation_report(
     let violations = check_budgets(tracks, solutions, &budgets);
     let time_consistency = check_time_consistency(tracks, sample_rate_hz);
     let consistency = check_solution_consistency(solutions);
+    let nis_values: Vec<f64> = solutions
+        .iter()
+        .filter_map(|s| {
+            let pred = s.ekf_predicted_variance?;
+            if pred > 0.0 {
+                Some((s.ekf_innovation_rms.unwrap_or(0.0).powi(2)) / pred)
+            } else {
+                None
+            }
+        })
+        .collect();
+    let nis_mean = if nis_values.is_empty() {
+        None
+    } else {
+        Some(nis_values.iter().sum::<f64>() / nis_values.len() as f64)
+    };
+    let nees_mean = if nees_values.is_empty() {
+        None
+    } else {
+        Some(nees_values.iter().sum::<f64>() / nees_values.len() as f64)
+    };
 
     Ok(ValidationReport {
         samples: tracks.iter().map(|t| t.epochs.len()).sum(),
@@ -2197,7 +2363,64 @@ fn build_validation_report(
         consistency,
         budgets,
         budget_violations: violations,
+        nis_mean,
+        nees_mean,
     })
+}
+
+#[derive(Debug, Serialize)]
+struct ReferenceCompareStats {
+    count: usize,
+    horiz_rms_m: f64,
+    vert_rms_m: f64,
+}
+
+fn reference_compare(
+    solutions: &[bijux_gnss_core::NavSolutionEpoch],
+    reference: &[ValidationReferenceEpoch],
+) -> (Vec<String>, ReferenceCompareStats) {
+    let mut ref_map = std::collections::BTreeMap::new();
+    for r in reference {
+        ref_map.insert(r.epoch_idx, r);
+    }
+    let mut rows = Vec::new();
+    rows.push("epoch_idx,dx_m,dy_m,dz_m,horiz_m,vert_m".to_string());
+    let mut horiz = Vec::new();
+    let mut vert = Vec::new();
+    for sol in solutions {
+        if let Some(r) = ref_map.get(&sol.epoch.index) {
+            let (x, y, z) = lla_to_ecef(r.latitude_deg, r.longitude_deg, r.altitude_m);
+            let dx = sol.ecef_x_m - x;
+            let dy = sol.ecef_y_m - y;
+            let dz = sol.ecef_z_m - z;
+            let h = (dx * dx + dy * dy).sqrt();
+            let v = dz.abs();
+            horiz.push(h);
+            vert.push(v);
+            rows.push(format!(
+                "{},{:.4},{:.4},{:.4},{:.4},{:.4}",
+                sol.epoch.index, dx, dy, dz, h, v
+            ));
+        }
+    }
+    let horiz_rms = if horiz.is_empty() {
+        0.0
+    } else {
+        (horiz.iter().map(|v| v * v).sum::<f64>() / horiz.len() as f64).sqrt()
+    };
+    let vert_rms = if vert.is_empty() {
+        0.0
+    } else {
+        (vert.iter().map(|v| v * v).sum::<f64>() / vert.len() as f64).sqrt()
+    };
+    (
+        rows,
+        ReferenceCompareStats {
+            count: horiz.len(),
+            horiz_rms_m: horiz_rms,
+            vert_rms_m: vert_rms,
+        },
+    )
 }
 
 fn check_solution_consistency(
