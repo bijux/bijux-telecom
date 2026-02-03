@@ -621,6 +621,7 @@ struct PppEvaluationReport {
     time_to_decimeter_s: Option<f64>,
     time_to_centimeter_s: Option<f64>,
     residual_rms_m: f64,
+    checkpoint_path: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1453,12 +1454,23 @@ fn main() -> Result<()> {
                     let ppp_config = build_ppp_config(&profile);
                     let mut ppp = PppFilter::new(ppp_config);
                     let mut ppp_solutions = Vec::new();
+                    let mut checkpoint_path = None;
                     for epoch in &obs {
                         if let Some(sol) = ppp.solve_epoch(epoch, &ephs, &products) {
                             ppp_solutions.push(sol);
                         }
+                        if profile.navigation.ppp.checkpoint_interval_epochs > 0
+                            && epoch.epoch_idx % profile.navigation.ppp.checkpoint_interval_epochs
+                                == 0
+                        {
+                            let ck = ppp.checkpoint();
+                            let path = out_dir.join("ppp_checkpoint.json");
+                            fs::write(&path, serde_json::to_string_pretty(&ck)?)?;
+                            checkpoint_path = Some(path.display().to_string());
+                        }
                     }
-                    let ppp_report = ppp_evaluation_report(&ppp_solutions, &reference_epochs);
+                    let mut ppp_report = ppp_evaluation_report(&ppp_solutions, &reference_epochs);
+                    ppp_report.checkpoint_path = checkpoint_path;
                     let ppp_path = out_dir.join("ppp_report.json");
                     fs::write(&ppp_path, serde_json::to_string_pretty(&ppp_report)?)?;
                 }
@@ -2511,15 +2523,26 @@ fn build_validation_report(
 
 fn build_ppp_config(profile: &ReceiverProfile) -> PppConfig {
     let p = &profile.navigation.ppp;
+    let ar_mode = match p.ar_mode.as_str() {
+        "ppp_ar_wide_lane" => bijux_gnss_nav::PppArMode::PppArWideLane,
+        "ppp_ar_narrow_lane" => bijux_gnss_nav::PppArMode::PppArNarrowLane,
+        _ => bijux_gnss_nav::PppArMode::FloatPpp,
+    };
     PppConfig {
         enable_iono_state: p.enable_iono_state,
         use_iono_free: p.use_iono_free,
         use_doppler: p.use_doppler,
+        ar_mode,
+        ar_ratio_threshold: p.ar_ratio_threshold,
+        ar_stability_epochs: p.ar_stability_epochs,
+        ar_max_sats: p.ar_max_sats,
+        ar_use_elevation: p.ar_use_elevation,
         prune_after_epochs: p.prune_after_epochs,
         reset_gap_s: p.reset_gap_s,
         residual_gate_m: p.residual_gate_m,
         drift_window_epochs: p.drift_window_epochs as usize,
         drift_threshold_m: p.drift_threshold_m,
+        checkpoint_interval_epochs: p.checkpoint_interval_epochs,
         process_noise: PppProcessNoise {
             clock_drift_s: p.noise_clock_drift,
             ztd_m: p.noise_ztd,
@@ -2598,6 +2621,7 @@ fn ppp_evaluation_report(
         time_to_decimeter_s: t10,
         time_to_centimeter_s: t1cm,
         residual_rms_m,
+        checkpoint_path: None,
     }
 }
 
