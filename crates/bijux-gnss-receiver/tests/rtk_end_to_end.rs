@@ -6,7 +6,7 @@ use bijux_gnss_nav::{
     geodetic_to_ecef, sat_state_gps_l1ca, GpsEphemeris, PositionObservation, PositionSolver,
 };
 use bijux_gnss_receiver::rtk::{
-    baseline_from_ecef, build_dd, build_sd, choose_ref_sat, solve_baseline_dd,
+    baseline_from_ecef, build_dd, build_sd, choose_ref_sat, solution_separation, solve_baseline_dd,
 };
 
 fn make_eph(prn: u8, omega0: f64, m0: f64) -> GpsEphemeris {
@@ -174,4 +174,27 @@ fn rtk_dd_solution_close_to_baseline() {
         (baseline.enu_m[1] - expected.enu_m[1]).abs() < 500.0,
         "north error too large"
     );
+}
+
+#[test]
+fn solution_separation_reports_deltas() {
+    let base = geodetic_to_ecef(37.0, -122.0, 10.0);
+    let rover = geodetic_to_ecef(37.0001, -121.9999, 12.0);
+    let t_rx_s = 100_000.0;
+    let ephs = vec![
+        make_eph(1, 0.0, 0.0),
+        make_eph(2, 0.8, 0.9),
+        make_eph(3, 1.6, 1.8),
+        make_eph(4, 2.4, 2.7),
+        make_eph(5, 3.2, 3.6),
+    ];
+    let base_epoch = make_obs_epoch(ReceiverRole::Base, t_rx_s, base, &ephs);
+    let rover_epoch = make_obs_epoch(ReceiverRole::Rover, t_rx_s, rover, &ephs);
+    let sd = build_sd(&base_epoch, &rover_epoch);
+    let ref_sig = choose_ref_sat(&sd).expect("ref sig");
+    let dd = build_dd(&sd, ref_sig);
+    let sep =
+        solution_separation(&dd, [base.0, base.1, base.2], &ephs, t_rx_s).expect("separation");
+    assert_eq!(sep.len(), dd.len());
+    assert!(sep.iter().all(|s| s.delta_enu_m.is_finite()));
 }

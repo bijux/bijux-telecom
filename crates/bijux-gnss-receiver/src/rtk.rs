@@ -37,6 +37,41 @@ pub enum RefSatPolicy {
     PerConstellation,
 }
 
+#[derive(Debug, Clone)]
+pub struct RefSatSelector {
+    pub last_ref: Option<SigId>,
+    pub hold_epochs: usize,
+    pub since_change: usize,
+}
+
+impl RefSatSelector {
+    pub fn new(hold_epochs: usize) -> Self {
+        Self {
+            last_ref: None,
+            hold_epochs,
+            since_change: 0,
+        }
+    }
+
+    pub fn choose(&mut self, sd: &[SdObservation]) -> Option<SigId> {
+        if sd.is_empty() {
+            return None;
+        }
+        let best = choose_ref_sat(sd)?;
+        if let Some(last) = self.last_ref {
+            if sd.iter().any(|s| s.sig == last) && self.since_change < self.hold_epochs {
+                self.since_change += 1;
+                return Some(last);
+            }
+        }
+        if self.last_ref != Some(best) {
+            self.last_ref = Some(best);
+            self.since_change = 0;
+        }
+        Some(best)
+    }
+}
+
 type SatKey = bijux_gnss_core::SatId;
 
 impl EpochAligner {
@@ -117,6 +152,12 @@ pub struct DdObservation {
     pub variance_code: f64,
     pub variance_phase: f64,
     pub canceled: Vec<AmbiguityId>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SolutionSeparation {
+    pub sig: SigId,
+    pub delta_enu_m: f64,
 }
 
 fn ambiguity_id(sat: &ObsSatellite) -> AmbiguityId {
@@ -539,6 +580,38 @@ pub fn dd_residual_metrics(
     let rms_obs = (residuals.iter().map(|v| v * v).sum::<f64>() / residuals.len() as f64).sqrt();
     let rms_pred = (predicted_vars.iter().sum::<f64>() / predicted_vars.len() as f64).sqrt();
     Some((rms_obs, rms_pred, residuals.len()))
+}
+
+pub fn solution_separation(
+    dd: &[DdObservation],
+    base_ecef_m: [f64; 3],
+    ephs: &[bijux_gnss_nav::GpsEphemeris],
+    t_rx_s: f64,
+) -> Option<Vec<SolutionSeparation>> {
+    let full = solve_baseline_dd(dd, base_ecef_m, ephs, t_rx_s)?;
+    if dd.len() < 2 {
+        return None;
+    }
+    let mut out = Vec::new();
+    for i in 0..dd.len() {
+        let mut subset = dd.to_vec();
+        let removed = subset.remove(i);
+        if let Some(sol) = solve_baseline_dd(&subset, base_ecef_m, ephs, t_rx_s) {
+            let de = sol.enu_m[0] - full.enu_m[0];
+            let dn = sol.enu_m[1] - full.enu_m[1];
+            let du = sol.enu_m[2] - full.enu_m[2];
+            let delta = (de * de + dn * dn + du * du).sqrt();
+            out.push(SolutionSeparation {
+                sig: removed.sig,
+                delta_enu_m: delta,
+            });
+        }
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
 }
 
 pub fn apply_fix_hold(mut baseline: BaselineSolution, fixed: bool) -> BaselineSolution {
