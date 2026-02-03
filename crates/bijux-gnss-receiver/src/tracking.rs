@@ -220,8 +220,9 @@ impl Tracking {
         &self,
         frame: &SamplesFrame,
         acquisitions: &[bijux_gnss_core::AcqResult],
-        early_late_spacing_chips: f64,
+        band: bijux_gnss_core::SignalBand,
     ) -> Vec<TrackingResult> {
+        let params = self.config.tracking_params(band);
         let max = self.config.channels;
         acquisitions
             .iter()
@@ -232,7 +233,7 @@ impl Tracking {
                     acq.sat,
                     acq.carrier_hz,
                     acq.code_phase_samples as f64,
-                    early_late_spacing_chips,
+                    params.early_late_spacing_chips,
                     self.epochs_in_frame(frame),
                 );
                 let mut lock_loss = 0usize;
@@ -254,7 +255,7 @@ impl Tracking {
                                 acq.sat,
                                 carrier_hz,
                                 code_phase_samples,
-                                early_late_spacing_chips,
+                                params.early_late_spacing_chips,
                                 self.epochs_in_frame(frame),
                             );
                         }
@@ -345,10 +346,11 @@ impl Tracking {
                 (corr.early.norm() - corr.late.norm()).abs() < 0.2 * corr.prompt.norm();
 
             let cn0_dbhz = track_epoch.cn0_dbhz;
+            let params = self.config.tracking_params(bijux_gnss_core::SignalBand::L1);
             let (dll_bw, pll_bw, fll_bw) = adaptive_bandwidth(
-                self.config.dll_bw_hz,
-                self.config.pll_bw_hz,
-                self.config.fll_bw_hz,
+                params.dll_bw_hz,
+                params.pll_bw_hz,
+                params.fll_bw_hz,
                 cn0_dbhz,
             );
             state.code_rate_hz += dll_bw * dll_err as f64;

@@ -9,6 +9,7 @@
 pub mod acquisition;
 pub mod ambiguity;
 pub mod ca_code;
+pub mod combinations;
 pub mod config;
 pub mod data;
 pub mod differencing;
@@ -65,7 +66,8 @@ impl Receiver {
         let acquisitions = acquisition.run_fft(&frame, &sats);
 
         let tracking = tracking::Tracking::new(self.config.clone());
-        let _tracking_results = tracking.track_from_acquisition(&frame, &acquisitions, 0.5);
+        let _tracking_results =
+            tracking.track_from_acquisition(&frame, &acquisitions, bijux_gnss_core::SignalBand::L1);
 
         Ok(())
     }

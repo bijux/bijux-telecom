@@ -25,7 +25,8 @@ fn golden_tracking_from_scenario() {
     let acq_results = acq.run_fft(&frame, &sats);
 
     let tracking = Tracking::new(config);
-    let tracks = tracking.track_from_acquisition(&frame, &acq_results, 0.5);
+    let tracks =
+        tracking.track_from_acquisition(&frame, &acq_results, bijux_gnss_core::SignalBand::L1);
 
     for track in &tracks {
         assert!(!track.epochs.is_empty());

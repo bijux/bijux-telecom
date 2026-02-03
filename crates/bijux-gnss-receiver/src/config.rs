@@ -2,6 +2,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::types::ReceiverConfig;
+use bijux_gnss_core::SignalBand;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ReceiverProfile {
@@ -33,6 +34,38 @@ pub struct TrackingProfile {
     pub fll_bw_hz: f64,
     pub max_channels: usize,
     pub per_epoch_budget_ms: f64,
+    #[serde(default = "default_tracking_integration_ms")]
+    pub integration_ms: u32,
+    #[serde(default)]
+    pub per_band: Vec<BandTrackingProfile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BandTrackingProfile {
+    pub band: String,
+    pub early_late_spacing_chips: f64,
+    pub dll_bw_hz: f64,
+    pub pll_bw_hz: f64,
+    pub fll_bw_hz: f64,
+    #[serde(default = "default_tracking_integration_ms")]
+    pub integration_ms: u32,
+}
+
+fn default_tracking_integration_ms() -> u32 {
+    1
+}
+
+fn parse_band(text: &str) -> Option<SignalBand> {
+    match text.to_lowercase().as_str() {
+        "l1" => Some(SignalBand::L1),
+        "l2" => Some(SignalBand::L2),
+        "l5" => Some(SignalBand::L5),
+        "e1" => Some(SignalBand::E1),
+        "e5" => Some(SignalBand::E5),
+        "b1" => Some(SignalBand::B1),
+        "b2" => Some(SignalBand::B2),
+        _ => None,
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -89,6 +122,43 @@ impl ReceiverProfile {
         if self.tracking.per_epoch_budget_ms <= 0.0 {
             errors.push("tracking.per_epoch_budget_ms must be > 0".to_string());
         }
+        if self.tracking.integration_ms == 0 {
+            errors.push("tracking.integration_ms must be > 0".to_string());
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        for band in &self.tracking.per_band {
+            let parsed = match parse_band(&band.band) {
+                Some(band) => band,
+                None => {
+                    errors.push(format!("tracking.per_band has unknown band {}", band.band));
+                    continue;
+                }
+            };
+            if !seen.insert(parsed) {
+                errors.push(format!(
+                    "tracking.per_band has duplicate entry for {:?}",
+                    parsed
+                ));
+            }
+            if band.early_late_spacing_chips <= 0.0 {
+                errors.push(format!(
+                    "tracking.per_band.{:?}.early_late_spacing_chips must be > 0",
+                    parsed
+                ));
+            }
+            if band.dll_bw_hz <= 0.0 || band.pll_bw_hz <= 0.0 || band.fll_bw_hz <= 0.0 {
+                errors.push(format!(
+                    "tracking.per_band.{:?}.loop bandwidths must be > 0",
+                    parsed
+                ));
+            }
+            if band.integration_ms == 0 {
+                errors.push(format!(
+                    "tracking.per_band.{:?}.integration_ms must be > 0",
+                    parsed
+                ));
+            }
+        }
         if self.navigation.huber_k <= 0.0 {
             errors.push("navigation.huber_k must be > 0".to_string());
         }
@@ -137,9 +207,26 @@ impl ReceiverProfile {
             code_freq_basis_hz: self.code_freq_basis_hz,
             code_length: self.code_length,
             channels: self.tracking.max_channels,
+            early_late_spacing_chips: self.tracking.early_late_spacing_chips,
             dll_bw_hz: self.tracking.dll_bw_hz,
             pll_bw_hz: self.tracking.pll_bw_hz,
             fll_bw_hz: self.tracking.fll_bw_hz,
+            tracking_per_band: self
+                .tracking
+                .per_band
+                .iter()
+                .filter_map(|entry| {
+                    parse_band(&entry.band).map(|band| crate::types::BandTrackingSpec {
+                        band,
+                        early_late_spacing_chips: entry.early_late_spacing_chips,
+                        dll_bw_hz: entry.dll_bw_hz,
+                        pll_bw_hz: entry.pll_bw_hz,
+                        fll_bw_hz: entry.fll_bw_hz,
+                        integration_ms: entry.integration_ms,
+                    })
+                })
+                .collect(),
+            tracking_integration_ms: self.tracking.integration_ms,
             robust_solver: self.navigation.robust_solver,
             huber_k: self.navigation.huber_k,
             raim: self.navigation.raim,
@@ -175,6 +262,8 @@ impl Default for ReceiverProfile {
                 fll_bw_hz: 10.0,
                 max_channels: 8,
                 per_epoch_budget_ms: 0.7,
+                integration_ms: 1,
+                per_band: Vec::new(),
             },
             navigation: NavigationProfile {
                 robust_solver: true,

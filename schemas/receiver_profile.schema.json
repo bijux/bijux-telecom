@@ -61,6 +61,23 @@
         },
         "per_epoch_budget_ms": {
           "type": "number"
+        },
+        "integration_ms": {
+          "type": "integer"
+        },
+        "per_band": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "band": { "type": "string" },
+              "early_late_spacing_chips": { "type": "number" },
+              "dll_bw_hz": { "type": "number" },
+              "pll_bw_hz": { "type": "number" },
+              "fll_bw_hz": { "type": "number" },
+              "integration_ms": { "type": "integer" }
+            }
+          }
         }
       }
     },
