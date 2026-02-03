@@ -203,6 +203,24 @@ fn ppp_resets_on_mass_slip() {
 }
 
 #[test]
+fn ppp_wl_fix_records_event() {
+    let cfg = PppConfig {
+        ar_mode: bijux_gnss_nav::PppArMode::PppArWideLane,
+        ar_ratio_threshold: 1.0,
+        ..PppConfig::default()
+    };
+    let mut ppp = PppFilter::new(cfg);
+    let ephs = vec![make_eph(1), make_eph(2), make_eph(3), make_eph(4)];
+    let products = BroadcastProductsProvider::new(ephs.clone());
+    let mut epoch = make_obs(1, 0.0, 1);
+    epoch.sats.push(make_obs(1, 0.0, 2).sats[0].clone());
+    epoch.sats.push(make_obs(1, 0.0, 3).sats[0].clone());
+    epoch.sats.push(make_obs(1, 0.0, 4).sats[0].clone());
+    let _ = ppp.solve_epoch(&epoch, &ephs, &products);
+    assert!(ppp.health.ar_events.iter().any(|e| e.contains("WL")));
+}
+
+#[test]
 fn ppp_iono_storm_triggers_residual_gate() {
     let cfg = PppConfig {
         residual_gate_m: 1.0,
