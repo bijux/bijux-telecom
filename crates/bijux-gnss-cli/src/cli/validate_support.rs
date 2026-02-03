@@ -78,7 +78,7 @@ fn build_validation_report(
         }
         by_sat.values().any(|bands| bands.len() > 1)
     });
-    let combos = bijux_gnss_receiver::combinations::combinations_from_obs_epochs(
+    let combos = bijux_gnss_nav::combinations_from_obs_epochs(
         obs,
         bijux_gnss_core::SignalBand::L1,
         bijux_gnss_core::SignalBand::L2,
@@ -128,6 +128,7 @@ fn build_validation_report(
     })
 }
 
+#[allow(dead_code)]
 fn build_ppp_config(profile: &ReceiverProfile) -> PppConfig {
     let p = &profile.navigation.ppp;
     let ar_mode = match p.ar_mode.as_str() {
@@ -172,6 +173,7 @@ fn build_ppp_config(profile: &ReceiverProfile) -> PppConfig {
     }
 }
 
+#[allow(dead_code)]
 fn ppp_evaluation_report(
     solutions: &[bijux_gnss_nav::PppSolutionEpoch],
     reference: &[ValidationReferenceEpoch],
@@ -234,12 +236,14 @@ fn ppp_evaluation_report(
 
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 struct ReferenceCompareStats {
     count: usize,
     horiz_rms_m: f64,
     vert_rms_m: f64,
 }
 
+#[allow(dead_code)]
 fn reference_compare(
     solutions: &[bijux_gnss_core::NavSolutionEpoch],
     reference: &[ValidationReferenceEpoch],

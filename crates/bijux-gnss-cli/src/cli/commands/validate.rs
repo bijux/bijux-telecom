@@ -172,3 +172,107 @@ fn validate_sidecar_schema(sidecar: &SidecarSpec) -> Result<()> {
     }
     Ok(())
 }
+
+fn handle_validateartifacts(command: GnssCommand) -> Result<()> {
+    let GnssCommand::ValidateArtifacts {
+        common,
+        obs,
+        eph,
+        strict,
+    } = command
+    else {
+        bail!("invalid command for handler");
+    };
+
+    set_trace_dir(&common);
+    if obs.is_none() && eph.is_none() {
+        bail!("--obs and/or --eph is required");
+    }
+    if let Some(path) = obs {
+        validate_jsonl_schema(&schema_path("obs_epoch.schema.json"), &path, strict)?;
+        println!("obs ok: {}", path.display());
+    }
+    if let Some(path) = eph {
+        validate_json_schema(&schema_path("gps_ephemeris.schema.json"), &path, strict)?;
+        println!("ephemeris ok: {}", path.display());
+    }
+
+    Ok(())
+}
+
+fn handle_validate(command: GnssCommand) -> Result<()> {
+    let GnssCommand::Validate {
+        common,
+        file,
+        eph,
+        reference,
+        prn,
+        sp3,
+        clk,
+    } = command
+    else {
+        bail!("invalid command for handler");
+    };
+
+    set_trace_dir(&common);
+    let file = file.context("--file is required for validation")?;
+    let profile = load_profile(&common)?;
+    let mut obs = read_obs_epochs(&file)?;
+    let nav = read_ephemeris(&eph)?;
+    let reference_epochs = read_reference_epochs(&reference)?;
+
+    if !prn.is_empty() {
+        obs.iter_mut().for_each(|e| {
+            e.sats.retain(|sat| prn.contains(&sat.signal_id.sat.prn));
+        });
+    }
+
+    let mut solutions = Vec::new();
+    let mut nav_solver =
+        bijux_gnss_receiver::navigation::Navigation::new(profile.to_receiver_config());
+    for obs_epoch in &obs {
+        if let Some(sol) = nav_solver.solve_epoch(obs_epoch, &nav) {
+            solutions.push(sol);
+        }
+    }
+
+    let mut products = bijux_gnss_nav::Products::new(
+        bijux_gnss_nav::BroadcastProductsProvider::new(nav.clone()),
+    );
+    if let Some(path) = sp3 {
+        let data = fs::read_to_string(path)?;
+        let sp3 = data
+            .parse::<bijux_gnss_nav::Sp3Provider>()
+            .map_err(|e| eyre!("sp3 parse error: {}", e))?;
+        products = products.with_sp3(sp3);
+    }
+    if let Some(path) = clk {
+        let data = fs::read_to_string(path)?;
+        let clk = data
+            .parse::<bijux_gnss_nav::ClkProvider>()
+            .map_err(|e| eyre!("clk parse error: {}", e))?;
+        products = products.with_clk(clk);
+    }
+
+    let products_ok = products.sp3.is_some() || products.clk.is_some();
+    let product_fallbacks = if products_ok {
+        Vec::new()
+    } else {
+        vec!["broadcast_only".to_string()]
+    };
+
+    let report = build_validation_report(
+        &[],
+        &obs,
+        &solutions,
+        &reference_epochs,
+        profile.sample_rate_hz,
+        products_ok,
+        product_fallbacks,
+    )?;
+    let out = common.out.clone().unwrap_or_else(|| PathBuf::from("validation_report.json"));
+    fs::write(&out, serde_json::to_string_pretty(&report)?)?;
+    println!("wrote {}", out.display());
+
+    Ok(())
+}

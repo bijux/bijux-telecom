@@ -178,6 +178,7 @@ struct PppReadinessReport {
 }
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 struct PppEvaluationReport {
     epochs: usize,
     horiz_rms_m: Option<f64>,
@@ -227,4 +228,3 @@ struct TimeConsistencyReport {
     observed_step_mean: Option<f64>,
     warnings: Vec<String>,
 }
-

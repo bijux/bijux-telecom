@@ -261,7 +261,7 @@ fn write_obs_timeseries(
     }
     fs::write(&path, lines.join("\n"))?;
     validate_jsonl_schema(&schema_path("obs_epoch.schema.json"), &path, false)?;
-    let combos = bijux_gnss_receiver::combinations::combinations_from_obs_epochs(
+    let combos = bijux_gnss_nav::combinations_from_obs_epochs(
         &obs,
         bijux_gnss_core::SignalBand::L1,
         bijux_gnss_core::SignalBand::L2,
