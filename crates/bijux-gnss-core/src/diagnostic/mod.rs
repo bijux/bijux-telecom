@@ -2,6 +2,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
+mod codes;
+
 /// Severity of a diagnostic event.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum DiagnosticSeverity {
@@ -72,56 +74,7 @@ pub struct DiagnosticCode {
     pub mitigation: &'static str,
 }
 
-pub const DIAGNOSTIC_CODES: &[DiagnosticCode] = &[
-    DiagnosticCode {
-        code: "GNSS_NUMERIC_ACQ_INVALID",
-        severity: DiagnosticSeverity::Error,
-        meaning: "Acquisition results contain NaN/Inf",
-        mitigation: "Inspect input IQ scaling and acquisition parameters.",
-    },
-    DiagnosticCode {
-        code: "GNSS_NUMERIC_TRACK_INVALID",
-        severity: DiagnosticSeverity::Error,
-        meaning: "Tracking epoch contains NaN/Inf",
-        mitigation: "Inspect loop configuration and correlator outputs.",
-    },
-    DiagnosticCode {
-        code: "GNSS_NUMERIC_OBS_INVALID",
-        severity: DiagnosticSeverity::Error,
-        meaning: "Observation contains NaN/Inf",
-        mitigation: "Check tracking outputs and observables conversion.",
-    },
-    DiagnosticCode {
-        code: "GNSS_NUMERIC_PVT_INVALID",
-        severity: DiagnosticSeverity::Error,
-        meaning: "Navigation solution contains NaN/Inf",
-        mitigation: "Inspect measurement inputs and solver configuration.",
-    },
-    DiagnosticCode {
-        code: "GNSS_NUMERIC_T_RX_INVALID",
-        severity: DiagnosticSeverity::Error,
-        meaning: "Receiver time tag is not finite",
-        mitigation: "Check sample clock and epoch timing logic.",
-    },
-    DiagnosticCode {
-        code: "GNSS_EPOCH_ALIGN_FAIL",
-        severity: DiagnosticSeverity::Warning,
-        meaning: "Base/rover epoch alignment failed or had gaps",
-        mitigation: "Check dataset timing and alignment tolerance.",
-    },
-    DiagnosticCode {
-        code: "NAV_EPHEMERIS_GAP",
-        severity: DiagnosticSeverity::Warning,
-        meaning: "Ephemeris coverage gap detected",
-        mitigation: "Provide a dataset with complete ephemeris coverage.",
-    },
-    DiagnosticCode {
-        code: "TRACK_LOSS_OF_LOCK",
-        severity: DiagnosticSeverity::Warning,
-        meaning: "Tracking reported loss of lock",
-        mitigation: "Inspect signal strength and tracking loop parameters.",
-    },
-];
+pub const DIAGNOSTIC_CODES: &[DiagnosticCode] = codes::DIAGNOSTIC_CODES;
 
 pub fn lookup_diagnostic(code: &str) -> Option<&'static DiagnosticCode> {
     DIAGNOSTIC_CODES.iter().find(|entry| entry.code == code)

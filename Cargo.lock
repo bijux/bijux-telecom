@@ -176,6 +176,7 @@ name = "bijux-guardrails"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bijux-gnss-core",
  "regex",
  "serde",
  "serde_json",
