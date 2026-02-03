@@ -9,6 +9,7 @@
 #![deny(clippy::unwrap_used)]
 #![deny(missing_docs)]
 
+mod artifact;
 mod config;
 mod diagnostic;
 mod error;

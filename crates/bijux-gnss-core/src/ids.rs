@@ -47,6 +47,70 @@ pub enum SignalCode {
     Unknown,
 }
 
+/// Sort satellite IDs in-place by (constellation, prn).
+pub fn sort_sat_ids(ids: &mut [SatId]) {
+    ids.sort_by_key(|sat| (constellation_rank(sat.constellation), sat.prn));
+}
+
+/// Sort signal IDs in-place by (constellation, prn, band, code).
+pub fn sort_sig_ids(ids: &mut [SigId]) {
+    ids.sort_by_key(|sig| {
+        (
+            constellation_rank(sig.sat.constellation),
+            sig.sat.prn,
+            band_rank(sig.band),
+            code_rank(sig.code),
+        )
+    });
+}
+
+/// Sort satellites within an observation epoch in-place.
+pub fn sort_obs_sats(epoch: &mut crate::ObsEpoch) {
+    epoch.sats.sort_by_key(|sat| {
+        (
+            constellation_rank(sat.signal_id.sat.constellation),
+            sat.signal_id.sat.prn,
+            band_rank(sat.signal_id.band),
+            code_rank(sat.signal_id.code),
+        )
+    });
+}
+
+fn constellation_rank(constellation: Constellation) -> u8 {
+    match constellation {
+        Constellation::Gps => 0,
+        Constellation::Galileo => 1,
+        Constellation::Glonass => 2,
+        Constellation::Beidou => 3,
+        Constellation::Unknown => 9,
+    }
+}
+
+fn band_rank(band: SignalBand) -> u8 {
+    match band {
+        SignalBand::L1 => 0,
+        SignalBand::L2 => 1,
+        SignalBand::L5 => 2,
+        SignalBand::E1 => 3,
+        SignalBand::E5 => 4,
+        SignalBand::B1 => 5,
+        SignalBand::B2 => 6,
+        SignalBand::Unknown => 9,
+    }
+}
+
+fn code_rank(code: SignalCode) -> u8 {
+    match code {
+        SignalCode::Ca => 0,
+        SignalCode::Py => 1,
+        SignalCode::E1B => 2,
+        SignalCode::E1C => 3,
+        SignalCode::E5a => 4,
+        SignalCode::E5b => 5,
+        SignalCode::Unknown => 9,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct FreqHz(pub f64);
