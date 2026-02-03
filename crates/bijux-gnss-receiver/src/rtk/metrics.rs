@@ -50,6 +50,32 @@ pub struct BaselineSolution {
     pub fixed: bool,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RtkBaselineQuality {
+    pub epoch_idx: u64,
+    pub fixed: bool,
+    pub sigma_e: f64,
+    pub sigma_n: f64,
+    pub sigma_u: f64,
+    pub used_sats: usize,
+    pub residual_rms_m: f64,
+    pub predicted_rms_m: f64,
+    pub hpl_m: f64,
+    pub vpl_m: f64,
+    pub separation_sig: Option<String>,
+    pub separation_max_m: Option<f64>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RtkPrecision {
+    pub epoch_idx: u64,
+    pub fix_accepted: bool,
+    pub ratio: Option<f64>,
+    pub fixed_count: usize,
+    pub ref_changed: bool,
+    pub slip_count: usize,
+}
+
 pub fn baseline_from_ecef(base_ecef_m: [f64; 3], rover_ecef_m: [f64; 3]) -> BaselineSolution {
     let (lat, lon, alt) =
         bijux_gnss_nav::ecef_to_geodetic(base_ecef_m[0], base_ecef_m[1], base_ecef_m[2]);

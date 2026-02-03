@@ -104,10 +104,11 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                     for (base, rover) in &aligned {
                         let sd = bijux_gnss_receiver::rtk::build_sd(base, rover);
                         for item in &sd {
-                            sd_lines.push(serde_json::to_string(&serde_json::json!({
-                                "header": header.clone(),
-                                "payload": item
-                            }))?);
+                            let wrapped = bijux_gnss_receiver::rtk::RtkSdEpochV1 {
+                                header: header.clone(),
+                                payload: item.clone(),
+                            };
+                            sd_lines.push(serde_json::to_string(&wrapped)?);
                         }
                         let dd = match ref_policy {
                             RefPolicy::Global => {
@@ -141,10 +142,11 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                             }
                         };
                         for item in &dd {
-                            dd_lines.push(serde_json::to_string(&serde_json::json!({
-                                "header": header.clone(),
-                                "payload": item
-                            }))?);
+                            let wrapped = bijux_gnss_receiver::rtk::RtkDdEpochV1 {
+                                header: header.clone(),
+                                payload: item.clone(),
+                            };
+                            dd_lines.push(serde_json::to_string(&wrapped)?);
                         }
                         let ref_sig = dd.first().map(|d| d.ref_sig);
                         let ref_changed = ref_sig != last_ref;
@@ -172,10 +174,11 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                         };
                         let (fix_result, audit) =
                             fixer.fix_with_state(rover.epoch_idx, &float, &mut fix_state);
-                        fix_audit_lines.push(serde_json::to_string(&serde_json::json!({
-                            "header": header.clone(),
-                            "payload": audit
-                        }))?);
+                        let fix_audit = bijux_gnss_receiver::rtk::RtkFixAuditV1 {
+                            header: header.clone(),
+                            payload: audit.clone(),
+                        };
+                        fix_audit_lines.push(serde_json::to_string(&fix_audit)?);
     
                         if let Some(baseline_val) = baseline.take() {
                             let before_rms = bijux_gnss_receiver::rtk::dd_residual_metrics(
@@ -245,44 +248,31 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                                 let sigma_h = (sigma_e * sigma_e + sigma_n * sigma_n).sqrt();
                                 let hpl = sigma_h * 6.0;
                                 let vpl = sigma_u * 6.0;
-                                let mut obj = serde_json::json!({
-                                    "epoch_idx": rover.epoch_idx,
-                                    "fixed": adjusted.fixed,
-                                    "sigma_e": sigma_e,
-                                    "sigma_n": sigma_n,
-                                    "sigma_u": sigma_u,
-                                    "used_sats": used_sats,
-                                    "residual_rms_m": rms_obs,
-                                    "predicted_rms_m": rms_pred,
-                                    "hpl_m": hpl,
-                                    "vpl_m": vpl
-                                });
-                                if let serde_json::Value::Object(map) = &mut obj {
-                                    if let Some(sig) = sep_sig {
-                                        map.insert(
-                                            "separation_sig".to_string(),
-                                            serde_json::Value::String(sig),
-                                        );
-                                    }
-                                    if let Some(val) = sep_max {
-                                        map.insert(
-                                            "separation_max_m".to_string(),
-                                            serde_json::Value::Number(
-                                                serde_json::Number::from_f64(val)
-                                                    .unwrap_or_else(|| serde_json::Number::from(0)),
-                                            ),
-                                        );
-                                    }
-                                }
-                                baseline_quality_lines.push(serde_json::to_string(&serde_json::json!({
-                                    "header": header.clone(),
-                                    "payload": obj
-                                }))?);
+                                let quality = bijux_gnss_receiver::rtk::RtkBaselineQuality {
+                                    epoch_idx: rover.epoch_idx,
+                                    fixed: adjusted.fixed,
+                                    sigma_e,
+                                    sigma_n,
+                                    sigma_u,
+                                    used_sats,
+                                    residual_rms_m: rms_obs,
+                                    predicted_rms_m: rms_pred,
+                                    hpl_m: hpl,
+                                    vpl_m: vpl,
+                                    separation_sig: sep_sig,
+                                    separation_max_m: sep_max,
+                                };
+                                let wrapped = bijux_gnss_receiver::rtk::RtkBaselineQualityV1 {
+                                    header: header.clone(),
+                                    payload: quality,
+                                };
+                                baseline_quality_lines.push(serde_json::to_string(&wrapped)?);
                             }
-                            baseline_lines.push(serde_json::to_string(&serde_json::json!({
-                                "header": header.clone(),
-                                "payload": adjusted
-                            }))?);
+                            let wrapped = bijux_gnss_receiver::rtk::RtkBaselineEpochV1 {
+                                header: header.clone(),
+                                payload: adjusted,
+                            };
+                            baseline_lines.push(serde_json::to_string(&wrapped)?);
                         }
     
                         let slip_count = base
@@ -291,17 +281,19 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                             .chain(rover.sats.iter())
                             .filter(|s| s.lock_flags.cycle_slip)
                             .count();
-                        precision_lines.push(serde_json::to_string(&serde_json::json!({
-                            "header": header.clone(),
-                            "payload": {
-                                "epoch_idx": rover.epoch_idx,
-                                "fix_accepted": fix_result.accepted,
-                                "ratio": fix_result.ratio,
-                                "fixed_count": audit.fixed_count,
-                                "ref_changed": ref_changed,
-                                "slip_count": slip_count
-                            }
-                        }))?);
+                        let precision = bijux_gnss_receiver::rtk::RtkPrecision {
+                            epoch_idx: rover.epoch_idx,
+                            fix_accepted: fix_result.accepted,
+                            ratio: fix_result.ratio,
+                            fixed_count: audit.fixed_count,
+                            ref_changed,
+                            slip_count,
+                        };
+                        let wrapped = bijux_gnss_receiver::rtk::RtkPrecisionV1 {
+                            header: header.clone(),
+                            payload: precision,
+                        };
+                        precision_lines.push(serde_json::to_string(&wrapped)?);
                     }
     
                     let sd_path = out_dir.join("rtk_sd.jsonl");

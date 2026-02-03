@@ -1,7 +1,7 @@
 //! Public API for bijux-gnss-nav.
 
 /// Versioned artifact wrappers.
-pub use crate::artifact::{GpsEphemerisV1, PppSolutionEpochV1};
+pub use crate::artifact::{GpsEphemerisV1, PppEpochV1};
 pub use crate::corrections::atmosphere::{clamp_ztd, AtmosphereConfig};
 pub use crate::corrections::biases::{CodeBiasProvider, PhaseBiasProvider, ZeroBiases};
 /// Corrections and combination helpers.

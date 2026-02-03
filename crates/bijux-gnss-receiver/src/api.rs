@@ -38,6 +38,7 @@ pub mod navigation {
 /// RTK differencing and baseline helpers.
 pub mod rtk {
     pub use crate::rtk_internal::ambiguity::*;
+    pub use crate::rtk_internal::artifact::*;
     pub use crate::rtk_internal::core::*;
     pub use crate::rtk_internal::differencing::*;
     pub use crate::rtk_internal::metrics::*;

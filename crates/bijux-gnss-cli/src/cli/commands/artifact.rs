@@ -164,8 +164,8 @@ fn validate_artifact_file(
         "acq" => validate_acq_artifact(&data)?,
         "eph" | "ephemeris" => validate_ephemeris_artifact(&data)?,
         "pvt" | "nav" => validate_pvt_artifact(&data)?,
-        "ppp" => validate_generic_jsonl(&data, "ppp")?,
-        "rtk" => validate_generic_jsonl(&data, "rtk")?,
+        "ppp" => validate_ppp_artifact(&data)?,
+        "rtk" => validate_rtk_artifact(&data)?,
         _ => bail!("unknown artifact kind; pass --kind"),
     };
     println!("artifact ok: {}", path.display());
@@ -299,24 +299,80 @@ fn validate_pvt_artifact(data: &str) -> Result<Vec<DiagnosticEvent>> {
     Ok(events)
 }
 
-fn validate_generic_jsonl(data: &str, label: &str) -> Result<Vec<DiagnosticEvent>> {
+fn validate_ppp_artifact(data: &str) -> Result<Vec<DiagnosticEvent>> {
+    let mut events = Vec::new();
+    for line in data.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let wrapped: bijux_gnss_nav::PppEpochV1 = serde_json::from_str(line)?;
+        if !ArtifactReadPolicy::is_supported(wrapped.header.schema_version) {
+            bail!(
+                "unsupported ppp schema_version {}",
+                wrapped.header.schema_version
+            );
+        }
+        events.extend(wrapped.validate());
+    }
+    Ok(events)
+}
+
+fn validate_rtk_artifact(data: &str) -> Result<Vec<DiagnosticEvent>> {
+    let mut events = Vec::new();
     for line in data.lines() {
         if line.trim().is_empty() {
             continue;
         }
         let value: serde_json::Value = serde_json::from_str(line)?;
-        let header = value
-            .get("header")
-            .ok_or_else(|| eyre!("{label} artifact missing header"))?;
-        let schema_version = header
-            .get("schema_version")
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| eyre!("{label} artifact missing schema_version"))?;
-        if !ArtifactReadPolicy::is_supported(schema_version as u32) {
-            bail!("{label} unsupported schema_version {schema_version}");
+        let header: ArtifactHeaderV1 = serde_json::from_value(
+            value
+                .get("header")
+                .cloned()
+                .ok_or_else(|| eyre!("rtk artifact missing header"))?,
+        )?;
+        if !ArtifactReadPolicy::is_supported(header.schema_version) {
+            bail!("unsupported rtk schema_version {}", header.schema_version);
+        }
+        let payload = value
+            .get("payload")
+            .cloned()
+            .ok_or_else(|| eyre!("rtk artifact missing payload"))?;
+        if payload.get("code_m").is_some() && payload.get("ref_sig").is_none() {
+            let wrapped: bijux_gnss_receiver::rtk::RtkSdEpochV1 = serde_json::from_value(value)?;
+            events.extend(wrapped.validate());
+            continue;
+        }
+        if payload.get("ref_sig").is_some() {
+            let wrapped: bijux_gnss_receiver::rtk::RtkDdEpochV1 = serde_json::from_value(value)?;
+            events.extend(wrapped.validate());
+            continue;
+        }
+        if payload.get("enu_m").is_some() {
+            let wrapped: bijux_gnss_receiver::rtk::RtkBaselineEpochV1 =
+                serde_json::from_value(value)?;
+            events.extend(wrapped.validate());
+            continue;
+        }
+        if payload.get("sigma_e").is_some() {
+            let wrapped: bijux_gnss_receiver::rtk::RtkBaselineQualityV1 =
+                serde_json::from_value(value)?;
+            events.extend(wrapped.validate());
+            continue;
+        }
+        if payload.get("fix_accepted").is_some() {
+            let wrapped: bijux_gnss_receiver::rtk::RtkPrecisionV1 =
+                serde_json::from_value(value)?;
+            events.extend(wrapped.validate());
+            continue;
+        }
+        if payload.get("fixed_count").is_some() {
+            let wrapped: bijux_gnss_receiver::rtk::RtkFixAuditV1 =
+                serde_json::from_value(value)?;
+            events.extend(wrapped.validate());
+            continue;
         }
     }
-    Ok(Vec::new())
+    Ok(events)
 }
 
 fn enforce_fail_policy(events: &[DiagnosticEvent], fail_on: DiagnosticFailOn) -> Result<()> {
