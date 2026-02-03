@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use std::path::Path;
 
 use bijux_guardrails::GuardrailConfig;
@@ -19,17 +20,23 @@ fn workspace_has_guardrails_tests() {
         if !path.join("Cargo.toml").exists() {
             continue;
         }
-        let guardrails = path.join("tests").join("guardrails.rs");
+        let guardrails = path.join("tests").join("integration_guardrails.rs");
+        let legacy = path.join("tests").join("guardrails.rs");
+        let guardrails_path = if guardrails.exists() {
+            guardrails
+        } else {
+            legacy
+        };
         assert!(
-            guardrails.exists(),
-            "missing tests/guardrails.rs in {}",
+            guardrails_path.exists(),
+            "missing tests/integration_guardrails.rs in {}",
             path.display()
         );
-        let content = std::fs::read_to_string(&guardrails).expect("read guardrails test");
+        let content = std::fs::read_to_string(&guardrails_path).expect("read guardrails test");
         assert!(
             content.contains("GuardrailConfig::for_crate"),
             "guardrails test must use GuardrailConfig::for_crate in {}",
-            guardrails.display()
+            guardrails_path.display()
         );
     }
 }

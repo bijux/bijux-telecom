@@ -26,3 +26,15 @@
 
 ## Tests
 - Tests live under `tests/` unless they are tightly coupled to a module and add value as unit tests.
+
+
+## Test Taxonomy
+
+Use these prefixes for tests:
+
+- `unit_*` for module-local unit tests.
+- `prop_*` for property tests.
+- `golden_*` for golden-file tests.
+- `integration_*` for integration tests.
+- `fault_*` for fault injection tests.
+- `bench_*` for benchmarks.

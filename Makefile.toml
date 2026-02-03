@@ -63,16 +63,40 @@ script = [
   "else",
   "  echo 'cargo-deny not installed; skipping deny check';",
   "fi",
+  "if command -v cargo-semver-checks >/dev/null 2>&1; then",
+  "  cargo semver-checks --workspace;",
+  "else",
+  "  echo 'cargo-semver-checks not installed; skipping API break check';",
+  "fi",
+]
+
+[tasks.doc]
+command = "cargo"
+args = ["doc", "--no-deps"]
+env = { RUSTDOCFLAGS = "-D warnings" }
+
+[tasks.test-no-default]
+script_runner = "bash"
+script = [
+  "for manifest in crates/*/Cargo.toml; do",
+  "  name=$(awk -F'\"' '/^name[[:space:]]*=/{print $2; exit}' \"$manifest\");",
+  "  if [ -z \"$name\" ]; then",
+  "    echo \"Skipping $manifest (no name found)\";",
+  "    continue;",
+  "  fi;",
+  "  echo \"Running no-default-features tests for $name\";",
+  "  cargo test -p \"$name\" --no-default-features -- --color always;",
+  "done",
 ]
 
 [tasks.lint]
 dependencies = ["fmt-check", "clippy"]
 
 [tasks.ci]
-dependencies = ["lint", "audit", "test"]
+dependencies = ["lint", "audit", "doc", "test", "test-no-default"]
 
 [tasks.ci-fast]
 description = "Run CI once at workspace root (no per-crate recursion)."
-dependencies = ["lint", "audit", "test"]
+dependencies = ["lint", "audit", "doc", "test", "test-no-default"]
 env = { CARGO_MAKE_NO_WORKSPACE = "true", CARGO_MAKE_WORKSPACE_SKIP_MEMBERS = "true" }
 workspace = false

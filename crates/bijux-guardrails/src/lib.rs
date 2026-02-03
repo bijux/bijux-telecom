@@ -1,4 +1,7 @@
 //! Shared guardrail checks across crates.
+//! See docs/GLOSSARY.md for acronym definitions.
+
+#![deny(missing_docs)]
 
 use anyhow::Result;
 use regex::Regex;
@@ -7,18 +10,35 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
+/// Public API surface for this crate.
+pub mod api;
+
+/// Guardrail configuration for policy checks.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GuardrailConfig {
+    /// Maximum lines of code per file.
     pub max_loc: usize,
+    /// Maximum module path depth.
     pub max_depth: usize,
+    /// Maximum number of Rust modules per directory.
     pub max_modules_per_dir: usize,
+    /// Maximum number of Rust files per directory.
     pub max_rs_files_per_dir: usize,
+    /// Maximum number of public items per file.
     pub max_pub_items_per_file: usize,
+    /// Maximum number of pub use statements per file.
     pub max_pub_use_per_file: usize,
+    /// Whether to forbid dense pub use blocks.
     pub forbid_pub_use_spam: bool,
+    /// Whether to forbid panic!/expect usage.
     pub forbid_panic_expect: bool,
+    /// Whether to forbid hard-coded stage id strings.
     pub forbid_stage_id_strings: bool,
+    /// Whether to enforce pub use only in api.rs.
+    pub enforce_pub_use_api_only: bool,
+    /// Allowlist of paths for panic/expect.
     pub allow_panic_expect_paths: Vec<String>,
+    /// Allowlist of paths for stage id strings.
     pub allow_stage_id_paths: Vec<String>,
 }
 
@@ -34,6 +54,7 @@ impl Default for GuardrailConfig {
             forbid_pub_use_spam: false,
             forbid_panic_expect: false,
             forbid_stage_id_strings: false,
+            enforce_pub_use_api_only: true,
             allow_panic_expect_paths: Vec::new(),
             allow_stage_id_paths: Vec::new(),
         }
@@ -42,6 +63,7 @@ impl Default for GuardrailConfig {
 
 impl GuardrailConfig {
     #[must_use]
+    /// Return a default configuration for a given crate name.
     pub fn for_crate(name: &str) -> Self {
         let mut config = Self::default();
         if name == "bijux-domain-bam" {
@@ -51,6 +73,7 @@ impl GuardrailConfig {
     }
 }
 
+/// Run guardrail checks on a crate root.
 pub fn check(crate_root: &Path, config: &GuardrailConfig) -> Result<()> {
     let src_dir = crate_root.join("src");
     let files = collect_rs_files(&src_dir)?;
@@ -62,6 +85,8 @@ pub fn check(crate_root: &Path, config: &GuardrailConfig) -> Result<()> {
     check_empty_modules(&files)?;
     check_mod_reexports_only(&files)?;
     check_pub_items(&files, config)?;
+    check_forbidden_filenames(&files)?;
+    check_pub_use_locations_if_enabled(&files, config)?;
     if config.forbid_pub_use_spam {
         check_pub_use_spam(&files, config)?;
     }
@@ -309,6 +334,51 @@ fn check_pub_use_spam(files: &[PathBuf], config: &GuardrailConfig) -> Result<()>
                 count,
                 config.max_pub_use_per_file
             );
+        }
+    }
+    Ok(())
+}
+
+fn check_pub_use_locations(files: &[PathBuf]) -> Result<()> {
+    let pub_use_re = Regex::new(r"^\s*pub\s+use\b")?;
+    for path in files {
+        if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
+            continue;
+        }
+        let is_api = path.file_name().and_then(|s| s.to_str()) == Some("api.rs");
+        let is_lib = path.file_name().and_then(|s| s.to_str()) == Some("lib.rs");
+        let content = fs::read_to_string(path)?;
+        for (idx, line) in content.lines().enumerate() {
+            if !pub_use_re.is_match(line) {
+                continue;
+            }
+            if is_api {
+                continue;
+            }
+            if is_lib && line.contains("api::") {
+                continue;
+            }
+            anyhow::bail!("pub use outside api.rs at {}:{}", path.display(), idx + 1);
+        }
+    }
+    Ok(())
+}
+
+fn check_pub_use_locations_if_enabled(files: &[PathBuf], config: &GuardrailConfig) -> Result<()> {
+    if !config.enforce_pub_use_api_only {
+        return Ok(());
+    }
+    check_pub_use_locations(files)
+}
+
+fn check_forbidden_filenames(files: &[PathBuf]) -> Result<()> {
+    for path in files {
+        let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+        if name.ends_with(".proptest-regressions") {
+            continue;
+        }
+        if name == "helpers.rs" || name == "support.rs" || name == "misc.rs" {
+            anyhow::bail!("forbidden filename: {}", path.display());
         }
     }
     Ok(())

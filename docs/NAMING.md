@@ -17,3 +17,14 @@ Banned aliases
 Public API surface
 - Keep crate exports minimal: modules + key types only.
 - Internal modules stay private.
+
+
+## Banned File Names
+
+Avoid generic container file names. The following are banned:
+
+- `helpers.rs`
+- `support.rs`
+- `misc.rs`
+
+Use concept-specific names instead (`paths.rs`, `format.rs`, `units.rs`, etc.).
