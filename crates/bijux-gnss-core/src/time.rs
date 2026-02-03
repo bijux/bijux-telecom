@@ -1,3 +1,6 @@
+#![allow(missing_docs)]
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

@@ -1,10 +1,11 @@
+#![allow(missing_docs)]
+#![allow(dead_code)]
+
 use std::collections::BTreeMap;
 
+use crate::{Constellation, Epoch, SampleTime, SatId, SigId, SignalBand, SignalSpec};
 use num_complex::Complex;
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
-
-use crate::{Constellation, Epoch, SampleTime, SatId, SigId, SignalBand, SignalSpec};
 
 pub type Sample = Complex<f32>;
 
@@ -370,45 +371,12 @@ pub fn melbourne_wubbena_m(
     (phi1 - phi2) - (code1_m - code2_m)
 }
 
-#[derive(Debug, Error)]
-#[error("input error: {message}")]
-pub struct InputError {
-    pub message: String,
-}
-
-#[derive(Debug, Error)]
-#[error("config error: {message}")]
-pub struct ConfigError {
-    pub message: String,
-}
-
-#[derive(Debug, Error)]
-#[error("signal error: {message}")]
-pub struct SignalError {
-    pub message: String,
-}
-
-#[derive(Debug, Error)]
-#[error("acquisition error: {message}")]
-pub struct AcqError {
-    pub message: String,
-}
-
-#[derive(Debug, Error)]
-#[error("tracking error: {message}")]
-pub struct TrackError {
-    pub message: String,
-}
-
-#[derive(Debug, Error)]
-#[error("navigation error: {message}")]
-pub struct NavError {
-    pub message: String,
-}
+// Errors moved to crate::error.
 
 #[cfg(test)]
 mod tests {
-    use crate::{utc_to_gps, LeapSeconds, UtcTime};
+    use crate::time::utc_to_gps;
+    use crate::{LeapSeconds, UtcTime};
 
     #[test]
     fn leap_second_table_validates() {
