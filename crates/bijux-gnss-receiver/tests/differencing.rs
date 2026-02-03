@@ -1,5 +1,6 @@
 use bijux_gnss_core::{
-    Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, SignalBand, SignalSpec,
+    Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, SatId, SigId,
+    SignalBand, SignalSpec,
 };
 use bijux_gnss_receiver::differencing::{double_difference, single_difference};
 use bijux_gnss_receiver::rtk::{build_dd, build_sd, choose_ref_sat_per_constellation};
@@ -11,11 +12,21 @@ fn make_epoch(prn: u8, pseudo: f64, phase: f64, doppler: f64) -> ObsEpoch {
         tow_s: None,
         epoch_idx: 0,
         discontinuity: false,
+        role: ReceiverRole::Rover,
         sats: vec![ObsSatellite {
-            prn,
+            signal_id: SigId {
+                sat: SatId {
+                    constellation: Constellation::Gps,
+                    prn,
+                },
+                band: SignalBand::L1,
+            },
             pseudorange_m: pseudo,
+            pseudorange_var_m2: 1.0,
             carrier_phase_cycles: phase,
+            carrier_phase_var_cycles2: 0.01,
             doppler_hz: doppler,
+            doppler_var_hz2: 4.0,
             cn0_dbhz: 45.0,
             lock_flags: LockFlags {
                 code_lock: true,
@@ -61,9 +72,10 @@ fn single_and_double_difference_basic() {
     let mut base_all = base.clone();
     base_all.sats.push(base2.sats[0].clone());
     let sds = single_difference(&rover_all, &base_all);
-    let dds = double_difference(&sds, 1);
+    let ref_sig = sds[0].sig;
+    let dds = double_difference(&sds, ref_sig);
     assert_eq!(dds.len(), 1);
-    assert_eq!(dds[0].ref_prn, 1);
+    assert_eq!(dds[0].ref_sig.sat.prn, 1);
 }
 
 #[test]
@@ -73,7 +85,7 @@ fn rtk_sd_dd_builders_work() {
     let sd = build_sd(&base, &rover);
     assert_eq!(sd.len(), 1);
     let refs = choose_ref_sat_per_constellation(&sd);
-    let ref_prn = *refs.values().next().expect("ref");
-    let dd = build_dd(&sd, ref_prn);
+    let ref_sig = *refs.values().next().expect("ref");
+    let dd = build_dd(&sd, ref_sig);
     assert!(dd.is_empty());
 }

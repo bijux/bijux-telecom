@@ -20,9 +20,9 @@ fn golden_tracking_from_scenario() {
     };
 
     let frame = generate_l1_ca_multi(&config, &scenario);
-    let prns: Vec<u8> = scenario.satellites.iter().map(|s| s.prn).collect();
+    let sats: Vec<bijux_gnss_core::SatId> = scenario.satellites.iter().map(|s| s.sat).collect();
     let acq = Acquisition::new(config.clone()).with_doppler(10_000, 500);
-    let acq_results = acq.run_fft(&frame, &prns);
+    let acq_results = acq.run_fft(&frame, &sats);
 
     let tracking = Tracking::new(config);
     let tracks = tracking.track_from_acquisition(&frame, &acq_results, 0.5);
@@ -30,7 +30,12 @@ fn golden_tracking_from_scenario() {
     for track in &tracks {
         assert!(!track.epochs.is_empty());
         let locked_epochs = track.epochs.iter().filter(|e| e.lock).count();
-        assert!(locked_epochs > 0, "no lock for PRN {}", track.prn);
+        assert!(
+            locked_epochs > 0,
+            "no lock for {:?}-{}",
+            track.sat.constellation,
+            track.sat.prn
+        );
     }
 }
 

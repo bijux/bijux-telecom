@@ -1,6 +1,8 @@
 use bijux_gnss_core::{
-    Constellation, LockFlags, ObsMetadata, ObsSatellite, SignalBand, SignalSpec,
+    Constellation, LockFlags, ObsMetadata, ObsSatellite, SatId, SigId, SignalBand, SignalSpec,
 };
+use bijux_gnss_nav::Matrix;
+use bijux_gnss_receiver::ambiguity::float_from_state;
 use bijux_gnss_receiver::ambiguity::AmbiguityManager;
 use bijux_gnss_receiver::ambiguity::{ratio_test, FixPolicy, FixState};
 
@@ -20,10 +22,19 @@ fn ratio_test_requires_consecutive_accepts() {
 fn ambiguity_resets_on_cycle_slip() {
     let mut manager = AmbiguityManager::new();
     let sat = ObsSatellite {
-        prn: 1,
+        signal_id: SigId {
+            sat: SatId {
+                constellation: Constellation::Gps,
+                prn: 1,
+            },
+            band: SignalBand::L1,
+        },
         pseudorange_m: 20_000_000.0,
+        pseudorange_var_m2: 1.0,
         carrier_phase_cycles: 100.0,
+        carrier_phase_var_cycles2: 0.01,
         doppler_hz: 0.0,
+        doppler_var_hz2: 4.0,
         cn0_dbhz: 45.0,
         lock_flags: LockFlags {
             code_lock: true,
@@ -57,4 +68,46 @@ fn ambiguity_resets_on_cycle_slip() {
     manager.update_from_obs(2, std::slice::from_ref(&slip_sat));
     let state = manager.states.values().next().expect("state");
     assert_eq!(state.status, bijux_gnss_core::AmbiguityStatus::Unknown);
+}
+
+#[test]
+fn float_covariance_is_symmetric_psd() {
+    let ids = vec![
+        bijux_gnss_core::AmbiguityId {
+            sig: SigId {
+                sat: SatId {
+                    constellation: Constellation::Gps,
+                    prn: 1,
+                },
+                band: SignalBand::L1,
+            },
+            signal: "L1".to_string(),
+        },
+        bijux_gnss_core::AmbiguityId {
+            sig: SigId {
+                sat: SatId {
+                    constellation: Constellation::Gps,
+                    prn: 2,
+                },
+                band: SignalBand::L1,
+            },
+            signal: "L1".to_string(),
+        },
+    ];
+    let state = vec![0.0, 1.0, 2.0];
+    let mut cov = Matrix::identity(3);
+    cov[(0, 1)] = 0.1;
+    cov[(1, 0)] = 0.1;
+    let float = float_from_state(ids, vec![0, 1], &state, &cov);
+
+    assert_eq!(float.covariance.len(), 2);
+    let eps = 1e-9;
+    assert!((float.covariance[0][1] - float.covariance[1][0]).abs() < eps);
+
+    let tests = vec![[1.0, 0.0], [0.0, 1.0], [1.0, -1.0], [2.0, 3.0]];
+    for v in tests {
+        let quad = v[0] * (float.covariance[0][0] * v[0] + float.covariance[0][1] * v[1])
+            + v[1] * (float.covariance[1][0] * v[0] + float.covariance[1][1] * v[1]);
+        assert!(quad >= -1e-6, "non-psd quadratic {quad}");
+    }
 }

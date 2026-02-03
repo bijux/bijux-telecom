@@ -32,22 +32,28 @@ fn bench_fft_acquisition(c: &mut Criterion) {
     let frame = generate_l1_ca(
         &config,
         SyntheticSignalParams {
-            prn: 1,
+            sat: bijux_gnss_core::SatId {
+                constellation: bijux_gnss_core::Constellation::Gps,
+                prn: 1,
+            },
             doppler_hz: 0.0,
             code_phase_chips: 100.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz: 55.0,
             data_bit_flip: false,
-            constellation: bijux_gnss_core::Constellation::Gps,
         },
         0x1234_5678,
         samples_per_code as f64 / config.sampling_freq_hz,
     );
     let acquisition = Acquisition::new(config).with_doppler(0, 500);
+    let sat = bijux_gnss_core::SatId {
+        constellation: bijux_gnss_core::Constellation::Gps,
+        prn: 1,
+    };
 
     c.bench_function("acquisition_fft_prn1", |b| {
         b.iter(|| {
-            let _ = acquisition.run_fft(&frame, &[1]);
+            let _ = acquisition.run_fft(&frame, &[sat]);
         })
     });
 }

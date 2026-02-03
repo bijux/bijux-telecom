@@ -1,9 +1,13 @@
 use bijux_gnss_core::{
-    Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, SignalBand, SignalSpec,
+    Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, SatId, SigId,
+    SignalBand, SignalSpec,
 };
 use bijux_gnss_nav::geodetic_to_ecef;
 use bijux_gnss_receiver::rtk::baseline_from_ecef;
-use bijux_gnss_receiver::rtk::{apply_fix_hold, build_dd, build_sd, choose_ref_sat, EpochAligner};
+use bijux_gnss_receiver::rtk::{
+    apply_fix_hold, build_dd, build_dd_per_constellation, build_sd, choose_ref_sat,
+    choose_ref_sat_per_constellation, EpochAligner,
+};
 
 fn make_epoch(t_rx_s: f64, prn: u8) -> ObsEpoch {
     ObsEpoch {
@@ -12,11 +16,21 @@ fn make_epoch(t_rx_s: f64, prn: u8) -> ObsEpoch {
         tow_s: None,
         epoch_idx: (t_rx_s * 1000.0) as u64,
         discontinuity: false,
+        role: ReceiverRole::Rover,
         sats: vec![ObsSatellite {
-            prn,
+            signal_id: SigId {
+                sat: SatId {
+                    constellation: Constellation::Gps,
+                    prn,
+                },
+                band: SignalBand::L1,
+            },
             pseudorange_m: 20_000_000.0 + prn as f64,
+            pseudorange_var_m2: 1.0,
             carrier_phase_cycles: 1000.0 + prn as f64,
+            carrier_phase_var_cycles2: 0.01,
             doppler_hz: -500.0,
+            doppler_var_hz2: 4.0,
             cn0_dbhz: 45.0,
             lock_flags: LockFlags {
                 code_lock: true,
@@ -47,6 +61,13 @@ fn make_epoch(t_rx_s: f64, prn: u8) -> ObsEpoch {
     }
 }
 
+fn make_epoch_with_constellation(t_rx_s: f64, prn: u8, constellation: Constellation) -> ObsEpoch {
+    let mut epoch = make_epoch(t_rx_s, prn);
+    epoch.sats[0].signal_id.sat.constellation = constellation;
+    epoch.sats[0].metadata.signal.constellation = constellation;
+    epoch
+}
+
 #[test]
 fn aligner_handles_missing_epochs() {
     let base = vec![
@@ -70,8 +91,8 @@ fn dd_builder_skips_ref_drop() {
     let base = make_epoch(0.0, 1);
     let rover = make_epoch(0.0, 1);
     let sd = build_sd(&base, &rover);
-    let ref_prn = choose_ref_sat(&sd).expect("ref");
-    let dd = build_dd(&sd, ref_prn);
+    let ref_sig = choose_ref_sat(&sd).expect("ref");
+    let dd = build_dd(&sd, ref_sig);
     assert!(dd.is_empty());
 }
 
@@ -92,4 +113,49 @@ fn fix_hold_reduces_covariance() {
     assert!(fixed.fixed);
     let cov = fixed.covariance_m2.expect("cov");
     assert!(cov[0][0] < 1.0);
+}
+
+#[test]
+fn dd_variance_matches_expected_sum() {
+    let mut base = make_epoch(0.0, 1);
+    let mut rover = make_epoch(0.0, 1);
+    base.sats[0].pseudorange_var_m2 = 4.0;
+    rover.sats[0].pseudorange_var_m2 = 9.0;
+    let sd = build_sd(&base, &rover);
+    assert_eq!(sd.len(), 1);
+    let ref_sig = choose_ref_sat(&sd).expect("ref");
+    let dd = build_dd(&sd, ref_sig);
+    assert!(dd.is_empty());
+    assert!((sd[0].variance_code - 13.0).abs() < 1e-6);
+}
+
+#[test]
+fn variance_model_decreases_with_cn0() {
+    let mut low = make_epoch(0.0, 1);
+    let mut high = make_epoch(0.0, 1);
+    low.sats[0].cn0_dbhz = 30.0;
+    low.sats[0].pseudorange_var_m2 = 0.0;
+    high.sats[0].cn0_dbhz = 45.0;
+    high.sats[0].pseudorange_var_m2 = 0.0;
+    let sd_low = build_sd(&low, &low);
+    let sd_high = build_sd(&high, &high);
+    assert!(sd_high[0].variance_code < sd_low[0].variance_code);
+}
+
+#[test]
+fn multi_constellation_ref_selection_is_per_system() {
+    let base_gps = make_epoch_with_constellation(0.0, 1, Constellation::Gps);
+    let rover_gps = make_epoch_with_constellation(0.0, 1, Constellation::Gps);
+    let base_gal = make_epoch_with_constellation(0.0, 1, Constellation::Galileo);
+    let rover_gal = make_epoch_with_constellation(0.0, 1, Constellation::Galileo);
+    let mut base = base_gps.clone();
+    base.sats.extend(base_gal.sats.clone());
+    let mut rover = rover_gps.clone();
+    rover.sats.extend(rover_gal.sats.clone());
+
+    let sd = build_sd(&base, &rover);
+    let refs = choose_ref_sat_per_constellation(&sd);
+    assert_eq!(refs.len(), 2);
+    let dd = build_dd_per_constellation(&sd, &refs);
+    assert!(dd.is_empty());
 }

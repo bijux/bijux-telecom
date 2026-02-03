@@ -1,4 +1,4 @@
-use bijux_gnss_core::Constellation;
+use bijux_gnss_core::{Constellation, SatId};
 use bijux_gnss_receiver::{
     acquisition::Acquisition,
     signal::samples_per_code,
@@ -22,24 +22,26 @@ fn synthetic_correlator_peak_ratio() {
         config.code_length,
     );
 
-    let prn = 3;
+    let sat = SatId {
+        constellation: Constellation::Gps,
+        prn: 3,
+    };
     let code_phase_chips = 200.0;
     let frame = generate_l1_ca(
         &config,
         SyntheticSignalParams {
-            prn,
+            sat,
             doppler_hz: 0.0,
             code_phase_chips,
             carrier_phase_rad: 0.0,
             cn0_db_hz: 60.0,
             data_bit_flip: false,
-            constellation: Constellation::Gps,
         },
         0xABCDEF01,
         samples_per_code as f64 / config.sampling_freq_hz,
     );
 
-    let local_code = generate_local_code(prn, &config, code_phase_chips, samples_per_code);
+    let local_code = generate_local_code(sat.prn, &config, code_phase_chips, samples_per_code);
 
     let correct = correlate(&frame.iq, &local_code);
     let incorrect = correlate(&frame.iq, &shift(&local_code, 250));
@@ -63,27 +65,29 @@ fn golden_acquisition_run_is_stable() {
         config.code_length,
     );
 
-    let prn = 7;
+    let sat = SatId {
+        constellation: Constellation::Gps,
+        prn: 7,
+    };
     let frame = generate_l1_ca(
         &config,
         SyntheticSignalParams {
-            prn,
+            sat,
             doppler_hz: 500.0,
             code_phase_chips: 321.0,
             carrier_phase_rad: 0.5,
             cn0_db_hz: 60.0,
             data_bit_flip: false,
-            constellation: Constellation::Gps,
         },
         0xBEEFBEEF,
         samples_per_code as f64 / config.sampling_freq_hz,
     );
 
     let acquisition = Acquisition::new(config).with_doppler(1000, 500);
-    let results = acquisition.run_fft(&frame, &[prn]);
+    let results = acquisition.run_fft(&frame, &[sat]);
     let r = &results[0];
 
-    assert_eq!(r.prn, prn);
+    assert_eq!(r.sat, sat);
     let peak_mean = r.peak_mean_ratio;
     let peak_second = r.peak_second_ratio;
 
@@ -103,13 +107,15 @@ fn synthetic_supports_multi_constellation_mock() {
     let _frame = generate_l1_ca(
         &config,
         SyntheticSignalParams {
-            prn: 11,
+            sat: SatId {
+                constellation: Constellation::Galileo,
+                prn: 11,
+            },
             doppler_hz: 0.0,
             code_phase_chips: 10.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz: 45.0,
             data_bit_flip: false,
-            constellation: Constellation::Galileo,
         },
         0x1234,
         0.001,
