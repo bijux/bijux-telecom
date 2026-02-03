@@ -1,8 +1,10 @@
 mod atmosphere;
 mod biases;
+mod combinations;
 
 pub use atmosphere::*;
 pub use biases::*;
+pub use combinations::*;
 
 #[derive(Debug, Clone)]
 pub struct CorrectionContext;

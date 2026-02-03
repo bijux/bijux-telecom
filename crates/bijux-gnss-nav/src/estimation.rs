@@ -1,4 +1,6 @@
 //! Estimation engines and shared helpers.
+//!
+//! This is the public facade for EKF, PPP, and PVT estimators.
 
 use bijux_gnss_core::SigId;
 
