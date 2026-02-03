@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use std::collections::BTreeMap;
 
 use bijux_gnss_core::{AmbiguityId, AmbiguityState, AmbiguityStatus, ObsSatellite};

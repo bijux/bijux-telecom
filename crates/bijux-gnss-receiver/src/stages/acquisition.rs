@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -9,9 +11,9 @@ use crate::logging;
 #[cfg(feature = "trace-dump")]
 use crate::logging::{dump_acq_trace, AcqTrace};
 use crate::ReceiverConfig;
-use bijux_gnss_signal::codes::ca_code::{generate_ca_code, Prn};
 use bijux_gnss_signal::samples_per_code;
 use bijux_gnss_signal::Nco;
+use bijux_gnss_signal::{generate_ca_code, Prn};
 
 /// Acquisition engine (coarse search).
 pub struct Acquisition {

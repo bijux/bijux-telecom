@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct JitterSummary {
     pub mean_s: f64,
@@ -170,4 +172,4 @@ pub fn apply_fix_hold(mut baseline: BaselineSolution, fixed: bool) -> BaselineSo
 }
 use bijux_gnss_nav::ecef_to_enu;
 
-use crate::rtk::{los_unit, solve_baseline_dd, DdObservation, SolutionSeparation};
+use super::core::{los_unit, solve_baseline_dd, DdObservation, SolutionSeparation};

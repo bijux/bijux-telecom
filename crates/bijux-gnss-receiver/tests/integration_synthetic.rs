@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use bijux_gnss_core::{Constellation, SatId};
 use bijux_gnss_receiver::{
     acquisition::Acquisition,
@@ -145,9 +146,7 @@ fn generate_local_code(
     code_phase_chips: f64,
     samples_per_code: usize,
 ) -> Vec<f32> {
-    let code = bijux_gnss_signal::codes::ca_code::generate_ca_code(
-        bijux_gnss_signal::codes::ca_code::Prn(prn),
-    );
+    let code = bijux_gnss_signal::generate_ca_code(bijux_gnss_signal::Prn(prn));
     let mut out = Vec::with_capacity(samples_per_code);
     let dt_s = 1.0 / config.sampling_freq_hz;
     for n in 0..samples_per_code {

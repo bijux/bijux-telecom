@@ -1,3 +1,3 @@
-mod synthetic;
+#![allow(missing_docs)]
 
-pub use synthetic::*;
+pub(crate) mod synthetic;

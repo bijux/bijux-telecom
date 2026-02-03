@@ -1,18 +1,13 @@
+#![allow(missing_docs)]
 use bijux_gnss_receiver::{
     acquisition::Acquisition,
     sim::{generate_l1_ca, SyntheticSignalParams},
     ReceiverConfig,
 };
-use bijux_gnss_signal::codes::ca_code::{generate_ca_code, Prn};
 use bijux_gnss_signal::samples_per_code;
 
 #[test]
-fn bench_code_gen_smoke() {
-    let _ = generate_ca_code(Prn(1));
-}
-
-#[test]
-fn bench_fft_acquisition_smoke() {
+fn acquisition_fft_detects_synthetic_signal() {
     let config = ReceiverConfig {
         sampling_freq_hz: 4_092_000.0,
         intermediate_freq_hz: 0.0,
@@ -21,31 +16,35 @@ fn bench_fft_acquisition_smoke() {
         channels: 12,
         ..ReceiverConfig::default()
     };
+
     let samples_per_code = samples_per_code(
         config.sampling_freq_hz,
         config.code_freq_basis_hz,
         config.code_length,
     );
+
+    let sat = bijux_gnss_core::SatId {
+        constellation: bijux_gnss_core::Constellation::Gps,
+        prn: 1,
+    };
     let frame = generate_l1_ca(
         &config,
         SyntheticSignalParams {
-            sat: bijux_gnss_core::SatId {
-                constellation: bijux_gnss_core::Constellation::Gps,
-                prn: 1,
-            },
+            sat,
             doppler_hz: 0.0,
             code_phase_chips: 100.0,
             carrier_phase_rad: 0.0,
-            cn0_db_hz: 55.0,
+            cn0_db_hz: 50.0,
             data_bit_flip: false,
         },
         0x1234_5678,
         samples_per_code as f64 / config.sampling_freq_hz,
     );
+
     let acquisition = Acquisition::new(config).with_doppler(0, 500);
-    let sat = bijux_gnss_core::SatId {
-        constellation: bijux_gnss_core::Constellation::Gps,
-        prn: 1,
-    };
-    let _ = acquisition.run_fft(&frame, &[sat]);
+    let results = acquisition.run_fft(&frame, &[sat]);
+
+    let r = &results[0];
+    assert_eq!(r.sat, sat);
+    assert!(r.peak_mean_ratio > 2.0);
 }

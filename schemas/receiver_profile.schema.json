@@ -3,6 +3,9 @@
   "title": "ReceiverProfile",
   "type": "object",
   "properties": {
+    "schema_version": {
+      "type": "integer"
+    },
     "sample_rate_hz": {
       "type": "number"
     },
@@ -70,12 +73,24 @@
           "items": {
             "type": "object",
             "properties": {
-              "band": { "type": "string" },
-              "early_late_spacing_chips": { "type": "number" },
-              "dll_bw_hz": { "type": "number" },
-              "pll_bw_hz": { "type": "number" },
-              "fll_bw_hz": { "type": "number" },
-              "integration_ms": { "type": "integer" }
+              "band": {
+                "type": "string"
+              },
+              "early_late_spacing_chips": {
+                "type": "number"
+              },
+              "dll_bw_hz": {
+                "type": "number"
+              },
+              "pll_bw_hz": {
+                "type": "number"
+              },
+              "fll_bw_hz": {
+                "type": "number"
+              },
+              "integration_ms": {
+                "type": "integer"
+              }
             }
           }
         }
@@ -108,29 +123,75 @@
         "ppp": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" },
-            "use_iono_free": { "type": "boolean" },
-            "use_doppler": { "type": "boolean" },
-            "enable_iono_state": { "type": "boolean" },
-            "ar_mode": { "type": "string" },
-            "ar_ratio_threshold": { "type": "number" },
-            "ar_stability_epochs": { "type": "integer" },
-            "ar_max_sats": { "type": "integer" },
-            "ar_use_elevation": { "type": "boolean" },
-            "prune_after_epochs": { "type": "integer" },
-            "reset_gap_s": { "type": "number" },
-            "residual_gate_m": { "type": "number" },
-            "drift_window_epochs": { "type": "integer" },
-            "drift_threshold_m": { "type": "number" },
-            "checkpoint_interval_epochs": { "type": "integer" },
-            "noise_clock_drift": { "type": "number" },
-            "noise_ztd": { "type": "number" },
-            "noise_iono": { "type": "number" },
-            "noise_ambiguity": { "type": "number" },
-            "convergence_min_time_s": { "type": "number" },
-            "convergence_pos_rate_mps": { "type": "number" },
-            "convergence_sigma_h_m": { "type": "number" },
-            "convergence_sigma_v_m": { "type": "number" }
+            "enabled": {
+              "type": "boolean"
+            },
+            "use_iono_free": {
+              "type": "boolean"
+            },
+            "use_doppler": {
+              "type": "boolean"
+            },
+            "enable_iono_state": {
+              "type": "boolean"
+            },
+            "ar_mode": {
+              "type": "string"
+            },
+            "ar_ratio_threshold": {
+              "type": "number"
+            },
+            "ar_stability_epochs": {
+              "type": "integer"
+            },
+            "ar_max_sats": {
+              "type": "integer"
+            },
+            "ar_use_elevation": {
+              "type": "boolean"
+            },
+            "prune_after_epochs": {
+              "type": "integer"
+            },
+            "reset_gap_s": {
+              "type": "number"
+            },
+            "residual_gate_m": {
+              "type": "number"
+            },
+            "drift_window_epochs": {
+              "type": "integer"
+            },
+            "drift_threshold_m": {
+              "type": "number"
+            },
+            "checkpoint_interval_epochs": {
+              "type": "integer"
+            },
+            "noise_clock_drift": {
+              "type": "number"
+            },
+            "noise_ztd": {
+              "type": "number"
+            },
+            "noise_iono": {
+              "type": "number"
+            },
+            "noise_ambiguity": {
+              "type": "number"
+            },
+            "convergence_min_time_s": {
+              "type": "number"
+            },
+            "convergence_pos_rate_mps": {
+              "type": "number"
+            },
+            "convergence_sigma_h_m": {
+              "type": "number"
+            },
+            "convergence_sigma_v_m": {
+              "type": "number"
+            }
           }
         },
         "weighting": {

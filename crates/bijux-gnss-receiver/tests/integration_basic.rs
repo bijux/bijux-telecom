@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use bijux_gnss_receiver::{Receiver, ReceiverConfig};
 use bijux_gnss_signal::samples_per_code;
 

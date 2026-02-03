@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use std::path::Path;
 
 use bijux_guardrails::{check, GuardrailConfig};

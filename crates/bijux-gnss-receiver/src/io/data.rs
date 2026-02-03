@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 
@@ -5,7 +7,7 @@ use thiserror::Error;
 
 use bijux_gnss_core::{SampleClock, SampleTime, SamplesFrame};
 
-use bijux_gnss_signal::samples::iq_i16_to_samples;
+use bijux_gnss_signal::iq_i16_to_samples;
 
 /// Input sample source for the receiver.
 ///

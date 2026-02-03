@@ -1,9 +1,6 @@
-mod ambiguity;
-mod core;
-mod differencing;
-mod metrics;
+#![allow(missing_docs)]
 
-pub use ambiguity::*;
-pub use core::*;
-pub use differencing::*;
-pub use metrics::*;
+pub(crate) mod ambiguity;
+pub(crate) mod core;
+pub(crate) mod differencing;
+pub(crate) mod metrics;

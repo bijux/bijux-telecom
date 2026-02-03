@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use bijux_gnss_receiver::{data::MemorySamples, Receiver, ReceiverConfig};
 
 #[test]

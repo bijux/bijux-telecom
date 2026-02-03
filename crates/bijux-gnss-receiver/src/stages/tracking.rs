@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use num_complex::Complex;
 
 use bijux_gnss_core::{Constellation, SampleClock, SampleTime, SamplesFrame, SatId, TrackEpoch};
@@ -5,9 +7,9 @@ use bijux_gnss_core::{Constellation, SampleClock, SampleTime, SamplesFrame, SatI
 use crate::logging;
 use crate::ReceiverConfig;
 use bijux_gnss_core::Sample;
-use bijux_gnss_signal::codes::ca_code::{generate_ca_code, Prn};
 use bijux_gnss_signal::samples_per_code;
 use bijux_gnss_signal::Nco;
+use bijux_gnss_signal::{generate_ca_code, Prn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelState {

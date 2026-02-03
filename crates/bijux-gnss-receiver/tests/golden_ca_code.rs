@@ -1,4 +1,5 @@
-use bijux_gnss_signal::codes::ca_code::{generate_ca_code, Prn};
+#![allow(missing_docs)]
+use bijux_gnss_signal::{generate_ca_code, Prn};
 
 #[test]
 fn ca_code_length_is_1023() {

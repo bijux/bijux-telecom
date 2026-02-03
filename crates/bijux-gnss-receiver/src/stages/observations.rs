@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use bijux_gnss_core::{
     LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, SigId, SignalBand, TrackEpoch,
 };

@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use bijux_gnss_core::{NavResidual, NavSolutionEpoch, ObsEpoch};
 use bijux_gnss_nav::{
     elevation_azimuth_deg, sat_state_gps_l1ca, weight_from_cn0_elev, GpsEphemeris,

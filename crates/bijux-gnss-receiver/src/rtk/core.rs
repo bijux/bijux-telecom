@@ -1,6 +1,8 @@
+#![allow(missing_docs)]
+
 use std::collections::BTreeMap;
 
-use crate::rtk::{baseline_from_ecef, jitter_summary, BaselineSolution, JitterSummary};
+use super::metrics::{baseline_from_ecef, jitter_summary, BaselineSolution, JitterSummary};
 use bijux_gnss_core::{AmbiguityId, Constellation, ObsEpoch, ObsSatellite, ReceiverRole, SigId};
 
 #[derive(Debug, Clone)]

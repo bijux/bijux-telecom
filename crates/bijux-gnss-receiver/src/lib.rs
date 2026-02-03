@@ -1,4 +1,5 @@
 //! GNSS receiver pipeline orchestration.
+//! See docs/GLOSSARY.md for acronym definitions.
 //!
 //! Module map:
 //! - `stages`: acquisition, tracking, observations, navigation
@@ -12,18 +13,24 @@
 //! - `ReceiverError`: error taxonomy for receiver stages
 
 #![deny(clippy::unwrap_used)]
-
-pub mod rtk;
-pub mod sim;
+#![deny(missing_docs)]
 
 mod io;
+#[path = "rtk/mod.rs"]
+mod rtk_internal;
 mod runtime;
+#[path = "sim/mod.rs"]
+mod sim_internal;
 mod stages;
 
-pub use crate::io::data;
-pub use crate::runtime::logging;
-pub use crate::runtime::receiver_config::{ReceiverConfig, ReceiverError, ReceiverProfile};
-pub use crate::stages::{acquisition, navigation, observations, tracking};
+/// Public API surface for this crate.
+pub mod api;
+
+/// Re-export public API at the crate root.
+pub use api::{
+    acquisition, data, logging, navigation, observations, rtk, sim, tracking, ReceiverConfig,
+    ReceiverError, ReceiverProfile,
+};
 
 /// High-level receiver pipeline entrypoint.
 pub struct Receiver {
@@ -31,6 +38,7 @@ pub struct Receiver {
 }
 
 impl Receiver {
+    /// Create a new receiver with the provided configuration.
     pub fn new(config: ReceiverConfig) -> Self {
         Self { config }
     }
@@ -70,6 +78,7 @@ impl Receiver {
         Ok(())
     }
 
+    /// Borrow the receiver configuration.
     pub fn config(&self) -> &ReceiverConfig {
         &self.config
     }

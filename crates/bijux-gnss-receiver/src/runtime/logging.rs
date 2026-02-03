@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 #[cfg(feature = "tracing")]
 use tracing::{debug, info};
 
