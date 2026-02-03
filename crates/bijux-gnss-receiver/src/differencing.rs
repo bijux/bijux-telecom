@@ -25,10 +25,7 @@ pub fn single_difference(rover: &ObsEpoch, base: &ObsEpoch) -> Vec<SingleDiffere
     for rover_sat in &rover.sats {
         if let Some(base_sat) = base_map.get(&rover_sat.signal_id.sat) {
             out.push(SingleDifference {
-                sig: SigId {
-                    sat: rover_sat.signal_id.sat,
-                    band: rover_sat.signal_id.band,
-                },
+                sig: rover_sat.signal_id,
                 code_m: rover_sat.pseudorange_m - base_sat.pseudorange_m,
                 phase_cycles: rover_sat.carrier_phase_cycles - base_sat.carrier_phase_cycles,
                 doppler_hz: rover_sat.doppler_hz - base_sat.doppler_hz,

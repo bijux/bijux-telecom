@@ -18,6 +18,7 @@ pub struct SatId {
 pub struct SigId {
     pub sat: SatId,
     pub band: SignalBand,
+    pub code: SignalCode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -376,12 +377,75 @@ pub enum SignalBand {
     Unknown,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum SignalCode {
+    Ca,
+    Py,
+    E1B,
+    E1C,
+    E5a,
+    E5b,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct FreqHz(pub f64);
+
+impl FreqHz {
+    pub const fn new(value: f64) -> Self {
+        Self(value)
+    }
+
+    pub fn value(self) -> f64 {
+        self.0
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct SignalSpec {
     pub constellation: Constellation,
     pub band: SignalBand,
+    pub code: SignalCode,
     pub code_rate_hz: f64,
-    pub carrier_hz: f64,
+    pub carrier_hz: FreqHz,
+}
+
+pub const GPS_L1_CA_CARRIER_HZ: FreqHz = FreqHz::new(1_575_420_000.0);
+pub const GPS_L2_PY_CARRIER_HZ: FreqHz = FreqHz::new(1_227_600_000.0);
+pub const GPS_L5_CARRIER_HZ: FreqHz = FreqHz::new(1_176_450_000.0);
+pub const GALILEO_E1_CARRIER_HZ: FreqHz = FreqHz::new(1_575_420_000.0);
+pub const GALILEO_E5_CARRIER_HZ: FreqHz = FreqHz::new(1_176_450_000.0);
+pub const GLONASS_L1_CARRIER_HZ: FreqHz = FreqHz::new(1_602_000_000.0);
+
+pub fn signal_spec_gps_l1_ca() -> SignalSpec {
+    SignalSpec {
+        constellation: Constellation::Gps,
+        band: SignalBand::L1,
+        code: SignalCode::Ca,
+        code_rate_hz: 1_023_000.0,
+        carrier_hz: GPS_L1_CA_CARRIER_HZ,
+    }
+}
+
+pub fn signal_spec_gps_l2_py() -> SignalSpec {
+    SignalSpec {
+        constellation: Constellation::Gps,
+        band: SignalBand::L2,
+        code: SignalCode::Py,
+        code_rate_hz: 1_023_000.0,
+        carrier_hz: GPS_L2_PY_CARRIER_HZ,
+    }
+}
+
+pub fn signal_spec_gps_l5() -> SignalSpec {
+    SignalSpec {
+        constellation: Constellation::Gps,
+        band: SignalBand::L5,
+        code: SignalCode::Unknown,
+        code_rate_hz: 10_230_000.0,
+        carrier_hz: GPS_L5_CARRIER_HZ,
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -433,6 +497,65 @@ pub struct ObsEpoch {
     pub sats: Vec<ObsSatellite>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BandLagEvent {
+    pub sat: SatId,
+    pub band: SignalBand,
+    pub lag_epochs: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InterFrequencyAlignmentReport {
+    pub total_events: usize,
+    pub max_lag_epochs: u64,
+    pub events: Vec<BandLagEvent>,
+}
+
+pub fn check_inter_frequency_alignment(epochs: &[ObsEpoch]) -> InterFrequencyAlignmentReport {
+    use std::collections::BTreeMap;
+    let mut last_seen: BTreeMap<(SatId, SignalBand), u64> = BTreeMap::new();
+    let mut events = Vec::new();
+    for epoch in epochs {
+        let mut present: BTreeMap<SatId, Vec<SignalBand>> = BTreeMap::new();
+        for sat in &epoch.sats {
+            present
+                .entry(sat.signal_id.sat)
+                .or_default()
+                .push(sat.signal_id.band);
+            last_seen
+                .entry((sat.signal_id.sat, sat.signal_id.band))
+                .or_insert(epoch.epoch_idx);
+        }
+        for (sat, bands) in present {
+            for ((seen_sat, seen_band), last_epoch) in last_seen.iter() {
+                if *seen_sat != sat {
+                    continue;
+                }
+                if bands.contains(seen_band) {
+                    continue;
+                }
+                let lag = epoch.epoch_idx.saturating_sub(*last_epoch);
+                if lag > 0 {
+                    events.push(BandLagEvent {
+                        sat,
+                        band: *seen_band,
+                        lag_epochs: lag,
+                    });
+                }
+            }
+        }
+        for sat in &epoch.sats {
+            last_seen.insert((sat.signal_id.sat, sat.signal_id.band), epoch.epoch_idx);
+        }
+    }
+    let max_lag = events.iter().map(|e| e.lag_epochs).max().unwrap_or(0);
+    InterFrequencyAlignmentReport {
+        total_events: events.len(),
+        max_lag_epochs: max_lag,
+        events,
+    }
+}
+
 pub fn validate_obs_epochs(epochs: &[ObsEpoch]) -> Result<(), String> {
     let mut last_t = None;
     for epoch in epochs {
@@ -445,7 +568,11 @@ pub fn validate_obs_epochs(epochs: &[ObsEpoch]) -> Result<(), String> {
         if !epoch.t_rx_s.is_finite() {
             return Err("t_rx_s is not finite".to_string());
         }
+        let mut seen = std::collections::BTreeSet::new();
         for sat in &epoch.sats {
+            if !seen.insert(sat.signal_id) {
+                return Err("duplicate signal_id within epoch".to_string());
+            }
             if !sat.pseudorange_m.is_finite()
                 || !sat.carrier_phase_cycles.is_finite()
                 || !sat.doppler_hz.is_finite()

@@ -115,10 +115,10 @@ struct SatState {
 impl SatState {
     fn new(config: &ReceiverConfig, params: SyntheticSignalParams) -> Self {
         let carrier = match params.sat.constellation {
-            Constellation::Galileo => 1_575_420_000.0,
-            Constellation::Gps => 1_575_420_000.0,
-            Constellation::Glonass => 1_602_000_000.0,
-            _ => 1_575_420_000.0,
+            Constellation::Galileo => bijux_gnss_core::GALILEO_E1_CARRIER_HZ.value(),
+            Constellation::Gps => bijux_gnss_core::GPS_L1_CA_CARRIER_HZ.value(),
+            Constellation::Glonass => bijux_gnss_core::GLONASS_L1_CARRIER_HZ.value(),
+            _ => bijux_gnss_core::GPS_L1_CA_CARRIER_HZ.value(),
         };
         Self {
             doppler_hz: params.doppler_hz,
@@ -128,7 +128,8 @@ impl SatState {
             data_bit_flip: params.data_bit_flip,
             code: generate_ca_code(Prn(params.sat.prn)),
             code_rate_hz: config.code_freq_basis_hz,
-            if_hz: config.intermediate_freq_hz + (carrier - 1_575_420_000.0),
+            if_hz: config.intermediate_freq_hz
+                + (carrier - bijux_gnss_core::GPS_L1_CA_CARRIER_HZ.value()),
         }
     }
 

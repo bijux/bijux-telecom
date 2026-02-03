@@ -24,6 +24,7 @@ fn make_epoch(t_rx_s: f64, prn: u8) -> ObsEpoch {
                     prn,
                 },
                 band: SignalBand::L1,
+                code: bijux_gnss_core::SignalCode::Ca,
             },
             pseudorange_m: 20_000_000.0 + prn as f64,
             pseudorange_var_m2: 1.0,
@@ -53,8 +54,9 @@ fn make_epoch(t_rx_s: f64, prn: u8) -> ObsEpoch {
                 signal: SignalSpec {
                     constellation: Constellation::Gps,
                     band: SignalBand::L1,
+                    code: bijux_gnss_core::SignalCode::Ca,
                     code_rate_hz: 1_023_000.0,
-                    carrier_hz: 1_575_420_000.0,
+                    carrier_hz: bijux_gnss_core::GPS_L1_CA_CARRIER_HZ,
                 },
             },
         }],

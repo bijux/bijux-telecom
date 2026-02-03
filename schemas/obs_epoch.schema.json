@@ -61,10 +61,11 @@
     ,
     "SignalSpec": {
       "type": "object",
-      "required": ["constellation", "band", "code_rate_hz", "carrier_hz"],
+      "required": ["constellation", "band", "code", "code_rate_hz", "carrier_hz"],
       "properties": {
         "constellation": { "type": "string" },
         "band": { "type": "string" },
+        "code": { "type": "string" },
         "code_rate_hz": { "type": "number" },
         "carrier_hz": { "type": "number" }
       }
@@ -112,9 +113,10 @@
     },
     "SigId": {
       "type": "object",
-      "required": ["sat", "band"],
+      "required": ["sat", "band", "code"],
       "properties": {
         "sat": { "$ref": "#/definitions/SatId" },
-        "band": { "type": "string" }
+        "band": { "type": "string" },
+        "code": { "type": "string" }
       }
     },

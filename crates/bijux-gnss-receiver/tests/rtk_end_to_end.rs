@@ -48,7 +48,7 @@ fn make_obs_epoch(
     pos_ecef: (f64, f64, f64),
     ephs: &[GpsEphemeris],
 ) -> ObsEpoch {
-    let lambda_m = 299_792_458.0 / 1_575_420_000.0;
+    let lambda_m = 299_792_458.0 / bijux_gnss_core::GPS_L1_CA_CARRIER_HZ.value();
     let sats: Vec<ObsSatellite> = ephs
         .iter()
         .map(|eph| {
@@ -61,6 +61,7 @@ fn make_obs_epoch(
                 signal_id: SigId {
                     sat: eph.sat,
                     band: SignalBand::L1,
+                    code: bijux_gnss_core::SignalCode::Ca,
                 },
                 pseudorange_m: range + 299_792_458.0 * (0.0 - sat.clock_bias_s),
                 pseudorange_var_m2: 4.0,
@@ -90,8 +91,9 @@ fn make_obs_epoch(
                     signal: SignalSpec {
                         constellation: Constellation::Gps,
                         band: SignalBand::L1,
+                        code: bijux_gnss_core::SignalCode::Ca,
                         code_rate_hz: 1_023_000.0,
-                        carrier_hz: 1_575_420_000.0,
+                        carrier_hz: bijux_gnss_core::GPS_L1_CA_CARRIER_HZ,
                     },
                 },
             }

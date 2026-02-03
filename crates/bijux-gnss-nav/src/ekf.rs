@@ -734,6 +734,7 @@ mod tests {
                     prn: 1,
                 },
                 band: SignalBand::L1,
+                code: bijux_gnss_core::SignalCode::Ca,
             },
             z_m: 20_200_000.0,
             sat_pos_m: [15_000_000.0, 0.0, 21_000_000.0],

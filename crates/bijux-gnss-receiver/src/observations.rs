@@ -1,6 +1,5 @@
 use bijux_gnss_core::{
-    Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, SigId, SignalBand,
-    SignalSpec, TrackEpoch,
+    LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, SigId, SignalBand, TrackEpoch,
 };
 
 use crate::signal::samples_per_code;
@@ -112,10 +111,13 @@ pub fn observations_from_tracking(config: &ReceiverConfig, epochs: &[TrackEpoch]
         let cn0_dbhz = 10.0 * (prompt_power.max(1e-9)).log10();
 
         let variance_m2 = (1.0 / cn0_dbhz.max(1.0)).powi(2);
+        let mut signal = bijux_gnss_core::signal_spec_gps_l1_ca();
+        signal.code_rate_hz = config.code_freq_basis_hz;
         let sat = ObsSatellite {
             signal_id: SigId {
                 sat: epoch.sat,
                 band: SignalBand::L1,
+                code: bijux_gnss_core::SignalCode::Ca,
             },
             pseudorange_m,
             pseudorange_var_m2: variance_m2,
@@ -137,17 +139,12 @@ pub fn observations_from_tracking(config: &ReceiverConfig, epochs: &[TrackEpoch]
             error_model: None,
             metadata: ObsMetadata {
                 tracking_mode: "scalar".to_string(),
-                integration_ms: 1,
+                integration_ms: config.tracking_integration_ms,
                 lock_quality: cn0_dbhz,
                 smoothing_window: 0,
                 smoothing_age: 0,
                 smoothing_resets: 0,
-                signal: SignalSpec {
-                    constellation: Constellation::Gps,
-                    band: SignalBand::L1,
-                    code_rate_hz: config.code_freq_basis_hz,
-                    carrier_hz: 1_575_420_000.0,
-                },
+                signal,
             },
         };
 
@@ -189,7 +186,7 @@ pub fn observations_from_tracking_results(
             });
             entry.discontinuity |= epoch.discontinuity;
             for mut sat in epoch.sats {
-                let lambda_m = SPEED_OF_LIGHT_MPS / 1_575_420_000.0;
+                let lambda_m = SPEED_OF_LIGHT_MPS / sat.metadata.signal.carrier_hz.value();
                 let state = hatch.entry(sat.signal_id).or_insert(HatchState {
                     smoothed_m: sat.pseudorange_m,
                     count: 0,
