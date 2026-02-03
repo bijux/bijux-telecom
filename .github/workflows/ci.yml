@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-make,cargo-nextest,cargo-audit
+      - name: Repo hygiene gate
+        run: |
+          if find . -name '.DS_Store' -o -name '._*' | grep -q .; then
+            echo "Found forbidden files (.DS_Store or ._*)."
+            find . -name '.DS_Store' -o -name '._*'
+            exit 1
+          fi
+      - name: Cargo make (ci)
+        run: cargo make ci
+      - name: Cargo deny
+        uses: EmbarkStudios/cargo-deny-action@v1
+        with:
+          command: check

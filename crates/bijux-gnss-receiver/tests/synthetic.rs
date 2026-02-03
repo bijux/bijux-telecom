@@ -1,0 +1,153 @@
+use bijux_gnss_core::Constellation;
+use bijux_gnss_receiver::{
+    acquisition::Acquisition,
+    signal::samples_per_code,
+    synthetic::{generate_l1_ca, SyntheticSignalParams},
+    types::ReceiverConfig,
+};
+
+#[test]
+fn synthetic_correlator_peak_ratio() {
+    let config = ReceiverConfig {
+        sampling_freq_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 1_023_000.0,
+        code_length: 1023,
+        channels: 12,
+        ..ReceiverConfig::default()
+    };
+    let samples_per_code = samples_per_code(
+        config.sampling_freq_hz,
+        config.code_freq_basis_hz,
+        config.code_length,
+    );
+
+    let prn = 3;
+    let code_phase_chips = 200.0;
+    let frame = generate_l1_ca(
+        &config,
+        SyntheticSignalParams {
+            prn,
+            doppler_hz: 0.0,
+            code_phase_chips,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 60.0,
+            data_bit_flip: false,
+            constellation: Constellation::Gps,
+        },
+        0xABCDEF01,
+        samples_per_code as f64 / config.sampling_freq_hz,
+    );
+
+    let local_code = generate_local_code(prn, &config, code_phase_chips, samples_per_code);
+
+    let correct = correlate(&frame.iq, &local_code);
+    let incorrect = correlate(&frame.iq, &shift(&local_code, 250));
+    let ratio = correct / (incorrect + 1e-6);
+    assert!(ratio > 50.0, "peak ratio too low: {ratio}");
+}
+
+#[test]
+fn golden_acquisition_run_is_stable() {
+    let config = ReceiverConfig {
+        sampling_freq_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 1_023_000.0,
+        code_length: 1023,
+        channels: 12,
+        ..ReceiverConfig::default()
+    };
+    let samples_per_code = samples_per_code(
+        config.sampling_freq_hz,
+        config.code_freq_basis_hz,
+        config.code_length,
+    );
+
+    let prn = 7;
+    let frame = generate_l1_ca(
+        &config,
+        SyntheticSignalParams {
+            prn,
+            doppler_hz: 500.0,
+            code_phase_chips: 321.0,
+            carrier_phase_rad: 0.5,
+            cn0_db_hz: 60.0,
+            data_bit_flip: false,
+            constellation: Constellation::Gps,
+        },
+        0xBEEFBEEF,
+        samples_per_code as f64 / config.sampling_freq_hz,
+    );
+
+    let acquisition = Acquisition::new(config).with_doppler(1000, 500);
+    let results = acquisition.run_fft(&frame, &[prn]);
+    let r = &results[0];
+
+    assert_eq!(r.prn, prn);
+    let peak_mean = r.peak_mean_ratio;
+    let peak_second = r.peak_second_ratio;
+
+    assert!(
+        (peak_mean - 69.3).abs() < 5.0,
+        "peak_mean_ratio drifted: {peak_mean}"
+    );
+    assert!(
+        (peak_second - 1.28).abs() < 0.2,
+        "peak_second_ratio drifted: {peak_second}"
+    );
+}
+
+#[test]
+fn synthetic_supports_multi_constellation_mock() {
+    let config = ReceiverConfig::default();
+    let _frame = generate_l1_ca(
+        &config,
+        SyntheticSignalParams {
+            prn: 11,
+            doppler_hz: 0.0,
+            code_phase_chips: 10.0,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 45.0,
+            data_bit_flip: false,
+            constellation: Constellation::Galileo,
+        },
+        0x1234,
+        0.001,
+    );
+}
+
+fn correlate(samples: &[num_complex::Complex<f32>], code: &[f32]) -> f32 {
+    let mut acc = num_complex::Complex::new(0.0f32, 0.0f32);
+    for (s, &c) in samples.iter().zip(code.iter()) {
+        acc += *s * c;
+    }
+    acc.norm()
+}
+
+fn shift(code: &[f32], offset: usize) -> Vec<f32> {
+    let n = code.len();
+    let mut out = vec![0.0f32; n];
+    for i in 0..n {
+        out[i] = code[(i + offset) % n];
+    }
+    out
+}
+
+fn generate_local_code(
+    prn: u8,
+    config: &ReceiverConfig,
+    code_phase_chips: f64,
+    samples_per_code: usize,
+) -> Vec<f32> {
+    let code =
+        bijux_gnss_receiver::ca_code::generate_ca_code(bijux_gnss_receiver::ca_code::Prn(prn));
+    let mut out = Vec::with_capacity(samples_per_code);
+    let dt_s = 1.0 / config.sampling_freq_hz;
+    for n in 0..samples_per_code {
+        let t = n as f64 * dt_s;
+        let code_phase = code_phase_chips + config.code_freq_basis_hz * t;
+        let chip_index = (code_phase.floor() as usize) % code.len();
+        out.push(code[chip_index] as f32);
+    }
+    out
+}

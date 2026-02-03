@@ -1,0 +1,29 @@
+[package]
+name = "bijux-gnss-receiver"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+thiserror.workspace = true
+bijux-gnss-signal = { path = "../bijux-gnss-signal" }
+num-complex.workspace = true
+rustfft.workspace = true
+tracing = { workspace = true, optional = true }
+serde.workspace = true
+schemars.workspace = true
+sha2.workspace = true
+hex.workspace = true
+bijux-gnss-core = { path = "../bijux-gnss-core" }
+bijux-gnss-nav = { path = "../bijux-gnss-nav" }
+serde_json.workspace = true
+
+[features]
+tracing = ["dep:tracing"]
+trace-dump = []
+
+[dev-dependencies]
+proptest.workspace = true
+criterion.workspace = true
+toml.workspace = true

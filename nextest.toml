@@ -1,0 +1,3 @@
+[profile.default]
+retries = 1
+status-level = "pass"

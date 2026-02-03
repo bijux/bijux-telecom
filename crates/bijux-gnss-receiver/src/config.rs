@@ -1,0 +1,200 @@
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
+use crate::types::ReceiverConfig;
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ReceiverProfile {
+    pub sample_rate_hz: f64,
+    pub intermediate_freq_hz: f64,
+    pub quantization_bits: u8,
+    pub code_freq_basis_hz: f64,
+    pub code_length: usize,
+    pub seed: u64,
+    pub acquisition: AcquisitionProfile,
+    pub tracking: TrackingProfile,
+    pub navigation: NavigationProfile,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AcquisitionProfile {
+    pub doppler_search_hz: i32,
+    pub doppler_step_hz: i32,
+    pub integration_ms: u32,
+    pub peak_mean_threshold: f32,
+    pub peak_second_threshold: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct TrackingProfile {
+    pub early_late_spacing_chips: f64,
+    pub dll_bw_hz: f64,
+    pub pll_bw_hz: f64,
+    pub fll_bw_hz: f64,
+    pub max_channels: usize,
+    pub per_epoch_budget_ms: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct NavigationProfile {
+    pub robust_solver: bool,
+    pub huber_k: f64,
+    pub raim: bool,
+    pub hatch_window: u32,
+    pub weighting: NavigationWeightingProfile,
+    pub iono_mode: String,
+    pub tropo_enable: bool,
+    pub tropo_ztd_m: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct NavigationWeightingProfile {
+    pub enabled: bool,
+    pub min_elev_deg: f64,
+    pub elev_exponent: f64,
+    pub cn0_ref_dbhz: f64,
+    pub min_weight: f64,
+    pub elev_mask_deg: f64,
+    pub tracking_mode_scalar_weight: f64,
+    pub tracking_mode_vector_weight: f64,
+}
+
+impl ReceiverProfile {
+    pub fn validate(&self) -> Result<(), Vec<String>> {
+        let mut errors = Vec::new();
+        if self.sample_rate_hz <= 0.0 {
+            errors.push("sample_rate_hz must be > 0".to_string());
+        }
+        if self.code_length == 0 {
+            errors.push("code_length must be > 0".to_string());
+        }
+        if self.quantization_bits == 0 {
+            errors.push("quantization_bits must be > 0".to_string());
+        }
+        if self.seed == 0 {
+            errors.push("seed must be > 0".to_string());
+        }
+        if self.acquisition.doppler_step_hz <= 0 {
+            errors.push("acquisition.doppler_step_hz must be > 0".to_string());
+        }
+        if self.acquisition.integration_ms == 0 {
+            errors.push("acquisition.integration_ms must be > 0".to_string());
+        }
+        if self.tracking.early_late_spacing_chips <= 0.0 {
+            errors.push("tracking.early_late_spacing_chips must be > 0".to_string());
+        }
+        if self.tracking.max_channels == 0 {
+            errors.push("tracking.max_channels must be > 0".to_string());
+        }
+        if self.tracking.per_epoch_budget_ms <= 0.0 {
+            errors.push("tracking.per_epoch_budget_ms must be > 0".to_string());
+        }
+        if self.navigation.huber_k <= 0.0 {
+            errors.push("navigation.huber_k must be > 0".to_string());
+        }
+        if self.navigation.hatch_window == 0 {
+            errors.push("navigation.hatch_window must be > 0".to_string());
+        }
+        if self.navigation.tropo_ztd_m < 0.0 {
+            errors.push("navigation.tropo_ztd_m must be >= 0".to_string());
+        }
+        if self.navigation.weighting.min_elev_deg < 0.0
+            || self.navigation.weighting.min_elev_deg > 90.0
+        {
+            errors.push("navigation.weighting.min_elev_deg must be within [0, 90]".to_string());
+        }
+        if self.navigation.weighting.elev_exponent <= 0.0 {
+            errors.push("navigation.weighting.elev_exponent must be > 0".to_string());
+        }
+        if self.navigation.weighting.cn0_ref_dbhz <= 0.0 {
+            errors.push("navigation.weighting.cn0_ref_dbhz must be > 0".to_string());
+        }
+        if self.navigation.weighting.min_weight <= 0.0 {
+            errors.push("navigation.weighting.min_weight must be > 0".to_string());
+        }
+        if self.navigation.weighting.elev_mask_deg < 0.0
+            || self.navigation.weighting.elev_mask_deg > 90.0
+        {
+            errors.push("navigation.weighting.elev_mask_deg must be within [0, 90]".to_string());
+        }
+        if self.navigation.weighting.tracking_mode_scalar_weight <= 0.0 {
+            errors.push("navigation.weighting.tracking_mode_scalar_weight must be > 0".to_string());
+        }
+        if self.navigation.weighting.tracking_mode_vector_weight <= 0.0 {
+            errors.push("navigation.weighting.tracking_mode_vector_weight must be > 0".to_string());
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+
+    pub fn to_receiver_config(&self) -> ReceiverConfig {
+        ReceiverConfig {
+            sampling_freq_hz: self.sample_rate_hz,
+            intermediate_freq_hz: self.intermediate_freq_hz,
+            code_freq_basis_hz: self.code_freq_basis_hz,
+            code_length: self.code_length,
+            channels: self.tracking.max_channels,
+            dll_bw_hz: self.tracking.dll_bw_hz,
+            pll_bw_hz: self.tracking.pll_bw_hz,
+            fll_bw_hz: self.tracking.fll_bw_hz,
+            robust_solver: self.navigation.robust_solver,
+            huber_k: self.navigation.huber_k,
+            raim: self.navigation.raim,
+            hatch_window: self.navigation.hatch_window,
+            weighting: self.navigation.weighting.clone(),
+            iono_mode: self.navigation.iono_mode.clone(),
+            tropo_enable: self.navigation.tropo_enable,
+            tropo_ztd_m: self.navigation.tropo_ztd_m,
+        }
+    }
+}
+
+impl Default for ReceiverProfile {
+    fn default() -> Self {
+        Self {
+            sample_rate_hz: 5_000_000.0,
+            intermediate_freq_hz: 0.0,
+            quantization_bits: 16,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            seed: 1,
+            acquisition: AcquisitionProfile {
+                doppler_search_hz: 10_000,
+                doppler_step_hz: 500,
+                integration_ms: 1,
+                peak_mean_threshold: 2.5,
+                peak_second_threshold: 1.5,
+            },
+            tracking: TrackingProfile {
+                early_late_spacing_chips: 0.5,
+                dll_bw_hz: 2.0,
+                pll_bw_hz: 15.0,
+                fll_bw_hz: 10.0,
+                max_channels: 8,
+                per_epoch_budget_ms: 0.7,
+            },
+            navigation: NavigationProfile {
+                robust_solver: true,
+                huber_k: 30.0,
+                raim: true,
+                hatch_window: 100,
+                weighting: NavigationWeightingProfile {
+                    enabled: true,
+                    min_elev_deg: 5.0,
+                    elev_exponent: 2.0,
+                    cn0_ref_dbhz: 50.0,
+                    min_weight: 0.1,
+                    elev_mask_deg: 5.0,
+                    tracking_mode_scalar_weight: 1.0,
+                    tracking_mode_vector_weight: 1.2,
+                },
+                iono_mode: "broadcast".to_string(),
+                tropo_enable: true,
+                tropo_ztd_m: 2.3,
+            },
+        }
+    }
+}

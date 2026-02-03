@@ -1,0 +1,78 @@
+[config]
+skip_core_tasks = true
+
+[env]
+JOBS = { value = "8", condition = { env_not_set = ["JOBS"] } }
+NEXTEST_JOBS = { value = "8", condition = { env_not_set = ["NEXTEST_JOBS"] } }
+CARGO_MAKE_RUN_TASKS_IN_WORKSPACE = { value = "false", condition = { env_not_set = ["CARGO_MAKE_RUN_TASKS_IN_WORKSPACE"] } }
+CARGO_MAKE_WORKSPACE_SKIP_MEMBERS = { value = "true", condition = { env_not_set = ["CARGO_MAKE_WORKSPACE_SKIP_MEMBERS"] } }
+CARGO_MAKE_NO_WORKSPACE = { value = "true", condition = { env_not_set = ["CARGO_MAKE_NO_WORKSPACE"] } }
+
+[tasks.fmt-check]
+command = "cargo"
+args = ["fmt", "--all", "--", "--check"]
+
+[tasks.check]
+command = "cargo"
+args = ["check", "--workspace", "--all-targets", "--all-features"]
+
+[tasks.clippy]
+command = "cargo"
+args = ["clippy", "--workspace", "--all-targets", "--all-features", "--", "-D", "warnings"]
+
+dependencies = []
+
+[tasks.test]
+script_runner = "bash"
+script = [
+  "if command -v cargo-nextest >/dev/null 2>&1; then",
+  "  echo 'Running tests with nextest...';",
+  "  CARGO_BUILD_JOBS=${JOBS} cargo nextest run --workspace --no-fail-fast --jobs ${NEXTEST_JOBS};",
+  "else",
+  "  echo 'cargo-nextest not installed; falling back to cargo test';",
+  "  CARGO_BUILD_JOBS=${JOBS} cargo test --workspace -- --color always;",
+  "fi",
+]
+
+[tasks.test-full]
+script_runner = "bash"
+script = [
+  "if command -v cargo-nextest >/dev/null 2>&1; then",
+  "  echo 'Running full tests with nextest...';",
+  "  CARGO_BUILD_JOBS=${JOBS} cargo nextest run --workspace --all-features --no-fail-fast --jobs ${NEXTEST_JOBS};",
+  "else",
+  "  echo 'cargo-nextest not installed; falling back to cargo test';",
+  "  CARGO_BUILD_JOBS=${JOBS} cargo test --workspace --all-features -- --color always;",
+  "fi",
+]
+
+[tasks.audit]
+script_runner = "bash"
+script = [
+  "if command -v cargo-audit >/dev/null 2>&1; then",
+  "  if [ -f audit-allowlist.toml ]; then",
+  "    cargo audit --file audit-allowlist.toml;",
+  "  else",
+  "    cargo audit;",
+  "  fi;",
+  "else",
+  "  echo 'cargo-audit not installed; skipping advisory check';",
+  "fi",
+  "if command -v cargo-deny >/dev/null 2>&1; then",
+  "  cargo deny check;",
+  "else",
+  "  echo 'cargo-deny not installed; skipping deny check';",
+  "fi",
+]
+
+[tasks.lint]
+dependencies = ["fmt-check", "clippy"]
+
+[tasks.ci]
+dependencies = ["lint", "audit", "test"]
+
+[tasks.ci-fast]
+description = "Run CI once at workspace root (no per-crate recursion)."
+dependencies = ["lint", "audit", "test"]
+env = { CARGO_MAKE_NO_WORKSPACE = "true", CARGO_MAKE_WORKSPACE_SKIP_MEMBERS = "true" }
+workspace = false

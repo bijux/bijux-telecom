@@ -1,0 +1,123 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ReceiverProfile",
+  "type": "object",
+  "properties": {
+    "sample_rate_hz": {
+      "type": "number"
+    },
+    "intermediate_freq_hz": {
+      "type": "number"
+    },
+    "quantization_bits": {
+      "type": "integer"
+    },
+    "code_freq_basis_hz": {
+      "type": "number"
+    },
+    "code_length": {
+      "type": "integer"
+    },
+    "seed": {
+      "type": "integer"
+    },
+    "acquisition": {
+      "type": "object",
+      "properties": {
+        "doppler_search_hz": {
+          "type": "integer"
+        },
+        "doppler_step_hz": {
+          "type": "integer"
+        },
+        "integration_ms": {
+          "type": "integer"
+        },
+        "peak_mean_threshold": {
+          "type": "number"
+        },
+        "peak_second_threshold": {
+          "type": "number"
+        }
+      }
+    },
+    "tracking": {
+      "type": "object",
+      "properties": {
+        "early_late_spacing_chips": {
+          "type": "number"
+        },
+        "dll_bw_hz": {
+          "type": "number"
+        },
+        "pll_bw_hz": {
+          "type": "number"
+        },
+        "fll_bw_hz": {
+          "type": "number"
+        },
+        "max_channels": {
+          "type": "integer"
+        },
+        "per_epoch_budget_ms": {
+          "type": "number"
+        }
+      }
+    },
+    "navigation": {
+      "type": "object",
+      "properties": {
+        "robust_solver": {
+          "type": "boolean"
+        },
+        "huber_k": {
+          "type": "number"
+        },
+        "raim": {
+          "type": "boolean"
+        },
+        "hatch_window": {
+          "type": "integer"
+        },
+        "iono_mode": {
+          "type": "string"
+        },
+        "tropo_enable": {
+          "type": "boolean"
+        },
+        "tropo_ztd_m": {
+          "type": "number"
+        },
+        "weighting": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "min_elev_deg": {
+              "type": "number"
+            },
+            "elev_exponent": {
+              "type": "number"
+            },
+            "cn0_ref_dbhz": {
+              "type": "number"
+            },
+            "min_weight": {
+              "type": "number"
+            },
+            "elev_mask_deg": {
+              "type": "number"
+            },
+            "tracking_mode_scalar_weight": {
+              "type": "number"
+            },
+            "tracking_mode_vector_weight": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    }
+  }
+}

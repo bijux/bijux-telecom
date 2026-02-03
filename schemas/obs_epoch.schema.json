@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ObsEpoch",
+  "type": "object",
+  "required": ["t_rx_s", "epoch_idx", "discontinuity", "sats"],
+  "properties": {
+    "t_rx_s": { "type": "number" },
+    "gps_week": { "type": ["integer", "null"], "minimum": 0 },
+    "tow_s": { "type": ["number", "null"] },
+    "epoch_idx": { "type": "integer", "minimum": 0 },
+    "discontinuity": { "type": "boolean" },
+    "sats": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/ObsSatellite" }
+    }
+  },
+  "definitions": {
+    "ObsSatellite": {
+      "type": "object",
+      "required": [
+        "prn",
+        "pseudorange_m",
+        "carrier_phase_cycles",
+        "doppler_hz",
+        "cn0_dbhz",
+        "lock_flags",
+        "multipath_suspect"
+      ],
+      "properties": {
+        "prn": { "type": "integer", "minimum": 1, "maximum": 32 },
+        "pseudorange_m": { "type": "number" },
+        "carrier_phase_cycles": { "type": "number" },
+        "doppler_hz": { "type": "number" },
+        "cn0_dbhz": { "type": "number" },
+        "lock_flags": { "$ref": "#/definitions/LockFlags" },
+        "multipath_suspect": { "type": "boolean" },
+        "elevation_deg": { "type": ["number", "null"] },
+        "azimuth_deg": { "type": ["number", "null"] },
+        "weight": { "type": ["number", "null"] },
+        "error_model": { "$ref": "#/definitions/MeasurementErrorModel" },
+        "metadata": { "$ref": "#/definitions/ObsMetadata" }
+      }
+    },
+    "LockFlags": {
+      "type": "object",
+      "required": ["code_lock", "carrier_lock", "bit_lock", "cycle_slip"],
+      "properties": {
+        "code_lock": { "type": "boolean" },
+        "carrier_lock": { "type": "boolean" },
+        "bit_lock": { "type": "boolean" },
+        "cycle_slip": { "type": "boolean" }
+      }
+    }
+    ,
+    "SignalSpec": {
+      "type": "object",
+      "required": ["constellation", "band", "code_rate_hz", "carrier_hz"],
+      "properties": {
+        "constellation": { "type": "string" },
+        "band": { "type": "string" },
+        "code_rate_hz": { "type": "number" },
+        "carrier_hz": { "type": "number" }
+      }
+    },
+    "ObsMetadata": {
+      "type": "object",
+      "required": [
+        "tracking_mode",
+        "integration_ms",
+        "lock_quality",
+        "smoothing_window",
+        "smoothing_age",
+        "smoothing_resets",
+        "signal"
+      ],
+      "properties": {
+        "tracking_mode": { "type": "string" },
+        "integration_ms": { "type": "integer" },
+        "lock_quality": { "type": "number" },
+        "smoothing_window": { "type": "integer" },
+        "smoothing_age": { "type": "integer" },
+        "smoothing_resets": { "type": "integer" },
+        "signal": { "$ref": "#/definitions/SignalSpec" }
+      }
+    },
+    "MeasurementErrorModel": {
+      "type": ["object", "null"],
+      "required": ["thermal_noise_m", "tracking_jitter_m", "multipath_proxy_m", "clock_error_m"],
+      "properties": {
+        "thermal_noise_m": { "type": "number" },
+        "tracking_jitter_m": { "type": "number" },
+        "multipath_proxy_m": { "type": "number" },
+        "clock_error_m": { "type": "number" }
+      }
+    }
+  }
+}

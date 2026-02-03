@@ -1,0 +1,32 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/bijux-gnss-core",
+  "crates/bijux-gnss-receiver",
+  "crates/bijux-gnss-cli",
+  "crates/bijux-gnss-signal",
+  "crates/bijux-gnss-nav",
+]
+
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+anyhow = "1.0"
+thiserror = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+rustfft = "6.2"
+num-complex = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+schemars = "0.8"
+jsonschema = "0.17"
+sha2 = "0.10"
+hex = "0.4"
+proptest = "1.4"
+criterion = "0.5"
+toml = "0.8"
+eyre = "0.6"

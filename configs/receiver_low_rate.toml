@@ -1,0 +1,40 @@
+sample_rate_hz = 4_092_000.0
+intermediate_freq_hz = 0.0
+quantization_bits = 16
+code_freq_basis_hz = 1_023_000.0
+code_length = 1023
+seed = 1
+
+[acquisition]
+doppler_search_hz = 10000
+doppler_step_hz = 500
+integration_ms = 1
+peak_mean_threshold = 3.0
+peak_second_threshold = 1.8
+
+[tracking]
+early_late_spacing_chips = 0.5
+dll_bw_hz = 1.5
+pll_bw_hz = 12.0
+fll_bw_hz = 8.0
+max_channels = 8
+per_epoch_budget_ms = 0.7
+
+[navigation]
+robust_solver = true
+huber_k = 30.0
+raim = true
+hatch_window = 100
+iono_mode = "broadcast"
+tropo_enable = true
+tropo_ztd_m = 2.3
+
+[navigation.weighting]
+enabled = true
+min_elev_deg = 5.0
+elev_exponent = 2.0
+cn0_ref_dbhz = 50.0
+min_weight = 0.1
+elev_mask_deg = 5.0
+tracking_mode_scalar_weight = 1.0
+tracking_mode_vector_weight = 1.2

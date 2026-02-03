@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ExperimentSummary",
+  "type": "object",
+  "required": ["runs"],
+  "properties": {
+    "runs": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/ExperimentRunResult" }
+    }
+  },
+  "definitions": {
+    "ExperimentRunResult": {
+      "type": "object",
+      "required": [
+        "run_index",
+        "config_hash",
+        "scenario_id",
+        "overrides",
+        "lock_pct",
+        "pvt_rms_m",
+        "residual_rms_m",
+        "rejected_count",
+        "ms_per_epoch"
+      ],
+      "properties": {
+        "run_index": { "type": "integer", "minimum": 0 },
+        "config_hash": { "type": "string" },
+        "scenario_id": { "type": "string" },
+        "overrides": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": [{ "type": "string" }, { "type": "string" }]
+          }
+        },
+        "lock_pct": { "type": "number" },
+        "pvt_rms_m": { "type": "number" },
+        "residual_rms_m": { "type": "number" },
+        "rejected_count": { "type": "integer", "minimum": 0 },
+        "ms_per_epoch": { "type": "number" }
+      }
+    }
+  }
+}

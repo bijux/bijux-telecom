@@ -1,0 +1,5 @@
+[advisories]
+ignore = []
+
+[output]
+deny = ["warnings"]
