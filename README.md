@@ -1,28 +1,45 @@
 # bijux-gnss
 
-A Rust-first GNSS software stack. This workspace hosts multiple crates with the `bijux-gnss-*` naming scheme.
+`bijux-gnss` is a production-grade GNSS receiver stack in Rust: acquisition, tracking,
+observations, navigation, and RTK/PPP scaffolding with reproducible artifacts and diagnostics.
 
-## Crates
-- `bijux-gnss-receiver` – core receiver library (acquisition, tracking, navigation)
-- `bijux-gnss-cli` – command-line interface (`bijux gnss ...`)
-- `gnss-signal` – shared DSP utilities
+## 30-Second Pitch
+- Deterministic, testable pipeline from IQ → observations → PVT.
+- Strict artifact contracts and schema validation.
+- Research-ready diagnostics, experiments, and reproducibility hooks.
 
-## Workspace Layout
-- `crates/` – Rust crates
-- `data/` – sample datasets (optional)
-- `-old-ref/` – legacy MATLAB reference (not used in builds)
+## Install
 
-## Build
 ```bash
-cargo build
+cargo build --workspace
 ```
 
-## Test
+## First Command
+
 ```bash
-cargo test
+bijux gnss run --scenario configs/scenarios/basic.toml --output runs/basic_demo
 ```
 
-## CLI Examples
-```bash
-cargo run -p bijux-gnss-cli -- gnss ca-code --prn 1 --count 16
+Example output:
 ```
+Artifacts: runs/basic_demo/artifacts
+Manifest: runs/basic_demo/manifest.json
+```
+
+## Supported Features (Current)
+- GPS L1 C/A acquisition + tracking
+- Observation epoch generation
+- PVT solver + RTK/PPP scaffolding
+- Artifact validation + diagnostics summaries
+
+## Maturity
+Active development. Interfaces and outputs are stabilizing; use deterministic mode for
+regression runs.
+
+## MSRV
+Minimum supported Rust version: `1.78.0`.
+
+## Documentation
+- `docs/README.md`
+- `docs/GETTING_STARTED.md`
+- `docs/CLI.md`

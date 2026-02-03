@@ -8,6 +8,7 @@ This document defines canonical diagnostic codes and how they are used.
 - Codes are human-readable and stable across releases.
 - Severity is one of `Info`, `Warning`, `Error`.
 - CLI tooling can gate on severity (`--fail-on WARN` / `--fail-on ERROR`).
+ - Diagnostics can be summarized per run via `bijux gnss diagnostics summarize`.
 
 ## Code Registry
 
@@ -30,3 +31,12 @@ When available, diagnostic events include context entries:
 - `epoch`: epoch index for time-aligned summaries.
 
 The diagnostic aggregator groups by `code` and records counts and first/last epochs.
+
+## CLI Helpers
+
+```bash
+bijux gnss diagnostics summarize runs/<run_id>
+```
+
+This command scans artifacts under `runs/<run_id>/artifacts` and produces a summary of
+diagnostic codes with counts and epoch ranges.
