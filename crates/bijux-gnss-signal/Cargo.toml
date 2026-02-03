@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+bijux-gnss-core = { path = "../bijux-gnss-core", version = "0.1.0" }
+num-complex.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
