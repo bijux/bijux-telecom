@@ -1,0 +1,11 @@
+[[suite]]
+name = "ppp_static"
+scenario = "configs/scenarios/ppp_static.toml"
+
+[[suite]]
+name = "ppp_kinematic"
+scenario = "configs/scenarios/ppp_kinematic.toml"
+
+[[suite]]
+name = "ppp_long"
+scenario = "configs/scenarios/ppp_long.toml"

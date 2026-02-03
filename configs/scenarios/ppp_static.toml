@@ -2,6 +2,7 @@ sample_rate_hz = 4092000.0
 intermediate_freq_hz = 0.0
 duration_s = 60.0
 seed = 4242
+ar_mode = "ppp_ar_wide_lane"
 
 [[satellites]]
 sat = { constellation = "Gps", prn = 3 }
