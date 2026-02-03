@@ -2,7 +2,7 @@ use std::fs;
 
 use bijux_gnss_receiver::{
     acquisition::Acquisition,
-    synthetic::{generate_l1_ca_multi, SyntheticScenario},
+    sim::{generate_l1_ca_multi, SyntheticScenario},
     tracking::Tracking,
     ReceiverConfig,
 };

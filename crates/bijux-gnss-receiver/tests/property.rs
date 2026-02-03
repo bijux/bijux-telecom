@@ -1,4 +1,4 @@
-use bijux_gnss_receiver::ca_code::{generate_ca_code, Prn};
+use bijux_gnss_signal::codes::ca_code::{generate_ca_code, Prn};
 use proptest::prelude::*;
 use rustfft::{num_complex::Complex, FftPlanner};
 

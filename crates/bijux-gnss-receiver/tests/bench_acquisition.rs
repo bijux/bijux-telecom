@@ -1,10 +1,10 @@
 use bijux_gnss_receiver::{
     acquisition::Acquisition,
-    ca_code::{generate_ca_code, Prn},
-    signal::samples_per_code,
-    synthetic::{generate_l1_ca, SyntheticSignalParams},
-    types::ReceiverConfig,
+    sim::{generate_l1_ca, SyntheticSignalParams},
+    ReceiverConfig,
 };
+use bijux_gnss_signal::codes::ca_code::{generate_ca_code, Prn};
+use bijux_gnss_signal::signal::samples_per_code;
 
 #[test]
 fn bench_code_gen_smoke() {

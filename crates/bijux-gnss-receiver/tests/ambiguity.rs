@@ -2,9 +2,9 @@ use bijux_gnss_core::{
     Constellation, LockFlags, ObsMetadata, ObsSatellite, SatId, SigId, SignalBand, SignalSpec,
 };
 use bijux_gnss_nav::Matrix;
-use bijux_gnss_receiver::ambiguity::float_from_state;
-use bijux_gnss_receiver::ambiguity::AmbiguityManager;
-use bijux_gnss_receiver::ambiguity::{
+use bijux_gnss_receiver::rtk::float_from_state;
+use bijux_gnss_receiver::rtk::AmbiguityManager;
+use bijux_gnss_receiver::rtk::{
     decorrelate_lambda, ratio_from_candidates, ratio_test, search_integer_candidates,
     select_partial_fix, FixPolicy, FixState, FloatAmbiguitySolution,
 };

@@ -1,4 +1,5 @@
-use bijux_gnss_receiver::{signal::samples_per_code, Receiver, ReceiverConfig};
+use bijux_gnss_receiver::{Receiver, ReceiverConfig};
+use bijux_gnss_signal::signal::samples_per_code;
 
 #[test]
 fn samples_per_code_is_reasonable() {

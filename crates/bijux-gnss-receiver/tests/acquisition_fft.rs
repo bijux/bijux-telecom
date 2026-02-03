@@ -1,9 +1,9 @@
 use bijux_gnss_receiver::{
     acquisition::Acquisition,
-    signal::samples_per_code,
-    synthetic::{generate_l1_ca, SyntheticSignalParams},
-    types::ReceiverConfig,
+    sim::{generate_l1_ca, SyntheticSignalParams},
+    ReceiverConfig,
 };
+use bijux_gnss_signal::signal::samples_per_code;
 
 #[test]
 fn acquisition_fft_detects_synthetic_signal() {
