@@ -2,7 +2,7 @@ use std::f32::consts::TAU;
 
 use num_complex::Complex;
 
-use bijux_gnss_core::{SampleClock, SampleTime, SamplesFrame};
+use bijux_gnss_core::{Constellation, SampleClock, SampleTime, SamplesFrame, SatId};
 
 use crate::ca_code::{generate_ca_code, Prn};
 use crate::types::ReceiverConfig;
@@ -11,14 +11,12 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct SyntheticSignalParams {
-    pub prn: u8,
+    pub sat: SatId,
     pub doppler_hz: f64,
     pub code_phase_chips: f64,
     pub carrier_phase_rad: f64,
     pub cn0_db_hz: f32,
     pub data_bit_flip: bool,
-    #[serde(default)]
-    pub constellation: bijux_gnss_core::Constellation,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -116,10 +114,10 @@ struct SatState {
 
 impl SatState {
     fn new(config: &ReceiverConfig, params: SyntheticSignalParams) -> Self {
-        let carrier = match params.constellation {
-            bijux_gnss_core::Constellation::Galileo => 1_575_420_000.0,
-            bijux_gnss_core::Constellation::Gps => 1_575_420_000.0,
-            bijux_gnss_core::Constellation::Glonass => 1_602_000_000.0,
+        let carrier = match params.sat.constellation {
+            Constellation::Galileo => 1_575_420_000.0,
+            Constellation::Gps => 1_575_420_000.0,
+            Constellation::Glonass => 1_602_000_000.0,
             _ => 1_575_420_000.0,
         };
         Self {
@@ -128,7 +126,7 @@ impl SatState {
             carrier_phase_rad: params.carrier_phase_rad,
             cn0_db_hz: params.cn0_db_hz,
             data_bit_flip: params.data_bit_flip,
-            code: generate_ca_code(Prn(params.prn)),
+            code: generate_ca_code(Prn(params.sat.prn)),
             code_rate_hz: config.code_freq_basis_hz,
             if_hz: config.intermediate_freq_hz + (carrier - 1_575_420_000.0),
         }

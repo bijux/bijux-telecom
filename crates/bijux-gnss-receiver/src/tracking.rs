@@ -1,6 +1,6 @@
 use num_complex::Complex;
 
-use bijux_gnss_core::{SampleClock, SampleTime, SamplesFrame, TrackEpoch};
+use bijux_gnss_core::{Constellation, SampleClock, SampleTime, SamplesFrame, SatId, TrackEpoch};
 
 use crate::ca_code::{generate_ca_code, Prn};
 use crate::logging;
@@ -63,7 +63,7 @@ pub struct CorrelatorOutput {
 
 #[derive(Debug, Clone)]
 pub struct TrackingResult {
-    pub prn: u8,
+    pub sat: SatId,
     pub carrier_hz: f64,
     pub code_phase_samples: f64,
     pub epochs: Vec<TrackEpoch>,
@@ -98,7 +98,7 @@ impl Tracking {
     pub fn correlate_epoch(
         &self,
         frame: &SamplesFrame,
-        prn: u8,
+        sat: SatId,
         carrier_freq_hz: f64,
         code_phase_samples: f64,
         early_late_spacing_chips: f64,
@@ -109,7 +109,7 @@ impl Tracking {
             self.config.code_length,
         );
         let n = samples_per_code.min(frame.len());
-        let code = generate_ca_code(Prn(prn));
+        let code = generate_ca_code(Prn(sat.prn));
         let samples_per_chip = n as f64 / code.len() as f64;
         let early_offset = code_phase_samples - early_late_spacing_chips * samples_per_chip;
         let late_offset = code_phase_samples + early_late_spacing_chips * samples_per_chip;
@@ -143,7 +143,7 @@ impl Tracking {
     pub fn track_epoch(
         &self,
         frame: &SamplesFrame,
-        prn: u8,
+        sat: SatId,
         carrier_freq_hz: f64,
         code_phase_samples: f64,
         early_late_spacing_chips: f64,
@@ -152,7 +152,7 @@ impl Tracking {
         let epoch = clock.epoch_from_samples(frame.t0.sample_index);
         let correlator = self.correlate_epoch(
             frame,
-            prn,
+            sat,
             carrier_freq_hz,
             code_phase_samples,
             early_late_spacing_chips,
@@ -162,7 +162,7 @@ impl Tracking {
         let track_epoch = TrackEpoch {
             epoch,
             sample_index: frame.t0.sample_index,
-            prn,
+            sat,
             prompt_i: correlator.prompt.re,
             prompt_q: correlator.prompt.im,
             carrier_hz: carrier_freq_hz,
@@ -194,9 +194,22 @@ impl Tracking {
             1.0 / self.config.sampling_freq_hz,
             samples.to_vec(),
         );
-        let epochs = self.track_epochs(&frame, 1, 0.0, 0.0, 0.5, 5);
+        let epochs = self.track_epochs(
+            &frame,
+            SatId {
+                constellation: Constellation::Gps,
+                prn: 1,
+            },
+            0.0,
+            0.0,
+            0.5,
+            5,
+        );
         vec![TrackingResult {
-            prn: 1,
+            sat: SatId {
+                constellation: Constellation::Gps,
+                prn: 1,
+            },
             carrier_hz: 0.0,
             code_phase_samples: 0.0,
             epochs,
@@ -216,7 +229,7 @@ impl Tracking {
             .map(|acq| {
                 let mut epochs = self.track_epochs(
                     frame,
-                    acq.prn,
+                    acq.sat,
                     acq.carrier_hz,
                     acq.code_phase_samples as f64,
                     early_late_spacing_chips,
@@ -232,13 +245,13 @@ impl Tracking {
                     if lock_loss >= 3 {
                         if let Some((carrier_hz, code_phase_samples)) = self.quick_reacquire(
                             frame,
-                            acq.prn,
+                            acq.sat,
                             epoch.carrier_hz,
                             epoch.code_phase_samples,
                         ) {
                             epochs = self.track_epochs(
                                 frame,
-                                acq.prn,
+                                acq.sat,
                                 carrier_hz,
                                 code_phase_samples,
                                 early_late_spacing_chips,
@@ -249,7 +262,7 @@ impl Tracking {
                     }
                 }
                 TrackingResult {
-                    prn: acq.prn,
+                    sat: acq.sat,
                     carrier_hz: acq.carrier_hz,
                     code_phase_samples: acq.code_phase_samples as f64,
                     epochs,
@@ -270,7 +283,7 @@ impl Tracking {
     fn track_epochs(
         &self,
         frame: &SamplesFrame,
-        prn: u8,
+        sat: SatId,
         carrier_hz: f64,
         code_phase_samples: f64,
         early_late_spacing_chips: f64,
@@ -307,7 +320,7 @@ impl Tracking {
 
             let (track_epoch, corr) = self.track_epoch(
                 &epoch_frame,
-                prn,
+                sat,
                 state.carrier_hz,
                 state.code_phase_samples,
                 early_late_spacing_chips,
@@ -371,7 +384,7 @@ impl Tracking {
     fn quick_reacquire(
         &self,
         frame: &SamplesFrame,
-        prn: u8,
+        sat: SatId,
         carrier_hz: f64,
         code_phase_samples: f64,
     ) -> Option<(f64, f64)> {
@@ -382,7 +395,7 @@ impl Tracking {
         for d in doppler_bins {
             for c in code_bins {
                 let corr =
-                    self.correlate_epoch(frame, prn, carrier_hz + d, code_phase_samples + c, 0.5);
+                    self.correlate_epoch(frame, sat, carrier_hz + d, code_phase_samples + c, 0.5);
                 let metric = corr.prompt.norm();
                 if metric > best_metric {
                     best_metric = metric;

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use bijux_gnss_core::{AcqResult, SamplesFrame};
+use bijux_gnss_core::{AcqResult, SamplesFrame, SatId};
 use num_complex::Complex;
 use rustfft::{num_traits::Zero, FftPlanner};
 
@@ -21,7 +21,7 @@ pub struct Acquisition {
     cache: Mutex<CodeFftCache>,
 }
 
-type CodeFftCache = HashMap<(usize, u8), Vec<Complex<f32>>>;
+type CodeFftCache = HashMap<(usize, SatId), Vec<Complex<f32>>>;
 
 impl Acquisition {
     pub fn new(config: ReceiverConfig) -> Self {
@@ -40,8 +40,8 @@ impl Acquisition {
     }
 
     /// Perform satellite acquisition on a 1 ms buffer using FFT-based circular correlation.
-    pub fn run_fft(&self, frame: &SamplesFrame, prns: &[u8]) -> Vec<AcqResult> {
-        self.run_fft_topn(frame, prns, 1, 1, 1)
+    pub fn run_fft(&self, frame: &SamplesFrame, sats: &[SatId]) -> Vec<AcqResult> {
+        self.run_fft_topn(frame, sats, 1, 1, 1)
             .into_iter()
             .map(|mut v| v.remove(0))
             .collect()
@@ -50,7 +50,7 @@ impl Acquisition {
     pub fn run_fft_topn(
         &self,
         frame: &SamplesFrame,
-        prns: &[u8],
+        sats: &[SatId],
         top_n: usize,
         coherent_ms: u32,
         noncoherent: u32,
@@ -71,8 +71,8 @@ impl Acquisition {
         let ifft = planner.plan_fft_inverse(samples_per_code);
 
         let mut results = Vec::new();
-        for &prn in prns {
-            let code_fft = self.code_fft(prn, samples_per_code, fft.as_ref());
+        for &sat in sats {
+            let code_fft = self.code_fft(sat, samples_per_code, fft.as_ref());
             let mut candidates = Vec::new();
 
             let mut doppler = -self.doppler_search_hz;
@@ -122,7 +122,7 @@ impl Acquisition {
                 let cn0_proxy = peak_mean_ratio * 10.0;
 
                 candidates.push(AcqResult {
-                    prn,
+                    sat,
                     carrier_hz: carrier,
                     code_phase_samples: peak_idx,
                     peak,
@@ -145,7 +145,7 @@ impl Acquisition {
 
             if let Some(best) = candidates.first() {
                 logging::acquisition_hit(
-                    best.prn,
+                    best.sat,
                     best.carrier_hz,
                     best.code_phase_samples,
                     best.peak,
@@ -154,7 +154,7 @@ impl Acquisition {
                 #[cfg(feature = "trace-dump")]
                 if let Ok(dir) = std::env::var("BIJUX_TRACE_DIR") {
                     let trace = AcqTrace {
-                        prn: best.prn,
+                        sat: best.sat,
                         doppler_hz: best.carrier_hz,
                         code_phase_samples: best.code_phase_samples,
                         peak: best.peak,
@@ -173,15 +173,15 @@ impl Acquisition {
 
     fn code_fft(
         &self,
-        prn: u8,
+        sat: SatId,
         samples_per_code: usize,
         fft: &dyn rustfft::Fft<f32>,
     ) -> Vec<Complex<f32>> {
-        let key = (samples_per_code, prn);
+        let key = (samples_per_code, sat);
         if let Some(cached) = self.cache.lock().ok().and_then(|m| m.get(&key).cloned()) {
             return cached;
         }
-        let code = generate_ca_code(Prn(prn));
+        let code = generate_ca_code(Prn(sat.prn));
         let local_code = upsample_code(&code, samples_per_code);
         let mut code_fft: Vec<Complex<f32>> =
             local_code.iter().map(|&x| Complex::new(x, 0.0)).collect();

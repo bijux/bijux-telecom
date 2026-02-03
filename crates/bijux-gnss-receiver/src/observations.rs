@@ -1,6 +1,6 @@
 use bijux_gnss_core::{
-    Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, SignalBand, SignalSpec,
-    TrackEpoch,
+    Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, SigId, SignalBand,
+    SignalSpec, TrackEpoch,
 };
 
 use crate::signal::samples_per_code;
@@ -111,11 +111,18 @@ pub fn observations_from_tracking(config: &ReceiverConfig, epochs: &[TrackEpoch]
             (epoch.prompt_i * epoch.prompt_i + epoch.prompt_q * epoch.prompt_q) as f64;
         let cn0_dbhz = 10.0 * (prompt_power.max(1e-9)).log10();
 
+        let variance_m2 = (1.0 / cn0_dbhz.max(1.0)).powi(2);
         let sat = ObsSatellite {
-            prn: epoch.prn,
+            signal_id: SigId {
+                sat: epoch.sat,
+                band: SignalBand::L1,
+            },
             pseudorange_m,
+            pseudorange_var_m2: variance_m2,
             carrier_phase_cycles: phase_state.phase_cycles,
+            carrier_phase_var_cycles2: variance_m2 * 0.01,
             doppler_hz,
+            doppler_var_hz2: 4.0,
             cn0_dbhz,
             lock_flags: LockFlags {
                 code_lock: epoch.lock,
@@ -150,6 +157,7 @@ pub fn observations_from_tracking(config: &ReceiverConfig, epochs: &[TrackEpoch]
             tow_s: None,
             epoch_idx: epoch.epoch.index,
             discontinuity,
+            role: ReceiverRole::Rover,
             sats: vec![sat],
         });
     }
@@ -165,7 +173,8 @@ pub fn observations_from_tracking_results(
     use std::collections::BTreeMap;
 
     let mut by_epoch: BTreeMap<u64, ObsEpoch> = BTreeMap::new();
-    let mut hatch: std::collections::HashMap<u8, HatchState> = std::collections::HashMap::new();
+    let mut hatch: std::collections::HashMap<bijux_gnss_core::SigId, HatchState> =
+        std::collections::HashMap::new();
     for track in tracks {
         let obs = observations_from_tracking(config, &track.epochs);
         for epoch in obs {
@@ -175,12 +184,13 @@ pub fn observations_from_tracking_results(
                 tow_s: epoch.tow_s,
                 epoch_idx: epoch.epoch_idx,
                 discontinuity: epoch.discontinuity,
+                role: epoch.role,
                 sats: Vec::new(),
             });
             entry.discontinuity |= epoch.discontinuity;
             for mut sat in epoch.sats {
                 let lambda_m = SPEED_OF_LIGHT_MPS / 1_575_420_000.0;
-                let state = hatch.entry(sat.prn).or_insert(HatchState {
+                let state = hatch.entry(sat.signal_id).or_insert(HatchState {
                     smoothed_m: sat.pseudorange_m,
                     count: 0,
                     last_carrier_cycles: sat.carrier_phase_cycles,

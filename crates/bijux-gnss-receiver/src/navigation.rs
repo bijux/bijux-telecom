@@ -104,7 +104,7 @@ impl Navigation {
                 let mut elevation = s.elevation_deg;
                 if elevation.is_none() {
                     if let Some((rx_x, rx_y, rx_z)) = self.last_ecef {
-                        if let Some(eph) = eph.iter().find(|e| e.prn == s.prn) {
+                        if let Some(eph) = eph.iter().find(|e| e.sat == s.signal_id.sat) {
                             let sat = sat_state_gps_l1ca(eph, obs.t_rx_s, 0.0);
                             let (_az, el) =
                                 elevation_azimuth_deg(rx_x, rx_y, rx_z, sat.x_m, sat.y_m, sat.z_m);
@@ -133,7 +133,7 @@ impl Navigation {
                     .map(|el| weight_from_cn0_elev(s.cn0_dbhz, el, weight_config))
                     .unwrap_or(1.0);
                 Some(PositionObservation {
-                    prn: s.prn,
+                    sat: s.signal_id.sat,
                     pseudorange_m: s.pseudorange_m,
                     cn0_dbhz: s.cn0_dbhz,
                     elevation_deg: elevation,
@@ -167,13 +167,13 @@ impl Navigation {
             residuals: solution
                 .residuals
                 .into_iter()
-                .map(|(prn, residual_m)| NavResidual {
-                    prn,
+                .map(|(sat, residual_m)| NavResidual {
+                    sat,
                     residual_m,
                     rejected: false,
                 })
-                .chain(solution.rejected.into_iter().map(|prn| NavResidual {
-                    prn,
+                .chain(solution.rejected.into_iter().map(|sat| NavResidual {
+                    sat,
                     residual_m: 0.0,
                     rejected: true,
                 }))

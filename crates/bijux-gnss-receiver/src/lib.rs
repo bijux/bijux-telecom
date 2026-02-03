@@ -55,9 +55,14 @@ impl Receiver {
             }
         };
 
-        let prns: Vec<u8> = (1..=32).collect();
+        let sats: Vec<bijux_gnss_core::SatId> = (1..=32)
+            .map(|prn| bijux_gnss_core::SatId {
+                constellation: bijux_gnss_core::Constellation::Gps,
+                prn,
+            })
+            .collect();
         let acquisition = acquisition::Acquisition::new(self.config.clone());
-        let acquisitions = acquisition.run_fft(&frame, &prns);
+        let acquisitions = acquisition.run_fft(&frame, &sats);
 
         let tracking = tracking::Tracking::new(self.config.clone());
         let _tracking_results = tracking.track_from_acquisition(&frame, &acquisitions, 0.5);
