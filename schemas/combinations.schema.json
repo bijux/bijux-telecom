@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CombinationObservation",
+  "type": "object",
+  "required": [
+    "epoch_idx",
+    "t_rx_s",
+    "sat",
+    "band_1",
+    "band_2",
+    "f1_hz",
+    "f2_hz",
+    "status",
+    "reason"
+  ],
+  "properties": {
+    "epoch_idx": { "type": "integer", "minimum": 0 },
+    "t_rx_s": { "type": "number" },
+    "sat": { "$ref": "#/definitions/SatId" },
+    "band_1": { "type": "string" },
+    "band_2": { "type": "string" },
+    "f1_hz": { "type": "number" },
+    "f2_hz": { "type": "number" },
+    "if_code_m": { "type": ["number", "null"] },
+    "if_phase_m": { "type": ["number", "null"] },
+    "wide_lane_cycles": { "type": ["number", "null"] },
+    "narrow_lane_cycles": { "type": ["number", "null"] },
+    "melbourne_wubbena_m": { "type": ["number", "null"] },
+    "status": { "type": "string" },
+    "reason": { "type": "string" }
+  },
+  "definitions": {
+    "SatId": {
+      "type": "object",
+      "required": ["constellation", "prn"],
+      "properties": {
+        "constellation": { "type": "string" },
+        "prn": { "type": "integer" }
+      }
+    }
+  }
+}
