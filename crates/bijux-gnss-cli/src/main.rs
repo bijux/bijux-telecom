@@ -1,9 +1,14 @@
 include!("cli/mod.rs");
 include!("cli/args.rs");
 include!("cli/report.rs");
-include!("cli/support.rs");
 include!("cli/output.rs");
-include!("cli/validate_support.rs");
+include!("cli/support/validate_support.rs");
+include!("cli/support/overrides.rs");
+include!("cli/support/hash.rs");
+include!("cli/support/sat.rs");
+include!("cli/support/sweep.rs");
+include!("cli/support/parse.rs");
+include!("cli/support/stats.rs");
 include!("cli/commands/ingest.rs");
 include!("cli/commands/run_pipeline.rs");
 include!("cli/commands/diagnostics.rs");

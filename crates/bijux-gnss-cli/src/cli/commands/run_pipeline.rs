@@ -1,3 +1,12 @@
+fn validate_profile(profile: &ReceiverProfile) -> Result<()> {
+    let report = <ReceiverProfile as ValidateConfig>::validate(profile);
+    if report.errors.is_empty() {
+        return Ok(());
+    }
+    let messages: Vec<String> = report.errors.into_iter().map(|e| e.message).collect();
+    bail!("invalid config: {}", messages.join(", "));
+}
+
 fn handle_acquire(command: GnssCommand) -> Result<()> {
     let GnssCommand::Acquire {
                 common,
@@ -24,9 +33,7 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
                         profile.sample_rate_hz = entry.sample_rate_hz;
                         profile.intermediate_freq_hz = entry.intermediate_freq_hz;
                     }
-                    profile
-                        .validate()
-                        .map_err(|errs| eyre!("invalid config: {}", errs.join(", ")))?;
+                    validate_profile(&profile)?;
                     let config = profile.to_receiver_config();
     
                     let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
@@ -269,9 +276,7 @@ fn handle_run(command: GnssCommand) -> Result<()> {
                         profile.sample_rate_hz = entry.sample_rate_hz;
                         profile.intermediate_freq_hz = entry.intermediate_freq_hz;
                     }
-                    profile
-                        .validate()
-                        .map_err(|errs| eyre!("invalid config: {}", errs.join(", ")))?;
+                    validate_profile(&profile)?;
                     let config = profile.to_receiver_config();
                     let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
                     let sidecar = load_sidecar(common.sidecar.as_ref())?;

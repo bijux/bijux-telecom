@@ -233,6 +233,20 @@ enum GnssCommand {
         out: PathBuf,
     },
 
+    /// Upgrade a receiver config to the current schema version
+    ConfigUpgrade {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Input config file
+        #[arg(long, value_name = "FILE")]
+        config: PathBuf,
+
+        /// Optional output path (defaults to overwriting input)
+        #[arg(long, value_name = "FILE")]
+        out: Option<PathBuf>,
+    },
+
     /// Run a streaming pipeline with optional replay rate
     Run {
         #[command(flatten)]
@@ -410,4 +424,3 @@ struct RunManifest {
     cpu_features: Vec<String>,
     results: serde_json::Value,
 }
-

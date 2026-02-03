@@ -1,3 +1,12 @@
+fn validate_profile_ingest(profile: &ReceiverProfile) -> Result<()> {
+    let report = <ReceiverProfile as ValidateConfig>::validate(profile);
+    if report.errors.is_empty() {
+        return Ok(());
+    }
+    let messages: Vec<String> = report.errors.into_iter().map(|e| e.message).collect();
+    bail!("invalid config: {}", messages.join(", "));
+}
+
 fn handle_track(command: GnssCommand) -> Result<()> {
     let GnssCommand::Track {
                 common,
@@ -23,9 +32,7 @@ fn handle_track(command: GnssCommand) -> Result<()> {
                         profile.sample_rate_hz = entry.sample_rate_hz;
                         profile.intermediate_freq_hz = entry.intermediate_freq_hz;
                     }
-                    profile
-                        .validate()
-                        .map_err(|errs| eyre!("invalid config: {}", errs.join(", ")))?;
+                    validate_profile_ingest(&profile)?;
                     let config = profile.to_receiver_config();
     
                     let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
@@ -124,13 +131,19 @@ fn handle_validateconfig(command: GnssCommand) -> Result<()> {
                         .context("--config is required")?;
                     let profile = load_profile_from_path(&path)?;
                     validate_config_schema(&profile)?;
-                    match profile.validate() {
-                        Ok(()) => {
-                            println!("config valid: {}", path.display());
-                        }
-                        Err(errors) => {
-                            bail!("config invalid: {}", errors.join(", "));
-                        }
+                    let report = <ReceiverProfile as ValidateConfig>::validate(&profile);
+                    if report.errors.is_empty() {
+                        println!("config valid: {}", path.display());
+                    } else {
+                        bail!(
+                            "config invalid: {}",
+                            report
+                                .errors
+                                .iter()
+                                .map(|e| e.message.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        );
                     }
 
     Ok(())
@@ -146,6 +159,33 @@ fn handle_configschema(command: GnssCommand) -> Result<()> {
                     fs::write(&out, serde_json::to_string_pretty(&schema)?)?;
                     println!("wrote {}", out.display());
 
+    Ok(())
+}
+
+fn handle_configupgrade(command: GnssCommand) -> Result<()> {
+    let GnssCommand::ConfigUpgrade { common, config, out } = command else {
+        bail!("invalid command for handler");
+    };
+
+    set_trace_dir(&common);
+    let profile = load_profile_from_path(&config)?;
+    validate_config_schema(&profile)?;
+    let report = <ReceiverProfile as ValidateConfig>::validate(&profile);
+    if !report.errors.is_empty() {
+        bail!(
+            "config invalid: {}",
+            report
+                .errors
+                .iter()
+                .map(|e| e.message.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    let output_path = out.unwrap_or(config);
+    let data = toml::to_string_pretty(&profile)?;
+    fs::write(&output_path, data)?;
+    println!("wrote {}", output_path.display());
     Ok(())
 }
 

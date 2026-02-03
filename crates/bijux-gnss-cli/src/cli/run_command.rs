@@ -11,6 +11,7 @@ fn run_command(command: GnssCommand) -> Result<()> {
         cmd @ GnssCommand::ValidateConfig { .. } => handle_validateconfig(cmd),
         cmd @ GnssCommand::ValidateArtifacts { .. } => handle_validateartifacts(cmd),
         cmd @ GnssCommand::ValidateSidecar { .. } => handle_validatesidecar(cmd),
+        cmd @ GnssCommand::ConfigUpgrade { .. } => handle_configupgrade(cmd),
         cmd @ GnssCommand::ConfigSchema { .. } => handle_configschema(cmd),
         cmd @ GnssCommand::Validate { .. } => handle_validate(cmd),
         cmd @ GnssCommand::Run { .. } => handle_run(cmd),

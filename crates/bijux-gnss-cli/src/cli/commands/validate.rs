@@ -217,6 +217,29 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
     set_trace_dir(&common);
     let file = file.context("--file is required for validation")?;
     let profile = load_profile(&common)?;
+    if profile.schema_version.0 != SchemaVersion::CURRENT.0 {
+        bail!(
+            "unsupported schema_version {}, expected {}",
+            profile.schema_version.0,
+            SchemaVersion::CURRENT.0
+        );
+    }
+
+    validate_config_schema(&profile)?;
+
+    let report = <ReceiverProfile as ValidateConfig>::validate(&profile);
+    if !report.errors.is_empty() {
+        bail!(
+            "config invalid: {}",
+            report
+                .errors
+                .iter()
+                .map(|e| e.message.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+
     let mut obs = read_obs_epochs(&file)?;
     let nav = read_ephemeris(&eph)?;
     let reference_epochs = read_reference_epochs(&reference)?;
@@ -236,29 +259,39 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
         }
     }
 
-    let mut products = bijux_gnss_nav::Products::new(
-        bijux_gnss_nav::BroadcastProductsProvider::new(nav.clone()),
-    );
-    if let Some(path) = sp3 {
-        let data = fs::read_to_string(path)?;
-        let sp3 = data
-            .parse::<bijux_gnss_nav::Sp3Provider>()
-            .map_err(|e| eyre!("sp3 parse error: {}", e))?;
-        products = products.with_sp3(sp3);
-    }
-    if let Some(path) = clk {
-        let data = fs::read_to_string(path)?;
-        let clk = data
-            .parse::<bijux_gnss_nav::ClkProvider>()
-            .map_err(|e| eyre!("clk parse error: {}", e))?;
-        products = products.with_clk(clk);
-    }
-
-    let products_ok = products.sp3.is_some() || products.clk.is_some();
-    let product_fallbacks = if products_ok {
-        Vec::new()
-    } else {
-        vec!["broadcast_only".to_string()]
+    #[cfg(feature = "precise-products")]
+    let (products_ok, product_fallbacks) = {
+        let mut products = bijux_gnss_nav::Products::new(
+            bijux_gnss_nav::BroadcastProductsProvider::new(nav.clone()),
+        );
+        if let Some(path) = sp3 {
+            let data = fs::read_to_string(path)?;
+            let sp3 = data
+                .parse::<bijux_gnss_nav::Sp3Provider>()
+                .map_err(|e| eyre!("sp3 parse error: {}", e))?;
+            products = products.with_sp3(sp3);
+        }
+        if let Some(path) = clk {
+            let data = fs::read_to_string(path)?;
+            let clk = data
+                .parse::<bijux_gnss_nav::ClkProvider>()
+                .map_err(|e| eyre!("clk parse error: {}", e))?;
+            products = products.with_clk(clk);
+        }
+        let ok = products.sp3.is_some() || products.clk.is_some();
+        let fallbacks = if ok {
+            Vec::new()
+        } else {
+            vec!["broadcast_only".to_string()]
+        };
+        (ok, fallbacks)
+    };
+    #[cfg(not(feature = "precise-products"))]
+    let (products_ok, product_fallbacks) = {
+        if sp3.is_some() || clk.is_some() {
+            bail!("precise-products feature disabled; recompile with feature to use SP3/CLK");
+        }
+        (false, vec!["precise_products_disabled".to_string()])
     };
 
     let report = build_validation_report(

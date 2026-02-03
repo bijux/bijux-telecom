@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use bijux_gnss_core::{
     Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, SatId, SigId,
     SignalBand, SignalCode, SignalSpec, GPS_L1_CA_CARRIER_HZ,

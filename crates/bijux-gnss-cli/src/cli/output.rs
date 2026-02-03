@@ -10,6 +10,13 @@ fn load_profile_from_path(path: &Path) -> Result<ReceiverProfile> {
         .with_context(|| format!("failed to read config {}", path.display()))?;
     let profile: ReceiverProfile = toml::from_str(&contents)
         .with_context(|| format!("failed to parse config {}", path.display()))?;
+    if profile.schema_version.0 != SchemaVersion::CURRENT.0 {
+        return Err(eyre!(
+            "unsupported schema_version {}, expected {}",
+            profile.schema_version.0,
+            SchemaVersion::CURRENT.0
+        ));
+    }
     Ok(profile)
 }
 

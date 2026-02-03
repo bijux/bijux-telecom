@@ -23,6 +23,8 @@ jsonschema.workspace = true
 schemars.workspace = true
 
 [features]
+default = ["precise-products"]
+precise-products = ["bijux-gnss-nav/precise-products"]
 tracing = ["bijux-gnss-receiver/tracing", "dep:tracing-subscriber"]
 
 [[bin]]
