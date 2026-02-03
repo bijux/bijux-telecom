@@ -525,6 +525,7 @@ pub enum NavHealthEvent {
     CovarianceClamped { min_eigenvalue: f64 },
     CovarianceDiverged { max_variance: f64 },
     InnovationRejected { reason: String },
+    ZtdClamped { before_m: f64, after_m: f64 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
