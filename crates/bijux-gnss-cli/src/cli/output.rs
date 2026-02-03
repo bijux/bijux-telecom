@@ -195,7 +195,11 @@ fn write_experiment_run(
         for res in &sol.residuals {
             residual_lines.push(format!(
                 "{},{:?},{},{},{}",
-                sol.epoch.index, res.sat.constellation, res.sat.prn, res.residual_m, res.rejected
+                sol.epoch.index,
+                res.sat.constellation,
+                res.sat.prn,
+                res.residual_m.0,
+                res.rejected
             ));
         }
     }
@@ -221,7 +225,7 @@ fn write_experiment_run(
                 epoch.epoch_idx,
                 sat.signal_id.sat.constellation,
                 sat.signal_id.sat.prn,
-                sat.carrier_phase_cycles
+                sat.carrier_phase_cycles.0
             ));
         }
     }
@@ -245,10 +249,32 @@ fn write_track_timeseries(
     let path = out_dir.join("track.jsonl");
     let mut lines = Vec::new();
     for epoch in &report.epochs {
-        let line = serde_json::to_string(&serde_json::json!({
-            "header": header.clone(),
-            "payload": epoch
-        }))?;
+        let wrapped = TrackEpochV1 {
+            header: header.clone(),
+            epoch: TrackEpoch {
+                epoch: bijux_gnss_core::Epoch {
+                    index: epoch.epoch_idx,
+                },
+                sample_index: epoch.sample_index,
+                sat: epoch.sat,
+                prompt_i: epoch.prompt_i,
+                prompt_q: epoch.prompt_q,
+                carrier_hz: bijux_gnss_core::Hertz(epoch.carrier_hz),
+                code_rate_hz: bijux_gnss_core::Hertz(epoch.code_rate_hz),
+                code_phase_samples: bijux_gnss_core::Chips(epoch.code_phase_samples),
+                lock: epoch.lock,
+                cn0_dbhz: epoch.cn0_dbhz,
+                pll_lock: epoch.pll_lock,
+                dll_lock: epoch.dll_lock,
+                fll_lock: epoch.fll_lock,
+                cycle_slip: epoch.cycle_slip,
+                nav_bit_lock: epoch.nav_bit_lock,
+                dll_err: epoch.dll_err,
+                pll_err: epoch.pll_err,
+                fll_err: epoch.fll_err,
+            },
+        };
+        let line = serde_json::to_string(&wrapped)?;
         lines.push(line);
     }
     fs::write(&path, lines.join("\n"))?;
@@ -324,7 +350,7 @@ fn read_obs_epochs(path: &Path) -> Result<Vec<ObsEpoch>> {
         }
         if line.contains("\"header\"") {
             let wrapped: ObsEpochV1 = serde_json::from_str(line)?;
-            if !ArtifactCompatibility::is_supported(wrapped.header.schema_version) {
+            if !ArtifactReadPolicy::is_supported(wrapped.header.schema_version) {
                 bail!(
                     "unsupported obs schema_version {}",
                     wrapped.header.schema_version
@@ -344,7 +370,7 @@ fn read_ephemeris(path: &Path) -> Result<Vec<GpsEphemeris>> {
     let data = fs::read_to_string(path)?;
     if data.contains("\"header\"") {
         let wrapped: GpsEphemerisV1 = serde_json::from_str(&data)?;
-        if !ArtifactCompatibility::is_supported(wrapped.header.schema_version) {
+        if !ArtifactReadPolicy::is_supported(wrapped.header.schema_version) {
             bail!(
                 "unsupported ephemeris schema_version {}",
                 wrapped.header.schema_version

@@ -301,18 +301,14 @@ enum GnssCommand {
     Validate {
         #[command(flatten)]
         common: CommonArgs,
-
         #[arg(long, alias = "path", value_name = "FILE")]
         file: Option<PathBuf>,
-
         /// Ephemeris JSON file (required for PVT)
         #[arg(long, value_name = "FILE")]
         eph: PathBuf,
-
         /// Reference solution JSONL for comparison
         #[arg(long, value_name = "FILE")]
         reference: PathBuf,
-
         /// PRN list for acquisition/tracking
         #[arg(
             long,
@@ -321,11 +317,9 @@ enum GnssCommand {
             value_parser = clap::value_parser!(u8).range(1..=32)
         )]
         prn: Vec<u8>,
-
         /// Precise ephemeris SP3 file (optional)
         #[arg(long, value_name = "FILE")]
         sp3: Option<PathBuf>,
-
         /// Precise clock CLK file (optional)
         #[arg(long, value_name = "FILE")]
         clk: Option<PathBuf>,
@@ -338,37 +332,44 @@ enum ArtifactCommand {
     Validate {
         #[command(flatten)]
         common: CommonArgs,
-
         /// Artifact file path
         #[arg(long, value_name = "FILE")]
         file: PathBuf,
-
         /// Artifact kind override (obs, track, acq, eph, pvt, rtk, ppp)
         #[arg(long)]
         kind: Option<String>,
-
         /// Require non-empty artifacts
         #[arg(long)]
         strict: bool,
+        /// Write diagnostics summary report (JSON)
+        #[arg(long, value_name = "FILE")]
+        report: Option<PathBuf>,
+        /// Fail on diagnostics at or above this severity
+        #[arg(long, value_enum, default_value = "error")]
+        fail_on: DiagnosticFailOn,
     },
 
     /// Convert an artifact to a target version (scaffold)
     Convert {
         #[command(flatten)]
         common: CommonArgs,
-
         /// Input artifact
         #[arg(long, value_name = "FILE")]
         input: PathBuf,
-
         /// Output artifact
         #[arg(long, value_name = "FILE")]
         output: PathBuf,
-
         /// Target version (e.g. v1)
         #[arg(long)]
         to: String,
     },
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug)]
+enum DiagnosticFailOn {
+    None,
+    Warn,
+    Error,
 }
 
 #[derive(Subcommand)]

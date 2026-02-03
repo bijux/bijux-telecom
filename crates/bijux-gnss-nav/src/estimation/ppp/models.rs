@@ -5,13 +5,13 @@ use crate::corrections::Corrections;
 use crate::estimation::ekf::traits::StateModel;
 use crate::linalg::Matrix;
 
-pub(crate) struct PppProcessModel {
-    pub(crate) pos: [usize; 3],
-    pub(crate) vel: [usize; 3],
-    pub(crate) clock_bias: usize,
-    pub(crate) clock_drift: usize,
-    pub(crate) ztd: usize,
-    pub(crate) process: PppProcessNoise,
+pub struct PppProcessModel {
+    pub pos: [usize; 3],
+    pub vel: [usize; 3],
+    pub clock_bias: usize,
+    pub clock_drift: usize,
+    pub ztd: usize,
+    pub process: PppProcessNoise,
 }
 
 impl StateModel for PppProcessModel {
@@ -49,13 +49,13 @@ impl StateModel for PppProcessModel {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct PppCodeMeasurement {
-    pub(crate) z_m: f64,
-    pub(crate) sat_pos_m: [f64; 3],
-    pub(crate) sat_clock_s: f64,
-    pub(crate) sigma_m: f64,
-    pub(crate) iono_index: Option<usize>,
-    pub(crate) ztd_index: Option<usize>,
-    pub(crate) isb_index: Option<usize>,
-    pub(crate) corr: Corrections,
+pub struct PppCodeMeasurement {
+    pub z_m: f64,
+    pub sat_pos_m: [f64; 3],
+    pub sat_clock_s: f64,
+    pub sigma_m: f64,
+    pub iono_index: Option<usize>,
+    pub ztd_index: Option<usize>,
+    pub isb_index: Option<usize>,
+    pub corr: Corrections,
 }

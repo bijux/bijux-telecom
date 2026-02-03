@@ -270,7 +270,7 @@ fn huber_weights(residuals: &[f64], k: f64) -> Vec<f64> {
         .collect()
 }
 
-pub(crate) fn invert_4x4(a: [[f64; 4]; 4]) -> Option<[[f64; 4]; 4]> {
+pub fn invert_4x4(a: [[f64; 4]; 4]) -> Option<[[f64; 4]; 4]> {
     let mut m = [[0.0_f64; 8]; 4];
     for i in 0..4 {
         for j in 0..4 {

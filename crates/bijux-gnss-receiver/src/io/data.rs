@@ -5,7 +5,7 @@ use std::io::{Read, Seek, SeekFrom};
 
 use thiserror::Error;
 
-use bijux_gnss_core::{SampleClock, SampleTime, SamplesFrame};
+use bijux_gnss_core::{SampleClock, SampleTime, SamplesFrame, Seconds};
 
 use bijux_gnss_signal::iq_i16_to_samples;
 
@@ -71,7 +71,7 @@ impl SampleSource for MemorySamples {
             sample_index: self.cursor_samples as u64,
             sample_rate_hz: self.clock.sample_rate_hz,
         };
-        let frame = SamplesFrame::new(t0, self.clock.dt_s(), iq);
+        let frame = SamplesFrame::new(t0, Seconds(self.clock.dt_s()), iq);
         self.cursor_samples += count;
         Ok(Some(frame))
     }
@@ -144,7 +144,7 @@ impl SampleSource for FileSamples {
             sample_index: self.sample_index,
             sample_rate_hz: self.clock.sample_rate_hz,
         };
-        let frame = SamplesFrame::new(t0, self.clock.dt_s(), iq);
+        let frame = SamplesFrame::new(t0, Seconds(self.clock.dt_s()), iq);
         self.sample_index += samples_read as u64;
         Ok(Some(frame))
     }

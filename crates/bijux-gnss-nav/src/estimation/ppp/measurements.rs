@@ -90,17 +90,17 @@ impl MeasurementModel for PppCodeMeasurement {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct PppPhaseMeasurement {
-    pub(crate) z_cycles: f64,
-    pub(crate) sat_pos_m: [f64; 3],
-    pub(crate) sat_clock_s: f64,
-    pub(crate) sigma_cycles: f64,
-    pub(crate) iono_index: Option<usize>,
-    pub(crate) ztd_index: Option<usize>,
-    pub(crate) isb_index: Option<usize>,
-    pub(crate) ambiguity_index: Option<usize>,
-    pub(crate) corr: Corrections,
-    pub(crate) wavelength_m: f64,
+pub struct PppPhaseMeasurement {
+    pub z_cycles: f64,
+    pub sat_pos_m: [f64; 3],
+    pub sat_clock_s: f64,
+    pub sigma_cycles: f64,
+    pub iono_index: Option<usize>,
+    pub ztd_index: Option<usize>,
+    pub isb_index: Option<usize>,
+    pub ambiguity_index: Option<usize>,
+    pub corr: Corrections,
+    pub wavelength_m: f64,
 }
 
 impl MeasurementModel for PppPhaseMeasurement {
@@ -195,14 +195,14 @@ impl MeasurementModel for PppPhaseMeasurement {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct PppIonoFreeCodeMeasurement {
-    pub(crate) z_m: f64,
-    pub(crate) sat_pos_m: [f64; 3],
-    pub(crate) sat_clock_s: f64,
-    pub(crate) sigma_m: f64,
-    pub(crate) ztd_index: Option<usize>,
-    pub(crate) isb_index: Option<usize>,
-    pub(crate) corr: Corrections,
+pub struct PppIonoFreeCodeMeasurement {
+    pub z_m: f64,
+    pub sat_pos_m: [f64; 3],
+    pub sat_clock_s: f64,
+    pub sigma_m: f64,
+    pub ztd_index: Option<usize>,
+    pub isb_index: Option<usize>,
+    pub corr: Corrections,
 }
 
 impl MeasurementModel for PppIonoFreeCodeMeasurement {
@@ -274,17 +274,17 @@ impl MeasurementModel for PppIonoFreeCodeMeasurement {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct PppIonoFreePhaseMeasurement {
-    pub(crate) z_cycles: f64,
-    pub(crate) sat_pos_m: [f64; 3],
-    pub(crate) sat_clock_s: f64,
-    pub(crate) sigma_cycles: f64,
-    pub(crate) ztd_index: Option<usize>,
-    pub(crate) isb_index: Option<usize>,
-    pub(crate) ambiguity_index: Option<usize>,
-    pub(crate) f1_hz: f64,
-    pub(crate) f2_hz: f64,
-    pub(crate) corr: Corrections,
+pub struct PppIonoFreePhaseMeasurement {
+    pub z_cycles: f64,
+    pub sat_pos_m: [f64; 3],
+    pub sat_clock_s: f64,
+    pub sigma_cycles: f64,
+    pub ztd_index: Option<usize>,
+    pub isb_index: Option<usize>,
+    pub ambiguity_index: Option<usize>,
+    pub f1_hz: f64,
+    pub f2_hz: f64,
+    pub corr: Corrections,
 }
 
 impl MeasurementModel for PppIonoFreePhaseMeasurement {
@@ -369,7 +369,7 @@ impl MeasurementModel for PppIonoFreePhaseMeasurement {
     }
 }
 
-pub(crate) fn iono_free_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<(f64, f64, f64, f64)> {
+pub fn iono_free_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<(f64, f64, f64, f64)> {
     let mut l1 = None;
     let mut l2 = None;
     for s in &obs.sats {
@@ -389,16 +389,16 @@ pub(crate) fn iono_free_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<(f64, f64
     let f1_2 = f1 * f1;
     let f2_2 = f2 * f2;
     let denom = (f1_2 - f2_2).max(1.0);
-    let if_code = (f1_2 * l1.pseudorange_m - f2_2 * l2.pseudorange_m) / denom;
+    let if_code = (f1_2 * l1.pseudorange_m.0 - f2_2 * l2.pseudorange_m.0) / denom;
     let lambda1 = SPEED_OF_LIGHT_MPS / f1;
     let lambda2 = SPEED_OF_LIGHT_MPS / f2;
-    let phi1_m = l1.carrier_phase_cycles * lambda1;
-    let phi2_m = l2.carrier_phase_cycles * lambda2;
+    let phi1_m = l1.carrier_phase_cycles.0 * lambda1;
+    let phi2_m = l2.carrier_phase_cycles.0 * lambda2;
     let if_phase = (f1_2 * phi1_m - f2_2 * phi2_m) / denom;
     Some((if_code, if_phase, f1, f2))
 }
 
-pub(crate) fn wide_lane_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<(f64, f64)> {
+pub fn wide_lane_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<(f64, f64)> {
     let mut l1 = None;
     let mut l2 = None;
     for s in &obs.sats {
@@ -417,15 +417,15 @@ pub(crate) fn wide_lane_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<(f64, f64
     let f2 = l2.metadata.signal.carrier_hz.value();
     let lambda1 = SPEED_OF_LIGHT_MPS / f1;
     let lambda2 = SPEED_OF_LIGHT_MPS / f2;
-    let phi1_m = l1.carrier_phase_cycles * lambda1;
-    let phi2_m = l2.carrier_phase_cycles * lambda2;
+    let phi1_m = l1.carrier_phase_cycles.0 * lambda1;
+    let phi2_m = l2.carrier_phase_cycles.0 * lambda2;
     let lambda_wl = SPEED_OF_LIGHT_MPS / (f1 - f2).abs().max(1.0);
     let wl_cycles = (phi1_m - phi2_m) / lambda_wl;
     let variance = l1.carrier_phase_var_cycles2 + l2.carrier_phase_var_cycles2;
     Some((wl_cycles, variance))
 }
 
-pub(crate) fn ratio_fix(float: f64, variance: f64) -> (f64, i64) {
+pub fn ratio_fix(float: f64, variance: f64) -> (f64, i64) {
     let n0 = float.round() as i64;
     let n1 = if float > n0 as f64 { n0 + 1 } else { n0 - 1 };
     let cost0 = ((float - n0 as f64).powi(2)) / variance.max(1e-6);

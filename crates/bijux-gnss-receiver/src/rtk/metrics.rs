@@ -9,7 +9,7 @@ pub struct JitterSummary {
     pub counts: Vec<usize>,
 }
 
-pub(crate) fn jitter_summary(samples: &[f64]) -> JitterSummary {
+pub fn jitter_summary(samples: &[f64]) -> JitterSummary {
     let mut data = samples.to_vec();
     data.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let mean = if data.is_empty() {

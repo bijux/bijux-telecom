@@ -237,11 +237,11 @@ pub struct BandTrackingProfile {
     pub integration_ms: u32,
 }
 
-pub(crate) fn default_tracking_integration_ms() -> u32 {
+pub fn default_tracking_integration_ms() -> u32 {
     1
 }
 
-pub(crate) fn parse_band(text: &str) -> Option<SignalBand> {
+pub fn parse_band(text: &str) -> Option<SignalBand> {
     match text.to_lowercase().as_str() {
         "l1" => Some(SignalBand::L1),
         "l2" => Some(SignalBand::L2),

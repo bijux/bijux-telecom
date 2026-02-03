@@ -94,14 +94,14 @@ impl EpochAligner {
         while i < base.len() && j < rover.len() {
             let b = &base[i];
             let r = &rover[j];
-            let dt = (b.t_rx_s - r.t_rx_s).abs();
+            let dt = (b.t_rx_s.0 - r.t_rx_s.0).abs();
             if dt <= self.tolerance_s {
                 out.push((b.clone(), r.clone()));
                 self.aligned += 1;
                 self.jitter_s.push(dt);
                 i += 1;
                 j += 1;
-            } else if b.t_rx_s < r.t_rx_s {
+            } else if b.t_rx_s.0 < r.t_rx_s.0 {
                 self.dropped_base += 1;
                 i += 1;
             } else {
@@ -210,9 +210,9 @@ pub fn build_sd(base: &ObsEpoch, rover: &ObsEpoch) -> Vec<SdObservation> {
             let variance_phase = rover_phase_var + base_phase_var;
             out.push(SdObservation {
                 sig: sat.signal_id,
-                code_m: sat.pseudorange_m - base_sat.pseudorange_m,
-                phase_cycles: sat.carrier_phase_cycles - base_sat.carrier_phase_cycles,
-                doppler_hz: sat.doppler_hz - base_sat.doppler_hz,
+                code_m: sat.pseudorange_m.0 - base_sat.pseudorange_m.0,
+                phase_cycles: sat.carrier_phase_cycles.0 - base_sat.carrier_phase_cycles.0,
+                doppler_hz: sat.doppler_hz.0 - base_sat.doppler_hz.0,
                 variance_code,
                 variance_phase,
                 ambiguity_rover: ambiguity_id(sat),
@@ -400,7 +400,7 @@ pub fn solve_baseline_dd(
     Some(baseline)
 }
 
-pub(crate) fn los_unit(base: [f64; 3], sat: [f64; 3]) -> [f64; 3] {
+pub fn los_unit(base: [f64; 3], sat: [f64; 3]) -> [f64; 3] {
     let dx = base[0] - sat[0];
     let dy = base[1] - sat[1];
     let dz = base[2] - sat[2];

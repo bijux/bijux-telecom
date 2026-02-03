@@ -156,7 +156,7 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                             &dd,
                             base_xyz,
                             &ephs,
-                            rover.t_rx_s,
+                            rover.t_rx_s.0,
                         );
     
                         let float = bijux_gnss_receiver::rtk::FloatAmbiguitySolution {
@@ -183,7 +183,7 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                                 base_xyz,
                                 baseline_val.enu_m,
                                 &ephs,
-                                rover.t_rx_s,
+                            rover.t_rx_s.0,
                             )
                             .map(|(rms, _pred, _)| rms);
                             let mut adjusted = bijux_gnss_receiver::rtk::apply_fix_hold(
@@ -195,7 +195,7 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                                 base_xyz,
                                 adjusted.enu_m,
                                 &ephs,
-                                rover.t_rx_s,
+                            rover.t_rx_s.0,
                             )
                             .map(|(rms, _pred, _)| rms);
                             if let (Some(before), Some(after)) = (before_rms, after_rms) {
@@ -214,7 +214,7 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                                         base_xyz,
                                         adjusted.enu_m,
                                         &ephs,
-                                        rover.t_rx_s,
+                            rover.t_rx_s.0,
                                     )
                                 {
                                     (rms_obs, rms_pred, count)
@@ -225,7 +225,7 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                                 &dd,
                                 base_xyz,
                                 &ephs,
-                                rover.t_rx_s,
+                            rover.t_rx_s.0,
                             );
                             let mut sep_sig = None;
                             let mut sep_max = None;

@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use bijux_gnss_core::{AcqResult, SamplesFrame, SatId};
+use bijux_gnss_core::{AcqResult, Hertz, SamplesFrame, SatId};
 use num_complex::Complex;
 use rustfft::{num_traits::Zero, FftPlanner};
 
@@ -125,7 +125,7 @@ impl Acquisition {
 
                 candidates.push(AcqResult {
                     sat,
-                    carrier_hz: carrier,
+                    carrier_hz: Hertz(carrier),
                     code_phase_samples: peak_idx,
                     peak,
                     second_peak: second,
@@ -148,7 +148,7 @@ impl Acquisition {
             if let Some(best) = candidates.first() {
                 logging::acquisition_hit(
                     best.sat,
-                    best.carrier_hz,
+                    best.carrier_hz.0,
                     best.code_phase_samples,
                     best.peak,
                     best.peak_mean_ratio,
@@ -157,7 +157,7 @@ impl Acquisition {
                 if let Ok(dir) = std::env::var("BIJUX_TRACE_DIR") {
                     let trace = AcqTrace {
                         sat: best.sat,
-                        doppler_hz: best.carrier_hz,
+                        doppler_hz: best.carrier_hz.0,
                         code_phase_samples: best.code_phase_samples,
                         peak: best.peak,
                         mean: best.mean,

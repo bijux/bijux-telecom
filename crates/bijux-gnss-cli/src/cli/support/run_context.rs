@@ -88,10 +88,10 @@ fn artifact_header(
     common: &CommonArgs,
     profile: &ReceiverProfile,
     dataset: Option<&DatasetEntry>,
-) -> Result<ArtifactHeader> {
+) -> Result<ArtifactHeaderV1> {
     let config_hash = hash_config(common.config.as_ref(), profile)?;
-    Ok(ArtifactHeader {
-        schema_version: ArtifactCompatibility::LATEST,
+    Ok(ArtifactHeaderV1 {
+        schema_version: ArtifactReadPolicy::LATEST,
         created_at_unix_ms: now_unix_ms(),
         git_sha: git_hash().unwrap_or_else(|| "unknown".to_string()),
         config_hash,
@@ -99,6 +99,7 @@ fn artifact_header(
         toolchain: std::env::var("RUSTC_VERSION").unwrap_or_else(|_| "unknown".to_string()),
         features: enabled_features(),
         deterministic: common.deterministic,
+        git_dirty: git_dirty(),
     })
 }
 

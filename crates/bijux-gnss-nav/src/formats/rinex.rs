@@ -43,7 +43,7 @@ pub fn write_rinex_obs(path: &Path, epochs: &[ObsEpoch], _strict: bool) -> Resul
         let sat_count = epoch.sats.len();
         let line = format!(
             "> {:>4} {:>2} {:>2} {:>2} {:>2} {:>11.7}  {:>2} {:>3}",
-            1980, 1, 6, 0, 0, epoch.t_rx_s, 0, sat_count
+            1980, 1, 6, 0, 0, epoch.t_rx_s.0, 0, sat_count
         );
         write_header_line(&mut writer, &line)?;
     }

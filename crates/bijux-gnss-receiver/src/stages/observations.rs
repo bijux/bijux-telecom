@@ -1,7 +1,8 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::{
-    LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, SigId, SignalBand, TrackEpoch,
+    Cycles, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, Seconds, SigId,
+    SignalBand, TrackEpoch,
 };
 
 use crate::tracking::TrackingResult;
@@ -53,7 +54,7 @@ pub fn observations_from_tracking(config: &ReceiverConfig, epochs: &[TrackEpoch]
     let clock_bias_s = 0.0_f64;
 
     for epoch in epochs {
-        let t_rx_s = epoch.sample_index as f64 / config.sampling_freq_hz + clock_bias_s;
+        let t_rx_s = Seconds(epoch.sample_index as f64 / config.sampling_freq_hz + clock_bias_s);
 
         let expected_step = (config.sampling_freq_hz * 0.001).round() as u64;
         let discontinuity = match last_sample_index {
@@ -76,11 +77,12 @@ pub fn observations_from_tracking(config: &ReceiverConfig, epochs: &[TrackEpoch]
         }
         last_sample_index = Some(epoch.sample_index);
 
-        let code_phase_chips = epoch.code_phase_samples / samples_per_chip;
+        let code_phase_chips = epoch.code_phase_samples.0 / samples_per_chip;
         let code_epoch = epoch.epoch.index as f64;
         let code_time_s =
             (code_epoch * config.code_length as f64 + code_phase_chips) / code_rate_hz;
-        let pseudorange_m = code_time_s * SPEED_OF_LIGHT_MPS + clock_bias_s * SPEED_OF_LIGHT_MPS;
+        let pseudorange_m =
+            Meters(code_time_s * SPEED_OF_LIGHT_MPS + clock_bias_s * SPEED_OF_LIGHT_MPS);
 
         let prompt_phase_cycles = (epoch.prompt_q as f64).atan2(epoch.prompt_i as f64) / TWO_PI;
         let doppler_hz = epoch.carrier_hz;
@@ -92,7 +94,7 @@ pub fn observations_from_tracking(config: &ReceiverConfig, epochs: &[TrackEpoch]
             phase_state.last_phase_cycles = prompt_phase_cycles;
             phase_state.initialized = true;
         } else {
-            let predicted = phase_state.phase_cycles + doppler_hz * dt_s;
+            let predicted = phase_state.phase_cycles + doppler_hz.0 * dt_s;
             let mut measured = prompt_phase_cycles;
             let delta = measured - phase_state.last_phase_cycles;
             if delta > 0.5 {
@@ -123,7 +125,7 @@ pub fn observations_from_tracking(config: &ReceiverConfig, epochs: &[TrackEpoch]
             },
             pseudorange_m,
             pseudorange_var_m2: variance_m2,
-            carrier_phase_cycles: phase_state.phase_cycles,
+            carrier_phase_cycles: Cycles(phase_state.phase_cycles),
             carrier_phase_var_cycles2: variance_m2 * 0.01,
             doppler_hz,
             doppler_var_hz2: 4.0,
@@ -190,9 +192,9 @@ pub fn observations_from_tracking_results(
             for mut sat in epoch.sats {
                 let lambda_m = SPEED_OF_LIGHT_MPS / sat.metadata.signal.carrier_hz.value();
                 let state = hatch.entry(sat.signal_id).or_insert(HatchState {
-                    smoothed_m: sat.pseudorange_m,
+                    smoothed_m: sat.pseudorange_m.0,
                     count: 0,
-                    last_carrier_cycles: sat.carrier_phase_cycles,
+                    last_carrier_cycles: sat.carrier_phase_cycles.0,
                     last_divergence_m: 0.0,
                     age: 0,
                     resets: 0,
@@ -205,30 +207,30 @@ pub fn observations_from_tracking_results(
                     state.age = 0;
                 }
                 if !state.initialized {
-                    state.smoothed_m = sat.pseudorange_m;
+                    state.smoothed_m = sat.pseudorange_m.0;
                     state.count = 1;
-                    state.last_carrier_cycles = sat.carrier_phase_cycles;
+                    state.last_carrier_cycles = sat.carrier_phase_cycles.0;
                     state.last_divergence_m =
-                        sat.pseudorange_m - sat.carrier_phase_cycles * lambda_m;
+                        sat.pseudorange_m.0 - sat.carrier_phase_cycles.0 * lambda_m;
                     state.initialized = true;
                     state.age = 1;
                 } else {
                     let delta_carrier =
-                        (sat.carrier_phase_cycles - state.last_carrier_cycles) * lambda_m;
+                        (sat.carrier_phase_cycles.0 - state.last_carrier_cycles) * lambda_m;
                     let pred = state.smoothed_m + delta_carrier;
                     let count = (state.count as f64).min(window);
-                    state.smoothed_m = pred + (sat.pseudorange_m - pred) / count;
+                    state.smoothed_m = pred + (sat.pseudorange_m.0 - pred) / count;
                     state.count = state.count.saturating_add(1);
-                    state.last_carrier_cycles = sat.carrier_phase_cycles;
+                    state.last_carrier_cycles = sat.carrier_phase_cycles.0;
                     state.last_divergence_m =
-                        sat.pseudorange_m - sat.carrier_phase_cycles * lambda_m;
+                        sat.pseudorange_m.0 - sat.carrier_phase_cycles.0 * lambda_m;
                     state.age = state.age.saturating_add(1);
                 }
-                sat.pseudorange_m = state.smoothed_m;
+                sat.pseudorange_m = Meters(state.smoothed_m);
                 sat.metadata.smoothing_window = hatch_window;
                 sat.metadata.smoothing_age = state.age;
                 sat.metadata.smoothing_resets = state.resets;
-                let divergence_m = sat.pseudorange_m - sat.carrier_phase_cycles * lambda_m;
+                let divergence_m = sat.pseudorange_m.0 - sat.carrier_phase_cycles.0 * lambda_m;
                 let threshold_m = slip_threshold_m(sat.cn0_dbhz, sat.elevation_deg);
                 let divergence_jump = (divergence_m - state.last_divergence_m).abs();
                 if divergence_jump > threshold_m {
@@ -236,10 +238,10 @@ pub fn observations_from_tracking_results(
                 }
                 sat.multipath_suspect = divergence_jump > threshold_m * 0.8;
                 sat.error_model = Some(bijux_gnss_core::MeasurementErrorModel {
-                    thermal_noise_m: 1.0,
-                    tracking_jitter_m: (1.0 / sat.cn0_dbhz.max(1.0)) * 10.0,
-                    multipath_proxy_m: divergence_jump,
-                    clock_error_m: 0.0,
+                    thermal_noise_m: Meters(1.0),
+                    tracking_jitter_m: Meters((1.0 / sat.cn0_dbhz.max(1.0)) * 10.0),
+                    multipath_proxy_m: Meters(divergence_jump),
+                    clock_error_m: Meters(0.0),
                 });
                 entry.sats.push(sat);
             }

@@ -5,7 +5,7 @@ use crate::formats::lnav_bits::GpsWord;
 use crate::orbits::gps::GpsEphemeris;
 use bijux_gnss_core::{Constellation, SatId};
 
-pub(crate) fn parse_subframe1(words: &[GpsWord]) -> Option<EphemerisPart> {
+pub fn parse_subframe1(words: &[GpsWord]) -> Option<EphemerisPart> {
     if words.len() < 10 {
         return None;
     }
@@ -53,7 +53,7 @@ pub(crate) fn parse_subframe1(words: &[GpsWord]) -> Option<EphemerisPart> {
     })
 }
 
-pub(crate) fn parse_subframe2(words: &[GpsWord]) -> Option<EphemerisPart> {
+pub fn parse_subframe2(words: &[GpsWord]) -> Option<EphemerisPart> {
     if words.len() < 10 {
         return None;
     }
@@ -106,7 +106,7 @@ pub(crate) fn parse_subframe2(words: &[GpsWord]) -> Option<EphemerisPart> {
     })
 }
 
-pub(crate) fn parse_subframe3(words: &[GpsWord]) -> Option<EphemerisPart> {
+pub fn parse_subframe3(words: &[GpsWord]) -> Option<EphemerisPart> {
     if words.len() < 10 {
         return None;
     }
@@ -163,7 +163,7 @@ pub(crate) fn parse_subframe3(words: &[GpsWord]) -> Option<EphemerisPart> {
     })
 }
 
-pub(crate) fn get_bits(data: u32, start: usize, len: usize) -> u32 {
+pub fn get_bits(data: u32, start: usize, len: usize) -> u32 {
     let shift = 24 - (start - 1) - len;
     (data >> shift) & ((1_u32 << len) - 1)
 }
@@ -178,7 +178,7 @@ fn signed(value: u32, bits: usize) -> i32 {
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct EphemerisPart {
+pub struct EphemerisPart {
     iodc: Option<u16>,
     iode: Option<u8>,
     week: Option<u16>,
@@ -206,7 +206,7 @@ pub(crate) struct EphemerisPart {
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct EphemerisBuilder {
+pub struct EphemerisBuilder {
     prn: u8,
     iodc: Option<u16>,
     iode: Option<u8>,
@@ -235,7 +235,7 @@ pub(crate) struct EphemerisBuilder {
 }
 
 impl EphemerisBuilder {
-    pub(crate) fn merge(&mut self, part: EphemerisPart) {
+    pub fn merge(&mut self, part: EphemerisPart) {
         if let Some(value) = part.iodc {
             self.iodc = Some(value);
         }
@@ -310,7 +310,7 @@ impl EphemerisBuilder {
         }
     }
 
-    pub(crate) fn try_build(&self) -> Option<GpsEphemeris> {
+    pub fn try_build(&self) -> Option<GpsEphemeris> {
         Some(GpsEphemeris {
             sat: SatId {
                 constellation: Constellation::Gps,

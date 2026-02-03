@@ -167,7 +167,7 @@ impl Ekf {
         true
     }
 
-    pub(crate) fn sanitize_covariance(&mut self) {
+    pub fn sanitize_covariance(&mut self) {
         let n = self.p.rows();
         for r in 0..n {
             for c in (r + 1)..n {

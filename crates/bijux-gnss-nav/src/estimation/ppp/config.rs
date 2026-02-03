@@ -10,7 +10,7 @@ use crate::corrections::CorrectionContext;
 use crate::estimation::ekf::state::Ekf;
 use crate::estimation::position::solver::WeightingConfig;
 
-pub(crate) const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
+pub const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 
 #[derive(Debug, Clone)]
 pub struct PppProcessNoise {
@@ -129,34 +129,34 @@ pub struct PppHealth {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct PppIndices {
-    pub(crate) pos: [usize; 3],
-    pub(crate) vel: [usize; 3],
-    pub(crate) clock_bias: usize,
-    pub(crate) clock_drift: usize,
-    pub(crate) ztd: usize,
-    pub(crate) isb: BTreeMap<Constellation, usize>,
-    pub(crate) iono: BTreeMap<SatId, usize>,
-    pub(crate) ambiguity: BTreeMap<SigId, usize>,
+pub struct PppIndices {
+    pub pos: [usize; 3],
+    pub vel: [usize; 3],
+    pub clock_bias: usize,
+    pub clock_drift: usize,
+    pub ztd: usize,
+    pub isb: BTreeMap<Constellation, usize>,
+    pub iono: BTreeMap<SatId, usize>,
+    pub ambiguity: BTreeMap<SigId, usize>,
 }
 
 pub struct PppFilter {
     pub ekf: Ekf,
     pub config: PppConfig,
-    pub(crate) indices: PppIndices,
-    pub(crate) last_t_rx_s: Option<f64>,
-    pub(crate) last_pos: Option<[f64; 3]>,
-    pub(crate) epoch0_t_s: Option<f64>,
-    pub(crate) last_seen_iono: BTreeMap<SatId, u64>,
-    pub(crate) last_seen_amb: BTreeMap<SigId, u64>,
-    pub(crate) residual_history: BTreeMap<SigId, Vec<f64>>,
-    pub(crate) drift_history: Vec<[f64; 3]>,
-    pub(crate) wl_state: BTreeMap<SatId, WlAmbiguity>,
-    pub(crate) ar_stable_epochs: u32,
+    pub indices: PppIndices,
+    pub last_t_rx_s: Option<f64>,
+    pub last_pos: Option<[f64; 3]>,
+    pub epoch0_t_s: Option<f64>,
+    pub last_seen_iono: BTreeMap<SatId, u64>,
+    pub last_seen_amb: BTreeMap<SigId, u64>,
+    pub residual_history: BTreeMap<SigId, Vec<f64>>,
+    pub drift_history: Vec<[f64; 3]>,
+    pub wl_state: BTreeMap<SatId, WlAmbiguity>,
+    pub ar_stable_epochs: u32,
     pub health: PppHealth,
-    pub(crate) code_bias: Box<dyn CodeBiasProvider + Send + Sync>,
-    pub(crate) phase_bias: Box<dyn PhaseBiasProvider + Send + Sync>,
-    pub(crate) corrections: CorrectionContext,
+    pub code_bias: Box<dyn CodeBiasProvider + Send + Sync>,
+    pub phase_bias: Box<dyn PhaseBiasProvider + Send + Sync>,
+    pub corrections: CorrectionContext,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -172,9 +172,9 @@ pub struct PppCheckpoint {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct WlAmbiguity {
-    pub(crate) float_cycles: f64,
-    pub(crate) variance: f64,
-    pub(crate) fixed: bool,
-    pub(crate) last_update_epoch: u64,
+pub struct WlAmbiguity {
+    pub float_cycles: f64,
+    pub variance: f64,
+    pub fixed: bool,
+    pub last_update_epoch: u64,
 }

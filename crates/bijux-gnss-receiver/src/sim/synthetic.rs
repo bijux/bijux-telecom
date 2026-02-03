@@ -4,7 +4,7 @@ use std::f32::consts::TAU;
 
 use num_complex::Complex;
 
-use bijux_gnss_core::{Constellation, SampleClock, SampleTime, SamplesFrame, SatId};
+use bijux_gnss_core::{Constellation, SampleClock, SampleTime, SamplesFrame, SatId, Seconds};
 
 use crate::ReceiverConfig;
 use bijux_gnss_nav::GpsEphemeris;
@@ -99,7 +99,7 @@ pub fn generate_l1_ca_multi(config: &ReceiverConfig, scenario: &SyntheticScenari
         sample_rate_hz: config.sampling_freq_hz,
     };
 
-    SamplesFrame::new(t0, dt_s, iq)
+    SamplesFrame::new(t0, Seconds(dt_s), iq)
 }
 
 #[derive(Debug, Clone)]

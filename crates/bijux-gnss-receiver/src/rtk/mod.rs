@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-pub(crate) mod ambiguity;
-pub(crate) mod core;
-pub(crate) mod differencing;
-pub(crate) mod metrics;
+pub mod ambiguity;
+pub mod core;
+pub mod differencing;
+pub mod metrics;

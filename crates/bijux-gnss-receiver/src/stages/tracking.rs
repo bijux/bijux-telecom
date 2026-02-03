@@ -2,7 +2,9 @@
 
 use num_complex::Complex;
 
-use bijux_gnss_core::{Constellation, SampleClock, SampleTime, SamplesFrame, SatId, TrackEpoch};
+use bijux_gnss_core::{
+    Chips, Constellation, Hertz, SampleClock, SampleTime, SamplesFrame, SatId, Seconds, TrackEpoch,
+};
 
 use crate::logging;
 use crate::ReceiverConfig;
@@ -167,9 +169,9 @@ impl Tracking {
             sat,
             prompt_i: correlator.prompt.re,
             prompt_q: correlator.prompt.im,
-            carrier_hz: carrier_freq_hz,
-            code_rate_hz: self.config.code_freq_basis_hz,
-            code_phase_samples,
+            carrier_hz: Hertz(carrier_freq_hz),
+            code_rate_hz: Hertz(self.config.code_freq_basis_hz),
+            code_phase_samples: Chips(code_phase_samples),
             lock: correlator.prompt.norm() > 0.0,
             cn0_dbhz,
             pll_lock: false,
@@ -193,7 +195,7 @@ impl Tracking {
                 sample_index: 0,
                 sample_rate_hz: self.config.sampling_freq_hz,
             },
-            1.0 / self.config.sampling_freq_hz,
+            Seconds(1.0 / self.config.sampling_freq_hz),
             samples.to_vec(),
         );
         let epochs = self.track_epochs(
@@ -233,7 +235,7 @@ impl Tracking {
                 let mut epochs = self.track_epochs(
                     frame,
                     acq.sat,
-                    acq.carrier_hz,
+                    acq.carrier_hz.0,
                     acq.code_phase_samples as f64,
                     params.early_late_spacing_chips,
                     self.epochs_in_frame(frame),
@@ -249,8 +251,8 @@ impl Tracking {
                         if let Some((carrier_hz, code_phase_samples)) = self.quick_reacquire(
                             frame,
                             acq.sat,
-                            epoch.carrier_hz,
-                            epoch.code_phase_samples,
+                            epoch.carrier_hz.0,
+                            epoch.code_phase_samples.0,
                         ) {
                             epochs = self.track_epochs(
                                 frame,
@@ -266,7 +268,7 @@ impl Tracking {
                 }
                 TrackingResult {
                     sat: acq.sat,
-                    carrier_hz: acq.carrier_hz,
+                    carrier_hz: acq.carrier_hz.0,
                     code_phase_samples: acq.code_phase_samples as f64,
                     epochs,
                 }
@@ -366,9 +368,9 @@ impl Tracking {
 
             out.push(TrackEpoch {
                 lock,
-                carrier_hz: state.carrier_hz,
-                code_rate_hz: state.code_rate_hz,
-                code_phase_samples: state.code_phase_samples,
+                carrier_hz: Hertz(state.carrier_hz),
+                code_rate_hz: Hertz(state.code_rate_hz),
+                code_phase_samples: Chips(state.code_phase_samples),
                 pll_lock,
                 dll_lock,
                 fll_lock,

@@ -127,11 +127,7 @@ pub fn decode_words(bits: &[i8]) -> Vec<GpsWord> {
     words
 }
 
-pub(crate) fn compute_parity(
-    data_bits: &[u8],
-    d29_star: u8,
-    d30_star: u8,
-) -> (u8, u8, u8, u8, u8, u8) {
+pub fn compute_parity(data_bits: &[u8], d29_star: u8, d30_star: u8) -> (u8, u8, u8, u8, u8, u8) {
     let d = |i: usize| -> u8 { data_bits[i - 1] };
     let p1 = d(1)
         ^ d(2)

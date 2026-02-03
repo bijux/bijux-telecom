@@ -99,16 +99,16 @@ impl PppFilter {
         products: &dyn ProductsProvider,
     ) -> Option<PppSolutionEpoch> {
         let dt_s = if let Some(prev) = self.last_t_rx_s {
-            (obs.t_rx_s - prev).max(1e-3)
+            (obs.t_rx_s.0 - prev).max(1e-3)
         } else {
             0.001
         };
         if dt_s > self.config.reset_gap_s {
             self.reset("epoch_gap");
         }
-        self.last_t_rx_s = Some(obs.t_rx_s);
+        self.last_t_rx_s = Some(obs.t_rx_s.0);
         if self.epoch0_t_s.is_none() {
-            self.epoch0_t_s = Some(obs.t_rx_s);
+            self.epoch0_t_s = Some(obs.t_rx_s.0);
         }
         self.predict(dt_s);
 
@@ -131,7 +131,7 @@ impl PppFilter {
                 None => continue,
             };
             let (state, clock_bias_s, fallback) =
-                match self.sat_state(products, eph, sat.signal_id.sat, obs.t_rx_s) {
+                match self.sat_state(products, eph, sat.signal_id.sat, obs.t_rx_s.0) {
                     Some(v) => v,
                     None => continue,
                 };
@@ -201,7 +201,7 @@ impl PppFilter {
                 }
             } else {
                 let code = PppCodeMeasurement {
-                    z_m: sat.pseudorange_m - code_bias_m,
+                    z_m: sat.pseudorange_m.0 - code_bias_m,
                     sat_pos_m: [state.x_m, state.y_m, state.z_m],
                     sat_clock_s: clock_bias_s,
                     sigma_m,
@@ -216,7 +216,7 @@ impl PppFilter {
                     used += 1;
                 }
                 let phase = PppPhaseMeasurement {
-                    z_cycles: sat.carrier_phase_cycles - phase_bias_cycles,
+                    z_cycles: sat.carrier_phase_cycles.0 - phase_bias_cycles,
                     sat_pos_m: [state.x_m, state.y_m, state.z_m],
                     sat_clock_s: clock_bias_s,
                     sigma_cycles: 0.05,
@@ -271,12 +271,12 @@ impl PppFilter {
             self.ekf.x[self.indices.pos[2]],
         ];
         let (sigma_h, sigma_v) = estimate_sigma(&self.ekf, &self.indices.pos);
-        self.update_convergence(obs.t_rx_s, pos, sigma_h, sigma_v);
+        self.update_convergence(obs.t_rx_s.0, pos, sigma_h, sigma_v);
         self.check_consistency();
         self.adapt_process_noise();
         Some(PppSolutionEpoch {
             epoch_idx: obs.epoch_idx,
-            t_rx_s: obs.t_rx_s,
+            t_rx_s: obs.t_rx_s.0,
             ecef_x_m: pos[0],
             ecef_y_m: pos[1],
             ecef_z_m: pos[2],

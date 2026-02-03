@@ -117,11 +117,11 @@ fn solve_epoch_ekf(
         return Ok(None);
     };
     let dt_s = if let Some(prev) = ctx.last_t_rx_s {
-        (obs.t_rx_s - prev).max(1e-3)
+        (obs.t_rx_s.0 - prev).max(1e-3)
     } else {
         0.001
     };
-    ctx.last_t_rx_s = Some(obs.t_rx_s);
+    ctx.last_t_rx_s = Some(obs.t_rx_s.0);
     ctx.ekf.predict(&ctx.model, dt_s);
 
     let mut used = 0;
@@ -133,8 +133,8 @@ fn solve_epoch_ekf(
             None => continue,
         };
         let _corr = bijux_gnss_nav::compute_corrections(&ctx.corrections);
-        let state = sat_state_gps_l1ca(eph, obs.t_rx_s, 0.0);
-        let state_next = sat_state_gps_l1ca(eph, obs.t_rx_s + 0.1, 0.0);
+        let state = sat_state_gps_l1ca(eph, obs.t_rx_s.0, 0.0);
+        let state_next = sat_state_gps_l1ca(eph, obs.t_rx_s.0 + 0.1, 0.0);
         let sat_vel = [
             (state_next.x_m - state.x_m) / 0.1,
             (state_next.y_m - state.y_m) / 0.1,
@@ -156,7 +156,7 @@ fn solve_epoch_ekf(
         let code_bias_m = ctx.code_bias.code_bias_m(sat.signal_id).unwrap_or(0.0);
         let meas = PseudorangeMeasurement {
             sig: sat.signal_id,
-            z_m: sat.pseudorange_m - code_bias_m,
+            z_m: sat.pseudorange_m.0 - code_bias_m,
             sat_pos_m: [state.x_m, state.y_m, state.z_m],
             sat_clock_s: state.clock_bias_s,
             tropo_m: 0.0,
@@ -172,7 +172,7 @@ fn solve_epoch_ekf(
 
         let doppler_meas = bijux_gnss_nav::DopplerMeasurement {
             sig: sat.signal_id,
-            z_hz: sat.doppler_hz,
+            z_hz: sat.doppler_hz.0,
             sat_pos_m: [state.x_m, state.y_m, state.z_m],
             sat_vel_mps: sat_vel,
             wavelength_m: 299_792_458.0 / sat.metadata.signal.carrier_hz.value(),
@@ -191,7 +191,7 @@ fn solve_epoch_ekf(
             .unwrap_or(0.0);
         let carrier_meas = bijux_gnss_nav::CarrierPhaseMeasurement {
             sig: sat.signal_id,
-            z_cycles: sat.carrier_phase_cycles - phase_bias_cycles,
+            z_cycles: sat.carrier_phase_cycles.0 - phase_bias_cycles,
             sat_pos_m: [state.x_m, state.y_m, state.z_m],
             sat_clock_s: state.clock_bias_s,
             tropo_m: 0.0,
@@ -232,15 +232,15 @@ fn solve_epoch_ekf(
         epoch: bijux_gnss_core::Epoch {
             index: obs.epoch_idx,
         },
-        ecef_x_m: ctx.ekf.x[0],
-        ecef_y_m: ctx.ekf.x[1],
-        ecef_z_m: ctx.ekf.x[2],
+        ecef_x_m: bijux_gnss_core::Meters(ctx.ekf.x[0]),
+        ecef_y_m: bijux_gnss_core::Meters(ctx.ekf.x[1]),
+        ecef_z_m: bijux_gnss_core::Meters(ctx.ekf.x[2]),
         latitude_deg: lat,
         longitude_deg: lon,
-        altitude_m: alt,
-        clock_bias_s: ctx.ekf.x[6],
+        altitude_m: bijux_gnss_core::Meters(alt),
+        clock_bias_s: bijux_gnss_core::Seconds(ctx.ekf.x[6]),
         pdop: 0.0,
-        rms_m: ctx.ekf.health.innovation_rms,
+        rms_m: bijux_gnss_core::Meters(ctx.ekf.health.innovation_rms),
         residuals: Vec::new(),
         isb: Vec::new(),
         sigma_h_m: None,

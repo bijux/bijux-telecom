@@ -20,24 +20,25 @@ fn build_validation_report(
     for sol in solutions {
         if let Some(r) = ref_map.get(&sol.epoch.index) {
             let (x, y, z) = lla_to_ecef(r.latitude_deg, r.longitude_deg, r.altitude_m);
-            let dx = sol.ecef_x_m - x;
-            let dy = sol.ecef_y_m - y;
-            let dz = sol.ecef_z_m - z;
+            let dx = sol.ecef_x_m.0 - x;
+            let dy = sol.ecef_y_m.0 - y;
+            let dz = sol.ecef_z_m.0 - z;
             let horiz = (dx * dx + dy * dy).sqrt();
             let vert = dz.abs();
             horiz_errors.push(horiz);
             vert_errors.push(vert);
             if let (Some(sig_h), Some(sig_v)) = (sol.sigma_h_m, sol.sigma_v_m) {
-                if sig_h > 0.0 && sig_v > 0.0 {
+                if sig_h.0 > 0.0 && sig_v.0 > 0.0 {
                     let (e, n, u) = bijux_gnss_nav::ecef_to_enu(
-                        sol.ecef_x_m,
-                        sol.ecef_y_m,
-                        sol.ecef_z_m,
+                        sol.ecef_x_m.0,
+                        sol.ecef_y_m.0,
+                        sol.ecef_z_m.0,
                         r.latitude_deg,
                         r.longitude_deg,
                         r.altitude_m,
                     );
-                    let nees = (e * e + n * n) / (sig_h * sig_h) + (u * u) / (sig_v * sig_v);
+                    let nees = (e * e + n * n) / (sig_h.0 * sig_h.0)
+                        + (u * u) / (sig_v.0 * sig_v.0);
                     nees_values.push(nees);
                 }
             }
@@ -48,12 +49,12 @@ fn build_validation_report(
             if r.rejected {
                 rejected.push(r.sat);
             } else {
-                per_sat.push((r.sat, r.residual_m));
+                per_sat.push((r.sat, r.residual_m.0));
             }
         }
         residuals.push(NavResidualReport {
             epoch_idx: sol.epoch.index,
-            rms_m: sol.rms_m,
+            rms_m: sol.rms_m.0,
             pdop: sol.pdop,
             residuals: per_sat,
             rejected,
@@ -259,9 +260,9 @@ fn reference_compare(
     for sol in solutions {
         if let Some(r) = ref_map.get(&sol.epoch.index) {
             let (x, y, z) = lla_to_ecef(r.latitude_deg, r.longitude_deg, r.altitude_m);
-            let dx = sol.ecef_x_m - x;
-            let dy = sol.ecef_y_m - y;
-            let dz = sol.ecef_z_m - z;
+            let dx = sol.ecef_x_m.0 - x;
+            let dy = sol.ecef_y_m.0 - y;
+            let dz = sol.ecef_z_m.0 - z;
             let h = (dx * dx + dy * dy).sqrt();
             let v = dz.abs();
             horiz.push(h);
@@ -303,14 +304,14 @@ fn check_solution_consistency(
     let mut prev_pdop: Option<f64> = None;
     for sol in solutions {
         if let Some(prev_sol) = prev {
-            let dx = sol.ecef_x_m - prev_sol.ecef_x_m;
-            let dy = sol.ecef_y_m - prev_sol.ecef_y_m;
-            let dz = sol.ecef_z_m - prev_sol.ecef_z_m;
+            let dx = sol.ecef_x_m.0 - prev_sol.ecef_x_m.0;
+            let dy = sol.ecef_y_m.0 - prev_sol.ecef_y_m.0;
+            let dz = sol.ecef_z_m.0 - prev_sol.ecef_z_m.0;
             let dist = (dx * dx + dy * dy + dz * dz).sqrt();
             if dist > 50.0 {
                 position_jump_count += 1;
             }
-            let clock_jump = (sol.clock_bias_s - prev_sol.clock_bias_s).abs();
+            let clock_jump = (sol.clock_bias_s.0 - prev_sol.clock_bias_s.0).abs();
             if clock_jump > 1e-3 {
                 clock_jump_count += 1;
             }
@@ -444,7 +445,7 @@ fn check_budgets(
     for track in tracks {
         let mut carriers = Vec::new();
         for e in &track.epochs {
-            carriers.push(e.carrier_hz);
+            carriers.push(e.carrier_hz.0);
         }
         if carriers.len() > 1 {
             let mean = carriers.iter().sum::<f64>() / carriers.len() as f64;
@@ -463,7 +464,7 @@ fn check_budgets(
         }
     }
     for sol in solutions {
-        if sol.residuals.len() >= 4 && sol.rms_m.is_nan() {
+        if sol.residuals.len() >= 4 && sol.rms_m.0.is_nan() {
             violations.push(format!("PVT RMS is NaN at epoch {}", sol.epoch.index));
         }
     }

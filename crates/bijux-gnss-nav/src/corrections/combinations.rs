@@ -88,12 +88,12 @@ pub fn combinations_from_obs_epochs(
                     let f1_2 = f1_hz * f1_hz;
                     let f2_2 = f2_hz * f2_hz;
                     let denom = (f1_2 - f2_2).max(1.0);
-                    let p1 = s1.pseudorange_m;
-                    let p2 = s2.pseudorange_m;
+                    let p1 = s1.pseudorange_m.0;
+                    let p2 = s2.pseudorange_m.0;
                     let lambda1 = SPEED_OF_LIGHT_MPS / f1_hz.max(1.0);
                     let lambda2 = SPEED_OF_LIGHT_MPS / f2_hz.max(1.0);
-                    let phi1_m = s1.carrier_phase_cycles * lambda1;
-                    let phi2_m = s2.carrier_phase_cycles * lambda2;
+                    let phi1_m = s1.carrier_phase_cycles.0 * lambda1;
+                    let phi2_m = s2.carrier_phase_cycles.0 * lambda2;
 
                     if_code_m = Some((f1_2 * p1 - f2_2 * p2) / denom);
                     if_phase_m = Some((f1_2 * phi1_m - f2_2 * phi2_m) / denom);
@@ -108,7 +108,7 @@ pub fn combinations_from_obs_epochs(
             let (status_str, reason) = status_reason(status);
             out.push(CombinationObservation {
                 epoch_idx: epoch.epoch_idx,
-                t_rx_s: epoch.t_rx_s,
+                t_rx_s: epoch.t_rx_s.0,
                 sat: sat_id,
                 band_1,
                 band_2,

@@ -1,6 +1,6 @@
 //! Versioned artifact wrappers for navigation outputs.
 
-use bijux_gnss_core::ArtifactHeader;
+use bijux_gnss_core::ArtifactHeaderV1;
 use serde::{Deserialize, Serialize};
 
 use crate::{GpsEphemeris, PppSolutionEpoch};
@@ -9,7 +9,7 @@ use crate::{GpsEphemeris, PppSolutionEpoch};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GpsEphemerisV1 {
     /// Artifact header.
-    pub header: ArtifactHeader,
+    pub header: ArtifactHeaderV1,
     /// Ephemeris payload.
     pub ephemerides: Vec<GpsEphemeris>,
 }
@@ -18,7 +18,7 @@ pub struct GpsEphemerisV1 {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PppSolutionEpochV1 {
     /// Artifact header.
-    pub header: ArtifactHeader,
+    pub header: ArtifactHeaderV1,
     /// PPP solution payload.
     pub epoch: PppSolutionEpoch,
 }

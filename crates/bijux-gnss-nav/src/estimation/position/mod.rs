@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-pub(crate) mod solver;
+pub mod solver;
 
 #[cfg(test)]
 mod tests;

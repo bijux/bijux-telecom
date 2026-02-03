@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
-pub(crate) mod atmosphere;
-pub(crate) mod biases;
-pub(crate) mod combinations;
+pub mod atmosphere;
+pub mod biases;
+pub mod combinations;
 
 #[derive(Debug, Clone)]
 pub struct CorrectionContext;

@@ -57,7 +57,7 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
                         for r in candidates {
                             rows.push(AcquisitionRow {
                                 sat: r.sat,
-                                carrier_hz: r.carrier_hz,
+                                carrier_hz: r.carrier_hz.0,
                                 code_phase_samples: r.code_phase_samples,
                                 peak: r.peak,
                                 peak_mean_ratio: r.peak_mean_ratio,
@@ -227,7 +227,11 @@ fn handle_experiment(command: GnssCommand) -> Result<()> {
                         let mean_pvt_rms = if solutions.is_empty() {
                             0.0
                         } else {
-                            solutions.iter().map(|s| s.rms_m).sum::<f64>() / solutions.len() as f64
+                            solutions
+                                .iter()
+                                .map(|s| s.rms_m.0)
+                                .sum::<f64>()
+                                / solutions.len() as f64
                         };
                         let mean_residual_rms = mean_pvt_rms;
                         let rejected_count = solutions

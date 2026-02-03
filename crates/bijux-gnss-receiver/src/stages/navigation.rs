@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::{NavResidual, NavSolutionEpoch, ObsEpoch};
+use bijux_gnss_core::{Meters, NavResidual, NavSolutionEpoch, ObsEpoch, Seconds};
 use bijux_gnss_nav::{
     elevation_azimuth_deg, sat_state_gps_l1ca, weight_from_cn0_elev, GpsEphemeris,
     PositionObservation, PositionSolver, WeightingConfig,
@@ -107,7 +107,7 @@ impl Navigation {
                 if elevation.is_none() {
                     if let Some((rx_x, rx_y, rx_z)) = self.last_ecef {
                         if let Some(eph) = eph.iter().find(|e| e.sat == s.signal_id.sat) {
-                            let sat = sat_state_gps_l1ca(eph, obs.t_rx_s, 0.0);
+                            let sat = sat_state_gps_l1ca(eph, obs.t_rx_s.0, 0.0);
                             let (_az, el) =
                                 elevation_azimuth_deg(rx_x, rx_y, rx_z, sat.x_m, sat.y_m, sat.z_m);
                             elevation = Some(el);
@@ -136,31 +136,31 @@ impl Navigation {
                     .unwrap_or(1.0);
                 Some(PositionObservation {
                     sat: s.signal_id.sat,
-                    pseudorange_m: s.pseudorange_m,
+                    pseudorange_m: s.pseudorange_m.0,
                     cn0_dbhz: s.cn0_dbhz,
                     elevation_deg: elevation,
                     weight: weight * tracking_mode_weight,
                 })
             })
             .collect();
-        let solution = self.solver.solve_wls(&observations, eph, obs.t_rx_s)?;
+        let solution = self.solver.solve_wls(&observations, eph, obs.t_rx_s.0)?;
         let clock_bias_s = self.clock.update(solution.clock_bias_s, 0.001);
         self.last_ecef = Some((solution.ecef_x_m, solution.ecef_y_m, solution.ecef_z_m));
         Some(NavSolutionEpoch {
             epoch: bijux_gnss_core::Epoch {
                 index: obs.epoch_idx,
             },
-            ecef_x_m: solution.ecef_x_m,
-            ecef_y_m: solution.ecef_y_m,
-            ecef_z_m: solution.ecef_z_m,
+            ecef_x_m: Meters(solution.ecef_x_m),
+            ecef_y_m: Meters(solution.ecef_y_m),
+            ecef_z_m: Meters(solution.ecef_z_m),
             latitude_deg: solution.latitude_deg,
             longitude_deg: solution.longitude_deg,
-            altitude_m: solution.altitude_m,
-            clock_bias_s,
+            altitude_m: Meters(solution.altitude_m),
+            clock_bias_s: Seconds(clock_bias_s),
             pdop: solution.pdop,
-            rms_m: solution.rms_m,
-            sigma_h_m: solution.sigma_h_m,
-            sigma_v_m: solution.sigma_v_m,
+            rms_m: Meters(solution.rms_m),
+            sigma_h_m: solution.sigma_h_m.map(Meters),
+            sigma_v_m: solution.sigma_v_m.map(Meters),
             ekf_innovation_rms: None,
             ekf_condition_number: None,
             ekf_whiteness_ratio: None,
@@ -171,12 +171,12 @@ impl Navigation {
                 .into_iter()
                 .map(|(sat, residual_m)| NavResidual {
                     sat,
-                    residual_m,
+                    residual_m: Meters(residual_m),
                     rejected: false,
                 })
                 .chain(solution.rejected.into_iter().map(|sat| NavResidual {
                     sat,
-                    residual_m: 0.0,
+                    residual_m: Meters(0.0),
                     rejected: true,
                 }))
                 .collect(),
