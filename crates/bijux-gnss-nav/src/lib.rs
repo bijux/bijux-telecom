@@ -8,6 +8,7 @@ pub mod clk;
 pub mod corrections;
 pub mod ekf;
 pub mod linalg;
+pub mod ppp;
 pub mod products;
 pub mod sp3;
 
@@ -31,5 +32,6 @@ pub use crate::position::{
     ecef_to_enu, ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef, weight_from_cn0_elev,
     PositionObservation, PositionSolution, PositionSolver, WeightingConfig,
 };
+pub use crate::ppp::*;
 pub use crate::products::*;
 pub use crate::sp3::*;

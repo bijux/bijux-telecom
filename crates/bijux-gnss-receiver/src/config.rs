@@ -78,6 +78,53 @@ pub struct NavigationProfile {
     pub iono_mode: String,
     pub tropo_enable: bool,
     pub tropo_ztd_m: f64,
+    #[serde(default)]
+    pub ppp: PppProfile,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PppProfile {
+    pub enabled: bool,
+    pub use_iono_free: bool,
+    pub use_doppler: bool,
+    pub enable_iono_state: bool,
+    pub prune_after_epochs: u64,
+    pub reset_gap_s: f64,
+    pub residual_gate_m: f64,
+    pub drift_window_epochs: u64,
+    pub drift_threshold_m: f64,
+    pub noise_clock_drift: f64,
+    pub noise_ztd: f64,
+    pub noise_iono: f64,
+    pub noise_ambiguity: f64,
+    pub convergence_min_time_s: f64,
+    pub convergence_pos_rate_mps: f64,
+    pub convergence_sigma_h_m: f64,
+    pub convergence_sigma_v_m: f64,
+}
+
+impl Default for PppProfile {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            use_iono_free: false,
+            use_doppler: false,
+            enable_iono_state: false,
+            prune_after_epochs: 200,
+            reset_gap_s: 2.0,
+            residual_gate_m: 200.0,
+            drift_window_epochs: 100,
+            drift_threshold_m: 10.0,
+            noise_clock_drift: 1e-5,
+            noise_ztd: 0.01,
+            noise_iono: 0.1,
+            noise_ambiguity: 0.05,
+            convergence_min_time_s: 60.0,
+            convergence_pos_rate_mps: 0.1,
+            convergence_sigma_h_m: 1.0,
+            convergence_sigma_v_m: 2.0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -193,6 +240,21 @@ impl ReceiverProfile {
         if self.navigation.weighting.tracking_mode_vector_weight <= 0.0 {
             errors.push("navigation.weighting.tracking_mode_vector_weight must be > 0".to_string());
         }
+        if self.navigation.ppp.reset_gap_s <= 0.0 {
+            errors.push("navigation.ppp.reset_gap_s must be > 0".to_string());
+        }
+        if self.navigation.ppp.prune_after_epochs == 0 {
+            errors.push("navigation.ppp.prune_after_epochs must be > 0".to_string());
+        }
+        if self.navigation.ppp.residual_gate_m <= 0.0 {
+            errors.push("navigation.ppp.residual_gate_m must be > 0".to_string());
+        }
+        if self.navigation.ppp.drift_window_epochs == 0 {
+            errors.push("navigation.ppp.drift_window_epochs must be > 0".to_string());
+        }
+        if self.navigation.ppp.drift_threshold_m <= 0.0 {
+            errors.push("navigation.ppp.drift_threshold_m must be > 0".to_string());
+        }
         if errors.is_empty() {
             Ok(())
         } else {
@@ -235,6 +297,7 @@ impl ReceiverProfile {
             iono_mode: self.navigation.iono_mode.clone(),
             tropo_enable: self.navigation.tropo_enable,
             tropo_ztd_m: self.navigation.tropo_ztd_m,
+            ppp: self.navigation.ppp.clone(),
         }
     }
 }
@@ -283,6 +346,7 @@ impl Default for ReceiverProfile {
                 iono_mode: "broadcast".to_string(),
                 tropo_enable: true,
                 tropo_ztd_m: 2.3,
+                ppp: PppProfile::default(),
             },
         }
     }

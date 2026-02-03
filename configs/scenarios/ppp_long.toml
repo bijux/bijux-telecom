@@ -1,0 +1,28 @@
+sample_rate_hz = 4092000.0
+intermediate_freq_hz = 0.0
+duration_s = 43200.0
+seed = 4244
+
+[[satellites]]
+sat = { constellation = "Gps", prn = 2 }
+doppler_hz = 700.0
+code_phase_chips = 250.0
+carrier_phase_rad = 0.0
+cn0_db_hz = 47.0
+data_bit_flip = true
+
+[[satellites]]
+sat = { constellation = "Gps", prn = 8 }
+doppler_hz = -900.0
+code_phase_chips = 410.0
+carrier_phase_rad = 0.2
+cn0_db_hz = 45.0
+data_bit_flip = true
+
+[[satellites]]
+sat = { constellation = "Gps", prn = 14 }
+doppler_hz = 1300.0
+code_phase_chips = 150.0
+carrier_phase_rad = 0.4
+cn0_db_hz = 44.0
+data_bit_flip = true

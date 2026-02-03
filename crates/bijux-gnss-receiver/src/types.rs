@@ -22,6 +22,7 @@ pub struct ReceiverConfig {
     pub iono_mode: String,
     pub tropo_enable: bool,
     pub tropo_ztd_m: f64,
+    pub ppp: crate::config::PppProfile,
 }
 
 impl Default for ReceiverConfig {
@@ -55,6 +56,7 @@ impl Default for ReceiverConfig {
             iono_mode: "broadcast".to_string(),
             tropo_enable: true,
             tropo_ztd_m: 2.3,
+            ppp: crate::config::PppProfile::default(),
         }
     }
 }

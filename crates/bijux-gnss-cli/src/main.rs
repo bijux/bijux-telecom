@@ -6,8 +6,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use bijux_gnss_core::{validate_obs_epochs, Constellation, ObsEpoch, SamplesFrame, SatId};
 use bijux_gnss_nav::{
     elevation_azimuth_deg, sat_state_gps_l1ca, CodeBiasProvider, GpsEphemeris, Matrix,
-    NavClockModel, PhaseBiasProvider, ProcessNoiseConfig, ProductsProvider, PseudorangeMeasurement,
-    WeightingConfig,
+    NavClockModel, PhaseBiasProvider, PppConfig, PppFilter, PppProcessNoise, ProcessNoiseConfig,
+    ProductsProvider, PseudorangeMeasurement, WeightingConfig,
 };
 use bijux_gnss_receiver::{
     acquisition::Acquisition, ca_code::generate_ca_code, ca_code::Prn, data::FileSamples,
@@ -610,6 +610,17 @@ struct PppReadinessReport {
     combinations_valid: bool,
     products_ok: bool,
     product_fallbacks: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct PppEvaluationReport {
+    epochs: usize,
+    horiz_rms_m: Option<f64>,
+    vert_rms_m: Option<f64>,
+    time_to_first_meter_s: Option<f64>,
+    time_to_decimeter_s: Option<f64>,
+    time_to_centimeter_s: Option<f64>,
+    residual_rms_m: f64,
 }
 
 #[derive(Debug, Serialize)]
@@ -1367,10 +1378,10 @@ fn main() -> Result<()> {
                 let ephs = read_ephemeris(&eph)?;
                 let mut products_diag = bijux_gnss_nav::ProductDiagnostics::new();
                 let mut products_ok = false;
+                let mut products = bijux_gnss_nav::Products::new(
+                    bijux_gnss_nav::BroadcastProductsProvider::new(ephs.clone()),
+                );
                 if sp3.is_some() || clk.is_some() {
-                    let mut products = bijux_gnss_nav::Products::new(
-                        bijux_gnss_nav::BroadcastProductsProvider::new(ephs.clone()),
-                    );
                     if let Some(sp3_path) = sp3 {
                         let data = fs::read_to_string(sp3_path)?;
                         let sp3: bijux_gnss_nav::Sp3Provider = data
@@ -1437,6 +1448,20 @@ fn main() -> Result<()> {
                 fs::write(&compare_path, serde_json::to_string_pretty(&stats)?)?;
                 let compare_csv = out_dir.join("reference_compare.csv");
                 fs::write(&compare_csv, rows.join("\n"))?;
+
+                if profile.navigation.ppp.enabled {
+                    let ppp_config = build_ppp_config(&profile);
+                    let mut ppp = PppFilter::new(ppp_config);
+                    let mut ppp_solutions = Vec::new();
+                    for epoch in &obs {
+                        if let Some(sol) = ppp.solve_epoch(epoch, &ephs, &products) {
+                            ppp_solutions.push(sol);
+                        }
+                    }
+                    let ppp_report = ppp_evaluation_report(&ppp_solutions, &reference_epochs);
+                    let ppp_path = out_dir.join("ppp_report.json");
+                    fs::write(&ppp_path, serde_json::to_string_pretty(&ppp_report)?)?;
+                }
             }
             GnssCommand::Run {
                 common,
@@ -2482,6 +2507,98 @@ fn build_validation_report(
             product_fallbacks,
         },
     })
+}
+
+fn build_ppp_config(profile: &ReceiverProfile) -> PppConfig {
+    let p = &profile.navigation.ppp;
+    PppConfig {
+        enable_iono_state: p.enable_iono_state,
+        use_iono_free: p.use_iono_free,
+        use_doppler: p.use_doppler,
+        prune_after_epochs: p.prune_after_epochs,
+        reset_gap_s: p.reset_gap_s,
+        residual_gate_m: p.residual_gate_m,
+        drift_window_epochs: p.drift_window_epochs as usize,
+        drift_threshold_m: p.drift_threshold_m,
+        process_noise: PppProcessNoise {
+            clock_drift_s: p.noise_clock_drift,
+            ztd_m: p.noise_ztd,
+            iono_m: p.noise_iono,
+            ambiguity_cycles: p.noise_ambiguity,
+        },
+        weighting: WeightingConfig {
+            enabled: profile.navigation.weighting.enabled,
+            min_elev_deg: profile.navigation.weighting.min_elev_deg,
+            elev_exponent: profile.navigation.weighting.elev_exponent,
+            cn0_ref_dbhz: profile.navigation.weighting.cn0_ref_dbhz,
+            min_weight: profile.navigation.weighting.min_weight,
+        },
+        convergence: bijux_gnss_nav::PppConvergenceConfig {
+            min_time_s: p.convergence_min_time_s,
+            pos_rate_mps: p.convergence_pos_rate_mps,
+            sigma_h_m: p.convergence_sigma_h_m,
+            sigma_v_m: p.convergence_sigma_v_m,
+        },
+    }
+}
+
+fn ppp_evaluation_report(
+    solutions: &[bijux_gnss_nav::PppSolutionEpoch],
+    reference: &[ValidationReferenceEpoch],
+) -> PppEvaluationReport {
+    let mut ref_map = std::collections::BTreeMap::new();
+    for r in reference {
+        ref_map.insert(r.epoch_idx, r);
+    }
+    let mut horiz = Vec::new();
+    let mut vert = Vec::new();
+    let mut residual_rms = Vec::new();
+    let mut last_conv = None;
+    for sol in solutions {
+        residual_rms.push(sol.rms_m);
+        if let Some(r) = ref_map.get(&sol.epoch_idx) {
+            let (x, y, z) = lla_to_ecef(r.latitude_deg, r.longitude_deg, r.altitude_m);
+            let dx = sol.ecef_x_m - x;
+            let dy = sol.ecef_y_m - y;
+            let dz = sol.ecef_z_m - z;
+            horiz.push((dx * dx + dy * dy).sqrt());
+            vert.push(dz.abs());
+        }
+        last_conv = Some(sol.convergence.clone());
+    }
+    let horiz_rms = if horiz.is_empty() {
+        None
+    } else {
+        Some((horiz.iter().map(|v| v * v).sum::<f64>() / horiz.len() as f64).sqrt())
+    };
+    let vert_rms = if vert.is_empty() {
+        None
+    } else {
+        Some((vert.iter().map(|v| v * v).sum::<f64>() / vert.len() as f64).sqrt())
+    };
+    let residual_rms_m = if residual_rms.is_empty() {
+        0.0
+    } else {
+        (residual_rms.iter().map(|v| v * v).sum::<f64>() / residual_rms.len() as f64).sqrt()
+    };
+    let (t1, t10, t1cm) = last_conv
+        .map(|c| {
+            (
+                c.time_to_first_meter_s,
+                c.time_to_decimeter_s,
+                c.time_to_centimeter_s,
+            )
+        })
+        .unwrap_or((None, None, None));
+    PppEvaluationReport {
+        epochs: solutions.len(),
+        horiz_rms_m: horiz_rms,
+        vert_rms_m: vert_rms,
+        time_to_first_meter_s: t1,
+        time_to_decimeter_s: t10,
+        time_to_centimeter_s: t1cm,
+        residual_rms_m,
+    }
 }
 
 #[derive(Debug, Serialize)]
