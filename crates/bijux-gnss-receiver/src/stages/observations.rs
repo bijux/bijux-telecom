@@ -2,9 +2,9 @@ use bijux_gnss_core::{
     LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, SigId, SignalBand, TrackEpoch,
 };
 
-use crate::config::ReceiverConfig;
 use crate::tracking::TrackingResult;
-use bijux_gnss_signal::signal::samples_per_code;
+use crate::ReceiverConfig;
+use bijux_gnss_signal::samples_per_code;
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 const TWO_PI: f64 = std::f64::consts::PI * 2.0;

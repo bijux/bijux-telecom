@@ -1,24 +1,29 @@
-//! bijux-gnss receiver core library.
+//! GNSS receiver pipeline orchestration.
 //!
-//! This library defines a modular GNSS receiver pipeline. Algorithms are
-//! implemented independently (not line-by-line translations) to preserve
-//! Apache-2.0 licensing.
+//! Module map:
+//! - `stages`: acquisition, tracking, observations, navigation
+//! - `io`: sample sources and dataset readers
+//! - `runtime`: logging and runtime configuration
+//! - `rtk`: differencing and baseline solution helpers
+//! - `sim`: synthetic signal generation for tests
+//! - `Receiver`: high-level pipeline entrypoint
+//! - `ReceiverConfig`: runtime configuration
+//! - `ReceiverProfile`: config file schema
+//! - `ReceiverError`: error taxonomy for receiver stages
 
 #![deny(clippy::unwrap_used)]
 
-pub mod acquisition;
-pub mod combinations;
-pub mod config;
-pub mod data;
-pub mod logging;
-pub mod navigation;
-pub mod observations;
 pub mod rtk;
 pub mod sim;
-pub mod tracking;
 
-pub use crate::config::ReceiverProfile;
-pub use crate::config::{ReceiverConfig, ReceiverError};
+mod io;
+mod runtime;
+mod stages;
+
+pub use crate::io::data;
+pub use crate::runtime::logging;
+pub use crate::runtime::receiver_config::{ReceiverConfig, ReceiverError, ReceiverProfile};
+pub use crate::stages::{acquisition, navigation, observations, tracking};
 
 /// High-level receiver pipeline entrypoint.
 pub struct Receiver {
@@ -34,7 +39,7 @@ impl Receiver {
     ///
     /// This is a scaffold and will be fully implemented incrementally.
     pub fn run(&self, _input: &mut dyn data::SampleSource) -> Result<(), ReceiverError> {
-        let samples_per_code = bijux_gnss_signal::signal::samples_per_code(
+        let samples_per_code = bijux_gnss_signal::samples_per_code(
             self.config.sampling_freq_hz,
             self.config.code_freq_basis_hz,
             self.config.code_length,

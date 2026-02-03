@@ -2,7 +2,7 @@ use bijux_gnss_core::{
     signal_spec_gps_l1_ca, signal_spec_gps_l2_py, Constellation, LockFlags, ObsEpoch, ObsMetadata,
     ObsSatellite, ReceiverRole, SatId, SigId, SignalBand, SignalCode,
 };
-use bijux_gnss_receiver::combinations::combinations_from_obs_epochs;
+use bijux_gnss_nav::combinations_from_obs_epochs;
 
 fn make_dual_freq_epoch(p1: f64, p2: f64, phi1: f64, phi2: f64) -> ObsEpoch {
     let sat = SatId {

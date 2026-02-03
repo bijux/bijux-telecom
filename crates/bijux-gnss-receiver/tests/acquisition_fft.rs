@@ -3,7 +3,7 @@ use bijux_gnss_receiver::{
     sim::{generate_l1_ca, SyntheticSignalParams},
     ReceiverConfig,
 };
-use bijux_gnss_signal::signal::samples_per_code;
+use bijux_gnss_signal::samples_per_code;
 
 #[test]
 fn acquisition_fft_detects_synthetic_signal() {

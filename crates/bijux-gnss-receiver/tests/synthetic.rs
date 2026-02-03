@@ -4,7 +4,7 @@ use bijux_gnss_receiver::{
     sim::{generate_l1_ca, SyntheticSignalParams},
     ReceiverConfig,
 };
-use bijux_gnss_signal::signal::samples_per_code;
+use bijux_gnss_signal::samples_per_code;
 
 #[test]
 fn synthetic_correlator_peak_ratio() {

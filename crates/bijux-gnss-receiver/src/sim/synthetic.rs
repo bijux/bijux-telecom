@@ -4,7 +4,7 @@ use num_complex::Complex;
 
 use bijux_gnss_core::{Constellation, SampleClock, SampleTime, SamplesFrame, SatId};
 
-use crate::config::ReceiverConfig;
+use crate::ReceiverConfig;
 use bijux_gnss_nav::GpsEphemeris;
 use bijux_gnss_signal::codes::ca_code::{generate_ca_code, Prn};
 use serde::{Deserialize, Serialize};

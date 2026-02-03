@@ -4,7 +4,7 @@ use bijux_gnss_receiver::{
     ReceiverConfig,
 };
 use bijux_gnss_signal::codes::ca_code::{generate_ca_code, Prn};
-use bijux_gnss_signal::signal::samples_per_code;
+use bijux_gnss_signal::samples_per_code;
 
 #[test]
 fn bench_code_gen_smoke() {
