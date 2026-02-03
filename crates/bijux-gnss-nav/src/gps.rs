@@ -2,6 +2,7 @@
 
 #![deny(clippy::unwrap_used)]
 
+use bijux_gnss_core::{Constellation, SatId};
 use serde::{Deserialize, Serialize};
 
 const GPS_L1CA_PREAMBLE: [u8; 8] = [1, 0, 0, 0, 1, 0, 1, 1];
@@ -11,7 +12,7 @@ const RELATIVISTIC_F: f64 = -4.442_807_633e-10;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GpsEphemeris {
-    pub prn: u8,
+    pub sat: SatId,
     pub iodc: u16,
     pub iode: u8,
     pub week: u16,
@@ -675,7 +676,10 @@ impl EphemerisBuilder {
 
     fn try_build(&self) -> Option<GpsEphemeris> {
         Some(GpsEphemeris {
-            prn: self.prn,
+            sat: SatId {
+                constellation: Constellation::Gps,
+                prn: self.prn,
+            },
             iodc: self.iodc?,
             iode: self.iode?,
             week: self.week?,
@@ -898,7 +902,10 @@ mod tests {
     #[test]
     fn sat_state_basic() {
         let eph = GpsEphemeris {
-            prn: 1,
+            sat: SatId {
+                constellation: Constellation::Gps,
+                prn: 1,
+            },
             iodc: 0,
             iode: 0,
             week: 0,
@@ -944,7 +951,10 @@ mod tests {
     #[test]
     fn relativistic_term_nonzero_for_eccentric() {
         let eph = GpsEphemeris {
-            prn: 1,
+            sat: SatId {
+                constellation: Constellation::Gps,
+                prn: 1,
+            },
             iodc: 0,
             iode: 0,
             week: 0,

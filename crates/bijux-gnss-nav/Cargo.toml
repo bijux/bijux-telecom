@@ -8,3 +8,4 @@ license.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 hex.workspace = true
+bijux-gnss-core = { path = "../bijux-gnss-core", version = "0.1.0" }

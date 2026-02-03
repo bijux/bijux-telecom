@@ -4,6 +4,9 @@
 
 pub mod atmosphere;
 pub mod ekf;
+pub mod linalg;
+
+pub use linalg::Matrix;
 pub mod ephemeris;
 pub mod gps;
 pub mod position;

@@ -1,155 +1,18 @@
 use std::collections::BTreeMap;
 
-#[derive(Debug, Clone)]
-pub struct Matrix {
-    rows: usize,
-    cols: usize,
-    data: Vec<f64>,
-}
-
-impl Matrix {
-    pub fn new(rows: usize, cols: usize, value: f64) -> Self {
-        Self {
-            rows,
-            cols,
-            data: vec![value; rows * cols],
-        }
-    }
-
-    pub fn identity(n: usize) -> Self {
-        let mut m = Self::new(n, n, 0.0);
-        for i in 0..n {
-            m[(i, i)] = 1.0;
-        }
-        m
-    }
-
-    pub fn rows(&self) -> usize {
-        self.rows
-    }
-
-    pub fn cols(&self) -> usize {
-        self.cols
-    }
-
-    pub fn transpose(&self) -> Self {
-        let mut out = Self::new(self.cols, self.rows, 0.0);
-        for r in 0..self.rows {
-            for c in 0..self.cols {
-                out[(c, r)] = self[(r, c)];
-            }
-        }
-        out
-    }
-
-    pub fn mul(&self, other: &Self) -> Self {
-        let mut out = Self::new(self.rows, other.cols, 0.0);
-        for r in 0..self.rows {
-            for c in 0..other.cols {
-                let mut sum = 0.0;
-                for k in 0..self.cols {
-                    sum += self[(r, k)] * other[(k, c)];
-                }
-                out[(r, c)] = sum;
-            }
-        }
-        out
-    }
-
-    pub fn add(&self, other: &Self) -> Self {
-        let mut out = self.clone();
-        for i in 0..self.data.len() {
-            out.data[i] += other.data[i];
-        }
-        out
-    }
-
-    pub fn sub(&self, other: &Self) -> Self {
-        let mut out = self.clone();
-        for i in 0..self.data.len() {
-            out.data[i] -= other.data[i];
-        }
-        out
-    }
-
-    pub fn invert(&self) -> Option<Self> {
-        if self.rows != self.cols {
-            return None;
-        }
-        let n = self.rows;
-        let mut a = vec![vec![0.0_f64; 2 * n]; n];
-        for r in 0..n {
-            for c in 0..n {
-                a[r][c] = self[(r, c)];
-            }
-            a[r][n + r] = 1.0;
-        }
-        for i in 0..n {
-            let mut pivot = i;
-            let mut max = a[i][i].abs();
-            for (r, row) in a.iter().enumerate().skip(i + 1) {
-                if row[i].abs() > max {
-                    max = row[i].abs();
-                    pivot = r;
-                }
-            }
-            if max < 1e-12 {
-                return None;
-            }
-            if pivot != i {
-                a.swap(pivot, i);
-            }
-            let diag = a[i][i];
-            for c in 0..2 * n {
-                a[i][c] /= diag;
-            }
-            for r in 0..n {
-                if r == i {
-                    continue;
-                }
-                let factor = a[r][i];
-                for c in 0..2 * n {
-                    a[r][c] -= factor * a[i][c];
-                }
-            }
-        }
-        let mut inv = Self::new(n, n, 0.0);
-        for r in 0..n {
-            for c in 0..n {
-                inv[(r, c)] = a[r][n + c];
-            }
-        }
-        Some(inv)
-    }
-
-    pub fn submatrix(&self, rows: &[usize], cols: &[usize]) -> Self {
-        let mut out = Self::new(rows.len(), cols.len(), 0.0);
-        for (i, &r) in rows.iter().enumerate() {
-            for (j, &c) in cols.iter().enumerate() {
-                out[(i, j)] = self[(r, c)];
-            }
-        }
-        out
-    }
-}
-
-impl std::ops::Index<(usize, usize)> for Matrix {
-    type Output = f64;
-    fn index(&self, index: (usize, usize)) -> &Self::Output {
-        &self.data[index.0 * self.cols + index.1]
-    }
-}
-
-impl std::ops::IndexMut<(usize, usize)> for Matrix {
-    fn index_mut(&mut self, index: (usize, usize)) -> &mut Self::Output {
-        &mut self.data[index.0 * self.cols + index.1]
-    }
-}
+use crate::linalg::Matrix;
+use bijux_gnss_core::NavHealthEvent;
+use bijux_gnss_core::SigId;
 
 #[derive(Debug, Clone)]
 pub struct EkfConfig {
-    pub gating_chi2: Option<f64>,
+    pub gating_chi2_code: Option<f64>,
+    pub gating_chi2_phase: Option<f64>,
+    pub gating_chi2_doppler: Option<f64>,
     pub huber_k: Option<f64>,
+    pub square_root: bool,
+    pub covariance_epsilon: f64,
+    pub divergence_max_variance: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -157,10 +20,26 @@ pub struct EkfHealth {
     pub innovation_rms: f64,
     pub rejected: usize,
     pub last_rejection: Option<String>,
+    pub rejection_reasons: Vec<String>,
+    pub last_rejection_code: Option<RejectionReason>,
     pub condition_number: Option<f64>,
     pub whiteness_ratio: Option<f64>,
     pub predicted_variance: Option<f64>,
     pub observed_variance: Option<f64>,
+    pub events: Vec<NavHealthEvent>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RejectionReason {
+    SingularS,
+    Chi2Gate,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MeasurementKind {
+    Code,
+    Doppler,
+    Phase,
 }
 
 pub trait StateModel {
@@ -170,6 +49,7 @@ pub trait StateModel {
 
 pub trait MeasurementModel {
     fn name(&self) -> &'static str;
+    fn kind(&self) -> MeasurementKind;
     fn measurement_dim(&self) -> usize;
     fn observation(&self) -> &[f64];
     fn h(&self, x: &[f64], out: &mut [f64]);
@@ -196,10 +76,13 @@ impl Ekf {
                 innovation_rms: 0.0,
                 rejected: 0,
                 last_rejection: None,
+                rejection_reasons: Vec::new(),
+                last_rejection_code: None,
                 condition_number: None,
                 whiteness_ratio: None,
                 predicted_variance: None,
                 observed_variance: None,
+                events: Vec::new(),
             },
             labels: Vec::new(),
         }
@@ -221,6 +104,7 @@ impl Ekf {
 
     pub fn predict<M: StateModel>(&mut self, model: &M, dt_s: f64) {
         model.propagate(&mut self.x, &mut self.p, dt_s);
+        self.sanitize_covariance();
     }
 
     pub fn update<M: MeasurementModel>(&mut self, model: &M) -> bool {
@@ -257,11 +141,22 @@ impl Ekf {
         }
         let Some(s_inv) = s.invert() else {
             self.health.rejected += 1;
-            self.health.last_rejection = Some(format!("{}: singular S", model.name()));
+            let reason = format!("{}: singular S", model.name());
+            self.health.last_rejection = Some(reason.clone());
+            self.health.rejection_reasons.push(reason.clone());
+            self.health.last_rejection_code = Some(RejectionReason::SingularS);
+            self.health
+                .events
+                .push(NavHealthEvent::InnovationRejected { reason });
             return false;
         };
 
-        if let Some(chi2) = self.config.gating_chi2 {
+        let chi2_gate = match model.kind() {
+            MeasurementKind::Code => self.config.gating_chi2_code,
+            MeasurementKind::Doppler => self.config.gating_chi2_doppler,
+            MeasurementKind::Phase => self.config.gating_chi2_phase,
+        };
+        if let Some(chi2) = chi2_gate {
             let mut chi = 0.0;
             for i in 0..m {
                 for j in 0..m {
@@ -270,7 +165,13 @@ impl Ekf {
             }
             if chi > chi2 {
                 self.health.rejected += 1;
-                self.health.last_rejection = Some(format!("{}: chi2 gate", model.name()));
+                let reason = format!("{}: chi2 gate", model.name());
+                self.health.last_rejection = Some(reason.clone());
+                self.health.rejection_reasons.push(reason.clone());
+                self.health.last_rejection_code = Some(RejectionReason::Chi2Gate);
+                self.health
+                    .events
+                    .push(NavHealthEvent::InnovationRejected { reason });
                 return false;
             }
         }
@@ -297,6 +198,7 @@ impl Ekf {
         let kh = k_gain.mul(&h);
         let p_new = i_mat.sub(&kh).mul(&self.p);
         self.p = p_new;
+        self.sanitize_covariance();
 
         let rms = if m > 0 {
             (y.iter().map(|v| v * v).sum::<f64>() / m as f64).sqrt()
@@ -324,6 +226,49 @@ impl Ekf {
             self.health.whiteness_ratio = Some(observed / predicted);
         }
         true
+    }
+
+    pub(crate) fn sanitize_covariance(&mut self) {
+        let n = self.p.rows();
+        for r in 0..n {
+            for c in (r + 1)..n {
+                let sym = 0.5 * (self.p[(r, c)] + self.p[(c, r)]);
+                if (self.p[(r, c)] - self.p[(c, r)]).abs() > 1e-12 {
+                    self.health
+                        .events
+                        .push(NavHealthEvent::CovarianceSymmetrized);
+                }
+                self.p[(r, c)] = sym;
+                self.p[(c, r)] = sym;
+            }
+        }
+
+        let mut max_var: f64 = 0.0;
+        for i in 0..n {
+            if self.p[(i, i)] < self.config.covariance_epsilon {
+                self.p[(i, i)] = self.config.covariance_epsilon;
+                self.health.events.push(NavHealthEvent::CovarianceClamped {
+                    min_eigenvalue: self.config.covariance_epsilon,
+                });
+            }
+            max_var = max_var.max(self.p[(i, i)].abs());
+        }
+        if max_var > self.config.divergence_max_variance {
+            self.health.events.push(NavHealthEvent::CovarianceDiverged {
+                max_variance: max_var,
+            });
+        }
+
+        if self.config.square_root {
+            if let Some(l) = self.p.cholesky() {
+                let lt = l.transpose();
+                self.p = l.mul(&lt);
+            } else {
+                self.health.events.push(NavHealthEvent::CovarianceClamped {
+                    min_eigenvalue: self.config.covariance_epsilon,
+                });
+            }
+        }
     }
 }
 
@@ -384,7 +329,7 @@ impl StateModel for NavClockModel {
 
 #[derive(Debug, Clone)]
 pub struct PseudorangeMeasurement {
-    pub prn: u8,
+    pub sig: SigId,
     pub z_m: f64,
     pub sat_pos_m: [f64; 3],
     pub sat_clock_s: f64,
@@ -398,6 +343,10 @@ pub struct PseudorangeMeasurement {
 impl MeasurementModel for PseudorangeMeasurement {
     fn name(&self) -> &'static str {
         "pseudorange"
+    }
+
+    fn kind(&self) -> MeasurementKind {
+        MeasurementKind::Code
     }
 
     fn measurement_dim(&self) -> usize {
@@ -444,7 +393,7 @@ impl MeasurementModel for PseudorangeMeasurement {
 
 #[derive(Debug, Clone)]
 pub struct DopplerMeasurement {
-    pub prn: u8,
+    pub sig: SigId,
     pub z_hz: f64,
     pub sat_pos_m: [f64; 3],
     pub sat_vel_mps: [f64; 3],
@@ -455,6 +404,10 @@ pub struct DopplerMeasurement {
 impl MeasurementModel for DopplerMeasurement {
     fn name(&self) -> &'static str {
         "doppler"
+    }
+
+    fn kind(&self) -> MeasurementKind {
+        MeasurementKind::Doppler
     }
 
     fn measurement_dim(&self) -> usize {
@@ -500,7 +453,7 @@ impl MeasurementModel for DopplerMeasurement {
 
 #[derive(Debug, Clone)]
 pub struct CarrierPhaseMeasurement {
-    pub prn: u8,
+    pub sig: SigId,
     pub z_cycles: f64,
     pub sat_pos_m: [f64; 3],
     pub sat_clock_s: f64,
@@ -516,6 +469,10 @@ pub struct CarrierPhaseMeasurement {
 impl MeasurementModel for CarrierPhaseMeasurement {
     fn name(&self) -> &'static str {
         "carrier_phase"
+    }
+
+    fn kind(&self) -> MeasurementKind {
+        MeasurementKind::Phase
     }
 
     fn measurement_dim(&self) -> usize {
@@ -590,6 +547,32 @@ impl AmbiguityManager {
         self.indices.insert(key.to_string(), idx);
         idx
     }
+
+    pub fn apply_fix_hold(&self, ekf: &mut Ekf, indices: &[usize], variance: f64) {
+        for &idx in indices {
+            if idx >= ekf.x.len() {
+                continue;
+            }
+            let z = ekf.x[idx].round();
+            let sigma = variance.max(1e-6).sqrt();
+            let meas = FixHoldMeasurement {
+                index: idx,
+                z,
+                sigma,
+            };
+            let _ = ekf.update(&meas);
+            let v = variance.max(1e-6);
+            ekf.p[(idx, idx)] = v;
+            for j in 0..ekf.x.len() {
+                if j == idx {
+                    continue;
+                }
+                ekf.p[(idx, j)] *= 0.2;
+                ekf.p[(j, idx)] = ekf.p[(idx, j)];
+            }
+        }
+        ekf.sanitize_covariance();
+    }
 }
 
 impl Default for AmbiguityManager {
@@ -598,9 +581,76 @@ impl Default for AmbiguityManager {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct InterSystemBiasManager {
+    pub indices: BTreeMap<String, usize>,
+}
+
+impl InterSystemBiasManager {
+    pub fn new() -> Self {
+        Self {
+            indices: BTreeMap::new(),
+        }
+    }
+
+    pub fn get_or_add(&mut self, ekf: &mut Ekf, key: &str, value: f64, variance: f64) -> usize {
+        if let Some(idx) = self.indices.get(key) {
+            return *idx;
+        }
+        let idx = ekf.x.len();
+        ekf.add_state(key, value, variance);
+        self.indices.insert(key.to_string(), idx);
+        idx
+    }
+}
+
+impl Default for InterSystemBiasManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Clone)]
+struct FixHoldMeasurement {
+    index: usize,
+    z: f64,
+    sigma: f64,
+}
+
+impl MeasurementModel for FixHoldMeasurement {
+    fn name(&self) -> &'static str {
+        "fix_hold"
+    }
+
+    fn kind(&self) -> MeasurementKind {
+        MeasurementKind::Phase
+    }
+
+    fn measurement_dim(&self) -> usize {
+        1
+    }
+
+    fn observation(&self) -> &[f64] {
+        std::slice::from_ref(&self.z)
+    }
+
+    fn h(&self, x: &[f64], out: &mut [f64]) {
+        out[0] = x.get(self.index).copied().unwrap_or(0.0);
+    }
+
+    fn jacobian(&self, _x: &[f64], h: &mut Matrix) {
+        h[(0, self.index)] = 1.0;
+    }
+
+    fn covariance(&self, _x: &[f64], r: &mut Matrix) {
+        r[(0, 0)] = self.sigma * self.sigma;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bijux_gnss_core::{Constellation, SatId, SignalBand};
 
     #[test]
     fn matrix_inversion_identity() {
@@ -622,12 +672,23 @@ mod tests {
             x,
             p,
             EkfConfig {
-                gating_chi2: Some(100.0),
+                gating_chi2_code: Some(100.0),
+                gating_chi2_phase: Some(100.0),
+                gating_chi2_doppler: Some(100.0),
                 huber_k: Some(10.0),
+                square_root: true,
+                covariance_epsilon: 1e-6,
+                divergence_max_variance: 1e12,
             },
         );
         let meas = PseudorangeMeasurement {
-            prn: 1,
+            sig: SigId {
+                sat: SatId {
+                    constellation: Constellation::Gps,
+                    prn: 1,
+                },
+                band: SignalBand::L1,
+            },
             z_m: 20_200_000.0,
             sat_pos_m: [15_000_000.0, 0.0, 21_000_000.0],
             sat_clock_s: 0.0,

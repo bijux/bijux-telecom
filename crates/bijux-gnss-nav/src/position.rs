@@ -1,4 +1,5 @@
 use crate::gps::{sat_state_gps_l1ca, GpsEphemeris, GpsSatState};
+use bijux_gnss_core::SatId;
 
 #[derive(Debug, Clone)]
 pub struct PositionSolution {
@@ -13,13 +14,13 @@ pub struct PositionSolution {
     pub rms_m: f64,
     pub sigma_h_m: Option<f64>,
     pub sigma_v_m: Option<f64>,
-    pub residuals: Vec<(u8, f64)>,
-    pub rejected: Vec<u8>,
+    pub residuals: Vec<(SatId, f64)>,
+    pub rejected: Vec<SatId>,
 }
 
 #[derive(Debug, Clone)]
 pub struct PositionObservation {
-    pub prn: u8,
+    pub sat: SatId,
     pub pseudorange_m: f64,
     pub cn0_dbhz: f64,
     pub elevation_deg: Option<f64>,
@@ -76,7 +77,7 @@ impl PositionSolver {
         for _ in 0..self.max_iterations {
             used.clear();
             for obs in observations {
-                let eph = ephemerides.iter().find(|e| e.prn == obs.prn)?;
+                let eph = ephemerides.iter().find(|e| e.sat == obs.sat)?;
                 let mut tau = obs.pseudorange_m / 299_792_458.0;
                 let mut state = sat_state_gps_l1ca(eph, t_rx_s - tau, tau);
                 let mut converged = false;
@@ -112,7 +113,7 @@ impl PositionSolver {
                 let range = (dx * dx + dy * dy + dz * dz).sqrt();
                 let pred = range + cb * 299_792_458.0 - state.clock_bias_s * 299_792_458.0;
                 let res = obs.pseudorange_m - pred;
-                residuals.push((obs.prn, res));
+                residuals.push((obs.sat, res));
                 let hx = dx / range;
                 let hy = dy / range;
                 let hz = dz / range;
@@ -150,7 +151,7 @@ impl PositionSolver {
             let pred = range + cb * 299_792_458.0 - state.clock_bias_s * 299_792_458.0;
             let res = obs.pseudorange_m - pred;
             if res.abs() > self.residual_gate_m {
-                rejected.push(obs.prn);
+                rejected.push(obs.sat);
             } else {
                 filtered.push((obs.clone(), state.clone(), res));
             }
@@ -168,7 +169,7 @@ impl PositionSolver {
                 .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
                 .unwrap_or((0, 0.0));
             if worst_res > self.residual_gate_m {
-                rejected.push(filtered[worst_idx].0.prn);
+                rejected.push(filtered[worst_idx].0.sat);
                 filtered.remove(worst_idx);
             }
         }
@@ -225,7 +226,7 @@ impl PositionSolver {
             rms_m: rms,
             sigma_h_m: Some(sigma_h_m),
             sigma_v_m: Some(sigma_v_m),
-            residuals: filtered.iter().map(|(o, _, r)| (o.prn, *r)).collect(),
+            residuals: filtered.iter().map(|(o, _, r)| (o.sat, *r)).collect(),
             rejected,
         })
     }
@@ -435,6 +436,7 @@ pub fn weight_from_cn0_elev(cn0_dbhz: f64, elev_deg: f64, config: WeightingConfi
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bijux_gnss_core::Constellation;
 
     #[test]
     fn invert_identity() {
@@ -452,7 +454,10 @@ mod tests {
     fn pvt_sanity() {
         let solver = PositionSolver::new();
         let eph = GpsEphemeris {
-            prn: 1,
+            sat: SatId {
+                constellation: Constellation::Gps,
+                prn: 1,
+            },
             iodc: 0,
             iode: 0,
             week: 0,
@@ -480,28 +485,40 @@ mod tests {
         };
         let obs = vec![
             PositionObservation {
-                prn: 1,
+                sat: SatId {
+                    constellation: Constellation::Gps,
+                    prn: 1,
+                },
                 pseudorange_m: 20_000_000.0,
                 cn0_dbhz: 40.0,
                 elevation_deg: None,
                 weight: 1.0,
             },
             PositionObservation {
-                prn: 1,
+                sat: SatId {
+                    constellation: Constellation::Gps,
+                    prn: 1,
+                },
                 pseudorange_m: 20_000_000.0,
                 cn0_dbhz: 40.0,
                 elevation_deg: None,
                 weight: 1.0,
             },
             PositionObservation {
-                prn: 1,
+                sat: SatId {
+                    constellation: Constellation::Gps,
+                    prn: 1,
+                },
                 pseudorange_m: 20_000_000.0,
                 cn0_dbhz: 40.0,
                 elevation_deg: None,
                 weight: 1.0,
             },
             PositionObservation {
-                prn: 1,
+                sat: SatId {
+                    constellation: Constellation::Gps,
+                    prn: 1,
+                },
                 pseudorange_m: 20_000_000.0,
                 cn0_dbhz: 40.0,
                 elevation_deg: None,

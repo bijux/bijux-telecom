@@ -8,7 +8,7 @@ fn rawephem_fixture_decodes_week_and_toe() {
     let sub3 = "8b0284a1b9adff7d74db71f3ffaa2840ed6e0fe024cddf1effadc82106c4";
 
     let eph = decode_rawephem_hex(1, sub1, sub2, sub3).expect("decoded ephemeris");
-    assert_eq!(eph.prn, 1);
+    assert_eq!(eph.sat.prn, 1);
     assert_eq!(eph.week, 2209 % 1024);
     assert!((eph.toc_s - 504000.0).abs() < 1.0);
     assert!((eph.toe_s - 504000.0).abs() < 16.0);

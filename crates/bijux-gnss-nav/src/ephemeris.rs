@@ -1,3 +1,4 @@
+use bijux_gnss_core::{Constellation, SatId};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -9,12 +10,12 @@ pub enum EphemerisError {
 /// Broadcast ephemeris parameters.
 #[derive(Debug, Clone)]
 pub struct Ephemeris {
-    pub prn: u8,
+    pub sat: SatId,
     pub toe_s: f64,
 }
 
 pub trait EphemerisProvider {
-    fn ephemeris(&self, prn: u8) -> Option<Ephemeris>;
+    fn ephemeris(&self, sat: SatId) -> Option<Ephemeris>;
 }
 
 #[derive(Debug, Clone)]
@@ -42,7 +43,13 @@ impl CsvEphemerisProvider {
                 Ok(val) => val,
                 Err(_) => continue,
             };
-            entries.push(Ephemeris { prn, toe_s });
+            entries.push(Ephemeris {
+                sat: SatId {
+                    constellation: Constellation::Gps,
+                    prn,
+                },
+                toe_s,
+            });
         }
         if entries.is_empty() {
             return Err(EphemerisError::UnsupportedFormat);
@@ -52,7 +59,7 @@ impl CsvEphemerisProvider {
 }
 
 impl EphemerisProvider for CsvEphemerisProvider {
-    fn ephemeris(&self, prn: u8) -> Option<Ephemeris> {
-        self.entries.iter().find(|e| e.prn == prn).cloned()
+    fn ephemeris(&self, sat: SatId) -> Option<Ephemeris> {
+        self.entries.iter().find(|e| e.sat == sat).cloned()
     }
 }

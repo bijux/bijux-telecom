@@ -1,10 +1,14 @@
+use bijux_gnss_core::{Constellation, SatId};
 use bijux_gnss_nav::{
     geodetic_to_ecef, sat_state_gps_l1ca, GpsEphemeris, PositionObservation, PositionSolver,
 };
 
 fn make_eph(prn: u8, omega0: f64, m0: f64) -> GpsEphemeris {
     GpsEphemeris {
-        prn,
+        sat: SatId {
+            constellation: Constellation::Gps,
+            prn,
+        },
         iodc: 0,
         iode: 0,
         week: 0,
@@ -54,11 +58,11 @@ fn fault_injection_rejects_bad_pseudorange() {
         let dz = rx_z - state.z_m;
         let range = (dx * dx + dy * dy + dz * dz).sqrt();
         let mut pr = range + 299_792_458.0 * (0.0 - state.clock_bias_s);
-        if eph.prn == 3 {
+        if eph.sat.prn == 3 {
             pr += 1000.0;
         }
         obs.push(PositionObservation {
-            prn: eph.prn,
+            sat: eph.sat,
             pseudorange_m: pr,
             cn0_dbhz: 45.0,
             elevation_deg: None,
@@ -72,5 +76,8 @@ fn fault_injection_rejects_bad_pseudorange() {
         ..PositionSolver::new()
     };
     let solution = solver.solve_wls(&obs, &ephs, t_rx_s).expect("solution");
-    assert!(solution.rejected.contains(&3));
+    assert!(solution.rejected.contains(&SatId {
+        constellation: Constellation::Gps,
+        prn: 3,
+    }));
 }
