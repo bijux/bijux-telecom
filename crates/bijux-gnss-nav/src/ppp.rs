@@ -33,11 +33,17 @@ pub struct PppConfig {
     pub enable_iono_state: bool,
     pub use_iono_free: bool,
     pub use_doppler: bool,
+    pub ar_mode: PppArMode,
+    pub ar_ratio_threshold: f64,
+    pub ar_stability_epochs: u32,
+    pub ar_max_sats: usize,
+    pub ar_use_elevation: bool,
     pub prune_after_epochs: u64,
     pub reset_gap_s: f64,
     pub residual_gate_m: f64,
     pub drift_window_epochs: usize,
     pub drift_threshold_m: f64,
+    pub checkpoint_interval_epochs: u64,
     pub process_noise: PppProcessNoise,
     pub weighting: WeightingConfig,
     pub convergence: PppConvergenceConfig,
@@ -49,11 +55,17 @@ impl Default for PppConfig {
             enable_iono_state: false,
             use_iono_free: false,
             use_doppler: false,
+            ar_mode: PppArMode::FloatPpp,
+            ar_ratio_threshold: 3.0,
+            ar_stability_epochs: 3,
+            ar_max_sats: 8,
+            ar_use_elevation: true,
             prune_after_epochs: 200,
             reset_gap_s: 2.0,
             residual_gate_m: 200.0,
             drift_window_epochs: 100,
             drift_threshold_m: 10.0,
+            checkpoint_interval_epochs: 0,
             process_noise: PppProcessNoise {
                 clock_drift_s: 1e-5,
                 ztd_m: 0.01,
@@ -86,6 +98,8 @@ pub struct PppSolutionEpoch {
     pub convergence: PppConvergenceState,
     pub residuals: Vec<(SigId, f64)>,
     pub nis_mean: Option<f64>,
+    pub ar_mode: PppArMode,
+    pub fixed_wl: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -97,6 +111,13 @@ pub struct PppConvergenceState {
     pub last_position_change_m: Option<f64>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PppArMode {
+    FloatPpp,
+    PppArWideLane,
+    PppArNarrowLane,
+}
+
 #[derive(Debug, Clone)]
 pub struct PppHealth {
     pub last_reset_reason: Option<String>,
@@ -104,6 +125,7 @@ pub struct PppHealth {
     pub convergence: PppConvergenceState,
     pub warnings: Vec<String>,
     pub nis_mean: Option<f64>,
+    pub ar_events: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -129,10 +151,32 @@ pub struct PppFilter {
     last_seen_amb: BTreeMap<SigId, u64>,
     residual_history: BTreeMap<SigId, Vec<f64>>,
     drift_history: Vec<[f64; 3]>,
+    wl_state: BTreeMap<SatId, WlAmbiguity>,
+    ar_stable_epochs: u32,
     pub health: PppHealth,
     code_bias: Box<dyn CodeBiasProvider + Send + Sync>,
     phase_bias: Box<dyn PhaseBiasProvider + Send + Sync>,
     corrections: CorrectionContext,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PppCheckpoint {
+    pub x: Vec<f64>,
+    pub p: Vec<Vec<f64>>,
+    pub indices_isb: Vec<(Constellation, usize)>,
+    pub indices_iono: Vec<(SatId, usize)>,
+    pub indices_amb: Vec<(SigId, usize)>,
+    pub last_t_rx_s: Option<f64>,
+    pub epoch0_t_s: Option<f64>,
+    pub last_pos: Option<[f64; 3]>,
+}
+
+#[derive(Debug, Clone)]
+struct WlAmbiguity {
+    float_cycles: f64,
+    variance: f64,
+    fixed: bool,
+    last_update_epoch: u64,
 }
 
 impl PppFilter {
@@ -182,12 +226,15 @@ impl PppFilter {
                 },
                 warnings: Vec::new(),
                 nis_mean: None,
+                ar_events: Vec::new(),
             },
             code_bias: Box::new(ZeroBiases),
             phase_bias: Box::new(ZeroBiases),
             corrections: CorrectionContext,
             residual_history: BTreeMap::new(),
             drift_history: Vec::new(),
+            wl_state: BTreeMap::new(),
+            ar_stable_epochs: 0,
         }
     }
 
@@ -227,6 +274,8 @@ impl PppFilter {
         let mut sats: Vec<&ObsSatellite> = obs.sats.iter().collect();
         sats.sort_by_key(|s| s.signal_id);
         self.ensure_states(&sats);
+        self.update_wide_lane(obs, &sats);
+        let fixed_wl = self.try_fix_wide_lane(obs, &sats);
         let corr = crate::compute_corrections(&self.corrections);
 
         let mut residuals = Vec::new();
@@ -383,6 +432,7 @@ impl PppFilter {
         let (sigma_h, sigma_v) = estimate_sigma(&self.ekf, &self.indices.pos);
         self.update_convergence(obs.t_rx_s, pos, sigma_h, sigma_v);
         self.check_consistency();
+        self.adapt_process_noise();
         Some(PppSolutionEpoch {
             epoch_idx: obs.epoch_idx,
             t_rx_s: obs.t_rx_s,
@@ -397,6 +447,8 @@ impl PppFilter {
             convergence: self.health.convergence.clone(),
             residuals,
             nis_mean: self.health.nis_mean,
+            ar_mode: self.config.ar_mode,
+            fixed_wl,
         })
     }
 
@@ -570,6 +622,23 @@ impl PppFilter {
         }
     }
 
+    fn adapt_process_noise(&mut self) {
+        let rms = self.ekf.health.innovation_rms;
+        if rms > 50.0 {
+            self.config.process_noise.clock_drift_s *= 1.2;
+            self.config.process_noise.ztd_m *= 1.2;
+            self.health
+                .warnings
+                .push("process noise increased".to_string());
+        } else if rms < 5.0 {
+            self.config.process_noise.clock_drift_s *= 0.95;
+            self.config.process_noise.ztd_m *= 0.95;
+            self.health
+                .warnings
+                .push("process noise decreased".to_string());
+        }
+    }
+
     fn check_consistency(&mut self) {
         let nis = if let Some(pred) = self.ekf.health.predicted_variance {
             if pred > 0.0 {
@@ -590,6 +659,13 @@ impl PppFilter {
                 self.health
                     .warnings
                     .push("NIS low: possible over-confidence".to_string());
+            }
+        }
+        if let Some(cond) = self.ekf.health.condition_number {
+            if cond > 1e8 {
+                self.health
+                    .warnings
+                    .push("condition number high".to_string());
             }
         }
     }
@@ -613,6 +689,146 @@ impl PppFilter {
         self.last_seen_amb.clear();
         self.last_pos = None;
         self.drift_history.clear();
+        self.wl_state.clear();
+        self.ar_stable_epochs = 0;
+    }
+
+    pub fn checkpoint(&self) -> PppCheckpoint {
+        let mut p = Vec::new();
+        for r in 0..self.ekf.p.rows() {
+            let mut row = Vec::new();
+            for c in 0..self.ekf.p.cols() {
+                row.push(self.ekf.p[(r, c)]);
+            }
+            p.push(row);
+        }
+        PppCheckpoint {
+            x: self.ekf.x.clone(),
+            p,
+            indices_isb: self.indices.isb.iter().map(|(k, v)| (*k, *v)).collect(),
+            indices_iono: self.indices.iono.iter().map(|(k, v)| (*k, *v)).collect(),
+            indices_amb: self
+                .indices
+                .ambiguity
+                .iter()
+                .map(|(k, v)| (*k, *v))
+                .collect(),
+            last_t_rx_s: self.last_t_rx_s,
+            epoch0_t_s: self.epoch0_t_s,
+            last_pos: self.last_pos,
+        }
+    }
+
+    pub fn restore_from_checkpoint(&mut self, ck: PppCheckpoint) {
+        let rows = ck.p.len();
+        let cols = ck.p.first().map(|r| r.len()).unwrap_or(0);
+        let mut mat = Matrix::new(rows, cols, 0.0);
+        for r in 0..rows {
+            for c in 0..cols {
+                mat[(r, c)] = ck.p[r][c];
+            }
+        }
+        self.ekf.x = ck.x;
+        self.ekf.p = mat;
+        self.indices.isb = ck.indices_isb.into_iter().collect();
+        self.indices.iono = ck.indices_iono.into_iter().collect();
+        self.indices.ambiguity = ck.indices_amb.into_iter().collect();
+        self.last_t_rx_s = ck.last_t_rx_s;
+        self.epoch0_t_s = ck.epoch0_t_s;
+        self.last_pos = ck.last_pos;
+    }
+
+    fn update_wide_lane(&mut self, obs: &ObsEpoch, sats: &[&ObsSatellite]) {
+        if self.config.ar_mode == PppArMode::FloatPpp {
+            return;
+        }
+        for sat in sats {
+            let Some((wl_cycles, variance)) = wide_lane_from_obs(obs, sat.signal_id.sat) else {
+                continue;
+            };
+            let entry = self
+                .wl_state
+                .entry(sat.signal_id.sat)
+                .or_insert(WlAmbiguity {
+                    float_cycles: wl_cycles,
+                    variance,
+                    fixed: false,
+                    last_update_epoch: obs.epoch_idx,
+                });
+            entry.float_cycles = wl_cycles;
+            entry.variance = variance;
+            entry.last_update_epoch = obs.epoch_idx;
+        }
+    }
+
+    fn try_fix_wide_lane(&mut self, _obs: &ObsEpoch, sats: &[&ObsSatellite]) -> usize {
+        if self.config.ar_mode == PppArMode::FloatPpp {
+            return 0;
+        }
+        let mut candidates: Vec<(SatId, f64, f64, f64)> = Vec::new();
+        for sat in sats {
+            if let Some(wl) = self.wl_state.get(&sat.signal_id.sat) {
+                let el = sat.elevation_deg.unwrap_or(0.0);
+                candidates.push((sat.signal_id.sat, wl.float_cycles, wl.variance, el));
+            }
+        }
+        if candidates.is_empty() {
+            self.health
+                .ar_events
+                .push("WL unavailable: no dual-frequency data".to_string());
+            return 0;
+        }
+        if self.config.ar_use_elevation {
+            candidates.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal));
+        } else {
+            candidates.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
+        }
+        candidates.truncate(self.config.ar_max_sats.max(1));
+        let mut fixed_count = 0;
+        for (sat, float, var, _el) in candidates {
+            let (ratio, _fixed) = ratio_fix(float, var);
+            self.health
+                .ar_events
+                .push(format!("WL float {:?} ratio {:.2}", sat, ratio));
+            if ratio >= self.config.ar_ratio_threshold {
+                if let Some(entry) = self.wl_state.get_mut(&sat) {
+                    entry.fixed = true;
+                    fixed_count += 1;
+                }
+                self.health
+                    .ar_events
+                    .push(format!("WL fix {:?} ratio {:.2}", sat, ratio));
+            }
+        }
+        if fixed_count > 0 {
+            self.ar_stable_epochs += 1;
+            if self.ar_stable_epochs >= self.config.ar_stability_epochs {
+                self.apply_wl_constraints();
+            }
+        } else {
+            self.ar_stable_epochs = 0;
+        }
+        fixed_count
+    }
+
+    fn apply_wl_constraints(&mut self) {
+        if self.config.ar_mode == PppArMode::FloatPpp {
+            return;
+        }
+        for (sat, wl) in &self.wl_state {
+            if !wl.fixed {
+                continue;
+            }
+            for (sig, idx) in self.indices.ambiguity.iter() {
+                if sig.sat != *sat {
+                    continue;
+                }
+                if *idx < self.ekf.p.rows() {
+                    self.ekf.p[(*idx, *idx)] *= 0.2;
+                }
+            }
+        }
+        self.ekf.sanitize_covariance();
     }
 }
 
@@ -1069,4 +1285,40 @@ fn iono_free_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<(f64, f64, f64, f64)
     let phi2_m = l2.carrier_phase_cycles * lambda2;
     let if_phase = (f1_2 * phi1_m - f2_2 * phi2_m) / denom;
     Some((if_code, if_phase, f1, f2))
+}
+
+fn wide_lane_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<(f64, f64)> {
+    let mut l1 = None;
+    let mut l2 = None;
+    for s in &obs.sats {
+        if s.signal_id.sat != sat {
+            continue;
+        }
+        match s.signal_id.band {
+            SignalBand::L1 | SignalBand::E1 => l1 = Some(s),
+            SignalBand::L2 | SignalBand::E5 => l2 = Some(s),
+            _ => {}
+        }
+    }
+    let l1 = l1?;
+    let l2 = l2?;
+    let f1 = l1.metadata.signal.carrier_hz.value();
+    let f2 = l2.metadata.signal.carrier_hz.value();
+    let lambda1 = SPEED_OF_LIGHT_MPS / f1;
+    let lambda2 = SPEED_OF_LIGHT_MPS / f2;
+    let phi1_m = l1.carrier_phase_cycles * lambda1;
+    let phi2_m = l2.carrier_phase_cycles * lambda2;
+    let lambda_wl = SPEED_OF_LIGHT_MPS / (f1 - f2).abs().max(1.0);
+    let wl_cycles = (phi1_m - phi2_m) / lambda_wl;
+    let variance = l1.carrier_phase_var_cycles2 + l2.carrier_phase_var_cycles2;
+    Some((wl_cycles, variance))
+}
+
+fn ratio_fix(float: f64, variance: f64) -> (f64, i64) {
+    let n0 = float.round() as i64;
+    let n1 = if float > n0 as f64 { n0 + 1 } else { n0 - 1 };
+    let cost0 = ((float - n0 as f64).powi(2)) / variance.max(1e-6);
+    let cost1 = ((float - n1 as f64).powi(2)) / variance.max(1e-6);
+    let ratio = if cost0 > 0.0 { cost1 / cost0 } else { 0.0 };
+    (ratio, n0)
 }
