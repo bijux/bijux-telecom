@@ -30,3 +30,4 @@ proptest = "1.4"
 criterion = "0.5"
 toml = "0.8"
 eyre = "0.6"
+bijux-gnss-core = { path = "crates/bijux-gnss-core" }

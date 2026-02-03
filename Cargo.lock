@@ -134,6 +134,7 @@ dependencies = [
 name = "bijux-gnss-nav"
 version = "0.1.0"
 dependencies = [
+ "bijux-gnss-core",
  "hex",
  "serde",
  "thiserror",
