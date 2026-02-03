@@ -7,7 +7,7 @@ pub struct JitterSummary {
     pub counts: Vec<usize>,
 }
 
-fn jitter_summary(samples: &[f64]) -> JitterSummary {
+pub(crate) fn jitter_summary(samples: &[f64]) -> JitterSummary {
     let mut data = samples.to_vec();
     data.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let mean = if data.is_empty() {
@@ -168,3 +168,6 @@ pub fn apply_fix_hold(mut baseline: BaselineSolution, fixed: bool) -> BaselineSo
     }
     baseline
 }
+use bijux_gnss_nav::ecef_to_enu;
+
+use crate::rtk::{los_unit, solve_baseline_dd, DdObservation, SolutionSeparation};

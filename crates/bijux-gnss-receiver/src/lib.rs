@@ -6,42 +6,19 @@
 
 #![deny(clippy::unwrap_used)]
 
-#[path = "pipeline/acquisition.rs"]
 pub mod acquisition;
-#[path = "core/ambiguity.rs"]
-pub mod ambiguity;
-#[path = "signal/ca_code.rs"]
-pub mod ca_code;
-#[path = "signal/combinations.rs"]
 pub mod combinations;
-#[path = "core/config.rs"]
 pub mod config;
-#[path = "io/data.rs"]
 pub mod data;
-#[path = "core/differencing.rs"]
-pub mod differencing;
-#[path = "io/logging.rs"]
 pub mod logging;
-#[path = "pipeline/navigation.rs"]
 pub mod navigation;
-#[path = "pipeline/observations.rs"]
 pub mod observations;
 pub mod rtk;
-#[path = "signal/samples.rs"]
-pub mod samples;
-#[path = "signal/signal.rs"]
-pub mod signal;
-#[path = "core/synthetic.rs"]
-pub mod synthetic;
-#[path = "io/trace_dump.rs"]
-pub mod trace_dump;
-#[path = "pipeline/tracking.rs"]
+pub mod sim;
 pub mod tracking;
-#[path = "core/types.rs"]
-pub mod types;
 
 pub use crate::config::ReceiverProfile;
-pub use crate::types::{ReceiverConfig, ReceiverError};
+pub use crate::config::{ReceiverConfig, ReceiverError};
 
 /// High-level receiver pipeline entrypoint.
 pub struct Receiver {
@@ -57,7 +34,7 @@ impl Receiver {
     ///
     /// This is a scaffold and will be fully implemented incrementally.
     pub fn run(&self, _input: &mut dyn data::SampleSource) -> Result<(), ReceiverError> {
-        let samples_per_code = signal::samples_per_code(
+        let samples_per_code = bijux_gnss_signal::signal::samples_per_code(
             self.config.sampling_freq_hz,
             self.config.code_freq_basis_hz,
             self.config.code_length,

@@ -5,7 +5,7 @@ use thiserror::Error;
 
 use bijux_gnss_core::{SampleClock, SampleTime, SamplesFrame};
 
-use crate::samples::iq_i16_to_samples;
+use bijux_gnss_signal::samples::iq_i16_to_samples;
 
 /// Input sample source for the receiver.
 ///

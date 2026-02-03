@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
+use crate::rtk::{baseline_from_ecef, jitter_summary, BaselineSolution, JitterSummary};
 use bijux_gnss_core::{AmbiguityId, Constellation, ObsEpoch, ObsSatellite, ReceiverRole, SigId};
-use bijux_gnss_nav::ecef_to_enu;
 
 #[derive(Debug, Clone)]
 pub struct BaselineConfig {
@@ -398,7 +398,7 @@ pub fn solve_baseline_dd(
     Some(baseline)
 }
 
-fn los_unit(base: [f64; 3], sat: [f64; 3]) -> [f64; 3] {
+pub(crate) fn los_unit(base: [f64; 3], sat: [f64; 3]) -> [f64; 3] {
     let dx = base[0] - sat[0];
     let dy = base[1] - sat[1];
     let dz = base[2] - sat[2];
@@ -460,4 +460,3 @@ pub struct AlignmentReport {
     pub matched_pct: f64,
     pub jitter: JitterSummary,
 }
-

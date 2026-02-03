@@ -4,7 +4,7 @@ use bijux_gnss_nav::{
     PositionObservation, PositionSolver, WeightingConfig,
 };
 
-use crate::types::ReceiverConfig;
+use crate::config::ReceiverConfig;
 
 /// Navigation solution derived from observation epochs.
 pub struct Navigation {
