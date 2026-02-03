@@ -27,7 +27,8 @@ fn golden_acquisition_from_scenario() {
 
     for (sat, res) in scenario.satellites.iter().zip(results.iter()) {
         assert_eq!(sat.sat, res.sat);
-        let doppler_err = (sat.doppler_hz - (res.carrier_hz - scenario.intermediate_freq_hz)).abs();
+        let doppler_err =
+            (sat.doppler_hz - (res.carrier_hz.0 - scenario.intermediate_freq_hz)).abs();
         assert!(
             doppler_err <= doppler_step_hz * 5.0,
             "doppler error too large: {doppler_err}"

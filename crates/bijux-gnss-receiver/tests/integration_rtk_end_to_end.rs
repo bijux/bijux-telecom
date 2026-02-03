@@ -64,11 +64,13 @@ fn make_obs_epoch(
                     band: SignalBand::L1,
                     code: bijux_gnss_core::SignalCode::Ca,
                 },
-                pseudorange_m: range + 299_792_458.0 * (0.0 - sat.clock_bias_s),
+                pseudorange_m: bijux_gnss_core::Meters(
+                    range + 299_792_458.0 * (0.0 - sat.clock_bias_s),
+                ),
                 pseudorange_var_m2: 4.0,
-                carrier_phase_cycles: range / lambda_m,
+                carrier_phase_cycles: bijux_gnss_core::Cycles(range / lambda_m),
                 carrier_phase_var_cycles2: 0.01,
-                doppler_hz: 0.0,
+                doppler_hz: bijux_gnss_core::Hertz(0.0),
                 doppler_var_hz2: 4.0,
                 cn0_dbhz: 45.0,
                 lock_flags: LockFlags {
@@ -101,7 +103,7 @@ fn make_obs_epoch(
         })
         .collect();
     ObsEpoch {
-        t_rx_s,
+        t_rx_s: bijux_gnss_core::Seconds(t_rx_s),
         gps_week: None,
         tow_s: None,
         epoch_idx: (t_rx_s * 1000.0) as u64,

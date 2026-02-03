@@ -12,7 +12,7 @@ use bijux_gnss_receiver::rtk::{
 
 fn make_epoch(t_rx_s: f64, prn: u8) -> ObsEpoch {
     ObsEpoch {
-        t_rx_s,
+        t_rx_s: bijux_gnss_core::Seconds(t_rx_s),
         gps_week: None,
         tow_s: None,
         epoch_idx: (t_rx_s * 1000.0) as u64,
@@ -27,11 +27,11 @@ fn make_epoch(t_rx_s: f64, prn: u8) -> ObsEpoch {
                 band: SignalBand::L1,
                 code: bijux_gnss_core::SignalCode::Ca,
             },
-            pseudorange_m: 20_000_000.0 + prn as f64,
+            pseudorange_m: bijux_gnss_core::Meters(20_000_000.0 + prn as f64),
             pseudorange_var_m2: 1.0,
-            carrier_phase_cycles: 1000.0 + prn as f64,
+            carrier_phase_cycles: bijux_gnss_core::Cycles(1000.0 + prn as f64),
             carrier_phase_var_cycles2: 0.01,
-            doppler_hz: -500.0,
+            doppler_hz: bijux_gnss_core::Hertz(-500.0),
             doppler_var_hz2: 4.0,
             cn0_dbhz: 45.0,
             lock_flags: LockFlags {

@@ -15,7 +15,7 @@ fn make_dual_freq_epoch(p1: f64, p2: f64, phi1: f64, phi2: f64) -> ObsEpoch {
     s1.code_rate_hz = 1_023_000.0;
     s2.code_rate_hz = 1_023_000.0;
     ObsEpoch {
-        t_rx_s: 0.0,
+        t_rx_s: bijux_gnss_core::Seconds(0.0),
         gps_week: None,
         tow_s: None,
         epoch_idx: 0,
@@ -28,11 +28,11 @@ fn make_dual_freq_epoch(p1: f64, p2: f64, phi1: f64, phi2: f64) -> ObsEpoch {
                     band: SignalBand::L1,
                     code: SignalCode::Ca,
                 },
-                pseudorange_m: p1,
+                pseudorange_m: bijux_gnss_core::Meters(p1),
                 pseudorange_var_m2: 1.0,
-                carrier_phase_cycles: phi1,
+                carrier_phase_cycles: bijux_gnss_core::Cycles(phi1),
                 carrier_phase_var_cycles2: 0.01,
-                doppler_hz: 0.0,
+                doppler_hz: bijux_gnss_core::Hertz(0.0),
                 doppler_var_hz2: 1.0,
                 cn0_dbhz: 45.0,
                 lock_flags: LockFlags {
@@ -62,11 +62,11 @@ fn make_dual_freq_epoch(p1: f64, p2: f64, phi1: f64, phi2: f64) -> ObsEpoch {
                     band: SignalBand::L2,
                     code: SignalCode::Py,
                 },
-                pseudorange_m: p2,
+                pseudorange_m: bijux_gnss_core::Meters(p2),
                 pseudorange_var_m2: 1.0,
-                carrier_phase_cycles: phi2,
+                carrier_phase_cycles: bijux_gnss_core::Cycles(phi2),
                 carrier_phase_var_cycles2: 0.01,
-                doppler_hz: 0.0,
+                doppler_hz: bijux_gnss_core::Hertz(0.0),
                 doppler_var_hz2: 1.0,
                 cn0_dbhz: 45.0,
                 lock_flags: LockFlags {

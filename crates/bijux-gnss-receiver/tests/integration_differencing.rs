@@ -8,7 +8,7 @@ use bijux_gnss_receiver::rtk::{double_difference, single_difference};
 
 fn make_epoch(prn: u8, pseudo: f64, phase: f64, doppler: f64) -> ObsEpoch {
     ObsEpoch {
-        t_rx_s: 0.0,
+        t_rx_s: bijux_gnss_core::Seconds(0.0),
         gps_week: None,
         tow_s: None,
         epoch_idx: 0,
@@ -23,11 +23,11 @@ fn make_epoch(prn: u8, pseudo: f64, phase: f64, doppler: f64) -> ObsEpoch {
                 band: SignalBand::L1,
                 code: bijux_gnss_core::SignalCode::Ca,
             },
-            pseudorange_m: pseudo,
+            pseudorange_m: bijux_gnss_core::Meters(pseudo),
             pseudorange_var_m2: 1.0,
-            carrier_phase_cycles: phase,
+            carrier_phase_cycles: bijux_gnss_core::Cycles(phase),
             carrier_phase_var_cycles2: 0.01,
-            doppler_hz: doppler,
+            doppler_hz: bijux_gnss_core::Hertz(doppler),
             doppler_var_hz2: 4.0,
             cn0_dbhz: 45.0,
             lock_flags: LockFlags {
@@ -66,7 +66,7 @@ fn single_and_double_difference_basic() {
     let base = make_epoch(1, 20_000_000.0, 1_000.0, -450.0);
     let sds = single_difference(&rover, &base);
     assert_eq!(sds.len(), 1);
-    assert!((sds[0].code_m - 100.0).abs() < 1e-6);
+    assert!((sds[0].code_m.0 - 100.0).abs() < 1e-6);
 
     let rover2 = make_epoch(2, 21_000_000.0, 1_500.0, -400.0);
     let base2 = make_epoch(2, 20_999_900.0, 1_499.8, -380.0);

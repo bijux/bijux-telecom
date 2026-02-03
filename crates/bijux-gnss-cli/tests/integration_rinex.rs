@@ -8,9 +8,9 @@ use bijux_gnss_nav::{write_rinex_nav, write_rinex_obs, GpsEphemeris};
 #[test]
 fn rinex_obs_has_header() {
     let epoch = ObsEpoch {
-        t_rx_s: 0.0,
+        t_rx_s: bijux_gnss_core::Seconds(0.0),
         gps_week: Some(0),
-        tow_s: Some(0.0),
+        tow_s: Some(bijux_gnss_core::Seconds(0.0)),
         epoch_idx: 0,
         discontinuity: false,
         role: ReceiverRole::Rover,
@@ -23,11 +23,11 @@ fn rinex_obs_has_header() {
                 band: SignalBand::L1,
                 code: SignalCode::Ca,
             },
-            pseudorange_m: 20_000_000.0,
+            pseudorange_m: bijux_gnss_core::Meters(20_000_000.0),
             pseudorange_var_m2: 1.0,
-            carrier_phase_cycles: 1000.0,
+            carrier_phase_cycles: bijux_gnss_core::Cycles(1000.0),
             carrier_phase_var_cycles2: 0.01,
-            doppler_hz: -500.0,
+            doppler_hz: bijux_gnss_core::Hertz(-500.0),
             doppler_var_hz2: 4.0,
             cn0_dbhz: 40.0,
             lock_flags: LockFlags {
