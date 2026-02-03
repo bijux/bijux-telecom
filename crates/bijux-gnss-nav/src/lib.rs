@@ -3,6 +3,7 @@
 #![deny(clippy::unwrap_used)]
 
 pub mod atmosphere;
+pub mod corrections;
 pub mod ekf;
 pub mod linalg;
 
@@ -12,6 +13,7 @@ pub mod gps;
 pub mod position;
 
 pub use crate::atmosphere::*;
+pub use crate::corrections::*;
 pub use crate::ekf::*;
 pub use crate::ephemeris::{CsvEphemerisProvider, Ephemeris, EphemerisError, EphemerisProvider};
 pub use crate::gps::{

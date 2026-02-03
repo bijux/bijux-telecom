@@ -278,6 +278,7 @@ pub struct ProcessNoiseConfig {
     pub vel_mps: f64,
     pub clock_bias_s: f64,
     pub clock_drift_s: f64,
+    pub ztd_m: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -321,6 +322,13 @@ impl StateModel for NavClockModel {
         q[(6, 6)] = self.noise.clock_bias_s * self.noise.clock_bias_s;
         q[(7, 7)] = self.noise.clock_drift_s * self.noise.clock_drift_s;
 
+        if x.len() > 8 && self.noise.ztd_m > 0.0 {
+            let idx = 8;
+            if idx < q.rows() {
+                q[(idx, idx)] = self.noise.ztd_m * self.noise.ztd_m;
+            }
+        }
+
         let ft = f.transpose();
         let p_new = f.mul(p).mul(&ft).add(&q);
         *p = p_new;
@@ -338,6 +346,7 @@ pub struct PseudorangeMeasurement {
     pub sigma_m: f64,
     pub elevation_deg: Option<f64>,
     pub ztd_index: Option<usize>,
+    pub isb_index: Option<usize>,
 }
 
 impl MeasurementModel for PseudorangeMeasurement {
@@ -371,7 +380,12 @@ impl MeasurementModel for PseudorangeMeasurement {
                 }
             }
         }
-        let pred = range + 299_792_458.0 * (x[6] - self.sat_clock_s) + tropo - self.iono_m;
+        let mut pred = range + 299_792_458.0 * (x[6] - self.sat_clock_s) + tropo - self.iono_m;
+        if let Some(idx) = self.isb_index {
+            if let Some(isb) = x.get(idx) {
+                pred += 299_792_458.0 * isb;
+            }
+        }
         out[0] = pred;
     }
 
@@ -384,6 +398,19 @@ impl MeasurementModel for PseudorangeMeasurement {
         h[(0, 1)] = dy / range;
         h[(0, 2)] = dz / range;
         h[(0, 6)] = 299_792_458.0;
+        if let Some(idx) = self.ztd_index {
+            if let Some(elev) = self.elevation_deg {
+                let m = 1.0 / elev.to_radians().sin().max(0.1);
+                if idx < h.cols() {
+                    h[(0, idx)] = m;
+                }
+            }
+        }
+        if let Some(idx) = self.isb_index {
+            if idx < h.cols() {
+                h[(0, idx)] = 299_792_458.0;
+            }
+        }
     }
 
     fn covariance(&self, _x: &[f64], r: &mut Matrix) {
@@ -464,6 +491,7 @@ pub struct CarrierPhaseMeasurement {
     pub sigma_cycles: f64,
     pub elevation_deg: Option<f64>,
     pub ztd_index: Option<usize>,
+    pub isb_index: Option<usize>,
 }
 
 impl MeasurementModel for CarrierPhaseMeasurement {
@@ -501,9 +529,14 @@ impl MeasurementModel for CarrierPhaseMeasurement {
                 }
             }
         }
-        let pred = (range + 299_792_458.0 * (x[6] - self.sat_clock_s) + tropo - self.iono_m)
+        let mut pred = (range + 299_792_458.0 * (x[6] - self.sat_clock_s) + tropo - self.iono_m)
             / self.wavelength_m
             + n;
+        if let Some(idx) = self.isb_index {
+            if let Some(isb) = x.get(idx) {
+                pred += 299_792_458.0 * isb / self.wavelength_m;
+            }
+        }
         out[0] = pred;
     }
 
@@ -516,6 +549,19 @@ impl MeasurementModel for CarrierPhaseMeasurement {
         h[(0, 1)] = (dy / range) / self.wavelength_m;
         h[(0, 2)] = (dz / range) / self.wavelength_m;
         h[(0, 6)] = 299_792_458.0 / self.wavelength_m;
+        if let Some(idx) = self.ztd_index {
+            if let Some(elev) = self.elevation_deg {
+                let m = 1.0 / elev.to_radians().sin().max(0.1);
+                if idx < h.cols() {
+                    h[(0, idx)] = m / self.wavelength_m;
+                }
+            }
+        }
+        if let Some(idx) = self.isb_index {
+            if idx < h.cols() {
+                h[(0, idx)] = 299_792_458.0 / self.wavelength_m;
+            }
+        }
         if let Some(idx) = self.ambiguity_index {
             h[(0, idx)] = 1.0;
         }
@@ -697,6 +743,7 @@ mod tests {
             sigma_m: 10.0,
             elevation_deg: None,
             ztd_index: None,
+            isb_index: None,
         };
         assert!(ekf.update(&meas));
     }
