@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use bijux_gnss_core::{ObsEpoch, SamplesFrame};
+use bijux_gnss_core::{validate_obs_epochs, Constellation, ObsEpoch, SamplesFrame, SatId};
 use bijux_gnss_nav::{
     elevation_azimuth_deg, sat_state_gps_l1ca, GpsEphemeris, Matrix, NavClockModel,
     ProcessNoiseConfig, PseudorangeMeasurement, WeightingConfig,
@@ -426,13 +426,13 @@ struct RunManifest {
 
 #[derive(Debug, Serialize)]
 struct AcquisitionReport {
-    prns: Vec<u8>,
+    sats: Vec<SatId>,
     results: Vec<AcquisitionRow>,
 }
 
 #[derive(Debug, Serialize)]
 struct AcquisitionRow {
-    prn: u8,
+    sat: SatId,
     carrier_hz: f64,
     code_phase_samples: usize,
     peak: f32,
@@ -485,8 +485,13 @@ impl EkfContext {
                 x,
                 p,
                 bijux_gnss_nav::EkfConfig {
-                    gating_chi2: Some(200.0),
+                    gating_chi2_code: Some(200.0),
+                    gating_chi2_phase: Some(200.0),
+                    gating_chi2_doppler: Some(200.0),
                     huber_k: Some(10.0),
+                    square_root: true,
+                    covariance_epsilon: 1e-6,
+                    divergence_max_variance: 1e12,
                 },
             ),
             model: NavClockModel::new(ProcessNoiseConfig {
@@ -503,7 +508,7 @@ impl EkfContext {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct TrackingReport {
-    prns: Vec<u8>,
+    sats: Vec<SatId>,
     epochs: Vec<TrackingRow>,
 }
 
@@ -511,7 +516,7 @@ struct TrackingReport {
 struct TrackingRow {
     epoch_idx: u64,
     sample_index: u64,
-    prn: u8,
+    sat: SatId,
     carrier_hz: f64,
     code_rate_hz: f64,
     code_phase_samples: f64,
@@ -531,7 +536,7 @@ struct TrackingRow {
 
 #[derive(Debug, Serialize)]
 struct NavDecodeReport {
-    prn: u8,
+    sat: SatId,
     preamble_hits: usize,
     parity_pass_rate: f64,
     ephemerides: Vec<bijux_gnss_nav::GpsEphemeris>,
@@ -572,8 +577,8 @@ struct NavResidualReport {
     epoch_idx: u64,
     rms_m: f64,
     pdop: f64,
-    residuals: Vec<(u8, f64)>,
-    rejected: Vec<u8>,
+    residuals: Vec<(SatId, f64)>,
+    rejected: Vec<SatId>,
 }
 
 #[derive(Debug, Serialize)]
@@ -654,9 +659,10 @@ fn main() -> Result<()> {
 
                 let acquisition =
                     Acquisition::new(config).with_doppler(doppler_search_hz, doppler_step_hz);
+                let sats = prns_to_sats(&prn);
                 let results = acquisition.run_fft_topn(
                     &frame,
-                    &prn,
+                    &sats,
                     top,
                     profile.acquisition.integration_ms,
                     1,
@@ -666,7 +672,7 @@ fn main() -> Result<()> {
                 for candidates in &results {
                     for r in candidates {
                         rows.push(AcquisitionRow {
-                            prn: r.prn,
+                            sat: r.sat,
                             carrier_hz: r.carrier_hz,
                             code_phase_samples: r.code_phase_samples,
                             peak: r.peak,
@@ -677,7 +683,7 @@ fn main() -> Result<()> {
                 }
 
                 let report = AcquisitionReport {
-                    prns: prn.clone(),
+                    sats,
                     results: rows,
                 };
                 match common.report {
@@ -718,7 +724,8 @@ fn main() -> Result<()> {
 
                 let acquisition = Acquisition::new(config.clone())
                     .with_doppler(doppler_search_hz, doppler_step_hz);
-                let acquisitions = acquisition.run_fft(&frame, &prn);
+                let sats = prns_to_sats(&prn);
+                let acquisitions = acquisition.run_fft(&frame, &sats);
 
                 let tracking = bijux_gnss_receiver::tracking::Tracking::new(config.clone());
                 let tracks = tracking.track_from_acquisition(
@@ -728,14 +735,14 @@ fn main() -> Result<()> {
                 );
 
                 let report = TrackingReport {
-                    prns: prn.clone(),
+                    sats: sats.clone(),
                     epochs: tracks
                         .iter()
                         .flat_map(|t| {
                             t.epochs.iter().map(move |e| TrackingRow {
                                 epoch_idx: e.epoch.index,
                                 sample_index: e.sample_index,
-                                prn: t.prn,
+                                sat: t.sat,
                                 carrier_hz: t.carrier_hz,
                                 code_rate_hz: e.code_rate_hz,
                                 code_phase_samples: t.code_phase_samples,
@@ -766,7 +773,11 @@ fn main() -> Result<()> {
                     set_trace_dir(&common);
                     let rows = read_tracking_dump(&track)?;
                     let mut prompt = Vec::new();
-                    let mut sorted: Vec<_> = rows.into_iter().filter(|r| r.prn == prn).collect();
+                    let target = SatId {
+                        constellation: Constellation::Gps,
+                        prn,
+                    };
+                    let mut sorted: Vec<_> = rows.into_iter().filter(|r| r.sat == target).collect();
                     sorted.sort_by_key(|r| r.epoch_idx);
                     for row in sorted {
                         prompt.push(row.prompt_i);
@@ -774,10 +785,10 @@ fn main() -> Result<()> {
                     let bits = bijux_gnss_nav::bit_sync_from_prompt(&prompt);
                     let (mut ephs, stats) = bijux_gnss_nav::decode_subframes(&bits.bits);
                     for eph in ephs.iter_mut() {
-                        eph.prn = prn;
+                        eph.sat = target;
                     }
                     let report = NavDecodeReport {
-                        prn,
+                        sat: target,
                         preamble_hits: stats.preamble_hits,
                         parity_pass_rate: stats.parity_pass_rate,
                         ephemerides: ephs.clone(),
@@ -872,6 +883,14 @@ fn main() -> Result<()> {
                 let mut sd_lines = Vec::new();
                 let mut dd_lines = Vec::new();
                 let mut baseline_lines = Vec::new();
+                let mut baseline_quality_lines = Vec::new();
+                let mut fix_audit_lines = Vec::new();
+                let mut precision_lines = Vec::new();
+                let mut fix_state = bijux_gnss_receiver::ambiguity::FixState::default();
+                let fixer = bijux_gnss_receiver::ambiguity::NaiveFixer::new(
+                    bijux_gnss_receiver::ambiguity::FixPolicy::default(),
+                );
+                let mut last_ref: Option<bijux_gnss_core::SigId> = None;
 
                 for (base, rover) in aligned {
                     let sd = bijux_gnss_receiver::rtk::build_sd(&base, &rover);
@@ -880,9 +899,11 @@ fn main() -> Result<()> {
                     }
                     let dd = match ref_policy {
                         RefPolicy::Global => {
-                            let ref_prn =
-                                bijux_gnss_receiver::rtk::choose_ref_sat(&sd).unwrap_or(1);
-                            bijux_gnss_receiver::rtk::build_dd(&sd, ref_prn)
+                            if let Some(ref_sig) = bijux_gnss_receiver::rtk::choose_ref_sat(&sd) {
+                                bijux_gnss_receiver::rtk::build_dd(&sd, ref_sig)
+                            } else {
+                                Vec::new()
+                            }
                         }
                         RefPolicy::PerConstellation => {
                             let refs =
@@ -893,15 +914,88 @@ fn main() -> Result<()> {
                     for item in &dd {
                         dd_lines.push(serde_json::to_string(item)?);
                     }
+                    let ref_sig = dd.first().map(|d| d.ref_sig);
+                    let ref_changed = ref_sig != last_ref;
+                    if ref_sig.is_some() {
+                        last_ref = ref_sig;
+                    }
 
-                    if let Some(baseline) = bijux_gnss_receiver::rtk::solve_baseline_dd(
+                    let mut baseline = bijux_gnss_receiver::rtk::solve_baseline_dd(
                         &dd,
                         base_xyz,
                         &ephs,
                         rover.t_rx_s,
-                    ) {
-                        baseline_lines.push(serde_json::to_string(&baseline)?);
+                    );
+
+                    let float = bijux_gnss_receiver::ambiguity::FloatAmbiguitySolution {
+                        ids: dd
+                            .iter()
+                            .map(|d| bijux_gnss_core::AmbiguityId {
+                                sig: d.sig,
+                                signal: format!("{:?}", d.sig.band),
+                            })
+                            .collect(),
+                        float_cycles: dd.iter().map(|d| d.phase_cycles).collect(),
+                        covariance: dd.iter().map(|d| vec![d.variance_phase]).collect(),
+                    };
+                    let (fix_result, audit) =
+                        fixer.fix_with_state(rover.epoch_idx, &float, &mut fix_state);
+                    fix_audit_lines.push(serde_json::to_string(&audit)?);
+
+                    if let Some(baseline_val) = baseline.take() {
+                        let mut adjusted = bijux_gnss_receiver::rtk::apply_fix_hold(
+                            baseline_val,
+                            fix_result.accepted,
+                        );
+                        adjusted.fixed = fix_result.accepted;
+                        let (rms_obs, rms_pred, used_sats) =
+                            if let Some((rms_obs, rms_pred, count)) =
+                                bijux_gnss_receiver::rtk::dd_residual_metrics(
+                                    &dd,
+                                    base_xyz,
+                                    adjusted.enu_m,
+                                    &ephs,
+                                    rover.t_rx_s,
+                                )
+                            {
+                                (rms_obs, rms_pred, count)
+                            } else {
+                                (0.0, 0.0, 0)
+                            };
+                        if let Some(cov) = adjusted.covariance_m2 {
+                            let sigma_e = cov[0][0].abs().sqrt();
+                            let sigma_n = cov[1][1].abs().sqrt();
+                            let sigma_u = cov[2][2].abs().sqrt();
+                            baseline_quality_lines.push(serde_json::to_string(
+                                &serde_json::json!({
+                                    "epoch_idx": rover.epoch_idx,
+                                    "fixed": adjusted.fixed,
+                                    "sigma_e": sigma_e,
+                                    "sigma_n": sigma_n,
+                                    "sigma_u": sigma_u,
+                                    "used_sats": used_sats,
+                                    "residual_rms_m": rms_obs,
+                                    "predicted_rms_m": rms_pred
+                                }),
+                            )?);
+                        }
+                        baseline_lines.push(serde_json::to_string(&adjusted)?);
                     }
+
+                    let slip_count = base
+                        .sats
+                        .iter()
+                        .chain(rover.sats.iter())
+                        .filter(|s| s.lock_flags.cycle_slip)
+                        .count();
+                    precision_lines.push(serde_json::to_string(&serde_json::json!({
+                        "epoch_idx": rover.epoch_idx,
+                        "fix_accepted": fix_result.accepted,
+                        "ratio": fix_result.ratio,
+                        "fixed_count": audit.fixed_count,
+                        "ref_changed": ref_changed,
+                        "slip_count": slip_count
+                    }))?);
                 }
 
                 let sd_path = out_dir.join("rtk_sd.jsonl");
@@ -910,12 +1004,14 @@ fn main() -> Result<()> {
                 fs::write(&dd_path, dd_lines.join("\n"))?;
                 let baseline_path = out_dir.join("rtk_baseline.jsonl");
                 fs::write(&baseline_path, baseline_lines.join("\n"))?;
+                let baseline_quality_path = out_dir.join("rtk_baseline_quality.jsonl");
+                fs::write(&baseline_quality_path, baseline_quality_lines.join("\n"))?;
+                let fix_audit_path = out_dir.join("rtk_fix_audit.jsonl");
+                fs::write(&fix_audit_path, fix_audit_lines.join("\n"))?;
+                let precision_path = out_dir.join("rtk_precision.jsonl");
+                fs::write(&precision_path, precision_lines.join("\n"))?;
 
-                let align_report = serde_json::json!({
-                    "aligned": aligner.aligned,
-                    "dropped_base": aligner.dropped_base,
-                    "dropped_rover": aligner.dropped_rover
-                });
+                let align_report = aligner.report(base_epochs.len(), rover_epochs.len());
                 fs::write(
                     out_dir.join("rtk_align.json"),
                     serde_json::to_string_pretty(&align_report)?,
@@ -924,6 +1020,21 @@ fn main() -> Result<()> {
                 validate_json_schema(
                     &schema_path("rtk_baseline.schema.json"),
                     &baseline_path,
+                    false,
+                )?;
+                validate_jsonl_schema(
+                    &schema_path("rtk_baseline_quality.schema.json"),
+                    &baseline_quality_path,
+                    false,
+                )?;
+                validate_jsonl_schema(
+                    &schema_path("rtk_fix_audit.schema.json"),
+                    &fix_audit_path,
+                    false,
+                )?;
+                validate_jsonl_schema(
+                    &schema_path("rtk_precision.schema.json"),
+                    &precision_path,
                     false,
                 )?;
             }
@@ -967,10 +1078,10 @@ fn main() -> Result<()> {
                         &config,
                         &scenario_def,
                     );
-                    let prns: Vec<u8> = scenario_def.satellites.iter().map(|s| s.prn).collect();
+                    let sats: Vec<SatId> = scenario_def.satellites.iter().map(|s| s.sat).collect();
                     let acquisition = Acquisition::new(config.clone())
                         .with_doppler(10_000, run_profile.acquisition.doppler_step_hz);
-                    let acquisitions = acquisition.run_fft(&frame, &prns);
+                    let acquisitions = acquisition.run_fft(&frame, &sats);
                     let tracking = bijux_gnss_receiver::tracking::Tracking::new(config.clone());
                     let tracks = tracking.track_from_acquisition(
                         &frame,
@@ -1114,7 +1225,8 @@ fn main() -> Result<()> {
                 let frame = load_frame(&input_file, &config, 0, sidecar.as_ref())?;
 
                 let acquisition = Acquisition::new(config.clone());
-                let acquisitions = acquisition.run_fft(&frame, &prn);
+                let sats = prns_to_sats(&prn);
+                let acquisitions = acquisition.run_fft(&frame, &sats);
                 let tracking = bijux_gnss_receiver::tracking::Tracking::new(config.clone());
                 let tracks = tracking.track_from_acquisition(
                     &frame,
@@ -1522,11 +1634,11 @@ fn set_trace_dir(common: &CommonArgs) {
 }
 
 fn print_acquisition_table(report: &AcquisitionReport) {
-    println!("PRN\tCarrier(Hz)\tCodePhase\tPeak\tPeak/Mean\tPeak/2nd");
+    println!("Sat\tCarrier(Hz)\tCodePhase\tPeak\tPeak/Mean\tPeak/2nd");
     for row in &report.results {
         println!(
             "{}\t{:.1}\t{}\t{:.3}\t{:.2}\t{:.2}",
-            row.prn,
+            format_sat(row.sat),
             row.carrier_hz,
             row.code_phase_samples,
             row.peak,
@@ -1548,6 +1660,19 @@ fn print_inspect_table(report: &InspectReport) {
         report.noise_floor_db
     );
     println!("Power histogram bins: {:?}", report.power_histogram);
+}
+
+fn format_sat(sat: SatId) -> String {
+    format!("{:?}-{}", sat.constellation, sat.prn)
+}
+
+fn prns_to_sats(prns: &[u8]) -> Vec<SatId> {
+    prns.iter()
+        .map(|&prn| SatId {
+            constellation: Constellation::Gps,
+            prn,
+        })
+        .collect()
 }
 
 fn parse_sweep(values: &[String]) -> Result<Vec<(String, Vec<String>)>> {
@@ -1653,51 +1778,66 @@ fn write_experiment_run(
     }
 
     let mut cn0_lines = Vec::new();
-    cn0_lines.push("epoch_idx,prn,cn0_dbhz".to_string());
+    cn0_lines.push("epoch_idx,constellation,prn,cn0_dbhz".to_string());
     for epoch in obs {
         for sat in &epoch.sats {
-            cn0_lines.push(format!("{},{},{}", epoch.epoch_idx, sat.prn, sat.cn0_dbhz));
+            cn0_lines.push(format!(
+                "{},{:?},{},{}",
+                epoch.epoch_idx,
+                sat.signal_id.sat.constellation,
+                sat.signal_id.sat.prn,
+                sat.cn0_dbhz
+            ));
         }
     }
     fs::write(run_dir.join("cn0.csv"), cn0_lines.join("\n"))?;
     validate_csv_schema(
         &run_dir.join("cn0.csv"),
-        "epoch_idx,prn,cn0_dbhz",
-        &[CsvType::U64, CsvType::U8, CsvType::F64],
+        "epoch_idx,constellation,prn,cn0_dbhz",
+        &[CsvType::U64, CsvType::Str, CsvType::U8, CsvType::F64],
     )?;
 
     let mut residual_lines = Vec::new();
-    residual_lines.push("epoch_idx,prn,residual_m,rejected".to_string());
+    residual_lines.push("epoch_idx,constellation,prn,residual_m,rejected".to_string());
     for sol in solutions {
         for res in &sol.residuals {
             residual_lines.push(format!(
-                "{},{},{},{}",
-                sol.epoch.index, res.prn, res.residual_m, res.rejected
+                "{},{:?},{},{},{}",
+                sol.epoch.index, res.sat.constellation, res.sat.prn, res.residual_m, res.rejected
             ));
         }
     }
     fs::write(run_dir.join("residuals.csv"), residual_lines.join("\n"))?;
     validate_csv_schema(
         &run_dir.join("residuals.csv"),
-        "epoch_idx,prn,residual_m,rejected",
-        &[CsvType::U64, CsvType::U8, CsvType::F64, CsvType::Bool],
+        "epoch_idx,constellation,prn,residual_m,rejected",
+        &[
+            CsvType::U64,
+            CsvType::Str,
+            CsvType::U8,
+            CsvType::F64,
+            CsvType::Bool,
+        ],
     )?;
 
     let mut ambiguity_lines = Vec::new();
-    ambiguity_lines.push("epoch_idx,prn,carrier_phase_cycles".to_string());
+    ambiguity_lines.push("epoch_idx,constellation,prn,carrier_phase_cycles".to_string());
     for epoch in obs {
         for sat in &epoch.sats {
             ambiguity_lines.push(format!(
-                "{},{},{}",
-                epoch.epoch_idx, sat.prn, sat.carrier_phase_cycles
+                "{},{:?},{},{}",
+                epoch.epoch_idx,
+                sat.signal_id.sat.constellation,
+                sat.signal_id.sat.prn,
+                sat.carrier_phase_cycles
             ));
         }
     }
     fs::write(run_dir.join("ambiguities.csv"), ambiguity_lines.join("\n"))?;
     validate_csv_schema(
         &run_dir.join("ambiguities.csv"),
-        "epoch_idx,prn,carrier_phase_cycles",
-        &[CsvType::U64, CsvType::U8, CsvType::F64],
+        "epoch_idx,constellation,prn,carrier_phase_cycles",
+        &[CsvType::U64, CsvType::Str, CsvType::U8, CsvType::F64],
     )?;
     Ok(())
 }
@@ -1708,6 +1848,7 @@ enum CsvType {
     U8,
     F64,
     Bool,
+    Str,
 }
 
 fn validate_csv_schema(path: &Path, expected: &str, types: &[CsvType]) -> Result<()> {
@@ -1755,6 +1896,15 @@ fn validate_csv_schema(path: &Path, expected: &str, types: &[CsvType]) -> Result
                         eyre!("csv parse error in {} line {}", path.display(), idx + 1)
                     })?;
                 }
+                CsvType::Str => {
+                    if value.trim().is_empty() {
+                        bail!(
+                            "csv parse error in {} line {}: empty string",
+                            path.display(),
+                            idx + 1
+                        );
+                    }
+                }
             }
         }
     }
@@ -1778,8 +1928,10 @@ fn solve_epoch_ekf(
     ctx.ekf.predict(&ctx.model, dt_s);
 
     let mut used = 0;
-    for sat in &obs.sats {
-        let eph = match ephs.iter().find(|e| e.prn == sat.prn) {
+    let mut sats: Vec<&bijux_gnss_core::ObsSatellite> = obs.sats.iter().collect();
+    sats.sort_by_key(|s| s.signal_id);
+    for sat in sats {
+        let eph = match ephs.iter().find(|e| e.sat == sat.signal_id.sat) {
             Some(e) => e,
             None => continue,
         };
@@ -1798,7 +1950,7 @@ fn solve_epoch_ekf(
             bijux_gnss_nav::weight_from_cn0_elev(sat.cn0_dbhz, el, WeightingConfig::default());
         let sigma_m = (5.0 / weight.max(0.1)).max(1.0);
         let meas = PseudorangeMeasurement {
-            prn: sat.prn,
+            sig: sat.signal_id,
             z_m: sat.pseudorange_m,
             sat_pos_m: [state.x_m, state.y_m, state.z_m],
             sat_clock_s: state.clock_bias_s,
@@ -1813,7 +1965,7 @@ fn solve_epoch_ekf(
         }
 
         let doppler_meas = bijux_gnss_nav::DopplerMeasurement {
-            prn: sat.prn,
+            sig: sat.signal_id,
             z_hz: sat.doppler_hz,
             sat_pos_m: [state.x_m, state.y_m, state.z_m],
             sat_vel_mps: sat_vel,
@@ -1824,11 +1976,11 @@ fn solve_epoch_ekf(
 
         let amb_key = format!(
             "{:?}:{}:{:?}",
-            sat.metadata.signal.constellation, sat.prn, sat.metadata.signal.band
+            sat.metadata.signal.constellation, sat.signal_id.sat.prn, sat.metadata.signal.band
         );
         let amb_idx = ctx.ambiguity.get_or_add(&mut ctx.ekf, &amb_key, 0.0, 100.0);
         let carrier_meas = bijux_gnss_nav::CarrierPhaseMeasurement {
-            prn: sat.prn,
+            sig: sat.signal_id,
             z_cycles: sat.carrier_phase_cycles,
             sat_pos_m: [state.x_m, state.y_m, state.z_m],
             sat_clock_s: state.clock_bias_s,
@@ -1937,6 +2089,7 @@ fn read_obs_epochs(path: &Path) -> Result<Vec<ObsEpoch>> {
         let epoch: ObsEpoch = serde_json::from_str(line)?;
         epochs.push(epoch);
     }
+    validate_obs_epochs(&epochs).map_err(|err| eyre!("obs epoch validation failed: {err}"))?;
     Ok(epochs)
 }
 
@@ -2013,9 +2166,9 @@ fn build_validation_report(
         let mut rejected = Vec::new();
         for r in &sol.residuals {
             if r.rejected {
-                rejected.push(r.prn);
+                rejected.push(r.sat);
             } else {
-                per_sat.push((r.prn, r.residual_m));
+                per_sat.push((r.sat, r.residual_m));
             }
         }
         residuals.push(NavResidualReport {
@@ -2237,7 +2390,7 @@ fn check_budgets(
             if std > budgets.tracking_carrier_jitter_hz {
                 violations.push(format!(
                     "tracking jitter too high for PRN {}: {:.1} Hz",
-                    track.prn, std
+                    track.sat.prn, std
                 ));
             }
         }
@@ -2301,7 +2454,7 @@ fn write_rinex_obs(path: &Path, epochs: &[ObsEpoch], strict: bool) -> Result<()>
         for sat in &epoch.sats {
             let line = format!(
                 "G{:02}{}{}{}{}",
-                sat.prn,
+                sat.signal_id.sat.prn,
                 format_f14_3(sat.pseudorange_m),
                 format_f14_6(sat.carrier_phase_cycles),
                 format_f14_3(sat.doppler_hz),
@@ -2331,7 +2484,7 @@ fn write_rinex_nav(path: &Path, ephs: &[GpsEphemeris], strict: bool) -> Result<(
         let (year, month, day, hour, min, sec) = gps_week_tow_to_ymdhms(eph.week, eph.toc_s);
         let line1 = format!(
             "G{:02} {:04} {:02} {:02} {:02} {:02} {:02}{}{}{}",
-            eph.prn,
+            eph.sat.prn,
             year,
             month,
             day,
@@ -2625,11 +2778,21 @@ mod tests {
             tow_s: Some(0.0),
             epoch_idx: 0,
             discontinuity: false,
+            role: bijux_gnss_core::ReceiverRole::Rover,
             sats: vec![bijux_gnss_core::ObsSatellite {
-                prn: 1,
+                signal_id: bijux_gnss_core::SigId {
+                    sat: bijux_gnss_core::SatId {
+                        constellation: bijux_gnss_core::Constellation::Gps,
+                        prn: 1,
+                    },
+                    band: bijux_gnss_core::SignalBand::L1,
+                },
                 pseudorange_m: 20_000_000.0,
+                pseudorange_var_m2: 1.0,
                 carrier_phase_cycles: 1000.0,
+                carrier_phase_var_cycles2: 0.01,
                 doppler_hz: -500.0,
+                doppler_var_hz2: 4.0,
                 cn0_dbhz: 40.0,
                 lock_flags: bijux_gnss_core::LockFlags {
                     code_lock: true,
@@ -2671,7 +2834,10 @@ mod tests {
     #[test]
     fn rinex_nav_has_header() {
         let eph = GpsEphemeris {
-            prn: 1,
+            sat: SatId {
+                constellation: Constellation::Gps,
+                prn: 1,
+            },
             iodc: 1,
             iode: 1,
             week: 0,
