@@ -17,7 +17,7 @@ cargo build --workspace
 ## First Command
 
 ```bash
-bijux gnss run --scenario configs/scenarios/basic.toml --output runs/basic_demo
+bijux gnss run --dataset demo_synthetic --output runs/basic_demo
 ```
 
 Example output:

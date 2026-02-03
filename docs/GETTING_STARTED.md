@@ -5,7 +5,7 @@ This is the canonical “first run” path for `bijux-gnss`. It uses a synthetic
 ## 1) Run a Synthetic Scenario
 
 ```bash
-bijux gnss run --scenario configs/scenarios/basic.toml --output runs/basic_demo
+bijux gnss run --dataset demo_synthetic --output runs/basic_demo
 ```
 
 ## 2) Validate Artifacts

@@ -55,7 +55,7 @@ Options:
 
 ### Run Pipeline
 ```bash
-bijux gnss run --scenario configs/scenarios/basic.toml --output runs/basic_demo
+bijux gnss run --dataset demo_synthetic --output runs/basic_demo
 ```
 
 ### Validate Artifacts
