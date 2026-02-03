@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 
 use bijux_gnss_core::{Constellation, SatId, SigId};
+use serde::{Deserialize, Serialize};
 
 use crate::corrections::biases::{CodeBiasProvider, PhaseBiasProvider};
 use crate::corrections::CorrectionContext;
@@ -82,7 +83,7 @@ impl Default for PppConfig {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PppSolutionEpoch {
     pub epoch_idx: u64,
     pub t_rx_s: f64,
@@ -101,7 +102,7 @@ pub struct PppSolutionEpoch {
     pub fixed_wl: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PppConvergenceState {
     pub converged: bool,
     pub time_to_first_meter_s: Option<f64>,
@@ -110,7 +111,7 @@ pub struct PppConvergenceState {
     pub last_position_change_m: Option<f64>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PppArMode {
     FloatPpp,
     PppArWideLane,

@@ -13,6 +13,7 @@
 #![deny(clippy::unwrap_used)]
 #![deny(missing_docs)]
 
+mod artifact;
 mod corrections;
 mod estimation;
 mod formats;
