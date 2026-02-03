@@ -188,14 +188,26 @@ fn handle_validateartifacts(command: GnssCommand) -> Result<()> {
     if obs.is_none() && eph.is_none() {
         bail!("--obs and/or --eph is required");
     }
+    let dataset = load_dataset(&common)?;
+    let mut checked = Vec::new();
     if let Some(path) = obs {
-        validate_jsonl_schema(&schema_path("obs_epoch.schema.json"), &path, strict)?;
+        validate_jsonl_schema(&schema_path("obs_epoch_v1.schema.json"), &path, strict)?;
         println!("obs ok: {}", path.display());
+        checked.push("obs".to_string());
     }
     if let Some(path) = eph {
-        validate_json_schema(&schema_path("gps_ephemeris.schema.json"), &path, strict)?;
+        validate_json_schema(&schema_path("gps_ephemeris_v1.schema.json"), &path, strict)?;
         println!("ephemeris ok: {}", path.display());
+        checked.push("ephemeris".to_string());
     }
+    let report = serde_json::json!({ "checked": checked });
+    write_manifest(
+        &common,
+        "validate_artifacts",
+        &ReceiverProfile::default(),
+        dataset.as_ref(),
+        &report,
+    )?;
 
     Ok(())
 }
@@ -217,6 +229,7 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
     set_trace_dir(&common);
     let file = file.context("--file is required for validation")?;
     let profile = load_profile(&common)?;
+    let dataset = load_dataset(&common)?;
     if profile.schema_version.0 != SchemaVersion::CURRENT.0 {
         bail!(
             "unsupported schema_version {}, expected {}",
@@ -303,9 +316,11 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
         products_ok,
         product_fallbacks,
     )?;
-    let out = common.out.clone().unwrap_or_else(|| PathBuf::from("validation_report.json"));
+    let out_dir = artifacts_dir(&common, "validate", dataset.as_ref())?;
+    let out = out_dir.join("validation_report.json");
     fs::write(&out, serde_json::to_string_pretty(&report)?)?;
     println!("wrote {}", out.display());
+    write_manifest(&common, "validate", &profile, dataset.as_ref(), &report)?;
 
     Ok(())
 }

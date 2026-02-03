@@ -11,6 +11,7 @@ fn run_command(command: GnssCommand) -> Result<()> {
         cmd @ GnssCommand::ValidateConfig { .. } => handle_validateconfig(cmd),
         cmd @ GnssCommand::ValidateArtifacts { .. } => handle_validateartifacts(cmd),
         cmd @ GnssCommand::ValidateSidecar { .. } => handle_validatesidecar(cmd),
+        cmd @ GnssCommand::Artifact { .. } => handle_artifact(cmd),
         cmd @ GnssCommand::ConfigUpgrade { .. } => handle_configupgrade(cmd),
         cmd @ GnssCommand::ConfigSchema { .. } => handle_configschema(cmd),
         cmd @ GnssCommand::Validate { .. } => handle_validate(cmd),
@@ -74,6 +75,10 @@ fn inspect_dataset(path: &Path, sample_rate_hz: f64, max_samples: usize) -> Resu
 fn set_trace_dir(common: &CommonArgs) {
     if let Some(dir) = &common.dump {
         std::env::set_var("BIJUX_TRACE_DIR", dir);
+    }
+    if common.deterministic {
+        std::env::set_var("RAYON_NUM_THREADS", "1");
+        std::env::set_var("BIJUX_DETERMINISTIC", "1");
     }
 }
 fn print_acquisition_table(report: &AcquisitionReport) {

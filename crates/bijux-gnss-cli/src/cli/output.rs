@@ -59,17 +59,18 @@ fn load_sidecar(path: Option<&PathBuf>) -> Result<Option<SidecarSpec>> {
 
 
 fn emit_report<T: Serialize>(common: &CommonArgs, command: &str, report: &T) -> Result<()> {
+    let summary = serde_json::to_value(report)?;
+    let dataset = load_dataset(common).ok().flatten();
+    let run_dir = run_dir(common, command, dataset.as_ref())?;
+    let summary_path = run_dir.join("summary.json");
+    fs::write(&summary_path, serde_json::to_string_pretty(&summary)?)?;
+
     match common.report {
         ReportFormat::Json => {
             let json = serde_json::to_string_pretty(report)?;
-            if let Some(out_dir) = &common.out {
-                fs::create_dir_all(out_dir)?;
-                let path = out_dir.join(format!("{command}_report.json"));
-                fs::write(&path, json)?;
-                println!("wrote {}", path.display());
-            } else {
-                println!("{json}");
-            }
+            let report_path = run_dir.join(format!("{command}_report.json"));
+            fs::write(&report_path, json)?;
+            println!("wrote {}", report_path.display());
         }
         ReportFormat::Table => {
             let json = serde_json::to_string_pretty(report)?;
@@ -86,28 +87,31 @@ fn write_manifest<T: Serialize>(
     dataset: Option<&DatasetEntry>,
     report: &T,
 ) -> Result<()> {
-    let Some(out_dir) = &common.out else {
-        return Ok(());
-    };
-    fs::create_dir_all(out_dir)?;
-
+    let run_dir = run_dir(common, command, dataset)?;
     let config_hash = hash_config(common.config.as_ref(), profile)?;
+    let config_snapshot = common
+        .config
+        .as_ref()
+        .and_then(|path| fs::read_to_string(path).ok());
     let git_hash = git_hash().unwrap_or_else(|| "unknown".to_string());
     let manifest = RunManifest {
         command: command.to_string(),
-        timestamp_unix_ms: SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis(),
+        timestamp_unix_ms: now_unix_ms(),
         git_hash,
+        git_dirty: git_dirty(),
         config_hash,
+        config_snapshot,
         dataset_id: dataset.map(|d| d.id.clone()),
+        dataset_metadata: dataset.cloned(),
         build_profile: std::env::var("PROFILE").unwrap_or_else(|_| "dev".to_string()),
         cpu_features: cpu_features(),
-        results: serde_json::to_value(report)?,
+        toolchain: std::env::var("RUSTC_VERSION").unwrap_or_else(|_| "unknown".to_string()),
+        features: enabled_features(),
+        summary: serde_json::to_value(report)?,
     };
-    let path = out_dir.join("run.json");
+    let path = run_dir.join("manifest.json");
     fs::write(&path, serde_json::to_string_pretty(&manifest)?)?;
+    append_run_index(&run_dir, &manifest)?;
     Ok(())
 }
 
@@ -230,15 +234,21 @@ fn write_experiment_run(
     Ok(())
 }
 
-fn write_track_timeseries(common: &CommonArgs, report: &TrackingReport) -> Result<()> {
-    let Some(out_dir) = &common.out else {
-        return Ok(());
-    };
-    fs::create_dir_all(out_dir)?;
+fn write_track_timeseries(
+    common: &CommonArgs,
+    report: &TrackingReport,
+    profile: &ReceiverProfile,
+    dataset: Option<&DatasetEntry>,
+) -> Result<()> {
+    let out_dir = artifacts_dir(common, "track", dataset)?;
+    let header = artifact_header(common, profile, dataset)?;
     let path = out_dir.join("track.jsonl");
     let mut lines = Vec::new();
     for epoch in &report.epochs {
-        let line = serde_json::to_string(epoch)?;
+        let line = serde_json::to_string(&serde_json::json!({
+            "header": header.clone(),
+            "payload": epoch
+        }))?;
         lines.push(line);
     }
     fs::write(&path, lines.join("\n"))?;
@@ -250,24 +260,31 @@ fn write_obs_timeseries(
     config: &ReceiverConfig,
     tracks: &[bijux_gnss_receiver::tracking::TrackingResult],
     hatch_window: u32,
+    profile: &ReceiverProfile,
+    dataset: Option<&DatasetEntry>,
 ) -> Result<()> {
-    let Some(out_dir) = &common.out else {
-        return Ok(());
-    };
-    fs::create_dir_all(out_dir)?;
-    let obs = bijux_gnss_receiver::observations::observations_from_tracking_results(
+    let out_dir = artifacts_dir(common, "track", dataset)?;
+    let header = artifact_header(common, profile, dataset)?;
+    let mut obs = bijux_gnss_receiver::observations::observations_from_tracking_results(
         config,
         tracks,
         hatch_window,
     );
     let path = out_dir.join("obs.jsonl");
     let mut lines = Vec::new();
-    for epoch in &obs {
-        let line = serde_json::to_string(epoch)?;
+    for epoch in &mut obs {
+        if common.deterministic {
+            sort_obs_sats(epoch);
+        }
+        let wrapped = ObsEpochV1 {
+            header: header.clone(),
+            epoch: epoch.clone(),
+        };
+        let line = serde_json::to_string(&wrapped)?;
         lines.push(line);
     }
     fs::write(&path, lines.join("\n"))?;
-    validate_jsonl_schema(&schema_path("obs_epoch.schema.json"), &path, false)?;
+    validate_jsonl_schema(&schema_path("obs_epoch_v1.schema.json"), &path, false)?;
     let combos = bijux_gnss_nav::combinations_from_obs_epochs(
         &obs,
         bijux_gnss_core::SignalBand::L1,
@@ -305,8 +322,19 @@ fn read_obs_epochs(path: &Path) -> Result<Vec<ObsEpoch>> {
         if line.trim().is_empty() {
             continue;
         }
-        let epoch: ObsEpoch = serde_json::from_str(line)?;
-        epochs.push(epoch);
+        if line.contains("\"header\"") {
+            let wrapped: ObsEpochV1 = serde_json::from_str(line)?;
+            if !ArtifactCompatibility::is_supported(wrapped.header.schema_version) {
+                bail!(
+                    "unsupported obs schema_version {}",
+                    wrapped.header.schema_version
+                );
+            }
+            epochs.push(wrapped.epoch);
+        } else {
+            let epoch: ObsEpoch = serde_json::from_str(line)?;
+            epochs.push(epoch);
+        }
     }
     validate_obs_epochs(&epochs).map_err(|err| eyre!("obs epoch validation failed: {err}"))?;
     Ok(epochs)
@@ -314,8 +342,19 @@ fn read_obs_epochs(path: &Path) -> Result<Vec<ObsEpoch>> {
 
 fn read_ephemeris(path: &Path) -> Result<Vec<GpsEphemeris>> {
     let data = fs::read_to_string(path)?;
-    let ephs: Vec<GpsEphemeris> = serde_json::from_str(&data)?;
-    Ok(ephs)
+    if data.contains("\"header\"") {
+        let wrapped: GpsEphemerisV1 = serde_json::from_str(&data)?;
+        if !ArtifactCompatibility::is_supported(wrapped.header.schema_version) {
+            bail!(
+                "unsupported ephemeris schema_version {}",
+                wrapped.header.schema_version
+            );
+        }
+        Ok(wrapped.ephemerides)
+    } else {
+        let ephs: Vec<GpsEphemeris> = serde_json::from_str(&data)?;
+        Ok(ephs)
+    }
 }
 
 fn read_reference_epochs(path: &Path) -> Result<Vec<ValidationReferenceEpoch>> {
@@ -331,14 +370,21 @@ fn read_reference_epochs(path: &Path) -> Result<Vec<ValidationReferenceEpoch>> {
     Ok(epochs)
 }
 
-fn write_ephemeris(common: &CommonArgs, ephs: &[GpsEphemeris]) -> Result<()> {
-    let Some(out_dir) = &common.out else {
-        return Ok(());
-    };
-    fs::create_dir_all(out_dir)?;
+fn write_ephemeris(
+    common: &CommonArgs,
+    ephs: &[GpsEphemeris],
+    profile: &ReceiverProfile,
+    dataset: Option<&DatasetEntry>,
+) -> Result<()> {
+    let out_dir = artifacts_dir(common, "nav", dataset)?;
+    let header = artifact_header(common, profile, dataset)?;
     let path = out_dir.join("ephemeris.json");
-    let data = serde_json::to_string_pretty(ephs)?;
+    let wrapped = GpsEphemerisV1 {
+        header,
+        ephemerides: ephs.to_vec(),
+    };
+    let data = serde_json::to_string_pretty(&wrapped)?;
     fs::write(&path, data)?;
-    validate_json_schema(&schema_path("gps_ephemeris.schema.json"), &path, false)?;
+    validate_json_schema(&schema_path("gps_ephemeris_v1.schema.json"), &path, false)?;
     Ok(())
 }

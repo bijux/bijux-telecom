@@ -25,6 +25,18 @@ fn git_hash() -> Option<String> {
     Some(hash)
 }
 
+fn git_dirty() -> bool {
+    let output = ProcessCommand::new("git")
+        .args(["status", "--porcelain"])
+        .output();
+    if let Ok(output) = output {
+        if output.status.success() {
+            return !output.stdout.is_empty();
+        }
+    }
+    false
+}
+
 fn cpu_features() -> Vec<String> {
     let mut features = Vec::new();
     #[cfg(target_arch = "x86_64")]

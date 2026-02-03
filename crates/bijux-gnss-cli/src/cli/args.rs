@@ -188,6 +188,12 @@ enum GnssCommand {
         sweep: Vec<String>,
     },
 
+    /// Artifact validation and conversion
+    Artifact {
+        #[command(subcommand)]
+        command: ArtifactCommand,
+    },
+
     /// Validate a receiver profile configuration file
     ValidateConfig {
         #[command(flatten)]
@@ -327,6 +333,45 @@ enum GnssCommand {
 }
 
 #[derive(Subcommand)]
+enum ArtifactCommand {
+    /// Validate an artifact against schema and invariants
+    Validate {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Artifact file path
+        #[arg(long, value_name = "FILE")]
+        file: PathBuf,
+
+        /// Artifact kind override (obs, track, acq, eph, pvt, rtk, ppp)
+        #[arg(long)]
+        kind: Option<String>,
+
+        /// Require non-empty artifacts
+        #[arg(long)]
+        strict: bool,
+    },
+
+    /// Convert an artifact to a target version (scaffold)
+    Convert {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Input artifact
+        #[arg(long, value_name = "FILE")]
+        input: PathBuf,
+
+        /// Output artifact
+        #[arg(long, value_name = "FILE")]
+        output: PathBuf,
+
+        /// Target version (e.g. v1)
+        #[arg(long)]
+        to: String,
+    },
+}
+
+#[derive(Subcommand)]
 enum NavCommand {
     /// Decode GPS LNAV from tracking dump
     Decode {
@@ -365,6 +410,10 @@ struct CommonArgs {
     #[arg(long)]
     seed: Option<u64>,
 
+    /// Force deterministic execution
+    #[arg(long)]
+    deterministic: bool,
+
     /// Dump trace artifacts (requires receiver feature `trace-dump`)
     #[arg(long)]
     dump: Option<PathBuf>,
@@ -372,6 +421,10 @@ struct CommonArgs {
     /// Sidecar metadata file for raw IQ
     #[arg(long)]
     sidecar: Option<PathBuf>,
+
+    /// Resume from a previous run directory
+    #[arg(long)]
+    resume: Option<PathBuf>,
 }
 
 #[derive(Copy, Clone, ValueEnum)]
@@ -393,7 +446,7 @@ struct DatasetRegistry {
     entries: Vec<DatasetEntry>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[allow(dead_code)]
 struct DatasetEntry {
     id: String,
@@ -418,9 +471,25 @@ struct RunManifest {
     command: String,
     timestamp_unix_ms: u128,
     git_hash: String,
+    git_dirty: bool,
     config_hash: String,
+    config_snapshot: Option<String>,
     dataset_id: Option<String>,
+    dataset_metadata: Option<DatasetEntry>,
     build_profile: String,
     cpu_features: Vec<String>,
-    results: serde_json::Value,
+    toolchain: String,
+    features: Vec<String>,
+    summary: serde_json::Value,
+}
+
+#[derive(Debug, Serialize)]
+struct RunIndexEntry {
+    run_dir: String,
+    command: String,
+    timestamp_unix_ms: u128,
+    git_hash: String,
+    dataset_id: Option<String>,
+    config_hash: String,
+    summary: serde_json::Value,
 }

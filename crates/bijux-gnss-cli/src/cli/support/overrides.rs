@@ -24,6 +24,9 @@ fn apply_common_overrides(profile: &mut ReceiverProfile, common: &CommonArgs) {
     if let Some(seed) = common.seed {
         profile.seed = seed;
     }
+    if common.deterministic && common.seed.is_none() {
+        profile.seed = 1;
+    }
 }
 
 fn apply_sweep_value(profile: &mut ReceiverProfile, key: &str, value: &str) -> Result<()> {

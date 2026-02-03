@@ -17,6 +17,11 @@ fn handle_nav(command: GnssCommand) -> Result<()> {
     let GnssCommand::Nav { command } = command else {
         bail!("invalid command for handler");
     };
+    let common = match &command {
+        NavCommand::Decode { common, .. } => common,
+    };
+    let profile = load_profile(common)?;
+    let dataset = load_dataset(common)?;
 
     match command {
                     NavCommand::Decode { common, track, prn } => {
@@ -44,7 +49,8 @@ fn handle_nav(command: GnssCommand) -> Result<()> {
                             ephemerides: ephs.clone(),
                         };
                         emit_report(&common, "nav_decode", &report)?;
-                        write_ephemeris(&common, &ephs)?;
+                        write_ephemeris(&common, &ephs, &profile, dataset.as_ref())?;
+                        write_manifest(&common, "nav_decode", &profile, dataset.as_ref(), &report)?;
                     }
                 }
 
@@ -65,6 +71,9 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
     };
 
     set_trace_dir(&common);
+                    let profile = load_profile(&common)?;
+                    let dataset = load_dataset(&common)?;
+                    let header = artifact_header(&common, &profile, dataset.as_ref())?;
                     let base_epochs = read_obs_epochs(&base_obs)?;
                     let rover_epochs = read_obs_epochs(&rover_obs)?;
                     let ephs = read_ephemeris(&eph)?;
@@ -73,8 +82,7 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                     let mut aligner = bijux_gnss_receiver::rtk::EpochAligner::new(tolerance_s);
                     let aligned = aligner.align(&base_epochs, &rover_epochs);
     
-                    let out_dir = common.out.clone().context("--out is required for rtk")?;
-                    fs::create_dir_all(&out_dir)?;
+                    let out_dir = artifacts_dir(&common, "rtk", dataset.as_ref())?;
     
                     let mut sd_lines = Vec::new();
                     let mut dd_lines = Vec::new();
@@ -93,10 +101,13 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                         bijux_gnss_receiver::rtk::RefSatSelector,
                     > = std::collections::BTreeMap::new();
     
-                    for (base, rover) in aligned {
-                        let sd = bijux_gnss_receiver::rtk::build_sd(&base, &rover);
+                    for (base, rover) in &aligned {
+                        let sd = bijux_gnss_receiver::rtk::build_sd(base, rover);
                         for item in &sd {
-                            sd_lines.push(serde_json::to_string(item)?);
+                            sd_lines.push(serde_json::to_string(&serde_json::json!({
+                                "header": header.clone(),
+                                "payload": item
+                            }))?);
                         }
                         let dd = match ref_policy {
                             RefPolicy::Global => {
@@ -130,7 +141,10 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                             }
                         };
                         for item in &dd {
-                            dd_lines.push(serde_json::to_string(item)?);
+                            dd_lines.push(serde_json::to_string(&serde_json::json!({
+                                "header": header.clone(),
+                                "payload": item
+                            }))?);
                         }
                         let ref_sig = dd.first().map(|d| d.ref_sig);
                         let ref_changed = ref_sig != last_ref;
@@ -158,7 +172,10 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                         };
                         let (fix_result, audit) =
                             fixer.fix_with_state(rover.epoch_idx, &float, &mut fix_state);
-                        fix_audit_lines.push(serde_json::to_string(&audit)?);
+                        fix_audit_lines.push(serde_json::to_string(&serde_json::json!({
+                            "header": header.clone(),
+                            "payload": audit
+                        }))?);
     
                         if let Some(baseline_val) = baseline.take() {
                             let before_rms = bijux_gnss_receiver::rtk::dd_residual_metrics(
@@ -257,9 +274,15 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                                         );
                                     }
                                 }
-                                baseline_quality_lines.push(serde_json::to_string(&obj)?);
+                                baseline_quality_lines.push(serde_json::to_string(&serde_json::json!({
+                                    "header": header.clone(),
+                                    "payload": obj
+                                }))?);
                             }
-                            baseline_lines.push(serde_json::to_string(&adjusted)?);
+                            baseline_lines.push(serde_json::to_string(&serde_json::json!({
+                                "header": header.clone(),
+                                "payload": adjusted
+                            }))?);
                         }
     
                         let slip_count = base
@@ -269,12 +292,15 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                             .filter(|s| s.lock_flags.cycle_slip)
                             .count();
                         precision_lines.push(serde_json::to_string(&serde_json::json!({
-                            "epoch_idx": rover.epoch_idx,
-                            "fix_accepted": fix_result.accepted,
-                            "ratio": fix_result.ratio,
-                            "fixed_count": audit.fixed_count,
-                            "ref_changed": ref_changed,
-                            "slip_count": slip_count
+                            "header": header.clone(),
+                            "payload": {
+                                "epoch_idx": rover.epoch_idx,
+                                "fix_accepted": fix_result.accepted,
+                                "ratio": fix_result.ratio,
+                                "fixed_count": audit.fixed_count,
+                                "ref_changed": ref_changed,
+                                "slip_count": slip_count
+                            }
                         }))?);
                     }
     
@@ -298,25 +324,32 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                     )?;
     
                     validate_json_schema(
-                        &schema_path("rtk_baseline.schema.json"),
+                        &schema_path("rtk_baseline_v1.schema.json"),
                         &baseline_path,
                         false,
                     )?;
                     validate_jsonl_schema(
-                        &schema_path("rtk_baseline_quality.schema.json"),
+                        &schema_path("rtk_baseline_quality_v1.schema.json"),
                         &baseline_quality_path,
                         false,
                     )?;
                     validate_jsonl_schema(
-                        &schema_path("rtk_fix_audit.schema.json"),
+                        &schema_path("rtk_fix_audit_v1.schema.json"),
                         &fix_audit_path,
                         false,
                     )?;
                     validate_jsonl_schema(
-                        &schema_path("rtk_precision.schema.json"),
+                        &schema_path("rtk_precision_v1.schema.json"),
                         &precision_path,
                         false,
                     )?;
+
+                    let report = serde_json::json!({
+                        "aligned_epochs": aligned.len(),
+                        "sd_count": sd_lines.len(),
+                        "dd_count": dd_lines.len()
+                    });
+                    write_manifest(&common, "rtk", &profile, dataset.as_ref(), &report)?;
 
     Ok(())
 }

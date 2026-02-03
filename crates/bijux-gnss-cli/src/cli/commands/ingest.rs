@@ -81,8 +81,15 @@ fn handle_track(command: GnssCommand) -> Result<()> {
                     };
     
                     emit_report(&common, "track", &report)?;
-                    write_track_timeseries(&common, &report)?;
-                    write_obs_timeseries(&common, &config, &tracks, profile.navigation.hatch_window)?;
+                    write_track_timeseries(&common, &report, &profile, dataset.as_ref())?;
+                    write_obs_timeseries(
+                        &common,
+                        &config,
+                        &tracks,
+                        profile.navigation.hatch_window,
+                        &profile,
+                        dataset.as_ref(),
+                    )?;
                     write_manifest(&common, "track", &profile, dataset.as_ref(), &report)?;
 
     Ok(())
@@ -145,6 +152,9 @@ fn handle_validateconfig(command: GnssCommand) -> Result<()> {
                                 .join(", ")
                         );
                     }
+                    let dataset = load_dataset(&common)?;
+                    let summary = serde_json::json!({ "config": path.display().to_string() });
+                    write_manifest(&common, "validate_config", &profile, dataset.as_ref(), &summary)?;
 
     Ok(())
 }
@@ -158,6 +168,15 @@ fn handle_configschema(command: GnssCommand) -> Result<()> {
                     let schema = schema_for!(ReceiverProfile);
                     fs::write(&out, serde_json::to_string_pretty(&schema)?)?;
                     println!("wrote {}", out.display());
+                    let dataset = load_dataset(&common)?;
+                    let summary = serde_json::json!({ "schema": out.display().to_string() });
+                    write_manifest(
+                        &common,
+                        "config_schema",
+                        &ReceiverProfile::default(),
+                        dataset.as_ref(),
+                        &summary,
+                    )?;
 
     Ok(())
 }
@@ -186,6 +205,9 @@ fn handle_configupgrade(command: GnssCommand) -> Result<()> {
     let data = toml::to_string_pretty(&profile)?;
     fs::write(&output_path, data)?;
     println!("wrote {}", output_path.display());
+    let dataset = load_dataset(&common)?;
+    let summary = serde_json::json!({ "output": output_path.display().to_string() });
+    write_manifest(&common, "config_upgrade", &profile, dataset.as_ref(), &summary)?;
     Ok(())
 }
 
@@ -202,14 +224,24 @@ fn handle_rinex(command: GnssCommand) -> Result<()> {
     set_trace_dir(&common);
                     let obs_epochs = read_obs_epochs(&obs)?;
                     let ephs = read_ephemeris(&eph)?;
-                    let out_dir = common.out.clone().context("--out is required for rinex")?;
-                    fs::create_dir_all(&out_dir)?;
+                    let out_dir = artifacts_dir(&common, "rinex", None)?;
                     let obs_path = out_dir.join("obs.rnx");
                     let nav_path = out_dir.join("nav.rnx");
                     write_rinex_obs(&obs_path, &obs_epochs, strict)?;
                     write_rinex_nav(&nav_path, &ephs, strict)?;
                     println!("wrote {}", obs_path.display());
                     println!("wrote {}", nav_path.display());
+                    let summary = serde_json::json!({
+                        "obs": obs_path.display().to_string(),
+                        "nav": nav_path.display().to_string()
+                    });
+                    write_manifest(
+                        &common,
+                        "rinex",
+                        &ReceiverProfile::default(),
+                        None,
+                        &summary,
+                    )?;
 
     Ok(())
 }

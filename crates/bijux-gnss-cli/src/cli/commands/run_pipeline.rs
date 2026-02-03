@@ -74,6 +74,20 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
                         ReportFormat::Table => print_acquisition_table(&report),
                         ReportFormat::Json => emit_report(&common, "acquire", &report)?,
                     }
+                    let header = artifact_header(&common, &profile, dataset.as_ref())?;
+                    let out_dir = artifacts_dir(&common, "acquire", dataset.as_ref())?;
+                    let acq_path = out_dir.join("acq.jsonl");
+                    let mut acq_lines = Vec::new();
+                    for candidates in &results {
+                        for result in candidates {
+                            let wrapped = AcqResultV1 {
+                                header: header.clone(),
+                                result: result.clone(),
+                            };
+                            acq_lines.push(serde_json::to_string(&wrapped)?);
+                        }
+                    }
+                    fs::write(acq_path, acq_lines.join("\n"))?;
                     write_manifest(&common, "acquire", &profile, dataset.as_ref(), &report)?;
 
     Ok(())
@@ -90,9 +104,12 @@ fn handle_pvt(command: GnssCommand) -> Result<()> {
     };
 
     set_trace_dir(&common);
+                    let profile = load_profile(&common)?;
+                    let dataset = load_dataset(&common)?;
                     let obs_epochs = read_obs_epochs(&obs)?;
                     let ephs = read_ephemeris(&eph)?;
                     let mut lines = Vec::new();
+                    let header = artifact_header(&common, &profile, dataset.as_ref())?;
                     let mut nav = if !ekf {
                         Some(bijux_gnss_receiver::navigation::Navigation::new(
                             ReceiverProfile::default().to_receiver_config(),
@@ -109,16 +126,22 @@ fn handle_pvt(command: GnssCommand) -> Result<()> {
                                 .and_then(|nav| nav.solve_epoch(&obs_epoch, &ephs))
                         };
                         if let Some(solution) = solution {
-                            let line = serde_json::to_string(&solution)?;
+                            let wrapped = NavSolutionEpochV1 {
+                                header: header.clone(),
+                                epoch: solution,
+                            };
+                            let line = serde_json::to_string(&wrapped)?;
                             lines.push(line);
                         }
                     }
-                    let Some(out_dir) = &common.out else {
-                        return Ok(());
-                    };
-                    fs::create_dir_all(out_dir)?;
+                    let out_dir = artifacts_dir(&common, "pvt", dataset.as_ref())?;
                     let path = out_dir.join("pvt.jsonl");
                     fs::write(path, lines.join("\n"))?;
+                    let report = serde_json::json!({
+                        "epochs": lines.len(),
+                        "ekf": ekf
+                    });
+                    write_manifest(&common, "pvt", &profile, dataset.as_ref(), &report)?;
 
     Ok(())
 }
@@ -146,10 +169,7 @@ fn handle_experiment(command: GnssCommand) -> Result<()> {
     
                     let sweep_spec = parse_sweep(&sweep)?;
                     let runs = expand_sweep(&sweep_spec);
-                    let Some(out_dir) = &common.out else {
-                        bail!("--out is required for experiment");
-                    };
-                    fs::create_dir_all(out_dir)?;
+                    let out_dir = artifacts_dir(&common, "experiment", None)?;
     
                     let mut results = Vec::new();
                     for (idx, overrides) in runs.iter().enumerate() {
@@ -227,7 +247,7 @@ fn handle_experiment(command: GnssCommand) -> Result<()> {
                             rejected_count,
                             ms_per_epoch,
                         };
-                        write_experiment_run(out_dir, idx, &result, &obs, &solutions)?;
+                        write_experiment_run(&out_dir, idx, &result, &obs, &solutions)?;
                         results.push(result);
                     }
     
@@ -240,6 +260,7 @@ fn handle_experiment(command: GnssCommand) -> Result<()> {
                     if schema_path.exists() {
                         validate_json_schema(&schema_path, &summary_path, false)?;
                     }
+                    write_manifest(&common, "experiment", &profile, None, &summary)?;
 
     Ok(())
 }
@@ -254,6 +275,15 @@ fn handle_validatesidecar(command: GnssCommand) -> Result<()> {
                     if spec.is_some() {
                         println!("sidecar ok: {}", sidecar.display());
                     }
+                    let dataset = load_dataset(&common)?;
+                    let summary = serde_json::json!({ "sidecar": sidecar.display().to_string() });
+                    write_manifest(
+                        &common,
+                        "validate_sidecar",
+                        &ReceiverProfile::default(),
+                        dataset.as_ref(),
+                        &summary,
+                    )?;
 
     Ok(())
 }
@@ -305,6 +335,8 @@ fn handle_run(command: GnssCommand) -> Result<()> {
                             std::thread::sleep(std::time::Duration::from_secs_f64(dt));
                         }
                     }
+                    let report = serde_json::json!({ "epochs": epoch });
+                    write_manifest(&common, "run", &profile, dataset.as_ref(), &report)?;
 
     Ok(())
 }
