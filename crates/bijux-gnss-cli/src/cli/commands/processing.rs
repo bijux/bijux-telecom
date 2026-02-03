@@ -134,7 +134,7 @@ fn handle_experiment(command: GnssCommand) -> Result<()> {
     
                     let scenario_contents = fs::read_to_string(&scenario)
                         .with_context(|| format!("failed to read scenario {}", scenario.display()))?;
-                    let scenario_def: bijux_gnss_receiver::synthetic::SyntheticScenario =
+                    let scenario_def: bijux_gnss_receiver::sim::SyntheticScenario =
                         toml::from_str(&scenario_contents)?;
     
                     let sweep_spec = parse_sweep(&sweep)?;
@@ -156,7 +156,7 @@ fn handle_experiment(command: GnssCommand) -> Result<()> {
     
                         let config = run_profile.to_receiver_config();
                         let start = std::time::Instant::now();
-                        let frame = bijux_gnss_receiver::synthetic::generate_l1_ca_multi(
+                        let frame = bijux_gnss_receiver::sim::generate_l1_ca_multi(
                             &config,
                             &scenario_def,
                         );

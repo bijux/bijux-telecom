@@ -1,8 +1,3 @@
-include!("handlers/gnss_1.rs");
-include!("handlers/gnss_2.rs");
-include!("handlers/gnss_3.rs");
-include!("handlers/gnss_4.rs");
-
 fn run_command(command: GnssCommand) -> Result<()> {
     match command {
         cmd @ GnssCommand::CaCode { .. } => handle_cacode(cmd),

@@ -82,9 +82,9 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                     let mut baseline_quality_lines = Vec::new();
                     let mut fix_audit_lines = Vec::new();
                     let mut precision_lines = Vec::new();
-                    let mut fix_state = bijux_gnss_receiver::ambiguity::FixState::default();
-                    let fixer = bijux_gnss_receiver::ambiguity::NaiveFixer::new(
-                        bijux_gnss_receiver::ambiguity::FixPolicy::default(),
+                    let mut fix_state = bijux_gnss_receiver::rtk::FixState::default();
+                    let fixer = bijux_gnss_receiver::rtk::NaiveFixer::new(
+                        bijux_gnss_receiver::rtk::FixPolicy::default(),
                     );
                     let mut last_ref: Option<bijux_gnss_core::SigId> = None;
                     let mut ref_selector = bijux_gnss_receiver::rtk::RefSatSelector::new(5);
@@ -145,7 +145,7 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                             rover.t_rx_s,
                         );
     
-                        let float = bijux_gnss_receiver::ambiguity::FloatAmbiguitySolution {
+                        let float = bijux_gnss_receiver::rtk::FloatAmbiguitySolution {
                             ids: dd
                                 .iter()
                                 .map(|d| bijux_gnss_core::AmbiguityId {
