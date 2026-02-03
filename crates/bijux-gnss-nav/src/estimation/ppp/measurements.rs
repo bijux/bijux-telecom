@@ -1,3 +1,11 @@
+use bijux_gnss_core::{ObsEpoch, SatId, SignalBand};
+
+use crate::estimation::ekf::{MeasurementKind, MeasurementModel};
+use crate::{Corrections, Matrix};
+
+use super::config::SPEED_OF_LIGHT_MPS;
+use super::models::PppCodeMeasurement;
+
 impl MeasurementModel for PppCodeMeasurement {
     fn name(&self) -> &'static str {
         "ppp_code"
@@ -78,17 +86,17 @@ impl MeasurementModel for PppCodeMeasurement {
 }
 
 #[derive(Debug, Clone)]
-struct PppPhaseMeasurement {
-    z_cycles: f64,
-    sat_pos_m: [f64; 3],
-    sat_clock_s: f64,
-    sigma_cycles: f64,
-    iono_index: Option<usize>,
-    ztd_index: Option<usize>,
-    isb_index: Option<usize>,
-    ambiguity_index: Option<usize>,
-    corr: Corrections,
-    wavelength_m: f64,
+pub(crate) struct PppPhaseMeasurement {
+    pub(crate) z_cycles: f64,
+    pub(crate) sat_pos_m: [f64; 3],
+    pub(crate) sat_clock_s: f64,
+    pub(crate) sigma_cycles: f64,
+    pub(crate) iono_index: Option<usize>,
+    pub(crate) ztd_index: Option<usize>,
+    pub(crate) isb_index: Option<usize>,
+    pub(crate) ambiguity_index: Option<usize>,
+    pub(crate) corr: Corrections,
+    pub(crate) wavelength_m: f64,
 }
 
 impl MeasurementModel for PppPhaseMeasurement {
@@ -183,14 +191,14 @@ impl MeasurementModel for PppPhaseMeasurement {
 }
 
 #[derive(Debug, Clone)]
-struct PppIonoFreeCodeMeasurement {
-    z_m: f64,
-    sat_pos_m: [f64; 3],
-    sat_clock_s: f64,
-    sigma_m: f64,
-    ztd_index: Option<usize>,
-    isb_index: Option<usize>,
-    corr: Corrections,
+pub(crate) struct PppIonoFreeCodeMeasurement {
+    pub(crate) z_m: f64,
+    pub(crate) sat_pos_m: [f64; 3],
+    pub(crate) sat_clock_s: f64,
+    pub(crate) sigma_m: f64,
+    pub(crate) ztd_index: Option<usize>,
+    pub(crate) isb_index: Option<usize>,
+    pub(crate) corr: Corrections,
 }
 
 impl MeasurementModel for PppIonoFreeCodeMeasurement {
@@ -262,17 +270,17 @@ impl MeasurementModel for PppIonoFreeCodeMeasurement {
 }
 
 #[derive(Debug, Clone)]
-struct PppIonoFreePhaseMeasurement {
-    z_cycles: f64,
-    sat_pos_m: [f64; 3],
-    sat_clock_s: f64,
-    sigma_cycles: f64,
-    ztd_index: Option<usize>,
-    isb_index: Option<usize>,
-    ambiguity_index: Option<usize>,
-    f1_hz: f64,
-    f2_hz: f64,
-    corr: Corrections,
+pub(crate) struct PppIonoFreePhaseMeasurement {
+    pub(crate) z_cycles: f64,
+    pub(crate) sat_pos_m: [f64; 3],
+    pub(crate) sat_clock_s: f64,
+    pub(crate) sigma_cycles: f64,
+    pub(crate) ztd_index: Option<usize>,
+    pub(crate) isb_index: Option<usize>,
+    pub(crate) ambiguity_index: Option<usize>,
+    pub(crate) f1_hz: f64,
+    pub(crate) f2_hz: f64,
+    pub(crate) corr: Corrections,
 }
 
 impl MeasurementModel for PppIonoFreePhaseMeasurement {
@@ -357,7 +365,7 @@ impl MeasurementModel for PppIonoFreePhaseMeasurement {
     }
 }
 
-fn iono_free_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<(f64, f64, f64, f64)> {
+pub(crate) fn iono_free_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<(f64, f64, f64, f64)> {
     let mut l1 = None;
     let mut l2 = None;
     for s in &obs.sats {
@@ -386,7 +394,7 @@ fn iono_free_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<(f64, f64, f64, f64)
     Some((if_code, if_phase, f1, f2))
 }
 
-fn wide_lane_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<(f64, f64)> {
+pub(crate) fn wide_lane_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<(f64, f64)> {
     let mut l1 = None;
     let mut l2 = None;
     for s in &obs.sats {
@@ -413,7 +421,7 @@ fn wide_lane_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<(f64, f64)> {
     Some((wl_cycles, variance))
 }
 
-fn ratio_fix(float: f64, variance: f64) -> (f64, i64) {
+pub(crate) fn ratio_fix(float: f64, variance: f64) -> (f64, i64) {
     let n0 = float.round() as i64;
     let n1 = if float > n0 as f64 { n0 + 1 } else { n0 - 1 };
     let cost0 = ((float - n0 as f64).powi(2)) / variance.max(1e-6);

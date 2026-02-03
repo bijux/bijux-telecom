@@ -1,3 +1,50 @@
+use serde::{Deserialize, Serialize};
+
+use bijux_gnss_core::SatId;
+
+const OMEGA_E_DOT: f64 = 7.292_115_146_7e-5;
+const MU: f64 = 3.986_005e14;
+const RELATIVISTIC_F: f64 = -4.442_807_633e-10;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GpsEphemeris {
+    pub sat: SatId,
+    pub iodc: u16,
+    pub iode: u8,
+    pub week: u16,
+    pub toe_s: f64,
+    pub toc_s: f64,
+    pub sqrt_a: f64,
+    pub e: f64,
+    pub i0: f64,
+    pub idot: f64,
+    pub omega0: f64,
+    pub omegadot: f64,
+    pub w: f64,
+    pub m0: f64,
+    pub delta_n: f64,
+    pub cuc: f64,
+    pub cus: f64,
+    pub crc: f64,
+    pub crs: f64,
+    pub cic: f64,
+    pub cis: f64,
+    pub af0: f64,
+    pub af1: f64,
+    pub af2: f64,
+    pub tgd: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GpsSatState {
+    pub x_m: f64,
+    pub y_m: f64,
+    pub z_m: f64,
+    pub clock_bias_s: f64,
+    pub clock_drift_s: f64,
+    pub relativistic_s: f64,
+}
+
 pub fn sat_state_gps_l1ca(eph: &GpsEphemeris, t_tx_s: f64, tau_s: f64) -> GpsSatState {
     let a = eph.sqrt_a * eph.sqrt_a;
     let n0 = (MU / (a * a * a)).sqrt();
@@ -82,4 +129,3 @@ fn wrap_time(mut t: f64) -> f64 {
     }
     t
 }
-

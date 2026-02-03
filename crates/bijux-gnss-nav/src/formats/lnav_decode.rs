@@ -1,4 +1,7 @@
-fn parse_subframe1(words: &[GpsWord]) -> Option<EphemerisPart> {
+use crate::{GpsEphemeris, GpsWord};
+use bijux_gnss_core::{Constellation, SatId};
+
+pub(crate) fn parse_subframe1(words: &[GpsWord]) -> Option<EphemerisPart> {
     if words.len() < 10 {
         return None;
     }
@@ -46,7 +49,7 @@ fn parse_subframe1(words: &[GpsWord]) -> Option<EphemerisPart> {
     })
 }
 
-fn parse_subframe2(words: &[GpsWord]) -> Option<EphemerisPart> {
+pub(crate) fn parse_subframe2(words: &[GpsWord]) -> Option<EphemerisPart> {
     if words.len() < 10 {
         return None;
     }
@@ -99,7 +102,7 @@ fn parse_subframe2(words: &[GpsWord]) -> Option<EphemerisPart> {
     })
 }
 
-fn parse_subframe3(words: &[GpsWord]) -> Option<EphemerisPart> {
+pub(crate) fn parse_subframe3(words: &[GpsWord]) -> Option<EphemerisPart> {
     if words.len() < 10 {
         return None;
     }
@@ -156,7 +159,7 @@ fn parse_subframe3(words: &[GpsWord]) -> Option<EphemerisPart> {
     })
 }
 
-fn get_bits(data: u32, start: usize, len: usize) -> u32 {
+pub(crate) fn get_bits(data: u32, start: usize, len: usize) -> u32 {
     let shift = 24 - (start - 1) - len;
     (data >> shift) & ((1_u32 << len) - 1)
 }
@@ -171,7 +174,7 @@ fn signed(value: u32, bits: usize) -> i32 {
 }
 
 #[derive(Debug, Default, Clone)]
-struct EphemerisPart {
+pub(crate) struct EphemerisPart {
     iodc: Option<u16>,
     iode: Option<u8>,
     week: Option<u16>,
@@ -199,7 +202,7 @@ struct EphemerisPart {
 }
 
 #[derive(Debug, Default, Clone)]
-struct EphemerisBuilder {
+pub(crate) struct EphemerisBuilder {
     prn: u8,
     iodc: Option<u16>,
     iode: Option<u8>,
@@ -228,7 +231,7 @@ struct EphemerisBuilder {
 }
 
 impl EphemerisBuilder {
-    fn merge(&mut self, part: EphemerisPart) {
+    pub(crate) fn merge(&mut self, part: EphemerisPart) {
         if let Some(value) = part.iodc {
             self.iodc = Some(value);
         }
@@ -303,7 +306,7 @@ impl EphemerisBuilder {
         }
     }
 
-    fn try_build(&self) -> Option<GpsEphemeris> {
+    pub(crate) fn try_build(&self) -> Option<GpsEphemeris> {
         Some(GpsEphemeris {
             sat: SatId {
                 constellation: Constellation::Gps,
@@ -400,4 +403,3 @@ pub fn decode_rawephem_hex(prn: u8, sub1: &str, sub2: &str, sub3: &str) -> Optio
     builder.merge(parse_subframe3(&words3)?);
     builder.try_build()
 }
-

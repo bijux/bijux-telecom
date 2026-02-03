@@ -1,3 +1,15 @@
+use crate::Matrix;
+use bijux_gnss_core::NavHealthEvent;
+
+#[derive(Debug, Clone)]
+pub struct Ekf {
+    pub x: Vec<f64>,
+    pub p: Matrix,
+    pub config: EkfConfig,
+    pub health: EkfHealth,
+    pub labels: Vec<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct EkfConfig {
     pub gating_chi2_code: Option<f64>,
@@ -35,4 +47,3 @@ pub enum MeasurementKind {
     Doppler,
     Phase,
 }
-

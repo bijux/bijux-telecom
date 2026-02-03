@@ -1,4 +1,6 @@
-fn estimate_sigma(ekf: &Ekf, pos_idx: &[usize; 3]) -> (Option<f64>, Option<f64>) {
+use crate::Ekf;
+
+pub(crate) fn estimate_sigma(ekf: &Ekf, pos_idx: &[usize; 3]) -> (Option<f64>, Option<f64>) {
     if ekf.p.rows() <= pos_idx[2] {
         return (None, None);
     }

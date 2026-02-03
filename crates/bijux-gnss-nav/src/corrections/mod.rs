@@ -1,3 +1,9 @@
+mod atmosphere;
+mod biases;
+
+pub use atmosphere::*;
+pub use biases::*;
+
 #[derive(Debug, Clone)]
 pub struct CorrectionContext;
 

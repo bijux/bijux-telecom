@@ -1,4 +1,4 @@
-use crate::gps::{sat_state_gps_l1ca, GpsEphemeris, GpsSatState};
+use crate::{sat_state_gps_l1ca, GpsEphemeris, GpsSatState};
 use bijux_gnss_core::SatId;
 
 #[derive(Debug, Clone)]
@@ -268,7 +268,7 @@ fn huber_weights(residuals: &[f64], k: f64) -> Vec<f64> {
         .collect()
 }
 
-fn invert_4x4(a: [[f64; 4]; 4]) -> Option<[[f64; 4]; 4]> {
+pub(crate) fn invert_4x4(a: [[f64; 4]; 4]) -> Option<[[f64; 4]; 4]> {
     let mut m = [[0.0_f64; 8]; 4];
     for i in 0..4 {
         for j in 0..4 {
@@ -432,4 +432,3 @@ pub fn weight_from_cn0_elev(cn0_dbhz: f64, elev_deg: f64, config: WeightingConfi
     let w_cn0 = (cn0_dbhz / config.cn0_ref_dbhz).max(config.min_weight);
     (w_elev * w_cn0).max(config.min_weight)
 }
-

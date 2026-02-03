@@ -1,10 +1,14 @@
-struct PppProcessModel {
-    pos: [usize; 3],
-    vel: [usize; 3],
-    clock_bias: usize,
-    clock_drift: usize,
-    ztd: usize,
-    process: PppProcessNoise,
+use super::config::PppProcessNoise;
+use crate::estimation::ekf::StateModel;
+use crate::{Corrections, Matrix};
+
+pub(crate) struct PppProcessModel {
+    pub(crate) pos: [usize; 3],
+    pub(crate) vel: [usize; 3],
+    pub(crate) clock_bias: usize,
+    pub(crate) clock_drift: usize,
+    pub(crate) ztd: usize,
+    pub(crate) process: PppProcessNoise,
 }
 
 impl StateModel for PppProcessModel {
@@ -42,14 +46,13 @@ impl StateModel for PppProcessModel {
 }
 
 #[derive(Debug, Clone)]
-struct PppCodeMeasurement {
-    z_m: f64,
-    sat_pos_m: [f64; 3],
-    sat_clock_s: f64,
-    sigma_m: f64,
-    iono_index: Option<usize>,
-    ztd_index: Option<usize>,
-    isb_index: Option<usize>,
-    corr: Corrections,
+pub(crate) struct PppCodeMeasurement {
+    pub(crate) z_m: f64,
+    pub(crate) sat_pos_m: [f64; 3],
+    pub(crate) sat_clock_s: f64,
+    pub(crate) sigma_m: f64,
+    pub(crate) iono_index: Option<usize>,
+    pub(crate) ztd_index: Option<usize>,
+    pub(crate) isb_index: Option<usize>,
+    pub(crate) corr: Corrections,
 }
-

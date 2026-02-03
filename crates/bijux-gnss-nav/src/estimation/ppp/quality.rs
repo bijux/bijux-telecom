@@ -1,5 +1,12 @@
+use bijux_gnss_core::{ObsEpoch, ObsSatellite, SatId};
+
+use super::config::{PppFilter, WlAmbiguity};
+use super::measurements::{ratio_fix, wide_lane_from_obs};
+use crate::estimation::ekf::MeasurementModel;
+use crate::{Ekf, Matrix, PppArMode, PppCheckpoint};
+
 impl PppFilter {
-    fn update_convergence(
+    pub(crate) fn update_convergence(
         &mut self,
         t_rx_s: f64,
         pos: [f64; 3],
@@ -70,7 +77,7 @@ impl PppFilter {
         }
     }
 
-    fn adapt_process_noise(&mut self) {
+    pub(crate) fn adapt_process_noise(&mut self) {
         let rms = self.ekf.health.innovation_rms;
         if rms > 50.0 {
             self.config.process_noise.clock_drift_s *= 1.2;
@@ -87,7 +94,7 @@ impl PppFilter {
         }
     }
 
-    fn check_consistency(&mut self) {
+    pub(crate) fn check_consistency(&mut self) {
         let nis = if let Some(pred) = self.ekf.health.predicted_variance {
             if pred > 0.0 {
                 Some(self.ekf.health.innovation_rms.powi(2) / pred)
@@ -118,7 +125,7 @@ impl PppFilter {
         }
     }
 
-    fn prefit_ok<M: MeasurementModel>(&self, z: f64, model: &M, gate: f64) -> bool {
+    pub(crate) fn prefit_ok<M: MeasurementModel>(&self, z: f64, model: &M, gate: f64) -> bool {
         let mut h = vec![0.0; model.measurement_dim()];
         model.h(&self.ekf.x, &mut h);
         let residual = (z - h[0]).abs();
@@ -186,7 +193,7 @@ impl PppFilter {
         self.last_pos = ck.last_pos;
     }
 
-    fn update_wide_lane(&mut self, obs: &ObsEpoch, sats: &[&ObsSatellite]) {
+    pub(crate) fn update_wide_lane(&mut self, obs: &ObsEpoch, sats: &[&ObsSatellite]) {
         if self.config.ar_mode == PppArMode::FloatPpp {
             return;
         }
@@ -209,7 +216,7 @@ impl PppFilter {
         }
     }
 
-    fn try_fix_wide_lane(&mut self, _obs: &ObsEpoch, sats: &[&ObsSatellite]) -> usize {
+    pub(crate) fn try_fix_wide_lane(&mut self, _obs: &ObsEpoch, sats: &[&ObsSatellite]) -> usize {
         if self.config.ar_mode == PppArMode::FloatPpp {
             return 0;
         }

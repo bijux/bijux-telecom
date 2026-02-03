@@ -1,51 +1,9 @@
-
-
-use bijux_gnss_core::{Constellation, SatId};
-use serde::{Deserialize, Serialize};
+use crate::formats::lnav_decode::{
+    get_bits, parse_subframe1, parse_subframe2, parse_subframe3, EphemerisBuilder, EphemerisPart,
+};
+use crate::GpsEphemeris;
 
 const GPS_L1CA_PREAMBLE: [u8; 8] = [1, 0, 0, 0, 1, 0, 1, 1];
-const OMEGA_E_DOT: f64 = 7.292_115_146_7e-5;
-const MU: f64 = 3.986_005e14;
-const RELATIVISTIC_F: f64 = -4.442_807_633e-10;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GpsEphemeris {
-    pub sat: SatId,
-    pub iodc: u16,
-    pub iode: u8,
-    pub week: u16,
-    pub toe_s: f64,
-    pub toc_s: f64,
-    pub sqrt_a: f64,
-    pub e: f64,
-    pub i0: f64,
-    pub idot: f64,
-    pub omega0: f64,
-    pub omegadot: f64,
-    pub w: f64,
-    pub m0: f64,
-    pub delta_n: f64,
-    pub cuc: f64,
-    pub cus: f64,
-    pub crc: f64,
-    pub crs: f64,
-    pub cic: f64,
-    pub cis: f64,
-    pub af0: f64,
-    pub af1: f64,
-    pub af2: f64,
-    pub tgd: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GpsSatState {
-    pub x_m: f64,
-    pub y_m: f64,
-    pub z_m: f64,
-    pub clock_bias_s: f64,
-    pub clock_drift_s: f64,
-    pub relativistic_s: f64,
-}
 
 #[derive(Debug, Clone)]
 pub struct BitSyncResult {
@@ -166,7 +124,11 @@ pub fn decode_words(bits: &[i8]) -> Vec<GpsWord> {
     words
 }
 
-fn compute_parity(data_bits: &[u8], d29_star: u8, d30_star: u8) -> (u8, u8, u8, u8, u8, u8) {
+pub(crate) fn compute_parity(
+    data_bits: &[u8],
+    d29_star: u8,
+    d30_star: u8,
+) -> (u8, u8, u8, u8, u8, u8) {
     let d = |i: usize| -> u8 { data_bits[i - 1] };
     let p1 = d(1)
         ^ d(2)
@@ -366,4 +328,3 @@ fn parse_ephemeris(words: &[GpsWord], subframe_id: u8) -> Option<EphemerisPart> 
         _ => None,
     }
 }
-
