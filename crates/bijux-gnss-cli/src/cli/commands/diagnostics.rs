@@ -354,6 +354,66 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
     Ok(())
 }
 
+fn handle_diagnostics(command: GnssCommand) -> Result<()> {
+    let GnssCommand::Diagnostics { command } = command else {
+        bail!("invalid command for handler");
+    };
+
+    match command {
+        DiagnosticsCommand::Summarize {
+            common,
+            run_dir,
+            top,
+        } => {
+            set_trace_dir(&common);
+            let events = summarize_run_diagnostics(&run_dir)?;
+            let summary = bijux_gnss_core::aggregate_diagnostics(&events);
+            let mut entries = summary.entries.clone();
+            entries.sort_by(|a, b| b.count.cmp(&a.count));
+            println!("Diagnostics summary (top {}):", top);
+            for entry in entries.into_iter().take(top.max(1)) {
+                println!(
+                    "{}\t{:?}\tcount={}\tfirst={:?}\tlast={:?}",
+                    entry.code, entry.severity, entry.count, entry.first_epoch, entry.last_epoch
+                );
+            }
+            let report = serde_json::json!({
+                "run_dir": run_dir.display().to_string(),
+                "total": summary.total,
+                "top": top,
+            });
+            write_manifest(&common, "diagnostics_summarize", &ReceiverProfile::default(), None, &report)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
+    let artifacts_dir = run_dir.join("artifacts");
+    if !artifacts_dir.exists() {
+        bail!("artifacts directory not found: {}", artifacts_dir.display());
+    }
+    let mut events = Vec::new();
+    for entry in fs::read_dir(&artifacts_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(ext) = path.extension().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if ext != "json" && ext != "jsonl" {
+            continue;
+        }
+        if let Ok(mut file_events) = validate_artifact_file(&path, None, false) {
+            events.append(&mut file_events);
+        }
+    }
+    Ok(events)
+}
+
 fn handle_doctor(command: GnssCommand) -> Result<()> {
     let GnssCommand::Doctor { common, file } = command else {
         bail!("invalid command for handler");

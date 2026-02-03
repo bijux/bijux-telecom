@@ -33,6 +33,10 @@ fn handle_artifact(command: GnssCommand) -> Result<()> {
                 &summary,
             )?;
         }
+        ArtifactCommand::Explain { common, file } => {
+            set_trace_dir(&common);
+            explain_artifact(&common, &file)?;
+        }
         ArtifactCommand::Convert {
             common,
             input,
@@ -55,6 +59,88 @@ fn handle_artifact(command: GnssCommand) -> Result<()> {
             )?;
         }
     }
+    Ok(())
+}
+
+fn explain_artifact(common: &CommonArgs, path: &Path) -> Result<()> {
+    let data = fs::read_to_string(path)?;
+    let mut header: Option<ArtifactHeaderV1> = None;
+    let mut kind = detect_kind_from_path(path).unwrap_or_else(|| "unknown".to_string());
+    let mut line_count = 0usize;
+
+    if data.trim_start().starts_with('{') && !data.contains('\n') {
+        if let Ok(wrapped) = serde_json::from_str::<GpsEphemerisV1>(&data) {
+            header = Some(wrapped.header);
+            kind = "ephemeris".to_string();
+            line_count = wrapped.ephemerides.len();
+        } else if let Ok(wrapped) = serde_json::from_str::<serde_json::Value>(&data) {
+            if let Some(value) = wrapped.get("header") {
+                header = Some(serde_json::from_value(value.clone())?);
+            }
+        }
+    } else {
+        for line in data.lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            if header.is_none() {
+                let value: serde_json::Value = serde_json::from_str(line)?;
+                if let Some(value) = value.get("header") {
+                    header = Some(serde_json::from_value(value.clone())?);
+                }
+            }
+            line_count += 1;
+        }
+    }
+
+    let header = header.ok_or_else(|| eyre!("artifact header not found"))?;
+    println!("artifact: {}", path.display());
+    println!("kind: {kind}");
+    println!("schema_version: {}", header.schema_version);
+    println!("created_at_unix_ms: {}", header.created_at_unix_ms);
+    println!("git_sha: {}", header.git_sha);
+    println!("git_dirty: {}", header.git_dirty);
+    println!("config_hash: {}", header.config_hash);
+    println!(
+        "dataset_id: {}",
+        header.dataset_id.as_deref().unwrap_or("none")
+    );
+    println!("toolchain: {}", header.toolchain);
+    println!("features: {}", header.features.join(", "));
+    println!("deterministic: {}", header.deterministic);
+    if line_count > 0 {
+        println!("entries: {line_count}");
+    }
+
+    let events = validate_artifact_file(path, Some(&kind), false)?;
+    let summary = bijux_gnss_core::aggregate_diagnostics(&events);
+    let mut error_count = 0usize;
+    let mut warn_count = 0usize;
+    for entry in &summary.entries {
+        match entry.severity {
+            DiagnosticSeverity::Error => error_count += entry.count,
+            DiagnosticSeverity::Warning => warn_count += entry.count,
+            DiagnosticSeverity::Info => {}
+        }
+    }
+    println!(
+        "diagnostics: total={} error={} warn={}",
+        summary.total, error_count, warn_count
+    );
+
+    write_manifest(
+        common,
+        "artifact_explain",
+        &ReceiverProfile::default(),
+        load_dataset(common)?.as_ref(),
+        &serde_json::json!({
+            "file": path.display().to_string(),
+            "kind": kind,
+            "schema_version": header.schema_version,
+            "diagnostics_total": summary.total
+        }),
+    )?;
+
     Ok(())
 }
 

@@ -1,4 +1,5 @@
 include!("cli/mod.rs");
+include!("cli/args_commands.rs");
 include!("cli/args.rs");
 include!("cli/report.rs");
 include!("cli/output.rs");
