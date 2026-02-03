@@ -1,3 +1,8 @@
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+use crate::{Constellation, Epoch, ObsSatellite, SatId, SigId, SignalBand};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObsEpoch {
     pub t_rx_s: f64,
@@ -288,7 +293,7 @@ pub struct NavError {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::{utc_to_gps, LeapSeconds, UtcTime};
 
     #[test]
     fn leap_second_table_validates() {
