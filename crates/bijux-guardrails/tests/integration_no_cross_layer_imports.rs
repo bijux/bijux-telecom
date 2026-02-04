@@ -32,6 +32,17 @@ fn no_cross_layer_imports() {
         "receiver should not use nav formats internals: {:?}",
         receiver_formats
     );
+
+    let receiver_obs_writers = find_string(&receiver_src, "ObsEpoch {");
+    let receiver_obs_writers = receiver_obs_writers
+        .into_iter()
+        .filter(|path| !path.ends_with("stages/observations.rs"))
+        .collect::<Vec<_>>();
+    assert!(
+        receiver_obs_writers.is_empty(),
+        "only observations builder may construct ObsEpoch: {:?}",
+        receiver_obs_writers
+    );
 }
 
 fn find_string(root: &Path, needle: &str) -> Vec<String> {

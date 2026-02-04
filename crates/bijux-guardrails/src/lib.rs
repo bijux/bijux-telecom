@@ -139,6 +139,7 @@ pub fn check(crate_root: &Path, config: &GuardrailConfig) -> Result<()> {
     check_empty_modules(&files)?;
     check_mod_reexports_only(&files)?;
     check_pub_items(&files, config)?;
+    check_pub_items_outside_api(&files)?;
     check_forbidden_filenames(&files)?;
     check_pub_use_locations_if_enabled(&files, config)?;
     if config.forbid_pub_use_spam {
@@ -368,6 +369,28 @@ fn check_pub_items(files: &[PathBuf], config: &GuardrailConfig) -> Result<()> {
                 count,
                 config.max_pub_items_per_file
             );
+        }
+    }
+    Ok(())
+}
+
+fn check_pub_items_outside_api(files: &[PathBuf]) -> Result<()> {
+    let pub_item_re = Regex::new(r"^\s*pub\s+(struct|enum|fn|type|trait|const|static)\b")?;
+    for path in files {
+        let is_api = path.file_name().and_then(|s| s.to_str()) == Some("api.rs");
+        let is_lib = path.file_name().and_then(|s| s.to_str()) == Some("lib.rs");
+        let content = fs::read_to_string(path)?;
+        for (idx, line) in content.lines().enumerate() {
+            if !pub_item_re.is_match(line) {
+                continue;
+            }
+            if is_api {
+                continue;
+            }
+            if is_lib && line.contains("pub use") {
+                continue;
+            }
+            bail!("pub item outside api.rs at {}:{}", path.display(), idx + 1);
         }
     }
     Ok(())
