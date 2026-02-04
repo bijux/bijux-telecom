@@ -26,6 +26,12 @@ fn no_cross_layer_imports() {
         "receiver should not use nav internals: {:?}",
         receiver_bad
     );
+    let receiver_formats = find_string(&receiver_src, "bijux_gnss_nav::formats");
+    assert!(
+        receiver_formats.is_empty(),
+        "receiver should not use nav formats internals: {:?}",
+        receiver_formats
+    );
 }
 
 fn find_string(root: &Path, needle: &str) -> Vec<String> {

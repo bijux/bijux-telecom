@@ -26,6 +26,12 @@ jobs:
           fi
       - name: Cargo make (ci)
         run: cargo make ci
+      - name: Rustdoc warnings as errors
+        run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+      - name: Semver checks (core/infra)
+        run: |
+          cargo semver-checks check-release -p bijux-gnss-core
+          cargo semver-checks check-release -p bijux-gnss-infra
       - name: Cargo deny
         uses: EmbarkStudios/cargo-deny-action@v1
         with:
