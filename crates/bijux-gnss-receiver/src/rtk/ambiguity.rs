@@ -220,6 +220,7 @@ pub fn select_partial_fix(
     }
 }
 
+#[allow(dead_code)]
 pub trait AmbiguityFixer {
     fn fix(&self, float: &FloatAmbiguitySolution) -> AmbiguityFixResult;
 }
@@ -246,6 +247,7 @@ impl Default for FixPolicy {
     }
 }
 
+#[allow(dead_code)]
 pub struct DummyFixer;
 
 impl AmbiguityFixer for DummyFixer {

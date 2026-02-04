@@ -14,6 +14,7 @@ use serde::Serialize;
 use crate::stages::tracking::ChannelState;
 use bijux_gnss_core::api::{DiagnosticEvent, SatId};
 
+#[cfg(feature = "tracing")]
 fn run_id() -> String {
     std::env::var("BIJUX_RUN_ID").unwrap_or_else(|_| "unknown".to_string())
 }
