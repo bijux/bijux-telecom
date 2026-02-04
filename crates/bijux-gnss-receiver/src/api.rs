@@ -97,6 +97,11 @@ impl Receiver {
             Ok(Some(frame)) => frame,
             Ok(None) => return Ok(RunArtifacts::default()),
             Err(err) => {
+                crate::runtime::diagnostics::dump_on_error(
+                    &format!("input error: {err}"),
+                    None,
+                    None,
+                );
                 return Err(ReceiverError::Input(bijux_gnss_core::api::InputError {
                     message: err.to_string(),
                 }))
@@ -113,18 +118,19 @@ impl Receiver {
         let acquisitions = acquisition.run_fft(&frame, &sats);
 
         let tracking = crate::stages::tracking::Tracking::new(self.config.clone());
-        let _tracking_results = tracking.track_from_acquisition(
+        let tracking_results = tracking.track_from_acquisition(
             &frame,
             &acquisitions,
             bijux_gnss_core::api::SignalBand::L1,
         );
-
-        Ok(RunArtifacts {
+        let artifacts = RunArtifacts {
             acquisitions,
-            tracking: Vec::new(),
+            tracking: tracking_results,
             observations: Vec::new(),
             navigation: Vec::new(),
-        })
+        };
+        crate::runtime::metrics::write_metrics_summary(&artifacts);
+        Ok(artifacts)
     }
 
     /// Borrow the receiver configuration.
