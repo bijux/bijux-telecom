@@ -226,6 +226,36 @@ fn ppp_wl_fix_records_event() {
 }
 
 #[test]
+fn golden_nav_solution_is_stable() {
+    let mut ppp = PppFilter::new(PppConfig::default());
+    let ephs = vec![make_eph(1), make_eph(2), make_eph(3), make_eph(4)];
+    let products = BroadcastProductsProvider::new(ephs.clone());
+    let mut last = None;
+    let mut stable_count = 0;
+    for idx in 0..5 {
+        let epoch = make_obs(idx + 1, idx as f64 * 0.001, 1);
+        let sol = ppp.solve_epoch(&epoch, &ephs, &products);
+        if let Some(sol) = sol {
+            if let Some(prev) = last.take() {
+                let dx = (sol.ecef_x_m - prev.ecef_x_m).abs();
+                let dy = (sol.ecef_y_m - prev.ecef_y_m).abs();
+                let dz = (sol.ecef_z_m - prev.ecef_z_m).abs();
+                assert!(
+                    dx < 50_000.0 && dy < 50_000.0 && dz < 50_000.0,
+                    "solution drift too large: {dx},{dy},{dz}"
+                );
+                stable_count += 1;
+            }
+            last = Some(sol);
+        }
+    }
+    assert!(
+        stable_count >= 2,
+        "expected at least 2 stable solution deltas, got {stable_count}"
+    );
+}
+
+#[test]
 fn ppp_iono_storm_triggers_residual_gate() {
     let cfg = PppConfig {
         residual_gate_m: 1.0,

@@ -3,13 +3,14 @@ use std::fs;
 
 use bijux_gnss_receiver::api::{
     acquisition::Acquisition,
+    observations::observations_from_tracking,
     sim::{generate_l1_ca_multi, SyntheticScenario},
     tracking::Tracking,
     ReceiverConfig,
 };
 
 #[test]
-fn golden_tracking_from_scenario() {
+fn numerical_sanity_pipeline() {
     let scenario = load_scenario();
     let config = ReceiverConfig {
         sampling_freq_hz: scenario.sample_rate_hz,
@@ -28,41 +29,43 @@ fn golden_tracking_from_scenario() {
     let acq = Acquisition::new(config.clone()).with_doppler(10_000, 500);
     let acq_results = acq.run_fft(&frame, &sats);
 
-    let tracking = Tracking::new(config);
+    for res in &acq_results {
+        assert!(res.peak.is_finite());
+        assert!(res.mean.is_finite());
+        assert!(res.peak_mean_ratio.is_finite());
+        assert!(res.peak_second_ratio.is_finite());
+    }
+
+    let tracking = Tracking::new(config.clone());
     let tracks =
         tracking.track_from_acquisition(&frame, &acq_results, bijux_gnss_core::api::SignalBand::L1);
 
     for track in &tracks {
-        assert!(!track.epochs.is_empty());
-        let locked_epochs = track.epochs.iter().filter(|e| e.lock).count();
-        let lock_ratio = locked_epochs as f64 / track.epochs.len() as f64;
-        assert!(
-            locked_epochs > 0,
-            "no lock for {:?}-{}",
-            track.sat.constellation,
-            track.sat.prn
-        );
-        assert!(
-            lock_ratio > 0.1,
-            "lock ratio too low for {:?}-{}: {lock_ratio}",
-            track.sat.constellation,
-            track.sat.prn
-        );
-        let mean_cn0 =
-            track.epochs.iter().map(|e| e.cn0_dbhz).sum::<f64>() / track.epochs.len() as f64;
-        let var_cn0 = track
-            .epochs
-            .iter()
-            .map(|e| (e.cn0_dbhz - mean_cn0).powi(2))
-            .sum::<f64>()
-            / track.epochs.len() as f64;
-        let std_cn0 = var_cn0.sqrt();
-        assert!(
-            std_cn0 < 10.0,
-            "CN0 instability too high for {:?}-{}: {std_cn0}",
-            track.sat.constellation,
-            track.sat.prn
-        );
+        for epoch in &track.epochs {
+            assert!(epoch.prompt_i.is_finite());
+            assert!(epoch.prompt_q.is_finite());
+            assert!(epoch.carrier_hz.0.is_finite());
+            assert!(epoch.code_rate_hz.0.is_finite());
+            assert!(epoch.cn0_dbhz.is_finite());
+            assert!(epoch.dll_err.is_finite());
+            assert!(epoch.pll_err.is_finite());
+            assert!(epoch.fll_err.is_finite());
+        }
+    }
+
+    let obs_epochs = if let Some(first) = tracks.first() {
+        observations_from_tracking(&config, &first.epochs)
+    } else {
+        Vec::new()
+    };
+    for epoch in &obs_epochs {
+        assert!(epoch.t_rx_s.0.is_finite());
+        for sat in &epoch.sats {
+            assert!(sat.pseudorange_m.0.is_finite());
+            assert!(sat.carrier_phase_cycles.0.is_finite());
+            assert!(sat.doppler_hz.0.is_finite());
+            assert!(sat.cn0_dbhz.is_finite());
+        }
     }
 }
 

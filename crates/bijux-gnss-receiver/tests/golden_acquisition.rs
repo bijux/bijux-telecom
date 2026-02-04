@@ -34,6 +34,16 @@ fn golden_acquisition_from_scenario() {
             doppler_err <= doppler_step_hz * 5.0,
             "doppler error too large: {doppler_err}"
         );
+        assert!(
+            res.peak_mean_ratio >= 2.0,
+            "peak/mean ratio too low: {}",
+            res.peak_mean_ratio
+        );
+        assert!(
+            res.peak_second_ratio >= 1.1,
+            "peak/second ratio too low: {}",
+            res.peak_second_ratio
+        );
     }
 }
 
