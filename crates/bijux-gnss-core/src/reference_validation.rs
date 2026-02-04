@@ -71,29 +71,6 @@ pub struct SolutionConsistencyReport {
     pub warnings: Vec<String>,
 }
 
-/// Time consistency report for tracking/obs epochs.
-#[derive(Debug, Serialize)]
-pub struct TimeConsistencyReport {
-    /// Number of channels inspected.
-    pub channels: usize,
-    /// Number of epochs checked.
-    pub epochs_checked: usize,
-    /// Epochs that went backwards.
-    pub epoch_backward: usize,
-    /// Epoch gaps detected.
-    pub epoch_gaps: usize,
-    /// Sample index went backwards.
-    pub sample_backward: usize,
-    /// Sample cadence mismatch count.
-    pub sample_step_mismatch: usize,
-    /// Expected sample step based on configuration.
-    pub expected_step: Option<u64>,
-    /// Observed sample step mean (if inferred).
-    pub observed_step_mean: Option<f64>,
-    /// Warning messages.
-    pub warnings: Vec<String>,
-}
-
 /// Convert reference epoch to ECEF coordinates.
 pub fn reference_ecef(r: &ValidationReferenceEpoch) -> (f64, f64, f64) {
     if let (Some(x), Some(y), Some(z)) = (r.ecef_x_m, r.ecef_y_m, r.ecef_z_m) {
@@ -105,7 +82,7 @@ pub fn reference_ecef(r: &ValidationReferenceEpoch) -> (f64, f64, f64) {
 
 /// Align reference epochs by time to solution epochs.
 pub fn align_reference_by_time(
-    solutions: &[bijux_gnss_core::NavSolutionEpoch],
+    solutions: &[crate::api::NavSolutionEpoch],
     reference: &[ValidationReferenceEpoch],
     policy: ReferenceAlign,
 ) -> Vec<ValidationReferenceEpoch> {
@@ -114,7 +91,7 @@ pub fn align_reference_by_time(
         .iter()
         .filter_map(|r| r.t_rx_s.map(|t| (t, r)))
         .collect();
-    ref_sorted.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    ref_sorted.sort_by(|a, b| a.0.total_cmp(&b.0));
     for sol in solutions {
         let t = sol.t_rx_s.0;
         let mut best = None;
@@ -170,7 +147,7 @@ pub fn align_reference_by_time(
 
 /// Compare solutions to a reference trajectory.
 pub fn reference_compare(
-    solutions: &[bijux_gnss_core::NavSolutionEpoch],
+    solutions: &[crate::api::NavSolutionEpoch],
     reference: &[ValidationReferenceEpoch],
 ) -> (Vec<String>, ReferenceCompareStats) {
     let mut ref_map = std::collections::BTreeMap::new();
@@ -219,13 +196,13 @@ pub fn reference_compare(
 
 /// Check solution consistency for obvious anomalies.
 pub fn check_solution_consistency(
-    solutions: &[bijux_gnss_core::NavSolutionEpoch],
+    solutions: &[crate::api::NavSolutionEpoch],
 ) -> SolutionConsistencyReport {
     let mut position_jump_count = 0;
     let mut clock_jump_count = 0;
     let mut pdop_spike_count = 0;
     let mut warnings = Vec::new();
-    let mut prev: Option<&bijux_gnss_core::NavSolutionEpoch> = None;
+    let mut prev: Option<&crate::api::NavSolutionEpoch> = None;
     let mut prev_pdop: Option<f64> = None;
     for sol in solutions {
         if let Some(prev_sol) = prev {
@@ -262,90 +239,6 @@ pub fn check_solution_consistency(
         position_jump_count,
         clock_jump_count,
         pdop_spike_count,
-        warnings,
-    }
-}
-
-/// Check time consistency in tracking epochs.
-pub fn check_time_consistency(
-    tracks: &[bijux_gnss_receiver::tracking::TrackingResult],
-    sample_rate_hz: f64,
-) -> TimeConsistencyReport {
-    let mut epoch_backward = 0;
-    let mut epoch_gaps = 0;
-    let mut sample_backward = 0;
-    let mut warnings = Vec::new();
-    let mut epochs_checked = 0;
-    let mut sample_step_mismatch = 0;
-    let configured_step = if sample_rate_hz > 0.0 {
-        Some((sample_rate_hz * 0.001).round().max(1.0) as u64)
-    } else {
-        None
-    };
-    let mut expected_step: Option<u64> = configured_step;
-    let mut sample_step_total = 0u64;
-    let mut sample_step_count = 0u64;
-
-    for track in tracks {
-        let mut prev_epoch: Option<u64> = None;
-        let mut prev_sample: Option<u64> = None;
-        for epoch in &track.epochs {
-            epochs_checked += 1;
-            if let Some(prev) = prev_epoch {
-                if epoch.epoch.index < prev {
-                    epoch_backward += 1;
-                } else if epoch.epoch.index > prev + 1 {
-                    epoch_gaps += 1;
-                }
-            }
-            if let Some(prev) = prev_sample {
-                if epoch.sample_index < prev {
-                    sample_backward += 1;
-                } else {
-                    let step = epoch.sample_index - prev;
-                    if let Some(expected) = expected_step {
-                        if step != expected {
-                            sample_step_mismatch += 1;
-                        }
-                    } else {
-                        expected_step = Some(step);
-                    }
-                    sample_step_total = sample_step_total.saturating_add(step);
-                    sample_step_count = sample_step_count.saturating_add(1);
-                }
-            }
-            prev_epoch = Some(epoch.epoch.index);
-            prev_sample = Some(epoch.sample_index);
-        }
-    }
-
-    if epoch_backward > 0 {
-        warnings.push("epoch index went backwards".to_string());
-    }
-    if epoch_gaps > 0 {
-        warnings.push("epoch index gaps detected".to_string());
-    }
-    if sample_backward > 0 {
-        warnings.push("sample index went backwards".to_string());
-    }
-    if sample_step_mismatch > 0 {
-        warnings.push("sample cadence mismatch detected".to_string());
-    }
-    let observed_step_mean = if sample_step_count > 0 {
-        Some(sample_step_total as f64 / sample_step_count as f64)
-    } else {
-        None
-    };
-
-    TimeConsistencyReport {
-        channels: tracks.len(),
-        epochs_checked,
-        epoch_backward,
-        epoch_gaps,
-        sample_backward,
-        sample_step_mismatch,
-        expected_step,
-        observed_step_mean,
         warnings,
     }
 }

@@ -1,21 +1,21 @@
 //! Sweep parsing and expansion utilities.
 
-use crate::errors::{InfraError, InfraResult};
+use bijux_gnss_receiver::api::core::InputError;
 
 /// Parse sweep arguments key=val1,val2.
-pub fn parse_sweep(values: &[String]) -> InfraResult<Vec<(String, Vec<String>)>> {
+pub fn parse_sweep(values: &[String]) -> Result<Vec<(String, Vec<String>)>, InputError> {
     let mut out = Vec::new();
     for item in values {
         let Some((key, vals)) = item.split_once('=') else {
-            return Err(InfraError::InvalidInput(format!(
-                "invalid sweep format: {item}"
-            )));
+            return Err(InputError {
+                message: format!("invalid sweep format: {item}"),
+            });
         };
         let vals: Vec<String> = vals.split(',').map(|v| v.trim().to_string()).collect();
         if vals.is_empty() {
-            return Err(InfraError::InvalidInput(format!(
-                "sweep values empty for {key}"
-            )));
+            return Err(InputError {
+                message: format!("sweep values empty for {key}"),
+            });
         }
         out.push((key.trim().to_string(), vals));
     }

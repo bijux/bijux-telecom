@@ -1,27 +1,36 @@
 //! Hashing and provenance helpers.
 
-use crate::errors::InfraResult;
-use bijux_gnss_receiver::ReceiverProfile;
+use bijux_gnss_receiver::api::core::InputError;
+use bijux_gnss_receiver::api::ReceiverProfile;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command as ProcessCommand;
 
 /// Hash a config file or profile snapshot.
-pub fn hash_config(path: Option<&PathBuf>, profile: &ReceiverProfile) -> InfraResult<String> {
+pub(crate) fn hash_config(
+    path: Option<&PathBuf>,
+    profile: &ReceiverProfile,
+) -> Result<String, InputError> {
     let mut hasher = Sha256::new();
     if let Some(path) = path {
-        let bytes = fs::read(path)?;
+        let bytes = fs::read(path).map_err(map_err)?;
         hasher.update(bytes);
     } else {
-        let serialized = toml::to_string(profile)?;
+        let serialized = toml::to_string(profile).map_err(map_err)?;
         hasher.update(serialized.as_bytes());
     }
     Ok(hex::encode(hasher.finalize()))
 }
 
+fn map_err(err: impl std::fmt::Display) -> InputError {
+    InputError {
+        message: err.to_string(),
+    }
+}
+
 /// Return current git hash if available.
-pub fn git_hash() -> Option<String> {
+pub(crate) fn git_hash() -> Option<String> {
     let output = ProcessCommand::new("git")
         .args(["rev-parse", "HEAD"])
         .output()
@@ -34,7 +43,7 @@ pub fn git_hash() -> Option<String> {
 }
 
 /// Return true when git workspace is dirty.
-pub fn git_dirty() -> bool {
+pub(crate) fn git_dirty() -> bool {
     let output = ProcessCommand::new("git")
         .args(["status", "--porcelain"])
         .output();
@@ -47,7 +56,7 @@ pub fn git_dirty() -> bool {
 }
 
 /// CPU feature detection summary.
-pub fn cpu_features() -> Vec<String> {
+pub(crate) fn cpu_features() -> Vec<String> {
     let mut features = Vec::new();
     #[cfg(target_arch = "x86_64")]
     {

@@ -1,10 +1,9 @@
 //! Run directory layout and manifest utilities.
 
 use crate::dataset::DatasetEntry;
-use crate::errors::{InfraError, InfraResult};
-use crate::hash::{cpu_features, git_dirty, git_hash, hash_config};
-use bijux_gnss_core::{ArtifactHeaderV1, ArtifactReadPolicy};
-use bijux_gnss_receiver::ReceiverProfile;
+use crate::hash::core::{cpu_features, git_dirty, git_hash, hash_config};
+use bijux_gnss_receiver::api::core::{ArtifactHeaderV1, ArtifactReadPolicy, InputError};
+use bijux_gnss_receiver::api::ReceiverProfile;
 use serde::Serialize;
 use std::fs;
 use std::io::Write;
@@ -44,9 +43,9 @@ impl RunDirLayout {
     }
 
     /// Create directories on disk.
-    pub fn create(&self) -> InfraResult<()> {
-        fs::create_dir_all(&self.artifacts_dir)?;
-        fs::create_dir_all(&self.logs_dir)?;
+    pub fn create(&self) -> Result<(), InputError> {
+        fs::create_dir_all(&self.artifacts_dir).map_err(map_err)?;
+        fs::create_dir_all(&self.logs_dir).map_err(map_err)?;
         Ok(())
     }
 }
@@ -136,14 +135,14 @@ fn resolve_run_context(
     args: &RunContextArgs<'_>,
     command: &str,
     dataset: Option<&DatasetEntry>,
-) -> InfraResult<&'static RunContext> {
+) -> Result<&'static RunContext, InputError> {
     if let Some(ctx) = RUN_CONTEXT.get() {
         return Ok(ctx);
     }
     if dataset.is_none() && !args.unregistered_dataset {
-        return Err(InfraError::InvalidInput(
-            "dataset id is required (use --dataset or --unregistered-dataset)".to_string(),
-        ));
+        return Err(InputError {
+            message: "dataset id is required (use --dataset or --unregistered-dataset)".to_string(),
+        });
     }
     let run_dir = if let Some(resume) = args.resume {
         resume.clone()
@@ -168,7 +167,7 @@ pub fn run_dir(
     args: &RunContextArgs<'_>,
     command: &str,
     dataset: Option<&DatasetEntry>,
-) -> InfraResult<PathBuf> {
+) -> Result<PathBuf, InputError> {
     Ok(resolve_run_context(args, command, dataset)?
         .layout
         .run_dir
@@ -180,7 +179,7 @@ pub fn artifacts_dir(
     args: &RunContextArgs<'_>,
     command: &str,
     dataset: Option<&DatasetEntry>,
-) -> InfraResult<PathBuf> {
+) -> Result<PathBuf, InputError> {
     Ok(resolve_run_context(args, command, dataset)?
         .layout
         .artifacts_dir
@@ -188,9 +187,9 @@ pub fn artifacts_dir(
 }
 
 /// Append a run index entry.
-pub fn append_run_index(run_dir: &Path, manifest: &RunManifest) -> InfraResult<()> {
+pub fn append_run_index(run_dir: &Path, manifest: &RunManifest) -> Result<(), InputError> {
     let index_path = PathBuf::from("runs").join("index.jsonl");
-    fs::create_dir_all(index_path.parent().unwrap_or(Path::new("runs")))?;
+    fs::create_dir_all(index_path.parent().unwrap_or(Path::new("runs"))).map_err(map_err)?;
     let entry = RunIndexEntry {
         run_dir: run_dir.display().to_string(),
         command: manifest.command.clone(),
@@ -200,12 +199,13 @@ pub fn append_run_index(run_dir: &Path, manifest: &RunManifest) -> InfraResult<(
         config_hash: manifest.config_hash.clone(),
         summary: manifest.summary.clone(),
     };
-    let line = serde_json::to_string(&entry)?;
+    let line = serde_json::to_string(&entry).map_err(map_err)?;
     let mut file = fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(index_path)?;
-    writeln!(file, "{line}")?;
+        .open(index_path)
+        .map_err(map_err)?;
+    writeln!(file, "{line}").map_err(map_err)?;
     Ok(())
 }
 
@@ -214,7 +214,7 @@ pub fn artifact_header(
     args: &RunContextArgs<'_>,
     profile: &ReceiverProfile,
     dataset: Option<&DatasetEntry>,
-) -> InfraResult<ArtifactHeaderV1> {
+) -> Result<ArtifactHeaderV1, InputError> {
     let config_hash = hash_config(args.config, profile)?;
     Ok(ArtifactHeaderV1 {
         schema_version: ArtifactReadPolicy::LATEST,
@@ -251,7 +251,7 @@ pub fn write_manifest(
     profile: &ReceiverProfile,
     dataset: Option<&DatasetEntry>,
     summary: &serde_json::Value,
-) -> InfraResult<RunManifest> {
+) -> Result<RunManifest, InputError> {
     let config_hash = hash_config(args.config, profile)?;
     let config_snapshot = if let Some(path) = args.config {
         fs::read_to_string(path).ok()
@@ -274,8 +274,14 @@ pub fn write_manifest(
         summary: summary.clone(),
     };
     let ctx = resolve_run_context(args, command, dataset)?;
-    let data = serde_json::to_string_pretty(&manifest)?;
-    fs::write(&ctx.layout.manifest_path, data)?;
+    let data = serde_json::to_string_pretty(&manifest).map_err(map_err)?;
+    fs::write(&ctx.layout.manifest_path, data).map_err(map_err)?;
     append_run_index(&ctx.layout.run_dir, &manifest)?;
     Ok(manifest)
+}
+
+fn map_err(err: impl std::fmt::Display) -> InputError {
+    InputError {
+        message: err.to_string(),
+    }
 }

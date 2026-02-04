@@ -1,6 +1,6 @@
 //! Dataset registry parsing and validation.
 
-use crate::errors::{InfraError, InfraResult};
+use bijux_gnss_receiver::api::core::InputError;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -39,13 +39,13 @@ pub struct DatasetRegistry {
 
 impl DatasetRegistry {
     /// Load registry from disk.
-    pub fn load(path: &Path) -> InfraResult<Self> {
-        let contents = fs::read_to_string(path)?;
-        let registry: DatasetRegistry = toml::from_str(&contents)?;
+    pub fn load(path: &Path) -> Result<Self, InputError> {
+        let contents = fs::read_to_string(path).map_err(map_err)?;
+        let registry: DatasetRegistry = toml::from_str(&contents).map_err(map_err)?;
         if registry.entries.is_empty() {
-            return Err(InfraError::InvalidInput(
-                "dataset registry is empty".to_string(),
-            ));
+            return Err(InputError {
+                message: "dataset registry is empty".to_string(),
+            });
         }
         Ok(registry)
     }
@@ -53,5 +53,11 @@ impl DatasetRegistry {
     /// Find entry by id.
     pub fn find(&self, id: &str) -> Option<DatasetEntry> {
         self.entries.iter().find(|e| e.id == id).cloned()
+    }
+}
+
+fn map_err(err: impl std::fmt::Display) -> InputError {
+    InputError {
+        message: err.to_string(),
     }
 }

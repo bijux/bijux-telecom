@@ -17,11 +17,10 @@ mod error;
 mod geo;
 mod ids;
 mod obs;
+mod reference_validation;
+mod stats;
 mod time;
 mod units;
 
 /// Public API surface for this crate.
 pub mod api;
-
-/// Re-export public API at the crate root.
-pub use api::*;

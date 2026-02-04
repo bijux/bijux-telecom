@@ -2,10 +2,9 @@
 
 use std::path::Path;
 
-use crate::errors::{InfraError, InfraResult};
-use bijux_gnss_core::{
+use bijux_gnss_receiver::api::core::{
     aggregate_diagnostics, ArtifactHeaderV1, ArtifactReadPolicy, ArtifactValidate, DiagnosticEvent,
-    DiagnosticSeverity, ObsEpochV1,
+    DiagnosticSeverity, InputError, ObsEpochV1,
 };
 
 /// Result of validating an artifact.
@@ -39,13 +38,12 @@ pub fn artifact_validate(
     path: &Path,
     kind: Option<&str>,
     strict: bool,
-) -> InfraResult<ArtifactValidationResult> {
-    let data = std::fs::read_to_string(path)?;
+) -> Result<ArtifactValidationResult, InputError> {
+    let data = std::fs::read_to_string(path).map_err(map_err)?;
     if strict && data.trim().is_empty() {
-        return Err(InfraError::InvalidInput(format!(
-            "artifact is empty: {}",
-            path.display()
-        )));
+        return Err(InputError {
+            message: format!("artifact is empty: {}", path.display()),
+        });
     }
     let kind = kind
         .map(|k| k.to_lowercase())
@@ -55,14 +53,14 @@ pub fn artifact_validate(
     let diagnostics = match kind.as_str() {
         "obs" => validate_obs_artifact(&data)?,
         "unknown" => {
-            return Err(InfraError::InvalidInput(
-                "unsupported artifact type".to_string(),
-            ))
+            return Err(InputError {
+                message: "unsupported artifact type".to_string(),
+            })
         }
         _ => {
-            return Err(InfraError::InvalidInput(
-                "unsupported artifact type".to_string(),
-            ))
+            return Err(InputError {
+                message: "unsupported artifact type".to_string(),
+            })
         }
     };
 
@@ -70,31 +68,32 @@ pub fn artifact_validate(
 }
 
 /// Explain an artifact file and return header + stats.
-pub fn artifact_explain(path: &Path) -> InfraResult<ArtifactExplainResult> {
-    let data = std::fs::read_to_string(path)?;
+pub fn artifact_explain(path: &Path) -> Result<ArtifactExplainResult, InputError> {
+    let data = std::fs::read_to_string(path).map_err(map_err)?;
     let mut header: Option<ArtifactHeaderV1> = None;
     let kind = detect_kind_from_path(path).unwrap_or_else(|| "unknown".to_string());
     let mut entries = 0usize;
 
     if kind != "obs" {
-        return Err(InfraError::InvalidInput(
-            "unsupported artifact type".to_string(),
-        ));
+        return Err(InputError {
+            message: "unsupported artifact type".to_string(),
+        });
     }
 
     for line in data.lines() {
         if line.trim().is_empty() {
             continue;
         }
-        let wrapped: ObsEpochV1 = serde_json::from_str(line)?;
+        let wrapped: ObsEpochV1 = serde_json::from_str(line).map_err(map_err)?;
         if header.is_none() {
             header = Some(wrapped.header.clone());
         }
         entries += 1;
     }
 
-    let header =
-        header.ok_or_else(|| InfraError::InvalidInput("artifact header not found".to_string()))?;
+    let header = header.ok_or_else(|| InputError {
+        message: "artifact header not found".to_string(),
+    })?;
     let diagnostics = artifact_validate(path, Some(&kind), false)?.diagnostics;
     let summary = aggregate_diagnostics(&diagnostics);
     let mut error_count = 0usize;
@@ -117,20 +116,22 @@ pub fn artifact_explain(path: &Path) -> InfraResult<ArtifactExplainResult> {
     })
 }
 
-fn validate_obs_artifact(data: &str) -> InfraResult<Vec<DiagnosticEvent>> {
+fn validate_obs_artifact(data: &str) -> Result<Vec<DiagnosticEvent>, InputError> {
     let mut epochs = Vec::new();
     let mut events = Vec::new();
-    let mut last_t_rx_s: Option<bijux_gnss_core::Seconds> = None;
+    let mut last_t_rx_s: Option<bijux_gnss_receiver::api::core::Seconds> = None;
     for line in data.lines() {
         if line.trim().is_empty() {
             continue;
         }
-        let wrapped: ObsEpochV1 = serde_json::from_str(line)?;
+        let wrapped: ObsEpochV1 = serde_json::from_str(line).map_err(map_err)?;
         if wrapped.header.schema_version != ArtifactReadPolicy::LATEST {
-            return Err(InfraError::InvalidInput(format!(
-                "unsupported obs schema_version {}",
-                wrapped.header.schema_version
-            )));
+            return Err(InputError {
+                message: format!(
+                    "unsupported obs schema_version {}",
+                    wrapped.header.schema_version
+                ),
+            });
         }
         if let Some(prev) = last_t_rx_s {
             if wrapped.payload.t_rx_s.0 < prev.0 {
@@ -145,7 +146,7 @@ fn validate_obs_artifact(data: &str) -> InfraResult<Vec<DiagnosticEvent>> {
         events.extend(wrapped.validate());
         epochs.push(wrapped.payload);
     }
-    if let Err(err) = bijux_gnss_core::validate_obs_epochs(&epochs) {
+    if let Err(err) = bijux_gnss_receiver::api::core::validate_obs_epochs(&epochs) {
         events.push(DiagnosticEvent::new(
             DiagnosticSeverity::Error,
             "GNSS_OBS_VALIDATE_FAILED",
@@ -153,6 +154,12 @@ fn validate_obs_artifact(data: &str) -> InfraResult<Vec<DiagnosticEvent>> {
         ));
     }
     Ok(events)
+}
+
+fn map_err(err: impl std::fmt::Display) -> InputError {
+    InputError {
+        message: err.to_string(),
+    }
 }
 
 fn detect_kind_from_path(path: &Path) -> Option<String> {

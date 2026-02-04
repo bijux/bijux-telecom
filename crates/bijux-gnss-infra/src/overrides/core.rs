@@ -1,19 +1,12 @@
 //! Configuration override helpers.
 
-use crate::errors::{InfraError, InfraResult};
-use bijux_gnss_receiver::ReceiverProfile;
+use bijux_gnss_receiver::api::core::InputError;
+use bijux_gnss_receiver::api::ReceiverProfile;
 
-/// Common override values from CLI.
-#[derive(Debug, Clone, Copy)]
-pub struct CommonOverrides {
-    /// Deterministic seed override.
-    pub seed: Option<u64>,
-    /// Force deterministic run.
-    pub deterministic: bool,
-}
+use crate::api::CommonOverrides;
 
 /// Apply config overrides from CLI options.
-pub fn apply_overrides(
+pub(crate) fn apply_overrides(
     profile: &mut ReceiverProfile,
     sampling_hz: Option<f64>,
     if_hz: Option<f64>,
@@ -35,7 +28,7 @@ pub fn apply_overrides(
 }
 
 /// Apply seed/determinism overrides.
-pub fn apply_common_overrides(profile: &mut ReceiverProfile, common: CommonOverrides) {
+pub(crate) fn apply_common_overrides(profile: &mut ReceiverProfile, common: CommonOverrides) {
     if let Some(seed) = common.seed {
         profile.seed = seed;
     }
@@ -45,7 +38,11 @@ pub fn apply_common_overrides(profile: &mut ReceiverProfile, common: CommonOverr
 }
 
 /// Apply sweep parameter overrides.
-pub fn apply_sweep_value(profile: &mut ReceiverProfile, key: &str, value: &str) -> InfraResult<()> {
+pub(crate) fn apply_sweep_value(
+    profile: &mut ReceiverProfile,
+    key: &str,
+    value: &str,
+) -> Result<(), InputError> {
     match key {
         "tracking.dll_bw_hz" => profile.tracking.dll_bw_hz = value.parse().map_err(map)?,
         "tracking.pll_bw_hz" => profile.tracking.pll_bw_hz = value.parse().map_err(map)?,
@@ -94,14 +91,16 @@ pub fn apply_sweep_value(profile: &mut ReceiverProfile, key: &str, value: &str) 
         }
         "navigation.raim" => profile.navigation.raim = value.parse().map_err(map)?,
         _ => {
-            return Err(InfraError::InvalidInput(format!(
-                "unsupported sweep parameter: {key}"
-            )))
+            return Err(InputError {
+                message: format!("unsupported sweep parameter: {key}"),
+            })
         }
     }
     Ok(())
 }
 
-fn map(err: impl std::fmt::Display) -> InfraError {
-    InfraError::InvalidInput(err.to_string())
+fn map(err: impl std::fmt::Display) -> InputError {
+    InputError {
+        message: err.to_string(),
+    }
 }
