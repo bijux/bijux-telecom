@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use bijux_gnss_core::{ObsEpoch, ObsSatellite, SatId, SignalBand};
+use bijux_gnss_core::api::{ObsEpoch, ObsSatellite, SatId, SignalBand};
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 

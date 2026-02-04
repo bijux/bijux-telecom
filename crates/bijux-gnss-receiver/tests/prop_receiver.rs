@@ -1,5 +1,5 @@
 #![allow(missing_docs)]
-use bijux_gnss_signal::{generate_ca_code, Prn};
+use bijux_gnss_signal::api::{generate_ca_code, Prn};
 use proptest::prelude::*;
 use rustfft::{num_complex::Complex, FftPlanner};
 

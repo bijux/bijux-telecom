@@ -4,9 +4,9 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
-use bijux_gnss_core::IoError;
+use bijux_gnss_core::api::IoError;
 
-use bijux_gnss_core::ObsEpoch;
+use bijux_gnss_core::api::ObsEpoch;
 
 use crate::orbits::gps::GpsEphemeris;
 

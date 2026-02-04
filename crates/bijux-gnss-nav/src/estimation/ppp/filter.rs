@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use bijux_gnss_core::{Constellation, ObsEpoch, ObsSatellite, SatId, SigId};
+use bijux_gnss_core::api::{Constellation, ObsEpoch, ObsSatellite, SatId, SigId};
 
 use super::config::{PppConfig, PppFilter, PppIndices, SPEED_OF_LIGHT_MPS};
 use super::measurements::{
@@ -11,6 +11,7 @@ use super::measurements::{
 };
 use super::models::{PppCodeMeasurement, PppProcessModel};
 use super::state::estimate_sigma;
+use crate::api::compute_corrections;
 use crate::corrections::biases::{CodeBiasProvider, PhaseBiasProvider, ZeroBiases};
 use crate::corrections::CorrectionContext;
 use crate::estimation::ekf::state::{Ekf, EkfConfig};
@@ -117,7 +118,7 @@ impl PppFilter {
         self.ensure_states(&sats);
         self.update_wide_lane(obs, &sats);
         let fixed_wl = self.try_fix_wide_lane(obs, &sats);
-        let corr = crate::compute_corrections(&self.corrections);
+        let corr = compute_corrections(&self.corrections);
 
         let mut residuals = Vec::new();
         let mut used = 0;

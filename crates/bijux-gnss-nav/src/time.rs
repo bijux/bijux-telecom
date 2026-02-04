@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::{GpsTime, UtcTime};
+use bijux_gnss_core::api::{GpsTime, UtcTime};
 
 pub fn normalize_tow(tow_s: f64) -> f64 {
     if tow_s.is_finite() {

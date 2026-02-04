@@ -3,7 +3,7 @@
 use super::state::{Ekf, EkfCheckpoint, EkfConfig, EkfHealth, MeasurementKind, RejectionReason};
 use super::traits::{MeasurementModel, StateModel};
 use crate::linalg::Matrix;
-use bijux_gnss_core::NavHealthEvent;
+use bijux_gnss_core::api::NavHealthEvent;
 
 impl Ekf {
     pub fn new(x: Vec<f64>, p: Matrix, config: EkfConfig) -> Self {

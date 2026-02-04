@@ -22,8 +22,15 @@ fn receiver_does_not_use_nav_estimation_module() {
     for path in files {
         let content = fs::read_to_string(&path).expect("read source");
         assert!(
-            !content.contains("use bijux_gnss_nav::estimation"),
+            !content.contains("bijux_gnss_nav::api::estimation")
+                && !content.contains("bijux_gnss_nav::estimation"),
             "found forbidden nav estimation import in {}",
+            path.display()
+        );
+        assert!(
+            !content.contains("bijux_gnss_nav::api::formats")
+                && !content.contains("bijux_gnss_nav::formats"),
+            "found forbidden nav formats import in {}",
             path.display()
         );
     }

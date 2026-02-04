@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
-use bijux_gnss_core::{Constellation, SatId};
-use bijux_gnss_nav::ClkProvider;
+use bijux_gnss_core::api::{Constellation, SatId};
+use bijux_gnss_nav::api::ClkProvider;
 
 #[test]
 fn clk_interpolates_bias() {

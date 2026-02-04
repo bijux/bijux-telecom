@@ -1,16 +1,16 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::{
+use bijux_gnss_core::api::{
     Cycles, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, Seconds, SigId,
     SignalBand, TrackEpoch,
 };
 
-use crate::tracking::TrackingResult;
-use crate::ReceiverConfig;
-use bijux_gnss_signal::samples_per_code;
+use crate::runtime::receiver_config::ReceiverConfig;
+use crate::stages::tracking::TrackingResult;
+use bijux_gnss_signal::api::samples_per_code;
 
 #[cfg(test)]
-use bijux_gnss_core::{Constellation, Hertz, SatId, SignalCode};
+use bijux_gnss_core::api::{Constellation, Hertz, SatId, SignalCode};
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 const TWO_PI: f64 = std::f64::consts::PI * 2.0;
@@ -118,13 +118,13 @@ pub fn observations_from_tracking(config: &ReceiverConfig, epochs: &[TrackEpoch]
         let cn0_dbhz = 10.0 * (prompt_power.max(1e-9)).log10();
 
         let variance_m2 = (1.0 / cn0_dbhz.max(1.0)).powi(2);
-        let mut signal = bijux_gnss_core::signal_spec_gps_l1_ca();
+        let mut signal = bijux_gnss_core::api::signal_spec_gps_l1_ca();
         signal.code_rate_hz = config.code_freq_basis_hz;
         let sat = ObsSatellite {
             signal_id: SigId {
                 sat: epoch.sat,
                 band: SignalBand::L1,
-                code: bijux_gnss_core::SignalCode::Ca,
+                code: bijux_gnss_core::api::SignalCode::Ca,
             },
             pseudorange_m,
             pseudorange_var_m2: variance_m2,
@@ -166,14 +166,14 @@ pub fn observations_from_tracking(config: &ReceiverConfig, epochs: &[TrackEpoch]
             role: ReceiverRole::Rover,
             sats: vec![sat],
         };
-        let events = bijux_gnss_core::check_obs_epoch_sanity(&epoch);
+        let events = bijux_gnss_core::api::check_obs_epoch_sanity(&epoch);
         if events
             .iter()
-            .any(|e| matches!(e.severity, bijux_gnss_core::DiagnosticSeverity::Error))
+            .any(|e| matches!(e.severity, bijux_gnss_core::api::DiagnosticSeverity::Error))
         {
             epoch.valid = false;
             for event in events {
-                crate::logging::diagnostic(&event);
+                crate::runtime::logging::diagnostic(&event);
             }
         }
         out.push(epoch);
@@ -190,7 +190,7 @@ pub fn observations_from_tracking_results(
     use std::collections::BTreeMap;
 
     let mut by_epoch: BTreeMap<u64, ObsEpoch> = BTreeMap::new();
-    let mut hatch: std::collections::HashMap<bijux_gnss_core::SigId, HatchState> =
+    let mut hatch: std::collections::HashMap<bijux_gnss_core::api::SigId, HatchState> =
         std::collections::HashMap::new();
     for track in tracks {
         let obs = observations_from_tracking(config, &track.epochs);
@@ -256,7 +256,7 @@ pub fn observations_from_tracking_results(
                     sat.lock_flags.cycle_slip = true;
                 }
                 sat.multipath_suspect = divergence_jump > threshold_m * 0.8;
-                sat.error_model = Some(bijux_gnss_core::MeasurementErrorModel {
+                sat.error_model = Some(bijux_gnss_core::api::MeasurementErrorModel {
                     thermal_noise_m: Meters(1.0),
                     tracking_jitter_m: Meters((1.0 / sat.cn0_dbhz.max(1.0)) * 10.0),
                     multipath_proxy_m: Meters(divergence_jump),
@@ -271,14 +271,14 @@ pub fn observations_from_tracking_results(
     }
     let mut out = Vec::new();
     for mut epoch in by_epoch.into_values() {
-        let events = bijux_gnss_core::check_obs_epoch_sanity(&epoch);
+        let events = bijux_gnss_core::api::check_obs_epoch_sanity(&epoch);
         if events
             .iter()
-            .any(|e| matches!(e.severity, bijux_gnss_core::DiagnosticSeverity::Error))
+            .any(|e| matches!(e.severity, bijux_gnss_core::api::DiagnosticSeverity::Error))
         {
             epoch.valid = false;
             for event in events {
-                crate::logging::diagnostic(&event);
+                crate::runtime::logging::diagnostic(&event);
             }
         }
         out.push(epoch);
@@ -331,7 +331,7 @@ pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
                 smoothing_window: 0,
                 smoothing_age: 0,
                 smoothing_resets: 0,
-                signal: bijux_gnss_core::signal_spec_gps_l1_ca(),
+                signal: bijux_gnss_core::api::signal_spec_gps_l1_ca(),
             },
         })
         .collect();

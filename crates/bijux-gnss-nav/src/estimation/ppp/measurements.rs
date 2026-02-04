@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::{ObsEpoch, SatId, SignalBand};
+use bijux_gnss_core::api::{ObsEpoch, SatId, SignalBand};
 
 use crate::corrections::Corrections;
 use crate::estimation::ekf::state::MeasurementKind;

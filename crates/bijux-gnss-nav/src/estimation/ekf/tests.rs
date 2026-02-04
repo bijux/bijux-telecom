@@ -3,7 +3,7 @@
 use crate::estimation::ekf::models::PseudorangeMeasurement;
 use crate::estimation::ekf::state::{Ekf, EkfConfig};
 use crate::linalg::Matrix;
-use bijux_gnss_core::{Constellation, SatId, SigId, SignalBand, SignalCode};
+use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand, SignalCode};
 
 #[test]
 fn matrix_inversion_identity() {

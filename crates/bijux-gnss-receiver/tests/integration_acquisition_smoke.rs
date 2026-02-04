@@ -1,10 +1,10 @@
 #![allow(missing_docs)]
-use bijux_gnss_receiver::{
+use bijux_gnss_receiver::api::{
     acquisition::Acquisition,
     sim::{generate_l1_ca, SyntheticSignalParams},
     ReceiverConfig,
 };
-use bijux_gnss_signal::{generate_ca_code, samples_per_code, Prn};
+use bijux_gnss_signal::api::{generate_ca_code, samples_per_code, Prn};
 
 #[test]
 fn bench_code_gen_smoke() {
@@ -29,8 +29,8 @@ fn bench_fft_acquisition_smoke() {
     let frame = generate_l1_ca(
         &config,
         SyntheticSignalParams {
-            sat: bijux_gnss_core::SatId {
-                constellation: bijux_gnss_core::Constellation::Gps,
+            sat: bijux_gnss_core::api::SatId {
+                constellation: bijux_gnss_core::api::Constellation::Gps,
                 prn: 1,
             },
             doppler_hz: 0.0,
@@ -43,8 +43,8 @@ fn bench_fft_acquisition_smoke() {
         samples_per_code as f64 / config.sampling_freq_hz,
     );
     let acquisition = Acquisition::new(config).with_doppler(0, 500);
-    let sat = bijux_gnss_core::SatId {
-        constellation: bijux_gnss_core::Constellation::Gps,
+    let sat = bijux_gnss_core::api::SatId {
+        constellation: bijux_gnss_core::api::Constellation::Gps,
         prn: 1,
     };
     let _ = acquisition.run_fft(&frame, &[sat]);

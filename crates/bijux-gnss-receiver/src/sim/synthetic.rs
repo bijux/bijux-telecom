@@ -4,11 +4,11 @@ use std::f32::consts::TAU;
 
 use num_complex::Complex;
 
-use bijux_gnss_core::{Constellation, SampleClock, SampleTime, SamplesFrame, SatId, Seconds};
+use bijux_gnss_core::api::{Constellation, SampleClock, SampleTime, SamplesFrame, SatId, Seconds};
 
-use crate::ReceiverConfig;
-use bijux_gnss_nav::GpsEphemeris;
-use bijux_gnss_signal::{generate_ca_code, Prn};
+use crate::runtime::receiver_config::ReceiverConfig;
+use bijux_gnss_nav::api::GpsEphemeris;
+use bijux_gnss_signal::api::{generate_ca_code, Prn};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -117,10 +117,10 @@ struct SatState {
 impl SatState {
     fn new(config: &ReceiverConfig, params: SyntheticSignalParams) -> Self {
         let carrier = match params.sat.constellation {
-            Constellation::Galileo => bijux_gnss_core::GALILEO_E1_CARRIER_HZ.value(),
-            Constellation::Gps => bijux_gnss_core::GPS_L1_CA_CARRIER_HZ.value(),
-            Constellation::Glonass => bijux_gnss_core::GLONASS_L1_CARRIER_HZ.value(),
-            _ => bijux_gnss_core::GPS_L1_CA_CARRIER_HZ.value(),
+            Constellation::Galileo => bijux_gnss_core::api::GALILEO_E1_CARRIER_HZ.value(),
+            Constellation::Gps => bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value(),
+            Constellation::Glonass => bijux_gnss_core::api::GLONASS_L1_CARRIER_HZ.value(),
+            _ => bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value(),
         };
         Self {
             doppler_hz: params.doppler_hz,
@@ -131,7 +131,7 @@ impl SatState {
             code: generate_ca_code(Prn(params.sat.prn)),
             code_rate_hz: config.code_freq_basis_hz,
             if_hz: config.intermediate_freq_hz
-                + (carrier - bijux_gnss_core::GPS_L1_CA_CARRIER_HZ.value()),
+                + (carrier - bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value()),
         }
     }
 

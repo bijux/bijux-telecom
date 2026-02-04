@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use crate::linalg::Matrix;
-use bijux_gnss_core::NavHealthEvent;
+use bijux_gnss_core::api::NavHealthEvent;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone)]

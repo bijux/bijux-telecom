@@ -1,5 +1,5 @@
 #![allow(missing_docs)]
-use bijux_gnss_receiver::{data::MemorySamples, Receiver, ReceiverConfig};
+use bijux_gnss_receiver::api::{data::MemorySamples, Receiver, ReceiverConfig};
 
 #[test]
 fn receiver_cli_smoke() {

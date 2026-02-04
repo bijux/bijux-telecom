@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 use std::fs;
 
-use bijux_gnss_receiver::{
+use bijux_gnss_receiver::api::{
     acquisition::Acquisition,
     sim::{generate_l1_ca_multi, SyntheticScenario},
     tracking::Tracking,
@@ -23,13 +23,14 @@ fn golden_tracking_from_scenario() {
     };
 
     let frame = generate_l1_ca_multi(&config, &scenario);
-    let sats: Vec<bijux_gnss_core::SatId> = scenario.satellites.iter().map(|s| s.sat).collect();
+    let sats: Vec<bijux_gnss_core::api::SatId> =
+        scenario.satellites.iter().map(|s| s.sat).collect();
     let acq = Acquisition::new(config.clone()).with_doppler(10_000, 500);
     let acq_results = acq.run_fft(&frame, &sats);
 
     let tracking = Tracking::new(config);
     let tracks =
-        tracking.track_from_acquisition(&frame, &acq_results, bijux_gnss_core::SignalBand::L1);
+        tracking.track_from_acquisition(&frame, &acq_results, bijux_gnss_core::api::SignalBand::L1);
 
     for track in &tracks {
         assert!(!track.epochs.is_empty());

@@ -23,7 +23,7 @@ pub trait SignalSource {
     fn next_frame(
         &mut self,
         frame_len: usize,
-    ) -> Result<Option<bijux_gnss_core::SamplesFrame>, Self::Error>;
+    ) -> Result<Option<bijux_gnss_core::api::SamplesFrame>, Self::Error>;
 
     /// Whether the source has reached end-of-stream.
     fn is_done(&self) -> bool;
@@ -38,7 +38,7 @@ pub trait SampleSource {
     fn next_samples(
         &mut self,
         frame_len: usize,
-    ) -> Result<Option<bijux_gnss_core::SamplesFrame>, Self::Error>;
+    ) -> Result<Option<bijux_gnss_core::api::SamplesFrame>, Self::Error>;
 }
 
 /// Correlator interface for tracking tests.
@@ -46,7 +46,7 @@ pub trait Correlator {
     /// Correlate a sample frame with a local code.
     fn correlate(
         &self,
-        frame: &bijux_gnss_core::SamplesFrame,
+        frame: &bijux_gnss_core::api::SamplesFrame,
         prn: u8,
         carrier_hz: f64,
         code_phase_samples: f64,
@@ -64,5 +64,6 @@ pub trait SampleSink {
     type Error;
 
     /// Push a sample frame into the sink.
-    fn push_frame(&mut self, frame: &bijux_gnss_core::SamplesFrame) -> Result<(), Self::Error>;
+    fn push_frame(&mut self, frame: &bijux_gnss_core::api::SamplesFrame)
+        -> Result<(), Self::Error>;
 }

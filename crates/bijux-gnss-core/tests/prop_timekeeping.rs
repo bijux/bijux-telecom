@@ -1,5 +1,5 @@
 #![allow(missing_docs)]
-use bijux_gnss_core::{GpsTime, SampleClock};
+use bijux_gnss_core::api::{GpsTime, SampleClock};
 use proptest::prelude::*;
 
 proptest! {

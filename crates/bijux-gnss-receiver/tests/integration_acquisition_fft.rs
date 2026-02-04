@@ -1,10 +1,10 @@
 #![allow(missing_docs)]
-use bijux_gnss_receiver::{
+use bijux_gnss_receiver::api::{
     acquisition::Acquisition,
     sim::{generate_l1_ca, SyntheticSignalParams},
     ReceiverConfig,
 };
-use bijux_gnss_signal::samples_per_code;
+use bijux_gnss_signal::api::samples_per_code;
 
 #[test]
 fn acquisition_fft_detects_synthetic_signal() {
@@ -23,8 +23,8 @@ fn acquisition_fft_detects_synthetic_signal() {
         config.code_length,
     );
 
-    let sat = bijux_gnss_core::SatId {
-        constellation: bijux_gnss_core::Constellation::Gps,
+    let sat = bijux_gnss_core::api::SatId {
+        constellation: bijux_gnss_core::api::Constellation::Gps,
         prn: 1,
     };
     let frame = generate_l1_ca(

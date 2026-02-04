@@ -9,6 +9,6 @@ regex = { workspace = true }
 walkdir = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+toml = { workspace = true }
 
 [dev-dependencies]
-bijux-gnss-core = { workspace = true }

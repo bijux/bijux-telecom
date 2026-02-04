@@ -50,12 +50,12 @@ pub struct BaselineSolution {
     pub fixed: bool,
 }
 
-impl bijux_gnss_core::ArtifactPayloadValidate for BaselineSolution {
-    fn validate_payload(&self) -> Vec<bijux_gnss_core::DiagnosticEvent> {
+impl bijux_gnss_core::api::ArtifactPayloadValidate for BaselineSolution {
+    fn validate_payload(&self) -> Vec<bijux_gnss_core::api::DiagnosticEvent> {
         let mut events = Vec::new();
         if !self.enu_m.iter().all(|v| v.is_finite()) {
-            events.push(bijux_gnss_core::DiagnosticEvent::new(
-                bijux_gnss_core::DiagnosticSeverity::Error,
+            events.push(bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Error,
                 "RTK_BASELINE_NUMERIC_INVALID",
                 "baseline ENU contains NaN/Inf",
             ));
@@ -80,8 +80,8 @@ pub struct RtkBaselineQuality {
     pub separation_max_m: Option<f64>,
 }
 
-impl bijux_gnss_core::ArtifactPayloadValidate for RtkBaselineQuality {
-    fn validate_payload(&self) -> Vec<bijux_gnss_core::DiagnosticEvent> {
+impl bijux_gnss_core::api::ArtifactPayloadValidate for RtkBaselineQuality {
+    fn validate_payload(&self) -> Vec<bijux_gnss_core::api::DiagnosticEvent> {
         let mut events = Vec::new();
         if !self.sigma_e.is_finite()
             || !self.sigma_n.is_finite()
@@ -89,8 +89,8 @@ impl bijux_gnss_core::ArtifactPayloadValidate for RtkBaselineQuality {
             || !self.residual_rms_m.is_finite()
             || !self.predicted_rms_m.is_finite()
         {
-            events.push(bijux_gnss_core::DiagnosticEvent::new(
-                bijux_gnss_core::DiagnosticSeverity::Error,
+            events.push(bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Error,
                 "RTK_QUALITY_NUMERIC_INVALID",
                 "baseline quality contains NaN/Inf",
             ));
@@ -109,13 +109,13 @@ pub struct RtkPrecision {
     pub slip_count: usize,
 }
 
-impl bijux_gnss_core::ArtifactPayloadValidate for RtkPrecision {
-    fn validate_payload(&self) -> Vec<bijux_gnss_core::DiagnosticEvent> {
+impl bijux_gnss_core::api::ArtifactPayloadValidate for RtkPrecision {
+    fn validate_payload(&self) -> Vec<bijux_gnss_core::api::DiagnosticEvent> {
         let mut events = Vec::new();
         if let Some(ratio) = self.ratio {
             if !ratio.is_finite() {
-                events.push(bijux_gnss_core::DiagnosticEvent::new(
-                    bijux_gnss_core::DiagnosticSeverity::Error,
+                events.push(bijux_gnss_core::api::DiagnosticEvent::new(
+                    bijux_gnss_core::api::DiagnosticSeverity::Error,
                     "RTK_PRECISION_NUMERIC_INVALID",
                     "rtk precision ratio contains NaN/Inf",
                 ));
@@ -127,7 +127,7 @@ impl bijux_gnss_core::ArtifactPayloadValidate for RtkPrecision {
 
 pub fn baseline_from_ecef(base_ecef_m: [f64; 3], rover_ecef_m: [f64; 3]) -> BaselineSolution {
     let (lat, lon, alt) =
-        bijux_gnss_nav::ecef_to_geodetic(base_ecef_m[0], base_ecef_m[1], base_ecef_m[2]);
+        bijux_gnss_nav::api::ecef_to_geodetic(base_ecef_m[0], base_ecef_m[1], base_ecef_m[2]);
     let (e, n, u) = ecef_to_enu(
         rover_ecef_m[0],
         rover_ecef_m[1],
@@ -145,7 +145,7 @@ pub fn baseline_from_ecef(base_ecef_m: [f64; 3], rover_ecef_m: [f64; 3]) -> Base
 
 pub fn enu_to_ecef(base_ecef_m: [f64; 3], enu_m: [f64; 3]) -> [f64; 3] {
     let (lat, lon, _alt) =
-        bijux_gnss_nav::ecef_to_geodetic(base_ecef_m[0], base_ecef_m[1], base_ecef_m[2]);
+        bijux_gnss_nav::api::ecef_to_geodetic(base_ecef_m[0], base_ecef_m[1], base_ecef_m[2]);
     let (sin_lat, cos_lat) = lat.to_radians().sin_cos();
     let (sin_lon, cos_lon) = lon.to_radians().sin_cos();
     let e = enu_m[0];
@@ -165,7 +165,7 @@ pub fn dd_residual_metrics(
     dd: &[DdObservation],
     base_ecef_m: [f64; 3],
     rover_enu_m: [f64; 3],
-    ephs: &[bijux_gnss_nav::GpsEphemeris],
+    ephs: &[bijux_gnss_nav::api::GpsEphemeris],
     t_rx_s: f64,
 ) -> Option<(f64, f64, usize)> {
     if dd.is_empty() {
@@ -182,8 +182,8 @@ pub fn dd_residual_metrics(
     for obs in dd {
         let eph = ephs.iter().find(|e| e.sat == obs.sig.sat)?;
         let eph_ref = ephs.iter().find(|e| e.sat == obs.ref_sig.sat)?;
-        let sat = bijux_gnss_nav::sat_state_gps_l1ca(eph, t_rx_s, 0.0);
-        let sat_ref = bijux_gnss_nav::sat_state_gps_l1ca(eph_ref, t_rx_s, 0.0);
+        let sat = bijux_gnss_nav::api::sat_state_gps_l1ca(eph, t_rx_s, 0.0);
+        let sat_ref = bijux_gnss_nav::api::sat_state_gps_l1ca(eph_ref, t_rx_s, 0.0);
         let u = los_unit(base_ecef_m, [sat.x_m, sat.y_m, sat.z_m]);
         let u_ref = los_unit(base_ecef_m, [sat_ref.x_m, sat_ref.y_m, sat_ref.z_m]);
         let h = [u_ref[0] - u[0], u_ref[1] - u[1], u_ref[2] - u[2]];
@@ -199,7 +199,7 @@ pub fn dd_residual_metrics(
 pub fn solution_separation(
     dd: &[DdObservation],
     base_ecef_m: [f64; 3],
-    ephs: &[bijux_gnss_nav::GpsEphemeris],
+    ephs: &[bijux_gnss_nav::api::GpsEphemeris],
     t_rx_s: f64,
 ) -> Option<Vec<SolutionSeparation>> {
     let full = solve_baseline_dd(dd, base_ecef_m, ephs, t_rx_s)?;
@@ -245,6 +245,6 @@ pub fn apply_fix_hold(mut baseline: BaselineSolution, fixed: bool) -> BaselineSo
     }
     baseline
 }
-use bijux_gnss_nav::ecef_to_enu;
+use bijux_gnss_nav::api::ecef_to_enu;
 
 use super::core::{los_unit, solve_baseline_dd, DdObservation, SolutionSeparation};

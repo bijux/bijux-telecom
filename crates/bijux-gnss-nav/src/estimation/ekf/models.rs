@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use bijux_gnss_core::SigId;
+use bijux_gnss_core::api::SigId;
 
 use super::state::{Ekf, MeasurementKind};
 use super::traits::{MeasurementModel, StateModel};

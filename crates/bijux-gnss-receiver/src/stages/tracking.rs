@@ -2,17 +2,17 @@
 
 use num_complex::Complex;
 
-use bijux_gnss_core::{
+use bijux_gnss_core::api::{
     Chips, Constellation, Hertz, SampleClock, SampleTime, SamplesFrame, SatId, Seconds, TrackEpoch,
 };
 
-use crate::logging;
-use crate::ReceiverConfig;
-use bijux_gnss_core::Sample;
-use bijux_gnss_signal::samples_per_code;
-use bijux_gnss_signal::Nco;
-use bijux_gnss_signal::{adaptive_bandwidth, code_at, discriminators, estimate_cn0_dbhz};
-use bijux_gnss_signal::{generate_ca_code, Prn};
+use crate::runtime::logging;
+use crate::runtime::receiver_config::ReceiverConfig;
+use bijux_gnss_core::api::Sample;
+use bijux_gnss_signal::api::samples_per_code;
+use bijux_gnss_signal::api::Nco;
+use bijux_gnss_signal::api::{adaptive_bandwidth, code_at, discriminators, estimate_cn0_dbhz};
+use bijux_gnss_signal::api::{generate_ca_code, Prn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelState {
@@ -165,8 +165,8 @@ impl Tracking {
         let cn0_dbhz = estimate_cn0_dbhz(correlator.prompt, correlator.early + correlator.late);
         logging::lock_status(0, correlator.prompt.norm() > 0.0);
         if !correlator.prompt.re.is_finite() || !correlator.prompt.im.is_finite() {
-            crate::logging::diagnostic(&bijux_gnss_core::DiagnosticEvent::new(
-                bijux_gnss_core::DiagnosticSeverity::Error,
+            crate::runtime::logging::diagnostic(&bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Error,
                 "TRACK_NUMERIC_INVALID",
                 "tracking correlator produced NaN/Inf",
             ));
@@ -232,8 +232,8 @@ impl Tracking {
     pub fn track_from_acquisition(
         &self,
         frame: &SamplesFrame,
-        acquisitions: &[bijux_gnss_core::AcqResult],
-        band: bijux_gnss_core::SignalBand,
+        acquisitions: &[bijux_gnss_core::api::AcqResult],
+        band: bijux_gnss_core::api::SignalBand,
     ) -> Vec<TrackingResult> {
         let params = self.config.tracking_params(band);
         let max = self.config.channels;
@@ -344,8 +344,8 @@ impl Tracking {
             track_epoch.processing_ms = Some(start_time.elapsed().as_secs_f64() * 1000.0);
             if let Some(ms) = track_epoch.processing_ms {
                 if ms > self.config.tracking_budget_ms {
-                    logging::diagnostic(&bijux_gnss_core::DiagnosticEvent::new(
-                        bijux_gnss_core::DiagnosticSeverity::Warning,
+                    logging::diagnostic(&bijux_gnss_core::api::DiagnosticEvent::new(
+                        bijux_gnss_core::api::DiagnosticSeverity::Warning,
                         "TRACK_BUDGET_EXCEEDED",
                         format!("tracking epoch exceeded budget: {ms:.3} ms"),
                     ));
@@ -356,8 +356,8 @@ impl Tracking {
             }
             let alloc_after = crate::runtime::alloc::allocation_count();
             if alloc_after > alloc_before {
-                logging::diagnostic(&bijux_gnss_core::DiagnosticEvent::new(
-                    bijux_gnss_core::DiagnosticSeverity::Warning,
+                logging::diagnostic(&bijux_gnss_core::api::DiagnosticEvent::new(
+                    bijux_gnss_core::api::DiagnosticSeverity::Warning,
                     "TRACK_ALLOCATIONS",
                     format!(
                         "tracking epoch allocated {} times",
@@ -386,7 +386,9 @@ impl Tracking {
                 (corr.early.norm() - corr.late.norm()).abs() < 0.2 * corr.prompt.norm();
 
             let cn0_dbhz = track_epoch.cn0_dbhz;
-            let params = self.config.tracking_params(bijux_gnss_core::SignalBand::L1);
+            let params = self
+                .config
+                .tracking_params(bijux_gnss_core::api::SignalBand::L1);
             let (dll_bw, pll_bw, fll_bw) = adaptive_bandwidth(
                 params.dll_bw_hz,
                 params.pll_bw_hz,

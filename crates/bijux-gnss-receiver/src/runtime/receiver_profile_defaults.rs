@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::SchemaVersion;
+use bijux_gnss_core::api::SchemaVersion;
 
 use crate::runtime::receiver_config::{
     default_tracking_integration_ms, AcquisitionProfile, NavigationProfile,

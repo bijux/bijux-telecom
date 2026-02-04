@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
-use bijux_gnss_receiver::{Receiver, ReceiverConfig};
-use bijux_gnss_signal::samples_per_code;
+use bijux_gnss_receiver::api::{Receiver, ReceiverConfig};
+use bijux_gnss_signal::api::samples_per_code;
 
 #[test]
 fn samples_per_code_is_reasonable() {

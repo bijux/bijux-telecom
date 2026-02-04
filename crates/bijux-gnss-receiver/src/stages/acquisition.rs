@@ -3,17 +3,17 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use bijux_gnss_core::{AcqResult, Hertz, SamplesFrame, SatId};
+use bijux_gnss_core::api::{AcqResult, Hertz, SamplesFrame, SatId};
 use num_complex::Complex;
 use rustfft::{num_traits::Zero, FftPlanner};
 
-use crate::logging;
+use crate::runtime::logging;
 #[cfg(feature = "trace-dump")]
-use crate::logging::{dump_acq_trace, AcqTrace};
-use crate::ReceiverConfig;
-use bijux_gnss_signal::samples_per_code;
-use bijux_gnss_signal::Nco;
-use bijux_gnss_signal::{generate_ca_code, Prn};
+use crate::runtime::logging::{dump_acq_trace, AcqTrace};
+use crate::runtime::receiver_config::ReceiverConfig;
+use bijux_gnss_signal::api::samples_per_code;
+use bijux_gnss_signal::api::Nco;
+use bijux_gnss_signal::api::{generate_ca_code, Prn};
 
 /// Acquisition engine (coarse search).
 pub struct Acquisition {

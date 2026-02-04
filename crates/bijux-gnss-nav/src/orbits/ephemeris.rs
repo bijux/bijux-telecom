@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 #![allow(dead_code)]
 
-use bijux_gnss_core::{Constellation, SatId};
+use bijux_gnss_core::api::{Constellation, SatId};
 use thiserror::Error;
 
 #[derive(Debug, Error)]

@@ -1,11 +1,11 @@
 #![allow(missing_docs)]
-use bijux_gnss_core::{Constellation, SatId};
-use bijux_gnss_receiver::{
+use bijux_gnss_core::api::{Constellation, SatId};
+use bijux_gnss_receiver::api::{
     acquisition::Acquisition,
     sim::{generate_l1_ca, SyntheticSignalParams},
     ReceiverConfig,
 };
-use bijux_gnss_signal::samples_per_code;
+use bijux_gnss_signal::api::samples_per_code;
 
 #[test]
 fn synthetic_correlator_peak_ratio() {
@@ -146,7 +146,7 @@ fn generate_local_code(
     code_phase_chips: f64,
     samples_per_code: usize,
 ) -> Vec<f32> {
-    let code = bijux_gnss_signal::generate_ca_code(bijux_gnss_signal::Prn(prn));
+    let code = bijux_gnss_signal::api::generate_ca_code(bijux_gnss_signal::api::Prn(prn));
     let mut out = Vec::with_capacity(samples_per_code);
     let dt_s = 1.0 / config.sampling_freq_hz;
     for n in 0..samples_per_code {

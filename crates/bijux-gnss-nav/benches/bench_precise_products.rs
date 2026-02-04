@@ -1,5 +1,5 @@
-use bijux_gnss_core::{Constellation, SatId};
-use bijux_gnss_nav::{ClkProvider, Sp3Provider};
+use bijux_gnss_core::api::{Constellation, SatId};
+use bijux_gnss_nav::api::{ClkProvider, Sp3Provider};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use std::str::FromStr;
 

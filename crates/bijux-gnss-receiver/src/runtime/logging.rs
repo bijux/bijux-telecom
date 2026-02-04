@@ -11,8 +11,8 @@ use std::path::Path;
 #[cfg(feature = "trace-dump")]
 use serde::Serialize;
 
-use crate::tracking::ChannelState;
-use bijux_gnss_core::{DiagnosticEvent, SatId};
+use crate::stages::tracking::ChannelState;
+use bijux_gnss_core::api::{DiagnosticEvent, SatId};
 
 pub fn acquisition_hit(sat: SatId, carrier_hz: f64, code_phase: usize, metric: f32, ratio: f32) {
     #[cfg(feature = "tracing")]
@@ -48,7 +48,7 @@ pub fn diagnostic(event: &DiagnosticEvent) {
     #[cfg(feature = "tracing")]
     {
         match event.severity {
-            bijux_gnss_core::DiagnosticSeverity::Error => {
+            bijux_gnss_core::api::DiagnosticSeverity::Error => {
                 tracing::event!(
                     tracing::Level::ERROR,
                     code = %event.code,
@@ -56,7 +56,7 @@ pub fn diagnostic(event: &DiagnosticEvent) {
                     "diagnostic"
                 )
             }
-            bijux_gnss_core::DiagnosticSeverity::Warning => {
+            bijux_gnss_core::api::DiagnosticSeverity::Warning => {
                 tracing::event!(
                     tracing::Level::WARN,
                     code = %event.code,
@@ -64,7 +64,7 @@ pub fn diagnostic(event: &DiagnosticEvent) {
                     "diagnostic"
                 )
             }
-            bijux_gnss_core::DiagnosticSeverity::Info => {
+            bijux_gnss_core::api::DiagnosticSeverity::Info => {
                 tracing::event!(
                     tracing::Level::INFO,
                     code = %event.code,

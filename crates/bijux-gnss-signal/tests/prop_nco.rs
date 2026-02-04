@@ -1,5 +1,5 @@
 #![allow(missing_docs)]
-use bijux_gnss_signal::Nco;
+use bijux_gnss_signal::api::Nco;
 use proptest::prelude::*;
 
 proptest! {

@@ -1,12 +1,12 @@
-use bijux_gnss_core::{SampleTime, SamplesFrame, SatId, Seconds};
-use bijux_gnss_receiver::{acquisition::Acquisition, ReceiverConfig};
+use bijux_gnss_core::api::{SampleTime, SamplesFrame, SatId, Seconds};
+use bijux_gnss_receiver::api::{acquisition::Acquisition, ReceiverConfig};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use num_complex::Complex;
 
 fn bench_acquisition_fft(c: &mut Criterion) {
     let config = ReceiverConfig::default();
     let acq = Acquisition::new(config.clone());
-    let samples_per_code = bijux_gnss_signal::samples_per_code(
+    let samples_per_code = bijux_gnss_signal::api::samples_per_code(
         config.sampling_freq_hz,
         config.code_freq_basis_hz,
         config.code_length,
@@ -22,7 +22,7 @@ fn bench_acquisition_fft(c: &mut Criterion) {
         iq,
     );
     let sat = SatId {
-        constellation: bijux_gnss_core::Constellation::Gps,
+        constellation: bijux_gnss_core::api::Constellation::Gps,
         prn: 1,
     };
     c.bench_function("acquisition_fft_1ms", |b| {

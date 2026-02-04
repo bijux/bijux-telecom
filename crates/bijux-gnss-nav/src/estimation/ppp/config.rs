@@ -2,10 +2,10 @@
 
 use std::collections::BTreeMap;
 
-use bijux_gnss_core::{Constellation, SatId, SigId};
+use bijux_gnss_core::api::{Constellation, SatId, SigId};
 use serde::{Deserialize, Serialize};
 
-use bijux_gnss_core::{ArtifactPayloadValidate, DiagnosticEvent, DiagnosticSeverity};
+use bijux_gnss_core::api::{ArtifactPayloadValidate, DiagnosticEvent, DiagnosticSeverity};
 
 use crate::corrections::biases::{CodeBiasProvider, PhaseBiasProvider};
 use crate::corrections::CorrectionContext;

@@ -5,7 +5,7 @@ use crate::estimation::position::solver::{
     PositionSolver,
 };
 use crate::orbits::gps::GpsEphemeris;
-use bijux_gnss_core::{Constellation, SatId};
+use bijux_gnss_core::api::{Constellation, SatId};
 
 #[test]
 fn invert_identity() {

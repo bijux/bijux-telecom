@@ -4,7 +4,7 @@
 #![allow(missing_docs)]
 #![allow(dead_code)]
 
-use bijux_gnss_core::SigId;
+use bijux_gnss_core::api::SigId;
 
 pub mod ekf;
 pub mod position;

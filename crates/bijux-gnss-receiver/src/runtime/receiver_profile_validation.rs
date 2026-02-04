@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::{ConfigError, SchemaVersion, ValidateConfig, ValidationReport};
+use bijux_gnss_core::api::{ConfigError, SchemaVersion, ValidateConfig, ValidationReport};
 
 use crate::runtime::receiver_config::{
     parse_band, BandTrackingSpec, ReceiverConfig, ReceiverProfile,

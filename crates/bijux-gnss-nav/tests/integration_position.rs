@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
-use bijux_gnss_core::{Constellation, SatId};
-use bijux_gnss_nav::{Ephemeris, PositionObservation, PositionSolver};
+use bijux_gnss_core::api::{Constellation, SatId};
+use bijux_gnss_nav::api::{Ephemeris, PositionObservation, PositionSolver};
 
 #[test]
 fn position_solver_returns_solution() {

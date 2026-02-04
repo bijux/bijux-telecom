@@ -5,9 +5,9 @@ use std::io::{Read, Seek, SeekFrom};
 
 use thiserror::Error;
 
-use bijux_gnss_core::{SampleClock, SampleTime, SamplesFrame, Seconds};
+use bijux_gnss_core::api::{SampleClock, SampleTime, SamplesFrame, Seconds};
 
-use bijux_gnss_signal::{iq_i16_to_samples, SampleSource, SignalSource};
+use bijux_gnss_signal::api::{iq_i16_to_samples, SampleSource, SignalSource};
 
 #[derive(Debug, Error)]
 pub enum SampleSourceError {

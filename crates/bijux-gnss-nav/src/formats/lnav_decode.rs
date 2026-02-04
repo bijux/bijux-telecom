@@ -3,7 +3,7 @@
 
 use crate::formats::lnav_bits::GpsWord;
 use crate::orbits::gps::GpsEphemeris;
-use bijux_gnss_core::{Constellation, SatId};
+use bijux_gnss_core::api::{Constellation, SatId};
 
 pub fn parse_subframe1(words: &[GpsWord]) -> Option<EphemerisPart> {
     if words.len() < 10 {

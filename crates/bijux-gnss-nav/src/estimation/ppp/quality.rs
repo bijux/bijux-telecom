@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::{ObsEpoch, ObsSatellite, SatId};
+use bijux_gnss_core::api::{ObsEpoch, ObsSatellite, SatId};
 
 use super::config::{PppFilter, WlAmbiguity};
 use super::measurements::{ratio_fix, wide_lane_from_obs};

@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use bijux_gnss_core::SatId;
+use bijux_gnss_core::api::SatId;
 
 const OMEGA_E_DOT: f64 = 7.292_115_146_7e-5;
 const MU: f64 = 3.986_005e14;
@@ -136,7 +136,7 @@ fn wrap_time(mut t: f64) -> f64 {
 mod tests {
     use super::*;
     use crate::formats::lnav_bits::{bit_sync_from_prompt, compute_parity, decode_words};
-    use bijux_gnss_core::{Constellation, SatId};
+    use bijux_gnss_core::api::{Constellation, SatId};
 
     fn encode_word(data: u32, prev_d29: u8, prev_d30: u8) -> [u8; 30] {
         let mut bits = [0_u8; 30];

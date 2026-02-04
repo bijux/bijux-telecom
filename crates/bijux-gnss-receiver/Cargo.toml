@@ -15,10 +15,13 @@ schemars.workspace = true
 sha2.workspace = true
 hex.workspace = true
 bijux-gnss-core = { path = "../bijux-gnss-core", version = "0.1.0" }
-bijux-gnss-nav = { path = "../bijux-gnss-nav", version = "0.1.0" }
+bijux-gnss-nav = { path = "../bijux-gnss-nav", version = "0.1.0", optional = true, default-features = false }
 serde_json.workspace = true
 
 [features]
+default = ["nav"]
+nav = ["dep:bijux-gnss-nav"]
+precise-products = ["nav", "bijux-gnss-nav/precise-products"]
 tracing = ["dep:tracing"]
 trace-dump = []
 alloc-trace = []

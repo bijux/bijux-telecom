@@ -1,12 +1,12 @@
-use bijux_gnss_core::{Constellation, SampleTime, SamplesFrame, SatId, Seconds};
-use bijux_gnss_receiver::{tracking::Tracking, ReceiverConfig};
+use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds};
+use bijux_gnss_receiver::api::{tracking::Tracking, ReceiverConfig};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use num_complex::Complex;
 
 fn bench_correlator(c: &mut Criterion) {
     let config = ReceiverConfig::default();
     let tracking = Tracking::new(config.clone());
-    let samples_per_code = bijux_gnss_signal::samples_per_code(
+    let samples_per_code = bijux_gnss_signal::api::samples_per_code(
         config.sampling_freq_hz,
         config.code_freq_basis_hz,
         config.code_length,

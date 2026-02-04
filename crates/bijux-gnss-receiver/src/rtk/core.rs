@@ -3,7 +3,9 @@
 use std::collections::BTreeMap;
 
 use super::metrics::{baseline_from_ecef, jitter_summary, BaselineSolution, JitterSummary};
-use bijux_gnss_core::{AmbiguityId, Constellation, ObsEpoch, ObsSatellite, ReceiverRole, SigId};
+use bijux_gnss_core::api::{
+    AmbiguityId, Constellation, ObsEpoch, ObsSatellite, ReceiverRole, SigId,
+};
 
 #[derive(Debug, Clone)]
 pub struct BaselineConfig {
@@ -74,7 +76,7 @@ impl RefSatSelector {
     }
 }
 
-type SatKey = bijux_gnss_core::SatId;
+type SatKey = bijux_gnss_core::api::SatId;
 
 impl EpochAligner {
     pub fn new(tolerance_s: f64) -> Self {
@@ -156,22 +158,22 @@ pub struct DdObservation {
     pub canceled: Vec<AmbiguityId>,
 }
 
-impl bijux_gnss_core::ArtifactPayloadValidate for SdObservation {
-    fn validate_payload(&self) -> Vec<bijux_gnss_core::DiagnosticEvent> {
+impl bijux_gnss_core::api::ArtifactPayloadValidate for SdObservation {
+    fn validate_payload(&self) -> Vec<bijux_gnss_core::api::DiagnosticEvent> {
         let mut events = Vec::new();
         if !self.code_m.is_finite()
             || !self.phase_cycles.is_finite()
             || !self.doppler_hz.is_finite()
         {
-            events.push(bijux_gnss_core::DiagnosticEvent::new(
-                bijux_gnss_core::DiagnosticSeverity::Error,
+            events.push(bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Error,
                 "RTK_SD_NUMERIC_INVALID",
                 "sd observation contains NaN/Inf",
             ));
         }
         if self.variance_code < 0.0 || self.variance_phase < 0.0 {
-            events.push(bijux_gnss_core::DiagnosticEvent::new(
-                bijux_gnss_core::DiagnosticSeverity::Error,
+            events.push(bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Error,
                 "RTK_SD_VARIANCE_INVALID",
                 "sd observation variance is negative",
             ));
@@ -180,22 +182,22 @@ impl bijux_gnss_core::ArtifactPayloadValidate for SdObservation {
     }
 }
 
-impl bijux_gnss_core::ArtifactPayloadValidate for DdObservation {
-    fn validate_payload(&self) -> Vec<bijux_gnss_core::DiagnosticEvent> {
+impl bijux_gnss_core::api::ArtifactPayloadValidate for DdObservation {
+    fn validate_payload(&self) -> Vec<bijux_gnss_core::api::DiagnosticEvent> {
         let mut events = Vec::new();
         if !self.code_m.is_finite()
             || !self.phase_cycles.is_finite()
             || !self.doppler_hz.is_finite()
         {
-            events.push(bijux_gnss_core::DiagnosticEvent::new(
-                bijux_gnss_core::DiagnosticSeverity::Error,
+            events.push(bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Error,
                 "RTK_DD_NUMERIC_INVALID",
                 "dd observation contains NaN/Inf",
             ));
         }
         if self.variance_code < 0.0 || self.variance_phase < 0.0 {
-            events.push(bijux_gnss_core::DiagnosticEvent::new(
-                bijux_gnss_core::DiagnosticSeverity::Error,
+            events.push(bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Error,
                 "RTK_DD_VARIANCE_INVALID",
                 "dd observation variance is negative",
             ));
@@ -417,7 +419,7 @@ pub fn innovation_diagnostics(residuals: &[f64], predicted_variance: f64) -> Inn
 pub fn solve_baseline_dd(
     dd: &[DdObservation],
     base_ecef_m: [f64; 3],
-    ephs: &[bijux_gnss_nav::GpsEphemeris],
+    ephs: &[bijux_gnss_nav::api::GpsEphemeris],
     t_rx_s: f64,
 ) -> Option<BaselineSolution> {
     if dd.len() < 3 {
@@ -428,8 +430,8 @@ pub fn solve_baseline_dd(
     for obs in dd {
         let eph = ephs.iter().find(|e| e.sat == obs.sig.sat)?;
         let eph_ref = ephs.iter().find(|e| e.sat == obs.ref_sig.sat)?;
-        let sat = bijux_gnss_nav::sat_state_gps_l1ca(eph, t_rx_s, 0.0);
-        let sat_ref = bijux_gnss_nav::sat_state_gps_l1ca(eph_ref, t_rx_s, 0.0);
+        let sat = bijux_gnss_nav::api::sat_state_gps_l1ca(eph, t_rx_s, 0.0);
+        let sat_ref = bijux_gnss_nav::api::sat_state_gps_l1ca(eph_ref, t_rx_s, 0.0);
         let u = los_unit(base_ecef_m, [sat.x_m, sat.y_m, sat.z_m]);
         let u_ref = los_unit(base_ecef_m, [sat_ref.x_m, sat_ref.y_m, sat_ref.z_m]);
         h.push([u_ref[0] - u[0], u_ref[1] - u[1], u_ref[2] - u[2]]);

@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use bijux_gnss_core::{
+use bijux_gnss_core::api::{
     AcqError, ConfigError, InputError, NavError, SchemaVersion, SignalBand, SignalError, TrackError,
 };
 use thiserror::Error;

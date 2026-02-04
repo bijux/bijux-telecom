@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 #![allow(dead_code)]
 
-use bijux_gnss_core::SigId;
+use bijux_gnss_core::api::SigId;
 
 #[derive(Debug, Clone)]
 pub struct CodeBias {

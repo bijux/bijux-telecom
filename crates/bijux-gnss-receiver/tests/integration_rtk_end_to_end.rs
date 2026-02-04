@@ -1,12 +1,12 @@
 #![allow(missing_docs)]
-use bijux_gnss_core::{
+use bijux_gnss_core::api::{
     Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, SatId, SigId,
     SignalBand, SignalSpec,
 };
-use bijux_gnss_nav::{
+use bijux_gnss_nav::api::{
     geodetic_to_ecef, sat_state_gps_l1ca, GpsEphemeris, PositionObservation, PositionSolver,
 };
-use bijux_gnss_receiver::rtk::{
+use bijux_gnss_receiver::api::rtk::{
     baseline_from_ecef, build_dd, build_sd, choose_ref_sat, solution_separation, solve_baseline_dd,
 };
 
@@ -49,7 +49,7 @@ fn make_obs_epoch(
     pos_ecef: (f64, f64, f64),
     ephs: &[GpsEphemeris],
 ) -> ObsEpoch {
-    let lambda_m = 299_792_458.0 / bijux_gnss_core::GPS_L1_CA_CARRIER_HZ.value();
+    let lambda_m = 299_792_458.0 / bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value();
     let sats: Vec<ObsSatellite> = ephs
         .iter()
         .map(|eph| {
@@ -62,15 +62,15 @@ fn make_obs_epoch(
                 signal_id: SigId {
                     sat: eph.sat,
                     band: SignalBand::L1,
-                    code: bijux_gnss_core::SignalCode::Ca,
+                    code: bijux_gnss_core::api::SignalCode::Ca,
                 },
-                pseudorange_m: bijux_gnss_core::Meters(
+                pseudorange_m: bijux_gnss_core::api::Meters(
                     range + 299_792_458.0 * (0.0 - sat.clock_bias_s),
                 ),
                 pseudorange_var_m2: 4.0,
-                carrier_phase_cycles: bijux_gnss_core::Cycles(range / lambda_m),
+                carrier_phase_cycles: bijux_gnss_core::api::Cycles(range / lambda_m),
                 carrier_phase_var_cycles2: 0.01,
-                doppler_hz: bijux_gnss_core::Hertz(0.0),
+                doppler_hz: bijux_gnss_core::api::Hertz(0.0),
                 doppler_var_hz2: 4.0,
                 cn0_dbhz: 45.0,
                 lock_flags: LockFlags {
@@ -94,16 +94,16 @@ fn make_obs_epoch(
                     signal: SignalSpec {
                         constellation: Constellation::Gps,
                         band: SignalBand::L1,
-                        code: bijux_gnss_core::SignalCode::Ca,
+                        code: bijux_gnss_core::api::SignalCode::Ca,
                         code_rate_hz: 1_023_000.0,
-                        carrier_hz: bijux_gnss_core::GPS_L1_CA_CARRIER_HZ,
+                        carrier_hz: bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ,
                     },
                 },
             }
         })
         .collect();
     ObsEpoch {
-        t_rx_s: bijux_gnss_core::Seconds(t_rx_s),
+        t_rx_s: bijux_gnss_core::api::Seconds(t_rx_s),
         gps_week: None,
         tow_s: None,
         epoch_idx: (t_rx_s * 1000.0) as u64,

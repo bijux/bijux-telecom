@@ -1,11 +1,11 @@
 #![allow(missing_docs)]
-use bijux_gnss_core::{
+use bijux_gnss_core::api::{
     Constellation, LockFlags, ObsMetadata, ObsSatellite, SatId, SigId, SignalBand, SignalSpec,
 };
-use bijux_gnss_nav::Matrix;
-use bijux_gnss_receiver::rtk::float_from_state;
-use bijux_gnss_receiver::rtk::AmbiguityManager;
-use bijux_gnss_receiver::rtk::{
+use bijux_gnss_nav::api::Matrix;
+use bijux_gnss_receiver::api::rtk::float_from_state;
+use bijux_gnss_receiver::api::rtk::AmbiguityManager;
+use bijux_gnss_receiver::api::rtk::{
     decorrelate_lambda, ratio_from_candidates, ratio_test, search_integer_candidates,
     select_partial_fix, FixPolicy, FixState, FloatAmbiguitySolution,
 };
@@ -32,13 +32,13 @@ fn ambiguity_resets_on_cycle_slip() {
                 prn: 1,
             },
             band: SignalBand::L1,
-            code: bijux_gnss_core::SignalCode::Ca,
+            code: bijux_gnss_core::api::SignalCode::Ca,
         },
-        pseudorange_m: bijux_gnss_core::Meters(20_000_000.0),
+        pseudorange_m: bijux_gnss_core::api::Meters(20_000_000.0),
         pseudorange_var_m2: 1.0,
-        carrier_phase_cycles: bijux_gnss_core::Cycles(100.0),
+        carrier_phase_cycles: bijux_gnss_core::api::Cycles(100.0),
         carrier_phase_var_cycles2: 0.01,
-        doppler_hz: bijux_gnss_core::Hertz(0.0),
+        doppler_hz: bijux_gnss_core::api::Hertz(0.0),
         doppler_var_hz2: 4.0,
         cn0_dbhz: 45.0,
         lock_flags: LockFlags {
@@ -62,9 +62,9 @@ fn ambiguity_resets_on_cycle_slip() {
             signal: SignalSpec {
                 constellation: Constellation::Gps,
                 band: SignalBand::L1,
-                code: bijux_gnss_core::SignalCode::Ca,
+                code: bijux_gnss_core::api::SignalCode::Ca,
                 code_rate_hz: 1_023_000.0,
-                carrier_hz: bijux_gnss_core::GPS_L1_CA_CARRIER_HZ,
+                carrier_hz: bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ,
             },
         },
     };
@@ -73,31 +73,31 @@ fn ambiguity_resets_on_cycle_slip() {
     slip_sat.lock_flags.cycle_slip = true;
     manager.update_from_obs(2, std::slice::from_ref(&slip_sat));
     let state = manager.states.values().next().expect("state");
-    assert_eq!(state.status, bijux_gnss_core::AmbiguityStatus::Unknown);
+    assert_eq!(state.status, bijux_gnss_core::api::AmbiguityStatus::Unknown);
 }
 
 #[test]
 fn float_covariance_is_symmetric_psd() {
     let ids = vec![
-        bijux_gnss_core::AmbiguityId {
+        bijux_gnss_core::api::AmbiguityId {
             sig: SigId {
                 sat: SatId {
                     constellation: Constellation::Gps,
                     prn: 1,
                 },
                 band: SignalBand::L1,
-                code: bijux_gnss_core::SignalCode::Ca,
+                code: bijux_gnss_core::api::SignalCode::Ca,
             },
             signal: "L1".to_string(),
         },
-        bijux_gnss_core::AmbiguityId {
+        bijux_gnss_core::api::AmbiguityId {
             sig: SigId {
                 sat: SatId {
                     constellation: Constellation::Gps,
                     prn: 2,
                 },
                 band: SignalBand::L1,
-                code: bijux_gnss_core::SignalCode::Ca,
+                code: bijux_gnss_core::api::SignalCode::Ca,
             },
             signal: "L1".to_string(),
         },
@@ -139,36 +139,36 @@ fn lambda_candidate_search_is_deterministic() {
 fn partial_fix_reduces_ambiguity_count() {
     let float = FloatAmbiguitySolution {
         ids: vec![
-            bijux_gnss_core::AmbiguityId {
+            bijux_gnss_core::api::AmbiguityId {
                 sig: SigId {
                     sat: SatId {
                         constellation: Constellation::Gps,
                         prn: 1,
                     },
                     band: SignalBand::L1,
-                    code: bijux_gnss_core::SignalCode::Ca,
+                    code: bijux_gnss_core::api::SignalCode::Ca,
                 },
                 signal: "L1".to_string(),
             },
-            bijux_gnss_core::AmbiguityId {
+            bijux_gnss_core::api::AmbiguityId {
                 sig: SigId {
                     sat: SatId {
                         constellation: Constellation::Gps,
                         prn: 2,
                     },
                     band: SignalBand::L1,
-                    code: bijux_gnss_core::SignalCode::Ca,
+                    code: bijux_gnss_core::api::SignalCode::Ca,
                 },
                 signal: "L1".to_string(),
             },
-            bijux_gnss_core::AmbiguityId {
+            bijux_gnss_core::api::AmbiguityId {
                 sig: SigId {
                     sat: SatId {
                         constellation: Constellation::Gps,
                         prn: 3,
                     },
                     band: SignalBand::L1,
-                    code: bijux_gnss_core::SignalCode::Ca,
+                    code: bijux_gnss_core::api::SignalCode::Ca,
                 },
                 signal: "L1".to_string(),
             },

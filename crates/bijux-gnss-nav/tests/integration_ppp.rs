@@ -1,9 +1,9 @@
 #![allow(missing_docs)]
-use bijux_gnss_core::{
+use bijux_gnss_core::api::{
     signal_spec_gps_l1_ca, Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite,
     ReceiverRole, SatId, SigId, SignalBand, SignalCode,
 };
-use bijux_gnss_nav::{BroadcastProductsProvider, GpsEphemeris, PppConfig, PppFilter};
+use bijux_gnss_nav::api::{BroadcastProductsProvider, GpsEphemeris, PppConfig, PppFilter};
 
 fn make_eph(prn: u8) -> GpsEphemeris {
     GpsEphemeris {
@@ -45,7 +45,7 @@ fn make_obs(epoch_idx: u64, t_rx_s: f64, prn: u8) -> ObsEpoch {
     };
     let spec = signal_spec_gps_l1_ca();
     ObsEpoch {
-        t_rx_s: bijux_gnss_core::Seconds(t_rx_s),
+        t_rx_s: bijux_gnss_core::api::Seconds(t_rx_s),
         gps_week: None,
         tow_s: None,
         epoch_idx,
@@ -59,11 +59,11 @@ fn make_obs(epoch_idx: u64, t_rx_s: f64, prn: u8) -> ObsEpoch {
                 band: SignalBand::L1,
                 code: SignalCode::Ca,
             },
-            pseudorange_m: bijux_gnss_core::Meters(20_000_000.0 + prn as f64),
+            pseudorange_m: bijux_gnss_core::api::Meters(20_000_000.0 + prn as f64),
             pseudorange_var_m2: 4.0,
-            carrier_phase_cycles: bijux_gnss_core::Cycles(1_000.0 + prn as f64),
+            carrier_phase_cycles: bijux_gnss_core::api::Cycles(1_000.0 + prn as f64),
             carrier_phase_var_cycles2: 0.01,
-            doppler_hz: bijux_gnss_core::Hertz(-500.0),
+            doppler_hz: bijux_gnss_core::api::Hertz(-500.0),
             doppler_var_hz2: 4.0,
             cn0_dbhz: 45.0,
             lock_flags: LockFlags {
@@ -105,11 +105,11 @@ fn make_obs_with_slips(epoch_idx: u64, t_rx_s: f64, prns: &[u8]) -> ObsEpoch {
                     band: SignalBand::L1,
                     code: SignalCode::Ca,
                 },
-                pseudorange_m: bijux_gnss_core::Meters(20_000_000.0 + prn as f64),
+                pseudorange_m: bijux_gnss_core::api::Meters(20_000_000.0 + prn as f64),
                 pseudorange_var_m2: 4.0,
-                carrier_phase_cycles: bijux_gnss_core::Cycles(1_000.0 + prn as f64),
+                carrier_phase_cycles: bijux_gnss_core::api::Cycles(1_000.0 + prn as f64),
                 carrier_phase_var_cycles2: 0.01,
-                doppler_hz: bijux_gnss_core::Hertz(-500.0),
+                doppler_hz: bijux_gnss_core::api::Hertz(-500.0),
                 doppler_var_hz2: 4.0,
                 cn0_dbhz: 45.0,
                 lock_flags: LockFlags {
@@ -136,7 +136,7 @@ fn make_obs_with_slips(epoch_idx: u64, t_rx_s: f64, prns: &[u8]) -> ObsEpoch {
         })
         .collect();
     ObsEpoch {
-        t_rx_s: bijux_gnss_core::Seconds(t_rx_s),
+        t_rx_s: bijux_gnss_core::api::Seconds(t_rx_s),
         gps_week: None,
         tow_s: None,
         epoch_idx,
@@ -167,13 +167,13 @@ fn ppp_resets_on_gap() {
 #[test]
 fn ppp_handles_missing_products() {
     struct EmptyProducts;
-    impl bijux_gnss_nav::ProductsProvider for EmptyProducts {
+    impl bijux_gnss_nav::api::ProductsProvider for EmptyProducts {
         fn sat_state(
             &self,
             _sat: SatId,
             _t_s: f64,
-            _diag: &mut bijux_gnss_nav::ProductDiagnostics,
-        ) -> Option<bijux_gnss_nav::GpsSatState> {
+            _diag: &mut bijux_gnss_nav::api::ProductDiagnostics,
+        ) -> Option<bijux_gnss_nav::api::GpsSatState> {
             None
         }
 
@@ -181,7 +181,7 @@ fn ppp_handles_missing_products() {
             &self,
             _sat: SatId,
             _t_s: f64,
-            _diag: &mut bijux_gnss_nav::ProductDiagnostics,
+            _diag: &mut bijux_gnss_nav::api::ProductDiagnostics,
         ) -> Option<f64> {
             None
         }
@@ -210,7 +210,7 @@ fn ppp_resets_on_mass_slip() {
 #[test]
 fn ppp_wl_fix_records_event() {
     let cfg = PppConfig {
-        ar_mode: bijux_gnss_nav::PppArMode::PppArWideLane,
+        ar_mode: bijux_gnss_nav::api::PppArMode::PppArWideLane,
         ar_ratio_threshold: 1.0,
         ..PppConfig::default()
     };
@@ -239,7 +239,7 @@ fn ppp_iono_storm_triggers_residual_gate() {
     epoch.sats.push(make_obs(1, 0.0, 3).sats[0].clone());
     epoch.sats.push(make_obs(1, 0.0, 4).sats[0].clone());
     for sat in &mut epoch.sats {
-        sat.pseudorange_m = bijux_gnss_core::Meters(sat.pseudorange_m.0 + 50_000.0);
+        sat.pseudorange_m = bijux_gnss_core::api::Meters(sat.pseudorange_m.0 + 50_000.0);
     }
     let sol = ppp.solve_epoch(&epoch, &ephs, &products);
     assert!(sol.is_none());

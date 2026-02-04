@@ -1,5 +1,5 @@
 #![allow(missing_docs)]
-use bijux_gnss_nav::decode_rawephem_hex;
+use bijux_gnss_nav::api::decode_rawephem_hex;
 
 #[test]
 fn rawephem_fixture_decodes_week_and_toe() {

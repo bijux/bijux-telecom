@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 use std::str::FromStr;
 
-use bijux_gnss_core::{Constellation, SatId};
+use bijux_gnss_core::api::{Constellation, SatId};
 
 #[derive(Debug, Clone)]
 pub struct ClkRecord {

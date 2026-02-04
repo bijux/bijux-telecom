@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::SatId;
+use bijux_gnss_core::api::SatId;
 
 use crate::orbits::gps::{sat_state_gps_l1ca, GpsEphemeris, GpsSatState};
 

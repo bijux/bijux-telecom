@@ -1,5 +1,7 @@
-use bijux_gnss_receiver::sim::{generate_l1_ca_multi, SyntheticScenario, SyntheticSignalParams};
-use bijux_gnss_receiver::ReceiverProfile;
+use bijux_gnss_receiver::api::sim::{
+    generate_l1_ca_multi, SyntheticScenario, SyntheticSignalParams,
+};
+use bijux_gnss_receiver::api::ReceiverProfile;
 
 fn hash_samples(samples: &[num_complex::Complex<f32>]) -> u64 {
     let mut hash = 0xcbf29ce484222325u64;
@@ -24,8 +26,8 @@ fn deterministic_synthetic_runs_match() {
         duration_s: 0.01,
         seed: 42,
         satellites: vec![SyntheticSignalParams {
-            sat: bijux_gnss_core::SatId {
-                constellation: bijux_gnss_core::Constellation::Gps,
+            sat: bijux_gnss_core::api::SatId {
+                constellation: bijux_gnss_core::api::Constellation::Gps,
                 prn: 1,
             },
             doppler_hz: 1000.0,

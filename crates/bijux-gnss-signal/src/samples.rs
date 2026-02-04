@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 #![allow(dead_code)]
 
-use bijux_gnss_core::Sample;
+use bijux_gnss_core::api::Sample;
 
 /// Scale applied to i16 samples when converting to floating point.
 pub const I16_SCALE: f32 = 1.0 / 32768.0;

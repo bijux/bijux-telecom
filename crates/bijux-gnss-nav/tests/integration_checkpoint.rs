@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::{Constellation, SatId, SigId, SignalBand, SignalCode};
-use bijux_gnss_nav::{Ekf, EkfConfig, Matrix, PseudorangeMeasurement};
+use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand, SignalCode};
+use bijux_gnss_nav::api::{Ekf, EkfConfig, Matrix, PseudorangeMeasurement};
 
 #[test]
 fn ekf_checkpoint_roundtrip() {

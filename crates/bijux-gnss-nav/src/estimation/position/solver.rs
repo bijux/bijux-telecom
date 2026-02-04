@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
-use crate::{sat_state_gps_l1ca, GpsEphemeris, GpsSatState};
-use bijux_gnss_core::SatId;
+use crate::orbits::gps::{sat_state_gps_l1ca, GpsEphemeris, GpsSatState};
+use bijux_gnss_core::api::SatId;
 
 #[derive(Debug, Clone)]
 pub struct PositionSolution {

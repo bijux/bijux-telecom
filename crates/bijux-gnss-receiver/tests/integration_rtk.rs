@@ -1,18 +1,18 @@
 #![allow(missing_docs)]
-use bijux_gnss_core::{
+use bijux_gnss_core::api::{
     Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, SatId, SigId,
     SignalBand, SignalSpec,
 };
-use bijux_gnss_nav::geodetic_to_ecef;
-use bijux_gnss_receiver::rtk::baseline_from_ecef;
-use bijux_gnss_receiver::rtk::{
+use bijux_gnss_nav::api::geodetic_to_ecef;
+use bijux_gnss_receiver::api::rtk::baseline_from_ecef;
+use bijux_gnss_receiver::api::rtk::{
     apply_fix_hold, build_dd, build_dd_per_constellation, build_sd, choose_ref_sat,
     choose_ref_sat_per_constellation, EpochAligner,
 };
 
 fn make_epoch(t_rx_s: f64, prn: u8) -> ObsEpoch {
     ObsEpoch {
-        t_rx_s: bijux_gnss_core::Seconds(t_rx_s),
+        t_rx_s: bijux_gnss_core::api::Seconds(t_rx_s),
         gps_week: None,
         tow_s: None,
         epoch_idx: (t_rx_s * 1000.0) as u64,
@@ -27,13 +27,13 @@ fn make_epoch(t_rx_s: f64, prn: u8) -> ObsEpoch {
                     prn,
                 },
                 band: SignalBand::L1,
-                code: bijux_gnss_core::SignalCode::Ca,
+                code: bijux_gnss_core::api::SignalCode::Ca,
             },
-            pseudorange_m: bijux_gnss_core::Meters(20_000_000.0 + prn as f64),
+            pseudorange_m: bijux_gnss_core::api::Meters(20_000_000.0 + prn as f64),
             pseudorange_var_m2: 1.0,
-            carrier_phase_cycles: bijux_gnss_core::Cycles(1000.0 + prn as f64),
+            carrier_phase_cycles: bijux_gnss_core::api::Cycles(1000.0 + prn as f64),
             carrier_phase_var_cycles2: 0.01,
-            doppler_hz: bijux_gnss_core::Hertz(-500.0),
+            doppler_hz: bijux_gnss_core::api::Hertz(-500.0),
             doppler_var_hz2: 4.0,
             cn0_dbhz: 45.0,
             lock_flags: LockFlags {
@@ -57,9 +57,9 @@ fn make_epoch(t_rx_s: f64, prn: u8) -> ObsEpoch {
                 signal: SignalSpec {
                     constellation: Constellation::Gps,
                     band: SignalBand::L1,
-                    code: bijux_gnss_core::SignalCode::Ca,
+                    code: bijux_gnss_core::api::SignalCode::Ca,
                     code_rate_hz: 1_023_000.0,
-                    carrier_hz: bijux_gnss_core::GPS_L1_CA_CARRIER_HZ,
+                    carrier_hz: bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ,
                 },
             },
         }],

@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use bijux_gnss_core::{
+use bijux_gnss_core::api::{
     AmbiguityId, DoubleDifference, Hertz, Meters, ObsEpoch, ObsSatellite, SigId, SignalBand,
     SingleDifference,
 };
@@ -20,7 +20,7 @@ fn ambiguity_id_from_sat(sat: &ObsSatellite) -> AmbiguityId {
 }
 
 pub fn single_difference(rover: &ObsEpoch, base: &ObsEpoch) -> Vec<SingleDifference> {
-    let mut base_map: HashMap<bijux_gnss_core::SatId, &ObsSatellite> = HashMap::new();
+    let mut base_map: HashMap<bijux_gnss_core::api::SatId, &ObsSatellite> = HashMap::new();
     for sat in &base.sats {
         base_map.insert(sat.signal_id.sat, sat);
     }
@@ -30,7 +30,7 @@ pub fn single_difference(rover: &ObsEpoch, base: &ObsEpoch) -> Vec<SingleDiffere
             out.push(SingleDifference {
                 sig: rover_sat.signal_id,
                 code_m: Meters(rover_sat.pseudorange_m.0 - base_sat.pseudorange_m.0),
-                phase_cycles: bijux_gnss_core::Cycles(
+                phase_cycles: bijux_gnss_core::api::Cycles(
                     rover_sat.carrier_phase_cycles.0 - base_sat.carrier_phase_cycles.0,
                 ),
                 doppler_hz: Hertz(rover_sat.doppler_hz.0 - base_sat.doppler_hz.0),
@@ -65,7 +65,7 @@ pub fn double_difference(
             ref_sig: ref_sd.sig,
             sig: sd.sig,
             code_m: Meters(sd.code_m.0 - ref_sd.code_m.0),
-            phase_cycles: bijux_gnss_core::Cycles(sd.phase_cycles.0 - ref_sd.phase_cycles.0),
+            phase_cycles: bijux_gnss_core::api::Cycles(sd.phase_cycles.0 - ref_sd.phase_cycles.0),
             doppler_hz: Hertz(sd.doppler_hz.0 - ref_sd.doppler_hz.0),
             canceled: vec![
                 ref_sd.ambiguity_rover.clone(),

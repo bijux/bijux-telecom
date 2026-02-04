@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
-use bijux_gnss_core::{Constellation, SatId};
-use bijux_gnss_nav::{CsvEphemerisProvider, EphemerisProvider};
+use bijux_gnss_core::api::{Constellation, SatId};
+use bijux_gnss_nav::api::{CsvEphemerisProvider, EphemerisProvider};
 
 #[test]
 fn csv_ephemeris_provider_loads_entries() {
