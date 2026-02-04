@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 include!("cli/mod.rs");
 include!("cli/args_commands.rs");
 include!("cli/args.rs");

@@ -24,14 +24,10 @@ pub use bijux_gnss_receiver::api::validation_report::{
 };
 
 /// Receiver API re-exports for CLI convenience.
-pub mod receiver {
-    pub use bijux_gnss_receiver::api::*;
-}
+pub use bijux_gnss_receiver::api as receiver;
 
 /// Core API re-exports for CLI convenience.
-pub mod core {
-    pub use bijux_gnss_receiver::api::core::*;
-}
+pub use bijux_gnss_receiver::api::core as core;
 
 /// Hash a config file or profile snapshot.
 pub fn hash_config(
@@ -123,12 +119,8 @@ pub fn apply_sweep_value(
 }
 
 /// Signal API re-exports for CLI convenience.
-pub mod signal {
-    pub use bijux_gnss_receiver::api::signal::*;
-}
+pub use bijux_gnss_receiver::api::signal as signal;
 
 /// Nav API re-exports for CLI convenience.
 #[cfg(feature = "nav")]
-pub mod nav {
-    pub use bijux_gnss_receiver::api::nav::*;
-}
+pub use bijux_gnss_receiver::api::nav as nav;

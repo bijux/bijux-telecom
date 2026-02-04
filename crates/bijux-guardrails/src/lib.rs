@@ -2,6 +2,7 @@
 //! See docs/GLOSSARY.md for acronym definitions.
 
 #![deny(missing_docs)]
+#![forbid(unsafe_code)]
 
 mod internal;
 

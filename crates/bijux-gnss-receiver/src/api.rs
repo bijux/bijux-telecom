@@ -10,71 +10,39 @@ pub mod data {
 }
 
 /// Re-export core API for downstream crates.
-pub mod core {
-    pub use bijux_gnss_core::api::*;
-}
+pub use bijux_gnss_core::api as core;
 
 /// Re-export signal API for downstream crates.
-pub mod signal {
-    pub use bijux_gnss_signal::api::*;
-}
+pub use bijux_gnss_signal::api as signal;
 
 /// Re-export nav API for downstream crates.
 #[cfg(feature = "nav")]
-pub mod nav {
-    pub use bijux_gnss_nav::api::*;
-}
+pub use bijux_gnss_nav::api as nav;
 
 /// Runtime logging helpers.
-pub mod logging {
-    pub use crate::runtime::logging::*;
-}
+pub use crate::runtime::logging as logging;
 
 /// Stage modules for acquisition, tracking, observations, and navigation.
-pub mod acquisition {
-    pub use crate::stages::acquisition::*;
-}
-
+pub use crate::stages::acquisition as acquisition;
 /// Tracking stage helpers.
-pub mod tracking {
-    pub use crate::stages::tracking::*;
-}
-
+pub use crate::stages::tracking as tracking;
 /// Observation-building helpers.
-pub mod observations {
-    pub use crate::stages::observations::*;
-}
-
+pub use crate::stages::observations as observations;
 /// Navigation bridge helpers.
 #[cfg(feature = "nav")]
-pub mod navigation {
-    pub use crate::stages::navigation::*;
-}
+pub use crate::stages::navigation as navigation;
 
 /// RTK differencing and baseline helpers.
 #[cfg(feature = "nav")]
-pub mod rtk {
-    pub use crate::rtk_internal::ambiguity::*;
-    pub use crate::rtk_internal::core::*;
-    pub use crate::rtk_internal::differencing::*;
-    pub use crate::rtk_internal::metrics::*;
-    pub use bijux_gnss_core::api::rtk::{
-        RtkBaselineEpochV1, RtkBaselineQualityV1, RtkDdEpochV1, RtkFixAuditV1, RtkPrecisionV1,
-        RtkSdEpochV1,
-    };
-}
+pub use crate::rtk_internal as rtk;
 
 /// Synthetic signal generation for tests and demos.
 #[cfg(feature = "nav")]
-pub mod sim {
-    pub use crate::sim_internal::synthetic::*;
-}
+pub use crate::sim_internal::synthetic as sim;
 
 /// Validation report helpers.
 #[cfg(feature = "nav")]
-pub mod validation_report {
-    pub use crate::validation_report::*;
-}
+pub use crate::validation_report as validation_report;
 
 /// Artifacts produced by a receiver pipeline run.
 #[derive(Debug, Default, Clone)]

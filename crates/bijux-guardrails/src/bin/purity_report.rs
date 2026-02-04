@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use regex::Regex;
 use std::collections::BTreeSet;
 use std::fs;

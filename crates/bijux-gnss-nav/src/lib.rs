@@ -12,6 +12,7 @@
 
 #![deny(clippy::unwrap_used)]
 #![deny(missing_docs)]
+#![forbid(unsafe_code)]
 
 mod corrections;
 mod estimation;

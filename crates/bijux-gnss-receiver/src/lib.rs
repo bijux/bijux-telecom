@@ -14,6 +14,7 @@
 
 #![deny(clippy::unwrap_used)]
 #![deny(missing_docs)]
+#![forbid(unsafe_code)]
 
 mod io;
 #[cfg(feature = "nav")]

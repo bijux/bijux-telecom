@@ -8,6 +8,7 @@
 //! - Start here: `ObsEpoch` and `SamplesFrame`
 #![deny(clippy::unwrap_used)]
 #![deny(missing_docs)]
+#![forbid(unsafe_code)]
 
 mod artifact;
 mod config;
