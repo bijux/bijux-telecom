@@ -202,6 +202,64 @@ fn write_experiment_run(
     Ok(())
 }
 
+#[derive(Debug, Serialize)]
+struct NavSolutionOutput {
+    schema_version: u32,
+    epoch_idx: u64,
+    t_rx_s: f64,
+    ecef_m: [f64; 3],
+    llh_deg: [f64; 3],
+    velocity_mps: Option<[f64; 3]>,
+    clock_bias_s: f64,
+    clock_drift_s_per_s: f64,
+    covariance: NavSolutionCovariance,
+    fix_quality: bijux_gnss_infra::api::core::NavQualityFlag,
+    validity: bijux_gnss_infra::api::core::SolutionValidity,
+    rejected_measurements: usize,
+}
+
+#[derive(Debug, Serialize)]
+struct NavSolutionCovariance {
+    sigma_h_m: Option<f64>,
+    sigma_v_m: Option<f64>,
+    covariance_xyz_m2: Option<[f64; 3]>,
+}
+
+fn write_nav_solution_outputs(
+    out_dir: &Path,
+    solutions: &[bijux_gnss_infra::api::core::NavSolutionEpoch],
+) -> Result<()> {
+    let mut lines = Vec::new();
+    for sol in solutions {
+        let output = NavSolutionOutput {
+            schema_version: 1,
+            epoch_idx: sol.epoch.index,
+            t_rx_s: sol.t_rx_s.0,
+            ecef_m: [sol.ecef_x_m.0, sol.ecef_y_m.0, sol.ecef_z_m.0],
+            llh_deg: [sol.latitude_deg, sol.longitude_deg, sol.altitude_m.0],
+            velocity_mps: None,
+            clock_bias_s: sol.clock_bias_s.0,
+            clock_drift_s_per_s: sol.clock_drift_s_per_s,
+            covariance: NavSolutionCovariance {
+                sigma_h_m: sol.sigma_h_m.map(|m| m.0),
+                sigma_v_m: sol.sigma_v_m.map(|m| m.0),
+                covariance_xyz_m2: None,
+            },
+            fix_quality: sol.quality,
+            validity: sol.validity,
+            rejected_measurements: sol.residuals.iter().filter(|r| r.rejected).count(),
+        };
+        lines.push(serde_json::to_string(&output)?);
+    }
+    let path = out_dir.join("nav_solution.jsonl");
+    fs::write(&path, lines.join("\n"))?;
+    let schema = schema_path("nav_solution.schema.json");
+    if schema.exists() {
+        validate_json_schema(&schema, &path, false)?;
+    }
+    Ok(())
+}
+
 fn write_track_timeseries(
     common: &CommonArgs,
     report: &TrackingReport,

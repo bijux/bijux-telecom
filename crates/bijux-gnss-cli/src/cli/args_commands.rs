@@ -226,6 +226,28 @@ pub(crate) enum GnssCommand {
         sidecar: PathBuf,
     },
 
+    /// Analyze a run directory and emit summary artifacts
+    Analyze {
+        /// Run directory produced by bijux-gnss
+        #[arg(long, value_name = "DIR")]
+        run_dir: PathBuf,
+
+        /// Optional reference JSONL for position error plots
+        #[arg(long, value_name = "FILE")]
+        reference: Option<PathBuf>,
+    },
+
+    /// Compare two run directories
+    Diff {
+        /// First run directory
+        #[arg(long, value_name = "DIR")]
+        run_a: PathBuf,
+
+        /// Second run directory
+        #[arg(long, value_name = "DIR")]
+        run_b: PathBuf,
+    },
+
     /// Write JSON schema for receiver config
     ConfigSchema {
         #[command(flatten)]

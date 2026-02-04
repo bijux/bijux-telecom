@@ -9,5 +9,6 @@ include!("cli/commands/ingest.rs");
 include!("cli/commands/run_pipeline.rs");
 include!("cli/commands/diagnostics.rs");
 include!("cli/commands/validate.rs");
+include!("cli/commands/analyze.rs");
 include!("cli/run_command.rs");
 include!("cli/commands/artifact.rs");

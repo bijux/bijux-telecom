@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Navigation Solution Output",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "epoch_idx",
+    "t_rx_s",
+    "ecef_m",
+    "llh_deg",
+    "clock_bias_s",
+    "clock_drift_s_per_s",
+    "covariance",
+    "fix_quality",
+    "validity",
+    "rejected_measurements"
+  ],
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "epoch_idx": { "type": "integer", "minimum": 0 },
+    "t_rx_s": { "type": "number" },
+    "ecef_m": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "type": "number" }
+    },
+    "llh_deg": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "type": "number" }
+    },
+    "velocity_mps": {
+      "type": ["array", "null"],
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "type": "number" }
+    },
+    "clock_bias_s": { "type": "number" },
+    "clock_drift_s_per_s": { "type": "number" },
+    "covariance": {
+      "type": "object",
+      "required": ["sigma_h_m", "sigma_v_m", "covariance_xyz_m2"],
+      "properties": {
+        "sigma_h_m": { "type": ["number", "null"] },
+        "sigma_v_m": { "type": ["number", "null"] },
+        "covariance_xyz_m2": {
+          "type": ["array", "null"],
+          "minItems": 3,
+          "maxItems": 3,
+          "items": { "type": "number" }
+        }
+      }
+    },
+    "fix_quality": { "type": "string" },
+    "validity": { "type": "string" },
+    "rejected_measurements": { "type": "integer", "minimum": 0 }
+  }
+}

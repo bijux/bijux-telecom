@@ -18,12 +18,14 @@ toml.workspace = true
 eyre.workspace = true
 jsonschema = { workspace = true, optional = true }
 schemars = { workspace = true, optional = true }
+plotters = { version = "0.3", optional = true }
 
 [features]
 default = ["precise-products"]
 precise-products = ["bijux-gnss-infra/precise-products"]
 tracing = ["bijux-gnss-infra/tracing", "dep:tracing-subscriber"]
 schema-validate = ["dep:jsonschema", "dep:schemars"]
+plots = ["dep:plotters"]
 
 [[bin]]
 name = "bijux"

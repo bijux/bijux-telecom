@@ -12,6 +12,8 @@ fn run_command(command: GnssCommand) -> Result<()> {
         cmd @ GnssCommand::Config { .. } => handle_config(cmd),
         cmd @ GnssCommand::ValidateArtifacts { .. } => handle_validateartifacts(cmd),
         cmd @ GnssCommand::ValidateSidecar { .. } => handle_validatesidecar(cmd),
+        cmd @ GnssCommand::Analyze { .. } => handle_analyze(cmd),
+        cmd @ GnssCommand::Diff { .. } => handle_diff(cmd),
         cmd @ GnssCommand::Artifact { .. } => handle_artifact(cmd),
         cmd @ GnssCommand::Diagnostics { .. } => handle_diagnostics(cmd),
         cmd @ GnssCommand::ConfigUpgrade { .. } => handle_configupgrade(cmd),
@@ -247,21 +249,33 @@ fn solve_epoch_ekf(
         longitude_deg: lon,
         altitude_m: bijux_gnss_infra::api::core::Meters(alt),
         clock_bias_s: bijux_gnss_infra::api::core::Seconds(ctx.ekf.x[6]),
+        clock_drift_s_per_s: ctx.ekf.x.get(7).copied().unwrap_or(0.0),
         pdop: 0.0,
         rms_m: bijux_gnss_infra::api::core::Meters(ctx.ekf.health.innovation_rms),
         status,
         quality: status.quality_flag(),
+        validity: if status == bijux_gnss_infra::api::core::SolutionStatus::Invalid {
+            bijux_gnss_infra::api::core::SolutionValidity::Invalid
+        } else {
+            bijux_gnss_infra::api::core::SolutionValidity::Converging
+        },
         valid: bijux_gnss_infra::api::core::is_solution_valid(status),
         processing_ms: None,
         residuals: Vec::new(),
+        health: Vec::new(),
         isb: Vec::new(),
         sigma_h_m: None,
         sigma_v_m: None,
+        innovation_rms_m: Some(ctx.ekf.health.innovation_rms),
+        normalized_innovation_rms: None,
+        normalized_innovation_max: None,
         ekf_innovation_rms: Some(ctx.ekf.health.innovation_rms),
         ekf_condition_number: ctx.ekf.health.condition_number,
         ekf_whiteness_ratio: ctx.ekf.health.whiteness_ratio,
         ekf_predicted_variance: ctx.ekf.health.predicted_variance,
         ekf_observed_variance: ctx.ekf.health.observed_variance,
+        integrity_hpl_m: None,
+        integrity_vpl_m: None,
     }))
 }
 
