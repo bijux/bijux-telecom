@@ -13,6 +13,8 @@ fn rinex_obs_has_header() {
         tow_s: Some(bijux_gnss_core::Seconds(0.0)),
         epoch_idx: 0,
         discontinuity: false,
+        valid: true,
+        processing_ms: None,
         role: ReceiverRole::Rover,
         sats: vec![ObsSatellite {
             signal_id: SigId {

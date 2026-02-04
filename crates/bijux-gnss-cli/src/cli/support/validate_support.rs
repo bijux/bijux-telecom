@@ -14,12 +14,15 @@ fn build_validation_report(
 
     let mut horiz_errors = Vec::new();
     let mut vert_errors = Vec::new();
+    let mut horiz_by_time = Vec::new();
+    let mut vert_by_time = Vec::new();
+    let mut fix_timeline = Vec::new();
     let mut residuals = Vec::new();
     let mut nees_values = Vec::new();
 
     for sol in solutions {
         if let Some(r) = ref_map.get(&sol.epoch.index) {
-            let (x, y, z) = lla_to_ecef(r.latitude_deg, r.longitude_deg, r.altitude_m);
+            let (x, y, z) = reference_ecef(r);
             let dx = sol.ecef_x_m.0 - x;
             let dy = sol.ecef_y_m.0 - y;
             let dz = sol.ecef_z_m.0 - z;
@@ -27,6 +30,8 @@ fn build_validation_report(
             let vert = dz.abs();
             horiz_errors.push(horiz);
             vert_errors.push(vert);
+            horiz_by_time.push((sol.t_rx_s.0, horiz));
+            vert_by_time.push((sol.t_rx_s.0, vert));
             if let (Some(sig_h), Some(sig_v)) = (sol.sigma_h_m, sol.sigma_v_m) {
                 if sig_h.0 > 0.0 && sig_v.0 > 0.0 {
                     let (e, n, u) = bijux_gnss_nav::ecef_to_enu(
@@ -43,6 +48,10 @@ fn build_validation_report(
                 }
             }
         }
+        fix_timeline.push(FixTimelineEntry {
+            epoch_idx: sol.epoch.index,
+            fixed: matches!(sol.status, bijux_gnss_core::SolutionStatus::Fixed),
+        });
         let mut per_sat = Vec::new();
         let mut rejected = Vec::new();
         for r in &sol.residuals {
@@ -63,6 +72,7 @@ fn build_validation_report(
 
     let horiz_stats = stats(&horiz_errors);
     let vert_stats = stats(&vert_errors);
+    let convergence = convergence_report(&horiz_by_time, &vert_by_time);
     let budgets = ValidationBudgets::default();
     let violations = check_budgets(tracks, solutions, &budgets);
     let time_consistency = check_time_consistency(tracks, sample_rate_hz);
@@ -106,12 +116,25 @@ fn build_validation_report(
     } else {
         Some(nees_values.iter().sum::<f64>() / nees_values.len() as f64)
     };
+    let mut consistency_warnings = Vec::new();
+    if let Some(nis) = nis_mean {
+        if !(0.1..=10.0).contains(&nis) {
+            consistency_warnings.push(format!("NIS out of expected range: {nis:.3}"));
+        }
+    }
+    if let Some(nees) = nees_mean {
+        if !(0.1..=10.0).contains(&nees) {
+            consistency_warnings.push(format!("NEES out of expected range: {nees:.3}"));
+        }
+    }
 
     Ok(ValidationReport {
         samples: tracks.iter().map(|t| t.epochs.len()).sum(),
         epochs: solutions.len(),
         horiz_error_m: horiz_stats,
         vert_error_m: vert_stats,
+        convergence,
+        fix_timeline,
         residuals,
         time_consistency,
         consistency,
@@ -119,6 +142,7 @@ fn build_validation_report(
         budget_violations: violations,
         nis_mean,
         nees_mean,
+        consistency_warnings,
         inter_frequency_alignment,
         ppp_readiness: PppReadinessReport {
             multi_freq_present,
@@ -127,6 +151,36 @@ fn build_validation_report(
             product_fallbacks,
         },
     })
+}
+
+fn convergence_report(horiz: &[(f64, f64)], vert: &[(f64, f64)]) -> ConvergenceReport {
+    let mut t1 = None;
+    let mut t03 = None;
+    let mut t01 = None;
+    let mut worst_h: f64 = 0.0;
+    let mut worst_v: f64 = 0.0;
+    for (t, h) in horiz {
+        worst_h = worst_h.max(*h);
+        if t1.is_none() && *h <= 1.0 {
+            t1 = Some(*t);
+        }
+        if t03.is_none() && *h <= 0.3 {
+            t03 = Some(*t);
+        }
+        if t01.is_none() && *h <= 0.1 {
+            t01 = Some(*t);
+        }
+    }
+    for (_t, v) in vert {
+        worst_v = worst_v.max(*v);
+    }
+    ConvergenceReport {
+        time_to_1m_s: t1,
+        time_to_0_3m_s: t03,
+        time_to_0_1m_s: t01,
+        worst_horiz_m: worst_h,
+        worst_vert_m: worst_v,
+    }
 }
 
 #[allow(dead_code)]
@@ -190,7 +244,7 @@ fn ppp_evaluation_report(
     for sol in solutions {
         residual_rms.push(sol.rms_m);
         if let Some(r) = ref_map.get(&sol.epoch_idx) {
-            let (x, y, z) = lla_to_ecef(r.latitude_deg, r.longitude_deg, r.altitude_m);
+            let (x, y, z) = reference_ecef(r);
             let dx = sol.ecef_x_m - x;
             let dy = sol.ecef_y_m - y;
             let dz = sol.ecef_z_m - z;
@@ -235,193 +289,65 @@ fn ppp_evaluation_report(
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-#[derive(Debug, Serialize)]
-#[allow(dead_code)]
-struct ReferenceCompareStats {
-    count: usize,
-    horiz_rms_m: f64,
-    vert_rms_m: f64,
-}
-
-#[allow(dead_code)]
-fn reference_compare(
-    solutions: &[bijux_gnss_core::NavSolutionEpoch],
-    reference: &[ValidationReferenceEpoch],
-) -> (Vec<String>, ReferenceCompareStats) {
-    let mut ref_map = std::collections::BTreeMap::new();
-    for r in reference {
-        ref_map.insert(r.epoch_idx, r);
-    }
-    let mut rows = Vec::new();
-    rows.push("epoch_idx,dx_m,dy_m,dz_m,horiz_m,vert_m".to_string());
-    let mut horiz = Vec::new();
-    let mut vert = Vec::new();
-    for sol in solutions {
-        if let Some(r) = ref_map.get(&sol.epoch.index) {
-            let (x, y, z) = lla_to_ecef(r.latitude_deg, r.longitude_deg, r.altitude_m);
-            let dx = sol.ecef_x_m.0 - x;
-            let dy = sol.ecef_y_m.0 - y;
-            let dz = sol.ecef_z_m.0 - z;
-            let h = (dx * dx + dy * dy).sqrt();
-            let v = dz.abs();
-            horiz.push(h);
-            vert.push(v);
-            rows.push(format!(
-                "{},{:.4},{:.4},{:.4},{:.4},{:.4}",
-                sol.epoch.index, dx, dy, dz, h, v
-            ));
-        }
-    }
-    let horiz_rms = if horiz.is_empty() {
-        0.0
-    } else {
-        (horiz.iter().map(|v| v * v).sum::<f64>() / horiz.len() as f64).sqrt()
-    };
-    let vert_rms = if vert.is_empty() {
-        0.0
-    } else {
-        (vert.iter().map(|v| v * v).sum::<f64>() / vert.len() as f64).sqrt()
-    };
-    (
-        rows,
-        ReferenceCompareStats {
-            count: horiz.len(),
-            horiz_rms_m: horiz_rms,
-            vert_rms_m: vert_rms,
-        },
-    )
-}
-
-fn check_solution_consistency(
-    solutions: &[bijux_gnss_core::NavSolutionEpoch],
-) -> SolutionConsistencyReport {
-    let mut position_jump_count = 0;
-    let mut clock_jump_count = 0;
-    let mut pdop_spike_count = 0;
-    let mut warnings = Vec::new();
-    let mut prev: Option<&bijux_gnss_core::NavSolutionEpoch> = None;
-    let mut prev_pdop: Option<f64> = None;
-    for sol in solutions {
-        if let Some(prev_sol) = prev {
-            let dx = sol.ecef_x_m.0 - prev_sol.ecef_x_m.0;
-            let dy = sol.ecef_y_m.0 - prev_sol.ecef_y_m.0;
-            let dz = sol.ecef_z_m.0 - prev_sol.ecef_z_m.0;
-            let dist = (dx * dx + dy * dy + dz * dz).sqrt();
-            if dist > 50.0 {
-                position_jump_count += 1;
-            }
-            let clock_jump = (sol.clock_bias_s.0 - prev_sol.clock_bias_s.0).abs();
-            if clock_jump > 1e-3 {
-                clock_jump_count += 1;
-            }
-        }
-        if let Some(prev_pdop) = prev_pdop {
-            if sol.pdop > prev_pdop * 2.5 && sol.pdop > 6.0 {
-                pdop_spike_count += 1;
-            }
-        }
-        prev_pdop = Some(sol.pdop);
-        prev = Some(sol);
-    }
-    if position_jump_count > 0 {
-        warnings.push("position jumps detected".to_string());
-    }
-    if clock_jump_count > 0 {
-        warnings.push("clock jumps detected".to_string());
-    }
-    if pdop_spike_count > 0 {
-        warnings.push("pdop spikes detected".to_string());
-    }
-    SolutionConsistencyReport {
-        position_jump_count,
-        clock_jump_count,
-        pdop_spike_count,
-        warnings,
+    #[test]
+    fn golden_reference_validation() {
+        let sol = bijux_gnss_core::NavSolutionEpoch {
+            epoch: bijux_gnss_core::Epoch { index: 0 },
+            t_rx_s: bijux_gnss_core::Seconds(0.0),
+            ecef_x_m: bijux_gnss_core::Meters(1.0),
+            ecef_y_m: bijux_gnss_core::Meters(2.0),
+            ecef_z_m: bijux_gnss_core::Meters(3.0),
+            latitude_deg: 0.0,
+            longitude_deg: 0.0,
+            altitude_m: bijux_gnss_core::Meters(0.0),
+            clock_bias_s: bijux_gnss_core::Seconds(0.0),
+            pdop: 1.0,
+            rms_m: bijux_gnss_core::Meters(0.0),
+            status: bijux_gnss_core::SolutionStatus::Converged,
+            valid: true,
+            processing_ms: None,
+            residuals: Vec::new(),
+            isb: Vec::new(),
+            sigma_h_m: None,
+            sigma_v_m: None,
+            ekf_innovation_rms: None,
+            ekf_condition_number: None,
+            ekf_whiteness_ratio: None,
+            ekf_predicted_variance: None,
+            ekf_observed_variance: None,
+        };
+        let reference = ValidationReferenceEpoch {
+            epoch_idx: 0,
+            t_rx_s: Some(0.0),
+            latitude_deg: 0.0,
+            longitude_deg: 0.0,
+            altitude_m: 0.0,
+            ecef_x_m: Some(1.0),
+            ecef_y_m: Some(2.0),
+            ecef_z_m: Some(3.0),
+            vel_x_mps: None,
+            vel_y_mps: None,
+            vel_z_mps: None,
+        };
+        let report = build_validation_report(
+            &[],
+            &[],
+            &[sol],
+            &[reference],
+            1.0,
+            false,
+            Vec::new(),
+        )
+        .expect("validation report");
+        assert!(report.horiz_error_m.rms <= 1e-6);
+        assert!(report.vert_error_m.rms <= 1e-6);
     }
 }
 
-fn check_time_consistency(
-    tracks: &[bijux_gnss_receiver::tracking::TrackingResult],
-    sample_rate_hz: f64,
-) -> TimeConsistencyReport {
-    let mut epoch_backward = 0;
-    let mut epoch_gaps = 0;
-    let mut sample_backward = 0;
-    let mut warnings = Vec::new();
-    let mut epochs_checked = 0;
-    let mut sample_step_mismatch = 0;
-    let configured_step = if sample_rate_hz > 0.0 {
-        Some((sample_rate_hz * 0.001).round().max(1.0) as u64)
-    } else {
-        None
-    };
-    let mut expected_step: Option<u64> = configured_step;
-    let mut sample_step_total = 0u64;
-    let mut sample_step_count = 0u64;
-
-    for track in tracks {
-        let mut prev_epoch: Option<u64> = None;
-        let mut prev_sample: Option<u64> = None;
-        for epoch in &track.epochs {
-            epochs_checked += 1;
-            if let Some(prev) = prev_epoch {
-                if epoch.epoch.index < prev {
-                    epoch_backward += 1;
-                } else if epoch.epoch.index > prev + 1 {
-                    epoch_gaps += 1;
-                }
-            }
-            if let Some(prev) = prev_sample {
-                if epoch.sample_index < prev {
-                    sample_backward += 1;
-                } else {
-                    let step = epoch.sample_index - prev;
-                    if let Some(expected) = expected_step {
-                        if step != expected {
-                            sample_step_mismatch += 1;
-                        }
-                    } else {
-                        expected_step = Some(step);
-                    }
-                    sample_step_total = sample_step_total.saturating_add(step);
-                    sample_step_count = sample_step_count.saturating_add(1);
-                }
-            }
-            prev_epoch = Some(epoch.epoch.index);
-            prev_sample = Some(epoch.sample_index);
-        }
-    }
-
-    if epoch_backward > 0 {
-        warnings.push("epoch index went backwards".to_string());
-    }
-    if epoch_gaps > 0 {
-        warnings.push("epoch index gaps detected".to_string());
-    }
-    if sample_backward > 0 {
-        warnings.push("sample index went backwards".to_string());
-    }
-    if sample_step_mismatch > 0 {
-        warnings.push("sample cadence mismatch detected".to_string());
-    }
-
-    TimeConsistencyReport {
-        channels: tracks.len(),
-        epochs_checked,
-        epoch_backward,
-        epoch_gaps,
-        sample_backward,
-        sample_step_mismatch,
-        expected_step,
-        observed_step_mean: if sample_step_count > 0 {
-            Some(sample_step_total as f64 / sample_step_count as f64)
-        } else {
-            None
-        },
-        warnings,
-    }
-}
 
 
 impl Default for ValidationBudgets {

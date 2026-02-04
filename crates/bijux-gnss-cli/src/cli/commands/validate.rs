@@ -324,3 +324,49 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
 
     Ok(())
 }
+
+fn handle_validate_reference(command: GnssCommand) -> Result<()> {
+    let GnssCommand::ValidateReference {
+        common,
+        run_dir,
+        reference,
+        align,
+    } = command
+    else {
+        bail!("invalid command for handler");
+    };
+
+    set_trace_dir(&common);
+    let artifacts = run_dir.join("artifacts");
+    let obs_path = artifacts.join("obs.jsonl");
+    let nav_path = artifacts.join("pvt.jsonl");
+    let obs = read_obs_epochs(&obs_path)?;
+    let solutions = read_nav_solutions(&nav_path)?;
+    let reference_epochs = read_reference_epochs(&reference)?;
+    let aligned = align_reference_by_time(&solutions, &reference_epochs, align);
+    if aligned.is_empty() {
+        bail!("no reference epochs aligned; check t_rx_s in reference file");
+    }
+
+    let report = build_validation_report(
+        &[],
+        &obs,
+        &solutions,
+        &aligned,
+        0.0,
+        false,
+        vec!["run_dir_only".to_string()],
+    )?;
+    let out_dir = artifacts_dir(&common, "validate_reference", None)?;
+    let out = out_dir.join("validation_report.json");
+    fs::write(&out, serde_json::to_string_pretty(&report)?)?;
+    let summary = serde_json::json!({ "report": out.display().to_string() });
+    write_manifest(
+        &common,
+        "validate_reference",
+        &ReceiverProfile::default(),
+        None,
+        &summary,
+    )?;
+    Ok(())
+}

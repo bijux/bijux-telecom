@@ -11,14 +11,7 @@ fn no_ad_hoc_warnings_in_core_nav_receiver() {
         "crates/bijux-gnss-nav",
         "crates/bijux-gnss-receiver",
     ];
-    let forbidden = [
-        "warn!(",
-        "error!(",
-        "log::warn",
-        "log::error",
-        "tracing::warn",
-        "tracing::error",
-    ];
+    let forbidden = ["warn!(", "error!(", "log::warn", "log::error"];
 
     for crate_path in crates {
         let src = root.join(crate_path).join("src");

@@ -135,12 +135,26 @@ struct NavDecodeReport {
     ephemerides: Vec<bijux_gnss_nav::GpsEphemeris>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct ValidationReferenceEpoch {
     epoch_idx: u64,
+    #[serde(default)]
+    t_rx_s: Option<f64>,
     latitude_deg: f64,
     longitude_deg: f64,
     altitude_m: f64,
+    #[serde(default)]
+    ecef_x_m: Option<f64>,
+    #[serde(default)]
+    ecef_y_m: Option<f64>,
+    #[serde(default)]
+    ecef_z_m: Option<f64>,
+    #[serde(default)]
+    vel_x_mps: Option<f64>,
+    #[serde(default)]
+    vel_y_mps: Option<f64>,
+    #[serde(default)]
+    vel_z_mps: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -150,6 +164,7 @@ struct ValidationErrorStats {
     median: f64,
     rms: f64,
     p95: f64,
+    max: f64,
 }
 
 #[derive(Debug, Serialize)]
@@ -158,6 +173,8 @@ struct ValidationReport {
     epochs: usize,
     horiz_error_m: ValidationErrorStats,
     vert_error_m: ValidationErrorStats,
+    convergence: ConvergenceReport,
+    fix_timeline: Vec<FixTimelineEntry>,
     residuals: Vec<NavResidualReport>,
     time_consistency: TimeConsistencyReport,
     consistency: SolutionConsistencyReport,
@@ -165,8 +182,24 @@ struct ValidationReport {
     budget_violations: Vec<String>,
     nis_mean: Option<f64>,
     nees_mean: Option<f64>,
+    consistency_warnings: Vec<String>,
     inter_frequency_alignment: bijux_gnss_core::InterFrequencyAlignmentReport,
     ppp_readiness: PppReadinessReport,
+}
+
+#[derive(Debug, Serialize)]
+struct ConvergenceReport {
+    time_to_1m_s: Option<f64>,
+    time_to_0_3m_s: Option<f64>,
+    time_to_0_1m_s: Option<f64>,
+    worst_horiz_m: f64,
+    worst_vert_m: f64,
+}
+
+#[derive(Debug, Serialize)]
+struct FixTimelineEntry {
+    epoch_idx: u64,
+    fixed: bool,
 }
 
 #[derive(Debug, Serialize)]

@@ -13,6 +13,8 @@ fn make_epoch(prn: u8, pseudo: f64, phase: f64, doppler: f64) -> ObsEpoch {
         tow_s: None,
         epoch_idx: 0,
         discontinuity: false,
+        valid: true,
+        processing_ms: None,
         role: ReceiverRole::Rover,
         sats: vec![ObsSatellite {
             signal_id: SigId {

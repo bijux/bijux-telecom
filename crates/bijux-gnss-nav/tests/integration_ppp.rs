@@ -50,6 +50,8 @@ fn make_obs(epoch_idx: u64, t_rx_s: f64, prn: u8) -> ObsEpoch {
         tow_s: None,
         epoch_idx,
         discontinuity: false,
+        valid: true,
+        processing_ms: None,
         role: ReceiverRole::Rover,
         sats: vec![ObsSatellite {
             signal_id: SigId {
@@ -139,6 +141,8 @@ fn make_obs_with_slips(epoch_idx: u64, t_rx_s: f64, prns: &[u8]) -> ObsEpoch {
         tow_s: None,
         epoch_idx,
         discontinuity: false,
+        valid: true,
+        processing_ms: None,
         role: ReceiverRole::Rover,
         sats,
     }

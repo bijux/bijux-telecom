@@ -320,6 +320,30 @@ pub(crate) enum GnssCommand {
         #[arg(long, value_name = "FILE")]
         clk: Option<PathBuf>,
     },
+
+    /// Validate a run directory against a reference trajectory
+    ValidateReference {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Run directory containing artifacts/
+        #[arg(long, value_name = "DIR")]
+        run_dir: PathBuf,
+
+        /// Reference trajectory file (JSONL or CSV)
+        #[arg(long, value_name = "FILE")]
+        reference: PathBuf,
+
+        /// Alignment policy for reference (nearest or linear)
+        #[arg(long, value_enum, default_value_t = ReferenceAlign::Nearest)]
+        align: ReferenceAlign,
+    },
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug)]
+pub(crate) enum ReferenceAlign {
+    Nearest,
+    Linear,
 }
 
 #[derive(Subcommand)]

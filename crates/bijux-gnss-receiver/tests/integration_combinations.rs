@@ -20,6 +20,8 @@ fn make_dual_freq_epoch(p1: f64, p2: f64, phi1: f64, phi2: f64) -> ObsEpoch {
         tow_s: None,
         epoch_idx: 0,
         discontinuity: false,
+        valid: true,
+        processing_ms: None,
         role: ReceiverRole::Rover,
         sats: vec![
             ObsSatellite {

@@ -277,6 +277,7 @@ fn write_track_timeseries(
                 dll_err: epoch.dll_err,
                 pll_err: epoch.pll_err,
                 fll_err: epoch.fll_err,
+                processing_ms: None,
             },
         };
         let line = serde_json::to_string(&wrapped)?;
@@ -303,6 +304,7 @@ fn write_obs_timeseries(
     );
     let path = out_dir.join("obs.jsonl");
     let mut lines = Vec::new();
+    let mut timing_lines = Vec::new();
     for epoch in &mut obs {
         if common.deterministic {
             sort_obs_sats(epoch);
@@ -313,9 +315,20 @@ fn write_obs_timeseries(
         };
         let line = serde_json::to_string(&wrapped)?;
         lines.push(line);
+        if let Some(ms) = epoch.processing_ms {
+            timing_lines.push(serde_json::to_string(&serde_json::json!({
+                "epoch_idx": epoch.epoch_idx,
+                "stage": "observations",
+                "processing_ms": ms
+            }))?);
+        }
     }
     fs::write(&path, lines.join("\n"))?;
     validate_jsonl_schema(&schema_path("obs_epoch_v1.schema.json"), &path, false)?;
+    if !timing_lines.is_empty() {
+        let timing_path = out_dir.join("timing_obs.jsonl");
+        fs::write(&timing_path, timing_lines.join("\n"))?;
+    }
     let combos = bijux_gnss_nav::combinations_from_obs_epochs(
         &obs,
         bijux_gnss_core::SignalBand::L1,
@@ -389,14 +402,71 @@ fn read_ephemeris(path: &Path) -> Result<Vec<GpsEphemeris>> {
 }
 
 fn read_reference_epochs(path: &Path) -> Result<Vec<ValidationReferenceEpoch>> {
+    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
+    let data = fs::read_to_string(path)?;
+    let mut epochs = Vec::new();
+    if ext.eq_ignore_ascii_case("csv") {
+        for (idx, line) in data.lines().enumerate() {
+            if idx == 0 && line.contains("epoch_idx") {
+                continue;
+            }
+            if line.trim().is_empty() {
+                continue;
+            }
+            let parts: Vec<&str> = line.split(',').collect();
+            if parts.len() < 4 {
+                bail!("invalid reference csv row: {line}");
+            }
+            let epoch_idx = parts[0].trim().parse::<u64>()?;
+            let t_rx_s = parts.get(1).and_then(|v| v.trim().parse::<f64>().ok());
+            let latitude_deg = parts.get(2).and_then(|v| v.trim().parse::<f64>().ok()).unwrap_or(0.0);
+            let longitude_deg = parts.get(3).and_then(|v| v.trim().parse::<f64>().ok()).unwrap_or(0.0);
+            let altitude_m = parts.get(4).and_then(|v| v.trim().parse::<f64>().ok()).unwrap_or(0.0);
+            let ecef_x_m = parts.get(5).and_then(|v| v.trim().parse::<f64>().ok());
+            let ecef_y_m = parts.get(6).and_then(|v| v.trim().parse::<f64>().ok());
+            let ecef_z_m = parts.get(7).and_then(|v| v.trim().parse::<f64>().ok());
+            epochs.push(ValidationReferenceEpoch {
+                epoch_idx,
+                t_rx_s,
+                latitude_deg,
+                longitude_deg,
+                altitude_m,
+                ecef_x_m,
+                ecef_y_m,
+                ecef_z_m,
+                vel_x_mps: None,
+                vel_y_mps: None,
+                vel_z_mps: None,
+            });
+        }
+    } else {
+        validate_jsonl_schema(&schema_path("reference_epoch.schema.json"), path, false)?;
+        for line in data.lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let epoch: ValidationReferenceEpoch = serde_json::from_str(line)?;
+            epochs.push(epoch);
+        }
+    }
+    Ok(epochs)
+}
+
+fn read_nav_solutions(path: &Path) -> Result<Vec<bijux_gnss_core::NavSolutionEpoch>> {
     let data = fs::read_to_string(path)?;
     let mut epochs = Vec::new();
     for line in data.lines() {
         if line.trim().is_empty() {
             continue;
         }
-        let epoch: ValidationReferenceEpoch = serde_json::from_str(line)?;
-        epochs.push(epoch);
+        let wrapped: NavSolutionEpochV1 = serde_json::from_str(line)?;
+        if !ArtifactReadPolicy::is_supported(wrapped.header.schema_version) {
+            bail!(
+                "unsupported nav schema_version {}",
+                wrapped.header.schema_version
+            );
+        }
+        epochs.push(wrapped.epoch);
     }
     Ok(epochs)
 }

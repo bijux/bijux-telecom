@@ -109,6 +109,7 @@ fn handle_pvt(command: GnssCommand) -> Result<()> {
                     let obs_epochs = read_obs_epochs(&obs)?;
                     let ephs = read_ephemeris(&eph)?;
                     let mut lines = Vec::new();
+                    let mut timing_lines = Vec::new();
                     let header = artifact_header(&common, &profile, dataset.as_ref())?;
                     let mut nav = if !ekf {
                         Some(bijux_gnss_receiver::navigation::Navigation::new(
@@ -126,6 +127,13 @@ fn handle_pvt(command: GnssCommand) -> Result<()> {
                                 .and_then(|nav| nav.solve_epoch(&obs_epoch, &ephs))
                         };
                         if let Some(solution) = solution {
+                            if let Some(ms) = solution.processing_ms {
+                                timing_lines.push(serde_json::to_string(&serde_json::json!({
+                                    "epoch_idx": solution.epoch.index,
+                                    "stage": "nav",
+                                    "processing_ms": ms
+                                }))?);
+                            }
                             let wrapped = NavSolutionEpochV1 {
                                 header: header.clone(),
                                 epoch: solution,
@@ -137,6 +145,10 @@ fn handle_pvt(command: GnssCommand) -> Result<()> {
                     let out_dir = artifacts_dir(&common, "pvt", dataset.as_ref())?;
                     let path = out_dir.join("pvt.jsonl");
                     fs::write(path, lines.join("\n"))?;
+                    if !timing_lines.is_empty() {
+                        let timing_path = out_dir.join("timing_nav.jsonl");
+                        fs::write(&timing_path, timing_lines.join("\n"))?;
+                    }
                     let report = serde_json::json!({
                         "epochs": lines.len(),
                         "ekf": ekf

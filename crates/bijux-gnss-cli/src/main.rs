@@ -3,6 +3,7 @@ include!("cli/args_commands.rs");
 include!("cli/args.rs");
 include!("cli/report.rs");
 include!("cli/output.rs");
+include!("cli/support/validate_reference.rs");
 include!("cli/support/validate_support.rs");
 include!("cli/support/overrides.rs");
 include!("cli/support/hash.rs");

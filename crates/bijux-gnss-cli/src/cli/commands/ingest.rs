@@ -90,6 +90,21 @@ fn handle_track(command: GnssCommand) -> Result<()> {
                         &profile,
                         dataset.as_ref(),
                     )?;
+                    let timing_path = artifacts_dir(&common, "track", dataset.as_ref())?
+                        .join("timing.jsonl");
+                    let mut timing_lines = Vec::new();
+                    for track in &tracks {
+                        for epoch in &track.epochs {
+                            if let Some(ms) = epoch.processing_ms {
+                                timing_lines.push(serde_json::to_string(&serde_json::json!({
+                                    "epoch_idx": epoch.epoch.index,
+                                    "stage": "tracking",
+                                    "processing_ms": ms
+                                }))?);
+                            }
+                        }
+                    }
+                    fs::write(&timing_path, timing_lines.join("\n"))?;
                     write_manifest(&common, "track", &profile, dataset.as_ref(), &report)?;
 
     Ok(())

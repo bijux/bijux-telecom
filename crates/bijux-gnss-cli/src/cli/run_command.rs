@@ -17,6 +17,7 @@ fn run_command(command: GnssCommand) -> Result<()> {
         cmd @ GnssCommand::ConfigUpgrade { .. } => handle_configupgrade(cmd),
         cmd @ GnssCommand::ConfigSchema { .. } => handle_configschema(cmd),
         cmd @ GnssCommand::Validate { .. } => handle_validate(cmd),
+        cmd @ GnssCommand::ValidateReference { .. } => handle_validate_reference(cmd),
         cmd @ GnssCommand::Run { .. } => handle_run(cmd),
         cmd @ GnssCommand::Rinex { .. } => handle_rinex(cmd),
         cmd @ GnssCommand::Doctor { .. } => handle_doctor(cmd),
@@ -225,15 +226,18 @@ fn solve_epoch_ekf(
         }
     }
 
-    if used < 4 {
-        return Ok(None);
-    }
     let (lat, lon, alt) =
         bijux_gnss_nav::ecef_to_geodetic(ctx.ekf.x[0], ctx.ekf.x[1], ctx.ekf.x[2]);
+    let status = if used < 4 {
+        bijux_gnss_core::SolutionStatus::Degraded
+    } else {
+        bijux_gnss_core::SolutionStatus::Float
+    };
     Ok(Some(bijux_gnss_core::NavSolutionEpoch {
         epoch: bijux_gnss_core::Epoch {
             index: obs.epoch_idx,
         },
+        t_rx_s: obs.t_rx_s,
         ecef_x_m: bijux_gnss_core::Meters(ctx.ekf.x[0]),
         ecef_y_m: bijux_gnss_core::Meters(ctx.ekf.x[1]),
         ecef_z_m: bijux_gnss_core::Meters(ctx.ekf.x[2]),
@@ -243,6 +247,9 @@ fn solve_epoch_ekf(
         clock_bias_s: bijux_gnss_core::Seconds(ctx.ekf.x[6]),
         pdop: 0.0,
         rms_m: bijux_gnss_core::Meters(ctx.ekf.health.innovation_rms),
+        status,
+        valid: bijux_gnss_core::is_solution_valid(status),
+        processing_ms: None,
         residuals: Vec::new(),
         isb: Vec::new(),
         sigma_h_m: None,

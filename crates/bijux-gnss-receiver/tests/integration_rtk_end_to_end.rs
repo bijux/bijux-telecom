@@ -108,6 +108,8 @@ fn make_obs_epoch(
         tow_s: None,
         epoch_idx: (t_rx_s * 1000.0) as u64,
         discontinuity: false,
+        valid: true,
+        processing_ms: None,
         role,
         sats,
     }

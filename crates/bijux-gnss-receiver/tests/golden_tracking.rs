@@ -17,6 +17,8 @@ fn golden_tracking_from_scenario() {
         code_freq_basis_hz: 1_023_000.0,
         code_length: 1023,
         channels: 12,
+        tracking_budget_ms: 100.0,
+        tracking_over_budget_action: "continue".to_string(),
         ..ReceiverConfig::default()
     };
 
