@@ -286,6 +286,22 @@ pub struct FixAuditEvent {
     pub fixed_count: usize,
 }
 
+impl bijux_gnss_core::ArtifactPayloadValidate for FixAuditEvent {
+    fn validate_payload(&self) -> Vec<bijux_gnss_core::DiagnosticEvent> {
+        let mut events = Vec::new();
+        if let Some(ratio) = self.ratio {
+            if !ratio.is_finite() {
+                events.push(bijux_gnss_core::DiagnosticEvent::new(
+                    bijux_gnss_core::DiagnosticSeverity::Error,
+                    "RTK_FIX_AUDIT_NUMERIC_INVALID",
+                    "rtk fix audit ratio contains NaN/Inf",
+                ));
+            }
+        }
+        events
+    }
+}
+
 pub struct NaiveFixer {
     pub policy: FixPolicy,
 }

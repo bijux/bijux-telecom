@@ -50,6 +50,20 @@ pub struct BaselineSolution {
     pub fixed: bool,
 }
 
+impl bijux_gnss_core::ArtifactPayloadValidate for BaselineSolution {
+    fn validate_payload(&self) -> Vec<bijux_gnss_core::DiagnosticEvent> {
+        let mut events = Vec::new();
+        if !self.enu_m.iter().all(|v| v.is_finite()) {
+            events.push(bijux_gnss_core::DiagnosticEvent::new(
+                bijux_gnss_core::DiagnosticSeverity::Error,
+                "RTK_BASELINE_NUMERIC_INVALID",
+                "baseline ENU contains NaN/Inf",
+            ));
+        }
+        events
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RtkBaselineQuality {
     pub epoch_idx: u64,
@@ -66,6 +80,25 @@ pub struct RtkBaselineQuality {
     pub separation_max_m: Option<f64>,
 }
 
+impl bijux_gnss_core::ArtifactPayloadValidate for RtkBaselineQuality {
+    fn validate_payload(&self) -> Vec<bijux_gnss_core::DiagnosticEvent> {
+        let mut events = Vec::new();
+        if !self.sigma_e.is_finite()
+            || !self.sigma_n.is_finite()
+            || !self.sigma_u.is_finite()
+            || !self.residual_rms_m.is_finite()
+            || !self.predicted_rms_m.is_finite()
+        {
+            events.push(bijux_gnss_core::DiagnosticEvent::new(
+                bijux_gnss_core::DiagnosticSeverity::Error,
+                "RTK_QUALITY_NUMERIC_INVALID",
+                "baseline quality contains NaN/Inf",
+            ));
+        }
+        events
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RtkPrecision {
     pub epoch_idx: u64,
@@ -74,6 +107,22 @@ pub struct RtkPrecision {
     pub fixed_count: usize,
     pub ref_changed: bool,
     pub slip_count: usize,
+}
+
+impl bijux_gnss_core::ArtifactPayloadValidate for RtkPrecision {
+    fn validate_payload(&self) -> Vec<bijux_gnss_core::DiagnosticEvent> {
+        let mut events = Vec::new();
+        if let Some(ratio) = self.ratio {
+            if !ratio.is_finite() {
+                events.push(bijux_gnss_core::DiagnosticEvent::new(
+                    bijux_gnss_core::DiagnosticSeverity::Error,
+                    "RTK_PRECISION_NUMERIC_INVALID",
+                    "rtk precision ratio contains NaN/Inf",
+                ));
+            }
+        }
+        events
+    }
 }
 
 pub fn baseline_from_ecef(base_ecef_m: [f64; 3], rover_ecef_m: [f64; 3]) -> BaselineSolution {

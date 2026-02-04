@@ -2,6 +2,9 @@
 
 pub use crate::dataset::{DatasetEntry, DatasetRegistry};
 pub use crate::commands::prepare_run;
+pub use crate::artifact_tools::{
+    artifact_explain, artifact_validate, ArtifactExplainResult, ArtifactValidationResult,
+};
 pub use crate::errors::{InfraError, InfraResult};
 pub use crate::experiment::{ExperimentSpec, SweepParameter};
 pub use crate::hash::{cpu_features, git_dirty, git_hash, hash_config};

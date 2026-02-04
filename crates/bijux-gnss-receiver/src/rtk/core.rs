@@ -156,6 +156,54 @@ pub struct DdObservation {
     pub canceled: Vec<AmbiguityId>,
 }
 
+impl bijux_gnss_core::ArtifactPayloadValidate for SdObservation {
+    fn validate_payload(&self) -> Vec<bijux_gnss_core::DiagnosticEvent> {
+        let mut events = Vec::new();
+        if !self.code_m.is_finite()
+            || !self.phase_cycles.is_finite()
+            || !self.doppler_hz.is_finite()
+        {
+            events.push(bijux_gnss_core::DiagnosticEvent::new(
+                bijux_gnss_core::DiagnosticSeverity::Error,
+                "RTK_SD_NUMERIC_INVALID",
+                "sd observation contains NaN/Inf",
+            ));
+        }
+        if self.variance_code < 0.0 || self.variance_phase < 0.0 {
+            events.push(bijux_gnss_core::DiagnosticEvent::new(
+                bijux_gnss_core::DiagnosticSeverity::Error,
+                "RTK_SD_VARIANCE_INVALID",
+                "sd observation variance is negative",
+            ));
+        }
+        events
+    }
+}
+
+impl bijux_gnss_core::ArtifactPayloadValidate for DdObservation {
+    fn validate_payload(&self) -> Vec<bijux_gnss_core::DiagnosticEvent> {
+        let mut events = Vec::new();
+        if !self.code_m.is_finite()
+            || !self.phase_cycles.is_finite()
+            || !self.doppler_hz.is_finite()
+        {
+            events.push(bijux_gnss_core::DiagnosticEvent::new(
+                bijux_gnss_core::DiagnosticSeverity::Error,
+                "RTK_DD_NUMERIC_INVALID",
+                "dd observation contains NaN/Inf",
+            ));
+        }
+        if self.variance_code < 0.0 || self.variance_phase < 0.0 {
+            events.push(bijux_gnss_core::DiagnosticEvent::new(
+                bijux_gnss_core::DiagnosticSeverity::Error,
+                "RTK_DD_VARIANCE_INVALID",
+                "dd observation variance is negative",
+            ));
+        }
+        events
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SolutionSeparation {
     pub sig: SigId,

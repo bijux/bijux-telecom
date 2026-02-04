@@ -3,6 +3,7 @@
 
 mod dataset;
 mod commands;
+mod artifact_tools;
 mod errors;
 mod experiment;
 mod hash;

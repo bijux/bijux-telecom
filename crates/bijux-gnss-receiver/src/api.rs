@@ -39,10 +39,17 @@ pub mod navigation {
 /// RTK differencing and baseline helpers.
 pub mod rtk {
     pub use crate::rtk_internal::ambiguity::*;
-    pub use crate::rtk_internal::artifact::*;
     pub use crate::rtk_internal::core::*;
     pub use crate::rtk_internal::differencing::*;
     pub use crate::rtk_internal::metrics::*;
+    pub use crate::rtk_internal::{
+        RtkBaselineEpoch, RtkBaselineQualityEpoch, RtkDdEpoch, RtkFixAuditEpoch, RtkPrecisionEpoch,
+        RtkSdEpoch,
+    };
+    pub use crate::rtk_internal::{
+        RtkBaselineEpochV1, RtkBaselineQualityV1, RtkDdEpochV1, RtkFixAuditV1, RtkPrecisionV1,
+        RtkSdEpochV1,
+    };
 }
 
 /// Synthetic signal generation for tests and demos.
