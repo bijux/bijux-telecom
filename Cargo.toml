@@ -39,3 +39,6 @@ eyre = "0.6"
 bijux-gnss-core = { path = "crates/bijux-gnss-core" }
 bijux-gnss-infra = { path = "crates/bijux-gnss-infra" }
 bijux-guardrails = { path = "crates/bijux-guardrails" }
+
+[workspace.lints.clippy]
+module_name_repetitions = "allow"
