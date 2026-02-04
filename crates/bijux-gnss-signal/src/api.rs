@@ -13,8 +13,20 @@ pub use crate::samples::iq_i16_to_samples;
 
 /// Streaming signal source interface.
 pub trait SignalSource {
-    /// Fetch next sample frame.
-    fn next_frame(&mut self) -> Option<bijux_gnss_core::SamplesFrame>;
+    /// Error type returned by the source.
+    type Error;
+
+    /// Sample rate in Hz.
+    fn sample_rate_hz(&self) -> f64;
+
+    /// Fetch the next sample frame.
+    fn next_frame(
+        &mut self,
+        frame_len: usize,
+    ) -> Result<Option<bijux_gnss_core::SamplesFrame>, Self::Error>;
+
+    /// Whether the source has reached end-of-stream.
+    fn is_done(&self) -> bool;
 }
 
 /// Correlator interface for tracking tests.
@@ -32,4 +44,16 @@ pub trait Correlator {
         num_complex::Complex<f32>,
         num_complex::Complex<f32>,
     );
+}
+
+/// Sink interface for writing sample frames.
+pub trait SampleSink {
+    /// Error type returned by the sink.
+    type Error;
+
+    /// Push a sample frame into the sink.
+    fn push_frame(
+        &mut self,
+        frame: &bijux_gnss_core::SamplesFrame,
+    ) -> Result<(), Self::Error>;
 }

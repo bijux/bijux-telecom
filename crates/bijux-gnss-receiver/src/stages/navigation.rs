@@ -260,8 +260,15 @@ impl Navigation {
 }
 
 impl bijux_gnss_nav::NavEngine for Navigation {
-    fn update(&mut self, obs: &ObsEpoch) -> Option<bijux_gnss_core::NavEpoch> {
-        self.solve_epoch(obs, &[])
+    fn update(
+        &mut self,
+        obs: &bijux_gnss_core::ObsEpochV1,
+    ) -> Option<bijux_gnss_core::NavSolutionEpochV1> {
+        let solution = self.solve_epoch(&obs.payload, &[])?;
+        Some(bijux_gnss_core::NavSolutionEpochV1 {
+            header: obs.header.clone(),
+            payload: solution,
+        })
     }
 }
 

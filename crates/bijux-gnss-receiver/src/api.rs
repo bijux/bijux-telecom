@@ -7,7 +7,8 @@ pub use crate::Receiver;
 
 /// I/O helpers.
 pub mod data {
-    pub use crate::io::data::{FileSamples, MemorySamples, SampleSource, SampleSourceError};
+    pub use crate::io::data::{FileSamples, MemorySamples, SampleSourceError};
+    pub use bijux_gnss_signal::SignalSource;
 }
 
 /// Runtime logging helpers.
@@ -47,4 +48,26 @@ pub mod rtk {
 /// Synthetic signal generation for tests and demos.
 pub mod sim {
     pub use crate::sim_internal::synthetic::*;
+}
+
+/// Artifacts produced by a receiver pipeline run.
+#[derive(Debug, Default, Clone)]
+pub struct RunArtifacts {
+    /// Acquisition candidates captured during the run.
+    pub acquisitions: Vec<bijux_gnss_core::AcqResult>,
+    /// Tracking reports captured during the run.
+    pub tracking: Vec<crate::stages::tracking::TrackingResult>,
+    /// Observation epochs captured during the run.
+    pub observations: Vec<bijux_gnss_core::ObsEpoch>,
+    /// Navigation solution epochs captured during the run.
+    pub navigation: Vec<bijux_gnss_core::NavEpoch>,
+}
+
+/// Receiver engine boundary trait.
+pub trait ReceiverEngine {
+    /// Run the receiver pipeline against a signal source.
+    fn run(
+        &mut self,
+        input: &mut dyn bijux_gnss_signal::SignalSource<Error = crate::io::data::SampleSourceError>,
+    ) -> Result<RunArtifacts, ReceiverError>;
 }

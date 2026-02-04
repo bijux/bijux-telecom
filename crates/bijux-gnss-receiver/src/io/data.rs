@@ -7,21 +7,7 @@ use thiserror::Error;
 
 use bijux_gnss_core::{SampleClock, SampleTime, SamplesFrame, Seconds};
 
-use bijux_gnss_signal::iq_i16_to_samples;
-
-/// Input sample source for the receiver.
-///
-/// Implementations can read from files, SDR streams, or memory buffers.
-pub trait SampleSource {
-    /// Sample rate in Hz.
-    fn sample_rate_hz(&self) -> f64;
-
-    /// Read the next frame of complex samples.
-    fn next_frame(&mut self, frame_len: usize) -> Result<Option<SamplesFrame>, SampleSourceError>;
-
-    /// Whether the source is exhausted.
-    fn is_done(&self) -> bool;
-}
+use bijux_gnss_signal::{iq_i16_to_samples, SignalSource};
 
 #[derive(Debug, Error)]
 pub enum SampleSourceError {
@@ -52,7 +38,9 @@ impl MemorySamples {
     }
 }
 
-impl SampleSource for MemorySamples {
+impl SignalSource for MemorySamples {
+    type Error = SampleSourceError;
+
     fn sample_rate_hz(&self) -> f64 {
         self.clock.sample_rate_hz
     }
@@ -108,7 +96,9 @@ impl FileSamples {
     }
 }
 
-impl SampleSource for FileSamples {
+impl SignalSource for FileSamples {
+    type Error = SampleSourceError;
+
     fn sample_rate_hz(&self) -> f64 {
         self.clock.sample_rate_hz
     }
