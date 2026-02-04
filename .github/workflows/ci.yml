@@ -6,6 +6,36 @@ on:
   pull_request:
 
 jobs:
+  quality-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - name: Repo hygiene gate
+        run: |
+          if find . -name '.DS_Store' -o -name '._*' | grep -q .; then
+            echo "Found forbidden files (.DS_Store or ._*)."
+            find . -name '.DS_Store' -o -name '._*'
+            exit 1
+          fi
+      - name: Fmt check
+        run: cargo fmt --all -- --check
+      - name: Clippy (deny warnings)
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Panic/unwrap guard (warn)
+        run: |
+          if rg -n --glob 'src/**/*.rs' \
+            --glob '!**/tests/**' \
+            --glob '!**/benches/**' \
+            --glob '!**/examples/**' \
+            'panic!\\(|todo!\\(|unimplemented!\\(|\\.unwrap\\(|\\.expect\\(' .; then
+            echo "Found panic/todo/unimplemented/unwrap/expect in src/. Treating as warning for now."
+          fi
+      - name: Tests (workspace)
+        run: cargo test --workspace
   rust:
     runs-on: ubuntu-latest
     steps:
@@ -29,13 +59,6 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest@0.9.60
-      - name: Repo hygiene gate
-        run: |
-          if find . -name '.DS_Store' -o -name '._*' | grep -q .; then
-            echo "Found forbidden files (.DS_Store or ._*)."
-            find . -name '.DS_Store' -o -name '._*'
-            exit 1
-          fi
       - name: Core unit tests (fast signal)
         run: cargo test -p bijux-gnss-core
       - name: No-default-features build (workspace)
