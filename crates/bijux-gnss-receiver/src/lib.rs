@@ -25,6 +25,7 @@ mod runtime;
 #[path = "sim/mod.rs"]
 mod sim_internal;
 mod stages;
+mod validation_helpers;
 #[cfg(feature = "nav")]
 mod validation_report;
 

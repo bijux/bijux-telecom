@@ -506,4 +506,28 @@ mod tests {
         let reset = Tracking::transition_state(2, lost, ChannelState::Idle);
         assert_eq!(reset, ChannelState::Idle);
     }
+
+    #[test]
+    #[cfg(feature = "alloc-audit")]
+    fn tracking_allocations_under_threshold() {
+        let config = crate::runtime::receiver_config::ReceiverConfig::default();
+        let samples_per_code = bijux_gnss_signal::api::samples_per_code(
+            config.sampling_freq_hz,
+            config.code_freq_basis_hz,
+            config.code_length,
+        );
+        let samples = vec![num_complex::Complex::new(0.0, 0.0); samples_per_code];
+        let tracking = Tracking::new(config);
+
+        let before = crate::runtime::alloc::allocation_count();
+        let _ = tracking.run(&samples);
+        let after = crate::runtime::alloc::allocation_count();
+
+        let allocated = after.saturating_sub(before);
+        let threshold = 200;
+        assert!(
+            allocated <= threshold,
+            "tracking allocations exceeded threshold: {allocated} > {threshold}"
+        );
+    }
 }

@@ -2,10 +2,14 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{NavSolutionEpoch, ObsEpoch};
+#[cfg(feature = "trace-heavy")]
 use serde::Serialize;
+#[cfg(feature = "trace-heavy")]
 use std::fs;
+#[cfg(feature = "trace-heavy")]
 use std::path::PathBuf;
 
+#[cfg(feature = "trace-heavy")]
 #[derive(Debug, Serialize)]
 struct DiagnosticsDump<'a> {
     run_id: String,
@@ -16,6 +20,7 @@ struct DiagnosticsDump<'a> {
     note: String,
 }
 
+#[cfg(feature = "trace-heavy")]
 #[derive(Debug, Serialize)]
 struct ResidualStats {
     count: usize,
@@ -24,6 +29,7 @@ struct ResidualStats {
     max_abs_m: f64,
 }
 
+#[cfg(feature = "trace-heavy")]
 pub fn dump_on_error(note: &str, obs: Option<&ObsEpoch>, nav: Option<&NavSolutionEpoch>) {
     if std::env::var("BIJUX_DIAGNOSTICS_DUMP").ok().as_deref() != Some("1") {
         return;
@@ -77,3 +83,6 @@ pub fn dump_on_error(note: &str, obs: Option<&ObsEpoch>, nav: Option<&NavSolutio
         let _ = fs::write(file, data);
     }
 }
+
+#[cfg(not(feature = "trace-heavy"))]
+pub fn dump_on_error(_note: &str, _obs: Option<&ObsEpoch>, _nav: Option<&NavSolutionEpoch>) {}

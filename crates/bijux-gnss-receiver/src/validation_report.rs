@@ -2,10 +2,11 @@
 
 use crate::api::tracking::TrackingResult;
 use crate::api::ReceiverProfile;
+use crate::validation_helpers::{check_budgets, to_validation_stats};
 use bijux_gnss_core::api::{
     check_inter_frequency_alignment, check_solution_consistency, reference_ecef, stats,
     InterFrequencyAlignmentReport, NavSolutionEpoch, ObsEpoch, SatId, SignalBand,
-    SolutionConsistencyReport, SolutionStatus, StatsSummary, ValidationReferenceEpoch,
+    SolutionConsistencyReport, SolutionStatus, ValidationReferenceEpoch,
 };
 use bijux_gnss_nav::api::{
     combinations_from_obs_epochs, ecef_to_enu, PppConfig, PppConvergenceConfig, PppProcessNoise,
@@ -103,6 +104,14 @@ pub struct ValidationBudgets {
     pub ephemeris_parity_rate_min: f64,
     /// Max PVT iterations.
     pub pvt_max_iterations: usize,
+    /// Max navigation residual RMS (m).
+    pub nav_residual_rms_m_max: f64,
+    /// Max rejected measurement ratio.
+    pub nav_rejected_ratio_max: f64,
+    /// Max allowed NaN count in navigation outputs.
+    pub nav_nan_max: usize,
+    /// Minimum lock epochs before nav update.
+    pub nav_min_lock_epochs: u64,
 }
 
 /// Navigation residual report per epoch.
@@ -542,63 +551,6 @@ fn ppp_evaluation_report(
     }
 }
 
-fn check_budgets(
-    tracks: &[TrackingResult],
-    solutions: &[NavSolutionEpoch],
-    budgets: &ValidationBudgets,
-) -> Vec<String> {
-    let mut violations = Vec::new();
-    for track in tracks {
-        let mut carriers = Vec::new();
-        for e in &track.epochs {
-            carriers.push(e.carrier_hz.0);
-        }
-        if carriers.len() > 1 {
-            let mean = carriers.iter().sum::<f64>() / carriers.len() as f64;
-            let var = carriers
-                .iter()
-                .map(|v| (v - mean) * (v - mean))
-                .sum::<f64>()
-                / carriers.len() as f64;
-            let std = var.sqrt();
-            if std > budgets.tracking_carrier_jitter_hz {
-                violations.push(format!(
-                    "tracking jitter too high for PRN {}: {:.1} Hz",
-                    track.sat.prn, std
-                ));
-            }
-        }
-    }
-    for sol in solutions {
-        if sol.residuals.len() >= 4 && sol.rms_m.0.is_nan() {
-            violations.push(format!("PVT RMS is NaN at epoch {}", sol.epoch.index));
-        }
-    }
-    violations
-}
-
-fn to_validation_stats(summary: StatsSummary) -> ValidationErrorStats {
-    ValidationErrorStats {
-        count: summary.count,
-        mean: summary.mean,
-        median: summary.median,
-        rms: summary.rms,
-        p95: summary.p95,
-        max: summary.max,
-    }
-}
-
-impl Default for ValidationBudgets {
-    fn default() -> Self {
-        Self {
-            acq_doppler_hz: 500.0,
-            acq_code_phase_samples: 5.0,
-            tracking_carrier_jitter_hz: 50.0,
-            ephemeris_parity_rate_min: 0.9,
-            pvt_max_iterations: 10,
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -616,21 +568,29 @@ mod tests {
             longitude_deg: 0.0,
             altitude_m: bijux_gnss_core::api::Meters(0.0),
             clock_bias_s: bijux_gnss_core::api::Seconds(0.0),
+            clock_drift_s_per_s: 0.0,
             pdop: 1.0,
             rms_m: bijux_gnss_core::api::Meters(0.0),
             status: SolutionStatus::Converged,
             quality: SolutionStatus::Converged.quality_flag(),
+            validity: bijux_gnss_core::api::SolutionValidity::Stable,
             valid: true,
             processing_ms: None,
             residuals: Vec::new(),
+            health: Vec::new(),
             isb: Vec::new(),
             sigma_h_m: None,
             sigma_v_m: None,
+            innovation_rms_m: None,
+            normalized_innovation_rms: None,
+            normalized_innovation_max: None,
             ekf_innovation_rms: None,
             ekf_condition_number: None,
             ekf_whiteness_ratio: None,
             ekf_predicted_variance: None,
             ekf_observed_variance: None,
+            integrity_hpl_m: None,
+            integrity_vpl_m: None,
         };
         let reference = ValidationReferenceEpoch {
             epoch_idx: 0,

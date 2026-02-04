@@ -25,6 +25,9 @@ precise-products = ["nav", "bijux-gnss-nav/precise-products"]
 tracing = ["dep:tracing"]
 trace-dump = []
 alloc-trace = []
+trace-heavy = ["trace-dump"]
+reference-checks = []
+alloc-audit = ["alloc-trace"]
 
 [dev-dependencies]
 criterion = "0.5"

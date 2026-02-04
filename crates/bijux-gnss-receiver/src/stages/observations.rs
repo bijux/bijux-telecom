@@ -33,6 +33,14 @@ struct HatchState {
     initialized: bool,
 }
 
+#[derive(Debug, Clone)]
+struct CycleSlipState {
+    last_gf_cycles: f64,
+    initialized: bool,
+}
+
+const GEOFREE_SLIP_THRESHOLD_CYCLES: f64 = 0.5;
+
 pub fn observations_from_tracking(config: &ReceiverConfig, epochs: &[TrackEpoch]) -> Vec<ObsEpoch> {
     if epochs.is_empty() {
         return Vec::new();
@@ -192,6 +200,8 @@ pub fn observations_from_tracking_results(
     let mut by_epoch: BTreeMap<u64, ObsEpoch> = BTreeMap::new();
     let mut hatch: std::collections::HashMap<bijux_gnss_core::api::SigId, HatchState> =
         std::collections::HashMap::new();
+    let mut slips: std::collections::HashMap<bijux_gnss_core::api::SigId, CycleSlipState> =
+        std::collections::HashMap::new();
     for track in tracks {
         let obs = observations_from_tracking(config, &track.epochs);
         for epoch in obs {
@@ -224,6 +234,7 @@ pub fn observations_from_tracking_results(
                     state.initialized = false;
                     state.resets = state.resets.saturating_add(1);
                     state.age = 0;
+                    slips.remove(&sat.signal_id);
                 }
                 if !state.initialized {
                     state.smoothed_m = sat.pseudorange_m.0;
@@ -255,6 +266,19 @@ pub fn observations_from_tracking_results(
                 if divergence_jump > threshold_m {
                     sat.lock_flags.cycle_slip = true;
                 }
+                // Geometry-free/Melbourne-Wubbena style placeholder for cycle slip detection.
+                let gf_cycles = sat.carrier_phase_cycles.0 - sat.pseudorange_m.0 / lambda_m;
+                let slip_state = slips.entry(sat.signal_id).or_insert(CycleSlipState {
+                    last_gf_cycles: gf_cycles,
+                    initialized: true,
+                });
+                if slip_state.initialized {
+                    let delta = gf_cycles - slip_state.last_gf_cycles;
+                    if delta.abs() > GEOFREE_SLIP_THRESHOLD_CYCLES {
+                        sat.lock_flags.cycle_slip = true;
+                    }
+                }
+                slip_state.last_gf_cycles = gf_cycles;
                 sat.multipath_suspect = divergence_jump > threshold_m * 0.8;
                 sat.error_model = Some(bijux_gnss_core::api::MeasurementErrorModel {
                     thermal_noise_m: Meters(1.0),
@@ -282,6 +306,13 @@ pub fn observations_from_tracking_results(
             }
         }
         out.push(epoch);
+    }
+    #[cfg(feature = "reference-checks")]
+    {
+        let events = bijux_gnss_core::api::validate_obs_epochs(&out);
+        for event in events {
+            crate::runtime::logging::diagnostic(&event);
+        }
     }
     out
 }

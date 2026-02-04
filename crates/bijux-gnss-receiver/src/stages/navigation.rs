@@ -181,7 +181,7 @@ impl Navigation {
                 return self.degraded_from_last(obs, start_time);
             }
         };
-        let clock_bias_s = self.clock.update(solution.clock_bias_s, 0.001);
+        let (clock_bias_s, clock_drift_s_per_s) = self.clock.update(solution.clock_bias_s, 0.001);
         self.last_ecef = Some((solution.ecef_x_m, solution.ecef_y_m, solution.ecef_z_m));
         let mut nav_epoch = NavSolutionEpoch {
             epoch: bijux_gnss_core::api::Epoch {
@@ -195,19 +195,16 @@ impl Navigation {
             longitude_deg: solution.longitude_deg,
             altitude_m: Meters(solution.altitude_m),
             clock_bias_s: Seconds(clock_bias_s),
+            clock_drift_s_per_s,
             pdop: solution.pdop,
             rms_m: Meters(solution.rms_m),
             status: SolutionStatus::Coarse,
             quality: SolutionStatus::Coarse.quality_flag(),
+            validity: bijux_gnss_core::api::SolutionValidity::Invalid,
             valid: true,
             processing_ms: Some(start_time.elapsed().as_secs_f64() * 1000.0),
             sigma_h_m: solution.sigma_h_m.map(Meters),
             sigma_v_m: solution.sigma_v_m.map(Meters),
-            ekf_innovation_rms: None,
-            ekf_condition_number: None,
-            ekf_whiteness_ratio: None,
-            ekf_predicted_variance: None,
-            ekf_observed_variance: None,
             residuals: solution
                 .residuals
                 .into_iter()
@@ -218,16 +215,59 @@ impl Navigation {
                     weight: Some(weight),
                     reject_reason: None,
                 })
-                .chain(solution.rejected.into_iter().map(|sat| NavResidual {
+                .chain(solution.rejected.into_iter().map(|(sat, reason)| NavResidual {
                     sat,
                     residual_m: Meters(0.0),
                     rejected: true,
                     weight: None,
-                    reject_reason: Some(bijux_gnss_core::api::MeasurementRejectReason::Outlier),
+                    reject_reason: Some(reason),
                 }))
                 .collect(),
             isb: Vec::new(),
+            health: Vec::new(),
+            innovation_rms_m: None,
+            normalized_innovation_rms: None,
+            normalized_innovation_max: None,
+            ekf_innovation_rms: None,
+            ekf_condition_number: None,
+            ekf_whiteness_ratio: None,
+            ekf_predicted_variance: None,
+            ekf_observed_variance: None,
+            integrity_hpl_m: None,
+            integrity_vpl_m: None,
         };
+
+        if solution.covariance_symmetrized {
+            nav_epoch
+                .health
+                .push(bijux_gnss_core::api::NavHealthEvent::CovarianceSymmetrized);
+            crate::runtime::logging::diagnostic(&bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                "NAV_COV_SYMM",
+                "nav covariance symmetrized",
+            ));
+        }
+        if solution.covariance_clamped {
+            nav_epoch.health.push(
+                bijux_gnss_core::api::NavHealthEvent::CovarianceClamped {
+                    min_eigenvalue: 0.0,
+                },
+            );
+            crate::runtime::logging::diagnostic(&bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                "NAV_COV_CLAMP",
+                "nav covariance clamped",
+            ));
+        }
+        if let Some(max_var) = solution.covariance_max_variance {
+            if max_var > 1e6 {
+                nav_epoch.health.push(
+                    bijux_gnss_core::api::NavHealthEvent::CovarianceDiverged {
+                        max_variance: max_var,
+                    },
+                );
+            }
+        }
 
         let sat_count = observations.len();
         nav_epoch.status = if sat_count < 4 {
@@ -269,6 +309,29 @@ impl Navigation {
         }
         nav_epoch.quality = nav_epoch.status.quality_flag();
 
+        let (innovation_rms, norm_rms, norm_max, predicted_var, observed_var) =
+            innovation_stats(&nav_epoch.residuals);
+        nav_epoch.innovation_rms_m = innovation_rms;
+        nav_epoch.normalized_innovation_rms = norm_rms;
+        nav_epoch.normalized_innovation_max = norm_max;
+        nav_epoch.ekf_predicted_variance = predicted_var;
+        nav_epoch.ekf_observed_variance = observed_var;
+        nav_epoch.validity = classify_validity(&nav_epoch);
+        if let Some(sigma_h) = nav_epoch.sigma_h_m {
+            nav_epoch.integrity_hpl_m = Some(sigma_h.0 * 6.0);
+        }
+        if let Some(sigma_v) = nav_epoch.sigma_v_m {
+            nav_epoch.integrity_vpl_m = Some(sigma_v.0 * 6.0);
+        }
+
+        if let Some(rms) = nav_epoch.innovation_rms_m {
+            crate::runtime::logging::diagnostic(&bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Info,
+                "NAV_INNOVATION_RMS",
+                format!("innovation rms {:.3} m", rms),
+            ));
+        }
+
         self.last_solution = Some(nav_epoch.clone());
         Some(nav_epoch)
     }
@@ -286,6 +349,7 @@ impl Navigation {
         degraded.status = SolutionStatus::Degraded;
         degraded.quality = degraded.status.quality_flag();
         degraded.valid = is_solution_valid(degraded.status);
+        degraded.validity = bijux_gnss_core::api::SolutionValidity::Coarse;
         degraded.processing_ms = Some(start_time.elapsed().as_secs_f64() * 1000.0);
         degraded.residuals.clear();
         Some(degraded)
@@ -320,22 +384,93 @@ fn invalid_solution_epoch(obs: &ObsEpoch) -> NavSolutionEpoch {
         longitude_deg: 0.0,
         altitude_m: Meters(0.0),
         clock_bias_s: Seconds(0.0),
+        clock_drift_s_per_s: 0.0,
         pdop: 0.0,
         rms_m: Meters(0.0),
         status: SolutionStatus::Invalid,
         quality: SolutionStatus::Invalid.quality_flag(),
+        validity: bijux_gnss_core::api::SolutionValidity::Invalid,
         valid: false,
         processing_ms: None,
         residuals: Vec::new(),
+        health: Vec::new(),
         isb: Vec::new(),
         sigma_h_m: None,
         sigma_v_m: None,
+        innovation_rms_m: None,
+        normalized_innovation_rms: None,
+        normalized_innovation_max: None,
         ekf_innovation_rms: None,
         ekf_condition_number: None,
         ekf_whiteness_ratio: None,
         ekf_predicted_variance: None,
         ekf_observed_variance: None,
+        integrity_hpl_m: None,
+        integrity_vpl_m: None,
     }
+}
+
+fn innovation_stats(
+    residuals: &[NavResidual],
+) -> (Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<f64>) {
+    let mut sum = 0.0;
+    let mut sum_norm = 0.0;
+    let mut max_norm = 0.0;
+    let mut sum_pred = 0.0;
+    let mut sum_obs = 0.0;
+    let mut count = 0.0;
+    for res in residuals {
+        if res.rejected {
+            continue;
+        }
+        let r = res.residual_m.0;
+        sum += r * r;
+        if let Some(w) = res.weight {
+            let sigma2 = 1.0 / w.max(1e-6);
+            sum_pred += sigma2;
+            let norm = r / sigma2.sqrt();
+            sum_norm += norm * norm;
+            if norm.abs() > max_norm {
+                max_norm = norm.abs();
+            }
+        }
+        sum_obs += r * r;
+        count += 1.0;
+    }
+    if count == 0.0 {
+        return (None, None, None, None, None);
+    }
+    let rms = (sum / count).sqrt();
+    let norm_rms = if sum_norm > 0.0 {
+        Some((sum_norm / count).sqrt())
+    } else {
+        None
+    };
+    let max_norm_opt = if max_norm > 0.0 { Some(max_norm) } else { None };
+    let pred_var = if sum_pred > 0.0 {
+        Some(sum_pred / count)
+    } else {
+        None
+    };
+    let obs_var = Some(sum_obs / count);
+    (Some(rms), norm_rms, max_norm_opt, pred_var, obs_var)
+}
+
+fn classify_validity(solution: &NavSolutionEpoch) -> bijux_gnss_core::api::SolutionValidity {
+    use bijux_gnss_core::api::SolutionValidity;
+    if !solution.valid {
+        return SolutionValidity::Invalid;
+    }
+    if solution.rms_m.0 > 50.0 || solution.pdop > 10.0 {
+        return SolutionValidity::Diverging;
+    }
+    if solution.rms_m.0 > 10.0 {
+        return SolutionValidity::Coarse;
+    }
+    if solution.rms_m.0 > 3.0 {
+        return SolutionValidity::Converging;
+    }
+    SolutionValidity::Stable
 }
 
 #[derive(Debug, Clone)]
@@ -352,7 +487,7 @@ impl ClockModel {
         }
     }
 
-    fn update(&mut self, measurement_bias_s: f64, dt_s: f64) -> f64 {
+    fn update(&mut self, measurement_bias_s: f64, dt_s: f64) -> (f64, f64) {
         let alpha = 0.1;
         let beta = 0.01;
         let mut bias = self.bias_s + self.drift_s * dt_s;
@@ -361,7 +496,7 @@ impl ClockModel {
         let drift = self.drift_s + (beta * residual / dt_s.max(1e-6));
         self.bias_s = bias;
         self.drift_s = drift;
-        self.bias_s
+        (self.bias_s, self.drift_s)
     }
 }
 
@@ -389,21 +524,29 @@ mod tests {
                 longitude_deg: 0.0,
                 altitude_m: Meters(0.0),
                 clock_bias_s: Seconds(0.0),
+                clock_drift_s_per_s: 0.0,
                 pdop: 1.0,
                 rms_m: Meters(1.0),
                 status: SolutionStatus::Converged,
                 quality: SolutionStatus::Converged.quality_flag(),
+                validity: bijux_gnss_core::api::SolutionValidity::Stable,
                 valid: true,
                 processing_ms: None,
                 residuals: Vec::new(),
+                health: Vec::new(),
                 isb: Vec::new(),
                 sigma_h_m: None,
                 sigma_v_m: None,
+                innovation_rms_m: None,
+                normalized_innovation_rms: None,
+                normalized_innovation_max: None,
                 ekf_innovation_rms: None,
                 ekf_condition_number: None,
                 ekf_whiteness_ratio: None,
                 ekf_predicted_variance: None,
                 ekf_observed_variance: None,
+                integrity_hpl_m: None,
+                integrity_vpl_m: None,
             }),
         };
         let obs = fake_obs_epoch_for_nav_tests(10);

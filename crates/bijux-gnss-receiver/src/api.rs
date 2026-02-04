@@ -53,6 +53,10 @@ pub mod rtk {
         apply_fix_hold, baseline_from_ecef, dd_residual_metrics, enu_to_ecef, jitter_summary,
         solution_separation, BaselineSolution, JitterSummary, RtkBaselineQuality, RtkPrecision,
     };
+    pub use bijux_gnss_core::api::rtk::{
+        RtkBaselineEpochV1, RtkBaselineQualityV1, RtkDdEpochV1, RtkFixAuditV1, RtkPrecisionV1,
+        RtkSdEpochV1,
+    };
 }
 
 /// Synthetic signal generation for tests and demos.
