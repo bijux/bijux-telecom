@@ -147,28 +147,13 @@ pub mod v1 {
 
         impl ArtifactPayloadValidate for ObsEpoch {
             fn validate_payload(&self) -> Vec<DiagnosticEvent> {
-                let mut events = Vec::new();
+                let mut events = self.validate_physics();
                 if !self.t_rx_s.0.is_finite() {
                     events.push(DiagnosticEvent::new(
                         DiagnosticSeverity::Error,
                         "GNSS_NUMERIC_T_RX_INVALID",
                         "t_rx_s is not finite",
                     ));
-                }
-                for sat in &self.sats {
-                    if !sat.pseudorange_m.0.is_finite()
-                        || !sat.carrier_phase_cycles.0.is_finite()
-                        || !sat.doppler_hz.0.is_finite()
-                    {
-                        events.push(
-                            DiagnosticEvent::new(
-                                DiagnosticSeverity::Error,
-                                "GNSS_NUMERIC_OBS_INVALID",
-                                "observation contains NaN/Inf",
-                            )
-                            .with_context("sat".to_string(), format!("{}", sat.signal_id.sat.prn)),
-                        );
-                    }
                 }
                 events
             }

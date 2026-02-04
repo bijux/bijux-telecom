@@ -140,6 +140,26 @@ pub struct ObsEpoch {
     pub sats: Vec<ObsSatellite>,
 }
 
+impl ObsEpoch {
+    /// Validate basic physics sanity checks for this epoch.
+    pub fn validate_physics(&self) -> Vec<crate::DiagnosticEvent> {
+        let mut events = crate::check_obs_epoch_sanity(self);
+        for sat in &self.sats {
+            if !sat.pseudorange_m.0.is_finite()
+                || !sat.carrier_phase_cycles.0.is_finite()
+                || !sat.doppler_hz.0.is_finite()
+            {
+                events.push(crate::DiagnosticEvent::new(
+                    crate::DiagnosticSeverity::Error,
+                    "GNSS_OBS_NUMERIC_INVALID",
+                    "obs contains NaN/Inf",
+                ));
+            }
+        }
+        events
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BandLagEvent {
     pub sat: SatId,

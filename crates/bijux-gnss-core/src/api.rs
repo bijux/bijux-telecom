@@ -27,6 +27,8 @@ pub use crate::error::{
     AcqError, ConfigError, InputError, InvariantError, IoError, NavError, ParseError, SignalError,
     TrackError,
 };
+/// Geodetic utilities (WGS-84).
+pub use crate::geo::{ecef_to_enu, ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef};
 /// Identity types and signal definitions.
 pub use crate::ids::{
     format_sat, prns_to_sats, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, sort_obs_sats,
