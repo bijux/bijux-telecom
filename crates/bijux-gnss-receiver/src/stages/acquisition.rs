@@ -183,7 +183,7 @@ impl Acquisition {
         if let Some(cached) = self.cache.lock().ok().and_then(|m| m.get(&key).cloned()) {
             return cached;
         }
-        let code = generate_ca_code(Prn(sat.prn));
+        let code = ca_code_or_default(sat.prn);
         let local_code = upsample_code(&code, samples_per_code);
         let mut code_fft: Vec<Complex<f32>> =
             local_code.iter().map(|&x| Complex::new(x, 0.0)).collect();
@@ -225,4 +225,11 @@ fn upsample_code(code: &[i8], samples_per_code: usize) -> Vec<f32> {
         *value = code[chip_index] as f32;
     }
     out
+}
+
+fn ca_code_or_default(prn: u8) -> Vec<i8> {
+    match generate_ca_code(Prn(prn)) {
+        Ok(code) => code,
+        Err(_) => vec![1; 1023],
+    }
 }

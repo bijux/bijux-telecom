@@ -11,12 +11,11 @@ pub struct Prn(pub u8);
 /// Generate one 1023-chip C/A code sequence for a given PRN (1..=32).
 ///
 /// Returns chips in {-1, +1}.
-pub fn generate_ca_code(prn: Prn) -> Vec<i8> {
+pub fn generate_ca_code(prn: Prn) -> Result<Vec<i8>, crate::error::SignalError> {
     let prn = prn.0;
-    assert!(
-        (1..=32).contains(&prn),
-        "PRN must be in 1..=32 for GPS L1 C/A"
-    );
+    if !(1..=32).contains(&prn) {
+        return Err(crate::error::SignalError::UnsupportedPrn(prn));
+    }
 
     let (tap1, tap2) = g2_taps(prn);
     let mut g1 = [1i8; 10];
@@ -37,7 +36,7 @@ pub fn generate_ca_code(prn: Prn) -> Vec<i8> {
         shift_register(&mut g2, g2_feedback);
     }
 
-    code
+    Ok(code)
 }
 
 fn shift_register(reg: &mut [i8; 10], feedback: i8) {
@@ -81,6 +80,6 @@ fn g2_taps(prn: u8) -> (usize, usize) {
         30 => (1, 6),
         31 => (2, 7),
         32 => (3, 8),
-        _ => panic!("Unsupported PRN {prn}"),
+        _ => unreachable!("PRN range validated before g2_taps"),
     }
 }

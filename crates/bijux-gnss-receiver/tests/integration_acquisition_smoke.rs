@@ -8,7 +8,7 @@ use bijux_gnss_signal::api::{generate_ca_code, samples_per_code, Prn};
 
 #[test]
 fn bench_code_gen_smoke() {
-    let _ = generate_ca_code(Prn(1));
+    let _ = generate_ca_code(Prn(1)).expect("valid PRN");
 }
 
 #[test]

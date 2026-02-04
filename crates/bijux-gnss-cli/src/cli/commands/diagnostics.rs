@@ -3,12 +3,13 @@ fn handle_cacode(command: GnssCommand) -> Result<()> {
         bail!("invalid command for handler");
     };
 
-    let code = generate_ca_code(Prn(prn));
-                    let count = count.min(code.len());
-                    for chip in code.iter().take(count) {
-                        print!("{chip} ");
-                    }
-                    println!();
+    let code = generate_ca_code(Prn(prn))
+        .map_err(|err| eyre!("failed to generate C/A code for PRN {prn}: {err}"))?;
+    let count = count.min(code.len());
+    for chip in code.iter().take(count) {
+        print!("{chip} ");
+    }
+    println!();
 
     Ok(())
 }
@@ -235,7 +236,7 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                             if let Some(seps) = separation {
                                 if let Some(max) = seps
                                     .iter()
-                                    .max_by(|a, b| a.delta_enu_m.partial_cmp(&b.delta_enu_m).unwrap())
+                                    .max_by(|a, b| a.delta_enu_m.total_cmp(&b.delta_enu_m))
                                 {
                                     sep_sig = Some(format!("{:?}", max.sig));
                                     sep_max = Some(max.delta_enu_m);

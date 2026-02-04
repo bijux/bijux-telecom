@@ -3,20 +3,20 @@ use bijux_gnss_signal::api::{generate_ca_code, Prn};
 
 #[test]
 fn ca_code_length_is_1023() {
-    let code = generate_ca_code(Prn(1));
+    let code = generate_ca_code(Prn(1)).expect("valid PRN");
     assert_eq!(code.len(), 1023);
 }
 
 #[test]
 fn ca_code_chips_are_pm_one() {
-    let code = generate_ca_code(Prn(1));
+    let code = generate_ca_code(Prn(1)).expect("valid PRN");
     assert!(code.iter().all(|&c| c == 1 || c == -1));
 }
 
 #[test]
 fn ca_code_reference_hashes_match() {
-    let prn1 = generate_ca_code(Prn(1));
-    let prn2 = generate_ca_code(Prn(2));
+    let prn1 = generate_ca_code(Prn(1)).expect("valid PRN");
+    let prn2 = generate_ca_code(Prn(2)).expect("valid PRN");
 
     let h1 = fnv1a_hash(&prn1);
     let h2 = fnv1a_hash(&prn2);

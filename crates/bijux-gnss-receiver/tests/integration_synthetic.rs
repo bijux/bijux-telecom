@@ -146,7 +146,8 @@ fn generate_local_code(
     code_phase_chips: f64,
     samples_per_code: usize,
 ) -> Vec<f32> {
-    let code = bijux_gnss_signal::api::generate_ca_code(bijux_gnss_signal::api::Prn(prn));
+    let code = bijux_gnss_signal::api::generate_ca_code(bijux_gnss_signal::api::Prn(prn))
+        .expect("valid PRN");
     let mut out = Vec::with_capacity(samples_per_code);
     let dt_s = 1.0 / config.sampling_freq_hz;
     for n in 0..samples_per_code {

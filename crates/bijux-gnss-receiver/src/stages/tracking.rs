@@ -114,7 +114,7 @@ impl Tracking {
             self.config.code_length,
         );
         let n = samples_per_code.min(frame.len());
-        let code = generate_ca_code(Prn(sat.prn));
+        let code = ca_code_or_default(sat.prn);
         let samples_per_chip = n as f64 / code.len() as f64;
         let early_offset = code_phase_samples - early_late_spacing_chips * samples_per_chip;
         let late_offset = code_phase_samples + early_late_spacing_chips * samples_per_chip;
@@ -421,6 +421,13 @@ impl Tracking {
             });
         }
         out
+    }
+}
+
+fn ca_code_or_default(prn: u8) -> Vec<i8> {
+    match generate_ca_code(Prn(prn)) {
+        Ok(code) => code,
+        Err(_) => vec![1; 1023],
     }
 }
 

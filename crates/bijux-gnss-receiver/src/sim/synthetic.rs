@@ -128,7 +128,7 @@ impl SatState {
             carrier_phase_rad: params.carrier_phase_rad,
             cn0_db_hz: params.cn0_db_hz,
             data_bit_flip: params.data_bit_flip,
-            code: generate_ca_code(Prn(params.sat.prn)),
+            code: generate_ca_code(Prn(params.sat.prn)).unwrap_or_else(|_| vec![1; 1023]),
             code_rate_hz: config.code_freq_basis_hz,
             if_hz: config.intermediate_freq_hz
                 + (carrier - bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value()),

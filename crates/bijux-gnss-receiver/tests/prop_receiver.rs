@@ -6,14 +6,14 @@ use rustfft::{num_complex::Complex, FftPlanner};
 proptest! {
     #[test]
     fn ca_code_is_deterministic(prn in 1u8..=32) {
-        let a = generate_ca_code(Prn(prn));
-        let b = generate_ca_code(Prn(prn));
+        let a = generate_ca_code(Prn(prn)).expect("valid PRN");
+        let b = generate_ca_code(Prn(prn)).expect("valid PRN");
         prop_assert_eq!(a, b);
     }
 
     #[test]
     fn ca_code_has_only_pm_one(prn in 1u8..=32) {
-        let code = generate_ca_code(Prn(prn));
+        let code = generate_ca_code(Prn(prn)).expect("valid PRN");
         prop_assert!(code.iter().all(|&c| c == 1 || c == -1));
     }
 }
