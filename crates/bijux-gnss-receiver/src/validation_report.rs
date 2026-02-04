@@ -1,7 +1,7 @@
 //! Validation report builders for GNSS runs.
 
 use crate::api::TrackingResult;
-use crate::api::ReceiverProfile;
+use crate::api::ReceiverConfig;
 use crate::validation_helpers::{check_budgets, to_validation_stats};
 use bijux_gnss_core::api::{
     check_inter_frequency_alignment, check_solution_consistency, reference_ecef, stats,
@@ -446,7 +446,7 @@ pub fn check_time_consistency(
 }
 
 #[allow(dead_code)]
-fn build_ppp_config(profile: &ReceiverProfile) -> PppConfig {
+fn build_ppp_config(profile: &ReceiverConfig) -> PppConfig {
     let p = &profile.navigation.ppp;
     let ar_mode = match p.ar_mode.as_str() {
         "ppp_ar_wide_lane" => bijux_gnss_nav::api::PppArMode::PppArWideLane,

@@ -4,19 +4,19 @@ use std::fs;
 use bijux_gnss_receiver::api::{
     AcquisitionEngine,
     sim::{generate_l1_ca_multi, SyntheticScenario},
-    ReceiverConfig,
+    ReceiverRuntimeConfig,
 };
 
 #[test]
 fn golden_acquisition_from_scenario() {
     let scenario = load_scenario();
-    let config = ReceiverConfig {
+    let config = ReceiverRuntimeConfig {
         sampling_freq_hz: scenario.sample_rate_hz,
         intermediate_freq_hz: scenario.intermediate_freq_hz,
         code_freq_basis_hz: 1_023_000.0,
         code_length: 1023,
         channels: 12,
-        ..ReceiverConfig::default()
+        ..ReceiverRuntimeConfig::default()
     };
 
     let frame = generate_l1_ca_multi(&config, &scenario);

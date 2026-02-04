@@ -2,19 +2,19 @@
 use bijux_gnss_receiver::api::{
     AcquisitionEngine,
     sim::{generate_l1_ca, SyntheticSignalParams},
-    ReceiverConfig,
+    ReceiverRuntimeConfig,
 };
 use bijux_gnss_signal::api::samples_per_code;
 
 #[test]
 fn acquisition_fft_detects_synthetic_signal() {
-    let config = ReceiverConfig {
+    let config = ReceiverRuntimeConfig {
         sampling_freq_hz: 4_092_000.0,
         intermediate_freq_hz: 0.0,
         code_freq_basis_hz: 1_023_000.0,
         code_length: 1023,
         channels: 12,
-        ..ReceiverConfig::default()
+        ..ReceiverRuntimeConfig::default()
     };
 
     let samples_per_code = samples_per_code(

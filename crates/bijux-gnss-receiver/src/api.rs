@@ -1,7 +1,7 @@
 //! Public API for bijux-gnss-receiver.
 
 /// Receiver configuration and schema.
-pub use crate::engine::receiver_config::{ReceiverConfig, ReceiverError, ReceiverProfile};
+pub use crate::engine::receiver_config::{ReceiverRuntimeConfig, ReceiverError, ReceiverConfig};
 
 /// I/O helpers.
 pub use crate::io::data::{FileSamples, MemorySamples, SampleSourceError};
@@ -104,17 +104,17 @@ pub trait ReceiverEngine {
 
 /// High-level receiver pipeline entrypoint.
 pub struct Receiver {
-    config: ReceiverConfig,
+    config: ReceiverRuntimeConfig,
 }
 
 impl Receiver {
     /// Create a new receiver with the provided configuration.
-    pub fn new(config: ReceiverConfig) -> Self {
+    pub fn new(config: ReceiverRuntimeConfig) -> Self {
         Self { config }
     }
 
     /// Borrow the receiver configuration.
-    pub fn config(&self) -> &ReceiverConfig {
+    pub fn config(&self) -> &ReceiverRuntimeConfig {
         &self.config
     }
 }

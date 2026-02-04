@@ -6,9 +6,11 @@ use bijux_gnss_core::api::{
 };
 use thiserror::Error;
 
-/// On-disk receiver profile configuration.
+/// On-disk receiver configuration.
+///
+/// For a combined receiver+navigation config, see `bijux_gnss_core::api::BijuxGnssConfig`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ReceiverProfile {
+pub struct ReceiverConfig {
     /// Schema version for config compatibility.
     #[schemars(with = "u32")]
     pub schema_version: SchemaVersion,
@@ -25,16 +27,16 @@ pub struct ReceiverProfile {
     /// RNG seed for deterministic operations.
     pub seed: u64,
     /// Acquisition configuration.
-    pub acquisition: AcquisitionProfile,
+    pub acquisition: AcquisitionConfig,
     /// Tracking configuration.
-    pub tracking: TrackingProfile,
+    pub tracking: TrackingConfig,
     /// Navigation configuration.
-    pub navigation: NavigationProfile,
+    pub navigation: NavigationConfig,
 }
 
 /// Derived receiver configuration used at runtime.
 #[derive(Debug, Clone)]
-pub struct ReceiverConfig {
+pub struct ReceiverRuntimeConfig {
     /// Sample rate of the IF signal, in Hz.
     pub sampling_freq_hz: f64,
     /// Intermediate frequency, in Hz.
@@ -70,7 +72,7 @@ pub struct ReceiverConfig {
     /// Hatch smoothing window, in epochs.
     pub hatch_window: u32,
     /// Navigation weighting configuration.
-    pub weighting: NavigationWeightingProfile,
+    pub weighting: NavigationWeightingConfig,
     /// Ionosphere model mode identifier.
     pub iono_mode: String,
     /// Whether to enable troposphere modeling.
@@ -78,10 +80,10 @@ pub struct ReceiverConfig {
     /// Default zenith tropospheric delay, in meters.
     pub tropo_ztd_m: f64,
     /// PPP configuration.
-    pub ppp: PppProfile,
+    pub ppp: PppConfig,
 }
 
-impl Default for ReceiverConfig {
+impl Default for ReceiverRuntimeConfig {
     fn default() -> Self {
         Self {
             sampling_freq_hz: 5_000_000.0,
@@ -101,11 +103,11 @@ impl Default for ReceiverConfig {
             huber_k: 30.0,
             raim: true,
             hatch_window: 100,
-            weighting: NavigationWeightingProfile::default(),
+            weighting: NavigationWeightingConfig::default(),
             iono_mode: "broadcast".to_string(),
             tropo_enable: true,
             tropo_ztd_m: 2.3,
-            ppp: PppProfile::default(),
+            ppp: PppConfig::default(),
         }
     }
 }
@@ -142,7 +144,7 @@ pub struct BandTrackingSpec {
     pub integration_ms: u32,
 }
 
-impl ReceiverConfig {
+impl ReceiverRuntimeConfig {
     /// Resolve tracking parameters for a given band, falling back to defaults.
     pub fn tracking_params(&self, band: SignalBand) -> TrackingParams {
         if let Some(profile) = self.tracking_per_band.iter().find(|p| p.band == band) {
@@ -189,7 +191,7 @@ pub enum ReceiverError {
 
 /// Acquisition configuration parameters.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct AcquisitionProfile {
+pub struct AcquisitionConfig {
     /// Doppler search range, in Hz.
     pub doppler_search_hz: i32,
     /// Doppler bin spacing, in Hz.
@@ -204,7 +206,7 @@ pub struct AcquisitionProfile {
 
 /// Tracking configuration parameters.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct TrackingProfile {
+pub struct TrackingConfig {
     /// Early/late spacing, in chips.
     pub early_late_spacing_chips: f64,
     /// DLL noise bandwidth, in Hz.
@@ -225,12 +227,12 @@ pub struct TrackingProfile {
     pub integration_ms: u32,
     /// Per-band overrides.
     #[serde(default)]
-    pub per_band: Vec<BandTrackingProfile>,
+    pub per_band: Vec<BandTrackingConfig>,
 }
 
 /// Tracking overrides for a specific band.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct BandTrackingProfile {
+pub struct BandTrackingConfig {
     /// Band identifier (e.g. L1, L2).
     pub band: String,
     /// Early/late spacing, in chips.
@@ -269,7 +271,7 @@ pub fn parse_band(text: &str) -> Option<SignalBand> {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 /// Navigation configuration parameters.
-pub struct NavigationProfile {
+pub struct NavigationConfig {
     /// Enable robust solver.
     pub robust_solver: bool,
     /// Huber loss parameter.
@@ -279,7 +281,7 @@ pub struct NavigationProfile {
     /// Hatch smoothing window.
     pub hatch_window: u32,
     /// Weighting configuration.
-    pub weighting: NavigationWeightingProfile,
+    pub weighting: NavigationWeightingConfig,
     /// Ionosphere model mode identifier.
     pub iono_mode: String,
     /// Enable troposphere modeling.
@@ -288,12 +290,12 @@ pub struct NavigationProfile {
     pub tropo_ztd_m: f64,
     /// PPP configuration.
     #[serde(default)]
-    pub ppp: PppProfile,
+    pub ppp: PppConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 /// PPP configuration parameters.
-pub struct PppProfile {
+pub struct PppConfig {
     /// Enable PPP processing.
     pub enabled: bool,
     /// Use ionosphere-free combinations.
@@ -344,7 +346,7 @@ pub struct PppProfile {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 /// Navigation measurement weighting parameters.
-pub struct NavigationWeightingProfile {
+pub struct NavigationWeightingConfig {
     /// Enable weighting.
     pub enabled: bool,
     /// Minimum elevation, in degrees.

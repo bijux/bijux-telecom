@@ -7,7 +7,7 @@ use bijux_gnss_core::api::{
 };
 
 use crate::engine::logging;
-use crate::engine::receiver_config::ReceiverConfig;
+use crate::engine::receiver_config::ReceiverRuntimeConfig;
 use bijux_gnss_core::api::Sample;
 use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::Nco;
@@ -85,11 +85,11 @@ struct LoopState {
 
 /// Tracking engine with basic E/P/L correlation per epoch.
 pub struct Tracking {
-    config: ReceiverConfig,
+    config: ReceiverRuntimeConfig,
 }
 
 impl Tracking {
-    pub fn new(config: ReceiverConfig) -> Self {
+    pub fn new(config: ReceiverRuntimeConfig) -> Self {
         Self { config }
     }
 
@@ -510,7 +510,7 @@ mod tests {
     #[test]
     #[cfg(feature = "alloc-audit")]
     fn tracking_allocations_under_threshold() {
-        let config = crate::engine::receiver_config::ReceiverConfig::default();
+        let config = crate::engine::receiver_config::ReceiverRuntimeConfig::default();
         let samples_per_code = bijux_gnss_signal::api::samples_per_code(
             config.sampling_freq_hz,
             config.code_freq_basis_hz,

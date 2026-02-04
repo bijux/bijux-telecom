@@ -3,11 +3,11 @@
 use bijux_gnss_core::api::SchemaVersion;
 
 use crate::engine::receiver_config::{
-    default_tracking_integration_ms, AcquisitionProfile, NavigationProfile,
-    NavigationWeightingProfile, PppProfile, ReceiverProfile, TrackingProfile,
+    default_tracking_integration_ms, AcquisitionConfig, NavigationConfig,
+    NavigationWeightingConfig, PppConfig, ReceiverConfig, TrackingConfig,
 };
 
-impl Default for ReceiverProfile {
+impl Default for ReceiverConfig {
     fn default() -> Self {
         Self {
             schema_version: SchemaVersion::CURRENT,
@@ -17,14 +17,14 @@ impl Default for ReceiverProfile {
             code_freq_basis_hz: 1_023_000.0,
             code_length: 1023,
             seed: 1,
-            acquisition: AcquisitionProfile::default(),
-            tracking: TrackingProfile::default(),
-            navigation: NavigationProfile::default(),
+            acquisition: AcquisitionConfig::default(),
+            tracking: TrackingConfig::default(),
+            navigation: NavigationConfig::default(),
         }
     }
 }
 
-impl Default for AcquisitionProfile {
+impl Default for AcquisitionConfig {
     fn default() -> Self {
         Self {
             doppler_search_hz: 10000,
@@ -36,7 +36,7 @@ impl Default for AcquisitionProfile {
     }
 }
 
-impl Default for TrackingProfile {
+impl Default for TrackingConfig {
     fn default() -> Self {
         Self {
             early_late_spacing_chips: 0.5,
@@ -52,23 +52,23 @@ impl Default for TrackingProfile {
     }
 }
 
-impl Default for NavigationProfile {
+impl Default for NavigationConfig {
     fn default() -> Self {
         Self {
             robust_solver: true,
             huber_k: 30.0,
             raim: true,
             hatch_window: 100,
-            weighting: NavigationWeightingProfile::default(),
+            weighting: NavigationWeightingConfig::default(),
             iono_mode: "broadcast".to_string(),
             tropo_enable: true,
             tropo_ztd_m: 2.3,
-            ppp: PppProfile::default(),
+            ppp: PppConfig::default(),
         }
     }
 }
 
-impl Default for NavigationWeightingProfile {
+impl Default for NavigationWeightingConfig {
     fn default() -> Self {
         Self {
             enabled: true,
@@ -83,7 +83,7 @@ impl Default for NavigationWeightingProfile {
     }
 }
 
-impl Default for PppProfile {
+impl Default for PppConfig {
     fn default() -> Self {
         Self {
             enabled: true,

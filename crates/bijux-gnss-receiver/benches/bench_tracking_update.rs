@@ -3,10 +3,10 @@ use num_complex::Complex;
 
 use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds};
 use bijux_gnss_receiver::api::TrackingEngine;
-use bijux_gnss_receiver::api::ReceiverConfig;
+use bijux_gnss_receiver::api::ReceiverRuntimeConfig;
 
 fn bench_tracking_update(c: &mut Criterion) {
-    let config = ReceiverConfig::default();
+    let config = ReceiverRuntimeConfig::default();
     let samples_per_code = bijux_gnss_signal::api::samples_per_code(
         config.sampling_freq_hz,
         config.code_freq_basis_hz,

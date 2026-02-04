@@ -10,14 +10,14 @@ use rustfft::{num_traits::Zero, FftPlanner};
 use crate::engine::logging;
 #[cfg(feature = "trace-dump")]
 use crate::engine::logging::{dump_acq_trace, AcqTrace};
-use crate::engine::receiver_config::ReceiverConfig;
+use crate::engine::receiver_config::ReceiverRuntimeConfig;
 use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::Nco;
 use bijux_gnss_signal::api::{generate_ca_code, Prn};
 
 /// Acquisition engine (coarse search).
 pub struct Acquisition {
-    config: ReceiverConfig,
+    config: ReceiverRuntimeConfig,
     doppler_search_hz: i32,
     doppler_step_hz: i32,
     cache: Mutex<CodeFftCache>,
@@ -26,7 +26,7 @@ pub struct Acquisition {
 type CodeFftCache = HashMap<(usize, SatId), Vec<Complex<f32>>>;
 
 impl Acquisition {
-    pub fn new(config: ReceiverConfig) -> Self {
+    pub fn new(config: ReceiverRuntimeConfig) -> Self {
         Self {
             config,
             doppler_search_hz: 10_000,

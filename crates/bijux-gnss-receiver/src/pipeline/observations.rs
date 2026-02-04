@@ -5,7 +5,7 @@ use bijux_gnss_core::api::{
     SignalBand, TrackEpoch,
 };
 
-use crate::engine::receiver_config::ReceiverConfig;
+use crate::engine::receiver_config::ReceiverRuntimeConfig;
 use crate::pipeline::tracking::TrackingResult;
 use bijux_gnss_signal::api::samples_per_code;
 
@@ -41,7 +41,7 @@ struct CycleSlipState {
 
 const GEOFREE_SLIP_THRESHOLD_CYCLES: f64 = 0.5;
 
-pub fn observations_from_tracking(config: &ReceiverConfig, epochs: &[TrackEpoch]) -> Vec<ObsEpoch> {
+pub fn observations_from_tracking(config: &ReceiverRuntimeConfig, epochs: &[TrackEpoch]) -> Vec<ObsEpoch> {
     if epochs.is_empty() {
         return Vec::new();
     }
@@ -191,7 +191,7 @@ pub fn observations_from_tracking(config: &ReceiverConfig, epochs: &[TrackEpoch]
 }
 
 pub fn observations_from_tracking_results(
-    config: &ReceiverConfig,
+    config: &ReceiverRuntimeConfig,
     tracks: &[TrackingResult],
     hatch_window: u32,
 ) -> Vec<ObsEpoch> {

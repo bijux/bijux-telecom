@@ -5,13 +5,13 @@ use bijux_gnss_receiver::api::{
     AcquisitionEngine,
     sim::{generate_l1_ca_multi, SyntheticScenario},
     TrackingEngine,
-    ReceiverConfig,
+    ReceiverRuntimeConfig,
 };
 
 #[test]
 fn golden_tracking_from_scenario() {
     let scenario = load_scenario();
-    let config = ReceiverConfig {
+    let config = ReceiverRuntimeConfig {
         sampling_freq_hz: scenario.sample_rate_hz,
         intermediate_freq_hz: scenario.intermediate_freq_hz,
         code_freq_basis_hz: 1_023_000.0,
@@ -19,7 +19,7 @@ fn golden_tracking_from_scenario() {
         channels: 12,
         tracking_budget_ms: 100.0,
         tracking_over_budget_action: "continue".to_string(),
-        ..ReceiverConfig::default()
+        ..ReceiverRuntimeConfig::default()
     };
 
     let frame = generate_l1_ca_multi(&config, &scenario);

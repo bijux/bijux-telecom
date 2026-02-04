@@ -1,10 +1,10 @@
 use bijux_gnss_core::api::{SampleTime, SamplesFrame, SatId, Seconds};
-use bijux_gnss_receiver::api::{AcquisitionEngine, ReceiverConfig};
+use bijux_gnss_receiver::api::{AcquisitionEngine, ReceiverRuntimeConfig};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use num_complex::Complex;
 
 fn bench_acquisition_fft(c: &mut Criterion) {
-    let config = ReceiverConfig::default();
+    let config = ReceiverRuntimeConfig::default();
     let acq = Acquisition::new(config.clone());
     let samples_per_code = bijux_gnss_signal::api::samples_per_code(
         config.sampling_freq_hz,

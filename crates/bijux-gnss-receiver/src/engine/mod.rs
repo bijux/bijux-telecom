@@ -8,8 +8,8 @@ pub mod engine;
 pub mod logging;
 pub mod metrics;
 pub mod receiver_config;
-pub mod receiver_profile_defaults;
-pub mod receiver_profile_validation;
+pub mod receiver_config_defaults;
+pub mod receiver_config_validation;
 
 #[allow(dead_code)]
 pub fn runtime_modules() -> [&'static str; 7] {
@@ -19,7 +19,7 @@ pub fn runtime_modules() -> [&'static str; 7] {
         "diagnostics",
         "metrics",
         "receiver_config",
-        "receiver_profile_defaults",
-        "receiver_profile_validation",
+        "receiver_config_defaults",
+        "receiver_config_validation",
     ]
 }

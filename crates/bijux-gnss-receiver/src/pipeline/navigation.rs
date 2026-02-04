@@ -9,12 +9,12 @@ use bijux_gnss_nav::api::{
     PositionObservation, PositionSolver, WeightingConfig,
 };
 
-use crate::engine::receiver_config::ReceiverConfig;
+use crate::engine::receiver_config::ReceiverRuntimeConfig;
 
 /// Navigation solution derived from observation epochs.
 pub struct Navigation {
     #[allow(dead_code)]
-    config: ReceiverConfig,
+    config: ReceiverRuntimeConfig,
     solver: PositionSolver,
     clock: ClockModel,
     last_ecef: Option<(f64, f64, f64)>,
@@ -85,7 +85,7 @@ impl Default for EkfState {
 }
 
 impl Navigation {
-    pub fn new(config: ReceiverConfig) -> Self {
+    pub fn new(config: ReceiverRuntimeConfig) -> Self {
         let mut solver = PositionSolver::new();
         solver.robust = config.robust_solver;
         solver.huber_k = config.huber_k;
@@ -508,7 +508,7 @@ mod tests {
 
     #[test]
     fn navigation_degrades_on_solver_failure() {
-        let config = ReceiverConfig::default();
+        let config = ReceiverRuntimeConfig::default();
         let mut nav = Navigation {
             config,
             solver: PositionSolver::new(),

@@ -8,8 +8,8 @@
 //! - `rtk`: differencing and baseline solution helpers
 //! - `sim`: synthetic signal generation for tests
 //! - `Receiver`: high-level pipeline entrypoint
-//! - `ReceiverConfig`: runtime configuration
-//! - `ReceiverProfile`: config file schema
+//! - `ReceiverConfig`: on-disk configuration schema (serialize/deserialize)
+//! - `ReceiverRuntimeConfig`: derived runtime configuration for engines
 //! - `ReceiverError`: error taxonomy for receiver stages
 
 #![deny(clippy::unwrap_used)]

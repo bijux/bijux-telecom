@@ -1,7 +1,7 @@
 use bijux_gnss_receiver::api::sim::{
     generate_l1_ca_multi, SyntheticScenario, SyntheticSignalParams,
 };
-use bijux_gnss_receiver::api::ReceiverProfile;
+use bijux_gnss_receiver::api::ReceiverConfig;
 
 fn hash_samples(samples: &[num_complex::Complex<f32>]) -> u64 {
     let mut hash = 0xcbf29ce484222325u64;
@@ -18,8 +18,8 @@ fn hash_samples(samples: &[num_complex::Complex<f32>]) -> u64 {
 
 #[test]
 fn deterministic_synthetic_runs_match() {
-    let profile = ReceiverProfile::default();
-    let config = profile.to_receiver_config();
+    let profile = ReceiverConfig::default();
+    let config = profile.to_runtime_config();
     let scenario = SyntheticScenario {
         sample_rate_hz: config.sampling_freq_hz,
         intermediate_freq_hz: config.intermediate_freq_hz,

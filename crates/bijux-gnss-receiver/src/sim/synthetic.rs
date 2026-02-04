@@ -6,7 +6,7 @@ use num_complex::Complex;
 
 use bijux_gnss_core::api::{Constellation, SampleClock, SampleTime, SamplesFrame, SatId, Seconds};
 
-use crate::engine::receiver_config::ReceiverConfig;
+use crate::engine::receiver_config::ReceiverRuntimeConfig;
 use bijux_gnss_nav::api::GpsEphemeris;
 use bijux_gnss_signal::api::{generate_ca_code, Prn};
 use serde::{Deserialize, Serialize};
@@ -38,7 +38,7 @@ pub struct SyntheticScenario {
 ///
 /// The C/N0 control is approximate and intended for test harnesses.
 pub fn generate_l1_ca(
-    config: &ReceiverConfig,
+    config: &ReceiverRuntimeConfig,
     params: SyntheticSignalParams,
     seed: u64,
     duration_s: f64,
@@ -57,7 +57,7 @@ pub fn generate_l1_ca(
     )
 }
 
-pub fn generate_l1_ca_multi(config: &ReceiverConfig, scenario: &SyntheticScenario) -> SamplesFrame {
+pub fn generate_l1_ca_multi(config: &ReceiverRuntimeConfig, scenario: &SyntheticScenario) -> SamplesFrame {
     let clock = SampleClock::new(config.sampling_freq_hz);
     let dt_s = clock.dt_s();
     let sample_count = (scenario.duration_s * config.sampling_freq_hz).round() as usize;
@@ -115,7 +115,7 @@ struct SatState {
 }
 
 impl SatState {
-    fn new(config: &ReceiverConfig, params: SyntheticSignalParams) -> Self {
+    fn new(config: &ReceiverRuntimeConfig, params: SyntheticSignalParams) -> Self {
         let carrier = match params.sat.constellation {
             Constellation::Galileo => bijux_gnss_core::api::GALILEO_E1_CARRIER_HZ.value(),
             Constellation::Gps => bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value(),

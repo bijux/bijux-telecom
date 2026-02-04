@@ -3,10 +3,10 @@
 use bijux_gnss_core::api::{ConfigError, SchemaVersion, ValidateConfig, ValidationReport};
 
 use crate::engine::receiver_config::{
-    parse_band, BandTrackingSpec, ReceiverConfig, ReceiverProfile,
+    parse_band, BandTrackingSpec, ReceiverRuntimeConfig, ReceiverConfig,
 };
 
-impl ValidateConfig for ReceiverProfile {
+impl ValidateConfig for ReceiverConfig {
     fn validate(&self) -> ValidationReport {
         let mut report = ValidationReport::default();
         if self.schema_version.0 != SchemaVersion::CURRENT.0 {
@@ -193,7 +193,7 @@ impl ValidateConfig for ReceiverProfile {
     }
 }
 
-impl ReceiverProfile {
+impl ReceiverConfig {
     pub fn validate(&self) -> Result<(), Vec<String>> {
         let report = <Self as ValidateConfig>::validate(self);
         if report.errors.is_empty() {
@@ -203,8 +203,8 @@ impl ReceiverProfile {
         }
     }
 
-    pub fn to_receiver_config(&self) -> ReceiverConfig {
-        ReceiverConfig {
+    pub fn to_runtime_config(&self) -> ReceiverRuntimeConfig {
+        ReceiverRuntimeConfig {
             sampling_freq_hz: self.sample_rate_hz,
             intermediate_freq_hz: self.intermediate_freq_hz,
             code_freq_basis_hz: self.code_freq_basis_hz,
