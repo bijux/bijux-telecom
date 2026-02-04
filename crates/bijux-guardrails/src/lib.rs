@@ -3,7 +3,6 @@
 
 #![deny(missing_docs)]
 
-use anyhow::Result;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -12,6 +11,61 @@ use walkdir::WalkDir;
 
 /// Public API surface for this crate.
 pub mod api;
+
+/// Guardrail error type.
+#[derive(Debug)]
+pub enum GuardrailError {
+    /// IO errors.
+    Io(std::io::Error),
+    /// Walkdir errors.
+    Walk(walkdir::Error),
+    /// Regex errors.
+    Regex(regex::Error),
+    /// Guardrail violation.
+    Violation(String),
+}
+
+impl std::fmt::Display for GuardrailError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GuardrailError::Io(err) => write!(f, "io error: {err}"),
+            GuardrailError::Walk(err) => write!(f, "walkdir error: {err}"),
+            GuardrailError::Regex(err) => write!(f, "regex error: {err}"),
+            GuardrailError::Violation(msg) => write!(f, "{msg}"),
+        }
+    }
+}
+
+impl std::error::Error for GuardrailError {}
+
+impl From<std::io::Error> for GuardrailError {
+    fn from(err: std::io::Error) -> Self {
+        GuardrailError::Io(err)
+    }
+}
+
+impl From<walkdir::Error> for GuardrailError {
+    fn from(err: walkdir::Error) -> Self {
+        GuardrailError::Walk(err)
+    }
+}
+
+impl From<regex::Error> for GuardrailError {
+    fn from(err: regex::Error) -> Self {
+        GuardrailError::Regex(err)
+    }
+}
+
+/// Result type for guardrail checks.
+pub type Result<T> = std::result::Result<T, GuardrailError>;
+
+macro_rules! bail {
+    ($($arg:tt)*) => {
+        return Err(GuardrailError::Violation(format!($($arg)*)))
+    };
+}
+
+use bail;
 
 /// Guardrail configuration for policy checks.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,7 +171,7 @@ fn check_loc(files: &[PathBuf], config: &GuardrailConfig) -> Result<()> {
         let content = fs::read_to_string(path)?;
         let lines = content.lines().count();
         if lines > config.max_loc {
-            anyhow::bail!(
+            bail!(
                 "{} has {} lines (max {})",
                 path.display(),
                 lines,
@@ -142,7 +196,7 @@ fn check_depth(src_dir: &Path, files: &[PathBuf], config: &GuardrailConfig) -> R
         if components.len() == config.max_depth + 1 && is_mod_rs {
             continue;
         }
-        anyhow::bail!(
+        bail!(
             "module depth exceeds allowed rule (src/a/b/c.rs or mod.rs at each level): {}",
             path.display()
         );
@@ -165,7 +219,7 @@ fn check_modules_per_dir(src_dir: &Path, config: &GuardrailConfig) -> Result<()>
             }
         }
         if count > config.max_modules_per_dir {
-            anyhow::bail!(
+            bail!(
                 "{} has {} rust modules (max {})",
                 entry.path().display(),
                 count,
@@ -195,7 +249,7 @@ fn check_rs_files_per_dir(src_dir: &Path, config: &GuardrailConfig) -> Result<()
             }
         }
         if count > config.max_rs_files_per_dir {
-            anyhow::bail!(
+            bail!(
                 "{} has {} rust modules (max {})",
                 entry.path().display(),
                 count,
@@ -235,7 +289,7 @@ fn check_mod_only_dirs(src_dir: &Path) -> Result<()> {
             .iter()
             .all(|name| name == "mod.rs" || name == "tests.rs");
         if allowed && rs_files.iter().any(|name| name == "mod.rs") && rs_files.len() <= 2 {
-            anyhow::bail!(
+            bail!(
                 "module directory contains only mod.rs (and optionally tests.rs): {}",
                 entry.path().display()
             );
@@ -262,7 +316,7 @@ fn check_empty_modules(files: &[PathBuf]) -> Result<()> {
             meaningful += 1;
         }
         if meaningful == 0 {
-            anyhow::bail!(
+            bail!(
                 "empty module file (only mod re-exports): {}",
                 path.display()
             );
@@ -295,7 +349,7 @@ fn check_mod_reexports_only(files: &[PathBuf]) -> Result<()> {
             meaningful += 1;
         }
         if meaningful == 0 {
-            anyhow::bail!("stages mod.rs contains only re-exports: {}", path.display());
+            bail!("stages mod.rs contains only re-exports: {}", path.display());
         }
     }
     Ok(())
@@ -308,7 +362,7 @@ fn check_pub_items(files: &[PathBuf], config: &GuardrailConfig) -> Result<()> {
         let content = fs::read_to_string(path)?;
         let count = content.lines().filter(|line| pub_re.is_match(line)).count();
         if count > config.max_pub_items_per_file {
-            anyhow::bail!(
+            bail!(
                 "{} has {} pub items (max {})",
                 path.display(),
                 count,
@@ -328,7 +382,7 @@ fn check_pub_use_spam(files: &[PathBuf], config: &GuardrailConfig) -> Result<()>
             .filter(|line| pub_use_re.is_match(line))
             .count();
         if count > config.max_pub_use_per_file {
-            anyhow::bail!(
+            bail!(
                 "{} has {} pub use re-exports (max {})",
                 path.display(),
                 count,
@@ -358,7 +412,7 @@ fn check_pub_use_locations(files: &[PathBuf]) -> Result<()> {
             if is_lib && line.contains("api::") {
                 continue;
             }
-            anyhow::bail!("pub use outside api.rs at {}:{}", path.display(), idx + 1);
+            bail!("pub use outside api.rs at {}:{}", path.display(), idx + 1);
         }
     }
     Ok(())
@@ -378,7 +432,7 @@ fn check_forbidden_filenames(files: &[PathBuf]) -> Result<()> {
             continue;
         }
         if name == "helpers.rs" || name == "support.rs" || name == "misc.rs" {
-            anyhow::bail!("forbidden filename: {}", path.display());
+            bail!("forbidden filename: {}", path.display());
         }
     }
     Ok(())
@@ -399,7 +453,7 @@ fn check_panic_expect(files: &[PathBuf], config: &GuardrailConfig) -> Result<()>
         let content = fs::read_to_string(path)?;
         for (idx, line) in content.lines().enumerate() {
             if panic_re.is_match(line) || expect_re.is_match(line) {
-                anyhow::bail!("panic/expect found in {}:{}", path.display(), idx + 1);
+                bail!("panic/expect found in {}:{}", path.display(), idx + 1);
             }
         }
     }
@@ -419,7 +473,7 @@ fn check_stage_id_strings(files: &[PathBuf], config: &GuardrailConfig) -> Result
         }
         let content = fs::read_to_string(path)?;
         if stage_re.is_match(&content) {
-            anyhow::bail!("stage id literal found in {}", path.display());
+            bail!("stage id literal found in {}", path.display());
         }
     }
     Ok(())
