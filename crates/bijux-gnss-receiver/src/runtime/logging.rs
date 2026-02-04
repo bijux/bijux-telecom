@@ -14,9 +14,14 @@ use serde::Serialize;
 use crate::stages::tracking::ChannelState;
 use bijux_gnss_core::api::{DiagnosticEvent, SatId};
 
+fn run_id() -> String {
+    std::env::var("BIJUX_RUN_ID").unwrap_or_else(|_| "unknown".to_string())
+}
+
 pub fn acquisition_hit(sat: SatId, carrier_hz: f64, code_phase: usize, metric: f32, ratio: f32) {
     #[cfg(feature = "tracing")]
     info!(
+        run_id = %run_id(),
         prn = sat.prn,
         carrier_hz, code_phase, metric, ratio, "acquisition hit"
     );
@@ -28,7 +33,7 @@ pub fn acquisition_hit(sat: SatId, carrier_hz: f64, code_phase: usize, metric: f
 
 pub fn channel_state_change(channel: u8, from: ChannelState, to: ChannelState) {
     #[cfg(feature = "tracing")]
-    info!(channel, from = ?from, to = ?to, "channel state change");
+    info!(run_id = %run_id(), channel, from = ?from, to = ?to, "channel state change");
     #[cfg(not(feature = "tracing"))]
     {
         let _ = (channel, from, to);
@@ -37,7 +42,7 @@ pub fn channel_state_change(channel: u8, from: ChannelState, to: ChannelState) {
 
 pub fn lock_status(channel: u8, locked: bool) {
     #[cfg(feature = "tracing")]
-    debug!(channel, locked, "lock status change");
+    debug!(run_id = %run_id(), channel, locked, "lock status change");
     #[cfg(not(feature = "tracing"))]
     {
         let _ = (channel, locked);
@@ -51,6 +56,7 @@ pub fn diagnostic(event: &DiagnosticEvent) {
             bijux_gnss_core::api::DiagnosticSeverity::Error => {
                 tracing::event!(
                     tracing::Level::ERROR,
+                    run_id = %run_id(),
                     code = %event.code,
                     message = %event.message,
                     "diagnostic"
@@ -59,6 +65,7 @@ pub fn diagnostic(event: &DiagnosticEvent) {
             bijux_gnss_core::api::DiagnosticSeverity::Warning => {
                 tracing::event!(
                     tracing::Level::WARN,
+                    run_id = %run_id(),
                     code = %event.code,
                     message = %event.message,
                     "diagnostic"
@@ -67,6 +74,7 @@ pub fn diagnostic(event: &DiagnosticEvent) {
             bijux_gnss_core::api::DiagnosticSeverity::Info => {
                 tracing::event!(
                     tracing::Level::INFO,
+                    run_id = %run_id(),
                     code = %event.code,
                     message = %event.message,
                     "diagnostic"

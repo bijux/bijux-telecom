@@ -148,6 +148,7 @@ impl Tracking {
     pub fn track_epoch(
         &self,
         frame: &SamplesFrame,
+        channel_id: u8,
         sat: SatId,
         carrier_freq_hz: f64,
         code_phase_samples: f64,
@@ -170,6 +171,11 @@ impl Tracking {
                 "TRACK_NUMERIC_INVALID",
                 "tracking correlator produced NaN/Inf",
             ));
+            crate::runtime::diagnostics::dump_on_error(
+                "tracking correlator produced NaN/Inf",
+                None,
+                None,
+            );
         }
         let track_epoch = TrackEpoch {
             epoch,
@@ -192,6 +198,17 @@ impl Tracking {
             fll_err: 0.0,
             processing_ms: None,
         };
+        #[cfg(feature = "tracing")]
+        {
+            tracing::debug!(
+                run_id = %std::env::var("BIJUX_RUN_ID").unwrap_or_else(|_| "unknown".to_string()),
+                channel_id,
+                epoch_idx = track_epoch.epoch.index,
+                t_rx_s = track_epoch.sample_index as f64 / self.config.sampling_freq_hz,
+                prn = track_epoch.sat.prn,
+                "tracking epoch"
+            );
+        }
         (track_epoch, correlator)
     }
 
@@ -209,6 +226,7 @@ impl Tracking {
         );
         let epochs = self.track_epochs(
             &frame,
+            0,
             SatId {
                 constellation: Constellation::Gps,
                 prn: 1,
@@ -240,9 +258,12 @@ impl Tracking {
         acquisitions
             .iter()
             .take(max.max(1))
-            .map(|acq| {
+            .enumerate()
+            .map(|(channel_idx, acq)| {
+                let channel_id = channel_idx as u8;
                 let mut epochs = self.track_epochs(
                     frame,
+                    channel_id,
                     acq.sat,
                     acq.carrier_hz.0,
                     acq.code_phase_samples as f64,
@@ -265,6 +286,7 @@ impl Tracking {
                         ) {
                             epochs = self.track_epochs(
                                 frame,
+                                channel_id,
                                 acq.sat,
                                 carrier_hz,
                                 code_phase_samples,
@@ -297,6 +319,7 @@ impl Tracking {
     fn track_epochs(
         &self,
         frame: &SamplesFrame,
+        channel_id: u8,
         sat: SatId,
         carrier_hz: f64,
         code_phase_samples: f64,
@@ -336,6 +359,7 @@ impl Tracking {
 
             let (mut track_epoch, corr) = self.track_epoch(
                 &epoch_frame,
+                channel_id,
                 sat,
                 state.carrier_hz,
                 state.code_phase_samples,

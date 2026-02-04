@@ -330,6 +330,7 @@ pub fn write_run_report(
     let data = serde_json::to_string_pretty(&report).map_err(map_err)?;
     let path = ctx.layout.run_dir.join("run_report.json");
     fs::write(path, data).map_err(map_err)?;
+    std::env::set_var("BIJUX_RUN_ID", &report.run_id);
     Ok(report)
 }
 
