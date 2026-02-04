@@ -1,4 +1,5 @@
 //! Public API for bijux-gnss-infra.
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 pub use crate::artifact_tools::{
     artifact_explain, artifact_validate, ArtifactExplainResult, ArtifactValidationResult,
@@ -11,6 +12,7 @@ pub use bijux_gnss_receiver::api::core::{
 };
 pub use bijux_gnss_receiver::api::core::{lla_to_ecef, stats, StatsSummary};
 #[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use bijux_gnss_receiver::api::{
     build_validation_report, check_time_consistency, ConvergenceReport, FixTimelineEntry,
     NavResidualReport, PppReadinessReport, TimeConsistencyReport, ValidationBudgets,
@@ -50,4 +52,5 @@ pub use bijux_gnss_receiver::api::signal;
 
 /// Nav API re-exports for CLI convenience.
 #[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use bijux_gnss_receiver::api::nav;
