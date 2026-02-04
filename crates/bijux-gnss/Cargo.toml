@@ -1,0 +1,15 @@
+[package]
+name = "bijux-gnss"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+rust-version = "1.78.0"
+
+[features]
+nav = ["bijux-gnss-receiver/nav", "bijux-gnss-nav"]
+
+[dependencies]
+bijux-gnss-core = { path = "../bijux-gnss-core" }
+bijux-gnss-signal = { path = "../bijux-gnss-signal" }
+bijux-gnss-receiver = { path = "../bijux-gnss-receiver" }
+bijux-gnss-nav = { path = "../bijux-gnss-nav", optional = true }

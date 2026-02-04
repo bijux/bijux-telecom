@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "crates/bijux-gnss",
   "crates/bijux-gnss-core",
   "crates/bijux-gnss-receiver",
   "crates/bijux-gnss-cli",
