@@ -241,10 +241,10 @@ fn handle_config(command: GnssCommand) -> Result<()> {
     Ok(())
 }
 
-#[cfg(feature = "schema-validation")]
+#[cfg(feature = "schema-validate")]
 use schemars::schema_for;
 
-#[cfg(feature = "schema-validation")]
+#[cfg(feature = "schema-validate")]
 fn handle_configschema(command: GnssCommand) -> Result<()> {
     let GnssCommand::ConfigSchema { common, out } = command else {
         bail!("invalid command for handler");
@@ -266,12 +266,12 @@ fn handle_configschema(command: GnssCommand) -> Result<()> {
     Ok(())
 }
 
-#[cfg(not(feature = "schema-validation"))]
+#[cfg(not(feature = "schema-validate"))]
 fn handle_configschema(command: GnssCommand) -> Result<()> {
     let GnssCommand::ConfigSchema { common: _, out: _ } = command else {
         bail!("invalid command for handler");
     };
-    bail!("schema generation disabled; enable --features schema-validation");
+    bail!("schema generation disabled; enable --features schema-validate");
 }
 
 fn handle_configupgrade(command: GnssCommand) -> Result<()> {

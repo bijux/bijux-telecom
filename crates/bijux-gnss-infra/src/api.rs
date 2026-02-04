@@ -1,10 +1,10 @@
 //! Public API for bijux-gnss-infra.
 
-pub use crate::dataset::{DatasetEntry, DatasetRegistry};
-pub use crate::commands::prepare_run;
 pub use crate::artifact_tools::{
     artifact_explain, artifact_validate, ArtifactExplainResult, ArtifactValidationResult,
 };
+pub use crate::commands::prepare_run;
+pub use crate::dataset::{DatasetEntry, DatasetRegistry};
 pub use crate::errors::{InfraError, InfraResult};
 pub use crate::experiment::{ExperimentSpec, SweepParameter};
 pub use crate::hash::{cpu_features, git_dirty, git_hash, hash_config};
@@ -23,3 +23,4 @@ pub use crate::run_layout::{
 };
 pub use crate::stats::{lla_to_ecef, stats, StatsSummary};
 pub use crate::sweep::{expand_sweep, parse_sweep};
+pub use crate::validate_reference::validate_reference;

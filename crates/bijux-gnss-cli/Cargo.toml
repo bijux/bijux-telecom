@@ -27,7 +27,7 @@ schemars = { workspace = true, optional = true }
 default = ["precise-products"]
 precise-products = ["bijux-gnss-nav/precise-products"]
 tracing = ["bijux-gnss-receiver/tracing", "dep:tracing-subscriber"]
-schema-validation = ["dep:jsonschema", "dep:schemars"]
+schema-validate = ["dep:jsonschema", "dep:schemars"]
 
 [[bin]]
 name = "bijux"

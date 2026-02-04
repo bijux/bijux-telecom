@@ -1,9 +1,5 @@
-use bijux_gnss_infra::align_reference_by_time;
-
-#[cfg(feature = "schema-validation")]
+#[cfg(feature = "schema-validate")]
 use jsonschema::JSONSchema;
-#[cfg(feature = "schema-validation")]
-use schemars::schema_for;
 
 #[derive(Copy, Clone)]
 enum CsvType {
@@ -78,7 +74,7 @@ fn validate_csv_schema(path: &Path, expected: &str, types: &[CsvType]) -> Result
 }
 
 fn validate_json_schema(schema_path: &Path, data_path: &Path, strict: bool) -> Result<()> {
-    #[cfg(feature = "schema-validation")]
+    #[cfg(feature = "schema-validate")]
     {
     let schema_data = fs::read_to_string(schema_path)?;
     let schema_json: serde_json::Value = serde_json::from_str(&schema_data)?;
@@ -105,14 +101,14 @@ fn validate_json_schema(schema_path: &Path, data_path: &Path, strict: bool) -> R
             messages.join(", ")
         );
     }
-    return Ok(());
+    Ok(())
     }
-    #[cfg(not(feature = "schema-validation"))]
+    #[cfg(not(feature = "schema-validate"))]
     {
         let _ = schema_path;
         if strict {
             bail!(
-                "schema validation disabled; enable --features schema-validation to validate {}",
+                "schema validation disabled; enable --features schema-validate to validate {}",
                 data_path.display()
             );
         }
@@ -121,7 +117,7 @@ fn validate_json_schema(schema_path: &Path, data_path: &Path, strict: bool) -> R
 }
 
 fn validate_jsonl_schema(schema_path: &Path, data_path: &Path, strict: bool) -> Result<()> {
-    #[cfg(feature = "schema-validation")]
+    #[cfg(feature = "schema-validate")]
     {
     let schema_data = fs::read_to_string(schema_path)?;
     let schema_json: serde_json::Value = serde_json::from_str(&schema_data)?;
@@ -151,14 +147,14 @@ fn validate_jsonl_schema(schema_path: &Path, data_path: &Path, strict: bool) -> 
     if strict && count == 0 {
         bail!("{} is empty", data_path.display());
     }
-    return Ok(());
+    Ok(())
     }
-    #[cfg(not(feature = "schema-validation"))]
+    #[cfg(not(feature = "schema-validate"))]
     {
         let _ = schema_path;
         if strict {
             bail!(
-                "schema validation disabled; enable --features schema-validation to validate {}",
+                "schema validation disabled; enable --features schema-validate to validate {}",
                 data_path.display()
             );
         }
@@ -167,7 +163,7 @@ fn validate_jsonl_schema(schema_path: &Path, data_path: &Path, strict: bool) -> 
 }
 
 fn validate_config_schema(profile: &ReceiverProfile) -> Result<()> {
-    #[cfg(feature = "schema-validation")]
+    #[cfg(feature = "schema-validate")]
     {
     let schema_path = schema_path("receiver_profile.schema.json");
     let schema_json: serde_json::Value = if schema_path.exists() {
@@ -176,10 +172,10 @@ fn validate_config_schema(profile: &ReceiverProfile) -> Result<()> {
         if file_json.get("properties").is_some() {
             file_json
         } else {
-            serde_json::to_value(schema_for!(ReceiverProfile))?
+            serde_json::to_value(schemars::schema_for!(ReceiverProfile))?
         }
     } else {
-        serde_json::to_value(schema_for!(ReceiverProfile))?
+        serde_json::to_value(schemars::schema_for!(ReceiverProfile))?
     };
     let compiled = JSONSchema::compile(&schema_json).map_err(|e| eyre!("invalid schema: {}", e))?;
     let json = serde_json::to_value(profile)?;
@@ -190,9 +186,9 @@ fn validate_config_schema(profile: &ReceiverProfile) -> Result<()> {
         }
         bail!("config schema validation failed: {}", messages.join(", "));
     }
-    return Ok(());
+    Ok(())
     }
-    #[cfg(not(feature = "schema-validation"))]
+    #[cfg(not(feature = "schema-validate"))]
     {
         let _ = profile;
         Ok(())
@@ -200,7 +196,7 @@ fn validate_config_schema(profile: &ReceiverProfile) -> Result<()> {
 }
 
 fn validate_sidecar_schema(sidecar: &SidecarSpec) -> Result<()> {
-    #[cfg(feature = "schema-validation")]
+    #[cfg(feature = "schema-validate")]
     {
     let schema_path = schema_path("sidecar.schema.json");
     let schema_data = fs::read_to_string(schema_path)?;
@@ -215,9 +211,9 @@ fn validate_sidecar_schema(sidecar: &SidecarSpec) -> Result<()> {
         }
         bail!("sidecar schema validation failed: {}", messages.join(", "));
     }
-    return Ok(());
+    Ok(())
     }
-    #[cfg(not(feature = "schema-validation"))]
+    #[cfg(not(feature = "schema-validate"))]
     {
         let _ = sidecar;
         Ok(())
@@ -398,10 +394,7 @@ fn handle_validate_reference(command: GnssCommand) -> Result<()> {
         ReferenceAlign::Nearest => bijux_gnss_infra::ReferenceAlign::Nearest,
         ReferenceAlign::Linear => bijux_gnss_infra::ReferenceAlign::Linear,
     };
-    let aligned = align_reference_by_time(&solutions, &reference_epochs, align_policy);
-    if aligned.is_empty() {
-        bail!("no reference epochs aligned; check t_rx_s in reference file");
-    }
+    let aligned = bijux_gnss_infra::validate_reference(&solutions, &reference_epochs, align_policy)?;
 
     let report = build_validation_report(
         &[],
