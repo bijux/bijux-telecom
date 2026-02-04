@@ -30,7 +30,7 @@ pub use crate::error::{
 /// Geodetic utilities (WGS-84).
 pub use crate::geo::{
     ecef_to_enu, ecef_to_enu_ref, ecef_to_geodetic, ecef_to_llh, elevation_azimuth_deg,
-    geodetic_to_ecef, llh_to_ecef, Ecef, Enu, GpsTime, GpsWeek, Llh, Tow,
+    geodetic_to_ecef, llh_to_ecef, Ecef, Enu, Llh,
 };
 /// Identity types and signal definitions.
 pub use crate::ids::{

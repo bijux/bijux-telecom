@@ -1,20 +1,5 @@
 //! Geodetic and reference frame utilities (WGS-84).
 
-/// GPS week number.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct GpsWeek(pub u16);
-
-/// GPS time-of-week in seconds.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Tow(pub f64);
-
-/// GPS time (week + time-of-week).
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct GpsTime {
-    pub week: GpsWeek,
-    pub tow: Tow,
-}
-
 /// ECEF coordinate (meters).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Ecef {
