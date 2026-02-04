@@ -65,7 +65,7 @@ pub fn sort_sig_ids(ids: &mut [SigId]) {
 }
 
 /// Sort satellites within an observation epoch in-place.
-pub fn sort_obs_sats(epoch: &mut crate::ObsEpoch) {
+pub fn sort_obs_sats(epoch: &mut crate::api::ObsEpoch) {
     epoch.sats.sort_by_key(|sat| {
         (
             constellation_rank(sat.signal_id.sat.constellation),

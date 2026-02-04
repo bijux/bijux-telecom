@@ -1,28 +1,30 @@
 #![allow(missing_docs)]
 
-use crate::obs::SolutionStatus;
-use crate::{DiagnosticEvent, DiagnosticSeverity, NavSolutionEpoch, ObsEpoch};
+use crate::api::{
+    Chips, Cycles, DiagnosticEvent, DiagnosticSeverity, Hertz, Meters, NavSolutionEpoch, ObsEpoch,
+    Seconds, SolutionStatus,
+};
 
 /// Compile-time unit type assertions.
 #[allow(dead_code)]
 pub(crate) fn compile_time_unit_checks() {
     fn _assert_unit<T: UnitType>() {}
-    _assert_unit::<crate::Meters>();
-    _assert_unit::<crate::Seconds>();
-    _assert_unit::<crate::Hertz>();
-    _assert_unit::<crate::Chips>();
-    _assert_unit::<crate::Cycles>();
+    _assert_unit::<Meters>();
+    _assert_unit::<Seconds>();
+    _assert_unit::<Hertz>();
+    _assert_unit::<Chips>();
+    _assert_unit::<Cycles>();
 }
 
 /// Marker trait for unit newtypes.
 #[allow(dead_code)]
 pub trait UnitType {}
 
-impl UnitType for crate::Meters {}
-impl UnitType for crate::Seconds {}
-impl UnitType for crate::Hertz {}
-impl UnitType for crate::Chips {}
-impl UnitType for crate::Cycles {}
+impl UnitType for Meters {}
+impl UnitType for Seconds {}
+impl UnitType for Hertz {}
+impl UnitType for Chips {}
+impl UnitType for Cycles {}
 
 #[derive(Debug, Clone, Copy)]
 pub struct ConventionsConfig {
@@ -135,25 +137,28 @@ pub fn is_solution_valid(status: SolutionStatus) -> bool {
 }
 
 /// Compute carrier phase increment (cycles) from Doppler and time step.
-pub fn carrier_phase_increment(doppler_hz: crate::Hertz, dt_s: crate::Seconds) -> crate::Cycles {
-    crate::Cycles(doppler_hz.0 * dt_s.0)
+pub fn carrier_phase_increment(
+    doppler_hz: crate::api::Hertz,
+    dt_s: crate::api::Seconds,
+) -> crate::api::Cycles {
+    crate::api::Cycles(doppler_hz.0 * dt_s.0)
 }
 
 /// Compute Doppler (Hz) from carrier phase increment and time step.
 pub fn doppler_from_phase_increment(
-    delta_cycles: crate::Cycles,
-    dt_s: crate::Seconds,
-) -> crate::Hertz {
+    delta_cycles: crate::api::Cycles,
+    dt_s: crate::api::Seconds,
+) -> crate::api::Hertz {
     if dt_s.0 == 0.0 {
-        return crate::Hertz(0.0);
+        return crate::api::Hertz(0.0);
     }
-    crate::Hertz(delta_cycles.0 / dt_s.0)
+    crate::api::Hertz(delta_cycles.0 / dt_s.0)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{carrier_phase_increment, compile_time_unit_checks, doppler_from_phase_increment};
-    use crate::{Hertz, Seconds};
+    use crate::api::{Hertz, Seconds};
 
     #[test]
     fn unit_type_compile_checks() {

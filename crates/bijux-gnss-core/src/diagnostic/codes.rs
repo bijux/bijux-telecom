@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use crate::{DiagnosticCode, DiagnosticSeverity};
+use crate::api::{DiagnosticCode, DiagnosticSeverity};
 
 pub const DIAGNOSTIC_CODES: &[DiagnosticCode] = &[
     DiagnosticCode {

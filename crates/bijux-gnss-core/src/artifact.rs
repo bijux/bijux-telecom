@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::DiagnosticEvent;
+use crate::api::DiagnosticEvent;
 
 /// Artifact header metadata included with every serialized artifact.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,11 +91,11 @@ pub fn convert_v1_to_v2<T>(_artifact: &T) {
 pub mod v1 {
     /// Versioned v1 artifact types.
     use super::{ArtifactPayloadValidate, ArtifactV1};
-    use crate::{DiagnosticEvent, DiagnosticSeverity};
+    use crate::api::{DiagnosticEvent, DiagnosticSeverity};
 
     pub mod acq {
         use super::*;
-        use crate::AcqResult;
+        use crate::api::AcqResult;
 
         /// Acquisition result artifact v1.
         pub type AcqResultV1 = ArtifactV1<AcqResult>;
@@ -117,7 +117,7 @@ pub mod v1 {
 
     pub mod track {
         use super::*;
-        use crate::TrackEpoch;
+        use crate::api::TrackEpoch;
 
         /// Tracking epoch artifact v1.
         pub type TrackEpochV1 = ArtifactV1<TrackEpoch>;
@@ -139,8 +139,9 @@ pub mod v1 {
 
     pub mod obs {
         use super::*;
-        use crate::{
-            ArtifactValidate, Constellation, DiagnosticSeverity, ObsEpoch, SignalBand, SignalCode,
+        use crate::api::{
+            ArtifactValidate, Constellation, DiagnosticSeverity, ObsEpoch, SigId, SignalBand,
+            SignalCode,
         };
 
         /// Observation epoch artifact v1.
@@ -176,7 +177,7 @@ pub mod v1 {
             }
         }
 
-        fn is_valid_signal_id(id: &crate::SigId) -> bool {
+        fn is_valid_signal_id(id: &SigId) -> bool {
             if id.sat.prn == 0 {
                 return false;
             }
@@ -188,7 +189,7 @@ pub mod v1 {
 
     pub mod nav {
         use super::*;
-        use crate::NavSolutionEpoch;
+        use crate::api::NavSolutionEpoch;
 
         /// Navigation solution artifact v1.
         pub type NavSolutionEpochV1 = ArtifactV1<NavSolutionEpoch>;

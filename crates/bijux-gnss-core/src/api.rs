@@ -46,6 +46,13 @@ pub use crate::obs::{
 };
 /// Engine boundary nav epoch alias.
 pub type NavEpoch = NavSolutionEpoch;
+/// Reference validation helpers.
+pub use crate::reference_validation::{
+    align_reference_by_time, check_solution_consistency, reference_compare, reference_ecef,
+    ReferenceAlign, ReferenceCompareStats, SolutionConsistencyReport, ValidationReferenceEpoch,
+};
+/// Statistical summaries.
+pub use crate::stats::{lla_to_ecef, stats, StatsSummary};
 /// Time and epoch structures.
 pub use crate::time::{
     Epoch, GpsTime, LeapSecondEntry, LeapSeconds, SampleClock, SampleTime, TaiTime, UtcTime,

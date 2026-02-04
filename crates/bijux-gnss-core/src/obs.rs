@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::{
+use crate::api::{
     Chips, Constellation, Cycles, Epoch, Hertz, Meters, SampleTime, SatId, Seconds, SigId,
     SignalBand, SignalSpec,
 };
@@ -142,15 +142,15 @@ pub struct ObsEpoch {
 
 impl ObsEpoch {
     /// Validate basic physics sanity checks for this epoch.
-    pub fn validate_physics(&self) -> Vec<crate::DiagnosticEvent> {
-        let mut events = crate::check_obs_epoch_sanity(self);
+    pub fn validate_physics(&self) -> Vec<crate::api::DiagnosticEvent> {
+        let mut events = crate::api::check_obs_epoch_sanity(self);
         for sat in &self.sats {
             if !sat.pseudorange_m.0.is_finite()
                 || !sat.carrier_phase_cycles.0.is_finite()
                 || !sat.doppler_hz.0.is_finite()
             {
-                events.push(crate::DiagnosticEvent::new(
-                    crate::DiagnosticSeverity::Error,
+                events.push(crate::api::DiagnosticEvent::new(
+                    crate::api::DiagnosticSeverity::Error,
                     "GNSS_OBS_NUMERIC_INVALID",
                     "obs contains NaN/Inf",
                 ));
@@ -428,8 +428,8 @@ pub(crate) fn melbourne_wubbena_m(
 
 #[cfg(test)]
 mod tests {
+    use crate::api::{LeapSeconds, UtcTime};
     use crate::time::utc_to_gps;
-    use crate::{LeapSeconds, UtcTime};
 
     #[test]
     fn leap_second_table_validates() {

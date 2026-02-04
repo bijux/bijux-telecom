@@ -14,7 +14,7 @@ fn handle_artifact(command: GnssCommand) -> Result<()> {
         } => {
             set_trace_dir(&common);
             let result = artifact_validate(&file, kind.as_deref(), strict)?;
-            let summary = bijux_gnss_core::aggregate_diagnostics(&result.diagnostics);
+            let summary = bijux_gnss_infra::api::core::aggregate_diagnostics(&result.diagnostics);
             if let Some(path) = report {
                 fs::write(&path, serde_json::to_string_pretty(&summary)?)?;
             }
@@ -92,7 +92,7 @@ fn convert_artifact(input: &Path, output: &Path, to: &str) -> Result<()> {
     Ok(())
 }
 
-fn render_artifact_explain(path: &Path, result: &bijux_gnss_infra::ArtifactExplainResult) -> String {
+fn render_artifact_explain(path: &Path, result: &bijux_gnss_infra::api::ArtifactExplainResult) -> String {
     let header = &result.header;
     let mut out = String::new();
     out.push_str(&format!("artifact: {}\n", path.display()));
@@ -162,7 +162,7 @@ mod artifact_tests {
     fn explain_obs_fixture_prints_fields() {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../bijux-gnss-core/tests/data/obs_fixture.jsonl");
-        let result = bijux_gnss_infra::artifact_explain(&path).expect("explain fixture");
+        let result = bijux_gnss_infra::api::artifact_explain(&path).expect("explain fixture");
         let output = render_artifact_explain(&path, &result);
         assert!(output.contains("schema_version: 1"));
         assert!(output.contains("producer: bijux-gnss-core-fixture"));

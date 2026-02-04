@@ -65,8 +65,7 @@ impl From<f64> for MetersPerSecond {
 /// Convert code chips to seconds given code rate in Hz.
 ///
 /// ```
-/// use bijux_gnss_core::{Chips, Hertz, Seconds};
-/// use bijux_gnss_core::chips_to_seconds;
+/// use bijux_gnss_core::api::{chips_to_seconds, Chips, Hertz, Seconds};
 /// assert!((chips_to_seconds(Chips(1023.0), Hertz(1_023_000.0)).0 - 0.001).abs() < 1e-9);
 /// ```
 pub fn chips_to_seconds(chips: Chips, code_rate: Hertz) -> Seconds {
@@ -76,8 +75,7 @@ pub fn chips_to_seconds(chips: Chips, code_rate: Hertz) -> Seconds {
 /// Convert carrier cycles to meters given carrier wavelength.
 ///
 /// ```
-/// use bijux_gnss_core::{Cycles, Meters};
-/// use bijux_gnss_core::cycles_to_meters;
+/// use bijux_gnss_core::api::{cycles_to_meters, Cycles, Meters};
 /// assert!((cycles_to_meters(Cycles(1.0), Meters(0.19)).0 - 0.19).abs() < 1e-9);
 /// ```
 pub fn cycles_to_meters(cycles: Cycles, wavelength_m: Meters) -> Meters {
@@ -87,8 +85,7 @@ pub fn cycles_to_meters(cycles: Cycles, wavelength_m: Meters) -> Meters {
 /// Convert Hertz to radians per second.
 ///
 /// ```
-/// use bijux_gnss_core::hz_to_rad_per_sec;
-/// use bijux_gnss_core::Hertz;
+/// use bijux_gnss_core::api::{hz_to_rad_per_sec, Hertz};
 /// assert!((hz_to_rad_per_sec(Hertz(1.0)) - std::f64::consts::TAU).abs() < 1e-9);
 /// ```
 pub fn hz_to_rad_per_sec(freq: Hertz) -> f64 {
