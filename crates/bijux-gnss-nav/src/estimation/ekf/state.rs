@@ -2,6 +2,7 @@
 
 use crate::linalg::Matrix;
 use bijux_gnss_core::NavHealthEvent;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone)]
 pub struct Ekf {
@@ -9,6 +10,15 @@ pub struct Ekf {
     pub p: Matrix,
     pub config: EkfConfig,
     pub health: EkfHealth,
+    pub labels: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EkfCheckpoint {
+    pub x: Vec<f64>,
+    pub rows: usize,
+    pub cols: usize,
+    pub data: Vec<f64>,
     pub labels: Vec<String>,
 }
 

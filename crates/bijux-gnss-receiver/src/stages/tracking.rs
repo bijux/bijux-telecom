@@ -7,6 +7,9 @@ use bijux_gnss_core::{
 };
 
 use crate::logging;
+use crate::stages::tracking_math::{
+    adaptive_bandwidth, code_at, discriminators, estimate_cn0_dbhz,
+};
 use crate::ReceiverConfig;
 use bijux_gnss_core::Sample;
 use bijux_gnss_signal::samples_per_code;
@@ -182,6 +185,7 @@ impl Tracking {
             dll_err: 0.0,
             pll_err: 0.0,
             fll_err: 0.0,
+            processing_ms: None,
         };
         (track_epoch, correlator)
     }
@@ -309,6 +313,8 @@ impl Tracking {
 
         let mut out = Vec::new();
         for epoch_idx in 0..epochs {
+            let alloc_before = crate::runtime::alloc::allocation_count();
+            let start_time = std::time::Instant::now();
             let start = epoch_idx * samples_per_code;
             let end = (start + samples_per_code).min(frame.len());
             if start >= end {
@@ -323,13 +329,37 @@ impl Tracking {
                 frame.iq[start..end].to_vec(),
             );
 
-            let (track_epoch, corr) = self.track_epoch(
+            let (mut track_epoch, corr) = self.track_epoch(
                 &epoch_frame,
                 sat,
                 state.carrier_hz,
                 state.code_phase_samples,
                 early_late_spacing_chips,
             );
+            track_epoch.processing_ms = Some(start_time.elapsed().as_secs_f64() * 1000.0);
+            if let Some(ms) = track_epoch.processing_ms {
+                if ms > self.config.tracking_budget_ms {
+                    logging::diagnostic(&bijux_gnss_core::DiagnosticEvent::new(
+                        bijux_gnss_core::DiagnosticSeverity::Warning,
+                        "TRACK_BUDGET_EXCEEDED",
+                        format!("tracking epoch exceeded budget: {ms:.3} ms"),
+                    ));
+                    if self.config.tracking_over_budget_action == "drop_epochs" {
+                        break;
+                    }
+                }
+            }
+            let alloc_after = crate::runtime::alloc::allocation_count();
+            if alloc_after > alloc_before {
+                logging::diagnostic(&bijux_gnss_core::DiagnosticEvent::new(
+                    bijux_gnss_core::DiagnosticSeverity::Warning,
+                    "TRACK_ALLOCATIONS",
+                    format!(
+                        "tracking epoch allocated {} times",
+                        alloc_after - alloc_before
+                    ),
+                ));
+            }
 
             let (dll_err, pll_err, fll_err, lock) = discriminators(&corr, state.prev_prompt);
             state.prev_prompt = Some(corr.prompt);
@@ -413,47 +443,24 @@ impl Tracking {
     }
 }
 
-fn adaptive_bandwidth(dll_bw: f64, pll_bw: f64, fll_bw: f64, cn0_dbhz: f64) -> (f64, f64, f64) {
-    if cn0_dbhz < 25.0 {
-        (dll_bw * 0.5, pll_bw * 0.5, fll_bw * 0.5)
-    } else if cn0_dbhz > 40.0 {
-        (dll_bw * 1.5, pll_bw * 1.5, fll_bw * 1.5)
-    } else {
-        (dll_bw, pll_bw, fll_bw)
+#[cfg(test)]
+mod tests {
+    use super::{ChannelState, Tracking};
+
+    #[test]
+    fn tracking_recovery_from_loss_of_lock() {
+        let lost = Tracking::transition_state(1, ChannelState::Tracking, ChannelState::Lost);
+        assert_eq!(lost, ChannelState::Lost);
+        let pull_in = Tracking::transition_state(1, lost, ChannelState::PullIn);
+        assert_eq!(pull_in, ChannelState::PullIn);
+        let tracking = Tracking::transition_state(1, pull_in, ChannelState::Tracking);
+        assert_eq!(tracking, ChannelState::Tracking);
     }
-}
 
-fn discriminators(
-    corr: &CorrelatorOutput,
-    prev_prompt: Option<Complex<f32>>,
-) -> (f32, f32, f32, bool) {
-    let e = corr.early.norm();
-    let l = corr.late.norm();
-    let p = corr.prompt.norm();
-    let dll = if e + l > 0.0 { (e - l) / (e + l) } else { 0.0 };
-    let pll = corr.prompt.im.atan2(corr.prompt.re);
-    let fll = if let Some(prev) = prev_prompt {
-        let dot = corr.prompt.re * prev.re + corr.prompt.im * prev.im;
-        let det = corr.prompt.im * prev.re - corr.prompt.re * prev.im;
-        det.atan2(dot)
-    } else {
-        0.0
-    };
-    let lock = p > 0.1 && dll.abs() < 0.5;
-    (dll, pll, fll, lock)
-}
-
-fn estimate_cn0_dbhz(prompt: Complex<f32>, noise: Complex<f32>) -> f64 {
-    let signal_power = (prompt.norm_sqr() as f64).max(1e-12);
-    let noise_power = (noise.norm_sqr() as f64).max(1e-12);
-    let snr = (signal_power / noise_power).max(1e-12);
-    10.0 * snr.log10() + 30.0
-}
-
-fn code_at(code: &[i8], samples_per_chip: f64, sample_index: f64) -> Complex<f32> {
-    let code_len_samples = samples_per_chip * code.len() as f64;
-    let wrapped = sample_index.rem_euclid(code_len_samples);
-    let chip_index = (wrapped / samples_per_chip).floor() as usize;
-    let chip = code[chip_index] as f32;
-    Complex::new(chip, 0.0)
+    #[test]
+    fn tracking_reset_after_gap() {
+        let lost = Tracking::transition_state(2, ChannelState::Tracking, ChannelState::Lost);
+        let reset = Tracking::transition_state(2, lost, ChannelState::Idle);
+        assert_eq!(reset, ChannelState::Idle);
+    }
 }

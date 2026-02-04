@@ -12,7 +12,7 @@ use std::path::Path;
 use serde::Serialize;
 
 use crate::tracking::ChannelState;
-use bijux_gnss_core::SatId;
+use bijux_gnss_core::{DiagnosticEvent, SatId};
 
 pub fn acquisition_hit(sat: SatId, carrier_hz: f64, code_phase: usize, metric: f32, ratio: f32) {
     #[cfg(feature = "tracing")]
@@ -41,6 +41,42 @@ pub fn lock_status(channel: u8, locked: bool) {
     #[cfg(not(feature = "tracing"))]
     {
         let _ = (channel, locked);
+    }
+}
+
+pub fn diagnostic(event: &DiagnosticEvent) {
+    #[cfg(feature = "tracing")]
+    {
+        match event.severity {
+            bijux_gnss_core::DiagnosticSeverity::Error => {
+                tracing::event!(
+                    tracing::Level::ERROR,
+                    code = %event.code,
+                    message = %event.message,
+                    "diagnostic"
+                )
+            }
+            bijux_gnss_core::DiagnosticSeverity::Warning => {
+                tracing::event!(
+                    tracing::Level::WARN,
+                    code = %event.code,
+                    message = %event.message,
+                    "diagnostic"
+                )
+            }
+            bijux_gnss_core::DiagnosticSeverity::Info => {
+                tracing::event!(
+                    tracing::Level::INFO,
+                    code = %event.code,
+                    message = %event.message,
+                    "diagnostic"
+                )
+            }
+        }
+    }
+    #[cfg(not(feature = "tracing"))]
+    {
+        let _ = event;
     }
 }
 

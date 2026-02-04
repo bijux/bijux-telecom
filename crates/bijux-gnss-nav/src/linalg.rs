@@ -32,6 +32,14 @@ impl Matrix {
         self.cols
     }
 
+    pub fn data(&self) -> &[f64] {
+        &self.data
+    }
+
+    pub fn from_parts(rows: usize, cols: usize, data: Vec<f64>) -> Self {
+        Self { rows, cols, data }
+    }
+
     pub fn transpose(&self) -> Self {
         let mut out = Matrix::new(self.cols, self.rows, 0.0);
         for r in 0..self.rows {

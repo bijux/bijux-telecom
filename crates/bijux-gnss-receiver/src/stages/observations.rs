@@ -152,15 +152,28 @@ pub fn observations_from_tracking(config: &ReceiverConfig, epochs: &[TrackEpoch]
             },
         };
 
-        out.push(ObsEpoch {
+        let mut epoch = ObsEpoch {
             t_rx_s,
             gps_week: None,
             tow_s: None,
             epoch_idx: epoch.epoch.index,
             discontinuity,
+            valid: true,
+            processing_ms: None,
             role: ReceiverRole::Rover,
             sats: vec![sat],
-        });
+        };
+        let events = bijux_gnss_core::check_obs_epoch_sanity(&epoch);
+        if events
+            .iter()
+            .any(|e| matches!(e.severity, bijux_gnss_core::DiagnosticSeverity::Error))
+        {
+            epoch.valid = false;
+            for event in events {
+                crate::logging::diagnostic(&event);
+            }
+        }
+        out.push(epoch);
     }
 
     out
@@ -179,12 +192,15 @@ pub fn observations_from_tracking_results(
     for track in tracks {
         let obs = observations_from_tracking(config, &track.epochs);
         for epoch in obs {
+            let start_time = std::time::Instant::now();
             let entry = by_epoch.entry(epoch.epoch_idx).or_insert_with(|| ObsEpoch {
                 t_rx_s: epoch.t_rx_s,
                 gps_week: epoch.gps_week,
                 tow_s: epoch.tow_s,
                 epoch_idx: epoch.epoch_idx,
                 discontinuity: epoch.discontinuity,
+                valid: true,
+                processing_ms: Some(0.0),
                 role: epoch.role,
                 sats: Vec::new(),
             });
@@ -245,9 +261,26 @@ pub fn observations_from_tracking_results(
                 });
                 entry.sats.push(sat);
             }
+            if let Some(total) = entry.processing_ms.as_mut() {
+                *total += start_time.elapsed().as_secs_f64() * 1000.0;
+            }
         }
     }
-    by_epoch.into_values().collect()
+    let mut out = Vec::new();
+    for mut epoch in by_epoch.into_values() {
+        let events = bijux_gnss_core::check_obs_epoch_sanity(&epoch);
+        if events
+            .iter()
+            .any(|e| matches!(e.severity, bijux_gnss_core::DiagnosticSeverity::Error))
+        {
+            epoch.valid = false;
+            for event in events {
+                crate::logging::diagnostic(&event);
+            }
+        }
+        out.push(epoch);
+    }
+    out
 }
 
 fn slip_threshold_m(cn0_dbhz: f64, elevation_deg: Option<f64>) -> f64 {

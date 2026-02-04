@@ -45,6 +45,7 @@ impl Default for TrackingProfile {
             fll_bw_hz: 10.0,
             max_channels: 8,
             per_epoch_budget_ms: 0.7,
+            over_budget_action: "drop_epochs".to_string(),
             integration_ms: default_tracking_integration_ms(),
             per_band: Vec::new(),
         }

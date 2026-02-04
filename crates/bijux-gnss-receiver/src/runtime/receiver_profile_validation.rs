@@ -63,6 +63,13 @@ impl ValidateConfig for ReceiverProfile {
                 message: "tracking.per_epoch_budget_ms must be > 0".to_string(),
             });
         }
+        if self.tracking.over_budget_action != "drop_epochs"
+            && self.tracking.over_budget_action != "continue"
+        {
+            report.errors.push(ConfigError {
+                message: "tracking.over_budget_action must be drop_epochs or continue".to_string(),
+            });
+        }
         if self.tracking.integration_ms == 0 {
             report.errors.push(ConfigError {
                 message: "tracking.integration_ms must be > 0".to_string(),
@@ -223,6 +230,8 @@ impl ReceiverProfile {
                 })
                 .collect(),
             tracking_integration_ms: self.tracking.integration_ms,
+            tracking_budget_ms: self.tracking.per_epoch_budget_ms,
+            tracking_over_budget_action: self.tracking.over_budget_action.clone(),
             robust_solver: self.navigation.robust_solver,
             huber_k: self.navigation.huber_k,
             raim: self.navigation.raim,

@@ -9,6 +9,7 @@ pub mod acquisition;
 pub mod navigation;
 pub mod observations;
 pub mod tracking;
+pub(crate) mod tracking_math;
 
 #[allow(dead_code)]
 pub fn stage_names() -> [&'static str; 4] {

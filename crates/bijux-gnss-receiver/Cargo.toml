@@ -22,8 +22,10 @@ serde_json.workspace = true
 [features]
 tracing = ["dep:tracing"]
 trace-dump = []
+alloc-trace = []
 
 [dev-dependencies]
+criterion = "0.5"
 proptest.workspace = true
 toml.workspace = true
 bijux-guardrails.workspace = true

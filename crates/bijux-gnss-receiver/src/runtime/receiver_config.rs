@@ -55,6 +55,10 @@ pub struct ReceiverConfig {
     pub fll_bw_hz: f64,
     /// Integration time for tracking, in milliseconds.
     pub tracking_integration_ms: u32,
+    /// Target per-epoch budget, in milliseconds.
+    pub tracking_budget_ms: f64,
+    /// Action when budget exceeded (drop_epochs or continue).
+    pub tracking_over_budget_action: String,
     /// Per-band tracking overrides.
     pub tracking_per_band: Vec<BandTrackingSpec>,
     /// Whether to use a robust navigation solver.
@@ -90,6 +94,8 @@ impl Default for ReceiverConfig {
             pll_bw_hz: 15.0,
             fll_bw_hz: 10.0,
             tracking_integration_ms: 1,
+            tracking_budget_ms: 1.0,
+            tracking_over_budget_action: "drop_epochs".to_string(),
             tracking_per_band: Vec::new(),
             robust_solver: true,
             huber_k: 30.0,
@@ -211,6 +217,9 @@ pub struct TrackingProfile {
     pub max_channels: usize,
     /// Per-epoch CPU budget, in milliseconds.
     pub per_epoch_budget_ms: f64,
+    /// Action when over budget (drop_epochs or continue).
+    #[serde(default = "default_over_budget_action")]
+    pub over_budget_action: String,
     /// Default integration time, in milliseconds.
     #[serde(default = "default_tracking_integration_ms")]
     pub integration_ms: u32,
@@ -239,6 +248,10 @@ pub struct BandTrackingProfile {
 
 pub fn default_tracking_integration_ms() -> u32 {
     1
+}
+
+pub fn default_over_budget_action() -> String {
+    "drop_epochs".to_string()
 }
 
 pub fn parse_band(text: &str) -> Option<SignalBand> {

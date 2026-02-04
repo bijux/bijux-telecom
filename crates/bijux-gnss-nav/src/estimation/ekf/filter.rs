@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use super::state::{Ekf, EkfConfig, EkfHealth, MeasurementKind, RejectionReason};
+use super::state::{Ekf, EkfCheckpoint, EkfConfig, EkfHealth, MeasurementKind, RejectionReason};
 use super::traits::{MeasurementModel, StateModel};
 use crate::linalg::Matrix;
 use bijux_gnss_core::NavHealthEvent;
@@ -24,6 +24,37 @@ impl Ekf {
                 events: Vec::new(),
             },
             labels: Vec::new(),
+        }
+    }
+
+    pub fn checkpoint(&self) -> EkfCheckpoint {
+        EkfCheckpoint {
+            x: self.x.clone(),
+            rows: self.p.rows(),
+            cols: self.p.cols(),
+            data: self.p.data().to_vec(),
+            labels: self.labels.clone(),
+        }
+    }
+
+    pub fn restore(checkpoint: EkfCheckpoint, config: EkfConfig) -> Self {
+        Self {
+            x: checkpoint.x,
+            p: Matrix::from_parts(checkpoint.rows, checkpoint.cols, checkpoint.data),
+            config,
+            health: EkfHealth {
+                innovation_rms: 0.0,
+                rejected: 0,
+                last_rejection: None,
+                rejection_reasons: Vec::new(),
+                last_rejection_code: None,
+                condition_number: None,
+                whiteness_ratio: None,
+                predicted_variance: None,
+                observed_variance: None,
+                events: Vec::new(),
+            },
+            labels: checkpoint.labels,
         }
     }
 
