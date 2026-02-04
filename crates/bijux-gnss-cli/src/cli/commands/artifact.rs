@@ -28,7 +28,7 @@ fn handle_artifact(command: GnssCommand) -> Result<()> {
             write_manifest(
                 &common,
                 "artifact_validate",
-                &ReceiverProfile::default(),
+                &ReceiverConfig::default(),
                 load_dataset(&common)?.as_ref(),
                 &summary,
             )?;
@@ -53,7 +53,7 @@ fn handle_artifact(command: GnssCommand) -> Result<()> {
             write_manifest(
                 &common,
                 "artifact_convert",
-                &ReceiverProfile::default(),
+                &ReceiverConfig::default(),
                 load_dataset(&common)?.as_ref(),
                 &summary,
             )?;
@@ -70,7 +70,7 @@ fn explain_artifact(common: &CommonArgs, path: &Path) -> Result<()> {
     write_manifest(
         common,
         "artifact_explain",
-        &ReceiverProfile::default(),
+        &ReceiverConfig::default(),
         load_dataset(common)?.as_ref(),
         &serde_json::json!({
             "file": path.display().to_string(),

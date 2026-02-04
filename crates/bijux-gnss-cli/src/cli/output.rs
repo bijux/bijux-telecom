@@ -1,14 +1,14 @@
-fn load_profile(common: &CommonArgs) -> Result<ReceiverProfile> {
+fn load_config(common: &CommonArgs) -> Result<ReceiverConfig> {
     match &common.config {
-        Some(path) => load_profile_from_path(path),
-        None => Ok(ReceiverProfile::default()),
+        Some(path) => load_config_from_path(path),
+        None => Ok(ReceiverConfig::default()),
     }
 }
 
-fn load_profile_from_path(path: &Path) -> Result<ReceiverProfile> {
+fn load_config_from_path(path: &Path) -> Result<ReceiverConfig> {
     let contents = fs::read_to_string(path)
         .with_context(|| format!("failed to read config {}", path.display()))?;
-    let profile: ReceiverProfile = toml::from_str(&contents)
+    let profile: ReceiverConfig = toml::from_str(&contents)
         .with_context(|| format!("failed to parse config {}", path.display()))?;
     if profile.schema_version.0 != SchemaVersion::CURRENT.0 {
         return Err(eyre!(
@@ -81,7 +81,7 @@ fn emit_report<T: Serialize>(common: &CommonArgs, command: &str, report: &T) -> 
 
 fn load_frame(
     path: &Path,
-    config: &ReceiverConfig,
+    config: &ReceiverRuntimeConfig,
     offset_bytes: u64,
     sidecar: Option<&SidecarSpec>,
 ) -> Result<SamplesFrame> {
@@ -263,7 +263,7 @@ fn write_nav_solution_outputs(
 fn write_track_timeseries(
     common: &CommonArgs,
     report: &TrackingReport,
-    profile: &ReceiverProfile,
+    profile: &ReceiverConfig,
     dataset: Option<&DatasetEntry>,
 ) -> Result<()> {
     let out_dir = artifacts_dir(common, "track", dataset)?;
@@ -306,15 +306,15 @@ fn write_track_timeseries(
 
 fn write_obs_timeseries(
     common: &CommonArgs,
-    config: &ReceiverConfig,
-    tracks: &[bijux_gnss_infra::api::receiver::tracking::TrackingResult],
+    config: &ReceiverRuntimeConfig,
+    tracks: &[bijux_gnss_infra::api::receiver::TrackingResult],
     hatch_window: u32,
-    profile: &ReceiverProfile,
+    profile: &ReceiverConfig,
     dataset: Option<&DatasetEntry>,
 ) -> Result<()> {
     let out_dir = artifacts_dir(common, "track", dataset)?;
     let header = artifact_header(common, profile, dataset)?;
-    let mut obs = bijux_gnss_infra::api::receiver::observations::observations_from_tracking_results(
+    let mut obs = bijux_gnss_infra::api::receiver::observations_from_tracking_results(
         config,
         tracks,
         hatch_window,
@@ -491,7 +491,7 @@ fn read_nav_solutions(path: &Path) -> Result<Vec<bijux_gnss_infra::api::core::Na
 fn write_ephemeris(
     common: &CommonArgs,
     ephs: &[GpsEphemeris],
-    profile: &ReceiverProfile,
+    profile: &ReceiverConfig,
     dataset: Option<&DatasetEntry>,
 ) -> Result<()> {
     let out_dir = artifacts_dir(common, "nav", dataset)?;

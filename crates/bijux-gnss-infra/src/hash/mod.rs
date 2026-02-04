@@ -3,7 +3,7 @@ pub(crate) mod core;
 /// Hash a config file or profile snapshot.
 pub fn hash_config(
     path: Option<&std::path::PathBuf>,
-    profile: &bijux_gnss_receiver::api::ReceiverProfile,
+    profile: &bijux_gnss_receiver::api::ReceiverConfig,
 ) -> Result<String, bijux_gnss_receiver::api::core::InputError> {
     core::hash_config(path, profile)
 }

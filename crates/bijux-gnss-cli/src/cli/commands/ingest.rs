@@ -1,5 +1,5 @@
-fn validate_profile_ingest(profile: &ReceiverProfile) -> Result<()> {
-    let report = <ReceiverProfile as ValidateConfig>::validate(profile);
+fn validate_config_ingest(profile: &ReceiverConfig) -> Result<()> {
+    let report = <ReceiverConfig as ValidateConfig>::validate(profile);
     if report.errors.is_empty() {
         return Ok(());
     }
@@ -25,7 +25,7 @@ fn handle_track(command: GnssCommand) -> Result<()> {
 
     set_trace_dir(&common);
                     let dataset = load_dataset(&common)?;
-                    let mut profile = load_profile(&common)?;
+                    let mut profile = load_config(&common)?;
                     apply_common_overrides(
                         &mut profile,
                         CommonOverrides {
@@ -38,19 +38,19 @@ fn handle_track(command: GnssCommand) -> Result<()> {
                         profile.sample_rate_hz = entry.sample_rate_hz;
                         profile.intermediate_freq_hz = entry.intermediate_freq_hz;
                     }
-                    validate_profile_ingest(&profile)?;
-                    let config = profile.to_receiver_config();
+                    validate_config_ingest(&profile)?;
+                    let config = profile.to_runtime_config();
     
                     let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
                     let sidecar = load_sidecar(common.sidecar.as_ref())?;
                     let frame = load_frame(&input_file, &config, offset_bytes, sidecar.as_ref())?;
     
-                    let acquisition = Acquisition::new(config.clone())
+                    let acquisition = AcquisitionEngine::new(config.clone())
                         .with_doppler(doppler_search_hz, doppler_step_hz);
                     let sats = bijux_gnss_infra::api::core::prns_to_sats(&prn);
                     let acquisitions = acquisition.run_fft(&frame, &sats);
     
-                    let tracking = bijux_gnss_infra::api::receiver::tracking::Tracking::new(config.clone());
+                    let tracking = bijux_gnss_infra::api::receiver::TrackingEngine::new(config.clone());
                     let tracks = tracking.track_from_acquisition(
                         &frame,
                         &acquisitions,
@@ -140,7 +140,7 @@ fn handle_inspect(command: GnssCommand) -> Result<()> {
                     write_manifest(
                         &common,
                         "inspect",
-                        &ReceiverProfile::default(),
+                        &ReceiverConfig::default(),
                         dataset.as_ref(),
                         &report,
                     )?;
@@ -157,9 +157,9 @@ fn handle_validateconfig(command: GnssCommand) -> Result<()> {
                     let path = config
                         .or(common.config.clone())
                         .context("--config is required")?;
-                    let profile = load_profile_from_path(&path)?;
+                    let profile = load_config_from_path(&path)?;
                     validate_config_schema(&profile)?;
-                    let report = <ReceiverProfile as ValidateConfig>::validate(&profile);
+                    let report = <ReceiverConfig as ValidateConfig>::validate(&profile);
                     if report.errors.is_empty() {
                         println!("config valid: {}", path.display());
                     } else {
@@ -192,8 +192,8 @@ fn handle_config(command: GnssCommand) -> Result<()> {
             strict,
         } => {
             let contents = fs::read_to_string(&file)?;
-            let profile: ReceiverProfile = toml::from_str(&contents)?;
-            let report = <ReceiverProfile as ValidateConfig>::validate(&profile);
+            let profile: ReceiverConfig = toml::from_str(&contents)?;
+            let report = <ReceiverConfig as ValidateConfig>::validate(&profile);
             if !report.errors.is_empty() {
                 for err in report.errors {
                     eprintln!("error: {}", err.message);
@@ -213,13 +213,13 @@ fn handle_config(command: GnssCommand) -> Result<()> {
             write_manifest(
                 &common,
                 "config_validate",
-                &ReceiverProfile::default(),
+                &ReceiverConfig::default(),
                 None,
                 &summary,
             )?;
         }
         ConfigCommand::PrintDefaults { common, out } => {
-            let profile = ReceiverProfile::default();
+            let profile = ReceiverConfig::default();
             let toml = toml::to_string_pretty(&profile)?;
             if let Some(out) = out {
                 fs::write(&out, toml)?;
@@ -231,7 +231,7 @@ fn handle_config(command: GnssCommand) -> Result<()> {
             write_manifest(
                 &common,
                 "config_print_defaults",
-                &ReceiverProfile::default(),
+                &ReceiverConfig::default(),
                 None,
                 &summary,
             )?;
@@ -251,14 +251,14 @@ fn handle_configschema(command: GnssCommand) -> Result<()> {
     };
 
     set_trace_dir(&common);
-                        let schema = schema_for!(ReceiverProfile);
+                        let schema = schema_for!(ReceiverConfig);
                         fs::write(&out, serde_json::to_string_pretty(&schema)?)?;
                         println!("wrote {}", out.display());
                         let summary = serde_json::json!({ "schema": out.display().to_string() });
                         write_manifest(
                             &common,
                             "config_schema",
-                            &ReceiverProfile::default(),
+                            &ReceiverConfig::default(),
                             None,
                             &summary,
                         )?;
@@ -280,9 +280,9 @@ fn handle_configupgrade(command: GnssCommand) -> Result<()> {
     };
 
     set_trace_dir(&common);
-    let profile = load_profile_from_path(&config)?;
+    let profile = load_config_from_path(&config)?;
     validate_config_schema(&profile)?;
-    let report = <ReceiverProfile as ValidateConfig>::validate(&profile);
+    let report = <ReceiverConfig as ValidateConfig>::validate(&profile);
     if !report.errors.is_empty() {
         bail!(
             "config invalid: {}",
@@ -330,7 +330,7 @@ fn handle_rinex(command: GnssCommand) -> Result<()> {
                     write_manifest(
                         &common,
                         "rinex",
-                        &ReceiverProfile::default(),
+                        &ReceiverConfig::default(),
                         None,
                         &summary,
                     )?;

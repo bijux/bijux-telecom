@@ -1,13 +1,13 @@
 //! Configuration override helpers.
 
 use bijux_gnss_receiver::api::core::InputError;
-use bijux_gnss_receiver::api::ReceiverProfile;
+use bijux_gnss_receiver::api::ReceiverConfig;
 
 use crate::overrides::CommonOverrides;
 
 /// Apply config overrides from CLI options.
 pub(crate) fn apply_overrides(
-    profile: &mut ReceiverProfile,
+    profile: &mut ReceiverConfig,
     sampling_hz: Option<f64>,
     if_hz: Option<f64>,
     code_hz: Option<f64>,
@@ -28,7 +28,7 @@ pub(crate) fn apply_overrides(
 }
 
 /// Apply seed/determinism overrides.
-pub(crate) fn apply_common_overrides(profile: &mut ReceiverProfile, common: CommonOverrides) {
+pub(crate) fn apply_common_overrides(profile: &mut ReceiverConfig, common: CommonOverrides) {
     if let Some(seed) = common.seed {
         profile.seed = seed;
     }
@@ -39,7 +39,7 @@ pub(crate) fn apply_common_overrides(profile: &mut ReceiverProfile, common: Comm
 
 /// Apply sweep parameter overrides.
 pub(crate) fn apply_sweep_value(
-    profile: &mut ReceiverProfile,
+    profile: &mut ReceiverConfig,
     key: &str,
     value: &str,
 ) -> Result<(), InputError> {

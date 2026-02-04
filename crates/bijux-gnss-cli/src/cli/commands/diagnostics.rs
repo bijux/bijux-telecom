@@ -21,7 +21,7 @@ fn handle_nav(command: GnssCommand) -> Result<()> {
     let common = match &command {
         NavCommand::Decode { common, .. } => common,
     };
-    let profile = load_profile(common)?;
+    let profile = load_config(common)?;
     let dataset = load_dataset(common)?;
 
     match command {
@@ -72,7 +72,7 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
     };
 
     set_trace_dir(&common);
-                    let profile = load_profile(&common)?;
+                    let profile = load_config(&common)?;
                     let dataset = load_dataset(&common)?;
                     let header = artifact_header(&common, &profile, dataset.as_ref())?;
                     let base_epochs = read_obs_epochs(&base_obs)?;
@@ -375,7 +375,7 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 "total": summary.total,
                 "top": top,
             });
-            write_manifest(&common, "diagnostics_summarize", &ReceiverProfile::default(), None, &report)?;
+            write_manifest(&common, "diagnostics_summarize", &ReceiverConfig::default(), None, &report)?;
         }
     }
 
@@ -432,7 +432,7 @@ fn handle_doctor(command: GnssCommand) -> Result<()> {
     }
 
     if let Some(config_path) = &common.config {
-        match load_profile_from_path(config_path) {
+        match load_config_from_path(config_path) {
             Ok(_) => println!("config: ok ({})", config_path.display()),
             Err(err) => println!("config: invalid ({}) - {}", config_path.display(), err),
         }

@@ -162,7 +162,7 @@ fn validate_jsonl_schema(schema_path: &Path, data_path: &Path, strict: bool) -> 
     }
 }
 
-fn validate_config_schema(profile: &ReceiverProfile) -> Result<()> {
+fn validate_config_schema(profile: &ReceiverConfig) -> Result<()> {
     #[cfg(feature = "schema-validate")]
     {
     let schema_path = schema_path("receiver_profile.schema.json");
@@ -172,10 +172,10 @@ fn validate_config_schema(profile: &ReceiverProfile) -> Result<()> {
         if file_json.get("properties").is_some() {
             file_json
         } else {
-            serde_json::to_value(schemars::schema_for!(ReceiverProfile))?
+            serde_json::to_value(schemars::schema_for!(ReceiverConfig))?
         }
     } else {
-        serde_json::to_value(schemars::schema_for!(ReceiverProfile))?
+        serde_json::to_value(schemars::schema_for!(ReceiverConfig))?
     };
     let compiled = JSONSchema::compile(&schema_json).map_err(|e| eyre!("invalid schema: {}", e))?;
     let json = serde_json::to_value(profile)?;
@@ -251,7 +251,7 @@ fn handle_validateartifacts(command: GnssCommand) -> Result<()> {
     write_manifest(
         &common,
         "validate_artifacts",
-        &ReceiverProfile::default(),
+        &ReceiverConfig::default(),
         dataset.as_ref(),
         &report,
     )?;
@@ -275,7 +275,7 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
 
     set_trace_dir(&common);
     let file = file.context("--file is required for validation")?;
-    let profile = load_profile(&common)?;
+    let profile = load_config(&common)?;
     let dataset = load_dataset(&common)?;
     if profile.schema_version.0 != SchemaVersion::CURRENT.0 {
         bail!(
@@ -287,7 +287,7 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
 
     validate_config_schema(&profile)?;
 
-    let report = <ReceiverProfile as ValidateConfig>::validate(&profile);
+    let report = <ReceiverConfig as ValidateConfig>::validate(&profile);
     if !report.errors.is_empty() {
         bail!(
             "config invalid: {}",
@@ -312,7 +312,7 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
 
     let mut solutions = Vec::new();
     let mut nav_solver =
-        bijux_gnss_infra::api::receiver::navigation::Navigation::new(profile.to_receiver_config());
+        bijux_gnss_infra::api::receiver::Navigation::new(profile.to_runtime_config());
     for obs_epoch in &obs {
         if let Some(sol) = nav_solver.solve_epoch(obs_epoch, &nav) {
             solutions.push(sol);
@@ -412,7 +412,7 @@ fn handle_validate_reference(command: GnssCommand) -> Result<()> {
     write_manifest(
         &common,
         "validate_reference",
-        &ReceiverProfile::default(),
+        &ReceiverConfig::default(),
         None,
         &summary,
     )?;

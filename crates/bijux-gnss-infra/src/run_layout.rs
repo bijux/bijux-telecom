@@ -3,7 +3,7 @@
 use crate::dataset::DatasetEntry;
 use crate::hash::core::{cpu_features, git_dirty, git_hash, hash_config};
 use bijux_gnss_receiver::api::core::{ArtifactHeaderV1, ArtifactReadPolicy, InputError};
-use bijux_gnss_receiver::api::ReceiverProfile;
+use bijux_gnss_receiver::api::ReceiverConfig;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -201,7 +201,7 @@ fn resolve_run_context(
         let dataset_tag = dataset
             .map(|d| d.id.clone())
             .unwrap_or_else(|| "unknown".to_string());
-        let config_hash = hash_config(args.config, &ReceiverProfile::default())?;
+        let config_hash = hash_config(args.config, &ReceiverConfig::default())?;
         let dataset_hash = dataset
             .map(dataset_hash)
             .transpose()?
@@ -272,7 +272,7 @@ pub fn append_run_index(run_dir: &Path, manifest: &RunManifest) -> Result<(), In
 /// Build an artifact header for outputs.
 pub fn artifact_header(
     args: &RunContextArgs<'_>,
-    profile: &ReceiverProfile,
+    profile: &ReceiverConfig,
     dataset: Option<&DatasetEntry>,
 ) -> Result<ArtifactHeaderV1, InputError> {
     let config_hash = hash_config(args.config, profile)?;
@@ -300,7 +300,7 @@ pub fn run_report_schema_version() -> u32 {
 pub fn write_run_report(
     args: &RunContextArgs<'_>,
     command: &str,
-    profile: &ReceiverProfile,
+    profile: &ReceiverConfig,
     dataset: Option<&DatasetEntry>,
 ) -> Result<RunReport, InputError> {
     let config_hash = hash_config(args.config, profile)?;
@@ -346,7 +346,7 @@ fn enabled_features() -> Vec<String> {
 pub fn write_manifest(
     args: &RunContextArgs<'_>,
     command: &str,
-    profile: &ReceiverProfile,
+    profile: &ReceiverConfig,
     dataset: Option<&DatasetEntry>,
     summary: &serde_json::Value,
 ) -> Result<RunManifest, InputError> {

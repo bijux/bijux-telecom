@@ -1,7 +1,7 @@
 //! Hashing and provenance helpers.
 
 use bijux_gnss_receiver::api::core::InputError;
-use bijux_gnss_receiver::api::ReceiverProfile;
+use bijux_gnss_receiver::api::ReceiverConfig;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;
@@ -10,7 +10,7 @@ use std::process::Command as ProcessCommand;
 /// Hash a config file or profile snapshot.
 pub(crate) fn hash_config(
     path: Option<&PathBuf>,
-    profile: &ReceiverProfile,
+    profile: &ReceiverConfig,
 ) -> Result<String, InputError> {
     let mut hasher = Sha256::new();
     if let Some(path) = path {

@@ -1,5 +1,5 @@
-fn validate_profile(profile: &ReceiverProfile) -> Result<()> {
-    let report = <ReceiverProfile as ValidateConfig>::validate(profile);
+fn validate_config(profile: &ReceiverConfig) -> Result<()> {
+    let report = <ReceiverConfig as ValidateConfig>::validate(profile);
     if report.errors.is_empty() {
         return Ok(());
     }
@@ -26,7 +26,7 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
 
     set_trace_dir(&common);
                     let dataset = load_dataset(&common)?;
-                    let mut profile = load_profile(&common)?;
+                    let mut profile = load_config(&common)?;
                     apply_common_overrides(
                         &mut profile,
                         CommonOverrides {
@@ -39,8 +39,8 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
                         profile.sample_rate_hz = entry.sample_rate_hz;
                         profile.intermediate_freq_hz = entry.intermediate_freq_hz;
                     }
-                    validate_profile(&profile)?;
-                    let config = profile.to_receiver_config();
+                    validate_config(&profile)?;
+                    let config = profile.to_runtime_config();
     
                     let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
     
@@ -48,7 +48,7 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
                     let frame = load_frame(&input_file, &config, offset_bytes, sidecar.as_ref())?;
     
                     let acquisition =
-                        Acquisition::new(config).with_doppler(doppler_search_hz, doppler_step_hz);
+                        AcquisitionEngine::new(config).with_doppler(doppler_search_hz, doppler_step_hz);
                     let sats = bijux_gnss_infra::api::core::prns_to_sats(&prn);
                     let results = acquisition.run_fft_topn(
                         &frame,
@@ -115,7 +115,7 @@ fn handle_pvt(command: GnssCommand) -> Result<()> {
     };
 
     set_trace_dir(&common);
-                    let profile = load_profile(&common)?;
+                    let profile = load_config(&common)?;
                     let dataset = load_dataset(&common)?;
                     let obs_epochs = read_obs_epochs(&obs)?;
                     let ephs = read_ephemeris(&eph)?;
@@ -124,8 +124,8 @@ fn handle_pvt(command: GnssCommand) -> Result<()> {
                     let mut timing_lines = Vec::new();
                     let header = artifact_header(&common, &profile, dataset.as_ref())?;
                     let mut nav = if !ekf {
-                        Some(bijux_gnss_infra::api::receiver::navigation::Navigation::new(
-                            ReceiverProfile::default().to_receiver_config(),
+                        Some(bijux_gnss_infra::api::receiver::Navigation::new(
+                            ReceiverConfig::default().to_runtime_config(),
                         ))
                     } else {
                         None
@@ -182,7 +182,7 @@ fn handle_experiment(command: GnssCommand) -> Result<()> {
     };
 
     set_trace_dir(&common);
-                    let mut profile = load_profile(&common)?;
+                    let mut profile = load_config(&common)?;
                     apply_common_overrides(
                         &mut profile,
                         CommonOverrides {
@@ -213,28 +213,28 @@ fn handle_experiment(command: GnssCommand) -> Result<()> {
                             .validate()
                             .map_err(|errs| eyre!("invalid config in sweep: {}", errs.join(", ")))?;
     
-                        let config = run_profile.to_receiver_config();
+                        let config = run_profile.to_runtime_config();
                         let start = std::time::Instant::now();
                         let frame = bijux_gnss_infra::api::receiver::sim::generate_l1_ca_multi(
                             &config,
                             &scenario_def,
                         );
                         let sats: Vec<SatId> = scenario_def.satellites.iter().map(|s| s.sat).collect();
-                        let acquisition = Acquisition::new(config.clone())
+                        let acquisition = AcquisitionEngine::new(config.clone())
                             .with_doppler(10_000, run_profile.acquisition.doppler_step_hz);
                         let acquisitions = acquisition.run_fft(&frame, &sats);
-                        let tracking = bijux_gnss_infra::api::receiver::tracking::Tracking::new(config.clone());
+                        let tracking = bijux_gnss_infra::api::receiver::TrackingEngine::new(config.clone());
                         let tracks = tracking.track_from_acquisition(
                             &frame,
                             &acquisitions,
                             bijux_gnss_infra::api::core::SignalBand::L1,
                         );
-                        let obs = bijux_gnss_infra::api::receiver::observations::observations_from_tracking_results(
+                        let obs = bijux_gnss_infra::api::receiver::observations_from_tracking_results(
                             &config,
                             &tracks,
                             run_profile.navigation.hatch_window,
                         );
-                        let mut nav = bijux_gnss_infra::api::receiver::navigation::Navigation::new(config.clone());
+                        let mut nav = bijux_gnss_infra::api::receiver::Navigation::new(config.clone());
                         let mut solutions = Vec::new();
                         for epoch in &obs {
                             if let Some(solution) = nav.solve_epoch(epoch, &scenario_def.ephemerides) {
@@ -316,7 +316,7 @@ fn handle_validatesidecar(command: GnssCommand) -> Result<()> {
                     write_manifest(
                         &common,
                         "validate_sidecar",
-                        &ReceiverProfile::default(),
+                        &ReceiverConfig::default(),
                         dataset.as_ref(),
                         &summary,
                     )?;
@@ -336,7 +336,7 @@ fn handle_run(command: GnssCommand) -> Result<()> {
 
     set_trace_dir(&common);
                     let dataset = load_dataset(&common)?;
-                    let mut profile = load_profile(&common)?;
+                    let mut profile = load_config(&common)?;
                     apply_common_overrides(
                         &mut profile,
                         CommonOverrides {
@@ -348,8 +348,8 @@ fn handle_run(command: GnssCommand) -> Result<()> {
                         profile.sample_rate_hz = entry.sample_rate_hz;
                         profile.intermediate_freq_hz = entry.intermediate_freq_hz;
                     }
-                    validate_profile(&profile)?;
-                    let config = profile.to_receiver_config();
+                    validate_config(&profile)?;
+                    let config = profile.to_runtime_config();
                     let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
                     let sidecar = load_sidecar(common.sidecar.as_ref())?;
                     let mut source = FileSamples::open(

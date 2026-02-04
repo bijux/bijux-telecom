@@ -23,7 +23,9 @@ use bijux_gnss_infra::api::nav::{
     Matrix, NavClockModel, PhaseBiasProvider, ProcessNoiseConfig, PseudorangeMeasurement,
     WeightingConfig, write_rinex_nav, write_rinex_obs,
 };
-use bijux_gnss_infra::api::receiver::{acquisition::Acquisition, data::FileSamples, ReceiverConfig, ReceiverProfile};
+use bijux_gnss_infra::api::receiver::{
+    AcquisitionEngine, FileSamples, ReceiverRuntimeConfig, ReceiverConfig,
+};
 use bijux_gnss_infra::api::signal::{generate_ca_code, samples_per_code, Prn, SignalSource};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use eyre::{bail, eyre, Context, ContextCompat, Result};
@@ -74,7 +76,7 @@ fn artifacts_dir(
 
 fn artifact_header(
     common: &CommonArgs,
-    profile: &ReceiverProfile,
+    profile: &ReceiverConfig,
     dataset: Option<&DatasetEntry>,
 ) -> Result<ArtifactHeaderV1> {
     Ok(bijux_gnss_infra::api::run_layout::artifact_header(
@@ -87,7 +89,7 @@ fn artifact_header(
 fn write_manifest<T: Serialize>(
     common: &CommonArgs,
     command: &str,
-    profile: &ReceiverProfile,
+    profile: &ReceiverConfig,
     dataset: Option<&DatasetEntry>,
     summary: &T,
 ) -> Result<RunManifest> {

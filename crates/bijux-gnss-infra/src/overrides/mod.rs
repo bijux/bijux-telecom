@@ -11,7 +11,7 @@ pub struct CommonOverrides {
 
 /// Apply config overrides from CLI options.
 pub fn apply_overrides(
-    profile: &mut bijux_gnss_receiver::api::ReceiverProfile,
+    profile: &mut bijux_gnss_receiver::api::ReceiverConfig,
     sampling_hz: Option<f64>,
     if_hz: Option<f64>,
     code_hz: Option<f64>,
@@ -22,7 +22,7 @@ pub fn apply_overrides(
 
 /// Apply seed/determinism overrides.
 pub fn apply_common_overrides(
-    profile: &mut bijux_gnss_receiver::api::ReceiverProfile,
+    profile: &mut bijux_gnss_receiver::api::ReceiverConfig,
     common: CommonOverrides,
 ) {
     core::apply_common_overrides(profile, common);
@@ -30,7 +30,7 @@ pub fn apply_common_overrides(
 
 /// Apply sweep parameter overrides.
 pub fn apply_sweep_value(
-    profile: &mut bijux_gnss_receiver::api::ReceiverProfile,
+    profile: &mut bijux_gnss_receiver::api::ReceiverConfig,
     key: &str,
     value: &str,
 ) -> Result<(), bijux_gnss_receiver::api::core::InputError> {
