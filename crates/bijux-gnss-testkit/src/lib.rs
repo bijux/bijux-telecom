@@ -1,7 +1,7 @@
 //! Test helpers for bijux GNSS.
 #![forbid(unsafe_code)]
 
-use bijux_gnss_infra::api::{DatasetEntry, DatasetRegistry};
+use bijux_gnss_infra::api::datasets::{DatasetEntry, DatasetRegistry};
 use bijux_gnss_receiver::api::ReceiverProfile;
 use serde::de::DeserializeOwned;
 use std::fs;
