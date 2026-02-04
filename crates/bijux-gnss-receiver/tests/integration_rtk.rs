@@ -4,8 +4,8 @@ use bijux_gnss_core::api::{
     SignalBand, SignalSpec,
 };
 use bijux_gnss_nav::api::geodetic_to_ecef;
-use bijux_gnss_receiver::api::rtk::baseline_from_ecef;
-use bijux_gnss_receiver::api::rtk::{
+use bijux_gnss_receiver::api::baseline_from_ecef;
+use bijux_gnss_receiver::api::{
     apply_fix_hold, build_dd, build_dd_per_constellation, build_sd, choose_ref_sat,
     choose_ref_sat_per_constellation, EpochAligner,
 };

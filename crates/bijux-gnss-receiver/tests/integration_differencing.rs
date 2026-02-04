@@ -3,8 +3,8 @@ use bijux_gnss_core::api::{
     Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, SatId, SigId,
     SignalBand, SignalSpec,
 };
-use bijux_gnss_receiver::api::rtk::{build_dd, build_sd, choose_ref_sat_per_constellation};
-use bijux_gnss_receiver::api::rtk::{double_difference, single_difference};
+use bijux_gnss_receiver::api::{build_dd, build_sd, choose_ref_sat_per_constellation};
+use bijux_gnss_receiver::api::{double_difference, single_difference};
 
 fn make_epoch(prn: u8, pseudo: f64, phase: f64, doppler: f64) -> ObsEpoch {
     ObsEpoch {

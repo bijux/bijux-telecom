@@ -10,6 +10,7 @@ pub mod metrics;
 pub mod receiver_config;
 pub mod receiver_config_defaults;
 pub mod receiver_config_validation;
+pub mod receiver;
 
 #[allow(dead_code)]
 pub fn runtime_modules() -> [&'static str; 7] {

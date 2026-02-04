@@ -3,9 +3,9 @@ use bijux_gnss_core::api::{
     Constellation, LockFlags, ObsMetadata, ObsSatellite, SatId, SigId, SignalBand, SignalSpec,
 };
 use bijux_gnss_nav::api::Matrix;
-use bijux_gnss_receiver::api::rtk::float_from_state;
-use bijux_gnss_receiver::api::rtk::AmbiguityManager;
-use bijux_gnss_receiver::api::rtk::{
+use bijux_gnss_receiver::api::float_from_state;
+use bijux_gnss_receiver::api::AmbiguityManager;
+use bijux_gnss_receiver::api::{
     decorrelate_lambda, ratio_from_candidates, ratio_test, search_integer_candidates,
     select_partial_fix, FixPolicy, FixState, FloatAmbiguitySolution,
 };

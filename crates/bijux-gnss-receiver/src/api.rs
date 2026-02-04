@@ -39,30 +39,31 @@ pub use crate::pipeline::navigation::{EkfState, Navigation, NavigationEngine};
 
 /// RTK differencing and baseline helpers.
 #[cfg(feature = "nav")]
-pub mod rtk {
-    pub use crate::rtk::ambiguity::{
-        decorrelate_lambda, float_from_state, ratio_from_candidates, ratio_test,
-        search_integer_candidates, select_partial_fix, AmbiguityFixResult, AmbiguityManager,
-        DecorrelatedAmbiguities, FixAuditEvent, FixPolicy, FixState, FloatAmbiguitySolution,
-        IntegerCandidate, NaiveFixer,
-    };
-    pub use crate::rtk::core::{
-        build_dd, build_dd_per_constellation, build_sd, choose_ref_sat,
-        choose_ref_sat_per_constellation, dd_covariance, innovation_diagnostics, los_unit,
-        solve_baseline_dd, AlignmentDiagnostic, AlignmentReport, BaselineConfig, DdCovarianceModel,
-        DdObservation, EpochAligner, RefSatPolicy, RefSatSelector, SdObservation,
-        SolutionSeparation,
-    };
-    pub use crate::rtk::differencing::{double_difference, single_difference};
-    pub use crate::rtk::metrics::{
-        apply_fix_hold, baseline_from_ecef, dd_residual_metrics, enu_to_ecef, jitter_summary,
-        solution_separation, BaselineSolution, JitterSummary, RtkBaselineQuality, RtkPrecision,
-    };
-    pub use bijux_gnss_core::api::rtk::{
-        RtkBaselineEpochV1, RtkBaselineQualityV1, RtkDdEpochV1, RtkFixAuditV1, RtkPrecisionV1,
-        RtkSdEpochV1,
-    };
-}
+pub use crate::rtk::ambiguity::{
+    decorrelate_lambda, float_from_state, ratio_from_candidates, ratio_test,
+    search_integer_candidates, select_partial_fix, AmbiguityFixResult, AmbiguityManager,
+    DecorrelatedAmbiguities, FixAuditEvent, FixPolicy, FixState, FloatAmbiguitySolution,
+    IntegerCandidate, NaiveFixer,
+};
+#[cfg(feature = "nav")]
+pub use crate::rtk::core::{
+    build_dd, build_dd_per_constellation, build_sd, choose_ref_sat,
+    choose_ref_sat_per_constellation, dd_covariance, innovation_diagnostics, los_unit,
+    solve_baseline_dd, AlignmentDiagnostic, AlignmentReport, BaselineConfig, DdCovarianceModel,
+    DdObservation, EpochAligner, RefSatPolicy, RefSatSelector, SdObservation, SolutionSeparation,
+};
+#[cfg(feature = "nav")]
+pub use crate::rtk::differencing::{double_difference, single_difference};
+#[cfg(feature = "nav")]
+pub use crate::rtk::metrics::{
+    apply_fix_hold, baseline_from_ecef, dd_residual_metrics, enu_to_ecef, jitter_summary,
+    solution_separation, BaselineSolution, JitterSummary, RtkBaselineQuality, RtkPrecision,
+};
+#[cfg(feature = "nav")]
+pub use bijux_gnss_core::api::rtk::{
+    RtkBaselineEpochV1, RtkBaselineQualityV1, RtkDdEpochV1, RtkFixAuditV1, RtkPrecisionV1,
+    RtkSdEpochV1,
+};
 
 /// Synthetic signal generation for tests and demos.
 #[cfg(feature = "nav")]
@@ -70,13 +71,11 @@ pub use crate::sim::synthetic as sim;
 
 /// Validation report helpers.
 #[cfg(feature = "nav")]
-pub mod validation_report {
-    pub use crate::validation_report::{
-        build_validation_report, check_time_consistency, ConvergenceReport, FixTimelineEntry,
-        NavResidualReport, PppReadinessReport, TimeConsistencyReport, ValidationBudgets,
-        ValidationErrorStats, ValidationReport,
-    };
-}
+pub use crate::validation_report::{
+    build_validation_report, check_time_consistency, ConvergenceReport, FixTimelineEntry,
+    NavResidualReport, PppReadinessReport, TimeConsistencyReport, ValidationBudgets,
+    ValidationErrorStats, ValidationReport,
+};
 
 /// Artifacts produced by a receiver pipeline run.
 #[derive(Debug, Default, Clone)]
@@ -104,17 +103,5 @@ pub trait ReceiverEngine {
 
 /// High-level receiver pipeline entrypoint.
 pub struct Receiver {
-    config: ReceiverRuntimeConfig,
-}
-
-impl Receiver {
-    /// Create a new receiver with the provided configuration.
-    pub fn new(config: ReceiverRuntimeConfig) -> Self {
-        Self { config }
-    }
-
-    /// Borrow the receiver configuration.
-    pub fn config(&self) -> &ReceiverRuntimeConfig {
-        &self.config
-    }
+    pub(crate) config: ReceiverRuntimeConfig,
 }

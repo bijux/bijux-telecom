@@ -6,7 +6,7 @@ use bijux_gnss_core::api::{
 use bijux_gnss_nav::api::{
     geodetic_to_ecef, sat_state_gps_l1ca, GpsEphemeris, PositionObservation, PositionSolver,
 };
-use bijux_gnss_receiver::api::rtk::{
+use bijux_gnss_receiver::api::{
     baseline_from_ecef, build_dd, build_sd, choose_ref_sat, solution_separation, solve_baseline_dd,
 };
 
