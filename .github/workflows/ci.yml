@@ -14,9 +14,21 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt, clippy
+      - name: Toolchain info
+        run: |
+          rustc --version
+          channel=$(sed -n 's/^channel = \"\\(.*\\)\"/\\1/p' rust-toolchain.toml)
+          active=$(rustup show active-toolchain | awk '{print $1}')
+          if [[ -n "$channel" && "$active" != "$channel"* ]]; then
+            echo "Active toolchain ($active) does not match rust-toolchain.toml ($channel)"
+            exit 1
+          fi
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-make,cargo-nextest,cargo-audit,cargo-llvm-cov,cargo-semver-checks
+          tool: cargo-make,cargo-audit,cargo-llvm-cov,cargo-semver-checks
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest@0.9.60
       - name: Repo hygiene gate
         run: |
           if find . -name '.DS_Store' -o -name '._*' | grep -q .; then
@@ -24,10 +36,22 @@ jobs:
             find . -name '.DS_Store' -o -name '._*'
             exit 1
           fi
+      - name: Core unit tests (fast signal)
+        run: cargo test -p bijux-gnss-core
       - name: Cargo make (ci)
         run: cargo make ci
+      - name: Rustdoc warnings as errors (core)
+        run: RUSTDOCFLAGS="-D warnings" cargo doc -p bijux-gnss-core --no-deps
       - name: Rustdoc warnings as errors
         run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+      - name: Cargo tree snapshot (cli)
+        run: |
+          mkdir -p artifacts
+          cargo tree -p bijux-gnss-cli > artifacts/cargo-tree-bijux-gnss-cli.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cargo-tree-bijux-gnss-cli
+          path: artifacts/cargo-tree-bijux-gnss-cli.txt
       - name: Semver checks (core/infra)
         run: |
           cargo semver-checks check-release -p bijux-gnss-core
