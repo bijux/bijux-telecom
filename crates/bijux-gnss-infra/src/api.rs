@@ -11,7 +11,7 @@ pub use bijux_gnss_receiver::api::core::{
 };
 pub use bijux_gnss_receiver::api::core::{lla_to_ecef, stats, StatsSummary};
 #[cfg(feature = "nav")]
-pub use bijux_gnss_receiver::api::validation_report::{
+pub use bijux_gnss_receiver::api::{
     build_validation_report, check_time_consistency, ConvergenceReport, FixTimelineEntry,
     NavResidualReport, PppReadinessReport, TimeConsistencyReport, ValidationBudgets,
     ValidationErrorStats, ValidationReport,
@@ -24,36 +24,26 @@ pub use bijux_gnss_receiver::api as receiver;
 pub use bijux_gnss_receiver::api::core;
 
 /// Run layout helpers.
-pub mod run_layout {
-    pub use crate::run_layout::{
-        append_run_index, artifact_header, artifacts_dir, run_dir, run_report_schema_version,
-        write_manifest, write_run_report, RunContextArgs, RunDirLayout, RunIndexEntry, RunManifest,
-        RunReport,
-    };
-}
+pub use crate::run_layout::{
+    append_run_index, artifact_header, artifacts_dir, run_dir, run_report_schema_version,
+    write_manifest, write_run_report, RunContextArgs, RunDirLayout, RunIndexEntry, RunManifest,
+    RunReport,
+};
 
 /// Dataset helpers.
-pub mod datasets {
-    pub use crate::datasets::{parse_ecef, DatasetEntry, DatasetRegistry};
-}
+pub use crate::datasets::{parse_ecef, DatasetEntry, DatasetRegistry};
 
 /// Experiment helpers.
-pub mod experiments {
-    pub use crate::experiments::{ExperimentSpec, SweepParameter};
-    pub use crate::sweep::{expand_sweep, parse_sweep};
-}
+pub use crate::experiments::{ExperimentSpec, SweepParameter};
+pub use crate::sweep::{expand_sweep, parse_sweep};
 
 /// Override helpers.
-pub mod overrides {
-    pub use crate::overrides::{
-        apply_common_overrides, apply_overrides, apply_sweep_value, CommonOverrides,
-    };
-}
+pub use crate::overrides::{
+    apply_common_overrides, apply_overrides, apply_sweep_value, CommonOverrides,
+};
 
 /// Hash helpers.
-pub mod hash {
-    pub use crate::hash::{cpu_features, git_dirty, git_hash, hash_config};
-}
+pub use crate::hash::{cpu_features, git_dirty, git_hash, hash_config};
 
 /// Signal API re-exports for CLI convenience.
 pub use bijux_gnss_receiver::api::signal;
