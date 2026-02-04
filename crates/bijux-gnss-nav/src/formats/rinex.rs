@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
-use bijux_gnss_core::api::IoError;
+use bijux_gnss_core::api::{IoError, ParseError};
 
 use bijux_gnss_core::api::ObsEpoch;
 
@@ -81,4 +81,25 @@ pub fn write_rinex_nav(path: &Path, ephs: &[GpsEphemeris], _strict: bool) -> Res
         message: e.to_string(),
     })?;
     Ok(())
+}
+
+pub fn parse_rinex_obs_header(data: &str) -> Result<(), ParseError> {
+    let mut has_version = false;
+    let mut has_end = false;
+    for line in data.lines() {
+        if line.contains("RINEX VERSION / TYPE") {
+            has_version = true;
+        }
+        if line.contains("END OF HEADER") {
+            has_end = true;
+            break;
+        }
+    }
+    if has_version && has_end {
+        Ok(())
+    } else {
+        Err(ParseError {
+            message: "invalid or incomplete RINEX header".to_string(),
+        })
+    }
 }

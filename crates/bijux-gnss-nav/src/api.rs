@@ -9,6 +9,10 @@ pub type PppEpochV1 =
     bijux_gnss_core::api::ppp::PppEpochV1<crate::estimation::ppp::config::PppSolutionEpoch>;
 pub use crate::corrections::atmosphere::{clamp_ztd, AtmosphereConfig};
 pub use crate::corrections::biases::{CodeBiasProvider, PhaseBiasProvider, ZeroBiases};
+/// Atmospheric model scaffolding.
+pub use crate::models::atmosphere::{
+    IonosphereModel, KlobucharModel, SaastamoinenModel, TroposphereModel,
+};
 /// Corrections and combination helpers.
 pub use crate::corrections::combinations::combinations_from_obs_epochs;
 pub use crate::corrections::{compute_corrections, CorrectionContext, Corrections};
@@ -35,7 +39,7 @@ pub use crate::formats::lnav_decode::{decode_rawephem_hex, decode_subframe_hex};
 pub use crate::formats::precise_products::{
     BroadcastProductsProvider, ProductDiagnostics, Products, ProductsProvider,
 };
-pub use crate::formats::rinex::{write_rinex_nav, write_rinex_obs};
+pub use crate::formats::rinex::{parse_rinex_obs_header, write_rinex_nav, write_rinex_obs};
 /// Precise product parsing helpers.
 pub use crate::formats::{clk::ClkProvider, sp3::Sp3Provider};
 /// Linear algebra helper.

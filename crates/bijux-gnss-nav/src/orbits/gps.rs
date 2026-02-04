@@ -7,6 +7,7 @@ use bijux_gnss_core::api::SatId;
 const OMEGA_E_DOT: f64 = 7.292_115_146_7e-5;
 const MU: f64 = 3.986_005e14;
 const RELATIVISTIC_F: f64 = -4.442_807_633e-10;
+const MAX_EPHEMERIS_AGE_S: f64 = 7200.0;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GpsEphemeris {
@@ -102,6 +103,12 @@ pub fn sat_state_gps_l1ca(eph: &GpsEphemeris, t_tx_s: f64, tau_s: f64) -> GpsSat
         clock_drift_s: clock_drift,
         relativistic_s: relativistic,
     }
+}
+
+pub fn is_ephemeris_valid(eph: &GpsEphemeris, t_s: f64) -> bool {
+    let toe_age = wrap_time(t_s - eph.toe_s).abs();
+    let toc_age = wrap_time(t_s - eph.toc_s).abs();
+    toe_age <= MAX_EPHEMERIS_AGE_S && toc_age <= MAX_EPHEMERIS_AGE_S
 }
 
 pub fn solve_kepler(m: f64, e: f64) -> (f64, f64, f64) {

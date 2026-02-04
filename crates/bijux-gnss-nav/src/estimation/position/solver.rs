@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use crate::orbits::gps::{sat_state_gps_l1ca, GpsEphemeris, GpsSatState};
+use crate::orbits::gps::{is_ephemeris_valid, sat_state_gps_l1ca, GpsEphemeris, GpsSatState};
 use bijux_gnss_core::api::SatId;
 
 #[derive(Debug, Clone)]
@@ -17,9 +17,12 @@ pub struct PositionSolution {
     pub sigma_h_m: Option<f64>,
     pub sigma_v_m: Option<f64>,
     pub residuals: Vec<(SatId, f64, f64)>,
-    pub rejected: Vec<SatId>,
+    pub rejected: Vec<(SatId, bijux_gnss_core::api::MeasurementRejectReason)>,
     pub separation_max_m: Option<f64>,
     pub separation_suspect: Option<SatId>,
+    pub covariance_symmetrized: bool,
+    pub covariance_clamped: bool,
+    pub covariance_max_variance: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -36,6 +39,7 @@ pub struct PositionSolver {
     pub max_iterations: usize,
     pub convergence_m: f64,
     pub residual_gate_m: f64,
+    pub chi_square_gate: f64,
     pub robust: bool,
     pub huber_k: f64,
     pub raim: bool,
@@ -54,6 +58,7 @@ impl PositionSolver {
             max_iterations: 10,
             convergence_m: 1e-3,
             residual_gate_m: 150.0,
+            chi_square_gate: 9.0,
             robust: true,
             huber_k: 30.0,
             raim: true,
@@ -82,10 +87,23 @@ impl PositionSolver {
         let mut rejected = Vec::new();
         let mut residuals = Vec::new();
         let mut cov = None;
+        let mut cov_symmetrized = false;
+        let mut cov_clamped = false;
+        let mut cov_max_variance = None;
         for _ in 0..self.max_iterations {
             used.clear();
             for obs in &observations {
-                let eph = ephemerides.iter().find(|e| e.sat == obs.sat)?;
+                let eph = match ephemerides.iter().find(|e| e.sat == obs.sat) {
+                    Some(eph) => eph,
+                    None => {
+                        rejected.push((obs.sat, bijux_gnss_core::api::MeasurementRejectReason::InvalidEphemeris));
+                        continue;
+                    }
+                };
+                if !is_ephemeris_valid(eph, t_rx_s) {
+                    rejected.push((obs.sat, bijux_gnss_core::api::MeasurementRejectReason::InvalidEphemeris));
+                    continue;
+                }
                 let mut tau = obs.pseudorange_m / 299_792_458.0;
                 let mut state = sat_state_gps_l1ca(eph, t_rx_s - tau, tau);
                 let mut converged = false;
@@ -110,6 +128,9 @@ impl PositionSolver {
                     return None;
                 }
                 used.push((obs.clone(), state, tau));
+            }
+            if used.len() < 4 {
+                return None;
             }
             let mut h = Vec::new();
             let mut v = Vec::new();
@@ -140,6 +161,16 @@ impl PositionSolver {
                 }
             }
             let (dx, dy, dz, dcb, cov_out) = solve_weighted_normal_eq(&h, &v, &weights)?;
+            let (cov_out, sym, clamp, max_var) = sanitize_covariance(cov_out);
+            cov_symmetrized |= sym;
+            cov_clamped |= clamp;
+            if let Some(max_var) = max_var {
+                cov_max_variance = Some(
+                    cov_max_variance
+                        .map(|v: f64| v.max(max_var))
+                        .unwrap_or(max_var),
+                );
+            }
             cov = Some(cov_out);
             x += dx;
             y += dy;
@@ -158,8 +189,10 @@ impl PositionSolver {
             let range = (dx * dx + dy * dy + dz * dz).sqrt();
             let pred = range + cb * 299_792_458.0 - state.clock_bias_s * 299_792_458.0;
             let res = obs.pseudorange_m - pred;
-            if res.abs() > self.residual_gate_m {
-                rejected.push(obs.sat);
+            let sigma_m = (1.0 / obs.weight.max(1e-6)).sqrt();
+            let norm = res / sigma_m;
+            if res.abs() > self.residual_gate_m || (norm * norm) > self.chi_square_gate {
+                rejected.push((obs.sat, bijux_gnss_core::api::MeasurementRejectReason::Outlier));
             } else {
                 filtered.push((obs.clone(), state.clone(), res));
             }
@@ -179,7 +212,10 @@ impl PositionSolver {
                 .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
                 .unwrap_or((0, 0.0));
             if worst_res > self.residual_gate_m {
-                rejected.push(filtered[worst_idx].0.sat);
+                rejected.push((
+                    filtered[worst_idx].0.sat,
+                    bijux_gnss_core::api::MeasurementRejectReason::Outlier,
+                ));
                 filtered.remove(worst_idx);
             }
 
@@ -273,8 +309,37 @@ impl PositionSolver {
             rejected,
             separation_max_m: separation_max,
             separation_suspect,
+            covariance_symmetrized: cov_symmetrized,
+            covariance_clamped: cov_clamped,
+            covariance_max_variance: cov_max_variance,
         })
     }
+}
+
+fn sanitize_covariance(mut cov: [[f64; 4]; 4]) -> ([[f64; 4]; 4], bool, bool, Option<f64>) {
+    let mut sym = false;
+    let mut clamp = false;
+    let mut max_var = None;
+    for i in 0..4 {
+        for j in 0..4 {
+            if (cov[i][j] - cov[j][i]).abs() > 1e-9 {
+                sym = true;
+                let avg = 0.5 * (cov[i][j] + cov[j][i]);
+                cov[i][j] = avg;
+                cov[j][i] = avg;
+            }
+        }
+        if cov[i][i] < 0.0 {
+            clamp = true;
+            cov[i][i] = 0.0;
+        }
+        max_var = Some(
+            max_var
+                .map(|v: f64| v.max(cov[i][i]))
+                .unwrap_or(cov[i][i]),
+        );
+    }
+    (cov, sym, clamp, max_var)
 }
 
 type NormalEqSolution = (f64, f64, f64, f64, [[f64; 4]; 4]);
