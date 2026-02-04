@@ -2,11 +2,13 @@
 #![deny(missing_docs)]
 
 mod dataset;
+mod commands;
 mod errors;
 mod experiment;
 mod hash;
 mod overrides;
 mod parse;
+mod reference_validation;
 mod run_layout;
 mod stats;
 mod sweep;
