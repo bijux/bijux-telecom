@@ -41,3 +41,9 @@ pub use crate::orbits::ephemeris::{CsvEphemerisProvider, Ephemeris, EphemerisPro
 pub use crate::orbits::gps::{sat_state_gps_l1ca, GpsEphemeris, GpsSatState};
 /// Time helpers.
 pub use crate::time::{gps_time_from_utc, gps_week_rollover, normalize_tow};
+
+/// Navigation engine trait boundary.
+pub trait NavEngine {
+    /// Update navigation solution with new observation epoch.
+    fn update(&mut self, obs: &bijux_gnss_core::ObsEpoch) -> Option<bijux_gnss_core::NavEpoch>;
+}

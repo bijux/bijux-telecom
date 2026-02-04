@@ -259,6 +259,12 @@ impl Navigation {
     }
 }
 
+impl bijux_gnss_nav::NavEngine for Navigation {
+    fn update(&mut self, obs: &ObsEpoch) -> Option<bijux_gnss_core::NavEpoch> {
+        self.solve_epoch(obs, &[])
+    }
+}
+
 #[derive(Debug, Clone)]
 struct ClockModel {
     bias_s: f64,

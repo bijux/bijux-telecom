@@ -7,13 +7,11 @@ use bijux_gnss_core::{
 };
 
 use crate::logging;
-use crate::stages::tracking_math::{
-    adaptive_bandwidth, code_at, discriminators, estimate_cn0_dbhz,
-};
 use crate::ReceiverConfig;
 use bijux_gnss_core::Sample;
 use bijux_gnss_signal::samples_per_code;
 use bijux_gnss_signal::Nco;
+use bijux_gnss_signal::{adaptive_bandwidth, code_at, discriminators, estimate_cn0_dbhz};
 use bijux_gnss_signal::{generate_ca_code, Prn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -361,7 +359,8 @@ impl Tracking {
                 ));
             }
 
-            let (dll_err, pll_err, fll_err, lock) = discriminators(&corr, state.prev_prompt);
+            let (dll_err, pll_err, fll_err, lock) =
+                discriminators(corr.early, corr.prompt, corr.late, state.prev_prompt);
             state.prev_prompt = Some(corr.prompt);
 
             if lock {

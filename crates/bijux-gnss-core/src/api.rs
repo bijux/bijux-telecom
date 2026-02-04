@@ -38,6 +38,8 @@ pub use crate::obs::{
     NavSolutionEpoch, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, Sample, SamplesFrame,
     SingleDifference, SolutionStatus, TrackEpoch,
 };
+/// Engine boundary nav epoch alias.
+pub type NavEpoch = NavSolutionEpoch;
 /// Time and epoch structures.
 pub use crate::time::{Epoch, GpsTime, LeapSeconds, SampleClock, SampleTime, TaiTime, UtcTime};
 /// Strong units for physical quantities.
