@@ -301,23 +301,39 @@ pub struct NavSolutionEpoch {
     pub longitude_deg: f64,
     pub altitude_m: Meters,
     pub clock_bias_s: Seconds,
+    #[serde(default)]
+    pub clock_drift_s_per_s: f64,
     pub pdop: f64,
     pub rms_m: Meters,
     pub status: SolutionStatus,
     #[serde(default)]
     pub quality: NavQualityFlag,
+    #[serde(default)]
+    pub validity: SolutionValidity,
     pub valid: bool,
     #[serde(default)]
     pub processing_ms: Option<f64>,
     pub residuals: Vec<NavResidual>,
+    #[serde(default)]
+    pub health: Vec<NavHealthEvent>,
     pub isb: Vec<InterSystemBias>,
     pub sigma_h_m: Option<Meters>,
     pub sigma_v_m: Option<Meters>,
+    #[serde(default)]
+    pub innovation_rms_m: Option<f64>,
+    #[serde(default)]
+    pub normalized_innovation_rms: Option<f64>,
+    #[serde(default)]
+    pub normalized_innovation_max: Option<f64>,
     pub ekf_innovation_rms: Option<f64>,
     pub ekf_condition_number: Option<f64>,
     pub ekf_whiteness_ratio: Option<f64>,
     pub ekf_predicted_variance: Option<f64>,
     pub ekf_observed_variance: Option<f64>,
+    #[serde(default)]
+    pub integrity_hpl_m: Option<f64>,
+    #[serde(default)]
+    pub integrity_vpl_m: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -358,6 +374,21 @@ pub enum NavQualityFlag {
 impl Default for NavQualityFlag {
     fn default() -> Self {
         NavQualityFlag::NoFix
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SolutionValidity {
+    Invalid,
+    Coarse,
+    Converging,
+    Stable,
+    Diverging,
+}
+
+impl Default for SolutionValidity {
+    fn default() -> Self {
+        SolutionValidity::Invalid
     }
 }
 

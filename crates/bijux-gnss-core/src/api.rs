@@ -36,17 +36,18 @@ pub use crate::geo::{
 pub use crate::ids::{
     format_sat, prns_to_sats, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, sort_obs_sats,
     sort_sat_ids, sort_sig_ids, Constellation, FreqHz, SatId, SigId, SignalBand, SignalCode,
-    SignalSpec, GALILEO_E1_CARRIER_HZ, GALILEO_E5_CARRIER_HZ, GLONASS_L1_CARRIER_HZ,
-    GPS_L1_CA_CARRIER_HZ, GPS_L2_PY_CARRIER_HZ, GPS_L5_CARRIER_HZ,
+    SignalRegistryEntry, SignalSpec, BEIDOU_B1_CARRIER_HZ, BEIDOU_B2_CARRIER_HZ,
+    GALILEO_E1_CARRIER_HZ, GALILEO_E5_CARRIER_HZ, GLONASS_L1_CARRIER_HZ,
+    GPS_L1_CA_CARRIER_HZ, GPS_L2_PY_CARRIER_HZ, GPS_L5_CARRIER_HZ, signal_registry,
 };
 /// Observation and tracking contracts.
 pub use crate::obs::{
     check_inter_frequency_alignment, validate_obs_epochs, AcqRequest, AcqResult, AmbiguityId,
     AmbiguityState, AmbiguityStatus, BandLagEvent, DoubleDifference, InterFrequencyAlignmentReport,
     InterSystemBias, LockFlags, MeasurementErrorModel, MeasurementRejectReason, NavHealthEvent,
-    NavResidual,
-    NavSolutionEpoch, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, Sample, SamplesFrame,
-    SingleDifference, SolutionStatus, TrackEpoch,
+    NavQualityFlag, NavResidual, NavSolutionEpoch, ObsEpoch, ObsMetadata, ObsSatellite,
+    ReceiverRole, Sample, SamplesFrame, SingleDifference, SolutionStatus, SolutionValidity,
+    TrackEpoch,
 };
 /// Engine boundary nav epoch alias.
 pub type NavEpoch = NavSolutionEpoch;

@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Strict satellite identity (constellation + PRN).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct SatId {
     pub constellation: Constellation,
@@ -146,6 +147,14 @@ pub const GPS_L5_CARRIER_HZ: FreqHz = FreqHz::new(1_176_450_000.0);
 pub const GALILEO_E1_CARRIER_HZ: FreqHz = FreqHz::new(1_575_420_000.0);
 pub const GALILEO_E5_CARRIER_HZ: FreqHz = FreqHz::new(1_176_450_000.0);
 pub const GLONASS_L1_CARRIER_HZ: FreqHz = FreqHz::new(1_602_000_000.0);
+pub const BEIDOU_B1_CARRIER_HZ: FreqHz = FreqHz::new(1_561_098_000.0);
+pub const BEIDOU_B2_CARRIER_HZ: FreqHz = FreqHz::new(1_207_140_000.0);
+
+#[derive(Debug, Clone)]
+pub struct SignalRegistryEntry {
+    pub spec: SignalSpec,
+    pub code_length: Option<u32>,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct SignalSpec {
@@ -174,4 +183,69 @@ pub fn signal_spec_gps_l2_py() -> SignalSpec {
         code_rate_hz: 10_230_000.0,
         carrier_hz: GPS_L2_PY_CARRIER_HZ,
     }
+}
+
+pub fn signal_registry(
+    constellation: Constellation,
+    band: SignalBand,
+    code: SignalCode,
+) -> Option<SignalRegistryEntry> {
+    let spec = SignalSpec {
+        constellation,
+        band,
+        code,
+        code_rate_hz: 0.0,
+        carrier_hz: FreqHz::new(0.0),
+    };
+    let (carrier_hz, code_rate_hz, code_length) = match (constellation, band, code) {
+        (Constellation::Gps, SignalBand::L1, SignalCode::Ca) => (
+            GPS_L1_CA_CARRIER_HZ,
+            1_023_000.0,
+            Some(1023),
+        ),
+        (Constellation::Gps, SignalBand::L2, SignalCode::Py) => (
+            GPS_L2_PY_CARRIER_HZ,
+            10_230_000.0,
+            Some(10230),
+        ),
+        (Constellation::Gps, SignalBand::L5, SignalCode::Unknown) => (
+            GPS_L5_CARRIER_HZ,
+            10_230_000.0,
+            None,
+        ),
+        (Constellation::Galileo, SignalBand::E1, SignalCode::E1B) => (
+            GALILEO_E1_CARRIER_HZ,
+            1_023_000.0,
+            None,
+        ),
+        (Constellation::Galileo, SignalBand::E5, SignalCode::E5a) => (
+            GALILEO_E5_CARRIER_HZ,
+            10_230_000.0,
+            None,
+        ),
+        (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown) => (
+            GLONASS_L1_CARRIER_HZ,
+            511_000.0,
+            None,
+        ),
+        (Constellation::Beidou, SignalBand::B1, SignalCode::Unknown) => (
+            BEIDOU_B1_CARRIER_HZ,
+            2_046_000.0,
+            None,
+        ),
+        (Constellation::Beidou, SignalBand::B2, SignalCode::Unknown) => (
+            BEIDOU_B2_CARRIER_HZ,
+            2_046_000.0,
+            None,
+        ),
+        _ => return None,
+    };
+    Some(SignalRegistryEntry {
+        spec: SignalSpec {
+            carrier_hz,
+            code_rate_hz,
+            ..spec
+        },
+        code_length,
+    })
 }
