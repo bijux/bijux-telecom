@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RunReport",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "config_hash",
+    "dataset_id",
+    "dataset_hash",
+    "git_hash",
+    "build_profile",
+    "toolchain",
+    "build_version",
+    "build_git",
+    "build_timestamp"
+  ],
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "run_id": { "type": "string" },
+    "config_hash": { "type": "string" },
+    "dataset_id": { "type": ["string", "null"] },
+    "dataset_hash": { "type": ["string", "null"] },
+    "git_hash": { "type": "string" },
+    "build_profile": { "type": "string" },
+    "toolchain": { "type": "string" },
+    "build_version": { "type": "string" },
+    "build_git": { "type": "string" },
+    "build_timestamp": { "type": "string" }
+  },
+  "additionalProperties": false
+}

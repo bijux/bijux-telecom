@@ -5,6 +5,7 @@ use crate::hash::core::{cpu_features, git_dirty, git_hash, hash_config};
 use bijux_gnss_receiver::api::core::{ArtifactHeaderV1, ArtifactReadPolicy, InputError};
 use bijux_gnss_receiver::api::ReceiverProfile;
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -98,6 +99,33 @@ pub struct RunManifest {
     pub summary: serde_json::Value,
 }
 
+/// Run report persisted for each execution.
+#[derive(Debug, Serialize)]
+pub struct RunReport {
+    /// Schema version.
+    pub schema_version: u32,
+    /// Deterministic run id.
+    pub run_id: String,
+    /// Config hash.
+    pub config_hash: String,
+    /// Dataset id.
+    pub dataset_id: Option<String>,
+    /// Dataset hash.
+    pub dataset_hash: Option<String>,
+    /// Git commit hash.
+    pub git_hash: String,
+    /// Build profile.
+    pub build_profile: String,
+    /// Toolchain string.
+    pub toolchain: String,
+    /// Build version string.
+    pub build_version: String,
+    /// Build git hash.
+    pub build_git: String,
+    /// Build timestamp (optional).
+    pub build_timestamp: String,
+}
+
 /// Run index entry appended to runs/index.jsonl.
 #[derive(Debug, Serialize)]
 pub struct RunIndexEntry {
@@ -123,6 +151,7 @@ struct RunContext {
 }
 
 static RUN_CONTEXT: OnceLock<RunContext> = OnceLock::new();
+const RUN_REPORT_SCHEMA_VERSION: u32 = 1;
 
 fn now_unix_ms(deterministic: bool) -> u128 {
     if deterministic {
@@ -132,6 +161,23 @@ fn now_unix_ms(deterministic: bool) -> u128 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis()
+}
+
+fn dataset_hash(dataset: &DatasetEntry) -> Result<String, InputError> {
+    let serialized = serde_json::to_vec(dataset).map_err(map_err)?;
+    let mut hasher = Sha256::new();
+    hasher.update(serialized);
+    Ok(hex::encode(hasher.finalize()))
+}
+
+fn run_id(config_hash: &str, dataset_hash: Option<&str>, build_version: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(config_hash.as_bytes());
+    if let Some(hash) = dataset_hash {
+        hasher.update(hash.as_bytes());
+    }
+    hasher.update(build_version.as_bytes());
+    hex::encode(hasher.finalize())
 }
 
 fn resolve_run_context(
@@ -155,12 +201,19 @@ fn resolve_run_context(
         let dataset_tag = dataset
             .map(|d| d.id.clone())
             .unwrap_or_else(|| "unknown".to_string());
-        let stamp = if args.deterministic {
-            "deterministic".to_string()
-        } else {
-            now_unix_ms(false).to_string()
-        };
-        PathBuf::from("runs").join(format!("{stamp}_{dataset_tag}_{command}"))
+        let config_hash = hash_config(args.config, &ReceiverProfile::default())?;
+        let dataset_hash = dataset
+            .map(dataset_hash)
+            .transpose()?
+            .unwrap_or_else(|| "unknown".to_string());
+        let build_version = env!("CARGO_PKG_VERSION");
+        let id = run_id(&config_hash, Some(&dataset_hash), build_version);
+        let mut name = format!("{id}_{dataset_tag}_{command}");
+        if !args.deterministic {
+            let stamp = now_unix_ms(false);
+            name = format!("{name}_{stamp}");
+        }
+        PathBuf::from("runs").join(name)
     };
     let layout = RunDirLayout::new(run_dir);
     layout.create()?;
@@ -231,11 +284,53 @@ pub fn artifact_header(
         git_sha: git_hash().unwrap_or_else(|| "unknown".to_string()),
         config_hash,
         dataset_id: dataset.map(|d| d.id.clone()),
-        toolchain: std::env::var("RUSTC_VERSION").unwrap_or_else(|_| "unknown".to_string()),
+        toolchain: std::env::var("BIJUX_BUILD_RUSTC").unwrap_or_else(|_| "unknown".to_string()),
         features: enabled_features(),
         deterministic: args.deterministic,
         git_dirty: git_dirty(),
     })
+}
+
+/// Load run report schema version.
+pub fn run_report_schema_version() -> u32 {
+    RUN_REPORT_SCHEMA_VERSION
+}
+
+/// Load run report schema version.
+pub fn run_report_schema_version() -> u32 {
+    RUN_REPORT_SCHEMA_VERSION
+}
+
+/// Write a run report to disk.
+pub fn write_run_report(
+    args: &RunContextArgs<'_>,
+    command: &str,
+    profile: &ReceiverProfile,
+    dataset: Option<&DatasetEntry>,
+) -> Result<RunReport, InputError> {
+    let config_hash = hash_config(args.config, profile)?;
+    let dataset_hash = dataset.map(dataset_hash).transpose()?;
+    let build_version = env!("CARGO_PKG_VERSION");
+    let id = run_id(&config_hash, dataset_hash.as_deref(), build_version);
+    let report = RunReport {
+        schema_version: RUN_REPORT_SCHEMA_VERSION,
+        run_id: id,
+        config_hash,
+        dataset_id: dataset.map(|d| d.id.clone()),
+        dataset_hash,
+        git_hash: git_hash().unwrap_or_else(|| "unknown".to_string()),
+        build_profile: std::env::var("BIJUX_BUILD_PROFILE").unwrap_or_else(|_| "dev".to_string()),
+        toolchain: std::env::var("BIJUX_BUILD_RUSTC").unwrap_or_else(|_| "unknown".to_string()),
+        build_version: build_version.to_string(),
+        build_git: std::env::var("BIJUX_BUILD_GIT_SHA").unwrap_or_else(|_| "unknown".to_string()),
+        build_timestamp: std::env::var("BIJUX_BUILD_TIMESTAMP")
+            .unwrap_or_else(|_| "unknown".to_string()),
+    };
+    let ctx = resolve_run_context(args, command, dataset)?;
+    let data = serde_json::to_string_pretty(&report).map_err(map_err)?;
+    let path = ctx.layout.run_dir.join("run_report.json");
+    fs::write(path, data).map_err(map_err)?;
+    Ok(report)
 }
 
 fn enabled_features() -> Vec<String> {

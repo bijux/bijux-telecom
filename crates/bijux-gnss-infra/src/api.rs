@@ -6,8 +6,9 @@ pub use crate::artifact_tools::{
 pub use crate::commands::prepare_run;
 pub use crate::dataset::{DatasetEntry, DatasetRegistry};
 pub use crate::run_layout::{
-    append_run_index, artifact_header, artifacts_dir, run_dir, write_manifest, RunContextArgs,
-    RunDirLayout, RunIndexEntry, RunManifest,
+    append_run_index, artifact_header, artifacts_dir, run_dir, run_report_schema_version,
+    write_manifest, write_run_report, RunContextArgs, RunDirLayout, RunIndexEntry, RunManifest,
+    RunReport,
 };
 pub use crate::sweep::{expand_sweep, parse_sweep};
 pub use crate::validate_reference::validate_reference;
@@ -27,7 +28,7 @@ pub use bijux_gnss_receiver::api::validation_report::{
 pub use bijux_gnss_receiver::api as receiver;
 
 /// Core API re-exports for CLI convenience.
-pub use bijux_gnss_receiver::api::core as core;
+pub use bijux_gnss_receiver::api::core;
 
 /// Hash a config file or profile snapshot.
 pub fn hash_config(
@@ -119,8 +120,8 @@ pub fn apply_sweep_value(
 }
 
 /// Signal API re-exports for CLI convenience.
-pub use bijux_gnss_receiver::api::signal as signal;
+pub use bijux_gnss_receiver::api::signal;
 
 /// Nav API re-exports for CLI convenience.
 #[cfg(feature = "nav")]
-pub use bijux_gnss_receiver::api::nav as nav;
+pub use bijux_gnss_receiver::api::nav;

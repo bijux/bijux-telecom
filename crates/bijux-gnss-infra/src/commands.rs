@@ -1,7 +1,7 @@
 //! Command helpers for standardized runs.
 
 use crate::dataset::DatasetEntry;
-use crate::run_layout::{artifact_header, run_dir, RunContextArgs, RunDirLayout};
+use crate::run_layout::{artifact_header, run_dir, write_run_report, RunContextArgs, RunDirLayout};
 use bijux_gnss_receiver::api::core::ArtifactHeaderV1;
 use bijux_gnss_receiver::api::core::InputError;
 use bijux_gnss_receiver::api::ReceiverProfile;
@@ -16,5 +16,6 @@ pub fn prepare_run(
     let run_dir = run_dir(args, command, dataset)?;
     let layout = RunDirLayout::new(run_dir);
     let header = artifact_header(args, profile, dataset)?;
+    let _ = write_run_report(args, command, profile, dataset)?;
     Ok((layout, header))
 }
