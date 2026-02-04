@@ -75,10 +75,16 @@ jobs:
         run: |
           mkdir -p artifacts
           cargo tree -p bijux-gnss-cli > artifacts/cargo-tree-bijux-gnss-cli.txt
+      - name: Benchmarks (warn-only)
+        run: scripts/bench_compare.sh
       - uses: actions/upload-artifact@v4
         with:
           name: cargo-tree-bijux-gnss-cli
           path: artifacts/cargo-tree-bijux-gnss-cli.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmarks
+          path: artifacts/benchmarks.txt
       - name: Semver checks (core/infra)
         run: |
           cargo semver-checks check-release -p bijux-gnss-core
