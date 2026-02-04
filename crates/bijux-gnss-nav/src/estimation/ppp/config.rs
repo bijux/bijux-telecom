@@ -5,6 +5,8 @@ use std::collections::BTreeMap;
 use bijux_gnss_core::{Constellation, SatId, SigId};
 use serde::{Deserialize, Serialize};
 
+use bijux_gnss_core::{ArtifactPayloadValidate, DiagnosticEvent, DiagnosticSeverity};
+
 use crate::corrections::biases::{CodeBiasProvider, PhaseBiasProvider};
 use crate::corrections::CorrectionContext;
 use crate::estimation::ekf::state::Ekf;
@@ -100,6 +102,24 @@ pub struct PppSolutionEpoch {
     pub nis_mean: Option<f64>,
     pub ar_mode: PppArMode,
     pub fixed_wl: usize,
+}
+
+impl ArtifactPayloadValidate for PppSolutionEpoch {
+    fn validate_payload(&self) -> Vec<DiagnosticEvent> {
+        let mut events = Vec::new();
+        if !self.ecef_x_m.is_finite()
+            || !self.ecef_y_m.is_finite()
+            || !self.ecef_z_m.is_finite()
+            || !self.clock_bias_s.is_finite()
+        {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "PPP_EPOCH_INVALID",
+                "PPP solution contains NaN/Inf",
+            ));
+        }
+        events
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

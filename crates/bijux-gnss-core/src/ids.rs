@@ -76,6 +76,21 @@ pub fn sort_obs_sats(epoch: &mut crate::ObsEpoch) {
     });
 }
 
+/// Format a satellite ID as `<Constellation>-<PRN>`.
+pub fn format_sat(sat: SatId) -> String {
+    format!("{:?}-{}", sat.constellation, sat.prn)
+}
+
+/// Convert GPS PRNs into satellite IDs.
+pub fn prns_to_sats(prns: &[u8]) -> Vec<SatId> {
+    prns.iter()
+        .map(|&prn| SatId {
+            constellation: Constellation::Gps,
+            prn,
+        })
+        .collect()
+}
+
 fn constellation_rank(constellation: Constellation) -> u8 {
     match constellation {
         Constellation::Gps => 0,

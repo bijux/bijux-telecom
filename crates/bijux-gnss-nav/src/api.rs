@@ -1,7 +1,11 @@
 //! Public API for bijux-gnss-nav.
 
 /// Versioned artifact wrappers.
-pub use crate::artifact::{GpsEphemerisV1, PppEpochV1};
+///
+/// Broadcast ephemeris list artifact v1.
+pub type GpsEphemerisV1 = bijux_gnss_core::ArtifactV1<Vec<crate::orbits::gps::GpsEphemeris>>;
+/// PPP solution epoch artifact v1.
+pub type PppEpochV1 = bijux_gnss_core::ppp::PppEpochV1<crate::estimation::ppp::config::PppSolutionEpoch>;
 pub use crate::corrections::atmosphere::{clamp_ztd, AtmosphereConfig};
 pub use crate::corrections::biases::{CodeBiasProvider, PhaseBiasProvider, ZeroBiases};
 /// Corrections and combination helpers.
@@ -45,5 +49,8 @@ pub use crate::time::{gps_time_from_utc, gps_week_rollover, normalize_tow};
 /// Navigation engine trait boundary.
 pub trait NavEngine {
     /// Update navigation solution with new observation epoch.
-    fn update(&mut self, obs: &bijux_gnss_core::ObsEpoch) -> Option<bijux_gnss_core::NavEpoch>;
+    fn update(
+        &mut self,
+        obs: &bijux_gnss_core::ObsEpochV1,
+    ) -> Option<bijux_gnss_core::NavSolutionEpochV1>;
 }

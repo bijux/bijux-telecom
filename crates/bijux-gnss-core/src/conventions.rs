@@ -134,12 +134,45 @@ pub fn is_solution_valid(status: SolutionStatus) -> bool {
     status.is_valid()
 }
 
+/// Compute carrier phase increment (cycles) from Doppler and time step.
+pub fn carrier_phase_increment(doppler_hz: crate::Hertz, dt_s: crate::Seconds) -> crate::Cycles {
+    crate::Cycles(doppler_hz.0 * dt_s.0)
+}
+
+/// Compute Doppler (Hz) from carrier phase increment and time step.
+pub fn doppler_from_phase_increment(
+    delta_cycles: crate::Cycles,
+    dt_s: crate::Seconds,
+) -> crate::Hertz {
+    if dt_s.0 == 0.0 {
+        return crate::Hertz(0.0);
+    }
+    crate::Hertz(delta_cycles.0 / dt_s.0)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::compile_time_unit_checks;
+    use super::{carrier_phase_increment, compile_time_unit_checks, doppler_from_phase_increment};
+    use crate::{Cycles, Hertz, Seconds};
 
     #[test]
     fn unit_type_compile_checks() {
         compile_time_unit_checks();
+    }
+
+    #[test]
+    fn doppler_phase_sign_convention() {
+        let dt = Seconds(0.02);
+        let doppler = Hertz(500.0);
+        let delta = carrier_phase_increment(doppler, dt);
+        assert!(delta.0 > 0.0);
+        let recovered = doppler_from_phase_increment(delta, dt);
+        assert!((recovered.0 - doppler.0).abs() < 1e-9);
+
+        let doppler_neg = Hertz(-250.0);
+        let delta_neg = carrier_phase_increment(doppler_neg, dt);
+        assert!(delta_neg.0 < 0.0);
+        let recovered_neg = doppler_from_phase_increment(delta_neg, dt);
+        assert!((recovered_neg.0 - doppler_neg.0).abs() < 1e-9);
     }
 }
