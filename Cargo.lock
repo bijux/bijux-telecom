@@ -104,11 +104,7 @@ name = "bijux-gnss-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bijux-gnss-core",
  "bijux-gnss-infra",
- "bijux-gnss-nav",
- "bijux-gnss-receiver",
- "bijux-gnss-signal",
  "bijux-guardrails",
  "clap",
  "eyre",
@@ -138,8 +134,6 @@ dependencies = [
 name = "bijux-gnss-infra"
 version = "0.1.0"
 dependencies = [
- "bijux-gnss-core",
- "bijux-gnss-nav",
  "bijux-gnss-receiver",
  "bijux-guardrails",
  "hex",
@@ -198,10 +192,10 @@ dependencies = [
 name = "bijux-guardrails"
 version = "0.1.0"
 dependencies = [
- "bijux-gnss-core",
  "regex",
  "serde",
  "serde_json",
+ "toml",
  "walkdir",
 ]
 

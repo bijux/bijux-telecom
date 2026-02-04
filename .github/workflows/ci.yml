@@ -38,6 +38,10 @@ jobs:
           fi
       - name: Core unit tests (fast signal)
         run: cargo test -p bijux-gnss-core
+      - name: No-default-features build (workspace)
+        run: cargo build --workspace --no-default-features
+      - name: Minimal engine build (core + signal + receiver)
+        run: cargo build -p bijux-gnss-core -p bijux-gnss-signal -p bijux-gnss-receiver --no-default-features
       - name: Cargo make (ci)
         run: cargo make ci
       - name: Rustdoc warnings as errors (core)

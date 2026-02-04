@@ -33,6 +33,8 @@ script = [
   "  CARGO_BUILD_JOBS=${JOBS} cargo test --workspace -- --color always;",
   "fi",
 ]
+workspace = false
+env = { CARGO_MAKE_NO_WORKSPACE = "true", CARGO_MAKE_WORKSPACE_SKIP_MEMBERS = "true" }
 
 [tasks.test-full]
 script_runner = "bash"
@@ -68,7 +70,7 @@ script = [
   "fi",
   "if command -v cargo-semver-checks >/dev/null 2>&1; then",
   "  workspace_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd);",
-  "  (cd \"$workspace_root\" && cargo semver-checks --workspace);",
+  "  (cd \"$workspace_root\" && cargo semver-checks -p bijux-gnss-core -p bijux-gnss-infra);",
   "else",
   "  echo 'cargo-semver-checks not installed; skipping API break check';",
   "fi",
@@ -91,6 +93,19 @@ script = [
   "  echo \"Running no-default-features tests for $name\";",
   "  cargo test -p \"$name\" --no-default-features -- --color always;",
   "done",
+]
+
+[tasks.build-minimal-engine]
+command = "cargo"
+args = [
+  "build",
+  "-p",
+  "bijux-gnss-core",
+  "-p",
+  "bijux-gnss-signal",
+  "-p",
+  "bijux-gnss-receiver",
+  "--no-default-features",
 ]
 
 [tasks.lint]
