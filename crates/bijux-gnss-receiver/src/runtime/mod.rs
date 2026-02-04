@@ -4,6 +4,7 @@
 
 pub mod alloc;
 pub mod diagnostics;
+pub mod engine;
 pub mod logging;
 pub mod metrics;
 pub mod receiver_config;

@@ -17,6 +17,7 @@
 #![forbid(unsafe_code)]
 
 mod io;
+mod ports;
 #[cfg(feature = "nav")]
 #[path = "rtk/mod.rs"]
 mod rtk_internal;
