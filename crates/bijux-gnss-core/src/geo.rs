@@ -3,24 +3,33 @@
 /// ECEF coordinate (meters).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Ecef {
+    /// X coordinate in meters.
     pub x_m: f64,
+    /// Y coordinate in meters.
     pub y_m: f64,
+    /// Z coordinate in meters.
     pub z_m: f64,
 }
 
 /// Geodetic coordinate (degrees, meters).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Llh {
+    /// Latitude in degrees.
     pub lat_deg: f64,
+    /// Longitude in degrees.
     pub lon_deg: f64,
+    /// Altitude in meters.
     pub alt_m: f64,
 }
 
 /// Local ENU coordinate (meters).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Enu {
+    /// East component in meters.
     pub e_m: f64,
+    /// North component in meters.
     pub n_m: f64,
+    /// Up component in meters.
     pub u_m: f64,
 }
 
