@@ -20,17 +20,17 @@ pub use bijux_gnss_signal::api as signal;
 pub use bijux_gnss_nav::api as nav;
 
 /// Runtime logging helpers.
-pub use crate::runtime::logging as logging;
+pub use crate::runtime::logging;
 
 /// Stage modules for acquisition, tracking, observations, and navigation.
-pub use crate::stages::acquisition as acquisition;
-/// Tracking stage helpers.
-pub use crate::stages::tracking as tracking;
-/// Observation-building helpers.
-pub use crate::stages::observations as observations;
+pub use crate::stages::acquisition;
 /// Navigation bridge helpers.
 #[cfg(feature = "nav")]
-pub use crate::stages::navigation as navigation;
+pub use crate::stages::navigation;
+/// Observation-building helpers.
+pub use crate::stages::observations;
+/// Tracking stage helpers.
+pub use crate::stages::tracking;
 
 /// RTK differencing and baseline helpers.
 #[cfg(feature = "nav")]
@@ -42,7 +42,7 @@ pub use crate::sim_internal::synthetic as sim;
 
 /// Validation report helpers.
 #[cfg(feature = "nav")]
-pub use crate::validation_report as validation_report;
+pub use crate::validation_report;
 
 /// Artifacts produced by a receiver pipeline run.
 #[derive(Debug, Default, Clone)]
