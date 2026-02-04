@@ -7,10 +7,6 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
-bijux-gnss-receiver = { path = "../bijux-gnss-receiver", version = "0.1.0" }
-bijux-gnss-core = { path = "../bijux-gnss-core", version = "0.1.0" }
-bijux-gnss-nav = { path = "../bijux-gnss-nav", version = "0.1.0" }
-bijux-gnss-signal = { path = "../bijux-gnss-signal", version = "0.1.0" }
 bijux-gnss-infra = { path = "../bijux-gnss-infra", version = "0.1.0" }
 tracing-subscriber = { version = "0.3", optional = true, features = ["env-filter"] }
 serde.workspace = true
@@ -25,8 +21,8 @@ schemars = { workspace = true, optional = true }
 
 [features]
 default = ["precise-products"]
-precise-products = ["bijux-gnss-nav/precise-products"]
-tracing = ["bijux-gnss-receiver/tracing", "dep:tracing-subscriber"]
+precise-products = ["bijux-gnss-infra/precise-products"]
+tracing = ["bijux-gnss-infra/tracing", "dep:tracing-subscriber"]
 schema-validate = ["dep:jsonschema", "dep:schemars"]
 
 [[bin]]

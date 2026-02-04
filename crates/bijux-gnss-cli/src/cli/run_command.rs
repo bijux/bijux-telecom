@@ -84,7 +84,7 @@ fn set_trace_dir(common: &CommonArgs) {
         std::env::set_var("BIJUX_DETERMINISTIC", "1");
     }
 }
-use bijux_gnss_core::format_sat;
+use bijux_gnss_infra::api::core::format_sat;
 
 fn print_acquisition_table(report: &AcquisitionReport) {
     println!("Sat\tCarrier(Hz)\tCodePhase\tPeak\tPeak/Mean\tPeak/2nd");
@@ -117,7 +117,7 @@ fn solve_epoch_ekf(
     ctx: &mut Option<EkfContext>,
     obs: &ObsEpoch,
     ephs: &[GpsEphemeris],
-) -> Result<Option<bijux_gnss_core::NavSolutionEpoch>> {
+) -> Result<Option<bijux_gnss_infra::api::core::NavSolutionEpoch>> {
     let Some(ctx) = ctx.as_mut() else {
         return Ok(None);
     };
@@ -130,14 +130,14 @@ fn solve_epoch_ekf(
     ctx.ekf.predict(&ctx.model, dt_s);
 
     let mut used = 0;
-    let mut sats: Vec<&bijux_gnss_core::ObsSatellite> = obs.sats.iter().collect();
+    let mut sats: Vec<&bijux_gnss_infra::api::core::ObsSatellite> = obs.sats.iter().collect();
     sats.sort_by_key(|s| s.signal_id);
     for sat in sats {
         let eph = match ephs.iter().find(|e| e.sat == sat.signal_id.sat) {
             Some(e) => e,
             None => continue,
         };
-        let _corr = bijux_gnss_nav::compute_corrections(&ctx.corrections);
+        let _corr = bijux_gnss_infra::api::nav::compute_corrections(&ctx.corrections);
         let state = sat_state_gps_l1ca(eph, obs.t_rx_s.0, 0.0);
         let state_next = sat_state_gps_l1ca(eph, obs.t_rx_s.0 + 0.1, 0.0);
         let sat_vel = [
@@ -150,7 +150,7 @@ fn solve_epoch_ekf(
         let rx_z = ctx.ekf.x[2];
         let (_az, el) = elevation_azimuth_deg(rx_x, rx_y, rx_z, state.x_m, state.y_m, state.z_m);
         let weight =
-            bijux_gnss_nav::weight_from_cn0_elev(sat.cn0_dbhz, el, WeightingConfig::default());
+            bijux_gnss_infra::api::nav::weight_from_cn0_elev(sat.cn0_dbhz, el, WeightingConfig::default());
         let sigma_m = (5.0 / weight.max(0.1)).max(1.0);
         let isb_index = if sat.signal_id.sat.constellation != Constellation::Gps {
             let key = format!("isb_{:?}", sat.signal_id.sat.constellation);
@@ -175,7 +175,7 @@ fn solve_epoch_ekf(
             used += 1;
         }
 
-        let doppler_meas = bijux_gnss_nav::DopplerMeasurement {
+        let doppler_meas = bijux_gnss_infra::api::nav::DopplerMeasurement {
             sig: sat.signal_id,
             z_hz: sat.doppler_hz.0,
             sat_pos_m: [state.x_m, state.y_m, state.z_m],
@@ -194,7 +194,7 @@ fn solve_epoch_ekf(
             .phase_bias
             .phase_bias_cycles(sat.signal_id)
             .unwrap_or(0.0);
-        let carrier_meas = bijux_gnss_nav::CarrierPhaseMeasurement {
+        let carrier_meas = bijux_gnss_infra::api::nav::CarrierPhaseMeasurement {
             sig: sat.signal_id,
             z_cycles: sat.carrier_phase_cycles.0 - phase_bias_cycles,
             sat_pos_m: [state.x_m, state.y_m, state.z_m],
@@ -214,13 +214,13 @@ fn solve_epoch_ekf(
     if let Some(idx) = ctx.ztd_index {
         if idx < ctx.ekf.x.len() {
             let before = ctx.ekf.x[idx];
-            let after = bijux_gnss_nav::clamp_ztd(before, &ctx.atmosphere);
+            let after = bijux_gnss_infra::api::nav::clamp_ztd(before, &ctx.atmosphere);
             if (after - before).abs() > 1e-6 {
                 ctx.ekf.x[idx] = after;
                 ctx.ekf
                     .health
                     .events
-                    .push(bijux_gnss_core::NavHealthEvent::ZtdClamped {
+                    .push(bijux_gnss_infra::api::core::NavHealthEvent::ZtdClamped {
                         before_m: before,
                         after_m: after,
                     });
@@ -229,28 +229,28 @@ fn solve_epoch_ekf(
     }
 
     let (lat, lon, alt) =
-        bijux_gnss_nav::ecef_to_geodetic(ctx.ekf.x[0], ctx.ekf.x[1], ctx.ekf.x[2]);
+        bijux_gnss_infra::api::nav::ecef_to_geodetic(ctx.ekf.x[0], ctx.ekf.x[1], ctx.ekf.x[2]);
     let status = if used < 4 {
-        bijux_gnss_core::SolutionStatus::Degraded
+        bijux_gnss_infra::api::core::SolutionStatus::Degraded
     } else {
-        bijux_gnss_core::SolutionStatus::Float
+        bijux_gnss_infra::api::core::SolutionStatus::Float
     };
-    Ok(Some(bijux_gnss_core::NavSolutionEpoch {
-        epoch: bijux_gnss_core::Epoch {
+    Ok(Some(bijux_gnss_infra::api::core::NavSolutionEpoch {
+        epoch: bijux_gnss_infra::api::core::Epoch {
             index: obs.epoch_idx,
         },
         t_rx_s: obs.t_rx_s,
-        ecef_x_m: bijux_gnss_core::Meters(ctx.ekf.x[0]),
-        ecef_y_m: bijux_gnss_core::Meters(ctx.ekf.x[1]),
-        ecef_z_m: bijux_gnss_core::Meters(ctx.ekf.x[2]),
+        ecef_x_m: bijux_gnss_infra::api::core::Meters(ctx.ekf.x[0]),
+        ecef_y_m: bijux_gnss_infra::api::core::Meters(ctx.ekf.x[1]),
+        ecef_z_m: bijux_gnss_infra::api::core::Meters(ctx.ekf.x[2]),
         latitude_deg: lat,
         longitude_deg: lon,
-        altitude_m: bijux_gnss_core::Meters(alt),
-        clock_bias_s: bijux_gnss_core::Seconds(ctx.ekf.x[6]),
+        altitude_m: bijux_gnss_infra::api::core::Meters(alt),
+        clock_bias_s: bijux_gnss_infra::api::core::Seconds(ctx.ekf.x[6]),
         pdop: 0.0,
-        rms_m: bijux_gnss_core::Meters(ctx.ekf.health.innovation_rms),
+        rms_m: bijux_gnss_infra::api::core::Meters(ctx.ekf.health.innovation_rms),
         status,
-        valid: bijux_gnss_core::is_solution_valid(status),
+        valid: bijux_gnss_infra::api::core::is_solution_valid(status),
         processing_ms: None,
         residuals: Vec::new(),
         isb: Vec::new(),

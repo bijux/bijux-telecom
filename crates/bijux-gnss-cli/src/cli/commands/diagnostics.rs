@@ -37,8 +37,8 @@ fn handle_nav(command: GnssCommand) -> Result<()> {
                         for row in sorted {
                             prompt.push(row.prompt_i);
                         }
-                        let bits = bijux_gnss_nav::bit_sync_from_prompt(&prompt);
-                        let (mut ephs, stats) = bijux_gnss_nav::decode_subframes(&bits.bits);
+                        let bits = bijux_gnss_infra::api::nav::bit_sync_from_prompt(&prompt);
+                        let (mut ephs, stats) = bijux_gnss_infra::api::nav::decode_subframes(&bits.bits);
                         for eph in ephs.iter_mut() {
                             eph.sat = target;
                         }
@@ -79,7 +79,7 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                     let ephs = read_ephemeris(&eph)?;
                     let base_xyz = parse_ecef(&base_ecef)?;
     
-                    let mut aligner = bijux_gnss_receiver::rtk::EpochAligner::new(tolerance_s);
+                    let mut aligner = bijux_gnss_infra::api::receiver::rtk::EpochAligner::new(tolerance_s);
                     let aligned = aligner.align(&base_epochs, &rover_epochs);
     
                     let out_dir = artifacts_dir(&common, "rtk", dataset.as_ref())?;
@@ -90,21 +90,21 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                     let mut baseline_quality_lines = Vec::new();
                     let mut fix_audit_lines = Vec::new();
                     let mut precision_lines = Vec::new();
-                    let mut fix_state = bijux_gnss_receiver::rtk::FixState::default();
-                    let fixer = bijux_gnss_receiver::rtk::NaiveFixer::new(
-                        bijux_gnss_receiver::rtk::FixPolicy::default(),
+                    let mut fix_state = bijux_gnss_infra::api::receiver::rtk::FixState::default();
+                    let fixer = bijux_gnss_infra::api::receiver::rtk::NaiveFixer::new(
+                        bijux_gnss_infra::api::receiver::rtk::FixPolicy::default(),
                     );
-                    let mut last_ref: Option<bijux_gnss_core::SigId> = None;
-                    let mut ref_selector = bijux_gnss_receiver::rtk::RefSatSelector::new(5);
+                    let mut last_ref: Option<bijux_gnss_infra::api::core::SigId> = None;
+                    let mut ref_selector = bijux_gnss_infra::api::receiver::rtk::RefSatSelector::new(5);
                     let mut ref_selectors: std::collections::BTreeMap<
                         Constellation,
-                        bijux_gnss_receiver::rtk::RefSatSelector,
+                        bijux_gnss_infra::api::receiver::rtk::RefSatSelector,
                     > = std::collections::BTreeMap::new();
     
                     for (base, rover) in &aligned {
-                        let sd = bijux_gnss_receiver::rtk::build_sd(base, rover);
+                        let sd = bijux_gnss_infra::api::receiver::rtk::build_sd(base, rover);
                         for item in &sd {
-                            let wrapped = bijux_gnss_receiver::rtk::RtkSdEpochV1 {
+                            let wrapped = bijux_gnss_infra::api::receiver::rtk::RtkSdEpochV1 {
                                 header: header.clone(),
                                 payload: item.clone(),
                             };
@@ -113,19 +113,19 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                         let dd = match ref_policy {
                             RefPolicy::Global => {
                                 if let Some(ref_sig) = ref_selector.choose(&sd) {
-                                    bijux_gnss_receiver::rtk::build_dd(&sd, ref_sig)
+                                    bijux_gnss_infra::api::receiver::rtk::build_dd(&sd, ref_sig)
                                 } else {
                                     Vec::new()
                                 }
                             }
                             RefPolicy::PerConstellation => {
                                 let refs =
-                                    bijux_gnss_receiver::rtk::choose_ref_sat_per_constellation(&sd);
+                                    bijux_gnss_infra::api::receiver::rtk::choose_ref_sat_per_constellation(&sd);
                                 let mut chosen = std::collections::BTreeMap::new();
                                 for (constellation, sig) in refs {
                                     let selector =
                                         ref_selectors.entry(constellation).or_insert_with(|| {
-                                            bijux_gnss_receiver::rtk::RefSatSelector::new(5)
+                                            bijux_gnss_infra::api::receiver::rtk::RefSatSelector::new(5)
                                         });
                                     let subset: Vec<_> = sd
                                         .iter()
@@ -138,11 +138,11 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                                         chosen.insert(constellation, sig);
                                     }
                                 }
-                                bijux_gnss_receiver::rtk::build_dd_per_constellation(&sd, &chosen)
+                                bijux_gnss_infra::api::receiver::rtk::build_dd_per_constellation(&sd, &chosen)
                             }
                         };
                         for item in &dd {
-                            let wrapped = bijux_gnss_receiver::rtk::RtkDdEpochV1 {
+                            let wrapped = bijux_gnss_infra::api::receiver::rtk::RtkDdEpochV1 {
                                 header: header.clone(),
                                 payload: item.clone(),
                             };
@@ -154,17 +154,17 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                             last_ref = ref_sig;
                         }
     
-                        let mut baseline = bijux_gnss_receiver::rtk::solve_baseline_dd(
+                        let mut baseline = bijux_gnss_infra::api::receiver::rtk::solve_baseline_dd(
                             &dd,
                             base_xyz,
                             &ephs,
                             rover.t_rx_s.0,
                         );
     
-                        let float = bijux_gnss_receiver::rtk::FloatAmbiguitySolution {
+                        let float = bijux_gnss_infra::api::receiver::rtk::FloatAmbiguitySolution {
                             ids: dd
                                 .iter()
-                                .map(|d| bijux_gnss_core::AmbiguityId {
+                                .map(|d| bijux_gnss_infra::api::core::AmbiguityId {
                                     sig: d.sig,
                                     signal: format!("{:?}", d.sig.band),
                                 })
@@ -174,14 +174,14 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                         };
                         let (fix_result, audit) =
                             fixer.fix_with_state(rover.epoch_idx, &float, &mut fix_state);
-                        let fix_audit = bijux_gnss_receiver::rtk::RtkFixAuditV1 {
+                        let fix_audit = bijux_gnss_infra::api::receiver::rtk::RtkFixAuditV1 {
                             header: header.clone(),
                             payload: audit.clone(),
                         };
                         fix_audit_lines.push(serde_json::to_string(&fix_audit)?);
     
                         if let Some(baseline_val) = baseline.take() {
-                            let before_rms = bijux_gnss_receiver::rtk::dd_residual_metrics(
+                            let before_rms = bijux_gnss_infra::api::receiver::rtk::dd_residual_metrics(
                                 &dd,
                                 base_xyz,
                                 baseline_val.enu_m,
@@ -189,11 +189,11 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                             rover.t_rx_s.0,
                             )
                             .map(|(rms, _pred, _)| rms);
-                            let mut adjusted = bijux_gnss_receiver::rtk::apply_fix_hold(
+                            let mut adjusted = bijux_gnss_infra::api::receiver::rtk::apply_fix_hold(
                                 baseline_val,
                                 fix_result.accepted,
                             );
-                            let after_rms = bijux_gnss_receiver::rtk::dd_residual_metrics(
+                            let after_rms = bijux_gnss_infra::api::receiver::rtk::dd_residual_metrics(
                                 &dd,
                                 base_xyz,
                                 adjusted.enu_m,
@@ -212,7 +212,7 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                             }
                             let (rms_obs, rms_pred, used_sats) =
                                 if let Some((rms_obs, rms_pred, count)) =
-                                    bijux_gnss_receiver::rtk::dd_residual_metrics(
+                                    bijux_gnss_infra::api::receiver::rtk::dd_residual_metrics(
                                         &dd,
                                         base_xyz,
                                         adjusted.enu_m,
@@ -224,7 +224,7 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                                 } else {
                                     (0.0, 0.0, 0)
                                 };
-                            let separation = bijux_gnss_receiver::rtk::solution_separation(
+                            let separation = bijux_gnss_infra::api::receiver::rtk::solution_separation(
                                 &dd,
                                 base_xyz,
                                 &ephs,
@@ -248,7 +248,7 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                                 let sigma_h = (sigma_e * sigma_e + sigma_n * sigma_n).sqrt();
                                 let hpl = sigma_h * 6.0;
                                 let vpl = sigma_u * 6.0;
-                                let quality = bijux_gnss_receiver::rtk::RtkBaselineQuality {
+                                let quality = bijux_gnss_infra::api::receiver::rtk::RtkBaselineQuality {
                                     epoch_idx: rover.epoch_idx,
                                     fixed: adjusted.fixed,
                                     sigma_e,
@@ -262,13 +262,13 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                                     separation_sig: sep_sig,
                                     separation_max_m: sep_max,
                                 };
-                                let wrapped = bijux_gnss_receiver::rtk::RtkBaselineQualityV1 {
+                                let wrapped = bijux_gnss_infra::api::receiver::rtk::RtkBaselineQualityV1 {
                                     header: header.clone(),
                                     payload: quality,
                                 };
                                 baseline_quality_lines.push(serde_json::to_string(&wrapped)?);
                             }
-                            let wrapped = bijux_gnss_receiver::rtk::RtkBaselineEpochV1 {
+                            let wrapped = bijux_gnss_infra::api::receiver::rtk::RtkBaselineEpochV1 {
                                 header: header.clone(),
                                 payload: adjusted,
                             };
@@ -281,7 +281,7 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                             .chain(rover.sats.iter())
                             .filter(|s| s.lock_flags.cycle_slip)
                             .count();
-                        let precision = bijux_gnss_receiver::rtk::RtkPrecision {
+                        let precision = bijux_gnss_infra::api::receiver::rtk::RtkPrecision {
                             epoch_idx: rover.epoch_idx,
                             fix_accepted: fix_result.accepted,
                             ratio: fix_result.ratio,
@@ -289,7 +289,7 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                             ref_changed,
                             slip_count,
                         };
-                        let wrapped = bijux_gnss_receiver::rtk::RtkPrecisionV1 {
+                        let wrapped = bijux_gnss_infra::api::receiver::rtk::RtkPrecisionV1 {
                             header: header.clone(),
                             payload: precision,
                         };
@@ -359,7 +359,7 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
         } => {
             set_trace_dir(&common);
             let events = summarize_run_diagnostics(&run_dir)?;
-            let summary = bijux_gnss_core::aggregate_diagnostics(&events);
+            let summary = bijux_gnss_infra::api::core::aggregate_diagnostics(&events);
             let mut entries = summary.entries.clone();
             entries.sort_by(|a, b| b.count.cmp(&a.count));
             println!("Diagnostics summary (top {}):", top);

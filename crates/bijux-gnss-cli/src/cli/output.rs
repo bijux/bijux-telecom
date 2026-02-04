@@ -120,7 +120,7 @@ fn write_experiment_run(
     idx: usize,
     result: &ExperimentRunResult,
     obs: &[ObsEpoch],
-    solutions: &[bijux_gnss_core::NavSolutionEpoch],
+    solutions: &[bijux_gnss_infra::api::core::NavSolutionEpoch],
 ) -> Result<()> {
     let run_dir = out_dir.join(format!("run_{idx:03}"));
     fs::create_dir_all(&run_dir)?;
@@ -216,16 +216,16 @@ fn write_track_timeseries(
         let wrapped = TrackEpochV1 {
             header: header.clone(),
             payload: TrackEpoch {
-                epoch: bijux_gnss_core::Epoch {
+                epoch: bijux_gnss_infra::api::core::Epoch {
                     index: epoch.epoch_idx,
                 },
                 sample_index: epoch.sample_index,
                 sat: epoch.sat,
                 prompt_i: epoch.prompt_i,
                 prompt_q: epoch.prompt_q,
-                carrier_hz: bijux_gnss_core::Hertz(epoch.carrier_hz),
-                code_rate_hz: bijux_gnss_core::Hertz(epoch.code_rate_hz),
-                code_phase_samples: bijux_gnss_core::Chips(epoch.code_phase_samples),
+                carrier_hz: bijux_gnss_infra::api::core::Hertz(epoch.carrier_hz),
+                code_rate_hz: bijux_gnss_infra::api::core::Hertz(epoch.code_rate_hz),
+                code_phase_samples: bijux_gnss_infra::api::core::Chips(epoch.code_phase_samples),
                 lock: epoch.lock,
                 cn0_dbhz: epoch.cn0_dbhz,
                 pll_lock: epoch.pll_lock,
@@ -249,14 +249,14 @@ fn write_track_timeseries(
 fn write_obs_timeseries(
     common: &CommonArgs,
     config: &ReceiverConfig,
-    tracks: &[bijux_gnss_receiver::tracking::TrackingResult],
+    tracks: &[bijux_gnss_infra::api::receiver::tracking::TrackingResult],
     hatch_window: u32,
     profile: &ReceiverProfile,
     dataset: Option<&DatasetEntry>,
 ) -> Result<()> {
     let out_dir = artifacts_dir(common, "track", dataset)?;
     let header = artifact_header(common, profile, dataset)?;
-    let mut obs = bijux_gnss_receiver::observations::observations_from_tracking_results(
+    let mut obs = bijux_gnss_infra::api::receiver::observations::observations_from_tracking_results(
         config,
         tracks,
         hatch_window,
@@ -288,10 +288,10 @@ fn write_obs_timeseries(
         let timing_path = out_dir.join("timing_obs.jsonl");
         fs::write(&timing_path, timing_lines.join("\n"))?;
     }
-    let combos = bijux_gnss_nav::combinations_from_obs_epochs(
+    let combos = bijux_gnss_infra::api::nav::combinations_from_obs_epochs(
         &obs,
-        bijux_gnss_core::SignalBand::L1,
-        bijux_gnss_core::SignalBand::L2,
+        bijux_gnss_infra::api::core::SignalBand::L1,
+        bijux_gnss_infra::api::core::SignalBand::L2,
     );
     if !combos.is_empty() {
         let combo_path = out_dir.join("combinations.jsonl");
@@ -411,7 +411,7 @@ fn read_reference_epochs(path: &Path) -> Result<Vec<ValidationReferenceEpoch>> {
     Ok(epochs)
 }
 
-fn read_nav_solutions(path: &Path) -> Result<Vec<bijux_gnss_core::NavSolutionEpoch>> {
+fn read_nav_solutions(path: &Path) -> Result<Vec<bijux_gnss_infra::api::core::NavSolutionEpoch>> {
     let data = fs::read_to_string(path)?;
     let mut epochs = Vec::new();
     for line in data.lines() {

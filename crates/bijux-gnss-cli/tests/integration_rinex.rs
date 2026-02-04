@@ -1,16 +1,16 @@
 #![allow(missing_docs)]
-use bijux_gnss_core::{
+use bijux_gnss_infra::api::core::{
     Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, SatId, SigId,
     SignalBand, SignalCode, SignalSpec, GPS_L1_CA_CARRIER_HZ,
 };
-use bijux_gnss_nav::{write_rinex_nav, write_rinex_obs, GpsEphemeris};
+use bijux_gnss_infra::api::nav::{write_rinex_nav, write_rinex_obs, GpsEphemeris};
 
 #[test]
 fn rinex_obs_has_header() {
     let epoch = ObsEpoch {
-        t_rx_s: bijux_gnss_core::Seconds(0.0),
+        t_rx_s: bijux_gnss_infra::api::core::Seconds(0.0),
         gps_week: Some(0),
-        tow_s: Some(bijux_gnss_core::Seconds(0.0)),
+        tow_s: Some(bijux_gnss_infra::api::core::Seconds(0.0)),
         epoch_idx: 0,
         discontinuity: false,
         valid: true,
@@ -25,11 +25,11 @@ fn rinex_obs_has_header() {
                 band: SignalBand::L1,
                 code: SignalCode::Ca,
             },
-            pseudorange_m: bijux_gnss_core::Meters(20_000_000.0),
+            pseudorange_m: bijux_gnss_infra::api::core::Meters(20_000_000.0),
             pseudorange_var_m2: 1.0,
-            carrier_phase_cycles: bijux_gnss_core::Cycles(1000.0),
+            carrier_phase_cycles: bijux_gnss_infra::api::core::Cycles(1000.0),
             carrier_phase_var_cycles2: 0.01,
-            doppler_hz: bijux_gnss_core::Hertz(-500.0),
+            doppler_hz: bijux_gnss_infra::api::core::Hertz(-500.0),
             doppler_var_hz2: 4.0,
             cn0_dbhz: 40.0,
             lock_flags: LockFlags {

@@ -49,7 +49,7 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
     
                     let acquisition =
                         Acquisition::new(config).with_doppler(doppler_search_hz, doppler_step_hz);
-                    let sats = bijux_gnss_core::prns_to_sats(&prn);
+                    let sats = bijux_gnss_infra::api::core::prns_to_sats(&prn);
                     let results = acquisition.run_fft_topn(
                         &frame,
                         &sats,
@@ -123,7 +123,7 @@ fn handle_pvt(command: GnssCommand) -> Result<()> {
                     let mut timing_lines = Vec::new();
                     let header = artifact_header(&common, &profile, dataset.as_ref())?;
                     let mut nav = if !ekf {
-                        Some(bijux_gnss_receiver::navigation::Navigation::new(
+                        Some(bijux_gnss_infra::api::receiver::navigation::Navigation::new(
                             ReceiverProfile::default().to_receiver_config(),
                         ))
                     } else {
@@ -193,7 +193,7 @@ fn handle_experiment(command: GnssCommand) -> Result<()> {
     
                     let scenario_contents = fs::read_to_string(&scenario)
                         .with_context(|| format!("failed to read scenario {}", scenario.display()))?;
-                    let scenario_def: bijux_gnss_receiver::sim::SyntheticScenario =
+                    let scenario_def: bijux_gnss_infra::api::receiver::sim::SyntheticScenario =
                         toml::from_str(&scenario_contents)?;
     
                     let sweep_spec = parse_sweep(&sweep)?;
@@ -212,7 +212,7 @@ fn handle_experiment(command: GnssCommand) -> Result<()> {
     
                         let config = run_profile.to_receiver_config();
                         let start = std::time::Instant::now();
-                        let frame = bijux_gnss_receiver::sim::generate_l1_ca_multi(
+                        let frame = bijux_gnss_infra::api::receiver::sim::generate_l1_ca_multi(
                             &config,
                             &scenario_def,
                         );
@@ -220,18 +220,18 @@ fn handle_experiment(command: GnssCommand) -> Result<()> {
                         let acquisition = Acquisition::new(config.clone())
                             .with_doppler(10_000, run_profile.acquisition.doppler_step_hz);
                         let acquisitions = acquisition.run_fft(&frame, &sats);
-                        let tracking = bijux_gnss_receiver::tracking::Tracking::new(config.clone());
+                        let tracking = bijux_gnss_infra::api::receiver::tracking::Tracking::new(config.clone());
                         let tracks = tracking.track_from_acquisition(
                             &frame,
                             &acquisitions,
-                            bijux_gnss_core::SignalBand::L1,
+                            bijux_gnss_infra::api::core::SignalBand::L1,
                         );
-                        let obs = bijux_gnss_receiver::observations::observations_from_tracking_results(
+                        let obs = bijux_gnss_infra::api::receiver::observations::observations_from_tracking_results(
                             &config,
                             &tracks,
                             run_profile.navigation.hatch_window,
                         );
-                        let mut nav = bijux_gnss_receiver::navigation::Navigation::new(config.clone());
+                        let mut nav = bijux_gnss_infra::api::receiver::navigation::Navigation::new(config.clone());
                         let mut solutions = Vec::new();
                         for epoch in &obs {
                             if let Some(solution) = nav.solve_epoch(epoch, &scenario_def.ephemerides) {

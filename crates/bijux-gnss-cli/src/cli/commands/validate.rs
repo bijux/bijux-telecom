@@ -312,7 +312,7 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
 
     let mut solutions = Vec::new();
     let mut nav_solver =
-        bijux_gnss_receiver::navigation::Navigation::new(profile.to_receiver_config());
+        bijux_gnss_infra::api::receiver::navigation::Navigation::new(profile.to_receiver_config());
     for obs_epoch in &obs {
         if let Some(sol) = nav_solver.solve_epoch(obs_epoch, &nav) {
             solutions.push(sol);
@@ -321,20 +321,20 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
 
     #[cfg(feature = "precise-products")]
     let (products_ok, product_fallbacks) = {
-        let mut products = bijux_gnss_nav::Products::new(
-            bijux_gnss_nav::BroadcastProductsProvider::new(nav.clone()),
+        let mut products = bijux_gnss_infra::api::nav::Products::new(
+            bijux_gnss_infra::api::nav::BroadcastProductsProvider::new(nav.clone()),
         );
         if let Some(path) = sp3 {
             let data = fs::read_to_string(path)?;
             let sp3 = data
-                .parse::<bijux_gnss_nav::Sp3Provider>()
+                .parse::<bijux_gnss_infra::api::nav::Sp3Provider>()
                 .map_err(|e| eyre!("sp3 parse error: {}", e))?;
             products = products.with_sp3(sp3);
         }
         if let Some(path) = clk {
             let data = fs::read_to_string(path)?;
             let clk = data
-                .parse::<bijux_gnss_nav::ClkProvider>()
+                .parse::<bijux_gnss_infra::api::nav::ClkProvider>()
                 .map_err(|e| eyre!("clk parse error: {}", e))?;
             products = products.with_clk(clk);
         }
@@ -391,10 +391,10 @@ fn handle_validate_reference(command: GnssCommand) -> Result<()> {
     let solutions = read_nav_solutions(&nav_path)?;
     let reference_epochs = read_reference_epochs(&reference)?;
     let align_policy = match align {
-        ReferenceAlign::Nearest => bijux_gnss_infra::ReferenceAlign::Nearest,
-        ReferenceAlign::Linear => bijux_gnss_infra::ReferenceAlign::Linear,
+        ReferenceAlign::Nearest => bijux_gnss_infra::api::ReferenceAlign::Nearest,
+        ReferenceAlign::Linear => bijux_gnss_infra::api::ReferenceAlign::Linear,
     };
-    let aligned = bijux_gnss_infra::validate_reference(&solutions, &reference_epochs, align_policy)?;
+    let aligned = bijux_gnss_infra::api::validate_reference(&solutions, &reference_epochs, align_policy)?;
 
     let report = build_validation_report(
         &[],

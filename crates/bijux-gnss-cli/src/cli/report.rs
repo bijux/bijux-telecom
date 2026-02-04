@@ -1,4 +1,3 @@
-use bijux_gnss_infra::{SolutionConsistencyReport, TimeConsistencyReport, ValidationReferenceEpoch};
 
 #[derive(Debug, Serialize)]
 struct AcquisitionReport {
@@ -46,26 +45,26 @@ struct ExperimentSummary {
 }
 
 struct EkfContext {
-    ekf: bijux_gnss_nav::Ekf,
+    ekf: bijux_gnss_infra::api::nav::Ekf,
     model: NavClockModel,
     last_t_rx_s: Option<f64>,
-    ambiguity: bijux_gnss_nav::AmbiguityManager,
-    isb: bijux_gnss_nav::InterSystemBiasManager,
+    ambiguity: bijux_gnss_infra::api::nav::AmbiguityManager,
+    isb: bijux_gnss_infra::api::nav::InterSystemBiasManager,
     ztd_index: Option<usize>,
-    atmosphere: bijux_gnss_nav::AtmosphereConfig,
-    code_bias: bijux_gnss_nav::ZeroBiases,
-    phase_bias: bijux_gnss_nav::ZeroBiases,
-    corrections: bijux_gnss_nav::CorrectionContext,
+    atmosphere: bijux_gnss_infra::api::nav::AtmosphereConfig,
+    code_bias: bijux_gnss_infra::api::nav::ZeroBiases,
+    phase_bias: bijux_gnss_infra::api::nav::ZeroBiases,
+    corrections: bijux_gnss_infra::api::nav::CorrectionContext,
 }
 
 impl EkfContext {
     fn new() -> Self {
         let x = vec![0.0_f64; 8];
         let p = Matrix::identity(8);
-        let mut ekf = bijux_gnss_nav::Ekf::new(
+        let mut ekf = bijux_gnss_infra::api::nav::Ekf::new(
             x,
             p,
-            bijux_gnss_nav::EkfConfig {
+            bijux_gnss_infra::api::nav::EkfConfig {
                 gating_chi2_code: Some(200.0),
                 gating_chi2_phase: Some(200.0),
                 gating_chi2_doppler: Some(200.0),
@@ -90,13 +89,13 @@ impl EkfContext {
                 ztd_m: 0.01,
             }),
             last_t_rx_s: None,
-            ambiguity: bijux_gnss_nav::AmbiguityManager::new(),
-            isb: bijux_gnss_nav::InterSystemBiasManager::new(),
+            ambiguity: bijux_gnss_infra::api::nav::AmbiguityManager::new(),
+            isb: bijux_gnss_infra::api::nav::InterSystemBiasManager::new(),
             ztd_index,
-            atmosphere: bijux_gnss_nav::AtmosphereConfig::default(),
-            code_bias: bijux_gnss_nav::ZeroBiases,
-            phase_bias: bijux_gnss_nav::ZeroBiases,
-            corrections: bijux_gnss_nav::CorrectionContext,
+            atmosphere: bijux_gnss_infra::api::nav::AtmosphereConfig::default(),
+            code_bias: bijux_gnss_infra::api::nav::ZeroBiases,
+            phase_bias: bijux_gnss_infra::api::nav::ZeroBiases,
+            corrections: bijux_gnss_infra::api::nav::CorrectionContext,
         }
     }
 }
@@ -134,91 +133,5 @@ struct NavDecodeReport {
     sat: SatId,
     preamble_hits: usize,
     parity_pass_rate: f64,
-    ephemerides: Vec<bijux_gnss_nav::GpsEphemeris>,
-}
-
-
-#[derive(Debug, Serialize)]
-struct ValidationErrorStats {
-    count: usize,
-    mean: f64,
-    median: f64,
-    rms: f64,
-    p95: f64,
-    max: f64,
-}
-
-#[derive(Debug, Serialize)]
-struct ValidationReport {
-    samples: usize,
-    epochs: usize,
-    horiz_error_m: ValidationErrorStats,
-    vert_error_m: ValidationErrorStats,
-    convergence: ConvergenceReport,
-    fix_timeline: Vec<FixTimelineEntry>,
-    residuals: Vec<NavResidualReport>,
-    time_consistency: TimeConsistencyReport,
-    consistency: SolutionConsistencyReport,
-    budgets: ValidationBudgets,
-    budget_violations: Vec<String>,
-    nis_mean: Option<f64>,
-    nees_mean: Option<f64>,
-    consistency_warnings: Vec<String>,
-    inter_frequency_alignment: bijux_gnss_core::InterFrequencyAlignmentReport,
-    ppp_readiness: PppReadinessReport,
-}
-
-#[derive(Debug, Serialize)]
-struct ConvergenceReport {
-    time_to_1m_s: Option<f64>,
-    time_to_0_3m_s: Option<f64>,
-    time_to_0_1m_s: Option<f64>,
-    worst_horiz_m: f64,
-    worst_vert_m: f64,
-}
-
-#[derive(Debug, Serialize)]
-struct FixTimelineEntry {
-    epoch_idx: u64,
-    fixed: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct PppReadinessReport {
-    multi_freq_present: bool,
-    combinations_valid: bool,
-    products_ok: bool,
-    product_fallbacks: Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
-#[allow(dead_code)]
-struct PppEvaluationReport {
-    epochs: usize,
-    horiz_rms_m: Option<f64>,
-    vert_rms_m: Option<f64>,
-    time_to_first_meter_s: Option<f64>,
-    time_to_decimeter_s: Option<f64>,
-    time_to_centimeter_s: Option<f64>,
-    residual_rms_m: f64,
-    checkpoint_path: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct NavResidualReport {
-    epoch_idx: u64,
-    rms_m: f64,
-    pdop: f64,
-    residuals: Vec<(SatId, f64)>,
-    rejected: Vec<SatId>,
-}
-
-
-#[derive(Debug, Clone, Serialize)]
-struct ValidationBudgets {
-    acq_doppler_hz: f64,
-    acq_code_phase_samples: f64,
-    tracking_carrier_jitter_hz: f64,
-    ephemeris_parity_rate_min: f64,
-    pvt_max_iterations: usize,
+    ephemerides: Vec<bijux_gnss_infra::api::nav::GpsEphemeris>,
 }
