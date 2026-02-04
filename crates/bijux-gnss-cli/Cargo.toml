@@ -20,13 +20,14 @@ sha2.workspace = true
 hex.workspace = true
 toml.workspace = true
 eyre.workspace = true
-jsonschema.workspace = true
-schemars.workspace = true
+jsonschema = { workspace = true, optional = true }
+schemars = { workspace = true, optional = true }
 
 [features]
 default = ["precise-products"]
 precise-products = ["bijux-gnss-nav/precise-products"]
 tracing = ["bijux-gnss-receiver/tracing", "dep:tracing-subscriber"]
+schema-validation = ["dep:jsonschema", "dep:schemars"]
 
 [[bin]]
 name = "bijux"

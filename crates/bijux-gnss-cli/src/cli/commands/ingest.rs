@@ -241,25 +241,37 @@ fn handle_config(command: GnssCommand) -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "schema-validation")]
+use schemars::schema_for;
+
+#[cfg(feature = "schema-validation")]
 fn handle_configschema(command: GnssCommand) -> Result<()> {
     let GnssCommand::ConfigSchema { common, out } = command else {
         bail!("invalid command for handler");
     };
 
     set_trace_dir(&common);
-                    let schema = schema_for!(ReceiverProfile);
-                    fs::write(&out, serde_json::to_string_pretty(&schema)?)?;
-                    println!("wrote {}", out.display());
-                    let summary = serde_json::json!({ "schema": out.display().to_string() });
-                    write_manifest(
-                        &common,
-                        "config_schema",
-                        &ReceiverProfile::default(),
-                        None,
-                        &summary,
-                    )?;
+                        let schema = schema_for!(ReceiverProfile);
+                        fs::write(&out, serde_json::to_string_pretty(&schema)?)?;
+                        println!("wrote {}", out.display());
+                        let summary = serde_json::json!({ "schema": out.display().to_string() });
+                        write_manifest(
+                            &common,
+                            "config_schema",
+                            &ReceiverProfile::default(),
+                            None,
+                            &summary,
+                        )?;
 
     Ok(())
+}
+
+#[cfg(not(feature = "schema-validation"))]
+fn handle_configschema(command: GnssCommand) -> Result<()> {
+    let GnssCommand::ConfigSchema { common: _, out: _ } = command else {
+        bail!("invalid command for handler");
+    };
+    bail!("schema generation disabled; enable --features schema-validation");
 }
 
 fn handle_configupgrade(command: GnssCommand) -> Result<()> {

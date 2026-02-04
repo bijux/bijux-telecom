@@ -139,6 +139,7 @@ name = "bijux-gnss-infra"
 version = "0.1.0"
 dependencies = [
  "bijux-gnss-core",
+ "bijux-gnss-nav",
  "bijux-gnss-receiver",
  "hex",
  "serde",

@@ -399,8 +399,8 @@ fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
         if ext != "json" && ext != "jsonl" {
             continue;
         }
-        if let Ok(mut file_events) = validate_artifact_file(&path, None, false) {
-            events.append(&mut file_events);
+        if let Ok(result) = artifact_validate(&path, None, false) {
+            events.extend(result.diagnostics);
         }
     }
     Ok(events)

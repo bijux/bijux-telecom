@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use bijux_gnss_core::{
     sort_obs_sats, validate_obs_epochs, AcqResultV1, ArtifactHeaderV1, ArtifactReadPolicy,
-    ArtifactValidate, DiagnosticEvent, DiagnosticSeverity, Constellation, NavSolutionEpochV1,
+    DiagnosticEvent, DiagnosticSeverity, Constellation, NavSolutionEpochV1,
     ObsEpoch, ObsEpochV1, SamplesFrame, SatId, SchemaVersion, TrackEpoch, TrackEpochV1,
     ValidateConfig,
 };
@@ -17,8 +17,6 @@ use bijux_gnss_receiver::{acquisition::Acquisition, data::FileSamples, ReceiverC
 use bijux_gnss_signal::{generate_ca_code, samples_per_code, Prn, SignalSource};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use eyre::{bail, eyre, Context, ContextCompat, Result};
-use jsonschema::JSONSchema;
-use schemars::schema_for;
 use serde::{Deserialize, Serialize};
 
 fn infra_args(common: &CommonArgs) -> RunContextArgs<'_> {
