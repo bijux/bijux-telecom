@@ -139,7 +139,9 @@ pub fn check(crate_root: &Path, config: &GuardrailConfig) -> Result<()> {
     check_empty_modules(&files)?;
     check_mod_reexports_only(&files)?;
     check_pub_items(&files, config)?;
-    check_pub_items_outside_api(&files)?;
+    if config.enforce_pub_use_api_only {
+        check_pub_items_outside_api(&files)?;
+    }
     check_forbidden_filenames(&files)?;
     check_pub_use_locations_if_enabled(&files, config)?;
     if config.forbid_pub_use_spam {

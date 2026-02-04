@@ -5,7 +5,7 @@ use crate::{DiagnosticEvent, DiagnosticSeverity, NavSolutionEpoch, ObsEpoch};
 
 /// Compile-time unit type assertions.
 #[allow(dead_code)]
-pub fn compile_time_unit_checks() {
+pub(crate) fn compile_time_unit_checks() {
     fn _assert_unit<T: UnitType>() {}
     _assert_unit::<crate::Meters>();
     _assert_unit::<crate::Seconds>();
@@ -153,7 +153,7 @@ pub fn doppler_from_phase_increment(
 #[cfg(test)]
 mod tests {
     use super::{carrier_phase_increment, compile_time_unit_checks, doppler_from_phase_increment};
-    use crate::{Cycles, Hertz, Seconds};
+    use crate::{Hertz, Seconds};
 
     #[test]
     fn unit_type_compile_checks() {

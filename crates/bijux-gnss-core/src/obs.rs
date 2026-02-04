@@ -160,6 +160,7 @@ impl ObsEpoch {
     }
 }
 
+/// Event describing missing band observations over time.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BandLagEvent {
     pub sat: SatId,
@@ -265,7 +266,7 @@ pub enum ReceiverRole {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ObsStreamTag {
+pub(crate) struct ObsStreamTag {
     pub role: ReceiverRole,
     pub source_id: String,
     pub sample_rate_hz: Hertz,
@@ -363,7 +364,7 @@ pub struct AmbiguityState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CarrierPhaseTerms {
+pub(crate) struct CarrierPhaseTerms {
     pub range_m: Meters,
     pub receiver_clock_s: Seconds,
     pub sat_clock_s: Seconds,
@@ -373,7 +374,7 @@ pub struct CarrierPhaseTerms {
     pub ambiguity_cycles: Cycles,
 }
 
-pub fn carrier_phase_cycles(terms: &CarrierPhaseTerms) -> f64 {
+pub(crate) fn carrier_phase_cycles(terms: &CarrierPhaseTerms) -> f64 {
     let corrected_m = terms.range_m.0
         + 299_792_458.0 * (terms.receiver_clock_s.0 - terms.sat_clock_s.0)
         + terms.tropo_m.0
@@ -401,7 +402,7 @@ pub struct DoubleDifference {
     pub canceled: Vec<AmbiguityId>,
 }
 
-pub fn geometry_free_phase_m(
+pub(crate) fn geometry_free_phase_m(
     phase1_cycles: f64,
     phase2_cycles: f64,
     lambda1_m: f64,
@@ -410,7 +411,7 @@ pub fn geometry_free_phase_m(
     phase1_cycles * lambda1_m - phase2_cycles * lambda2_m
 }
 
-pub fn melbourne_wubbena_m(
+pub(crate) fn melbourne_wubbena_m(
     code1_m: f64,
     code2_m: f64,
     phase1_cycles: f64,

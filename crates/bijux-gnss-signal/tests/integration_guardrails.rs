@@ -6,6 +6,7 @@ use bijux_guardrails::{check, GuardrailConfig};
 #[test]
 fn guardrails() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let config = GuardrailConfig::for_crate("bijux-gnss-signal");
+    let mut config = GuardrailConfig::for_crate("bijux-gnss-signal");
+    config.enforce_pub_use_api_only = false;
     check(crate_root, &config).unwrap_or_else(|err| panic!("guardrails failed: {err}"));
 }

@@ -12,9 +12,9 @@
 mod artifact;
 mod config;
 mod conventions;
-mod geo;
 mod diagnostic;
 mod error;
+mod geo;
 mod ids;
 mod obs;
 mod time;

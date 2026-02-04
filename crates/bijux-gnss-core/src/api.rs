@@ -1,15 +1,15 @@
 //! Public API for bijux-gnss-core.
 
-/// Artifact headers and versioned payloads.
-pub use crate::artifact::{
-    convert_v1_to_v2, ArtifactHeaderV1, ArtifactKind, ArtifactReadPolicy, ArtifactValidate,
-    ArtifactPayloadValidate, ArtifactV1,
-};
 pub use crate::artifact::v1::acq::AcqResultV1;
 pub use crate::artifact::v1::nav::NavSolutionEpochV1;
 pub use crate::artifact::v1::obs::ObsEpochV1;
 pub use crate::artifact::v1::track::TrackEpochV1;
 pub use crate::artifact::v1::{ppp, rtk};
+/// Artifact headers and versioned payloads.
+pub use crate::artifact::{
+    convert_v1_to_v2, ArtifactHeaderV1, ArtifactKind, ArtifactPayloadValidate, ArtifactReadPolicy,
+    ArtifactV1, ArtifactValidate,
+};
 /// Configuration composition and validation.
 pub use crate::config::{BijuxGnssConfig, SchemaVersion, ValidateConfig, ValidationReport};
 /// Scientific conventions and sanity checks.
@@ -39,7 +39,7 @@ pub use crate::ids::{
 /// Observation and tracking contracts.
 pub use crate::obs::{
     check_inter_frequency_alignment, validate_obs_epochs, AcqRequest, AcqResult, AmbiguityId,
-    AmbiguityState, AmbiguityStatus, DoubleDifference, InterFrequencyAlignmentReport,
+    AmbiguityState, AmbiguityStatus, BandLagEvent, DoubleDifference, InterFrequencyAlignmentReport,
     InterSystemBias, LockFlags, MeasurementErrorModel, NavHealthEvent, NavResidual,
     NavSolutionEpoch, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, Sample, SamplesFrame,
     SingleDifference, SolutionStatus, TrackEpoch,
@@ -47,7 +47,9 @@ pub use crate::obs::{
 /// Engine boundary nav epoch alias.
 pub type NavEpoch = NavSolutionEpoch;
 /// Time and epoch structures.
-pub use crate::time::{Epoch, GpsTime, LeapSeconds, SampleClock, SampleTime, TaiTime, UtcTime};
+pub use crate::time::{
+    Epoch, GpsTime, LeapSecondEntry, LeapSeconds, SampleClock, SampleTime, TaiTime, UtcTime,
+};
 /// Strong units for physical quantities.
 pub use crate::units::{
     chips_to_seconds, cycles_to_meters, hz_to_rad_per_sec, Chips, Cycles, Hertz, Meters,

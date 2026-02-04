@@ -76,10 +76,11 @@ pub struct TaiTime {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct ReceiverTime {
+pub(crate) struct ReceiverTime {
     pub rx_s: f64,
 }
 
+/// Single leap second table entry.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct LeapSecondEntry {
     pub utc_unix_s: i64,
@@ -228,7 +229,7 @@ impl GpsTime {
     }
 }
 
-pub fn gps_to_utc(gps: GpsTime, leap: &LeapSeconds) -> UtcTime {
+pub(crate) fn gps_to_utc(gps: GpsTime, leap: &LeapSeconds) -> UtcTime {
     let gps_s = gps.to_seconds();
     let mut offset = leap.latest_offset();
     let mut utc_s = gps_s - offset as f64;
@@ -240,19 +241,19 @@ pub fn gps_to_utc(gps: GpsTime, leap: &LeapSeconds) -> UtcTime {
     UtcTime { unix_s: utc_s }
 }
 
-pub fn utc_to_gps(utc: UtcTime, leap: &LeapSeconds) -> GpsTime {
+pub(crate) fn utc_to_gps(utc: UtcTime, leap: &LeapSeconds) -> GpsTime {
     let offset = leap.offset_at_utc(utc.unix_s);
     GpsTime::from_seconds(utc.unix_s + offset as f64)
 }
 
-pub fn tai_to_utc(tai: TaiTime, leap: &LeapSeconds) -> UtcTime {
+pub(crate) fn tai_to_utc(tai: TaiTime, leap: &LeapSeconds) -> UtcTime {
     let offset = leap.latest_offset();
     UtcTime {
         unix_s: tai.tai_s - (offset as f64 + 19.0),
     }
 }
 
-pub fn utc_to_tai(utc: UtcTime, leap: &LeapSeconds) -> TaiTime {
+pub(crate) fn utc_to_tai(utc: UtcTime, leap: &LeapSeconds) -> TaiTime {
     let offset = leap.offset_at_utc(utc.unix_s);
     TaiTime {
         tai_s: utc.unix_s + offset as f64 + 19.0,

@@ -75,4 +75,3 @@ pub fn elevation_azimuth_deg(
     let el = (u / (e * e + n * n + u * u).sqrt()).asin().to_degrees();
     (az, el)
 }
-
