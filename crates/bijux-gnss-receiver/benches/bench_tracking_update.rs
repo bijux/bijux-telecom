@@ -1,0 +1,41 @@
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use num_complex::Complex;
+
+use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds};
+use bijux_gnss_receiver::api::tracking::Tracking;
+use bijux_gnss_receiver::api::ReceiverConfig;
+
+fn bench_tracking_update(c: &mut Criterion) {
+    let config = ReceiverConfig::default();
+    let samples_per_code = bijux_gnss_signal::api::samples_per_code(
+        config.sampling_freq_hz,
+        config.code_freq_basis_hz,
+        config.code_length,
+    );
+    let frame = SamplesFrame::new(
+        SampleTime {
+            sample_index: 0,
+            sample_rate_hz: config.sampling_freq_hz,
+        },
+        Seconds(1.0 / config.sampling_freq_hz),
+        vec![Complex::new(0.0, 0.0); samples_per_code],
+    );
+    let tracking = Tracking::new(config);
+    let sat = SatId {
+        constellation: Constellation::Gps,
+        prn: 1,
+    };
+
+    c.bench_function("tracking_epoch_update", |b| {
+        b.iter_batched(
+            || frame.clone(),
+            |frame| {
+                let _ = tracking.track_epoch(&frame, 0, sat, 0.0, 0.0, 0.5);
+            },
+            BatchSize::SmallInput,
+        )
+    });
+}
+
+criterion_group!(benches, bench_tracking_update);
+criterion_main!(benches);
