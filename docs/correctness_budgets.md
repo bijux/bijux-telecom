@@ -15,6 +15,10 @@ They are intended to be conservative and should be tightened as the pipeline mat
 
 ## PVT
 - Max iterations per epoch: ≤ 10
+- Residual RMS: ≤ 50 m
+- Rejected measurement ratio: ≤ 0.5
+- NaN count: 0 allowed
+- Minimum lock epochs before nav update: ≥ 3
 
 If a budget is violated, the validation report includes a `budget_violations` entry.
 
