@@ -1,0 +1,6 @@
+dataset_id = "synthetic_rtk"
+
+[[sweep]]
+key = "navigation.rtk.ratio_threshold"
+values = ["2.0", "3.0"]
+

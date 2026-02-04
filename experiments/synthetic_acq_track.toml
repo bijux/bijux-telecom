@@ -1,4 +1,6 @@
-id = "synthetic_acq_track"
-scenario = "configs/scenarios/basic.toml"
-sweep = ["acquisition.integration_ms=1", "acquisition.doppler_step_hz=500"]
-notes = "Baseline synthetic acquisition+tracking sweep."
+dataset_id = "synthetic_basic"
+
+[[sweep]]
+key = "acquisition.doppler_step_hz"
+values = ["250", "500"]
+
