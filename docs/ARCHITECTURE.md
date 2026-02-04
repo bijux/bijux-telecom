@@ -1,46 +1,38 @@
-# bijux-gnss Architecture
+# Architecture
 
-## Dependency Direction
-```
-CLI → receiver → {signal, nav, core}
-signal → core
-nav → core
-core (no dependencies on other workspace crates)
-```
-Rules:
-- `bijux-gnss-cli` must not be depended on by any other crate.
-- `bijux-gnss-nav` must not depend on receiver or CLI.
-- `bijux-gnss-signal` depends only on core.
-- `bijux-gnss-receiver` orchestrates and may depend on signal + nav + core.
+This document defines the high-level layering and boundary rules for bijux-gnss.
 
-## Crate Responsibilities
-- `bijux-gnss-core`: time, identities, observables schema, shared primitives.
-- `bijux-gnss-signal`: DSP primitives (NCO, mixing, correlators, FFT helpers, code generators).
-- `bijux-gnss-receiver`: pipeline orchestration (ingest → acquire → track → observations). No nav math.
-- `bijux-gnss-nav`: ephemeris, satellite state, corrections, solvers, filters (EKF/PPP/RTK nav-side).
-- `bijux-gnss-cli`: wiring + UX only.
+## Layers (Top to Bottom)
+1. CLI
+2. Infra tooling
+3. Receiver pipeline
+4. Signal processing
+5. Core domain
 
-## Pipeline Stages
-1. Ingest: load IQ samples, validate metadata, frame samples.
-2. Acquisition: coarse search over PRN and Doppler, return candidates.
-3. Tracking: carrier + code tracking loops, produce per-epoch prompt I/Q.
-4. Observations: convert tracking to observables (pseudorange, carrier phase, Doppler, C/N0).
-5. Navigation: ephemeris decode, sat state, corrections, estimation (EKF/PPP/RTK).
-6. Output: structured artifacts (JSON/JSONL/CSV) and reports.
+Dependencies are allowed only “down” the stack:
+- CLI → infra, receiver, core, signal, nav
+- Infra → receiver, core, signal, nav (no CLI)
+- Receiver → signal, core, nav (no infra/CLI)
+- Signal → core (no receiver/infra/CLI)
+- Core → standard library only
 
-## Contracts
-- SamplesFrame: timed complex samples and metadata.
-- AcqRequest/AcqResult: acquisition inputs/outputs.
-- TrackEpoch: per-epoch tracking data.
-- ObservationsEpoch: per-epoch observables with metadata.
-- NavSolutionEpoch: per-epoch solution + residuals.
+This rule keeps domain logic isolated, prevents circular dependencies, and makes the
+execution boundary explicit.
 
-## Data Structures
-- Identities: `SatId`, `SigId`, `SignalBand`, `SignalCode`.
-- Time: `SampleTime`, `Epoch`, `GpsTime`, `UtcTime`, `TaiTime`, `ReceiverTime`.
-- Observables: `ObsEpoch`, `ObsSatellite`, `LockFlags`, `ObsMetadata`.
+## Public API Rule
+Only `src/api.rs` is the public façade for each crate.
+Everything else is `pub(crate)` unless explicitly re-exported from `api.rs`.
 
-## Invariants
-- Time is monotonic per stream.
-- Observations carry units and provenance.
-- No domain logic in CLI; no navigation logic in receiver.
+Guidelines:
+- `api.rs` declares types/traits and re-exports stable items.
+- Concrete logic lives in internal modules (pipeline/app/engine/etc.).
+- No `pub use crate::module::*` wildcard exports.
+
+## Receiver Boundary
+Receiver runtime logic lives in internal modules (engine/pipeline).
+Ports define the purity boundary between I/O and domain logic:
+- `SampleSource`: input samples
+- `ArtifactSink`: output artifacts
+- `Clock`: time source
+
+These interfaces prevent I/O details from leaking into domain code.
