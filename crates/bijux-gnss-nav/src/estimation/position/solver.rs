@@ -84,7 +84,7 @@ impl PositionSolver {
         let mut cov = None;
         for _ in 0..self.max_iterations {
             used.clear();
-            for obs in observations {
+            for obs in &observations {
                 let eph = ephemerides.iter().find(|e| e.sat == obs.sat)?;
                 let mut tau = obs.pseudorange_m / 299_792_458.0;
                 let mut state = sat_state_gps_l1ca(eph, t_rx_s - tau, tau);
@@ -202,7 +202,9 @@ impl PositionSolver {
                     h_sep.push([hx, hy, hz, 1.0]);
                     v_sep.push(*res);
                 }
-                if let Some((dx, dy, dz, _dcb, _)) = solve_weighted_normal_eq(&h_sep, &v_sep, &vec![1.0; v_sep.len()]) {
+                if let Some((dx, dy, dz, _dcb, _)) =
+                    solve_weighted_normal_eq(&h_sep, &v_sep, &vec![1.0; v_sep.len()])
+                {
                     let delta = (dx * dx + dy * dy + dz * dz).sqrt();
                     if separation_max.map(|m| delta > m).unwrap_or(true) {
                         separation_max = Some(delta);

@@ -29,6 +29,18 @@ pub trait SignalSource {
     fn is_done(&self) -> bool;
 }
 
+/// Minimal sample source interface.
+pub trait SampleSource {
+    /// Error type returned by the source.
+    type Error;
+
+    /// Fetch the next sample frame.
+    fn next_samples(
+        &mut self,
+        frame_len: usize,
+    ) -> Result<Option<bijux_gnss_core::SamplesFrame>, Self::Error>;
+}
+
 /// Correlator interface for tracking tests.
 pub trait Correlator {
     /// Correlate a sample frame with a local code.
@@ -52,8 +64,5 @@ pub trait SampleSink {
     type Error;
 
     /// Push a sample frame into the sink.
-    fn push_frame(
-        &mut self,
-        frame: &bijux_gnss_core::SamplesFrame,
-    ) -> Result<(), Self::Error>;
+    fn push_frame(&mut self, frame: &bijux_gnss_core::SamplesFrame) -> Result<(), Self::Error>;
 }

@@ -7,7 +7,7 @@ use thiserror::Error;
 
 use bijux_gnss_core::{SampleClock, SampleTime, SamplesFrame, Seconds};
 
-use bijux_gnss_signal::{iq_i16_to_samples, SignalSource};
+use bijux_gnss_signal::{iq_i16_to_samples, SampleSource, SignalSource};
 
 #[derive(Debug, Error)]
 pub enum SampleSourceError {
@@ -141,5 +141,13 @@ impl SignalSource for FileSamples {
 
     fn is_done(&self) -> bool {
         self.done
+    }
+}
+
+impl SampleSource for FileSamples {
+    type Error = SampleSourceError;
+
+    fn next_samples(&mut self, frame_len: usize) -> Result<Option<SamplesFrame>, Self::Error> {
+        self.next_frame(frame_len)
     }
 }

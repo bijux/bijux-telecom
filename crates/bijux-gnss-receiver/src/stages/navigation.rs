@@ -273,15 +273,44 @@ impl Navigation {
 }
 
 impl bijux_gnss_nav::NavEngine for Navigation {
-    fn update(
-        &mut self,
-        obs: &bijux_gnss_core::ObsEpochV1,
-    ) -> Option<bijux_gnss_core::NavSolutionEpochV1> {
-        let solution = self.solve_epoch(&obs.payload, &[])?;
-        Some(bijux_gnss_core::NavSolutionEpochV1 {
+    fn update(&mut self, obs: &bijux_gnss_core::ObsEpochV1) -> bijux_gnss_core::NavSolutionEpochV1 {
+        let solution = self
+            .solve_epoch(&obs.payload, &[])
+            .unwrap_or_else(|| invalid_solution_epoch(&obs.payload));
+        bijux_gnss_core::NavSolutionEpochV1 {
             header: obs.header.clone(),
             payload: solution,
-        })
+        }
+    }
+}
+
+fn invalid_solution_epoch(obs: &ObsEpoch) -> NavSolutionEpoch {
+    NavSolutionEpoch {
+        epoch: bijux_gnss_core::Epoch {
+            index: obs.epoch_idx,
+        },
+        t_rx_s: obs.t_rx_s,
+        ecef_x_m: Meters(0.0),
+        ecef_y_m: Meters(0.0),
+        ecef_z_m: Meters(0.0),
+        latitude_deg: 0.0,
+        longitude_deg: 0.0,
+        altitude_m: Meters(0.0),
+        clock_bias_s: Seconds(0.0),
+        pdop: 0.0,
+        rms_m: Meters(0.0),
+        status: SolutionStatus::Invalid,
+        valid: false,
+        processing_ms: None,
+        residuals: Vec::new(),
+        isb: Vec::new(),
+        sigma_h_m: None,
+        sigma_v_m: None,
+        ekf_innovation_rms: None,
+        ekf_condition_number: None,
+        ekf_whiteness_ratio: None,
+        ekf_predicted_variance: None,
+        ekf_observed_variance: None,
     }
 }
 
@@ -315,63 +344,8 @@ impl ClockModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bijux_gnss_core::{
-        Constellation, Cycles, Hertz, LockFlags, Meters, ObsMetadata, ObsSatellite, ReceiverRole,
-        SatId, Seconds, SigId, SignalBand, SignalCode,
-    };
-
-    fn fake_obs_epoch(epoch_idx: u64) -> ObsEpoch {
-        let sats = (1..=4)
-            .map(|prn| ObsSatellite {
-                signal_id: SigId {
-                    sat: SatId {
-                        constellation: Constellation::Gps,
-                        prn,
-                    },
-                    band: SignalBand::L1,
-                    code: SignalCode::Ca,
-                },
-                pseudorange_m: Meters(20_200_000.0 + prn as f64),
-                pseudorange_var_m2: 100.0,
-                carrier_phase_cycles: Cycles(0.0),
-                carrier_phase_var_cycles2: 1.0,
-                doppler_hz: Hertz(0.0),
-                doppler_var_hz2: 1.0,
-                cn0_dbhz: 45.0,
-                lock_flags: LockFlags {
-                    code_lock: true,
-                    carrier_lock: true,
-                    bit_lock: true,
-                    cycle_slip: false,
-                },
-                multipath_suspect: false,
-                elevation_deg: Some(45.0),
-                azimuth_deg: Some(0.0),
-                weight: Some(1.0),
-                error_model: None,
-                metadata: ObsMetadata {
-                    tracking_mode: "scalar".to_string(),
-                    integration_ms: 1,
-                    lock_quality: 1.0,
-                    smoothing_window: 0,
-                    smoothing_age: 0,
-                    smoothing_resets: 0,
-                    signal: bijux_gnss_core::signal_spec_gps_l1_ca(),
-                },
-            })
-            .collect();
-        ObsEpoch {
-            t_rx_s: Seconds(epoch_idx as f64 * 0.001),
-            gps_week: None,
-            tow_s: None,
-            epoch_idx,
-            discontinuity: false,
-            valid: true,
-            processing_ms: None,
-            role: ReceiverRole::Rover,
-            sats,
-        }
-    }
+    use crate::stages::observations::fake_obs_epoch_for_nav_tests;
+    use bijux_gnss_core::{Meters, Seconds};
 
     #[test]
     fn navigation_degrades_on_solver_failure() {
@@ -407,7 +381,7 @@ mod tests {
                 ekf_observed_variance: None,
             }),
         };
-        let obs = fake_obs_epoch(10);
+        let obs = fake_obs_epoch_for_nav_tests(10);
         let solution = nav.solve_epoch(&obs, &[]).expect("degraded solution");
         assert_eq!(solution.status, SolutionStatus::Degraded);
         assert_eq!(solution.epoch.index, 10);

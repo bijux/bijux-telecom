@@ -9,6 +9,9 @@ use crate::tracking::TrackingResult;
 use crate::ReceiverConfig;
 use bijux_gnss_signal::samples_per_code;
 
+#[cfg(test)]
+use bijux_gnss_core::{Constellation, Hertz, SatId, SignalCode};
+
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 const TWO_PI: f64 = std::f64::consts::PI * 2.0;
 
@@ -289,4 +292,58 @@ fn slip_threshold_m(cn0_dbhz: f64, elevation_deg: Option<f64>) -> f64 {
     let elev = elevation_deg.unwrap_or(30.0).clamp(0.0, 90.0);
     let elev_factor = 1.0 + (30.0 - elev).max(0.0) / 30.0;
     5.0 * cn0_factor * elev_factor
+}
+
+#[cfg(test)]
+pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
+    let sats = (1..=4)
+        .map(|prn| ObsSatellite {
+            signal_id: SigId {
+                sat: SatId {
+                    constellation: Constellation::Gps,
+                    prn,
+                },
+                band: SignalBand::L1,
+                code: SignalCode::Ca,
+            },
+            pseudorange_m: Meters(20_200_000.0 + prn as f64),
+            pseudorange_var_m2: 100.0,
+            carrier_phase_cycles: Cycles(0.0),
+            carrier_phase_var_cycles2: 1.0,
+            doppler_hz: Hertz(0.0),
+            doppler_var_hz2: 1.0,
+            cn0_dbhz: 45.0,
+            lock_flags: LockFlags {
+                code_lock: true,
+                carrier_lock: true,
+                bit_lock: true,
+                cycle_slip: false,
+            },
+            multipath_suspect: false,
+            elevation_deg: Some(45.0),
+            azimuth_deg: Some(0.0),
+            weight: Some(1.0),
+            error_model: None,
+            metadata: ObsMetadata {
+                tracking_mode: "scalar".to_string(),
+                integration_ms: 1,
+                lock_quality: 1.0,
+                smoothing_window: 0,
+                smoothing_age: 0,
+                smoothing_resets: 0,
+                signal: bijux_gnss_core::signal_spec_gps_l1_ca(),
+            },
+        })
+        .collect();
+    ObsEpoch {
+        t_rx_s: Seconds(epoch_idx as f64 * 0.001),
+        gps_week: None,
+        tow_s: None,
+        epoch_idx,
+        discontinuity: false,
+        valid: true,
+        processing_ms: None,
+        role: ReceiverRole::Rover,
+        sats,
+    }
 }
