@@ -124,7 +124,10 @@ struct RunContext {
 
 static RUN_CONTEXT: OnceLock<RunContext> = OnceLock::new();
 
-fn now_unix_ms() -> u128 {
+fn now_unix_ms(deterministic: bool) -> u128 {
+    if deterministic {
+        return 0;
+    }
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -152,7 +155,11 @@ fn resolve_run_context(
         let dataset_tag = dataset
             .map(|d| d.id.clone())
             .unwrap_or_else(|| "unknown".to_string());
-        let stamp = now_unix_ms();
+        let stamp = if args.deterministic {
+            "deterministic".to_string()
+        } else {
+            now_unix_ms(false).to_string()
+        };
         PathBuf::from("runs").join(format!("{stamp}_{dataset_tag}_{command}"))
     };
     let layout = RunDirLayout::new(run_dir);
@@ -220,7 +227,7 @@ pub fn artifact_header(
         schema_version: ArtifactReadPolicy::LATEST,
         producer: env!("CARGO_PKG_NAME").to_string(),
         producer_version: env!("CARGO_PKG_VERSION").to_string(),
-        created_at_unix_ms: now_unix_ms(),
+        created_at_unix_ms: now_unix_ms(args.deterministic),
         git_sha: git_hash().unwrap_or_else(|| "unknown".to_string()),
         config_hash,
         dataset_id: dataset.map(|d| d.id.clone()),
@@ -260,7 +267,7 @@ pub fn write_manifest(
     };
     let manifest = RunManifest {
         command: command.to_string(),
-        timestamp_unix_ms: now_unix_ms(),
+        timestamp_unix_ms: now_unix_ms(args.deterministic),
         git_hash: git_hash().unwrap_or_else(|| "unknown".to_string()),
         git_dirty: git_dirty(),
         config_hash,
