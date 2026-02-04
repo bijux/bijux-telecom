@@ -8,6 +8,11 @@ pub use crate::artifact::{
 };
 /// Configuration composition and validation.
 pub use crate::config::{BijuxGnssConfig, SchemaVersion, ValidateConfig, ValidationReport};
+/// Scientific conventions and sanity checks.
+pub use crate::conventions::{
+    check_nav_solution_sanity, check_obs_epoch_sanity, is_solution_valid, ConventionsConfig,
+    NavSanityConfig,
+};
 /// Structured diagnostics.
 pub use crate::diagnostic::{
     aggregate_diagnostics, lookup_diagnostic, DiagnosticCode, DiagnosticEvent, DiagnosticSeverity,
@@ -31,7 +36,7 @@ pub use crate::obs::{
     AmbiguityState, AmbiguityStatus, DoubleDifference, InterFrequencyAlignmentReport,
     InterSystemBias, LockFlags, MeasurementErrorModel, NavHealthEvent, NavResidual,
     NavSolutionEpoch, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, Sample, SamplesFrame,
-    SingleDifference, TrackEpoch,
+    SingleDifference, SolutionStatus, TrackEpoch,
 };
 /// Time and epoch structures.
 pub use crate::time::{Epoch, GpsTime, LeapSeconds, SampleClock, SampleTime, TaiTime, UtcTime};

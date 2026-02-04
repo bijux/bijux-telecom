@@ -75,6 +75,8 @@ pub struct TrackEpoch {
     pub dll_err: f32,
     pub pll_err: f32,
     pub fll_err: f32,
+    #[serde(default)]
+    pub processing_ms: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -130,6 +132,10 @@ pub struct ObsEpoch {
     pub tow_s: Option<Seconds>,
     pub epoch_idx: u64,
     pub discontinuity: bool,
+    #[serde(default)]
+    pub valid: bool,
+    #[serde(default)]
+    pub processing_ms: Option<f64>,
     pub role: ReceiverRole,
     pub sats: Vec<ObsSatellite>,
 }
@@ -262,6 +268,7 @@ pub struct InterSystemBias {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NavSolutionEpoch {
     pub epoch: Epoch,
+    pub t_rx_s: Seconds,
     pub ecef_x_m: Meters,
     pub ecef_y_m: Meters,
     pub ecef_z_m: Meters,
@@ -271,6 +278,10 @@ pub struct NavSolutionEpoch {
     pub clock_bias_s: Seconds,
     pub pdop: f64,
     pub rms_m: Meters,
+    pub status: SolutionStatus,
+    pub valid: bool,
+    #[serde(default)]
+    pub processing_ms: Option<f64>,
     pub residuals: Vec<NavResidual>,
     pub isb: Vec<InterSystemBias>,
     pub sigma_h_m: Option<Meters>,
@@ -280,6 +291,22 @@ pub struct NavSolutionEpoch {
     pub ekf_whiteness_ratio: Option<f64>,
     pub ekf_predicted_variance: Option<f64>,
     pub ekf_observed_variance: Option<f64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SolutionStatus {
+    Invalid,
+    Degraded,
+    Coarse,
+    Converged,
+    Float,
+    Fixed,
+}
+
+impl SolutionStatus {
+    pub fn is_valid(self) -> bool {
+        !matches!(self, SolutionStatus::Invalid)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

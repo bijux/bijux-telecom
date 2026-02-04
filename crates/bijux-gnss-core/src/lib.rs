@@ -11,6 +11,7 @@
 
 mod artifact;
 mod config;
+mod conventions;
 mod diagnostic;
 mod error;
 mod ids;

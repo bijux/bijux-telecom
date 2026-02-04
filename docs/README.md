@@ -5,6 +5,7 @@ Welcome to the `bijux-gnss` documentation. Start with **Getting Started**, then 
 ## Core Guides
 - `docs/GETTING_STARTED.md`
 - `docs/CONCEPTS.md`
+- `docs/CONVENTIONS.md`
 - `docs/CLI.md`
 - `docs/ARTIFACTS.md`
 - `docs/DIAGNOSTICS.md`
