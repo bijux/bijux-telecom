@@ -200,15 +200,17 @@ impl Navigation {
             residuals: solution
                 .residuals
                 .into_iter()
-                .map(|(sat, residual_m)| NavResidual {
+                .map(|(sat, residual_m, weight)| NavResidual {
                     sat,
                     residual_m: Meters(residual_m),
                     rejected: false,
+                    weight: Some(weight),
                 })
                 .chain(solution.rejected.into_iter().map(|sat| NavResidual {
                     sat,
                     residual_m: Meters(0.0),
                     rejected: true,
+                    weight: None,
                 }))
                 .collect(),
             isb: Vec::new(),
@@ -217,11 +219,22 @@ impl Navigation {
         let sat_count = observations.len();
         nav_epoch.status = if sat_count < 4 {
             SolutionStatus::Degraded
-        } else if nav_epoch.rms_m.0 < 50.0 {
+        } else if nav_epoch.rms_m.0 < 10.0 {
             SolutionStatus::Converged
         } else {
             SolutionStatus::Coarse
         };
+
+        if let Some(sep) = solution.separation_max_m {
+            if sep > self.solver.separation_gate_m {
+                nav_epoch.status = SolutionStatus::Degraded;
+                crate::logging::diagnostic(&bijux_gnss_core::DiagnosticEvent::new(
+                    bijux_gnss_core::DiagnosticSeverity::Warning,
+                    "NAV_RAIM_SEPARATION",
+                    format!("solution separation exceeded: {:.2} m", sep),
+                ));
+            }
+        }
 
         let sanity_events = check_nav_solution_sanity(self.last_solution.as_ref(), &nav_epoch);
         if sanity_events

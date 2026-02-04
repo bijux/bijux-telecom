@@ -164,6 +164,13 @@ impl Tracking {
         );
         let cn0_dbhz = estimate_cn0_dbhz(correlator.prompt, correlator.early + correlator.late);
         logging::lock_status(0, correlator.prompt.norm() > 0.0);
+        if !correlator.prompt.re.is_finite() || !correlator.prompt.im.is_finite() {
+            crate::logging::diagnostic(&bijux_gnss_core::DiagnosticEvent::new(
+                bijux_gnss_core::DiagnosticSeverity::Error,
+                "TRACK_NUMERIC_INVALID",
+                "tracking correlator produced NaN/Inf",
+            ));
+        }
         let track_epoch = TrackEpoch {
             epoch,
             sample_index: frame.t0.sample_index,

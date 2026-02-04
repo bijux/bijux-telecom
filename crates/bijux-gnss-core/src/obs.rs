@@ -276,6 +276,8 @@ pub struct NavResidual {
     pub sat: SatId,
     pub residual_m: Meters,
     pub rejected: bool,
+    #[serde(default)]
+    pub weight: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

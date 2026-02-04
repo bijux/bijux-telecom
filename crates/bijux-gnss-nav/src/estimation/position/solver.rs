@@ -16,8 +16,10 @@ pub struct PositionSolution {
     pub rms_m: f64,
     pub sigma_h_m: Option<f64>,
     pub sigma_v_m: Option<f64>,
-    pub residuals: Vec<(SatId, f64)>,
+    pub residuals: Vec<(SatId, f64, f64)>,
     pub rejected: Vec<SatId>,
+    pub separation_max_m: Option<f64>,
+    pub separation_suspect: Option<SatId>,
 }
 
 #[derive(Debug, Clone)]
@@ -37,6 +39,7 @@ pub struct PositionSolver {
     pub robust: bool,
     pub huber_k: f64,
     pub raim: bool,
+    pub separation_gate_m: f64,
 }
 
 impl Default for PositionSolver {
@@ -54,6 +57,7 @@ impl PositionSolver {
             robust: true,
             huber_k: 30.0,
             raim: true,
+            separation_gate_m: 50.0,
         }
     }
 
@@ -66,6 +70,8 @@ impl PositionSolver {
         if observations.len() < 4 {
             return None;
         }
+        let mut observations = observations.to_vec();
+        observations.sort_by_key(|obs| (obs.sat.constellation as u8, obs.sat.prn));
         let mut x = 0.0_f64;
         let mut y = 0.0_f64;
         let mut z = 0.0_f64;
@@ -163,6 +169,8 @@ impl PositionSolver {
             return None;
         }
 
+        let mut separation_max = None;
+        let mut separation_suspect = None;
         if self.raim && filtered.len() >= 5 {
             let (worst_idx, worst_res) = filtered
                 .iter()
@@ -173,6 +181,34 @@ impl PositionSolver {
             if worst_res > self.residual_gate_m {
                 rejected.push(filtered[worst_idx].0.sat);
                 filtered.remove(worst_idx);
+            }
+
+            for idx in 0..filtered.len() {
+                let mut subset = filtered.clone();
+                let removed = subset.remove(idx);
+                if subset.len() < 4 {
+                    continue;
+                }
+                let mut h_sep = Vec::new();
+                let mut v_sep = Vec::new();
+                for (_obs, state, res) in &subset {
+                    let dx = x - state.x_m;
+                    let dy = y - state.y_m;
+                    let dz = z - state.z_m;
+                    let range = (dx * dx + dy * dy + dz * dz).sqrt();
+                    let hx = dx / range;
+                    let hy = dy / range;
+                    let hz = dz / range;
+                    h_sep.push([hx, hy, hz, 1.0]);
+                    v_sep.push(*res);
+                }
+                if let Some((dx, dy, dz, _dcb, _)) = solve_weighted_normal_eq(&h_sep, &v_sep, &vec![1.0; v_sep.len()]) {
+                    let delta = (dx * dx + dy * dy + dz * dz).sqrt();
+                    if separation_max.map(|m| delta > m).unwrap_or(true) {
+                        separation_max = Some(delta);
+                        separation_suspect = Some(removed.0.sat);
+                    }
+                }
             }
         }
 
@@ -228,8 +264,13 @@ impl PositionSolver {
             rms_m: rms,
             sigma_h_m: Some(sigma_h_m),
             sigma_v_m: Some(sigma_v_m),
-            residuals: filtered.iter().map(|(o, _, r)| (o.sat, *r)).collect(),
+            residuals: filtered
+                .iter()
+                .map(|(o, _, r)| (o.sat, *r, o.weight))
+                .collect(),
             rejected,
+            separation_max_m: separation_max,
+            separation_suspect,
         })
     }
 }
