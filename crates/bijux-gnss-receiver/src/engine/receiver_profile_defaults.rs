@@ -2,7 +2,7 @@
 
 use bijux_gnss_core::api::SchemaVersion;
 
-use crate::runtime::receiver_config::{
+use crate::engine::receiver_config::{
     default_tracking_integration_ms, AcquisitionProfile, NavigationProfile,
     NavigationWeightingProfile, PppProfile, ReceiverProfile, TrackingProfile,
 };

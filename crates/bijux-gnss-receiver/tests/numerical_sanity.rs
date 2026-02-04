@@ -2,10 +2,10 @@
 use std::fs;
 
 use bijux_gnss_receiver::api::{
-    acquisition::Acquisition,
-    observations::observations_from_tracking,
+    AcquisitionEngine,
+    observations_from_tracking,
     sim::{generate_l1_ca_multi, SyntheticScenario},
-    tracking::Tracking,
+    TrackingEngine,
     ReceiverConfig,
 };
 

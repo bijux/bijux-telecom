@@ -1,5 +1,5 @@
 use bijux_gnss_core::api::{SampleTime, SamplesFrame, SatId, Seconds};
-use bijux_gnss_receiver::api::{acquisition::Acquisition, ReceiverConfig};
+use bijux_gnss_receiver::api::{AcquisitionEngine, ReceiverConfig};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use num_complex::Complex;
 

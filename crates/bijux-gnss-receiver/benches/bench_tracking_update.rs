@@ -2,7 +2,7 @@ use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use num_complex::Complex;
 
 use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds};
-use bijux_gnss_receiver::api::tracking::Tracking;
+use bijux_gnss_receiver::api::TrackingEngine;
 use bijux_gnss_receiver::api::ReceiverConfig;
 
 fn bench_tracking_update(c: &mut Criterion) {

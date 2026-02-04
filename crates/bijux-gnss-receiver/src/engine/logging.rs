@@ -11,7 +11,7 @@ use std::path::Path;
 #[cfg(feature = "trace-dump")]
 use serde::Serialize;
 
-use crate::stages::tracking::ChannelState;
+use crate::pipeline::tracking::ChannelState;
 use bijux_gnss_core::api::{DiagnosticEvent, SatId};
 
 #[cfg(feature = "tracing")]

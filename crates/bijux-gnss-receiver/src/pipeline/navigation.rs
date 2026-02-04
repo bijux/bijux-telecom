@@ -9,7 +9,7 @@ use bijux_gnss_nav::api::{
     PositionObservation, PositionSolver, WeightingConfig,
 };
 
-use crate::runtime::receiver_config::ReceiverConfig;
+use crate::engine::receiver_config::ReceiverConfig;
 
 /// Navigation solution derived from observation epochs.
 pub struct Navigation {
@@ -153,12 +153,12 @@ impl Navigation {
             .collect();
         let start_time = std::time::Instant::now();
         if observations.len() < 4 {
-            crate::runtime::logging::diagnostic(&bijux_gnss_core::api::DiagnosticEvent::new(
+            crate::engine::logging::diagnostic(&bijux_gnss_core::api::DiagnosticEvent::new(
                 bijux_gnss_core::api::DiagnosticSeverity::Warning,
                 "NAV_INSUFFICIENT_SATS",
                 "insufficient satellites for navigation solution",
             ));
-            crate::runtime::diagnostics::dump_on_error(
+            crate::engine::diagnostics::dump_on_error(
                 "nav insufficient satellites",
                 Some(obs),
                 self.last_solution.as_ref(),
@@ -168,12 +168,12 @@ impl Navigation {
         let solution = match self.solver.solve_wls(&observations, eph, obs.t_rx_s.0) {
             Some(solution) => solution,
             None => {
-                crate::runtime::logging::diagnostic(&bijux_gnss_core::api::DiagnosticEvent::new(
+                crate::engine::logging::diagnostic(&bijux_gnss_core::api::DiagnosticEvent::new(
                     bijux_gnss_core::api::DiagnosticSeverity::Warning,
                     "NAV_SOLVER_FAILED",
                     "nav solver failed to converge",
                 ));
-                crate::runtime::diagnostics::dump_on_error(
+                crate::engine::diagnostics::dump_on_error(
                     "nav solver failed to converge",
                     Some(obs),
                     self.last_solution.as_ref(),
@@ -241,7 +241,7 @@ impl Navigation {
             nav_epoch
                 .health
                 .push(bijux_gnss_core::api::NavHealthEvent::CovarianceSymmetrized);
-            crate::runtime::logging::diagnostic(&bijux_gnss_core::api::DiagnosticEvent::new(
+            crate::engine::logging::diagnostic(&bijux_gnss_core::api::DiagnosticEvent::new(
                 bijux_gnss_core::api::DiagnosticSeverity::Warning,
                 "NAV_COV_SYMM",
                 "nav covariance symmetrized",
@@ -253,7 +253,7 @@ impl Navigation {
                     min_eigenvalue: 0.0,
                 },
             );
-            crate::runtime::logging::diagnostic(&bijux_gnss_core::api::DiagnosticEvent::new(
+            crate::engine::logging::diagnostic(&bijux_gnss_core::api::DiagnosticEvent::new(
                 bijux_gnss_core::api::DiagnosticSeverity::Warning,
                 "NAV_COV_CLAMP",
                 "nav covariance clamped",
@@ -281,7 +281,7 @@ impl Navigation {
         if let Some(sep) = solution.separation_max_m {
             if sep > self.solver.separation_gate_m {
                 nav_epoch.status = SolutionStatus::Degraded;
-                crate::runtime::logging::diagnostic(&bijux_gnss_core::api::DiagnosticEvent::new(
+                crate::engine::logging::diagnostic(&bijux_gnss_core::api::DiagnosticEvent::new(
                     bijux_gnss_core::api::DiagnosticSeverity::Warning,
                     "NAV_RAIM_SEPARATION",
                     format!("solution separation exceeded: {:.2} m", sep),
@@ -297,9 +297,9 @@ impl Navigation {
             nav_epoch.status = SolutionStatus::Degraded;
             nav_epoch.valid = false;
             for event in sanity_events {
-                crate::runtime::logging::diagnostic(&event);
+                crate::engine::logging::diagnostic(&event);
             }
-            crate::runtime::diagnostics::dump_on_error(
+            crate::engine::diagnostics::dump_on_error(
                 "nav solution sanity failed",
                 Some(obs),
                 Some(&nav_epoch),
@@ -325,7 +325,7 @@ impl Navigation {
         }
 
         if let Some(rms) = nav_epoch.innovation_rms_m {
-            crate::runtime::logging::diagnostic(&bijux_gnss_core::api::DiagnosticEvent::new(
+            crate::engine::logging::diagnostic(&bijux_gnss_core::api::DiagnosticEvent::new(
                 bijux_gnss_core::api::DiagnosticSeverity::Info,
                 "NAV_INNOVATION_RMS",
                 format!("innovation rms {:.3} m", rms),
@@ -503,7 +503,7 @@ impl ClockModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::stages::observations::fake_obs_epoch_for_nav_tests;
+    use crate::pipeline::observations::fake_obs_epoch_for_nav_tests;
     use bijux_gnss_core::api::{Meters, Seconds};
 
     #[test]

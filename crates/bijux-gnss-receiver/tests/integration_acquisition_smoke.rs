@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 use bijux_gnss_receiver::api::{
-    acquisition::Acquisition,
+    AcquisitionEngine,
     sim::{generate_l1_ca, SyntheticSignalParams},
     ReceiverConfig,
 };

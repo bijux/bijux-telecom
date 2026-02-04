@@ -2,7 +2,7 @@
 #![allow(missing_docs)]
 
 use crate::api::{Receiver, ReceiverEngine, RunArtifacts};
-use crate::runtime::metrics::write_metrics_summary;
+use crate::engine::metrics::write_metrics_summary;
 use bijux_gnss_core::api::{Constellation, InputError, SatId, SignalBand};
 
 impl Receiver {
@@ -14,7 +14,7 @@ impl Receiver {
         input: &mut dyn bijux_gnss_signal::api::SignalSource<
             Error = crate::io::data::SampleSourceError,
         >,
-    ) -> Result<RunArtifacts, crate::runtime::receiver_config::ReceiverError> {
+    ) -> Result<RunArtifacts, crate::engine::receiver_config::ReceiverError> {
         let samples_per_code = bijux_gnss_signal::api::samples_per_code(
             self.config().sampling_freq_hz,
             self.config().code_freq_basis_hz,
@@ -24,12 +24,12 @@ impl Receiver {
             Ok(Some(frame)) => frame,
             Ok(None) => return Ok(RunArtifacts::default()),
             Err(err) => {
-                crate::runtime::diagnostics::dump_on_error(
+                crate::engine::diagnostics::dump_on_error(
                     &format!("input error: {err}"),
                     None,
                     None,
                 );
-                return Err(crate::runtime::receiver_config::ReceiverError::Input(InputError {
+                return Err(crate::engine::receiver_config::ReceiverError::Input(InputError {
                     message: err.to_string(),
                 }));
             }
@@ -42,10 +42,10 @@ impl Receiver {
             })
             .collect();
         let acquisition =
-            crate::stages::acquisition::Acquisition::new(self.config().clone());
+            crate::pipeline::acquisition::Acquisition::new(self.config().clone());
         let acquisitions = acquisition.run_fft(&frame, &sats);
 
-        let tracking = crate::stages::tracking::Tracking::new(self.config().clone());
+        let tracking = crate::pipeline::tracking::Tracking::new(self.config().clone());
         let tracking_results =
             tracking.track_from_acquisition(&frame, &acquisitions, SignalBand::L1);
         let artifacts = RunArtifacts {
@@ -65,7 +65,7 @@ impl ReceiverEngine for Receiver {
         input: &mut dyn bijux_gnss_signal::api::SignalSource<
             Error = crate::io::data::SampleSourceError,
         >,
-    ) -> Result<RunArtifacts, crate::runtime::receiver_config::ReceiverError> {
+    ) -> Result<RunArtifacts, crate::engine::receiver_config::ReceiverError> {
         Receiver::run(self, input)
     }
 }

@@ -2,7 +2,7 @@
 
 use bijux_gnss_core::api::{ConfigError, SchemaVersion, ValidateConfig, ValidationReport};
 
-use crate::runtime::receiver_config::{
+use crate::engine::receiver_config::{
     parse_band, BandTrackingSpec, ReceiverConfig, ReceiverProfile,
 };
 

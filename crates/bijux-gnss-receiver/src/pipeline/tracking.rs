@@ -6,8 +6,8 @@ use bijux_gnss_core::api::{
     Chips, Constellation, Hertz, SampleClock, SampleTime, SamplesFrame, SatId, Seconds, TrackEpoch,
 };
 
-use crate::runtime::logging;
-use crate::runtime::receiver_config::ReceiverConfig;
+use crate::engine::logging;
+use crate::engine::receiver_config::ReceiverConfig;
 use bijux_gnss_core::api::Sample;
 use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::Nco;
@@ -166,12 +166,12 @@ impl Tracking {
         let cn0_dbhz = estimate_cn0_dbhz(correlator.prompt, correlator.early + correlator.late);
         logging::lock_status(0, correlator.prompt.norm() > 0.0);
         if !correlator.prompt.re.is_finite() || !correlator.prompt.im.is_finite() {
-            crate::runtime::logging::diagnostic(&bijux_gnss_core::api::DiagnosticEvent::new(
+            crate::engine::logging::diagnostic(&bijux_gnss_core::api::DiagnosticEvent::new(
                 bijux_gnss_core::api::DiagnosticSeverity::Error,
                 "TRACK_NUMERIC_INVALID",
                 "tracking correlator produced NaN/Inf",
             ));
-            crate::runtime::diagnostics::dump_on_error(
+            crate::engine::diagnostics::dump_on_error(
                 "tracking correlator produced NaN/Inf",
                 None,
                 None,
@@ -345,7 +345,7 @@ impl Tracking {
 
         let mut out = Vec::new();
         for epoch_idx in 0..epochs {
-            let alloc_before = crate::runtime::alloc::allocation_count();
+            let alloc_before = crate::engine::alloc::allocation_count();
             let start_time = std::time::Instant::now();
             let start = epoch_idx * samples_per_code;
             let end = (start + samples_per_code).min(frame.len());
@@ -382,7 +382,7 @@ impl Tracking {
                     }
                 }
             }
-            let alloc_after = crate::runtime::alloc::allocation_count();
+            let alloc_after = crate::engine::alloc::allocation_count();
             if alloc_after > alloc_before {
                 logging::diagnostic(&bijux_gnss_core::api::DiagnosticEvent::new(
                     bijux_gnss_core::api::DiagnosticSeverity::Warning,
@@ -510,7 +510,7 @@ mod tests {
     #[test]
     #[cfg(feature = "alloc-audit")]
     fn tracking_allocations_under_threshold() {
-        let config = crate::runtime::receiver_config::ReceiverConfig::default();
+        let config = crate::engine::receiver_config::ReceiverConfig::default();
         let samples_per_code = bijux_gnss_signal::api::samples_per_code(
             config.sampling_freq_hz,
             config.code_freq_basis_hz,
@@ -519,9 +519,9 @@ mod tests {
         let samples = vec![num_complex::Complex::new(0.0, 0.0); samples_per_code];
         let tracking = Tracking::new(config);
 
-        let before = crate::runtime::alloc::allocation_count();
+        let before = crate::engine::alloc::allocation_count();
         let _ = tracking.run(&samples);
-        let after = crate::runtime::alloc::allocation_count();
+        let after = crate::engine::alloc::allocation_count();
 
         let allocated = after.saturating_sub(before);
         let threshold = 200;

@@ -7,10 +7,10 @@ use bijux_gnss_core::api::{AcqResult, Hertz, SamplesFrame, SatId};
 use num_complex::Complex;
 use rustfft::{num_traits::Zero, FftPlanner};
 
-use crate::runtime::logging;
+use crate::engine::logging;
 #[cfg(feature = "trace-dump")]
-use crate::runtime::logging::{dump_acq_trace, AcqTrace};
-use crate::runtime::receiver_config::ReceiverConfig;
+use crate::engine::logging::{dump_acq_trace, AcqTrace};
+use crate::engine::receiver_config::ReceiverConfig;
 use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::Nco;
 use bijux_gnss_signal::api::{generate_ca_code, Prn};

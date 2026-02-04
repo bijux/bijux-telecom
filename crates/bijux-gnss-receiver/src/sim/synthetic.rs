@@ -6,7 +6,7 @@ use num_complex::Complex;
 
 use bijux_gnss_core::api::{Constellation, SampleClock, SampleTime, SamplesFrame, SatId, Seconds};
 
-use crate::runtime::receiver_config::ReceiverConfig;
+use crate::engine::receiver_config::ReceiverConfig;
 use bijux_gnss_nav::api::GpsEphemeris;
 use bijux_gnss_signal::api::{generate_ca_code, Prn};
 use serde::{Deserialize, Serialize};

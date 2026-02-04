@@ -1,6 +1,6 @@
 //! Validation report builders for GNSS runs.
 
-use crate::api::tracking::TrackingResult;
+use crate::api::TrackingResult;
 use crate::api::ReceiverProfile;
 use crate::validation_helpers::{check_budgets, to_validation_stats};
 use bijux_gnss_core::api::{

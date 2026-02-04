@@ -5,8 +5,8 @@ use bijux_gnss_core::api::{
     SignalBand, TrackEpoch,
 };
 
-use crate::runtime::receiver_config::ReceiverConfig;
-use crate::stages::tracking::TrackingResult;
+use crate::engine::receiver_config::ReceiverConfig;
+use crate::pipeline::tracking::TrackingResult;
 use bijux_gnss_signal::api::samples_per_code;
 
 #[cfg(test)]
@@ -181,7 +181,7 @@ pub fn observations_from_tracking(config: &ReceiverConfig, epochs: &[TrackEpoch]
         {
             epoch.valid = false;
             for event in events {
-                crate::runtime::logging::diagnostic(&event);
+                crate::engine::logging::diagnostic(&event);
             }
         }
         out.push(epoch);
@@ -302,7 +302,7 @@ pub fn observations_from_tracking_results(
         {
             epoch.valid = false;
             for event in events {
-                crate::runtime::logging::diagnostic(&event);
+                crate::engine::logging::diagnostic(&event);
             }
         }
         out.push(epoch);
@@ -311,7 +311,7 @@ pub fn observations_from_tracking_results(
     {
         let events = bijux_gnss_core::api::validate_obs_epochs(&out);
         for event in events {
-            crate::runtime::logging::diagnostic(&event);
+            crate::engine::logging::diagnostic(&event);
         }
     }
     out

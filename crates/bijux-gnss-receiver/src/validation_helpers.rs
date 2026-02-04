@@ -3,7 +3,7 @@
 
 use crate::validation_report::{ValidationBudgets, ValidationErrorStats};
 use bijux_gnss_core::api::{NavSolutionEpoch, StatsSummary};
-use crate::stages::tracking::TrackingResult;
+use crate::pipeline::tracking::TrackingResult;
 
 pub(crate) fn check_budgets(
     tracks: &[TrackingResult],
