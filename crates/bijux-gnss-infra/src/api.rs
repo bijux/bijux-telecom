@@ -4,13 +4,6 @@ pub use crate::artifact_tools::{
     artifact_explain, artifact_validate, ArtifactExplainResult, ArtifactValidationResult,
 };
 pub use crate::commands::prepare_run;
-pub use crate::dataset::{DatasetEntry, DatasetRegistry};
-pub use crate::run_layout::{
-    append_run_index, artifact_header, artifacts_dir, run_dir, run_report_schema_version,
-    write_manifest, write_run_report, RunContextArgs, RunDirLayout, RunIndexEntry, RunManifest,
-    RunReport,
-};
-pub use crate::sweep::{expand_sweep, parse_sweep};
 pub use crate::validate_reference::validate_reference;
 pub use bijux_gnss_receiver::api::core::{
     align_reference_by_time, check_solution_consistency, reference_compare, reference_ecef,
@@ -30,93 +23,36 @@ pub use bijux_gnss_receiver::api as receiver;
 /// Core API re-exports for CLI convenience.
 pub use bijux_gnss_receiver::api::core;
 
-/// Hash a config file or profile snapshot.
-pub fn hash_config(
-    path: Option<&std::path::PathBuf>,
-    profile: &bijux_gnss_receiver::api::ReceiverProfile,
-) -> Result<String, bijux_gnss_receiver::api::core::InputError> {
-    crate::hash::core::hash_config(path, profile)
+/// Run layout helpers.
+pub mod run_layout {
+    pub use crate::run_layout::{
+        append_run_index, artifact_header, artifacts_dir, run_dir, run_report_schema_version,
+        write_manifest, write_run_report, RunContextArgs, RunDirLayout, RunIndexEntry, RunManifest,
+        RunReport,
+    };
 }
 
-/// Return current git hash if available.
-pub fn git_hash() -> Option<String> {
-    crate::hash::core::git_hash()
+/// Dataset helpers.
+pub mod datasets {
+    pub use crate::datasets::{parse_ecef, DatasetEntry, DatasetRegistry};
 }
 
-/// Return true when git workspace is dirty.
-pub fn git_dirty() -> bool {
-    crate::hash::core::git_dirty()
+/// Experiment helpers.
+pub mod experiments {
+    pub use crate::experiments::{ExperimentSpec, SweepParameter};
+    pub use crate::sweep::{expand_sweep, parse_sweep};
 }
 
-/// CPU feature detection summary.
-pub fn cpu_features() -> Vec<String> {
-    crate::hash::core::cpu_features()
+/// Override helpers.
+pub mod overrides {
+    pub use crate::overrides::{
+        apply_common_overrides, apply_overrides, apply_sweep_value, CommonOverrides,
+    };
 }
 
-/// Parse ECEF coordinates in x,y,z format.
-pub fn parse_ecef(text: &str) -> Result<[f64; 3], bijux_gnss_receiver::api::core::InputError> {
-    crate::parse::core::parse_ecef(text)
-}
-
-/// Common override values from CLI.
-#[derive(Debug, Clone, Copy)]
-pub struct CommonOverrides {
-    /// Deterministic seed override.
-    pub seed: Option<u64>,
-    /// Force deterministic run.
-    pub deterministic: bool,
-}
-
-/// Sweep parameter definition.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct SweepParameter {
-    /// Parameter key.
-    pub key: String,
-    /// Values to sweep.
-    pub values: Vec<String>,
-}
-
-/// Experiment specification for batch runs.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ExperimentSpec {
-    /// Dataset or scenario id.
-    pub dataset_id: String,
-    /// Optional config path.
-    pub config_path: Option<String>,
-    /// Sweep parameters.
-    pub sweep: Vec<SweepParameter>,
-    /// Deterministic seed.
-    pub seed: Option<u64>,
-    /// Output directory.
-    pub out_dir: Option<String>,
-}
-
-/// Apply config overrides from CLI options.
-pub fn apply_overrides(
-    profile: &mut bijux_gnss_receiver::api::ReceiverProfile,
-    sampling_hz: Option<f64>,
-    if_hz: Option<f64>,
-    code_hz: Option<f64>,
-    code_length: Option<usize>,
-) {
-    crate::overrides::core::apply_overrides(profile, sampling_hz, if_hz, code_hz, code_length);
-}
-
-/// Apply seed/determinism overrides.
-pub fn apply_common_overrides(
-    profile: &mut bijux_gnss_receiver::api::ReceiverProfile,
-    common: CommonOverrides,
-) {
-    crate::overrides::core::apply_common_overrides(profile, common);
-}
-
-/// Apply sweep parameter overrides.
-pub fn apply_sweep_value(
-    profile: &mut bijux_gnss_receiver::api::ReceiverProfile,
-    key: &str,
-    value: &str,
-) -> Result<(), bijux_gnss_receiver::api::core::InputError> {
-    crate::overrides::core::apply_sweep_value(profile, key, value)
+/// Hash helpers.
+pub mod hash {
+    pub use crate::hash::{cpu_features, git_dirty, git_hash, hash_config};
 }
 
 /// Signal API re-exports for CLI convenience.

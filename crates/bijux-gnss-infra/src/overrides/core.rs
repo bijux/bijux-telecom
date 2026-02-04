@@ -3,7 +3,7 @@
 use bijux_gnss_receiver::api::core::InputError;
 use bijux_gnss_receiver::api::ReceiverProfile;
 
-use crate::api::CommonOverrides;
+use crate::overrides::CommonOverrides;
 
 /// Apply config overrides from CLI options.
 pub(crate) fn apply_overrides(
