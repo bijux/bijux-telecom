@@ -296,11 +296,6 @@ pub fn run_report_schema_version() -> u32 {
     RUN_REPORT_SCHEMA_VERSION
 }
 
-/// Load run report schema version.
-pub fn run_report_schema_version() -> u32 {
-    RUN_REPORT_SCHEMA_VERSION
-}
-
 /// Write a run report to disk.
 pub fn write_run_report(
     args: &RunContextArgs<'_>,
