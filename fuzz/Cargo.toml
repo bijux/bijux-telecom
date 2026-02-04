@@ -1,0 +1,15 @@
+[package]
+name = "bijux-gnss-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[dependencies]
+libfuzzer-sys = "0.4"
+bijux-gnss-nav = { path = "../crates/bijux-gnss-nav" }
+bijux-gnss-infra = { path = "../crates/bijux-gnss-infra" }
+bijux-gnss-receiver = { path = "../crates/bijux-gnss-receiver" }
+toml = "0.8"
+
+[package.metadata]
+cargo-fuzz = true
