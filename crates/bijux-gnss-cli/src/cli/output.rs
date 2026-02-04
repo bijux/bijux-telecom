@@ -327,7 +327,7 @@ fn read_obs_epochs(path: &Path) -> Result<Vec<ObsEpoch>> {
         }
         if line.contains("\"header\"") {
             let wrapped: ObsEpochV1 = serde_json::from_str(line)?;
-            if !ArtifactReadPolicy::is_supported(wrapped.header.schema_version) {
+            if wrapped.header.schema_version != ArtifactReadPolicy::LATEST {
                 bail!(
                     "unsupported obs schema_version {}",
                     wrapped.header.schema_version
@@ -347,7 +347,7 @@ fn read_ephemeris(path: &Path) -> Result<Vec<GpsEphemeris>> {
     let data = fs::read_to_string(path)?;
     if data.contains("\"header\"") {
         let wrapped: GpsEphemerisV1 = serde_json::from_str(&data)?;
-        if !ArtifactReadPolicy::is_supported(wrapped.header.schema_version) {
+        if wrapped.header.schema_version != ArtifactReadPolicy::LATEST {
             bail!(
                 "unsupported ephemeris schema_version {}",
                 wrapped.header.schema_version
@@ -419,7 +419,7 @@ fn read_nav_solutions(path: &Path) -> Result<Vec<bijux_gnss_core::NavSolutionEpo
             continue;
         }
         let wrapped: NavSolutionEpochV1 = serde_json::from_str(line)?;
-        if !ArtifactReadPolicy::is_supported(wrapped.header.schema_version) {
+        if wrapped.header.schema_version != ArtifactReadPolicy::LATEST {
             bail!(
                 "unsupported nav schema_version {}",
                 wrapped.header.schema_version

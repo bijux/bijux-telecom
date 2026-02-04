@@ -16,7 +16,19 @@ pub const DIAGNOSTIC_CODES: &[DiagnosticCode] = &[
         mitigation: "Inspect loop configuration and correlator outputs.",
     },
     DiagnosticCode {
+        code: "TRACK_NUMERIC_INVALID",
+        severity: DiagnosticSeverity::Error,
+        meaning: "Tracking epoch contains NaN/Inf",
+        mitigation: "Inspect loop configuration and correlator outputs.",
+    },
+    DiagnosticCode {
         code: "GNSS_NUMERIC_OBS_INVALID",
+        severity: DiagnosticSeverity::Error,
+        meaning: "Observation contains NaN/Inf",
+        mitigation: "Check tracking outputs and observables conversion.",
+    },
+    DiagnosticCode {
+        code: "GNSS_OBS_NUMERIC_INVALID",
         severity: DiagnosticSeverity::Error,
         meaning: "Observation contains NaN/Inf",
         mitigation: "Check tracking outputs and observables conversion.",
@@ -44,6 +56,18 @@ pub const DIAGNOSTIC_CODES: &[DiagnosticCode] = &[
         severity: DiagnosticSeverity::Error,
         meaning: "Observation epoch validation failed",
         mitigation: "Inspect observation ordering, IDs, and time tags.",
+    },
+    DiagnosticCode {
+        code: "GNSS_OBS_TIME_NON_MONOTONIC",
+        severity: DiagnosticSeverity::Error,
+        meaning: "Observation time tags are not monotonic",
+        mitigation: "Ensure obs epochs are ordered by t_rx_s.",
+    },
+    DiagnosticCode {
+        code: "GNSS_OBS_ID_INVALID",
+        severity: DiagnosticSeverity::Error,
+        meaning: "Observation contains invalid signal or satellite IDs",
+        mitigation: "Check constellation, PRN, band, and code assignments.",
     },
     DiagnosticCode {
         code: "GNSS_OBS_CN0_INVALID",
@@ -74,6 +98,12 @@ pub const DIAGNOSTIC_CODES: &[DiagnosticCode] = &[
         severity: DiagnosticSeverity::Error,
         meaning: "Nav solution position jump exceeds threshold",
         mitigation: "Inspect time alignment and receiver clock.",
+    },
+    DiagnosticCode {
+        code: "NAV_RAIM_SEPARATION",
+        severity: DiagnosticSeverity::Warning,
+        meaning: "Nav RAIM separation exceeded threshold",
+        mitigation: "Inspect measurement consistency and RAIM settings.",
     },
     DiagnosticCode {
         code: "NAV_CLOCK_JUMP",
@@ -118,6 +148,18 @@ pub const DIAGNOSTIC_CODES: &[DiagnosticCode] = &[
         mitigation: "Enable alloc-trace and reduce per-epoch allocations.",
     },
     DiagnosticCode {
+        code: "RTK_SD_NUMERIC_INVALID",
+        severity: DiagnosticSeverity::Error,
+        meaning: "RTK single-difference contains NaN/Inf",
+        mitigation: "Inspect SD observation construction.",
+    },
+    DiagnosticCode {
+        code: "RTK_SD_VARIANCE_INVALID",
+        severity: DiagnosticSeverity::Error,
+        meaning: "RTK single-difference variance is invalid",
+        mitigation: "Inspect SD variance modeling.",
+    },
+    DiagnosticCode {
         code: "RTK_SD_CODE_INVALID",
         severity: DiagnosticSeverity::Error,
         meaning: "RTK single-difference code contains NaN/Inf",
@@ -154,7 +196,25 @@ pub const DIAGNOSTIC_CODES: &[DiagnosticCode] = &[
         mitigation: "Inspect DD Doppler formation.",
     },
     DiagnosticCode {
+        code: "RTK_DD_NUMERIC_INVALID",
+        severity: DiagnosticSeverity::Error,
+        meaning: "RTK double-difference contains NaN/Inf",
+        mitigation: "Inspect DD observation construction.",
+    },
+    DiagnosticCode {
+        code: "RTK_DD_VARIANCE_INVALID",
+        severity: DiagnosticSeverity::Error,
+        meaning: "RTK double-difference variance is invalid",
+        mitigation: "Inspect DD variance modeling.",
+    },
+    DiagnosticCode {
         code: "RTK_BASELINE_INVALID",
+        severity: DiagnosticSeverity::Error,
+        meaning: "RTK baseline contains NaN/Inf",
+        mitigation: "Inspect baseline solver and DD residuals.",
+    },
+    DiagnosticCode {
+        code: "RTK_BASELINE_NUMERIC_INVALID",
         severity: DiagnosticSeverity::Error,
         meaning: "RTK baseline contains NaN/Inf",
         mitigation: "Inspect baseline solver and DD residuals.",
@@ -166,10 +226,28 @@ pub const DIAGNOSTIC_CODES: &[DiagnosticCode] = &[
         mitigation: "Inspect covariance propagation and residual metrics.",
     },
     DiagnosticCode {
+        code: "RTK_QUALITY_NUMERIC_INVALID",
+        severity: DiagnosticSeverity::Error,
+        meaning: "RTK baseline quality metrics contain NaN/Inf",
+        mitigation: "Inspect covariance propagation and residual metrics.",
+    },
+    DiagnosticCode {
         code: "RTK_PRECISION_INVALID",
         severity: DiagnosticSeverity::Error,
         meaning: "RTK precision metrics contain NaN/Inf",
         mitigation: "Inspect fix ratio and precision reporting.",
+    },
+    DiagnosticCode {
+        code: "RTK_PRECISION_NUMERIC_INVALID",
+        severity: DiagnosticSeverity::Error,
+        meaning: "RTK precision metrics contain NaN/Inf",
+        mitigation: "Inspect fix ratio and precision reporting.",
+    },
+    DiagnosticCode {
+        code: "RTK_FIX_AUDIT_NUMERIC_INVALID",
+        severity: DiagnosticSeverity::Error,
+        meaning: "RTK fix audit contains NaN/Inf",
+        mitigation: "Inspect fix audit calculations.",
     },
     DiagnosticCode {
         code: "PPP_EPOCH_INVALID",

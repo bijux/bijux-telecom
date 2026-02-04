@@ -218,6 +218,8 @@ pub fn artifact_header(
     let config_hash = hash_config(args.config, profile)?;
     Ok(ArtifactHeaderV1 {
         schema_version: ArtifactReadPolicy::LATEST,
+        producer: env!("CARGO_PKG_NAME").to_string(),
+        producer_version: env!("CARGO_PKG_VERSION").to_string(),
         created_at_unix_ms: now_unix_ms(),
         git_sha: git_hash().unwrap_or_else(|| "unknown".to_string()),
         config_hash,

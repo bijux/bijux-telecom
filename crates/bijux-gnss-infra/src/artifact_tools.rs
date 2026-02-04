@@ -5,9 +5,8 @@ use std::path::Path;
 use crate::errors::{InfraError, InfraResult};
 use bijux_gnss_core::{
     aggregate_diagnostics, ArtifactHeaderV1, ArtifactReadPolicy, ArtifactValidate, DiagnosticEvent,
-    DiagnosticSeverity, ObsEpochV1, TrackEpochV1,
+    DiagnosticSeverity, ObsEpochV1,
 };
-use bijux_gnss_nav::GpsEphemerisV1;
 
 /// Result of validating an artifact.
 #[derive(Debug, Clone)]
@@ -55,15 +54,14 @@ pub fn artifact_validate(
 
     let diagnostics = match kind.as_str() {
         "obs" => validate_obs_artifact(&data)?,
-        "track" => validate_track_artifact(&data)?,
-        "acq" => validate_acq_artifact(&data)?,
-        "eph" | "ephemeris" => validate_ephemeris_artifact(&data)?,
-        "pvt" | "nav" => validate_pvt_artifact(&data)?,
-        "ppp" => validate_ppp_artifact(&data)?,
-        "rtk" => validate_rtk_artifact(&data)?,
+        "unknown" => {
+            return Err(InfraError::InvalidInput(
+                "unsupported artifact type".to_string(),
+            ))
+        }
         _ => {
             return Err(InfraError::InvalidInput(
-                "unknown artifact kind; pass --kind".to_string(),
+                "unsupported artifact type".to_string(),
             ))
         }
     };
@@ -75,36 +73,28 @@ pub fn artifact_validate(
 pub fn artifact_explain(path: &Path) -> InfraResult<ArtifactExplainResult> {
     let data = std::fs::read_to_string(path)?;
     let mut header: Option<ArtifactHeaderV1> = None;
-    let mut kind = detect_kind_from_path(path).unwrap_or_else(|| "unknown".to_string());
+    let kind = detect_kind_from_path(path).unwrap_or_else(|| "unknown".to_string());
     let mut entries = 0usize;
 
-    if data.trim_start().starts_with('{') && !data.contains('\n') {
-        if let Ok(wrapped) = serde_json::from_str::<GpsEphemerisV1>(&data) {
-            header = Some(wrapped.header);
-            kind = "ephemeris".to_string();
-            entries = wrapped.payload.len();
-        } else if let Ok(wrapped) = serde_json::from_str::<serde_json::Value>(&data) {
-            if let Some(value) = wrapped.get("header") {
-                header = Some(serde_json::from_value(value.clone())?);
-            }
-        }
-    } else {
-        for line in data.lines() {
-            if line.trim().is_empty() {
-                continue;
-            }
-            if header.is_none() {
-                let value: serde_json::Value = serde_json::from_str(line)?;
-                if let Some(value) = value.get("header") {
-                    header = Some(serde_json::from_value(value.clone())?);
-                }
-            }
-            entries += 1;
-        }
+    if kind != "obs" {
+        return Err(InfraError::InvalidInput(
+            "unsupported artifact type".to_string(),
+        ));
     }
 
-    let header = header
-        .ok_or_else(|| InfraError::InvalidInput("artifact header not found".to_string()))?;
+    for line in data.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let wrapped: ObsEpochV1 = serde_json::from_str(line)?;
+        if header.is_none() {
+            header = Some(wrapped.header.clone());
+        }
+        entries += 1;
+    }
+
+    let header =
+        header.ok_or_else(|| InfraError::InvalidInput("artifact header not found".to_string()))?;
     let diagnostics = artifact_validate(path, Some(&kind), false)?.diagnostics;
     let summary = aggregate_diagnostics(&diagnostics);
     let mut error_count = 0usize;
@@ -130,17 +120,28 @@ pub fn artifact_explain(path: &Path) -> InfraResult<ArtifactExplainResult> {
 fn validate_obs_artifact(data: &str) -> InfraResult<Vec<DiagnosticEvent>> {
     let mut epochs = Vec::new();
     let mut events = Vec::new();
+    let mut last_t_rx_s: Option<bijux_gnss_core::Seconds> = None;
     for line in data.lines() {
         if line.trim().is_empty() {
             continue;
         }
         let wrapped: ObsEpochV1 = serde_json::from_str(line)?;
-        if !ArtifactReadPolicy::is_supported(wrapped.header.schema_version) {
+        if wrapped.header.schema_version != ArtifactReadPolicy::LATEST {
             return Err(InfraError::InvalidInput(format!(
                 "unsupported obs schema_version {}",
                 wrapped.header.schema_version
             )));
         }
+        if let Some(prev) = last_t_rx_s {
+            if wrapped.payload.t_rx_s.0 < prev.0 {
+                events.push(DiagnosticEvent::new(
+                    DiagnosticSeverity::Error,
+                    "GNSS_OBS_TIME_NON_MONOTONIC",
+                    "obs t_rx_s is not monotonic",
+                ));
+            }
+        }
+        last_t_rx_s = Some(wrapped.payload.t_rx_s);
         events.extend(wrapped.validate());
         epochs.push(wrapped.payload);
     }
@@ -150,162 +151,6 @@ fn validate_obs_artifact(data: &str) -> InfraResult<Vec<DiagnosticEvent>> {
             "GNSS_OBS_VALIDATE_FAILED",
             format!("obs epoch validation failed: {err}"),
         ));
-    }
-    Ok(events)
-}
-
-fn validate_track_artifact(data: &str) -> InfraResult<Vec<DiagnosticEvent>> {
-    let mut events = Vec::new();
-    for line in data.lines() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let wrapped: TrackEpochV1 = serde_json::from_str(line)?;
-        if !ArtifactReadPolicy::is_supported(wrapped.header.schema_version) {
-            return Err(InfraError::InvalidInput(format!(
-                "unsupported track schema_version {}",
-                wrapped.header.schema_version
-            )));
-        }
-        events.extend(wrapped.validate());
-    }
-    Ok(events)
-}
-
-fn validate_acq_artifact(data: &str) -> InfraResult<Vec<DiagnosticEvent>> {
-    let mut events = Vec::new();
-    for line in data.lines() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let wrapped: bijux_gnss_core::AcqResultV1 = serde_json::from_str(line)?;
-        if !ArtifactReadPolicy::is_supported(wrapped.header.schema_version) {
-            return Err(InfraError::InvalidInput(format!(
-                "unsupported acq schema_version {}",
-                wrapped.header.schema_version
-            )));
-        }
-        events.extend(wrapped.validate());
-    }
-    Ok(events)
-}
-
-fn validate_ephemeris_artifact(data: &str) -> InfraResult<Vec<DiagnosticEvent>> {
-    let wrapped: GpsEphemerisV1 = serde_json::from_str(data)?;
-    if !ArtifactReadPolicy::is_supported(wrapped.header.schema_version) {
-        return Err(InfraError::InvalidInput(format!(
-            "unsupported ephemeris schema_version {}",
-            wrapped.header.schema_version
-        )));
-    }
-    Ok(Vec::new())
-}
-
-fn validate_pvt_artifact(data: &str) -> InfraResult<Vec<DiagnosticEvent>> {
-    let mut events = Vec::new();
-    for line in data.lines() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let wrapped: bijux_gnss_core::NavSolutionEpochV1 = serde_json::from_str(line)?;
-        if !ArtifactReadPolicy::is_supported(wrapped.header.schema_version) {
-            return Err(InfraError::InvalidInput(format!(
-                "unsupported pvt schema_version {}",
-                wrapped.header.schema_version
-            )));
-        }
-        events.extend(wrapped.validate());
-    }
-    Ok(events)
-}
-
-fn validate_ppp_artifact(data: &str) -> InfraResult<Vec<DiagnosticEvent>> {
-    let mut events = Vec::new();
-    for line in data.lines() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let wrapped: bijux_gnss_nav::PppEpochV1 = serde_json::from_str(line)?;
-        if !ArtifactReadPolicy::is_supported(wrapped.header.schema_version) {
-            return Err(InfraError::InvalidInput(format!(
-                "unsupported ppp schema_version {}",
-                wrapped.header.schema_version
-            )));
-        }
-        events.extend(wrapped.validate());
-    }
-    Ok(events)
-}
-
-fn validate_rtk_artifact(data: &str) -> InfraResult<Vec<DiagnosticEvent>> {
-    let mut events = Vec::new();
-    for line in data.lines() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let value: serde_json::Value = serde_json::from_str(line)?;
-        let header: ArtifactHeaderV1 = serde_json::from_value(
-            value
-                .get("header")
-                .cloned()
-                .ok_or_else(|| InfraError::InvalidInput("missing header".to_string()))?,
-        )?;
-        if !ArtifactReadPolicy::is_supported(header.schema_version) {
-            return Err(InfraError::InvalidInput(format!(
-                "unsupported rtk schema_version {}",
-                header.schema_version
-            )));
-        }
-        if let Ok(wrapped) = serde_json::from_value::<
-            bijux_gnss_core::rtk::RtkSdEpochV1<bijux_gnss_receiver::rtk::SdObservation>,
-        >(value.clone())
-        {
-            events.extend(wrapped.validate());
-            continue;
-        }
-        if let Ok(wrapped) = serde_json::from_value::<
-            bijux_gnss_core::rtk::RtkDdEpochV1<bijux_gnss_receiver::rtk::DdObservation>,
-        >(value.clone())
-        {
-            events.extend(wrapped.validate());
-            continue;
-        }
-        if let Ok(wrapped) = serde_json::from_value::<
-            bijux_gnss_core::rtk::RtkBaselineEpochV1<
-                bijux_gnss_receiver::rtk::BaselineSolution,
-            >,
-        >(value.clone())
-        {
-            events.extend(wrapped.validate());
-            continue;
-        }
-        if let Ok(wrapped) = serde_json::from_value::<
-            bijux_gnss_core::rtk::RtkBaselineQualityV1<
-                bijux_gnss_receiver::rtk::RtkBaselineQuality,
-            >,
-        >(value.clone())
-        {
-            events.extend(wrapped.validate());
-            continue;
-        }
-        if let Ok(wrapped) = serde_json::from_value::<
-            bijux_gnss_core::rtk::RtkPrecisionV1<
-                bijux_gnss_receiver::rtk::RtkPrecision,
-            >,
-        >(value.clone())
-        {
-            events.extend(wrapped.validate());
-            continue;
-        }
-        if let Ok(wrapped) = serde_json::from_value::<
-            bijux_gnss_core::rtk::RtkFixAuditV1<
-                bijux_gnss_receiver::rtk::FixAuditEvent,
-            >,
-        >(value)
-        {
-            events.extend(wrapped.validate());
-            continue;
-        }
     }
     Ok(events)
 }

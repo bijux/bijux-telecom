@@ -64,33 +64,8 @@ fn handle_artifact(command: GnssCommand) -> Result<()> {
 
 fn explain_artifact(common: &CommonArgs, path: &Path) -> Result<()> {
     let result = artifact_explain(path)?;
-    let header = result.header;
-    let kind = result.kind;
-    let line_count = result.entries;
-    println!("artifact: {}", path.display());
-    println!("kind: {kind}");
-    println!("schema_version: {}", header.schema_version);
-    println!("created_at_unix_ms: {}", header.created_at_unix_ms);
-    println!("git_sha: {}", header.git_sha);
-    println!("git_dirty: {}", header.git_dirty);
-    println!("config_hash: {}", header.config_hash);
-    println!(
-        "dataset_id: {}",
-        header.dataset_id.as_deref().unwrap_or("none")
-    );
-    println!("toolchain: {}", header.toolchain);
-    println!("features: {}", header.features.join(", "));
-    println!("deterministic: {}", header.deterministic);
-    if line_count > 0 {
-        println!("entries: {line_count}");
-    }
-    let error_count = result.diagnostics_error;
-    let warn_count = result.diagnostics_warn;
-    let total = result.diagnostics_total;
-    println!(
-        "diagnostics: total={} error={} warn={}",
-        total, error_count, warn_count
-    );
+    let output = render_artifact_explain(path, &result);
+    print!("{output}");
 
     write_manifest(
         common,
@@ -99,9 +74,9 @@ fn explain_artifact(common: &CommonArgs, path: &Path) -> Result<()> {
         load_dataset(common)?.as_ref(),
         &serde_json::json!({
             "file": path.display().to_string(),
-            "kind": kind,
-            "schema_version": header.schema_version,
-            "diagnostics_total": total
+            "kind": result.kind,
+            "schema_version": result.header.schema_version,
+            "diagnostics_total": result.diagnostics_total
         }),
     )?;
 
@@ -115,6 +90,38 @@ fn convert_artifact(input: &Path, output: &Path, to: &str) -> Result<()> {
     let data = fs::read_to_string(input)?;
     fs::write(output, data)?;
     Ok(())
+}
+
+fn render_artifact_explain(path: &Path, result: &bijux_gnss_infra::ArtifactExplainResult) -> String {
+    let header = &result.header;
+    let mut out = String::new();
+    out.push_str(&format!("artifact: {}\n", path.display()));
+    out.push_str(&format!("kind: {}\n", result.kind));
+    out.push_str(&format!("schema_version: {}\n", header.schema_version));
+    out.push_str(&format!("producer: {}\n", header.producer));
+    out.push_str(&format!(
+        "producer_version: {}\n",
+        header.producer_version
+    ));
+    out.push_str(&format!("created_at_unix_ms: {}\n", header.created_at_unix_ms));
+    out.push_str(&format!("git_sha: {}\n", header.git_sha));
+    out.push_str(&format!("git_dirty: {}\n", header.git_dirty));
+    out.push_str(&format!("config_hash: {}\n", header.config_hash));
+    out.push_str(&format!(
+        "dataset_id: {}\n",
+        header.dataset_id.as_deref().unwrap_or("none")
+    ));
+    out.push_str(&format!("toolchain: {}\n", header.toolchain));
+    out.push_str(&format!("features: {}\n", header.features.join(", ")));
+    out.push_str(&format!("deterministic: {}\n", header.deterministic));
+    if result.entries > 0 {
+        out.push_str(&format!("entries: {}\n", result.entries));
+    }
+    out.push_str(&format!(
+        "diagnostics: total={} error={} warn={}\n",
+        result.diagnostics_total, result.diagnostics_error, result.diagnostics_warn
+    ));
+    out
 }
 
 fn enforce_fail_policy(events: &[DiagnosticEvent], fail_on: DiagnosticFailOn) -> Result<()> {
@@ -143,5 +150,23 @@ fn enforce_fail_policy(events: &[DiagnosticEvent], fail_on: DiagnosticFailOn) ->
             }
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod artifact_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn explain_obs_fixture_prints_fields() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../bijux-gnss-core/tests/data/obs_fixture.jsonl");
+        let result = bijux_gnss_infra::artifact_explain(&path).expect("explain fixture");
+        let output = render_artifact_explain(&path, &result);
+        assert!(output.contains("schema_version: 1"));
+        assert!(output.contains("producer: bijux-gnss-core-fixture"));
+        assert!(output.contains("producer_version: 0.1.0"));
+        assert!(output.contains("entries: 1"));
     }
 }
