@@ -1,20 +1,29 @@
+//! Sweep parsing and expansion utilities.
 
-fn parse_sweep(values: &[String]) -> Result<Vec<(String, Vec<String>)>> {
+use crate::errors::{InfraError, InfraResult};
+
+/// Parse sweep arguments key=val1,val2.
+pub fn parse_sweep(values: &[String]) -> InfraResult<Vec<(String, Vec<String>)>> {
     let mut out = Vec::new();
     for item in values {
         let Some((key, vals)) = item.split_once('=') else {
-            bail!("invalid sweep format: {item}");
+            return Err(InfraError::InvalidInput(format!(
+                "invalid sweep format: {item}"
+            )));
         };
         let vals: Vec<String> = vals.split(',').map(|v| v.trim().to_string()).collect();
         if vals.is_empty() {
-            bail!("sweep values empty for {key}");
+            return Err(InfraError::InvalidInput(format!(
+                "sweep values empty for {key}"
+            )));
         }
         out.push((key.trim().to_string(), vals));
     }
     Ok(out)
 }
 
-fn expand_sweep(spec: &[(String, Vec<String>)]) -> Vec<Vec<(String, String)>> {
+/// Expand sweep spec into list of override sets.
+pub fn expand_sweep(spec: &[(String, Vec<String>)]) -> Vec<Vec<(String, String)>> {
     fn expand(
         idx: usize,
         spec: &[(String, Vec<String>)],

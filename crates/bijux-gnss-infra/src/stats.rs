@@ -1,6 +1,26 @@
-fn stats(values: &[f64]) -> ValidationErrorStats {
+//! Statistical helpers.
+
+/// Summary statistics for error distributions.
+#[derive(Debug, Clone)]
+pub struct StatsSummary {
+    /// Count of values.
+    pub count: usize,
+    /// Mean value.
+    pub mean: f64,
+    /// Median value.
+    pub median: f64,
+    /// Root-mean-square value.
+    pub rms: f64,
+    /// 95th percentile.
+    pub p95: f64,
+    /// Maximum value.
+    pub max: f64,
+}
+
+/// Compute stats for a collection of values.
+pub fn stats(values: &[f64]) -> StatsSummary {
     if values.is_empty() {
-        return ValidationErrorStats {
+        return StatsSummary {
             count: 0,
             mean: 0.0,
             median: 0.0,
@@ -17,7 +37,7 @@ fn stats(values: &[f64]) -> ValidationErrorStats {
     let median = sorted[count / 2];
     let p95 = sorted[(count as f64 * 0.95).floor().min((count - 1) as f64) as usize];
     let max = *sorted.last().unwrap_or(&0.0);
-    ValidationErrorStats {
+    StatsSummary {
         count,
         mean,
         median,
@@ -27,7 +47,8 @@ fn stats(values: &[f64]) -> ValidationErrorStats {
     }
 }
 
-fn lla_to_ecef(lat_deg: f64, lon_deg: f64, alt_m: f64) -> (f64, f64, f64) {
+/// Convert LLA to ECEF (WGS-84).
+pub fn lla_to_ecef(lat_deg: f64, lon_deg: f64, alt_m: f64) -> (f64, f64, f64) {
     let a = 6378137.0;
     let f = 1.0 / 298.257_223_563;
     let e2 = f * (2.0 - f);

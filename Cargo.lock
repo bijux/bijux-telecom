@@ -105,6 +105,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bijux-gnss-core",
+ "bijux-gnss-infra",
  "bijux-gnss-nav",
  "bijux-gnss-receiver",
  "bijux-gnss-signal",
@@ -134,13 +135,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "bijux-gnss-infra"
+version = "0.1.0"
+dependencies = [
+ "bijux-gnss-core",
+ "bijux-gnss-receiver",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
 name = "bijux-gnss-nav"
 version = "0.1.0"
 dependencies = [
  "bijux-gnss-core",
  "bijux-guardrails",
  "criterion",
- "eyre",
  "hex",
  "serde",
  "thiserror",
@@ -150,7 +164,6 @@ dependencies = [
 name = "bijux-gnss-receiver"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "bijux-gnss-core",
  "bijux-gnss-nav",
  "bijux-gnss-signal",
@@ -183,7 +196,6 @@ dependencies = [
 name = "bijux-guardrails"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "bijux-gnss-core",
  "regex",
  "serde",

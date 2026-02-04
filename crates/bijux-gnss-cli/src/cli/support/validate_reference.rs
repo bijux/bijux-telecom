@@ -2,7 +2,7 @@ fn reference_ecef(r: &ValidationReferenceEpoch) -> (f64, f64, f64) {
     if let (Some(x), Some(y), Some(z)) = (r.ecef_x_m, r.ecef_y_m, r.ecef_z_m) {
         (x, y, z)
     } else {
-        bijux_gnss_nav::geodetic_to_ecef(r.latitude_deg, r.longitude_deg, r.altitude_m)
+        bijux_gnss_infra::lla_to_ecef(r.latitude_deg, r.longitude_deg, r.altitude_m)
     }
 }
 
@@ -93,7 +93,7 @@ fn reference_compare(
     let mut vert = Vec::new();
     for sol in solutions {
         if let Some(r) = ref_map.get(&sol.epoch.index) {
-            let (x, y, z) = lla_to_ecef(r.latitude_deg, r.longitude_deg, r.altitude_m);
+            let (x, y, z) = bijux_gnss_infra::lla_to_ecef(r.latitude_deg, r.longitude_deg, r.altitude_m);
             let dx = sol.ecef_x_m.0 - x;
             let dy = sol.ecef_y_m.0 - y;
             let dz = sol.ecef_z_m.0 - z;

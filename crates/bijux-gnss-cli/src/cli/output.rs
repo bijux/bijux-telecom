@@ -28,14 +28,10 @@ fn load_dataset(common: &CommonArgs) -> Result<Option<DatasetEntry>> {
         bail!("dataset id is required (use --dataset or --unregistered-dataset)");
     };
     let registry_path = PathBuf::from("datasets/registry.toml");
-    let contents = fs::read_to_string(&registry_path)
-        .with_context(|| format!("failed to read {}", registry_path.display()))?;
-    let registry: DatasetRegistry = toml::from_str(&contents)
+    let registry = DatasetRegistry::load(&registry_path)
         .with_context(|| format!("failed to parse {}", registry_path.display()))?;
     let entry = registry
-        .entries
-        .into_iter()
-        .find(|e| e.id == *id)
+        .find(id)
         .with_context(|| format!("dataset not found: {id}"))?;
     Ok(Some(entry))
 }
@@ -80,43 +76,6 @@ fn emit_report<T: Serialize>(common: &CommonArgs, command: &str, report: &T) -> 
             println!("{json}");
         }
     }
-    Ok(())
-}
-
-fn write_manifest<T: Serialize>(
-    common: &CommonArgs,
-    command: &str,
-    profile: &ReceiverProfile,
-    dataset: Option<&DatasetEntry>,
-    report: &T,
-) -> Result<()> {
-    let run_dir = run_dir(common, command, dataset)?;
-    let summary_path = run_dir.join("summary.json");
-    fs::write(&summary_path, serde_json::to_string_pretty(&report)?)?;
-    let config_hash = hash_config(common.config.as_ref(), profile)?;
-    let config_snapshot = common
-        .config
-        .as_ref()
-        .and_then(|path| fs::read_to_string(path).ok());
-    let git_hash = git_hash().unwrap_or_else(|| "unknown".to_string());
-    let manifest = RunManifest {
-        command: command.to_string(),
-        timestamp_unix_ms: now_unix_ms(),
-        git_hash,
-        git_dirty: git_dirty(),
-        config_hash,
-        config_snapshot,
-        dataset_id: dataset.map(|d| d.id.clone()),
-        dataset_metadata: dataset.cloned(),
-        build_profile: std::env::var("PROFILE").unwrap_or_else(|_| "dev".to_string()),
-        cpu_features: cpu_features(),
-        toolchain: std::env::var("RUSTC_VERSION").unwrap_or_else(|_| "unknown".to_string()),
-        features: enabled_features(),
-        summary: serde_json::to_value(report)?,
-    };
-    let path = run_dir.join("manifest.json");
-    fs::write(&path, serde_json::to_string_pretty(&manifest)?)?;
-    append_run_index(&run_dir, &manifest)?;
     Ok(())
 }
 

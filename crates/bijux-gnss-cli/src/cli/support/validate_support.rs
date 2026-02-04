@@ -70,8 +70,8 @@ fn build_validation_report(
         });
     }
 
-    let horiz_stats = stats(&horiz_errors);
-    let vert_stats = stats(&vert_errors);
+    let horiz_stats = to_validation_stats(stats(&horiz_errors));
+    let vert_stats = to_validation_stats(stats(&vert_errors));
     let convergence = convergence_report(&horiz_by_time, &vert_by_time);
     let budgets = ValidationBudgets::default();
     let violations = check_budgets(tracks, solutions, &budgets);
@@ -400,4 +400,15 @@ fn check_budgets(
 fn schema_path(name: &str) -> PathBuf {
     let base = Path::new(env!("CARGO_MANIFEST_DIR"));
     base.join("../../schemas").join(name)
+}
+
+fn to_validation_stats(summary: StatsSummary) -> ValidationErrorStats {
+    ValidationErrorStats {
+        count: summary.count,
+        mean: summary.mean,
+        median: summary.median,
+        rms: summary.rms,
+        p95: summary.p95,
+        max: summary.max,
+    }
 }

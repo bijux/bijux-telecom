@@ -11,6 +11,7 @@ bijux-gnss-receiver = { path = "../bijux-gnss-receiver", version = "0.1.0" }
 bijux-gnss-core = { path = "../bijux-gnss-core", version = "0.1.0" }
 bijux-gnss-nav = { path = "../bijux-gnss-nav", version = "0.1.0" }
 bijux-gnss-signal = { path = "../bijux-gnss-signal", version = "0.1.0" }
+bijux-gnss-infra = { path = "../bijux-gnss-infra", version = "0.1.0" }
 tracing-subscriber = { version = "0.3", optional = true, features = ["env-filter"] }
 serde.workspace = true
 serde_json.workspace = true

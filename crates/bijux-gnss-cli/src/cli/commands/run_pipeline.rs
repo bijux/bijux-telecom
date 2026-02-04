@@ -27,7 +27,13 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
     set_trace_dir(&common);
                     let dataset = load_dataset(&common)?;
                     let mut profile = load_profile(&common)?;
-                    apply_common_overrides(&mut profile, &common);
+                    apply_common_overrides(
+                        &mut profile,
+                        CommonOverrides {
+                            seed: common.seed,
+                            deterministic: common.deterministic,
+                        },
+                    );
                     apply_overrides(&mut profile, sampling_hz, if_hz, code_hz, code_length);
                     if let Some(entry) = &dataset {
                         profile.sample_rate_hz = entry.sample_rate_hz;
@@ -169,7 +175,13 @@ fn handle_experiment(command: GnssCommand) -> Result<()> {
 
     set_trace_dir(&common);
                     let mut profile = load_profile(&common)?;
-                    apply_common_overrides(&mut profile, &common);
+                    apply_common_overrides(
+                        &mut profile,
+                        CommonOverrides {
+                            seed: common.seed,
+                            deterministic: common.deterministic,
+                        },
+                    );
                     profile
                         .validate()
                         .map_err(|errs| eyre!("invalid config before sweep: {}", errs.join(", ")))?;
@@ -317,7 +329,13 @@ fn handle_run(command: GnssCommand) -> Result<()> {
     set_trace_dir(&common);
                     let dataset = load_dataset(&common)?;
                     let mut profile = load_profile(&common)?;
-                    apply_common_overrides(&mut profile, &common);
+                    apply_common_overrides(
+                        &mut profile,
+                        CommonOverrides {
+                            seed: common.seed,
+                            deterministic: common.deterministic,
+                        },
+                    );
                     if let Some(entry) = &dataset {
                         profile.sample_rate_hz = entry.sample_rate_hz;
                         profile.intermediate_freq_hz = entry.intermediate_freq_hz;
