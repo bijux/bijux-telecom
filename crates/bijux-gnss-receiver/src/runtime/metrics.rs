@@ -66,13 +66,13 @@ pub fn write_metrics_summary(artifacts: &RunArtifacts) {
     let nav_rms_m_mean = if artifacts.navigation.is_empty() {
         None
     } else {
-        let sum: f64 = artifacts.navigation.iter().map(|n| n.payload.rms_m.0).sum();
+        let sum: f64 = artifacts.navigation.iter().map(|n| n.rms_m.0).sum();
         Some(sum / artifacts.navigation.len() as f64)
     };
     let nav_outlier_count = artifacts
         .navigation
         .iter()
-        .map(|n| n.payload.residuals.iter().filter(|r| r.rejected).count() as u64)
+        .map(|n| n.residuals.iter().filter(|r| r.rejected).count() as u64)
         .sum();
 
     let summary = MetricsSummary {

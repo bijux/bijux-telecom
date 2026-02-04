@@ -34,7 +34,26 @@ pub use crate::stages::tracking;
 
 /// RTK differencing and baseline helpers.
 #[cfg(feature = "nav")]
-pub use crate::rtk_internal as rtk;
+pub mod rtk {
+    pub use crate::rtk_internal::ambiguity::{
+        decorrelate_lambda, float_from_state, ratio_from_candidates, ratio_test,
+        search_integer_candidates, select_partial_fix, AmbiguityFixResult, AmbiguityManager,
+        DecorrelatedAmbiguities, FixAuditEvent, FixPolicy, FixState, FloatAmbiguitySolution,
+        IntegerCandidate, NaiveFixer,
+    };
+    pub use crate::rtk_internal::core::{
+        build_dd, build_dd_per_constellation, build_sd, choose_ref_sat,
+        choose_ref_sat_per_constellation, dd_covariance, innovation_diagnostics, los_unit,
+        solve_baseline_dd, AlignmentDiagnostic, AlignmentReport, BaselineConfig, DdCovarianceModel,
+        DdObservation, EpochAligner, RefSatPolicy, RefSatSelector, SdObservation,
+        SolutionSeparation,
+    };
+    pub use crate::rtk_internal::differencing::{double_difference, single_difference};
+    pub use crate::rtk_internal::metrics::{
+        apply_fix_hold, baseline_from_ecef, dd_residual_metrics, enu_to_ecef, jitter_summary,
+        solution_separation, BaselineSolution, JitterSummary, RtkBaselineQuality, RtkPrecision,
+    };
+}
 
 /// Synthetic signal generation for tests and demos.
 #[cfg(feature = "nav")]
@@ -42,7 +61,13 @@ pub use crate::sim_internal::synthetic as sim;
 
 /// Validation report helpers.
 #[cfg(feature = "nav")]
-pub use crate::validation_report;
+pub mod validation_report {
+    pub use crate::validation_report::{
+        build_validation_report, check_time_consistency, ConvergenceReport, FixTimelineEntry,
+        NavResidualReport, PppReadinessReport, TimeConsistencyReport, ValidationBudgets,
+        ValidationErrorStats, ValidationReport,
+    };
+}
 
 /// Artifacts produced by a receiver pipeline run.
 #[derive(Debug, Default, Clone)]

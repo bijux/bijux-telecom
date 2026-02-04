@@ -186,6 +186,18 @@ dependencies = [
  "bijux-guardrails",
  "num-complex",
  "proptest",
+ "thiserror",
+]
+
+[[package]]
+name = "bijux-gnss-testkit"
+version = "0.1.0"
+dependencies = [
+ "bijux-gnss-infra",
+ "bijux-gnss-receiver",
+ "proptest",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

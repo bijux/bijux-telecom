@@ -209,6 +209,10 @@ impl Tracking {
                 "tracking epoch"
             );
         }
+        #[cfg(not(feature = "tracing"))]
+        {
+            let _ = channel_id;
+        }
         (track_epoch, correlator)
     }
 

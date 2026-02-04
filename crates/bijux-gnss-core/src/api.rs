@@ -43,7 +43,8 @@ pub use crate::ids::{
 pub use crate::obs::{
     check_inter_frequency_alignment, validate_obs_epochs, AcqRequest, AcqResult, AmbiguityId,
     AmbiguityState, AmbiguityStatus, BandLagEvent, DoubleDifference, InterFrequencyAlignmentReport,
-    InterSystemBias, LockFlags, MeasurementErrorModel, NavHealthEvent, NavResidual,
+    InterSystemBias, LockFlags, MeasurementErrorModel, MeasurementRejectReason, NavHealthEvent,
+    NavResidual,
     NavSolutionEpoch, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, Sample, SamplesFrame,
     SingleDifference, SolutionStatus, TrackEpoch,
 };
