@@ -215,7 +215,7 @@ fn write_track_timeseries(
     for epoch in &report.epochs {
         let wrapped = TrackEpochV1 {
             header: header.clone(),
-            epoch: TrackEpoch {
+            payload: TrackEpoch {
                 epoch: bijux_gnss_core::Epoch {
                     index: epoch.epoch_idx,
                 },
@@ -270,7 +270,7 @@ fn write_obs_timeseries(
         }
         let wrapped = ObsEpochV1 {
             header: header.clone(),
-            epoch: epoch.clone(),
+            payload: epoch.clone(),
         };
         let line = serde_json::to_string(&wrapped)?;
         lines.push(line);
@@ -333,7 +333,7 @@ fn read_obs_epochs(path: &Path) -> Result<Vec<ObsEpoch>> {
                     wrapped.header.schema_version
                 );
             }
-            epochs.push(wrapped.epoch);
+            epochs.push(wrapped.payload);
         } else {
             let epoch: ObsEpoch = serde_json::from_str(line)?;
             epochs.push(epoch);
@@ -353,7 +353,7 @@ fn read_ephemeris(path: &Path) -> Result<Vec<GpsEphemeris>> {
                 wrapped.header.schema_version
             );
         }
-        Ok(wrapped.ephemerides)
+        Ok(wrapped.payload)
     } else {
         let ephs: Vec<GpsEphemeris> = serde_json::from_str(&data)?;
         Ok(ephs)
@@ -425,7 +425,7 @@ fn read_nav_solutions(path: &Path) -> Result<Vec<bijux_gnss_core::NavSolutionEpo
                 wrapped.header.schema_version
             );
         }
-        epochs.push(wrapped.epoch);
+        epochs.push(wrapped.payload);
     }
     Ok(epochs)
 }
@@ -441,7 +441,7 @@ fn write_ephemeris(
     let path = out_dir.join("ephemeris.json");
     let wrapped = GpsEphemerisV1 {
         header,
-        ephemerides: ephs.to_vec(),
+        payload: ephs.to_vec(),
     };
     let data = serde_json::to_string_pretty(&wrapped)?;
     fs::write(&path, data)?;

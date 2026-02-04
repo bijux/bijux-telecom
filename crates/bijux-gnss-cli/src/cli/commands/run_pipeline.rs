@@ -49,7 +49,7 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
     
                     let acquisition =
                         Acquisition::new(config).with_doppler(doppler_search_hz, doppler_step_hz);
-                    let sats = prns_to_sats(&prn);
+                    let sats = bijux_gnss_core::prns_to_sats(&prn);
                     let results = acquisition.run_fft_topn(
                         &frame,
                         &sats,
@@ -80,15 +80,20 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
                         ReportFormat::Table => print_acquisition_table(&report),
                         ReportFormat::Json => emit_report(&common, "acquire", &report)?,
                     }
-                    let header = artifact_header(&common, &profile, dataset.as_ref())?;
-                    let out_dir = artifacts_dir(&common, "acquire", dataset.as_ref())?;
+                    let (layout, header) = prepare_run(
+                        &infra_args(&common),
+                        "acquire",
+                        &profile,
+                        dataset.as_ref(),
+                    )?;
+                    let out_dir = layout.artifacts_dir;
                     let acq_path = out_dir.join("acq.jsonl");
                     let mut acq_lines = Vec::new();
                     for candidates in &results {
                         for result in candidates {
                             let wrapped = AcqResultV1 {
                                 header: header.clone(),
-                                result: result.clone(),
+                                payload: result.clone(),
                             };
                             acq_lines.push(serde_json::to_string(&wrapped)?);
                         }
@@ -142,7 +147,7 @@ fn handle_pvt(command: GnssCommand) -> Result<()> {
                             }
                             let wrapped = NavSolutionEpochV1 {
                                 header: header.clone(),
-                                epoch: solution,
+                                payload: solution,
                             };
                             let line = serde_json::to_string(&wrapped)?;
                             lines.push(line);

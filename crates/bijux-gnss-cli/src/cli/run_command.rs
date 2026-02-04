@@ -84,6 +84,8 @@ fn set_trace_dir(common: &CommonArgs) {
         std::env::set_var("BIJUX_DETERMINISTIC", "1");
     }
 }
+use bijux_gnss_core::format_sat;
+
 fn print_acquisition_table(report: &AcquisitionReport) {
     println!("Sat\tCarrier(Hz)\tCodePhase\tPeak\tPeak/Mean\tPeak/2nd");
     for row in &report.results {

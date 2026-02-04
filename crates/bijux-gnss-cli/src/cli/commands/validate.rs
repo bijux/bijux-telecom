@@ -1,3 +1,5 @@
+use bijux_gnss_infra::align_reference_by_time;
+
 #[derive(Copy, Clone)]
 enum CsvType {
     U64,
@@ -343,7 +345,11 @@ fn handle_validate_reference(command: GnssCommand) -> Result<()> {
     let obs = read_obs_epochs(&obs_path)?;
     let solutions = read_nav_solutions(&nav_path)?;
     let reference_epochs = read_reference_epochs(&reference)?;
-    let aligned = align_reference_by_time(&solutions, &reference_epochs, align);
+    let align_policy = match align {
+        ReferenceAlign::Nearest => bijux_gnss_infra::ReferenceAlign::Nearest,
+        ReferenceAlign::Linear => bijux_gnss_infra::ReferenceAlign::Linear,
+    };
+    let aligned = align_reference_by_time(&solutions, &reference_epochs, align_policy);
     if aligned.is_empty() {
         bail!("no reference epochs aligned; check t_rx_s in reference file");
     }

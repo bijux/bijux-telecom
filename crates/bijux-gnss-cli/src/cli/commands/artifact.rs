@@ -72,7 +72,7 @@ fn explain_artifact(common: &CommonArgs, path: &Path) -> Result<()> {
         if let Ok(wrapped) = serde_json::from_str::<GpsEphemerisV1>(&data) {
             header = Some(wrapped.header);
             kind = "ephemeris".to_string();
-            line_count = wrapped.ephemerides.len();
+            line_count = wrapped.payload.len();
         } else if let Ok(wrapped) = serde_json::from_str::<serde_json::Value>(&data) {
             if let Some(value) = wrapped.get("header") {
                 header = Some(serde_json::from_value(value.clone())?);
@@ -222,7 +222,7 @@ fn validate_obs_artifact(data: &str) -> Result<Vec<DiagnosticEvent>> {
             );
         }
         events.extend(wrapped.validate());
-        epochs.push(wrapped.epoch);
+        epochs.push(wrapped.payload);
     }
     if let Err(err) = validate_obs_epochs(&epochs) {
         events.push(DiagnosticEvent::new(

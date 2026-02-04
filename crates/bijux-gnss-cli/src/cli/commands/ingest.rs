@@ -47,7 +47,7 @@ fn handle_track(command: GnssCommand) -> Result<()> {
     
                     let acquisition = Acquisition::new(config.clone())
                         .with_doppler(doppler_search_hz, doppler_step_hz);
-                    let sats = prns_to_sats(&prn);
+                    let sats = bijux_gnss_core::prns_to_sats(&prn);
                     let acquisitions = acquisition.run_fft(&frame, &sats);
     
                     let tracking = bijux_gnss_receiver::tracking::Tracking::new(config.clone());

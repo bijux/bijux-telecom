@@ -1,3 +1,5 @@
+use bijux_gnss_infra::{SolutionConsistencyReport, TimeConsistencyReport, ValidationReferenceEpoch};
+
 #[derive(Debug, Serialize)]
 struct AcquisitionReport {
     sats: Vec<SatId>,
@@ -135,27 +137,6 @@ struct NavDecodeReport {
     ephemerides: Vec<bijux_gnss_nav::GpsEphemeris>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ValidationReferenceEpoch {
-    epoch_idx: u64,
-    #[serde(default)]
-    t_rx_s: Option<f64>,
-    latitude_deg: f64,
-    longitude_deg: f64,
-    altitude_m: f64,
-    #[serde(default)]
-    ecef_x_m: Option<f64>,
-    #[serde(default)]
-    ecef_y_m: Option<f64>,
-    #[serde(default)]
-    ecef_z_m: Option<f64>,
-    #[serde(default)]
-    vel_x_mps: Option<f64>,
-    #[serde(default)]
-    vel_y_mps: Option<f64>,
-    #[serde(default)]
-    vel_z_mps: Option<f64>,
-}
 
 #[derive(Debug, Serialize)]
 struct ValidationErrorStats {
@@ -232,13 +213,6 @@ struct NavResidualReport {
     rejected: Vec<SatId>,
 }
 
-#[derive(Debug, Serialize)]
-struct SolutionConsistencyReport {
-    position_jump_count: usize,
-    clock_jump_count: usize,
-    pdop_spike_count: usize,
-    warnings: Vec<String>,
-}
 
 #[derive(Debug, Clone, Serialize)]
 struct ValidationBudgets {
@@ -247,17 +221,4 @@ struct ValidationBudgets {
     tracking_carrier_jitter_hz: f64,
     ephemeris_parity_rate_min: f64,
     pvt_max_iterations: usize,
-}
-
-#[derive(Debug, Serialize)]
-struct TimeConsistencyReport {
-    channels: usize,
-    epochs_checked: usize,
-    epoch_backward: usize,
-    epoch_gaps: usize,
-    sample_backward: usize,
-    sample_step_mismatch: usize,
-    expected_step: Option<u64>,
-    observed_step_mean: Option<f64>,
-    warnings: Vec<String>,
 }
