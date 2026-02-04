@@ -158,6 +158,11 @@ impl Navigation {
                 "NAV_INSUFFICIENT_SATS",
                 "insufficient satellites for navigation solution",
             ));
+            crate::runtime::diagnostics::dump_on_error(
+                "nav insufficient satellites",
+                Some(obs),
+                self.last_solution.as_ref(),
+            );
             return self.degraded_from_last(obs, start_time);
         }
         let solution = match self.solver.solve_wls(&observations, eph, obs.t_rx_s.0) {
@@ -168,6 +173,11 @@ impl Navigation {
                     "NAV_SOLVER_FAILED",
                     "nav solver failed to converge",
                 ));
+                crate::runtime::diagnostics::dump_on_error(
+                    "nav solver failed to converge",
+                    Some(obs),
+                    self.last_solution.as_ref(),
+                );
                 return self.degraded_from_last(obs, start_time);
             }
         };
@@ -188,6 +198,7 @@ impl Navigation {
             pdop: solution.pdop,
             rms_m: Meters(solution.rms_m),
             status: SolutionStatus::Coarse,
+            quality: SolutionStatus::Coarse.quality_flag(),
             valid: true,
             processing_ms: Some(start_time.elapsed().as_secs_f64() * 1000.0),
             sigma_h_m: solution.sigma_h_m.map(Meters),
@@ -205,12 +216,14 @@ impl Navigation {
                     residual_m: Meters(residual_m),
                     rejected: false,
                     weight: Some(weight),
+                    reject_reason: None,
                 })
                 .chain(solution.rejected.into_iter().map(|sat| NavResidual {
                     sat,
                     residual_m: Meters(0.0),
                     rejected: true,
                     weight: None,
+                    reject_reason: Some(bijux_gnss_core::api::MeasurementRejectReason::Outlier),
                 }))
                 .collect(),
             isb: Vec::new(),
@@ -246,9 +259,15 @@ impl Navigation {
             for event in sanity_events {
                 crate::runtime::logging::diagnostic(&event);
             }
+            crate::runtime::diagnostics::dump_on_error(
+                "nav solution sanity failed",
+                Some(obs),
+                Some(&nav_epoch),
+            );
         } else {
             nav_epoch.valid = is_solution_valid(nav_epoch.status);
         }
+        nav_epoch.quality = nav_epoch.status.quality_flag();
 
         self.last_solution = Some(nav_epoch.clone());
         Some(nav_epoch)
@@ -265,6 +284,7 @@ impl Navigation {
         };
         degraded.t_rx_s = obs.t_rx_s;
         degraded.status = SolutionStatus::Degraded;
+        degraded.quality = degraded.status.quality_flag();
         degraded.valid = is_solution_valid(degraded.status);
         degraded.processing_ms = Some(start_time.elapsed().as_secs_f64() * 1000.0);
         degraded.residuals.clear();
@@ -303,6 +323,7 @@ fn invalid_solution_epoch(obs: &ObsEpoch) -> NavSolutionEpoch {
         pdop: 0.0,
         rms_m: Meters(0.0),
         status: SolutionStatus::Invalid,
+        quality: SolutionStatus::Invalid.quality_flag(),
         valid: false,
         processing_ms: None,
         residuals: Vec::new(),
@@ -371,6 +392,7 @@ mod tests {
                 pdop: 1.0,
                 rms_m: Meters(1.0),
                 status: SolutionStatus::Converged,
+                quality: SolutionStatus::Converged.quality_flag(),
                 valid: true,
                 processing_ms: None,
                 residuals: Vec::new(),

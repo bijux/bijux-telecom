@@ -279,6 +279,8 @@ pub struct NavResidual {
     pub rejected: bool,
     #[serde(default)]
     pub weight: Option<f64>,
+    #[serde(default)]
+    pub reject_reason: Option<MeasurementRejectReason>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -302,6 +304,8 @@ pub struct NavSolutionEpoch {
     pub pdop: f64,
     pub rms_m: Meters,
     pub status: SolutionStatus,
+    #[serde(default)]
+    pub quality: NavQualityFlag,
     pub valid: bool,
     #[serde(default)]
     pub processing_ms: Option<f64>,
@@ -330,6 +334,40 @@ impl SolutionStatus {
     pub fn is_valid(self) -> bool {
         !matches!(self, SolutionStatus::Invalid)
     }
+
+    pub fn quality_flag(self) -> NavQualityFlag {
+        match self {
+            SolutionStatus::Invalid => NavQualityFlag::NoFix,
+            SolutionStatus::Degraded => NavQualityFlag::Degraded,
+            SolutionStatus::Coarse | SolutionStatus::Converged | SolutionStatus::Float => {
+                NavQualityFlag::Float
+            }
+            SolutionStatus::Fixed => NavQualityFlag::Fix,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NavQualityFlag {
+    NoFix,
+    Float,
+    Fix,
+    Degraded,
+}
+
+impl Default for NavQualityFlag {
+    fn default() -> Self {
+        NavQualityFlag::NoFix
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MeasurementRejectReason {
+    Outlier,
+    Geometry,
+    CycleSlip,
+    InvalidEphemeris,
+    TimeInconsistency,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

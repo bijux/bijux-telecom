@@ -619,6 +619,7 @@ mod tests {
             pdop: 1.0,
             rms_m: bijux_gnss_core::api::Meters(0.0),
             status: SolutionStatus::Converged,
+            quality: SolutionStatus::Converged.quality_flag(),
             valid: true,
             processing_ms: None,
             residuals: Vec::new(),

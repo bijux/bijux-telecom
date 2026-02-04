@@ -250,6 +250,7 @@ fn solve_epoch_ekf(
         pdop: 0.0,
         rms_m: bijux_gnss_infra::api::core::Meters(ctx.ekf.health.innovation_rms),
         status,
+        quality: status.quality_flag(),
         valid: bijux_gnss_infra::api::core::is_solution_valid(status),
         processing_ms: None,
         residuals: Vec::new(),
