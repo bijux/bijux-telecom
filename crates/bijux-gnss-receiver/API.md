@@ -4,7 +4,8 @@ Stable public API surface exposed via `crates/bijux-gnss-receiver/src/api.rs`.
 
 Config + errors
 - `ReceiverConfig`: on-disk receiver configuration schema (serde + schema validation).
-- `ReceiverRuntimeConfig`: derived runtime configuration used by engines.
+- `ReceiverPipelineConfig`: derived pipeline configuration used by engines.
+- `ReceiverRuntimeConfig`: runtime options for side-effectful outputs (run id, trace dir, etc).
 - `ReceiverError`: receiver pipeline error wrapper.
 
 I/O + ports
@@ -15,7 +16,7 @@ I/O + ports
 - `SampleSource`, `ArtifactSink`, `Clock`, `SystemClock`: purity-boundary traits for I/O.
 
 Engines + helpers
-- `Receiver`: top-level receiver entrypoint (constructed with `ReceiverRuntimeConfig`).
+- `Receiver`: top-level receiver entrypoint (constructed with `ReceiverPipelineConfig` + `ReceiverRuntimeConfig`).
 - `ReceiverEngine`: trait for a receiver pipeline runner.
 - `RunArtifacts`: artifacts captured during a run.
 - `AcquisitionEngine`: acquisition engine implementation.

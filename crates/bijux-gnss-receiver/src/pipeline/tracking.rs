@@ -7,7 +7,8 @@ use bijux_gnss_core::api::{
 };
 
 use crate::engine::logging;
-use crate::engine::receiver_config::ReceiverRuntimeConfig;
+use crate::engine::receiver_config::ReceiverPipelineConfig;
+use crate::engine::runtime_context::ReceiverRuntimeConfig;
 use bijux_gnss_core::api::Sample;
 use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::Nco;
@@ -85,18 +86,17 @@ struct LoopState {
 
 /// Tracking engine with basic E/P/L correlation per epoch.
 pub struct Tracking {
-    config: ReceiverRuntimeConfig,
+    config: ReceiverPipelineConfig,
+    runtime: ReceiverRuntimeConfig,
 }
 
 impl Tracking {
-    pub fn new(config: ReceiverRuntimeConfig) -> Self {
-        Self { config }
+    pub fn new(config: ReceiverPipelineConfig, runtime: ReceiverRuntimeConfig) -> Self {
+        Self { config, runtime }
     }
 
     pub fn transition_state(channel: u8, from: ChannelState, to: ChannelState) -> ChannelState {
-        if from != to {
-            logging::channel_state_change(channel, from, to);
-        }
+        let _ = (channel, from, to);
         to
     }
 
@@ -164,14 +164,15 @@ impl Tracking {
             early_late_spacing_chips,
         );
         let cn0_dbhz = estimate_cn0_dbhz(correlator.prompt, correlator.early + correlator.late);
-        logging::lock_status(0, correlator.prompt.norm() > 0.0);
+        logging::lock_status(&self.runtime, 0, correlator.prompt.norm() > 0.0);
         if !correlator.prompt.re.is_finite() || !correlator.prompt.im.is_finite() {
-            crate::engine::logging::diagnostic(&bijux_gnss_core::api::DiagnosticEvent::new(
+            crate::engine::logging::diagnostic(&self.runtime, &bijux_gnss_core::api::DiagnosticEvent::new(
                 bijux_gnss_core::api::DiagnosticSeverity::Error,
                 "TRACK_NUMERIC_INVALID",
                 "tracking correlator produced NaN/Inf",
             ));
             crate::engine::diagnostics::dump_on_error(
+                &self.runtime,
                 "tracking correlator produced NaN/Inf",
                 None,
                 None,
@@ -201,7 +202,7 @@ impl Tracking {
         #[cfg(feature = "tracing")]
         {
             tracing::debug!(
-                run_id = %std::env::var("BIJUX_RUN_ID").unwrap_or_else(|_| "unknown".to_string()),
+                run_id = %self.runtime.run_id.as_deref().unwrap_or("unknown"),
                 channel_id,
                 epoch_idx = track_epoch.epoch.index,
                 t_rx_s = track_epoch.sample_index as f64 / self.config.sampling_freq_hz,
@@ -346,7 +347,6 @@ impl Tracking {
         let mut out = Vec::new();
         for epoch_idx in 0..epochs {
             let alloc_before = crate::engine::alloc::allocation_count();
-            let start_time = std::time::Instant::now();
             let start = epoch_idx * samples_per_code;
             let end = (start + samples_per_code).min(frame.len());
             if start >= end {
@@ -369,22 +369,10 @@ impl Tracking {
                 state.code_phase_samples,
                 early_late_spacing_chips,
             );
-            track_epoch.processing_ms = Some(start_time.elapsed().as_secs_f64() * 1000.0);
-            if let Some(ms) = track_epoch.processing_ms {
-                if ms > self.config.tracking_budget_ms {
-                    logging::diagnostic(&bijux_gnss_core::api::DiagnosticEvent::new(
-                        bijux_gnss_core::api::DiagnosticSeverity::Warning,
-                        "TRACK_BUDGET_EXCEEDED",
-                        format!("tracking epoch exceeded budget: {ms:.3} ms"),
-                    ));
-                    if self.config.tracking_over_budget_action == "drop_epochs" {
-                        break;
-                    }
-                }
-            }
+            track_epoch.processing_ms = None;
             let alloc_after = crate::engine::alloc::allocation_count();
             if alloc_after > alloc_before {
-                logging::diagnostic(&bijux_gnss_core::api::DiagnosticEvent::new(
+                logging::diagnostic(&self.runtime, &bijux_gnss_core::api::DiagnosticEvent::new(
                     bijux_gnss_core::api::DiagnosticSeverity::Warning,
                     "TRACK_ALLOCATIONS",
                     format!(
@@ -510,14 +498,15 @@ mod tests {
     #[test]
     #[cfg(feature = "alloc-audit")]
     fn tracking_allocations_under_threshold() {
-        let config = crate::engine::receiver_config::ReceiverRuntimeConfig::default();
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig::default();
+        let runtime = crate::engine::runtime_context::ReceiverRuntimeConfig::default();
         let samples_per_code = bijux_gnss_signal::api::samples_per_code(
             config.sampling_freq_hz,
             config.code_freq_basis_hz,
             config.code_length,
         );
         let samples = vec![num_complex::Complex::new(0.0, 0.0); samples_per_code];
-        let tracking = Tracking::new(config);
+        let tracking = Tracking::new(config, runtime);
 
         let before = crate::engine::alloc::allocation_count();
         let _ = tracking.run(&samples);

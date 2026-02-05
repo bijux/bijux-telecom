@@ -3,10 +3,10 @@ use num_complex::Complex;
 
 use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds};
 use bijux_gnss_receiver::api::TrackingEngine;
-use bijux_gnss_receiver::api::ReceiverRuntimeConfig;
+use bijux_gnss_receiver::api::ReceiverPipelineConfig;
 
 fn bench_tracking_update(c: &mut Criterion) {
-    let config = ReceiverRuntimeConfig::default();
+    let config = ReceiverPipelineConfig::default();
     let samples_per_code = bijux_gnss_signal::api::samples_per_code(
         config.sampling_freq_hz,
         config.code_freq_basis_hz,
@@ -20,7 +20,8 @@ fn bench_tracking_update(c: &mut Criterion) {
         Seconds(1.0 / config.sampling_freq_hz),
         vec![Complex::new(0.0, 0.0); samples_per_code],
     );
-    let tracking = Tracking::new(config);
+    let runtime = bijux_gnss_receiver::api::ReceiverRuntimeConfig::default();
+    let tracking = Tracking::new(config, runtime);
     let sat = SatId {
         constellation: Constellation::Gps,
         prn: 1,

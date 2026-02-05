@@ -9,7 +9,8 @@
 //! - `sim`: synthetic signal generation for tests
 //! - `Receiver`: high-level pipeline entrypoint
 //! - `ReceiverConfig`: on-disk configuration schema (serialize/deserialize)
-//! - `ReceiverRuntimeConfig`: derived runtime configuration for engines
+//! - `ReceiverPipelineConfig`: derived pipeline configuration for engines
+//! - `ReceiverRuntimeConfig`: runtime options for side-effectful output
 //! - `ReceiverError`: error taxonomy for receiver stages
 
 #![deny(clippy::unwrap_used)]

@@ -19,7 +19,7 @@ fn hash_samples(samples: &[num_complex::Complex<f32>]) -> u64 {
 #[test]
 fn deterministic_synthetic_runs_match() {
     let profile = ReceiverConfig::default();
-    let config = profile.to_runtime_config();
+    let config = profile.to_pipeline_config();
     let scenario = SyntheticScenario {
         sample_rate_hz: config.sampling_freq_hz,
         intermediate_freq_hz: config.intermediate_freq_hz,

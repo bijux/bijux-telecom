@@ -1,11 +1,11 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    Cycles, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, Seconds, SigId,
-    SignalBand, TrackEpoch,
+    Cycles, DiagnosticEvent, DiagnosticSeverity, LockFlags, Meters, ObsEpoch, ObsMetadata,
+    ObsSatellite, ReceiverRole, Seconds, SigId, SignalBand, TrackEpoch,
 };
 
-use crate::engine::receiver_config::ReceiverRuntimeConfig;
+use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::pipeline::tracking::TrackingResult;
 use bijux_gnss_signal::api::samples_per_code;
 
@@ -41,9 +41,12 @@ struct CycleSlipState {
 
 const GEOFREE_SLIP_THRESHOLD_CYCLES: f64 = 0.5;
 
-pub fn observations_from_tracking(config: &ReceiverRuntimeConfig, epochs: &[TrackEpoch]) -> Vec<ObsEpoch> {
+pub fn observations_from_tracking(
+    config: &ReceiverPipelineConfig,
+    epochs: &[TrackEpoch],
+) -> (Vec<ObsEpoch>, Vec<DiagnosticEvent>) {
     if epochs.is_empty() {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     }
 
     let samples_per_code = samples_per_code(
@@ -61,6 +64,7 @@ pub fn observations_from_tracking(config: &ReceiverRuntimeConfig, epochs: &[Trac
     };
 
     let mut out = Vec::with_capacity(epochs.len());
+    let mut diagnostics = Vec::new();
     let mut last_sample_index = None;
     let clock_bias_s = 0.0_f64;
 
@@ -74,16 +78,29 @@ pub fn observations_from_tracking(config: &ReceiverRuntimeConfig, epochs: &[Trac
         };
         if let Some(prev) = last_sample_index {
             if epoch.sample_index < prev {
-                eprintln!(
-                    "time audit: sample index went backwards ({} -> {})",
-                    prev, epoch.sample_index
+                diagnostics.push(
+                    DiagnosticEvent::new(
+                        DiagnosticSeverity::Warning,
+                        "OBS_TIME_BACKWARDS",
+                        format!(
+                            "sample index went backwards ({} -> {})",
+                            prev, epoch.sample_index
+                        ),
+                    )
+                    .with_context("epoch", epoch.epoch.index.to_string())
+                    .with_context("stage", "observations"),
                 );
             }
         }
         if discontinuity {
-            eprintln!(
-                "time audit: discontinuity at sample index {}",
-                epoch.sample_index
+            diagnostics.push(
+                DiagnosticEvent::new(
+                    DiagnosticSeverity::Warning,
+                    "OBS_TIME_DISCONTINUITY",
+                    format!("discontinuity at sample index {}", epoch.sample_index),
+                )
+                .with_context("epoch", epoch.epoch.index.to_string())
+                .with_context("stage", "observations"),
             );
         }
         last_sample_index = Some(epoch.sample_index);
@@ -180,21 +197,19 @@ pub fn observations_from_tracking(config: &ReceiverRuntimeConfig, epochs: &[Trac
             .any(|e| matches!(e.severity, bijux_gnss_core::api::DiagnosticSeverity::Error))
         {
             epoch.valid = false;
-            for event in events {
-                crate::engine::logging::diagnostic(&event);
-            }
+            diagnostics.extend(events);
         }
         out.push(epoch);
     }
 
-    out
+    (out, diagnostics)
 }
 
 pub fn observations_from_tracking_results(
-    config: &ReceiverRuntimeConfig,
+    config: &ReceiverPipelineConfig,
     tracks: &[TrackingResult],
     hatch_window: u32,
-) -> Vec<ObsEpoch> {
+) -> (Vec<ObsEpoch>, Vec<DiagnosticEvent>) {
     use std::collections::BTreeMap;
 
     let mut by_epoch: BTreeMap<u64, ObsEpoch> = BTreeMap::new();
@@ -202,10 +217,11 @@ pub fn observations_from_tracking_results(
         std::collections::HashMap::new();
     let mut slips: std::collections::HashMap<bijux_gnss_core::api::SigId, CycleSlipState> =
         std::collections::HashMap::new();
+    let mut diagnostics = Vec::new();
     for track in tracks {
-        let obs = observations_from_tracking(config, &track.epochs);
+        let (obs, mut events) = observations_from_tracking(config, &track.epochs);
+        diagnostics.append(&mut events);
         for epoch in obs {
-            let start_time = std::time::Instant::now();
             let entry = by_epoch.entry(epoch.epoch_idx).or_insert_with(|| ObsEpoch {
                 t_rx_s: epoch.t_rx_s,
                 gps_week: epoch.gps_week,
@@ -213,7 +229,7 @@ pub fn observations_from_tracking_results(
                 epoch_idx: epoch.epoch_idx,
                 discontinuity: epoch.discontinuity,
                 valid: true,
-                processing_ms: Some(0.0),
+                processing_ms: None,
                 role: epoch.role,
                 sats: Vec::new(),
             });
@@ -288,9 +304,6 @@ pub fn observations_from_tracking_results(
                 });
                 entry.sats.push(sat);
             }
-            if let Some(total) = entry.processing_ms.as_mut() {
-                *total += start_time.elapsed().as_secs_f64() * 1000.0;
-            }
         }
     }
     let mut out = Vec::new();
@@ -301,20 +314,16 @@ pub fn observations_from_tracking_results(
             .any(|e| matches!(e.severity, bijux_gnss_core::api::DiagnosticSeverity::Error))
         {
             epoch.valid = false;
-            for event in events {
-                crate::engine::logging::diagnostic(&event);
-            }
+            diagnostics.extend(events);
         }
         out.push(epoch);
     }
     #[cfg(feature = "reference-checks")]
     {
         let events = bijux_gnss_core::api::validate_obs_epochs(&out);
-        for event in events {
-            crate::engine::logging::diagnostic(&event);
-        }
+        diagnostics.extend(events);
     }
-    out
+    (out, diagnostics)
 }
 
 fn slip_threshold_m(cn0_dbhz: f64, elevation_deg: Option<f64>) -> f64 {

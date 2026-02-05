@@ -36,7 +36,7 @@ pub struct ReceiverConfig {
 
 /// Derived receiver configuration used at runtime.
 #[derive(Debug, Clone)]
-pub struct ReceiverRuntimeConfig {
+pub struct ReceiverPipelineConfig {
     /// Sample rate of the IF signal, in Hz.
     pub sampling_freq_hz: f64,
     /// Intermediate frequency, in Hz.
@@ -83,7 +83,7 @@ pub struct ReceiverRuntimeConfig {
     pub ppp: PppConfig,
 }
 
-impl Default for ReceiverRuntimeConfig {
+impl Default for ReceiverPipelineConfig {
     fn default() -> Self {
         Self {
             sampling_freq_hz: 5_000_000.0,
@@ -144,7 +144,7 @@ pub struct BandTrackingSpec {
     pub integration_ms: u32,
 }
 
-impl ReceiverRuntimeConfig {
+impl ReceiverPipelineConfig {
     /// Resolve tracking parameters for a given band, falling back to defaults.
     pub fn tracking_params(&self, band: SignalBand) -> TrackingParams {
         if let Some(profile) = self.tracking_per_band.iter().find(|p| p.band == band) {

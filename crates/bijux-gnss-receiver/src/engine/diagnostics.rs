@@ -2,6 +2,7 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{NavSolutionEpoch, ObsEpoch};
+use crate::engine::runtime_context::ReceiverRuntimeConfig;
 #[cfg(feature = "trace-heavy")]
 use serde::Serialize;
 #[cfg(feature = "trace-heavy")]
@@ -30,11 +31,16 @@ struct ResidualStats {
 }
 
 #[cfg(feature = "trace-heavy")]
-pub fn dump_on_error(note: &str, obs: Option<&ObsEpoch>, nav: Option<&NavSolutionEpoch>) {
-    if std::env::var("BIJUX_DIAGNOSTICS_DUMP").ok().as_deref() != Some("1") {
+pub fn dump_on_error(
+    runtime: &ReceiverRuntimeConfig,
+    note: &str,
+    obs: Option<&ObsEpoch>,
+    nav: Option<&NavSolutionEpoch>,
+) {
+    if !runtime.diagnostics_dump {
         return;
     }
-    let run_id = std::env::var("BIJUX_RUN_ID").unwrap_or_else(|_| "unknown".to_string());
+    let run_id = runtime.run_id.clone().unwrap_or_else(|| "unknown".to_string());
     let obs_tail = obs.into_iter().collect::<Vec<_>>();
     let nav_tail = nav.into_iter().collect::<Vec<_>>();
     let residual_stats = nav.and_then(|nav| {
@@ -60,9 +66,9 @@ pub fn dump_on_error(note: &str, obs: Option<&ObsEpoch>, nav: Option<&NavSolutio
         })
     });
 
-    let config_snapshot = std::env::var("BIJUX_RUN_DIR")
-        .ok()
-        .map(PathBuf::from)
+    let config_snapshot = runtime
+        .run_dir
+        .clone()
         .and_then(|dir| fs::read_to_string(dir.join("config.json")).ok())
         .and_then(|data| serde_json::from_str(&data).ok());
 
@@ -74,9 +80,9 @@ pub fn dump_on_error(note: &str, obs: Option<&ObsEpoch>, nav: Option<&NavSolutio
         config_snapshot,
         note: note.to_string(),
     };
-    let path = std::env::var("BIJUX_RUN_DIR")
-        .ok()
-        .map(PathBuf::from)
+    let path = runtime
+        .run_dir
+        .clone()
         .unwrap_or_else(|| PathBuf::from("."));
     let file = path.join("diagnostics_dump.json");
     if let Ok(data) = serde_json::to_string_pretty(&dump) {
@@ -85,4 +91,10 @@ pub fn dump_on_error(note: &str, obs: Option<&ObsEpoch>, nav: Option<&NavSolutio
 }
 
 #[cfg(not(feature = "trace-heavy"))]
-pub fn dump_on_error(_note: &str, _obs: Option<&ObsEpoch>, _nav: Option<&NavSolutionEpoch>) {}
+pub fn dump_on_error(
+    _runtime: &ReceiverRuntimeConfig,
+    _note: &str,
+    _obs: Option<&ObsEpoch>,
+    _nav: Option<&NavSolutionEpoch>,
+) {
+}

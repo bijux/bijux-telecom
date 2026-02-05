@@ -3,19 +3,19 @@ use bijux_gnss_core::api::{Constellation, SatId};
 use bijux_gnss_receiver::api::{
     AcquisitionEngine,
     sim::{generate_l1_ca, SyntheticSignalParams},
-    ReceiverRuntimeConfig,
+    ReceiverPipelineConfig,
 };
 use bijux_gnss_signal::api::samples_per_code;
 
 #[test]
 fn synthetic_correlator_peak_ratio() {
-    let config = ReceiverRuntimeConfig {
+    let config = ReceiverPipelineConfig {
         sampling_freq_hz: 4_092_000.0,
         intermediate_freq_hz: 0.0,
         code_freq_basis_hz: 1_023_000.0,
         code_length: 1023,
         channels: 12,
-        ..ReceiverRuntimeConfig::default()
+        ..ReceiverPipelineConfig::default()
     };
     let samples_per_code = samples_per_code(
         config.sampling_freq_hz,
@@ -52,13 +52,13 @@ fn synthetic_correlator_peak_ratio() {
 
 #[test]
 fn golden_acquisition_run_is_stable() {
-    let config = ReceiverRuntimeConfig {
+    let config = ReceiverPipelineConfig {
         sampling_freq_hz: 4_092_000.0,
         intermediate_freq_hz: 0.0,
         code_freq_basis_hz: 1_023_000.0,
         code_length: 1023,
         channels: 12,
-        ..ReceiverRuntimeConfig::default()
+        ..ReceiverPipelineConfig::default()
     };
     let samples_per_code = samples_per_code(
         config.sampling_freq_hz,
@@ -84,7 +84,8 @@ fn golden_acquisition_run_is_stable() {
         samples_per_code as f64 / config.sampling_freq_hz,
     );
 
-    let acquisition = Acquisition::new(config).with_doppler(1000, 500);
+    let runtime = bijux_gnss_receiver::api::ReceiverRuntimeConfig::default();
+    let acquisition = Acquisition::new(config, runtime).with_doppler(1000, 500);
     let results = acquisition.run_fft(&frame, &[sat]);
     let r = &results[0];
 
@@ -104,7 +105,7 @@ fn golden_acquisition_run_is_stable() {
 
 #[test]
 fn synthetic_supports_multi_constellation_mock() {
-    let config = ReceiverRuntimeConfig::default();
+    let config = ReceiverPipelineConfig::default();
     let _frame = generate_l1_ca(
         &config,
         SyntheticSignalParams {
@@ -142,7 +143,7 @@ fn shift(code: &[f32], offset: usize) -> Vec<f32> {
 
 fn generate_local_code(
     prn: u8,
-    config: &ReceiverRuntimeConfig,
+    config: &ReceiverPipelineConfig,
     code_phase_chips: f64,
     samples_per_code: usize,
 ) -> Vec<f32> {

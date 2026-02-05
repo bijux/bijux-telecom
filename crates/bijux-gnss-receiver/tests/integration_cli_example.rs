@@ -1,10 +1,11 @@
 #![allow(missing_docs)]
-use bijux_gnss_receiver::api::{data::MemorySamples, Receiver, ReceiverRuntimeConfig};
+use bijux_gnss_receiver::api::{data::MemorySamples, Receiver, ReceiverPipelineConfig};
 
 #[test]
 fn receiver_cli_smoke() {
-    let config = ReceiverRuntimeConfig::default();
-    let receiver = Receiver::new(config.clone());
+    let config = ReceiverPipelineConfig::default();
+    let runtime = bijux_gnss_receiver::api::ReceiverRuntimeConfig::default();
+    let receiver = Receiver::new(config.clone(), runtime);
 
     let samples = vec![0i16; 10_000];
     let mut source = MemorySamples::new(samples, config.sampling_freq_hz).expect("valid samples");

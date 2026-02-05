@@ -25,6 +25,7 @@ impl Receiver {
             Ok(None) => return Ok(RunArtifacts::default()),
             Err(err) => {
                 crate::engine::diagnostics::dump_on_error(
+                    self.runtime(),
                     &format!("input error: {err}"),
                     None,
                     None,
@@ -41,11 +42,16 @@ impl Receiver {
                 prn,
             })
             .collect();
-        let acquisition =
-            crate::pipeline::acquisition::Acquisition::new(self.config().clone());
+        let acquisition = crate::pipeline::acquisition::Acquisition::new(
+            self.config().clone(),
+            self.runtime().clone(),
+        );
         let acquisitions = acquisition.run_fft(&frame, &sats);
 
-        let tracking = crate::pipeline::tracking::Tracking::new(self.config().clone());
+        let tracking = crate::pipeline::tracking::Tracking::new(
+            self.config().clone(),
+            self.runtime().clone(),
+        );
         let tracking_results =
             tracking.track_from_acquisition(&frame, &acquisitions, SignalBand::L1);
         let artifacts = RunArtifacts {
@@ -54,7 +60,7 @@ impl Receiver {
             observations: Vec::new(),
             navigation: Vec::new(),
         };
-        write_metrics_summary(&artifacts);
+        write_metrics_summary(self.runtime(), &artifacts);
         Ok(artifacts)
     }
 }

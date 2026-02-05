@@ -3,7 +3,7 @@
 use bijux_gnss_core::api::{ConfigError, SchemaVersion, ValidateConfig, ValidationReport};
 
 use crate::engine::receiver_config::{
-    parse_band, BandTrackingSpec, ReceiverRuntimeConfig, ReceiverConfig,
+    parse_band, BandTrackingSpec, ReceiverPipelineConfig, ReceiverConfig,
 };
 
 impl ValidateConfig for ReceiverConfig {
@@ -203,8 +203,8 @@ impl ReceiverConfig {
         }
     }
 
-    pub fn to_runtime_config(&self) -> ReceiverRuntimeConfig {
-        ReceiverRuntimeConfig {
+    pub fn to_pipeline_config(&self) -> ReceiverPipelineConfig {
+        ReceiverPipelineConfig {
             sampling_freq_hz: self.sample_rate_hz,
             intermediate_freq_hz: self.intermediate_freq_hz,
             code_freq_basis_hz: self.code_freq_basis_hz,

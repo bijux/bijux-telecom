@@ -6,13 +6,13 @@ use bijux_gnss_receiver::api::{
     observations_from_tracking,
     sim::{generate_l1_ca_multi, SyntheticScenario},
     TrackingEngine,
-    ReceiverRuntimeConfig,
+    ReceiverPipelineConfig,
 };
 
 #[test]
 fn numerical_sanity_pipeline() {
     let scenario = load_scenario();
-    let config = ReceiverRuntimeConfig {
+    let config = ReceiverPipelineConfig {
         sampling_freq_hz: scenario.sample_rate_hz,
         intermediate_freq_hz: scenario.intermediate_freq_hz,
         code_freq_basis_hz: 1_023_000.0,
@@ -20,13 +20,14 @@ fn numerical_sanity_pipeline() {
         channels: 12,
         tracking_budget_ms: 100.0,
         tracking_over_budget_action: "continue".to_string(),
-        ..ReceiverRuntimeConfig::default()
+        ..ReceiverPipelineConfig::default()
     };
 
     let frame = generate_l1_ca_multi(&config, &scenario);
     let sats: Vec<bijux_gnss_core::api::SatId> =
         scenario.satellites.iter().map(|s| s.sat).collect();
-    let acq = Acquisition::new(config.clone()).with_doppler(10_000, 500);
+    let runtime = bijux_gnss_receiver::api::ReceiverRuntimeConfig::default();
+    let acq = Acquisition::new(config.clone(), runtime.clone()).with_doppler(10_000, 500);
     let acq_results = acq.run_fft(&frame, &sats);
 
     for res in &acq_results {
@@ -36,7 +37,7 @@ fn numerical_sanity_pipeline() {
         assert!(res.peak_second_ratio.is_finite());
     }
 
-    let tracking = Tracking::new(config.clone());
+    let tracking = Tracking::new(config.clone(), runtime);
     let tracks =
         tracking.track_from_acquisition(&frame, &acq_results, bijux_gnss_core::api::SignalBand::L1);
 
@@ -54,7 +55,7 @@ fn numerical_sanity_pipeline() {
     }
 
     let obs_epochs = if let Some(first) = tracks.first() {
-        observations_from_tracking(&config, &first.epochs)
+        observations_from_tracking(&config, &first.epochs).0
     } else {
         Vec::new()
     };

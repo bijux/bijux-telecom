@@ -11,53 +11,72 @@ use std::path::Path;
 #[cfg(feature = "trace-dump")]
 use serde::Serialize;
 
+use crate::engine::runtime_context::ReceiverRuntimeConfig;
 use crate::pipeline::tracking::ChannelState;
 use bijux_gnss_core::api::{DiagnosticEvent, SatId};
 
 #[cfg(feature = "tracing")]
-fn run_id() -> String {
-    std::env::var("BIJUX_RUN_ID").unwrap_or_else(|_| "unknown".to_string())
+fn run_id(runtime: &ReceiverRuntimeConfig) -> &str {
+    runtime.run_id.as_deref().unwrap_or("unknown")
 }
 
-pub fn acquisition_hit(sat: SatId, carrier_hz: f64, code_phase: usize, metric: f32, ratio: f32) {
+pub fn acquisition_hit(
+    runtime: &ReceiverRuntimeConfig,
+    sat: SatId,
+    carrier_hz: f64,
+    code_phase: usize,
+    metric: f32,
+    ratio: f32,
+) {
     #[cfg(feature = "tracing")]
     info!(
-        run_id = %run_id(),
+        run_id = %run_id(runtime),
         prn = sat.prn,
         carrier_hz, code_phase, metric, ratio, "acquisition hit"
     );
     #[cfg(not(feature = "tracing"))]
     {
-        let _ = (sat, carrier_hz, code_phase, metric, ratio);
+        let _ = (runtime, sat, carrier_hz, code_phase, metric, ratio);
     }
 }
 
-pub fn channel_state_change(channel: u8, from: ChannelState, to: ChannelState) {
+pub fn channel_state_change(
+    runtime: &ReceiverRuntimeConfig,
+    channel: u8,
+    from: ChannelState,
+    to: ChannelState,
+) {
     #[cfg(feature = "tracing")]
-    info!(run_id = %run_id(), channel, from = ?from, to = ?to, "channel state change");
+    info!(
+        run_id = %run_id(runtime),
+        channel,
+        from = ?from,
+        to = ?to,
+        "channel state change"
+    );
     #[cfg(not(feature = "tracing"))]
     {
-        let _ = (channel, from, to);
+        let _ = (runtime, channel, from, to);
     }
 }
 
-pub fn lock_status(channel: u8, locked: bool) {
+pub fn lock_status(runtime: &ReceiverRuntimeConfig, channel: u8, locked: bool) {
     #[cfg(feature = "tracing")]
-    debug!(run_id = %run_id(), channel, locked, "lock status change");
+    debug!(run_id = %run_id(runtime), channel, locked, "lock status change");
     #[cfg(not(feature = "tracing"))]
     {
-        let _ = (channel, locked);
+        let _ = (runtime, channel, locked);
     }
 }
 
-pub fn diagnostic(event: &DiagnosticEvent) {
+pub fn diagnostic(runtime: &ReceiverRuntimeConfig, event: &DiagnosticEvent) {
     #[cfg(feature = "tracing")]
     {
         match event.severity {
             bijux_gnss_core::api::DiagnosticSeverity::Error => {
                 tracing::event!(
                     tracing::Level::ERROR,
-                    run_id = %run_id(),
+                    run_id = %run_id(runtime),
                     code = %event.code,
                     message = %event.message,
                     "diagnostic"
@@ -66,7 +85,7 @@ pub fn diagnostic(event: &DiagnosticEvent) {
             bijux_gnss_core::api::DiagnosticSeverity::Warning => {
                 tracing::event!(
                     tracing::Level::WARN,
-                    run_id = %run_id(),
+                    run_id = %run_id(runtime),
                     code = %event.code,
                     message = %event.message,
                     "diagnostic"
@@ -75,7 +94,7 @@ pub fn diagnostic(event: &DiagnosticEvent) {
             bijux_gnss_core::api::DiagnosticSeverity::Info => {
                 tracing::event!(
                     tracing::Level::INFO,
-                    run_id = %run_id(),
+                    run_id = %run_id(runtime),
                     code = %event.code,
                     message = %event.message,
                     "diagnostic"
@@ -85,7 +104,7 @@ pub fn diagnostic(event: &DiagnosticEvent) {
     }
     #[cfg(not(feature = "tracing"))]
     {
-        let _ = event;
+        let _ = (runtime, event);
     }
 }
 

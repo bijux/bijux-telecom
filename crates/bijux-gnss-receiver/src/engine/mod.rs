@@ -11,9 +11,10 @@ pub mod receiver_config;
 pub mod receiver_config_defaults;
 pub mod receiver_config_validation;
 pub mod receiver;
+pub mod runtime_context;
 
 #[allow(dead_code)]
-pub fn runtime_modules() -> [&'static str; 7] {
+pub fn runtime_modules() -> [&'static str; 8] {
     [
         "logging",
         "alloc",
@@ -22,5 +23,6 @@ pub fn runtime_modules() -> [&'static str; 7] {
         "receiver_config",
         "receiver_config_defaults",
         "receiver_config_validation",
+        "runtime_context",
     ]
 }

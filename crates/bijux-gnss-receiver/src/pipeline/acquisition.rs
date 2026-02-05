@@ -10,14 +10,16 @@ use rustfft::{num_traits::Zero, FftPlanner};
 use crate::engine::logging;
 #[cfg(feature = "trace-dump")]
 use crate::engine::logging::{dump_acq_trace, AcqTrace};
-use crate::engine::receiver_config::ReceiverRuntimeConfig;
+use crate::engine::receiver_config::ReceiverPipelineConfig;
+use crate::engine::runtime_context::ReceiverRuntimeConfig;
 use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::Nco;
 use bijux_gnss_signal::api::{generate_ca_code, Prn};
 
 /// Acquisition engine (coarse search).
 pub struct Acquisition {
-    config: ReceiverRuntimeConfig,
+    config: ReceiverPipelineConfig,
+    runtime: ReceiverRuntimeConfig,
     doppler_search_hz: i32,
     doppler_step_hz: i32,
     cache: Mutex<CodeFftCache>,
@@ -26,9 +28,10 @@ pub struct Acquisition {
 type CodeFftCache = HashMap<(usize, SatId), Vec<Complex<f32>>>;
 
 impl Acquisition {
-    pub fn new(config: ReceiverRuntimeConfig) -> Self {
+    pub fn new(config: ReceiverPipelineConfig, runtime: ReceiverRuntimeConfig) -> Self {
         Self {
             config,
+            runtime,
             doppler_search_hz: 10_000,
             doppler_step_hz: 500,
             cache: Mutex::new(HashMap::new()),
@@ -147,6 +150,7 @@ impl Acquisition {
 
             if let Some(best) = candidates.first() {
                 logging::acquisition_hit(
+                    &self.runtime,
                     best.sat,
                     best.carrier_hz.0,
                     best.code_phase_samples,
@@ -154,7 +158,7 @@ impl Acquisition {
                     best.peak_mean_ratio,
                 );
                 #[cfg(feature = "trace-dump")]
-                if let Ok(dir) = std::env::var("BIJUX_TRACE_DIR") {
+                if let Some(dir) = self.runtime.trace_dir.as_ref() {
                     let trace = AcqTrace {
                         sat: best.sat,
                         doppler_hz: best.carrier_hz.0,
@@ -163,7 +167,7 @@ impl Acquisition {
                         mean: best.mean,
                         second_peak: best.second_peak,
                     };
-                    let _ = dump_acq_trace(std::path::Path::new(&dir), &trace);
+                    let _ = dump_acq_trace(dir.as_path(), &trace);
                 }
             }
 

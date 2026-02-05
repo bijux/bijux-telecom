@@ -1,16 +1,21 @@
 //! Receiver entrypoint helpers.
 #![allow(missing_docs)]
 
-use crate::api::{Receiver, ReceiverRuntimeConfig};
+use crate::api::{Receiver, ReceiverPipelineConfig, ReceiverRuntimeConfig};
 
 impl Receiver {
     /// Create a new receiver with the provided configuration.
-    pub fn new(config: ReceiverRuntimeConfig) -> Self {
-        Self { config }
+    pub fn new(config: ReceiverPipelineConfig, runtime: ReceiverRuntimeConfig) -> Self {
+        Self { config, runtime }
     }
 
     /// Borrow the receiver configuration.
-    pub fn config(&self) -> &ReceiverRuntimeConfig {
+    pub fn config(&self) -> &ReceiverPipelineConfig {
         &self.config
+    }
+
+    /// Borrow the receiver runtime options.
+    pub fn runtime(&self) -> &ReceiverRuntimeConfig {
+        &self.runtime
     }
 }

@@ -4,26 +4,27 @@ use std::fs;
 use bijux_gnss_receiver::api::{
     AcquisitionEngine,
     sim::{generate_l1_ca_multi, SyntheticScenario},
-    ReceiverRuntimeConfig,
+    ReceiverPipelineConfig,
 };
 
 #[test]
 fn golden_acquisition_from_scenario() {
     let scenario = load_scenario();
-    let config = ReceiverRuntimeConfig {
+    let config = ReceiverPipelineConfig {
         sampling_freq_hz: scenario.sample_rate_hz,
         intermediate_freq_hz: scenario.intermediate_freq_hz,
         code_freq_basis_hz: 1_023_000.0,
         code_length: 1023,
         channels: 12,
-        ..ReceiverRuntimeConfig::default()
+        ..ReceiverPipelineConfig::default()
     };
 
     let frame = generate_l1_ca_multi(&config, &scenario);
     let sats: Vec<bijux_gnss_core::api::SatId> =
         scenario.satellites.iter().map(|s| s.sat).collect();
     let doppler_step_hz = 500.0;
-    let acq = Acquisition::new(config).with_doppler(10_000, doppler_step_hz as i32);
+    let runtime = bijux_gnss_receiver::api::ReceiverRuntimeConfig::default();
+    let acq = Acquisition::new(config, runtime).with_doppler(10_000, doppler_step_hz as i32);
     let results = acq.run_fft(&frame, &sats);
 
     for (sat, res) in scenario.satellites.iter().zip(results.iter()) {

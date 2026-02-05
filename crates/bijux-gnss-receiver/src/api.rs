@@ -2,7 +2,11 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 /// Receiver configuration and schema.
-pub use crate::engine::receiver_config::{ReceiverRuntimeConfig, ReceiverError, ReceiverConfig};
+pub use crate::engine::receiver_config::{
+    ReceiverConfig, ReceiverError, ReceiverPipelineConfig,
+};
+/// Receiver runtime options (side-effectful controls).
+pub use crate::engine::runtime_context::ReceiverRuntimeConfig;
 
 /// I/O helpers.
 pub use crate::io::data::{FileSamples, MemorySamples, SampleSourceError};
@@ -113,5 +117,6 @@ pub trait ReceiverEngine {
 
 /// High-level receiver pipeline entrypoint.
 pub struct Receiver {
-    pub(crate) config: ReceiverRuntimeConfig,
+    pub(crate) config: ReceiverPipelineConfig,
+    pub(crate) runtime: ReceiverRuntimeConfig,
 }

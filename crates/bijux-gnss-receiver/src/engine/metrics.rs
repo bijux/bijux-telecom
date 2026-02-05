@@ -2,9 +2,9 @@
 #![allow(missing_docs)]
 
 use crate::api::RunArtifacts;
+use crate::engine::runtime_context::ReceiverRuntimeConfig;
 use serde::Serialize;
 use std::fs;
-use std::path::PathBuf;
 
 #[derive(Debug, Serialize)]
 struct MetricsSummary {
@@ -17,10 +17,10 @@ struct MetricsSummary {
     nav_outlier_count: u64,
 }
 
-pub fn write_metrics_summary(artifacts: &RunArtifacts) {
-    let run_dir = match std::env::var("BIJUX_RUN_DIR") {
-        Ok(dir) => PathBuf::from(dir),
-        Err(_) => return,
+pub fn write_metrics_summary(runtime: &ReceiverRuntimeConfig, artifacts: &RunArtifacts) {
+    let run_dir = match runtime.run_dir.as_ref() {
+        Some(dir) => dir.clone(),
+        None => return,
     };
 
     let acquisition_peak_mean_ratio_avg = if artifacts.acquisitions.is_empty() {
