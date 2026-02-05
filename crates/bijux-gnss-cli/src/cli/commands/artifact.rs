@@ -12,7 +12,7 @@ fn handle_artifact(command: GnssCommand) -> Result<()> {
             report,
             fail_on,
         } => {
-            set_trace_dir(&common);
+            let _ = runtime_config_from_env(&common, None);
             let result = artifact_validate(&file, kind.as_deref(), strict)?;
             let summary = bijux_gnss_infra::api::core::aggregate_diagnostics(&result.diagnostics);
             if let Some(path) = report {
@@ -34,7 +34,7 @@ fn handle_artifact(command: GnssCommand) -> Result<()> {
             )?;
         }
         ArtifactCommand::Explain { common, file } => {
-            set_trace_dir(&common);
+            let _ = runtime_config_from_env(&common, None);
             explain_artifact(&common, &file)?;
         }
         ArtifactCommand::Convert {
@@ -43,7 +43,7 @@ fn handle_artifact(command: GnssCommand) -> Result<()> {
             output,
             to,
         } => {
-            set_trace_dir(&common);
+            let _ = runtime_config_from_env(&common, None);
             convert_artifact(&input, &output, &to)?;
             let summary = serde_json::json!({
                 "input": input.display().to_string(),

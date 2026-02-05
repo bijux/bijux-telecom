@@ -231,7 +231,7 @@ fn handle_validateartifacts(command: GnssCommand) -> Result<()> {
         bail!("invalid command for handler");
     };
 
-    set_trace_dir(&common);
+    let _ = runtime_config_from_env(&common, None);
     if obs.is_none() && eph.is_none() {
         bail!("--obs and/or --eph is required");
     }
@@ -273,7 +273,7 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
         bail!("invalid command for handler");
     };
 
-    set_trace_dir(&common);
+    let _ = runtime_config_from_env(&common, None);
     let file = file.context("--file is required for validation")?;
     let profile = load_config(&common)?;
     let dataset = load_dataset(&common)?;
@@ -312,7 +312,10 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
 
     let mut solutions = Vec::new();
     let mut nav_solver =
-        bijux_gnss_infra::api::receiver::Navigation::new(profile.to_runtime_config());
+        bijux_gnss_infra::api::receiver::Navigation::new(
+            profile.to_pipeline_config(),
+            runtime_config_from_env(&common, None),
+        );
     for obs_epoch in &obs {
         if let Some(sol) = nav_solver.solve_epoch(obs_epoch, &nav) {
             solutions.push(sol);
@@ -383,7 +386,7 @@ fn handle_validate_reference(command: GnssCommand) -> Result<()> {
         bail!("invalid command for handler");
     };
 
-    set_trace_dir(&common);
+    let _ = runtime_config_from_env(&common, None);
     let artifacts = run_dir.join("artifacts");
     let obs_path = artifacts.join("obs.jsonl");
     let nav_path = artifacts.join("pvt.jsonl");

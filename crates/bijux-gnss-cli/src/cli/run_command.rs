@@ -77,13 +77,22 @@ fn inspect_dataset(path: &Path, sample_rate_hz: f64, max_samples: usize) -> Resu
         power_histogram: power_hist,
     })
 }
-fn set_trace_dir(common: &CommonArgs) {
-    if let Some(dir) = &common.dump {
-        std::env::set_var("BIJUX_TRACE_DIR", dir);
-    }
+fn runtime_config_from_env(
+    common: &CommonArgs,
+    run_dir: Option<PathBuf>,
+) -> bijux_gnss_infra::api::receiver::ReceiverRuntimeConfig {
     if common.deterministic {
         std::env::set_var("RAYON_NUM_THREADS", "1");
         std::env::set_var("BIJUX_DETERMINISTIC", "1");
+    }
+    bijux_gnss_infra::api::receiver::ReceiverRuntimeConfig {
+        run_id: std::env::var("BIJUX_RUN_ID").ok(),
+        trace_dir: common.dump.clone(),
+        run_dir: run_dir.or_else(|| std::env::var("BIJUX_RUN_DIR").ok().map(PathBuf::from)),
+        diagnostics_dump: std::env::var("BIJUX_DIAGNOSTICS_DUMP")
+            .ok()
+            .as_deref()
+            == Some("1"),
     }
 }
 use bijux_gnss_infra::api::core::format_sat;

@@ -81,7 +81,7 @@ fn emit_report<T: Serialize>(common: &CommonArgs, command: &str, report: &T) -> 
 
 fn load_frame(
     path: &Path,
-    config: &ReceiverRuntimeConfig,
+    config: &ReceiverPipelineConfig,
     offset_bytes: u64,
     sidecar: Option<&SidecarSpec>,
 ) -> Result<SamplesFrame> {
@@ -306,7 +306,7 @@ fn write_track_timeseries(
 
 fn write_obs_timeseries(
     common: &CommonArgs,
-    config: &ReceiverRuntimeConfig,
+    config: &ReceiverPipelineConfig,
     tracks: &[bijux_gnss_infra::api::receiver::TrackingResult],
     hatch_window: u32,
     profile: &ReceiverConfig,
@@ -314,11 +314,16 @@ fn write_obs_timeseries(
 ) -> Result<()> {
     let out_dir = artifacts_dir(common, "track", dataset)?;
     let header = artifact_header(common, profile, dataset)?;
-    let mut obs = bijux_gnss_infra::api::receiver::observations_from_tracking_results(
-        config,
-        tracks,
-        hatch_window,
-    );
+    let runtime = runtime_config_from_env(common, None);
+    let (mut obs, mut events) =
+        bijux_gnss_infra::api::receiver::observations_from_tracking_results(
+            config,
+            tracks,
+            hatch_window,
+        );
+    for event in events.drain(..) {
+        bijux_gnss_infra::api::receiver::logging::diagnostic(&runtime, &event);
+    }
     let path = out_dir.join("obs.jsonl");
     let mut lines = Vec::new();
     let mut timing_lines = Vec::new();

@@ -23,7 +23,7 @@ fn handle_track(command: GnssCommand) -> Result<()> {
         bail!("invalid command for handler");
     };
 
-    set_trace_dir(&common);
+    let runtime = runtime_config_from_env(&common, None);
                     let dataset = load_dataset(&common)?;
                     let mut profile = load_config(&common)?;
                     apply_common_overrides(
@@ -39,18 +39,21 @@ fn handle_track(command: GnssCommand) -> Result<()> {
                         profile.intermediate_freq_hz = entry.intermediate_freq_hz;
                     }
                     validate_config_ingest(&profile)?;
-                    let config = profile.to_runtime_config();
+                    let config = profile.to_pipeline_config();
     
                     let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
                     let sidecar = load_sidecar(common.sidecar.as_ref())?;
                     let frame = load_frame(&input_file, &config, offset_bytes, sidecar.as_ref())?;
     
-                    let acquisition = AcquisitionEngine::new(config.clone())
+                    let acquisition = AcquisitionEngine::new(config.clone(), runtime.clone())
                         .with_doppler(doppler_search_hz, doppler_step_hz);
                     let sats = bijux_gnss_infra::api::core::prns_to_sats(&prn);
                     let acquisitions = acquisition.run_fft(&frame, &sats);
     
-                    let tracking = bijux_gnss_infra::api::receiver::TrackingEngine::new(config.clone());
+                    let tracking = bijux_gnss_infra::api::receiver::TrackingEngine::new(
+                        config.clone(),
+                        runtime.clone(),
+                    );
                     let tracks = tracking.track_from_acquisition(
                         &frame,
                         &acquisitions,
@@ -126,7 +129,7 @@ fn handle_inspect(command: GnssCommand) -> Result<()> {
         bail!("invalid command for handler");
     };
 
-    set_trace_dir(&common);
+    let _ = runtime_config_from_env(&common, None);
                     let dataset = load_dataset(&common)?;
                     let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
                     let sample_rate_hz = sampling_hz
@@ -153,7 +156,7 @@ fn handle_validateconfig(command: GnssCommand) -> Result<()> {
         bail!("invalid command for handler");
     };
 
-    set_trace_dir(&common);
+    let _ = runtime_config_from_env(&common, None);
                     let path = config
                         .or(common.config.clone())
                         .context("--config is required")?;
@@ -250,7 +253,7 @@ fn handle_configschema(command: GnssCommand) -> Result<()> {
         bail!("invalid command for handler");
     };
 
-    set_trace_dir(&common);
+    let _ = runtime_config_from_env(&common, None);
                         let schema = schema_for!(ReceiverConfig);
                         fs::write(&out, serde_json::to_string_pretty(&schema)?)?;
                         println!("wrote {}", out.display());
@@ -279,7 +282,7 @@ fn handle_configupgrade(command: GnssCommand) -> Result<()> {
         bail!("invalid command for handler");
     };
 
-    set_trace_dir(&common);
+    let _ = runtime_config_from_env(&common, None);
     let profile = load_config_from_path(&config)?;
     validate_config_schema(&profile)?;
     let report = <ReceiverConfig as ValidateConfig>::validate(&profile);
@@ -313,7 +316,7 @@ fn handle_rinex(command: GnssCommand) -> Result<()> {
         bail!("invalid command for handler");
     };
 
-    set_trace_dir(&common);
+    let _ = runtime_config_from_env(&common, None);
                     let obs_epochs = read_obs_epochs(&obs)?;
                     let ephs = read_ephemeris(&eph)?;
                     let out_dir = artifacts_dir(&common, "rinex", None)?;

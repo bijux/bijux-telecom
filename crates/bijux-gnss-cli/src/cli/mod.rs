@@ -24,7 +24,7 @@ use bijux_gnss_infra::api::nav::{
     WeightingConfig, write_rinex_nav, write_rinex_obs,
 };
 use bijux_gnss_infra::api::receiver::{
-    AcquisitionEngine, FileSamples, ReceiverRuntimeConfig, ReceiverConfig,
+    AcquisitionEngine, FileSamples, ReceiverPipelineConfig, ReceiverConfig,
 };
 use bijux_gnss_infra::api::signal::{generate_ca_code, samples_per_code, Prn, SignalSource};
 use clap::{Args, Parser, Subcommand, ValueEnum};
