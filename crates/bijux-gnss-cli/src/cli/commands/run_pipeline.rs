@@ -232,17 +232,15 @@ fn handle_experiment(command: GnssCommand) -> Result<()> {
                             &acquisitions,
                             bijux_gnss_infra::api::core::SignalBand::L1,
                         );
-                        let (obs, mut obs_events) =
+                        let obs_report =
                             bijux_gnss_infra::api::receiver::observations_from_tracking_results(
-                            &config,
-                            &tracks,
-                            run_profile.navigation.hatch_window,
-                        );
-                        for event in obs_events.drain(..) {
-                            bijux_gnss_infra::api::receiver::logging::diagnostic(
-                                &runtime,
-                                &event,
+                                &config,
+                                &tracks,
+                                run_profile.navigation.hatch_window,
                             );
+                        let obs = obs_report.output;
+                        for event in obs_report.events {
+                            runtime.logger.event(&event);
                         }
                         let mut nav =
                             bijux_gnss_infra::api::receiver::Navigation::new(config.clone(), runtime.clone());

@@ -80,12 +80,12 @@ fn inspect_dataset(path: &Path, sample_rate_hz: f64, max_samples: usize) -> Resu
 fn runtime_config_from_env(
     common: &CommonArgs,
     run_dir: Option<PathBuf>,
-) -> bijux_gnss_infra::api::receiver::ReceiverRuntimeConfig {
+) -> bijux_gnss_infra::api::receiver::ReceiverRuntime {
     if common.deterministic {
         std::env::set_var("RAYON_NUM_THREADS", "1");
         std::env::set_var("BIJUX_DETERMINISTIC", "1");
     }
-    bijux_gnss_infra::api::receiver::ReceiverRuntimeConfig {
+    let config = bijux_gnss_infra::api::receiver::ReceiverRuntimeConfig {
         run_id: std::env::var("BIJUX_RUN_ID").ok(),
         trace_dir: common.dump.clone(),
         run_dir: run_dir.or_else(|| std::env::var("BIJUX_RUN_DIR").ok().map(PathBuf::from)),
@@ -93,7 +93,8 @@ fn runtime_config_from_env(
             .ok()
             .as_deref()
             == Some("1"),
-    }
+    };
+    bijux_gnss_infra::api::receiver::ReceiverRuntime::new(config)
 }
 use bijux_gnss_infra::api::core::format_sat;
 

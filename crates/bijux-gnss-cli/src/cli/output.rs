@@ -315,14 +315,15 @@ fn write_obs_timeseries(
     let out_dir = artifacts_dir(common, "track", dataset)?;
     let header = artifact_header(common, profile, dataset)?;
     let runtime = runtime_config_from_env(common, None);
-    let (mut obs, mut events) =
+    let obs_report =
         bijux_gnss_infra::api::receiver::observations_from_tracking_results(
             config,
             tracks,
             hatch_window,
         );
-    for event in events.drain(..) {
-        bijux_gnss_infra::api::receiver::logging::diagnostic(&runtime, &event);
+    let mut obs = obs_report.output;
+    for event in obs_report.events {
+        runtime.logger.event(&event);
     }
     let path = out_dir.join("obs.jsonl");
     let mut lines = Vec::new();
