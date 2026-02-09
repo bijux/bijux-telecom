@@ -10,13 +10,13 @@ use bijux_gnss_nav::api::{
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
-use crate::engine::runtime_context::ReceiverRuntimeConfig;
+use crate::engine::runtime::ReceiverRuntime;
 
 /// Navigation solution derived from observation epochs.
 pub struct Navigation {
     #[allow(dead_code)]
     config: ReceiverPipelineConfig,
-    runtime: ReceiverRuntimeConfig,
+    runtime: ReceiverRuntime,
     solver: PositionSolver,
     clock: ClockModel,
     last_ecef: Option<(f64, f64, f64)>,
@@ -87,7 +87,7 @@ impl Default for EkfState {
 }
 
 impl Navigation {
-    pub fn new(config: ReceiverPipelineConfig, runtime: ReceiverRuntimeConfig) -> Self {
+    pub fn new(config: ReceiverPipelineConfig, runtime: ReceiverRuntime) -> Self {
         let mut solver = PositionSolver::new();
         solver.robust = config.robust_solver;
         solver.huber_k = config.huber_k;
@@ -155,32 +155,24 @@ impl Navigation {
             })
             .collect();
         if observations.len() < 4 {
-            crate::engine::logging::diagnostic(&self.runtime, &bijux_gnss_core::api::DiagnosticEvent::new(
-                bijux_gnss_core::api::DiagnosticSeverity::Warning,
-                "NAV_INSUFFICIENT_SATS",
-                "insufficient satellites for navigation solution",
-            ));
-            crate::engine::diagnostics::dump_on_error(
-                &self.runtime,
-                "nav insufficient satellites",
-                Some(obs),
-                self.last_solution.as_ref(),
+            self.runtime.logger.event(
+                &bijux_gnss_core::api::DiagnosticEvent::new(
+                    bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                    "NAV_INSUFFICIENT_SATS",
+                    "insufficient satellites for navigation solution",
+                ),
             );
             return self.degraded_from_last(obs);
         }
         let solution = match self.solver.solve_wls(&observations, eph, obs.t_rx_s.0) {
             Some(solution) => solution,
             None => {
-                crate::engine::logging::diagnostic(&self.runtime, &bijux_gnss_core::api::DiagnosticEvent::new(
-                    bijux_gnss_core::api::DiagnosticSeverity::Warning,
-                    "NAV_SOLVER_FAILED",
-                    "nav solver failed to converge",
-                ));
-                crate::engine::diagnostics::dump_on_error(
-                    &self.runtime,
-                    "nav solver failed to converge",
-                    Some(obs),
-                    self.last_solution.as_ref(),
+                self.runtime.logger.event(
+                    &bijux_gnss_core::api::DiagnosticEvent::new(
+                        bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                        "NAV_SOLVER_FAILED",
+                        "nav solver failed to converge",
+                    ),
                 );
                 return self.degraded_from_last(obs);
             }
@@ -245,11 +237,13 @@ impl Navigation {
             nav_epoch
                 .health
                 .push(bijux_gnss_core::api::NavHealthEvent::CovarianceSymmetrized);
-            crate::engine::logging::diagnostic(&self.runtime, &bijux_gnss_core::api::DiagnosticEvent::new(
-                bijux_gnss_core::api::DiagnosticSeverity::Warning,
-                "NAV_COV_SYMM",
-                "nav covariance symmetrized",
-            ));
+            self.runtime.logger.event(
+                &bijux_gnss_core::api::DiagnosticEvent::new(
+                    bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                    "NAV_COV_SYMM",
+                    "nav covariance symmetrized",
+                ),
+            );
         }
         if solution.covariance_clamped {
             nav_epoch.health.push(
@@ -257,11 +251,13 @@ impl Navigation {
                     min_eigenvalue: 0.0,
                 },
             );
-            crate::engine::logging::diagnostic(&self.runtime, &bijux_gnss_core::api::DiagnosticEvent::new(
-                bijux_gnss_core::api::DiagnosticSeverity::Warning,
-                "NAV_COV_CLAMP",
-                "nav covariance clamped",
-            ));
+            self.runtime.logger.event(
+                &bijux_gnss_core::api::DiagnosticEvent::new(
+                    bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                    "NAV_COV_CLAMP",
+                    "nav covariance clamped",
+                ),
+            );
         }
         if let Some(max_var) = solution.covariance_max_variance {
             if max_var > 1e6 {
@@ -285,11 +281,13 @@ impl Navigation {
         if let Some(sep) = solution.separation_max_m {
             if sep > self.solver.separation_gate_m {
                 nav_epoch.status = SolutionStatus::Degraded;
-                crate::engine::logging::diagnostic(&self.runtime, &bijux_gnss_core::api::DiagnosticEvent::new(
-                    bijux_gnss_core::api::DiagnosticSeverity::Warning,
-                    "NAV_RAIM_SEPARATION",
-                    format!("solution separation exceeded: {:.2} m", sep),
-                ));
+                self.runtime.logger.event(
+                    &bijux_gnss_core::api::DiagnosticEvent::new(
+                        bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                        "NAV_RAIM_SEPARATION",
+                        format!("solution separation exceeded: {:.2} m", sep),
+                    ),
+                );
             }
         }
 
@@ -301,14 +299,8 @@ impl Navigation {
             nav_epoch.status = SolutionStatus::Degraded;
             nav_epoch.valid = false;
             for event in sanity_events {
-                crate::engine::logging::diagnostic(&self.runtime, &event);
+                self.runtime.logger.event(&event);
             }
-            crate::engine::diagnostics::dump_on_error(
-                &self.runtime,
-                "nav solution sanity failed",
-                Some(obs),
-                Some(&nav_epoch),
-            );
         } else {
             nav_epoch.valid = is_solution_valid(nav_epoch.status);
         }
@@ -330,11 +322,13 @@ impl Navigation {
         }
 
         if let Some(rms) = nav_epoch.innovation_rms_m {
-            crate::engine::logging::diagnostic(&self.runtime, &bijux_gnss_core::api::DiagnosticEvent::new(
-                bijux_gnss_core::api::DiagnosticSeverity::Info,
-                "NAV_INNOVATION_RMS",
-                format!("innovation rms {:.3} m", rms),
-            ));
+            self.runtime.logger.event(
+                &bijux_gnss_core::api::DiagnosticEvent::new(
+                    bijux_gnss_core::api::DiagnosticSeverity::Info,
+                    "NAV_INNOVATION_RMS",
+                    format!("innovation rms {:.3} m", rms),
+                ),
+            );
         }
 
         self.last_solution = Some(nav_epoch.clone());
@@ -512,6 +506,7 @@ mod tests {
         let config = ReceiverPipelineConfig::default();
         let mut nav = Navigation {
             config,
+            runtime: crate::engine::runtime::ReceiverRuntime::default(),
             solver: PositionSolver::new(),
             clock: ClockModel::new(),
             last_ecef: Some((1.0, 2.0, 3.0)),

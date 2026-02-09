@@ -6,9 +6,8 @@ use bijux_gnss_core::api::{
     Chips, Constellation, Hertz, SampleClock, SampleTime, SamplesFrame, SatId, Seconds, TrackEpoch,
 };
 
-use crate::engine::logging;
 use crate::engine::receiver_config::ReceiverPipelineConfig;
-use crate::engine::runtime_context::ReceiverRuntimeConfig;
+use crate::engine::runtime::ReceiverRuntime;
 use bijux_gnss_core::api::Sample;
 use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::Nco;
@@ -87,11 +86,11 @@ struct LoopState {
 /// Tracking engine with basic E/P/L correlation per epoch.
 pub struct Tracking {
     config: ReceiverPipelineConfig,
-    runtime: ReceiverRuntimeConfig,
+    runtime: ReceiverRuntime,
 }
 
 impl Tracking {
-    pub fn new(config: ReceiverPipelineConfig, runtime: ReceiverRuntimeConfig) -> Self {
+    pub fn new(config: ReceiverPipelineConfig, runtime: ReceiverRuntime) -> Self {
         Self { config, runtime }
     }
 
@@ -164,18 +163,13 @@ impl Tracking {
             early_late_spacing_chips,
         );
         let cn0_dbhz = estimate_cn0_dbhz(correlator.prompt, correlator.early + correlator.late);
-        logging::lock_status(&self.runtime, 0, correlator.prompt.norm() > 0.0);
         if !correlator.prompt.re.is_finite() || !correlator.prompt.im.is_finite() {
-            crate::engine::logging::diagnostic(&self.runtime, &bijux_gnss_core::api::DiagnosticEvent::new(
-                bijux_gnss_core::api::DiagnosticSeverity::Error,
-                "TRACK_NUMERIC_INVALID",
-                "tracking correlator produced NaN/Inf",
-            ));
-            crate::engine::diagnostics::dump_on_error(
-                &self.runtime,
-                "tracking correlator produced NaN/Inf",
-                None,
-                None,
+            self.runtime.logger.event(
+                &bijux_gnss_core::api::DiagnosticEvent::new(
+                    bijux_gnss_core::api::DiagnosticSeverity::Error,
+                    "TRACK_NUMERIC_INVALID",
+                    "tracking correlator produced NaN/Inf",
+                ),
             );
         }
         let track_epoch = TrackEpoch {
@@ -199,21 +193,7 @@ impl Tracking {
             fll_err: 0.0,
             processing_ms: None,
         };
-        #[cfg(feature = "tracing")]
-        {
-            tracing::debug!(
-                run_id = %self.runtime.run_id.as_deref().unwrap_or("unknown"),
-                channel_id,
-                epoch_idx = track_epoch.epoch.index,
-                t_rx_s = track_epoch.sample_index as f64 / self.config.sampling_freq_hz,
-                prn = track_epoch.sat.prn,
-                "tracking epoch"
-            );
-        }
-        #[cfg(not(feature = "tracing"))]
-        {
-            let _ = channel_id;
-        }
+        let _ = channel_id;
         (track_epoch, correlator)
     }
 
@@ -372,14 +352,16 @@ impl Tracking {
             track_epoch.processing_ms = None;
             let alloc_after = crate::engine::alloc::allocation_count();
             if alloc_after > alloc_before {
-                logging::diagnostic(&self.runtime, &bijux_gnss_core::api::DiagnosticEvent::new(
-                    bijux_gnss_core::api::DiagnosticSeverity::Warning,
-                    "TRACK_ALLOCATIONS",
-                    format!(
-                        "tracking epoch allocated {} times",
-                        alloc_after - alloc_before
+                self.runtime.logger.event(
+                    &bijux_gnss_core::api::DiagnosticEvent::new(
+                        bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                        "TRACK_ALLOCATIONS",
+                        format!(
+                            "tracking epoch allocated {} times",
+                            alloc_after - alloc_before
+                        ),
                     ),
-                ));
+                );
             }
 
             let (dll_err, pll_err, fll_err, lock) =
@@ -499,7 +481,7 @@ mod tests {
     #[cfg(feature = "alloc-audit")]
     fn tracking_allocations_under_threshold() {
         let config = crate::engine::receiver_config::ReceiverPipelineConfig::default();
-        let runtime = crate::engine::runtime_context::ReceiverRuntimeConfig::default();
+        let runtime = crate::engine::runtime::ReceiverRuntime::default();
         let samples_per_code = bijux_gnss_signal::api::samples_per_code(
             config.sampling_freq_hz,
             config.code_freq_basis_hz,

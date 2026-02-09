@@ -6,7 +6,7 @@ pub use crate::engine::receiver_config::{
     ReceiverConfig, ReceiverError, ReceiverPipelineConfig,
 };
 /// Receiver runtime options (side-effectful controls).
-pub use crate::engine::runtime_context::ReceiverRuntimeConfig;
+pub use crate::engine::runtime::{ReceiverRuntime, ReceiverRuntimeConfig};
 
 /// I/O helpers.
 pub use crate::io::data::{FileSamples, MemorySamples, SampleSourceError};
@@ -26,7 +26,8 @@ pub use bijux_gnss_nav::api as nav;
 /// Runtime logging helpers.
 pub use crate::engine::logging;
 /// Port traits (I/O boundaries).
-pub use crate::ports::{ArtifactSink, Clock, SampleSource, SystemClock};
+pub use crate::ports::{ArtifactSink, SampleSource};
+pub use crate::ports::clock::{Clock, SystemClock};
 
 /// Acquisition engine.
 pub use crate::pipeline::acquisition::Acquisition as AcquisitionEngine;
@@ -39,6 +40,8 @@ pub use crate::pipeline::tracking::{
 pub use crate::pipeline::observations::{
     observations_from_tracking, observations_from_tracking_results,
 };
+/// Pipeline step report helpers.
+pub use crate::pipeline::{StepReport, StepStats};
 /// Navigation engine and helpers.
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
@@ -118,5 +121,5 @@ pub trait ReceiverEngine {
 /// High-level receiver pipeline entrypoint.
 pub struct Receiver {
     pub(crate) config: ReceiverPipelineConfig,
-    pub(crate) runtime: ReceiverRuntimeConfig,
+    pub(crate) runtime: ReceiverRuntime,
 }

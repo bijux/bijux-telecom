@@ -1,7 +1,9 @@
 //! Receiver port traits (I/O boundaries).
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{NavSolutionEpochV1, ObsEpochV1, SamplesFrame, Seconds};
+use bijux_gnss_core::api::{NavSolutionEpochV1, ObsEpochV1, SamplesFrame};
+
+pub mod clock;
 
 pub trait SampleSource {
     type Error;
@@ -25,18 +27,4 @@ pub trait ArtifactSink {
     fn write_nav(&mut self, nav: &NavSolutionEpochV1) -> Result<(), Self::Error>;
 }
 
-pub trait Clock {
-    fn now_s(&self) -> Seconds;
-}
-
-pub struct SystemClock;
-
-impl Clock for SystemClock {
-    fn now_s(&self) -> Seconds {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs_f64();
-        Seconds(now)
-    }
-}
+// Clock traits live in clock.rs to keep module layout explicit.

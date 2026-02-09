@@ -7,11 +7,8 @@ use bijux_gnss_core::api::{AcqResult, Hertz, SamplesFrame, SatId};
 use num_complex::Complex;
 use rustfft::{num_traits::Zero, FftPlanner};
 
-use crate::engine::logging;
-#[cfg(feature = "trace-dump")]
-use crate::engine::logging::{dump_acq_trace, AcqTrace};
 use crate::engine::receiver_config::ReceiverPipelineConfig;
-use crate::engine::runtime_context::ReceiverRuntimeConfig;
+use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
 use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::Nco;
 use bijux_gnss_signal::api::{generate_ca_code, Prn};
@@ -19,7 +16,7 @@ use bijux_gnss_signal::api::{generate_ca_code, Prn};
 /// Acquisition engine (coarse search).
 pub struct Acquisition {
     config: ReceiverPipelineConfig,
-    runtime: ReceiverRuntimeConfig,
+    runtime: ReceiverRuntime,
     doppler_search_hz: i32,
     doppler_step_hz: i32,
     cache: Mutex<CodeFftCache>,
@@ -28,7 +25,7 @@ pub struct Acquisition {
 type CodeFftCache = HashMap<(usize, SatId), Vec<Complex<f32>>>;
 
 impl Acquisition {
-    pub fn new(config: ReceiverPipelineConfig, runtime: ReceiverRuntimeConfig) -> Self {
+    pub fn new(config: ReceiverPipelineConfig, runtime: ReceiverRuntime) -> Self {
         Self {
             config,
             runtime,
@@ -149,26 +146,17 @@ impl Acquisition {
             candidates.truncate(top_n.max(1));
 
             if let Some(best) = candidates.first() {
-                logging::acquisition_hit(
-                    &self.runtime,
-                    best.sat,
-                    best.carrier_hz.0,
-                    best.code_phase_samples,
-                    best.peak,
-                    best.peak_mean_ratio,
-                );
-                #[cfg(feature = "trace-dump")]
-                if let Some(dir) = self.runtime.trace_dir.as_ref() {
-                    let trace = AcqTrace {
-                        sat: best.sat,
-                        doppler_hz: best.carrier_hz.0,
-                        code_phase_samples: best.code_phase_samples,
-                        peak: best.peak,
-                        mean: best.mean,
-                        second_peak: best.second_peak,
-                    };
-                    let _ = dump_acq_trace(dir.as_path(), &trace);
-                }
+                self.runtime.trace.record(TraceRecord {
+                    name: "acquisition_hit",
+                    fields: vec![
+                        ("constellation", format!("{:?}", best.sat.constellation)),
+                        ("prn", best.sat.prn.to_string()),
+                        ("carrier_hz", format!("{:.3}", best.carrier_hz.0)),
+                        ("code_phase_samples", best.code_phase_samples.to_string()),
+                        ("peak", format!("{:.6}", best.peak)),
+                        ("peak_mean_ratio", format!("{:.6}", best.peak_mean_ratio)),
+                    ],
+                });
             }
 
             results.push(candidates);

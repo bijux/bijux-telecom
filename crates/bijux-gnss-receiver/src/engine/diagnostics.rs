@@ -2,7 +2,7 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{NavSolutionEpoch, ObsEpoch};
-use crate::engine::runtime_context::ReceiverRuntimeConfig;
+use crate::engine::runtime::ReceiverRuntime;
 #[cfg(feature = "trace-heavy")]
 use serde::Serialize;
 #[cfg(feature = "trace-heavy")]
@@ -32,15 +32,19 @@ struct ResidualStats {
 
 #[cfg(feature = "trace-heavy")]
 pub fn dump_on_error(
-    runtime: &ReceiverRuntimeConfig,
+    runtime: &ReceiverRuntime,
     note: &str,
     obs: Option<&ObsEpoch>,
     nav: Option<&NavSolutionEpoch>,
 ) {
-    if !runtime.diagnostics_dump {
+    if !runtime.config.diagnostics_dump {
         return;
     }
-    let run_id = runtime.run_id.clone().unwrap_or_else(|| "unknown".to_string());
+    let run_id = runtime
+        .config
+        .run_id
+        .clone()
+        .unwrap_or_else(|| "unknown".to_string());
     let obs_tail = obs.into_iter().collect::<Vec<_>>();
     let nav_tail = nav.into_iter().collect::<Vec<_>>();
     let residual_stats = nav.and_then(|nav| {
@@ -67,6 +71,7 @@ pub fn dump_on_error(
     });
 
     let config_snapshot = runtime
+        .config
         .run_dir
         .clone()
         .and_then(|dir| fs::read_to_string(dir.join("config.json")).ok())
@@ -81,6 +86,7 @@ pub fn dump_on_error(
         note: note.to_string(),
     };
     let path = runtime
+        .config
         .run_dir
         .clone()
         .unwrap_or_else(|| PathBuf::from("."));
@@ -92,7 +98,7 @@ pub fn dump_on_error(
 
 #[cfg(not(feature = "trace-heavy"))]
 pub fn dump_on_error(
-    _runtime: &ReceiverRuntimeConfig,
+    _runtime: &ReceiverRuntime,
     _note: &str,
     _obs: Option<&ObsEpoch>,
     _nav: Option<&NavSolutionEpoch>,

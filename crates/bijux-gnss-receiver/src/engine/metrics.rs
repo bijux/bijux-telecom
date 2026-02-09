@@ -2,7 +2,7 @@
 #![allow(missing_docs)]
 
 use crate::api::RunArtifacts;
-use crate::engine::runtime_context::ReceiverRuntimeConfig;
+use crate::engine::runtime::ReceiverRuntime;
 use serde::Serialize;
 use std::fs;
 
@@ -17,8 +17,8 @@ struct MetricsSummary {
     nav_outlier_count: u64,
 }
 
-pub fn write_metrics_summary(runtime: &ReceiverRuntimeConfig, artifacts: &RunArtifacts) {
-    let run_dir = match runtime.run_dir.as_ref() {
+pub fn write_metrics_summary(runtime: &ReceiverRuntime, artifacts: &RunArtifacts) {
+    let run_dir = match runtime.config.run_dir.as_ref() {
         Some(dir) => dir.clone(),
         None => return,
     };
