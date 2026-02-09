@@ -87,6 +87,10 @@ pub struct GuardrailConfig {
     pub forbid_stage_id_strings: bool,
     /// Whether to enforce pub use only in api.rs.
     pub enforce_pub_use_api_only: bool,
+    /// Path substrings that define pure zones.
+    pub purity_zones: Vec<String>,
+    /// Regex patterns forbidden inside pure zones.
+    pub purity_forbidden: Vec<String>,
     /// Allowlist of paths for panic/expect.
     pub allow_panic_expect_paths: Vec<String>,
     /// Allowlist of paths for stage id strings.
@@ -106,6 +110,8 @@ impl Default for GuardrailConfig {
             forbid_panic_expect: false,
             forbid_stage_id_strings: false,
             enforce_pub_use_api_only: true,
+            purity_zones: Vec::new(),
+            purity_forbidden: Vec::new(),
             allow_panic_expect_paths: Vec::new(),
             allow_stage_id_paths: Vec::new(),
         }
@@ -151,6 +157,7 @@ pub fn check(crate_root: &Path, config: &GuardrailConfig) -> Result<()> {
     if config.forbid_stage_id_strings {
         check_stage_id_strings(&files, config)?;
     }
+    check_purity_zones(&files, config)?;
     Ok(())
 }
 
@@ -185,6 +192,36 @@ fn check_api_purity(files: &[PathBuf]) -> Result<()> {
                     path.display(),
                     idx + 1
                 );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn check_purity_zones(files: &[PathBuf], config: &GuardrailConfig) -> Result<()> {
+    if config.purity_zones.is_empty() || config.purity_forbidden.is_empty() {
+        return Ok(());
+    }
+    let mut forbidden = Vec::new();
+    for pattern in &config.purity_forbidden {
+        forbidden.push(Regex::new(pattern)?);
+    }
+    for path in files {
+        let path_str = path.display().to_string();
+        if !config.purity_zones.iter().any(|zone| path_str.contains(zone)) {
+            continue;
+        }
+        let content = fs::read_to_string(path)?;
+        for (idx, line) in content.lines().enumerate() {
+            for regex in &forbidden {
+                if regex.is_match(line) {
+                    bail!(
+                        "purity violation at {}:{} -> {}",
+                        path.display(),
+                        idx + 1,
+                        line.trim()
+                    );
+                }
             }
         }
     }
