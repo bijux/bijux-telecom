@@ -23,8 +23,9 @@ fn golden_acquisition_from_scenario() {
     let sats: Vec<bijux_gnss_core::api::SatId> =
         scenario.satellites.iter().map(|s| s.sat).collect();
     let doppler_step_hz = 500.0;
-    let runtime = bijux_gnss_receiver::api::ReceiverRuntimeConfig::default();
-    let acq = Acquisition::new(config, runtime).with_doppler(10_000, doppler_step_hz as i32);
+    let runtime = bijux_gnss_receiver::api::ReceiverRuntime::default();
+    let acq =
+        AcquisitionEngine::new(config, runtime).with_doppler(10_000, doppler_step_hz as i32);
     let results = acq.run_fft(&frame, &sats);
 
     for (sat, res) in scenario.satellites.iter().zip(results.iter()) {

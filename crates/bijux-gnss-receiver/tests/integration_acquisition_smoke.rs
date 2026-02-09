@@ -42,8 +42,8 @@ fn bench_fft_acquisition_smoke() {
         0x1234_5678,
         samples_per_code as f64 / config.sampling_freq_hz,
     );
-    let runtime = bijux_gnss_receiver::api::ReceiverRuntimeConfig::default();
-    let acquisition = Acquisition::new(config, runtime).with_doppler(0, 500);
+    let runtime = bijux_gnss_receiver::api::ReceiverRuntime::default();
+    let acquisition = AcquisitionEngine::new(config, runtime).with_doppler(0, 500);
     let sat = bijux_gnss_core::api::SatId {
         constellation: bijux_gnss_core::api::Constellation::Gps,
         prn: 1,

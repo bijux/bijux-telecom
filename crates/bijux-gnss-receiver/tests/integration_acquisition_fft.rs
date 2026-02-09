@@ -41,8 +41,8 @@ fn acquisition_fft_detects_synthetic_signal() {
         samples_per_code as f64 / config.sampling_freq_hz,
     );
 
-    let runtime = bijux_gnss_receiver::api::ReceiverRuntimeConfig::default();
-    let acquisition = Acquisition::new(config, runtime).with_doppler(0, 500);
+    let runtime = bijux_gnss_receiver::api::ReceiverRuntime::default();
+    let acquisition = AcquisitionEngine::new(config, runtime).with_doppler(0, 500);
     let results = acquisition.run_fft(&frame, &[sat]);
 
     let r = &results[0];

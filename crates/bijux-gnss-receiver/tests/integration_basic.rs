@@ -10,7 +10,7 @@ fn samples_per_code_is_reasonable() {
 
 #[test]
 fn receiver_constructs() {
-    let runtime = bijux_gnss_receiver::api::ReceiverRuntimeConfig::default();
+    let runtime = bijux_gnss_receiver::api::ReceiverRuntime::default();
     let receiver = Receiver::new(ReceiverPipelineConfig::default(), runtime);
     assert!(receiver.config().channels > 0);
 }

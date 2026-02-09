@@ -26,8 +26,9 @@ fn numerical_sanity_pipeline() {
     let frame = generate_l1_ca_multi(&config, &scenario);
     let sats: Vec<bijux_gnss_core::api::SatId> =
         scenario.satellites.iter().map(|s| s.sat).collect();
-    let runtime = bijux_gnss_receiver::api::ReceiverRuntimeConfig::default();
-    let acq = Acquisition::new(config.clone(), runtime.clone()).with_doppler(10_000, 500);
+    let runtime = bijux_gnss_receiver::api::ReceiverRuntime::default();
+    let acq =
+        AcquisitionEngine::new(config.clone(), runtime.clone()).with_doppler(10_000, 500);
     let acq_results = acq.run_fft(&frame, &sats);
 
     for res in &acq_results {
@@ -37,7 +38,7 @@ fn numerical_sanity_pipeline() {
         assert!(res.peak_second_ratio.is_finite());
     }
 
-    let tracking = Tracking::new(config.clone(), runtime);
+    let tracking = TrackingEngine::new(config.clone(), runtime);
     let tracks =
         tracking.track_from_acquisition(&frame, &acq_results, bijux_gnss_core::api::SignalBand::L1);
 

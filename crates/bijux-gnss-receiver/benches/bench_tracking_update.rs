@@ -20,8 +20,8 @@ fn bench_tracking_update(c: &mut Criterion) {
         Seconds(1.0 / config.sampling_freq_hz),
         vec![Complex::new(0.0, 0.0); samples_per_code],
     );
-    let runtime = bijux_gnss_receiver::api::ReceiverRuntimeConfig::default();
-    let tracking = Tracking::new(config, runtime);
+    let runtime = bijux_gnss_receiver::api::ReceiverRuntime::default();
+    let tracking = TrackingEngine::new(config, runtime);
     let sat = SatId {
         constellation: Constellation::Gps,
         prn: 1,

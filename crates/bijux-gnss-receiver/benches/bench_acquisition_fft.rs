@@ -5,8 +5,8 @@ use num_complex::Complex;
 
 fn bench_acquisition_fft(c: &mut Criterion) {
     let config = ReceiverPipelineConfig::default();
-    let runtime = bijux_gnss_receiver::api::ReceiverRuntimeConfig::default();
-    let acq = Acquisition::new(config.clone(), runtime);
+    let runtime = bijux_gnss_receiver::api::ReceiverRuntime::default();
+    let acq = AcquisitionEngine::new(config.clone(), runtime);
     let samples_per_code = bijux_gnss_signal::api::samples_per_code(
         config.sampling_freq_hz,
         config.code_freq_basis_hz,

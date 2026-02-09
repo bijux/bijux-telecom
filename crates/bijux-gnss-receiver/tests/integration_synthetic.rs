@@ -84,8 +84,8 @@ fn golden_acquisition_run_is_stable() {
         samples_per_code as f64 / config.sampling_freq_hz,
     );
 
-    let runtime = bijux_gnss_receiver::api::ReceiverRuntimeConfig::default();
-    let acquisition = Acquisition::new(config, runtime).with_doppler(1000, 500);
+    let runtime = bijux_gnss_receiver::api::ReceiverRuntime::default();
+    let acquisition = AcquisitionEngine::new(config, runtime).with_doppler(1000, 500);
     let results = acquisition.run_fft(&frame, &[sat]);
     let r = &results[0];
 

@@ -5,8 +5,8 @@ use num_complex::Complex;
 
 fn bench_correlator(c: &mut Criterion) {
     let config = ReceiverPipelineConfig::default();
-    let runtime = bijux_gnss_receiver::api::ReceiverRuntimeConfig::default();
-    let tracking = Tracking::new(config.clone(), runtime);
+    let runtime = bijux_gnss_receiver::api::ReceiverRuntime::default();
+    let tracking = TrackingEngine::new(config.clone(), runtime);
     let samples_per_code = bijux_gnss_signal::api::samples_per_code(
         config.sampling_freq_hz,
         config.code_freq_basis_hz,
