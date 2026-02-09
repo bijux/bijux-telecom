@@ -1,4 +1,10 @@
 #![allow(missing_docs)]
+//! Observation error model assumptions:
+//! - thermal_noise_m = 1.0 m (fixed placeholder).
+//! - tracking_jitter_m = 10 / max(cn0_dbhz, 1) meters (heuristic CN0-derived jitter).
+//! - multipath_proxy_m = |Δ divergence| meters (proxy, not a modeled multipath estimator).
+//! - clock_error_m = 0.0 m (placeholder).
+//! TODO(ref-grade): add literature citations for CN0 weighting and multipath heuristics.
 
 use bijux_gnss_core::api::{
     Cycles, DiagnosticEvent, DiagnosticSeverity, LockFlags, Meters, ObsEpoch, ObsMetadata,
@@ -6,6 +12,7 @@ use bijux_gnss_core::api::{
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
+use crate::pipeline::{StepReport, StepStats};
 use crate::pipeline::tracking::TrackingResult;
 use bijux_gnss_signal::api::samples_per_code;
 
@@ -138,9 +145,7 @@ pub fn observations_from_tracking(
             phase_state.last_phase_cycles = measured;
         }
 
-        let prompt_power =
-            (epoch.prompt_i * epoch.prompt_i + epoch.prompt_q * epoch.prompt_q) as f64;
-        let cn0_dbhz = 10.0 * (prompt_power.max(1e-9)).log10();
+        let cn0_dbhz = epoch.cn0_dbhz;
 
         let variance_m2 = (1.0 / cn0_dbhz.max(1.0)).powi(2);
         let mut signal = bijux_gnss_core::api::signal_spec_gps_l1_ca();
@@ -209,7 +214,7 @@ pub fn observations_from_tracking_results(
     config: &ReceiverPipelineConfig,
     tracks: &[TrackingResult],
     hatch_window: u32,
-) -> (Vec<ObsEpoch>, Vec<DiagnosticEvent>) {
+) -> StepReport<Vec<ObsEpoch>> {
     use std::collections::BTreeMap;
 
     let mut by_epoch: BTreeMap<u64, ObsEpoch> = BTreeMap::new();
@@ -308,6 +313,7 @@ pub fn observations_from_tracking_results(
     }
     let mut out = Vec::new();
     for mut epoch in by_epoch.into_values() {
+        bijux_gnss_core::api::sort_obs_sats(&mut epoch);
         let events = bijux_gnss_core::api::check_obs_epoch_sanity(&epoch);
         if events
             .iter()
@@ -323,7 +329,11 @@ pub fn observations_from_tracking_results(
         let events = bijux_gnss_core::api::validate_obs_epochs(&out);
         diagnostics.extend(events);
     }
-    (out, diagnostics)
+    StepReport {
+        output: out,
+        events: diagnostics,
+        stats: StepStats::default(),
+    }
 }
 
 fn slip_threshold_m(cn0_dbhz: f64, elevation_deg: Option<f64>) -> f64 {
@@ -385,5 +395,59 @@ pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
         processing_ms: None,
         role: ReceiverRole::Rover,
         sats,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bijux_gnss_core::api::{Chips, Epoch, Hertz, SatId};
+
+    fn make_track(prn: u8, config: &ReceiverPipelineConfig) -> TrackingResult {
+        let sat = SatId {
+            constellation: Constellation::Gps,
+            prn,
+        };
+        let epoch = TrackEpoch {
+            epoch: Epoch { index: 0 },
+            sample_index: 0,
+            sat,
+            prompt_i: 1.0,
+            prompt_q: 0.0,
+            carrier_hz: Hertz(0.0),
+            code_rate_hz: Hertz(config.code_freq_basis_hz),
+            code_phase_samples: Chips(0.0),
+            lock: true,
+            cn0_dbhz: 45.0,
+            pll_lock: true,
+            dll_lock: true,
+            fll_lock: true,
+            cycle_slip: false,
+            nav_bit_lock: false,
+            dll_err: 0.0,
+            pll_err: 0.0,
+            fll_err: 0.0,
+            processing_ms: None,
+        };
+        TrackingResult {
+            sat,
+            carrier_hz: 0.0,
+            code_phase_samples: 0.0,
+            epochs: vec![epoch],
+        }
+    }
+
+    #[test]
+    fn observation_satellite_order_is_canonical() {
+        let config = ReceiverPipelineConfig::default();
+        let tracks_a = vec![make_track(2, &config), make_track(1, &config)];
+        let tracks_b = vec![make_track(1, &config), make_track(2, &config)];
+
+        let report_a = observations_from_tracking_results(&config, &tracks_a, 10);
+        let report_b = observations_from_tracking_results(&config, &tracks_b, 10);
+
+        let json_a = serde_json::to_string(&report_a.output).unwrap();
+        let json_b = serde_json::to_string(&report_b.output).unwrap();
+        assert_eq!(json_a, json_b);
     }
 }
