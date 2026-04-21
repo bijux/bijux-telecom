@@ -10,6 +10,7 @@ members = [
   "crates/bijux-gnss-infra",
   "crates/bijux-gnss-testkit",
   "crates/bijux-guardrails",
+  "crates/bijux-telecom-dev",
 ]
 
 [workspace.package]

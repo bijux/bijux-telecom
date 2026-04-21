@@ -1,0 +1,16 @@
+[package]
+name = "bijux-telecom-dev"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+clap = { workspace = true, features = ["derive"] }
+regex.workspace = true
+
+[[bin]]
+name = "bijux-telecom-dev"
+path = "src/main.rs"
