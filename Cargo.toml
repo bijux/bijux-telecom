@@ -35,7 +35,7 @@ sha2 = "0.10"
 hex = "0.4"
 proptest = "1.11"
 criterion = "0.5"
-toml = "0.8"
+toml = "1.1"
 eyre = "0.6"
 bijux-gnss-core = { path = "crates/bijux-gnss-core" }
 bijux-gnss-infra = { path = "crates/bijux-gnss-infra" }
