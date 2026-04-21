@@ -113,11 +113,18 @@ jobs:
 
             const trustedBotAuthors = new Set([
               "dependabot[bot]",
+              "@dependabot[bot]",
               "renovate[bot]",
+              "@renovate[bot]",
               "github-actions[bot]",
+              "@github-actions[bot]",
             ]);
-            const authorLogin = (pr.user && pr.user.login ? pr.user.login : "").toLowerCase();
-            const authorIsTrustedBot = trustedBotAuthors.has(authorLogin);
+            const rawAuthorLogin = (pr.user && pr.user.login ? pr.user.login : "").toLowerCase();
+            const authorLogin = rawAuthorLogin.startsWith("@")
+              ? rawAuthorLogin.slice(1)
+              : rawAuthorLogin;
+            const authorIsTrustedBot =
+              trustedBotAuthors.has(rawAuthorLogin) || trustedBotAuthors.has(authorLogin);
 
             let prClass = "product";
             if (touchesProtectedGovernance || touchesReleaseSensitive) {
