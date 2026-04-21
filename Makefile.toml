@@ -7,6 +7,12 @@ NEXTEST_JOBS = { value = "8", condition = { env_not_set = ["NEXTEST_JOBS"] } }
 CARGO_MAKE_RUN_TASKS_IN_WORKSPACE = { value = "false", condition = { env_not_set = ["CARGO_MAKE_RUN_TASKS_IN_WORKSPACE"] } }
 CARGO_MAKE_WORKSPACE_SKIP_MEMBERS = { value = "true", condition = { env_not_set = ["CARGO_MAKE_WORKSPACE_SKIP_MEMBERS"] } }
 CARGO_MAKE_NO_WORKSPACE = { value = "true", condition = { env_not_set = ["CARGO_MAKE_NO_WORKSPACE"] } }
+CARGO_TARGET_DIR = { value = "artifacts/rust/target", condition = { env_not_set = ["CARGO_TARGET_DIR"] } }
+CARGO_HOME = { value = "artifacts/rust/cargo-home", condition = { env_not_set = ["CARGO_HOME"] } }
+CARGO_INSTALL_ROOT = { value = "artifacts/rust/cargo-install", condition = { env_not_set = ["CARGO_INSTALL_ROOT"] } }
+NEXTEST_CACHE_DIR = { value = "artifacts/rust/target/nextest", condition = { env_not_set = ["NEXTEST_CACHE_DIR"] } }
+LLVM_PROFILE_FILE = { value = "artifacts/coverage/profraw/default_%m_%p.profraw", condition = { env_not_set = ["LLVM_PROFILE_FILE"] } }
+CARGO_TERM_COLOR = { value = "always", condition = { env_not_set = ["CARGO_TERM_COLOR"] } }
 
 [tasks.fmt-check]
 command = "cargo"
@@ -121,3 +127,24 @@ description = "Run CI once at workspace root (no per-crate recursion)."
 dependencies = ["lint", "audit", "doc", "test", "test-no-default"]
 env = { CARGO_MAKE_NO_WORKSPACE = "true", CARGO_MAKE_WORKSPACE_SKIP_MEMBERS = "true" }
 workspace = false
+
+[tasks.ci-pr]
+description = "Pull-request lane aligned with ci-fast."
+dependencies = ["ci-fast"]
+workspace = false
+
+[tasks.ci-nightly]
+description = "Nightly lane with full feature test coverage."
+dependencies = ["lint", "audit", "doc", "test-full", "test-no-default"]
+env = { CARGO_MAKE_NO_WORKSPACE = "true", CARGO_MAKE_WORKSPACE_SKIP_MEMBERS = "true" }
+workspace = false
+
+[tasks.ci-docs]
+description = "Documentation lane."
+dependencies = ["doc"]
+workspace = false
+
+[tasks.ci-dependency-lock-refresh]
+description = "Refresh Cargo.lock under workspace control."
+command = "cargo"
+args = ["update", "--workspace"]

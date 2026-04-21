@@ -1,0 +1,27 @@
+[build]
+target-dir = "artifacts/rust/target"
+rustflags = ["-Dwarnings"]
+
+[target.'cfg(target_os = "linux")']
+rustflags = [
+  "-C", "debuginfo=1",
+  "-C", "link-arg=-Wl,-z,relro",
+  "-C", "link-arg=-Wl,-z,now",
+]
+
+[target.'cfg(target_os = "macos")']
+rustflags = [
+  "-C", "debuginfo=1",
+  "-C", "link-arg=-Wl,-dead_strip",
+]
+
+[term]
+verbose = false
+
+[env]
+LLVM_PROFILE_FILE = { value = "artifacts/coverage/profraw/default_%m_%p.profraw", relative = true }
+
+[alias]
+fmt-check = "fmt --all -- --check"
+lint = "clippy --workspace --all-targets -- -D warnings"
+check-workspace = "check --workspace --all-targets"
