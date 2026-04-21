@@ -96,12 +96,18 @@ impl PositionSolver {
                 let eph = match ephemerides.iter().find(|e| e.sat == obs.sat) {
                     Some(eph) => eph,
                     None => {
-                        rejected.push((obs.sat, bijux_gnss_core::api::MeasurementRejectReason::InvalidEphemeris));
+                        rejected.push((
+                            obs.sat,
+                            bijux_gnss_core::api::MeasurementRejectReason::InvalidEphemeris,
+                        ));
                         continue;
                     }
                 };
                 if !is_ephemeris_valid(eph, t_rx_s) {
-                    rejected.push((obs.sat, bijux_gnss_core::api::MeasurementRejectReason::InvalidEphemeris));
+                    rejected.push((
+                        obs.sat,
+                        bijux_gnss_core::api::MeasurementRejectReason::InvalidEphemeris,
+                    ));
                     continue;
                 }
                 let mut tau = obs.pseudorange_m / 299_792_458.0;
@@ -192,7 +198,10 @@ impl PositionSolver {
             let sigma_m = (1.0 / obs.weight.max(1e-6)).sqrt();
             let norm = res / sigma_m;
             if res.abs() > self.residual_gate_m || (norm * norm) > self.chi_square_gate {
-                rejected.push((obs.sat, bijux_gnss_core::api::MeasurementRejectReason::Outlier));
+                rejected.push((
+                    obs.sat,
+                    bijux_gnss_core::api::MeasurementRejectReason::Outlier,
+                ));
             } else {
                 filtered.push((obs.clone(), state.clone(), res));
             }
@@ -320,24 +329,24 @@ fn sanitize_covariance(mut cov: [[f64; 4]; 4]) -> ([[f64; 4]; 4], bool, bool, Op
     let mut sym = false;
     let mut clamp = false;
     let mut max_var = None;
-    for i in 0..4 {
-        for j in 0..4 {
+    let mut i = 0;
+    while i < 4 {
+        let mut j = 0;
+        while j < 4 {
             if (cov[i][j] - cov[j][i]).abs() > 1e-9 {
                 sym = true;
                 let avg = 0.5 * (cov[i][j] + cov[j][i]);
                 cov[i][j] = avg;
                 cov[j][i] = avg;
             }
+            j += 1;
         }
         if cov[i][i] < 0.0 {
             clamp = true;
             cov[i][i] = 0.0;
         }
-        max_var = Some(
-            max_var
-                .map(|v: f64| v.max(cov[i][i]))
-                .unwrap_or(cov[i][i]),
-        );
+        max_var = Some(max_var.map(|v: f64| v.max(cov[i][i])).unwrap_or(cov[i][i]));
+        i += 1;
     }
     (cov, sym, clamp, max_var)
 }
@@ -402,16 +411,20 @@ pub fn invert_4x4(a: [[f64; 4]; 4]) -> Option<[[f64; 4]; 4]> {
             m.swap(i, pivot);
         }
         let inv_pivot = 1.0 / m[i][i];
-        for j in i..8 {
+        let mut j = i;
+        while j < 8 {
             m[i][j] *= inv_pivot;
+            j += 1;
         }
         for r in 0..4 {
             if r == i {
                 continue;
             }
             let factor = m[r][i];
-            for j in i..8 {
+            let mut j = i;
+            while j < 8 {
                 m[r][j] -= factor * m[i][j];
+                j += 1;
             }
         }
     }
