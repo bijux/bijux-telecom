@@ -30,7 +30,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
 schemars = "1.2"
-jsonschema = "0.17"
+jsonschema = "0.46"
 sha2 = "0.11"
 hex = "0.4"
 proptest = "1.11"
