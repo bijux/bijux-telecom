@@ -120,6 +120,14 @@ def write_if_needed(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
+def remove_if_generated(path: Path) -> None:
+    if not path.exists():
+        return
+    content = path.read_text(encoding="utf-8")
+    if content.startswith(PROVENANCE_HEADER):
+        path.unlink()
+
+
 def render_repo(repo_name: str, manifest: dict) -> None:
     repo = find_repo_config(manifest, repo_name)
     repo_root = resolve_repo_root(repo_name)
@@ -135,13 +143,16 @@ def render_repo(repo_name: str, manifest: dict) -> None:
         write_if_needed(dependabot_path, dependabot_content)
 
     wrappers = repo.get("workflow_wrappers", {})
-    if "ci" in wrappers:
-        ci_path = repo_root / ".github/workflows/ci.yml"
-        write_if_needed(ci_path, render_yaml_document(wrappers["ci"]))
-
-    if "verify" in wrappers:
-        verify_path = repo_root / ".github/workflows/verify.yml"
-        write_if_needed(verify_path, render_yaml_document(wrappers["verify"]))
+    wrapper_paths = {
+        "ci": repo_root / ".github/workflows/ci.yml",
+        "verify": repo_root / ".github/workflows/verify.yml",
+    }
+    for wrapper_name, wrapper_path in wrapper_paths.items():
+        wrapper_definition = wrappers.get(wrapper_name)
+        if wrapper_definition is None:
+            remove_if_generated(wrapper_path)
+            continue
+        write_if_needed(wrapper_path, render_yaml_document(wrapper_definition))
 
 
 def main() -> None:
