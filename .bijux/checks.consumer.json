@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "consumer_id": "bijux-telecom",
+  "suite": "verify",
+  "checks": [
+    {"id": "BJC-ROOT-HELP-001", "required": true},
+    {"id": "BJC-STANDARD-001", "required": true},
+    {"id": "BJC-GH-STANDARD-001", "required": false},
+    {"id": "BJC-PY-CONFIG-LAYOUT-001", "required": false},
+    {"id": "BJC-PY-MAKE-LAYOUT-001", "required": false}
+  ]
+}
