@@ -9,6 +9,8 @@ bijux-gnss-infra = { path = "../bijux-gnss-infra", version = "0.1.0" }
 bijux-gnss-receiver = { path = "../bijux-gnss-receiver", version = "0.1.0" }
 serde.workspace = true
 serde_json.workspace = true
+toml.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+bijux-gnss-policies.workspace = true
