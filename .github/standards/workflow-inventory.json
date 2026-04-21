@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "managed_workflows": [
+    {
+      "id": "release-artifacts",
+      "source": "shared/bijux-gh/workflows/release-artifacts.yml",
+      "consumer_runtime": ".github/workflows/release-artifacts.yml"
+    },
+    {
+      "id": "deploy-docs",
+      "source": "shared/bijux-gh/workflows/deploy-docs.yml",
+      "consumer_runtime": ".github/workflows/deploy-docs.yml"
+    },
+    {
+      "id": "github-policy",
+      "source": "shared/bijux-gh/workflows/github-policy.yml",
+      "consumer_runtime": ".github/workflows/github-policy.yml"
+    },
+    {
+      "id": "release-crates",
+      "source": "shared/bijux-gh/workflows/release-crates.yml",
+      "consumer_runtime": ".github/workflows/release-crates.yml"
+    },
+    {
+      "id": "release-ghcr",
+      "source": "shared/bijux-gh/workflows/release-ghcr.yml",
+      "consumer_runtime": ".github/workflows/release-ghcr.yml"
+    },
+    {
+      "id": "release-github",
+      "source": "shared/bijux-gh/workflows/release-github.yml",
+      "consumer_runtime": ".github/workflows/release-github.yml"
+    },
+    {
+      "id": "release-pypi",
+      "source": "shared/bijux-gh/workflows/release-pypi.yml",
+      "consumer_runtime": ".github/workflows/release-pypi.yml"
+    }
+  ]
+}
