@@ -75,6 +75,20 @@
           "value": "1.86.0"
         },
         {
+          "key": "BIJUX_RELEASE_BUILD_MATRIX_JSON",
+          "type": "json",
+          "value": [
+            {
+              "package_slug": "bijux-atlas",
+              "package_dir": ".",
+              "artifacts_dir": "artifacts/dist",
+              "makefile_path": "makes/release-bundle.mk",
+              "build_targets": "build",
+              "dist_subdir": "release"
+            }
+          ]
+        },
+        {
           "key": "BIJUX_RELEASE_FILES_MANIFEST",
           "type": "string",
           "value": ".github/release-github.files"
@@ -147,7 +161,16 @@
         {
           "key": "BIJUX_GHCR_RELEASE_ENABLED",
           "type": "bool",
-          "value": false
+          "value": true
+        },
+        {
+          "key": "BIJUX_GHCR_RELEASE_PACKAGE_MATRIX_JSON",
+          "type": "json",
+          "value": [
+            {
+              "package_slug": "bijux-atlas"
+            }
+          ]
         },
         {
           "key": "BIJUX_PYPI_ENABLED",
@@ -315,6 +338,7 @@
         "github-policy",
         "release-artifacts",
         "release-crates",
+        "release-ghcr",
         "release-github"
       ],
       "pinned_std_sha": "1f69262f891f11a8fb5ea49ddd4477977228e776"
@@ -990,7 +1014,16 @@
         {
           "key": "BIJUX_GHCR_RELEASE_ENABLED",
           "type": "bool",
-          "value": false
+          "value": true
+        },
+        {
+          "key": "BIJUX_GHCR_RELEASE_PACKAGE_MATRIX_JSON",
+          "type": "json",
+          "value": [
+            {
+              "package_slug": "bijux-cli"
+            }
+          ]
         },
         {
           "key": "BIJUX_PYPI_ENABLED",
@@ -1258,6 +1291,7 @@
         "github-policy",
         "release-artifacts",
         "release-crates",
+        "release-ghcr",
         "release-github",
         "release-pypi"
       ],
@@ -1309,7 +1343,28 @@
           }
         ]
       },
-      "release_env": []
+      "release_env": [
+        {
+          "key": "BIJUX_RELEASE_ENABLED",
+          "type": "bool",
+          "value": false
+        },
+        {
+          "key": "BIJUX_CRATES_RELEASE_ENABLED",
+          "type": "bool",
+          "value": false
+        },
+        {
+          "key": "BIJUX_GHCR_RELEASE_ENABLED",
+          "type": "bool",
+          "value": false
+        },
+        {
+          "key": "BIJUX_PYPI_ENABLED",
+          "type": "bool",
+          "value": false
+        }
+      ]
     },
     {
       "name": "bijux-masterclass",
@@ -2519,86 +2574,12 @@
         {
           "key": "BIJUX_RELEASE_ENABLED",
           "type": "bool",
-          "value": true
-        },
-        {
-          "key": "BIJUX_RELEASE_WAIT_FOR_CI_COMMAND",
-          "type": "string",
-          "value": "make gh-release-wait-for-ci"
-        },
-        {
-          "key": "BIJUX_RELEASE_PLAN_COMMAND",
-          "type": "string",
-          "value": "make gh-release-plan-github"
-        },
-        {
-          "key": "BIJUX_RELEASE_SETUP_RUST",
-          "type": "bool",
-          "value": true
-        },
-        {
-          "key": "BIJUX_RELEASE_RUST_TOOLCHAIN",
-          "type": "string",
-          "value": "1.85.0"
-        },
-        {
-          "key": "BIJUX_RELEASE_BUILD_MATRIX_JSON",
-          "type": "json",
-          "value": [
-            {
-              "package_slug": "bijux-cli",
-              "package_dir": ".",
-              "artifacts_dir": "artifacts/python",
-              "makefile_path": "makes/root.mk",
-              "build_targets": "build-py",
-              "dist_subdir": "build"
-            }
-          ]
+          "value": false
         },
         {
           "key": "BIJUX_CRATES_RELEASE_ENABLED",
           "type": "bool",
-          "value": true
-        },
-        {
-          "key": "BIJUX_CRATES_RELEASE_WAIT_FOR_CI_COMMAND",
-          "type": "string",
-          "value": "make gh-release-wait-for-ci"
-        },
-        {
-          "key": "BIJUX_CRATES_RELEASE_PLAN_COMMAND",
-          "type": "string",
-          "value": "make gh-release-plan-crates"
-        },
-        {
-          "key": "BIJUX_CRATES_RELEASE_SETUP_RUST",
-          "type": "bool",
-          "value": true
-        },
-        {
-          "key": "BIJUX_CRATES_RELEASE_RUST_TOOLCHAIN",
-          "type": "string",
-          "value": "1.85.0"
-        },
-        {
-          "key": "BIJUX_CRATES_RELEASE_VERIFY_TOKEN_COMMAND",
-          "type": "string",
-          "value": "make gh-release-require-cargo-token"
-        },
-        {
-          "key": "BIJUX_CRATES_RELEASE_PUBLISH_SKIP_EXISTING",
-          "type": "bool",
-          "value": true
-        },
-        {
-          "key": "BIJUX_CRATES_RELEASE_PUBLISH_COMMAND",
-          "type": "string",
-          "value": "make publish-rs RUST_PUBLISH_DRY_RUN=0 RUST_PUBLISH_SKIP_EXISTING=1 RUST_PUBLISH_PACKAGES=\"${PACKAGES}\""
-        },
-        {
-          "key": "BIJUX_CRATES_RELEASE_PACKAGES",
-          "type": "string",
-          "value": "bijux-cli"
+          "value": false
         },
         {
           "key": "BIJUX_GHCR_RELEASE_ENABLED",
@@ -2608,22 +2589,7 @@
         {
           "key": "BIJUX_PYPI_ENABLED",
           "type": "bool",
-          "value": true
-        },
-        {
-          "key": "BIJUX_PYPI_MODE",
-          "type": "string",
-          "value": "maturin"
-        },
-        {
-          "key": "BIJUX_PYPI_WAIT_FOR_CI_COMMAND",
-          "type": "string",
-          "value": "make gh-release-wait-for-ci"
-        },
-        {
-          "key": "BIJUX_PYPI_PLAN_COMMAND",
-          "type": "string",
-          "value": "make gh-release-plan-pypi"
+          "value": false
         }
       ],
       "dependabot": {
@@ -2652,40 +2618,12 @@
               "dependencies",
               "rust"
             ]
-          },
-          {
-            "package-ecosystem": "pip",
-            "directory": "/crates/bijux-cli-python",
-            "schedule": {
-              "interval": "weekly"
-            },
-            "open-pull-requests-limit": 10,
-            "labels": [
-              "dependencies",
-              "python"
-            ]
-          },
-          {
-            "package-ecosystem": "pip",
-            "directory": "/configs/docs",
-            "schedule": {
-              "interval": "weekly"
-            },
-            "open-pull-requests-limit": 10,
-            "labels": [
-              "dependencies",
-              "python"
-            ]
           }
         ]
       },
       "workflow_allowlist": [
         "deploy-docs",
-        "github-policy",
-        "release-artifacts",
-        "release-crates",
-        "release-github",
-        "release-pypi"
+        "github-policy"
       ]
     },
     {
