@@ -1,0 +1,49 @@
+name: Bug Report
+description: Report a reproducible defect in behavior, interfaces, or release automation
+title: "bug: <short summary>"
+labels:
+  - bug
+body:
+  - type: input
+    id: affected_surface
+    attributes:
+      label: Affected surface
+      description: Command, package, workflow, docs section, or contract path.
+      placeholder: crates/bijux-cli, .github/workflows/release-artifacts.yml, docs/...
+    validations:
+      required: true
+  - type: textarea
+    id: current_behavior
+    attributes:
+      label: Current behavior
+      description: What happened.
+    validations:
+      required: true
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected behavior
+      description: What should have happened.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Exact commands, inputs, and environment details.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Logs, screenshots, CI links, stack traces, or artifact paths.
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: User, operator, release, or compatibility impact.
