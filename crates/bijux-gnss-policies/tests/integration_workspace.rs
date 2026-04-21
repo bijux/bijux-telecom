@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 use std::path::Path;
 
-use bijux_guardrails::api::GuardrailConfig;
+use bijux_gnss_policies::api::GuardrailConfig;
 
 #[test]
 fn workspace_has_guardrails_tests() {

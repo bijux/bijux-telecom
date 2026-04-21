@@ -11,4 +11,4 @@ serde.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
-bijux-guardrails.workspace = true
+bijux-gnss-policies.workspace = true

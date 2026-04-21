@@ -32,4 +32,4 @@ name = "bijux"
 path = "src/main.rs"
 
 [dev-dependencies]
-bijux-guardrails.workspace = true
+bijux-gnss-policies.workspace = true

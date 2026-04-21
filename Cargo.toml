@@ -9,7 +9,7 @@ members = [
   "crates/bijux-gnss-nav",
   "crates/bijux-gnss-infra",
   "crates/bijux-gnss-testkit",
-  "crates/bijux-guardrails",
+  "crates/bijux-gnss-policies",
   "crates/bijux-telecom-dev",
 ]
 
@@ -40,7 +40,7 @@ toml = "1.1"
 eyre = "0.6"
 bijux-gnss-core = { path = "crates/bijux-gnss-core" }
 bijux-gnss-infra = { path = "crates/bijux-gnss-infra" }
-bijux-guardrails = { path = "crates/bijux-guardrails" }
+bijux-gnss-policies = { path = "crates/bijux-gnss-policies" }
 
 [workspace.lints.clippy]
 module_name_repetitions = "allow"

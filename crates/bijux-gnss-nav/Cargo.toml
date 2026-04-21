@@ -16,4 +16,4 @@ precise-products = []
 
 [dev-dependencies]
 criterion = "0.8"
-bijux-guardrails.workspace = true
+bijux-gnss-policies.workspace = true

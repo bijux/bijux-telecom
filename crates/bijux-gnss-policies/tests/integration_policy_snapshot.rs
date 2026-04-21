@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 use std::path::PathBuf;
 
-use bijux_guardrails::api::GuardrailConfig;
+use bijux_gnss_policies::api::GuardrailConfig;
 
 #[test]
 fn guardrail_default_policy_snapshot() {

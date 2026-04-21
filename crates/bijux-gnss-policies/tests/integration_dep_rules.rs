@@ -57,7 +57,7 @@ fn dependency_direction_rules() {
         ("bijux-gnss-signal", HashSet::from(["bijux-gnss-core"])),
         ("bijux-gnss-nav", HashSet::from(["bijux-gnss-core"])),
         ("bijux-gnss-core", HashSet::new()),
-        ("bijux-guardrails", HashSet::new()),
+        ("bijux-gnss-policies", HashSet::new()),
     ]
     .into_iter()
     .collect();

@@ -1,4 +1,4 @@
-//! Public API for bijux-guardrails.
+//! Public API for bijux-gnss-policies.
 
 /// Run guardrail checks for a crate root.
 pub use crate::internal::check;

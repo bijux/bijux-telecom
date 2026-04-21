@@ -33,4 +33,4 @@ alloc-audit = ["alloc-trace"]
 criterion = "0.8"
 proptest.workspace = true
 toml.workspace = true
-bijux-guardrails.workspace = true
+bijux-gnss-policies.workspace = true
