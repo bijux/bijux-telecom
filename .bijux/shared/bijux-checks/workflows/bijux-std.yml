@@ -1,0 +1,61 @@
+name: bijux-std
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [standard, report]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Run matrix check
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "${{ matrix.check }}" in
+            standard)
+              make bijux-std-checks
+              ;;
+            report)
+              if [[ -x ".bijux/shared/bijux-checks/scripts/run-bijux-check-suite.sh" ]]; then
+                bash .bijux/shared/bijux-checks/scripts/run-bijux-check-suite.sh \
+                  --consumer .bijux/checks.consumer.json \
+                  --artifacts-dir artifacts/checks
+              elif [[ -x "shared/bijux-checks/scripts/run-bijux-check-suite.sh" ]]; then
+                bash shared/bijux-checks/scripts/run-bijux-check-suite.sh \
+                  --consumer .bijux/checks.consumer.json \
+                  --artifacts-dir artifacts/bijux-checks
+              else
+                echo "ERROR: unable to locate bijux checks runner script" >&2
+                exit 1
+              fi
+              ;;
+            *)
+              echo "ERROR: unknown matrix check '${{ matrix.check }}'" >&2
+              exit 2
+              ;;
+          esac
+
+      - name: Upload bijux checks report artifact
+        if: always() && matrix.check == 'report'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v4.4.0
+        with:
+          name: bijux-checks-report
+          path: |
+            artifacts/checks
+            artifacts/bijux-checks
+          if-no-files-found: error

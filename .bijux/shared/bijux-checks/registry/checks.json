@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "checks": [
+    {
+      "id": "BJC-ROOT-HELP-001",
+      "title": "Root make surface is resolvable",
+      "owner_id": "bijux-maintainers",
+      "severity": "high",
+      "runner": {
+        "type": "make_target",
+        "target": "help"
+      }
+    },
+    {
+      "id": "BJC-STANDARD-001",
+      "title": "Shared standards match bijux-std",
+      "owner_id": "bijux-maintainers",
+      "severity": "blocker",
+      "runner": {
+        "type": "make_target",
+        "target": "bijux-std-checks"
+      }
+    },
+    {
+      "id": "BJC-GH-STANDARD-001",
+      "title": "GitHub governance files match shared standard",
+      "owner_id": "bijux-maintainers",
+      "severity": "high",
+      "runner": {
+        "type": "make_target",
+        "target": "bijux-standard-check"
+      }
+    },
+    {
+      "id": "BJC-PY-CONFIG-LAYOUT-001",
+      "title": "Repository config layout contract holds",
+      "owner_id": "bijux-maintainers",
+      "severity": "high",
+      "runner": {
+        "type": "make_target",
+        "target": "check-config-layout"
+      }
+    },
+    {
+      "id": "BJC-PY-MAKE-LAYOUT-001",
+      "title": "Repository make layout contract holds",
+      "owner_id": "bijux-maintainers",
+      "severity": "high",
+      "runner": {
+        "type": "make_target",
+        "target": "check-make-layout"
+      }
+    }
+  ]
+}

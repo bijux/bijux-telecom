@@ -1,0 +1,17 @@
+/* Utilities: focus treatment and low-level cross-component helper rules. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+.md-typeset .md-button:focus-visible,
+.bijux-tabs__link:focus-visible,
+.md-sidebar--primary .md-nav__link:focus-visible,
+.md-sidebar--primary .md-nav__container > .md-nav__link:focus-visible,
+.bijux-header-tools .md-search__input:focus-visible {
+  border-color: rgba(15, 118, 110, 0.26);
+  box-shadow: 0 0 0 0.2rem var(--md-default-bg-color), 0 0 0 0.38rem var(--bijux-focus-ring);
+  outline: none;
+}
+
+.md-tabs__list {
+  flex-wrap: nowrap;
+}

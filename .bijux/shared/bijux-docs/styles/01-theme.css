@@ -1,0 +1,218 @@
+/* Theme mapping: scheme-specific variable assignments and color-scheme overrides. */
+[data-md-color-scheme="default"] {
+  --md-default-bg-color: #f4f6f4;
+  --md-default-bg-color--light: #fbfcfa;
+  --md-default-fg-color: var(--bijux-ink);
+  --md-primary-fg-color: #0f766e;
+  --md-accent-fg-color: #155e75;
+  --md-typeset-a-color: #0f5f73;
+  --bijux-hub-bg: rgba(11, 20, 34, 0.97);
+  --bijux-hub-border: rgba(255, 255, 255, 0.12);
+  --bijux-hub-link: rgba(255, 255, 255, 0.76);
+  --bijux-hub-link-active-bg: rgba(255, 255, 255, 0.14);
+  --bijux-detail-bg: rgba(255, 255, 255, 0.95);
+  --bijux-detail-border: rgba(15, 118, 110, 0.14);
+  --bijux-detail-link: #2d4b5c;
+  --bijux-detail-link-active-bg: rgba(13, 148, 136, 0.12);
+}
+
+[data-md-color-scheme="slate"] {
+  --bijux-ink: #e7eef5;
+  --bijux-muted: #b2c2cf;
+  --bijux-border: rgba(45, 212, 191, 0.18);
+  --bijux-panel: rgba(15, 118, 110, 0.14);
+  --bijux-panel-strong: rgba(8, 145, 178, 0.2);
+  --bijux-card-shadow: 0 24px 48px rgba(2, 6, 23, 0.38);
+  --bijux-map-shadow: 0 28px 58px rgba(2, 6, 23, 0.5);
+  --bijux-card-shadow-hover: 0 30px 64px rgba(2, 6, 23, 0.52);
+  --bijux-surface-gradient: linear-gradient(180deg, rgba(30, 41, 59, 0.42), rgba(15, 23, 42, 0));
+  --md-default-bg-color: #0b1120;
+  --md-default-bg-color--light: #111827;
+  --md-default-fg-color: #e8ecff;
+  --md-default-fg-color--light: #cdd5f3;
+  --md-default-fg-color--lighter: #9ea9d0;
+  --md-primary-fg-color: #0f766e;
+  --md-primary-fg-color--light: #14b8a6;
+  --md-accent-fg-color: #67e8f9;
+  --md-typeset-a-color: #7dd3fc;
+  --bijux-hub-bg: rgba(8, 11, 29, 0.98);
+  --bijux-hub-border: rgba(45, 212, 191, 0.16);
+  --bijux-hub-link: rgba(229, 231, 255, 0.82);
+  --bijux-hub-link-active-bg: rgba(45, 212, 191, 0.16);
+  --bijux-detail-bg: rgba(15, 23, 42, 0.96);
+  --bijux-detail-border: rgba(45, 212, 191, 0.18);
+  --bijux-detail-link: #d0f3f0;
+  --bijux-detail-link-active-bg: rgba(13, 148, 136, 0.18);
+  --bijux-ribbon-bg: #091524;
+  --bijux-ribbon-bg-strong: #0f3f56;
+  --bijux-ribbon-fade: rgba(9, 21, 36, 0);
+  --bijux-nav-indicator: linear-gradient(90deg, rgba(251, 191, 36, 0.92), rgba(103, 232, 249, 0.92));
+  --bijux-nav-active-shadow: 0 18px 34px rgba(2, 6, 23, 0.48);
+  --bijux-focus-ring: rgba(103, 232, 249, 0.24);
+}
+
+[data-md-color-scheme="slate"] .bijux-hero {
+  background:
+    radial-gradient(circle at top right, rgba(45, 212, 191, 0.16), transparent 34%),
+    radial-gradient(circle at left center, rgba(103, 232, 249, 0.12), transparent 28%),
+    linear-gradient(145deg, rgba(15, 23, 42, 0.92), rgba(10, 20, 33, 0.9));
+  border-color: rgba(45, 212, 191, 0.2);
+}
+
+[data-md-color-scheme="slate"] .bijux-panel,
+[data-md-color-scheme="slate"] .bijux-showcase-card,
+[data-md-color-scheme="slate"] .bijux-media-card {
+  background:
+    linear-gradient(180deg, rgba(30, 41, 59, 0.56), rgba(15, 23, 42, 0.34)),
+    linear-gradient(160deg, rgba(10, 18, 32, 0.94), rgba(9, 16, 28, 0.92));
+  border-color: rgba(45, 212, 191, 0.14);
+}
+
+[data-md-color-scheme="slate"] .bijux-callout {
+  background:
+    linear-gradient(145deg, rgba(15, 118, 110, 0.16), rgba(8, 145, 178, 0.12)),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(11, 18, 32, 0.9));
+  border-color: rgba(45, 212, 191, 0.18);
+}
+
+[data-md-color-scheme="slate"] .bijux-map-frame {
+  background: linear-gradient(180deg, rgba(15, 118, 110, 0.16), rgba(8, 145, 178, 0.1));
+  border-color: rgba(45, 212, 191, 0.18);
+}
+
+[data-md-color-scheme="slate"] .bijux-panel::after,
+[data-md-color-scheme="slate"] .bijux-showcase-card::before {
+  background: linear-gradient(90deg, rgba(251, 191, 36, 0.32), rgba(45, 212, 191, 0.18), transparent);
+}
+
+[data-md-color-scheme="slate"] .bijux-showcase-card::after {
+  background: radial-gradient(circle, rgba(103, 232, 249, 0.16), transparent 70%);
+}
+
+[data-md-color-scheme="slate"] .bijux-showcase-card__eyebrow {
+  color: #d7e4ee;
+}
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) {
+  background: rgba(9, 16, 28, 0.88);
+  box-shadow: 0 16px 32px rgba(2, 6, 23, 0.34);
+}
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) th {
+  background: rgba(15, 118, 110, 0.24);
+  color: #f8fbff;
+}
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) td {
+  background: rgba(12, 19, 33, 0.82);
+}
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) tr:nth-child(even) td {
+  background: rgba(8, 145, 178, 0.1);
+}
+
+[data-md-color-scheme="slate"] .md-typeset code {
+  background: rgba(9, 16, 28, 0.9);
+  color: #e5f5f6;
+}
+
+[data-md-color-scheme="slate"] .md-typeset pre > code {
+  background: rgba(2, 6, 23, 0.72);
+}
+
+[data-md-color-scheme="slate"] .md-typeset blockquote {
+  background: rgba(12, 19, 33, 0.82);
+  border-left-color: #2dd4bf;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .mermaid {
+  background: linear-gradient(180deg, rgba(15, 118, 110, 0.16), rgba(15, 23, 42, 0.94));
+  border-color: rgba(45, 212, 191, 0.16);
+}
+
+/* Force high-contrast Mermaid rendering in dark mode, regardless of per-diagram classDef/style declarations. */
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .node rect,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .node circle,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .node ellipse,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .node polygon,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .node path,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .classBox,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .stateGroup rect,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .stateGroup path,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg rect.basic,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg rect.label-container {
+  fill: #122b3c !important;
+  stroke: #6fc7c2 !important;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .cluster rect {
+  fill: #0f2536 !important;
+  stroke: #4ba8a2 !important;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .flowchart-link,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .edgePath .path,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .path,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .marker,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .marker path,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg line,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg polyline {
+  stroke: #a9c8d4 !important;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg text,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg tspan,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .label,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .label text,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .nodeLabel,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg span.nodeLabel,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .edgeLabel,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .edgeLabel p,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .cluster-label text,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .classTitle,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .state-title,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg foreignObject div,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg foreignObject span {
+  color: #eaf2fa !important;
+  fill: #eaf2fa !important;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .edgeLabel rect,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .labelBkg,
+[data-md-color-scheme="slate"] .md-typeset .mermaid svg .relationshipLabelBox {
+  fill: #102334 !important;
+  opacity: 1 !important;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .md-button {
+  background: rgba(12, 19, 33, 0.8);
+  border-color: rgba(45, 212, 191, 0.16);
+  color: #eef6ff;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .md-button--primary {
+  background: linear-gradient(135deg, #0f766e, #155e75);
+  color: #f8fbff;
+}
+
+[data-md-color-scheme="slate"] .md-sidebar--primary .md-nav__link:hover,
+[data-md-color-scheme="slate"] .md-sidebar--primary .md-nav__container > .md-nav__link:hover {
+  background: rgba(45, 212, 191, 0.12);
+}
+
+[data-md-color-scheme="slate"] .md-sidebar--primary .md-nav__item--active > .md-nav__container > .md-nav__link,
+[data-md-color-scheme="slate"] .md-sidebar--primary .md-nav__link--active {
+  background: rgba(15, 118, 110, 0.24);
+  box-shadow: inset 0 0 0 1px rgba(45, 212, 191, 0.16), 0 12px 24px rgba(2, 6, 23, 0.28);
+  color: #f8fbff;
+}
+
+[data-md-color-scheme="slate"] .bijux-hero__eyebrow,
+[data-md-color-scheme="slate"] .bijux-topic-pill {
+  color: #dbeafe;
+}
+
+[data-md-color-scheme="slate"] .bijux-topic-pill {
+  background: rgba(15, 23, 42, 0.62);
+  border-color: rgba(45, 212, 191, 0.22);
+}

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "suites": [
+    {
+      "id": "verify",
+      "title": "Default repository verification suite",
+      "check_ids": [
+        "BJC-ROOT-HELP-001",
+        "BJC-STANDARD-001",
+        "BJC-GH-STANDARD-001",
+        "BJC-PY-CONFIG-LAYOUT-001",
+        "BJC-PY-MAKE-LAYOUT-001"
+      ]
+    }
+  ]
+}

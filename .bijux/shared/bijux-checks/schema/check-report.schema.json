@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bijux.io/schema/check-report.schema.json",
+  "title": "Bijux Check Report",
+  "type": "object",
+  "required": ["schema_version", "consumer", "summary", "checks"],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "consumer": {
+      "type": "object",
+      "required": ["consumer_id", "suite"],
+      "properties": {
+        "consumer_id": {"type": "string"},
+        "suite": {"type": "string"},
+        "repository": {"type": "string"},
+        "sha": {"type": "string"}
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["contracts", "passed", "failed", "skipped", "errored", "duration_ms", "exit_code"],
+      "properties": {
+        "contracts": {"type": "integer", "minimum": 0},
+        "passed": {"type": "integer", "minimum": 0},
+        "failed": {"type": "integer", "minimum": 0},
+        "skipped": {"type": "integer", "minimum": 0},
+        "errored": {"type": "integer", "minimum": 0},
+        "duration_ms": {"type": "integer", "minimum": 0},
+        "exit_code": {"type": "integer", "minimum": 0}
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "status", "required", "duration_ms"],
+        "properties": {
+          "id": {"type": "string"},
+          "title": {"type": "string"},
+          "owner_id": {"type": "string"},
+          "severity": {"type": "string"},
+          "status": {"type": "string", "enum": ["passed", "failed", "skipped", "error"]},
+          "required": {"type": "boolean"},
+          "duration_ms": {"type": "integer", "minimum": 0},
+          "message": {"type": "string"},
+          "command": {"type": "string"},
+          "log_path": {"type": "string"}
+        }
+      }
+    }
+  }
+}

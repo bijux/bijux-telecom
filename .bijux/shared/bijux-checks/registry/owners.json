@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "owners": [
+    {
+      "id": "bijux-maintainers",
+      "name": "Bijux Maintainers",
+      "contact": "bijan@bijux.io"
+    }
+  ]
+}
