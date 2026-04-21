@@ -14,3 +14,6 @@ regex.workspace = true
 [[bin]]
 name = "bijux-telecom-dev"
 path = "src/main.rs"
+
+[dev-dependencies]
+bijux-gnss-policies.workspace = true

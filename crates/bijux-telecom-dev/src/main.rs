@@ -46,7 +46,8 @@ fn main() -> Result<()> {
 }
 
 fn run_bench_compare(strict: bool, threshold: f64, workspace_root: Option<PathBuf>) -> Result<()> {
-    let root = workspace_root.unwrap_or(std::env::current_dir().context("resolve current directory")?);
+    let root =
+        workspace_root.unwrap_or(std::env::current_dir().context("resolve current directory")?);
     let artifacts_dir = root.join("artifacts");
     let benchmarks_dir = root.join("benchmarks");
     let baseline = benchmarks_dir.join("bencher_baseline.txt");
@@ -61,13 +62,13 @@ fn run_bench_compare(strict: bool, threshold: f64, workspace_root: Option<PathBu
     combined.push_str(&run_bench(
         &root,
         "bijux-gnss-receiver",
-        &["bench_correlator", "bench_acquisition_fft", "bench_tracking_update"],
+        &[
+            "bench_correlator",
+            "bench_acquisition_fft",
+            "bench_tracking_update",
+        ],
     )?);
-    combined.push_str(&run_bench(
-        &root,
-        "bijux-gnss-nav",
-        &["bench_ekf_update"],
-    )?);
+    combined.push_str(&run_bench(&root, "bijux-gnss-nav", &["bench_ekf_update"])?);
 
     fs::write(&benchmark_log, combined.as_bytes()).context("write benchmark log")?;
     write_current_snapshot(&combined, &current)?;
@@ -130,7 +131,11 @@ fn write_current_snapshot(bench_output: &str, current_path: &Path) -> Result<()>
     let mut rows = Vec::<(String, u64)>::new();
     for line in bench_output.lines() {
         if let Some(caps) = line_re.captures(line) {
-            let name = caps.get(1).map(|m| m.as_str()).unwrap_or_default().to_string();
+            let name = caps
+                .get(1)
+                .map(|m| m.as_str())
+                .unwrap_or_default()
+                .to_string();
             let value = caps
                 .get(2)
                 .map(|m| m.as_str())
@@ -147,17 +152,18 @@ fn write_current_snapshot(bench_output: &str, current_path: &Path) -> Result<()>
     let mut out = fs::File::create(current_path)
         .with_context(|| format!("create {}", current_path.display()))?;
     for (name, value) in rows {
-        writeln!(out, "{name} {value}").with_context(|| format!("write {}", current_path.display()))?;
+        writeln!(out, "{name} {value}")
+            .with_context(|| format!("write {}", current_path.display()))?;
     }
 
     Ok(())
 }
 
 fn compare_baseline(baseline: &Path, current: &Path, threshold: f64) -> Result<Vec<String>> {
-    let baseline_text = fs::read_to_string(baseline)
-        .with_context(|| format!("read {}", baseline.display()))?;
-    let current_text = fs::read_to_string(current)
-        .with_context(|| format!("read {}", current.display()))?;
+    let baseline_text =
+        fs::read_to_string(baseline).with_context(|| format!("read {}", baseline.display()))?;
+    let current_text =
+        fs::read_to_string(current).with_context(|| format!("read {}", current.display()))?;
 
     let mut baseline_map = std::collections::BTreeMap::<String, u64>::new();
     for line in baseline_text.lines() {
