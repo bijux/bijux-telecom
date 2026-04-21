@@ -57,7 +57,10 @@ pub(crate) fn git_dirty() -> bool {
 
 /// CPU feature detection summary.
 pub(crate) fn cpu_features() -> Vec<String> {
+    #[cfg(target_arch = "x86_64")]
     let mut features = Vec::new();
+    #[cfg(not(target_arch = "x86_64"))]
+    let features = Vec::new();
     #[cfg(target_arch = "x86_64")]
     {
         if std::is_x86_feature_detected!("avx2") {
