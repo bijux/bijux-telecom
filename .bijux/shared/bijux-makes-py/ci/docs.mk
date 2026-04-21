@@ -1,0 +1,218 @@
+DOCS_PYTHON                  ?= $(if $(wildcard $(VENV_PYTHON)),$(VENV_PYTHON),python3.11)
+DOCS_SITE_DIR                ?= $(PROJECT_ARTIFACTS_DIR)/docs/site
+DOCS_BUILD_SITE_DIR          ?= $(DOCS_SITE_DIR)
+DOCS_CHECK_SITE_DIR          ?= $(DOCS_SITE_DIR)
+DOCS_SERVE_SITE_DIR          ?= $(DOCS_SITE_DIR)
+DOCS_CACHE_DIR               ?= $(PROJECT_ARTIFACTS_DIR)/docs/.cache
+DOCS_SOURCE_DIR              ?= $(PROJECT_ARTIFACTS_DIR)/docs/source
+DOCS_EFFECTIVE_CONFIG        ?= $(PROJECT_ARTIFACTS_DIR)/docs/mkdocs.generated.yml
+DOCS_BUILD_CONFIG_FILE       ?= $(DOCS_EFFECTIVE_CONFIG)
+DOCS_CHECK_CONFIG_FILE       ?= $(DOCS_EFFECTIVE_CONFIG)
+DOCS_SERVE_CONFIG_FILE       ?= $(DOCS_EFFECTIVE_CONFIG)
+DOCS_SHARED_ASSETS_DIR       ?= $(PROJECT_DIR)/docs/assets
+DOCS_DEV_ADDR                ?= 127.0.0.1:8001
+DOCS_SITE_URL                ?= http://127.0.0.1:8000/
+DOCS_BUILD_SITE_URL          ?= $(DOCS_SITE_URL)
+DOCS_CHECK_SITE_URL          ?= $(DOCS_SITE_URL)
+DOCS_SERVE_SITE_URL          ?= $(DOCS_SITE_URL)
+DOCS_BUILD_FLAGS             ?= --strict
+DOCS_SERVE_FLAGS             ?=
+DOCS_DEPLOY_FLAGS            ?= --force
+DOCS_ENABLE_SOCIAL_CARDS     ?= false
+DOCS_EXTRA_CLEAN_PATHS       ?=
+DOCS_HYGIENE_FORBID_ROOT     ?= site .cache
+DOCS_BUILD_BOOTSTRAP_TARGETS ?=
+DOCS_CHECK_BOOTSTRAP_TARGETS ?=
+DOCS_SERVE_BOOTSTRAP_TARGETS ?=
+DOCS_BUILD_PREPARE_TARGETS   ?= docs-prepare-source
+DOCS_CHECK_PREPARE_TARGETS   ?= docs-prepare-source
+DOCS_SERVE_PREPARE_TARGETS   ?= docs-prepare-source
+DOCS_BUILD_GUARD_TARGETS     ?=
+DOCS_CHECK_GUARD_TARGETS     ?=
+DOCS_SERVE_GUARD_TARGETS     ?=
+DOCS_BUILD_PRE_CLEAN_PATHS   ?=
+DOCS_CHECK_PRE_CLEAN_PATHS   ?=
+DOCS_SERVE_PRE_CLEAN_PATHS   ?=
+DOCS_BUILD_ENV               ?=
+DOCS_CHECK_ENV               ?=
+DOCS_SERVE_ENV               ?=
+DOCS_SERVE_REUSE_MATCH       ?= $(if $(filter 1,$(DOCS_RENDER_SERVE_CONFIG)),$(DOCS_SERVE_CONFIG_FILE),$(DOCS_BASE_CONFIG_FILE))
+DOCS_SERVE_STATUS_FILE       ?= $(DOCS_CACHE_DIR)/.serve-state
+DOCS_SERVE_LOCK_DIR          ?= $(DOCS_CACHE_DIR)/.serve-lock
+DOCS_RENDER_SERVE_CONFIG     ?= 0
+DOCS_BASE_CONFIG_FILE        ?= $(MKDOCS_CFG)
+DOCS_SHARED_CONFIG_FILE      ?=
+DOCS_RENDERED_DOCS_DIR       ?= $(PROJECT_DIR)/docs
+DOCS_CONFIG_CLI              ?=
+
+ifeq ($(shell uname -s),Darwin)
+  DOCS_BREW_PREFIX   := $(shell command -v brew >/dev/null 2>&1 && brew --prefix)
+  DOCS_LIBFFI_PREFIX := $(shell test -n "$(DOCS_BREW_PREFIX)" && brew --prefix libffi)
+  DOCS_ENV           := DYLD_FALLBACK_LIBRARY_PATH="$(DOCS_BREW_PREFIX)/lib:$(DOCS_LIBFFI_PREFIX)/lib:$$DYLD_FALLBACK_LIBRARY_PATH"
+else
+  DOCS_ENV           :=
+endif
+
+DOCS_GOALS := $(filter docs docs-serve docs-deploy docs-check,$(MAKECMDGOALS))
+ifneq ($(strip $(DOCS_GOALS)),)
+  ifeq ($(wildcard $(MKDOCS_CFG)),)
+    $(error mkdocs config '$(MKDOCS_CFG)' not found)
+  endif
+endif
+
+include $(abspath $(dir $(lastword $(MAKEFILE_LIST))))/util.mk
+
+.PHONY: docs docs-serve docs-serve-run docs-deploy docs-check docs-clean docs-hygiene docs-prepare-source docs-assert-serve-port docs-render-serve-config
+
+docs:
+	$(call run_make_targets,$(DOCS_BUILD_BOOTSTRAP_TARGETS),$(MAKE))
+	$(call run_make_targets,$(DOCS_BUILD_GUARD_TARGETS),$(MAKE))
+	$(call clean_paths,$(DOCS_BUILD_PRE_CLEAN_PATHS))
+	$(call run_make_targets,$(DOCS_BUILD_PREPARE_TARGETS),$(MAKE))
+	@echo "→ Building documentation"
+	@mkdir -p "$(DOCS_CACHE_DIR)"
+	@XDG_CACHE_HOME="$(DOCS_CACHE_DIR)" $(DOCS_ENV) $(DOCS_BUILD_ENV) ENABLE_SOCIAL_CARDS="$(DOCS_ENABLE_SOCIAL_CARDS)" SITE_URL="$(DOCS_BUILD_SITE_URL)" \
+	  "$(DOCS_PYTHON)" -m mkdocs build $(DOCS_BUILD_FLAGS) --config-file "$(DOCS_BUILD_CONFIG_FILE)" --site-dir "$(DOCS_BUILD_SITE_DIR)"
+	@$(MAKE) docs-hygiene
+	@echo "✔ Docs built → $(DOCS_BUILD_SITE_DIR)"
+
+docs-serve:
+	@mkdir -p "$(DOCS_CACHE_DIR)"; \
+	status_file="$(DOCS_SERVE_STATUS_FILE)"; \
+	lock_dir="$(DOCS_SERVE_LOCK_DIR)"; \
+	set -eu; \
+	acquire_lock() { \
+	  mkdir "$$lock_dir" 2>/dev/null; \
+	}; \
+	if ! acquire_lock; then \
+	  echo "→ Documentation serve is already starting or running"; \
+	  exit 0; \
+	fi; \
+	trap 'rm -f "$$status_file"; rm -rf "$$lock_dir"' EXIT INT TERM; \
+	rm -f "$$status_file"; \
+	if [ -n "$(strip $(DOCS_SERVE_GUARD_TARGETS))" ]; then \
+	  $(MAKE) $(DOCS_SERVE_GUARD_TARGETS); \
+	  if [ "$$(cat "$(DOCS_SERVE_STATUS_FILE)" 2>/dev/null || true)" = "reuse" ]; then \
+	    exit 0; \
+	  fi; \
+	fi; \
+	$(MAKE) docs-serve-run
+
+docs-serve-run:
+	$(call run_make_targets,$(DOCS_SERVE_BOOTSTRAP_TARGETS),$(MAKE))
+	$(call clean_paths,$(DOCS_SERVE_PRE_CLEAN_PATHS))
+	$(call run_make_targets,$(DOCS_SERVE_PREPARE_TARGETS),$(MAKE))
+	@echo "→ Serving documentation on http://$(DOCS_DEV_ADDR)/"
+	@config_file="$(DOCS_SERVE_CONFIG_FILE)"; \
+	if [ "$(DOCS_RENDER_SERVE_CONFIG)" != "1" ]; then \
+	  config_file="$(DOCS_BASE_CONFIG_FILE)"; \
+	fi; \
+	exec env XDG_CACHE_HOME="$(DOCS_CACHE_DIR)" $(DOCS_ENV) $(DOCS_SERVE_ENV) SITE_URL="$(DOCS_SERVE_SITE_URL)" \
+	  "$(DOCS_PYTHON)" -m mkdocs serve $(DOCS_SERVE_FLAGS) --config-file "$$config_file" --dev-addr "$(DOCS_DEV_ADDR)"
+
+docs-deploy:
+	$(call run_make_targets,$(DOCS_BUILD_BOOTSTRAP_TARGETS),$(MAKE))
+	$(call clean_paths,$(DOCS_BUILD_PRE_CLEAN_PATHS))
+	$(call run_make_targets,$(DOCS_BUILD_PREPARE_TARGETS),$(MAKE))
+	@echo "→ Deploying documentation"
+	@mkdir -p "$(DOCS_CACHE_DIR)"
+	@XDG_CACHE_HOME="$(DOCS_CACHE_DIR)" $(DOCS_ENV) $(DOCS_BUILD_ENV) ENABLE_SOCIAL_CARDS="$(DOCS_ENABLE_SOCIAL_CARDS)" SITE_URL="$(DOCS_BUILD_SITE_URL)" \
+	  "$(DOCS_PYTHON)" -m mkdocs gh-deploy $(DOCS_BUILD_FLAGS) $(DOCS_DEPLOY_FLAGS) --config-file "$(DOCS_BUILD_CONFIG_FILE)" --site-dir "$(DOCS_BUILD_SITE_DIR)"
+
+docs-check:
+	$(call run_make_targets,$(DOCS_CHECK_BOOTSTRAP_TARGETS),$(MAKE))
+	$(call run_make_targets,$(DOCS_CHECK_GUARD_TARGETS),$(MAKE))
+	$(call clean_paths,$(DOCS_CHECK_PRE_CLEAN_PATHS))
+	$(call run_make_targets,$(DOCS_CHECK_PREPARE_TARGETS),$(MAKE))
+	@echo "→ Checking documentation build integrity"
+	@mkdir -p "$(DOCS_CACHE_DIR)"
+	@XDG_CACHE_HOME="$(DOCS_CACHE_DIR)" $(DOCS_ENV) $(DOCS_CHECK_ENV) ENABLE_SOCIAL_CARDS="$(DOCS_ENABLE_SOCIAL_CARDS)" SITE_URL="$(DOCS_CHECK_SITE_URL)" \
+	  "$(DOCS_PYTHON)" -m mkdocs build $(DOCS_BUILD_FLAGS) --quiet --config-file "$(DOCS_CHECK_CONFIG_FILE)" --site-dir "$(DOCS_CHECK_SITE_DIR)"
+	@$(MAKE) docs-hygiene
+	@echo "✔ Docs check passed"
+
+docs-prepare-source:
+	@echo "→ Preparing documentation source tree"
+	@mkdir -p "$(DOCS_SOURCE_DIR)" "$(dir $(DOCS_EFFECTIVE_CONFIG))"
+	@rm -rf "$(DOCS_SOURCE_DIR)"
+	@mkdir -p "$(DOCS_SOURCE_DIR)"
+	@rsync -a --delete "$(PROJECT_DIR)/docs/" "$(DOCS_SOURCE_DIR)/"
+	@if [ -d "$(DOCS_SHARED_ASSETS_DIR)" ] && [ "$(abspath $(DOCS_SHARED_ASSETS_DIR))" != "$(abspath $(DOCS_SOURCE_DIR)/assets)" ]; then \
+	  mkdir -p "$(DOCS_SOURCE_DIR)/assets"; \
+	  rsync -a --delete "$(DOCS_SHARED_ASSETS_DIR)/" "$(DOCS_SOURCE_DIR)/assets/"; \
+	fi
+	@if [ -n "$(strip $(DOCS_CONFIG_CLI))" ]; then \
+	  "$(DOCS_PYTHON)" $(DOCS_CONFIG_CLI) prepare-source \
+	    --source-config "$(MKDOCS_CFG)" \
+	    --output-config "$(DOCS_EFFECTIVE_CONFIG)" \
+	    --docs-source-dir "$(DOCS_SOURCE_DIR)"; \
+	else \
+	  cp "$(MKDOCS_CFG)" "$(DOCS_EFFECTIVE_CONFIG)"; \
+	fi
+
+docs-clean:
+	@echo "→ Cleaning documentation artifacts"
+	@rm -rf \
+	  "$(DOCS_SITE_DIR)" \
+	  "$(DOCS_BUILD_SITE_DIR)" \
+	  "$(DOCS_CHECK_SITE_DIR)" \
+	  "$(DOCS_SERVE_SITE_DIR)" \
+	  "$(DOCS_CACHE_DIR)" \
+	  "$(DOCS_SOURCE_DIR)" \
+	  "$(DOCS_EFFECTIVE_CONFIG)" \
+	  $(DOCS_EXTRA_CLEAN_PATHS)
+
+docs-hygiene:
+	@set -e; \
+	for path in $(DOCS_HYGIENE_FORBID_ROOT); do \
+	  test ! -e "$$path" || { echo "ERROR: root '$$path' is forbidden"; exit 1; }; \
+	done
+	@echo "Docs hygiene OK"
+
+docs-assert-serve-port:
+	@set -eu; \
+	status_file="$(DOCS_SERVE_STATUS_FILE)"; \
+	rm -f "$$status_file"; \
+	addr="$(DOCS_DEV_ADDR)"; \
+	port="$${addr##*:}"; \
+	if lsof_output="$$(lsof -nP -iTCP:$$port -sTCP:LISTEN 2>/dev/null)"; then \
+	  pid="$$(printf '%s\n' "$$lsof_output" | awk 'NR==2 {print $$2}')"; \
+	  command_line="$$(ps -p "$$pid" -o command= 2>/dev/null || true)"; \
+	  if [ -n "$(DOCS_SERVE_REUSE_MATCH)" ] && printf '%s\n' "$$command_line" | grep -Fq -- "$(DOCS_SERVE_REUSE_MATCH)"; then \
+	    echo "→ Documentation already serving on http://$$addr (pid $$pid)"; \
+	    echo reuse > "$$status_file"; \
+	    exit 0; \
+	  fi; \
+	  echo "Port $$addr is already in use by pid $$pid."; \
+	  if [ -n "$$command_line" ]; then \
+	    echo "$$command_line"; \
+	  fi; \
+	  echo "Stop that process or set DOCS_DEV_ADDR to a free port."; \
+	  exit 2; \
+	fi
+
+docs-render-serve-config:
+	@if [ "$(DOCS_RENDER_SERVE_CONFIG)" != "1" ]; then \
+	  echo "→ Serve config rendering is not enabled for this docs profile"; \
+	else \
+	  if [ -z "$(strip $(DOCS_CONFIG_CLI))" ]; then \
+	    echo "✘ DOCS_CONFIG_CLI is required when DOCS_RENDER_SERVE_CONFIG=1"; \
+	    exit 2; \
+	  fi; \
+	  mkdir -p "$(dir $(DOCS_SERVE_CONFIG_FILE))"; \
+	  "$(DOCS_PYTHON)" $(DOCS_CONFIG_CLI) render-serve-config \
+	    --source-config "$(DOCS_BASE_CONFIG_FILE)" \
+	    --output-config "$(DOCS_SERVE_CONFIG_FILE)" \
+	    --docs-dir "$(DOCS_RENDERED_DOCS_DIR)" \
+	    --site-dir "$(DOCS_SERVE_SITE_DIR)" \
+	    --site-url "$(DOCS_SERVE_SITE_URL)" \
+	    $(if $(strip $(DOCS_SHARED_CONFIG_FILE)),--inherit-config "$(DOCS_SHARED_CONFIG_FILE)"); \
+	fi
+
+##@ Docs
+docs:         ## Build the documentation site
+docs-serve:   ## Serve docs locally from DOCS_DEV_ADDR
+docs-deploy:  ## Deploy docs with mkdocs gh-deploy
+docs-check:   ## Validate docs build without persisting root pollution
+docs-clean:   ## Remove generated docs artifacts
+docs-hygiene: ## Fail if forbidden root docs outputs exist

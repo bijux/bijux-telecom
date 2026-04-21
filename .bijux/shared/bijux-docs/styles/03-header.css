@@ -1,0 +1,145 @@
+/* Header structure: hub strip and header tools surfaces. */
+.bijux-hub-strip {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  position: relative;
+  scrollbar-width: none;
+}
+
+.bijux-hub-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.bijux-hub-strip::before,
+.bijux-hub-strip::after {
+  content: "";
+  inset-block: 0;
+  pointer-events: none;
+  position: absolute;
+  width: 1.15rem;
+  z-index: 1;
+}
+
+.bijux-hub-strip::before {
+  background: linear-gradient(90deg, var(--bijux-hub-bg), rgba(30, 40, 82, 0));
+  inset-inline-start: 0;
+}
+
+.bijux-hub-strip::after {
+  background: linear-gradient(270deg, var(--bijux-hub-bg), rgba(30, 40, 82, 0));
+  inset-inline-end: 0;
+}
+
+.bijux-header-tools {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.5rem;
+  margin-inline-start: auto;
+}
+
+.bijux-header-tools > * {
+  margin: 0;
+}
+
+.bijux-header-tools .md-header__button,
+.bijux-header-tools .md-header__option {
+  border-radius: 999px;
+}
+
+.bijux-header-tools .md-search {
+  padding: 0;
+}
+
+.bijux-header-tools .md-search__inner {
+  width: clamp(8.75rem, 12vw, 10.75rem);
+}
+
+.bijux-header-tools .md-header__source {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+.bijux-header-tools .md-search__form,
+.bijux-header-tools .md-source {
+  border-radius: 0.95rem;
+  max-width: none;
+  width: auto;
+}
+
+.bijux-header-tools .md-source {
+  min-width: 0;
+}
+
+.bijux-header-tools .md-source__repository {
+  font-size: 0.72rem;
+  line-height: 1.1;
+}
+
+.bijux-header-tools .md-source__repository,
+.bijux-header-tools .md-source__facts {
+  display: none;
+}
+
+.bijux-header-tools .md-source {
+  align-items: center;
+  aspect-ratio: 1;
+  justify-content: center;
+  min-width: 2.4rem;
+  padding: 0;
+  width: 2.4rem;
+}
+
+.bijux-header-tools .md-source__icon {
+  margin: 0;
+}
+
+.bijux-header-tools .md-source__icon svg {
+  height: 1.05rem;
+  width: 1.05rem;
+}
+
+.bijux-header-tools [data-md-component="palette"] {
+  display: none;
+}
+
+.bijux-header-tools .bijux-theme-toggle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: #0f172a;
+  display: inline-flex;
+  justify-content: center;
+  opacity: 0.92;
+  transition: transform 0.18s ease, color 0.18s ease, opacity 0.18s ease;
+}
+
+.bijux-header-tools .bijux-theme-toggle:hover {
+  background: transparent;
+  box-shadow: none;
+  color: #0f5f73;
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+[data-md-color-scheme="slate"] .bijux-header-tools .bijux-theme-toggle {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: #e6f1ff;
+  opacity: 0.95;
+}
+
+[data-md-color-scheme="slate"] .bijux-header-tools .bijux-theme-toggle:hover {
+  background: transparent;
+  box-shadow: none;
+  color: #7dd3fc;
+  opacity: 1;
+}
+
+.bijux-header-tools .bijux-theme-toggle svg {
+  height: 1.05rem;
+  width: 1.05rem;
+}

@@ -1,0 +1,144 @@
+/* Content styling: headings, prose, code, tables, and markdown surfaces. */
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3 {
+  letter-spacing: -0.02em;
+}
+
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3,
+.md-typeset h4,
+.md-typeset h5,
+.md-typeset h6 {
+  scroll-margin-top: 8.2rem;
+}
+
+.md-typeset h1 {
+  font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  font-weight: 700;
+}
+
+.md-typeset p,
+.md-typeset li {
+  line-height: 1.75;
+  color: var(--bijux-ink);
+  overflow-wrap: anywhere;
+}
+
+.md-main {
+  background:
+    radial-gradient(circle at top left, rgba(13, 148, 136, 0.07), transparent 22%),
+    radial-gradient(circle at 82% 10%, rgba(245, 158, 11, 0.06), transparent 18%),
+    radial-gradient(circle at top right, rgba(8, 145, 178, 0.05), transparent 20%),
+    radial-gradient(circle at 24% 58%, rgba(20, 184, 166, 0.04), transparent 22%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0));
+}
+
+[data-md-color-scheme="slate"] .md-main {
+  background:
+    radial-gradient(circle at top left, rgba(45, 212, 191, 0.08), transparent 24%),
+    radial-gradient(circle at 80% 8%, rgba(251, 191, 36, 0.05), transparent 16%),
+    radial-gradient(circle at 28% 56%, rgba(103, 232, 249, 0.05), transparent 24%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.36), rgba(15, 23, 42, 0));
+}
+
+.md-typeset > h2 {
+  align-items: center;
+  display: flex;
+  gap: 0.85rem;
+  margin-top: 2.9rem;
+}
+
+.md-typeset > h2::after {
+  background: linear-gradient(90deg, rgba(15, 118, 110, 0.32), rgba(8, 145, 178, 0.08));
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  min-width: 3.5rem;
+}
+
+.md-typeset > h2 + p {
+  max-width: 64rem;
+}
+
+.md-typeset > h2 + .bijux-panel-grid,
+.md-typeset > h2 + .bijux-showcase-grid,
+.md-typeset > h2 + .bijux-media-grid,
+.md-typeset > h2 + table:not([class]),
+.md-typeset > h2 + .bijux-callout,
+.md-typeset > h2 + .bijux-map-frame,
+.md-typeset > h2 + blockquote,
+.md-typeset > h2 + ul,
+.md-typeset > h2 + ol {
+  margin-top: 1.2rem;
+}
+
+.md-typeset > h3 {
+  margin-top: 2rem;
+}
+
+.md-typeset code {
+  border-radius: 0.35rem;
+}
+
+.md-typeset pre > code {
+  border-radius: 0.75rem;
+}
+
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: 0.75rem;
+}
+
+.md-typeset table:not([class]) {
+  border: 1px solid var(--bijux-border);
+  border-collapse: separate;
+  border-radius: 0.95rem;
+  border-spacing: 0;
+  overflow: hidden;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
+}
+
+.md-typeset table:not([class]) th {
+  background: rgba(15, 118, 110, 0.08);
+  color: var(--bijux-ink);
+  font-size: 0.74rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: top;
+}
+
+.md-typeset table:not([class]) td {
+  vertical-align: top;
+}
+
+.md-typeset table:not([class]) tr:nth-child(even) td {
+  background: rgba(8, 145, 178, 0.03);
+}
+
+.md-typeset blockquote {
+  border-left: 0.2rem solid #0f766e;
+  background: var(--bijux-panel);
+  padding: 0.1rem 0.8rem;
+}
+
+.md-typeset hr {
+  border-bottom: 1px solid var(--bijux-border);
+}
+
+.md-typeset .mermaid {
+  background: var(--bijux-panel-strong);
+  border: 1px solid var(--bijux-border);
+  border-radius: 0.9rem;
+  padding: 1rem;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.md-typeset .mermaid svg {
+  display: block;
+  margin: 0 auto;
+  height: auto;
+  max-width: 100%;
+}

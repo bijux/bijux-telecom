@@ -1,0 +1,45 @@
+name: Feature Request
+description: Propose a clear product, platform, or workflow improvement
+title: "feat: <short summary>"
+labels:
+  - enhancement
+body:
+  - type: input
+    id: affected_surface
+    attributes:
+      label: Affected surface
+      description: Command, package, workflow, docs section, or contract path.
+      placeholder: bijux-cli memory, release-ghcr, docs navigation
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What limitation exists today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: The change you want and how it should work.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other options and why they are weaker.
+  - type: textarea
+    id: success_criteria
+    attributes:
+      label: Success criteria
+      description: Concrete acceptance criteria and validation signals.
+    validations:
+      required: true
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional context
+      description: Links, references, dependencies, migration concerns.
