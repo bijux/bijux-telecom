@@ -3,7 +3,7 @@
 # Do not edit this generated copy directly.
 
 name: "repo / ci"
-true:
+on:
   push:
     branches:
       - main
