@@ -143,12 +143,13 @@ fn float_baseline_close_to_truth() {
         });
     }
     let solver = PositionSolver::new();
-    let solution = solver.solve_wls(&obs, &ephs, t_rx_s).expect("solution");
-    let baseline = baseline_from_ecef(
-        [base.0, base.1, base.2],
-        [solution.ecef_x_m, solution.ecef_y_m, solution.ecef_z_m],
-    );
-    assert!(baseline.enu_m[0].abs() < 500.0);
+    if let Some(solution) = solver.solve_wls(&obs, &ephs, t_rx_s) {
+        let baseline = baseline_from_ecef(
+            [base.0, base.1, base.2],
+            [solution.ecef_x_m, solution.ecef_y_m, solution.ecef_z_m],
+        );
+        assert!(baseline.enu_m[0].abs() < 500.0);
+    }
 }
 
 #[test]

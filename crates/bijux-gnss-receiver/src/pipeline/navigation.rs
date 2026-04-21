@@ -155,25 +155,25 @@ impl Navigation {
             })
             .collect();
         if observations.len() < 4 {
-            self.runtime.logger.event(
-                &bijux_gnss_core::api::DiagnosticEvent::new(
+            self.runtime
+                .logger
+                .event(&bijux_gnss_core::api::DiagnosticEvent::new(
                     bijux_gnss_core::api::DiagnosticSeverity::Warning,
                     "NAV_INSUFFICIENT_SATS",
                     "insufficient satellites for navigation solution",
-                ),
-            );
+                ));
             return self.degraded_from_last(obs);
         }
         let solution = match self.solver.solve_wls(&observations, eph, obs.t_rx_s.0) {
             Some(solution) => solution,
             None => {
-                self.runtime.logger.event(
-                    &bijux_gnss_core::api::DiagnosticEvent::new(
+                self.runtime
+                    .logger
+                    .event(&bijux_gnss_core::api::DiagnosticEvent::new(
                         bijux_gnss_core::api::DiagnosticSeverity::Warning,
                         "NAV_SOLVER_FAILED",
                         "nav solver failed to converge",
-                    ),
-                );
+                    ));
                 return self.degraded_from_last(obs);
             }
         };
@@ -211,13 +211,18 @@ impl Navigation {
                     weight: Some(weight),
                     reject_reason: None,
                 })
-                .chain(solution.rejected.into_iter().map(|(sat, reason)| NavResidual {
-                    sat,
-                    residual_m: Meters(0.0),
-                    rejected: true,
-                    weight: None,
-                    reject_reason: Some(reason),
-                }))
+                .chain(
+                    solution
+                        .rejected
+                        .into_iter()
+                        .map(|(sat, reason)| NavResidual {
+                            sat,
+                            residual_m: Meters(0.0),
+                            rejected: true,
+                            weight: None,
+                            reject_reason: Some(reason),
+                        }),
+                )
                 .collect(),
             isb: Vec::new(),
             health: Vec::new(),
@@ -237,35 +242,35 @@ impl Navigation {
             nav_epoch
                 .health
                 .push(bijux_gnss_core::api::NavHealthEvent::CovarianceSymmetrized);
-            self.runtime.logger.event(
-                &bijux_gnss_core::api::DiagnosticEvent::new(
+            self.runtime
+                .logger
+                .event(&bijux_gnss_core::api::DiagnosticEvent::new(
                     bijux_gnss_core::api::DiagnosticSeverity::Warning,
                     "NAV_COV_SYMM",
                     "nav covariance symmetrized",
-                ),
-            );
+                ));
         }
         if solution.covariance_clamped {
-            nav_epoch.health.push(
-                bijux_gnss_core::api::NavHealthEvent::CovarianceClamped {
+            nav_epoch
+                .health
+                .push(bijux_gnss_core::api::NavHealthEvent::CovarianceClamped {
                     min_eigenvalue: 0.0,
-                },
-            );
-            self.runtime.logger.event(
-                &bijux_gnss_core::api::DiagnosticEvent::new(
+                });
+            self.runtime
+                .logger
+                .event(&bijux_gnss_core::api::DiagnosticEvent::new(
                     bijux_gnss_core::api::DiagnosticSeverity::Warning,
                     "NAV_COV_CLAMP",
                     "nav covariance clamped",
-                ),
-            );
+                ));
         }
         if let Some(max_var) = solution.covariance_max_variance {
             if max_var > 1e6 {
-                nav_epoch.health.push(
-                    bijux_gnss_core::api::NavHealthEvent::CovarianceDiverged {
+                nav_epoch
+                    .health
+                    .push(bijux_gnss_core::api::NavHealthEvent::CovarianceDiverged {
                         max_variance: max_var,
-                    },
-                );
+                    });
             }
         }
 
@@ -281,13 +286,13 @@ impl Navigation {
         if let Some(sep) = solution.separation_max_m {
             if sep > self.solver.separation_gate_m {
                 nav_epoch.status = SolutionStatus::Degraded;
-                self.runtime.logger.event(
-                    &bijux_gnss_core::api::DiagnosticEvent::new(
+                self.runtime
+                    .logger
+                    .event(&bijux_gnss_core::api::DiagnosticEvent::new(
                         bijux_gnss_core::api::DiagnosticSeverity::Warning,
                         "NAV_RAIM_SEPARATION",
                         format!("solution separation exceeded: {:.2} m", sep),
-                    ),
-                );
+                    ));
             }
         }
 
@@ -322,13 +327,13 @@ impl Navigation {
         }
 
         if let Some(rms) = nav_epoch.innovation_rms_m {
-            self.runtime.logger.event(
-                &bijux_gnss_core::api::DiagnosticEvent::new(
+            self.runtime
+                .logger
+                .event(&bijux_gnss_core::api::DiagnosticEvent::new(
                     bijux_gnss_core::api::DiagnosticSeverity::Info,
                     "NAV_INNOVATION_RMS",
                     format!("innovation rms {:.3} m", rms),
-                ),
-            );
+                ));
         }
 
         self.last_solution = Some(nav_epoch.clone());
@@ -405,9 +410,15 @@ fn invalid_solution_epoch(obs: &ObsEpoch) -> NavSolutionEpoch {
     }
 }
 
-fn innovation_stats(
-    residuals: &[NavResidual],
-) -> (Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<f64>) {
+type InnovationStats = (
+    Option<f64>,
+    Option<f64>,
+    Option<f64>,
+    Option<f64>,
+    Option<f64>,
+);
+
+fn innovation_stats(residuals: &[NavResidual]) -> InnovationStats {
     let mut sum = 0.0;
     let mut sum_norm = 0.0;
     let mut max_norm = 0.0;
