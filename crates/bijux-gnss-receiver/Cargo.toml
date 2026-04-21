@@ -30,7 +30,7 @@ reference-checks = []
 alloc-audit = ["alloc-trace"]
 
 [dev-dependencies]
-criterion = "0.5"
+criterion = "0.8"
 proptest.workspace = true
 toml.workspace = true
 bijux-guardrails.workspace = true
