@@ -15,5 +15,5 @@ default = ["precise-products"]
 precise-products = []
 
 [dev-dependencies]
-criterion = "0.5"
+criterion = "0.8"
 bijux-guardrails.workspace = true
