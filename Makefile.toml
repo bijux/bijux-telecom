@@ -1,150 +1,57 @@
 [config]
 skip_core_tasks = true
 
-[env]
-JOBS = { value = "8", condition = { env_not_set = ["JOBS"] } }
-NEXTEST_JOBS = { value = "8", condition = { env_not_set = ["NEXTEST_JOBS"] } }
-CARGO_MAKE_RUN_TASKS_IN_WORKSPACE = { value = "false", condition = { env_not_set = ["CARGO_MAKE_RUN_TASKS_IN_WORKSPACE"] } }
-CARGO_MAKE_WORKSPACE_SKIP_MEMBERS = { value = "true", condition = { env_not_set = ["CARGO_MAKE_WORKSPACE_SKIP_MEMBERS"] } }
-CARGO_MAKE_NO_WORKSPACE = { value = "true", condition = { env_not_set = ["CARGO_MAKE_NO_WORKSPACE"] } }
-CARGO_TARGET_DIR = { value = "artifacts/rust/target", condition = { env_not_set = ["CARGO_TARGET_DIR"] } }
-CARGO_HOME = { value = "artifacts/rust/cargo-home", condition = { env_not_set = ["CARGO_HOME"] } }
-CARGO_INSTALL_ROOT = { value = "artifacts/rust/cargo-install", condition = { env_not_set = ["CARGO_INSTALL_ROOT"] } }
-NEXTEST_CACHE_DIR = { value = "artifacts/rust/target/nextest", condition = { env_not_set = ["NEXTEST_CACHE_DIR"] } }
-LLVM_PROFILE_FILE = { value = "artifacts/coverage/profraw/default_%m_%p.profraw", condition = { env_not_set = ["LLVM_PROFILE_FILE"] } }
-CARGO_TERM_COLOR = { value = "always", condition = { env_not_set = ["CARGO_TERM_COLOR"] } }
-
 [tasks.fmt-check]
-command = "cargo"
-args = ["fmt", "--all", "--", "--check"]
-
-[tasks.check]
-command = "cargo"
-args = ["check", "--workspace", "--all-targets", "--all-features"]
+command = "make"
+args = ["fmt-rs"]
 
 [tasks.clippy]
-command = "cargo"
-args = ["clippy", "--workspace", "--all-targets", "--all-features", "--", "-D", "warnings"]
-
-dependencies = []
+command = "make"
+args = ["lint-rs"]
 
 [tasks.test]
-script_runner = "bash"
-script = [
-  "if command -v cargo-nextest >/dev/null 2>&1; then",
-  "  echo 'Running tests with nextest...';",
-  "  CARGO_BUILD_JOBS=${JOBS} cargo nextest run --workspace --no-fail-fast --jobs ${NEXTEST_JOBS};",
-  "else",
-  "  echo 'cargo-nextest not installed; falling back to cargo test';",
-  "  CARGO_BUILD_JOBS=${JOBS} cargo test --workspace -- --color always;",
-  "fi",
-]
-workspace = false
-env = { CARGO_MAKE_NO_WORKSPACE = "true", CARGO_MAKE_WORKSPACE_SKIP_MEMBERS = "true" }
+command = "make"
+args = ["test-rs"]
 
 [tasks.test-full]
-script_runner = "bash"
-script = [
-  "if command -v cargo-nextest >/dev/null 2>&1; then",
-  "  echo 'Running full tests with nextest...';",
-  "  CARGO_BUILD_JOBS=${JOBS} cargo nextest run --workspace --all-features --no-fail-fast --jobs ${NEXTEST_JOBS};",
-  "else",
-  "  echo 'cargo-nextest not installed; falling back to cargo test';",
-  "  CARGO_BUILD_JOBS=${JOBS} cargo test --workspace --all-features -- --color always;",
-  "fi",
-]
+command = "make"
+args = ["test-all-rs"]
 
 [tasks.audit]
-script_runner = "bash"
-script = [
-  "if command -v cargo-audit >/dev/null 2>&1; then",
-  "  workspace_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd);",
-  "  allowlist=\"$workspace_root/audit-allowlist.toml\";",
-  "  if [ -f \"$allowlist\" ]; then",
-  "    (cd \"$workspace_root\" && cargo audit --file \"$allowlist\");",
-  "  else",
-  "    (cd \"$workspace_root\" && cargo audit);",
-  "  fi;",
-  "else",
-  "  echo 'cargo-audit not installed; skipping advisory check';",
-  "fi",
-  "if command -v cargo-deny >/dev/null 2>&1; then",
-  "  workspace_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd);",
-  "  (cd \"$workspace_root\" && cargo deny check);",
-  "else",
-  "  echo 'cargo-deny not installed; skipping deny check';",
-  "fi",
-  "if command -v cargo-semver-checks >/dev/null 2>&1; then",
-  "  workspace_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd);",
-  "  (cd \"$workspace_root\" && cargo semver-checks -p bijux-gnss-core -p bijux-gnss-infra);",
-  "else",
-  "  echo 'cargo-semver-checks not installed; skipping API break check';",
-  "fi",
-]
+command = "make"
+args = ["audit-rs"]
 
 [tasks.doc]
-command = "cargo"
-args = ["doc", "--no-deps"]
-env = { RUSTDOCFLAGS = "-D warnings" }
+command = "make"
+args = ["docs-check"]
 
-[tasks.test-no-default]
-script_runner = "bash"
-script = [
-  "for manifest in crates/*/Cargo.toml; do",
-  "  name=$(awk -F'\"' '/^name[[:space:]]*=/{print $2; exit}' \"$manifest\");",
-  "  if [ -z \"$name\" ]; then",
-  "    echo \"Skipping $manifest (no name found)\";",
-  "    continue;",
-  "  fi;",
-  "  echo \"Running no-default-features tests for $name\";",
-  "  cargo test -p \"$name\" --no-default-features -- --color always;",
-  "done",
-]
-
-[tasks.build-minimal-engine]
-command = "cargo"
-args = [
-  "build",
-  "-p",
-  "bijux-gnss-core",
-  "-p",
-  "bijux-gnss-signal",
-  "-p",
-  "bijux-gnss-receiver",
-  "--no-default-features",
-]
+[tasks.bench-compare]
+command = "make"
+args = ["bench-compare"]
 
 [tasks.lint]
 dependencies = ["fmt-check", "clippy"]
-workspace = false
-env = { CARGO_MAKE_NO_WORKSPACE = "true", CARGO_MAKE_WORKSPACE_SKIP_MEMBERS = "true" }
 
 [tasks.ci]
-dependencies = ["lint", "audit", "doc", "test", "test-no-default"]
+command = "make"
+args = ["ci"]
 
 [tasks.ci-fast]
-description = "Run CI once at workspace root (no per-crate recursion)."
-dependencies = ["lint", "audit", "doc", "test", "test-no-default"]
-env = { CARGO_MAKE_NO_WORKSPACE = "true", CARGO_MAKE_WORKSPACE_SKIP_MEMBERS = "true" }
-workspace = false
+command = "make"
+args = ["ci-fast"]
 
 [tasks.ci-pr]
-description = "Pull-request lane aligned with ci-fast."
-dependencies = ["ci-fast"]
-workspace = false
+command = "make"
+args = ["ci-pr"]
 
 [tasks.ci-nightly]
-description = "Nightly lane with full feature test coverage."
-dependencies = ["lint", "audit", "doc", "test-full", "test-no-default"]
-env = { CARGO_MAKE_NO_WORKSPACE = "true", CARGO_MAKE_WORKSPACE_SKIP_MEMBERS = "true" }
-workspace = false
+command = "make"
+args = ["ci-nightly"]
 
 [tasks.ci-docs]
-description = "Documentation lane."
-dependencies = ["doc"]
-workspace = false
+command = "make"
+args = ["ci-docs"]
 
 [tasks.ci-dependency-lock-refresh]
-description = "Refresh Cargo.lock under workspace control."
-command = "cargo"
-args = ["update", "--workspace"]
+command = "make"
+args = ["ci-dependency-lock-refresh"]
