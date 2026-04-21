@@ -34,15 +34,7 @@ jobs:
               python3 .github/scripts/check_pinned_actions.py \
                 --manifest-managed .github/standards/repo-config.manifest.json \
                 .github/workflows
-              if [[ -f "Makefile" ]] && grep -qE '^[[:space:]]*bijux-std-checks:' Makefile; then
-                make bijux-std-checks
-              elif [[ -x ".bijux/shared/bijux-checks/check-bijux-std.sh" ]]; then
-                bash .bijux/shared/bijux-checks/check-bijux-std.sh
-              elif [[ -x "shared/bijux-checks/check-bijux-std.sh" ]]; then
-                bash shared/bijux-checks/check-bijux-std.sh
-              else
-                echo "INFO: bijux-std runtime drift checks are not vendored in this repository; skipping."
-              fi
+              make bijux-std-checks
               ;;
             report)
               if [[ -x ".bijux/shared/bijux-checks/scripts/run-bijux-check-suite.sh" ]]; then
@@ -54,13 +46,8 @@ jobs:
                   --consumer .bijux/checks.consumer.json \
                   --artifacts-dir artifacts/bijux-checks
               else
-                mkdir -p artifacts/bijux-checks
-                printf '{"schema_version":1,"kind":"check_report","status":"skipped","reason":"bijux checks runner not vendored"}\n' \
-                  > artifacts/bijux-checks/check-report.json
-                printf '# bijux checks report\n\nstatus: skipped\nreason: bijux checks runner not vendored\n' \
-                  > artifacts/bijux-checks/check-report.md
-                printf '<?xml version="1.0" encoding="UTF-8"?><testsuite name="bijux-checks" tests="1" skipped="1"></testsuite>\n' \
-                  > artifacts/bijux-checks/junit.xml
+                echo "ERROR: unable to locate bijux checks runner script" >&2
+                exit 1
               fi
               ;;
             *)

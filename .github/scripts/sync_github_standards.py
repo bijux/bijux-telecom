@@ -45,6 +45,7 @@ DEFAULT_REPOS = [
     "bijux-atlas",
     "bijux-canon",
     "bijux-core",
+    "bijux-genomics",
     "bijux-masterclass",
     "bijux-pollenomics",
     "bijux-proteomics",

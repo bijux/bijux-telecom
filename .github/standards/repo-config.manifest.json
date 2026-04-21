@@ -1264,6 +1264,55 @@
       "pinned_std_sha": "af42c48d386fe5af0eb4c4f45041d1ab4d14b634"
     },
     {
+      "name": "bijux-genomics",
+      "workflow_allowlist": [
+        "deploy-docs",
+        "github-policy"
+      ],
+      "dependabot": {
+        "version": 2,
+        "updates": [
+          {
+            "package-ecosystem": "github-actions",
+            "directory": "/",
+            "schedule": {
+              "interval": "weekly"
+            },
+            "open-pull-requests-limit": 10,
+            "labels": [
+              "dependencies",
+              "github_actions"
+            ]
+          },
+          {
+            "package-ecosystem": "cargo",
+            "directory": "/",
+            "schedule": {
+              "interval": "weekly"
+            },
+            "open-pull-requests-limit": 10,
+            "labels": [
+              "dependencies",
+              "rust"
+            ]
+          },
+          {
+            "package-ecosystem": "pip",
+            "directory": "/configs/docs",
+            "schedule": {
+              "interval": "weekly"
+            },
+            "open-pull-requests-limit": 10,
+            "labels": [
+              "dependencies",
+              "python"
+            ]
+          }
+        ]
+      },
+      "release_env": []
+    },
+    {
       "name": "bijux-masterclass",
       "release_env": [],
       "dependabot": {
@@ -2634,7 +2683,7 @@
       "workflow_wrappers": {
         "ci": {
           "name": "repo / ci",
-          "true": {
+          "on": {
             "push": {
               "branches": [
                 "main"
