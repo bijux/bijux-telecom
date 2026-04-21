@@ -30,9 +30,11 @@ impl Receiver {
                     None,
                     None,
                 );
-                return Err(crate::engine::receiver_config::ReceiverError::Input(InputError {
-                    message: err.to_string(),
-                }));
+                return Err(crate::engine::receiver_config::ReceiverError::Input(
+                    InputError {
+                        message: err.to_string(),
+                    },
+                ));
             }
         };
 
@@ -48,10 +50,8 @@ impl Receiver {
         );
         let acquisitions = acquisition.run_fft(&frame, &sats);
 
-        let tracking = crate::pipeline::tracking::Tracking::new(
-            self.config().clone(),
-            self.runtime().clone(),
-        );
+        let tracking =
+            crate::pipeline::tracking::Tracking::new(self.config().clone(), self.runtime().clone());
         let tracking_results =
             tracking.track_from_acquisition(&frame, &acquisitions, SignalBand::L1);
         let artifacts = RunArtifacts {

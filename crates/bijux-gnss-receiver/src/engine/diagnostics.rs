@@ -1,8 +1,8 @@
 //! Diagnostics dump helpers.
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{NavSolutionEpoch, ObsEpoch};
 use crate::engine::runtime::ReceiverRuntime;
+use bijux_gnss_core::api::{NavSolutionEpoch, ObsEpoch};
 #[cfg(feature = "trace-heavy")]
 use serde::Serialize;
 #[cfg(feature = "trace-heavy")]

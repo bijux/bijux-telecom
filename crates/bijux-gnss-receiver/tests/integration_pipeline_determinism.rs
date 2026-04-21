@@ -1,6 +1,6 @@
-use bijux_gnss_receiver::api::{observations_from_tracking_results, ReceiverPipelineConfig};
-use bijux_gnss_receiver::api::TrackingResult;
 use bijux_gnss_core::api::{Chips, Constellation, Epoch, Hertz, SatId, TrackEpoch};
+use bijux_gnss_receiver::api::TrackingResult;
+use bijux_gnss_receiver::api::{observations_from_tracking_results, ReceiverPipelineConfig};
 
 fn make_track(prn: u8, config: &ReceiverPipelineConfig) -> TrackingResult {
     let sat = SatId {

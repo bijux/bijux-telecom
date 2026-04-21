@@ -2,8 +2,8 @@ use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use num_complex::Complex;
 
 use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds};
-use bijux_gnss_receiver::api::TrackingEngine;
 use bijux_gnss_receiver::api::ReceiverPipelineConfig;
+use bijux_gnss_receiver::api::TrackingEngine;
 
 fn bench_tracking_update(c: &mut Criterion) {
     let config = ReceiverPipelineConfig::default();

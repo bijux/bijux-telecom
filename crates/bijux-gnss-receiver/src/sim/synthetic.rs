@@ -57,7 +57,10 @@ pub fn generate_l1_ca(
     )
 }
 
-pub fn generate_l1_ca_multi(config: &ReceiverPipelineConfig, scenario: &SyntheticScenario) -> SamplesFrame {
+pub fn generate_l1_ca_multi(
+    config: &ReceiverPipelineConfig,
+    scenario: &SyntheticScenario,
+) -> SamplesFrame {
     let clock = SampleClock::new(config.sampling_freq_hz);
     let dt_s = clock.dt_s();
     let sample_count = (scenario.duration_s * config.sampling_freq_hz).round() as usize;

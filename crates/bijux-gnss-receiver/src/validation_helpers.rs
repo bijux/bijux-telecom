@@ -1,9 +1,9 @@
 //! Validation helper routines split out to keep report file size manageable.
 #![allow(missing_docs)]
 
+use crate::pipeline::tracking::TrackingResult;
 use crate::validation_report::{ValidationBudgets, ValidationErrorStats};
 use bijux_gnss_core::api::{NavSolutionEpoch, StatsSummary};
-use crate::pipeline::tracking::TrackingResult;
 
 pub(crate) fn check_budgets(
     tracks: &[TrackingResult],
@@ -52,9 +52,7 @@ pub(crate) fn check_budgets(
     }
     let mut nan_count = 0usize;
     for sol in solutions {
-        if !sol.ecef_x_m.0.is_finite()
-            || !sol.ecef_y_m.0.is_finite()
-            || !sol.ecef_z_m.0.is_finite()
+        if !sol.ecef_x_m.0.is_finite() || !sol.ecef_y_m.0.is_finite() || !sol.ecef_z_m.0.is_finite()
         {
             nan_count += 1;
         }
