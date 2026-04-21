@@ -1,0 +1,360 @@
+# SSOT NOTICE: Synced consumer copies are generated from bijux-std/shared/bijux-gh/workflows/release-ghcr.yml.
+# Do not edit consumer workflow copies directly; update bijux-std and run standards sync refresh.
+
+name: release-ghcr
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag to publish (defaults to current tag on tag pushes)"
+        required: false
+        type: string
+      enabled:
+        description: "Enable GHCR publication for this run"
+        required: false
+        type: boolean
+      build_matrix_json:
+        description: "JSON array for shared release build matrix"
+        required: false
+        type: string
+      package_matrix_json:
+        description: "JSON array for package publication matrix"
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      release_tag:
+        required: false
+        type: string
+        default: ""
+      enabled:
+        required: false
+        type: boolean
+        default: false
+      build_matrix_json:
+        required: false
+        type: string
+        default: ""
+      package_matrix_json:
+        required: false
+        type: string
+        default: ""
+      artifact_suffix:
+        required: false
+        type: string
+        default: ""
+      package_ref_prefix:
+        required: false
+        type: string
+        default: ""
+      push_latest:
+        required: false
+        type: boolean
+        default: true
+      artifact_type:
+        required: false
+        type: string
+        default: ""
+      archive_media_type:
+        required: false
+        type: string
+        default: ""
+      oras_version:
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  actions: read
+  packages: write
+
+concurrency:
+  group: release-ghcr-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: resolve-release-ghcr-config
+    runs-on: ubuntu-24.04
+    outputs:
+      enabled: ${{ steps.config.outputs.enabled }}
+      release_tag: ${{ steps.config.outputs.release_tag }}
+      build_matrix_json: ${{ steps.config.outputs.build_matrix_json }}
+      package_matrix_json: ${{ steps.config.outputs.package_matrix_json }}
+      allowed_packages: ${{ steps.config.outputs.allowed_packages }}
+      artifact_suffix: ${{ steps.config.outputs.artifact_suffix }}
+      package_ref_prefix: ${{ steps.config.outputs.package_ref_prefix }}
+      push_latest: ${{ steps.config.outputs.push_latest }}
+      artifact_type: ${{ steps.config.outputs.artifact_type }}
+      archive_media_type: ${{ steps.config.outputs.archive_media_type }}
+      oras_version: ${{ steps.config.outputs.oras_version }}
+    steps:
+      - name: Checkout release configuration
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5.0.0
+        with:
+          fetch-depth: 1
+
+      - name: Resolve release-ghcr configuration
+        id: config
+        shell: bash
+        env:
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag || github.event.inputs.release_tag || '' }}
+          INPUT_BUILD_MATRIX_JSON: ${{ inputs.build_matrix_json || github.event.inputs.build_matrix_json || '' }}
+          INPUT_PACKAGE_MATRIX_JSON: ${{ inputs.package_matrix_json || github.event.inputs.package_matrix_json || '' }}
+          INPUT_ARTIFACT_SUFFIX: ${{ inputs.artifact_suffix || '' }}
+          INPUT_PACKAGE_REF_PREFIX: ${{ inputs.package_ref_prefix || '' }}
+          INPUT_ARTIFACT_TYPE: ${{ inputs.artifact_type || '' }}
+          INPUT_ARCHIVE_MEDIA_TYPE: ${{ inputs.archive_media_type || '' }}
+          INPUT_ORAS_VERSION: ${{ inputs.oras_version || '' }}
+          INPUT_ENABLED_RAW: ${{ toJSON(inputs.enabled) }}
+          INPUT_PUSH_LATEST_RAW: ${{ toJSON(inputs.push_latest) }}
+          DISPATCH_ENABLED_RAW: ${{ github.event.inputs.enabled || '' }}
+          DISPATCH_PUSH_LATEST_RAW: ${{ github.event.inputs.push_latest || '' }}
+        run: |
+          set -euo pipefail
+
+          if [[ -f ".github/release.env" ]]; then
+            # shellcheck disable=SC1091
+            source ".github/release.env"
+          fi
+
+          non_empty() {
+            local value="$1"
+            [[ -n "${value// }" ]]
+          }
+
+          from_values() {
+            local input_value="$1"
+            local env_value="$2"
+            local repo_var_value="$3"
+            local default_value="$4"
+            if non_empty "$input_value"; then
+              printf '%s\n' "$input_value"
+              return
+            fi
+            if non_empty "$env_value"; then
+              printf '%s\n' "$env_value"
+              return
+            fi
+            if non_empty "$repo_var_value"; then
+              printf '%s\n' "$repo_var_value"
+              return
+            fi
+            printf '%s\n' "$default_value"
+          }
+
+          bool_from_values() {
+            local input_value="$1"
+            local env_value="$2"
+            local repo_var_value="$3"
+            local default_value="$4"
+            local raw
+            raw="$(from_values "$input_value" "$env_value" "$repo_var_value" "$default_value")"
+            case "${raw,,}" in
+              true|1|yes|on) printf 'true\n' ;;
+              false|0|no|off) printf 'false\n' ;;
+              *) printf '%s\n' "$default_value" ;;
+            esac
+          }
+
+          normalize_bool_optional() {
+            local raw="$1"
+            case "${raw,,}" in
+              true|1|yes|on) printf 'true\n' ;;
+              false|0|no|off) printf 'false\n' ;;
+              ''|null) printf '\n' ;;
+              *) printf '\n' ;;
+            esac
+          }
+
+          filter_matrix() {
+            local raw="$1"
+            local allowed_raw="$2"
+            python3 - "$raw" "$allowed_raw" <<'PY'
+          import json
+          import re
+          import sys
+
+          raw = sys.argv[1]
+          allowed_raw = sys.argv[2]
+          try:
+              value = json.loads(raw)
+          except Exception as exc:  # pragma: no cover
+              raise SystemExit(f"Invalid matrix JSON: {exc}")
+          if not isinstance(value, list):
+              raise SystemExit("Matrix JSON must be a JSON array")
+          for index, item in enumerate(value):
+              if not isinstance(item, dict):
+                  raise SystemExit(f"Matrix entry {index} must be an object")
+              if "package_slug" not in item or not str(item["package_slug"]).strip():
+                  raise SystemExit(f"Matrix entry {index} missing package_slug")
+
+          allowed = {
+              part.strip()
+              for part in re.split(r"[\s,;]+", allowed_raw.strip())
+              if part.strip()
+          }
+          if allowed:
+              value = [item for item in value if str(item.get("package_slug", "")).strip() in allowed]
+
+          print(json.dumps(value, separators=(",", ":")))
+          PY
+          }
+
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            default_tag="${GITHUB_REF_NAME}"
+          else
+            default_tag=""
+          fi
+
+          input_enabled="$(normalize_bool_optional "${INPUT_ENABLED_RAW}")"
+          if [[ -z "${input_enabled}" ]]; then
+            input_enabled="$(normalize_bool_optional "${DISPATCH_ENABLED_RAW}")"
+          fi
+
+          input_push_latest="$(normalize_bool_optional "${INPUT_PUSH_LATEST_RAW}")"
+          if [[ -z "${input_push_latest}" ]]; then
+            input_push_latest="$(normalize_bool_optional "${DISPATCH_PUSH_LATEST_RAW}")"
+          fi
+
+          release_tag="$(from_values "${INPUT_RELEASE_TAG}" "${BIJUX_GHCR_RELEASE_TAG:-}" "${{ vars.BIJUX_GHCR_RELEASE_TAG || '' }}" "$default_tag")"
+          enabled="$(bool_from_values "${input_enabled}" "${BIJUX_GHCR_RELEASE_ENABLED:-}" "${{ vars.BIJUX_GHCR_RELEASE_ENABLED || '' }}" "false")"
+          build_matrix_json="$(from_values "${INPUT_BUILD_MATRIX_JSON}" "${BIJUX_RELEASE_BUILD_MATRIX_JSON:-}" "${{ vars.BIJUX_RELEASE_BUILD_MATRIX_JSON || '' }}" "[]")"
+          package_matrix_json="$(from_values "${INPUT_PACKAGE_MATRIX_JSON}" "${BIJUX_GHCR_RELEASE_PACKAGE_MATRIX_JSON:-}" "${{ vars.BIJUX_GHCR_RELEASE_PACKAGE_MATRIX_JSON || '' }}" "[]")"
+          allowed_packages="$(from_values "" "${BIJUX_GHCR_RELEASE_ALLOWED_PACKAGES:-}" "${{ vars.BIJUX_GHCR_RELEASE_ALLOWED_PACKAGES || '' }}" "")"
+          artifact_suffix="$(from_values "${INPUT_ARTIFACT_SUFFIX}" "${BIJUX_GHCR_RELEASE_ARTIFACT_SUFFIX:-}" "${{ vars.BIJUX_GHCR_RELEASE_ARTIFACT_SUFFIX || '' }}" "-release")"
+          package_ref_prefix="$(from_values "${INPUT_PACKAGE_REF_PREFIX}" "${BIJUX_GHCR_RELEASE_PACKAGE_REF_PREFIX:-}" "${{ vars.BIJUX_GHCR_RELEASE_PACKAGE_REF_PREFIX || '' }}" "ghcr.io/${GITHUB_REPOSITORY}")"
+          push_latest="$(bool_from_values "${input_push_latest}" "${BIJUX_GHCR_RELEASE_PUSH_LATEST:-}" "${{ vars.BIJUX_GHCR_RELEASE_PUSH_LATEST || '' }}" "true")"
+          artifact_type="$(from_values "${INPUT_ARTIFACT_TYPE}" "${BIJUX_GHCR_RELEASE_ARTIFACT_TYPE:-}" "${{ vars.BIJUX_GHCR_RELEASE_ARTIFACT_TYPE || '' }}" "application/vnd.bijux.release-bundle.v1+tar")"
+          archive_media_type="$(from_values "${INPUT_ARCHIVE_MEDIA_TYPE}" "${BIJUX_GHCR_RELEASE_ARCHIVE_MEDIA_TYPE:-}" "${{ vars.BIJUX_GHCR_RELEASE_ARCHIVE_MEDIA_TYPE || '' }}" "application/gzip")"
+          oras_version="$(from_values "${INPUT_ORAS_VERSION}" "${BIJUX_GHCR_RELEASE_ORAS_VERSION:-}" "${{ vars.BIJUX_GHCR_RELEASE_ORAS_VERSION || '' }}" "1.2.3")"
+
+          if [[ "${enabled}" == "true" && -n "${release_tag}" && "${release_tag}" != v* ]]; then
+            echo "release_tag must start with 'v' when release-ghcr is enabled: ${release_tag}" >&2
+            exit 1
+          fi
+
+          build_matrix_json="$(filter_matrix "${build_matrix_json}" "${allowed_packages}")"
+          package_matrix_json="$(filter_matrix "${package_matrix_json}" "${allowed_packages}")"
+
+          if [[ "${build_matrix_json}" == "[]" || "${package_matrix_json}" == "[]" ]]; then
+            enabled="false"
+          fi
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${enabled}" != "true" ]]; then
+            echo "Manual dispatch resolved to a no-op release-ghcr run." >&2
+            echo "Set enabled=true and ensure release matrices resolve to at least one package." >&2
+            exit 1
+          fi
+
+          {
+            echo "enabled=${enabled}"
+            echo "release_tag=${release_tag}"
+            echo "allowed_packages=${allowed_packages}"
+            echo "artifact_suffix=${artifact_suffix}"
+            echo "package_ref_prefix=${package_ref_prefix}"
+            echo "push_latest=${push_latest}"
+            echo "artifact_type=${artifact_type}"
+            echo "archive_media_type=${archive_media_type}"
+            echo "oras_version=${oras_version}"
+            echo "build_matrix_json<<EOF"
+            printf '%s\n' "${build_matrix_json}"
+            echo "EOF"
+            echo "package_matrix_json<<EOF"
+            printf '%s\n' "${package_matrix_json}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: build-${{ matrix.package_slug }}
+    needs: resolve
+    if: ${{ needs.resolve.outputs.enabled == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.resolve.outputs.build_matrix_json) }}
+    uses: ./.github/workflows/release-artifacts.yml
+    with:
+      package_slug: ${{ matrix.package_slug }}
+      package_dir: ${{ matrix.package_dir }}
+      artifacts_dir: ${{ matrix.artifacts_dir }}
+      makefile_path: ${{ matrix.makefile_path || '' }}
+      build_targets: ${{ matrix.build_targets || 'build' }}
+      dist_subdir: ${{ matrix.dist_subdir || 'build' }}
+  publish:
+    name: publish-ghcr-${{ matrix.package_slug }}
+    needs:
+      - resolve
+      - build
+    if: ${{ needs.resolve.outputs.enabled == 'true' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.resolve.outputs.package_matrix_json) }}
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ matrix.artifact_name || format('{0}{1}', matrix.package_slug, needs.resolve.outputs.artifact_suffix) }}
+          path: .github/tmp/${{ matrix.package_slug }}-release
+
+      - name: Install ORAS
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.resolve.outputs.oras_version }}"
+          mkdir -p "${HOME}/.local/bin"
+          curl -sSfL "https://github.com/oras-project/oras/releases/download/v${version}/oras_${version}_linux_amd64.tar.gz" \
+            | tar -xz -C "${HOME}/.local/bin" oras
+          chmod +x "${HOME}/.local/bin/oras"
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Log in to GHCR
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "${{ github.token }}" | oras login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Publish release bundle to GHCR
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_tag='${{ needs.resolve.outputs.release_tag }}'
+          if [[ -z "${release_tag}" ]]; then
+            release_tag='${{ github.ref_name }}'
+          fi
+
+          stage_dir=".github/tmp/${{ matrix.package_slug }}-release"
+          archive_dir=".github/tmp/${{ matrix.package_slug }}-ghcr"
+          archive_path="${archive_dir}/${{ matrix.package_slug }}-${release_tag}.tar.gz"
+          package_ref="${{ matrix.package_ref || format('{0}/{1}', needs.resolve.outputs.package_ref_prefix, matrix.package_slug) }}"
+          artifact_type="${{ matrix.artifact_type || needs.resolve.outputs.artifact_type }}"
+          archive_media_type="${{ matrix.archive_media_type || needs.resolve.outputs.archive_media_type }}"
+
+          mkdir -p "${archive_dir}"
+          tar -C "${stage_dir}" -czf "${archive_path}" .
+
+          oras push "${package_ref}:${release_tag}" \
+            --artifact-type "${artifact_type}" \
+            --annotation "org.opencontainers.image.title=${{ matrix.package_slug }}" \
+            --annotation "org.opencontainers.image.version=${release_tag}" \
+            --annotation "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+            --annotation "org.opencontainers.image.revision=${{ github.sha }}" \
+            "${archive_path}:${archive_media_type}"
+
+          push_latest='${{ matrix.push_latest || needs.resolve.outputs.push_latest }}'
+          normalized_tag="${release_tag#v}"
+          is_prerelease="false"
+          if [[ "${normalized_tag}" == *-* ]]; then
+            is_prerelease="true"
+          fi
+          if [[ "${push_latest}" == "true" && "${is_prerelease}" != "true" ]]; then
+            oras tag "${package_ref}:${release_tag}" latest
+          fi
