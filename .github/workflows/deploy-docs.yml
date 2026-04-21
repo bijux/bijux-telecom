@@ -1,0 +1,349 @@
+# SSOT NOTICE: Synced consumer copies are generated from bijux-std/shared/bijux-gh/workflows/deploy-docs.yml.
+# Do not edit consumer workflow copies directly; update bijux-std and run standards sync refresh.
+
+name: deploy-docs
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - "v*"
+    paths:
+      - ".github/workflows/deploy-docs.yml"
+      - ".github/docs-deploy.env"
+      - "Makefile"
+      - "makes/**"
+      - "docs/**"
+      - "mkdocs.yml"
+      - "mkdocs.shared.yml"
+      - "configs/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "package-lock.json"
+      - "package.json"
+      - ".bijux/shared/bijux-docs/**"
+      - ".bijux/shared/bijux-makes-py/**"
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: deploy-docs-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    name: Build docs site
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      site_available: ${{ steps.artifact.outputs.site_available }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Resolve docs deploy configuration
+        id: config
+        shell: bash
+        env:
+          VARS_DOCS_SITE_URL: ${{ vars.BIJUX_DOCS_SITE_URL }}
+          VARS_DOCS_SITE_DIR: ${{ vars.BIJUX_DOCS_SITE_DIR }}
+          VARS_DOCS_INSTALL_COMMAND: ${{ vars.BIJUX_DOCS_INSTALL_COMMAND }}
+          VARS_DOCS_BUILD_COMMAND: ${{ vars.BIJUX_DOCS_BUILD_COMMAND }}
+          VARS_DOCS_VERIFY_COMMAND: ${{ vars.BIJUX_DOCS_VERIFY_COMMAND }}
+          VARS_DOCS_PYTHON_VERSION: ${{ vars.BIJUX_DOCS_PYTHON_VERSION }}
+          VARS_DOCS_NODE_VERSION: ${{ vars.BIJUX_DOCS_NODE_VERSION }}
+          VARS_DOCS_RUST_TOOLCHAIN: ${{ vars.BIJUX_DOCS_RUST_TOOLCHAIN }}
+          VARS_DOCS_SETUP_PYTHON: ${{ vars.BIJUX_DOCS_SETUP_PYTHON }}
+          VARS_DOCS_SETUP_UV: ${{ vars.BIJUX_DOCS_SETUP_UV }}
+          VARS_DOCS_SETUP_NODE: ${{ vars.BIJUX_DOCS_SETUP_NODE }}
+          VARS_DOCS_SETUP_RUST: ${{ vars.BIJUX_DOCS_SETUP_RUST }}
+        run: |
+          set -euo pipefail
+
+          if [[ -f ".github/docs-deploy.env" ]]; then
+            # shellcheck disable=SC1091
+            source ".github/docs-deploy.env"
+          fi
+
+          non_empty() {
+            local value="$1"
+            [[ -n "${value// }" ]]
+          }
+
+          from_vars_or_default() {
+            local var_value="$1"
+            local env_value="$2"
+            local default_value="$3"
+            if non_empty "$env_value"; then
+              printf '%s\n' "$env_value"
+              return
+            fi
+            if non_empty "$var_value"; then
+              printf '%s\n' "$var_value"
+              return
+            fi
+            printf '%s\n' "$default_value"
+          }
+
+          has_target() {
+            local target="$1"
+            make -prRn 2>/dev/null | awk -F':' -v t="$target" '$1 == t { found=1 } END { exit(found ? 0 : 1) }'
+          }
+
+          discover_command() {
+            local explicit="$1"
+            shift
+            if non_empty "$explicit"; then
+              printf '%s\n' "$explicit"
+              return
+            fi
+            for candidate in "$@"; do
+              if has_target "$candidate"; then
+                printf 'make %s\n' "$candidate"
+                return
+              fi
+            done
+            printf '%s\n' ""
+          }
+
+          repository_name="${GITHUB_REPOSITORY#*/}"
+          if [[ "$repository_name" == "bijux.github.io" ]]; then
+            default_site_url="https://bijux.io/"
+          else
+            default_site_url="https://bijux.io/${repository_name}/"
+          fi
+
+          site_url="$(from_vars_or_default "$VARS_DOCS_SITE_URL" "${BIJUX_DOCS_SITE_URL:-}" "$default_site_url")"
+          site_dir="$(from_vars_or_default "$VARS_DOCS_SITE_DIR" "${BIJUX_DOCS_SITE_DIR:-}" "artifacts/docs/site")"
+
+          install_command="$(discover_command "$(from_vars_or_default "$VARS_DOCS_INSTALL_COMMAND" "${BIJUX_DOCS_INSTALL_COMMAND:-}" "")" gh-docs-install docs-install install)"
+          build_command="$(discover_command "$(from_vars_or_default "$VARS_DOCS_BUILD_COMMAND" "${BIJUX_DOCS_BUILD_COMMAND:-}" "")" gh-docs-build docs-check docs series-docs-build)"
+          verify_command="$(discover_command "$(from_vars_or_default "$VARS_DOCS_VERIFY_COMMAND" "${BIJUX_DOCS_VERIFY_COMMAND:-}" "")" gh-docs-verify docs-verify)"
+
+          python_version="$(from_vars_or_default "$VARS_DOCS_PYTHON_VERSION" "${BIJUX_DOCS_PYTHON_VERSION:-}" "3.11")"
+          node_version="$(from_vars_or_default "$VARS_DOCS_NODE_VERSION" "${BIJUX_DOCS_NODE_VERSION:-}" "22")"
+          rust_toolchain="$(from_vars_or_default "$VARS_DOCS_RUST_TOOLCHAIN" "${BIJUX_DOCS_RUST_TOOLCHAIN:-}" "stable")"
+
+          setup_python="$(from_vars_or_default "$VARS_DOCS_SETUP_PYTHON" "${BIJUX_DOCS_SETUP_PYTHON:-}" "")"
+          setup_uv="$(from_vars_or_default "$VARS_DOCS_SETUP_UV" "${BIJUX_DOCS_SETUP_UV:-}" "")"
+          setup_node="$(from_vars_or_default "$VARS_DOCS_SETUP_NODE" "${BIJUX_DOCS_SETUP_NODE:-}" "")"
+          setup_rust="$(from_vars_or_default "$VARS_DOCS_SETUP_RUST" "${BIJUX_DOCS_SETUP_RUST:-}" "")"
+
+          if ! non_empty "$setup_python"; then
+            if [[ -f "pyproject.toml" || -f "mkdocs.yml" || -f "mkdocs.shared.yml" ]]; then
+              setup_python="true"
+            else
+              setup_python="false"
+            fi
+          fi
+
+          if ! non_empty "$setup_uv"; then
+            [[ -f "uv.lock" ]] && setup_uv="true" || setup_uv="false"
+          fi
+
+          if ! non_empty "$setup_node"; then
+            if [[ -f "package-lock.json" || -f "package.json" || -f "configs/sources/repository/docs/package-lock.json" ]]; then
+              setup_node="true"
+            else
+              setup_node="false"
+            fi
+          fi
+
+          if ! non_empty "$setup_rust"; then
+            if [[ -f "Cargo.toml" || -f "rust-toolchain.toml" || -f "rust-toolchain" ]]; then
+              setup_rust="true"
+            else
+              setup_rust="false"
+            fi
+          fi
+
+          if ! non_empty "$build_command"; then
+            echo "Unable to discover a docs build command. Set BIJUX_DOCS_BUILD_COMMAND." >&2
+            exit 1
+          fi
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            if [[ "${GITHUB_REF}" != "refs/heads/main" && "${GITHUB_REF}" != "refs/heads/master" && "${GITHUB_REF}" != refs/tags/v* ]]; then
+              echo "Manual dispatch would only build docs but skip deploy from ${GITHUB_REF}." >&2
+              echo "Dispatch deploy-docs from main/master or a v* tag when deployment is required." >&2
+              exit 1
+            fi
+          fi
+
+          {
+            echo "site_url=${site_url}"
+            echo "site_dir=${site_dir}"
+            echo "install_command=${install_command}"
+            echo "build_command=${build_command}"
+            echo "verify_command=${verify_command}"
+            echo "python_version=${python_version}"
+            echo "node_version=${node_version}"
+            echo "rust_toolchain=${rust_toolchain}"
+            echo "setup_python=${setup_python}"
+            echo "setup_uv=${setup_uv}"
+            echo "setup_node=${setup_node}"
+            echo "setup_rust=${setup_rust}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Setup Python
+        if: ${{ steps.config.outputs.setup_python == 'true' }}
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.1.0
+        with:
+          python-version: ${{ steps.config.outputs.python_version }}
+
+      - name: Setup uv
+        if: ${{ steps.config.outputs.setup_uv == 'true' }}
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Setup Node.js
+        if: ${{ steps.config.outputs.setup_node == 'true' }}
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.1.0
+        with:
+          node-version: ${{ steps.config.outputs.node_version }}
+
+      - name: Install Rust toolchain
+        if: ${{ steps.config.outputs.setup_rust == 'true' }}
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: ${{ steps.config.outputs.rust_toolchain }}
+
+      - name: Restore Rust cache
+        if: ${{ steps.config.outputs.setup_rust == 'true' }}
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      - name: Install docs toolchain
+        if: ${{ steps.config.outputs.install_command != '' }}
+        env:
+          DOCS_BUILD_SITE_URL: ${{ steps.config.outputs.site_url }}
+        run: ${{ steps.config.outputs.install_command }}
+
+      - name: Build docs site
+        env:
+          DOCS_BUILD_SITE_URL: ${{ steps.config.outputs.site_url }}
+          SITE_URL: ${{ steps.config.outputs.site_url }}
+        run: ${{ steps.config.outputs.build_command }}
+
+      - name: Build docs site fallback
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          candidates=(
+            "${{ steps.config.outputs.site_dir }}"
+            "artifacts/tmp-site"
+            "artifacts/root/docs/build-site"
+            "artifacts/site/bijux-masterclass"
+            "artifacts/docs/site"
+            "artifacts/root/docs/site"
+          )
+
+          for dir in "${candidates[@]}"; do
+            if [[ -n "$dir" && -f "$dir/index.html" ]]; then
+              exit 0
+            fi
+          done
+
+          if [[ ! -f "mkdocs.yml" ]]; then
+            exit 0
+          fi
+
+          if make -prRn 2>/dev/null | awk -F':' '$1 == "docs" { found=1 } END { exit(found ? 0 : 1) }'; then
+            echo "No publishable docs artifact detected; running fallback make docs."
+            make docs
+            exit 0
+          fi
+
+          echo "Unable to build fallback docs site: 'docs' make target is unavailable." >&2
+          exit 1
+
+      - name: Resolve docs artifact directory
+        id: artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          explicit="${{ steps.config.outputs.site_dir }}"
+          candidates=(
+            "$explicit"
+            "artifacts/tmp-site"
+            "artifacts/root/docs/build-site"
+            "artifacts/site/bijux-masterclass"
+            "artifacts/docs/site"
+            "artifacts/root/docs/site"
+          )
+
+          selected=""
+          for dir in "${candidates[@]}"; do
+            if [[ -n "$dir" && -d "$dir" && -f "$dir/index.html" ]]; then
+              selected="$dir"
+              break
+            fi
+          done
+
+          if [[ -z "$selected" ]]; then
+            echo "Unable to resolve docs artifact directory. Checked:" >&2
+            for dir in "${candidates[@]}"; do
+              [[ -n "$dir" ]] && echo "  - $dir" >&2
+            done
+            echo "Set BIJUX_DOCS_SITE_DIR in repository variables or .github/docs-deploy.env." >&2
+            exit 1
+          fi
+
+          echo "site_available=true" >> "$GITHUB_OUTPUT"
+          echo "site_dir=$selected" >> "$GITHUB_OUTPUT"
+
+      - name: Verify docs site
+        if: ${{ steps.artifact.outputs.site_available == 'true' && steps.config.outputs.verify_command != '' }}
+        env:
+          DOCS_BUILD_SITE_URL: ${{ steps.config.outputs.site_url }}
+          DOCS_SITE_DIR: ${{ steps.artifact.outputs.site_dir }}
+        run: ${{ steps.config.outputs.verify_command }}
+
+      - name: Validate Pages bundle
+        if: ${{ steps.artifact.outputs.site_available == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          site_dir="${{ steps.artifact.outputs.site_dir }}"
+          test -d "${site_dir}"
+          test -f "${site_dir}/index.html"
+
+      - name: Configure Pages
+        if: ${{ steps.artifact.outputs.site_available == 'true' }}
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
+
+      - name: Upload Pages artifact
+        if: ${{ steps.artifact.outputs.site_available == 'true' }}
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v3.0.1
+        with:
+          path: ${{ steps.artifact.outputs.site_dir }}
+
+  deploy:
+    name: Deploy docs site
+    needs: build
+    if: ${{ needs.build.outputs.site_available == 'true' && (github.event_name == 'workflow_call' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) }}
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5

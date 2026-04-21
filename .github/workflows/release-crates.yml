@@ -1,0 +1,264 @@
+# SSOT NOTICE: Synced consumer copies are generated from bijux-std/shared/bijux-gh/workflows/release-crates.yml.
+# Do not edit consumer workflow copies directly; update bijux-std and run standards sync refresh.
+
+name: release-crates
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag to publish (defaults to current tag on tag pushes)"
+        required: false
+        type: string
+      enabled:
+        description: "Enable crates.io publication for this run"
+        required: false
+        type: boolean
+  workflow_call:
+    inputs:
+      release_tag:
+        required: false
+        type: string
+        default: ""
+      enabled:
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: release-crates-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: resolve-release-crates-config
+    runs-on: ubuntu-24.04
+    outputs:
+      enabled: ${{ steps.config.outputs.enabled }}
+      release_tag: ${{ steps.config.outputs.release_tag }}
+      wait_for_ci_command: ${{ steps.config.outputs.wait_for_ci_command }}
+      plan_command: ${{ steps.config.outputs.plan_command }}
+      setup_rust: ${{ steps.config.outputs.setup_rust }}
+      rust_toolchain: ${{ steps.config.outputs.rust_toolchain }}
+      verify_token_command: ${{ steps.config.outputs.verify_token_command }}
+      publish_command: ${{ steps.config.outputs.publish_command }}
+      publish_skip_existing: ${{ steps.config.outputs.publish_skip_existing }}
+      fallback_packages: ${{ steps.config.outputs.fallback_packages }}
+      allowed_packages: ${{ steps.config.outputs.allowed_packages }}
+    steps:
+      - name: Checkout release configuration
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5.0.0
+        with:
+          fetch-depth: 1
+
+      - name: Resolve release-crates configuration
+        id: config
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -f ".github/release.env" ]]; then
+            # shellcheck disable=SC1091
+            source ".github/release.env"
+          fi
+
+          non_empty() {
+            local value="$1"
+            [[ -n "${value// }" ]]
+          }
+
+          from_values() {
+            local input_value="$1"
+            local env_value="$2"
+            local repo_var_value="$3"
+            local default_value="$4"
+            if non_empty "$input_value"; then
+              printf '%s\n' "$input_value"
+              return
+            fi
+            if non_empty "$env_value"; then
+              printf '%s\n' "$env_value"
+              return
+            fi
+            if non_empty "$repo_var_value"; then
+              printf '%s\n' "$repo_var_value"
+              return
+            fi
+            printf '%s\n' "$default_value"
+          }
+
+          bool_from_values() {
+            local input_value="$1"
+            local env_value="$2"
+            local repo_var_value="$3"
+            local default_value="$4"
+            local raw
+            raw="$(from_values "$input_value" "$env_value" "$repo_var_value" "$default_value")"
+            case "${raw,,}" in
+              true|1|yes|on) printf 'true\n' ;;
+              false|0|no|off) printf 'false\n' ;;
+              *) printf '%s\n' "$default_value" ;;
+            esac
+          }
+
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            default_tag="${GITHUB_REF_NAME}"
+          else
+            default_tag=""
+          fi
+
+          input_enabled=""
+          if [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then
+            input_enabled="${{ github.event.inputs.enabled || '' }}"
+          elif [[ "${GITHUB_EVENT_NAME:-}" == "workflow_call" ]]; then
+            input_enabled="${{ inputs.enabled && 'true' || 'false' }}"
+          fi
+
+          release_tag="$(from_values "${{ inputs.release_tag || github.event.inputs.release_tag || '' }}" "${BIJUX_CRATES_RELEASE_TAG:-}" "${{ vars.BIJUX_CRATES_RELEASE_TAG || '' }}" "$default_tag")"
+          enabled="$(bool_from_values "${input_enabled}" "${BIJUX_CRATES_RELEASE_ENABLED:-}" "${{ vars.BIJUX_CRATES_RELEASE_ENABLED || '' }}" "false")"
+          wait_for_ci_command="$(from_values "" "${BIJUX_CRATES_RELEASE_WAIT_FOR_CI_COMMAND:-}" "${{ vars.BIJUX_CRATES_RELEASE_WAIT_FOR_CI_COMMAND || '' }}" "")"
+          plan_command="$(from_values "" "${BIJUX_CRATES_RELEASE_PLAN_COMMAND:-}" "${{ vars.BIJUX_CRATES_RELEASE_PLAN_COMMAND || '' }}" "")"
+          setup_rust="$(bool_from_values "" "${BIJUX_CRATES_RELEASE_SETUP_RUST:-}" "${{ vars.BIJUX_CRATES_RELEASE_SETUP_RUST || '' }}" "true")"
+          rust_toolchain="$(from_values "" "${BIJUX_CRATES_RELEASE_RUST_TOOLCHAIN:-}" "${{ vars.BIJUX_CRATES_RELEASE_RUST_TOOLCHAIN || '' }}" "stable")"
+          verify_token_command="$(from_values "" "${BIJUX_CRATES_RELEASE_VERIFY_TOKEN_COMMAND:-}" "${{ vars.BIJUX_CRATES_RELEASE_VERIFY_TOKEN_COMMAND || '' }}" "make gh-release-require-cargo-token")"
+          publish_command="$(from_values "" "${BIJUX_CRATES_RELEASE_PUBLISH_COMMAND:-}" "${{ vars.BIJUX_CRATES_RELEASE_PUBLISH_COMMAND || '' }}" "make publish-rs RUST_PUBLISH_DRY_RUN=0 RUST_PUBLISH_SKIP_EXISTING=\"\${PUBLISH_SKIP_EXISTING}\" RUST_PUBLISH_PACKAGES=\"\${PACKAGES}\"")"
+          publish_skip_existing="$(bool_from_values "" "${BIJUX_CRATES_RELEASE_PUBLISH_SKIP_EXISTING:-}" "${{ vars.BIJUX_CRATES_RELEASE_PUBLISH_SKIP_EXISTING || '' }}" "true")"
+          fallback_packages="$(from_values "" "${BIJUX_CRATES_RELEASE_PACKAGES:-}" "${{ vars.BIJUX_CRATES_RELEASE_PACKAGES || '' }}" "")"
+          allowed_packages="$(from_values "" "${BIJUX_CRATES_RELEASE_ALLOWED_PACKAGES:-}" "${{ vars.BIJUX_CRATES_RELEASE_ALLOWED_PACKAGES || '' }}" "")"
+
+          {
+            echo "enabled=${enabled}"
+            echo "release_tag=${release_tag}"
+            echo "wait_for_ci_command=${wait_for_ci_command}"
+            echo "plan_command=${plan_command}"
+            echo "setup_rust=${setup_rust}"
+            echo "rust_toolchain=${rust_toolchain}"
+            echo "verify_token_command=${verify_token_command}"
+            echo "publish_command=${publish_command}"
+            echo "publish_skip_existing=${publish_skip_existing}"
+            echo "fallback_packages=${fallback_packages}"
+            echo "allowed_packages=${allowed_packages}"
+          } >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: publish-crates
+    needs: resolve
+    if: ${{ needs.resolve.outputs.enabled == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5.0.0
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Wait for CI gate
+        if: ${{ github.event_name == 'push' && needs.resolve.outputs.wait_for_ci_command != '' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.sha }}
+          TARGET_REF_NAME: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          CI_WAIT_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          export CI_WAIT_STARTED_AT
+          eval "${{ needs.resolve.outputs.wait_for_ci_command }}"
+
+      - name: Decide whether to publish crates.io packages
+        id: plan
+        if: ${{ needs.resolve.outputs.plan_command != '' }}
+        env:
+          TARGET_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          eval "${{ needs.resolve.outputs.plan_command }}"
+
+      - name: Resolve publish decision
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          publish="${{ steps.plan.outputs.publish || '' }}"
+          if [[ -z "${publish}" ]]; then
+            publish="true"
+          fi
+
+          release_version="${{ steps.plan.outputs.version || '' }}"
+          if [[ -z "${release_version}" ]]; then
+            release_tag="${{ needs.resolve.outputs.release_tag }}"
+            release_version="${release_tag#v}"
+          fi
+
+          packages="${{ steps.plan.outputs.packages || '' }}"
+          if [[ -z "${packages}" ]]; then
+            packages="${{ needs.resolve.outputs.fallback_packages }}"
+          fi
+
+          allowed_packages="${{ needs.resolve.outputs.allowed_packages }}"
+          filtered_packages="$(python3 - "$packages" "$allowed_packages" <<'PY'
+          import re
+          import sys
+
+          packages_raw = sys.argv[1]
+          allowed_raw = sys.argv[2]
+
+          packages = [part.strip() for part in re.split(r"[\s,;]+", packages_raw.strip()) if part.strip()]
+          allowed = {part.strip() for part in re.split(r"[\s,;]+", allowed_raw.strip()) if part.strip()}
+
+          if allowed:
+              if not packages:
+                  packages = sorted(allowed)
+              else:
+                  packages = [name for name in packages if name in allowed]
+
+          print(" ".join(packages))
+          PY
+          )"
+
+          if [[ -n "${allowed_packages// }" && -z "${filtered_packages// }" ]]; then
+            publish="false"
+          fi
+
+          echo "publish=${publish}" >> "$GITHUB_OUTPUT"
+          echo "version=${release_version}" >> "$GITHUB_OUTPUT"
+          echo "packages=${filtered_packages}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Rust
+        if: ${{ steps.release.outputs.publish == 'true' && needs.resolve.outputs.setup_rust == 'true' }}
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: ${{ needs.resolve.outputs.rust_toolchain }}
+
+      - name: Restore the Rust cache
+        if: ${{ steps.release.outputs.publish == 'true' && needs.resolve.outputs.setup_rust == 'true' }}
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      - name: Verify crates.io credentials
+        if: ${{ steps.release.outputs.publish == 'true' && needs.resolve.outputs.verify_token_command != '' }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          eval "${{ needs.resolve.outputs.verify_token_command }}"
+
+      - name: Publish crates.io packages
+        if: ${{ steps.release.outputs.publish == 'true' }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          PACKAGES: ${{ steps.release.outputs.packages }}
+          PUBLISH_SKIP_EXISTING: ${{ needs.resolve.outputs.publish_skip_existing == 'true' && '1' || '0' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          eval "${{ needs.resolve.outputs.publish_command }}"

@@ -1,0 +1,150 @@
+# SSOT NOTICE: Synced consumer copies are generated from bijux-std/shared/bijux-gh/workflows/release-artifacts.yml.
+# Do not edit consumer workflow copies directly; update bijux-std and run standards sync refresh.
+
+name: release-artifacts
+
+on:
+  workflow_call:
+    inputs:
+      package_slug:
+        required: true
+        type: string
+      package_dir:
+        required: true
+        type: string
+      artifacts_dir:
+        required: true
+        type: string
+      makefile_path:
+        required: false
+        type: string
+        default: ""
+      build_targets:
+        required: false
+        type: string
+        default: "build"
+      dist_subdir:
+        required: false
+        type: string
+        default: build
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-artifacts-${{ github.workflow }}-${{ github.ref }}-${{ inputs.package_slug }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: release-artifacts-${{ inputs.package_slug }}
+    runs-on: ubuntu-24.04
+    env:
+      ARTIFACTS_DIR: ${{ inputs.artifacts_dir }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.1.0
+        with:
+          python-version: "3.11"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install package toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          makefile="${{ inputs.makefile_path }}"
+          if [ -z "$makefile" ]; then
+            makefile="makes/packages/$(basename '${{ inputs.package_dir }}').mk"
+          fi
+          makefile="${GITHUB_WORKSPACE}/$makefile"
+          make -f "$makefile" -C "${{ inputs.package_dir }}" install
+
+      - name: Build release artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          makefile="${{ inputs.makefile_path }}"
+          if [ -z "$makefile" ]; then
+            makefile="makes/packages/$(basename '${{ inputs.package_dir }}').mk"
+          fi
+          makefile="${GITHUB_WORKSPACE}/$makefile"
+          for target in ${{ inputs.build_targets }}; do
+            make -f "$makefile" -C "${{ inputs.package_dir }}" "$target"
+          done
+
+      - name: Stage publish artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage_dir=".github/tmp/${{ inputs.package_slug }}-dist"
+          dist_dir="${ARTIFACTS_DIR}/${{ inputs.dist_subdir }}"
+          mkdir -p "$stage_dir"
+          mapfile -d '' dist_files < <(
+            find "$dist_dir" -type f \( -name '*.whl' -o -name '*.tar.gz' \) -print0 | sort -z
+          )
+          if [ "${#dist_files[@]}" -eq 0 ]; then
+            echo "No publish artifacts found under $dist_dir" >&2
+            find "${ARTIFACTS_DIR}" -maxdepth 4 -type f | sort || true
+            exit 1
+          fi
+          cp "${dist_files[@]}" "$stage_dir"/
+
+      - name: Stage GitHub release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage_dir=".github/tmp/${{ inputs.package_slug }}-release"
+          dist_dir="${ARTIFACTS_DIR}/${{ inputs.dist_subdir }}"
+          rm -rf "$stage_dir"
+          mkdir -p "$stage_dir"
+          while IFS= read -r -d '' file_path; do
+            asset_name="${{ inputs.package_slug }}-dist-$(basename "$file_path")"
+            cp "$file_path" "$stage_dir/$asset_name"
+          done < <(find "$dist_dir" -type f -print0 | sort -z)
+          sbom_dir="${ARTIFACTS_DIR}/sbom"
+          if [ -d "$sbom_dir" ]; then
+            while IFS= read -r -d '' file_path; do
+              case "$(basename "$file_path")" in
+                *.prod.cdx.json)
+                  asset_name="${{ inputs.package_slug }}-sbom-prod.cdx.json"
+                  ;;
+                *.dev.cdx.json)
+                  asset_name="${{ inputs.package_slug }}-sbom-dev.cdx.json"
+                  ;;
+                summary.txt)
+                  asset_name="${{ inputs.package_slug }}-sbom-summary.txt"
+                  ;;
+                *)
+                  continue
+                  ;;
+              esac
+              cp "$file_path" "$stage_dir/$asset_name"
+            done < <(find "$sbom_dir" -type f -print0 | sort -z)
+          fi
+
+      - name: Upload publish artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.package_slug }}-pypi-dist
+          path: .github/tmp/${{ inputs.package_slug }}-dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.package_slug }}-release
+          path: .github/tmp/${{ inputs.package_slug }}-release/**/*
+          if-no-files-found: error
+          retention-days: 14
