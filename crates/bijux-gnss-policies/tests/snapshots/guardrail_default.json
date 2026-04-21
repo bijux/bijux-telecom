@@ -9,6 +9,8 @@
   "forbid_panic_expect": false,
   "forbid_stage_id_strings": false,
   "enforce_pub_use_api_only": true,
+  "purity_zones": [],
+  "purity_forbidden": [],
   "allow_panic_expect_paths": [],
   "allow_stage_id_paths": []
 }
