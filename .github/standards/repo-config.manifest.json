@@ -1266,7 +1266,6 @@
     {
       "name": "bijux-genomics",
       "workflow_allowlist": [
-        "deploy-docs",
         "github-policy"
       ],
       "dependabot": {
