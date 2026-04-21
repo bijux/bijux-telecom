@@ -163,6 +163,7 @@ version = "0.1.0"
 dependencies = [
  "bijux-gnss-core",
  "bijux-gnss-nav",
+ "bijux-gnss-policies",
  "bijux-gnss-receiver",
  "bijux-gnss-signal",
 ]
@@ -274,10 +275,12 @@ name = "bijux-gnss-testkit"
 version = "0.1.0"
 dependencies = [
  "bijux-gnss-infra",
+ "bijux-gnss-policies",
  "bijux-gnss-receiver",
  "proptest",
  "serde",
  "serde_json",
+ "toml",
 ]
 
 [[package]]
@@ -285,6 +288,7 @@ name = "bijux-telecom-dev"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bijux-gnss-policies",
  "clap",
  "regex",
 ]
