@@ -1,0 +1,67 @@
+name: bijux-std
+
+on:
+  workflow_dispatch:
+  pull_request:
+  merge_group:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: std / ${{ matrix.check }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [standard, report]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run matrix check
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "${{ matrix.check }}" in
+            standard)
+              sha256sum --check .github/bijux-std-shared.sha256
+              python3 .github/scripts/check_pinned_actions.py \
+                --manifest-managed .github/standards/repo-config.manifest.json \
+                .github/workflows
+              make bijux-std-checks
+              ;;
+            report)
+              if [[ -x ".bijux/shared/bijux-checks/scripts/run-bijux-check-suite.sh" ]]; then
+                bash .bijux/shared/bijux-checks/scripts/run-bijux-check-suite.sh \
+                  --consumer .bijux/checks.consumer.json \
+                  --artifacts-dir artifacts/checks
+              elif [[ -x "shared/bijux-checks/scripts/run-bijux-check-suite.sh" ]]; then
+                bash shared/bijux-checks/scripts/run-bijux-check-suite.sh \
+                  --consumer .bijux/checks.consumer.json \
+                  --artifacts-dir artifacts/bijux-checks
+              else
+                echo "ERROR: unable to locate bijux checks runner script" >&2
+                exit 1
+              fi
+              ;;
+            *)
+              echo "ERROR: unknown matrix check '${{ matrix.check }}'" >&2
+              exit 2
+              ;;
+          esac
+
+      - name: Upload bijux checks report artifact
+        if: always() && matrix.check == 'report'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bijux-checks-report
+          path: |
+            artifacts/checks
+            artifacts/bijux-checks
+          if-no-files-found: error
