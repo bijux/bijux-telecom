@@ -2634,7 +2634,7 @@
       "workflow_wrappers": {
         "ci": {
           "name": "repo / ci",
-          "on": {
+          "true": {
             "push": {
               "branches": [
                 "main"
