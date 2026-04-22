@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 use bijux_gnss_core::api::{
-    validate_obs_epochs, Chips, Constellation, Cycles, Hertz, Meters, ObsEpoch, ObsMetadata,
-    ObsSatellite, ReceiverRole, SatId, Seconds, SigId, SignalBand, SignalCode, SignalSpec,
+    signal_registry, validate_obs_epochs, Constellation, Cycles, Hertz, Meters, ObsEpoch,
+    ObsMetadata, ObsSatellite, ReceiverRole, SatId, Seconds, SigId, SignalBand, SignalCode,
 };
 use proptest::prelude::*;
 
@@ -50,11 +50,9 @@ fn make_epoch(t_rx_s: f64) -> ObsEpoch {
                 smoothing_window: 1,
                 smoothing_age: 0,
                 smoothing_resets: 0,
-                signal: SignalSpec {
-                    sat: sig.sat,
-                    band: sig.band,
-                    code: sig.code,
-                },
+                signal: signal_registry(sig.sat.constellation, sig.band, sig.code)
+                    .expect("signal registry must include GPS L1 C/A")
+                    .spec,
             },
         }],
     }

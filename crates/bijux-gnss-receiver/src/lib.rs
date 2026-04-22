@@ -17,14 +17,14 @@
 #![deny(missing_docs)]
 #![forbid(unsafe_code)]
 
+mod engine;
 mod io;
+mod pipeline;
 mod ports;
 #[cfg(feature = "nav")]
 mod rtk;
-mod engine;
 #[cfg(feature = "nav")]
 mod sim;
-mod pipeline;
 mod validation_helpers;
 #[cfg(feature = "nav")]
 mod validation_report;

@@ -378,7 +378,7 @@ fn handle_run(command: GnssCommand) -> Result<()> {
                     while let Some(frame) = source.next_frame(samples_per_code)? {
                         let _ = frame;
                         epoch += 1;
-                        if epoch.is_multiple_of(100) {
+                        if epoch % 100 == 0 {
                             println!("processed epochs: {}", epoch);
                         }
                         if replay && rate > 0.0 {

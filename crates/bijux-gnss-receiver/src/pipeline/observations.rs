@@ -4,6 +4,7 @@
 //! - tracking_jitter_m = 10 / max(cn0_dbhz, 1) meters (heuristic CN0-derived jitter).
 //! - multipath_proxy_m = |Δ divergence| meters (proxy, not a modeled multipath estimator).
 //! - clock_error_m = 0.0 m (placeholder).
+//!
 //! TODO(ref-grade): add literature citations for CN0 weighting and multipath heuristics.
 
 use bijux_gnss_core::api::{
@@ -12,8 +13,8 @@ use bijux_gnss_core::api::{
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
-use crate::pipeline::{StepReport, StepStats};
 use crate::pipeline::tracking::TrackingResult;
+use crate::pipeline::{StepReport, StepStats};
 use bijux_gnss_signal::api::samples_per_code;
 
 #[cfg(test)]
@@ -326,8 +327,12 @@ pub fn observations_from_tracking_results(
     }
     #[cfg(feature = "reference-checks")]
     {
-        let events = bijux_gnss_core::api::validate_obs_epochs(&out);
-        diagnostics.extend(events);
+        if let Err(err) = bijux_gnss_core::api::validate_obs_epochs(&out) {
+            diagnostics.push(
+                DiagnosticEvent::new(DiagnosticSeverity::Error, "OBS_EPOCH_SEQUENCE_INVALID", err)
+                    .with_context("stage", "observations"),
+            );
+        }
     }
     StepReport {
         output: out,

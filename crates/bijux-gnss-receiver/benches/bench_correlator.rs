@@ -1,5 +1,5 @@
 use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds};
-use bijux_gnss_receiver::api::{TrackingEngine, ReceiverPipelineConfig};
+use bijux_gnss_receiver::api::{ReceiverPipelineConfig, TrackingEngine};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use num_complex::Complex;
 

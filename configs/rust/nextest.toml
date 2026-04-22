@@ -1,0 +1,40 @@
+# schema_version = 1
+# owner = bijux-telecom-dev
+# purpose = Contract config for Rust nextest execution
+# authority = bijux-telecom-dev
+# stability = stable
+
+[profile.default]
+retries = { count = 1, backoff = "fixed", delay = "1s" }
+fail-fast = false
+failure-output = "immediate"
+success-output = "never"
+status-level = "slow"
+slow-timeout = { period = "10s", terminate-after = 60 }
+
+[store]
+dir = "artifacts/rust/test/nextest-store"
+
+[profile.ci]
+retries = { count = 0, backoff = "fixed", delay = "1s" }
+fail-fast = false
+test-threads = 1
+failure-output = "immediate"
+success-output = "never"
+status-level = "pass"
+
+[profile.fast-unit]
+retries = { count = 0, backoff = "fixed", delay = "1s" }
+fail-fast = true
+test-threads = 8
+failure-output = "immediate-final"
+success-output = "never"
+status-level = "pass"
+
+[profile.slow-integration]
+retries = { count = 1, backoff = "fixed", delay = "1s" }
+fail-fast = false
+test-threads = 4
+failure-output = "immediate-final"
+success-output = "never"
+status-level = "pass"

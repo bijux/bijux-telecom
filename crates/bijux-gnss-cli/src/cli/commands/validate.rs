@@ -1,5 +1,5 @@
 #[cfg(feature = "schema-validate")]
-use jsonschema::JSONSchema;
+use jsonschema::validator_for;
 
 #[derive(Copy, Clone)]
 enum CsvType {
@@ -78,7 +78,7 @@ fn validate_json_schema(schema_path: &Path, data_path: &Path, strict: bool) -> R
     {
     let schema_data = fs::read_to_string(schema_path)?;
     let schema_json: serde_json::Value = serde_json::from_str(&schema_data)?;
-    let compiled = JSONSchema::compile(&schema_json)
+    let compiled = validator_for(&schema_json)
         .map_err(|e| eyre!("invalid schema {}: {}", schema_path.display(), e))?;
     let data = fs::read_to_string(data_path)?;
     let json: serde_json::Value = serde_json::from_str(&data)?;
@@ -90,9 +90,9 @@ fn validate_json_schema(schema_path: &Path, data_path: &Path, strict: bool) -> R
             _ => {}
         }
     }
-    if let Err(errors) = compiled.validate(&json) {
+    if !compiled.is_valid(&json) {
         let mut messages = Vec::new();
-        for error in errors {
+        for error in compiled.iter_errors(&json) {
             messages.push(error.to_string());
         }
         bail!(
@@ -121,7 +121,7 @@ fn validate_jsonl_schema(schema_path: &Path, data_path: &Path, strict: bool) -> 
     {
     let schema_data = fs::read_to_string(schema_path)?;
     let schema_json: serde_json::Value = serde_json::from_str(&schema_data)?;
-    let compiled = JSONSchema::compile(&schema_json)
+    let compiled = validator_for(&schema_json)
         .map_err(|e| eyre!("invalid schema {}: {}", schema_path.display(), e))?;
     let data = fs::read_to_string(data_path)?;
     let mut count = 0usize;
@@ -131,10 +131,7 @@ fn validate_jsonl_schema(schema_path: &Path, data_path: &Path, strict: bool) -> 
         }
         let json: serde_json::Value = serde_json::from_str(line)?;
         count += 1;
-        let errors: Vec<String> = match compiled.validate(&json) {
-            Ok(()) => Vec::new(),
-            Err(errors) => errors.map(|e| e.to_string()).collect(),
-        };
+        let errors: Vec<String> = compiled.iter_errors(&json).map(|e| e.to_string()).collect();
         if !errors.is_empty() {
             bail!(
                 "schema validation failed for {} line {}: {}",
@@ -177,11 +174,11 @@ fn validate_config_schema(profile: &ReceiverConfig) -> Result<()> {
     } else {
         serde_json::to_value(schemars::schema_for!(ReceiverConfig))?
     };
-    let compiled = JSONSchema::compile(&schema_json).map_err(|e| eyre!("invalid schema: {}", e))?;
+    let compiled = validator_for(&schema_json).map_err(|e| eyre!("invalid schema: {}", e))?;
     let json = serde_json::to_value(profile)?;
-    if let Err(errors) = compiled.validate(&json) {
+    if !compiled.is_valid(&json) {
         let mut messages = Vec::new();
-        for error in errors {
+        for error in compiled.iter_errors(&json) {
             messages.push(error.to_string());
         }
         bail!("config schema validation failed: {}", messages.join(", "));
@@ -202,11 +199,11 @@ fn validate_sidecar_schema(sidecar: &SidecarSpec) -> Result<()> {
     let schema_data = fs::read_to_string(schema_path)?;
     let schema_json: serde_json::Value = serde_json::from_str(&schema_data)?;
     let compiled =
-        JSONSchema::compile(&schema_json).map_err(|e| eyre!("invalid sidecar schema: {}", e))?;
+        validator_for(&schema_json).map_err(|e| eyre!("invalid sidecar schema: {}", e))?;
     let json = serde_json::to_value(sidecar)?;
-    if let Err(errors) = compiled.validate(&json) {
+    if !compiled.is_valid(&json) {
         let mut messages = Vec::new();
-        for error in errors {
+        for error in compiled.iter_errors(&json) {
             messages.push(error.to_string());
         }
         bail!("sidecar schema validation failed: {}", messages.join(", "));

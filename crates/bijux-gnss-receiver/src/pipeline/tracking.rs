@@ -164,13 +164,13 @@ impl Tracking {
         );
         let cn0_dbhz = estimate_cn0_dbhz(correlator.prompt, correlator.early + correlator.late);
         if !correlator.prompt.re.is_finite() || !correlator.prompt.im.is_finite() {
-            self.runtime.logger.event(
-                &bijux_gnss_core::api::DiagnosticEvent::new(
+            self.runtime
+                .logger
+                .event(&bijux_gnss_core::api::DiagnosticEvent::new(
                     bijux_gnss_core::api::DiagnosticSeverity::Error,
                     "TRACK_NUMERIC_INVALID",
                     "tracking correlator produced NaN/Inf",
-                ),
-            );
+                ));
         }
         let track_epoch = TrackEpoch {
             epoch,
@@ -301,6 +301,7 @@ impl Tracking {
         (frame.len() / samples_per_code).max(1)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn track_epochs(
         &self,
         frame: &SamplesFrame,
@@ -352,16 +353,16 @@ impl Tracking {
             track_epoch.processing_ms = None;
             let alloc_after = crate::engine::alloc::allocation_count();
             if alloc_after > alloc_before {
-                self.runtime.logger.event(
-                    &bijux_gnss_core::api::DiagnosticEvent::new(
+                self.runtime
+                    .logger
+                    .event(&bijux_gnss_core::api::DiagnosticEvent::new(
                         bijux_gnss_core::api::DiagnosticSeverity::Warning,
                         "TRACK_ALLOCATIONS",
                         format!(
                             "tracking epoch allocated {} times",
                             alloc_after - alloc_before
                         ),
-                    ),
-                );
+                    ));
             }
 
             let (dll_err, pll_err, fll_err, lock) =

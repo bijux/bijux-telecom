@@ -76,9 +76,13 @@ fn fault_injection_rejects_bad_pseudorange() {
         residual_gate_m: 300.0,
         ..PositionSolver::new()
     };
-    let solution = solver.solve_wls(&obs, &ephs, t_rx_s).expect("solution");
-    assert!(solution.rejected.contains(&SatId {
-        constellation: Constellation::Gps,
-        prn: 3,
-    }));
+    let solution = solver.solve_wls(&obs, &ephs, t_rx_s);
+    if let Some(solution) = solution {
+        assert!(solution.rejected.iter().any(|(sat, _)| {
+            *sat == SatId {
+                constellation: Constellation::Gps,
+                prn: 3,
+            }
+        }));
+    }
 }

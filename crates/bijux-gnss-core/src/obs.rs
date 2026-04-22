@@ -363,33 +363,23 @@ impl SolutionStatus {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum NavQualityFlag {
+    #[default]
     NoFix,
     Float,
     Fix,
     Degraded,
 }
 
-impl Default for NavQualityFlag {
-    fn default() -> Self {
-        NavQualityFlag::NoFix
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum SolutionValidity {
+    #[default]
     Invalid,
     Coarse,
     Converging,
     Stable,
     Diverging,
-}
-
-impl Default for SolutionValidity {
-    fn default() -> Self {
-        SolutionValidity::Invalid
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -54,10 +54,24 @@ fn dependency_direction_rules() {
             "bijux-gnss-receiver",
             HashSet::from(["bijux-gnss-signal", "bijux-gnss-core", "bijux-gnss-nav"]),
         ),
+        (
+            "bijux-gnss",
+            HashSet::from([
+                "bijux-gnss-core",
+                "bijux-gnss-signal",
+                "bijux-gnss-receiver",
+                "bijux-gnss-nav",
+            ]),
+        ),
         ("bijux-gnss-signal", HashSet::from(["bijux-gnss-core"])),
         ("bijux-gnss-nav", HashSet::from(["bijux-gnss-core"])),
         ("bijux-gnss-core", HashSet::new()),
-        ("bijux-guardrails", HashSet::new()),
+        (
+            "bijux-gnss-testkit",
+            HashSet::from(["bijux-gnss-infra", "bijux-gnss-receiver"]),
+        ),
+        ("bijux-telecom-dev", HashSet::new()),
+        ("bijux-gnss-policies", HashSet::new()),
     ]
     .into_iter()
     .collect();

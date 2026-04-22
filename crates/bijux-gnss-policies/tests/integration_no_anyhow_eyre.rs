@@ -7,7 +7,7 @@ use std::path::Path;
 fn no_anyhow_eyre_outside_cli() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
     let crates_dir = root.join("crates");
-    let allow = ["bijux-gnss-cli"];
+    let allow = ["bijux-gnss-cli", "bijux-telecom-dev"];
     let mut offenders = Vec::new();
     for entry in fs::read_dir(&crates_dir).expect("read crates dir") {
         let entry = entry.expect("entry");

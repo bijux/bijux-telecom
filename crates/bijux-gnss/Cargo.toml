@@ -13,3 +13,6 @@ bijux-gnss-core = { path = "../bijux-gnss-core" }
 bijux-gnss-signal = { path = "../bijux-gnss-signal" }
 bijux-gnss-receiver = { path = "../bijux-gnss-receiver" }
 bijux-gnss-nav = { path = "../bijux-gnss-nav", optional = true }
+
+[dev-dependencies]
+bijux-gnss-policies = { path = "../bijux-gnss-policies" }

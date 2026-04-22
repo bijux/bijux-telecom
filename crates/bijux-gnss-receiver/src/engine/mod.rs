@@ -4,14 +4,15 @@
 
 pub mod alloc;
 pub mod diagnostics;
+#[allow(clippy::module_inception)]
 pub mod engine;
 pub mod logging;
 pub mod metrics;
-pub mod runtime;
+pub mod receiver;
 pub mod receiver_config;
 pub mod receiver_config_defaults;
 pub mod receiver_config_validation;
-pub mod receiver;
+pub mod runtime;
 
 #[allow(dead_code)]
 pub fn runtime_modules() -> [&'static str; 8] {

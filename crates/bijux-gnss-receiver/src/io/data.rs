@@ -27,7 +27,7 @@ pub struct MemorySamples {
 
 impl MemorySamples {
     pub fn new(data: Vec<i16>, sample_rate_hz: f64) -> Result<Self, SampleSourceError> {
-        if !data.len().is_multiple_of(2) {
+        if data.len() % 2 != 0 {
             return Err(SampleSourceError::InvalidIqLength);
         }
         Ok(Self {
@@ -115,7 +115,7 @@ impl SignalSource for FileSamples {
             return Ok(None);
         }
         let i16_count = read / 2;
-        if !i16_count.is_multiple_of(2) {
+        if i16_count % 2 != 0 {
             self.done = true;
             return Err(SampleSourceError::InvalidIqLength);
         }

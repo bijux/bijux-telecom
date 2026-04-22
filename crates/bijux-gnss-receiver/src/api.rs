@@ -2,9 +2,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 /// Receiver configuration and schema.
-pub use crate::engine::receiver_config::{
-    ReceiverConfig, ReceiverError, ReceiverPipelineConfig,
-};
+pub use crate::engine::receiver_config::{ReceiverConfig, ReceiverError, ReceiverPipelineConfig};
 /// Receiver runtime options (side-effectful controls).
 pub use crate::engine::runtime::{ReceiverRuntime, ReceiverRuntimeConfig};
 
@@ -25,27 +23,27 @@ pub use bijux_gnss_nav::api as nav;
 
 /// Runtime logging helpers.
 pub use crate::engine::logging;
+pub use crate::ports::clock::{Clock, SystemClock};
 /// Port traits (I/O boundaries).
 pub use crate::ports::{ArtifactSink, SampleSource};
-pub use crate::ports::clock::{Clock, SystemClock};
 
 /// Acquisition engine.
 pub use crate::pipeline::acquisition::Acquisition as AcquisitionEngine;
+/// Navigation engine and helpers.
+#[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
+pub use crate::pipeline::navigation::{EkfState, Navigation, NavigationEngine};
+/// Observation-building helpers.
+pub use crate::pipeline::observations::{
+    observations_from_tracking, observations_from_tracking_results,
+};
 /// Tracking engine and related types.
 pub use crate::pipeline::tracking::{
     Channel, ChannelEvent, ChannelState, CorrelatorOutput, Tracking as TrackingEngine,
     TrackingResult,
 };
-/// Observation-building helpers.
-pub use crate::pipeline::observations::{
-    observations_from_tracking, observations_from_tracking_results,
-};
 /// Pipeline step report helpers.
 pub use crate::pipeline::{StepReport, StepStats};
-/// Navigation engine and helpers.
-#[cfg(feature = "nav")]
-#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
-pub use crate::pipeline::navigation::{EkfState, Navigation, NavigationEngine};
 
 /// RTK differencing and baseline helpers.
 #[cfg(feature = "nav")]

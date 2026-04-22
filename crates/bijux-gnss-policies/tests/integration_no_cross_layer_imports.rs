@@ -36,7 +36,7 @@ fn no_cross_layer_imports() {
     let receiver_obs_writers = find_string(&receiver_src, "ObsEpoch {");
     let receiver_obs_writers = receiver_obs_writers
         .into_iter()
-        .filter(|path| !path.ends_with("stages/observations.rs"))
+        .filter(|path| !path.ends_with("pipeline/observations.rs"))
         .collect::<Vec<_>>();
     assert!(
         receiver_obs_writers.is_empty(),

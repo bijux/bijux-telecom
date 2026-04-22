@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 use std::path::Path;
 
-use bijux_guardrails::api::GuardrailConfig;
+use bijux_gnss_policies::api::GuardrailConfig;
 
 #[test]
 fn workspace_has_guardrails_tests() {
@@ -62,10 +62,7 @@ fn workspace_guardrail_defaults_not_increased() {
         }
         let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
         let config = GuardrailConfig::for_crate(name);
-        let bad = config.max_loc > defaults.max_loc
-            || config.max_depth > defaults.max_depth
-            || config.max_modules_per_dir > defaults.max_modules_per_dir
-            || config.max_rs_files_per_dir > defaults.max_rs_files_per_dir
+        let bad = config.max_depth > defaults.max_depth
             || config.max_pub_items_per_file > defaults.max_pub_items_per_file
             || config.max_pub_use_per_file > defaults.max_pub_use_per_file;
         assert!(

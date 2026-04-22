@@ -9,10 +9,6 @@ pub type PppEpochV1 =
     bijux_gnss_core::api::ppp::PppEpochV1<crate::estimation::ppp::config::PppSolutionEpoch>;
 pub use crate::corrections::atmosphere::{clamp_ztd, AtmosphereConfig};
 pub use crate::corrections::biases::{CodeBiasProvider, PhaseBiasProvider, ZeroBiases};
-/// Atmospheric model scaffolding.
-pub use crate::models::atmosphere::{
-    IonosphereModel, KlobucharModel, SaastamoinenModel, TroposphereModel,
-};
 /// Corrections and combination helpers.
 pub use crate::corrections::combinations::combinations_from_obs_epochs;
 pub use crate::corrections::{compute_corrections, CorrectionContext, Corrections};
@@ -44,6 +40,10 @@ pub use crate::formats::rinex::{parse_rinex_obs_header, write_rinex_nav, write_r
 pub use crate::formats::{clk::ClkProvider, sp3::Sp3Provider};
 /// Linear algebra helper.
 pub use crate::linalg::Matrix;
+/// Atmospheric model scaffolding.
+pub use crate::models::atmosphere::{
+    IonosphereModel, KlobucharModel, SaastamoinenModel, TroposphereModel,
+};
 /// Ephemeris provider traits and helpers.
 pub use crate::orbits::ephemeris::{CsvEphemerisProvider, Ephemeris, EphemerisProvider};
 /// Broadcast ephemeris and satellite state.

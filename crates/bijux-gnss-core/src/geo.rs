@@ -63,7 +63,11 @@ pub fn ecef_to_enu_ref(ecef: Ecef, reference: Llh) -> Enu {
         reference.lon_deg,
         reference.alt_m,
     );
-    Enu { e_m: e, n_m: n, u_m: u }
+    Enu {
+        e_m: e,
+        n_m: n,
+        u_m: u,
+    }
 }
 
 /// Convert ECEF to geodetic (lat, lon, alt).
@@ -83,31 +87,6 @@ pub fn ecef_to_geodetic(x: f64, y: f64, z: f64) -> (f64, f64, f64) {
         lat = z.atan2(p * (1.0 - e2 * n / (n + alt)));
     }
     (lat.to_degrees(), lon.to_degrees(), alt)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{ecef_to_llh, llh_to_ecef, Ecef, Llh};
-
-    #[test]
-    fn llh_ecef_roundtrip_equator() {
-        let llh = Llh {
-            lat_deg: 0.0,
-            lon_deg: 0.0,
-            alt_m: 0.0,
-        };
-        let ecef = llh_to_ecef(llh);
-        assert!((ecef.x_m - 6_378_137.0).abs() < 1.0);
-        assert!(ecef.y_m.abs() < 1.0);
-        assert!(ecef.z_m.abs() < 1.0);
-        let back = ecef_to_llh(Ecef {
-            x_m: ecef.x_m,
-            y_m: ecef.y_m,
-            z_m: ecef.z_m,
-        });
-        assert!((back.lat_deg - llh.lat_deg).abs() < 1e-6);
-        assert!((back.lon_deg - llh.lon_deg).abs() < 1e-6);
-    }
 }
 
 /// Convert geodetic (lat, lon, alt) to ECEF.
@@ -165,4 +144,29 @@ pub fn elevation_azimuth_deg(
     let az = e.atan2(n).to_degrees().rem_euclid(360.0);
     let el = (u / (e * e + n * n + u * u).sqrt()).asin().to_degrees();
     (az, el)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ecef_to_llh, llh_to_ecef, Ecef, Llh};
+
+    #[test]
+    fn llh_ecef_roundtrip_equator() {
+        let llh = Llh {
+            lat_deg: 0.0,
+            lon_deg: 0.0,
+            alt_m: 0.0,
+        };
+        let ecef = llh_to_ecef(llh);
+        assert!((ecef.x_m - 6_378_137.0).abs() < 1.0);
+        assert!(ecef.y_m.abs() < 1.0);
+        assert!(ecef.z_m.abs() < 1.0);
+        let back = ecef_to_llh(Ecef {
+            x_m: ecef.x_m,
+            y_m: ecef.y_m,
+            z_m: ecef.z_m,
+        });
+        assert!((back.lat_deg - llh.lat_deg).abs() < 1e-6);
+        assert!((back.lon_deg - llh.lon_deg).abs() < 1e-6);
+    }
 }

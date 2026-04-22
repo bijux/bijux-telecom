@@ -4,10 +4,10 @@
 
 /// Core domain types and schemas.
 pub use bijux_gnss_core as core;
-/// Signal processing primitives and generators.
-pub use bijux_gnss_signal as signal;
 /// Receiver pipeline API and engines.
 pub use bijux_gnss_receiver as receiver;
+/// Signal processing primitives and generators.
+pub use bijux_gnss_signal as signal;
 
 /// Navigation API.
 #[cfg(feature = "nav")]

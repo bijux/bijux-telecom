@@ -163,6 +163,7 @@ version = "0.1.0"
 dependencies = [
  "bijux-gnss-core",
  "bijux-gnss-nav",
+ "bijux-gnss-policies",
  "bijux-gnss-receiver",
  "bijux-gnss-signal",
 ]
@@ -173,7 +174,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bijux-gnss-infra",
- "bijux-guardrails",
+ "bijux-gnss-policies",
  "clap",
  "eyre",
  "hex",
@@ -192,7 +193,7 @@ dependencies = [
 name = "bijux-gnss-core"
 version = "0.1.0"
 dependencies = [
- "bijux-guardrails",
+ "bijux-gnss-policies",
  "num-complex",
  "proptest",
  "serde",
@@ -203,8 +204,8 @@ dependencies = [
 name = "bijux-gnss-infra"
 version = "0.1.0"
 dependencies = [
+ "bijux-gnss-policies",
  "bijux-gnss-receiver",
- "bijux-guardrails",
  "hex",
  "serde",
  "serde_json",
@@ -218,11 +219,22 @@ name = "bijux-gnss-nav"
 version = "0.1.0"
 dependencies = [
  "bijux-gnss-core",
- "bijux-guardrails",
+ "bijux-gnss-policies",
  "criterion",
  "hex",
  "serde",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "bijux-gnss-policies"
+version = "0.1.0"
+dependencies = [
+ "regex",
+ "serde",
+ "serde_json",
+ "toml",
+ "walkdir",
 ]
 
 [[package]]
@@ -231,8 +243,8 @@ version = "0.1.0"
 dependencies = [
  "bijux-gnss-core",
  "bijux-gnss-nav",
+ "bijux-gnss-policies",
  "bijux-gnss-signal",
- "bijux-guardrails",
  "criterion",
  "hex",
  "num-complex",
@@ -252,7 +264,7 @@ name = "bijux-gnss-signal"
 version = "0.1.0"
 dependencies = [
  "bijux-gnss-core",
- "bijux-guardrails",
+ "bijux-gnss-policies",
  "num-complex",
  "proptest",
  "thiserror 2.0.18",
@@ -263,21 +275,22 @@ name = "bijux-gnss-testkit"
 version = "0.1.0"
 dependencies = [
  "bijux-gnss-infra",
+ "bijux-gnss-policies",
  "bijux-gnss-receiver",
  "proptest",
  "serde",
  "serde_json",
+ "toml",
 ]
 
 [[package]]
-name = "bijux-guardrails"
+name = "bijux-telecom-dev"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "bijux-gnss-policies",
+ "clap",
  "regex",
- "serde",
- "serde_json",
- "toml",
- "walkdir",
 ]
 
 [[package]]

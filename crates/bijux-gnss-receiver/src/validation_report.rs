@@ -1,7 +1,7 @@
 //! Validation report builders for GNSS runs.
 
-use crate::api::TrackingResult;
 use crate::api::ReceiverConfig;
+use crate::api::TrackingResult;
 use crate::validation_helpers::{check_budgets, to_validation_stats};
 use bijux_gnss_core::api::{
     check_inter_frequency_alignment, check_solution_consistency, reference_ecef, stats,
@@ -550,7 +550,6 @@ fn ppp_evaluation_report(
         checkpoint_path: None,
     }
 }
-
 
 #[cfg(test)]
 mod tests {

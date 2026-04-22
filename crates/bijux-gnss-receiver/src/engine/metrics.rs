@@ -60,8 +60,16 @@ pub fn write_metrics_summary(runtime: &ReceiverRuntime, artifacts: &RunArtifacts
     } else {
         Some(cn0_sum / total_epochs as f64)
     };
-    let cn0_dbhz_min = if total_epochs == 0 { None } else { Some(cn0_min) };
-    let cn0_dbhz_max = if total_epochs == 0 { None } else { Some(cn0_max) };
+    let cn0_dbhz_min = if total_epochs == 0 {
+        None
+    } else {
+        Some(cn0_min)
+    };
+    let cn0_dbhz_max = if total_epochs == 0 {
+        None
+    } else {
+        Some(cn0_max)
+    };
 
     let nav_rms_m_mean = if artifacts.navigation.is_empty() {
         None

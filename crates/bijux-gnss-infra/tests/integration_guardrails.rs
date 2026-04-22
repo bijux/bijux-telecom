@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
-use bijux_guardrails::api::check;
-use bijux_guardrails::api::GuardrailConfig;
+use bijux_gnss_policies::api::check;
+use bijux_gnss_policies::api::GuardrailConfig;
 
 #[test]
 fn guardrails() {

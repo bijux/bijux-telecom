@@ -2,11 +2,9 @@
 use std::fs;
 
 use bijux_gnss_receiver::api::{
-    AcquisitionEngine,
     observations_from_tracking,
     sim::{generate_l1_ca_multi, SyntheticScenario},
-    TrackingEngine,
-    ReceiverPipelineConfig,
+    AcquisitionEngine, ReceiverPipelineConfig, TrackingEngine,
 };
 
 #[test]
@@ -27,8 +25,7 @@ fn numerical_sanity_pipeline() {
     let sats: Vec<bijux_gnss_core::api::SatId> =
         scenario.satellites.iter().map(|s| s.sat).collect();
     let runtime = bijux_gnss_receiver::api::ReceiverRuntime::default();
-    let acq =
-        AcquisitionEngine::new(config.clone(), runtime.clone()).with_doppler(10_000, 500);
+    let acq = AcquisitionEngine::new(config.clone(), runtime.clone()).with_doppler(10_000, 500);
     let acq_results = acq.run_fft(&frame, &sats);
 
     for res in &acq_results {
