@@ -17,6 +17,12 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
+    /// Validate audit allowlist quality contract.
+    AuditAllowlist {
+        /// Workspace root override.
+        #[arg(long)]
+        workspace_root: Option<PathBuf>,
+    },
     /// Run benchmark suite and compare against baseline.
     BenchCompare {
         /// Fail if a regression exceeds threshold.
@@ -37,12 +43,92 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::BenchCompare {
-            strict,
-            threshold,
-            workspace_root,
-        } => run_bench_compare(strict, threshold, workspace_root),
+        Commands::AuditAllowlist { workspace_root } => run_audit_allowlist_check(workspace_root),
+        Commands::BenchCompare { strict, threshold, workspace_root } => {
+            run_bench_compare(strict, threshold, workspace_root)
+        }
     }
+}
+
+fn run_audit_allowlist_check(workspace_root: Option<PathBuf>) -> Result<()> {
+    let root =
+        workspace_root.unwrap_or(std::env::current_dir().context("resolve current directory")?);
+    let path = root.join("audit-allowlist.toml");
+    if !path.is_file() {
+        bail!("missing {}", path.display());
+    }
+    let payload = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    let value: toml::Value =
+        toml::from_str(&payload).with_context(|| format!("parse {}", path.display()))?;
+    let advisories =
+        value.get("advisory").and_then(toml::Value::as_array).cloned().unwrap_or_default();
+    if advisories.is_empty() {
+        println!("audit allowlist quality gate: OK (no advisory exceptions)");
+        return Ok(());
+    }
+
+    let today = current_iso_day()?;
+    let mut errors = Vec::new();
+    for (index, row) in advisories.iter().enumerate() {
+        let label = format!("advisory[{index}]");
+        let id = row.get("id").and_then(toml::Value::as_str).unwrap_or("").trim();
+        let why = row.get("why").and_then(toml::Value::as_str).unwrap_or("").trim();
+        let owner = row.get("owner").and_then(toml::Value::as_str).unwrap_or("").trim();
+        let link = row.get("link").and_then(toml::Value::as_str).unwrap_or("").trim();
+        let expiry = row.get("expiry").and_then(toml::Value::as_str).unwrap_or("").trim();
+
+        if !is_rustsec_id(id) {
+            errors.push(format!("{label}: id must match RUSTSEC-YYYY-NNNN"));
+        }
+        if why.is_empty() {
+            errors.push(format!("{label}: missing why"));
+        }
+        if owner.is_empty() {
+            errors.push(format!("{label}: missing owner"));
+        }
+        if !(link.starts_with("http://") || link.starts_with("https://")) {
+            errors.push(format!("{label}: link must be http(s)"));
+        }
+        if !is_iso_day(expiry) {
+            errors.push(format!("{label}: expiry must be YYYY-MM-DD"));
+        } else if expiry < today.as_str() {
+            errors.push(format!("{label}: expiry has passed ({expiry})"));
+        }
+    }
+
+    if errors.is_empty() {
+        println!("audit allowlist quality gate: OK");
+        return Ok(());
+    }
+
+    bail!("audit allowlist quality gate failed:\n{}", errors.join("\n"));
+}
+
+fn current_iso_day() -> Result<String> {
+    let output =
+        Command::new("date").args(["+%Y-%m-%d"]).output().context("resolve current date")?;
+    if !output.status.success() {
+        bail!("resolve current date failed");
+    }
+    Ok(String::from_utf8(output.stdout).context("date output is not UTF-8")?.trim().to_string())
+}
+
+fn is_iso_day(value: &str) -> bool {
+    value.len() == 10
+        && value.chars().nth(4) == Some('-')
+        && value.chars().nth(7) == Some('-')
+        && value
+            .chars()
+            .enumerate()
+            .all(|(index, ch)| (index == 4 || index == 7) || ch.is_ascii_digit())
+}
+
+fn is_rustsec_id(value: &str) -> bool {
+    value.len() == 17
+        && value.starts_with("RUSTSEC-")
+        && value.as_bytes().get(12) == Some(&b'-')
+        && value[8..12].chars().all(|ch| ch.is_ascii_digit())
+        && value[13..17].chars().all(|ch| ch.is_ascii_digit())
 }
 
 fn run_bench_compare(strict: bool, threshold: f64, workspace_root: Option<PathBuf>) -> Result<()> {
@@ -62,11 +148,7 @@ fn run_bench_compare(strict: bool, threshold: f64, workspace_root: Option<PathBu
     combined.push_str(&run_bench(
         &root,
         "bijux-gnss-receiver",
-        &[
-            "bench_correlator",
-            "bench_acquisition_fft",
-            "bench_tracking_update",
-        ],
+        &["bench_correlator", "bench_acquisition_fft", "bench_tracking_update"],
     )?);
     combined.push_str(&run_bench(&root, "bijux-gnss-nav", &["bench_ekf_update"])?);
 
@@ -131,11 +213,7 @@ fn write_current_snapshot(bench_output: &str, current_path: &Path) -> Result<()>
     let mut rows = Vec::<(String, u64)>::new();
     for line in bench_output.lines() {
         if let Some(caps) = line_re.captures(line) {
-            let name = caps
-                .get(1)
-                .map(|m| m.as_str())
-                .unwrap_or_default()
-                .to_string();
+            let name = caps.get(1).map(|m| m.as_str()).unwrap_or_default().to_string();
             let value = caps
                 .get(2)
                 .map(|m| m.as_str())
@@ -170,9 +248,8 @@ fn compare_baseline(baseline: &Path, current: &Path, threshold: f64) -> Result<V
         let mut parts = line.split_whitespace();
         let Some(name) = parts.next() else { continue };
         let Some(value) = parts.next() else { continue };
-        let parsed = value
-            .parse::<u64>()
-            .with_context(|| format!("parse baseline value for {name}"))?;
+        let parsed =
+            value.parse::<u64>().with_context(|| format!("parse baseline value for {name}"))?;
         baseline_map.insert(name.to_string(), parsed);
     }
 
@@ -181,9 +258,8 @@ fn compare_baseline(baseline: &Path, current: &Path, threshold: f64) -> Result<V
         let mut parts = line.split_whitespace();
         let Some(name) = parts.next() else { continue };
         let Some(value) = parts.next() else { continue };
-        let current_ns = value
-            .parse::<u64>()
-            .with_context(|| format!("parse current value for {name}"))?;
+        let current_ns =
+            value.parse::<u64>().with_context(|| format!("parse current value for {name}"))?;
         let Some(baseline_ns) = baseline_map.get(name) else {
             continue;
         };

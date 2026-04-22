@@ -10,6 +10,7 @@ publish = false
 anyhow.workspace = true
 clap = { workspace = true, features = ["derive"] }
 regex.workspace = true
+toml.workspace = true
 
 [[bin]]
 name = "bijux-telecom-dev"

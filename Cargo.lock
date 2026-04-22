@@ -291,6 +291,7 @@ dependencies = [
  "bijux-gnss-policies",
  "clap",
  "regex",
+ "toml",
 ]
 
 [[package]]

@@ -94,6 +94,9 @@ audit-rs: ## Run cargo-deny and cargo-audit
 	deny_status=0; \
 	audit_status=0; \
 	{ \
+		echo "run: cargo run -q -p bijux-telecom-dev -- audit-allowlist"; \
+		CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo run -q -p bijux-telecom-dev -- audit-allowlist || audit_status=$$?; \
+		echo; \
 		echo "run: cargo deny check bans licenses sources --config configs/rust/deny.toml"; \
 		CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo deny check bans licenses sources --config configs/rust/deny.toml || deny_status=$$?; \
 		echo; \
