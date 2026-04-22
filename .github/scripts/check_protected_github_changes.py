@@ -27,7 +27,7 @@ BASE_PROTECTED_PATHS = {
     ".github/release.env",
     ".github/dependabot.yml",
     ".github/labeler.yml",
-    "codecov.yml",
+    ".github/codecov.yml",
     ".github/workflows/ci.yml",
     ".github/workflows/verify.yml",
     ".github/standards/bijux-std.sha",

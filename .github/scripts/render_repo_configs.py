@@ -150,7 +150,7 @@ def render_repo(repo_name: str, manifest: dict) -> None:
 
     codecov_data = repo.get("codecov")
     if codecov_data is not None:
-        codecov_path = repo_root / "codecov.yml"
+        codecov_path = repo_root / ".github/codecov.yml"
         codecov_content = render_yaml_document(codecov_data)
         write_if_needed(codecov_path, codecov_content)
 

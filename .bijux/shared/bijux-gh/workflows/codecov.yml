@@ -48,3 +48,4 @@ jobs:
         with:
           files: ${{ steps.collect.outputs.files }}
           fail_ci_if_error: false
+          codecov_yml_path: .github/codecov.yml

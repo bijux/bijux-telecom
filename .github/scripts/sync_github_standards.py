@@ -190,7 +190,7 @@ def copy_repo_files(target_repo: str, repo_config: dict[str, Any], manifest: dic
         if path.exists():
             path.unlink()
 
-    if (repo_dir / ".bijux/shared").exists():
+    if repo_dir.name != "bijux-std" and (repo_dir / ".bijux/shared").exists():
         for legacy_name in ("bijux-docs", "bijux-makes-py", "bijux-checks", "bijux-gh"):
             legacy_shared_path = repo_dir / "shared" / legacy_name
             if legacy_shared_path.exists():
