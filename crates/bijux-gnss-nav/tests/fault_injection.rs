@@ -6,10 +6,7 @@ use bijux_gnss_nav::api::{
 
 fn make_eph(prn: u8, omega0: f64, m0: f64) -> GpsEphemeris {
     GpsEphemeris {
-        sat: SatId {
-            constellation: Constellation::Gps,
-            prn,
-        },
+        sat: SatId { constellation: Constellation::Gps, prn },
         iodc: 0,
         iode: 0,
         week: 0,
@@ -71,18 +68,12 @@ fn fault_injection_rejects_bad_pseudorange() {
         });
     }
 
-    let solver = PositionSolver {
-        raim: true,
-        residual_gate_m: 300.0,
-        ..PositionSolver::new()
-    };
+    let solver = PositionSolver { raim: true, residual_gate_m: 300.0, ..PositionSolver::new() };
     let solution = solver.solve_wls(&obs, &ephs, t_rx_s);
     if let Some(solution) = solution {
-        assert!(solution.rejected.iter().any(|(sat, _)| {
-            *sat == SatId {
-                constellation: Constellation::Gps,
-                prn: 3,
-            }
-        }));
+        assert!(solution
+            .rejected
+            .iter()
+            .any(|(sat, _)| { *sat == SatId { constellation: Constellation::Gps, prn: 3 } }));
     }
 }

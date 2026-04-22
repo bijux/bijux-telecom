@@ -7,10 +7,7 @@ use bijux_gnss_nav::api::{BroadcastProductsProvider, GpsEphemeris, PppConfig, Pp
 
 fn make_eph(prn: u8) -> GpsEphemeris {
     GpsEphemeris {
-        sat: SatId {
-            constellation: Constellation::Gps,
-            prn,
-        },
+        sat: SatId { constellation: Constellation::Gps, prn },
         iodc: 0,
         iode: 0,
         week: 0,
@@ -39,10 +36,7 @@ fn make_eph(prn: u8) -> GpsEphemeris {
 }
 
 fn make_obs(epoch_idx: u64, t_rx_s: f64, prn: u8) -> ObsEpoch {
-    let sat = SatId {
-        constellation: Constellation::Gps,
-        prn,
-    };
+    let sat = SatId { constellation: Constellation::Gps, prn };
     let spec = signal_spec_gps_l1_ca();
     ObsEpoch {
         t_rx_s: bijux_gnss_core::api::Seconds(t_rx_s),
@@ -54,11 +48,7 @@ fn make_obs(epoch_idx: u64, t_rx_s: f64, prn: u8) -> ObsEpoch {
         processing_ms: None,
         role: ReceiverRole::Rover,
         sats: vec![ObsSatellite {
-            signal_id: SigId {
-                sat,
-                band: SignalBand::L1,
-                code: SignalCode::Ca,
-            },
+            signal_id: SigId { sat, band: SignalBand::L1, code: SignalCode::Ca },
             pseudorange_m: bijux_gnss_core::api::Meters(20_000_000.0 + prn as f64),
             pseudorange_var_m2: 4.0,
             carrier_phase_cycles: bijux_gnss_core::api::Cycles(1_000.0 + prn as f64),
@@ -94,17 +84,10 @@ fn make_obs_with_slips(epoch_idx: u64, t_rx_s: f64, prns: &[u8]) -> ObsEpoch {
     let sats = prns
         .iter()
         .map(|&prn| {
-            let sat = SatId {
-                constellation: Constellation::Gps,
-                prn,
-            };
+            let sat = SatId { constellation: Constellation::Gps, prn };
             let spec = signal_spec_gps_l1_ca();
             ObsSatellite {
-                signal_id: SigId {
-                    sat,
-                    band: SignalBand::L1,
-                    code: SignalCode::Ca,
-                },
+                signal_id: SigId { sat, band: SignalBand::L1, code: SignalCode::Ca },
                 pseudorange_m: bijux_gnss_core::api::Meters(20_000_000.0 + prn as f64),
                 pseudorange_var_m2: 4.0,
                 carrier_phase_cycles: bijux_gnss_core::api::Cycles(1_000.0 + prn as f64),
@@ -150,10 +133,7 @@ fn make_obs_with_slips(epoch_idx: u64, t_rx_s: f64, prns: &[u8]) -> ObsEpoch {
 
 #[test]
 fn ppp_resets_on_gap() {
-    let cfg = PppConfig {
-        reset_gap_s: 0.01,
-        ..PppConfig::default()
-    };
+    let cfg = PppConfig { reset_gap_s: 0.01, ..PppConfig::default() };
     let mut ppp = PppFilter::new(cfg);
     let ephs = vec![make_eph(1), make_eph(2), make_eph(3), make_eph(4)];
     let products = BroadcastProductsProvider::new(ephs.clone());
@@ -257,10 +237,7 @@ fn golden_nav_solution_is_stable() {
 
 #[test]
 fn ppp_iono_storm_triggers_residual_gate() {
-    let cfg = PppConfig {
-        residual_gate_m: 1.0,
-        ..PppConfig::default()
-    };
+    let cfg = PppConfig { residual_gate_m: 1.0, ..PppConfig::default() };
     let mut ppp = PppFilter::new(cfg);
     let ephs = vec![make_eph(1), make_eph(2), make_eph(3), make_eph(4)];
     let products = BroadcastProductsProvider::new(ephs.clone());

@@ -35,12 +35,7 @@ fn golden_tracking_from_scenario() {
         assert!(!track.epochs.is_empty());
         let locked_epochs = track.epochs.iter().filter(|e| e.lock).count();
         let lock_ratio = locked_epochs as f64 / track.epochs.len() as f64;
-        assert!(
-            locked_epochs > 0,
-            "no lock for {:?}-{}",
-            track.sat.constellation,
-            track.sat.prn
-        );
+        assert!(locked_epochs > 0, "no lock for {:?}-{}", track.sat.constellation, track.sat.prn);
         assert!(
             lock_ratio > 0.1,
             "lock ratio too low for {:?}-{}: {lock_ratio}",
@@ -49,11 +44,7 @@ fn golden_tracking_from_scenario() {
         );
         let mean_cn0 =
             track.epochs.iter().map(|e| e.cn0_dbhz).sum::<f64>() / track.epochs.len() as f64;
-        let var_cn0 = track
-            .epochs
-            .iter()
-            .map(|e| (e.cn0_dbhz - mean_cn0).powi(2))
-            .sum::<f64>()
+        let var_cn0 = track.epochs.iter().map(|e| (e.cn0_dbhz - mean_cn0).powi(2)).sum::<f64>()
             / track.epochs.len() as f64;
         let std_cn0 = var_cn0.sqrt();
         assert!(

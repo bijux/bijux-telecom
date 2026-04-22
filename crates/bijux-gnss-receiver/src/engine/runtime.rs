@@ -50,12 +50,7 @@ impl ReceiverRuntime {
         trace: Arc<dyn TraceSink>,
         metrics: Arc<dyn MetricsSink>,
     ) -> Self {
-        Self {
-            config,
-            logger,
-            trace,
-            metrics,
-        }
+        Self { config, logger, trace, metrics }
     }
 }
 

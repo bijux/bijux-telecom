@@ -38,9 +38,7 @@ pub struct NavigationEngine {
 
 impl NavigationEngine {
     pub fn new() -> Self {
-        Self {
-            state: NavigationState::ColdStart,
-        }
+        Self { state: NavigationState::ColdStart }
     }
 
     pub fn transition(&mut self, sats: usize, rms_m: f64) {
@@ -155,34 +153,28 @@ impl Navigation {
             })
             .collect();
         if observations.len() < 4 {
-            self.runtime
-                .logger
-                .event(&bijux_gnss_core::api::DiagnosticEvent::new(
-                    bijux_gnss_core::api::DiagnosticSeverity::Warning,
-                    "NAV_INSUFFICIENT_SATS",
-                    "insufficient satellites for navigation solution",
-                ));
+            self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                "NAV_INSUFFICIENT_SATS",
+                "insufficient satellites for navigation solution",
+            ));
             return self.degraded_from_last(obs);
         }
         let solution = match self.solver.solve_wls(&observations, eph, obs.t_rx_s.0) {
             Some(solution) => solution,
             None => {
-                self.runtime
-                    .logger
-                    .event(&bijux_gnss_core::api::DiagnosticEvent::new(
-                        bijux_gnss_core::api::DiagnosticSeverity::Warning,
-                        "NAV_SOLVER_FAILED",
-                        "nav solver failed to converge",
-                    ));
+                self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
+                    bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                    "NAV_SOLVER_FAILED",
+                    "nav solver failed to converge",
+                ));
                 return self.degraded_from_last(obs);
             }
         };
         let (clock_bias_s, clock_drift_s_per_s) = self.clock.update(solution.clock_bias_s, 0.001);
         self.last_ecef = Some((solution.ecef_x_m, solution.ecef_y_m, solution.ecef_z_m));
         let mut nav_epoch = NavSolutionEpoch {
-            epoch: bijux_gnss_core::api::Epoch {
-                index: obs.epoch_idx,
-            },
+            epoch: bijux_gnss_core::api::Epoch { index: obs.epoch_idx },
             t_rx_s: obs.t_rx_s,
             ecef_x_m: Meters(solution.ecef_x_m),
             ecef_y_m: Meters(solution.ecef_y_m),
@@ -211,18 +203,13 @@ impl Navigation {
                     weight: Some(weight),
                     reject_reason: None,
                 })
-                .chain(
-                    solution
-                        .rejected
-                        .into_iter()
-                        .map(|(sat, reason)| NavResidual {
-                            sat,
-                            residual_m: Meters(0.0),
-                            rejected: true,
-                            weight: None,
-                            reject_reason: Some(reason),
-                        }),
-                )
+                .chain(solution.rejected.into_iter().map(|(sat, reason)| NavResidual {
+                    sat,
+                    residual_m: Meters(0.0),
+                    rejected: true,
+                    weight: None,
+                    reject_reason: Some(reason),
+                }))
                 .collect(),
             isb: Vec::new(),
             health: Vec::new(),
@@ -239,38 +226,28 @@ impl Navigation {
         };
 
         if solution.covariance_symmetrized {
-            nav_epoch
-                .health
-                .push(bijux_gnss_core::api::NavHealthEvent::CovarianceSymmetrized);
-            self.runtime
-                .logger
-                .event(&bijux_gnss_core::api::DiagnosticEvent::new(
-                    bijux_gnss_core::api::DiagnosticSeverity::Warning,
-                    "NAV_COV_SYMM",
-                    "nav covariance symmetrized",
-                ));
+            nav_epoch.health.push(bijux_gnss_core::api::NavHealthEvent::CovarianceSymmetrized);
+            self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                "NAV_COV_SYMM",
+                "nav covariance symmetrized",
+            ));
         }
         if solution.covariance_clamped {
-            nav_epoch
-                .health
-                .push(bijux_gnss_core::api::NavHealthEvent::CovarianceClamped {
-                    min_eigenvalue: 0.0,
-                });
-            self.runtime
-                .logger
-                .event(&bijux_gnss_core::api::DiagnosticEvent::new(
-                    bijux_gnss_core::api::DiagnosticSeverity::Warning,
-                    "NAV_COV_CLAMP",
-                    "nav covariance clamped",
-                ));
+            nav_epoch.health.push(bijux_gnss_core::api::NavHealthEvent::CovarianceClamped {
+                min_eigenvalue: 0.0,
+            });
+            self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                "NAV_COV_CLAMP",
+                "nav covariance clamped",
+            ));
         }
         if let Some(max_var) = solution.covariance_max_variance {
             if max_var > 1e6 {
-                nav_epoch
-                    .health
-                    .push(bijux_gnss_core::api::NavHealthEvent::CovarianceDiverged {
-                        max_variance: max_var,
-                    });
+                nav_epoch.health.push(bijux_gnss_core::api::NavHealthEvent::CovarianceDiverged {
+                    max_variance: max_var,
+                });
             }
         }
 
@@ -286,13 +263,11 @@ impl Navigation {
         if let Some(sep) = solution.separation_max_m {
             if sep > self.solver.separation_gate_m {
                 nav_epoch.status = SolutionStatus::Degraded;
-                self.runtime
-                    .logger
-                    .event(&bijux_gnss_core::api::DiagnosticEvent::new(
-                        bijux_gnss_core::api::DiagnosticSeverity::Warning,
-                        "NAV_RAIM_SEPARATION",
-                        format!("solution separation exceeded: {:.2} m", sep),
-                    ));
+                self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
+                    bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                    "NAV_RAIM_SEPARATION",
+                    format!("solution separation exceeded: {:.2} m", sep),
+                ));
             }
         }
 
@@ -327,13 +302,11 @@ impl Navigation {
         }
 
         if let Some(rms) = nav_epoch.innovation_rms_m {
-            self.runtime
-                .logger
-                .event(&bijux_gnss_core::api::DiagnosticEvent::new(
-                    bijux_gnss_core::api::DiagnosticSeverity::Info,
-                    "NAV_INNOVATION_RMS",
-                    format!("innovation rms {:.3} m", rms),
-                ));
+            self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Info,
+                "NAV_INNOVATION_RMS",
+                format!("innovation rms {:.3} m", rms),
+            ));
         }
 
         self.last_solution = Some(nav_epoch.clone());
@@ -342,9 +315,7 @@ impl Navigation {
 
     fn degraded_from_last(&self, obs: &ObsEpoch) -> Option<NavSolutionEpoch> {
         let mut degraded = self.last_solution.clone()?;
-        degraded.epoch = bijux_gnss_core::api::Epoch {
-            index: obs.epoch_idx,
-        };
+        degraded.epoch = bijux_gnss_core::api::Epoch { index: obs.epoch_idx };
         degraded.t_rx_s = obs.t_rx_s;
         degraded.status = SolutionStatus::Degraded;
         degraded.quality = degraded.status.quality_flag();
@@ -364,18 +335,13 @@ impl bijux_gnss_nav::api::NavEngine for Navigation {
         let solution = self
             .solve_epoch(&obs.payload, &[])
             .unwrap_or_else(|| invalid_solution_epoch(&obs.payload));
-        bijux_gnss_core::api::NavSolutionEpochV1 {
-            header: obs.header.clone(),
-            payload: solution,
-        }
+        bijux_gnss_core::api::NavSolutionEpochV1 { header: obs.header.clone(), payload: solution }
     }
 }
 
 fn invalid_solution_epoch(obs: &ObsEpoch) -> NavSolutionEpoch {
     NavSolutionEpoch {
-        epoch: bijux_gnss_core::api::Epoch {
-            index: obs.epoch_idx,
-        },
+        epoch: bijux_gnss_core::api::Epoch { index: obs.epoch_idx },
         t_rx_s: obs.t_rx_s,
         ecef_x_m: Meters(0.0),
         ecef_y_m: Meters(0.0),
@@ -410,13 +376,7 @@ fn invalid_solution_epoch(obs: &ObsEpoch) -> NavSolutionEpoch {
     }
 }
 
-type InnovationStats = (
-    Option<f64>,
-    Option<f64>,
-    Option<f64>,
-    Option<f64>,
-    Option<f64>,
-);
+type InnovationStats = (Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<f64>);
 
 fn innovation_stats(residuals: &[NavResidual]) -> InnovationStats {
     let mut sum = 0.0;
@@ -447,17 +407,9 @@ fn innovation_stats(residuals: &[NavResidual]) -> InnovationStats {
         return (None, None, None, None, None);
     }
     let rms = (sum / count).sqrt();
-    let norm_rms = if sum_norm > 0.0 {
-        Some((sum_norm / count).sqrt())
-    } else {
-        None
-    };
+    let norm_rms = if sum_norm > 0.0 { Some((sum_norm / count).sqrt()) } else { None };
     let max_norm_opt = if max_norm > 0.0 { Some(max_norm) } else { None };
-    let pred_var = if sum_pred > 0.0 {
-        Some(sum_pred / count)
-    } else {
-        None
-    };
+    let pred_var = if sum_pred > 0.0 { Some(sum_pred / count) } else { None };
     let obs_var = Some(sum_obs / count);
     (Some(rms), norm_rms, max_norm_opt, pred_var, obs_var)
 }
@@ -487,10 +439,7 @@ struct ClockModel {
 
 impl ClockModel {
     fn new() -> Self {
-        Self {
-            bias_s: 0.0,
-            drift_s: 0.0,
-        }
+        Self { bias_s: 0.0, drift_s: 0.0 }
     }
 
     fn update(&mut self, measurement_bias_s: f64, dt_s: f64) -> (f64, f64) {

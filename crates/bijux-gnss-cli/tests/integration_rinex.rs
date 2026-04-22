@@ -18,10 +18,7 @@ fn rinex_obs_has_header() {
         role: ReceiverRole::Rover,
         sats: vec![ObsSatellite {
             signal_id: SigId {
-                sat: SatId {
-                    constellation: Constellation::Gps,
-                    prn: 1,
-                },
+                sat: SatId { constellation: Constellation::Gps, prn: 1 },
                 band: SignalBand::L1,
                 code: SignalCode::Ca,
             },
@@ -73,10 +70,7 @@ fn rinex_obs_has_header() {
 #[test]
 fn rinex_nav_has_header() {
     let eph = GpsEphemeris {
-        sat: SatId {
-            constellation: Constellation::Gps,
-            prn: 1,
-        },
+        sat: SatId { constellation: Constellation::Gps, prn: 1 },
         iodc: 1,
         iode: 1,
         week: 0,

@@ -12,10 +12,7 @@ use bijux_gnss_receiver::api::{
 
 fn make_eph(prn: u8, omega0: f64, m0: f64) -> GpsEphemeris {
     GpsEphemeris {
-        sat: SatId {
-            constellation: Constellation::Gps,
-            prn,
-        },
+        sat: SatId { constellation: Constellation::Gps, prn },
         iodc: 0,
         iode: 0,
         week: 0,
@@ -174,14 +171,8 @@ fn rtk_dd_solution_close_to_baseline() {
         solve_baseline_dd(&dd, [base.0, base.1, base.2], &ephs, t_rx_s).expect("baseline");
     let expected = baseline_from_ecef([base.0, base.1, base.2], [rover.0, rover.1, rover.2]);
 
-    assert!(
-        (baseline.enu_m[0] - expected.enu_m[0]).abs() < 500.0,
-        "east error too large"
-    );
-    assert!(
-        (baseline.enu_m[1] - expected.enu_m[1]).abs() < 500.0,
-        "north error too large"
-    );
+    assert!((baseline.enu_m[0] - expected.enu_m[0]).abs() < 500.0, "east error too large");
+    assert!((baseline.enu_m[1] - expected.enu_m[1]).abs() < 500.0, "north error too large");
 }
 
 #[test]

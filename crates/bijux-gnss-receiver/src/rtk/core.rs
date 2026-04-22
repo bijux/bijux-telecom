@@ -50,11 +50,7 @@ pub struct RefSatSelector {
 
 impl RefSatSelector {
     pub fn new(hold_epochs: usize) -> Self {
-        Self {
-            last_ref: None,
-            hold_epochs,
-            since_change: 0,
-        }
+        Self { last_ref: None, hold_epochs, since_change: 0 }
     }
 
     pub fn choose(&mut self, sd: &[SdObservation]) -> Option<SigId> {
@@ -80,13 +76,7 @@ type SatKey = bijux_gnss_core::api::SatId;
 
 impl EpochAligner {
     pub fn new(tolerance_s: f64) -> Self {
-        Self {
-            tolerance_s,
-            aligned: 0,
-            dropped_base: 0,
-            dropped_rover: 0,
-            jitter_s: Vec::new(),
-        }
+        Self { tolerance_s, aligned: 0, dropped_base: 0, dropped_rover: 0, jitter_s: Vec::new() }
     }
 
     pub fn align(&mut self, base: &[ObsEpoch], rover: &[ObsEpoch]) -> Vec<(ObsEpoch, ObsEpoch)> {
@@ -213,10 +203,7 @@ pub struct SolutionSeparation {
 }
 
 fn ambiguity_id(sat: &ObsSatellite) -> AmbiguityId {
-    AmbiguityId {
-        sig: sat.signal_id,
-        signal: format!("{:?}", sat.metadata.signal.band),
-    }
+    AmbiguityId { sig: sat.signal_id, signal: format!("{:?}", sat.metadata.signal.band) }
 }
 
 pub fn build_sd(base: &ObsEpoch, rover: &ObsEpoch) -> Vec<SdObservation> {
@@ -276,9 +263,7 @@ pub fn build_sd(base: &ObsEpoch, rover: &ObsEpoch) -> Vec<SdObservation> {
 pub fn choose_ref_sat(sd: &[SdObservation]) -> Option<SigId> {
     sd.iter()
         .min_by(|a, b| {
-            a.variance_code
-                .partial_cmp(&b.variance_code)
-                .unwrap_or(std::cmp::Ordering::Equal)
+            a.variance_code.partial_cmp(&b.variance_code).unwrap_or(std::cmp::Ordering::Equal)
         })
         .map(|s| s.sig)
 }
@@ -286,10 +271,7 @@ pub fn choose_ref_sat(sd: &[SdObservation]) -> Option<SigId> {
 pub fn choose_ref_sat_per_constellation(sd: &[SdObservation]) -> BTreeMap<Constellation, SigId> {
     let mut by_const: BTreeMap<Constellation, Vec<SdObservation>> = BTreeMap::new();
     for s in sd {
-        by_const
-            .entry(s.ambiguity_rover.sig.sat.constellation)
-            .or_default()
-            .push(s.clone());
+        by_const.entry(s.ambiguity_rover.sig.sat.constellation).or_default().push(s.clone());
     }
     let mut out = BTreeMap::new();
     for (constellation, items) in by_const {
@@ -404,11 +386,7 @@ pub fn innovation_diagnostics(residuals: &[f64], predicted_variance: f64) -> Inn
     } else {
         residuals.iter().map(|r| r * r).sum::<f64>() / residuals.len() as f64
     };
-    let scale = if predicted_variance > 0.0 {
-        (observed / predicted_variance).sqrt()
-    } else {
-        1.0
-    };
+    let scale = if predicted_variance > 0.0 { (observed / predicted_variance).sqrt() } else { 1.0 };
     InnovationDiagnostics {
         predicted_variance,
         observed_variance: observed,
@@ -440,11 +418,7 @@ pub fn solve_baseline_dd(
     let (bx, by, bz, cov) = solve_3x3(&h, &v)?;
     let mut baseline = baseline_from_ecef(
         base_ecef_m,
-        [
-            base_ecef_m[0] + bx,
-            base_ecef_m[1] + by,
-            base_ecef_m[2] + bz,
-        ],
+        [base_ecef_m[0] + bx, base_ecef_m[1] + by, base_ecef_m[2] + bz],
     );
     baseline.covariance_m2 = Some(cov);
     Some(baseline)

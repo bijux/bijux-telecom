@@ -26,17 +26,11 @@ struct Dependency {
 
 fn workspace_root() -> &'static Path {
     let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    crate_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .expect("workspace root")
+    crate_dir.parent().and_then(|p| p.parent()).expect("workspace root")
 }
 
 fn read_manifest(crate_name: &str) -> String {
-    let path = workspace_root()
-        .join("crates")
-        .join(crate_name)
-        .join("Cargo.toml");
+    let path = workspace_root().join("crates").join(crate_name).join("Cargo.toml");
     fs::read_to_string(path).expect("read Cargo.toml")
 }
 
@@ -66,10 +60,7 @@ fn dependency_direction_rules() {
         ("bijux-gnss-signal", HashSet::from(["bijux-gnss-core"])),
         ("bijux-gnss-nav", HashSet::from(["bijux-gnss-core"])),
         ("bijux-gnss-core", HashSet::new()),
-        (
-            "bijux-gnss-testkit",
-            HashSet::from(["bijux-gnss-infra", "bijux-gnss-receiver"]),
-        ),
+        ("bijux-gnss-testkit", HashSet::from(["bijux-gnss-infra", "bijux-gnss-receiver"])),
         ("bijux-telecom-dev", HashSet::new()),
         ("bijux-gnss-policies", HashSet::new()),
     ]
@@ -94,12 +85,7 @@ fn dependency_direction_rules() {
         if !workspace.contains(*from) {
             continue;
         }
-        let actual = deps_for(
-            &metadata,
-            &workspace,
-            from,
-            DependencyKindFilter::NormalAndBuild,
-        );
+        let actual = deps_for(&metadata, &workspace, from, DependencyKindFilter::NormalAndBuild);
         for to in actual {
             assert!(
                 allowed_tos.contains(to.as_str()),
@@ -130,22 +116,13 @@ fn no_cyclic_dev_dependencies() {
 fn forbidden_feature_coupling() {
     let manifest = read_manifest("bijux-gnss-receiver");
     let receiver: toml::Value = toml::from_str(&manifest).expect("parse receiver Cargo.toml");
-    let deps = receiver
-        .get("dependencies")
-        .and_then(|d| d.as_table())
-        .expect("receiver dependencies");
-    let nav = deps
-        .get("bijux-gnss-nav")
-        .expect("receiver depends on bijux-gnss-nav");
+    let deps =
+        receiver.get("dependencies").and_then(|d| d.as_table()).expect("receiver dependencies");
+    let nav = deps.get("bijux-gnss-nav").expect("receiver depends on bijux-gnss-nav");
     if let Some(table) = nav.as_table() {
-        let default_features = table
-            .get("default-features")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
-        assert!(
-            !default_features,
-            "receiver must disable default features for bijux-gnss-nav"
-        );
+        let default_features =
+            table.get("default-features").and_then(|v| v.as_bool()).unwrap_or(true);
+        assert!(!default_features, "receiver must disable default features for bijux-gnss-nav");
         if let Some(features) = table.get("features").and_then(|v| v.as_array()) {
             for feature in features {
                 let feature = feature.as_str().unwrap_or_default();

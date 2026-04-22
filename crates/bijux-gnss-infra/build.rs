@@ -8,13 +8,15 @@ fn main() {
         .args(["rev-parse", "HEAD"])
         .output()
         .ok()
-        .and_then(|out| {
-            if out.status.success() {
-                String::from_utf8(out.stdout).ok()
-            } else {
-                None
-            }
-        })
+        .and_then(
+            |out| {
+                if out.status.success() {
+                    String::from_utf8(out.stdout).ok()
+                } else {
+                    None
+                }
+            },
+        )
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|| "unknown".to_string());
 
@@ -27,13 +29,15 @@ fn main() {
         .arg("--version")
         .output()
         .ok()
-        .and_then(|out| {
-            if out.status.success() {
-                String::from_utf8(out.stdout).ok()
-            } else {
-                None
-            }
-        })
+        .and_then(
+            |out| {
+                if out.status.success() {
+                    String::from_utf8(out.stdout).ok()
+                } else {
+                    None
+                }
+            },
+        )
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|| "unknown".to_string());
 

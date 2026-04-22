@@ -34,13 +34,7 @@ impl RunDirLayout {
         let logs_dir = run_dir.join("logs");
         let summary_path = run_dir.join("summary.json");
         let manifest_path = run_dir.join("manifest.json");
-        Self {
-            run_dir,
-            artifacts_dir,
-            logs_dir,
-            summary_path,
-            manifest_path,
-        }
+        Self { run_dir, artifacts_dir, logs_dir, summary_path, manifest_path }
     }
 
     /// Create directories on disk.
@@ -157,10 +151,7 @@ fn now_unix_ms(deterministic: bool) -> u128 {
     if deterministic {
         return 0;
     }
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis()
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis()
 }
 
 fn dataset_hash(dataset: &DatasetEntry) -> Result<String, InputError> {
@@ -198,14 +189,10 @@ fn resolve_run_context(
     } else if let Some(out) = args.out {
         out.clone()
     } else {
-        let dataset_tag = dataset
-            .map(|d| d.id.clone())
-            .unwrap_or_else(|| "unknown".to_string());
+        let dataset_tag = dataset.map(|d| d.id.clone()).unwrap_or_else(|| "unknown".to_string());
         let config_hash = hash_config(args.config, &ReceiverConfig::default())?;
-        let dataset_hash = dataset
-            .map(dataset_hash)
-            .transpose()?
-            .unwrap_or_else(|| "unknown".to_string());
+        let dataset_hash =
+            dataset.map(dataset_hash).transpose()?.unwrap_or_else(|| "unknown".to_string());
         let build_version = env!("CARGO_PKG_VERSION");
         let id = run_id(&config_hash, Some(&dataset_hash), build_version);
         let mut name = format!("{id}_{dataset_tag}_{command}");
@@ -228,10 +215,7 @@ pub fn run_dir(
     command: &str,
     dataset: Option<&DatasetEntry>,
 ) -> Result<PathBuf, InputError> {
-    Ok(resolve_run_context(args, command, dataset)?
-        .layout
-        .run_dir
-        .clone())
+    Ok(resolve_run_context(args, command, dataset)?.layout.run_dir.clone())
 }
 
 /// Resolve artifacts directory path.
@@ -240,10 +224,7 @@ pub fn artifacts_dir(
     command: &str,
     dataset: Option<&DatasetEntry>,
 ) -> Result<PathBuf, InputError> {
-    Ok(resolve_run_context(args, command, dataset)?
-        .layout
-        .artifacts_dir
-        .clone())
+    Ok(resolve_run_context(args, command, dataset)?.layout.artifacts_dir.clone())
 }
 
 /// Append a run index entry.
@@ -260,11 +241,8 @@ pub fn append_run_index(run_dir: &Path, manifest: &RunManifest) -> Result<(), In
         summary: manifest.summary.clone(),
     };
     let line = serde_json::to_string(&entry).map_err(map_err)?;
-    let mut file = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(index_path)
-        .map_err(map_err)?;
+    let mut file =
+        fs::OpenOptions::new().create(true).append(true).open(index_path).map_err(map_err)?;
     writeln!(file, "{line}").map_err(map_err)?;
     Ok(())
 }
@@ -379,7 +357,5 @@ pub fn write_manifest(
 }
 
 fn map_err(err: impl std::fmt::Display) -> InputError {
-    InputError {
-        message: err.to_string(),
-    }
+    InputError { message: err.to_string() }
 }

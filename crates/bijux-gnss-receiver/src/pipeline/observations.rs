@@ -57,19 +57,13 @@ pub fn observations_from_tracking(
         return (Vec::new(), Vec::new());
     }
 
-    let samples_per_code = samples_per_code(
-        config.sampling_freq_hz,
-        config.code_freq_basis_hz,
-        config.code_length,
-    );
+    let samples_per_code =
+        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
     let samples_per_chip = samples_per_code as f64 / config.code_length as f64;
     let code_rate_hz = config.code_freq_basis_hz;
 
-    let mut phase_state = PhaseState {
-        phase_cycles: 0.0,
-        last_phase_cycles: 0.0,
-        initialized: false,
-    };
+    let mut phase_state =
+        PhaseState { phase_cycles: 0.0, last_phase_cycles: 0.0, initialized: false };
 
     let mut out = Vec::with_capacity(epochs.len());
     let mut diagnostics = Vec::new();
@@ -90,10 +84,7 @@ pub fn observations_from_tracking(
                     DiagnosticEvent::new(
                         DiagnosticSeverity::Warning,
                         "OBS_TIME_BACKWARDS",
-                        format!(
-                            "sample index went backwards ({} -> {})",
-                            prev, epoch.sample_index
-                        ),
+                        format!("sample index went backwards ({} -> {})", prev, epoch.sample_index),
                     )
                     .with_context("epoch", epoch.epoch.index.to_string())
                     .with_context("stage", "observations"),
@@ -290,10 +281,9 @@ pub fn observations_from_tracking_results(
                 }
                 // Geometry-free/Melbourne-Wubbena style placeholder for cycle slip detection.
                 let gf_cycles = sat.carrier_phase_cycles.0 - sat.pseudorange_m.0 / lambda_m;
-                let slip_state = slips.entry(sat.signal_id).or_insert(CycleSlipState {
-                    last_gf_cycles: gf_cycles,
-                    initialized: true,
-                });
+                let slip_state = slips
+                    .entry(sat.signal_id)
+                    .or_insert(CycleSlipState { last_gf_cycles: gf_cycles, initialized: true });
                 if slip_state.initialized {
                     let delta = gf_cycles - slip_state.last_gf_cycles;
                     if delta.abs() > GEOFREE_SLIP_THRESHOLD_CYCLES {
@@ -334,11 +324,7 @@ pub fn observations_from_tracking_results(
             );
         }
     }
-    StepReport {
-        output: out,
-        events: diagnostics,
-        stats: StepStats::default(),
-    }
+    StepReport { output: out, events: diagnostics, stats: StepStats::default() }
 }
 
 fn slip_threshold_m(cn0_dbhz: f64, elevation_deg: Option<f64>) -> f64 {
@@ -354,10 +340,7 @@ pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
     let sats = (1..=4)
         .map(|prn| ObsSatellite {
             signal_id: SigId {
-                sat: SatId {
-                    constellation: Constellation::Gps,
-                    prn,
-                },
+                sat: SatId { constellation: Constellation::Gps, prn },
                 band: SignalBand::L1,
                 code: SignalCode::Ca,
             },
@@ -409,10 +392,7 @@ mod tests {
     use bijux_gnss_core::api::{Chips, Epoch, Hertz, SatId};
 
     fn make_track(prn: u8, config: &ReceiverPipelineConfig) -> TrackingResult {
-        let sat = SatId {
-            constellation: Constellation::Gps,
-            prn,
-        };
+        let sat = SatId { constellation: Constellation::Gps, prn };
         let epoch = TrackEpoch {
             epoch: Epoch { index: 0 },
             sample_index: 0,
@@ -434,12 +414,7 @@ mod tests {
             fll_err: 0.0,
             processing_ms: None,
         };
-        TrackingResult {
-            sat,
-            carrier_hz: 0.0,
-            code_phase_samples: 0.0,
-            epochs: vec![epoch],
-        }
+        TrackingResult { sat, carrier_hz: 0.0, code_phase_samples: 0.0, epochs: vec![epoch] }
     }
 
     #[test]

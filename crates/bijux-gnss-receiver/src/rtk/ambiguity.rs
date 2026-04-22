@@ -12,9 +12,7 @@ pub struct AmbiguityManager {
 
 impl AmbiguityManager {
     pub fn new() -> Self {
-        Self {
-            states: BTreeMap::new(),
-        }
+        Self { states: BTreeMap::new() }
     }
 
     pub fn update_from_obs(&mut self, epoch_idx: u64, sats: &[ObsSatellite]) {
@@ -81,11 +79,7 @@ pub fn float_from_state(
         }
         cov.push(row);
     }
-    FloatAmbiguitySolution {
-        ids,
-        float_cycles,
-        covariance: cov,
-    }
+    FloatAmbiguitySolution { ids, float_cycles, covariance: cov }
 }
 
 pub fn decorrelate_lambda(float: &FloatAmbiguitySolution) -> DecorrelatedAmbiguities {
@@ -121,10 +115,7 @@ pub fn search_integer_candidates(
         base.push(v.round() as i64);
     }
     let cost1 = candidate_cost(n_prime, q_prime, &base);
-    best.push(IntegerCandidate {
-        integers: base.clone(),
-        cost: cost1,
-    });
+    best.push(IntegerCandidate { integers: base.clone(), cost: cost1 });
     let mut neighbor = base.clone();
     let mut max_idx = 0;
     let mut max_res = 0.0;
@@ -136,23 +127,12 @@ pub fn search_integer_candidates(
         }
     }
     if max_res > 0.0 {
-        let dir = if n_prime[max_idx] - n_prime[max_idx].round() >= 0.0 {
-            1
-        } else {
-            -1
-        };
+        let dir = if n_prime[max_idx] - n_prime[max_idx].round() >= 0.0 { 1 } else { -1 };
         neighbor[max_idx] += dir;
         let cost2 = candidate_cost(n_prime, q_prime, &neighbor);
-        best.push(IntegerCandidate {
-            integers: neighbor,
-            cost: cost2,
-        });
+        best.push(IntegerCandidate { integers: neighbor, cost: cost2 });
     }
-    best.sort_by(|a, b| {
-        a.cost
-            .partial_cmp(&b.cost)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    best.sort_by(|a, b| a.cost.partial_cmp(&b.cost).unwrap_or(std::cmp::Ordering::Equal));
     best.truncate(top_k.max(1));
     best
 }
@@ -160,12 +140,7 @@ pub fn search_integer_candidates(
 fn candidate_cost(n_prime: &[f64], q_prime: &[Vec<f64>], integers: &[i64]) -> f64 {
     let mut cost = 0.0;
     for i in 0..n_prime.len() {
-        let var = q_prime
-            .get(i)
-            .and_then(|row| row.get(i))
-            .copied()
-            .unwrap_or(1.0)
-            .max(1e-6);
+        let var = q_prime.get(i).and_then(|row| row.get(i)).copied().unwrap_or(1.0).max(1e-6);
         let res = n_prime[i] - integers[i] as f64;
         cost += res * res / var;
     }
@@ -213,11 +188,7 @@ pub fn select_partial_fix(
         }
         cov.push(row);
     }
-    FloatAmbiguitySolution {
-        ids,
-        float_cycles: floats,
-        covariance: cov,
-    }
+    FloatAmbiguitySolution { ids, float_cycles: floats, covariance: cov }
 }
 
 #[allow(dead_code)]
@@ -240,10 +211,7 @@ pub struct FixPolicy {
 
 impl Default for FixPolicy {
     fn default() -> Self {
-        Self {
-            ratio_threshold: 3.0,
-            consecutive_required: 3,
-        }
+        Self { ratio_threshold: 3.0, consecutive_required: 3 }
     }
 }
 
@@ -252,11 +220,7 @@ pub struct DummyFixer;
 
 impl AmbiguityFixer for DummyFixer {
     fn fix(&self, _float: &FloatAmbiguitySolution) -> AmbiguityFixResult {
-        AmbiguityFixResult {
-            candidates: Vec::new(),
-            ratio: None,
-            accepted: false,
-        }
+        AmbiguityFixResult { candidates: Vec::new(), ratio: None, accepted: false }
     }
 }
 
@@ -328,11 +292,7 @@ impl NaiveFixer {
                 fixed_count: 0,
             };
             return (
-                AmbiguityFixResult {
-                    candidates: Vec::new(),
-                    ratio: None,
-                    accepted: false,
-                },
+                AmbiguityFixResult { candidates: Vec::new(), ratio: None, accepted: false },
                 audit,
             );
         }
@@ -340,9 +300,7 @@ impl NaiveFixer {
         let decor = decorrelate_lambda(float);
         let mut candidates = search_integer_candidates(&decor.n_prime, &decor.q_prime, 2);
         let mut ratio = ratio_from_candidates(&candidates);
-        let mut accepted = ratio
-            .map(|r| ratio_test(r, &self.policy, state))
-            .unwrap_or(false);
+        let mut accepted = ratio.map(|r| ratio_test(r, &self.policy, state)).unwrap_or(false);
         let mut fixed_count = if accepted { decor.n_prime.len() } else { 0 };
         let mut reason = if accepted { "accepted" } else { "ratio_fail" };
 
@@ -369,13 +327,8 @@ impl NaiveFixer {
             ratio,
             accepted,
         };
-        let audit = FixAuditEvent {
-            epoch_idx,
-            ratio,
-            accepted,
-            reason: reason.to_string(),
-            fixed_count,
-        };
+        let audit =
+            FixAuditEvent { epoch_idx, ratio, accepted, reason: reason.to_string(), fixed_count };
         (result, audit)
     }
 }

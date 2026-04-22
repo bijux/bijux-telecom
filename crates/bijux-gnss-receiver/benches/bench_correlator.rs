@@ -14,17 +14,11 @@ fn bench_correlator(c: &mut Criterion) {
     );
     let iq = vec![Complex::new(0.5f32, -0.2f32); samples_per_code];
     let frame = SamplesFrame::new(
-        SampleTime {
-            sample_index: 0,
-            sample_rate_hz: config.sampling_freq_hz,
-        },
+        SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
         Seconds(1.0 / config.sampling_freq_hz),
         iq,
     );
-    let sat = SatId {
-        constellation: Constellation::Gps,
-        prn: 1,
-    };
+    let sat = SatId { constellation: Constellation::Gps, prn: 1 };
     c.bench_function("tracking_correlator_epoch", |b| {
         b.iter_batched(
             || frame.clone(),

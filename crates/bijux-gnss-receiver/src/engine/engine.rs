@@ -30,20 +30,14 @@ impl Receiver {
                     None,
                     None,
                 );
-                return Err(crate::engine::receiver_config::ReceiverError::Input(
-                    InputError {
-                        message: err.to_string(),
-                    },
-                ));
+                return Err(crate::engine::receiver_config::ReceiverError::Input(InputError {
+                    message: err.to_string(),
+                }));
             }
         };
 
-        let sats: Vec<SatId> = (1..=32)
-            .map(|prn| SatId {
-                constellation: Constellation::Gps,
-                prn,
-            })
-            .collect();
+        let sats: Vec<SatId> =
+            (1..=32).map(|prn| SatId { constellation: Constellation::Gps, prn }).collect();
         let acquisition = crate::pipeline::acquisition::Acquisition::new(
             self.config().clone(),
             self.runtime().clone(),

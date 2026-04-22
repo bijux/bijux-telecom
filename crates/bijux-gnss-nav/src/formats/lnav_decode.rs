@@ -312,10 +312,7 @@ impl EphemerisBuilder {
 
     pub fn try_build(&self) -> Option<GpsEphemeris> {
         Some(GpsEphemeris {
-            sat: SatId {
-                constellation: Constellation::Gps,
-                prn: self.prn,
-            },
+            sat: SatId { constellation: Constellation::Gps, prn: self.prn },
             iodc: self.iodc?,
             iode: self.iode?,
             week: self.week?,
@@ -371,36 +368,18 @@ pub fn decode_rawephem_hex(prn: u8, sub1: &str, sub2: &str, sub3: &str) -> Optio
     let w1 = decode_subframe_hex(sub1)?;
     let w2 = decode_subframe_hex(sub2)?;
     let w3 = decode_subframe_hex(sub3)?;
-    let mut builder = EphemerisBuilder {
-        prn,
-        ..Default::default()
-    };
+    let mut builder = EphemerisBuilder { prn, ..Default::default() };
     let words1: Vec<GpsWord> = w1
         .into_iter()
-        .map(|data| GpsWord {
-            data,
-            parity_ok: true,
-            d29_star: 0,
-            d30_star: 0,
-        })
+        .map(|data| GpsWord { data, parity_ok: true, d29_star: 0, d30_star: 0 })
         .collect();
     let words2: Vec<GpsWord> = w2
         .into_iter()
-        .map(|data| GpsWord {
-            data,
-            parity_ok: true,
-            d29_star: 0,
-            d30_star: 0,
-        })
+        .map(|data| GpsWord { data, parity_ok: true, d29_star: 0, d30_star: 0 })
         .collect();
     let words3: Vec<GpsWord> = w3
         .into_iter()
-        .map(|data| GpsWord {
-            data,
-            parity_ok: true,
-            d29_star: 0,
-            d30_star: 0,
-        })
+        .map(|data| GpsWord { data, parity_ok: true, d29_star: 0, d30_star: 0 })
         .collect();
     builder.merge(parse_subframe1(&words1)?);
     builder.merge(parse_subframe2(&words2)?);

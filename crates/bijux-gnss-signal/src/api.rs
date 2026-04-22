@@ -53,11 +53,7 @@ pub trait Correlator {
         carrier_hz: f64,
         code_phase_samples: f64,
         early_late_spacing_chips: f64,
-    ) -> (
-        num_complex::Complex<f32>,
-        num_complex::Complex<f32>,
-        num_complex::Complex<f32>,
-    );
+    ) -> (num_complex::Complex<f32>, num_complex::Complex<f32>, num_complex::Complex<f32>);
 }
 
 /// Sink interface for writing sample frames.

@@ -39,10 +39,7 @@ pub fn bit_sync_from_prompt(prompt_i: &[f32]) -> BitSyncResult {
         idx += 20;
     }
 
-    BitSyncResult {
-        bit_start_ms: best_offset,
-        bits,
-    }
+    BitSyncResult { bit_start_ms: best_offset, bits }
 }
 
 pub fn find_preamble(bits: &[i8]) -> Option<(usize, bool)> {
@@ -115,12 +112,7 @@ pub fn decode_words(bits: &[i8]) -> Vec<GpsWord> {
         prev_d29 = raw_bits[28];
         prev_d30 = raw_bits[29];
 
-        words.push(GpsWord {
-            data,
-            parity_ok,
-            d29_star: prev_d29,
-            d30_star: prev_d30,
-        });
+        words.push(GpsWord { data, parity_ok, d29_star: prev_d29, d30_star: prev_d30 });
 
         idx += 30;
     }
@@ -294,29 +286,16 @@ pub fn decode_subframes(bits: &[i8]) -> (Vec<GpsEphemeris>, LnavDecodeStats) {
         idx += 300;
     }
 
-    let parity_pass_rate = if parity_total > 0 {
-        parity_ok as f64 / parity_total as f64
-    } else {
-        0.0
-    };
+    let parity_pass_rate =
+        if parity_total > 0 { parity_ok as f64 / parity_total as f64 } else { 0.0 };
 
-    (
-        ephemerides,
-        LnavDecodeStats {
-            preamble_hits,
-            parity_pass_rate,
-        },
-    )
+    (ephemerides, LnavDecodeStats { preamble_hits, parity_pass_rate })
 }
 
 fn parse_how(word: &GpsWord) -> SubframeInfo {
     let tow = get_bits(word.data, 1, 17) as f64 * 6.0;
     let subframe_id = get_bits(word.data, 19, 3) as u8;
-    SubframeInfo {
-        tow_s: tow,
-        subframe_id,
-        parity_ok_count: if word.parity_ok { 1 } else { 0 },
-    }
+    SubframeInfo { tow_s: tow, subframe_id, parity_ok_count: if word.parity_ok { 1 } else { 0 } }
 }
 
 fn parse_ephemeris(words: &[GpsWord], subframe_id: u8) -> Option<EphemerisPart> {

@@ -3,10 +3,7 @@ use bijux_gnss_receiver::api::TrackingResult;
 use bijux_gnss_receiver::api::{observations_from_tracking_results, ReceiverPipelineConfig};
 
 fn make_track(prn: u8, config: &ReceiverPipelineConfig) -> TrackingResult {
-    let sat = SatId {
-        constellation: Constellation::Gps,
-        prn,
-    };
+    let sat = SatId { constellation: Constellation::Gps, prn };
     let epoch = TrackEpoch {
         epoch: Epoch { index: 0 },
         sample_index: 0,
@@ -28,12 +25,7 @@ fn make_track(prn: u8, config: &ReceiverPipelineConfig) -> TrackingResult {
         fll_err: 0.0,
         processing_ms: None,
     };
-    TrackingResult {
-        sat,
-        carrier_hz: 0.0,
-        code_phase_samples: 0.0,
-        epochs: vec![epoch],
-    }
+    TrackingResult { sat, carrier_hz: 0.0, code_phase_samples: 0.0, epochs: vec![epoch] }
 }
 
 #[test]

@@ -43,10 +43,7 @@ impl Acquisition {
 
     /// Perform satellite acquisition on a 1 ms buffer using FFT-based circular correlation.
     pub fn run_fft(&self, frame: &SamplesFrame, sats: &[SatId]) -> Vec<AcqResult> {
-        self.run_fft_topn(frame, sats, 1, 1, 1)
-            .into_iter()
-            .map(|mut v| v.remove(0))
-            .collect()
+        self.run_fft_topn(frame, sats, 1, 1, 1).into_iter().map(|mut v| v.remove(0)).collect()
     }
 
     pub fn run_fft_topn(

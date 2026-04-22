@@ -25,9 +25,8 @@ fn fft_ifft_round_trip_tolerance() {
     let fft = planner.plan_fft_forward(n);
     let ifft = planner.plan_fft_inverse(n);
 
-    let mut data: Vec<Complex<f32>> = (0..n)
-        .map(|i| Complex::new((i as f32).sin(), (i as f32).cos()))
-        .collect();
+    let mut data: Vec<Complex<f32>> =
+        (0..n).map(|i| Complex::new((i as f32).sin(), (i as f32).cos())).collect();
 
     let original = data.clone();
     fft.process(&mut data);

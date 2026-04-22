@@ -36,21 +36,13 @@ pub struct Enu {
 /// Convert ECEF to geodetic.
 pub fn ecef_to_llh(ecef: Ecef) -> Llh {
     let (lat, lon, alt) = ecef_to_geodetic(ecef.x_m, ecef.y_m, ecef.z_m);
-    Llh {
-        lat_deg: lat,
-        lon_deg: lon,
-        alt_m: alt,
-    }
+    Llh { lat_deg: lat, lon_deg: lon, alt_m: alt }
 }
 
 /// Convert geodetic to ECEF.
 pub fn llh_to_ecef(llh: Llh) -> Ecef {
     let (x, y, z) = geodetic_to_ecef(llh.lat_deg, llh.lon_deg, llh.alt_m);
-    Ecef {
-        x_m: x,
-        y_m: y,
-        z_m: z,
-    }
+    Ecef { x_m: x, y_m: y, z_m: z }
 }
 
 /// Convert ECEF to local ENU.
@@ -63,11 +55,7 @@ pub fn ecef_to_enu_ref(ecef: Ecef, reference: Llh) -> Enu {
         reference.lon_deg,
         reference.alt_m,
     );
-    Enu {
-        e_m: e,
-        n_m: n,
-        u_m: u,
-    }
+    Enu { e_m: e, n_m: n, u_m: u }
 }
 
 /// Convert ECEF to geodetic (lat, lon, alt).
@@ -152,20 +140,12 @@ mod tests {
 
     #[test]
     fn llh_ecef_roundtrip_equator() {
-        let llh = Llh {
-            lat_deg: 0.0,
-            lon_deg: 0.0,
-            alt_m: 0.0,
-        };
+        let llh = Llh { lat_deg: 0.0, lon_deg: 0.0, alt_m: 0.0 };
         let ecef = llh_to_ecef(llh);
         assert!((ecef.x_m - 6_378_137.0).abs() < 1.0);
         assert!(ecef.y_m.abs() < 1.0);
         assert!(ecef.z_m.abs() < 1.0);
-        let back = ecef_to_llh(Ecef {
-            x_m: ecef.x_m,
-            y_m: ecef.y_m,
-            z_m: ecef.z_m,
-        });
+        let back = ecef_to_llh(Ecef { x_m: ecef.x_m, y_m: ecef.y_m, z_m: ecef.z_m });
         assert!((back.lat_deg - llh.lat_deg).abs() < 1e-6);
         assert!((back.lon_deg - llh.lon_deg).abs() < 1e-6);
     }

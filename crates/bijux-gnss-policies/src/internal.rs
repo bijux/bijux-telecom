@@ -169,18 +169,10 @@ fn check_api_purity(files: &[PathBuf]) -> Result<()> {
         let content = fs::read_to_string(path)?;
         for (idx, line) in content.lines().enumerate() {
             if impl_re.is_match(line) {
-                bail!(
-                    "impl block not allowed in api.rs at {}:{}",
-                    path.display(),
-                    idx + 1
-                );
+                bail!("impl block not allowed in api.rs at {}:{}", path.display(), idx + 1);
             }
             if pub_mod_re.is_match(line) {
-                bail!(
-                    "pub mod not allowed in api.rs at {}:{}",
-                    path.display(),
-                    idx + 1
-                );
+                bail!("pub mod not allowed in api.rs at {}:{}", path.display(), idx + 1);
             }
             if pub_export_re.is_match(line) && line.contains("_internal") {
                 bail!(
@@ -211,23 +203,14 @@ fn check_purity_zones(files: &[PathBuf], config: &GuardrailConfig) -> Result<()>
     }
     for path in files {
         let path_str = path.display().to_string();
-        if !config
-            .purity_zones
-            .iter()
-            .any(|zone| path_str.contains(zone))
-        {
+        if !config.purity_zones.iter().any(|zone| path_str.contains(zone)) {
             continue;
         }
         let content = fs::read_to_string(path)?;
         for (idx, line) in content.lines().enumerate() {
             for regex in &forbidden {
                 if regex.is_match(line) {
-                    bail!(
-                        "purity violation at {}:{} -> {}",
-                        path.display(),
-                        idx + 1,
-                        line.trim()
-                    );
+                    bail!("purity violation at {}:{} -> {}", path.display(), idx + 1, line.trim());
                 }
             }
         }
@@ -255,10 +238,8 @@ fn check_depth(src_dir: &Path, files: &[PathBuf], config: &GuardrailConfig) -> R
         if components.len() <= config.max_depth {
             continue;
         }
-        let is_mod_rs = path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| name == "mod.rs");
+        let is_mod_rs =
+            path.file_name().and_then(|name| name.to_str()).is_some_and(|name| name == "mod.rs");
         if components.len() == config.max_depth + 1 && is_mod_rs {
             continue;
         }
@@ -295,9 +276,7 @@ fn check_mod_only_dirs(src_dir: &Path) -> Result<()> {
         if rs_files.is_empty() {
             continue;
         }
-        let allowed = rs_files
-            .iter()
-            .all(|name| name == "mod.rs" || name == "tests.rs");
+        let allowed = rs_files.iter().all(|name| name == "mod.rs" || name == "tests.rs");
         if allowed && rs_files.iter().any(|name| name == "mod.rs") && rs_files.len() <= 2 {
             bail!(
                 "module directory contains only mod.rs (and optionally tests.rs): {}",
@@ -326,10 +305,7 @@ fn check_empty_modules(files: &[PathBuf]) -> Result<()> {
             meaningful += 1;
         }
         if meaningful == 0 {
-            bail!(
-                "empty module file (only mod re-exports): {}",
-                path.display()
-            );
+            bail!("empty module file (only mod re-exports): {}", path.display());
         }
     }
     Ok(())
@@ -412,10 +388,7 @@ fn check_pub_use_spam(files: &[PathBuf], config: &GuardrailConfig) -> Result<()>
     let pub_use_re = Regex::new(r"^\s*pub\s+use\b")?;
     for path in files {
         let content = fs::read_to_string(path)?;
-        let count = content
-            .lines()
-            .filter(|line| pub_use_re.is_match(line))
-            .count();
+        let count = content.lines().filter(|line| pub_use_re.is_match(line)).count();
         if count > config.max_pub_use_per_file {
             bail!(
                 "{} has {} pub use re-exports (max {})",
@@ -478,11 +451,7 @@ fn check_panic_expect(files: &[PathBuf], config: &GuardrailConfig) -> Result<()>
     let expect_re = Regex::new(r"\.expect\(")?;
     for path in files {
         let path_str = path.to_string_lossy();
-        if config
-            .allow_panic_expect_paths
-            .iter()
-            .any(|allowed| path_str.contains(allowed))
-        {
+        if config.allow_panic_expect_paths.iter().any(|allowed| path_str.contains(allowed)) {
             continue;
         }
         let content = fs::read_to_string(path)?;
@@ -499,11 +468,7 @@ fn check_stage_id_strings(files: &[PathBuf], config: &GuardrailConfig) -> Result
     let stage_re = Regex::new(r#"\"(fastq|bam|vcf)\.[^\"]+\""#)?;
     for path in files {
         let path_str = path.to_string_lossy();
-        if config
-            .allow_stage_id_paths
-            .iter()
-            .any(|allowed| path_str.contains(allowed))
-        {
+        if config.allow_stage_id_paths.iter().any(|allowed| path_str.contains(allowed)) {
             continue;
         }
         let content = fs::read_to_string(path)?;

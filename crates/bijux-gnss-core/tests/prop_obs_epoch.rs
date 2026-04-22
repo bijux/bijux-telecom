@@ -7,10 +7,7 @@ use proptest::prelude::*;
 
 fn make_epoch(t_rx_s: f64) -> ObsEpoch {
     let sig = SigId {
-        sat: SatId {
-            constellation: Constellation::Gps,
-            prn: 1,
-        },
+        sat: SatId { constellation: Constellation::Gps, prn: 1 },
         band: SignalBand::L1,
         code: SignalCode::Ca,
     };

@@ -18,10 +18,7 @@ fn make_epoch(prn: u8, pseudo: f64, phase: f64, doppler: f64) -> ObsEpoch {
         role: ReceiverRole::Rover,
         sats: vec![ObsSatellite {
             signal_id: SigId {
-                sat: SatId {
-                    constellation: Constellation::Gps,
-                    prn,
-                },
+                sat: SatId { constellation: Constellation::Gps, prn },
                 band: SignalBand::L1,
                 code: bijux_gnss_core::api::SignalCode::Ca,
             },

@@ -156,11 +156,8 @@ impl PositionSolver {
                 v.push(res);
             }
 
-            let mut weights = if self.robust {
-                huber_weights(&v, self.huber_k)
-            } else {
-                vec![1.0; v.len()]
-            };
+            let mut weights =
+                if self.robust { huber_weights(&v, self.huber_k) } else { vec![1.0; v.len()] };
             for (i, (obs, _, _)) in used.iter().enumerate() {
                 if let Some(w) = weights.get_mut(i) {
                     *w *= obs.weight;
@@ -171,11 +168,8 @@ impl PositionSolver {
             cov_symmetrized |= sym;
             cov_clamped |= clamp;
             if let Some(max_var) = max_var {
-                cov_max_variance = Some(
-                    cov_max_variance
-                        .map(|v: f64| v.max(max_var))
-                        .unwrap_or(max_var),
-                );
+                cov_max_variance =
+                    Some(cov_max_variance.map(|v: f64| v.max(max_var)).unwrap_or(max_var));
             }
             cov = Some(cov_out);
             x += dx;
@@ -198,10 +192,7 @@ impl PositionSolver {
             let sigma_m = (1.0 / obs.weight.max(1e-6)).sqrt();
             let norm = res / sigma_m;
             if res.abs() > self.residual_gate_m || (norm * norm) > self.chi_square_gate {
-                rejected.push((
-                    obs.sat,
-                    bijux_gnss_core::api::MeasurementRejectReason::Outlier,
-                ));
+                rejected.push((obs.sat, bijux_gnss_core::api::MeasurementRejectReason::Outlier));
             } else {
                 filtered.push((obs.clone(), state.clone(), res));
             }
@@ -311,10 +302,7 @@ impl PositionSolver {
             rms_m: rms,
             sigma_h_m: Some(sigma_h_m),
             sigma_v_m: Some(sigma_v_m),
-            residuals: filtered
-                .iter()
-                .map(|(o, _, r)| (o.sat, *r, o.weight))
-                .collect(),
+            residuals: filtered.iter().map(|(o, _, r)| (o.sat, *r, o.weight)).collect(),
             rejected,
             separation_max_m: separation_max,
             separation_suspect,
@@ -549,9 +537,7 @@ pub fn weight_from_cn0_elev(cn0_dbhz: f64, elev_deg: f64, config: WeightingConfi
         return 1.0;
     }
     let elev = elev_deg.clamp(0.0, 90.0).max(config.min_elev_deg);
-    let w_elev = (elev / 90.0)
-        .powf(config.elev_exponent)
-        .max(config.min_weight);
+    let w_elev = (elev / 90.0).powf(config.elev_exponent).max(config.min_weight);
     let w_cn0 = (cn0_dbhz / config.cn0_ref_dbhz).max(config.min_weight);
     (w_elev * w_cn0).max(config.min_weight)
 }

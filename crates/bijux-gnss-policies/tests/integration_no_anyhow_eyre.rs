@@ -28,9 +28,5 @@ fn no_anyhow_eyre_outside_cli() {
             offenders.push(name.to_string());
         }
     }
-    assert!(
-        offenders.is_empty(),
-        "anyhow/eyre found outside CLI: {:?}",
-        offenders
-    );
+    assert!(offenders.is_empty(), "anyhow/eyre found outside CLI: {:?}", offenders);
 }

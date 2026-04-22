@@ -11,23 +11,14 @@ fn position_solver_returns_solution() {
 
 #[test]
 fn ephemeris_is_constructible() {
-    let eph = Ephemeris {
-        sat: SatId {
-            constellation: Constellation::Gps,
-            prn: 1,
-        },
-        toe_s: 0.0,
-    };
+    let eph = Ephemeris { sat: SatId { constellation: Constellation::Gps, prn: 1 }, toe_s: 0.0 };
     assert_eq!(eph.sat.prn, 1);
 }
 
 #[test]
 fn position_observation_constructible() {
     let obs = PositionObservation {
-        sat: SatId {
-            constellation: Constellation::Gps,
-            prn: 3,
-        },
+        sat: SatId { constellation: Constellation::Gps, prn: 3 },
         pseudorange_m: 20_000_000.0,
         cn0_dbhz: 40.0,
         elevation_deg: None,

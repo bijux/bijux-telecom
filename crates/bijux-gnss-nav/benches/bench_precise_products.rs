@@ -24,10 +24,7 @@ AS G01 2020 01 01 00 15 00.000000 0 0 0 0.000002
 fn bench_precise_products(c: &mut Criterion) {
     let sp3 = sample_sp3();
     let clk = sample_clk();
-    let sat = SatId {
-        constellation: Constellation::Gps,
-        prn: 1,
-    };
+    let sat = SatId { constellation: Constellation::Gps, prn: 1 };
     c.bench_function("sp3_interpolation", |b| {
         b.iter_batched(
             || sp3.clone(),
