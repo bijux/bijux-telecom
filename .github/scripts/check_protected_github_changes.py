@@ -26,6 +26,8 @@ BASE_PROTECTED_PATHS = {
     ".github/bijux-std-shared.sha256",
     ".github/release.env",
     ".github/dependabot.yml",
+    ".github/labeler.yml",
+    "codecov.yml",
     ".github/workflows/ci.yml",
     ".github/workflows/verify.yml",
     ".github/standards/bijux-std.sha",

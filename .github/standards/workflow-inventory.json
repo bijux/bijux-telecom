@@ -35,6 +35,16 @@
       "id": "release-pypi",
       "source": "shared/bijux-gh/workflows/release-pypi.yml",
       "consumer_runtime": ".github/workflows/release-pypi.yml"
+    },
+    {
+      "id": "labeler",
+      "source": "shared/bijux-gh/workflows/labeler.yml",
+      "consumer_runtime": ".github/workflows/labeler.yml"
+    },
+    {
+      "id": "codecov",
+      "source": "shared/bijux-gh/workflows/codecov.yml",
+      "consumer_runtime": ".github/workflows/codecov.yml"
     }
   ]
 }
