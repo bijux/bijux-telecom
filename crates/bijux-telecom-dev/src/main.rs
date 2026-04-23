@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -17,6 +18,24 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
+    /// Validate audit allowlist quality contract.
+    AuditAllowlist {
+        /// Workspace root override.
+        #[arg(long)]
+        workspace_root: Option<PathBuf>,
+    },
+    /// Validate deny policy deviations governance contract.
+    DenyPolicyDeviations {
+        /// Workspace root override.
+        #[arg(long)]
+        workspace_root: Option<PathBuf>,
+    },
+    /// Print cargo audit ignore arguments derived from audit allowlist.
+    AuditIgnoreArgs {
+        /// Workspace root override.
+        #[arg(long)]
+        workspace_root: Option<PathBuf>,
+    },
     /// Run benchmark suite and compare against baseline.
     BenchCompare {
         /// Fail if a regression exceeds threshold.
@@ -37,10 +56,256 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::BenchCompare { strict, threshold, workspace_root } => {
-            run_bench_compare(strict, threshold, workspace_root)
+        Commands::AuditAllowlist { workspace_root } => run_audit_allowlist_check(workspace_root),
+        Commands::DenyPolicyDeviations { workspace_root } => {
+            run_deny_policy_deviations_check(workspace_root)
+        }
+        Commands::AuditIgnoreArgs { workspace_root } => run_audit_ignore_args(workspace_root),
+        Commands::BenchCompare {
+            strict,
+            threshold,
+            workspace_root,
+        } => run_bench_compare(strict, threshold, workspace_root),
+    }
+}
+
+fn run_audit_ignore_args(workspace_root: Option<PathBuf>) -> Result<()> {
+    let root =
+        workspace_root.unwrap_or(std::env::current_dir().context("resolve current directory")?);
+    let path = root.join("audit-allowlist.toml");
+    if !path.is_file() {
+        return Ok(());
+    }
+
+    let payload = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    let value: toml::Value =
+        toml::from_str(&payload).with_context(|| format!("parse {}", path.display()))?;
+    let mut advisory_ids = BTreeSet::new();
+
+    if let Some(rows) = value.get("advisory").and_then(toml::Value::as_array) {
+        for row in rows {
+            let advisory_id = row
+                .get("id")
+                .and_then(toml::Value::as_str)
+                .unwrap_or("")
+                .trim();
+            if is_rustsec_id(advisory_id) {
+                advisory_ids.insert(advisory_id.to_string());
+            }
         }
     }
+
+    if let Some(ignore_rows) = value
+        .get("advisories")
+        .and_then(toml::Value::as_table)
+        .and_then(|table| table.get("ignore"))
+        .and_then(toml::Value::as_array)
+    {
+        for advisory_value in ignore_rows {
+            let advisory_id = advisory_value.as_str().unwrap_or("").trim();
+            if is_rustsec_id(advisory_id) {
+                advisory_ids.insert(advisory_id.to_string());
+            }
+        }
+    }
+
+    let args = advisory_ids
+        .into_iter()
+        .map(|id| format!("--ignore {id}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    println!("{args}");
+    Ok(())
+}
+
+fn run_audit_allowlist_check(workspace_root: Option<PathBuf>) -> Result<()> {
+    let root =
+        workspace_root.unwrap_or(std::env::current_dir().context("resolve current directory")?);
+    let path = root.join("audit-allowlist.toml");
+    if !path.is_file() {
+        bail!("missing {}", path.display());
+    }
+    let payload = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    let value: toml::Value =
+        toml::from_str(&payload).with_context(|| format!("parse {}", path.display()))?;
+    let advisories = value
+        .get("advisory")
+        .and_then(toml::Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if advisories.is_empty() {
+        println!("check-audit-allowlist: passed");
+        return Ok(());
+    }
+
+    let today = current_iso_day()?;
+    let mut errors = Vec::new();
+    for (index, row) in advisories.iter().enumerate() {
+        let label = format!("advisory[{index}]");
+        let id = row
+            .get("id")
+            .and_then(toml::Value::as_str)
+            .unwrap_or("")
+            .trim();
+        let why = row
+            .get("why")
+            .and_then(toml::Value::as_str)
+            .unwrap_or("")
+            .trim();
+        let owner = row
+            .get("owner")
+            .and_then(toml::Value::as_str)
+            .unwrap_or("")
+            .trim();
+        let link = row
+            .get("link")
+            .and_then(toml::Value::as_str)
+            .unwrap_or("")
+            .trim();
+        let expiry = row
+            .get("expiry")
+            .and_then(toml::Value::as_str)
+            .unwrap_or("")
+            .trim();
+
+        if !is_rustsec_id(id) {
+            errors.push(format!("{label}: id must match RUSTSEC-YYYY-NNNN"));
+        }
+        if why.is_empty() {
+            errors.push(format!("{label}: missing why"));
+        }
+        if owner.is_empty() {
+            errors.push(format!("{label}: missing owner"));
+        }
+        if !(link.starts_with("http://") || link.starts_with("https://")) {
+            errors.push(format!("{label}: link must be http(s)"));
+        }
+        if !is_iso_day(expiry) {
+            errors.push(format!("{label}: expiry must be YYYY-MM-DD"));
+        } else if expiry < today.as_str() {
+            errors.push(format!("{label}: expiry has passed ({expiry})"));
+        }
+    }
+
+    if errors.is_empty() {
+        println!("check-audit-allowlist: passed");
+        return Ok(());
+    }
+
+    bail!(
+        "audit allowlist quality gate failed:\n{}",
+        errors.join("\n")
+    );
+}
+
+fn run_deny_policy_deviations_check(workspace_root: Option<PathBuf>) -> Result<()> {
+    let root =
+        workspace_root.unwrap_or(std::env::current_dir().context("resolve current directory")?);
+    let path = root.join("configs/rust/deny.deviations.toml");
+    if !path.is_file() {
+        bail!("missing {}", path.display());
+    }
+    let payload = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    let value: toml::Value =
+        toml::from_str(&payload).with_context(|| format!("parse {}", path.display()))?;
+    let rows = value
+        .get("deviation")
+        .and_then(toml::Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if rows.is_empty() {
+        println!("check-deny-policy-deviations: passed");
+        return Ok(());
+    }
+    let today = current_iso_day()?;
+    let mut errors = Vec::new();
+    for (index, row) in rows.iter().enumerate() {
+        let label = format!("deviation[{index}]");
+        let id = row
+            .get("id")
+            .and_then(toml::Value::as_str)
+            .unwrap_or("")
+            .trim();
+        let owner = row
+            .get("owner")
+            .and_then(toml::Value::as_str)
+            .unwrap_or("")
+            .trim();
+        let reason = row
+            .get("reason")
+            .and_then(toml::Value::as_str)
+            .unwrap_or("")
+            .trim();
+        let expiry = row
+            .get("expiry")
+            .and_then(toml::Value::as_str)
+            .unwrap_or("")
+            .trim();
+        let review = row
+            .get("review")
+            .and_then(toml::Value::as_str)
+            .unwrap_or("")
+            .trim();
+        if id.is_empty() {
+            errors.push(format!("{label}: missing id"));
+        }
+        if owner.is_empty() {
+            errors.push(format!("{label}: missing owner"));
+        }
+        if reason.is_empty() {
+            errors.push(format!("{label}: missing reason"));
+        }
+        if !is_iso_day(expiry) {
+            errors.push(format!("{label}: expiry must be YYYY-MM-DD"));
+        } else if expiry < today.as_str() {
+            errors.push(format!("{label}: expiry has passed ({expiry})"));
+        }
+        if !(review.starts_with("http://") || review.starts_with("https://")) {
+            errors.push(format!("{label}: review must be an http(s) link"));
+        } else if !review.contains("bijux-std") {
+            errors.push(format!("{label}: review must reference bijux-std"));
+        }
+    }
+    if errors.is_empty() {
+        println!("check-deny-policy-deviations: passed");
+        return Ok(());
+    }
+    bail!(
+        "deny policy deviations governance gate failed:\n{}",
+        errors.join("\n")
+    );
+}
+
+fn current_iso_day() -> Result<String> {
+    let output = Command::new("date")
+        .args(["+%Y-%m-%d"])
+        .output()
+        .context("resolve current date")?;
+    if !output.status.success() {
+        bail!("resolve current date failed");
+    }
+    Ok(String::from_utf8(output.stdout)
+        .context("date output is not UTF-8")?
+        .trim()
+        .to_string())
+}
+
+fn is_iso_day(value: &str) -> bool {
+    value.len() == 10
+        && value.chars().nth(4) == Some('-')
+        && value.chars().nth(7) == Some('-')
+        && value
+            .chars()
+            .enumerate()
+            .all(|(index, ch)| (index == 4 || index == 7) || ch.is_ascii_digit())
+}
+
+fn is_rustsec_id(value: &str) -> bool {
+    value.len() == 17
+        && value.starts_with("RUSTSEC-")
+        && value.as_bytes().get(12) == Some(&b'-')
+        && value[8..12].chars().all(|ch| ch.is_ascii_digit())
+        && value[13..17].chars().all(|ch| ch.is_ascii_digit())
 }
 
 fn run_bench_compare(strict: bool, threshold: f64, workspace_root: Option<PathBuf>) -> Result<()> {
