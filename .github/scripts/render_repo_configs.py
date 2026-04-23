@@ -106,6 +106,15 @@ def render_yaml_document(data: Any) -> str:
     return PROVENANCE_HEADER + "\n".join(dump_yaml(data)) + "\n"
 
 
+def normalize_labeler_rules(data: Any) -> Any:
+    if not isinstance(data, dict):
+        return data
+    normalized: dict[str, Any] = {}
+    for label, rules in data.items():
+        normalized[label] = rules if isinstance(rules, list) else [rules]
+    return normalized
+
+
 def find_repo_config(manifest: dict, repo_name: str) -> dict:
     for repo in manifest["repositories"]:
         if repo["name"] == repo_name:
@@ -145,7 +154,7 @@ def render_repo(repo_name: str, manifest: dict) -> None:
     labeler_data = repo.get("labeler")
     if labeler_data is not None:
         labeler_path = repo_root / ".github/labeler.yml"
-        labeler_content = render_yaml_document(labeler_data)
+        labeler_content = render_yaml_document(normalize_labeler_rules(labeler_data))
         write_if_needed(labeler_path, labeler_content)
 
     codecov_data = repo.get("codecov")

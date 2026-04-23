@@ -3,53 +3,53 @@
 # Do not edit this generated copy directly.
 
 github:
-  changed-files:
-    - any-glob-to-any-file:
-        - ".github/**"
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
 docs:
-  changed-files:
-    - any-glob-to-any-file:
-        - "docs/**"
-        - "**/*.md"
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docs/**"
+          - "**/*.md"
 rust:
-  changed-files:
-    - any-glob-to-any-file:
-        - "**/*.rs"
-        - Cargo.toml
-        - Cargo.lock
-        - "configs/rust/**"
-        - ".cargo/**"
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.rs"
+          - Cargo.toml
+          - Cargo.lock
+          - "configs/rust/**"
+          - ".cargo/**"
 python:
-  changed-files:
-    - any-glob-to-any-file:
-        - "**/*.py"
-        - pyproject.toml
-        - uv.lock
-        - "requirements*.txt"
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.py"
+          - pyproject.toml
+          - uv.lock
+          - "requirements*.txt"
 javascript:
-  changed-files:
-    - any-glob-to-any-file:
-        - "**/*.js"
-        - "**/*.ts"
-        - package.json
-        - package-lock.json
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.js"
+          - "**/*.ts"
+          - package.json
+          - package-lock.json
 dependencies:
-  changed-files:
-    - any-glob-to-any-file:
-        - Cargo.lock
-        - uv.lock
-        - package-lock.json
-        - "requirements*.txt"
-        - .github/dependabot.yml
+  - changed-files:
+      - any-glob-to-any-file:
+          - Cargo.lock
+          - uv.lock
+          - package-lock.json
+          - "requirements*.txt"
+          - .github/dependabot.yml
 ci:
-  changed-files:
-    - any-glob-to-any-file:
-        - ".github/workflows/**"
-        - "makes/**"
-        - Makefile
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/workflows/**"
+          - "makes/**"
+          - Makefile
 security:
-  changed-files:
-    - any-glob-to-any-file:
-        - configs/rust/deny.toml
-        - AuditAllowlist.toml
-        - SECURITY.md
+  - changed-files:
+      - any-glob-to-any-file:
+          - configs/rust/deny.toml
+          - AuditAllowlist.toml
+          - SECURITY.md
