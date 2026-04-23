@@ -14,18 +14,10 @@ fn no_cross_layer_imports() {
     assert!(nav_bad.is_empty(), "nav imports receiver: {:?}", nav_bad);
 
     let signal_bad = find_string(&signal_src, "bijux_gnss_nav");
-    assert!(
-        signal_bad.is_empty(),
-        "signal imports nav: {:?}",
-        signal_bad
-    );
+    assert!(signal_bad.is_empty(), "signal imports nav: {:?}", signal_bad);
 
     let receiver_bad = find_string(&receiver_src, "bijux_gnss_nav::api::estimation");
-    assert!(
-        receiver_bad.is_empty(),
-        "receiver should not use nav internals: {:?}",
-        receiver_bad
-    );
+    assert!(receiver_bad.is_empty(), "receiver should not use nav internals: {:?}", receiver_bad);
     let receiver_formats = find_string(&receiver_src, "bijux_gnss_nav::api::formats");
     assert!(
         receiver_formats.is_empty(),

@@ -20,14 +20,7 @@ pub struct StatsSummary {
 /// Compute stats for a collection of values.
 pub fn stats(values: &[f64]) -> StatsSummary {
     if values.is_empty() {
-        return StatsSummary {
-            count: 0,
-            mean: 0.0,
-            median: 0.0,
-            rms: 0.0,
-            p95: 0.0,
-            max: 0.0,
-        };
+        return StatsSummary { count: 0, mean: 0.0, median: 0.0, rms: 0.0, p95: 0.0, max: 0.0 };
     }
     let mut sorted = values.to_vec();
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
@@ -37,14 +30,7 @@ pub fn stats(values: &[f64]) -> StatsSummary {
     let median = sorted[count / 2];
     let p95 = sorted[(count as f64 * 0.95).floor().min((count - 1) as f64) as usize];
     let max = *sorted.last().unwrap_or(&0.0);
-    StatsSummary {
-        count,
-        mean,
-        median,
-        rms,
-        p95,
-        max,
-    }
+    StatsSummary { count, mean, median, rms, p95, max }
 }
 
 /// Convert LLA to ECEF (WGS-84).

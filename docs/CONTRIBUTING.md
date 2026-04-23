@@ -11,5 +11,5 @@ See `docs/TESTING.md` for test taxonomy and commands.
 ## CI
 All changes must pass:
 ```bash
-cargo make ci-fast
+make ci-fast
 ```

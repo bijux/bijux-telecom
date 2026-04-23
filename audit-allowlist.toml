@@ -1,5 +1,14 @@
+[metadata]
+review_cadence = "every dependency upgrade sweep (min quarterly)"
+owner = "platform/infra"
+
 [advisories]
 ignore = []
 
-[output]
-deny = ["warnings"]
+# For each ignored advisory use:
+# [[advisory]]
+# id = "RUSTSEC-YYYY-NNNN"
+# why = "short risk acceptance rationale"
+# expiry = "YYYY-MM-DD"
+# owner = "team-or-crate-owner"
+# link = "https://tracker-or-issue-url"

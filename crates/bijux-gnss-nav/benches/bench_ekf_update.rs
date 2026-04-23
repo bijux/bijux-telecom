@@ -14,10 +14,7 @@ fn bench_ekf_update(c: &mut Criterion) {
     };
     let meas = PseudorangeMeasurement {
         sig: SigId {
-            sat: SatId {
-                constellation: Constellation::Gps,
-                prn: 3,
-            },
+            sat: SatId { constellation: Constellation::Gps, prn: 3 },
             band: SignalBand::L1,
             code: SignalCode::Ca,
         },

@@ -17,7 +17,7 @@ This repository uses a test taxonomy to keep the suite navigable and determinist
 - Unit tests only: `cargo test --lib`
 - Integration/golden/fault tests: `cargo test --tests`
 - Property tests (default): `cargo test prop_`
-- Nextest: `cargo nextest run`
+- Nextest: `cargo nextest run --config-file configs/rust/nextest.toml`
 
 ## Determinism Rules
 

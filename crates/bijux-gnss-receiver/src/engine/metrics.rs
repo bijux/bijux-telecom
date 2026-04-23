@@ -26,11 +26,7 @@ pub fn write_metrics_summary(runtime: &ReceiverRuntime, artifacts: &RunArtifacts
     let acquisition_peak_mean_ratio_avg = if artifacts.acquisitions.is_empty() {
         None
     } else {
-        let sum: f32 = artifacts
-            .acquisitions
-            .iter()
-            .map(|a| a.peak_mean_ratio)
-            .sum();
+        let sum: f32 = artifacts.acquisitions.iter().map(|a| a.peak_mean_ratio).sum();
         Some(sum / artifacts.acquisitions.len() as f32)
     };
 
@@ -50,26 +46,11 @@ pub fn write_metrics_summary(runtime: &ReceiverRuntime, artifacts: &RunArtifacts
             cn0_max = cn0_max.max(epoch.cn0_dbhz);
         }
     }
-    let tracking_lock_ratio = if total_epochs == 0 {
-        None
-    } else {
-        Some(locked_epochs as f64 / total_epochs as f64)
-    };
-    let cn0_dbhz_mean = if total_epochs == 0 {
-        None
-    } else {
-        Some(cn0_sum / total_epochs as f64)
-    };
-    let cn0_dbhz_min = if total_epochs == 0 {
-        None
-    } else {
-        Some(cn0_min)
-    };
-    let cn0_dbhz_max = if total_epochs == 0 {
-        None
-    } else {
-        Some(cn0_max)
-    };
+    let tracking_lock_ratio =
+        if total_epochs == 0 { None } else { Some(locked_epochs as f64 / total_epochs as f64) };
+    let cn0_dbhz_mean = if total_epochs == 0 { None } else { Some(cn0_sum / total_epochs as f64) };
+    let cn0_dbhz_min = if total_epochs == 0 { None } else { Some(cn0_min) };
+    let cn0_dbhz_max = if total_epochs == 0 { None } else { Some(cn0_max) };
 
     let nav_rms_m_mean = if artifacts.navigation.is_empty() {
         None

@@ -35,12 +35,7 @@ impl DiagnosticEvent {
         code: impl Into<String>,
         message: impl Into<String>,
     ) -> Self {
-        Self {
-            severity,
-            code: code.into(),
-            message: message.into(),
-            context: Vec::new(),
-        }
+        Self { severity, code: code.into(), message: message.into(), context: Vec::new() }
     }
 
     /// Attach a context key/value pair.
@@ -128,8 +123,5 @@ pub fn aggregate_diagnostics(events: &[DiagnosticEvent]) -> DiagnosticSummary {
             stages: entry.stages.into_iter().collect(),
         })
         .collect();
-    DiagnosticSummary {
-        total: events.len(),
-        entries,
-    }
+    DiagnosticSummary { total: events.len(), entries }
 }

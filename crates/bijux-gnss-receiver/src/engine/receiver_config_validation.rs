@@ -19,24 +19,18 @@ impl ValidateConfig for ReceiverConfig {
             });
         }
         if self.sample_rate_hz <= 0.0 {
-            report.errors.push(ConfigError {
-                message: "sample_rate_hz must be > 0".to_string(),
-            });
+            report.errors.push(ConfigError { message: "sample_rate_hz must be > 0".to_string() });
         }
         if self.code_length == 0 {
-            report.errors.push(ConfigError {
-                message: "code_length must be > 0".to_string(),
-            });
+            report.errors.push(ConfigError { message: "code_length must be > 0".to_string() });
         }
         if self.quantization_bits == 0 {
-            report.errors.push(ConfigError {
-                message: "quantization_bits must be > 0".to_string(),
-            });
+            report
+                .errors
+                .push(ConfigError { message: "quantization_bits must be > 0".to_string() });
         }
         if self.seed == 0 {
-            report.errors.push(ConfigError {
-                message: "seed must be > 0".to_string(),
-            });
+            report.errors.push(ConfigError { message: "seed must be > 0".to_string() });
         }
         if self.acquisition.doppler_step_hz <= 0 {
             report.errors.push(ConfigError {
@@ -54,9 +48,9 @@ impl ValidateConfig for ReceiverConfig {
             });
         }
         if self.tracking.max_channels == 0 {
-            report.errors.push(ConfigError {
-                message: "tracking.max_channels must be > 0".to_string(),
-            });
+            report
+                .errors
+                .push(ConfigError { message: "tracking.max_channels must be > 0".to_string() });
         }
         if self.tracking.per_epoch_budget_ms <= 0.0 {
             report.errors.push(ConfigError {
@@ -71,9 +65,9 @@ impl ValidateConfig for ReceiverConfig {
             });
         }
         if self.tracking.integration_ms == 0 {
-            report.errors.push(ConfigError {
-                message: "tracking.integration_ms must be > 0".to_string(),
-            });
+            report
+                .errors
+                .push(ConfigError { message: "tracking.integration_ms must be > 0".to_string() });
         }
         let mut seen = std::collections::BTreeSet::new();
         for band in &self.tracking.per_band {
@@ -111,19 +105,19 @@ impl ValidateConfig for ReceiverConfig {
             }
         }
         if self.navigation.huber_k <= 0.0 {
-            report.errors.push(ConfigError {
-                message: "navigation.huber_k must be > 0".to_string(),
-            });
+            report
+                .errors
+                .push(ConfigError { message: "navigation.huber_k must be > 0".to_string() });
         }
         if self.navigation.hatch_window == 0 {
-            report.errors.push(ConfigError {
-                message: "navigation.hatch_window must be > 0".to_string(),
-            });
+            report
+                .errors
+                .push(ConfigError { message: "navigation.hatch_window must be > 0".to_string() });
         }
         if self.navigation.tropo_ztd_m < 0.0 {
-            report.errors.push(ConfigError {
-                message: "navigation.tropo_ztd_m must be >= 0".to_string(),
-            });
+            report
+                .errors
+                .push(ConfigError { message: "navigation.tropo_ztd_m must be >= 0".to_string() });
         }
         if self.navigation.weighting.min_elev_deg < 0.0
             || self.navigation.weighting.min_elev_deg > 90.0

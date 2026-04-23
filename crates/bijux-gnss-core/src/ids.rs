@@ -84,12 +84,7 @@ pub fn format_sat(sat: SatId) -> String {
 
 /// Convert GPS PRNs into satellite IDs.
 pub fn prns_to_sats(prns: &[u8]) -> Vec<SatId> {
-    prns.iter()
-        .map(|&prn| SatId {
-            constellation: Constellation::Gps,
-            prn,
-        })
-        .collect()
+    prns.iter().map(|&prn| SatId { constellation: Constellation::Gps, prn }).collect()
 }
 
 fn constellation_rank(constellation: Constellation) -> u8 {
@@ -190,13 +185,8 @@ pub fn signal_registry(
     band: SignalBand,
     code: SignalCode,
 ) -> Option<SignalRegistryEntry> {
-    let spec = SignalSpec {
-        constellation,
-        band,
-        code,
-        code_rate_hz: 0.0,
-        carrier_hz: FreqHz::new(0.0),
-    };
+    let spec =
+        SignalSpec { constellation, band, code, code_rate_hz: 0.0, carrier_hz: FreqHz::new(0.0) };
     let (carrier_hz, code_rate_hz, code_length) = match (constellation, band, code) {
         (Constellation::Gps, SignalBand::L1, SignalCode::Ca) => {
             (GPS_L1_CA_CARRIER_HZ, 1_023_000.0, Some(1023))
@@ -224,12 +214,5 @@ pub fn signal_registry(
         }
         _ => return None,
     };
-    Some(SignalRegistryEntry {
-        spec: SignalSpec {
-            carrier_hz,
-            code_rate_hz,
-            ..spec
-        },
-        code_length,
-    })
+    Some(SignalRegistryEntry { spec: SignalSpec { carrier_hz, code_rate_hz, ..spec }, code_length })
 }

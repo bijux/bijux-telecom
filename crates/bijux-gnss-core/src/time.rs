@@ -45,17 +45,12 @@ impl SampleClock {
     }
 
     pub fn time_from_samples(&self, sample_index: u64) -> SampleTime {
-        SampleTime {
-            sample_index,
-            sample_rate_hz: self.sample_rate_hz,
-        }
+        SampleTime { sample_index, sample_rate_hz: self.sample_rate_hz }
     }
 
     pub fn epoch_from_samples(&self, sample_index: u64) -> Epoch {
         let samples_per_epoch = self.samples_per_epoch().max(1);
-        Epoch {
-            index: sample_index / samples_per_epoch,
-        }
+        Epoch { index: sample_index / samples_per_epoch }
     }
 }
 
@@ -96,78 +91,24 @@ impl LeapSeconds {
     pub fn default_table() -> Self {
         Self {
             entries: vec![
-                LeapSecondEntry {
-                    utc_unix_s: 362_793_600,
-                    offset_s: 1,
-                },
-                LeapSecondEntry {
-                    utc_unix_s: 394_329_600,
-                    offset_s: 2,
-                },
-                LeapSecondEntry {
-                    utc_unix_s: 425_865_600,
-                    offset_s: 3,
-                },
-                LeapSecondEntry {
-                    utc_unix_s: 489_024_000,
-                    offset_s: 4,
-                },
-                LeapSecondEntry {
-                    utc_unix_s: 567_993_600,
-                    offset_s: 5,
-                },
-                LeapSecondEntry {
-                    utc_unix_s: 631_152_000,
-                    offset_s: 6,
-                },
-                LeapSecondEntry {
-                    utc_unix_s: 662_688_000,
-                    offset_s: 7,
-                },
-                LeapSecondEntry {
-                    utc_unix_s: 709_948_800,
-                    offset_s: 8,
-                },
-                LeapSecondEntry {
-                    utc_unix_s: 741_484_800,
-                    offset_s: 9,
-                },
-                LeapSecondEntry {
-                    utc_unix_s: 773_020_800,
-                    offset_s: 10,
-                },
-                LeapSecondEntry {
-                    utc_unix_s: 820_454_400,
-                    offset_s: 11,
-                },
-                LeapSecondEntry {
-                    utc_unix_s: 867_715_200,
-                    offset_s: 12,
-                },
-                LeapSecondEntry {
-                    utc_unix_s: 915_148_800,
-                    offset_s: 13,
-                },
-                LeapSecondEntry {
-                    utc_unix_s: 1_136_073_600,
-                    offset_s: 14,
-                },
-                LeapSecondEntry {
-                    utc_unix_s: 1_230_768_000,
-                    offset_s: 15,
-                },
-                LeapSecondEntry {
-                    utc_unix_s: 1_341_100_800,
-                    offset_s: 16,
-                },
-                LeapSecondEntry {
-                    utc_unix_s: 1_435_708_800,
-                    offset_s: 17,
-                },
-                LeapSecondEntry {
-                    utc_unix_s: 1_483_228_800,
-                    offset_s: 18,
-                },
+                LeapSecondEntry { utc_unix_s: 362_793_600, offset_s: 1 },
+                LeapSecondEntry { utc_unix_s: 394_329_600, offset_s: 2 },
+                LeapSecondEntry { utc_unix_s: 425_865_600, offset_s: 3 },
+                LeapSecondEntry { utc_unix_s: 489_024_000, offset_s: 4 },
+                LeapSecondEntry { utc_unix_s: 567_993_600, offset_s: 5 },
+                LeapSecondEntry { utc_unix_s: 631_152_000, offset_s: 6 },
+                LeapSecondEntry { utc_unix_s: 662_688_000, offset_s: 7 },
+                LeapSecondEntry { utc_unix_s: 709_948_800, offset_s: 8 },
+                LeapSecondEntry { utc_unix_s: 741_484_800, offset_s: 9 },
+                LeapSecondEntry { utc_unix_s: 773_020_800, offset_s: 10 },
+                LeapSecondEntry { utc_unix_s: 820_454_400, offset_s: 11 },
+                LeapSecondEntry { utc_unix_s: 867_715_200, offset_s: 12 },
+                LeapSecondEntry { utc_unix_s: 915_148_800, offset_s: 13 },
+                LeapSecondEntry { utc_unix_s: 1_136_073_600, offset_s: 14 },
+                LeapSecondEntry { utc_unix_s: 1_230_768_000, offset_s: 15 },
+                LeapSecondEntry { utc_unix_s: 1_341_100_800, offset_s: 16 },
+                LeapSecondEntry { utc_unix_s: 1_435_708_800, offset_s: 17 },
+                LeapSecondEntry { utc_unix_s: 1_483_228_800, offset_s: 18 },
             ],
         }
     }
@@ -218,10 +159,7 @@ impl GpsTime {
         let week = (seconds / week_seconds).floor() as u64;
         seconds -= week as f64 * week_seconds;
         let week_mod = (week % 1024) as u16;
-        Self {
-            week: week_mod,
-            tow_s: seconds,
-        }
+        Self { week: week_mod, tow_s: seconds }
     }
 
     pub fn to_seconds(&self) -> f64 {
@@ -248,14 +186,10 @@ pub(crate) fn utc_to_gps(utc: UtcTime, leap: &LeapSeconds) -> GpsTime {
 
 pub(crate) fn tai_to_utc(tai: TaiTime, leap: &LeapSeconds) -> UtcTime {
     let offset = leap.latest_offset();
-    UtcTime {
-        unix_s: tai.tai_s - (offset as f64 + 19.0),
-    }
+    UtcTime { unix_s: tai.tai_s - (offset as f64 + 19.0) }
 }
 
 pub(crate) fn utc_to_tai(utc: UtcTime, leap: &LeapSeconds) -> TaiTime {
     let offset = leap.offset_at_utc(utc.unix_s);
-    TaiTime {
-        tai_s: utc.unix_s + offset as f64 + 19.0,
-    }
+    TaiTime { tai_s: utc.unix_s + offset as f64 + 19.0 }
 }

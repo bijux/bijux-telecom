@@ -15,10 +15,7 @@ pub(crate) fn check_budgets(
         if track.epochs.len() > 3 {
             let carriers: Vec<f64> = track.epochs.iter().map(|e| e.carrier_hz.0).collect();
             let mean = carriers.iter().sum::<f64>() / carriers.len() as f64;
-            let var = carriers
-                .iter()
-                .map(|v| (v - mean) * (v - mean))
-                .sum::<f64>()
+            let var = carriers.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>()
                 / carriers.len() as f64;
             let std = var.sqrt();
             if std > budgets.tracking_carrier_jitter_hz {
@@ -58,10 +55,7 @@ pub(crate) fn check_budgets(
         }
     }
     if nan_count > budgets.nav_nan_max {
-        violations.push(format!(
-            "nav NaN count too high: {nan_count} > {}",
-            budgets.nav_nan_max
-        ));
+        violations.push(format!("nav NaN count too high: {nan_count} > {}", budgets.nav_nan_max));
     }
     if budgets.nav_min_lock_epochs > 0 && !solutions.is_empty() {
         let mut lock_ok = false;

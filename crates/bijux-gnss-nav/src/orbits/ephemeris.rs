@@ -46,13 +46,8 @@ impl CsvEphemerisProvider {
                 Ok(val) => val,
                 Err(_) => continue,
             };
-            entries.push(Ephemeris {
-                sat: SatId {
-                    constellation: Constellation::Gps,
-                    prn,
-                },
-                toe_s,
-            });
+            entries
+                .push(Ephemeris { sat: SatId { constellation: Constellation::Gps, prn }, toe_s });
         }
         if entries.is_empty() {
             return Err(EphemerisError::UnsupportedFormat);

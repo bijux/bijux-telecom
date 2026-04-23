@@ -264,10 +264,7 @@ pub fn build_validation_report(
         let mut by_sat: std::collections::BTreeMap<SatId, std::collections::BTreeSet<_>> =
             std::collections::BTreeMap::new();
         for sat in &e.sats {
-            by_sat
-                .entry(sat.signal_id.sat)
-                .or_default()
-                .insert(sat.signal_id.band);
+            by_sat.entry(sat.signal_id.sat).or_default().insert(sat.signal_id.band);
         }
         by_sat.values().any(|bands| bands.len() > 1)
     });
@@ -531,13 +528,7 @@ fn ppp_evaluation_report(
         (residual_rms.iter().map(|v| v * v).sum::<f64>() / residual_rms.len() as f64).sqrt()
     };
     let (t1, t10, t1cm) = last_conv
-        .map(|c| {
-            (
-                c.time_to_first_meter_s,
-                c.time_to_decimeter_s,
-                c.time_to_centimeter_s,
-            )
-        })
+        .map(|c| (c.time_to_first_meter_s, c.time_to_decimeter_s, c.time_to_centimeter_s))
         .unwrap_or((None, None, None));
     PppEvaluationReport {
         epochs: solutions.len(),

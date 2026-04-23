@@ -22,10 +22,7 @@ fn make_epoch(t_rx_s: f64, prn: u8) -> ObsEpoch {
         role: ReceiverRole::Rover,
         sats: vec![ObsSatellite {
             signal_id: SigId {
-                sat: SatId {
-                    constellation: Constellation::Gps,
-                    prn,
-                },
+                sat: SatId { constellation: Constellation::Gps, prn },
                 band: SignalBand::L1,
                 code: bijux_gnss_core::api::SignalCode::Ca,
             },
@@ -75,16 +72,8 @@ fn make_epoch_with_constellation(t_rx_s: f64, prn: u8, constellation: Constellat
 
 #[test]
 fn aligner_handles_missing_epochs() {
-    let base = vec![
-        make_epoch(0.000, 1),
-        make_epoch(0.001, 1),
-        make_epoch(0.003, 1),
-    ];
-    let rover = vec![
-        make_epoch(0.000, 1),
-        make_epoch(0.002, 1),
-        make_epoch(0.003, 1),
-    ];
+    let base = vec![make_epoch(0.000, 1), make_epoch(0.001, 1), make_epoch(0.003, 1)];
+    let rover = vec![make_epoch(0.000, 1), make_epoch(0.002, 1), make_epoch(0.003, 1)];
     let mut aligner = EpochAligner::new(0.0002);
     let aligned = aligner.align(&base, &rover);
     assert_eq!(aligned.len(), 2);

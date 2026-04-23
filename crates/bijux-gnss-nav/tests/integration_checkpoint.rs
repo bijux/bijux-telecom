@@ -37,10 +37,7 @@ fn ekf_checkpoint_resume_matches() {
 
     let meas = PseudorangeMeasurement {
         sig: SigId {
-            sat: SatId {
-                constellation: Constellation::Gps,
-                prn: 5,
-            },
+            sat: SatId { constellation: Constellation::Gps, prn: 5 },
             band: SignalBand::L1,
             code: SignalCode::Ca,
         },

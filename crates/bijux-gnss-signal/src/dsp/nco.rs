@@ -12,10 +12,7 @@ pub struct Nco {
 impl Nco {
     pub fn new(freq_hz: f64, sample_rate_hz: f64) -> Self {
         let phase_step_rad = TAU * freq_hz / sample_rate_hz;
-        Self {
-            phase_rad: 0.0,
-            phase_step_rad,
-        }
+        Self { phase_rad: 0.0, phase_step_rad }
     }
 
     pub fn set_freq(&mut self, freq_hz: f64, sample_rate_hz: f64) {

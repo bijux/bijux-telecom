@@ -188,11 +188,8 @@ impl MeasurementModel for DopplerMeasurement {
         let dz = x[2] - self.sat_pos_m[2];
         let range = (dx * dx + dy * dy + dz * dz).sqrt().max(1.0);
         let los = [dx / range, dy / range, dz / range];
-        let rel_vel = [
-            x[3] - self.sat_vel_mps[0],
-            x[4] - self.sat_vel_mps[1],
-            x[5] - self.sat_vel_mps[2],
-        ];
+        let rel_vel =
+            [x[3] - self.sat_vel_mps[0], x[4] - self.sat_vel_mps[1], x[5] - self.sat_vel_mps[2]];
         let range_rate = los[0] * rel_vel[0] + los[1] * rel_vel[1] + los[2] * rel_vel[2];
         let pred = -range_rate / self.wavelength_m + 299_792_458.0 * x[7] / self.wavelength_m;
         out[0] = pred;
@@ -253,10 +250,7 @@ impl MeasurementModel for CarrierPhaseMeasurement {
         let dy = x[1] - self.sat_pos_m[1];
         let dz = x[2] - self.sat_pos_m[2];
         let range = (dx * dx + dy * dy + dz * dz).sqrt();
-        let n = self
-            .ambiguity_index
-            .and_then(|idx| x.get(idx).copied())
-            .unwrap_or(0.0);
+        let n = self.ambiguity_index.and_then(|idx| x.get(idx).copied()).unwrap_or(0.0);
         let mut tropo = self.tropo_m;
         if let Some(idx) = self.ztd_index {
             if let Some(elev) = self.elevation_deg {
@@ -316,9 +310,7 @@ pub struct AmbiguityManager {
 
 impl AmbiguityManager {
     pub fn new() -> Self {
-        Self {
-            indices: BTreeMap::new(),
-        }
+        Self { indices: BTreeMap::new() }
     }
 
     pub fn get_or_add(&mut self, ekf: &mut Ekf, key: &str, value: f64, variance: f64) -> usize {
@@ -338,11 +330,7 @@ impl AmbiguityManager {
             }
             let z = ekf.x[idx].round();
             let sigma = variance.max(1e-6).sqrt();
-            let meas = FixHoldMeasurement {
-                index: idx,
-                z,
-                sigma,
-            };
+            let meas = FixHoldMeasurement { index: idx, z, sigma };
             let _ = ekf.update(&meas);
             let v = variance.max(1e-6);
             ekf.p[(idx, idx)] = v;
@@ -371,9 +359,7 @@ pub struct InterSystemBiasManager {
 
 impl InterSystemBiasManager {
     pub fn new() -> Self {
-        Self {
-            indices: BTreeMap::new(),
-        }
+        Self { indices: BTreeMap::new() }
     }
 
     pub fn get_or_add(&mut self, ekf: &mut Ekf, key: &str, value: f64, variance: f64) -> usize {

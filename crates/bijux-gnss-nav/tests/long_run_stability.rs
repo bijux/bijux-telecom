@@ -17,10 +17,7 @@ fn ekf_long_run_stability() {
     let mut ekf = Ekf::new(vec![0.0; 8], Matrix::identity(8), config);
     let meas = PseudorangeMeasurement {
         sig: SigId {
-            sat: SatId {
-                constellation: Constellation::Gps,
-                prn: 10,
-            },
+            sat: SatId { constellation: Constellation::Gps, prn: 10 },
             band: SignalBand::L1,
             code: SignalCode::Ca,
         },

@@ -6,10 +6,7 @@ use bijux_gnss_core::api::{
 use bijux_gnss_nav::api::combinations_from_obs_epochs;
 
 fn make_dual_freq_epoch(p1: f64, p2: f64, phi1: f64, phi2: f64) -> ObsEpoch {
-    let sat = SatId {
-        constellation: Constellation::Gps,
-        prn: 1,
-    };
+    let sat = SatId { constellation: Constellation::Gps, prn: 1 };
     let mut s1 = signal_spec_gps_l1_ca();
     let mut s2 = signal_spec_gps_l2_py();
     s1.code_rate_hz = 1_023_000.0;
@@ -25,11 +22,7 @@ fn make_dual_freq_epoch(p1: f64, p2: f64, phi1: f64, phi2: f64) -> ObsEpoch {
         role: ReceiverRole::Rover,
         sats: vec![
             ObsSatellite {
-                signal_id: SigId {
-                    sat,
-                    band: SignalBand::L1,
-                    code: SignalCode::Ca,
-                },
+                signal_id: SigId { sat, band: SignalBand::L1, code: SignalCode::Ca },
                 pseudorange_m: bijux_gnss_core::api::Meters(p1),
                 pseudorange_var_m2: 1.0,
                 carrier_phase_cycles: bijux_gnss_core::api::Cycles(phi1),
@@ -59,11 +52,7 @@ fn make_dual_freq_epoch(p1: f64, p2: f64, phi1: f64, phi2: f64) -> ObsEpoch {
                 },
             },
             ObsSatellite {
-                signal_id: SigId {
-                    sat,
-                    band: SignalBand::L2,
-                    code: SignalCode::Py,
-                },
+                signal_id: SigId { sat, band: SignalBand::L2, code: SignalCode::Py },
                 pseudorange_m: bijux_gnss_core::api::Meters(p2),
                 pseudorange_var_m2: 1.0,
                 carrier_phase_cycles: bijux_gnss_core::api::Cycles(phi2),

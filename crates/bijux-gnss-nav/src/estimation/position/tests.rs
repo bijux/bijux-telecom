@@ -23,10 +23,7 @@ fn invert_identity() {
 fn pvt_sanity() {
     let solver = PositionSolver::new();
     let eph = GpsEphemeris {
-        sat: SatId {
-            constellation: Constellation::Gps,
-            prn: 1,
-        },
+        sat: SatId { constellation: Constellation::Gps, prn: 1 },
         iodc: 0,
         iode: 0,
         week: 0,
@@ -54,40 +51,28 @@ fn pvt_sanity() {
     };
     let obs = vec![
         PositionObservation {
-            sat: SatId {
-                constellation: Constellation::Gps,
-                prn: 1,
-            },
+            sat: SatId { constellation: Constellation::Gps, prn: 1 },
             pseudorange_m: 20_000_000.0,
             cn0_dbhz: 40.0,
             elevation_deg: None,
             weight: 1.0,
         },
         PositionObservation {
-            sat: SatId {
-                constellation: Constellation::Gps,
-                prn: 1,
-            },
+            sat: SatId { constellation: Constellation::Gps, prn: 1 },
             pseudorange_m: 20_000_000.0,
             cn0_dbhz: 40.0,
             elevation_deg: None,
             weight: 1.0,
         },
         PositionObservation {
-            sat: SatId {
-                constellation: Constellation::Gps,
-                prn: 1,
-            },
+            sat: SatId { constellation: Constellation::Gps, prn: 1 },
             pseudorange_m: 20_000_000.0,
             cn0_dbhz: 40.0,
             elevation_deg: None,
             weight: 1.0,
         },
         PositionObservation {
-            sat: SatId {
-                constellation: Constellation::Gps,
-                prn: 1,
-            },
+            sat: SatId { constellation: Constellation::Gps, prn: 1 },
             pseudorange_m: 20_000_000.0,
             cn0_dbhz: 40.0,
             elevation_deg: None,

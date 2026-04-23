@@ -43,9 +43,7 @@ impl DatasetRegistry {
         let contents = fs::read_to_string(path).map_err(map_err)?;
         let registry: DatasetRegistry = toml::from_str(&contents).map_err(map_err)?;
         if registry.entries.is_empty() {
-            return Err(InputError {
-                message: "dataset registry is empty".to_string(),
-            });
+            return Err(InputError { message: "dataset registry is empty".to_string() });
         }
         Ok(registry)
     }
@@ -57,7 +55,5 @@ impl DatasetRegistry {
 }
 
 fn map_err(err: impl std::fmt::Display) -> InputError {
-    InputError {
-        message: err.to_string(),
-    }
+    InputError { message: err.to_string() }
 }

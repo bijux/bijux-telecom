@@ -99,11 +99,8 @@ impl PppFilter {
         ephs: &[GpsEphemeris],
         products: &dyn ProductsProvider,
     ) -> Option<PppSolutionEpoch> {
-        let dt_s = if let Some(prev) = self.last_t_rx_s {
-            (obs.t_rx_s.0 - prev).max(1e-3)
-        } else {
-            0.001
-        };
+        let dt_s =
+            if let Some(prev) = self.last_t_rx_s { (obs.t_rx_s.0 - prev).max(1e-3) } else { 0.001 };
         if dt_s > self.config.reset_gap_s {
             self.reset("epoch_gap");
         }
@@ -137,10 +134,9 @@ impl PppFilter {
                     None => continue,
                 };
             if fallback {
-                self.health.warnings.push(format!(
-                    "products fallback used for {:?}",
-                    sat.signal_id.sat
-                ));
+                self.health
+                    .warnings
+                    .push(format!("products fallback used for {:?}", sat.signal_id.sat));
             }
             let rx_x = self.ekf.x[self.indices.pos[0]];
             let rx_y = self.ekf.x[self.indices.pos[1]];
@@ -153,19 +149,12 @@ impl PppFilter {
             let weight = weight_from_cn0_elev(sat.cn0_dbhz, el, self.config.weighting);
             let sigma_m = (5.0 / weight.max(0.1)).max(1.0);
 
-            let isb_index = self
-                .indices
-                .isb
-                .get(&sat.signal_id.sat.constellation)
-                .copied();
+            let isb_index = self.indices.isb.get(&sat.signal_id.sat.constellation).copied();
             let iono_index = self.indices.iono.get(&sat.signal_id.sat).copied();
             let amb_index = self.indices.ambiguity.get(&sat.signal_id).copied();
 
             let code_bias_m = self.code_bias.code_bias_m(sat.signal_id).unwrap_or(0.0);
-            let phase_bias_cycles = self
-                .phase_bias
-                .phase_bias_cycles(sat.signal_id)
-                .unwrap_or(0.0);
+            let phase_bias_cycles = self.phase_bias.phase_bias_cycles(sat.signal_id).unwrap_or(0.0);
 
             if self.config.use_iono_free {
                 if let Some((if_code_m, if_phase_m, f1, f2)) =
@@ -305,9 +294,7 @@ impl PppFilter {
         let state = products
             .sat_state(sat, t_s, &mut diag)
             .or_else(|| Some(sat_state_gps_l1ca(eph, t_s, 0.0)))?;
-        let clock_bias_s = products
-            .clock_bias_s(sat, t_s, &mut diag)
-            .unwrap_or(state.clock_bias_s);
+        let clock_bias_s = products.clock_bias_s(sat, t_s, &mut diag).unwrap_or(state.clock_bias_s);
         let fallback = !diag.fallbacks.is_empty();
         let relativistic = state.relativistic_s;
         Some((state, clock_bias_s + relativistic, fallback))
@@ -318,11 +305,7 @@ impl PppFilter {
         let mut new_iono: BTreeSet<SatId> = BTreeSet::new();
         let mut new_amb: BTreeSet<SigId> = BTreeSet::new();
         for sat in sats {
-            if !self
-                .indices
-                .isb
-                .contains_key(&sat.signal_id.sat.constellation)
-            {
+            if !self.indices.isb.contains_key(&sat.signal_id.sat.constellation) {
                 new_isb.insert(sat.signal_id.sat.constellation);
             }
             if self.config.enable_iono_state && !self.indices.iono.contains_key(&sat.signal_id.sat)
@@ -345,8 +328,7 @@ impl PppFilter {
         }
         for sig in new_amb {
             let idx = self.ekf.x.len();
-            self.ekf
-                .add_state(&format!("amb_{:?}_{:?}", sig.sat, sig.band), 0.0, 100.0);
+            self.ekf.add_state(&format!("amb_{:?}_{:?}", sig.sat, sig.band), 0.0, 100.0);
             self.indices.ambiguity.insert(sig, idx);
         }
     }

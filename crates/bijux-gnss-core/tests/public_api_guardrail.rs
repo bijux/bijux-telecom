@@ -27,10 +27,7 @@ fn extract_pub_item_name(line: &str, keyword: &str) -> Option<String> {
     let needle = format!("pub {keyword} ");
     let idx = line.find(&needle)?;
     let rest = &line[idx + needle.len()..];
-    let name = rest
-        .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-        .next()
-        .unwrap_or("");
+    let name = rest.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).next().unwrap_or("");
     if name.is_empty() {
         None
     } else {

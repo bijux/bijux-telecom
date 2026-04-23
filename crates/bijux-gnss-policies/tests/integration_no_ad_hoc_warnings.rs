@@ -6,11 +6,7 @@ use walkdir::WalkDir;
 #[test]
 fn no_ad_hoc_warnings_in_core_nav_receiver() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let crates = [
-        "crates/bijux-gnss-core",
-        "crates/bijux-gnss-nav",
-        "crates/bijux-gnss-receiver",
-    ];
+    let crates = ["crates/bijux-gnss-core", "crates/bijux-gnss-nav", "crates/bijux-gnss-receiver"];
     let forbidden = ["warn!(", "error!(", "log::warn", "log::error"];
 
     for crate_path in crates {
@@ -28,11 +24,7 @@ fn no_ad_hoc_warnings_in_core_nav_receiver() {
             };
             for token in &forbidden {
                 if contents.contains(token) {
-                    panic!(
-                        "ad-hoc warning/error found ({}) in {}",
-                        token,
-                        entry.path().display()
-                    );
+                    panic!("ad-hoc warning/error found ({}) in {}", token, entry.path().display());
                 }
             }
         }

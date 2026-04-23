@@ -41,9 +41,7 @@ pub fn artifact_validate(
 ) -> Result<ArtifactValidationResult, InputError> {
     let data = std::fs::read_to_string(path).map_err(map_err)?;
     if strict && data.trim().is_empty() {
-        return Err(InputError {
-            message: format!("artifact is empty: {}", path.display()),
-        });
+        return Err(InputError { message: format!("artifact is empty: {}", path.display()) });
     }
     let kind = kind
         .map(|k| k.to_lowercase())
@@ -52,16 +50,8 @@ pub fn artifact_validate(
 
     let diagnostics = match kind.as_str() {
         "obs" => validate_obs_artifact(&data)?,
-        "unknown" => {
-            return Err(InputError {
-                message: "unsupported artifact type".to_string(),
-            })
-        }
-        _ => {
-            return Err(InputError {
-                message: "unsupported artifact type".to_string(),
-            })
-        }
+        "unknown" => return Err(InputError { message: "unsupported artifact type".to_string() }),
+        _ => return Err(InputError { message: "unsupported artifact type".to_string() }),
     };
 
     Ok(ArtifactValidationResult { kind, diagnostics })
@@ -75,9 +65,7 @@ pub fn artifact_explain(path: &Path) -> Result<ArtifactExplainResult, InputError
     let mut entries = 0usize;
 
     if kind != "obs" {
-        return Err(InputError {
-            message: "unsupported artifact type".to_string(),
-        });
+        return Err(InputError { message: "unsupported artifact type".to_string() });
     }
 
     for line in data.lines() {
@@ -91,9 +79,8 @@ pub fn artifact_explain(path: &Path) -> Result<ArtifactExplainResult, InputError
         entries += 1;
     }
 
-    let header = header.ok_or_else(|| InputError {
-        message: "artifact header not found".to_string(),
-    })?;
+    let header =
+        header.ok_or_else(|| InputError { message: "artifact header not found".to_string() })?;
     let diagnostics = artifact_validate(path, Some(&kind), false)?.diagnostics;
     let summary = aggregate_diagnostics(&diagnostics);
     let mut error_count = 0usize;
@@ -157,9 +144,7 @@ fn validate_obs_artifact(data: &str) -> Result<Vec<DiagnosticEvent>, InputError>
 }
 
 fn map_err(err: impl std::fmt::Display) -> InputError {
-    InputError {
-        message: err.to_string(),
-    }
+    InputError { message: err.to_string() }
 }
 
 fn detect_kind_from_path(path: &Path) -> Option<String> {

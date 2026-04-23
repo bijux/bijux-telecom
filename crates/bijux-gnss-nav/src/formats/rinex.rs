@@ -15,25 +15,18 @@ fn write_header_line(writer: &mut BufWriter<File>, line: &str) -> Result<(), IoE
     if out.len() > 80 {
         out.truncate(80);
     }
-    writeln!(writer, "{out}").map_err(|e| IoError {
-        message: e.to_string(),
-    })?;
+    writeln!(writer, "{out}").map_err(|e| IoError { message: e.to_string() })?;
     Ok(())
 }
 
 pub fn write_rinex_obs(path: &Path, epochs: &[ObsEpoch], _strict: bool) -> Result<(), IoError> {
-    let file = File::create(path).map_err(|e| IoError {
-        message: e.to_string(),
-    })?;
+    let file = File::create(path).map_err(|e| IoError { message: e.to_string() })?;
     let mut writer = BufWriter::new(file);
     write_header_line(
         &mut writer,
         "     3.04           OBSERVATION DATA    M (MIXED)           RINEX VERSION / TYPE",
     )?;
-    write_header_line(
-        &mut writer,
-        "bijux-gnss                              PGM / RUN BY / DATE",
-    )?;
+    write_header_line(&mut writer, "bijux-gnss                              PGM / RUN BY / DATE")?;
     write_header_line(
         &mut writer,
         "                                                            END OF HEADER",
@@ -48,25 +41,18 @@ pub fn write_rinex_obs(path: &Path, epochs: &[ObsEpoch], _strict: bool) -> Resul
         write_header_line(&mut writer, &line)?;
     }
 
-    writer.flush().map_err(|e| IoError {
-        message: e.to_string(),
-    })?;
+    writer.flush().map_err(|e| IoError { message: e.to_string() })?;
     Ok(())
 }
 
 pub fn write_rinex_nav(path: &Path, ephs: &[GpsEphemeris], _strict: bool) -> Result<(), IoError> {
-    let file = File::create(path).map_err(|e| IoError {
-        message: e.to_string(),
-    })?;
+    let file = File::create(path).map_err(|e| IoError { message: e.to_string() })?;
     let mut writer = BufWriter::new(file);
     write_header_line(
         &mut writer,
         "     3.04           NAVIGATION DATA     M (MIXED)           RINEX VERSION / TYPE",
     )?;
-    write_header_line(
-        &mut writer,
-        "bijux-gnss                              PGM / RUN BY / DATE",
-    )?;
+    write_header_line(&mut writer, "bijux-gnss                              PGM / RUN BY / DATE")?;
     write_header_line(
         &mut writer,
         "                                                            END OF HEADER",
@@ -77,9 +63,7 @@ pub fn write_rinex_nav(path: &Path, ephs: &[GpsEphemeris], _strict: bool) -> Res
         write_header_line(&mut writer, &line)?;
     }
 
-    writer.flush().map_err(|e| IoError {
-        message: e.to_string(),
-    })?;
+    writer.flush().map_err(|e| IoError { message: e.to_string() })?;
     Ok(())
 }
 
@@ -98,8 +82,6 @@ pub fn parse_rinex_obs_header(data: &str) -> Result<(), ParseError> {
     if has_version && has_end {
         Ok(())
     } else {
-        Err(ParseError {
-            message: "invalid or incomplete RINEX header".to_string(),
-        })
+        Err(ParseError { message: "invalid or incomplete RINEX header".to_string() })
     }
 }

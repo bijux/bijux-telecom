@@ -26,12 +26,8 @@ impl PppFilter {
         }
         self.last_pos = Some(pos);
         let elapsed = self.epoch0_t_s.map(|t0| t_rx_s - t0).unwrap_or(0.0);
-        let sigma_h_ok = sigma_h
-            .map(|s| s < self.config.convergence.sigma_h_m)
-            .unwrap_or(false);
-        let sigma_v_ok = sigma_v
-            .map(|s| s < self.config.convergence.sigma_v_m)
-            .unwrap_or(false);
+        let sigma_h_ok = sigma_h.map(|s| s < self.config.convergence.sigma_h_m).unwrap_or(false);
+        let sigma_v_ok = sigma_v.map(|s| s < self.config.convergence.sigma_v_m).unwrap_or(false);
         let change_ok = change
             .map(|c| c / 1.0_f64.max(1e-6) < self.config.convergence.pos_rate_mps)
             .unwrap_or(false);
@@ -74,9 +70,7 @@ impl PppFilter {
             let dz = pos[2] - mean[2];
             let drift = (dx * dx + dy * dy + dz * dz).sqrt();
             if drift > self.config.drift_threshold_m {
-                self.health
-                    .warnings
-                    .push("long-run drift detected".to_string());
+                self.health.warnings.push("long-run drift detected".to_string());
             }
         }
     }
@@ -86,15 +80,11 @@ impl PppFilter {
         if rms > 50.0 {
             self.config.process_noise.clock_drift_s *= 1.2;
             self.config.process_noise.ztd_m *= 1.2;
-            self.health
-                .warnings
-                .push("process noise increased".to_string());
+            self.health.warnings.push("process noise increased".to_string());
         } else if rms < 5.0 {
             self.config.process_noise.clock_drift_s *= 0.95;
             self.config.process_noise.ztd_m *= 0.95;
-            self.health
-                .warnings
-                .push("process noise decreased".to_string());
+            self.health.warnings.push("process noise decreased".to_string());
         }
     }
 
@@ -111,20 +101,14 @@ impl PppFilter {
         self.health.nis_mean = nis;
         if let Some(nis) = nis {
             if nis > 5.0 {
-                self.health
-                    .warnings
-                    .push("NIS high: possible under-confidence".to_string());
+                self.health.warnings.push("NIS high: possible under-confidence".to_string());
             } else if nis < 0.2 {
-                self.health
-                    .warnings
-                    .push("NIS low: possible over-confidence".to_string());
+                self.health.warnings.push("NIS low: possible over-confidence".to_string());
             }
         }
         if let Some(cond) = self.ekf.health.condition_number {
             if cond > 1e8 {
-                self.health
-                    .warnings
-                    .push("condition number high".to_string());
+                self.health.warnings.push("condition number high".to_string());
             }
         }
     }
@@ -166,12 +150,7 @@ impl PppFilter {
             p,
             indices_isb: self.indices.isb.iter().map(|(k, v)| (*k, *v)).collect(),
             indices_iono: self.indices.iono.iter().map(|(k, v)| (*k, *v)).collect(),
-            indices_amb: self
-                .indices
-                .ambiguity
-                .iter()
-                .map(|(k, v)| (*k, *v))
-                .collect(),
+            indices_amb: self.indices.ambiguity.iter().map(|(k, v)| (*k, *v)).collect(),
             last_t_rx_s: self.last_t_rx_s,
             epoch0_t_s: self.epoch0_t_s,
             last_pos: self.last_pos,
@@ -205,15 +184,12 @@ impl PppFilter {
             let Some((wl_cycles, variance)) = wide_lane_from_obs(obs, sat.signal_id.sat) else {
                 continue;
             };
-            let entry = self
-                .wl_state
-                .entry(sat.signal_id.sat)
-                .or_insert(WlAmbiguity {
-                    float_cycles: wl_cycles,
-                    variance,
-                    fixed: false,
-                    last_update_epoch: obs.epoch_idx,
-                });
+            let entry = self.wl_state.entry(sat.signal_id.sat).or_insert(WlAmbiguity {
+                float_cycles: wl_cycles,
+                variance,
+                fixed: false,
+                last_update_epoch: obs.epoch_idx,
+            });
             entry.float_cycles = wl_cycles;
             entry.variance = variance;
             entry.last_update_epoch = obs.epoch_idx;
@@ -232,9 +208,7 @@ impl PppFilter {
             }
         }
         if candidates.is_empty() {
-            self.health
-                .ar_events
-                .push("WL unavailable: no dual-frequency data".to_string());
+            self.health.ar_events.push("WL unavailable: no dual-frequency data".to_string());
             return 0;
         }
         if self.config.ar_use_elevation {
@@ -246,17 +220,13 @@ impl PppFilter {
         let mut fixed_count = 0;
         for (sat, float, var, _el) in candidates {
             let (ratio, _fixed) = ratio_fix(float, var);
-            self.health
-                .ar_events
-                .push(format!("WL float {:?} ratio {:.2}", sat, ratio));
+            self.health.ar_events.push(format!("WL float {:?} ratio {:.2}", sat, ratio));
             if ratio >= self.config.ar_ratio_threshold {
                 if let Some(entry) = self.wl_state.get_mut(&sat) {
                     entry.fixed = true;
                     fixed_count += 1;
                 }
-                self.health
-                    .ar_events
-                    .push(format!("WL fix {:?} ratio {:.2}", sat, ratio));
+                self.health.ar_events.push(format!("WL fix {:?} ratio {:.2}", sat, ratio));
             }
         }
         if fixed_count > 0 {

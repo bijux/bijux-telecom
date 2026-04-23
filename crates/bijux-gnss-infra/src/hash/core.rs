@@ -24,17 +24,12 @@ pub(crate) fn hash_config(
 }
 
 fn map_err(err: impl std::fmt::Display) -> InputError {
-    InputError {
-        message: err.to_string(),
-    }
+    InputError { message: err.to_string() }
 }
 
 /// Return current git hash if available.
 pub(crate) fn git_hash() -> Option<String> {
-    let output = ProcessCommand::new("git")
-        .args(["rev-parse", "HEAD"])
-        .output()
-        .ok()?;
+    let output = ProcessCommand::new("git").args(["rev-parse", "HEAD"]).output().ok()?;
     if !output.status.success() {
         return None;
     }
@@ -44,9 +39,7 @@ pub(crate) fn git_hash() -> Option<String> {
 
 /// Return true when git workspace is dirty.
 pub(crate) fn git_dirty() -> bool {
-    let output = ProcessCommand::new("git")
-        .args(["status", "--porcelain"])
-        .output();
+    let output = ProcessCommand::new("git").args(["status", "--porcelain"]).output();
     if let Ok(output) = output {
         if output.status.success() {
             return !output.stdout.is_empty();

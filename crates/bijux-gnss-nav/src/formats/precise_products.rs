@@ -14,9 +14,7 @@ pub struct ProductDiagnostics {
 
 impl ProductDiagnostics {
     pub fn new() -> Self {
-        Self {
-            fallbacks: Vec::new(),
-        }
+        Self { fallbacks: Vec::new() }
     }
 
     pub fn fallback(&mut self, msg: impl Into<String>) {
@@ -78,11 +76,7 @@ pub struct Products {
 
 impl Products {
     pub fn new(broadcast: BroadcastProductsProvider) -> Self {
-        Self {
-            broadcast,
-            sp3: None,
-            clk: None,
-        }
+        Self { broadcast, sp3: None, clk: None }
     }
 
     pub fn with_sp3(mut self, sp3: Sp3Provider) -> Self {
