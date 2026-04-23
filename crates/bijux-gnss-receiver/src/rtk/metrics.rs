@@ -12,11 +12,7 @@ pub struct JitterSummary {
 pub fn jitter_summary(samples: &[f64]) -> JitterSummary {
     let mut data = samples.to_vec();
     data.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let mean = if data.is_empty() {
-        0.0
-    } else {
-        data.iter().sum::<f64>() / data.len() as f64
-    };
+    let mean = if data.is_empty() { 0.0 } else { data.iter().sum::<f64>() / data.len() as f64 };
     let p95 = if data.is_empty() {
         0.0
     } else {
@@ -34,13 +30,7 @@ pub fn jitter_summary(samples: &[f64]) -> JitterSummary {
             }
         }
     }
-    JitterSummary {
-        mean_s: mean,
-        p95_s: p95,
-        max_s: max,
-        bin_edges_s: bin_edges,
-        counts,
-    }
+    JitterSummary { mean_s: mean, p95_s: p95, max_s: max, bin_edges_s: bin_edges, counts }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -128,19 +118,8 @@ impl bijux_gnss_core::api::ArtifactPayloadValidate for RtkPrecision {
 pub fn baseline_from_ecef(base_ecef_m: [f64; 3], rover_ecef_m: [f64; 3]) -> BaselineSolution {
     let (lat, lon, alt) =
         bijux_gnss_nav::api::ecef_to_geodetic(base_ecef_m[0], base_ecef_m[1], base_ecef_m[2]);
-    let (e, n, u) = ecef_to_enu(
-        rover_ecef_m[0],
-        rover_ecef_m[1],
-        rover_ecef_m[2],
-        lat,
-        lon,
-        alt,
-    );
-    BaselineSolution {
-        enu_m: [e, n, u],
-        covariance_m2: None,
-        fixed: false,
-    }
+    let (e, n, u) = ecef_to_enu(rover_ecef_m[0], rover_ecef_m[1], rover_ecef_m[2], lat, lon, alt);
+    BaselineSolution { enu_m: [e, n, u], covariance_m2: None, fixed: false }
 }
 
 pub fn enu_to_ecef(base_ecef_m: [f64; 3], enu_m: [f64; 3]) -> [f64; 3] {
@@ -154,11 +133,7 @@ pub fn enu_to_ecef(base_ecef_m: [f64; 3], enu_m: [f64; 3]) -> [f64; 3] {
     let dx = -sin_lon * e - sin_lat * cos_lon * n + cos_lat * cos_lon * u;
     let dy = cos_lon * e - sin_lat * sin_lon * n + cos_lat * sin_lon * u;
     let dz = cos_lat * n + sin_lat * u;
-    [
-        base_ecef_m[0] + dx,
-        base_ecef_m[1] + dy,
-        base_ecef_m[2] + dz,
-    ]
+    [base_ecef_m[0] + dx, base_ecef_m[1] + dy, base_ecef_m[2] + dz]
 }
 
 pub fn dd_residual_metrics(
@@ -215,10 +190,7 @@ pub fn solution_separation(
             let dn = sol.enu_m[1] - full.enu_m[1];
             let du = sol.enu_m[2] - full.enu_m[2];
             let delta = (de * de + dn * dn + du * du).sqrt();
-            out.push(SolutionSeparation {
-                sig: removed.sig,
-                delta_enu_m: delta,
-            });
+            out.push(SolutionSeparation { sig: removed.sig, delta_enu_m: delta });
         }
     }
     if out.is_empty() {
@@ -232,9 +204,7 @@ pub fn apply_fix_hold(mut baseline: BaselineSolution, fixed: bool) -> BaselineSo
     baseline.fixed = fixed;
     if fixed {
         let cov =
-            baseline
-                .covariance_m2
-                .unwrap_or([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]);
+            baseline.covariance_m2.unwrap_or([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]);
         let mut scaled = cov;
         for row in &mut scaled {
             for val in row.iter_mut() {

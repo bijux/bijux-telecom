@@ -65,11 +65,7 @@ pub fn generate_l1_ca_multi(
     let dt_s = clock.dt_s();
     let sample_count = (scenario.duration_s * config.sampling_freq_hz).round() as usize;
 
-    let max_cn0 = scenario
-        .satellites
-        .iter()
-        .map(|s| s.cn0_db_hz)
-        .fold(0.0_f32, f32::max);
+    let max_cn0 = scenario.satellites.iter().map(|s| s.cn0_db_hz).fold(0.0_f32, f32::max);
     let snr_db = max_cn0 - 30.0;
     let snr_linear = 10.0f32.powf(snr_db / 10.0).max(1e-6);
     let noise_std = 1.0f32 / snr_linear.sqrt();
@@ -77,11 +73,8 @@ pub fn generate_l1_ca_multi(
     let mut rng = XorShift64::new(scenario.seed);
     let mut iq = Vec::with_capacity(sample_count);
 
-    let sat_states: Vec<SatState> = scenario
-        .satellites
-        .iter()
-        .map(|sat| SatState::new(config, *sat))
-        .collect();
+    let sat_states: Vec<SatState> =
+        scenario.satellites.iter().map(|sat| SatState::new(config, *sat)).collect();
 
     for n in 0..sample_count {
         let t = n as f64 * dt_s;
@@ -97,10 +90,7 @@ pub fn generate_l1_ca_multi(
         iq.push(sample + noise);
     }
 
-    let t0 = SampleTime {
-        sample_index: 0,
-        sample_rate_hz: config.sampling_freq_hz,
-    };
+    let t0 = SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz };
 
     SamplesFrame::new(t0, Seconds(dt_s), iq)
 }

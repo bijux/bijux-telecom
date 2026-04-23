@@ -40,10 +40,7 @@ pub struct Channel {
 
 impl Channel {
     pub fn new(id: u8) -> Self {
-        Self {
-            id,
-            state: ChannelState::Idle,
-        }
+        Self { id, state: ChannelState::Idle }
     }
 
     pub fn apply(&mut self, event: ChannelEvent) {
@@ -137,11 +134,7 @@ impl Tracking {
             late += mixed * late_code;
         }
 
-        CorrelatorOutput {
-            early,
-            prompt,
-            late,
-        }
+        CorrelatorOutput { early, prompt, late }
     }
 
     pub fn track_epoch(
@@ -164,13 +157,11 @@ impl Tracking {
         );
         let cn0_dbhz = estimate_cn0_dbhz(correlator.prompt, correlator.early + correlator.late);
         if !correlator.prompt.re.is_finite() || !correlator.prompt.im.is_finite() {
-            self.runtime
-                .logger
-                .event(&bijux_gnss_core::api::DiagnosticEvent::new(
-                    bijux_gnss_core::api::DiagnosticSeverity::Error,
-                    "TRACK_NUMERIC_INVALID",
-                    "tracking correlator produced NaN/Inf",
-                ));
+            self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Error,
+                "TRACK_NUMERIC_INVALID",
+                "tracking correlator produced NaN/Inf",
+            ));
         }
         let track_epoch = TrackEpoch {
             epoch,
@@ -202,30 +193,21 @@ impl Tracking {
             return Vec::new();
         }
         let frame = SamplesFrame::new(
-            SampleTime {
-                sample_index: 0,
-                sample_rate_hz: self.config.sampling_freq_hz,
-            },
+            SampleTime { sample_index: 0, sample_rate_hz: self.config.sampling_freq_hz },
             Seconds(1.0 / self.config.sampling_freq_hz),
             samples.to_vec(),
         );
         let epochs = self.track_epochs(
             &frame,
             0,
-            SatId {
-                constellation: Constellation::Gps,
-                prn: 1,
-            },
+            SatId { constellation: Constellation::Gps, prn: 1 },
             0.0,
             0.0,
             0.5,
             5,
         );
         vec![TrackingResult {
-            sat: SatId {
-                constellation: Constellation::Gps,
-                prn: 1,
-            },
+            sat: SatId { constellation: Constellation::Gps, prn: 1 },
             carrier_hz: 0.0,
             code_phase_samples: 0.0,
             epochs,
@@ -353,16 +335,11 @@ impl Tracking {
             track_epoch.processing_ms = None;
             let alloc_after = crate::engine::alloc::allocation_count();
             if alloc_after > alloc_before {
-                self.runtime
-                    .logger
-                    .event(&bijux_gnss_core::api::DiagnosticEvent::new(
-                        bijux_gnss_core::api::DiagnosticSeverity::Warning,
-                        "TRACK_ALLOCATIONS",
-                        format!(
-                            "tracking epoch allocated {} times",
-                            alloc_after - alloc_before
-                        ),
-                    ));
+                self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
+                    bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                    "TRACK_ALLOCATIONS",
+                    format!("tracking epoch allocated {} times", alloc_after - alloc_before),
+                ));
             }
 
             let (dll_err, pll_err, fll_err, lock) =
@@ -385,15 +362,9 @@ impl Tracking {
                 (corr.early.norm() - corr.late.norm()).abs() < 0.2 * corr.prompt.norm();
 
             let cn0_dbhz = track_epoch.cn0_dbhz;
-            let params = self
-                .config
-                .tracking_params(bijux_gnss_core::api::SignalBand::L1);
-            let (dll_bw, pll_bw, fll_bw) = adaptive_bandwidth(
-                params.dll_bw_hz,
-                params.pll_bw_hz,
-                params.fll_bw_hz,
-                cn0_dbhz,
-            );
+            let params = self.config.tracking_params(bijux_gnss_core::api::SignalBand::L1);
+            let (dll_bw, pll_bw, fll_bw) =
+                adaptive_bandwidth(params.dll_bw_hz, params.pll_bw_hz, params.fll_bw_hz, cn0_dbhz);
             state.code_rate_hz += dll_bw * dll_err as f64;
             if state.state == ChannelState::PullIn {
                 state.carrier_hz += fll_bw * fll_err as f64;

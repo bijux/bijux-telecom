@@ -181,13 +181,8 @@ pub fn check_inter_frequency_alignment(epochs: &[ObsEpoch]) -> InterFrequencyAli
     for epoch in epochs {
         let mut present: BTreeMap<SatId, Vec<SignalBand>> = BTreeMap::new();
         for sat in &epoch.sats {
-            present
-                .entry(sat.signal_id.sat)
-                .or_default()
-                .push(sat.signal_id.band);
-            last_seen
-                .entry((sat.signal_id.sat, sat.signal_id.band))
-                .or_insert(epoch.epoch_idx);
+            present.entry(sat.signal_id.sat).or_default().push(sat.signal_id.band);
+            last_seen.entry((sat.signal_id.sat, sat.signal_id.band)).or_insert(epoch.epoch_idx);
         }
         for (sat, bands) in present {
             for ((seen_sat, seen_band), last_epoch) in last_seen.iter() {
@@ -199,11 +194,7 @@ pub fn check_inter_frequency_alignment(epochs: &[ObsEpoch]) -> InterFrequencyAli
                 }
                 let lag = epoch.epoch_idx.saturating_sub(*last_epoch);
                 if lag > 0 {
-                    events.push(BandLagEvent {
-                        sat,
-                        band: *seen_band,
-                        lag_epochs: lag,
-                    });
+                    events.push(BandLagEvent { sat, band: *seen_band, lag_epochs: lag });
                 }
             }
         }
@@ -212,11 +203,7 @@ pub fn check_inter_frequency_alignment(epochs: &[ObsEpoch]) -> InterFrequencyAli
         }
     }
     let max_lag = events.iter().map(|e| e.lag_epochs).max().unwrap_or(0);
-    InterFrequencyAlignmentReport {
-        total_events: events.len(),
-        max_lag_epochs: max_lag,
-        events,
-    }
+    InterFrequencyAlignmentReport { total_events: events.len(), max_lag_epochs: max_lag, events }
 }
 
 pub fn validate_obs_epochs(epochs: &[ObsEpoch]) -> Result<(), String> {
@@ -508,9 +495,7 @@ mod tests {
     #[test]
     fn utc_to_gps_uses_leap_offset() {
         let table = LeapSeconds::default_table();
-        let utc = UtcTime {
-            unix_s: 1_700_000_000.0,
-        };
+        let utc = UtcTime { unix_s: 1_700_000_000.0 };
         let gps = utc_to_gps(utc, &table);
         let offset = table.offset_at_utc(utc.unix_s);
         let expected = utc.unix_s + offset as f64;

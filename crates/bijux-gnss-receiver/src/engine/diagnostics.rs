@@ -40,11 +40,7 @@ pub fn dump_on_error(
     if !runtime.config.diagnostics_dump {
         return;
     }
-    let run_id = runtime
-        .config
-        .run_id
-        .clone()
-        .unwrap_or_else(|| "unknown".to_string());
+    let run_id = runtime.config.run_id.clone().unwrap_or_else(|| "unknown".to_string());
     let obs_tail = obs.into_iter().collect::<Vec<_>>();
     let nav_tail = nav.into_iter().collect::<Vec<_>>();
     let residual_stats = nav.and_then(|nav| {
@@ -85,11 +81,7 @@ pub fn dump_on_error(
         config_snapshot,
         note: note.to_string(),
     };
-    let path = runtime
-        .config
-        .run_dir
-        .clone()
-        .unwrap_or_else(|| PathBuf::from("."));
+    let path = runtime.config.run_dir.clone().unwrap_or_else(|| PathBuf::from("."));
     let file = path.join("diagnostics_dump.json");
     if let Ok(data) = serde_json::to_string_pretty(&dump) {
         let _ = fs::write(file, data);

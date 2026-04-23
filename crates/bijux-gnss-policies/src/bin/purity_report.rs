@@ -7,11 +7,7 @@ use std::path::{Path, PathBuf};
 
 fn workspace_root() -> PathBuf {
     let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    crate_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .expect("workspace root")
-        .to_path_buf()
+    crate_dir.parent().and_then(|p| p.parent()).expect("workspace root").to_path_buf()
 }
 
 fn read_toml(path: &Path) -> toml::Value {
@@ -58,9 +54,8 @@ fn pub_item_counts(src_dir: &Path) -> (usize, usize) {
 fn main() {
     let root = workspace_root();
     let crates_dir = root.join("crates");
-    let heavy_deps: BTreeSet<&str> = ["tokio", "reqwest", "hyper", "jsonschema"]
-        .into_iter()
-        .collect();
+    let heavy_deps: BTreeSet<&str> =
+        ["tokio", "reqwest", "hyper", "jsonschema"].into_iter().collect();
 
     println!("purity-report v1");
     for entry in fs::read_dir(&crates_dir).expect("read crates dir") {
@@ -80,11 +75,8 @@ fn main() {
             .and_then(|v| v.as_table())
             .map(|t| t.keys().cloned().collect::<BTreeSet<String>>())
             .unwrap_or_default();
-        let heavy_present: Vec<_> = deps
-            .iter()
-            .filter(|d| heavy_deps.contains(d.as_str()))
-            .cloned()
-            .collect();
+        let heavy_present: Vec<_> =
+            deps.iter().filter(|d| heavy_deps.contains(d.as_str())).cloned().collect();
         let features = data
             .get("features")
             .and_then(|v| v.as_table())
@@ -92,11 +84,8 @@ fn main() {
             .unwrap_or_default();
 
         let src_dir = entry.path().join("src");
-        let (api_pub, non_api_pub) = if src_dir.exists() {
-            pub_item_counts(&src_dir)
-        } else {
-            (0, 0)
-        };
+        let (api_pub, non_api_pub) =
+            if src_dir.exists() { pub_item_counts(&src_dir) } else { (0, 0) };
 
         println!("crate: {}", name);
         println!("deps: {}", deps.len());
@@ -109,10 +98,7 @@ fn main() {
         if features.is_empty() {
             println!("features: none");
         } else {
-            println!(
-                "features: {}",
-                features.into_iter().collect::<Vec<_>>().join(",")
-            );
+            println!("features: {}", features.into_iter().collect::<Vec<_>>().join(","));
         }
         println!("---");
     }

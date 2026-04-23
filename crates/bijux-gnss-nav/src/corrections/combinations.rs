@@ -63,12 +63,8 @@ pub fn combinations_from_obs_epochs(
             if s1.is_none() || s2.is_none() {
                 status = CombinationStatus::MissingFrequency;
             }
-            let f1_hz = s1
-                .map(|s| s.metadata.signal.carrier_hz.value())
-                .unwrap_or(0.0);
-            let f2_hz = s2
-                .map(|s| s.metadata.signal.carrier_hz.value())
-                .unwrap_or(0.0);
+            let f1_hz = s1.map(|s| s.metadata.signal.carrier_hz.value()).unwrap_or(0.0);
+            let f2_hz = s2.map(|s| s.metadata.signal.carrier_hz.value()).unwrap_or(0.0);
             let (mut if_code_m, mut if_phase_m) = (None, None);
             let (mut wide_lane_cycles, mut narrow_lane_cycles, mut mw_m) = (None, None, None);
             if let (Some(s1), Some(s2)) = (s1, s2) {

@@ -36,10 +36,7 @@ fn ekf_update_runs() {
     );
     let meas = PseudorangeMeasurement {
         sig: SigId {
-            sat: SatId {
-                constellation: Constellation::Gps,
-                prn: 1,
-            },
+            sat: SatId { constellation: Constellation::Gps, prn: 1 },
             band: SignalBand::L1,
             code: SignalCode::Ca,
         },

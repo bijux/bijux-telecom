@@ -12,10 +12,7 @@ use bijux_gnss_receiver::api::{
 
 #[test]
 fn ratio_test_requires_consecutive_accepts() {
-    let policy = FixPolicy {
-        ratio_threshold: 3.0,
-        consecutive_required: 2,
-    };
+    let policy = FixPolicy { ratio_threshold: 3.0, consecutive_required: 2 };
     let mut state = FixState::default();
     assert!(!ratio_test(2.0, &policy, &mut state));
     assert!(!ratio_test(3.1, &policy, &mut state));
@@ -27,10 +24,7 @@ fn ambiguity_resets_on_cycle_slip() {
     let mut manager = AmbiguityManager::new();
     let sat = ObsSatellite {
         signal_id: SigId {
-            sat: SatId {
-                constellation: Constellation::Gps,
-                prn: 1,
-            },
+            sat: SatId { constellation: Constellation::Gps, prn: 1 },
             band: SignalBand::L1,
             code: bijux_gnss_core::api::SignalCode::Ca,
         },
@@ -81,10 +75,7 @@ fn float_covariance_is_symmetric_psd() {
     let ids = vec![
         bijux_gnss_core::api::AmbiguityId {
             sig: SigId {
-                sat: SatId {
-                    constellation: Constellation::Gps,
-                    prn: 1,
-                },
+                sat: SatId { constellation: Constellation::Gps, prn: 1 },
                 band: SignalBand::L1,
                 code: bijux_gnss_core::api::SignalCode::Ca,
             },
@@ -92,10 +83,7 @@ fn float_covariance_is_symmetric_psd() {
         },
         bijux_gnss_core::api::AmbiguityId {
             sig: SigId {
-                sat: SatId {
-                    constellation: Constellation::Gps,
-                    prn: 2,
-                },
+                sat: SatId { constellation: Constellation::Gps, prn: 2 },
                 band: SignalBand::L1,
                 code: bijux_gnss_core::api::SignalCode::Ca,
             },
@@ -141,10 +129,7 @@ fn partial_fix_reduces_ambiguity_count() {
         ids: vec![
             bijux_gnss_core::api::AmbiguityId {
                 sig: SigId {
-                    sat: SatId {
-                        constellation: Constellation::Gps,
-                        prn: 1,
-                    },
+                    sat: SatId { constellation: Constellation::Gps, prn: 1 },
                     band: SignalBand::L1,
                     code: bijux_gnss_core::api::SignalCode::Ca,
                 },
@@ -152,10 +137,7 @@ fn partial_fix_reduces_ambiguity_count() {
             },
             bijux_gnss_core::api::AmbiguityId {
                 sig: SigId {
-                    sat: SatId {
-                        constellation: Constellation::Gps,
-                        prn: 2,
-                    },
+                    sat: SatId { constellation: Constellation::Gps, prn: 2 },
                     band: SignalBand::L1,
                     code: bijux_gnss_core::api::SignalCode::Ca,
                 },
@@ -163,10 +145,7 @@ fn partial_fix_reduces_ambiguity_count() {
             },
             bijux_gnss_core::api::AmbiguityId {
                 sig: SigId {
-                    sat: SatId {
-                        constellation: Constellation::Gps,
-                        prn: 3,
-                    },
+                    sat: SatId { constellation: Constellation::Gps, prn: 3 },
                     band: SignalBand::L1,
                     code: bijux_gnss_core::api::SignalCode::Ca,
                 },
@@ -174,11 +153,7 @@ fn partial_fix_reduces_ambiguity_count() {
             },
         ],
         float_cycles: vec![1.1, 2.2, 3.3],
-        covariance: vec![
-            vec![1.0, 0.0, 0.0],
-            vec![0.0, 1.0, 0.0],
-            vec![0.0, 0.0, 1.0],
-        ],
+        covariance: vec![vec![1.0, 0.0, 0.0], vec![0.0, 1.0, 0.0], vec![0.0, 0.0, 1.0]],
     };
     let subset = select_partial_fix(&float, 2);
     assert_eq!(subset.float_cycles.len(), 2);

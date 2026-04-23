@@ -106,6 +106,15 @@ def render_yaml_document(data: Any) -> str:
     return PROVENANCE_HEADER + "\n".join(dump_yaml(data)) + "\n"
 
 
+def normalize_labeler_rules(data: Any) -> Any:
+    if not isinstance(data, dict):
+        return data
+    normalized: dict[str, Any] = {}
+    for label, rules in data.items():
+        normalized[label] = rules if isinstance(rules, list) else [rules]
+    return normalized
+
+
 def find_repo_config(manifest: dict, repo_name: str) -> dict:
     for repo in manifest["repositories"]:
         if repo["name"] == repo_name:
@@ -142,6 +151,18 @@ def render_repo(repo_name: str, manifest: dict) -> None:
         dependabot_content = render_yaml_document(dependabot_data)
         write_if_needed(dependabot_path, dependabot_content)
 
+    labeler_data = repo.get("labeler")
+    if labeler_data is not None:
+        labeler_path = repo_root / ".github/labeler.yml"
+        labeler_content = render_yaml_document(normalize_labeler_rules(labeler_data))
+        write_if_needed(labeler_path, labeler_content)
+
+    codecov_data = repo.get("codecov")
+    if codecov_data is not None:
+        codecov_path = repo_root / ".github/codecov.yml"
+        codecov_content = render_yaml_document(codecov_data)
+        write_if_needed(codecov_path, codecov_content)
+
     wrappers = repo.get("workflow_wrappers", {})
     wrapper_paths = {
         "ci": repo_root / ".github/workflows/ci.yml",
@@ -156,7 +177,7 @@ def render_repo(repo_name: str, manifest: dict) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Render release.env, dependabot.yml, and workflow wrappers from manifest")
+    parser = argparse.ArgumentParser(description="Render release.env, dependabot.yml, labeler.yml, codecov.yml, and workflow wrappers from manifest")
     parser.add_argument("--manifest", default=str(MANIFEST_PATH), help="Path to manifest JSON")
     parser.add_argument("--repo", action="append", default=[], help="Repository name (repeatable)")
     args = parser.parse_args()

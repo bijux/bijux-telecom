@@ -9,11 +9,7 @@ pub struct Matrix {
 
 impl Matrix {
     pub fn new(rows: usize, cols: usize, value: f64) -> Self {
-        Self {
-            rows,
-            cols,
-            data: vec![value; rows * cols],
-        }
+        Self { rows, cols, data: vec![value; rows * cols] }
     }
 
     pub fn identity(n: usize) -> Self {

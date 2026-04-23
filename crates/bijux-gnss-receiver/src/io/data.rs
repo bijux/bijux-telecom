@@ -30,11 +30,7 @@ impl MemorySamples {
         if data.len() % 2 != 0 {
             return Err(SampleSourceError::InvalidIqLength);
         }
-        Ok(Self {
-            data,
-            cursor_samples: 0,
-            clock: SampleClock::new(sample_rate_hz),
-        })
+        Ok(Self { data, cursor_samples: 0, clock: SampleClock::new(sample_rate_hz) })
     }
 }
 
@@ -87,12 +83,7 @@ impl FileSamples {
         if offset_bytes > 0 {
             file.seek(SeekFrom::Start(offset_bytes))?;
         }
-        Ok(Self {
-            file,
-            done: false,
-            clock: SampleClock::new(sample_rate_hz),
-            sample_index: 0,
-        })
+        Ok(Self { file, done: false, clock: SampleClock::new(sample_rate_hz), sample_index: 0 })
     }
 }
 

@@ -325,11 +325,7 @@ fn run_bench_compare(strict: bool, threshold: f64, workspace_root: Option<PathBu
     combined.push_str(&run_bench(
         &root,
         "bijux-gnss-receiver",
-        &[
-            "bench_correlator",
-            "bench_acquisition_fft",
-            "bench_tracking_update",
-        ],
+        &["bench_correlator", "bench_acquisition_fft", "bench_tracking_update"],
     )?);
     combined.push_str(&run_bench(&root, "bijux-gnss-nav", &["bench_ekf_update"])?);
 
@@ -394,11 +390,7 @@ fn write_current_snapshot(bench_output: &str, current_path: &Path) -> Result<()>
     let mut rows = Vec::<(String, u64)>::new();
     for line in bench_output.lines() {
         if let Some(caps) = line_re.captures(line) {
-            let name = caps
-                .get(1)
-                .map(|m| m.as_str())
-                .unwrap_or_default()
-                .to_string();
+            let name = caps.get(1).map(|m| m.as_str()).unwrap_or_default().to_string();
             let value = caps
                 .get(2)
                 .map(|m| m.as_str())
@@ -433,9 +425,8 @@ fn compare_baseline(baseline: &Path, current: &Path, threshold: f64) -> Result<V
         let mut parts = line.split_whitespace();
         let Some(name) = parts.next() else { continue };
         let Some(value) = parts.next() else { continue };
-        let parsed = value
-            .parse::<u64>()
-            .with_context(|| format!("parse baseline value for {name}"))?;
+        let parsed =
+            value.parse::<u64>().with_context(|| format!("parse baseline value for {name}"))?;
         baseline_map.insert(name.to_string(), parsed);
     }
 
@@ -444,9 +435,8 @@ fn compare_baseline(baseline: &Path, current: &Path, threshold: f64) -> Result<V
         let mut parts = line.split_whitespace();
         let Some(name) = parts.next() else { continue };
         let Some(value) = parts.next() else { continue };
-        let current_ns = value
-            .parse::<u64>()
-            .with_context(|| format!("parse current value for {name}"))?;
+        let current_ns =
+            value.parse::<u64>().with_context(|| format!("parse current value for {name}"))?;
         let Some(baseline_ns) = baseline_map.get(name) else {
             continue;
         };

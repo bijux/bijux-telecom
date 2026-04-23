@@ -5,11 +5,7 @@ use bijux_gnss_policies::api::GuardrailConfig;
 
 #[test]
 fn workspace_has_guardrails_tests() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap();
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap();
     let crates_dir = root.join("crates");
     for entry in std::fs::read_dir(&crates_dir).expect("read crates dir") {
         let entry = entry.expect("crate entry");
@@ -22,11 +18,7 @@ fn workspace_has_guardrails_tests() {
         }
         let guardrails = path.join("tests").join("integration_guardrails.rs");
         let legacy = path.join("tests").join("guardrails.rs");
-        let guardrails_path = if guardrails.exists() {
-            guardrails
-        } else {
-            legacy
-        };
+        let guardrails_path = if guardrails.exists() { guardrails } else { legacy };
         assert!(
             guardrails_path.exists(),
             "missing tests/integration_guardrails.rs in {}",
@@ -43,11 +35,7 @@ fn workspace_has_guardrails_tests() {
 
 #[test]
 fn workspace_guardrail_defaults_not_increased() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap();
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap();
     let crates_dir = root.join("crates");
     let defaults = GuardrailConfig::default();
     for entry in std::fs::read_dir(&crates_dir).expect("read crates dir") {
@@ -65,10 +53,6 @@ fn workspace_guardrail_defaults_not_increased() {
         let bad = config.max_depth > defaults.max_depth
             || config.max_pub_items_per_file > defaults.max_pub_items_per_file
             || config.max_pub_use_per_file > defaults.max_pub_use_per_file;
-        assert!(
-            !bad,
-            "guardrails defaults increased for {}: {:?}",
-            name, config
-        );
+        assert!(!bad, "guardrails defaults increased for {}: {:?}", name, config);
     }
 }

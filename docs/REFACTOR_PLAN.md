@@ -18,7 +18,7 @@
 6. Rename files and update references.
 
 ## Done When
-- `cargo make ci-fast` passes.
+- `make ci-fast` passes.
 - No numbered files exist.
 - Path depth ≤ 4 for all crate files.
 - Docs updated and consistent with module layout.

@@ -90,17 +90,11 @@ pub(crate) fn apply_sweep_value(
             profile.navigation.robust_solver = value.parse().map_err(map)?
         }
         "navigation.raim" => profile.navigation.raim = value.parse().map_err(map)?,
-        _ => {
-            return Err(InputError {
-                message: format!("unsupported sweep parameter: {key}"),
-            })
-        }
+        _ => return Err(InputError { message: format!("unsupported sweep parameter: {key}") }),
     }
     Ok(())
 }
 
 fn map(err: impl std::fmt::Display) -> InputError {
-    InputError {
-        message: err.to_string(),
-    }
+    InputError { message: err.to_string() }
 }

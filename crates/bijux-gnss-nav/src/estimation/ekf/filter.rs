@@ -115,9 +115,7 @@ impl Ekf {
             self.health.last_rejection = Some(reason.clone());
             self.health.rejection_reasons.push(reason.clone());
             self.health.last_rejection_code = Some(RejectionReason::SingularS);
-            self.health
-                .events
-                .push(NavHealthEvent::InnovationRejected { reason });
+            self.health.events.push(NavHealthEvent::InnovationRejected { reason });
             return false;
         };
 
@@ -139,9 +137,7 @@ impl Ekf {
                 self.health.last_rejection = Some(reason.clone());
                 self.health.rejection_reasons.push(reason.clone());
                 self.health.last_rejection_code = Some(RejectionReason::Chi2Gate);
-                self.health
-                    .events
-                    .push(NavHealthEvent::InnovationRejected { reason });
+                self.health.events.push(NavHealthEvent::InnovationRejected { reason });
                 return false;
             }
         }
@@ -170,11 +166,8 @@ impl Ekf {
         self.p = p_new;
         self.sanitize_covariance();
 
-        let rms = if m > 0 {
-            (y.iter().map(|v| v * v).sum::<f64>() / m as f64).sqrt()
-        } else {
-            0.0
-        };
+        let rms =
+            if m > 0 { (y.iter().map(|v| v * v).sum::<f64>() / m as f64).sqrt() } else { 0.0 };
         self.health.innovation_rms = rms;
         let predicted = if m > 0 {
             let mut sum = 0.0;
@@ -185,11 +178,7 @@ impl Ekf {
         } else {
             0.0
         };
-        let observed = if m > 0 {
-            y.iter().map(|v| v * v).sum::<f64>() / m as f64
-        } else {
-            0.0
-        };
+        let observed = if m > 0 { y.iter().map(|v| v * v).sum::<f64>() / m as f64 } else { 0.0 };
         self.health.predicted_variance = Some(predicted);
         self.health.observed_variance = Some(observed);
         if predicted > 0.0 {
@@ -204,9 +193,7 @@ impl Ekf {
             for c in (r + 1)..n {
                 let sym = 0.5 * (self.p[(r, c)] + self.p[(c, r)]);
                 if (self.p[(r, c)] - self.p[(c, r)]).abs() > 1e-12 {
-                    self.health
-                        .events
-                        .push(NavHealthEvent::CovarianceSymmetrized);
+                    self.health.events.push(NavHealthEvent::CovarianceSymmetrized);
                 }
                 self.p[(r, c)] = sym;
                 self.p[(c, r)] = sym;
@@ -224,9 +211,7 @@ impl Ekf {
             max_var = max_var.max(self.p[(i, i)].abs());
         }
         if max_var > self.config.divergence_max_variance {
-            self.health.events.push(NavHealthEvent::CovarianceDiverged {
-                max_variance: max_var,
-            });
+            self.health.events.push(NavHealthEvent::CovarianceDiverged { max_variance: max_var });
         }
 
         if self.config.square_root {

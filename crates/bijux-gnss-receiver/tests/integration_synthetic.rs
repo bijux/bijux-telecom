@@ -16,16 +16,10 @@ fn synthetic_correlator_peak_ratio() {
         channels: 12,
         ..ReceiverPipelineConfig::default()
     };
-    let samples_per_code = samples_per_code(
-        config.sampling_freq_hz,
-        config.code_freq_basis_hz,
-        config.code_length,
-    );
+    let samples_per_code =
+        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
 
-    let sat = SatId {
-        constellation: Constellation::Gps,
-        prn: 3,
-    };
+    let sat = SatId { constellation: Constellation::Gps, prn: 3 };
     let code_phase_chips = 200.0;
     let frame = generate_l1_ca(
         &config,
@@ -59,16 +53,10 @@ fn golden_acquisition_run_is_stable() {
         channels: 12,
         ..ReceiverPipelineConfig::default()
     };
-    let samples_per_code = samples_per_code(
-        config.sampling_freq_hz,
-        config.code_freq_basis_hz,
-        config.code_length,
-    );
+    let samples_per_code =
+        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
 
-    let sat = SatId {
-        constellation: Constellation::Gps,
-        prn: 7,
-    };
+    let sat = SatId { constellation: Constellation::Gps, prn: 7 };
     let frame = generate_l1_ca(
         &config,
         SyntheticSignalParams {
@@ -92,14 +80,8 @@ fn golden_acquisition_run_is_stable() {
     let peak_mean = r.peak_mean_ratio;
     let peak_second = r.peak_second_ratio;
 
-    assert!(
-        (peak_mean - 69.3).abs() < 5.0,
-        "peak_mean_ratio drifted: {peak_mean}"
-    );
-    assert!(
-        (peak_second - 1.28).abs() < 0.2,
-        "peak_second_ratio drifted: {peak_second}"
-    );
+    assert!((peak_mean - 69.3).abs() < 5.0, "peak_mean_ratio drifted: {peak_mean}");
+    assert!((peak_second - 1.28).abs() < 0.2, "peak_second_ratio drifted: {peak_second}");
 }
 
 #[test]
@@ -108,10 +90,7 @@ fn synthetic_supports_multi_constellation_mock() {
     let _frame = generate_l1_ca(
         &config,
         SyntheticSignalParams {
-            sat: SatId {
-                constellation: Constellation::Galileo,
-                prn: 11,
-            },
+            sat: SatId { constellation: Constellation::Galileo, prn: 11 },
             doppler_hz: 0.0,
             code_phase_chips: 10.0,
             carrier_phase_rad: 0.0,

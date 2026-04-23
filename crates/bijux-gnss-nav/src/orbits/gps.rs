@@ -186,10 +186,7 @@ mod tests {
     #[test]
     fn sat_state_basic() {
         let eph = GpsEphemeris {
-            sat: SatId {
-                constellation: Constellation::Gps,
-                prn: 1,
-            },
+            sat: SatId { constellation: Constellation::Gps, prn: 1 },
             iodc: 0,
             iode: 0,
             week: 0,
@@ -235,10 +232,7 @@ mod tests {
     #[test]
     fn relativistic_term_nonzero_for_eccentric() {
         let eph = GpsEphemeris {
-            sat: SatId {
-                constellation: Constellation::Gps,
-                prn: 1,
-            },
+            sat: SatId { constellation: Constellation::Gps, prn: 1 },
             iodc: 0,
             iode: 0,
             week: 0,

@@ -87,10 +87,8 @@ pub fn align_reference_by_time(
     policy: ReferenceAlign,
 ) -> Vec<ValidationReferenceEpoch> {
     let mut out = Vec::new();
-    let mut ref_sorted: Vec<_> = reference
-        .iter()
-        .filter_map(|r| r.t_rx_s.map(|t| (t, r)))
-        .collect();
+    let mut ref_sorted: Vec<_> =
+        reference.iter().filter_map(|r| r.t_rx_s.map(|t| (t, r))).collect();
     ref_sorted.sort_by(|a, b| a.0.total_cmp(&b.0));
     for sol in solutions {
         let t = sol.t_rx_s.0;
@@ -99,11 +97,7 @@ pub fn align_reference_by_time(
             if t >= window[0].0 && t <= window[1].0 {
                 let (t0, r0) = window[0];
                 let (t1, r1) = window[1];
-                let alpha = if (t1 - t0).abs() < 1e-9 {
-                    0.0
-                } else {
-                    (t - t0) / (t1 - t0)
-                };
+                let alpha = if (t1 - t0).abs() < 1e-9 { 0.0 } else { (t - t0) / (t1 - t0) };
                 let chosen = match policy {
                     ReferenceAlign::Nearest => {
                         if (t - t0).abs() <= (t1 - t).abs() {
@@ -186,11 +180,7 @@ pub fn reference_compare(
     };
     (
         rows,
-        ReferenceCompareStats {
-            count: horiz.len(),
-            horiz_rms_m: horiz_rms,
-            vert_rms_m: vert_rms,
-        },
+        ReferenceCompareStats { count: horiz.len(), horiz_rms_m: horiz_rms, vert_rms_m: vert_rms },
     )
 }
 
@@ -235,10 +225,5 @@ pub fn check_solution_consistency(
     if pdop_spike_count > 0 {
         warnings.push("pdop spikes detected".to_string());
     }
-    SolutionConsistencyReport {
-        position_jump_count,
-        clock_jump_count,
-        pdop_spike_count,
-        warnings,
-    }
+    SolutionConsistencyReport { position_jump_count, clock_jump_count, pdop_spike_count, warnings }
 }

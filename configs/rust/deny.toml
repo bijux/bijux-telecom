@@ -9,6 +9,8 @@ allow = [
   "Apache-2.0",
   "Apache-2.0 WITH LLVM-exception",
   "MIT",
+  "MIT-0",
+  "MPL-2.0",
   "BSD-2-Clause",
   "BSD-3-Clause",
   "ISC",
@@ -20,6 +22,62 @@ allow = [
 [bans]
 multiple-versions = "warn"
 wildcards = "warn"
+
+[[bans.skip]]
+name = "bitflags"
+# why = "Simultaneous 1.x and 2.x are required by macOS graphics stack and modern transitive crates."
+
+[[bans.skip]]
+name = "core-foundation"
+# why = "Parallel 0.9/0.10 lines are pulled by legacy graphics and newer TLS verifier stacks."
+
+[[bans.skip]]
+name = "getrandom"
+# why = "0.2 and 0.3 are both required by mixed transitive ecosystems; no direct telecom crate selects them."
+
+[[bans.skip]]
+name = "thiserror"
+# why = "1.x is required by legacy transitive JNI path while telecom crates use 2.x."
+
+[[bans.skip]]
+name = "thiserror-impl"
+# why = "Mirrors thiserror 1.x and 2.x split across transitive dependency families."
+
+[[bans.skip]]
+name = "windows-sys"
+# why = "Multiple windows-sys lines are transitively required across platform-specific dependency families."
+
+[[bans.skip]]
+name = "windows-targets"
+# why = "Multiple windows-targets lines are transitively required across platform-specific dependency families."
+
+[[bans.skip]]
+name = "windows_aarch64_gnullvm"
+# why = "Target support crate appears in multiple generations through transitive windows-targets lines."
+
+[[bans.skip]]
+name = "windows_aarch64_msvc"
+# why = "Target support crate appears in multiple generations through transitive windows-targets lines."
+
+[[bans.skip]]
+name = "windows_i686_gnu"
+# why = "Target support crate appears in multiple generations through transitive windows-targets lines."
+
+[[bans.skip]]
+name = "windows_i686_msvc"
+# why = "Target support crate appears in multiple generations through transitive windows-targets lines."
+
+[[bans.skip]]
+name = "windows_x86_64_gnu"
+# why = "Target support crate appears in multiple generations through transitive windows-targets lines."
+
+[[bans.skip]]
+name = "windows_x86_64_gnullvm"
+# why = "Target support crate appears in multiple generations through transitive windows-targets lines."
+
+[[bans.skip]]
+name = "windows_x86_64_msvc"
+# why = "Target support crate appears in multiple generations through transitive windows-targets lines."
 
 [sources]
 unknown-registry = "deny"

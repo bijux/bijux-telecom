@@ -13,19 +13,13 @@ fn bench_tracking_update(c: &mut Criterion) {
         config.code_length,
     );
     let frame = SamplesFrame::new(
-        SampleTime {
-            sample_index: 0,
-            sample_rate_hz: config.sampling_freq_hz,
-        },
+        SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
         Seconds(1.0 / config.sampling_freq_hz),
         vec![Complex::new(0.0, 0.0); samples_per_code],
     );
     let runtime = bijux_gnss_receiver::api::ReceiverRuntime::default();
     let tracking = TrackingEngine::new(config, runtime);
-    let sat = SatId {
-        constellation: Constellation::Gps,
-        prn: 1,
-    };
+    let sat = SatId { constellation: Constellation::Gps, prn: 1 };
 
     c.bench_function("tracking_epoch_update", |b| {
         b.iter_batched(

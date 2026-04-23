@@ -56,11 +56,7 @@ pub struct NavSanityConfig {
 
 impl Default for NavSanityConfig {
     fn default() -> Self {
-        Self {
-            max_position_jump_m: 10_000.0,
-            max_clock_jump_s: 0.1,
-            max_rms_m: 10_000.0,
-        }
+        Self { max_position_jump_m: 10_000.0, max_clock_jump_s: 0.1, max_rms_m: 10_000.0 }
     }
 }
 

@@ -15,17 +15,11 @@ fn bench_acquisition_fft(c: &mut Criterion) {
     let n = samples_per_code;
     let iq = vec![Complex::new(1.0f32, 0.0f32); n];
     let frame = SamplesFrame::new(
-        SampleTime {
-            sample_index: 0,
-            sample_rate_hz: config.sampling_freq_hz,
-        },
+        SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
         Seconds(1.0 / config.sampling_freq_hz),
         iq,
     );
-    let sat = SatId {
-        constellation: bijux_gnss_core::api::Constellation::Gps,
-        prn: 1,
-    };
+    let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 1 };
     c.bench_function("acquisition_fft_1ms", |b| {
         b.iter_batched(
             || frame.clone(),

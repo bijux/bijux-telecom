@@ -20,11 +20,8 @@ fn bench_fft_acquisition_smoke() {
         channels: 12,
         ..ReceiverPipelineConfig::default()
     };
-    let samples_per_code = samples_per_code(
-        config.sampling_freq_hz,
-        config.code_freq_basis_hz,
-        config.code_length,
-    );
+    let samples_per_code =
+        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
     let frame = generate_l1_ca(
         &config,
         SyntheticSignalParams {

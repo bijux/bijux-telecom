@@ -16,11 +16,8 @@ fn acquisition_fft_detects_synthetic_signal() {
         ..ReceiverPipelineConfig::default()
     };
 
-    let samples_per_code = samples_per_code(
-        config.sampling_freq_hz,
-        config.code_freq_basis_hz,
-        config.code_length,
-    );
+    let samples_per_code =
+        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
 
     let sat = bijux_gnss_core::api::SatId {
         constellation: bijux_gnss_core::api::Constellation::Gps,

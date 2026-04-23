@@ -35,19 +35,13 @@ impl ClkProvider {
             let hour: u32 = parts[5].parse().map_err(|_| "invalid hour")?;
             let min: u32 = parts[6].parse().map_err(|_| "invalid min")?;
             let sec: f64 = parts[7].parse().map_err(|_| "invalid sec")?;
-            let bias_s: f64 = parts
-                .last()
-                .ok_or("missing bias")?
-                .parse()
-                .map_err(|_| "invalid bias")?;
+            let bias_s: f64 =
+                parts.last().ok_or("missing bias")?.parse().map_err(|_| "invalid bias")?;
             let days = days_from_civil(year, month, day);
             let epoch_abs = days as f64 * 86_400.0 + hour as f64 * 3600.0 + min as f64 * 60.0 + sec;
             let base = *epoch0.get_or_insert(epoch_abs);
             let epoch_s = epoch_abs - base;
-            records
-                .entry(sat)
-                .or_default()
-                .push(ClkRecord { epoch_s, bias_s });
+            records.entry(sat).or_default().push(ClkRecord { epoch_s, bias_s });
         }
         Ok(Self { records })
     }

@@ -133,13 +133,7 @@ fn parse_sp3_epoch(line: &str) -> Result<f64, String> {
 }
 
 fn parse_sat_id(line: &str) -> Result<SatId, String> {
-    let id = line
-        .chars()
-        .skip(1)
-        .take(3)
-        .collect::<String>()
-        .trim()
-        .to_string();
+    let id = line.chars().skip(1).take(3).collect::<String>().trim().to_string();
     if id.len() < 2 {
         return Err("invalid sat id".to_string());
     }

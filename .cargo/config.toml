@@ -23,5 +23,5 @@ LLVM_PROFILE_FILE = { value = "artifacts/coverage/profraw/default_%m_%p.profraw"
 
 [alias]
 fmt-check = "fmt --all -- --check"
-lint = "clippy --workspace --all-targets -- -D warnings"
+lint = "clippy --workspace --all-targets --all-features -- -D warnings"
 check-workspace = "check --workspace --all-targets"
