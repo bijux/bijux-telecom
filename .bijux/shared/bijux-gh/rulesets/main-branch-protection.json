@@ -40,6 +40,9 @@
           }
         ]
       }
+    },
+    {
+      "type": "merge_queue"
     }
   ],
   "bypass_actors": [
