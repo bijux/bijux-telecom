@@ -91,18 +91,32 @@ audit-rs: ## Run cargo-deny and cargo-audit
 	$(call rs_require_tool,cargo-audit)
 	@mkdir -p "$(dir $(RS_AUDIT_REPORT))"
 	@set -o pipefail; \
+	audit_ignore_args=(); \
+	audit_ignore_args_line="$$(CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo run -q -p bijux-telecom-dev -- audit-ignore-args)"; \
+	if [ -n "$${audit_ignore_args_line}" ]; then \
+		read -r -a audit_ignore_args <<< "$${audit_ignore_args_line}"; \
+	fi; \
+	governance_status=0; \
 	deny_status=0; \
 	audit_status=0; \
 	{ \
 		echo "run: cargo run -q -p bijux-telecom-dev -- audit-allowlist"; \
-		CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo run -q -p bijux-telecom-dev -- audit-allowlist || audit_status=$$?; \
+		CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo run -q -p bijux-telecom-dev -- audit-allowlist || governance_status=$$?; \
+		echo; \
+		echo "run: cargo run -q -p bijux-telecom-dev -- deny-policy-deviations"; \
+		CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo run -q -p bijux-telecom-dev -- deny-policy-deviations || governance_status=$$?; \
 		echo; \
 		echo "run: cargo deny check bans licenses sources --config configs/rust/deny.toml"; \
 		CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo deny check bans licenses sources --config configs/rust/deny.toml || deny_status=$$?; \
 		echo; \
-		echo "run: cargo audit"; \
-		CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo audit || audit_status=$$?; \
+		if [ "$${#audit_ignore_args[@]}" -gt 0 ]; then \
+			echo "run: cargo audit $${audit_ignore_args[*]}"; \
+		else \
+			echo "run: cargo audit"; \
+		fi; \
+		CARGO_TARGET_DIR="$(RS_TARGET_DIR)" cargo audit "$${audit_ignore_args[@]}" || audit_status=$$?; \
 	} 2>&1 | tee "$(RS_AUDIT_REPORT)"; \
+	test $$governance_status -eq 0; \
 	test $$deny_status -eq 0; \
 	test $$audit_status -eq 0
 
