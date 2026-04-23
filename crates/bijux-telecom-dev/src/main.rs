@@ -61,9 +61,11 @@ fn main() -> Result<()> {
             run_deny_policy_deviations_check(workspace_root)
         }
         Commands::AuditIgnoreArgs { workspace_root } => run_audit_ignore_args(workspace_root),
-        Commands::BenchCompare { strict, threshold, workspace_root } => {
-            run_bench_compare(strict, threshold, workspace_root)
-        }
+        Commands::BenchCompare {
+            strict,
+            threshold,
+            workspace_root,
+        } => run_bench_compare(strict, threshold, workspace_root),
     }
 }
 
@@ -82,7 +84,11 @@ fn run_audit_ignore_args(workspace_root: Option<PathBuf>) -> Result<()> {
 
     if let Some(rows) = value.get("advisory").and_then(toml::Value::as_array) {
         for row in rows {
-            let advisory_id = row.get("id").and_then(toml::Value::as_str).unwrap_or("").trim();
+            let advisory_id = row
+                .get("id")
+                .and_then(toml::Value::as_str)
+                .unwrap_or("")
+                .trim();
             if is_rustsec_id(advisory_id) {
                 advisory_ids.insert(advisory_id.to_string());
             }
@@ -103,8 +109,11 @@ fn run_audit_ignore_args(workspace_root: Option<PathBuf>) -> Result<()> {
         }
     }
 
-    let args =
-        advisory_ids.into_iter().map(|id| format!("--ignore {id}")).collect::<Vec<_>>().join(" ");
+    let args = advisory_ids
+        .into_iter()
+        .map(|id| format!("--ignore {id}"))
+        .collect::<Vec<_>>()
+        .join(" ");
     println!("{args}");
     Ok(())
 }
@@ -119,8 +128,11 @@ fn run_audit_allowlist_check(workspace_root: Option<PathBuf>) -> Result<()> {
     let payload = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
     let value: toml::Value =
         toml::from_str(&payload).with_context(|| format!("parse {}", path.display()))?;
-    let advisories =
-        value.get("advisory").and_then(toml::Value::as_array).cloned().unwrap_or_default();
+    let advisories = value
+        .get("advisory")
+        .and_then(toml::Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     if advisories.is_empty() {
         println!("check-audit-allowlist: passed");
         return Ok(());
@@ -130,11 +142,31 @@ fn run_audit_allowlist_check(workspace_root: Option<PathBuf>) -> Result<()> {
     let mut errors = Vec::new();
     for (index, row) in advisories.iter().enumerate() {
         let label = format!("advisory[{index}]");
-        let id = row.get("id").and_then(toml::Value::as_str).unwrap_or("").trim();
-        let why = row.get("why").and_then(toml::Value::as_str).unwrap_or("").trim();
-        let owner = row.get("owner").and_then(toml::Value::as_str).unwrap_or("").trim();
-        let link = row.get("link").and_then(toml::Value::as_str).unwrap_or("").trim();
-        let expiry = row.get("expiry").and_then(toml::Value::as_str).unwrap_or("").trim();
+        let id = row
+            .get("id")
+            .and_then(toml::Value::as_str)
+            .unwrap_or("")
+            .trim();
+        let why = row
+            .get("why")
+            .and_then(toml::Value::as_str)
+            .unwrap_or("")
+            .trim();
+        let owner = row
+            .get("owner")
+            .and_then(toml::Value::as_str)
+            .unwrap_or("")
+            .trim();
+        let link = row
+            .get("link")
+            .and_then(toml::Value::as_str)
+            .unwrap_or("")
+            .trim();
+        let expiry = row
+            .get("expiry")
+            .and_then(toml::Value::as_str)
+            .unwrap_or("")
+            .trim();
 
         if !is_rustsec_id(id) {
             errors.push(format!("{label}: id must match RUSTSEC-YYYY-NNNN"));
@@ -160,7 +192,10 @@ fn run_audit_allowlist_check(workspace_root: Option<PathBuf>) -> Result<()> {
         return Ok(());
     }
 
-    bail!("audit allowlist quality gate failed:\n{}", errors.join("\n"));
+    bail!(
+        "audit allowlist quality gate failed:\n{}",
+        errors.join("\n")
+    );
 }
 
 fn run_deny_policy_deviations_check(workspace_root: Option<PathBuf>) -> Result<()> {
@@ -173,7 +208,11 @@ fn run_deny_policy_deviations_check(workspace_root: Option<PathBuf>) -> Result<(
     let payload = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
     let value: toml::Value =
         toml::from_str(&payload).with_context(|| format!("parse {}", path.display()))?;
-    let rows = value.get("deviation").and_then(toml::Value::as_array).cloned().unwrap_or_default();
+    let rows = value
+        .get("deviation")
+        .and_then(toml::Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     if rows.is_empty() {
         println!("check-deny-policy-deviations: passed");
         return Ok(());
@@ -182,11 +221,31 @@ fn run_deny_policy_deviations_check(workspace_root: Option<PathBuf>) -> Result<(
     let mut errors = Vec::new();
     for (index, row) in rows.iter().enumerate() {
         let label = format!("deviation[{index}]");
-        let id = row.get("id").and_then(toml::Value::as_str).unwrap_or("").trim();
-        let owner = row.get("owner").and_then(toml::Value::as_str).unwrap_or("").trim();
-        let reason = row.get("reason").and_then(toml::Value::as_str).unwrap_or("").trim();
-        let expiry = row.get("expiry").and_then(toml::Value::as_str).unwrap_or("").trim();
-        let review = row.get("review").and_then(toml::Value::as_str).unwrap_or("").trim();
+        let id = row
+            .get("id")
+            .and_then(toml::Value::as_str)
+            .unwrap_or("")
+            .trim();
+        let owner = row
+            .get("owner")
+            .and_then(toml::Value::as_str)
+            .unwrap_or("")
+            .trim();
+        let reason = row
+            .get("reason")
+            .and_then(toml::Value::as_str)
+            .unwrap_or("")
+            .trim();
+        let expiry = row
+            .get("expiry")
+            .and_then(toml::Value::as_str)
+            .unwrap_or("")
+            .trim();
+        let review = row
+            .get("review")
+            .and_then(toml::Value::as_str)
+            .unwrap_or("")
+            .trim();
         if id.is_empty() {
             errors.push(format!("{label}: missing id"));
         }
@@ -211,16 +270,24 @@ fn run_deny_policy_deviations_check(workspace_root: Option<PathBuf>) -> Result<(
         println!("check-deny-policy-deviations: passed");
         return Ok(());
     }
-    bail!("deny policy deviations governance gate failed:\n{}", errors.join("\n"));
+    bail!(
+        "deny policy deviations governance gate failed:\n{}",
+        errors.join("\n")
+    );
 }
 
 fn current_iso_day() -> Result<String> {
-    let output =
-        Command::new("date").args(["+%Y-%m-%d"]).output().context("resolve current date")?;
+    let output = Command::new("date")
+        .args(["+%Y-%m-%d"])
+        .output()
+        .context("resolve current date")?;
     if !output.status.success() {
         bail!("resolve current date failed");
     }
-    Ok(String::from_utf8(output.stdout).context("date output is not UTF-8")?.trim().to_string())
+    Ok(String::from_utf8(output.stdout)
+        .context("date output is not UTF-8")?
+        .trim()
+        .to_string())
 }
 
 fn is_iso_day(value: &str) -> bool {
@@ -258,7 +325,11 @@ fn run_bench_compare(strict: bool, threshold: f64, workspace_root: Option<PathBu
     combined.push_str(&run_bench(
         &root,
         "bijux-gnss-receiver",
-        &["bench_correlator", "bench_acquisition_fft", "bench_tracking_update"],
+        &[
+            "bench_correlator",
+            "bench_acquisition_fft",
+            "bench_tracking_update",
+        ],
     )?);
     combined.push_str(&run_bench(&root, "bijux-gnss-nav", &["bench_ekf_update"])?);
 
@@ -323,7 +394,11 @@ fn write_current_snapshot(bench_output: &str, current_path: &Path) -> Result<()>
     let mut rows = Vec::<(String, u64)>::new();
     for line in bench_output.lines() {
         if let Some(caps) = line_re.captures(line) {
-            let name = caps.get(1).map(|m| m.as_str()).unwrap_or_default().to_string();
+            let name = caps
+                .get(1)
+                .map(|m| m.as_str())
+                .unwrap_or_default()
+                .to_string();
             let value = caps
                 .get(2)
                 .map(|m| m.as_str())
@@ -358,8 +433,9 @@ fn compare_baseline(baseline: &Path, current: &Path, threshold: f64) -> Result<V
         let mut parts = line.split_whitespace();
         let Some(name) = parts.next() else { continue };
         let Some(value) = parts.next() else { continue };
-        let parsed =
-            value.parse::<u64>().with_context(|| format!("parse baseline value for {name}"))?;
+        let parsed = value
+            .parse::<u64>()
+            .with_context(|| format!("parse baseline value for {name}"))?;
         baseline_map.insert(name.to_string(), parsed);
     }
 
@@ -368,8 +444,9 @@ fn compare_baseline(baseline: &Path, current: &Path, threshold: f64) -> Result<V
         let mut parts = line.split_whitespace();
         let Some(name) = parts.next() else { continue };
         let Some(value) = parts.next() else { continue };
-        let current_ns =
-            value.parse::<u64>().with_context(|| format!("parse current value for {name}"))?;
+        let current_ns = value
+            .parse::<u64>()
+            .with_context(|| format!("parse current value for {name}"))?;
         let Some(baseline_ns) = baseline_map.get(name) else {
             continue;
         };
