@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -23,6 +24,18 @@ enum Commands {
         #[arg(long)]
         workspace_root: Option<PathBuf>,
     },
+    /// Validate deny policy deviations governance contract.
+    DenyPolicyDeviations {
+        /// Workspace root override.
+        #[arg(long)]
+        workspace_root: Option<PathBuf>,
+    },
+    /// Print cargo audit ignore arguments derived from audit allowlist.
+    AuditIgnoreArgs {
+        /// Workspace root override.
+        #[arg(long)]
+        workspace_root: Option<PathBuf>,
+    },
     /// Run benchmark suite and compare against baseline.
     BenchCompare {
         /// Fail if a regression exceeds threshold.
@@ -44,10 +57,56 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::AuditAllowlist { workspace_root } => run_audit_allowlist_check(workspace_root),
+        Commands::DenyPolicyDeviations { workspace_root } => {
+            run_deny_policy_deviations_check(workspace_root)
+        }
+        Commands::AuditIgnoreArgs { workspace_root } => run_audit_ignore_args(workspace_root),
         Commands::BenchCompare { strict, threshold, workspace_root } => {
             run_bench_compare(strict, threshold, workspace_root)
         }
     }
+}
+
+fn run_audit_ignore_args(workspace_root: Option<PathBuf>) -> Result<()> {
+    let root =
+        workspace_root.unwrap_or(std::env::current_dir().context("resolve current directory")?);
+    let path = root.join("audit-allowlist.toml");
+    if !path.is_file() {
+        return Ok(());
+    }
+
+    let payload = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    let value: toml::Value =
+        toml::from_str(&payload).with_context(|| format!("parse {}", path.display()))?;
+    let mut advisory_ids = BTreeSet::new();
+
+    if let Some(rows) = value.get("advisory").and_then(toml::Value::as_array) {
+        for row in rows {
+            let advisory_id = row.get("id").and_then(toml::Value::as_str).unwrap_or("").trim();
+            if is_rustsec_id(advisory_id) {
+                advisory_ids.insert(advisory_id.to_string());
+            }
+        }
+    }
+
+    if let Some(ignore_rows) = value
+        .get("advisories")
+        .and_then(toml::Value::as_table)
+        .and_then(|table| table.get("ignore"))
+        .and_then(toml::Value::as_array)
+    {
+        for advisory_value in ignore_rows {
+            let advisory_id = advisory_value.as_str().unwrap_or("").trim();
+            if is_rustsec_id(advisory_id) {
+                advisory_ids.insert(advisory_id.to_string());
+            }
+        }
+    }
+
+    let args =
+        advisory_ids.into_iter().map(|id| format!("--ignore {id}")).collect::<Vec<_>>().join(" ");
+    println!("{args}");
+    Ok(())
 }
 
 fn run_audit_allowlist_check(workspace_root: Option<PathBuf>) -> Result<()> {
@@ -63,8 +122,7 @@ fn run_audit_allowlist_check(workspace_root: Option<PathBuf>) -> Result<()> {
     let advisories =
         value.get("advisory").and_then(toml::Value::as_array).cloned().unwrap_or_default();
     if advisories.is_empty() {
-        run_deny_policy_deviations_check(&root)?;
-        println!("audit allowlist quality gate: OK (no advisory exceptions)");
+        println!("check-audit-allowlist: passed");
         return Ok(());
     }
 
@@ -98,15 +156,16 @@ fn run_audit_allowlist_check(workspace_root: Option<PathBuf>) -> Result<()> {
     }
 
     if errors.is_empty() {
-        run_deny_policy_deviations_check(&root)?;
-        println!("audit allowlist quality gate: OK");
+        println!("check-audit-allowlist: passed");
         return Ok(());
     }
 
     bail!("audit allowlist quality gate failed:\n{}", errors.join("\n"));
 }
 
-fn run_deny_policy_deviations_check(root: &Path) -> Result<()> {
+fn run_deny_policy_deviations_check(workspace_root: Option<PathBuf>) -> Result<()> {
+    let root =
+        workspace_root.unwrap_or(std::env::current_dir().context("resolve current directory")?);
     let path = root.join("configs/rust/deny.deviations.toml");
     if !path.is_file() {
         bail!("missing {}", path.display());
@@ -116,6 +175,7 @@ fn run_deny_policy_deviations_check(root: &Path) -> Result<()> {
         toml::from_str(&payload).with_context(|| format!("parse {}", path.display()))?;
     let rows = value.get("deviation").and_then(toml::Value::as_array).cloned().unwrap_or_default();
     if rows.is_empty() {
+        println!("check-deny-policy-deviations: passed");
         return Ok(());
     }
     let today = current_iso_day()?;
@@ -148,6 +208,7 @@ fn run_deny_policy_deviations_check(root: &Path) -> Result<()> {
         }
     }
     if errors.is_empty() {
+        println!("check-deny-policy-deviations: passed");
         return Ok(());
     }
     bail!("deny policy deviations governance gate failed:\n{}", errors.join("\n"));
