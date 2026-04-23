@@ -4,27 +4,6 @@
 name: deploy-docs
 
 on:
-  push:
-    branches:
-      - main
-      - master
-    tags:
-      - "v*"
-    paths:
-      - ".github/workflows/deploy-docs.yml"
-      - ".github/docs-deploy.env"
-      - "Makefile"
-      - "makes/**"
-      - "docs/**"
-      - "mkdocs.yml"
-      - "mkdocs.shared.yml"
-      - "configs/**"
-      - "pyproject.toml"
-      - "uv.lock"
-      - "package-lock.json"
-      - "package.json"
-      - ".bijux/shared/bijux-docs/**"
-      - ".bijux/shared/bijux-makes-py/**"
   workflow_dispatch:
   workflow_call:
 

@@ -37,6 +37,16 @@
         "id": "release-pypi",
         "source": "shared/bijux-gh/workflows/release-pypi.yml",
         "consumer_runtime": ".github/workflows/release-pypi.yml"
+      },
+      {
+        "id": "labeler",
+        "source": "shared/bijux-gh/workflows/labeler.yml",
+        "consumer_runtime": ".github/workflows/labeler.yml"
+      },
+      {
+        "id": "codecov",
+        "source": "shared/bijux-gh/workflows/codecov.yml",
+        "consumer_runtime": ".github/workflows/codecov.yml"
       }
     ]
   },
@@ -334,14 +344,141 @@
         }
       },
       "workflow_allowlist": [
+        "codecov",
         "deploy-docs",
         "github-policy",
+        "labeler",
         "release-artifacts",
         "release-crates",
         "release-ghcr",
         "release-github"
       ],
-      "pinned_std_sha": "1f69262f891f11a8fb5ea49ddd4477977228e776"
+      "pinned_std_sha": "1f69262f891f11a8fb5ea49ddd4477977228e776",
+      "labeler": {
+        "github": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                ".github/**"
+              ]
+            }
+          ]
+        },
+        "docs": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "docs/**",
+                "**/*.md"
+              ]
+            }
+          ]
+        },
+        "rust": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.rs",
+                "Cargo.toml",
+                "Cargo.lock",
+                "configs/rust/**",
+                ".cargo/**"
+              ]
+            }
+          ]
+        },
+        "python": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.py",
+                "pyproject.toml",
+                "uv.lock",
+                "requirements*.txt"
+              ]
+            }
+          ]
+        },
+        "javascript": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.js",
+                "**/*.ts",
+                "package.json",
+                "package-lock.json"
+              ]
+            }
+          ]
+        },
+        "dependencies": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "Cargo.lock",
+                "uv.lock",
+                "package-lock.json",
+                "requirements*.txt",
+                ".github/dependabot.yml"
+              ]
+            }
+          ]
+        },
+        "ci": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                ".github/workflows/**",
+                "makes/**",
+                "Makefile"
+              ]
+            }
+          ]
+        },
+        "security": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "configs/rust/deny.toml",
+                "AuditAllowlist.toml",
+                "SECURITY.md"
+              ]
+            }
+          ]
+        }
+      },
+      "codecov": {
+        "codecov": {
+          "require_ci_to_pass": true,
+          "notify": {
+            "wait_for_ci": true,
+            "after_n_builds": 1
+          }
+        },
+        "coverage": {
+          "status": {
+            "project": {
+              "default": {
+                "target": "auto",
+                "threshold": "1%",
+                "informational": false
+              }
+            },
+            "patch": {
+              "default": {
+                "target": "auto",
+                "threshold": "1%",
+                "informational": false
+              }
+            }
+          }
+        },
+        "comment": {
+          "layout": "reach,diff,flags,files",
+          "behavior": "default",
+          "require_changes": true
+        }
+      }
     },
     {
       "name": "bijux-canon",
@@ -915,14 +1052,141 @@
         }
       },
       "workflow_allowlist": [
+        "codecov",
         "deploy-docs",
         "github-policy",
+        "labeler",
         "release-artifacts",
         "release-ghcr",
         "release-github",
         "release-pypi"
       ],
-      "pinned_std_sha": "af42c48d386fe5af0eb4c4f45041d1ab4d14b634"
+      "pinned_std_sha": "af42c48d386fe5af0eb4c4f45041d1ab4d14b634",
+      "labeler": {
+        "github": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                ".github/**"
+              ]
+            }
+          ]
+        },
+        "docs": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "docs/**",
+                "**/*.md"
+              ]
+            }
+          ]
+        },
+        "rust": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.rs",
+                "Cargo.toml",
+                "Cargo.lock",
+                "configs/rust/**",
+                ".cargo/**"
+              ]
+            }
+          ]
+        },
+        "python": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.py",
+                "pyproject.toml",
+                "uv.lock",
+                "requirements*.txt"
+              ]
+            }
+          ]
+        },
+        "javascript": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.js",
+                "**/*.ts",
+                "package.json",
+                "package-lock.json"
+              ]
+            }
+          ]
+        },
+        "dependencies": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "Cargo.lock",
+                "uv.lock",
+                "package-lock.json",
+                "requirements*.txt",
+                ".github/dependabot.yml"
+              ]
+            }
+          ]
+        },
+        "ci": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                ".github/workflows/**",
+                "makes/**",
+                "Makefile"
+              ]
+            }
+          ]
+        },
+        "security": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "configs/rust/deny.toml",
+                "AuditAllowlist.toml",
+                "SECURITY.md"
+              ]
+            }
+          ]
+        }
+      },
+      "codecov": {
+        "codecov": {
+          "require_ci_to_pass": true,
+          "notify": {
+            "wait_for_ci": true,
+            "after_n_builds": 1
+          }
+        },
+        "coverage": {
+          "status": {
+            "project": {
+              "default": {
+                "target": "auto",
+                "threshold": "1%",
+                "informational": false
+              }
+            },
+            "patch": {
+              "default": {
+                "target": "auto",
+                "threshold": "1%",
+                "informational": false
+              }
+            }
+          }
+        },
+        "comment": {
+          "layout": "reach,diff,flags,files",
+          "behavior": "default",
+          "require_changes": true
+        }
+      }
     },
     {
       "name": "bijux-core",
@@ -1287,20 +1551,149 @@
         }
       },
       "workflow_allowlist": [
+        "codecov",
         "deploy-docs",
         "github-policy",
+        "labeler",
         "release-artifacts",
         "release-crates",
         "release-ghcr",
         "release-github",
         "release-pypi"
       ],
-      "pinned_std_sha": "af42c48d386fe5af0eb4c4f45041d1ab4d14b634"
+      "pinned_std_sha": "af42c48d386fe5af0eb4c4f45041d1ab4d14b634",
+      "labeler": {
+        "github": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                ".github/**"
+              ]
+            }
+          ]
+        },
+        "docs": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "docs/**",
+                "**/*.md"
+              ]
+            }
+          ]
+        },
+        "rust": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.rs",
+                "Cargo.toml",
+                "Cargo.lock",
+                "configs/rust/**",
+                ".cargo/**"
+              ]
+            }
+          ]
+        },
+        "python": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.py",
+                "pyproject.toml",
+                "uv.lock",
+                "requirements*.txt"
+              ]
+            }
+          ]
+        },
+        "javascript": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.js",
+                "**/*.ts",
+                "package.json",
+                "package-lock.json"
+              ]
+            }
+          ]
+        },
+        "dependencies": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "Cargo.lock",
+                "uv.lock",
+                "package-lock.json",
+                "requirements*.txt",
+                ".github/dependabot.yml"
+              ]
+            }
+          ]
+        },
+        "ci": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                ".github/workflows/**",
+                "makes/**",
+                "Makefile"
+              ]
+            }
+          ]
+        },
+        "security": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "configs/rust/deny.toml",
+                "AuditAllowlist.toml",
+                "SECURITY.md"
+              ]
+            }
+          ]
+        }
+      },
+      "codecov": {
+        "codecov": {
+          "require_ci_to_pass": true,
+          "notify": {
+            "wait_for_ci": true,
+            "after_n_builds": 1
+          }
+        },
+        "coverage": {
+          "status": {
+            "project": {
+              "default": {
+                "target": "auto",
+                "threshold": "1%",
+                "informational": false
+              }
+            },
+            "patch": {
+              "default": {
+                "target": "auto",
+                "threshold": "1%",
+                "informational": false
+              }
+            }
+          }
+        },
+        "comment": {
+          "layout": "reach,diff,flags,files",
+          "behavior": "default",
+          "require_changes": true
+        }
+      }
     },
     {
       "name": "bijux-genomics",
       "workflow_allowlist": [
-        "github-policy"
+        "codecov",
+        "github-policy",
+        "labeler"
       ],
       "dependabot": {
         "version": 2,
@@ -1364,7 +1757,132 @@
           "type": "bool",
           "value": false
         }
-      ]
+      ],
+      "labeler": {
+        "github": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                ".github/**"
+              ]
+            }
+          ]
+        },
+        "docs": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "docs/**",
+                "**/*.md"
+              ]
+            }
+          ]
+        },
+        "rust": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.rs",
+                "Cargo.toml",
+                "Cargo.lock",
+                "configs/rust/**",
+                ".cargo/**"
+              ]
+            }
+          ]
+        },
+        "python": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.py",
+                "pyproject.toml",
+                "uv.lock",
+                "requirements*.txt"
+              ]
+            }
+          ]
+        },
+        "javascript": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.js",
+                "**/*.ts",
+                "package.json",
+                "package-lock.json"
+              ]
+            }
+          ]
+        },
+        "dependencies": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "Cargo.lock",
+                "uv.lock",
+                "package-lock.json",
+                "requirements*.txt",
+                ".github/dependabot.yml"
+              ]
+            }
+          ]
+        },
+        "ci": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                ".github/workflows/**",
+                "makes/**",
+                "Makefile"
+              ]
+            }
+          ]
+        },
+        "security": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "configs/rust/deny.toml",
+                "AuditAllowlist.toml",
+                "SECURITY.md"
+              ]
+            }
+          ]
+        }
+      },
+      "codecov": {
+        "codecov": {
+          "require_ci_to_pass": true,
+          "notify": {
+            "wait_for_ci": true,
+            "after_n_builds": 1
+          }
+        },
+        "coverage": {
+          "status": {
+            "project": {
+              "default": {
+                "target": "auto",
+                "threshold": "1%",
+                "informational": false
+              }
+            },
+            "patch": {
+              "default": {
+                "target": "auto",
+                "threshold": "1%",
+                "informational": false
+              }
+            }
+          }
+        },
+        "comment": {
+          "layout": "reach,diff,flags,files",
+          "behavior": "default",
+          "require_changes": true
+        }
+      }
     },
     {
       "name": "bijux-masterclass",
@@ -1459,10 +1977,137 @@
         ]
       },
       "workflow_allowlist": [
+        "codecov",
         "deploy-docs",
-        "github-policy"
+        "github-policy",
+        "labeler"
       ],
-      "pinned_std_sha": "af42c48d386fe5af0eb4c4f45041d1ab4d14b634"
+      "pinned_std_sha": "af42c48d386fe5af0eb4c4f45041d1ab4d14b634",
+      "labeler": {
+        "github": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                ".github/**"
+              ]
+            }
+          ]
+        },
+        "docs": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "docs/**",
+                "**/*.md"
+              ]
+            }
+          ]
+        },
+        "rust": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.rs",
+                "Cargo.toml",
+                "Cargo.lock",
+                "configs/rust/**",
+                ".cargo/**"
+              ]
+            }
+          ]
+        },
+        "python": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.py",
+                "pyproject.toml",
+                "uv.lock",
+                "requirements*.txt"
+              ]
+            }
+          ]
+        },
+        "javascript": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.js",
+                "**/*.ts",
+                "package.json",
+                "package-lock.json"
+              ]
+            }
+          ]
+        },
+        "dependencies": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "Cargo.lock",
+                "uv.lock",
+                "package-lock.json",
+                "requirements*.txt",
+                ".github/dependabot.yml"
+              ]
+            }
+          ]
+        },
+        "ci": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                ".github/workflows/**",
+                "makes/**",
+                "Makefile"
+              ]
+            }
+          ]
+        },
+        "security": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "configs/rust/deny.toml",
+                "AuditAllowlist.toml",
+                "SECURITY.md"
+              ]
+            }
+          ]
+        }
+      },
+      "codecov": {
+        "codecov": {
+          "require_ci_to_pass": true,
+          "notify": {
+            "wait_for_ci": true,
+            "after_n_builds": 1
+          }
+        },
+        "coverage": {
+          "status": {
+            "project": {
+              "default": {
+                "target": "auto",
+                "threshold": "1%",
+                "informational": false
+              }
+            },
+            "patch": {
+              "default": {
+                "target": "auto",
+                "threshold": "1%",
+                "informational": false
+              }
+            }
+          }
+        },
+        "comment": {
+          "layout": "reach,diff,flags,files",
+          "behavior": "default",
+          "require_changes": true
+        }
+      }
     },
     {
       "name": "bijux-pollenomics",
@@ -1953,14 +2598,141 @@
         }
       },
       "workflow_allowlist": [
+        "codecov",
         "deploy-docs",
         "github-policy",
+        "labeler",
         "release-artifacts",
         "release-ghcr",
         "release-github",
         "release-pypi"
       ],
-      "pinned_std_sha": "af42c48d386fe5af0eb4c4f45041d1ab4d14b634"
+      "pinned_std_sha": "af42c48d386fe5af0eb4c4f45041d1ab4d14b634",
+      "labeler": {
+        "github": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                ".github/**"
+              ]
+            }
+          ]
+        },
+        "docs": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "docs/**",
+                "**/*.md"
+              ]
+            }
+          ]
+        },
+        "rust": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.rs",
+                "Cargo.toml",
+                "Cargo.lock",
+                "configs/rust/**",
+                ".cargo/**"
+              ]
+            }
+          ]
+        },
+        "python": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.py",
+                "pyproject.toml",
+                "uv.lock",
+                "requirements*.txt"
+              ]
+            }
+          ]
+        },
+        "javascript": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.js",
+                "**/*.ts",
+                "package.json",
+                "package-lock.json"
+              ]
+            }
+          ]
+        },
+        "dependencies": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "Cargo.lock",
+                "uv.lock",
+                "package-lock.json",
+                "requirements*.txt",
+                ".github/dependabot.yml"
+              ]
+            }
+          ]
+        },
+        "ci": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                ".github/workflows/**",
+                "makes/**",
+                "Makefile"
+              ]
+            }
+          ]
+        },
+        "security": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "configs/rust/deny.toml",
+                "AuditAllowlist.toml",
+                "SECURITY.md"
+              ]
+            }
+          ]
+        }
+      },
+      "codecov": {
+        "codecov": {
+          "require_ci_to_pass": true,
+          "notify": {
+            "wait_for_ci": true,
+            "after_n_builds": 1
+          }
+        },
+        "coverage": {
+          "status": {
+            "project": {
+              "default": {
+                "target": "auto",
+                "threshold": "1%",
+                "informational": false
+              }
+            },
+            "patch": {
+              "default": {
+                "target": "auto",
+                "threshold": "1%",
+                "informational": false
+              }
+            }
+          }
+        },
+        "comment": {
+          "layout": "reach,diff,flags,files",
+          "behavior": "default",
+          "require_changes": true
+        }
+      }
     },
     {
       "name": "bijux-proteomics",
@@ -2559,14 +3331,141 @@
         }
       },
       "workflow_allowlist": [
+        "codecov",
         "deploy-docs",
         "github-policy",
+        "labeler",
         "release-artifacts",
         "release-ghcr",
         "release-github",
         "release-pypi"
       ],
-      "pinned_std_sha": "af42c48d386fe5af0eb4c4f45041d1ab4d14b634"
+      "pinned_std_sha": "af42c48d386fe5af0eb4c4f45041d1ab4d14b634",
+      "labeler": {
+        "github": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                ".github/**"
+              ]
+            }
+          ]
+        },
+        "docs": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "docs/**",
+                "**/*.md"
+              ]
+            }
+          ]
+        },
+        "rust": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.rs",
+                "Cargo.toml",
+                "Cargo.lock",
+                "configs/rust/**",
+                ".cargo/**"
+              ]
+            }
+          ]
+        },
+        "python": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.py",
+                "pyproject.toml",
+                "uv.lock",
+                "requirements*.txt"
+              ]
+            }
+          ]
+        },
+        "javascript": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.js",
+                "**/*.ts",
+                "package.json",
+                "package-lock.json"
+              ]
+            }
+          ]
+        },
+        "dependencies": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "Cargo.lock",
+                "uv.lock",
+                "package-lock.json",
+                "requirements*.txt",
+                ".github/dependabot.yml"
+              ]
+            }
+          ]
+        },
+        "ci": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                ".github/workflows/**",
+                "makes/**",
+                "Makefile"
+              ]
+            }
+          ]
+        },
+        "security": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "configs/rust/deny.toml",
+                "AuditAllowlist.toml",
+                "SECURITY.md"
+              ]
+            }
+          ]
+        }
+      },
+      "codecov": {
+        "codecov": {
+          "require_ci_to_pass": true,
+          "notify": {
+            "wait_for_ci": true,
+            "after_n_builds": 1
+          }
+        },
+        "coverage": {
+          "status": {
+            "project": {
+              "default": {
+                "target": "auto",
+                "threshold": "1%",
+                "informational": false
+              }
+            },
+            "patch": {
+              "default": {
+                "target": "auto",
+                "threshold": "1%",
+                "informational": false
+              }
+            }
+          }
+        },
+        "comment": {
+          "layout": "reach,diff,flags,files",
+          "behavior": "default",
+          "require_changes": true
+        }
+      }
     },
     {
       "name": "bijux-telecom",
@@ -2622,9 +3521,136 @@
         ]
       },
       "workflow_allowlist": [
+        "codecov",
         "deploy-docs",
-        "github-policy"
-      ]
+        "github-policy",
+        "labeler"
+      ],
+      "labeler": {
+        "github": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                ".github/**"
+              ]
+            }
+          ]
+        },
+        "docs": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "docs/**",
+                "**/*.md"
+              ]
+            }
+          ]
+        },
+        "rust": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.rs",
+                "Cargo.toml",
+                "Cargo.lock",
+                "configs/rust/**",
+                ".cargo/**"
+              ]
+            }
+          ]
+        },
+        "python": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.py",
+                "pyproject.toml",
+                "uv.lock",
+                "requirements*.txt"
+              ]
+            }
+          ]
+        },
+        "javascript": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.js",
+                "**/*.ts",
+                "package.json",
+                "package-lock.json"
+              ]
+            }
+          ]
+        },
+        "dependencies": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "Cargo.lock",
+                "uv.lock",
+                "package-lock.json",
+                "requirements*.txt",
+                ".github/dependabot.yml"
+              ]
+            }
+          ]
+        },
+        "ci": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                ".github/workflows/**",
+                "makes/**",
+                "Makefile"
+              ]
+            }
+          ]
+        },
+        "security": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "configs/rust/deny.toml",
+                "AuditAllowlist.toml",
+                "SECURITY.md"
+              ]
+            }
+          ]
+        }
+      },
+      "codecov": {
+        "codecov": {
+          "require_ci_to_pass": true,
+          "notify": {
+            "wait_for_ci": true,
+            "after_n_builds": 1
+          }
+        },
+        "coverage": {
+          "status": {
+            "project": {
+              "default": {
+                "target": "auto",
+                "threshold": "1%",
+                "informational": false
+              }
+            },
+            "patch": {
+              "default": {
+                "target": "auto",
+                "threshold": "1%",
+                "informational": false
+              }
+            }
+          }
+        },
+        "comment": {
+          "layout": "reach,diff,flags,files",
+          "behavior": "default",
+          "require_changes": true
+        }
+      }
     },
     {
       "name": "bijux-std",
@@ -2673,9 +3699,136 @@
         ]
       },
       "workflow_allowlist": [
-        "github-policy"
+        "codecov",
+        "github-policy",
+        "labeler"
       ],
-      "pinned_std_sha": "5da4225aedcfc2af92bb431875243fa2db2b0ce9"
+      "pinned_std_sha": "5da4225aedcfc2af92bb431875243fa2db2b0ce9",
+      "labeler": {
+        "github": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                ".github/**"
+              ]
+            }
+          ]
+        },
+        "docs": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "docs/**",
+                "**/*.md"
+              ]
+            }
+          ]
+        },
+        "rust": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.rs",
+                "Cargo.toml",
+                "Cargo.lock",
+                "configs/rust/**",
+                ".cargo/**"
+              ]
+            }
+          ]
+        },
+        "python": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.py",
+                "pyproject.toml",
+                "uv.lock",
+                "requirements*.txt"
+              ]
+            }
+          ]
+        },
+        "javascript": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.js",
+                "**/*.ts",
+                "package.json",
+                "package-lock.json"
+              ]
+            }
+          ]
+        },
+        "dependencies": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "Cargo.lock",
+                "uv.lock",
+                "package-lock.json",
+                "requirements*.txt",
+                ".github/dependabot.yml"
+              ]
+            }
+          ]
+        },
+        "ci": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                ".github/workflows/**",
+                "makes/**",
+                "Makefile"
+              ]
+            }
+          ]
+        },
+        "security": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "configs/rust/deny.toml",
+                "AuditAllowlist.toml",
+                "SECURITY.md"
+              ]
+            }
+          ]
+        }
+      },
+      "codecov": {
+        "codecov": {
+          "require_ci_to_pass": true,
+          "notify": {
+            "wait_for_ci": true,
+            "after_n_builds": 1
+          }
+        },
+        "coverage": {
+          "status": {
+            "project": {
+              "default": {
+                "target": "auto",
+                "threshold": "1%",
+                "informational": false
+              }
+            },
+            "patch": {
+              "default": {
+                "target": "auto",
+                "threshold": "1%",
+                "informational": false
+              }
+            }
+          }
+        },
+        "comment": {
+          "layout": "reach,diff,flags,files",
+          "behavior": "default",
+          "require_changes": true
+        }
+      }
     },
     {
       "name": "bijux.github.io",
@@ -2710,10 +3863,137 @@
         ]
       },
       "workflow_allowlist": [
+        "codecov",
         "deploy-docs",
-        "github-policy"
+        "github-policy",
+        "labeler"
       ],
-      "pinned_std_sha": "af42c48d386fe5af0eb4c4f45041d1ab4d14b634"
+      "pinned_std_sha": "af42c48d386fe5af0eb4c4f45041d1ab4d14b634",
+      "labeler": {
+        "github": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                ".github/**"
+              ]
+            }
+          ]
+        },
+        "docs": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "docs/**",
+                "**/*.md"
+              ]
+            }
+          ]
+        },
+        "rust": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.rs",
+                "Cargo.toml",
+                "Cargo.lock",
+                "configs/rust/**",
+                ".cargo/**"
+              ]
+            }
+          ]
+        },
+        "python": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.py",
+                "pyproject.toml",
+                "uv.lock",
+                "requirements*.txt"
+              ]
+            }
+          ]
+        },
+        "javascript": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "**/*.js",
+                "**/*.ts",
+                "package.json",
+                "package-lock.json"
+              ]
+            }
+          ]
+        },
+        "dependencies": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "Cargo.lock",
+                "uv.lock",
+                "package-lock.json",
+                "requirements*.txt",
+                ".github/dependabot.yml"
+              ]
+            }
+          ]
+        },
+        "ci": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                ".github/workflows/**",
+                "makes/**",
+                "Makefile"
+              ]
+            }
+          ]
+        },
+        "security": {
+          "changed-files": [
+            {
+              "any-glob-to-any-file": [
+                "configs/rust/deny.toml",
+                "AuditAllowlist.toml",
+                "SECURITY.md"
+              ]
+            }
+          ]
+        }
+      },
+      "codecov": {
+        "codecov": {
+          "require_ci_to_pass": true,
+          "notify": {
+            "wait_for_ci": true,
+            "after_n_builds": 1
+          }
+        },
+        "coverage": {
+          "status": {
+            "project": {
+              "default": {
+                "target": "auto",
+                "threshold": "1%",
+                "informational": false
+              }
+            },
+            "patch": {
+              "default": {
+                "target": "auto",
+                "threshold": "1%",
+                "informational": false
+              }
+            }
+          }
+        },
+        "comment": {
+          "layout": "reach,diff,flags,files",
+          "behavior": "default",
+          "require_changes": true
+        }
+      }
     }
   ]
 }
