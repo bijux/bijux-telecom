@@ -22,7 +22,45 @@ jobs:
           ref: refs/pull/${{ github.event.pull_request.number }}/merge
           persist-credentials: false
 
+      - name: Validate labeler config schema
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import sys
+
+          import yaml
+
+          path = Path(".github/labeler.yml")
+          if not path.exists():
+              print("ERROR: .github/labeler.yml is missing in checked-out PR merge ref")
+              sys.exit(1)
+
+          data = yaml.safe_load(path.read_text(encoding="utf-8"))
+          if not isinstance(data, dict):
+              print("ERROR: .github/labeler.yml must be a top-level mapping")
+              sys.exit(1)
+
+          option_keys = {"changed-files-labels-limit", "max-files-changed"}
+          for key, value in data.items():
+              if key in option_keys:
+                  continue
+              if not isinstance(value, list):
+                  print(
+                      "ERROR: label '%s' must map to a list of rule mappings for actions/labeler v5"
+                      % key
+                  )
+                  sys.exit(1)
+              for idx, item in enumerate(value, start=1):
+                  if not isinstance(item, dict):
+                      print(
+                          "ERROR: label '%s' item #%d must be a mapping, got %s"
+                          % (key, idx, type(item).__name__)
+                      )
+                      sys.exit(1)
+          PY
+
       - uses: actions/labeler@8558fd74291d67161a8a78ce36a881fa63b766a9 # v5
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           sync-labels: true
+          configuration-path: .github/labeler.yml

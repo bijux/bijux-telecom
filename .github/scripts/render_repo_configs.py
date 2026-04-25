@@ -109,10 +109,33 @@ def render_yaml_document(data: Any) -> str:
 def normalize_labeler_rules(data: Any) -> Any:
     if not isinstance(data, dict):
         return data
+    # actions/labeler supports these top-level config keys as scalars.
+    option_keys = {"changed-files-labels-limit", "max-files-changed"}
     normalized: dict[str, Any] = {}
     for label, rules in data.items():
+        if label in option_keys:
+            normalized[label] = rules
+            continue
         normalized[label] = rules if isinstance(rules, list) else [rules]
     return normalized
+
+
+def validate_labeler_rules(data: Any) -> None:
+    if not isinstance(data, dict):
+        raise ValueError("labeler config must be a mapping")
+    option_keys = {"changed-files-labels-limit", "max-files-changed"}
+    for key, value in data.items():
+        if key in option_keys:
+            continue
+        if not isinstance(value, list):
+            raise ValueError(
+                f"labeler config entry '{key}' must be a list of rule objects"
+            )
+        for index, item in enumerate(value):
+            if not isinstance(item, dict):
+                raise ValueError(
+                    f"labeler config entry '{key}' item #{index + 1} must be a mapping"
+                )
 
 
 def find_repo_config(manifest: dict, repo_name: str) -> dict:
@@ -154,7 +177,9 @@ def render_repo(repo_name: str, manifest: dict) -> None:
     labeler_data = repo.get("labeler")
     if labeler_data is not None:
         labeler_path = repo_root / ".github/labeler.yml"
-        labeler_content = render_yaml_document(normalize_labeler_rules(labeler_data))
+        normalized_labeler = normalize_labeler_rules(labeler_data)
+        validate_labeler_rules(normalized_labeler)
+        labeler_content = render_yaml_document(normalized_labeler)
         write_if_needed(labeler_path, labeler_content)
 
     codecov_data = repo.get("codecov")
