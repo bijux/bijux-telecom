@@ -43,6 +43,8 @@ ALLOWED_CONTROL_PATHS = {
     ".bijux/shared/shared-dir-sha256.txt",
 }
 
+STD_PIN_PATH = ".github/standards/bijux-std.sha"
+
 
 def load_manifest() -> dict:
     if not MANIFEST_PATH.exists():
@@ -86,6 +88,11 @@ def main() -> int:
 
     protected_changed = sorted(path for path in changed if path in protected_paths())
     if not protected_changed:
+        return 0
+
+    # Permit pin-only updates so repositories can advance the consumed standard commit
+    # even when no managed file payload changed.
+    if set(protected_changed) == {STD_PIN_PATH}:
         return 0
 
     controls_changed = sorted(path for path in changed if path in ALLOWED_CONTROL_PATHS)
