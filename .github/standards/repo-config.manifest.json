@@ -2384,7 +2384,7 @@
                   }
                 },
                 {
-                  "uses": "actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f",
+                  "uses": "actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e",
                   "if": "${{ contains(fromJson(inputs.api_toolchain_targets), matrix.target) }}",
                   "with": {
                     "node-version": 20
@@ -3104,7 +3104,7 @@
                   }
                 },
                 {
-                  "uses": "actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f",
+                  "uses": "actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e",
                   "if": "${{ contains(fromJson(inputs.api_toolchain_targets), matrix.target) }}",
                   "with": {
                     "node-version": 20

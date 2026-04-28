@@ -106,6 +106,24 @@ def render_yaml_document(data: Any) -> str:
     return PROVENANCE_HEADER + "\n".join(dump_yaml(data)) + "\n"
 
 
+def render_dependabot_document(data: Any) -> str:
+    lines = dump_yaml(data)
+    rendered: list[str] = []
+    first_update = True
+
+    for line in lines:
+        if line.startswith("  - "):
+            if not first_update:
+                rendered.append("")
+            first_update = False
+        if line.startswith("    directory: /"):
+            _, value = line.split(": ", maxsplit=1)
+            line = f'    directory: "{value}"'
+        rendered.append(line)
+
+    return "\n".join(rendered) + "\n"
+
+
 def normalize_labeler_rules(data: Any) -> Any:
     if not isinstance(data, dict):
         return data
@@ -171,7 +189,7 @@ def render_repo(repo_name: str, manifest: dict) -> None:
     dependabot_data = repo.get("dependabot")
     if dependabot_data is not None:
         dependabot_path = repo_root / ".github/dependabot.yml"
-        dependabot_content = render_yaml_document(dependabot_data)
+        dependabot_content = render_dependabot_document(dependabot_data)
         write_if_needed(dependabot_path, dependabot_content)
 
     labeler_data = repo.get("labeler")

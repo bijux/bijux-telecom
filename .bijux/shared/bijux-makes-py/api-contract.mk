@@ -212,7 +212,10 @@ api-test: | $(VENV)
 	@[ -f ./openapitools.json ] && echo "→ Removing stray openapitools.json (root)" && rm -f ./openapitools.json || true
 	@echo "✔ Schemathesis finished. Log → $(API_TEST_DIR_ABS)/schemathesis.log"
 	@[ -f "$(SCHEMATHESIS_JUNIT)" ] && echo "  JUnit → $(SCHEMATHESIS_JUNIT)" || true
-	@[ -d .hypothesis ] && echo "→ Removing stray .hypothesis (root)" && rm -rf .hypothesis || true
+	@if [ -d .hypothesis ] && [ ! -L .hypothesis ]; then \
+	  echo "→ Removing stray .hypothesis (root)"; \
+	  rm -rf .hypothesis; \
+	fi
 
 api-serve: | $(VENV)
 	@mkdir -p "$(API_ARTIFACTS_DIR_ABS)"

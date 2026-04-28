@@ -38,6 +38,14 @@ COMMON_API_TEMP_CLEAN_PATHS := spec.json openapitools.json node_modules site
 COMMON_ARTIFACT_CLEAN_PATHS := artifacts "$(PROJECT_ARTIFACTS_DIR)"
 COMMON_CONFIG_CACHE_CLEAN_PATHS := "$(CONFIG_DIR)/.ruff_cache"
 
+# Package roots may expose tracked symlink aliases for repository-owned
+# artifact locations. Keep those aliases stable and let clean targets operate
+# on the canonical repository artifact tree instead of deleting the links.
+COMMON_PYTHON_CLEAN_PATHS := $(filter-out .hypothesis .benchmarks,$(COMMON_PYTHON_CLEAN_PATHS))
+PROJECT_ARTIFACT_PRESERVE_DIRS ?= venv hypothesis benchmarks
+PROJECT_ARTIFACT_CHILD_CLEAN_PATHS := $(shell if [ -d "$(PROJECT_ARTIFACTS_DIR)" ]; then find "$(PROJECT_ARTIFACTS_DIR)" -mindepth 1 -maxdepth 1 $(foreach dir,$(PROJECT_ARTIFACT_PRESERVE_DIRS),! -name "$(dir)") -print; fi)
+COMMON_ARTIFACT_CLEAN_PATHS := $(PROJECT_ARTIFACT_CHILD_CLEAN_PATHS)
+
 ifneq ($(strip $(PACKAGE_PROFILE_MAKEFILE)),)
 MAKEFLAGS += -f $(PACKAGE_PROFILE_MAKEFILE)
 endif
