@@ -3555,6 +3555,10 @@
                   "uses": "actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8"
                 },
                 {
+                  "name": "Install Linux build dependencies",
+                  "run": "sudo apt-get update && sudo apt-get install --yes pkg-config libfontconfig1-dev libfreetype6-dev"
+                },
+                {
                   "name": "Set up Rust",
                   "uses": "dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9",
                   "with": {
@@ -3607,6 +3611,10 @@
                 {
                   "name": "Check out the repository",
                   "uses": "actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8"
+                },
+                {
+                  "name": "Install Linux build dependencies",
+                  "run": "sudo apt-get update && sudo apt-get install --yes pkg-config libfontconfig1-dev libfreetype6-dev"
                 },
                 {
                   "name": "Set up Rust",
