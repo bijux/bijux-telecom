@@ -3520,6 +3520,148 @@
           }
         ]
       },
+      "workflow_wrappers": {
+        "ci": {
+          "name": "repo / ci",
+          "on": {
+            "push": {
+              "branches": [
+                "main"
+              ]
+            },
+            "pull_request": null
+          },
+          "concurrency": {
+            "group": "${{ github.workflow }}-${{ github.ref }}",
+            "cancel-in-progress": true
+          },
+          "permissions": {
+            "contents": "read"
+          },
+          "env": {
+            "RUST_TOOLCHAIN_VERSION": "1.86.0",
+            "CARGO_DENY_VERSION": "0.18.3",
+            "CARGO_AUDIT_VERSION": "0.22.0",
+            "CARGO_NEXTEST_VERSION": "0.9.100"
+          },
+          "jobs": {
+            "fmt": {
+              "name": "Formatting",
+              "runs-on": "ubuntu-24.04",
+              "timeout-minutes": 20,
+              "steps": [
+                {
+                  "name": "Check out the repository",
+                  "uses": "actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8"
+                },
+                {
+                  "name": "Set up Rust",
+                  "uses": "dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9",
+                  "with": {
+                    "toolchain": "${{ env.RUST_TOOLCHAIN_VERSION }}",
+                    "components": "rustfmt"
+                  }
+                },
+                {
+                  "name": "Restore the Rust cache",
+                  "uses": "Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4"
+                },
+                {
+                  "name": "Run formatting checks",
+                  "run": "make fmt-rs"
+                }
+              ]
+            },
+            "lint": {
+              "name": "Lint",
+              "runs-on": "ubuntu-24.04",
+              "timeout-minutes": 30,
+              "steps": [
+                {
+                  "name": "Check out the repository",
+                  "uses": "actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8"
+                },
+                {
+                  "name": "Set up Rust",
+                  "uses": "dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9",
+                  "with": {
+                    "toolchain": "${{ env.RUST_TOOLCHAIN_VERSION }}",
+                    "components": "clippy"
+                  }
+                },
+                {
+                  "name": "Restore the Rust cache",
+                  "uses": "Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4"
+                },
+                {
+                  "name": "Run lint checks",
+                  "run": "make lint-rs"
+                }
+              ]
+            },
+            "security": {
+              "name": "Security",
+              "runs-on": "ubuntu-24.04",
+              "timeout-minutes": 30,
+              "steps": [
+                {
+                  "name": "Check out the repository",
+                  "uses": "actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8"
+                },
+                {
+                  "name": "Set up Rust",
+                  "uses": "dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9",
+                  "with": {
+                    "toolchain": "${{ env.RUST_TOOLCHAIN_VERSION }}"
+                  }
+                },
+                {
+                  "name": "Restore the Rust cache",
+                  "uses": "Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4"
+                },
+                {
+                  "name": "Install Rust security tools",
+                  "run": "cargo install --locked cargo-deny --version \"${{ env.CARGO_DENY_VERSION }}\" && cargo install --locked cargo-audit --version \"${{ env.CARGO_AUDIT_VERSION }}\""
+                },
+                {
+                  "name": "Run security checks",
+                  "run": "make audit-rs"
+                }
+              ]
+            },
+            "test": {
+              "name": "Tests",
+              "runs-on": "ubuntu-24.04",
+              "timeout-minutes": 45,
+              "steps": [
+                {
+                  "name": "Check out the repository",
+                  "uses": "actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8"
+                },
+                {
+                  "name": "Set up Rust",
+                  "uses": "dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9",
+                  "with": {
+                    "toolchain": "${{ env.RUST_TOOLCHAIN_VERSION }}"
+                  }
+                },
+                {
+                  "name": "Restore the Rust cache",
+                  "uses": "Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4"
+                },
+                {
+                  "name": "Install cargo-nextest",
+                  "run": "cargo install --locked cargo-nextest --version \"${{ env.CARGO_NEXTEST_VERSION }}\""
+                },
+                {
+                  "name": "Run test suites",
+                  "run": "make test-rs"
+                }
+              ]
+            }
+          }
+        }
+      },
       "workflow_allowlist": [
         "codecov",
         "deploy-docs",
