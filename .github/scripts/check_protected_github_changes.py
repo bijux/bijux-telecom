@@ -34,16 +34,17 @@ BASE_PROTECTED_PATHS = {
 }
 
 ALLOWED_CONTROL_PATHS = {
+    ".github/standards/bijux-std.sha",
     ".github/standards/repo-config.manifest.json",
     ".github/standards/workflow-inventory.json",
     ".github/scripts/build_repo_manifest.py",
+    ".github/scripts/check_protected_github_changes.py",
     ".github/scripts/render_repo_configs.py",
     ".github/scripts/sync_github_standards.py",
     ".github/bijux-std-shared.sha256",
     ".bijux/shared/shared-dir-sha256.txt",
+    "shared/shared-dir-sha256.txt",
 }
-
-STD_PIN_PATH = ".github/standards/bijux-std.sha"
 
 
 def load_manifest() -> dict:
@@ -88,11 +89,6 @@ def main() -> int:
 
     protected_changed = sorted(path for path in changed if path in protected_paths())
     if not protected_changed:
-        return 0
-
-    # Permit pin-only updates so repositories can advance the consumed standard commit
-    # even when no managed file payload changed.
-    if set(protected_changed) == {STD_PIN_PATH}:
         return 0
 
     controls_changed = sorted(path for path in changed if path in ALLOWED_CONTROL_PATHS)

@@ -40,3 +40,23 @@ Workflow automation identity:
 ## Governance Rule
 
 Bot-authored commit provenance is intentionally retained on `main` so history keeps clear authorship for human decisions, dependency automation, and workflow automation.
+
+## Workflow Ownership Contract
+
+Shared governance workflows are generated from `bijux-std` and synchronized into
+consumer repositories. Treat these as managed outputs:
+
+- `.github/workflows/automerge-pr.yml`
+- `.github/workflows/bijux-std.yml`
+- `.github/workflows/deploy-docs.yml`
+- `.github/workflows/github-policy.yml`
+- `.github/workflows/release-*.yml`
+- `.github/workflows/ci.yml` and `.github/workflows/verify.yml` when rendered
+  from manifest wrappers
+
+Contributor rules:
+
+- do not hand-edit generated workflow copies in consumer repositories
+- make standards changes in `bijux-std` source-of-truth files
+- run standards sync/render to propagate managed updates
+- keep repository-owned workflows separate and outside the managed inventory

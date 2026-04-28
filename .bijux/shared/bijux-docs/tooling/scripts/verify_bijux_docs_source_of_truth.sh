@@ -67,11 +67,12 @@ verify_shared_manifest_entry() {
   local manifest_path="$1"
   local dir_rel="$2"
   local repo_label="$3"
+  local manifest_dir_rel="${4:-$2}"
 
   local expected_sha
-  expected_sha="$(manifest_sha_for_dir "${manifest_path}" "${dir_rel}")"
+  expected_sha="$(manifest_sha_for_dir "${manifest_path}" "${manifest_dir_rel}")"
   if [[ -z "${expected_sha}" ]]; then
-    echo "ERROR: ${manifest_path} missing entry for ${dir_rel} (${repo_label})" >&2
+    echo "ERROR: ${manifest_path} missing entry for ${manifest_dir_rel} (${repo_label})" >&2
     exit 1
   fi
 
@@ -147,7 +148,8 @@ if [[ -d "${repo_root}/${shared_prefix}/bijux-gh" ]]; then
 fi
 
 for dir_rel in "${local_dirs[@]}"; do
-  verify_shared_manifest_entry "${local_manifest}" "${dir_rel}" "local repository"
+  manifest_dir_rel="${dir_rel#.bijux/}"
+  verify_shared_manifest_entry "${local_manifest}" "${dir_rel}" "local repository" "${manifest_dir_rel}"
 done
 
 workspace_root="$(cd "${repo_root}/.." && pwd)"
@@ -156,8 +158,8 @@ std_manifest="${std_root}/shared/shared-dir-sha256.txt"
 
 if [[ -f "${std_manifest}" ]]; then
   for dir_rel in "${local_dirs[@]}"; do
-    local_manifest_sha="$(manifest_sha_for_dir "${local_manifest}" "${dir_rel}")"
     std_dir_rel="${dir_rel#.bijux/}"
+    local_manifest_sha="$(manifest_sha_for_dir "${local_manifest}" "${std_dir_rel}")"
     std_manifest_sha="$(manifest_sha_for_dir "${std_manifest}" "${std_dir_rel}")"
     if [[ -z "${std_manifest_sha}" ]]; then
       echo "ERROR: bijux-std manifest missing ${std_dir_rel}" >&2
