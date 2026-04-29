@@ -18,6 +18,9 @@ This `shared/bijux-gh` subtree remains as legacy source content for
 cross-repository governance assets that are also promoted into the canonical
 `.github` standards layer.
 
+Live GitHub admin settings such as branch protection are governed in
+`bijux-iac`, not from this subtree.
+
 - `.github/automation-identity.md`
 - `.github/CODEOWNERS`
 - `.github/ISSUE_TEMPLATE/*`
@@ -46,7 +49,8 @@ Usage in a repository (current model):
    - `.github/workflows/bijux-std.yml`
    - `.github/workflows/github-policy.yml`
 
-This keeps branch protection and bot update policy consistent across Python repositories.
+This keeps in-repo GitHub standards and bot update policy consistent across
+repositories. Live branch protection is enforced separately by `bijux-iac`.
 
 ## Issue and Pull Request Templates
 
