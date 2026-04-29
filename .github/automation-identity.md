@@ -60,3 +60,6 @@ Contributor rules:
 - make standards changes in `bijux-std` source-of-truth files
 - run standards sync/render to propagate managed updates
 - keep repository-owned workflows separate and outside the managed inventory
+
+Live GitHub admin settings such as branch protection are governed separately in
+`bijux-iac`.
