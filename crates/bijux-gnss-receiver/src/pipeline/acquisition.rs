@@ -3,7 +3,9 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use bijux_gnss_core::api::{AcqResult, Hertz, SamplesFrame, SatId};
+use bijux_gnss_core::api::{
+    AcqAssumptions, AcqEvidence, AcqHypothesis, AcqResult, Hertz, SamplesFrame, SatId,
+};
 use num_complex::Complex;
 use rustfft::{num_traits::Zero, FftPlanner};
 
@@ -20,30 +22,72 @@ pub struct Acquisition {
     doppler_search_hz: i32,
     doppler_step_hz: i32,
     cache: Mutex<CodeFftCache>,
+    stats: Mutex<AcquisitionStats>,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct AcquisitionStats {
+    pub sat_count: u64,
+    pub doppler_bins: u64,
+    pub code_search_bins: u64,
+    pub cache_hits: u64,
+    pub cache_misses: u64,
+    pub accepted_count: u64,
+    pub ambiguous_count: u64,
+    pub rejected_count: u64,
+    pub deferred_count: u64,
 }
 
 type CodeFftCache = HashMap<(usize, SatId), Vec<Complex<f32>>>;
 
 impl Acquisition {
+    fn with_stats<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&mut AcquisitionStats) -> R,
+    {
+        match self.stats.lock() {
+            Ok(mut guard) => f(&mut guard),
+            Err(_) => f(&mut AcquisitionStats::default()),
+        }
+    }
+
+    pub fn stats_snapshot(&self) -> AcquisitionStats {
+        match self.stats.lock() {
+            Ok(stats) => *stats,
+            Err(_) => AcquisitionStats::default(),
+        }
+    }
+
     pub fn new(config: ReceiverPipelineConfig, runtime: ReceiverRuntime) -> Self {
+        let doppler_step_hz = config.acquisition_doppler_step_hz.max(1);
         Self {
-            config,
+            config: config.clone(),
             runtime,
-            doppler_search_hz: 10_000,
-            doppler_step_hz: 500,
+            doppler_search_hz: config.acquisition_doppler_search_hz,
+            doppler_step_hz,
             cache: Mutex::new(HashMap::new()),
+            stats: Mutex::new(AcquisitionStats::default()),
         }
     }
 
     pub fn with_doppler(mut self, search_hz: i32, step_hz: i32) -> Self {
-        self.doppler_search_hz = search_hz;
+        self.doppler_search_hz = search_hz.abs();
         self.doppler_step_hz = step_hz.max(1);
         self
     }
 
     /// Perform satellite acquisition on a 1 ms buffer using FFT-based circular correlation.
     pub fn run_fft(&self, frame: &SamplesFrame, sats: &[SatId]) -> Vec<AcqResult> {
-        self.run_fft_topn(frame, sats, 1, 1, 1).into_iter().map(|mut v| v.remove(0)).collect()
+        self.run_fft_topn(
+            frame,
+            sats,
+            1,
+            self.config.acquisition_integration_ms,
+            self.config.acquisition_noncoherent,
+        )
+        .into_iter()
+        .filter_map(|mut v| if v.is_empty() { None } else { Some(v.remove(0)) })
+        .collect()
     }
 
     pub fn run_fft_topn(
@@ -69,8 +113,36 @@ impl Acquisition {
         let fft = planner.plan_fft_forward(samples_per_code);
         let ifft = planner.plan_fft_inverse(samples_per_code);
 
+        self.with_stats(|stats| {
+            stats.sat_count += sats.len() as u64;
+            stats.doppler_bins += (doppler_bin_count(self.doppler_search_hz, self.doppler_step_hz)
+                * sats.len() as u64) as u64;
+            stats.code_search_bins += (samples_per_code * sats.len()) as u64;
+        });
+
+        let assumptions = AcqAssumptions {
+            doppler_search_hz: self.doppler_search_hz,
+            doppler_step_hz: self.doppler_step_hz,
+            coherent_ms,
+            noncoherent,
+            samples_per_code,
+            frame_samples: frame.len(),
+            code_phase_search_start_sample: 0,
+            code_phase_search_step_samples: 1,
+            code_phase_search_bins: samples_per_code,
+            code_phase_search_mode: "full_code".to_string(),
+        };
+
         let mut results = Vec::new();
         for &sat in sats {
+            self.runtime.trace.record(TraceRecord {
+                name: "acquisition_sat_start",
+                fields: vec![
+                    ("constellation", format!("{:?}", sat.constellation)),
+                    ("prn", sat.prn.to_string()),
+                ],
+            });
+
             let code_fft = self.code_fft(sat, samples_per_code, fft.as_ref());
             let mut candidates = Vec::new();
 
@@ -130,6 +202,10 @@ impl Acquisition {
                     peak_mean_ratio,
                     peak_second_ratio,
                     cn0_proxy,
+                    score: 0.0,
+                    hypothesis: AcqHypothesis::Deferred,
+                    assumptions: Some(assumptions.clone()),
+                    evidence: Vec::new(),
                 });
 
                 doppler += self.doppler_step_hz;
@@ -141,21 +217,97 @@ impl Acquisition {
                     .unwrap_or(std::cmp::Ordering::Equal)
             });
             candidates.truncate(top_n.max(1));
-
-            if let Some(best) = candidates.first() {
+            if candidates.is_empty() {
                 self.runtime.trace.record(TraceRecord {
-                    name: "acquisition_hit",
+                    name: "acquisition_sat_done",
+                    fields: vec![
+                        ("constellation", format!("{:?}", sat.constellation)),
+                        ("prn", sat.prn.to_string()),
+                        ("outcome", "no_candidates".to_string()),
+                    ],
+                });
+                self.with_stats(|stats| {
+                    stats.deferred_count = stats.deferred_count.saturating_add(1);
+                });
+                continue;
+            }
+
+            let second_peak_ratio = candidates
+                .get(1)
+                .map(|candidate| candidate.peak_second_ratio)
+                .unwrap_or(f32::INFINITY);
+            for (rank, candidate) in candidates.iter_mut().enumerate() {
+                candidate.evidence.push(AcqEvidence {
+                    rank: rank as u8 + 1,
+                    code_phase_samples: candidate.code_phase_samples,
+                    doppler_hz: candidate.carrier_hz.0,
+                    peak: candidate.peak,
+                    second_peak: candidate.second_peak,
+                    peak_mean_ratio: candidate.peak_mean_ratio,
+                    peak_second_ratio: candidate.peak_second_ratio,
+                    mean: candidate.mean,
+                });
+                let separation_ratio =
+                    if rank == 0 { second_peak_ratio } else { candidate.peak_second_ratio };
+                if rank == 0 {
+                    let (hypothesis, score) = acquisition_hypothesis(
+                        candidate.peak_mean_ratio,
+                        candidate.peak_second_ratio,
+                        separation_ratio,
+                        &self.config,
+                    );
+                    candidate.hypothesis = hypothesis;
+                    candidate.score = score;
+                } else {
+                    candidate.hypothesis = AcqHypothesis::Deferred;
+                }
+            }
+
+            let best = &candidates[0];
+            let outcome = match best.hypothesis {
+                AcqHypothesis::Accepted => "accepted",
+                AcqHypothesis::Ambiguous => "ambiguous",
+                AcqHypothesis::Rejected => "rejected",
+                AcqHypothesis::Deferred => "deferred",
+            };
+            self.runtime.trace.record(TraceRecord {
+                name: "acquisition_sat_done",
+                fields: vec![
+                    ("constellation", format!("{:?}", best.sat.constellation)),
+                    ("prn", best.sat.prn.to_string()),
+                    ("outcome", outcome.to_string()),
+                    ("carrier_hz", format!("{:.3}", best.carrier_hz.0)),
+                    ("score", format!("{:.6}", best.score)),
+                    ("peak_mean_ratio", format!("{:.6}", best.peak_mean_ratio)),
+                ],
+            });
+            if !best.evidence.is_empty() {
+                self.runtime.trace.record(TraceRecord {
+                    name: "acquisition_evidence",
                     fields: vec![
                         ("constellation", format!("{:?}", best.sat.constellation)),
                         ("prn", best.sat.prn.to_string()),
-                        ("carrier_hz", format!("{:.3}", best.carrier_hz.0)),
-                        ("code_phase_samples", best.code_phase_samples.to_string()),
+                        ("rank", format!("{}", best.evidence.first().map(|e| e.rank).unwrap_or(0))),
                         ("peak", format!("{:.6}", best.peak)),
-                        ("peak_mean_ratio", format!("{:.6}", best.peak_mean_ratio)),
+                        ("second_peak", format!("{:.6}", best.second_peak)),
+                        ("mean", format!("{:.6}", best.mean)),
                     ],
                 });
             }
-
+            self.with_stats(|stats| match best.hypothesis {
+                AcqHypothesis::Accepted => {
+                    stats.accepted_count = stats.accepted_count.saturating_add(1)
+                }
+                AcqHypothesis::Ambiguous => {
+                    stats.ambiguous_count = stats.ambiguous_count.saturating_add(1)
+                }
+                AcqHypothesis::Rejected => {
+                    stats.rejected_count = stats.rejected_count.saturating_add(1)
+                }
+                AcqHypothesis::Deferred => {
+                    stats.deferred_count = stats.deferred_count.saturating_add(1)
+                }
+            });
             results.push(candidates);
         }
 
@@ -170,8 +322,31 @@ impl Acquisition {
     ) -> Vec<Complex<f32>> {
         let key = (samples_per_code, sat);
         if let Some(cached) = self.cache.lock().ok().and_then(|m| m.get(&key).cloned()) {
+            self.with_stats(|stats| {
+                stats.cache_hits = stats.cache_hits.saturating_add(1);
+            });
+            self.runtime.trace.record(TraceRecord {
+                name: "acquisition_code_fft_cache_hit",
+                fields: vec![
+                    ("constellation", format!("{:?}", sat.constellation)),
+                    ("prn", sat.prn.to_string()),
+                    ("samples_per_code", samples_per_code.to_string()),
+                ],
+            });
             return cached;
         }
+
+        self.with_stats(|stats| {
+            stats.cache_misses = stats.cache_misses.saturating_add(1);
+        });
+        self.runtime.trace.record(TraceRecord {
+            name: "acquisition_code_fft_cache_miss",
+            fields: vec![
+                ("constellation", format!("{:?}", sat.constellation)),
+                ("prn", sat.prn.to_string()),
+                ("samples_per_code", samples_per_code.to_string()),
+            ],
+        });
         let code = ca_code_or_default(sat.prn);
         let local_code = upsample_code(&code, samples_per_code);
         let mut code_fft: Vec<Complex<f32>> =
@@ -181,6 +356,64 @@ impl Acquisition {
             cache.insert(key, code_fft.clone());
         }
         code_fft
+    }
+}
+
+fn doppler_bin_count(search_hz: i32, step_hz: i32) -> u64 {
+    if step_hz <= 0 {
+        return 0;
+    }
+    let search = search_hz.abs() as u64;
+    let step = step_hz.abs() as u64;
+    (search / step).saturating_mul(2).saturating_add(1)
+}
+
+fn acquisition_hypothesis(
+    peak_mean_ratio: f32,
+    peak_second_ratio: f32,
+    separation_ratio: f32,
+    config: &ReceiverPipelineConfig,
+) -> (AcqHypothesis, f32) {
+    if peak_mean_ratio < config.acquisition_peak_mean_threshold {
+        return (AcqHypothesis::Rejected, 0.0);
+    }
+    if !separation_ratio.is_finite() {
+        return (AcqHypothesis::Ambiguous, 0.25 * peak_mean_ratio);
+    }
+    if peak_second_ratio < config.acquisition_peak_second_threshold
+        || separation_ratio < config.acquisition_peak_second_threshold
+    {
+        return (AcqHypothesis::Ambiguous, (peak_mean_ratio * 0.35) + (peak_second_ratio * 0.15));
+    }
+    (AcqHypothesis::Accepted, (peak_mean_ratio * 0.5) + (peak_second_ratio * 0.5))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn acquisition_hypothesis_rejects_weak_primary_peak() {
+        let config = ReceiverPipelineConfig::default();
+        let (hypothesis, score) = acquisition_hypothesis(2.0, 2.0, 2.0, &config);
+        assert_eq!(hypothesis.to_string(), "rejected");
+        assert_eq!(score, 0.0);
+    }
+
+    #[test]
+    fn acquisition_hypothesis_marks_ambiguous_on_low_peak_separation() {
+        let config = ReceiverPipelineConfig::default();
+        let (hypothesis, score) = acquisition_hypothesis(3.0, 1.0, 1.4, &config);
+        assert_eq!(hypothesis.to_string(), "ambiguous");
+        assert!((score - 1.2).abs() < 1e-6);
+    }
+
+    #[test]
+    fn acquisition_hypothesis_accepts_clean_peak() {
+        let config = ReceiverPipelineConfig::default();
+        let (hypothesis, score) = acquisition_hypothesis(3.5, 2.0, 2.5, &config);
+        assert_eq!(hypothesis.to_string(), "accepted");
+        assert!((score - 2.75).abs() < f32::EPSILON);
     }
 }
 
