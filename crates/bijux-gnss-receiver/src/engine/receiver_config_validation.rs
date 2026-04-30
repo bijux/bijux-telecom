@@ -42,6 +42,21 @@ impl ValidateConfig for ReceiverConfig {
                 message: "acquisition.integration_ms must be > 0".to_string(),
             });
         }
+        if self.acquisition.noncoherent_integration == 0 {
+            report.errors.push(ConfigError {
+                message: "acquisition.noncoherent_integration must be > 0".to_string(),
+            });
+        }
+        if self.acquisition.peak_mean_threshold <= 0.0 {
+            report.errors.push(ConfigError {
+                message: "acquisition.peak_mean_threshold must be > 0".to_string(),
+            });
+        }
+        if self.acquisition.peak_second_threshold <= 1.0 {
+            report.errors.push(ConfigError {
+                message: "acquisition.peak_second_threshold must be > 1".to_string(),
+            });
+        }
         if self.tracking.early_late_spacing_chips <= 0.0 {
             report.errors.push(ConfigError {
                 message: "tracking.early_late_spacing_chips must be > 0".to_string(),
@@ -204,6 +219,12 @@ impl ReceiverConfig {
             code_freq_basis_hz: self.code_freq_basis_hz,
             code_length: self.code_length,
             channels: self.tracking.max_channels,
+            acquisition_doppler_search_hz: self.acquisition.doppler_search_hz,
+            acquisition_doppler_step_hz: self.acquisition.doppler_step_hz,
+            acquisition_integration_ms: self.acquisition.integration_ms,
+            acquisition_noncoherent: self.acquisition.noncoherent_integration,
+            acquisition_peak_mean_threshold: self.acquisition.peak_mean_threshold,
+            acquisition_peak_second_threshold: self.acquisition.peak_second_threshold,
             early_late_spacing_chips: self.tracking.early_late_spacing_chips,
             dll_bw_hz: self.tracking.dll_bw_hz,
             pll_bw_hz: self.tracking.pll_bw_hz,

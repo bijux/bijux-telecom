@@ -30,6 +30,7 @@ impl Default for AcquisitionConfig {
             doppler_search_hz: 10000,
             doppler_step_hz: 500,
             integration_ms: 1,
+            noncoherent_integration: 1,
             peak_mean_threshold: 2.5,
             peak_second_threshold: 1.5,
         }

@@ -47,6 +47,18 @@ pub struct ReceiverPipelineConfig {
     pub code_length: usize,
     /// Maximum tracking channels.
     pub channels: usize,
+    /// Doppler search range used by acquisition, in Hz.
+    pub acquisition_doppler_search_hz: i32,
+    /// Doppler bin spacing used by acquisition, in Hz.
+    pub acquisition_doppler_step_hz: i32,
+    /// Coherent integration used by acquisition, in milliseconds.
+    pub acquisition_integration_ms: u32,
+    /// Noncoherent integration used by acquisition.
+    pub acquisition_noncoherent: u32,
+    /// Minimum accepted peak-to-mean acquisition ratio.
+    pub acquisition_peak_mean_threshold: f32,
+    /// Minimum accepted peak-to-second-peak acquisition ratio.
+    pub acquisition_peak_second_threshold: f32,
     /// Default early/late spacing, in chips.
     pub early_late_spacing_chips: f64,
     /// DLL noise bandwidth, in Hz.
@@ -91,6 +103,12 @@ impl Default for ReceiverPipelineConfig {
             code_freq_basis_hz: 1_023_000.0,
             code_length: 1023,
             channels: 12,
+            acquisition_doppler_search_hz: 10_000,
+            acquisition_doppler_step_hz: 500,
+            acquisition_integration_ms: 1,
+            acquisition_noncoherent: 1,
+            acquisition_peak_mean_threshold: 2.5,
+            acquisition_peak_second_threshold: 1.5,
             early_late_spacing_chips: 0.5,
             dll_bw_hz: 2.0,
             pll_bw_hz: 15.0,
@@ -198,6 +216,9 @@ pub struct AcquisitionConfig {
     pub doppler_step_hz: i32,
     /// Coherent integration length, in ms.
     pub integration_ms: u32,
+    /// Noncoherent integration count.
+    #[serde(default)]
+    pub noncoherent_integration: u32,
     /// Peak-to-mean threshold.
     pub peak_mean_threshold: f32,
     /// Peak-to-second-peak threshold.
