@@ -54,6 +54,7 @@ fn rinex_obs_has_header() {
                     code_rate_hz: 1_023_000.0,
                     carrier_hz: GPS_L1_CA_CARRIER_HZ,
                 },
+                ..ObsMetadata::default()
             },
         }],
     };

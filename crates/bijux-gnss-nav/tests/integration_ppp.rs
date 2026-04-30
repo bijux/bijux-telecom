@@ -75,6 +75,7 @@ fn make_obs(epoch_idx: u64, t_rx_s: f64, prn: u8) -> ObsEpoch {
                 smoothing_age: 0,
                 smoothing_resets: 0,
                 signal: spec,
+                ..ObsMetadata::default()
             },
         }],
     }
@@ -114,6 +115,7 @@ fn make_obs_with_slips(epoch_idx: u64, t_rx_s: f64, prns: &[u8]) -> ObsEpoch {
                     smoothing_age: 0,
                     smoothing_resets: 0,
                     signal: spec,
+                    ..ObsMetadata::default()
                 },
             }
         })
