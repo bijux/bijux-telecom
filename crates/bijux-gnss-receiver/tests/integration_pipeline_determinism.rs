@@ -23,9 +23,24 @@ fn make_track(prn: u8, config: &ReceiverPipelineConfig) -> TrackingResult {
         dll_err: 0.0,
         pll_err: 0.0,
         fll_err: 0.0,
+        anti_false_lock: false,
+        cycle_slip_reason: None,
+        lock_state: "tracking".to_string(),
+        lock_state_reason: None,
         processing_ms: None,
+        ..TrackEpoch::default()
     };
-    TrackingResult { sat, carrier_hz: 0.0, code_phase_samples: 0.0, epochs: vec![epoch] }
+    TrackingResult {
+        sat,
+        carrier_hz: 0.0,
+        code_phase_samples: 0.0,
+        acquisition_hypothesis: "deferred".to_string(),
+        acquisition_score: 0.0,
+        acquisition_code_phase_samples: 0,
+        acquisition_carrier_hz: 0.0,
+        acq_to_track_state: "deferred".to_string(),
+        epochs: vec![epoch],
+    }
 }
 
 #[test]

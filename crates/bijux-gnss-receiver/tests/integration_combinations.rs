@@ -49,6 +49,7 @@ fn make_dual_freq_epoch(p1: f64, p2: f64, phi1: f64, phi2: f64) -> ObsEpoch {
                     smoothing_age: 0,
                     smoothing_resets: 0,
                     signal: s1,
+                    ..ObsMetadata::default()
                 },
             },
             ObsSatellite {
@@ -79,6 +80,7 @@ fn make_dual_freq_epoch(p1: f64, p2: f64, phi1: f64, phi2: f64) -> ObsEpoch {
                     smoothing_age: 0,
                     smoothing_resets: 0,
                     signal: s2,
+                    ..ObsMetadata::default()
                 },
             },
         ],

@@ -60,6 +60,7 @@ fn ambiguity_resets_on_cycle_slip() {
                 code_rate_hz: 1_023_000.0,
                 carrier_hz: bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ,
             },
+            ..ObsMetadata::default()
         },
     };
     manager.update_from_obs(1, std::slice::from_ref(&sat));

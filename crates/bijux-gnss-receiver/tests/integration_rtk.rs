@@ -58,6 +58,7 @@ fn make_epoch(t_rx_s: f64, prn: u8) -> ObsEpoch {
                     code_rate_hz: 1_023_000.0,
                     carrier_hz: bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ,
                 },
+                ..ObsMetadata::default()
             },
         }],
     }
