@@ -53,6 +53,14 @@ pub fn observations_from_tracking(
     config: &ReceiverPipelineConfig,
     epochs: &[TrackEpoch],
 ) -> (Vec<ObsEpoch>, Vec<DiagnosticEvent>) {
+    observations_from_tracking_with_provenance(config, None, epochs)
+}
+
+fn observations_from_tracking_with_provenance(
+    config: &ReceiverPipelineConfig,
+    track: Option<&TrackingResult>,
+    epochs: &[TrackEpoch],
+) -> (Vec<ObsEpoch>, Vec<DiagnosticEvent>) {
     if epochs.is_empty() {
         return (Vec::new(), Vec::new());
     }
@@ -68,9 +76,12 @@ pub fn observations_from_tracking(
     let mut out = Vec::with_capacity(epochs.len());
     let mut diagnostics = Vec::new();
     let mut last_sample_index = None;
+    let mut last_locked_sample = None;
     let clock_bias_s = 0.0_f64;
 
     for epoch in epochs {
+        let (time_tag_source, time_tag_sample_index) =
+            tracking_time_tag(epoch, &mut last_locked_sample);
         let t_rx_s = Seconds(epoch.sample_index as f64 / config.sampling_freq_hz + clock_bias_s);
 
         let expected_step = (config.sampling_freq_hz * 0.001).round() as u64;
@@ -138,6 +149,7 @@ pub fn observations_from_tracking(
         }
 
         let cn0_dbhz = epoch.cn0_dbhz;
+        let lock_quality = tracking_lock_quality(epoch);
 
         let variance_m2 = (1.0 / cn0_dbhz.max(1.0)).powi(2);
         let mut signal = bijux_gnss_core::api::signal_spec_gps_l1_ca();
@@ -169,11 +181,26 @@ pub fn observations_from_tracking(
             metadata: ObsMetadata {
                 tracking_mode: "scalar".to_string(),
                 integration_ms: config.tracking_integration_ms,
-                lock_quality: cn0_dbhz,
+                lock_quality,
                 smoothing_window: 0,
                 smoothing_age: 0,
                 smoothing_resets: 0,
                 signal,
+                acquisition_hypothesis: track
+                    .map(|t| t.acquisition_hypothesis.clone())
+                    .unwrap_or_default(),
+                acquisition_score: track.map(|t| t.acquisition_score).unwrap_or_default(),
+                acquisition_code_phase_samples: track
+                    .map(|t| t.acquisition_code_phase_samples)
+                    .unwrap_or_default(),
+                acquisition_carrier_hz: track.map(|t| t.acquisition_carrier_hz).unwrap_or_default(),
+                acq_to_track_state: track.map(|t| t.acq_to_track_state.clone()).unwrap_or_default(),
+                tracking_state: epoch.lock_state.clone(),
+                tracking_lock_state: tracking_lock_state(epoch),
+                tracking_lock_quality: lock_quality,
+                time_tag_source,
+                time_tag_sample_index,
+                time_tag_sample_rate_hz: config.sampling_freq_hz,
             },
         };
 
@@ -216,7 +243,8 @@ pub fn observations_from_tracking_results(
         std::collections::HashMap::new();
     let mut diagnostics = Vec::new();
     for track in tracks {
-        let (obs, mut events) = observations_from_tracking(config, &track.epochs);
+        let (obs, mut events) =
+            observations_from_tracking_with_provenance(config, Some(track), &track.epochs);
         diagnostics.append(&mut events);
         for epoch in obs {
             let entry = by_epoch.entry(epoch.epoch_idx).or_insert_with(|| ObsEpoch {
@@ -335,6 +363,54 @@ fn slip_threshold_m(cn0_dbhz: f64, elevation_deg: Option<f64>) -> f64 {
     5.0 * cn0_factor * elev_factor
 }
 
+fn tracking_lock_quality(epoch: &TrackEpoch) -> f64 {
+    let mut quality = (epoch.cn0_dbhz / 60.0).clamp(0.0, 1.0);
+    if epoch.anti_false_lock {
+        quality *= 0.5;
+    }
+    if epoch.cycle_slip {
+        quality *= 0.2;
+    }
+    if !epoch.lock {
+        quality *= 0.2;
+    }
+    if !epoch.pll_lock {
+        quality *= 0.7;
+    }
+    if !epoch.dll_lock {
+        quality *= 0.8;
+    }
+    if !epoch.fll_lock {
+        quality *= 0.9;
+    }
+    quality
+}
+
+fn tracking_lock_state(epoch: &TrackEpoch) -> String {
+    if epoch.cycle_slip {
+        return "cycle_slip".to_string();
+    }
+    if epoch.anti_false_lock {
+        return "anti_false_lock".to_string();
+    }
+    if !epoch.lock {
+        return "unlocked".to_string();
+    }
+    epoch.lock_state.clone()
+}
+
+fn tracking_time_tag(epoch: &TrackEpoch, last_locked_sample: &mut Option<u64>) -> (String, u64) {
+    if epoch.lock || epoch.lock_state == "tracking" || epoch.lock_state == "acquired" {
+        *last_locked_sample = Some(epoch.sample_index);
+        return ("tracking".to_string(), epoch.sample_index);
+    }
+    match (epoch.lock, *last_locked_sample) {
+        (false, Some(last)) => ("tracking_last_locked".to_string(), last),
+        (false, None) => ("tracking_unlocked".to_string(), epoch.sample_index),
+        _ => ("tracking".to_string(), epoch.sample_index),
+    }
+}
+
 #[cfg(test)]
 pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
     let sats = (1..=4)
@@ -370,6 +446,7 @@ pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
                 smoothing_age: 0,
                 smoothing_resets: 0,
                 signal: bijux_gnss_core::api::signal_spec_gps_l1_ca(),
+                ..ObsMetadata::default()
             },
         })
         .collect();
@@ -412,9 +489,24 @@ mod tests {
             dll_err: 0.0,
             pll_err: 0.0,
             fll_err: 0.0,
+            anti_false_lock: false,
+            cycle_slip_reason: None,
+            lock_state: "tracking".to_string(),
+            lock_state_reason: Some("stable_tracking".to_string()),
             processing_ms: None,
+            ..TrackEpoch::default()
         };
-        TrackingResult { sat, carrier_hz: 0.0, code_phase_samples: 0.0, epochs: vec![epoch] }
+        TrackingResult {
+            sat,
+            carrier_hz: 0.0,
+            code_phase_samples: 0.0,
+            acquisition_hypothesis: "deferred".to_string(),
+            acquisition_score: 0.0,
+            acquisition_code_phase_samples: 0,
+            acquisition_carrier_hz: 0.0,
+            acq_to_track_state: "deferred".to_string(),
+            epochs: vec![epoch],
+        }
     }
 
     #[test]
@@ -429,5 +521,34 @@ mod tests {
         let json_a = serde_json::to_string(&report_a.output).unwrap();
         let json_b = serde_json::to_string(&report_b.output).unwrap();
         assert_eq!(json_a, json_b);
+    }
+
+    #[test]
+    fn tracking_time_tag_prefers_last_locked_sample() {
+        let locked = TrackEpoch {
+            epoch: Epoch { index: 0 },
+            sample_index: 100,
+            sat: SatId { constellation: Constellation::Gps, prn: 1 },
+            lock_state: "tracking".to_string(),
+            lock: true,
+            ..TrackEpoch::default()
+        };
+        let unlocked_after = TrackEpoch {
+            epoch: Epoch { index: 1 },
+            sample_index: 101,
+            sat: SatId { constellation: Constellation::Gps, prn: 1 },
+            lock_state: "lost".to_string(),
+            lock: false,
+            ..TrackEpoch::default()
+        };
+        let mut last_locked = None;
+        let (source_locked, sample_locked) = tracking_time_tag(&locked, &mut last_locked);
+        let (source_unlocked, sample_unlocked) =
+            tracking_time_tag(&unlocked_after, &mut last_locked);
+
+        assert_eq!(source_locked, "tracking");
+        assert_eq!(sample_locked, 100);
+        assert_eq!(source_unlocked, "tracking_last_locked");
+        assert_eq!(sample_unlocked, 100);
     }
 }
