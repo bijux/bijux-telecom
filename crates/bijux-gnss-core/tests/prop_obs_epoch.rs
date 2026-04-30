@@ -50,6 +50,7 @@ fn make_epoch(t_rx_s: f64) -> ObsEpoch {
                 signal: signal_registry(sig.sat.constellation, sig.band, sig.code)
                     .expect("signal registry must include GPS L1 C/A")
                     .spec,
+                ..ObsMetadata::default()
             },
         }],
     }

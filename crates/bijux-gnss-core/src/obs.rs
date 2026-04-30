@@ -10,6 +10,18 @@ use crate::api::{
 use num_complex::Complex;
 use serde::{Deserialize, Serialize};
 
+fn default_start_sample() -> usize {
+    0
+}
+
+fn default_phase_step_samples() -> usize {
+    1
+}
+
+fn default_phase_search_mode() -> String {
+    "full_code".to_string()
+}
+
 pub type Sample = Complex<f32>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,6 +54,63 @@ pub struct AcqRequest {
     pub noncoherent: u32,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AcqHypothesis {
+    Accepted,
+    Ambiguous,
+    Rejected,
+    Deferred,
+}
+
+impl Default for AcqHypothesis {
+    fn default() -> Self {
+        Self::Deferred
+    }
+}
+
+impl std::fmt::Display for AcqHypothesis {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let value = match self {
+            Self::Accepted => "accepted",
+            Self::Ambiguous => "ambiguous",
+            Self::Rejected => "rejected",
+            Self::Deferred => "deferred",
+        };
+        write!(f, "{value}")
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcqAssumptions {
+    pub doppler_search_hz: i32,
+    pub doppler_step_hz: i32,
+    pub coherent_ms: u32,
+    pub noncoherent: u32,
+    pub samples_per_code: usize,
+    pub frame_samples: usize,
+    #[serde(default = "default_start_sample")]
+    pub code_phase_search_start_sample: usize,
+    #[serde(default = "default_phase_step_samples")]
+    pub code_phase_search_step_samples: usize,
+    #[serde(default)]
+    pub code_phase_search_bins: usize,
+    #[serde(default = "default_phase_search_mode")]
+    pub code_phase_search_mode: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcqEvidence {
+    pub rank: u8,
+    pub code_phase_samples: usize,
+    pub doppler_hz: f64,
+    pub peak: f32,
+    pub second_peak: f32,
+    pub peak_mean_ratio: f32,
+    pub peak_second_ratio: f32,
+    pub mean: f32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcqResult {
     pub sat: SatId,
@@ -53,6 +122,14 @@ pub struct AcqResult {
     pub peak_mean_ratio: f32,
     pub peak_second_ratio: f32,
     pub cn0_proxy: f32,
+    #[serde(default)]
+    pub score: f32,
+    #[serde(default)]
+    pub hypothesis: AcqHypothesis,
+    #[serde(default)]
+    pub assumptions: Option<AcqAssumptions>,
+    #[serde(default)]
+    pub evidence: Vec<AcqEvidence>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,6 +139,14 @@ pub struct TrackEpoch {
     pub sat: SatId,
     pub prompt_i: f32,
     pub prompt_q: f32,
+    #[serde(default)]
+    pub early_i: f32,
+    #[serde(default)]
+    pub early_q: f32,
+    #[serde(default)]
+    pub late_i: f32,
+    #[serde(default)]
+    pub late_q: f32,
     pub carrier_hz: Hertz,
     pub code_rate_hz: Hertz,
     pub code_phase_samples: Chips,
@@ -76,7 +161,49 @@ pub struct TrackEpoch {
     pub pll_err: f32,
     pub fll_err: f32,
     #[serde(default)]
+    pub anti_false_lock: bool,
+    #[serde(default)]
+    pub cycle_slip_reason: Option<String>,
+    #[serde(default)]
+    pub lock_state: String,
+    #[serde(default)]
+    pub lock_state_reason: Option<String>,
+    #[serde(default)]
     pub processing_ms: Option<f64>,
+}
+
+impl Default for TrackEpoch {
+    fn default() -> Self {
+        Self {
+            epoch: Epoch { index: 0 },
+            sample_index: 0,
+            sat: SatId { constellation: Constellation::Unknown, prn: 0 },
+            prompt_i: 0.0,
+            prompt_q: 0.0,
+            early_i: 0.0,
+            early_q: 0.0,
+            late_i: 0.0,
+            late_q: 0.0,
+            carrier_hz: Hertz(0.0),
+            code_rate_hz: Hertz(0.0),
+            code_phase_samples: Chips(0.0),
+            lock: false,
+            cn0_dbhz: 0.0,
+            pll_lock: false,
+            dll_lock: false,
+            fll_lock: false,
+            cycle_slip: false,
+            nav_bit_lock: false,
+            dll_err: 0.0,
+            pll_err: 0.0,
+            fll_err: 0.0,
+            anti_false_lock: false,
+            cycle_slip_reason: None,
+            lock_state: "inactive".to_string(),
+            lock_state_reason: None,
+            processing_ms: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -96,6 +223,59 @@ pub struct ObsMetadata {
     pub smoothing_age: u32,
     pub smoothing_resets: u32,
     pub signal: SignalSpec,
+    #[serde(default)]
+    pub acquisition_hypothesis: String,
+    #[serde(default)]
+    pub acquisition_score: f32,
+    #[serde(default)]
+    pub acquisition_code_phase_samples: usize,
+    #[serde(default)]
+    pub acquisition_carrier_hz: f64,
+    #[serde(default)]
+    pub acq_to_track_state: String,
+    #[serde(default)]
+    pub tracking_state: String,
+    #[serde(default)]
+    pub tracking_lock_state: String,
+    #[serde(default)]
+    pub tracking_lock_quality: f64,
+    #[serde(default)]
+    pub time_tag_source: String,
+    #[serde(default)]
+    pub time_tag_sample_index: u64,
+    #[serde(default)]
+    pub time_tag_sample_rate_hz: f64,
+}
+
+impl Default for ObsMetadata {
+    fn default() -> Self {
+        Self {
+            tracking_mode: "scalar".to_string(),
+            integration_ms: 0,
+            lock_quality: 0.0,
+            smoothing_window: 0,
+            smoothing_age: 0,
+            smoothing_resets: 0,
+            signal: SignalSpec {
+                constellation: Constellation::Unknown,
+                band: SignalBand::Unknown,
+                code: crate::api::SignalCode::Unknown,
+                code_rate_hz: 0.0,
+                carrier_hz: crate::api::GPS_L1_CA_CARRIER_HZ,
+            },
+            acquisition_hypothesis: "deferred".to_string(),
+            acquisition_score: 0.0,
+            acquisition_code_phase_samples: 0,
+            acquisition_carrier_hz: 0.0,
+            acq_to_track_state: String::new(),
+            tracking_state: String::new(),
+            tracking_lock_state: String::new(),
+            tracking_lock_quality: 0.0,
+            time_tag_source: String::new(),
+            time_tag_sample_index: 0,
+            time_tag_sample_rate_hz: 0.0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

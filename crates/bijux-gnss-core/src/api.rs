@@ -42,12 +42,12 @@ pub use crate::ids::{
 };
 /// Observation and tracking contracts.
 pub use crate::obs::{
-    check_inter_frequency_alignment, validate_obs_epochs, AcqRequest, AcqResult, AmbiguityId,
-    AmbiguityState, AmbiguityStatus, BandLagEvent, DoubleDifference, InterFrequencyAlignmentReport,
-    InterSystemBias, LockFlags, MeasurementErrorModel, MeasurementRejectReason, NavHealthEvent,
-    NavQualityFlag, NavResidual, NavSolutionEpoch, ObsEpoch, ObsMetadata, ObsSatellite,
-    ReceiverRole, Sample, SamplesFrame, SingleDifference, SolutionStatus, SolutionValidity,
-    TrackEpoch,
+    check_inter_frequency_alignment, validate_obs_epochs, AcqAssumptions, AcqEvidence,
+    AcqHypothesis, AcqRequest, AcqResult, AmbiguityId, AmbiguityState, AmbiguityStatus,
+    BandLagEvent, DoubleDifference, InterFrequencyAlignmentReport, InterSystemBias, LockFlags,
+    MeasurementErrorModel, MeasurementRejectReason, NavHealthEvent, NavQualityFlag, NavResidual,
+    NavSolutionEpoch, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, Sample, SamplesFrame,
+    SingleDifference, SolutionStatus, SolutionValidity, TrackEpoch,
 };
 /// Engine boundary nav epoch alias.
 pub type NavEpoch = NavSolutionEpoch;
