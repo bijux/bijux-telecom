@@ -91,10 +91,14 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                     let mut baseline_quality_lines = Vec::new();
                     let mut fix_audit_lines = Vec::new();
                     let mut precision_lines = Vec::new();
+                    let mut correction_input_lines = Vec::new();
+                    let mut ambiguity_state_lines = Vec::new();
+                    let mut advanced_solution_lines = Vec::new();
                     let mut fix_state = bijux_gnss_infra::api::receiver::FixState::default();
                     let fixer = bijux_gnss_infra::api::receiver::NaiveFixer::new(
                         bijux_gnss_infra::api::receiver::FixPolicy::default(),
                     );
+                    let support_matrix = bijux_gnss_infra::api::receiver::support_status_matrix();
                     let mut last_ref: Option<bijux_gnss_infra::api::core::SigId> = None;
                     let mut ref_selector = bijux_gnss_infra::api::receiver::RefSatSelector::new(5);
                     let mut ref_selectors: std::collections::BTreeMap<
@@ -275,6 +279,88 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                             };
                             baseline_lines.push(serde_json::to_string(&wrapped)?);
                         }
+
+                        let correction_input =
+                            bijux_gnss_infra::api::receiver::CorrectionInputArtifact {
+                                epoch_idx: rover.epoch_idx,
+                                mode: bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
+                                ephemeris_count: ephs.len(),
+                                products_ok: !ephs.is_empty(),
+                                correction_tags: vec!["broadcast_ephemeris".to_string()],
+                            };
+                        let correction_wrapped = bijux_gnss_infra::api::core::ArtifactV1 {
+                            header: header.clone(),
+                            payload: correction_input,
+                        };
+                        correction_input_lines.push(serde_json::to_string(&correction_wrapped)?);
+
+                        let ambiguity_state =
+                            bijux_gnss_infra::api::receiver::AmbiguityStateArtifact {
+                                epoch_idx: rover.epoch_idx,
+                                mode: bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
+                                float_count: float.float_cycles.len(),
+                                fixed_count: usize::from(fix_result.accepted),
+                            };
+                        let ambiguity_wrapped = bijux_gnss_infra::api::core::ArtifactV1 {
+                            header: header.clone(),
+                            payload: ambiguity_state,
+                        };
+                        ambiguity_state_lines.push(serde_json::to_string(&ambiguity_wrapped)?);
+
+                        let prereq = bijux_gnss_infra::api::receiver::AdvancedPrerequisites {
+                            has_base_observations: !base.sats.is_empty(),
+                            has_rover_observations: !rover.sats.is_empty(),
+                            has_ephemeris: !ephs.is_empty(),
+                            has_reference_frame: true,
+                            has_corrections: true,
+                            has_min_satellites: dd.len() >= 3,
+                            has_ambiguity_state: !float.float_cycles.is_empty(),
+                        };
+                        let prereq_decision =
+                            bijux_gnss_infra::api::receiver::evaluate_prerequisites(
+                                bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
+                                &prereq,
+                            );
+                        let raw_claim = if fix_result.accepted {
+                            bijux_gnss_infra::api::receiver::AdvancedSolutionClaim::Fixed
+                        } else {
+                            bijux_gnss_infra::api::receiver::AdvancedSolutionClaim::Float
+                        };
+                        let (status, downgraded, downgrade_reason, claim) =
+                            bijux_gnss_infra::api::receiver::apply_downgrade_policy(
+                                bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
+                                &prereq_decision,
+                                raw_claim,
+                            );
+                        let source_obs_id = rover
+                            .manifest
+                            .as_ref()
+                            .map(|manifest| manifest.epoch_id.clone())
+                            .unwrap_or_else(|| format!("obs-epoch-{:010}", rover.epoch_idx));
+                        let advanced_solution =
+                            bijux_gnss_infra::api::receiver::AdvancedSolutionArtifact {
+                                epoch_idx: rover.epoch_idx,
+                                mode: bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
+                                status,
+                                downgraded,
+                                downgrade_reason: downgrade_reason.clone(),
+                                prerequisites: prereq,
+                                refusal_class: prereq_decision.refusal_class,
+                                provenance: bijux_gnss_infra::api::receiver::AdvancedSolutionProvenance {
+                                    claim,
+                                    ambiguity_state_count: float.float_cycles.len(),
+                                    correction_source: "broadcast_ephemeris".to_string(),
+                                    fallback_from: downgrade_reason,
+                                    fixed_ratio: fix_result.ratio,
+                                },
+                                artifact_id: format!("rtk-advanced-epoch-{:010}", rover.epoch_idx),
+                                source_observation_epoch_id: source_obs_id,
+                            };
+                        let advanced_wrapped = bijux_gnss_infra::api::core::ArtifactV1 {
+                            header: header.clone(),
+                            payload: advanced_solution,
+                        };
+                        advanced_solution_lines.push(serde_json::to_string(&advanced_wrapped)?);
     
                         let slip_count = base
                             .sats
@@ -309,6 +395,17 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                     fs::write(&fix_audit_path, fix_audit_lines.join("\n"))?;
                     let precision_path = out_dir.join("rtk_precision.jsonl");
                     fs::write(&precision_path, precision_lines.join("\n"))?;
+                    let correction_input_path = out_dir.join("rtk_correction_input.jsonl");
+                    fs::write(&correction_input_path, correction_input_lines.join("\n"))?;
+                    let ambiguity_state_path = out_dir.join("rtk_ambiguity_state.jsonl");
+                    fs::write(&ambiguity_state_path, ambiguity_state_lines.join("\n"))?;
+                    let advanced_solution_path = out_dir.join("rtk_advanced_solution.jsonl");
+                    fs::write(&advanced_solution_path, advanced_solution_lines.join("\n"))?;
+                    let support_matrix_path = out_dir.join("rtk_support_matrix.json");
+                    fs::write(
+                        &support_matrix_path,
+                        serde_json::to_string_pretty(&support_matrix)?,
+                    )?;
     
                     let align_report = aligner.report(base_epochs.len(), rover_epochs.len());
                     fs::write(
@@ -340,7 +437,9 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                     let report = serde_json::json!({
                         "aligned_epochs": aligned.len(),
                         "sd_count": sd_lines.len(),
-                        "dd_count": dd_lines.len()
+                        "dd_count": dd_lines.len(),
+                        "advanced_solution_count": advanced_solution_lines.len(),
+                        "support_matrix_path": support_matrix_path.display().to_string()
                     });
                     write_manifest(&common, "rtk", &profile, dataset.as_ref(), &report)?;
 
