@@ -194,10 +194,33 @@ pub enum NavRefusalClass {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NavAssumptions {
+    #[serde(default = "default_nav_time_system")]
     pub time_system: String,
+    #[serde(default = "default_nav_reference_frame")]
+    pub reference_frame: String,
+    #[serde(default = "default_nav_clock_model")]
+    pub clock_model: String,
     pub ephemeris_source: String,
     pub frame_decode_mode: String,
+    #[serde(default = "default_nav_ephemeris_completeness")]
+    pub ephemeris_completeness: String,
     pub ephemeris_count: usize,
+}
+
+fn default_nav_time_system() -> String {
+    "gps".to_string()
+}
+
+fn default_nav_reference_frame() -> String {
+    "ecef_wgs84".to_string()
+}
+
+fn default_nav_clock_model() -> String {
+    "receiver_clock_bias_drift_linear".to_string()
+}
+
+fn default_nav_ephemeris_completeness() -> String {
+    "unknown".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

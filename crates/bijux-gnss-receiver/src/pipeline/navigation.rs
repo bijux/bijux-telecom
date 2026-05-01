@@ -567,10 +567,20 @@ fn short_id(value: &str) -> String {
 }
 
 fn nav_assumptions(ephemeris_count: usize) -> NavAssumptions {
+    let ephemeris_completeness = if ephemeris_count == 0 {
+        "none"
+    } else if ephemeris_count < 4 {
+        "partial"
+    } else {
+        "sufficient"
+    };
     NavAssumptions {
         time_system: "gps".to_string(),
+        reference_frame: "ecef_wgs84".to_string(),
+        clock_model: "receiver_clock_bias_drift_linear".to_string(),
         ephemeris_source: "broadcast_lnav".to_string(),
         frame_decode_mode: "lnav".to_string(),
+        ephemeris_completeness: ephemeris_completeness.to_string(),
         ephemeris_count,
     }
 }
