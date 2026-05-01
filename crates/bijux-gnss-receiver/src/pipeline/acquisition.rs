@@ -34,13 +34,76 @@ pub struct AcquisitionStats {
     pub code_search_bins: u64,
     pub cache_hits: u64,
     pub cache_misses: u64,
+    pub cache_miss_cold_start: u64,
+    pub cache_miss_incompatible: u64,
     pub accepted_count: u64,
     pub ambiguous_count: u64,
     pub rejected_count: u64,
     pub deferred_count: u64,
 }
 
-type CodeFftCache = HashMap<(usize, SatId), Vec<Complex<f32>>>;
+const ACQUISITION_CACHE_MODEL_VERSION: u32 = 1;
+const ACQUISITION_CACHE_POLICY_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+struct CodeFftCacheKey {
+    sat: SatId,
+    samples_per_code: usize,
+    sampling_hz_bits: u64,
+    if_hz_bits: u64,
+    code_hz_bits: u64,
+    code_length: usize,
+    doppler_search_hz: i32,
+    doppler_step_hz: i32,
+    coherent_ms: u32,
+    noncoherent: u32,
+    model_version: u32,
+    policy_version: u32,
+}
+
+impl CodeFftCacheKey {
+    fn from_runtime(
+        config: &ReceiverPipelineConfig,
+        sat: SatId,
+        samples_per_code: usize,
+        doppler_search_hz: i32,
+        doppler_step_hz: i32,
+        coherent_ms: u32,
+        noncoherent: u32,
+    ) -> Self {
+        Self {
+            sat,
+            samples_per_code,
+            sampling_hz_bits: config.sampling_freq_hz.to_bits(),
+            if_hz_bits: config.intermediate_freq_hz.to_bits(),
+            code_hz_bits: config.code_freq_basis_hz.to_bits(),
+            code_length: config.code_length,
+            doppler_search_hz,
+            doppler_step_hz,
+            coherent_ms,
+            noncoherent,
+            model_version: ACQUISITION_CACHE_MODEL_VERSION,
+            policy_version: ACQUISITION_CACHE_POLICY_VERSION,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum CacheMissReason {
+    ColdStart,
+    IncompatibleAssumptions,
+}
+
+impl CacheMissReason {
+    fn as_str(self) -> &'static str {
+        match self {
+            CacheMissReason::ColdStart => "cold_start",
+            CacheMissReason::IncompatibleAssumptions => "incompatible_assumptions",
+        }
+    }
+}
+
+type CodeFftCache = HashMap<CodeFftCacheKey, Vec<Complex<f32>>>;
 
 #[derive(Debug, Clone)]
 pub struct AcquisitionRun {
@@ -185,7 +248,8 @@ impl Acquisition {
                 peak_mean_threshold: self.config.acquisition_peak_mean_threshold,
                 peak_second_threshold: self.config.acquisition_peak_second_threshold,
             };
-            let code_fft = self.code_fft(sat, samples_per_code, fft.as_ref());
+            let code_fft =
+                self.code_fft(sat, samples_per_code, coherent_ms, noncoherent, fft.as_ref());
             let mut candidates = Vec::new();
 
             let mut doppler = -self.doppler_search_hz;
@@ -434,9 +498,19 @@ impl Acquisition {
         &self,
         sat: SatId,
         samples_per_code: usize,
+        coherent_ms: u32,
+        noncoherent: u32,
         fft: &dyn rustfft::Fft<f32>,
     ) -> Vec<Complex<f32>> {
-        let key = (samples_per_code, sat);
+        let key = CodeFftCacheKey::from_runtime(
+            &self.config,
+            sat,
+            samples_per_code,
+            self.doppler_search_hz,
+            self.doppler_step_hz,
+            coherent_ms,
+            noncoherent,
+        );
         if let Some(cached) = self.cache.lock().ok().and_then(|m| m.get(&key).cloned()) {
             self.with_stats(|stats| {
                 stats.cache_hits = stats.cache_hits.saturating_add(1);
@@ -452,8 +526,27 @@ impl Acquisition {
             return cached;
         }
 
+        let miss_reason = self.cache.lock().ok().map_or(CacheMissReason::ColdStart, |cache| {
+            let has_same_satellite = cache
+                .keys()
+                .any(|cached| cached.sat == sat && cached.samples_per_code == samples_per_code);
+            if has_same_satellite {
+                CacheMissReason::IncompatibleAssumptions
+            } else {
+                CacheMissReason::ColdStart
+            }
+        });
+
         self.with_stats(|stats| {
             stats.cache_misses = stats.cache_misses.saturating_add(1);
+            match miss_reason {
+                CacheMissReason::ColdStart => {
+                    stats.cache_miss_cold_start = stats.cache_miss_cold_start.saturating_add(1)
+                }
+                CacheMissReason::IncompatibleAssumptions => {
+                    stats.cache_miss_incompatible = stats.cache_miss_incompatible.saturating_add(1)
+                }
+            }
         });
         self.runtime.trace.record(TraceRecord {
             name: "acquisition_code_fft_cache_miss",
@@ -461,6 +554,9 @@ impl Acquisition {
                 ("constellation", format!("{:?}", sat.constellation)),
                 ("prn", sat.prn.to_string()),
                 ("samples_per_code", samples_per_code.to_string()),
+                ("reason", miss_reason.as_str().to_string()),
+                ("model_version", ACQUISITION_CACHE_MODEL_VERSION.to_string()),
+                ("policy_version", ACQUISITION_CACHE_POLICY_VERSION.to_string()),
             ],
         });
         let code = ca_code_or_default(sat.prn);
