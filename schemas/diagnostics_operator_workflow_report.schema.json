@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DiagnosticsOperatorWorkflowReport",
+  "type": "object",
+  "required": ["schema_version", "profile", "steps"],
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "profile": { "type": "string" },
+    "steps": { "type": "array" }
+  },
+  "additionalProperties": true
+}

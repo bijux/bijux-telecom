@@ -945,6 +945,29 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
+        DiagnosticsCommand::OperatorWorkflow { common, profile } => {
+            let _ = runtime_config_from_env(&common, None);
+            let report = operator_workflow_report(profile);
+            match common.report {
+                ReportFormat::Table => print_operator_workflow_table(&report),
+                ReportFormat::Json => {
+                    emit_report(&common, "diagnostics_operator_workflow", &report)?
+                }
+            }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_operator_workflow",
+                &report,
+                "diagnostics_operator_workflow_report.schema.json",
+            )?;
+            write_manifest(
+                &common,
+                "diagnostics_operator_workflow",
+                &ReceiverConfig::default(),
+                None,
+                &report,
+            )?;
+        }
     }
 
     Ok(())
@@ -1416,6 +1439,27 @@ fn print_route_explain_table(report: &serde_json::Value) {
             if let Some(cmd) = step.get("command").and_then(|v| v.as_str()) {
                 println!("{cmd}");
             }
+        }
+    }
+}
+
+fn print_operator_workflow_table(report: &serde_json::Value) {
+    let profile = report
+        .get("profile")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    println!("operator workflow\t{profile}");
+    if let Some(steps) = report.get("steps").and_then(|v| v.as_array()) {
+        for step in steps {
+            let label = step
+                .get("label")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            let command = step
+                .get("command")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            println!("{label}\t{command}");
         }
     }
 }
@@ -2303,7 +2347,8 @@ fn machine_catalog_report() -> serde_json::Value {
         serde_json::json!({"name": "diagnostics_api_parity", "schema": "schemas/diagnostics_api_parity_report.schema.json", "schema_version": 1}),
         serde_json::json!({"name": "diagnostics_expert_guide", "schema": "schemas/diagnostics_expert_guide_report.schema.json", "schema_version": 1}),
         serde_json::json!({"name": "diagnostics_history_browse", "schema": "schemas/diagnostics_history_browse_report.schema.json", "schema_version": 1}),
-        serde_json::json!({"name": "diagnostics_route_explain", "schema": "schemas/diagnostics_route_explain_report.schema.json", "schema_version": 1})
+        serde_json::json!({"name": "diagnostics_route_explain", "schema": "schemas/diagnostics_route_explain_report.schema.json", "schema_version": 1}),
+        serde_json::json!({"name": "diagnostics_operator_workflow", "schema": "schemas/diagnostics_operator_workflow_report.schema.json", "schema_version": 1})
     ];
     serde_json::json!({
         "schema_version": 1,
@@ -2497,6 +2542,32 @@ fn route_explain_report(topic: RouteTopic) -> serde_json::Value {
     serde_json::json!({
         "schema_version": 1,
         "topic": topic_name,
+        "steps": steps
+    })
+}
+
+fn operator_workflow_report(profile: WorkflowProfile) -> serde_json::Value {
+    let profile_name = format!("{profile:?}").to_lowercase();
+    let steps = match profile {
+        WorkflowProfile::Run => vec![
+            serde_json::json!({"label": "execute", "command": "bijux gnss run --dataset <id> --config <profile.toml>", "output": "manifest + run_report + artifacts"}),
+            serde_json::json!({"label": "status", "command": "bijux gnss diagnostics operator-status --run-dir <run_dir> --report table", "output": "run/quality/evidence states"}),
+            serde_json::json!({"label": "gate", "command": "bijux gnss diagnostics medium-gate --run-dir <run_dir> --strict --report json", "output": "integration gate result"})
+        ],
+        WorkflowProfile::Triage => vec![
+            serde_json::json!({"label": "inventory", "command": "bijux gnss diagnostics artifact-inventory --run-dir <run_dir> --report table", "output": "artifact group counts"}),
+            serde_json::json!({"label": "route", "command": "bijux gnss diagnostics route-explain --topic integrity --report table", "output": "debugging command path"}),
+            serde_json::json!({"label": "bundle", "command": "bijux gnss diagnostics export-bundle --run-dir <run_dir>", "output": "reproducible review package"})
+        ],
+        WorkflowProfile::Compare => vec![
+            serde_json::json!({"label": "replay", "command": "bijux gnss diagnostics replay-audit --baseline-run-dir <a> --candidate-run-dir <b> --report table", "output": "determinism classification"}),
+            serde_json::json!({"label": "quality", "command": "bijux gnss diagnostics compare --baseline-run-dir <a> --candidate-run-dir <b> --report json", "output": "quality and integrity deltas"}),
+            serde_json::json!({"label": "channel", "command": "bijux gnss diagnostics channel-summary --run-dir <b> --report table", "output": "channel-level context for drift"})
+        ],
+    };
+    serde_json::json!({
+        "schema_version": 1,
+        "profile": profile_name,
         "steps": steps
     })
 }

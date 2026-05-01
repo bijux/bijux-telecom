@@ -654,6 +654,16 @@ pub(crate) enum DiagnosticsCommand {
         #[arg(long, value_enum)]
         topic: RouteTopic,
     },
+
+    /// Operator-focused workflow packs tuned for run, triage, and comparison loops
+    OperatorWorkflow {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Workflow profile to emit
+        #[arg(long, value_enum)]
+        profile: WorkflowProfile,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
@@ -668,6 +678,13 @@ pub(crate) enum RouteTopic {
     Replay,
     Compare,
     Export,
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug)]
+pub(crate) enum WorkflowProfile {
+    Run,
+    Triage,
+    Compare,
 }
 
 #[derive(Subcommand)]
