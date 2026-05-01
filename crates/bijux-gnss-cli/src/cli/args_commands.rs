@@ -624,6 +624,12 @@ pub(crate) enum DiagnosticsCommand {
         #[command(flatten)]
         common: CommonArgs,
     },
+
+    /// Print compact expert workflow guidance with high-signal command routes
+    ExpertGuide {
+        #[command(flatten)]
+        common: CommonArgs,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]

@@ -878,6 +878,27 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
+        DiagnosticsCommand::ExpertGuide { common } => {
+            let _ = runtime_config_from_env(&common, None);
+            let report = expert_guide_report();
+            match common.report {
+                ReportFormat::Table => print_expert_guide_table(&report),
+                ReportFormat::Json => emit_report(&common, "diagnostics_expert_guide", &report)?,
+            }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_expert_guide",
+                &report,
+                "diagnostics_expert_guide_report.schema.json",
+            )?;
+            write_manifest(
+                &common,
+                "diagnostics_expert_guide",
+                &ReceiverConfig::default(),
+                None,
+                &report,
+            )?;
+        }
     }
 
     Ok(())
@@ -1303,6 +1324,22 @@ fn print_api_parity_table(report: &serde_json::Value) {
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
             println!("{workflow}\tcli={cli}\tapi={api}");
+        }
+    }
+}
+
+fn print_expert_guide_table(report: &serde_json::Value) {
+    println!("expert guide");
+    if let Some(flows) = report.get("flows").and_then(|v| v.as_array()) {
+        for flow in flows {
+            let name = flow.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let first = flow
+                .get("steps")
+                .and_then(|v| v.as_array())
+                .and_then(|rows| rows.first())
+                .and_then(|v| v.as_str())
+                .unwrap_or("no-steps");
+            println!("{name}\t{first}");
         }
     }
 }
@@ -2187,7 +2224,8 @@ fn machine_catalog_report() -> serde_json::Value {
         serde_json::json!({"name": "diagnostics_operator_status", "schema": "schemas/diagnostics_operator_status_report.schema.json", "schema_version": 1}),
         serde_json::json!({"name": "diagnostics_channel_summary", "schema": "schemas/diagnostics_channel_summary_report.schema.json", "schema_version": 1}),
         serde_json::json!({"name": "diagnostics_export_bundle", "schema": "schemas/diagnostics_export_bundle_report.schema.json", "schema_version": 1}),
-        serde_json::json!({"name": "diagnostics_api_parity", "schema": "schemas/diagnostics_api_parity_report.schema.json", "schema_version": 1})
+        serde_json::json!({"name": "diagnostics_api_parity", "schema": "schemas/diagnostics_api_parity_report.schema.json", "schema_version": 1}),
+        serde_json::json!({"name": "diagnostics_expert_guide", "schema": "schemas/diagnostics_expert_guide_report.schema.json", "schema_version": 1})
     ];
     serde_json::json!({
         "schema_version": 1,
@@ -2253,6 +2291,42 @@ fn api_parity_report() -> serde_json::Value {
         "schema_version": 1,
         "parity_ok": parity_ok,
         "workflows": workflows
+    })
+}
+
+fn expert_guide_report() -> serde_json::Value {
+    let flows = vec![
+        serde_json::json!({
+            "name": "integrity_triage",
+            "intent": "fast integrity diagnosis without losing rigor",
+            "steps": [
+                "bijux gnss diagnostics medium-gate --run-dir <run_dir> --report table",
+                "bijux gnss diagnostics replay-audit --baseline-run-dir <a> --candidate-run-dir <b> --report json",
+                "bijux gnss diagnostics advanced-gate --run-dir <run_dir> --mode rtk --strict --report json"
+            ]
+        }),
+        serde_json::json!({
+            "name": "artifact_forensics",
+            "intent": "explain artifact state before deep debugging",
+            "steps": [
+                "bijux gnss diagnostics artifact-inventory --run-dir <run_dir> --report json",
+                "bijux gnss diagnostics explain --run-dir <run_dir> --report json",
+                "bijux gnss diagnostics export-bundle --run-dir <run_dir>"
+            ]
+        }),
+        serde_json::json!({
+            "name": "solver_regression",
+            "intent": "compare navigation behavior with evidence context",
+            "steps": [
+                "bijux gnss diagnostics compare --baseline-run-dir <a> --candidate-run-dir <b> --report json",
+                "bijux gnss diagnostics channel-summary --run-dir <b> --report json",
+                "bijux gnss diagnostics benchmark-summary --run-dir <b> --report json"
+            ]
+        }),
+    ];
+    serde_json::json!({
+        "schema_version": 1,
+        "flows": flows
     })
 }
 
