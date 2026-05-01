@@ -73,6 +73,15 @@ pub use crate::rtk::metrics::{
 };
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
+pub use crate::rtk::status::{
+    apply_downgrade_policy, evaluate_prerequisites, support_status_matrix, AdvancedMaturity,
+    AdvancedMode, AdvancedPrereqDecision, AdvancedPrerequisites, AdvancedRefusalClass,
+    AdvancedSolutionArtifact, AdvancedSolutionClaim, AdvancedSolutionProvenance,
+    AdvancedSupportMatrix, AdvancedSupportRow, AmbiguityStateArtifact, CorrectionInputArtifact,
+    ADVANCED_SUPPORT_MATRIX_VERSION,
+};
+#[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use bijux_gnss_core::api::rtk::{
     RtkBaselineEpochV1, RtkBaselineQualityV1, RtkDdEpochV1, RtkFixAuditV1, RtkPrecisionV1,
     RtkSdEpochV1,
