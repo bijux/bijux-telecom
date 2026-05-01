@@ -211,7 +211,7 @@ pub(crate) enum GnssCommand {
         strict: bool,
     },
 
-    /// Diagnostics utilities
+    /// Diagnostics and audit workflows for receiver evidence
     Diagnostics {
         #[command(subcommand)]
         command: DiagnosticsCommand,
@@ -226,7 +226,7 @@ pub(crate) enum GnssCommand {
         sidecar: PathBuf,
     },
 
-    /// Analyze a run directory and emit summary artifacts
+    /// Analyze a GNSS run directory and emit evidence-oriented summaries
     Analyze {
         /// Run directory produced by bijux-gnss
         #[arg(long, value_name = "DIR")]
@@ -237,7 +237,7 @@ pub(crate) enum GnssCommand {
         reference: Option<PathBuf>,
     },
 
-    /// Compare two run directories
+    /// Compare two GNSS run directories for quality deltas
     Diff {
         /// First run directory
         #[arg(long, value_name = "DIR")]
@@ -306,7 +306,7 @@ pub(crate) enum GnssCommand {
         strict: bool,
     },
 
-    /// Print build and runtime diagnostics
+    /// Print receiver runtime readiness diagnostics
     Doctor {
         #[command(flatten)]
         common: CommonArgs,
