@@ -534,6 +534,16 @@ pub(crate) enum DiagnosticsCommand {
         #[arg(long)]
         strict: bool,
     },
+
+    /// Summarize run artifacts grouped by stage to make outputs easier to locate
+    ArtifactInventory {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Run directory to inspect
+        #[arg(long, value_name = "DIR")]
+        run_dir: PathBuf,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]

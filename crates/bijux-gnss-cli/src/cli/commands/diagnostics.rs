@@ -667,6 +667,29 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
+        DiagnosticsCommand::ArtifactInventory { common, run_dir } => {
+            let _ = runtime_config_from_env(&common, None);
+            let report = artifact_inventory_report(&run_dir)?;
+            match common.report {
+                ReportFormat::Table => print_artifact_inventory_table(&report),
+                ReportFormat::Json => {
+                    emit_report(&common, "diagnostics_artifact_inventory", &report)?
+                }
+            }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_artifact_inventory",
+                &report,
+                "diagnostics_artifact_inventory_report.schema.json",
+            )?;
+            write_manifest(
+                &common,
+                "diagnostics_artifact_inventory",
+                &ReceiverConfig::default(),
+                None,
+                &report,
+            )?;
+        }
     }
 
     Ok(())
@@ -949,6 +972,19 @@ fn print_advanced_gate_table(report: &serde_json::Value) {
     println!("gate_passed\t{passed}");
     println!("maturity\t{maturity}");
     println!("claim_guard_supported\t{evidence_supported}");
+}
+
+fn print_artifact_inventory_table(report: &serde_json::Value) {
+    println!("artifact inventory");
+    if let Some(groups) = report.get("groups").and_then(|v| v.as_object()) {
+        for (group, payload) in groups {
+            let files = payload
+                .get("file_count")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            println!("{group}\tfiles={files}");
+        }
+    }
 }
 
 fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
@@ -1487,6 +1523,43 @@ fn advanced_gate_report(run_dir: &Path, mode: AdvancedGateMode) -> Result<serde_
                 .cloned()
                 .unwrap_or(serde_json::Value::Null)
         }
+    }))
+}
+
+fn artifact_inventory_report(run_dir: &Path) -> Result<serde_json::Value> {
+    ensure_run_dir_exists(run_dir)?;
+    let artifacts_root = run_dir.join("artifacts");
+    let mut groups = serde_json::Map::new();
+    if artifacts_root.exists() {
+        for entry in fs::read_dir(&artifacts_root)? {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            let mut files = Vec::new();
+            for child in fs::read_dir(&path)? {
+                let child = child?;
+                let child_path = child.path();
+                if child_path.is_file() {
+                    files.push(child.file_name().to_string_lossy().to_string());
+                }
+            }
+            files.sort();
+            groups.insert(
+                name,
+                serde_json::json!({
+                    "file_count": files.len(),
+                    "files": files
+                }),
+            );
+        }
+    }
+    Ok(serde_json::json!({
+        "schema_version": 1,
+        "run_dir": run_dir.display().to_string(),
+        "groups": groups
     }))
 }
 

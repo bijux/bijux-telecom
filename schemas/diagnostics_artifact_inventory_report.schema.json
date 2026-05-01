@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DiagnosticsArtifactInventoryReport",
+  "type": "object",
+  "required": ["schema_version", "run_dir", "groups"],
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "run_dir": { "type": "string" },
+    "groups": { "type": "object" }
+  },
+  "additionalProperties": true
+}
