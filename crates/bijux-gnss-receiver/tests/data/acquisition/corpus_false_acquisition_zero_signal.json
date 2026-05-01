@@ -1,0 +1,14 @@
+{
+  "id": "zero-signal",
+  "kind": "zeros",
+  "sat": { "constellation": "Gps", "prn": 5 },
+  "doppler_hz": 0.0,
+  "code_phase_chips": 0.0,
+  "cn0_db_hz": 0.0,
+  "seed": 1,
+  "search_hz": 1500,
+  "step_hz": 250,
+  "coherent_ms": 1,
+  "noncoherent": 1,
+  "expected_hypothesis": "rejected"
+}
