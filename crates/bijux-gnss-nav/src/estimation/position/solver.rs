@@ -13,6 +13,9 @@ pub struct PositionSolution {
     pub altitude_m: f64,
     pub clock_bias_s: f64,
     pub pdop: f64,
+    pub hdop: Option<f64>,
+    pub vdop: Option<f64>,
+    pub gdop: Option<f64>,
     pub rms_m: f64,
     pub sigma_h_m: Option<f64>,
     pub sigma_v_m: Option<f64>,
@@ -23,6 +26,9 @@ pub struct PositionSolution {
     pub covariance_symmetrized: bool,
     pub covariance_clamped: bool,
     pub covariance_max_variance: Option<f64>,
+    pub sat_count: usize,
+    pub used_sat_count: usize,
+    pub rejected_sat_count: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -264,7 +270,7 @@ impl PositionSolver {
             v.push(*res);
         }
 
-        let pdop = compute_pdop(&h).unwrap_or(0.0);
+        let (pdop, hdop, vdop, gdop) = compute_dops(&h).unwrap_or((0.0, None, None, None));
         let rms = if !v.is_empty() {
             let sum = v.iter().map(|r| r * r).sum::<f64>();
             (sum / v.len() as f64).sqrt()
@@ -290,6 +296,7 @@ impl PositionSolver {
             })
             .unwrap_or((0.0, 0.0));
 
+        let rejected_sat_count = rejected.len();
         Some(PositionSolution {
             ecef_x_m: x,
             ecef_y_m: y,
@@ -299,6 +306,9 @@ impl PositionSolver {
             altitude_m: alt,
             clock_bias_s: cb,
             pdop,
+            hdop,
+            vdop,
+            gdop,
             rms_m: rms,
             sigma_h_m: Some(sigma_h_m),
             sigma_v_m: Some(sigma_v_m),
@@ -309,6 +319,9 @@ impl PositionSolver {
             covariance_symmetrized: cov_symmetrized,
             covariance_clamped: cov_clamped,
             covariance_max_variance: cov_max_variance,
+            sat_count: observations.len(),
+            used_sat_count: filtered.len(),
+            rejected_sat_count,
         })
     }
 }
@@ -437,6 +450,24 @@ fn compute_pdop(h: &[[f64; 4]]) -> Option<f64> {
     let inv = invert_4x4(n)?;
     let pdop = (inv[0][0] + inv[1][1] + inv[2][2]).sqrt();
     Some(pdop)
+}
+
+fn compute_dops(h: &[[f64; 4]]) -> Option<(f64, Option<f64>, Option<f64>, Option<f64>)> {
+    let mut n = [[0.0_f64; 4]; 4];
+    for row in h {
+        for r in 0..4 {
+            for c in 0..4 {
+                n[r][c] += row[r] * row[c];
+            }
+        }
+    }
+    let inv = invert_4x4(n)?;
+    let hdop = (inv[0][0] + inv[1][1]).max(0.0).sqrt();
+    let vdop = inv[2][2].max(0.0).sqrt();
+    let tdop = inv[3][3].max(0.0).sqrt();
+    let pdop = (hdop.powi(2) + vdop.powi(2)).sqrt();
+    let gdop = (pdop.powi(2) + tdop.powi(2)).sqrt();
+    Some((pdop, Some(hdop), Some(vdop), Some(gdop)))
 }
 
 pub fn ecef_to_geodetic(x: f64, y: f64, z: f64) -> (f64, f64, f64) {
