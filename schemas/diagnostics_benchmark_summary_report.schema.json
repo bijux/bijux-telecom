@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DiagnosticsBenchmarkSummaryReport",
+  "type": "object",
+  "required": ["schema_version", "run_dir", "summary", "rigor"],
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "run_dir": { "type": "string" },
+    "summary": { "type": "object" },
+    "rigor": { "type": "object" }
+  },
+  "additionalProperties": true
+}

@@ -711,6 +711,29 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
+        DiagnosticsCommand::BenchmarkSummary { common, run_dir } => {
+            let _ = runtime_config_from_env(&common, None);
+            let report = benchmark_summary_report(&run_dir)?;
+            match common.report {
+                ReportFormat::Table => print_benchmark_summary_table(&report),
+                ReportFormat::Json => {
+                    emit_report(&common, "diagnostics_benchmark_summary", &report)?
+                }
+            }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_benchmark_summary",
+                &report,
+                "diagnostics_benchmark_summary_report.schema.json",
+            )?;
+            write_manifest(
+                &common,
+                "diagnostics_benchmark_summary",
+                &ReceiverConfig::default(),
+                None,
+                &report,
+            )?;
+        }
     }
 
     Ok(())
@@ -1020,6 +1043,21 @@ fn print_debug_plan_table(report: &serde_json::Value) {
             println!("{name}\t{check}");
         }
     }
+}
+
+fn print_benchmark_summary_table(report: &serde_json::Value) {
+    let nav_epochs = report
+        .get("summary")
+        .and_then(|v| v.get("nav_epochs"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let obs_epochs = report
+        .get("summary")
+        .and_then(|v| v.get("obs_epochs"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    println!("obs_epochs\t{obs_epochs}");
+    println!("nav_epochs\t{nav_epochs}");
 }
 
 fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
@@ -1629,6 +1667,56 @@ fn debug_plan_report(run_dir: &Path) -> Result<serde_json::Value> {
                 "diagnostic_focus": "residuals, geometry, claim evidence guard"
             }
         ]
+    }))
+}
+
+fn benchmark_summary_report(run_dir: &Path) -> Result<serde_json::Value> {
+    ensure_run_dir_exists(run_dir)?;
+    let obs_path = run_dir.join("artifacts").join("obs").join("obs.jsonl");
+    let pvt_path = run_dir.join("artifacts").join("pvt").join("pvt.jsonl");
+    let obs = if obs_path.exists() {
+        read_obs_epochs(&obs_path).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let nav = if pvt_path.exists() {
+        read_nav_solutions(&pvt_path).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let mean_cn0 = {
+        let mut sum = 0.0;
+        let mut count = 0usize;
+        for epoch in &obs {
+            for sat in &epoch.sats {
+                sum += sat.cn0_dbhz;
+                count = count.saturating_add(1);
+            }
+        }
+        if count == 0 {
+            None
+        } else {
+            Some(sum / count as f64)
+        }
+    };
+    let mean_rms = if nav.is_empty() {
+        None
+    } else {
+        Some(nav.iter().map(|v| v.rms_m.0).sum::<f64>() / nav.len() as f64)
+    };
+    Ok(serde_json::json!({
+        "schema_version": 1,
+        "run_dir": run_dir.display().to_string(),
+        "summary": {
+            "obs_epochs": obs.len(),
+            "nav_epochs": nav.len(),
+            "mean_cn0_dbhz": mean_cn0,
+            "mean_nav_rms_m": mean_rms
+        },
+        "rigor": {
+            "requires_validation_evidence_bundle": true,
+            "requires_replay_audit": true
+        }
     }))
 }
 
