@@ -66,8 +66,13 @@ impl Receiver {
             self.config().clone(),
             self.runtime().clone(),
         );
-        let acquisition_run =
-            acquisition.run_fft_topn_with_explain(&frame, &sats, 4, self.config().acquisition_integration_ms, self.config().acquisition_noncoherent);
+        let acquisition_run = acquisition.run_fft_topn_with_explain(
+            &frame,
+            &sats,
+            4,
+            self.config().acquisition_integration_ms,
+            self.config().acquisition_noncoherent,
+        );
         let acquisition_candidates = acquisition_run.results;
         let acquisitions: Vec<_> = acquisition_candidates
             .iter()
@@ -100,6 +105,14 @@ impl Receiver {
         runtime.metrics.metric(Metric {
             name: "acquisition_cache_misses",
             value: acquisition_stats.cache_misses as f64,
+        });
+        runtime.metrics.metric(Metric {
+            name: "acquisition_cache_miss_cold_start",
+            value: acquisition_stats.cache_miss_cold_start as f64,
+        });
+        runtime.metrics.metric(Metric {
+            name: "acquisition_cache_miss_incompatible",
+            value: acquisition_stats.cache_miss_incompatible as f64,
         });
         runtime.metrics.metric(Metric {
             name: "acquisition_accepted_count",
@@ -136,10 +149,8 @@ impl Receiver {
             crate::pipeline::tracking::Tracking::new(self.config().clone(), self.runtime().clone());
         let tracking_results =
             tracking.track_from_acquisition(&frame, &acquisitions, SignalBand::L1);
-        let track_transitions: Vec<_> = tracking_results
-            .iter()
-            .flat_map(|result| result.transitions.iter().cloned())
-            .collect();
+        let track_transitions: Vec<_> =
+            tracking_results.iter().flat_map(|result| result.transitions.iter().cloned()).collect();
         let tracking_ms = tracking_start.elapsed().as_secs_f64() * 1000.0;
         let track_channel_count: f64 =
             tracking_results.iter().filter(|result| result.epochs.len() > 0).count() as f64;
@@ -234,12 +245,8 @@ impl Receiver {
 }
 
 fn build_support_matrix() -> SupportMatrix {
-    let constellations = [
-        Constellation::Gps,
-        Constellation::Galileo,
-        Constellation::Glonass,
-        Constellation::Beidou,
-    ];
+    let constellations =
+        [Constellation::Gps, Constellation::Galileo, Constellation::Glonass, Constellation::Beidou];
     let bands = [
         SignalBand::L1,
         SignalBand::L2,
@@ -279,7 +286,9 @@ fn build_support_matrix() -> SupportMatrix {
             }
         }
     }
-    rows.sort_by_key(|row| (format!("{:?}", row.constellation), format!("{:?}", row.band), format!("{:?}", row.code)));
+    rows.sort_by_key(|row| {
+        (format!("{:?}", row.constellation), format!("{:?}", row.band), format!("{:?}", row.code))
+    });
     SupportMatrix { schema_version: 1, rows }
 }
 
