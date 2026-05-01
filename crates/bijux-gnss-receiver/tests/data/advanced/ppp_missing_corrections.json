@@ -1,0 +1,21 @@
+{
+  "id": "ppp_missing_corrections",
+  "mode": "ppp",
+  "prerequisites": {
+    "has_base_observations": true,
+    "has_rover_observations": true,
+    "has_ephemeris": true,
+    "has_reference_frame": true,
+    "has_corrections": false,
+    "has_min_satellites": true,
+    "has_ambiguity_state": true
+  },
+  "claim": "scaffolding",
+  "expect": {
+    "ready": false,
+    "refusal_class": "incomplete_corrections",
+    "downgraded": true,
+    "status_prefix": "degraded",
+    "final_claim": "scaffolding"
+  }
+}

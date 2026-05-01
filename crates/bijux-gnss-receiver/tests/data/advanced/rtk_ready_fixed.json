@@ -1,0 +1,21 @@
+{
+  "id": "rtk_ready_fixed",
+  "mode": "rtk",
+  "prerequisites": {
+    "has_base_observations": true,
+    "has_rover_observations": true,
+    "has_ephemeris": true,
+    "has_reference_frame": true,
+    "has_corrections": true,
+    "has_min_satellites": true,
+    "has_ambiguity_state": true
+  },
+  "claim": "fixed",
+  "expect": {
+    "ready": true,
+    "refusal_class": null,
+    "downgraded": false,
+    "status_prefix": "accepted",
+    "final_claim": "fixed"
+  }
+}
