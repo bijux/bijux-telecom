@@ -1,0 +1,21 @@
+{
+  "id": "pvt_nominal_midlat",
+  "t_rx_s": 100000.0,
+  "truth": {
+    "lat_deg": 37.0,
+    "lon_deg": -122.0,
+    "alt_m": 25.0
+  },
+  "ephemerides": [
+    { "prn": 1, "omega0": 0.0, "m0": 0.0 },
+    { "prn": 2, "omega0": 0.8, "m0": 0.9 },
+    { "prn": 3, "omega0": 1.6, "m0": 1.8 },
+    { "prn": 4, "omega0": 2.4, "m0": 2.7 },
+    { "prn": 5, "omega0": 3.2, "m0": 3.6 }
+  ],
+  "expect": {
+    "max_position_error_m": 300.0,
+    "max_clock_bias_s": 0.001,
+    "min_used_satellites": 4
+  }
+}
