@@ -482,6 +482,20 @@ pub(crate) enum DiagnosticsCommand {
         #[arg(long, value_name = "DIR")]
         run_dir: PathBuf,
     },
+
+    /// Compare two run directories using reproducibility and quality evidence
+    Compare {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Baseline run directory
+        #[arg(long, value_name = "DIR")]
+        baseline_run_dir: PathBuf,
+
+        /// Candidate run directory
+        #[arg(long, value_name = "DIR")]
+        candidate_run_dir: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
