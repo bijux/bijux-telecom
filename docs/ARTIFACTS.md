@@ -68,6 +68,7 @@ Units: meters, seconds.
 Invariants:
 - receiver state finite
 - residual RMS finite
+- assumptions include explicit `time_system`, `reference_frame`, and `clock_model`
 
 ### rtk (Rtk*V1)
 Purpose: RTK SD/DD, baseline, fix audit, precision.
@@ -95,3 +96,22 @@ Every command writes `manifest.json` into the run output directory. The manifest
 - config hash and snapshot
 - dataset id
 - enabled features
+- replay scope metadata (`deterministic`, `resume`, output selection)
+- front-end provenance (`sample_rate_hz`, `intermediate_freq_hz`, `quantization_bits`, normalization/calibration source)
+
+## Validation Evidence Bundle
+
+Validation workflows emit an evidence bundle:
+- file: `artifacts/validation_evidence_bundle.json`
+- purpose: summarize physical signal context and numerical solution behavior in one machine-readable report
+- sections:
+  - `physical`: constellation counts, CN0 summary, lock-quality ratio
+  - `numerical`: PDOP/residual summary, error RMS, refusal-class counts
+  - `diagnostics`: advisory vs enforced-refusal partition
+
+## Reproducibility Verification
+
+Diagnostics workflows can verify run reproducibility artifacts:
+- command: `bijux gnss diagnostics verify-repro --run-dir <RUN_DIR>`
+- output: run fingerprint plus SHA-256 hashes for manifest/report/artifact bundles
+- use case: auditability checks before replay, review, or archival

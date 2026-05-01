@@ -68,3 +68,20 @@ bijux gnss artifact explain --file runs/basic_demo/artifacts/obs.jsonl
 ```bash
 bijux gnss diagnostics summarize --run-dir runs/basic_demo
 ```
+
+### Diagnostics Explain (Replay, Cache, Identity)
+```bash
+bijux gnss diagnostics explain --run-dir runs/basic_demo
+```
+
+### Diagnostics Reproducibility Verification
+```bash
+bijux gnss diagnostics verify-repro --run-dir runs/basic_demo
+```
+
+### Validation Evidence Bundle
+```bash
+bijux gnss validate --file runs/basic_demo/artifacts/obs.jsonl --eph runs/basic_demo/artifacts/ephemeris.json --reference refs/reference.jsonl
+# emits runs/.../artifacts/validation_report.json
+# emits runs/.../artifacts/validation_evidence_bundle.json
+```
