@@ -366,6 +366,8 @@ pub fn observations_from_tracking_results(
             source_epoch_idx: epoch.epoch_idx,
             source_sample_index,
             decision: epoch.decision,
+            downstream_profile_version:
+                bijux_gnss_core::api::OBSERVATION_DOWNSTREAM_PROFILE_VERSION,
         });
         for sat in &mut epoch.sats {
             sat.metadata.observation_epoch_id = artifact_id.clone();
@@ -666,6 +668,8 @@ pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
             source_epoch_idx: epoch_idx,
             source_sample_index: epoch_idx,
             decision: ObservationEpochDecision::Accepted,
+            downstream_profile_version:
+                bijux_gnss_core::api::OBSERVATION_DOWNSTREAM_PROFILE_VERSION,
         }),
     }
 }
