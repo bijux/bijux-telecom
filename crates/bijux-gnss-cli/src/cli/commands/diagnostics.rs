@@ -2216,8 +2216,9 @@ fn handle_doctor(command: GnssCommand) -> Result<()> {
 #[cfg(test)]
 mod diagnostics_tests {
     use super::{
-        advanced_gate_report, compare_run_evidence, explain_run_scope, replay_audit_report,
-        verify_repro_bundle, AdvancedGateMode,
+        advanced_gate_report, artifact_inventory_report, compare_run_evidence, explain_run_scope,
+        export_bundle_report, machine_catalog_report, medium_gate_report, operator_status_report,
+        replay_audit_report, verify_repro_bundle, AdvancedGateMode,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -2442,5 +2443,87 @@ mod diagnostics_tests {
         assert_eq!(report.get("gate_passed").and_then(|v| v.as_bool()), Some(true));
 
         let _ = fs::remove_dir_all(run_dir);
+    }
+
+    #[test]
+    fn artifact_inventory_report_lists_groups() {
+        let run_dir = create_base_run("artifact_inventory", "cfg-artifacts");
+        fs::create_dir_all(run_dir.join("artifacts").join("obs")).expect("obs dir");
+        fs::write(
+            run_dir.join("artifacts").join("obs").join("obs.jsonl"),
+            "{\"payload\":{}}\n",
+        )
+        .expect("obs write");
+        let report = artifact_inventory_report(PathBuf::as_path(&run_dir)).expect("inventory report");
+        assert!(report
+            .get("groups")
+            .and_then(|v| v.get("obs"))
+            .is_some());
+        let _ = fs::remove_dir_all(run_dir);
+    }
+
+    #[test]
+    fn medium_gate_report_exposes_gate_flag() {
+        let run_dir = create_base_run("medium_gate", "cfg-medium");
+        fs::create_dir_all(run_dir.join("artifacts").join("validate")).expect("validate dir");
+        fs::write(
+            run_dir
+                .join("artifacts")
+                .join("validate")
+                .join("validation_evidence_bundle.json"),
+            "{\"claim_evidence_guard\":{\"supported\":true}}\n",
+        )
+        .expect("evidence write");
+        let report = medium_gate_report(PathBuf::as_path(&run_dir)).expect("medium gate");
+        assert!(report.get("gate_passed").is_some());
+        let _ = fs::remove_dir_all(run_dir);
+    }
+
+    #[test]
+    fn operator_status_report_emits_state_labels() {
+        let run_dir = create_base_run("operator_status", "cfg-status");
+        fs::create_dir_all(run_dir.join("artifacts").join("validate")).expect("validate dir");
+        fs::write(
+            run_dir
+                .join("artifacts")
+                .join("validate")
+                .join("validation_evidence_bundle.json"),
+            "{\"claim_evidence_guard\":{\"supported\":false}}\n",
+        )
+        .expect("evidence write");
+        let report = operator_status_report(PathBuf::as_path(&run_dir)).expect("status");
+        assert!(report.get("status").is_some());
+        let _ = fs::remove_dir_all(run_dir);
+    }
+
+    #[test]
+    fn export_bundle_report_writes_bundle_manifest() {
+        let run_dir = create_base_run("bundle_export", "cfg-bundle");
+        let report = export_bundle_report(PathBuf::as_path(&run_dir), None).expect("bundle");
+        let bundle_dir = report
+            .get("bundle_dir")
+            .and_then(|v| v.as_str())
+            .expect("bundle dir");
+        let manifest = PathBuf::from(bundle_dir).join("bundle_manifest.json");
+        assert!(manifest.exists());
+        let _ = fs::remove_dir_all(run_dir);
+    }
+
+    #[test]
+    fn machine_catalog_report_contains_compare_contract() {
+        let report = machine_catalog_report();
+        let has_compare = report
+            .get("reports")
+            .and_then(|v| v.as_array())
+            .map(|rows| {
+                rows.iter().any(|row| {
+                    row.get("name")
+                        .and_then(|v| v.as_str())
+                        .map(|name| name == "diagnostics_compare")
+                        .unwrap_or(false)
+                })
+            })
+            .unwrap_or(false);
+        assert!(has_compare);
     }
 }
