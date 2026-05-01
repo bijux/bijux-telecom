@@ -51,6 +51,7 @@ fn infra_args(common: &CommonArgs) -> bijux_gnss_infra::api::RunContextArgs<'_> 
         out: common.out.as_ref(),
         resume: common.resume.as_ref(),
         deterministic: common.deterministic,
+        sidecar: common.sidecar.as_ref(),
     }
 }
 

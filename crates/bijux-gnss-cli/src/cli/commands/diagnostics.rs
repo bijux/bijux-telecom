@@ -663,6 +663,10 @@ fn explain_run_scope(run_dir: &Path) -> Result<serde_json::Value> {
             "resume": run_manifest.get("replay_scope").and_then(|v| v.get("resume")).cloned().unwrap_or(serde_json::Value::Null),
             "explicit_output_dir": run_manifest.get("replay_scope").and_then(|v| v.get("explicit_output_dir")).cloned().unwrap_or(serde_json::Value::Null)
         },
+        "front_end_provenance": run_manifest
+            .get("front_end_provenance")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
         "artifact_integrity": {
             "artifact_files_scanned": total_artifact_files,
             "entries_scanned": total_lines,

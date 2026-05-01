@@ -60,6 +60,8 @@ pub struct RunContextArgs<'a> {
     pub resume: Option<&'a PathBuf>,
     /// Deterministic flag.
     pub deterministic: bool,
+    /// Optional sidecar metadata path.
+    pub sidecar: Option<&'a PathBuf>,
 }
 
 /// Run manifest persisted for each execution.
@@ -93,6 +95,8 @@ pub struct RunManifest {
     pub features: Vec<String>,
     /// Replay scope required to re-run with matching context.
     pub replay_scope: ReplayScope,
+    /// Front-end provenance that can affect scientific interpretation.
+    pub front_end_provenance: FrontEndProvenance,
     /// Summary payload.
     pub summary: serde_json::Value,
 }
@@ -126,6 +130,8 @@ pub struct RunReport {
     pub layout_schema_version: u32,
     /// Replay scope required to re-run with matching context.
     pub replay_scope: ReplayScope,
+    /// Front-end provenance that can affect scientific interpretation.
+    pub front_end_provenance: FrontEndProvenance,
 }
 
 /// Replay scope persisted in run manifests and reports.
@@ -141,6 +147,23 @@ pub struct ReplayScope {
     pub requested_dataset_id: Option<String>,
     /// Whether unregistered datasets were allowed.
     pub allow_unregistered_dataset: bool,
+}
+
+/// Front-end provenance captured at run time.
+#[derive(Debug, Serialize, Clone)]
+pub struct FrontEndProvenance {
+    /// Sample rate used for ingest, in Hz.
+    pub sample_rate_hz: f64,
+    /// Intermediate frequency used for ingest, in Hz.
+    pub intermediate_freq_hz: f64,
+    /// Quantization depth in bits.
+    pub quantization_bits: u8,
+    /// Code frequency basis in Hz.
+    pub code_freq_basis_hz: f64,
+    /// Normalization source.
+    pub normalization_source: String,
+    /// Calibration source descriptor.
+    pub calibration_source: String,
 }
 
 /// Run index entry appended to runs/index.jsonl.
@@ -202,6 +225,25 @@ fn replay_scope(args: &RunContextArgs<'_>) -> ReplayScope {
         explicit_output_dir: args.out.is_some(),
         requested_dataset_id: args.dataset_id.map(str::to_string),
         allow_unregistered_dataset: args.unregistered_dataset,
+    }
+}
+
+fn front_end_provenance(args: &RunContextArgs<'_>, profile: &ReceiverConfig) -> FrontEndProvenance {
+    let sidecar_used = args.sidecar.is_some();
+    FrontEndProvenance {
+        sample_rate_hz: profile.sample_rate_hz,
+        intermediate_freq_hz: profile.intermediate_freq_hz,
+        quantization_bits: profile.quantization_bits,
+        code_freq_basis_hz: profile.code_freq_basis_hz,
+        normalization_source: if sidecar_used {
+            "sidecar+receiver_profile".to_string()
+        } else {
+            "receiver_profile".to_string()
+        },
+        calibration_source: args
+            .sidecar
+            .map(|path| format!("sidecar:{}", path.display()))
+            .unwrap_or_else(|| "none_declared".to_string()),
     }
 }
 
@@ -334,6 +376,7 @@ pub fn write_run_report(
             .unwrap_or_else(|_| "unknown".to_string()),
         layout_schema_version: RUN_LAYOUT_SCHEMA_VERSION,
         replay_scope: replay_scope(args),
+        front_end_provenance: front_end_provenance(args, profile),
     };
     let ctx = resolve_run_context(args, command, dataset)?;
     let data = serde_json::to_string_pretty(&report).map_err(map_err)?;
@@ -385,6 +428,7 @@ pub fn write_manifest(
         toolchain: std::env::var("RUSTC_VERSION").unwrap_or_else(|_| "unknown".to_string()),
         features: enabled_features(),
         replay_scope: replay_scope(args),
+        front_end_provenance: front_end_provenance(args, profile),
         summary: summary.clone(),
     };
     let ctx = resolve_run_context(args, command, dataset)?;
