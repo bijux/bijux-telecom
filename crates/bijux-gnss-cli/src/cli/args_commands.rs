@@ -674,6 +674,16 @@ pub(crate) enum DiagnosticsCommand {
         #[arg(long, value_name = "DIR")]
         run_dir: PathBuf,
     },
+
+    /// Emit audit trail for overrides, replay controls, and high-risk policy exceptions
+    AuditTrail {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Run directory to evaluate
+        #[arg(long, value_name = "DIR")]
+        run_dir: PathBuf,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]

@@ -991,6 +991,27 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
+        DiagnosticsCommand::AuditTrail { common, run_dir } => {
+            let _ = runtime_config_from_env(&common, None);
+            let report = audit_trail_report(&run_dir)?;
+            match common.report {
+                ReportFormat::Table => print_audit_trail_table(&report),
+                ReportFormat::Json => emit_report(&common, "diagnostics_audit_trail", &report)?,
+            }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_audit_trail",
+                &report,
+                "diagnostics_audit_trail_report.schema.json",
+            )?;
+            write_manifest(
+                &common,
+                "diagnostics_audit_trail",
+                &ReceiverConfig::default(),
+                None,
+                &report,
+            )?;
+        }
     }
 
     Ok(())
@@ -1505,6 +1526,25 @@ fn print_operator_ergonomics_table(report: &serde_json::Value) {
     println!("ergonomics_score\t{score:.2}");
     println!("medium_gate_passed\t{gate}");
     println!("evidence_state\t{evidence}");
+}
+
+fn print_audit_trail_table(report: &serde_json::Value) {
+    let replay = report
+        .get("replay_controls")
+        .and_then(|v| v.get("deterministic"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let overrides = report
+        .get("override_events")
+        .and_then(|v| v.as_array())
+        .map_or(0usize, Vec::len);
+    let exceptions = report
+        .get("policy_exceptions")
+        .and_then(|v| v.as_array())
+        .map_or(0usize, Vec::len);
+    println!("deterministic_replay\t{replay}");
+    println!("override_events\t{overrides}");
+    println!("policy_exceptions\t{exceptions}");
 }
 
 fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
@@ -2392,7 +2432,8 @@ fn machine_catalog_report() -> serde_json::Value {
         serde_json::json!({"name": "diagnostics_history_browse", "schema": "schemas/diagnostics_history_browse_report.schema.json", "schema_version": 1}),
         serde_json::json!({"name": "diagnostics_route_explain", "schema": "schemas/diagnostics_route_explain_report.schema.json", "schema_version": 1}),
         serde_json::json!({"name": "diagnostics_operator_workflow", "schema": "schemas/diagnostics_operator_workflow_report.schema.json", "schema_version": 1}),
-        serde_json::json!({"name": "diagnostics_operator_ergonomics", "schema": "schemas/diagnostics_operator_ergonomics_report.schema.json", "schema_version": 1})
+        serde_json::json!({"name": "diagnostics_operator_ergonomics", "schema": "schemas/diagnostics_operator_ergonomics_report.schema.json", "schema_version": 1}),
+        serde_json::json!({"name": "diagnostics_audit_trail", "schema": "schemas/diagnostics_audit_trail_report.schema.json", "schema_version": 1})
     ];
     serde_json::json!({
         "schema_version": 1,
@@ -2669,6 +2710,82 @@ fn operator_ergonomics_report(run_dir: &Path) -> Result<serde_json::Value> {
             "quality_state": quality_state,
             "run_state": run_state
         }
+    }))
+}
+
+fn audit_trail_report(run_dir: &Path) -> Result<serde_json::Value> {
+    ensure_run_dir_exists(run_dir)?;
+    let manifest_path = run_dir.join("manifest.json");
+    let manifest: serde_json::Value = serde_json::from_str(&fs::read_to_string(&manifest_path)?)
+        .unwrap_or(serde_json::Value::Null);
+    let replay_controls = serde_json::json!({
+        "deterministic": manifest
+            .get("replay_scope")
+            .and_then(|v| v.get("deterministic"))
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
+        "resume": manifest
+            .get("replay_scope")
+            .and_then(|v| v.get("resume"))
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
+        "explicit_output_dir": manifest
+            .get("replay_scope")
+            .and_then(|v| v.get("explicit_output_dir"))
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
+    });
+
+    let mut override_events = Vec::new();
+    let trace_path = run_dir.join("trace.ndjson");
+    if trace_path.exists() {
+        let trace = fs::read_to_string(&trace_path)?;
+        for line in trace.lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let Ok(row) = serde_json::from_str::<serde_json::Value>(line) else {
+                continue;
+            };
+            let name = row
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_lowercase();
+            if name.contains("override") || name.contains("exception") || name.contains("replay")
+            {
+                override_events.push(row);
+            }
+        }
+    }
+
+    let mut policy_exceptions = Vec::new();
+    let evidence_path = run_dir
+        .join("artifacts")
+        .join("validate")
+        .join("validation_evidence_bundle.json");
+    if evidence_path.exists() {
+        let evidence = serde_json::from_str::<serde_json::Value>(&fs::read_to_string(&evidence_path)?)
+            .unwrap_or(serde_json::Value::Null);
+        if let Some(violations) = evidence
+            .get("claim_evidence_guard")
+            .and_then(|v| v.get("violations"))
+            .and_then(|v| v.as_array())
+        {
+            policy_exceptions.extend(violations.iter().cloned());
+        }
+        if let Some(refusals) = evidence.get("refusal_reasons").and_then(|v| v.as_array()) {
+            policy_exceptions.extend(refusals.iter().cloned());
+        }
+    }
+
+    Ok(serde_json::json!({
+        "schema_version": 1,
+        "run_dir": run_dir.display().to_string(),
+        "manifest_path": manifest_path.display().to_string(),
+        "replay_controls": replay_controls,
+        "override_events": override_events,
+        "policy_exceptions": policy_exceptions
     }))
 }
 

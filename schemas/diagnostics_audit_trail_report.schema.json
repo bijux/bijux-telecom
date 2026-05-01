@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DiagnosticsAuditTrailReport",
+  "type": "object",
+  "required": ["schema_version", "run_dir", "replay_controls", "override_events", "policy_exceptions"],
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "run_dir": { "type": "string" },
+    "manifest_path": { "type": "string" },
+    "replay_controls": { "type": "object" },
+    "override_events": { "type": "array" },
+    "policy_exceptions": { "type": "array" }
+  },
+  "additionalProperties": true
+}
