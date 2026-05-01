@@ -704,6 +704,16 @@ pub(crate) enum DiagnosticsCommand {
         #[arg(long, value_name = "DIR")]
         run_dir: PathBuf,
     },
+
+    /// Emphasize concrete engineering/scientific trust checks over ceremonial signals
+    IntegrityFocus {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Run directory to evaluate
+        #[arg(long, value_name = "DIR")]
+        run_dir: PathBuf,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]

@@ -1056,6 +1056,27 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
+        DiagnosticsCommand::IntegrityFocus { common, run_dir } => {
+            let _ = runtime_config_from_env(&common, None);
+            let report = integrity_focus_report(&run_dir)?;
+            match common.report {
+                ReportFormat::Table => print_integrity_focus_table(&report),
+                ReportFormat::Json => emit_report(&common, "diagnostics_integrity_focus", &report)?,
+            }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_integrity_focus",
+                &report,
+                "diagnostics_integrity_focus_report.schema.json",
+            )?;
+            write_manifest(
+                &common,
+                "diagnostics_integrity_focus",
+                &ReceiverConfig::default(),
+                None,
+                &report,
+            )?;
+        }
     }
 
     Ok(())
@@ -1629,6 +1650,24 @@ fn print_trust_class_table(report: &serde_json::Value) {
         .unwrap_or_default();
     println!("trust_class\t{class}");
     println!("rationale\t{rationale}");
+}
+
+fn print_integrity_focus_table(report: &serde_json::Value) {
+    let class = report
+        .get("trust_class")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let score = report
+        .get("engineering_trust_score")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+    let blockers = report
+        .get("blocking_findings")
+        .and_then(|v| v.as_array())
+        .map_or(0usize, Vec::len);
+    println!("trust_class\t{class}");
+    println!("engineering_trust_score\t{score:.2}");
+    println!("blocking_findings\t{blockers}");
 }
 
 fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
@@ -2519,7 +2558,8 @@ fn machine_catalog_report() -> serde_json::Value {
         serde_json::json!({"name": "diagnostics_operator_ergonomics", "schema": "schemas/diagnostics_operator_ergonomics_report.schema.json", "schema_version": 1}),
         serde_json::json!({"name": "diagnostics_audit_trail", "schema": "schemas/diagnostics_audit_trail_report.schema.json", "schema_version": 1}),
         serde_json::json!({"name": "diagnostics_dependency_trace", "schema": "schemas/diagnostics_dependency_trace_report.schema.json", "schema_version": 1}),
-        serde_json::json!({"name": "diagnostics_trust_class", "schema": "schemas/diagnostics_trust_class_report.schema.json", "schema_version": 1})
+        serde_json::json!({"name": "diagnostics_trust_class", "schema": "schemas/diagnostics_trust_class_report.schema.json", "schema_version": 1}),
+        serde_json::json!({"name": "diagnostics_integrity_focus", "schema": "schemas/diagnostics_integrity_focus_report.schema.json", "schema_version": 1})
     ];
     serde_json::json!({
         "schema_version": 1,
@@ -3022,6 +3062,81 @@ fn trust_class_report(run_dir: &Path) -> Result<serde_json::Value> {
             "repro_audit_ok": repro_ok,
             "obs_epochs": obs_epochs,
             "nav_epochs": nav_epochs
+        }
+    }))
+}
+
+fn integrity_focus_report(run_dir: &Path) -> Result<serde_json::Value> {
+    ensure_run_dir_exists(run_dir)?;
+    let trust = trust_class_report(run_dir)?;
+    let audit = audit_trail_report(run_dir)?;
+    let dependency = dependency_trace_report(run_dir)?;
+    let medium_gate = medium_gate_report(run_dir)?;
+
+    let mut blocking_findings = Vec::new();
+    if !medium_gate
+        .get("gate_passed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        blocking_findings.push("medium_gate_failed".to_string());
+    }
+    if audit
+        .get("policy_exceptions")
+        .and_then(|v| v.as_array())
+        .map_or(0usize, Vec::len)
+        > 0
+    {
+        blocking_findings.push("policy_exceptions_present".to_string());
+    }
+    if dependency
+        .get("corrections")
+        .and_then(|v| v.get("rows"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0)
+        == 0
+    {
+        blocking_findings.push("correction_trace_missing".to_string());
+    }
+
+    let trust_class = trust
+        .get("trust_class")
+        .and_then(|v| v.as_str())
+        .unwrap_or("draft");
+    let base_score = match trust_class {
+        "certification_grade" => 1.0,
+        "benchmarked" => 0.8,
+        "operational" => 0.6,
+        _ => 0.3,
+    };
+    let penalty = 0.15 * blocking_findings.len() as f64;
+    let engineering_trust_score = (base_score - penalty).clamp(0.0, 1.0);
+
+    let prioritized_actions = if blocking_findings.is_empty() {
+        vec![
+            "replay-audit baseline/candidate for drift watch".to_string(),
+            "export-bundle for durable review package".to_string(),
+        ]
+    } else {
+        vec![
+            "medium-gate --strict to force critical gate closure".to_string(),
+            "audit-trail and dependency-trace to close integrity gaps".to_string(),
+            "trust-class rerun after fixes".to_string(),
+        ]
+    };
+
+    Ok(serde_json::json!({
+        "schema_version": 1,
+        "run_dir": run_dir.display().to_string(),
+        "trust_class": trust_class,
+        "engineering_trust_score": engineering_trust_score,
+        "blocking_findings": blocking_findings,
+        "prioritized_actions": prioritized_actions,
+        "signals": {
+            "trust_class_report": trust,
+            "audit_trail_report": audit,
+            "dependency_trace_report": dependency,
+            "medium_gate_report": medium_gate
         }
     }))
 }
