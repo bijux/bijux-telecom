@@ -544,6 +544,16 @@ pub(crate) enum DiagnosticsCommand {
         #[arg(long, value_name = "DIR")]
         run_dir: PathBuf,
     },
+
+    /// Emit focused local debugging workflow for acquisition, tracking, observations, and PVT
+    DebugPlan {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Run directory to inspect
+        #[arg(long, value_name = "DIR")]
+        run_dir: PathBuf,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]

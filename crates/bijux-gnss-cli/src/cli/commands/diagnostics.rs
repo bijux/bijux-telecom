@@ -690,6 +690,27 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
+        DiagnosticsCommand::DebugPlan { common, run_dir } => {
+            let _ = runtime_config_from_env(&common, None);
+            let report = debug_plan_report(&run_dir)?;
+            match common.report {
+                ReportFormat::Table => print_debug_plan_table(&report),
+                ReportFormat::Json => emit_report(&common, "diagnostics_debug_plan", &report)?,
+            }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_debug_plan",
+                &report,
+                "diagnostics_debug_plan_report.schema.json",
+            )?;
+            write_manifest(
+                &common,
+                "diagnostics_debug_plan",
+                &ReceiverConfig::default(),
+                None,
+                &report,
+            )?;
+        }
     }
 
     Ok(())
@@ -983,6 +1004,20 @@ fn print_artifact_inventory_table(report: &serde_json::Value) {
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0);
             println!("{group}\tfiles={files}");
+        }
+    }
+}
+
+fn print_debug_plan_table(report: &serde_json::Value) {
+    println!("debug plan");
+    if let Some(stages) = report.get("stages").and_then(|v| v.as_array()) {
+        for stage in stages {
+            let name = stage.get("stage").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let check = stage
+                .get("recommended_check")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            println!("{name}\t{check}");
         }
     }
 }
@@ -1560,6 +1595,40 @@ fn artifact_inventory_report(run_dir: &Path) -> Result<serde_json::Value> {
         "schema_version": 1,
         "run_dir": run_dir.display().to_string(),
         "groups": groups
+    }))
+}
+
+fn debug_plan_report(run_dir: &Path) -> Result<serde_json::Value> {
+    ensure_run_dir_exists(run_dir)?;
+    Ok(serde_json::json!({
+        "schema_version": 1,
+        "run_dir": run_dir.display().to_string(),
+        "stages": [
+            {
+                "stage": "acquisition",
+                "artifact": "artifacts/acquire/acq.jsonl",
+                "recommended_check": "bijux gnss artifact validate --file <acq.jsonl>",
+                "diagnostic_focus": "peak ratios, support status, threshold provenance"
+            },
+            {
+                "stage": "tracking",
+                "artifact": "artifacts/track/track.jsonl",
+                "recommended_check": "bijux gnss diagnostics channel-summary --run-dir <run_dir>",
+                "diagnostic_focus": "lock transitions, cycle slips, cn0 distribution"
+            },
+            {
+                "stage": "observations",
+                "artifact": "artifacts/obs/obs.jsonl",
+                "recommended_check": "bijux gnss artifact validate --file <obs.jsonl>",
+                "diagnostic_focus": "missing/weak observables, epoch consistency"
+            },
+            {
+                "stage": "pvt",
+                "artifact": "artifacts/pvt/pvt.jsonl",
+                "recommended_check": "bijux gnss diagnostics medium-gate --run-dir <run_dir>",
+                "diagnostic_focus": "residuals, geometry, claim evidence guard"
+            }
+        ]
     }))
 }
 
