@@ -452,6 +452,27 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
     };
 
     match command {
+        DiagnosticsCommand::OperatorMap { common } => {
+            let _ = runtime_config_from_env(&common, None);
+            let report = operator_map_report();
+            match common.report {
+                ReportFormat::Table => print_operator_map_table(&report),
+                ReportFormat::Json => emit_report(&common, "diagnostics_operator_map", &report)?,
+            }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_operator_map",
+                &report,
+                "diagnostics_operator_map_report.schema.json",
+            )?;
+            write_manifest(
+                &common,
+                "diagnostics_operator_map",
+                &ReceiverConfig::default(),
+                None,
+                &report,
+            )?;
+        }
         DiagnosticsCommand::Workflow { common } => {
             let _ = runtime_config_from_env(&common, None);
             let report = workflow_map_report();
@@ -644,6 +665,39 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
     Ok(())
 }
 
+fn operator_map_report() -> serde_json::Value {
+    serde_json::json!({
+        "schema_version": 1,
+        "operator_map": [
+            {
+                "workflow": "run",
+                "goal": "execute receiver pipeline",
+                "command": "bijux gnss run --dataset <id> --config <profile.toml>"
+            },
+            {
+                "workflow": "diagnose",
+                "goal": "inspect replay scope, cache behavior, and artifact integrity",
+                "command": "bijux gnss diagnostics explain --run-dir <run_dir>"
+            },
+            {
+                "workflow": "replay_audit",
+                "goal": "prove deterministic match or classify drift",
+                "command": "bijux gnss diagnostics replay-audit --baseline-run-dir <run_a> --candidate-run-dir <run_b>"
+            },
+            {
+                "workflow": "compare",
+                "goal": "compare quality deltas and reproducibility evidence",
+                "command": "bijux gnss diagnostics compare --baseline-run-dir <run_a> --candidate-run-dir <run_b>"
+            },
+            {
+                "workflow": "export_bundle",
+                "goal": "prepare reproducible review bundle for triage",
+                "command": "bijux gnss diagnostics export-bundle --run-dir <run_dir>"
+            }
+        ]
+    })
+}
+
 fn workflow_map_report() -> serde_json::Value {
     serde_json::json!({
         "schema_version": 1,
@@ -680,6 +734,17 @@ fn workflow_map_report() -> serde_json::Value {
             }
         ]
     })
+}
+
+fn print_operator_map_table(report: &serde_json::Value) {
+    println!("operator workflow map");
+    if let Some(rows) = report.get("operator_map").and_then(|v| v.as_array()) {
+        for row in rows {
+            let workflow = row.get("workflow").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let command = row.get("command").and_then(|v| v.as_str()).unwrap_or("unknown");
+            println!("{workflow}\t{command}");
+        }
+    }
 }
 
 fn write_diagnostics_report_artifact(
