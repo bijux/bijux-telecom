@@ -734,6 +734,41 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
+        DiagnosticsCommand::MediumGate {
+            common,
+            run_dir,
+            strict,
+        } => {
+            let _ = runtime_config_from_env(&common, None);
+            let report = medium_gate_report(&run_dir)?;
+            let passed = report
+                .get("gate_passed")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if strict && !passed {
+                return Err(classified_error(
+                    CliErrorClass::UnsupportedScience,
+                    format!("medium gate failed for run_dir={}", run_dir.display()),
+                ));
+            }
+            match common.report {
+                ReportFormat::Table => print_medium_gate_table(&report),
+                ReportFormat::Json => emit_report(&common, "diagnostics_medium_gate", &report)?,
+            }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_medium_gate",
+                &report,
+                "diagnostics_medium_gate_report.schema.json",
+            )?;
+            write_manifest(
+                &common,
+                "diagnostics_medium_gate",
+                &ReceiverConfig::default(),
+                None,
+                &report,
+            )?;
+        }
     }
 
     Ok(())
@@ -1058,6 +1093,25 @@ fn print_benchmark_summary_table(report: &serde_json::Value) {
         .unwrap_or(0);
     println!("obs_epochs\t{obs_epochs}");
     println!("nav_epochs\t{nav_epochs}");
+}
+
+fn print_medium_gate_table(report: &serde_json::Value) {
+    let passed = report
+        .get("gate_passed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    println!("gate_passed\t{passed}");
+    let reasons = report
+        .get("reasons")
+        .and_then(|v| v.as_array())
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|v| v.as_str())
+                .collect::<Vec<_>>()
+                .join(",")
+        })
+        .unwrap_or_default();
+    println!("reasons\t{reasons}");
 }
 
 fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
@@ -1716,6 +1770,54 @@ fn benchmark_summary_report(run_dir: &Path) -> Result<serde_json::Value> {
         "rigor": {
             "requires_validation_evidence_bundle": true,
             "requires_replay_audit": true
+        }
+    }))
+}
+
+fn medium_gate_report(run_dir: &Path) -> Result<serde_json::Value> {
+    ensure_run_dir_exists(run_dir)?;
+    let explain = explain_run_scope(run_dir)?;
+    let repro = verify_repro_bundle(run_dir)?;
+    let evidence_path = run_dir
+        .join("artifacts")
+        .join("validate")
+        .join("validation_evidence_bundle.json");
+    let evidence = if evidence_path.exists() {
+        serde_json::from_str::<serde_json::Value>(&fs::read_to_string(&evidence_path)?)
+            .unwrap_or(serde_json::Value::Null)
+    } else {
+        serde_json::Value::Null
+    };
+    let claim_supported = evidence
+        .get("claim_evidence_guard")
+        .and_then(|v| v.get("supported"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let corruption_count = explain
+        .get("artifact_integrity")
+        .and_then(|v| v.get("corrupted_files"))
+        .and_then(|v| v.as_array())
+        .map_or(0usize, Vec::len);
+    let repro_ok = repro.get("audit_ok").and_then(|v| v.as_bool()).unwrap_or(false);
+    let mut reasons = Vec::new();
+    if !repro_ok {
+        reasons.push("repro_audit_failed".to_string());
+    }
+    if corruption_count > 0 {
+        reasons.push("artifact_corruption_detected".to_string());
+    }
+    if !claim_supported {
+        reasons.push("claim_evidence_guard_failed".to_string());
+    }
+    Ok(serde_json::json!({
+        "schema_version": 1,
+        "run_dir": run_dir.display().to_string(),
+        "gate_passed": reasons.is_empty(),
+        "reasons": reasons,
+        "checks": {
+            "replay_audit_ok": repro_ok,
+            "artifact_corruption_count": corruption_count,
+            "claim_evidence_supported": claim_supported
         }
     }))
 }

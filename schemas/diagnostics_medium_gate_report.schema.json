@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DiagnosticsMediumGateReport",
+  "type": "object",
+  "required": ["schema_version", "run_dir", "gate_passed", "reasons", "checks"],
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "run_dir": { "type": "string" },
+    "gate_passed": { "type": "boolean" },
+    "reasons": { "type": "array" },
+    "checks": { "type": "object" }
+  },
+  "additionalProperties": true
+}

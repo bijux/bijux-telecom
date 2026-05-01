@@ -564,6 +564,20 @@ pub(crate) enum DiagnosticsCommand {
         #[arg(long, value_name = "DIR")]
         run_dir: PathBuf,
     },
+
+    /// Run medium integration gate across replay integrity and evidence stability
+    MediumGate {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Run directory to inspect
+        #[arg(long, value_name = "DIR")]
+        run_dir: PathBuf,
+
+        /// Fail command when medium gate does not pass
+        #[arg(long)]
+        strict: bool,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
