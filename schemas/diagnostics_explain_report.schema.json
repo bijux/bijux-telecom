@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DiagnosticsExplainReport",
+  "type": "object",
+  "required": ["schema_version", "run_dir", "manifest_path", "replay_scope", "artifact_integrity", "artifact_identity_coverage", "cache_behavior"],
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "run_dir": { "type": "string" },
+    "manifest_path": { "type": "string" },
+    "replay_scope": { "type": "object" },
+    "artifact_integrity": { "type": "object" },
+    "artifact_identity_coverage": { "type": "object" },
+    "cache_behavior": { "type": "object" }
+  },
+  "additionalProperties": true
+}

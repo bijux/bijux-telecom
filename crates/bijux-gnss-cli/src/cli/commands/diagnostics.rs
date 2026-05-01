@@ -459,6 +459,12 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 ReportFormat::Table => print_workflow_table(&report),
                 ReportFormat::Json => emit_report(&common, "diagnostics_workflow", &report)?,
             }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_workflow",
+                &report,
+                "diagnostics_workflow_report.schema.json",
+            )?;
             write_manifest(
                 &common,
                 "diagnostics_workflow",
@@ -478,6 +484,7 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
             let mut entries = summary.entries.clone();
             entries.sort_by(|a, b| b.count.cmp(&a.count));
             let report = serde_json::json!({
+                "schema_version": 1,
                 "run_dir": run_dir.display().to_string(),
                 "total": summary.total,
                 "top": top,
@@ -492,6 +499,12 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 }
                 ReportFormat::Json => emit_report(&common, "diagnostics_summarize", &report)?,
             }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_summarize",
+                &report,
+                "diagnostics_summary_report.schema.json",
+            )?;
             write_manifest(&common, "diagnostics_summarize", &ReceiverConfig::default(), None, &report)?;
         }
         DiagnosticsCommand::Explain { common, run_dir } => {
@@ -501,6 +514,12 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 ReportFormat::Table => print_diagnostics_explain_table(&summary),
                 ReportFormat::Json => emit_report(&common, "diagnostics_explain", &summary)?,
             }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_explain",
+                &summary,
+                "diagnostics_explain_report.schema.json",
+            )?;
             write_manifest(
                 &common,
                 "diagnostics_explain",
@@ -516,6 +535,12 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 ReportFormat::Table => print_verify_repro_table(&report),
                 ReportFormat::Json => emit_report(&common, "diagnostics_verify_repro", &report)?,
             }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_verify_repro",
+                &report,
+                "diagnostics_verify_repro_report.schema.json",
+            )?;
             write_manifest(
                 &common,
                 "diagnostics_verify_repro",
@@ -565,6 +590,22 @@ fn workflow_map_report() -> serde_json::Value {
             }
         ]
     })
+}
+
+fn write_diagnostics_report_artifact(
+    common: &CommonArgs,
+    command: &str,
+    report: &serde_json::Value,
+    schema_name: &str,
+) -> Result<PathBuf> {
+    let out_dir = artifacts_dir(common, command, None)?;
+    let report_path = out_dir.join("report.json");
+    fs::write(&report_path, serde_json::to_string_pretty(report)?)?;
+    let schema = schema_path(schema_name);
+    if schema.exists() {
+        validate_json_schema(&schema, &report_path, false)?;
+    }
+    Ok(report_path)
 }
 
 fn print_workflow_table(report: &serde_json::Value) {
@@ -799,6 +840,7 @@ fn explain_run_scope(run_dir: &Path) -> Result<serde_json::Value> {
     };
 
     Ok(serde_json::json!({
+        "schema_version": 1,
         "run_dir": run_dir.display().to_string(),
         "manifest_path": manifest_path.display().to_string(),
         "replay_scope": {
@@ -907,6 +949,7 @@ fn verify_repro_bundle(run_dir: &Path) -> Result<serde_json::Value> {
     let audit_ok = issues.is_empty();
 
     Ok(serde_json::json!({
+        "schema_version": 1,
         "run_dir": run_dir.display().to_string(),
         "audit_ok": audit_ok,
         "issues": issues,
