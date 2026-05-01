@@ -496,6 +496,20 @@ pub(crate) enum DiagnosticsCommand {
         #[arg(long, value_name = "DIR")]
         candidate_run_dir: PathBuf,
     },
+
+    /// Audit replay determinism and classify drift between two run directories
+    ReplayAudit {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Baseline run directory
+        #[arg(long, value_name = "DIR")]
+        baseline_run_dir: PathBuf,
+
+        /// Candidate run directory
+        #[arg(long, value_name = "DIR")]
+        candidate_run_dir: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]

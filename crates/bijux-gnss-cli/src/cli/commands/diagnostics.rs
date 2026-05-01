@@ -574,6 +574,31 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
+        DiagnosticsCommand::ReplayAudit {
+            common,
+            baseline_run_dir,
+            candidate_run_dir,
+        } => {
+            let _ = runtime_config_from_env(&common, None);
+            let report = replay_audit_report(&baseline_run_dir, &candidate_run_dir)?;
+            match common.report {
+                ReportFormat::Table => print_replay_audit_table(&report),
+                ReportFormat::Json => emit_report(&common, "diagnostics_replay_audit", &report)?,
+            }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_replay_audit",
+                &report,
+                "diagnostics_replay_audit_report.schema.json",
+            )?;
+            write_manifest(
+                &common,
+                "diagnostics_replay_audit",
+                &ReceiverConfig::default(),
+                None,
+                &report,
+            )?;
+        }
     }
 
     Ok(())
@@ -738,6 +763,35 @@ fn print_compare_report_table(report: &serde_json::Value) {
     println!("candidate_audit_ok\t{candidate_audit}");
     println!("mean_rms_delta_m\t{rms_delta:.6}");
     println!("mean_cn0_delta_dbhz\t{cn0_delta:.6}");
+}
+
+fn print_replay_audit_table(report: &serde_json::Value) {
+    let class = report
+        .get("classification")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let baseline_command = report
+        .get("baseline_command")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let candidate_command = report
+        .get("candidate_command")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let reasons = report
+        .get("reasons")
+        .and_then(|v| v.as_array())
+        .map(|vals| {
+            vals.iter()
+                .filter_map(|v| v.as_str())
+                .collect::<Vec<_>>()
+                .join(",")
+        })
+        .unwrap_or_else(String::new);
+    println!("classification\t{class}");
+    println!("baseline_command\t{baseline_command}");
+    println!("candidate_command\t{candidate_command}");
+    println!("reasons\t{reasons}");
 }
 
 fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
@@ -1061,6 +1115,74 @@ fn compare_run_evidence(baseline_run_dir: &Path, candidate_run_dir: &Path) -> Re
             "convergence_epoch_candidate": quality.get("convergence_epoch_idx").and_then(|v| v.get("run_b")).cloned().unwrap_or(serde_json::Value::Null),
             "raw_diff": quality
         }
+    }))
+}
+
+fn replay_audit_report(baseline_run_dir: &Path, candidate_run_dir: &Path) -> Result<serde_json::Value> {
+    let compare = compare_run_evidence(baseline_run_dir, candidate_run_dir)?;
+    let baseline_explain = explain_run_scope(baseline_run_dir)?;
+    let candidate_explain = explain_run_scope(candidate_run_dir)?;
+
+    let fingerprint_match = compare
+        .get("reproducibility")
+        .and_then(|v| v.get("fingerprint_match"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let baseline_audit_ok = compare
+        .get("reproducibility")
+        .and_then(|v| v.get("baseline_audit_ok"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let candidate_audit_ok = compare
+        .get("reproducibility")
+        .and_then(|v| v.get("candidate_audit_ok"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let corrupted_delta = compare
+        .get("artifact_integrity")
+        .and_then(|v| v.get("corrupted_file_delta"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+
+    let mut reasons = Vec::new();
+    if !baseline_audit_ok {
+        reasons.push("baseline_repro_audit_failed".to_string());
+    }
+    if !candidate_audit_ok {
+        reasons.push("candidate_repro_audit_failed".to_string());
+    }
+    if !fingerprint_match {
+        reasons.push("replay_fingerprint_changed".to_string());
+    }
+    if corrupted_delta != 0 {
+        reasons.push("artifact_corruption_delta_detected".to_string());
+    }
+    let classification = if baseline_audit_ok && candidate_audit_ok && fingerprint_match && corrupted_delta == 0
+    {
+        "deterministic_match"
+    } else if baseline_audit_ok && candidate_audit_ok {
+        "scientific_or_configuration_drift"
+    } else {
+        "integrity_failure"
+    };
+
+    Ok(serde_json::json!({
+        "schema_version": 1,
+        "baseline_run_dir": baseline_run_dir.display().to_string(),
+        "candidate_run_dir": candidate_run_dir.display().to_string(),
+        "classification": classification,
+        "reasons": reasons,
+        "baseline_command": baseline_explain
+            .get("replay_scope")
+            .and_then(|v| v.get("command"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown"),
+        "candidate_command": candidate_explain
+            .get("replay_scope")
+            .and_then(|v| v.get("command"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown"),
+        "compare": compare
     }))
 }
 
