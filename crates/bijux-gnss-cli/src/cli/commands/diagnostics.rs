@@ -1422,9 +1422,41 @@ fn handle_doctor(command: GnssCommand) -> Result<()> {
 
 #[cfg(test)]
 mod diagnostics_tests {
-    use super::{explain_run_scope, verify_repro_bundle};
+    use super::{
+        advanced_gate_report, compare_run_evidence, explain_run_scope, replay_audit_report,
+        verify_repro_bundle, AdvancedGateMode,
+    };
     use std::fs;
     use std::path::PathBuf;
+
+    fn create_base_run(name: &str, config_hash: &str) -> PathBuf {
+        let base = std::env::temp_dir().join(format!(
+            "bijux_{name}_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("duration")
+                .as_nanos()
+        ));
+        fs::create_dir_all(base.join("artifacts")).expect("artifacts dir");
+        let manifest = serde_json::json!({
+            "command": "run",
+            "dataset_id": "demo",
+            "config_hash": config_hash,
+            "layout_schema_version": 1,
+            "replay_scope": {"deterministic": true},
+            "front_end_provenance": {"sample_rate_hz": 5000000.0}
+        });
+        fs::write(
+            base.join("manifest.json"),
+            serde_json::to_string_pretty(&manifest).expect("manifest json"),
+        )
+        .expect("manifest write");
+        fs::write(base.join("run_report.json"), "{\"schema_version\":1}\n").expect("report write");
+        fs::write(base.join("artifacts").join("obs.jsonl"), "{\"payload\":{\"artifact_id\":\"obs-1\"}}\n")
+            .expect("artifact write");
+        base
+    }
 
     #[test]
     fn explain_run_scope_reports_cache_replay_and_identity() {
@@ -1537,5 +1569,85 @@ mod diagnostics_tests {
         assert!(report.get("manifest_sha256").and_then(|v| v.as_str()).is_some());
 
         let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn compare_run_evidence_reports_repro_and_quality_deltas() {
+        let baseline = create_base_run("compare_base", "cfg-a");
+        let candidate = create_base_run("compare_cand", "cfg-a");
+        let report =
+            compare_run_evidence(PathBuf::as_path(&baseline), PathBuf::as_path(&candidate))
+                .expect("compare");
+        assert_eq!(
+            report
+                .get("reproducibility")
+                .and_then(|v| v.get("fingerprint_match"))
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert!(report.get("quality").is_some());
+        let _ = fs::remove_dir_all(baseline);
+        let _ = fs::remove_dir_all(candidate);
+    }
+
+    #[test]
+    fn replay_audit_report_classifies_fingerprint_drift() {
+        let baseline = create_base_run("audit_base", "cfg-a");
+        let candidate = create_base_run("audit_cand", "cfg-b");
+        let report = replay_audit_report(PathBuf::as_path(&baseline), PathBuf::as_path(&candidate))
+            .expect("replay audit");
+        assert_eq!(
+            report.get("classification").and_then(|v| v.as_str()),
+            Some("scientific_or_configuration_drift")
+        );
+        let _ = fs::remove_dir_all(baseline);
+        let _ = fs::remove_dir_all(candidate);
+    }
+
+    #[test]
+    fn advanced_gate_report_passes_for_supported_rtk_claims() {
+        let run_dir = create_base_run("advanced_gate", "cfg-gate");
+        fs::create_dir_all(run_dir.join("artifacts").join("rtk")).expect("rtk dir");
+        fs::create_dir_all(run_dir.join("artifacts").join("validate")).expect("validate dir");
+
+        let support = serde_json::json!({
+            "schema_version": 1,
+            "rows": [
+                {
+                    "mode": "Rtk",
+                    "maturity": "Experimental",
+                    "real_solver": true,
+                    "required_inputs": ["base_obs", "rover_obs", "ephemeris", "base_ecef"],
+                    "notes": "supported"
+                }
+            ]
+        });
+        fs::write(
+            run_dir.join("artifacts").join("rtk").join("rtk_support_matrix.json"),
+            serde_json::to_string_pretty(&support).expect("support json"),
+        )
+        .expect("support write");
+
+        let evidence = serde_json::json!({
+            "schema_version": 1,
+            "claim_evidence_guard": {
+                "supported": true,
+                "violations": []
+            }
+        });
+        fs::write(
+            run_dir
+                .join("artifacts")
+                .join("validate")
+                .join("validation_evidence_bundle.json"),
+            serde_json::to_string_pretty(&evidence).expect("evidence json"),
+        )
+        .expect("evidence write");
+
+        let report = advanced_gate_report(PathBuf::as_path(&run_dir), AdvancedGateMode::Rtk)
+            .expect("advanced gate");
+        assert_eq!(report.get("gate_passed").and_then(|v| v.as_bool()), Some(true));
+
+        let _ = fs::remove_dir_all(run_dir);
     }
 }
