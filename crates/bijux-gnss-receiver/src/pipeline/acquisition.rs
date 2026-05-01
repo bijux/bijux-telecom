@@ -4,7 +4,8 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use bijux_gnss_core::api::{
-    AcqAssumptions, AcqEvidence, AcqHypothesis, AcqResult, Hertz, SamplesFrame, SatId,
+    AcqAssumptions, AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqResult,
+    AcqThresholdProvenance, Hertz, SamplesFrame, SatId,
 };
 use num_complex::Complex;
 use rustfft::{num_traits::Zero, FftPlanner};
@@ -39,6 +40,12 @@ pub struct AcquisitionStats {
 }
 
 type CodeFftCache = HashMap<(usize, SatId), Vec<Complex<f32>>>;
+
+#[derive(Debug, Clone)]
+pub struct AcquisitionRun {
+    pub results: Vec<Vec<AcqResult>>,
+    pub explains: Vec<AcqExplain>,
+}
 
 impl Acquisition {
     fn with_stats<F, R>(&self, f: F) -> R
@@ -90,6 +97,25 @@ impl Acquisition {
         .collect()
     }
 
+    pub fn run_fft_topn_with_explain(
+        &self,
+        frame: &SamplesFrame,
+        sats: &[SatId],
+        top_n: usize,
+        coherent_ms: u32,
+        noncoherent: u32,
+    ) -> AcquisitionRun {
+        let results = self.run_fft_topn_internal(
+            frame,
+            sats,
+            top_n,
+            coherent_ms,
+            noncoherent,
+            true,
+        );
+        results
+    }
+
     pub fn run_fft_topn(
         &self,
         frame: &SamplesFrame,
@@ -98,6 +124,26 @@ impl Acquisition {
         coherent_ms: u32,
         noncoherent: u32,
     ) -> Vec<Vec<AcqResult>> {
+        self.run_fft_topn_internal(
+            frame,
+            sats,
+            top_n,
+            coherent_ms,
+            noncoherent,
+            false,
+        )
+        .results
+    }
+
+    fn run_fft_topn_internal(
+        &self,
+        frame: &SamplesFrame,
+        sats: &[SatId],
+        top_n: usize,
+        coherent_ms: u32,
+        noncoherent: u32,
+        emit_explanations: bool,
+    ) -> AcquisitionRun {
         let samples_per_code = samples_per_code(
             self.config.sampling_freq_hz,
             self.config.code_freq_basis_hz,
@@ -106,7 +152,7 @@ impl Acquisition {
         let total_ms = (coherent_ms * noncoherent).max(1) as usize;
         let required = samples_per_code * total_ms;
         if frame.len() < required {
-            return Vec::new();
+            return AcquisitionRun { results: Vec::new(), explains: Vec::new() };
         }
 
         let mut planner = FftPlanner::<f32>::new();
@@ -134,6 +180,7 @@ impl Acquisition {
         };
 
         let mut results = Vec::new();
+        let mut explains = Vec::new();
         for &sat in sats {
             self.runtime.trace.record(TraceRecord {
                 name: "acquisition_sat_start",
@@ -143,6 +190,14 @@ impl Acquisition {
                 ],
             });
 
+            let threshold_provenance = AcqThresholdProvenance {
+                coherent_ms,
+                noncoherent,
+                doppler_search_hz: self.doppler_search_hz,
+                doppler_step_hz: self.doppler_step_hz,
+                peak_mean_threshold: self.config.acquisition_peak_mean_threshold,
+                peak_second_threshold: self.config.acquisition_peak_second_threshold,
+            };
             let code_fft = self.code_fft(sat, samples_per_code, fft.as_ref());
             let mut candidates = Vec::new();
 
@@ -206,6 +261,8 @@ impl Acquisition {
                     hypothesis: AcqHypothesis::Deferred,
                     assumptions: Some(assumptions.clone()),
                     evidence: Vec::new(),
+                    threshold_provenance: Some(threshold_provenance.clone()),
+                    explain_selection_reason: None,
                 });
 
                 doppler += self.doppler_step_hz;
@@ -229,6 +286,15 @@ impl Acquisition {
                 self.with_stats(|stats| {
                     stats.deferred_count = stats.deferred_count.saturating_add(1);
                 });
+                if emit_explanations {
+                    explains.push(AcqExplain {
+                        sat,
+                        selected_rank: None,
+                        selected_reason: "no_candidates".to_string(),
+                        candidate_count: 0,
+                        candidates: Vec::new(),
+                    });
+                }
                 continue;
             }
 
@@ -258,12 +324,58 @@ impl Acquisition {
                     );
                     candidate.hypothesis = hypothesis;
                     candidate.score = score;
+                    candidate.explain_selection_reason = Some(format!(
+                        "rank 1 selected; peak_mean_ratio={:.6}, separation_ratio={:.6}, score={:.6}",
+                        candidate.peak_mean_ratio,
+                        separation_ratio,
+                        score
+                    ));
                 } else {
                     candidate.hypothesis = AcqHypothesis::Deferred;
+                    candidate.explain_selection_reason = Some("not_selected".to_string());
                 }
             }
 
             let best = &candidates[0];
+            if emit_explanations {
+                let selected_reason = match best.hypothesis {
+                    AcqHypothesis::Accepted => "accepted_by_ratio_thresholds",
+                    AcqHypothesis::Ambiguous => "ambiguous_ratio_thresholds",
+                    AcqHypothesis::Rejected => "rejected_peak_mean_threshold",
+                    AcqHypothesis::Deferred => "deferred",
+                };
+                explains.push(AcqExplain {
+                    sat,
+                    selected_rank: Some(1),
+                    selected_reason: selected_reason.to_string(),
+                    candidate_count: candidates.len(),
+                    candidates: candidates
+                        .iter()
+                        .enumerate()
+                        .map(|(rank, candidate)| AcqExplainCandidate {
+                            rank: rank as u8 + 1,
+                            code_phase_samples: candidate.code_phase_samples,
+                            carrier_hz: candidate.carrier_hz.0,
+                            peak: candidate.peak,
+                            peak_mean_ratio: candidate.peak_mean_ratio,
+                            peak_second_ratio: candidate.peak_second_ratio,
+                            second_peak_ratio: (if candidate.peak == 0.0 {
+                                f32::INFINITY
+                            } else {
+                                candidate.peak / (candidate.second_peak + 1e-6)
+                            }),
+                            mean: candidate.mean,
+                            hypothesis: candidate.hypothesis,
+                            score: candidate.score,
+                            threshold_hit: matches!(candidate.hypothesis, AcqHypothesis::Accepted),
+                            reason: candidate
+                                .explain_selection_reason
+                                .clone()
+                                .unwrap_or_else(|| "discarded".to_string()),
+                        })
+                        .collect(),
+                });
+            }
             let outcome = match best.hypothesis {
                 AcqHypothesis::Accepted => "accepted",
                 AcqHypothesis::Ambiguous => "ambiguous",
@@ -310,8 +422,7 @@ impl Acquisition {
             });
             results.push(candidates);
         }
-
-        results
+        AcquisitionRun { results, explains }
     }
 
     fn code_fft(
