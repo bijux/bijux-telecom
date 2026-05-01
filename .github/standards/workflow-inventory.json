@@ -17,6 +17,11 @@
       "consumer_runtime": ".github/workflows/github-policy.yml"
     },
     {
+      "id": "pr-approval-policy",
+      "source": "shared/bijux-gh/workflows/pr-approval-policy.yml",
+      "consumer_runtime": ".github/workflows/pr-approval-policy.yml"
+    },
+    {
       "id": "release-crates",
       "source": "shared/bijux-gh/workflows/release-crates.yml",
       "consumer_runtime": ".github/workflows/release-crates.yml"
