@@ -2,6 +2,11 @@
 
 use crate::api::ReceiverConfig;
 use crate::api::TrackingResult;
+use crate::rtk::status::{
+    apply_downgrade_policy, evaluate_prerequisites, support_status_matrix, AdvancedMaturity,
+    AdvancedMode, AdvancedPrerequisites, AdvancedRefusalClass, AdvancedSolutionClaim,
+    AdvancedSupportRow,
+};
 use crate::validation_helpers::{check_budgets, to_validation_stats};
 use bijux_gnss_core::api::{
     check_inter_frequency_alignment, check_solution_consistency, reference_ecef, stats,
@@ -66,6 +71,20 @@ pub struct PppReadinessReport {
     pub products_ok: bool,
     /// Fallback descriptions when precise products are missing.
     pub product_fallbacks: Vec<String>,
+    /// Declared maturity state for PPP behavior.
+    pub maturity: AdvancedMaturity,
+    /// Whether explicit execution prerequisites were met.
+    pub prerequisites_met: bool,
+    /// Refusal class when prerequisites were not met.
+    pub refusal_class: Option<AdvancedRefusalClass>,
+    /// Whether the reported PPP path was downgraded.
+    pub downgraded: bool,
+    /// Downgrade reason when present.
+    pub downgrade_reason: Option<String>,
+    /// Reported claim class for PPP output.
+    pub claim: AdvancedSolutionClaim,
+    /// Support matrix row for PPP.
+    pub support: AdvancedSupportRow,
 }
 
 /// Time consistency report for tracking epochs.
@@ -270,6 +289,32 @@ pub fn build_validation_report(
     });
     let combos = combinations_from_obs_epochs(obs, SignalBand::L1, SignalBand::L2);
     let combinations_valid = combos.iter().all(|c| c.status == "ok") && !combos.is_empty();
+    let support_matrix = support_status_matrix();
+    let ppp_support =
+        support_matrix.rows.iter().find(|row| row.mode == AdvancedMode::Ppp).cloned().unwrap_or(
+            AdvancedSupportRow {
+                mode: AdvancedMode::Ppp,
+                maturity: AdvancedMaturity::Scaffolding,
+                real_solver: false,
+                required_inputs: Vec::new(),
+                notes: "ppp support row missing".to_string(),
+            },
+        );
+    let ppp_prereq = AdvancedPrerequisites {
+        has_base_observations: true,
+        has_rover_observations: true,
+        has_ephemeris: !solutions.is_empty(),
+        has_reference_frame: !reference.is_empty(),
+        has_corrections: products_ok,
+        has_min_satellites: solutions.iter().any(|sol| sol.used_sat_count >= 4),
+        has_ambiguity_state: combinations_valid,
+    };
+    let ppp_prereq_decision = evaluate_prerequisites(AdvancedMode::Ppp, &ppp_prereq);
+    let (_ppp_status, downgraded, downgrade_reason, claim) = apply_downgrade_policy(
+        AdvancedMode::Ppp,
+        &ppp_prereq_decision,
+        AdvancedSolutionClaim::Scaffolding,
+    );
     let nis_values: Vec<f64> = solutions
         .iter()
         .filter_map(|s| {
@@ -324,6 +369,13 @@ pub fn build_validation_report(
             combinations_valid,
             products_ok,
             product_fallbacks,
+            maturity: ppp_support.maturity,
+            prerequisites_met: ppp_prereq_decision.ready,
+            refusal_class: ppp_prereq_decision.refusal_class,
+            downgraded,
+            downgrade_reason,
+            claim,
+            support: ppp_support,
         },
     })
 }
@@ -597,6 +649,9 @@ mod tests {
             hdop: Some(1.0),
             vdop: Some(1.0),
             gdop: Some(1.0),
+            stability_signature: "navsig:v1:golden".to_string(),
+            stability_signature_version:
+                bijux_gnss_core::api::NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
         };
         let reference = ValidationReferenceEpoch {
             epoch_idx: 0,
