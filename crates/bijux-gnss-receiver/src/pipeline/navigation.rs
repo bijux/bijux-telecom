@@ -4,7 +4,7 @@ use bijux_gnss_core::api::{
     check_nav_solution_sanity, is_solution_valid, obs_epoch_stability_key, Meters, NavAssumptions,
     NavLifecycleState, NavProvenance, NavRefusalClass, NavResidual, NavSolutionEpoch,
     NavUncertaintyClass, ObsEpoch, Seconds, SolutionStatus, SolutionValidity,
-    NAV_SOLUTION_MODEL_VERSION,
+    NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
 };
 use bijux_gnss_nav::api::{
     elevation_azimuth_deg, sat_state_gps_l1ca, weight_from_cn0_elev, GpsEphemeris,
@@ -292,6 +292,8 @@ impl Navigation {
             hdop: solution.hdop,
             vdop: solution.vdop,
             gdop: solution.gdop,
+            stability_signature: String::new(),
+            stability_signature_version: NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
         };
 
         if solution.covariance_symmetrized {
@@ -377,6 +379,7 @@ impl Navigation {
         nav_epoch.explain_decision = decision.explain_decision;
         nav_epoch.explain_reasons = decision.explain_reasons;
         nav_epoch.refusal_class = decision.refusal_class;
+        nav_epoch.stability_signature = nav_output_stability_signature(&nav_epoch);
         if let Some(sigma_h) = nav_epoch.sigma_h_m {
             nav_epoch.integrity_hpl_m = Some(sigma_h.0 * 6.0);
         }
@@ -435,6 +438,7 @@ impl Navigation {
         degraded.explain_decision = decision.explain_decision;
         degraded.explain_reasons = decision.explain_reasons;
         degraded.refusal_class = decision.refusal_class;
+        degraded.stability_signature = nav_output_stability_signature(&degraded);
         degraded
     }
 }
@@ -468,7 +472,7 @@ fn invalid_solution_epoch(
     explain_reasons: Vec<String>,
     assumptions: NavAssumptions,
 ) -> NavSolutionEpoch {
-    NavSolutionEpoch {
+    let mut solution = NavSolutionEpoch {
         epoch: bijux_gnss_core::api::Epoch { index: obs.epoch_idx },
         t_rx_s: obs.t_rx_s,
         ecef_x_m: Meters(0.0),
@@ -517,7 +521,34 @@ fn invalid_solution_epoch(
         hdop: None,
         vdop: None,
         gdop: None,
-    }
+        stability_signature: String::new(),
+        stability_signature_version: NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
+    };
+    solution.stability_signature = nav_output_stability_signature(&solution);
+    solution
+}
+
+fn nav_output_stability_signature(solution: &NavSolutionEpoch) -> String {
+    let refusal = solution
+        .refusal_class
+        .map(|value| format!("{value:?}"))
+        .unwrap_or_else(|| "None".to_string());
+    format!(
+        "navsig:v{}:epoch={}:src={}:status={:?}:lifecycle={:?}:valid={}:sat={}:used={}:rej={}:pdop={:.3}:rms={:.3}:refusal={}:decision={}",
+        NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
+        solution.epoch.index,
+        short_id(&solution.source_observation_epoch_id),
+        solution.status,
+        solution.lifecycle_state,
+        solution.valid,
+        solution.sat_count,
+        solution.used_sat_count,
+        solution.rejected_sat_count,
+        solution.pdop,
+        solution.rms_m.0,
+        refusal,
+        solution.explain_decision
+    )
 }
 
 fn source_observation_epoch_id(obs: &ObsEpoch) -> String {
@@ -783,6 +814,8 @@ mod tests {
             hdop: Some(1.0),
             vdop: Some(1.2),
             gdop: Some(1.5),
+            stability_signature: "navsig:v1:sample".to_string(),
+            stability_signature_version: NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
         }
     }
 
@@ -998,6 +1031,8 @@ mod tests {
         assert_eq!(solution.explain_decision, "accepted");
         assert_eq!(solution.refusal_class, None);
         assert!(solution.valid);
+        assert!(solution.stability_signature.starts_with("navsig:v1:"));
+        assert_eq!(solution.stability_signature_version, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION);
     }
 
     #[test]
