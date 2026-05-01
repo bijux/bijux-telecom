@@ -25,6 +25,8 @@ fn default_phase_search_mode() -> String {
 
 pub const TRACKING_STATE_MODEL_VERSION: u32 = 1;
 pub const OBSERVATION_MODEL_VERSION: u32 = 1;
+pub const OBSERVATION_DOWNSTREAM_PROFILE_VERSION: u32 = 1;
+pub const NAV_SOLUTION_MODEL_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TrackingLifecycleState {
@@ -124,6 +126,12 @@ pub struct ObsEpochManifest {
     pub source_epoch_idx: u64,
     pub source_sample_index: u64,
     pub decision: ObservationEpochDecision,
+    #[serde(default = "default_observation_downstream_profile_version")]
+    pub downstream_profile_version: u32,
+}
+
+fn default_observation_downstream_profile_version() -> u32 {
+    OBSERVATION_DOWNSTREAM_PROFILE_VERSION
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -164,6 +172,40 @@ pub enum ObservationUncertaintyClass {
     Medium,
     High,
     Unknown,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub enum NavUncertaintyClass {
+    Low,
+    Medium,
+    High,
+    #[default]
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum NavRefusalClass {
+    InsufficientGeometry,
+    InvalidEphemeris,
+    InconsistentObservations,
+    SolverFailure,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NavAssumptions {
+    pub time_system: String,
+    pub ephemeris_source: String,
+    pub frame_decode_mode: String,
+    pub ephemeris_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NavProvenance {
+    pub solver_family: String,
+    pub weighting_mode: String,
+    pub robust_solver: bool,
+    pub raim_enabled: bool,
+    pub satellites_used: Vec<SatId>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -765,11 +807,48 @@ pub struct NavSolutionEpoch {
     pub integrity_hpl_m: Option<f64>,
     #[serde(default)]
     pub integrity_vpl_m: Option<f64>,
+    #[serde(default = "default_nav_solution_model_version")]
+    pub model_version: u32,
+    #[serde(default)]
+    pub lifecycle_state: NavLifecycleState,
+    #[serde(default)]
+    pub uncertainty_class: NavUncertaintyClass,
+    #[serde(default)]
+    pub assumptions: Option<NavAssumptions>,
+    #[serde(default)]
+    pub refusal_class: Option<NavRefusalClass>,
+    #[serde(default)]
+    pub artifact_id: String,
+    #[serde(default)]
+    pub source_observation_epoch_id: String,
+    #[serde(default)]
+    pub explain_decision: String,
+    #[serde(default)]
+    pub explain_reasons: Vec<String>,
+    #[serde(default)]
+    pub provenance: Option<NavProvenance>,
+    #[serde(default)]
+    pub sat_count: usize,
+    #[serde(default)]
+    pub used_sat_count: usize,
+    #[serde(default)]
+    pub rejected_sat_count: usize,
+    #[serde(default)]
+    pub hdop: Option<f64>,
+    #[serde(default)]
+    pub vdop: Option<f64>,
+    #[serde(default)]
+    pub gdop: Option<f64>,
+}
+
+fn default_nav_solution_model_version() -> u32 {
+    NAV_SOLUTION_MODEL_VERSION
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SolutionStatus {
     Invalid,
+    Held,
     Degraded,
     Coarse,
     Converged,
@@ -785,13 +864,25 @@ impl SolutionStatus {
     pub fn quality_flag(self) -> NavQualityFlag {
         match self {
             SolutionStatus::Invalid => NavQualityFlag::NoFix,
-            SolutionStatus::Degraded => NavQualityFlag::Degraded,
+            SolutionStatus::Held | SolutionStatus::Degraded => NavQualityFlag::Degraded,
             SolutionStatus::Coarse | SolutionStatus::Converged | SolutionStatus::Float => {
                 NavQualityFlag::Float
             }
             SolutionStatus::Fixed => NavQualityFlag::Fix,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum NavLifecycleState {
+    #[default]
+    Invalid,
+    Held,
+    Degraded,
+    Coarse,
+    Converged,
+    Float,
+    Fixed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
