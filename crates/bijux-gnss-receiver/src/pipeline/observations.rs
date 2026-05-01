@@ -351,17 +351,14 @@ pub fn observations_from_tracking_results(
     for mut epoch in by_epoch.into_values() {
         bijux_gnss_core::api::sort_obs_sats(&mut epoch);
         apply_epoch_decision(&mut epoch);
-        let source_sample_index = epoch
-            .sats
-            .iter()
-            .map(|sat| sat.metadata.time_tag_sample_index)
-            .min()
-            .unwrap_or(0);
+        let source_sample_index =
+            epoch.sats.iter().map(|sat| sat.metadata.time_tag_sample_index).min().unwrap_or(0);
         let artifact_id = format!("obs-epoch-{:010}", epoch.epoch_idx);
+        let epoch_key = bijux_gnss_core::api::obs_epoch_stability_key(&epoch);
         epoch.manifest = Some(ObsEpochManifest {
-            version: 1,
+            version: bijux_gnss_core::api::OBSERVATION_MODEL_VERSION,
             artifact_id: artifact_id.clone(),
-            epoch_id: observation_epoch_id(epoch.epoch_idx, source_sample_index),
+            epoch_id: epoch_key,
             source_epoch_idx: epoch.epoch_idx,
             source_sample_index,
             decision: epoch.decision,
@@ -608,7 +605,7 @@ pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
         decision: ObservationEpochDecision::Accepted,
         decision_reason: Some("accepted_observables_present".to_string()),
         manifest: Some(ObsEpochManifest {
-            version: 1,
+            version: bijux_gnss_core::api::OBSERVATION_MODEL_VERSION,
             artifact_id: format!("obs-epoch-{epoch_idx:010}"),
             epoch_id: observation_epoch_id(epoch_idx, epoch_idx),
             source_epoch_idx: epoch_idx,
