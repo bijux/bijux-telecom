@@ -373,7 +373,11 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
     let out_dir = artifacts_dir(&common, "validate", dataset.as_ref())?;
     let out = out_dir.join("validation_report.json");
     fs::write(&out, serde_json::to_string_pretty(&report)?)?;
+    let evidence = validation_evidence_bundle(&obs, &solutions, &report);
+    let evidence_path = out_dir.join("validation_evidence_bundle.json");
+    fs::write(&evidence_path, serde_json::to_string_pretty(&evidence)?)?;
     println!("wrote {}", out.display());
+    println!("wrote {}", evidence_path.display());
     write_manifest(&common, "validate", &profile, dataset.as_ref(), &report)?;
 
     Ok(())
@@ -416,6 +420,9 @@ fn handle_validate_reference(command: GnssCommand) -> Result<()> {
     let out_dir = artifacts_dir(&common, "validate_reference", None)?;
     let out = out_dir.join("validation_report.json");
     fs::write(&out, serde_json::to_string_pretty(&report)?)?;
+    let evidence = validation_evidence_bundle(&obs, &solutions, &report);
+    let evidence_path = out_dir.join("validation_evidence_bundle.json");
+    fs::write(&evidence_path, serde_json::to_string_pretty(&evidence)?)?;
     let summary = serde_json::json!({ "report": out.display().to_string() });
     write_manifest(
         &common,
@@ -425,4 +432,87 @@ fn handle_validate_reference(command: GnssCommand) -> Result<()> {
         &summary,
     )?;
     Ok(())
+}
+
+fn validation_evidence_bundle(
+    obs: &[ObsEpoch],
+    solutions: &[NavSolutionEpoch],
+    report: &ValidationReport,
+) -> serde_json::Value {
+    let mut constellation_counts = std::collections::BTreeMap::new();
+    let mut cn0_values = Vec::new();
+    let mut lock_total = 0usize;
+    let mut lock_good = 0usize;
+
+    for epoch in obs {
+        for sat in &epoch.sats {
+            let key = format!("{:?}", sat.signal_id.sat.constellation);
+            *constellation_counts.entry(key).or_insert(0usize) += 1;
+            cn0_values.push(sat.cn0_dbhz);
+            lock_total += 1;
+            if sat.lock_flags.code_lock && sat.lock_flags.carrier_lock && !sat.lock_flags.cycle_slip {
+                lock_good += 1;
+            }
+        }
+    }
+
+    let cn0_mean = if cn0_values.is_empty() {
+        None
+    } else {
+        Some(cn0_values.iter().sum::<f64>() / cn0_values.len() as f64)
+    };
+    let cn0_min = cn0_values.iter().cloned().reduce(f64::min);
+    let cn0_max = cn0_values.iter().cloned().reduce(f64::max);
+
+    let mut refusal_counts = std::collections::BTreeMap::new();
+    let mut pdop_values = Vec::new();
+    let mut rms_values = Vec::new();
+    for sol in solutions {
+        pdop_values.push(sol.pdop);
+        rms_values.push(sol.rms_m.0);
+        if let Some(refusal) = sol.refusal_class {
+            let key = format!("{refusal:?}");
+            *refusal_counts.entry(key).or_insert(0usize) += 1;
+        }
+    }
+    let pdop_mean = if pdop_values.is_empty() {
+        None
+    } else {
+        Some(pdop_values.iter().sum::<f64>() / pdop_values.len() as f64)
+    };
+    let pdop_max = pdop_values.iter().cloned().reduce(f64::max);
+    let residual_rms_mean = if rms_values.is_empty() {
+        None
+    } else {
+        Some(rms_values.iter().sum::<f64>() / rms_values.len() as f64)
+    };
+
+    serde_json::json!({
+        "schema_version": 1,
+        "physical": {
+            "observation_epochs": obs.len(),
+            "constellation_counts": constellation_counts,
+            "cn0_dbhz_mean": cn0_mean,
+            "cn0_dbhz_min": cn0_min,
+            "cn0_dbhz_max": cn0_max,
+            "lock_quality_ratio": if lock_total == 0 {
+                None
+            } else {
+                Some(lock_good as f64 / lock_total as f64)
+            }
+        },
+        "numerical": {
+            "solution_epochs": solutions.len(),
+            "horiz_error_rms_m": report.horiz_error_m.rms,
+            "vert_error_rms_m": report.vert_error_m.rms,
+            "pdop_mean": pdop_mean,
+            "pdop_max": pdop_max,
+            "residual_rms_mean_m": residual_rms_mean,
+            "refusal_counts": refusal_counts
+        },
+        "diagnostics": {
+            "advisory": report.diagnostic_partition.advisory_diagnostics,
+            "enforced_refusals": report.diagnostic_partition.enforced_refusals
+        }
+    })
 }
