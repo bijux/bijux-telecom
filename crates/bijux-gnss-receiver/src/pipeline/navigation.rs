@@ -424,7 +424,27 @@ impl Navigation {
         nav_epoch.lifecycle_state = lifecycle_state_from_status(nav_epoch.status);
         nav_epoch.uncertainty_class = uncertainty_class_from_solution(&nav_epoch);
         nav_epoch.provenance = Some(build_provenance(&self.config, &observations, &nav_epoch));
-        let decision = decision_for_solution(&nav_epoch);
+        let mut decision = decision_for_solution(&nav_epoch);
+        let policy_violations =
+            scientific_prerequisite_violations(&nav_epoch, &observations, &self.config);
+        if decision.explain_decision == "accepted" && !policy_violations.is_empty() {
+            nav_epoch.status = deterministic_solution_transition(
+                self.last_solution.as_ref().map(|row| row.status),
+                nav_epoch.status,
+                Some(NavRefusalClass::ScientificPrerequisitesTooWeak),
+                false,
+            );
+            nav_epoch.valid = false;
+            nav_epoch.quality = nav_epoch.status.quality_flag();
+            nav_epoch.validity = classify_validity(&nav_epoch);
+            nav_epoch.lifecycle_state = lifecycle_state_from_status(nav_epoch.status);
+            decision = NavDecision {
+                status: nav_epoch.status,
+                refusal_class: Some(NavRefusalClass::ScientificPrerequisitesTooWeak),
+                explain_decision: "refused".to_string(),
+                explain_reasons: policy_violations,
+            };
+        }
         nav_epoch.explain_decision = decision.explain_decision;
         nav_epoch.explain_reasons = decision.explain_reasons;
         nav_epoch.refusal_class = decision.refusal_class;
@@ -681,6 +701,44 @@ fn uncertainty_class_from_solution(solution: &NavSolutionEpoch) -> NavUncertaint
     } else {
         NavUncertaintyClass::High
     }
+}
+
+fn scientific_prerequisite_violations(
+    solution: &NavSolutionEpoch,
+    observations: &[PositionObservation],
+    config: &ReceiverPipelineConfig,
+) -> Vec<String> {
+    let mut reasons = Vec::new();
+    let thresholds = &config.science_thresholds;
+    let mean_cn0 = if observations.is_empty() {
+        None
+    } else {
+        Some(observations.iter().map(|row| row.cn0_dbhz).sum::<f64>() / observations.len() as f64)
+    };
+    if let Some(value) = mean_cn0 {
+        if value < thresholds.min_mean_cn0_dbhz {
+            reasons.push(format!(
+                "mean_cn0_below_threshold:{value:.2}<{:.2}",
+                thresholds.min_mean_cn0_dbhz
+            ));
+        }
+    }
+    if solution.pdop > thresholds.max_pdop {
+        reasons.push(format!("pdop_above_threshold:{:.3}>{:.3}", solution.pdop, thresholds.max_pdop));
+    }
+    if solution.rms_m.0 > thresholds.max_residual_rms_m {
+        reasons.push(format!(
+            "residual_rms_above_threshold:{:.3}>{:.3}",
+            solution.rms_m.0, thresholds.max_residual_rms_m
+        ));
+    }
+    if solution.used_sat_count < thresholds.min_used_satellites {
+        reasons.push(format!(
+            "used_satellites_below_threshold:{}<{}",
+            solution.used_sat_count, thresholds.min_used_satellites
+        ));
+    }
+    reasons
 }
 
 fn build_provenance(
@@ -1151,5 +1209,31 @@ mod tests {
             ),
             SolutionStatus::Invalid
         );
+    }
+
+    #[test]
+    fn scientific_policy_can_refuse_optimistic_solution_claims() {
+        let mut config = ReceiverPipelineConfig::default();
+        config.science_thresholds.max_pdop = 0.5;
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+        let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
+        let t_rx_s = 100_100.0;
+        let ephs = vec![
+            make_eph(1, 0.0, 0.0, t_rx_s),
+            make_eph(2, 0.8, 0.9, t_rx_s),
+            make_eph(3, 1.6, 1.8, t_rx_s),
+            make_eph(4, 2.4, 2.7, t_rx_s),
+        ];
+        let obs = make_obs_epoch_for_solution(17, t_rx_s, truth, &ephs);
+        let solution = nav.solve_epoch(&obs, &ephs).expect("solution");
+        assert_eq!(
+            solution.refusal_class,
+            Some(NavRefusalClass::ScientificPrerequisitesTooWeak)
+        );
+        assert_eq!(solution.explain_decision, "refused");
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason.starts_with("pdop_above_threshold:")));
     }
 }

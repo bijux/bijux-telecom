@@ -4,7 +4,7 @@ use bijux_gnss_core::api::SchemaVersion;
 
 use crate::engine::receiver_config::{
     default_tracking_integration_ms, AcquisitionConfig, NavigationConfig,
-    NavigationWeightingConfig, PppConfig, ReceiverConfig, TrackingConfig,
+    NavigationWeightingConfig, PppConfig, ReceiverConfig, ScienceThresholdsConfig, TrackingConfig,
 };
 
 impl Default for ReceiverConfig {
@@ -65,6 +65,7 @@ impl Default for NavigationConfig {
             tropo_enable: true,
             tropo_ztd_m: 2.3,
             ppp: PppConfig::default(),
+            science_thresholds: ScienceThresholdsConfig::default(),
         }
     }
 }
@@ -110,6 +111,18 @@ impl Default for PppConfig {
             convergence_pos_rate_mps: 0.1,
             convergence_sigma_h_m: 1.0,
             convergence_sigma_v_m: 2.0,
+        }
+    }
+}
+
+impl Default for ScienceThresholdsConfig {
+    fn default() -> Self {
+        Self {
+            min_mean_cn0_dbhz: 28.0,
+            max_pdop: 8.0,
+            max_residual_rms_m: 25.0,
+            min_used_satellites: 4,
+            min_lock_ratio: 0.7,
         }
     }
 }

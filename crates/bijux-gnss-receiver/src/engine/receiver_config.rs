@@ -93,6 +93,8 @@ pub struct ReceiverPipelineConfig {
     pub tropo_ztd_m: f64,
     /// PPP configuration.
     pub ppp: PppConfig,
+    /// Scientific threshold policy configuration.
+    pub science_thresholds: ScienceThresholdsConfig,
 }
 
 impl Default for ReceiverPipelineConfig {
@@ -126,6 +128,7 @@ impl Default for ReceiverPipelineConfig {
             tropo_enable: true,
             tropo_ztd_m: 2.3,
             ppp: PppConfig::default(),
+            science_thresholds: ScienceThresholdsConfig::default(),
         }
     }
 }
@@ -312,6 +315,24 @@ pub struct NavigationConfig {
     /// PPP configuration.
     #[serde(default)]
     pub ppp: PppConfig,
+    /// Scientific threshold policy configuration.
+    #[serde(default)]
+    pub science_thresholds: ScienceThresholdsConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+/// Scientific threshold policy parameters.
+pub struct ScienceThresholdsConfig {
+    /// Minimum mean C/N0 for accepted navigation solutions.
+    pub min_mean_cn0_dbhz: f64,
+    /// Maximum PDOP for accepted navigation solutions.
+    pub max_pdop: f64,
+    /// Maximum residual RMS (meters) for accepted navigation solutions.
+    pub max_residual_rms_m: f64,
+    /// Minimum used satellites for accepted navigation solutions.
+    pub min_used_satellites: usize,
+    /// Minimum lock quality ratio for stable integrity classification.
+    pub min_lock_ratio: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

@@ -193,6 +193,7 @@ pub enum NavRefusalClass {
     UnsupportedConstellation,
     MixedConstellationInput,
     PartialDecodedNavigationState,
+    ScientificPrerequisitesTooWeak,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -198,6 +198,34 @@ impl ValidateConfig for ReceiverConfig {
                 message: "navigation.ppp.drift_threshold_m must be > 0".to_string(),
             });
         }
+        if self.navigation.science_thresholds.min_mean_cn0_dbhz <= 0.0 {
+            report.errors.push(ConfigError {
+                message: "navigation.science_thresholds.min_mean_cn0_dbhz must be > 0".to_string(),
+            });
+        }
+        if self.navigation.science_thresholds.max_pdop <= 0.0 {
+            report.errors.push(ConfigError {
+                message: "navigation.science_thresholds.max_pdop must be > 0".to_string(),
+            });
+        }
+        if self.navigation.science_thresholds.max_residual_rms_m <= 0.0 {
+            report.errors.push(ConfigError {
+                message:
+                    "navigation.science_thresholds.max_residual_rms_m must be > 0".to_string(),
+            });
+        }
+        if self.navigation.science_thresholds.min_used_satellites < 4 {
+            report.errors.push(ConfigError {
+                message:
+                    "navigation.science_thresholds.min_used_satellites must be >= 4".to_string(),
+            });
+        }
+        if !(0.0..=1.0).contains(&self.navigation.science_thresholds.min_lock_ratio) {
+            report.errors.push(ConfigError {
+                message:
+                    "navigation.science_thresholds.min_lock_ratio must be within [0, 1]".to_string(),
+            });
+        }
         report
     }
 }
@@ -256,6 +284,7 @@ impl ReceiverConfig {
             tropo_enable: self.navigation.tropo_enable,
             tropo_ztd_m: self.navigation.tropo_ztd_m,
             ppp: self.navigation.ppp.clone(),
+            science_thresholds: self.navigation.science_thresholds.clone(),
         }
     }
 }
