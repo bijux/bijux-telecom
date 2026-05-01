@@ -488,6 +488,18 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &summary,
             )?;
         }
+        DiagnosticsCommand::VerifyRepro { common, run_dir } => {
+            let _ = runtime_config_from_env(&common, None);
+            let report = verify_repro_bundle(&run_dir)?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+            write_manifest(
+                &common,
+                "diagnostics_verify_repro",
+                &ReceiverConfig::default(),
+                None,
+                &report,
+            )?;
+        }
     }
 
     Ok(())
@@ -681,6 +693,101 @@ fn explain_run_scope(run_dir: &Path) -> Result<serde_json::Value> {
     }))
 }
 
+fn verify_repro_bundle(run_dir: &Path) -> Result<serde_json::Value> {
+    let manifest_path = run_dir.join("manifest.json");
+    let manifest_data = std::fs::read_to_string(&manifest_path)?;
+    let manifest: serde_json::Value = serde_json::from_str(&manifest_data)?;
+
+    let run_report_path = run_dir.join("run_report.json");
+    let run_report_data = if run_report_path.exists() {
+        Some(std::fs::read_to_string(&run_report_path)?)
+    } else {
+        None
+    };
+
+    let artifacts_dir = run_dir.join("artifacts");
+    let mut artifact_hashes = serde_json::Map::new();
+    let mut issues = Vec::new();
+
+    if !artifacts_dir.exists() {
+        issues.push("artifacts_directory_missing".to_string());
+    } else {
+        for entry in std::fs::read_dir(&artifacts_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
+            let bytes = std::fs::read(&path)?;
+            let hash = sha256_hex(&bytes);
+            artifact_hashes.insert(file_name.to_string(), serde_json::Value::String(hash));
+        }
+    }
+
+    if artifact_hashes.is_empty() {
+        issues.push("artifact_hash_set_empty".to_string());
+    }
+
+    let mut fingerprint_payload = serde_json::Map::new();
+    fingerprint_payload.insert(
+        "command".to_string(),
+        manifest.get("command").cloned().unwrap_or(serde_json::Value::Null),
+    );
+    fingerprint_payload.insert(
+        "config_hash".to_string(),
+        manifest.get("config_hash").cloned().unwrap_or(serde_json::Value::Null),
+    );
+    fingerprint_payload.insert(
+        "dataset_id".to_string(),
+        manifest.get("dataset_id").cloned().unwrap_or(serde_json::Value::Null),
+    );
+    fingerprint_payload.insert(
+        "replay_scope".to_string(),
+        manifest
+            .get("replay_scope")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
+    );
+    fingerprint_payload.insert(
+        "front_end_provenance".to_string(),
+        manifest
+            .get("front_end_provenance")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
+    );
+    fingerprint_payload.insert(
+        "layout_schema_version".to_string(),
+        manifest
+            .get("layout_schema_version")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
+    );
+    let fingerprint_json = serde_json::to_vec(&fingerprint_payload)?;
+    let replay_fingerprint = sha256_hex(&fingerprint_json);
+
+    let manifest_hash = sha256_hex(manifest_data.as_bytes());
+    let run_report_hash = run_report_data.as_deref().map(|text| sha256_hex(text.as_bytes()));
+    let audit_ok = issues.is_empty();
+
+    Ok(serde_json::json!({
+        "run_dir": run_dir.display().to_string(),
+        "audit_ok": audit_ok,
+        "issues": issues,
+        "replay_fingerprint": replay_fingerprint,
+        "manifest_sha256": manifest_hash,
+        "run_report_sha256": run_report_hash,
+        "artifact_sha256": artifact_hashes
+    }))
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(bytes);
+    hex::encode(hasher.finalize())
+}
+
 fn handle_doctor(command: GnssCommand) -> Result<()> {
     let GnssCommand::Doctor { common, file } = command else {
         bail!("invalid command for handler");
@@ -727,7 +834,7 @@ fn handle_doctor(command: GnssCommand) -> Result<()> {
 
 #[cfg(test)]
 mod diagnostics_tests {
-    use super::explain_run_scope;
+    use super::{explain_run_scope, verify_repro_bundle};
     use std::fs;
     use std::path::PathBuf;
 
@@ -805,6 +912,41 @@ mod diagnostics_tests {
                 .and_then(|v| v.as_bool()),
             Some(true)
         );
+
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn verify_repro_bundle_reports_hashes_and_fingerprint() {
+        let base = std::env::temp_dir().join(format!(
+            "bijux_verify_repro_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("duration")
+                .as_nanos()
+        ));
+        fs::create_dir_all(base.join("artifacts")).expect("artifacts dir");
+        let manifest = serde_json::json!({
+            "command": "validate",
+            "config_hash": "cfg",
+            "dataset_id": "demo",
+            "layout_schema_version": 1,
+            "replay_scope": {"deterministic": true},
+            "front_end_provenance": {"sample_rate_hz": 5000000.0}
+        });
+        fs::write(
+            base.join("manifest.json"),
+            serde_json::to_string_pretty(&manifest).expect("manifest"),
+        )
+        .expect("manifest write");
+        fs::write(base.join("run_report.json"), "{\"schema_version\":1}\n").expect("report write");
+        fs::write(base.join("artifacts").join("obs.jsonl"), "{\"payload\":{}}\n").expect("artifact");
+
+        let report = verify_repro_bundle(PathBuf::as_path(&base)).expect("report");
+        assert_eq!(report.get("audit_ok").and_then(|v| v.as_bool()), Some(true));
+        assert!(report.get("replay_fingerprint").and_then(|v| v.as_str()).is_some());
+        assert!(report.get("manifest_sha256").and_then(|v| v.as_str()).is_some());
 
         let _ = fs::remove_dir_all(base);
     }

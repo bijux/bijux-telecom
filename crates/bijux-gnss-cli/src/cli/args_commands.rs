@@ -466,6 +466,16 @@ pub(crate) enum DiagnosticsCommand {
         #[arg(long, value_name = "DIR")]
         run_dir: PathBuf,
     },
+
+    /// Verify reproducibility/audit bundle integrity for a run directory
+    VerifyRepro {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Run directory (expects manifest.json and artifacts/)
+        #[arg(long, value_name = "DIR")]
+        run_dir: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
