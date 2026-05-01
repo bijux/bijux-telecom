@@ -305,6 +305,7 @@ fn write_track_timeseries(
                 channel_id: None,
                 channel_uid: String::new(),
                 tracking_provenance: String::new(),
+                tracking_assumptions: None,
                 processing_ms: None,
             },
         };
