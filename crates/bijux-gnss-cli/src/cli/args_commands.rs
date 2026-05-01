@@ -598,6 +598,20 @@ pub(crate) enum DiagnosticsCommand {
         #[arg(long, value_name = "DIR")]
         run_dir: PathBuf,
     },
+
+    /// Export reproducible review bundle with key artifacts and checksums
+    ExportBundle {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Run directory to export from
+        #[arg(long, value_name = "DIR")]
+        run_dir: PathBuf,
+
+        /// Optional bundle output directory
+        #[arg(long, value_name = "DIR")]
+        out_dir: Option<PathBuf>,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]

@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DiagnosticsExportBundleReport",
+  "type": "object",
+  "required": ["schema_version", "run_dir", "bundle_dir", "file_count", "bundle_manifest"],
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "run_dir": { "type": "string" },
+    "bundle_dir": { "type": "string" },
+    "file_count": { "type": "integer", "minimum": 0 },
+    "bundle_manifest": { "type": "object" }
+  },
+  "additionalProperties": true
+}

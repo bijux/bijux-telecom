@@ -811,6 +811,31 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
+        DiagnosticsCommand::ExportBundle {
+            common,
+            run_dir,
+            out_dir,
+        } => {
+            let _ = runtime_config_from_env(&common, None);
+            let report = export_bundle_report(&run_dir, out_dir.as_ref())?;
+            match common.report {
+                ReportFormat::Table => print_export_bundle_table(&report),
+                ReportFormat::Json => emit_report(&common, "diagnostics_export_bundle", &report)?,
+            }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_export_bundle",
+                &report,
+                "diagnostics_export_bundle_report.schema.json",
+            )?;
+            write_manifest(
+                &common,
+                "diagnostics_export_bundle",
+                &ReceiverConfig::default(),
+                None,
+                &report,
+            )?;
+        }
     }
 
     Ok(())
@@ -1190,6 +1215,19 @@ fn print_channel_summary_table(report: &serde_json::Value) {
         .unwrap_or(0);
     println!("channel_count\t{channels}");
     println!("obs_epochs\t{epochs}");
+}
+
+fn print_export_bundle_table(report: &serde_json::Value) {
+    let path = report
+        .get("bundle_dir")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let files = report
+        .get("file_count")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    println!("bundle_dir\t{path}");
+    println!("file_count\t{files}");
 }
 
 fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
@@ -1990,6 +2028,68 @@ fn channel_summary_report(run_dir: &Path) -> Result<serde_json::Value> {
             "channel_count": channels.len()
         },
         "channels": channels
+    }))
+}
+
+fn export_bundle_report(run_dir: &Path, out_dir: Option<&PathBuf>) -> Result<serde_json::Value> {
+    ensure_run_dir_exists(run_dir)?;
+    let bundle_root = out_dir
+        .cloned()
+        .unwrap_or_else(|| run_dir.join("artifacts").join("diagnostics_export_bundle"));
+    fs::create_dir_all(&bundle_root)?;
+
+    let mut included = Vec::new();
+    let mut checksums = serde_json::Map::new();
+    let candidates = vec![
+        run_dir.join("manifest.json"),
+        run_dir.join("run_report.json"),
+        run_dir
+            .join("artifacts")
+            .join("validate")
+            .join("validation_report.json"),
+        run_dir
+            .join("artifacts")
+            .join("validate")
+            .join("validation_evidence_bundle.json"),
+        run_dir.join("trace.ndjson"),
+    ];
+    for src in candidates {
+        if !src.exists() || !src.is_file() {
+            continue;
+        }
+        let file_name = src
+            .file_name()
+            .and_then(|v| v.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+        let dst = bundle_root.join(&file_name);
+        fs::copy(&src, &dst)?;
+        let bytes = fs::read(&dst)?;
+        checksums.insert(file_name.clone(), serde_json::Value::String(sha256_hex(&bytes)));
+        included.push(file_name);
+    }
+    included.sort();
+
+    let bundle_manifest = serde_json::json!({
+        "schema_version": 1,
+        "source_run_dir": run_dir.display().to_string(),
+        "included_files": included,
+        "checksums_sha256": checksums
+    });
+    fs::write(
+        bundle_root.join("bundle_manifest.json"),
+        serde_json::to_string_pretty(&bundle_manifest)?,
+    )?;
+
+    Ok(serde_json::json!({
+        "schema_version": 1,
+        "run_dir": run_dir.display().to_string(),
+        "bundle_dir": bundle_root.display().to_string(),
+        "file_count": bundle_manifest
+            .get("included_files")
+            .and_then(|v| v.as_array())
+            .map_or(0usize, Vec::len),
+        "bundle_manifest": bundle_manifest
     }))
 }
 
