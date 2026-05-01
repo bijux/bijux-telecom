@@ -769,6 +769,27 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
+        DiagnosticsCommand::OperatorStatus { common, run_dir } => {
+            let _ = runtime_config_from_env(&common, None);
+            let report = operator_status_report(&run_dir)?;
+            match common.report {
+                ReportFormat::Table => print_operator_status_table(&report),
+                ReportFormat::Json => emit_report(&common, "diagnostics_operator_status", &report)?,
+            }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_operator_status",
+                &report,
+                "diagnostics_operator_status_report.schema.json",
+            )?;
+            write_manifest(
+                &common,
+                "diagnostics_operator_status",
+                &ReceiverConfig::default(),
+                None,
+                &report,
+            )?;
+        }
     }
 
     Ok(())
@@ -1112,6 +1133,27 @@ fn print_medium_gate_table(report: &serde_json::Value) {
         })
         .unwrap_or_default();
     println!("reasons\t{reasons}");
+}
+
+fn print_operator_status_table(report: &serde_json::Value) {
+    let mode = report
+        .get("status")
+        .and_then(|v| v.get("run_state"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let quality = report
+        .get("status")
+        .and_then(|v| v.get("quality_state"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let evidence = report
+        .get("status")
+        .and_then(|v| v.get("evidence_state"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    println!("run_state\t{mode}");
+    println!("quality_state\t{quality}");
+    println!("evidence_state\t{evidence}");
 }
 
 fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
@@ -1818,6 +1860,60 @@ fn medium_gate_report(run_dir: &Path) -> Result<serde_json::Value> {
             "replay_audit_ok": repro_ok,
             "artifact_corruption_count": corruption_count,
             "claim_evidence_supported": claim_supported
+        }
+    }))
+}
+
+fn operator_status_report(run_dir: &Path) -> Result<serde_json::Value> {
+    ensure_run_dir_exists(run_dir)?;
+    let explain = explain_run_scope(run_dir)?;
+    let repro = verify_repro_bundle(run_dir)?;
+    let evidence_path = run_dir
+        .join("artifacts")
+        .join("validate")
+        .join("validation_evidence_bundle.json");
+    let evidence = if evidence_path.exists() {
+        serde_json::from_str::<serde_json::Value>(&fs::read_to_string(&evidence_path)?)
+            .unwrap_or(serde_json::Value::Null)
+    } else {
+        serde_json::Value::Null
+    };
+    let corrupted = explain
+        .get("artifact_integrity")
+        .and_then(|v| v.get("corrupted_files"))
+        .and_then(|v| v.as_array())
+        .map_or(0usize, Vec::len);
+    let evidence_state = if evidence
+        .get("claim_evidence_guard")
+        .and_then(|v| v.get("supported"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        "evidence_supported"
+    } else {
+        "evidence_limited"
+    };
+    let quality_state = if corrupted == 0 {
+        "artifact_clean"
+    } else {
+        "artifact_corrupted"
+    };
+    let run_state = if repro.get("audit_ok").and_then(|v| v.as_bool()).unwrap_or(false) {
+        "audit_ready"
+    } else {
+        "audit_alert"
+    };
+    Ok(serde_json::json!({
+        "schema_version": 1,
+        "run_dir": run_dir.display().to_string(),
+        "status": {
+            "run_state": run_state,
+            "quality_state": quality_state,
+            "evidence_state": evidence_state
+        },
+        "details": {
+            "corrupted_artifact_count": corrupted,
+            "replay_fingerprint": repro.get("replay_fingerprint").cloned().unwrap_or(serde_json::Value::Null)
         }
     }))
 }

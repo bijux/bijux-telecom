@@ -578,6 +578,16 @@ pub(crate) enum DiagnosticsCommand {
         #[arg(long)]
         strict: bool,
     },
+
+    /// Operator-focused run state, quality, and evidence summary
+    OperatorStatus {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Run directory to inspect
+        #[arg(long, value_name = "DIR")]
+        run_dir: PathBuf,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
