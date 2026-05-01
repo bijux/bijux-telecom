@@ -120,6 +120,7 @@ Diagnostics workflows can verify run reproducibility artifacts:
 ## Diagnostics Command Reports
 
 Diagnostics workflows emit schema-versioned command reports under command-specific artifact directories:
+- `artifacts/diagnostics_operator_map/report.json`
 - `artifacts/diagnostics_workflow/report.json`
 - `artifacts/diagnostics_summarize/report.json`
 - `artifacts/diagnostics_explain/report.json`
@@ -127,5 +128,13 @@ Diagnostics workflows emit schema-versioned command reports under command-specif
 - `artifacts/diagnostics_compare/report.json`
 - `artifacts/diagnostics_replay_audit/report.json`
 - `artifacts/diagnostics_advanced_gate/report.json`
+- `artifacts/diagnostics_artifact_inventory/report.json`
+- `artifacts/diagnostics_debug_plan/report.json`
+- `artifacts/diagnostics_benchmark_summary/report.json`
+- `artifacts/diagnostics_medium_gate/report.json`
+- `artifacts/diagnostics_operator_status/report.json`
+- `artifacts/diagnostics_channel_summary/report.json`
+- `artifacts/diagnostics_export_bundle/report.json`
+- `artifacts/diagnostics_machine_catalog/report.json`
 
 These reports are validated against corresponding schemas in `schemas/` and include evidence-bound claim interpretation fields (`claim_level`, `interpretation`) to prevent overstatement.

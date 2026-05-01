@@ -74,6 +74,11 @@ bijux gnss diagnostics summarize --run-dir runs/basic_demo
 bijux gnss diagnostics workflow --report json
 ```
 
+### Diagnostics Operator Map
+```bash
+bijux gnss diagnostics operator-map --report table
+```
+
 ### Diagnostics Explain (Replay, Cache, Identity)
 ```bash
 bijux gnss diagnostics explain --run-dir runs/basic_demo
@@ -92,6 +97,46 @@ bijux gnss diagnostics compare --baseline-run-dir runs/baseline --candidate-run-
 ### Diagnostics Replay Audit
 ```bash
 bijux gnss diagnostics replay-audit --baseline-run-dir runs/baseline --candidate-run-dir runs/candidate --report json
+```
+
+### Diagnostics Artifact Inventory
+```bash
+bijux gnss diagnostics artifact-inventory --run-dir runs/basic_demo --report json
+```
+
+### Diagnostics Debug Plan
+```bash
+bijux gnss diagnostics debug-plan --run-dir runs/basic_demo --report table
+```
+
+### Diagnostics Benchmark Summary
+```bash
+bijux gnss diagnostics benchmark-summary --run-dir runs/basic_demo --report json
+```
+
+### Diagnostics Medium Gate
+```bash
+bijux gnss diagnostics medium-gate --run-dir runs/basic_demo --strict --report json
+```
+
+### Diagnostics Operator Status
+```bash
+bijux gnss diagnostics operator-status --run-dir runs/basic_demo --report table
+```
+
+### Diagnostics Channel Summary
+```bash
+bijux gnss diagnostics channel-summary --run-dir runs/basic_demo --report json
+```
+
+### Diagnostics Export Bundle
+```bash
+bijux gnss diagnostics export-bundle --run-dir runs/basic_demo
+```
+
+### Diagnostics Machine Catalog
+```bash
+bijux gnss diagnostics machine-catalog --report json
 ```
 
 ### Advanced Claim Gate
