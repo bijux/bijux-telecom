@@ -50,13 +50,15 @@ pub use crate::obs::{
     stable_acq_result_keys, validate_obs_epochs, AcqAssumptions, AcqEvidence, AcqExplain,
     AcqExplainCandidate, AcqHypothesis, AcqRequest, AcqResult, AcqThresholdProvenance, AmbiguityId,
     AmbiguityState, AmbiguityStatus, BandLagEvent, DoubleDifference, InterFrequencyAlignmentReport,
-    InterSystemBias, LockFlags, MeasurementErrorModel, MeasurementRejectReason, NavHealthEvent,
-    NavQualityFlag, NavResidual, NavSolutionEpoch, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest,
+    InterSystemBias, LockFlags, MeasurementErrorModel, MeasurementRejectReason, NavAssumptions,
+    NavHealthEvent, NavLifecycleState, NavProvenance, NavQualityFlag, NavRefusalClass, NavResidual,
+    NavSolutionEpoch, NavUncertaintyClass, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest,
     ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus,
     ObservationSupportClass, ObservationUncertaintyClass, ReceiverRole, Sample, SamplesFrame,
     SatObservationDecision, SignalSupportRow, SingleDifference, SolutionStatus, SolutionValidity,
     SupportMatrix, SupportStatus, TrackEpoch, TrackTransition, TrackingAssumptions,
-    TrackingLifecycleState, OBSERVATION_MODEL_VERSION, TRACKING_STATE_MODEL_VERSION,
+    TrackingLifecycleState, NAV_SOLUTION_MODEL_VERSION, OBSERVATION_DOWNSTREAM_PROFILE_VERSION,
+    OBSERVATION_MODEL_VERSION, TRACKING_STATE_MODEL_VERSION,
 };
 /// Engine boundary nav epoch alias.
 pub type NavEpoch = NavSolutionEpoch;
