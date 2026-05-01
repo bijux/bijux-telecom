@@ -644,12 +644,30 @@ pub(crate) enum DiagnosticsCommand {
         #[arg(long, default_value_t = 20)]
         limit: usize,
     },
+
+    /// Explain optimal command route for a debugging objective
+    RouteExplain {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Debugging objective topic
+        #[arg(long, value_enum)]
+        topic: RouteTopic,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
 pub(crate) enum AdvancedGateMode {
     Rtk,
     Ppp,
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug)]
+pub(crate) enum RouteTopic {
+    Integrity,
+    Replay,
+    Compare,
+    Export,
 }
 
 #[derive(Subcommand)]

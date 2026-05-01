@@ -924,6 +924,27 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
+        DiagnosticsCommand::RouteExplain { common, topic } => {
+            let _ = runtime_config_from_env(&common, None);
+            let report = route_explain_report(topic);
+            match common.report {
+                ReportFormat::Table => print_route_explain_table(&report),
+                ReportFormat::Json => emit_report(&common, "diagnostics_route_explain", &report)?,
+            }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_route_explain",
+                &report,
+                "diagnostics_route_explain_report.schema.json",
+            )?;
+            write_manifest(
+                &common,
+                "diagnostics_route_explain",
+                &ReceiverConfig::default(),
+                None,
+                &report,
+            )?;
+        }
     }
 
     Ok(())
@@ -1380,6 +1401,21 @@ fn print_history_browse_table(report: &serde_json::Value) {
                 .and_then(|v| v.as_str())
                 .unwrap_or("unknown");
             println!("{dir}\t{cmd}\t{dataset}");
+        }
+    }
+}
+
+fn print_route_explain_table(report: &serde_json::Value) {
+    let topic = report
+        .get("topic")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    println!("route topic\t{topic}");
+    if let Some(steps) = report.get("steps").and_then(|v| v.as_array()) {
+        for step in steps {
+            if let Some(cmd) = step.get("command").and_then(|v| v.as_str()) {
+                println!("{cmd}");
+            }
         }
     }
 }
@@ -2266,7 +2302,8 @@ fn machine_catalog_report() -> serde_json::Value {
         serde_json::json!({"name": "diagnostics_export_bundle", "schema": "schemas/diagnostics_export_bundle_report.schema.json", "schema_version": 1}),
         serde_json::json!({"name": "diagnostics_api_parity", "schema": "schemas/diagnostics_api_parity_report.schema.json", "schema_version": 1}),
         serde_json::json!({"name": "diagnostics_expert_guide", "schema": "schemas/diagnostics_expert_guide_report.schema.json", "schema_version": 1}),
-        serde_json::json!({"name": "diagnostics_history_browse", "schema": "schemas/diagnostics_history_browse_report.schema.json", "schema_version": 1})
+        serde_json::json!({"name": "diagnostics_history_browse", "schema": "schemas/diagnostics_history_browse_report.schema.json", "schema_version": 1}),
+        serde_json::json!({"name": "diagnostics_route_explain", "schema": "schemas/diagnostics_route_explain_report.schema.json", "schema_version": 1})
     ];
     serde_json::json!({
         "schema_version": 1,
@@ -2431,6 +2468,37 @@ fn history_browse_report(root_dir: &Path, limit: usize) -> Result<serde_json::Va
         "limit": limit,
         "runs": runs
     }))
+}
+
+fn route_explain_report(topic: RouteTopic) -> serde_json::Value {
+    let topic_name = format!("{topic:?}").to_lowercase();
+    let steps = match topic {
+        RouteTopic::Integrity => vec![
+            serde_json::json!({"command": "bijux gnss diagnostics medium-gate --run-dir <run_dir> --report table", "reason": "surface critical pass/fail first"}),
+            serde_json::json!({"command": "bijux gnss diagnostics advanced-gate --run-dir <run_dir> --mode rtk --report json", "reason": "separate support maturity from evidence failures"}),
+            serde_json::json!({"command": "bijux gnss diagnostics explain --run-dir <run_dir> --report json", "reason": "inspect replay scope, cache, and artifact integrity"})
+        ],
+        RouteTopic::Replay => vec![
+            serde_json::json!({"command": "bijux gnss diagnostics verify-repro --run-dir <run_dir> --report json", "reason": "establish bundle and fingerprint baseline"}),
+            serde_json::json!({"command": "bijux gnss diagnostics replay-audit --baseline-run-dir <a> --candidate-run-dir <b> --report table", "reason": "classify deterministic match vs drift"}),
+            serde_json::json!({"command": "bijux gnss diagnostics compare --baseline-run-dir <a> --candidate-run-dir <b> --report json", "reason": "attach quality deltas to replay outcome"})
+        ],
+        RouteTopic::Compare => vec![
+            serde_json::json!({"command": "bijux gnss diagnostics compare --baseline-run-dir <a> --candidate-run-dir <b> --report json", "reason": "compute reproducibility and quality delta summary"}),
+            serde_json::json!({"command": "bijux gnss diagnostics channel-summary --run-dir <b> --report json", "reason": "inspect channel-level context for differences"}),
+            serde_json::json!({"command": "bijux gnss diagnostics benchmark-summary --run-dir <b> --report json", "reason": "review digestible benchmark metrics with rigor markers"})
+        ],
+        RouteTopic::Export => vec![
+            serde_json::json!({"command": "bijux gnss diagnostics export-bundle --run-dir <run_dir>", "reason": "create reproducible review package"}),
+            serde_json::json!({"command": "bijux gnss diagnostics machine-catalog --report json", "reason": "declare report contracts for downstream systems"}),
+            serde_json::json!({"command": "bijux gnss diagnostics history-browse --root-dir runs --report json", "reason": "find neighboring runs for triage context"})
+        ],
+    };
+    serde_json::json!({
+        "schema_version": 1,
+        "topic": topic_name,
+        "steps": steps
+    })
 }
 
 fn ensure_run_dir_exists(run_dir: &Path) -> Result<()> {
