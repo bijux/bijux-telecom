@@ -694,6 +694,16 @@ pub(crate) enum DiagnosticsCommand {
         #[arg(long, value_name = "DIR")]
         run_dir: PathBuf,
     },
+
+    /// Classify run trust level for downstream use
+    TrustClass {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Run directory to evaluate
+        #[arg(long, value_name = "DIR")]
+        run_dir: PathBuf,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]

@@ -1035,6 +1035,27 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
+        DiagnosticsCommand::TrustClass { common, run_dir } => {
+            let _ = runtime_config_from_env(&common, None);
+            let report = trust_class_report(&run_dir)?;
+            match common.report {
+                ReportFormat::Table => print_trust_class_table(&report),
+                ReportFormat::Json => emit_report(&common, "diagnostics_trust_class", &report)?,
+            }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_trust_class",
+                &report,
+                "diagnostics_trust_class_report.schema.json",
+            )?;
+            write_manifest(
+                &common,
+                "diagnostics_trust_class",
+                &ReceiverConfig::default(),
+                None,
+                &report,
+            )?;
+        }
     }
 
     Ok(())
@@ -1589,6 +1610,25 @@ fn print_dependency_trace_table(report: &serde_json::Value) {
     println!("toolchain\t{toolchain}");
     println!("correction_rows\t{correction_rows}");
     println!("environment_references\t{env_refs}");
+}
+
+fn print_trust_class_table(report: &serde_json::Value) {
+    let class = report
+        .get("trust_class")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let rationale = report
+        .get("rationale")
+        .and_then(|v| v.as_array())
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|v| v.as_str())
+                .collect::<Vec<_>>()
+                .join(",")
+        })
+        .unwrap_or_default();
+    println!("trust_class\t{class}");
+    println!("rationale\t{rationale}");
 }
 
 fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
@@ -2478,7 +2518,8 @@ fn machine_catalog_report() -> serde_json::Value {
         serde_json::json!({"name": "diagnostics_operator_workflow", "schema": "schemas/diagnostics_operator_workflow_report.schema.json", "schema_version": 1}),
         serde_json::json!({"name": "diagnostics_operator_ergonomics", "schema": "schemas/diagnostics_operator_ergonomics_report.schema.json", "schema_version": 1}),
         serde_json::json!({"name": "diagnostics_audit_trail", "schema": "schemas/diagnostics_audit_trail_report.schema.json", "schema_version": 1}),
-        serde_json::json!({"name": "diagnostics_dependency_trace", "schema": "schemas/diagnostics_dependency_trace_report.schema.json", "schema_version": 1})
+        serde_json::json!({"name": "diagnostics_dependency_trace", "schema": "schemas/diagnostics_dependency_trace_report.schema.json", "schema_version": 1}),
+        serde_json::json!({"name": "diagnostics_trust_class", "schema": "schemas/diagnostics_trust_class_report.schema.json", "schema_version": 1})
     ];
     serde_json::json!({
         "schema_version": 1,
@@ -2918,6 +2959,69 @@ fn dependency_trace_report(run_dir: &Path) -> Result<serde_json::Value> {
                 .unwrap_or(serde_json::Value::Null),
             "references": env_references,
             "reference_count": env_reference_count
+        }
+    }))
+}
+
+fn trust_class_report(run_dir: &Path) -> Result<serde_json::Value> {
+    ensure_run_dir_exists(run_dir)?;
+    let medium_gate = medium_gate_report(run_dir)?;
+    let repro = verify_repro_bundle(run_dir)?;
+    let benchmark = benchmark_summary_report(run_dir)?;
+
+    let gate_passed = medium_gate
+        .get("gate_passed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let repro_ok = repro.get("audit_ok").and_then(|v| v.as_bool()).unwrap_or(false);
+    let nav_epochs = benchmark
+        .get("summary")
+        .and_then(|v| v.get("nav_epochs"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let obs_epochs = benchmark
+        .get("summary")
+        .and_then(|v| v.get("obs_epochs"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+
+    let mut rationale = Vec::new();
+    if gate_passed {
+        rationale.push("medium_gate_passed".to_string());
+    } else {
+        rationale.push("medium_gate_failed".to_string());
+    }
+    if repro_ok {
+        rationale.push("repro_audit_ok".to_string());
+    } else {
+        rationale.push("repro_audit_failed".to_string());
+    }
+    if nav_epochs > 0 && obs_epochs > 0 {
+        rationale.push("benchmark_epochs_present".to_string());
+    } else {
+        rationale.push("benchmark_epochs_missing".to_string());
+    }
+
+    let trust_class = if gate_passed && repro_ok && nav_epochs >= 100 && obs_epochs >= 100 {
+        "certification_grade"
+    } else if gate_passed && repro_ok {
+        "benchmarked"
+    } else if repro_ok {
+        "operational"
+    } else {
+        "draft"
+    };
+
+    Ok(serde_json::json!({
+        "schema_version": 1,
+        "run_dir": run_dir.display().to_string(),
+        "trust_class": trust_class,
+        "rationale": rationale,
+        "checks": {
+            "medium_gate_passed": gate_passed,
+            "repro_audit_ok": repro_ok,
+            "obs_epochs": obs_epochs,
+            "nav_epochs": nav_epochs
         }
     }))
 }

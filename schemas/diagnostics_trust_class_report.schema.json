@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DiagnosticsTrustClassReport",
+  "type": "object",
+  "required": ["schema_version", "run_dir", "trust_class", "rationale", "checks"],
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "run_dir": { "type": "string" },
+    "trust_class": {
+      "type": "string",
+      "enum": ["draft", "operational", "benchmarked", "certification_grade"]
+    },
+    "rationale": { "type": "array" },
+    "checks": { "type": "object" }
+  },
+  "additionalProperties": true
+}
