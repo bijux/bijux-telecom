@@ -968,6 +968,29 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
+        DiagnosticsCommand::OperatorErgonomics { common, run_dir } => {
+            let _ = runtime_config_from_env(&common, None);
+            let report = operator_ergonomics_report(&run_dir)?;
+            match common.report {
+                ReportFormat::Table => print_operator_ergonomics_table(&report),
+                ReportFormat::Json => {
+                    emit_report(&common, "diagnostics_operator_ergonomics", &report)?
+                }
+            }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_operator_ergonomics",
+                &report,
+                "diagnostics_operator_ergonomics_report.schema.json",
+            )?;
+            write_manifest(
+                &common,
+                "diagnostics_operator_ergonomics",
+                &ReceiverConfig::default(),
+                None,
+                &report,
+            )?;
+        }
     }
 
     Ok(())
@@ -1462,6 +1485,26 @@ fn print_operator_workflow_table(report: &serde_json::Value) {
             println!("{label}\t{command}");
         }
     }
+}
+
+fn print_operator_ergonomics_table(report: &serde_json::Value) {
+    let score = report
+        .get("ergonomics_score")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+    let gate = report
+        .get("rigor")
+        .and_then(|v| v.get("medium_gate_passed"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let evidence = report
+        .get("rigor")
+        .and_then(|v| v.get("evidence_state"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    println!("ergonomics_score\t{score:.2}");
+    println!("medium_gate_passed\t{gate}");
+    println!("evidence_state\t{evidence}");
 }
 
 fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
@@ -2348,7 +2391,8 @@ fn machine_catalog_report() -> serde_json::Value {
         serde_json::json!({"name": "diagnostics_expert_guide", "schema": "schemas/diagnostics_expert_guide_report.schema.json", "schema_version": 1}),
         serde_json::json!({"name": "diagnostics_history_browse", "schema": "schemas/diagnostics_history_browse_report.schema.json", "schema_version": 1}),
         serde_json::json!({"name": "diagnostics_route_explain", "schema": "schemas/diagnostics_route_explain_report.schema.json", "schema_version": 1}),
-        serde_json::json!({"name": "diagnostics_operator_workflow", "schema": "schemas/diagnostics_operator_workflow_report.schema.json", "schema_version": 1})
+        serde_json::json!({"name": "diagnostics_operator_workflow", "schema": "schemas/diagnostics_operator_workflow_report.schema.json", "schema_version": 1}),
+        serde_json::json!({"name": "diagnostics_operator_ergonomics", "schema": "schemas/diagnostics_operator_ergonomics_report.schema.json", "schema_version": 1})
     ];
     serde_json::json!({
         "schema_version": 1,
@@ -2570,6 +2614,62 @@ fn operator_workflow_report(profile: WorkflowProfile) -> serde_json::Value {
         "profile": profile_name,
         "steps": steps
     })
+}
+
+fn operator_ergonomics_report(run_dir: &Path) -> Result<serde_json::Value> {
+    ensure_run_dir_exists(run_dir)?;
+    let status = operator_status_report(run_dir)?;
+    let gate = medium_gate_report(run_dir)?;
+    let gate_passed = gate
+        .get("gate_passed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let evidence_state = status
+        .get("status")
+        .and_then(|v| v.get("evidence_state"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let quality_state = status
+        .get("status")
+        .and_then(|v| v.get("quality_state"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let run_state = status
+        .get("status")
+        .and_then(|v| v.get("run_state"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let score = match (gate_passed, quality_state, evidence_state, run_state) {
+        (true, "artifact_clean", "evidence_supported", "audit_ready") => 1.0,
+        (true, "artifact_clean", _, _) => 0.8,
+        (true, _, _, _) => 0.6,
+        (false, _, _, _) => 0.3,
+    };
+    let quick_actions = if gate_passed {
+        vec![
+            "route-explain --topic compare".to_string(),
+            "operator-workflow --profile compare".to_string(),
+        ]
+    } else {
+        vec![
+            "medium-gate --strict".to_string(),
+            "route-explain --topic integrity".to_string(),
+            "export-bundle".to_string(),
+        ]
+    };
+
+    Ok(serde_json::json!({
+        "schema_version": 1,
+        "run_dir": run_dir.display().to_string(),
+        "ergonomics_score": score,
+        "quick_actions": quick_actions,
+        "rigor": {
+            "medium_gate_passed": gate_passed,
+            "evidence_state": evidence_state,
+            "quality_state": quality_state,
+            "run_state": run_state
+        }
+    }))
 }
 
 fn ensure_run_dir_exists(run_dir: &Path) -> Result<()> {

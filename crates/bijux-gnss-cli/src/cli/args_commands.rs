@@ -664,6 +664,16 @@ pub(crate) enum DiagnosticsCommand {
         #[arg(long, value_enum)]
         profile: WorkflowProfile,
     },
+
+    /// Evaluate operator ergonomics while preserving evidence and gate rigor
+    OperatorErgonomics {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Run directory to evaluate
+        #[arg(long, value_name = "DIR")]
+        run_dir: PathBuf,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
