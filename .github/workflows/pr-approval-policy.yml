@@ -50,7 +50,16 @@ jobs:
           repo = os.environ["GH_REPOSITORY"]
           token = os.environ["GH_TOKEN"]
           event_name = os.environ["GH_EVENT_NAME"]
-          event_path = os.environ["GH_EVENT_PATH"]
+          event_path = (
+            os.environ.get("GH_EVENT_PATH")
+            or os.environ.get("GITHUB_EVENT_PATH")
+          )
+          if not event_path:
+            print(
+              "Missing GitHub event payload path. "
+              "Expected GH_EVENT_PATH or GITHUB_EVENT_PATH."
+            )
+            raise SystemExit(1)
           owner_login = os.environ["OWNER_LOGIN"]
           owner_self_signoff_label = os.environ["OWNER_SELF_SIGNOFF_LABEL"]
 
