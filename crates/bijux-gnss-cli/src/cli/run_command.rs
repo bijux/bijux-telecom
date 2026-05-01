@@ -331,6 +331,9 @@ fn solve_epoch_ekf(
         hdop: None,
         vdop: None,
         gdop: None,
+        stability_signature: String::new(),
+        stability_signature_version:
+            bijux_gnss_infra::api::core::NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
     }))
 }
 
