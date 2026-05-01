@@ -486,6 +486,83 @@ fn validation_evidence_bundle(
     } else {
         Some(rms_values.iter().sum::<f64>() / rms_values.len() as f64)
     };
+    let used_sat_mean = if solutions.is_empty() {
+        None
+    } else {
+        Some(
+            solutions
+                .iter()
+                .map(|sol| sol.used_sat_count as f64)
+                .sum::<f64>()
+                / solutions.len() as f64,
+        )
+    };
+    let stable_solution_count = solutions
+        .iter()
+        .filter(|sol| matches!(sol.validity, bijux_gnss_infra::api::core::SolutionValidity::Stable))
+        .count();
+    let weak_integrity_stable_count = report
+        .integrity
+        .iter()
+        .filter(|entry| {
+            !matches!(
+                entry.class,
+                bijux_gnss_infra::api::receiver::NavIntegrityClass::Nominal
+            )
+        })
+        .count();
+
+    let mut claim_evidence_violations = Vec::new();
+    if let Some(value) = cn0_mean {
+        if value < report.science_policy.min_mean_cn0_dbhz {
+            claim_evidence_violations.push(format!(
+                "mean_cn0_below_policy:{value:.3}<{}",
+                report.science_policy.min_mean_cn0_dbhz
+            ));
+        }
+    }
+    if let Some(value) = pdop_mean {
+        if value > report.science_policy.max_pdop {
+            claim_evidence_violations.push(format!(
+                "mean_pdop_above_policy:{value:.3}>{}",
+                report.science_policy.max_pdop
+            ));
+        }
+    }
+    if let Some(value) = residual_rms_mean {
+        if value > report.science_policy.max_residual_rms_m {
+            claim_evidence_violations.push(format!(
+                "mean_residual_rms_above_policy:{value:.3}>{}",
+                report.science_policy.max_residual_rms_m
+            ));
+        }
+    }
+    if let Some(value) = used_sat_mean {
+        if value < report.science_policy.min_used_satellites as f64 {
+            claim_evidence_violations.push(format!(
+                "mean_used_satellites_below_policy:{value:.3}<{}",
+                report.science_policy.min_used_satellites
+            ));
+        }
+    }
+    let lock_quality_ratio = if lock_total == 0 {
+        None
+    } else {
+        Some(lock_good as f64 / lock_total as f64)
+    };
+    if let Some(value) = lock_quality_ratio {
+        if value < report.science_policy.min_lock_ratio {
+            claim_evidence_violations.push(format!(
+                "lock_quality_ratio_below_policy:{value:.3}<{}",
+                report.science_policy.min_lock_ratio
+            ));
+        }
+    }
+    if stable_solution_count > 0 && weak_integrity_stable_count > 0 {
+        claim_evidence_violations.push(format!(
+            "stable_solutions_with_non_nominal_integrity:{weak_integrity_stable_count}/{stable_solution_count}"
+        ));
+    }
 
     serde_json::json!({
         "schema_version": 1,
@@ -495,16 +572,14 @@ fn validation_evidence_bundle(
             "cn0_dbhz_mean": cn0_mean,
             "cn0_dbhz_min": cn0_min,
             "cn0_dbhz_max": cn0_max,
-            "lock_quality_ratio": if lock_total == 0 {
-                None
-            } else {
-                Some(lock_good as f64 / lock_total as f64)
-            }
+            "lock_quality_ratio": lock_quality_ratio
         },
         "numerical": {
             "solution_epochs": solutions.len(),
+            "stable_solution_epochs": stable_solution_count,
             "horiz_error_rms_m": report.horiz_error_m.rms,
             "vert_error_rms_m": report.vert_error_m.rms,
+            "mean_used_satellites": used_sat_mean,
             "pdop_mean": pdop_mean,
             "pdop_max": pdop_max,
             "residual_rms_mean_m": residual_rms_mean,
@@ -513,6 +588,11 @@ fn validation_evidence_bundle(
         "diagnostics": {
             "advisory": report.diagnostic_partition.advisory_diagnostics,
             "enforced_refusals": report.diagnostic_partition.enforced_refusals
+        },
+        "claim_evidence_guard": {
+            "policy": report.science_policy,
+            "supported": claim_evidence_violations.is_empty(),
+            "violations": claim_evidence_violations
         }
     })
 }
