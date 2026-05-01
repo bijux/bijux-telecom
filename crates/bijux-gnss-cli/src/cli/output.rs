@@ -25,14 +25,22 @@ fn load_dataset(common: &CommonArgs) -> Result<Option<DatasetEntry>> {
         if common.unregistered_dataset {
             return Ok(None);
         }
-        bail!("dataset id is required (use --dataset or --unregistered-dataset)");
+        return Err(classified_error(
+            CliErrorClass::OperatorMisconfiguration,
+            "dataset id is required (use --dataset or --unregistered-dataset)",
+        ));
     };
     let registry_path = PathBuf::from("datasets/registry.toml");
     let registry = DatasetRegistry::load(&registry_path)
         .with_context(|| format!("failed to parse {}", registry_path.display()))?;
     let entry = registry
         .find(id)
-        .with_context(|| format!("dataset not found: {id}"))?;
+        .ok_or_else(|| {
+            classified_error(
+                CliErrorClass::OperatorMisconfiguration,
+                format!("dataset not found: {id}"),
+            )
+        })?;
     Ok(Some(entry))
 }
 
@@ -43,7 +51,10 @@ fn resolve_input_file(file: Option<&PathBuf>, dataset: Option<&DatasetEntry>) ->
     if let Some(dataset) = dataset {
         return Ok(PathBuf::from(&dataset.path));
     }
-    bail!("no input file provided; use --file or --dataset");
+    Err(classified_error(
+        CliErrorClass::OperatorMisconfiguration,
+        "no input file provided; use --file or --dataset",
+    ))
 }
 
 fn load_sidecar(path: Option<&PathBuf>) -> Result<Option<SidecarSpec>> {

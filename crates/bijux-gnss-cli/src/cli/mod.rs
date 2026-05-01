@@ -39,6 +39,22 @@ fn workspace_root() -> &'static Path {
         .expect("workspace root")
 }
 
+#[derive(Clone, Copy)]
+enum CliErrorClass {
+    OperatorMisconfiguration,
+    UnsupportedScience,
+    InternalFault,
+}
+
+fn classified_error(class: CliErrorClass, detail: impl AsRef<str>) -> eyre::Report {
+    let (code, label) = match class {
+        CliErrorClass::OperatorMisconfiguration => ("operator_misconfiguration", "operator"),
+        CliErrorClass::UnsupportedScience => ("unsupported_science", "science"),
+        CliErrorClass::InternalFault => ("internal_fault", "internal"),
+    };
+    eyre!("[{label}:{code}] {}", detail.as_ref())
+}
+
 pub(crate) fn schema_path(name: &str) -> PathBuf {
     workspace_root().join("schemas").join(name)
 }

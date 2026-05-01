@@ -795,9 +795,13 @@ fn print_replay_audit_table(report: &serde_json::Value) {
 }
 
 fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
+    ensure_run_dir_exists(run_dir)?;
     let artifacts_dir = run_dir.join("artifacts");
     if !artifacts_dir.exists() {
-        bail!("artifacts directory not found: {}", artifacts_dir.display());
+        return Err(classified_error(
+            CliErrorClass::OperatorMisconfiguration,
+            format!("artifacts directory not found: {}", artifacts_dir.display()),
+        ));
     }
     let mut events = Vec::new();
     for entry in fs::read_dir(&artifacts_dir)? {
@@ -820,9 +824,15 @@ fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
 }
 
 fn explain_run_scope(run_dir: &Path) -> Result<serde_json::Value> {
+    ensure_run_dir_exists(run_dir)?;
     let manifest_path = run_dir.join("manifest.json");
     let run_manifest: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&manifest_path)?)
-        .map_err(|err| eyre!("failed parsing manifest {}: {err}", manifest_path.display()))?;
+        .map_err(|err| {
+            classified_error(
+                CliErrorClass::InternalFault,
+                format!("failed parsing manifest {}: {err}", manifest_path.display()),
+            )
+        })?;
 
     let artifacts_dir = run_dir.join("artifacts");
     let mut identity_coverage = serde_json::Map::new();
@@ -984,9 +994,15 @@ fn explain_run_scope(run_dir: &Path) -> Result<serde_json::Value> {
 }
 
 fn verify_repro_bundle(run_dir: &Path) -> Result<serde_json::Value> {
+    ensure_run_dir_exists(run_dir)?;
     let manifest_path = run_dir.join("manifest.json");
     let manifest_data = std::fs::read_to_string(&manifest_path)?;
-    let manifest: serde_json::Value = serde_json::from_str(&manifest_data)?;
+    let manifest: serde_json::Value = serde_json::from_str(&manifest_data).map_err(|err| {
+        classified_error(
+            CliErrorClass::InternalFault,
+            format!("failed parsing manifest {}: {err}", manifest_path.display()),
+        )
+    })?;
 
     let run_report_path = run_dir.join("run_report.json");
     let run_report_data = if run_report_path.exists() {
@@ -1073,6 +1089,8 @@ fn verify_repro_bundle(run_dir: &Path) -> Result<serde_json::Value> {
 }
 
 fn compare_run_evidence(baseline_run_dir: &Path, candidate_run_dir: &Path) -> Result<serde_json::Value> {
+    ensure_run_dir_exists(baseline_run_dir)?;
+    ensure_run_dir_exists(candidate_run_dir)?;
     let baseline_repro = verify_repro_bundle(baseline_run_dir)?;
     let candidate_repro = verify_repro_bundle(candidate_run_dir)?;
     let baseline_explain = explain_run_scope(baseline_run_dir)?;
@@ -1119,6 +1137,8 @@ fn compare_run_evidence(baseline_run_dir: &Path, candidate_run_dir: &Path) -> Re
 }
 
 fn replay_audit_report(baseline_run_dir: &Path, candidate_run_dir: &Path) -> Result<serde_json::Value> {
+    ensure_run_dir_exists(baseline_run_dir)?;
+    ensure_run_dir_exists(candidate_run_dir)?;
     let compare = compare_run_evidence(baseline_run_dir, candidate_run_dir)?;
     let baseline_explain = explain_run_scope(baseline_run_dir)?;
     let candidate_explain = explain_run_scope(candidate_run_dir)?;
@@ -1184,6 +1204,16 @@ fn replay_audit_report(baseline_run_dir: &Path, candidate_run_dir: &Path) -> Res
             .unwrap_or("unknown"),
         "compare": compare
     }))
+}
+
+fn ensure_run_dir_exists(run_dir: &Path) -> Result<()> {
+    if run_dir.exists() && run_dir.is_dir() {
+        return Ok(());
+    }
+    Err(classified_error(
+        CliErrorClass::OperatorMisconfiguration,
+        format!("run directory not found: {}", run_dir.display()),
+    ))
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
