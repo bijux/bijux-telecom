@@ -4,8 +4,13 @@
 use crate::api::{Receiver, ReceiverEngine, RunArtifacts};
 use crate::engine::metrics::write_metrics_summary;
 use crate::engine::runtime::{Metric, TraceRecord};
-use crate::pipeline::observations::observations_from_tracking_results;
-use bijux_gnss_core::api::{Constellation, InputError, SatId, SignalBand};
+use crate::pipeline::observations::{
+    observation_decisions_from_epochs, observations_from_tracking_results,
+};
+use bijux_gnss_core::api::{
+    signal_registry, Constellation, InputError, SatId, SignalBand, SignalCode, SignalSupportRow,
+    SupportMatrix, SupportStatus,
+};
 use std::time::Instant;
 
 impl Receiver {
@@ -61,13 +66,20 @@ impl Receiver {
             self.config().clone(),
             self.runtime().clone(),
         );
-        let acquisitions = acquisition.run_fft(&frame, &sats);
+        let acquisition_run =
+            acquisition.run_fft_topn_with_explain(&frame, &sats, 4, self.config().acquisition_integration_ms, self.config().acquisition_noncoherent);
+        let acquisition_candidates = acquisition_run.results;
+        let acquisitions: Vec<_> = acquisition_candidates
+            .iter()
+            .filter_map(|candidates| candidates.first().cloned())
+            .collect();
         let acquisition_stats = acquisition.stats_snapshot();
+        let acquisition_explain = acquisition_run.explains;
         let acquisition_ms = acquisition_start.elapsed().as_secs_f64() * 1000.0;
         runtime.metrics.metric(Metric { name: "stage_acquisition_ms", value: acquisition_ms });
         runtime.metrics.metric(Metric {
             name: "acquisition_candidate_count",
-            value: acquisitions.len() as f64,
+            value: acquisition_candidates.len() as f64,
         });
         runtime.metrics.metric(Metric {
             name: "acquisition_sat_count",
@@ -110,6 +122,7 @@ impl Receiver {
             fields: vec![
                 ("stage", "acquisition".to_string()),
                 ("accepted_candidates", acquisitions.len().to_string()),
+                ("explained_sats", acquisition_explain.len().to_string()),
             ],
         });
 
@@ -123,6 +136,10 @@ impl Receiver {
             crate::pipeline::tracking::Tracking::new(self.config().clone(), self.runtime().clone());
         let tracking_results =
             tracking.track_from_acquisition(&frame, &acquisitions, SignalBand::L1);
+        let track_transitions: Vec<_> = tracking_results
+            .iter()
+            .flat_map(|result| result.transitions.iter().cloned())
+            .collect();
         let tracking_ms = tracking_start.elapsed().as_secs_f64() * 1000.0;
         let track_channel_count: f64 =
             tracking_results.iter().filter(|result| result.epochs.len() > 0).count() as f64;
@@ -148,7 +165,9 @@ impl Receiver {
             &tracking_results,
             self.config().hatch_window,
         );
+        let observation_decisions = observation_decisions_from_epochs(&observation_report.output);
         let observation_ms = observation_start.elapsed().as_secs_f64() * 1000.0;
+        let observation_decisions_count = observation_decisions.len();
         let observation_epoch_count = observation_report.output.len() as f64;
         runtime.metrics.metric(Metric { name: "stage_observation_ms", value: observation_ms });
         runtime
@@ -159,6 +178,7 @@ impl Receiver {
             fields: vec![
                 ("stage", "observations".to_string()),
                 ("epochs", observation_report.output.len().to_string()),
+                ("decision_artifacts", observation_decisions_count.to_string()),
             ],
         });
         runtime.trace.record(TraceRecord {
@@ -185,8 +205,12 @@ impl Receiver {
 
         let artifacts = RunArtifacts {
             acquisitions,
+            acquisition_explain,
+            track_transitions,
             tracking: tracking_results,
             observations: observation_report.output,
+            observation_decisions,
+            support_matrix: Some(build_support_matrix()),
             navigation: Vec::new(),
         };
         runtime.trace.record(TraceRecord {
@@ -207,6 +231,80 @@ impl Receiver {
         write_metrics_summary(self.runtime(), &artifacts, acquisition_stats);
         Ok(artifacts)
     }
+}
+
+fn build_support_matrix() -> SupportMatrix {
+    let constellations = [
+        Constellation::Gps,
+        Constellation::Galileo,
+        Constellation::Glonass,
+        Constellation::Beidou,
+    ];
+    let bands = [
+        SignalBand::L1,
+        SignalBand::L2,
+        SignalBand::L5,
+        SignalBand::E1,
+        SignalBand::E5,
+        SignalBand::B1,
+        SignalBand::B2,
+    ];
+    let codes = [
+        SignalCode::Ca,
+        SignalCode::Py,
+        SignalCode::E1B,
+        SignalCode::E1C,
+        SignalCode::E5a,
+        SignalCode::E5b,
+        SignalCode::Unknown,
+    ];
+
+    let mut rows = Vec::new();
+    for constellation in constellations {
+        for band in bands {
+            for code in codes {
+                let status = signal_support_status(constellation, band, code);
+                if matches!(status, SupportStatus::Unsupported)
+                    && signal_registry(constellation, band, code).is_none()
+                {
+                    continue;
+                }
+                rows.push(SignalSupportRow {
+                    constellation,
+                    band,
+                    code,
+                    status,
+                    reason: support_reason(constellation, band, code),
+                });
+            }
+        }
+    }
+    rows.sort_by_key(|row| (format!("{:?}", row.constellation), format!("{:?}", row.band), format!("{:?}", row.code)));
+    SupportMatrix { schema_version: 1, rows }
+}
+
+fn signal_support_status(
+    constellation: Constellation,
+    band: SignalBand,
+    code: SignalCode,
+) -> SupportStatus {
+    if constellation == Constellation::Gps && band == SignalBand::L1 && code == SignalCode::Ca {
+        return SupportStatus::Supported;
+    }
+    if signal_registry(constellation, band, code).is_some() {
+        return SupportStatus::Planned;
+    }
+    SupportStatus::Unsupported
+}
+
+fn support_reason(constellation: Constellation, band: SignalBand, code: SignalCode) -> String {
+    if constellation == Constellation::Gps && band == SignalBand::L1 && code == SignalCode::Ca {
+        return "receiver pipeline supports this signal path".to_string();
+    }
+    if signal_registry(constellation, band, code).is_some() {
+        return "signal model registered; receiver pipeline support not yet complete".to_string();
+    }
+    "unsupported constellation-band-code combination".to_string()
 }
 
 impl ReceiverEngine for Receiver {
