@@ -3,11 +3,11 @@
 
 use std::collections::BTreeMap;
 
+use crate::api::SignalCode;
 use crate::api::{
     Chips, Constellation, Cycles, Epoch, Hertz, Meters, SampleTime, SatId, Seconds, SigId,
     SignalBand, SignalSpec,
 };
-use crate::api::SignalCode;
 use num_complex::Complex;
 use serde::{Deserialize, Serialize};
 
@@ -21,6 +21,29 @@ fn default_phase_step_samples() -> usize {
 
 fn default_phase_search_mode() -> String {
     "full_code".to_string()
+}
+
+pub const TRACKING_STATE_MODEL_VERSION: u32 = 1;
+pub const OBSERVATION_MODEL_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TrackingLifecycleState {
+    Init,
+    PullIn,
+    Lock,
+    Degraded,
+    Lost,
+    Inactive,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrackingAssumptions {
+    pub integration_ms: u32,
+    pub dll_bw_hz: f64,
+    pub pll_bw_hz: f64,
+    pub fll_bw_hz: f64,
+    pub discriminator_family: String,
+    pub aiding_mode: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -126,6 +149,21 @@ pub enum ObservationStatus {
     Weak,
     Inconsistent,
     Rejected,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ObservationSupportClass {
+    Supported,
+    Degraded,
+    Unsupported,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ObservationUncertaintyClass {
+    Low,
+    Medium,
+    High,
+    Unknown,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -260,6 +298,26 @@ pub struct AcqResult {
     pub explain_selection_reason: Option<String>,
 }
 
+pub fn acq_result_stability_key(result: &AcqResult) -> String {
+    format!(
+        "{:?}-{:02}|{:.3}|{}|{:.6}|{:.6}|{:.6}|{}",
+        result.sat.constellation,
+        result.sat.prn,
+        result.carrier_hz.0,
+        result.code_phase_samples,
+        result.peak_mean_ratio,
+        result.peak_second_ratio,
+        result.score,
+        result.hypothesis
+    )
+}
+
+pub fn stable_acq_result_keys(results: &[AcqResult]) -> Vec<String> {
+    let mut keys = results.iter().map(acq_result_stability_key).collect::<Vec<_>>();
+    keys.sort();
+    keys
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrackEpoch {
     pub epoch: Epoch,
@@ -303,6 +361,8 @@ pub struct TrackEpoch {
     #[serde(default)]
     pub tracking_provenance: String,
     #[serde(default)]
+    pub tracking_assumptions: Option<TrackingAssumptions>,
+    #[serde(default)]
     pub processing_ms: Option<f64>,
 }
 
@@ -338,7 +398,21 @@ impl Default for TrackEpoch {
             channel_id: None,
             channel_uid: String::new(),
             tracking_provenance: String::new(),
+            tracking_assumptions: None,
             processing_ms: None,
+        }
+    }
+}
+
+impl TrackEpoch {
+    pub fn lifecycle_state(&self) -> TrackingLifecycleState {
+        match self.lock_state.as_str() {
+            "tracking" => TrackingLifecycleState::Lock,
+            "acquired" => TrackingLifecycleState::Init,
+            "pull_in" => TrackingLifecycleState::PullIn,
+            "lost" => TrackingLifecycleState::Lost,
+            "degraded" => TrackingLifecycleState::Degraded,
+            _ => TrackingLifecycleState::Inactive,
         }
     }
 }
@@ -383,6 +457,10 @@ pub struct ObsMetadata {
     #[serde(default)]
     pub observation_epoch_id: String,
     #[serde(default)]
+    pub observation_support_class: String,
+    #[serde(default)]
+    pub observation_uncertainty_class: String,
+    #[serde(default)]
     pub time_tag_source: String,
     #[serde(default)]
     pub time_tag_sample_index: u64,
@@ -417,6 +495,8 @@ impl Default for ObsMetadata {
             observation_status: "accepted".to_string(),
             observation_reject_reasons: Vec::new(),
             observation_epoch_id: String::new(),
+            observation_support_class: "supported".to_string(),
+            observation_uncertainty_class: "unknown".to_string(),
             time_tag_source: String::new(),
             time_tag_sample_index: 0,
             time_tag_sample_rate_hz: 0.0,
@@ -474,6 +554,34 @@ pub struct ObsEpoch {
     pub decision_reason: Option<String>,
     #[serde(default)]
     pub manifest: Option<ObsEpochManifest>,
+}
+
+pub fn obs_epoch_stability_key(epoch: &ObsEpoch) -> String {
+    let mut sat_keys = epoch
+        .sats
+        .iter()
+        .map(|sat| {
+            format!(
+                "{:?}-{:02}:{:?}:{:?}:{:.3}:{:.6}:{:.3}:{:.6}",
+                sat.signal_id.sat.constellation,
+                sat.signal_id.sat.prn,
+                sat.signal_id.band,
+                sat.signal_id.code,
+                sat.pseudorange_m.0,
+                sat.carrier_phase_cycles.0,
+                sat.doppler_hz.0,
+                sat.cn0_dbhz
+            )
+        })
+        .collect::<Vec<_>>();
+    sat_keys.sort();
+    format!(
+        "epoch:{}|t:{:.9}|decision:{:?}|sats:{}",
+        epoch.epoch_idx,
+        epoch.t_rx_s.0,
+        epoch.decision,
+        sat_keys.join(";")
+    )
 }
 
 impl ObsEpoch {
