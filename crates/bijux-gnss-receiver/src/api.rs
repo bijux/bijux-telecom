@@ -97,10 +97,18 @@ pub use crate::validation_report::{
 pub struct RunArtifacts {
     /// Acquisition candidates captured during the run.
     pub acquisitions: Vec<bijux_gnss_core::api::AcqResult>,
+    /// Acquisition explain artifacts captured during the run.
+    pub acquisition_explain: Vec<bijux_gnss_core::api::AcqExplain>,
+    /// Track transition artifacts captured during the run.
+    pub track_transitions: Vec<bijux_gnss_core::api::TrackTransition>,
     /// Tracking reports captured during the run.
     pub tracking: Vec<TrackingResult>,
+    /// Observation decision artifacts captured during the run.
+    pub observation_decisions: Vec<bijux_gnss_core::api::ObsDecisionArtifact>,
     /// Observation epochs captured during the run.
     pub observations: Vec<bijux_gnss_core::api::ObsEpoch>,
+    /// Signal support matrix artifact.
+    pub support_matrix: Option<bijux_gnss_core::api::SupportMatrix>,
     /// Navigation solution epochs captured during the run.
     pub navigation: Vec<bijux_gnss_core::api::NavEpoch>,
 }

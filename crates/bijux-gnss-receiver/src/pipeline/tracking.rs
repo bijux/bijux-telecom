@@ -4,7 +4,7 @@ use num_complex::Complex;
 
 use bijux_gnss_core::api::{
     AcqHypothesis, Chips, Constellation, Hertz, SampleClock, SampleTime, SamplesFrame, SatId,
-    Seconds, TrackEpoch,
+    Seconds, TrackEpoch, TrackTransition,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -88,6 +88,7 @@ pub struct TrackingResult {
     pub acquisition_carrier_hz: f64,
     pub acq_to_track_state: String,
     pub epochs: Vec<TrackEpoch>,
+    pub transitions: Vec<TrackTransition>,
 }
 
 #[derive(Debug, Clone)]
@@ -211,9 +212,14 @@ impl Tracking {
             cycle_slip_reason: None,
             lock_state: ChannelState::Idle.to_string(),
             lock_state_reason: Some("initializing".to_string()),
+            channel_id: Some(channel_id),
+            channel_uid: format!("{:?}-{:02}-ch{:02}", sat.constellation, sat.prn, channel_id),
+            tracking_provenance: format!(
+                "channel={} sat={:?}-{}",
+                channel_id, sat.constellation, sat.prn
+            ),
             processing_ms: None,
         };
-        let _ = channel_id;
         (track_epoch, correlator)
     }
 
@@ -244,7 +250,8 @@ impl Tracking {
             acquisition_code_phase_samples: 0,
             acquisition_carrier_hz: 0.0,
             acq_to_track_state: "deferred".to_string(),
-            epochs,
+            epochs: epochs.0,
+            transitions: epochs.1,
         }]
     }
 
@@ -273,7 +280,7 @@ impl Tracking {
                         ("to_track", acq_to_track_state.clone()),
                     ],
                 });
-                let mut epochs =
+                let tracked =
                     if matches!(acq.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous)
                     {
                         self.track_epochs(
@@ -286,8 +293,10 @@ impl Tracking {
                             self.epochs_in_frame(frame),
                         )
                     } else {
-                        Vec::new()
+                        (Vec::new(), Vec::new())
                     };
+                let mut epochs = tracked.0;
+                let mut transitions = tracked.1;
                 let mut lock_loss = 0usize;
                 for epoch in &epochs {
                     if epoch.lock {
@@ -302,7 +311,7 @@ impl Tracking {
                             epoch.carrier_hz.0,
                             epoch.code_phase_samples.0,
                         ) {
-                            epochs = self.track_epochs(
+                            let reacquired = self.track_epochs(
                                 frame,
                                 channel_id,
                                 acq.sat,
@@ -311,9 +320,20 @@ impl Tracking {
                                 params.early_late_spacing_chips,
                                 self.epochs_in_frame(frame),
                             );
+                            epochs = reacquired.0;
+                            transitions.extend(reacquired.1);
                         }
                         break;
                     }
+                }
+                for epoch in &mut epochs {
+                    epoch.tracking_provenance = format!(
+                        "acq_hypothesis={} acq_score={:.6} acq_carrier_hz={:.3} acq_code_phase_samples={}",
+                        acquisition_hypothesis,
+                        acq.score,
+                        acq.carrier_hz.0,
+                        acq.code_phase_samples
+                    );
                 }
                 let outcome = if epochs.is_empty() { "not_tracked" } else { "tracked" };
                 self.runtime.trace.record(TraceRecord {
@@ -336,6 +356,7 @@ impl Tracking {
                     acquisition_carrier_hz: acq.carrier_hz.0,
                     acq_to_track_state,
                     epochs,
+                    transitions,
                 }
             })
             .collect()
@@ -360,7 +381,7 @@ impl Tracking {
         code_phase_samples: f64,
         early_late_spacing_chips: f64,
         epochs: usize,
-    ) -> Vec<TrackEpoch> {
+    ) -> (Vec<TrackEpoch>, Vec<TrackTransition>) {
         let samples_per_code = samples_per_code(
             self.config.sampling_freq_hz,
             self.config.code_freq_basis_hz,
@@ -377,6 +398,7 @@ impl Tracking {
         };
 
         let mut out = Vec::new();
+        let mut transitions = Vec::new();
         for epoch_idx in 0..epochs {
             let alloc_before = crate::engine::alloc::allocation_count();
             let start = epoch_idx * samples_per_code;
@@ -436,6 +458,7 @@ impl Tracking {
             }
             state.prev_prompt_phase_cycles = Some(phase_cycles);
 
+            let from_state = state.state;
             if lock {
                 state.unlocked_count = 0;
                 state.state = ChannelState::Tracking;
@@ -509,6 +532,21 @@ impl Tracking {
             state.code_phase_samples =
                 (state.code_phase_samples + samples_per_code as f64) % samples_per_code as f64;
 
+            if state.state != from_state {
+                transitions.push(TrackTransition {
+                    sat,
+                    channel_id,
+                    epoch_idx: track_epoch.epoch.index,
+                    sample_index: track_epoch.sample_index,
+                    from_state: from_state.to_string(),
+                    to_state: state.state.to_string(),
+                    reason: lock_state_reason
+                        .clone()
+                        .unwrap_or_else(|| "state_transition".to_string()),
+                    lock_quality: epoch_lock_quality(lock, pll_lock, dll_lock, fll_lock, cn0_dbhz),
+                });
+            }
+
             out.push(TrackEpoch {
                 lock,
                 carrier_hz: Hertz(state.carrier_hz),
@@ -529,7 +567,7 @@ impl Tracking {
                 ..track_epoch
             });
         }
-        out
+        (out, transitions)
     }
 }
 
@@ -547,6 +585,23 @@ fn ca_code_or_default(prn: u8) -> Vec<i8> {
         Ok(code) => code,
         Err(_) => vec![1; 1023],
     }
+}
+
+fn epoch_lock_quality(lock: bool, pll_lock: bool, dll_lock: bool, fll_lock: bool, cn0_dbhz: f64) -> f64 {
+    let mut quality = (cn0_dbhz / 60.0).clamp(0.0, 1.0);
+    if !lock {
+        quality *= 0.2;
+    }
+    if !pll_lock {
+        quality *= 0.7;
+    }
+    if !dll_lock {
+        quality *= 0.8;
+    }
+    if !fll_lock {
+        quality *= 0.9;
+    }
+    quality
 }
 
 impl Tracking {
