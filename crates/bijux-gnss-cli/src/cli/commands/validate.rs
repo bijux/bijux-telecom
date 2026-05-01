@@ -362,6 +362,13 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
         profile.sample_rate_hz,
         products_ok,
         product_fallbacks,
+        bijux_gnss_infra::api::receiver::ValidationSciencePolicy {
+            min_mean_cn0_dbhz: profile.navigation.science_thresholds.min_mean_cn0_dbhz,
+            max_pdop: profile.navigation.science_thresholds.max_pdop,
+            max_residual_rms_m: profile.navigation.science_thresholds.max_residual_rms_m,
+            min_used_satellites: profile.navigation.science_thresholds.min_used_satellites,
+            min_lock_ratio: profile.navigation.science_thresholds.min_lock_ratio,
+        },
     )?;
     let out_dir = artifacts_dir(&common, "validate", dataset.as_ref())?;
     let out = out_dir.join("validation_report.json");
@@ -404,6 +411,7 @@ fn handle_validate_reference(command: GnssCommand) -> Result<()> {
         0.0,
         false,
         vec!["run_dir_only".to_string()],
+        bijux_gnss_infra::api::receiver::ValidationSciencePolicy::default(),
     )?;
     let out_dir = artifacts_dir(&common, "validate_reference", None)?;
     let out = out_dir.join("validation_report.json");

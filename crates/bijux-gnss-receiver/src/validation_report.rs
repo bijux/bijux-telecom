@@ -133,6 +133,80 @@ pub struct ValidationBudgets {
     pub nav_min_lock_epochs: u64,
 }
 
+/// Scientific policy used for validation and integrity classification.
+#[derive(Debug, Serialize, Clone)]
+pub struct ValidationSciencePolicy {
+    /// Minimum mean C/N0 expected for stable acceptance.
+    pub min_mean_cn0_dbhz: f64,
+    /// Maximum PDOP for stable geometry.
+    pub max_pdop: f64,
+    /// Maximum residual RMS (meters) for stable quality.
+    pub max_residual_rms_m: f64,
+    /// Minimum used satellites expected for stable geometry.
+    pub min_used_satellites: usize,
+    /// Minimum lock ratio for stable tracking support.
+    pub min_lock_ratio: f64,
+}
+
+impl Default for ValidationSciencePolicy {
+    fn default() -> Self {
+        Self {
+            min_mean_cn0_dbhz: 28.0,
+            max_pdop: 8.0,
+            max_residual_rms_m: 25.0,
+            min_used_satellites: 4,
+            min_lock_ratio: 0.7,
+        }
+    }
+}
+
+/// Integrity class for a navigation epoch.
+#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum NavIntegrityClass {
+    /// No integrity red flags were detected.
+    Nominal,
+    /// Geometry-related checks were weak (PDOP or used satellites).
+    WeakGeometry,
+    /// Residual-related checks were suspicious.
+    SuspiciousResiduals,
+    /// Tracking lock support was unstable.
+    UnstableLock,
+    /// Multiple integrity concerns were present simultaneously.
+    Compound,
+}
+
+/// Integrity report entry for one navigation epoch.
+#[derive(Debug, Serialize)]
+pub struct NavIntegrityReport {
+    /// Epoch index.
+    pub epoch_idx: u64,
+    /// Classified integrity state.
+    pub class: NavIntegrityClass,
+    /// Reasons behind classification.
+    pub reasons: Vec<String>,
+}
+
+/// Partition of advisory diagnostics versus enforced refusal outcomes.
+#[derive(Debug, Serialize)]
+pub struct DiagnosticPartitionReport {
+    /// Advisory diagnostics that do not directly enforce refusal.
+    pub advisory_diagnostics: Vec<String>,
+    /// Enforced refusal outcomes recorded in solutions.
+    pub enforced_refusals: Vec<String>,
+}
+
+/// Assumption summary across validation outputs.
+#[derive(Debug, Serialize)]
+pub struct ValidationAssumptionReport {
+    /// Time systems used in solutions.
+    pub time_systems: Vec<String>,
+    /// Reference frames used in solutions.
+    pub reference_frames: Vec<String>,
+    /// Clock models used in solutions.
+    pub clock_models: Vec<String>,
+}
+
 /// Navigation residual report per epoch.
 #[derive(Debug, Serialize)]
 pub struct NavResidualReport {
@@ -183,6 +257,14 @@ pub struct ValidationReport {
     pub inter_frequency_alignment: InterFrequencyAlignmentReport,
     /// PPP readiness report.
     pub ppp_readiness: PppReadinessReport,
+    /// Scientific policy used when classifying outputs.
+    pub science_policy: ValidationSciencePolicy,
+    /// Integrity classifications per navigation epoch.
+    pub integrity: Vec<NavIntegrityReport>,
+    /// Partition between advisory diagnostics and enforced refusal outcomes.
+    pub diagnostic_partition: DiagnosticPartitionReport,
+    /// Assumption summary for time, frame, and clock model usage.
+    pub assumptions: ValidationAssumptionReport,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -207,6 +289,7 @@ pub fn build_validation_report(
     sample_rate_hz: f64,
     products_ok: bool,
     product_fallbacks: Vec<String>,
+    science_policy: ValidationSciencePolicy,
 ) -> Result<ValidationReport, bijux_gnss_core::api::InputError> {
     let mut ref_map = std::collections::BTreeMap::new();
     for r in reference {
@@ -347,6 +430,14 @@ pub fn build_validation_report(
             consistency_warnings.push(format!("NEES out of expected range: {nees:.3}"));
         }
     }
+    let lock_ratio_by_epoch = lock_ratio_by_epoch(tracks);
+    let integrity = classify_integrity(solutions, &lock_ratio_by_epoch, &science_policy);
+    let assumptions = summarize_assumptions(solutions);
+    let diagnostic_partition = partition_diagnostics(
+        &time_consistency.warnings,
+        &consistency_warnings,
+        solutions,
+    );
 
     Ok(ValidationReport {
         samples: tracks.iter().map(|t| t.epochs.len()).sum(),
@@ -377,7 +468,109 @@ pub fn build_validation_report(
             claim,
             support: ppp_support,
         },
+        science_policy,
+        integrity,
+        diagnostic_partition,
+        assumptions,
     })
+}
+
+fn lock_ratio_by_epoch(tracks: &[TrackingResult]) -> std::collections::BTreeMap<u64, f64> {
+    let mut counts: std::collections::BTreeMap<u64, (u64, u64)> = std::collections::BTreeMap::new();
+    for track in tracks {
+        for epoch in &track.epochs {
+            let entry = counts.entry(epoch.epoch.index).or_insert((0, 0));
+            entry.0 = entry.0.saturating_add(1);
+            if epoch.lock {
+                entry.1 = entry.1.saturating_add(1);
+            }
+        }
+    }
+    counts
+        .into_iter()
+        .map(|(epoch, (total, locked))| {
+            let ratio = if total == 0 { 1.0 } else { locked as f64 / total as f64 };
+            (epoch, ratio)
+        })
+        .collect()
+}
+
+fn classify_integrity(
+    solutions: &[NavSolutionEpoch],
+    lock_ratio_by_epoch: &std::collections::BTreeMap<u64, f64>,
+    science_policy: &ValidationSciencePolicy,
+) -> Vec<NavIntegrityReport> {
+    let mut out = Vec::with_capacity(solutions.len());
+    for solution in solutions {
+        let mut reasons = Vec::new();
+        if solution.used_sat_count < science_policy.min_used_satellites
+            || solution.pdop > science_policy.max_pdop
+        {
+            reasons.push("weak_geometry".to_string());
+        }
+        if solution.rms_m.0 > science_policy.max_residual_rms_m {
+            reasons.push("suspicious_residuals".to_string());
+        }
+        if let Some(ratio) = lock_ratio_by_epoch.get(&solution.epoch.index) {
+            if *ratio < science_policy.min_lock_ratio {
+                reasons.push("unstable_lock".to_string());
+            }
+        }
+        let class = match reasons.as_slice() {
+            [] => NavIntegrityClass::Nominal,
+            [single] if single == "weak_geometry" => NavIntegrityClass::WeakGeometry,
+            [single] if single == "suspicious_residuals" => NavIntegrityClass::SuspiciousResiduals,
+            [single] if single == "unstable_lock" => NavIntegrityClass::UnstableLock,
+            _ => NavIntegrityClass::Compound,
+        };
+        out.push(NavIntegrityReport { epoch_idx: solution.epoch.index, class, reasons });
+    }
+    out
+}
+
+fn summarize_assumptions(solutions: &[NavSolutionEpoch]) -> ValidationAssumptionReport {
+    let mut time_systems = std::collections::BTreeSet::new();
+    let mut reference_frames = std::collections::BTreeSet::new();
+    let mut clock_models = std::collections::BTreeSet::new();
+    for solution in solutions {
+        if let Some(assumptions) = &solution.assumptions {
+            time_systems.insert(assumptions.time_system.clone());
+            reference_frames.insert(assumptions.reference_frame.clone());
+            clock_models.insert(assumptions.clock_model.clone());
+        }
+    }
+    ValidationAssumptionReport {
+        time_systems: time_systems.into_iter().collect(),
+        reference_frames: reference_frames.into_iter().collect(),
+        clock_models: clock_models.into_iter().collect(),
+    }
+}
+
+fn partition_diagnostics(
+    time_warnings: &[String],
+    consistency_warnings: &[String],
+    solutions: &[NavSolutionEpoch],
+) -> DiagnosticPartitionReport {
+    let mut advisory = std::collections::BTreeSet::new();
+    for warning in time_warnings {
+        advisory.insert(format!("time_consistency:{warning}"));
+    }
+    for warning in consistency_warnings {
+        advisory.insert(format!("consistency:{warning}"));
+    }
+    let mut refusals = std::collections::BTreeSet::new();
+    for solution in solutions {
+        if let Some(refusal) = solution.refusal_class {
+            refusals.insert(format!(
+                "epoch={} refusal={:?} decision={}",
+                solution.epoch.index, refusal, solution.explain_decision
+            ));
+        }
+    }
+    DiagnosticPartitionReport {
+        advisory_diagnostics: advisory.into_iter().collect(),
+        enforced_refusals: refusals.into_iter().collect(),
+    }
 }
 
 fn convergence_report(horiz: &[(f64, f64)], vert: &[(f64, f64)]) -> ConvergenceReport {
@@ -666,10 +859,19 @@ mod tests {
             vel_y_mps: None,
             vel_z_mps: None,
         };
-        let report =
-            build_validation_report(&[], &[], &[sol], &[reference], 1.0, false, Vec::new())
-                .expect("validation report");
+        let report = build_validation_report(
+            &[],
+            &[],
+            &[sol],
+            &[reference],
+            1.0,
+            false,
+            Vec::new(),
+            ValidationSciencePolicy::default(),
+        )
+        .expect("validation report");
         assert!(report.horiz_error_m.rms <= 1e-6);
         assert!(report.vert_error_m.rms <= 1e-6);
+        assert_eq!(report.integrity.len(), 1);
     }
 }

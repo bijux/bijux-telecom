@@ -97,8 +97,9 @@ pub use crate::sim::synthetic as sim;
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use crate::validation_report::{
     build_validation_report, check_time_consistency, ConvergenceReport, FixTimelineEntry,
-    NavResidualReport, PppReadinessReport, TimeConsistencyReport, ValidationBudgets,
-    ValidationErrorStats, ValidationReport,
+    DiagnosticPartitionReport, NavIntegrityClass, NavIntegrityReport, NavResidualReport,
+    PppReadinessReport, TimeConsistencyReport, ValidationAssumptionReport, ValidationBudgets,
+    ValidationErrorStats, ValidationReport, ValidationSciencePolicy,
 };
 
 /// Artifacts produced by a receiver pipeline run.
