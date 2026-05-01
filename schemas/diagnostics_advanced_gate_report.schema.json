@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DiagnosticsAdvancedGateReport",
+  "type": "object",
+  "required": ["schema_version", "run_dir", "mode", "gate_passed", "reasons", "support", "evidence"],
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "run_dir": { "type": "string" },
+    "mode": { "type": "string", "enum": ["Rtk", "Ppp"] },
+    "gate_passed": { "type": "boolean" },
+    "reasons": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "support": { "type": "object" },
+    "evidence": { "type": "object" }
+  },
+  "additionalProperties": true
+}

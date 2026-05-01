@@ -599,6 +599,46 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
+        DiagnosticsCommand::AdvancedGate {
+            common,
+            run_dir,
+            mode,
+            strict,
+        } => {
+            let _ = runtime_config_from_env(&common, None);
+            let report = advanced_gate_report(&run_dir, mode)?;
+            let passed = report
+                .get("gate_passed")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if strict && !passed {
+                return Err(classified_error(
+                    CliErrorClass::UnsupportedScience,
+                    format!(
+                        "advanced gate failed for mode={:?} run_dir={}",
+                        mode,
+                        run_dir.display()
+                    ),
+                ));
+            }
+            match common.report {
+                ReportFormat::Table => print_advanced_gate_table(&report),
+                ReportFormat::Json => emit_report(&common, "diagnostics_advanced_gate", &report)?,
+            }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_advanced_gate",
+                &report,
+                "diagnostics_advanced_gate_report.schema.json",
+            )?;
+            write_manifest(
+                &common,
+                "diagnostics_advanced_gate",
+                &ReceiverConfig::default(),
+                None,
+                &report,
+            )?;
+        }
     }
 
     Ok(())
@@ -792,6 +832,31 @@ fn print_replay_audit_table(report: &serde_json::Value) {
     println!("baseline_command\t{baseline_command}");
     println!("candidate_command\t{candidate_command}");
     println!("reasons\t{reasons}");
+}
+
+fn print_advanced_gate_table(report: &serde_json::Value) {
+    let mode = report
+        .get("mode")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let passed = report
+        .get("gate_passed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let maturity = report
+        .get("support")
+        .and_then(|v| v.get("maturity"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let evidence_supported = report
+        .get("evidence")
+        .and_then(|v| v.get("claim_guard_supported"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    println!("mode\t{mode}");
+    println!("gate_passed\t{passed}");
+    println!("maturity\t{maturity}");
+    println!("claim_guard_supported\t{evidence_supported}");
 }
 
 fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
@@ -1203,6 +1268,94 @@ fn replay_audit_report(baseline_run_dir: &Path, candidate_run_dir: &Path) -> Res
             .and_then(|v| v.as_str())
             .unwrap_or("unknown"),
         "compare": compare
+    }))
+}
+
+fn advanced_gate_report(run_dir: &Path, mode: AdvancedGateMode) -> Result<serde_json::Value> {
+    ensure_run_dir_exists(run_dir)?;
+    let mode_label = match mode {
+        AdvancedGateMode::Rtk => "Rtk",
+        AdvancedGateMode::Ppp => "Ppp",
+    };
+    let support_path = run_dir.join("artifacts").join("rtk").join("rtk_support_matrix.json");
+    let support_json = if support_path.exists() {
+        serde_json::from_str::<serde_json::Value>(&fs::read_to_string(&support_path)?).unwrap_or(serde_json::Value::Null)
+    } else {
+        serde_json::Value::Null
+    };
+    let support_row = support_json
+        .get("rows")
+        .and_then(|v| v.as_array())
+        .and_then(|rows| {
+            rows.iter().find(|row| {
+                row.get("mode")
+                    .and_then(|v| v.as_str())
+                    .map(|value| value == mode_label)
+                    .unwrap_or(false)
+            })
+        })
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+
+    let maturity = support_row
+        .get("maturity")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let real_solver = support_row
+        .get("real_solver")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let evidence_path = run_dir
+        .join("artifacts")
+        .join("validate")
+        .join("validation_evidence_bundle.json");
+    let evidence_json = if evidence_path.exists() {
+        serde_json::from_str::<serde_json::Value>(&fs::read_to_string(&evidence_path)?).unwrap_or(serde_json::Value::Null)
+    } else {
+        serde_json::Value::Null
+    };
+    let claim_guard_supported = evidence_json
+        .get("claim_evidence_guard")
+        .and_then(|v| v.get("supported"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let mut reasons = Vec::new();
+    if support_row.is_null() {
+        reasons.push("support_matrix_row_missing".to_string());
+    }
+    if maturity == "Scaffolding" {
+        reasons.push("mode_is_scaffolding".to_string());
+    }
+    if !real_solver {
+        reasons.push("mode_not_real_solver".to_string());
+    }
+    if !claim_guard_supported {
+        reasons.push("claim_evidence_guard_not_supported".to_string());
+    }
+    let gate_passed = reasons.is_empty();
+
+    Ok(serde_json::json!({
+        "schema_version": 1,
+        "run_dir": run_dir.display().to_string(),
+        "mode": mode_label,
+        "gate_passed": gate_passed,
+        "reasons": reasons,
+        "support": {
+            "matrix_path": support_path.display().to_string(),
+            "maturity": maturity,
+            "real_solver": real_solver,
+            "row": support_row
+        },
+        "evidence": {
+            "bundle_path": evidence_path.display().to_string(),
+            "claim_guard_supported": claim_guard_supported,
+            "claim_guard": evidence_json
+                .get("claim_evidence_guard")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null)
+        }
     }))
 }
 

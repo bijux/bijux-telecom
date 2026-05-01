@@ -510,6 +510,30 @@ pub(crate) enum DiagnosticsCommand {
         #[arg(long, value_name = "DIR")]
         candidate_run_dir: PathBuf,
     },
+
+    /// Gate advanced RTK/PPP workflow claims using support maturity and recorded evidence
+    AdvancedGate {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Run directory to evaluate
+        #[arg(long, value_name = "DIR")]
+        run_dir: PathBuf,
+
+        /// Advanced workflow mode to evaluate
+        #[arg(long, value_enum)]
+        mode: AdvancedGateMode,
+
+        /// Fail command if gate does not pass
+        #[arg(long)]
+        strict: bool,
+    },
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug)]
+pub(crate) enum AdvancedGateMode {
+    Rtk,
+    Ppp,
 }
 
 #[derive(Subcommand)]
