@@ -4,7 +4,7 @@ use num_complex::Complex;
 
 use bijux_gnss_core::api::{
     AcqHypothesis, Chips, Constellation, Hertz, SampleClock, SampleTime, SamplesFrame, SatId,
-    Seconds, TrackEpoch, TrackTransition,
+    Seconds, TrackEpoch, TrackTransition, TrackingAssumptions,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -218,6 +218,7 @@ impl Tracking {
                 "channel={} sat={:?}-{}",
                 channel_id, sat.constellation, sat.prn
             ),
+            tracking_assumptions: Some(default_tracking_assumptions(&self.config)),
             processing_ms: None,
         };
         (track_epoch, correlator)
@@ -564,6 +565,7 @@ impl Tracking {
                 cycle_slip_reason,
                 lock_state,
                 lock_state_reason,
+                tracking_assumptions: Some(default_tracking_assumptions(&self.config)),
                 ..track_epoch
             });
         }
@@ -602,6 +604,87 @@ fn epoch_lock_quality(lock: bool, pll_lock: bool, dll_lock: bool, fll_lock: bool
         quality *= 0.9;
     }
     quality
+}
+
+#[derive(Debug, Clone)]
+struct TransitionDecision {
+    to_state: ChannelState,
+    reason: String,
+    next_unlocked_count: u8,
+}
+
+fn deterministic_transition_rule(
+    from_state: ChannelState,
+    lock: bool,
+    anti_false_lock: bool,
+    cycle_slip: bool,
+    unlocked_count: u8,
+) -> TransitionDecision {
+    if cycle_slip {
+        return TransitionDecision {
+            to_state: ChannelState::Lost,
+            reason: "cycle_slip".to_string(),
+            next_unlocked_count: unlocked_count.saturating_add(1),
+        };
+    }
+    if lock {
+        return TransitionDecision {
+            to_state: ChannelState::Tracking,
+            reason: "locked".to_string(),
+            next_unlocked_count: 0,
+        };
+    }
+    if anti_false_lock {
+        return TransitionDecision {
+            to_state: ChannelState::PullIn,
+            reason: "anti_false_lock".to_string(),
+            next_unlocked_count: unlocked_count.saturating_add(1),
+        };
+    }
+    let next_unlocked = unlocked_count.saturating_add(1);
+    if from_state == ChannelState::Tracking && next_unlocked >= 2 {
+        return TransitionDecision {
+            to_state: ChannelState::Lost,
+            reason: "lock_lost".to_string(),
+            next_unlocked_count: next_unlocked,
+        };
+    }
+    TransitionDecision {
+        to_state: ChannelState::PullIn,
+        reason: "pulling".to_string(),
+        next_unlocked_count: next_unlocked,
+    }
+}
+
+fn default_tracking_assumptions(config: &ReceiverPipelineConfig) -> TrackingAssumptions {
+    TrackingAssumptions {
+        integration_ms: config.tracking_integration_ms,
+        dll_bw_hz: config.dll_bw_hz,
+        pll_bw_hz: config.pll_bw_hz,
+        fll_bw_hz: config.fll_bw_hz,
+        discriminator_family: "early_prompt_late".to_string(),
+        aiding_mode: "none".to_string(),
+    }
+}
+
+fn tracking_stability_signature(epochs: &[TrackEpoch]) -> String {
+    let mut rows = epochs
+        .iter()
+        .map(|epoch| {
+            format!(
+                "{}|{}|{:.3}|{:.3}|{}|{}|{}",
+                epoch.epoch.index,
+                epoch.sample_index,
+                epoch.carrier_hz.0,
+                epoch.code_phase_samples.0,
+                epoch.lock_state,
+                epoch.lock,
+                epoch.cycle_slip
+            )
+        })
+        .collect::<Vec<_>>();
+    rows.sort();
+    rows.join(";")
 }
 
 impl Tracking {
