@@ -284,7 +284,7 @@ pub mod v1 {
 
     pub mod nav {
         use super::*;
-        use crate::api::NavSolutionEpoch;
+        use crate::api::{NavSolutionEpoch, SolutionStatus};
 
         /// Navigation solution artifact v1.
         pub type NavSolutionEpochV1 = ArtifactV1<NavSolutionEpoch>;
@@ -300,6 +300,55 @@ pub mod v1 {
                         DiagnosticSeverity::Error,
                         "GNSS_NUMERIC_PVT_INVALID",
                         "PVT position contains NaN/Inf",
+                    ));
+                }
+                if self.model_version == 0 {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Error,
+                        "GNSS_NAV_MODEL_VERSION_INVALID",
+                        "nav solution model_version must be non-zero",
+                    ));
+                }
+                if self.sat_count != self.used_sat_count + self.rejected_sat_count {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Error,
+                        "GNSS_NAV_SAT_COUNTS_INVALID",
+                        "sat_count does not match used_sat_count + rejected_sat_count",
+                    ));
+                }
+                if self.valid != self.status.is_valid() {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Warning,
+                        "GNSS_NAV_STATUS_VALID_MISMATCH",
+                        "nav solution valid flag does not match status validity",
+                    ));
+                }
+                if self.artifact_id.is_empty() {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Warning,
+                        "GNSS_NAV_ARTIFACT_ID_MISSING",
+                        "nav solution artifact_id is empty",
+                    ));
+                }
+                if self.source_observation_epoch_id.is_empty() {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Warning,
+                        "GNSS_NAV_SOURCE_EPOCH_ID_MISSING",
+                        "nav solution source_observation_epoch_id is empty",
+                    ));
+                }
+                if self.refusal_class.is_some() && self.explain_decision.is_empty() {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Warning,
+                        "GNSS_NAV_EXPLAIN_DECISION_MISSING",
+                        "nav solution refusal_class requires explain_decision",
+                    ));
+                }
+                if matches!(self.status, SolutionStatus::Invalid) && self.refusal_class.is_none() {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Warning,
+                        "GNSS_NAV_REFUSAL_CLASS_MISSING",
+                        "invalid nav solution should carry a refusal_class",
                     ));
                 }
                 events
