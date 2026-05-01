@@ -588,6 +588,16 @@ pub(crate) enum DiagnosticsCommand {
         #[arg(long, value_name = "DIR")]
         run_dir: PathBuf,
     },
+
+    /// Structured multi-channel summary for large GNSS runs
+    ChannelSummary {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Run directory to inspect
+        #[arg(long, value_name = "DIR")]
+        run_dir: PathBuf,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]

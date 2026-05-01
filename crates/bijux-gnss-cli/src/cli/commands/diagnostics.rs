@@ -790,6 +790,27 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
+        DiagnosticsCommand::ChannelSummary { common, run_dir } => {
+            let _ = runtime_config_from_env(&common, None);
+            let report = channel_summary_report(&run_dir)?;
+            match common.report {
+                ReportFormat::Table => print_channel_summary_table(&report),
+                ReportFormat::Json => emit_report(&common, "diagnostics_channel_summary", &report)?,
+            }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_channel_summary",
+                &report,
+                "diagnostics_channel_summary_report.schema.json",
+            )?;
+            write_manifest(
+                &common,
+                "diagnostics_channel_summary",
+                &ReceiverConfig::default(),
+                None,
+                &report,
+            )?;
+        }
     }
 
     Ok(())
@@ -1154,6 +1175,21 @@ fn print_operator_status_table(report: &serde_json::Value) {
     println!("run_state\t{mode}");
     println!("quality_state\t{quality}");
     println!("evidence_state\t{evidence}");
+}
+
+fn print_channel_summary_table(report: &serde_json::Value) {
+    let channels = report
+        .get("summary")
+        .and_then(|v| v.get("channel_count"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let epochs = report
+        .get("summary")
+        .and_then(|v| v.get("obs_epochs"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    println!("channel_count\t{channels}");
+    println!("obs_epochs\t{epochs}");
 }
 
 fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
@@ -1915,6 +1951,45 @@ fn operator_status_report(run_dir: &Path) -> Result<serde_json::Value> {
             "corrupted_artifact_count": corrupted,
             "replay_fingerprint": repro.get("replay_fingerprint").cloned().unwrap_or(serde_json::Value::Null)
         }
+    }))
+}
+
+fn channel_summary_report(run_dir: &Path) -> Result<serde_json::Value> {
+    ensure_run_dir_exists(run_dir)?;
+    let obs_path = run_dir.join("artifacts").join("obs").join("obs.jsonl");
+    let obs = if obs_path.exists() {
+        read_obs_epochs(&obs_path).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let mut per_channel: std::collections::BTreeMap<String, (usize, f64)> =
+        std::collections::BTreeMap::new();
+    for epoch in &obs {
+        for sat in &epoch.sats {
+            let key = format!("{:?}-{}", sat.signal_id.sat.constellation, sat.signal_id.sat.prn);
+            let entry = per_channel.entry(key).or_insert((0usize, 0.0));
+            entry.0 = entry.0.saturating_add(1);
+            entry.1 += sat.cn0_dbhz;
+        }
+    }
+    let channels: Vec<serde_json::Value> = per_channel
+        .iter()
+        .map(|(channel, (count, sum_cn0))| {
+            serde_json::json!({
+                "channel": channel,
+                "epochs_seen": count,
+                "mean_cn0_dbhz": if *count == 0 { 0.0 } else { *sum_cn0 / *count as f64 }
+            })
+        })
+        .collect();
+    Ok(serde_json::json!({
+        "schema_version": 1,
+        "run_dir": run_dir.display().to_string(),
+        "summary": {
+            "obs_epochs": obs.len(),
+            "channel_count": channels.len()
+        },
+        "channels": channels
     }))
 }
 
