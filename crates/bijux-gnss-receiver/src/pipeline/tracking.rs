@@ -460,21 +460,16 @@ impl Tracking {
             state.prev_prompt_phase_cycles = Some(phase_cycles);
 
             let from_state = state.state;
-            if lock {
-                state.unlocked_count = 0;
-                state.state = ChannelState::Tracking;
-            } else {
-                state.unlocked_count = state.unlocked_count.saturating_add(1);
-                if state.state == ChannelState::Tracking && state.unlocked_count >= 2 {
-                    state.state = ChannelState::Lost;
-                } else {
-                    state.state = ChannelState::PullIn;
-                }
-            }
-
+            let transition = deterministic_transition_rule(
+                from_state,
+                lock,
+                anti_false_lock,
+                cycle_slip,
+                state.unlocked_count,
+            );
+            state.unlocked_count = transition.next_unlocked_count;
+            state.state = transition.to_state;
             if cycle_slip {
-                state.unlocked_count = state.unlocked_count.saturating_add(1);
-                state.state = ChannelState::Lost;
                 cycle_slip_reason = match cycle_slip_reason {
                     Some(reason) => Some(reason),
                     None => Some("cycle_slip_detected".to_string()),
@@ -488,22 +483,7 @@ impl Tracking {
                 ChannelState::Tracking => "tracking".to_string(),
                 ChannelState::Lost => "lost".to_string(),
             };
-            let lock_state_reason = if !lock {
-                if anti_false_lock {
-                    Some("anti_false_lock".to_string())
-                } else if cycle_slip {
-                    Some("cycle_slip".to_string())
-                } else {
-                    Some(match state.state {
-                        ChannelState::Lost => "lock_lost".to_string(),
-                        ChannelState::PullIn => "pulling".to_string(),
-                        ChannelState::Acquired => "weak_lock".to_string(),
-                        _ => "searching".to_string(),
-                    })
-                }
-            } else {
-                Some("locked".to_string())
-            };
+            let lock_state_reason = Some(transition.reason.clone());
 
             if cycle_slip_reason.is_none() && state.state == ChannelState::Lost && !lock {
                 cycle_slip_reason = Some("lock_reacquire".to_string());
