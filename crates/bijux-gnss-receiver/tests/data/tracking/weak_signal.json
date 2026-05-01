@@ -1,0 +1,8 @@
+{
+  "id": "weak-signal",
+  "initial_state": "Acquired",
+  "events": [
+    { "lock": false, "anti_false_lock": true, "cycle_slip": false }
+  ],
+  "expected_final_state": "PullIn"
+}

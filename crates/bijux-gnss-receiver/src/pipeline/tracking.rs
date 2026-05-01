@@ -698,6 +698,9 @@ impl Tracking {
 mod tests {
     use super::{ChannelState, Tracking};
     use bijux_gnss_core::api::AcqHypothesis;
+    use serde::Deserialize;
+    use std::fs;
+    use std::path::Path;
 
     #[test]
     fn tracking_recovery_from_loss_of_lock() {
@@ -725,6 +728,74 @@ mod tests {
     }
 
     #[test]
+    fn deterministic_transition_rule_handles_cycle_slip_first() {
+        let decision =
+            super::deterministic_transition_rule(ChannelState::Tracking, false, false, true, 1);
+        assert_eq!(decision.to_state, ChannelState::Lost);
+        assert_eq!(decision.reason, "cycle_slip");
+        assert_eq!(decision.next_unlocked_count, 2);
+    }
+
+    #[test]
+    fn deterministic_transition_rule_promotes_lock() {
+        let decision =
+            super::deterministic_transition_rule(ChannelState::PullIn, true, false, false, 2);
+        assert_eq!(decision.to_state, ChannelState::Tracking);
+        assert_eq!(decision.reason, "locked");
+        assert_eq!(decision.next_unlocked_count, 0);
+    }
+
+    #[test]
+    fn deterministic_transition_rule_marks_loss_after_tracking_failures() {
+        let decision =
+            super::deterministic_transition_rule(ChannelState::Tracking, false, false, false, 1);
+        assert_eq!(decision.to_state, ChannelState::Lost);
+        assert_eq!(decision.reason, "lock_lost");
+        assert_eq!(decision.next_unlocked_count, 2);
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct TrackingEventFixture {
+        lock: bool,
+        anti_false_lock: bool,
+        cycle_slip: bool,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct TrackingScenarioFixture {
+        id: String,
+        initial_state: String,
+        events: Vec<TrackingEventFixture>,
+        expected_final_state: String,
+    }
+
+    #[test]
+    fn tracking_scenario_fixtures_are_deterministic() {
+        for fixture_path in tracking_fixture_paths() {
+            let fixture = load_tracking_fixture(&fixture_path);
+            let mut state = parse_state(&fixture.initial_state);
+            let mut unlocked = 0u8;
+            for event in &fixture.events {
+                let decision = super::deterministic_transition_rule(
+                    state,
+                    event.lock,
+                    event.anti_false_lock,
+                    event.cycle_slip,
+                    unlocked,
+                );
+                state = decision.to_state;
+                unlocked = decision.next_unlocked_count;
+            }
+            assert_eq!(
+                state,
+                parse_state(&fixture.expected_final_state),
+                "fixture {} final state mismatch",
+                fixture.id
+            );
+        }
+    }
+
+    #[test]
     #[cfg(feature = "alloc-audit")]
     fn tracking_allocations_under_threshold() {
         let config = crate::engine::receiver_config::ReceiverPipelineConfig::default();
@@ -747,5 +818,32 @@ mod tests {
             allocated <= threshold,
             "tracking allocations exceeded threshold: {allocated} > {threshold}"
         );
+    }
+
+    fn tracking_fixture_paths() -> Vec<std::path::PathBuf> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/tracking");
+        let mut paths = fs::read_dir(root)
+            .expect("read tracking fixture directory")
+            .filter_map(|entry| entry.ok().map(|e| e.path()))
+            .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
+            .collect::<Vec<_>>();
+        paths.sort();
+        paths
+    }
+
+    fn load_tracking_fixture(path: &Path) -> TrackingScenarioFixture {
+        let raw = fs::read_to_string(path).expect("read tracking fixture");
+        serde_json::from_str(&raw).expect("parse tracking fixture")
+    }
+
+    fn parse_state(value: &str) -> ChannelState {
+        match value {
+            "Idle" => ChannelState::Idle,
+            "Acquired" => ChannelState::Acquired,
+            "PullIn" => ChannelState::PullIn,
+            "Tracking" => ChannelState::Tracking,
+            "Lost" => ChannelState::Lost,
+            _ => panic!("unsupported state {value}"),
+        }
     }
 }
