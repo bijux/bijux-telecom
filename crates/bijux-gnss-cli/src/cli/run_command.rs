@@ -144,6 +144,7 @@ fn solve_epoch_ekf(
     let mut used = 0;
     let mut sats: Vec<&bijux_gnss_infra::api::core::ObsSatellite> = obs.sats.iter().collect();
     sats.sort_by_key(|s| s.signal_id);
+    let sat_count = sats.len();
     for sat in sats {
         let eph = match ephs.iter().find(|e| e.sat == sat.signal_id.sat) {
             Some(e) => e,
@@ -286,6 +287,50 @@ fn solve_epoch_ekf(
         ekf_observed_variance: ctx.ekf.health.observed_variance,
         integrity_hpl_m: None,
         integrity_vpl_m: None,
+        model_version: bijux_gnss_infra::api::core::NAV_SOLUTION_MODEL_VERSION,
+        lifecycle_state: match status {
+            bijux_gnss_infra::api::core::SolutionStatus::Invalid => {
+                bijux_gnss_infra::api::core::NavLifecycleState::Invalid
+            }
+            bijux_gnss_infra::api::core::SolutionStatus::Held => {
+                bijux_gnss_infra::api::core::NavLifecycleState::Held
+            }
+            bijux_gnss_infra::api::core::SolutionStatus::Degraded => {
+                bijux_gnss_infra::api::core::NavLifecycleState::Degraded
+            }
+            bijux_gnss_infra::api::core::SolutionStatus::Coarse => {
+                bijux_gnss_infra::api::core::NavLifecycleState::Coarse
+            }
+            bijux_gnss_infra::api::core::SolutionStatus::Converged => {
+                bijux_gnss_infra::api::core::NavLifecycleState::Converged
+            }
+            bijux_gnss_infra::api::core::SolutionStatus::Float => {
+                bijux_gnss_infra::api::core::NavLifecycleState::Float
+            }
+            bijux_gnss_infra::api::core::SolutionStatus::Fixed => {
+                bijux_gnss_infra::api::core::NavLifecycleState::Fixed
+            }
+        },
+        uncertainty_class: if status == bijux_gnss_infra::api::core::SolutionStatus::Invalid {
+            bijux_gnss_infra::api::core::NavUncertaintyClass::Unknown
+        } else if status == bijux_gnss_infra::api::core::SolutionStatus::Degraded {
+            bijux_gnss_infra::api::core::NavUncertaintyClass::High
+        } else {
+            bijux_gnss_infra::api::core::NavUncertaintyClass::Medium
+        },
+        assumptions: None,
+        refusal_class: None,
+        artifact_id: String::new(),
+        source_observation_epoch_id: String::new(),
+        explain_decision: "cli_navigation_solution".to_string(),
+        explain_reasons: vec![format!("usable_satellites={used}")],
+        provenance: None,
+        sat_count,
+        used_sat_count: used,
+        rejected_sat_count: sat_count.saturating_sub(used),
+        hdop: None,
+        vdop: None,
+        gdop: None,
     }))
 }
 
