@@ -455,7 +455,10 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
         DiagnosticsCommand::Workflow { common } => {
             let _ = runtime_config_from_env(&common, None);
             let report = workflow_map_report();
-            println!("{}", serde_json::to_string_pretty(&report)?);
+            match common.report {
+                ReportFormat::Table => print_workflow_table(&report),
+                ReportFormat::Json => emit_report(&common, "diagnostics_workflow", &report)?,
+            }
             write_manifest(
                 &common,
                 "diagnostics_workflow",
@@ -474,24 +477,30 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
             let summary = bijux_gnss_infra::api::core::aggregate_diagnostics(&events);
             let mut entries = summary.entries.clone();
             entries.sort_by(|a, b| b.count.cmp(&a.count));
-            println!("Diagnostics summary (top {}):", top);
-            for entry in entries.into_iter().take(top.max(1)) {
-                println!(
-                    "{}\t{:?}\tcount={}\tfirst={:?}\tlast={:?}",
-                    entry.code, entry.severity, entry.count, entry.first_epoch, entry.last_epoch
-                );
-            }
             let report = serde_json::json!({
                 "run_dir": run_dir.display().to_string(),
                 "total": summary.total,
                 "top": top,
+                "entries": entries,
             });
+            match common.report {
+                ReportFormat::Table => {
+                    print_diagnostics_summary_table(
+                        report.get("entries").and_then(|v| v.as_array()),
+                        top,
+                    );
+                }
+                ReportFormat::Json => emit_report(&common, "diagnostics_summarize", &report)?,
+            }
             write_manifest(&common, "diagnostics_summarize", &ReceiverConfig::default(), None, &report)?;
         }
         DiagnosticsCommand::Explain { common, run_dir } => {
             let _ = runtime_config_from_env(&common, None);
             let summary = explain_run_scope(&run_dir)?;
-            println!("{}", serde_json::to_string_pretty(&summary)?);
+            match common.report {
+                ReportFormat::Table => print_diagnostics_explain_table(&summary),
+                ReportFormat::Json => emit_report(&common, "diagnostics_explain", &summary)?,
+            }
             write_manifest(
                 &common,
                 "diagnostics_explain",
@@ -503,7 +512,10 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
         DiagnosticsCommand::VerifyRepro { common, run_dir } => {
             let _ = runtime_config_from_env(&common, None);
             let report = verify_repro_bundle(&run_dir)?;
-            println!("{}", serde_json::to_string_pretty(&report)?);
+            match common.report {
+                ReportFormat::Table => print_verify_repro_table(&report),
+                ReportFormat::Json => emit_report(&common, "diagnostics_verify_repro", &report)?,
+            }
             write_manifest(
                 &common,
                 "diagnostics_verify_repro",
@@ -553,6 +565,80 @@ fn workflow_map_report() -> serde_json::Value {
             }
         ]
     })
+}
+
+fn print_workflow_table(report: &serde_json::Value) {
+    println!("GNSS workflow map");
+    if let Some(stages) = report.get("workflow").and_then(|v| v.as_array()) {
+        for stage in stages {
+            let label = stage.get("stage").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let command = stage
+                .get("command")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            println!("{label}\t{command}");
+        }
+    }
+}
+
+fn print_diagnostics_summary_table(entries: Option<&Vec<serde_json::Value>>, top: usize) {
+    println!("Diagnostics summary (top {}):", top);
+    if let Some(items) = entries {
+        for entry in items.iter().take(top.max(1)) {
+            let code = entry.get("code").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let severity = entry
+                .get("severity")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            let count = entry.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
+            println!("{code}\t{severity}\tcount={count}");
+        }
+    }
+}
+
+fn print_diagnostics_explain_table(report: &serde_json::Value) {
+    let command = report
+        .get("replay_scope")
+        .and_then(|v| v.get("command"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let deterministic = report
+        .get("replay_scope")
+        .and_then(|v| v.get("deterministic"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let artifacts = report
+        .get("artifact_integrity")
+        .and_then(|v| v.get("artifact_files_scanned"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let corrupted = report
+        .get("artifact_integrity")
+        .and_then(|v| v.get("corrupted_files"))
+        .and_then(|v| v.as_array())
+        .map_or(0usize, Vec::len);
+    println!("command\t{command}");
+    println!("deterministic\t{deterministic}");
+    println!("artifact_files\t{artifacts}");
+    println!("corrupted_files\t{corrupted}");
+}
+
+fn print_verify_repro_table(report: &serde_json::Value) {
+    let audit_ok = report
+        .get("audit_ok")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let fingerprint = report
+        .get("replay_fingerprint")
+        .and_then(|v| v.as_str())
+        .unwrap_or("missing");
+    let issue_count = report
+        .get("issues")
+        .and_then(|v| v.as_array())
+        .map_or(0usize, Vec::len);
+    println!("audit_ok\t{audit_ok}");
+    println!("issues\t{issue_count}");
+    println!("replay_fingerprint\t{fingerprint}");
 }
 
 fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
