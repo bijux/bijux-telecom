@@ -7,6 +7,7 @@ use crate::api::{
     Chips, Constellation, Cycles, Epoch, Hertz, Meters, SampleTime, SatId, Seconds, SigId,
     SignalBand, SignalSpec,
 };
+use crate::api::SignalCode;
 use num_complex::Complex;
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +21,129 @@ fn default_phase_step_samples() -> usize {
 
 fn default_phase_search_mode() -> String {
     "full_code".to_string()
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum SupportStatus {
+    Supported,
+    Unsupported,
+    Planned,
+    Deprecated,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SignalSupportRow {
+    pub constellation: Constellation,
+    pub band: SignalBand,
+    pub code: SignalCode,
+    pub status: SupportStatus,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SupportMatrix {
+    pub schema_version: u32,
+    pub rows: Vec<SignalSupportRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcqThresholdProvenance {
+    pub coherent_ms: u32,
+    pub noncoherent: u32,
+    pub doppler_search_hz: i32,
+    pub doppler_step_hz: i32,
+    pub peak_mean_threshold: f32,
+    pub peak_second_threshold: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcqExplainCandidate {
+    pub rank: u8,
+    pub code_phase_samples: usize,
+    pub carrier_hz: f64,
+    pub peak: f32,
+    pub peak_mean_ratio: f32,
+    pub peak_second_ratio: f32,
+    pub second_peak_ratio: f32,
+    pub mean: f32,
+    pub hypothesis: AcqHypothesis,
+    pub score: f32,
+    pub threshold_hit: bool,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcqExplain {
+    pub sat: SatId,
+    pub selected_rank: Option<u8>,
+    pub selected_reason: String,
+    pub candidate_count: usize,
+    pub candidates: Vec<AcqExplainCandidate>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrackTransition {
+    pub sat: SatId,
+    pub channel_id: u8,
+    pub epoch_idx: u64,
+    pub sample_index: u64,
+    pub from_state: String,
+    pub to_state: String,
+    pub reason: String,
+    pub lock_quality: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ObsEpochManifest {
+    pub version: u32,
+    pub artifact_id: String,
+    pub epoch_id: String,
+    pub source_epoch_idx: u64,
+    pub source_sample_index: u64,
+    pub decision: ObservationEpochDecision,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SatObservationDecision {
+    pub sat: SatId,
+    pub status: ObservationStatus,
+    pub reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ObsDecisionArtifact {
+    pub artifact_id: String,
+    pub epoch_idx: u64,
+    pub decision: ObservationEpochDecision,
+    pub reasons: Vec<String>,
+    pub accepted_sats: Vec<SatObservationDecision>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ObservationStatus {
+    Accepted,
+    Missing,
+    Weak,
+    Inconsistent,
+    Rejected,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ObservationEpochDecision {
+    Accepted,
+    Rejected,
+}
+
+impl Default for ObservationStatus {
+    fn default() -> Self {
+        Self::Accepted
+    }
+}
+
+impl Default for ObservationEpochDecision {
+    fn default() -> Self {
+        Self::Accepted
+    }
 }
 
 pub type Sample = Complex<f32>;
@@ -130,6 +254,10 @@ pub struct AcqResult {
     pub assumptions: Option<AcqAssumptions>,
     #[serde(default)]
     pub evidence: Vec<AcqEvidence>,
+    #[serde(default)]
+    pub threshold_provenance: Option<AcqThresholdProvenance>,
+    #[serde(default)]
+    pub explain_selection_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -169,6 +297,12 @@ pub struct TrackEpoch {
     #[serde(default)]
     pub lock_state_reason: Option<String>,
     #[serde(default)]
+    pub channel_id: Option<u8>,
+    #[serde(default)]
+    pub channel_uid: String,
+    #[serde(default)]
+    pub tracking_provenance: String,
+    #[serde(default)]
     pub processing_ms: Option<f64>,
 }
 
@@ -201,6 +335,9 @@ impl Default for TrackEpoch {
             cycle_slip_reason: None,
             lock_state: "inactive".to_string(),
             lock_state_reason: None,
+            channel_id: None,
+            channel_uid: String::new(),
+            tracking_provenance: String::new(),
             processing_ms: None,
         }
     }
@@ -240,6 +377,12 @@ pub struct ObsMetadata {
     #[serde(default)]
     pub tracking_lock_quality: f64,
     #[serde(default)]
+    pub observation_status: String,
+    #[serde(default)]
+    pub observation_reject_reasons: Vec<String>,
+    #[serde(default)]
+    pub observation_epoch_id: String,
+    #[serde(default)]
     pub time_tag_source: String,
     #[serde(default)]
     pub time_tag_sample_index: u64,
@@ -271,6 +414,9 @@ impl Default for ObsMetadata {
             tracking_state: String::new(),
             tracking_lock_state: String::new(),
             tracking_lock_quality: 0.0,
+            observation_status: "accepted".to_string(),
+            observation_reject_reasons: Vec::new(),
+            observation_epoch_id: String::new(),
             time_tag_source: String::new(),
             time_tag_sample_index: 0,
             time_tag_sample_rate_hz: 0.0,
@@ -298,6 +444,10 @@ pub struct ObsSatellite {
     pub cn0_dbhz: f64,
     pub lock_flags: LockFlags,
     pub multipath_suspect: bool,
+    #[serde(default)]
+    pub observation_status: ObservationStatus,
+    #[serde(default)]
+    pub observation_reject_reasons: Vec<String>,
     pub elevation_deg: Option<f64>,
     pub azimuth_deg: Option<f64>,
     pub weight: Option<f64>,
@@ -318,6 +468,12 @@ pub struct ObsEpoch {
     pub processing_ms: Option<f64>,
     pub role: ReceiverRole,
     pub sats: Vec<ObsSatellite>,
+    #[serde(default)]
+    pub decision: ObservationEpochDecision,
+    #[serde(default)]
+    pub decision_reason: Option<String>,
+    #[serde(default)]
+    pub manifest: Option<ObsEpochManifest>,
 }
 
 impl ObsEpoch {
