@@ -836,6 +836,27 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
+        DiagnosticsCommand::MachineCatalog { common } => {
+            let _ = runtime_config_from_env(&common, None);
+            let report = machine_catalog_report();
+            match common.report {
+                ReportFormat::Table => print_machine_catalog_table(&report),
+                ReportFormat::Json => emit_report(&common, "diagnostics_machine_catalog", &report)?,
+            }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_machine_catalog",
+                &report,
+                "diagnostics_machine_catalog_report.schema.json",
+            )?;
+            write_manifest(
+                &common,
+                "diagnostics_machine_catalog",
+                &ReceiverConfig::default(),
+                None,
+                &report,
+            )?;
+        }
     }
 
     Ok(())
@@ -1228,6 +1249,20 @@ fn print_export_bundle_table(report: &serde_json::Value) {
         .unwrap_or(0);
     println!("bundle_dir\t{path}");
     println!("file_count\t{files}");
+}
+
+fn print_machine_catalog_table(report: &serde_json::Value) {
+    println!("machine-readable report catalog");
+    if let Some(rows) = report.get("reports").and_then(|v| v.as_array()) {
+        for row in rows {
+            let name = row.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let schema = row
+                .get("schema")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            println!("{name}\t{schema}");
+        }
+    }
 }
 
 fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
@@ -2091,6 +2126,30 @@ fn export_bundle_report(run_dir: &Path, out_dir: Option<&PathBuf>) -> Result<ser
             .map_or(0usize, Vec::len),
         "bundle_manifest": bundle_manifest
     }))
+}
+
+fn machine_catalog_report() -> serde_json::Value {
+    let reports = vec![
+        serde_json::json!({"name": "diagnostics_operator_map", "schema": "schemas/diagnostics_operator_map_report.schema.json", "schema_version": 1}),
+        serde_json::json!({"name": "diagnostics_workflow", "schema": "schemas/diagnostics_workflow_report.schema.json", "schema_version": 1}),
+        serde_json::json!({"name": "diagnostics_summarize", "schema": "schemas/diagnostics_summary_report.schema.json", "schema_version": 1}),
+        serde_json::json!({"name": "diagnostics_explain", "schema": "schemas/diagnostics_explain_report.schema.json", "schema_version": 1}),
+        serde_json::json!({"name": "diagnostics_verify_repro", "schema": "schemas/diagnostics_verify_repro_report.schema.json", "schema_version": 1}),
+        serde_json::json!({"name": "diagnostics_compare", "schema": "schemas/diagnostics_compare_report.schema.json", "schema_version": 1}),
+        serde_json::json!({"name": "diagnostics_replay_audit", "schema": "schemas/diagnostics_replay_audit_report.schema.json", "schema_version": 1}),
+        serde_json::json!({"name": "diagnostics_advanced_gate", "schema": "schemas/diagnostics_advanced_gate_report.schema.json", "schema_version": 1}),
+        serde_json::json!({"name": "diagnostics_artifact_inventory", "schema": "schemas/diagnostics_artifact_inventory_report.schema.json", "schema_version": 1}),
+        serde_json::json!({"name": "diagnostics_debug_plan", "schema": "schemas/diagnostics_debug_plan_report.schema.json", "schema_version": 1}),
+        serde_json::json!({"name": "diagnostics_benchmark_summary", "schema": "schemas/diagnostics_benchmark_summary_report.schema.json", "schema_version": 1}),
+        serde_json::json!({"name": "diagnostics_medium_gate", "schema": "schemas/diagnostics_medium_gate_report.schema.json", "schema_version": 1}),
+        serde_json::json!({"name": "diagnostics_operator_status", "schema": "schemas/diagnostics_operator_status_report.schema.json", "schema_version": 1}),
+        serde_json::json!({"name": "diagnostics_channel_summary", "schema": "schemas/diagnostics_channel_summary_report.schema.json", "schema_version": 1}),
+        serde_json::json!({"name": "diagnostics_export_bundle", "schema": "schemas/diagnostics_export_bundle_report.schema.json", "schema_version": 1})
+    ];
+    serde_json::json!({
+        "schema_version": 1,
+        "reports": reports
+    })
 }
 
 fn ensure_run_dir_exists(run_dir: &Path) -> Result<()> {

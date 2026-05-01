@@ -612,6 +612,12 @@ pub(crate) enum DiagnosticsCommand {
         #[arg(long, value_name = "DIR")]
         out_dir: Option<PathBuf>,
     },
+
+    /// List stable machine-readable diagnostic report contracts for downstream systems
+    MachineCatalog {
+        #[command(flatten)]
+        common: CommonArgs,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
