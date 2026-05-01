@@ -1197,6 +1197,16 @@ fn compare_run_evidence(baseline_run_dir: &Path, candidate_run_dir: &Path) -> Re
             "convergence_epoch_baseline": quality.get("convergence_epoch_idx").and_then(|v| v.get("run_a")).cloned().unwrap_or(serde_json::Value::Null),
             "convergence_epoch_candidate": quality.get("convergence_epoch_idx").and_then(|v| v.get("run_b")).cloned().unwrap_or(serde_json::Value::Null),
             "raw_diff": quality
+        },
+        "interpretation": {
+            "claim_level": if baseline_repro.get("audit_ok").and_then(|v| v.as_bool()).unwrap_or(false)
+                && candidate_repro.get("audit_ok").and_then(|v| v.as_bool()).unwrap_or(false)
+            {
+                "evidence_bound"
+            } else {
+                "audit_limited"
+            },
+            "note": "quality deltas are comparative diagnostics and must be interpreted with validation evidence and support maturity"
         }
     }))
 }
@@ -1335,12 +1345,20 @@ fn advanced_gate_report(run_dir: &Path, mode: AdvancedGateMode) -> Result<serde_
         reasons.push("claim_evidence_guard_not_supported".to_string());
     }
     let gate_passed = reasons.is_empty();
+    let claim_level = if maturity == "Scaffolding" || !real_solver {
+        "scaffolding_only"
+    } else if gate_passed {
+        "evidence_bound_experimental"
+    } else {
+        "blocked_by_evidence"
+    };
 
     Ok(serde_json::json!({
         "schema_version": 1,
         "run_dir": run_dir.display().to_string(),
         "mode": mode_label,
         "gate_passed": gate_passed,
+        "claim_level": claim_level,
         "reasons": reasons,
         "support": {
             "matrix_path": support_path.display().to_string(),

@@ -5,12 +5,12 @@ This document is generated from the live `--help` output and provides examples f
 ## Top-Level Help
 
 ```
-bijux-gnss CLI
+GNSS receiver workflows: run, inspect, validate, diagnose, replay, and compare
 
 Usage: bijux <COMMAND>
 
 Commands:
-  gnss  GNSS-related commands
+  gnss  GNSS receiver commands for operation, validation, diagnostics, and replay
   help  Print this message or the help of the given subcommand(s)
 
 Options:
@@ -21,7 +21,7 @@ Options:
 ## GNSS Command Help
 
 ```
-GNSS-related commands
+GNSS receiver commands for operation, validation, diagnostics, and replay
 
 Usage: bijux gnss <COMMAND>
 
@@ -37,13 +37,13 @@ Commands:
   artifact            Artifact validation and conversion
   validate-config     Validate a receiver profile configuration file
   validate-artifacts  Validate observation or ephemeris artifacts against schemas
-  diagnostics         Diagnostics utilities
+  diagnostics         Diagnostics and audit workflows for receiver evidence
   validate-sidecar    Validate sidecar file against schema
   config-schema       Write JSON schema for receiver config
   config-upgrade      Upgrade a receiver config to the current schema version
   run                 Run a streaming pipeline with optional replay rate
   rinex               Write RINEX-like observation and navigation files
-  doctor              Print build and runtime diagnostics
+  doctor              Print receiver runtime readiness diagnostics
   validate            Run a full validation pipeline and emit validation_report.json
   help                Print this message or the help of the given subcommand(s)
 
@@ -69,6 +69,11 @@ bijux gnss artifact explain --file runs/basic_demo/artifacts/obs.jsonl
 bijux gnss diagnostics summarize --run-dir runs/basic_demo
 ```
 
+### Diagnostics Workflow Map
+```bash
+bijux gnss diagnostics workflow --report json
+```
+
 ### Diagnostics Explain (Replay, Cache, Identity)
 ```bash
 bijux gnss diagnostics explain --run-dir runs/basic_demo
@@ -79,9 +84,26 @@ bijux gnss diagnostics explain --run-dir runs/basic_demo
 bijux gnss diagnostics verify-repro --run-dir runs/basic_demo
 ```
 
+### Diagnostics Compare (Evidence + Quality)
+```bash
+bijux gnss diagnostics compare --baseline-run-dir runs/baseline --candidate-run-dir runs/candidate --report json
+```
+
+### Diagnostics Replay Audit
+```bash
+bijux gnss diagnostics replay-audit --baseline-run-dir runs/baseline --candidate-run-dir runs/candidate --report json
+```
+
+### Advanced Claim Gate
+```bash
+bijux gnss diagnostics advanced-gate --run-dir runs/rtk_eval --mode rtk --strict --report json
+```
+
 ### Validation Evidence Bundle
 ```bash
 bijux gnss validate --file runs/basic_demo/artifacts/obs.jsonl --eph runs/basic_demo/artifacts/ephemeris.json --reference refs/reference.jsonl
 # emits runs/.../artifacts/validation_report.json
 # emits runs/.../artifacts/validation_evidence_bundle.json
 ```
+
+Validation and diagnostics JSON reports include explicit claim-bound fields (`claim_evidence_guard`, `claim_level`, and `interpretation`) so strong claims are only made when recorded evidence supports them.
