@@ -443,6 +443,12 @@ pub(crate) enum NavCommand {
 
 #[derive(Subcommand)]
 pub(crate) enum DiagnosticsCommand {
+    /// Print operator workflow map for run, inspect, validate, diagnose, replay, and compare tasks
+    Workflow {
+        #[command(flatten)]
+        common: CommonArgs,
+    },
+
     /// Summarize diagnostics from a run directory
     Summarize {
         #[command(flatten)]

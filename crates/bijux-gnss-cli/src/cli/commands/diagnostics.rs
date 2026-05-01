@@ -452,6 +452,18 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
     };
 
     match command {
+        DiagnosticsCommand::Workflow { common } => {
+            let _ = runtime_config_from_env(&common, None);
+            let report = workflow_map_report();
+            println!("{}", serde_json::to_string_pretty(&report)?);
+            write_manifest(
+                &common,
+                "diagnostics_workflow",
+                &ReceiverConfig::default(),
+                None,
+                &report,
+            )?;
+        }
         DiagnosticsCommand::Summarize {
             common,
             run_dir,
@@ -503,6 +515,44 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn workflow_map_report() -> serde_json::Value {
+    serde_json::json!({
+        "schema_version": 1,
+        "workflow": [
+            {
+                "stage": "run",
+                "command": "bijux gnss run --dataset <id> --config <profile.toml>",
+                "artifacts": ["manifest.json", "run_report.json", "artifacts/"]
+            },
+            {
+                "stage": "inspect",
+                "command": "bijux gnss inspect --dataset <id> --report json",
+                "artifacts": ["inspect_report.json", "summary.json"]
+            },
+            {
+                "stage": "validate",
+                "command": "bijux gnss validate --dataset <id> --eph <eph.json> --reference <ref.jsonl>",
+                "artifacts": ["validation_report.json", "validation_evidence_bundle.json"]
+            },
+            {
+                "stage": "diagnose",
+                "command": "bijux gnss diagnostics explain --run-dir <run_dir>",
+                "artifacts": ["diagnostics_explain_report.json", "summary.json"]
+            },
+            {
+                "stage": "replay",
+                "command": "bijux gnss diagnostics verify-repro --run-dir <run_dir>",
+                "artifacts": ["diagnostics_verify_repro_report.json", "summary.json"]
+            },
+            {
+                "stage": "compare",
+                "command": "bijux gnss diff --run-a <run_a> --run-b <run_b>",
+                "artifacts": ["compare summary json on stdout"]
+            }
+        ]
+    })
 }
 
 fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
