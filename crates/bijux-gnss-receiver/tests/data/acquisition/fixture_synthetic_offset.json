@@ -1,0 +1,14 @@
+{
+  "id": "synthetic-offset",
+  "kind": "synthetic",
+  "sat": { "constellation": "Gps", "prn": 3 },
+  "doppler_hz": -750.0,
+  "code_phase_chips": 420.0,
+  "cn0_db_hz": 48.0,
+  "seed": 3735928559,
+  "search_hz": 2000,
+  "step_hz": 250,
+  "coherent_ms": 1,
+  "noncoherent": 1,
+  "expected_hypothesis": "ambiguous"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "synthetic-clean",
+  "kind": "synthetic",
+  "sat": { "constellation": "Gps", "prn": 1 },
+  "doppler_hz": 500.0,
+  "code_phase_chips": 120.0,
+  "cn0_db_hz": 50.0,
+  "seed": 305419896,
+  "search_hz": 1500,
+  "step_hz": 250,
+  "coherent_ms": 1,
+  "noncoherent": 1,
+  "expected_hypothesis": "ambiguous"
+}
