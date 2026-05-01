@@ -684,6 +684,16 @@ pub(crate) enum DiagnosticsCommand {
         #[arg(long, value_name = "DIR")]
         run_dir: PathBuf,
     },
+
+    /// Trace external tools, correction inputs, and environment dependencies for a run
+    DependencyTrace {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Run directory to evaluate
+        #[arg(long, value_name = "DIR")]
+        run_dir: PathBuf,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]

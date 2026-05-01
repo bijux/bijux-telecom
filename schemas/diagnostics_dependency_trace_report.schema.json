@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DiagnosticsDependencyTraceReport",
+  "type": "object",
+  "required": ["schema_version", "run_dir", "tooling", "corrections", "environment"],
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "run_dir": { "type": "string" },
+    "tooling": { "type": "object" },
+    "corrections": { "type": "object" },
+    "environment": { "type": "object" }
+  },
+  "additionalProperties": true
+}

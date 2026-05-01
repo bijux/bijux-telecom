@@ -1012,6 +1012,29 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
+        DiagnosticsCommand::DependencyTrace { common, run_dir } => {
+            let _ = runtime_config_from_env(&common, None);
+            let report = dependency_trace_report(&run_dir)?;
+            match common.report {
+                ReportFormat::Table => print_dependency_trace_table(&report),
+                ReportFormat::Json => {
+                    emit_report(&common, "diagnostics_dependency_trace", &report)?
+                }
+            }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_dependency_trace",
+                &report,
+                "diagnostics_dependency_trace_report.schema.json",
+            )?;
+            write_manifest(
+                &common,
+                "diagnostics_dependency_trace",
+                &ReceiverConfig::default(),
+                None,
+                &report,
+            )?;
+        }
     }
 
     Ok(())
@@ -1545,6 +1568,27 @@ fn print_audit_trail_table(report: &serde_json::Value) {
     println!("deterministic_replay\t{replay}");
     println!("override_events\t{overrides}");
     println!("policy_exceptions\t{exceptions}");
+}
+
+fn print_dependency_trace_table(report: &serde_json::Value) {
+    let toolchain = report
+        .get("tooling")
+        .and_then(|v| v.get("toolchain"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let correction_rows = report
+        .get("corrections")
+        .and_then(|v| v.get("rows"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let env_refs = report
+        .get("environment")
+        .and_then(|v| v.get("reference_count"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    println!("toolchain\t{toolchain}");
+    println!("correction_rows\t{correction_rows}");
+    println!("environment_references\t{env_refs}");
 }
 
 fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
@@ -2433,7 +2477,8 @@ fn machine_catalog_report() -> serde_json::Value {
         serde_json::json!({"name": "diagnostics_route_explain", "schema": "schemas/diagnostics_route_explain_report.schema.json", "schema_version": 1}),
         serde_json::json!({"name": "diagnostics_operator_workflow", "schema": "schemas/diagnostics_operator_workflow_report.schema.json", "schema_version": 1}),
         serde_json::json!({"name": "diagnostics_operator_ergonomics", "schema": "schemas/diagnostics_operator_ergonomics_report.schema.json", "schema_version": 1}),
-        serde_json::json!({"name": "diagnostics_audit_trail", "schema": "schemas/diagnostics_audit_trail_report.schema.json", "schema_version": 1})
+        serde_json::json!({"name": "diagnostics_audit_trail", "schema": "schemas/diagnostics_audit_trail_report.schema.json", "schema_version": 1}),
+        serde_json::json!({"name": "diagnostics_dependency_trace", "schema": "schemas/diagnostics_dependency_trace_report.schema.json", "schema_version": 1})
     ];
     serde_json::json!({
         "schema_version": 1,
@@ -2786,6 +2831,94 @@ fn audit_trail_report(run_dir: &Path) -> Result<serde_json::Value> {
         "replay_controls": replay_controls,
         "override_events": override_events,
         "policy_exceptions": policy_exceptions
+    }))
+}
+
+fn dependency_trace_report(run_dir: &Path) -> Result<serde_json::Value> {
+    ensure_run_dir_exists(run_dir)?;
+    let manifest_path = run_dir.join("manifest.json");
+    let manifest: serde_json::Value = serde_json::from_str(&fs::read_to_string(&manifest_path)?)
+        .unwrap_or(serde_json::Value::Null);
+
+    let correction_path = run_dir
+        .join("artifacts")
+        .join("rtk")
+        .join("rtk_correction_input.jsonl");
+    let mut correction_rows = 0u64;
+    let mut correction_tags = std::collections::BTreeSet::new();
+    if correction_path.exists() {
+        let text = fs::read_to_string(&correction_path)?;
+        for line in text.lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let Ok(row) = serde_json::from_str::<serde_json::Value>(line) else {
+                continue;
+            };
+            correction_rows = correction_rows.saturating_add(1);
+            if let Some(tags) = row
+                .get("payload")
+                .and_then(|v| v.get("correction_tags"))
+                .and_then(|v| v.as_array())
+            {
+                for tag in tags {
+                    if let Some(value) = tag.as_str() {
+                        correction_tags.insert(value.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    let mut env_references = Vec::new();
+    if let Some(command) = manifest.get("command").and_then(|v| v.as_str()) {
+        if command.contains("--config") {
+            env_references.push("config_file".to_string());
+        }
+        if command.contains("--dataset") {
+            env_references.push("dataset_reference".to_string());
+        }
+    }
+    if manifest.get("toolchain").is_some() {
+        env_references.push("toolchain_metadata".to_string());
+    }
+    if manifest.get("features").is_some() {
+        env_references.push("feature_set".to_string());
+    }
+    env_references.sort();
+    env_references.dedup();
+    let env_reference_count = env_references.len();
+
+    Ok(serde_json::json!({
+        "schema_version": 1,
+        "run_dir": run_dir.display().to_string(),
+        "tooling": {
+            "toolchain": manifest
+                .get("toolchain")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown"),
+            "features": manifest
+                .get("features")
+                .cloned()
+                .unwrap_or(serde_json::json!([]))
+        },
+        "corrections": {
+            "artifact_path": correction_path.display().to_string(),
+            "rows": correction_rows,
+            "tags": correction_tags.into_iter().collect::<Vec<_>>()
+        },
+        "environment": {
+            "dataset_id": manifest
+                .get("dataset_id")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null),
+            "config_hash": manifest
+                .get("config_hash")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null),
+            "references": env_references,
+            "reference_count": env_reference_count
+        }
     }))
 }
 
