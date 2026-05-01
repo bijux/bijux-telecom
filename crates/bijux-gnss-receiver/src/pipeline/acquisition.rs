@@ -4,8 +4,9 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use bijux_gnss_core::api::{
-    AcqAssumptions, AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqResult,
-    AcqThresholdProvenance, Hertz, SamplesFrame, SatId,
+    acq_result_stability_key, stable_acq_result_keys, AcqAssumptions, AcqEvidence, AcqExplain,
+    AcqExplainCandidate, AcqHypothesis, AcqResult, AcqThresholdProvenance, Hertz, SamplesFrame,
+    SatId,
 };
 use num_complex::Complex;
 use rustfft::{num_traits::Zero, FftPlanner};
@@ -269,9 +270,14 @@ impl Acquisition {
             }
 
             candidates.sort_by(|a, b| {
-                b.peak_mean_ratio
+                let primary = b
+                    .peak_mean_ratio
                     .partial_cmp(&a.peak_mean_ratio)
-                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .unwrap_or(std::cmp::Ordering::Equal);
+                if primary == std::cmp::Ordering::Equal {
+                    return acq_result_stability_key(a).cmp(&acq_result_stability_key(b));
+                }
+                primary
             });
             candidates.truncate(top_n.max(1));
             if candidates.is_empty() {
@@ -419,6 +425,19 @@ impl Acquisition {
                 AcqHypothesis::Deferred => {
                     stats.deferred_count = stats.deferred_count.saturating_add(1)
                 }
+            });
+            let stable_keys = stable_acq_result_keys(&candidates);
+            self.runtime.trace.record(TraceRecord {
+                name: "acquisition_stability_signature",
+                fields: vec![
+                    ("constellation", format!("{:?}", sat.constellation)),
+                    ("prn", sat.prn.to_string()),
+                    ("candidate_count", stable_keys.len().to_string()),
+                    (
+                        "top_signature",
+                        stable_keys.first().cloned().unwrap_or_else(|| "none".to_string()),
+                    ),
+                ],
             });
             results.push(candidates);
         }
