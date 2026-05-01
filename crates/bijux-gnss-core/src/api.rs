@@ -1,9 +1,13 @@
 //! Public API for bijux-gnss-core.
 
 pub use crate::artifact::v1::acq::AcqResultV1;
+pub use crate::artifact::v1::acq_explain::AcqExplainV1;
 pub use crate::artifact::v1::nav::NavSolutionEpochV1;
 pub use crate::artifact::v1::obs::ObsEpochV1;
 pub use crate::artifact::v1::track::TrackEpochV1;
+pub use crate::artifact::v1::obs_decision::ObsDecisionV1;
+pub use crate::artifact::v1::support_matrix::SupportMatrixV1;
+pub use crate::artifact::v1::track_transition::TrackTransitionV1;
 pub use crate::artifact::v1::{ppp, rtk};
 /// Artifact headers and versioned payloads.
 pub use crate::artifact::{
@@ -43,11 +47,14 @@ pub use crate::ids::{
 /// Observation and tracking contracts.
 pub use crate::obs::{
     check_inter_frequency_alignment, validate_obs_epochs, AcqAssumptions, AcqEvidence,
-    AcqHypothesis, AcqRequest, AcqResult, AmbiguityId, AmbiguityState, AmbiguityStatus,
+    AcqHypothesis, AcqRequest, AcqResult, AcqThresholdProvenance, AcqExplain,
+    AcqExplainCandidate, AmbiguityId, AmbiguityState, AmbiguityStatus,
     BandLagEvent, DoubleDifference, InterFrequencyAlignmentReport, InterSystemBias, LockFlags,
     MeasurementErrorModel, MeasurementRejectReason, NavHealthEvent, NavQualityFlag, NavResidual,
-    NavSolutionEpoch, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, Sample, SamplesFrame,
-    SingleDifference, SolutionStatus, SolutionValidity, TrackEpoch,
+    NavSolutionEpoch, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest, ObsMetadata, ObsSatellite,
+    ObservationEpochDecision, ObservationStatus, ReceiverRole, Sample, SamplesFrame, SatObservationDecision,
+    SignalSupportRow, SingleDifference, SolutionStatus, SolutionValidity, SupportMatrix, SupportStatus,
+    TrackEpoch, TrackTransition,
 };
 /// Engine boundary nav epoch alias.
 pub type NavEpoch = NavSolutionEpoch;
