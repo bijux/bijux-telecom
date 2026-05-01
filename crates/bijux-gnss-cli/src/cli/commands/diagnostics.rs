@@ -510,6 +510,13 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 "total": summary.total,
                 "top": top,
                 "entries": entries,
+                "layered": layered_report(
+                    summarize_critical_entries(&summary.entries),
+                    serde_json::json!({
+                        "top_entries": summary.entries,
+                        "total": summary.total
+                    })
+                ),
             });
             match common.report {
                 ReportFormat::Table => {
@@ -696,6 +703,26 @@ fn operator_map_report() -> serde_json::Value {
             }
         ]
     })
+}
+
+fn layered_report(critical: Vec<String>, details: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "critical": critical,
+        "details": details
+    })
+}
+
+fn summarize_critical_entries(
+    entries: &[bijux_gnss_infra::api::core::DiagnosticSummaryEntry],
+) -> Vec<String> {
+    let mut critical = Vec::new();
+    for entry in entries {
+        let severity = format!("{:?}", entry.severity).to_lowercase();
+        if severity == "error" || severity == "fatal" {
+            critical.push(format!("{}:{}:count={}", severity, entry.code, entry.count));
+        }
+    }
+    critical
 }
 
 fn workflow_map_report() -> serde_json::Value {
@@ -1272,7 +1299,21 @@ fn compare_run_evidence(baseline_run_dir: &Path, candidate_run_dir: &Path) -> Re
                 "audit_limited"
             },
             "note": "quality deltas are comparative diagnostics and must be interpreted with validation evidence and support maturity"
-        }
+        },
+        "layered": layered_report(
+            vec![],
+            serde_json::json!({
+                "reproducibility": {
+                    "fingerprint_match": baseline_repro.get("replay_fingerprint") == candidate_repro.get("replay_fingerprint"),
+                    "baseline_audit_ok": baseline_repro.get("audit_ok").and_then(|v| v.as_bool()).unwrap_or(false),
+                    "candidate_audit_ok": candidate_repro.get("audit_ok").and_then(|v| v.as_bool()).unwrap_or(false)
+                },
+                "quality_delta": {
+                    "mean_rms_delta_m": quality.get("mean_rms_m").and_then(|v| v.get("delta")).and_then(|v| v.as_f64()).unwrap_or(0.0),
+                    "mean_cn0_delta_dbhz": quality.get("mean_cn0_dbhz").and_then(|v| v.get("delta")).and_then(|v| v.as_f64()).unwrap_or(0.0)
+                }
+            })
+        )
     }))
 }
 
@@ -1342,7 +1383,14 @@ fn replay_audit_report(baseline_run_dir: &Path, candidate_run_dir: &Path) -> Res
             .and_then(|v| v.get("command"))
             .and_then(|v| v.as_str())
             .unwrap_or("unknown"),
-        "compare": compare
+        "compare": compare,
+        "layered": layered_report(
+            reasons.clone(),
+            serde_json::json!({
+                "classification": classification,
+                "compare": compare
+            })
+        )
     }))
 }
 
