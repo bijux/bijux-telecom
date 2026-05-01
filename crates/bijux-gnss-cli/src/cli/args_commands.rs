@@ -456,6 +456,16 @@ pub(crate) enum DiagnosticsCommand {
         #[arg(long, default_value_t = 10)]
         top: usize,
     },
+
+    /// Explain run replay scope, artifact identity coverage, and cache behavior
+    Explain {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Run directory (expects manifest.json and artifacts/)
+        #[arg(long, value_name = "DIR")]
+        run_dir: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]

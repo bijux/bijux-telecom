@@ -476,6 +476,18 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
             });
             write_manifest(&common, "diagnostics_summarize", &ReceiverConfig::default(), None, &report)?;
         }
+        DiagnosticsCommand::Explain { common, run_dir } => {
+            let _ = runtime_config_from_env(&common, None);
+            let summary = explain_run_scope(&run_dir)?;
+            println!("{}", serde_json::to_string_pretty(&summary)?);
+            write_manifest(
+                &common,
+                "diagnostics_explain",
+                &ReceiverConfig::default(),
+                None,
+                &summary,
+            )?;
+        }
     }
 
     Ok(())
@@ -504,6 +516,165 @@ fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
         }
     }
     Ok(events)
+}
+
+fn explain_run_scope(run_dir: &Path) -> Result<serde_json::Value> {
+    let manifest_path = run_dir.join("manifest.json");
+    let run_manifest: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&manifest_path)?)
+        .map_err(|err| eyre!("failed parsing manifest {}: {err}", manifest_path.display()))?;
+
+    let artifacts_dir = run_dir.join("artifacts");
+    let mut identity_coverage = serde_json::Map::new();
+    let mut total_artifact_files = 0usize;
+    let mut total_lines = 0usize;
+    let mut corrupted_files = Vec::new();
+    let mut cache_events = serde_json::Map::new();
+    let mut cache_event_total = 0usize;
+
+    if artifacts_dir.exists() {
+        for entry in std::fs::read_dir(&artifacts_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let Some(ext) = path.extension().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            if ext != "json" && ext != "jsonl" {
+                continue;
+            }
+            total_artifact_files = total_artifact_files.saturating_add(1);
+            let data = std::fs::read_to_string(&path)?;
+            let file_name =
+                path.file_name().and_then(|name| name.to_str()).unwrap_or("unknown").to_string();
+            let mut has_artifact_id = false;
+            let mut has_epoch_id = false;
+            let mut has_source_epoch_id = false;
+            let mut parsed_lines = 0usize;
+
+            if ext == "jsonl" {
+                for (idx, line) in data.lines().enumerate() {
+                    if line.trim().is_empty() {
+                        continue;
+                    }
+                    parsed_lines = parsed_lines.saturating_add(1);
+                    total_lines = total_lines.saturating_add(1);
+                    let parsed: serde_json::Value = match serde_json::from_str(line) {
+                        Ok(v) => v,
+                        Err(err) => {
+                            corrupted_files.push(serde_json::json!({
+                                "file": file_name,
+                                "line": idx + 1,
+                                "error": err.to_string()
+                            }));
+                            break;
+                        }
+                    };
+                    let payload = parsed.get("payload").unwrap_or(&parsed);
+                    has_artifact_id |= payload.get("artifact_id").is_some();
+                    has_epoch_id |= payload.get("epoch_id").is_some();
+                    has_source_epoch_id |= payload.get("source_observation_epoch_id").is_some();
+                }
+            } else if ext == "json" {
+                total_lines = total_lines.saturating_add(1);
+                if let Err(err) = serde_json::from_str::<serde_json::Value>(&data) {
+                    corrupted_files.push(serde_json::json!({
+                        "file": file_name,
+                        "line": 1,
+                        "error": err.to_string()
+                    }));
+                } else {
+                    parsed_lines = 1;
+                }
+            }
+
+            identity_coverage.insert(
+                file_name.clone(),
+                serde_json::json!({
+                    "parsed_entries": parsed_lines,
+                    "has_artifact_id": has_artifact_id,
+                    "has_epoch_id": has_epoch_id,
+                    "has_source_observation_epoch_id": has_source_epoch_id
+                }),
+            );
+        }
+    }
+
+    let trace_path = run_dir.join("trace.ndjson");
+    if trace_path.exists() {
+        let trace = std::fs::read_to_string(trace_path)?;
+        for line in trace.lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let Ok(row) = serde_json::from_str::<serde_json::Value>(line) else {
+                continue;
+            };
+            let Some(name) = row.get("name").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            if name != "acquisition_code_fft_cache_hit" && name != "acquisition_code_fft_cache_miss"
+            {
+                continue;
+            }
+            cache_event_total = cache_event_total.saturating_add(1);
+            if name == "acquisition_code_fft_cache_miss" {
+                if let Some(reason) = row
+                    .get("fields")
+                    .and_then(|v| v.as_array())
+                    .and_then(|fields| {
+                        fields.iter().find_map(|entry| {
+                            let key = entry.get(0).and_then(|v| v.as_str())?;
+                            if key == "reason" {
+                                entry.get(1).and_then(|v| v.as_str()).map(|s| s.to_string())
+                            } else {
+                                None
+                            }
+                        })
+                    })
+                {
+                    let next =
+                        cache_events.get(&reason).and_then(|v| v.as_u64()).unwrap_or(0) + 1;
+                    cache_events.insert(reason, serde_json::Value::from(next));
+                }
+            }
+        }
+    }
+
+    let metrics_summary_path = run_dir.join("metrics_summary.json");
+    let metrics_summary = if metrics_summary_path.exists() {
+        serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(&metrics_summary_path)?)
+            .unwrap_or(serde_json::Value::Null)
+    } else {
+        serde_json::Value::Null
+    };
+
+    Ok(serde_json::json!({
+        "run_dir": run_dir.display().to_string(),
+        "manifest_path": manifest_path.display().to_string(),
+        "replay_scope": {
+            "command": run_manifest.get("command").cloned().unwrap_or(serde_json::Value::Null),
+            "dataset_id": run_manifest.get("dataset_id").cloned().unwrap_or(serde_json::Value::Null),
+            "config_hash": run_manifest.get("config_hash").cloned().unwrap_or(serde_json::Value::Null),
+            "toolchain": run_manifest.get("toolchain").cloned().unwrap_or(serde_json::Value::Null),
+            "features": run_manifest.get("features").cloned().unwrap_or(serde_json::Value::Null),
+            "deterministic": run_manifest.get("replay_scope").and_then(|v| v.get("deterministic")).cloned().unwrap_or(serde_json::Value::Null),
+            "resume": run_manifest.get("replay_scope").and_then(|v| v.get("resume")).cloned().unwrap_or(serde_json::Value::Null),
+            "explicit_output_dir": run_manifest.get("replay_scope").and_then(|v| v.get("explicit_output_dir")).cloned().unwrap_or(serde_json::Value::Null)
+        },
+        "artifact_integrity": {
+            "artifact_files_scanned": total_artifact_files,
+            "entries_scanned": total_lines,
+            "corrupted_files": corrupted_files
+        },
+        "artifact_identity_coverage": identity_coverage,
+        "cache_behavior": {
+            "cache_events_seen": cache_event_total,
+            "miss_reason_counts": cache_events,
+            "metrics_summary": metrics_summary
+        }
+    }))
 }
 
 fn handle_doctor(command: GnssCommand) -> Result<()> {
@@ -548,4 +719,89 @@ fn handle_doctor(command: GnssCommand) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod diagnostics_tests {
+    use super::explain_run_scope;
+    use std::fs;
+    use std::path::PathBuf;
+
+    #[test]
+    fn explain_run_scope_reports_cache_replay_and_identity() {
+        let base = std::env::temp_dir().join(format!(
+            "bijux_diagnostics_explain_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("duration")
+                .as_nanos()
+        ));
+        fs::create_dir_all(base.join("artifacts")).expect("artifacts dir");
+
+        let manifest = serde_json::json!({
+            "command": "run",
+            "dataset_id": "demo",
+            "config_hash": "abc123",
+            "toolchain": "rustc",
+            "features": [],
+            "replay_scope": {
+                "deterministic": true,
+                "resume": false,
+                "explicit_output_dir": true
+            }
+        });
+        fs::write(
+            base.join("manifest.json"),
+            serde_json::to_string_pretty(&manifest).expect("manifest json"),
+        )
+        .expect("manifest write");
+
+        let obs_line = serde_json::json!({
+            "header": {"schema_version":1},
+            "payload": {"artifact_id":"obs-epoch-0001","epoch_id":"epoch-0001"}
+        });
+        fs::write(
+            base.join("artifacts").join("obs.jsonl"),
+            format!("{}\n", serde_json::to_string(&obs_line).expect("obs line")),
+        )
+        .expect("obs write");
+
+        let trace_line = serde_json::json!({
+            "name":"acquisition_code_fft_cache_miss",
+            "fields":[["reason","incompatible_assumptions"]]
+        });
+        fs::write(
+            base.join("trace.ndjson"),
+            format!("{}\n", serde_json::to_string(&trace_line).expect("trace line")),
+        )
+        .expect("trace write");
+
+        let summary = explain_run_scope(PathBuf::as_path(&base)).expect("summary");
+        assert_eq!(
+            summary
+                .get("replay_scope")
+                .and_then(|v| v.get("deterministic"))
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            summary
+                .get("cache_behavior")
+                .and_then(|v| v.get("miss_reason_counts"))
+                .and_then(|v| v.get("incompatible_assumptions"))
+                .and_then(|v| v.as_u64()),
+            Some(1)
+        );
+        assert_eq!(
+            summary
+                .get("artifact_identity_coverage")
+                .and_then(|v| v.get("obs.jsonl"))
+                .and_then(|v| v.get("has_artifact_id"))
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
+
+        let _ = fs::remove_dir_all(base);
+    }
 }
