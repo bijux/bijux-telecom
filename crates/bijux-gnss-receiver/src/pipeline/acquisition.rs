@@ -169,9 +169,7 @@ impl Acquisition {
         coherent_ms: u32,
         noncoherent: u32,
     ) -> AcquisitionRun {
-        let results =
-            self.run_fft_topn_internal(frame, sats, top_n, coherent_ms, noncoherent, true);
-        results
+        self.run_fft_topn_internal(frame, sats, top_n, coherent_ms, noncoherent, true)
     }
 
     pub fn run_fft_topn(
@@ -211,8 +209,8 @@ impl Acquisition {
 
         self.with_stats(|stats| {
             stats.sat_count += sats.len() as u64;
-            stats.doppler_bins += (doppler_bin_count(self.doppler_search_hz, self.doppler_step_hz)
-                * sats.len() as u64) as u64;
+            stats.doppler_bins +=
+                doppler_bin_count(self.doppler_search_hz, self.doppler_step_hz) * sats.len() as u64;
             stats.code_search_bins += (samples_per_code * sats.len()) as u64;
         });
 
@@ -575,8 +573,8 @@ fn doppler_bin_count(search_hz: i32, step_hz: i32) -> u64 {
     if step_hz <= 0 {
         return 0;
     }
-    let search = search_hz.abs() as u64;
-    let step = step_hz.abs() as u64;
+    let search = search_hz.unsigned_abs() as u64;
+    let step = step_hz.unsigned_abs() as u64;
     (search / step).saturating_mul(2).saturating_add(1)
 }
 
@@ -600,6 +598,7 @@ fn acquisition_hypothesis(
     (AcqHypothesis::Accepted, (peak_mean_ratio * 0.5) + (peak_second_ratio * 0.5))
 }
 
+#[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 mod tests {
     use super::*;

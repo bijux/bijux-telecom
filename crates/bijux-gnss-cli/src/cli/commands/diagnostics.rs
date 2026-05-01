@@ -1329,7 +1329,7 @@ fn print_replay_audit_table(report: &serde_json::Value) {
                 .collect::<Vec<_>>()
                 .join(",")
         })
-        .unwrap_or_else(String::new);
+        .unwrap_or_default();
     println!("classification\t{class}");
     println!("baseline_command\t{baseline_command}");
     println!("candidate_command\t{candidate_command}");

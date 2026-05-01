@@ -153,7 +153,7 @@ impl Receiver {
             tracking_results.iter().flat_map(|result| result.transitions.iter().cloned()).collect();
         let tracking_ms = tracking_start.elapsed().as_secs_f64() * 1000.0;
         let track_channel_count: f64 =
-            tracking_results.iter().filter(|result| result.epochs.len() > 0).count() as f64;
+            tracking_results.iter().filter(|result| !result.epochs.is_empty()).count() as f64;
         runtime.metrics.metric(Metric { name: "stage_tracking_ms", value: tracking_ms });
         runtime
             .metrics

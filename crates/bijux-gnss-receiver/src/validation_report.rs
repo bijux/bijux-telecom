@@ -281,6 +281,7 @@ struct PppEvaluationReport {
 }
 
 /// Build the validation report for a run.
+#[allow(clippy::too_many_arguments)]
 pub fn build_validation_report(
     tracks: &[TrackingResult],
     obs: &[ObsEpoch],
@@ -433,11 +434,8 @@ pub fn build_validation_report(
     let lock_ratio_by_epoch = lock_ratio_by_epoch(tracks);
     let integrity = classify_integrity(solutions, &lock_ratio_by_epoch, &science_policy);
     let assumptions = summarize_assumptions(solutions);
-    let diagnostic_partition = partition_diagnostics(
-        &time_consistency.warnings,
-        &consistency_warnings,
-        solutions,
-    );
+    let diagnostic_partition =
+        partition_diagnostics(&time_consistency.warnings, &consistency_warnings, solutions);
 
     Ok(ValidationReport {
         samples: tracks.iter().map(|t| t.epochs.len()).sum(),
@@ -790,10 +788,10 @@ fn ppp_evaluation_report(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::TrackingResult;
     use bijux_gnss_core::api::{
         Chips, Constellation, Epoch, Hertz, NavAssumptions, SatId, TrackEpoch,
     };
-    use crate::api::TrackingResult;
     use serde::Deserialize;
 
     #[test]
@@ -890,7 +888,12 @@ mod tests {
         expected_class: String,
     }
 
-    fn fixture_solution(epoch_idx: u64, pdop: f64, rms_m: f64, used_sat_count: usize) -> NavSolutionEpoch {
+    fn fixture_solution(
+        epoch_idx: u64,
+        pdop: f64,
+        rms_m: f64,
+        used_sat_count: usize,
+    ) -> NavSolutionEpoch {
         NavSolutionEpoch {
             epoch: bijux_gnss_core::api::Epoch { index: epoch_idx },
             t_rx_s: bijux_gnss_core::api::Seconds(epoch_idx as f64),
@@ -949,7 +952,8 @@ mod tests {
             vdop: Some(pdop),
             gdop: Some(pdop),
             stability_signature: format!("navsig:v1:fixture:{epoch_idx}"),
-            stability_signature_version: bijux_gnss_core::api::NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
+            stability_signature_version:
+                bijux_gnss_core::api::NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
         }
     }
 

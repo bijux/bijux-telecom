@@ -452,7 +452,9 @@ fn compute_pdop(h: &[[f64; 4]]) -> Option<f64> {
     Some(pdop)
 }
 
-fn compute_dops(h: &[[f64; 4]]) -> Option<(f64, Option<f64>, Option<f64>, Option<f64>)> {
+type DopTuple = (f64, Option<f64>, Option<f64>, Option<f64>);
+
+fn compute_dops(h: &[[f64; 4]]) -> Option<DopTuple> {
     let mut n = [[0.0_f64; 4]; 4];
     for row in h {
         for r in 0..4 {

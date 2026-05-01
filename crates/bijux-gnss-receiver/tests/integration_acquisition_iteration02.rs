@@ -107,7 +107,10 @@ fn acquisition_explain_artifact_contains_ranked_rationale() {
     assert!(explain.candidate_count >= 1);
     assert!(!explain.selected_reason.is_empty());
     assert!(
-        explain.candidates.iter().any(|candidate| candidate.rank == 1 && !candidate.reason.is_empty()),
+        explain
+            .candidates
+            .iter()
+            .any(|candidate| candidate.rank == 1 && !candidate.reason.is_empty()),
         "rank-1 candidate must include explanation reason"
     );
 }
@@ -130,8 +133,11 @@ fn frame_from_fixture(config: &ReceiverPipelineConfig, fixture: &AcqFixture) -> 
             duration_s,
         ),
         "zeros" => {
-            let samples = samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length)
-                * (fixture.coherent_ms * fixture.noncoherent).max(1) as usize;
+            let samples = samples_per_code(
+                config.sampling_freq_hz,
+                config.code_freq_basis_hz,
+                config.code_length,
+            ) * (fixture.coherent_ms * fixture.noncoherent).max(1) as usize;
             SamplesFrame::new(
                 SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
                 Seconds(1.0 / config.sampling_freq_hz),
