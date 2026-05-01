@@ -344,6 +344,20 @@ pub mod v1 {
                         "nav solution refusal_class requires explain_decision",
                     ));
                 }
+                if self.stability_signature.is_empty() {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Warning,
+                        "GNSS_NAV_STABILITY_SIGNATURE_MISSING",
+                        "nav solution stability signature is empty",
+                    ));
+                }
+                if self.stability_signature_version == 0 {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Warning,
+                        "GNSS_NAV_STABILITY_SIGNATURE_VERSION_INVALID",
+                        "nav solution stability signature version is zero",
+                    ));
+                }
                 if matches!(self.status, SolutionStatus::Invalid) && self.refusal_class.is_none() {
                     events.push(DiagnosticEvent::new(
                         DiagnosticSeverity::Warning,
