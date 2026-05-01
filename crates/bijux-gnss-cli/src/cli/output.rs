@@ -302,6 +302,9 @@ fn write_track_timeseries(
                 cycle_slip_reason: epoch.cycle_slip_reason.clone(),
                 lock_state: epoch.lock_state.clone(),
                 lock_state_reason: epoch.lock_state_reason.clone(),
+                channel_id: None,
+                channel_uid: String::new(),
+                tracking_provenance: String::new(),
                 processing_ms: None,
             },
         };

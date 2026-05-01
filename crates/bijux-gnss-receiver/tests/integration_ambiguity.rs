@@ -42,6 +42,8 @@ fn ambiguity_resets_on_cycle_slip() {
             cycle_slip: false,
         },
         multipath_suspect: false,
+        observation_status: bijux_gnss_core::api::ObservationStatus::Accepted,
+        observation_reject_reasons: Vec::new(),
         elevation_deg: None,
         azimuth_deg: None,
         weight: None,

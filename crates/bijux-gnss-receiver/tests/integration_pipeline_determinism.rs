@@ -40,6 +40,7 @@ fn make_track(prn: u8, config: &ReceiverPipelineConfig) -> TrackingResult {
         acquisition_carrier_hz: 0.0,
         acq_to_track_state: "deferred".to_string(),
         epochs: vec![epoch],
+        transitions: Vec::new(),
     }
 }
 

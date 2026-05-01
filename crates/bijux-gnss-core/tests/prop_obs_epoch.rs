@@ -36,6 +36,8 @@ fn make_epoch(t_rx_s: f64) -> ObsEpoch {
                 cycle_slip: false,
             },
             multipath_suspect: false,
+            observation_status: bijux_gnss_core::api::ObservationStatus::Accepted,
+            observation_reject_reasons: Vec::new(),
             elevation_deg: Some(45.0),
             azimuth_deg: Some(90.0),
             weight: Some(1.0),
@@ -53,6 +55,9 @@ fn make_epoch(t_rx_s: f64) -> ObsEpoch {
                 ..ObsMetadata::default()
             },
         }],
+        decision: bijux_gnss_core::api::ObservationEpochDecision::Accepted,
+        decision_reason: Some("accepted_observables_present".to_string()),
+        manifest: None,
     }
 }
 
