@@ -27,6 +27,7 @@ pub const TRACKING_STATE_MODEL_VERSION: u32 = 1;
 pub const OBSERVATION_MODEL_VERSION: u32 = 1;
 pub const OBSERVATION_DOWNSTREAM_PROFILE_VERSION: u32 = 1;
 pub const NAV_SOLUTION_MODEL_VERSION: u32 = 1;
+pub const NAV_OUTPUT_STABILITY_SIGNATURE_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TrackingLifecycleState {
@@ -839,10 +840,18 @@ pub struct NavSolutionEpoch {
     pub vdop: Option<f64>,
     #[serde(default)]
     pub gdop: Option<f64>,
+    #[serde(default)]
+    pub stability_signature: String,
+    #[serde(default = "default_nav_output_stability_signature_version")]
+    pub stability_signature_version: u32,
 }
 
 fn default_nav_solution_model_version() -> u32 {
     NAV_SOLUTION_MODEL_VERSION
+}
+
+fn default_nav_output_stability_signature_version() -> u32 {
+    NAV_OUTPUT_STABILITY_SIGNATURE_VERSION
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
