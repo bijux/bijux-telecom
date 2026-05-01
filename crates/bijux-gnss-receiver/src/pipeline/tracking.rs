@@ -353,7 +353,7 @@ impl Tracking {
                     sat: acq.sat,
                     carrier_hz: acq.carrier_hz.0,
                     code_phase_samples: acq.code_phase_samples as f64,
-                    acquisition_hypothesis: acquisition_hypothesis,
+                    acquisition_hypothesis,
                     acquisition_score: acq.score,
                     acquisition_code_phase_samples: acq.code_phase_samples,
                     acquisition_carrier_hz: acq.carrier_hz.0,
@@ -571,7 +571,13 @@ fn ca_code_or_default(prn: u8) -> Vec<i8> {
     }
 }
 
-fn epoch_lock_quality(lock: bool, pll_lock: bool, dll_lock: bool, fll_lock: bool, cn0_dbhz: f64) -> f64 {
+fn epoch_lock_quality(
+    lock: bool,
+    pll_lock: bool,
+    dll_lock: bool,
+    fll_lock: bool,
+    cn0_dbhz: f64,
+) -> f64 {
     let mut quality = (cn0_dbhz / 60.0).clamp(0.0, 1.0);
     if !lock {
         quality *= 0.2;
@@ -701,8 +707,6 @@ mod tests {
     use super::{ChannelState, Tracking};
     use bijux_gnss_core::api::AcqHypothesis;
     use serde::Deserialize;
-    use std::fs;
-    use std::path::Path;
 
     #[test]
     fn tracking_recovery_from_loss_of_lock() {
@@ -773,8 +777,8 @@ mod tests {
 
     #[test]
     fn tracking_scenario_fixtures_are_deterministic() {
-        for fixture_path in tracking_fixture_paths() {
-            let fixture = load_tracking_fixture(&fixture_path);
+        for (fixture_name, fixture_raw) in tracking_fixture_specs() {
+            let fixture = load_tracking_fixture(fixture_raw, fixture_name);
             let mut state = parse_state(&fixture.initial_state);
             let mut unlocked = 0u8;
             for event in &fixture.events {
@@ -822,20 +826,39 @@ mod tests {
         );
     }
 
-    fn tracking_fixture_paths() -> Vec<std::path::PathBuf> {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/tracking");
-        let mut paths = fs::read_dir(root)
-            .expect("read tracking fixture directory")
-            .filter_map(|entry| entry.ok().map(|e| e.path()))
-            .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
-            .collect::<Vec<_>>();
-        paths.sort();
-        paths
+    fn tracking_fixture_specs() -> Vec<(&'static str, &'static str)> {
+        vec![
+            (
+                "interference_like.json",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/tests/data/tracking/interference_like.json"
+                )),
+            ),
+            (
+                "lock.json",
+                include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/tracking/lock.json")),
+            ),
+            (
+                "relock.json",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/tests/data/tracking/relock.json"
+                )),
+            ),
+            (
+                "weak_signal.json",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/tests/data/tracking/weak_signal.json"
+                )),
+            ),
+        ]
     }
 
-    fn load_tracking_fixture(path: &Path) -> TrackingScenarioFixture {
-        let raw = fs::read_to_string(path).expect("read tracking fixture");
-        serde_json::from_str(&raw).expect("parse tracking fixture")
+    fn load_tracking_fixture(raw: &str, fixture_name: &str) -> TrackingScenarioFixture {
+        serde_json::from_str(raw)
+            .unwrap_or_else(|err| panic!("parse tracking fixture {fixture_name}: {err}"))
     }
 
     fn parse_state(value: &str) -> ChannelState {

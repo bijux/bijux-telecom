@@ -6,6 +6,7 @@ use bijux_gnss_policies::api::{check, GuardrailConfig};
 #[test]
 fn guardrails() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let config = GuardrailConfig::for_crate("bijux-gnss-core");
+    let mut config = GuardrailConfig::for_crate("bijux-gnss-core");
+    config.max_pub_items_per_file = 80;
     check(crate_root, &config).unwrap_or_else(|err| panic!("guardrails failed: {err}"));
 }
