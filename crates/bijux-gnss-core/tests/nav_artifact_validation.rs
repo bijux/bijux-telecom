@@ -59,6 +59,8 @@ fn sample_solution() -> NavSolutionEpoch {
         hdop: Some(1.0),
         vdop: Some(1.2),
         gdop: Some(1.4),
+        stability_signature: "navsig:v1:sample".to_string(),
+        stability_signature_version: bijux_gnss_core::api::NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
     }
 }
 
