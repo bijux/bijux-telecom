@@ -336,6 +336,7 @@ impl Tracking {
                         acq.code_phase_samples
                     );
                 }
+                let stability_signature = tracking_stability_signature(&epochs);
                 let outcome = if epochs.is_empty() { "not_tracked" } else { "tracked" };
                 self.runtime.trace.record(TraceRecord {
                     name: "tracking_sat_done",
@@ -345,6 +346,7 @@ impl Tracking {
                         ("outcome", outcome.to_string()),
                         ("hypothesis", acquisition_hypothesis.clone()),
                         ("epochs", epochs.len().to_string()),
+                        ("stability_signature", stability_signature),
                     ],
                 });
                 TrackingResult {
