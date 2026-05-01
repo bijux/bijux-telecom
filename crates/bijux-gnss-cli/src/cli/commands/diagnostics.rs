@@ -857,6 +857,27 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
+        DiagnosticsCommand::ApiParity { common } => {
+            let _ = runtime_config_from_env(&common, None);
+            let report = api_parity_report();
+            match common.report {
+                ReportFormat::Table => print_api_parity_table(&report),
+                ReportFormat::Json => emit_report(&common, "diagnostics_api_parity", &report)?,
+            }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_api_parity",
+                &report,
+                "diagnostics_api_parity_report.schema.json",
+            )?;
+            write_manifest(
+                &common,
+                "diagnostics_api_parity",
+                &ReceiverConfig::default(),
+                None,
+                &report,
+            )?;
+        }
     }
 
     Ok(())
@@ -1261,6 +1282,27 @@ fn print_machine_catalog_table(report: &serde_json::Value) {
                 .and_then(|v| v.as_str())
                 .unwrap_or("unknown");
             println!("{name}\t{schema}");
+        }
+    }
+}
+
+fn print_api_parity_table(report: &serde_json::Value) {
+    println!("cli/api parity");
+    if let Some(rows) = report.get("workflows").and_then(|v| v.as_array()) {
+        for row in rows {
+            let workflow = row
+                .get("workflow")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            let cli = row
+                .get("cli_supported")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let api = row
+                .get("api_supported")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            println!("{workflow}\tcli={cli}\tapi={api}");
         }
     }
 }
@@ -2144,11 +2186,73 @@ fn machine_catalog_report() -> serde_json::Value {
         serde_json::json!({"name": "diagnostics_medium_gate", "schema": "schemas/diagnostics_medium_gate_report.schema.json", "schema_version": 1}),
         serde_json::json!({"name": "diagnostics_operator_status", "schema": "schemas/diagnostics_operator_status_report.schema.json", "schema_version": 1}),
         serde_json::json!({"name": "diagnostics_channel_summary", "schema": "schemas/diagnostics_channel_summary_report.schema.json", "schema_version": 1}),
-        serde_json::json!({"name": "diagnostics_export_bundle", "schema": "schemas/diagnostics_export_bundle_report.schema.json", "schema_version": 1})
+        serde_json::json!({"name": "diagnostics_export_bundle", "schema": "schemas/diagnostics_export_bundle_report.schema.json", "schema_version": 1}),
+        serde_json::json!({"name": "diagnostics_api_parity", "schema": "schemas/diagnostics_api_parity_report.schema.json", "schema_version": 1})
     ];
     serde_json::json!({
         "schema_version": 1,
         "reports": reports
+    })
+}
+
+fn api_parity_report() -> serde_json::Value {
+    let workflows = vec![
+        serde_json::json!({
+            "workflow": "run",
+            "cli_supported": true,
+            "api_supported": true,
+            "cli_command": "bijux gnss run",
+            "api_surface": "prepare_run + receiver runtime pipeline"
+        }),
+        serde_json::json!({
+            "workflow": "inspect",
+            "cli_supported": true,
+            "api_supported": true,
+            "cli_command": "bijux gnss inspect",
+            "api_surface": "FileSamples + signal metadata inspectors"
+        }),
+        serde_json::json!({
+            "workflow": "diagnose",
+            "cli_supported": true,
+            "api_supported": true,
+            "cli_command": "bijux gnss diagnostics explain|summarize",
+            "api_surface": "artifact_validate + aggregate_diagnostics + run manifest parser"
+        }),
+        serde_json::json!({
+            "workflow": "compare",
+            "cli_supported": true,
+            "api_supported": true,
+            "cli_command": "bijux gnss diagnostics compare",
+            "api_surface": "read_nav_solutions + read_obs_epochs + validate_reference"
+        }),
+        serde_json::json!({
+            "workflow": "replay_audit",
+            "cli_supported": true,
+            "api_supported": true,
+            "cli_command": "bijux gnss diagnostics replay-audit",
+            "api_surface": "run manifest + artifact hash + replay fingerprint computation"
+        }),
+        serde_json::json!({
+            "workflow": "export",
+            "cli_supported": true,
+            "api_supported": true,
+            "cli_command": "bijux gnss diagnostics export-bundle",
+            "api_surface": "run layout paths + managed artifact copy + sha256 manifest"
+        }),
+    ];
+    let parity_ok = workflows.iter().all(|row| {
+        row.get("cli_supported")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+            == row
+                .get("api_supported")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+    });
+    serde_json::json!({
+        "schema_version": 1,
+        "parity_ok": parity_ok,
+        "workflows": workflows
     })
 }
 

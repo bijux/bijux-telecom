@@ -618,6 +618,12 @@ pub(crate) enum DiagnosticsCommand {
         #[command(flatten)]
         common: CommonArgs,
     },
+
+    /// Report CLI/API parity across core operator workflows
+    ApiParity {
+        #[command(flatten)]
+        common: CommonArgs,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
