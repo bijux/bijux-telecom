@@ -106,14 +106,8 @@ impl Acquisition {
         coherent_ms: u32,
         noncoherent: u32,
     ) -> AcquisitionRun {
-        let results = self.run_fft_topn_internal(
-            frame,
-            sats,
-            top_n,
-            coherent_ms,
-            noncoherent,
-            true,
-        );
+        let results =
+            self.run_fft_topn_internal(frame, sats, top_n, coherent_ms, noncoherent, true);
         results
     }
 
@@ -125,15 +119,7 @@ impl Acquisition {
         coherent_ms: u32,
         noncoherent: u32,
     ) -> Vec<Vec<AcqResult>> {
-        self.run_fft_topn_internal(
-            frame,
-            sats,
-            top_n,
-            coherent_ms,
-            noncoherent,
-            false,
-        )
-        .results
+        self.run_fft_topn_internal(frame, sats, top_n, coherent_ms, noncoherent, false).results
     }
 
     fn run_fft_topn_internal(
@@ -544,6 +530,59 @@ mod tests {
         let (hypothesis, score) = acquisition_hypothesis(3.5, 2.0, 2.5, &config);
         assert_eq!(hypothesis.to_string(), "accepted");
         assert!((score - 2.75).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn acquisition_stability_keys_are_sorted() {
+        let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 1 };
+        let mut rows = vec![
+            AcqResult {
+                sat,
+                carrier_hz: Hertz(100.0),
+                code_phase_samples: 10,
+                peak: 10.0,
+                second_peak: 2.0,
+                mean: 1.0,
+                peak_mean_ratio: 10.0,
+                peak_second_ratio: 5.0,
+                cn0_proxy: 10.0,
+                score: 2.0,
+                hypothesis: AcqHypothesis::Accepted,
+                assumptions: None,
+                evidence: Vec::new(),
+                threshold_provenance: None,
+                explain_selection_reason: None,
+            },
+            AcqResult {
+                sat,
+                carrier_hz: Hertz(50.0),
+                code_phase_samples: 20,
+                peak: 10.0,
+                second_peak: 2.0,
+                mean: 1.0,
+                peak_mean_ratio: 10.0,
+                peak_second_ratio: 5.0,
+                cn0_proxy: 10.0,
+                score: 2.0,
+                hypothesis: AcqHypothesis::Accepted,
+                assumptions: None,
+                evidence: Vec::new(),
+                threshold_provenance: None,
+                explain_selection_reason: None,
+            },
+        ];
+        rows.sort_by(|a, b| {
+            let primary = b
+                .peak_mean_ratio
+                .partial_cmp(&a.peak_mean_ratio)
+                .unwrap_or(std::cmp::Ordering::Equal);
+            if primary == std::cmp::Ordering::Equal {
+                return acq_result_stability_key(a).cmp(&acq_result_stability_key(b));
+            }
+            primary
+        });
+        let keys = stable_acq_result_keys(&rows);
+        assert!(keys.windows(2).all(|window| window[0] <= window[1]));
     }
 }
 
