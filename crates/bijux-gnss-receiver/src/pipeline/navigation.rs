@@ -1,9 +1,9 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    check_nav_solution_sanity, is_solution_valid, obs_epoch_stability_key, Meters, NavAssumptions,
-    NavLifecycleState, NavProvenance, NavRefusalClass, NavResidual, NavSolutionEpoch,
-    NavUncertaintyClass, ObsEpoch, Seconds, SolutionStatus, SolutionValidity,
+    check_nav_solution_sanity, is_solution_valid, obs_epoch_stability_key, Constellation, Meters,
+    NavAssumptions, NavLifecycleState, NavProvenance, NavRefusalClass, NavResidual,
+    NavSolutionEpoch, NavUncertaintyClass, ObsEpoch, Seconds, SolutionStatus, SolutionValidity,
     NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
 };
 use bijux_gnss_nav::api::{
@@ -129,9 +129,45 @@ impl Navigation {
                 assumptions,
             ));
         }
+        let input_constellations = obs
+            .sats
+            .iter()
+            .map(|row| row.signal_id.sat.constellation)
+            .collect::<std::collections::BTreeSet<_>>();
+        let has_supported_gps = input_constellations.contains(&Constellation::Gps);
+        let has_unsupported_constellation = input_constellations
+            .iter()
+            .any(|constellation| *constellation != Constellation::Gps);
+
+        if has_unsupported_constellation && !has_supported_gps {
+            return Some(invalid_solution_epoch(
+                obs,
+                source_observation_epoch_id,
+                nav_artifact_id,
+                Some(NavRefusalClass::UnsupportedConstellation),
+                "unsupported_constellation_input".to_string(),
+                vec![format!(
+                    "constellations={}",
+                    input_constellations
+                        .iter()
+                        .map(|value| format!("{value:?}"))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                )],
+                assumptions,
+            ));
+        }
+        if has_unsupported_constellation && has_supported_gps {
+            self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                "NAV_MIXED_CONSTELLATION_INPUT",
+                "mixed-constellation observations detected; unsupported signals are excluded",
+            ));
+        }
         let observations: Vec<PositionObservation> = obs
             .sats
             .iter()
+            .filter(|s| s.signal_id.sat.constellation == Constellation::Gps)
             .filter_map(|s| {
                 let mut elevation = s.elevation_deg;
                 if elevation.is_none() {
@@ -179,15 +215,26 @@ impl Navigation {
                 "NAV_INSUFFICIENT_SATS",
                 "insufficient satellites for navigation solution",
             ));
+            let refusal = if has_unsupported_constellation {
+                NavRefusalClass::MixedConstellationInput
+            } else {
+                NavRefusalClass::InsufficientGeometry
+            };
             return Some(self.degraded_from_last(
                 obs,
                 source_observation_epoch_id,
                 nav_artifact_id,
                 NavDecision {
                     status: SolutionStatus::Degraded,
-                    refusal_class: Some(NavRefusalClass::InsufficientGeometry),
+                    refusal_class: Some(refusal),
                     explain_decision: "refused".to_string(),
-                    explain_reasons: vec!["insufficient_geometry".to_string()],
+                    explain_reasons: vec![
+                        "insufficient_geometry".to_string(),
+                        format!(
+                            "supported_satellites={}",
+                            observations.len()
+                        ),
+                    ],
                 },
                 assumptions,
             ));
@@ -204,6 +251,8 @@ impl Navigation {
                 ));
                 let refusal_class = if eph_covered_count < 4 {
                     NavRefusalClass::InvalidEphemeris
+                } else if eph_covered_count < observations.len() {
+                    NavRefusalClass::PartialDecodedNavigationState
                 } else {
                     NavRefusalClass::SolverFailure
                 };
@@ -1010,6 +1059,34 @@ mod tests {
             .any(|reason| reason == "input_observation_marked_invalid"));
         assert_eq!(solution.lifecycle_state, NavLifecycleState::Invalid);
         assert_eq!(solution.model_version, NAV_SOLUTION_MODEL_VERSION);
+    }
+
+    #[test]
+    fn unsupported_constellation_input_is_refused_explicitly() {
+        let config = ReceiverPipelineConfig::default();
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+        let mut obs = fake_obs_epoch_for_nav_tests(15);
+        for sat in &mut obs.sats {
+            sat.signal_id.sat.constellation = Constellation::Galileo;
+        }
+        let solution = nav.solve_epoch(&obs, &[]).expect("unsupported constellation solution");
+        assert_eq!(solution.status, SolutionStatus::Invalid);
+        assert_eq!(solution.refusal_class, Some(NavRefusalClass::UnsupportedConstellation));
+        assert_eq!(solution.explain_decision, "unsupported_constellation_input");
+    }
+
+    #[test]
+    fn mixed_constellation_without_supported_geometry_refuses_explicitly() {
+        let config = ReceiverPipelineConfig::default();
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+        let mut obs = fake_obs_epoch_for_nav_tests(16);
+        for sat in obs.sats.iter_mut().skip(1) {
+            sat.signal_id.sat.constellation = Constellation::Galileo;
+        }
+        let solution = nav.solve_epoch(&obs, &[]).expect("mixed constellation solution");
+        assert_eq!(solution.status, SolutionStatus::Held);
+        assert_eq!(solution.refusal_class, Some(NavRefusalClass::MixedConstellationInput));
+        assert_eq!(solution.explain_decision, "refused");
     }
 
     #[test]

@@ -190,6 +190,9 @@ pub enum NavRefusalClass {
     InvalidEphemeris,
     InconsistentObservations,
     SolverFailure,
+    UnsupportedConstellation,
+    MixedConstellationInput,
+    PartialDecodedNavigationState,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
