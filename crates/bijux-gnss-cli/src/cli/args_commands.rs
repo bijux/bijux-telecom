@@ -630,6 +630,20 @@ pub(crate) enum DiagnosticsCommand {
         #[command(flatten)]
         common: CommonArgs,
     },
+
+    /// Browse historical run summaries from a root directory
+    HistoryBrowse {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Root directory that contains run directories
+        #[arg(long, value_name = "DIR", default_value = "runs")]
+        root_dir: PathBuf,
+
+        /// Maximum number of runs to return
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]

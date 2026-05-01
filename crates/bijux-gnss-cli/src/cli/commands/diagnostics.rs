@@ -899,6 +899,31 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
+        DiagnosticsCommand::HistoryBrowse {
+            common,
+            root_dir,
+            limit,
+        } => {
+            let _ = runtime_config_from_env(&common, None);
+            let report = history_browse_report(&root_dir, limit)?;
+            match common.report {
+                ReportFormat::Table => print_history_browse_table(&report),
+                ReportFormat::Json => emit_report(&common, "diagnostics_history_browse", &report)?,
+            }
+            write_diagnostics_report_artifact(
+                &common,
+                "diagnostics_history_browse",
+                &report,
+                "diagnostics_history_browse_report.schema.json",
+            )?;
+            write_manifest(
+                &common,
+                "diagnostics_history_browse",
+                &ReceiverConfig::default(),
+                None,
+                &report,
+            )?;
+        }
     }
 
     Ok(())
@@ -1340,6 +1365,21 @@ fn print_expert_guide_table(report: &serde_json::Value) {
                 .and_then(|v| v.as_str())
                 .unwrap_or("no-steps");
             println!("{name}\t{first}");
+        }
+    }
+}
+
+fn print_history_browse_table(report: &serde_json::Value) {
+    println!("history browse");
+    if let Some(runs) = report.get("runs").and_then(|v| v.as_array()) {
+        for run in runs {
+            let dir = run.get("run_dir").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let cmd = run.get("command").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let dataset = run
+                .get("dataset_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            println!("{dir}\t{cmd}\t{dataset}");
         }
     }
 }
@@ -2225,7 +2265,8 @@ fn machine_catalog_report() -> serde_json::Value {
         serde_json::json!({"name": "diagnostics_channel_summary", "schema": "schemas/diagnostics_channel_summary_report.schema.json", "schema_version": 1}),
         serde_json::json!({"name": "diagnostics_export_bundle", "schema": "schemas/diagnostics_export_bundle_report.schema.json", "schema_version": 1}),
         serde_json::json!({"name": "diagnostics_api_parity", "schema": "schemas/diagnostics_api_parity_report.schema.json", "schema_version": 1}),
-        serde_json::json!({"name": "diagnostics_expert_guide", "schema": "schemas/diagnostics_expert_guide_report.schema.json", "schema_version": 1})
+        serde_json::json!({"name": "diagnostics_expert_guide", "schema": "schemas/diagnostics_expert_guide_report.schema.json", "schema_version": 1}),
+        serde_json::json!({"name": "diagnostics_history_browse", "schema": "schemas/diagnostics_history_browse_report.schema.json", "schema_version": 1})
     ];
     serde_json::json!({
         "schema_version": 1,
@@ -2328,6 +2369,68 @@ fn expert_guide_report() -> serde_json::Value {
         "schema_version": 1,
         "flows": flows
     })
+}
+
+fn history_browse_report(root_dir: &Path, limit: usize) -> Result<serde_json::Value> {
+    if !root_dir.exists() || !root_dir.is_dir() {
+        return Err(classified_error(
+            CliErrorClass::OperatorMisconfiguration,
+            format!("history root not found: {}", root_dir.display()),
+        ));
+    }
+    let mut runs = Vec::new();
+    for entry in fs::read_dir(root_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let manifest_path = path.join("manifest.json");
+        if !manifest_path.exists() {
+            continue;
+        }
+        let manifest = serde_json::from_str::<serde_json::Value>(&fs::read_to_string(&manifest_path)?)
+            .unwrap_or(serde_json::Value::Null);
+        let artifact_files = path.join("artifacts");
+        let artifact_file_count = if artifact_files.exists() {
+            let mut count = 0usize;
+            for group in fs::read_dir(&artifact_files)? {
+                let group = group?;
+                let group_path = group.path();
+                if group_path.is_dir() {
+                    for child in fs::read_dir(group_path)? {
+                        let child = child?;
+                        if child.path().is_file() {
+                            count = count.saturating_add(1);
+                        }
+                    }
+                }
+            }
+            count
+        } else {
+            0
+        };
+        runs.push(serde_json::json!({
+            "run_dir": path.display().to_string(),
+            "command": manifest.get("command").cloned().unwrap_or(serde_json::Value::Null),
+            "dataset_id": manifest.get("dataset_id").cloned().unwrap_or(serde_json::Value::Null),
+            "config_hash": manifest.get("config_hash").cloned().unwrap_or(serde_json::Value::Null),
+            "artifact_file_count": artifact_file_count
+        }));
+    }
+    runs.sort_by(|a, b| {
+        b.get("run_dir")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .cmp(a.get("run_dir").and_then(|v| v.as_str()).unwrap_or(""))
+    });
+    runs.truncate(limit.max(1));
+    Ok(serde_json::json!({
+        "schema_version": 1,
+        "root_dir": root_dir.display().to_string(),
+        "limit": limit,
+        "runs": runs
+    }))
 }
 
 fn ensure_run_dir_exists(run_dir: &Path) -> Result<()> {
