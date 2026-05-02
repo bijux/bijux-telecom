@@ -1,0 +1,10 @@
+{
+  "id": "relock",
+  "initial_state": "Tracking",
+  "events": [
+    { "lock": false, "anti_false_lock": false, "cycle_slip": false },
+    { "lock": false, "anti_false_lock": false, "cycle_slip": false },
+    { "lock": true, "anti_false_lock": false, "cycle_slip": false }
+  ],
+  "expected_final_state": "Tracking"
+}

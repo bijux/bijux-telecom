@@ -42,6 +42,14 @@ pub enum ArtifactKind {
     Track,
     /// Acquisition results.
     Acq,
+    /// Acquisition selection explain artifacts.
+    AcqExplain,
+    /// Channel transition events.
+    TrackTransition,
+    /// Observation epoch decisions.
+    ObsDecision,
+    /// Support matrix report.
+    SupportMatrix,
     /// Navigation solution epochs.
     Nav,
 }
@@ -137,6 +145,93 @@ pub mod v1 {
         }
     }
 
+    pub mod acq_explain {
+        use super::*;
+        use crate::api::AcqExplain;
+
+        /// Acquisition explain artifact v1.
+        pub type AcqExplainV1 = ArtifactV1<AcqExplain>;
+
+        impl ArtifactPayloadValidate for AcqExplain {
+            fn validate_payload(&self) -> Vec<DiagnosticEvent> {
+                let mut events = Vec::new();
+                if self.sat.prn == 0 {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Error,
+                        "GNSS_ACQ_EXPLAIN_INVALID",
+                        "explain record has invalid sat",
+                    ));
+                }
+                events
+            }
+        }
+    }
+
+    pub mod track_transition {
+        use super::*;
+        use crate::api::TrackTransition;
+
+        /// Track transition artifact v1.
+        pub type TrackTransitionV1 = ArtifactV1<TrackTransition>;
+
+        impl ArtifactPayloadValidate for TrackTransition {
+            fn validate_payload(&self) -> Vec<DiagnosticEvent> {
+                let mut events = Vec::new();
+                if self.sample_index == 0 && self.epoch_idx == 0 {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Warning,
+                        "GNSS_TRACK_TRANSITION_UNINITIALIZED",
+                        "transition uses zero epoch/sample index",
+                    ));
+                }
+                events
+            }
+        }
+    }
+
+    pub mod obs_decision {
+        use super::*;
+        use crate::api::ObsDecisionArtifact;
+
+        /// Observation decision artifact v1.
+        pub type ObsDecisionV1 = ArtifactV1<ObsDecisionArtifact>;
+
+        impl ArtifactPayloadValidate for ObsDecisionArtifact {
+            fn validate_payload(&self) -> Vec<DiagnosticEvent> {
+                let mut events = Vec::new();
+                if self.artifact_id.is_empty() {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Error,
+                        "GNSS_OBS_DECISION_INVALID",
+                        "observation decision missing artifact id",
+                    ));
+                }
+                events
+            }
+        }
+    }
+
+    pub mod support_matrix {
+        use super::*;
+        use crate::api::SupportMatrix;
+
+        /// Support matrix artifact v1.
+        pub type SupportMatrixV1 = ArtifactV1<SupportMatrix>;
+
+        impl ArtifactPayloadValidate for SupportMatrix {
+            fn validate_payload(&self) -> Vec<DiagnosticEvent> {
+                if self.rows.is_empty() {
+                    return vec![DiagnosticEvent::new(
+                        DiagnosticSeverity::Warning,
+                        "GNSS_SUPPORT_MATRIX_EMPTY",
+                        "support matrix is empty",
+                    )];
+                }
+                Vec::new()
+            }
+        }
+    }
+
     pub mod obs {
         use super::*;
         use crate::api::{
@@ -189,7 +284,7 @@ pub mod v1 {
 
     pub mod nav {
         use super::*;
-        use crate::api::NavSolutionEpoch;
+        use crate::api::{NavSolutionEpoch, SolutionStatus};
 
         /// Navigation solution artifact v1.
         pub type NavSolutionEpochV1 = ArtifactV1<NavSolutionEpoch>;
@@ -205,6 +300,69 @@ pub mod v1 {
                         DiagnosticSeverity::Error,
                         "GNSS_NUMERIC_PVT_INVALID",
                         "PVT position contains NaN/Inf",
+                    ));
+                }
+                if self.model_version == 0 {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Error,
+                        "GNSS_NAV_MODEL_VERSION_INVALID",
+                        "nav solution model_version must be non-zero",
+                    ));
+                }
+                if self.sat_count != self.used_sat_count + self.rejected_sat_count {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Error,
+                        "GNSS_NAV_SAT_COUNTS_INVALID",
+                        "sat_count does not match used_sat_count + rejected_sat_count",
+                    ));
+                }
+                if self.valid != self.status.is_valid() {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Warning,
+                        "GNSS_NAV_STATUS_VALID_MISMATCH",
+                        "nav solution valid flag does not match status validity",
+                    ));
+                }
+                if self.artifact_id.is_empty() {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Warning,
+                        "GNSS_NAV_ARTIFACT_ID_MISSING",
+                        "nav solution artifact_id is empty",
+                    ));
+                }
+                if self.source_observation_epoch_id.is_empty() {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Warning,
+                        "GNSS_NAV_SOURCE_EPOCH_ID_MISSING",
+                        "nav solution source_observation_epoch_id is empty",
+                    ));
+                }
+                if self.refusal_class.is_some() && self.explain_decision.is_empty() {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Warning,
+                        "GNSS_NAV_EXPLAIN_DECISION_MISSING",
+                        "nav solution refusal_class requires explain_decision",
+                    ));
+                }
+                if self.stability_signature.is_empty() {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Warning,
+                        "GNSS_NAV_STABILITY_SIGNATURE_MISSING",
+                        "nav solution stability signature is empty",
+                    ));
+                }
+                if self.stability_signature_version == 0 {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Warning,
+                        "GNSS_NAV_STABILITY_SIGNATURE_VERSION_INVALID",
+                        "nav solution stability signature version is zero",
+                    ));
+                }
+                if matches!(self.status, SolutionStatus::Invalid) && self.refusal_class.is_none() {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Warning,
+                        "GNSS_NAV_REFUSAL_CLASS_MISSING",
+                        "invalid nav solution should carry a refusal_class",
                     ));
                 }
                 events

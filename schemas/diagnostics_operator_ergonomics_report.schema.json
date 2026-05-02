@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DiagnosticsOperatorErgonomicsReport",
+  "type": "object",
+  "required": ["schema_version", "run_dir", "ergonomics_score", "rigor"],
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "run_dir": { "type": "string" },
+    "ergonomics_score": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "quick_actions": { "type": "array" },
+    "rigor": { "type": "object" }
+  },
+  "additionalProperties": true
+}

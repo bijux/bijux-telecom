@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DiagnosticsIntegrityFocusReport",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_dir",
+    "trust_class",
+    "engineering_trust_score",
+    "blocking_findings",
+    "prioritized_actions",
+    "signals"
+  ],
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "run_dir": { "type": "string" },
+    "trust_class": { "type": "string" },
+    "engineering_trust_score": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "blocking_findings": { "type": "array" },
+    "prioritized_actions": { "type": "array" },
+    "signals": { "type": "object" }
+  },
+  "additionalProperties": true
+}

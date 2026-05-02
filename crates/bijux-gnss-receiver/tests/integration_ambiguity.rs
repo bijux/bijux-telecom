@@ -42,6 +42,8 @@ fn ambiguity_resets_on_cycle_slip() {
             cycle_slip: false,
         },
         multipath_suspect: false,
+        observation_status: bijux_gnss_core::api::ObservationStatus::Accepted,
+        observation_reject_reasons: Vec::new(),
         elevation_deg: None,
         azimuth_deg: None,
         weight: None,
@@ -60,6 +62,7 @@ fn ambiguity_resets_on_cycle_slip() {
                 code_rate_hz: 1_023_000.0,
                 carrier_hz: bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ,
             },
+            ..ObsMetadata::default()
         },
     };
     manager.update_from_obs(1, std::slice::from_ref(&sat));

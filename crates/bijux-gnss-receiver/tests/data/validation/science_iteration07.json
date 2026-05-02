@@ -1,0 +1,26 @@
+[
+  {
+    "name": "degraded_geometry",
+    "pdop": 15.0,
+    "rms_m": 3.0,
+    "used_sat_count": 3,
+    "lock_ratio": 0.95,
+    "expected_class": "weak_geometry"
+  },
+  {
+    "name": "weak_signal_residual",
+    "pdop": 3.0,
+    "rms_m": 42.0,
+    "used_sat_count": 6,
+    "lock_ratio": 0.92,
+    "expected_class": "suspicious_residuals"
+  },
+  {
+    "name": "interference_like_lock_instability",
+    "pdop": 2.0,
+    "rms_m": 4.0,
+    "used_sat_count": 6,
+    "lock_ratio": 0.25,
+    "expected_class": "unstable_lock"
+  }
+]

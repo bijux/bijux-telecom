@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DiagnosticsHistoryBrowseReport",
+  "type": "object",
+  "required": ["schema_version", "root_dir", "limit", "runs"],
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "root_dir": { "type": "string" },
+    "limit": { "type": "integer", "minimum": 1 },
+    "runs": { "type": "array" }
+  },
+  "additionalProperties": true
+}

@@ -77,6 +77,8 @@ fn make_obs_epoch(
                     cycle_slip: false,
                 },
                 multipath_suspect: false,
+                observation_status: bijux_gnss_core::api::ObservationStatus::Accepted,
+                observation_reject_reasons: Vec::new(),
                 elevation_deg: None,
                 azimuth_deg: None,
                 weight: None,
@@ -95,6 +97,7 @@ fn make_obs_epoch(
                         code_rate_hz: 1_023_000.0,
                         carrier_hz: bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ,
                     },
+                    ..ObsMetadata::default()
                 },
             }
         })
@@ -109,6 +112,9 @@ fn make_obs_epoch(
         processing_ms: None,
         role,
         sats,
+        decision: bijux_gnss_core::api::ObservationEpochDecision::Accepted,
+        decision_reason: Some("accepted_observables_present".to_string()),
+        manifest: None,
     }
 }
 

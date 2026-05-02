@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DiagnosticsReplayAuditReport",
+  "type": "object",
+  "required": ["schema_version", "baseline_run_dir", "candidate_run_dir", "classification", "reasons", "compare"],
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "baseline_run_dir": { "type": "string" },
+    "candidate_run_dir": { "type": "string" },
+    "classification": {
+      "type": "string",
+      "enum": ["deterministic_match", "scientific_or_configuration_drift", "integrity_failure"]
+    },
+    "reasons": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "baseline_command": { "type": "string" },
+    "candidate_command": { "type": "string" },
+    "compare": { "type": "object" }
+  },
+  "additionalProperties": true
+}

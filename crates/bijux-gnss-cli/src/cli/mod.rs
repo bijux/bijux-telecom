@@ -4,13 +4,13 @@ use std::path::{Path, PathBuf};
 use bijux_gnss_infra::api::core::{
     sort_obs_sats, validate_obs_epochs, AcqResultV1, ArtifactHeaderV1, ArtifactReadPolicy,
     DiagnosticEvent, DiagnosticSeverity, Constellation, NavSolutionEpochV1,
-    ObsEpoch, ObsEpochV1, SamplesFrame, SatId, SchemaVersion, TrackEpoch, TrackEpochV1,
-    ValidateConfig,
+    NavSolutionEpoch, ObsEpoch, ObsEpochV1, SamplesFrame, SatId, SchemaVersion, TrackEpoch,
+    TrackEpochV1, ValidateConfig,
 };
 use bijux_gnss_infra::api::{artifact_explain, artifact_validate, prepare_run};
 use bijux_gnss_infra::api::parse_ecef;
 use bijux_gnss_infra::api::build_validation_report;
-use bijux_gnss_infra::api::ValidationReferenceEpoch;
+use bijux_gnss_infra::api::{ValidationReferenceEpoch, ValidationReport};
 use bijux_gnss_infra::api::{DatasetEntry, DatasetRegistry};
 use bijux_gnss_infra::api::{expand_sweep, parse_sweep};
 use bijux_gnss_infra::api::hash_config;
@@ -39,6 +39,22 @@ fn workspace_root() -> &'static Path {
         .expect("workspace root")
 }
 
+#[derive(Clone, Copy)]
+enum CliErrorClass {
+    OperatorMisconfiguration,
+    UnsupportedScience,
+    InternalFault,
+}
+
+fn classified_error(class: CliErrorClass, detail: impl AsRef<str>) -> eyre::Report {
+    let (code, label) = match class {
+        CliErrorClass::OperatorMisconfiguration => ("operator_misconfiguration", "operator"),
+        CliErrorClass::UnsupportedScience => ("unsupported_science", "science"),
+        CliErrorClass::InternalFault => ("internal_fault", "internal"),
+    };
+    eyre!("[{label}:{code}] {}", detail.as_ref())
+}
+
 pub(crate) fn schema_path(name: &str) -> PathBuf {
     workspace_root().join("schemas").join(name)
 }
@@ -51,6 +67,7 @@ fn infra_args(common: &CommonArgs) -> bijux_gnss_infra::api::RunContextArgs<'_> 
         out: common.out.as_ref(),
         resume: common.resume.as_ref(),
         deterministic: common.deterministic,
+        sidecar: common.sidecar.as_ref(),
     }
 }
 

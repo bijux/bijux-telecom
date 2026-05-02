@@ -60,11 +60,15 @@ pub struct RunContextArgs<'a> {
     pub resume: Option<&'a PathBuf>,
     /// Deterministic flag.
     pub deterministic: bool,
+    /// Optional sidecar metadata path.
+    pub sidecar: Option<&'a PathBuf>,
 }
 
 /// Run manifest persisted for each execution.
 #[derive(Debug, Serialize)]
 pub struct RunManifest {
+    /// Layout schema version for run directory contracts.
+    pub layout_schema_version: u32,
     /// Command name.
     pub command: String,
     /// Timestamp in Unix milliseconds.
@@ -89,6 +93,10 @@ pub struct RunManifest {
     pub toolchain: String,
     /// Enabled features.
     pub features: Vec<String>,
+    /// Replay scope required to re-run with matching context.
+    pub replay_scope: ReplayScope,
+    /// Front-end provenance that can affect scientific interpretation.
+    pub front_end_provenance: FrontEndProvenance,
     /// Summary payload.
     pub summary: serde_json::Value,
 }
@@ -118,6 +126,44 @@ pub struct RunReport {
     pub build_git: String,
     /// Build timestamp (optional).
     pub build_timestamp: String,
+    /// Layout schema version for run directory contracts.
+    pub layout_schema_version: u32,
+    /// Replay scope required to re-run with matching context.
+    pub replay_scope: ReplayScope,
+    /// Front-end provenance that can affect scientific interpretation.
+    pub front_end_provenance: FrontEndProvenance,
+}
+
+/// Replay scope persisted in run manifests and reports.
+#[derive(Debug, Serialize, Clone)]
+pub struct ReplayScope {
+    /// Whether deterministic mode was requested.
+    pub deterministic: bool,
+    /// Whether run resumed from a prior run directory.
+    pub resume: bool,
+    /// Whether output directory was explicitly requested.
+    pub explicit_output_dir: bool,
+    /// Requested dataset id from CLI args.
+    pub requested_dataset_id: Option<String>,
+    /// Whether unregistered datasets were allowed.
+    pub allow_unregistered_dataset: bool,
+}
+
+/// Front-end provenance captured at run time.
+#[derive(Debug, Serialize, Clone)]
+pub struct FrontEndProvenance {
+    /// Sample rate used for ingest, in Hz.
+    pub sample_rate_hz: f64,
+    /// Intermediate frequency used for ingest, in Hz.
+    pub intermediate_freq_hz: f64,
+    /// Quantization depth in bits.
+    pub quantization_bits: u8,
+    /// Code frequency basis in Hz.
+    pub code_freq_basis_hz: f64,
+    /// Normalization source.
+    pub normalization_source: String,
+    /// Calibration source descriptor.
+    pub calibration_source: String,
 }
 
 /// Run index entry appended to runs/index.jsonl.
@@ -146,6 +192,7 @@ struct RunContext {
 
 static RUN_CONTEXT: OnceLock<RunContext> = OnceLock::new();
 const RUN_REPORT_SCHEMA_VERSION: u32 = 1;
+const RUN_LAYOUT_SCHEMA_VERSION: u32 = 1;
 
 fn now_unix_ms(deterministic: bool) -> u128 {
     if deterministic {
@@ -169,6 +216,35 @@ fn run_id(config_hash: &str, dataset_hash: Option<&str>, build_version: &str) ->
     }
     hasher.update(build_version.as_bytes());
     hex::encode(hasher.finalize())
+}
+
+fn replay_scope(args: &RunContextArgs<'_>) -> ReplayScope {
+    ReplayScope {
+        deterministic: args.deterministic,
+        resume: args.resume.is_some(),
+        explicit_output_dir: args.out.is_some(),
+        requested_dataset_id: args.dataset_id.map(str::to_string),
+        allow_unregistered_dataset: args.unregistered_dataset,
+    }
+}
+
+fn front_end_provenance(args: &RunContextArgs<'_>, profile: &ReceiverConfig) -> FrontEndProvenance {
+    let sidecar_used = args.sidecar.is_some();
+    FrontEndProvenance {
+        sample_rate_hz: profile.sample_rate_hz,
+        intermediate_freq_hz: profile.intermediate_freq_hz,
+        quantization_bits: profile.quantization_bits,
+        code_freq_basis_hz: profile.code_freq_basis_hz,
+        normalization_source: if sidecar_used {
+            "sidecar+receiver_profile".to_string()
+        } else {
+            "receiver_profile".to_string()
+        },
+        calibration_source: args
+            .sidecar
+            .map(|path| format!("sidecar:{}", path.display()))
+            .unwrap_or_else(|| "none_declared".to_string()),
+    }
 }
 
 fn resolve_run_context(
@@ -298,6 +374,9 @@ pub fn write_run_report(
         build_git: std::env::var("BIJUX_BUILD_GIT_SHA").unwrap_or_else(|_| "unknown".to_string()),
         build_timestamp: std::env::var("BIJUX_BUILD_TIMESTAMP")
             .unwrap_or_else(|_| "unknown".to_string()),
+        layout_schema_version: RUN_LAYOUT_SCHEMA_VERSION,
+        replay_scope: replay_scope(args),
+        front_end_provenance: front_end_provenance(args, profile),
     };
     let ctx = resolve_run_context(args, command, dataset)?;
     let data = serde_json::to_string_pretty(&report).map_err(map_err)?;
@@ -335,6 +414,7 @@ pub fn write_manifest(
         toml::to_string(profile).ok()
     };
     let manifest = RunManifest {
+        layout_schema_version: RUN_LAYOUT_SCHEMA_VERSION,
         command: command.to_string(),
         timestamp_unix_ms: now_unix_ms(args.deterministic),
         git_hash: git_hash().unwrap_or_else(|| "unknown".to_string()),
@@ -347,6 +427,8 @@ pub fn write_manifest(
         cpu_features: cpu_features(),
         toolchain: std::env::var("RUSTC_VERSION").unwrap_or_else(|_| "unknown".to_string()),
         features: enabled_features(),
+        replay_scope: replay_scope(args),
+        front_end_provenance: front_end_provenance(args, profile),
         summary: summary.clone(),
     };
     let ctx = resolve_run_context(args, command, dataset)?;

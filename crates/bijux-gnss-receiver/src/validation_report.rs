@@ -2,6 +2,11 @@
 
 use crate::api::ReceiverConfig;
 use crate::api::TrackingResult;
+use crate::rtk::status::{
+    apply_downgrade_policy, evaluate_prerequisites, support_status_matrix, AdvancedMaturity,
+    AdvancedMode, AdvancedPrerequisites, AdvancedRefusalClass, AdvancedSolutionClaim,
+    AdvancedSupportRow,
+};
 use crate::validation_helpers::{check_budgets, to_validation_stats};
 use bijux_gnss_core::api::{
     check_inter_frequency_alignment, check_solution_consistency, reference_ecef, stats,
@@ -66,6 +71,20 @@ pub struct PppReadinessReport {
     pub products_ok: bool,
     /// Fallback descriptions when precise products are missing.
     pub product_fallbacks: Vec<String>,
+    /// Declared maturity state for PPP behavior.
+    pub maturity: AdvancedMaturity,
+    /// Whether explicit execution prerequisites were met.
+    pub prerequisites_met: bool,
+    /// Refusal class when prerequisites were not met.
+    pub refusal_class: Option<AdvancedRefusalClass>,
+    /// Whether the reported PPP path was downgraded.
+    pub downgraded: bool,
+    /// Downgrade reason when present.
+    pub downgrade_reason: Option<String>,
+    /// Reported claim class for PPP output.
+    pub claim: AdvancedSolutionClaim,
+    /// Support matrix row for PPP.
+    pub support: AdvancedSupportRow,
 }
 
 /// Time consistency report for tracking epochs.
@@ -112,6 +131,80 @@ pub struct ValidationBudgets {
     pub nav_nan_max: usize,
     /// Minimum lock epochs before nav update.
     pub nav_min_lock_epochs: u64,
+}
+
+/// Scientific policy used for validation and integrity classification.
+#[derive(Debug, Serialize, Clone)]
+pub struct ValidationSciencePolicy {
+    /// Minimum mean C/N0 expected for stable acceptance.
+    pub min_mean_cn0_dbhz: f64,
+    /// Maximum PDOP for stable geometry.
+    pub max_pdop: f64,
+    /// Maximum residual RMS (meters) for stable quality.
+    pub max_residual_rms_m: f64,
+    /// Minimum used satellites expected for stable geometry.
+    pub min_used_satellites: usize,
+    /// Minimum lock ratio for stable tracking support.
+    pub min_lock_ratio: f64,
+}
+
+impl Default for ValidationSciencePolicy {
+    fn default() -> Self {
+        Self {
+            min_mean_cn0_dbhz: 28.0,
+            max_pdop: 8.0,
+            max_residual_rms_m: 25.0,
+            min_used_satellites: 4,
+            min_lock_ratio: 0.7,
+        }
+    }
+}
+
+/// Integrity class for a navigation epoch.
+#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum NavIntegrityClass {
+    /// No integrity red flags were detected.
+    Nominal,
+    /// Geometry-related checks were weak (PDOP or used satellites).
+    WeakGeometry,
+    /// Residual-related checks were suspicious.
+    SuspiciousResiduals,
+    /// Tracking lock support was unstable.
+    UnstableLock,
+    /// Multiple integrity concerns were present simultaneously.
+    Compound,
+}
+
+/// Integrity report entry for one navigation epoch.
+#[derive(Debug, Serialize)]
+pub struct NavIntegrityReport {
+    /// Epoch index.
+    pub epoch_idx: u64,
+    /// Classified integrity state.
+    pub class: NavIntegrityClass,
+    /// Reasons behind classification.
+    pub reasons: Vec<String>,
+}
+
+/// Partition of advisory diagnostics versus enforced refusal outcomes.
+#[derive(Debug, Serialize)]
+pub struct DiagnosticPartitionReport {
+    /// Advisory diagnostics that do not directly enforce refusal.
+    pub advisory_diagnostics: Vec<String>,
+    /// Enforced refusal outcomes recorded in solutions.
+    pub enforced_refusals: Vec<String>,
+}
+
+/// Assumption summary across validation outputs.
+#[derive(Debug, Serialize)]
+pub struct ValidationAssumptionReport {
+    /// Time systems used in solutions.
+    pub time_systems: Vec<String>,
+    /// Reference frames used in solutions.
+    pub reference_frames: Vec<String>,
+    /// Clock models used in solutions.
+    pub clock_models: Vec<String>,
 }
 
 /// Navigation residual report per epoch.
@@ -164,6 +257,14 @@ pub struct ValidationReport {
     pub inter_frequency_alignment: InterFrequencyAlignmentReport,
     /// PPP readiness report.
     pub ppp_readiness: PppReadinessReport,
+    /// Scientific policy used when classifying outputs.
+    pub science_policy: ValidationSciencePolicy,
+    /// Integrity classifications per navigation epoch.
+    pub integrity: Vec<NavIntegrityReport>,
+    /// Partition between advisory diagnostics and enforced refusal outcomes.
+    pub diagnostic_partition: DiagnosticPartitionReport,
+    /// Assumption summary for time, frame, and clock model usage.
+    pub assumptions: ValidationAssumptionReport,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -180,6 +281,7 @@ struct PppEvaluationReport {
 }
 
 /// Build the validation report for a run.
+#[allow(clippy::too_many_arguments)]
 pub fn build_validation_report(
     tracks: &[TrackingResult],
     obs: &[ObsEpoch],
@@ -188,6 +290,7 @@ pub fn build_validation_report(
     sample_rate_hz: f64,
     products_ok: bool,
     product_fallbacks: Vec<String>,
+    science_policy: ValidationSciencePolicy,
 ) -> Result<ValidationReport, bijux_gnss_core::api::InputError> {
     let mut ref_map = std::collections::BTreeMap::new();
     for r in reference {
@@ -270,6 +373,32 @@ pub fn build_validation_report(
     });
     let combos = combinations_from_obs_epochs(obs, SignalBand::L1, SignalBand::L2);
     let combinations_valid = combos.iter().all(|c| c.status == "ok") && !combos.is_empty();
+    let support_matrix = support_status_matrix();
+    let ppp_support =
+        support_matrix.rows.iter().find(|row| row.mode == AdvancedMode::Ppp).cloned().unwrap_or(
+            AdvancedSupportRow {
+                mode: AdvancedMode::Ppp,
+                maturity: AdvancedMaturity::Scaffolding,
+                real_solver: false,
+                required_inputs: Vec::new(),
+                notes: "ppp support row missing".to_string(),
+            },
+        );
+    let ppp_prereq = AdvancedPrerequisites {
+        has_base_observations: true,
+        has_rover_observations: true,
+        has_ephemeris: !solutions.is_empty(),
+        has_reference_frame: !reference.is_empty(),
+        has_corrections: products_ok,
+        has_min_satellites: solutions.iter().any(|sol| sol.used_sat_count >= 4),
+        has_ambiguity_state: combinations_valid,
+    };
+    let ppp_prereq_decision = evaluate_prerequisites(AdvancedMode::Ppp, &ppp_prereq);
+    let (_ppp_status, downgraded, downgrade_reason, claim) = apply_downgrade_policy(
+        AdvancedMode::Ppp,
+        &ppp_prereq_decision,
+        AdvancedSolutionClaim::Scaffolding,
+    );
     let nis_values: Vec<f64> = solutions
         .iter()
         .filter_map(|s| {
@@ -302,6 +431,11 @@ pub fn build_validation_report(
             consistency_warnings.push(format!("NEES out of expected range: {nees:.3}"));
         }
     }
+    let lock_ratio_by_epoch = lock_ratio_by_epoch(tracks);
+    let integrity = classify_integrity(solutions, &lock_ratio_by_epoch, &science_policy);
+    let assumptions = summarize_assumptions(solutions);
+    let diagnostic_partition =
+        partition_diagnostics(&time_consistency.warnings, &consistency_warnings, solutions);
 
     Ok(ValidationReport {
         samples: tracks.iter().map(|t| t.epochs.len()).sum(),
@@ -324,8 +458,117 @@ pub fn build_validation_report(
             combinations_valid,
             products_ok,
             product_fallbacks,
+            maturity: ppp_support.maturity,
+            prerequisites_met: ppp_prereq_decision.ready,
+            refusal_class: ppp_prereq_decision.refusal_class,
+            downgraded,
+            downgrade_reason,
+            claim,
+            support: ppp_support,
         },
+        science_policy,
+        integrity,
+        diagnostic_partition,
+        assumptions,
     })
+}
+
+fn lock_ratio_by_epoch(tracks: &[TrackingResult]) -> std::collections::BTreeMap<u64, f64> {
+    let mut counts: std::collections::BTreeMap<u64, (u64, u64)> = std::collections::BTreeMap::new();
+    for track in tracks {
+        for epoch in &track.epochs {
+            let entry = counts.entry(epoch.epoch.index).or_insert((0, 0));
+            entry.0 = entry.0.saturating_add(1);
+            if epoch.lock {
+                entry.1 = entry.1.saturating_add(1);
+            }
+        }
+    }
+    counts
+        .into_iter()
+        .map(|(epoch, (total, locked))| {
+            let ratio = if total == 0 { 1.0 } else { locked as f64 / total as f64 };
+            (epoch, ratio)
+        })
+        .collect()
+}
+
+fn classify_integrity(
+    solutions: &[NavSolutionEpoch],
+    lock_ratio_by_epoch: &std::collections::BTreeMap<u64, f64>,
+    science_policy: &ValidationSciencePolicy,
+) -> Vec<NavIntegrityReport> {
+    let mut out = Vec::with_capacity(solutions.len());
+    for solution in solutions {
+        let mut reasons = Vec::new();
+        if solution.used_sat_count < science_policy.min_used_satellites
+            || solution.pdop > science_policy.max_pdop
+        {
+            reasons.push("weak_geometry".to_string());
+        }
+        if solution.rms_m.0 > science_policy.max_residual_rms_m {
+            reasons.push("suspicious_residuals".to_string());
+        }
+        if let Some(ratio) = lock_ratio_by_epoch.get(&solution.epoch.index) {
+            if *ratio < science_policy.min_lock_ratio {
+                reasons.push("unstable_lock".to_string());
+            }
+        }
+        let class = match reasons.as_slice() {
+            [] => NavIntegrityClass::Nominal,
+            [single] if single == "weak_geometry" => NavIntegrityClass::WeakGeometry,
+            [single] if single == "suspicious_residuals" => NavIntegrityClass::SuspiciousResiduals,
+            [single] if single == "unstable_lock" => NavIntegrityClass::UnstableLock,
+            _ => NavIntegrityClass::Compound,
+        };
+        out.push(NavIntegrityReport { epoch_idx: solution.epoch.index, class, reasons });
+    }
+    out
+}
+
+fn summarize_assumptions(solutions: &[NavSolutionEpoch]) -> ValidationAssumptionReport {
+    let mut time_systems = std::collections::BTreeSet::new();
+    let mut reference_frames = std::collections::BTreeSet::new();
+    let mut clock_models = std::collections::BTreeSet::new();
+    for solution in solutions {
+        if let Some(assumptions) = &solution.assumptions {
+            time_systems.insert(assumptions.time_system.clone());
+            reference_frames.insert(assumptions.reference_frame.clone());
+            clock_models.insert(assumptions.clock_model.clone());
+        }
+    }
+    ValidationAssumptionReport {
+        time_systems: time_systems.into_iter().collect(),
+        reference_frames: reference_frames.into_iter().collect(),
+        clock_models: clock_models.into_iter().collect(),
+    }
+}
+
+fn partition_diagnostics(
+    time_warnings: &[String],
+    consistency_warnings: &[String],
+    solutions: &[NavSolutionEpoch],
+) -> DiagnosticPartitionReport {
+    let mut advisory = std::collections::BTreeSet::new();
+    for warning in time_warnings {
+        advisory.insert(format!("time_consistency:{warning}"));
+    }
+    for warning in consistency_warnings {
+        advisory.insert(format!("consistency:{warning}"));
+    }
+    let mut refusals = std::collections::BTreeSet::new();
+    for solution in solutions {
+        if let Some(refusal) = solution.refusal_class {
+            refusals.insert(format!(
+                "epoch={} refusal={:?} decision={}",
+                solution.epoch.index, refusal, solution.explain_decision
+            ));
+        }
+    }
+    DiagnosticPartitionReport {
+        advisory_diagnostics: advisory.into_iter().collect(),
+        enforced_refusals: refusals.into_iter().collect(),
+    }
 }
 
 fn convergence_report(horiz: &[(f64, f64)], vert: &[(f64, f64)]) -> ConvergenceReport {
@@ -545,6 +788,11 @@ fn ppp_evaluation_report(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::TrackingResult;
+    use bijux_gnss_core::api::{
+        Chips, Constellation, Epoch, Hertz, NavAssumptions, SatId, TrackEpoch,
+    };
+    use serde::Deserialize;
 
     #[test]
     fn golden_reference_validation() {
@@ -581,6 +829,25 @@ mod tests {
             ekf_observed_variance: None,
             integrity_hpl_m: None,
             integrity_vpl_m: None,
+            model_version: bijux_gnss_core::api::NAV_SOLUTION_MODEL_VERSION,
+            lifecycle_state: bijux_gnss_core::api::NavLifecycleState::Converged,
+            uncertainty_class: bijux_gnss_core::api::NavUncertaintyClass::Low,
+            assumptions: None,
+            refusal_class: None,
+            artifact_id: "nav-epoch-0000000000-golden".to_string(),
+            source_observation_epoch_id: "obs-epoch-0000000000-golden".to_string(),
+            explain_decision: "accepted".to_string(),
+            explain_reasons: vec!["navigation_solution_usable".to_string()],
+            provenance: None,
+            sat_count: 4,
+            used_sat_count: 4,
+            rejected_sat_count: 0,
+            hdop: Some(1.0),
+            vdop: Some(1.0),
+            gdop: Some(1.0),
+            stability_signature: "navsig:v1:golden".to_string(),
+            stability_signature_version:
+                bijux_gnss_core::api::NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
         };
         let reference = ValidationReferenceEpoch {
             epoch_idx: 0,
@@ -595,10 +862,177 @@ mod tests {
             vel_y_mps: None,
             vel_z_mps: None,
         };
-        let report =
-            build_validation_report(&[], &[], &[sol], &[reference], 1.0, false, Vec::new())
-                .expect("validation report");
+        let report = build_validation_report(
+            &[],
+            &[],
+            &[sol],
+            &[reference],
+            1.0,
+            false,
+            Vec::new(),
+            ValidationSciencePolicy::default(),
+        )
+        .expect("validation report");
         assert!(report.horiz_error_m.rms <= 1e-6);
         assert!(report.vert_error_m.rms <= 1e-6);
+        assert_eq!(report.integrity.len(), 1);
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct ScienceFixtureCase {
+        name: String,
+        pdop: f64,
+        rms_m: f64,
+        used_sat_count: usize,
+        lock_ratio: f64,
+        expected_class: String,
+    }
+
+    fn fixture_solution(
+        epoch_idx: u64,
+        pdop: f64,
+        rms_m: f64,
+        used_sat_count: usize,
+    ) -> NavSolutionEpoch {
+        NavSolutionEpoch {
+            epoch: bijux_gnss_core::api::Epoch { index: epoch_idx },
+            t_rx_s: bijux_gnss_core::api::Seconds(epoch_idx as f64),
+            ecef_x_m: bijux_gnss_core::api::Meters(0.0),
+            ecef_y_m: bijux_gnss_core::api::Meters(0.0),
+            ecef_z_m: bijux_gnss_core::api::Meters(0.0),
+            latitude_deg: 0.0,
+            longitude_deg: 0.0,
+            altitude_m: bijux_gnss_core::api::Meters(0.0),
+            clock_bias_s: bijux_gnss_core::api::Seconds(0.0),
+            clock_drift_s_per_s: 0.0,
+            pdop,
+            rms_m: bijux_gnss_core::api::Meters(rms_m),
+            status: SolutionStatus::Converged,
+            quality: SolutionStatus::Converged.quality_flag(),
+            validity: bijux_gnss_core::api::SolutionValidity::Stable,
+            valid: true,
+            processing_ms: None,
+            sigma_h_m: Some(bijux_gnss_core::api::Meters(1.0)),
+            sigma_v_m: Some(bijux_gnss_core::api::Meters(1.0)),
+            residuals: Vec::new(),
+            isb: Vec::new(),
+            health: Vec::new(),
+            innovation_rms_m: None,
+            normalized_innovation_rms: None,
+            normalized_innovation_max: None,
+            ekf_innovation_rms: None,
+            ekf_condition_number: None,
+            ekf_whiteness_ratio: None,
+            ekf_predicted_variance: None,
+            ekf_observed_variance: None,
+            integrity_hpl_m: None,
+            integrity_vpl_m: None,
+            model_version: bijux_gnss_core::api::NAV_SOLUTION_MODEL_VERSION,
+            lifecycle_state: bijux_gnss_core::api::NavLifecycleState::Converged,
+            uncertainty_class: bijux_gnss_core::api::NavUncertaintyClass::Medium,
+            assumptions: Some(NavAssumptions {
+                time_system: "gps".to_string(),
+                reference_frame: "ecef_wgs84".to_string(),
+                clock_model: "receiver_clock_bias_drift_linear".to_string(),
+                ephemeris_source: "broadcast_lnav".to_string(),
+                frame_decode_mode: "lnav".to_string(),
+                ephemeris_completeness: "sufficient".to_string(),
+                ephemeris_count: used_sat_count,
+            }),
+            refusal_class: None,
+            artifact_id: format!("nav-epoch-{epoch_idx:010}"),
+            source_observation_epoch_id: format!("obs-epoch-{epoch_idx:010}"),
+            explain_decision: "accepted".to_string(),
+            explain_reasons: vec!["fixture".to_string()],
+            provenance: None,
+            sat_count: used_sat_count,
+            used_sat_count,
+            rejected_sat_count: 0,
+            hdop: Some(pdop),
+            vdop: Some(pdop),
+            gdop: Some(pdop),
+            stability_signature: format!("navsig:v1:fixture:{epoch_idx}"),
+            stability_signature_version:
+                bijux_gnss_core::api::NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
+        }
+    }
+
+    fn fixture_track(epoch_idx: u64, lock_ratio: f64) -> TrackingResult {
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        let total = 8u64;
+        let locked = ((total as f64) * lock_ratio).round() as u64;
+        let mut epochs = Vec::new();
+        for idx in 0..total {
+            epochs.push(TrackEpoch {
+                epoch: Epoch { index: epoch_idx },
+                sample_index: idx,
+                sat,
+                prompt_i: 1.0,
+                prompt_q: 0.0,
+                carrier_hz: Hertz(0.0),
+                code_rate_hz: Hertz(1_023_000.0),
+                code_phase_samples: Chips(0.0),
+                lock: idx < locked,
+                cn0_dbhz: 35.0,
+                pll_lock: idx < locked,
+                dll_lock: idx < locked,
+                fll_lock: idx < locked,
+                cycle_slip: false,
+                nav_bit_lock: false,
+                dll_err: 0.0,
+                pll_err: 0.0,
+                fll_err: 0.0,
+                anti_false_lock: false,
+                cycle_slip_reason: None,
+                lock_state: "tracking".to_string(),
+                lock_state_reason: None,
+                processing_ms: None,
+                ..TrackEpoch::default()
+            });
+        }
+        TrackingResult {
+            sat,
+            carrier_hz: 0.0,
+            code_phase_samples: 0.0,
+            acquisition_hypothesis: "accepted".to_string(),
+            acquisition_score: 1.0,
+            acquisition_code_phase_samples: 0,
+            acquisition_carrier_hz: 0.0,
+            acq_to_track_state: "tracking".to_string(),
+            epochs,
+            transitions: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn science_fixture_integrity_classes_are_deterministic() {
+        let fixture_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../bijux-gnss-receiver/tests/data/validation/science_iteration07.json");
+        let cases: Vec<ScienceFixtureCase> =
+            serde_json::from_str(&std::fs::read_to_string(fixture_path).expect("fixture"))
+                .expect("cases");
+        for (idx, case) in cases.iter().enumerate() {
+            let solution = fixture_solution(idx as u64, case.pdop, case.rms_m, case.used_sat_count);
+            let track = fixture_track(idx as u64, case.lock_ratio);
+            let report = build_validation_report(
+                &[track],
+                &[],
+                &[solution],
+                &[],
+                1.0,
+                false,
+                Vec::new(),
+                ValidationSciencePolicy::default(),
+            )
+            .expect("report");
+            let class = report.integrity.first().expect("integrity row");
+            let expected = match case.expected_class.as_str() {
+                "weak_geometry" => NavIntegrityClass::WeakGeometry,
+                "suspicious_residuals" => NavIntegrityClass::SuspiciousResiduals,
+                "unstable_lock" => NavIntegrityClass::UnstableLock,
+                other => panic!("unsupported expected class: {other}"),
+            };
+            assert_eq!(class.class, expected, "case {}", case.name);
+        }
     }
 }

@@ -362,11 +362,22 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
         profile.sample_rate_hz,
         products_ok,
         product_fallbacks,
+        bijux_gnss_infra::api::receiver::ValidationSciencePolicy {
+            min_mean_cn0_dbhz: profile.navigation.science_thresholds.min_mean_cn0_dbhz,
+            max_pdop: profile.navigation.science_thresholds.max_pdop,
+            max_residual_rms_m: profile.navigation.science_thresholds.max_residual_rms_m,
+            min_used_satellites: profile.navigation.science_thresholds.min_used_satellites,
+            min_lock_ratio: profile.navigation.science_thresholds.min_lock_ratio,
+        },
     )?;
     let out_dir = artifacts_dir(&common, "validate", dataset.as_ref())?;
     let out = out_dir.join("validation_report.json");
     fs::write(&out, serde_json::to_string_pretty(&report)?)?;
+    let evidence = validation_evidence_bundle(&obs, &solutions, &report);
+    let evidence_path = out_dir.join("validation_evidence_bundle.json");
+    fs::write(&evidence_path, serde_json::to_string_pretty(&evidence)?)?;
     println!("wrote {}", out.display());
+    println!("wrote {}", evidence_path.display());
     write_manifest(&common, "validate", &profile, dataset.as_ref(), &report)?;
 
     Ok(())
@@ -404,10 +415,14 @@ fn handle_validate_reference(command: GnssCommand) -> Result<()> {
         0.0,
         false,
         vec!["run_dir_only".to_string()],
+        bijux_gnss_infra::api::receiver::ValidationSciencePolicy::default(),
     )?;
     let out_dir = artifacts_dir(&common, "validate_reference", None)?;
     let out = out_dir.join("validation_report.json");
     fs::write(&out, serde_json::to_string_pretty(&report)?)?;
+    let evidence = validation_evidence_bundle(&obs, &solutions, &report);
+    let evidence_path = out_dir.join("validation_evidence_bundle.json");
+    fs::write(&evidence_path, serde_json::to_string_pretty(&evidence)?)?;
     let summary = serde_json::json!({ "report": out.display().to_string() });
     write_manifest(
         &common,
@@ -417,4 +432,167 @@ fn handle_validate_reference(command: GnssCommand) -> Result<()> {
         &summary,
     )?;
     Ok(())
+}
+
+fn validation_evidence_bundle(
+    obs: &[ObsEpoch],
+    solutions: &[NavSolutionEpoch],
+    report: &ValidationReport,
+) -> serde_json::Value {
+    let mut constellation_counts = std::collections::BTreeMap::new();
+    let mut cn0_values = Vec::new();
+    let mut lock_total = 0usize;
+    let mut lock_good = 0usize;
+
+    for epoch in obs {
+        for sat in &epoch.sats {
+            let key = format!("{:?}", sat.signal_id.sat.constellation);
+            *constellation_counts.entry(key).or_insert(0usize) += 1;
+            cn0_values.push(sat.cn0_dbhz);
+            lock_total += 1;
+            if sat.lock_flags.code_lock && sat.lock_flags.carrier_lock && !sat.lock_flags.cycle_slip {
+                lock_good += 1;
+            }
+        }
+    }
+
+    let cn0_mean = if cn0_values.is_empty() {
+        None
+    } else {
+        Some(cn0_values.iter().sum::<f64>() / cn0_values.len() as f64)
+    };
+    let cn0_min = cn0_values.iter().cloned().reduce(f64::min);
+    let cn0_max = cn0_values.iter().cloned().reduce(f64::max);
+
+    let mut refusal_counts = std::collections::BTreeMap::new();
+    let mut pdop_values = Vec::new();
+    let mut rms_values = Vec::new();
+    for sol in solutions {
+        pdop_values.push(sol.pdop);
+        rms_values.push(sol.rms_m.0);
+        if let Some(refusal) = sol.refusal_class {
+            let key = format!("{refusal:?}");
+            *refusal_counts.entry(key).or_insert(0usize) += 1;
+        }
+    }
+    let pdop_mean = if pdop_values.is_empty() {
+        None
+    } else {
+        Some(pdop_values.iter().sum::<f64>() / pdop_values.len() as f64)
+    };
+    let pdop_max = pdop_values.iter().cloned().reduce(f64::max);
+    let residual_rms_mean = if rms_values.is_empty() {
+        None
+    } else {
+        Some(rms_values.iter().sum::<f64>() / rms_values.len() as f64)
+    };
+    let used_sat_mean = if solutions.is_empty() {
+        None
+    } else {
+        Some(
+            solutions
+                .iter()
+                .map(|sol| sol.used_sat_count as f64)
+                .sum::<f64>()
+                / solutions.len() as f64,
+        )
+    };
+    let stable_solution_count = solutions
+        .iter()
+        .filter(|sol| matches!(sol.validity, bijux_gnss_infra::api::core::SolutionValidity::Stable))
+        .count();
+    let weak_integrity_stable_count = report
+        .integrity
+        .iter()
+        .filter(|entry| {
+            !matches!(
+                entry.class,
+                bijux_gnss_infra::api::receiver::NavIntegrityClass::Nominal
+            )
+        })
+        .count();
+
+    let mut claim_evidence_violations = Vec::new();
+    if let Some(value) = cn0_mean {
+        if value < report.science_policy.min_mean_cn0_dbhz {
+            claim_evidence_violations.push(format!(
+                "mean_cn0_below_policy:{value:.3}<{}",
+                report.science_policy.min_mean_cn0_dbhz
+            ));
+        }
+    }
+    if let Some(value) = pdop_mean {
+        if value > report.science_policy.max_pdop {
+            claim_evidence_violations.push(format!(
+                "mean_pdop_above_policy:{value:.3}>{}",
+                report.science_policy.max_pdop
+            ));
+        }
+    }
+    if let Some(value) = residual_rms_mean {
+        if value > report.science_policy.max_residual_rms_m {
+            claim_evidence_violations.push(format!(
+                "mean_residual_rms_above_policy:{value:.3}>{}",
+                report.science_policy.max_residual_rms_m
+            ));
+        }
+    }
+    if let Some(value) = used_sat_mean {
+        if value < report.science_policy.min_used_satellites as f64 {
+            claim_evidence_violations.push(format!(
+                "mean_used_satellites_below_policy:{value:.3}<{}",
+                report.science_policy.min_used_satellites
+            ));
+        }
+    }
+    let lock_quality_ratio = if lock_total == 0 {
+        None
+    } else {
+        Some(lock_good as f64 / lock_total as f64)
+    };
+    if let Some(value) = lock_quality_ratio {
+        if value < report.science_policy.min_lock_ratio {
+            claim_evidence_violations.push(format!(
+                "lock_quality_ratio_below_policy:{value:.3}<{}",
+                report.science_policy.min_lock_ratio
+            ));
+        }
+    }
+    if stable_solution_count > 0 && weak_integrity_stable_count > 0 {
+        claim_evidence_violations.push(format!(
+            "stable_solutions_with_non_nominal_integrity:{weak_integrity_stable_count}/{stable_solution_count}"
+        ));
+    }
+
+    serde_json::json!({
+        "schema_version": 1,
+        "physical": {
+            "observation_epochs": obs.len(),
+            "constellation_counts": constellation_counts,
+            "cn0_dbhz_mean": cn0_mean,
+            "cn0_dbhz_min": cn0_min,
+            "cn0_dbhz_max": cn0_max,
+            "lock_quality_ratio": lock_quality_ratio
+        },
+        "numerical": {
+            "solution_epochs": solutions.len(),
+            "stable_solution_epochs": stable_solution_count,
+            "horiz_error_rms_m": report.horiz_error_m.rms,
+            "vert_error_rms_m": report.vert_error_m.rms,
+            "mean_used_satellites": used_sat_mean,
+            "pdop_mean": pdop_mean,
+            "pdop_max": pdop_max,
+            "residual_rms_mean_m": residual_rms_mean,
+            "refusal_counts": refusal_counts
+        },
+        "diagnostics": {
+            "advisory": report.diagnostic_partition.advisory_diagnostics,
+            "enforced_refusals": report.diagnostic_partition.enforced_refusals
+        },
+        "claim_evidence_guard": {
+            "policy": report.science_policy,
+            "supported": claim_evidence_violations.is_empty(),
+            "violations": claim_evidence_violations
+        }
+    })
 }

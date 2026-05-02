@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DiagnosticsExpertGuideReport",
+  "type": "object",
+  "required": ["schema_version", "flows"],
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "flows": { "type": "array" }
+  },
+  "additionalProperties": true
+}

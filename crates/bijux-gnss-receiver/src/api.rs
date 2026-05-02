@@ -73,6 +73,15 @@ pub use crate::rtk::metrics::{
 };
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
+pub use crate::rtk::status::{
+    apply_downgrade_policy, evaluate_prerequisites, support_status_matrix, AdvancedMaturity,
+    AdvancedMode, AdvancedPrereqDecision, AdvancedPrerequisites, AdvancedRefusalClass,
+    AdvancedSolutionArtifact, AdvancedSolutionClaim, AdvancedSolutionProvenance,
+    AdvancedSupportMatrix, AdvancedSupportRow, AmbiguityStateArtifact, CorrectionInputArtifact,
+    ADVANCED_SUPPORT_MATRIX_VERSION,
+};
+#[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use bijux_gnss_core::api::rtk::{
     RtkBaselineEpochV1, RtkBaselineQualityV1, RtkDdEpochV1, RtkFixAuditV1, RtkPrecisionV1,
     RtkSdEpochV1,
@@ -87,9 +96,10 @@ pub use crate::sim::synthetic as sim;
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use crate::validation_report::{
-    build_validation_report, check_time_consistency, ConvergenceReport, FixTimelineEntry,
-    NavResidualReport, PppReadinessReport, TimeConsistencyReport, ValidationBudgets,
-    ValidationErrorStats, ValidationReport,
+    build_validation_report, check_time_consistency, ConvergenceReport, DiagnosticPartitionReport,
+    FixTimelineEntry, NavIntegrityClass, NavIntegrityReport, NavResidualReport, PppReadinessReport,
+    TimeConsistencyReport, ValidationAssumptionReport, ValidationBudgets, ValidationErrorStats,
+    ValidationReport, ValidationSciencePolicy,
 };
 
 /// Artifacts produced by a receiver pipeline run.
@@ -97,10 +107,18 @@ pub use crate::validation_report::{
 pub struct RunArtifacts {
     /// Acquisition candidates captured during the run.
     pub acquisitions: Vec<bijux_gnss_core::api::AcqResult>,
+    /// Acquisition explain artifacts captured during the run.
+    pub acquisition_explain: Vec<bijux_gnss_core::api::AcqExplain>,
+    /// Track transition artifacts captured during the run.
+    pub track_transitions: Vec<bijux_gnss_core::api::TrackTransition>,
     /// Tracking reports captured during the run.
     pub tracking: Vec<TrackingResult>,
+    /// Observation decision artifacts captured during the run.
+    pub observation_decisions: Vec<bijux_gnss_core::api::ObsDecisionArtifact>,
     /// Observation epochs captured during the run.
     pub observations: Vec<bijux_gnss_core::api::ObsEpoch>,
+    /// Signal support matrix artifact.
+    pub support_matrix: Option<bijux_gnss_core::api::SupportMatrix>,
     /// Navigation solution epochs captured during the run.
     pub navigation: Vec<bijux_gnss_core::api::NavEpoch>,
 }

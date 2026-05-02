@@ -36,6 +36,8 @@ fn rinex_obs_has_header() {
                 cycle_slip: false,
             },
             multipath_suspect: false,
+            observation_status: bijux_gnss_infra::api::core::ObservationStatus::Accepted,
+            observation_reject_reasons: Vec::new(),
             elevation_deg: None,
             azimuth_deg: None,
             weight: None,
@@ -54,8 +56,12 @@ fn rinex_obs_has_header() {
                     code_rate_hz: 1_023_000.0,
                     carrier_hz: GPS_L1_CA_CARRIER_HZ,
                 },
+                ..ObsMetadata::default()
             },
         }],
+        decision: bijux_gnss_infra::api::core::ObservationEpochDecision::Accepted,
+        decision_reason: Some("accepted_observables_present".to_string()),
+        manifest: None,
     };
     let path = std::path::Path::new("/tmp/rinex_obs_test.rnx");
     write_rinex_obs(path, &[epoch], true).expect("write obs");

@@ -3,12 +3,256 @@
 
 use std::collections::BTreeMap;
 
+use crate::api::SignalCode;
 use crate::api::{
     Chips, Constellation, Cycles, Epoch, Hertz, Meters, SampleTime, SatId, Seconds, SigId,
     SignalBand, SignalSpec,
 };
 use num_complex::Complex;
 use serde::{Deserialize, Serialize};
+
+fn default_start_sample() -> usize {
+    0
+}
+
+fn default_phase_step_samples() -> usize {
+    1
+}
+
+fn default_phase_search_mode() -> String {
+    "full_code".to_string()
+}
+
+pub const TRACKING_STATE_MODEL_VERSION: u32 = 1;
+pub const OBSERVATION_MODEL_VERSION: u32 = 1;
+pub const OBSERVATION_DOWNSTREAM_PROFILE_VERSION: u32 = 1;
+pub const NAV_SOLUTION_MODEL_VERSION: u32 = 1;
+pub const NAV_OUTPUT_STABILITY_SIGNATURE_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TrackingLifecycleState {
+    Init,
+    PullIn,
+    Lock,
+    Degraded,
+    Lost,
+    Inactive,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrackingAssumptions {
+    pub integration_ms: u32,
+    pub dll_bw_hz: f64,
+    pub pll_bw_hz: f64,
+    pub fll_bw_hz: f64,
+    pub discriminator_family: String,
+    pub aiding_mode: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum SupportStatus {
+    Supported,
+    Unsupported,
+    Planned,
+    Deprecated,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SignalSupportRow {
+    pub constellation: Constellation,
+    pub band: SignalBand,
+    pub code: SignalCode,
+    pub status: SupportStatus,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SupportMatrix {
+    pub schema_version: u32,
+    pub rows: Vec<SignalSupportRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcqThresholdProvenance {
+    pub coherent_ms: u32,
+    pub noncoherent: u32,
+    pub doppler_search_hz: i32,
+    pub doppler_step_hz: i32,
+    pub peak_mean_threshold: f32,
+    pub peak_second_threshold: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcqExplainCandidate {
+    pub rank: u8,
+    pub code_phase_samples: usize,
+    pub carrier_hz: f64,
+    pub peak: f32,
+    pub peak_mean_ratio: f32,
+    pub peak_second_ratio: f32,
+    pub second_peak_ratio: f32,
+    pub mean: f32,
+    pub hypothesis: AcqHypothesis,
+    pub score: f32,
+    pub threshold_hit: bool,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcqExplain {
+    pub sat: SatId,
+    pub selected_rank: Option<u8>,
+    pub selected_reason: String,
+    pub candidate_count: usize,
+    pub candidates: Vec<AcqExplainCandidate>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrackTransition {
+    pub sat: SatId,
+    pub channel_id: u8,
+    pub epoch_idx: u64,
+    pub sample_index: u64,
+    pub from_state: String,
+    pub to_state: String,
+    pub reason: String,
+    pub lock_quality: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ObsEpochManifest {
+    pub version: u32,
+    pub artifact_id: String,
+    pub epoch_id: String,
+    pub source_epoch_idx: u64,
+    pub source_sample_index: u64,
+    pub decision: ObservationEpochDecision,
+    #[serde(default = "default_observation_downstream_profile_version")]
+    pub downstream_profile_version: u32,
+}
+
+fn default_observation_downstream_profile_version() -> u32 {
+    OBSERVATION_DOWNSTREAM_PROFILE_VERSION
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SatObservationDecision {
+    pub sat: SatId,
+    pub status: ObservationStatus,
+    pub reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ObsDecisionArtifact {
+    pub artifact_id: String,
+    pub epoch_idx: u64,
+    pub decision: ObservationEpochDecision,
+    pub reasons: Vec<String>,
+    pub accepted_sats: Vec<SatObservationDecision>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ObservationStatus {
+    Accepted,
+    Missing,
+    Weak,
+    Inconsistent,
+    Rejected,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ObservationSupportClass {
+    Supported,
+    Degraded,
+    Unsupported,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ObservationUncertaintyClass {
+    Low,
+    Medium,
+    High,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub enum NavUncertaintyClass {
+    Low,
+    Medium,
+    High,
+    #[default]
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum NavRefusalClass {
+    InsufficientGeometry,
+    InvalidEphemeris,
+    InconsistentObservations,
+    SolverFailure,
+    UnsupportedConstellation,
+    MixedConstellationInput,
+    PartialDecodedNavigationState,
+    ScientificPrerequisitesTooWeak,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NavAssumptions {
+    #[serde(default = "default_nav_time_system")]
+    pub time_system: String,
+    #[serde(default = "default_nav_reference_frame")]
+    pub reference_frame: String,
+    #[serde(default = "default_nav_clock_model")]
+    pub clock_model: String,
+    pub ephemeris_source: String,
+    pub frame_decode_mode: String,
+    #[serde(default = "default_nav_ephemeris_completeness")]
+    pub ephemeris_completeness: String,
+    pub ephemeris_count: usize,
+}
+
+fn default_nav_time_system() -> String {
+    "gps".to_string()
+}
+
+fn default_nav_reference_frame() -> String {
+    "ecef_wgs84".to_string()
+}
+
+fn default_nav_clock_model() -> String {
+    "receiver_clock_bias_drift_linear".to_string()
+}
+
+fn default_nav_ephemeris_completeness() -> String {
+    "unknown".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NavProvenance {
+    pub solver_family: String,
+    pub weighting_mode: String,
+    pub robust_solver: bool,
+    pub raim_enabled: bool,
+    pub satellites_used: Vec<SatId>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ObservationEpochDecision {
+    Accepted,
+    Rejected,
+}
+
+impl Default for ObservationStatus {
+    fn default() -> Self {
+        Self::Accepted
+    }
+}
+
+impl Default for ObservationEpochDecision {
+    fn default() -> Self {
+        Self::Accepted
+    }
+}
 
 pub type Sample = Complex<f32>;
 
@@ -42,6 +286,63 @@ pub struct AcqRequest {
     pub noncoherent: u32,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AcqHypothesis {
+    Accepted,
+    Ambiguous,
+    Rejected,
+    Deferred,
+}
+
+impl Default for AcqHypothesis {
+    fn default() -> Self {
+        Self::Deferred
+    }
+}
+
+impl std::fmt::Display for AcqHypothesis {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let value = match self {
+            Self::Accepted => "accepted",
+            Self::Ambiguous => "ambiguous",
+            Self::Rejected => "rejected",
+            Self::Deferred => "deferred",
+        };
+        write!(f, "{value}")
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcqAssumptions {
+    pub doppler_search_hz: i32,
+    pub doppler_step_hz: i32,
+    pub coherent_ms: u32,
+    pub noncoherent: u32,
+    pub samples_per_code: usize,
+    pub frame_samples: usize,
+    #[serde(default = "default_start_sample")]
+    pub code_phase_search_start_sample: usize,
+    #[serde(default = "default_phase_step_samples")]
+    pub code_phase_search_step_samples: usize,
+    #[serde(default)]
+    pub code_phase_search_bins: usize,
+    #[serde(default = "default_phase_search_mode")]
+    pub code_phase_search_mode: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcqEvidence {
+    pub rank: u8,
+    pub code_phase_samples: usize,
+    pub doppler_hz: f64,
+    pub peak: f32,
+    pub second_peak: f32,
+    pub peak_mean_ratio: f32,
+    pub peak_second_ratio: f32,
+    pub mean: f32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcqResult {
     pub sat: SatId,
@@ -53,6 +354,38 @@ pub struct AcqResult {
     pub peak_mean_ratio: f32,
     pub peak_second_ratio: f32,
     pub cn0_proxy: f32,
+    #[serde(default)]
+    pub score: f32,
+    #[serde(default)]
+    pub hypothesis: AcqHypothesis,
+    #[serde(default)]
+    pub assumptions: Option<AcqAssumptions>,
+    #[serde(default)]
+    pub evidence: Vec<AcqEvidence>,
+    #[serde(default)]
+    pub threshold_provenance: Option<AcqThresholdProvenance>,
+    #[serde(default)]
+    pub explain_selection_reason: Option<String>,
+}
+
+pub fn acq_result_stability_key(result: &AcqResult) -> String {
+    format!(
+        "{:?}-{:02}|{:.3}|{}|{:.6}|{:.6}|{:.6}|{}",
+        result.sat.constellation,
+        result.sat.prn,
+        result.carrier_hz.0,
+        result.code_phase_samples,
+        result.peak_mean_ratio,
+        result.peak_second_ratio,
+        result.score,
+        result.hypothesis
+    )
+}
+
+pub fn stable_acq_result_keys(results: &[AcqResult]) -> Vec<String> {
+    let mut keys = results.iter().map(acq_result_stability_key).collect::<Vec<_>>();
+    keys.sort();
+    keys
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,6 +395,14 @@ pub struct TrackEpoch {
     pub sat: SatId,
     pub prompt_i: f32,
     pub prompt_q: f32,
+    #[serde(default)]
+    pub early_i: f32,
+    #[serde(default)]
+    pub early_q: f32,
+    #[serde(default)]
+    pub late_i: f32,
+    #[serde(default)]
+    pub late_q: f32,
     pub carrier_hz: Hertz,
     pub code_rate_hz: Hertz,
     pub code_phase_samples: Chips,
@@ -76,7 +417,74 @@ pub struct TrackEpoch {
     pub pll_err: f32,
     pub fll_err: f32,
     #[serde(default)]
+    pub anti_false_lock: bool,
+    #[serde(default)]
+    pub cycle_slip_reason: Option<String>,
+    #[serde(default)]
+    pub lock_state: String,
+    #[serde(default)]
+    pub lock_state_reason: Option<String>,
+    #[serde(default)]
+    pub channel_id: Option<u8>,
+    #[serde(default)]
+    pub channel_uid: String,
+    #[serde(default)]
+    pub tracking_provenance: String,
+    #[serde(default)]
+    pub tracking_assumptions: Option<TrackingAssumptions>,
+    #[serde(default)]
     pub processing_ms: Option<f64>,
+}
+
+impl Default for TrackEpoch {
+    fn default() -> Self {
+        Self {
+            epoch: Epoch { index: 0 },
+            sample_index: 0,
+            sat: SatId { constellation: Constellation::Unknown, prn: 0 },
+            prompt_i: 0.0,
+            prompt_q: 0.0,
+            early_i: 0.0,
+            early_q: 0.0,
+            late_i: 0.0,
+            late_q: 0.0,
+            carrier_hz: Hertz(0.0),
+            code_rate_hz: Hertz(0.0),
+            code_phase_samples: Chips(0.0),
+            lock: false,
+            cn0_dbhz: 0.0,
+            pll_lock: false,
+            dll_lock: false,
+            fll_lock: false,
+            cycle_slip: false,
+            nav_bit_lock: false,
+            dll_err: 0.0,
+            pll_err: 0.0,
+            fll_err: 0.0,
+            anti_false_lock: false,
+            cycle_slip_reason: None,
+            lock_state: "inactive".to_string(),
+            lock_state_reason: None,
+            channel_id: None,
+            channel_uid: String::new(),
+            tracking_provenance: String::new(),
+            tracking_assumptions: None,
+            processing_ms: None,
+        }
+    }
+}
+
+impl TrackEpoch {
+    pub fn lifecycle_state(&self) -> TrackingLifecycleState {
+        match self.lock_state.as_str() {
+            "tracking" => TrackingLifecycleState::Lock,
+            "acquired" => TrackingLifecycleState::Init,
+            "pull_in" => TrackingLifecycleState::PullIn,
+            "lost" => TrackingLifecycleState::Lost,
+            "degraded" => TrackingLifecycleState::Degraded,
+            _ => TrackingLifecycleState::Inactive,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -96,6 +504,74 @@ pub struct ObsMetadata {
     pub smoothing_age: u32,
     pub smoothing_resets: u32,
     pub signal: SignalSpec,
+    #[serde(default)]
+    pub acquisition_hypothesis: String,
+    #[serde(default)]
+    pub acquisition_score: f32,
+    #[serde(default)]
+    pub acquisition_code_phase_samples: usize,
+    #[serde(default)]
+    pub acquisition_carrier_hz: f64,
+    #[serde(default)]
+    pub acq_to_track_state: String,
+    #[serde(default)]
+    pub tracking_state: String,
+    #[serde(default)]
+    pub tracking_lock_state: String,
+    #[serde(default)]
+    pub tracking_lock_quality: f64,
+    #[serde(default)]
+    pub observation_status: String,
+    #[serde(default)]
+    pub observation_reject_reasons: Vec<String>,
+    #[serde(default)]
+    pub observation_epoch_id: String,
+    #[serde(default)]
+    pub observation_support_class: String,
+    #[serde(default)]
+    pub observation_uncertainty_class: String,
+    #[serde(default)]
+    pub time_tag_source: String,
+    #[serde(default)]
+    pub time_tag_sample_index: u64,
+    #[serde(default)]
+    pub time_tag_sample_rate_hz: f64,
+}
+
+impl Default for ObsMetadata {
+    fn default() -> Self {
+        Self {
+            tracking_mode: "scalar".to_string(),
+            integration_ms: 0,
+            lock_quality: 0.0,
+            smoothing_window: 0,
+            smoothing_age: 0,
+            smoothing_resets: 0,
+            signal: SignalSpec {
+                constellation: Constellation::Unknown,
+                band: SignalBand::Unknown,
+                code: crate::api::SignalCode::Unknown,
+                code_rate_hz: 0.0,
+                carrier_hz: crate::api::GPS_L1_CA_CARRIER_HZ,
+            },
+            acquisition_hypothesis: "deferred".to_string(),
+            acquisition_score: 0.0,
+            acquisition_code_phase_samples: 0,
+            acquisition_carrier_hz: 0.0,
+            acq_to_track_state: String::new(),
+            tracking_state: String::new(),
+            tracking_lock_state: String::new(),
+            tracking_lock_quality: 0.0,
+            observation_status: "accepted".to_string(),
+            observation_reject_reasons: Vec::new(),
+            observation_epoch_id: String::new(),
+            observation_support_class: "supported".to_string(),
+            observation_uncertainty_class: "unknown".to_string(),
+            time_tag_source: String::new(),
+            time_tag_sample_index: 0,
+            time_tag_sample_rate_hz: 0.0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -118,6 +594,10 @@ pub struct ObsSatellite {
     pub cn0_dbhz: f64,
     pub lock_flags: LockFlags,
     pub multipath_suspect: bool,
+    #[serde(default)]
+    pub observation_status: ObservationStatus,
+    #[serde(default)]
+    pub observation_reject_reasons: Vec<String>,
     pub elevation_deg: Option<f64>,
     pub azimuth_deg: Option<f64>,
     pub weight: Option<f64>,
@@ -138,6 +618,40 @@ pub struct ObsEpoch {
     pub processing_ms: Option<f64>,
     pub role: ReceiverRole,
     pub sats: Vec<ObsSatellite>,
+    #[serde(default)]
+    pub decision: ObservationEpochDecision,
+    #[serde(default)]
+    pub decision_reason: Option<String>,
+    #[serde(default)]
+    pub manifest: Option<ObsEpochManifest>,
+}
+
+pub fn obs_epoch_stability_key(epoch: &ObsEpoch) -> String {
+    let mut sat_keys = epoch
+        .sats
+        .iter()
+        .map(|sat| {
+            format!(
+                "{:?}-{:02}:{:?}:{:?}:{:.3}:{:.6}:{:.3}:{:.6}",
+                sat.signal_id.sat.constellation,
+                sat.signal_id.sat.prn,
+                sat.signal_id.band,
+                sat.signal_id.code,
+                sat.pseudorange_m.0,
+                sat.carrier_phase_cycles.0,
+                sat.doppler_hz.0,
+                sat.cn0_dbhz
+            )
+        })
+        .collect::<Vec<_>>();
+    sat_keys.sort();
+    format!(
+        "epoch:{}|t:{:.9}|decision:{:?}|sats:{}",
+        epoch.epoch_idx,
+        epoch.t_rx_s.0,
+        epoch.decision,
+        sat_keys.join(";")
+    )
 }
 
 impl ObsEpoch {
@@ -321,11 +835,56 @@ pub struct NavSolutionEpoch {
     pub integrity_hpl_m: Option<f64>,
     #[serde(default)]
     pub integrity_vpl_m: Option<f64>,
+    #[serde(default = "default_nav_solution_model_version")]
+    pub model_version: u32,
+    #[serde(default)]
+    pub lifecycle_state: NavLifecycleState,
+    #[serde(default)]
+    pub uncertainty_class: NavUncertaintyClass,
+    #[serde(default)]
+    pub assumptions: Option<NavAssumptions>,
+    #[serde(default)]
+    pub refusal_class: Option<NavRefusalClass>,
+    #[serde(default)]
+    pub artifact_id: String,
+    #[serde(default)]
+    pub source_observation_epoch_id: String,
+    #[serde(default)]
+    pub explain_decision: String,
+    #[serde(default)]
+    pub explain_reasons: Vec<String>,
+    #[serde(default)]
+    pub provenance: Option<NavProvenance>,
+    #[serde(default)]
+    pub sat_count: usize,
+    #[serde(default)]
+    pub used_sat_count: usize,
+    #[serde(default)]
+    pub rejected_sat_count: usize,
+    #[serde(default)]
+    pub hdop: Option<f64>,
+    #[serde(default)]
+    pub vdop: Option<f64>,
+    #[serde(default)]
+    pub gdop: Option<f64>,
+    #[serde(default)]
+    pub stability_signature: String,
+    #[serde(default = "default_nav_output_stability_signature_version")]
+    pub stability_signature_version: u32,
+}
+
+fn default_nav_solution_model_version() -> u32 {
+    NAV_SOLUTION_MODEL_VERSION
+}
+
+fn default_nav_output_stability_signature_version() -> u32 {
+    NAV_OUTPUT_STABILITY_SIGNATURE_VERSION
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SolutionStatus {
     Invalid,
+    Held,
     Degraded,
     Coarse,
     Converged,
@@ -341,13 +900,25 @@ impl SolutionStatus {
     pub fn quality_flag(self) -> NavQualityFlag {
         match self {
             SolutionStatus::Invalid => NavQualityFlag::NoFix,
-            SolutionStatus::Degraded => NavQualityFlag::Degraded,
+            SolutionStatus::Held | SolutionStatus::Degraded => NavQualityFlag::Degraded,
             SolutionStatus::Coarse | SolutionStatus::Converged | SolutionStatus::Float => {
                 NavQualityFlag::Float
             }
             SolutionStatus::Fixed => NavQualityFlag::Fix,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum NavLifecycleState {
+    #[default]
+    Invalid,
+    Held,
+    Degraded,
+    Coarse,
+    Converged,
+    Float,
+    Fixed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]

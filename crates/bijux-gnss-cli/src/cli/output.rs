@@ -25,14 +25,22 @@ fn load_dataset(common: &CommonArgs) -> Result<Option<DatasetEntry>> {
         if common.unregistered_dataset {
             return Ok(None);
         }
-        bail!("dataset id is required (use --dataset or --unregistered-dataset)");
+        return Err(classified_error(
+            CliErrorClass::OperatorMisconfiguration,
+            "dataset id is required (use --dataset or --unregistered-dataset)",
+        ));
     };
     let registry_path = PathBuf::from("datasets/registry.toml");
     let registry = DatasetRegistry::load(&registry_path)
         .with_context(|| format!("failed to parse {}", registry_path.display()))?;
     let entry = registry
         .find(id)
-        .with_context(|| format!("dataset not found: {id}"))?;
+        .ok_or_else(|| {
+            classified_error(
+                CliErrorClass::OperatorMisconfiguration,
+                format!("dataset not found: {id}"),
+            )
+        })?;
     Ok(Some(entry))
 }
 
@@ -43,7 +51,10 @@ fn resolve_input_file(file: Option<&PathBuf>, dataset: Option<&DatasetEntry>) ->
     if let Some(dataset) = dataset {
         return Ok(PathBuf::from(&dataset.path));
     }
-    bail!("no input file provided; use --file or --dataset");
+    Err(classified_error(
+        CliErrorClass::OperatorMisconfiguration,
+        "no input file provided; use --file or --dataset",
+    ))
 }
 
 fn load_sidecar(path: Option<&PathBuf>) -> Result<Option<SidecarSpec>> {
@@ -281,6 +292,10 @@ fn write_track_timeseries(
                 sat: epoch.sat,
                 prompt_i: epoch.prompt_i,
                 prompt_q: epoch.prompt_q,
+                early_i: epoch.early_i,
+                early_q: epoch.early_q,
+                late_i: epoch.late_i,
+                late_q: epoch.late_q,
                 carrier_hz: bijux_gnss_infra::api::core::Hertz(epoch.carrier_hz),
                 code_rate_hz: bijux_gnss_infra::api::core::Hertz(epoch.code_rate_hz),
                 code_phase_samples: bijux_gnss_infra::api::core::Chips(epoch.code_phase_samples),
@@ -294,6 +309,14 @@ fn write_track_timeseries(
                 dll_err: epoch.dll_err,
                 pll_err: epoch.pll_err,
                 fll_err: epoch.fll_err,
+                anti_false_lock: epoch.anti_false_lock,
+                cycle_slip_reason: epoch.cycle_slip_reason.clone(),
+                lock_state: epoch.lock_state.clone(),
+                lock_state_reason: epoch.lock_state_reason.clone(),
+                channel_id: None,
+                channel_uid: String::new(),
+                tracking_provenance: String::new(),
+                tracking_assumptions: None,
                 processing_ms: None,
             },
         };

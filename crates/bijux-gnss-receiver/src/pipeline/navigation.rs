@@ -1,8 +1,10 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    check_nav_solution_sanity, is_solution_valid, Meters, NavResidual, NavSolutionEpoch, ObsEpoch,
-    Seconds, SolutionStatus,
+    check_nav_solution_sanity, is_solution_valid, obs_epoch_stability_key, Constellation, Meters,
+    NavAssumptions, NavLifecycleState, NavProvenance, NavRefusalClass, NavResidual,
+    NavSolutionEpoch, NavUncertaintyClass, ObsEpoch, Seconds, SolutionStatus, SolutionValidity,
+    NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
 };
 use bijux_gnss_nav::api::{
     elevation_azimuth_deg, sat_state_gps_l1ca, weight_from_cn0_elev, GpsEphemeris,
@@ -21,6 +23,14 @@ pub struct Navigation {
     clock: ClockModel,
     last_ecef: Option<(f64, f64, f64)>,
     last_solution: Option<NavSolutionEpoch>,
+}
+
+#[derive(Debug, Clone)]
+struct NavDecision {
+    status: SolutionStatus,
+    refusal_class: Option<NavRefusalClass>,
+    explain_decision: String,
+    explain_reasons: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,12 +115,58 @@ impl Navigation {
         obs: &ObsEpoch,
         eph: &[GpsEphemeris],
     ) -> Option<NavSolutionEpoch> {
+        let source_observation_epoch_id = source_observation_epoch_id(obs);
+        let nav_artifact_id = nav_artifact_id(obs.epoch_idx, &source_observation_epoch_id);
+        let assumptions = nav_assumptions(eph.len());
         if !obs.valid {
-            return None;
+            return Some(invalid_solution_epoch(
+                obs,
+                source_observation_epoch_id,
+                nav_artifact_id,
+                Some(NavRefusalClass::InconsistentObservations),
+                "invalid_observation_epoch".to_string(),
+                vec!["input_observation_marked_invalid".to_string()],
+                assumptions,
+            ));
+        }
+        let input_constellations = obs
+            .sats
+            .iter()
+            .map(|row| row.signal_id.sat.constellation)
+            .collect::<std::collections::BTreeSet<_>>();
+        let has_supported_gps = input_constellations.contains(&Constellation::Gps);
+        let has_unsupported_constellation =
+            input_constellations.iter().any(|constellation| *constellation != Constellation::Gps);
+
+        if has_unsupported_constellation && !has_supported_gps {
+            return Some(invalid_solution_epoch(
+                obs,
+                source_observation_epoch_id,
+                nav_artifact_id,
+                Some(NavRefusalClass::UnsupportedConstellation),
+                "unsupported_constellation_input".to_string(),
+                vec![format!(
+                    "constellations={}",
+                    input_constellations
+                        .iter()
+                        .map(|value| format!("{value:?}"))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                )],
+                assumptions,
+            ));
+        }
+        if has_unsupported_constellation && has_supported_gps {
+            self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                "NAV_MIXED_CONSTELLATION_INPUT",
+                "mixed-constellation observations detected; unsupported signals are excluded",
+            ));
         }
         let observations: Vec<PositionObservation> = obs
             .sats
             .iter()
+            .filter(|s| s.signal_id.sat.constellation == Constellation::Gps)
             .filter_map(|s| {
                 let mut elevation = s.elevation_deg;
                 if elevation.is_none() {
@@ -158,8 +214,29 @@ impl Navigation {
                 "NAV_INSUFFICIENT_SATS",
                 "insufficient satellites for navigation solution",
             ));
-            return self.degraded_from_last(obs);
+            let refusal = if has_unsupported_constellation {
+                NavRefusalClass::MixedConstellationInput
+            } else {
+                NavRefusalClass::InsufficientGeometry
+            };
+            return Some(self.degraded_from_last(
+                obs,
+                source_observation_epoch_id,
+                nav_artifact_id,
+                NavDecision {
+                    status: SolutionStatus::Degraded,
+                    refusal_class: Some(refusal),
+                    explain_decision: "refused".to_string(),
+                    explain_reasons: vec![
+                        "insufficient_geometry".to_string(),
+                        format!("supported_satellites={}", observations.len()),
+                    ],
+                },
+                assumptions,
+            ));
         }
+        let eph_covered_count =
+            observations.iter().filter(|row| eph.iter().any(|entry| entry.sat == row.sat)).count();
         let solution = match self.solver.solve_wls(&observations, eph, obs.t_rx_s.0) {
             Some(solution) => solution,
             None => {
@@ -168,7 +245,28 @@ impl Navigation {
                     "NAV_SOLVER_FAILED",
                     "nav solver failed to converge",
                 ));
-                return self.degraded_from_last(obs);
+                let refusal_class = if eph_covered_count < 4 {
+                    NavRefusalClass::InvalidEphemeris
+                } else if eph_covered_count < observations.len() {
+                    NavRefusalClass::PartialDecodedNavigationState
+                } else {
+                    NavRefusalClass::SolverFailure
+                };
+                return Some(self.degraded_from_last(
+                    obs,
+                    source_observation_epoch_id,
+                    nav_artifact_id,
+                    NavDecision {
+                        status: SolutionStatus::Degraded,
+                        refusal_class: Some(refusal_class),
+                        explain_decision: "refused".to_string(),
+                        explain_reasons: vec![
+                            "position_solver_failed".to_string(),
+                            format!("ephemeris_covered_count={eph_covered_count}"),
+                        ],
+                    },
+                    assumptions,
+                ));
             }
         };
         let (clock_bias_s, clock_drift_s_per_s) = self.clock.update(solution.clock_bias_s, 0.001);
@@ -188,7 +286,7 @@ impl Navigation {
             rms_m: Meters(solution.rms_m),
             status: SolutionStatus::Coarse,
             quality: SolutionStatus::Coarse.quality_flag(),
-            validity: bijux_gnss_core::api::SolutionValidity::Invalid,
+            validity: SolutionValidity::Invalid,
             valid: true,
             processing_ms: None,
             sigma_h_m: solution.sigma_h_m.map(Meters),
@@ -223,6 +321,24 @@ impl Navigation {
             ekf_observed_variance: None,
             integrity_hpl_m: None,
             integrity_vpl_m: None,
+            model_version: NAV_SOLUTION_MODEL_VERSION,
+            lifecycle_state: NavLifecycleState::Coarse,
+            uncertainty_class: NavUncertaintyClass::Unknown,
+            assumptions: Some(assumptions.clone()),
+            refusal_class: None,
+            artifact_id: nav_artifact_id,
+            source_observation_epoch_id,
+            explain_decision: String::new(),
+            explain_reasons: Vec::new(),
+            provenance: None,
+            sat_count: solution.sat_count,
+            used_sat_count: solution.used_sat_count,
+            rejected_sat_count: solution.rejected_sat_count,
+            hdop: solution.hdop,
+            vdop: solution.vdop,
+            gdop: solution.gdop,
+            stability_signature: String::new(),
+            stability_signature_version: NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
         };
 
         if solution.covariance_symmetrized {
@@ -252,13 +368,19 @@ impl Navigation {
         }
 
         let sat_count = observations.len();
-        nav_epoch.status = if sat_count < 4 {
+        let provisional_status = if sat_count < 4 {
             SolutionStatus::Degraded
         } else if nav_epoch.rms_m.0 < 10.0 {
             SolutionStatus::Converged
         } else {
             SolutionStatus::Coarse
         };
+        nav_epoch.status = deterministic_solution_transition(
+            self.last_solution.as_ref().map(|row| row.status),
+            provisional_status,
+            None,
+            false,
+        );
 
         if let Some(sep) = solution.separation_max_m {
             if sep > self.solver.separation_gate_m {
@@ -278,6 +400,7 @@ impl Navigation {
         {
             nav_epoch.status = SolutionStatus::Degraded;
             nav_epoch.valid = false;
+            nav_epoch.refusal_class = Some(NavRefusalClass::InconsistentObservations);
             for event in sanity_events {
                 self.runtime.logger.event(&event);
             }
@@ -294,6 +417,34 @@ impl Navigation {
         nav_epoch.ekf_predicted_variance = predicted_var;
         nav_epoch.ekf_observed_variance = observed_var;
         nav_epoch.validity = classify_validity(&nav_epoch);
+        nav_epoch.lifecycle_state = lifecycle_state_from_status(nav_epoch.status);
+        nav_epoch.uncertainty_class = uncertainty_class_from_solution(&nav_epoch);
+        nav_epoch.provenance = Some(build_provenance(&self.config, &observations, &nav_epoch));
+        let mut decision = decision_for_solution(&nav_epoch);
+        let policy_violations =
+            scientific_prerequisite_violations(&nav_epoch, &observations, &self.config);
+        if decision.explain_decision == "accepted" && !policy_violations.is_empty() {
+            nav_epoch.status = deterministic_solution_transition(
+                self.last_solution.as_ref().map(|row| row.status),
+                nav_epoch.status,
+                Some(NavRefusalClass::ScientificPrerequisitesTooWeak),
+                false,
+            );
+            nav_epoch.valid = false;
+            nav_epoch.quality = nav_epoch.status.quality_flag();
+            nav_epoch.validity = classify_validity(&nav_epoch);
+            nav_epoch.lifecycle_state = lifecycle_state_from_status(nav_epoch.status);
+            decision = NavDecision {
+                status: nav_epoch.status,
+                refusal_class: Some(NavRefusalClass::ScientificPrerequisitesTooWeak),
+                explain_decision: "refused".to_string(),
+                explain_reasons: policy_violations,
+            };
+        }
+        nav_epoch.explain_decision = decision.explain_decision;
+        nav_epoch.explain_reasons = decision.explain_reasons;
+        nav_epoch.refusal_class = decision.refusal_class;
+        nav_epoch.stability_signature = nav_output_stability_signature(&nav_epoch);
         if let Some(sigma_h) = nav_epoch.sigma_h_m {
             nav_epoch.integrity_hpl_m = Some(sigma_h.0 * 6.0);
         }
@@ -313,17 +464,47 @@ impl Navigation {
         Some(nav_epoch)
     }
 
-    fn degraded_from_last(&self, obs: &ObsEpoch) -> Option<NavSolutionEpoch> {
-        let mut degraded = self.last_solution.clone()?;
+    fn degraded_from_last(
+        &self,
+        obs: &ObsEpoch,
+        source_observation_epoch_id: String,
+        nav_artifact_id: String,
+        decision: NavDecision,
+        assumptions: NavAssumptions,
+    ) -> NavSolutionEpoch {
+        let mut degraded = self.last_solution.clone().unwrap_or_else(|| {
+            invalid_solution_epoch(
+                obs,
+                source_observation_epoch_id.clone(),
+                nav_artifact_id.clone(),
+                decision.refusal_class,
+                decision.explain_decision.clone(),
+                decision.explain_reasons.clone(),
+                assumptions.clone(),
+            )
+        });
         degraded.epoch = bijux_gnss_core::api::Epoch { index: obs.epoch_idx };
         degraded.t_rx_s = obs.t_rx_s;
-        degraded.status = SolutionStatus::Degraded;
+        degraded.status = deterministic_solution_transition(
+            self.last_solution.as_ref().map(|row| row.status),
+            decision.status,
+            decision.refusal_class,
+            true,
+        );
+        degraded.lifecycle_state = lifecycle_state_from_status(degraded.status);
         degraded.quality = degraded.status.quality_flag();
         degraded.valid = is_solution_valid(degraded.status);
-        degraded.validity = bijux_gnss_core::api::SolutionValidity::Coarse;
+        degraded.validity = SolutionValidity::Coarse;
         degraded.processing_ms = None;
         degraded.residuals.clear();
-        Some(degraded)
+        degraded.assumptions = Some(assumptions);
+        degraded.source_observation_epoch_id = source_observation_epoch_id;
+        degraded.artifact_id = nav_artifact_id;
+        degraded.explain_decision = decision.explain_decision;
+        degraded.explain_reasons = decision.explain_reasons;
+        degraded.refusal_class = decision.refusal_class;
+        degraded.stability_signature = nav_output_stability_signature(&degraded);
+        degraded
     }
 }
 
@@ -332,15 +513,31 @@ impl bijux_gnss_nav::api::NavEngine for Navigation {
         &mut self,
         obs: &bijux_gnss_core::api::ObsEpochV1,
     ) -> bijux_gnss_core::api::NavSolutionEpochV1 {
-        let solution = self
-            .solve_epoch(&obs.payload, &[])
-            .unwrap_or_else(|| invalid_solution_epoch(&obs.payload));
+        let solution = self.solve_epoch(&obs.payload, &[]).unwrap_or_else(|| {
+            invalid_solution_epoch(
+                &obs.payload,
+                source_observation_epoch_id(&obs.payload),
+                nav_artifact_id(obs.payload.epoch_idx, &source_observation_epoch_id(&obs.payload)),
+                Some(NavRefusalClass::SolverFailure),
+                "refused".to_string(),
+                vec!["runtime_update_solver_failure".to_string()],
+                nav_assumptions(0),
+            )
+        });
         bijux_gnss_core::api::NavSolutionEpochV1 { header: obs.header.clone(), payload: solution }
     }
 }
 
-fn invalid_solution_epoch(obs: &ObsEpoch) -> NavSolutionEpoch {
-    NavSolutionEpoch {
+fn invalid_solution_epoch(
+    obs: &ObsEpoch,
+    source_observation_epoch_id: String,
+    artifact_id: String,
+    refusal_class: Option<NavRefusalClass>,
+    explain_decision: String,
+    explain_reasons: Vec<String>,
+    assumptions: NavAssumptions,
+) -> NavSolutionEpoch {
+    let mut solution = NavSolutionEpoch {
         epoch: bijux_gnss_core::api::Epoch { index: obs.epoch_idx },
         t_rx_s: obs.t_rx_s,
         ecef_x_m: Meters(0.0),
@@ -355,7 +552,7 @@ fn invalid_solution_epoch(obs: &ObsEpoch) -> NavSolutionEpoch {
         rms_m: Meters(0.0),
         status: SolutionStatus::Invalid,
         quality: SolutionStatus::Invalid.quality_flag(),
-        validity: bijux_gnss_core::api::SolutionValidity::Invalid,
+        validity: SolutionValidity::Invalid,
         valid: false,
         processing_ms: None,
         residuals: Vec::new(),
@@ -373,6 +570,220 @@ fn invalid_solution_epoch(obs: &ObsEpoch) -> NavSolutionEpoch {
         ekf_observed_variance: None,
         integrity_hpl_m: None,
         integrity_vpl_m: None,
+        model_version: NAV_SOLUTION_MODEL_VERSION,
+        lifecycle_state: NavLifecycleState::Invalid,
+        uncertainty_class: NavUncertaintyClass::Unknown,
+        assumptions: Some(assumptions),
+        refusal_class,
+        artifact_id,
+        source_observation_epoch_id,
+        explain_decision,
+        explain_reasons,
+        provenance: None,
+        sat_count: 0,
+        used_sat_count: 0,
+        rejected_sat_count: 0,
+        hdop: None,
+        vdop: None,
+        gdop: None,
+        stability_signature: String::new(),
+        stability_signature_version: NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
+    };
+    solution.stability_signature = nav_output_stability_signature(&solution);
+    solution
+}
+
+fn nav_output_stability_signature(solution: &NavSolutionEpoch) -> String {
+    let refusal = solution
+        .refusal_class
+        .map(|value| format!("{value:?}"))
+        .unwrap_or_else(|| "None".to_string());
+    format!(
+        "navsig:v{}:epoch={}:src={}:status={:?}:lifecycle={:?}:valid={}:sat={}:used={}:rej={}:pdop={:.3}:rms={:.3}:refusal={}:decision={}",
+        NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
+        solution.epoch.index,
+        short_id(&solution.source_observation_epoch_id),
+        solution.status,
+        solution.lifecycle_state,
+        solution.valid,
+        solution.sat_count,
+        solution.used_sat_count,
+        solution.rejected_sat_count,
+        solution.pdop,
+        solution.rms_m.0,
+        refusal,
+        solution.explain_decision
+    )
+}
+
+fn source_observation_epoch_id(obs: &ObsEpoch) -> String {
+    obs.manifest
+        .as_ref()
+        .map(|manifest| manifest.epoch_id.clone())
+        .unwrap_or_else(|| obs_epoch_stability_key(obs))
+}
+
+fn nav_artifact_id(epoch_idx: u64, source_observation_epoch_id: &str) -> String {
+    format!("nav-epoch-{epoch_idx:010}-{}", short_id(source_observation_epoch_id))
+}
+
+fn short_id(value: &str) -> String {
+    value.chars().take(16).collect()
+}
+
+fn nav_assumptions(ephemeris_count: usize) -> NavAssumptions {
+    let ephemeris_completeness = if ephemeris_count == 0 {
+        "none"
+    } else if ephemeris_count < 4 {
+        "partial"
+    } else {
+        "sufficient"
+    };
+    NavAssumptions {
+        time_system: "gps".to_string(),
+        reference_frame: "ecef_wgs84".to_string(),
+        clock_model: "receiver_clock_bias_drift_linear".to_string(),
+        ephemeris_source: "broadcast_lnav".to_string(),
+        frame_decode_mode: "lnav".to_string(),
+        ephemeris_completeness: ephemeris_completeness.to_string(),
+        ephemeris_count,
+    }
+}
+
+fn deterministic_solution_transition(
+    previous: Option<SolutionStatus>,
+    proposed: SolutionStatus,
+    refusal_class: Option<NavRefusalClass>,
+    reused_previous: bool,
+) -> SolutionStatus {
+    if refusal_class.is_some() && !reused_previous {
+        return SolutionStatus::Invalid;
+    }
+    if refusal_class.is_some() && reused_previous {
+        return SolutionStatus::Held;
+    }
+    match (previous, proposed) {
+        (_, SolutionStatus::Invalid) => SolutionStatus::Invalid,
+        (Some(SolutionStatus::Converged), SolutionStatus::Coarse) => SolutionStatus::Degraded,
+        (Some(SolutionStatus::Fixed), SolutionStatus::Coarse) => SolutionStatus::Degraded,
+        (_, other) => other,
+    }
+}
+
+fn lifecycle_state_from_status(status: SolutionStatus) -> NavLifecycleState {
+    match status {
+        SolutionStatus::Invalid => NavLifecycleState::Invalid,
+        SolutionStatus::Held => NavLifecycleState::Held,
+        SolutionStatus::Degraded => NavLifecycleState::Degraded,
+        SolutionStatus::Coarse => NavLifecycleState::Coarse,
+        SolutionStatus::Converged => NavLifecycleState::Converged,
+        SolutionStatus::Float => NavLifecycleState::Float,
+        SolutionStatus::Fixed => NavLifecycleState::Fixed,
+    }
+}
+
+fn uncertainty_class_from_solution(solution: &NavSolutionEpoch) -> NavUncertaintyClass {
+    let sigma = solution
+        .sigma_h_m
+        .map(|value| value.0)
+        .or(solution.innovation_rms_m)
+        .unwrap_or(f64::INFINITY);
+    if !sigma.is_finite() {
+        NavUncertaintyClass::Unknown
+    } else if sigma <= 3.0 {
+        NavUncertaintyClass::Low
+    } else if sigma <= 10.0 {
+        NavUncertaintyClass::Medium
+    } else {
+        NavUncertaintyClass::High
+    }
+}
+
+fn scientific_prerequisite_violations(
+    solution: &NavSolutionEpoch,
+    observations: &[PositionObservation],
+    config: &ReceiverPipelineConfig,
+) -> Vec<String> {
+    let mut reasons = Vec::new();
+    let thresholds = &config.science_thresholds;
+    let mean_cn0 = if observations.is_empty() {
+        None
+    } else {
+        Some(observations.iter().map(|row| row.cn0_dbhz).sum::<f64>() / observations.len() as f64)
+    };
+    if let Some(value) = mean_cn0 {
+        if value < thresholds.min_mean_cn0_dbhz {
+            reasons.push(format!(
+                "mean_cn0_below_threshold:{value:.2}<{:.2}",
+                thresholds.min_mean_cn0_dbhz
+            ));
+        }
+    }
+    if solution.pdop > thresholds.max_pdop {
+        reasons
+            .push(format!("pdop_above_threshold:{:.3}>{:.3}", solution.pdop, thresholds.max_pdop));
+    }
+    if solution.rms_m.0 > thresholds.max_residual_rms_m {
+        reasons.push(format!(
+            "residual_rms_above_threshold:{:.3}>{:.3}",
+            solution.rms_m.0, thresholds.max_residual_rms_m
+        ));
+    }
+    if solution.used_sat_count < thresholds.min_used_satellites {
+        reasons.push(format!(
+            "used_satellites_below_threshold:{}<{}",
+            solution.used_sat_count, thresholds.min_used_satellites
+        ));
+    }
+    reasons
+}
+
+fn build_provenance(
+    config: &ReceiverPipelineConfig,
+    observations: &[PositionObservation],
+    solution: &NavSolutionEpoch,
+) -> NavProvenance {
+    let satellites_used = solution
+        .residuals
+        .iter()
+        .filter(|residual| !residual.rejected)
+        .map(|residual| residual.sat)
+        .collect::<Vec<_>>();
+    let weighting_mode =
+        if config.weighting.enabled { "cn0_elevation_weighted" } else { "uniform" };
+    let solver_family =
+        if observations.iter().any(|row| row.weight < 0.999) { "wls_weighted" } else { "wls" };
+    NavProvenance {
+        solver_family: solver_family.to_string(),
+        weighting_mode: weighting_mode.to_string(),
+        robust_solver: config.robust_solver,
+        raim_enabled: config.raim,
+        satellites_used,
+    }
+}
+
+fn decision_for_solution(solution: &NavSolutionEpoch) -> NavDecision {
+    if solution.refusal_class.is_some() || !solution.valid {
+        return NavDecision {
+            status: solution.status,
+            refusal_class: solution.refusal_class,
+            explain_decision: "refused".to_string(),
+            explain_reasons: vec!["solution_marked_invalid".to_string()],
+        };
+    }
+    if matches!(solution.status, SolutionStatus::Held | SolutionStatus::Degraded) {
+        return NavDecision {
+            status: solution.status,
+            refusal_class: None,
+            explain_decision: "degraded".to_string(),
+            explain_reasons: vec!["quality_or_geometry_degraded".to_string()],
+        };
+    }
+    NavDecision {
+        status: solution.status,
+        refusal_class: None,
+        explain_decision: "accepted".to_string(),
+        explain_reasons: vec!["navigation_solution_usable".to_string()],
     }
 }
 
@@ -459,7 +870,208 @@ impl ClockModel {
 mod tests {
     use super::*;
     use crate::pipeline::observations::fake_obs_epoch_for_nav_tests;
-    use bijux_gnss_core::api::{Meters, Seconds};
+    use bijux_gnss_core::api::{
+        Constellation, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
+        ObservationEpochDecision, ObservationStatus, ObservationSupportClass,
+        ObservationUncertaintyClass, ReceiverRole, SatId, Seconds, SigId, SignalBand, SignalCode,
+        SignalSpec,
+    };
+    use bijux_gnss_nav::api::{geodetic_to_ecef, sat_state_gps_l1ca, GpsEphemeris};
+
+    fn sample_last_solution() -> NavSolutionEpoch {
+        NavSolutionEpoch {
+            epoch: bijux_gnss_core::api::Epoch { index: 0 },
+            t_rx_s: Seconds(0.0),
+            ecef_x_m: Meters(1.0),
+            ecef_y_m: Meters(2.0),
+            ecef_z_m: Meters(3.0),
+            latitude_deg: 0.0,
+            longitude_deg: 0.0,
+            altitude_m: Meters(0.0),
+            clock_bias_s: Seconds(0.0),
+            clock_drift_s_per_s: 0.0,
+            pdop: 1.0,
+            rms_m: Meters(1.0),
+            status: SolutionStatus::Converged,
+            quality: SolutionStatus::Converged.quality_flag(),
+            validity: bijux_gnss_core::api::SolutionValidity::Stable,
+            valid: true,
+            processing_ms: None,
+            residuals: Vec::new(),
+            health: Vec::new(),
+            isb: Vec::new(),
+            sigma_h_m: None,
+            sigma_v_m: None,
+            innovation_rms_m: None,
+            normalized_innovation_rms: None,
+            normalized_innovation_max: None,
+            ekf_innovation_rms: None,
+            ekf_condition_number: None,
+            ekf_whiteness_ratio: None,
+            ekf_predicted_variance: None,
+            ekf_observed_variance: None,
+            integrity_hpl_m: None,
+            integrity_vpl_m: None,
+            model_version: NAV_SOLUTION_MODEL_VERSION,
+            lifecycle_state: NavLifecycleState::Converged,
+            uncertainty_class: NavUncertaintyClass::Medium,
+            assumptions: Some(nav_assumptions(0)),
+            refusal_class: None,
+            artifact_id: "nav-epoch-0000000000-seed".to_string(),
+            source_observation_epoch_id: "obs-epoch-0000000000-seed".to_string(),
+            explain_decision: "accepted".to_string(),
+            explain_reasons: vec!["navigation_solution_usable".to_string()],
+            provenance: None,
+            sat_count: 4,
+            used_sat_count: 4,
+            rejected_sat_count: 0,
+            hdop: Some(1.0),
+            vdop: Some(1.2),
+            gdop: Some(1.5),
+            stability_signature: "navsig:v1:sample".to_string(),
+            stability_signature_version: NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
+        }
+    }
+
+    fn make_eph(prn: u8, omega0: f64, m0: f64, t_ref_s: f64) -> GpsEphemeris {
+        GpsEphemeris {
+            sat: SatId { constellation: Constellation::Gps, prn },
+            iodc: 0,
+            iode: 0,
+            week: 0,
+            toe_s: t_ref_s,
+            toc_s: t_ref_s,
+            sqrt_a: 5153.7954775,
+            e: 0.01,
+            i0: 0.94,
+            idot: 0.0,
+            omega0,
+            omegadot: 0.0,
+            w: 0.0,
+            m0,
+            delta_n: 0.0,
+            cuc: 0.0,
+            cus: 0.0,
+            crc: 0.0,
+            crs: 0.0,
+            cic: 0.0,
+            cis: 0.0,
+            af0: 0.0,
+            af1: 0.0,
+            af2: 0.0,
+            tgd: 0.0,
+        }
+    }
+
+    type NavFixtureEpoch = ObsEpoch;
+
+    fn make_obs_epoch_for_solution(
+        epoch_idx: u64,
+        t_rx_s: f64,
+        position_ecef: (f64, f64, f64),
+        ephs: &[GpsEphemeris],
+    ) -> NavFixtureEpoch {
+        let sats = ephs
+            .iter()
+            .map(|eph| {
+                let pseudorange_m = synthetic_pseudorange_m(eph, t_rx_s, position_ecef);
+                ObsSatellite {
+                    signal_id: SigId { sat: eph.sat, band: SignalBand::L1, code: SignalCode::Ca },
+                    pseudorange_m: Meters(pseudorange_m),
+                    pseudorange_var_m2: 4.0,
+                    carrier_phase_cycles: bijux_gnss_core::api::Cycles(0.0),
+                    carrier_phase_var_cycles2: 1.0,
+                    doppler_hz: bijux_gnss_core::api::Hertz(0.0),
+                    doppler_var_hz2: 4.0,
+                    cn0_dbhz: 45.0,
+                    lock_flags: LockFlags {
+                        code_lock: true,
+                        carrier_lock: true,
+                        bit_lock: true,
+                        cycle_slip: false,
+                    },
+                    multipath_suspect: false,
+                    observation_status: ObservationStatus::Accepted,
+                    observation_reject_reasons: Vec::new(),
+                    elevation_deg: Some(45.0),
+                    azimuth_deg: Some(0.0),
+                    weight: Some(1.0),
+                    error_model: None,
+                    metadata: ObsMetadata {
+                        tracking_mode: "synthetic".to_string(),
+                        integration_ms: 1,
+                        lock_quality: 1.0,
+                        smoothing_window: 0,
+                        smoothing_age: 0,
+                        smoothing_resets: 0,
+                        signal: SignalSpec {
+                            constellation: Constellation::Gps,
+                            band: SignalBand::L1,
+                            code: SignalCode::Ca,
+                            code_rate_hz: 1_023_000.0,
+                            carrier_hz: bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ,
+                        },
+                        observation_status: "accepted".to_string(),
+                        observation_support_class: match ObservationSupportClass::Supported {
+                            ObservationSupportClass::Supported => "supported",
+                            ObservationSupportClass::Degraded => "degraded",
+                            ObservationSupportClass::Unsupported => "unsupported",
+                        }
+                        .to_string(),
+                        observation_uncertainty_class: match ObservationUncertaintyClass::Unknown {
+                            ObservationUncertaintyClass::Low => "low",
+                            ObservationUncertaintyClass::Medium => "medium",
+                            ObservationUncertaintyClass::High => "high",
+                            ObservationUncertaintyClass::Unknown => "unknown",
+                        }
+                        .to_string(),
+                        ..ObsMetadata::default()
+                    },
+                }
+            })
+            .collect();
+        let mut epoch = crate::pipeline::observations::fake_obs_epoch_for_nav_tests(epoch_idx);
+        epoch.t_rx_s = Seconds(t_rx_s);
+        epoch.role = ReceiverRole::Rover;
+        epoch.sats = sats;
+        epoch.decision = ObservationEpochDecision::Accepted;
+        epoch.decision_reason = Some("accepted_observables_present".to_string());
+        epoch.manifest = Some(bijux_gnss_core::api::ObsEpochManifest {
+            version: bijux_gnss_core::api::OBSERVATION_MODEL_VERSION,
+            artifact_id: format!("obs-epoch-{epoch_idx:010}"),
+            epoch_id: format!("obs-epoch-{epoch_idx:010}-synthetic"),
+            source_epoch_idx: epoch_idx,
+            source_sample_index: epoch_idx,
+            decision: ObservationEpochDecision::Accepted,
+            downstream_profile_version:
+                bijux_gnss_core::api::OBSERVATION_DOWNSTREAM_PROFILE_VERSION,
+        });
+        epoch
+    }
+
+    fn synthetic_pseudorange_m(
+        eph: &GpsEphemeris,
+        t_rx_s: f64,
+        position_ecef: (f64, f64, f64),
+    ) -> f64 {
+        let c = 299_792_458.0;
+        let mut tau = 0.07;
+        let mut pseudorange_m = 0.0;
+        for _ in 0..10 {
+            let sat = sat_state_gps_l1ca(eph, t_rx_s - tau, tau);
+            let dx = position_ecef.0 - sat.x_m;
+            let dy = position_ecef.1 - sat.y_m;
+            let dz = position_ecef.2 - sat.z_m;
+            let range = (dx * dx + dy * dy + dz * dz).sqrt();
+            pseudorange_m = range - sat.clock_bias_s * c;
+            let next_tau = pseudorange_m / c;
+            if (next_tau - tau).abs() < 1e-12 {
+                break;
+            }
+            tau = next_tau;
+        }
+        pseudorange_m
+    }
 
     #[test]
     fn navigation_degrades_on_solver_failure() {
@@ -470,44 +1082,148 @@ mod tests {
             solver: PositionSolver::new(),
             clock: ClockModel::new(),
             last_ecef: Some((1.0, 2.0, 3.0)),
-            last_solution: Some(NavSolutionEpoch {
-                epoch: bijux_gnss_core::api::Epoch { index: 0 },
-                t_rx_s: Seconds(0.0),
-                ecef_x_m: Meters(1.0),
-                ecef_y_m: Meters(2.0),
-                ecef_z_m: Meters(3.0),
-                latitude_deg: 0.0,
-                longitude_deg: 0.0,
-                altitude_m: Meters(0.0),
-                clock_bias_s: Seconds(0.0),
-                clock_drift_s_per_s: 0.0,
-                pdop: 1.0,
-                rms_m: Meters(1.0),
-                status: SolutionStatus::Converged,
-                quality: SolutionStatus::Converged.quality_flag(),
-                validity: bijux_gnss_core::api::SolutionValidity::Stable,
-                valid: true,
-                processing_ms: None,
-                residuals: Vec::new(),
-                health: Vec::new(),
-                isb: Vec::new(),
-                sigma_h_m: None,
-                sigma_v_m: None,
-                innovation_rms_m: None,
-                normalized_innovation_rms: None,
-                normalized_innovation_max: None,
-                ekf_innovation_rms: None,
-                ekf_condition_number: None,
-                ekf_whiteness_ratio: None,
-                ekf_predicted_variance: None,
-                ekf_observed_variance: None,
-                integrity_hpl_m: None,
-                integrity_vpl_m: None,
-            }),
+            last_solution: Some(sample_last_solution()),
         };
         let obs = fake_obs_epoch_for_nav_tests(10);
         let solution = nav.solve_epoch(&obs, &[]).expect("degraded solution");
-        assert_eq!(solution.status, SolutionStatus::Degraded);
+        assert_eq!(solution.status, SolutionStatus::Held);
+        assert_eq!(solution.refusal_class, Some(NavRefusalClass::InvalidEphemeris));
+        assert_eq!(solution.explain_decision, "refused");
         assert_eq!(solution.epoch.index, 10);
+    }
+
+    #[test]
+    fn invalid_observation_epoch_is_refused_with_explain_surface() {
+        let config = ReceiverPipelineConfig::default();
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+        let mut obs = fake_obs_epoch_for_nav_tests(11);
+        obs.valid = false;
+        obs.decision = ObservationEpochDecision::Rejected;
+        obs.decision_reason = Some("malformed_observation_set".to_string());
+        let solution = nav.solve_epoch(&obs, &[]).expect("invalid solution");
+        assert_eq!(solution.status, SolutionStatus::Invalid);
+        assert_eq!(solution.refusal_class, Some(NavRefusalClass::InconsistentObservations));
+        assert_eq!(solution.explain_decision, "invalid_observation_epoch");
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "input_observation_marked_invalid"));
+        assert_eq!(solution.lifecycle_state, NavLifecycleState::Invalid);
+        assert_eq!(solution.model_version, NAV_SOLUTION_MODEL_VERSION);
+    }
+
+    #[test]
+    fn unsupported_constellation_input_is_refused_explicitly() {
+        let config = ReceiverPipelineConfig::default();
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+        let mut obs = fake_obs_epoch_for_nav_tests(15);
+        for sat in &mut obs.sats {
+            sat.signal_id.sat.constellation = Constellation::Galileo;
+        }
+        let solution = nav.solve_epoch(&obs, &[]).expect("unsupported constellation solution");
+        assert_eq!(solution.status, SolutionStatus::Invalid);
+        assert_eq!(solution.refusal_class, Some(NavRefusalClass::UnsupportedConstellation));
+        assert_eq!(solution.explain_decision, "unsupported_constellation_input");
+    }
+
+    #[test]
+    fn mixed_constellation_without_supported_geometry_refuses_explicitly() {
+        let config = ReceiverPipelineConfig::default();
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+        let mut obs = fake_obs_epoch_for_nav_tests(16);
+        for sat in obs.sats.iter_mut().skip(1) {
+            sat.signal_id.sat.constellation = Constellation::Galileo;
+        }
+        let solution = nav.solve_epoch(&obs, &[]).expect("mixed constellation solution");
+        assert_eq!(solution.status, SolutionStatus::Held);
+        assert_eq!(solution.refusal_class, Some(NavRefusalClass::MixedConstellationInput));
+        assert_eq!(solution.explain_decision, "refused");
+    }
+
+    #[test]
+    fn synthetic_solution_populates_provenance_counts_and_dops() {
+        let config = ReceiverPipelineConfig::default();
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+        let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
+        let t_rx_s = 100_000.0;
+        let ephs = vec![
+            make_eph(1, 0.0, 0.0, t_rx_s),
+            make_eph(2, 0.8, 0.9, t_rx_s),
+            make_eph(3, 1.6, 1.8, t_rx_s),
+            make_eph(4, 2.4, 2.7, t_rx_s),
+            make_eph(5, 3.2, 3.6, t_rx_s),
+        ];
+        let obs = make_obs_epoch_for_solution(12, t_rx_s, truth, &ephs);
+        let solution = nav.solve_epoch(&obs, &ephs).expect("synthetic solution");
+
+        assert_eq!(solution.model_version, NAV_SOLUTION_MODEL_VERSION);
+        assert!(solution.artifact_id.starts_with("nav-epoch-"));
+        assert!(solution.source_observation_epoch_id.starts_with("obs-epoch-"));
+        assert!(solution.sat_count >= 4);
+        assert!(solution.used_sat_count >= 4);
+        assert_eq!(solution.sat_count, solution.used_sat_count + solution.rejected_sat_count);
+        assert!(solution.hdop.is_some());
+        assert!(solution.vdop.is_some());
+        assert!(solution.gdop.is_some());
+        assert!(solution.provenance.is_some());
+        assert_eq!(solution.explain_decision, "accepted");
+        assert_eq!(solution.refusal_class, None);
+        assert!(solution.valid);
+        assert!(solution.stability_signature.starts_with("navsig:v1:"));
+        assert_eq!(solution.stability_signature_version, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION);
+    }
+
+    #[test]
+    fn deterministic_solution_transition_handles_refusal_and_regression() {
+        assert_eq!(
+            deterministic_solution_transition(
+                Some(SolutionStatus::Converged),
+                SolutionStatus::Coarse,
+                None,
+                false,
+            ),
+            SolutionStatus::Degraded
+        );
+        assert_eq!(
+            deterministic_solution_transition(
+                Some(SolutionStatus::Converged),
+                SolutionStatus::Degraded,
+                Some(NavRefusalClass::InsufficientGeometry),
+                true,
+            ),
+            SolutionStatus::Held
+        );
+        assert_eq!(
+            deterministic_solution_transition(
+                Some(SolutionStatus::Converged),
+                SolutionStatus::Coarse,
+                Some(NavRefusalClass::SolverFailure),
+                false,
+            ),
+            SolutionStatus::Invalid
+        );
+    }
+
+    #[test]
+    fn scientific_policy_can_refuse_optimistic_solution_claims() {
+        let mut config = ReceiverPipelineConfig::default();
+        config.science_thresholds.max_pdop = 0.5;
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+        let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
+        let t_rx_s = 100_100.0;
+        let ephs = vec![
+            make_eph(1, 0.0, 0.0, t_rx_s),
+            make_eph(2, 0.8, 0.9, t_rx_s),
+            make_eph(3, 1.6, 1.8, t_rx_s),
+            make_eph(4, 2.4, 2.7, t_rx_s),
+        ];
+        let obs = make_obs_epoch_for_solution(17, t_rx_s, truth, &ephs);
+        let solution = nav.solve_epoch(&obs, &ephs).expect("solution");
+        assert_eq!(solution.refusal_class, Some(NavRefusalClass::ScientificPrerequisitesTooWeak));
+        assert_eq!(solution.explain_decision, "refused");
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason.starts_with("pdop_above_threshold:")));
     }
 }

@@ -1,0 +1,38 @@
+{
+  "id": "partial-visibility",
+  "rows": [
+    {
+      "sat_prn": 7,
+      "epoch_idx": 0,
+      "sample_index": 0,
+      "lock": true,
+      "cn0_dbhz": 45.0,
+      "code_phase_samples": 0.0,
+      "prompt_i": 1.0,
+      "prompt_q": 0.0,
+      "carrier_hz": 0.0,
+      "lock_state": "tracking"
+    },
+    {
+      "sat_prn": 8,
+      "epoch_idx": 0,
+      "sample_index": 0,
+      "lock": false,
+      "cn0_dbhz": 45.0,
+      "code_phase_samples": 0.0,
+      "prompt_i": 1.0,
+      "prompt_q": 0.0,
+      "carrier_hz": 0.0,
+      "lock_state": "lost"
+    }
+  ],
+  "expect": {
+    "decisions": [
+      { "epoch_idx": 0, "decision": "accepted" }
+    ],
+    "support_classes": ["supported", "degraded"],
+    "uncertainty_classes": ["low"],
+    "min_rejected": 1,
+    "multipath_any": false
+  }
+}

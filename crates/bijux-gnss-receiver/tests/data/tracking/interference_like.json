@@ -1,0 +1,8 @@
+{
+  "id": "interference-like",
+  "initial_state": "Tracking",
+  "events": [
+    { "lock": false, "anti_false_lock": false, "cycle_slip": true }
+  ],
+  "expected_final_state": "Lost"
+}

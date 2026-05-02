@@ -116,6 +116,14 @@ struct TrackingRow {
     code_phase_samples: f64,
     prompt_i: f32,
     prompt_q: f32,
+    #[serde(default)]
+    early_i: f32,
+    #[serde(default)]
+    early_q: f32,
+    #[serde(default)]
+    late_i: f32,
+    #[serde(default)]
+    late_q: f32,
     lock: bool,
     cn0_dbhz: f64,
     pll_lock: bool,
@@ -126,6 +134,14 @@ struct TrackingRow {
     dll_err: f32,
     pll_err: f32,
     fll_err: f32,
+    #[serde(default)]
+    anti_false_lock: bool,
+    #[serde(default)]
+    cycle_slip_reason: Option<String>,
+    #[serde(default)]
+    lock_state: String,
+    #[serde(default)]
+    lock_state_reason: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

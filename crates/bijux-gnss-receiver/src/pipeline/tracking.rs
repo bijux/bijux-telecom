@@ -3,11 +3,12 @@
 use num_complex::Complex;
 
 use bijux_gnss_core::api::{
-    Chips, Constellation, Hertz, SampleClock, SampleTime, SamplesFrame, SatId, Seconds, TrackEpoch,
+    AcqHypothesis, Chips, Constellation, Hertz, SampleClock, SampleTime, SamplesFrame, SatId,
+    Seconds, TrackEpoch, TrackTransition, TrackingAssumptions,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
-use crate::engine::runtime::ReceiverRuntime;
+use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
 use bijux_gnss_core::api::Sample;
 use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::Nco;
@@ -21,6 +22,19 @@ pub enum ChannelState {
     PullIn,
     Tracking,
     Lost,
+}
+
+impl std::fmt::Display for ChannelState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let value = match self {
+            Self::Idle => "idle",
+            Self::Acquired => "acquired",
+            Self::PullIn => "pull_in",
+            Self::Tracking => "tracking",
+            Self::Lost => "lost",
+        };
+        write!(f, "{value}")
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,7 +82,13 @@ pub struct TrackingResult {
     pub sat: SatId,
     pub carrier_hz: f64,
     pub code_phase_samples: f64,
+    pub acquisition_hypothesis: String,
+    pub acquisition_score: f32,
+    pub acquisition_code_phase_samples: usize,
+    pub acquisition_carrier_hz: f64,
+    pub acq_to_track_state: String,
     pub epochs: Vec<TrackEpoch>,
+    pub transitions: Vec<TrackTransition>,
 }
 
 #[derive(Debug, Clone)]
@@ -77,7 +97,9 @@ struct LoopState {
     code_rate_hz: f64,
     code_phase_samples: f64,
     prev_prompt: Option<Complex<f32>>,
+    prev_prompt_phase_cycles: Option<f64>,
     state: ChannelState,
+    unlocked_count: u8,
 }
 
 /// Tracking engine with basic E/P/L correlation per epoch.
@@ -169,6 +191,10 @@ impl Tracking {
             sat,
             prompt_i: correlator.prompt.re,
             prompt_q: correlator.prompt.im,
+            early_i: correlator.early.re,
+            early_q: correlator.early.im,
+            late_i: correlator.late.re,
+            late_q: correlator.late.im,
             carrier_hz: Hertz(carrier_freq_hz),
             code_rate_hz: Hertz(self.config.code_freq_basis_hz),
             code_phase_samples: Chips(code_phase_samples),
@@ -182,9 +208,19 @@ impl Tracking {
             dll_err: 0.0,
             pll_err: 0.0,
             fll_err: 0.0,
+            anti_false_lock: false,
+            cycle_slip_reason: None,
+            lock_state: ChannelState::Idle.to_string(),
+            lock_state_reason: Some("initializing".to_string()),
+            channel_id: Some(channel_id),
+            channel_uid: format!("{:?}-{:02}-ch{:02}", sat.constellation, sat.prn, channel_id),
+            tracking_provenance: format!(
+                "channel={} sat={:?}-{}",
+                channel_id, sat.constellation, sat.prn
+            ),
+            tracking_assumptions: Some(default_tracking_assumptions(&self.config)),
             processing_ms: None,
         };
-        let _ = channel_id;
         (track_epoch, correlator)
     }
 
@@ -210,7 +246,13 @@ impl Tracking {
             sat: SatId { constellation: Constellation::Gps, prn: 1 },
             carrier_hz: 0.0,
             code_phase_samples: 0.0,
-            epochs,
+            acquisition_hypothesis: AcqHypothesis::Deferred.to_string(),
+            acquisition_score: 0.0,
+            acquisition_code_phase_samples: 0,
+            acquisition_carrier_hz: 0.0,
+            acq_to_track_state: "deferred".to_string(),
+            epochs: epochs.0,
+            transitions: epochs.1,
         }]
     }
 
@@ -228,15 +270,34 @@ impl Tracking {
             .enumerate()
             .map(|(channel_idx, acq)| {
                 let channel_id = channel_idx as u8;
-                let mut epochs = self.track_epochs(
-                    frame,
-                    channel_id,
-                    acq.sat,
-                    acq.carrier_hz.0,
-                    acq.code_phase_samples as f64,
-                    params.early_late_spacing_chips,
-                    self.epochs_in_frame(frame),
-                );
+                let acquisition_hypothesis = acq.hypothesis.to_string();
+                let acq_to_track_state = acq_to_track_state(&acq.hypothesis).to_string();
+                self.runtime.trace.record(TraceRecord {
+                    name: "tracking_sat_start",
+                    fields: vec![
+                        ("constellation", format!("{:?}", acq.sat.constellation)),
+                        ("prn", acq.sat.prn.to_string()),
+                        ("hypothesis", acquisition_hypothesis.clone()),
+                        ("to_track", acq_to_track_state.clone()),
+                    ],
+                });
+                let tracked =
+                    if matches!(acq.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous)
+                    {
+                        self.track_epochs(
+                            frame,
+                            channel_id,
+                            acq.sat,
+                            acq.carrier_hz.0,
+                            acq.code_phase_samples as f64,
+                            params.early_late_spacing_chips,
+                            self.epochs_in_frame(frame),
+                        )
+                    } else {
+                        (Vec::new(), Vec::new())
+                    };
+                let mut epochs = tracked.0;
+                let mut transitions = tracked.1;
                 let mut lock_loss = 0usize;
                 for epoch in &epochs {
                     if epoch.lock {
@@ -251,7 +312,7 @@ impl Tracking {
                             epoch.carrier_hz.0,
                             epoch.code_phase_samples.0,
                         ) {
-                            epochs = self.track_epochs(
+                            let reacquired = self.track_epochs(
                                 frame,
                                 channel_id,
                                 acq.sat,
@@ -260,15 +321,45 @@ impl Tracking {
                                 params.early_late_spacing_chips,
                                 self.epochs_in_frame(frame),
                             );
+                            epochs = reacquired.0;
+                            transitions.extend(reacquired.1);
                         }
                         break;
                     }
                 }
+                for epoch in &mut epochs {
+                    epoch.tracking_provenance = format!(
+                        "acq_hypothesis={} acq_score={:.6} acq_carrier_hz={:.3} acq_code_phase_samples={}",
+                        acquisition_hypothesis,
+                        acq.score,
+                        acq.carrier_hz.0,
+                        acq.code_phase_samples
+                    );
+                }
+                let stability_signature = tracking_stability_signature(&epochs);
+                let outcome = if epochs.is_empty() { "not_tracked" } else { "tracked" };
+                self.runtime.trace.record(TraceRecord {
+                    name: "tracking_sat_done",
+                    fields: vec![
+                        ("constellation", format!("{:?}", acq.sat.constellation)),
+                        ("prn", acq.sat.prn.to_string()),
+                        ("outcome", outcome.to_string()),
+                        ("hypothesis", acquisition_hypothesis.clone()),
+                        ("epochs", epochs.len().to_string()),
+                        ("stability_signature", stability_signature),
+                    ],
+                });
                 TrackingResult {
                     sat: acq.sat,
                     carrier_hz: acq.carrier_hz.0,
                     code_phase_samples: acq.code_phase_samples as f64,
+                    acquisition_hypothesis,
+                    acquisition_score: acq.score,
+                    acquisition_code_phase_samples: acq.code_phase_samples,
+                    acquisition_carrier_hz: acq.carrier_hz.0,
+                    acq_to_track_state,
                     epochs,
+                    transitions,
                 }
             })
             .collect()
@@ -293,7 +384,7 @@ impl Tracking {
         code_phase_samples: f64,
         early_late_spacing_chips: f64,
         epochs: usize,
-    ) -> Vec<TrackEpoch> {
+    ) -> (Vec<TrackEpoch>, Vec<TrackTransition>) {
         let samples_per_code = samples_per_code(
             self.config.sampling_freq_hz,
             self.config.code_freq_basis_hz,
@@ -304,10 +395,13 @@ impl Tracking {
             code_rate_hz: self.config.code_freq_basis_hz,
             code_phase_samples,
             prev_prompt: None,
+            prev_prompt_phase_cycles: None,
             state: ChannelState::Acquired,
+            unlocked_count: 0,
         };
 
         let mut out = Vec::new();
+        let mut transitions = Vec::new();
         for epoch_idx in 0..epochs {
             let alloc_before = crate::engine::alloc::allocation_count();
             let start = epoch_idx * samples_per_code;
@@ -345,21 +439,68 @@ impl Tracking {
             let (dll_err, pll_err, fll_err, lock) =
                 discriminators(corr.early, corr.prompt, corr.late, state.prev_prompt);
             state.prev_prompt = Some(corr.prompt);
+            let phase_cycles = corr.prompt.arg() as f64 / (2.0 * std::f64::consts::PI);
 
-            if lock {
-                state.state = ChannelState::Tracking;
-            } else if state.state == ChannelState::Tracking {
-                state.state = ChannelState::Lost;
-            } else {
-                state.state = ChannelState::PullIn;
+            let anti_false_lock =
+                (corr.early.norm() - corr.late.norm()).abs() < 0.2 * corr.prompt.norm();
+
+            let mut cycle_slip = false;
+            let mut cycle_slip_reason = None;
+            if let Some(previous_phase_cycles) = state.prev_prompt_phase_cycles {
+                let mut delta = phase_cycles - previous_phase_cycles;
+                while delta > 0.5 {
+                    delta -= 1.0;
+                }
+                while delta < -0.5 {
+                    delta += 1.0;
+                }
+                if delta.abs() > 0.35 {
+                    cycle_slip = true;
+                    cycle_slip_reason = Some("phase_discontinuity".to_string());
+                }
+            }
+            state.prev_prompt_phase_cycles = Some(phase_cycles);
+
+            let from_state = state.state;
+            let transition = deterministic_transition_rule(
+                from_state,
+                lock,
+                anti_false_lock,
+                cycle_slip,
+                state.unlocked_count,
+            );
+            state.unlocked_count = transition.next_unlocked_count;
+            state.state = transition.to_state;
+            if cycle_slip {
+                cycle_slip_reason = match cycle_slip_reason {
+                    Some(reason) => Some(reason),
+                    None => Some("cycle_slip_detected".to_string()),
+                };
+            }
+
+            let lock_state = match state.state {
+                ChannelState::Idle => "idle".to_string(),
+                ChannelState::Acquired => "acquired".to_string(),
+                ChannelState::PullIn => "pull_in".to_string(),
+                ChannelState::Tracking => "tracking".to_string(),
+                ChannelState::Lost => "lost".to_string(),
+            };
+            let lock_state_reason = Some(transition.reason.clone());
+
+            if cycle_slip_reason.is_none() && state.state == ChannelState::Lost && !lock {
+                cycle_slip_reason = Some("lock_reacquire".to_string());
             }
 
             let dll_lock = dll_err.abs() < 0.2;
             let pll_lock = pll_err.abs() < 0.2;
             let fll_lock = fll_err.abs() < 0.2;
-            let cycle_slip = false;
-            let anti_false_lock =
-                (corr.early.norm() - corr.late.norm()).abs() < 0.2 * corr.prompt.norm();
+            if track_epoch.early_i.is_infinite() || track_epoch.late_i.is_infinite() {
+                self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
+                    bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                    "TRACK_NUMERIC_INVALID",
+                    "infinite tracking sample in early/late output",
+                ));
+            }
 
             let cn0_dbhz = track_epoch.cn0_dbhz;
             let params = self.config.tracking_params(bijux_gnss_core::api::SignalBand::L1);
@@ -374,6 +515,21 @@ impl Tracking {
             state.code_phase_samples =
                 (state.code_phase_samples + samples_per_code as f64) % samples_per_code as f64;
 
+            if state.state != from_state {
+                transitions.push(TrackTransition {
+                    sat,
+                    channel_id,
+                    epoch_idx: track_epoch.epoch.index,
+                    sample_index: track_epoch.sample_index,
+                    from_state: from_state.to_string(),
+                    to_state: state.state.to_string(),
+                    reason: lock_state_reason
+                        .clone()
+                        .unwrap_or_else(|| "state_transition".to_string()),
+                    lock_quality: epoch_lock_quality(lock, pll_lock, dll_lock, fll_lock, cn0_dbhz),
+                });
+            }
+
             out.push(TrackEpoch {
                 lock,
                 carrier_hz: Hertz(state.carrier_hz),
@@ -383,14 +539,28 @@ impl Tracking {
                 dll_lock,
                 fll_lock,
                 cycle_slip,
-                nav_bit_lock: anti_false_lock,
+                nav_bit_lock: false,
                 dll_err,
                 pll_err,
                 fll_err,
+                anti_false_lock,
+                cycle_slip_reason,
+                lock_state,
+                lock_state_reason,
+                tracking_assumptions: Some(default_tracking_assumptions(&self.config)),
                 ..track_epoch
             });
         }
-        out
+        (out, transitions)
+    }
+}
+
+fn acq_to_track_state(hypothesis: &AcqHypothesis) -> &'static str {
+    match hypothesis {
+        AcqHypothesis::Accepted => "accepted",
+        AcqHypothesis::Ambiguous => "degraded",
+        AcqHypothesis::Rejected => "rejected",
+        AcqHypothesis::Deferred => "deferred",
     }
 }
 
@@ -399,6 +569,110 @@ fn ca_code_or_default(prn: u8) -> Vec<i8> {
         Ok(code) => code,
         Err(_) => vec![1; 1023],
     }
+}
+
+fn epoch_lock_quality(
+    lock: bool,
+    pll_lock: bool,
+    dll_lock: bool,
+    fll_lock: bool,
+    cn0_dbhz: f64,
+) -> f64 {
+    let mut quality = (cn0_dbhz / 60.0).clamp(0.0, 1.0);
+    if !lock {
+        quality *= 0.2;
+    }
+    if !pll_lock {
+        quality *= 0.7;
+    }
+    if !dll_lock {
+        quality *= 0.8;
+    }
+    if !fll_lock {
+        quality *= 0.9;
+    }
+    quality
+}
+
+#[derive(Debug, Clone)]
+struct TransitionDecision {
+    to_state: ChannelState,
+    reason: String,
+    next_unlocked_count: u8,
+}
+
+fn deterministic_transition_rule(
+    from_state: ChannelState,
+    lock: bool,
+    anti_false_lock: bool,
+    cycle_slip: bool,
+    unlocked_count: u8,
+) -> TransitionDecision {
+    if cycle_slip {
+        return TransitionDecision {
+            to_state: ChannelState::Lost,
+            reason: "cycle_slip".to_string(),
+            next_unlocked_count: unlocked_count.saturating_add(1),
+        };
+    }
+    if lock {
+        return TransitionDecision {
+            to_state: ChannelState::Tracking,
+            reason: "locked".to_string(),
+            next_unlocked_count: 0,
+        };
+    }
+    if anti_false_lock {
+        return TransitionDecision {
+            to_state: ChannelState::PullIn,
+            reason: "anti_false_lock".to_string(),
+            next_unlocked_count: unlocked_count.saturating_add(1),
+        };
+    }
+    let next_unlocked = unlocked_count.saturating_add(1);
+    if from_state == ChannelState::Tracking && next_unlocked >= 2 {
+        return TransitionDecision {
+            to_state: ChannelState::Lost,
+            reason: "lock_lost".to_string(),
+            next_unlocked_count: next_unlocked,
+        };
+    }
+    TransitionDecision {
+        to_state: ChannelState::PullIn,
+        reason: "pulling".to_string(),
+        next_unlocked_count: next_unlocked,
+    }
+}
+
+fn default_tracking_assumptions(config: &ReceiverPipelineConfig) -> TrackingAssumptions {
+    TrackingAssumptions {
+        integration_ms: config.tracking_integration_ms,
+        dll_bw_hz: config.dll_bw_hz,
+        pll_bw_hz: config.pll_bw_hz,
+        fll_bw_hz: config.fll_bw_hz,
+        discriminator_family: "early_prompt_late".to_string(),
+        aiding_mode: "none".to_string(),
+    }
+}
+
+fn tracking_stability_signature(epochs: &[TrackEpoch]) -> String {
+    let mut rows = epochs
+        .iter()
+        .map(|epoch| {
+            format!(
+                "{}|{}|{:.3}|{:.3}|{}|{}|{}",
+                epoch.epoch.index,
+                epoch.sample_index,
+                epoch.carrier_hz.0,
+                epoch.code_phase_samples.0,
+                epoch.lock_state,
+                epoch.lock,
+                epoch.cycle_slip
+            )
+        })
+        .collect::<Vec<_>>();
+    rows.sort();
+    rows.join(";")
 }
 
 impl Tracking {
@@ -431,6 +705,8 @@ impl Tracking {
 #[cfg(test)]
 mod tests {
     use super::{ChannelState, Tracking};
+    use bijux_gnss_core::api::AcqHypothesis;
+    use serde::Deserialize;
 
     #[test]
     fn tracking_recovery_from_loss_of_lock() {
@@ -447,6 +723,82 @@ mod tests {
         let lost = Tracking::transition_state(2, ChannelState::Tracking, ChannelState::Lost);
         let reset = Tracking::transition_state(2, lost, ChannelState::Idle);
         assert_eq!(reset, ChannelState::Idle);
+    }
+
+    #[test]
+    fn ambiguous_hypothesis_is_degraded_for_tracking() {
+        assert_eq!(super::acq_to_track_state(&AcqHypothesis::Accepted), "accepted");
+        assert_eq!(super::acq_to_track_state(&AcqHypothesis::Ambiguous), "degraded");
+        assert_eq!(super::acq_to_track_state(&AcqHypothesis::Rejected), "rejected");
+        assert_eq!(super::acq_to_track_state(&AcqHypothesis::Deferred), "deferred");
+    }
+
+    #[test]
+    fn deterministic_transition_rule_handles_cycle_slip_first() {
+        let decision =
+            super::deterministic_transition_rule(ChannelState::Tracking, false, false, true, 1);
+        assert_eq!(decision.to_state, ChannelState::Lost);
+        assert_eq!(decision.reason, "cycle_slip");
+        assert_eq!(decision.next_unlocked_count, 2);
+    }
+
+    #[test]
+    fn deterministic_transition_rule_promotes_lock() {
+        let decision =
+            super::deterministic_transition_rule(ChannelState::PullIn, true, false, false, 2);
+        assert_eq!(decision.to_state, ChannelState::Tracking);
+        assert_eq!(decision.reason, "locked");
+        assert_eq!(decision.next_unlocked_count, 0);
+    }
+
+    #[test]
+    fn deterministic_transition_rule_marks_loss_after_tracking_failures() {
+        let decision =
+            super::deterministic_transition_rule(ChannelState::Tracking, false, false, false, 1);
+        assert_eq!(decision.to_state, ChannelState::Lost);
+        assert_eq!(decision.reason, "lock_lost");
+        assert_eq!(decision.next_unlocked_count, 2);
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct TrackingEventFixture {
+        lock: bool,
+        anti_false_lock: bool,
+        cycle_slip: bool,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct TrackingScenarioFixture {
+        id: String,
+        initial_state: String,
+        events: Vec<TrackingEventFixture>,
+        expected_final_state: String,
+    }
+
+    #[test]
+    fn tracking_scenario_fixtures_are_deterministic() {
+        for (fixture_name, fixture_raw) in tracking_fixture_specs() {
+            let fixture = load_tracking_fixture(fixture_raw, fixture_name);
+            let mut state = parse_state(&fixture.initial_state);
+            let mut unlocked = 0u8;
+            for event in &fixture.events {
+                let decision = super::deterministic_transition_rule(
+                    state,
+                    event.lock,
+                    event.anti_false_lock,
+                    event.cycle_slip,
+                    unlocked,
+                );
+                state = decision.to_state;
+                unlocked = decision.next_unlocked_count;
+            }
+            assert_eq!(
+                state,
+                parse_state(&fixture.expected_final_state),
+                "fixture {} final state mismatch",
+                fixture.id
+            );
+        }
     }
 
     #[test]
@@ -472,5 +824,51 @@ mod tests {
             allocated <= threshold,
             "tracking allocations exceeded threshold: {allocated} > {threshold}"
         );
+    }
+
+    fn tracking_fixture_specs() -> Vec<(&'static str, &'static str)> {
+        vec![
+            (
+                "interference_like.json",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/tests/data/tracking/interference_like.json"
+                )),
+            ),
+            (
+                "lock.json",
+                include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/tracking/lock.json")),
+            ),
+            (
+                "relock.json",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/tests/data/tracking/relock.json"
+                )),
+            ),
+            (
+                "weak_signal.json",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/tests/data/tracking/weak_signal.json"
+                )),
+            ),
+        ]
+    }
+
+    fn load_tracking_fixture(raw: &str, fixture_name: &str) -> TrackingScenarioFixture {
+        serde_json::from_str(raw)
+            .unwrap_or_else(|err| panic!("parse tracking fixture {fixture_name}: {err}"))
+    }
+
+    fn parse_state(value: &str) -> ChannelState {
+        match value {
+            "Idle" => ChannelState::Idle,
+            "Acquired" => ChannelState::Acquired,
+            "PullIn" => ChannelState::PullIn,
+            "Tracking" => ChannelState::Tracking,
+            "Lost" => ChannelState::Lost,
+            _ => panic!("unsupported state {value}"),
+        }
     }
 }

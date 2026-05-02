@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DiagnosticsVerifyReproReport",
+  "type": "object",
+  "required": ["schema_version", "run_dir", "audit_ok", "issues", "replay_fingerprint", "manifest_sha256", "artifact_sha256"],
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "run_dir": { "type": "string" },
+    "audit_ok": { "type": "boolean" },
+    "issues": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "replay_fingerprint": { "type": "string" },
+    "manifest_sha256": { "type": "string" },
+    "run_report_sha256": {
+      "type": ["string", "null"]
+    },
+    "artifact_sha256": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    }
+  },
+  "additionalProperties": true
+}

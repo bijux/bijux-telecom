@@ -1,5 +1,9 @@
 #[derive(Parser)]
-#[command(name = "bijux", version, about = "bijux-gnss CLI")]
+#[command(
+    name = "bijux",
+    version,
+    about = "GNSS receiver workflows: run, inspect, validate, diagnose, replay, and compare"
+)]
 struct Cli {
     #[command(subcommand)]
     command: AppCommand,
@@ -7,7 +11,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum AppCommand {
-    /// GNSS-related commands
+    /// GNSS receiver commands for operation, validation, diagnostics, and replay
     Gnss {
         #[command(subcommand)]
         command: GnssCommand,

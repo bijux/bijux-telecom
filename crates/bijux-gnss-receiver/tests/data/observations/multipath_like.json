@@ -1,0 +1,52 @@
+{
+  "id": "multipath-like",
+  "rows": [
+    {
+      "sat_prn": 3,
+      "epoch_idx": 0,
+      "sample_index": 0,
+      "lock": true,
+      "cn0_dbhz": 42.0,
+      "code_phase_samples": 0.0,
+      "prompt_i": 1.0,
+      "prompt_q": 0.0,
+      "carrier_hz": 0.0,
+      "lock_state": "tracking"
+    },
+    {
+      "sat_prn": 3,
+      "epoch_idx": 1,
+      "sample_index": 1000,
+      "lock": true,
+      "cn0_dbhz": 42.0,
+      "code_phase_samples": 1200.0,
+      "prompt_i": 0.0,
+      "prompt_q": 1.0,
+      "carrier_hz": 0.0,
+      "lock_state": "tracking"
+    },
+    {
+      "sat_prn": 3,
+      "epoch_idx": 2,
+      "sample_index": 2000,
+      "lock": true,
+      "cn0_dbhz": 42.0,
+      "code_phase_samples": 900000.0,
+      "prompt_i": -1.0,
+      "prompt_q": 0.0,
+      "carrier_hz": 0.0,
+      "lock_state": "tracking"
+    }
+  ],
+  "expect": {
+    "decisions": [
+      { "epoch_idx": 0, "decision": "accepted" },
+      { "epoch_idx": 1, "decision": "accepted" },
+      { "epoch_idx": 2, "decision": "accepted" }
+    ],
+    "support_classes": ["supported"],
+    "uncertainty_classes": ["medium"],
+    "min_rejected": 0,
+    "multipath_any": true
+  }
+}

@@ -194,6 +194,26 @@
             }
           }
         },
+        "science_thresholds": {
+          "type": "object",
+          "properties": {
+            "min_mean_cn0_dbhz": {
+              "type": "number"
+            },
+            "max_pdop": {
+              "type": "number"
+            },
+            "max_residual_rms_m": {
+              "type": "number"
+            },
+            "min_used_satellites": {
+              "type": "integer"
+            },
+            "min_lock_ratio": {
+              "type": "number"
+            }
+          }
+        },
         "weighting": {
           "type": "object",
           "properties": {

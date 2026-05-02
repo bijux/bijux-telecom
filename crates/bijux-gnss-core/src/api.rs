@@ -1,9 +1,13 @@
 //! Public API for bijux-gnss-core.
 
 pub use crate::artifact::v1::acq::AcqResultV1;
+pub use crate::artifact::v1::acq_explain::AcqExplainV1;
 pub use crate::artifact::v1::nav::NavSolutionEpochV1;
 pub use crate::artifact::v1::obs::ObsEpochV1;
+pub use crate::artifact::v1::obs_decision::ObsDecisionV1;
+pub use crate::artifact::v1::support_matrix::SupportMatrixV1;
 pub use crate::artifact::v1::track::TrackEpochV1;
+pub use crate::artifact::v1::track_transition::TrackTransitionV1;
 pub use crate::artifact::v1::{ppp, rtk};
 /// Artifact headers and versioned payloads.
 pub use crate::artifact::{
@@ -42,12 +46,20 @@ pub use crate::ids::{
 };
 /// Observation and tracking contracts.
 pub use crate::obs::{
-    check_inter_frequency_alignment, validate_obs_epochs, AcqRequest, AcqResult, AmbiguityId,
+    acq_result_stability_key, check_inter_frequency_alignment, obs_epoch_stability_key,
+    stable_acq_result_keys, validate_obs_epochs, AcqAssumptions, AcqEvidence, AcqExplain,
+    AcqExplainCandidate, AcqHypothesis, AcqRequest, AcqResult, AcqThresholdProvenance, AmbiguityId,
     AmbiguityState, AmbiguityStatus, BandLagEvent, DoubleDifference, InterFrequencyAlignmentReport,
-    InterSystemBias, LockFlags, MeasurementErrorModel, MeasurementRejectReason, NavHealthEvent,
-    NavQualityFlag, NavResidual, NavSolutionEpoch, ObsEpoch, ObsMetadata, ObsSatellite,
-    ReceiverRole, Sample, SamplesFrame, SingleDifference, SolutionStatus, SolutionValidity,
-    TrackEpoch,
+    InterSystemBias, LockFlags, MeasurementErrorModel, MeasurementRejectReason, NavAssumptions,
+    NavHealthEvent, NavLifecycleState, NavProvenance, NavQualityFlag, NavRefusalClass, NavResidual,
+    NavSolutionEpoch, NavUncertaintyClass, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest,
+    ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus,
+    ObservationSupportClass, ObservationUncertaintyClass, ReceiverRole, Sample, SamplesFrame,
+    SatObservationDecision, SignalSupportRow, SingleDifference, SolutionStatus, SolutionValidity,
+    SupportMatrix, SupportStatus, TrackEpoch, TrackTransition, TrackingAssumptions,
+    TrackingLifecycleState, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
+    OBSERVATION_DOWNSTREAM_PROFILE_VERSION, OBSERVATION_MODEL_VERSION,
+    TRACKING_STATE_MODEL_VERSION,
 };
 /// Engine boundary nav epoch alias.
 pub type NavEpoch = NavSolutionEpoch;

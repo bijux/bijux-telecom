@@ -8,8 +8,10 @@
 //! TODO(ref-grade): add literature citations for CN0 weighting and multipath heuristics.
 
 use bijux_gnss_core::api::{
-    Cycles, DiagnosticEvent, DiagnosticSeverity, LockFlags, Meters, ObsEpoch, ObsMetadata,
-    ObsSatellite, ReceiverRole, Seconds, SigId, SignalBand, TrackEpoch,
+    Cycles, DiagnosticEvent, DiagnosticSeverity, LockFlags, Meters, ObsDecisionArtifact, ObsEpoch,
+    ObsEpochManifest, ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus,
+    ObservationSupportClass, ObservationUncertaintyClass, ReceiverRole, SatObservationDecision,
+    Seconds, SigId, SignalBand, TrackEpoch,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -22,6 +24,7 @@ use bijux_gnss_core::api::{Constellation, Hertz, SatId, SignalCode};
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 const TWO_PI: f64 = std::f64::consts::PI * 2.0;
+const OBS_WEAK_CN0_DBHZ: f64 = 25.0;
 
 #[derive(Debug, Clone)]
 struct PhaseState {
@@ -53,6 +56,14 @@ pub fn observations_from_tracking(
     config: &ReceiverPipelineConfig,
     epochs: &[TrackEpoch],
 ) -> (Vec<ObsEpoch>, Vec<DiagnosticEvent>) {
+    observations_from_tracking_with_provenance(config, None, epochs)
+}
+
+fn observations_from_tracking_with_provenance(
+    config: &ReceiverPipelineConfig,
+    track: Option<&TrackingResult>,
+    epochs: &[TrackEpoch],
+) -> (Vec<ObsEpoch>, Vec<DiagnosticEvent>) {
     if epochs.is_empty() {
         return (Vec::new(), Vec::new());
     }
@@ -68,9 +79,12 @@ pub fn observations_from_tracking(
     let mut out = Vec::with_capacity(epochs.len());
     let mut diagnostics = Vec::new();
     let mut last_sample_index = None;
+    let mut last_locked_sample = None;
     let clock_bias_s = 0.0_f64;
 
     for epoch in epochs {
+        let (time_tag_source, time_tag_sample_index) =
+            tracking_time_tag(epoch, &mut last_locked_sample);
         let t_rx_s = Seconds(epoch.sample_index as f64 / config.sampling_freq_hz + clock_bias_s);
 
         let expected_step = (config.sampling_freq_hz * 0.001).round() as u64;
@@ -138,10 +152,14 @@ pub fn observations_from_tracking(
         }
 
         let cn0_dbhz = epoch.cn0_dbhz;
+        let lock_quality = tracking_lock_quality(epoch);
 
         let variance_m2 = (1.0 / cn0_dbhz.max(1.0)).powi(2);
+        let (observation_status, observation_reject_reasons) =
+            classify_observation_status(epoch, cn0_dbhz);
         let mut signal = bijux_gnss_core::api::signal_spec_gps_l1_ca();
         signal.code_rate_hz = config.code_freq_basis_hz;
+        let observation_epoch_id = observation_epoch_id(epoch.epoch.index, epoch.sample_index);
         let sat = ObsSatellite {
             signal_id: SigId {
                 sat: epoch.sat,
@@ -162,6 +180,8 @@ pub fn observations_from_tracking(
                 cycle_slip,
             },
             multipath_suspect: false,
+            observation_status,
+            observation_reject_reasons: observation_reject_reasons.clone(),
             elevation_deg: None,
             azimuth_deg: None,
             weight: None,
@@ -169,11 +189,32 @@ pub fn observations_from_tracking(
             metadata: ObsMetadata {
                 tracking_mode: "scalar".to_string(),
                 integration_ms: config.tracking_integration_ms,
-                lock_quality: cn0_dbhz,
+                lock_quality,
                 smoothing_window: 0,
                 smoothing_age: 0,
                 smoothing_resets: 0,
                 signal,
+                acquisition_hypothesis: track
+                    .map(|t| t.acquisition_hypothesis.clone())
+                    .unwrap_or_default(),
+                acquisition_score: track.map(|t| t.acquisition_score).unwrap_or_default(),
+                acquisition_code_phase_samples: track
+                    .map(|t| t.acquisition_code_phase_samples)
+                    .unwrap_or_default(),
+                acquisition_carrier_hz: track.map(|t| t.acquisition_carrier_hz).unwrap_or_default(),
+                acq_to_track_state: track.map(|t| t.acq_to_track_state.clone()).unwrap_or_default(),
+                tracking_state: epoch.lock_state.clone(),
+                tracking_lock_state: tracking_lock_state(epoch),
+                tracking_lock_quality: lock_quality,
+                observation_status: observation_status_label(observation_status).to_string(),
+                observation_reject_reasons,
+                observation_epoch_id: observation_epoch_id.clone(),
+                observation_support_class: observation_support_label(observation_status)
+                    .to_string(),
+                observation_uncertainty_class: observation_uncertainty_label(cn0_dbhz).to_string(),
+                time_tag_source,
+                time_tag_sample_index,
+                time_tag_sample_rate_hz: config.sampling_freq_hz,
             },
         };
 
@@ -187,6 +228,9 @@ pub fn observations_from_tracking(
             processing_ms: None,
             role: ReceiverRole::Rover,
             sats: vec![sat],
+            decision: ObservationEpochDecision::Accepted,
+            decision_reason: None,
+            manifest: None,
         };
         let events = bijux_gnss_core::api::check_obs_epoch_sanity(&epoch);
         if events
@@ -196,6 +240,7 @@ pub fn observations_from_tracking(
             epoch.valid = false;
             diagnostics.extend(events);
         }
+        apply_epoch_decision(&mut epoch);
         out.push(epoch);
     }
 
@@ -216,7 +261,8 @@ pub fn observations_from_tracking_results(
         std::collections::HashMap::new();
     let mut diagnostics = Vec::new();
     for track in tracks {
-        let (obs, mut events) = observations_from_tracking(config, &track.epochs);
+        let (obs, mut events) =
+            observations_from_tracking_with_provenance(config, Some(track), &track.epochs);
         diagnostics.append(&mut events);
         for epoch in obs {
             let entry = by_epoch.entry(epoch.epoch_idx).or_insert_with(|| ObsEpoch {
@@ -229,6 +275,9 @@ pub fn observations_from_tracking_results(
                 processing_ms: None,
                 role: epoch.role,
                 sats: Vec::new(),
+                decision: ObservationEpochDecision::Accepted,
+                decision_reason: None,
+                manifest: None,
             });
             entry.discontinuity |= epoch.discontinuity;
             for mut sat in epoch.sats {
@@ -305,6 +354,31 @@ pub fn observations_from_tracking_results(
     let mut out = Vec::new();
     for mut epoch in by_epoch.into_values() {
         bijux_gnss_core::api::sort_obs_sats(&mut epoch);
+        apply_epoch_decision(&mut epoch);
+        let source_sample_index =
+            epoch.sats.iter().map(|sat| sat.metadata.time_tag_sample_index).min().unwrap_or(0);
+        let artifact_id = format!("obs-epoch-{:010}", epoch.epoch_idx);
+        let epoch_key = bijux_gnss_core::api::obs_epoch_stability_key(&epoch);
+        epoch.manifest = Some(ObsEpochManifest {
+            version: bijux_gnss_core::api::OBSERVATION_MODEL_VERSION,
+            artifact_id: artifact_id.clone(),
+            epoch_id: epoch_key,
+            source_epoch_idx: epoch.epoch_idx,
+            source_sample_index,
+            decision: epoch.decision,
+            downstream_profile_version:
+                bijux_gnss_core::api::OBSERVATION_DOWNSTREAM_PROFILE_VERSION,
+        });
+        for sat in &mut epoch.sats {
+            sat.metadata.observation_epoch_id = artifact_id.clone();
+            sat.metadata.observation_status =
+                observation_status_label(sat.observation_status).to_string();
+            sat.metadata.observation_reject_reasons = sat.observation_reject_reasons.clone();
+            sat.metadata.observation_support_class =
+                observation_support_label(sat.observation_status).to_string();
+            sat.metadata.observation_uncertainty_class =
+                observation_uncertainty_label(sat.cn0_dbhz).to_string();
+        }
         let events = bijux_gnss_core::api::check_obs_epoch_sanity(&epoch);
         if events
             .iter()
@@ -327,12 +401,211 @@ pub fn observations_from_tracking_results(
     StepReport { output: out, events: diagnostics, stats: StepStats::default() }
 }
 
+pub fn observation_decisions_from_epochs(epochs: &[ObsEpoch]) -> Vec<ObsDecisionArtifact> {
+    epochs
+        .iter()
+        .map(|epoch| {
+            let artifact_id = epoch
+                .manifest
+                .as_ref()
+                .map(|manifest| manifest.artifact_id.clone())
+                .unwrap_or_else(|| format!("obs-epoch-{:010}", epoch.epoch_idx));
+            let mut reasons = Vec::new();
+            if let Some(reason) = &epoch.decision_reason {
+                reasons.push(reason.clone());
+            }
+            for sat in &epoch.sats {
+                reasons.extend(sat.observation_reject_reasons.clone());
+            }
+            reasons.sort();
+            reasons.dedup();
+            let accepted_sats = epoch
+                .sats
+                .iter()
+                .map(|sat| SatObservationDecision {
+                    sat: sat.signal_id.sat,
+                    status: sat.observation_status,
+                    reasons: sat.observation_reject_reasons.clone(),
+                })
+                .collect();
+            ObsDecisionArtifact {
+                artifact_id,
+                epoch_idx: epoch.epoch_idx,
+                decision: epoch.decision,
+                reasons,
+                accepted_sats,
+            }
+        })
+        .collect()
+}
+
+fn observation_epoch_id(epoch_idx: u64, sample_index: u64) -> String {
+    format!("epoch-{epoch_idx:010}-sample-{sample_index:012}")
+}
+
+fn observation_status_label(status: ObservationStatus) -> &'static str {
+    match status {
+        ObservationStatus::Accepted => "accepted",
+        ObservationStatus::Missing => "missing",
+        ObservationStatus::Weak => "weak",
+        ObservationStatus::Inconsistent => "inconsistent",
+        ObservationStatus::Rejected => "rejected",
+    }
+}
+
+fn observation_support_label(status: ObservationStatus) -> &'static str {
+    match status {
+        ObservationStatus::Accepted => support_class_label(ObservationSupportClass::Supported),
+        ObservationStatus::Weak | ObservationStatus::Missing => {
+            support_class_label(ObservationSupportClass::Degraded)
+        }
+        ObservationStatus::Inconsistent | ObservationStatus::Rejected => {
+            support_class_label(ObservationSupportClass::Unsupported)
+        }
+    }
+}
+
+fn support_class_label(value: ObservationSupportClass) -> &'static str {
+    match value {
+        ObservationSupportClass::Supported => "supported",
+        ObservationSupportClass::Degraded => "degraded",
+        ObservationSupportClass::Unsupported => "unsupported",
+    }
+}
+
+fn observation_uncertainty_label(cn0_dbhz: f64) -> &'static str {
+    let class = if !cn0_dbhz.is_finite() {
+        ObservationUncertaintyClass::Unknown
+    } else if cn0_dbhz >= 45.0 {
+        ObservationUncertaintyClass::Low
+    } else if cn0_dbhz >= 35.0 {
+        ObservationUncertaintyClass::Medium
+    } else {
+        ObservationUncertaintyClass::High
+    };
+    match class {
+        ObservationUncertaintyClass::Low => "low",
+        ObservationUncertaintyClass::Medium => "medium",
+        ObservationUncertaintyClass::High => "high",
+        ObservationUncertaintyClass::Unknown => "unknown",
+    }
+}
+
+fn classify_observation_status(
+    epoch: &TrackEpoch,
+    cn0_dbhz: f64,
+) -> (ObservationStatus, Vec<String>) {
+    let mut reasons = Vec::new();
+    if !epoch.lock {
+        reasons.push("tracking_unlock".to_string());
+    }
+    if cn0_dbhz < OBS_WEAK_CN0_DBHZ {
+        reasons.push(format!("cn0_below_{OBS_WEAK_CN0_DBHZ:.1}dbhz"));
+    }
+    if epoch.cycle_slip {
+        reasons.push("cycle_slip".to_string());
+    }
+    if !epoch.prompt_i.is_finite() || !epoch.prompt_q.is_finite() || !cn0_dbhz.is_finite() {
+        reasons.push("non_finite_observable".to_string());
+    }
+
+    let status = if reasons.iter().any(|reason| reason == "non_finite_observable") {
+        ObservationStatus::Inconsistent
+    } else if reasons.iter().any(|reason| reason == "tracking_unlock") {
+        ObservationStatus::Missing
+    } else if reasons.iter().any(|reason| reason.starts_with("cn0_below_")) {
+        ObservationStatus::Weak
+    } else {
+        ObservationStatus::Accepted
+    };
+    (status, reasons)
+}
+
+fn apply_epoch_decision(epoch: &mut ObsEpoch) {
+    if let Err(reason) = bijux_gnss_core::api::validate_obs_epochs(std::slice::from_ref(epoch)) {
+        epoch.decision = ObservationEpochDecision::Rejected;
+        epoch.decision_reason = Some(format!("malformed_observation_set:{reason}"));
+        epoch.valid = false;
+        return;
+    }
+    let accepted_count = epoch
+        .sats
+        .iter()
+        .filter(|sat| sat.observation_status == ObservationStatus::Accepted)
+        .count();
+    let has_inconsistent =
+        epoch.sats.iter().any(|sat| sat.observation_status == ObservationStatus::Inconsistent);
+
+    if has_inconsistent {
+        epoch.decision = ObservationEpochDecision::Rejected;
+        epoch.decision_reason = Some("inconsistent_observable".to_string());
+        epoch.valid = false;
+        return;
+    }
+    if accepted_count == 0 {
+        epoch.decision = ObservationEpochDecision::Rejected;
+        epoch.decision_reason = Some("no_accepted_observables".to_string());
+        epoch.valid = false;
+        return;
+    }
+    epoch.decision = ObservationEpochDecision::Accepted;
+    epoch.decision_reason = Some("accepted_observables_present".to_string());
+}
+
 fn slip_threshold_m(cn0_dbhz: f64, elevation_deg: Option<f64>) -> f64 {
     let cn0 = cn0_dbhz.clamp(20.0, 60.0);
     let cn0_factor = 45.0 / cn0;
     let elev = elevation_deg.unwrap_or(30.0).clamp(0.0, 90.0);
     let elev_factor = 1.0 + (30.0 - elev).max(0.0) / 30.0;
     5.0 * cn0_factor * elev_factor
+}
+
+fn tracking_lock_quality(epoch: &TrackEpoch) -> f64 {
+    let mut quality = (epoch.cn0_dbhz / 60.0).clamp(0.0, 1.0);
+    if epoch.anti_false_lock {
+        quality *= 0.5;
+    }
+    if epoch.cycle_slip {
+        quality *= 0.2;
+    }
+    if !epoch.lock {
+        quality *= 0.2;
+    }
+    if !epoch.pll_lock {
+        quality *= 0.7;
+    }
+    if !epoch.dll_lock {
+        quality *= 0.8;
+    }
+    if !epoch.fll_lock {
+        quality *= 0.9;
+    }
+    quality
+}
+
+fn tracking_lock_state(epoch: &TrackEpoch) -> String {
+    if epoch.cycle_slip {
+        return "cycle_slip".to_string();
+    }
+    if epoch.anti_false_lock {
+        return "anti_false_lock".to_string();
+    }
+    if !epoch.lock {
+        return "unlocked".to_string();
+    }
+    epoch.lock_state.clone()
+}
+
+fn tracking_time_tag(epoch: &TrackEpoch, last_locked_sample: &mut Option<u64>) -> (String, u64) {
+    if epoch.lock || epoch.lock_state == "tracking" || epoch.lock_state == "acquired" {
+        *last_locked_sample = Some(epoch.sample_index);
+        return ("tracking".to_string(), epoch.sample_index);
+    }
+    match (epoch.lock, *last_locked_sample) {
+        (false, Some(last)) => ("tracking_last_locked".to_string(), last),
+        (false, None) => ("tracking_unlocked".to_string(), epoch.sample_index),
+        _ => ("tracking".to_string(), epoch.sample_index),
+    }
 }
 
 #[cfg(test)]
@@ -358,6 +631,8 @@ pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
                 cycle_slip: false,
             },
             multipath_suspect: false,
+            observation_status: ObservationStatus::Accepted,
+            observation_reject_reasons: Vec::new(),
             elevation_deg: Some(45.0),
             azimuth_deg: Some(0.0),
             weight: Some(1.0),
@@ -370,6 +645,7 @@ pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
                 smoothing_age: 0,
                 smoothing_resets: 0,
                 signal: bijux_gnss_core::api::signal_spec_gps_l1_ca(),
+                ..ObsMetadata::default()
             },
         })
         .collect();
@@ -383,6 +659,18 @@ pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
         processing_ms: None,
         role: ReceiverRole::Rover,
         sats,
+        decision: ObservationEpochDecision::Accepted,
+        decision_reason: Some("accepted_observables_present".to_string()),
+        manifest: Some(ObsEpochManifest {
+            version: bijux_gnss_core::api::OBSERVATION_MODEL_VERSION,
+            artifact_id: format!("obs-epoch-{epoch_idx:010}"),
+            epoch_id: observation_epoch_id(epoch_idx, epoch_idx),
+            source_epoch_idx: epoch_idx,
+            source_sample_index: epoch_idx,
+            decision: ObservationEpochDecision::Accepted,
+            downstream_profile_version:
+                bijux_gnss_core::api::OBSERVATION_DOWNSTREAM_PROFILE_VERSION,
+        }),
     }
 }
 
@@ -412,9 +700,25 @@ mod tests {
             dll_err: 0.0,
             pll_err: 0.0,
             fll_err: 0.0,
+            anti_false_lock: false,
+            cycle_slip_reason: None,
+            lock_state: "tracking".to_string(),
+            lock_state_reason: Some("stable_tracking".to_string()),
             processing_ms: None,
+            ..TrackEpoch::default()
         };
-        TrackingResult { sat, carrier_hz: 0.0, code_phase_samples: 0.0, epochs: vec![epoch] }
+        TrackingResult {
+            sat,
+            carrier_hz: 0.0,
+            code_phase_samples: 0.0,
+            acquisition_hypothesis: "deferred".to_string(),
+            acquisition_score: 0.0,
+            acquisition_code_phase_samples: 0,
+            acquisition_carrier_hz: 0.0,
+            acq_to_track_state: "deferred".to_string(),
+            epochs: vec![epoch],
+            transitions: Vec::new(),
+        }
     }
 
     #[test]
@@ -429,5 +733,127 @@ mod tests {
         let json_a = serde_json::to_string(&report_a.output).unwrap();
         let json_b = serde_json::to_string(&report_b.output).unwrap();
         assert_eq!(json_a, json_b);
+    }
+
+    #[test]
+    fn tracking_time_tag_prefers_last_locked_sample() {
+        let locked = TrackEpoch {
+            epoch: Epoch { index: 0 },
+            sample_index: 100,
+            sat: SatId { constellation: Constellation::Gps, prn: 1 },
+            lock_state: "tracking".to_string(),
+            lock: true,
+            ..TrackEpoch::default()
+        };
+        let unlocked_after = TrackEpoch {
+            epoch: Epoch { index: 1 },
+            sample_index: 101,
+            sat: SatId { constellation: Constellation::Gps, prn: 1 },
+            lock_state: "lost".to_string(),
+            lock: false,
+            ..TrackEpoch::default()
+        };
+        let mut last_locked = None;
+        let (source_locked, sample_locked) = tracking_time_tag(&locked, &mut last_locked);
+        let (source_unlocked, sample_unlocked) =
+            tracking_time_tag(&unlocked_after, &mut last_locked);
+
+        assert_eq!(source_locked, "tracking");
+        assert_eq!(sample_locked, 100);
+        assert_eq!(source_unlocked, "tracking_last_locked");
+        assert_eq!(sample_unlocked, 100);
+    }
+
+    #[test]
+    fn observation_manifest_uses_stable_model_version_and_epoch_key() {
+        let config = ReceiverPipelineConfig::default();
+        let tracks = vec![make_track(1, &config), make_track(2, &config)];
+        let report = observations_from_tracking_results(&config, &tracks, 10);
+        assert!(!report.output.is_empty());
+        for epoch in &report.output {
+            let manifest = epoch.manifest.as_ref().expect("manifest");
+            assert_eq!(manifest.version, bijux_gnss_core::api::OBSERVATION_MODEL_VERSION);
+            assert_eq!(manifest.epoch_id, bijux_gnss_core::api::obs_epoch_stability_key(epoch));
+        }
+    }
+
+    #[test]
+    fn observation_metadata_sets_support_and_uncertainty_classes() {
+        let config = ReceiverPipelineConfig::default();
+        let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+        let weak = TrackEpoch {
+            epoch: Epoch { index: 0 },
+            sample_index: 0,
+            sat,
+            lock: true,
+            cn0_dbhz: 20.0,
+            lock_state: "tracking".to_string(),
+            ..TrackEpoch::default()
+        };
+        let missing = TrackEpoch {
+            epoch: Epoch { index: 0 },
+            sample_index: 0,
+            sat: SatId { constellation: Constellation::Gps, prn: 8 },
+            lock: false,
+            cn0_dbhz: 45.0,
+            lock_state: "lost".to_string(),
+            ..TrackEpoch::default()
+        };
+        let tracks = vec![
+            TrackingResult {
+                sat,
+                carrier_hz: 0.0,
+                code_phase_samples: 0.0,
+                acquisition_hypothesis: "deferred".to_string(),
+                acquisition_score: 0.0,
+                acquisition_code_phase_samples: 0,
+                acquisition_carrier_hz: 0.0,
+                acq_to_track_state: "deferred".to_string(),
+                epochs: vec![weak],
+                transitions: Vec::new(),
+            },
+            TrackingResult {
+                sat: SatId { constellation: Constellation::Gps, prn: 8 },
+                carrier_hz: 0.0,
+                code_phase_samples: 0.0,
+                acquisition_hypothesis: "deferred".to_string(),
+                acquisition_score: 0.0,
+                acquisition_code_phase_samples: 0,
+                acquisition_carrier_hz: 0.0,
+                acq_to_track_state: "deferred".to_string(),
+                epochs: vec![missing],
+                transitions: Vec::new(),
+            },
+        ];
+        let report = observations_from_tracking_results(&config, &tracks, 10);
+        let epoch = report.output.iter().find(|row| row.epoch_idx == 0).expect("epoch");
+        let labels = epoch
+            .sats
+            .iter()
+            .map(|sat| {
+                (
+                    sat.metadata.observation_support_class.clone(),
+                    sat.metadata.observation_uncertainty_class.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert!(labels
+            .iter()
+            .any(|(support, uncertainty)| support == "degraded" && uncertainty == "high"));
+        assert!(labels
+            .iter()
+            .any(|(support, uncertainty)| support == "degraded" && uncertainty == "low"));
+    }
+
+    #[test]
+    fn apply_epoch_decision_refuses_malformed_duplicate_signal_set() {
+        let mut epoch = fake_obs_epoch_for_nav_tests(0);
+        let duplicate = epoch.sats[0].clone();
+        epoch.sats.push(duplicate);
+        apply_epoch_decision(&mut epoch);
+        assert_eq!(epoch.decision, ObservationEpochDecision::Rejected);
+        let reason = epoch.decision_reason.expect("decision reason");
+        assert!(reason.contains("malformed_observation_set"));
+        assert!(reason.contains("duplicate signal_id"));
     }
 }

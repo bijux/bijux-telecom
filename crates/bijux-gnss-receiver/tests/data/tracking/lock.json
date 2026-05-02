@@ -1,0 +1,8 @@
+{
+  "id": "lock",
+  "initial_state": "Acquired",
+  "events": [
+    { "lock": true, "anti_false_lock": false, "cycle_slip": false }
+  ],
+  "expected_final_state": "Tracking"
+}

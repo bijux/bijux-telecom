@@ -1,0 +1,14 @@
+{
+  "id": "low-cn0",
+  "kind": "synthetic",
+  "sat": { "constellation": "Gps", "prn": 7 },
+  "doppler_hz": 250.0,
+  "code_phase_chips": 300.0,
+  "cn0_db_hz": 20.0,
+  "seed": 81985529216486895,
+  "search_hz": 1500,
+  "step_hz": 250,
+  "coherent_ms": 1,
+  "noncoherent": 1,
+  "expect_not_accepted": true
+}

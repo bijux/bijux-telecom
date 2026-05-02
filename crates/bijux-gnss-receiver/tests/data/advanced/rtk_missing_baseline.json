@@ -1,0 +1,21 @@
+{
+  "id": "rtk_missing_baseline",
+  "mode": "rtk",
+  "prerequisites": {
+    "has_base_observations": false,
+    "has_rover_observations": true,
+    "has_ephemeris": true,
+    "has_reference_frame": true,
+    "has_corrections": true,
+    "has_min_satellites": true,
+    "has_ambiguity_state": true
+  },
+  "claim": "float",
+  "expect": {
+    "ready": false,
+    "refusal_class": "missing_baseline",
+    "downgraded": true,
+    "status_prefix": "degraded",
+    "final_claim": "fallback_nav"
+  }
+}

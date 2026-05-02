@@ -42,6 +42,21 @@ impl ValidateConfig for ReceiverConfig {
                 message: "acquisition.integration_ms must be > 0".to_string(),
             });
         }
+        if self.acquisition.noncoherent_integration == 0 {
+            report.errors.push(ConfigError {
+                message: "acquisition.noncoherent_integration must be > 0".to_string(),
+            });
+        }
+        if self.acquisition.peak_mean_threshold <= 0.0 {
+            report.errors.push(ConfigError {
+                message: "acquisition.peak_mean_threshold must be > 0".to_string(),
+            });
+        }
+        if self.acquisition.peak_second_threshold <= 1.0 {
+            report.errors.push(ConfigError {
+                message: "acquisition.peak_second_threshold must be > 1".to_string(),
+            });
+        }
         if self.tracking.early_late_spacing_chips <= 0.0 {
             report.errors.push(ConfigError {
                 message: "tracking.early_late_spacing_chips must be > 0".to_string(),
@@ -183,6 +198,33 @@ impl ValidateConfig for ReceiverConfig {
                 message: "navigation.ppp.drift_threshold_m must be > 0".to_string(),
             });
         }
+        if self.navigation.science_thresholds.min_mean_cn0_dbhz <= 0.0 {
+            report.errors.push(ConfigError {
+                message: "navigation.science_thresholds.min_mean_cn0_dbhz must be > 0".to_string(),
+            });
+        }
+        if self.navigation.science_thresholds.max_pdop <= 0.0 {
+            report.errors.push(ConfigError {
+                message: "navigation.science_thresholds.max_pdop must be > 0".to_string(),
+            });
+        }
+        if self.navigation.science_thresholds.max_residual_rms_m <= 0.0 {
+            report.errors.push(ConfigError {
+                message: "navigation.science_thresholds.max_residual_rms_m must be > 0".to_string(),
+            });
+        }
+        if self.navigation.science_thresholds.min_used_satellites < 4 {
+            report.errors.push(ConfigError {
+                message: "navigation.science_thresholds.min_used_satellites must be >= 4"
+                    .to_string(),
+            });
+        }
+        if !(0.0..=1.0).contains(&self.navigation.science_thresholds.min_lock_ratio) {
+            report.errors.push(ConfigError {
+                message: "navigation.science_thresholds.min_lock_ratio must be within [0, 1]"
+                    .to_string(),
+            });
+        }
         report
     }
 }
@@ -204,6 +246,12 @@ impl ReceiverConfig {
             code_freq_basis_hz: self.code_freq_basis_hz,
             code_length: self.code_length,
             channels: self.tracking.max_channels,
+            acquisition_doppler_search_hz: self.acquisition.doppler_search_hz,
+            acquisition_doppler_step_hz: self.acquisition.doppler_step_hz,
+            acquisition_integration_ms: self.acquisition.integration_ms,
+            acquisition_noncoherent: self.acquisition.noncoherent_integration,
+            acquisition_peak_mean_threshold: self.acquisition.peak_mean_threshold,
+            acquisition_peak_second_threshold: self.acquisition.peak_second_threshold,
             early_late_spacing_chips: self.tracking.early_late_spacing_chips,
             dll_bw_hz: self.tracking.dll_bw_hz,
             pll_bw_hz: self.tracking.pll_bw_hz,
@@ -235,6 +283,7 @@ impl ReceiverConfig {
             tropo_enable: self.navigation.tropo_enable,
             tropo_ztd_m: self.navigation.tropo_ztd_m,
             ppp: self.navigation.ppp.clone(),
+            science_thresholds: self.navigation.science_thresholds.clone(),
         }
     }
 }

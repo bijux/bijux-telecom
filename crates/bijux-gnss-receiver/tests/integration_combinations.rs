@@ -37,6 +37,8 @@ fn make_dual_freq_epoch(p1: f64, p2: f64, phi1: f64, phi2: f64) -> ObsEpoch {
                     cycle_slip: false,
                 },
                 multipath_suspect: false,
+                observation_status: bijux_gnss_core::api::ObservationStatus::Accepted,
+                observation_reject_reasons: Vec::new(),
                 elevation_deg: None,
                 azimuth_deg: None,
                 weight: None,
@@ -49,6 +51,7 @@ fn make_dual_freq_epoch(p1: f64, p2: f64, phi1: f64, phi2: f64) -> ObsEpoch {
                     smoothing_age: 0,
                     smoothing_resets: 0,
                     signal: s1,
+                    ..ObsMetadata::default()
                 },
             },
             ObsSatellite {
@@ -67,6 +70,8 @@ fn make_dual_freq_epoch(p1: f64, p2: f64, phi1: f64, phi2: f64) -> ObsEpoch {
                     cycle_slip: false,
                 },
                 multipath_suspect: false,
+                observation_status: bijux_gnss_core::api::ObservationStatus::Accepted,
+                observation_reject_reasons: Vec::new(),
                 elevation_deg: None,
                 azimuth_deg: None,
                 weight: None,
@@ -79,9 +84,13 @@ fn make_dual_freq_epoch(p1: f64, p2: f64, phi1: f64, phi2: f64) -> ObsEpoch {
                     smoothing_age: 0,
                     smoothing_resets: 0,
                     signal: s2,
+                    ..ObsMetadata::default()
                 },
             },
         ],
+        decision: bijux_gnss_core::api::ObservationEpochDecision::Accepted,
+        decision_reason: Some("accepted_observables_present".to_string()),
+        manifest: None,
     }
 }
 
