@@ -30,6 +30,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          write_single_commit_diff() {
+            git diff-tree --no-commit-id --name-only -r "${GITHUB_SHA}" > /tmp/changed-files.txt
+          }
+          write_range_diff_or_fallback() {
+            local base_sha="$1"
+            local head_sha="$2"
+            if [[ -z "${base_sha}" || -z "${head_sha}" ]]; then
+              write_single_commit_diff
+              return 0
+            fi
+            if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+              write_single_commit_diff
+              return 0
+            fi
+            if ! git cat-file -e "${head_sha}^{commit}" 2>/dev/null; then
+              write_single_commit_diff
+              return 0
+            fi
+            if git merge-base --is-ancestor "${base_sha}" "${head_sha}" 2>/dev/null; then
+              git diff --name-only "${base_sha}...${head_sha}" > /tmp/changed-files.txt
+            else
+              write_single_commit_diff
+            fi
+          }
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             base_ref="${{ github.base_ref }}"
             git fetch --no-tags --prune --depth=1 origin "${base_ref}"
@@ -38,16 +62,16 @@ jobs:
             base_sha="${{ github.event.merge_group.base_sha }}"
             head_sha="${{ github.event.merge_group.head_sha }}"
             if [[ -n "${base_sha}" && "${base_sha}" != "null" && -n "${head_sha}" && "${head_sha}" != "null" ]]; then
-              git diff --name-only "${base_sha}...${head_sha}" > /tmp/changed-files.txt
+              write_range_diff_or_fallback "${base_sha}" "${head_sha}"
             else
-              git diff-tree --no-commit-id --name-only -r "${GITHUB_SHA}" > /tmp/changed-files.txt
+              write_single_commit_diff
             fi
           else
             before_sha="${{ github.event.before }}"
             if [[ -n "${before_sha}" && "${before_sha}" != "0000000000000000000000000000000000000000" ]]; then
-              git diff --name-only "${before_sha}...${GITHUB_SHA}" > /tmp/changed-files.txt
+              write_range_diff_or_fallback "${before_sha}" "${GITHUB_SHA}"
             else
-              git diff-tree --no-commit-id --name-only -r "${GITHUB_SHA}" > /tmp/changed-files.txt
+              write_single_commit_diff
             fi
           fi
 

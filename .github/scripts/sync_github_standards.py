@@ -48,6 +48,7 @@ DEFAULT_REPOS = [
     "bijux-genomics",
     "bijux-iac",
     "bijux-masterclass",
+    "bijux-phylogenetics",
     "bijux-pollenomics",
     "bijux-proteomics",
     "bijux-telecom",

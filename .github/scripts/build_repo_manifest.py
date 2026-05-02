@@ -42,6 +42,7 @@ REPOS = [
     "bijux-genomics",
     "bijux-iac",
     "bijux-masterclass",
+    "bijux-phylogenetics",
     "bijux-pollenomics",
     "bijux-proteomics",
     "bijux-telecom",
@@ -72,7 +73,7 @@ def release_env_value(entries: list[dict], key: str, default: bool = False) -> b
 
 def derive_workflow_allowlist(repo_name: str, release_env: list[dict], wrappers: dict, inventory: dict[str, Any]) -> list[str]:
     known = workflow_ids(inventory)
-    allow: set[str] = {"github-policy"}
+    allow: set[str] = {"github-policy", "pr-approval-policy"}
 
     if repo_name not in {"bijux-std", "bijux-iac"}:
         allow.add("deploy-docs")
