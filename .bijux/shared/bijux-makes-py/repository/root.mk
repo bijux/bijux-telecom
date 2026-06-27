@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 
 .PHONY: \
-	help list list-all install lock lock-check lint quality security test docs docs-check docs-serve api build sbom clean all \
+	help list list-all setup install lock lock-check lint quality security test docs docs-check docs-serve api build sbom clean all \
 	clean-root-artifacts root-check-env check-make-layout check-bijux-standard
 
 ROOT_CHECK_VENV ?= $(ROOT_ARTIFACTS_DIR)/check-venv
@@ -17,6 +17,8 @@ ROOT_DOCS_DEV_ADDR ?= 127.0.0.1:8000
 UV_SYNC ?= UV_PROJECT_ENVIRONMENT="$(ROOT_CHECK_VENV)" $(UV) sync --frozen --group dev --python "$(PYTHON)"
 ROOT_DEV_PYTHONPATH ?=
 ROOT_CHECK_STAMP_SYNC_MESSAGE ?= @true
+ROOT_ARTIFACT_ALIAS_SCRIPT ?= $(ROOT_MAKEFILE_DIR)/bijux-py/repository/artifact_aliases.py
+ROOT_SETUP_PACKAGES_DIR ?= $(CURDIR)/packages
 
 ifneq ($(strip $(ROOT_DEV_PYTHONPATH)),)
 export PYTHONPATH := $(ROOT_DEV_PYTHONPATH)$(if $(PYTHONPATH),:$(PYTHONPATH))
@@ -35,8 +37,15 @@ ROOT_FORBIDDEN_ARTIFACTS ?= \
 	"$(CURDIR)/configs/.ruff_cache" \
 	"$(CURDIR)/configs/.mypy_cache" \
 	"$(CURDIR)/configs/.hypothesis"
+ROOT_FORBIDDEN_ARTIFACTS := $(filter-out \
+	"$(CURDIR)/.hypothesis" \
+	"$(CURDIR)/.benchmarks", \
+	$(ROOT_FORBIDDEN_ARTIFACTS))
 
-$(ROOT_CHECK_STAMP): pyproject.toml uv.lock
+setup: ## Materialize repository and package artifact alias links
+	@"$(PYTHON)" "$(ROOT_ARTIFACT_ALIAS_SCRIPT)" root --repo-root "$(CURDIR)" --packages-dir "$(ROOT_SETUP_PACKAGES_DIR)"
+
+$(ROOT_CHECK_STAMP): pyproject.toml uv.lock | setup
 	@mkdir -p "$(ROOT_ARTIFACTS_DIR)"
 	@rm -rf "$(ROOT_CHECK_VENV)"
 	$(ROOT_CHECK_STAMP_SYNC_MESSAGE)

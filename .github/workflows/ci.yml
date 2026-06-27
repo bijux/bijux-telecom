@@ -13,12 +13,27 @@ concurrency:
   cancel-in-progress: true
 permissions:
   contents: read
+  actions: read
+  pull-requests: read
 env:
   RUST_TOOLCHAIN_VERSION: 1.86.0
   CARGO_DENY_VERSION: 0.18.3
   CARGO_AUDIT_VERSION: 0.22.0
   CARGO_NEXTEST_VERSION: 0.9.100
 jobs:
+  policy_gate:
+    name: policy-prerequisites
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: "Wait for policy and standards prerequisites"
+        shell: bash
+        env:
+          GITHUB_TOKEN: "${{ github.token }}"
+        run:
+          |
+            set -euo pipefail
+            python3 .github/scripts/check_workflow_prerequisites.py
   fmt:
     name: Formatting
     runs-on: ubuntu-24.04
@@ -35,6 +50,7 @@ jobs:
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
       - name: "Run formatting checks"
         run: "make fmt-rs"
+    needs: policy_gate
   lint:
     name: Lint
     runs-on: ubuntu-24.04
@@ -53,6 +69,7 @@ jobs:
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
       - name: "Run lint checks"
         run: "make lint-rs"
+    needs: policy_gate
   security:
     name: Security
     runs-on: ubuntu-24.04
@@ -70,6 +87,7 @@ jobs:
         run: "cargo install --locked cargo-deny --version \"${{ env.CARGO_DENY_VERSION }}\" && cargo install --locked cargo-audit --version \"${{ env.CARGO_AUDIT_VERSION }}\""
       - name: "Run security checks"
         run: "make audit-rs"
+    needs: policy_gate
   test:
     name: Tests
     runs-on: ubuntu-24.04
@@ -89,3 +107,4 @@ jobs:
         run: "cargo install --locked cargo-nextest --version \"${{ env.CARGO_NEXTEST_VERSION }}\""
       - name: "Run test suites"
         run: "make test-rs"
+    needs: policy_gate

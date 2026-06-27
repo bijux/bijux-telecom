@@ -49,6 +49,22 @@ directory_tree_sha256() {
     exit 1
   fi
 
+  local git_root=""
+  git_root="$(git -C "${target_dir}" rev-parse --show-toplevel 2>/dev/null || true)"
+  if [[ -n "${git_root}" ]]; then
+    local dir_rel=""
+    dir_rel="$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[2]).resolve().relative_to(Path(sys.argv[1]).resolve()).as_posix())' "${git_root}" "${target_dir}" 2>/dev/null || true)"
+    if [[ -n "${dir_rel}" ]]; then
+      (
+        cd "${git_root}"
+        git ls-files -- "${dir_rel}" | LC_ALL=C sort | while IFS= read -r file_rel; do
+          shasum -a 256 "${file_rel}" | sed "s#  ${dir_rel}/#  ./#"
+        done
+      ) | shasum -a 256 | awk '{print $1}'
+      return
+    fi
+  fi
+
   (
     cd "${target_dir}"
     find . -type f -print | LC_ALL=C sort | while IFS= read -r file_rel; do
