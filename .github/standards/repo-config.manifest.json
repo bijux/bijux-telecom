@@ -867,7 +867,7 @@
                 {
                   "name": "Verify repository automation contracts",
                   "shell": "bash",
-                  "run": "set -euo pipefail make check-shared-bijux-py check-config-layout check-make-layout help "
+                  "run": "set -euo pipefail; make check-shared-bijux-py check-config-layout check-make-layout help "
                 }
               ]
             },
@@ -1449,7 +1449,7 @@
                     "TZ": "UTC",
                     "LC_ALL": "C"
                   },
-                  "run": "make ssot-policy-fast\nmake ci-fast\n"
+                  "run": "make ci-fast\n"
                 }
               ]
             },
@@ -1511,7 +1511,7 @@
                 },
                 {
                   "name": "Example schema + dry plan",
-                  "run": "make ci-fast\n"
+                  "run": "cargo run -q -p bijux-dna-dev -- examples run check-drift -- fastq_essential_qc\n"
                 }
               ]
             },
@@ -1536,32 +1536,7 @@
                 },
                 {
                   "name": "Registry tools must have container defs",
-                  "run": "make ci-fast\n"
-                }
-              ]
-            },
-            "container-orphans": {
-              "runs-on": "ubuntu-latest",
-              "needs": "fast-tier",
-              "steps": [
-                {
-                  "uses": "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
-                },
-                {
-                  "uses": "dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9",
-                  "with": {
-                    "toolchain": "1.86.0"
-                  }
-                },
-                {
-                  "uses": "Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4",
-                  "with": {
-                    "shared-key": "ci-build"
-                  }
-                },
-                {
-                  "name": "Container defs must exist in registry",
-                  "run": "make ci-fast\n"
+                  "run": "cargo run -q -p bijux-dna-dev -- containers run check-registry-vs-defs\n"
                 }
               ]
             }
@@ -1711,9 +1686,9 @@
               "build_targets": "build sbom"
             },
             {
-              "package_slug": "phylogenetics",
-              "package_dir": "packages/phylogenetics",
-              "artifacts_dir": "artifacts/phylogenetics",
+              "package_slug": "phylogenetic",
+              "package_dir": "packages/phylogenetic",
+              "artifacts_dir": "artifacts/phylogenetic",
               "build_targets": "build sbom"
             }
           ]
@@ -1731,7 +1706,7 @@
               "package_slug": "bijux-phylogenetics"
             },
             {
-              "package_slug": "phylogenetics",
+              "package_slug": "phylogenetic",
               "publish_auth": "token"
             }
           ]
@@ -1744,7 +1719,7 @@
               "package_slug": "bijux-phylogenetics"
             },
             {
-              "package_slug": "phylogenetics"
+              "package_slug": "phylogenetic"
             }
           ]
         }
@@ -1814,7 +1789,7 @@
           },
           {
             "package-ecosystem": "pip",
-            "directory": "/packages/phylogenetics",
+            "directory": "/packages/phylogenetic",
             "schedule": {
               "interval": "weekly"
             },
@@ -1904,12 +1879,12 @@
                 {
                   "name": "Install package toolchain",
                   "shell": "bash",
-                  "run": "set -euo pipefail makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\" make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" install "
+                  "run": "set -euo pipefail; makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\"; make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" install "
                 },
                 {
                   "name": "Run tests",
                   "shell": "bash",
-                  "run": "set -euo pipefail makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\" make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" test "
+                  "run": "set -euo pipefail; makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\"; make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" test "
                 },
                 {
                   "name": "Run post-test validation",
@@ -1977,12 +1952,12 @@
                 {
                   "name": "Install package toolchain",
                   "shell": "bash",
-                  "run": "set -euo pipefail makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\" make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" install "
+                  "run": "set -euo pipefail; makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\"; make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" install "
                 },
                 {
                   "name": "Run ${{ matrix.target }}",
                   "shell": "bash",
-                  "run": "set -euo pipefail makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\" make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" ${{ matrix.target }} "
+                  "run": "set -euo pipefail; makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\"; make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" ${{ matrix.target }} "
                 },
                 {
                   "name": "Upload artifacts",
@@ -2020,12 +1995,12 @@
                 {
                   "name": "Install package toolchain",
                   "shell": "bash",
-                  "run": "set -euo pipefail makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\" make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" install "
+                  "run": "set -euo pipefail; makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\"; make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" install "
                 },
                 {
                   "name": "Run lint",
                   "shell": "bash",
-                  "run": "set -euo pipefail makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\" make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" lint "
+                  "run": "set -euo pipefail; makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\"; make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" lint "
                 },
                 {
                   "name": "Upload lint artifacts",
@@ -2122,7 +2097,7 @@
                 {
                   "name": "Run repository checks",
                   "shell": "bash",
-                  "run": "set -euo pipefail make check-shared-bijux-py check-config-layout check-make-layout help "
+                  "run": "set -euo pipefail; make check-shared-bijux-py check-config-layout check-make-layout help "
                 },
                 {
                   "name": "Confirm clean worktree after checks",
@@ -2145,9 +2120,9 @@
                       "check_targets": "[\"quality\", \"security\", \"api\", \"openapi-drift\", \"build\", \"sbom\"]"
                     },
                     {
-                      "package_slug": "phylogenetics",
-                      "package_dir": "packages/phylogenetics",
-                      "artifacts_dir": "artifacts/phylogenetics",
+                      "package_slug": "phylogenetic",
+                      "package_dir": "packages/phylogenetic",
+                      "artifacts_dir": "artifacts/phylogenetic",
                       "check_targets": "[\"quality\", \"security\", \"build\", \"sbom\"]"
                     },
                     {
@@ -2426,12 +2401,12 @@
                 {
                   "name": "Install package toolchain",
                   "shell": "bash",
-                  "run": "set -euo pipefail makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\" make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" install "
+                  "run": "set -euo pipefail; makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\"; make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" install "
                 },
                 {
                   "name": "Run tests",
                   "shell": "bash",
-                  "run": "set -euo pipefail makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\" make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" test "
+                  "run": "set -euo pipefail; makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\"; make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" test "
                 },
                 {
                   "name": "Run post-test validation",
@@ -2499,12 +2474,12 @@
                 {
                   "name": "Install package toolchain",
                   "shell": "bash",
-                  "run": "set -euo pipefail makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\" make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" install "
+                  "run": "set -euo pipefail; makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\"; make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" install "
                 },
                 {
                   "name": "Run ${{ matrix.target }}",
                   "shell": "bash",
-                  "run": "set -euo pipefail makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\" make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" ${{ matrix.target }} "
+                  "run": "set -euo pipefail; makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\"; make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" ${{ matrix.target }} "
                 },
                 {
                   "name": "Upload artifacts",
@@ -2542,12 +2517,12 @@
                 {
                   "name": "Install package toolchain",
                   "shell": "bash",
-                  "run": "set -euo pipefail makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\" make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" install "
+                  "run": "set -euo pipefail; makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\"; make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" install "
                 },
                 {
                   "name": "Run lint",
                   "shell": "bash",
-                  "run": "set -euo pipefail makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\" make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" lint "
+                  "run": "set -euo pipefail; makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\"; make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" lint "
                 },
                 {
                   "name": "Upload lint artifacts",
@@ -2644,7 +2619,7 @@
                 {
                   "name": "Run repository checks",
                   "shell": "bash",
-                  "run": "set -euo pipefail make check-shared-bijux-py check-config-layout check-make-layout help "
+                  "run": "set -euo pipefail; make check-shared-bijux-py check-config-layout check-make-layout help "
                 },
                 {
                   "name": "Confirm clean worktree after checks",
@@ -3023,12 +2998,12 @@
                 {
                   "name": "Install package toolchain",
                   "shell": "bash",
-                  "run": "set -euo pipefail makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\" make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" install "
+                  "run": "set -euo pipefail; makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\"; make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" install "
                 },
                 {
                   "name": "Run tests",
                   "shell": "bash",
-                  "run": "set -euo pipefail makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\" make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" test "
+                  "run": "set -euo pipefail; makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\"; make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" test "
                 },
                 {
                   "name": "Run post-test validation",
@@ -3096,12 +3071,12 @@
                 {
                   "name": "Install package toolchain",
                   "shell": "bash",
-                  "run": "set -euo pipefail makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\" make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" install "
+                  "run": "set -euo pipefail; makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\"; make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" install "
                 },
                 {
                   "name": "Run ${{ matrix.target }}",
                   "shell": "bash",
-                  "run": "set -euo pipefail makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\" make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" ${{ matrix.target }} "
+                  "run": "set -euo pipefail; makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\"; make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" ${{ matrix.target }} "
                 },
                 {
                   "name": "Upload artifacts",
@@ -3139,12 +3114,12 @@
                 {
                   "name": "Install package toolchain",
                   "shell": "bash",
-                  "run": "set -euo pipefail makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\" make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" install "
+                  "run": "set -euo pipefail; makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\"; make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" install "
                 },
                 {
                   "name": "Run lint",
                   "shell": "bash",
-                  "run": "set -euo pipefail makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\" make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" lint "
+                  "run": "set -euo pipefail; makefile=\"${GITHUB_WORKSPACE}/makes/packages/$(basename '${{ inputs.package_dir }}').mk\"; make -f \"$makefile\" -C \"${{ inputs.package_dir }}\" lint "
                 },
                 {
                   "name": "Upload lint artifacts",
@@ -3241,7 +3216,7 @@
                 {
                   "name": "Verify repository automation contracts",
                   "shell": "bash",
-                  "run": "set -euo pipefail make check-shared-bijux-py check-config-layout check-make-layout help "
+                  "run": "set -euo pipefail; make check-shared-bijux-py check-config-layout check-make-layout help "
                 }
               ]
             },

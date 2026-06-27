@@ -150,8 +150,14 @@ include $(ROOT_MAKE_DIR)/bijux-py/ci/sbom.mk
 include $(ROOT_MAKE_DIR)/bijux-py/api.mk
 include $(ROOT_MAKE_DIR)/publish.mk
 
+PACKAGE_ARTIFACT_ALIAS_SCRIPT ?= $(ROOT_MAKE_DIR)/bijux-py/repository/artifact_aliases.py
+
+setup: ## Materialize package artifact alias links
+	@"$(PYTHON)" "$(PACKAGE_ARTIFACT_ALIAS_SCRIPT)" package --repo-root "$(MONOREPO_ROOT)" --package-dir "$(PROJECT_DIR)"
+.PHONY: setup
+
 ifeq ($(PACKAGE_DEFINE_VENV),1)
-$(VENV):
+$(VENV): | setup
 	@echo "$(PACKAGE_VENV_CREATE_MESSAGE)"
 	@$(UV) venv --python "$(PYTHON)" "$(VENV)"
 endif

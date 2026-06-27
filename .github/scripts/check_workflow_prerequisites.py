@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+import os
+import time
+import urllib.parse
+import urllib.request
+from dataclasses import dataclass
+from pathlib import Path
+
+
+API_VERSION = "2022-11-28"
+POLL_INTERVAL_SECONDS = 15
+POLL_TIMEOUT_SECONDS = 45 * 60
+
+
+@dataclass(frozen=True)
+class RequiredWorkflow:
+    name: str
+    fail_on_non_success: bool = True
+
+
+def _event_payload() -> dict:
+    event_path = os.environ.get("GITHUB_EVENT_PATH")
+    if not event_path:
+        raise RuntimeError("GITHUB_EVENT_PATH is required")
+    return json.loads(Path(event_path).read_text(encoding="utf-8"))
+
+
+def _api_get_json(path: str) -> dict:
+    token = os.environ.get("GITHUB_TOKEN")
+    repository = os.environ.get("GITHUB_REPOSITORY")
+    if not token or not repository:
+        raise RuntimeError("GITHUB_TOKEN and GITHUB_REPOSITORY are required")
+
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{repository}{path}",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": API_VERSION,
+        },
+    )
+    with urllib.request.urlopen(request) as response:
+        return json.load(response)
+
+
+def _current_head_sha(event: dict) -> str:
+    pull_request = event.get("pull_request")
+    if isinstance(pull_request, dict):
+        head = pull_request.get("head")
+        if isinstance(head, dict):
+            sha = head.get("sha")
+            if isinstance(sha, str) and sha:
+                return sha
+
+    merge_group = event.get("merge_group")
+    if isinstance(merge_group, dict):
+        sha = merge_group.get("head_sha")
+        if isinstance(sha, str) and sha:
+            return sha
+
+    sha = os.environ.get("GITHUB_SHA")
+    if not sha:
+        raise RuntimeError("Unable to resolve GITHUB_SHA")
+    return sha
+
+
+def _required_workflows(event_name: str) -> list[RequiredWorkflow]:
+    override = os.environ.get("BIJUX_REQUIRED_WORKFLOWS", "").strip()
+    if override:
+        names = [name.strip() for name in override.split(",") if name.strip()]
+        return [RequiredWorkflow(name) for name in names]
+
+    if event_name in {"workflow_call", "workflow_dispatch"}:
+        return []
+    if event_name in {"pull_request", "pull_request_target", "pull_request_review"}:
+        return [
+            RequiredWorkflow("bijux-std"),
+            # Approval failures should stop downstream work immediately.
+            # A later label or review update creates a new event and a new run.
+            RequiredWorkflow("policy / pr approval"),
+        ]
+    if event_name in {"merge_group", "push"}:
+        return [RequiredWorkflow("bijux-std")]
+    return []
+
+
+def _list_workflow_runs(head_sha: str) -> list[dict]:
+    query = urllib.parse.urlencode({"head_sha": head_sha, "per_page": 100})
+    payload = _api_get_json(f"/actions/runs?{query}")
+    runs = payload.get("workflow_runs")
+    if not isinstance(runs, list):
+        return []
+    return runs
+
+
+def _latest_run_for_name(runs: list[dict], workflow_name: str) -> dict | None:
+    matching = [
+        run
+        for run in runs
+        if isinstance(run, dict) and run.get("name") == workflow_name
+    ]
+    if not matching:
+        return None
+
+    def sort_key(run: dict) -> tuple[str, int]:
+        created_at = str(run.get("created_at") or "")
+        run_number = int(run.get("run_number") or 0)
+        return (created_at, run_number)
+
+    return max(matching, key=sort_key)
+
+
+def _run_state_text(run: dict | None) -> str:
+    if run is None:
+        return "missing"
+    status = run.get("status") or "unknown"
+    conclusion = run.get("conclusion") or "pending"
+    return f"{status}/{conclusion}"
+
+
+def _all_prerequisites_ready(
+    required: list[RequiredWorkflow],
+    runs: list[dict],
+) -> tuple[bool, list[str]]:
+    states: list[str] = []
+    for workflow in required:
+        run = _latest_run_for_name(runs, workflow.name)
+        states.append(f"{workflow.name}={_run_state_text(run)}")
+        if run is None:
+            return (False, states)
+        status = run.get("status")
+        conclusion = run.get("conclusion")
+        if status != "completed":
+            return (False, states)
+        if conclusion != "success":
+            if workflow.fail_on_non_success:
+                raise RuntimeError(
+                    f"Required workflow '{workflow.name}' completed with conclusion "
+                    f"'{conclusion}'."
+                )
+            return (False, states)
+    return (True, states)
+
+
+def main() -> None:
+    event_name = os.environ.get("GITHUB_EVENT_NAME", "")
+    required = _required_workflows(event_name)
+    if not required:
+        print(f"No workflow prerequisites required for event '{event_name}'.")
+        return
+
+    event = _event_payload()
+    head_sha = _current_head_sha(event)
+    deadline = time.time() + POLL_TIMEOUT_SECONDS
+
+    while True:
+        runs = _list_workflow_runs(head_sha)
+        ready, states = _all_prerequisites_ready(required, runs)
+        print(f"Workflow prerequisites for {head_sha}: {', '.join(states)}")
+        if ready:
+            print("All prerequisite workflows completed successfully.")
+            return
+        if time.time() >= deadline:
+            raise RuntimeError(
+                "Timed out waiting for prerequisite workflows: "
+                + ", ".join(workflow.name for workflow in required)
+            )
+        time.sleep(POLL_INTERVAL_SECONDS)
+
+
+if __name__ == "__main__":
+    main()
