@@ -37,7 +37,7 @@ endef
 
 $(foreach package,$(ROOT_BUILD_ALIAS_PACKAGES),$(eval $(call define_root_build_alias,$(package))))
 
-build-tools: | $(VENV)
+build-tools: | $(VENV_PYTHON)
 	@echo "→ Ensuring build toolchain..."
 	@$(BUILD_TOOLS_COMMAND)
 

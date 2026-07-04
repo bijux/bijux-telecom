@@ -306,15 +306,16 @@
         "ci": {
           "name": "repo / ci",
           "on": {
-            "push": {
+            "pull_request": {
               "branches": [
                 "main"
-              ],
-              "tags": [
-                "v*"
               ]
             },
-            "pull_request": null
+            "merge_group": {
+              "branches": [
+                "main"
+              ]
+            }
           },
           "concurrency": {
             "group": "${{ github.workflow }}-${{ github.ref }}",
@@ -852,7 +853,7 @@
                   "uses": "actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd"
                 },
                 {
-                  "uses": "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1",
+                  "uses": "actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405",
                   "with": {
                     "python-version": 3.11
                   }
@@ -1140,12 +1141,16 @@
         "ci": {
           "name": "repo / ci",
           "on": {
-            "push": {
+            "pull_request": {
               "branches": [
                 "main"
               ]
             },
-            "pull_request": null
+            "merge_group": {
+              "branches": [
+                "main"
+              ]
+            }
           },
           "concurrency": {
             "group": "${{ github.workflow }}-${{ github.ref }}",
@@ -1404,8 +1409,16 @@
         "ci": {
           "name": "ci",
           "on": {
-            "push": null,
-            "pull_request": null,
+            "pull_request": {
+              "branches": [
+                "main"
+              ]
+            },
+            "merge_group": {
+              "branches": [
+                "main"
+              ]
+            },
             "workflow_dispatch": {
               "inputs": {
                 "run_slow_tier": {
@@ -1417,8 +1430,14 @@
               }
             }
           },
+          "concurrency": {
+            "group": "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}",
+            "cancel-in-progress": true
+          },
           "jobs": {
-            "fast-tier": {
+            "ssot_policy": {
+              "name": "ssot-policy-fast",
+              "if": "${{ github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.user.type != 'Bot' && !endsWith(github.event.pull_request.user.login, '[bot]')) }}",
               "runs-on": "ubuntu-latest",
               "env": {
                 "SCCACHE_GHA_ENABLED": "true",
@@ -1426,12 +1445,12 @@
               },
               "steps": [
                 {
-                  "uses": "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+                  "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
                 },
                 {
                   "uses": "dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9",
                   "with": {
-                    "toolchain": "1.86.0"
+                    "toolchain": "1.88.0"
                   }
                 },
                 {
@@ -1444,12 +1463,263 @@
                   }
                 },
                 {
-                  "name": "Minimal CI gate",
+                  "name": "SSOT policy fast gate",
                   "env": {
                     "TZ": "UTC",
                     "LC_ALL": "C"
                   },
-                  "run": "make ci-fast\n"
+                  "run": "make ssot-policy-fast\n"
+                }
+              ]
+            },
+            "workspace_hygiene": {
+              "name": "workspace-hygiene",
+              "if": "${{ github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.user.type != 'Bot' && !endsWith(github.event.pull_request.user.login, '[bot]')) }}",
+              "runs-on": "ubuntu-latest",
+              "env": {
+                "SCCACHE_GHA_ENABLED": "true",
+                "RUSTC_WRAPPER": "sccache"
+              },
+              "steps": [
+                {
+                  "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+                },
+                {
+                  "uses": "dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9",
+                  "with": {
+                    "toolchain": "1.88.0"
+                  }
+                },
+                {
+                  "uses": "mozilla/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad"
+                },
+                {
+                  "uses": "Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4",
+                  "with": {
+                    "shared-key": "ci-build"
+                  }
+                },
+                {
+                  "name": "Workspace formatting and lint gate",
+                  "env": {
+                    "TZ": "UTC",
+                    "LC_ALL": "C"
+                  },
+                  "run": "make fmt\nmake lint-workspace\n"
+                }
+              ]
+            },
+            "unit_contract_fast": {
+              "name": "unit-contract-fast",
+              "if": "${{ github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.user.type != 'Bot' && !endsWith(github.event.pull_request.user.login, '[bot]')) }}",
+              "runs-on": "ubuntu-latest",
+              "env": {
+                "SCCACHE_GHA_ENABLED": "true",
+                "RUSTC_WRAPPER": "sccache"
+              },
+              "steps": [
+                {
+                  "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+                },
+                {
+                  "uses": "dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9",
+                  "with": {
+                    "toolchain": "1.88.0"
+                  }
+                },
+                {
+                  "uses": "mozilla/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad"
+                },
+                {
+                  "uses": "Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4",
+                  "with": {
+                    "shared-key": "ci-build"
+                  }
+                },
+                {
+                  "name": "Unit and contract gate",
+                  "env": {
+                    "TZ": "UTC",
+                    "LC_ALL": "C"
+                  },
+                  "run": "make _unit-contract-fast\n"
+                }
+              ]
+            },
+            "release_readiness": {
+              "name": "release-readiness",
+              "if": "${{ github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.user.type != 'Bot' && !endsWith(github.event.pull_request.user.login, '[bot]')) }}",
+              "runs-on": "ubuntu-latest",
+              "env": {
+                "SCCACHE_GHA_ENABLED": "true",
+                "RUSTC_WRAPPER": "sccache"
+              },
+              "steps": [
+                {
+                  "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+                },
+                {
+                  "uses": "dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9",
+                  "with": {
+                    "toolchain": "1.88.0"
+                  }
+                },
+                {
+                  "uses": "mozilla/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad"
+                },
+                {
+                  "uses": "Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4",
+                  "with": {
+                    "shared-key": "ci-build"
+                  }
+                },
+                {
+                  "name": "Release readiness gate",
+                  "env": {
+                    "TZ": "UTC",
+                    "LC_ALL": "C"
+                  },
+                  "run": "make _release-readiness\n"
+                }
+              ]
+            },
+            "fastq_container_readiness": {
+              "name": "fastq-container-readiness",
+              "if": "${{ github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.user.type != 'Bot' && !endsWith(github.event.pull_request.user.login, '[bot]')) }}",
+              "runs-on": "ubuntu-latest",
+              "env": {
+                "SCCACHE_GHA_ENABLED": "true",
+                "RUSTC_WRAPPER": "sccache"
+              },
+              "steps": [
+                {
+                  "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+                },
+                {
+                  "uses": "dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9",
+                  "with": {
+                    "toolchain": "1.88.0"
+                  }
+                },
+                {
+                  "uses": "mozilla/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad"
+                },
+                {
+                  "uses": "Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4",
+                  "with": {
+                    "shared-key": "ci-build"
+                  }
+                },
+                {
+                  "name": "FASTQ container readiness gate",
+                  "env": {
+                    "TZ": "UTC",
+                    "LC_ALL": "C"
+                  },
+                  "run": "make _fastq-container-readiness\n"
+                }
+              ]
+            },
+            "profile_invariants": {
+              "name": "profile-invariants",
+              "if": "${{ github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.user.type != 'Bot' && !endsWith(github.event.pull_request.user.login, '[bot]')) }}",
+              "runs-on": "ubuntu-latest",
+              "env": {
+                "SCCACHE_GHA_ENABLED": "true",
+                "RUSTC_WRAPPER": "sccache"
+              },
+              "steps": [
+                {
+                  "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+                },
+                {
+                  "uses": "dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9",
+                  "with": {
+                    "toolchain": "1.88.0"
+                  }
+                },
+                {
+                  "uses": "mozilla/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad"
+                },
+                {
+                  "uses": "Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4",
+                  "with": {
+                    "shared-key": "ci-build"
+                  }
+                },
+                {
+                  "name": "Profile invariants gate",
+                  "env": {
+                    "TZ": "UTC",
+                    "LC_ALL": "C"
+                  },
+                  "run": "make _test-profile-invariants\n"
+                }
+              ]
+            },
+            "cargo_policy": {
+              "name": "cargo-policy",
+              "if": "${{ github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.user.type != 'Bot' && !endsWith(github.event.pull_request.user.login, '[bot]')) }}",
+              "runs-on": "ubuntu-latest",
+              "env": {
+                "SCCACHE_GHA_ENABLED": "true",
+                "RUSTC_WRAPPER": "sccache"
+              },
+              "steps": [
+                {
+                  "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+                },
+                {
+                  "uses": "dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9",
+                  "with": {
+                    "toolchain": "1.88.0"
+                  }
+                },
+                {
+                  "uses": "mozilla/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad"
+                },
+                {
+                  "uses": "Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4",
+                  "with": {
+                    "shared-key": "ci-build"
+                  }
+                },
+                {
+                  "name": "Cargo policy gate",
+                  "env": {
+                    "TZ": "UTC",
+                    "LC_ALL": "C"
+                  },
+                  "run": "make _policy-no-raw-cargo\n"
+                }
+              ]
+            },
+            "fast-tier": {
+              "if": "${{ always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.user.type != 'Bot' && !endsWith(github.event.pull_request.user.login, '[bot]')))) }}",
+              "runs-on": "ubuntu-latest",
+              "needs": [
+                "ssot_policy",
+                "workspace_hygiene",
+                "unit_contract_fast",
+                "release_readiness",
+                "fastq_container_readiness",
+                "profile_invariants",
+                "cargo_policy"
+              ],
+              "steps": [
+                {
+                  "name": "Require fast CI lanes to pass",
+                  "shell": "bash",
+                  "env": {
+                    "SSOT_POLICY_RESULT": "${{ needs.ssot_policy.result }}",
+                    "WORKSPACE_HYGIENE_RESULT": "${{ needs.workspace_hygiene.result }}",
+                    "UNIT_CONTRACT_FAST_RESULT": "${{ needs.unit_contract_fast.result }}",
+                    "RELEASE_READINESS_RESULT": "${{ needs.release_readiness.result }}",
+                    "FASTQ_CONTAINER_READINESS_RESULT": "${{ needs.fastq_container_readiness.result }}",
+                    "PROFILE_INVARIANTS_RESULT": "${{ needs.profile_invariants.result }}",
+                    "CARGO_POLICY_RESULT": "${{ needs.cargo_policy.result }}"
+                  },
+                  "run": "set -euo pipefail\nfor result in \\\n  \"${SSOT_POLICY_RESULT}\" \\\n  \"${WORKSPACE_HYGIENE_RESULT}\" \\\n  \"${UNIT_CONTRACT_FAST_RESULT}\" \\\n  \"${RELEASE_READINESS_RESULT}\" \\\n  \"${FASTQ_CONTAINER_READINESS_RESULT}\" \\\n  \"${PROFILE_INVARIANTS_RESULT}\" \\\n  \"${CARGO_POLICY_RESULT}\"; do\n  [[ \"${result}\" == \"success\" ]]\ndone\n"
                 }
               ]
             },
@@ -1463,12 +1733,12 @@
               },
               "steps": [
                 {
-                  "uses": "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+                  "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
                 },
                 {
                   "uses": "dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9",
                   "with": {
-                    "toolchain": "1.86.0"
+                    "toolchain": "1.88.0"
                   }
                 },
                 {
@@ -1490,18 +1760,25 @@
                 }
               ]
             },
-            "example-dry-run": {
+            "benchmark-active-scope": {
               "runs-on": "ubuntu-latest",
-              "needs": "fast-tier",
+              "if": "${{ github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.user.type != 'Bot' && !endsWith(github.event.pull_request.user.login, '[bot]')) }}",
+              "env": {
+                "SCCACHE_GHA_ENABLED": "true",
+                "RUSTC_WRAPPER": "sccache"
+              },
               "steps": [
                 {
-                  "uses": "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+                  "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
                 },
                 {
                   "uses": "dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9",
                   "with": {
-                    "toolchain": "1.86.0"
+                    "toolchain": "1.88.0"
                   }
+                },
+                {
+                  "uses": "mozilla/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad"
                 },
                 {
                   "uses": "Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4",
@@ -1510,23 +1787,30 @@
                   }
                 },
                 {
-                  "name": "Example schema + dry plan",
-                  "run": "cargo run -q -p bijux-dna-dev -- examples run check-drift -- fastq_essential_qc\n"
+                  "name": "Active benchmark readiness",
+                  "run": "make bench-active-fast\n"
                 }
               ]
             },
-            "registry-vs-containers": {
+            "parser-fixtures": {
               "runs-on": "ubuntu-latest",
-              "needs": "fast-tier",
+              "if": "${{ github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.user.type != 'Bot' && !endsWith(github.event.pull_request.user.login, '[bot]')) }}",
+              "env": {
+                "SCCACHE_GHA_ENABLED": "true",
+                "RUSTC_WRAPPER": "sccache"
+              },
               "steps": [
                 {
-                  "uses": "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+                  "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
                 },
                 {
                   "uses": "dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9",
                   "with": {
-                    "toolchain": "1.86.0"
+                    "toolchain": "1.88.0"
                   }
+                },
+                {
+                  "uses": "mozilla/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad"
                 },
                 {
                   "uses": "Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4",
@@ -1535,8 +1819,72 @@
                   }
                 },
                 {
-                  "name": "Registry tools must have container defs",
-                  "run": "cargo run -q -p bijux-dna-dev -- containers run check-registry-vs-defs\n"
+                  "name": "Parser fixtures",
+                  "run": "make bench-parser-fast\n"
+                }
+              ]
+            },
+            "adapter-rendering": {
+              "runs-on": "ubuntu-latest",
+              "if": "${{ github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.user.type != 'Bot' && !endsWith(github.event.pull_request.user.login, '[bot]')) }}",
+              "env": {
+                "SCCACHE_GHA_ENABLED": "true",
+                "RUSTC_WRAPPER": "sccache"
+              },
+              "steps": [
+                {
+                  "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+                },
+                {
+                  "uses": "dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9",
+                  "with": {
+                    "toolchain": "1.88.0"
+                  }
+                },
+                {
+                  "uses": "mozilla/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad"
+                },
+                {
+                  "uses": "Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4",
+                  "with": {
+                    "shared-key": "ci-build"
+                  }
+                },
+                {
+                  "name": "Adapter rendering",
+                  "run": "make bench-adapter-fast\n"
+                }
+              ]
+            },
+            "science-fixtures": {
+              "runs-on": "ubuntu-latest",
+              "if": "${{ github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.user.type != 'Bot' && !endsWith(github.event.pull_request.user.login, '[bot]')) }}",
+              "env": {
+                "SCCACHE_GHA_ENABLED": "true",
+                "RUSTC_WRAPPER": "sccache"
+              },
+              "steps": [
+                {
+                  "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+                },
+                {
+                  "uses": "dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9",
+                  "with": {
+                    "toolchain": "1.88.0"
+                  }
+                },
+                {
+                  "uses": "mozilla/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad"
+                },
+                {
+                  "uses": "Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4",
+                  "with": {
+                    "shared-key": "ci-build"
+                  }
+                },
+                {
+                  "name": "Science fixtures",
+                  "run": "make science-fixtures-fast\n"
                 }
               ]
             }
@@ -3420,12 +3768,16 @@
         "ci": {
           "name": "repo / ci",
           "on": {
-            "push": {
+            "pull_request": {
               "branches": [
                 "main"
               ]
             },
-            "pull_request": null
+            "merge_group": {
+              "branches": [
+                "main"
+              ]
+            }
           },
           "concurrency": {
             "group": "${{ github.workflow }}-${{ github.ref }}",

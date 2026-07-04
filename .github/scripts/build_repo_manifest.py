@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -145,12 +146,19 @@ def parse_release_env(path: Path) -> list[dict]:
             try:
                 parsed_json = json.loads(inner)
             except json.JSONDecodeError:
-                entries.append({"key": key, "type": "string", "value": value})
+                entries.append({"key": key, "type": "string", "value": inner})
             else:
                 entries.append({"key": key, "type": "json", "value": parsed_json})
             continue
 
-        entries.append({"key": key, "type": "string", "value": value})
+        try:
+            shell_parts = shlex.split(value, posix=True)
+        except ValueError:
+            parsed_value = value
+        else:
+            parsed_value = " ".join(shell_parts) if len(shell_parts) > 1 else (shell_parts[0] if shell_parts else "")
+
+        entries.append({"key": key, "type": "string", "value": parsed_value})
 
     return entries
 

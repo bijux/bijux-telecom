@@ -23,9 +23,22 @@ PACKAGE_ALIAS_LAYOUT = {
     ".benchmarks": Path("artifacts/{package}/benchmarks"),
 }
 
+PRESERVED_LOCAL_DIRECTORY_ALIASES = frozenset(
+    {
+        ".venv",
+        ".tox",
+        ".hypothesis",
+        ".benchmarks",
+    }
+)
+
 
 def _relative_target(*, link_path: Path, target_path: Path) -> str:
     return os.path.relpath(target_path, start=link_path.parent)
+
+
+def _should_preserve_existing_directory(*, link_path: Path) -> bool:
+    return link_path.name in PRESERVED_LOCAL_DIRECTORY_ALIASES
 
 
 def _materialize_alias(*, link_path: Path, target_path: Path) -> None:
@@ -39,6 +52,8 @@ def _materialize_alias(*, link_path: Path, target_path: Path) -> None:
             return
         link_path.unlink()
     elif link_path.exists():
+        if link_path.is_dir() and _should_preserve_existing_directory(link_path=link_path):
+            return
         raise RuntimeError(
             f"refusing to replace non-symlink path '{link_path}' with alias to "
             f"'{expected_target}'"
