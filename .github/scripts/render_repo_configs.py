@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,10 @@ REQUIRED_VERIFY_TRIGGER_PATHS = [
     ".bijux/**",
     ".github/**",
 ]
+DEPENDABOT_PR_SKIP_CONDITION = (
+    "github.event_name != 'pull_request' || "
+    "github.event.pull_request.user.login != 'dependabot[bot]'"
+)
 
 
 def resolve_repo_root(repo_name: str) -> Path:
@@ -109,7 +114,7 @@ def render_release_env(entries: list[dict]) -> str:
         elif kind == "json":
             rendered = "'" + json.dumps(value, separators=(",", ":")) + "'"
         elif kind == "string":
-            rendered = str(value)
+            rendered = shlex.quote(str(value))
         else:
             raise ValueError(f"Unsupported release.env entry type: {kind}")
 
@@ -242,7 +247,7 @@ def inject_policy_gate(
     if wrapper_name == "verify":
         wrapper_definition = normalize_verify_trigger_paths(wrapper_definition)
 
-    if wrapper_name not in {"ci", "verify"}:
+    if wrapper_name != "verify":
         return wrapper_definition
 
     jobs = wrapper_definition.get("jobs")
@@ -297,6 +302,40 @@ def inject_policy_gate(
     return wrapper_definition
 
 
+def combine_job_if(existing: Any, condition: str) -> str:
+    if not existing:
+        return f"${{{{ {condition} }}}}"
+    if not isinstance(existing, str):
+        raise TypeError("job if condition must be a string when present")
+
+    stripped = existing.strip()
+    if stripped.startswith("${{") and stripped.endswith("}}"):
+        stripped = stripped[3:-2].strip()
+    return f"${{{{ ({condition}) && ({stripped}) }}}}"
+
+
+def inject_dependabot_pull_request_skip(
+    wrapper_name: str,
+    wrapper_definition: dict[str, Any],
+) -> dict[str, Any]:
+    if wrapper_name != "ci":
+        return wrapper_definition
+
+    jobs = wrapper_definition.get("jobs")
+    if not isinstance(jobs, dict):
+        return wrapper_definition
+
+    for job_definition in jobs.values():
+        if not isinstance(job_definition, dict):
+            continue
+        job_definition["if"] = combine_job_if(
+            job_definition.get("if"),
+            DEPENDABOT_PR_SKIP_CONDITION,
+        )
+
+    return wrapper_definition
+
+
 def render_repo(repo_name: str, manifest: dict) -> None:
     repo = find_repo_config(manifest, repo_name)
     repo_root = resolve_repo_root(repo_name)
@@ -335,6 +374,10 @@ def render_repo(repo_name: str, manifest: dict) -> None:
         if wrapper_definition is None:
             remove_if_generated(wrapper_path)
             continue
+        wrapper_definition = inject_dependabot_pull_request_skip(
+            wrapper_name,
+            wrapper_definition,
+        )
         wrapper_definition = inject_policy_gate(wrapper_name, wrapper_definition)
         write_if_needed(wrapper_path, render_yaml_document(wrapper_definition))
 

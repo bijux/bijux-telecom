@@ -104,7 +104,7 @@ openapi-drift:
 	  echo "Skipping openapi-drift ($(API_OPENAPI_DRIFT_CHECK) missing)"; \
 	fi
 
-api-install: | $(VENV)
+api-install: | $(VENV_PYTHON)
 	@echo "→ Installing API Python deps..."
 	@if [ "$(API_ENABLE_NODE_TOOLS)" = "1" ]; then $(API_SELF_MAKE) node_deps; fi
 	@command -v curl >/dev/null || { echo "✘ curl not found"; exit 1; }
@@ -128,7 +128,7 @@ api-lint:
 	@[ -f ./openapitools.json ] && echo "→ Removing stray openapitools.json (root)" && rm -f ./openapitools.json || true
 	@echo "✔ All schemas validated. Logs → $(API_LINT_DIR_ABS)"
 
-api-test: | $(VENV)
+api-test: | $(VENV_PYTHON)
 	@if [ "$(API_ENABLE_NODE_TOOLS)" = "1" ]; then $(API_SELF_MAKE) node_deps; fi
 	@if [ -z "$(ALL_API_SCHEMAS)" ]; then \
 	  if [ "$(API_SKIP_IF_NO_SCHEMAS)" = "1" ]; then echo "$(API_TEST_MISSING_MESSAGE)"; exit 0; fi; \
@@ -217,12 +217,12 @@ api-test: | $(VENV)
 	  rm -rf .hypothesis; \
 	fi
 
-api-serve: | $(VENV)
+api-serve: | $(VENV_PYTHON)
 	@mkdir -p "$(API_ARTIFACTS_DIR_ABS)"
 	@echo "→ Serving API (foreground) @ $(SCHEMA_URL) — logs → $(abspath $(API_LOG))"
 	@API_HOST="$(API_HOST)" API_PORT="$(API_PORT)" $(API_SERVER_CMD)
 
-api-serve-bg: | $(VENV)
+api-serve-bg: | $(VENV_PYTHON)
 	@mkdir -p "$(API_ARTIFACTS_DIR_ABS)"
 	@echo "→ Serving API (background) @ $(SCHEMA_URL) — logs → $(abspath $(API_LOG))"
 	@API_HOST="$(API_HOST)" API_PORT="$(API_PORT)" $(API_SERVER_CMD) >"$(abspath $(API_LOG))" 2>&1 & echo $$! >"$(API_ARTIFACTS_DIR_ABS)/server.pid"

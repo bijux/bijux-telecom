@@ -19,22 +19,8 @@ permissions:
   pull-requests: read
 
 jobs:
-  policy_gate:
-    name: policy-prerequisites
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - name: Wait for policy and standards prerequisites
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          python3 .github/scripts/check_workflow_prerequisites.py
-
   policy:
     name: policy / github
-    needs: policy_gate
     runs-on: ubuntu-latest
 
     steps:

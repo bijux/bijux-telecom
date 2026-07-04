@@ -15,6 +15,7 @@ COV_XML                   ?= $(TEST_ARTIFACTS_DIR)/coverage.xml
 ENABLE_BENCH              ?= 1
 PYTEST_ADDOPTS_EXTRA      ?=
 TEST_PRE_TARGETS          ?=
+TEST_LABEL                ?= full test suite
 TEST_MAIN_ARGS            ?=
 TEST_UNIT_DIR_ARGS        ?= -m "not slow" --maxfail=1 -q
 TEST_UNIT_FALLBACK_ARGS   ?= -k "not e2e and not integration and not functional" -m "not slow" --maxfail=1 -q
@@ -81,13 +82,13 @@ TEST_PYCACHE_PREFIX_ABS   := $(abspath $(TEST_PYCACHE_PREFIX))
 TEST_PYCACHE_ENV          := $(if $(strip $(TEST_PYCACHE_PREFIX)),PYTHONPYCACHEPREFIX="$(TEST_PYCACHE_PREFIX_ABS)",)
 pytest_abs_path           = $(abspath $(if $(filter /%,$(strip $(1))),$(strip $(1)),$(PROJECT_DIR_ABS)/$(strip $(1))))
 to_pytest_path            = $(if $(strip $(1)),$(patsubst $(PYTEST_ROOTDIR_ABS)/%,%,$(call pytest_abs_path,$(1))),)
-TEST_PATH_ARGS            := $(foreach path,$(TEST_PATHS),"$(call to_pytest_path,$(path))")
-TEST_PATHS_UNIT_ARG       := $(call to_pytest_path,$(TEST_PATHS_UNIT))
-TEST_PATHS_E2E_ARG        := $(call to_pytest_path,$(TEST_PATHS_E2E))
-TEST_PATHS_REGRESSION_ARG := $(call to_pytest_path,$(TEST_PATHS_REGRESSION))
-TEST_PATHS_EVALUATION_ARG := $(call to_pytest_path,$(TEST_PATHS_EVALUATION))
-TEST_REAL_LOCAL_ARG       := $(call to_pytest_path,$(TEST_REAL_LOCAL_PATH))
-TEST_COVERAGE_TARGET_ARGS := $(foreach path,$(TEST_COVERAGE_TARGETS),"$(call to_pytest_path,$(path))")
+TEST_PATH_ARGS            = $(foreach path,$(TEST_PATHS),"$(call to_pytest_path,$(path))")
+TEST_PATHS_UNIT_ARG       = $(call to_pytest_path,$(TEST_PATHS_UNIT))
+TEST_PATHS_E2E_ARG        = $(call to_pytest_path,$(TEST_PATHS_E2E))
+TEST_PATHS_REGRESSION_ARG = $(call to_pytest_path,$(TEST_PATHS_REGRESSION))
+TEST_PATHS_EVALUATION_ARG = $(call to_pytest_path,$(TEST_PATHS_EVALUATION))
+TEST_REAL_LOCAL_ARG       = $(call to_pytest_path,$(TEST_REAL_LOCAL_PATH))
+TEST_COVERAGE_TARGET_ARGS = $(foreach path,$(TEST_COVERAGE_TARGETS),"$(call to_pytest_path,$(path))")
 
 PYTEST_COV_FLAGS = $(foreach path,$(TEST_COVERAGE_SOURCE_ABS),--cov="$(path)")
 
@@ -105,7 +106,7 @@ PYTEST_INFO_FLAGS = -o cache_dir="$(CACHE_DIR_ABS)"
 .PHONY: test test-unit test-e2e test-regression test-evaluation test-ci test-clean test-syntax coverage-core real-local
 
 test:
-	@echo "→ Running full test suite on $(TEST_PATHS)"
+	@echo "→ Running $(TEST_LABEL) on $(TEST_PATHS)"
 	$(call run_make_targets,$(TEST_PRE_TARGETS),$(TEST_SELF_MAKE))
 	$(call run_test_syntax)
 	@if [ "$(TEST_RESET_PYCACHE)" = "1" ]; then find . -type d -name '__pycache__' -exec rm -rf {} + >/dev/null 2>&1 || true; fi

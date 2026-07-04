@@ -4,6 +4,20 @@
 {% endif %}
 {% set bijux = config.extra.bijux if config.extra and config.extra.bijux else {} %}
 {% set hub_links = bijux.hub_links if bijux and bijux.hub_links else [] %}
+{% set canonical_hub_keys = ["bijux", "bijux-core", "bijux-proteomics", "bijux-pollenomics", "bijux-phylogenetics", "bijux-canon", "bijux-atlas", "bijux-masterclass"] %}
+{% set ordered_hub_links = namespace(items=[]) %}
+{% for hub_key in canonical_hub_keys %}
+  {% for entry in hub_links %}
+    {% if entry.key == hub_key %}
+      {% set _ = ordered_hub_links.items.append(entry) %}
+    {% endif %}
+  {% endfor %}
+{% endfor %}
+{% for entry in hub_links %}
+  {% if entry.key not in canonical_hub_keys %}
+    {% set _ = ordered_hub_links.items.append(entry) %}
+  {% endif %}
+{% endfor %}
 {% set active_repository = bijux.repository if bijux and bijux.repository else "" %}
 {% set repo_name = config.repo_name if config and config.repo_name else "" %}
 {% set is_bijux_hub_site = repo_name == "bijux/bijux.github.io" or active_repository in ["bijux", "bijux.github.io"] %}
@@ -128,11 +142,11 @@
   {% endif %}
 {%- endmacro %}
 {% set mobile_sites_block %}
-  {% if hub_links %}
+  {% if ordered_hub_links.items %}
     <section class="bijux-mobile-hub" aria-label="Bijux sites" data-bijux-mobile-order="{{ mobile_sites_order }}" data-bijux-mobile-kind="sites">
       <div class="bijux-mobile-hub__label">Sites</div>
       <ul class="bijux-mobile-hub__list">
-        {% for entry in hub_links %}
+        {% for entry in ordered_hub_links.items %}
           {% set item_class = "bijux-mobile-hub__item" %}
           {% set current = "" %}
           {% if entry.key == active_repository %}

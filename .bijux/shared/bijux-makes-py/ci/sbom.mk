@@ -32,7 +32,7 @@ SBOM_DEV_FILE             = $(SBOM_DIR)/$(PACKAGE_NAME)-$(SBOM_VERSION_SAFE)-$(G
 sbom: sbom-clean sbom-prod sbom-dev sbom-summary
 	@echo "✔ SBOMs generated in $(SBOM_DIR)"
 
-sbom-tooling: | $(VENV)
+sbom-tooling: | $(VENV_PYTHON)
 	@if ! "$(VENV_PYTHON)" -c "import pip_audit" >/dev/null 2>&1; then \
 	  echo "→ Installing pip-audit into $(VENV)"; \
 	  $(UV) pip install --python "$(VENV_PYTHON)" --upgrade pip-audit >/dev/null; \

@@ -238,6 +238,8 @@ verify_homepage_sidebar_collapse_contract() {
 
 verify_workflow_run_shell_preambles() {
   local manifest_shell_breaks
+  local shared_workflow_rel
+  local shared_workflow_dir
   manifest_shell_breaks="$(grep -nE '"run": "set -euo pipefail [^;&"]' "${repo_root}/.github/standards/repo-config.manifest.json" || true)"
   if [[ -n "${manifest_shell_breaks}" ]]; then
     echo "ERROR: malformed workflow shell preamble in standards manifest" >&2
@@ -247,7 +249,9 @@ verify_workflow_run_shell_preambles() {
   fi
 
   local shared_workflow_breaks
-  shared_workflow_breaks="$(grep -RInE 'run: "?set -euo pipefail [^;&"]' "${repo_root}/shared/bijux-gh/workflows" || true)"
+  shared_workflow_rel="$(resolve_local_rel "shared/bijux-gh/workflows")"
+  shared_workflow_dir="${repo_root}/${shared_workflow_rel}"
+  shared_workflow_breaks="$(grep -RInE 'run: "?set -euo pipefail [^;&"]' "${shared_workflow_dir}" || true)"
   if [[ -n "${shared_workflow_breaks}" ]]; then
     echo "ERROR: malformed workflow shell preamble in shared GitHub workflow templates" >&2
     echo "${shared_workflow_breaks}" >&2
@@ -256,6 +260,52 @@ verify_workflow_run_shell_preambles() {
   fi
 
   echo "✔ Workflow shell preambles are executable"
+}
+
+verify_release_env_shell_safety() {
+  python3 - "${repo_root}" "${tmp_dir}" <<'PY'
+import importlib.util
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+repo_root = Path(sys.argv[1])
+tmp_dir = Path(sys.argv[2])
+manifest_path = repo_root / ".github/standards/repo-config.manifest.json"
+render_script_path = repo_root / ".github/scripts/render_repo_configs.py"
+
+spec = importlib.util.spec_from_file_location("render_repo_configs", render_script_path)
+module = importlib.util.module_from_spec(spec)
+assert spec.loader is not None
+spec.loader.exec_module(module)
+
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+for repo in manifest["repositories"]:
+    release_content = module.render_release_env(repo.get("release_env", []))
+    release_path = tmp_dir / f"{repo['name']}.release.env"
+    release_path.write_text(release_content, encoding="utf-8")
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            "set -euo pipefail; source \"$1\"",
+            "bash",
+            str(release_path),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        sys.stderr.write(
+            f"ERROR: rendered release.env is not shell-safe for {repo['name']}\n"
+        )
+        if result.stderr:
+            sys.stderr.write(result.stderr)
+        raise SystemExit(result.returncode)
+
+print("✔ Rendered release.env files are shell-safe")
+PY
 }
 
 tmp_dir="$(mktemp -d)"
@@ -296,5 +346,6 @@ verify_no_legacy_root_shared_dirs
 verify_canonical_mermaid_init
 verify_homepage_sidebar_collapse_contract
 verify_workflow_run_shell_preambles
+verify_release_env_shell_safety
 
 echo "✔ bijux-std check passed (ref=${std_ref}, manifest=${manifest_rel}, remote=${git_url_default})"

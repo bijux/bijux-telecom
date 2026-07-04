@@ -19,6 +19,7 @@ POLL_TIMEOUT_SECONDS = 45 * 60
 class RequiredWorkflow:
     name: str
     fail_on_non_success: bool = True
+    allowed_events: tuple[str, ...] = ()
 
 
 def _event_payload() -> dict:
@@ -77,13 +78,16 @@ def _required_workflows(event_name: str) -> list[RequiredWorkflow]:
         return []
     if event_name in {"pull_request", "pull_request_target", "pull_request_review"}:
         return [
-            RequiredWorkflow("bijux-std"),
+            RequiredWorkflow("bijux-std", allowed_events=("pull_request",)),
             # Approval failures should stop downstream work immediately.
             # A later label or review update creates a new event and a new run.
-            RequiredWorkflow("policy / pr approval"),
+            RequiredWorkflow(
+                "policy / pr approval",
+                allowed_events=("pull_request_target", "pull_request_review"),
+            ),
         ]
     if event_name in {"merge_group", "push"}:
-        return [RequiredWorkflow("bijux-std")]
+        return [RequiredWorkflow("bijux-std", allowed_events=(event_name,))]
     return []
 
 
@@ -96,11 +100,41 @@ def _list_workflow_runs(head_sha: str) -> list[dict]:
     return runs
 
 
-def _latest_run_for_name(runs: list[dict], workflow_name: str) -> dict | None:
+def _run_matches_event(run: dict, workflow: RequiredWorkflow) -> bool:
+    if not workflow.allowed_events:
+        return True
+    event_name = run.get("event")
+    return isinstance(event_name, str) and event_name in workflow.allowed_events
+
+
+def _run_has_materialized_jobs(run: dict, jobs_cache: dict[int, bool]) -> bool:
+    run_id = run.get("id")
+    if not isinstance(run_id, int):
+        return False
+    cached = jobs_cache.get(run_id)
+    if cached is not None:
+        return cached
+
+    payload = _api_get_json(f"/actions/runs/{run_id}/jobs?per_page=1")
+    total_count = payload.get("total_count")
+    jobs = payload.get("jobs")
+    has_jobs = bool(total_count) if isinstance(total_count, int) else bool(jobs)
+    jobs_cache[run_id] = has_jobs
+    return has_jobs
+
+
+def _latest_run_for_name(
+    runs: list[dict],
+    workflow: RequiredWorkflow,
+    jobs_cache: dict[int, bool],
+) -> dict | None:
     matching = [
         run
         for run in runs
-        if isinstance(run, dict) and run.get("name") == workflow_name
+        if isinstance(run, dict)
+        and run.get("name") == workflow.name
+        and _run_matches_event(run, workflow)
+        and _run_has_materialized_jobs(run, jobs_cache)
     ]
     if not matching:
         return None
@@ -126,8 +160,9 @@ def _all_prerequisites_ready(
     runs: list[dict],
 ) -> tuple[bool, list[str]]:
     states: list[str] = []
+    jobs_cache: dict[int, bool] = {}
     for workflow in required:
-        run = _latest_run_for_name(runs, workflow.name)
+        run = _latest_run_for_name(runs, workflow, jobs_cache)
         states.append(f"{workflow.name}={_run_state_text(run)}")
         if run is None:
             return (False, states)
