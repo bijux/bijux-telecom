@@ -86,6 +86,13 @@ bijux gnss ca-code --prn 1 --count 4 --with-autocorrelation
 
 This prints the validated periodic autocorrelation peak, the maximum absolute non-zero sidelobe magnitude, the distinct non-zero sidelobe values, and the requested chip window.
 
+### Inspect C/A Cross-Correlation Summary
+```bash
+bijux gnss ca-code --prn 1 --count 4 --cross-correlation-prn 2
+```
+
+This prints the validated periodic cross-correlation PRN pair, the maximum absolute cross-correlation magnitude, the distinct cross-correlation values, and the requested chip window.
+
 ### Export Synthetic IQ Truth Bundle
 ```bash
 bijux gnss export-synthetic-iq --scenario configs/scenarios/synthetic_iq_reference.toml --report json --out artifacts/synthetic_iq_reference
