@@ -15,7 +15,9 @@ use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
 use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::Nco;
-use bijux_gnss_signal::api::{generate_ca_code, measure_iq_front_end_metrics, Prn};
+use bijux_gnss_signal::api::{
+    generate_ca_code, measure_iq_front_end_metrics, sample_code, Prn,
+};
 
 /// Acquisition engine (coarse search).
 pub struct Acquisition {
@@ -642,7 +644,7 @@ impl Acquisition {
             ],
         });
         let code = ca_code_or_default(sat.prn);
-        let local_code = upsample_code(&code, samples_per_code);
+        let local_code = sample_local_code_period(&self.config, &code, samples_per_code);
         let mut code_fft: Vec<Complex<f32>> =
             local_code.iter().map(|&x| Complex::new(x, 0.0)).collect();
         fft.process(&mut code_fft);
@@ -1031,15 +1033,19 @@ fn correlation_metrics(corr: &[f32]) -> (usize, f32, f32, f32) {
     (peak_idx, peak, second, mean)
 }
 
-fn upsample_code(code: &[i8], samples_per_code: usize) -> Vec<f32> {
-    let chips = code.len();
-    let samples_per_chip = samples_per_code as f64 / chips as f64;
-    let mut out = vec![0.0f32; samples_per_code];
-    for (i, value) in out.iter_mut().enumerate() {
-        let chip_index = (i as f64 / samples_per_chip).floor() as usize;
-        *value = code[chip_index] as f32;
-    }
-    out
+fn sample_local_code_period(
+    config: &ReceiverPipelineConfig,
+    code: &[i8],
+    samples_per_code: usize,
+) -> Vec<f32> {
+    sample_code(
+        code,
+        config.sampling_freq_hz,
+        config.code_freq_basis_hz,
+        0.0,
+        samples_per_code,
+    )
+    .unwrap_or_else(|_| vec![1.0; samples_per_code])
 }
 
 fn ca_code_or_default(prn: u8) -> Vec<i8> {

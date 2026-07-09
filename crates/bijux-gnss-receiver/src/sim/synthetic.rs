@@ -13,7 +13,7 @@ use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::io::data::SampleSourceError;
 use bijux_gnss_nav::api::GpsEphemeris;
 use bijux_gnss_signal::api::{
-    generate_ca_code, samples_per_code, IqSampleFormat, Prn, RawIqMetadata,
+    code_value_at_phase, generate_ca_code, samples_per_code, IqSampleFormat, Prn, RawIqMetadata,
 };
 use serde::{Deserialize, Serialize};
 
@@ -537,8 +537,7 @@ impl SatState {
 
     fn sample_at(&self, t: f64) -> Complex<f32> {
         let code_phase = self.code_phase_chips + self.code_rate_hz * t;
-        let chip_index = (code_phase.floor() as usize) % self.code.len();
-        let chip = self.code[chip_index] as f32;
+        let chip = code_value_at_phase(&self.code, code_phase).unwrap_or(1.0);
 
         let data_bit = if self.data_bit_flip {
             let bit_index = (t / 0.02).floor() as i64;
