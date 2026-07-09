@@ -136,7 +136,14 @@ fn handle_export_synthetic_iq(command: GnssCommand) -> Result<()> {
 }
 
 fn handle_validate_synthetic_iq(command: GnssCommand) -> Result<()> {
-    let GnssCommand::ValidateSyntheticIq { common, file, truth, tolerance_db_hz } = command else {
+    let GnssCommand::ValidateSyntheticIq {
+        common,
+        file,
+        truth,
+        tolerance_db_hz,
+        acquisition_code_phase_tolerance_samples,
+    } = command
+    else {
         bail!("invalid command for handler");
     };
 
@@ -188,6 +195,13 @@ fn handle_validate_synthetic_iq(command: GnssCommand) -> Result<()> {
         &truth_bundle,
         tolerance_db_hz,
     );
+    let acquisition_code_phase_validation =
+        bijux_gnss_infra::api::receiver::sim::validate_truth_guided_acquisition_code_phase(
+            &config,
+            &frame,
+            &truth_bundle,
+            acquisition_code_phase_tolerance_samples,
+        );
     let report = SyntheticIqValidationReport {
         input_iq: input_file.display().to_string(),
         input_sidecar: common
@@ -197,12 +211,13 @@ fn handle_validate_synthetic_iq(command: GnssCommand) -> Result<()> {
             .unwrap_or_default(),
         input_truth: truth.display().to_string(),
         validation,
+        acquisition_code_phase_validation,
     };
     emit_synthetic_iq_validation_report(&common, &report)?;
     write_manifest(&common, "validate_synthetic_iq", &profile, dataset.as_ref(), &report)?;
 
-    if !report.validation.pass {
-        let failures = report
+    if !report.validation.pass || !report.acquisition_code_phase_validation.pass {
+        let cn0_failures = report
             .validation
             .satellites
             .iter()
@@ -217,7 +232,30 @@ fn handle_validate_synthetic_iq(command: GnssCommand) -> Result<()> {
             })
             .collect::<Vec<_>>()
             .join(", ");
-        bail!("synthetic IQ validation failed: {failures}");
+        let acquisition_failures = report
+            .acquisition_code_phase_validation
+            .satellites
+            .iter()
+            .filter(|row| !row.pass)
+            .map(|row| {
+                format!(
+                    "{}:{}:{}:{}",
+                    format_sat(row.sat),
+                    row.expected_code_phase_samples,
+                    row.measured_code_phase_samples,
+                    row.code_phase_error_samples
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let mut failure_sections = Vec::new();
+        if !cn0_failures.is_empty() {
+            failure_sections.push(format!("cn0={cn0_failures}"));
+        }
+        if !acquisition_failures.is_empty() {
+            failure_sections.push(format!("acq_code_phase={acquisition_failures}"));
+        }
+        bail!("synthetic IQ validation failed: {}", failure_sections.join("; "));
     }
 
     Ok(())

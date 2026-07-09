@@ -139,6 +139,8 @@ struct SyntheticIqValidationReport {
     input_sidecar: String,
     input_truth: String,
     validation: bijux_gnss_infra::api::receiver::sim::SyntheticCn0ValidationReport,
+    acquisition_code_phase_validation:
+        bijux_gnss_infra::api::receiver::sim::SyntheticAcquisitionCodePhaseValidationReport,
 }
 
 #[cfg(test)]

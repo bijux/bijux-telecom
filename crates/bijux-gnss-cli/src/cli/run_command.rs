@@ -235,6 +235,26 @@ fn print_synthetic_iq_validation_table(report: &SyntheticIqValidationReport) {
             row.pass
         );
     }
+    println!(
+        "Acquisition code-phase tolerance (samples): {}",
+        report.acquisition_code_phase_validation.tolerance_samples
+    );
+    println!(
+        "Acquisition code-phase pass: {}",
+        report.acquisition_code_phase_validation.pass
+    );
+    for row in &report.acquisition_code_phase_validation.satellites {
+        println!(
+            "{}\texpected={}\tmeasured={}\terror={}\tpeak/mean={:.3}\thypothesis={}\tpass={}",
+            format_sat(row.sat),
+            row.expected_code_phase_samples,
+            row.measured_code_phase_samples,
+            row.code_phase_error_samples,
+            row.peak_mean_ratio,
+            row.hypothesis,
+            row.pass
+        );
+    }
 }
 fn print_inspect_table(report: &InspectReport) {
     println!(

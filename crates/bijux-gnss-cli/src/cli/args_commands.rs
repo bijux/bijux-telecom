@@ -224,8 +224,12 @@ pub(crate) enum GnssCommand {
         truth: PathBuf,
 
         /// Maximum allowed absolute C/N0 error in dB-Hz
-        #[arg(long, default_value_t = 3.0)]
+        #[arg(long, default_value_t = 4.0)]
         tolerance_db_hz: f64,
+
+        /// Maximum allowed wrapped acquisition code-phase error in samples
+        #[arg(long, default_value_t = 2)]
+        acquisition_code_phase_tolerance_samples: usize,
     },
 
     /// Artifact validation and conversion
