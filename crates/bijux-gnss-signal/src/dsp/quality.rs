@@ -74,9 +74,23 @@ pub fn measure_iq_front_end_metrics(samples: &[Sample]) -> IqFrontEndMetrics {
     analyzer.finish()
 }
 
+/// Remove the mean I/Q offset from a sample window in place.
+///
+/// Returns the measured front-end metrics before the correction is applied.
+pub fn remove_dc_offset_in_place(samples: &mut [Sample]) -> IqFrontEndMetrics {
+    let metrics = measure_iq_front_end_metrics(samples);
+    let i_mean = metrics.i_mean as f32;
+    let q_mean = metrics.q_mean as f32;
+    for sample in samples {
+        sample.re -= i_mean;
+        sample.im -= q_mean;
+    }
+    metrics
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{measure_iq_front_end_metrics, IqFrontEndAnalyzer};
+    use super::{measure_iq_front_end_metrics, remove_dc_offset_in_place, IqFrontEndAnalyzer};
     use bijux_gnss_core::api::Sample;
 
     fn approx_eq(left: f64, right: f64) {
@@ -114,5 +128,25 @@ mod tests {
         approx_eq(metrics.q_mean, 0.0);
         approx_eq(metrics.rms, 0.5590169943749475);
         approx_eq(metrics.dc_imbalance, 0.8944271909999159);
+    }
+
+    #[test]
+    fn remove_dc_offset_in_place_zero_centers_samples() {
+        let mut samples = vec![
+            Sample::new(0.75, 0.25),
+            Sample::new(0.75, -0.25),
+            Sample::new(0.25, 0.25),
+            Sample::new(0.25, -0.25),
+        ];
+
+        let before = remove_dc_offset_in_place(&mut samples);
+        let after = measure_iq_front_end_metrics(&samples);
+
+        approx_eq(before.i_mean, 0.5);
+        approx_eq(before.q_mean, 0.0);
+        approx_eq(after.i_mean, 0.0);
+        approx_eq(after.q_mean, 0.0);
+        approx_eq(after.rms, 0.3535533905932738);
+        approx_eq(after.dc_imbalance, 0.0);
     }
 }
