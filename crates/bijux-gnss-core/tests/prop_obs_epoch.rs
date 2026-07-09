@@ -1,7 +1,8 @@
 #![allow(missing_docs)]
 use bijux_gnss_core::api::{
     signal_registry, validate_obs_epochs, Constellation, Cycles, Hertz, Meters, ObsEpoch,
-    ObsMetadata, ObsSatellite, ReceiverRole, SatId, Seconds, SigId, SignalBand, SignalCode,
+    ObsMetadata, ObsSatellite, ReceiverRole, ReceiverSampleTrace, SatId, Seconds, SigId,
+    SignalBand, SignalCode,
 };
 use proptest::prelude::*;
 
@@ -13,6 +14,10 @@ fn make_epoch(t_rx_s: f64) -> ObsEpoch {
     };
     ObsEpoch {
         t_rx_s: Seconds(t_rx_s),
+        source_time: ReceiverSampleTrace::from_sample_index(
+            (t_rx_s * 1000.0).round() as u64,
+            1000.0,
+        ),
         gps_week: None,
         tow_s: None,
         epoch_idx: (t_rx_s * 1000.0).round() as u64,

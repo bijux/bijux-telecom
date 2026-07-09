@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 #![allow(dead_code)]
 
+use crate::units::Seconds;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -12,6 +13,56 @@ pub struct SampleTime {
 impl SampleTime {
     pub fn seconds(&self) -> f64 {
         self.sample_index as f64 / self.sample_rate_hz
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ReceiverSampleTrace {
+    pub sample_index: u64,
+    pub sample_rate_hz: f64,
+    pub receiver_time_s: Seconds,
+}
+
+impl ReceiverSampleTrace {
+    pub fn from_sample_time(sample_time: SampleTime) -> Self {
+        Self::from_sample_index(sample_time.sample_index, sample_time.sample_rate_hz)
+    }
+
+    pub fn from_sample_index(sample_index: u64, sample_rate_hz: f64) -> Self {
+        Self {
+            sample_index,
+            sample_rate_hz,
+            receiver_time_s: Seconds(sample_index as f64 / sample_rate_hz),
+        }
+    }
+
+    pub fn sample_time(&self) -> SampleTime {
+        SampleTime { sample_index: self.sample_index, sample_rate_hz: self.sample_rate_hz }
+    }
+
+    pub fn inferred_receiver_time_s(&self) -> Seconds {
+        Seconds(self.sample_index as f64 / self.sample_rate_hz)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.sample_rate_hz <= 0.0 || !self.sample_rate_hz.is_finite() {
+            return Err("sample_rate_hz must be finite and positive".to_string());
+        }
+        if !self.receiver_time_s.0.is_finite() {
+            return Err("receiver_time_s must be finite".to_string());
+        }
+        let inferred = self.inferred_receiver_time_s().0;
+        let tolerance_s = (0.5 / self.sample_rate_hz).max(1.0e-12);
+        if (self.receiver_time_s.0 - inferred).abs() > tolerance_s {
+            return Err("receiver_time_s must match sample_index / sample_rate_hz".to_string());
+        }
+        Ok(())
+    }
+}
+
+impl Default for ReceiverSampleTrace {
+    fn default() -> Self {
+        Self { sample_index: 0, sample_rate_hz: 0.0, receiver_time_s: Seconds(0.0) }
     }
 }
 

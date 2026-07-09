@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 
 use crate::api::SignalCode;
 use crate::api::{
-    Chips, Constellation, Cycles, Epoch, Hertz, Meters, SampleTime, SatId, Seconds, SigId,
-    SignalBand, SignalSpec,
+    Chips, Constellation, Cycles, Epoch, Hertz, Meters, ReceiverSampleTrace, SampleTime, SatId,
+    Seconds, SigId, SignalBand, SignalSpec,
 };
 use num_complex::Complex;
 use serde::{Deserialize, Serialize};
@@ -126,6 +126,8 @@ pub struct ObsEpochManifest {
     pub epoch_id: String,
     pub source_epoch_idx: u64,
     pub source_sample_index: u64,
+    #[serde(default)]
+    pub source_time: ReceiverSampleTrace,
     pub decision: ObservationEpochDecision,
     #[serde(default = "default_observation_downstream_profile_version")]
     pub downstream_profile_version: u32,
@@ -346,6 +348,8 @@ pub struct AcqEvidence {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcqResult {
     pub sat: SatId,
+    #[serde(default)]
+    pub source_time: ReceiverSampleTrace,
     pub carrier_hz: Hertz,
     pub code_phase_samples: usize,
     pub peak: f32,
@@ -392,6 +396,8 @@ pub fn stable_acq_result_keys(results: &[AcqResult]) -> Vec<String> {
 pub struct TrackEpoch {
     pub epoch: Epoch,
     pub sample_index: u64,
+    #[serde(default)]
+    pub source_time: ReceiverSampleTrace,
     pub sat: SatId,
     pub prompt_i: f32,
     pub prompt_q: f32,
@@ -441,6 +447,7 @@ impl Default for TrackEpoch {
         Self {
             epoch: Epoch { index: 0 },
             sample_index: 0,
+            source_time: ReceiverSampleTrace::default(),
             sat: SatId { constellation: Constellation::Unknown, prn: 0 },
             prompt_i: 0.0,
             prompt_q: 0.0,
@@ -608,6 +615,8 @@ pub struct ObsSatellite {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObsEpoch {
     pub t_rx_s: Seconds,
+    #[serde(default)]
+    pub source_time: ReceiverSampleTrace,
     pub gps_week: Option<u16>,
     pub tow_s: Option<Seconds>,
     pub epoch_idx: u64,
@@ -646,8 +655,9 @@ pub fn obs_epoch_stability_key(epoch: &ObsEpoch) -> String {
         .collect::<Vec<_>>();
     sat_keys.sort();
     format!(
-        "epoch:{}|t:{:.9}|decision:{:?}|sats:{}",
+        "epoch:{}|sample:{}|t:{:.9}|decision:{:?}|sats:{}",
         epoch.epoch_idx,
+        epoch.source_time.sample_index,
         epoch.t_rx_s.0,
         epoch.decision,
         sat_keys.join(";")
@@ -795,6 +805,8 @@ pub struct InterSystemBias {
 pub struct NavSolutionEpoch {
     pub epoch: Epoch,
     pub t_rx_s: Seconds,
+    #[serde(default)]
+    pub source_time: ReceiverSampleTrace,
     pub ecef_x_m: Meters,
     pub ecef_y_m: Meters,
     pub ecef_z_m: Meters,

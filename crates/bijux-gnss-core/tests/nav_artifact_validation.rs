@@ -1,12 +1,14 @@
 use bijux_gnss_core::api::{
     ArtifactPayloadValidate, Constellation, Epoch, Meters, NavLifecycleState, NavResidual,
-    NavSolutionEpoch, NavUncertaintyClass, SatId, Seconds, SolutionStatus, SolutionValidity,
+    NavSolutionEpoch, NavUncertaintyClass, ReceiverSampleTrace, SatId, Seconds, SolutionStatus,
+    SolutionValidity,
 };
 
 fn sample_solution() -> NavSolutionEpoch {
     NavSolutionEpoch {
         epoch: Epoch { index: 1 },
         t_rx_s: Seconds(100_000.0),
+        source_time: ReceiverSampleTrace::from_sample_index(100_000, 1.0),
         ecef_x_m: Meters(1_000_000.0),
         ecef_y_m: Meters(2_000_000.0),
         ecef_z_m: Meters(3_000_000.0),

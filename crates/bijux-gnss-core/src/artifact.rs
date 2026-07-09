@@ -99,7 +99,47 @@ pub fn convert_v1_to_v2<T>(_artifact: &T) {
 pub mod v1 {
     /// Versioned v1 artifact types.
     use super::{ArtifactPayloadValidate, ArtifactV1};
-    use crate::api::{DiagnosticEvent, DiagnosticSeverity};
+    use crate::api::{DiagnosticEvent, DiagnosticSeverity, ReceiverSampleTrace, Seconds};
+
+    fn validate_receiver_sample_trace(
+        trace: ReceiverSampleTrace,
+        context: &str,
+        expected_receiver_time: Option<Seconds>,
+        expected_sample_index: Option<u64>,
+    ) -> Vec<DiagnosticEvent> {
+        let mut events = Vec::new();
+        if let Err(reason) = trace.validate() {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "GNSS_RECEIVER_SAMPLE_TRACE_INVALID",
+                format!("{context} receiver sample trace invalid: {reason}"),
+            ));
+        }
+        if let Some(sample_index) = expected_sample_index {
+            if trace.sample_index != sample_index {
+                events.push(DiagnosticEvent::new(
+                    DiagnosticSeverity::Error,
+                    "GNSS_RECEIVER_SAMPLE_TRACE_SAMPLE_MISMATCH",
+                    format!("{context} receiver sample trace sample index does not match"),
+                ));
+            }
+        }
+        if let Some(receiver_time) = expected_receiver_time {
+            let tolerance_s = if trace.sample_rate_hz > 0.0 {
+                (0.5 / trace.sample_rate_hz).max(1.0e-12)
+            } else {
+                1.0e-12
+            };
+            if (trace.receiver_time_s.0 - receiver_time.0).abs() > tolerance_s {
+                events.push(DiagnosticEvent::new(
+                    DiagnosticSeverity::Error,
+                    "GNSS_RECEIVER_SAMPLE_TRACE_TIME_MISMATCH",
+                    format!("{context} receiver sample trace time does not match"),
+                ));
+            }
+        }
+        events
+    }
 
     pub mod acq {
         use super::*;
@@ -118,6 +158,12 @@ pub mod v1 {
                         "acquisition result contains NaN/Inf",
                     ));
                 }
+                events.extend(validate_receiver_sample_trace(
+                    self.source_time,
+                    "acquisition",
+                    None,
+                    None,
+                ));
                 events
             }
         }
@@ -140,6 +186,12 @@ pub mod v1 {
                         "tracking epoch contains NaN/Inf",
                     ));
                 }
+                events.extend(validate_receiver_sample_trace(
+                    self.source_time,
+                    "tracking",
+                    None,
+                    Some(self.sample_index),
+                ));
                 events
             }
         }
@@ -268,6 +320,27 @@ pub mod v1 {
                         "t_rx_s is not finite",
                     ));
                 }
+                events.extend(validate_receiver_sample_trace(
+                    self.source_time,
+                    "observation",
+                    Some(self.t_rx_s),
+                    None,
+                ));
+                if let Some(manifest) = &self.manifest {
+                    events.extend(validate_receiver_sample_trace(
+                        manifest.source_time,
+                        "observation manifest",
+                        Some(self.t_rx_s),
+                        Some(manifest.source_sample_index),
+                    ));
+                    if manifest.source_time.sample_index != self.source_time.sample_index {
+                        events.push(DiagnosticEvent::new(
+                            DiagnosticSeverity::Error,
+                            "GNSS_OBS_SOURCE_TIME_MISMATCH",
+                            "observation manifest source trace does not match epoch source trace",
+                        ));
+                    }
+                }
                 events
             }
         }
@@ -337,6 +410,12 @@ pub mod v1 {
                         "nav solution source_observation_epoch_id is empty",
                     ));
                 }
+                events.extend(validate_receiver_sample_trace(
+                    self.source_time,
+                    "navigation",
+                    Some(self.t_rx_s),
+                    None,
+                ));
                 if self.refusal_class.is_some() && self.explain_decision.is_empty() {
                     events.push(DiagnosticEvent::new(
                         DiagnosticSeverity::Warning,
