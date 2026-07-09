@@ -24,6 +24,66 @@ fn acquisition_uncertainty_harness_preserves_accepted_candidate() {
     assert!(run.results[0][0].code_phase_refinement.is_some(), "{run:?}");
 }
 
+#[test]
+fn acquisition_reports_uncertainty_for_accepted_candidate() {
+    let sat = gps_l1_ca_satellite();
+    let config = uncertainty_profile();
+    let frame = accepted_signal_frame(&config, sat, 0x2407_4601);
+    let run = AcquisitionEngine::new(config.clone(), ReceiverRuntime::default())
+        .with_doppler(config.acquisition_doppler_search_hz, config.acquisition_doppler_step_hz)
+        .run_fft_topn_with_explain(&frame, &[sat], 4, 1, 1);
+    let best = &run.results[0][0];
+    let uncertainty = best
+        .uncertainty
+        .as_ref()
+        .unwrap_or_else(|| panic!("accepted acquisition uncertainty missing: {run:?}"));
+
+    assert_eq!(best.hypothesis.to_string(), "accepted", "{run:?}");
+    assert!(uncertainty.doppler_hz.is_finite());
+    assert!(uncertainty.code_phase_samples.is_finite());
+    assert!(uncertainty.doppler_hz > 0.0, "{run:?}");
+    assert!(uncertainty.code_phase_samples > 0.0, "{run:?}");
+}
+
+#[test]
+fn acquisition_uncertainty_stays_within_search_resolution_bounds() {
+    let sat = gps_l1_ca_satellite();
+    let config = uncertainty_profile();
+    let frame = accepted_signal_frame(&config, sat, 0x2407_4601);
+    let results = AcquisitionEngine::new(config.clone(), ReceiverRuntime::default())
+        .with_doppler(config.acquisition_doppler_search_hz, config.acquisition_doppler_step_hz)
+        .run_fft(&frame, &[sat]);
+    let best = &results[0];
+    let uncertainty = best
+        .uncertainty
+        .as_ref()
+        .unwrap_or_else(|| panic!("accepted acquisition uncertainty missing: {results:?}"));
+
+    assert_eq!(best.hypothesis.to_string(), "accepted", "{results:?}");
+    assert!(
+        uncertainty.doppler_hz <= config.acquisition_doppler_step_hz as f64 / 2.0 + f64::EPSILON,
+        "{results:?}"
+    );
+    assert!(uncertainty.code_phase_samples <= 0.5 + f64::EPSILON, "{results:?}");
+}
+
+#[test]
+fn acquisition_primary_result_preserves_acceptance_after_candidate_truncation() {
+    let sat = gps_l1_ca_satellite();
+    let config = uncertainty_profile();
+    let frame = accepted_signal_frame(&config, sat, 0x2407_4601);
+    let primary = AcquisitionEngine::new(config.clone(), ReceiverRuntime::default())
+        .with_doppler(config.acquisition_doppler_search_hz, config.acquisition_doppler_step_hz)
+        .run_fft(&frame, &[sat]);
+    let ranked = AcquisitionEngine::new(config.clone(), ReceiverRuntime::default())
+        .with_doppler(config.acquisition_doppler_search_hz, config.acquisition_doppler_step_hz)
+        .run_fft_topn_with_explain(&frame, &[sat], 4, 1, 1);
+
+    assert_eq!(primary.len(), 1);
+    assert_eq!(primary[0].hypothesis.to_string(), "accepted", "{primary:?}");
+    assert_eq!(ranked.results[0][0].hypothesis.to_string(), "accepted", "{ranked:?}");
+}
+
 fn uncertainty_profile() -> ReceiverPipelineConfig {
     ReceiverPipelineConfig {
         sampling_freq_hz: 4_000_000.0,

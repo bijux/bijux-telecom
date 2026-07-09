@@ -490,8 +490,8 @@ impl Acquisition {
                 self.config.acquisition_peak_mean_threshold,
             );
 
-            let mut candidates = grid_candidates.clone();
-            candidates.sort_by(|a, b| {
+            let mut ranked_candidates = grid_candidates.clone();
+            ranked_candidates.sort_by(|a, b| {
                 let primary = b
                     .peak_mean_ratio
                     .partial_cmp(&a.peak_mean_ratio)
@@ -501,6 +501,8 @@ impl Acquisition {
                 }
                 primary
             });
+            let competing_peak_ratio = competing_candidate_ratio(&ranked_candidates);
+            let mut candidates = ranked_candidates;
             candidates.truncate(top_n.max(1));
             refine_acquisition_candidates(
                 self,
@@ -520,8 +522,6 @@ impl Acquisition {
                 });
                 continue;
             }
-
-            let competing_peak_ratio = competing_candidate_ratio(&candidates);
             for (rank, candidate) in candidates.iter_mut().enumerate() {
                 candidate.evidence.push(AcqEvidence {
                     rank: rank as u8 + 1,
