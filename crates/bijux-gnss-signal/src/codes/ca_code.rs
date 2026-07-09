@@ -35,6 +35,15 @@ pub struct CaCodeAutocorrelationSummary {
     pub unique_nonzero_values: Vec<i16>,
 }
 
+/// Summary metrics derived from one full-period C/A cross-correlation trace.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CaCodeCrossCorrelationSummary {
+    /// Maximum absolute value observed across all circular shifts.
+    pub max_abs: i16,
+    /// Sorted unique cross-correlation values.
+    pub unique_values: Vec<i16>,
+}
+
 impl CaCodeAssignment {
     fn zero_based_g2_taps(self) -> (usize, usize) {
         (usize::from(self.g2_taps.0 - 1), usize::from(self.g2_taps.1 - 1))
@@ -317,19 +326,44 @@ pub fn ca_code_periodic_autocorrelation(prn: Prn) -> Result<Vec<i16>, crate::err
     periodic_correlation(&code, &code)
 }
 
+/// Compute the full-period periodic cross-correlation between two GPS L1 C/A codes.
+pub fn ca_code_periodic_cross_correlation(
+    left_prn: Prn,
+    right_prn: Prn,
+) -> Result<Vec<i16>, crate::error::SignalError> {
+    let left = generate_ca_code(left_prn)?;
+    let right = generate_ca_code(right_prn)?;
+    periodic_correlation(&left, &right)
+}
+
 /// Summarize the periodic autocorrelation of one GPS L1 C/A code.
 pub fn ca_code_autocorrelation_summary(
     prn: Prn,
 ) -> Result<CaCodeAutocorrelationSummary, crate::error::SignalError> {
     let correlation = ca_code_periodic_autocorrelation(prn)?;
     let peak = correlation.first().copied().unwrap_or_default();
-    let mut unique_nonzero_values = correlation.iter().copied().skip(1).collect::<Vec<_>>();
-    unique_nonzero_values.sort_unstable();
-    unique_nonzero_values.dedup();
-    let max_nonzero_abs =
-        correlation.iter().copied().skip(1).map(i16::abs).max().unwrap_or_default();
+    let (max_nonzero_abs, unique_nonzero_values) = summarize_correlation_values(&correlation[1..]);
 
     Ok(CaCodeAutocorrelationSummary { peak, max_nonzero_abs, unique_nonzero_values })
+}
+
+/// Summarize the periodic cross-correlation between two GPS L1 C/A codes.
+pub fn ca_code_cross_correlation_summary(
+    left_prn: Prn,
+    right_prn: Prn,
+) -> Result<CaCodeCrossCorrelationSummary, crate::error::SignalError> {
+    let correlation = ca_code_periodic_cross_correlation(left_prn, right_prn)?;
+    let (max_abs, unique_values) = summarize_correlation_values(&correlation);
+
+    Ok(CaCodeCrossCorrelationSummary { max_abs, unique_values })
+}
+
+fn summarize_correlation_values(correlation: &[i16]) -> (i16, Vec<i16>) {
+    let mut unique_values = correlation.to_vec();
+    unique_values.sort_unstable();
+    unique_values.dedup();
+    let max_abs = correlation.iter().copied().map(i16::abs).max().unwrap_or_default();
+    (max_abs, unique_values)
 }
 
 fn shift_register(reg: &mut [i8; 10], feedback: i8) {
