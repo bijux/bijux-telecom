@@ -13,7 +13,8 @@ use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::io::data::SampleSourceError;
 use bijux_gnss_nav::api::GpsEphemeris;
 use bijux_gnss_signal::api::{
-    code_value_at_phase, generate_ca_code, samples_per_code, IqSampleFormat, Prn, RawIqMetadata,
+    advance_code_phase_seconds, code_value_at_phase, generate_ca_code, samples_per_code,
+    IqSampleFormat, Prn, RawIqMetadata,
 };
 use serde::{Deserialize, Serialize};
 
@@ -536,7 +537,13 @@ impl SatState {
     }
 
     fn sample_at(&self, t: f64) -> Complex<f32> {
-        let code_phase = self.code_phase_chips + self.code_rate_hz * t;
+        let code_phase = advance_code_phase_seconds(
+            self.code_phase_chips,
+            self.code_rate_hz,
+            t,
+            self.code.len(),
+        )
+        .expect("synthetic generator requires a valid code phase model");
         let chip = code_value_at_phase(&self.code, code_phase).unwrap_or(1.0);
 
         let data_bit = if self.data_bit_flip {
@@ -623,8 +630,13 @@ fn code_phase_samples_at_epoch_start(
     code_phase_chips: f64,
 ) -> f64 {
     let start_s = frame.t0.sample_index as f64 / frame.t0.sample_rate_hz;
-    let chip_phase = (code_phase_chips + config.code_freq_basis_hz * start_s)
-        .rem_euclid(config.code_length as f64);
+    let chip_phase = advance_code_phase_seconds(
+        code_phase_chips,
+        config.code_freq_basis_hz,
+        start_s,
+        config.code_length,
+    )
+    .expect("synthetic epoch alignment requires a valid code phase model");
     let samples_per_chip = frame.t0.sample_rate_hz / config.code_freq_basis_hz;
     chip_phase * samples_per_chip
 }
