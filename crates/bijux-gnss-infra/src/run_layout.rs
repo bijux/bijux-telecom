@@ -236,11 +236,13 @@ fn front_end_provenance(
     args: &RunContextArgs<'_>,
     profile: &ReceiverConfig,
     dataset: Option<&DatasetEntry>,
-) -> FrontEndProvenance {
-    let raw_iq_metadata =
-        resolve_raw_iq_metadata(dataset, args.sidecar.map(|path| path.as_path())).ok();
+) -> Result<FrontEndProvenance, InputError> {
+    let raw_iq_metadata = resolve_raw_iq_metadata(dataset, args.sidecar.map(|path| path.as_path())).ok();
     let sidecar_used = args.sidecar.is_some();
-    FrontEndProvenance {
+    if sidecar_used && raw_iq_metadata.is_none() {
+        resolve_raw_iq_metadata(dataset, args.sidecar.map(|path| path.as_path()))?;
+    }
+    Ok(FrontEndProvenance {
         sample_format: raw_iq_metadata.as_ref().map(|metadata| format!("{:?}", metadata.format)),
         sample_rate_hz: profile.sample_rate_hz,
         intermediate_freq_hz: profile.intermediate_freq_hz,
@@ -260,7 +262,7 @@ fn front_end_provenance(
             .sidecar
             .map(|path| format!("sidecar:{}", path.display()))
             .unwrap_or_else(|| "none_declared".to_string()),
-    }
+    })
 }
 
 fn resolve_run_context(
@@ -392,7 +394,7 @@ pub fn write_run_report(
             .unwrap_or_else(|_| "unknown".to_string()),
         layout_schema_version: RUN_LAYOUT_SCHEMA_VERSION,
         replay_scope: replay_scope(args),
-        front_end_provenance: front_end_provenance(args, profile, dataset),
+        front_end_provenance: front_end_provenance(args, profile, dataset)?,
     };
     let ctx = resolve_run_context(args, command, dataset)?;
     let data = serde_json::to_string_pretty(&report).map_err(map_err)?;
@@ -444,7 +446,7 @@ pub fn write_manifest(
         toolchain: std::env::var("RUSTC_VERSION").unwrap_or_else(|_| "unknown".to_string()),
         features: enabled_features(),
         replay_scope: replay_scope(args),
-        front_end_provenance: front_end_provenance(args, profile, dataset),
+        front_end_provenance: front_end_provenance(args, profile, dataset)?,
         summary: summary.clone(),
     };
     let ctx = resolve_run_context(args, command, dataset)?;
@@ -456,4 +458,39 @@ pub fn write_manifest(
 
 fn map_err(err: impl std::fmt::Display) -> InputError {
     InputError { message: err.to_string() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{front_end_provenance, RunContextArgs};
+    use bijux_gnss_receiver::api::ReceiverConfig;
+    use std::fs;
+
+    #[test]
+    fn front_end_provenance_rejects_sidecar_without_sample_rate() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let sidecar = temp.path().join("broken.sidecar.toml");
+        fs::write(
+            &sidecar,
+            r#"
+format = "iq16_le"
+intermediate_freq_hz = 0.0
+capture_start_utc = "2026-07-09T00:00:00Z"
+"#,
+        )
+        .expect("write sidecar");
+
+        let args = RunContextArgs {
+            config: None,
+            dataset_id: None,
+            unregistered_dataset: true,
+            out: None,
+            resume: None,
+            deterministic: true,
+            sidecar: Some(&sidecar),
+        };
+        let err = front_end_provenance(&args, &ReceiverConfig::default(), None)
+            .expect_err("missing sample rate must fail");
+        assert!(err.message.contains("sample_rate_hz") || err.message.contains("missing field"));
+    }
 }
