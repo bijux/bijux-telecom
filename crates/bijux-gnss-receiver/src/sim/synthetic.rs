@@ -229,6 +229,48 @@ pub struct SyntheticAcquisitionCodePhaseValidationReport {
     pub satellites: Vec<SyntheticAcquisitionCodePhaseValidationSatellite>,
 }
 
+/// Per-satellite acquisition Doppler comparison between clean synthetic truth and receiver output.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionDopplerValidationSatellite {
+    /// Satellite identifier.
+    pub sat: SatId,
+    /// Injected Doppler shift in Hz.
+    pub injected_doppler_hz: f64,
+    /// Measured acquisition Doppler in Hz relative to the configured IF.
+    pub measured_doppler_hz: f64,
+    /// Absolute Doppler error in Hz.
+    pub doppler_error_hz: f64,
+    /// Effective acquisition Doppler bin width in Hz.
+    pub doppler_step_hz: i32,
+    /// Doppler error expressed in acquisition bins.
+    pub doppler_error_bins: f64,
+    /// Peak-to-mean ratio for the selected acquisition result.
+    pub peak_mean_ratio: f32,
+    /// Acquisition hypothesis returned by the receiver.
+    pub hypothesis: String,
+    /// Whether the measured Doppler stayed within tolerance.
+    pub pass: bool,
+}
+
+/// Truth-guided acquisition Doppler validation report for a synthetic capture.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionDopplerValidationReport {
+    /// Stable scenario identifier for this capture.
+    pub scenario_id: String,
+    /// Allowed Doppler error in acquisition bins.
+    pub tolerance_bins: usize,
+    /// Allowed Doppler error in Hz.
+    pub tolerance_hz: f64,
+    /// Capture sample rate in Hz.
+    pub sample_rate_hz: f64,
+    /// Effective acquisition Doppler bin width in Hz.
+    pub doppler_step_hz: i32,
+    /// Whether every measured satellite passed the requested tolerance.
+    pub pass: bool,
+    /// Per-satellite comparison rows.
+    pub satellites: Vec<SyntheticAcquisitionDopplerValidationSatellite>,
+}
+
 /// Build a machine-readable truth bundle for an emitted synthetic capture.
 pub fn build_truth_bundle(
     scenario_id: &str,
@@ -501,6 +543,58 @@ pub fn validate_truth_guided_acquisition_code_phase(
         tolerance_samples,
         sample_rate_hz: truth.sample_rate_hz,
         period_samples,
+        pass,
+        satellites,
+    }
+}
+
+/// Measure truth-guided acquisition Doppler accuracy from a synthetic capture.
+pub fn validate_truth_guided_acquisition_doppler(
+    config: &ReceiverPipelineConfig,
+    frame: &SamplesFrame,
+    truth: &SyntheticIqTruthBundle,
+    tolerance_bins: usize,
+) -> SyntheticAcquisitionDopplerValidationReport {
+    let doppler_step_hz = config.acquisition_doppler_step_hz.max(1);
+    let tolerance_hz = tolerance_bins as f64 * doppler_step_hz as f64;
+    let satellites = truth
+        .satellites
+        .iter()
+        .map(|sat_truth| {
+            let isolated_frame =
+                regenerate_isolated_scaled_satellite_signal_only_frame(config, frame, truth, sat_truth);
+            let acquisition = crate::pipeline::acquisition::Acquisition::new(
+                config.clone(),
+                crate::engine::runtime::ReceiverRuntime::default(),
+            );
+            let result = acquisition.run_fft(&isolated_frame, &[sat_truth.sat]).remove(0);
+            let measured_doppler_hz =
+                crate::pipeline::doppler::doppler_hz_from_carrier_hz(config.intermediate_freq_hz, result.carrier_hz.0);
+            let doppler_error_hz = (measured_doppler_hz - sat_truth.doppler_hz).abs();
+            let doppler_error_bins = doppler_error_hz / doppler_step_hz as f64;
+            let pass = measured_doppler_hz.is_finite() && doppler_error_hz <= tolerance_hz + f64::EPSILON;
+
+            SyntheticAcquisitionDopplerValidationSatellite {
+                sat: sat_truth.sat,
+                injected_doppler_hz: sat_truth.doppler_hz,
+                measured_doppler_hz,
+                doppler_error_hz,
+                doppler_step_hz,
+                doppler_error_bins,
+                peak_mean_ratio: result.peak_mean_ratio,
+                hypothesis: result.hypothesis.to_string(),
+                pass,
+            }
+        })
+        .collect::<Vec<_>>();
+    let pass = !satellites.is_empty() && satellites.iter().all(|row| row.pass);
+
+    SyntheticAcquisitionDopplerValidationReport {
+        scenario_id: truth.scenario_id.clone(),
+        tolerance_bins,
+        tolerance_hz,
+        sample_rate_hz: truth.sample_rate_hz,
+        doppler_step_hz,
         pass,
         satellites,
     }
@@ -936,7 +1030,8 @@ mod tests {
         build_iq16_capture_bundle, build_truth_bundle, generate_l1_ca_multi,
         expected_acquisition_code_phase_samples, nav_bit_index_at_time_s, nav_bit_sign_at_time_s,
         signal_amplitude_from_cn0, validate_truth_guided_acquisition_code_phase,
-        validate_truth_guided_cn0, wrapped_code_phase_error_samples, SatState,
+        validate_truth_guided_acquisition_doppler, validate_truth_guided_cn0,
+        wrapped_code_phase_error_samples, SatState,
         SyntheticNavBitMode, SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource,
         SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
     };
@@ -1423,6 +1518,70 @@ mod tests {
             assert!(row.pass, "{row:?}");
             assert!(row.code_phase_error_samples <= 2, "{row:?}");
             assert!(matches!(row.hypothesis.as_str(), "accepted" | "ambiguous"));
+        }
+    }
+
+    #[test]
+    fn truth_guided_acquisition_doppler_validation_matches_clean_truth_within_one_bin() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            acquisition_doppler_search_hz: 10_000,
+            acquisition_doppler_step_hz: 500,
+            ..ReceiverPipelineConfig::default()
+        };
+        let scenario = SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            duration_s: 0.04,
+            seed: 24071985,
+            satellites: vec![
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                    doppler_hz: 750.0,
+                    code_phase_chips: 200.25,
+                    carrier_phase_rad: 0.0,
+                    cn0_db_hz: 58.0,
+                    data_bit_flip: true,
+                },
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                    doppler_hz: -1_000.0,
+                    code_phase_chips: 321.5,
+                    carrier_phase_rad: 0.2,
+                    cn0_db_hz: 52.0,
+                    data_bit_flip: false,
+                },
+            ],
+            ephemerides: Vec::new(),
+            id: "acquisition-doppler-validation".to_string(),
+        };
+        let frame = generate_l1_ca_multi(&config, &scenario);
+        let bundle = build_iq16_capture_bundle(
+            &scenario.id,
+            &scenario,
+            &frame,
+            "2026-07-09T00:00:00Z",
+            Some("synthetic acquisition doppler validation".to_string()),
+        );
+        let scaled_frame = SamplesFrame::new(
+            frame.t0,
+            frame.dt_s,
+            frame.iq.iter().map(|sample| *sample * bundle.truth.output_scale_applied).collect(),
+        );
+        let report = validate_truth_guided_acquisition_doppler(&config, &scaled_frame, &bundle.truth, 1);
+
+        assert!(report.pass, "{report:?}");
+        assert_eq!(report.tolerance_hz, 500.0);
+        assert_eq!(report.doppler_step_hz, 500);
+        assert_eq!(report.satellites.len(), 2);
+        for row in &report.satellites {
+            assert!(row.pass, "{row:?}");
+            assert!(row.doppler_error_hz <= 500.0 + f64::EPSILON, "{row:?}");
+            assert!(row.doppler_error_bins <= 1.0 + f64::EPSILON, "{row:?}");
+            assert_ne!(row.hypothesis, "deferred");
         }
     }
 }
