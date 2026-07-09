@@ -4,6 +4,8 @@ This document defines the scientific and engineering conventions used across `bi
 
 ## Sign Conventions
 - **Doppler**: positive Doppler means increasing carrier frequency at the receiver.
+  Receiver outputs report Doppler relative to the configured IF; absolute in-band carrier
+  frequency remains an internal acquisition/tracking quantity.
 - **Carrier phase**: phase is reported in cycles; increasing phase corresponds to increasing range.
 
 ## Reference Frames

@@ -38,6 +38,8 @@ sanity checks). Any violation must emit diagnostics and mark the measurement as 
 - Model: `f_D = d/dt(φ)`
 - Units: Hz
 - Sign convention: positive Doppler implies increasing carrier phase.
+- Receiver contract: acquisition and tracking may carry an absolute in-band `carrier_hz`, while
+  reported Doppler observations are the IF-relative offset `carrier_hz - intermediate_freq_hz`.
 
 ## Receiver Clock Model
 - State: receiver clock bias `δt_r` and drift `δṫ_r` (seconds and seconds/second).
