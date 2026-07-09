@@ -182,9 +182,6 @@ pub(crate) enum GnssCommand {
     ValidateConfig {
         #[command(flatten)]
         common: CommonArgs,
-
-        #[arg(long, value_name = "FILE")]
-        config: Option<PathBuf>,
     },
 
     /// Configuration utilities

@@ -163,33 +163,31 @@ fn handle_inspect(command: GnssCommand) -> Result<()> {
 }
 
 fn handle_validateconfig(command: GnssCommand) -> Result<()> {
-    let GnssCommand::ValidateConfig { common, config } = command else {
+    let GnssCommand::ValidateConfig { common } = command else {
         bail!("invalid command for handler");
     };
 
     let _ = runtime_config_from_env(&common, None);
-                    let path = config
-                        .or(common.config.clone())
-                        .context("--config is required")?;
-                    let profile = load_config_from_path(&path)?;
-                    validate_config_schema(&profile)?;
-                    let report = <ReceiverConfig as ValidateConfig>::validate(&profile);
-                    if report.errors.is_empty() {
-                        println!("config valid: {}", path.display());
-                    } else {
-                        bail!(
-                            "config invalid: {}",
-                            report
-                                .errors
-                                .iter()
-                                .map(|e| e.message.as_str())
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        );
-                    }
-                    let dataset = load_dataset(&common)?;
-                    let summary = serde_json::json!({ "config": path.display().to_string() });
-                    write_manifest(&common, "validate_config", &profile, dataset.as_ref(), &summary)?;
+    let path = common.config.clone().context("--config is required")?;
+    let profile = load_config_from_path(&path)?;
+    validate_config_schema(&profile)?;
+    let report = <ReceiverConfig as ValidateConfig>::validate(&profile);
+    if report.errors.is_empty() {
+        println!("config valid: {}", path.display());
+    } else {
+        bail!(
+            "config invalid: {}",
+            report
+                .errors
+                .iter()
+                .map(|e| e.message.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    let dataset = load_dataset(&common)?;
+    let summary = serde_json::json!({ "config": path.display().to_string() });
+    write_manifest(&common, "validate_config", &profile, dataset.as_ref(), &summary)?;
 
     Ok(())
 }
