@@ -174,15 +174,23 @@ the shared 60-second phase model in signal and synthetic receiver tests.
 `validate_synthetic_iq_report.json` includes two explicit validation sections:
 - `validation`: truth-guided C/N0 checks
 - `acquisition_code_phase_validation`: truth-guided acquisition code-phase checks
+- `acquisition_doppler_validation`: truth-guided acquisition Doppler checks
 
 Current defaults:
 - `tolerance_db_hz = 4.0`
 - `acquisition_code_phase_tolerance_samples = 2`
+- `acquisition_doppler_tolerance_bins = 1`
 
 The acquisition code-phase validation regenerates each satellite as a clean single-satellite signal
 from the truth bundle, centers acquisition on the injected carrier, and then checks the wrapped
 sample error of the reported code phase. This keeps the code-phase accuracy check focused on
 acquisition phase recovery rather than Doppler-bin quantization.
+
+The acquisition Doppler validation also regenerates each satellite as a clean single-satellite
+signal, but it keeps the configured acquisition Doppler grid intact and checks the selected
+IF-relative Doppler estimate against the injected truth. The report preserves both absolute
+`doppler_error_hz` and normalized `doppler_error_bins` so downstream tools can reason about the
+effective bin accuracy directly.
 
 ## Validation Evidence Bundle
 

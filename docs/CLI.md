@@ -119,9 +119,11 @@ bijux gnss validate-synthetic-iq --unregistered-dataset --file artifacts/synthet
 This workflow validates two truth-guided properties from the same bundle:
 - prompt-power C/N0 against the injected truth, with a default tolerance of `4.0 dB-Hz`
 - acquisition code-phase recovery against clean regenerated truth, with a default tolerance of `2` samples
+- acquisition Doppler recovery against clean regenerated truth, with a default tolerance of `1` Doppler bin
 
 Use `--tolerance-db-hz` or `--acquisition-code-phase-tolerance-samples` when you need a stricter
-or looser bound for a specific validation run.
+or looser bound for a specific validation run. Use `--acquisition-doppler-tolerance-bins` when the
+relevant scientific bound should be expressed in acquisition bins rather than raw Hz.
 
 ### Validate Artifacts
 ```bash

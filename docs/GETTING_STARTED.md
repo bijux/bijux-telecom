@@ -85,7 +85,8 @@ bijux gnss validate-synthetic-iq --unregistered-dataset --file artifacts/synthet
 This calibration flow checks that measured prompt-power C/N0 remains within a configured tolerance
 of the injected truth recorded in the synthetic bundle, and it also checks that acquisition
 recovers the clean synthetic code phase within the configured sample tolerance. The default
-validation bounds are `4.0 dB-Hz` for C/N0 and `2` samples for acquisition code phase.
+validation bounds are `4.0 dB-Hz` for C/N0, `2` samples for acquisition code phase, and `1`
+acquisition bin for Doppler recovery.
 
 The reference scenario uses one satellite by design so C/N0 validation stays isolated from later
 tracking and multi-satellite integration work.
