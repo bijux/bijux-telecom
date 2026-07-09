@@ -216,6 +216,13 @@ fn handle_validate_synthetic_iq(command: GnssCommand) -> Result<()> {
             &truth_bundle,
             acquisition_doppler_tolerance_bins,
         );
+    let acquisition_receiver_clock_offset_validation =
+        bijux_gnss_infra::api::receiver::sim::validate_truth_guided_acquisition_receiver_clock_offset(
+            &config,
+            &frame,
+            &truth_bundle,
+            acquisition_doppler_tolerance_bins,
+        );
     let report = SyntheticIqValidationReport {
         input_iq: input_file.display().to_string(),
         input_sidecar: common
@@ -228,6 +235,7 @@ fn handle_validate_synthetic_iq(command: GnssCommand) -> Result<()> {
         acquisition_code_phase_validation,
         acquisition_code_phase_refinement_validation,
         acquisition_doppler_validation,
+        acquisition_receiver_clock_offset_validation,
     };
     emit_synthetic_iq_validation_report(&common, &report)?;
     write_manifest(&common, "validate_synthetic_iq", &profile, dataset.as_ref(), &report)?;
@@ -236,6 +244,7 @@ fn handle_validate_synthetic_iq(command: GnssCommand) -> Result<()> {
         || !report.acquisition_code_phase_validation.pass
         || !report.acquisition_code_phase_refinement_validation.pass
         || !report.acquisition_doppler_validation.pass
+        || !report.acquisition_receiver_clock_offset_validation.pass
     {
         let cn0_failures = report
             .validation
@@ -300,6 +309,23 @@ fn handle_validate_synthetic_iq(command: GnssCommand) -> Result<()> {
             })
             .collect::<Vec<_>>()
             .join(", ");
+        let acquisition_receiver_clock_offset_failures = report
+            .acquisition_receiver_clock_offset_validation
+            .satellites
+            .iter()
+            .filter(|row| !row.pass)
+            .map(|row| {
+                format!(
+                    "{}:{:.3}:{:.3}:{:.3}:{:.3}",
+                    format_sat(row.sat),
+                    row.injected_receiver_clock_frequency_bias_hz,
+                    row.expected_measured_doppler_hz,
+                    row.measured_doppler_hz,
+                    row.receiver_clock_frequency_bias_error_hz
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
         let mut failure_sections = Vec::new();
         if !cn0_failures.is_empty() {
             failure_sections.push(format!("cn0={cn0_failures}"));
@@ -314,6 +340,11 @@ fn handle_validate_synthetic_iq(command: GnssCommand) -> Result<()> {
         }
         if !acquisition_doppler_failures.is_empty() {
             failure_sections.push(format!("acq_doppler={acquisition_doppler_failures}"));
+        }
+        if !acquisition_receiver_clock_offset_failures.is_empty() {
+            failure_sections.push(format!(
+                "acq_receiver_clock_offset={acquisition_receiver_clock_offset_failures}"
+            ));
         }
         bail!("synthetic IQ validation failed: {}", failure_sections.join("; "));
     }

@@ -157,6 +157,8 @@ struct SyntheticIqValidationReport {
         bijux_gnss_infra::api::receiver::sim::SyntheticAcquisitionCodePhaseRefinementReport,
     acquisition_doppler_validation:
         bijux_gnss_infra::api::receiver::sim::SyntheticAcquisitionDopplerValidationReport,
+    acquisition_receiver_clock_offset_validation: bijux_gnss_infra::api::receiver::sim::
+        SyntheticAcquisitionReceiverClockOffsetValidationReport,
 }
 
 #[cfg(test)]

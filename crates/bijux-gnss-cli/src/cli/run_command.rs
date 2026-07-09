@@ -328,6 +328,29 @@ fn print_synthetic_iq_validation_table(report: &SyntheticIqValidationReport) {
             row.pass
         );
     }
+    println!(
+        "Acquisition receiver clock-offset tolerance: {} bins ({:.3} Hz)",
+        report.acquisition_receiver_clock_offset_validation.tolerance_bins,
+        report.acquisition_receiver_clock_offset_validation.tolerance_hz
+    );
+    println!(
+        "Acquisition receiver clock-offset pass: {}",
+        report.acquisition_receiver_clock_offset_validation.pass
+    );
+    for row in &report.acquisition_receiver_clock_offset_validation.satellites {
+        println!(
+            "{}\tinjected_bias={:.3}\texpected_doppler={:.3}\tmeasured_doppler={:.3}\tmeasured_bias={:.3}\tbias_error={:.3}\tpeak/mean={:.3}\thypothesis={}\tpass={}",
+            format_sat(row.sat),
+            row.injected_receiver_clock_frequency_bias_hz,
+            row.expected_measured_doppler_hz,
+            row.measured_doppler_hz,
+            row.measured_receiver_clock_frequency_bias_hz,
+            row.receiver_clock_frequency_bias_error_hz,
+            row.peak_mean_ratio,
+            row.hypothesis,
+            row.pass
+        );
+    }
 }
 fn print_inspect_table(report: &InspectReport) {
     println!(
