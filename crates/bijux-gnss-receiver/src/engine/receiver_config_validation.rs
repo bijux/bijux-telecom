@@ -37,6 +37,19 @@ impl ValidateConfig for ReceiverConfig {
                 message: "acquisition.doppler_step_hz must be > 0".to_string(),
             });
         }
+        if self.acquisition.doppler_search_hz < 0 {
+            report.errors.push(ConfigError {
+                message: "acquisition.doppler_search_hz must be >= 0".to_string(),
+            });
+        }
+        if self.acquisition.doppler_step_hz > 0
+            && self.acquisition.doppler_search_hz > 0
+            && self.acquisition.doppler_search_hz % self.acquisition.doppler_step_hz != 0
+        {
+            report.errors.push(ConfigError {
+                message: "acquisition.doppler_search_hz must be an integer multiple of acquisition.doppler_step_hz".to_string(),
+            });
+        }
         if self.acquisition.integration_ms == 0 {
             report.errors.push(ConfigError {
                 message: "acquisition.integration_ms must be > 0".to_string(),
@@ -286,5 +299,54 @@ impl ReceiverConfig {
             ppp: self.navigation.ppp.clone(),
             science_thresholds: self.navigation.science_thresholds.clone(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validation_rejects_negative_doppler_search_range() {
+        let mut config = ReceiverConfig::default();
+        config.acquisition.doppler_search_hz = -500;
+
+        let report = <ReceiverConfig as ValidateConfig>::validate(&config);
+
+        assert!(report.errors.iter().any(|error| {
+            error.message == "acquisition.doppler_search_hz must be >= 0"
+        }));
+    }
+
+    #[test]
+    fn validation_rejects_unaligned_doppler_grid() {
+        let mut config = ReceiverConfig::default();
+        config.acquisition.doppler_search_hz = 1_250;
+        config.acquisition.doppler_step_hz = 500;
+
+        let report = <ReceiverConfig as ValidateConfig>::validate(&config);
+
+        assert!(report.errors.iter().any(|error| {
+            error.message
+                == "acquisition.doppler_search_hz must be an integer multiple of acquisition.doppler_step_hz"
+        }));
+    }
+
+    #[test]
+    fn validation_allows_zero_doppler_search_range() {
+        let mut config = ReceiverConfig::default();
+        config.acquisition.doppler_search_hz = 0;
+        config.acquisition.doppler_step_hz = 500;
+
+        let report = <ReceiverConfig as ValidateConfig>::validate(&config);
+
+        assert!(
+            !report
+                .errors
+                .iter()
+                .any(|error| error.message.contains("acquisition.doppler_search_hz")),
+            "unexpected Doppler-search validation error: {:?}",
+            report.errors
+        );
     }
 }

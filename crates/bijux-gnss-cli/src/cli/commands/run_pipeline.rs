@@ -213,8 +213,7 @@ fn handle_experiment(command: GnssCommand) -> Result<()> {
         let frame =
             bijux_gnss_infra::api::receiver::sim::generate_l1_ca_multi(&config, &scenario_def);
         let sats: Vec<SatId> = scenario_def.satellites.iter().map(|s| s.sat).collect();
-        let acquisition = AcquisitionEngine::new(config.clone(), runtime.clone())
-            .with_doppler(10_000, run_profile.acquisition.doppler_step_hz);
+        let acquisition = AcquisitionEngine::new(config.clone(), runtime.clone());
         let acquisitions = acquisition.run_fft(&frame, &sats);
         let tracking =
             bijux_gnss_infra::api::receiver::TrackingEngine::new(config.clone(), runtime.clone());
