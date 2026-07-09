@@ -98,7 +98,9 @@ fn acquire_uses_profile_doppler_search_settings_by_default() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert_doppler_search_report(&acquire_dir.join("acquire_report.json"), 1_500, 250, 13);
+    assert_code_phase_search_report(&acquire_dir.join("acquire_report.json"), 4_092);
     assert_doppler_search_artifact(&acquire_dir.join("artifacts").join("acq.jsonl"), 1_500, 250);
+    assert_code_phase_search_artifact(&acquire_dir.join("artifacts").join("acq.jsonl"), 4_092);
 
     fs::remove_dir_all(&temp_dir).expect("remove temp dir");
 }
@@ -144,7 +146,9 @@ fn acquire_can_override_profile_doppler_search_settings() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert_doppler_search_report(&acquire_dir.join("acquire_report.json"), 1_000, 500, 5);
+    assert_code_phase_search_report(&acquire_dir.join("acquire_report.json"), 4_092);
     assert_doppler_search_artifact(&acquire_dir.join("artifacts").join("acq.jsonl"), 1_000, 500);
+    assert_code_phase_search_artifact(&acquire_dir.join("artifacts").join("acq.jsonl"), 4_092);
 
     fs::remove_dir_all(&temp_dir).expect("remove temp dir");
 }
@@ -222,6 +226,45 @@ fn assert_doppler_search_artifact(
             row["payload"]["assumptions"]["doppler_step_hz"],
             expected_step_hz,
             "unexpected doppler_step_hz row: {row}"
+        );
+    }
+}
+
+fn assert_code_phase_search_report(report_path: &Path, expected_period_samples: i64) {
+    let report: Value =
+        serde_json::from_str(&fs::read_to_string(report_path).expect("read acquire report"))
+            .expect("parse acquire report");
+    assert_eq!(report["code_phase_search"]["start_sample"], 0);
+    assert_eq!(report["code_phase_search"]["step_samples"], 1);
+    assert_eq!(report["code_phase_search"]["bin_count"], expected_period_samples);
+    assert_eq!(report["code_phase_search"]["period_samples"], expected_period_samples);
+    assert_eq!(report["code_phase_search"]["mode"], "full_code");
+}
+
+fn assert_code_phase_search_artifact(artifact_path: &Path, expected_period_samples: i64) {
+    let contents = fs::read_to_string(artifact_path).expect("read acq artifact");
+    assert!(!contents.is_empty(), "expected acquisition artifact rows");
+    for line in contents.lines() {
+        let row: Value = serde_json::from_str(line).expect("parse acq artifact row");
+        assert_eq!(
+            row["payload"]["assumptions"]["code_phase_search_start_sample"],
+            0,
+            "unexpected code_phase_search_start_sample row: {row}"
+        );
+        assert_eq!(
+            row["payload"]["assumptions"]["code_phase_search_step_samples"],
+            1,
+            "unexpected code_phase_search_step_samples row: {row}"
+        );
+        assert_eq!(
+            row["payload"]["assumptions"]["code_phase_search_bins"],
+            expected_period_samples,
+            "unexpected code_phase_search_bins row: {row}"
+        );
+        assert_eq!(
+            row["payload"]["assumptions"]["code_phase_search_mode"],
+            "full_code",
+            "unexpected code_phase_search_mode row: {row}"
         );
     }
 }
