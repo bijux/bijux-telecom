@@ -480,10 +480,7 @@ impl Acquisition {
                 continue;
             }
 
-            let second_peak_ratio = candidates
-                .get(1)
-                .map(|candidate| candidate.peak_second_ratio)
-                .unwrap_or(f32::INFINITY);
+            let competing_peak_ratio = competing_candidate_ratio(&candidates);
             for (rank, candidate) in candidates.iter_mut().enumerate() {
                 candidate.evidence.push(AcqEvidence {
                     rank: rank as u8 + 1,
@@ -495,8 +492,7 @@ impl Acquisition {
                     peak_second_ratio: candidate.peak_second_ratio,
                     mean: candidate.mean,
                 });
-                let separation_ratio =
-                    if rank == 0 { second_peak_ratio } else { candidate.peak_second_ratio };
+                let local_peak_separation_ratio = candidate.peak_second_ratio;
                 if rank == 0 {
                     if let Some(diagnostic) = search_window_diagnostic.as_ref() {
                         candidate.hypothesis = AcqHypothesis::Rejected;
@@ -507,15 +503,17 @@ impl Acquisition {
                         let (hypothesis, score) = acquisition_hypothesis(
                             candidate.peak_mean_ratio,
                             candidate.peak_second_ratio,
-                            separation_ratio,
+                            local_peak_separation_ratio,
+                            competing_peak_ratio,
                             &self.config,
                         );
                         candidate.hypothesis = hypothesis;
                         candidate.score = score;
                         candidate.explain_selection_reason = Some(format!(
-                            "rank 1 selected; peak_mean_ratio={:.6}, separation_ratio={:.6}, score={:.6}",
+                            "rank 1 selected; peak_mean_ratio={:.6}, local_peak_separation_ratio={:.6}, competing_peak_ratio={:.6}, score={:.6}",
                             candidate.peak_mean_ratio,
-                            separation_ratio,
+                            local_peak_separation_ratio,
+                            competing_peak_ratio,
                             score
                         ));
                     }
@@ -1078,21 +1076,34 @@ fn search_window_candidate_reason(diagnostic: &SearchWindowDiagnostic) -> String
 fn acquisition_hypothesis(
     peak_mean_ratio: f32,
     peak_second_ratio: f32,
-    separation_ratio: f32,
+    local_peak_separation_ratio: f32,
+    competing_peak_ratio: f32,
     config: &ReceiverPipelineConfig,
 ) -> (AcqHypothesis, f32) {
     if peak_mean_ratio < config.acquisition_peak_mean_threshold {
         return (AcqHypothesis::Rejected, 0.0);
     }
-    if !separation_ratio.is_finite() {
+    if !local_peak_separation_ratio.is_finite() || !competing_peak_ratio.is_finite() {
         return (AcqHypothesis::Ambiguous, 0.25 * peak_mean_ratio);
     }
+    let limiting_ratio =
+        peak_second_ratio.min(local_peak_separation_ratio).min(competing_peak_ratio);
     if peak_second_ratio < config.acquisition_peak_second_threshold
-        || separation_ratio < config.acquisition_peak_second_threshold
+        || local_peak_separation_ratio < config.acquisition_peak_second_threshold
+        || competing_peak_ratio < config.acquisition_peak_second_threshold
     {
-        return (AcqHypothesis::Ambiguous, (peak_mean_ratio * 0.35) + (peak_second_ratio * 0.15));
+        return (AcqHypothesis::Ambiguous, (peak_mean_ratio * 0.35) + (limiting_ratio * 0.15));
     }
     (AcqHypothesis::Accepted, (peak_mean_ratio * 0.5) + (peak_second_ratio * 0.5))
+}
+
+fn competing_candidate_ratio(candidates: &[AcqResult]) -> f32 {
+    match (candidates.first(), candidates.get(1)) {
+        (Some(best), Some(competing)) if competing.peak_mean_ratio > f32::EPSILON => {
+            best.peak_mean_ratio / competing.peak_mean_ratio
+        }
+        _ => f32::INFINITY,
+    }
 }
 
 fn refine_acquisition_candidates(
@@ -1290,7 +1301,7 @@ mod tests {
     #[test]
     fn acquisition_hypothesis_rejects_weak_primary_peak() {
         let config = ReceiverPipelineConfig::default();
-        let (hypothesis, score) = acquisition_hypothesis(2.0, 2.0, 2.0, &config);
+        let (hypothesis, score) = acquisition_hypothesis(2.0, 2.0, 2.0, 2.0, &config);
         assert_eq!(hypothesis.to_string(), "rejected");
         assert_eq!(score, 0.0);
     }
@@ -1298,17 +1309,37 @@ mod tests {
     #[test]
     fn acquisition_hypothesis_marks_ambiguous_on_low_peak_separation() {
         let config = ReceiverPipelineConfig::default();
-        let (hypothesis, score) = acquisition_hypothesis(3.0, 1.0, 1.4, &config);
+        let (hypothesis, score) = acquisition_hypothesis(3.0, 1.0, 1.4, 2.0, &config);
         assert_eq!(hypothesis.to_string(), "ambiguous");
         assert!((score - 1.2).abs() < 1e-6);
     }
 
     #[test]
+    fn acquisition_hypothesis_marks_ambiguous_on_comparable_competing_candidate() {
+        let config = ReceiverPipelineConfig::default();
+        let (hypothesis, score) = acquisition_hypothesis(3.5, 2.0, 2.0, 1.4, &config);
+        assert_eq!(hypothesis.to_string(), "ambiguous");
+        assert!((score - 1.435).abs() < 1e-6);
+    }
+
+    #[test]
     fn acquisition_hypothesis_accepts_clean_peak() {
         let config = ReceiverPipelineConfig::default();
-        let (hypothesis, score) = acquisition_hypothesis(3.5, 2.0, 2.5, &config);
+        let (hypothesis, score) = acquisition_hypothesis(3.5, 2.0, 2.5, 2.1, &config);
         assert_eq!(hypothesis.to_string(), "accepted");
         assert!((score - 2.75).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn competing_candidate_ratio_uses_top_two_peak_mean_ratios() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        let ratio = competing_candidate_ratio(&[
+            candidate_for_search_window_test(sat, 0.0, 4.0),
+            candidate_for_search_window_test(sat, 250.0, 3.0),
+            candidate_for_search_window_test(sat, 500.0, 1.5),
+        ]);
+
+        assert!((ratio - (4.0 / 3.0)).abs() < 1.0e-6);
     }
 
     #[test]
