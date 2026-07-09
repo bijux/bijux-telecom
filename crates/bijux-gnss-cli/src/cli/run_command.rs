@@ -136,6 +136,48 @@ fn print_inspect_table(report: &InspectReport) {
     );
     println!("Power histogram bins: {:?}", report.power_histogram);
 }
+
+#[cfg(test)]
+mod inspect_dataset_tests {
+    use super::inspect_dataset;
+    use crate::RawIqMetadata;
+    use bijux_gnss_infra::api::signal::IqSampleFormat;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_file_path(name: &str) -> PathBuf {
+        let nanos =
+            SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos();
+        std::env::temp_dir().join(format!("bijux_{}_{}_{}.iq", name, std::process::id(), nanos))
+    }
+
+    #[test]
+    fn inspect_dataset_reports_signed_8bit_metadata() {
+        let path = temp_file_path("inspect_iq8");
+        fs::write(&path, [0x80u8, 0x7fu8, 0x40u8, 0xc0u8]).expect("write iq8 fixture");
+
+        let metadata = RawIqMetadata {
+            format: IqSampleFormat::Iq8,
+            sample_rate_hz: 2_000_000.0,
+            intermediate_freq_hz: 125_000.0,
+            capture_start_utc: "2026-07-09T00:00:00Z".to_string(),
+            offset_bytes: 0,
+            quantization_bits: Some(8),
+            notes: None,
+        };
+        let report = inspect_dataset(&path, &metadata, 0).expect("inspect dataset");
+
+        assert_eq!(report.format, "Iq8");
+        assert_eq!(report.sample_rate_hz, metadata.sample_rate_hz);
+        assert_eq!(report.intermediate_freq_hz, metadata.intermediate_freq_hz);
+        assert_eq!(report.capture_start_utc, metadata.capture_start_utc);
+        assert_eq!(report.total_samples, 2);
+
+        fs::remove_file(&path).expect("remove iq8 fixture");
+    }
+}
+
 fn solve_epoch_ekf(
     ctx: &mut Option<EkfContext>,
     obs: &ObsEpoch,
