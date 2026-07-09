@@ -124,6 +124,35 @@ fn assert_dc_only_metrics(metrics: &Value, sample_count: u64) {
     assert_eq!(metrics.get("dc_imbalance").and_then(Value::as_f64), Some(1.0));
 }
 
+fn assert_all_zero_metrics(metrics: &Value, sample_count: u64) {
+    assert_eq!(metrics.get("sample_count").and_then(Value::as_u64), Some(sample_count));
+    assert_eq!(metrics.get("i_mean").and_then(Value::as_f64), Some(0.0));
+    assert_eq!(metrics.get("q_mean").and_then(Value::as_f64), Some(0.0));
+    assert_eq!(metrics.get("i_power").and_then(Value::as_f64), Some(0.0));
+    assert_eq!(metrics.get("q_power").and_then(Value::as_f64), Some(0.0));
+    assert_eq!(metrics.get("iq_power_ratio").and_then(Value::as_f64), Some(1.0));
+    assert_eq!(metrics.get("power_imbalance_warning").and_then(Value::as_bool), Some(false));
+    assert_eq!(metrics.get("quadrature_error_deg").and_then(Value::as_f64), None);
+    assert_eq!(metrics.get("quadrature_error_warning").and_then(Value::as_bool), Some(false));
+    assert_eq!(metrics.get("clipping_pct").and_then(Value::as_f64), Some(0.0));
+    assert_eq!(metrics.get("clipping_warning").and_then(Value::as_bool), Some(false));
+    assert_eq!(metrics.get("centered_rms").and_then(Value::as_f64), Some(0.0));
+    assert_eq!(metrics.get("zero_signal_detected").and_then(Value::as_bool), Some(true));
+    assert!(metrics
+        .get("zero_signal_reason")
+        .and_then(Value::as_str)
+        .expect("zero_signal_reason")
+        .contains("no varying signal energy"));
+    assert_eq!(metrics.get("precision_claims_allowed").and_then(Value::as_bool), Some(false));
+    assert!(metrics
+        .get("precision_claims_refused_reason")
+        .and_then(Value::as_str)
+        .expect("precision_claims_refused_reason")
+        .contains("no varying signal energy"));
+    assert_eq!(metrics.get("rms").and_then(Value::as_f64), Some(0.0));
+    assert_eq!(metrics.get("dc_imbalance").and_then(Value::as_f64), Some(0.0));
+}
+
 fn assert_precision_refusal_metrics(
     metrics: &Value,
     sample_count: u64,
@@ -561,6 +590,174 @@ fn inspect_reports_clipping_for_signed_16bit_capture() {
     let report = load_json(&out_dir.join("inspect_report.json"));
     let metrics = report.get("front_end_metrics").expect("front_end_metrics present");
     assert_precision_refusal_metrics(metrics, 128, 6.25);
+
+    fs::remove_dir_all(&temp).expect("remove temp dir");
+}
+
+#[test]
+fn raw_iq_commands_flag_all_zero_input_as_zero_signal() {
+    let temp = temp_dir_path("zero_signal_raw_iq");
+    fs::create_dir_all(&temp).expect("create temp dir");
+
+    let iq_path = temp.join("zeros.iq8");
+    write_constant_iq8_capture(&iq_path, 0, 0, 5_000);
+    let sidecar_path = temp.join("zeros.sidecar.toml");
+    write_raw_iq_sidecar(&sidecar_path);
+
+    let acquire_out = temp.join("acquire-out");
+    let acquire = run_bijux(
+        &[
+            "gnss",
+            "acquire",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--prn",
+            "1",
+            "--report",
+            "json",
+            "--out",
+            acquire_out.to_str().expect("out dir"),
+        ],
+        &repo_root(),
+    );
+    assert!(
+        acquire.status.success(),
+        "acquire failed: {}",
+        String::from_utf8_lossy(&acquire.stderr)
+    );
+    let acquire_report = load_json(&acquire_out.join("acquire_report.json"));
+    assert_all_zero_metrics(
+        acquire_report.get("front_end_metrics").expect("front_end_metrics present"),
+        5_000,
+    );
+    let acquire_results =
+        acquire_report.get("results").and_then(Value::as_array).expect("acquire results");
+    assert_eq!(acquire_results.len(), 1);
+    assert_eq!(acquire_results[0].get("peak").and_then(Value::as_f64), Some(0.0));
+    assert_eq!(acquire_results[0].get("peak_mean_ratio").and_then(Value::as_f64), Some(0.0));
+    assert_eq!(acquire_results[0].get("peak_second_ratio").and_then(Value::as_f64), Some(0.0));
+
+    let track_out = temp.join("track-out");
+    let track = run_bijux(
+        &[
+            "gnss",
+            "track",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--prn",
+            "1",
+            "--report",
+            "json",
+            "--out",
+            track_out.to_str().expect("out dir"),
+        ],
+        &repo_root(),
+    );
+    assert!(track.status.success(), "track failed: {}", String::from_utf8_lossy(&track.stderr));
+    let track_report = load_json(&track_out.join("track_report.json"));
+    assert_all_zero_metrics(
+        track_report.get("front_end_metrics").expect("front_end_metrics present"),
+        5_000,
+    );
+    assert_eq!(track_report.get("epochs").and_then(Value::as_array).map(Vec::len), Some(0));
+
+    let inspect_out = temp.join("inspect-out");
+    let inspect = run_bijux(
+        &[
+            "gnss",
+            "inspect",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--max-samples",
+            "5000",
+            "--report",
+            "json",
+            "--out",
+            inspect_out.to_str().expect("out dir"),
+        ],
+        &repo_root(),
+    );
+    assert!(
+        inspect.status.success(),
+        "inspect failed: {}",
+        String::from_utf8_lossy(&inspect.stderr)
+    );
+    let inspect_report = load_json(&inspect_out.join("inspect_report.json"));
+    assert_all_zero_metrics(
+        inspect_report.get("front_end_metrics").expect("front_end_metrics present"),
+        5_000,
+    );
+
+    let run_out = temp.join("run-out");
+    let run = run_bijux(
+        &[
+            "gnss",
+            "run",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--report",
+            "json",
+            "--out",
+            run_out.to_str().expect("out dir"),
+        ],
+        &repo_root(),
+    );
+    assert!(run.status.success(), "run failed: {}", String::from_utf8_lossy(&run.stderr));
+    let run_report = load_json(&run_out.join("run_report.json"));
+    assert_all_zero_metrics(
+        run_report.get("front_end_metrics").expect("front_end_metrics present"),
+        5_000,
+    );
+    assert_eq!(run_report.get("epochs").and_then(Value::as_u64), Some(1));
+
+    fs::remove_dir_all(&temp).expect("remove temp dir");
+}
+
+#[test]
+fn inspect_table_reports_zero_signal_diagnostics_for_all_zero_capture() {
+    let temp = temp_dir_path("inspect_zero_signal_table");
+    fs::create_dir_all(&temp).expect("create temp dir");
+
+    let iq_path = temp.join("zeros.iq8");
+    write_constant_iq8_capture(&iq_path, 0, 0, 4);
+    let sidecar_path = temp.join("zeros.sidecar.toml");
+    write_raw_iq_sidecar(&sidecar_path);
+
+    let output = run_bijux(
+        &[
+            "gnss",
+            "inspect",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--max-samples",
+            "4",
+            "--report",
+            "table",
+        ],
+        &repo_root(),
+    );
+
+    assert!(output.status.success(), "inspect failed: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("ZeroSignalDetected"), "stdout={stdout}");
+    assert!(stdout.contains("ZeroSignalReason"), "stdout={stdout}");
+    assert!(stdout.contains("PrecisionRefusal"), "stdout={stdout}");
+    assert!(stdout.contains("no varying signal energy"), "stdout={stdout}");
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
 }
