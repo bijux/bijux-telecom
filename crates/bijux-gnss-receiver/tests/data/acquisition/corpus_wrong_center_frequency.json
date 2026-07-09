@@ -11,6 +11,7 @@
   "step_hz": 250,
   "coherent_ms": 1,
   "noncoherent": 1,
-  "expected_hypothesis": "rejected",
-  "expected_selected_reason": "signal_outside_search_range"
+  "expected_hypothesis": "ambiguous",
+  "expected_selected_reason": "ambiguous_ratio_thresholds",
+  "expect_not_accepted": true
 }
