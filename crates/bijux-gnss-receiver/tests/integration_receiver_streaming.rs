@@ -153,6 +153,7 @@ fn receiver_tracks_sixty_seconds_with_bounded_stream_reads() {
     let scenario = SyntheticScenario {
         sample_rate_hz: config.sampling_freq_hz,
         intermediate_freq_hz: config.intermediate_freq_hz,
+        receiver_clock_frequency_bias_hz: 0.0,
         duration_s: 60.0,
         seed: 41,
         satellites: vec![SyntheticSignalParams {

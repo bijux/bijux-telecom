@@ -73,6 +73,7 @@ fn noise_only_frame(profile: &ReceiverConfig, seed: u64) -> SamplesFrame {
         &SyntheticScenario {
             sample_rate_hz: config.sampling_freq_hz,
             intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 0.0,
             duration_s: config.code_length as f64 / config.code_freq_basis_hz,
             seed,
             satellites: Vec::new(),

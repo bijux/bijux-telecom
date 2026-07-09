@@ -23,6 +23,7 @@ fn deterministic_synthetic_runs_match() {
     let scenario = SyntheticScenario {
         sample_rate_hz: config.sampling_freq_hz,
         intermediate_freq_hz: config.intermediate_freq_hz,
+        receiver_clock_frequency_bias_hz: 0.0,
         duration_s: 0.01,
         seed: 42,
         satellites: vec![SyntheticSignalParams {

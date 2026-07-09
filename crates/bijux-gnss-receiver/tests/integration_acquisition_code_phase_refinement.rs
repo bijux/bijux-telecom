@@ -25,6 +25,7 @@ fn acquisition_refinement_improves_fractional_code_phase_initialization() {
         let scenario = SyntheticScenario {
             sample_rate_hz: config.sampling_freq_hz,
             intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 0.0,
             duration_s: 0.04,
             seed: 2_407_1985,
             satellites: vec![SyntheticSignalParams {

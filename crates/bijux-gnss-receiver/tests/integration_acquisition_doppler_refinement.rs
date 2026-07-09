@@ -28,6 +28,7 @@ fn acquisition_refinement_recovers_fractional_doppler_more_closely_than_the_raw_
         let scenario = SyntheticScenario {
             sample_rate_hz: config.sampling_freq_hz,
             intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 0.0,
             duration_s: 0.04,
             seed: 2_407_1985,
             satellites: vec![

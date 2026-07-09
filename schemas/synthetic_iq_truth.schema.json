@@ -9,6 +9,7 @@
     "sample_format",
     "sample_rate_hz",
     "intermediate_freq_hz",
+    "receiver_clock_frequency_bias_hz",
     "capture_start_utc",
     "quantization_bits",
     "duration_s",
@@ -20,12 +21,13 @@
     "satellites"
   ],
   "properties": {
-    "schema_version": { "type": "integer", "minimum": 2 },
+    "schema_version": { "type": "integer", "minimum": 3 },
     "scenario_id": { "type": "string", "minLength": 1 },
     "seed": { "type": "integer", "minimum": 0 },
     "sample_format": { "type": "string", "enum": ["iq16_le", "iq8", "cf32_le"] },
     "sample_rate_hz": { "type": "number", "exclusiveMinimum": 0 },
     "intermediate_freq_hz": { "type": "number" },
+    "receiver_clock_frequency_bias_hz": { "type": "number" },
     "capture_start_utc": { "type": "string", "minLength": 1 },
     "quantization_bits": { "type": "integer", "minimum": 1 },
     "duration_s": { "type": "number", "minimum": 0 },

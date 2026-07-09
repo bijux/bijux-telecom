@@ -19,7 +19,7 @@ use bijux_gnss_signal::api::{
 };
 use serde::{Deserialize, Serialize};
 
-const SYNTHETIC_IQ_TRUTH_SCHEMA_VERSION: u32 = 2;
+const SYNTHETIC_IQ_TRUTH_SCHEMA_VERSION: u32 = 3;
 const GPS_L1_CA_NAV_BIT_PERIOD_S: f64 = 0.02;
 const SYNTHETIC_COMPLEX_NOISE_POWER: f64 = 1.0;
 const SYNTHETIC_NOISE_STD_PER_COMPONENT: f32 = std::f32::consts::FRAC_1_SQRT_2;
@@ -39,6 +39,8 @@ pub struct SyntheticSignalParams {
 pub struct SyntheticScenario {
     pub sample_rate_hz: f64,
     pub intermediate_freq_hz: f64,
+    #[serde(default)]
+    pub receiver_clock_frequency_bias_hz: f64,
     pub duration_s: f64,
     pub seed: u64,
     pub satellites: Vec<SyntheticSignalParams>,
@@ -109,6 +111,8 @@ pub struct SyntheticIqTruthBundle {
     pub sample_rate_hz: f64,
     /// Output intermediate frequency in Hz.
     pub intermediate_freq_hz: f64,
+    /// Common receiver clock frequency bias added to every synthetic carrier, in Hz.
+    pub receiver_clock_frequency_bias_hz: f64,
     /// Synthetic capture start timestamp in UTC.
     pub capture_start_utc: String,
     /// Output quantization depth in bits.
@@ -650,6 +654,7 @@ pub fn build_truth_bundle(
         sample_format: metadata.format,
         sample_rate_hz: frame.t0.sample_rate_hz,
         intermediate_freq_hz: metadata.intermediate_freq_hz,
+        receiver_clock_frequency_bias_hz: scenario.receiver_clock_frequency_bias_hz,
         capture_start_utc: metadata.capture_start_utc.clone(),
         quantization_bits: metadata.quantization_bits.unwrap_or_default(),
         duration_s: frame.len() as f64 * frame.dt_s.0,
@@ -1182,6 +1187,7 @@ pub fn measure_truth_guided_acquisition_detection_probability(
             let scenario = SyntheticScenario {
                 sample_rate_hz: profile_config.sampling_freq_hz,
                 intermediate_freq_hz: profile_config.intermediate_freq_hz,
+                receiver_clock_frequency_bias_hz: 0.0,
                 duration_s,
                 seed: *seed,
                 satellites: vec![signal],
@@ -1330,6 +1336,7 @@ pub fn measure_noise_only_acquisition_false_alarm_rate(
             let scenario = SyntheticScenario {
                 sample_rate_hz: profile_config.sampling_freq_hz,
                 intermediate_freq_hz: profile_config.intermediate_freq_hz,
+                receiver_clock_frequency_bias_hz: 0.0,
                 duration_s,
                 seed: *seed,
                 satellites: Vec::new(),
@@ -1639,6 +1646,7 @@ pub fn generate_l1_ca(
         &SyntheticScenario {
             sample_rate_hz: config.sampling_freq_hz,
             intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 0.0,
             duration_s,
             seed,
             satellites: vec![params],
@@ -1685,8 +1693,17 @@ fn generate_l1_ca_multi_signal_only(
     let clock = SampleClock::new(config.sampling_freq_hz);
     let dt_s = clock.dt_s();
     let sample_count = (scenario.duration_s * config.sampling_freq_hz).round() as usize;
-    let sat_states: Vec<SatState> =
-        scenario.satellites.iter().map(|sat| SatState::new(config, *sat)).collect();
+    let sat_states: Vec<SatState> = scenario
+        .satellites
+        .iter()
+        .map(|sat| {
+            SatState::new_with_receiver_clock_frequency_bias_hz(
+                config,
+                *sat,
+                scenario.receiver_clock_frequency_bias_hz,
+            )
+        })
+        .collect();
     let mut iq = Vec::with_capacity(sample_count);
     for n in 0..sample_count {
         let t = n as f64 * dt_s;
@@ -1712,7 +1729,17 @@ impl SyntheticSignalSource {
             remaining_samples: sample_count,
             next_sample_index: 0,
             noise_std,
-            sat_states: scenario.satellites.iter().map(|sat| SatState::new(config, *sat)).collect(),
+            sat_states: scenario
+                .satellites
+                .iter()
+                .map(|sat| {
+                    SatState::new_with_receiver_clock_frequency_bias_hz(
+                        config,
+                        *sat,
+                        scenario.receiver_clock_frequency_bias_hz,
+                    )
+                })
+                .collect(),
             rng: XorShift64::new(scenario.seed),
         }
     }
@@ -1758,6 +1785,7 @@ impl SignalSource for SyntheticSignalSource {
 #[derive(Debug, Clone)]
 struct SatState {
     doppler_hz: f64,
+    receiver_clock_frequency_bias_hz: f64,
     code_phase_chips: f64,
     carrier_phase_rad: f64,
     cn0_db_hz: f32,
@@ -1769,9 +1797,14 @@ struct SatState {
 }
 
 impl SatState {
-    fn new(config: &ReceiverPipelineConfig, params: SyntheticSignalParams) -> Self {
+    fn new_with_receiver_clock_frequency_bias_hz(
+        config: &ReceiverPipelineConfig,
+        params: SyntheticSignalParams,
+        receiver_clock_frequency_bias_hz: f64,
+    ) -> Self {
         Self {
             doppler_hz: params.doppler_hz,
+            receiver_clock_frequency_bias_hz,
             code_phase_chips: params.code_phase_chips,
             carrier_phase_rad: params.carrier_phase_rad,
             cn0_db_hz: params.cn0_db_hz,
@@ -1794,7 +1827,7 @@ impl SatState {
         let chip = code_value_at_phase(&self.code, code_phase).unwrap_or(1.0);
         let data_bit = nav_bit_value_at_time_s(self.data_bit_flip, t);
 
-        let carrier_hz = self.if_hz + self.doppler_hz;
+        let carrier_hz = self.if_hz + self.doppler_hz + self.receiver_clock_frequency_bias_hz;
         let phase = self.carrier_phase_rad as f32 + TAU * (carrier_hz as f32) * (t as f32);
         let carrier = Complex::new(phase.cos(), phase.sin());
 
@@ -1871,6 +1904,7 @@ fn isolated_satellite_scenario(
     SyntheticScenario {
         sample_rate_hz: truth.sample_rate_hz,
         intermediate_freq_hz: truth.intermediate_freq_hz,
+        receiver_clock_frequency_bias_hz: truth.receiver_clock_frequency_bias_hz,
         duration_s: measured_frame.len() as f64 * measured_frame.dt_s.0,
         seed: truth.seed,
         satellites: vec![SyntheticSignalParams {
@@ -2080,6 +2114,7 @@ mod tests {
         advance_code_phase_seconds, sample_ca_code, samples_per_code, IqSampleFormat, Prn,
         RawIqMetadata, SignalSource,
     };
+    use num_complex::Complex;
 
     const RECEIVER_PHASE_TOLERANCE_SAMPLES: f64 = 1e-6;
 
@@ -2095,6 +2130,7 @@ mod tests {
         let scenario = SyntheticScenario {
             sample_rate_hz: config.sampling_freq_hz,
             intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 0.0,
             duration_s: 0.004,
             seed: 29,
             satellites: vec![SyntheticSignalParams {
@@ -2149,7 +2185,7 @@ mod tests {
             cn0_db_hz: 58.0,
             data_bit_flip: false,
         };
-        let sat_state = SatState::new(&config, params);
+        let sat_state = SatState::new_with_receiver_clock_frequency_bias_hz(&config, params, 0.0);
         let code_period_samples = samples_per_code(
             config.sampling_freq_hz,
             config.code_freq_basis_hz,
@@ -2232,6 +2268,15 @@ mod tests {
         );
     }
 
+    fn phase_step_rad(left: Complex<f32>, right: Complex<f32>) -> f32 {
+        (right * left.conj()).arg()
+    }
+
+    fn wrap_phase_rad(phase_rad: f64) -> f64 {
+        let tau = std::f64::consts::TAU;
+        (phase_rad + std::f64::consts::PI).rem_euclid(tau) - std::f64::consts::PI
+    }
+
     #[test]
     fn truth_bundle_records_constant_and_alternating_nav_bit_truth() {
         let config = ReceiverPipelineConfig {
@@ -2244,6 +2289,7 @@ mod tests {
         let scenario = SyntheticScenario {
             sample_rate_hz: config.sampling_freq_hz,
             intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 250.0,
             duration_s: 0.05,
             seed: 44,
             satellites: vec![
@@ -2280,11 +2326,12 @@ mod tests {
 
         let truth = build_truth_bundle(&scenario.id, &scenario, &frame, &metadata, 1.25, 0.8);
 
-        assert_eq!(truth.schema_version, 2);
+        assert_eq!(truth.schema_version, 3);
         assert_eq!(truth.scenario_id, "truth-bundle");
         assert_eq!(truth.seed, 44);
         assert_eq!(truth.sample_format, IqSampleFormat::Iq16Le);
         assert_eq!(truth.sample_rate_hz, 4_000_000.0);
+        assert_eq!(truth.receiver_clock_frequency_bias_hz, 250.0);
         assert_eq!(truth.quantization_bits, 16);
         assert_eq!(truth.noise_std_per_component, SYNTHETIC_NOISE_STD_PER_COMPONENT);
         assert_eq!(truth.noise_power_per_complex_sample, SYNTHETIC_COMPLEX_NOISE_POWER as f32);
@@ -2323,6 +2370,39 @@ mod tests {
     }
 
     #[test]
+    fn receiver_clock_frequency_bias_shifts_synthetic_carrier_phase_increment() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let params = SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Gps, prn: 3 },
+            doppler_hz: 1_000.0,
+            code_phase_chips: 0.0,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 60.0,
+            data_bit_flip: false,
+        };
+        let unbiased = SatState::new_with_receiver_clock_frequency_bias_hz(&config, params, 0.0);
+        let biased =
+            SatState::new_with_receiver_clock_frequency_bias_hz(&config, params, 500.0);
+        let sample_dt_s = 1.0 / config.sampling_freq_hz;
+        let unbiased_phase_step = phase_step_rad(unbiased.sample_at(0.0), unbiased.sample_at(sample_dt_s));
+        let biased_phase_step = phase_step_rad(biased.sample_at(0.0), biased.sample_at(sample_dt_s));
+        let expected_extra_phase_step = std::f64::consts::TAU * 500.0 / config.sampling_freq_hz;
+        let actual_extra_phase_step =
+            wrap_phase_rad((biased_phase_step - unbiased_phase_step) as f64);
+
+        assert!(
+            (actual_extra_phase_step - expected_extra_phase_step).abs() <= 1e-6,
+            "receiver clock bias phase step mismatch: actual={actual_extra_phase_step}, expected={expected_extra_phase_step}"
+        );
+    }
+
+    #[test]
     fn alternating_nav_bit_sign_flips_on_twenty_millisecond_boundaries() {
         assert_eq!(nav_bit_index_at_time_s(-1.0), 0);
         assert_eq!(nav_bit_index_at_time_s(0.0), 0);
@@ -2351,6 +2431,7 @@ mod tests {
         let scenario = SyntheticScenario {
             sample_rate_hz: config.sampling_freq_hz,
             intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 0.0,
             duration_s: 0.01,
             seed: 91,
             satellites: vec![
@@ -2425,6 +2506,7 @@ mod tests {
         let scenario = SyntheticScenario {
             sample_rate_hz: config.sampling_freq_hz,
             intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 0.0,
             duration_s: 0.01,
             seed: 17,
             satellites: vec![SyntheticSignalParams {
@@ -2519,6 +2601,7 @@ mod tests {
         let scenario = SyntheticScenario {
             sample_rate_hz: config.sampling_freq_hz,
             intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 0.0,
             duration_s: 0.04,
             seed: 24071985,
             satellites: vec![
@@ -2583,6 +2666,7 @@ mod tests {
             let scenario = SyntheticScenario {
                 sample_rate_hz: config.sampling_freq_hz,
                 intermediate_freq_hz: config.intermediate_freq_hz,
+                receiver_clock_frequency_bias_hz: 0.0,
                 duration_s: 0.04,
                 seed: 24071985,
                 satellites: vec![SyntheticSignalParams {
@@ -2643,6 +2727,7 @@ mod tests {
         let scenario = SyntheticScenario {
             sample_rate_hz: config.sampling_freq_hz,
             intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 0.0,
             duration_s: 0.04,
             seed: 2_407_1985,
             satellites: vec![SyntheticSignalParams {
@@ -2882,6 +2967,7 @@ mod tests {
         let scenario = SyntheticScenario {
             sample_rate_hz: config.sampling_freq_hz,
             intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 0.0,
             duration_s: 0.04,
             seed: 24071985,
             satellites: vec![
@@ -3048,6 +3134,7 @@ mod tests {
         let scenario = SyntheticScenario {
             sample_rate_hz: config.sampling_freq_hz,
             intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 0.0,
             duration_s: 0.04,
             seed,
             satellites: vec![
