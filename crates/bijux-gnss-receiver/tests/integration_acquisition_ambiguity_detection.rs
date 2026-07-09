@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{Constellation, SatId};
+use bijux_gnss_core::api::{AcqSearchSummary, Constellation, SatId};
 use bijux_gnss_receiver::api::{
     sim::{generate_l1_ca_multi, SyntheticScenario, SyntheticSignalParams},
     AcquisitionEngine, ReceiverPipelineConfig, ReceiverRuntime,
@@ -72,6 +72,30 @@ fn acquisition_explainability_reports_ambiguous_competing_peaks() {
     assert_eq!(explain.selected_reason, "ambiguous_ratio_thresholds", "{run:?}");
     assert_eq!(selected.hypothesis.to_string(), "ambiguous", "{run:?}");
     assert!(selected.reason.contains("local_peak_separation_ratio"), "{run:?}");
+}
+
+#[test]
+fn acquisition_search_summary_counts_ambiguous_outcomes() {
+    let sat = gps_l1_ca_satellite();
+    let config = ambiguity_profile();
+    let frame = competing_peak_frame(
+        &config,
+        0.001,
+        [competing_signal(sat, 0.0, 300.0, 44.0), competing_signal(sat, 0.0, 650.0, 44.0)],
+        0x2407_2000,
+    );
+    let results = AcquisitionEngine::new(config.clone(), ReceiverRuntime::default())
+        .with_doppler(config.acquisition_doppler_search_hz, config.acquisition_doppler_step_hz)
+        .run_fft(&frame, &[sat]);
+    let summary = AcqSearchSummary::from_results(&results);
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].hypothesis.to_string(), "ambiguous", "{results:?}");
+    assert_eq!(summary.searched_satellites, 1);
+    assert_eq!(summary.ambiguous, 1);
+    assert_eq!(summary.accepted, 0);
+    assert_eq!(summary.rejected, 0);
+    assert_eq!(summary.deferred, 0);
 }
 
 fn ambiguity_profile() -> ReceiverPipelineConfig {
