@@ -13,6 +13,7 @@ use rustfft::{num_traits::Zero, FftPlanner};
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
+use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
 use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::{
     generate_ca_code, measure_iq_front_end_metrics, sample_code, wipeoff_carrier, Prn,
@@ -294,7 +295,8 @@ impl Acquisition {
 
             let mut doppler = -self.doppler_search_hz;
             while doppler <= self.doppler_search_hz {
-                let carrier = self.config.intermediate_freq_hz + doppler as f64;
+                let carrier =
+                    carrier_hz_from_doppler_hz(self.config.intermediate_freq_hz, doppler as f64);
                 let mut noncoherent_acc = vec![0.0f32; samples_per_code];
 
                 for nc in 0..noncoherent {
@@ -746,13 +748,19 @@ fn signal_outside_search_range(
     [
         (
             SearchWindowEdge::Lower,
-            intermediate_freq_hz - doppler_search_hz as f64,
-            intermediate_freq_hz - doppler_search_hz as f64 + doppler_step_hz as f64,
+            carrier_hz_from_doppler_hz(intermediate_freq_hz, -(doppler_search_hz as f64)),
+            carrier_hz_from_doppler_hz(
+                intermediate_freq_hz,
+                -((doppler_search_hz - doppler_step_hz) as f64),
+            ),
         ),
         (
             SearchWindowEdge::Upper,
-            intermediate_freq_hz + doppler_search_hz as f64,
-            intermediate_freq_hz + doppler_search_hz as f64 - doppler_step_hz as f64,
+            carrier_hz_from_doppler_hz(intermediate_freq_hz, doppler_search_hz as f64),
+            carrier_hz_from_doppler_hz(
+                intermediate_freq_hz,
+                (doppler_search_hz - doppler_step_hz) as f64,
+            ),
         ),
     ]
     .into_iter()
@@ -984,6 +992,51 @@ mod tests {
         );
 
         assert!(diagnostic.is_none());
+    }
+
+    #[test]
+    fn search_window_diagnostic_respects_nonzero_intermediate_frequency() {
+        let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 1 };
+        let intermediate_freq_hz = 1_250_000.0;
+        let diagnostic = signal_outside_search_range(
+            &[
+                candidate_for_search_window_test(
+                    sat,
+                    carrier_hz_from_doppler_hz(intermediate_freq_hz, -1_500.0),
+                    1.5,
+                ),
+                candidate_for_search_window_test(
+                    sat,
+                    carrier_hz_from_doppler_hz(intermediate_freq_hz, -1_250.0),
+                    1.7,
+                ),
+                candidate_for_search_window_test(
+                    sat,
+                    carrier_hz_from_doppler_hz(intermediate_freq_hz, 1_250.0),
+                    2.4,
+                ),
+                candidate_for_search_window_test(
+                    sat,
+                    carrier_hz_from_doppler_hz(intermediate_freq_hz, 1_500.0),
+                    2.9,
+                ),
+            ],
+            intermediate_freq_hz,
+            1_500,
+            250,
+            2.5,
+        )
+        .expect("search-window diagnostic");
+
+        assert_eq!(diagnostic.edge, SearchWindowEdge::Upper);
+        assert_eq!(
+            diagnostic.best_carrier_hz,
+            carrier_hz_from_doppler_hz(intermediate_freq_hz, 1_500.0)
+        );
+        assert_eq!(
+            diagnostic.interior_carrier_hz,
+            carrier_hz_from_doppler_hz(intermediate_freq_hz, 1_250.0)
+        );
     }
 
     fn candidate_for_search_window_test(
