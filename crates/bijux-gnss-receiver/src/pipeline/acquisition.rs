@@ -4,8 +4,9 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use bijux_gnss_core::api::{
-    acq_result_stability_key, stable_acq_result_keys, AcqAssumptions, AcqEvidence, AcqExplain,
-    AcqExplainCandidate, AcqHypothesis, AcqResult, AcqThresholdProvenance, Hertz,
+    acq_result_stability_key, stable_acq_result_keys, AcqAssumptions, AcqDopplerRefinement,
+    AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqResult,
+    AcqThresholdProvenance, Hertz,
     ReceiverSampleTrace, SamplesFrame, SatId,
 };
 use num_complex::Complex;
@@ -48,6 +49,9 @@ const ACQUISITION_CACHE_MODEL_VERSION: u32 = 1;
 const ACQUISITION_CACHE_POLICY_VERSION: u32 = 1;
 const SEARCH_EDGE_HINT_PEAK_MEAN_RATIO_FRACTION: f32 = 0.9;
 const SEARCH_EDGE_RISE_RATIO_EPSILON: f32 = 0.05;
+const SUB_BIN_DOPPLER_REFINEMENT_METHOD: &str = "parabolic_peak";
+const SUB_BIN_DOPPLER_REFINEMENT_MAX_OFFSET_BINS: f64 = 0.5;
+const SUB_BIN_DOPPLER_REFINEMENT_EPSILON: f64 = 1e-12;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 struct CodeFftCacheKey {
@@ -322,7 +326,7 @@ impl Acquisition {
             });
             let code_fft =
                 self.code_fft(sat, samples_per_code, coherent_ms, noncoherent, fft.as_ref());
-            let mut candidates = Vec::new();
+            let mut grid_candidates = Vec::new();
 
             let mut doppler = -self.doppler_search_hz;
             while doppler <= self.doppler_search_hz {
@@ -372,7 +376,7 @@ impl Acquisition {
                 let peak_second_ratio = peak / (second + 1e-6);
                 let cn0_proxy = peak_mean_ratio * 10.0;
 
-                candidates.push(AcqResult {
+                grid_candidates.push(AcqResult {
                     sat,
                     source_time: ReceiverSampleTrace::from_sample_time(frame.t0),
                     carrier_hz: Hertz(carrier),
@@ -389,19 +393,21 @@ impl Acquisition {
                     evidence: Vec::new(),
                     threshold_provenance: Some(threshold_provenance.clone()),
                     explain_selection_reason: None,
+                    doppler_refinement: None,
                 });
 
                 doppler += self.doppler_step_hz;
             }
 
             let search_window_diagnostic = signal_outside_search_range(
-                &candidates,
+                &grid_candidates,
                 self.config.intermediate_freq_hz,
                 self.doppler_search_hz,
                 self.doppler_step_hz,
                 self.config.acquisition_peak_mean_threshold,
             );
 
+            let mut candidates = grid_candidates.clone();
             candidates.sort_by(|a, b| {
                 let primary = b
                     .peak_mean_ratio
@@ -413,6 +419,7 @@ impl Acquisition {
                 primary
             });
             candidates.truncate(top_n.max(1));
+            refine_acquisition_candidates(&mut candidates, &grid_candidates, self.doppler_step_hz);
             if candidates.is_empty() {
                 self.runtime.trace.record(TraceRecord {
                     name: "acquisition_sat_done",
@@ -728,6 +735,7 @@ fn zero_signal_run(
             evidence: Vec::new(),
             threshold_provenance: Some(threshold_provenance.clone()),
             explain_selection_reason: Some(candidate_reason.clone()),
+            doppler_refinement: None,
         };
         if emit_explanations {
             explains.push(AcqExplain {
@@ -790,6 +798,7 @@ fn insufficient_frame_run(
             evidence: Vec::new(),
             threshold_provenance: Some(threshold_provenance.clone()),
             explain_selection_reason: Some(candidate_reason.clone()),
+            doppler_refinement: None,
         };
         if emit_explanations {
             explains.push(AcqExplain {
@@ -927,6 +936,71 @@ fn acquisition_hypothesis(
     (AcqHypothesis::Accepted, (peak_mean_ratio * 0.5) + (peak_second_ratio * 0.5))
 }
 
+fn refine_acquisition_candidates(
+    candidates: &mut [AcqResult],
+    grid_candidates: &[AcqResult],
+    doppler_step_hz: i32,
+) {
+    for candidate in candidates {
+        let coarse_carrier_hz = candidate.carrier_hz.0;
+        let Some(refinement) =
+            estimate_acquisition_doppler_refinement(coarse_carrier_hz, grid_candidates, doppler_step_hz)
+        else {
+            continue;
+        };
+        candidate.carrier_hz = Hertz(coarse_carrier_hz + refinement.offset_hz);
+        candidate.doppler_refinement = Some(refinement);
+    }
+}
+
+fn estimate_acquisition_doppler_refinement(
+    coarse_carrier_hz: f64,
+    grid_candidates: &[AcqResult],
+    doppler_step_hz: i32,
+) -> Option<AcqDopplerRefinement> {
+    if doppler_step_hz <= 0 {
+        return None;
+    }
+    let step_hz = doppler_step_hz as f64;
+    let left = find_candidate_by_carrier_hz(grid_candidates, coarse_carrier_hz - step_hz)?;
+    let center = find_candidate_by_carrier_hz(grid_candidates, coarse_carrier_hz)?;
+    let right = find_candidate_by_carrier_hz(grid_candidates, coarse_carrier_hz + step_hz)?;
+    if center.peak < left.peak || center.peak < right.peak {
+        return None;
+    }
+
+    let left_peak = left.peak as f64;
+    let center_peak = center.peak as f64;
+    let right_peak = right.peak as f64;
+    let denominator = left_peak - (2.0 * center_peak) + right_peak;
+    if !denominator.is_finite() || denominator.abs() <= SUB_BIN_DOPPLER_REFINEMENT_EPSILON {
+        return None;
+    }
+
+    let raw_offset_bins = 0.5 * (left_peak - right_peak) / denominator;
+    if !raw_offset_bins.is_finite() {
+        return None;
+    }
+    let offset_bins = raw_offset_bins.clamp(
+        -SUB_BIN_DOPPLER_REFINEMENT_MAX_OFFSET_BINS,
+        SUB_BIN_DOPPLER_REFINEMENT_MAX_OFFSET_BINS,
+    );
+
+    Some(AcqDopplerRefinement {
+        method: SUB_BIN_DOPPLER_REFINEMENT_METHOD.to_string(),
+        coarse_carrier_hz: Hertz(coarse_carrier_hz),
+        offset_hz: offset_bins * step_hz,
+        offset_bins,
+        left_peak: left.peak,
+        center_peak: center.peak,
+        right_peak: right.peak,
+    })
+}
+
+fn find_candidate_by_carrier_hz(candidates: &[AcqResult], carrier_hz: f64) -> Option<&AcqResult> {
+    candidates.iter().find(|candidate| (candidate.carrier_hz.0 - carrier_hz).abs() <= f64::EPSILON)
+}
+
 #[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 mod tests {
@@ -958,6 +1032,37 @@ mod tests {
     }
 
     #[test]
+    fn parabolic_refinement_estimates_sub_bin_offset_from_neighbor_peaks() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        let candidates = vec![
+            candidate_for_search_window_test(sat, -250.0, 9.0),
+            candidate_for_search_window_test(sat, 0.0, 16.0),
+            candidate_for_search_window_test(sat, 250.0, 12.0),
+        ];
+
+        let refinement =
+            estimate_acquisition_doppler_refinement(0.0, &candidates, 250).expect("refinement");
+
+        assert_eq!(refinement.method, "parabolic_peak");
+        assert_eq!(refinement.coarse_carrier_hz.0, 0.0);
+        assert!((refinement.offset_bins - 0.136_363_636_4).abs() < 1.0e-6);
+        assert!((refinement.offset_hz - 34.090_909_1).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn parabolic_refinement_skips_search_edge_candidates() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        let candidates = vec![
+            candidate_for_search_window_test(sat, 0.0, 16.0),
+            candidate_for_search_window_test(sat, 250.0, 12.0),
+        ];
+
+        let refinement = estimate_acquisition_doppler_refinement(0.0, &candidates, 250);
+
+        assert!(refinement.is_none());
+    }
+
+    #[test]
     fn acquisition_stability_keys_are_sorted() {
         let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 1 };
         let mut rows = vec![
@@ -978,6 +1083,7 @@ mod tests {
                 evidence: Vec::new(),
                 threshold_provenance: None,
                 explain_selection_reason: None,
+                doppler_refinement: None,
             },
             AcqResult {
                 sat,
@@ -996,6 +1102,7 @@ mod tests {
                 evidence: Vec::new(),
                 threshold_provenance: None,
                 explain_selection_reason: None,
+                doppler_refinement: None,
             },
         ];
         rows.sort_by(|a, b| {
@@ -1207,6 +1314,7 @@ mod tests {
             evidence: Vec::new(),
             threshold_provenance: None,
             explain_selection_reason: None,
+            doppler_refinement: None,
         }
     }
 }

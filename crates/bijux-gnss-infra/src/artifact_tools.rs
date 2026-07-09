@@ -345,6 +345,7 @@ mod tests {
                 evidence: Vec::new(),
                 threshold_provenance: None,
                 explain_selection_reason: Some("accepted_peak".to_string()),
+                doppler_refinement: None,
             },
         };
         fs::write(&path, serde_json::to_string(&wrapped).expect("serialize")).expect("write");

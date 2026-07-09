@@ -346,6 +346,17 @@ pub struct AcqEvidence {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcqDopplerRefinement {
+    pub method: String,
+    pub coarse_carrier_hz: Hertz,
+    pub offset_hz: f64,
+    pub offset_bins: f64,
+    pub left_peak: f32,
+    pub center_peak: f32,
+    pub right_peak: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcqResult {
     pub sat: SatId,
     #[serde(default)]
@@ -370,6 +381,8 @@ pub struct AcqResult {
     pub threshold_provenance: Option<AcqThresholdProvenance>,
     #[serde(default)]
     pub explain_selection_reason: Option<String>,
+    #[serde(default)]
+    pub doppler_refinement: Option<AcqDopplerRefinement>,
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -397,8 +410,18 @@ impl AcqSearchSummary {
 }
 
 pub fn acq_result_stability_key(result: &AcqResult) -> String {
+    let refinement_key = result
+        .doppler_refinement
+        .as_ref()
+        .map(|refinement| {
+            format!(
+                "|{}|{:.3}|{:.6}",
+                refinement.method, refinement.coarse_carrier_hz.0, refinement.offset_bins
+            )
+        })
+        .unwrap_or_default();
     format!(
-        "{:?}-{:02}|{:.3}|{}|{:.6}|{:.6}|{:.6}|{}",
+        "{:?}-{:02}|{:.3}|{}|{:.6}|{:.6}|{:.6}|{}{}",
         result.sat.constellation,
         result.sat.prn,
         result.carrier_hz.0,
@@ -406,7 +429,8 @@ pub fn acq_result_stability_key(result: &AcqResult) -> String {
         result.peak_mean_ratio,
         result.peak_second_ratio,
         result.score,
-        result.hypothesis
+        result.hypothesis,
+        refinement_key,
     )
 }
 
@@ -1156,6 +1180,7 @@ mod tests {
             evidence: Vec::new(),
             threshold_provenance: None,
             explain_selection_reason: None,
+            doppler_refinement: None,
         }
     }
 }

@@ -158,6 +158,21 @@ pub mod v1 {
                         "acquisition result contains NaN/Inf",
                     ));
                 }
+                if let Some(refinement) = &self.doppler_refinement {
+                    if !refinement.coarse_carrier_hz.0.is_finite()
+                        || !refinement.offset_hz.is_finite()
+                        || !refinement.offset_bins.is_finite()
+                        || !refinement.left_peak.is_finite()
+                        || !refinement.center_peak.is_finite()
+                        || !refinement.right_peak.is_finite()
+                    {
+                        events.push(DiagnosticEvent::new(
+                            DiagnosticSeverity::Error,
+                            "GNSS_NUMERIC_ACQ_REFINEMENT_INVALID",
+                            "acquisition refinement contains NaN/Inf",
+                        ));
+                    }
+                }
                 events.extend(validate_receiver_sample_trace(
                     self.source_time,
                     "acquisition",
