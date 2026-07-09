@@ -218,14 +218,6 @@ impl Acquisition {
         );
         let total_ms = (coherent_ms * noncoherent).max(1) as usize;
         let required = samples_per_code * total_ms;
-        if frame.len() < required {
-            return AcquisitionRun { results: Vec::new(), explains: Vec::new() };
-        }
-
-        let mut planner = FftPlanner::<f32>::new();
-        let fft = planner.plan_fft_forward(samples_per_code);
-        let ifft = planner.plan_fft_inverse(samples_per_code);
-
         let assumptions = AcqAssumptions {
             doppler_search_hz: self.doppler_search_hz,
             doppler_step_hz: self.doppler_step_hz,
@@ -246,6 +238,34 @@ impl Acquisition {
             peak_mean_threshold: self.config.acquisition_peak_mean_threshold,
             peak_second_threshold: self.config.acquisition_peak_second_threshold,
         };
+        if frame.len() < required {
+            self.runtime.trace.record(TraceRecord {
+                name: "acquisition_input_rejection",
+                fields: vec![
+                    ("reason", "insufficient_frame".to_string()),
+                    ("available_samples", frame.len().to_string()),
+                    ("required_samples", required.to_string()),
+                    ("sat_count", sats.len().to_string()),
+                ],
+            });
+            self.with_stats(|stats| {
+                stats.deferred_count = stats.deferred_count.saturating_add(sats.len() as u64);
+            });
+            return insufficient_frame_run(
+                sats,
+                &assumptions,
+                &threshold_provenance,
+                self.config.intermediate_freq_hz,
+                ReceiverSampleTrace::from_sample_time(frame.t0),
+                frame.len(),
+                required,
+                emit_explanations,
+            );
+        }
+
+        let mut planner = FftPlanner::<f32>::new();
+        let fft = planner.plan_fft_forward(samples_per_code);
+        let ifft = planner.plan_fft_inverse(samples_per_code);
 
         self.with_stats(|stats| {
             stats.sat_count += sats.len() as u64;
@@ -726,11 +746,79 @@ fn zero_signal_run(
     AcquisitionRun { results, explains }
 }
 
+fn insufficient_frame_run(
+    sats: &[SatId],
+    assumptions: &AcqAssumptions,
+    threshold_provenance: &AcqThresholdProvenance,
+    intermediate_freq_hz: f64,
+    source_time: ReceiverSampleTrace,
+    available_samples: usize,
+    required_samples: usize,
+    emit_explanations: bool,
+) -> AcquisitionRun {
+    let candidate_reason =
+        insufficient_frame_candidate_reason(available_samples, required_samples);
+    let mut results = Vec::with_capacity(sats.len());
+    let mut explains = Vec::new();
+
+    for &sat in sats {
+        let result = AcqResult {
+            sat,
+            source_time,
+            carrier_hz: Hertz(intermediate_freq_hz),
+            code_phase_samples: 0,
+            peak: 0.0,
+            second_peak: 0.0,
+            mean: 0.0,
+            peak_mean_ratio: 0.0,
+            peak_second_ratio: 0.0,
+            cn0_proxy: 0.0,
+            score: 0.0,
+            hypothesis: AcqHypothesis::Deferred,
+            assumptions: Some(assumptions.clone()),
+            evidence: Vec::new(),
+            threshold_provenance: Some(threshold_provenance.clone()),
+            explain_selection_reason: Some(candidate_reason.clone()),
+        };
+        if emit_explanations {
+            explains.push(AcqExplain {
+                sat,
+                selected_rank: Some(1),
+                selected_reason: "insufficient_frame".to_string(),
+                candidate_count: 1,
+                candidates: vec![AcqExplainCandidate {
+                    rank: 1,
+                    code_phase_samples: 0,
+                    carrier_hz: intermediate_freq_hz,
+                    peak: 0.0,
+                    peak_mean_ratio: 0.0,
+                    peak_second_ratio: 0.0,
+                    second_peak_ratio: 0.0,
+                    mean: 0.0,
+                    hypothesis: AcqHypothesis::Deferred,
+                    score: 0.0,
+                    threshold_hit: false,
+                    reason: candidate_reason.clone(),
+                }],
+            });
+        }
+        results.push(vec![result]);
+    }
+
+    AcquisitionRun { results, explains }
+}
+
 fn zero_signal_candidate_reason(zero_signal_reason: Option<&str>) -> String {
     match zero_signal_reason {
         Some(reason) => format!("zero_signal_input: {reason}"),
         None => "zero_signal_input".to_string(),
     }
+}
+
+fn insufficient_frame_candidate_reason(available_samples: usize, required_samples: usize) -> String {
+    format!(
+        "insufficient_frame: acquisition requires {required_samples} samples but received {available_samples}"
+    )
 }
 
 fn signal_outside_search_range(
@@ -832,6 +920,7 @@ fn acquisition_hypothesis(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds};
 
     #[test]
     fn acquisition_hypothesis_rejects_weak_primary_peak() {
@@ -1037,6 +1126,52 @@ mod tests {
             diagnostic.interior_carrier_hz,
             carrier_hz_from_doppler_hz(intermediate_freq_hz, 1_250.0)
         );
+    }
+
+    #[test]
+    fn run_fft_returns_deferred_result_for_each_satellite_when_frame_is_too_short() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            acquisition_integration_ms: 2,
+            acquisition_noncoherent: 1,
+            ..ReceiverPipelineConfig::default()
+        };
+        let samples_per_code =
+            samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
+        let frame = SamplesFrame::new(
+            SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
+            Seconds(1.0 / config.sampling_freq_hz),
+            vec![Complex::zero(); samples_per_code],
+        );
+        let sats = vec![
+            SatId { constellation: Constellation::Gps, prn: 3 },
+            SatId { constellation: Constellation::Gps, prn: 7 },
+        ];
+        let acquisition = Acquisition::new(config, ReceiverRuntime::default());
+
+        let run = acquisition.run_fft_topn_with_explain(&frame, &sats, 1, 2, 1);
+
+        assert_eq!(run.results.len(), sats.len());
+        assert_eq!(run.explains.len(), sats.len());
+        for (idx, sat) in sats.iter().enumerate() {
+            let result = run.results[idx].first().expect("placeholder result");
+            assert_eq!(result.sat, *sat);
+            assert_eq!(result.hypothesis.to_string(), AcqHypothesis::Deferred.to_string());
+            assert_eq!(result.code_phase_samples, 0);
+            assert_eq!(result.peak_mean_ratio, 0.0);
+            assert_eq!(
+                result.explain_selection_reason.as_deref(),
+                Some("insufficient_frame: acquisition requires 8184 samples but received 4092"),
+            );
+
+            let explain = &run.explains[idx];
+            assert_eq!(explain.sat, *sat);
+            assert_eq!(explain.selected_reason, "insufficient_frame");
+            assert_eq!(explain.candidate_count, 1);
+        }
     }
 
     fn candidate_for_search_window_test(
