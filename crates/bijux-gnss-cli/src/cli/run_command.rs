@@ -355,6 +355,177 @@ mod inspect_dataset_tests {
     }
 }
 
+#[cfg(test)]
+mod nav_trace_tests {
+    use super::*;
+    use bijux_gnss_infra::api::core::{
+        ArtifactPayloadValidate, Constellation, Epoch, LockFlags, Meters, NavLifecycleState,
+        NavUncertaintyClass, ObservationEpochDecision, ObservationStatus, ObsEpochManifest,
+        ObsMetadata, ObsSatellite, ReceiverRole, ReceiverSampleTrace, Seconds, SigId, SignalBand,
+        SignalCode, SolutionStatus, SolutionValidity, signal_spec_gps_l1_ca,
+    };
+
+    fn sample_obs_epoch(with_manifest: bool) -> ObsEpoch {
+        let source_time = ReceiverSampleTrace::from_sample_index(4_092_000, 4_092_000.0);
+        let mut epoch = ObsEpoch {
+            t_rx_s: Seconds(1.0),
+            source_time,
+            gps_week: Some(2000),
+            tow_s: Some(Seconds(1.0)),
+            epoch_idx: 7,
+            discontinuity: false,
+            valid: true,
+            processing_ms: None,
+            role: ReceiverRole::Rover,
+            sats: vec![ObsSatellite {
+                signal_id: SigId {
+                    sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                    band: SignalBand::L1,
+                    code: SignalCode::Ca,
+                },
+                pseudorange_m: Meters(20_200_000.0),
+                pseudorange_var_m2: 25.0,
+                carrier_phase_cycles: bijux_gnss_infra::api::core::Cycles(12_345.0),
+                carrier_phase_var_cycles2: 1.0,
+                doppler_hz: bijux_gnss_infra::api::core::Hertz(-1_250.0),
+                doppler_var_hz2: 4.0,
+                cn0_dbhz: 42.5,
+                lock_flags: LockFlags {
+                    code_lock: true,
+                    carrier_lock: true,
+                    bit_lock: true,
+                    cycle_slip: false,
+                },
+                multipath_suspect: false,
+                observation_status: ObservationStatus::Accepted,
+                observation_reject_reasons: Vec::new(),
+                elevation_deg: Some(45.0),
+                azimuth_deg: Some(120.0),
+                weight: None,
+                error_model: None,
+                metadata: ObsMetadata {
+                    signal: signal_spec_gps_l1_ca(),
+                    tracking_mode: "test".to_string(),
+                    integration_ms: 20,
+                    lock_quality: 1.0,
+                    smoothing_window: 0,
+                    smoothing_age: 0,
+                    smoothing_resets: 0,
+                    time_tag_source: "receiver_sample_index".to_string(),
+                    time_tag_sample_index: source_time.sample_index,
+                    time_tag_sample_rate_hz: source_time.sample_rate_hz,
+                    ..ObsMetadata::default()
+                },
+            }],
+            decision: ObservationEpochDecision::Accepted,
+            decision_reason: Some("accepted_observables_present".to_string()),
+            manifest: None,
+        };
+        if with_manifest {
+            epoch.manifest = Some(ObsEpochManifest {
+                version: bijux_gnss_infra::api::core::OBSERVATION_MODEL_VERSION,
+                artifact_id: "obs-epoch-0000000007".to_string(),
+                epoch_id: "epoch-0000000007-sample-000004092000".to_string(),
+                source_epoch_idx: epoch.epoch_idx,
+                source_sample_index: source_time.sample_index,
+                source_time,
+                decision: ObservationEpochDecision::Accepted,
+                downstream_profile_version:
+                    bijux_gnss_infra::api::core::OBSERVATION_DOWNSTREAM_PROFILE_VERSION,
+            });
+        }
+        epoch
+    }
+
+    fn sample_nav_solution(obs: &ObsEpoch) -> NavSolutionEpoch {
+        NavSolutionEpoch {
+            epoch: Epoch { index: obs.epoch_idx },
+            t_rx_s: obs.t_rx_s,
+            source_time: obs.source_time,
+            ecef_x_m: Meters(1.0),
+            ecef_y_m: Meters(2.0),
+            ecef_z_m: Meters(3.0),
+            latitude_deg: 0.0,
+            longitude_deg: 0.0,
+            altitude_m: Meters(4.0),
+            clock_bias_s: Seconds(0.0),
+            clock_drift_s_per_s: 0.0,
+            pdop: 1.5,
+            rms_m: Meters(2.0),
+            status: SolutionStatus::Float,
+            quality: SolutionStatus::Float.quality_flag(),
+            validity: SolutionValidity::Converging,
+            valid: true,
+            processing_ms: None,
+            residuals: Vec::new(),
+            health: Vec::new(),
+            isb: Vec::new(),
+            sigma_h_m: None,
+            sigma_v_m: None,
+            innovation_rms_m: None,
+            normalized_innovation_rms: None,
+            normalized_innovation_max: None,
+            ekf_innovation_rms: None,
+            ekf_condition_number: None,
+            ekf_whiteness_ratio: None,
+            ekf_predicted_variance: None,
+            ekf_observed_variance: None,
+            integrity_hpl_m: None,
+            integrity_vpl_m: None,
+            model_version: bijux_gnss_infra::api::core::NAV_SOLUTION_MODEL_VERSION,
+            lifecycle_state: NavLifecycleState::Float,
+            uncertainty_class: NavUncertaintyClass::Medium,
+            assumptions: None,
+            refusal_class: None,
+            artifact_id: String::new(),
+            source_observation_epoch_id: String::new(),
+            explain_decision: "cli_navigation_solution".to_string(),
+            explain_reasons: vec!["usable_satellites=4".to_string()],
+            provenance: None,
+            sat_count: 4,
+            used_sat_count: 4,
+            rejected_sat_count: 0,
+            hdop: None,
+            vdop: None,
+            gdop: None,
+            stability_signature: String::new(),
+            stability_signature_version:
+                bijux_gnss_infra::api::core::NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
+        }
+    }
+
+    #[test]
+    fn cli_nav_trace_identity_uses_observation_manifest() {
+        let obs = sample_obs_epoch(true);
+        let mut solution = sample_nav_solution(&obs);
+
+        populate_cli_nav_solution_trace_identity(&obs, &mut solution);
+
+        assert_eq!(
+            solution.source_observation_epoch_id,
+            "epoch-0000000007-sample-000004092000"
+        );
+        assert_eq!(solution.artifact_id, "nav-epoch-0000000007-epoch-0000000007");
+        assert!(solution.stability_signature.starts_with("navsig:v1:"));
+        assert!(solution.validate_payload().is_empty());
+    }
+
+    #[test]
+    fn cli_nav_trace_identity_falls_back_to_observation_stability_key() {
+        let obs = sample_obs_epoch(false);
+        let mut solution = sample_nav_solution(&obs);
+
+        populate_cli_nav_solution_trace_identity(&obs, &mut solution);
+
+        assert_eq!(
+            solution.source_observation_epoch_id,
+            bijux_gnss_infra::api::core::obs_epoch_stability_key(&obs)
+        );
+        assert!(solution.artifact_id.starts_with("nav-epoch-0000000007-"));
+        assert!(solution.stability_signature.contains("src="));
+    }
+}
+
 fn solve_epoch_ekf(
     ctx: &mut Option<EkfContext>,
     obs: &ObsEpoch,
@@ -474,7 +645,7 @@ fn solve_epoch_ekf(
     } else {
         bijux_gnss_infra::api::core::SolutionStatus::Float
     };
-    Ok(Some(bijux_gnss_infra::api::core::NavSolutionEpoch {
+    let mut solution = bijux_gnss_infra::api::core::NavSolutionEpoch {
         epoch: bijux_gnss_infra::api::core::Epoch { index: obs.epoch_idx },
         t_rx_s: obs.t_rx_s,
         source_time: obs.source_time,
@@ -559,7 +730,49 @@ fn solve_epoch_ekf(
         stability_signature: String::new(),
         stability_signature_version:
             bijux_gnss_infra::api::core::NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
-    }))
+    };
+    populate_cli_nav_solution_trace_identity(obs, &mut solution);
+    Ok(Some(solution))
+}
+
+fn populate_cli_nav_solution_trace_identity(
+    obs: &ObsEpoch,
+    solution: &mut bijux_gnss_infra::api::core::NavSolutionEpoch,
+) {
+    let source_observation_epoch_id = obs
+        .manifest
+        .as_ref()
+        .map(|manifest| manifest.epoch_id.clone())
+        .unwrap_or_else(|| bijux_gnss_infra::api::core::obs_epoch_stability_key(obs));
+    solution.source_observation_epoch_id = source_observation_epoch_id.clone();
+    solution.artifact_id =
+        format!("nav-epoch-{:010}-{}", solution.epoch.index, cli_nav_trace_short_id(&source_observation_epoch_id));
+    solution.stability_signature = cli_nav_output_stability_signature(solution);
+}
+
+fn cli_nav_output_stability_signature(
+    solution: &bijux_gnss_infra::api::core::NavSolutionEpoch,
+) -> String {
+    format!(
+        "navsig:v{}:epoch={}:src={}@{}:status={:?}:lifecycle={:?}:valid={}:sat={}:used={}:rej={}:pdop={:.3}:rms={:.3}:decision={}",
+        bijux_gnss_infra::api::core::NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
+        solution.epoch.index,
+        cli_nav_trace_short_id(&solution.source_observation_epoch_id),
+        solution.source_time.sample_index,
+        solution.status,
+        solution.lifecycle_state,
+        solution.valid,
+        solution.sat_count,
+        solution.used_sat_count,
+        solution.rejected_sat_count,
+        solution.pdop,
+        solution.rms_m.0,
+        solution.explain_decision
+    )
+}
+
+fn cli_nav_trace_short_id(value: &str) -> String {
+    value.chars().take(16).collect()
 }
 
 #[cfg(feature = "tracing")]
