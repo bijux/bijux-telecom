@@ -13,12 +13,14 @@
     "quantization_bits",
     "duration_s",
     "sample_count",
+    "noise_std_per_component",
+    "noise_power_per_complex_sample",
     "peak_component_before_scaling",
     "output_scale_applied",
     "satellites"
   ],
   "properties": {
-    "schema_version": { "type": "integer", "minimum": 1 },
+    "schema_version": { "type": "integer", "minimum": 2 },
     "scenario_id": { "type": "string", "minLength": 1 },
     "seed": { "type": "integer", "minimum": 0 },
     "sample_format": { "type": "string", "enum": ["iq16_le", "iq8", "cf32_le"] },
@@ -28,6 +30,8 @@
     "quantization_bits": { "type": "integer", "minimum": 1 },
     "duration_s": { "type": "number", "minimum": 0 },
     "sample_count": { "type": "integer", "minimum": 0 },
+    "noise_std_per_component": { "type": "number", "exclusiveMinimum": 0 },
+    "noise_power_per_complex_sample": { "type": "number", "exclusiveMinimum": 0 },
     "peak_component_before_scaling": { "type": "number", "minimum": 0 },
     "output_scale_applied": { "type": "number", "exclusiveMinimum": 0 },
     "satellites": {
@@ -40,6 +44,7 @@
           "code_phase_chips",
           "carrier_phase_rad",
           "cn0_db_hz",
+          "signal_amplitude",
           "nav_bit_mode",
           "nav_bit_segments"
         ],
@@ -56,6 +61,7 @@
           "code_phase_chips": { "type": "number" },
           "carrier_phase_rad": { "type": "number" },
           "cn0_db_hz": { "type": "number" },
+          "signal_amplitude": { "type": "number", "exclusiveMinimum": 0 },
           "nav_bit_mode": {
             "type": "string",
             "enum": ["constant_positive", "alternating_gps_lnav20ms"]

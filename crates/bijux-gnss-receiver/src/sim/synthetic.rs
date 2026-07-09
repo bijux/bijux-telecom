@@ -4,17 +4,23 @@ use std::f32::consts::TAU;
 
 use num_complex::Complex;
 
-use bijux_gnss_core::api::{Constellation, SampleClock, SampleTime, SamplesFrame, SatId, Seconds};
+use bijux_gnss_core::api::{
+    Constellation, SampleClock, SampleTime, SamplesFrame, SatId, Seconds, SignalBand,
+};
 use bijux_gnss_signal::api::SignalSource;
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::io::data::SampleSourceError;
 use bijux_gnss_nav::api::GpsEphemeris;
-use bijux_gnss_signal::api::{generate_ca_code, IqSampleFormat, Prn, RawIqMetadata};
+use bijux_gnss_signal::api::{
+    generate_ca_code, samples_per_code, IqSampleFormat, Prn, RawIqMetadata,
+};
 use serde::{Deserialize, Serialize};
 
-const SYNTHETIC_IQ_TRUTH_SCHEMA_VERSION: u32 = 1;
+const SYNTHETIC_IQ_TRUTH_SCHEMA_VERSION: u32 = 2;
 const GPS_L1_CA_NAV_BIT_PERIOD_S: f64 = 0.02;
+const SYNTHETIC_COMPLEX_NOISE_POWER: f64 = 1.0;
+const SYNTHETIC_NOISE_STD_PER_COMPONENT: f32 = std::f32::consts::FRAC_1_SQRT_2;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct SyntheticSignalParams {
@@ -77,6 +83,8 @@ pub struct SyntheticSatelliteTruth {
     pub carrier_phase_rad: f64,
     /// Injected carrier-to-noise density ratio in dB-Hz.
     pub cn0_db_hz: f32,
+    /// Complex sample amplitude before additive noise and output scaling.
+    pub signal_amplitude: f32,
     /// Deterministic navigation-bit model used for this signal.
     pub nav_bit_mode: SyntheticNavBitMode,
     /// Sample-aligned navigation-bit truth intervals.
@@ -106,6 +114,10 @@ pub struct SyntheticIqTruthBundle {
     pub duration_s: f64,
     /// Total complex samples emitted into the file.
     pub sample_count: usize,
+    /// Gaussian noise standard deviation applied to each I/Q component.
+    pub noise_std_per_component: f32,
+    /// Total noise power per complex sample before quantization.
+    pub noise_power_per_complex_sample: f32,
     /// Peak absolute I/Q component before output scaling.
     pub peak_component_before_scaling: f32,
     /// Scale factor applied before quantization.
@@ -123,6 +135,58 @@ pub struct SyntheticIqCaptureBundle {
     pub metadata: RawIqMetadata,
     /// Machine-readable truth for the emitted capture.
     pub truth: SyntheticIqTruthBundle,
+}
+
+/// Per-satellite C/N0 comparison between synthetic truth and receiver measurement.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticCn0ValidationSatellite {
+    /// Satellite identifier.
+    pub sat: SatId,
+    /// Injected carrier-to-noise density ratio in dB-Hz.
+    pub injected_cn0_db_hz: f32,
+    /// Mean truth-guided receiver estimate across measured epochs.
+    pub measured_mean_cn0_dbhz: f64,
+    /// Minimum truth-guided receiver estimate across measured epochs.
+    pub measured_min_cn0_dbhz: f64,
+    /// Maximum truth-guided receiver estimate across measured epochs.
+    pub measured_max_cn0_dbhz: f64,
+    /// Mean estimate minus injected truth, in dB-Hz.
+    pub cn0_delta_db: f64,
+    /// Injected complex amplitude before additive noise and output scaling.
+    pub signal_amplitude: f32,
+    /// Injected complex amplitude after the export scaling factor is applied.
+    pub output_signal_amplitude: f32,
+    /// Count of coherent epochs measured for this satellite.
+    pub epochs_measured: usize,
+    /// Whether the measured mean stayed within the requested tolerance.
+    pub pass: bool,
+}
+
+/// Truth-guided C/N0 validation report for an exported synthetic IQ capture.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticCn0ValidationReport {
+    /// Stable scenario identifier for this capture.
+    pub scenario_id: String,
+    /// Allowed absolute C/N0 error in dB-Hz.
+    pub tolerance_db_hz: f64,
+    /// Capture sample rate in Hz.
+    pub sample_rate_hz: f64,
+    /// Number of samples used per coherent receiver estimate.
+    pub coherent_samples_per_epoch: usize,
+    /// Coherent integration interval in seconds.
+    pub coherent_integration_s: f64,
+    /// Quantization depth declared in the truth bundle.
+    pub quantization_bits: u8,
+    /// Gaussian noise standard deviation applied to each I/Q component.
+    pub noise_std_per_component: f32,
+    /// Total noise power per complex sample before quantization.
+    pub noise_power_per_complex_sample: f32,
+    /// Scale factor applied before quantization.
+    pub output_scale_applied: f32,
+    /// Whether every measured satellite passed the requested tolerance.
+    pub pass: bool,
+    /// Per-satellite comparison rows.
+    pub satellites: Vec<SyntheticCn0ValidationSatellite>,
 }
 
 /// Build a machine-readable truth bundle for an emitted synthetic capture.
@@ -145,6 +209,8 @@ pub fn build_truth_bundle(
         quantization_bits: metadata.quantization_bits.unwrap_or_default(),
         duration_s: frame.len() as f64 * frame.dt_s.0,
         sample_count: frame.len(),
+        noise_std_per_component: SYNTHETIC_NOISE_STD_PER_COMPONENT,
+        noise_power_per_complex_sample: SYNTHETIC_COMPLEX_NOISE_POWER as f32,
         peak_component_before_scaling,
         output_scale_applied,
         satellites: scenario
@@ -156,6 +222,10 @@ pub fn build_truth_bundle(
                 code_phase_chips: params.code_phase_chips,
                 carrier_phase_rad: params.carrier_phase_rad,
                 cn0_db_hz: params.cn0_db_hz,
+                signal_amplitude: signal_amplitude_from_cn0(
+                    params.cn0_db_hz,
+                    frame.t0.sample_rate_hz,
+                ),
                 nav_bit_mode: nav_bit_mode(params),
                 nav_bit_segments: nav_bit_segments(
                     frame.t0.sample_rate_hz,
@@ -202,6 +272,111 @@ pub fn build_iq16_capture_bundle(
     SyntheticIqCaptureBundle { raw_iq_bytes, metadata, truth }
 }
 
+/// Measure truth-guided C/N0 directly from a synthetic capture using receiver correlators.
+pub fn validate_truth_guided_cn0(
+    config: &ReceiverPipelineConfig,
+    frame: &SamplesFrame,
+    truth: &SyntheticIqTruthBundle,
+    tolerance_db_hz: f64,
+) -> SyntheticCn0ValidationReport {
+    let coherent_samples_per_epoch =
+        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length)
+            .min(frame.len());
+    let coherent_integration_s = coherent_samples_per_epoch as f64 * frame.dt_s.0;
+    let tracking = crate::pipeline::tracking::Tracking::new(
+        config.clone(),
+        crate::engine::runtime::ReceiverRuntime::default(),
+    );
+    let early_late_spacing_chips = config.tracking_params(SignalBand::L1).early_late_spacing_chips;
+    let measured_epochs =
+        if coherent_samples_per_epoch == 0 { 0 } else { frame.len() / coherent_samples_per_epoch };
+    let satellites = truth
+        .satellites
+        .iter()
+        .map(|sat_truth| {
+            let isolated_frame =
+                regenerate_isolated_scaled_satellite_frame(config, frame, truth, sat_truth);
+            let mut cn0_values = Vec::with_capacity(measured_epochs);
+            for epoch_index in 0..measured_epochs {
+                let start = epoch_index * coherent_samples_per_epoch;
+                let end = start + coherent_samples_per_epoch;
+                let epoch_frame = SamplesFrame::new(
+                    SampleTime {
+                        sample_index: isolated_frame.t0.sample_index + start as u64,
+                        sample_rate_hz: isolated_frame.t0.sample_rate_hz,
+                    },
+                    isolated_frame.dt_s,
+                    isolated_frame.iq[start..end].to_vec(),
+                );
+                let code_phase_samples = code_phase_samples_at_epoch_start(
+                    config,
+                    &epoch_frame,
+                    sat_truth.code_phase_chips,
+                );
+                let carrier_hz = synthetic_carrier_hz(
+                    truth.intermediate_freq_hz,
+                    sat_truth.sat,
+                    sat_truth.doppler_hz,
+                );
+                let (track_epoch, _) = tracking.track_epoch(
+                    &epoch_frame,
+                    0,
+                    sat_truth.sat,
+                    carrier_hz,
+                    code_phase_samples,
+                    early_late_spacing_chips,
+                );
+                let prompt = Complex::new(track_epoch.prompt_i, track_epoch.prompt_q);
+                cn0_values.push(measure_cn0_from_prompt_with_known_noise(
+                    prompt,
+                    truth.output_scale_applied,
+                    truth.noise_power_per_complex_sample as f64,
+                    frame.t0.sample_rate_hz,
+                    coherent_samples_per_epoch as f64,
+                ));
+            }
+
+            let measured_mean_cn0_dbhz = if cn0_values.is_empty() {
+                0.0
+            } else {
+                cn0_values.iter().sum::<f64>() / cn0_values.len() as f64
+            };
+            let measured_min_cn0_dbhz = cn0_values.iter().copied().reduce(f64::min).unwrap_or(0.0);
+            let measured_max_cn0_dbhz = cn0_values.iter().copied().reduce(f64::max).unwrap_or(0.0);
+            let cn0_delta_db = measured_mean_cn0_dbhz - sat_truth.cn0_db_hz as f64;
+            let pass = !cn0_values.is_empty() && cn0_delta_db.abs() <= tolerance_db_hz;
+
+            SyntheticCn0ValidationSatellite {
+                sat: sat_truth.sat,
+                injected_cn0_db_hz: sat_truth.cn0_db_hz,
+                measured_mean_cn0_dbhz,
+                measured_min_cn0_dbhz,
+                measured_max_cn0_dbhz,
+                cn0_delta_db,
+                signal_amplitude: sat_truth.signal_amplitude,
+                output_signal_amplitude: sat_truth.signal_amplitude * truth.output_scale_applied,
+                epochs_measured: cn0_values.len(),
+                pass,
+            }
+        })
+        .collect::<Vec<_>>();
+    let pass = !satellites.is_empty() && satellites.iter().all(|row| row.pass);
+
+    SyntheticCn0ValidationReport {
+        scenario_id: truth.scenario_id.clone(),
+        tolerance_db_hz,
+        sample_rate_hz: truth.sample_rate_hz,
+        coherent_samples_per_epoch,
+        coherent_integration_s,
+        quantization_bits: truth.quantization_bits,
+        noise_std_per_component: truth.noise_std_per_component,
+        noise_power_per_complex_sample: truth.noise_power_per_complex_sample,
+        output_scale_applied: truth.output_scale_applied,
+        pass,
+        satellites,
+    }
+}
+
 /// Generate a synthetic GPS L1 C/A signal at the receiver sample rate.
 ///
 /// The C/N0 control is approximate and intended for test harnesses.
@@ -229,38 +404,19 @@ pub fn generate_l1_ca_multi(
     config: &ReceiverPipelineConfig,
     scenario: &SyntheticScenario,
 ) -> SamplesFrame {
+    let signal_only = generate_l1_ca_multi_signal_only(config, scenario);
     let clock = SampleClock::new(config.sampling_freq_hz);
     let dt_s = clock.dt_s();
-    let sample_count = (scenario.duration_s * config.sampling_freq_hz).round() as usize;
-
-    let max_cn0 = scenario.satellites.iter().map(|s| s.cn0_db_hz).fold(0.0_f32, f32::max);
-    let snr_db = max_cn0 - 30.0;
-    let snr_linear = 10.0f32.powf(snr_db / 10.0).max(1e-6);
-    let noise_std = 1.0f32 / snr_linear.sqrt();
-
+    let noise_std = SYNTHETIC_NOISE_STD_PER_COMPONENT;
     let mut rng = XorShift64::new(scenario.seed);
-    let mut iq = Vec::with_capacity(sample_count);
-
-    let sat_states: Vec<SatState> =
-        scenario.satellites.iter().map(|sat| SatState::new(config, *sat)).collect();
-
-    for n in 0..sample_count {
-        let t = n as f64 * dt_s;
-        let mut sample = Complex::new(0.0f32, 0.0f32);
-        for sat in &sat_states {
-            sample += sat.sample_at(t);
-        }
-
+    let mut iq = Vec::with_capacity(signal_only.len());
+    for sample in signal_only.iq {
         let noise_i = rng.next_gaussian() * noise_std;
         let noise_q = rng.next_gaussian() * noise_std;
         let noise = Complex::new(noise_i, noise_q);
-
         iq.push(sample + noise);
     }
-
-    let t0 = SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz };
-
-    SamplesFrame::new(t0, Seconds(dt_s), iq)
+    SamplesFrame::new(signal_only.t0, Seconds(dt_s), iq)
 }
 
 /// Streaming synthetic GPS L1 C/A signal source for long-duration receiver tests.
@@ -274,14 +430,33 @@ pub struct SyntheticSignalSource {
     rng: XorShift64,
 }
 
+fn generate_l1_ca_multi_signal_only(
+    config: &ReceiverPipelineConfig,
+    scenario: &SyntheticScenario,
+) -> SamplesFrame {
+    let clock = SampleClock::new(config.sampling_freq_hz);
+    let dt_s = clock.dt_s();
+    let sample_count = (scenario.duration_s * config.sampling_freq_hz).round() as usize;
+    let sat_states: Vec<SatState> =
+        scenario.satellites.iter().map(|sat| SatState::new(config, *sat)).collect();
+    let mut iq = Vec::with_capacity(sample_count);
+    for n in 0..sample_count {
+        let t = n as f64 * dt_s;
+        let mut sample = Complex::new(0.0f32, 0.0f32);
+        for sat in &sat_states {
+            sample += sat.sample_at(t);
+        }
+        iq.push(sample);
+    }
+    let t0 = SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz };
+    SamplesFrame::new(t0, Seconds(dt_s), iq)
+}
+
 impl SyntheticSignalSource {
     /// Build a streaming synthetic source from a scenario without materializing the full capture.
     pub fn new(config: &ReceiverPipelineConfig, scenario: &SyntheticScenario) -> Self {
         let sample_count = (scenario.duration_s * config.sampling_freq_hz).round() as usize;
-        let max_cn0 = scenario.satellites.iter().map(|s| s.cn0_db_hz).fold(0.0_f32, f32::max);
-        let snr_db = max_cn0 - 30.0;
-        let snr_linear = 10.0f32.powf(snr_db / 10.0).max(1e-6);
-        let noise_std = 1.0f32 / snr_linear.sqrt();
+        let noise_std = SYNTHETIC_NOISE_STD_PER_COMPONENT;
 
         Self {
             sample_rate_hz: config.sampling_freq_hz,
@@ -289,11 +464,7 @@ impl SyntheticSignalSource {
             remaining_samples: sample_count,
             next_sample_index: 0,
             noise_std,
-            sat_states: scenario
-                .satellites
-                .iter()
-                .map(|sat| SatState::new(config, *sat))
-                .collect(),
+            sat_states: scenario.satellites.iter().map(|sat| SatState::new(config, *sat)).collect(),
             rng: XorShift64::new(scenario.seed),
         }
     }
@@ -346,16 +517,11 @@ struct SatState {
     code: Vec<i8>,
     code_rate_hz: f64,
     if_hz: f64,
+    sample_rate_hz: f64,
 }
 
 impl SatState {
     fn new(config: &ReceiverPipelineConfig, params: SyntheticSignalParams) -> Self {
-        let carrier = match params.sat.constellation {
-            Constellation::Galileo => bijux_gnss_core::api::GALILEO_E1_CARRIER_HZ.value(),
-            Constellation::Gps => bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value(),
-            Constellation::Glonass => bijux_gnss_core::api::GLONASS_L1_CARRIER_HZ.value(),
-            _ => bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value(),
-        };
         Self {
             doppler_hz: params.doppler_hz,
             code_phase_chips: params.code_phase_chips,
@@ -364,8 +530,8 @@ impl SatState {
             data_bit_flip: params.data_bit_flip,
             code: generate_ca_code(Prn(params.sat.prn)).unwrap_or_else(|_| vec![1; 1023]),
             code_rate_hz: config.code_freq_basis_hz,
-            if_hz: config.intermediate_freq_hz
-                + (carrier - bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value()),
+            if_hz: synthetic_intermediate_frequency_hz(config.intermediate_freq_hz, params.sat),
+            sample_rate_hz: config.sampling_freq_hz,
         }
     }
 
@@ -389,11 +555,97 @@ impl SatState {
         let phase = self.carrier_phase_rad as f32 + TAU * (carrier_hz as f32) * (t as f32);
         let carrier = Complex::new(phase.cos(), phase.sin());
 
-        let snr_db = self.cn0_db_hz - 30.0;
-        let snr_linear = 10.0f32.powf(snr_db / 10.0).max(1e-6);
-        let amplitude = snr_linear.sqrt();
+        let amplitude = signal_amplitude_from_cn0(self.cn0_db_hz, self.sample_rate_hz);
 
         carrier * (chip * data_bit * amplitude)
+    }
+}
+
+fn signal_amplitude_from_cn0(cn0_db_hz: f32, sample_rate_hz: f64) -> f32 {
+    let cn0_linear = 10.0_f64.powf(cn0_db_hz as f64 / 10.0).max(1e-12);
+    ((cn0_linear * SYNTHETIC_COMPLEX_NOISE_POWER) / sample_rate_hz).sqrt() as f32
+}
+
+fn measure_cn0_from_prompt_with_known_noise(
+    prompt: Complex<f32>,
+    output_scale_applied: f32,
+    noise_power_per_complex_sample: f64,
+    sample_rate_hz: f64,
+    prompt_coherent_gain: f64,
+) -> f64 {
+    let scaled_noise_power_per_complex_sample =
+        noise_power_per_complex_sample * (output_scale_applied as f64).powi(2);
+    let prompt_noise_power = scaled_noise_power_per_complex_sample * prompt_coherent_gain;
+    let prompt_power = prompt.norm_sqr() as f64;
+    let signal_power_per_sample =
+        ((prompt_power - prompt_noise_power).max(1e-12)) / prompt_coherent_gain.powi(2);
+    let cn0_linear =
+        signal_power_per_sample * sample_rate_hz / scaled_noise_power_per_complex_sample;
+    10.0 * cn0_linear.max(1e-12).log10()
+}
+
+fn regenerate_isolated_scaled_satellite_frame(
+    config: &ReceiverPipelineConfig,
+    measured_frame: &SamplesFrame,
+    truth: &SyntheticIqTruthBundle,
+    sat_truth: &SyntheticSatelliteTruth,
+) -> SamplesFrame {
+    let isolated_frame = generate_l1_ca_multi(
+        config,
+        &SyntheticScenario {
+            sample_rate_hz: truth.sample_rate_hz,
+            intermediate_freq_hz: truth.intermediate_freq_hz,
+            duration_s: measured_frame.len() as f64 * measured_frame.dt_s.0,
+            seed: truth.seed,
+            satellites: vec![SyntheticSignalParams {
+                sat: sat_truth.sat,
+                doppler_hz: sat_truth.doppler_hz,
+                code_phase_chips: sat_truth.code_phase_chips,
+                carrier_phase_rad: sat_truth.carrier_phase_rad,
+                cn0_db_hz: sat_truth.cn0_db_hz,
+                data_bit_flip: sat_truth.nav_bit_mode
+                    == SyntheticNavBitMode::AlternatingGpsLnav20ms,
+            }],
+            ephemerides: Vec::new(),
+            id: sat_truth.sat.prn.to_string(),
+        },
+    );
+    let iq = isolated_frame
+        .iq
+        .iter()
+        .map(|sample| *sample * truth.output_scale_applied)
+        .collect::<Vec<_>>();
+    SamplesFrame::new(measured_frame.t0, measured_frame.dt_s, iq)
+}
+
+fn code_phase_samples_at_epoch_start(
+    config: &ReceiverPipelineConfig,
+    frame: &SamplesFrame,
+    code_phase_chips: f64,
+) -> f64 {
+    let start_s = frame.t0.sample_index as f64 / frame.t0.sample_rate_hz;
+    let chip_phase = (code_phase_chips + config.code_freq_basis_hz * start_s)
+        .rem_euclid(config.code_length as f64);
+    let samples_per_chip = frame.t0.sample_rate_hz / config.code_freq_basis_hz;
+    chip_phase * samples_per_chip
+}
+
+fn synthetic_intermediate_frequency_hz(intermediate_freq_hz: f64, sat: SatId) -> f64 {
+    intermediate_freq_hz
+        + (synthetic_constellation_carrier_hz(sat)
+            - bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value())
+}
+
+fn synthetic_carrier_hz(intermediate_freq_hz: f64, sat: SatId, doppler_hz: f64) -> f64 {
+    synthetic_intermediate_frequency_hz(intermediate_freq_hz, sat) + doppler_hz
+}
+
+fn synthetic_constellation_carrier_hz(sat: SatId) -> f64 {
+    match sat.constellation {
+        Constellation::Galileo => bijux_gnss_core::api::GALILEO_E1_CARRIER_HZ.value(),
+        Constellation::Gps => bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value(),
+        Constellation::Glonass => bijux_gnss_core::api::GLONASS_L1_CARRIER_HZ.value(),
+        _ => bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value(),
     }
 }
 
@@ -406,10 +658,7 @@ fn nav_bit_mode(params: &SyntheticSignalParams) -> SyntheticNavBitMode {
 }
 
 fn peak_component(samples: &[Complex<f32>]) -> f32 {
-    samples
-        .iter()
-        .flat_map(|sample| [sample.re.abs(), sample.im.abs()])
-        .fold(0.0f32, f32::max)
+    samples.iter().flat_map(|sample| [sample.re.abs(), sample.im.abs()]).fold(0.0f32, f32::max)
 }
 
 fn encode_iq16_le_bytes(samples: &[Complex<f32>], scale: f32) -> Vec<u8> {
@@ -504,11 +753,13 @@ impl XorShift64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_iq16_capture_bundle, build_truth_bundle, generate_l1_ca_multi, SyntheticNavBitMode,
+        build_iq16_capture_bundle, build_truth_bundle, generate_l1_ca_multi,
+        signal_amplitude_from_cn0, validate_truth_guided_cn0, SyntheticNavBitMode,
         SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource,
+        SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
-    use bijux_gnss_core::api::{Constellation, SatId, SamplesFrame};
+    use bijux_gnss_core::api::{Constellation, SamplesFrame, SatId};
     use bijux_gnss_signal::api::{IqSampleFormat, RawIqMetadata, SignalSource};
 
     #[test]
@@ -608,17 +859,23 @@ mod tests {
 
         let truth = build_truth_bundle(&scenario.id, &scenario, &frame, &metadata, 1.25, 0.8);
 
-        assert_eq!(truth.schema_version, 1);
+        assert_eq!(truth.schema_version, 2);
         assert_eq!(truth.scenario_id, "truth-bundle");
         assert_eq!(truth.seed, 44);
         assert_eq!(truth.sample_format, IqSampleFormat::Iq16Le);
         assert_eq!(truth.sample_rate_hz, 4_000_000.0);
         assert_eq!(truth.quantization_bits, 16);
+        assert_eq!(truth.noise_std_per_component, SYNTHETIC_NOISE_STD_PER_COMPONENT);
+        assert_eq!(truth.noise_power_per_complex_sample, SYNTHETIC_COMPLEX_NOISE_POWER as f32);
         assert_eq!(truth.peak_component_before_scaling, 1.25);
         assert_eq!(truth.output_scale_applied, 0.8);
         assert_eq!(truth.satellites.len(), 2);
 
         let constant = &truth.satellites[0];
+        assert_eq!(
+            constant.signal_amplitude,
+            signal_amplitude_from_cn0(constant.cn0_db_hz, truth.sample_rate_hz)
+        );
         assert_eq!(constant.nav_bit_mode, SyntheticNavBitMode::ConstantPositive);
         assert_eq!(constant.nav_bit_segments.len(), 1);
         assert_eq!(constant.nav_bit_segments[0].start_sample, 0);
@@ -627,9 +884,11 @@ mod tests {
 
         let alternating = &truth.satellites[1];
         assert_eq!(
-            alternating.nav_bit_mode,
-            SyntheticNavBitMode::AlternatingGpsLnav20ms
+            alternating.signal_amplitude,
+            signal_amplitude_from_cn0(alternating.cn0_db_hz, truth.sample_rate_hz)
         );
+        assert!(constant.signal_amplitude > alternating.signal_amplitude);
+        assert_eq!(alternating.nav_bit_mode, SyntheticNavBitMode::AlternatingGpsLnav20ms);
         assert_eq!(alternating.nav_bit_segments.len(), 3);
         assert_eq!(alternating.nav_bit_segments[0].start_sample, 0);
         assert_eq!(alternating.nav_bit_segments[0].end_sample, 80_000);
@@ -692,10 +951,19 @@ mod tests {
         assert_eq!(bundle.truth.scenario_id, "iq16-bundle");
         assert_eq!(bundle.truth.sample_count, frame.len());
         assert_eq!(bundle.truth.sample_rate_hz, 4_092_000.0);
+        assert_eq!(bundle.truth.noise_std_per_component, SYNTHETIC_NOISE_STD_PER_COMPONENT);
+        assert_eq!(
+            bundle.truth.noise_power_per_complex_sample,
+            SYNTHETIC_COMPLEX_NOISE_POWER as f32
+        );
         assert_eq!(bundle.raw_iq_bytes.len(), frame.len() * 4);
         assert!(bundle.truth.peak_component_before_scaling > 0.0);
         assert!(bundle.truth.output_scale_applied > 0.0);
         assert!(bundle.truth.output_scale_applied <= 1.0);
+        assert!(
+            bundle.truth.satellites[0].signal_amplitude
+                > bundle.truth.satellites[1].signal_amplitude
+        );
 
         assert!(
             bundle
@@ -705,5 +973,56 @@ mod tests {
                 .any(|sample| sample != 0),
             "encoded synthetic capture should contain non-zero samples"
         );
+    }
+
+    #[test]
+    fn truth_guided_cn0_validation_matches_injected_truth_within_tolerance() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let scenario = SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            duration_s: 0.01,
+            seed: 17,
+            satellites: vec![SyntheticSignalParams {
+                sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                doppler_hz: -1000.0,
+                code_phase_chips: 321.0,
+                carrier_phase_rad: 0.2,
+                cn0_db_hz: 52.0,
+                data_bit_flip: false,
+            }],
+            ephemerides: Vec::new(),
+            id: "cn0-validation".to_string(),
+        };
+        let frame = generate_l1_ca_multi(&config, &scenario);
+        let bundle = build_iq16_capture_bundle(
+            &scenario.id,
+            &scenario,
+            &frame,
+            "2026-07-09T00:00:00Z",
+            Some("synthetic cn0 validation".to_string()),
+        );
+        let scaled_frame = SamplesFrame::new(
+            frame.t0,
+            frame.dt_s,
+            frame.iq.iter().map(|sample| *sample * bundle.truth.output_scale_applied).collect(),
+        );
+        let report = validate_truth_guided_cn0(&config, &scaled_frame, &bundle.truth, 3.0);
+
+        assert!(report.pass, "{report:?}");
+        assert_eq!(report.coherent_samples_per_epoch, 4092);
+        assert_eq!(report.satellites.len(), 1);
+        for row in &report.satellites {
+            assert!(row.pass, "{row:?}");
+            assert_eq!(row.epochs_measured, 10);
+            assert!(row.cn0_delta_db.abs() <= 3.0, "{row:?}");
+            assert!(row.measured_max_cn0_dbhz >= row.measured_min_cn0_dbhz);
+        }
     }
 }
