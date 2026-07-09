@@ -230,6 +230,10 @@ pub(crate) enum GnssCommand {
         /// Maximum allowed wrapped acquisition code-phase error in samples
         #[arg(long, default_value_t = 2)]
         acquisition_code_phase_tolerance_samples: usize,
+
+        /// Maximum allowed acquisition Doppler error in Doppler bins
+        #[arg(long, default_value_t = 1)]
+        acquisition_doppler_tolerance_bins: usize,
     },
 
     /// Artifact validation and conversion

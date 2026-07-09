@@ -142,6 +142,7 @@ fn handle_validate_synthetic_iq(command: GnssCommand) -> Result<()> {
         truth,
         tolerance_db_hz,
         acquisition_code_phase_tolerance_samples,
+        acquisition_doppler_tolerance_bins,
     } = command
     else {
         bail!("invalid command for handler");
@@ -202,6 +203,13 @@ fn handle_validate_synthetic_iq(command: GnssCommand) -> Result<()> {
             &truth_bundle,
             acquisition_code_phase_tolerance_samples,
         );
+    let acquisition_doppler_validation =
+        bijux_gnss_infra::api::receiver::sim::validate_truth_guided_acquisition_doppler(
+            &config,
+            &frame,
+            &truth_bundle,
+            acquisition_doppler_tolerance_bins,
+        );
     let report = SyntheticIqValidationReport {
         input_iq: input_file.display().to_string(),
         input_sidecar: common
@@ -212,11 +220,15 @@ fn handle_validate_synthetic_iq(command: GnssCommand) -> Result<()> {
         input_truth: truth.display().to_string(),
         validation,
         acquisition_code_phase_validation,
+        acquisition_doppler_validation,
     };
     emit_synthetic_iq_validation_report(&common, &report)?;
     write_manifest(&common, "validate_synthetic_iq", &profile, dataset.as_ref(), &report)?;
 
-    if !report.validation.pass || !report.acquisition_code_phase_validation.pass {
+    if !report.validation.pass
+        || !report.acquisition_code_phase_validation.pass
+        || !report.acquisition_doppler_validation.pass
+    {
         let cn0_failures = report
             .validation
             .satellites
@@ -248,12 +260,31 @@ fn handle_validate_synthetic_iq(command: GnssCommand) -> Result<()> {
             })
             .collect::<Vec<_>>()
             .join(", ");
+        let acquisition_doppler_failures = report
+            .acquisition_doppler_validation
+            .satellites
+            .iter()
+            .filter(|row| !row.pass)
+            .map(|row| {
+                format!(
+                    "{}:{:.3}:{:.3}:{:.3}",
+                    format_sat(row.sat),
+                    row.injected_doppler_hz,
+                    row.measured_doppler_hz,
+                    row.doppler_error_hz
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
         let mut failure_sections = Vec::new();
         if !cn0_failures.is_empty() {
             failure_sections.push(format!("cn0={cn0_failures}"));
         }
         if !acquisition_failures.is_empty() {
             failure_sections.push(format!("acq_code_phase={acquisition_failures}"));
+        }
+        if !acquisition_doppler_failures.is_empty() {
+            failure_sections.push(format!("acq_doppler={acquisition_doppler_failures}"));
         }
         bail!("synthetic IQ validation failed: {}", failure_sections.join("; "));
     }

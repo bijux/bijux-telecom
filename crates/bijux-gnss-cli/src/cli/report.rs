@@ -141,6 +141,8 @@ struct SyntheticIqValidationReport {
     validation: bijux_gnss_infra::api::receiver::sim::SyntheticCn0ValidationReport,
     acquisition_code_phase_validation:
         bijux_gnss_infra::api::receiver::sim::SyntheticAcquisitionCodePhaseValidationReport,
+    acquisition_doppler_validation:
+        bijux_gnss_infra::api::receiver::sim::SyntheticAcquisitionDopplerValidationReport,
 }
 
 #[cfg(test)]
