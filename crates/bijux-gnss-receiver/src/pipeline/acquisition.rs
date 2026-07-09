@@ -15,7 +15,7 @@ use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
 use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::Nco;
-use bijux_gnss_signal::api::{generate_ca_code, Prn};
+use bijux_gnss_signal::api::{generate_ca_code, measure_iq_front_end_metrics, Prn};
 
 /// Acquisition engine (coarse search).
 pub struct Acquisition {
@@ -207,13 +207,6 @@ impl Acquisition {
         let fft = planner.plan_fft_forward(samples_per_code);
         let ifft = planner.plan_fft_inverse(samples_per_code);
 
-        self.with_stats(|stats| {
-            stats.sat_count += sats.len() as u64;
-            stats.doppler_bins +=
-                doppler_bin_count(self.doppler_search_hz, self.doppler_step_hz) * sats.len() as u64;
-            stats.code_search_bins += (samples_per_code * sats.len()) as u64;
-        });
-
         let assumptions = AcqAssumptions {
             doppler_search_hz: self.doppler_search_hz,
             doppler_step_hz: self.doppler_step_hz,
@@ -226,9 +219,48 @@ impl Acquisition {
             code_phase_search_bins: samples_per_code,
             code_phase_search_mode: "full_code".to_string(),
         };
+        let threshold_provenance = AcqThresholdProvenance {
+            coherent_ms,
+            noncoherent,
+            doppler_search_hz: self.doppler_search_hz,
+            doppler_step_hz: self.doppler_step_hz,
+            peak_mean_threshold: self.config.acquisition_peak_mean_threshold,
+            peak_second_threshold: self.config.acquisition_peak_second_threshold,
+        };
+
+        self.with_stats(|stats| {
+            stats.sat_count += sats.len() as u64;
+        });
+        let front_end_metrics = measure_iq_front_end_metrics(&frame.iq);
+        if front_end_metrics.zero_signal_detected {
+            self.runtime.trace.record(TraceRecord {
+                name: "acquisition_front_end_rejection",
+                fields: vec![
+                    ("reason", "zero_signal_input".to_string()),
+                    ("sample_count", frame.len().to_string()),
+                    ("centered_rms", format!("{:.9}", front_end_metrics.centered_rms)),
+                ],
+            });
+            self.with_stats(|stats| {
+                stats.rejected_count = stats.rejected_count.saturating_add(sats.len() as u64);
+            });
+            return zero_signal_run(
+                sats,
+                &assumptions,
+                &threshold_provenance,
+                self.config.intermediate_freq_hz,
+                front_end_metrics.zero_signal_reason.as_deref(),
+                emit_explanations,
+            );
+        }
 
         let mut results = Vec::new();
         let mut explains = Vec::new();
+        self.with_stats(|stats| {
+            stats.doppler_bins +=
+                doppler_bin_count(self.doppler_search_hz, self.doppler_step_hz) * sats.len() as u64;
+            stats.code_search_bins += (samples_per_code * sats.len()) as u64;
+        });
         for &sat in sats {
             self.runtime.trace.record(TraceRecord {
                 name: "acquisition_sat_start",
@@ -237,15 +269,6 @@ impl Acquisition {
                     ("prn", sat.prn.to_string()),
                 ],
             });
-
-            let threshold_provenance = AcqThresholdProvenance {
-                coherent_ms,
-                noncoherent,
-                doppler_search_hz: self.doppler_search_hz,
-                doppler_step_hz: self.doppler_step_hz,
-                peak_mean_threshold: self.config.acquisition_peak_mean_threshold,
-                peak_second_threshold: self.config.acquisition_peak_second_threshold,
-            };
             let code_fft =
                 self.code_fft(sat, samples_per_code, coherent_ms, noncoherent, fft.as_ref());
             let mut candidates = Vec::new();
@@ -576,6 +599,71 @@ fn doppler_bin_count(search_hz: i32, step_hz: i32) -> u64 {
     let search = search_hz.unsigned_abs() as u64;
     let step = step_hz.unsigned_abs() as u64;
     (search / step).saturating_mul(2).saturating_add(1)
+}
+
+fn zero_signal_run(
+    sats: &[SatId],
+    assumptions: &AcqAssumptions,
+    threshold_provenance: &AcqThresholdProvenance,
+    intermediate_freq_hz: f64,
+    zero_signal_reason: Option<&str>,
+    emit_explanations: bool,
+) -> AcquisitionRun {
+    let candidate_reason = zero_signal_candidate_reason(zero_signal_reason);
+    let mut results = Vec::with_capacity(sats.len());
+    let mut explains = Vec::new();
+
+    for &sat in sats {
+        let result = AcqResult {
+            sat,
+            carrier_hz: Hertz(intermediate_freq_hz),
+            code_phase_samples: 0,
+            peak: 0.0,
+            second_peak: 0.0,
+            mean: 0.0,
+            peak_mean_ratio: 0.0,
+            peak_second_ratio: 0.0,
+            cn0_proxy: 0.0,
+            score: 0.0,
+            hypothesis: AcqHypothesis::Rejected,
+            assumptions: Some(assumptions.clone()),
+            evidence: Vec::new(),
+            threshold_provenance: Some(threshold_provenance.clone()),
+            explain_selection_reason: Some(candidate_reason.clone()),
+        };
+        if emit_explanations {
+            explains.push(AcqExplain {
+                sat,
+                selected_rank: Some(1),
+                selected_reason: "zero_signal_input".to_string(),
+                candidate_count: 1,
+                candidates: vec![AcqExplainCandidate {
+                    rank: 1,
+                    code_phase_samples: 0,
+                    carrier_hz: intermediate_freq_hz,
+                    peak: 0.0,
+                    peak_mean_ratio: 0.0,
+                    peak_second_ratio: 0.0,
+                    second_peak_ratio: 0.0,
+                    mean: 0.0,
+                    hypothesis: AcqHypothesis::Rejected,
+                    score: 0.0,
+                    threshold_hit: false,
+                    reason: candidate_reason.clone(),
+                }],
+            });
+        }
+        results.push(vec![result]);
+    }
+
+    AcquisitionRun { results, explains }
+}
+
+fn zero_signal_candidate_reason(zero_signal_reason: Option<&str>) -> String {
+    match zero_signal_reason {
+        Some(reason) => format!("zero_signal_input: {reason}"),
+        None => "zero_signal_input".to_string(),
+    }
 }
 
 fn acquisition_hypothesis(
