@@ -33,14 +33,12 @@ fn load_dataset(common: &CommonArgs) -> Result<Option<DatasetEntry>> {
     let registry_path = PathBuf::from("datasets/registry.toml");
     let registry = DatasetRegistry::load(&registry_path)
         .with_context(|| format!("failed to parse {}", registry_path.display()))?;
-    let entry = registry
-        .find(id)
-        .ok_or_else(|| {
-            classified_error(
-                CliErrorClass::OperatorMisconfiguration,
-                format!("dataset not found: {id}"),
-            )
-        })?;
+    let entry = registry.find(id).ok_or_else(|| {
+        classified_error(
+            CliErrorClass::OperatorMisconfiguration,
+            format!("dataset not found: {id}"),
+        )
+    })?;
     Ok(Some(entry))
 }
 
@@ -57,7 +55,10 @@ fn resolve_input_file(file: Option<&PathBuf>, dataset: Option<&DatasetEntry>) ->
     ))
 }
 
-fn resolve_raw_iq_metadata(common: &CommonArgs, dataset: Option<&DatasetEntry>) -> Result<RawIqMetadata> {
+fn resolve_raw_iq_metadata(
+    common: &CommonArgs,
+    dataset: Option<&DatasetEntry>,
+) -> Result<RawIqMetadata> {
     let metadata =
         bijux_gnss_infra::api::resolve_raw_iq_metadata(dataset, common.sidecar.as_deref())?;
     validate_sidecar_schema(&metadata)?;
@@ -71,11 +72,7 @@ fn apply_raw_iq_metadata(
     if_hz: Option<f64>,
 ) -> Result<()> {
     enforce_locked_capture_value("sample_rate_hz", sampling_hz, metadata.sample_rate_hz)?;
-    enforce_locked_capture_value(
-        "intermediate_freq_hz",
-        if_hz,
-        metadata.intermediate_freq_hz,
-    )?;
+    enforce_locked_capture_value("intermediate_freq_hz", if_hz, metadata.intermediate_freq_hz)?;
     profile.sample_rate_hz = metadata.sample_rate_hz;
     profile.intermediate_freq_hz = metadata.intermediate_freq_hz;
     if let Some(bits) = metadata.quantization_bits {
@@ -84,7 +81,11 @@ fn apply_raw_iq_metadata(
     Ok(())
 }
 
-fn enforce_locked_capture_value(field: &str, cli_value: Option<f64>, metadata_value: f64) -> Result<()> {
+fn enforce_locked_capture_value(
+    field: &str,
+    cli_value: Option<f64>,
+    metadata_value: f64,
+) -> Result<()> {
     let Some(cli_value) = cli_value else {
         return Ok(());
     };
@@ -98,7 +99,6 @@ fn enforce_locked_capture_value(field: &str, cli_value: Option<f64>, metadata_va
     }
     Ok(())
 }
-
 
 fn emit_report<T: Serialize>(common: &CommonArgs, command: &str, report: &T) -> Result<()> {
     let summary = serde_json::to_value(report)?;
@@ -127,11 +127,8 @@ fn load_frame(
     config: &ReceiverPipelineConfig,
     metadata: &RawIqMetadata,
 ) -> Result<SamplesFrame> {
-    let samples_per_code = samples_per_code(
-        metadata.sample_rate_hz,
-        config.code_freq_basis_hz,
-        config.code_length,
-    );
+    let samples_per_code =
+        samples_per_code(metadata.sample_rate_hz, config.code_freq_basis_hz, config.code_length);
     let mut source = FileSamples::open_raw_iq(path, metadata.clone())
         .with_context(|| format!("failed to open {}", path.display()))?;
 
@@ -140,10 +137,7 @@ fn load_frame(
         None => bail!("no samples available in {}", path.display()),
     };
     if frame.len() < samples_per_code {
-        bail!(
-            "not enough samples: need {samples_per_code}, got {}",
-            frame.len()
-        );
+        bail!("not enough samples: need {samples_per_code}, got {}", frame.len());
     }
     if config.remove_dc_offset {
         bijux_gnss_infra::api::signal::remove_dc_offset_in_place(&mut frame.iq);
@@ -160,10 +154,7 @@ fn write_experiment_run(
 ) -> Result<()> {
     let run_dir = out_dir.join(format!("run_{idx:03}"));
     fs::create_dir_all(&run_dir)?;
-    fs::write(
-        run_dir.join("result.json"),
-        serde_json::to_string_pretty(result)?,
-    )?;
+    fs::write(run_dir.join("result.json"), serde_json::to_string_pretty(result)?)?;
     let schema_path = schema_path("experiment_run.schema.json");
     if schema_path.exists() {
         validate_json_schema(&schema_path, &run_dir.join("result.json"), false)?;
@@ -195,11 +186,7 @@ fn write_experiment_run(
         for res in &sol.residuals {
             residual_lines.push(format!(
                 "{},{:?},{},{},{}",
-                sol.epoch.index,
-                res.sat.constellation,
-                res.sat.prn,
-                res.residual_m.0,
-                res.rejected
+                sol.epoch.index, res.sat.constellation, res.sat.prn, res.residual_m.0, res.rejected
             ));
         }
     }
@@ -207,13 +194,7 @@ fn write_experiment_run(
     validate_csv_schema(
         &run_dir.join("residuals.csv"),
         "epoch_idx,constellation,prn,residual_m,rejected",
-        &[
-            CsvType::U64,
-            CsvType::Str,
-            CsvType::U8,
-            CsvType::F64,
-            CsvType::Bool,
-        ],
+        &[CsvType::U64, CsvType::Str, CsvType::U8, CsvType::F64, CsvType::Bool],
     )?;
 
     let mut ambiguity_lines = Vec::new();
@@ -310,9 +291,7 @@ fn write_track_timeseries(
         let wrapped = TrackEpochV1 {
             header: header.clone(),
             payload: TrackEpoch {
-                epoch: bijux_gnss_infra::api::core::Epoch {
-                    index: epoch.epoch_idx,
-                },
+                epoch: bijux_gnss_infra::api::core::Epoch { index: epoch.epoch_idx },
                 sample_index: epoch.sample_index,
                 sat: epoch.sat,
                 prompt_i: epoch.prompt_i,
@@ -363,12 +342,11 @@ fn write_obs_timeseries(
     let out_dir = artifacts_dir(common, "track", dataset)?;
     let header = artifact_header(common, profile, dataset)?;
     let runtime = runtime_config_from_env(common, None);
-    let obs_report =
-        bijux_gnss_infra::api::receiver::observations_from_tracking_results(
-            config,
-            tracks,
-            hatch_window,
-        );
+    let obs_report = bijux_gnss_infra::api::receiver::observations_from_tracking_results(
+        config,
+        tracks,
+        hatch_window,
+    );
     let mut obs = obs_report.output;
     for event in obs_report.events {
         runtime.logger.event(&event);
@@ -380,10 +358,7 @@ fn write_obs_timeseries(
         if common.deterministic {
             sort_obs_sats(epoch);
         }
-        let wrapped = ObsEpochV1 {
-            header: header.clone(),
-            payload: epoch.clone(),
-        };
+        let wrapped = ObsEpochV1 { header: header.clone(), payload: epoch.clone() };
         let line = serde_json::to_string(&wrapped)?;
         lines.push(line);
         if let Some(ms) = epoch.processing_ms {
@@ -440,10 +415,7 @@ fn read_obs_epochs(path: &Path) -> Result<Vec<ObsEpoch>> {
         if line.contains("\"header\"") {
             let wrapped: ObsEpochV1 = serde_json::from_str(line)?;
             if wrapped.header.schema_version != ArtifactReadPolicy::LATEST {
-                bail!(
-                    "unsupported obs schema_version {}",
-                    wrapped.header.schema_version
-                );
+                bail!("unsupported obs schema_version {}", wrapped.header.schema_version);
             }
             epochs.push(wrapped.payload);
         } else {
@@ -460,10 +432,7 @@ fn read_ephemeris(path: &Path) -> Result<Vec<GpsEphemeris>> {
     if data.contains("\"header\"") {
         let wrapped: GpsEphemerisV1 = serde_json::from_str(&data)?;
         if wrapped.header.schema_version != ArtifactReadPolicy::LATEST {
-            bail!(
-                "unsupported ephemeris schema_version {}",
-                wrapped.header.schema_version
-            );
+            bail!("unsupported ephemeris schema_version {}", wrapped.header.schema_version);
         }
         Ok(wrapped.payload)
     } else {
@@ -490,8 +459,10 @@ fn read_reference_epochs(path: &Path) -> Result<Vec<ValidationReferenceEpoch>> {
             }
             let epoch_idx = parts[0].trim().parse::<u64>()?;
             let t_rx_s = parts.get(1).and_then(|v| v.trim().parse::<f64>().ok());
-            let latitude_deg = parts.get(2).and_then(|v| v.trim().parse::<f64>().ok()).unwrap_or(0.0);
-            let longitude_deg = parts.get(3).and_then(|v| v.trim().parse::<f64>().ok()).unwrap_or(0.0);
+            let latitude_deg =
+                parts.get(2).and_then(|v| v.trim().parse::<f64>().ok()).unwrap_or(0.0);
+            let longitude_deg =
+                parts.get(3).and_then(|v| v.trim().parse::<f64>().ok()).unwrap_or(0.0);
             let altitude_m = parts.get(4).and_then(|v| v.trim().parse::<f64>().ok()).unwrap_or(0.0);
             let ecef_x_m = parts.get(5).and_then(|v| v.trim().parse::<f64>().ok());
             let ecef_y_m = parts.get(6).and_then(|v| v.trim().parse::<f64>().ok());
@@ -532,10 +503,7 @@ fn read_nav_solutions(path: &Path) -> Result<Vec<bijux_gnss_infra::api::core::Na
         }
         let wrapped: NavSolutionEpochV1 = serde_json::from_str(line)?;
         if wrapped.header.schema_version != ArtifactReadPolicy::LATEST {
-            bail!(
-                "unsupported nav schema_version {}",
-                wrapped.header.schema_version
-            );
+            bail!("unsupported nav schema_version {}", wrapped.header.schema_version);
         }
         epochs.push(wrapped.payload);
     }
@@ -551,10 +519,7 @@ fn write_ephemeris(
     let out_dir = artifacts_dir(common, "nav", dataset)?;
     let header = artifact_header(common, profile, dataset)?;
     let path = out_dir.join("ephemeris.json");
-    let wrapped = GpsEphemerisV1 {
-        header,
-        payload: ephs.to_vec(),
-    };
+    let wrapped = GpsEphemerisV1 { header, payload: ephs.to_vec() };
     let data = serde_json::to_string_pretty(&wrapped)?;
     fs::write(&path, data)?;
     validate_json_schema(&schema_path("gps_ephemeris_v1.schema.json"), &path, false)?;
@@ -564,8 +529,8 @@ fn write_ephemeris(
 #[cfg(test)]
 mod tests {
     use super::{apply_raw_iq_metadata, enforce_locked_capture_value, load_frame};
-    use crate::{ReceiverConfig, ReceiverPipelineConfig};
     use crate::RawIqMetadata;
+    use crate::{ReceiverConfig, ReceiverPipelineConfig};
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -599,8 +564,7 @@ mod tests {
     }
 
     fn temp_file_path(name: &str) -> PathBuf {
-        let nanos =
-            SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos();
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos();
         std::env::temp_dir().join(format!("bijux_{}_{}_{}.iq", name, std::process::id(), nanos))
     }
 
@@ -643,6 +607,19 @@ mod tests {
         assert!(!metrics.power_imbalance_warning);
         assert_eq!(metrics.quadrature_error_deg, None);
         assert!(!metrics.quadrature_error_warning);
+        assert_eq!(metrics.centered_rms, 0.0);
+        assert!(metrics.zero_signal_detected);
+        assert!(metrics
+            .zero_signal_reason
+            .as_deref()
+            .expect("zero_signal_reason")
+            .contains("no varying signal energy"));
+        assert!(!metrics.precision_claims_allowed);
+        assert!(metrics
+            .precision_claims_refused_reason
+            .as_deref()
+            .expect("precision_claims_refused_reason")
+            .contains("no varying signal energy"));
 
         fs::remove_file(&path).expect("remove iq8 fixture");
     }

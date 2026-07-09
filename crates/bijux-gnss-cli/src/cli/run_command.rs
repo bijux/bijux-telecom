@@ -26,9 +26,11 @@ fn run_command(command: GnssCommand) -> Result<()> {
     }
 }
 
-
-
-fn inspect_dataset(path: &Path, metadata: &RawIqMetadata, max_samples: usize) -> Result<InspectReport> {
+fn inspect_dataset(
+    path: &Path,
+    metadata: &RawIqMetadata,
+    max_samples: usize,
+) -> Result<InspectReport> {
     let mut source = FileSamples::open_raw_iq(path, metadata.clone())
         .with_context(|| format!("failed to open {}", path.display()))?;
     let mut total_iq = 0usize;
@@ -39,11 +41,7 @@ fn inspect_dataset(path: &Path, metadata: &RawIqMetadata, max_samples: usize) ->
     let mut power_sum = 0.0f64;
 
     while max_samples == 0 || total_iq < max_samples {
-        let frame_len = if max_samples == 0 {
-            4096
-        } else {
-            (max_samples - total_iq).min(4096)
-        };
+        let frame_len = if max_samples == 0 { 4096 } else { (max_samples - total_iq).min(4096) };
         let Some(frame) = source.next_frame(frame_len)? else {
             break;
         };
@@ -88,25 +86,18 @@ fn runtime_config_from_env(
         run_id: std::env::var("BIJUX_RUN_ID").ok(),
         trace_dir: common.dump.clone(),
         run_dir: run_dir.or_else(|| std::env::var("BIJUX_RUN_DIR").ok().map(PathBuf::from)),
-        diagnostics_dump: std::env::var("BIJUX_DIAGNOSTICS_DUMP")
-            .ok()
-            .as_deref()
-            == Some("1"),
+        diagnostics_dump: std::env::var("BIJUX_DIAGNOSTICS_DUMP").ok().as_deref() == Some("1"),
     };
     bijux_gnss_infra::api::receiver::ReceiverRuntime::new(config)
 }
 use bijux_gnss_infra::api::core::format_sat;
 
 fn format_optional_degrees(value: Option<f64>) -> String {
-    value
-        .map(|degrees| format!("{degrees:.6}"))
-        .unwrap_or_else(|| "n/a".to_string())
+    value.map(|degrees| format!("{degrees:.6}")).unwrap_or_else(|| "n/a".to_string())
 }
 
 fn format_optional_percent(value: Option<f64>) -> String {
-    value
-        .map(|pct| format!("{pct:.3}"))
-        .unwrap_or_else(|| "n/a".to_string())
+    value.map(|pct| format!("{pct:.3}")).unwrap_or_else(|| "n/a".to_string())
 }
 
 fn format_optional_reason(value: Option<&str>) -> String {
@@ -200,8 +191,7 @@ mod inspect_dataset_tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_file_path(name: &str) -> PathBuf {
-        let nanos =
-            SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos();
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos();
         std::env::temp_dir().join(format!("bijux_{}_{}_{}.iq", name, std::process::id(), nanos))
     }
 
@@ -230,14 +220,12 @@ mod inspect_dataset_tests {
         assert_eq!(report.front_end_metrics.clipping_pct, Some(50.0));
         assert!(report.front_end_metrics.clipping_warning);
         assert!(!report.front_end_metrics.precision_claims_allowed);
-        assert!(
-            report
-                .front_end_metrics
-                .precision_claims_refused_reason
-                .as_deref()
-                .expect("precision refusal reason")
-                .contains("front-end clipping 50.000% exceeds")
-        );
+        assert!(report
+            .front_end_metrics
+            .precision_claims_refused_reason
+            .as_deref()
+            .expect("precision refusal reason")
+            .contains("front-end clipping 50.000% exceeds"));
 
         fs::remove_file(&path).expect("remove iq8 fixture");
     }
@@ -245,11 +233,8 @@ mod inspect_dataset_tests {
     #[test]
     fn inspect_dataset_reports_signed_16bit_metadata() {
         let path = temp_file_path("inspect_iq16");
-        fs::write(
-            &path,
-            [0x00u8, 0x80u8, 0xffu8, 0x7fu8, 0x00u8, 0x40u8, 0x00u8, 0xc0u8],
-        )
-        .expect("write iq16 fixture");
+        fs::write(&path, [0x00u8, 0x80u8, 0xffu8, 0x7fu8, 0x00u8, 0x40u8, 0x00u8, 0xc0u8])
+            .expect("write iq16 fixture");
 
         let metadata = RawIqMetadata {
             format: IqSampleFormat::Iq16Le,
@@ -271,14 +256,12 @@ mod inspect_dataset_tests {
         assert_eq!(report.front_end_metrics.clipping_pct, Some(50.0));
         assert!(report.front_end_metrics.clipping_warning);
         assert!(!report.front_end_metrics.precision_claims_allowed);
-        assert!(
-            report
-                .front_end_metrics
-                .precision_claims_refused_reason
-                .as_deref()
-                .expect("precision refusal reason")
-                .contains("front-end clipping 50.000% exceeds")
-        );
+        assert!(report
+            .front_end_metrics
+            .precision_claims_refused_reason
+            .as_deref()
+            .expect("precision refusal reason")
+            .contains("front-end clipping 50.000% exceeds"));
 
         fs::remove_file(&path).expect("remove iq16 fixture");
     }
@@ -289,8 +272,8 @@ mod inspect_dataset_tests {
         fs::write(
             &path,
             [
-                0x00u8, 0x00u8, 0x80u8, 0xbfu8, 0x00u8, 0x00u8, 0x40u8, 0x3fu8, 0x00u8,
-                0x00u8, 0x00u8, 0x3fu8, 0x00u8, 0x00u8, 0x80u8, 0xbeu8,
+                0x00u8, 0x00u8, 0x80u8, 0xbfu8, 0x00u8, 0x00u8, 0x40u8, 0x3fu8, 0x00u8, 0x00u8,
+                0x00u8, 0x3fu8, 0x00u8, 0x00u8, 0x80u8, 0xbeu8,
             ],
         )
         .expect("write cf32 fixture");
@@ -316,6 +299,13 @@ mod inspect_dataset_tests {
         assert!(!report.front_end_metrics.clipping_warning);
         assert!(report.front_end_metrics.precision_claims_allowed);
         assert_eq!(report.front_end_metrics.precision_claims_refused_reason, None);
+        assert!(
+            (report.front_end_metrics.centered_rms - 0.7905694150420949).abs() < 1e-12,
+            "centered_rms={}",
+            report.front_end_metrics.centered_rms
+        );
+        assert!(!report.front_end_metrics.zero_signal_detected);
+        assert_eq!(report.front_end_metrics.zero_signal_reason, None);
 
         fs::remove_file(&path).expect("remove cf32 fixture");
     }
@@ -343,8 +333,21 @@ mod inspect_dataset_tests {
         assert!(report.front_end_metrics.power_imbalance_warning);
         assert_eq!(report.front_end_metrics.clipping_pct, Some(0.0));
         assert!(!report.front_end_metrics.clipping_warning);
-        assert!(report.front_end_metrics.precision_claims_allowed);
-        assert_eq!(report.front_end_metrics.precision_claims_refused_reason, None);
+        assert_eq!(report.front_end_metrics.centered_rms, 0.0);
+        assert!(report.front_end_metrics.zero_signal_detected);
+        assert!(report
+            .front_end_metrics
+            .zero_signal_reason
+            .as_deref()
+            .expect("zero_signal_reason")
+            .contains("no varying signal energy"));
+        assert!(!report.front_end_metrics.precision_claims_allowed);
+        assert!(report
+            .front_end_metrics
+            .precision_claims_refused_reason
+            .as_deref()
+            .expect("precision_claims_refused_reason")
+            .contains("no varying signal energy"));
 
         fs::remove_file(&path).expect("remove iq8 fixture");
     }
@@ -358,11 +361,8 @@ fn solve_epoch_ekf(
     let Some(ctx) = ctx.as_mut() else {
         return Ok(None);
     };
-    let dt_s = if let Some(prev) = ctx.last_t_rx_s {
-        (obs.t_rx_s.0 - prev).max(1e-3)
-    } else {
-        0.001
-    };
+    let dt_s =
+        if let Some(prev) = ctx.last_t_rx_s { (obs.t_rx_s.0 - prev).max(1e-3) } else { 0.001 };
     ctx.last_t_rx_s = Some(obs.t_rx_s.0);
     ctx.ekf.predict(&ctx.model, dt_s);
 
@@ -387,8 +387,11 @@ fn solve_epoch_ekf(
         let rx_y = ctx.ekf.x[1];
         let rx_z = ctx.ekf.x[2];
         let (_az, el) = elevation_azimuth_deg(rx_x, rx_y, rx_z, state.x_m, state.y_m, state.z_m);
-        let weight =
-            bijux_gnss_infra::api::nav::weight_from_cn0_elev(sat.cn0_dbhz, el, WeightingConfig::default());
+        let weight = bijux_gnss_infra::api::nav::weight_from_cn0_elev(
+            sat.cn0_dbhz,
+            el,
+            WeightingConfig::default(),
+        );
         let sigma_m = (5.0 / weight.max(0.1)).max(1.0);
         let isb_index = if sat.signal_id.sat.constellation != Constellation::Gps {
             let key = format!("isb_{:?}", sat.signal_id.sat.constellation);
@@ -428,10 +431,7 @@ fn solve_epoch_ekf(
             sat.metadata.signal.constellation, sat.signal_id.sat.prn, sat.metadata.signal.band
         );
         let amb_idx = ctx.ambiguity.get_or_add(&mut ctx.ekf, &amb_key, 0.0, 100.0);
-        let phase_bias_cycles = ctx
-            .phase_bias
-            .phase_bias_cycles(sat.signal_id)
-            .unwrap_or(0.0);
+        let phase_bias_cycles = ctx.phase_bias.phase_bias_cycles(sat.signal_id).unwrap_or(0.0);
         let carrier_meas = bijux_gnss_infra::api::nav::CarrierPhaseMeasurement {
             sig: sat.signal_id,
             z_cycles: sat.carrier_phase_cycles.0 - phase_bias_cycles,
@@ -455,13 +455,12 @@ fn solve_epoch_ekf(
             let after = bijux_gnss_infra::api::nav::clamp_ztd(before, &ctx.atmosphere);
             if (after - before).abs() > 1e-6 {
                 ctx.ekf.x[idx] = after;
-                ctx.ekf
-                    .health
-                    .events
-                    .push(bijux_gnss_infra::api::core::NavHealthEvent::ZtdClamped {
+                ctx.ekf.health.events.push(
+                    bijux_gnss_infra::api::core::NavHealthEvent::ZtdClamped {
                         before_m: before,
                         after_m: after,
-                    });
+                    },
+                );
             }
         }
     }
@@ -474,9 +473,7 @@ fn solve_epoch_ekf(
         bijux_gnss_infra::api::core::SolutionStatus::Float
     };
     Ok(Some(bijux_gnss_infra::api::core::NavSolutionEpoch {
-        epoch: bijux_gnss_infra::api::core::Epoch {
-            index: obs.epoch_idx,
-        },
+        epoch: bijux_gnss_infra::api::core::Epoch { index: obs.epoch_idx },
         t_rx_s: obs.t_rx_s,
         ecef_x_m: bijux_gnss_infra::api::core::Meters(ctx.ekf.x[0]),
         ecef_y_m: bijux_gnss_infra::api::core::Meters(ctx.ekf.x[1]),
@@ -562,18 +559,13 @@ fn solve_epoch_ekf(
     }))
 }
 
-
 #[cfg(feature = "tracing")]
 fn init_tracing() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter("info")
-        .with_target(false)
-        .try_init();
+    let _ = tracing_subscriber::fmt().with_env_filter("info").with_target(false).try_init();
 }
 
 #[cfg(not(feature = "tracing"))]
 fn init_tracing() {}
-
 
 fn main() -> Result<()> {
     init_tracing();

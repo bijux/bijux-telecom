@@ -93,65 +93,55 @@ fn write_receiver_config(path: &Path, configure: impl FnOnce(&mut ReceiverConfig
         .expect("write config");
 }
 
-fn assert_constant_iq_metrics(metrics: &Value, sample_count: u64) {
+fn assert_dc_only_metrics(metrics: &Value, sample_count: u64) {
     assert_eq!(metrics.get("sample_count").and_then(Value::as_u64), Some(sample_count));
     assert_eq!(metrics.get("i_mean").and_then(Value::as_f64), Some(0.25));
     assert_eq!(metrics.get("q_mean").and_then(Value::as_f64), Some(0.0));
     assert_eq!(metrics.get("i_power").and_then(Value::as_f64), Some(0.0625));
     assert_eq!(metrics.get("q_power").and_then(Value::as_f64), Some(0.0));
-    assert!(metrics
-        .get("iq_power_ratio")
-        .and_then(Value::as_f64)
-        .expect("iq_power_ratio")
-        > 1.0e10);
-    assert_eq!(
-        metrics.get("power_imbalance_warning").and_then(Value::as_bool),
-        Some(true)
+    assert!(
+        metrics.get("iq_power_ratio").and_then(Value::as_f64).expect("iq_power_ratio") > 1.0e10
     );
+    assert_eq!(metrics.get("power_imbalance_warning").and_then(Value::as_bool), Some(true));
     assert_eq!(metrics.get("quadrature_error_deg").and_then(Value::as_f64), None);
-    assert_eq!(
-        metrics.get("quadrature_error_warning").and_then(Value::as_bool),
-        Some(false)
-    );
+    assert_eq!(metrics.get("quadrature_error_warning").and_then(Value::as_bool), Some(false));
     assert_eq!(metrics.get("clipping_pct").and_then(Value::as_f64), Some(0.0));
-    assert_eq!(
-        metrics.get("clipping_warning").and_then(Value::as_bool),
-        Some(false)
-    );
-    assert_eq!(
-        metrics.get("precision_claims_allowed").and_then(Value::as_bool),
-        Some(true)
-    );
-    assert_eq!(metrics.get("precision_claims_refused_reason"), Some(&Value::Null));
+    assert_eq!(metrics.get("clipping_warning").and_then(Value::as_bool), Some(false));
+    assert_eq!(metrics.get("centered_rms").and_then(Value::as_f64), Some(0.0));
+    assert_eq!(metrics.get("zero_signal_detected").and_then(Value::as_bool), Some(true));
+    assert!(metrics
+        .get("zero_signal_reason")
+        .and_then(Value::as_str)
+        .expect("zero_signal_reason")
+        .contains("no varying signal energy"));
+    assert_eq!(metrics.get("precision_claims_allowed").and_then(Value::as_bool), Some(false));
+    assert!(metrics
+        .get("precision_claims_refused_reason")
+        .and_then(Value::as_str)
+        .expect("precision_claims_refused_reason")
+        .contains("no varying signal energy"));
     assert_eq!(metrics.get("rms").and_then(Value::as_f64), Some(0.25));
     assert_eq!(metrics.get("dc_imbalance").and_then(Value::as_f64), Some(1.0));
 }
 
-fn assert_precision_refusal_metrics(metrics: &Value, sample_count: u64, expected_clipping_pct: f64) {
+fn assert_precision_refusal_metrics(
+    metrics: &Value,
+    sample_count: u64,
+    expected_clipping_pct: f64,
+) {
     assert_eq!(metrics.get("sample_count").and_then(Value::as_u64), Some(sample_count));
-    let clipping_pct = metrics
-        .get("clipping_pct")
-        .and_then(Value::as_f64)
-        .expect("clipping_pct");
+    let clipping_pct = metrics.get("clipping_pct").and_then(Value::as_f64).expect("clipping_pct");
     assert!(
         (clipping_pct - expected_clipping_pct).abs() <= CLIPPING_REFUSAL_TOLERANCE_PCT,
         "measured={clipping_pct} expected={expected_clipping_pct}"
     );
-    assert_eq!(
-        metrics.get("clipping_warning").and_then(Value::as_bool),
-        Some(true)
-    );
-    assert_eq!(
-        metrics.get("precision_claims_allowed").and_then(Value::as_bool),
-        Some(false)
-    );
-    assert!(
-        metrics
-            .get("precision_claims_refused_reason")
-            .and_then(Value::as_str)
-            .expect("precision_claims_refused_reason")
-            .contains("front-end clipping")
-    );
+    assert_eq!(metrics.get("clipping_warning").and_then(Value::as_bool), Some(true));
+    assert_eq!(metrics.get("precision_claims_allowed").and_then(Value::as_bool), Some(false));
+    assert!(metrics
+        .get("precision_claims_refused_reason")
+        .and_then(Value::as_str)
+        .expect("precision_claims_refused_reason")
+        .contains("front-end clipping"));
 }
 
 fn write_biased_synthetic_iq8_capture(path: &Path, i_bias: f32, q_bias: f32) {
@@ -182,10 +172,10 @@ fn write_biased_synthetic_iq8_capture(path: &Path, i_bias: f32, q_bias: f32) {
 
     let mut raw = Vec::with_capacity(frame.iq.len() * 2);
     for sample in &frame.iq {
-        let i = ((sample.re * amplitude_scale + i_bias).clamp(-1.0, 127.0 / 128.0) * 128.0)
-            .round() as i8;
-        let q = ((sample.im * amplitude_scale + q_bias).clamp(-1.0, 127.0 / 128.0) * 128.0)
-            .round() as i8;
+        let i = ((sample.re * amplitude_scale + i_bias).clamp(-1.0, 127.0 / 128.0) * 128.0).round()
+            as i8;
+        let q = ((sample.im * amplitude_scale + q_bias).clamp(-1.0, 127.0 / 128.0) * 128.0).round()
+            as i8;
         raw.push(i as u8);
         raw.push(q as u8);
     }
@@ -243,10 +233,8 @@ fn acquire_reports_front_end_metrics_from_acquisition_window() {
 
     assert!(output.status.success(), "acquire failed: {}", String::from_utf8_lossy(&output.stderr));
     let report = load_json(&out_dir.join("acquire_report.json"));
-    let metrics = report
-        .get("front_end_metrics")
-        .expect("front_end_metrics present");
-    assert_constant_iq_metrics(metrics, 5_000);
+    let metrics = report.get("front_end_metrics").expect("front_end_metrics present");
+    assert_dc_only_metrics(metrics, 5_000);
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
 }
@@ -283,10 +271,8 @@ fn track_reports_front_end_metrics_from_acquisition_window() {
 
     assert!(output.status.success(), "track failed: {}", String::from_utf8_lossy(&output.stderr));
     let report = load_json(&out_dir.join("track_report.json"));
-    let metrics = report
-        .get("front_end_metrics")
-        .expect("front_end_metrics present");
-    assert_constant_iq_metrics(metrics, 5_000);
+    let metrics = report.get("front_end_metrics").expect("front_end_metrics present");
+    assert_dc_only_metrics(metrics, 5_000);
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
 }
@@ -323,10 +309,8 @@ fn inspect_reports_front_end_metrics_from_requested_samples() {
 
     assert!(output.status.success(), "inspect failed: {}", String::from_utf8_lossy(&output.stderr));
     let report = load_json(&out_dir.join("inspect_report.json"));
-    let metrics = report
-        .get("front_end_metrics")
-        .expect("front_end_metrics present");
-    assert_constant_iq_metrics(metrics, 4);
+    let metrics = report.get("front_end_metrics").expect("front_end_metrics present");
+    assert_dc_only_metrics(metrics, 4);
     assert_eq!(report.get("total_samples").and_then(Value::as_u64), Some(4));
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
@@ -362,10 +346,8 @@ fn run_reports_front_end_metrics_for_stream_start() {
 
     assert!(output.status.success(), "run failed: {}", String::from_utf8_lossy(&output.stderr));
     let report = load_json(&out_dir.join("run_report.json"));
-    let metrics = report
-        .get("front_end_metrics")
-        .expect("front_end_metrics present");
-    assert_constant_iq_metrics(metrics, 5_000);
+    let metrics = report.get("front_end_metrics").expect("front_end_metrics present");
+    assert_dc_only_metrics(metrics, 5_000);
     assert_eq!(report.get("epochs").and_then(Value::as_u64), Some(1));
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
@@ -402,32 +384,19 @@ fn inspect_reports_quadrature_error_from_synthetic_fixture() {
 
     assert!(output.status.success(), "inspect failed: {}", String::from_utf8_lossy(&output.stderr));
     let report = load_json(&out_dir.join("inspect_report.json"));
-    let metrics = report
-        .get("front_end_metrics")
-        .expect("front_end_metrics present");
-    let measured_error_deg = metrics
-        .get("quadrature_error_deg")
-        .and_then(Value::as_f64)
-        .expect("quadrature_error_deg");
+    let metrics = report.get("front_end_metrics").expect("front_end_metrics present");
+    let measured_error_deg =
+        metrics.get("quadrature_error_deg").and_then(Value::as_f64).expect("quadrature_error_deg");
 
     assert!(
         (measured_error_deg - expected_error_deg).abs() <= QUADRATURE_FIXTURE_TOLERANCE_DEG,
         "measured={measured_error_deg} expected={expected_error_deg}"
     );
-    assert_eq!(
-        metrics.get("quadrature_error_warning").and_then(Value::as_bool),
-        Some(true)
-    );
+    assert_eq!(metrics.get("quadrature_error_warning").and_then(Value::as_bool), Some(true));
     assert_eq!(metrics.get("power_imbalance_warning").and_then(Value::as_bool), Some(false));
     assert_eq!(metrics.get("clipping_pct").and_then(Value::as_f64), None);
-    assert_eq!(
-        metrics.get("clipping_warning").and_then(Value::as_bool),
-        Some(false)
-    );
-    assert_eq!(
-        metrics.get("precision_claims_allowed").and_then(Value::as_bool),
-        Some(true)
-    );
+    assert_eq!(metrics.get("clipping_warning").and_then(Value::as_bool), Some(false));
+    assert_eq!(metrics.get("precision_claims_allowed").and_then(Value::as_bool), Some(true));
     assert_eq!(metrics.get("precision_claims_refused_reason"), Some(&Value::Null));
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
@@ -462,12 +431,14 @@ fn raw_iq_commands_refuse_precision_claims_for_clipped_iq8_capture() {
         ],
         &repo_root(),
     );
-    assert!(acquire.status.success(), "acquire failed: {}", String::from_utf8_lossy(&acquire.stderr));
+    assert!(
+        acquire.status.success(),
+        "acquire failed: {}",
+        String::from_utf8_lossy(&acquire.stderr)
+    );
     let acquire_report = load_json(&acquire_out.join("acquire_report.json"));
     assert_precision_refusal_metrics(
-        acquire_report
-            .get("front_end_metrics")
-            .expect("front_end_metrics present"),
+        acquire_report.get("front_end_metrics").expect("front_end_metrics present"),
         5_000,
         2.0,
     );
@@ -494,9 +465,7 @@ fn raw_iq_commands_refuse_precision_claims_for_clipped_iq8_capture() {
     assert!(track.status.success(), "track failed: {}", String::from_utf8_lossy(&track.stderr));
     let track_report = load_json(&track_out.join("track_report.json"));
     assert_precision_refusal_metrics(
-        track_report
-            .get("front_end_metrics")
-            .expect("front_end_metrics present"),
+        track_report.get("front_end_metrics").expect("front_end_metrics present"),
         5_000,
         2.0,
     );
@@ -520,12 +489,14 @@ fn raw_iq_commands_refuse_precision_claims_for_clipped_iq8_capture() {
         ],
         &repo_root(),
     );
-    assert!(inspect.status.success(), "inspect failed: {}", String::from_utf8_lossy(&inspect.stderr));
+    assert!(
+        inspect.status.success(),
+        "inspect failed: {}",
+        String::from_utf8_lossy(&inspect.stderr)
+    );
     let inspect_report = load_json(&inspect_out.join("inspect_report.json"));
     assert_precision_refusal_metrics(
-        inspect_report
-            .get("front_end_metrics")
-            .expect("front_end_metrics present"),
+        inspect_report.get("front_end_metrics").expect("front_end_metrics present"),
         5_000,
         2.0,
     );
@@ -550,9 +521,7 @@ fn raw_iq_commands_refuse_precision_claims_for_clipped_iq8_capture() {
     assert!(run.status.success(), "run failed: {}", String::from_utf8_lossy(&run.stderr));
     let run_report = load_json(&run_out.join("run_report.json"));
     assert_precision_refusal_metrics(
-        run_report
-            .get("front_end_metrics")
-            .expect("front_end_metrics present"),
+        run_report.get("front_end_metrics").expect("front_end_metrics present"),
         5_000,
         2.0,
     );
@@ -590,9 +559,7 @@ fn inspect_reports_clipping_for_signed_16bit_capture() {
 
     assert!(output.status.success(), "inspect failed: {}", String::from_utf8_lossy(&output.stderr));
     let report = load_json(&out_dir.join("inspect_report.json"));
-    let metrics = report
-        .get("front_end_metrics")
-        .expect("front_end_metrics present");
+    let metrics = report.get("front_end_metrics").expect("front_end_metrics present");
     assert_precision_refusal_metrics(metrics, 128, 6.25);
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
@@ -649,7 +616,11 @@ fn acquire_config_dc_removal_preserves_or_improves_biased_peak_quality() {
         ],
         &repo_root(),
     );
-    assert!(disabled.status.success(), "acquire without dc removal failed: {}", String::from_utf8_lossy(&disabled.stderr));
+    assert!(
+        disabled.status.success(),
+        "acquire without dc removal failed: {}",
+        String::from_utf8_lossy(&disabled.stderr)
+    );
 
     let enabled_out = temp.join("acquire-enabled");
     let enabled = run_bijux(
@@ -672,7 +643,11 @@ fn acquire_config_dc_removal_preserves_or_improves_biased_peak_quality() {
         ],
         &repo_root(),
     );
-    assert!(enabled.status.success(), "acquire with dc removal failed: {}", String::from_utf8_lossy(&enabled.stderr));
+    assert!(
+        enabled.status.success(),
+        "acquire with dc removal failed: {}",
+        String::from_utf8_lossy(&enabled.stderr)
+    );
 
     let disabled_report = load_json(&disabled_out.join("acquire_report.json"));
     let enabled_report = load_json(&enabled_out.join("acquire_report.json"));
