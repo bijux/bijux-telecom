@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{Constellation, SatId};
+use bijux_gnss_core::api::{AcqSearchSummary, Constellation, SatId};
 use bijux_gnss_receiver::api::{
     sim::{generate_l1_ca_multi, SyntheticScenario, SyntheticSignalParams},
     AcquisitionEngine, ReceiverPipelineConfig, ReceiverRuntime,
@@ -29,6 +29,60 @@ fn acquisition_multipath_harness_preserves_ranked_candidates() {
     assert!(run.results[0].len() <= 4);
     assert!(run.explains[0].candidate_count >= 1);
     assert!(!run.explains[0].selected_reason.is_empty());
+}
+
+#[test]
+fn acquisition_reports_delayed_secondary_peak_as_multipath_suspicion() {
+    let sat = gps_l1_ca_satellite();
+    let config = multipath_profile();
+    let frame = delayed_secondary_path_frame(
+        &config,
+        0.001,
+        [
+            path_signal(sat, 0.0, 300.0, 46.0),
+            path_signal(sat, 0.0, 360.0, 42.0),
+        ],
+        0x2407_4502,
+    );
+    let run = AcquisitionEngine::new(config.clone(), ReceiverRuntime::default())
+        .with_doppler(config.acquisition_doppler_search_hz, config.acquisition_doppler_step_hz)
+        .run_fft_topn_with_explain(&frame, &[sat], 4, 1, 1);
+    let best = &run.results[0][0];
+    let explain = &run.explains[0];
+
+    assert_eq!(best.hypothesis.to_string(), "ambiguous", "{run:?}");
+    assert_eq!(explain.selected_reason, "multipath_suspect", "{run:?}");
+    assert!(
+        explain.candidates[0].reason.contains("delayed secondary peak"),
+        "{run:?}"
+    );
+}
+
+#[test]
+fn acquisition_search_summary_counts_multipath_suspicion_as_degraded() {
+    let sat = gps_l1_ca_satellite();
+    let config = multipath_profile();
+    let frame = delayed_secondary_path_frame(
+        &config,
+        0.001,
+        [
+            path_signal(sat, 0.0, 300.0, 46.0),
+            path_signal(sat, 0.0, 360.0, 42.0),
+        ],
+        0x2407_4503,
+    );
+    let results = AcquisitionEngine::new(config.clone(), ReceiverRuntime::default())
+        .with_doppler(config.acquisition_doppler_search_hz, config.acquisition_doppler_step_hz)
+        .run_fft(&frame, &[sat]);
+    let summary = AcqSearchSummary::from_results(&results);
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].hypothesis.to_string(), "ambiguous", "{results:?}");
+    assert_eq!(summary.searched_satellites, 1);
+    assert_eq!(summary.ambiguous, 1);
+    assert_eq!(summary.accepted, 0);
+    assert_eq!(summary.rejected, 0);
+    assert_eq!(summary.deferred, 0);
 }
 
 fn multipath_profile() -> ReceiverPipelineConfig {
