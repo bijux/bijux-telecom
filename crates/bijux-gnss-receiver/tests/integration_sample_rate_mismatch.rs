@@ -27,6 +27,7 @@ fn accepted_acquisition(sat: SatId, carrier_hz: f64, code_phase_samples: usize) 
         threshold_provenance: None,
         explain_selection_reason: Some("seeded_tracking_start".to_string()),
         doppler_refinement: None,
+        code_phase_refinement: None,
     }
 }
 

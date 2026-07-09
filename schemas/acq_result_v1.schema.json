@@ -69,6 +69,7 @@
         "source_time": { "$ref": "#/definitions/ReceiverSampleTrace" },
         "carrier_hz": { "type": "number" },
         "doppler_refinement": { "$ref": "#/definitions/AcqDopplerRefinement" },
+        "code_phase_refinement": { "$ref": "#/definitions/AcqCodePhaseRefinement" },
         "code_phase_samples": { "type": "integer", "minimum": 0 },
         "peak": { "type": "number" },
         "peak_second_ratio": { "type": "number" },
@@ -94,6 +95,25 @@
         "left_peak_mean_ratio": { "type": "number" },
         "center_peak_mean_ratio": { "type": "number" },
         "right_peak_mean_ratio": { "type": "number" }
+      }
+    },
+    "AcqCodePhaseRefinement": {
+      "type": "object",
+      "required": [
+        "method",
+        "offset_samples",
+        "refined_code_phase_samples",
+        "left_correlation_norm",
+        "center_correlation_norm",
+        "right_correlation_norm"
+      ],
+      "properties": {
+        "method": { "type": "string" },
+        "offset_samples": { "type": "number" },
+        "refined_code_phase_samples": { "type": "number" },
+        "left_correlation_norm": { "type": "number" },
+        "center_correlation_norm": { "type": "number" },
+        "right_correlation_norm": { "type": "number" }
       }
     }
   }

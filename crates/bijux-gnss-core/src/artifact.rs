@@ -173,6 +173,20 @@ pub mod v1 {
                         ));
                     }
                 }
+                if let Some(refinement) = &self.code_phase_refinement {
+                    if !refinement.offset_samples.is_finite()
+                        || !refinement.refined_code_phase_samples.is_finite()
+                        || !refinement.left_correlation_norm.is_finite()
+                        || !refinement.center_correlation_norm.is_finite()
+                        || !refinement.right_correlation_norm.is_finite()
+                    {
+                        events.push(DiagnosticEvent::new(
+                            DiagnosticSeverity::Error,
+                            "GNSS_NUMERIC_ACQ_CODE_PHASE_REFINEMENT_INVALID",
+                            "acquisition code-phase refinement contains NaN/Inf",
+                        ));
+                    }
+                }
                 events.extend(validate_receiver_sample_trace(
                     self.source_time,
                     "acquisition",

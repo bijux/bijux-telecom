@@ -1462,6 +1462,7 @@ mod tests {
             threshold_provenance: None,
             explain_selection_reason: None,
             doppler_refinement: None,
+            code_phase_refinement: None,
         };
 
         let single = tracking.track_from_acquisition(

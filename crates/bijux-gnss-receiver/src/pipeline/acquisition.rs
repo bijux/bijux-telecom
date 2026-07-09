@@ -5,9 +5,8 @@ use std::sync::Mutex;
 
 use bijux_gnss_core::api::{
     acq_result_stability_key, stable_acq_result_keys, AcqAssumptions, AcqDopplerRefinement,
-    AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqResult,
-    AcqThresholdProvenance, Hertz,
-    ReceiverSampleTrace, SamplesFrame, SatId,
+    AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqResult, AcqThresholdProvenance,
+    Hertz, ReceiverSampleTrace, SamplesFrame, SatId,
 };
 use num_complex::Complex;
 use rustfft::{num_traits::Zero, FftPlanner};
@@ -243,8 +242,12 @@ impl Acquisition {
         );
         let total_ms = (coherent_ms * noncoherent).max(1) as usize;
         let required = samples_per_code * total_ms;
-        let assumptions =
-            self.full_code_search_assumptions(frame.len(), coherent_ms, noncoherent, samples_per_code);
+        let assumptions = self.full_code_search_assumptions(
+            frame.len(),
+            coherent_ms,
+            noncoherent,
+            samples_per_code,
+        );
         let threshold_provenance = AcqThresholdProvenance {
             coherent_ms,
             noncoherent,
@@ -394,6 +397,7 @@ impl Acquisition {
                     threshold_provenance: Some(threshold_provenance.clone()),
                     explain_selection_reason: None,
                     doppler_refinement: None,
+                    code_phase_refinement: None,
                 });
 
                 doppler += self.doppler_step_hz;
@@ -736,6 +740,7 @@ fn zero_signal_run(
             threshold_provenance: Some(threshold_provenance.clone()),
             explain_selection_reason: Some(candidate_reason.clone()),
             doppler_refinement: None,
+            code_phase_refinement: None,
         };
         if emit_explanations {
             explains.push(AcqExplain {
@@ -775,8 +780,7 @@ fn insufficient_frame_run(
     required_samples: usize,
     emit_explanations: bool,
 ) -> AcquisitionRun {
-    let candidate_reason =
-        insufficient_frame_candidate_reason(available_samples, required_samples);
+    let candidate_reason = insufficient_frame_candidate_reason(available_samples, required_samples);
     let mut results = Vec::with_capacity(sats.len());
     let mut explains = Vec::new();
 
@@ -799,6 +803,7 @@ fn insufficient_frame_run(
             threshold_provenance: Some(threshold_provenance.clone()),
             explain_selection_reason: Some(candidate_reason.clone()),
             doppler_refinement: None,
+            code_phase_refinement: None,
         };
         if emit_explanations {
             explains.push(AcqExplain {
@@ -835,7 +840,10 @@ fn zero_signal_candidate_reason(zero_signal_reason: Option<&str>) -> String {
     }
 }
 
-fn insufficient_frame_candidate_reason(available_samples: usize, required_samples: usize) -> String {
+fn insufficient_frame_candidate_reason(
+    available_samples: usize,
+    required_samples: usize,
+) -> String {
     format!(
         "insufficient_frame: acquisition requires {required_samples} samples but received {available_samples}"
     )
@@ -943,9 +951,11 @@ fn refine_acquisition_candidates(
 ) {
     for candidate in candidates {
         let coarse_carrier_hz = candidate.carrier_hz.0;
-        let Some(refinement) =
-            estimate_acquisition_doppler_refinement(coarse_carrier_hz, grid_candidates, doppler_step_hz)
-        else {
+        let Some(refinement) = estimate_acquisition_doppler_refinement(
+            coarse_carrier_hz,
+            grid_candidates,
+            doppler_step_hz,
+        ) else {
             continue;
         };
         candidate.carrier_hz = Hertz(coarse_carrier_hz + refinement.offset_hz);
@@ -974,8 +984,7 @@ fn estimate_acquisition_doppler_refinement(
     let left_peak_mean_ratio = left.peak_mean_ratio as f64;
     let center_peak_mean_ratio = center.peak_mean_ratio as f64;
     let right_peak_mean_ratio = right.peak_mean_ratio as f64;
-    let denominator =
-        left_peak_mean_ratio - (2.0 * center_peak_mean_ratio) + right_peak_mean_ratio;
+    let denominator = left_peak_mean_ratio - (2.0 * center_peak_mean_ratio) + right_peak_mean_ratio;
     if !denominator.is_finite() || denominator.abs() <= SUB_BIN_DOPPLER_REFINEMENT_EPSILON {
         return None;
     }
@@ -1087,6 +1096,7 @@ mod tests {
                 threshold_provenance: None,
                 explain_selection_reason: None,
                 doppler_refinement: None,
+                code_phase_refinement: None,
             },
             AcqResult {
                 sat,
@@ -1106,6 +1116,7 @@ mod tests {
                 threshold_provenance: None,
                 explain_selection_reason: None,
                 doppler_refinement: None,
+                code_phase_refinement: None,
             },
         ];
         rows.sort_by(|a, b| {
@@ -1260,8 +1271,11 @@ mod tests {
             acquisition_noncoherent: 1,
             ..ReceiverPipelineConfig::default()
         };
-        let samples_per_code =
-            samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
+        let samples_per_code = samples_per_code(
+            config.sampling_freq_hz,
+            config.code_freq_basis_hz,
+            config.code_length,
+        );
         let frame = SamplesFrame::new(
             SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
             Seconds(1.0 / config.sampling_freq_hz),
@@ -1318,6 +1332,7 @@ mod tests {
             threshold_provenance: None,
             explain_selection_reason: None,
             doppler_refinement: None,
+            code_phase_refinement: None,
         }
     }
 }

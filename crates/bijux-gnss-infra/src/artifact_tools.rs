@@ -77,9 +77,7 @@ pub fn artifact_explain(path: &Path) -> Result<ArtifactExplainResult, InputError
                 "acq" => serde_json::from_str::<AcqResultV1>(line).map_err(map_err)?.header,
                 "track" => serde_json::from_str::<TrackEpochV1>(line).map_err(map_err)?.header,
                 "obs" => serde_json::from_str::<ObsEpochV1>(line).map_err(map_err)?.header,
-                "pvt" => {
-                    serde_json::from_str::<NavSolutionEpochV1>(line).map_err(map_err)?.header
-                }
+                "pvt" => serde_json::from_str::<NavSolutionEpochV1>(line).map_err(map_err)?.header,
                 _ => {
                     return Err(InputError { message: "unsupported artifact type".to_string() });
                 }
@@ -298,10 +296,10 @@ fn detect_kind_from_path(path: &Path) -> Option<String> {
 mod tests {
     use super::{artifact_explain, artifact_validate};
     use bijux_gnss_receiver::api::core::{
-        AcqHypothesis, AcqResult, ArtifactHeaderV1, Constellation, Epoch, Hertz, Meters,
-        NavLifecycleState, NavSolutionEpoch, NavSolutionEpochV1, NavUncertaintyClass, SatId,
-        Seconds, SolutionStatus, SolutionValidity, TrackEpoch, TrackEpochV1, AcqResultV1,
-        ReceiverSampleTrace, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
+        AcqHypothesis, AcqResult, AcqResultV1, ArtifactHeaderV1, Constellation, Epoch, Hertz,
+        Meters, NavLifecycleState, NavSolutionEpoch, NavSolutionEpochV1, NavUncertaintyClass,
+        ReceiverSampleTrace, SatId, Seconds, SolutionStatus, SolutionValidity, TrackEpoch,
+        TrackEpochV1, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
     };
     use std::fs;
     use tempfile::tempdir;
@@ -346,6 +344,7 @@ mod tests {
                 threshold_provenance: None,
                 explain_selection_reason: Some("accepted_peak".to_string()),
                 doppler_refinement: None,
+                code_phase_refinement: None,
             },
         };
         fs::write(&path, serde_json::to_string(&wrapped).expect("serialize")).expect("write");

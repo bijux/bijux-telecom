@@ -357,6 +357,16 @@ pub struct AcqDopplerRefinement {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcqCodePhaseRefinement {
+    pub method: String,
+    pub offset_samples: f64,
+    pub refined_code_phase_samples: f64,
+    pub left_correlation_norm: f32,
+    pub center_correlation_norm: f32,
+    pub right_correlation_norm: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcqResult {
     pub sat: SatId,
     #[serde(default)]
@@ -383,6 +393,17 @@ pub struct AcqResult {
     pub explain_selection_reason: Option<String>,
     #[serde(default)]
     pub doppler_refinement: Option<AcqDopplerRefinement>,
+    #[serde(default)]
+    pub code_phase_refinement: Option<AcqCodePhaseRefinement>,
+}
+
+impl AcqResult {
+    pub fn resolved_code_phase_samples(&self) -> f64 {
+        self.code_phase_refinement
+            .as_ref()
+            .map(|refinement| refinement.refined_code_phase_samples)
+            .unwrap_or(self.code_phase_samples as f64)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -410,7 +431,7 @@ impl AcqSearchSummary {
 }
 
 pub fn acq_result_stability_key(result: &AcqResult) -> String {
-    let refinement_key = result
+    let doppler_refinement_key = result
         .doppler_refinement
         .as_ref()
         .map(|refinement| {
@@ -420,8 +441,18 @@ pub fn acq_result_stability_key(result: &AcqResult) -> String {
             )
         })
         .unwrap_or_default();
+    let code_phase_refinement_key = result
+        .code_phase_refinement
+        .as_ref()
+        .map(|refinement| {
+            format!(
+                "|{}|{:.6}|{:.6}",
+                refinement.method, refinement.offset_samples, refinement.refined_code_phase_samples
+            )
+        })
+        .unwrap_or_default();
     format!(
-        "{:?}-{:02}|{:.3}|{}|{:.6}|{:.6}|{:.6}|{}{}",
+        "{:?}-{:02}|{:.3}|{}|{:.6}|{:.6}|{:.6}|{}{}{}",
         result.sat.constellation,
         result.sat.prn,
         result.carrier_hz.0,
@@ -430,7 +461,8 @@ pub fn acq_result_stability_key(result: &AcqResult) -> String {
         result.peak_second_ratio,
         result.score,
         result.hypothesis,
-        refinement_key,
+        doppler_refinement_key,
+        code_phase_refinement_key,
     )
 }
 
@@ -1181,6 +1213,7 @@ mod tests {
             threshold_provenance: None,
             explain_selection_reason: None,
             doppler_refinement: None,
+            code_phase_refinement: None,
         }
     }
 }
