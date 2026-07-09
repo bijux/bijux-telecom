@@ -9,6 +9,8 @@ use bijux_gnss_receiver::api::{
 };
 
 const FALSE_ALARM_RATE_TRIAL_COUNT: usize = 24;
+const FALSE_ALARM_RATE_THRESHOLD_TRIAL_COUNT: usize = 48;
+const FALSE_ALARM_RATE_THRESHOLD: f64 = 0.05;
 
 #[test]
 fn acquisition_false_alarm_rate_report_runs_multiple_measurement_points() {
@@ -83,6 +85,34 @@ fn acquisition_false_alarm_rate_reports_noncoherent_profiles() {
             && point.false_alarm_rate.is_finite()
             && (0.0..=1.0).contains(&point.false_alarm_rate)),
         "{report:?}"
+    );
+}
+
+#[test]
+fn acquisition_noise_only_false_alarm_rate_stays_below_threshold() {
+    let config = acquisition_profile();
+    let report = measure_noise_only_acquisition_false_alarm_rates(
+        &config,
+        &[
+            false_alarm_rate_case(1, 1),
+            false_alarm_rate_case(2, 1),
+            false_alarm_rate_case(5, 1),
+            false_alarm_rate_case(10, 1),
+            false_alarm_rate_case(20, 1),
+            false_alarm_rate_case(1, 2),
+            false_alarm_rate_case(1, 4),
+            false_alarm_rate_case(1, 8),
+        ],
+        &trial_seeds(0x2407_1996, FALSE_ALARM_RATE_THRESHOLD_TRIAL_COUNT),
+        "acquisition_false_alarm_rate_threshold",
+    );
+
+    assert!(
+        report
+            .points
+            .iter()
+            .all(|point| point.false_alarm_rate <= FALSE_ALARM_RATE_THRESHOLD),
+        "expected every noise-only profile to stay at or below the false-alarm threshold: {report:?}"
     );
 }
 
