@@ -192,7 +192,7 @@ fn validate_config_schema(profile: &ReceiverConfig) -> Result<()> {
     }
 }
 
-fn validate_sidecar_schema(sidecar: &SidecarSpec) -> Result<()> {
+fn validate_sidecar_schema(sidecar: &RawIqMetadata) -> Result<()> {
     #[cfg(feature = "schema-validate")]
     {
     let schema_path = schema_path("sidecar.schema.json");

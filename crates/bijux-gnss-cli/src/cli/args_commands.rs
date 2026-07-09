@@ -10,7 +10,7 @@ pub(crate) enum GnssCommand {
         count: usize,
     },
 
-    /// Acquire satellites from a raw i16 sample file
+    /// Acquire satellites from a raw IQ file with explicit metadata
     Acquire {
         #[command(flatten)]
         common: CommonArgs,
@@ -53,7 +53,7 @@ pub(crate) enum GnssCommand {
         prn: Vec<u8>,
     },
 
-    /// Track satellites from a raw i16 sample file
+    /// Track satellites from a raw IQ file with explicit metadata
     Track {
         #[command(flatten)]
         common: CommonArgs,
@@ -114,7 +114,7 @@ pub(crate) enum GnssCommand {
         ekf: bool,
     },
 
-    /// Inspect dataset statistics
+    /// Inspect raw IQ dataset statistics from explicit metadata
     Inspect {
         #[command(flatten)]
         common: CommonArgs,

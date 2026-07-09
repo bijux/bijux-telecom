@@ -2,5 +2,6 @@ schema_version = 1
 format = "iq16_le"
 sample_rate_hz = 5_000_000.0
 intermediate_freq_hz = 0.0
+capture_start_utc = "2026-07-09T00:00:00Z"
 quantization_bits = 16
 notes = "Synthetic demo dataset metadata."

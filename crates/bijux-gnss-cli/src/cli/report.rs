@@ -17,7 +17,10 @@ struct AcquisitionRow {
 
 #[derive(Debug, Serialize)]
 struct InspectReport {
+    format: String,
     sample_rate_hz: f64,
+    intermediate_freq_hz: f64,
+    capture_start_utc: String,
     total_samples: usize,
     dc_offset_i: f64,
     dc_offset_q: f64,

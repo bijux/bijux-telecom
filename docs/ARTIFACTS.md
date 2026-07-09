@@ -97,6 +97,7 @@ Every command writes `manifest.json` into the run output directory. The manifest
 - dataset id
 - enabled features
 - replay scope metadata (`deterministic`, `resume`, output selection)
+- dataset metadata when a registered dataset is used, including raw IQ format and capture timestamp
 - front-end provenance (`sample_rate_hz`, `intermediate_freq_hz`, `quantization_bits`, normalization/calibration source)
 
 ## Validation Evidence Bundle

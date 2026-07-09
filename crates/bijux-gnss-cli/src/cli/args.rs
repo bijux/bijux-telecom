@@ -72,10 +72,3 @@ enum RefPolicy {
     Global,
     PerConstellation,
 }
-
-#[derive(Debug, Serialize, Deserialize)]
-struct SidecarSpec {
-    sample_rate_hz: f64,
-    #[serde(default)]
-    offset_bytes: u64,
-}

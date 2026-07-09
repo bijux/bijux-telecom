@@ -27,11 +27,11 @@ Usage: bijux gnss <COMMAND>
 
 Commands:
   ca-code             Generate GPS L1 C/A code for a PRN
-  acquire             Acquire satellites from a raw i16 sample file
-  track               Track satellites from a raw i16 sample file
+  acquire             Acquire satellites from a raw IQ file with explicit metadata
+  track               Track satellites from a raw IQ file with explicit metadata
   nav                 Navigation-related commands
   pvt                 Solve PVT from a dataset
-  inspect             Inspect dataset statistics
+  inspect             Inspect raw IQ dataset statistics from explicit metadata
   rtk                 RTK alignment and SD/DD artifacts
   experiment          Run parameter sweeps over synthetic scenarios
   artifact            Artifact validation and conversion

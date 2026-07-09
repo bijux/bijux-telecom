@@ -17,7 +17,7 @@ fn handle_track(command: GnssCommand) -> Result<()> {
                 code_length,
                 doppler_search_hz,
                 doppler_step_hz,
-                offset_bytes,
+                offset_bytes: _offset_bytes,
                 prn,
             } = command else {
         bail!("invalid command for handler");
@@ -33,17 +33,14 @@ fn handle_track(command: GnssCommand) -> Result<()> {
                             deterministic: common.deterministic,
                         },
                     );
-                    apply_overrides(&mut profile, sampling_hz, if_hz, code_hz, code_length);
-                    if let Some(entry) = &dataset {
-                        profile.sample_rate_hz = entry.sample_rate_hz;
-                        profile.intermediate_freq_hz = entry.intermediate_freq_hz;
-                    }
+                    let raw_iq_metadata = resolve_raw_iq_metadata(&common, dataset.as_ref())?;
+                    apply_raw_iq_metadata(&mut profile, &raw_iq_metadata, sampling_hz, if_hz)?;
+                    apply_overrides(&mut profile, None, None, code_hz, code_length);
                     validate_config_ingest(&profile)?;
                     let config = profile.to_pipeline_config();
     
                     let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
-                    let sidecar = load_sidecar(common.sidecar.as_ref())?;
-                    let frame = load_frame(&input_file, &config, offset_bytes, sidecar.as_ref())?;
+                    let frame = load_frame(&input_file, &config, &raw_iq_metadata)?;
     
                     let acquisition = AcquisitionEngine::new(config.clone(), runtime.clone())
                         .with_doppler(doppler_search_hz, doppler_step_hz);
@@ -140,10 +137,10 @@ fn handle_inspect(command: GnssCommand) -> Result<()> {
     let _ = runtime_config_from_env(&common, None);
                     let dataset = load_dataset(&common)?;
                     let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
-                    let sample_rate_hz = sampling_hz
-                        .or_else(|| dataset.as_ref().map(|d| d.sample_rate_hz))
-                        .unwrap_or(5_000_000.0);
-                    let report = inspect_dataset(&input_file, sample_rate_hz, max_samples)?;
+                    let raw_iq_metadata = resolve_raw_iq_metadata(&common, dataset.as_ref())?;
+                    let mut profile = ReceiverConfig::default();
+                    apply_raw_iq_metadata(&mut profile, &raw_iq_metadata, sampling_hz, None)?;
+                    let report = inspect_dataset(&input_file, &raw_iq_metadata, max_samples)?;
                     match common.report {
                         ReportFormat::Table => print_inspect_table(&report),
                         ReportFormat::Json => emit_report(&common, "inspect", &report)?,
@@ -151,7 +148,7 @@ fn handle_inspect(command: GnssCommand) -> Result<()> {
                     write_manifest(
                         &common,
                         "inspect",
-                        &ReceiverConfig::default(),
+                        &profile,
                         dataset.as_ref(),
                         &report,
                     )?;

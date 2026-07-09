@@ -28,19 +28,10 @@ fn run_command(command: GnssCommand) -> Result<()> {
 
 
 
-fn inspect_dataset(path: &Path, sample_rate_hz: f64, max_samples: usize) -> Result<InspectReport> {
-    let bytes = fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
-    let mut samples = Vec::with_capacity(bytes.len() / 2);
-    for chunk in bytes.chunks_exact(2) {
-        samples.push(i16::from_le_bytes([chunk[0], chunk[1]]));
-    }
-
-    let total_iq = samples.len() / 2;
-    let limit = if max_samples == 0 {
-        total_iq
-    } else {
-        total_iq.min(max_samples)
-    };
+fn inspect_dataset(path: &Path, metadata: &RawIqMetadata, max_samples: usize) -> Result<InspectReport> {
+    let mut source = FileSamples::open_raw_iq(path, metadata.clone())
+        .with_context(|| format!("failed to open {}", path.display()))?;
+    let mut total_iq = 0usize;
 
     let mut sum_i = 0.0f64;
     let mut sum_q = 0.0f64;
@@ -48,31 +39,48 @@ fn inspect_dataset(path: &Path, sample_rate_hz: f64, max_samples: usize) -> Resu
     let mut power_hist = vec![0u64; 8];
     let mut power_sum = 0.0f64;
 
-    for idx in 0..limit {
-        let i = samples[2 * idx] as f64;
-        let q = samples[2 * idx + 1] as f64;
-        sum_i += i;
-        sum_q += q;
-        if samples[2 * idx].abs() == i16::MAX || samples[2 * idx + 1].abs() == i16::MAX {
-            clip += 1;
+    while max_samples == 0 || total_iq < max_samples {
+        let frame_len = if max_samples == 0 {
+            4096
+        } else {
+            (max_samples - total_iq).min(4096)
+        };
+        let Some(frame) = source.next_frame(frame_len)? else {
+            break;
+        };
+        for sample in &frame.iq {
+            let i = sample.re as f64;
+            let q = sample.im as f64;
+            sum_i += i;
+            sum_q += q;
+            if sample.re.abs() >= 0.999 || sample.im.abs() >= 0.999 {
+                clip += 1;
+            }
+            let power = i * i + q * q;
+            power_sum += power;
+            let bin = ((power.sqrt() / 0.25).min(7.0)) as usize;
+            power_hist[bin] += 1;
+            total_iq += 1;
+            if max_samples != 0 && total_iq >= max_samples {
+                break;
+            }
         }
-        let power = i * i + q * q;
-        power_sum += power;
-        let bin = ((power.sqrt() / 10000.0).min(7.0)) as usize;
-        power_hist[bin] += 1;
     }
 
-    let dc_i = sum_i / limit.max(1) as f64;
-    let dc_q = sum_q / limit.max(1) as f64;
-    let mean_power = power_sum / limit.max(1) as f64;
+    let dc_i = sum_i / total_iq.max(1) as f64;
+    let dc_q = sum_q / total_iq.max(1) as f64;
+    let mean_power = power_sum / total_iq.max(1) as f64;
     let noise_floor_db = 10.0 * mean_power.max(1e-9).log10();
 
     Ok(InspectReport {
-        sample_rate_hz,
-        total_samples: limit,
+        format: format!("{:?}", metadata.format),
+        sample_rate_hz: metadata.sample_rate_hz,
+        intermediate_freq_hz: metadata.intermediate_freq_hz,
+        capture_start_utc: metadata.capture_start_utc.clone(),
+        total_samples: total_iq,
         dc_offset_i: dc_i,
         dc_offset_q: dc_q,
-        clip_rate: clip as f64 / limit.max(1) as f64,
+        clip_rate: clip as f64 / total_iq.max(1) as f64,
         noise_floor_db,
         power_histogram: power_hist,
     })
@@ -113,10 +121,13 @@ fn print_acquisition_table(report: &AcquisitionReport) {
     }
 }
 fn print_inspect_table(report: &InspectReport) {
-    println!("SampleRate(Hz)\tSamples\tDC_I\tDC_Q\tClipRate\tNoiseFloor(dB)");
+    println!("Format\tSampleRate(Hz)\tIF(Hz)\tCaptureStartUtc\tSamples\tDC_I\tDC_Q\tClipRate\tNoiseFloor(dB)");
     println!(
-        "{:.1}\t{}\t{:.3}\t{:.3}\t{:.6}\t{:.2}",
+        "{}\t{:.1}\t{:.1}\t{}\t{}\t{:.3}\t{:.3}\t{:.6}\t{:.2}",
+        report.format,
         report.sample_rate_hz,
+        report.intermediate_freq_hz,
+        report.capture_start_utc,
         report.total_samples,
         report.dc_offset_i,
         report.dc_offset_q,

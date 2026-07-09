@@ -57,14 +57,46 @@ fn resolve_input_file(file: Option<&PathBuf>, dataset: Option<&DatasetEntry>) ->
     ))
 }
 
-fn load_sidecar(path: Option<&PathBuf>) -> Result<Option<SidecarSpec>> {
-    let Some(path) = path else {
-        return Ok(None);
+fn resolve_raw_iq_metadata(common: &CommonArgs, dataset: Option<&DatasetEntry>) -> Result<RawIqMetadata> {
+    let metadata =
+        bijux_gnss_infra::api::resolve_raw_iq_metadata(dataset, common.sidecar.as_deref())?;
+    validate_sidecar_schema(&metadata)?;
+    Ok(metadata)
+}
+
+fn apply_raw_iq_metadata(
+    profile: &mut ReceiverConfig,
+    metadata: &RawIqMetadata,
+    sampling_hz: Option<f64>,
+    if_hz: Option<f64>,
+) -> Result<()> {
+    enforce_locked_capture_value("sample_rate_hz", sampling_hz, metadata.sample_rate_hz)?;
+    enforce_locked_capture_value(
+        "intermediate_freq_hz",
+        if_hz,
+        metadata.intermediate_freq_hz,
+    )?;
+    profile.sample_rate_hz = metadata.sample_rate_hz;
+    profile.intermediate_freq_hz = metadata.intermediate_freq_hz;
+    if let Some(bits) = metadata.quantization_bits {
+        profile.quantization_bits = bits;
+    }
+    Ok(())
+}
+
+fn enforce_locked_capture_value(field: &str, cli_value: Option<f64>, metadata_value: f64) -> Result<()> {
+    let Some(cli_value) = cli_value else {
+        return Ok(());
     };
-    let data = fs::read_to_string(path)?;
-    let spec: SidecarSpec = toml::from_str(&data)?;
-    validate_sidecar_schema(&spec)?;
-    Ok(Some(spec))
+    if (cli_value - metadata_value).abs() > 1e-9 {
+        return Err(classified_error(
+            CliErrorClass::OperatorMisconfiguration,
+            format!(
+                "{field} must come from explicit raw IQ metadata; update the dataset registry or sidecar instead of overriding it on the command line"
+            ),
+        ));
+    }
+    Ok(())
 }
 
 
@@ -93,25 +125,15 @@ fn emit_report<T: Serialize>(common: &CommonArgs, command: &str, report: &T) -> 
 fn load_frame(
     path: &Path,
     config: &ReceiverPipelineConfig,
-    offset_bytes: u64,
-    sidecar: Option<&SidecarSpec>,
+    metadata: &RawIqMetadata,
 ) -> Result<SamplesFrame> {
     let samples_per_code = samples_per_code(
-        sidecar
-            .map(|s| s.sample_rate_hz)
-            .unwrap_or(config.sampling_freq_hz),
+        metadata.sample_rate_hz,
         config.code_freq_basis_hz,
         config.code_length,
     );
-    let offset = sidecar.map(|s| s.offset_bytes).unwrap_or(offset_bytes);
-    let mut source = FileSamples::open(
-        path.to_str().unwrap_or_default(),
-        offset,
-        sidecar
-            .map(|s| s.sample_rate_hz)
-            .unwrap_or(config.sampling_freq_hz),
-    )
-    .with_context(|| format!("failed to open {}", path.display()))?;
+    let mut source = FileSamples::open_raw_iq(path, metadata.clone())
+        .with_context(|| format!("failed to open {}", path.display()))?;
 
     let frame = match source.next_frame(samples_per_code)? {
         Some(frame) => frame,
@@ -534,4 +556,39 @@ fn write_ephemeris(
     fs::write(&path, data)?;
     validate_json_schema(&schema_path("gps_ephemeris_v1.schema.json"), &path, false)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{apply_raw_iq_metadata, enforce_locked_capture_value};
+    use crate::ReceiverConfig;
+    use crate::RawIqMetadata;
+
+    #[test]
+    fn locked_capture_value_rejects_drift() {
+        let err = enforce_locked_capture_value("sample_rate_hz", Some(4_092_000.0), 5_000_000.0)
+            .expect_err("mismatch must fail");
+        assert!(err.to_string().contains("sample_rate_hz"));
+    }
+
+    #[test]
+    fn raw_iq_metadata_updates_receiver_profile() {
+        let mut profile = ReceiverConfig::default();
+        let metadata = RawIqMetadata {
+            format: bijux_gnss_infra::api::signal::IqSampleFormat::Iq16Le,
+            sample_rate_hz: 5_000_000.0,
+            intermediate_freq_hz: 250_000.0,
+            capture_start_utc: "2026-07-09T00:00:00Z".to_string(),
+            offset_bytes: 64,
+            quantization_bits: Some(16),
+            notes: None,
+        };
+
+        apply_raw_iq_metadata(&mut profile, &metadata, Some(5_000_000.0), Some(250_000.0))
+            .expect("apply raw iq metadata");
+
+        assert_eq!(profile.sample_rate_hz, metadata.sample_rate_hz);
+        assert_eq!(profile.intermediate_freq_hz, metadata.intermediate_freq_hz);
+        assert_eq!(profile.quantization_bits, 16);
+    }
 }

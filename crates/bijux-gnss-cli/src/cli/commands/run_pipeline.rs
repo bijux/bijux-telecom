@@ -17,7 +17,7 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
                 code_length,
                 doppler_search_hz,
                 doppler_step_hz,
-                offset_bytes,
+                offset_bytes: _offset_bytes,
                 top,
                 prn,
             } = command else {
@@ -33,18 +33,15 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
                             deterministic: common.deterministic,
                         },
                     );
-                    apply_overrides(&mut profile, sampling_hz, if_hz, code_hz, code_length);
-                    if let Some(entry) = &dataset {
-                        profile.sample_rate_hz = entry.sample_rate_hz;
-                        profile.intermediate_freq_hz = entry.intermediate_freq_hz;
-                    }
+                    let raw_iq_metadata = resolve_raw_iq_metadata(&common, dataset.as_ref())?;
+                    apply_raw_iq_metadata(&mut profile, &raw_iq_metadata, sampling_hz, if_hz)?;
+                    apply_overrides(&mut profile, None, None, code_hz, code_length);
                     validate_config(&profile)?;
                     let config = profile.to_pipeline_config();
     
                     let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
     
-                    let sidecar = load_sidecar(common.sidecar.as_ref())?;
-                    let frame = load_frame(&input_file, &config, offset_bytes, sidecar.as_ref())?;
+                    let frame = load_frame(&input_file, &config, &raw_iq_metadata)?;
                     let runtime = runtime_config_from_env(&common, None);
                     let acquisition = AcquisitionEngine::new(config, runtime)
                         .with_doppler(doppler_search_hz, doppler_step_hz);
@@ -316,10 +313,9 @@ fn handle_validatesidecar(command: GnssCommand) -> Result<()> {
     };
 
     let _ = runtime_config_from_env(&common, None);
-                    let spec = load_sidecar(Some(&sidecar))?;
-                    if spec.is_some() {
-                        println!("sidecar ok: {}", sidecar.display());
-                    }
+                    let spec = bijux_gnss_infra::api::load_raw_iq_metadata(&sidecar)?;
+                    validate_sidecar_schema(&spec)?;
+                    println!("sidecar ok: {}", sidecar.display());
                     let dataset = load_dataset(&common)?;
                     let summary = serde_json::json!({ "sidecar": sidecar.display().to_string() });
                     write_manifest(
@@ -353,22 +349,12 @@ fn handle_run(command: GnssCommand) -> Result<()> {
                             deterministic: common.deterministic,
                         },
                     );
-                    if let Some(entry) = &dataset {
-                        profile.sample_rate_hz = entry.sample_rate_hz;
-                        profile.intermediate_freq_hz = entry.intermediate_freq_hz;
-                    }
+                    let raw_iq_metadata = resolve_raw_iq_metadata(&common, dataset.as_ref())?;
+                    apply_raw_iq_metadata(&mut profile, &raw_iq_metadata, None, None)?;
                     validate_config(&profile)?;
                     let config = profile.to_pipeline_config();
                     let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
-                    let sidecar = load_sidecar(common.sidecar.as_ref())?;
-                    let mut source = FileSamples::open(
-                        input_file.to_str().unwrap_or_default(),
-                        sidecar.as_ref().map(|s| s.offset_bytes).unwrap_or(0),
-                        sidecar
-                            .as_ref()
-                            .map(|s| s.sample_rate_hz)
-                            .unwrap_or(config.sampling_freq_hz),
-                    )?;
+                    let mut source = FileSamples::open_raw_iq(&input_file, raw_iq_metadata)?;
                     let samples_per_code = samples_per_code(
                         config.sampling_freq_hz,
                         config.code_freq_basis_hz,

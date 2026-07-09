@@ -1,10 +1,18 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "SidecarSpec",
+  "title": "RawIqMetadata",
   "type": "object",
-  "required": ["sample_rate_hz"],
+  "required": ["format", "sample_rate_hz", "intermediate_freq_hz", "capture_start_utc"],
   "properties": {
+    "format": {
+      "type": "string",
+      "enum": ["iq8", "iq16_le", "cf32_le"]
+    },
     "sample_rate_hz": { "type": "number", "exclusiveMinimum": 0 },
-    "offset_bytes": { "type": "integer", "minimum": 0 }
+    "intermediate_freq_hz": { "type": "number" },
+    "capture_start_utc": { "type": "string", "minLength": 1 },
+    "offset_bytes": { "type": "integer", "minimum": 0 },
+    "quantization_bits": { "type": "integer", "minimum": 1 },
+    "notes": { "type": "string" }
   }
 }
