@@ -493,4 +493,34 @@ capture_start_utc = "2026-07-09T00:00:00Z"
             .expect_err("missing sample rate must fail");
         assert!(err.message.contains("sample_rate_hz") || err.message.contains("missing field"));
     }
+
+    #[test]
+    fn front_end_provenance_rejects_sidecar_without_intermediate_frequency() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let sidecar = temp.path().join("broken.sidecar.toml");
+        fs::write(
+            &sidecar,
+            r#"
+format = "iq16_le"
+sample_rate_hz = 5000000.0
+capture_start_utc = "2026-07-09T00:00:00Z"
+"#,
+        )
+        .expect("write sidecar");
+
+        let args = RunContextArgs {
+            config: None,
+            dataset_id: None,
+            unregistered_dataset: true,
+            out: None,
+            resume: None,
+            deterministic: true,
+            sidecar: Some(&sidecar),
+        };
+        let err = front_end_provenance(&args, &ReceiverConfig::default(), None)
+            .expect_err("missing intermediate frequency must fail");
+        assert!(
+            err.message.contains("intermediate_freq_hz") || err.message.contains("missing field")
+        );
+    }
 }
