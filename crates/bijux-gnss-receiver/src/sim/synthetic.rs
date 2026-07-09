@@ -587,6 +587,53 @@ pub struct SyntheticAcquisitionDopplerRefinementReport {
     pub satellites: Vec<SyntheticAcquisitionDopplerRefinementSatellite>,
 }
 
+/// Validation input for one acquisition sample-rate profile.
+#[derive(Debug, Clone, Copy)]
+pub struct SyntheticAcquisitionSampleRateValidationCase<'a> {
+    /// Receiver configuration to validate.
+    pub config: &'a ReceiverPipelineConfig,
+    /// Synthetic sample frame captured at the configured rate.
+    pub frame: &'a SamplesFrame,
+    /// Machine-readable synthetic truth for the frame.
+    pub truth: &'a SyntheticIqTruthBundle,
+}
+
+/// Per-sample-rate acquisition validation summary across code-phase and Doppler checks.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionSampleRateValidationPoint {
+    /// Stable scenario identifier for this sample-rate profile.
+    pub scenario_id: String,
+    /// Capture sample rate in Hz.
+    pub sample_rate_hz: f64,
+    /// Truth-guided acquisition code-phase validation for this profile.
+    pub code_phase_validation: SyntheticAcquisitionCodePhaseValidationReport,
+    /// Truth-guided acquisition Doppler validation for this profile.
+    pub doppler_validation: SyntheticAcquisitionDopplerValidationReport,
+    /// Whether both code-phase and Doppler checks passed for this profile.
+    pub pass: bool,
+}
+
+/// Aggregate acquisition validation across multiple sample-rate profiles.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionSampleRateValidationReport {
+    /// Allowed code-phase error in samples for every profile.
+    pub code_phase_tolerance_samples: usize,
+    /// Allowed Doppler error in acquisition bins for every profile.
+    pub doppler_tolerance_bins: usize,
+    /// Allowed Doppler error in Hz for every profile.
+    pub doppler_tolerance_hz: f64,
+    /// Number of distinct sample rates covered by the report.
+    pub distinct_sample_rate_count: usize,
+    /// Lowest sample rate validated by this report, in Hz.
+    pub min_sample_rate_hz: f64,
+    /// Highest sample rate validated by this report, in Hz.
+    pub max_sample_rate_hz: f64,
+    /// Whether at least two distinct sample rates were validated and every profile passed.
+    pub pass: bool,
+    /// Per-profile validation results.
+    pub points: Vec<SyntheticAcquisitionSampleRateValidationPoint>,
+}
+
 /// Build a machine-readable truth bundle for an emitted synthetic capture.
 pub fn build_truth_bundle(
     scenario_id: &str,
@@ -1513,6 +1560,71 @@ pub fn validate_truth_guided_acquisition_doppler_refinement(
     }
 }
 
+/// Validate acquisition code phase and Doppler across multiple sample-rate profiles.
+pub fn validate_truth_guided_acquisition_sample_rates(
+    cases: &[SyntheticAcquisitionSampleRateValidationCase<'_>],
+    code_phase_tolerance_samples: usize,
+    doppler_tolerance_bins: usize,
+) -> SyntheticAcquisitionSampleRateValidationReport {
+    let mut points = cases
+        .iter()
+        .map(|case| {
+            let code_phase_validation = validate_truth_guided_acquisition_code_phase(
+                case.config,
+                case.frame,
+                case.truth,
+                code_phase_tolerance_samples,
+            );
+            let doppler_validation = validate_truth_guided_acquisition_doppler(
+                case.config,
+                case.frame,
+                case.truth,
+                doppler_tolerance_bins,
+            );
+            let pass = code_phase_validation.pass && doppler_validation.pass;
+            SyntheticAcquisitionSampleRateValidationPoint {
+                scenario_id: case.truth.scenario_id.clone(),
+                sample_rate_hz: case.truth.sample_rate_hz,
+                code_phase_validation,
+                doppler_validation,
+                pass,
+            }
+        })
+        .collect::<Vec<_>>();
+    points.sort_by(|left, right| {
+        left.sample_rate_hz
+            .partial_cmp(&right.sample_rate_hz)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| left.scenario_id.cmp(&right.scenario_id))
+    });
+
+    let distinct_sample_rate_count = points
+        .iter()
+        .map(|point| point.sample_rate_hz.to_bits())
+        .collect::<std::collections::BTreeSet<_>>()
+        .len();
+    let min_sample_rate_hz = points.first().map(|point| point.sample_rate_hz).unwrap_or(0.0);
+    let max_sample_rate_hz = points.last().map(|point| point.sample_rate_hz).unwrap_or(0.0);
+    let doppler_tolerance_hz = points
+        .first()
+        .map(|point| point.doppler_validation.tolerance_hz)
+        .unwrap_or(doppler_tolerance_bins as f64);
+    let pass = distinct_sample_rate_count >= 2
+        && !points.is_empty()
+        && points.iter().all(|point| point.pass);
+
+    SyntheticAcquisitionSampleRateValidationReport {
+        code_phase_tolerance_samples,
+        doppler_tolerance_bins,
+        doppler_tolerance_hz,
+        distinct_sample_rate_count,
+        min_sample_rate_hz,
+        max_sample_rate_hz,
+        pass,
+        points,
+    }
+}
+
 /// Generate a synthetic GPS L1 C/A signal at the receiver sample rate.
 ///
 /// The C/N0 control is approximate and intended for test harnesses.
@@ -1950,14 +2062,17 @@ mod tests {
         measure_truth_guided_acquisition_detection_probability,
         measure_truth_guided_acquisition_detection_rate, nav_bit_index_at_time_s,
         nav_bit_sign_at_time_s, signal_amplitude_from_cn0,
+        validate_truth_guided_acquisition_sample_rates,
         validate_truth_guided_acquisition_code_phase,
         validate_truth_guided_acquisition_code_phase_refinement,
         validate_truth_guided_acquisition_coherent_integration,
         validate_truth_guided_acquisition_doppler, validate_truth_guided_cn0,
-        wrapped_code_phase_error_samples, wrapped_code_phase_error_samples_f64, SatState,
-        SyntheticAcquisitionDetectionRateCase, SyntheticAcquisitionFalseAlarmRateCase,
-        SyntheticNavBitMode, SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource,
-        SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
+        wrapped_code_phase_error_samples, wrapped_code_phase_error_samples_f64,
+        SatState, SyntheticAcquisitionDetectionRateCase,
+        SyntheticAcquisitionFalseAlarmRateCase, SyntheticAcquisitionSampleRateValidationCase,
+        SyntheticNavBitMode, SyntheticScenario, SyntheticSignalParams,
+        SyntheticSignalSource, SYNTHETIC_COMPLEX_NOISE_POWER,
+        SYNTHETIC_NOISE_STD_PER_COMPONENT,
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
     use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds};
@@ -2815,6 +2930,169 @@ mod tests {
             assert!(row.doppler_error_hz <= 500.0 + f64::EPSILON, "{row:?}");
             assert!(row.doppler_error_bins <= 1.0 + f64::EPSILON, "{row:?}");
             assert_ne!(row.hypothesis, "deferred");
+        }
+    }
+
+    #[test]
+    fn acquisition_sample_rate_validation_passes_with_distinct_low_and_high_rate_profiles() {
+        let low_rate = synthetic_acquisition_sample_rate_case_fixture(
+            2_046_000.0,
+            "acquisition_sample_rate_validation_low_rate",
+            0x2_046_000,
+        );
+        let high_rate = synthetic_acquisition_sample_rate_case_fixture(
+            4_092_000.0,
+            "acquisition_sample_rate_validation_high_rate",
+            0x4_092_000,
+        );
+
+        let report = validate_truth_guided_acquisition_sample_rates(
+            &[low_rate.case, high_rate.case],
+            2,
+            1,
+        );
+
+        assert!(report.pass, "{report:?}");
+        assert_eq!(report.code_phase_tolerance_samples, 2);
+        assert_eq!(report.doppler_tolerance_bins, 1);
+        assert_eq!(report.doppler_tolerance_hz, 500.0);
+        assert_eq!(report.distinct_sample_rate_count, 2);
+        assert_eq!(report.min_sample_rate_hz, 2_046_000.0);
+        assert_eq!(report.max_sample_rate_hz, 4_092_000.0);
+        assert_eq!(report.points.len(), 2);
+        assert_eq!(report.points[0].scenario_id, low_rate.truth.scenario_id);
+        assert_eq!(report.points[1].scenario_id, high_rate.truth.scenario_id);
+        for point in &report.points {
+            assert!(point.pass, "{point:?}");
+            assert!(point.code_phase_validation.pass, "{point:?}");
+            assert!(point.doppler_validation.pass, "{point:?}");
+        }
+    }
+
+    #[test]
+    fn acquisition_sample_rate_validation_requires_distinct_sample_rates() {
+        let alpha = synthetic_acquisition_sample_rate_case_fixture(
+            4_092_000.0,
+            "acquisition_sample_rate_validation_same_rate_alpha",
+            0x4_092_001,
+        );
+        let beta = synthetic_acquisition_sample_rate_case_fixture(
+            4_092_000.0,
+            "acquisition_sample_rate_validation_same_rate_beta",
+            0x4_092_002,
+        );
+
+        let report = validate_truth_guided_acquisition_sample_rates(&[alpha.case, beta.case], 2, 1);
+
+        assert!(!report.pass, "{report:?}");
+        assert_eq!(report.distinct_sample_rate_count, 1);
+        assert_eq!(report.min_sample_rate_hz, 4_092_000.0);
+        assert_eq!(report.max_sample_rate_hz, 4_092_000.0);
+        assert!(report.points.iter().all(|point| point.pass), "{report:?}");
+    }
+
+    #[test]
+    fn acquisition_sample_rate_validation_orders_profiles_by_rate_then_scenario_id() {
+        let zeta = synthetic_acquisition_sample_rate_case_fixture(
+            4_092_000.0,
+            "acquisition_sample_rate_validation_zeta",
+            0x4_092_003,
+        );
+        let beta = synthetic_acquisition_sample_rate_case_fixture(
+            2_046_000.0,
+            "acquisition_sample_rate_validation_beta",
+            0x2_046_001,
+        );
+        let alpha = synthetic_acquisition_sample_rate_case_fixture(
+            2_046_000.0,
+            "acquisition_sample_rate_validation_alpha",
+            0x2_046_002,
+        );
+
+        let report = validate_truth_guided_acquisition_sample_rates(&[zeta.case, beta.case, alpha.case], 2, 1);
+        let ordered_points = report
+            .points
+            .iter()
+            .map(|point| (point.sample_rate_hz, point.scenario_id.as_str()))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            ordered_points,
+            vec![
+                (2_046_000.0, "acquisition_sample_rate_validation_alpha"),
+                (2_046_000.0, "acquisition_sample_rate_validation_beta"),
+                (4_092_000.0, "acquisition_sample_rate_validation_zeta"),
+            ]
+        );
+    }
+
+    struct SyntheticAcquisitionSampleRateCaseFixture {
+        case: SyntheticAcquisitionSampleRateValidationCase<'static>,
+        truth: &'static super::SyntheticIqTruthBundle,
+    }
+
+    fn synthetic_acquisition_sample_rate_case_fixture(
+        sampling_freq_hz: f64,
+        scenario_id: &str,
+        seed: u64,
+    ) -> SyntheticAcquisitionSampleRateCaseFixture {
+        let config = Box::leak(Box::new(ReceiverPipelineConfig {
+            sampling_freq_hz,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            acquisition_doppler_search_hz: 10_000,
+            acquisition_doppler_step_hz: 500,
+            ..ReceiverPipelineConfig::default()
+        }));
+        let scenario = SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            duration_s: 0.04,
+            seed,
+            satellites: vec![
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                    doppler_hz: 750.0,
+                    code_phase_chips: 200.25,
+                    carrier_phase_rad: 0.0,
+                    cn0_db_hz: 58.0,
+                    data_bit_flip: true,
+                },
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                    doppler_hz: -1_000.0,
+                    code_phase_chips: 321.5,
+                    carrier_phase_rad: 0.2,
+                    cn0_db_hz: 52.0,
+                    data_bit_flip: false,
+                },
+            ],
+            ephemerides: Vec::new(),
+            id: scenario_id.to_string(),
+        };
+        let frame = generate_l1_ca_multi(config, &scenario);
+        let bundle = build_iq16_capture_bundle(
+            &scenario.id,
+            &scenario,
+            &frame,
+            "2026-07-09T00:00:00Z",
+            Some("synthetic acquisition sample-rate validation".to_string()),
+        );
+        let scaled_frame = Box::leak(Box::new(SamplesFrame::new(
+            frame.t0,
+            frame.dt_s,
+            frame
+                .iq
+                .iter()
+                .map(|sample| *sample * bundle.truth.output_scale_applied)
+                .collect(),
+        )));
+        let truth = Box::leak(Box::new(bundle.truth));
+
+        SyntheticAcquisitionSampleRateCaseFixture {
+            case: SyntheticAcquisitionSampleRateValidationCase { config, frame: scaled_frame, truth },
+            truth,
         }
     }
 }
