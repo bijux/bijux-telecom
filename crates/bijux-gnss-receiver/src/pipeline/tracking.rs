@@ -15,6 +15,8 @@ use bijux_gnss_signal::api::Nco;
 use bijux_gnss_signal::api::{adaptive_bandwidth, code_at, discriminators, estimate_cn0_dbhz};
 use bijux_gnss_signal::api::{generate_ca_code, Prn};
 
+const DLL_CODE_PHASE_CORRECTION_GAIN: f64 = 0.5;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelState {
     Idle,
@@ -390,6 +392,7 @@ impl Tracking {
             self.config.code_freq_basis_hz,
             self.config.code_length,
         );
+        let samples_per_chip = samples_per_code as f64 / self.config.code_length as f64;
         let mut state = LoopState {
             carrier_hz,
             code_rate_hz: self.config.code_freq_basis_hz,
@@ -511,9 +514,15 @@ impl Tracking {
                 state.carrier_hz += fll_bw * fll_err as f64;
             }
             state.carrier_hz += pll_bw * pll_err as f64;
-
-            state.code_phase_samples =
-                (state.code_phase_samples + samples_per_code as f64) % samples_per_code as f64;
+            state.code_phase_samples = advance_code_phase_samples(
+                state.code_phase_samples,
+                epoch_frame.len(),
+                state.code_rate_hz,
+                self.config.code_freq_basis_hz,
+                dll_err,
+                samples_per_chip,
+                samples_per_code,
+            );
 
             if state.state != from_state {
                 transitions.push(TrackTransition {
@@ -655,6 +664,31 @@ fn default_tracking_assumptions(config: &ReceiverPipelineConfig) -> TrackingAssu
     }
 }
 
+fn advance_code_phase_samples(
+    current_code_phase_samples: f64,
+    epoch_len_samples: usize,
+    tracked_code_rate_hz: f64,
+    nominal_code_rate_hz: f64,
+    dll_err: f32,
+    samples_per_chip: f64,
+    samples_per_code: usize,
+) -> f64 {
+    let nominal_code_rate_hz = nominal_code_rate_hz.max(1.0);
+    let code_period_advance_samples =
+        epoch_len_samples as f64 * (tracked_code_rate_hz / nominal_code_rate_hz);
+    let dll_correction_samples =
+        -(dll_err as f64) * samples_per_chip * DLL_CODE_PHASE_CORRECTION_GAIN;
+    wrap_code_phase_samples(
+        current_code_phase_samples + code_period_advance_samples + dll_correction_samples,
+        samples_per_code,
+    )
+}
+
+fn wrap_code_phase_samples(code_phase_samples: f64, samples_per_code: usize) -> f64 {
+    let code_period_samples = samples_per_code.max(1) as f64;
+    code_phase_samples.rem_euclid(code_period_samples)
+}
+
 fn tracking_stability_signature(epochs: &[TrackEpoch]) -> String {
     let mut rows = epochs
         .iter()
@@ -758,6 +792,34 @@ mod tests {
         assert_eq!(decision.to_state, ChannelState::Lost);
         assert_eq!(decision.reason, "lock_lost");
         assert_eq!(decision.next_unlocked_count, 2);
+    }
+
+    #[test]
+    fn advance_code_phase_samples_wraps_nominal_epoch_step() {
+        let next = super::advance_code_phase_samples(
+            137.5,
+            5_000,
+            1_023_000.0,
+            1_023_000.0,
+            0.0,
+            4.887585532746823,
+            5_000,
+        );
+        assert!((next - 137.5).abs() < 1.0e-9, "next={next}");
+    }
+
+    #[test]
+    fn advance_code_phase_samples_applies_dll_correction() {
+        let next = super::advance_code_phase_samples(
+            250.0,
+            5_000,
+            1_023_000.0,
+            1_023_000.0,
+            0.4,
+            4.887585532746823,
+            5_000,
+        );
+        assert!(next < 250.0, "next={next}");
     }
 
     #[derive(Debug, Deserialize)]
