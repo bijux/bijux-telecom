@@ -383,6 +383,7 @@ fn write_track_timeseries(
         lines.push(line);
     }
     fs::write(&path, lines.join("\n"))?;
+    validate_jsonl_schema(&schema_path("track_epoch_v1.schema.json"), &path, false)?;
     Ok(())
 }
 

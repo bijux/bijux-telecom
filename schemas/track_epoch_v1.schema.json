@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TrackEpochV1",
+  "type": "object",
+  "required": ["header", "payload"],
+  "properties": {
+    "header": { "$ref": "#/definitions/ArtifactHeader" },
+    "payload": { "$ref": "#/definitions/TrackEpoch" }
+  },
+  "definitions": {
+    "ArtifactHeader": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "producer",
+        "producer_version",
+        "created_at_unix_ms",
+        "git_sha",
+        "config_hash",
+        "toolchain",
+        "features",
+        "deterministic",
+        "git_dirty"
+      ],
+      "properties": {
+        "schema_version": { "type": "integer", "const": 1 },
+        "producer": { "type": "string" },
+        "producer_version": { "type": "string" },
+        "created_at_unix_ms": { "type": "integer", "minimum": 0 },
+        "git_sha": { "type": "string" },
+        "config_hash": { "type": "string" },
+        "dataset_id": { "type": ["string", "null"] },
+        "toolchain": { "type": "string" },
+        "features": { "type": "array", "items": { "type": "string" } },
+        "deterministic": { "type": "boolean" },
+        "git_dirty": { "type": "boolean" }
+      }
+    },
+    "ReceiverSampleTrace": {
+      "type": "object",
+      "required": ["sample_index", "sample_rate_hz", "receiver_time_s"],
+      "properties": {
+        "sample_index": { "type": "integer", "minimum": 0 },
+        "sample_rate_hz": { "type": "number", "exclusiveMinimum": 0 },
+        "receiver_time_s": { "type": "number" }
+      }
+    },
+    "Epoch": {
+      "type": "object",
+      "required": ["index"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "SatId": {
+      "type": "object",
+      "required": ["constellation", "prn"],
+      "properties": {
+        "constellation": { "type": "string" },
+        "prn": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "TrackEpoch": {
+      "type": "object",
+      "required": [
+        "epoch",
+        "sample_index",
+        "source_time",
+        "sat",
+        "carrier_hz",
+        "code_rate_hz",
+        "code_phase_samples",
+        "lock",
+        "cn0_dbhz"
+      ],
+      "properties": {
+        "epoch": { "$ref": "#/definitions/Epoch" },
+        "sample_index": { "type": "integer", "minimum": 0 },
+        "source_time": { "$ref": "#/definitions/ReceiverSampleTrace" },
+        "sat": { "$ref": "#/definitions/SatId" },
+        "carrier_hz": { "type": "number" },
+        "code_rate_hz": { "type": "number" },
+        "code_phase_samples": { "type": "number" },
+        "lock": { "type": "boolean" },
+        "cn0_dbhz": { "type": "number" }
+      }
+    }
+  }
+}

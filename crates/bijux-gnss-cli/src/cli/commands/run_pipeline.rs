@@ -83,7 +83,8 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
             acq_lines.push(serde_json::to_string(&wrapped)?);
         }
     }
-    fs::write(acq_path, acq_lines.join("\n"))?;
+    fs::write(&acq_path, acq_lines.join("\n"))?;
+    validate_jsonl_schema(&schema_path("acq_result_v1.schema.json"), &acq_path, false)?;
     write_manifest(&common, "acquire", &profile, dataset.as_ref(), &report)?;
 
     Ok(())
@@ -134,7 +135,8 @@ fn handle_pvt(command: GnssCommand) -> Result<()> {
     }
     let out_dir = artifacts_dir(&common, "pvt", dataset.as_ref())?;
     let path = out_dir.join("pvt.jsonl");
-    fs::write(path, lines.join("\n"))?;
+    fs::write(&path, lines.join("\n"))?;
+    validate_jsonl_schema(&schema_path("nav_solution_epoch_v1.schema.json"), &path, false)?;
     write_nav_solution_outputs(&out_dir, &solutions)?;
     if !timing_lines.is_empty() {
         let timing_path = out_dir.join("timing_nav.jsonl");
