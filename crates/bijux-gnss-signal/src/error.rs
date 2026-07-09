@@ -15,6 +15,9 @@ pub enum SignalError {
     /// Code phase must be finite.
     #[error("invalid code phase")]
     InvalidCodePhase,
+    /// Elapsed duration must be finite and non-negative.
+    #[error("invalid elapsed duration")]
+    InvalidElapsedDuration,
     /// Code sequence must contain at least one chip.
     #[error("empty code sequence")]
     EmptyCodeSequence,

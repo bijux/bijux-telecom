@@ -8,6 +8,7 @@ Signal generation + helpers
 - `sample_code`: arbitrary-rate sampled spreading-code helper.
 - `sample_ca_code`: arbitrary-rate GPS L1 C/A sampled-code helper.
 - `advance_code_phase_chips`: wrapped chip-phase advance helper for chunked generation.
+- `advance_code_phase_seconds`: wrapped chip-phase advance helper for elapsed-time validation.
 - `code_value_at_phase`: chip lookup at a wrapped chip phase.
 
 Types

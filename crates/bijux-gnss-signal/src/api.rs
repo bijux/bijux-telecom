@@ -18,7 +18,8 @@ pub use crate::dsp::quality::{
 };
 /// Signal processing utilities.
 pub use crate::dsp::signal::{
-    advance_code_phase_chips, code_value_at_phase, sample_ca_code, sample_code, samples_per_code,
+    advance_code_phase_chips, advance_code_phase_seconds, code_value_at_phase, sample_ca_code,
+    sample_code, samples_per_code,
 };
 /// Tracking helpers.
 pub use crate::dsp::tracking::{adaptive_bandwidth, code_at, discriminators, estimate_cn0_dbhz};

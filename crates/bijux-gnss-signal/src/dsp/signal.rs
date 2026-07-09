@@ -23,11 +23,28 @@ pub fn advance_code_phase_chips(
     sample_count: usize,
     code_length: usize,
 ) -> Result<f64, SignalError> {
-    validate_rate_inputs(sample_rate_hz, code_rate_hz)?;
+    validate_sample_rate(sample_rate_hz)?;
+    validate_code_rate(code_rate_hz)?;
     validate_code_phase(start_chip_phase)?;
     validate_code_length(code_length)?;
 
     let chip_advance = sample_count as f64 * code_rate_hz / sample_rate_hz;
+    Ok((start_chip_phase + chip_advance).rem_euclid(code_length as f64))
+}
+
+/// Advance a wrapped code phase by an elapsed duration in seconds.
+pub fn advance_code_phase_seconds(
+    start_chip_phase: f64,
+    code_rate_hz: f64,
+    elapsed_seconds: f64,
+    code_length: usize,
+) -> Result<f64, SignalError> {
+    validate_code_rate(code_rate_hz)?;
+    validate_code_phase(start_chip_phase)?;
+    validate_elapsed_seconds(elapsed_seconds)?;
+    validate_code_length(code_length)?;
+
+    let chip_advance = elapsed_seconds * code_rate_hz;
     Ok((start_chip_phase + chip_advance).rem_euclid(code_length as f64))
 }
 
@@ -47,7 +64,8 @@ pub fn sample_code(
     start_chip_phase: f64,
     sample_count: usize,
 ) -> Result<Vec<f32>, SignalError> {
-    validate_rate_inputs(sample_rate_hz, code_rate_hz)?;
+    validate_sample_rate(sample_rate_hz)?;
+    validate_code_rate(code_rate_hz)?;
     validate_code_phase(start_chip_phase)?;
     validate_code(code)?;
 
@@ -80,10 +98,14 @@ fn code_value_at_phase_unchecked(code: &[i8], chip_phase: f64) -> f32 {
     code[chip_index] as f32
 }
 
-fn validate_rate_inputs(sample_rate_hz: f64, code_rate_hz: f64) -> Result<(), SignalError> {
+fn validate_sample_rate(sample_rate_hz: f64) -> Result<(), SignalError> {
     if !sample_rate_hz.is_finite() || sample_rate_hz <= 0.0 {
         return Err(SignalError::InvalidSampleRate);
     }
+    Ok(())
+}
+
+fn validate_code_rate(code_rate_hz: f64) -> Result<(), SignalError> {
     if !code_rate_hz.is_finite() || code_rate_hz <= 0.0 {
         return Err(SignalError::InvalidCodeRate);
     }
@@ -93,6 +115,13 @@ fn validate_rate_inputs(sample_rate_hz: f64, code_rate_hz: f64) -> Result<(), Si
 fn validate_code_phase(chip_phase: f64) -> Result<(), SignalError> {
     if !chip_phase.is_finite() {
         return Err(SignalError::InvalidCodePhase);
+    }
+    Ok(())
+}
+
+fn validate_elapsed_seconds(elapsed_seconds: f64) -> Result<(), SignalError> {
+    if !elapsed_seconds.is_finite() || elapsed_seconds < 0.0 {
+        return Err(SignalError::InvalidElapsedDuration);
     }
     Ok(())
 }
