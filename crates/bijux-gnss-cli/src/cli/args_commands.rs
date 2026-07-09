@@ -16,6 +16,10 @@ pub(crate) enum GnssCommand {
         /// Print published PRN assignment metadata before the chip sequence
         #[arg(long)]
         with_reference: bool,
+
+        /// Print periodic autocorrelation summary before the chip sequence
+        #[arg(long)]
+        with_autocorrelation: bool,
     },
 
     /// Acquire satellites from a raw IQ file with explicit metadata

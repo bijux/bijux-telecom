@@ -4,6 +4,7 @@ fn handle_cacode(command: GnssCommand) -> Result<()> {
         start_chip,
         count,
         with_reference,
+        with_autocorrelation,
     } = command
     else {
         bail!("invalid command for handler");
@@ -11,6 +12,15 @@ fn handle_cacode(command: GnssCommand) -> Result<()> {
 
     let assignment = ca_code_assignment(Prn(prn))
         .map_err(|err| eyre!("failed to load C/A code assignment for PRN {prn}: {err}"))?;
+    let autocorrelation = if with_autocorrelation {
+        Some(
+            ca_code_autocorrelation_summary(Prn(prn)).map_err(|err| {
+                eyre!("failed to compute C/A autocorrelation summary for PRN {prn}: {err}")
+            })?,
+        )
+    } else {
+        None
+    };
     let wrapped_start_chip = start_chip % CA_CODE_PERIOD_CHIPS;
     let chip_count = wrapped_start_chip.saturating_add(count);
     let code = generate_ca_code_chips(Prn(prn), chip_count)
@@ -29,6 +39,23 @@ fn handle_cacode(command: GnssCommand) -> Result<()> {
         println!(
             "first_ten_chips_octal: {:04}",
             assignment.first_ten_chips_octal
+        );
+    }
+
+    if let Some(autocorrelation) = autocorrelation {
+        println!("autocorrelation_peak: {}", autocorrelation.peak);
+        println!(
+            "autocorrelation_max_nonzero_abs: {}",
+            autocorrelation.max_nonzero_abs
+        );
+        println!(
+            "autocorrelation_nonzero_values: {}",
+            autocorrelation
+                .unique_nonzero_values
+                .iter()
+                .map(i16::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
         );
     }
 
