@@ -115,3 +115,83 @@ fn ca_code_with_reference_reports_published_assignment() {
         "stdout did not end with requested chip sequence: {stdout}"
     );
 }
+
+#[test]
+fn ca_code_with_autocorrelation_reports_expected_summary() {
+    let output = run_bijux(
+        &[
+            "gnss",
+            "ca-code",
+            "--prn",
+            "1",
+            "--count",
+            "4",
+            "--with-autocorrelation",
+        ],
+        &repo_root(),
+    );
+
+    assert!(
+        output.status.success(),
+        "ca-code with autocorrelation failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("autocorrelation_peak: 1023\n"),
+        "stdout did not report autocorrelation peak: {stdout}"
+    );
+    assert!(
+        stdout.contains("autocorrelation_max_nonzero_abs: 65\n"),
+        "stdout did not report autocorrelation sidelobe bound: {stdout}"
+    );
+    assert!(
+        stdout.contains("autocorrelation_nonzero_values: -65,-1,63\n"),
+        "stdout did not report autocorrelation sidelobe set: {stdout}"
+    );
+    assert!(
+        stdout.ends_with("-1 -1 1 1 \n"),
+        "stdout did not end with requested chip sequence: {stdout}"
+    );
+}
+
+#[test]
+fn ca_code_combines_reference_and_autocorrelation_metadata() {
+    let output = run_bijux(
+        &[
+            "gnss",
+            "ca-code",
+            "--prn",
+            "1",
+            "--start-chip",
+            "1022",
+            "--count",
+            "4",
+            "--with-reference",
+            "--with-autocorrelation",
+        ],
+        &repo_root(),
+    );
+
+    assert!(
+        output.status.success(),
+        "ca-code combined metadata failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("g2_taps: 2 6\n"), "stdout did not report G2 taps: {stdout}");
+    assert!(
+        stdout.contains("autocorrelation_peak: 1023\n"),
+        "stdout did not report autocorrelation peak: {stdout}"
+    );
+    assert!(
+        stdout.contains("autocorrelation_nonzero_values: -65,-1,63\n"),
+        "stdout did not report autocorrelation sidelobe set: {stdout}"
+    );
+    assert!(
+        stdout.ends_with("1 -1 -1 1 \n"),
+        "stdout did not end with requested chip sequence: {stdout}"
+    );
+}
