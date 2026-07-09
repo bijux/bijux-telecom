@@ -20,6 +20,10 @@ pub(crate) enum GnssCommand {
         /// Print periodic autocorrelation summary before the chip sequence
         #[arg(long)]
         with_autocorrelation: bool,
+
+        /// Print periodic cross-correlation summary against another PRN before the chip sequence
+        #[arg(long, value_name = "PRN", value_parser = clap::value_parser!(u8).range(1..=32))]
+        cross_correlation_prn: Option<u8>,
     },
 
     /// Acquire satellites from a raw IQ file with explicit metadata
