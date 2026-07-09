@@ -17,6 +17,7 @@ struct AcqFixture {
     sat: SatId,
     signal_sat: Option<SatId>,
     requested_sats: Option<Vec<SatId>>,
+    signals: Option<Vec<FixtureSignal>>,
     doppler_hz: f64,
     signal_intermediate_freq_hz: Option<f64>,
     code_phase_chips: f64,
@@ -30,6 +31,14 @@ struct AcqFixture {
     expected_hypothesis: Option<String>,
     expected_selected_reason: Option<String>,
     expect_not_accepted: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FixtureSignal {
+    sat: SatId,
+    doppler_hz: f64,
+    code_phase_chips: f64,
+    cn0_db_hz: f32,
 }
 
 #[test]
@@ -181,6 +190,31 @@ fn frame_from_fixture(config: &ReceiverPipelineConfig, fixture: &AcqFixture) -> 
                 id: fixture.id.clone(),
             },
         ),
+        "synthetic_multi" => generate_l1_ca_multi(
+            config,
+            &SyntheticScenario {
+                sample_rate_hz: config.sampling_freq_hz,
+                intermediate_freq_hz: fixture
+                    .signal_intermediate_freq_hz
+                    .unwrap_or(config.intermediate_freq_hz),
+                duration_s,
+                seed: fixture.seed,
+                satellites: fixture
+                    .signals()
+                    .iter()
+                    .map(|signal| SyntheticSignalParams {
+                        sat: signal.sat,
+                        doppler_hz: signal.doppler_hz,
+                        code_phase_chips: signal.code_phase_chips,
+                        carrier_phase_rad: 0.0,
+                        cn0_db_hz: signal.cn0_db_hz,
+                        data_bit_flip: false,
+                    })
+                    .collect(),
+                ephemerides: Vec::new(),
+                id: fixture.id.clone(),
+            },
+        ),
         other => panic!("unsupported fixture kind: {other}"),
     }
 }
@@ -191,6 +225,14 @@ fn signal_sat(fixture: &AcqFixture) -> SatId {
 
 fn requested_sats(fixture: &AcqFixture) -> Vec<SatId> {
     fixture.requested_sats.clone().unwrap_or_else(|| vec![fixture.sat])
+}
+
+impl AcqFixture {
+    fn signals(&self) -> &[FixtureSignal] {
+        self.signals
+            .as_deref()
+            .expect("synthetic_multi fixtures must define signals")
+    }
 }
 
 fn result_for_sat<'a>(
