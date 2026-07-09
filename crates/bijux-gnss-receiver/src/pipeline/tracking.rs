@@ -10,8 +10,8 @@ use bijux_gnss_core::api::{
 
 use crate::engine::receiver_config::{ReceiverPipelineConfig, TrackingParams};
 use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
-use bijux_gnss_core::api::Sample;
 use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
+use bijux_gnss_core::api::Sample;
 use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::{
     adaptive_bandwidth, code_value_at_phase, discriminators, estimate_cn0_dbhz, wipeoff_carrier,
@@ -167,6 +167,18 @@ struct CodeLoopUpdate {
 }
 
 #[derive(Debug, Clone, Copy)]
+struct CodeLoopInput {
+    current_code_rate_hz: f64,
+    current_code_phase_samples: f64,
+    epoch_len_samples: usize,
+    nominal_code_rate_hz: f64,
+    dll_bw_hz: f64,
+    dll_err: f32,
+    samples_per_chip: f64,
+    samples_per_code: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
 struct PromptPhaseDecision {
     aligned_phase_cycles: f64,
     nav_bit_phase_offset_cycles: f64,
@@ -194,10 +206,7 @@ impl Tracking {
         &self,
         acquisition: &bijux_gnss_core::api::AcqResult,
     ) -> Option<TrackingStartContext> {
-        if !matches!(
-            acquisition.hypothesis,
-            AcqHypothesis::Accepted | AcqHypothesis::Ambiguous
-        ) {
+        if !matches!(acquisition.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous) {
             return None;
         }
         Some(TrackingStartContext {
@@ -246,7 +255,7 @@ impl Tracking {
         let mut late = Complex::new(0.0f32, 0.0f32);
         let mut early_late_noise_weight_energy = 0.0f64;
 
-        for i in 0..n {
+        for (i, mixed_sample) in mixed.iter().take(n).enumerate() {
             let chip_phase = base_chip_phase + i as f64 * chips_per_sample;
             let early_code = Complex::new(
                 code_value_at_phase(&code, chip_phase - early_late_spacing_chips).unwrap_or(0.0),
@@ -261,9 +270,9 @@ impl Tracking {
             let noise_weight = early_code - late_code;
             early_late_noise_weight_energy += noise_weight.norm_sqr() as f64;
 
-            early += mixed[i] * early_code;
-            prompt += mixed[i] * prompt_code;
-            late += mixed[i] * late_code;
+            early += *mixed_sample * early_code;
+            prompt += *mixed_sample * prompt_code;
+            late += *mixed_sample * late_code;
         }
 
         CorrelatorOutput { early, prompt, late, early_late_noise_weight_energy }
@@ -412,9 +421,10 @@ impl Tracking {
             let Some((carrier_hz, code_phase_samples)) = reacquire_seed else {
                 continue;
             };
-            let Some(channel_frame) =
-                tracking_frame_from_start_sample(frame, Some(channel.start_source_time.sample_index))
-            else {
+            let Some(channel_frame) = tracking_frame_from_start_sample(
+                frame,
+                Some(channel.start_source_time.sample_index),
+            ) else {
                 continue;
             };
             let Some((carrier_hz, code_phase_samples)) = self.quick_reacquire(
@@ -795,16 +805,16 @@ impl Tracking {
                 tracking_params.fll_bw_hz,
                 cn0_dbhz,
             );
-            let code_loop = apply_dll_code_loop(
-                state.code_rate_hz,
-                state.code_phase_samples,
-                epoch_frame.len(),
-                self.config.code_freq_basis_hz,
-                dll_bw,
+            let code_loop = apply_dll_code_loop(CodeLoopInput {
+                current_code_rate_hz: state.code_rate_hz,
+                current_code_phase_samples: state.code_phase_samples,
+                epoch_len_samples: epoch_frame.len(),
+                nominal_code_rate_hz: self.config.code_freq_basis_hz,
+                dll_bw_hz: dll_bw,
                 dll_err,
                 samples_per_chip,
                 samples_per_code,
-            );
+            });
             state.code_rate_hz = code_loop.code_rate_hz;
             if state.state == ChannelState::PullIn {
                 state.carrier_hz += fll_bw * fll_err as f64;
@@ -1039,25 +1049,16 @@ fn advance_code_phase_samples(
     )
 }
 
-fn apply_dll_code_loop(
-    current_code_rate_hz: f64,
-    current_code_phase_samples: f64,
-    epoch_len_samples: usize,
-    nominal_code_rate_hz: f64,
-    dll_bw_hz: f64,
-    dll_err: f32,
-    samples_per_chip: f64,
-    samples_per_code: usize,
-) -> CodeLoopUpdate {
-    let code_rate_hz = current_code_rate_hz + dll_bw_hz * dll_err as f64;
+fn apply_dll_code_loop(input: CodeLoopInput) -> CodeLoopUpdate {
+    let code_rate_hz = input.current_code_rate_hz + input.dll_bw_hz * input.dll_err as f64;
     let code_phase_samples = advance_code_phase_samples(
-        current_code_phase_samples,
-        epoch_len_samples,
+        input.current_code_phase_samples,
+        input.epoch_len_samples,
         code_rate_hz,
-        nominal_code_rate_hz,
-        dll_err,
-        samples_per_chip,
-        samples_per_code,
+        input.nominal_code_rate_hz,
+        input.dll_err,
+        input.samples_per_chip,
+        input.samples_per_code,
     );
     CodeLoopUpdate { code_rate_hz, code_phase_samples }
 }
@@ -1397,16 +1398,16 @@ mod tests {
 
     #[test]
     fn apply_dll_code_loop_updates_code_rate_from_discriminator() {
-        let update = super::apply_dll_code_loop(
-            1_023_000.0,
-            250.0,
-            5_000,
-            1_023_000.0,
-            2.0,
-            0.25,
-            4.887585532746823,
-            5_000,
-        );
+        let update = super::apply_dll_code_loop(super::CodeLoopInput {
+            current_code_rate_hz: 1_023_000.0,
+            current_code_phase_samples: 250.0,
+            epoch_len_samples: 5_000,
+            nominal_code_rate_hz: 1_023_000.0,
+            dll_bw_hz: 2.0,
+            dll_err: 0.25,
+            samples_per_chip: 4.887585532746823,
+            samples_per_code: 5_000,
+        });
 
         assert!((update.code_rate_hz - 1_023_000.5).abs() < 1.0e-9, "{update:?}");
     }
@@ -1414,41 +1415,35 @@ mod tests {
     #[test]
     fn apply_dll_code_loop_pulls_positive_code_error_toward_prompt() {
         let current_code_phase_samples = 250.0;
-        let update = super::apply_dll_code_loop(
-            1_023_000.0,
+        let update = super::apply_dll_code_loop(super::CodeLoopInput {
+            current_code_rate_hz: 1_023_000.0,
             current_code_phase_samples,
-            5_000,
-            1_023_000.0,
-            2.0,
-            0.4,
-            4.887585532746823,
-            5_000,
-        );
+            epoch_len_samples: 5_000,
+            nominal_code_rate_hz: 1_023_000.0,
+            dll_bw_hz: 2.0,
+            dll_err: 0.4,
+            samples_per_chip: 4.887585532746823,
+            samples_per_code: 5_000,
+        });
 
-        assert!(
-            update.code_phase_samples < current_code_phase_samples,
-            "update={update:?}"
-        );
+        assert!(update.code_phase_samples < current_code_phase_samples, "update={update:?}");
     }
 
     #[test]
     fn apply_dll_code_loop_pulls_negative_code_error_toward_prompt() {
         let current_code_phase_samples = 250.0;
-        let update = super::apply_dll_code_loop(
-            1_023_000.0,
+        let update = super::apply_dll_code_loop(super::CodeLoopInput {
+            current_code_rate_hz: 1_023_000.0,
             current_code_phase_samples,
-            5_000,
-            1_023_000.0,
-            2.0,
-            -0.4,
-            4.887585532746823,
-            5_000,
-        );
+            epoch_len_samples: 5_000,
+            nominal_code_rate_hz: 1_023_000.0,
+            dll_bw_hz: 2.0,
+            dll_err: -0.4,
+            samples_per_chip: 4.887585532746823,
+            samples_per_code: 5_000,
+        });
 
-        assert!(
-            update.code_phase_samples > current_code_phase_samples,
-            "update={update:?}"
-        );
+        assert!(update.code_phase_samples > current_code_phase_samples, "update={update:?}");
     }
 
     #[test]
@@ -1600,8 +1595,7 @@ mod tests {
         };
 
         let single = tracking.track_from_acquisition(&frame, &[acquisition.clone()]);
-        let mut incremental = tracking
-            .begin_incremental_tracking(&[acquisition]);
+        let mut incremental = tracking.begin_incremental_tracking(&[acquisition]);
         for chunk in split_frame(&frame, 4 * 1_023) {
             tracking.track_incremental_frame(&mut incremental, &chunk);
         }
