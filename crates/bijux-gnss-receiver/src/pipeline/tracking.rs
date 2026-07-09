@@ -1396,6 +1396,62 @@ mod tests {
     }
 
     #[test]
+    fn apply_dll_code_loop_updates_code_rate_from_discriminator() {
+        let update = super::apply_dll_code_loop(
+            1_023_000.0,
+            250.0,
+            5_000,
+            1_023_000.0,
+            2.0,
+            0.25,
+            4.887585532746823,
+            5_000,
+        );
+
+        assert!((update.code_rate_hz - 1_023_000.5).abs() < 1.0e-9, "{update:?}");
+    }
+
+    #[test]
+    fn apply_dll_code_loop_pulls_positive_code_error_toward_prompt() {
+        let current_code_phase_samples = 250.0;
+        let update = super::apply_dll_code_loop(
+            1_023_000.0,
+            current_code_phase_samples,
+            5_000,
+            1_023_000.0,
+            2.0,
+            0.4,
+            4.887585532746823,
+            5_000,
+        );
+
+        assert!(
+            update.code_phase_samples < current_code_phase_samples,
+            "update={update:?}"
+        );
+    }
+
+    #[test]
+    fn apply_dll_code_loop_pulls_negative_code_error_toward_prompt() {
+        let current_code_phase_samples = 250.0;
+        let update = super::apply_dll_code_loop(
+            1_023_000.0,
+            current_code_phase_samples,
+            5_000,
+            1_023_000.0,
+            2.0,
+            -0.4,
+            4.887585532746823,
+            5_000,
+        );
+
+        assert!(
+            update.code_phase_samples > current_code_phase_samples,
+            "update={update:?}"
+        );
+    }
+
+    #[test]
     fn correlate_epoch_aligns_prompt_with_non_integer_rate_sampled_code() {
         let config = ReceiverPipelineConfig {
             sampling_freq_hz: 4_000_000.0,
