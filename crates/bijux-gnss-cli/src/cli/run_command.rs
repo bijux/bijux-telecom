@@ -205,6 +205,17 @@ mod inspect_dataset_tests {
         assert_eq!(report.capture_start_utc, metadata.capture_start_utc);
         assert_eq!(report.total_samples, 2);
         assert_eq!(report.front_end_metrics.sample_count, 2);
+        assert_eq!(report.front_end_metrics.clipping_pct, Some(50.0));
+        assert!(report.front_end_metrics.clipping_warning);
+        assert!(!report.front_end_metrics.precision_claims_allowed);
+        assert!(
+            report
+                .front_end_metrics
+                .precision_claims_refused_reason
+                .as_deref()
+                .expect("precision refusal reason")
+                .contains("front-end clipping 50.000% exceeds")
+        );
 
         fs::remove_file(&path).expect("remove iq8 fixture");
     }
@@ -235,6 +246,17 @@ mod inspect_dataset_tests {
         assert_eq!(report.capture_start_utc, metadata.capture_start_utc);
         assert_eq!(report.total_samples, 2);
         assert_eq!(report.front_end_metrics.sample_count, 2);
+        assert_eq!(report.front_end_metrics.clipping_pct, Some(50.0));
+        assert!(report.front_end_metrics.clipping_warning);
+        assert!(!report.front_end_metrics.precision_claims_allowed);
+        assert!(
+            report
+                .front_end_metrics
+                .precision_claims_refused_reason
+                .as_deref()
+                .expect("precision refusal reason")
+                .contains("front-end clipping 50.000% exceeds")
+        );
 
         fs::remove_file(&path).expect("remove iq16 fixture");
     }
@@ -268,6 +290,10 @@ mod inspect_dataset_tests {
         assert_eq!(report.capture_start_utc, metadata.capture_start_utc);
         assert_eq!(report.total_samples, 2);
         assert_eq!(report.front_end_metrics.sample_count, 2);
+        assert_eq!(report.front_end_metrics.clipping_pct, None);
+        assert!(!report.front_end_metrics.clipping_warning);
+        assert!(report.front_end_metrics.precision_claims_allowed);
+        assert_eq!(report.front_end_metrics.precision_claims_refused_reason, None);
 
         fs::remove_file(&path).expect("remove cf32 fixture");
     }
@@ -293,6 +319,10 @@ mod inspect_dataset_tests {
         assert_eq!(report.front_end_metrics.q_power, 0.0);
         assert!(report.front_end_metrics.iq_power_ratio > 1.0e10);
         assert!(report.front_end_metrics.power_imbalance_warning);
+        assert_eq!(report.front_end_metrics.clipping_pct, Some(0.0));
+        assert!(!report.front_end_metrics.clipping_warning);
+        assert!(report.front_end_metrics.precision_claims_allowed);
+        assert_eq!(report.front_end_metrics.precision_claims_refused_reason, None);
 
         fs::remove_file(&path).expect("remove iq8 fixture");
     }
