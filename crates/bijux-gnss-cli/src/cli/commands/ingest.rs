@@ -40,7 +40,7 @@ fn handle_track(command: GnssCommand) -> Result<()> {
                     let config = profile.to_pipeline_config();
     
                     let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
-                    let frame = load_frame(&input_file, &config, &raw_iq_metadata)?;
+                    let frame = load_tracking_frame(&input_file, &config, &raw_iq_metadata)?;
                     let front_end_metrics =
                         bijux_gnss_infra::api::signal::measure_raw_iq_front_end_metrics(
                             &frame.iq,
@@ -72,9 +72,9 @@ fn handle_track(command: GnssCommand) -> Result<()> {
                                     epoch_idx: e.epoch.index,
                                     sample_index: e.sample_index,
                                     sat: t.sat,
-                                    carrier_hz: t.carrier_hz,
+                                    carrier_hz: e.carrier_hz.0,
                                     code_rate_hz: e.code_rate_hz.0,
-                                    code_phase_samples: t.code_phase_samples,
+                                    code_phase_samples: e.code_phase_samples.0,
                                     prompt_i: e.prompt_i,
                                     prompt_q: e.prompt_q,
                                     early_i: e.early_i,

@@ -122,22 +122,58 @@ fn emit_report<T: Serialize>(common: &CommonArgs, command: &str, report: &T) -> 
     Ok(())
 }
 
+const TRACKING_DIAGNOSTIC_CODE_PERIODS: usize = 12;
+
 fn load_frame(
+    path: &Path,
+    config: &ReceiverPipelineConfig,
+    metadata: &RawIqMetadata,
+) -> Result<SamplesFrame> {
+    load_frame_window(path, config, metadata, 1)
+}
+
+fn load_tracking_frame(
     path: &Path,
     config: &ReceiverPipelineConfig,
     metadata: &RawIqMetadata,
 ) -> Result<SamplesFrame> {
     let samples_per_code =
         samples_per_code(metadata.sample_rate_hz, config.code_freq_basis_hz, config.code_length);
+    let desired_samples = samples_per_code.saturating_mul(TRACKING_DIAGNOSTIC_CODE_PERIODS);
     let mut source = FileSamples::open_raw_iq(path, metadata.clone())
         .with_context(|| format!("failed to open {}", path.display()))?;
 
-    let mut frame = match source.next_frame(samples_per_code)? {
+    let mut frame = match source.next_frame(desired_samples)? {
         Some(frame) => frame,
         None => bail!("no samples available in {}", path.display()),
     };
     if frame.len() < samples_per_code {
         bail!("not enough samples: need {samples_per_code}, got {}", frame.len());
+    }
+    if config.remove_dc_offset {
+        bijux_gnss_infra::api::signal::remove_dc_offset_in_place(&mut frame.iq);
+    }
+    Ok(frame)
+}
+
+fn load_frame_window(
+    path: &Path,
+    config: &ReceiverPipelineConfig,
+    metadata: &RawIqMetadata,
+    code_periods: usize,
+) -> Result<SamplesFrame> {
+    let samples_per_code =
+        samples_per_code(metadata.sample_rate_hz, config.code_freq_basis_hz, config.code_length);
+    let required_samples = samples_per_code.saturating_mul(code_periods.max(1));
+    let mut source = FileSamples::open_raw_iq(path, metadata.clone())
+        .with_context(|| format!("failed to open {}", path.display()))?;
+
+    let mut frame = match source.next_frame(required_samples)? {
+        Some(frame) => frame,
+        None => bail!("no samples available in {}", path.display()),
+    };
+    if frame.len() < required_samples {
+        bail!("not enough samples: need {required_samples}, got {}", frame.len());
     }
     if config.remove_dc_offset {
         bijux_gnss_infra::api::signal::remove_dc_offset_in_place(&mut frame.iq);
@@ -620,6 +656,40 @@ mod tests {
             .as_deref()
             .expect("precision_claims_refused_reason")
             .contains("no varying signal energy"));
+
+        fs::remove_file(&path).expect("remove iq8 fixture");
+    }
+
+    #[test]
+    fn load_tracking_frame_reads_multiple_code_periods() {
+        let path = temp_file_path("load_tracking_frame_window");
+        let sample_count = 4_092usize * super::TRACKING_DIAGNOSTIC_CODE_PERIODS;
+        let mut raw = Vec::with_capacity(sample_count * 2);
+        for _ in 0..sample_count {
+            raw.push(16u8);
+            raw.push(0u8);
+        }
+        fs::write(&path, raw).expect("write iq8 fixture");
+
+        let metadata = RawIqMetadata {
+            format: bijux_gnss_infra::api::signal::IqSampleFormat::Iq8,
+            sample_rate_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            capture_start_utc: "2026-07-09T00:00:00Z".to_string(),
+            offset_bytes: 0,
+            quantization_bits: Some(8),
+            notes: None,
+        };
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: metadata.sample_rate_hz,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+
+        let frame = super::load_tracking_frame(&path, &config, &metadata)
+            .expect("load tracking frame");
+        assert_eq!(frame.len(), sample_count);
 
         fs::remove_file(&path).expect("remove iq8 fixture");
     }

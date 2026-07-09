@@ -225,6 +225,20 @@ fn write_synthetic_iq8_capture_with_signal_if(
     sample_rate_hz: f64,
     signal_intermediate_freq_hz: f64,
 ) {
+    write_synthetic_iq8_capture_with_signal_if_and_duration_s(
+        path,
+        sample_rate_hz,
+        signal_intermediate_freq_hz,
+        1_023.0 / 1_023_000.0,
+    );
+}
+
+fn write_synthetic_iq8_capture_with_signal_if_and_duration_s(
+    path: &Path,
+    sample_rate_hz: f64,
+    signal_intermediate_freq_hz: f64,
+    duration_s: f64,
+) {
     let mut profile = ReceiverConfig::default();
     profile.sample_rate_hz = sample_rate_hz;
     profile.intermediate_freq_hz = signal_intermediate_freq_hz;
@@ -240,7 +254,7 @@ fn write_synthetic_iq8_capture_with_signal_if(
             data_bit_flip: false,
         },
         4_277_009_102,
-        1_023.0 / profile.code_freq_basis_hz,
+        duration_s,
     );
     let peak_component = frame
         .iq
@@ -351,6 +365,74 @@ fn track_reports_front_end_metrics_from_acquisition_window() {
     let report = load_json(&out_dir.join("track_report.json"));
     let metrics = report.get("front_end_metrics").expect("front_end_metrics present");
     assert_dc_only_metrics(metrics, 5_000);
+
+    fs::remove_dir_all(&temp).expect("remove temp dir");
+}
+
+#[test]
+fn track_report_uses_epoch_tracking_state_for_clean_capture() {
+    let temp = temp_dir_path("track_epoch_tracking_state");
+    fs::create_dir_all(&temp).expect("create temp dir");
+
+    let iq_path = temp.join("clean.iq8");
+    write_synthetic_iq8_capture_with_signal_if_and_duration_s(&iq_path, 5_000_000.0, 0.0, 0.012);
+    let sidecar_path = temp.join("clean.sidecar.toml");
+    write_raw_iq_sidecar_with_format_sample_rate_and_if(&sidecar_path, "iq8", 5_000_000.0, 0.0);
+
+    let out_dir = temp.join("track-out");
+    let output = run_bijux(
+        &[
+            "gnss",
+            "track",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--prn",
+            "11",
+            "--doppler-search-hz",
+            "1500",
+            "--doppler-step-hz",
+            "250",
+            "--report",
+            "json",
+            "--out",
+            out_dir.to_str().expect("out dir"),
+        ],
+        &repo_root(),
+    );
+
+    assert!(output.status.success(), "track failed: {}", String::from_utf8_lossy(&output.stderr));
+    let report = load_json(&out_dir.join("track_report.json"));
+    let rows = report
+        .get("epochs")
+        .and_then(Value::as_array)
+        .expect("track epoch rows");
+    assert!(rows.len() >= 2, "rows={rows:?}");
+
+    let first_code_phase = rows[0]
+        .get("code_phase_samples")
+        .and_then(Value::as_f64)
+        .expect("first code phase");
+    let first_carrier_hz =
+        rows[0].get("carrier_hz").and_then(Value::as_f64).expect("first carrier");
+    assert!(
+        rows.iter().skip(1).any(|row| {
+            row.get("code_phase_samples")
+                .and_then(Value::as_f64)
+                .is_some_and(|value| (value - first_code_phase).abs() > 1.0e-6)
+        }),
+        "rows={rows:?}"
+    );
+    assert!(
+        rows.iter().skip(1).any(|row| {
+            row.get("carrier_hz")
+                .and_then(Value::as_f64)
+                .is_some_and(|value| (value - first_carrier_hz).abs() > 1.0e-6)
+        }),
+        "rows={rows:?}"
+    );
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
 }
