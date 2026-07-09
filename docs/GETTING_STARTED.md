@@ -1,38 +1,38 @@
 # Getting Started
 
-This is the canonical “first run” path for `bijux-gnss`. It uses a synthetic dataset to keep the flow deterministic.
+This is the canonical ingest-first path for `bijux-gnss`. It uses a deterministic raw IQ fixture to
+prove metadata-backed ingest before stronger acquisition, tracking, and positioning claims.
 
-## 1) Run a Synthetic Scenario
+## 1) Validate the Raw IQ Metadata
 
 ```bash
-bijux gnss run --dataset demo_synthetic --output runs/basic_demo
+bijux gnss validate-sidecar --sidecar-file datasets/synthetic/demo.sidecar.toml --unregistered-dataset --output artifacts/basic_sidecar
 ```
 
-## 2) Validate Artifacts
+## 2) Inspect the Registered Raw IQ Fixture
 
 ```bash
-bijux gnss artifact validate runs/basic_demo/artifacts/obs.jsonl
-bijux gnss artifact validate runs/basic_demo/artifacts/track.jsonl
+bijux gnss inspect --dataset demo_synthetic --output artifacts/basic_ingest
 ```
 
-## 3) Summarize Diagnostics
+## 3) Run a Streaming Ingest Smoke Path
 
 ```bash
-bijux gnss diagnostics summarize runs/basic_demo
+bijux gnss run --dataset demo_synthetic --output artifacts/basic_stream
 ```
 
-## 4) Inspect a Specific Artifact
+## 4) Summarize Diagnostics
 
 ```bash
-bijux gnss artifact explain runs/basic_demo/artifacts/obs.jsonl
+bijux gnss diagnostics summarize artifacts/basic_stream
 ```
 
 ## 5) Explore Outputs
 
-Artifacts are written under `runs/<timestamp>_<dataset>_<command>/artifacts` and include:
-- observation epochs
-- tracking epochs
-- acquisition results
-- navigation solutions (when enabled)
+Artifacts are written under the selected output directory and include:
+- `manifest.json`
+- `summary.json`
+- command-specific artifact directories when the invoked workflow emits them
 
-See `docs/ARTIFACTS.md` for details.
+`demo_synthetic` is an ingest fixture, not a navigation-truth corpus. Use it to verify explicit raw
+IQ handling first, then move to stronger GNSS validation datasets for acquisition, tracking, and PVT.

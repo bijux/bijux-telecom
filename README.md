@@ -32,14 +32,17 @@ cargo build --workspace
 ## First Command
 
 ```bash
-bijux gnss run --dataset demo_synthetic --output runs/basic_demo
+bijux gnss inspect --dataset demo_synthetic --output artifacts/basic_ingest
 ```
 
 Example output:
 ```
-Artifacts: runs/basic_demo/artifacts
-Manifest: runs/basic_demo/manifest.json
+Artifacts: artifacts/basic_ingest/artifacts
+Manifest: artifacts/basic_ingest/manifest.json
 ```
+
+`demo_synthetic` is a deterministic raw IQ ingest fixture. It proves explicit format, sample-rate,
+IF, and capture-time handling; it is not a satellite-truth positioning dataset.
 
 ## Supported Features (Current)
 - GPS L1 C/A acquisition + tracking

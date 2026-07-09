@@ -1,6 +1,6 @@
 //! Run directory layout and manifest utilities.
 
-use crate::dataset::DatasetEntry;
+use crate::dataset::{resolve_raw_iq_metadata, DatasetEntry};
 use crate::hash::core::{cpu_features, git_dirty, git_hash, hash_config};
 use bijux_gnss_receiver::api::core::{ArtifactHeaderV1, ArtifactReadPolicy, InputError};
 use bijux_gnss_receiver::api::ReceiverConfig;
@@ -152,10 +152,14 @@ pub struct ReplayScope {
 /// Front-end provenance captured at run time.
 #[derive(Debug, Serialize, Clone)]
 pub struct FrontEndProvenance {
+    /// Declared raw IQ sample format, if available.
+    pub sample_format: Option<String>,
     /// Sample rate used for ingest, in Hz.
     pub sample_rate_hz: f64,
     /// Intermediate frequency used for ingest, in Hz.
     pub intermediate_freq_hz: f64,
+    /// Capture start timestamp in UTC, if available.
+    pub capture_start_utc: Option<String>,
     /// Quantization depth in bits.
     pub quantization_bits: u8,
     /// Code frequency basis in Hz.
@@ -166,7 +170,7 @@ pub struct FrontEndProvenance {
     pub calibration_source: String,
 }
 
-/// Run index entry appended to runs/index.jsonl.
+/// Run index entry appended to `artifacts/runs/index.jsonl`.
 #[derive(Debug, Serialize)]
 pub struct RunIndexEntry {
     /// Run directory path.
@@ -228,14 +232,26 @@ fn replay_scope(args: &RunContextArgs<'_>) -> ReplayScope {
     }
 }
 
-fn front_end_provenance(args: &RunContextArgs<'_>, profile: &ReceiverConfig) -> FrontEndProvenance {
+fn front_end_provenance(
+    args: &RunContextArgs<'_>,
+    profile: &ReceiverConfig,
+    dataset: Option<&DatasetEntry>,
+) -> FrontEndProvenance {
+    let raw_iq_metadata =
+        resolve_raw_iq_metadata(dataset, args.sidecar.map(|path| path.as_path())).ok();
     let sidecar_used = args.sidecar.is_some();
     FrontEndProvenance {
+        sample_format: raw_iq_metadata.as_ref().map(|metadata| format!("{:?}", metadata.format)),
         sample_rate_hz: profile.sample_rate_hz,
         intermediate_freq_hz: profile.intermediate_freq_hz,
+        capture_start_utc: raw_iq_metadata
+            .as_ref()
+            .map(|metadata| metadata.capture_start_utc.clone()),
         quantization_bits: profile.quantization_bits,
         code_freq_basis_hz: profile.code_freq_basis_hz,
-        normalization_source: if sidecar_used {
+        normalization_source: if raw_iq_metadata.is_some() {
+            "raw_iq_metadata+receiver_profile".to_string()
+        } else if sidecar_used {
             "sidecar+receiver_profile".to_string()
         } else {
             "receiver_profile".to_string()
@@ -305,8 +321,8 @@ pub fn artifacts_dir(
 
 /// Append a run index entry.
 pub fn append_run_index(run_dir: &Path, manifest: &RunManifest) -> Result<(), InputError> {
-    let index_path = PathBuf::from("runs").join("index.jsonl");
-    fs::create_dir_all(index_path.parent().unwrap_or(Path::new("runs"))).map_err(map_err)?;
+    let index_path = PathBuf::from("artifacts").join("runs").join("index.jsonl");
+    fs::create_dir_all(index_path.parent().unwrap_or(Path::new("artifacts"))).map_err(map_err)?;
     let entry = RunIndexEntry {
         run_dir: run_dir.display().to_string(),
         command: manifest.command.clone(),
@@ -376,7 +392,7 @@ pub fn write_run_report(
             .unwrap_or_else(|_| "unknown".to_string()),
         layout_schema_version: RUN_LAYOUT_SCHEMA_VERSION,
         replay_scope: replay_scope(args),
-        front_end_provenance: front_end_provenance(args, profile),
+        front_end_provenance: front_end_provenance(args, profile, dataset),
     };
     let ctx = resolve_run_context(args, command, dataset)?;
     let data = serde_json::to_string_pretty(&report).map_err(map_err)?;
@@ -428,7 +444,7 @@ pub fn write_manifest(
         toolchain: std::env::var("RUSTC_VERSION").unwrap_or_else(|_| "unknown".to_string()),
         features: enabled_features(),
         replay_scope: replay_scope(args),
-        front_end_provenance: front_end_provenance(args, profile),
+        front_end_provenance: front_end_provenance(args, profile, dataset),
         summary: summary.clone(),
     };
     let ctx = resolve_run_context(args, command, dataset)?;

@@ -71,7 +71,7 @@ impl SignalSource for MemorySamples {
     }
 }
 
-/// File-backed sample source for raw i16 samples.
+/// File-backed sample source for raw IQ captures.
 pub struct FileSamples {
     file: File,
     done: bool,
@@ -94,24 +94,6 @@ impl FileSamples {
             sample_index: 0,
             metadata,
         })
-    }
-
-    /// Backward-compatible constructor for raw little-endian i16 captures.
-    pub fn open(
-        path: &str,
-        offset_bytes: u64,
-        sample_rate_hz: f64,
-    ) -> Result<Self, SampleSourceError> {
-        let metadata = RawIqMetadata {
-            format: IqSampleFormat::Iq16Le,
-            sample_rate_hz,
-            intermediate_freq_hz: 0.0,
-            capture_start_utc: "unspecified".to_string(),
-            offset_bytes,
-            quantization_bits: Some(16),
-            notes: None,
-        };
-        Self::open_raw_iq(Path::new(path), metadata)
     }
 
     /// Metadata declared for this raw IQ source.

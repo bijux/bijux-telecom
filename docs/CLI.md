@@ -55,7 +55,7 @@ Options:
 
 ### Run Pipeline
 ```bash
-bijux gnss run --dataset demo_synthetic --output runs/basic_demo
+bijux gnss inspect --dataset demo_synthetic --output artifacts/basic_ingest
 ```
 
 ### Validate Artifacts

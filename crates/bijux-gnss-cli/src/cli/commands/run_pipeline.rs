@@ -308,16 +308,16 @@ fn handle_experiment(command: GnssCommand) -> Result<()> {
 }
 
 fn handle_validatesidecar(command: GnssCommand) -> Result<()> {
-    let GnssCommand::ValidateSidecar { common, sidecar } = command else {
+    let GnssCommand::ValidateSidecar { common, sidecar_file } = command else {
         bail!("invalid command for handler");
     };
 
     let _ = runtime_config_from_env(&common, None);
-                    let spec = bijux_gnss_infra::api::load_raw_iq_metadata(&sidecar)?;
+                    let spec = bijux_gnss_infra::api::load_raw_iq_metadata(&sidecar_file)?;
                     validate_sidecar_schema(&spec)?;
-                    println!("sidecar ok: {}", sidecar.display());
+                    println!("sidecar ok: {}", sidecar_file.display());
                     let dataset = load_dataset(&common)?;
-                    let summary = serde_json::json!({ "sidecar": sidecar.display().to_string() });
+                    let summary = serde_json::json!({ "sidecar": sidecar_file.display().to_string() });
                     write_manifest(
                         &common,
                         "validate_sidecar",

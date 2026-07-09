@@ -222,8 +222,8 @@ pub(crate) enum GnssCommand {
         #[command(flatten)]
         common: CommonArgs,
 
-        #[arg(long, value_name = "FILE")]
-        sidecar: PathBuf,
+        #[arg(long = "sidecar-file", value_name = "FILE")]
+        sidecar_file: PathBuf,
     },
 
     /// Analyze a GNSS run directory and emit evidence-oriented summaries

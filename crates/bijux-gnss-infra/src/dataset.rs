@@ -179,7 +179,15 @@ fn resolve_registry_path(base_dir: &Path, value: &str) -> String {
     if path.is_absolute() {
         return value.to_string();
     }
-    base_dir.join(path).to_string_lossy().into_owned()
+    let anchor = match (base_dir.file_name(), base_dir.parent(), path.components().next()) {
+        (Some(dir_name), Some(parent), Some(first_component))
+            if first_component.as_os_str() == dir_name =>
+        {
+            parent
+        }
+        _ => base_dir,
+    };
+    anchor.join(path).to_string_lossy().into_owned()
 }
 
 fn map_err(err: impl std::fmt::Display) -> InputError {
