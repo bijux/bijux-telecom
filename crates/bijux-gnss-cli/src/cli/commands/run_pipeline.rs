@@ -43,7 +43,10 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
 
                     let frame = load_frame(&input_file, &config, &raw_iq_metadata)?;
                     let front_end_metrics =
-                        bijux_gnss_infra::api::signal::measure_iq_front_end_metrics(&frame.iq);
+                        bijux_gnss_infra::api::signal::measure_raw_iq_front_end_metrics(
+                            &frame.iq,
+                            &raw_iq_metadata,
+                        );
                     let runtime = runtime_config_from_env(&common, None);
                     let acquisition = AcquisitionEngine::new(config, runtime)
                         .with_doppler(doppler_search_hz, doppler_step_hz);
@@ -361,18 +364,24 @@ fn handle_run(command: GnssCommand) -> Result<()> {
                     validate_config(&profile)?;
                     let config = profile.to_pipeline_config();
                     let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
-                    let mut source = FileSamples::open_raw_iq(&input_file, raw_iq_metadata)?;
+                    let mut source = FileSamples::open_raw_iq(&input_file, raw_iq_metadata.clone())?;
                     let samples_per_code = samples_per_code(
                         config.sampling_freq_hz,
                         config.code_freq_basis_hz,
                         config.code_length,
                     );
                     let mut front_end_metrics =
-                        bijux_gnss_infra::api::signal::IqFrontEndAnalyzer::new().finish();
+                        bijux_gnss_infra::api::signal::IqFrontEndAnalyzer::for_raw_iq_metadata(
+                            &raw_iq_metadata,
+                        )
+                        .finish();
                     let mut epoch = 0u64;
                     if let Some(frame) = source.next_frame(samples_per_code)? {
                         front_end_metrics =
-                            bijux_gnss_infra::api::signal::measure_iq_front_end_metrics(&frame.iq);
+                            bijux_gnss_infra::api::signal::measure_raw_iq_front_end_metrics(
+                                &frame.iq,
+                                &raw_iq_metadata,
+                            );
                         epoch += 1;
                         if replay && rate > 0.0 {
                             let dt = 0.001 / rate;

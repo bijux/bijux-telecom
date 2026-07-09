@@ -33,8 +33,8 @@ fn inspect_dataset(path: &Path, metadata: &RawIqMetadata, max_samples: usize) ->
         .with_context(|| format!("failed to open {}", path.display()))?;
     let mut total_iq = 0usize;
 
-    let mut front_end_analyzer = bijux_gnss_infra::api::signal::IqFrontEndAnalyzer::new();
-    let mut clip = 0u64;
+    let mut front_end_analyzer =
+        bijux_gnss_infra::api::signal::IqFrontEndAnalyzer::for_raw_iq_metadata(metadata);
     let mut power_hist = vec![0u64; 8];
     let mut power_sum = 0.0f64;
 
@@ -51,9 +51,6 @@ fn inspect_dataset(path: &Path, metadata: &RawIqMetadata, max_samples: usize) ->
         for sample in &frame.iq {
             let i = sample.re as f64;
             let q = sample.im as f64;
-            if sample.re.abs() >= 0.999 || sample.im.abs() >= 0.999 {
-                clip += 1;
-            }
             let power = i * i + q * q;
             power_sum += power;
             let bin = ((power.sqrt() / 0.25).min(7.0)) as usize;
@@ -75,7 +72,6 @@ fn inspect_dataset(path: &Path, metadata: &RawIqMetadata, max_samples: usize) ->
         capture_start_utc: metadata.capture_start_utc.clone(),
         total_samples: total_iq,
         front_end_metrics: front_end_analyzer.finish(),
-        clip_rate: clip as f64 / total_iq.max(1) as f64,
         noise_floor_db,
         power_histogram: power_hist,
     })
@@ -107,9 +103,15 @@ fn format_optional_degrees(value: Option<f64>) -> String {
         .unwrap_or_else(|| "n/a".to_string())
 }
 
+fn format_optional_percent(value: Option<f64>) -> String {
+    value
+        .map(|pct| format!("{pct:.3}"))
+        .unwrap_or_else(|| "n/a".to_string())
+}
+
 fn print_acquisition_table(report: &AcquisitionReport) {
     println!(
-        "I mean: {:.6}  Q mean: {:.6}  I power: {:.6}  Q power: {:.6}  I/Q ratio: {:.6}  Power warning: {}  Quadrature error(deg): {}  Quadrature warning: {}  RMS: {:.6}  DC imbalance: {:.6}",
+        "I mean: {:.6}  Q mean: {:.6}  I power: {:.6}  Q power: {:.6}  I/Q ratio: {:.6}  Power warning: {}  Quadrature error(deg): {}  Quadrature warning: {}  Clipping(%): {}  Clipping warning: {}  Precision claims allowed: {}  RMS: {:.6}  DC imbalance: {:.6}",
         report.front_end_metrics.i_mean,
         report.front_end_metrics.q_mean,
         report.front_end_metrics.i_power,
@@ -118,6 +120,9 @@ fn print_acquisition_table(report: &AcquisitionReport) {
         report.front_end_metrics.power_imbalance_warning,
         format_optional_degrees(report.front_end_metrics.quadrature_error_deg),
         report.front_end_metrics.quadrature_error_warning,
+        format_optional_percent(report.front_end_metrics.clipping_pct),
+        report.front_end_metrics.clipping_warning,
+        report.front_end_metrics.precision_claims_allowed,
         report.front_end_metrics.rms,
         report.front_end_metrics.dc_imbalance
     );
@@ -136,10 +141,10 @@ fn print_acquisition_table(report: &AcquisitionReport) {
 }
 fn print_inspect_table(report: &InspectReport) {
     println!(
-        "Format\tSampleRate(Hz)\tIF(Hz)\tCaptureStartUtc\tSamples\tIMean\tQMean\tIPower\tQPower\tIqPowerRatio\tPowerWarning\tQuadratureErrorDeg\tQuadratureWarning\tRms\tDcImbalance\tClipRate\tNoiseFloor(dB)"
+        "Format\tSampleRate(Hz)\tIF(Hz)\tCaptureStartUtc\tSamples\tIMean\tQMean\tIPower\tQPower\tIqPowerRatio\tPowerWarning\tQuadratureErrorDeg\tQuadratureWarning\tClippingPct\tClippingWarning\tPrecisionClaimsAllowed\tRms\tDcImbalance\tNoiseFloor(dB)"
     );
     println!(
-        "{}\t{:.1}\t{:.1}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{:.2}",
+        "{}\t{:.1}\t{:.1}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.2}",
         report.format,
         report.sample_rate_hz,
         report.intermediate_freq_hz,
@@ -153,9 +158,11 @@ fn print_inspect_table(report: &InspectReport) {
         report.front_end_metrics.power_imbalance_warning,
         format_optional_degrees(report.front_end_metrics.quadrature_error_deg),
         report.front_end_metrics.quadrature_error_warning,
+        format_optional_percent(report.front_end_metrics.clipping_pct),
+        report.front_end_metrics.clipping_warning,
+        report.front_end_metrics.precision_claims_allowed,
         report.front_end_metrics.rms,
         report.front_end_metrics.dc_imbalance,
-        report.clip_rate,
         report.noise_floor_db
     );
     println!("Power histogram bins: {:?}", report.power_histogram);

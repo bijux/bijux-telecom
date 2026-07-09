@@ -24,7 +24,6 @@ struct InspectReport {
     capture_start_utc: String,
     total_samples: usize,
     front_end_metrics: bijux_gnss_infra::api::signal::IqFrontEndMetrics,
-    clip_rate: f64,
     noise_floor_db: f64,
     power_histogram: Vec<u64>,
 }
