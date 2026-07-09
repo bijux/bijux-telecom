@@ -281,6 +281,7 @@ dependencies = [
  "bijux-gnss-infra",
  "bijux-gnss-policies",
  "bijux-gnss-receiver",
+ "num-complex",
  "proptest",
  "serde",
  "serde_json",

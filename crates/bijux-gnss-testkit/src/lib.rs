@@ -1,6 +1,8 @@
 //! Test helpers for bijux GNSS.
 #![forbid(unsafe_code)]
 
+pub mod front_end;
+
 use bijux_gnss_infra::api::{DatasetEntry, DatasetRegistry};
 use bijux_gnss_receiver::api::ReceiverConfig;
 use serde::de::DeserializeOwned;
