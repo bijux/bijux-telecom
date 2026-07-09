@@ -63,9 +63,8 @@ fn export_synthetic_iq_emits_truth_bundle_and_ingestable_capture() {
     assert!(truth_path.exists(), "missing exported truth file");
     assert!(scenario_copy_path.exists(), "missing scenario copy");
 
-    let truth: Value =
-        serde_json::from_str(&fs::read_to_string(&truth_path).expect("read truth"))
-            .expect("parse truth");
+    let truth: Value = serde_json::from_str(&fs::read_to_string(&truth_path).expect("read truth"))
+        .expect("parse truth");
     assert_eq!(truth["scenario_id"], "synthetic_iq_reference");
     assert_eq!(truth["seed"], 24071985);
     assert_eq!(truth["sample_format"], "iq16_le");
@@ -148,9 +147,7 @@ fn export_synthetic_iq_emits_truth_bundle_and_ingestable_capture() {
             + search_summary["deferred"].as_u64().unwrap_or(0),
         2
     );
-    let primary_results = acquire_report["primary_results"]
-        .as_array()
-        .expect("primary_results");
+    let primary_results = acquire_report["primary_results"].as_array().expect("primary_results");
     assert_eq!(primary_results.len(), 2, "expected one selected acquisition row per searched PRN");
     let results = acquire_report["results"].as_array().expect("results");
     assert!(
@@ -221,11 +218,12 @@ data_bit_flip = false
     );
 
     let iq_path = export_dir.join("artifacts").join("fractional_acquisition_refinement.iq16");
-    let sidecar_path = export_dir.join("artifacts").join("fractional_acquisition_refinement.sidecar.toml");
-    let truth_path = export_dir.join("artifacts").join("fractional_acquisition_refinement.truth.json");
-    let _truth: Value =
-        serde_json::from_str(&fs::read_to_string(&truth_path).expect("read truth"))
-            .expect("parse truth");
+    let sidecar_path =
+        export_dir.join("artifacts").join("fractional_acquisition_refinement.sidecar.toml");
+    let truth_path =
+        export_dir.join("artifacts").join("fractional_acquisition_refinement.truth.json");
+    let _truth: Value = serde_json::from_str(&fs::read_to_string(&truth_path).expect("read truth"))
+        .expect("parse truth");
 
     let acquire_config_path = temp.join("receiver_acquisition_refinement.toml");
     fs::write(
@@ -312,13 +310,10 @@ tracking_mode_vector_weight = 1.2
         .as_array()
         .and_then(|rows| rows.first())
         .expect("primary acquisition row");
-    let coarse_carrier_hz = primary_row["coarse_carrier_hz"]
-        .as_f64()
-        .expect("coarse carrier for primary row");
+    let coarse_carrier_hz =
+        primary_row["coarse_carrier_hz"].as_f64().expect("coarse carrier for primary row");
     let refined_carrier_hz = primary_row["carrier_hz"].as_f64().expect("refined carrier");
-    let refinement_bins = primary_row["doppler_refinement_bins"]
-        .as_f64()
-        .expect("refinement bins");
+    let refinement_bins = primary_row["doppler_refinement_bins"].as_f64().expect("refinement bins");
     assert!(
         (refined_carrier_hz - coarse_carrier_hz).abs() > f64::EPSILON,
         "refined carrier should differ from the coarse bin when refinement is present: {primary_row}"
@@ -334,9 +329,125 @@ tracking_mode_vector_weight = 1.2
         serde_json::from_str(acq_artifact.lines().next().expect("artifact row"))
             .expect("parse acquisition artifact row");
     assert_eq!(
-        artifact_row["payload"]["doppler_refinement"]["method"],
-        "parabolic_peak",
+        artifact_row["payload"]["doppler_refinement"]["method"], "parabolic_peak",
         "acquisition artifact should expose doppler refinement provenance: {artifact_row}"
+    );
+
+    fs::remove_dir_all(&temp).expect("remove temp dir");
+}
+
+#[test]
+fn acquire_report_exposes_refined_code_phase_for_fractional_synthetic_truth() {
+    let repo = repo_root();
+    let temp = temp_dir_path("acquisition_code_phase_refinement_report");
+    fs::create_dir_all(&temp).expect("create temp dir");
+    let scenario_path = temp.join("fractional_code_phase_refinement.toml");
+    fs::write(
+        &scenario_path,
+        r#"id = "fractional_code_phase_refinement"
+sample_rate_hz = 4000000.0
+intermediate_freq_hz = 0.0
+duration_s = 0.08
+seed = 24071985
+
+[[satellites]]
+sat = { constellation = "Gps", prn = 3 }
+doppler_hz = 0.0
+code_phase_chips = 200.125
+carrier_phase_rad = 0.0
+cn0_db_hz = 65.0
+data_bit_flip = false
+"#,
+    )
+    .expect("write refinement scenario");
+    let export_dir = temp.join("export");
+    fs::create_dir_all(&export_dir).expect("create export dir");
+    let export_output = run_bijux(
+        &[
+            "gnss",
+            "export-synthetic-iq",
+            "--scenario",
+            scenario_path.to_str().expect("scenario path"),
+            "--report",
+            "json",
+            "--out",
+            export_dir.to_str().expect("export dir"),
+        ],
+        &repo,
+    );
+    assert!(
+        export_output.status.success(),
+        "export-synthetic-iq failed: {}",
+        String::from_utf8_lossy(&export_output.stderr)
+    );
+
+    let acquire_dir = temp.join("acquire");
+    fs::create_dir_all(&acquire_dir).expect("create acquire dir");
+    let acquire_output = run_bijux(
+        &[
+            "gnss",
+            "acquire",
+            "--unregistered-dataset",
+            "--file",
+            export_dir
+                .join("artifacts")
+                .join("fractional_code_phase_refinement.iq16")
+                .to_str()
+                .expect("iq path"),
+            "--sidecar",
+            export_dir
+                .join("artifacts")
+                .join("fractional_code_phase_refinement.sidecar.toml")
+                .to_str()
+                .expect("sidecar path"),
+            "--config",
+            "configs/receiver_low_rate.toml",
+            "--prn",
+            "3",
+            "--report",
+            "json",
+            "--out",
+            acquire_dir.to_str().expect("acquire dir"),
+        ],
+        &repo,
+    );
+    assert!(
+        acquire_output.status.success(),
+        "acquire failed: {}",
+        String::from_utf8_lossy(&acquire_output.stderr)
+    );
+
+    let acquire_report: Value = serde_json::from_str(
+        &fs::read_to_string(acquire_dir.join("acquire_report.json")).expect("read acquire report"),
+    )
+    .expect("parse acquire report");
+    let primary_row = acquire_report["primary_results"]
+        .as_array()
+        .and_then(|rows| rows.first())
+        .expect("primary acquisition row");
+    let coarse_code_phase_samples =
+        primary_row["code_phase_samples"].as_u64().expect("coarse code phase samples") as f64;
+    let refined_code_phase_samples =
+        primary_row["refined_code_phase_samples"].as_f64().expect("refined code phase");
+    let code_phase_refinement_samples =
+        primary_row["code_phase_refinement_samples"].as_f64().expect("code phase refinement");
+    assert!(
+        (refined_code_phase_samples - coarse_code_phase_samples).abs() > f64::EPSILON,
+        "refined code phase should differ from the coarse sample when refinement is present: {primary_row}"
+    );
+    assert!(
+        code_phase_refinement_samples.abs() <= 0.5 + f64::EPSILON,
+        "code phase refinement should stay within one half-sample: {primary_row}"
+    );
+
+    let acq_artifact = fs::read_to_string(acquire_dir.join("artifacts").join("acq.jsonl"))
+        .expect("read acq artifact");
+    let artifact_row: Value =
+        serde_json::from_str(acq_artifact.lines().next().expect("artifact row"))
+            .expect("parse acquisition artifact row");
+    assert_eq!(
+        artifact_row["payload"]["code_phase_refinement"]["method"], "parabolic_code_peak",
+        "acquisition artifact should expose code-phase refinement provenance: {artifact_row}"
     );
 
     fs::remove_dir_all(&temp).expect("remove temp dir");

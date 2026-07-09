@@ -104,6 +104,7 @@ fn validate_synthetic_iq_accepts_reference_cn0_bundle() {
     assert_eq!(report["validation"]["scenario_id"], "synthetic_iq_cn0_reference");
     assert_eq!(report["validation"]["pass"], true);
     assert_eq!(report["acquisition_code_phase_validation"]["pass"], true);
+    assert_eq!(report["acquisition_code_phase_refinement_validation"]["pass"], true);
     assert_eq!(report["acquisition_doppler_validation"]["pass"], true);
     let rows = report["validation"]["satellites"].as_array().expect("satellite rows");
     assert_eq!(rows.len(), 1);
@@ -118,6 +119,23 @@ fn validate_synthetic_iq_accepts_reference_cn0_bundle() {
     assert_eq!(acquisition_rows[0]["sat"]["prn"], 7);
     assert_eq!(acquisition_rows[0]["pass"], true);
     assert_eq!(acquisition_rows[0]["code_phase_error_samples"], 0);
+    let acquisition_refinement_rows = report["acquisition_code_phase_refinement_validation"]
+        ["satellites"]
+        .as_array()
+        .expect("acquisition refinement rows");
+    assert_eq!(acquisition_refinement_rows.len(), 1);
+    assert_eq!(acquisition_refinement_rows[0]["sat"]["prn"], 7);
+    assert_eq!(acquisition_refinement_rows[0]["pass"], true);
+    let coarse_error_samples = acquisition_refinement_rows[0]["coarse_error_samples"]
+        .as_f64()
+        .expect("coarse code phase error");
+    let refined_error_samples = acquisition_refinement_rows[0]["refined_error_samples"]
+        .as_f64()
+        .expect("refined code phase error");
+    assert!(
+        refined_error_samples <= coarse_error_samples + f64::EPSILON,
+        "refined code phase should not regress initialization: {acquisition_refinement_rows:?}"
+    );
     let acquisition_doppler_rows = report["acquisition_doppler_validation"]["satellites"]
         .as_array()
         .expect("acquisition doppler rows");
@@ -126,7 +144,10 @@ fn validate_synthetic_iq_accepts_reference_cn0_bundle() {
     assert_eq!(acquisition_doppler_rows[0]["pass"], true);
     let doppler_error_hz =
         acquisition_doppler_rows[0]["doppler_error_hz"].as_f64().expect("doppler error");
-    assert!(doppler_error_hz <= 500.0 + f64::EPSILON, "doppler error out of tolerance: {doppler_error_hz}");
+    assert!(
+        doppler_error_hz <= 500.0 + f64::EPSILON,
+        "doppler error out of tolerance: {doppler_error_hz}"
+    );
     assert!(validate_dir.join("manifest.json").exists(), "missing validation manifest");
 
     fs::remove_dir_all(&export_dir).expect("remove export dir");
@@ -144,9 +165,8 @@ fn validate_synthetic_iq_rejects_too_tight_acquisition_code_phase_tolerance() {
     fs::create_dir_all(&probe_root).expect("create probe root");
     let mut max_error = None;
 
-    for (index, code_phase_chips) in [200.125, 200.25, 200.375, 200.5, 200.625, 200.75, 200.875]
-        .into_iter()
-        .enumerate()
+    for (index, code_phase_chips) in
+        [200.125, 200.25, 200.375, 200.5, 200.625, 200.75, 200.875].into_iter().enumerate()
     {
         fs::write(
             &scenario_path,
@@ -225,7 +245,8 @@ data_bit_flip = false
         }
     }
 
-    let max_error = max_error.expect("candidate scenarios did not produce a non-zero acquisition code-phase error");
+    let max_error = max_error
+        .expect("candidate scenarios did not produce a non-zero acquisition code-phase error");
     let strict_tolerance = (max_error - 1).to_string();
 
     let strict_dir = temp_dir_path("validate_synthetic_iq_fractional_phase_strict");
@@ -236,10 +257,7 @@ data_bit_flip = false
             "validate-synthetic-iq",
             "--unregistered-dataset",
             "--file",
-            artifacts_dir
-                .join("fractional_code_phase_accuracy.iq16")
-                .to_str()
-                .expect("iq path"),
+            artifacts_dir.join("fractional_code_phase_accuracy.iq16").to_str().expect("iq path"),
             "--sidecar",
             artifacts_dir
                 .join("fractional_code_phase_accuracy.sidecar.toml")
