@@ -106,6 +106,7 @@ impl EkfContext {
 #[derive(Debug, Serialize, Deserialize)]
 struct TrackingReport {
     sats: Vec<SatId>,
+    front_end_metrics: bijux_gnss_infra::api::signal::IqFrontEndMetrics,
     epochs: Vec<TrackingRow>,
 }
 

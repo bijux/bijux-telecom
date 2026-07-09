@@ -97,3 +97,47 @@ fn acquire_reports_front_end_metrics_from_acquisition_window() {
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
 }
+
+#[test]
+fn track_reports_front_end_metrics_from_acquisition_window() {
+    let temp = temp_dir_path("track_front_end_metrics");
+    fs::create_dir_all(&temp).expect("create temp dir");
+
+    let iq_path = temp.join("demo.iq8");
+    write_constant_iq8_capture(&iq_path, 32, 0, 5_000);
+    let sidecar_path = temp.join("demo.sidecar.toml");
+    write_raw_iq_sidecar(&sidecar_path);
+
+    let out_dir = temp.join("track-out");
+    let output = run_bijux(
+        &[
+            "gnss",
+            "track",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--prn",
+            "1",
+            "--report",
+            "json",
+            "--out",
+            out_dir.to_str().expect("out dir"),
+        ],
+        &repo_root(),
+    );
+
+    assert!(output.status.success(), "track failed: {}", String::from_utf8_lossy(&output.stderr));
+    let report = load_json(&out_dir.join("track_report.json"));
+    let metrics = report
+        .get("front_end_metrics")
+        .expect("front_end_metrics present");
+    assert_eq!(metrics.get("sample_count").and_then(Value::as_u64), Some(5_000));
+    assert_eq!(metrics.get("i_mean").and_then(Value::as_f64), Some(0.25));
+    assert_eq!(metrics.get("q_mean").and_then(Value::as_f64), Some(0.0));
+    assert_eq!(metrics.get("rms").and_then(Value::as_f64), Some(0.25));
+    assert_eq!(metrics.get("dc_imbalance").and_then(Value::as_f64), Some(1.0));
+
+    fs::remove_dir_all(&temp).expect("remove temp dir");
+}

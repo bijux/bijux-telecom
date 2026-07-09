@@ -41,6 +41,8 @@ fn handle_track(command: GnssCommand) -> Result<()> {
     
                     let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
                     let frame = load_frame(&input_file, &config, &raw_iq_metadata)?;
+                    let front_end_metrics =
+                        bijux_gnss_infra::api::signal::measure_iq_front_end_metrics(&frame.iq);
     
                     let acquisition = AcquisitionEngine::new(config.clone(), runtime.clone())
                         .with_doppler(doppler_search_hz, doppler_step_hz);
@@ -59,6 +61,7 @@ fn handle_track(command: GnssCommand) -> Result<()> {
     
                     let report = TrackingReport {
                         sats: sats.clone(),
+                        front_end_metrics,
                         epochs: tracks
                             .iter()
                             .flat_map(|t| {
