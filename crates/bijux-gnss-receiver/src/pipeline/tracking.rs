@@ -161,6 +161,12 @@ struct CodePhaseStabilityDiagnostic {
 }
 
 #[derive(Debug, Clone, Copy)]
+struct CodeLoopUpdate {
+    code_rate_hz: f64,
+    code_phase_samples: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
 struct PromptPhaseDecision {
     aligned_phase_cycles: f64,
     nav_bit_phase_offset_cycles: f64,
@@ -783,27 +789,28 @@ impl Tracking {
             }
 
             let cn0_dbhz = track_epoch.cn0_dbhz;
-            let (dll_bw, pll_bw, fll_bw) =
-                adaptive_bandwidth(
-                    tracking_params.dll_bw_hz,
-                    tracking_params.pll_bw_hz,
-                    tracking_params.fll_bw_hz,
-                    cn0_dbhz,
-                );
-            state.code_rate_hz += dll_bw * dll_err as f64;
-            if state.state == ChannelState::PullIn {
-                state.carrier_hz += fll_bw * fll_err as f64;
-            }
-            state.carrier_hz += pll_bw * pll_err as f64;
-            state.code_phase_samples = advance_code_phase_samples(
+            let (dll_bw, pll_bw, fll_bw) = adaptive_bandwidth(
+                tracking_params.dll_bw_hz,
+                tracking_params.pll_bw_hz,
+                tracking_params.fll_bw_hz,
+                cn0_dbhz,
+            );
+            let code_loop = apply_dll_code_loop(
+                state.code_rate_hz,
                 state.code_phase_samples,
                 epoch_frame.len(),
-                state.code_rate_hz,
                 self.config.code_freq_basis_hz,
+                dll_bw,
                 dll_err,
                 samples_per_chip,
                 samples_per_code,
             );
+            state.code_rate_hz = code_loop.code_rate_hz;
+            if state.state == ChannelState::PullIn {
+                state.carrier_hz += fll_bw * fll_err as f64;
+            }
+            state.carrier_hz += pll_bw * pll_err as f64;
+            state.code_phase_samples = code_loop.code_phase_samples;
 
             if state.state != from_state {
                 transitions.push(TrackTransition {
@@ -940,6 +947,7 @@ fn default_tracking_assumptions(config: &ReceiverPipelineConfig) -> TrackingAssu
 fn tracking_assumptions(params: TrackingParams) -> TrackingAssumptions {
     TrackingAssumptions {
         integration_ms: params.integration_ms,
+        early_late_spacing_chips: params.early_late_spacing_chips,
         dll_bw_hz: params.dll_bw_hz,
         pll_bw_hz: params.pll_bw_hz,
         fll_bw_hz: params.fll_bw_hz,
@@ -1029,6 +1037,29 @@ fn advance_code_phase_samples(
         current_code_phase_samples + code_period_advance_samples + dll_correction_samples,
         samples_per_code,
     )
+}
+
+fn apply_dll_code_loop(
+    current_code_rate_hz: f64,
+    current_code_phase_samples: f64,
+    epoch_len_samples: usize,
+    nominal_code_rate_hz: f64,
+    dll_bw_hz: f64,
+    dll_err: f32,
+    samples_per_chip: f64,
+    samples_per_code: usize,
+) -> CodeLoopUpdate {
+    let code_rate_hz = current_code_rate_hz + dll_bw_hz * dll_err as f64;
+    let code_phase_samples = advance_code_phase_samples(
+        current_code_phase_samples,
+        epoch_len_samples,
+        code_rate_hz,
+        nominal_code_rate_hz,
+        dll_err,
+        samples_per_chip,
+        samples_per_code,
+    );
+    CodeLoopUpdate { code_rate_hz, code_phase_samples }
 }
 
 fn wrap_code_phase_samples(code_phase_samples: f64, samples_per_code: usize) -> f64 {

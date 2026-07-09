@@ -54,6 +54,8 @@ pub enum TrackingLifecycleState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrackingAssumptions {
     pub integration_ms: u32,
+    #[serde(default)]
+    pub early_late_spacing_chips: f64,
     pub dll_bw_hz: f64,
     pub pll_bw_hz: f64,
     pub fll_bw_hz: f64,
