@@ -112,8 +112,24 @@ The synthetic IQ export workflow emits a deterministic raw-capture bundle for a 
 - truth schema: `schemas/synthetic_iq_truth.schema.json`
 
 The truth artifact records the emitted PRNs, Doppler, code phase, C/N0, and navigation-bit state
-for each synthetic satellite. Given the same scenario, seed, and capture start time, the emitted
-bundle is deterministic.
+for each synthetic satellite. It also records the exported signal amplitude plus bundle-level noise
+statistics (`noise_std_per_component`, `noise_power_per_complex_sample`) so receiver-side C/N0
+validation can reproduce the injected calibration conditions. Given the same scenario, seed, and
+capture start time, the emitted bundle is deterministic.
+
+## Synthetic IQ Validation Report
+
+The synthetic IQ validation workflow checks receiver measurements against injected truth:
+- command: `bijux gnss validate-synthetic-iq --file <IQ16> --sidecar <SIDECAR> --truth <TRUTH>`
+- files:
+  - `validate_synthetic_iq_report.json`
+  - `manifest.json`
+- purpose: compare measured prompt-power C/N0 against the injected synthetic truth for each
+  tracked satellite and fail when the configured tolerance is exceeded
+
+The bundled `synthetic_iq_cn0_reference.toml` scenario is a single-satellite calibration fixture.
+That scope is intentional: it validates C/N0 recovery without overstating multi-satellite or
+fractional-sampling coverage that belongs to later receiver validation work.
 
 ## Validation Evidence Bundle
 

@@ -35,6 +35,7 @@ Commands:
   rtk                  RTK alignment and SD/DD artifacts
   experiment           Run parameter sweeps over synthetic scenarios
   export-synthetic-iq  Export a deterministic synthetic raw IQ bundle and matching truth artifact
+  validate-synthetic-iq  Validate a synthetic IQ bundle against truth-guided C/N0 expectations
   artifact             Artifact validation and conversion
   validate-config      Validate a receiver profile configuration file
   config               Configuration utilities
@@ -71,6 +72,11 @@ bijux gnss acquire --dataset gps_l1_2022_03_27_excerpt --config configs/receiver
 ### Export Synthetic IQ Truth Bundle
 ```bash
 bijux gnss export-synthetic-iq --scenario configs/scenarios/synthetic_iq_reference.toml --report json --out artifacts/synthetic_iq_reference
+```
+
+### Validate Synthetic IQ C/N0 Calibration
+```bash
+bijux gnss validate-synthetic-iq --unregistered-dataset --file artifacts/synthetic_iq_cn0_reference/artifacts/synthetic_iq_cn0_reference.iq16 --sidecar artifacts/synthetic_iq_cn0_reference/artifacts/synthetic_iq_cn0_reference.sidecar.toml --truth artifacts/synthetic_iq_cn0_reference/artifacts/synthetic_iq_cn0_reference.truth.json --config configs/receiver_low_rate.toml --report json --out artifacts/synthetic_iq_cn0_validation
 ```
 
 ### Validate Artifacts

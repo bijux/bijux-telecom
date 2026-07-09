@@ -54,6 +54,18 @@ bijux gnss export-synthetic-iq --scenario configs/scenarios/synthetic_iq_referen
 That command writes a raw IQ capture, a sidecar, a copied scenario file, and a truth JSON artifact
 validated by `schemas/synthetic_iq_truth.schema.json`.
 
+For deterministic C/N0 calibration against injected synthetic truth, export and validate the
+single-satellite reference bundle:
+
+```bash
+bijux gnss export-synthetic-iq --scenario configs/scenarios/synthetic_iq_cn0_reference.toml --report json --out artifacts/synthetic_iq_cn0_reference
+bijux gnss validate-synthetic-iq --unregistered-dataset --file artifacts/synthetic_iq_cn0_reference/artifacts/synthetic_iq_cn0_reference.iq16 --sidecar artifacts/synthetic_iq_cn0_reference/artifacts/synthetic_iq_cn0_reference.sidecar.toml --truth artifacts/synthetic_iq_cn0_reference/artifacts/synthetic_iq_cn0_reference.truth.json --config configs/receiver_low_rate.toml --report json --out artifacts/synthetic_iq_cn0_validation
+```
+
+This workflow verifies that measured prompt-power C/N0 stays within a configured tolerance of the
+injected synthetic truth. The calibration scenario is intentionally single-satellite so the check
+stays isolated from later multi-satellite and fractional-sampling validation work.
+
 For a public real-RF acquisition example, use the registered live-sky excerpt and its tuned
 profile:
 

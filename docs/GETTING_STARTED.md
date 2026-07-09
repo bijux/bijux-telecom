@@ -61,3 +61,14 @@ This command emits:
 
 Use this bundle when you need deterministic raw IQ plus explicit PRN, Doppler, code phase, C/N0,
 and navigation-bit truth for downstream ingest and acquisition checks.
+
+## 8) Validate Injected Synthetic C/N0 Against Receiver Measurements
+
+```bash
+bijux gnss export-synthetic-iq --scenario configs/scenarios/synthetic_iq_cn0_reference.toml --report json --out artifacts/synthetic_iq_cn0_reference
+bijux gnss validate-synthetic-iq --unregistered-dataset --file artifacts/synthetic_iq_cn0_reference/artifacts/synthetic_iq_cn0_reference.iq16 --sidecar artifacts/synthetic_iq_cn0_reference/artifacts/synthetic_iq_cn0_reference.sidecar.toml --truth artifacts/synthetic_iq_cn0_reference/artifacts/synthetic_iq_cn0_reference.truth.json --config configs/receiver_low_rate.toml --report json --out artifacts/synthetic_iq_cn0_validation
+```
+
+This calibration flow checks that measured prompt-power C/N0 remains within a configured tolerance
+of the injected truth recorded in the synthetic bundle. The reference scenario uses one satellite by
+design so C/N0 validation stays isolated from later tracking and multi-satellite integration work.
