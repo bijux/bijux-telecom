@@ -25,7 +25,7 @@ const SYNTHETIC_COMPLEX_NOISE_POWER: f64 = 1.0;
 const SYNTHETIC_NOISE_STD_PER_COMPONENT: f32 = std::f32::consts::FRAC_1_SQRT_2;
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticSignalParams {
     pub sat: SatId,
     pub doppler_hz: f64,
@@ -422,6 +422,59 @@ pub struct SyntheticAcquisitionSensitivityReport {
     pub mean_peak_mean_ratio: f64,
     /// Per-trial acquisition rows.
     pub trials: Vec<SyntheticAcquisitionSensitivityTrial>,
+}
+
+/// Acquisition detection-rate input for one synthetic measurement point.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionDetectionRateCase {
+    /// Signal configuration under test.
+    pub signal: SyntheticSignalParams,
+    /// Coherent integration length under test, in milliseconds.
+    pub coherent_ms: u32,
+    /// Noncoherent integration count under test.
+    pub noncoherent: u32,
+}
+
+/// Detection-rate summary for one synthetic acquisition measurement point.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionDetectionRatePoint {
+    /// Satellite identifier under test.
+    pub sat: SatId,
+    /// Injected carrier-to-noise density ratio in dB-Hz.
+    pub cn0_db_hz: f32,
+    /// Injected Doppler shift in Hz.
+    pub doppler_hz: f64,
+    /// Coherent integration length under test, in milliseconds.
+    pub coherent_ms: u32,
+    /// Noncoherent integration count under test.
+    pub noncoherent: u32,
+    /// Number of synthetic trials measured for this point.
+    pub trial_count: usize,
+    /// Number of trials that produced accepted results.
+    pub accepted_count: usize,
+    /// Number of trials that produced non-rejected results within truth tolerances.
+    pub detected_count: usize,
+    /// Accepted-trial probability across the measured trials.
+    pub acceptance_probability: f64,
+    /// Detection probability across the measured trials.
+    pub detection_probability: f64,
+    /// Mean peak-to-mean ratio across the measured trials.
+    pub mean_peak_mean_ratio: f64,
+}
+
+/// Detection-rate report across multiple C/N0, Doppler, and integration settings.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionDetectionRateReport {
+    /// Scenario identifier prefix shared across the measurement points.
+    pub scenario_id_prefix: String,
+    /// Allowed code-phase error in samples.
+    pub code_phase_tolerance_samples: usize,
+    /// Allowed Doppler error in acquisition bins.
+    pub doppler_tolerance_bins: usize,
+    /// Effective acquisition Doppler bin width in Hz.
+    pub doppler_step_hz: i32,
+    /// Measurement points captured in the report.
+    pub points: Vec<SyntheticAcquisitionDetectionRatePoint>,
 }
 
 /// Noise-only false-alarm summary for a synthetic acquisition profile.
@@ -1116,6 +1169,55 @@ pub fn measure_truth_guided_acquisition_detection_probability(
     )
 }
 
+/// Measure acquisition detection rate across multiple C/N0, Doppler, and integration settings.
+pub fn measure_truth_guided_acquisition_detection_rate(
+    config: &ReceiverPipelineConfig,
+    cases: &[SyntheticAcquisitionDetectionRateCase],
+    trial_seeds: &[u64],
+    scenario_id_prefix: &str,
+    code_phase_tolerance_samples: usize,
+    doppler_tolerance_bins: usize,
+) -> SyntheticAcquisitionDetectionRateReport {
+    let doppler_step_hz = config.acquisition_doppler_step_hz.max(1);
+    let points = cases
+        .iter()
+        .map(|case| {
+            let sensitivity = measure_truth_guided_acquisition_detection_probability(
+                config,
+                case.signal,
+                case.coherent_ms,
+                case.noncoherent,
+                trial_seeds,
+                &detection_rate_case_id(scenario_id_prefix, case),
+                code_phase_tolerance_samples,
+                doppler_tolerance_bins,
+            );
+
+            SyntheticAcquisitionDetectionRatePoint {
+                sat: case.signal.sat,
+                cn0_db_hz: case.signal.cn0_db_hz,
+                doppler_hz: case.signal.doppler_hz,
+                coherent_ms: case.coherent_ms,
+                noncoherent: case.noncoherent,
+                trial_count: sensitivity.trial_count,
+                accepted_count: sensitivity.accepted_count,
+                detected_count: sensitivity.detected_count,
+                acceptance_probability: sensitivity.acceptance_probability,
+                detection_probability: sensitivity.detection_probability,
+                mean_peak_mean_ratio: sensitivity.mean_peak_mean_ratio,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    SyntheticAcquisitionDetectionRateReport {
+        scenario_id_prefix: scenario_id_prefix.to_string(),
+        code_phase_tolerance_samples,
+        doppler_tolerance_bins,
+        doppler_step_hz,
+        points,
+    }
+}
+
 /// Measure noise-only false-alarm rate for an acquisition integration profile.
 pub fn measure_noise_only_acquisition_false_alarm_rate(
     config: &ReceiverPipelineConfig,
@@ -1235,6 +1337,20 @@ fn synthetic_acquisition_sensitivity_report(
         mean_peak_mean_ratio,
         trials,
     }
+}
+
+fn detection_rate_case_id(
+    scenario_id_prefix: &str,
+    case: &SyntheticAcquisitionDetectionRateCase,
+) -> String {
+    format!(
+        "{scenario_id_prefix}_prn_{}_cn0_{:03}_doppler_{:+05}_coherent_{}ms_noncoherent_{}",
+        case.signal.sat.prn,
+        (case.signal.cn0_db_hz * 10.0).round() as i32,
+        case.signal.doppler_hz.round() as i32,
+        case.coherent_ms,
+        case.noncoherent,
+    )
 }
 
 /// Measure whether acquisition Doppler refinement improves on the raw search bin.
@@ -1738,15 +1854,17 @@ mod tests {
         build_iq16_capture_bundle, build_truth_bundle, expected_acquisition_code_phase_samples,
         expected_acquisition_code_phase_samples_f64, generate_l1_ca_multi,
         measure_noise_only_acquisition_false_alarm_rate,
-        measure_truth_guided_acquisition_detection_probability, nav_bit_index_at_time_s,
+        measure_truth_guided_acquisition_detection_probability,
+        measure_truth_guided_acquisition_detection_rate, nav_bit_index_at_time_s,
         nav_bit_sign_at_time_s, signal_amplitude_from_cn0,
         validate_truth_guided_acquisition_code_phase,
         validate_truth_guided_acquisition_code_phase_refinement,
         validate_truth_guided_acquisition_coherent_integration,
         validate_truth_guided_acquisition_doppler, validate_truth_guided_cn0,
         wrapped_code_phase_error_samples, wrapped_code_phase_error_samples_f64, SatState,
-        SyntheticNavBitMode, SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource,
-        SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
+        SyntheticAcquisitionDetectionRateCase, SyntheticNavBitMode, SyntheticScenario,
+        SyntheticSignalParams, SyntheticSignalSource, SYNTHETIC_COMPLEX_NOISE_POWER,
+        SYNTHETIC_NOISE_STD_PER_COMPONENT,
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
     use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds};
@@ -2444,6 +2562,63 @@ mod tests {
         assert_eq!(report.false_alarm_count, 0);
         assert_eq!(report.false_alarm_rate, 0.0);
         assert!(report.trials.iter().all(|trial| !trial.accepted), "{report:?}");
+    }
+
+    #[test]
+    fn acquisition_detection_rate_report_keeps_cn0_doppler_and_integration_axes() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            acquisition_doppler_search_hz: 1_500,
+            acquisition_doppler_step_hz: 250,
+            ..ReceiverPipelineConfig::default()
+        };
+        let report = measure_truth_guided_acquisition_detection_rate(
+            &config,
+            &[
+                SyntheticAcquisitionDetectionRateCase {
+                    signal: SyntheticSignalParams {
+                        sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                        doppler_hz: 250.0,
+                        code_phase_chips: 300.0,
+                        carrier_phase_rad: 0.0,
+                        cn0_db_hz: 30.0,
+                        data_bit_flip: false,
+                    },
+                    coherent_ms: 1,
+                    noncoherent: 1,
+                },
+                SyntheticAcquisitionDetectionRateCase {
+                    signal: SyntheticSignalParams {
+                        sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                        doppler_hz: 750.0,
+                        code_phase_chips: 300.0,
+                        carrier_phase_rad: 0.0,
+                        cn0_db_hz: 34.0,
+                        data_bit_flip: false,
+                    },
+                    coherent_ms: 5,
+                    noncoherent: 1,
+                },
+            ],
+            &[17, 29],
+            "acquisition-detection-rate",
+            2,
+            1,
+        );
+
+        assert_eq!(report.doppler_step_hz, 250);
+        assert_eq!(report.points.len(), 2);
+        assert_eq!(report.points[0].cn0_db_hz, 30.0);
+        assert_eq!(report.points[0].doppler_hz, 250.0);
+        assert_eq!(report.points[0].coherent_ms, 1);
+        assert_eq!(report.points[0].noncoherent, 1);
+        assert_eq!(report.points[1].cn0_db_hz, 34.0);
+        assert_eq!(report.points[1].doppler_hz, 750.0);
+        assert_eq!(report.points[1].coherent_ms, 5);
+        assert_eq!(report.points[1].noncoherent, 1);
     }
 
     #[test]
