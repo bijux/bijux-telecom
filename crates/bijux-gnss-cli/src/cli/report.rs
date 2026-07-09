@@ -96,6 +96,7 @@ struct StreamingRunReport {
     tracked_channels: usize,
     observation_epochs: usize,
     front_end_metrics: bijux_gnss_infra::api::signal::IqFrontEndMetrics,
+    signal_quality: RawIqSignalQualityReport,
 }
 
 #[derive(Debug, Serialize, Clone)]

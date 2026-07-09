@@ -313,18 +313,7 @@ fn handle_run(command: GnssCommand) -> Result<()> {
     validate_config(&profile)?;
     let config = profile.to_pipeline_config();
     let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
-    let samples_per_code =
-        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
-    let mut front_end_metrics =
-        bijux_gnss_infra::api::signal::IqFrontEndAnalyzer::for_raw_iq_metadata(&raw_iq_metadata)
-            .finish();
-    let mut metrics_source = FileSamples::open_raw_iq(&input_file, raw_iq_metadata.clone())?;
-    if let Some(frame) = metrics_source.next_frame(samples_per_code)? {
-        front_end_metrics = bijux_gnss_infra::api::signal::measure_raw_iq_front_end_metrics(
-            &frame.iq,
-            &raw_iq_metadata,
-        );
-    }
+    let signal_quality = measure_signal_quality_from_raw_iq(&input_file, &raw_iq_metadata, 0)?;
     let receiver = Receiver::new(config.clone(), runtime);
     let mut source = FileSamples::open_raw_iq(&input_file, raw_iq_metadata.clone())?;
     let artifacts = receiver.run(&mut source)?;
@@ -338,9 +327,11 @@ fn handle_run(command: GnssCommand) -> Result<()> {
         acquisitions: artifacts.acquisitions.len(),
         tracked_channels: artifacts.tracking.iter().filter(|track| !track.epochs.is_empty()).count(),
         observation_epochs: artifacts.observations.len(),
-        front_end_metrics,
+        front_end_metrics: signal_quality.front_end_metrics.clone(),
+        signal_quality,
     };
     emit_report(&common, "run", &report)?;
+    write_signal_quality_report(&common, "run", &report.signal_quality)?;
     write_manifest(&common, "run", &profile, dataset.as_ref(), &report)?;
 
     Ok(())

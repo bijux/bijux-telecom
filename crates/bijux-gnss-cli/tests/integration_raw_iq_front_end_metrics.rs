@@ -542,6 +542,14 @@ fn run_reports_front_end_metrics_for_stream_start() {
     let metrics = report.get("front_end_metrics").expect("front_end_metrics present");
     assert_dc_only_metrics(metrics, 5_000);
     assert_eq!(report.get("epochs").and_then(Value::as_u64), Some(1));
+    let signal_quality = report.get("signal_quality").expect("signal_quality present");
+    assert_eq!(signal_quality.get("analyzed_samples").and_then(Value::as_u64), Some(5_000));
+    assert_eq!(
+        signal_quality.get("front_end_metrics"),
+        report.get("front_end_metrics")
+    );
+    let standalone_signal_quality = load_json(&out_dir.join("signal_quality_report.json"));
+    assert_eq!(standalone_signal_quality, *signal_quality);
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
 }
@@ -590,6 +598,13 @@ fn run_reports_streamed_tracking_progress_for_clean_capture() {
         report.get("acquisitions").and_then(Value::as_u64).unwrap_or(0) >= 1,
         "acquisitions={report}",
     );
+    let signal_quality = report.get("signal_quality").expect("signal_quality present");
+    assert_eq!(
+        signal_quality.get("analyzed_samples").and_then(Value::as_u64),
+        Some(60_000)
+    );
+    let standalone_signal_quality = load_json(&out_dir.join("signal_quality_report.json"));
+    assert_eq!(standalone_signal_quality, *signal_quality);
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
 }
