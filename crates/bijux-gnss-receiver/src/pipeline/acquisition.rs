@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use bijux_gnss_core::api::{
     acq_result_stability_key, stable_acq_result_keys, AcqAssumptions, AcqCodePhaseRefinement,
     AcqDopplerRefinement, AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqResult,
-    AcqThresholdProvenance, Hertz, ReceiverSampleTrace, SamplesFrame, SatId,
+    AcqThresholdProvenance, AcqUncertainty, Hertz, ReceiverSampleTrace, SamplesFrame, SatId,
 };
 use num_complex::Complex;
 use rustfft::{num_traits::Zero, FftPlanner};
@@ -58,6 +58,9 @@ const SUB_SAMPLE_CODE_PHASE_REFINEMENT_METHOD: &str = "parabolic_code_peak";
 const SUB_SAMPLE_CODE_PHASE_REFINEMENT_MAX_OFFSET_SAMPLES: f64 = 0.5;
 const SUB_SAMPLE_CODE_PHASE_REFINEMENT_EPSILON: f64 = 1e-12;
 const SUB_SAMPLE_CODE_PHASE_REFINEMENT_MIN_ABS_OFFSET_SAMPLES: f64 = 0.05;
+const ACQUISITION_UNCERTAINTY_MIN_RESOLUTION_FRACTION: f64 = 0.05;
+const ACQUISITION_UNCERTAINTY_REFERENCE_RESOLUTION_FRACTION: f64 = 0.25;
+const ACQUISITION_UNCERTAINTY_MAX_RESOLUTION_FRACTION: f64 = 0.5;
 const MULTIPATH_SECONDARY_GUARD_CHIPS: usize = 2;
 const WRONG_PRN_DOMINANCE_RATIO_MIN: f32 = 4.0;
 const WRONG_PRN_PEAK_SECOND_RATIO_MAX: f32 = 1.1;
@@ -587,6 +590,8 @@ impl Acquisition {
                                     &self.config,
                                 ),
                             });
+                        candidate.uncertainty =
+                            estimate_acquisition_uncertainty(candidate, self.doppler_step_hz);
                     }
                 } else {
                     candidate.hypothesis = AcqHypothesis::Deferred;
@@ -1460,6 +1465,85 @@ fn refine_acquisition_candidates(
     }
 }
 
+fn estimate_acquisition_uncertainty(
+    candidate: &AcqResult,
+    doppler_step_hz: i32,
+) -> Option<AcqUncertainty> {
+    if !matches!(candidate.hypothesis, AcqHypothesis::Accepted) {
+        return None;
+    }
+    Some(AcqUncertainty {
+        doppler_hz: estimate_doppler_uncertainty_hz(candidate, doppler_step_hz)?,
+        code_phase_samples: estimate_code_phase_uncertainty_samples(candidate)?,
+    })
+}
+
+fn estimate_doppler_uncertainty_hz(candidate: &AcqResult, doppler_step_hz: i32) -> Option<f64> {
+    let step_hz = doppler_step_hz.unsigned_abs() as f64;
+    if step_hz <= f64::EPSILON {
+        return None;
+    }
+    let uncertainty_bins = candidate
+        .doppler_refinement
+        .as_ref()
+        .and_then(|refinement| {
+            curvature_based_resolution_fraction(
+                refinement.left_peak_mean_ratio as f64,
+                refinement.center_peak_mean_ratio as f64,
+                refinement.right_peak_mean_ratio as f64,
+                1.0 + refinement.offset_bins.abs(),
+            )
+        })
+        .unwrap_or(ACQUISITION_UNCERTAINTY_MAX_RESOLUTION_FRACTION);
+    Some(uncertainty_bins * step_hz)
+}
+
+fn estimate_code_phase_uncertainty_samples(candidate: &AcqResult) -> Option<f64> {
+    Some(
+        candidate
+            .code_phase_refinement
+            .as_ref()
+            .and_then(|refinement| {
+                curvature_based_resolution_fraction(
+                    refinement.left_correlation_norm as f64,
+                    refinement.center_correlation_norm as f64,
+                    refinement.right_correlation_norm as f64,
+                    1.0 + refinement.offset_samples.abs(),
+                )
+            })
+            .unwrap_or(ACQUISITION_UNCERTAINTY_MAX_RESOLUTION_FRACTION),
+    )
+}
+
+fn curvature_based_resolution_fraction(
+    left_metric: f64,
+    center_metric: f64,
+    right_metric: f64,
+    offset_penalty: f64,
+) -> Option<f64> {
+    if !left_metric.is_finite()
+        || !center_metric.is_finite()
+        || !right_metric.is_finite()
+        || !offset_penalty.is_finite()
+        || center_metric <= f64::EPSILON
+    {
+        return None;
+    }
+    let normalized_curvature =
+        ((2.0 * center_metric) - left_metric - right_metric).max(0.0) / center_metric.max(f64::EPSILON);
+    if normalized_curvature <= f64::EPSILON {
+        return Some(ACQUISITION_UNCERTAINTY_MAX_RESOLUTION_FRACTION);
+    }
+    Some(
+        ((ACQUISITION_UNCERTAINTY_REFERENCE_RESOLUTION_FRACTION / normalized_curvature.sqrt())
+            * offset_penalty)
+            .clamp(
+                ACQUISITION_UNCERTAINTY_MIN_RESOLUTION_FRACTION,
+                ACQUISITION_UNCERTAINTY_MAX_RESOLUTION_FRACTION,
+            ),
+    )
+}
+
 fn estimate_acquisition_doppler_refinement(
     coarse_carrier_hz: f64,
     grid_candidates: &[AcqResult],
@@ -1786,6 +1870,65 @@ mod tests {
         let refinement = estimate_acquisition_doppler_refinement(0.0, &candidates, 250);
 
         assert!(refinement.is_none());
+    }
+
+    #[test]
+    fn curvature_based_resolution_fraction_shrinks_for_sharper_peaks() {
+        let broad = curvature_based_resolution_fraction(14.0, 16.0, 15.0, 1.0).expect("broad");
+        let sharp = curvature_based_resolution_fraction(9.0, 16.0, 12.0, 1.0).expect("sharp");
+
+        assert!(sharp < broad, "sharp={sharp:?} broad={broad:?}");
+        assert!(sharp >= ACQUISITION_UNCERTAINTY_MIN_RESOLUTION_FRACTION);
+        assert!(broad <= ACQUISITION_UNCERTAINTY_MAX_RESOLUTION_FRACTION);
+    }
+
+    #[test]
+    fn estimate_acquisition_uncertainty_reports_positive_values_for_accepted_candidate() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        let uncertainty = estimate_acquisition_uncertainty(
+            &AcqResult {
+                hypothesis: AcqHypothesis::Accepted,
+                doppler_refinement: Some(AcqDopplerRefinement {
+                    method: "parabolic_peak".to_string(),
+                    coarse_carrier_hz: Hertz(250.0),
+                    offset_hz: 20.0,
+                    offset_bins: 0.08,
+                    left_peak_mean_ratio: 9.0,
+                    center_peak_mean_ratio: 16.0,
+                    right_peak_mean_ratio: 12.0,
+                }),
+                code_phase_refinement: Some(AcqCodePhaseRefinement {
+                    method: "parabolic_code_peak".to_string(),
+                    offset_samples: 0.2,
+                    refined_code_phase_samples: 1500.2,
+                    left_correlation_norm: 10.0,
+                    center_correlation_norm: 16.0,
+                    right_correlation_norm: 13.0,
+                }),
+                ..candidate_for_search_window_test(sat, 250.0, 16.0)
+            },
+            250,
+        )
+        .expect("acquisition uncertainty");
+
+        assert!(uncertainty.doppler_hz > 0.0);
+        assert!(uncertainty.doppler_hz < 125.0);
+        assert!(uncertainty.code_phase_samples > 0.0);
+        assert!(uncertainty.code_phase_samples < 0.5);
+    }
+
+    #[test]
+    fn estimate_acquisition_uncertainty_skips_ambiguous_candidate() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        let uncertainty = estimate_acquisition_uncertainty(
+            &AcqResult {
+                hypothesis: AcqHypothesis::Ambiguous,
+                ..candidate_for_search_window_test(sat, 0.0, 4.0)
+            },
+            250,
+        );
+
+        assert!(uncertainty.is_none());
     }
 
     #[test]
