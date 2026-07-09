@@ -11,9 +11,8 @@ use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
 use bijux_gnss_core::api::Sample;
 use bijux_gnss_signal::api::samples_per_code;
-use bijux_gnss_signal::api::Nco;
 use bijux_gnss_signal::api::{
-    adaptive_bandwidth, code_value_at_phase, discriminators, estimate_cn0_dbhz,
+    adaptive_bandwidth, code_value_at_phase, discriminators, estimate_cn0_dbhz, wipeoff_carrier,
 };
 use bijux_gnss_signal::api::{generate_ca_code, Prn};
 
@@ -177,17 +176,20 @@ impl Tracking {
         let chips_per_sample = code_rate_hz / sample_rate_hz;
         let base_chip_phase = code_phase_samples * chips_per_sample;
 
-        let mut nco = Nco::new(-carrier_freq_hz, sample_rate_hz);
+        let mixed = wipeoff_carrier(
+            &frame.iq[..n],
+            carrier_freq_hz,
+            sample_rate_hz,
+            frame.t0.sample_index,
+            0.0,
+        )
+        .expect("tracking carrier wipeoff requires finite carrier inputs");
         let mut early = Complex::new(0.0f32, 0.0f32);
         let mut prompt = Complex::new(0.0f32, 0.0f32);
         let mut late = Complex::new(0.0f32, 0.0f32);
         let mut early_late_noise_weight_energy = 0.0f64;
 
         for i in 0..n {
-            let (sin, cos) = nco.next_sin_cos();
-            let rot = Complex::new(cos as f32, -sin as f32);
-            let mixed = frame.iq[i] * rot;
-
             let chip_phase = base_chip_phase + i as f64 * chips_per_sample;
             let early_code = Complex::new(
                 code_value_at_phase(&code, chip_phase - early_late_spacing_chips).unwrap_or(0.0),
@@ -202,9 +204,9 @@ impl Tracking {
             let noise_weight = early_code - late_code;
             early_late_noise_weight_energy += noise_weight.norm_sqr() as f64;
 
-            early += mixed * early_code;
-            prompt += mixed * prompt_code;
-            late += mixed * late_code;
+            early += mixed[i] * early_code;
+            prompt += mixed[i] * prompt_code;
+            late += mixed[i] * late_code;
         }
 
         CorrelatorOutput { early, prompt, late, early_late_noise_weight_energy }
@@ -1051,13 +1053,7 @@ impl Tracking {
         for d in doppler_bins {
             for c in code_bins {
                 let corr =
-                    self.correlate_epoch(
-                        frame,
-                        sat,
-                        carrier_hz + d,
-                        code_phase_samples + c,
-                        0.5,
-                    );
+                    self.correlate_epoch(frame, sat, carrier_hz + d, code_phase_samples + c, 0.5);
                 let metric = corr.prompt.norm();
                 if metric > best_metric {
                     best_metric = metric;
@@ -1172,8 +1168,11 @@ mod tests {
             ..ReceiverPipelineConfig::default()
         };
         let tracking = Tracking::new(config.clone(), ReceiverRuntime::default());
-        let sample_count =
-            samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
+        let sample_count = samples_per_code(
+            config.sampling_freq_hz,
+            config.code_freq_basis_hz,
+            config.code_length,
+        );
         let code_phase_chips = 245.25;
         let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 3 };
         let code_phase_samples =
@@ -1192,13 +1191,7 @@ mod tests {
             samples.into_iter().map(|value| Complex::new(value, 0.0)).collect(),
         );
 
-        let correlator = tracking.correlate_epoch(
-            &frame,
-            sat,
-            0.0,
-            code_phase_samples,
-            0.5,
-        );
+        let correlator = tracking.correlate_epoch(&frame, sat, 0.0, code_phase_samples, 0.5);
 
         assert!(correlator.prompt.norm() > correlator.early.norm());
         assert!(correlator.prompt.norm() > correlator.late.norm());
