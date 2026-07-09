@@ -2,8 +2,12 @@
 
 use std::f64::consts::TAU;
 
-use bijux_gnss_core::api::{Chips, Constellation, Epoch, Hertz, ReceiverSampleTrace, SatId, TrackEpoch};
-use bijux_gnss_receiver::api::{observations_from_tracking, ReceiverPipelineConfig};
+use bijux_gnss_core::api::{
+    Chips, Constellation, Epoch, Hertz, ReceiverSampleTrace, SatId, TrackEpoch,
+};
+use bijux_gnss_receiver::api::{
+    carrier_hz_from_doppler_hz, observations_from_tracking, ReceiverPipelineConfig,
+};
 
 const START_EPOCH_INDEX: u64 = 70;
 const START_SAMPLE_INDEX: u64 = START_EPOCH_INDEX * 4092;
@@ -20,7 +24,7 @@ fn observations_report_doppler_relative_to_intermediate_frequency() {
     let sat = SatId { constellation: Constellation::Gps, prn: 7 };
 
     for doppler_hz in [250.0, -250.0] {
-        let carrier_hz = config.intermediate_freq_hz + doppler_hz;
+        let carrier_hz = carrier_hz_from_doppler_hz(config.intermediate_freq_hz, doppler_hz);
         let epochs = vec![
             tracking_epoch(&config, sat, START_EPOCH_INDEX, START_SAMPLE_INDEX, carrier_hz, 0.10),
             tracking_epoch(
