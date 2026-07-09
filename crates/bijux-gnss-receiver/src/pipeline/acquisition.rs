@@ -58,6 +58,7 @@ const SUB_SAMPLE_CODE_PHASE_REFINEMENT_METHOD: &str = "parabolic_code_peak";
 const SUB_SAMPLE_CODE_PHASE_REFINEMENT_MAX_OFFSET_SAMPLES: f64 = 0.5;
 const SUB_SAMPLE_CODE_PHASE_REFINEMENT_EPSILON: f64 = 1e-12;
 const SUB_SAMPLE_CODE_PHASE_REFINEMENT_MIN_ABS_OFFSET_SAMPLES: f64 = 0.05;
+const MULTIPATH_SECONDARY_GUARD_CHIPS: usize = 2;
 const WRONG_PRN_DOMINANCE_RATIO_MIN: f32 = 4.0;
 const WRONG_PRN_PEAK_SECOND_RATIO_MAX: f32 = 1.1;
 
@@ -137,10 +138,26 @@ struct AcquisitionSatEvaluation {
     search_window_diagnostic: Option<SearchWindowDiagnostic>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct CorrelationMetrics {
+    peak_idx: usize,
+    peak: f32,
+    second_idx: usize,
+    second: f32,
+    mean: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DelayedSecondaryPeakDiagnostic {
+    secondary_code_phase_samples: usize,
+    delay_samples: usize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AcquisitionDecisionReason {
     AcceptedByRatioThresholds,
     AmbiguousRatioThresholds,
+    MultipathSuspect,
     LowPeakMetric,
 }
 
@@ -149,6 +166,7 @@ impl AcquisitionDecisionReason {
         match self {
             AcquisitionDecisionReason::AcceptedByRatioThresholds => "accepted_by_ratio_thresholds",
             AcquisitionDecisionReason::AmbiguousRatioThresholds => "ambiguous_ratio_thresholds",
+            AcquisitionDecisionReason::MultipathSuspect => "multipath_suspect",
             AcquisitionDecisionReason::LowPeakMetric => "low_peak_metric",
         }
     }
@@ -430,18 +448,20 @@ impl Acquisition {
                     }
                 }
 
-                let (peak_idx, peak, second, mean) = correlation_metrics(&noncoherent_acc);
-                let peak_mean_ratio = peak / (mean + 1e-6);
-                let peak_second_ratio = peak / (second + 1e-6);
+                let correlation_metrics = correlation_metrics(&noncoherent_acc);
+                let peak_mean_ratio =
+                    correlation_metrics.peak / (correlation_metrics.mean + 1e-6);
+                let peak_second_ratio =
+                    correlation_metrics.peak / (correlation_metrics.second + 1e-6);
                 let cn0_proxy = peak_mean_ratio * 10.0;
                 grid_candidates.push(AcqResult {
                     sat,
                     source_time: ReceiverSampleTrace::from_sample_time(frame.t0),
                     carrier_hz: Hertz(carrier),
-                    code_phase_samples: peak_idx,
-                    peak,
-                    second_peak: second,
-                    mean,
+                    code_phase_samples: correlation_metrics.peak_idx,
+                    peak: correlation_metrics.peak,
+                    second_peak: correlation_metrics.second,
+                    mean: correlation_metrics.mean,
                     peak_mean_ratio,
                     peak_second_ratio,
                     cn0_proxy,
@@ -524,15 +544,48 @@ impl Acquisition {
                             competing_peak_ratio,
                             &self.config,
                         );
+                        let multipath_diagnostic = classify_delayed_secondary_peak(
+                            &self.config,
+                            frame,
+                            sat,
+                            candidate.carrier_hz.0,
+                            candidate.code_phase_samples,
+                            samples_per_code,
+                            coherent_ms,
+                            noncoherent,
+                            candidate.peak_mean_ratio,
+                            candidate.peak_second_ratio,
+                            competing_peak_ratio,
+                        );
+                        let decision = multipath_diagnostic
+                            .as_ref()
+                            .map_or(decision, |diagnostic| multipath_suspect_decision(
+                                candidate.peak_mean_ratio,
+                                candidate.peak_second_ratio,
+                                competing_peak_ratio,
+                                diagnostic,
+                            ));
                         candidate.hypothesis = decision.hypothesis;
                         candidate.score = decision.score;
-                        candidate.explain_selection_reason = Some(selected_candidate_reason(
-                            decision,
-                            candidate.peak_mean_ratio,
-                            local_peak_separation_ratio,
-                            competing_peak_ratio,
-                            &self.config,
-                        ));
+                        candidate.explain_selection_reason =
+                            Some(match multipath_diagnostic.as_ref() {
+                                Some(diagnostic) => multipath_candidate_reason(
+                                    candidate.peak_mean_ratio,
+                                    candidate.peak_second_ratio,
+                                    competing_peak_ratio,
+                                    diagnostic,
+                                    samples_per_code,
+                                    self.config.code_length,
+                                    decision.score,
+                                ),
+                                None => selected_candidate_reason(
+                                    decision,
+                                    candidate.peak_mean_ratio,
+                                    local_peak_separation_ratio,
+                                    competing_peak_ratio,
+                                    &self.config,
+                                ),
+                            });
                     }
                 } else {
                     candidate.hypothesis = AcqHypothesis::Deferred;
@@ -1189,6 +1242,7 @@ fn known_selection_reason_prefix(reason: &str) -> Option<&'static str> {
     match reason_prefix {
         "accepted_by_ratio_thresholds" => Some("accepted_by_ratio_thresholds"),
         "ambiguous_ratio_thresholds" => Some("ambiguous_ratio_thresholds"),
+        "multipath_suspect" => Some("multipath_suspect"),
         "low_peak_metric" => Some("low_peak_metric"),
         "wrong_prn_correlation" => Some("wrong_prn_correlation"),
         _ => None,
@@ -1289,7 +1343,77 @@ fn selected_candidate_reason(
             peak_mean_ratio,
             config.acquisition_peak_mean_threshold,
         ),
+        AcquisitionDecisionReason::MultipathSuspect => unreachable!(
+            "multipath_suspect reasons must be rendered through multipath_candidate_reason"
+        ),
     }
+}
+
+fn classify_delayed_secondary_peak(
+    config: &ReceiverPipelineConfig,
+    frame: &SamplesFrame,
+    sat: SatId,
+    carrier_hz: f64,
+    code_phase_samples: usize,
+    samples_per_code: usize,
+    coherent_ms: u32,
+    noncoherent: u32,
+    peak_mean_ratio: f32,
+    peak_second_ratio: f32,
+    competing_peak_ratio: f32,
+) -> Option<DelayedSecondaryPeakDiagnostic> {
+    if peak_mean_ratio < config.acquisition_peak_mean_threshold
+        || peak_second_ratio >= config.acquisition_peak_second_threshold
+        || competing_peak_ratio < config.acquisition_peak_second_threshold
+    {
+        return None;
+    }
+    let correlation_profile =
+        measure_code_phase_profile(config, frame, sat, carrier_hz, coherent_ms, noncoherent)?;
+    delayed_secondary_peak_diagnostic(
+        &correlation_profile,
+        code_phase_samples,
+        samples_per_code,
+        config.code_length,
+    )
+}
+
+fn multipath_suspect_decision(
+    peak_mean_ratio: f32,
+    peak_second_ratio: f32,
+    competing_peak_ratio: f32,
+    diagnostic: &DelayedSecondaryPeakDiagnostic,
+) -> AcquisitionDecision {
+    let delay_penalty = 1.0 / (1.0 + diagnostic.delay_samples as f32);
+    let limiting_ratio = peak_second_ratio.min(competing_peak_ratio);
+    AcquisitionDecision {
+        hypothesis: AcqHypothesis::Ambiguous,
+        reason: AcquisitionDecisionReason::MultipathSuspect,
+        score: (peak_mean_ratio * 0.35) + (limiting_ratio * 0.15) - delay_penalty.min(0.1),
+    }
+}
+
+fn multipath_candidate_reason(
+    peak_mean_ratio: f32,
+    peak_second_ratio: f32,
+    competing_peak_ratio: f32,
+    diagnostic: &DelayedSecondaryPeakDiagnostic,
+    samples_per_code: usize,
+    code_length: usize,
+    score: f32,
+) -> String {
+    let delay_chips =
+        diagnostic.delay_samples as f64 * code_length.max(1) as f64 / samples_per_code.max(1) as f64;
+    format!(
+        "multipath_suspect: delayed secondary peak at sample {} (+{} samples, {:.3} chips) with peak_mean_ratio={:.6}, peak_second_ratio={:.6}, competing_peak_ratio={:.6}, score={:.6}",
+        diagnostic.secondary_code_phase_samples,
+        diagnostic.delay_samples,
+        delay_chips,
+        peak_mean_ratio,
+        peak_second_ratio,
+        competing_peak_ratio,
+        score,
+    )
 }
 
 fn competing_candidate_ratio(candidates: &[AcqResult]) -> f32 {
@@ -1580,6 +1704,19 @@ mod tests {
     }
 
     #[test]
+    fn selected_reason_for_candidate_reports_multipath_suspect() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+        let mut candidate = candidate_for_search_window_test(sat, 0.0, 3.0);
+        candidate.hypothesis = AcqHypothesis::Ambiguous;
+        candidate.explain_selection_reason = Some(
+            "multipath_suspect: delayed secondary peak at sample 1440 (+240 samples, 60.000 chips)"
+                .to_string(),
+        );
+
+        assert_eq!(selected_reason_for_candidate(&candidate), "multipath_suspect");
+    }
+
+    #[test]
     fn suppress_wrong_prn_correlations_rejects_ambiguous_cross_prn_candidates() {
         let dominant_sat = SatId { constellation: Constellation::Gps, prn: 7 };
         let wrong_sat = SatId { constellation: Constellation::Gps, prn: 8 };
@@ -1667,6 +1804,59 @@ mod tests {
 
         assert!(offset_samples < 0.0);
         assert!((refined_code_phase_samples - 3.8).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn correlation_metrics_report_primary_and_secondary_peak_indices() {
+        let metrics = correlation_metrics(&[1.0, 4.0, 2.0, 3.5, 1.5]);
+
+        assert_eq!(metrics.peak_idx, 1);
+        assert_eq!(metrics.second_idx, 3);
+        assert_eq!(metrics.peak, 4.0);
+        assert_eq!(metrics.second, 3.5);
+        assert!((metrics.mean - 2.4).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn delayed_secondary_peak_diagnostic_ignores_main_lobe_neighbors() {
+        let diagnostic = delayed_secondary_peak_diagnostic(
+            &[1.0, 8.0, 7.6, 7.2, 1.4, 5.5, 1.2, 0.8],
+            1,
+            8,
+            4,
+        )
+        .expect("delayed secondary peak");
+
+        assert_eq!(diagnostic.secondary_code_phase_samples, 5);
+        assert_eq!(diagnostic.delay_samples, 4);
+    }
+
+    #[test]
+    fn delayed_secondary_peak_diagnostic_skips_short_wraparound_alias() {
+        let diagnostic =
+            delayed_secondary_peak_diagnostic(&[6.0, 1.0, 0.8, 0.9, 1.1, 1.3, 1.2, 5.4], 7, 8, 4);
+
+        assert!(diagnostic.is_none());
+    }
+
+    #[test]
+    fn multipath_candidate_reason_reports_delay_context() {
+        let reason = multipath_candidate_reason(
+            5.2,
+            1.3,
+            3.4,
+            &DelayedSecondaryPeakDiagnostic {
+                secondary_code_phase_samples: 1440,
+                delay_samples: 240,
+            },
+            4092,
+            1023,
+            1.92,
+        );
+
+        assert!(reason.starts_with("multipath_suspect: delayed secondary peak"));
+        assert!(reason.contains("+240 samples, 60.000 chips"));
+        assert!(reason.contains("peak_second_ratio=1.300000"));
     }
 
     #[test]
@@ -1988,25 +2178,88 @@ mod tests {
     }
 }
 
-fn correlation_metrics(corr: &[f32]) -> (usize, f32, f32, f32) {
+fn correlation_metrics(corr: &[f32]) -> CorrelationMetrics {
     let mut peak_idx = 0;
     let mut peak = 0.0f32;
+    let mut second_idx = 0usize;
     let mut second = 0.0f32;
     let mut sum = 0.0f32;
 
     for (idx, &mag) in corr.iter().enumerate() {
         sum += mag;
         if mag > peak {
+            second_idx = peak_idx;
             second = peak;
             peak = mag;
             peak_idx = idx;
         } else if mag > second {
+            second_idx = idx;
             second = mag;
         }
     }
 
     let mean = sum / corr.len().max(1) as f32;
-    (peak_idx, peak, second, mean)
+    CorrelationMetrics { peak_idx, peak, second_idx, second, mean }
+}
+
+fn delayed_secondary_peak_diagnostic(
+    correlation_profile: &[f32],
+    peak_idx: usize,
+    samples_per_code: usize,
+    code_length: usize,
+) -> Option<DelayedSecondaryPeakDiagnostic> {
+    if correlation_profile.len() < 3 || samples_per_code == 0 || code_length == 0 {
+        return None;
+    }
+    let min_delay_samples =
+        samples_per_chip(samples_per_code, code_length).saturating_mul(MULTIPATH_SECONDARY_GUARD_CHIPS);
+    let period_samples = correlation_profile.len();
+    let mut best_secondary_idx = None;
+    let mut best_secondary_peak = 0.0f32;
+
+    for (idx, &magnitude) in correlation_profile.iter().enumerate() {
+        let delay_samples = wrapped_code_phase_offset_samples(peak_idx, idx, period_samples);
+        if delay_samples < min_delay_samples || delay_samples > period_samples / 2 {
+            continue;
+        }
+        if !is_local_code_phase_peak(correlation_profile, idx) {
+            continue;
+        }
+        if magnitude > best_secondary_peak {
+            best_secondary_peak = magnitude;
+            best_secondary_idx = Some((idx, delay_samples));
+        }
+    }
+
+    let (secondary_code_phase_samples, delay_samples) = best_secondary_idx?;
+    Some(DelayedSecondaryPeakDiagnostic { secondary_code_phase_samples, delay_samples })
+}
+
+fn is_local_code_phase_peak(correlation_profile: &[f32], idx: usize) -> bool {
+    if correlation_profile.len() < 3 {
+        return false;
+    }
+    let period_samples = correlation_profile.len();
+    let left = correlation_profile[(idx + period_samples - 1) % period_samples];
+    let center = correlation_profile[idx];
+    let right = correlation_profile[(idx + 1) % period_samples];
+
+    (center >= left && center >= right) && (center > left || center > right)
+}
+
+fn samples_per_chip(samples_per_code: usize, code_length: usize) -> usize {
+    ((samples_per_code + code_length.saturating_sub(1)) / code_length.max(1)).max(1)
+}
+
+fn wrapped_code_phase_offset_samples(
+    primary_code_phase_samples: usize,
+    secondary_code_phase_samples: usize,
+    period_samples: usize,
+) -> usize {
+    if period_samples == 0 {
+        return 0;
+    }
+    (secondary_code_phase_samples + period_samples - primary_code_phase_samples) % period_samples
 }
 
 fn sample_local_code_period(
