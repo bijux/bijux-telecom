@@ -181,9 +181,22 @@ pub fn remove_dc_offset_in_place(samples: &mut [Sample]) -> IqFrontEndMetrics {
 mod tests {
     use super::{measure_iq_front_end_metrics, remove_dc_offset_in_place, IqFrontEndAnalyzer};
     use bijux_gnss_core::api::Sample;
+    use std::f32::consts::TAU;
+
+    const QUADRATURE_FIXTURE_TOLERANCE_DEG: f64 = 0.25;
 
     fn approx_eq(left: f64, right: f64) {
         assert!((left - right).abs() < 1e-9, "left={left} right={right}");
+    }
+
+    fn phase_skewed_carrier_samples(sample_count: usize, phase_error_deg: f32) -> Vec<Sample> {
+        let phase_error_rad = phase_error_deg.to_radians();
+        (0..sample_count)
+            .map(|idx| {
+                let phase = TAU * idx as f32 / sample_count as f32;
+                Sample::new(phase.cos(), (phase + phase_error_rad).sin())
+            })
+            .collect()
     }
 
     #[test]
@@ -278,5 +291,21 @@ mod tests {
         approx_eq(metrics.iq_power_ratio, 1.0);
         assert!(!metrics.power_imbalance_warning);
         assert!(metrics.quadrature_error_deg.is_some());
+    }
+
+    #[test]
+    fn synthetic_phase_skew_fixture_detects_quadrature_error_within_tolerance() {
+        let expected_error_deg = 12.5_f64;
+        let samples = phase_skewed_carrier_samples(4096, expected_error_deg as f32);
+
+        let metrics = measure_iq_front_end_metrics(&samples);
+        let measured_error_deg =
+            metrics.quadrature_error_deg.expect("quadrature error should be measurable");
+
+        assert!(
+            (measured_error_deg - expected_error_deg).abs() <= QUADRATURE_FIXTURE_TOLERANCE_DEG,
+            "measured={measured_error_deg} expected={expected_error_deg}"
+        );
+        assert!(metrics.quadrature_error_warning);
     }
 }
