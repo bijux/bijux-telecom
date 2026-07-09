@@ -1,10 +1,31 @@
 fn handle_cacode(command: GnssCommand) -> Result<()> {
-    let GnssCommand::CaCode { prn, count } = command else {
+    let GnssCommand::CaCode {
+        prn,
+        count,
+        with_reference,
+    } = command
+    else {
         bail!("invalid command for handler");
     };
 
+    let assignment = ca_code_assignment(Prn(prn))
+        .map_err(|err| eyre!("failed to load C/A code assignment for PRN {prn}: {err}"))?;
     let code = generate_ca_code(Prn(prn))
         .map_err(|err| eyre!("failed to generate C/A code for PRN {prn}: {err}"))?;
+
+    if with_reference {
+        println!("prn: {prn}");
+        println!(
+            "g2_taps: {} {}",
+            assignment.g2_taps.0, assignment.g2_taps.1
+        );
+        println!("g2_delay_chips: {}", assignment.g2_delay_chips);
+        println!(
+            "first_ten_chips_octal: {:04}",
+            assignment.first_ten_chips_octal
+        );
+    }
+
     let count = count.min(code.len());
     for chip in code.iter().take(count) {
         print!("{chip} ");

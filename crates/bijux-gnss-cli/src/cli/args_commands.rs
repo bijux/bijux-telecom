@@ -8,6 +8,10 @@ pub(crate) enum GnssCommand {
         /// Number of chips to print
         #[arg(long, default_value_t = 16)]
         count: usize,
+
+        /// Print published PRN assignment metadata before the chip sequence
+        #[arg(long)]
+        with_reference: bool,
     },
 
     /// Acquire satellites from a raw IQ file with explicit metadata
