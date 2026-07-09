@@ -62,3 +62,40 @@ fn validate_config_accepts_live_sky_receiver_profile() {
 
     fs::remove_dir_all(&out_dir).expect("remove output dir");
 }
+
+#[test]
+fn validate_config_accepts_low_rate_receiver_profile() {
+    let repo = repo_root();
+    let out_dir = temp_dir_path("validate_low_rate_config");
+    fs::create_dir_all(&out_dir).expect("create output dir");
+
+    let output = run_bijux(
+        &[
+            "gnss",
+            "validate-config",
+            "--config",
+            "configs/receiver_low_rate.toml",
+            "--unregistered-dataset",
+            "--out",
+            out_dir.to_str().expect("out dir"),
+        ],
+        &repo,
+    );
+
+    assert!(
+        output.status.success(),
+        "validate-config failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("config valid: configs/receiver_low_rate.toml"),
+        "stdout did not confirm the validated profile: {stdout}"
+    );
+    assert!(
+        out_dir.join("manifest.json").exists(),
+        "validate-config did not emit a manifest"
+    );
+
+    fs::remove_dir_all(&out_dir).expect("remove output dir");
+}
