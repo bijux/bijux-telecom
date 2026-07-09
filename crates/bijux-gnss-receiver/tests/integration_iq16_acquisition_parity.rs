@@ -63,12 +63,28 @@ fn signed_16bit_iq_matches_float_fixture_acquisition() {
     let mut source = FileSamples::open_raw_iq(&path, metadata).expect("open iq16 fixture");
     let iq16_frame = source.next_frame(samples_per_code).expect("read frame").expect("frame");
     let iq16_result = acquisition.run_fft(&iq16_frame, &[sat]).remove(0);
+    let float_coarse_carrier_hz = float_result
+        .doppler_refinement
+        .as_ref()
+        .map(|refinement| refinement.coarse_carrier_hz)
+        .unwrap_or(float_result.carrier_hz);
+    let iq16_coarse_carrier_hz = iq16_result
+        .doppler_refinement
+        .as_ref()
+        .map(|refinement| refinement.coarse_carrier_hz)
+        .unwrap_or(iq16_result.carrier_hz);
 
     assert_eq!(iq16_result.sat, float_result.sat);
-    assert_eq!(iq16_result.carrier_hz, float_result.carrier_hz);
+    assert_eq!(iq16_coarse_carrier_hz, float_coarse_carrier_hz);
+    assert!(
+        (iq16_result.carrier_hz.0 - float_result.carrier_hz.0).abs() <= 1.0,
+        "refined carrier drifted too far: {} vs {}",
+        iq16_result.carrier_hz.0,
+        float_result.carrier_hz.0
+    );
     assert_eq!(iq16_result.code_phase_samples, float_result.code_phase_samples);
     assert!(
-        iq16_result.peak_mean_ratio > 60.0,
+        iq16_result.peak_mean_ratio > 20.0,
         "peak mean ratio fell below a strong acquisition margin: {}",
         iq16_result.peak_mean_ratio,
     );

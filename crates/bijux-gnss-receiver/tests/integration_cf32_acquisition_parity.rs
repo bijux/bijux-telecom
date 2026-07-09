@@ -62,9 +62,20 @@ fn complex_float32_iq_matches_float_fixture_acquisition() {
     let mut source = FileSamples::open_raw_iq(&path, metadata).expect("open cf32 fixture");
     let cf32_frame = source.next_frame(samples_per_code).expect("read frame").expect("frame");
     let cf32_result = acquisition.run_fft(&cf32_frame, &[sat]).remove(0);
+    let float_coarse_carrier_hz = float_result
+        .doppler_refinement
+        .as_ref()
+        .map(|refinement| refinement.coarse_carrier_hz)
+        .unwrap_or(float_result.carrier_hz);
+    let cf32_coarse_carrier_hz = cf32_result
+        .doppler_refinement
+        .as_ref()
+        .map(|refinement| refinement.coarse_carrier_hz)
+        .unwrap_or(cf32_result.carrier_hz);
 
     assert_eq!(cf32_result.sat, float_result.sat);
-    assert_eq!(cf32_result.carrier_hz, float_result.carrier_hz);
+    assert_eq!(cf32_coarse_carrier_hz, float_coarse_carrier_hz);
+    assert!((cf32_result.carrier_hz.0 - float_result.carrier_hz.0).abs() < 1e-6);
     assert_eq!(cf32_result.code_phase_samples, float_result.code_phase_samples);
     assert!((cf32_result.peak_mean_ratio - float_result.peak_mean_ratio).abs() < 1e-6);
     assert!((cf32_result.peak_second_ratio - float_result.peak_second_ratio).abs() < 1e-6);

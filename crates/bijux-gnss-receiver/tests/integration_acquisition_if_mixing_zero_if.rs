@@ -45,16 +45,21 @@ fn acquisition_selects_expected_zero_if_doppler_bins() {
             acquisition.run_fft_topn(&frame, &[sat], 1, COHERENT_MS, 1).remove(0).remove(0);
         let expected_carrier_hz =
             carrier_hz_from_doppler_hz(config.intermediate_freq_hz, doppler_hz);
+        let coarse_carrier_hz = result
+            .doppler_refinement
+            .as_ref()
+            .map(|refinement| refinement.coarse_carrier_hz.0)
+            .unwrap_or(result.carrier_hz.0);
         let recovered_doppler_hz =
             doppler_hz_from_carrier_hz(config.intermediate_freq_hz, result.carrier_hz.0);
 
         assert_eq!(
-            result.carrier_hz.0, expected_carrier_hz,
+            coarse_carrier_hz, expected_carrier_hz,
             "wrong carrier bin selected for injected doppler {doppler_hz}"
         );
-        assert_eq!(
-            recovered_doppler_hz, doppler_hz,
-            "wrong Doppler bin selected for injected doppler {doppler_hz}"
+        assert!(
+            (recovered_doppler_hz - doppler_hz).abs() <= 10.0,
+            "refined Doppler drifted away from the injected truth: injected={doppler_hz}, recovered={recovered_doppler_hz}"
         );
     }
 }

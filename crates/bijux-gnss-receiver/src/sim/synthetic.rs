@@ -271,6 +271,50 @@ pub struct SyntheticAcquisitionDopplerValidationReport {
     pub satellites: Vec<SyntheticAcquisitionDopplerValidationSatellite>,
 }
 
+/// Per-satellite comparison between coarse acquisition Doppler bins and refined Doppler estimates.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionDopplerRefinementSatellite {
+    /// Satellite identifier.
+    pub sat: SatId,
+    /// Injected Doppler shift in Hz.
+    pub injected_doppler_hz: f64,
+    /// Coarse acquisition Doppler in Hz relative to the configured IF.
+    pub coarse_doppler_hz: f64,
+    /// Refined acquisition Doppler in Hz relative to the configured IF.
+    pub refined_doppler_hz: f64,
+    /// Absolute coarse Doppler error in Hz.
+    pub coarse_error_hz: f64,
+    /// Absolute refined Doppler error in Hz.
+    pub refined_error_hz: f64,
+    /// Improvement from refinement, in Hz.
+    pub improvement_hz: f64,
+    /// Effective acquisition Doppler bin width in Hz.
+    pub doppler_step_hz: i32,
+    /// Refined Doppler offset relative to the coarse grid, in bins.
+    pub refinement_bins: f64,
+    /// Peak-to-mean ratio for the selected acquisition result.
+    pub peak_mean_ratio: f32,
+    /// Acquisition hypothesis returned by the receiver.
+    pub hypothesis: String,
+    /// Whether the refined Doppler stayed measurably closer than the coarse bin.
+    pub pass: bool,
+}
+
+/// Truth-guided report for acquisition Doppler refinement on a synthetic capture.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionDopplerRefinementReport {
+    /// Stable scenario identifier for this capture.
+    pub scenario_id: String,
+    /// Capture sample rate in Hz.
+    pub sample_rate_hz: f64,
+    /// Effective acquisition Doppler bin width in Hz.
+    pub doppler_step_hz: i32,
+    /// Whether every measured satellite passed the refinement criterion.
+    pub pass: bool,
+    /// Per-satellite refinement rows.
+    pub satellites: Vec<SyntheticAcquisitionDopplerRefinementSatellite>,
+}
+
 /// Build a machine-readable truth bundle for an emitted synthetic capture.
 pub fn build_truth_bundle(
     scenario_id: &str,
@@ -593,6 +637,71 @@ pub fn validate_truth_guided_acquisition_doppler(
         scenario_id: truth.scenario_id.clone(),
         tolerance_bins,
         tolerance_hz,
+        sample_rate_hz: truth.sample_rate_hz,
+        doppler_step_hz,
+        pass,
+        satellites,
+    }
+}
+
+/// Measure whether acquisition Doppler refinement improves on the raw search bin.
+pub fn validate_truth_guided_acquisition_doppler_refinement(
+    config: &ReceiverPipelineConfig,
+    frame: &SamplesFrame,
+    truth: &SyntheticIqTruthBundle,
+) -> SyntheticAcquisitionDopplerRefinementReport {
+    let doppler_step_hz = config.acquisition_doppler_step_hz.max(1);
+    let satellites = truth
+        .satellites
+        .iter()
+        .map(|sat_truth| {
+            let isolated_frame =
+                regenerate_isolated_scaled_satellite_signal_only_frame(config, frame, truth, sat_truth);
+            let acquisition = crate::pipeline::acquisition::Acquisition::new(
+                config.clone(),
+                crate::engine::runtime::ReceiverRuntime::default(),
+            );
+            let result = acquisition.run_fft(&isolated_frame, &[sat_truth.sat]).remove(0);
+            let refined_doppler_hz =
+                crate::pipeline::doppler::doppler_hz_from_carrier_hz(config.intermediate_freq_hz, result.carrier_hz.0);
+            let (coarse_doppler_hz, refinement_bins) = result
+                .doppler_refinement
+                .as_ref()
+                .map(|refinement| {
+                    (
+                        crate::pipeline::doppler::doppler_hz_from_carrier_hz(
+                            config.intermediate_freq_hz,
+                            refinement.coarse_carrier_hz.0,
+                        ),
+                        refinement.offset_bins,
+                    )
+                })
+                .unwrap_or((refined_doppler_hz, 0.0));
+            let coarse_error_hz = (coarse_doppler_hz - sat_truth.doppler_hz).abs();
+            let refined_error_hz = (refined_doppler_hz - sat_truth.doppler_hz).abs();
+            let improvement_hz = coarse_error_hz - refined_error_hz;
+            let pass = result.doppler_refinement.is_some() && improvement_hz > f64::EPSILON;
+
+            SyntheticAcquisitionDopplerRefinementSatellite {
+                sat: sat_truth.sat,
+                injected_doppler_hz: sat_truth.doppler_hz,
+                coarse_doppler_hz,
+                refined_doppler_hz,
+                coarse_error_hz,
+                refined_error_hz,
+                improvement_hz,
+                doppler_step_hz,
+                refinement_bins,
+                peak_mean_ratio: result.peak_mean_ratio,
+                hypothesis: result.hypothesis.to_string(),
+                pass,
+            }
+        })
+        .collect::<Vec<_>>();
+    let pass = !satellites.is_empty() && satellites.iter().all(|row| row.pass);
+
+    SyntheticAcquisitionDopplerRefinementReport {
+        scenario_id: truth.scenario_id.clone(),
         sample_rate_hz: truth.sample_rate_hz,
         doppler_step_hz,
         pass,
