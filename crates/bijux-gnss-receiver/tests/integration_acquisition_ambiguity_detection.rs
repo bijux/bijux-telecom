@@ -29,6 +29,36 @@ fn acquisition_ambiguity_harness_preserves_ranked_candidates() {
 }
 
 #[test]
+fn acquisition_preserves_candidate_rank_metadata_for_ranked_rows() {
+    let sat = gps_l1_ca_satellite();
+    let config = ambiguity_profile();
+    let frame = competing_peak_frame(
+        &config,
+        0.001,
+        [competing_signal(sat, 0.0, 300.0, 44.0), competing_signal(sat, 250.0, 300.0, 44.0)],
+        0x2407_1996,
+    );
+    let run = AcquisitionEngine::new(config.clone(), ReceiverRuntime::default())
+        .with_doppler(config.acquisition_doppler_search_hz, config.acquisition_doppler_step_hz)
+        .run_fft_topn_with_explain(&frame, &[sat], 4, 1, 1);
+
+    let candidates = &run.results[0];
+    assert!(candidates.len() >= 2, "{run:?}");
+    assert_eq!(candidates[0].candidate_rank, 1, "{run:?}");
+    assert!(candidates[0].is_primary_candidate, "{run:?}");
+    assert_eq!(candidates[1].candidate_rank, 2, "{run:?}");
+    assert!(!candidates[1].is_primary_candidate, "{run:?}");
+    assert!(
+        candidates.windows(2).all(|pair| pair[0].candidate_rank + 1 == pair[1].candidate_rank),
+        "{run:?}"
+    );
+
+    let explain = &run.explains[0];
+    assert_eq!(explain.candidates[0].rank, candidates[0].candidate_rank, "{run:?}");
+    assert_eq!(explain.candidates[1].rank, candidates[1].candidate_rank, "{run:?}");
+}
+
+#[test]
 fn acquisition_marks_comparable_competing_peaks_as_ambiguous() {
     let sat = gps_l1_ca_satellite();
     let config = ambiguity_profile();
