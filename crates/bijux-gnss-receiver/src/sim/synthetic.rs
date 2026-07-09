@@ -546,17 +546,7 @@ impl SatState {
         )
         .expect("synthetic generator requires a valid code phase model");
         let chip = code_value_at_phase(&self.code, code_phase).unwrap_or(1.0);
-
-        let data_bit = if self.data_bit_flip {
-            let bit_index = (t / 0.02).floor() as i64;
-            if bit_index % 2 == 0 {
-                1.0
-            } else {
-                -1.0
-            }
-        } else {
-            1.0
-        };
+        let data_bit = nav_bit_value_at_time_s(self.data_bit_flip, t);
 
         let carrier_hz = self.if_hz + self.doppler_hz;
         let phase = self.carrier_phase_rad as f32 + TAU * (carrier_hz as f32) * (t as f32);
@@ -672,6 +662,32 @@ fn nav_bit_mode(params: &SyntheticSignalParams) -> SyntheticNavBitMode {
     }
 }
 
+fn nav_bit_value_at_time_s(data_bit_flip: bool, time_s: f64) -> f32 {
+    nav_bit_sign_at_time_s(data_bit_flip, time_s) as f32
+}
+
+fn nav_bit_sign_at_time_s(data_bit_flip: bool, time_s: f64) -> i8 {
+    if !data_bit_flip {
+        return 1;
+    }
+    nav_bit_sign_for_index(nav_bit_index_at_time_s(time_s))
+}
+
+fn nav_bit_index_at_time_s(time_s: f64) -> u64 {
+    if !time_s.is_finite() || time_s <= 0.0 {
+        return 0;
+    }
+    (time_s / GPS_L1_CA_NAV_BIT_PERIOD_S).floor() as u64
+}
+
+fn nav_bit_sign_for_index(bit_index: u64) -> i8 {
+    if bit_index % 2 == 0 {
+        1
+    } else {
+        -1
+    }
+}
+
 fn peak_component(samples: &[Complex<f32>]) -> f32 {
     samples.iter().flat_map(|sample| [sample.re.abs(), sample.im.abs()]).fold(0.0f32, f32::max)
 }
@@ -724,7 +740,7 @@ fn nav_bit_segments(
             end_sample: clamped_end,
             start_s: start_sample as f64 / sample_rate_hz,
             end_s: clamped_end as f64 / sample_rate_hz,
-            bit: if bit_index % 2 == 0 { 1 } else { -1 },
+            bit: nav_bit_sign_for_index(bit_index),
         });
         bit_index += 1;
     }
@@ -769,9 +785,10 @@ impl XorShift64 {
 mod tests {
     use super::{
         build_iq16_capture_bundle, build_truth_bundle, generate_l1_ca_multi,
-        signal_amplitude_from_cn0, validate_truth_guided_cn0, SatState, SyntheticNavBitMode,
-        SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource,
-        SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
+        nav_bit_index_at_time_s, nav_bit_sign_at_time_s, signal_amplitude_from_cn0,
+        validate_truth_guided_cn0, SatState, SyntheticNavBitMode, SyntheticScenario,
+        SyntheticSignalParams, SyntheticSignalSource, SYNTHETIC_COMPLEX_NOISE_POWER,
+        SYNTHETIC_NOISE_STD_PER_COMPONENT,
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
     use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds};
@@ -1019,6 +1036,23 @@ mod tests {
         assert_eq!(alternating.nav_bit_segments[2].start_sample, 160_000);
         assert_eq!(alternating.nav_bit_segments[2].end_sample, frame.len() as u64);
         assert_eq!(alternating.nav_bit_segments[2].bit, 1);
+    }
+
+    #[test]
+    fn alternating_nav_bit_sign_flips_on_twenty_millisecond_boundaries() {
+        assert_eq!(nav_bit_index_at_time_s(-1.0), 0);
+        assert_eq!(nav_bit_index_at_time_s(0.0), 0);
+        assert_eq!(nav_bit_index_at_time_s(0.019_999_999), 0);
+        assert_eq!(nav_bit_index_at_time_s(0.020_000_000), 1);
+        assert_eq!(nav_bit_index_at_time_s(0.039_999_999), 1);
+        assert_eq!(nav_bit_index_at_time_s(0.040_000_000), 2);
+
+        assert_eq!(nav_bit_sign_at_time_s(false, 0.0), 1);
+        assert_eq!(nav_bit_sign_at_time_s(true, 0.0), 1);
+        assert_eq!(nav_bit_sign_at_time_s(true, 0.019_999_999), 1);
+        assert_eq!(nav_bit_sign_at_time_s(true, 0.020_000_000), -1);
+        assert_eq!(nav_bit_sign_at_time_s(true, 0.039_999_999), -1);
+        assert_eq!(nav_bit_sign_at_time_s(true, 0.040_000_000), 1);
     }
 
     #[test]
