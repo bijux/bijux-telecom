@@ -437,6 +437,9 @@ tracking_mode_vector_weight = 1.2
         .as_array()
         .and_then(|rows| rows.first())
         .expect("primary acquisition row");
+    assert_eq!(primary_row["signal_band"], "L1", "{primary_row}");
+    assert_eq!(primary_row["source_sample_index"], 0, "{primary_row}");
+    let reported_doppler_hz = primary_row["doppler_hz"].as_f64().expect("reported doppler");
     let coarse_carrier_hz =
         primary_row["coarse_carrier_hz"].as_f64().expect("coarse carrier for primary row");
     let refined_carrier_hz = primary_row["carrier_hz"].as_f64().expect("refined carrier");
@@ -455,6 +458,11 @@ tracking_mode_vector_weight = 1.2
     let artifact_row: Value =
         serde_json::from_str(acq_artifact.lines().next().expect("artifact row"))
             .expect("parse acquisition artifact row");
+    let artifact_doppler_hz =
+        artifact_row["payload"]["doppler_hz"].as_f64().expect("artifact doppler");
+    assert_eq!(artifact_row["payload"]["signal_band"], "L1", "{artifact_row}");
+    assert_eq!(artifact_row["payload"]["source_time"]["sample_index"], 0, "{artifact_row}");
+    assert_eq!(artifact_doppler_hz, reported_doppler_hz);
     assert_eq!(
         artifact_row["payload"]["doppler_refinement"]["method"], "parabolic_peak",
         "acquisition artifact should expose doppler refinement provenance: {artifact_row}"
