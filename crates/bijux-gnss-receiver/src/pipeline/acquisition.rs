@@ -14,9 +14,8 @@ use rustfft::{num_traits::Zero, FftPlanner};
 use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
 use bijux_gnss_signal::api::samples_per_code;
-use bijux_gnss_signal::api::Nco;
 use bijux_gnss_signal::api::{
-    generate_ca_code, measure_iq_front_end_metrics, sample_code, Prn,
+    generate_ca_code, measure_iq_front_end_metrics, sample_code, wipeoff_carrier, Prn,
 };
 
 /// Acquisition engine (coarse search).
@@ -307,13 +306,14 @@ impl Acquisition {
                         let end = start + samples_per_code;
                         let block = &frame.iq[start..end];
 
-                        let mut mixed = vec![Complex::zero(); samples_per_code];
-                        let mut nco = Nco::new(-carrier, self.config.sampling_freq_hz);
-                        for (i, sample) in block.iter().enumerate() {
-                            let (sin, cos) = nco.next_sin_cos();
-                            let rot = Complex::new(cos as f32, -sin as f32);
-                            mixed[i] = *sample * rot;
-                        }
+                        let mixed = wipeoff_carrier(
+                            block,
+                            carrier,
+                            self.config.sampling_freq_hz,
+                            frame.t0.sample_index + start as u64,
+                            0.0,
+                        )
+                        .expect("acquisition carrier wipeoff requires finite carrier inputs");
 
                         let mut input_fft = mixed;
                         fft.process(&mut input_fft);
@@ -757,9 +757,9 @@ fn signal_outside_search_range(
     ]
     .into_iter()
     .filter_map(|(edge, edge_carrier_hz, interior_carrier_hz)| {
-        let edge_candidate = candidates.iter().find(|candidate| {
-            (candidate.carrier_hz.0 - edge_carrier_hz).abs() <= f64::EPSILON
-        })?;
+        let edge_candidate = candidates
+            .iter()
+            .find(|candidate| (candidate.carrier_hz.0 - edge_carrier_hz).abs() <= f64::EPSILON)?;
         let interior_candidate = candidates.iter().find(|candidate| {
             (candidate.carrier_hz.0 - interior_carrier_hz).abs() <= f64::EPSILON
         })?;
@@ -1038,14 +1038,8 @@ fn sample_local_code_period(
     code: &[i8],
     samples_per_code: usize,
 ) -> Vec<f32> {
-    sample_code(
-        code,
-        config.sampling_freq_hz,
-        config.code_freq_basis_hz,
-        0.0,
-        samples_per_code,
-    )
-    .unwrap_or_else(|_| vec![1.0; samples_per_code])
+    sample_code(code, config.sampling_freq_hz, config.code_freq_basis_hz, 0.0, samples_per_code)
+        .unwrap_or_else(|_| vec![1.0; samples_per_code])
 }
 
 fn ca_code_or_default(prn: u8) -> Vec<i8> {
