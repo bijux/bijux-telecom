@@ -514,6 +514,54 @@ fn run_reports_front_end_metrics_for_stream_start() {
 }
 
 #[test]
+fn run_reports_streamed_tracking_progress_for_clean_capture() {
+    let temp = temp_dir_path("run_streamed_tracking_progress");
+    fs::create_dir_all(&temp).expect("create temp dir");
+
+    let iq_path = temp.join("demo.iq8");
+    write_synthetic_iq8_capture_with_signal_if_and_duration_s(&iq_path, 5_000_000.0, 0.0, 0.012);
+    let sidecar_path = temp.join("demo.sidecar.toml");
+    write_raw_iq_sidecar(&sidecar_path);
+
+    let out_dir = temp.join("run-out");
+    let output = run_bijux(
+        &[
+            "gnss",
+            "run",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--report",
+            "json",
+            "--out",
+            out_dir.to_str().expect("out dir"),
+        ],
+        &repo_root(),
+    );
+
+    assert!(output.status.success(), "run failed: {}", String::from_utf8_lossy(&output.stderr));
+    let report = load_json(&out_dir.join("run_report.json"));
+    assert_eq!(report.get("epochs").and_then(Value::as_u64), Some(12));
+    assert_eq!(report.get("processed_input_samples").and_then(Value::as_u64), Some(60_000));
+    assert!(
+        report.get("tracked_channels").and_then(Value::as_u64).unwrap_or(0) >= 1,
+        "tracked_channels={report}",
+    );
+    assert!(
+        report.get("observation_epochs").and_then(Value::as_u64).unwrap_or(0) >= 1,
+        "observation_epochs={report}",
+    );
+    assert!(
+        report.get("acquisitions").and_then(Value::as_u64).unwrap_or(0) >= 1,
+        "acquisitions={report}",
+    );
+
+    fs::remove_dir_all(&temp).expect("remove temp dir");
+}
+
+#[test]
 fn inspect_reports_quadrature_error_from_synthetic_fixture() {
     let expected_error_deg = 12.5_f64;
     let temp = temp_dir_path("inspect_quadrature_error");
