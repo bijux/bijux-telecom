@@ -205,6 +205,38 @@ mod inspect_dataset_tests {
 
         fs::remove_file(&path).expect("remove iq16 fixture");
     }
+
+    #[test]
+    fn inspect_dataset_reports_complex_float32_metadata() {
+        let path = temp_file_path("inspect_cf32");
+        fs::write(
+            &path,
+            [
+                0x00u8, 0x00u8, 0x80u8, 0xbfu8, 0x00u8, 0x00u8, 0x40u8, 0x3fu8, 0x00u8,
+                0x00u8, 0x00u8, 0x3fu8, 0x00u8, 0x00u8, 0x80u8, 0xbeu8,
+            ],
+        )
+        .expect("write cf32 fixture");
+
+        let metadata = RawIqMetadata {
+            format: IqSampleFormat::Cf32Le,
+            sample_rate_hz: 2_000_000.0,
+            intermediate_freq_hz: 125_000.0,
+            capture_start_utc: "2026-07-09T00:00:00Z".to_string(),
+            offset_bytes: 0,
+            quantization_bits: Some(32),
+            notes: None,
+        };
+        let report = inspect_dataset(&path, &metadata, 0).expect("inspect dataset");
+
+        assert_eq!(report.format, "Cf32Le");
+        assert_eq!(report.sample_rate_hz, metadata.sample_rate_hz);
+        assert_eq!(report.intermediate_freq_hz, metadata.intermediate_freq_hz);
+        assert_eq!(report.capture_start_utc, metadata.capture_start_utc);
+        assert_eq!(report.total_samples, 2);
+
+        fs::remove_file(&path).expect("remove cf32 fixture");
+    }
 }
 
 fn solve_epoch_ekf(
