@@ -54,6 +54,10 @@ Files: `acq.jsonl`
 Units: hertz, chips, seconds.
 Invariants:
 - carrier/code estimates finite
+- `acq.jsonl` stores retained acquisition candidates; when top-N retention is greater than 1, multiple rows may exist for one searched PRN
+- `acquire_report.json.primary_results` stores exactly one selected outcome per searched PRN
+- `acquire_report.json.search_summary` counts selected PRN decisions (`accepted`, `ambiguous`, `rejected`, `deferred`)
+- when the input frame is too short for the requested coherent/noncoherent window, acquisition still emits one deferred outcome per searched PRN instead of omitting them
 
 ### eph (GpsEphemerisV1)
 Purpose: decoded ephemerides.

@@ -4,6 +4,7 @@ These are the shared types exchanged across layers. They live in `bijux-gnss-cor
 
 ## Samples and Observations
 - `SamplesFrame`: time-tagged IQ samples
+- `AcqSearchSummary`: per-PRN acquisition decision counts for a configured search set
 - `ObsEpoch`: per-epoch observables (pseudorange, phase, doppler, CN0)
 - `LockFlags`: lock quality
 - `SolutionStatus`: validity state (Invalid, Degraded, Coarse, Converged, Float, Fixed)
@@ -20,6 +21,7 @@ These are the shared types exchanged across layers. They live in `bijux-gnss-cor
 - Versioned wrappers: `ObsEpochV1`, `TrackEpochV1`, `NavSolutionEpochV1`, `AcqResultV1`
 
 ## Invariants
+- Acquisition returns one selected outcome per searched PRN, even when the frame is too short for a usable search
 - Epochs are monotonic in `t_rx_s`
 - No NaNs/Inf in artifacts
 - `SolutionStatus` determines `valid` flag
