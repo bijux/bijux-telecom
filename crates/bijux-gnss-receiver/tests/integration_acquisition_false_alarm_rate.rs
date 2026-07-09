@@ -57,6 +57,35 @@ fn acquisition_false_alarm_rate_reports_coherent_integration_profiles() {
     );
 }
 
+#[test]
+fn acquisition_false_alarm_rate_reports_noncoherent_profiles() {
+    let config = acquisition_profile();
+    let report = measure_noise_only_acquisition_false_alarm_rates(
+        &config,
+        &[
+            false_alarm_rate_case(1, 1),
+            false_alarm_rate_case(1, 2),
+            false_alarm_rate_case(1, 4),
+            false_alarm_rate_case(1, 8),
+        ],
+        &trial_seeds(0x2407_1995, FALSE_ALARM_RATE_TRIAL_COUNT),
+        "acquisition_false_alarm_rate_noncoherent",
+    );
+
+    assert_eq!(report.points.len(), 4);
+    assert_eq!(
+        report.points.iter().map(|point| point.noncoherent).collect::<Vec<_>>(),
+        vec![1, 2, 4, 8]
+    );
+    assert!(
+        report.points.iter().all(|point| point.coherent_ms == 1
+            && point.false_alarm_count <= point.trial_count
+            && point.false_alarm_rate.is_finite()
+            && (0.0..=1.0).contains(&point.false_alarm_rate)),
+        "{report:?}"
+    );
+}
+
 fn acquisition_profile() -> ReceiverPipelineConfig {
     ReceiverPipelineConfig {
         sampling_freq_hz: 4_092_000.0,
