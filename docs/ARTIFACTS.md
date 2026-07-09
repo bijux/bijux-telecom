@@ -119,6 +119,10 @@ The report includes:
 - clipping percentage and precision-claim refusal state
 - RMS, centered RMS, and estimated noise floor in dB
 
+Raw-IQ acquisition and tracking command reports also include a `doppler_search` section that
+records the effective `max_search_hz`, `bin_width_hz`, `bin_count`, and `intermediate_freq_hz`
+used for that run. This field reflects the final receiver profile after any explicit CLI override.
+
 ## Synthetic IQ Export Bundle
 
 The synthetic IQ export workflow emits a deterministic raw-capture bundle for a scenario:

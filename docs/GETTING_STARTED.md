@@ -47,6 +47,11 @@ clipping, RMS, and an estimated noise floor for the analyzed input window.
 bijux gnss acquire --dataset gps_l1_2022_03_27_excerpt --config configs/receiver_live_sky_gps_l1.toml --prn 11,12,25,31,32 --report json --output artifacts/live_sky_acquire
 ```
 
+By default, the acquisition Doppler search range and bin width come from the selected receiver
+profile. Override them with `--doppler-search-hz` or `--doppler-step-hz` only for an explicit
+one-off experiment. Valid profiles keep `doppler_search_hz` aligned to `doppler_step_hz` so the
+search grid includes both `0 Hz` and the configured edge.
+
 This dataset is a redistributed excerpt from Daniel Estévez's public GPS L1 recording on Zenodo.
 Use `datasets/recorded/gps_l1_2022_03_27_excerpt.provenance.md` for source, license, and local
 excerpt details.

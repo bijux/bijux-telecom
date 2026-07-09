@@ -72,6 +72,15 @@ All raw-IQ workflows (`inspect`, `acquire`, `track`, and `run`) also emit
 bijux gnss acquire --dataset gps_l1_2022_03_27_excerpt --config configs/receiver_live_sky_gps_l1.toml --prn 11,12,25,31,32 --report json --output artifacts/live_sky_acquire
 ```
 
+The effective Doppler grid comes from the receiver profile's `[acquisition]` section by default:
+- `doppler_search_hz` is the maximum search range on each side of IF
+- `doppler_step_hz` is the bin width
+- `intermediate_freq_hz` defines the search center
+
+Use `--doppler-search-hz` and `--doppler-step-hz` only when you need a one-off override for a
+specific run. Valid receiver profiles must keep `doppler_search_hz` as an integer multiple of
+`doppler_step_hz` so the search grid includes both `0 Hz` and the configured search edge.
+
 ### Inspect Published C/A PRN Assignment
 ```bash
 bijux gnss ca-code --prn 1 --start-chip 1022 --count 4 --with-reference
