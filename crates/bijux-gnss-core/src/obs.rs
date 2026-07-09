@@ -351,9 +351,9 @@ pub struct AcqDopplerRefinement {
     pub coarse_carrier_hz: Hertz,
     pub offset_hz: f64,
     pub offset_bins: f64,
-    pub left_peak: f32,
-    pub center_peak: f32,
-    pub right_peak: f32,
+    pub left_peak_mean_ratio: f32,
+    pub center_peak_mean_ratio: f32,
+    pub right_peak_mean_ratio: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

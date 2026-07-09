@@ -965,19 +965,22 @@ fn estimate_acquisition_doppler_refinement(
     let left = find_candidate_by_carrier_hz(grid_candidates, coarse_carrier_hz - step_hz)?;
     let center = find_candidate_by_carrier_hz(grid_candidates, coarse_carrier_hz)?;
     let right = find_candidate_by_carrier_hz(grid_candidates, coarse_carrier_hz + step_hz)?;
-    if center.peak < left.peak || center.peak < right.peak {
+    if center.peak_mean_ratio < left.peak_mean_ratio
+        || center.peak_mean_ratio < right.peak_mean_ratio
+    {
         return None;
     }
 
-    let left_peak = left.peak as f64;
-    let center_peak = center.peak as f64;
-    let right_peak = right.peak as f64;
-    let denominator = left_peak - (2.0 * center_peak) + right_peak;
+    let left_peak_mean_ratio = left.peak_mean_ratio as f64;
+    let center_peak_mean_ratio = center.peak_mean_ratio as f64;
+    let right_peak_mean_ratio = right.peak_mean_ratio as f64;
+    let denominator =
+        left_peak_mean_ratio - (2.0 * center_peak_mean_ratio) + right_peak_mean_ratio;
     if !denominator.is_finite() || denominator.abs() <= SUB_BIN_DOPPLER_REFINEMENT_EPSILON {
         return None;
     }
 
-    let raw_offset_bins = 0.5 * (left_peak - right_peak) / denominator;
+    let raw_offset_bins = 0.5 * (left_peak_mean_ratio - right_peak_mean_ratio) / denominator;
     if !raw_offset_bins.is_finite() {
         return None;
     }
@@ -991,9 +994,9 @@ fn estimate_acquisition_doppler_refinement(
         coarse_carrier_hz: Hertz(coarse_carrier_hz),
         offset_hz: offset_bins * step_hz,
         offset_bins,
-        left_peak: left.peak,
-        center_peak: center.peak,
-        right_peak: right.peak,
+        left_peak_mean_ratio: left.peak_mean_ratio,
+        center_peak_mean_ratio: center.peak_mean_ratio,
+        right_peak_mean_ratio: right.peak_mean_ratio,
     })
 }
 

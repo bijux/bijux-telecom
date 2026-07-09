@@ -174,3 +174,170 @@ fn export_synthetic_iq_emits_truth_bundle_and_ingestable_capture() {
     fs::remove_dir_all(&inspect_dir).expect("remove inspect dir");
     fs::remove_dir_all(&acquire_dir).expect("remove acquire dir");
 }
+
+#[test]
+fn acquire_report_exposes_refined_doppler_for_fractional_synthetic_truth() {
+    let repo = repo_root();
+    let temp = temp_dir_path("acquisition_refinement_report");
+    fs::create_dir_all(&temp).expect("create temp dir");
+    let scenario_path = temp.join("fractional_acquisition_refinement.toml");
+    fs::write(
+        &scenario_path,
+        r#"id = "fractional_acquisition_refinement"
+sample_rate_hz = 4092000.0
+intermediate_freq_hz = 0.0
+duration_s = 0.08
+seed = 24071985
+
+[[satellites]]
+sat = { constellation = "Gps", prn = 3 }
+doppler_hz = 875.0
+code_phase_chips = 200.25
+carrier_phase_rad = 0.0
+cn0_db_hz = 65.0
+data_bit_flip = false
+"#,
+    )
+    .expect("write refinement scenario");
+    let export_dir = temp.join("export");
+    fs::create_dir_all(&export_dir).expect("create export dir");
+    let export_output = run_bijux(
+        &[
+            "gnss",
+            "export-synthetic-iq",
+            "--scenario",
+            scenario_path.to_str().expect("scenario path"),
+            "--report",
+            "json",
+            "--out",
+            export_dir.to_str().expect("export dir"),
+        ],
+        &repo,
+    );
+    assert!(
+        export_output.status.success(),
+        "export-synthetic-iq failed: {}",
+        String::from_utf8_lossy(&export_output.stderr)
+    );
+
+    let iq_path = export_dir.join("artifacts").join("fractional_acquisition_refinement.iq16");
+    let sidecar_path = export_dir.join("artifacts").join("fractional_acquisition_refinement.sidecar.toml");
+    let truth_path = export_dir.join("artifacts").join("fractional_acquisition_refinement.truth.json");
+    let _truth: Value =
+        serde_json::from_str(&fs::read_to_string(&truth_path).expect("read truth"))
+            .expect("parse truth");
+
+    let acquire_config_path = temp.join("receiver_acquisition_refinement.toml");
+    fs::write(
+        &acquire_config_path,
+        r#"schema_version = 1
+sample_rate_hz = 4_092_000.0
+intermediate_freq_hz = 0.0
+quantization_bits = 16
+code_freq_basis_hz = 1_023_000.0
+code_length = 1023
+seed = 1
+
+[acquisition]
+doppler_search_hz = 10_000
+doppler_step_hz = 500
+integration_ms = 10
+noncoherent_integration = 1
+peak_mean_threshold = 3.0
+peak_second_threshold = 1.8
+
+[tracking]
+early_late_spacing_chips = 0.5
+dll_bw_hz = 1.5
+pll_bw_hz = 12.0
+fll_bw_hz = 8.0
+max_channels = 8
+per_epoch_budget_ms = 0.7
+
+[navigation]
+robust_solver = true
+huber_k = 30.0
+raim = true
+hatch_window = 100
+iono_mode = "broadcast"
+tropo_enable = true
+tropo_ztd_m = 2.3
+
+[navigation.weighting]
+enabled = true
+min_elev_deg = 5.0
+elev_exponent = 2.0
+cn0_ref_dbhz = 50.0
+min_weight = 0.1
+elev_mask_deg = 5.0
+tracking_mode_scalar_weight = 1.0
+tracking_mode_vector_weight = 1.2
+"#,
+    )
+    .expect("write refinement config");
+
+    let acquire_dir = temp.join("acquire");
+    fs::create_dir_all(&acquire_dir).expect("create acquire dir");
+    let acquire_output = run_bijux(
+        &[
+            "gnss",
+            "acquire",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--config",
+            acquire_config_path.to_str().expect("acquire config"),
+            "--prn",
+            "3",
+            "--report",
+            "json",
+            "--out",
+            acquire_dir.to_str().expect("acquire dir"),
+        ],
+        &repo,
+    );
+    assert!(
+        acquire_output.status.success(),
+        "acquire failed: {}",
+        String::from_utf8_lossy(&acquire_output.stderr)
+    );
+
+    let acquire_report: Value = serde_json::from_str(
+        &fs::read_to_string(acquire_dir.join("acquire_report.json")).expect("read acquire report"),
+    )
+    .expect("parse acquire report");
+    let primary_row = acquire_report["primary_results"]
+        .as_array()
+        .and_then(|rows| rows.first())
+        .expect("primary acquisition row");
+    let coarse_carrier_hz = primary_row["coarse_carrier_hz"]
+        .as_f64()
+        .expect("coarse carrier for primary row");
+    let refined_carrier_hz = primary_row["carrier_hz"].as_f64().expect("refined carrier");
+    let refinement_bins = primary_row["doppler_refinement_bins"]
+        .as_f64()
+        .expect("refinement bins");
+    assert!(
+        (refined_carrier_hz - coarse_carrier_hz).abs() > f64::EPSILON,
+        "refined carrier should differ from the coarse bin when refinement is present: {primary_row}"
+    );
+    assert!(
+        refinement_bins.abs() <= 0.5,
+        "refinement should stay within one half-bin: {primary_row}"
+    );
+
+    let acq_artifact = fs::read_to_string(acquire_dir.join("artifacts").join("acq.jsonl"))
+        .expect("read acq artifact");
+    let artifact_row: Value =
+        serde_json::from_str(acq_artifact.lines().next().expect("artifact row"))
+            .expect("parse acquisition artifact row");
+    assert_eq!(
+        artifact_row["payload"]["doppler_refinement"]["method"],
+        "parabolic_peak",
+        "acquisition artifact should expose doppler refinement provenance: {artifact_row}"
+    );
+
+    fs::remove_dir_all(&temp).expect("remove temp dir");
+}

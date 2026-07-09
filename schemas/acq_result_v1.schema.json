@@ -82,18 +82,18 @@
         "coarse_carrier_hz",
         "offset_hz",
         "offset_bins",
-        "left_peak",
-        "center_peak",
-        "right_peak"
+        "left_peak_mean_ratio",
+        "center_peak_mean_ratio",
+        "right_peak_mean_ratio"
       ],
       "properties": {
         "method": { "type": "string" },
         "coarse_carrier_hz": { "type": "number" },
         "offset_hz": { "type": "number" },
         "offset_bins": { "type": "number" },
-        "left_peak": { "type": "number" },
-        "center_peak": { "type": "number" },
-        "right_peak": { "type": "number" }
+        "left_peak_mean_ratio": { "type": "number" },
+        "center_peak_mean_ratio": { "type": "number" },
+        "right_peak_mean_ratio": { "type": "number" }
       }
     }
   }

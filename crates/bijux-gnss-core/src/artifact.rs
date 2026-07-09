@@ -162,9 +162,9 @@ pub mod v1 {
                     if !refinement.coarse_carrier_hz.0.is_finite()
                         || !refinement.offset_hz.is_finite()
                         || !refinement.offset_bins.is_finite()
-                        || !refinement.left_peak.is_finite()
-                        || !refinement.center_peak.is_finite()
-                        || !refinement.right_peak.is_finite()
+                        || !refinement.left_peak_mean_ratio.is_finite()
+                        || !refinement.center_peak_mean_ratio.is_finite()
+                        || !refinement.right_peak_mean_ratio.is_finite()
                     {
                         events.push(DiagnosticEvent::new(
                             DiagnosticSeverity::Error,
