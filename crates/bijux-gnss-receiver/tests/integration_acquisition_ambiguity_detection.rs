@@ -53,6 +53,27 @@ fn acquisition_marks_comparable_competing_peaks_as_ambiguous() {
     );
 }
 
+#[test]
+fn acquisition_explainability_reports_ambiguous_competing_peaks() {
+    let sat = gps_l1_ca_satellite();
+    let config = ambiguity_profile();
+    let frame = competing_peak_frame(
+        &config,
+        0.001,
+        [competing_signal(sat, 0.0, 300.0, 44.0), competing_signal(sat, 0.0, 650.0, 44.0)],
+        0x2407_1999,
+    );
+    let run = AcquisitionEngine::new(config.clone(), ReceiverRuntime::default())
+        .with_doppler(config.acquisition_doppler_search_hz, config.acquisition_doppler_step_hz)
+        .run_fft_topn_with_explain(&frame, &[sat], 4, 1, 1);
+    let explain = &run.explains[0];
+    let selected = explain.candidates.first().expect("selected candidate");
+
+    assert_eq!(explain.selected_reason, "ambiguous_ratio_thresholds", "{run:?}");
+    assert_eq!(selected.hypothesis.to_string(), "ambiguous", "{run:?}");
+    assert!(selected.reason.contains("local_peak_separation_ratio"), "{run:?}");
+}
+
 fn ambiguity_profile() -> ReceiverPipelineConfig {
     ReceiverPipelineConfig {
         sampling_freq_hz: 4_092_000.0,
