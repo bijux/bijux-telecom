@@ -12,6 +12,9 @@ use num_complex::Complex;
 use rustfft::{num_traits::Zero, FftPlanner};
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
+use crate::engine::receiver_config::{
+    acquisition_integration_ms_is_supported, supported_acquisition_integration_ms_csv,
+};
 use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
 use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
 use bijux_gnss_signal::api::samples_per_code;
@@ -260,6 +263,29 @@ impl Acquisition {
             peak_mean_threshold: self.config.acquisition_peak_mean_threshold,
             peak_second_threshold: self.config.acquisition_peak_second_threshold,
         };
+        if !acquisition_integration_ms_is_supported(coherent_ms) {
+            self.runtime.trace.record(TraceRecord {
+                name: "acquisition_input_rejection",
+                fields: vec![
+                    ("reason", "unsupported_coherent_integration_ms".to_string()),
+                    ("coherent_ms", coherent_ms.to_string()),
+                    ("supported_coherent_ms", supported_acquisition_integration_ms_csv()),
+                    ("sat_count", sats.len().to_string()),
+                ],
+            });
+            self.with_stats(|stats| {
+                stats.deferred_count = stats.deferred_count.saturating_add(sats.len() as u64);
+            });
+            return unsupported_coherent_integration_run(
+                sats,
+                &assumptions,
+                &threshold_provenance,
+                self.config.intermediate_freq_hz,
+                ReceiverSampleTrace::from_sample_time(frame.t0),
+                coherent_ms,
+                emit_explanations,
+            );
+        }
         if frame.len() < required {
             self.runtime.trace.record(TraceRecord {
                 name: "acquisition_input_rejection",
@@ -912,6 +938,76 @@ fn insufficient_frame_candidate_reason(
     )
 }
 
+fn unsupported_coherent_integration_run(
+    sats: &[SatId],
+    assumptions: &AcqAssumptions,
+    threshold_provenance: &AcqThresholdProvenance,
+    intermediate_freq_hz: f64,
+    source_time: ReceiverSampleTrace,
+    coherent_ms: u32,
+    emit_explanations: bool,
+) -> AcquisitionRun {
+    let candidate_reason = unsupported_coherent_integration_candidate_reason(coherent_ms);
+    let mut results = Vec::with_capacity(sats.len());
+    let mut explains = Vec::new();
+
+    for &sat in sats {
+        let result = AcqResult {
+            sat,
+            source_time,
+            carrier_hz: Hertz(intermediate_freq_hz),
+            code_phase_samples: 0,
+            peak: 0.0,
+            second_peak: 0.0,
+            mean: 0.0,
+            peak_mean_ratio: 0.0,
+            peak_second_ratio: 0.0,
+            cn0_proxy: 0.0,
+            score: 0.0,
+            hypothesis: AcqHypothesis::Deferred,
+            assumptions: Some(assumptions.clone()),
+            evidence: Vec::new(),
+            threshold_provenance: Some(threshold_provenance.clone()),
+            explain_selection_reason: Some(candidate_reason.clone()),
+            doppler_refinement: None,
+            code_phase_refinement: None,
+        };
+        if emit_explanations {
+            explains.push(AcqExplain {
+                sat,
+                selected_rank: Some(1),
+                selected_reason: "unsupported_coherent_integration_ms".to_string(),
+                candidate_count: 1,
+                candidates: vec![AcqExplainCandidate {
+                    rank: 1,
+                    code_phase_samples: 0,
+                    carrier_hz: intermediate_freq_hz,
+                    peak: 0.0,
+                    peak_mean_ratio: 0.0,
+                    peak_second_ratio: 0.0,
+                    second_peak_ratio: 0.0,
+                    mean: 0.0,
+                    hypothesis: AcqHypothesis::Deferred,
+                    score: 0.0,
+                    threshold_hit: false,
+                    reason: candidate_reason.clone(),
+                }],
+            });
+        }
+        results.push(vec![result]);
+    }
+
+    AcquisitionRun { results, explains }
+}
+
+fn unsupported_coherent_integration_candidate_reason(coherent_ms: u32) -> String {
+    format!(
+        "unsupported_coherent_integration_ms: acquisition coherent integration must be one of [{}] ms but received {} ms",
+        supported_acquisition_integration_ms_csv(),
+        coherent_ms,
+    )
+}
+
 fn signal_outside_search_range(
     candidates: &[AcqResult],
     intermediate_freq_hz: f64,
@@ -1274,6 +1370,31 @@ mod tests {
 
         assert!(offset_samples < 0.0);
         assert!((refined_code_phase_samples - 3.8).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn acquisition_rejects_unsupported_coherent_integration_lengths() {
+        let config = ReceiverPipelineConfig::default();
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        let frame = SamplesFrame::new(
+            SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
+            Seconds(1.0 / config.sampling_freq_hz),
+            Vec::new(),
+        );
+        let acquisition = Acquisition::new(config, ReceiverRuntime::default());
+
+        let run = acquisition.run_fft_topn_with_explain(&frame, &[sat], 1, 3, 1);
+
+        let result = run.results.first().and_then(|rows| rows.first()).expect("result");
+        let explain = run.explains.first().expect("explain");
+        assert_eq!(result.hypothesis.to_string(), AcqHypothesis::Deferred.to_string());
+        assert_eq!(explain.selected_reason, "unsupported_coherent_integration_ms");
+        assert_eq!(
+            result.explain_selection_reason.as_deref(),
+            Some(
+                "unsupported_coherent_integration_ms: acquisition coherent integration must be one of [1, 2, 5, 10, 20] ms but received 3 ms"
+            )
+        );
     }
 
     #[test]

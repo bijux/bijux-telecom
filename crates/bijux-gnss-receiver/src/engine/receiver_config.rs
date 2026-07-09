@@ -290,6 +290,16 @@ pub fn default_tracking_integration_ms() -> u32 {
     1
 }
 
+pub const SUPPORTED_ACQUISITION_INTEGRATION_MS: [u32; 5] = [1, 2, 5, 10, 20];
+
+pub fn acquisition_integration_ms_is_supported(integration_ms: u32) -> bool {
+    SUPPORTED_ACQUISITION_INTEGRATION_MS.contains(&integration_ms)
+}
+
+pub fn supported_acquisition_integration_ms_csv() -> String {
+    SUPPORTED_ACQUISITION_INTEGRATION_MS.iter().map(u32::to_string).collect::<Vec<_>>().join(", ")
+}
+
 pub fn default_over_budget_action() -> String {
     "drop_epochs".to_string()
 }

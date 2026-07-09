@@ -3,7 +3,8 @@
 use bijux_gnss_core::api::{ConfigError, SchemaVersion, ValidateConfig, ValidationReport};
 
 use crate::engine::receiver_config::{
-    parse_band, BandTrackingSpec, ReceiverConfig, ReceiverPipelineConfig,
+    acquisition_integration_ms_is_supported, parse_band, supported_acquisition_integration_ms_csv,
+    BandTrackingSpec, ReceiverConfig, ReceiverPipelineConfig,
 };
 
 impl ValidateConfig for ReceiverConfig {
@@ -53,6 +54,13 @@ impl ValidateConfig for ReceiverConfig {
         if self.acquisition.integration_ms == 0 {
             report.errors.push(ConfigError {
                 message: "acquisition.integration_ms must be > 0".to_string(),
+            });
+        } else if !acquisition_integration_ms_is_supported(self.acquisition.integration_ms) {
+            report.errors.push(ConfigError {
+                message: format!(
+                    "acquisition.integration_ms must be one of [{}]",
+                    supported_acquisition_integration_ms_csv()
+                ),
             });
         }
         if self.acquisition.noncoherent_integration == 0 {
@@ -313,9 +321,10 @@ mod tests {
 
         let report = <ReceiverConfig as ValidateConfig>::validate(&config);
 
-        assert!(report.errors.iter().any(|error| {
-            error.message == "acquisition.doppler_search_hz must be >= 0"
-        }));
+        assert!(report
+            .errors
+            .iter()
+            .any(|error| { error.message == "acquisition.doppler_search_hz must be >= 0" }));
     }
 
     #[test]
@@ -348,5 +357,17 @@ mod tests {
             "unexpected Doppler-search validation error: {:?}",
             report.errors
         );
+    }
+
+    #[test]
+    fn validation_rejects_unsupported_acquisition_coherent_integration() {
+        let mut config = ReceiverConfig::default();
+        config.acquisition.integration_ms = 3;
+
+        let report = <ReceiverConfig as ValidateConfig>::validate(&config);
+
+        assert!(report.errors.iter().any(|error| {
+            error.message == "acquisition.integration_ms must be one of [1, 2, 5, 10, 20]"
+        }));
     }
 }
