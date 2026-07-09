@@ -5,8 +5,10 @@ use std::f32::consts::TAU;
 use num_complex::Complex;
 
 use bijux_gnss_core::api::{Constellation, SampleClock, SampleTime, SamplesFrame, SatId, Seconds};
+use bijux_gnss_signal::api::SignalSource;
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
+use crate::io::data::SampleSourceError;
 use bijux_gnss_nav::api::GpsEphemeris;
 use bijux_gnss_signal::api::{generate_ca_code, Prn};
 use serde::{Deserialize, Serialize};
@@ -93,6 +95,79 @@ pub fn generate_l1_ca_multi(
     let t0 = SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz };
 
     SamplesFrame::new(t0, Seconds(dt_s), iq)
+}
+
+/// Streaming synthetic GPS L1 C/A signal source for long-duration receiver tests.
+pub struct SyntheticSignalSource {
+    sample_rate_hz: f64,
+    dt_s: f64,
+    remaining_samples: usize,
+    next_sample_index: u64,
+    noise_std: f32,
+    sat_states: Vec<SatState>,
+    rng: XorShift64,
+}
+
+impl SyntheticSignalSource {
+    /// Build a streaming synthetic source from a scenario without materializing the full capture.
+    pub fn new(config: &ReceiverPipelineConfig, scenario: &SyntheticScenario) -> Self {
+        let sample_count = (scenario.duration_s * config.sampling_freq_hz).round() as usize;
+        let max_cn0 = scenario.satellites.iter().map(|s| s.cn0_db_hz).fold(0.0_f32, f32::max);
+        let snr_db = max_cn0 - 30.0;
+        let snr_linear = 10.0f32.powf(snr_db / 10.0).max(1e-6);
+        let noise_std = 1.0f32 / snr_linear.sqrt();
+
+        Self {
+            sample_rate_hz: config.sampling_freq_hz,
+            dt_s: 1.0 / config.sampling_freq_hz,
+            remaining_samples: sample_count,
+            next_sample_index: 0,
+            noise_std,
+            sat_states: scenario
+                .satellites
+                .iter()
+                .map(|sat| SatState::new(config, *sat))
+                .collect(),
+            rng: XorShift64::new(scenario.seed),
+        }
+    }
+}
+
+impl SignalSource for SyntheticSignalSource {
+    type Error = SampleSourceError;
+
+    fn sample_rate_hz(&self) -> f64 {
+        self.sample_rate_hz
+    }
+
+    fn next_frame(&mut self, frame_len: usize) -> Result<Option<SamplesFrame>, Self::Error> {
+        if self.remaining_samples == 0 {
+            return Ok(None);
+        }
+        let count = self.remaining_samples.min(frame_len.max(1));
+        let t0 = SampleTime {
+            sample_index: self.next_sample_index,
+            sample_rate_hz: self.sample_rate_hz,
+        };
+        let mut iq = Vec::with_capacity(count);
+        for offset in 0..count {
+            let t = (self.next_sample_index + offset as u64) as f64 * self.dt_s;
+            let mut sample = Complex::new(0.0f32, 0.0f32);
+            for sat in &self.sat_states {
+                sample += sat.sample_at(t);
+            }
+            let noise_i = self.rng.next_gaussian() * self.noise_std;
+            let noise_q = self.rng.next_gaussian() * self.noise_std;
+            iq.push(sample + Complex::new(noise_i, noise_q));
+        }
+        self.next_sample_index += count as u64;
+        self.remaining_samples -= count;
+        Ok(Some(SamplesFrame::new(t0, Seconds(self.dt_s), iq)))
+    }
+
+    fn is_done(&self) -> bool {
+        self.remaining_samples == 0
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -187,5 +262,62 @@ impl XorShift64 {
         let r = (-2.0 * u1.ln()).sqrt();
         let theta = TAU * u2;
         r * theta.cos()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{generate_l1_ca_multi, SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource};
+    use crate::engine::receiver_config::ReceiverPipelineConfig;
+    use bijux_gnss_core::api::{Constellation, SatId, SamplesFrame};
+    use bijux_gnss_signal::api::SignalSource;
+
+    #[test]
+    fn synthetic_signal_source_matches_materialized_generator() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 1_023_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let scenario = SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            duration_s: 0.004,
+            seed: 29,
+            satellites: vec![SyntheticSignalParams {
+                sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                doppler_hz: 750.0,
+                code_phase_chips: 15.0,
+                carrier_phase_rad: 0.0,
+                cn0_db_hz: 47.0,
+                data_bit_flip: false,
+            }],
+            ephemerides: Vec::new(),
+            id: "synthetic-stream".to_string(),
+        };
+
+        let expected = generate_l1_ca_multi(&config, &scenario);
+        let mut source = SyntheticSignalSource::new(&config, &scenario);
+        let streamed = collect_frames(&mut source, 2 * 1_023);
+
+        assert_eq!(expected.len(), streamed.len());
+        assert_eq!(expected.t0, streamed.t0);
+        assert_eq!(expected.dt_s, streamed.dt_s);
+        assert_eq!(expected.iq, streamed.iq);
+        assert!(source.is_done());
+    }
+
+    fn collect_frames(source: &mut SyntheticSignalSource, frame_len: usize) -> SamplesFrame {
+        let mut frames = Vec::new();
+        while let Some(frame) = source.next_frame(frame_len).expect("synthetic frame") {
+            frames.push(frame);
+        }
+        let first = frames.first().expect("at least one frame");
+        let t0 = first.t0;
+        let dt_s = first.dt_s;
+        let iq = frames.into_iter().flat_map(|frame| frame.iq).collect::<Vec<_>>();
+        SamplesFrame::new(t0, dt_s, iq)
     }
 }
