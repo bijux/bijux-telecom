@@ -14,6 +14,9 @@ struct AcquisitionReport {
 #[derive(Debug, Serialize, Clone)]
 struct AcquisitionRow {
     sat: SatId,
+    signal_band: bijux_gnss_infra::api::core::SignalBand,
+    source_sample_index: u64,
+    doppler_hz: f64,
     candidate_rank: u8,
     is_primary_candidate: bool,
     carrier_hz: f64,
@@ -169,6 +172,9 @@ mod report_tests {
     fn gps_row(prn: u8, hypothesis: &str, peak_mean_ratio: f32) -> AcquisitionRow {
         AcquisitionRow {
             sat: SatId { constellation: Constellation::Gps, prn },
+            signal_band: bijux_gnss_infra::api::core::SignalBand::L1,
+            source_sample_index: 0,
+            doppler_hz: 0.0,
             candidate_rank: 1,
             is_primary_candidate: true,
             carrier_hz: 500.0 * prn as f64,

@@ -186,7 +186,7 @@ fn print_acquisition_table(report: &AcquisitionReport) {
     println!("Search summary: {}", format_search_summary(report));
     println!("Reported PRNs: {}", format_reported_prns(report));
     println!(
-        "Sat\tRank\tPrimary\tCarrier(Hz)\tCoarseCarrier(Hz)\tRefine(Hz)\tRefine(Bins)\tDopplerUnc(Hz)\tCodePhase\tRefinedCodePhase\tCodePhaseRefine\tCodePhaseUnc\tPeak\tPeak/Mean\tPeak/2nd\tHypothesis\tReason"
+        "Sat\tBand\tStartSample\tDoppler(Hz)\tRank\tPrimary\tCarrier(Hz)\tCoarseCarrier(Hz)\tRefine(Hz)\tRefine(Bins)\tDopplerUnc(Hz)\tCodePhase\tRefinedCodePhase\tCodePhaseRefine\tCodePhaseUnc\tPeak\tPeak/Mean\tPeak/2nd\tHypothesis\tReason"
     );
     for row in &report.results {
         let coarse_carrier_hz = row
@@ -218,8 +218,11 @@ fn print_acquisition_table(report: &AcquisitionReport) {
             .map(|value| format!("{value:.6}"))
             .unwrap_or_else(|| "n/a".to_string());
         println!(
-            "{}\t{}\t{}\t{:.1}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.3}\t{:.2}\t{:.2}\t{}\t{}",
+            "{}\t{:?}\t{}\t{:.3}\t{}\t{}\t{:.1}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.3}\t{:.2}\t{:.2}\t{}\t{}",
             format_sat(row.sat),
+            row.signal_band,
+            row.source_sample_index,
+            row.doppler_hz,
             row.candidate_rank,
             row.is_primary_candidate,
             row.carrier_hz,
