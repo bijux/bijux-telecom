@@ -12,6 +12,7 @@ fn acquisition_ambiguity_harness_preserves_ranked_candidates() {
     let config = ambiguity_profile();
     let frame = competing_peak_frame(
         &config,
+        0.001,
         [competing_signal(sat, 0.0, 300.0, 44.0), competing_signal(sat, 250.0, 300.0, 44.0)],
         0x2407_1997,
     );
@@ -25,6 +26,31 @@ fn acquisition_ambiguity_harness_preserves_ranked_candidates() {
     assert!(run.results[0].len() <= 4);
     assert!(!run.explains[0].selected_reason.is_empty());
     assert!(run.explains[0].candidate_count >= 1);
+}
+
+#[test]
+fn acquisition_marks_comparable_competing_peaks_as_ambiguous() {
+    let sat = gps_l1_ca_satellite();
+    let config = ambiguity_profile();
+    let frame = competing_peak_frame(
+        &config,
+        0.001,
+        [competing_signal(sat, 0.0, 300.0, 44.0), competing_signal(sat, 0.0, 650.0, 44.0)],
+        0x2407_1998,
+    );
+    let run = AcquisitionEngine::new(config.clone(), ReceiverRuntime::default())
+        .with_doppler(config.acquisition_doppler_search_hz, config.acquisition_doppler_step_hz)
+        .run_fft_topn_with_explain(&frame, &[sat], 4, 1, 1);
+    let best = &run.results[0][0];
+    let second = run.results[0].get(1).expect("runner-up candidate");
+    let competing_peak_ratio = best.peak_mean_ratio / second.peak_mean_ratio;
+
+    assert_eq!(best.hypothesis.to_string(), "ambiguous", "{run:?}");
+    assert!(
+        best.peak_second_ratio < config.acquisition_peak_second_threshold
+            || competing_peak_ratio < config.acquisition_peak_second_threshold,
+        "{run:?}"
+    );
 }
 
 fn ambiguity_profile() -> ReceiverPipelineConfig {
@@ -41,6 +67,7 @@ fn ambiguity_profile() -> ReceiverPipelineConfig {
 
 fn competing_peak_frame(
     config: &ReceiverPipelineConfig,
+    duration_s: f64,
     signals: [SyntheticSignalParams; 2],
     seed: u64,
 ) -> bijux_gnss_core::api::SamplesFrame {
@@ -49,7 +76,7 @@ fn competing_peak_frame(
         &SyntheticScenario {
             sample_rate_hz: config.sampling_freq_hz,
             intermediate_freq_hz: config.intermediate_freq_hz,
-            duration_s: 0.001,
+            duration_s,
             seed,
             satellites: signals.into_iter().collect(),
             ephemerides: Vec::new(),
