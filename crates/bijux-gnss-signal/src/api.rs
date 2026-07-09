@@ -10,6 +10,8 @@ pub use crate::dsp::signal::samples_per_code;
 pub use crate::dsp::tracking::{adaptive_bandwidth, code_at, discriminators, estimate_cn0_dbhz};
 /// Error types.
 pub use crate::error::SignalError;
+/// Raw IQ metadata contracts.
+pub use crate::raw_iq::{IqSampleFormat, RawIqMetadata};
 /// Sample conversion helpers.
 pub use crate::samples::iq_i16_to_samples;
 

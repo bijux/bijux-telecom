@@ -17,6 +17,7 @@
 mod codes;
 mod dsp;
 mod error;
+mod raw_iq;
 mod samples;
 
 /// Public API surface for this crate.
