@@ -1,0 +1,83 @@
+#![allow(missing_docs)]
+
+use bijux_gnss_core::api::{AcqHypothesis, AcqResult, Constellation, Hertz, SatId, SignalBand};
+use bijux_gnss_receiver::api::{
+    sim::{generate_l1_ca, SyntheticSignalParams},
+    ReceiverPipelineConfig, ReceiverRuntime, TrackingEngine,
+};
+
+fn accepted_acquisition(sat: SatId, carrier_hz: f64, code_phase_samples: usize) -> AcqResult {
+    AcqResult {
+        sat,
+        carrier_hz: Hertz(carrier_hz),
+        code_phase_samples,
+        peak: 1.0,
+        second_peak: 0.1,
+        mean: 0.01,
+        peak_mean_ratio: 20.0,
+        peak_second_ratio: 10.0,
+        cn0_proxy: 48.0,
+        score: 1.0,
+        hypothesis: AcqHypothesis::Accepted,
+        assumptions: None,
+        evidence: Vec::new(),
+        threshold_provenance: None,
+        explain_selection_reason: Some("seeded_tracking_start".to_string()),
+    }
+}
+
+fn synthetic_frame(config: &ReceiverPipelineConfig, code_phase_chips: f64) -> bijux_gnss_core::api::SamplesFrame {
+    generate_l1_ca(
+        config,
+        SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Gps, prn: 11 },
+            doppler_hz: 0.0,
+            code_phase_chips,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 48.0,
+            data_bit_flip: false,
+        },
+        0x5A17_2026,
+        0.012,
+    )
+}
+
+#[test]
+fn tracking_preserves_stable_code_phase_with_matching_sample_rate() {
+    let config = ReceiverPipelineConfig::default();
+    let frame = synthetic_frame(&config, 0.0);
+    let sat = SatId { constellation: Constellation::Gps, prn: 11 };
+    let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
+    let acquisitions = vec![accepted_acquisition(sat, config.intermediate_freq_hz, 0)];
+
+    let tracks = tracking.track_from_acquisition(&frame, &acquisitions, SignalBand::L1);
+    let epochs = &tracks.first().expect("track").epochs;
+
+    assert!(
+        epochs
+            .iter()
+            .all(|epoch| epoch.lock_state_reason.as_deref() != Some("sample_rate_mismatch")),
+        "epochs={epochs:?}"
+    );
+}
+
+#[test]
+fn tracking_marks_persistent_code_phase_drift_as_sample_rate_mismatch() {
+    let true_config = ReceiverPipelineConfig::default();
+    let frame = synthetic_frame(&true_config, 0.0);
+    let sat = SatId { constellation: Constellation::Gps, prn: 11 };
+
+    let mut declared_config = true_config.clone();
+    declared_config.sampling_freq_hz = 5_050_000.0;
+    let tracking = TrackingEngine::new(declared_config.clone(), ReceiverRuntime::default());
+    let acquisitions = vec![accepted_acquisition(sat, declared_config.intermediate_freq_hz, 0)];
+
+    let tracks = tracking.track_from_acquisition(&frame, &acquisitions, SignalBand::L1);
+    let epochs = &tracks.first().expect("track").epochs;
+
+    let first_mismatch = epochs
+        .iter()
+        .find(|epoch| epoch.lock_state_reason.as_deref() == Some("sample_rate_mismatch"))
+        .unwrap_or_else(|| panic!("sample rate mismatch must be reported: {epochs:?}"));
+    assert!(first_mismatch.cycle_slip || !first_mismatch.dll_lock || !first_mismatch.pll_lock);
+}

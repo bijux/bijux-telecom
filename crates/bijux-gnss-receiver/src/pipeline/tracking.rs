@@ -16,6 +16,12 @@ use bijux_gnss_signal::api::{adaptive_bandwidth, code_at, discriminators, estima
 use bijux_gnss_signal::api::{generate_ca_code, Prn};
 
 const DLL_CODE_PHASE_CORRECTION_GAIN: f64 = 0.5;
+const SAMPLE_RATE_MISMATCH_MIN_CN0_DBHZ: f64 = 18.0;
+const SAMPLE_RATE_MISMATCH_MIN_PHASE_DRIFT_FRACTION: f64 = 0.0025;
+const SAMPLE_RATE_MISMATCH_MIN_PHASE_DRIFT_SAMPLES: f64 = 12.0;
+const SAMPLE_RATE_MISMATCH_MIN_ACQUISITION_SCORE: f32 = 0.9;
+const SAMPLE_RATE_MISMATCH_WINDOW_EPOCHS: usize = 4;
+const SAMPLE_RATE_MISMATCH_MIN_UNSTABLE_EPOCHS_IN_WINDOW: usize = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelState {
@@ -102,6 +108,13 @@ struct LoopState {
     prev_prompt_phase_cycles: Option<f64>,
     state: ChannelState,
     unlocked_count: u8,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CodePhaseStabilityDiagnostic {
+    first_unstable_epoch_index: usize,
+    max_abs_phase_step_samples: f64,
+    phase_step_limit_samples: f64,
 }
 
 /// Tracking engine with basic E/P/L correlation per epoch.
@@ -338,6 +351,11 @@ impl Tracking {
                         acq.code_phase_samples
                     );
                 }
+                self.apply_sample_rate_mismatch_diagnostic(
+                    acq.sat,
+                    acq.score,
+                    &mut epochs,
+                );
                 let stability_signature = tracking_stability_signature(&epochs);
                 let outcome = if epochs.is_empty() { "not_tracked" } else { "tracked" };
                 self.runtime.trace.record(TraceRecord {
@@ -365,6 +383,50 @@ impl Tracking {
                 }
             })
             .collect()
+    }
+
+    fn apply_sample_rate_mismatch_diagnostic(
+        &self,
+        sat: SatId,
+        acquisition_score: f32,
+        epochs: &mut [TrackEpoch],
+    ) {
+        if acquisition_score < SAMPLE_RATE_MISMATCH_MIN_ACQUISITION_SCORE {
+            return;
+        }
+        let samples_per_code = samples_per_code(
+            self.config.sampling_freq_hz,
+            self.config.code_freq_basis_hz,
+            self.config.code_length,
+        );
+        let Some(diagnostic) = detect_sample_rate_mismatch(epochs, samples_per_code) else {
+            return;
+        };
+
+        let first_epoch = &epochs[diagnostic.first_unstable_epoch_index];
+        self.runtime.trace.record(TraceRecord {
+            name: "tracking_sample_rate_mismatch",
+            fields: vec![
+                ("constellation", format!("{:?}", sat.constellation)),
+                ("prn", sat.prn.to_string()),
+                (
+                    "first_epoch_idx",
+                    first_epoch.epoch.index.to_string(),
+                ),
+                (
+                    "max_abs_phase_step_samples",
+                    format!("{:.6}", diagnostic.max_abs_phase_step_samples),
+                ),
+                (
+                    "phase_step_limit_samples",
+                    format!("{:.6}", diagnostic.phase_step_limit_samples),
+                ),
+            ],
+        });
+
+        for epoch in epochs.iter_mut().skip(diagnostic.first_unstable_epoch_index) {
+            epoch.lock_state_reason = Some("sample_rate_mismatch".to_string());
+        }
     }
 
     fn epochs_in_frame(&self, frame: &SamplesFrame) -> usize {
@@ -709,6 +771,77 @@ fn tracking_stability_signature(epochs: &[TrackEpoch]) -> String {
     rows.join(";")
 }
 
+fn detect_sample_rate_mismatch(
+    epochs: &[TrackEpoch],
+    samples_per_code: usize,
+) -> Option<CodePhaseStabilityDiagnostic> {
+    if epochs.len() <= SAMPLE_RATE_MISMATCH_WINDOW_EPOCHS {
+        return None;
+    }
+
+    let phase_step_limit_samples = SAMPLE_RATE_MISMATCH_MIN_PHASE_DRIFT_SAMPLES.max(
+        samples_per_code as f64 * SAMPLE_RATE_MISMATCH_MIN_PHASE_DRIFT_FRACTION,
+    );
+    let instability_markers = epochs
+        .windows(2)
+        .enumerate()
+        .map(|(index, pair)| {
+            let previous = &pair[0];
+            let current = &pair[1];
+            let phase_step_samples = wrapped_code_phase_delta(
+                current.code_phase_samples.0,
+                previous.code_phase_samples.0,
+                samples_per_code,
+            );
+            let abs_phase_step_samples = phase_step_samples.abs();
+            let unstable = abs_phase_step_samples > phase_step_limit_samples
+                || current.cycle_slip
+                || !current.lock
+                || !current.dll_lock
+                || !current.pll_lock
+                || current.lock_state == ChannelState::Lost.to_string();
+            let supported = current.cn0_dbhz.is_finite()
+                && current.cn0_dbhz >= SAMPLE_RATE_MISMATCH_MIN_CN0_DBHZ;
+            (index + 1, abs_phase_step_samples, unstable, supported)
+        })
+        .collect::<Vec<_>>();
+
+    for window in instability_markers.windows(SAMPLE_RATE_MISMATCH_WINDOW_EPOCHS) {
+        let unstable_count = window
+            .iter()
+            .filter(|(_, _, unstable, supported)| *unstable && *supported)
+            .count();
+        if unstable_count >= SAMPLE_RATE_MISMATCH_MIN_UNSTABLE_EPOCHS_IN_WINDOW {
+            let first_unstable_epoch_index = window
+                .iter()
+                .find(|(_, _, unstable, supported)| *unstable && *supported)
+                .map(|(epoch_index, _, _, _)| *epoch_index)
+                .expect("window contains unstable epoch");
+            let max_abs_phase_step_samples = window
+                .iter()
+                .filter(|(_, _, unstable, supported)| *unstable && *supported)
+                .map(|(_, abs_phase_step_samples, _, _)| *abs_phase_step_samples)
+                .fold(0.0_f64, f64::max);
+            return Some(CodePhaseStabilityDiagnostic {
+                first_unstable_epoch_index,
+                max_abs_phase_step_samples,
+                phase_step_limit_samples,
+            });
+        }
+    }
+
+    None
+}
+
+fn wrapped_code_phase_delta(next_code_phase_samples: f64, previous_code_phase_samples: f64, samples_per_code: usize) -> f64 {
+    let code_period_samples = samples_per_code.max(1) as f64;
+    let mut delta = (next_code_phase_samples - previous_code_phase_samples).rem_euclid(code_period_samples);
+    if delta > code_period_samples / 2.0 {
+        delta -= code_period_samples;
+    }
+    delta
+}
+
 impl Tracking {
     fn quick_reacquire(
         &self,
@@ -739,7 +872,7 @@ impl Tracking {
 #[cfg(test)]
 mod tests {
     use super::{ChannelState, Tracking};
-    use bijux_gnss_core::api::AcqHypothesis;
+    use bijux_gnss_core::api::{AcqHypothesis, Chips, Epoch, SatId, TrackEpoch};
     use serde::Deserialize;
 
     #[test]
@@ -820,6 +953,61 @@ mod tests {
             5_000,
         );
         assert!(next < 250.0, "next={next}");
+    }
+
+    #[test]
+    fn detect_sample_rate_mismatch_flags_persistent_phase_drift() {
+        let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 11 };
+        let epochs = [0.0, 24.0, 48.0, 72.0, 96.0]
+            .into_iter()
+            .enumerate()
+            .map(|(index, code_phase_samples)| TrackEpoch {
+                epoch: Epoch { index: index as u64 },
+                sample_index: (index as u64) * 5_000,
+                sat,
+                code_phase_samples: Chips(code_phase_samples),
+                dll_err: 0.35,
+                cn0_dbhz: 46.0,
+                lock: true,
+                pll_lock: true,
+                dll_lock: true,
+                fll_lock: true,
+                lock_state: ChannelState::Tracking.to_string(),
+                lock_state_reason: Some("locked".to_string()),
+                ..TrackEpoch::default()
+            })
+            .collect::<Vec<_>>();
+
+        let diagnostic =
+            super::detect_sample_rate_mismatch(&epochs, 5_000).expect("diagnostic must exist");
+        assert_eq!(diagnostic.first_unstable_epoch_index, 1);
+        assert!(diagnostic.max_abs_phase_step_samples >= 24.0);
+    }
+
+    #[test]
+    fn detect_sample_rate_mismatch_ignores_small_stable_phase_steps() {
+        let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 11 };
+        let epochs = [0.0, 1.5, 2.0, 1.0, 0.5]
+            .into_iter()
+            .enumerate()
+            .map(|(index, code_phase_samples)| TrackEpoch {
+                epoch: Epoch { index: index as u64 },
+                sample_index: (index as u64) * 5_000,
+                sat,
+                code_phase_samples: Chips(code_phase_samples),
+                dll_err: 0.05,
+                cn0_dbhz: 46.0,
+                lock: true,
+                pll_lock: true,
+                dll_lock: true,
+                fll_lock: true,
+                lock_state: ChannelState::Tracking.to_string(),
+                lock_state_reason: Some("locked".to_string()),
+                ..TrackEpoch::default()
+            })
+            .collect::<Vec<_>>();
+
+        assert!(super::detect_sample_rate_mismatch(&epochs, 5_000).is_none());
     }
 
     #[derive(Debug, Deserialize)]
