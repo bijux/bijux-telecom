@@ -15,6 +15,7 @@ use bijux_gnss_core::api::{
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
+use crate::pipeline::doppler::doppler_hz_from_carrier_hz;
 use crate::pipeline::tracking::TrackingResult;
 use crate::pipeline::{StepReport, StepStats};
 use bijux_gnss_signal::api::samples_per_code;
@@ -126,7 +127,10 @@ fn observations_from_tracking_with_provenance(
             Meters(code_time_s * SPEED_OF_LIGHT_MPS + clock_bias_s * SPEED_OF_LIGHT_MPS);
 
         let prompt_phase_cycles = (epoch.prompt_q as f64).atan2(epoch.prompt_i as f64) / TWO_PI;
-        let doppler_hz = epoch.carrier_hz;
+        let doppler_hz = bijux_gnss_core::api::Hertz(doppler_hz_from_carrier_hz(
+            config.intermediate_freq_hz,
+            epoch.carrier_hz.0,
+        ));
         let dt_s = 0.001;
         let mut cycle_slip = false;
 
