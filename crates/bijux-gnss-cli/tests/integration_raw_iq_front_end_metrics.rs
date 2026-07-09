@@ -53,13 +53,22 @@ fn write_raw_iq_sidecar(path: &Path) {
 }
 
 fn write_raw_iq_sidecar_with_sample_rate(path: &Path, sample_rate_hz: f64) {
-    write_raw_iq_sidecar_with_format_and_sample_rate(path, "iq8", sample_rate_hz);
+    write_raw_iq_sidecar_with_format_sample_rate_and_if(path, "iq8", sample_rate_hz, 0.0);
 }
 
 fn write_raw_iq_sidecar_with_format_and_sample_rate(
     path: &Path,
     format: &str,
     sample_rate_hz: f64,
+) {
+    write_raw_iq_sidecar_with_format_sample_rate_and_if(path, format, sample_rate_hz, 0.0);
+}
+
+fn write_raw_iq_sidecar_with_format_sample_rate_and_if(
+    path: &Path,
+    format: &str,
+    sample_rate_hz: f64,
+    intermediate_freq_hz: f64,
 ) {
     let quantization_bits = match format {
         "iq8" => 8,
@@ -73,7 +82,7 @@ fn write_raw_iq_sidecar_with_format_and_sample_rate(
             r#"
 format = "{format}"
 sample_rate_hz = {sample_rate_hz}
-intermediate_freq_hz = 0.0
+intermediate_freq_hz = {intermediate_freq_hz}
 capture_start_utc = "2026-07-09T00:00:00Z"
 quantization_bits = {quantization_bits}
 "#
@@ -209,6 +218,46 @@ fn write_biased_synthetic_iq8_capture(path: &Path, i_bias: f32, q_bias: f32) {
         raw.push(q as u8);
     }
     fs::write(path, raw).expect("write biased iq8 capture");
+}
+
+fn write_synthetic_iq8_capture_with_signal_if(
+    path: &Path,
+    sample_rate_hz: f64,
+    signal_intermediate_freq_hz: f64,
+) {
+    let mut profile = ReceiverConfig::default();
+    profile.sample_rate_hz = sample_rate_hz;
+    profile.intermediate_freq_hz = signal_intermediate_freq_hz;
+    let pipeline = profile.to_pipeline_config();
+    let frame = generate_l1_ca(
+        &pipeline,
+        SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Gps, prn: 11 },
+            doppler_hz: 0.0,
+            code_phase_chips: 210.0,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 48.0,
+            data_bit_flip: false,
+        },
+        4_277_009_102,
+        1_023.0 / profile.code_freq_basis_hz,
+    );
+    let peak_component = frame
+        .iq
+        .iter()
+        .flat_map(|sample| [sample.re.abs(), sample.im.abs()])
+        .fold(0.0_f32, f32::max)
+        .max(1.0);
+    let amplitude_scale = 0.45 / peak_component;
+
+    let mut raw = Vec::with_capacity(frame.iq.len() * 2);
+    for sample in &frame.iq {
+        let i = ((sample.re * amplitude_scale).clamp(-1.0, 127.0 / 128.0) * 128.0).round() as i8;
+        let q = ((sample.im * amplitude_scale).clamp(-1.0, 127.0 / 128.0) * 128.0).round() as i8;
+        raw.push(i as u8);
+        raw.push(q as u8);
+    }
+    fs::write(path, raw).expect("write wrong-if iq8 capture");
 }
 
 fn write_phase_skewed_cf32_capture(path: &Path, phase_error_deg: f32) {
@@ -590,6 +639,59 @@ fn inspect_reports_clipping_for_signed_16bit_capture() {
     let report = load_json(&out_dir.join("inspect_report.json"));
     let metrics = report.get("front_end_metrics").expect("front_end_metrics present");
     assert_precision_refusal_metrics(metrics, 128, 6.25);
+
+    fs::remove_dir_all(&temp).expect("remove temp dir");
+}
+
+#[test]
+fn acquire_reports_signal_outside_search_range_for_wrong_if_capture() {
+    let temp = temp_dir_path("acquire_wrong_if");
+    fs::create_dir_all(&temp).expect("create temp dir");
+
+    let iq_path = temp.join("wrong-if.iq8");
+    write_synthetic_iq8_capture_with_signal_if(&iq_path, 5_000_000.0, 2_000.0);
+    let sidecar_path = temp.join("wrong-if.sidecar.toml");
+    write_raw_iq_sidecar_with_format_sample_rate_and_if(&sidecar_path, "iq8", 5_000_000.0, 0.0);
+
+    let out_dir = temp.join("acquire-out");
+    let output = run_bijux(
+        &[
+            "gnss",
+            "acquire",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--prn",
+            "11",
+            "--top",
+            "1",
+            "--doppler-search-hz",
+            "1500",
+            "--doppler-step-hz",
+            "250",
+            "--report",
+            "json",
+            "--out",
+            out_dir.to_str().expect("out dir"),
+        ],
+        &repo_root(),
+    );
+
+    assert!(output.status.success(), "acquire failed: {}", String::from_utf8_lossy(&output.stderr));
+    let report = load_json(&out_dir.join("acquire_report.json"));
+    let row = report
+        .get("results")
+        .and_then(Value::as_array)
+        .and_then(|rows| rows.first())
+        .expect("acquire result row");
+    assert_eq!(row.get("hypothesis").and_then(Value::as_str), Some("rejected"));
+    assert!(row
+        .get("selection_reason")
+        .and_then(Value::as_str)
+        .expect("selection_reason")
+        .contains("signal_outside_search_range"));
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
 }
