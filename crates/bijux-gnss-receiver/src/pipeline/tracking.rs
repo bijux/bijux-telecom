@@ -4,7 +4,7 @@ use num_complex::Complex;
 
 use bijux_gnss_core::api::{
     AcqHypothesis, Chips, Constellation, Hertz, SampleClock, SampleTime, SamplesFrame, SatId,
-    Seconds, TrackEpoch, TrackTransition, TrackingAssumptions,
+    Seconds, SignalBand, TrackEpoch, TrackTransition, TrackingAssumptions,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -108,6 +108,27 @@ struct LoopState {
     prev_prompt_phase_cycles: Option<f64>,
     state: ChannelState,
     unlocked_count: u8,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct IncrementalTrackingState {
+    channels: Vec<IncrementalTrackingChannel>,
+}
+
+#[derive(Debug, Clone)]
+struct IncrementalTrackingChannel {
+    sat: SatId,
+    channel_id: u8,
+    acquisition_hypothesis: String,
+    acquisition_score: f32,
+    acquisition_code_phase_samples: usize,
+    acquisition_carrier_hz: f64,
+    acq_to_track_state: String,
+    early_late_spacing_chips: f64,
+    track_enabled: bool,
+    state: LoopState,
+    epochs: Vec<TrackEpoch>,
+    transitions: Vec<TrackTransition>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -275,7 +296,7 @@ impl Tracking {
         &self,
         frame: &SamplesFrame,
         acquisitions: &[bijux_gnss_core::api::AcqResult],
-        band: bijux_gnss_core::api::SignalBand,
+        band: SignalBand,
     ) -> Vec<TrackingResult> {
         let params = self.config.tracking_params(band);
         let max = self.config.channels;
@@ -438,7 +459,6 @@ impl Tracking {
         (frame.len() / samples_per_code).max(1)
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn track_epochs(
         &self,
         frame: &SamplesFrame,
@@ -449,12 +469,6 @@ impl Tracking {
         early_late_spacing_chips: f64,
         epochs: usize,
     ) -> (Vec<TrackEpoch>, Vec<TrackTransition>) {
-        let samples_per_code = samples_per_code(
-            self.config.sampling_freq_hz,
-            self.config.code_freq_basis_hz,
-            self.config.code_length,
-        );
-        let samples_per_chip = samples_per_code as f64 / self.config.code_length as f64;
         let mut state = LoopState {
             carrier_hz,
             code_rate_hz: self.config.code_freq_basis_hz,
@@ -467,6 +481,163 @@ impl Tracking {
 
         let mut out = Vec::new();
         let mut transitions = Vec::new();
+        self.append_tracked_epochs(
+            frame,
+            channel_id,
+            sat,
+            early_late_spacing_chips,
+            epochs,
+            &mut state,
+            &mut out,
+            &mut transitions,
+        );
+        (out, transitions)
+    }
+
+    pub(crate) fn begin_incremental_tracking(
+        &self,
+        acquisitions: &[bijux_gnss_core::api::AcqResult],
+        band: SignalBand,
+    ) -> IncrementalTrackingState {
+        let params = self.config.tracking_params(band);
+        let channels = acquisitions
+            .iter()
+            .take(self.config.channels.max(1))
+            .enumerate()
+            .map(|(channel_idx, acq)| {
+                let channel_id = channel_idx as u8;
+                let acquisition_hypothesis = acq.hypothesis.to_string();
+                let acq_to_track_state = acq_to_track_state(&acq.hypothesis).to_string();
+                self.runtime.trace.record(TraceRecord {
+                    name: "tracking_sat_start",
+                    fields: vec![
+                        ("constellation", format!("{:?}", acq.sat.constellation)),
+                        ("prn", acq.sat.prn.to_string()),
+                        ("hypothesis", acquisition_hypothesis.clone()),
+                        ("to_track", acq_to_track_state.clone()),
+                    ],
+                });
+                IncrementalTrackingChannel {
+                    sat: acq.sat,
+                    channel_id,
+                    acquisition_hypothesis,
+                    acquisition_score: acq.score,
+                    acquisition_code_phase_samples: acq.code_phase_samples,
+                    acquisition_carrier_hz: acq.carrier_hz.0,
+                    acq_to_track_state,
+                    early_late_spacing_chips: params.early_late_spacing_chips,
+                    track_enabled: matches!(
+                        acq.hypothesis,
+                        AcqHypothesis::Accepted | AcqHypothesis::Ambiguous
+                    ),
+                    state: LoopState {
+                        carrier_hz: acq.carrier_hz.0,
+                        code_rate_hz: self.config.code_freq_basis_hz,
+                        code_phase_samples: acq.code_phase_samples as f64,
+                        prev_prompt: None,
+                        prev_prompt_phase_cycles: None,
+                        state: ChannelState::Acquired,
+                        unlocked_count: 0,
+                    },
+                    epochs: Vec::new(),
+                    transitions: Vec::new(),
+                }
+            })
+            .collect();
+        IncrementalTrackingState { channels }
+    }
+
+    pub(crate) fn track_incremental_frame(
+        &self,
+        tracking: &mut IncrementalTrackingState,
+        frame: &SamplesFrame,
+    ) {
+        for channel in &mut tracking.channels {
+            if !channel.track_enabled {
+                continue;
+            }
+            self.append_tracked_epochs(
+                frame,
+                channel.channel_id,
+                channel.sat,
+                channel.early_late_spacing_chips,
+                self.epochs_in_frame(frame),
+                &mut channel.state,
+                &mut channel.epochs,
+                &mut channel.transitions,
+            );
+        }
+    }
+
+    pub(crate) fn finish_incremental_tracking(
+        &self,
+        tracking: IncrementalTrackingState,
+    ) -> Vec<TrackingResult> {
+        tracking
+            .channels
+            .into_iter()
+            .map(|mut channel| {
+                for epoch in &mut channel.epochs {
+                    epoch.tracking_provenance = format!(
+                        "acq_hypothesis={} acq_score={:.6} acq_carrier_hz={:.3} acq_code_phase_samples={}",
+                        channel.acquisition_hypothesis,
+                        channel.acquisition_score,
+                        channel.acquisition_carrier_hz,
+                        channel.acquisition_code_phase_samples
+                    );
+                }
+                self.apply_sample_rate_mismatch_diagnostic(
+                    channel.sat,
+                    channel.acquisition_score,
+                    &mut channel.epochs,
+                );
+                let stability_signature = tracking_stability_signature(&channel.epochs);
+                let outcome = if channel.epochs.is_empty() { "not_tracked" } else { "tracked" };
+                self.runtime.trace.record(TraceRecord {
+                    name: "tracking_sat_done",
+                    fields: vec![
+                        ("constellation", format!("{:?}", channel.sat.constellation)),
+                        ("prn", channel.sat.prn.to_string()),
+                        ("outcome", outcome.to_string()),
+                        ("hypothesis", channel.acquisition_hypothesis.clone()),
+                        ("epochs", channel.epochs.len().to_string()),
+                        ("stability_signature", stability_signature),
+                    ],
+                });
+                TrackingResult {
+                    sat: channel.sat,
+                    carrier_hz: channel.acquisition_carrier_hz,
+                    code_phase_samples: channel.acquisition_code_phase_samples as f64,
+                    acquisition_hypothesis: channel.acquisition_hypothesis,
+                    acquisition_score: channel.acquisition_score,
+                    acquisition_code_phase_samples: channel.acquisition_code_phase_samples,
+                    acquisition_carrier_hz: channel.acquisition_carrier_hz,
+                    acq_to_track_state: channel.acq_to_track_state,
+                    epochs: channel.epochs,
+                    transitions: channel.transitions,
+                }
+            })
+            .collect()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn append_tracked_epochs(
+        &self,
+        frame: &SamplesFrame,
+        channel_id: u8,
+        sat: SatId,
+        early_late_spacing_chips: f64,
+        epochs: usize,
+        state: &mut LoopState,
+        out: &mut Vec<TrackEpoch>,
+        transitions: &mut Vec<TrackTransition>,
+    ) {
+        let samples_per_code = samples_per_code(
+            self.config.sampling_freq_hz,
+            self.config.code_freq_basis_hz,
+            self.config.code_length,
+        );
+        let samples_per_chip = samples_per_code as f64 / self.config.code_length as f64;
         for epoch_idx in 0..epochs {
             let alloc_before = crate::engine::alloc::allocation_count();
             let start = epoch_idx * samples_per_code;
@@ -622,7 +793,6 @@ impl Tracking {
                 ..track_epoch
             });
         }
-        (out, transitions)
     }
 }
 
@@ -872,7 +1042,7 @@ impl Tracking {
 #[cfg(test)]
 mod tests {
     use super::{ChannelState, Tracking};
-    use bijux_gnss_core::api::{AcqHypothesis, Chips, Epoch, SatId, TrackEpoch};
+    use bijux_gnss_core::api::{AcqHypothesis, Chips, Epoch, SampleTime, SamplesFrame, SatId, Seconds, TrackEpoch};
     use serde::Deserialize;
 
     #[test]
@@ -1010,6 +1180,94 @@ mod tests {
         assert!(super::detect_sample_rate_mismatch(&epochs, 5_000).is_none());
     }
 
+    #[test]
+    fn incremental_tracking_matches_single_frame_tracking() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig {
+            sampling_freq_hz: 1_023_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            channels: 4,
+            ..crate::engine::receiver_config::ReceiverPipelineConfig::default()
+        };
+        let runtime = crate::engine::runtime::ReceiverRuntime::default();
+        let tracking = Tracking::new(config.clone(), runtime.clone());
+        let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 3 };
+        let duration_s = 0.012;
+        let frame = crate::sim::synthetic::generate_l1_ca(
+            &config,
+            crate::sim::synthetic::SyntheticSignalParams {
+                sat,
+                doppler_hz: 1_000.0,
+                code_phase_chips: 10.0,
+                carrier_phase_rad: 0.0,
+                cn0_db_hz: 48.0,
+                data_bit_flip: false,
+            },
+            7,
+            duration_s,
+        );
+        let acquisition = bijux_gnss_core::api::AcqResult {
+            sat,
+            carrier_hz: bijux_gnss_core::api::Hertz(1_000.0),
+            code_phase_samples: 10,
+            peak: 10.0,
+            second_peak: 2.0,
+            mean: 1.0,
+            peak_mean_ratio: 10.0,
+            peak_second_ratio: 5.0,
+            cn0_proxy: 48.0,
+            score: 0.98,
+            hypothesis: AcqHypothesis::Accepted,
+            assumptions: None,
+            evidence: Vec::new(),
+            threshold_provenance: None,
+            explain_selection_reason: None,
+        };
+
+        let single = tracking.track_from_acquisition(
+            &frame,
+            &[acquisition.clone()],
+            bijux_gnss_core::api::SignalBand::L1,
+        );
+        let mut incremental =
+            tracking.begin_incremental_tracking(&[acquisition], bijux_gnss_core::api::SignalBand::L1);
+        for chunk in split_frame(&frame, 4 * 1_023) {
+            tracking.track_incremental_frame(&mut incremental, &chunk);
+        }
+        let streamed = tracking.finish_incremental_tracking(incremental);
+
+        assert_eq!(single.len(), streamed.len());
+        assert_eq!(single[0].epochs.len(), streamed[0].epochs.len());
+        let single_keys = single[0]
+            .epochs
+            .iter()
+            .map(|epoch| {
+                (
+                    epoch.epoch.index,
+                    epoch.sample_index,
+                    epoch.lock,
+                    epoch.lock_state.clone(),
+                    epoch.lock_state_reason.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let streamed_keys = streamed[0]
+            .epochs
+            .iter()
+            .map(|epoch| {
+                (
+                    epoch.epoch.index,
+                    epoch.sample_index,
+                    epoch.lock,
+                    epoch.lock_state.clone(),
+                    epoch.lock_state_reason.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(single_keys, streamed_keys);
+    }
+
     #[derive(Debug, Deserialize)]
     struct TrackingEventFixture {
         lock: bool,
@@ -1104,6 +1362,24 @@ mod tests {
                 )),
             ),
         ]
+    }
+
+    fn split_frame(frame: &SamplesFrame, chunk_len: usize) -> Vec<SamplesFrame> {
+        let mut chunks = Vec::new();
+        let mut start = 0usize;
+        while start < frame.len() {
+            let end = (start + chunk_len.max(1)).min(frame.len());
+            chunks.push(SamplesFrame::new(
+                SampleTime {
+                    sample_index: frame.t0.sample_index + start as u64,
+                    sample_rate_hz: frame.t0.sample_rate_hz,
+                },
+                Seconds(frame.dt_s.0),
+                frame.iq[start..end].to_vec(),
+            ));
+            start = end;
+        }
+        chunks
     }
 
     fn load_tracking_fixture(raw: &str, fixture_name: &str) -> TrackingScenarioFixture {
