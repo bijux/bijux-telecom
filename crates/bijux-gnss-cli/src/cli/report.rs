@@ -68,9 +68,23 @@ struct InspectReport {
     intermediate_freq_hz: f64,
     capture_start_utc: String,
     total_samples: usize,
+    usable_duration_s: f64,
     front_end_metrics: bijux_gnss_infra::api::signal::IqFrontEndMetrics,
     noise_floor_db: f64,
     power_histogram: Vec<u64>,
+    signal_quality: RawIqSignalQualityReport,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct RawIqSignalQualityReport {
+    format: String,
+    sample_rate_hz: f64,
+    intermediate_freq_hz: f64,
+    capture_start_utc: String,
+    analyzed_samples: usize,
+    usable_duration_s: f64,
+    estimated_noise_floor_db: f64,
+    front_end_metrics: bijux_gnss_infra::api::signal::IqFrontEndMetrics,
 }
 
 #[derive(Debug, Serialize)]

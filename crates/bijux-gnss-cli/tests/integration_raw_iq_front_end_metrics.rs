@@ -472,6 +472,23 @@ fn inspect_reports_front_end_metrics_from_requested_samples() {
     let metrics = report.get("front_end_metrics").expect("front_end_metrics present");
     assert_dc_only_metrics(metrics, 4);
     assert_eq!(report.get("total_samples").and_then(Value::as_u64), Some(4));
+    let usable_duration_s =
+        report.get("usable_duration_s").and_then(Value::as_f64).expect("usable_duration_s");
+    assert!((usable_duration_s - 4.0 / 5_000_000.0).abs() <= 1e-12, "usable_duration_s={usable_duration_s}");
+    let signal_quality = report.get("signal_quality").expect("signal_quality present");
+    assert_eq!(signal_quality.get("format").and_then(Value::as_str), Some("Iq8"));
+    assert_eq!(signal_quality.get("sample_rate_hz").and_then(Value::as_f64), Some(5_000_000.0));
+    assert_eq!(
+        signal_quality.get("intermediate_freq_hz").and_then(Value::as_f64),
+        Some(0.0)
+    );
+    assert_eq!(signal_quality.get("analyzed_samples").and_then(Value::as_u64), Some(4));
+    assert_eq!(
+        signal_quality.get("front_end_metrics"),
+        report.get("front_end_metrics")
+    );
+    let standalone_signal_quality = load_json(&out_dir.join("signal_quality_report.json"));
+    assert_eq!(standalone_signal_quality, *signal_quality);
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
 }

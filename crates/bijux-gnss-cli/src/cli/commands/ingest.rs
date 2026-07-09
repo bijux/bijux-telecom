@@ -151,6 +151,7 @@ fn handle_inspect(command: GnssCommand) -> Result<()> {
                         ReportFormat::Table => print_inspect_table(&report),
                         ReportFormat::Json => emit_report(&common, "inspect", &report)?,
                     }
+                    write_signal_quality_report(&common, "inspect", &report.signal_quality)?;
                     write_manifest(
                         &common,
                         "inspect",

@@ -33,26 +33,22 @@ fn inspect_dataset(
     metadata: &RawIqMetadata,
     max_samples: usize,
 ) -> Result<InspectReport> {
+    let signal_quality = measure_signal_quality_from_raw_iq(path, metadata, max_samples)?;
     let mut source = FileSamples::open_raw_iq(path, metadata.clone())
         .with_context(|| format!("failed to open {}", path.display()))?;
     let mut total_iq = 0usize;
 
-    let mut front_end_analyzer =
-        bijux_gnss_infra::api::signal::IqFrontEndAnalyzer::for_raw_iq_metadata(metadata);
     let mut power_hist = vec![0u64; 8];
-    let mut power_sum = 0.0f64;
 
     while max_samples == 0 || total_iq < max_samples {
         let frame_len = if max_samples == 0 { 4096 } else { (max_samples - total_iq).min(4096) };
         let Some(frame) = source.next_frame(frame_len)? else {
             break;
         };
-        front_end_analyzer.update(&frame.iq);
         for sample in &frame.iq {
             let i = sample.re as f64;
             let q = sample.im as f64;
             let power = i * i + q * q;
-            power_sum += power;
             let bin = ((power.sqrt() / 0.25).min(7.0)) as usize;
             power_hist[bin] += 1;
             total_iq += 1;
@@ -62,18 +58,17 @@ fn inspect_dataset(
         }
     }
 
-    let mean_power = power_sum / total_iq.max(1) as f64;
-    let noise_floor_db = 10.0 * mean_power.max(1e-9).log10();
-
     Ok(InspectReport {
         format: format!("{:?}", metadata.format),
         sample_rate_hz: metadata.sample_rate_hz,
         intermediate_freq_hz: metadata.intermediate_freq_hz,
         capture_start_utc: metadata.capture_start_utc.clone(),
         total_samples: total_iq,
-        front_end_metrics: front_end_analyzer.finish(),
-        noise_floor_db,
+        usable_duration_s: signal_quality.usable_duration_s,
+        front_end_metrics: signal_quality.front_end_metrics.clone(),
+        noise_floor_db: signal_quality.estimated_noise_floor_db,
         power_histogram: power_hist,
+        signal_quality,
     })
 }
 fn runtime_config_from_env(
@@ -208,15 +203,16 @@ fn print_synthetic_iq_validation_table(report: &SyntheticIqValidationReport) {
 }
 fn print_inspect_table(report: &InspectReport) {
     println!(
-        "Format\tSampleRate(Hz)\tIF(Hz)\tCaptureStartUtc\tSamples\tIMean\tQMean\tIPower\tQPower\tIqPowerRatio\tPowerWarning\tQuadratureErrorDeg\tQuadratureWarning\tClippingPct\tClippingWarning\tCenteredRms\tZeroSignalDetected\tZeroSignalReason\tPrecisionClaimsAllowed\tPrecisionRefusal\tRms\tDcImbalance\tNoiseFloor(dB)"
+        "Format\tSampleRate(Hz)\tIF(Hz)\tCaptureStartUtc\tSamples\tUsableDuration(s)\tIMean\tQMean\tIPower\tQPower\tIqPowerRatio\tPowerWarning\tQuadratureErrorDeg\tQuadratureWarning\tClippingPct\tClippingWarning\tCenteredRms\tZeroSignalDetected\tZeroSignalReason\tPrecisionClaimsAllowed\tPrecisionRefusal\tRms\tDcImbalance\tNoiseFloor(dB)"
     );
     println!(
-        "{}\t{:.1}\t{:.1}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{:.6e}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.2}",
+        "{}\t{:.1}\t{:.1}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{:.6e}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.2}",
         report.format,
         report.sample_rate_hz,
         report.intermediate_freq_hz,
         report.capture_start_utc,
         report.total_samples,
+        report.usable_duration_s,
         report.front_end_metrics.i_mean,
         report.front_end_metrics.q_mean,
         report.front_end_metrics.i_power,
