@@ -44,6 +44,16 @@ Manifest: artifacts/basic_ingest/manifest.json
 `demo_synthetic` is a deterministic raw IQ ingest fixture. It proves explicit format, sample-rate,
 IF, and capture-time handling; it is not a satellite-truth positioning dataset.
 
+For a deterministic synthetic capture with machine-readable satellite truth, export the reference
+scenario bundle:
+
+```bash
+bijux gnss export-synthetic-iq --scenario configs/scenarios/synthetic_iq_reference.toml --report json --out artifacts/synthetic_iq_reference
+```
+
+That command writes a raw IQ capture, a sidecar, a copied scenario file, and a truth JSON artifact
+validated by `schemas/synthetic_iq_truth.schema.json`.
+
 For a public real-RF acquisition example, use the registered live-sky excerpt and its tuned
 profile:
 

@@ -100,6 +100,21 @@ Every command writes `manifest.json` into the run output directory. The manifest
 - dataset metadata when a registered dataset is used, including raw IQ format and capture timestamp
 - front-end provenance (`sample_rate_hz`, `intermediate_freq_hz`, `quantization_bits`, normalization/calibration source)
 
+## Synthetic IQ Export Bundle
+
+The synthetic IQ export workflow emits a deterministic raw-capture bundle for a scenario:
+- command: `bijux gnss export-synthetic-iq --scenario <SCENARIO>`
+- files:
+  - `artifacts/<scenario_id>.iq16`
+  - `artifacts/<scenario_id>.sidecar.toml`
+  - `artifacts/<scenario_id>.truth.json`
+  - `artifacts/<scenario_id>.scenario.toml`
+- truth schema: `schemas/synthetic_iq_truth.schema.json`
+
+The truth artifact records the emitted PRNs, Doppler, code phase, C/N0, and navigation-bit state
+for each synthetic satellite. Given the same scenario, seed, and capture start time, the emitted
+bundle is deterministic.
+
 ## Validation Evidence Bundle
 
 Validation workflows emit an evidence bundle:

@@ -46,3 +46,18 @@ bijux gnss acquire --dataset gps_l1_2022_03_27_excerpt --config configs/receiver
 This dataset is a redistributed excerpt from Daniel Estévez's public GPS L1 recording on Zenodo.
 Use `datasets/recorded/gps_l1_2022_03_27_excerpt.provenance.md` for source, license, and local
 excerpt details.
+
+## 7) Export a Deterministic Synthetic Truth Bundle
+
+```bash
+bijux gnss export-synthetic-iq --scenario configs/scenarios/synthetic_iq_reference.toml --report json --out artifacts/synthetic_iq_reference
+```
+
+This command emits:
+- `artifacts/synthetic_iq_reference/artifacts/synthetic_iq_reference.iq16`
+- `artifacts/synthetic_iq_reference/artifacts/synthetic_iq_reference.sidecar.toml`
+- `artifacts/synthetic_iq_reference/artifacts/synthetic_iq_reference.truth.json`
+- `artifacts/synthetic_iq_reference/artifacts/synthetic_iq_reference.scenario.toml`
+
+Use this bundle when you need deterministic raw IQ plus explicit PRN, Doppler, code phase, C/N0,
+and navigation-bit truth for downstream ingest and acquisition checks.

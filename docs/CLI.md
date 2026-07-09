@@ -26,26 +26,31 @@ GNSS receiver commands for operation, validation, diagnostics, and replay
 Usage: bijux gnss <COMMAND>
 
 Commands:
-  ca-code             Generate GPS L1 C/A code for a PRN
-  acquire             Acquire satellites from a raw IQ file with explicit metadata
-  track               Track satellites from a raw IQ file with explicit metadata
-  nav                 Navigation-related commands
-  pvt                 Solve PVT from a dataset
-  inspect             Inspect raw IQ dataset statistics from explicit metadata
-  rtk                 RTK alignment and SD/DD artifacts
-  experiment          Run parameter sweeps over synthetic scenarios
-  artifact            Artifact validation and conversion
-  validate-config     Validate a receiver profile configuration file
-  validate-artifacts  Validate observation or ephemeris artifacts against schemas
-  diagnostics         Diagnostics and audit workflows for receiver evidence
-  validate-sidecar    Validate sidecar file against schema
-  config-schema       Write JSON schema for receiver config
-  config-upgrade      Upgrade a receiver config to the current schema version
-  run                 Run a streaming pipeline with optional replay rate
-  rinex               Write RINEX-like observation and navigation files
-  doctor              Print receiver runtime readiness diagnostics
-  validate            Run a full validation pipeline and emit validation_report.json
-  help                Print this message or the help of the given subcommand(s)
+  ca-code              Generate GPS L1 C/A code for a PRN
+  acquire              Acquire satellites from a raw IQ file with explicit metadata
+  track                Track satellites from a raw IQ file with explicit metadata
+  nav                  Navigation-related commands
+  pvt                  Solve PVT from a dataset
+  inspect              Inspect raw IQ dataset statistics from explicit metadata
+  rtk                  RTK alignment and SD/DD artifacts
+  experiment           Run parameter sweeps over synthetic scenarios
+  export-synthetic-iq  Export a deterministic synthetic raw IQ bundle and matching truth artifact
+  artifact             Artifact validation and conversion
+  validate-config      Validate a receiver profile configuration file
+  config               Configuration utilities
+  validate-artifacts   Validate observation or ephemeris artifacts against schemas
+  diagnostics          Diagnostics and audit workflows for receiver evidence
+  validate-sidecar     Validate sidecar file against schema
+  analyze              Analyze a GNSS run directory and emit evidence-oriented summaries
+  diff                 Compare two GNSS run directories for quality deltas
+  config-schema        Write JSON schema for receiver config
+  config-upgrade       Upgrade a receiver config to the current schema version
+  run                  Run a streaming pipeline with optional replay rate
+  rinex                Write RINEX-like observation and navigation files
+  doctor               Print receiver runtime readiness diagnostics
+  validate             Run a full validation pipeline and emit validation_report.json
+  validate-reference   Validate a run directory against a reference trajectory
+  help                 Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help  Print help
@@ -61,6 +66,11 @@ bijux gnss inspect --dataset demo_synthetic --output artifacts/basic_ingest
 ### Real RF Acquisition
 ```bash
 bijux gnss acquire --dataset gps_l1_2022_03_27_excerpt --config configs/receiver_live_sky_gps_l1.toml --prn 11,12,25,31,32 --report json --output artifacts/live_sky_acquire
+```
+
+### Export Synthetic IQ Truth Bundle
+```bash
+bijux gnss export-synthetic-iq --scenario configs/scenarios/synthetic_iq_reference.toml --report json --out artifacts/synthetic_iq_reference
 ```
 
 ### Validate Artifacts
