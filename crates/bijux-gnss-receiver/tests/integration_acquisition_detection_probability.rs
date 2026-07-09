@@ -88,6 +88,36 @@ fn acquisition_detection_rate_reports_doppler_sensitivity() {
     );
 }
 
+#[test]
+fn acquisition_detection_rate_reports_integration_length_sensitivity() {
+    let config = acquisition_profile();
+    let report = measure_truth_guided_acquisition_detection_rate(
+        &config,
+        &[
+            detection_rate_case(30.0, 250.0, 1, 1),
+            detection_rate_case(30.0, 250.0, 2, 1),
+            detection_rate_case(30.0, 250.0, 5, 1),
+            detection_rate_case(30.0, 250.0, 10, 1),
+            detection_rate_case(30.0, 250.0, 20, 1),
+        ],
+        &trial_seeds(0x2407_1992, DETECTION_RATE_TRIAL_COUNT),
+        "acquisition_detection_rate_integration_length",
+        2,
+        1,
+    );
+
+    assert_eq!(report.points.len(), 5);
+    assert_eq!(
+        report.points.iter().map(|point| point.coherent_ms).collect::<Vec<_>>(),
+        vec![1, 2, 5, 10, 20]
+    );
+    assert!(
+        report.points.last().expect("longest integration").detection_probability
+            > report.points.first().expect("shortest integration").detection_probability,
+        "expected longer coherent integration to improve detection probability: {report:?}"
+    );
+}
+
 fn acquisition_profile() -> ReceiverPipelineConfig {
     ReceiverPipelineConfig {
         sampling_freq_hz: 4_092_000.0,
