@@ -1,0 +1,69 @@
+#![allow(missing_docs)]
+
+use bijux_gnss_core::api::{Constellation, SatId};
+use bijux_gnss_receiver::api::{
+    sim::{
+        measure_truth_guided_acquisition_detection_rate, SyntheticAcquisitionDetectionRateCase,
+        SyntheticSignalParams,
+    },
+    ReceiverPipelineConfig,
+};
+
+const DETECTION_RATE_TRIAL_COUNT: usize = 24;
+
+#[test]
+fn acquisition_detection_rate_report_runs_multiple_measurement_points() {
+    let config = acquisition_profile();
+    let report = measure_truth_guided_acquisition_detection_rate(
+        &config,
+        &[detection_rate_case(30.0, 250.0, 1, 1), detection_rate_case(34.0, 250.0, 5, 1)],
+        &trial_seeds(0x2407_1989, DETECTION_RATE_TRIAL_COUNT),
+        "acquisition_detection_rate_smoke",
+        2,
+        1,
+    );
+
+    assert_eq!(report.points.len(), 2);
+    assert_eq!(report.points[0].trial_count, DETECTION_RATE_TRIAL_COUNT);
+    assert_eq!(report.points[1].trial_count, DETECTION_RATE_TRIAL_COUNT);
+    assert_eq!(report.points[0].doppler_hz, 250.0);
+    assert_eq!(report.points[1].coherent_ms, 5);
+}
+
+fn acquisition_profile() -> ReceiverPipelineConfig {
+    ReceiverPipelineConfig {
+        sampling_freq_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 1_023_000.0,
+        code_length: 1023,
+        acquisition_doppler_search_hz: 1_500,
+        acquisition_doppler_step_hz: 250,
+        ..ReceiverPipelineConfig::default()
+    }
+}
+
+fn detection_rate_case(
+    cn0_db_hz: f32,
+    doppler_hz: f64,
+    coherent_ms: u32,
+    noncoherent: u32,
+) -> SyntheticAcquisitionDetectionRateCase {
+    SyntheticAcquisitionDetectionRateCase {
+        signal: SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Gps, prn: 7 },
+            doppler_hz,
+            code_phase_chips: 300.0,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz,
+            data_bit_flip: false,
+        },
+        coherent_ms,
+        noncoherent,
+    }
+}
+
+fn trial_seeds(base_seed: u64, count: usize) -> Vec<u64> {
+    (0..count)
+        .map(|index| base_seed.wrapping_add((index as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15)))
+        .collect()
+}
