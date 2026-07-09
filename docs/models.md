@@ -4,6 +4,7 @@
 - GPS L1 C/A code only.
 - GPS L1 C/A PRNs 1-32 are validated against the published GPS SPS Table 2-1 tap pairs, delays, and first-ten-chip references.
 - GPS L1 C/A period length is fixed at 1023 chips and the generated sequence repeats exactly on that boundary for PRNs 1-32.
+- GPS L1 C/A periodic autocorrelation for PRNs 1-32 is validated with a 1023-chip main peak and non-zero sidelobes limited to `-65`, `-1`, and `63`, with maximum absolute sidelobe magnitude `65`.
 - Ideal spreading codes (±1) without front-end distortions.
 - Additive noise approximated in tracking metrics.
 

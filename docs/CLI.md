@@ -79,6 +79,13 @@ bijux gnss ca-code --prn 1 --start-chip 1022 --count 4 --with-reference
 
 This prints the published G2 tap pair, G2 delay, period length, wrapped chip offset, first-10-chip octal reference, and the requested chip window across the period boundary.
 
+### Inspect C/A Autocorrelation Summary
+```bash
+bijux gnss ca-code --prn 1 --count 4 --with-autocorrelation
+```
+
+This prints the validated periodic autocorrelation peak, the maximum absolute non-zero sidelobe magnitude, the distinct non-zero sidelobe values, and the requested chip window.
+
 ### Export Synthetic IQ Truth Bundle
 ```bash
 bijux gnss export-synthetic-iq --scenario configs/scenarios/synthetic_iq_reference.toml --report json --out artifacts/synthetic_iq_reference
