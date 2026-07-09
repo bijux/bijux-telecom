@@ -1,10 +1,13 @@
 #![allow(missing_docs)]
-use bijux_gnss_core::api::{Constellation, SatId};
+use std::f64::consts::TAU;
+
+use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds};
 use bijux_gnss_receiver::api::{
     sim::{generate_l1_ca, SyntheticSignalParams},
-    AcquisitionEngine, ReceiverPipelineConfig,
+    AcquisitionEngine, ReceiverPipelineConfig, TrackingEngine,
 };
-use bijux_gnss_signal::api::{sample_ca_code, samples_per_code, Prn};
+use bijux_gnss_signal::api::{advance_code_phase_seconds, sample_ca_code, samples_per_code, Prn};
+use num_complex::Complex;
 
 #[test]
 fn synthetic_correlator_peak_ratio() {
@@ -139,6 +142,75 @@ fn synthetic_supports_multi_constellation_mock() {
     );
 }
 
+#[test]
+fn tracking_correlator_preserves_prompt_phase_across_sixty_second_offset() {
+    let config = ReceiverPipelineConfig {
+        sampling_freq_hz: 4_000_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 1_023_000.0,
+        code_length: 1023,
+        channels: 12,
+        ..ReceiverPipelineConfig::default()
+    };
+    let samples_per_code =
+        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
+    let sat = SatId { constellation: Constellation::Gps, prn: 9 };
+    let code_phase_chips = 200.375;
+    let carrier_hz = 1_234.625;
+    let carrier_phase_rad = 0.4;
+    let tracking =
+        TrackingEngine::new(config.clone(), bijux_gnss_receiver::api::ReceiverRuntime::default());
+
+    let first_frame = synthetic_epoch_frame(
+        &config,
+        sat.prn,
+        0,
+        code_phase_chips,
+        carrier_hz,
+        carrier_phase_rad,
+        samples_per_code,
+    );
+    let offset_sample_index = (60.0 * config.sampling_freq_hz) as u64;
+    let offset_code_phase_chips = advance_code_phase_seconds(
+        code_phase_chips,
+        config.code_freq_basis_hz,
+        60.0,
+        config.code_length,
+    )
+    .expect("valid sixty-second code phase");
+    let offset_frame = synthetic_epoch_frame(
+        &config,
+        sat.prn,
+        offset_sample_index,
+        offset_code_phase_chips,
+        carrier_hz,
+        carrier_phase_rad,
+        samples_per_code,
+    );
+    let code_phase_samples = code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
+    let offset_code_phase_samples =
+        offset_code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
+
+    let first = tracking.correlate_epoch(&first_frame, sat, carrier_hz, code_phase_samples, 0.5);
+    let offset =
+        tracking.correlate_epoch(&offset_frame, sat, carrier_hz, offset_code_phase_samples, 0.5);
+
+    let first_phase = first.prompt.arg();
+    let offset_phase = offset.prompt.arg();
+    let phase_delta = wrapped_phase_delta(first_phase, offset_phase);
+    assert!(
+        phase_delta.abs() <= 1e-3,
+        "prompt phase drifted across sixty seconds: first={first_phase}, offset={offset_phase}, delta={phase_delta}"
+    );
+    let amplitude_delta = (first.prompt.norm() - offset.prompt.norm()).abs();
+    assert!(
+        amplitude_delta <= 1e-3,
+        "prompt magnitude drifted across sixty seconds: first={}, offset={}, delta={amplitude_delta}",
+        first.prompt.norm(),
+        offset.prompt.norm()
+    );
+}
+
 fn correlate(samples: &[num_complex::Complex<f32>], code: &[f32]) -> f32 {
     let mut acc = num_complex::Complex::new(0.0f32, 0.0f32);
     for (s, &c) in samples.iter().zip(code.iter()) {
@@ -170,4 +242,50 @@ fn generate_local_code(
         samples_per_code,
     )
     .expect("valid local code sampling")
+}
+
+fn synthetic_epoch_frame(
+    config: &ReceiverPipelineConfig,
+    prn: u8,
+    start_sample_index: u64,
+    code_phase_chips: f64,
+    carrier_hz: f64,
+    carrier_phase_rad: f64,
+    sample_count: usize,
+) -> SamplesFrame {
+    let local_code = sample_ca_code(
+        Prn(prn),
+        config.sampling_freq_hz,
+        config.code_freq_basis_hz,
+        code_phase_chips,
+        sample_count,
+    )
+    .expect("valid synthetic local code");
+    let iq = local_code
+        .into_iter()
+        .enumerate()
+        .map(|(offset, code)| {
+            let sample_index = start_sample_index + offset as u64;
+            let phase_rad = (carrier_phase_rad
+                + TAU * carrier_hz * (sample_index as f64 / config.sampling_freq_hz))
+                .rem_euclid(TAU);
+            Complex::new(phase_rad.cos() as f32, phase_rad.sin() as f32) * code
+        })
+        .collect::<Vec<_>>();
+    SamplesFrame::new(
+        SampleTime { sample_index: start_sample_index, sample_rate_hz: config.sampling_freq_hz },
+        Seconds(1.0 / config.sampling_freq_hz),
+        iq,
+    )
+}
+
+fn wrapped_phase_delta(left: f32, right: f32) -> f32 {
+    let mut delta = right - left;
+    while delta > std::f32::consts::PI {
+        delta -= std::f32::consts::TAU;
+    }
+    while delta < -std::f32::consts::PI {
+        delta += std::f32::consts::TAU;
+    }
+    delta
 }
