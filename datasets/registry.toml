@@ -35,3 +35,23 @@ expected_sats = []
 expected_region = "N/A"
 expected_time_utc = "N/A"
 sidecar = "datasets/synthetic/demo_cf32.sidecar.toml"
+
+[[entries]]
+id = "gps_l1_2022_03_27_excerpt"
+path = "datasets/recorded/gps_l1_2022_03_27_excerpt.iq16"
+format = "iq16_le"
+sample_rate_hz = 4_000_000.0
+intermediate_freq_hz = 0.0
+capture_start_utc = "2022-03-27T11:32:04.2147593125Z"
+expected_sats = [31]
+expected_region = "N/A"
+expected_time_utc = "2022-03-27T11:32:04Z"
+sidecar = "datasets/recorded/gps_l1_2022_03_27_excerpt.sidecar.toml"
+
+[entries.recorded_capture]
+source_url = "https://doi.org/10.5281/zenodo.6394603"
+license = "https://creativecommons.org/licenses/by/4.0/"
+attribution = "Daniel Estévez, Recording of GPS L1 signals, Zenodo DOI 10.5281/zenodo.6394603"
+hardware = "USRP B205mini"
+center_frequency_hz = 1575420000
+recommended_config = "configs/receiver_live_sky_gps_l1.toml"

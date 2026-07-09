@@ -1,0 +1,6 @@
+format = "iq16_le"
+sample_rate_hz = 4000000.0
+intermediate_freq_hz = 0.0
+capture_start_utc = "2022-03-27T11:32:04.2147593125Z"
+quantization_bits = 16
+notes = "Excerpted from Daniel Estevez GPS-L1-2022-03-27 SigMF recording (CC-BY-4.0)"
