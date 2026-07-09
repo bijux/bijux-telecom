@@ -163,12 +163,26 @@ The synthetic IQ validation workflow checks receiver measurements against inject
   - `validate_synthetic_iq_report.json`
   - `manifest.json`
 - purpose: compare measured prompt-power C/N0 against the injected synthetic truth for each
-  tracked satellite and fail when the configured tolerance is exceeded
+  tracked satellite and compare acquisition-reported code phase against clean regenerated truth for
+  each injected satellite
 
 The bundled `synthetic_iq_cn0_reference.toml` scenario is a single-satellite calibration fixture.
 That scope is intentional: it validates C/N0 recovery without overstating multi-satellite
 navigation claims. Long-duration sampled-code phase stability is validated separately against
 the shared 60-second phase model in signal and synthetic receiver tests.
+
+`validate_synthetic_iq_report.json` includes two explicit validation sections:
+- `validation`: truth-guided C/N0 checks
+- `acquisition_code_phase_validation`: truth-guided acquisition code-phase checks
+
+Current defaults:
+- `tolerance_db_hz = 4.0`
+- `acquisition_code_phase_tolerance_samples = 2`
+
+The acquisition code-phase validation regenerates each satellite as a clean single-satellite signal
+from the truth bundle, centers acquisition on the injected carrier, and then checks the wrapped
+sample error of the reported code phase. This keeps the code-phase accuracy check focused on
+acquisition phase recovery rather than Doppler-bin quantization.
 
 ## Validation Evidence Bundle
 

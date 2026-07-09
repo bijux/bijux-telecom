@@ -116,6 +116,13 @@ bijux gnss export-synthetic-iq --scenario configs/scenarios/synthetic_iq_referen
 bijux gnss validate-synthetic-iq --unregistered-dataset --file artifacts/synthetic_iq_cn0_reference/artifacts/synthetic_iq_cn0_reference.iq16 --sidecar artifacts/synthetic_iq_cn0_reference/artifacts/synthetic_iq_cn0_reference.sidecar.toml --truth artifacts/synthetic_iq_cn0_reference/artifacts/synthetic_iq_cn0_reference.truth.json --config configs/receiver_low_rate.toml --report json --out artifacts/synthetic_iq_cn0_validation
 ```
 
+This workflow validates two truth-guided properties from the same bundle:
+- prompt-power C/N0 against the injected truth, with a default tolerance of `4.0 dB-Hz`
+- acquisition code-phase recovery against clean regenerated truth, with a default tolerance of `2` samples
+
+Use `--tolerance-db-hz` or `--acquisition-code-phase-tolerance-samples` when you need a stricter
+or looser bound for a specific validation run.
+
 ### Validate Artifacts
 ```bash
 bijux gnss artifact validate --file runs/basic_demo/artifacts/obs.jsonl
