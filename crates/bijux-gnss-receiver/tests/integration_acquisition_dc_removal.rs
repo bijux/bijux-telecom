@@ -210,6 +210,12 @@ fn receiver_dc_removal_reports_power_imbalance_diagnostics() {
         }),
         "missing power imbalance warning metric"
     );
+    assert!(
+        values.iter().any(|(name, value)| {
+            name == "front_end_quadrature_error_warning_before_removal" && *value == 0.0
+        }),
+        "missing quadrature warning metric"
+    );
 
     let events = trace.events.lock().expect("trace lock");
     let event = events
@@ -222,6 +228,16 @@ fn receiver_dc_removal_reports_power_imbalance_diagnostics() {
     assert!(
         event.fields.iter().any(|(name, value)| {
             *name == "power_imbalance_warning" && value == "true"
+        })
+    );
+    assert!(
+        event.fields.iter().any(|(name, value)| {
+            *name == "quadrature_error_deg" && !value.is_empty()
+        })
+    );
+    assert!(
+        event.fields.iter().any(|(name, value)| {
+            *name == "quadrature_error_warning" && value == "false"
         })
     );
 }

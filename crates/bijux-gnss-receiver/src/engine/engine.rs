@@ -73,6 +73,16 @@ impl Receiver {
                 name: "front_end_power_imbalance_warning_before_removal",
                 value: if removed.power_imbalance_warning { 1.0 } else { 0.0 },
             });
+            if let Some(quadrature_error_deg) = removed.quadrature_error_deg {
+                runtime.metrics.metric(Metric {
+                    name: "front_end_quadrature_error_deg_before_removal",
+                    value: quadrature_error_deg,
+                });
+            }
+            runtime.metrics.metric(Metric {
+                name: "front_end_quadrature_error_warning_before_removal",
+                value: if removed.quadrature_error_warning { 1.0 } else { 0.0 },
+            });
             runtime.trace.record(TraceRecord {
                 name: "front_end_dc_removal",
                 fields: vec![
@@ -85,6 +95,17 @@ impl Receiver {
                     (
                         "power_imbalance_warning",
                         removed.power_imbalance_warning.to_string(),
+                    ),
+                    (
+                        "quadrature_error_deg",
+                        removed
+                            .quadrature_error_deg
+                            .map(|value| format!("{value:.9}"))
+                            .unwrap_or_else(|| "n/a".to_string()),
+                    ),
+                    (
+                        "quadrature_error_warning",
+                        removed.quadrature_error_warning.to_string(),
                     ),
                     ("rms", format!("{:.9}", removed.rms)),
                     ("dc_imbalance", format!("{:.9}", removed.dc_imbalance)),
