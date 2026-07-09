@@ -58,7 +58,7 @@ fn acquisition_selects_expected_zero_if_doppler_bins() {
             "wrong carrier bin selected for injected doppler {doppler_hz}"
         );
         assert!(
-            (recovered_doppler_hz - doppler_hz).abs() <= 10.0,
+            (recovered_doppler_hz - doppler_hz).abs() <= DOPPLER_BIN_HZ as f64,
             "refined Doppler drifted away from the injected truth: injected={doppler_hz}, recovered={recovered_doppler_hz}"
         );
     }
