@@ -33,3 +33,4 @@ path = "src/main.rs"
 
 [dev-dependencies]
 bijux-gnss-policies.workspace = true
+bijux-gnss-testkit = { path = "../bijux-gnss-testkit", version = "0.1.0" }

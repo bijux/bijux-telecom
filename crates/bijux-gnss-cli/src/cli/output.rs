@@ -641,6 +641,8 @@ mod tests {
         assert_eq!(metrics.q_power, 0.0);
         assert_eq!(metrics.iq_power_ratio, 1.0);
         assert!(!metrics.power_imbalance_warning);
+        assert_eq!(metrics.quadrature_error_deg, None);
+        assert!(!metrics.quadrature_error_warning);
 
         fs::remove_file(&path).expect("remove iq8 fixture");
     }

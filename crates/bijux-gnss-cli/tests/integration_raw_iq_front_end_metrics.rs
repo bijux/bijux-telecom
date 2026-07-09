@@ -5,11 +5,15 @@ use bijux_gnss_infra::api::receiver::{
     sim::{generate_l1_ca, SyntheticSignalParams},
     ReceiverConfig,
 };
+use bijux_gnss_testkit::front_end::generate_quadrature_skew_carrier;
 use serde_json::Value;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+const QUADRATURE_FIXTURE_TOLERANCE_DEG: f64 = 0.25;
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -46,16 +50,26 @@ fn write_raw_iq_sidecar(path: &Path) {
 }
 
 fn write_raw_iq_sidecar_with_sample_rate(path: &Path, sample_rate_hz: f64) {
+    write_raw_iq_sidecar_with_format_and_sample_rate(path, "iq8", sample_rate_hz);
+}
+
+fn write_raw_iq_sidecar_with_format_and_sample_rate(
+    path: &Path,
+    format: &str,
+    sample_rate_hz: f64,
+) {
     fs::write(
         path,
         format!(
             r#"
-format = "iq8"
+format = "{format}"
 sample_rate_hz = {sample_rate_hz}
 intermediate_freq_hz = 0.0
 capture_start_utc = "2026-07-09T00:00:00Z"
-quantization_bits = 8
+quantization_bits = {}
 "#
+            ,
+            if format == "cf32_le" { 32 } else { 8 }
         ),
     )
     .expect("write sidecar");
@@ -86,6 +100,11 @@ fn assert_constant_iq_metrics(metrics: &Value, sample_count: u64) {
     assert_eq!(
         metrics.get("power_imbalance_warning").and_then(Value::as_bool),
         Some(true)
+    );
+    assert_eq!(metrics.get("quadrature_error_deg").and_then(Value::as_f64), None);
+    assert_eq!(
+        metrics.get("quadrature_error_warning").and_then(Value::as_bool),
+        Some(false)
     );
     assert_eq!(metrics.get("rms").and_then(Value::as_f64), Some(0.25));
     assert_eq!(metrics.get("dc_imbalance").and_then(Value::as_f64), Some(1.0));
@@ -127,6 +146,15 @@ fn write_biased_synthetic_iq8_capture(path: &Path, i_bias: f32, q_bias: f32) {
         raw.push(q as u8);
     }
     fs::write(path, raw).expect("write biased iq8 capture");
+}
+
+fn write_phase_skewed_cf32_capture(path: &Path, phase_error_deg: f32) {
+    let samples = generate_quadrature_skew_carrier(4096, 8.0, phase_error_deg);
+    let mut file = fs::File::create(path).expect("create cf32 capture");
+    for sample in samples {
+        file.write_all(&sample.re.to_le_bytes()).expect("write I sample");
+        file.write_all(&sample.im.to_le_bytes()).expect("write Q sample");
+    }
 }
 
 #[test]
@@ -285,6 +313,58 @@ fn run_reports_front_end_metrics_for_stream_start() {
         .expect("front_end_metrics present");
     assert_constant_iq_metrics(metrics, 5_000);
     assert_eq!(report.get("epochs").and_then(Value::as_u64), Some(1));
+
+    fs::remove_dir_all(&temp).expect("remove temp dir");
+}
+
+#[test]
+fn inspect_reports_quadrature_error_from_synthetic_fixture() {
+    let expected_error_deg = 12.5_f64;
+    let temp = temp_dir_path("inspect_quadrature_error");
+    fs::create_dir_all(&temp).expect("create temp dir");
+
+    let iq_path = temp.join("quadrature.cf32");
+    write_phase_skewed_cf32_capture(&iq_path, expected_error_deg as f32);
+    let sidecar_path = temp.join("quadrature.sidecar.toml");
+    write_raw_iq_sidecar_with_format_and_sample_rate(&sidecar_path, "cf32_le", 4_096_000.0);
+
+    let out_dir = temp.join("inspect-out");
+    let output = run_bijux(
+        &[
+            "gnss",
+            "inspect",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--report",
+            "json",
+            "--out",
+            out_dir.to_str().expect("out dir"),
+        ],
+        &repo_root(),
+    );
+
+    assert!(output.status.success(), "inspect failed: {}", String::from_utf8_lossy(&output.stderr));
+    let report = load_json(&out_dir.join("inspect_report.json"));
+    let metrics = report
+        .get("front_end_metrics")
+        .expect("front_end_metrics present");
+    let measured_error_deg = metrics
+        .get("quadrature_error_deg")
+        .and_then(Value::as_f64)
+        .expect("quadrature_error_deg");
+
+    assert!(
+        (measured_error_deg - expected_error_deg).abs() <= QUADRATURE_FIXTURE_TOLERANCE_DEG,
+        "measured={measured_error_deg} expected={expected_error_deg}"
+    );
+    assert_eq!(
+        metrics.get("quadrature_error_warning").and_then(Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(metrics.get("power_imbalance_warning").and_then(Value::as_bool), Some(false));
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
 }
