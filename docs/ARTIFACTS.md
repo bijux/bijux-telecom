@@ -123,6 +123,19 @@ Raw-IQ acquisition and tracking command reports also include a `doppler_search` 
 records the effective `max_search_hz`, `bin_width_hz`, `bin_count`, and `intermediate_freq_hz`
 used for that run. This field reflects the final receiver profile after any explicit CLI override.
 
+Raw-IQ acquisition reports also include a `code_phase_search` section that records the effective
+sample-domain search contract:
+- `start_sample`
+- `step_samples`
+- `bin_count`
+- `period_samples`
+- `mode`
+
+For GPS L1 C/A acquisition, the current contract is a full-code search over the entire sampled code
+period: `start_sample = 0`, `step_samples = 1`, `bin_count = period_samples`, `mode = "full_code"`.
+The same values are preserved per candidate in `acq.jsonl.payload.assumptions` so downstream tools
+can validate the report against the retained acquisition evidence.
+
 ## Synthetic IQ Export Bundle
 
 The synthetic IQ export workflow emits a deterministic raw-capture bundle for a scenario:

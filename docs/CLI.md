@@ -81,6 +81,10 @@ Use `--doppler-search-hz` and `--doppler-step-hz` only when you need a one-off o
 specific run. Valid receiver profiles must keep `doppler_search_hz` as an integer multiple of
 `doppler_step_hz` so the search grid includes both `0 Hz` and the configured search edge.
 
+The acquisition report also records the effective code-phase search scope. For GPS L1 C/A, the
+current receiver searches the full sampled code period with one-sample spacing and emits that
+contract under `code_phase_search` in `acquire_report.json`.
+
 ### Inspect Published C/A PRN Assignment
 ```bash
 bijux gnss ca-code --prn 1 --start-chip 1022 --count 4 --with-reference

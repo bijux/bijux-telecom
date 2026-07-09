@@ -52,6 +52,10 @@ profile. Override them with `--doppler-search-hz` or `--doppler-step-hz` only fo
 one-off experiment. Valid profiles keep `doppler_search_hz` aligned to `doppler_step_hz` so the
 search grid includes both `0 Hz` and the configured edge.
 
+`acquire_report.json` also records the code-phase search contract for the run. For GPS L1 C/A, that
+contract currently spans the full sampled code period with one-sample spacing, so the reported
+`bin_count` matches `period_samples`.
+
 This dataset is a redistributed excerpt from Daniel Estévez's public GPS L1 recording on Zenodo.
 Use `datasets/recorded/gps_l1_2022_03_27_excerpt.provenance.md` for source, license, and local
 excerpt details.
