@@ -129,6 +129,7 @@ struct IncrementalTrackingChannel {
     acquisition_hypothesis: String,
     acquisition_score: f32,
     acquisition_code_phase_samples: usize,
+    acquisition_resolved_code_phase_samples: f64,
     acquisition_carrier_hz: f64,
     acq_to_track_state: String,
     early_late_spacing_chips: f64,
@@ -360,6 +361,7 @@ impl Tracking {
                         ("to_track", acq_to_track_state.clone()),
                     ],
                 });
+                let acquisition_resolved_code_phase_samples = acq.resolved_code_phase_samples();
                 let tracked =
                     if matches!(acq.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous)
                     {
@@ -368,7 +370,7 @@ impl Tracking {
                             channel_id,
                             acq.sat,
                             acq.carrier_hz.0,
-                            acq.code_phase_samples as f64,
+                            acquisition_resolved_code_phase_samples,
                             params.early_late_spacing_chips,
                             self.epochs_in_frame(frame),
                         )
@@ -408,11 +410,12 @@ impl Tracking {
                 }
                 for epoch in &mut epochs {
                     epoch.tracking_provenance = format!(
-                        "acq_hypothesis={} acq_score={:.6} acq_carrier_hz={:.3} acq_code_phase_samples={}",
+                        "acq_hypothesis={} acq_score={:.6} acq_carrier_hz={:.3} acq_code_phase_samples={} acq_resolved_code_phase_samples={:.6}",
                         acquisition_hypothesis,
                         acq.score,
                         acq.carrier_hz.0,
-                        acq.code_phase_samples
+                        acq.code_phase_samples,
+                        acquisition_resolved_code_phase_samples,
                     );
                 }
                 self.apply_sample_rate_mismatch_diagnostic(
@@ -436,7 +439,7 @@ impl Tracking {
                 TrackingResult {
                     sat: acq.sat,
                     carrier_hz: acq.carrier_hz.0,
-                    code_phase_samples: acq.code_phase_samples as f64,
+                    code_phase_samples: acquisition_resolved_code_phase_samples,
                     acquisition_hypothesis,
                     acquisition_score: acq.score,
                     acquisition_code_phase_samples: acq.code_phase_samples,
@@ -556,12 +559,14 @@ impl Tracking {
                         ("to_track", acq_to_track_state.clone()),
                     ],
                 });
+                let acquisition_resolved_code_phase_samples = acq.resolved_code_phase_samples();
                 IncrementalTrackingChannel {
                     sat: acq.sat,
                     channel_id,
                     acquisition_hypothesis,
                     acquisition_score: acq.score,
                     acquisition_code_phase_samples: acq.code_phase_samples,
+                    acquisition_resolved_code_phase_samples,
                     acquisition_carrier_hz: acq.carrier_hz.0,
                     acq_to_track_state,
                     early_late_spacing_chips: params.early_late_spacing_chips,
@@ -572,7 +577,7 @@ impl Tracking {
                     state: LoopState {
                         carrier_hz: acq.carrier_hz.0,
                         code_rate_hz: self.config.code_freq_basis_hz,
-                        code_phase_samples: acq.code_phase_samples as f64,
+                        code_phase_samples: acquisition_resolved_code_phase_samples,
                         prev_prompt: None,
                         prev_prompt_phase_cycles: None,
                         nav_bit_phase_offset_cycles: 0.0,
@@ -620,11 +625,12 @@ impl Tracking {
             .map(|mut channel| {
                 for epoch in &mut channel.epochs {
                     epoch.tracking_provenance = format!(
-                        "acq_hypothesis={} acq_score={:.6} acq_carrier_hz={:.3} acq_code_phase_samples={}",
+                        "acq_hypothesis={} acq_score={:.6} acq_carrier_hz={:.3} acq_code_phase_samples={} acq_resolved_code_phase_samples={:.6}",
                         channel.acquisition_hypothesis,
                         channel.acquisition_score,
                         channel.acquisition_carrier_hz,
-                        channel.acquisition_code_phase_samples
+                        channel.acquisition_code_phase_samples,
+                        channel.acquisition_resolved_code_phase_samples,
                     );
                 }
                 self.apply_sample_rate_mismatch_diagnostic(
@@ -648,7 +654,7 @@ impl Tracking {
                 TrackingResult {
                     sat: channel.sat,
                     carrier_hz: channel.acquisition_carrier_hz,
-                    code_phase_samples: channel.acquisition_code_phase_samples as f64,
+                    code_phase_samples: channel.acquisition_resolved_code_phase_samples,
                     acquisition_hypothesis: channel.acquisition_hypothesis,
                     acquisition_score: channel.acquisition_score,
                     acquisition_code_phase_samples: channel.acquisition_code_phase_samples,
