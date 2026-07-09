@@ -99,3 +99,47 @@ fn validate_config_accepts_low_rate_receiver_profile() {
 
     fs::remove_dir_all(&out_dir).expect("remove output dir");
 }
+
+#[test]
+fn validate_config_rejects_unsupported_acquisition_coherent_integration() {
+    let repo = repo_root();
+    let temp_dir = temp_dir_path("validate_unsupported_coherent_integration");
+    fs::create_dir_all(&temp_dir).expect("create temp dir");
+    let config_path = write_receiver_config_with_integration_ms(&temp_dir, 3);
+    let out_dir = temp_dir.join("validate_out");
+    fs::create_dir_all(&out_dir).expect("create output dir");
+
+    let output = run_bijux(
+        &[
+            "gnss",
+            "validate-config",
+            "--config",
+            config_path.to_str().expect("config path"),
+            "--unregistered-dataset",
+            "--out",
+            out_dir.to_str().expect("out dir"),
+        ],
+        &repo,
+    );
+
+    assert!(!output.status.success(), "validate-config unexpectedly succeeded");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("acquisition.integration_ms must be one of [1, 2, 5, 10, 20]"),
+        "stderr did not mention the coherent integration constraint: {stderr}"
+    );
+
+    fs::remove_dir_all(&temp_dir).expect("remove temp dir");
+}
+
+fn write_receiver_config_with_integration_ms(temp_dir: &Path, integration_ms: i64) -> PathBuf {
+    let base_path = repo_root().join("configs/receiver_low_rate.toml");
+    let mut config: toml::Value =
+        toml::from_str(&fs::read_to_string(&base_path).expect("read base config"))
+            .expect("parse base config");
+    config["acquisition"]["integration_ms"] = toml::Value::Integer(integration_ms);
+    let config_path = temp_dir.join("receiver.toml");
+    fs::write(&config_path, toml::to_string(&config).expect("serialize config"))
+        .expect("write config");
+    config_path
+}
