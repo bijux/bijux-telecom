@@ -57,6 +57,81 @@ fn export_reference_bundle(repo: &Path, export_dir: &Path) {
     );
 }
 
+fn validate_acquisition_reference_bundle(
+    repo: &Path,
+    scenario_relative_path: &str,
+    scenario_id: &str,
+    expected_sample_rate_hz: f64,
+) {
+    let export_dir = temp_dir_path(scenario_id);
+    export_bundle(repo, &export_dir, &repo.join(scenario_relative_path));
+
+    let validate_dir = temp_dir_path(&format!("{scenario_id}_validation"));
+    fs::create_dir_all(&validate_dir).expect("create validate dir");
+    let artifacts_dir = export_dir.join("artifacts");
+    let iq_path = artifacts_dir.join(format!("{scenario_id}.iq16"));
+    let sidecar_path = artifacts_dir.join(format!("{scenario_id}.sidecar.toml"));
+    let truth_path = artifacts_dir.join(format!("{scenario_id}.truth.json"));
+
+    let output = run_bijux(
+        &[
+            "gnss",
+            "validate-synthetic-iq",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--truth",
+            truth_path.to_str().expect("truth path"),
+            "--config",
+            "configs/receiver_low_rate.toml",
+            "--report",
+            "json",
+            "--out",
+            validate_dir.to_str().expect("validate dir"),
+        ],
+        repo,
+    );
+    assert!(
+        output.status.success(),
+        "validate-synthetic-iq failed for {scenario_id}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let report: Value = serde_json::from_str(
+        &fs::read_to_string(validate_dir.join("validate_synthetic_iq_report.json"))
+            .expect("read validation report"),
+    )
+    .expect("parse validation report");
+    assert_eq!(report["validation"]["scenario_id"], scenario_id);
+    assert_eq!(report["validation"]["sample_rate_hz"], expected_sample_rate_hz);
+    assert_eq!(report["validation"]["pass"], true);
+    assert_eq!(report["acquisition_code_phase_validation"]["sample_rate_hz"], expected_sample_rate_hz);
+    assert_eq!(report["acquisition_code_phase_validation"]["pass"], true);
+    assert_eq!(report["acquisition_code_phase_refinement_validation"]["sample_rate_hz"], expected_sample_rate_hz);
+    assert_eq!(report["acquisition_code_phase_refinement_validation"]["pass"], true);
+    assert_eq!(report["acquisition_doppler_validation"]["sample_rate_hz"], expected_sample_rate_hz);
+    assert_eq!(report["acquisition_doppler_validation"]["pass"], true);
+    assert_eq!(
+        report["acquisition_code_phase_validation"]["satellites"]
+            .as_array()
+            .expect("acquisition code-phase rows")
+            .len(),
+        2
+    );
+    assert_eq!(
+        report["acquisition_doppler_validation"]["satellites"]
+            .as_array()
+            .expect("acquisition doppler rows")
+            .len(),
+        2
+    );
+
+    fs::remove_dir_all(&export_dir).expect("remove export dir");
+    fs::remove_dir_all(&validate_dir).expect("remove validate dir");
+}
+
 #[test]
 fn validate_synthetic_iq_accepts_reference_cn0_bundle() {
     let repo = repo_root();
@@ -152,6 +227,18 @@ fn validate_synthetic_iq_accepts_reference_cn0_bundle() {
 
     fs::remove_dir_all(&export_dir).expect("remove export dir");
     fs::remove_dir_all(&validate_dir).expect("remove validate dir");
+}
+
+#[test]
+fn validate_synthetic_iq_accepts_low_rate_acquisition_reference_bundle() {
+    let repo = repo_root();
+
+    validate_acquisition_reference_bundle(
+        &repo,
+        "configs/scenarios/synthetic_iq_acquisition_reference_low_rate.toml",
+        "synthetic_iq_acquisition_reference_low_rate",
+        2_046_000.0,
+    );
 }
 
 #[test]
