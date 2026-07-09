@@ -189,6 +189,7 @@ fn tracking_uses_explicit_signal_band_parameters() {
         .expect("tracking assumptions");
 
     assert_eq!(assumptions.integration_ms, 7);
+    assert_eq!(assumptions.early_late_spacing_chips, 0.25);
     assert_eq!(assumptions.dll_bw_hz, 4.5);
     assert_eq!(assumptions.pll_bw_hz, 18.0);
     assert_eq!(assumptions.fll_bw_hz, 6.5);
