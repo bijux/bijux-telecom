@@ -9,7 +9,8 @@ use thiserror::Error;
 use bijux_gnss_core::api::{SampleClock, SampleTime, SamplesFrame, Seconds};
 
 use bijux_gnss_signal::api::{
-    iq_i16_to_samples, iq_i8_to_samples, IqSampleFormat, RawIqMetadata, SampleSource, SignalSource,
+    iq_f32_to_samples, iq_i16_to_samples, iq_i8_to_samples, IqSampleFormat, RawIqMetadata,
+    SampleSource, SignalSource,
 };
 
 #[derive(Debug, Error)]
@@ -20,8 +21,6 @@ pub enum SampleSourceError {
     #[error("IQ sample stream length is not even")]
     InvalidIqLength,
 
-    #[error("raw IQ format {0:?} is not supported by this ingest path")]
-    UnsupportedFormat(IqSampleFormat),
 }
 
 /// Simple in-memory sample source for tests and examples.
@@ -153,7 +152,7 @@ fn decode_samples(
     match metadata.format {
         IqSampleFormat::Iq8 => decode_i8_samples(raw_bytes),
         IqSampleFormat::Iq16Le => decode_i16_le_samples(raw_bytes),
-        other => Err(SampleSourceError::UnsupportedFormat(other)),
+        IqSampleFormat::Cf32Le => decode_cf32_le_samples(raw_bytes),
     }
 }
 
@@ -182,4 +181,23 @@ fn decode_i16_le_samples(
         i16_buf[i] = i16::from_le_bytes([raw_bytes[2 * i], raw_bytes[2 * i + 1]]);
     }
     Ok((iq_i16_to_samples(&i16_buf), i16_count / 2))
+}
+
+fn decode_cf32_le_samples(
+    raw_bytes: &[u8],
+) -> Result<(Vec<bijux_gnss_core::api::Sample>, usize), SampleSourceError> {
+    let f32_count = raw_bytes.len() / 4;
+    if f32_count * 4 != raw_bytes.len() || f32_count % 2 != 0 {
+        return Err(SampleSourceError::InvalidIqLength);
+    }
+    let mut f32_buf = vec![0f32; f32_count];
+    for i in 0..f32_count {
+        f32_buf[i] = f32::from_le_bytes([
+            raw_bytes[4 * i],
+            raw_bytes[4 * i + 1],
+            raw_bytes[4 * i + 2],
+            raw_bytes[4 * i + 3],
+        ]);
+    }
+    Ok((iq_f32_to_samples(&f32_buf), f32_count / 2))
 }
