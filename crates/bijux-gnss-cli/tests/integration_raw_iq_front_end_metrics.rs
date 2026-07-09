@@ -95,6 +95,47 @@ fn load_json(path: &Path) -> Value {
     serde_json::from_str(&fs::read_to_string(path).expect("read json")).expect("parse json")
 }
 
+fn assert_signal_quality_report_shape(
+    signal_quality: &Value,
+    expected_sample_rate_hz: f64,
+    expected_intermediate_frequency_hz: f64,
+    expected_analyzed_samples: u64,
+) {
+    assert_eq!(signal_quality.get("format").and_then(Value::as_str), Some("Iq8"));
+    assert_eq!(
+        signal_quality.get("sample_rate_hz").and_then(Value::as_f64),
+        Some(expected_sample_rate_hz)
+    );
+    assert_eq!(
+        signal_quality
+            .get("intermediate_freq_hz")
+            .and_then(Value::as_f64),
+        Some(expected_intermediate_frequency_hz)
+    );
+    assert_eq!(
+        signal_quality.get("analyzed_samples").and_then(Value::as_u64),
+        Some(expected_analyzed_samples)
+    );
+    let usable_duration_s = signal_quality
+        .get("usable_duration_s")
+        .and_then(Value::as_f64)
+        .expect("usable_duration_s");
+    assert!(usable_duration_s > 0.0, "usable_duration_s={usable_duration_s}");
+    assert!(
+        signal_quality
+            .get("estimated_noise_floor_db")
+            .and_then(Value::as_f64)
+            .is_some_and(f64::is_finite),
+        "signal_quality={signal_quality}"
+    );
+    assert_dc_only_metrics(
+        signal_quality
+            .get("front_end_metrics")
+            .expect("front_end_metrics present"),
+        expected_analyzed_samples,
+    );
+}
+
 fn write_receiver_config(path: &Path, configure: impl FnOnce(&mut ReceiverConfig)) {
     let mut profile = ReceiverConfig::default();
     configure(&mut profile);
@@ -605,6 +646,106 @@ fn run_reports_streamed_tracking_progress_for_clean_capture() {
     );
     let standalone_signal_quality = load_json(&out_dir.join("signal_quality_report.json"));
     assert_eq!(standalone_signal_quality, *signal_quality);
+
+    fs::remove_dir_all(&temp).expect("remove temp dir");
+}
+
+#[test]
+fn raw_iq_workflows_emit_required_signal_quality_fields() {
+    let temp = temp_dir_path("raw_iq_signal_quality_fields");
+    fs::create_dir_all(&temp).expect("create temp dir");
+
+    let iq_path = temp.join("demo.iq8");
+    write_constant_iq8_capture(&iq_path, 32, 0, 5_000);
+    let sidecar_path = temp.join("demo.sidecar.toml");
+    write_raw_iq_sidecar(&sidecar_path);
+
+    let inspect_out = temp.join("inspect-out");
+    let inspect = run_bijux(
+        &[
+            "gnss",
+            "inspect",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--max-samples",
+            "5000",
+            "--report",
+            "json",
+            "--out",
+            inspect_out.to_str().expect("inspect out"),
+        ],
+        &repo_root(),
+    );
+    assert!(inspect.status.success(), "inspect failed: {}", String::from_utf8_lossy(&inspect.stderr));
+
+    let acquire_out = temp.join("acquire-out");
+    let acquire = run_bijux(
+        &[
+            "gnss",
+            "acquire",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--prn",
+            "1",
+            "--report",
+            "json",
+            "--out",
+            acquire_out.to_str().expect("acquire out"),
+        ],
+        &repo_root(),
+    );
+    assert!(acquire.status.success(), "acquire failed: {}", String::from_utf8_lossy(&acquire.stderr));
+
+    let track_out = temp.join("track-out");
+    let track = run_bijux(
+        &[
+            "gnss",
+            "track",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--prn",
+            "1",
+            "--report",
+            "json",
+            "--out",
+            track_out.to_str().expect("track out"),
+        ],
+        &repo_root(),
+    );
+    assert!(track.status.success(), "track failed: {}", String::from_utf8_lossy(&track.stderr));
+
+    let run_out = temp.join("run-out");
+    let run = run_bijux(
+        &[
+            "gnss",
+            "run",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--report",
+            "json",
+            "--out",
+            run_out.to_str().expect("run out"),
+        ],
+        &repo_root(),
+    );
+    assert!(run.status.success(), "run failed: {}", String::from_utf8_lossy(&run.stderr));
+
+    for out_dir in [&inspect_out, &acquire_out, &track_out, &run_out] {
+        let signal_quality = load_json(&out_dir.join("signal_quality_report.json"));
+        assert_signal_quality_report_shape(&signal_quality, 5_000_000.0, 0.0, 5_000);
+    }
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
 }
