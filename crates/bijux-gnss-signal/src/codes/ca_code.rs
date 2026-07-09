@@ -8,6 +8,9 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Prn(pub u8);
 
+/// Number of chips in one GPS L1 C/A code period.
+pub const CA_CODE_PERIOD_CHIPS: usize = 1023;
+
 /// Published GPS L1 C/A code assignment metadata for one PRN.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CaCodeAssignment {
@@ -238,13 +241,23 @@ pub fn ca_code_assignments() -> &'static [CaCodeAssignment; 32] {
 ///
 /// Returns chips in {-1, +1}.
 pub fn generate_ca_code(prn: Prn) -> Result<Vec<i8>, crate::error::SignalError> {
+    generate_ca_code_chips(prn, CA_CODE_PERIOD_CHIPS)
+}
+
+/// Generate a GPS L1 C/A code sequence of arbitrary length for a given PRN (1..=32).
+///
+/// Returns chips in {-1, +1}.
+pub fn generate_ca_code_chips(
+    prn: Prn,
+    chip_count: usize,
+) -> Result<Vec<i8>, crate::error::SignalError> {
     let (tap1, tap2) = ca_code_assignment(prn)?.zero_based_g2_taps();
     let mut g1 = [1i8; 10];
     let mut g2 = [1i8; 10];
 
-    let mut code = Vec::with_capacity(1023);
+    let mut code = Vec::with_capacity(chip_count);
 
-    for _ in 0..1023 {
+    for _ in 0..chip_count {
         let g1_out = g1[9];
         let g2_out = g2[tap1] ^ g2[tap2];
         let chip = g1_out ^ g2_out;

@@ -2,7 +2,8 @@
 
 /// Spreading code generators.
 pub use crate::codes::ca_code::{
-    ca_code_assignment, ca_code_assignments, generate_ca_code, CaCodeAssignment, Prn,
+    ca_code_assignment, ca_code_assignments, generate_ca_code, generate_ca_code_chips,
+    CaCodeAssignment, Prn, CA_CODE_PERIOD_CHIPS,
 };
 /// Numerically controlled oscillator helper.
 pub use crate::dsp::nco::Nco;
