@@ -144,6 +144,17 @@ fn format_doppler_search(settings: DopplerSearchSettings) -> String {
     )
 }
 
+fn format_code_phase_search(settings: &CodePhaseSearchSettings) -> String {
+    format!(
+        "{} samples from {} in {}-sample steps ({} bins, mode {})",
+        settings.period_samples,
+        settings.start_sample,
+        settings.step_samples,
+        settings.bin_count,
+        settings.mode
+    )
+}
+
 fn print_acquisition_table(report: &AcquisitionReport) {
     println!(
         "I mean: {:.6}  Q mean: {:.6}  I power: {:.6}  Q power: {:.6}  I/Q ratio: {:.6}  Power warning: {}  Quadrature error(deg): {}  Quadrature warning: {}  Clipping(%): {}  Clipping warning: {}  Centered RMS: {:.6e}  Zero-signal: {}  Zero-signal reason: {}  Precision claims allowed: {}  Precision refusal: {}  RMS: {:.6}  DC imbalance: {:.6}",
@@ -171,6 +182,7 @@ fn print_acquisition_table(report: &AcquisitionReport) {
         report.front_end_metrics.dc_imbalance
     );
     println!("Doppler search: {}", format_doppler_search(report.doppler_search));
+    println!("Code-phase search: {}", format_code_phase_search(&report.code_phase_search));
     println!("Search summary: {}", format_search_summary(report));
     println!("Reported PRNs: {}", format_reported_prns(report));
     println!("Sat\tCarrier(Hz)\tCodePhase\tPeak\tPeak/Mean\tPeak/2nd\tHypothesis\tReason");

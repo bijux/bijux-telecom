@@ -2,8 +2,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use bijux_gnss_infra::api::core::{
-    sort_obs_sats, validate_obs_epochs, AcqResultV1, ArtifactHeaderV1, ArtifactReadPolicy,
-    DiagnosticEvent, DiagnosticSeverity, Constellation, NavSolutionEpochV1,
+    sort_obs_sats, validate_obs_epochs, AcqAssumptions, AcqResult, AcqResultV1,
+    ArtifactHeaderV1, ArtifactReadPolicy, DiagnosticEvent, DiagnosticSeverity, Constellation, NavSolutionEpochV1,
     NavSolutionEpoch, ObsEpoch, ObsEpochV1, SamplesFrame, SatId, SchemaVersion, TrackEpoch,
     TrackEpochV1, ValidateConfig,
 };
@@ -138,6 +138,54 @@ fn doppler_search_settings(profile: &ReceiverConfig) -> DopplerSearchSettings {
         bin_count,
         intermediate_freq_hz: profile.intermediate_freq_hz,
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CodePhaseSearchSettings {
+    start_sample: usize,
+    step_samples: usize,
+    bin_count: usize,
+    period_samples: usize,
+    mode: String,
+}
+
+fn code_phase_search_settings(profile: &ReceiverConfig) -> CodePhaseSearchSettings {
+    let period_samples = samples_per_code(
+        profile.sample_rate_hz,
+        profile.code_freq_basis_hz,
+        profile.code_length,
+    );
+    CodePhaseSearchSettings {
+        start_sample: 0,
+        step_samples: 1,
+        bin_count: period_samples,
+        period_samples,
+        mode: "full_code".to_string(),
+    }
+}
+
+fn code_phase_search_settings_from_assumptions(
+    assumptions: &AcqAssumptions,
+) -> CodePhaseSearchSettings {
+    CodePhaseSearchSettings {
+        start_sample: assumptions.code_phase_search_start_sample,
+        step_samples: assumptions.code_phase_search_step_samples,
+        bin_count: assumptions.code_phase_search_bins,
+        period_samples: assumptions.samples_per_code,
+        mode: assumptions.code_phase_search_mode.clone(),
+    }
+}
+
+fn code_phase_search_settings_from_results(
+    profile: &ReceiverConfig,
+    results: &[Vec<AcqResult>],
+) -> CodePhaseSearchSettings {
+    results
+        .iter()
+        .flat_map(|candidates| candidates.iter())
+        .find_map(|result| result.assumptions.as_ref())
+        .map(code_phase_search_settings_from_assumptions)
+        .unwrap_or_else(|| code_phase_search_settings(profile))
 }
 
 fn write_manifest<T: Serialize>(

@@ -74,6 +74,7 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
             &primary_results,
         ),
         doppler_search: doppler_search_settings(&profile),
+        code_phase_search: code_phase_search_settings_from_results(&profile, &results),
         front_end_metrics: signal_quality.front_end_metrics.clone(),
         signal_quality,
         reported_prns: summarize_reported_prns(&rows),

@@ -3,6 +3,7 @@ struct AcquisitionReport {
     sats: Vec<SatId>,
     search_summary: bijux_gnss_infra::api::core::AcqSearchSummary,
     doppler_search: DopplerSearchSettings,
+    code_phase_search: CodePhaseSearchSettings,
     front_end_metrics: bijux_gnss_infra::api::signal::IqFrontEndMetrics,
     signal_quality: RawIqSignalQualityReport,
     reported_prns: Vec<ReportedPrn>,
