@@ -69,8 +69,6 @@ struct CodeFftCacheKey {
     code_length: usize,
     doppler_search_hz: i32,
     doppler_step_hz: i32,
-    coherent_ms: u32,
-    noncoherent: u32,
     model_version: u32,
     policy_version: u32,
 }
@@ -82,8 +80,6 @@ impl CodeFftCacheKey {
         samples_per_code: usize,
         doppler_search_hz: i32,
         doppler_step_hz: i32,
-        coherent_ms: u32,
-        noncoherent: u32,
     ) -> Self {
         Self {
             sat,
@@ -94,8 +90,6 @@ impl CodeFftCacheKey {
             code_length: config.code_length,
             doppler_search_hz,
             doppler_step_hz,
-            coherent_ms,
-            noncoherent,
             model_version: ACQUISITION_CACHE_MODEL_VERSION,
             policy_version: ACQUISITION_CACHE_POLICY_VERSION,
         }
@@ -664,8 +658,8 @@ impl Acquisition {
         &self,
         sat: SatId,
         samples_per_code: usize,
-        coherent_ms: u32,
-        noncoherent: u32,
+        _coherent_ms: u32,
+        _noncoherent: u32,
         fft: &dyn rustfft::Fft<f32>,
     ) -> Vec<Complex<f32>> {
         let key = CodeFftCacheKey::from_runtime(
@@ -674,8 +668,6 @@ impl Acquisition {
             samples_per_code,
             self.doppler_search_hz,
             self.doppler_step_hz,
-            coherent_ms,
-            noncoherent,
         );
         if let Some(cached) = self.cache.lock().ok().and_then(|m| m.get(&key).cloned()) {
             self.with_stats(|stats| {
@@ -1395,6 +1387,37 @@ mod tests {
                 "unsupported_coherent_integration_ms: acquisition coherent integration must be one of [1, 2, 5, 10, 20] ms but received 3 ms"
             )
         );
+    }
+
+    #[test]
+    fn code_fft_cache_reuses_local_code_across_integration_profiles() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Gps, prn: 11 };
+        let samples_per_code = samples_per_code(
+            config.sampling_freq_hz,
+            config.code_freq_basis_hz,
+            config.code_length,
+        );
+        let acquisition = Acquisition::new(config, ReceiverRuntime::default());
+        let mut planner = FftPlanner::<f32>::new();
+        let fft = planner.plan_fft_forward(samples_per_code);
+
+        acquisition.code_fft(sat, samples_per_code, 1, 1, fft.as_ref());
+        let after_first_profile = acquisition.stats_snapshot();
+        assert_eq!(after_first_profile.cache_misses, 1);
+        assert_eq!(after_first_profile.cache_hits, 0);
+
+        acquisition.code_fft(sat, samples_per_code, 1, 4, fft.as_ref());
+        let after_second_profile = acquisition.stats_snapshot();
+        assert_eq!(after_second_profile.cache_misses, 1);
+        assert_eq!(after_second_profile.cache_hits, 1);
+        assert_eq!(after_second_profile.cache_miss_incompatible, 0);
     }
 
     #[test]
