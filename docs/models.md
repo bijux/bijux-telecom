@@ -2,6 +2,7 @@
 
 ## Signal Model Assumptions
 - GPS L1 C/A code only.
+- GPS L1 C/A PRNs 1-32 are validated against the published GPS SPS Table 2-1 tap pairs, delays, and first-ten-chip references.
 - Ideal spreading codes (±1) without front-end distortions.
 - Additive noise approximated in tracking metrics.
 

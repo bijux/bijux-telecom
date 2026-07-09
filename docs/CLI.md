@@ -72,6 +72,13 @@ All raw-IQ workflows (`inspect`, `acquire`, `track`, and `run`) also emit
 bijux gnss acquire --dataset gps_l1_2022_03_27_excerpt --config configs/receiver_live_sky_gps_l1.toml --prn 11,12,25,31,32 --report json --output artifacts/live_sky_acquire
 ```
 
+### Inspect Published C/A PRN Assignment
+```bash
+bijux gnss ca-code --prn 1 --count 10 --with-reference
+```
+
+This prints the published G2 tap pair, G2 delay, first-10-chip octal reference, and the requested chip prefix.
+
 ### Export Synthetic IQ Truth Bundle
 ```bash
 bijux gnss export-synthetic-iq --scenario configs/scenarios/synthetic_iq_reference.toml --report json --out artifacts/synthetic_iq_reference
