@@ -18,3 +18,12 @@ entries:
     expected_sats: []
     expected_region: "N/A"
     expected_time_utc: "N/A"
+  - id: demo_synthetic_cf32
+    path: datasets/synthetic/demo_cf32.cf32
+    format: cf32_le
+    sample_rate_hz: 5000000.0
+    intermediate_freq_hz: 0.0
+    capture_start_utc: "2026-07-09T00:00:00Z"
+    expected_sats: []
+    expected_region: "N/A"
+    expected_time_utc: "N/A"
