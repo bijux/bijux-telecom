@@ -55,6 +55,39 @@ fn acquisition_detection_rate_reports_cn0_sensitivity() {
     );
 }
 
+#[test]
+fn acquisition_detection_rate_reports_doppler_sensitivity() {
+    let config = acquisition_profile();
+    let report = measure_truth_guided_acquisition_detection_rate(
+        &config,
+        &[
+            detection_rate_case(34.0, 0.0, 20, 1),
+            detection_rate_case(34.0, 125.0, 20, 1),
+            detection_rate_case(34.0, 250.0, 20, 1),
+            detection_rate_case(34.0, 375.0, 20, 1),
+        ],
+        &trial_seeds(0x2407_1991, DETECTION_RATE_TRIAL_COUNT),
+        "acquisition_detection_rate_doppler",
+        2,
+        1,
+    );
+
+    let aligned_detection_probability =
+        (report.points[0].detection_probability + report.points[2].detection_probability) / 2.0;
+    let half_bin_detection_probability =
+        (report.points[1].detection_probability + report.points[3].detection_probability) / 2.0;
+
+    assert_eq!(report.points.len(), 4);
+    assert_eq!(
+        report.points.iter().map(|point| point.doppler_hz).collect::<Vec<_>>(),
+        vec![0.0, 125.0, 250.0, 375.0]
+    );
+    assert!(
+        aligned_detection_probability > half_bin_detection_probability,
+        "expected exact-bin Doppler hypotheses to outperform half-bin offsets: {report:?}"
+    );
+}
+
 fn acquisition_profile() -> ReceiverPipelineConfig {
     ReceiverPipelineConfig {
         sampling_freq_hz: 4_092_000.0,
