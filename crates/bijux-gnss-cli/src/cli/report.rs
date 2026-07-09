@@ -2,6 +2,7 @@
 #[derive(Debug, Serialize)]
 struct AcquisitionReport {
     sats: Vec<SatId>,
+    front_end_metrics: bijux_gnss_infra::api::signal::IqFrontEndMetrics,
     results: Vec<AcquisitionRow>,
 }
 

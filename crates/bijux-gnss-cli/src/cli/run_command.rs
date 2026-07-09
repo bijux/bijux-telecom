@@ -102,6 +102,13 @@ fn runtime_config_from_env(
 use bijux_gnss_infra::api::core::format_sat;
 
 fn print_acquisition_table(report: &AcquisitionReport) {
+    println!(
+        "I mean: {:.6}  Q mean: {:.6}  RMS: {:.6}  DC imbalance: {:.6}",
+        report.front_end_metrics.i_mean,
+        report.front_end_metrics.q_mean,
+        report.front_end_metrics.rms,
+        report.front_end_metrics.dc_imbalance
+    );
     println!("Sat\tCarrier(Hz)\tCodePhase\tPeak\tPeak/Mean\tPeak/2nd");
     for row in &report.results {
         println!(

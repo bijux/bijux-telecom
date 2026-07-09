@@ -40,8 +40,10 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
                     let config = profile.to_pipeline_config();
     
                     let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
-    
+
                     let frame = load_frame(&input_file, &config, &raw_iq_metadata)?;
+                    let front_end_metrics =
+                        bijux_gnss_infra::api::signal::measure_iq_front_end_metrics(&frame.iq);
                     let runtime = runtime_config_from_env(&common, None);
                     let acquisition = AcquisitionEngine::new(config, runtime)
                         .with_doppler(doppler_search_hz, doppler_step_hz);
@@ -70,6 +72,7 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
     
                     let report = AcquisitionReport {
                         sats,
+                        front_end_metrics,
                         results: rows,
                     };
                     match common.report {
