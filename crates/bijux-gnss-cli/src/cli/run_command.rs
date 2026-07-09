@@ -130,16 +130,18 @@ fn print_acquisition_table(report: &AcquisitionReport) {
         report.front_end_metrics.rms,
         report.front_end_metrics.dc_imbalance
     );
-    println!("Sat\tCarrier(Hz)\tCodePhase\tPeak\tPeak/Mean\tPeak/2nd");
+    println!("Sat\tCarrier(Hz)\tCodePhase\tPeak\tPeak/Mean\tPeak/2nd\tHypothesis\tReason");
     for row in &report.results {
         println!(
-            "{}\t{:.1}\t{}\t{:.3}\t{:.2}\t{:.2}",
+            "{}\t{:.1}\t{}\t{:.3}\t{:.2}\t{:.2}\t{}\t{}",
             format_sat(row.sat),
             row.carrier_hz,
             row.code_phase_samples,
             row.peak,
             row.peak_mean_ratio,
-            row.peak_second_ratio
+            row.peak_second_ratio,
+            row.hypothesis,
+            format_optional_reason(row.selection_reason.as_deref()),
         );
     }
 }

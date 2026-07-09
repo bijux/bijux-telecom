@@ -1,4 +1,3 @@
-
 #[derive(Debug, Serialize)]
 struct AcquisitionReport {
     sats: Vec<SatId>,
@@ -14,6 +13,8 @@ struct AcquisitionRow {
     peak: f32,
     peak_mean_ratio: f32,
     peak_second_ratio: f32,
+    hypothesis: String,
+    selection_reason: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
