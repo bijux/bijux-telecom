@@ -9,6 +9,7 @@
 - GPS L1 C/A sampled-code generation advances chip phase from exact `code_rate_hz / sample_rate_hz` progression, so arbitrary sample rates and chunk boundaries preserve the same wrapped chip sequence without rounded samples-per-chip drift.
 - The sampled-code phase model is validated at the 60-second boundary: direct elapsed-time advance, chunked sample-count advance, and synthetic receiver epoch alignment agree within a documented floating-point tolerance, and the resulting sampled C/A block remains unchanged.
 - Carrier wipeoff uses an absolute-time-aware NCO keyed to sample index, so long-offset acquisition and tracking frames preserve bounded prompt-phase error instead of resetting carrier phase at each local block origin.
+- Synthetic carrier generation and acquisition both interpret Doppler relative to the configured IF, using the same `carrier_hz = intermediate_freq_hz + doppler_hz` mapping for zero-IF and high-IF captures.
 - Ideal spreading codes (±1) without front-end distortions.
 - Additive noise approximated in tracking metrics.
 
