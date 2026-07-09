@@ -11,9 +11,11 @@ use bijux_gnss_receiver::api::{
 fn accepted_acquisition(sat: SatId, carrier_hz: f64, code_phase_samples: usize) -> AcqResult {
     AcqResult {
         sat,
+        signal_band: SignalBand::L1,
         source_time: ReceiverSampleTrace::default(),
         candidate_rank: 1,
         is_primary_candidate: true,
+        doppler_hz: Hertz(carrier_hz),
         carrier_hz: Hertz(carrier_hz),
         code_phase_samples,
         peak: 1.0,

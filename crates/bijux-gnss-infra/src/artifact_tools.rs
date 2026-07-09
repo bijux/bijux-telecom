@@ -298,7 +298,7 @@ mod tests {
     use bijux_gnss_receiver::api::core::{
         AcqHypothesis, AcqResult, AcqResultV1, ArtifactHeaderV1, Constellation, Epoch, Hertz,
         Meters, NavLifecycleState, NavSolutionEpoch, NavSolutionEpochV1, NavUncertaintyClass,
-        ReceiverSampleTrace, SatId, Seconds, SolutionStatus, SolutionValidity, TrackEpoch,
+        ReceiverSampleTrace, SatId, Seconds, SignalBand, SolutionStatus, SolutionValidity, TrackEpoch,
         TrackEpochV1, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
     };
     use std::fs;
@@ -328,9 +328,11 @@ mod tests {
             header: header(),
             payload: AcqResult {
                 sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                signal_band: SignalBand::L1,
                 source_time: ReceiverSampleTrace::from_sample_index(4_092, 4_092_000.0),
                 candidate_rank: 1,
                 is_primary_candidate: true,
+                doppler_hz: Hertz(500.0),
                 carrier_hz: Hertz(500.0),
                 code_phase_samples: 17,
                 peak: 10.0,

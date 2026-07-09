@@ -31,6 +31,10 @@ fn default_is_primary_candidate() -> bool {
     true
 }
 
+fn default_signal_band() -> SignalBand {
+    SignalBand::L1
+}
+
 pub const TRACKING_STATE_MODEL_VERSION: u32 = 1;
 pub const OBSERVATION_MODEL_VERSION: u32 = 1;
 pub const OBSERVATION_DOWNSTREAM_PROFILE_VERSION: u32 = 1;
@@ -381,14 +385,27 @@ pub struct AcqUncertainty {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcqTrackingSeed {
+    pub sat: SatId,
+    pub signal_band: SignalBand,
+    pub source_time: ReceiverSampleTrace,
+    pub doppler_hz: Hertz,
+    pub code_phase_samples: Chips,
+    pub uncertainty: Option<AcqUncertainty>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcqResult {
     pub sat: SatId,
+    #[serde(default = "default_signal_band")]
+    pub signal_band: SignalBand,
     #[serde(default)]
     pub source_time: ReceiverSampleTrace,
     #[serde(default = "default_candidate_rank")]
     pub candidate_rank: u8,
     #[serde(default = "default_is_primary_candidate")]
     pub is_primary_candidate: bool,
+    pub doppler_hz: Hertz,
     pub carrier_hz: Hertz,
     pub code_phase_samples: usize,
     pub peak: f32,
@@ -424,6 +441,27 @@ impl AcqResult {
             .map(|refinement| refinement.refined_code_phase_samples)
             .unwrap_or(self.code_phase_samples as f64)
     }
+
+    pub fn tracking_seed(&self) -> AcqTrackingSeed {
+        AcqTrackingSeed {
+            sat: self.sat,
+            signal_band: self.signal_band,
+            source_time: self.source_time,
+            doppler_hz: self.doppler_hz,
+            code_phase_samples: Chips(self.resolved_code_phase_samples()),
+            uncertainty: self.uncertainty.clone(),
+        }
+    }
+}
+
+pub fn trackable_acq_tracking_seeds(results: &[AcqResult]) -> Vec<AcqTrackingSeed> {
+    results
+        .iter()
+        .filter(|result| {
+            matches!(result.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous)
+        })
+        .map(AcqResult::tracking_seed)
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -1166,8 +1204,9 @@ pub(crate) fn melbourne_wubbena_m(
 #[cfg(test)]
 mod tests {
     use crate::api::{
-        AcqHypothesis, AcqResult, AcqSearchSummary, Constellation, Hertz, LeapSeconds,
-        ReceiverSampleTrace, SatId, UtcTime,
+        trackable_acq_tracking_seeds, AcqCodePhaseRefinement, AcqHypothesis, AcqResult,
+        AcqSearchSummary, AcqUncertainty, Constellation, Hertz, LeapSeconds,
+        ReceiverSampleTrace, SatId, SignalBand, UtcTime,
     };
     use crate::time::utc_to_gps;
 
@@ -1222,12 +1261,74 @@ mod tests {
         );
     }
 
+    #[test]
+    fn acq_tracking_seed_uses_explicit_tracking_start_fields() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+        let result = AcqResult {
+            sat,
+            signal_band: SignalBand::L1,
+            source_time: ReceiverSampleTrace::from_sample_index(8_184, 4_092_000.0),
+            candidate_rank: 1,
+            is_primary_candidate: true,
+            doppler_hz: Hertz(750.0),
+            carrier_hz: Hertz(750.0),
+            code_phase_samples: 100,
+            peak: 0.0,
+            second_peak: 0.0,
+            mean: 0.0,
+            peak_mean_ratio: 0.0,
+            peak_second_ratio: 0.0,
+            cn0_proxy: 0.0,
+            score: 1.0,
+            hypothesis: AcqHypothesis::Accepted,
+            assumptions: None,
+            evidence: Vec::new(),
+            threshold_provenance: None,
+            explain_selection_reason: None,
+            doppler_refinement: None,
+            code_phase_refinement: Some(AcqCodePhaseRefinement {
+                method: "parabolic_code_peak".to_string(),
+                offset_samples: 0.125,
+                refined_code_phase_samples: 100.125,
+                left_correlation_norm: 0.8,
+                center_correlation_norm: 1.0,
+                right_correlation_norm: 0.7,
+            }),
+            uncertainty: Some(AcqUncertainty { doppler_hz: 125.0, code_phase_samples: 0.25 }),
+        };
+
+        let seed = result.tracking_seed();
+
+        assert_eq!(seed.sat, sat);
+        assert_eq!(seed.signal_band, SignalBand::L1);
+        assert_eq!(seed.source_time, result.source_time);
+        assert_eq!(seed.doppler_hz.0, 750.0);
+        assert!((seed.code_phase_samples.0 - 100.125).abs() <= f64::EPSILON);
+        assert_eq!(seed.uncertainty.as_ref().map(|u| u.doppler_hz), Some(125.0));
+    }
+
+    #[test]
+    fn trackable_acq_tracking_seeds_keep_only_trackable_results() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 9 };
+        let accepted = acq_result_for_summary(sat, AcqHypothesis::Accepted);
+        let ambiguous = acq_result_for_summary(sat, AcqHypothesis::Ambiguous);
+        let rejected = acq_result_for_summary(sat, AcqHypothesis::Rejected);
+        let deferred = acq_result_for_summary(sat, AcqHypothesis::Deferred);
+
+        let seeds = trackable_acq_tracking_seeds(&[accepted, ambiguous, rejected, deferred]);
+
+        assert_eq!(seeds.len(), 2);
+        assert!(seeds.iter().all(|seed| seed.signal_band == SignalBand::L1));
+    }
+
     fn acq_result_for_summary(sat: SatId, hypothesis: AcqHypothesis) -> AcqResult {
         AcqResult {
             sat,
+            signal_band: SignalBand::L1,
             source_time: ReceiverSampleTrace::default(),
             candidate_rank: 1,
             is_primary_candidate: true,
+            doppler_hz: Hertz(0.0),
             carrier_hz: Hertz(0.0),
             code_phase_samples: 0,
             peak: 0.0,

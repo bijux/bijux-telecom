@@ -7,6 +7,7 @@ use bijux_gnss_core::api::{
     acq_result_stability_key, stable_acq_result_keys, AcqAssumptions, AcqCodePhaseRefinement,
     AcqDopplerRefinement, AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqResult,
     AcqThresholdProvenance, AcqUncertainty, Hertz, ReceiverSampleTrace, SamplesFrame, SatId,
+    SignalBand,
 };
 use num_complex::Complex;
 use rustfft::{num_traits::Zero, FftPlanner};
@@ -459,9 +460,11 @@ impl Acquisition {
                 let cn0_proxy = peak_mean_ratio * 10.0;
                 grid_candidates.push(AcqResult {
                     sat,
+                    signal_band: SignalBand::L1,
                     source_time: ReceiverSampleTrace::from_sample_time(frame.t0),
                     candidate_rank: 1,
                     is_primary_candidate: true,
+                    doppler_hz: Hertz(doppler as f64),
                     carrier_hz: Hertz(carrier),
                     code_phase_samples: correlation_metrics.peak_idx,
                     peak: correlation_metrics.peak,
@@ -929,9 +932,11 @@ fn zero_signal_run(
     for &sat in sats {
         let result = AcqResult {
             sat,
+            signal_band: SignalBand::L1,
             source_time,
             candidate_rank: 1,
             is_primary_candidate: true,
+            doppler_hz: Hertz(0.0),
             carrier_hz: Hertz(intermediate_freq_hz),
             code_phase_samples: 0,
             peak: 0.0,
@@ -995,9 +1000,11 @@ fn insufficient_frame_run(
     for &sat in sats {
         let result = AcqResult {
             sat,
+            signal_band: SignalBand::L1,
             source_time,
             candidate_rank: 1,
             is_primary_candidate: true,
+            doppler_hz: Hertz(0.0),
             carrier_hz: Hertz(intermediate_freq_hz),
             code_phase_samples: 0,
             peak: 0.0,
@@ -1076,9 +1083,11 @@ fn unsupported_coherent_integration_run(
     for &sat in sats {
         let result = AcqResult {
             sat,
+            signal_band: SignalBand::L1,
             source_time,
             candidate_rank: 1,
             is_primary_candidate: true,
+            doppler_hz: Hertz(0.0),
             carrier_hz: Hertz(intermediate_freq_hz),
             code_phase_samples: 0,
             peak: 0.0,
@@ -2097,9 +2106,11 @@ mod tests {
         let mut rows = vec![
             AcqResult {
                 sat,
+                signal_band: SignalBand::L1,
                 source_time: ReceiverSampleTrace::default(),
                 candidate_rank: 1,
                 is_primary_candidate: true,
+                doppler_hz: Hertz(100.0),
                 carrier_hz: Hertz(100.0),
                 code_phase_samples: 10,
                 peak: 10.0,
@@ -2120,9 +2131,11 @@ mod tests {
             },
             AcqResult {
                 sat,
+                signal_band: SignalBand::L1,
                 source_time: ReceiverSampleTrace::default(),
                 candidate_rank: 1,
                 is_primary_candidate: true,
+                doppler_hz: Hertz(50.0),
                 carrier_hz: Hertz(50.0),
                 code_phase_samples: 20,
                 peak: 10.0,
@@ -2339,9 +2352,11 @@ mod tests {
     ) -> AcqResult {
         AcqResult {
             sat,
+            signal_band: SignalBand::L1,
             source_time: ReceiverSampleTrace::default(),
             candidate_rank: 1,
             is_primary_candidate: true,
+            doppler_hz: Hertz(carrier_hz),
             carrier_hz: Hertz(carrier_hz),
             code_phase_samples: 0,
             peak: peak_mean_ratio,

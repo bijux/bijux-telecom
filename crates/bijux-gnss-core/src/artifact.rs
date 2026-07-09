@@ -151,11 +151,18 @@ pub mod v1 {
         impl ArtifactPayloadValidate for AcqResult {
             fn validate_payload(&self) -> Vec<DiagnosticEvent> {
                 let mut events = Vec::new();
-                if !self.carrier_hz.0.is_finite() {
+                if !self.doppler_hz.0.is_finite() || !self.carrier_hz.0.is_finite() {
                     events.push(DiagnosticEvent::new(
                         DiagnosticSeverity::Error,
                         "GNSS_NUMERIC_ACQ_INVALID",
                         "acquisition result contains NaN/Inf",
+                    ));
+                }
+                if self.signal_band == crate::api::SignalBand::Unknown {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Error,
+                        "GNSS_ACQ_SIGNAL_BAND_INVALID",
+                        "acquisition result must declare an explicit signal band",
                     ));
                 }
                 if let Some(refinement) = &self.doppler_refinement {
