@@ -6,6 +6,8 @@
     "schema_version",
     "epoch_idx",
     "t_rx_s",
+    "source_time",
+    "source_observation_epoch_id",
     "ecef_m",
     "llh_deg",
     "clock_bias_s",
@@ -19,6 +21,16 @@
     "schema_version": { "type": "integer", "minimum": 1 },
     "epoch_idx": { "type": "integer", "minimum": 0 },
     "t_rx_s": { "type": "number" },
+    "source_time": {
+      "type": "object",
+      "required": ["sample_index", "sample_rate_hz", "receiver_time_s"],
+      "properties": {
+        "sample_index": { "type": "integer", "minimum": 0 },
+        "sample_rate_hz": { "type": "number", "exclusiveMinimum": 0 },
+        "receiver_time_s": { "type": "number" }
+      }
+    },
+    "source_observation_epoch_id": { "type": "string", "minLength": 1 },
     "ecef_m": {
       "type": "array",
       "minItems": 3,

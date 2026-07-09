@@ -260,6 +260,8 @@ struct NavSolutionOutput {
     schema_version: u32,
     epoch_idx: u64,
     t_rx_s: f64,
+    source_time: ReceiverSampleTraceOutput,
+    source_observation_epoch_id: String,
     ecef_m: [f64; 3],
     llh_deg: [f64; 3],
     velocity_mps: Option<[f64; 3]>,
@@ -278,6 +280,13 @@ struct NavSolutionCovariance {
     covariance_xyz_m2: Option<[f64; 3]>,
 }
 
+#[derive(Debug, Serialize)]
+struct ReceiverSampleTraceOutput {
+    sample_index: u64,
+    sample_rate_hz: f64,
+    receiver_time_s: f64,
+}
+
 fn write_nav_solution_outputs(
     out_dir: &Path,
     solutions: &[bijux_gnss_infra::api::core::NavSolutionEpoch],
@@ -288,6 +297,12 @@ fn write_nav_solution_outputs(
             schema_version: 1,
             epoch_idx: sol.epoch.index,
             t_rx_s: sol.t_rx_s.0,
+            source_time: ReceiverSampleTraceOutput {
+                sample_index: sol.source_time.sample_index,
+                sample_rate_hz: sol.source_time.sample_rate_hz,
+                receiver_time_s: sol.source_time.receiver_time_s.0,
+            },
+            source_observation_epoch_id: sol.source_observation_epoch_id.clone(),
             ecef_m: [sol.ecef_x_m.0, sol.ecef_y_m.0, sol.ecef_z_m.0],
             llh_deg: [sol.latitude_deg, sol.longitude_deg, sol.altitude_m.0],
             velocity_mps: None,
@@ -308,7 +323,7 @@ fn write_nav_solution_outputs(
     fs::write(&path, lines.join("\n"))?;
     let schema = schema_path("nav_solution.schema.json");
     if schema.exists() {
-        validate_json_schema(&schema, &path, false)?;
+        validate_jsonl_schema(&schema, &path, false)?;
     }
     Ok(())
 }
@@ -571,6 +586,11 @@ mod tests {
     use super::{apply_raw_iq_metadata, enforce_locked_capture_value, load_frame};
     use crate::RawIqMetadata;
     use crate::{ReceiverConfig, ReceiverPipelineConfig};
+    use bijux_gnss_infra::api::core::{
+        Epoch, Meters, NavLifecycleState, NavSolutionEpoch, NavUncertaintyClass,
+        ReceiverSampleTrace, Seconds, SolutionStatus, SolutionValidity,
+        NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
+    };
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -696,5 +716,85 @@ mod tests {
         assert_eq!(frame.len(), sample_count);
 
         fs::remove_file(&path).expect("remove iq8 fixture");
+    }
+
+    #[test]
+    fn nav_solution_output_preserves_source_trace() {
+        let out_dir = std::env::temp_dir().join(format!(
+            "bijux_nav_solution_output_{}_{}",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos()
+        ));
+        fs::create_dir_all(&out_dir).expect("create output directory");
+        let solution = NavSolutionEpoch {
+            epoch: Epoch { index: 12 },
+            t_rx_s: Seconds(1.5),
+            source_time: ReceiverSampleTrace::from_sample_index(6_138, 4_092_000.0),
+            ecef_x_m: Meters(1.0),
+            ecef_y_m: Meters(2.0),
+            ecef_z_m: Meters(3.0),
+            latitude_deg: 60.0,
+            longitude_deg: 18.0,
+            altitude_m: Meters(4.0),
+            clock_bias_s: Seconds(0.001),
+            clock_drift_s_per_s: 0.0,
+            pdop: 1.0,
+            rms_m: Meters(2.0),
+            status: SolutionStatus::Converged,
+            quality: SolutionStatus::Converged.quality_flag(),
+            validity: SolutionValidity::Stable,
+            valid: true,
+            processing_ms: None,
+            residuals: Vec::new(),
+            health: Vec::new(),
+            isb: Vec::new(),
+            sigma_h_m: Some(Meters(0.5)),
+            sigma_v_m: Some(Meters(0.8)),
+            innovation_rms_m: None,
+            normalized_innovation_rms: None,
+            normalized_innovation_max: None,
+            ekf_innovation_rms: None,
+            ekf_condition_number: None,
+            ekf_whiteness_ratio: None,
+            ekf_predicted_variance: None,
+            ekf_observed_variance: None,
+            integrity_hpl_m: None,
+            integrity_vpl_m: None,
+            model_version: NAV_SOLUTION_MODEL_VERSION,
+            lifecycle_state: NavLifecycleState::Converged,
+            uncertainty_class: NavUncertaintyClass::Low,
+            assumptions: None,
+            refusal_class: None,
+            artifact_id: "nav-epoch-0000000012-source".to_string(),
+            source_observation_epoch_id: "epoch-0000000012-sample-000000006138".to_string(),
+            explain_decision: "accepted".to_string(),
+            explain_reasons: vec!["navigation_solution_usable".to_string()],
+            provenance: None,
+            sat_count: 4,
+            used_sat_count: 4,
+            rejected_sat_count: 0,
+            hdop: None,
+            vdop: None,
+            gdop: None,
+            stability_signature: "navsig:v1:test".to_string(),
+            stability_signature_version: NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
+        };
+
+        super::write_nav_solution_outputs(&out_dir, &[solution]).expect("write nav solution");
+
+        let path = out_dir.join("nav_solution.jsonl");
+        let line = fs::read_to_string(&path).expect("read nav solution");
+        let payload: serde_json::Value = serde_json::from_str(line.lines().next().unwrap_or(""))
+            .expect("parse nav solution line");
+        assert_eq!(payload["source_time"]["sample_index"], 6_138);
+        assert_eq!(payload["source_time"]["sample_rate_hz"], 4_092_000.0);
+        assert_eq!(payload["source_time"]["receiver_time_s"], 0.0015);
+        assert_eq!(
+            payload["source_observation_epoch_id"],
+            "epoch-0000000012-sample-000000006138"
+        );
+
+        fs::remove_file(&path).expect("remove nav solution output");
+        fs::remove_dir(&out_dir).expect("remove output directory");
     }
 }
