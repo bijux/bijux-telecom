@@ -59,6 +59,8 @@ const QUADRATURE_WARNING_LIMIT_DEG: f64 = 5.0;
 const QUADRATURE_VARIANCE_EPSILON: f64 = 1e-12;
 const CLIPPING_PRECISION_REFUSAL_LIMIT_PCT: f64 = 1.0;
 const ZERO_SIGNAL_CENTERED_RMS_EPSILON: f64 = 1e-9;
+const NOISE_FLOOR_PERCENTILE: f64 = 0.2;
+const NOISE_FLOOR_POWER_EPSILON: f64 = 1e-12;
 
 #[derive(Debug, Clone, Copy)]
 struct ClippingProfile {
@@ -298,6 +300,30 @@ pub fn measure_raw_iq_front_end_metrics(
     analyzer.finish()
 }
 
+/// Estimate the complex noise floor from centered I/Q power.
+///
+/// The estimator uses the lower tail of the centered power distribution so strong signal energy
+/// does not dominate the floor estimate. The returned value is in dB relative to the normalized
+/// complex sample power used elsewhere in front-end metrics.
+pub fn estimate_iq_noise_floor_db(samples: &[Sample]) -> f64 {
+    let metrics = measure_iq_front_end_metrics(samples);
+    estimate_iq_noise_floor_db_from_metrics(samples, &metrics)
+}
+
+/// Estimate the complex noise floor from centered I/Q power using precomputed front-end metrics.
+pub fn estimate_iq_noise_floor_db_from_metrics(
+    samples: &[Sample],
+    metrics: &IqFrontEndMetrics,
+) -> f64 {
+    let Some(power_quantile) = centered_power_quantile(samples, metrics, NOISE_FLOOR_PERCENTILE)
+    else {
+        return 10.0 * NOISE_FLOOR_POWER_EPSILON.log10();
+    };
+    let percentile_scale = -((1.0 - NOISE_FLOOR_PERCENTILE).ln());
+    let noise_floor_power = (power_quantile / percentile_scale).max(NOISE_FLOOR_POWER_EPSILON);
+    10.0 * noise_floor_power.log10()
+}
+
 /// Remove the mean I/Q offset from a sample window in place.
 ///
 /// Returns the measured front-end metrics before the correction is applied.
@@ -312,11 +338,35 @@ pub fn remove_dc_offset_in_place(samples: &mut [Sample]) -> IqFrontEndMetrics {
     metrics
 }
 
+fn centered_power_quantile(
+    samples: &[Sample],
+    metrics: &IqFrontEndMetrics,
+    percentile: f64,
+) -> Option<f64> {
+    if samples.is_empty() {
+        return None;
+    }
+    let mut centered_powers = samples
+        .iter()
+        .map(|sample| {
+            let centered_i = sample.re as f64 - metrics.i_mean;
+            let centered_q = sample.im as f64 - metrics.q_mean;
+            centered_i * centered_i + centered_q * centered_q
+        })
+        .collect::<Vec<_>>();
+    centered_powers.sort_by(|left, right| left.total_cmp(right));
+    let last_index = centered_powers.len().saturating_sub(1);
+    let percentile = percentile.clamp(0.0, 1.0);
+    let idx = ((last_index as f64) * percentile).floor() as usize;
+    centered_powers.get(idx).copied()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        measure_iq_front_end_metrics, measure_raw_iq_front_end_metrics, remove_dc_offset_in_place,
-        IqFrontEndAnalyzer,
+        estimate_iq_noise_floor_db, estimate_iq_noise_floor_db_from_metrics,
+        measure_iq_front_end_metrics, measure_raw_iq_front_end_metrics,
+        remove_dc_offset_in_place, IqFrontEndAnalyzer,
     };
     use crate::raw_iq::{IqSampleFormat, RawIqMetadata};
     use bijux_gnss_core::api::Sample;
@@ -565,5 +615,42 @@ mod tests {
                 .expect("precision refusal reason")
                 .contains("no varying signal energy")
         );
+    }
+
+    #[test]
+    fn noise_floor_estimator_matches_centered_noise_scale() {
+        let samples = vec![
+            Sample::new(0.44, -0.18),
+            Sample::new(0.40, -0.20),
+            Sample::new(0.42, -0.22),
+            Sample::new(0.38, -0.24),
+            Sample::new(0.41, -0.19),
+            Sample::new(0.39, -0.21),
+            Sample::new(0.43, -0.23),
+            Sample::new(0.37, -0.17),
+            Sample::new(0.96, 0.35),
+            Sample::new(-0.18, -0.79),
+        ];
+
+        let metrics = measure_iq_front_end_metrics(&samples);
+        let estimated_db = estimate_iq_noise_floor_db_from_metrics(&samples, &metrics);
+
+        assert!(estimated_db.is_finite());
+        assert!(estimated_db > -35.0, "estimated_db={estimated_db}");
+        assert!(estimated_db < -20.0, "estimated_db={estimated_db}");
+    }
+
+    #[test]
+    fn noise_floor_estimator_refuses_dc_only_energy() {
+        let samples = vec![
+            Sample::new(0.25, -0.5),
+            Sample::new(0.25, -0.5),
+            Sample::new(0.25, -0.5),
+            Sample::new(0.25, -0.5),
+        ];
+
+        let estimated_db = estimate_iq_noise_floor_db(&samples);
+
+        assert!(estimated_db <= -100.0, "estimated_db={estimated_db}");
     }
 }
