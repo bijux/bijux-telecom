@@ -827,6 +827,7 @@ pub fn validate_truth_guided_cn0(
                     0,
                     sat_truth.sat,
                     carrier_hz,
+                    config.code_freq_basis_hz,
                     code_phase_samples,
                     early_late_spacing_chips,
                 );

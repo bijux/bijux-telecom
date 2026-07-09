@@ -227,11 +227,11 @@ impl Tracking {
         frame: &SamplesFrame,
         sat: SatId,
         carrier_freq_hz: f64,
+        code_rate_hz: f64,
         code_phase_samples: f64,
         early_late_spacing_chips: f64,
     ) -> CorrelatorOutput {
         let sample_rate_hz = self.config.sampling_freq_hz;
-        let code_rate_hz = self.config.code_freq_basis_hz;
         let samples_per_code = samples_per_code(
             sample_rate_hz,
             self.config.code_freq_basis_hz,
@@ -284,6 +284,7 @@ impl Tracking {
         channel_id: u8,
         sat: SatId,
         carrier_freq_hz: f64,
+        code_rate_hz: f64,
         code_phase_samples: f64,
         early_late_spacing_chips: f64,
     ) -> (TrackEpoch, CorrelatorOutput) {
@@ -293,6 +294,7 @@ impl Tracking {
             frame,
             sat,
             carrier_freq_hz,
+            code_rate_hz,
             code_phase_samples,
             early_late_spacing_chips,
         );
@@ -328,7 +330,7 @@ impl Tracking {
             late_i: correlator.late.re,
             late_q: correlator.late.im,
             carrier_hz: Hertz(carrier_freq_hz),
-            code_rate_hz: Hertz(self.config.code_freq_basis_hz),
+            code_rate_hz: Hertz(code_rate_hz),
             code_phase_samples: Chips(code_phase_samples),
             lock: correlator.prompt.norm() > 0.0,
             cn0_dbhz,
@@ -719,6 +721,7 @@ impl Tracking {
                 channel_id,
                 sat,
                 state.carrier_hz,
+                state.code_rate_hz,
                 state.code_phase_samples,
                 tracking_params.early_late_spacing_chips,
             );
@@ -1196,7 +1199,14 @@ impl Tracking {
         for d in doppler_bins {
             for c in code_bins {
                 let corr =
-                    self.correlate_epoch(frame, sat, carrier_hz + d, code_phase_samples + c, 0.5);
+                    self.correlate_epoch(
+                        frame,
+                        sat,
+                        carrier_hz + d,
+                        self.config.code_freq_basis_hz,
+                        code_phase_samples + c,
+                        0.5,
+                    );
                 let metric = corr.prompt.norm();
                 if metric > best_metric {
                     best_metric = metric;
@@ -1345,8 +1355,15 @@ mod tests {
             .expect("valid epoch code phase");
             let epoch_code_phase_samples =
                 epoch_code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
-            let (epoch, _) =
-                tracking.track_epoch(&epoch_frame, 0, sat, 0.0, epoch_code_phase_samples, 0.5);
+            let (epoch, _) = tracking.track_epoch(
+                &epoch_frame,
+                0,
+                sat,
+                0.0,
+                config.code_freq_basis_hz,
+                epoch_code_phase_samples,
+                0.5,
+            );
             let raw_phase_cycles =
                 (epoch.prompt_q as f64).atan2(epoch.prompt_i as f64) / (2.0 * std::f64::consts::PI);
             let decision = super::classify_prompt_phase(
@@ -1480,7 +1497,14 @@ mod tests {
             samples.into_iter().map(|value| Complex::new(value, 0.0)).collect(),
         );
 
-        let correlator = tracking.correlate_epoch(&frame, sat, 0.0, code_phase_samples, 0.5);
+        let correlator = tracking.correlate_epoch(
+            &frame,
+            sat,
+            0.0,
+            config.code_freq_basis_hz,
+            code_phase_samples,
+            0.5,
+        );
 
         assert!(correlator.prompt.norm() > correlator.early.norm());
         assert!(correlator.prompt.norm() > correlator.late.norm());
