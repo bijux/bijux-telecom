@@ -191,6 +191,44 @@ pub struct SyntheticCn0ValidationReport {
     pub satellites: Vec<SyntheticCn0ValidationSatellite>,
 }
 
+/// Per-satellite acquisition code-phase comparison between clean synthetic truth and receiver output.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionCodePhaseValidationSatellite {
+    /// Satellite identifier.
+    pub sat: SatId,
+    /// Injected code phase at the start of the validation frame, in chips.
+    pub injected_code_phase_chips: f64,
+    /// Expected acquisition-reported code phase sample under the receiver search convention.
+    pub expected_code_phase_samples: usize,
+    /// Measured acquisition-reported code phase sample.
+    pub measured_code_phase_samples: usize,
+    /// Wrapped absolute error between expected and measured code phase samples.
+    pub code_phase_error_samples: usize,
+    /// Peak-to-mean ratio for the selected acquisition result.
+    pub peak_mean_ratio: f32,
+    /// Acquisition hypothesis returned by the receiver.
+    pub hypothesis: String,
+    /// Whether the measured code phase stayed within tolerance.
+    pub pass: bool,
+}
+
+/// Truth-guided acquisition code-phase validation report for a synthetic capture.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionCodePhaseValidationReport {
+    /// Stable scenario identifier for this capture.
+    pub scenario_id: String,
+    /// Allowed wrapped absolute error in samples.
+    pub tolerance_samples: usize,
+    /// Capture sample rate in Hz.
+    pub sample_rate_hz: f64,
+    /// Number of samples in one code period at the configured rate.
+    pub period_samples: usize,
+    /// Whether every measured satellite passed the requested tolerance.
+    pub pass: bool,
+    /// Per-satellite comparison rows.
+    pub satellites: Vec<SyntheticAcquisitionCodePhaseValidationSatellite>,
+}
+
 /// Build a machine-readable truth bundle for an emitted synthetic capture.
 pub fn build_truth_bundle(
     scenario_id: &str,
@@ -374,6 +412,95 @@ pub fn validate_truth_guided_cn0(
         noise_std_per_component: truth.noise_std_per_component,
         noise_power_per_complex_sample: truth.noise_power_per_complex_sample,
         output_scale_applied: truth.output_scale_applied,
+        pass,
+        satellites,
+    }
+}
+
+/// Convert a truth-model code phase into the receiver's acquisition-reported sample convention.
+pub fn expected_acquisition_code_phase_samples(
+    config: &ReceiverPipelineConfig,
+    frame: &SamplesFrame,
+    code_phase_chips: f64,
+) -> usize {
+    let period_samples =
+        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length)
+            .max(1);
+    let phase_samples = code_phase_samples_at_epoch_start(config, frame, code_phase_chips);
+    let injected_sample = (phase_samples.round() as usize) % period_samples;
+    (period_samples - injected_sample) % period_samples
+}
+
+/// Measure wrapped code-phase error in samples over one code period.
+pub fn wrapped_code_phase_error_samples(
+    actual: usize,
+    expected: usize,
+    period_samples: usize,
+) -> usize {
+    let period_samples = period_samples.max(1);
+    let forward = actual.abs_diff(expected);
+    let wrapped = period_samples.saturating_sub(forward);
+    forward.min(wrapped)
+}
+
+/// Measure truth-guided acquisition code-phase accuracy from a synthetic capture.
+pub fn validate_truth_guided_acquisition_code_phase(
+    config: &ReceiverPipelineConfig,
+    frame: &SamplesFrame,
+    truth: &SyntheticIqTruthBundle,
+    tolerance_samples: usize,
+) -> SyntheticAcquisitionCodePhaseValidationReport {
+    let period_samples =
+        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length)
+            .max(1);
+    let satellites = truth
+        .satellites
+        .iter()
+        .map(|sat_truth| {
+            let isolated_frame =
+                regenerate_isolated_scaled_satellite_signal_only_frame(config, frame, truth, sat_truth);
+            let mut acquisition_config = config.clone();
+            acquisition_config.intermediate_freq_hz =
+                synthetic_carrier_hz(truth.intermediate_freq_hz, sat_truth.sat, sat_truth.doppler_hz);
+            acquisition_config.acquisition_doppler_search_hz = 0;
+            acquisition_config.acquisition_doppler_step_hz = 1;
+            let acquisition = crate::pipeline::acquisition::Acquisition::new(
+                acquisition_config,
+                crate::engine::runtime::ReceiverRuntime::default(),
+            )
+            .with_doppler(0, 1);
+            let result = acquisition.run_fft(&isolated_frame, &[sat_truth.sat]).remove(0);
+            let expected_code_phase_samples =
+                expected_acquisition_code_phase_samples(config, &isolated_frame, sat_truth.code_phase_chips);
+            let code_phase_error_samples = wrapped_code_phase_error_samples(
+                result.code_phase_samples,
+                expected_code_phase_samples,
+                period_samples,
+            );
+            let pass = matches!(
+                result.hypothesis,
+                crate::api::core::AcqHypothesis::Accepted | crate::api::core::AcqHypothesis::Ambiguous
+            ) && code_phase_error_samples <= tolerance_samples;
+
+            SyntheticAcquisitionCodePhaseValidationSatellite {
+                sat: sat_truth.sat,
+                injected_code_phase_chips: sat_truth.code_phase_chips,
+                expected_code_phase_samples,
+                measured_code_phase_samples: result.code_phase_samples,
+                code_phase_error_samples,
+                peak_mean_ratio: result.peak_mean_ratio,
+                hypothesis: result.hypothesis.to_string(),
+                pass,
+            }
+        })
+        .collect::<Vec<_>>();
+    let pass = !satellites.is_empty() && satellites.iter().all(|row| row.pass);
+
+    SyntheticAcquisitionCodePhaseValidationReport {
+        scenario_id: truth.scenario_id.clone(),
+        tolerance_samples,
+        sample_rate_hz: truth.sample_rate_hz,
+        period_samples,
         pass,
         satellites,
     }
@@ -587,25 +714,24 @@ fn regenerate_isolated_scaled_satellite_frame(
     truth: &SyntheticIqTruthBundle,
     sat_truth: &SyntheticSatelliteTruth,
 ) -> SamplesFrame {
-    let isolated_frame = generate_l1_ca_multi(
+    let isolated_frame = generate_l1_ca_multi(config, &isolated_satellite_scenario(measured_frame, truth, sat_truth));
+    let iq = isolated_frame
+        .iq
+        .iter()
+        .map(|sample| *sample * truth.output_scale_applied)
+        .collect::<Vec<_>>();
+    SamplesFrame::new(measured_frame.t0, measured_frame.dt_s, iq)
+}
+
+fn regenerate_isolated_scaled_satellite_signal_only_frame(
+    config: &ReceiverPipelineConfig,
+    measured_frame: &SamplesFrame,
+    truth: &SyntheticIqTruthBundle,
+    sat_truth: &SyntheticSatelliteTruth,
+) -> SamplesFrame {
+    let isolated_frame = generate_l1_ca_multi_signal_only(
         config,
-        &SyntheticScenario {
-            sample_rate_hz: truth.sample_rate_hz,
-            intermediate_freq_hz: truth.intermediate_freq_hz,
-            duration_s: measured_frame.len() as f64 * measured_frame.dt_s.0,
-            seed: truth.seed,
-            satellites: vec![SyntheticSignalParams {
-                sat: sat_truth.sat,
-                doppler_hz: sat_truth.doppler_hz,
-                code_phase_chips: sat_truth.code_phase_chips,
-                carrier_phase_rad: sat_truth.carrier_phase_rad,
-                cn0_db_hz: sat_truth.cn0_db_hz,
-                data_bit_flip: sat_truth.nav_bit_mode
-                    == SyntheticNavBitMode::AlternatingGpsLnav20ms,
-            }],
-            ephemerides: Vec::new(),
-            id: sat_truth.sat.prn.to_string(),
-        },
+        &isolated_satellite_scenario(measured_frame, truth, sat_truth),
     );
     let iq = isolated_frame
         .iq
@@ -613,6 +739,29 @@ fn regenerate_isolated_scaled_satellite_frame(
         .map(|sample| *sample * truth.output_scale_applied)
         .collect::<Vec<_>>();
     SamplesFrame::new(measured_frame.t0, measured_frame.dt_s, iq)
+}
+
+fn isolated_satellite_scenario(
+    measured_frame: &SamplesFrame,
+    truth: &SyntheticIqTruthBundle,
+    sat_truth: &SyntheticSatelliteTruth,
+) -> SyntheticScenario {
+    SyntheticScenario {
+        sample_rate_hz: truth.sample_rate_hz,
+        intermediate_freq_hz: truth.intermediate_freq_hz,
+        duration_s: measured_frame.len() as f64 * measured_frame.dt_s.0,
+        seed: truth.seed,
+        satellites: vec![SyntheticSignalParams {
+            sat: sat_truth.sat,
+            doppler_hz: sat_truth.doppler_hz,
+            code_phase_chips: sat_truth.code_phase_chips,
+            carrier_phase_rad: sat_truth.carrier_phase_rad,
+            cn0_db_hz: sat_truth.cn0_db_hz,
+            data_bit_flip: sat_truth.nav_bit_mode == SyntheticNavBitMode::AlternatingGpsLnav20ms,
+        }],
+        ephemerides: Vec::new(),
+        id: sat_truth.sat.prn.to_string(),
+    }
 }
 
 fn code_phase_samples_at_epoch_start(
@@ -785,10 +934,11 @@ impl XorShift64 {
 mod tests {
     use super::{
         build_iq16_capture_bundle, build_truth_bundle, generate_l1_ca_multi,
-        nav_bit_index_at_time_s, nav_bit_sign_at_time_s, signal_amplitude_from_cn0,
-        validate_truth_guided_cn0, SatState, SyntheticNavBitMode, SyntheticScenario,
-        SyntheticSignalParams, SyntheticSignalSource, SYNTHETIC_COMPLEX_NOISE_POWER,
-        SYNTHETIC_NOISE_STD_PER_COMPONENT,
+        expected_acquisition_code_phase_samples, nav_bit_index_at_time_s, nav_bit_sign_at_time_s,
+        signal_amplitude_from_cn0, validate_truth_guided_acquisition_code_phase,
+        validate_truth_guided_cn0, wrapped_code_phase_error_samples, SatState,
+        SyntheticNavBitMode, SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource,
+        SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
     use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds};
@@ -1177,6 +1327,102 @@ mod tests {
             assert_eq!(row.epochs_measured, 10);
             assert!(row.cn0_delta_db.abs() <= 3.0, "{row:?}");
             assert!(row.measured_max_cn0_dbhz >= row.measured_min_cn0_dbhz);
+        }
+    }
+
+    #[test]
+    fn expected_acquisition_code_phase_uses_receiver_search_convention() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let period_samples =
+            samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
+        let frame = SamplesFrame::new(
+            SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
+            Seconds(1.0 / config.sampling_freq_hz),
+            vec![num_complex::Complex::new(0.0f32, 0.0f32); period_samples],
+        );
+
+        assert_eq!(expected_acquisition_code_phase_samples(&config, &frame, 0.0), 0);
+        assert_eq!(
+            expected_acquisition_code_phase_samples(
+                &config,
+                &frame,
+                (period_samples - 1) as f64 * config.code_freq_basis_hz / config.sampling_freq_hz,
+            ),
+            1
+        );
+    }
+
+    #[test]
+    fn wrapped_code_phase_error_measures_shortest_period_distance() {
+        assert_eq!(wrapped_code_phase_error_samples(0, 0, 4092), 0);
+        assert_eq!(wrapped_code_phase_error_samples(1, 4091, 4092), 2);
+        assert_eq!(wrapped_code_phase_error_samples(4091, 1, 4092), 2);
+    }
+
+    #[test]
+    fn truth_guided_acquisition_code_phase_validation_matches_clean_truth_within_two_samples() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let scenario = SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            duration_s: 0.04,
+            seed: 24071985,
+            satellites: vec![
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                    doppler_hz: 750.0,
+                    code_phase_chips: 200.25,
+                    carrier_phase_rad: 0.0,
+                    cn0_db_hz: 58.0,
+                    data_bit_flip: true,
+                },
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                    doppler_hz: -1000.0,
+                    code_phase_chips: 321.5,
+                    carrier_phase_rad: 0.2,
+                    cn0_db_hz: 52.0,
+                    data_bit_flip: false,
+                },
+            ],
+            ephemerides: Vec::new(),
+            id: "acquisition-code-phase-validation".to_string(),
+        };
+        let frame = generate_l1_ca_multi(&config, &scenario);
+        let bundle = build_iq16_capture_bundle(
+            &scenario.id,
+            &scenario,
+            &frame,
+            "2026-07-09T00:00:00Z",
+            Some("synthetic acquisition code-phase validation".to_string()),
+        );
+        let scaled_frame = SamplesFrame::new(
+            frame.t0,
+            frame.dt_s,
+            frame.iq.iter().map(|sample| *sample * bundle.truth.output_scale_applied).collect(),
+        );
+        let report =
+            validate_truth_guided_acquisition_code_phase(&config, &scaled_frame, &bundle.truth, 2);
+
+        assert!(report.pass, "{report:?}");
+        assert_eq!(report.period_samples, 4092);
+        assert_eq!(report.satellites.len(), 2);
+        for row in &report.satellites {
+            assert!(row.pass, "{row:?}");
+            assert!(row.code_phase_error_samples <= 2, "{row:?}");
+            assert!(matches!(row.hypothesis.as_str(), "accepted" | "ambiguous"));
         }
     }
 }
