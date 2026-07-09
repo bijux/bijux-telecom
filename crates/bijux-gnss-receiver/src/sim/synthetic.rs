@@ -324,6 +324,62 @@ pub struct SyntheticAcquisitionDopplerValidationReport {
     pub satellites: Vec<SyntheticAcquisitionDopplerValidationSatellite>,
 }
 
+/// Per-satellite acquisition receiver clock-offset comparison row.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionReceiverClockOffsetSatellite {
+    /// Satellite identifier.
+    pub sat: SatId,
+    /// Injected Doppler shift in Hz.
+    pub injected_doppler_hz: f64,
+    /// Receiver clock frequency bias injected into the synthetic capture, in Hz.
+    pub injected_receiver_clock_frequency_bias_hz: f64,
+    /// Expected Doppler measurement after the common receiver clock bias is applied, in Hz.
+    pub expected_measured_doppler_hz: f64,
+    /// Measured acquisition Doppler in Hz relative to the configured IF.
+    pub measured_doppler_hz: f64,
+    /// Receiver clock frequency bias implied by the measured acquisition Doppler, in Hz.
+    pub measured_receiver_clock_frequency_bias_hz: f64,
+    /// Absolute error between measured and injected receiver clock frequency bias, in Hz.
+    pub receiver_clock_frequency_bias_error_hz: f64,
+    /// Effective acquisition Doppler bin width in Hz.
+    pub doppler_step_hz: i32,
+    /// Peak-to-mean ratio for the selected acquisition result.
+    pub peak_mean_ratio: f32,
+    /// Acquisition hypothesis returned by the receiver.
+    pub hypothesis: String,
+    /// Whether the measured receiver clock bias stayed within tolerance.
+    pub pass: bool,
+}
+
+/// Truth-guided acquisition receiver clock-offset validation report for a synthetic capture.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionReceiverClockOffsetValidationReport {
+    /// Stable scenario identifier for this capture.
+    pub scenario_id: String,
+    /// Receiver clock frequency bias injected into the synthetic capture, in Hz.
+    pub injected_receiver_clock_frequency_bias_hz: f64,
+    /// Allowed receiver clock bias error in acquisition bins.
+    pub tolerance_bins: usize,
+    /// Allowed receiver clock bias error in Hz.
+    pub tolerance_hz: f64,
+    /// Capture sample rate in Hz.
+    pub sample_rate_hz: f64,
+    /// Effective acquisition Doppler bin width in Hz.
+    pub doppler_step_hz: i32,
+    /// Mean recovered receiver clock frequency bias across all measured satellites, in Hz.
+    pub mean_measured_receiver_clock_frequency_bias_hz: f64,
+    /// Minimum recovered receiver clock frequency bias across all measured satellites, in Hz.
+    pub min_measured_receiver_clock_frequency_bias_hz: f64,
+    /// Maximum recovered receiver clock frequency bias across all measured satellites, in Hz.
+    pub max_measured_receiver_clock_frequency_bias_hz: f64,
+    /// Spread between the minimum and maximum recovered receiver clock frequency bias, in Hz.
+    pub measured_receiver_clock_frequency_bias_spread_hz: f64,
+    /// Whether every measured satellite recovered the injected receiver clock bias consistently.
+    pub pass: bool,
+    /// Per-satellite comparison rows.
+    pub satellites: Vec<SyntheticAcquisitionReceiverClockOffsetSatellite>,
+}
+
 /// Per-satellite acquisition validation row for a specific coherent integration profile.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticAcquisitionCoherentIntegrationSatellite {
@@ -1096,6 +1152,96 @@ pub fn validate_truth_guided_acquisition_doppler(
         tolerance_hz,
         sample_rate_hz: truth.sample_rate_hz,
         doppler_step_hz,
+        pass,
+        satellites,
+    }
+}
+
+/// Validate acquisition receiver clock-offset recovery from a synthetic capture.
+pub fn validate_truth_guided_acquisition_receiver_clock_offset(
+    config: &ReceiverPipelineConfig,
+    frame: &SamplesFrame,
+    truth: &SyntheticIqTruthBundle,
+    tolerance_bins: usize,
+) -> SyntheticAcquisitionReceiverClockOffsetValidationReport {
+    let doppler_step_hz = config.acquisition_doppler_step_hz.max(1);
+    let tolerance_hz = tolerance_bins as f64 * doppler_step_hz as f64;
+    let injected_receiver_clock_frequency_bias_hz = truth.receiver_clock_frequency_bias_hz;
+    let satellites = truth
+        .satellites
+        .iter()
+        .map(|sat_truth| {
+            let isolated_frame = regenerate_isolated_scaled_satellite_signal_only_frame(
+                config, frame, truth, sat_truth,
+            );
+            let acquisition = crate::pipeline::acquisition::Acquisition::new(
+                config.clone(),
+                crate::engine::runtime::ReceiverRuntime::default(),
+            );
+            let result = acquisition.run_fft(&isolated_frame, &[sat_truth.sat]).remove(0);
+            let measured_doppler_hz = crate::pipeline::doppler::doppler_hz_from_carrier_hz(
+                config.intermediate_freq_hz,
+                result.carrier_hz.0,
+            );
+            let expected_measured_doppler_hz =
+                sat_truth.doppler_hz + injected_receiver_clock_frequency_bias_hz;
+            let measured_receiver_clock_frequency_bias_hz =
+                measured_doppler_hz - sat_truth.doppler_hz;
+            let receiver_clock_frequency_bias_error_hz = (measured_receiver_clock_frequency_bias_hz
+                - injected_receiver_clock_frequency_bias_hz)
+                .abs();
+            let pass = measured_doppler_hz.is_finite()
+                && receiver_clock_frequency_bias_error_hz <= tolerance_hz + f64::EPSILON;
+
+            SyntheticAcquisitionReceiverClockOffsetSatellite {
+                sat: sat_truth.sat,
+                injected_doppler_hz: sat_truth.doppler_hz,
+                injected_receiver_clock_frequency_bias_hz,
+                expected_measured_doppler_hz,
+                measured_doppler_hz,
+                measured_receiver_clock_frequency_bias_hz,
+                receiver_clock_frequency_bias_error_hz,
+                doppler_step_hz,
+                peak_mean_ratio: result.peak_mean_ratio,
+                hypothesis: result.hypothesis.to_string(),
+                pass,
+            }
+        })
+        .collect::<Vec<_>>();
+    let min_measured_receiver_clock_frequency_bias_hz = satellites
+        .iter()
+        .map(|row| row.measured_receiver_clock_frequency_bias_hz)
+        .min_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal))
+        .unwrap_or(0.0);
+    let max_measured_receiver_clock_frequency_bias_hz = satellites
+        .iter()
+        .map(|row| row.measured_receiver_clock_frequency_bias_hz)
+        .max_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal))
+        .unwrap_or(0.0);
+    let measured_receiver_clock_frequency_bias_spread_hz =
+        max_measured_receiver_clock_frequency_bias_hz
+            - min_measured_receiver_clock_frequency_bias_hz;
+    let mean_measured_receiver_clock_frequency_bias_hz = if satellites.is_empty() {
+        0.0
+    } else {
+        satellites.iter().map(|row| row.measured_receiver_clock_frequency_bias_hz).sum::<f64>()
+            / satellites.len() as f64
+    };
+    let pass = !satellites.is_empty()
+        && satellites.iter().all(|row| row.pass)
+        && measured_receiver_clock_frequency_bias_spread_hz <= tolerance_hz + f64::EPSILON;
+
+    SyntheticAcquisitionReceiverClockOffsetValidationReport {
+        scenario_id: truth.scenario_id.clone(),
+        injected_receiver_clock_frequency_bias_hz,
+        tolerance_bins,
+        tolerance_hz,
+        sample_rate_hz: truth.sample_rate_hz,
+        doppler_step_hz,
+        mean_measured_receiver_clock_frequency_bias_hz,
+        min_measured_receiver_clock_frequency_bias_hz,
+        max_measured_receiver_clock_frequency_bias_hz,
+        measured_receiver_clock_frequency_bias_spread_hz,
         pass,
         satellites,
     }
@@ -2096,16 +2242,16 @@ mod tests {
         measure_truth_guided_acquisition_detection_probability,
         measure_truth_guided_acquisition_detection_rate, nav_bit_index_at_time_s,
         nav_bit_sign_at_time_s, signal_amplitude_from_cn0,
-        validate_truth_guided_acquisition_sample_rates,
         validate_truth_guided_acquisition_code_phase,
         validate_truth_guided_acquisition_code_phase_refinement,
         validate_truth_guided_acquisition_coherent_integration,
-        validate_truth_guided_acquisition_doppler, validate_truth_guided_cn0,
-        wrapped_code_phase_error_samples, wrapped_code_phase_error_samples_f64,
-        SatState, SyntheticAcquisitionDetectionRateCase,
-        SyntheticAcquisitionFalseAlarmRateCase, SyntheticAcquisitionSampleRateValidationCase,
-        SyntheticNavBitMode, SyntheticScenario, SyntheticSignalParams,
-        SyntheticSignalSource, SYNTHETIC_COMPLEX_NOISE_POWER,
+        validate_truth_guided_acquisition_doppler,
+        validate_truth_guided_acquisition_receiver_clock_offset,
+        validate_truth_guided_acquisition_sample_rates, validate_truth_guided_cn0,
+        wrapped_code_phase_error_samples, wrapped_code_phase_error_samples_f64, SatState,
+        SyntheticAcquisitionDetectionRateCase, SyntheticAcquisitionFalseAlarmRateCase,
+        SyntheticAcquisitionSampleRateValidationCase, SyntheticNavBitMode, SyntheticScenario,
+        SyntheticSignalParams, SyntheticSignalSource, SYNTHETIC_COMPLEX_NOISE_POWER,
         SYNTHETIC_NOISE_STD_PER_COMPONENT,
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -2387,11 +2533,12 @@ mod tests {
             data_bit_flip: false,
         };
         let unbiased = SatState::new_with_receiver_clock_frequency_bias_hz(&config, params, 0.0);
-        let biased =
-            SatState::new_with_receiver_clock_frequency_bias_hz(&config, params, 500.0);
+        let biased = SatState::new_with_receiver_clock_frequency_bias_hz(&config, params, 500.0);
         let sample_dt_s = 1.0 / config.sampling_freq_hz;
-        let unbiased_phase_step = phase_step_rad(unbiased.sample_at(0.0), unbiased.sample_at(sample_dt_s));
-        let biased_phase_step = phase_step_rad(biased.sample_at(0.0), biased.sample_at(sample_dt_s));
+        let unbiased_phase_step =
+            phase_step_rad(unbiased.sample_at(0.0), unbiased.sample_at(sample_dt_s));
+        let biased_phase_step =
+            phase_step_rad(biased.sample_at(0.0), biased.sample_at(sample_dt_s));
         let expected_extra_phase_step = std::f64::consts::TAU * 500.0 / config.sampling_freq_hz;
         let actual_extra_phase_step =
             wrap_phase_rad((biased_phase_step - unbiased_phase_step) as f64);
@@ -3020,6 +3167,155 @@ mod tests {
     }
 
     #[test]
+    fn truth_guided_acquisition_receiver_clock_offset_validation_reports_positive_bias() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            acquisition_doppler_search_hz: 10_000,
+            acquisition_doppler_step_hz: 250,
+            ..ReceiverPipelineConfig::default()
+        };
+        let scenario = SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 500.0,
+            duration_s: 0.04,
+            seed: 24071985,
+            satellites: vec![
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                    doppler_hz: 750.0,
+                    code_phase_chips: 200.25,
+                    carrier_phase_rad: 0.0,
+                    cn0_db_hz: 58.0,
+                    data_bit_flip: true,
+                },
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                    doppler_hz: -1_000.0,
+                    code_phase_chips: 321.5,
+                    carrier_phase_rad: 0.2,
+                    cn0_db_hz: 52.0,
+                    data_bit_flip: false,
+                },
+            ],
+            ephemerides: Vec::new(),
+            id: "acquisition-receiver-clock-offset-positive".to_string(),
+        };
+        let frame = generate_l1_ca_multi(&config, &scenario);
+        let bundle = build_iq16_capture_bundle(
+            &scenario.id,
+            &scenario,
+            &frame,
+            "2026-07-09T00:00:00Z",
+            Some("synthetic acquisition receiver clock offset validation".to_string()),
+        );
+        let scaled_frame = SamplesFrame::new(
+            frame.t0,
+            frame.dt_s,
+            frame.iq.iter().map(|sample| *sample * bundle.truth.output_scale_applied).collect(),
+        );
+        let report = validate_truth_guided_acquisition_receiver_clock_offset(
+            &config,
+            &scaled_frame,
+            &bundle.truth,
+            1,
+        );
+
+        assert!(report.pass, "{report:?}");
+        assert_eq!(report.injected_receiver_clock_frequency_bias_hz, 500.0);
+        assert_eq!(report.tolerance_hz, 250.0);
+        assert_eq!(report.doppler_step_hz, 250);
+        assert_eq!(report.satellites.len(), 2);
+        assert!(
+            (report.mean_measured_receiver_clock_frequency_bias_hz - 500.0).abs() <= 250.0,
+            "{report:?}"
+        );
+        for row in &report.satellites {
+            assert!(row.pass, "{row:?}");
+            assert!(
+                (row.measured_receiver_clock_frequency_bias_hz - 500.0).abs() <= 250.0,
+                "{row:?}"
+            );
+            assert!(
+                (row.expected_measured_doppler_hz - row.measured_doppler_hz).abs() <= 250.0,
+                "{row:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn truth_guided_acquisition_receiver_clock_offset_validation_reports_negative_bias() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            acquisition_doppler_search_hz: 10_000,
+            acquisition_doppler_step_hz: 250,
+            ..ReceiverPipelineConfig::default()
+        };
+        let scenario = SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: -500.0,
+            duration_s: 0.04,
+            seed: 24071986,
+            satellites: vec![
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 11 },
+                    doppler_hz: 1_250.0,
+                    code_phase_chips: 150.25,
+                    carrier_phase_rad: 0.0,
+                    cn0_db_hz: 58.0,
+                    data_bit_flip: false,
+                },
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 19 },
+                    doppler_hz: -750.0,
+                    code_phase_chips: 420.5,
+                    carrier_phase_rad: 0.3,
+                    cn0_db_hz: 54.0,
+                    data_bit_flip: true,
+                },
+            ],
+            ephemerides: Vec::new(),
+            id: "acquisition-receiver-clock-offset-negative".to_string(),
+        };
+        let frame = generate_l1_ca_multi(&config, &scenario);
+        let bundle = build_iq16_capture_bundle(
+            &scenario.id,
+            &scenario,
+            &frame,
+            "2026-07-09T00:00:00Z",
+            Some("synthetic acquisition receiver clock offset validation".to_string()),
+        );
+        let scaled_frame = SamplesFrame::new(
+            frame.t0,
+            frame.dt_s,
+            frame.iq.iter().map(|sample| *sample * bundle.truth.output_scale_applied).collect(),
+        );
+        let report = validate_truth_guided_acquisition_receiver_clock_offset(
+            &config,
+            &scaled_frame,
+            &bundle.truth,
+            1,
+        );
+
+        assert!(report.pass, "{report:?}");
+        assert_eq!(report.injected_receiver_clock_frequency_bias_hz, -500.0);
+        assert_eq!(report.satellites.len(), 2);
+        assert!(report.max_measured_receiver_clock_frequency_bias_hz <= 0.0, "{report:?}");
+        assert!(report.min_measured_receiver_clock_frequency_bias_hz <= -250.0, "{report:?}");
+        for row in &report.satellites {
+            assert!(row.pass, "{row:?}");
+            assert!(row.measured_receiver_clock_frequency_bias_hz < 0.0, "{row:?}");
+        }
+    }
+
+    #[test]
     fn acquisition_sample_rate_validation_passes_with_distinct_low_and_high_rate_profiles() {
         let low_rate = synthetic_acquisition_sample_rate_case_fixture(
             2_046_000.0,
@@ -3032,11 +3328,8 @@ mod tests {
             0x4_092_000,
         );
 
-        let report = validate_truth_guided_acquisition_sample_rates(
-            &[low_rate.case, high_rate.case],
-            2,
-            1,
-        );
+        let report =
+            validate_truth_guided_acquisition_sample_rates(&[low_rate.case, high_rate.case], 2, 1);
 
         assert!(report.pass, "{report:?}");
         assert_eq!(report.code_phase_tolerance_samples, 2);
@@ -3095,7 +3388,11 @@ mod tests {
             0x2_046_002,
         );
 
-        let report = validate_truth_guided_acquisition_sample_rates(&[zeta.case, beta.case, alpha.case], 2, 1);
+        let report = validate_truth_guided_acquisition_sample_rates(
+            &[zeta.case, beta.case, alpha.case],
+            2,
+            1,
+        );
         let ordered_points = report
             .points
             .iter()
@@ -3169,16 +3466,16 @@ mod tests {
         let scaled_frame = Box::leak(Box::new(SamplesFrame::new(
             frame.t0,
             frame.dt_s,
-            frame
-                .iq
-                .iter()
-                .map(|sample| *sample * bundle.truth.output_scale_applied)
-                .collect(),
+            frame.iq.iter().map(|sample| *sample * bundle.truth.output_scale_applied).collect(),
         )));
         let truth = Box::leak(Box::new(bundle.truth));
 
         SyntheticAcquisitionSampleRateCaseFixture {
-            case: SyntheticAcquisitionSampleRateValidationCase { config, frame: scaled_frame, truth },
+            case: SyntheticAcquisitionSampleRateValidationCase {
+                config,
+                frame: scaled_frame,
+                truth,
+            },
             truth,
         }
     }
