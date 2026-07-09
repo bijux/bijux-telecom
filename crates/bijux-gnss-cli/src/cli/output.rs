@@ -124,12 +124,16 @@ fn emit_report<T: Serialize>(common: &CommonArgs, command: &str, report: &T) -> 
 
 const TRACKING_DIAGNOSTIC_CODE_PERIODS: usize = 12;
 
-fn load_frame(
+fn load_acquisition_frame(
     path: &Path,
     config: &ReceiverPipelineConfig,
     metadata: &RawIqMetadata,
 ) -> Result<SamplesFrame> {
-    load_frame_window(path, config, metadata, 1)
+    let code_periods = acquisition_code_periods(
+        config.acquisition_integration_ms,
+        config.acquisition_noncoherent,
+    );
+    load_frame_window(path, config, metadata, code_periods)
 }
 
 fn load_tracking_frame(
@@ -154,6 +158,10 @@ fn load_tracking_frame(
         bijux_gnss_infra::api::signal::remove_dc_offset_in_place(&mut frame.iq);
     }
     Ok(frame)
+}
+
+fn acquisition_code_periods(coherent_ms: u32, noncoherent: u32) -> usize {
+    coherent_ms.saturating_mul(noncoherent).max(1) as usize
 }
 
 fn load_frame_window(
@@ -584,7 +592,9 @@ fn write_ephemeris(
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_raw_iq_metadata, enforce_locked_capture_value, load_frame};
+    use super::{
+        apply_raw_iq_metadata, enforce_locked_capture_value, load_frame_window,
+    };
     use crate::RawIqMetadata;
     use crate::{ReceiverConfig, ReceiverPipelineConfig};
     use bijux_gnss_infra::api::core::{
@@ -657,7 +667,7 @@ mod tests {
             ..ReceiverPipelineConfig::default()
         };
 
-        let frame = load_frame(&path, &config, &metadata).expect("load frame");
+        let frame = load_frame_window(&path, &config, &metadata, 1).expect("load frame");
         let metrics = bijux_gnss_infra::api::signal::measure_iq_front_end_metrics(&frame.iq);
 
         assert!(metrics.i_mean.abs() < 1e-6, "i_mean={}", metrics.i_mean);
@@ -714,6 +724,45 @@ mod tests {
 
         let frame = super::load_tracking_frame(&path, &config, &metadata)
             .expect("load tracking frame");
+        assert_eq!(frame.len(), sample_count);
+
+        fs::remove_file(&path).expect("remove iq8 fixture");
+    }
+
+    #[test]
+    fn load_acquisition_frame_reads_configured_integration_window() {
+        let path = temp_file_path("load_acquisition_frame_window");
+        let coherent_ms = 5u32;
+        let noncoherent = 4u32;
+        let sample_count =
+            4_092usize * super::acquisition_code_periods(coherent_ms, noncoherent);
+        let mut raw = Vec::with_capacity(sample_count * 2);
+        for _ in 0..sample_count {
+            raw.push(8u8);
+            raw.push(0u8);
+        }
+        fs::write(&path, raw).expect("write iq8 fixture");
+
+        let metadata = RawIqMetadata {
+            format: bijux_gnss_infra::api::signal::IqSampleFormat::Iq8,
+            sample_rate_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            capture_start_utc: "2026-07-09T00:00:00Z".to_string(),
+            offset_bytes: 0,
+            quantization_bits: Some(8),
+            notes: None,
+        };
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: metadata.sample_rate_hz,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            acquisition_integration_ms: coherent_ms,
+            acquisition_noncoherent: noncoherent,
+            ..ReceiverPipelineConfig::default()
+        };
+
+        let frame = super::load_acquisition_frame(&path, &config, &metadata)
+            .expect("load acquisition frame");
         assert_eq!(frame.len(), sample_count);
 
         fs::remove_file(&path).expect("remove iq8 fixture");

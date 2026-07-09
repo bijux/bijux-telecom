@@ -39,7 +39,7 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
 
     let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
 
-    let frame = load_frame(&input_file, &config, &raw_iq_metadata)?;
+    let frame = load_acquisition_frame(&input_file, &config, &raw_iq_metadata)?;
     let front_end_metrics = bijux_gnss_infra::api::signal::measure_raw_iq_front_end_metrics(
         &frame.iq,
         &raw_iq_metadata,
@@ -48,8 +48,13 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
     let acquisition =
         AcquisitionEngine::new(config, runtime).with_doppler(doppler_search_hz, doppler_step_hz);
     let sats = bijux_gnss_infra::api::core::prns_to_sats(&prn);
-    let results =
-        acquisition.run_fft_topn(&frame, &sats, top, profile.acquisition.integration_ms, 1);
+    let results = acquisition.run_fft_topn(
+        &frame,
+        &sats,
+        top,
+        profile.acquisition.integration_ms,
+        profile.acquisition.noncoherent_integration,
+    );
 
     let mut rows = Vec::new();
     for candidates in &results {
