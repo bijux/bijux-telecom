@@ -496,6 +496,9 @@ fn classify_observation_status(
     cn0_dbhz: f64,
 ) -> (ObservationStatus, Vec<String>) {
     let mut reasons = Vec::new();
+    if epoch.lock_state_reason.as_deref() == Some("sample_rate_mismatch") {
+        reasons.push("sample_rate_mismatch".to_string());
+    }
     if !epoch.lock {
         reasons.push("tracking_unlock".to_string());
     }
@@ -509,7 +512,10 @@ fn classify_observation_status(
         reasons.push("non_finite_observable".to_string());
     }
 
-    let status = if reasons.iter().any(|reason| reason == "non_finite_observable") {
+    let status = if reasons
+        .iter()
+        .any(|reason| reason == "non_finite_observable" || reason == "sample_rate_mismatch")
+    {
         ObservationStatus::Inconsistent
     } else if reasons.iter().any(|reason| reason == "tracking_unlock") {
         ObservationStatus::Missing
@@ -855,5 +861,44 @@ mod tests {
         let reason = epoch.decision_reason.expect("decision reason");
         assert!(reason.contains("malformed_observation_set"));
         assert!(reason.contains("duplicate signal_id"));
+    }
+
+    #[test]
+    fn observations_reject_sample_rate_mismatch_tracking_reason() {
+        let config = ReceiverPipelineConfig::default();
+        let sat = SatId { constellation: Constellation::Gps, prn: 11 };
+        let mismatch_epoch = TrackEpoch {
+            epoch: Epoch { index: 0 },
+            sample_index: 0,
+            sat,
+            lock: true,
+            cn0_dbhz: 45.0,
+            dll_lock: false,
+            pll_lock: false,
+            lock_state: "tracking".to_string(),
+            lock_state_reason: Some("sample_rate_mismatch".to_string()),
+            ..TrackEpoch::default()
+        };
+        let track = TrackingResult {
+            sat,
+            carrier_hz: 0.0,
+            code_phase_samples: 0.0,
+            acquisition_hypothesis: "accepted".to_string(),
+            acquisition_score: 1.0,
+            acquisition_code_phase_samples: 0,
+            acquisition_carrier_hz: 0.0,
+            acq_to_track_state: "accepted".to_string(),
+            epochs: vec![mismatch_epoch],
+            transitions: Vec::new(),
+        };
+
+        let report = observations_from_tracking_results(&config, &[track], 10);
+        let epoch = report.output.first().expect("observation epoch");
+        let sat = epoch.sats.first().expect("observation satellite");
+
+        assert_eq!(sat.observation_status, ObservationStatus::Inconsistent);
+        assert!(sat.observation_reject_reasons.iter().any(|reason| reason == "sample_rate_mismatch"));
+        assert_eq!(epoch.decision, ObservationEpochDecision::Rejected);
+        assert_eq!(epoch.decision_reason.as_deref(), Some("inconsistent_observable"));
     }
 }
