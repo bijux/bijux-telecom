@@ -76,6 +76,17 @@ fn assert_constant_iq_metrics(metrics: &Value, sample_count: u64) {
     assert_eq!(metrics.get("sample_count").and_then(Value::as_u64), Some(sample_count));
     assert_eq!(metrics.get("i_mean").and_then(Value::as_f64), Some(0.25));
     assert_eq!(metrics.get("q_mean").and_then(Value::as_f64), Some(0.0));
+    assert_eq!(metrics.get("i_power").and_then(Value::as_f64), Some(0.0625));
+    assert_eq!(metrics.get("q_power").and_then(Value::as_f64), Some(0.0));
+    assert!(metrics
+        .get("iq_power_ratio")
+        .and_then(Value::as_f64)
+        .expect("iq_power_ratio")
+        > 1.0e10);
+    assert_eq!(
+        metrics.get("power_imbalance_warning").and_then(Value::as_bool),
+        Some(true)
+    );
     assert_eq!(metrics.get("rms").and_then(Value::as_f64), Some(0.25));
     assert_eq!(metrics.get("dc_imbalance").and_then(Value::as_f64), Some(1.0));
 }

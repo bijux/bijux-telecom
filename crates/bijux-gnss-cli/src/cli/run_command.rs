@@ -103,9 +103,13 @@ use bijux_gnss_infra::api::core::format_sat;
 
 fn print_acquisition_table(report: &AcquisitionReport) {
     println!(
-        "I mean: {:.6}  Q mean: {:.6}  RMS: {:.6}  DC imbalance: {:.6}",
+        "I mean: {:.6}  Q mean: {:.6}  I power: {:.6}  Q power: {:.6}  I/Q ratio: {:.6}  Power warning: {}  RMS: {:.6}  DC imbalance: {:.6}",
         report.front_end_metrics.i_mean,
         report.front_end_metrics.q_mean,
+        report.front_end_metrics.i_power,
+        report.front_end_metrics.q_power,
+        report.front_end_metrics.iq_power_ratio,
+        report.front_end_metrics.power_imbalance_warning,
         report.front_end_metrics.rms,
         report.front_end_metrics.dc_imbalance
     );
@@ -124,10 +128,10 @@ fn print_acquisition_table(report: &AcquisitionReport) {
 }
 fn print_inspect_table(report: &InspectReport) {
     println!(
-        "Format\tSampleRate(Hz)\tIF(Hz)\tCaptureStartUtc\tSamples\tIMean\tQMean\tRms\tDcImbalance\tClipRate\tNoiseFloor(dB)"
+        "Format\tSampleRate(Hz)\tIF(Hz)\tCaptureStartUtc\tSamples\tIMean\tQMean\tIPower\tQPower\tIqPowerRatio\tPowerWarning\tRms\tDcImbalance\tClipRate\tNoiseFloor(dB)"
     );
     println!(
-        "{}\t{:.1}\t{:.1}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{:.2}",
+        "{}\t{:.1}\t{:.1}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{}\t{:.6}\t{:.6}\t{:.6}\t{:.2}",
         report.format,
         report.sample_rate_hz,
         report.intermediate_freq_hz,
@@ -135,6 +139,10 @@ fn print_inspect_table(report: &InspectReport) {
         report.total_samples,
         report.front_end_metrics.i_mean,
         report.front_end_metrics.q_mean,
+        report.front_end_metrics.i_power,
+        report.front_end_metrics.q_power,
+        report.front_end_metrics.iq_power_ratio,
+        report.front_end_metrics.power_imbalance_warning,
         report.front_end_metrics.rms,
         report.front_end_metrics.dc_imbalance,
         report.clip_rate,
@@ -245,6 +253,31 @@ mod inspect_dataset_tests {
         assert_eq!(report.front_end_metrics.sample_count, 2);
 
         fs::remove_file(&path).expect("remove cf32 fixture");
+    }
+
+    #[test]
+    fn inspect_dataset_reports_iq_power_imbalance_warning() {
+        let path = temp_file_path("inspect_iq8_power_warning");
+        fs::write(&path, [32u8, 0u8, 32u8, 0u8]).expect("write iq8 fixture");
+
+        let metadata = RawIqMetadata {
+            format: IqSampleFormat::Iq8,
+            sample_rate_hz: 2_000_000.0,
+            intermediate_freq_hz: 0.0,
+            capture_start_utc: "2026-07-09T00:00:00Z".to_string(),
+            offset_bytes: 0,
+            quantization_bits: Some(8),
+            notes: None,
+        };
+        let report = inspect_dataset(&path, &metadata, 0).expect("inspect dataset");
+
+        assert_eq!(report.front_end_metrics.sample_count, 2);
+        assert_eq!(report.front_end_metrics.i_power, 0.0625);
+        assert_eq!(report.front_end_metrics.q_power, 0.0);
+        assert!(report.front_end_metrics.iq_power_ratio > 1.0e10);
+        assert!(report.front_end_metrics.power_imbalance_warning);
+
+        fs::remove_file(&path).expect("remove iq8 fixture");
     }
 }
 

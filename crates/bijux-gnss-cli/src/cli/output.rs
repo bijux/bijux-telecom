@@ -637,6 +637,10 @@ mod tests {
 
         assert!(metrics.i_mean.abs() < 1e-6, "i_mean={}", metrics.i_mean);
         assert!(metrics.q_mean.abs() < 1e-6, "q_mean={}", metrics.q_mean);
+        assert_eq!(metrics.i_power, 0.0);
+        assert_eq!(metrics.q_power, 0.0);
+        assert_eq!(metrics.iq_power_ratio, 1.0);
+        assert!(!metrics.power_imbalance_warning);
 
         fs::remove_file(&path).expect("remove iq8 fixture");
     }
