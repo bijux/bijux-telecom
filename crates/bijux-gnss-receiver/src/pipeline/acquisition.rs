@@ -525,8 +525,10 @@ impl Acquisition {
                 continue;
             }
             for (rank, candidate) in candidates.iter_mut().enumerate() {
+                candidate.candidate_rank = rank as u8 + 1;
+                candidate.is_primary_candidate = rank == 0;
                 candidate.evidence.push(AcqEvidence {
-                    rank: rank as u8 + 1,
+                    rank: candidate.candidate_rank,
                     code_phase_samples: candidate.code_phase_samples,
                     doppler_hz: candidate.carrier_hz.0,
                     peak: candidate.peak,
@@ -647,14 +649,13 @@ impl Acquisition {
                 };
                 explains.push(AcqExplain {
                     sat,
-                    selected_rank: Some(1),
+                    selected_rank: Some(best.candidate_rank),
                     selected_reason: selected_reason.to_string(),
                     candidate_count: candidates.len(),
                     candidates: candidates
                         .iter()
-                        .enumerate()
-                        .map(|(rank, candidate)| AcqExplainCandidate {
-                            rank: rank as u8 + 1,
+                        .map(|candidate| AcqExplainCandidate {
+                            rank: candidate.candidate_rank,
                             code_phase_samples: candidate.code_phase_samples,
                             carrier_hz: candidate.carrier_hz.0,
                             peak: candidate.peak,
