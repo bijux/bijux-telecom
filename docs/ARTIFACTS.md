@@ -144,7 +144,7 @@ The synthetic IQ validation workflow checks receiver measurements against inject
 
 The bundled `synthetic_iq_cn0_reference.toml` scenario is a single-satellite calibration fixture.
 That scope is intentional: it validates C/N0 recovery without overstating multi-satellite or
-fractional-sampling coverage that belongs to later receiver validation work.
+long-duration sampling stability coverage that belongs to later receiver validation work.
 
 ## Validation Evidence Bundle
 
