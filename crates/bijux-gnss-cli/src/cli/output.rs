@@ -329,6 +329,10 @@ fn write_track_timeseries(
             payload: TrackEpoch {
                 epoch: bijux_gnss_infra::api::core::Epoch { index: epoch.epoch_idx },
                 sample_index: epoch.sample_index,
+                source_time: bijux_gnss_infra::api::core::ReceiverSampleTrace::from_sample_index(
+                    epoch.sample_index,
+                    profile.sample_rate_hz,
+                ),
                 sat: epoch.sat,
                 prompt_i: epoch.prompt_i,
                 prompt_q: epoch.prompt_q,

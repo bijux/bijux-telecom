@@ -1,6 +1,8 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{AcqHypothesis, AcqResult, Constellation, Hertz, SatId, SignalBand};
+use bijux_gnss_core::api::{
+    AcqHypothesis, AcqResult, Constellation, Hertz, ReceiverSampleTrace, SatId, SignalBand,
+};
 use bijux_gnss_receiver::api::{
     sim::{generate_l1_ca, SyntheticSignalParams},
     ReceiverPipelineConfig, ReceiverRuntime, TrackingEngine,
@@ -9,6 +11,7 @@ use bijux_gnss_receiver::api::{
 fn accepted_acquisition(sat: SatId, carrier_hz: f64, code_phase_samples: usize) -> AcqResult {
     AcqResult {
         sat,
+        source_time: ReceiverSampleTrace::default(),
         carrier_hz: Hertz(carrier_hz),
         code_phase_samples,
         peak: 1.0,
@@ -26,7 +29,10 @@ fn accepted_acquisition(sat: SatId, carrier_hz: f64, code_phase_samples: usize) 
     }
 }
 
-fn synthetic_frame(config: &ReceiverPipelineConfig, code_phase_chips: f64) -> bijux_gnss_core::api::SamplesFrame {
+fn synthetic_frame(
+    config: &ReceiverPipelineConfig,
+    code_phase_chips: f64,
+) -> bijux_gnss_core::api::SamplesFrame {
     generate_l1_ca(
         config,
         SyntheticSignalParams {

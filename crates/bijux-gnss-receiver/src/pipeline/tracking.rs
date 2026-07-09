@@ -3,8 +3,8 @@
 use num_complex::Complex;
 
 use bijux_gnss_core::api::{
-    AcqHypothesis, Chips, Constellation, Hertz, SampleClock, SampleTime, SamplesFrame, SatId,
-    Seconds, SignalBand, TrackEpoch, TrackTransition, TrackingAssumptions,
+    AcqHypothesis, Chips, Constellation, Hertz, ReceiverSampleTrace, SampleClock, SampleTime,
+    SamplesFrame, SatId, Seconds, SignalBand, TrackEpoch, TrackTransition, TrackingAssumptions,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -224,6 +224,7 @@ impl Tracking {
         let track_epoch = TrackEpoch {
             epoch,
             sample_index: frame.t0.sample_index,
+            source_time: ReceiverSampleTrace::from_sample_time(frame.t0),
             sat,
             prompt_i: correlator.prompt.re,
             prompt_q: correlator.prompt.im,
@@ -430,18 +431,12 @@ impl Tracking {
             fields: vec![
                 ("constellation", format!("{:?}", sat.constellation)),
                 ("prn", sat.prn.to_string()),
-                (
-                    "first_epoch_idx",
-                    first_epoch.epoch.index.to_string(),
-                ),
+                ("first_epoch_idx", first_epoch.epoch.index.to_string()),
                 (
                     "max_abs_phase_step_samples",
                     format!("{:.6}", diagnostic.max_abs_phase_step_samples),
                 ),
-                (
-                    "phase_step_limit_samples",
-                    format!("{:.6}", diagnostic.phase_step_limit_samples),
-                ),
+                ("phase_step_limit_samples", format!("{:.6}", diagnostic.phase_step_limit_samples)),
             ],
         });
 
@@ -949,9 +944,8 @@ fn detect_sample_rate_mismatch(
         return None;
     }
 
-    let phase_step_limit_samples = SAMPLE_RATE_MISMATCH_MIN_PHASE_DRIFT_SAMPLES.max(
-        samples_per_code as f64 * SAMPLE_RATE_MISMATCH_MIN_PHASE_DRIFT_FRACTION,
-    );
+    let phase_step_limit_samples = SAMPLE_RATE_MISMATCH_MIN_PHASE_DRIFT_SAMPLES
+        .max(samples_per_code as f64 * SAMPLE_RATE_MISMATCH_MIN_PHASE_DRIFT_FRACTION);
     let instability_markers = epochs
         .windows(2)
         .enumerate()
@@ -977,10 +971,8 @@ fn detect_sample_rate_mismatch(
         .collect::<Vec<_>>();
 
     for window in instability_markers.windows(SAMPLE_RATE_MISMATCH_WINDOW_EPOCHS) {
-        let unstable_count = window
-            .iter()
-            .filter(|(_, _, unstable, supported)| *unstable && *supported)
-            .count();
+        let unstable_count =
+            window.iter().filter(|(_, _, unstable, supported)| *unstable && *supported).count();
         if unstable_count >= SAMPLE_RATE_MISMATCH_MIN_UNSTABLE_EPOCHS_IN_WINDOW {
             let first_unstable_epoch_index = window
                 .iter()
@@ -1003,9 +995,14 @@ fn detect_sample_rate_mismatch(
     None
 }
 
-fn wrapped_code_phase_delta(next_code_phase_samples: f64, previous_code_phase_samples: f64, samples_per_code: usize) -> f64 {
+fn wrapped_code_phase_delta(
+    next_code_phase_samples: f64,
+    previous_code_phase_samples: f64,
+    samples_per_code: usize,
+) -> f64 {
     let code_period_samples = samples_per_code.max(1) as f64;
-    let mut delta = (next_code_phase_samples - previous_code_phase_samples).rem_euclid(code_period_samples);
+    let mut delta =
+        (next_code_phase_samples - previous_code_phase_samples).rem_euclid(code_period_samples);
     if delta > code_period_samples / 2.0 {
         delta -= code_period_samples;
     }
@@ -1042,7 +1039,9 @@ impl Tracking {
 #[cfg(test)]
 mod tests {
     use super::{ChannelState, Tracking};
-    use bijux_gnss_core::api::{AcqHypothesis, Chips, Epoch, SampleTime, SamplesFrame, SatId, Seconds, TrackEpoch};
+    use bijux_gnss_core::api::{
+        AcqHypothesis, Chips, Epoch, SampleTime, SamplesFrame, SatId, Seconds, TrackEpoch,
+    };
     use serde::Deserialize;
 
     #[test]
@@ -1209,6 +1208,7 @@ mod tests {
         );
         let acquisition = bijux_gnss_core::api::AcqResult {
             sat,
+            source_time: bijux_gnss_core::api::ReceiverSampleTrace::from_sample_time(frame.t0),
             carrier_hz: bijux_gnss_core::api::Hertz(1_000.0),
             code_phase_samples: 10,
             peak: 10.0,
@@ -1230,8 +1230,8 @@ mod tests {
             &[acquisition.clone()],
             bijux_gnss_core::api::SignalBand::L1,
         );
-        let mut incremental =
-            tracking.begin_incremental_tracking(&[acquisition], bijux_gnss_core::api::SignalBand::L1);
+        let mut incremental = tracking
+            .begin_incremental_tracking(&[acquisition], bijux_gnss_core::api::SignalBand::L1);
         for chunk in split_frame(&frame, 4 * 1_023) {
             tracking.track_incremental_frame(&mut incremental, &chunk);
         }
