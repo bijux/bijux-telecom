@@ -290,7 +290,7 @@ fn handle_run(command: GnssCommand) -> Result<()> {
         bail!("invalid command for handler");
     };
 
-    let _ = runtime_config_from_env(&common, None);
+    let runtime = runtime_config_from_env(&common, None);
     let dataset = load_dataset(&common)?;
     let mut profile = load_config(&common)?;
     apply_common_overrides(
@@ -302,35 +302,33 @@ fn handle_run(command: GnssCommand) -> Result<()> {
     validate_config(&profile)?;
     let config = profile.to_pipeline_config();
     let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
-    let mut source = FileSamples::open_raw_iq(&input_file, raw_iq_metadata.clone())?;
     let samples_per_code =
         samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
     let mut front_end_metrics =
         bijux_gnss_infra::api::signal::IqFrontEndAnalyzer::for_raw_iq_metadata(&raw_iq_metadata)
             .finish();
-    let mut epoch = 0u64;
-    if let Some(frame) = source.next_frame(samples_per_code)? {
+    let mut metrics_source = FileSamples::open_raw_iq(&input_file, raw_iq_metadata.clone())?;
+    if let Some(frame) = metrics_source.next_frame(samples_per_code)? {
         front_end_metrics = bijux_gnss_infra::api::signal::measure_raw_iq_front_end_metrics(
             &frame.iq,
             &raw_iq_metadata,
         );
-        epoch += 1;
-        if replay && rate > 0.0 {
-            let dt = 0.001 / rate;
-            std::thread::sleep(std::time::Duration::from_secs_f64(dt));
-        }
     }
-    while let Some(_frame) = source.next_frame(samples_per_code)? {
-        epoch += 1;
-        if epoch % 100 == 0 {
-            println!("processed epochs: {}", epoch);
-        }
-        if replay && rate > 0.0 {
-            let dt = 0.001 / rate;
-            std::thread::sleep(std::time::Duration::from_secs_f64(dt));
-        }
+    let receiver = Receiver::new(config.clone(), runtime);
+    let mut source = FileSamples::open_raw_iq(&input_file, raw_iq_metadata.clone())?;
+    let artifacts = receiver.run(&mut source)?;
+    if replay && rate > 0.0 {
+        let dt = (artifacts.processed_input_epochs as f64 * 0.001) / rate;
+        std::thread::sleep(std::time::Duration::from_secs_f64(dt));
     }
-    let report = StreamingRunReport { epochs: epoch, front_end_metrics };
+    let report = StreamingRunReport {
+        epochs: artifacts.processed_input_epochs,
+        processed_input_samples: artifacts.processed_input_samples,
+        acquisitions: artifacts.acquisitions.len(),
+        tracked_channels: artifacts.tracking.iter().filter(|track| !track.epochs.is_empty()).count(),
+        observation_epochs: artifacts.observations.len(),
+        front_end_metrics,
+    };
     emit_report(&common, "run", &report)?;
     write_manifest(&common, "run", &profile, dataset.as_ref(), &report)?;
 

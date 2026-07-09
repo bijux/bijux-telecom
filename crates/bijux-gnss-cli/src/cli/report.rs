@@ -32,6 +32,10 @@ struct InspectReport {
 #[derive(Debug, Serialize)]
 struct StreamingRunReport {
     epochs: u64,
+    processed_input_samples: u64,
+    acquisitions: usize,
+    tracked_channels: usize,
+    observation_epochs: usize,
     front_end_metrics: bijux_gnss_infra::api::signal::IqFrontEndMetrics,
 }
 
