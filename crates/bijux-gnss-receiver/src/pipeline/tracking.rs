@@ -1139,10 +1139,13 @@ mod tests {
     use super::{ChannelState, Tracking};
     use crate::engine::receiver_config::ReceiverPipelineConfig;
     use crate::engine::runtime::ReceiverRuntime;
+    use crate::sim::synthetic::{generate_l1_ca, SyntheticSignalParams};
     use bijux_gnss_core::api::{
         AcqHypothesis, Chips, Epoch, SampleTime, SamplesFrame, SatId, Seconds, TrackEpoch,
     };
-    use bijux_gnss_signal::api::{sample_ca_code, samples_per_code, Prn};
+    use bijux_gnss_signal::api::{
+        advance_code_phase_seconds, sample_ca_code, samples_per_code, Prn,
+    };
     use num_complex::Complex;
     use serde::Deserialize;
 
@@ -1215,6 +1218,80 @@ mod tests {
         assert!(!decision.nav_bit_transition);
         assert!(decision.cycle_slip);
         assert!((decision.nav_bit_phase_offset_cycles - 0.0).abs() <= f64::EPSILON);
+    }
+
+    #[test]
+    fn classify_prompt_phase_handles_real_synthetic_nav_bit_transitions() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            channels: 12,
+            ..ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 7 };
+        let code_phase_chips = 321.0;
+        let samples_per_epoch = samples_per_code(
+            config.sampling_freq_hz,
+            config.code_freq_basis_hz,
+            config.code_length,
+        );
+        let frame = generate_l1_ca(
+            &config,
+            SyntheticSignalParams {
+                sat,
+                doppler_hz: 0.0,
+                code_phase_chips,
+                carrier_phase_rad: 0.0,
+                cn0_db_hz: 70.0,
+                data_bit_flip: true,
+            },
+            0x7A91B17,
+            0.05,
+        );
+        let tracking = Tracking::new(config.clone(), ReceiverRuntime::default());
+        let mut previous_aligned_phase_cycles = None;
+        let mut nav_bit_phase_offset_cycles = 0.0;
+        let mut transition_epochs = Vec::new();
+
+        for (epoch_index, epoch_samples) in frame.iq.chunks_exact(samples_per_epoch).enumerate() {
+            let sample_index = epoch_index as u64 * samples_per_epoch as u64;
+            let epoch_frame = SamplesFrame::new(
+                SampleTime { sample_index, sample_rate_hz: config.sampling_freq_hz },
+                Seconds(1.0 / config.sampling_freq_hz),
+                epoch_samples.to_vec(),
+            );
+            let epoch_code_phase_chips = advance_code_phase_seconds(
+                code_phase_chips,
+                config.code_freq_basis_hz,
+                sample_index as f64 / config.sampling_freq_hz,
+                config.code_length,
+            )
+            .expect("valid epoch code phase");
+            let epoch_code_phase_samples =
+                epoch_code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
+            let (epoch, _) =
+                tracking.track_epoch(&epoch_frame, 0, sat, 0.0, epoch_code_phase_samples, 0.5);
+            let raw_phase_cycles =
+                (epoch.prompt_q as f64).atan2(epoch.prompt_i as f64) / (2.0 * std::f64::consts::PI);
+            let decision = super::classify_prompt_phase(
+                raw_phase_cycles,
+                previous_aligned_phase_cycles,
+                nav_bit_phase_offset_cycles,
+            );
+            if decision.nav_bit_transition {
+                transition_epochs.push(epoch_index);
+            }
+            assert!(
+                !decision.cycle_slip,
+                "unexpected cycle slip at epoch {epoch_index}: raw_phase_cycles={raw_phase_cycles}"
+            );
+            previous_aligned_phase_cycles = Some(decision.aligned_phase_cycles);
+            nav_bit_phase_offset_cycles = decision.nav_bit_phase_offset_cycles;
+        }
+
+        assert_eq!(transition_epochs, vec![20, 40]);
     }
 
     #[test]
