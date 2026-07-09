@@ -191,6 +191,23 @@ pub(crate) enum GnssCommand {
         capture_start_utc: String,
     },
 
+    /// Validate a synthetic IQ bundle against truth-guided C/N0 expectations
+    ValidateSyntheticIq {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        #[arg(long, alias = "path", value_name = "FILE")]
+        file: PathBuf,
+
+        /// Synthetic truth JSON emitted alongside the IQ capture
+        #[arg(long, value_name = "FILE")]
+        truth: PathBuf,
+
+        /// Maximum allowed absolute C/N0 error in dB-Hz
+        #[arg(long, default_value_t = 3.0)]
+        tolerance_db_hz: f64,
+    },
+
     /// Artifact validation and conversion
     Artifact {
         #[command(subcommand)]

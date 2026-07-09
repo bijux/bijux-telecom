@@ -9,6 +9,7 @@ fn run_command(command: GnssCommand) -> Result<()> {
         cmd @ GnssCommand::Rtk { .. } => handle_rtk(cmd),
         cmd @ GnssCommand::Experiment { .. } => handle_experiment(cmd),
         cmd @ GnssCommand::ExportSyntheticIq { .. } => handle_export_synthetic_iq(cmd),
+        cmd @ GnssCommand::ValidateSyntheticIq { .. } => handle_validate_synthetic_iq(cmd),
         cmd @ GnssCommand::ValidateConfig { .. } => handle_validateconfig(cmd),
         cmd @ GnssCommand::Config { .. } => handle_config(cmd),
         cmd @ GnssCommand::ValidateArtifacts { .. } => handle_validateartifacts(cmd),
@@ -180,6 +181,30 @@ fn print_synthetic_iq_export_table(report: &SyntheticIqExportReport) {
     println!("IQ: {}", report.output_iq);
     println!("Sidecar: {}", report.output_sidecar);
     println!("Truth: {}", report.output_truth);
+}
+
+fn print_synthetic_iq_validation_table(report: &SyntheticIqValidationReport) {
+    println!("Scenario: {}", report.validation.scenario_id);
+    println!("Input IQ: {}", report.input_iq);
+    println!("Input sidecar: {}", report.input_sidecar);
+    println!("Input truth: {}", report.input_truth);
+    println!("Tolerance (dB-Hz): {:.3}", report.validation.tolerance_db_hz);
+    println!(
+        "Coherent integration: {} samples ({:.6} s)",
+        report.validation.coherent_samples_per_epoch, report.validation.coherent_integration_s
+    );
+    println!("Pass: {}", report.validation.pass);
+    for row in &report.validation.satellites {
+        println!(
+            "{}\tinjected={:.3}\tmeasured={:.3}\tdelta={:.3}\tepochs={}\tpass={}",
+            format_sat(row.sat),
+            row.injected_cn0_db_hz,
+            row.measured_mean_cn0_dbhz,
+            row.cn0_delta_db,
+            row.epochs_measured,
+            row.pass
+        );
+    }
 }
 fn print_inspect_table(report: &InspectReport) {
     println!(
@@ -395,10 +420,10 @@ mod inspect_dataset_tests {
 mod nav_trace_tests {
     use super::*;
     use bijux_gnss_infra::api::core::{
-        ArtifactPayloadValidate, Constellation, Epoch, LockFlags, Meters, NavLifecycleState,
-        NavUncertaintyClass, ObservationEpochDecision, ObservationStatus, ObsEpochManifest,
-        ObsMetadata, ObsSatellite, ReceiverRole, ReceiverSampleTrace, Seconds, SigId, SignalBand,
-        SignalCode, SolutionStatus, SolutionValidity, signal_spec_gps_l1_ca,
+        signal_spec_gps_l1_ca, ArtifactPayloadValidate, Constellation, Epoch, LockFlags, Meters,
+        NavLifecycleState, NavUncertaintyClass, ObsEpochManifest, ObsMetadata, ObsSatellite,
+        ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, Seconds,
+        SigId, SignalBand, SignalCode, SolutionStatus, SolutionValidity,
     };
 
     fn sample_obs_epoch(with_manifest: bool) -> ObsEpoch {
@@ -537,10 +562,7 @@ mod nav_trace_tests {
 
         populate_cli_nav_solution_trace_identity(&obs, &mut solution);
 
-        assert_eq!(
-            solution.source_observation_epoch_id,
-            "epoch-0000000007-sample-000004092000"
-        );
+        assert_eq!(solution.source_observation_epoch_id, "epoch-0000000007-sample-000004092000");
         assert_eq!(solution.artifact_id, "nav-epoch-0000000007-epoch-0000000007");
         assert!(solution.stability_signature.starts_with("navsig:v1:"));
         assert!(solution.validate_payload().is_empty());
@@ -781,8 +803,11 @@ fn populate_cli_nav_solution_trace_identity(
         .map(|manifest| manifest.epoch_id.clone())
         .unwrap_or_else(|| bijux_gnss_infra::api::core::obs_epoch_stability_key(obs));
     solution.source_observation_epoch_id = source_observation_epoch_id.clone();
-    solution.artifact_id =
-        format!("nav-epoch-{:010}-{}", solution.epoch.index, cli_nav_trace_short_id(&source_observation_epoch_id));
+    solution.artifact_id = format!(
+        "nav-epoch-{:010}-{}",
+        solution.epoch.index,
+        cli_nav_trace_short_id(&source_observation_epoch_id)
+    );
     solution.stability_signature = cli_nav_output_stability_signature(solution);
 }
 

@@ -113,6 +113,14 @@ struct SyntheticIqExportReport {
     satellites: Vec<SatId>,
 }
 
+#[derive(Debug, Serialize)]
+struct SyntheticIqValidationReport {
+    input_iq: String,
+    input_sidecar: String,
+    input_truth: String,
+    validation: bijux_gnss_infra::api::receiver::sim::SyntheticCn0ValidationReport,
+}
+
 #[cfg(test)]
 mod report_tests {
     use super::*;

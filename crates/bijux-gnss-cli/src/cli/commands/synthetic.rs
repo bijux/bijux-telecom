@@ -46,6 +46,25 @@ fn emit_synthetic_iq_report(
     Ok(())
 }
 
+fn emit_synthetic_iq_validation_report(
+    common: &CommonArgs,
+    report: &SyntheticIqValidationReport,
+) -> Result<()> {
+    let dataset = load_dataset(common).ok().flatten();
+    let run_dir = run_dir(common, "validate_synthetic_iq", dataset.as_ref())?;
+    fs::write(run_dir.join("summary.json"), serde_json::to_string_pretty(report)?)?;
+
+    match common.report {
+        ReportFormat::Json => {
+            let report_path = run_dir.join("validate_synthetic_iq_report.json");
+            fs::write(&report_path, serde_json::to_string_pretty(report)?)?;
+            println!("wrote {}", report_path.display());
+        }
+        ReportFormat::Table => print_synthetic_iq_validation_table(report),
+    }
+    Ok(())
+}
+
 fn handle_export_synthetic_iq(command: GnssCommand) -> Result<()> {
     let GnssCommand::ExportSyntheticIq { scenario, out, report, capture_start_utc } = command
     else {
@@ -112,6 +131,94 @@ fn handle_export_synthetic_iq(command: GnssCommand) -> Result<()> {
         None,
         &summary,
     )?;
+
+    Ok(())
+}
+
+fn handle_validate_synthetic_iq(command: GnssCommand) -> Result<()> {
+    let GnssCommand::ValidateSyntheticIq { common, file, truth, tolerance_db_hz } = command else {
+        bail!("invalid command for handler");
+    };
+
+    let dataset = load_dataset(&common)?;
+    let input_file = resolve_input_file(Some(&file), dataset.as_ref())?;
+    let raw_iq_metadata = resolve_raw_iq_metadata(&common, dataset.as_ref())?;
+    validate_json_schema(&schema_path("synthetic_iq_truth.schema.json"), &truth, false)?;
+    let truth_bundle: bijux_gnss_infra::api::receiver::sim::SyntheticIqTruthBundle =
+        serde_json::from_str(
+            &fs::read_to_string(&truth)
+                .with_context(|| format!("failed to read truth {}", truth.display()))?,
+        )
+        .with_context(|| format!("failed to parse truth {}", truth.display()))?;
+
+    if (raw_iq_metadata.sample_rate_hz - truth_bundle.sample_rate_hz).abs() > 1e-9 {
+        bail!(
+            "truth/sample-rate mismatch: sidecar={} truth={}",
+            raw_iq_metadata.sample_rate_hz,
+            truth_bundle.sample_rate_hz
+        );
+    }
+    if (raw_iq_metadata.intermediate_freq_hz - truth_bundle.intermediate_freq_hz).abs() > 1e-9 {
+        bail!(
+            "truth/intermediate-frequency mismatch: sidecar={} truth={}",
+            raw_iq_metadata.intermediate_freq_hz,
+            truth_bundle.intermediate_freq_hz
+        );
+    }
+    if raw_iq_metadata.quantization_bits.unwrap_or_default() != truth_bundle.quantization_bits {
+        bail!(
+            "truth/quantization mismatch: sidecar={} truth={}",
+            raw_iq_metadata.quantization_bits.unwrap_or_default(),
+            truth_bundle.quantization_bits
+        );
+    }
+
+    let mut profile = load_config(&common)?;
+    apply_common_overrides(
+        &mut profile,
+        CommonOverrides { seed: common.seed, deterministic: common.deterministic },
+    );
+    apply_raw_iq_metadata(&mut profile, &raw_iq_metadata, None, None)?;
+    validate_config(&profile)?;
+    let config = profile.to_pipeline_config();
+    let frame = load_tracking_frame(&input_file, &config, &raw_iq_metadata)?;
+    let validation = bijux_gnss_infra::api::receiver::sim::validate_truth_guided_cn0(
+        &config,
+        &frame,
+        &truth_bundle,
+        tolerance_db_hz,
+    );
+    let report = SyntheticIqValidationReport {
+        input_iq: input_file.display().to_string(),
+        input_sidecar: common
+            .sidecar
+            .as_ref()
+            .map(|path| path.display().to_string())
+            .unwrap_or_default(),
+        input_truth: truth.display().to_string(),
+        validation,
+    };
+    emit_synthetic_iq_validation_report(&common, &report)?;
+    write_manifest(&common, "validate_synthetic_iq", &profile, dataset.as_ref(), &report)?;
+
+    if !report.validation.pass {
+        let failures = report
+            .validation
+            .satellites
+            .iter()
+            .filter(|row| !row.pass)
+            .map(|row| {
+                format!(
+                    "{}:{}:{:.3}",
+                    format_sat(row.sat),
+                    row.injected_cn0_db_hz,
+                    row.cn0_delta_db
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        bail!("synthetic IQ validation failed: {failures}");
+    }
 
     Ok(())
 }
