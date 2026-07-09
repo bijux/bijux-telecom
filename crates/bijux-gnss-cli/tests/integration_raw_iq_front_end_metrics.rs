@@ -697,6 +697,49 @@ fn acquire_reports_signal_outside_search_range_for_wrong_if_capture() {
 }
 
 #[test]
+fn acquire_table_reports_search_range_rejection_for_wrong_if_capture() {
+    let temp = temp_dir_path("acquire_wrong_if_table");
+    fs::create_dir_all(&temp).expect("create temp dir");
+
+    let iq_path = temp.join("wrong-if.iq8");
+    write_synthetic_iq8_capture_with_signal_if(&iq_path, 5_000_000.0, 2_000.0);
+    let sidecar_path = temp.join("wrong-if.sidecar.toml");
+    write_raw_iq_sidecar_with_format_sample_rate_and_if(&sidecar_path, "iq8", 5_000_000.0, 0.0);
+
+    let output = run_bijux(
+        &[
+            "gnss",
+            "acquire",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--prn",
+            "11",
+            "--top",
+            "1",
+            "--doppler-search-hz",
+            "1500",
+            "--doppler-step-hz",
+            "250",
+            "--report",
+            "table",
+        ],
+        &repo_root(),
+    );
+
+    assert!(output.status.success(), "acquire failed: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Hypothesis"), "stdout={stdout}");
+    assert!(stdout.contains("Reason"), "stdout={stdout}");
+    assert!(stdout.contains("rejected"), "stdout={stdout}");
+    assert!(stdout.contains("signal_outside_search_range"), "stdout={stdout}");
+
+    fs::remove_dir_all(&temp).expect("remove temp dir");
+}
+
+#[test]
 fn raw_iq_commands_flag_all_zero_input_as_zero_signal() {
     let temp = temp_dir_path("zero_signal_raw_iq");
     fs::create_dir_all(&temp).expect("create temp dir");
