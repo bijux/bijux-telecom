@@ -15,6 +15,8 @@ struct AcqFixture {
     id: String,
     kind: String,
     sat: SatId,
+    signal_sat: Option<SatId>,
+    requested_sats: Option<Vec<SatId>>,
     doppler_hz: f64,
     signal_intermediate_freq_hz: Option<f64>,
     code_phase_chips: f64,
@@ -40,19 +42,20 @@ fn acquisition_fixtures_are_deterministic_with_expected_hypotheses() {
             config.acquisition_peak_mean_threshold = acquisition_peak_mean_threshold;
         }
         let frame = frame_from_fixture(&config, &fixture);
+        let requested_sats = requested_sats(&fixture);
 
         let acquisition = AcquisitionEngine::new(config.clone(), ReceiverRuntime::default())
             .with_doppler(fixture.search_hz, fixture.step_hz);
         let run_a = acquisition.run_fft_topn_with_explain(
             &frame,
-            &[fixture.sat],
+            &requested_sats,
             4,
             fixture.coherent_ms,
             fixture.noncoherent,
         );
         let run_b = acquisition.run_fft_topn_with_explain(
             &frame,
-            &[fixture.sat],
+            &requested_sats,
             4,
             fixture.coherent_ms,
             fixture.noncoherent,
@@ -66,10 +69,8 @@ fn acquisition_fixtures_are_deterministic_with_expected_hypotheses() {
         let explain_b = serde_json::to_string(&run_b.explains).expect("serialize explain b");
         assert_eq!(explain_a, explain_b, "fixture {} explain must be deterministic", fixture.id);
 
-        let best = run_a
-            .results
+        let best = result_for_sat(&run_a.results, fixture.sat)
             .first()
-            .and_then(|candidates| candidates.first())
             .expect("at least one acquisition candidate");
 
         if let Some(expected) = &fixture.expected_hypothesis {
@@ -90,7 +91,8 @@ fn acquisition_fixtures_are_deterministic_with_expected_hypotheses() {
             );
         }
         if let Some(expected_selected_reason) = &fixture.expected_selected_reason {
-            let explain = run_a.explains.first().expect("at least one acquisition explain");
+            let explain =
+                explain_for_sat(&run_a.explains, fixture.sat).expect("acquisition explain for sat");
             assert_eq!(
                 explain.selected_reason, *expected_selected_reason,
                 "fixture {} selected reason mismatch",
@@ -108,18 +110,18 @@ fn acquisition_explain_artifact_contains_ranked_rationale() {
         config.acquisition_peak_mean_threshold = acquisition_peak_mean_threshold;
     }
     let frame = frame_from_fixture(&config, &fixture);
+    let requested_sats = requested_sats(&fixture);
     let acquisition = AcquisitionEngine::new(config, ReceiverRuntime::default())
         .with_doppler(fixture.search_hz, fixture.step_hz);
     let run = acquisition.run_fft_topn_with_explain(
         &frame,
-        &[fixture.sat],
+        &requested_sats,
         4,
         fixture.coherent_ms,
         fixture.noncoherent,
     );
 
-    assert_eq!(run.explains.len(), 1);
-    let explain = &run.explains[0];
+    let explain = explain_for_sat(&run.explains, fixture.sat).expect("acquisition explain for sat");
     assert_eq!(explain.sat, fixture.sat);
     assert!(explain.candidate_count >= 1);
     assert!(!explain.selected_reason.is_empty());
@@ -144,7 +146,7 @@ fn frame_from_fixture(config: &ReceiverPipelineConfig, fixture: &AcqFixture) -> 
             generate_l1_ca(
                 &signal_config,
                 SyntheticSignalParams {
-                    sat: fixture.sat,
+                    sat: signal_sat(&fixture),
                     doppler_hz: fixture.doppler_hz,
                     code_phase_chips: fixture.code_phase_chips,
                     carrier_phase_rad: 0.0,
@@ -181,6 +183,31 @@ fn frame_from_fixture(config: &ReceiverPipelineConfig, fixture: &AcqFixture) -> 
         ),
         other => panic!("unsupported fixture kind: {other}"),
     }
+}
+
+fn signal_sat(fixture: &AcqFixture) -> SatId {
+    fixture.signal_sat.unwrap_or(fixture.sat)
+}
+
+fn requested_sats(fixture: &AcqFixture) -> Vec<SatId> {
+    fixture.requested_sats.clone().unwrap_or_else(|| vec![fixture.sat])
+}
+
+fn result_for_sat<'a>(
+    results: &'a [Vec<bijux_gnss_core::api::AcqResult>],
+    sat: SatId,
+) -> &'a Vec<bijux_gnss_core::api::AcqResult> {
+    results
+        .iter()
+        .find(|candidates| candidates.first().is_some_and(|candidate| candidate.sat == sat))
+        .expect("result for requested satellite")
+}
+
+fn explain_for_sat<'a>(
+    explains: &'a [bijux_gnss_core::api::AcqExplain],
+    sat: SatId,
+) -> Option<&'a bijux_gnss_core::api::AcqExplain> {
+    explains.iter().find(|explain| explain.sat == sat)
 }
 
 fn parse_hypothesis(value: &str) -> AcqHypothesis {
