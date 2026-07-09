@@ -53,25 +53,20 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
         profile.acquisition.noncoherent_integration,
     );
 
-    let mut rows = Vec::new();
-    for candidates in &results {
-        for r in candidates {
-            rows.push(AcquisitionRow {
-                sat: r.sat,
-                carrier_hz: r.carrier_hz.0,
-                code_phase_samples: r.code_phase_samples,
-                peak: r.peak,
-                peak_mean_ratio: r.peak_mean_ratio,
-                peak_second_ratio: r.peak_second_ratio,
-                hypothesis: r.hypothesis.to_string(),
-                selection_reason: r.explain_selection_reason.clone(),
-            });
-        }
-    }
     let primary_results = results
         .iter()
         .filter_map(|candidates| candidates.first().cloned())
         .collect::<Vec<_>>();
+    let primary_rows = primary_results
+        .iter()
+        .map(acquisition_row_from_result)
+        .collect::<Vec<_>>();
+    let mut rows = Vec::new();
+    for candidates in &results {
+        for r in candidates {
+            rows.push(acquisition_row_from_result(r));
+        }
+    }
 
     let report = AcquisitionReport {
         sats,
@@ -81,6 +76,7 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
         front_end_metrics: signal_quality.front_end_metrics.clone(),
         signal_quality,
         reported_prns: summarize_reported_prns(&rows),
+        primary_results: primary_rows,
         results: rows,
     };
     match common.report {
@@ -104,6 +100,19 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
     write_manifest(&common, "acquire", &profile, dataset.as_ref(), &report)?;
 
     Ok(())
+}
+
+fn acquisition_row_from_result(result: &bijux_gnss_infra::api::core::AcqResult) -> AcquisitionRow {
+    AcquisitionRow {
+        sat: result.sat,
+        carrier_hz: result.carrier_hz.0,
+        code_phase_samples: result.code_phase_samples,
+        peak: result.peak,
+        peak_mean_ratio: result.peak_mean_ratio,
+        peak_second_ratio: result.peak_second_ratio,
+        hypothesis: result.hypothesis.to_string(),
+        selection_reason: result.explain_selection_reason.clone(),
+    }
 }
 
 fn handle_pvt(command: GnssCommand) -> Result<()> {

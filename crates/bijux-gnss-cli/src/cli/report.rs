@@ -5,6 +5,7 @@ struct AcquisitionReport {
     front_end_metrics: bijux_gnss_infra::api::signal::IqFrontEndMetrics,
     signal_quality: RawIqSignalQualityReport,
     reported_prns: Vec<ReportedPrn>,
+    primary_results: Vec<AcquisitionRow>,
     results: Vec<AcquisitionRow>,
 }
 
