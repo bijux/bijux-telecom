@@ -379,7 +379,7 @@ pub struct SyntheticAcquisitionSensitivityTrial {
     pub hypothesis: String,
     /// Whether the receiver accepted this trial.
     pub accepted: bool,
-    /// Whether the accepted result stayed within truth tolerances.
+    /// Whether the selected non-rejected result stayed within truth tolerances.
     pub detected: bool,
     /// Wrapped code-phase error in samples when truth was available.
     pub code_phase_error_samples: Option<usize>,
@@ -412,7 +412,7 @@ pub struct SyntheticAcquisitionSensitivityReport {
     pub trial_count: usize,
     /// Number of trials that produced accepted results.
     pub accepted_count: usize,
-    /// Number of trials that produced accepted results within truth tolerances.
+    /// Number of trials that produced non-rejected results within truth tolerances.
     pub detected_count: usize,
     /// Accepted-trial probability across the measured trials.
     pub acceptance_probability: f64,
@@ -1085,7 +1085,7 @@ pub fn measure_truth_guided_acquisition_detection_probability(
             let doppler_error_bins =
                 ((measured_doppler_hz - signal.doppler_hz).abs()) / doppler_step_hz as f64;
             let accepted = matches!(result.hypothesis, crate::api::core::AcqHypothesis::Accepted);
-            let detected = accepted
+            let detected = !matches!(result.hypothesis, crate::api::core::AcqHypothesis::Rejected)
                 && code_phase_error_samples <= code_phase_tolerance_samples
                 && doppler_error_bins <= doppler_tolerance_bins as f64 + f64::EPSILON;
 
