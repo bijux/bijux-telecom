@@ -500,6 +500,49 @@ pub struct SyntheticAcquisitionFalseAlarmReport {
     pub trials: Vec<SyntheticAcquisitionSensitivityTrial>,
 }
 
+/// Noise-only false-alarm measurement input for one acquisition profile.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SyntheticAcquisitionFalseAlarmRateCase {
+    /// Satellite identifier searched during the noise-only trials.
+    pub sat: SatId,
+    /// Coherent integration length under test, in milliseconds.
+    pub coherent_ms: u32,
+    /// Noncoherent integration count under test.
+    pub noncoherent: u32,
+}
+
+/// Noise-only false-alarm summary for one acquisition measurement point.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionFalseAlarmRatePoint {
+    /// Satellite identifier searched during the noise-only trials.
+    pub sat: SatId,
+    /// Coherent integration length under test, in milliseconds.
+    pub coherent_ms: u32,
+    /// Noncoherent integration count under test.
+    pub noncoherent: u32,
+    /// Number of synthetic noise-only trials measured for this point.
+    pub trial_count: usize,
+    /// Number of trials that produced accepted results.
+    pub false_alarm_count: usize,
+    /// False-alarm probability across the measured trials.
+    pub false_alarm_rate: f64,
+    /// Mean peak-to-mean ratio across the measured trials.
+    pub mean_peak_mean_ratio: f64,
+}
+
+/// Noise-only false-alarm report across multiple acquisition profiles.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionFalseAlarmRateReport {
+    /// Scenario identifier prefix shared across the measurement points.
+    pub scenario_id_prefix: String,
+    /// Configured acquisition Doppler search half-width in Hz.
+    pub acquisition_doppler_search_hz: i32,
+    /// Effective acquisition Doppler bin width in Hz.
+    pub acquisition_doppler_step_hz: i32,
+    /// Measurement points captured in the report.
+    pub points: Vec<SyntheticAcquisitionFalseAlarmRatePoint>,
+}
+
 /// Per-satellite comparison between coarse acquisition Doppler bins and refined Doppler estimates.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticAcquisitionDopplerRefinementSatellite {
@@ -1292,6 +1335,45 @@ pub fn measure_noise_only_acquisition_false_alarm_rate(
     }
 }
 
+/// Measure noise-only false-alarm rate across multiple acquisition integration profiles.
+pub fn measure_noise_only_acquisition_false_alarm_rates(
+    config: &ReceiverPipelineConfig,
+    cases: &[SyntheticAcquisitionFalseAlarmRateCase],
+    trial_seeds: &[u64],
+    scenario_id_prefix: &str,
+) -> SyntheticAcquisitionFalseAlarmRateReport {
+    let points = cases
+        .iter()
+        .map(|case| {
+            let report = measure_noise_only_acquisition_false_alarm_rate(
+                config,
+                case.sat,
+                case.coherent_ms,
+                case.noncoherent,
+                trial_seeds,
+                &false_alarm_rate_case_id(scenario_id_prefix, case),
+            );
+
+            SyntheticAcquisitionFalseAlarmRatePoint {
+                sat: case.sat,
+                coherent_ms: case.coherent_ms,
+                noncoherent: case.noncoherent,
+                trial_count: report.trial_count,
+                false_alarm_count: report.false_alarm_count,
+                false_alarm_rate: report.false_alarm_rate,
+                mean_peak_mean_ratio: report.mean_peak_mean_ratio,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    SyntheticAcquisitionFalseAlarmRateReport {
+        scenario_id_prefix: scenario_id_prefix.to_string(),
+        acquisition_doppler_search_hz: config.acquisition_doppler_search_hz,
+        acquisition_doppler_step_hz: config.acquisition_doppler_step_hz.max(1),
+        points,
+    }
+}
+
 fn synthetic_acquisition_sensitivity_report(
     scenario_id_prefix: &str,
     sat: SatId,
@@ -1350,6 +1432,16 @@ fn detection_rate_case_id(
         case.signal.doppler_hz.round() as i32,
         case.coherent_ms,
         case.noncoherent,
+    )
+}
+
+fn false_alarm_rate_case_id(
+    scenario_id_prefix: &str,
+    case: &SyntheticAcquisitionFalseAlarmRateCase,
+) -> String {
+    format!(
+        "{scenario_id_prefix}_prn_{}_coherent_{}ms_noncoherent_{}",
+        case.sat.prn, case.coherent_ms, case.noncoherent,
     )
 }
 
@@ -1854,6 +1946,7 @@ mod tests {
         build_iq16_capture_bundle, build_truth_bundle, expected_acquisition_code_phase_samples,
         expected_acquisition_code_phase_samples_f64, generate_l1_ca_multi,
         measure_noise_only_acquisition_false_alarm_rate,
+        measure_noise_only_acquisition_false_alarm_rates,
         measure_truth_guided_acquisition_detection_probability,
         measure_truth_guided_acquisition_detection_rate, nav_bit_index_at_time_s,
         nav_bit_sign_at_time_s, signal_amplitude_from_cn0,
@@ -1862,9 +1955,9 @@ mod tests {
         validate_truth_guided_acquisition_coherent_integration,
         validate_truth_guided_acquisition_doppler, validate_truth_guided_cn0,
         wrapped_code_phase_error_samples, wrapped_code_phase_error_samples_f64, SatState,
-        SyntheticAcquisitionDetectionRateCase, SyntheticNavBitMode, SyntheticScenario,
-        SyntheticSignalParams, SyntheticSignalSource, SYNTHETIC_COMPLEX_NOISE_POWER,
-        SYNTHETIC_NOISE_STD_PER_COMPONENT,
+        SyntheticAcquisitionDetectionRateCase, SyntheticAcquisitionFalseAlarmRateCase,
+        SyntheticNavBitMode, SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource,
+        SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
     use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds};
@@ -2562,6 +2655,45 @@ mod tests {
         assert_eq!(report.false_alarm_count, 0);
         assert_eq!(report.false_alarm_rate, 0.0);
         assert!(report.trials.iter().all(|trial| !trial.accepted), "{report:?}");
+    }
+
+    #[test]
+    fn acquisition_false_alarm_rate_report_keeps_integration_axes() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            acquisition_doppler_search_hz: 1_500,
+            acquisition_doppler_step_hz: 250,
+            ..ReceiverPipelineConfig::default()
+        };
+        let report = measure_noise_only_acquisition_false_alarm_rates(
+            &config,
+            &[
+                SyntheticAcquisitionFalseAlarmRateCase {
+                    sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                    coherent_ms: 1,
+                    noncoherent: 1,
+                },
+                SyntheticAcquisitionFalseAlarmRateCase {
+                    sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                    coherent_ms: 5,
+                    noncoherent: 4,
+                },
+            ],
+            &[31, 37],
+            "acquisition-false-alarm-rate",
+        );
+
+        assert_eq!(report.acquisition_doppler_search_hz, 1_500);
+        assert_eq!(report.acquisition_doppler_step_hz, 250);
+        assert_eq!(report.points.len(), 2);
+        assert_eq!(report.points[0].coherent_ms, 1);
+        assert_eq!(report.points[0].noncoherent, 1);
+        assert_eq!(report.points[1].coherent_ms, 5);
+        assert_eq!(report.points[1].noncoherent, 4);
+        assert!(report.points.iter().all(|point| point.trial_count == 2), "{report:?}");
     }
 
     #[test]
