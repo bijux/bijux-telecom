@@ -261,19 +261,6 @@ fn write_biased_synthetic_iq8_capture(path: &Path, i_bias: f32, q_bias: f32) {
     fs::write(path, raw).expect("write biased iq8 capture");
 }
 
-fn write_synthetic_iq8_capture_with_signal_if(
-    path: &Path,
-    sample_rate_hz: f64,
-    signal_intermediate_freq_hz: f64,
-) {
-    write_synthetic_iq8_capture_with_signal_if_and_duration_s(
-        path,
-        sample_rate_hz,
-        signal_intermediate_freq_hz,
-        1_023.0 / 1_023_000.0,
-    );
-}
-
 fn write_synthetic_iq8_capture_with_signal_if_and_duration_s(
     path: &Path,
     sample_rate_hz: f64,
@@ -313,6 +300,35 @@ fn write_synthetic_iq8_capture_with_signal_if_and_duration_s(
         raw.push(q as u8);
     }
     fs::write(path, raw).expect("write wrong-if iq8 capture");
+}
+
+fn write_synthetic_cf32_capture_with_signal_if(
+    path: &Path,
+    sample_rate_hz: f64,
+    signal_intermediate_freq_hz: f64,
+) {
+    let mut profile = ReceiverConfig::default();
+    profile.sample_rate_hz = sample_rate_hz;
+    profile.intermediate_freq_hz = signal_intermediate_freq_hz;
+    let pipeline = profile.to_pipeline_config();
+    let frame = generate_l1_ca(
+        &pipeline,
+        SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Gps, prn: 11 },
+            doppler_hz: 0.0,
+            code_phase_chips: 210.0,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 48.0,
+            data_bit_flip: false,
+        },
+        4_277_009_102,
+        1_023.0 / 1_023_000.0,
+    );
+    let mut file = fs::File::create(path).expect("create cf32 capture");
+    for sample in frame.iq {
+        file.write_all(&sample.re.to_le_bytes()).expect("write I sample");
+        file.write_all(&sample.im.to_le_bytes()).expect("write Q sample");
+    }
 }
 
 fn write_phase_skewed_cf32_capture(path: &Path, phase_error_deg: f32) {
@@ -967,10 +983,15 @@ fn acquire_reports_signal_outside_search_range_for_wrong_if_capture() {
     let temp = temp_dir_path("acquire_wrong_if");
     fs::create_dir_all(&temp).expect("create temp dir");
 
-    let iq_path = temp.join("wrong-if.iq8");
-    write_synthetic_iq8_capture_with_signal_if(&iq_path, 5_000_000.0, 2_000.0);
+    let iq_path = temp.join("wrong-if.cf32");
+    write_synthetic_cf32_capture_with_signal_if(&iq_path, 5_000_000.0, 1_750.0);
     let sidecar_path = temp.join("wrong-if.sidecar.toml");
-    write_raw_iq_sidecar_with_format_sample_rate_and_if(&sidecar_path, "iq8", 5_000_000.0, 0.0);
+    write_raw_iq_sidecar_with_format_sample_rate_and_if(
+        &sidecar_path,
+        "cf32_le",
+        5_000_000.0,
+        0.0,
+    );
 
     let out_dir = temp.join("acquire-out");
     let output = run_bijux(
@@ -985,7 +1006,7 @@ fn acquire_reports_signal_outside_search_range_for_wrong_if_capture() {
             "--prn",
             "11",
             "--top",
-            "1",
+            "8",
             "--doppler-search-hz",
             "1500",
             "--doppler-step-hz",
@@ -1020,10 +1041,15 @@ fn acquire_table_reports_search_range_rejection_for_wrong_if_capture() {
     let temp = temp_dir_path("acquire_wrong_if_table");
     fs::create_dir_all(&temp).expect("create temp dir");
 
-    let iq_path = temp.join("wrong-if.iq8");
-    write_synthetic_iq8_capture_with_signal_if(&iq_path, 5_000_000.0, 2_000.0);
+    let iq_path = temp.join("wrong-if.cf32");
+    write_synthetic_cf32_capture_with_signal_if(&iq_path, 5_000_000.0, 1_750.0);
     let sidecar_path = temp.join("wrong-if.sidecar.toml");
-    write_raw_iq_sidecar_with_format_sample_rate_and_if(&sidecar_path, "iq8", 5_000_000.0, 0.0);
+    write_raw_iq_sidecar_with_format_sample_rate_and_if(
+        &sidecar_path,
+        "cf32_le",
+        5_000_000.0,
+        0.0,
+    );
 
     let output = run_bijux(
         &[
@@ -1037,7 +1063,7 @@ fn acquire_table_reports_search_range_rejection_for_wrong_if_capture() {
             "--prn",
             "11",
             "--top",
-            "1",
+            "8",
             "--doppler-search-hz",
             "1500",
             "--doppler-step-hz",
@@ -1066,7 +1092,7 @@ fn track_reports_sample_rate_mismatch_for_wrong_sample_rate_capture() {
     let iq_path = temp.join("wrong-sample-rate.iq8");
     write_synthetic_iq8_capture_with_signal_if_and_duration_s(&iq_path, 5_000_000.0, 0.0, 0.012);
     let sidecar_path = temp.join("wrong-sample-rate.sidecar.toml");
-    write_raw_iq_sidecar_with_format_sample_rate_and_if(&sidecar_path, "iq8", 5_050_000.0, 0.0);
+    write_raw_iq_sidecar_with_format_sample_rate_and_if(&sidecar_path, "iq8", 5_200_000.0, 0.0);
 
     let out_dir = temp.join("track-out");
     let output = run_bijux(

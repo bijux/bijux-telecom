@@ -740,40 +740,47 @@ fn signal_outside_search_range(
         return None;
     }
 
-    let best = candidates.iter().max_by(|a, b| {
-        a.peak_mean_ratio.partial_cmp(&b.peak_mean_ratio).unwrap_or(std::cmp::Ordering::Equal)
-    })?;
-    let best_offset_hz = best.carrier_hz.0 - intermediate_freq_hz;
-    let edge = if best_offset_hz <= -(doppler_search_hz as f64) {
-        SearchWindowEdge::Lower
-    } else if best_offset_hz >= doppler_search_hz as f64 {
-        SearchWindowEdge::Upper
-    } else {
-        return None;
-    };
-
-    let interior_carrier_hz = match edge {
-        SearchWindowEdge::Lower => best.carrier_hz.0 + doppler_step_hz as f64,
-        SearchWindowEdge::Upper => best.carrier_hz.0 - doppler_step_hz as f64,
-    };
-    let interior = candidates
-        .iter()
-        .find(|candidate| (candidate.carrier_hz.0 - interior_carrier_hz).abs() <= f64::EPSILON)?;
-
     let hint_threshold = peak_mean_threshold * SEARCH_EDGE_HINT_PEAK_MEAN_RATIO_FRACTION;
-    if best.peak_mean_ratio < hint_threshold {
-        return None;
-    }
-    if best.peak_mean_ratio <= interior.peak_mean_ratio * (1.0 + SEARCH_EDGE_RISE_RATIO_EPSILON) {
-        return None;
-    }
-
-    Some(SearchWindowDiagnostic {
-        edge,
-        best_carrier_hz: best.carrier_hz.0,
-        interior_carrier_hz: interior.carrier_hz.0,
-        best_peak_mean_ratio: best.peak_mean_ratio,
-        interior_peak_mean_ratio: interior.peak_mean_ratio,
+    [
+        (
+            SearchWindowEdge::Lower,
+            intermediate_freq_hz - doppler_search_hz as f64,
+            intermediate_freq_hz - doppler_search_hz as f64 + doppler_step_hz as f64,
+        ),
+        (
+            SearchWindowEdge::Upper,
+            intermediate_freq_hz + doppler_search_hz as f64,
+            intermediate_freq_hz + doppler_search_hz as f64 - doppler_step_hz as f64,
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(edge, edge_carrier_hz, interior_carrier_hz)| {
+        let edge_candidate = candidates.iter().find(|candidate| {
+            (candidate.carrier_hz.0 - edge_carrier_hz).abs() <= f64::EPSILON
+        })?;
+        let interior_candidate = candidates.iter().find(|candidate| {
+            (candidate.carrier_hz.0 - interior_carrier_hz).abs() <= f64::EPSILON
+        })?;
+        if edge_candidate.peak_mean_ratio < hint_threshold {
+            return None;
+        }
+        if edge_candidate.peak_mean_ratio
+            <= interior_candidate.peak_mean_ratio * (1.0 + SEARCH_EDGE_RISE_RATIO_EPSILON)
+        {
+            return None;
+        }
+        Some(SearchWindowDiagnostic {
+            edge,
+            best_carrier_hz: edge_candidate.carrier_hz.0,
+            interior_carrier_hz: interior_candidate.carrier_hz.0,
+            best_peak_mean_ratio: edge_candidate.peak_mean_ratio,
+            interior_peak_mean_ratio: interior_candidate.peak_mean_ratio,
+        })
+    })
+    .max_by(|left, right| {
+        left.best_peak_mean_ratio
+            .partial_cmp(&right.best_peak_mean_ratio)
+            .unwrap_or(std::cmp::Ordering::Equal)
     })
 }
 
@@ -934,6 +941,28 @@ mod tests {
         );
 
         assert!(diagnostic.is_none());
+    }
+
+    #[test]
+    fn search_window_diagnostic_prefers_edge_signal_over_interior_ambiguity() {
+        let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 1 };
+        let diagnostic = signal_outside_search_range(
+            &[
+                candidate_for_search_window_test(sat, -1_500.0, 2.3),
+                candidate_for_search_window_test(sat, -1_250.0, 1.6),
+                candidate_for_search_window_test(sat, 0.0, 3.6),
+                candidate_for_search_window_test(sat, 1_500.0, 1.9),
+            ],
+            0.0,
+            1_500,
+            250,
+            2.5,
+        )
+        .expect("search-window diagnostic");
+
+        assert_eq!(diagnostic.edge, SearchWindowEdge::Lower);
+        assert_eq!(diagnostic.best_carrier_hz, -1_500.0);
+        assert_eq!(diagnostic.interior_carrier_hz, -1_250.0);
     }
 
     #[test]
