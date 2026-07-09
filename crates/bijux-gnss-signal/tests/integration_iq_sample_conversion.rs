@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_signal::api::{iq_i16_to_samples, iq_i8_to_samples};
+use bijux_gnss_signal::api::{iq_f32_to_samples, iq_i16_to_samples, iq_i8_to_samples};
 
 #[test]
 fn iq_i8_to_samples_normalizes_signed_pairs() {
@@ -34,4 +34,15 @@ fn iq_i8_and_i16_conversions_agree_on_equivalent_levels() {
         assert!((left.re - right.re).abs() < 1e-6, "I mismatch: {left:?} vs {right:?}");
         assert!((left.im - right.im).abs() < 1e-6, "Q mismatch: {left:?} vs {right:?}");
     }
+}
+
+#[test]
+fn iq_f32_to_samples_preserves_complex_pairs() {
+    let samples = iq_f32_to_samples(&[-1.0, 0.75, 0.5, -0.25]);
+
+    assert_eq!(samples.len(), 2);
+    assert_eq!(samples[0].re, -1.0);
+    assert_eq!(samples[0].im, 0.75);
+    assert_eq!(samples[1].re, 0.5);
+    assert_eq!(samples[1].im, -0.25);
 }

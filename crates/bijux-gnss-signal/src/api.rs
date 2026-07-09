@@ -13,7 +13,7 @@ pub use crate::error::SignalError;
 /// Raw IQ metadata contracts.
 pub use crate::raw_iq::{IqSampleFormat, RawIqMetadata};
 /// Sample conversion helpers.
-pub use crate::samples::{iq_i16_to_samples, iq_i8_to_samples};
+pub use crate::samples::{iq_f32_to_samples, iq_i16_to_samples, iq_i8_to_samples};
 
 /// Streaming signal source interface.
 pub trait SignalSource {

@@ -30,3 +30,12 @@ pub fn iq_i16_to_samples(input: &[i16]) -> Vec<Sample> {
     }
     out
 }
+
+/// Convert interleaved f32 IQ samples into complex f32 samples without quantization scaling.
+pub fn iq_f32_to_samples(input: &[f32]) -> Vec<Sample> {
+    let mut out = Vec::with_capacity(input.len() / 2);
+    for chunk in input.chunks_exact(2) {
+        out.push(num_complex::Complex::new(chunk[0], chunk[1]));
+    }
+    out
+}
