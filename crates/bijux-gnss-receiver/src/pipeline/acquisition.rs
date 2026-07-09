@@ -597,10 +597,17 @@ impl Acquisition {
                         candidate.uncertainty =
                             estimate_acquisition_uncertainty(candidate, self.doppler_step_hz);
                     }
-                } else {
-                    candidate.hypothesis = AcqHypothesis::Deferred;
-                    candidate.explain_selection_reason = Some("not_selected".to_string());
                 }
+            }
+            let primary_candidate = candidates
+                .first()
+                .cloned()
+                .expect("retained acquisition candidates must include a primary row");
+            for candidate in candidates.iter_mut().skip(1) {
+                candidate.hypothesis = AcqHypothesis::Rejected;
+                candidate.score = 0.0;
+                candidate.explain_selection_reason =
+                    Some(ranked_alternative_candidate_reason(&primary_candidate, candidate));
             }
             sat_evaluations.push(AcquisitionSatEvaluation {
                 sat,
@@ -1262,9 +1269,22 @@ fn known_selection_reason_prefix(reason: &str) -> Option<&'static str> {
         "ambiguous_ratio_thresholds" => Some("ambiguous_ratio_thresholds"),
         "multipath_suspect" => Some("multipath_suspect"),
         "low_peak_metric" => Some("low_peak_metric"),
+        "ranked_alternative" => Some("ranked_alternative"),
         "wrong_prn_correlation" => Some("wrong_prn_correlation"),
         _ => None,
     }
+}
+
+fn ranked_alternative_candidate_reason(primary: &AcqResult, alternative: &AcqResult) -> String {
+    format!(
+        "ranked_alternative: preserved rank {} candidate behind rank {} primary (peak_mean_ratio {:.6} < {:.6}, peak_second_ratio {:.6} vs {:.6})",
+        alternative.candidate_rank,
+        primary.candidate_rank,
+        alternative.peak_mean_ratio,
+        primary.peak_mean_ratio,
+        alternative.peak_second_ratio,
+        primary.peak_second_ratio,
+    )
 }
 
 fn suppress_wrong_prn_correlations(sat_evaluations: &mut [AcquisitionSatEvaluation]) {
