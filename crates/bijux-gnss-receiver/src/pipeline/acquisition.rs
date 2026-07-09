@@ -58,6 +58,8 @@ const SUB_SAMPLE_CODE_PHASE_REFINEMENT_METHOD: &str = "parabolic_code_peak";
 const SUB_SAMPLE_CODE_PHASE_REFINEMENT_MAX_OFFSET_SAMPLES: f64 = 0.5;
 const SUB_SAMPLE_CODE_PHASE_REFINEMENT_EPSILON: f64 = 1e-12;
 const SUB_SAMPLE_CODE_PHASE_REFINEMENT_MIN_ABS_OFFSET_SAMPLES: f64 = 0.05;
+const WRONG_PRN_DOMINANCE_RATIO_MIN: f32 = 4.0;
+const WRONG_PRN_PEAK_SECOND_RATIO_MAX: f32 = 1.1;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 struct CodeFftCacheKey {
@@ -126,6 +128,13 @@ struct SearchWindowDiagnostic {
     interior_carrier_hz: f64,
     best_peak_mean_ratio: f32,
     interior_peak_mean_ratio: f32,
+}
+
+#[derive(Debug, Clone)]
+struct AcquisitionSatEvaluation {
+    sat: SatId,
+    candidates: Vec<AcqResult>,
+    search_window_diagnostic: Option<SearchWindowDiagnostic>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -360,8 +369,7 @@ impl Acquisition {
             );
         }
 
-        let mut results = Vec::new();
-        let mut explains = Vec::new();
+        let mut sat_evaluations = Vec::new();
         self.with_stats(|stats| {
             stats.doppler_bins +=
                 doppler_bin_count(self.doppler_search_hz, self.doppler_step_hz) * sats.len() as u64;
@@ -481,26 +489,11 @@ impl Acquisition {
                 noncoherent,
             );
             if candidates.is_empty() {
-                self.runtime.trace.record(TraceRecord {
-                    name: "acquisition_sat_done",
-                    fields: vec![
-                        ("constellation", format!("{:?}", sat.constellation)),
-                        ("prn", sat.prn.to_string()),
-                        ("outcome", "no_candidates".to_string()),
-                    ],
+                sat_evaluations.push(AcquisitionSatEvaluation {
+                    sat,
+                    candidates: Vec::new(),
+                    search_window_diagnostic: None,
                 });
-                self.with_stats(|stats| {
-                    stats.deferred_count = stats.deferred_count.saturating_add(1);
-                });
-                if emit_explanations {
-                    explains.push(AcqExplain {
-                        sat,
-                        selected_rank: None,
-                        selected_reason: "no_candidates".to_string(),
-                        candidate_count: 0,
-                        candidates: Vec::new(),
-                    });
-                }
                 continue;
             }
 
@@ -545,6 +538,44 @@ impl Acquisition {
                     candidate.hypothesis = AcqHypothesis::Deferred;
                     candidate.explain_selection_reason = Some("not_selected".to_string());
                 }
+            }
+            sat_evaluations.push(AcquisitionSatEvaluation {
+                sat,
+                candidates,
+                search_window_diagnostic,
+            });
+        }
+        suppress_wrong_prn_correlations(&mut sat_evaluations);
+
+        let mut results = Vec::with_capacity(sat_evaluations.len());
+        let mut explains = Vec::with_capacity(sat_evaluations.len());
+        for evaluation in sat_evaluations {
+            let sat = evaluation.sat;
+            let search_window_diagnostic = evaluation.search_window_diagnostic;
+            let candidates = evaluation.candidates;
+            if candidates.is_empty() {
+                self.runtime.trace.record(TraceRecord {
+                    name: "acquisition_sat_done",
+                    fields: vec![
+                        ("constellation", format!("{:?}", sat.constellation)),
+                        ("prn", sat.prn.to_string()),
+                        ("outcome", "no_candidates".to_string()),
+                    ],
+                });
+                self.with_stats(|stats| {
+                    stats.deferred_count = stats.deferred_count.saturating_add(1);
+                });
+                if emit_explanations {
+                    explains.push(AcqExplain {
+                        sat,
+                        selected_rank: None,
+                        selected_reason: "no_candidates".to_string(),
+                        candidate_count: 0,
+                        candidates: Vec::new(),
+                    });
+                }
+                results.push(candidates);
+                continue;
             }
 
             let best = &candidates[0];
@@ -1140,12 +1171,99 @@ fn acquisition_decision(
 }
 
 fn selected_reason_for_candidate(candidate: &AcqResult) -> &'static str {
+    if let Some(reason) = candidate.explain_selection_reason.as_deref() {
+        if let Some(reason_prefix) = known_selection_reason_prefix(reason) {
+            return reason_prefix;
+        }
+    }
     match candidate.hypothesis {
         AcqHypothesis::Accepted => AcquisitionDecisionReason::AcceptedByRatioThresholds.as_str(),
         AcqHypothesis::Ambiguous => AcquisitionDecisionReason::AmbiguousRatioThresholds.as_str(),
         AcqHypothesis::Rejected => AcquisitionDecisionReason::LowPeakMetric.as_str(),
         AcqHypothesis::Deferred => "deferred",
     }
+}
+
+fn known_selection_reason_prefix(reason: &str) -> Option<&'static str> {
+    let reason_prefix = reason.split_once(':').map_or(reason, |(prefix, _)| prefix);
+    match reason_prefix {
+        "accepted_by_ratio_thresholds" => Some("accepted_by_ratio_thresholds"),
+        "ambiguous_ratio_thresholds" => Some("ambiguous_ratio_thresholds"),
+        "low_peak_metric" => Some("low_peak_metric"),
+        "wrong_prn_correlation" => Some("wrong_prn_correlation"),
+        _ => None,
+    }
+}
+
+fn suppress_wrong_prn_correlations(sat_evaluations: &mut [AcquisitionSatEvaluation]) {
+    let dominant = sat_evaluations
+        .iter()
+        .filter_map(|evaluation| evaluation.candidates.first())
+        .filter(|candidate| {
+            matches!(candidate.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous)
+        })
+        .max_by(|left, right| {
+            left.peak_mean_ratio
+                .partial_cmp(&right.peak_mean_ratio)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|candidate| (candidate.sat, candidate.peak_mean_ratio));
+
+    let Some((dominant_sat, dominant_peak_mean_ratio)) = dominant else {
+        return;
+    };
+
+    for evaluation in sat_evaluations {
+        if evaluation.search_window_diagnostic.is_some() {
+            continue;
+        }
+        let Some(candidate) = evaluation.candidates.first_mut() else {
+            continue;
+        };
+        if candidate.sat == dominant_sat
+            || !matches!(candidate.hypothesis, AcqHypothesis::Ambiguous)
+        {
+            continue;
+        }
+        if candidate.peak_second_ratio >= WRONG_PRN_PEAK_SECOND_RATIO_MAX
+            || candidate.peak_mean_ratio <= f32::EPSILON
+        {
+            continue;
+        }
+        let dominance_ratio = dominant_peak_mean_ratio / candidate.peak_mean_ratio;
+        if dominance_ratio < WRONG_PRN_DOMINANCE_RATIO_MIN {
+            continue;
+        }
+        candidate.hypothesis = AcqHypothesis::Rejected;
+        candidate.score = 0.0;
+        candidate.explain_selection_reason = Some(wrong_prn_candidate_reason(
+            candidate.sat,
+            dominant_sat,
+            candidate.peak_mean_ratio,
+            dominant_peak_mean_ratio,
+            dominance_ratio,
+            candidate.peak_second_ratio,
+        ));
+    }
+}
+
+fn wrong_prn_candidate_reason(
+    candidate_sat: SatId,
+    dominant_sat: SatId,
+    candidate_peak_mean_ratio: f32,
+    dominant_peak_mean_ratio: f32,
+    dominance_ratio: f32,
+    candidate_peak_second_ratio: f32,
+) -> String {
+    format!(
+        "wrong_prn_correlation: prn {} suppressed by stronger prn {} (peak_mean_ratio {:.6} vs {:.6}, dominance_ratio {:.6}, peak_second_ratio {:.6})",
+        candidate_sat.prn,
+        dominant_sat.prn,
+        candidate_peak_mean_ratio,
+        dominant_peak_mean_ratio,
+        dominance_ratio,
+        candidate_peak_second_ratio,
+    )
 }
 
 fn selected_candidate_reason(
@@ -1448,6 +1566,54 @@ mod tests {
         candidate.hypothesis = AcqHypothesis::Rejected;
 
         assert_eq!(selected_reason_for_candidate(&candidate), "low_peak_metric");
+    }
+
+    #[test]
+    fn selected_reason_for_candidate_reports_wrong_prn_correlation() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 8 };
+        let mut candidate = candidate_for_search_window_test(sat, 0.0, 3.0);
+        candidate.hypothesis = AcqHypothesis::Rejected;
+        candidate.explain_selection_reason =
+            Some("wrong_prn_correlation: prn 8 suppressed by stronger prn 7".to_string());
+
+        assert_eq!(selected_reason_for_candidate(&candidate), "wrong_prn_correlation");
+    }
+
+    #[test]
+    fn suppress_wrong_prn_correlations_rejects_ambiguous_cross_prn_candidates() {
+        let dominant_sat = SatId { constellation: Constellation::Gps, prn: 7 };
+        let wrong_sat = SatId { constellation: Constellation::Gps, prn: 8 };
+        let mut sat_evaluations = vec![
+            AcquisitionSatEvaluation {
+                sat: dominant_sat,
+                candidates: vec![AcqResult {
+                    hypothesis: AcqHypothesis::Ambiguous,
+                    peak_mean_ratio: 18.6,
+                    peak_second_ratio: 1.25,
+                    explain_selection_reason: Some("ambiguous_ratio_thresholds".to_string()),
+                    ..candidate_for_search_window_test(dominant_sat, 0.0, 18.6)
+                }],
+                search_window_diagnostic: None,
+            },
+            AcquisitionSatEvaluation {
+                sat: wrong_sat,
+                candidates: vec![AcqResult {
+                    hypothesis: AcqHypothesis::Ambiguous,
+                    peak_mean_ratio: 3.1,
+                    peak_second_ratio: 1.02,
+                    explain_selection_reason: Some("ambiguous_ratio_thresholds".to_string()),
+                    ..candidate_for_search_window_test(wrong_sat, 0.0, 3.1)
+                }],
+                search_window_diagnostic: None,
+            },
+        ];
+
+        suppress_wrong_prn_correlations(&mut sat_evaluations);
+
+        let suppressed = sat_evaluations[1].candidates.first().expect("suppressed candidate");
+        assert_eq!(suppressed.hypothesis.to_string(), "rejected");
+        assert_eq!(selected_reason_for_candidate(suppressed), "wrong_prn_correlation");
+        assert_eq!(suppressed.score, 0.0);
     }
 
     #[test]
