@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{Constellation, SatId};
+use bijux_gnss_core::api::{AcqSearchSummary, Constellation, SatId};
 use bijux_gnss_receiver::api::{
     sim::{generate_l1_ca, SyntheticSignalParams},
     AcquisitionEngine, ReceiverPipelineConfig, ReceiverRuntime,
@@ -20,6 +20,53 @@ fn wrong_prn_harness_preserves_requested_prn_results() {
     assert_eq!(run.explains.len(), requested_sats.len());
     assert!(run.results.iter().all(|candidates| !candidates.is_empty()));
     assert!(run.explains.iter().all(|explain| explain.candidate_count >= 1));
+}
+
+#[test]
+fn acquisition_rejects_wrong_prns_for_single_prn_signal() {
+    let config = wrong_prn_profile();
+    let signal_sat = gps_l1_ca_satellite(7);
+    let requested_sats = [gps_l1_ca_satellite(7), gps_l1_ca_satellite(8), gps_l1_ca_satellite(9)];
+    let frame = single_prn_frame(&config, signal_sat, 0x2407_3002);
+    let run = AcquisitionEngine::new(config.clone(), ReceiverRuntime::default())
+        .with_doppler(config.acquisition_doppler_search_hz, config.acquisition_doppler_step_hz)
+        .run_fft_topn_with_explain(&frame, &requested_sats, 4, 1, 1);
+
+    let correct_prn = run.results.iter().find(|result| result[0].sat.prn == 7).expect("prn 7");
+    let wrong_prn_8 = run.results.iter().find(|result| result[0].sat.prn == 8).expect("prn 8");
+    let wrong_prn_9 = run.results.iter().find(|result| result[0].sat.prn == 9).expect("prn 9");
+    let wrong_prn_8_explain =
+        run.explains.iter().find(|explain| explain.sat.prn == 8).expect("prn 8 explain");
+    let wrong_prn_9_explain =
+        run.explains.iter().find(|explain| explain.sat.prn == 9).expect("prn 9 explain");
+
+    assert_ne!(correct_prn[0].hypothesis.to_string(), "rejected", "{run:?}");
+    assert_eq!(wrong_prn_8[0].hypothesis.to_string(), "rejected", "{run:?}");
+    assert_eq!(wrong_prn_9[0].hypothesis.to_string(), "rejected", "{run:?}");
+    assert_eq!(wrong_prn_8_explain.selected_reason, "wrong_prn_correlation", "{run:?}");
+    assert_eq!(wrong_prn_9_explain.selected_reason, "wrong_prn_correlation", "{run:?}");
+}
+
+#[test]
+fn wrong_prn_rejection_counts_rejected_candidates() {
+    let config = wrong_prn_profile();
+    let signal_sat = gps_l1_ca_satellite(7);
+    let requested_sats = [gps_l1_ca_satellite(7), gps_l1_ca_satellite(8), gps_l1_ca_satellite(9)];
+    let frame = single_prn_frame(&config, signal_sat, 0x2407_3003);
+    let results = AcquisitionEngine::new(config.clone(), ReceiverRuntime::default())
+        .with_doppler(config.acquisition_doppler_search_hz, config.acquisition_doppler_step_hz)
+        .run_fft(&frame, &requested_sats);
+    let summary = AcqSearchSummary::from_results(&results);
+
+    assert_eq!(results.len(), requested_sats.len());
+    assert_eq!(summary.searched_satellites, requested_sats.len());
+    assert_eq!(summary.rejected, 2);
+    assert_eq!(summary.accepted, 0);
+    assert_eq!(summary.ambiguous + summary.deferred, 1);
+    assert_eq!(
+        results.iter().filter(|result| result.hypothesis.to_string() == "rejected").count(),
+        2
+    );
 }
 
 fn wrong_prn_profile() -> ReceiverPipelineConfig {
