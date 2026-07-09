@@ -8,7 +8,7 @@ seed = 24071987
 [[satellites]]
 sat = { constellation = "Gps", prn = 3 }
 doppler_hz = 750.0
-code_phase_chips = 200.25
+code_phase_chips = 200.125
 carrier_phase_rad = 0.0
 cn0_db_hz = 58.0
 data_bit_flip = true

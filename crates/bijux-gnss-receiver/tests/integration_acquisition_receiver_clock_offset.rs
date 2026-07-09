@@ -3,7 +3,7 @@
 use bijux_gnss_core::api::{Constellation, SamplesFrame, SatId};
 use bijux_gnss_receiver::api::{
     sim::{
-        build_iq16_capture_bundle, generate_l1_ca_multi,
+        build_iq16_capture_bundle, generate_l1_ca_multi, validate_truth_guided_acquisition_doppler,
         validate_truth_guided_acquisition_receiver_clock_offset, SyntheticScenario,
         SyntheticSignalParams,
     },
@@ -64,24 +64,32 @@ fn acquisition_reports_consistent_receiver_clock_offset_across_satellites() {
         &bundle.truth,
         1,
     );
+    let doppler_report =
+        validate_truth_guided_acquisition_doppler(&config, &scaled_frame, &bundle.truth, 1);
 
     assert!(report.pass, "{report:?}");
+    assert!(doppler_report.pass, "{doppler_report:?}");
     assert_eq!(report.sample_rate_hz, 4_092_000.0);
     assert_eq!(report.injected_receiver_clock_frequency_bias_hz, 500.0);
     assert_eq!(report.tolerance_hz, 250.0);
     assert_eq!(report.satellites.len(), 2);
+    assert_eq!(doppler_report.satellites.len(), 2);
     assert!(
         (report.mean_measured_receiver_clock_frequency_bias_hz - 500.0).abs() <= 250.0,
         "{report:?}"
     );
     assert!(report.measured_receiver_clock_frequency_bias_spread_hz <= 250.0, "{report:?}");
+    for row in &doppler_report.satellites {
+        assert!(row.pass, "{row:?}");
+        assert!(
+            (row.expected_measured_doppler_hz - row.measured_doppler_hz).abs() <= 250.0,
+            "{row:?}"
+        );
+    }
     for row in &report.satellites {
         assert!(row.pass, "{row:?}");
         assert_eq!(row.injected_receiver_clock_frequency_bias_hz, 500.0);
-        assert!(
-            (row.measured_receiver_clock_frequency_bias_hz - 500.0).abs() <= 250.0,
-            "{row:?}"
-        );
+        assert!((row.measured_receiver_clock_frequency_bias_hz - 500.0).abs() <= 250.0, "{row:?}");
         assert!(
             (row.expected_measured_doppler_hz - row.measured_doppler_hz).abs() <= 250.0,
             "{row:?}"

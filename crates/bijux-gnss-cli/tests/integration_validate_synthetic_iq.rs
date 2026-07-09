@@ -62,6 +62,7 @@ fn validate_acquisition_reference_bundle(
     scenario_relative_path: &str,
     scenario_id: &str,
     expected_sample_rate_hz: f64,
+    expected_receiver_clock_frequency_bias_hz: Option<f64>,
 ) {
     let export_dir = temp_dir_path(scenario_id);
     export_bundle(repo, &export_dir, &repo.join(scenario_relative_path));
@@ -107,12 +108,23 @@ fn validate_acquisition_reference_bundle(
     assert_eq!(report["validation"]["scenario_id"], scenario_id);
     assert_eq!(report["validation"]["sample_rate_hz"], expected_sample_rate_hz);
     assert_eq!(report["validation"]["pass"], true);
-    assert_eq!(report["acquisition_code_phase_validation"]["sample_rate_hz"], expected_sample_rate_hz);
+    assert_eq!(
+        report["acquisition_code_phase_validation"]["sample_rate_hz"],
+        expected_sample_rate_hz
+    );
     assert_eq!(report["acquisition_code_phase_validation"]["pass"], true);
-    assert_eq!(report["acquisition_code_phase_refinement_validation"]["sample_rate_hz"], expected_sample_rate_hz);
+    assert_eq!(
+        report["acquisition_code_phase_refinement_validation"]["sample_rate_hz"],
+        expected_sample_rate_hz
+    );
     assert_eq!(report["acquisition_code_phase_refinement_validation"]["pass"], true);
     assert_eq!(report["acquisition_doppler_validation"]["sample_rate_hz"], expected_sample_rate_hz);
     assert_eq!(report["acquisition_doppler_validation"]["pass"], true);
+    assert_eq!(
+        report["acquisition_receiver_clock_offset_validation"]["sample_rate_hz"],
+        expected_sample_rate_hz
+    );
+    assert_eq!(report["acquisition_receiver_clock_offset_validation"]["pass"], true);
     assert_eq!(
         report["acquisition_code_phase_validation"]["satellites"]
             .as_array()
@@ -127,6 +139,34 @@ fn validate_acquisition_reference_bundle(
             .len(),
         2
     );
+    assert_eq!(
+        report["acquisition_receiver_clock_offset_validation"]["satellites"]
+            .as_array()
+            .expect("acquisition receiver clock-offset rows")
+            .len(),
+        2
+    );
+    if let Some(expected_receiver_clock_frequency_bias_hz) =
+        expected_receiver_clock_frequency_bias_hz
+    {
+        assert_eq!(
+            report["acquisition_receiver_clock_offset_validation"]
+                ["injected_receiver_clock_frequency_bias_hz"],
+            expected_receiver_clock_frequency_bias_hz
+        );
+        let mean_measured_receiver_clock_frequency_bias_hz = report
+            ["acquisition_receiver_clock_offset_validation"]
+            ["mean_measured_receiver_clock_frequency_bias_hz"]
+            .as_f64()
+            .expect("mean measured receiver clock frequency bias");
+        assert!(
+            (mean_measured_receiver_clock_frequency_bias_hz
+                - expected_receiver_clock_frequency_bias_hz)
+                .abs()
+                <= 500.0 + f64::EPSILON,
+            "receiver clock bias out of tolerance: {mean_measured_receiver_clock_frequency_bias_hz}"
+        );
+    }
 
     fs::remove_dir_all(&export_dir).expect("remove export dir");
     fs::remove_dir_all(&validate_dir).expect("remove validate dir");
@@ -238,6 +278,7 @@ fn validate_synthetic_iq_accepts_low_rate_acquisition_reference_bundle() {
         "configs/scenarios/synthetic_iq_acquisition_reference_low_rate.toml",
         "synthetic_iq_acquisition_reference_low_rate",
         2_046_000.0,
+        Some(0.0),
     );
 }
 
@@ -250,6 +291,20 @@ fn validate_synthetic_iq_accepts_high_rate_acquisition_reference_bundle() {
         "configs/scenarios/synthetic_iq_acquisition_reference_high_rate.toml",
         "synthetic_iq_acquisition_reference_high_rate",
         4_092_000.0,
+        Some(0.0),
+    );
+}
+
+#[test]
+fn validate_synthetic_iq_accepts_acquisition_clock_offset_reference_bundle() {
+    let repo = repo_root();
+
+    validate_acquisition_reference_bundle(
+        &repo,
+        "configs/scenarios/synthetic_iq_acquisition_clock_offset_reference.toml",
+        "synthetic_iq_acquisition_clock_offset_reference",
+        4_092_000.0,
+        Some(500.0),
     );
 }
 

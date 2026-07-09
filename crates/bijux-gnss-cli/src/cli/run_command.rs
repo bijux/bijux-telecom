@@ -317,9 +317,10 @@ fn print_synthetic_iq_validation_table(report: &SyntheticIqValidationReport) {
     println!("Acquisition Doppler pass: {}", report.acquisition_doppler_validation.pass);
     for row in &report.acquisition_doppler_validation.satellites {
         println!(
-            "{}\tinjected={:.3}\tmeasured={:.3}\terror={:.3}\terror_bins={:.3}\tpeak/mean={:.3}\thypothesis={}\tpass={}",
+            "{}\tinjected={:.3}\texpected={:.3}\tmeasured={:.3}\terror={:.3}\terror_bins={:.3}\tpeak/mean={:.3}\thypothesis={}\tpass={}",
             format_sat(row.sat),
             row.injected_doppler_hz,
+            row.expected_measured_doppler_hz,
             row.measured_doppler_hz,
             row.doppler_error_hz,
             row.doppler_error_bins,

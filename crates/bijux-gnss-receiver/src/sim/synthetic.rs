@@ -289,6 +289,8 @@ pub struct SyntheticAcquisitionDopplerValidationSatellite {
     pub sat: SatId,
     /// Injected Doppler shift in Hz.
     pub injected_doppler_hz: f64,
+    /// Expected acquisition Doppler after the common receiver clock bias is applied, in Hz.
+    pub expected_measured_doppler_hz: f64,
     /// Measured acquisition Doppler in Hz relative to the configured IF.
     pub measured_doppler_hz: f64,
     /// Absolute Doppler error in Hz.
@@ -819,11 +821,7 @@ pub fn validate_truth_guided_cn0(
                     &epoch_frame,
                     sat_truth.code_phase_chips,
                 );
-                let carrier_hz = synthetic_carrier_hz(
-                    truth.intermediate_freq_hz,
-                    sat_truth.sat,
-                    sat_truth.doppler_hz,
-                );
+                let carrier_hz = synthetic_truth_carrier_hz(truth, sat_truth);
                 let (track_epoch, _) = tracking.track_epoch(
                     &epoch_frame,
                     0,
@@ -959,7 +957,7 @@ pub fn validate_truth_guided_acquisition_code_phase(
             acquisition_config.intermediate_freq_hz = synthetic_carrier_hz(
                 truth.intermediate_freq_hz,
                 sat_truth.sat,
-                sat_truth.doppler_hz,
+                synthetic_truth_measured_doppler_hz(truth, sat_truth),
             );
             acquisition_config.acquisition_doppler_search_hz = 0;
             acquisition_config.acquisition_doppler_step_hz = 1;
@@ -1029,7 +1027,7 @@ pub fn validate_truth_guided_acquisition_code_phase_refinement(
             acquisition_config.intermediate_freq_hz = synthetic_carrier_hz(
                 truth.intermediate_freq_hz,
                 sat_truth.sat,
-                sat_truth.doppler_hz,
+                synthetic_truth_measured_doppler_hz(truth, sat_truth),
             );
             acquisition_config.acquisition_doppler_search_hz = 0;
             acquisition_config.acquisition_doppler_step_hz = 1;
@@ -1126,7 +1124,9 @@ pub fn validate_truth_guided_acquisition_doppler(
                 config.intermediate_freq_hz,
                 result.carrier_hz.0,
             );
-            let doppler_error_hz = (measured_doppler_hz - sat_truth.doppler_hz).abs();
+            let expected_measured_doppler_hz =
+                synthetic_truth_measured_doppler_hz(truth, sat_truth);
+            let doppler_error_hz = (measured_doppler_hz - expected_measured_doppler_hz).abs();
             let doppler_error_bins = doppler_error_hz / doppler_step_hz as f64;
             let pass =
                 measured_doppler_hz.is_finite() && doppler_error_hz <= tolerance_hz + f64::EPSILON;
@@ -1134,6 +1134,7 @@ pub fn validate_truth_guided_acquisition_doppler(
             SyntheticAcquisitionDopplerValidationSatellite {
                 sat: sat_truth.sat,
                 injected_doppler_hz: sat_truth.doppler_hz,
+                expected_measured_doppler_hz,
                 measured_doppler_hz,
                 doppler_error_hz,
                 doppler_step_hz,
@@ -1681,8 +1682,10 @@ pub fn validate_truth_guided_acquisition_doppler_refinement(
                     )
                 })
                 .unwrap_or((refined_doppler_hz, 0.0));
-            let coarse_error_hz = (coarse_doppler_hz - sat_truth.doppler_hz).abs();
-            let refined_error_hz = (refined_doppler_hz - sat_truth.doppler_hz).abs();
+            let expected_measured_doppler_hz =
+                synthetic_truth_measured_doppler_hz(truth, sat_truth);
+            let coarse_error_hz = (coarse_doppler_hz - expected_measured_doppler_hz).abs();
+            let refined_error_hz = (refined_doppler_hz - expected_measured_doppler_hz).abs();
             let improvement_hz = coarse_error_hz - refined_error_hz;
             let pass = result.doppler_refinement.is_some() && improvement_hz > f64::EPSILON;
 
@@ -2093,6 +2096,24 @@ fn synthetic_carrier_hz(intermediate_freq_hz: f64, sat: SatId, doppler_hz: f64) 
     carrier_hz_from_doppler_hz(
         synthetic_intermediate_frequency_hz(intermediate_freq_hz, sat),
         doppler_hz,
+    )
+}
+
+fn synthetic_truth_measured_doppler_hz(
+    truth: &SyntheticIqTruthBundle,
+    sat_truth: &SyntheticSatelliteTruth,
+) -> f64 {
+    sat_truth.doppler_hz + truth.receiver_clock_frequency_bias_hz
+}
+
+fn synthetic_truth_carrier_hz(
+    truth: &SyntheticIqTruthBundle,
+    sat_truth: &SyntheticSatelliteTruth,
+) -> f64 {
+    synthetic_carrier_hz(
+        truth.intermediate_freq_hz,
+        sat_truth.sat,
+        synthetic_truth_measured_doppler_hz(truth, sat_truth),
     )
 }
 
