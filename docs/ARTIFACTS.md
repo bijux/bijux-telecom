@@ -130,7 +130,9 @@ The truth artifact records the emitted PRNs, Doppler, code phase, C/N0, and navi
 for each synthetic satellite. It also records the exported signal amplitude plus bundle-level noise
 statistics (`noise_std_per_component`, `noise_power_per_complex_sample`) so receiver-side C/N0
 validation can reproduce the injected calibration conditions. Given the same scenario, seed, and
-capture start time, the emitted bundle is deterministic.
+capture start time, the emitted bundle is deterministic. When navigation data modulation is
+enabled, the truth bundle records both the nav-bit mode and the exact sample-aligned 20 ms bit
+segments so downstream validation can distinguish deterministic bit flips from carrier events.
 
 ## Synthetic IQ Validation Report
 

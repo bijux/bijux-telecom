@@ -10,6 +10,7 @@
 - The sampled-code phase model is validated at the 60-second boundary: direct elapsed-time advance, chunked sample-count advance, and synthetic receiver epoch alignment agree within a documented floating-point tolerance, and the resulting sampled C/A block remains unchanged.
 - Carrier wipeoff uses an absolute-time-aware NCO keyed to sample index, so long-offset acquisition and tracking frames preserve bounded prompt-phase error instead of resetting carrier phase at each local block origin.
 - Synthetic carrier generation and acquisition both interpret Doppler relative to the configured IF, using the same `carrier_hz = intermediate_freq_hz + doppler_hz` mapping for zero-IF and high-IF captures.
+- Synthetic GPS L1 C/A navigation data is modeled as a deterministic 50 bps sign modulation: when enabled, the data-bit sign alternates every 20 ms starting positive at sample zero, and the truth bundle records the exact sample-aligned bit segments.
 - Ideal spreading codes (±1) without front-end distortions.
 - Additive noise approximated in tracking metrics.
 
@@ -17,6 +18,7 @@
 - Scalar tracking by default; vector tracking may be enabled via config.
 - DLL/PLL/FLL loops assume near-constant dynamics over 1 ms integration.
 - Cycle slips detected via phase residual thresholds.
+- Prompt-phase continuity treats deterministic 20 ms nav-bit sign inversions as data transitions rather than carrier cycle slips, so 1 ms coherent tracking can span GPS LNAV bit boundaries without false slip reports.
 
 ## Navigation Measurement Model
 - Pseudorange observations derived from code phase and clock bias.
