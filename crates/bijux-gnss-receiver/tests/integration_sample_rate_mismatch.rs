@@ -63,7 +63,7 @@ fn tracking_preserves_stable_code_phase_with_matching_sample_rate() {
     let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
     let acquisitions = vec![accepted_acquisition(sat, config.intermediate_freq_hz, 0)];
 
-    let tracks = tracking.track_from_acquisition(&frame, &acquisitions, SignalBand::L1);
+    let tracks = tracking.track_from_acquisition(&frame, &acquisitions);
     let epochs = &tracks.first().expect("track").epochs;
 
     assert!(
@@ -85,7 +85,7 @@ fn tracking_marks_persistent_code_phase_drift_as_sample_rate_mismatch() {
     let tracking = TrackingEngine::new(declared_config.clone(), ReceiverRuntime::default());
     let acquisitions = vec![accepted_acquisition(sat, declared_config.intermediate_freq_hz, 0)];
 
-    let tracks = tracking.track_from_acquisition(&frame, &acquisitions, SignalBand::L1);
+    let tracks = tracking.track_from_acquisition(&frame, &acquisitions);
     let epochs = &tracks.first().expect("track").epochs;
 
     let first_mismatch = epochs

@@ -216,8 +216,7 @@ impl Receiver {
         let has_trackable_channels = acquisitions.iter().take(self.config().channels.max(1)).any(
             |acq| matches!(acq.hypothesis, bijux_gnss_core::api::AcqHypothesis::Accepted | bijux_gnss_core::api::AcqHypothesis::Ambiguous),
         );
-        let mut incremental_tracking =
-            tracking.begin_incremental_tracking(&acquisitions, SignalBand::L1);
+        let mut incremental_tracking = tracking.begin_incremental_tracking(&acquisitions);
         tracking.track_incremental_frame(&mut incremental_tracking, &frame);
         if has_trackable_channels {
             let tracking_frame_len = streaming_tracking_frame_len(samples_per_code);

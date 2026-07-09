@@ -29,7 +29,7 @@ fn golden_tracking_from_scenario() {
 
     let tracking = TrackingEngine::new(config, runtime);
     let tracks =
-        tracking.track_from_acquisition(&frame, &acq_results, bijux_gnss_core::api::SignalBand::L1);
+        tracking.track_from_acquisition(&frame, &acq_results);
 
     for track in &tracks {
         assert!(!track.epochs.is_empty());

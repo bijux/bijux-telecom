@@ -246,11 +246,7 @@ fn handle_experiment(command: GnssCommand) -> Result<()> {
         let acquisitions = acquisition.run_fft(&frame, &sats);
         let tracking =
             bijux_gnss_infra::api::receiver::TrackingEngine::new(config.clone(), runtime.clone());
-        let tracks = tracking.track_from_acquisition(
-            &frame,
-            &acquisitions,
-            bijux_gnss_infra::api::core::SignalBand::L1,
-        );
+        let tracks = tracking.track_from_acquisition(&frame, &acquisitions);
         let obs_report = bijux_gnss_infra::api::receiver::observations_from_tracking_results(
             &config,
             &tracks,

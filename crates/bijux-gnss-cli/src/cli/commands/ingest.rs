@@ -57,11 +57,7 @@ fn handle_track(command: GnssCommand) -> Result<()> {
                         config.clone(),
                         runtime.clone(),
                     );
-                    let tracks = tracking.track_from_acquisition(
-                        &frame,
-                        &acquisitions,
-                        bijux_gnss_infra::api::core::SignalBand::L1,
-                    );
+                    let tracks = tracking.track_from_acquisition(&frame, &acquisitions);
     
                     let report = TrackingReport {
                         sats: sats.clone(),

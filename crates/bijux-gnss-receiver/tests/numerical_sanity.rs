@@ -37,7 +37,7 @@ fn numerical_sanity_pipeline() {
 
     let tracking = TrackingEngine::new(config.clone(), runtime);
     let tracks =
-        tracking.track_from_acquisition(&frame, &acq_results, bijux_gnss_core::api::SignalBand::L1);
+        tracking.track_from_acquisition(&frame, &acq_results);
 
     for track in &tracks {
         for epoch in &track.epochs {

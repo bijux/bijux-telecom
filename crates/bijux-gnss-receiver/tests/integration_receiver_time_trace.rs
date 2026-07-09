@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{Constellation, ReceiverSampleTrace, SampleTime, SatId, SignalBand};
+use bijux_gnss_core::api::{Constellation, ReceiverSampleTrace, SampleTime, SatId};
 use bijux_gnss_receiver::api::{
     observations_from_tracking_results,
     sim::{generate_l1_ca, SyntheticSignalParams},
@@ -34,7 +34,7 @@ fn receiver_pipeline_preserves_sample_trace_across_stage_outputs() {
     assert_eq!(acquisition[0].source_time, expected_frame_trace);
 
     let tracking = TrackingEngine::new(config.clone(), runtime.clone());
-    let tracks = tracking.track_from_acquisition(&frame, &acquisition, SignalBand::L1);
+    let tracks = tracking.track_from_acquisition(&frame, &acquisition);
     let first_track = tracks.first().expect("tracking result");
     assert!(!first_track.epochs.is_empty(), "tracking must emit epochs");
     for epoch in &first_track.epochs {
