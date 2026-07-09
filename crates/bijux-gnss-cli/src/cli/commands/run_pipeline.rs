@@ -118,15 +118,22 @@ fn acquisition_row_from_result(result: &bijux_gnss_infra::api::core::AcqResult) 
             (Some(refinement.refined_code_phase_samples), Some(refinement.offset_samples))
         })
         .unwrap_or((None, None));
+    let (doppler_uncertainty_hz, code_phase_uncertainty_samples) = result
+        .uncertainty
+        .as_ref()
+        .map(|uncertainty| (Some(uncertainty.doppler_hz), Some(uncertainty.code_phase_samples)))
+        .unwrap_or((None, None));
     AcquisitionRow {
         sat: result.sat,
         carrier_hz: result.carrier_hz.0,
         coarse_carrier_hz,
         doppler_refinement_hz,
         doppler_refinement_bins,
+        doppler_uncertainty_hz,
         code_phase_samples: result.code_phase_samples,
         refined_code_phase_samples,
         code_phase_refinement_samples,
+        code_phase_uncertainty_samples,
         peak: result.peak,
         peak_mean_ratio: result.peak_mean_ratio,
         peak_second_ratio: result.peak_second_ratio,

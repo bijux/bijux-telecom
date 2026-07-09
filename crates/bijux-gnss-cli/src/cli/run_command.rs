@@ -186,7 +186,7 @@ fn print_acquisition_table(report: &AcquisitionReport) {
     println!("Search summary: {}", format_search_summary(report));
     println!("Reported PRNs: {}", format_reported_prns(report));
     println!(
-        "Sat\tCarrier(Hz)\tCoarseCarrier(Hz)\tRefine(Hz)\tRefine(Bins)\tCodePhase\tRefinedCodePhase\tCodePhaseRefine\tPeak\tPeak/Mean\tPeak/2nd\tHypothesis\tReason"
+        "Sat\tCarrier(Hz)\tCoarseCarrier(Hz)\tRefine(Hz)\tRefine(Bins)\tDopplerUnc(Hz)\tCodePhase\tRefinedCodePhase\tCodePhaseRefine\tCodePhaseUnc\tPeak\tPeak/Mean\tPeak/2nd\tHypothesis\tReason"
     );
     for row in &report.results {
         let coarse_carrier_hz = row
@@ -201,6 +201,10 @@ fn print_acquisition_table(report: &AcquisitionReport) {
             .doppler_refinement_bins
             .map(|value| format!("{value:.6}"))
             .unwrap_or_else(|| "n/a".to_string());
+        let doppler_uncertainty_hz = row
+            .doppler_uncertainty_hz
+            .map(|value| format!("{value:.3}"))
+            .unwrap_or_else(|| "n/a".to_string());
         let refined_code_phase_samples = row
             .refined_code_phase_samples
             .map(|value| format!("{value:.6}"))
@@ -209,16 +213,22 @@ fn print_acquisition_table(report: &AcquisitionReport) {
             .code_phase_refinement_samples
             .map(|value| format!("{value:.6}"))
             .unwrap_or_else(|| "n/a".to_string());
+        let code_phase_uncertainty_samples = row
+            .code_phase_uncertainty_samples
+            .map(|value| format!("{value:.6}"))
+            .unwrap_or_else(|| "n/a".to_string());
         println!(
-            "{}\t{:.1}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.3}\t{:.2}\t{:.2}\t{}\t{}",
+            "{}\t{:.1}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.3}\t{:.2}\t{:.2}\t{}\t{}",
             format_sat(row.sat),
             row.carrier_hz,
             coarse_carrier_hz,
             doppler_refinement_hz,
             doppler_refinement_bins,
+            doppler_uncertainty_hz,
             row.code_phase_samples,
             refined_code_phase_samples,
             code_phase_refinement_samples,
+            code_phase_uncertainty_samples,
             row.peak,
             row.peak_mean_ratio,
             row.peak_second_ratio,
