@@ -27,7 +27,8 @@ use bijux_gnss_infra::api::receiver::{
     AcquisitionEngine, FileSamples, Receiver, ReceiverPipelineConfig, ReceiverConfig,
 };
 use bijux_gnss_infra::api::signal::{
-    ca_code_assignment, generate_ca_code, samples_per_code, Prn, RawIqMetadata, SignalSource,
+    ca_code_assignment, generate_ca_code_chips, samples_per_code, Prn, RawIqMetadata,
+    SignalSource, CA_CODE_PERIOD_CHIPS,
 };
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use eyre::{bail, eyre, Context, ContextCompat, Result};

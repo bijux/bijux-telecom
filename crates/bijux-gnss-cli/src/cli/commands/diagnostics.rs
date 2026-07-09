@@ -1,6 +1,7 @@
 fn handle_cacode(command: GnssCommand) -> Result<()> {
     let GnssCommand::CaCode {
         prn,
+        start_chip,
         count,
         with_reference,
     } = command
@@ -10,11 +11,16 @@ fn handle_cacode(command: GnssCommand) -> Result<()> {
 
     let assignment = ca_code_assignment(Prn(prn))
         .map_err(|err| eyre!("failed to load C/A code assignment for PRN {prn}: {err}"))?;
-    let code = generate_ca_code(Prn(prn))
+    let wrapped_start_chip = start_chip % CA_CODE_PERIOD_CHIPS;
+    let chip_count = wrapped_start_chip.saturating_add(count);
+    let code = generate_ca_code_chips(Prn(prn), chip_count)
         .map_err(|err| eyre!("failed to generate C/A code for PRN {prn}: {err}"))?;
 
     if with_reference {
         println!("prn: {prn}");
+        println!("period_chips: {CA_CODE_PERIOD_CHIPS}");
+        println!("start_chip: {start_chip}");
+        println!("wrapped_start_chip: {wrapped_start_chip}");
         println!(
             "g2_taps: {} {}",
             assignment.g2_taps.0, assignment.g2_taps.1
@@ -26,8 +32,7 @@ fn handle_cacode(command: GnssCommand) -> Result<()> {
         );
     }
 
-    let count = count.min(code.len());
-    for chip in code.iter().take(count) {
+    for chip in code.iter().skip(wrapped_start_chip).take(count) {
         print!("{chip} ");
     }
     println!();

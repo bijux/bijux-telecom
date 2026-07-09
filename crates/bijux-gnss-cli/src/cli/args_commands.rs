@@ -5,6 +5,10 @@ pub(crate) enum GnssCommand {
         #[arg(long)]
         prn: u8,
 
+        /// Zero-based chip offset within the repeating C/A sequence
+        #[arg(long, default_value_t = 0)]
+        start_chip: usize,
+
         /// Number of chips to print
         #[arg(long, default_value_t = 16)]
         count: usize,
