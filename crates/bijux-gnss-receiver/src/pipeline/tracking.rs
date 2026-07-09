@@ -12,7 +12,9 @@ use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
 use bijux_gnss_core::api::Sample;
 use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::Nco;
-use bijux_gnss_signal::api::{adaptive_bandwidth, code_at, discriminators, estimate_cn0_dbhz};
+use bijux_gnss_signal::api::{
+    adaptive_bandwidth, code_value_at_phase, discriminators, estimate_cn0_dbhz,
+};
 use bijux_gnss_signal::api::{generate_ca_code, Prn};
 
 const DLL_CODE_PHASE_CORRECTION_GAIN: f64 = 0.5;
@@ -163,18 +165,19 @@ impl Tracking {
         code_phase_samples: f64,
         early_late_spacing_chips: f64,
     ) -> CorrelatorOutput {
+        let sample_rate_hz = self.config.sampling_freq_hz;
+        let code_rate_hz = self.config.code_freq_basis_hz;
         let samples_per_code = samples_per_code(
-            self.config.sampling_freq_hz,
+            sample_rate_hz,
             self.config.code_freq_basis_hz,
             self.config.code_length,
         );
         let n = samples_per_code.min(frame.len());
         let code = ca_code_or_default(sat.prn);
-        let samples_per_chip = n as f64 / code.len() as f64;
-        let early_offset = code_phase_samples - early_late_spacing_chips * samples_per_chip;
-        let late_offset = code_phase_samples + early_late_spacing_chips * samples_per_chip;
+        let chips_per_sample = code_rate_hz / sample_rate_hz;
+        let base_chip_phase = code_phase_samples * chips_per_sample;
 
-        let mut nco = Nco::new(-carrier_freq_hz, self.config.sampling_freq_hz);
+        let mut nco = Nco::new(-carrier_freq_hz, sample_rate_hz);
         let mut early = Complex::new(0.0f32, 0.0f32);
         let mut prompt = Complex::new(0.0f32, 0.0f32);
         let mut late = Complex::new(0.0f32, 0.0f32);
@@ -185,9 +188,17 @@ impl Tracking {
             let rot = Complex::new(cos as f32, -sin as f32);
             let mixed = frame.iq[i] * rot;
 
-            let early_code = code_at(&code, samples_per_chip, i as f64 + early_offset);
-            let prompt_code = code_at(&code, samples_per_chip, i as f64 + code_phase_samples);
-            let late_code = code_at(&code, samples_per_chip, i as f64 + late_offset);
+            let chip_phase = base_chip_phase + i as f64 * chips_per_sample;
+            let early_code = Complex::new(
+                code_value_at_phase(&code, chip_phase - early_late_spacing_chips).unwrap_or(0.0),
+                0.0,
+            );
+            let prompt_code =
+                Complex::new(code_value_at_phase(&code, chip_phase).unwrap_or(0.0), 0.0);
+            let late_code = Complex::new(
+                code_value_at_phase(&code, chip_phase + early_late_spacing_chips).unwrap_or(0.0),
+                0.0,
+            );
             let noise_weight = early_code - late_code;
             early_late_noise_weight_energy += noise_weight.norm_sqr() as f64;
 
@@ -1040,7 +1051,13 @@ impl Tracking {
         for d in doppler_bins {
             for c in code_bins {
                 let corr =
-                    self.correlate_epoch(frame, sat, carrier_hz + d, code_phase_samples + c, 0.5);
+                    self.correlate_epoch(
+                        frame,
+                        sat,
+                        carrier_hz + d,
+                        code_phase_samples + c,
+                        0.5,
+                    );
                 let metric = corr.prompt.norm();
                 if metric > best_metric {
                     best_metric = metric;
@@ -1055,9 +1072,13 @@ impl Tracking {
 #[cfg(test)]
 mod tests {
     use super::{ChannelState, Tracking};
+    use crate::engine::receiver_config::ReceiverPipelineConfig;
+    use crate::engine::runtime::ReceiverRuntime;
     use bijux_gnss_core::api::{
         AcqHypothesis, Chips, Epoch, SampleTime, SamplesFrame, SatId, Seconds, TrackEpoch,
     };
+    use bijux_gnss_signal::api::{sample_ca_code, samples_per_code, Prn};
+    use num_complex::Complex;
     use serde::Deserialize;
 
     #[test]
@@ -1138,6 +1159,49 @@ mod tests {
             5_000,
         );
         assert!(next < 250.0, "next={next}");
+    }
+
+    #[test]
+    fn correlate_epoch_aligns_prompt_with_non_integer_rate_sampled_code() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_000_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            channels: 12,
+            ..ReceiverPipelineConfig::default()
+        };
+        let tracking = Tracking::new(config.clone(), ReceiverRuntime::default());
+        let sample_count =
+            samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
+        let code_phase_chips = 245.25;
+        let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 3 };
+        let code_phase_samples =
+            code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
+        let samples = sample_ca_code(
+            Prn(sat.prn),
+            config.sampling_freq_hz,
+            config.code_freq_basis_hz,
+            code_phase_chips,
+            sample_count,
+        )
+        .expect("valid sampled code");
+        let frame = SamplesFrame::new(
+            SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
+            Seconds(1.0 / config.sampling_freq_hz),
+            samples.into_iter().map(|value| Complex::new(value, 0.0)).collect(),
+        );
+
+        let correlator = tracking.correlate_epoch(
+            &frame,
+            sat,
+            0.0,
+            code_phase_samples,
+            0.5,
+        );
+
+        assert!(correlator.prompt.norm() > correlator.early.norm());
+        assert!(correlator.prompt.norm() > correlator.late.norm());
     }
 
     #[test]
