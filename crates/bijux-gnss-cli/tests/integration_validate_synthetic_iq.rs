@@ -104,6 +104,7 @@ fn validate_synthetic_iq_accepts_reference_cn0_bundle() {
     assert_eq!(report["validation"]["scenario_id"], "synthetic_iq_cn0_reference");
     assert_eq!(report["validation"]["pass"], true);
     assert_eq!(report["acquisition_code_phase_validation"]["pass"], true);
+    assert_eq!(report["acquisition_doppler_validation"]["pass"], true);
     let rows = report["validation"]["satellites"].as_array().expect("satellite rows");
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0]["sat"]["prn"], 7);
@@ -117,6 +118,15 @@ fn validate_synthetic_iq_accepts_reference_cn0_bundle() {
     assert_eq!(acquisition_rows[0]["sat"]["prn"], 7);
     assert_eq!(acquisition_rows[0]["pass"], true);
     assert_eq!(acquisition_rows[0]["code_phase_error_samples"], 0);
+    let acquisition_doppler_rows = report["acquisition_doppler_validation"]["satellites"]
+        .as_array()
+        .expect("acquisition doppler rows");
+    assert_eq!(acquisition_doppler_rows.len(), 1);
+    assert_eq!(acquisition_doppler_rows[0]["sat"]["prn"], 7);
+    assert_eq!(acquisition_doppler_rows[0]["pass"], true);
+    let doppler_error_hz =
+        acquisition_doppler_rows[0]["doppler_error_hz"].as_f64().expect("doppler error");
+    assert!(doppler_error_hz <= 500.0 + f64::EPSILON, "doppler error out of tolerance: {doppler_error_hz}");
     assert!(validate_dir.join("manifest.json").exists(), "missing validation manifest");
 
     fs::remove_dir_all(&export_dir).expect("remove export dir");
@@ -317,4 +327,115 @@ fn validate_synthetic_iq_rejects_too_tight_cn0_tolerance() {
 
     fs::remove_dir_all(&export_dir).expect("remove export dir");
     fs::remove_dir_all(&validate_dir).expect("remove validate dir");
+}
+
+#[test]
+fn validate_synthetic_iq_rejects_too_tight_acquisition_doppler_tolerance() {
+    let repo = repo_root();
+    let export_dir = temp_dir_path("export_synthetic_iq_fractional_doppler_accuracy");
+    fs::create_dir_all(&export_dir).expect("create export dir");
+    let scenario_path = export_dir.join("fractional_doppler_accuracy.toml");
+    fs::write(
+        &scenario_path,
+        r#"
+id = "fractional_doppler_accuracy"
+sample_rate_hz = 4092000.0
+intermediate_freq_hz = 0.0
+duration_s = 0.04
+seed = 24071985
+
+[[satellites]]
+sat = { constellation = "Gps", prn = 7 }
+doppler_hz = 875.0
+code_phase_chips = 321.0
+carrier_phase_rad = 0.2
+cn0_db_hz = 58.0
+data_bit_flip = false
+"#,
+    )
+    .expect("write scenario");
+    export_bundle(&repo, &export_dir, &scenario_path);
+
+    let validate_dir = temp_dir_path("validate_synthetic_iq_fractional_doppler_default");
+    fs::create_dir_all(&validate_dir).expect("create validate dir");
+    let artifacts_dir = export_dir.join("artifacts");
+    let iq_path = artifacts_dir.join("fractional_doppler_accuracy.iq16");
+    let sidecar_path = artifacts_dir.join("fractional_doppler_accuracy.sidecar.toml");
+    let truth_path = artifacts_dir.join("fractional_doppler_accuracy.truth.json");
+
+    let default_output = run_bijux(
+        &[
+            "gnss",
+            "validate-synthetic-iq",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--truth",
+            truth_path.to_str().expect("truth path"),
+            "--config",
+            "configs/receiver_low_rate.toml",
+            "--report",
+            "json",
+            "--out",
+            validate_dir.to_str().expect("validate dir"),
+        ],
+        &repo,
+    );
+    assert!(
+        default_output.status.success(),
+        "validate-synthetic-iq failed with default doppler tolerance: {}",
+        String::from_utf8_lossy(&default_output.stderr)
+    );
+    let report: Value = serde_json::from_str(
+        &fs::read_to_string(validate_dir.join("validate_synthetic_iq_report.json"))
+            .expect("read validation report"),
+    )
+    .expect("parse validation report");
+    let acquisition_doppler_rows = report["acquisition_doppler_validation"]["satellites"]
+        .as_array()
+        .expect("acquisition doppler rows");
+    assert_eq!(acquisition_doppler_rows.len(), 1);
+    let doppler_error_hz =
+        acquisition_doppler_rows[0]["doppler_error_hz"].as_f64().expect("doppler error");
+    assert!(doppler_error_hz > 0.0, "scenario did not produce a non-zero doppler error");
+
+    let strict_dir = temp_dir_path("validate_synthetic_iq_fractional_doppler_strict");
+    fs::create_dir_all(&strict_dir).expect("create strict dir");
+    let strict_output = run_bijux(
+        &[
+            "gnss",
+            "validate-synthetic-iq",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--truth",
+            truth_path.to_str().expect("truth path"),
+            "--config",
+            "configs/receiver_low_rate.toml",
+            "--acquisition-doppler-tolerance-bins",
+            "0",
+            "--report",
+            "json",
+            "--out",
+            strict_dir.to_str().expect("strict dir"),
+        ],
+        &repo,
+    );
+    assert!(
+        !strict_output.status.success(),
+        "validate-synthetic-iq unexpectedly succeeded with strict acquisition doppler tolerance"
+    );
+    let stderr = String::from_utf8_lossy(&strict_output.stderr);
+    assert!(
+        stderr.contains("acq_doppler="),
+        "stderr did not include acquisition doppler failure details: {stderr}"
+    );
+
+    fs::remove_dir_all(&export_dir).expect("remove export dir");
+    fs::remove_dir_all(&validate_dir).expect("remove validate dir");
+    fs::remove_dir_all(&strict_dir).expect("remove strict dir");
 }
