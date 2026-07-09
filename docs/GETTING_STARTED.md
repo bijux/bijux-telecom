@@ -31,11 +31,15 @@ bijux gnss diagnostics summarize artifacts/basic_stream
 
 Artifacts are written under the selected output directory and include:
 - `manifest.json`
+- `signal_quality_report.json` for raw-IQ workflows
 - `summary.json`
 - command-specific artifact directories when the invoked workflow emits them
 
 `demo_synthetic` is an ingest fixture, not a navigation-truth corpus. Use it to verify explicit raw
 IQ handling first, then move to stronger GNSS validation datasets for acquisition, tracking, and PVT.
+
+The signal-quality report captures sample rate, IF, usable duration, DC offset, I/Q imbalance,
+clipping, RMS, and an estimated noise floor for the analyzed input window.
 
 ## 6) Acquire PRNs from the Public Live-Sky Excerpt
 

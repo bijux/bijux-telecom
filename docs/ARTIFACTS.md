@@ -100,6 +100,21 @@ Every command writes `manifest.json` into the run output directory. The manifest
 - dataset metadata when a registered dataset is used, including raw IQ format and capture timestamp
 - front-end provenance (`sample_rate_hz`, `intermediate_freq_hz`, `quantization_bits`, normalization/calibration source)
 
+## Signal Quality Report
+
+Raw-IQ workflows emit a standalone signal-quality artifact:
+- file: `signal_quality_report.json`
+- workflows: `inspect`, `acquire`, `track`, `run`
+- purpose: record operator-facing RF quality for the analyzed input window
+
+The report includes:
+- sample format, sample rate, IF, and capture start time
+- analyzed sample count and usable duration
+- DC offset and centered front-end metrics
+- I/Q power imbalance and quadrature warning state
+- clipping percentage and precision-claim refusal state
+- RMS, centered RMS, and estimated noise floor in dB
+
 ## Synthetic IQ Export Bundle
 
 The synthetic IQ export workflow emits a deterministic raw-capture bundle for a scenario:

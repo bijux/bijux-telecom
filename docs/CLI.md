@@ -64,6 +64,9 @@ Options:
 bijux gnss inspect --dataset demo_synthetic --output artifacts/basic_ingest
 ```
 
+All raw-IQ workflows (`inspect`, `acquire`, `track`, and `run`) also emit
+`signal_quality_report.json` in the selected run directory.
+
 ### Real RF Acquisition
 ```bash
 bijux gnss acquire --dataset gps_l1_2022_03_27_excerpt --config configs/receiver_live_sky_gps_l1.toml --prn 11,12,25,31,32 --report json --output artifacts/live_sky_acquire

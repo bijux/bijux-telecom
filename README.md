@@ -44,6 +44,10 @@ Manifest: artifacts/basic_ingest/manifest.json
 `demo_synthetic` is a deterministic raw IQ ingest fixture. It proves explicit format, sample-rate,
 IF, and capture-time handling; it is not a satellite-truth positioning dataset.
 
+Raw-IQ workflows now also emit `signal_quality_report.json`, which records sample rate, IF,
+usable duration, DC offset, I/Q imbalance, clipping, RMS, and an estimated noise floor for the
+analyzed input window.
+
 For a deterministic synthetic capture with machine-readable satellite truth, export the reference
 scenario bundle:
 
