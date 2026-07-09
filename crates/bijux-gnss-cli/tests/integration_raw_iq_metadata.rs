@@ -129,3 +129,50 @@ sidecar = "{}"
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
 }
+
+#[test]
+fn inspect_rejects_unregistered_raw_iq_without_sample_rate_metadata() {
+    let temp = temp_dir_path("inspect_missing_sample_rate");
+    fs::create_dir_all(&temp).expect("create temp dir");
+
+    let iq_path = temp.join("demo.iq16");
+    fs::write(&iq_path, [0x00u8, 0x80u8, 0xffu8, 0x7fu8]).expect("write iq data");
+
+    let sidecar_path = temp.join("broken.sidecar.toml");
+    fs::write(
+        &sidecar_path,
+        r#"
+format = "iq16_le"
+intermediate_freq_hz = 0.0
+capture_start_utc = "2026-07-09T00:00:00Z"
+"#,
+    )
+    .expect("write sidecar");
+
+    let out_dir = temp.join("inspect-out");
+    let output = run_bijux(
+        &[
+            "gnss",
+            "inspect",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--report",
+            "json",
+            "--out",
+            out_dir.to_str().expect("out dir"),
+        ],
+        &repo_root(),
+    );
+
+    assert!(!output.status.success(), "inspect unexpectedly succeeded");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("sample_rate_hz"),
+        "stderr did not mention sample_rate_hz: {stderr}"
+    );
+
+    fs::remove_dir_all(&temp).expect("remove temp dir");
+}
