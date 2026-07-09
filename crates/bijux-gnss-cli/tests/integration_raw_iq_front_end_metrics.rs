@@ -822,6 +822,58 @@ fn acquire_table_reports_search_range_rejection_for_wrong_if_capture() {
 }
 
 #[test]
+fn track_reports_sample_rate_mismatch_for_wrong_sample_rate_capture() {
+    let temp = temp_dir_path("track_wrong_sample_rate");
+    fs::create_dir_all(&temp).expect("create temp dir");
+
+    let iq_path = temp.join("wrong-sample-rate.iq8");
+    write_synthetic_iq8_capture_with_signal_if_and_duration_s(&iq_path, 5_000_000.0, 0.0, 0.012);
+    let sidecar_path = temp.join("wrong-sample-rate.sidecar.toml");
+    write_raw_iq_sidecar_with_format_sample_rate_and_if(&sidecar_path, "iq8", 5_050_000.0, 0.0);
+
+    let out_dir = temp.join("track-out");
+    let output = run_bijux(
+        &[
+            "gnss",
+            "track",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--prn",
+            "11",
+            "--doppler-search-hz",
+            "1500",
+            "--doppler-step-hz",
+            "250",
+            "--report",
+            "json",
+            "--out",
+            out_dir.to_str().expect("out dir"),
+        ],
+        &repo_root(),
+    );
+
+    assert!(output.status.success(), "track failed: {}", String::from_utf8_lossy(&output.stderr));
+    let report = load_json(&out_dir.join("track_report.json"));
+    let rows = report
+        .get("epochs")
+        .and_then(Value::as_array)
+        .expect("track epoch rows");
+    assert!(
+        rows.iter().any(|row| {
+            row.get("lock_state_reason")
+                .and_then(Value::as_str)
+                .is_some_and(|reason| reason == "sample_rate_mismatch")
+        }),
+        "rows={rows:?}"
+    );
+
+    fs::remove_dir_all(&temp).expect("remove temp dir");
+}
+
+#[test]
 fn raw_iq_commands_flag_all_zero_input_as_zero_signal() {
     let temp = temp_dir_path("zero_signal_raw_iq");
     fs::create_dir_all(&temp).expect("create temp dir");
