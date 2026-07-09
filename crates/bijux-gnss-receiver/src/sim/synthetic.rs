@@ -366,6 +366,87 @@ pub struct SyntheticAcquisitionCoherentIntegrationReport {
     pub satellites: Vec<SyntheticAcquisitionCoherentIntegrationSatellite>,
 }
 
+/// Per-trial acquisition outcome for a synthetic sensitivity profile.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionSensitivityTrial {
+    /// Stable scenario identifier for this trial.
+    pub scenario_id: String,
+    /// Deterministic seed used for the synthetic noise realization.
+    pub seed: u64,
+    /// Satellite identifier under test.
+    pub sat: SatId,
+    /// Acquisition hypothesis returned by the receiver.
+    pub hypothesis: String,
+    /// Whether the receiver accepted this trial.
+    pub accepted: bool,
+    /// Whether the accepted result stayed within truth tolerances.
+    pub detected: bool,
+    /// Wrapped code-phase error in samples when truth was available.
+    pub code_phase_error_samples: Option<usize>,
+    /// Doppler error in acquisition bins when truth was available.
+    pub doppler_error_bins: Option<f64>,
+    /// Peak-to-mean ratio for the selected acquisition result.
+    pub peak_mean_ratio: f32,
+}
+
+/// Detection-probability summary for a synthetic acquisition profile.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionSensitivityReport {
+    /// Scenario identifier prefix shared across the trials.
+    pub scenario_id_prefix: String,
+    /// Satellite identifier under test.
+    pub sat: SatId,
+    /// Injected carrier-to-noise density ratio in dB-Hz.
+    pub cn0_db_hz: f32,
+    /// Coherent integration length under test, in milliseconds.
+    pub coherent_ms: u32,
+    /// Noncoherent integration count under test.
+    pub noncoherent: u32,
+    /// Allowed code-phase error in samples.
+    pub code_phase_tolerance_samples: usize,
+    /// Allowed Doppler error in acquisition bins.
+    pub doppler_tolerance_bins: usize,
+    /// Effective acquisition Doppler bin width in Hz.
+    pub doppler_step_hz: i32,
+    /// Number of synthetic trials measured for this profile.
+    pub trial_count: usize,
+    /// Number of trials that produced accepted results.
+    pub accepted_count: usize,
+    /// Number of trials that produced accepted results within truth tolerances.
+    pub detected_count: usize,
+    /// Accepted-trial probability across the measured trials.
+    pub acceptance_probability: f64,
+    /// Detection probability across the measured trials.
+    pub detection_probability: f64,
+    /// Mean peak-to-mean ratio across the measured trials.
+    pub mean_peak_mean_ratio: f64,
+    /// Per-trial acquisition rows.
+    pub trials: Vec<SyntheticAcquisitionSensitivityTrial>,
+}
+
+/// Noise-only false-alarm summary for a synthetic acquisition profile.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionFalseAlarmReport {
+    /// Scenario identifier prefix shared across the trials.
+    pub scenario_id_prefix: String,
+    /// Satellite identifier searched during the noise-only trials.
+    pub sat: SatId,
+    /// Coherent integration length under test, in milliseconds.
+    pub coherent_ms: u32,
+    /// Noncoherent integration count under test.
+    pub noncoherent: u32,
+    /// Number of synthetic noise-only trials measured for this profile.
+    pub trial_count: usize,
+    /// Number of trials that produced accepted results.
+    pub false_alarm_count: usize,
+    /// False-alarm probability across the measured trials.
+    pub false_alarm_rate: f64,
+    /// Mean peak-to-mean ratio across the measured trials.
+    pub mean_peak_mean_ratio: f64,
+    /// Per-trial acquisition rows.
+    pub trials: Vec<SyntheticAcquisitionSensitivityTrial>,
+}
+
 /// Per-satellite comparison between coarse acquisition Doppler bins and refined Doppler estimates.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticAcquisitionDopplerRefinementSatellite {
@@ -933,6 +1014,229 @@ pub fn validate_truth_guided_acquisition_coherent_integration(
     }
 }
 
+/// Measure low-C/N0 detection probability for an acquisition integration profile.
+pub fn measure_truth_guided_acquisition_detection_probability(
+    config: &ReceiverPipelineConfig,
+    signal: SyntheticSignalParams,
+    coherent_ms: u32,
+    noncoherent: u32,
+    trial_seeds: &[u64],
+    scenario_id_prefix: &str,
+    code_phase_tolerance_samples: usize,
+    doppler_tolerance_bins: usize,
+) -> SyntheticAcquisitionSensitivityReport {
+    let mut profile_config = config.clone();
+    profile_config.acquisition_integration_ms = coherent_ms;
+    profile_config.acquisition_noncoherent = noncoherent;
+    let doppler_step_hz = profile_config.acquisition_doppler_step_hz.max(1);
+    let duration_s = (coherent_ms.saturating_mul(noncoherent).max(1) as f64) / 1000.0;
+
+    let trials = trial_seeds
+        .iter()
+        .enumerate()
+        .map(|(trial_index, seed)| {
+            let scenario_id = format!("{scenario_id_prefix}_trial_{trial_index}");
+            let scenario = SyntheticScenario {
+                sample_rate_hz: profile_config.sampling_freq_hz,
+                intermediate_freq_hz: profile_config.intermediate_freq_hz,
+                duration_s,
+                seed: *seed,
+                satellites: vec![signal],
+                ephemerides: Vec::new(),
+                id: scenario_id.clone(),
+            };
+            let frame = generate_l1_ca_multi(&profile_config, &scenario);
+            let bundle = build_iq16_capture_bundle(
+                &scenario.id,
+                &scenario,
+                &frame,
+                "2026-07-09T00:00:00Z",
+                Some("synthetic acquisition sensitivity trial".to_string()),
+            );
+            let scaled_frame = SamplesFrame::new(
+                frame.t0,
+                frame.dt_s,
+                frame.iq.iter().map(|sample| *sample * bundle.truth.output_scale_applied).collect(),
+            );
+            let acquisition = crate::pipeline::acquisition::Acquisition::new(
+                profile_config.clone(),
+                crate::engine::runtime::ReceiverRuntime::default(),
+            );
+            let result = acquisition.run_fft(&scaled_frame, &[signal.sat]).remove(0);
+            let expected_code_phase_samples = expected_acquisition_code_phase_samples(
+                &profile_config,
+                &scaled_frame,
+                signal.code_phase_chips,
+            );
+            let period_samples = samples_per_code(
+                profile_config.sampling_freq_hz,
+                profile_config.code_freq_basis_hz,
+                profile_config.code_length,
+            );
+            let code_phase_error_samples = wrapped_code_phase_error_samples(
+                result.code_phase_samples,
+                expected_code_phase_samples,
+                period_samples,
+            );
+            let measured_doppler_hz = crate::pipeline::doppler::doppler_hz_from_carrier_hz(
+                profile_config.intermediate_freq_hz,
+                result.carrier_hz.0,
+            );
+            let doppler_error_bins =
+                ((measured_doppler_hz - signal.doppler_hz).abs()) / doppler_step_hz as f64;
+            let accepted = matches!(result.hypothesis, crate::api::core::AcqHypothesis::Accepted);
+            let detected = accepted
+                && code_phase_error_samples <= code_phase_tolerance_samples
+                && doppler_error_bins <= doppler_tolerance_bins as f64 + f64::EPSILON;
+
+            SyntheticAcquisitionSensitivityTrial {
+                scenario_id,
+                seed: *seed,
+                sat: signal.sat,
+                hypothesis: result.hypothesis.to_string(),
+                accepted,
+                detected,
+                code_phase_error_samples: Some(code_phase_error_samples),
+                doppler_error_bins: Some(doppler_error_bins),
+                peak_mean_ratio: result.peak_mean_ratio,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    synthetic_acquisition_sensitivity_report(
+        scenario_id_prefix,
+        signal.sat,
+        Some(signal.cn0_db_hz),
+        coherent_ms,
+        noncoherent,
+        code_phase_tolerance_samples,
+        doppler_tolerance_bins,
+        doppler_step_hz,
+        trials,
+    )
+}
+
+/// Measure noise-only false-alarm rate for an acquisition integration profile.
+pub fn measure_noise_only_acquisition_false_alarm_rate(
+    config: &ReceiverPipelineConfig,
+    sat: SatId,
+    coherent_ms: u32,
+    noncoherent: u32,
+    trial_seeds: &[u64],
+    scenario_id_prefix: &str,
+) -> SyntheticAcquisitionFalseAlarmReport {
+    let mut profile_config = config.clone();
+    profile_config.acquisition_integration_ms = coherent_ms;
+    profile_config.acquisition_noncoherent = noncoherent;
+    let duration_s = (coherent_ms.saturating_mul(noncoherent).max(1) as f64) / 1000.0;
+
+    let trials = trial_seeds
+        .iter()
+        .enumerate()
+        .map(|(trial_index, seed)| {
+            let scenario_id = format!("{scenario_id_prefix}_trial_{trial_index}");
+            let scenario = SyntheticScenario {
+                sample_rate_hz: profile_config.sampling_freq_hz,
+                intermediate_freq_hz: profile_config.intermediate_freq_hz,
+                duration_s,
+                seed: *seed,
+                satellites: Vec::new(),
+                ephemerides: Vec::new(),
+                id: scenario_id.clone(),
+            };
+            let frame = generate_l1_ca_multi(&profile_config, &scenario);
+            let acquisition = crate::pipeline::acquisition::Acquisition::new(
+                profile_config.clone(),
+                crate::engine::runtime::ReceiverRuntime::default(),
+            );
+            let result = acquisition.run_fft(&frame, &[sat]).remove(0);
+            let accepted = matches!(result.hypothesis, crate::api::core::AcqHypothesis::Accepted);
+
+            SyntheticAcquisitionSensitivityTrial {
+                scenario_id,
+                seed: *seed,
+                sat,
+                hypothesis: result.hypothesis.to_string(),
+                accepted,
+                detected: false,
+                code_phase_error_samples: None,
+                doppler_error_bins: None,
+                peak_mean_ratio: result.peak_mean_ratio,
+            }
+        })
+        .collect::<Vec<_>>();
+    let trial_count = trials.len();
+    let false_alarm_count = trials.iter().filter(|trial| trial.accepted).count();
+    let mean_peak_mean_ratio = if trial_count == 0 {
+        0.0
+    } else {
+        trials.iter().map(|trial| trial.peak_mean_ratio as f64).sum::<f64>() / trial_count as f64
+    };
+
+    SyntheticAcquisitionFalseAlarmReport {
+        scenario_id_prefix: scenario_id_prefix.to_string(),
+        sat,
+        coherent_ms,
+        noncoherent,
+        trial_count,
+        false_alarm_count,
+        false_alarm_rate: if trial_count == 0 {
+            0.0
+        } else {
+            false_alarm_count as f64 / trial_count as f64
+        },
+        mean_peak_mean_ratio,
+        trials,
+    }
+}
+
+fn synthetic_acquisition_sensitivity_report(
+    scenario_id_prefix: &str,
+    sat: SatId,
+    cn0_db_hz: Option<f32>,
+    coherent_ms: u32,
+    noncoherent: u32,
+    code_phase_tolerance_samples: usize,
+    doppler_tolerance_bins: usize,
+    doppler_step_hz: i32,
+    trials: Vec<SyntheticAcquisitionSensitivityTrial>,
+) -> SyntheticAcquisitionSensitivityReport {
+    let trial_count = trials.len();
+    let accepted_count = trials.iter().filter(|trial| trial.accepted).count();
+    let detected_count = trials.iter().filter(|trial| trial.detected).count();
+    let mean_peak_mean_ratio = if trial_count == 0 {
+        0.0
+    } else {
+        trials.iter().map(|trial| trial.peak_mean_ratio as f64).sum::<f64>() / trial_count as f64
+    };
+
+    SyntheticAcquisitionSensitivityReport {
+        scenario_id_prefix: scenario_id_prefix.to_string(),
+        sat,
+        cn0_db_hz: cn0_db_hz.unwrap_or_default(),
+        coherent_ms,
+        noncoherent,
+        code_phase_tolerance_samples,
+        doppler_tolerance_bins,
+        doppler_step_hz,
+        trial_count,
+        accepted_count,
+        detected_count,
+        acceptance_probability: if trial_count == 0 {
+            0.0
+        } else {
+            accepted_count as f64 / trial_count as f64
+        },
+        detection_probability: if trial_count == 0 {
+            0.0
+        } else {
+            detected_count as f64 / trial_count as f64
+        },
+        mean_peak_mean_ratio,
+        trials,
+    }
+}
+
 /// Measure whether acquisition Doppler refinement improves on the raw search bin.
 pub fn validate_truth_guided_acquisition_doppler_refinement(
     config: &ReceiverPipelineConfig,
@@ -1432,7 +1736,9 @@ impl XorShift64 {
 mod tests {
     use super::{
         build_iq16_capture_bundle, build_truth_bundle, expected_acquisition_code_phase_samples,
-        expected_acquisition_code_phase_samples_f64, generate_l1_ca_multi, nav_bit_index_at_time_s,
+        expected_acquisition_code_phase_samples_f64, generate_l1_ca_multi,
+        measure_noise_only_acquisition_false_alarm_rate,
+        measure_truth_guided_acquisition_detection_probability, nav_bit_index_at_time_s,
         nav_bit_sign_at_time_s, signal_amplitude_from_cn0,
         validate_truth_guided_acquisition_code_phase,
         validate_truth_guided_acquisition_code_phase_refinement,
@@ -2053,6 +2359,91 @@ mod tests {
         assert_eq!(report.noncoherent, 1);
         assert_eq!(report.satellites.len(), 1);
         assert!(report.satellites[0].pass, "{:?}", report.satellites[0]);
+    }
+
+    #[test]
+    fn acquisition_detection_probability_report_tracks_accepted_trials() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            acquisition_doppler_search_hz: 10_000,
+            acquisition_doppler_step_hz: 500,
+            ..ReceiverPipelineConfig::default()
+        };
+        let report = measure_truth_guided_acquisition_detection_probability(
+            &config,
+            SyntheticSignalParams {
+                sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                doppler_hz: 750.0,
+                code_phase_chips: 200.25,
+                carrier_phase_rad: 0.0,
+                cn0_db_hz: 58.0,
+                data_bit_flip: false,
+            },
+            1,
+            1,
+            &[2_407_1985, 2_407_1986],
+            "acquisition-detection-probability",
+            2,
+            1,
+        );
+
+        assert_eq!(report.trial_count, 2);
+        assert_eq!(
+            report.accepted_count,
+            report.trials.iter().filter(|trial| trial.accepted).count()
+        );
+        assert_eq!(
+            report.detected_count,
+            report.trials.iter().filter(|trial| trial.detected).count()
+        );
+        assert!(report.accepted_count <= report.trial_count);
+        assert!(report.detected_count <= report.accepted_count);
+        assert!(
+            (report.acceptance_probability
+                - report.accepted_count as f64 / report.trial_count as f64)
+                .abs()
+                <= f64::EPSILON
+        );
+        assert!(
+            (report.detection_probability
+                - report.detected_count as f64 / report.trial_count as f64)
+                .abs()
+                <= f64::EPSILON
+        );
+        assert!(
+            report.trials.iter().all(|trial| trial.code_phase_error_samples.is_some()
+                && trial.doppler_error_bins.is_some()),
+            "{report:?}"
+        );
+    }
+
+    #[test]
+    fn acquisition_false_alarm_report_tracks_noise_only_trials() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            acquisition_doppler_search_hz: 10_000,
+            acquisition_doppler_step_hz: 500,
+            ..ReceiverPipelineConfig::default()
+        };
+        let report = measure_noise_only_acquisition_false_alarm_rate(
+            &config,
+            SatId { constellation: Constellation::Gps, prn: 3 },
+            1,
+            1,
+            &[17, 29],
+            "acquisition-false-alarm",
+        );
+
+        assert_eq!(report.trial_count, 2);
+        assert_eq!(report.false_alarm_count, 0);
+        assert_eq!(report.false_alarm_rate, 0.0);
+        assert!(report.trials.iter().all(|trial| !trial.accepted), "{report:?}");
     }
 
     #[test]
