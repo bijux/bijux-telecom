@@ -30,6 +30,31 @@ fn acquisition_detection_rate_report_runs_multiple_measurement_points() {
     assert_eq!(report.points[1].coherent_ms, 5);
 }
 
+#[test]
+fn acquisition_detection_rate_reports_cn0_sensitivity() {
+    let config = acquisition_profile();
+    let report = measure_truth_guided_acquisition_detection_rate(
+        &config,
+        &[
+            detection_rate_case(26.0, 250.0, 1, 1),
+            detection_rate_case(30.0, 250.0, 1, 1),
+            detection_rate_case(34.0, 250.0, 1, 1),
+            detection_rate_case(38.0, 250.0, 1, 1),
+        ],
+        &trial_seeds(0x2407_1990, DETECTION_RATE_TRIAL_COUNT),
+        "acquisition_detection_rate_cn0",
+        2,
+        1,
+    );
+
+    assert_eq!(report.points.len(), 4);
+    assert!(
+        report.points.last().expect("strongest cn0").detection_probability
+            > report.points.first().expect("weakest cn0").detection_probability,
+        "expected detection probability to improve across the C/N0 sweep: {report:?}"
+    );
+}
+
 fn acquisition_profile() -> ReceiverPipelineConfig {
     ReceiverPipelineConfig {
         sampling_freq_hz: 4_092_000.0,
