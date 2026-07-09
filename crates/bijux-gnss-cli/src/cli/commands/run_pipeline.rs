@@ -40,10 +40,7 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
     let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
 
     let frame = load_acquisition_frame(&input_file, &config, &raw_iq_metadata)?;
-    let front_end_metrics = bijux_gnss_infra::api::signal::measure_raw_iq_front_end_metrics(
-        &frame.iq,
-        &raw_iq_metadata,
-    );
+    let signal_quality = measure_signal_quality_from_samples(&raw_iq_metadata, &frame.iq);
     let runtime = runtime_config_from_env(&common, None);
     let acquisition =
         AcquisitionEngine::new(config, runtime).with_doppler(doppler_search_hz, doppler_step_hz);
@@ -74,7 +71,8 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
 
     let report = AcquisitionReport {
         sats,
-        front_end_metrics,
+        front_end_metrics: signal_quality.front_end_metrics.clone(),
+        signal_quality,
         reported_prns: summarize_reported_prns(&rows),
         results: rows,
     };
@@ -82,6 +80,7 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
         ReportFormat::Table => print_acquisition_table(&report),
         ReportFormat::Json => emit_report(&common, "acquire", &report)?,
     }
+    write_signal_quality_report(&common, "acquire", &report.signal_quality)?;
     let (layout, header) =
         prepare_run(&infra_args(&common), "acquire", &profile, dataset.as_ref())?;
     let out_dir = layout.artifacts_dir;

@@ -122,6 +122,20 @@ fn build_signal_quality_report(
     }
 }
 
+fn measure_signal_quality_from_samples(
+    metadata: &RawIqMetadata,
+    samples: &[bijux_gnss_infra::api::core::Sample],
+) -> RawIqSignalQualityReport {
+    let front_end_metrics =
+        bijux_gnss_infra::api::signal::measure_raw_iq_front_end_metrics(samples, metadata);
+    let estimated_noise_floor_db =
+        bijux_gnss_infra::api::signal::estimate_iq_noise_floor_db_from_metrics(
+            samples,
+            &front_end_metrics,
+        );
+    build_signal_quality_report(metadata, front_end_metrics, estimated_noise_floor_db)
+}
+
 fn measure_signal_quality_from_raw_iq(
     path: &Path,
     metadata: &RawIqMetadata,

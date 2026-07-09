@@ -327,6 +327,14 @@ fn acquire_reports_front_end_metrics_from_acquisition_window() {
     let report = load_json(&out_dir.join("acquire_report.json"));
     let metrics = report.get("front_end_metrics").expect("front_end_metrics present");
     assert_dc_only_metrics(metrics, 5_000);
+    let signal_quality = report.get("signal_quality").expect("signal_quality present");
+    assert_eq!(signal_quality.get("analyzed_samples").and_then(Value::as_u64), Some(5_000));
+    assert_eq!(
+        signal_quality.get("front_end_metrics"),
+        report.get("front_end_metrics")
+    );
+    let standalone_signal_quality = load_json(&out_dir.join("signal_quality_report.json"));
+    assert_eq!(standalone_signal_quality, *signal_quality);
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
 }
@@ -365,6 +373,14 @@ fn track_reports_front_end_metrics_from_acquisition_window() {
     let report = load_json(&out_dir.join("track_report.json"));
     let metrics = report.get("front_end_metrics").expect("front_end_metrics present");
     assert_dc_only_metrics(metrics, 5_000);
+    let signal_quality = report.get("signal_quality").expect("signal_quality present");
+    assert_eq!(signal_quality.get("analyzed_samples").and_then(Value::as_u64), Some(5_000));
+    assert_eq!(
+        signal_quality.get("front_end_metrics"),
+        report.get("front_end_metrics")
+    );
+    let standalone_signal_quality = load_json(&out_dir.join("signal_quality_report.json"));
+    assert_eq!(standalone_signal_quality, *signal_quality);
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
 }

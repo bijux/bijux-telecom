@@ -2,6 +2,7 @@
 struct AcquisitionReport {
     sats: Vec<SatId>,
     front_end_metrics: bijux_gnss_infra::api::signal::IqFrontEndMetrics,
+    signal_quality: RawIqSignalQualityReport,
     reported_prns: Vec<ReportedPrn>,
     results: Vec<AcquisitionRow>,
 }
@@ -233,6 +234,7 @@ impl EkfContext {
 struct TrackingReport {
     sats: Vec<SatId>,
     front_end_metrics: bijux_gnss_infra::api::signal::IqFrontEndMetrics,
+    signal_quality: RawIqSignalQualityReport,
     epochs: Vec<TrackingRow>,
 }
 
