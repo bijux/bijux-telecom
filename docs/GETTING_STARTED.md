@@ -56,6 +56,10 @@ search grid includes both `0 Hz` and the configured edge.
 contract currently spans the full sampled code period with one-sample spacing, so the reported
 `bin_count` matches `period_samples`.
 
+If the winning Doppler row supports sub-bin refinement, the same report also includes the refined
+`carrier_hz` alongside `coarse_carrier_hz`, `doppler_refinement_hz`, and
+`doppler_refinement_bins` so the search-bin provenance remains visible.
+
 This dataset is a redistributed excerpt from Daniel Estévez's public GPS L1 recording on Zenodo.
 Use `datasets/recorded/gps_l1_2022_03_27_excerpt.provenance.md` for source, license, and local
 excerpt details.

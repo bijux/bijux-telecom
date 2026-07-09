@@ -85,6 +85,12 @@ The acquisition report also records the effective code-phase search scope. For G
 current receiver searches the full sampled code period with one-sample spacing and emits that
 contract under `code_phase_search` in `acquire_report.json`.
 
+When acquisition can refine the Doppler estimate between search bins, `acquire_report.json`
+preserves both values instead of hiding the raw search result:
+- `carrier_hz` is the refined carrier estimate used downstream
+- `coarse_carrier_hz` is the selected Doppler-bin carrier
+- `doppler_refinement_hz` and `doppler_refinement_bins` report the bounded offset from the coarse bin
+
 ### Inspect Published C/A PRN Assignment
 ```bash
 bijux gnss ca-code --prn 1 --start-chip 1022 --count 4 --with-reference

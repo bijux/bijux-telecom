@@ -59,6 +59,15 @@ Invariants:
 - `acquire_report.json.search_summary` counts selected PRN decisions (`accepted`, `ambiguous`, `rejected`, `deferred`)
 - when the input frame is too short for the requested coherent/noncoherent window, acquisition still emits one deferred outcome per searched PRN instead of omitting them
 
+When sub-bin Doppler refinement is available, `acq.jsonl.payload.carrier_hz` carries the refined
+carrier estimate that downstream tracking will consume, and
+`acq.jsonl.payload.doppler_refinement` preserves the coarse selected bin plus the bounded
+refinement offset:
+- `coarse_carrier_hz`
+- `offset_hz`
+- `offset_bins`
+- `left_peak_mean_ratio`, `center_peak_mean_ratio`, `right_peak_mean_ratio`
+
 ### eph (GpsEphemerisV1)
 Purpose: decoded ephemerides.
 Files: `ephemeris.json`
@@ -135,6 +144,13 @@ For GPS L1 C/A acquisition, the current contract is a full-code search over the 
 period: `start_sample = 0`, `step_samples = 1`, `bin_count = period_samples`, `mode = "full_code"`.
 The same values are preserved per candidate in `acq.jsonl.payload.assumptions` so downstream tools
 can validate the report against the retained acquisition evidence.
+
+When an acquisition row has sub-bin Doppler refinement, `acquire_report.json.results[*]` and
+`acquire_report.json.primary_results[*]` include:
+- `carrier_hz`: refined carrier estimate
+- `coarse_carrier_hz`: selected Doppler-bin carrier
+- `doppler_refinement_hz`: refined-minus-coarse carrier offset
+- `doppler_refinement_bins`: the same offset expressed in Doppler bins
 
 ## Synthetic IQ Export Bundle
 
