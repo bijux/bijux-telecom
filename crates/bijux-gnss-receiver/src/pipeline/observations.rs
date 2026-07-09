@@ -10,8 +10,8 @@
 use bijux_gnss_core::api::{
     Cycles, DiagnosticEvent, DiagnosticSeverity, LockFlags, Meters, ObsDecisionArtifact, ObsEpoch,
     ObsEpochManifest, ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus,
-    ObservationSupportClass, ObservationUncertaintyClass, ReceiverRole, SatObservationDecision,
-    Seconds, SigId, SignalBand, TrackEpoch,
+    ObservationSupportClass, ObservationUncertaintyClass, ReceiverRole, ReceiverSampleTrace,
+    SatObservationDecision, Seconds, SigId, SignalBand, TrackEpoch,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -220,6 +220,7 @@ fn observations_from_tracking_with_provenance(
 
         let mut epoch = ObsEpoch {
             t_rx_s,
+            source_time: epoch.source_time,
             gps_week: None,
             tow_s: None,
             epoch_idx: epoch.epoch.index,
@@ -267,6 +268,7 @@ pub fn observations_from_tracking_results(
         for epoch in obs {
             let entry = by_epoch.entry(epoch.epoch_idx).or_insert_with(|| ObsEpoch {
                 t_rx_s: epoch.t_rx_s,
+                source_time: epoch.source_time,
                 gps_week: epoch.gps_week,
                 tow_s: epoch.tow_s,
                 epoch_idx: epoch.epoch_idx,
@@ -357,7 +359,10 @@ pub fn observations_from_tracking_results(
         apply_epoch_decision(&mut epoch);
         let source_sample_index =
             epoch.sats.iter().map(|sat| sat.metadata.time_tag_sample_index).min().unwrap_or(0);
+        let source_time =
+            ReceiverSampleTrace::from_sample_index(source_sample_index, config.sampling_freq_hz);
         let artifact_id = format!("obs-epoch-{:010}", epoch.epoch_idx);
+        epoch.source_time = source_time;
         let epoch_key = bijux_gnss_core::api::obs_epoch_stability_key(&epoch);
         epoch.manifest = Some(ObsEpochManifest {
             version: bijux_gnss_core::api::OBSERVATION_MODEL_VERSION,
@@ -365,6 +370,7 @@ pub fn observations_from_tracking_results(
             epoch_id: epoch_key,
             source_epoch_idx: epoch.epoch_idx,
             source_sample_index,
+            source_time,
             decision: epoch.decision,
             downstream_profile_version:
                 bijux_gnss_core::api::OBSERVATION_DOWNSTREAM_PROFILE_VERSION,
@@ -657,6 +663,7 @@ pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
         .collect();
     ObsEpoch {
         t_rx_s: Seconds(epoch_idx as f64 * 0.001),
+        source_time: ReceiverSampleTrace::from_sample_index(epoch_idx, 1_000.0),
         gps_week: None,
         tow_s: None,
         epoch_idx,
@@ -673,6 +680,7 @@ pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
             epoch_id: observation_epoch_id(epoch_idx, epoch_idx),
             source_epoch_idx: epoch_idx,
             source_sample_index: epoch_idx,
+            source_time: ReceiverSampleTrace::from_sample_index(epoch_idx, 1_000.0),
             decision: ObservationEpochDecision::Accepted,
             downstream_profile_version:
                 bijux_gnss_core::api::OBSERVATION_DOWNSTREAM_PROFILE_VERSION,
@@ -897,7 +905,10 @@ mod tests {
         let sat = epoch.sats.first().expect("observation satellite");
 
         assert_eq!(sat.observation_status, ObservationStatus::Inconsistent);
-        assert!(sat.observation_reject_reasons.iter().any(|reason| reason == "sample_rate_mismatch"));
+        assert!(sat
+            .observation_reject_reasons
+            .iter()
+            .any(|reason| reason == "sample_rate_mismatch"));
         assert_eq!(epoch.decision, ObservationEpochDecision::Rejected);
         assert_eq!(epoch.decision_reason.as_deref(), Some("inconsistent_observable"));
     }

@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 use bijux_gnss_infra::api::core::{
-    Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, SatId, SigId,
-    SignalBand, SignalCode, SignalSpec, GPS_L1_CA_CARRIER_HZ,
+    Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole,
+    ReceiverSampleTrace, SatId, SigId, SignalBand, SignalCode, SignalSpec, GPS_L1_CA_CARRIER_HZ,
 };
 use bijux_gnss_infra::api::nav::{write_rinex_nav, write_rinex_obs, GpsEphemeris};
 
@@ -9,6 +9,7 @@ use bijux_gnss_infra::api::nav::{write_rinex_nav, write_rinex_obs, GpsEphemeris}
 fn rinex_obs_has_header() {
     let epoch = ObsEpoch {
         t_rx_s: bijux_gnss_infra::api::core::Seconds(0.0),
+        source_time: ReceiverSampleTrace::from_sample_index(0, 1_000.0),
         gps_week: Some(0),
         tow_s: Some(bijux_gnss_infra::api::core::Seconds(0.0)),
         epoch_idx: 0,

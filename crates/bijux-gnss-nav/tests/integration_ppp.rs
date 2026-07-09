@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 use bijux_gnss_core::api::{
     signal_spec_gps_l1_ca, Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite,
-    ReceiverRole, SatId, SigId, SignalBand, SignalCode,
+    ReceiverRole, ReceiverSampleTrace, SatId, SigId, SignalBand, SignalCode,
 };
 use bijux_gnss_nav::api::{BroadcastProductsProvider, GpsEphemeris, PppConfig, PppFilter};
 
@@ -40,6 +40,7 @@ fn make_obs(epoch_idx: u64, t_rx_s: f64, prn: u8) -> ObsEpoch {
     let spec = signal_spec_gps_l1_ca();
     ObsEpoch {
         t_rx_s: bijux_gnss_core::api::Seconds(t_rx_s),
+        source_time: ReceiverSampleTrace::from_sample_index(epoch_idx, 1_000.0),
         gps_week: None,
         tow_s: None,
         epoch_idx,
@@ -129,6 +130,7 @@ fn make_obs_with_slips(epoch_idx: u64, t_rx_s: f64, prns: &[u8]) -> ObsEpoch {
         .collect();
     ObsEpoch {
         t_rx_s: bijux_gnss_core::api::Seconds(t_rx_s),
+        source_time: ReceiverSampleTrace::from_sample_index(epoch_idx, 1_000.0),
         gps_week: None,
         tow_s: None,
         epoch_idx,

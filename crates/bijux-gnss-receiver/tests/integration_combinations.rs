@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 use bijux_gnss_core::api::{
     signal_spec_gps_l1_ca, signal_spec_gps_l2_py, Constellation, LockFlags, ObsEpoch, ObsMetadata,
-    ObsSatellite, ReceiverRole, SatId, SigId, SignalBand, SignalCode,
+    ObsSatellite, ReceiverRole, ReceiverSampleTrace, SatId, SigId, SignalBand, SignalCode,
 };
 use bijux_gnss_nav::api::combinations_from_obs_epochs;
 
@@ -13,6 +13,7 @@ fn make_dual_freq_epoch(p1: f64, p2: f64, phi1: f64, phi2: f64) -> ObsEpoch {
     s2.code_rate_hz = 1_023_000.0;
     ObsEpoch {
         t_rx_s: bijux_gnss_core::api::Seconds(0.0),
+        source_time: ReceiverSampleTrace::from_sample_index(0, 1_000.0),
         gps_week: None,
         tow_s: None,
         epoch_idx: 0,

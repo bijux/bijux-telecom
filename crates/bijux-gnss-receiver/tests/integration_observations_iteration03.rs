@@ -3,7 +3,8 @@ use std::fs;
 use std::path::Path;
 
 use bijux_gnss_core::api::{
-    Chips, Constellation, Epoch, Hertz, ObservationEpochDecision, SatId, TrackEpoch,
+    Chips, Constellation, Epoch, Hertz, ObservationEpochDecision, ReceiverSampleTrace, SatId,
+    TrackEpoch,
 };
 use bijux_gnss_receiver::api::{
     observations_from_tracking_results, ReceiverPipelineConfig, TrackingResult,
@@ -137,6 +138,10 @@ fn tracks_from_fixture_rows(
         by_sat.entry(row.sat_prn).or_default().push(TrackEpoch {
             epoch: Epoch { index: row.epoch_idx },
             sample_index: row.sample_index,
+            source_time: ReceiverSampleTrace::from_sample_index(
+                row.sample_index,
+                config.sampling_freq_hz,
+            ),
             sat,
             prompt_i: row.prompt_i,
             prompt_q: row.prompt_q,

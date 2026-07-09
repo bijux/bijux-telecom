@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 use bijux_gnss_core::api::{
-    Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, SatId, SigId,
-    SignalBand, SignalSpec,
+    Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole,
+    ReceiverSampleTrace, SatId, SigId, SignalBand, SignalSpec,
 };
 use bijux_gnss_nav::api::geodetic_to_ecef;
 use bijux_gnss_receiver::api::baseline_from_ecef;
@@ -13,6 +13,7 @@ use bijux_gnss_receiver::api::{
 fn make_epoch(t_rx_s: f64, prn: u8) -> ObsEpoch {
     ObsEpoch {
         t_rx_s: bijux_gnss_core::api::Seconds(t_rx_s),
+        source_time: ReceiverSampleTrace::from_sample_index((t_rx_s * 1000.0) as u64, 1_000.0),
         gps_week: None,
         tow_s: None,
         epoch_idx: (t_rx_s * 1000.0) as u64,
