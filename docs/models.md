@@ -8,6 +8,7 @@
 - GPS L1 C/A periodic cross-correlation for every distinct PRN pair in 1-32 is validated with values limited to `-65`, `-1`, and `63`, with maximum absolute magnitude `65`, so no false full-period main peak appears between different codes.
 - GPS L1 C/A sampled-code generation advances chip phase from exact `code_rate_hz / sample_rate_hz` progression, so arbitrary sample rates and chunk boundaries preserve the same wrapped chip sequence without rounded samples-per-chip drift.
 - The sampled-code phase model is validated at the 60-second boundary: direct elapsed-time advance, chunked sample-count advance, and synthetic receiver epoch alignment agree within a documented floating-point tolerance, and the resulting sampled C/A block remains unchanged.
+- Carrier wipeoff uses an absolute-time-aware NCO keyed to sample index, so long-offset acquisition and tracking frames preserve bounded prompt-phase error instead of resetting carrier phase at each local block origin.
 - Ideal spreading codes (±1) without front-end distortions.
 - Additive noise approximated in tracking metrics.
 
