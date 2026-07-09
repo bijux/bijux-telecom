@@ -10,8 +10,11 @@ use bijux_gnss_signal::api::SignalSource;
 use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::io::data::SampleSourceError;
 use bijux_gnss_nav::api::GpsEphemeris;
-use bijux_gnss_signal::api::{generate_ca_code, Prn};
+use bijux_gnss_signal::api::{generate_ca_code, IqSampleFormat, Prn, RawIqMetadata};
 use serde::{Deserialize, Serialize};
+
+const SYNTHETIC_IQ_TRUTH_SCHEMA_VERSION: u32 = 1;
+const GPS_L1_CA_NAV_BIT_PERIOD_S: f64 = 0.02;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct SyntheticSignalParams {
@@ -34,6 +37,123 @@ pub struct SyntheticScenario {
     pub ephemerides: Vec<GpsEphemeris>,
     #[serde(default)]
     pub id: String,
+}
+
+/// Deterministic navigation-bit schedule used by a synthetic signal.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SyntheticNavBitMode {
+    /// Keep the navigation-bit sign positive for the full capture.
+    ConstantPositive,
+    /// Alternate the bit sign every 20 ms, starting positive at sample zero.
+    AlternatingGpsLnav20ms,
+}
+
+/// Sample-aligned navigation-bit truth interval.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticNavBitSegment {
+    /// Inclusive segment start sample.
+    pub start_sample: u64,
+    /// Exclusive segment end sample.
+    pub end_sample: u64,
+    /// Segment start time in seconds.
+    pub start_s: f64,
+    /// Segment end time in seconds.
+    pub end_s: f64,
+    /// Navigation-bit sign applied over this interval.
+    pub bit: i8,
+}
+
+/// Per-satellite truth carried alongside a synthetic IQ export.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticSatelliteTruth {
+    /// Satellite identifier.
+    pub sat: SatId,
+    /// Injected Doppler shift in Hz.
+    pub doppler_hz: f64,
+    /// Injected code phase at sample zero, in chips.
+    pub code_phase_chips: f64,
+    /// Injected carrier phase at sample zero, in radians.
+    pub carrier_phase_rad: f64,
+    /// Injected carrier-to-noise density ratio in dB-Hz.
+    pub cn0_db_hz: f32,
+    /// Deterministic navigation-bit model used for this signal.
+    pub nav_bit_mode: SyntheticNavBitMode,
+    /// Sample-aligned navigation-bit truth intervals.
+    pub nav_bit_segments: Vec<SyntheticNavBitSegment>,
+}
+
+/// Machine-readable truth for an exported synthetic IQ capture.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticIqTruthBundle {
+    /// Truth schema version.
+    pub schema_version: u32,
+    /// Stable scenario identifier for this capture.
+    pub scenario_id: String,
+    /// Deterministic seed used for the synthetic noise realization.
+    pub seed: u64,
+    /// Output sample format.
+    pub sample_format: IqSampleFormat,
+    /// Output sample rate in Hz.
+    pub sample_rate_hz: f64,
+    /// Output intermediate frequency in Hz.
+    pub intermediate_freq_hz: f64,
+    /// Synthetic capture start timestamp in UTC.
+    pub capture_start_utc: String,
+    /// Output quantization depth in bits.
+    pub quantization_bits: u8,
+    /// Total capture duration in seconds.
+    pub duration_s: f64,
+    /// Total complex samples emitted into the file.
+    pub sample_count: usize,
+    /// Peak absolute I/Q component before output scaling.
+    pub peak_component_before_scaling: f32,
+    /// Scale factor applied before quantization.
+    pub output_scale_applied: f32,
+    /// Per-satellite truth rows.
+    pub satellites: Vec<SyntheticSatelliteTruth>,
+}
+
+/// Build a machine-readable truth bundle for an emitted synthetic capture.
+pub fn build_truth_bundle(
+    scenario_id: &str,
+    scenario: &SyntheticScenario,
+    frame: &SamplesFrame,
+    metadata: &RawIqMetadata,
+    peak_component_before_scaling: f32,
+    output_scale_applied: f32,
+) -> SyntheticIqTruthBundle {
+    SyntheticIqTruthBundle {
+        schema_version: SYNTHETIC_IQ_TRUTH_SCHEMA_VERSION,
+        scenario_id: scenario_id.to_string(),
+        seed: scenario.seed,
+        sample_format: metadata.format,
+        sample_rate_hz: frame.t0.sample_rate_hz,
+        intermediate_freq_hz: metadata.intermediate_freq_hz,
+        capture_start_utc: metadata.capture_start_utc.clone(),
+        quantization_bits: metadata.quantization_bits.unwrap_or_default(),
+        duration_s: frame.len() as f64 * frame.dt_s.0,
+        sample_count: frame.len(),
+        peak_component_before_scaling,
+        output_scale_applied,
+        satellites: scenario
+            .satellites
+            .iter()
+            .map(|params| SyntheticSatelliteTruth {
+                sat: params.sat,
+                doppler_hz: params.doppler_hz,
+                code_phase_chips: params.code_phase_chips,
+                carrier_phase_rad: params.carrier_phase_rad,
+                cn0_db_hz: params.cn0_db_hz,
+                nav_bit_mode: nav_bit_mode(params),
+                nav_bit_segments: nav_bit_segments(
+                    frame.t0.sample_rate_hz,
+                    frame.len() as u64,
+                    params.data_bit_flip,
+                ),
+            })
+            .collect(),
+    }
 }
 
 /// Generate a synthetic GPS L1 C/A signal at the receiver sample rate.
@@ -231,6 +351,55 @@ impl SatState {
     }
 }
 
+fn nav_bit_mode(params: &SyntheticSignalParams) -> SyntheticNavBitMode {
+    if params.data_bit_flip {
+        SyntheticNavBitMode::AlternatingGpsLnav20ms
+    } else {
+        SyntheticNavBitMode::ConstantPositive
+    }
+}
+
+fn nav_bit_segments(
+    sample_rate_hz: f64,
+    sample_count: u64,
+    data_bit_flip: bool,
+) -> Vec<SyntheticNavBitSegment> {
+    if sample_count == 0 {
+        return Vec::new();
+    }
+    if !data_bit_flip {
+        return vec![SyntheticNavBitSegment {
+            start_sample: 0,
+            end_sample: sample_count,
+            start_s: 0.0,
+            end_s: sample_count as f64 / sample_rate_hz,
+            bit: 1,
+        }];
+    }
+
+    let mut segments = Vec::new();
+    let mut bit_index = 0u64;
+    loop {
+        let start_sample =
+            ((bit_index as f64 * GPS_L1_CA_NAV_BIT_PERIOD_S * sample_rate_hz).ceil()) as u64;
+        if start_sample >= sample_count {
+            break;
+        }
+        let end_sample = ((((bit_index + 1) as f64) * GPS_L1_CA_NAV_BIT_PERIOD_S * sample_rate_hz)
+            .ceil()) as u64;
+        let clamped_end = end_sample.min(sample_count);
+        segments.push(SyntheticNavBitSegment {
+            start_sample,
+            end_sample: clamped_end,
+            start_s: start_sample as f64 / sample_rate_hz,
+            end_s: clamped_end as f64 / sample_rate_hz,
+            bit: if bit_index % 2 == 0 { 1 } else { -1 },
+        });
+        bit_index += 1;
+    }
+    segments
+}
+
 #[derive(Debug, Clone)]
 struct XorShift64 {
     state: u64,
@@ -267,10 +436,13 @@ impl XorShift64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{generate_l1_ca_multi, SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource};
+    use super::{
+        build_truth_bundle, generate_l1_ca_multi, SyntheticNavBitMode, SyntheticScenario,
+        SyntheticSignalParams, SyntheticSignalSource,
+    };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
     use bijux_gnss_core::api::{Constellation, SatId, SamplesFrame};
-    use bijux_gnss_signal::api::SignalSource;
+    use bijux_gnss_signal::api::{IqSampleFormat, RawIqMetadata, SignalSource};
 
     #[test]
     fn synthetic_signal_source_matches_materialized_generator() {
@@ -319,5 +491,87 @@ mod tests {
         let dt_s = first.dt_s;
         let iq = frames.into_iter().flat_map(|frame| frame.iq).collect::<Vec<_>>();
         SamplesFrame::new(t0, dt_s, iq)
+    }
+
+    #[test]
+    fn truth_bundle_records_constant_and_alternating_nav_bit_truth() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_000_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let scenario = SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            duration_s: 0.05,
+            seed: 44,
+            satellites: vec![
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                    doppler_hz: 500.0,
+                    code_phase_chips: 200.0,
+                    carrier_phase_rad: 0.0,
+                    cn0_db_hz: 50.0,
+                    data_bit_flip: false,
+                },
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                    doppler_hz: -750.0,
+                    code_phase_chips: 321.0,
+                    carrier_phase_rad: 0.2,
+                    cn0_db_hz: 45.0,
+                    data_bit_flip: true,
+                },
+            ],
+            ephemerides: Vec::new(),
+            id: "truth-bundle".to_string(),
+        };
+        let frame = generate_l1_ca_multi(&config, &scenario);
+        let metadata = RawIqMetadata {
+            format: IqSampleFormat::Iq16Le,
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            capture_start_utc: "2026-07-09T00:00:00Z".to_string(),
+            offset_bytes: 0,
+            quantization_bits: Some(16),
+            notes: Some("synthetic truth bundle".to_string()),
+        };
+
+        let truth = build_truth_bundle(&scenario.id, &scenario, &frame, &metadata, 1.25, 0.8);
+
+        assert_eq!(truth.schema_version, 1);
+        assert_eq!(truth.scenario_id, "truth-bundle");
+        assert_eq!(truth.seed, 44);
+        assert_eq!(truth.sample_format, IqSampleFormat::Iq16Le);
+        assert_eq!(truth.sample_rate_hz, 4_000_000.0);
+        assert_eq!(truth.quantization_bits, 16);
+        assert_eq!(truth.peak_component_before_scaling, 1.25);
+        assert_eq!(truth.output_scale_applied, 0.8);
+        assert_eq!(truth.satellites.len(), 2);
+
+        let constant = &truth.satellites[0];
+        assert_eq!(constant.nav_bit_mode, SyntheticNavBitMode::ConstantPositive);
+        assert_eq!(constant.nav_bit_segments.len(), 1);
+        assert_eq!(constant.nav_bit_segments[0].start_sample, 0);
+        assert_eq!(constant.nav_bit_segments[0].end_sample, frame.len() as u64);
+        assert_eq!(constant.nav_bit_segments[0].bit, 1);
+
+        let alternating = &truth.satellites[1];
+        assert_eq!(
+            alternating.nav_bit_mode,
+            SyntheticNavBitMode::AlternatingGpsLnav20ms
+        );
+        assert_eq!(alternating.nav_bit_segments.len(), 3);
+        assert_eq!(alternating.nav_bit_segments[0].start_sample, 0);
+        assert_eq!(alternating.nav_bit_segments[0].end_sample, 80_000);
+        assert_eq!(alternating.nav_bit_segments[0].bit, 1);
+        assert_eq!(alternating.nav_bit_segments[1].start_sample, 80_000);
+        assert_eq!(alternating.nav_bit_segments[1].end_sample, 160_000);
+        assert_eq!(alternating.nav_bit_segments[1].bit, -1);
+        assert_eq!(alternating.nav_bit_segments[2].start_sample, 160_000);
+        assert_eq!(alternating.nav_bit_segments[2].end_sample, frame.len() as u64);
+        assert_eq!(alternating.nav_bit_segments[2].bit, 1);
     }
 }
