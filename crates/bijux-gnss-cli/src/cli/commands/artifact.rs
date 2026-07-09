@@ -169,4 +169,17 @@ mod artifact_tests {
         assert!(output.contains("producer_version: 0.1.0"));
         assert!(output.contains("entries: 1"));
     }
+
+    #[test]
+    fn validate_obs_fixture_accepts_receiver_time_trace() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../bijux-gnss-core/tests/data/obs_fixture.jsonl");
+        let result =
+            bijux_gnss_infra::api::artifact_validate(&path, Some("obs"), true).expect("validate fixture");
+        assert!(
+            result.diagnostics.is_empty(),
+            "diagnostics={:?}",
+            result.diagnostics
+        );
+    }
 }
