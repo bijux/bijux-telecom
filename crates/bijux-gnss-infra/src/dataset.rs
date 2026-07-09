@@ -464,6 +464,25 @@ capture_start_utc = "2026-07-09T00:00:00Z"
     }
 
     #[test]
+    fn load_raw_iq_metadata_rejects_missing_intermediate_frequency() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let sidecar_path = temp.path().join("broken.sidecar.toml");
+        fs::write(
+            &sidecar_path,
+            r#"
+format = "iq16_le"
+sample_rate_hz = 5000000.0
+capture_start_utc = "2026-07-09T00:00:00Z"
+"#,
+        )
+        .expect("write sidecar");
+
+        let err =
+            load_raw_iq_metadata(&sidecar_path).expect_err("missing intermediate frequency must fail");
+        assert!(err.message.contains("intermediate_freq_hz"));
+    }
+
+    #[test]
     fn load_raw_iq_metadata_rejects_missing_timestamp() {
         let temp = tempfile::tempdir().expect("tempdir");
         let sidecar_path = temp.path().join("broken.sidecar.toml");
