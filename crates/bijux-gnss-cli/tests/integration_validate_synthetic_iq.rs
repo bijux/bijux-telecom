@@ -242,6 +242,18 @@ fn validate_synthetic_iq_accepts_low_rate_acquisition_reference_bundle() {
 }
 
 #[test]
+fn validate_synthetic_iq_accepts_high_rate_acquisition_reference_bundle() {
+    let repo = repo_root();
+
+    validate_acquisition_reference_bundle(
+        &repo,
+        "configs/scenarios/synthetic_iq_acquisition_reference_high_rate.toml",
+        "synthetic_iq_acquisition_reference_high_rate",
+        4_092_000.0,
+    );
+}
+
+#[test]
 fn validate_synthetic_iq_rejects_too_tight_acquisition_code_phase_tolerance() {
     let repo = repo_root();
     let export_dir = temp_dir_path("export_synthetic_iq_fractional_phase_accuracy");
