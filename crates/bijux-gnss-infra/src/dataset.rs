@@ -282,8 +282,31 @@ sidecar = "{}"
         let metadata =
             resolve_raw_iq_metadata(Some(&entry), None).expect("resolve raw iq metadata");
 
+        assert_eq!(metadata.format, bijux_gnss_signal::api::IqSampleFormat::Iq16Le);
         assert_eq!(metadata.offset_bytes, 128);
         assert_eq!(metadata.quantization_bits, Some(16));
+    }
+
+    #[test]
+    fn load_raw_iq_metadata_rejects_signed_16bit_quantization_mismatch() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let sidecar_path = temp.path().join("broken.sidecar.toml");
+        fs::write(
+            &sidecar_path,
+            r#"
+format = "iq16_le"
+sample_rate_hz = 5000000.0
+intermediate_freq_hz = 0.0
+capture_start_utc = "2026-07-09T00:00:00Z"
+quantization_bits = 8
+"#,
+        )
+        .expect("write sidecar");
+
+        let err =
+            load_raw_iq_metadata(&sidecar_path).expect_err("quantization mismatch must fail");
+        assert!(err.message.contains("quantization_bits"));
+        assert!(err.message.contains("Iq16Le"));
     }
 
     #[test]
