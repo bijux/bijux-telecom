@@ -2,10 +2,11 @@
 struct AcquisitionReport {
     sats: Vec<SatId>,
     front_end_metrics: bijux_gnss_infra::api::signal::IqFrontEndMetrics,
+    reported_prns: Vec<ReportedPrn>,
     results: Vec<AcquisitionRow>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 struct AcquisitionRow {
     sat: SatId,
     carrier_hz: f64,
@@ -15,6 +16,50 @@ struct AcquisitionRow {
     peak_second_ratio: f32,
     hypothesis: String,
     selection_reason: Option<String>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+struct ReportedPrn {
+    sat: SatId,
+    classification: String,
+    carrier_hz: f64,
+    peak_mean_ratio: f32,
+    peak_second_ratio: f32,
+}
+
+fn summarize_reported_prns(rows: &[AcquisitionRow]) -> Vec<ReportedPrn> {
+    let mut by_prn = std::collections::BTreeMap::<SatId, ReportedPrn>::new();
+    for row in rows {
+        let classification = match row.hypothesis.as_str() {
+            "accepted" => "accepted",
+            "ambiguous" => "candidate",
+            _ => continue,
+        };
+        let candidate = ReportedPrn {
+            sat: row.sat,
+            classification: classification.to_string(),
+            carrier_hz: row.carrier_hz,
+            peak_mean_ratio: row.peak_mean_ratio,
+            peak_second_ratio: row.peak_second_ratio,
+        };
+        match by_prn.get(&row.sat) {
+            Some(existing)
+                if reported_prn_sort_key(existing) <= reported_prn_sort_key(&candidate) => {}
+            _ => {
+                by_prn.insert(row.sat, candidate);
+            }
+        }
+    }
+    let mut reported_prns: Vec<_> = by_prn.into_values().collect();
+    reported_prns.sort_by(|left, right| {
+        reported_prn_sort_key(left).cmp(&reported_prn_sort_key(right))
+    });
+    reported_prns
+}
+
+fn reported_prn_sort_key(entry: &ReportedPrn) -> (u8, std::cmp::Reverse<u32>, u8) {
+    let class_rank = if entry.classification == "accepted" { 0 } else { 1 };
+    (class_rank, std::cmp::Reverse(entry.peak_mean_ratio.to_bits()), entry.sat.prn)
 }
 
 #[derive(Debug, Serialize)]
@@ -55,6 +100,44 @@ struct ExperimentRunResult {
 #[derive(Debug, Serialize)]
 struct ExperimentSummary {
     runs: Vec<ExperimentRunResult>,
+}
+
+#[cfg(test)]
+mod report_tests {
+    use super::*;
+    use bijux_gnss_infra::api::core::Constellation;
+
+    fn gps_row(prn: u8, hypothesis: &str, peak_mean_ratio: f32) -> AcquisitionRow {
+        AcquisitionRow {
+            sat: SatId { constellation: Constellation::Gps, prn },
+            carrier_hz: 500.0 * prn as f64,
+            code_phase_samples: 42,
+            peak: peak_mean_ratio * 10.0,
+            peak_mean_ratio,
+            peak_second_ratio: 1.1,
+            hypothesis: hypothesis.to_string(),
+            selection_reason: None,
+        }
+    }
+
+    #[test]
+    fn summarize_reported_prns_prefers_accepted_rows_and_filters_rejections() {
+        let rows = vec![
+            gps_row(31, "ambiguous", 8.0),
+            gps_row(31, "accepted", 7.0),
+            gps_row(12, "ambiguous", 6.0),
+            gps_row(25, "deferred", 9.0),
+            gps_row(32, "rejected", 10.0),
+        ];
+
+        let reported_prns = summarize_reported_prns(&rows);
+
+        assert_eq!(reported_prns.len(), 2);
+        assert_eq!(reported_prns[0].sat.prn, 31);
+        assert_eq!(reported_prns[0].classification, "accepted");
+        assert_eq!(reported_prns[1].sat.prn, 12);
+        assert_eq!(reported_prns[1].classification, "candidate");
+    }
 }
 
 struct EkfContext {

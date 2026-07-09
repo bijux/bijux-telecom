@@ -72,7 +72,12 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
         }
     }
 
-    let report = AcquisitionReport { sats, front_end_metrics, results: rows };
+    let report = AcquisitionReport {
+        sats,
+        front_end_metrics,
+        reported_prns: summarize_reported_prns(&rows),
+        results: rows,
+    };
     match common.report {
         ReportFormat::Table => print_acquisition_table(&report),
         ReportFormat::Json => emit_report(&common, "acquire", &report)?,
