@@ -20,6 +20,13 @@ pub struct IqFrontEndMetrics {
     pub iq_power_ratio: f64,
     /// Whether the branch powers differ enough to warrant an operator warning.
     pub power_imbalance_warning: bool,
+    /// Estimated deviation from ideal 90 degree I/Q phase separation in degrees.
+    ///
+    /// This is `None` when the sample window does not provide enough centered I and Q variance
+    /// to support a meaningful estimate.
+    pub quadrature_error_deg: Option<f64>,
+    /// Whether the estimated quadrature error exceeds the operator warning limit.
+    pub quadrature_error_warning: bool,
     /// Complex RMS magnitude computed from I and Q power.
     pub rms: f64,
     /// Normalized DC vector magnitude relative to the complex RMS magnitude.
@@ -28,6 +35,8 @@ pub struct IqFrontEndMetrics {
 
 const POWER_RATIO_WARNING_LIMIT: f64 = 1.5;
 const POWER_RATIO_EPSILON: f64 = 1e-12;
+const QUADRATURE_WARNING_LIMIT_DEG: f64 = 5.0;
+const QUADRATURE_VARIANCE_EPSILON: f64 = 1e-12;
 
 /// Incremental analyzer for front-end metrics over one or more I/Q frames.
 #[derive(Debug, Clone, Default)]
@@ -37,6 +46,7 @@ pub struct IqFrontEndAnalyzer {
     sum_q: f64,
     sum_i_power: f64,
     sum_q_power: f64,
+    sum_iq: f64,
     sum_power: f64,
 }
 
@@ -56,6 +66,7 @@ impl IqFrontEndAnalyzer {
             self.sum_q += q;
             self.sum_i_power += i * i;
             self.sum_q_power += q * q;
+            self.sum_iq += i * q;
             self.sum_power += i * i + q * q;
         }
     }
@@ -77,6 +88,11 @@ impl IqFrontEndAnalyzer {
         };
         let iq_power_ratio = iq_power_ratio(i_power, q_power);
         let power_imbalance_warning = power_imbalance_warning(i_power, q_power);
+        let quadrature_error_deg =
+            quadrature_error_deg(self.sample_count, i_mean, q_mean, i_power, q_power, self.sum_iq);
+        let quadrature_error_warning = quadrature_error_deg
+            .map(|error_deg| error_deg.abs() > QUADRATURE_WARNING_LIMIT_DEG)
+            .unwrap_or(false);
         let rms = if self.sample_count == 0 {
             0.0
         } else {
@@ -92,6 +108,8 @@ impl IqFrontEndAnalyzer {
             q_power,
             iq_power_ratio,
             power_imbalance_warning,
+            quadrature_error_deg,
+            quadrature_error_warning,
             rms,
             dc_imbalance,
         }
@@ -113,6 +131,29 @@ fn power_imbalance_warning(i_power: f64, q_power: f64) -> bool {
     let stronger = i_power.max(q_power);
     let weaker = i_power.min(q_power);
     weaker <= POWER_RATIO_EPSILON || stronger / weaker > POWER_RATIO_WARNING_LIMIT
+}
+
+fn quadrature_error_deg(
+    sample_count: usize,
+    i_mean: f64,
+    q_mean: f64,
+    i_power: f64,
+    q_power: f64,
+    sum_iq: f64,
+) -> Option<f64> {
+    if sample_count == 0 {
+        return None;
+    }
+    let count = sample_count as f64;
+    let iq_mean = sum_iq / count;
+    let i_variance = (i_power - i_mean * i_mean).max(0.0);
+    let q_variance = (q_power - q_mean * q_mean).max(0.0);
+    if i_variance <= QUADRATURE_VARIANCE_EPSILON || q_variance <= QUADRATURE_VARIANCE_EPSILON {
+        return None;
+    }
+    let covariance = iq_mean - i_mean * q_mean;
+    let normalized = (covariance / (i_variance.sqrt() * q_variance.sqrt())).clamp(-1.0, 1.0);
+    Some(normalized.asin().to_degrees())
 }
 
 /// Measure front-end metrics over a single I/Q slice.
@@ -163,6 +204,8 @@ mod tests {
         approx_eq(metrics.q_power, 0.0625);
         approx_eq(metrics.iq_power_ratio, 4.0);
         assert!(metrics.power_imbalance_warning);
+        assert!(metrics.quadrature_error_deg.is_some());
+        assert!(metrics.quadrature_error_warning);
         approx_eq(metrics.rms, 0.5590169943749475);
         approx_eq(metrics.dc_imbalance, 0.5);
     }
@@ -182,6 +225,8 @@ mod tests {
         approx_eq(metrics.q_power, 0.0625);
         approx_eq(metrics.iq_power_ratio, 4.0);
         assert!(metrics.power_imbalance_warning);
+        assert_eq!(metrics.quadrature_error_deg, None);
+        assert!(!metrics.quadrature_error_warning);
         approx_eq(metrics.rms, 0.5590169943749475);
         approx_eq(metrics.dc_imbalance, 0.8944271909999159);
     }
@@ -204,12 +249,16 @@ mod tests {
         approx_eq(before.q_power, 0.0625);
         approx_eq(before.iq_power_ratio, 5.0);
         assert!(before.power_imbalance_warning);
+        assert_eq!(before.quadrature_error_deg, Some(0.0));
+        assert!(!before.quadrature_error_warning);
         approx_eq(after.i_mean, 0.0);
         approx_eq(after.q_mean, 0.0);
         approx_eq(after.i_power, 0.0625);
         approx_eq(after.q_power, 0.0625);
         approx_eq(after.iq_power_ratio, 1.0);
         assert!(!after.power_imbalance_warning);
+        assert_eq!(after.quadrature_error_deg, Some(0.0));
+        assert!(!after.quadrature_error_warning);
         approx_eq(after.rms, 0.3535533905932738);
         approx_eq(after.dc_imbalance, 0.0);
     }
@@ -228,5 +277,6 @@ mod tests {
         approx_eq(metrics.i_power, metrics.q_power);
         approx_eq(metrics.iq_power_ratio, 1.0);
         assert!(!metrics.power_imbalance_warning);
+        assert!(metrics.quadrature_error_deg.is_some());
     }
 }
