@@ -1,17 +1,19 @@
 //! Public API for bijux-gnss-signal.
 
 /// Spreading code generators.
-pub use crate::codes::ca_code::{generate_ca_code, Prn};
+pub use crate::codes::ca_code::{
+    ca_code_assignment, ca_code_assignments, generate_ca_code, CaCodeAssignment, Prn,
+};
 /// Numerically controlled oscillator helper.
 pub use crate::dsp::nco::Nco;
-/// Signal processing utilities.
-pub use crate::dsp::signal::samples_per_code;
 /// Front-end quality metrics derived from complex I/Q samples.
 pub use crate::dsp::quality::{
     estimate_iq_noise_floor_db, estimate_iq_noise_floor_db_from_metrics,
     measure_iq_front_end_metrics, measure_raw_iq_front_end_metrics, remove_dc_offset_in_place,
     IqFrontEndAnalyzer, IqFrontEndMetrics,
 };
+/// Signal processing utilities.
+pub use crate::dsp::signal::samples_per_code;
 /// Tracking helpers.
 pub use crate::dsp::tracking::{adaptive_bandwidth, code_at, discriminators, estimate_cn0_dbhz};
 /// Error types.
