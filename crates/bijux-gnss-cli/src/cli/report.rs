@@ -29,6 +29,12 @@ struct InspectReport {
     power_histogram: Vec<u64>,
 }
 
+#[derive(Debug, Serialize)]
+struct StreamingRunReport {
+    epochs: u64,
+    front_end_metrics: bijux_gnss_infra::api::signal::IqFrontEndMetrics,
+}
+
 #[derive(Debug, Serialize, Clone)]
 struct ExperimentRunResult {
     run_index: usize,

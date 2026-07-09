@@ -367,9 +367,19 @@ fn handle_run(command: GnssCommand) -> Result<()> {
                         config.code_freq_basis_hz,
                         config.code_length,
                     );
+                    let mut front_end_metrics =
+                        bijux_gnss_infra::api::signal::IqFrontEndAnalyzer::new().finish();
                     let mut epoch = 0u64;
-                    while let Some(frame) = source.next_frame(samples_per_code)? {
-                        let _ = frame;
+                    if let Some(frame) = source.next_frame(samples_per_code)? {
+                        front_end_metrics =
+                            bijux_gnss_infra::api::signal::measure_iq_front_end_metrics(&frame.iq);
+                        epoch += 1;
+                        if replay && rate > 0.0 {
+                            let dt = 0.001 / rate;
+                            std::thread::sleep(std::time::Duration::from_secs_f64(dt));
+                        }
+                    }
+                    while let Some(_frame) = source.next_frame(samples_per_code)? {
                         epoch += 1;
                         if epoch % 100 == 0 {
                             println!("processed epochs: {}", epoch);
@@ -379,7 +389,11 @@ fn handle_run(command: GnssCommand) -> Result<()> {
                             std::thread::sleep(std::time::Duration::from_secs_f64(dt));
                         }
                     }
-                    let report = serde_json::json!({ "epochs": epoch });
+                    let report = StreamingRunReport {
+                        epochs: epoch,
+                        front_end_metrics,
+                    };
+                    emit_report(&common, "run", &report)?;
                     write_manifest(&common, "run", &profile, dataset.as_ref(), &report)?;
 
     Ok(())
