@@ -8,8 +8,8 @@ pub use crate::dsp::nco::Nco;
 pub use crate::dsp::signal::samples_per_code;
 /// Front-end quality metrics derived from complex I/Q samples.
 pub use crate::dsp::quality::{
-    measure_iq_front_end_metrics, remove_dc_offset_in_place, IqFrontEndAnalyzer,
-    IqFrontEndMetrics,
+    measure_iq_front_end_metrics, measure_raw_iq_front_end_metrics, remove_dc_offset_in_place,
+    IqFrontEndAnalyzer, IqFrontEndMetrics,
 };
 /// Tracking helpers.
 pub use crate::dsp::tracking::{adaptive_bandwidth, code_at, discriminators, estimate_cn0_dbhz};

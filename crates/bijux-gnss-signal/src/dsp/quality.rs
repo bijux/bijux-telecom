@@ -3,8 +3,11 @@
 use bijux_gnss_core::api::Sample;
 use serde::{Deserialize, Serialize};
 
+use crate::raw_iq::{IqSampleFormat, RawIqMetadata};
+use crate::samples::{I16_SCALE, I8_SCALE};
+
 /// Front-end metrics measured from a complex I/Q sample window.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IqFrontEndMetrics {
     /// Number of complex samples used for the measurement.
     pub sample_count: usize,
@@ -27,6 +30,17 @@ pub struct IqFrontEndMetrics {
     pub quadrature_error_deg: Option<f64>,
     /// Whether the estimated quadrature error exceeds the operator warning limit.
     pub quadrature_error_warning: bool,
+    /// Percentage of complex samples that hit a quantized I/Q rail.
+    ///
+    /// This is `None` when the capture format does not support a meaningful rail-based
+    /// clipping measurement.
+    pub clipping_pct: Option<f64>,
+    /// Whether clipping exceeds the precision-claim refusal threshold.
+    pub clipping_warning: bool,
+    /// Whether the measured front-end conditions still support precision claims.
+    pub precision_claims_allowed: bool,
+    /// Explicit refusal reason when precision claims are not allowed.
+    pub precision_claims_refused_reason: Option<String>,
     /// Complex RMS magnitude computed from I and Q power.
     pub rms: f64,
     /// Normalized DC vector magnitude relative to the complex RMS magnitude.
@@ -37,6 +51,33 @@ const POWER_RATIO_WARNING_LIMIT: f64 = 1.5;
 const POWER_RATIO_EPSILON: f64 = 1e-12;
 const QUADRATURE_WARNING_LIMIT_DEG: f64 = 5.0;
 const QUADRATURE_VARIANCE_EPSILON: f64 = 1e-12;
+const CLIPPING_PRECISION_REFUSAL_LIMIT_PCT: f64 = 1.0;
+
+#[derive(Debug, Clone, Copy)]
+struct ClippingProfile {
+    negative_rail: f32,
+    positive_rail: f32,
+}
+
+impl ClippingProfile {
+    fn from_raw_iq_metadata(metadata: &RawIqMetadata) -> Option<Self> {
+        match metadata.format {
+            IqSampleFormat::Iq8 => Some(Self {
+                negative_rail: -128.0 * I8_SCALE,
+                positive_rail: 127.0 * I8_SCALE,
+            }),
+            IqSampleFormat::Iq16Le => Some(Self {
+                negative_rail: -32768.0 * I16_SCALE,
+                positive_rail: 32767.0 * I16_SCALE,
+            }),
+            IqSampleFormat::Cf32Le => None,
+        }
+    }
+
+    fn sample_is_clipped(self, sample: Sample) -> bool {
+        component_hits_rail(sample.re, self) || component_hits_rail(sample.im, self)
+    }
+}
 
 /// Incremental analyzer for front-end metrics over one or more I/Q frames.
 #[derive(Debug, Clone, Default)]
@@ -48,12 +89,22 @@ pub struct IqFrontEndAnalyzer {
     sum_q_power: f64,
     sum_iq: f64,
     sum_power: f64,
+    clipping_profile: Option<ClippingProfile>,
+    clipped_sample_count: usize,
 }
 
 impl IqFrontEndAnalyzer {
     /// Create a new analyzer.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Create a new analyzer with raw-IQ clipping context derived from capture metadata.
+    pub fn for_raw_iq_metadata(metadata: &RawIqMetadata) -> Self {
+        Self {
+            clipping_profile: ClippingProfile::from_raw_iq_metadata(metadata),
+            ..Self::default()
+        }
     }
 
     /// Accumulate metrics from a complex I/Q slice.
@@ -68,6 +119,13 @@ impl IqFrontEndAnalyzer {
             self.sum_q_power += q * q;
             self.sum_iq += i * q;
             self.sum_power += i * i + q * q;
+            if self
+                .clipping_profile
+                .map(|profile| profile.sample_is_clipped(*sample))
+                .unwrap_or(false)
+            {
+                self.clipped_sample_count += 1;
+            }
         }
     }
 
@@ -93,6 +151,22 @@ impl IqFrontEndAnalyzer {
         let quadrature_error_warning = quadrature_error_deg
             .map(|error_deg| error_deg.abs() > QUADRATURE_WARNING_LIMIT_DEG)
             .unwrap_or(false);
+        let clipping_pct = clipping_pct(
+            self.sample_count,
+            self.clipped_sample_count,
+            self.clipping_profile,
+        );
+        let clipping_warning = clipping_pct
+            .map(|pct| pct > CLIPPING_PRECISION_REFUSAL_LIMIT_PCT)
+            .unwrap_or(false);
+        let precision_claims_refused_reason = clipping_pct
+            .filter(|pct| *pct > CLIPPING_PRECISION_REFUSAL_LIMIT_PCT)
+            .map(|pct| {
+                format!(
+                    "front-end clipping {:.3}% exceeds the {:.3}% precision threshold",
+                    pct, CLIPPING_PRECISION_REFUSAL_LIMIT_PCT
+                )
+            });
         let rms = if self.sample_count == 0 {
             0.0
         } else {
@@ -110,6 +184,10 @@ impl IqFrontEndAnalyzer {
             power_imbalance_warning,
             quadrature_error_deg,
             quadrature_error_warning,
+            clipping_pct,
+            clipping_warning,
+            precision_claims_allowed: precision_claims_refused_reason.is_none(),
+            precision_claims_refused_reason,
             rms,
             dc_imbalance,
         }
@@ -156,9 +234,34 @@ fn quadrature_error_deg(
     Some(normalized.asin().to_degrees())
 }
 
+fn component_hits_rail(component: f32, profile: ClippingProfile) -> bool {
+    component == profile.negative_rail || component == profile.positive_rail
+}
+
+fn clipping_pct(
+    sample_count: usize,
+    clipped_sample_count: usize,
+    clipping_profile: Option<ClippingProfile>,
+) -> Option<f64> {
+    if sample_count == 0 || clipping_profile.is_none() {
+        return None;
+    }
+    Some(clipped_sample_count as f64 * 100.0 / sample_count as f64)
+}
+
 /// Measure front-end metrics over a single I/Q slice.
 pub fn measure_iq_front_end_metrics(samples: &[Sample]) -> IqFrontEndMetrics {
     let mut analyzer = IqFrontEndAnalyzer::new();
+    analyzer.update(samples);
+    analyzer.finish()
+}
+
+/// Measure front-end metrics over a raw-IQ window with quantization-aware clipping detection.
+pub fn measure_raw_iq_front_end_metrics(
+    samples: &[Sample],
+    metadata: &RawIqMetadata,
+) -> IqFrontEndMetrics {
+    let mut analyzer = IqFrontEndAnalyzer::for_raw_iq_metadata(metadata);
     analyzer.update(samples);
     analyzer.finish()
 }
@@ -179,7 +282,11 @@ pub fn remove_dc_offset_in_place(samples: &mut [Sample]) -> IqFrontEndMetrics {
 
 #[cfg(test)]
 mod tests {
-    use super::{measure_iq_front_end_metrics, remove_dc_offset_in_place, IqFrontEndAnalyzer};
+    use super::{
+        measure_iq_front_end_metrics, measure_raw_iq_front_end_metrics, remove_dc_offset_in_place,
+        IqFrontEndAnalyzer,
+    };
+    use crate::raw_iq::{IqSampleFormat, RawIqMetadata};
     use bijux_gnss_core::api::Sample;
     use std::f32::consts::TAU;
 
@@ -187,6 +294,18 @@ mod tests {
 
     fn approx_eq(left: f64, right: f64) {
         assert!((left - right).abs() < 1e-9, "left={left} right={right}");
+    }
+
+    fn iq8_metadata() -> RawIqMetadata {
+        RawIqMetadata {
+            format: IqSampleFormat::Iq8,
+            sample_rate_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            capture_start_utc: "2026-07-09T00:00:00Z".to_string(),
+            offset_bytes: 0,
+            quantization_bits: Some(8),
+            notes: None,
+        }
     }
 
     fn phase_skewed_carrier_samples(sample_count: usize, phase_error_deg: f32) -> Vec<Sample> {
@@ -219,6 +338,10 @@ mod tests {
         assert!(metrics.power_imbalance_warning);
         assert!(metrics.quadrature_error_deg.is_some());
         assert!(metrics.quadrature_error_warning);
+        assert_eq!(metrics.clipping_pct, None);
+        assert!(!metrics.clipping_warning);
+        assert!(metrics.precision_claims_allowed);
+        assert_eq!(metrics.precision_claims_refused_reason, None);
         approx_eq(metrics.rms, 0.5590169943749475);
         approx_eq(metrics.dc_imbalance, 0.5);
     }
@@ -240,6 +363,10 @@ mod tests {
         assert!(metrics.power_imbalance_warning);
         assert_eq!(metrics.quadrature_error_deg, None);
         assert!(!metrics.quadrature_error_warning);
+        assert_eq!(metrics.clipping_pct, None);
+        assert!(!metrics.clipping_warning);
+        assert!(metrics.precision_claims_allowed);
+        assert_eq!(metrics.precision_claims_refused_reason, None);
         approx_eq(metrics.rms, 0.5590169943749475);
         approx_eq(metrics.dc_imbalance, 0.8944271909999159);
     }
@@ -264,6 +391,10 @@ mod tests {
         assert!(before.power_imbalance_warning);
         assert_eq!(before.quadrature_error_deg, Some(0.0));
         assert!(!before.quadrature_error_warning);
+        assert_eq!(before.clipping_pct, None);
+        assert!(!before.clipping_warning);
+        assert!(before.precision_claims_allowed);
+        assert_eq!(before.precision_claims_refused_reason, None);
         approx_eq(after.i_mean, 0.0);
         approx_eq(after.q_mean, 0.0);
         approx_eq(after.i_power, 0.0625);
@@ -272,6 +403,10 @@ mod tests {
         assert!(!after.power_imbalance_warning);
         assert_eq!(after.quadrature_error_deg, Some(0.0));
         assert!(!after.quadrature_error_warning);
+        assert_eq!(after.clipping_pct, None);
+        assert!(!after.clipping_warning);
+        assert!(after.precision_claims_allowed);
+        assert_eq!(after.precision_claims_refused_reason, None);
         approx_eq(after.rms, 0.3535533905932738);
         approx_eq(after.dc_imbalance, 0.0);
     }
@@ -291,6 +426,9 @@ mod tests {
         approx_eq(metrics.iq_power_ratio, 1.0);
         assert!(!metrics.power_imbalance_warning);
         assert!(metrics.quadrature_error_deg.is_some());
+        assert_eq!(metrics.clipping_pct, None);
+        assert!(!metrics.clipping_warning);
+        assert!(metrics.precision_claims_allowed);
     }
 
     #[test]
@@ -307,5 +445,44 @@ mod tests {
             "measured={measured_error_deg} expected={expected_error_deg}"
         );
         assert!(metrics.quadrature_error_warning);
+    }
+
+    #[test]
+    fn raw_iq_metrics_report_clipping_percentage_and_refusal() {
+        let samples = vec![
+            Sample::new(-1.0, 127.0 / 128.0),
+            Sample::new(0.25, 0.0),
+            Sample::new(0.5, 0.25),
+            Sample::new(0.75, 0.5),
+        ];
+
+        let metrics = measure_raw_iq_front_end_metrics(&samples, &iq8_metadata());
+
+        assert_eq!(metrics.clipping_pct, Some(25.0));
+        assert!(metrics.clipping_warning);
+        assert!(!metrics.precision_claims_allowed);
+        assert!(
+            metrics
+                .precision_claims_refused_reason
+                .expect("precision refusal reason")
+                .contains("front-end clipping 25.000% exceeds")
+        );
+    }
+
+    #[test]
+    fn raw_iq_metrics_allow_precision_claims_at_threshold() {
+        let mut samples = Vec::new();
+        samples.push(Sample::new(-1.0, 127.0 / 128.0));
+        for idx in 1..100 {
+            let amplitude = idx as f32 / 200.0;
+            samples.push(Sample::new(amplitude, -amplitude * 0.5));
+        }
+
+        let metrics = measure_raw_iq_front_end_metrics(&samples, &iq8_metadata());
+
+        assert_eq!(metrics.clipping_pct, Some(1.0));
+        assert!(!metrics.clipping_warning);
+        assert!(metrics.precision_claims_allowed);
+        assert_eq!(metrics.precision_claims_refused_reason, None);
     }
 }
