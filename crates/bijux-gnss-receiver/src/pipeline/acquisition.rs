@@ -44,6 +44,8 @@ pub struct AcquisitionStats {
 
 const ACQUISITION_CACHE_MODEL_VERSION: u32 = 1;
 const ACQUISITION_CACHE_POLICY_VERSION: u32 = 1;
+const SEARCH_EDGE_HINT_PEAK_MEAN_RATIO_FRACTION: f32 = 0.9;
+const SEARCH_EDGE_RISE_RATIO_EPSILON: f32 = 0.05;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 struct CodeFftCacheKey {
@@ -104,6 +106,21 @@ impl CacheMissReason {
 }
 
 type CodeFftCache = HashMap<CodeFftCacheKey, Vec<Complex<f32>>>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SearchWindowEdge {
+    Lower,
+    Upper,
+}
+
+#[derive(Debug, Clone)]
+struct SearchWindowDiagnostic {
+    edge: SearchWindowEdge,
+    best_carrier_hz: f64,
+    interior_carrier_hz: f64,
+    best_peak_mean_ratio: f32,
+    interior_peak_mean_ratio: f32,
+}
 
 #[derive(Debug, Clone)]
 pub struct AcquisitionRun {
@@ -340,6 +357,14 @@ impl Acquisition {
                 doppler += self.doppler_step_hz;
             }
 
+            let search_window_diagnostic = signal_outside_search_range(
+                &candidates,
+                self.config.intermediate_freq_hz,
+                self.doppler_search_hz,
+                self.doppler_step_hz,
+                self.config.acquisition_peak_mean_threshold,
+            );
+
             candidates.sort_by(|a, b| {
                 let primary = b
                     .peak_mean_ratio
@@ -393,20 +418,27 @@ impl Acquisition {
                 let separation_ratio =
                     if rank == 0 { second_peak_ratio } else { candidate.peak_second_ratio };
                 if rank == 0 {
-                    let (hypothesis, score) = acquisition_hypothesis(
-                        candidate.peak_mean_ratio,
-                        candidate.peak_second_ratio,
-                        separation_ratio,
-                        &self.config,
-                    );
-                    candidate.hypothesis = hypothesis;
-                    candidate.score = score;
-                    candidate.explain_selection_reason = Some(format!(
-                        "rank 1 selected; peak_mean_ratio={:.6}, separation_ratio={:.6}, score={:.6}",
-                        candidate.peak_mean_ratio,
-                        separation_ratio,
-                        score
-                    ));
+                    if let Some(diagnostic) = search_window_diagnostic.as_ref() {
+                        candidate.hypothesis = AcqHypothesis::Rejected;
+                        candidate.score = 0.0;
+                        candidate.explain_selection_reason =
+                            Some(search_window_candidate_reason(diagnostic));
+                    } else {
+                        let (hypothesis, score) = acquisition_hypothesis(
+                            candidate.peak_mean_ratio,
+                            candidate.peak_second_ratio,
+                            separation_ratio,
+                            &self.config,
+                        );
+                        candidate.hypothesis = hypothesis;
+                        candidate.score = score;
+                        candidate.explain_selection_reason = Some(format!(
+                            "rank 1 selected; peak_mean_ratio={:.6}, separation_ratio={:.6}, score={:.6}",
+                            candidate.peak_mean_ratio,
+                            separation_ratio,
+                            score
+                        ));
+                    }
                 } else {
                     candidate.hypothesis = AcqHypothesis::Deferred;
                     candidate.explain_selection_reason = Some("not_selected".to_string());
@@ -415,11 +447,14 @@ impl Acquisition {
 
             let best = &candidates[0];
             if emit_explanations {
-                let selected_reason = match best.hypothesis {
-                    AcqHypothesis::Accepted => "accepted_by_ratio_thresholds",
-                    AcqHypothesis::Ambiguous => "ambiguous_ratio_thresholds",
-                    AcqHypothesis::Rejected => "rejected_peak_mean_threshold",
-                    AcqHypothesis::Deferred => "deferred",
+                let selected_reason = match search_window_diagnostic.as_ref() {
+                    Some(_) => "signal_outside_search_range",
+                    None => match best.hypothesis {
+                        AcqHypothesis::Accepted => "accepted_by_ratio_thresholds",
+                        AcqHypothesis::Ambiguous => "ambiguous_ratio_thresholds",
+                        AcqHypothesis::Rejected => "rejected_peak_mean_threshold",
+                        AcqHypothesis::Deferred => "deferred",
+                    },
                 };
                 explains.push(AcqExplain {
                     sat,
@@ -470,6 +505,30 @@ impl Acquisition {
                     ("peak_mean_ratio", format!("{:.6}", best.peak_mean_ratio)),
                 ],
             });
+            if let Some(diagnostic) = search_window_diagnostic.as_ref() {
+                self.runtime.trace.record(TraceRecord {
+                    name: "acquisition_search_window_rejection",
+                    fields: vec![
+                        ("constellation", format!("{:?}", best.sat.constellation)),
+                        ("prn", best.sat.prn.to_string()),
+                        ("reason", "signal_outside_search_range".to_string()),
+                        (
+                            "edge",
+                            match diagnostic.edge {
+                                SearchWindowEdge::Lower => "lower".to_string(),
+                                SearchWindowEdge::Upper => "upper".to_string(),
+                            },
+                        ),
+                        ("best_carrier_hz", format!("{:.3}", diagnostic.best_carrier_hz)),
+                        ("interior_carrier_hz", format!("{:.3}", diagnostic.interior_carrier_hz)),
+                        ("best_peak_mean_ratio", format!("{:.6}", diagnostic.best_peak_mean_ratio)),
+                        (
+                            "interior_peak_mean_ratio",
+                            format!("{:.6}", diagnostic.interior_peak_mean_ratio),
+                        ),
+                    ],
+                });
+            }
             if !best.evidence.is_empty() {
                 self.runtime.trace.record(TraceRecord {
                     name: "acquisition_evidence",
@@ -666,6 +725,68 @@ fn zero_signal_candidate_reason(zero_signal_reason: Option<&str>) -> String {
     }
 }
 
+fn signal_outside_search_range(
+    candidates: &[AcqResult],
+    intermediate_freq_hz: f64,
+    doppler_search_hz: i32,
+    doppler_step_hz: i32,
+    peak_mean_threshold: f32,
+) -> Option<SearchWindowDiagnostic> {
+    if candidates.len() < 2 || doppler_search_hz <= 0 || doppler_step_hz <= 0 {
+        return None;
+    }
+
+    let best = candidates.iter().max_by(|a, b| {
+        a.peak_mean_ratio.partial_cmp(&b.peak_mean_ratio).unwrap_or(std::cmp::Ordering::Equal)
+    })?;
+    let best_offset_hz = best.carrier_hz.0 - intermediate_freq_hz;
+    let edge = if best_offset_hz <= -(doppler_search_hz as f64) {
+        SearchWindowEdge::Lower
+    } else if best_offset_hz >= doppler_search_hz as f64 {
+        SearchWindowEdge::Upper
+    } else {
+        return None;
+    };
+
+    let interior_carrier_hz = match edge {
+        SearchWindowEdge::Lower => best.carrier_hz.0 + doppler_step_hz as f64,
+        SearchWindowEdge::Upper => best.carrier_hz.0 - doppler_step_hz as f64,
+    };
+    let interior = candidates
+        .iter()
+        .find(|candidate| (candidate.carrier_hz.0 - interior_carrier_hz).abs() <= f64::EPSILON)?;
+
+    let hint_threshold = peak_mean_threshold * SEARCH_EDGE_HINT_PEAK_MEAN_RATIO_FRACTION;
+    if best.peak_mean_ratio < hint_threshold {
+        return None;
+    }
+    if best.peak_mean_ratio <= interior.peak_mean_ratio * (1.0 + SEARCH_EDGE_RISE_RATIO_EPSILON) {
+        return None;
+    }
+
+    Some(SearchWindowDiagnostic {
+        edge,
+        best_carrier_hz: best.carrier_hz.0,
+        interior_carrier_hz: interior.carrier_hz.0,
+        best_peak_mean_ratio: best.peak_mean_ratio,
+        interior_peak_mean_ratio: interior.peak_mean_ratio,
+    })
+}
+
+fn search_window_candidate_reason(diagnostic: &SearchWindowDiagnostic) -> String {
+    let edge = match diagnostic.edge {
+        SearchWindowEdge::Lower => "lower",
+        SearchWindowEdge::Upper => "upper",
+    };
+    format!(
+        "signal_outside_search_range: best carrier {:.3} Hz sits on the {edge} search edge and exceeds the interior neighbor at {:.3} Hz (peak_mean_ratio {:.6} > {:.6})",
+        diagnostic.best_carrier_hz,
+        diagnostic.interior_carrier_hz,
+        diagnostic.best_peak_mean_ratio,
+        diagnostic.interior_peak_mean_ratio,
+    )
+}
+
 fn acquisition_hypothesis(
     peak_mean_ratio: f32,
     peak_second_ratio: f32,
@@ -766,6 +887,90 @@ mod tests {
         });
         let keys = stable_acq_result_keys(&rows);
         assert!(keys.windows(2).all(|window| window[0] <= window[1]));
+    }
+
+    #[test]
+    fn search_window_diagnostic_detects_rising_upper_edge_peak() {
+        let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 1 };
+        let diagnostic = signal_outside_search_range(
+            &[
+                candidate_for_search_window_test(sat, -1_500.0, 1.5),
+                candidate_for_search_window_test(sat, -1_250.0, 1.7),
+                candidate_for_search_window_test(sat, 1_250.0, 2.4),
+                candidate_for_search_window_test(sat, 1_500.0, 2.9),
+            ],
+            0.0,
+            1_500,
+            250,
+            2.5,
+        )
+        .expect("search-window diagnostic");
+
+        assert_eq!(diagnostic.edge, SearchWindowEdge::Upper);
+        assert_eq!(diagnostic.best_carrier_hz, 1_500.0);
+        assert_eq!(diagnostic.interior_carrier_hz, 1_250.0);
+    }
+
+    #[test]
+    fn search_window_diagnostic_ignores_interior_peak() {
+        let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 1 };
+        let diagnostic = signal_outside_search_range(
+            &[
+                candidate_for_search_window_test(sat, -1_500.0, 1.4),
+                candidate_for_search_window_test(sat, -1_250.0, 1.8),
+                candidate_for_search_window_test(sat, 0.0, 3.2),
+                candidate_for_search_window_test(sat, 1_500.0, 2.7),
+            ],
+            0.0,
+            1_500,
+            250,
+            2.5,
+        );
+
+        assert!(diagnostic.is_none());
+    }
+
+    #[test]
+    fn search_window_diagnostic_ignores_weak_edge_peak() {
+        let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 1 };
+        let diagnostic = signal_outside_search_range(
+            &[
+                candidate_for_search_window_test(sat, -1_500.0, 1.1),
+                candidate_for_search_window_test(sat, -1_250.0, 1.0),
+                candidate_for_search_window_test(sat, 1_250.0, 1.8),
+                candidate_for_search_window_test(sat, 1_500.0, 2.0),
+            ],
+            0.0,
+            1_500,
+            250,
+            2.5,
+        );
+
+        assert!(diagnostic.is_none());
+    }
+
+    fn candidate_for_search_window_test(
+        sat: SatId,
+        carrier_hz: f64,
+        peak_mean_ratio: f32,
+    ) -> AcqResult {
+        AcqResult {
+            sat,
+            carrier_hz: Hertz(carrier_hz),
+            code_phase_samples: 0,
+            peak: peak_mean_ratio,
+            second_peak: 1.0,
+            mean: 1.0,
+            peak_mean_ratio,
+            peak_second_ratio: peak_mean_ratio,
+            cn0_proxy: peak_mean_ratio,
+            score: 0.0,
+            hypothesis: AcqHypothesis::Deferred,
+            assumptions: None,
+            evidence: Vec::new(),
+            threshold_provenance: None,
+            explain_selection_reason: None,
+        }
     }
 }
 
