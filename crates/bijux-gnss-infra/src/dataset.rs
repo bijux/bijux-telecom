@@ -310,6 +310,28 @@ quantization_bits = 8
     }
 
     #[test]
+    fn load_raw_iq_metadata_rejects_complex_float32_quantization_mismatch() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let sidecar_path = temp.path().join("broken.sidecar.toml");
+        fs::write(
+            &sidecar_path,
+            r#"
+format = "cf32_le"
+sample_rate_hz = 5000000.0
+intermediate_freq_hz = 0.0
+capture_start_utc = "2026-07-09T00:00:00Z"
+quantization_bits = 16
+"#,
+        )
+        .expect("write sidecar");
+
+        let err =
+            load_raw_iq_metadata(&sidecar_path).expect_err("quantization mismatch must fail");
+        assert!(err.message.contains("quantization_bits"));
+        assert!(err.message.contains("Cf32Le"));
+    }
+
+    #[test]
     fn load_raw_iq_metadata_rejects_missing_timestamp() {
         let temp = tempfile::tempdir().expect("tempdir");
         let sidecar_path = temp.path().join("broken.sidecar.toml");
