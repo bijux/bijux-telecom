@@ -82,7 +82,9 @@ impl DatasetEntry {
 /// Load and validate raw IQ metadata from a sidecar file.
 pub fn load_raw_iq_metadata(path: &Path) -> Result<RawIqMetadata, InputError> {
     let contents = fs::read_to_string(path).map_err(map_err)?;
-    let metadata: RawIqMetadata = toml::from_str(&contents).map_err(map_err)?;
+    let value: toml::Value = toml::from_str(&contents).map_err(map_err)?;
+    validate_required_raw_iq_fields(&value)?;
+    let metadata: RawIqMetadata = value.try_into().map_err(map_err)?;
     validate_raw_iq_metadata(&metadata)?;
     Ok(metadata)
 }
@@ -168,6 +170,20 @@ fn validate_raw_iq_metadata(metadata: &RawIqMetadata) -> Result<(), InputError> 
                     "raw IQ metadata quantization_bits {bits} does not match format {:?}",
                     metadata.format
                 ),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn validate_required_raw_iq_fields(value: &toml::Value) -> Result<(), InputError> {
+    let table = value.as_table().ok_or_else(|| InputError {
+        message: "raw IQ metadata must be a TOML table".to_string(),
+    })?;
+    for field in ["format", "sample_rate_hz", "intermediate_freq_hz", "capture_start_utc"] {
+        if !table.contains_key(field) {
+            return Err(InputError {
+                message: format!("raw IQ metadata must declare {field}"),
             });
         }
     }
@@ -329,6 +345,24 @@ quantization_bits = 16
             load_raw_iq_metadata(&sidecar_path).expect_err("quantization mismatch must fail");
         assert!(err.message.contains("quantization_bits"));
         assert!(err.message.contains("Cf32Le"));
+    }
+
+    #[test]
+    fn load_raw_iq_metadata_rejects_missing_sample_rate() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let sidecar_path = temp.path().join("broken.sidecar.toml");
+        fs::write(
+            &sidecar_path,
+            r#"
+format = "iq16_le"
+intermediate_freq_hz = 0.0
+capture_start_utc = "2026-07-09T00:00:00Z"
+"#,
+        )
+        .expect("write sidecar");
+
+        let err = load_raw_iq_metadata(&sidecar_path).expect_err("missing sample rate must fail");
+        assert!(err.message.contains("sample_rate_hz"));
     }
 
     #[test]
