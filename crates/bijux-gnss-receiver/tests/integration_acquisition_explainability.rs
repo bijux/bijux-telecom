@@ -24,6 +24,7 @@ struct AcqFixture {
     step_hz: i32,
     coherent_ms: u32,
     noncoherent: u32,
+    acquisition_peak_mean_threshold: Option<f32>,
     expected_hypothesis: Option<String>,
     expected_selected_reason: Option<String>,
     expect_not_accepted: Option<bool>,
@@ -34,7 +35,10 @@ fn acquisition_fixtures_are_deterministic_with_expected_hypotheses() {
     let fixtures = load_fixture_paths();
     for path in fixtures {
         let fixture = load_fixture(&path);
-        let config = ReceiverPipelineConfig::default();
+        let mut config = ReceiverPipelineConfig::default();
+        if let Some(acquisition_peak_mean_threshold) = fixture.acquisition_peak_mean_threshold {
+            config.acquisition_peak_mean_threshold = acquisition_peak_mean_threshold;
+        }
         let frame = frame_from_fixture(&config, &fixture);
 
         let acquisition = AcquisitionEngine::new(config.clone(), ReceiverRuntime::default())
@@ -99,7 +103,10 @@ fn acquisition_fixtures_are_deterministic_with_expected_hypotheses() {
 #[test]
 fn acquisition_explain_artifact_contains_ranked_rationale() {
     let fixture = load_fixture(&fixture_root().join("fixture_synthetic_clean.json"));
-    let config = ReceiverPipelineConfig::default();
+    let mut config = ReceiverPipelineConfig::default();
+    if let Some(acquisition_peak_mean_threshold) = fixture.acquisition_peak_mean_threshold {
+        config.acquisition_peak_mean_threshold = acquisition_peak_mean_threshold;
+    }
     let frame = frame_from_fixture(&config, &fixture);
     let acquisition = AcquisitionEngine::new(config, ReceiverRuntime::default())
         .with_doppler(fixture.search_hz, fixture.step_hz);

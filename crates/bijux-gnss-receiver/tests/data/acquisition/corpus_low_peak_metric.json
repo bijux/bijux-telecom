@@ -1,0 +1,17 @@
+{
+  "id": "low-peak-metric",
+  "kind": "synthetic",
+  "sat": { "constellation": "Gps", "prn": 7 },
+  "doppler_hz": 250.0,
+  "code_phase_chips": 300.0,
+  "cn0_db_hz": 20.0,
+  "seed": 604446724,
+  "search_hz": 1500,
+  "step_hz": 250,
+  "coherent_ms": 1,
+  "noncoherent": 1,
+  "acquisition_peak_mean_threshold": 10.0,
+  "expected_hypothesis": "rejected",
+  "expected_selected_reason": "low_peak_metric",
+  "expect_not_accepted": true
+}
