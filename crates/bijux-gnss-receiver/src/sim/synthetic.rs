@@ -23,6 +23,7 @@ const SYNTHETIC_IQ_TRUTH_SCHEMA_VERSION: u32 = 2;
 const GPS_L1_CA_NAV_BIT_PERIOD_S: f64 = 0.02;
 const SYNTHETIC_COMPLEX_NOISE_POWER: f64 = 1.0;
 const SYNTHETIC_NOISE_STD_PER_COMPONENT: f32 = std::f32::consts::FRAC_1_SQRT_2;
+const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct SyntheticSignalParams {
@@ -227,6 +228,54 @@ pub struct SyntheticAcquisitionCodePhaseValidationReport {
     pub pass: bool,
     /// Per-satellite comparison rows.
     pub satellites: Vec<SyntheticAcquisitionCodePhaseValidationSatellite>,
+}
+
+/// Per-satellite comparison between coarse acquisition code phase and refined sub-sample phase.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionCodePhaseRefinementSatellite {
+    /// Satellite identifier.
+    pub sat: SatId,
+    /// Injected code phase at the start of the validation frame, in chips.
+    pub injected_code_phase_chips: f64,
+    /// Continuous expected acquisition-reported code phase sample.
+    pub expected_code_phase_samples: f64,
+    /// Coarse acquisition-reported code phase sample.
+    pub coarse_code_phase_samples: usize,
+    /// Refined acquisition-reported code phase sample.
+    pub refined_code_phase_samples: f64,
+    /// Wrapped absolute coarse error in samples.
+    pub coarse_error_samples: f64,
+    /// Wrapped absolute refined error in samples.
+    pub refined_error_samples: f64,
+    /// Pseudorange initialization error from the coarse phase, in meters.
+    pub coarse_pseudorange_error_m: f64,
+    /// Pseudorange initialization error from the refined phase, in meters.
+    pub refined_pseudorange_error_m: f64,
+    /// Improvement from refinement, in samples.
+    pub improvement_samples: f64,
+    /// Improvement from refinement, in meters.
+    pub improvement_m: f64,
+    /// Peak-to-mean ratio for the selected acquisition result.
+    pub peak_mean_ratio: f32,
+    /// Acquisition hypothesis returned by the receiver.
+    pub hypothesis: String,
+    /// Whether the refined phase stayed measurably closer than the coarse sample.
+    pub pass: bool,
+}
+
+/// Truth-guided report for acquisition code-phase refinement on a synthetic capture.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionCodePhaseRefinementReport {
+    /// Stable scenario identifier for this capture.
+    pub scenario_id: String,
+    /// Capture sample rate in Hz.
+    pub sample_rate_hz: f64,
+    /// Number of samples in one code period at the configured rate.
+    pub period_samples: usize,
+    /// Whether every measured satellite passed the refinement criterion.
+    pub pass: bool,
+    /// Per-satellite refinement rows.
+    pub satellites: Vec<SyntheticAcquisitionCodePhaseRefinementSatellite>,
 }
 
 /// Per-satellite acquisition Doppler comparison between clean synthetic truth and receiver output.
@@ -517,6 +566,19 @@ pub fn expected_acquisition_code_phase_samples(
     (period_samples - injected_sample) % period_samples
 }
 
+/// Convert a truth-model code phase into the receiver's continuous acquisition sample convention.
+pub fn expected_acquisition_code_phase_samples_f64(
+    config: &ReceiverPipelineConfig,
+    frame: &SamplesFrame,
+    code_phase_chips: f64,
+) -> f64 {
+    let period_samples =
+        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length)
+            .max(1) as f64;
+    let phase_samples = code_phase_samples_at_epoch_start(config, frame, code_phase_chips);
+    (period_samples - phase_samples.rem_euclid(period_samples)).rem_euclid(period_samples)
+}
+
 /// Measure wrapped code-phase error in samples over one code period.
 pub fn wrapped_code_phase_error_samples(
     actual: usize,
@@ -527,6 +589,22 @@ pub fn wrapped_code_phase_error_samples(
     let forward = actual.abs_diff(expected);
     let wrapped = period_samples.saturating_sub(forward);
     forward.min(wrapped)
+}
+
+/// Measure wrapped code-phase error in samples over one code period for fractional estimates.
+pub fn wrapped_code_phase_error_samples_f64(
+    actual: f64,
+    expected: f64,
+    period_samples: usize,
+) -> f64 {
+    let period_samples = period_samples.max(1) as f64;
+    let forward = (actual - expected).abs().rem_euclid(period_samples);
+    let wrapped = (period_samples - forward).rem_euclid(period_samples);
+    forward.min(wrapped)
+}
+
+fn code_phase_error_samples_to_pseudorange_m(error_samples: f64, sample_rate_hz: f64) -> f64 {
+    (error_samples / sample_rate_hz) * SPEED_OF_LIGHT_MPS
 }
 
 /// Measure truth-guided acquisition code-phase accuracy from a synthetic capture.
@@ -543,11 +621,15 @@ pub fn validate_truth_guided_acquisition_code_phase(
         .satellites
         .iter()
         .map(|sat_truth| {
-            let isolated_frame =
-                regenerate_isolated_scaled_satellite_signal_only_frame(config, frame, truth, sat_truth);
+            let isolated_frame = regenerate_isolated_scaled_satellite_signal_only_frame(
+                config, frame, truth, sat_truth,
+            );
             let mut acquisition_config = config.clone();
-            acquisition_config.intermediate_freq_hz =
-                synthetic_carrier_hz(truth.intermediate_freq_hz, sat_truth.sat, sat_truth.doppler_hz);
+            acquisition_config.intermediate_freq_hz = synthetic_carrier_hz(
+                truth.intermediate_freq_hz,
+                sat_truth.sat,
+                sat_truth.doppler_hz,
+            );
             acquisition_config.acquisition_doppler_search_hz = 0;
             acquisition_config.acquisition_doppler_step_hz = 1;
             let acquisition = crate::pipeline::acquisition::Acquisition::new(
@@ -556,8 +638,11 @@ pub fn validate_truth_guided_acquisition_code_phase(
             )
             .with_doppler(0, 1);
             let result = acquisition.run_fft(&isolated_frame, &[sat_truth.sat]).remove(0);
-            let expected_code_phase_samples =
-                expected_acquisition_code_phase_samples(config, &isolated_frame, sat_truth.code_phase_chips);
+            let expected_code_phase_samples = expected_acquisition_code_phase_samples(
+                config,
+                &isolated_frame,
+                sat_truth.code_phase_chips,
+            );
             let code_phase_error_samples = wrapped_code_phase_error_samples(
                 result.code_phase_samples,
                 expected_code_phase_samples,
@@ -565,7 +650,8 @@ pub fn validate_truth_guided_acquisition_code_phase(
             );
             let pass = matches!(
                 result.hypothesis,
-                crate::api::core::AcqHypothesis::Accepted | crate::api::core::AcqHypothesis::Ambiguous
+                crate::api::core::AcqHypothesis::Accepted
+                    | crate::api::core::AcqHypothesis::Ambiguous
             ) && code_phase_error_samples <= tolerance_samples;
 
             SyntheticAcquisitionCodePhaseValidationSatellite {
@@ -592,6 +678,100 @@ pub fn validate_truth_guided_acquisition_code_phase(
     }
 }
 
+/// Measure whether acquisition code-phase refinement improves pseudorange initialization.
+pub fn validate_truth_guided_acquisition_code_phase_refinement(
+    config: &ReceiverPipelineConfig,
+    frame: &SamplesFrame,
+    truth: &SyntheticIqTruthBundle,
+) -> SyntheticAcquisitionCodePhaseRefinementReport {
+    let period_samples =
+        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length)
+            .max(1);
+    let satellites = truth
+        .satellites
+        .iter()
+        .map(|sat_truth| {
+            let isolated_frame = regenerate_isolated_scaled_satellite_signal_only_frame(
+                config, frame, truth, sat_truth,
+            );
+            let mut acquisition_config = config.clone();
+            acquisition_config.intermediate_freq_hz = synthetic_carrier_hz(
+                truth.intermediate_freq_hz,
+                sat_truth.sat,
+                sat_truth.doppler_hz,
+            );
+            acquisition_config.acquisition_doppler_search_hz = 0;
+            acquisition_config.acquisition_doppler_step_hz = 1;
+            let acquisition = crate::pipeline::acquisition::Acquisition::new(
+                acquisition_config,
+                crate::engine::runtime::ReceiverRuntime::default(),
+            )
+            .with_doppler(0, 1);
+            let result = acquisition.run_fft(&isolated_frame, &[sat_truth.sat]).remove(0);
+            let expected_code_phase_samples = expected_acquisition_code_phase_samples_f64(
+                config,
+                &isolated_frame,
+                sat_truth.code_phase_chips,
+            );
+            let coarse_code_phase_samples = result.code_phase_samples;
+            let refined_code_phase_samples = result.resolved_code_phase_samples();
+            let coarse_error_samples = wrapped_code_phase_error_samples_f64(
+                coarse_code_phase_samples as f64,
+                expected_code_phase_samples,
+                period_samples,
+            );
+            let refined_error_samples = wrapped_code_phase_error_samples_f64(
+                refined_code_phase_samples,
+                expected_code_phase_samples,
+                period_samples,
+            );
+            let coarse_pseudorange_error_m = code_phase_error_samples_to_pseudorange_m(
+                coarse_error_samples,
+                config.sampling_freq_hz,
+            );
+            let refined_pseudorange_error_m = code_phase_error_samples_to_pseudorange_m(
+                refined_error_samples,
+                config.sampling_freq_hz,
+            );
+            let improvement_samples = coarse_error_samples - refined_error_samples;
+            let improvement_m = coarse_pseudorange_error_m - refined_pseudorange_error_m;
+            let pass = result.code_phase_refinement.is_some()
+                && matches!(
+                    result.hypothesis,
+                    crate::api::core::AcqHypothesis::Accepted
+                        | crate::api::core::AcqHypothesis::Ambiguous
+                )
+                && improvement_samples > f64::EPSILON;
+
+            SyntheticAcquisitionCodePhaseRefinementSatellite {
+                sat: sat_truth.sat,
+                injected_code_phase_chips: sat_truth.code_phase_chips,
+                expected_code_phase_samples,
+                coarse_code_phase_samples,
+                refined_code_phase_samples,
+                coarse_error_samples,
+                refined_error_samples,
+                coarse_pseudorange_error_m,
+                refined_pseudorange_error_m,
+                improvement_samples,
+                improvement_m,
+                peak_mean_ratio: result.peak_mean_ratio,
+                hypothesis: result.hypothesis.to_string(),
+                pass,
+            }
+        })
+        .collect::<Vec<_>>();
+    let pass = !satellites.is_empty() && satellites.iter().all(|row| row.pass);
+
+    SyntheticAcquisitionCodePhaseRefinementReport {
+        scenario_id: truth.scenario_id.clone(),
+        sample_rate_hz: truth.sample_rate_hz,
+        period_samples,
+        pass,
+        satellites,
+    }
+}
+
 /// Measure truth-guided acquisition Doppler accuracy from a synthetic capture.
 pub fn validate_truth_guided_acquisition_doppler(
     config: &ReceiverPipelineConfig,
@@ -605,18 +785,22 @@ pub fn validate_truth_guided_acquisition_doppler(
         .satellites
         .iter()
         .map(|sat_truth| {
-            let isolated_frame =
-                regenerate_isolated_scaled_satellite_signal_only_frame(config, frame, truth, sat_truth);
+            let isolated_frame = regenerate_isolated_scaled_satellite_signal_only_frame(
+                config, frame, truth, sat_truth,
+            );
             let acquisition = crate::pipeline::acquisition::Acquisition::new(
                 config.clone(),
                 crate::engine::runtime::ReceiverRuntime::default(),
             );
             let result = acquisition.run_fft(&isolated_frame, &[sat_truth.sat]).remove(0);
-            let measured_doppler_hz =
-                crate::pipeline::doppler::doppler_hz_from_carrier_hz(config.intermediate_freq_hz, result.carrier_hz.0);
+            let measured_doppler_hz = crate::pipeline::doppler::doppler_hz_from_carrier_hz(
+                config.intermediate_freq_hz,
+                result.carrier_hz.0,
+            );
             let doppler_error_hz = (measured_doppler_hz - sat_truth.doppler_hz).abs();
             let doppler_error_bins = doppler_error_hz / doppler_step_hz as f64;
-            let pass = measured_doppler_hz.is_finite() && doppler_error_hz <= tolerance_hz + f64::EPSILON;
+            let pass =
+                measured_doppler_hz.is_finite() && doppler_error_hz <= tolerance_hz + f64::EPSILON;
 
             SyntheticAcquisitionDopplerValidationSatellite {
                 sat: sat_truth.sat,
@@ -655,15 +839,18 @@ pub fn validate_truth_guided_acquisition_doppler_refinement(
         .satellites
         .iter()
         .map(|sat_truth| {
-            let isolated_frame =
-                regenerate_isolated_scaled_satellite_signal_only_frame(config, frame, truth, sat_truth);
+            let isolated_frame = regenerate_isolated_scaled_satellite_signal_only_frame(
+                config, frame, truth, sat_truth,
+            );
             let acquisition = crate::pipeline::acquisition::Acquisition::new(
                 config.clone(),
                 crate::engine::runtime::ReceiverRuntime::default(),
             );
             let result = acquisition.run_fft(&isolated_frame, &[sat_truth.sat]).remove(0);
-            let refined_doppler_hz =
-                crate::pipeline::doppler::doppler_hz_from_carrier_hz(config.intermediate_freq_hz, result.carrier_hz.0);
+            let refined_doppler_hz = crate::pipeline::doppler::doppler_hz_from_carrier_hz(
+                config.intermediate_freq_hz,
+                result.carrier_hz.0,
+            );
             let (coarse_doppler_hz, refinement_bins) = result
                 .doppler_refinement
                 .as_ref()
@@ -917,7 +1104,10 @@ fn regenerate_isolated_scaled_satellite_frame(
     truth: &SyntheticIqTruthBundle,
     sat_truth: &SyntheticSatelliteTruth,
 ) -> SamplesFrame {
-    let isolated_frame = generate_l1_ca_multi(config, &isolated_satellite_scenario(measured_frame, truth, sat_truth));
+    let isolated_frame = generate_l1_ca_multi(
+        config,
+        &isolated_satellite_scenario(measured_frame, truth, sat_truth),
+    );
     let iq = isolated_frame
         .iq
         .iter()
@@ -1136,11 +1326,13 @@ impl XorShift64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_iq16_capture_bundle, build_truth_bundle, generate_l1_ca_multi,
-        expected_acquisition_code_phase_samples, nav_bit_index_at_time_s, nav_bit_sign_at_time_s,
-        signal_amplitude_from_cn0, validate_truth_guided_acquisition_code_phase,
+        build_iq16_capture_bundle, build_truth_bundle, expected_acquisition_code_phase_samples,
+        expected_acquisition_code_phase_samples_f64, generate_l1_ca_multi, nav_bit_index_at_time_s,
+        nav_bit_sign_at_time_s, signal_amplitude_from_cn0,
+        validate_truth_guided_acquisition_code_phase,
+        validate_truth_guided_acquisition_code_phase_refinement,
         validate_truth_guided_acquisition_doppler, validate_truth_guided_cn0,
-        wrapped_code_phase_error_samples, SatState,
+        wrapped_code_phase_error_samples, wrapped_code_phase_error_samples_f64, SatState,
         SyntheticNavBitMode, SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource,
         SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
     };
@@ -1543,8 +1735,11 @@ mod tests {
             code_length: 1023,
             ..ReceiverPipelineConfig::default()
         };
-        let period_samples =
-            samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
+        let period_samples = samples_per_code(
+            config.sampling_freq_hz,
+            config.code_freq_basis_hz,
+            config.code_length,
+        );
         let frame = SamplesFrame::new(
             SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
             Seconds(1.0 / config.sampling_freq_hz),
@@ -1560,6 +1755,10 @@ mod tests {
             ),
             1
         );
+        assert!(
+            (expected_acquisition_code_phase_samples_f64(&config, &frame, 0.125) - 4091.5).abs()
+                < 1.0e-9
+        );
     }
 
     #[test]
@@ -1567,6 +1766,7 @@ mod tests {
         assert_eq!(wrapped_code_phase_error_samples(0, 0, 4092), 0);
         assert_eq!(wrapped_code_phase_error_samples(1, 4091, 4092), 2);
         assert_eq!(wrapped_code_phase_error_samples(4091, 1, 4092), 2);
+        assert!((wrapped_code_phase_error_samples_f64(4091.5, 0.0, 4092) - 0.5).abs() < 1.0e-9);
     }
 
     #[test]
@@ -1631,6 +1831,70 @@ mod tests {
     }
 
     #[test]
+    fn truth_guided_code_phase_refinement_improves_fractional_pseudorange_initialization() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_000_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let scenario = SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            duration_s: 0.04,
+            seed: 24071985,
+            satellites: vec![
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                    doppler_hz: 0.0,
+                    code_phase_chips: 200.25,
+                    carrier_phase_rad: 0.0,
+                    cn0_db_hz: 65.0,
+                    data_bit_flip: false,
+                },
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                    doppler_hz: 0.0,
+                    code_phase_chips: 321.5,
+                    carrier_phase_rad: 0.2,
+                    cn0_db_hz: 63.0,
+                    data_bit_flip: false,
+                },
+            ],
+            ephemerides: Vec::new(),
+            id: "acquisition_code_phase_refinement_truth".to_string(),
+        };
+        let frame = generate_l1_ca_multi(&config, &scenario);
+        let bundle = build_iq16_capture_bundle(
+            &scenario.id,
+            &scenario,
+            &frame,
+            "2026-07-09T00:00:00Z",
+            Some("unit code-phase refinement validation".to_string()),
+        );
+        let scaled_frame = SamplesFrame::new(
+            frame.t0,
+            frame.dt_s,
+            frame.iq.iter().map(|sample| *sample * bundle.truth.output_scale_applied).collect(),
+        );
+
+        let report = validate_truth_guided_acquisition_code_phase_refinement(
+            &config,
+            &scaled_frame,
+            &bundle.truth,
+        );
+
+        assert!(report.pass, "{report:?}");
+        assert_eq!(report.satellites.len(), 2);
+        for row in &report.satellites {
+            assert!(row.pass, "{row:?}");
+            assert!(row.improvement_samples > 0.0, "{row:?}");
+            assert!(row.improvement_m > 0.0, "{row:?}");
+        }
+    }
+
+    #[test]
     fn truth_guided_acquisition_doppler_validation_matches_clean_truth_within_one_bin() {
         let config = ReceiverPipelineConfig {
             sampling_freq_hz: 4_092_000.0,
@@ -1680,7 +1944,8 @@ mod tests {
             frame.dt_s,
             frame.iq.iter().map(|sample| *sample * bundle.truth.output_scale_applied).collect(),
         );
-        let report = validate_truth_guided_acquisition_doppler(&config, &scaled_frame, &bundle.truth, 1);
+        let report =
+            validate_truth_guided_acquisition_doppler(&config, &scaled_frame, &bundle.truth, 1);
 
         assert!(report.pass, "{report:?}");
         assert_eq!(report.tolerance_hz, 500.0);
