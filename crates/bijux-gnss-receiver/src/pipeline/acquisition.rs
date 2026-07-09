@@ -166,6 +166,27 @@ impl Acquisition {
         self
     }
 
+    fn full_code_search_assumptions(
+        &self,
+        frame_samples: usize,
+        coherent_ms: u32,
+        noncoherent: u32,
+        samples_per_code: usize,
+    ) -> AcqAssumptions {
+        AcqAssumptions {
+            doppler_search_hz: self.doppler_search_hz,
+            doppler_step_hz: self.doppler_step_hz,
+            coherent_ms,
+            noncoherent,
+            samples_per_code,
+            frame_samples,
+            code_phase_search_start_sample: 0,
+            code_phase_search_step_samples: 1,
+            code_phase_search_bins: samples_per_code,
+            code_phase_search_mode: "full_code".to_string(),
+        }
+    }
+
     /// Perform satellite acquisition on a buffer that spans the configured integration window.
     pub fn run_fft(&self, frame: &SamplesFrame, sats: &[SatId]) -> Vec<AcqResult> {
         self.run_fft_topn(
@@ -218,18 +239,8 @@ impl Acquisition {
         );
         let total_ms = (coherent_ms * noncoherent).max(1) as usize;
         let required = samples_per_code * total_ms;
-        let assumptions = AcqAssumptions {
-            doppler_search_hz: self.doppler_search_hz,
-            doppler_step_hz: self.doppler_step_hz,
-            coherent_ms,
-            noncoherent,
-            samples_per_code,
-            frame_samples: frame.len(),
-            code_phase_search_start_sample: 0,
-            code_phase_search_step_samples: 1,
-            code_phase_search_bins: samples_per_code,
-            code_phase_search_mode: "full_code".to_string(),
-        };
+        let assumptions =
+            self.full_code_search_assumptions(frame.len(), coherent_ms, noncoherent, samples_per_code);
         let threshold_provenance = AcqThresholdProvenance {
             coherent_ms,
             noncoherent,
