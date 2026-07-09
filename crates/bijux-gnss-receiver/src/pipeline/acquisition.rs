@@ -128,6 +128,30 @@ struct SearchWindowDiagnostic {
     interior_peak_mean_ratio: f32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AcquisitionDecisionReason {
+    AcceptedByRatioThresholds,
+    AmbiguousRatioThresholds,
+    LowPeakMetric,
+}
+
+impl AcquisitionDecisionReason {
+    fn as_str(self) -> &'static str {
+        match self {
+            AcquisitionDecisionReason::AcceptedByRatioThresholds => "accepted_by_ratio_thresholds",
+            AcquisitionDecisionReason::AmbiguousRatioThresholds => "ambiguous_ratio_thresholds",
+            AcquisitionDecisionReason::LowPeakMetric => "low_peak_metric",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct AcquisitionDecision {
+    hypothesis: AcqHypothesis,
+    reason: AcquisitionDecisionReason,
+    score: f32,
+}
+
 #[derive(Debug, Clone)]
 pub struct AcquisitionRun {
     pub results: Vec<Vec<AcqResult>>,
@@ -500,21 +524,21 @@ impl Acquisition {
                         candidate.explain_selection_reason =
                             Some(search_window_candidate_reason(diagnostic));
                     } else {
-                        let (hypothesis, score) = acquisition_hypothesis(
+                        let decision = acquisition_decision(
                             candidate.peak_mean_ratio,
                             candidate.peak_second_ratio,
                             local_peak_separation_ratio,
                             competing_peak_ratio,
                             &self.config,
                         );
-                        candidate.hypothesis = hypothesis;
-                        candidate.score = score;
-                        candidate.explain_selection_reason = Some(format!(
-                            "rank 1 selected; peak_mean_ratio={:.6}, local_peak_separation_ratio={:.6}, competing_peak_ratio={:.6}, score={:.6}",
+                        candidate.hypothesis = decision.hypothesis;
+                        candidate.score = decision.score;
+                        candidate.explain_selection_reason = Some(selected_candidate_reason(
+                            decision,
                             candidate.peak_mean_ratio,
                             local_peak_separation_ratio,
                             competing_peak_ratio,
-                            score
+                            &self.config,
                         ));
                     }
                 } else {
@@ -527,12 +551,7 @@ impl Acquisition {
             if emit_explanations {
                 let selected_reason = match search_window_diagnostic.as_ref() {
                     Some(_) => "signal_outside_search_range",
-                    None => match best.hypothesis {
-                        AcqHypothesis::Accepted => "accepted_by_ratio_thresholds",
-                        AcqHypothesis::Ambiguous => "ambiguous_ratio_thresholds",
-                        AcqHypothesis::Rejected => "rejected_peak_mean_threshold",
-                        AcqHypothesis::Deferred => "deferred",
-                    },
+                    None => selected_reason_for_candidate(best),
                 };
                 explains.push(AcqExplain {
                     sat,
@@ -578,6 +597,13 @@ impl Acquisition {
                     ("constellation", format!("{:?}", best.sat.constellation)),
                     ("prn", best.sat.prn.to_string()),
                     ("outcome", outcome.to_string()),
+                    (
+                        "reason",
+                        search_window_diagnostic.as_ref().map_or_else(
+                            || selected_reason_for_candidate(best).to_string(),
+                            |_| "signal_outside_search_range".to_string(),
+                        ),
+                    ),
                     ("carrier_hz", format!("{:.3}", best.carrier_hz.0)),
                     ("score", format!("{:.6}", best.score)),
                     ("peak_mean_ratio", format!("{:.6}", best.peak_mean_ratio)),
@@ -1073,18 +1099,26 @@ fn search_window_candidate_reason(diagnostic: &SearchWindowDiagnostic) -> String
     )
 }
 
-fn acquisition_hypothesis(
+fn acquisition_decision(
     peak_mean_ratio: f32,
     peak_second_ratio: f32,
     local_peak_separation_ratio: f32,
     competing_peak_ratio: f32,
     config: &ReceiverPipelineConfig,
-) -> (AcqHypothesis, f32) {
+) -> AcquisitionDecision {
     if peak_mean_ratio < config.acquisition_peak_mean_threshold {
-        return (AcqHypothesis::Rejected, 0.0);
+        return AcquisitionDecision {
+            hypothesis: AcqHypothesis::Rejected,
+            reason: AcquisitionDecisionReason::LowPeakMetric,
+            score: 0.0,
+        };
     }
     if !local_peak_separation_ratio.is_finite() || !competing_peak_ratio.is_finite() {
-        return (AcqHypothesis::Ambiguous, 0.25 * peak_mean_ratio);
+        return AcquisitionDecision {
+            hypothesis: AcqHypothesis::Ambiguous,
+            reason: AcquisitionDecisionReason::AmbiguousRatioThresholds,
+            score: 0.25 * peak_mean_ratio,
+        };
     }
     let limiting_ratio =
         peak_second_ratio.min(local_peak_separation_ratio).min(competing_peak_ratio);
@@ -1092,9 +1126,52 @@ fn acquisition_hypothesis(
         || local_peak_separation_ratio < config.acquisition_peak_second_threshold
         || competing_peak_ratio < config.acquisition_peak_second_threshold
     {
-        return (AcqHypothesis::Ambiguous, (peak_mean_ratio * 0.35) + (limiting_ratio * 0.15));
+        return AcquisitionDecision {
+            hypothesis: AcqHypothesis::Ambiguous,
+            reason: AcquisitionDecisionReason::AmbiguousRatioThresholds,
+            score: (peak_mean_ratio * 0.35) + (limiting_ratio * 0.15),
+        };
     }
-    (AcqHypothesis::Accepted, (peak_mean_ratio * 0.5) + (peak_second_ratio * 0.5))
+    AcquisitionDecision {
+        hypothesis: AcqHypothesis::Accepted,
+        reason: AcquisitionDecisionReason::AcceptedByRatioThresholds,
+        score: (peak_mean_ratio * 0.5) + (peak_second_ratio * 0.5),
+    }
+}
+
+fn selected_reason_for_candidate(candidate: &AcqResult) -> &'static str {
+    match candidate.hypothesis {
+        AcqHypothesis::Accepted => AcquisitionDecisionReason::AcceptedByRatioThresholds.as_str(),
+        AcqHypothesis::Ambiguous => AcquisitionDecisionReason::AmbiguousRatioThresholds.as_str(),
+        AcqHypothesis::Rejected => AcquisitionDecisionReason::LowPeakMetric.as_str(),
+        AcqHypothesis::Deferred => "deferred",
+    }
+}
+
+fn selected_candidate_reason(
+    decision: AcquisitionDecision,
+    peak_mean_ratio: f32,
+    local_peak_separation_ratio: f32,
+    competing_peak_ratio: f32,
+    config: &ReceiverPipelineConfig,
+) -> String {
+    match decision.reason {
+        AcquisitionDecisionReason::AcceptedByRatioThresholds
+        | AcquisitionDecisionReason::AmbiguousRatioThresholds => format!(
+            "{}: peak_mean_ratio={:.6}, local_peak_separation_ratio={:.6}, competing_peak_ratio={:.6}, score={:.6}",
+            decision.reason.as_str(),
+            peak_mean_ratio,
+            local_peak_separation_ratio,
+            competing_peak_ratio,
+            decision.score,
+        ),
+        AcquisitionDecisionReason::LowPeakMetric => format!(
+            "{}: peak_mean_ratio={:.6} below threshold {:.6}",
+            decision.reason.as_str(),
+            peak_mean_ratio,
+            config.acquisition_peak_mean_threshold,
+        ),
+    }
 }
 
 fn competing_candidate_ratio(candidates: &[AcqResult]) -> f32 {
@@ -1299,35 +1376,39 @@ mod tests {
     use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds};
 
     #[test]
-    fn acquisition_hypothesis_rejects_weak_primary_peak() {
+    fn acquisition_decision_rejects_weak_primary_peak() {
         let config = ReceiverPipelineConfig::default();
-        let (hypothesis, score) = acquisition_hypothesis(2.0, 2.0, 2.0, 2.0, &config);
-        assert_eq!(hypothesis.to_string(), "rejected");
-        assert_eq!(score, 0.0);
+        let decision = acquisition_decision(2.0, 2.0, 2.0, 2.0, &config);
+        assert_eq!(decision.hypothesis.to_string(), "rejected");
+        assert_eq!(decision.reason, AcquisitionDecisionReason::LowPeakMetric);
+        assert_eq!(decision.score, 0.0);
     }
 
     #[test]
-    fn acquisition_hypothesis_marks_ambiguous_on_low_peak_separation() {
+    fn acquisition_decision_marks_ambiguous_on_low_peak_separation() {
         let config = ReceiverPipelineConfig::default();
-        let (hypothesis, score) = acquisition_hypothesis(3.0, 1.0, 1.4, 2.0, &config);
-        assert_eq!(hypothesis.to_string(), "ambiguous");
-        assert!((score - 1.2).abs() < 1e-6);
+        let decision = acquisition_decision(3.0, 1.0, 1.4, 2.0, &config);
+        assert_eq!(decision.hypothesis.to_string(), "ambiguous");
+        assert_eq!(decision.reason, AcquisitionDecisionReason::AmbiguousRatioThresholds);
+        assert!((decision.score - 1.2).abs() < 1e-6);
     }
 
     #[test]
-    fn acquisition_hypothesis_marks_ambiguous_on_comparable_competing_candidate() {
+    fn acquisition_decision_marks_ambiguous_on_comparable_competing_candidate() {
         let config = ReceiverPipelineConfig::default();
-        let (hypothesis, score) = acquisition_hypothesis(3.5, 2.0, 2.0, 1.4, &config);
-        assert_eq!(hypothesis.to_string(), "ambiguous");
-        assert!((score - 1.435).abs() < 1e-6);
+        let decision = acquisition_decision(3.5, 2.0, 2.0, 1.4, &config);
+        assert_eq!(decision.hypothesis.to_string(), "ambiguous");
+        assert_eq!(decision.reason, AcquisitionDecisionReason::AmbiguousRatioThresholds);
+        assert!((decision.score - 1.435).abs() < 1e-6);
     }
 
     #[test]
-    fn acquisition_hypothesis_accepts_clean_peak() {
+    fn acquisition_decision_accepts_clean_peak() {
         let config = ReceiverPipelineConfig::default();
-        let (hypothesis, score) = acquisition_hypothesis(3.5, 2.0, 2.5, 2.1, &config);
-        assert_eq!(hypothesis.to_string(), "accepted");
-        assert!((score - 2.75).abs() < f32::EPSILON);
+        let decision = acquisition_decision(3.5, 2.0, 2.5, 2.1, &config);
+        assert_eq!(decision.hypothesis.to_string(), "accepted");
+        assert_eq!(decision.reason, AcquisitionDecisionReason::AcceptedByRatioThresholds);
+        assert!((decision.score - 2.75).abs() < f32::EPSILON);
     }
 
     #[test]
