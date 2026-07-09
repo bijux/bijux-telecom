@@ -16,6 +16,7 @@ struct AcqFixture {
     kind: String,
     sat: SatId,
     doppler_hz: f64,
+    signal_intermediate_freq_hz: Option<f64>,
     code_phase_chips: f64,
     cn0_db_hz: f32,
     seed: u64,
@@ -24,6 +25,7 @@ struct AcqFixture {
     coherent_ms: u32,
     noncoherent: u32,
     expected_hypothesis: Option<String>,
+    expected_selected_reason: Option<String>,
     expect_not_accepted: Option<bool>,
 }
 
@@ -83,6 +85,14 @@ fn acquisition_fixtures_are_deterministic_with_expected_hypotheses() {
                 fixture.id
             );
         }
+        if let Some(expected_selected_reason) = &fixture.expected_selected_reason {
+            let explain = run_a.explains.first().expect("at least one acquisition explain");
+            assert_eq!(
+                explain.selected_reason, *expected_selected_reason,
+                "fixture {} selected reason mismatch",
+                fixture.id
+            );
+        }
     }
 }
 
@@ -119,19 +129,25 @@ fn frame_from_fixture(config: &ReceiverPipelineConfig, fixture: &AcqFixture) -> 
     let ms = (fixture.coherent_ms * fixture.noncoherent).max(1) as f64;
     let duration_s = ms / 1000.0;
     match fixture.kind.as_str() {
-        "synthetic" => generate_l1_ca(
-            config,
-            SyntheticSignalParams {
-                sat: fixture.sat,
-                doppler_hz: fixture.doppler_hz,
-                code_phase_chips: fixture.code_phase_chips,
-                carrier_phase_rad: 0.0,
-                cn0_db_hz: fixture.cn0_db_hz,
-                data_bit_flip: false,
-            },
-            fixture.seed,
-            duration_s,
-        ),
+        "synthetic" => {
+            let mut signal_config = config.clone();
+            if let Some(signal_intermediate_freq_hz) = fixture.signal_intermediate_freq_hz {
+                signal_config.intermediate_freq_hz = signal_intermediate_freq_hz;
+            }
+            generate_l1_ca(
+                &signal_config,
+                SyntheticSignalParams {
+                    sat: fixture.sat,
+                    doppler_hz: fixture.doppler_hz,
+                    code_phase_chips: fixture.code_phase_chips,
+                    carrier_phase_rad: 0.0,
+                    cn0_db_hz: fixture.cn0_db_hz,
+                    data_bit_flip: false,
+                },
+                fixture.seed,
+                duration_s,
+            )
+        }
         "zeros" => {
             let samples = samples_per_code(
                 config.sampling_freq_hz,

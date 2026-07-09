@@ -1,0 +1,16 @@
+{
+  "id": "wrong-center-frequency",
+  "kind": "synthetic",
+  "sat": { "constellation": "Gps", "prn": 11 },
+  "doppler_hz": 0.0,
+  "signal_intermediate_freq_hz": 2000.0,
+  "code_phase_chips": 210.0,
+  "cn0_db_hz": 48.0,
+  "seed": 4277009102,
+  "search_hz": 1500,
+  "step_hz": 250,
+  "coherent_ms": 1,
+  "noncoherent": 1,
+  "expected_hypothesis": "rejected",
+  "expected_selected_reason": "signal_outside_search_range"
+}
