@@ -765,13 +765,18 @@ impl XorShift64 {
 mod tests {
     use super::{
         build_iq16_capture_bundle, build_truth_bundle, generate_l1_ca_multi,
-        signal_amplitude_from_cn0, validate_truth_guided_cn0, SyntheticNavBitMode,
+        signal_amplitude_from_cn0, validate_truth_guided_cn0, SatState, SyntheticNavBitMode,
         SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource,
         SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
-    use bijux_gnss_core::api::{Constellation, SamplesFrame, SatId};
-    use bijux_gnss_signal::api::{IqSampleFormat, RawIqMetadata, SignalSource};
+    use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds};
+    use bijux_gnss_signal::api::{
+        advance_code_phase_seconds, sample_ca_code, samples_per_code, IqSampleFormat, Prn,
+        RawIqMetadata, SignalSource,
+    };
+
+    const RECEIVER_PHASE_TOLERANCE_SAMPLES: f64 = 1e-6;
 
     #[test]
     fn synthetic_signal_source_matches_materialized_generator() {
@@ -820,6 +825,106 @@ mod tests {
         let dt_s = first.dt_s;
         let iq = frames.into_iter().flat_map(|frame| frame.iq).collect::<Vec<_>>();
         SamplesFrame::new(t0, dt_s, iq)
+    }
+
+    #[test]
+    fn synthetic_epoch_start_phase_matches_theoretical_phase_after_sixty_seconds() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_000_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let params = SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Gps, prn: 11 },
+            doppler_hz: 0.0,
+            code_phase_chips: 200.375,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 58.0,
+            data_bit_flip: false,
+        };
+        let sat_state = SatState::new(&config, params);
+        let code_period_samples = samples_per_code(
+            config.sampling_freq_hz,
+            config.code_freq_basis_hz,
+            config.code_length,
+        );
+        let sixty_second_sample_index = (60.0 * config.sampling_freq_hz) as u64;
+        let frame = synthetic_epoch_frame(
+            &sat_state,
+            &config,
+            sixty_second_sample_index,
+            code_period_samples,
+        );
+
+        let actual_phase_samples =
+            super::code_phase_samples_at_epoch_start(&config, &frame, params.code_phase_chips);
+        let expected_chip_phase = advance_code_phase_seconds(
+            params.code_phase_chips,
+            config.code_freq_basis_hz,
+            60.0,
+            config.code_length,
+        )
+        .expect("valid theoretical phase");
+        let expected_phase_samples =
+            expected_chip_phase * config.sampling_freq_hz / config.code_freq_basis_hz;
+
+        assert_phase_samples_close(actual_phase_samples, expected_phase_samples);
+
+        let expected_code = sample_ca_code(
+            Prn(params.sat.prn),
+            config.sampling_freq_hz,
+            config.code_freq_basis_hz,
+            expected_chip_phase,
+            code_period_samples,
+        )
+        .expect("valid expected sampled code");
+        let amplitude = signal_amplitude_from_cn0(params.cn0_db_hz, config.sampling_freq_hz);
+
+        for (index, (sample, expected_chip)) in
+            frame.iq.iter().zip(expected_code.iter()).enumerate()
+        {
+            let expected_value = *expected_chip * amplitude;
+            assert!(
+                (sample.re - expected_value).abs() <= 1e-6,
+                "I component drifted at sample {index}: actual={}, expected={expected_value}",
+                sample.re
+            );
+            assert!(
+                sample.im.abs() <= 1e-6,
+                "Q component drifted at sample {index}: actual={}",
+                sample.im
+            );
+        }
+    }
+
+    fn synthetic_epoch_frame(
+        sat_state: &SatState,
+        config: &ReceiverPipelineConfig,
+        start_sample_index: u64,
+        sample_count: usize,
+    ) -> SamplesFrame {
+        let dt_s = 1.0 / config.sampling_freq_hz;
+        let iq = (0..sample_count)
+            .map(|offset| sat_state.sample_at((start_sample_index + offset as u64) as f64 * dt_s))
+            .collect::<Vec<_>>();
+        SamplesFrame::new(
+            SampleTime {
+                sample_index: start_sample_index,
+                sample_rate_hz: config.sampling_freq_hz,
+            },
+            Seconds(dt_s),
+            iq,
+        )
+    }
+
+    fn assert_phase_samples_close(actual: f64, expected: f64) {
+        let delta = (actual - expected).abs();
+        assert!(
+            delta <= RECEIVER_PHASE_TOLERANCE_SAMPLES,
+            "code phase samples drifted at sixty seconds: actual={actual:.12}, expected={expected:.12}, delta={delta:.12}"
+        );
     }
 
     #[test]
