@@ -54,7 +54,7 @@ fn acquisition_marks_comparable_competing_peaks_as_ambiguous() {
 }
 
 #[test]
-fn acquisition_explainability_reports_ambiguous_competing_peaks() {
+fn acquisition_explainability_reports_multipath_suspicion_for_delayed_secondary_peaks() {
     let sat = gps_l1_ca_satellite();
     let config = ambiguity_profile();
     let frame = competing_peak_frame(
@@ -69,9 +69,9 @@ fn acquisition_explainability_reports_ambiguous_competing_peaks() {
     let explain = &run.explains[0];
     let selected = explain.candidates.first().expect("selected candidate");
 
-    assert_eq!(explain.selected_reason, "ambiguous_ratio_thresholds", "{run:?}");
+    assert_eq!(explain.selected_reason, "multipath_suspect", "{run:?}");
     assert_eq!(selected.hypothesis.to_string(), "ambiguous", "{run:?}");
-    assert!(selected.reason.contains("local_peak_separation_ratio"), "{run:?}");
+    assert!(selected.reason.contains("delayed secondary peak"), "{run:?}");
 }
 
 #[test]
