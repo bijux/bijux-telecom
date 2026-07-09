@@ -44,6 +44,16 @@ Manifest: artifacts/basic_ingest/manifest.json
 `demo_synthetic` is a deterministic raw IQ ingest fixture. It proves explicit format, sample-rate,
 IF, and capture-time handling; it is not a satellite-truth positioning dataset.
 
+For a public real-RF acquisition example, use the registered live-sky excerpt and its tuned
+profile:
+
+```bash
+bijux gnss acquire --dataset gps_l1_2022_03_27_excerpt --config configs/receiver_live_sky_gps_l1.toml --prn 11,12,25,31,32 --report json --output artifacts/live_sky_acquire
+```
+
+The dataset provenance and redistribution details live in
+`datasets/recorded/gps_l1_2022_03_27_excerpt.provenance.md`.
+
 ## Supported Features (Current)
 - GPS L1 C/A acquisition + tracking
 - Observation epoch generation

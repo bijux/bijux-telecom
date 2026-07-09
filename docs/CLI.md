@@ -58,6 +58,11 @@ Options:
 bijux gnss inspect --dataset demo_synthetic --output artifacts/basic_ingest
 ```
 
+### Real RF Acquisition
+```bash
+bijux gnss acquire --dataset gps_l1_2022_03_27_excerpt --config configs/receiver_live_sky_gps_l1.toml --prn 11,12,25,31,32 --report json --output artifacts/live_sky_acquire
+```
+
 ### Validate Artifacts
 ```bash
 bijux gnss artifact validate --file runs/basic_demo/artifacts/obs.jsonl

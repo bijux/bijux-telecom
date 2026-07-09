@@ -36,3 +36,13 @@ Artifacts are written under the selected output directory and include:
 
 `demo_synthetic` is an ingest fixture, not a navigation-truth corpus. Use it to verify explicit raw
 IQ handling first, then move to stronger GNSS validation datasets for acquisition, tracking, and PVT.
+
+## 6) Acquire PRNs from the Public Live-Sky Excerpt
+
+```bash
+bijux gnss acquire --dataset gps_l1_2022_03_27_excerpt --config configs/receiver_live_sky_gps_l1.toml --prn 11,12,25,31,32 --report json --output artifacts/live_sky_acquire
+```
+
+This dataset is a redistributed excerpt from Daniel Estévez's public GPS L1 recording on Zenodo.
+Use `datasets/recorded/gps_l1_2022_03_27_excerpt.provenance.md` for source, license, and local
+excerpt details.
