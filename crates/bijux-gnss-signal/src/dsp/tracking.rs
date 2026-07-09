@@ -36,12 +36,29 @@ pub fn discriminators(
     (dll, pll, fll, lock)
 }
 
-/// Estimate CN0 in dB-Hz from prompt and noise.
-pub fn estimate_cn0_dbhz(prompt: Complex<f32>, noise: Complex<f32>) -> f64 {
+/// Estimate CN0 in dB-Hz from coherent prompt energy and a signal-free noise proxy.
+pub fn estimate_cn0_dbhz(
+    prompt: Complex<f32>,
+    noise: Complex<f32>,
+    sample_rate_hz: f64,
+    prompt_coherent_gain: f64,
+    noise_weight_energy: f64,
+) -> f64 {
+    if !sample_rate_hz.is_finite()
+        || sample_rate_hz <= 0.0
+        || !prompt_coherent_gain.is_finite()
+        || prompt_coherent_gain <= 0.0
+        || !noise_weight_energy.is_finite()
+        || noise_weight_energy <= 0.0
+    {
+        return 0.0;
+    }
     let signal_power = (prompt.norm_sqr() as f64).max(1e-12);
     let noise_power = (noise.norm_sqr() as f64).max(1e-12);
     let snr = (signal_power / noise_power).max(1e-12);
-    10.0 * snr.log10() + 30.0
+    let cn0_linear =
+        (snr * noise_weight_energy * sample_rate_hz / prompt_coherent_gain.powi(2)).max(1e-12);
+    10.0 * cn0_linear.log10()
 }
 
 /// Return code chip at a fractional sample index.
@@ -51,4 +68,38 @@ pub fn code_at(code: &[i8], samples_per_chip: f64, sample_index: f64) -> Complex
     let chip_index = (wrapped / samples_per_chip).floor() as usize;
     let chip = code[chip_index] as f32;
     Complex::new(chip, 0.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::estimate_cn0_dbhz;
+    use num_complex::Complex;
+
+    #[test]
+    fn estimate_cn0_dbhz_recovers_known_cn0_from_prompt_and_noise_weighting() {
+        let sample_rate_hz = 4_092_000.0_f64;
+        let coherent_samples = 4092.0_f64;
+        let noise_weight_energy = 8_184.0_f64;
+        let expected_cn0_dbhz = 58.0;
+        let expected_cn0_linear = 10.0_f64.powf(expected_cn0_dbhz / 10.0);
+        let prompt_to_noise_power_ratio =
+            expected_cn0_linear * coherent_samples.powi(2) / (noise_weight_energy * sample_rate_hz);
+        let prompt = Complex::new(prompt_to_noise_power_ratio.sqrt() as f32, 0.0);
+        let noise = Complex::new(1.0, 0.0);
+
+        let measured =
+            estimate_cn0_dbhz(prompt, noise, sample_rate_hz, coherent_samples, noise_weight_energy);
+
+        assert!((measured - expected_cn0_dbhz).abs() < 1e-6, "measured={measured}");
+    }
+
+    #[test]
+    fn estimate_cn0_dbhz_returns_zero_for_invalid_estimator_parameters() {
+        let prompt = Complex::new(1.0, 0.0);
+        let noise = Complex::new(1.0, 0.0);
+
+        assert_eq!(estimate_cn0_dbhz(prompt, noise, 0.0, 4092.0, 8_184.0), 0.0);
+        assert_eq!(estimate_cn0_dbhz(prompt, noise, 4_092_000.0, 0.0, 8_184.0), 0.0);
+        assert_eq!(estimate_cn0_dbhz(prompt, noise, 4_092_000.0, 4092.0, 0.0), 0.0);
+    }
 }

@@ -83,6 +83,7 @@ pub struct CorrelatorOutput {
     pub early: Complex<f32>,
     pub prompt: Complex<f32>,
     pub late: Complex<f32>,
+    pub early_late_noise_weight_energy: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -177,6 +178,7 @@ impl Tracking {
         let mut early = Complex::new(0.0f32, 0.0f32);
         let mut prompt = Complex::new(0.0f32, 0.0f32);
         let mut late = Complex::new(0.0f32, 0.0f32);
+        let mut early_late_noise_weight_energy = 0.0f64;
 
         for i in 0..n {
             let (sin, cos) = nco.next_sin_cos();
@@ -186,13 +188,15 @@ impl Tracking {
             let early_code = code_at(&code, samples_per_chip, i as f64 + early_offset);
             let prompt_code = code_at(&code, samples_per_chip, i as f64 + code_phase_samples);
             let late_code = code_at(&code, samples_per_chip, i as f64 + late_offset);
+            let noise_weight = early_code - late_code;
+            early_late_noise_weight_energy += noise_weight.norm_sqr() as f64;
 
             early += mixed * early_code;
             prompt += mixed * prompt_code;
             late += mixed * late_code;
         }
 
-        CorrelatorOutput { early, prompt, late }
+        CorrelatorOutput { early, prompt, late, early_late_noise_weight_energy }
     }
 
     pub fn track_epoch(
@@ -213,7 +217,19 @@ impl Tracking {
             code_phase_samples,
             early_late_spacing_chips,
         );
-        let cn0_dbhz = estimate_cn0_dbhz(correlator.prompt, correlator.early + correlator.late);
+        let coherent_samples = samples_per_code(
+            self.config.sampling_freq_hz,
+            self.config.code_freq_basis_hz,
+            self.config.code_length,
+        )
+        .min(frame.len());
+        let cn0_dbhz = estimate_cn0_dbhz(
+            correlator.prompt,
+            correlator.early - correlator.late,
+            self.config.sampling_freq_hz,
+            coherent_samples as f64,
+            correlator.early_late_noise_weight_energy,
+        );
         if !correlator.prompt.re.is_finite() || !correlator.prompt.im.is_finite() {
             self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
                 bijux_gnss_core::api::DiagnosticSeverity::Error,
