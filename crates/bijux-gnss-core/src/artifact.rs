@@ -187,6 +187,19 @@ pub mod v1 {
                         ));
                     }
                 }
+                if let Some(uncertainty) = &self.uncertainty {
+                    if !uncertainty.doppler_hz.is_finite()
+                        || !uncertainty.code_phase_samples.is_finite()
+                        || uncertainty.doppler_hz < 0.0
+                        || uncertainty.code_phase_samples < 0.0
+                    {
+                        events.push(DiagnosticEvent::new(
+                            DiagnosticSeverity::Error,
+                            "GNSS_NUMERIC_ACQ_UNCERTAINTY_INVALID",
+                            "acquisition uncertainty contains invalid values",
+                        ));
+                    }
+                }
                 events.extend(validate_receiver_sample_trace(
                     self.source_time,
                     "acquisition",

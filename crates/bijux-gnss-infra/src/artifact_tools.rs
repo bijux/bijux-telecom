@@ -345,6 +345,7 @@ mod tests {
                 explain_selection_reason: Some("accepted_peak".to_string()),
                 doppler_refinement: None,
                 code_phase_refinement: None,
+                uncertainty: None,
             },
         };
         fs::write(&path, serde_json::to_string(&wrapped).expect("serialize")).expect("write");

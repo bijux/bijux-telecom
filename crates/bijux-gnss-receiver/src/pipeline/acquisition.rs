@@ -473,6 +473,7 @@ impl Acquisition {
                     explain_selection_reason: None,
                     doppler_refinement: None,
                     code_phase_refinement: None,
+                    uncertainty: None,
                 });
 
                 doppler += self.doppler_step_hz;
@@ -930,6 +931,7 @@ fn zero_signal_run(
             explain_selection_reason: Some(candidate_reason.clone()),
             doppler_refinement: None,
             code_phase_refinement: None,
+            uncertainty: None,
         };
         if emit_explanations {
             explains.push(AcqExplain {
@@ -993,6 +995,7 @@ fn insufficient_frame_run(
             explain_selection_reason: Some(candidate_reason.clone()),
             doppler_refinement: None,
             code_phase_refinement: None,
+            uncertainty: None,
         };
         if emit_explanations {
             explains.push(AcqExplain {
@@ -1071,6 +1074,7 @@ fn unsupported_coherent_integration_run(
             explain_selection_reason: Some(candidate_reason.clone()),
             doppler_refinement: None,
             code_phase_refinement: None,
+            uncertainty: None,
         };
         if emit_explanations {
             explains.push(AcqExplain {
@@ -1938,6 +1942,7 @@ mod tests {
                 explain_selection_reason: None,
                 doppler_refinement: None,
                 code_phase_refinement: None,
+                uncertainty: None,
             },
             AcqResult {
                 sat,
@@ -1958,6 +1963,7 @@ mod tests {
                 explain_selection_reason: None,
                 doppler_refinement: None,
                 code_phase_refinement: None,
+                uncertainty: None,
             },
         ];
         rows.sort_by(|a, b| {
@@ -2174,6 +2180,7 @@ mod tests {
             explain_selection_reason: None,
             doppler_refinement: None,
             code_phase_refinement: None,
+            uncertainty: None,
         }
     }
 }

@@ -367,6 +367,12 @@ pub struct AcqCodePhaseRefinement {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcqUncertainty {
+    pub doppler_hz: f64,
+    pub code_phase_samples: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcqResult {
     pub sat: SatId,
     #[serde(default)]
@@ -395,6 +401,8 @@ pub struct AcqResult {
     pub doppler_refinement: Option<AcqDopplerRefinement>,
     #[serde(default)]
     pub code_phase_refinement: Option<AcqCodePhaseRefinement>,
+    #[serde(default)]
+    pub uncertainty: Option<AcqUncertainty>,
 }
 
 impl AcqResult {
@@ -451,8 +459,13 @@ pub fn acq_result_stability_key(result: &AcqResult) -> String {
             )
         })
         .unwrap_or_default();
+    let uncertainty_key = result
+        .uncertainty
+        .as_ref()
+        .map(|uncertainty| format!("|{:.6}|{:.6}", uncertainty.doppler_hz, uncertainty.code_phase_samples))
+        .unwrap_or_default();
     format!(
-        "{:?}-{:02}|{:.3}|{}|{:.6}|{:.6}|{:.6}|{}{}{}",
+        "{:?}-{:02}|{:.3}|{}|{:.6}|{:.6}|{:.6}|{}{}{}{}",
         result.sat.constellation,
         result.sat.prn,
         result.carrier_hz.0,
@@ -463,6 +476,7 @@ pub fn acq_result_stability_key(result: &AcqResult) -> String {
         result.hypothesis,
         doppler_refinement_key,
         code_phase_refinement_key,
+        uncertainty_key,
     )
 }
 
@@ -1214,6 +1228,7 @@ mod tests {
             explain_selection_reason: None,
             doppler_refinement: None,
             code_phase_refinement: None,
+            uncertainty: None,
         }
     }
 }
