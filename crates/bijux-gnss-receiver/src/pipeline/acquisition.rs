@@ -51,9 +51,10 @@ const SEARCH_EDGE_RISE_RATIO_EPSILON: f32 = 0.05;
 const SUB_BIN_DOPPLER_REFINEMENT_METHOD: &str = "parabolic_peak";
 const SUB_BIN_DOPPLER_REFINEMENT_MAX_OFFSET_BINS: f64 = 0.5;
 const SUB_BIN_DOPPLER_REFINEMENT_EPSILON: f64 = 1e-12;
-const SUB_SAMPLE_CODE_PHASE_REFINEMENT_METHOD: &str = "parabolic_peak";
+const SUB_SAMPLE_CODE_PHASE_REFINEMENT_METHOD: &str = "parabolic_code_peak";
 const SUB_SAMPLE_CODE_PHASE_REFINEMENT_MAX_OFFSET_SAMPLES: f64 = 0.5;
 const SUB_SAMPLE_CODE_PHASE_REFINEMENT_EPSILON: f64 = 1e-12;
+const SUB_SAMPLE_CODE_PHASE_REFINEMENT_MIN_ABS_OFFSET_SAMPLES: f64 = 0.05;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 struct CodeFftCacheKey {
@@ -381,9 +382,6 @@ impl Acquisition {
                 let peak_mean_ratio = peak / (mean + 1e-6);
                 let peak_second_ratio = peak / (second + 1e-6);
                 let cn0_proxy = peak_mean_ratio * 10.0;
-                let code_phase_refinement =
-                    estimate_acquisition_code_phase_refinement(&noncoherent_acc, peak_idx);
-
                 grid_candidates.push(AcqResult {
                     sat,
                     source_time: ReceiverSampleTrace::from_sample_time(frame.t0),
@@ -402,7 +400,7 @@ impl Acquisition {
                     threshold_provenance: Some(threshold_provenance.clone()),
                     explain_selection_reason: None,
                     doppler_refinement: None,
-                    code_phase_refinement,
+                    code_phase_refinement: None,
                 });
 
                 doppler += self.doppler_step_hz;
@@ -428,7 +426,16 @@ impl Acquisition {
                 primary
             });
             candidates.truncate(top_n.max(1));
-            refine_acquisition_candidates(&mut candidates, &grid_candidates, self.doppler_step_hz);
+            refine_acquisition_candidates(
+                self,
+                frame,
+                sat,
+                &mut candidates,
+                &grid_candidates,
+                self.doppler_step_hz,
+                coherent_ms,
+                noncoherent,
+            );
             if candidates.is_empty() {
                 self.runtime.trace.record(TraceRecord {
                     name: "acquisition_sat_done",
@@ -702,6 +709,57 @@ impl Acquisition {
         }
         code_fft
     }
+
+    fn estimate_acquisition_code_phase_refinement(
+        &self,
+        frame: &SamplesFrame,
+        sat: SatId,
+        carrier_hz: f64,
+        coarse_code_phase_samples: usize,
+        coherent_ms: u32,
+        noncoherent: u32,
+    ) -> Option<AcqCodePhaseRefinement> {
+        let samples_per_code = samples_per_code(
+            self.config.sampling_freq_hz,
+            self.config.code_freq_basis_hz,
+            self.config.code_length,
+        );
+        if samples_per_code == 0
+            || frame.len() < samples_per_code * (coherent_ms * noncoherent) as usize
+        {
+            return None;
+        }
+        let correlation_profile = measure_code_phase_profile(
+            &self.config,
+            frame,
+            sat,
+            carrier_hz,
+            coherent_ms,
+            noncoherent,
+        )?;
+        let (
+            offset_samples,
+            left_correlation_norm,
+            center_correlation_norm,
+            right_correlation_norm,
+        ) = estimate_parabolic_code_phase_offset_samples(
+            &correlation_profile,
+            coarse_code_phase_samples,
+        )?;
+        let refined_code_phase_samples = wrap_acquisition_code_phase_samples(
+            coarse_code_phase_samples as f64 + offset_samples,
+            samples_per_code,
+        );
+
+        Some(AcqCodePhaseRefinement {
+            method: SUB_SAMPLE_CODE_PHASE_REFINEMENT_METHOD.to_string(),
+            offset_samples,
+            refined_code_phase_samples,
+            left_correlation_norm,
+            center_correlation_norm,
+            right_correlation_norm,
+        })
+    }
 }
 
 fn doppler_bin_count(search_hz: i32, step_hz: i32) -> u64 {
@@ -950,21 +1008,33 @@ fn acquisition_hypothesis(
 }
 
 fn refine_acquisition_candidates(
+    acquisition: &Acquisition,
+    frame: &SamplesFrame,
+    sat: SatId,
     candidates: &mut [AcqResult],
     grid_candidates: &[AcqResult],
     doppler_step_hz: i32,
+    coherent_ms: u32,
+    noncoherent: u32,
 ) {
     for candidate in candidates {
         let coarse_carrier_hz = candidate.carrier_hz.0;
-        let Some(refinement) = estimate_acquisition_doppler_refinement(
+        if let Some(refinement) = estimate_acquisition_doppler_refinement(
             coarse_carrier_hz,
             grid_candidates,
             doppler_step_hz,
-        ) else {
-            continue;
-        };
-        candidate.carrier_hz = Hertz(coarse_carrier_hz + refinement.offset_hz);
-        candidate.doppler_refinement = Some(refinement);
+        ) {
+            candidate.carrier_hz = Hertz(coarse_carrier_hz + refinement.offset_hz);
+            candidate.doppler_refinement = Some(refinement);
+        }
+        candidate.code_phase_refinement = acquisition.estimate_acquisition_code_phase_refinement(
+            frame,
+            sat,
+            candidate.carrier_hz.0,
+            candidate.code_phase_samples,
+            coherent_ms,
+            noncoherent,
+        );
     }
 }
 
@@ -1014,51 +1084,104 @@ fn estimate_acquisition_doppler_refinement(
     })
 }
 
-fn estimate_acquisition_code_phase_refinement(
-    correlation_norms: &[f32],
-    coarse_code_phase_samples: usize,
-) -> Option<AcqCodePhaseRefinement> {
-    if correlation_norms.len() < 3 || coarse_code_phase_samples >= correlation_norms.len() {
+fn measure_code_phase_profile(
+    config: &ReceiverPipelineConfig,
+    frame: &SamplesFrame,
+    sat: SatId,
+    carrier_hz: f64,
+    coherent_ms: u32,
+    noncoherent: u32,
+) -> Option<Vec<f32>> {
+    let samples_per_code =
+        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
+    if samples_per_code == 0 {
         return None;
     }
-    let len = correlation_norms.len();
-    let left_idx =
-        if coarse_code_phase_samples == 0 { len - 1 } else { coarse_code_phase_samples - 1 };
-    let right_idx = (coarse_code_phase_samples + 1) % len;
-    let left_correlation_norm = correlation_norms[left_idx] as f64;
-    let center_correlation_norm = correlation_norms[coarse_code_phase_samples] as f64;
-    let right_correlation_norm = correlation_norms[right_idx] as f64;
-    if center_correlation_norm < left_correlation_norm
-        || center_correlation_norm < right_correlation_norm
-    {
+    let mut planner = FftPlanner::<f32>::new();
+    let fft = planner.plan_fft_forward(samples_per_code);
+    let ifft = planner.plan_fft_inverse(samples_per_code);
+    let code = ca_code_or_default(sat.prn);
+    let local_code = sample_local_code_period(config, &code, samples_per_code);
+    let mut code_fft: Vec<Complex<f32>> =
+        local_code.iter().map(|&x| Complex::new(x, 0.0)).collect();
+    fft.process(&mut code_fft);
+    let mut noncoherent_acc = vec![0.0f32; samples_per_code];
+
+    for nc in 0..noncoherent {
+        let mut coherent_corr: Vec<Complex<f32>> = vec![Complex::zero(); samples_per_code];
+        for c in 0..coherent_ms {
+            let offset_ms = (nc * coherent_ms + c) as usize;
+            let start = offset_ms * samples_per_code;
+            let end = start + samples_per_code;
+            let block = &frame.iq[start..end];
+            let mixed = wipeoff_carrier(
+                block,
+                carrier_hz,
+                config.sampling_freq_hz,
+                frame.t0.sample_index + start as u64,
+                0.0,
+            )
+            .ok()?;
+            let mut input_fft = mixed;
+            fft.process(&mut input_fft);
+
+            let mut prod = vec![Complex::zero(); samples_per_code];
+            for i in 0..samples_per_code {
+                prod[i] = input_fft[i] * code_fft[i].conj();
+            }
+
+            ifft.process(&mut prod);
+            for i in 0..samples_per_code {
+                coherent_corr[i] += prod[i];
+            }
+        }
+
+        for i in 0..samples_per_code {
+            noncoherent_acc[i] += coherent_corr[i].norm();
+        }
+    }
+
+    Some(noncoherent_acc)
+}
+
+fn estimate_parabolic_code_phase_offset_samples(
+    correlation_profile: &[f32],
+    coarse_code_phase_samples: usize,
+) -> Option<(f64, f32, f32, f32)> {
+    if correlation_profile.len() < 3 {
+        return None;
+    }
+    let period_samples = correlation_profile.len();
+    let center_index = coarse_code_phase_samples % period_samples;
+    let left_index = (center_index + period_samples - 1) % period_samples;
+    let right_index = (center_index + 1) % period_samples;
+    let left = correlation_profile[left_index];
+    let center = correlation_profile[center_index];
+    let right = correlation_profile[right_index];
+
+    if center < left || center < right {
         return None;
     }
 
-    let denominator =
-        left_correlation_norm - (2.0 * center_correlation_norm) + right_correlation_norm;
+    let denominator = left as f64 - (2.0 * center as f64) + right as f64;
     if !denominator.is_finite() || denominator.abs() <= SUB_SAMPLE_CODE_PHASE_REFINEMENT_EPSILON {
         return None;
     }
 
-    let raw_offset_samples = 0.5 * (left_correlation_norm - right_correlation_norm) / denominator;
+    let raw_offset_samples = 0.5 * (left as f64 - right as f64) / denominator;
     if !raw_offset_samples.is_finite() {
         return None;
     }
+
     let offset_samples = raw_offset_samples.clamp(
         -SUB_SAMPLE_CODE_PHASE_REFINEMENT_MAX_OFFSET_SAMPLES,
         SUB_SAMPLE_CODE_PHASE_REFINEMENT_MAX_OFFSET_SAMPLES,
     );
-    let refined_code_phase_samples =
-        wrap_acquisition_code_phase_samples(coarse_code_phase_samples as f64 + offset_samples, len);
+    if offset_samples.abs() < SUB_SAMPLE_CODE_PHASE_REFINEMENT_MIN_ABS_OFFSET_SAMPLES {
+        return None;
+    }
 
-    Some(AcqCodePhaseRefinement {
-        method: SUB_SAMPLE_CODE_PHASE_REFINEMENT_METHOD.to_string(),
-        offset_samples,
-        refined_code_phase_samples,
-        left_correlation_norm: correlation_norms[left_idx],
-        center_correlation_norm: correlation_norms[coarse_code_phase_samples],
-        right_correlation_norm: correlation_norms[right_idx],
-    })
+    Some((offset_samples, left, center, right))
 }
 
 fn wrap_acquisition_code_phase_samples(code_phase_samples: f64, period_samples: usize) -> f64 {
@@ -1133,25 +1256,24 @@ mod tests {
 
     #[test]
     fn code_phase_refinement_estimates_sub_sample_offset_from_neighbor_bins() {
-        let correlation_norms = vec![9.0, 16.0, 12.0];
+        let profile = [12.0, 16.0, 15.0];
+        let (offset_samples, left, center, right) =
+            estimate_parabolic_code_phase_offset_samples(&profile, 1).expect("refinement");
 
-        let refinement =
-            estimate_acquisition_code_phase_refinement(&correlation_norms, 1).expect("refinement");
-
-        assert_eq!(refinement.method, "parabolic_peak");
-        assert!((refinement.offset_samples - 0.136_363_636_4).abs() < 1.0e-6);
-        assert!((refinement.refined_code_phase_samples - 1.136_363_636_4).abs() < 1.0e-6);
+        assert!((offset_samples - 0.3).abs() < 1.0e-6);
+        assert_eq!(left, 12.0);
+        assert_eq!(center, 16.0);
+        assert_eq!(right, 15.0);
     }
 
     #[test]
     fn code_phase_refinement_wraps_negative_offsets_at_period_edges() {
-        let correlation_norms = vec![16.0, 12.0, 3.0, 9.0];
+        let offset_samples = -0.2;
+        let refined_code_phase_samples =
+            wrap_acquisition_code_phase_samples(0.0 + offset_samples, 4);
 
-        let refinement =
-            estimate_acquisition_code_phase_refinement(&correlation_norms, 0).expect("refinement");
-
-        assert!(refinement.offset_samples < 0.0);
-        assert!((refinement.refined_code_phase_samples - 3.136_363_636_4).abs() < 1.0e-6);
+        assert!(offset_samples < 0.0);
+        assert!((refined_code_phase_samples - 3.8).abs() < 1.0e-6);
     }
 
     #[test]
