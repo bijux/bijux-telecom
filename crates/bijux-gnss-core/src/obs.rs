@@ -372,6 +372,30 @@ pub struct AcqResult {
     pub explain_selection_reason: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AcqSearchSummary {
+    pub searched_satellites: usize,
+    pub accepted: usize,
+    pub ambiguous: usize,
+    pub rejected: usize,
+    pub deferred: usize,
+}
+
+impl AcqSearchSummary {
+    pub fn from_results(results: &[AcqResult]) -> Self {
+        let mut summary = Self { searched_satellites: results.len(), ..Self::default() };
+        for result in results {
+            match result.hypothesis {
+                AcqHypothesis::Accepted => summary.accepted += 1,
+                AcqHypothesis::Ambiguous => summary.ambiguous += 1,
+                AcqHypothesis::Rejected => summary.rejected += 1,
+                AcqHypothesis::Deferred => summary.deferred += 1,
+            }
+        }
+        summary
+    }
+}
+
 pub fn acq_result_stability_key(result: &AcqResult) -> String {
     format!(
         "{:?}-{:02}|{:.3}|{}|{:.6}|{:.6}|{:.6}|{}",
@@ -1057,7 +1081,10 @@ pub(crate) fn melbourne_wubbena_m(
 
 #[cfg(test)]
 mod tests {
-    use crate::api::{LeapSeconds, UtcTime};
+    use crate::api::{
+        AcqHypothesis, AcqResult, AcqSearchSummary, Constellation, Hertz, LeapSeconds,
+        ReceiverSampleTrace, SatId, UtcTime,
+    };
     use crate::time::utc_to_gps;
 
     #[test]
@@ -1085,5 +1112,50 @@ mod tests {
         let cycle = 604_800.0 * 1024.0;
         let diff = (gps.to_seconds() - expected).abs();
         assert!((diff % cycle) < 1e-6);
+    }
+
+    #[test]
+    fn acq_search_summary_counts_each_decision() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        let results = vec![
+            acq_result_for_summary(sat, AcqHypothesis::Accepted),
+            acq_result_for_summary(sat, AcqHypothesis::Ambiguous),
+            acq_result_for_summary(sat, AcqHypothesis::Rejected),
+            acq_result_for_summary(sat, AcqHypothesis::Deferred),
+        ];
+
+        let summary = AcqSearchSummary::from_results(&results);
+
+        assert_eq!(
+            summary,
+            AcqSearchSummary {
+                searched_satellites: 4,
+                accepted: 1,
+                ambiguous: 1,
+                rejected: 1,
+                deferred: 1,
+            }
+        );
+    }
+
+    fn acq_result_for_summary(sat: SatId, hypothesis: AcqHypothesis) -> AcqResult {
+        AcqResult {
+            sat,
+            source_time: ReceiverSampleTrace::default(),
+            carrier_hz: Hertz(0.0),
+            code_phase_samples: 0,
+            peak: 0.0,
+            second_peak: 0.0,
+            mean: 0.0,
+            peak_mean_ratio: 0.0,
+            peak_second_ratio: 0.0,
+            cn0_proxy: 0.0,
+            score: 0.0,
+            hypothesis,
+            assumptions: None,
+            evidence: Vec::new(),
+            threshold_provenance: None,
+            explain_selection_reason: None,
+        }
     }
 }
