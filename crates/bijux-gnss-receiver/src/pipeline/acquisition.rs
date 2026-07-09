@@ -1424,6 +1424,33 @@ mod tests {
     }
 
     #[test]
+    fn selected_candidate_reason_reports_low_peak_metric_threshold() {
+        let config = ReceiverPipelineConfig::default();
+        let reason = selected_candidate_reason(
+            AcquisitionDecision {
+                hypothesis: AcqHypothesis::Rejected,
+                reason: AcquisitionDecisionReason::LowPeakMetric,
+                score: 0.0,
+            },
+            2.0,
+            2.0,
+            2.0,
+            &config,
+        );
+
+        assert_eq!(reason, "low_peak_metric: peak_mean_ratio=2.000000 below threshold 2.500000");
+    }
+
+    #[test]
+    fn selected_reason_for_candidate_reports_low_peak_metric() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        let mut candidate = candidate_for_search_window_test(sat, 0.0, 2.0);
+        candidate.hypothesis = AcqHypothesis::Rejected;
+
+        assert_eq!(selected_reason_for_candidate(&candidate), "low_peak_metric");
+    }
+
+    #[test]
     fn parabolic_refinement_estimates_sub_bin_offset_from_neighbor_peaks() {
         let sat = SatId { constellation: Constellation::Gps, prn: 1 };
         let candidates = vec![
