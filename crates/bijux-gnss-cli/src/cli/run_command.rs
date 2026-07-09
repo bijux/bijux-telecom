@@ -101,15 +101,23 @@ fn runtime_config_from_env(
 }
 use bijux_gnss_infra::api::core::format_sat;
 
+fn format_optional_degrees(value: Option<f64>) -> String {
+    value
+        .map(|degrees| format!("{degrees:.6}"))
+        .unwrap_or_else(|| "n/a".to_string())
+}
+
 fn print_acquisition_table(report: &AcquisitionReport) {
     println!(
-        "I mean: {:.6}  Q mean: {:.6}  I power: {:.6}  Q power: {:.6}  I/Q ratio: {:.6}  Power warning: {}  RMS: {:.6}  DC imbalance: {:.6}",
+        "I mean: {:.6}  Q mean: {:.6}  I power: {:.6}  Q power: {:.6}  I/Q ratio: {:.6}  Power warning: {}  Quadrature error(deg): {}  Quadrature warning: {}  RMS: {:.6}  DC imbalance: {:.6}",
         report.front_end_metrics.i_mean,
         report.front_end_metrics.q_mean,
         report.front_end_metrics.i_power,
         report.front_end_metrics.q_power,
         report.front_end_metrics.iq_power_ratio,
         report.front_end_metrics.power_imbalance_warning,
+        format_optional_degrees(report.front_end_metrics.quadrature_error_deg),
+        report.front_end_metrics.quadrature_error_warning,
         report.front_end_metrics.rms,
         report.front_end_metrics.dc_imbalance
     );
@@ -128,10 +136,10 @@ fn print_acquisition_table(report: &AcquisitionReport) {
 }
 fn print_inspect_table(report: &InspectReport) {
     println!(
-        "Format\tSampleRate(Hz)\tIF(Hz)\tCaptureStartUtc\tSamples\tIMean\tQMean\tIPower\tQPower\tIqPowerRatio\tPowerWarning\tRms\tDcImbalance\tClipRate\tNoiseFloor(dB)"
+        "Format\tSampleRate(Hz)\tIF(Hz)\tCaptureStartUtc\tSamples\tIMean\tQMean\tIPower\tQPower\tIqPowerRatio\tPowerWarning\tQuadratureErrorDeg\tQuadratureWarning\tRms\tDcImbalance\tClipRate\tNoiseFloor(dB)"
     );
     println!(
-        "{}\t{:.1}\t{:.1}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{}\t{:.6}\t{:.6}\t{:.6}\t{:.2}",
+        "{}\t{:.1}\t{:.1}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{:.2}",
         report.format,
         report.sample_rate_hz,
         report.intermediate_freq_hz,
@@ -143,6 +151,8 @@ fn print_inspect_table(report: &InspectReport) {
         report.front_end_metrics.q_power,
         report.front_end_metrics.iq_power_ratio,
         report.front_end_metrics.power_imbalance_warning,
+        format_optional_degrees(report.front_end_metrics.quadrature_error_deg),
+        report.front_end_metrics.quadrature_error_warning,
         report.front_end_metrics.rms,
         report.front_end_metrics.dc_imbalance,
         report.clip_rate,
