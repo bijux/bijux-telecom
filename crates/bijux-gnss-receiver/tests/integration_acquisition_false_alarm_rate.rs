@@ -1,0 +1,57 @@
+#![allow(missing_docs)]
+
+use bijux_gnss_core::api::{Constellation, SatId};
+use bijux_gnss_receiver::api::{
+    sim::{
+        measure_noise_only_acquisition_false_alarm_rates, SyntheticAcquisitionFalseAlarmRateCase,
+    },
+    ReceiverPipelineConfig,
+};
+
+const FALSE_ALARM_RATE_TRIAL_COUNT: usize = 24;
+
+#[test]
+fn acquisition_false_alarm_rate_report_runs_multiple_measurement_points() {
+    let config = acquisition_profile();
+    let report = measure_noise_only_acquisition_false_alarm_rates(
+        &config,
+        &[false_alarm_rate_case(1, 1), false_alarm_rate_case(5, 4)],
+        &trial_seeds(0x2407_1993, FALSE_ALARM_RATE_TRIAL_COUNT),
+        "acquisition_false_alarm_rate_smoke",
+    );
+
+    assert_eq!(report.points.len(), 2);
+    assert_eq!(report.points[0].trial_count, FALSE_ALARM_RATE_TRIAL_COUNT);
+    assert_eq!(report.points[1].trial_count, FALSE_ALARM_RATE_TRIAL_COUNT);
+    assert_eq!(report.points[0].coherent_ms, 1);
+    assert_eq!(report.points[1].noncoherent, 4);
+}
+
+fn acquisition_profile() -> ReceiverPipelineConfig {
+    ReceiverPipelineConfig {
+        sampling_freq_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 1_023_000.0,
+        code_length: 1023,
+        acquisition_doppler_search_hz: 1_500,
+        acquisition_doppler_step_hz: 250,
+        ..ReceiverPipelineConfig::default()
+    }
+}
+
+fn false_alarm_rate_case(
+    coherent_ms: u32,
+    noncoherent: u32,
+) -> SyntheticAcquisitionFalseAlarmRateCase {
+    SyntheticAcquisitionFalseAlarmRateCase {
+        sat: SatId { constellation: Constellation::Gps, prn: 7 },
+        coherent_ms,
+        noncoherent,
+    }
+}
+
+fn trial_seeds(base_seed: u64, count: usize) -> Vec<u64> {
+    (0..count)
+        .map(|index| base_seed.wrapping_add((index as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15)))
+        .collect()
+}
