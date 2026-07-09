@@ -12,10 +12,12 @@ serde_json.workspace = true
 toml.workspace = true
 sha2.workspace = true
 hex.workspace = true
+bijux-gnss-signal = { path = "../bijux-gnss-signal", version = "0.1.0" }
 bijux-gnss-receiver = { path = "../bijux-gnss-receiver", version = "0.1.0", default-features = false }
 
 [dev-dependencies]
 bijux-gnss-policies = { path = "../bijux-gnss-policies", version = "0.1.0" }
+tempfile = "3.24"
 
 [features]
 default = ["nav"]

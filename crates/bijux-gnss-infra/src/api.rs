@@ -33,7 +33,9 @@ pub use crate::run_layout::{
 };
 
 /// Dataset helpers.
-pub use crate::datasets::{parse_ecef, DatasetEntry, DatasetRegistry};
+pub use crate::datasets::{
+    load_raw_iq_metadata, parse_ecef, resolve_raw_iq_metadata, DatasetEntry, DatasetRegistry,
+};
 
 /// Experiment helpers.
 pub use crate::experiments::{ExperimentSpec, SweepParameter};
