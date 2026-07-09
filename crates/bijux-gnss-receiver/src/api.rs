@@ -108,6 +108,10 @@ pub use crate::validation_report::{
 /// Artifacts produced by a receiver pipeline run.
 #[derive(Debug, Default, Clone)]
 pub struct RunArtifacts {
+    /// Total complex samples consumed from the input source.
+    pub processed_input_samples: u64,
+    /// Total code-period epochs consumed from the input source.
+    pub processed_input_epochs: u64,
     /// Acquisition candidates captured during the run.
     pub acquisitions: Vec<bijux_gnss_core::api::AcqResult>,
     /// Acquisition explain artifacts captured during the run.

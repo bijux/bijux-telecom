@@ -14,6 +14,8 @@ use bijux_gnss_core::api::{
 use bijux_gnss_signal::api::remove_dc_offset_in_place;
 use std::time::Instant;
 
+const STREAMING_TRACKING_CODE_PERIODS: usize = 100;
+
 impl Receiver {
     /// Run a full pipeline: acquisition -> tracking.
     ///
@@ -209,8 +211,44 @@ impl Receiver {
 
         let tracking =
             crate::pipeline::tracking::Tracking::new(self.config().clone(), self.runtime().clone());
-        let tracking_results =
-            tracking.track_from_acquisition(&frame, &acquisitions, SignalBand::L1);
+        let mut processed_input_samples = frame.len() as u64;
+        let mut processed_input_epochs = code_periods_in_frame(frame.len(), samples_per_code);
+        let has_trackable_channels = acquisitions.iter().take(self.config().channels.max(1)).any(
+            |acq| matches!(acq.hypothesis, bijux_gnss_core::api::AcqHypothesis::Accepted | bijux_gnss_core::api::AcqHypothesis::Ambiguous),
+        );
+        let mut incremental_tracking =
+            tracking.begin_incremental_tracking(&acquisitions, SignalBand::L1);
+        tracking.track_incremental_frame(&mut incremental_tracking, &frame);
+        if has_trackable_channels {
+            let tracking_frame_len = streaming_tracking_frame_len(samples_per_code);
+            loop {
+                let next_frame = match input.next_frame(tracking_frame_len) {
+                    Ok(frame) => frame,
+                    Err(err) => {
+                        crate::engine::diagnostics::dump_on_error(
+                            self.runtime(),
+                            &format!("input error: {err}"),
+                            None,
+                            None,
+                        );
+                        return Err(crate::engine::receiver_config::ReceiverError::Input(
+                            InputError { message: err.to_string() },
+                        ));
+                    }
+                };
+                let Some(mut tracking_frame) = next_frame else {
+                    break;
+                };
+                if self.config().remove_dc_offset {
+                    remove_dc_offset_in_place(&mut tracking_frame.iq);
+                }
+                processed_input_samples += tracking_frame.len() as u64;
+                processed_input_epochs +=
+                    code_periods_in_frame(tracking_frame.len(), samples_per_code);
+                tracking.track_incremental_frame(&mut incremental_tracking, &tracking_frame);
+            }
+        }
+        let tracking_results = tracking.finish_incremental_tracking(incremental_tracking);
         let track_transitions: Vec<_> =
             tracking_results.iter().flat_map(|result| result.transitions.iter().cloned()).collect();
         let tracking_ms = tracking_start.elapsed().as_secs_f64() * 1000.0;
@@ -277,6 +315,8 @@ impl Receiver {
         });
 
         let artifacts = RunArtifacts {
+            processed_input_samples,
+            processed_input_epochs,
             acquisitions,
             acquisition_explain,
             track_transitions,
@@ -304,6 +344,17 @@ impl Receiver {
         write_metrics_summary(self.runtime(), &artifacts, acquisition_stats);
         Ok(artifacts)
     }
+}
+
+fn streaming_tracking_frame_len(samples_per_code: usize) -> usize {
+    samples_per_code.saturating_mul(STREAMING_TRACKING_CODE_PERIODS.max(1))
+}
+
+fn code_periods_in_frame(frame_len: usize, samples_per_code: usize) -> u64 {
+    if frame_len == 0 {
+        return 0;
+    }
+    (frame_len / samples_per_code.max(1)).max(1) as u64
 }
 
 fn build_support_matrix() -> SupportMatrix {
