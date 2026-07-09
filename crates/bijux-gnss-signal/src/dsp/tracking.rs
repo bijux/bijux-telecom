@@ -1,5 +1,6 @@
 //! Tracking math utilities.
 
+use crate::dsp::signal::code_value_at_phase;
 use num_complex::Complex;
 
 /// Adaptive loop bandwidth scaling based on CN0.
@@ -63,10 +64,12 @@ pub fn estimate_cn0_dbhz(
 
 /// Return code chip at a fractional sample index.
 pub fn code_at(code: &[i8], samples_per_chip: f64, sample_index: f64) -> Complex<f32> {
-    let code_len_samples = samples_per_chip * code.len() as f64;
-    let wrapped = sample_index.rem_euclid(code_len_samples);
-    let chip_index = (wrapped / samples_per_chip).floor() as usize;
-    let chip = code[chip_index] as f32;
+    if !samples_per_chip.is_finite() || samples_per_chip <= 0.0 || !sample_index.is_finite() {
+        return Complex::new(0.0, 0.0);
+    }
+
+    let chip_phase = sample_index / samples_per_chip;
+    let chip = code_value_at_phase(code, chip_phase).unwrap_or(0.0);
     Complex::new(chip, 0.0)
 }
 

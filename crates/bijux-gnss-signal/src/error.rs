@@ -6,6 +6,18 @@ pub enum SignalError {
     /// Unsupported or out-of-range PRN.
     #[error("unsupported PRN {0}")]
     UnsupportedPrn(u8),
+    /// Sample rate must be finite and strictly positive.
+    #[error("invalid sample rate")]
+    InvalidSampleRate,
+    /// Code rate must be finite and strictly positive.
+    #[error("invalid code rate")]
+    InvalidCodeRate,
+    /// Code phase must be finite.
+    #[error("invalid code phase")]
+    InvalidCodePhase,
+    /// Code sequence must contain at least one chip.
+    #[error("empty code sequence")]
+    EmptyCodeSequence,
     /// Periodic correlation requires equal-length sequences.
     #[error("periodic correlation length mismatch: left={left}, right={right}")]
     CorrelationLengthMismatch {
