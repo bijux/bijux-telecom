@@ -139,10 +139,35 @@ fn export_synthetic_iq_emits_truth_bundle_and_ingestable_capture() {
         &fs::read_to_string(acquire_dir.join("acquire_report.json")).expect("read acquire report"),
     )
     .expect("parse acquire report");
+    let search_summary = &acquire_report["search_summary"];
+    assert_eq!(search_summary["searched_satellites"], 2);
+    assert_eq!(
+        search_summary["accepted"].as_u64().unwrap_or(0)
+            + search_summary["ambiguous"].as_u64().unwrap_or(0)
+            + search_summary["rejected"].as_u64().unwrap_or(0)
+            + search_summary["deferred"].as_u64().unwrap_or(0),
+        2
+    );
+    let primary_results = acquire_report["primary_results"]
+        .as_array()
+        .expect("primary_results");
+    assert_eq!(primary_results.len(), 2, "expected one selected acquisition row per searched PRN");
+    let results = acquire_report["results"].as_array().expect("results");
+    assert!(
+        results.len() >= primary_results.len(),
+        "candidate results should include the selected primary rows: {acquire_report}"
+    );
     let reported_prns = acquire_report["reported_prns"].as_array().expect("reported_prns");
     assert!(
         reported_prns.iter().any(|entry| entry["sat"]["prn"] == 3),
         "reported_prns did not include PRN 3: {acquire_report}"
+    );
+    let acq_artifact = fs::read_to_string(acquire_dir.join("artifacts").join("acq.jsonl"))
+        .expect("read acq artifact");
+    assert_eq!(
+        acq_artifact.lines().count(),
+        results.len(),
+        "acq artifact row count should match detailed candidate rows"
     );
 
     fs::remove_dir_all(&export_dir).expect("remove export dir");
