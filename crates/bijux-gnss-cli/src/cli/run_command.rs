@@ -33,8 +33,7 @@ fn inspect_dataset(path: &Path, metadata: &RawIqMetadata, max_samples: usize) ->
         .with_context(|| format!("failed to open {}", path.display()))?;
     let mut total_iq = 0usize;
 
-    let mut sum_i = 0.0f64;
-    let mut sum_q = 0.0f64;
+    let mut front_end_analyzer = bijux_gnss_infra::api::signal::IqFrontEndAnalyzer::new();
     let mut clip = 0u64;
     let mut power_hist = vec![0u64; 8];
     let mut power_sum = 0.0f64;
@@ -48,11 +47,10 @@ fn inspect_dataset(path: &Path, metadata: &RawIqMetadata, max_samples: usize) ->
         let Some(frame) = source.next_frame(frame_len)? else {
             break;
         };
+        front_end_analyzer.update(&frame.iq);
         for sample in &frame.iq {
             let i = sample.re as f64;
             let q = sample.im as f64;
-            sum_i += i;
-            sum_q += q;
             if sample.re.abs() >= 0.999 || sample.im.abs() >= 0.999 {
                 clip += 1;
             }
@@ -67,8 +65,6 @@ fn inspect_dataset(path: &Path, metadata: &RawIqMetadata, max_samples: usize) ->
         }
     }
 
-    let dc_i = sum_i / total_iq.max(1) as f64;
-    let dc_q = sum_q / total_iq.max(1) as f64;
     let mean_power = power_sum / total_iq.max(1) as f64;
     let noise_floor_db = 10.0 * mean_power.max(1e-9).log10();
 
@@ -78,8 +74,7 @@ fn inspect_dataset(path: &Path, metadata: &RawIqMetadata, max_samples: usize) ->
         intermediate_freq_hz: metadata.intermediate_freq_hz,
         capture_start_utc: metadata.capture_start_utc.clone(),
         total_samples: total_iq,
-        dc_offset_i: dc_i,
-        dc_offset_q: dc_q,
+        front_end_metrics: front_end_analyzer.finish(),
         clip_rate: clip as f64 / total_iq.max(1) as f64,
         noise_floor_db,
         power_histogram: power_hist,
@@ -121,16 +116,20 @@ fn print_acquisition_table(report: &AcquisitionReport) {
     }
 }
 fn print_inspect_table(report: &InspectReport) {
-    println!("Format\tSampleRate(Hz)\tIF(Hz)\tCaptureStartUtc\tSamples\tDC_I\tDC_Q\tClipRate\tNoiseFloor(dB)");
     println!(
-        "{}\t{:.1}\t{:.1}\t{}\t{}\t{:.3}\t{:.3}\t{:.6}\t{:.2}",
+        "Format\tSampleRate(Hz)\tIF(Hz)\tCaptureStartUtc\tSamples\tIMean\tQMean\tRms\tDcImbalance\tClipRate\tNoiseFloor(dB)"
+    );
+    println!(
+        "{}\t{:.1}\t{:.1}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{:.2}",
         report.format,
         report.sample_rate_hz,
         report.intermediate_freq_hz,
         report.capture_start_utc,
         report.total_samples,
-        report.dc_offset_i,
-        report.dc_offset_q,
+        report.front_end_metrics.i_mean,
+        report.front_end_metrics.q_mean,
+        report.front_end_metrics.rms,
+        report.front_end_metrics.dc_imbalance,
         report.clip_rate,
         report.noise_floor_db
     );
@@ -173,6 +172,7 @@ mod inspect_dataset_tests {
         assert_eq!(report.intermediate_freq_hz, metadata.intermediate_freq_hz);
         assert_eq!(report.capture_start_utc, metadata.capture_start_utc);
         assert_eq!(report.total_samples, 2);
+        assert_eq!(report.front_end_metrics.sample_count, 2);
 
         fs::remove_file(&path).expect("remove iq8 fixture");
     }
@@ -202,6 +202,7 @@ mod inspect_dataset_tests {
         assert_eq!(report.intermediate_freq_hz, metadata.intermediate_freq_hz);
         assert_eq!(report.capture_start_utc, metadata.capture_start_utc);
         assert_eq!(report.total_samples, 2);
+        assert_eq!(report.front_end_metrics.sample_count, 2);
 
         fs::remove_file(&path).expect("remove iq16 fixture");
     }
@@ -234,6 +235,7 @@ mod inspect_dataset_tests {
         assert_eq!(report.intermediate_freq_hz, metadata.intermediate_freq_hz);
         assert_eq!(report.capture_start_utc, metadata.capture_start_utc);
         assert_eq!(report.total_samples, 2);
+        assert_eq!(report.front_end_metrics.sample_count, 2);
 
         fs::remove_file(&path).expect("remove cf32 fixture");
     }
