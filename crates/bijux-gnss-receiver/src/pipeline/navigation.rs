@@ -274,6 +274,7 @@ impl Navigation {
         let mut nav_epoch = NavSolutionEpoch {
             epoch: bijux_gnss_core::api::Epoch { index: obs.epoch_idx },
             t_rx_s: obs.t_rx_s,
+            source_time: obs.source_time,
             ecef_x_m: Meters(solution.ecef_x_m),
             ecef_y_m: Meters(solution.ecef_y_m),
             ecef_z_m: Meters(solution.ecef_z_m),
@@ -485,6 +486,7 @@ impl Navigation {
         });
         degraded.epoch = bijux_gnss_core::api::Epoch { index: obs.epoch_idx };
         degraded.t_rx_s = obs.t_rx_s;
+        degraded.source_time = obs.source_time;
         degraded.status = deterministic_solution_transition(
             self.last_solution.as_ref().map(|row| row.status),
             decision.status,
@@ -540,6 +542,7 @@ fn invalid_solution_epoch(
     let mut solution = NavSolutionEpoch {
         epoch: bijux_gnss_core::api::Epoch { index: obs.epoch_idx },
         t_rx_s: obs.t_rx_s,
+        source_time: obs.source_time,
         ecef_x_m: Meters(0.0),
         ecef_y_m: Meters(0.0),
         ecef_z_m: Meters(0.0),
@@ -602,7 +605,11 @@ fn nav_output_stability_signature(solution: &NavSolutionEpoch) -> String {
         "navsig:v{}:epoch={}:src={}:status={:?}:lifecycle={:?}:valid={}:sat={}:used={}:rej={}:pdop={:.3}:rms={:.3}:refusal={}:decision={}",
         NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
         solution.epoch.index,
-        short_id(&solution.source_observation_epoch_id),
+        format!(
+            "{}@{}",
+            short_id(&solution.source_observation_epoch_id),
+            solution.source_time.sample_index
+        ),
         solution.status,
         solution.lifecycle_state,
         solution.valid,
@@ -882,6 +889,7 @@ mod tests {
         NavSolutionEpoch {
             epoch: bijux_gnss_core::api::Epoch { index: 0 },
             t_rx_s: Seconds(0.0),
+            source_time: bijux_gnss_core::api::ReceiverSampleTrace::from_sample_index(0, 1_000.0),
             ecef_x_m: Meters(1.0),
             ecef_y_m: Meters(2.0),
             ecef_z_m: Meters(3.0),
@@ -1042,10 +1050,15 @@ mod tests {
             epoch_id: format!("obs-epoch-{epoch_idx:010}-synthetic"),
             source_epoch_idx: epoch_idx,
             source_sample_index: epoch_idx,
+            source_time: bijux_gnss_core::api::ReceiverSampleTrace::from_sample_index(
+                epoch_idx, 1_000.0,
+            ),
             decision: ObservationEpochDecision::Accepted,
             downstream_profile_version:
                 bijux_gnss_core::api::OBSERVATION_DOWNSTREAM_PROFILE_VERSION,
         });
+        epoch.source_time =
+            bijux_gnss_core::api::ReceiverSampleTrace::from_sample_index(epoch_idx, 1_000.0);
         epoch
     }
 

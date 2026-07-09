@@ -799,6 +799,7 @@ mod tests {
         let sol = NavSolutionEpoch {
             epoch: bijux_gnss_core::api::Epoch { index: 0 },
             t_rx_s: bijux_gnss_core::api::Seconds(0.0),
+            source_time: bijux_gnss_core::api::ReceiverSampleTrace::from_sample_index(0, 1.0),
             ecef_x_m: bijux_gnss_core::api::Meters(1.0),
             ecef_y_m: bijux_gnss_core::api::Meters(2.0),
             ecef_z_m: bijux_gnss_core::api::Meters(3.0),
@@ -897,6 +898,9 @@ mod tests {
         NavSolutionEpoch {
             epoch: bijux_gnss_core::api::Epoch { index: epoch_idx },
             t_rx_s: bijux_gnss_core::api::Seconds(epoch_idx as f64),
+            source_time: bijux_gnss_core::api::ReceiverSampleTrace::from_sample_index(
+                epoch_idx, 1.0,
+            ),
             ecef_x_m: bijux_gnss_core::api::Meters(0.0),
             ecef_y_m: bijux_gnss_core::api::Meters(0.0),
             ecef_z_m: bijux_gnss_core::api::Meters(0.0),

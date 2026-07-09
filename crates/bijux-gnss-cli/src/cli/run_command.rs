@@ -477,6 +477,7 @@ fn solve_epoch_ekf(
     Ok(Some(bijux_gnss_infra::api::core::NavSolutionEpoch {
         epoch: bijux_gnss_infra::api::core::Epoch { index: obs.epoch_idx },
         t_rx_s: obs.t_rx_s,
+        source_time: obs.source_time,
         ecef_x_m: bijux_gnss_infra::api::core::Meters(ctx.ekf.x[0]),
         ecef_y_m: bijux_gnss_infra::api::core::Meters(ctx.ekf.x[1]),
         ecef_z_m: bijux_gnss_infra::api::core::Meters(ctx.ekf.x[2]),
