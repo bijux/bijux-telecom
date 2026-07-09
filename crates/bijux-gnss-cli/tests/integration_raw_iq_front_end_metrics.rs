@@ -5,7 +5,9 @@ use bijux_gnss_infra::api::receiver::{
     sim::{generate_l1_ca, SyntheticSignalParams},
     ReceiverConfig,
 };
-use bijux_gnss_testkit::front_end::generate_quadrature_skew_carrier;
+use bijux_gnss_testkit::front_end::{
+    generate_clipped_iq16_le_bytes, generate_clipped_iq8_bytes, generate_quadrature_skew_carrier,
+};
 use serde_json::Value;
 use std::fs;
 use std::io::Write;
@@ -14,6 +16,7 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const QUADRATURE_FIXTURE_TOLERANCE_DEG: f64 = 0.25;
+const CLIPPING_REFUSAL_TOLERANCE_PCT: f64 = 1e-9;
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -58,6 +61,12 @@ fn write_raw_iq_sidecar_with_format_and_sample_rate(
     format: &str,
     sample_rate_hz: f64,
 ) {
+    let quantization_bits = match format {
+        "iq8" => 8,
+        "iq16_le" => 16,
+        "cf32_le" => 32,
+        other => panic!("unsupported raw iq format for sidecar helper: {other}"),
+    };
     fs::write(
         path,
         format!(
@@ -66,10 +75,8 @@ format = "{format}"
 sample_rate_hz = {sample_rate_hz}
 intermediate_freq_hz = 0.0
 capture_start_utc = "2026-07-09T00:00:00Z"
-quantization_bits = {}
+quantization_bits = {quantization_bits}
 "#
-            ,
-            if format == "cf32_le" { 32 } else { 8 }
         ),
     )
     .expect("write sidecar");
@@ -106,8 +113,45 @@ fn assert_constant_iq_metrics(metrics: &Value, sample_count: u64) {
         metrics.get("quadrature_error_warning").and_then(Value::as_bool),
         Some(false)
     );
+    assert_eq!(metrics.get("clipping_pct").and_then(Value::as_f64), Some(0.0));
+    assert_eq!(
+        metrics.get("clipping_warning").and_then(Value::as_bool),
+        Some(false)
+    );
+    assert_eq!(
+        metrics.get("precision_claims_allowed").and_then(Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(metrics.get("precision_claims_refused_reason"), Some(&Value::Null));
     assert_eq!(metrics.get("rms").and_then(Value::as_f64), Some(0.25));
     assert_eq!(metrics.get("dc_imbalance").and_then(Value::as_f64), Some(1.0));
+}
+
+fn assert_precision_refusal_metrics(metrics: &Value, sample_count: u64, expected_clipping_pct: f64) {
+    assert_eq!(metrics.get("sample_count").and_then(Value::as_u64), Some(sample_count));
+    let clipping_pct = metrics
+        .get("clipping_pct")
+        .and_then(Value::as_f64)
+        .expect("clipping_pct");
+    assert!(
+        (clipping_pct - expected_clipping_pct).abs() <= CLIPPING_REFUSAL_TOLERANCE_PCT,
+        "measured={clipping_pct} expected={expected_clipping_pct}"
+    );
+    assert_eq!(
+        metrics.get("clipping_warning").and_then(Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        metrics.get("precision_claims_allowed").and_then(Value::as_bool),
+        Some(false)
+    );
+    assert!(
+        metrics
+            .get("precision_claims_refused_reason")
+            .and_then(Value::as_str)
+            .expect("precision_claims_refused_reason")
+            .contains("front-end clipping")
+    );
 }
 
 fn write_biased_synthetic_iq8_capture(path: &Path, i_bias: f32, q_bias: f32) {
@@ -155,6 +199,16 @@ fn write_phase_skewed_cf32_capture(path: &Path, phase_error_deg: f32) {
         file.write_all(&sample.re.to_le_bytes()).expect("write I sample");
         file.write_all(&sample.im.to_le_bytes()).expect("write Q sample");
     }
+}
+
+fn write_clipped_iq8_capture(path: &Path, sample_count: usize, clipped_sample_count: usize) {
+    fs::write(path, generate_clipped_iq8_bytes(sample_count, clipped_sample_count))
+        .expect("write clipped iq8 capture");
+}
+
+fn write_clipped_iq16_capture(path: &Path, sample_count: usize, clipped_sample_count: usize) {
+    fs::write(path, generate_clipped_iq16_le_bytes(sample_count, clipped_sample_count))
+        .expect("write clipped iq16 capture");
 }
 
 #[test]
@@ -365,6 +419,181 @@ fn inspect_reports_quadrature_error_from_synthetic_fixture() {
         Some(true)
     );
     assert_eq!(metrics.get("power_imbalance_warning").and_then(Value::as_bool), Some(false));
+    assert_eq!(metrics.get("clipping_pct").and_then(Value::as_f64), None);
+    assert_eq!(
+        metrics.get("clipping_warning").and_then(Value::as_bool),
+        Some(false)
+    );
+    assert_eq!(
+        metrics.get("precision_claims_allowed").and_then(Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(metrics.get("precision_claims_refused_reason"), Some(&Value::Null));
+
+    fs::remove_dir_all(&temp).expect("remove temp dir");
+}
+
+#[test]
+fn raw_iq_commands_refuse_precision_claims_for_clipped_iq8_capture() {
+    let temp = temp_dir_path("clipped_iq8_precision_refusal");
+    fs::create_dir_all(&temp).expect("create temp dir");
+
+    let iq_path = temp.join("clipped.iq8");
+    write_clipped_iq8_capture(&iq_path, 5_000, 100);
+    let sidecar_path = temp.join("clipped.sidecar.toml");
+    write_raw_iq_sidecar(&sidecar_path);
+
+    let acquire_out = temp.join("acquire-out");
+    let acquire = run_bijux(
+        &[
+            "gnss",
+            "acquire",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--prn",
+            "1",
+            "--report",
+            "json",
+            "--out",
+            acquire_out.to_str().expect("out dir"),
+        ],
+        &repo_root(),
+    );
+    assert!(acquire.status.success(), "acquire failed: {}", String::from_utf8_lossy(&acquire.stderr));
+    let acquire_report = load_json(&acquire_out.join("acquire_report.json"));
+    assert_precision_refusal_metrics(
+        acquire_report
+            .get("front_end_metrics")
+            .expect("front_end_metrics present"),
+        5_000,
+        2.0,
+    );
+
+    let track_out = temp.join("track-out");
+    let track = run_bijux(
+        &[
+            "gnss",
+            "track",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--prn",
+            "1",
+            "--report",
+            "json",
+            "--out",
+            track_out.to_str().expect("out dir"),
+        ],
+        &repo_root(),
+    );
+    assert!(track.status.success(), "track failed: {}", String::from_utf8_lossy(&track.stderr));
+    let track_report = load_json(&track_out.join("track_report.json"));
+    assert_precision_refusal_metrics(
+        track_report
+            .get("front_end_metrics")
+            .expect("front_end_metrics present"),
+        5_000,
+        2.0,
+    );
+
+    let inspect_out = temp.join("inspect-out");
+    let inspect = run_bijux(
+        &[
+            "gnss",
+            "inspect",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--max-samples",
+            "5000",
+            "--report",
+            "json",
+            "--out",
+            inspect_out.to_str().expect("out dir"),
+        ],
+        &repo_root(),
+    );
+    assert!(inspect.status.success(), "inspect failed: {}", String::from_utf8_lossy(&inspect.stderr));
+    let inspect_report = load_json(&inspect_out.join("inspect_report.json"));
+    assert_precision_refusal_metrics(
+        inspect_report
+            .get("front_end_metrics")
+            .expect("front_end_metrics present"),
+        5_000,
+        2.0,
+    );
+
+    let run_out = temp.join("run-out");
+    let run = run_bijux(
+        &[
+            "gnss",
+            "run",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--report",
+            "json",
+            "--out",
+            run_out.to_str().expect("out dir"),
+        ],
+        &repo_root(),
+    );
+    assert!(run.status.success(), "run failed: {}", String::from_utf8_lossy(&run.stderr));
+    let run_report = load_json(&run_out.join("run_report.json"));
+    assert_precision_refusal_metrics(
+        run_report
+            .get("front_end_metrics")
+            .expect("front_end_metrics present"),
+        5_000,
+        2.0,
+    );
+
+    fs::remove_dir_all(&temp).expect("remove temp dir");
+}
+
+#[test]
+fn inspect_reports_clipping_for_signed_16bit_capture() {
+    let temp = temp_dir_path("inspect_iq16_clipping");
+    fs::create_dir_all(&temp).expect("create temp dir");
+
+    let iq_path = temp.join("clipped.iq16");
+    write_clipped_iq16_capture(&iq_path, 128, 8);
+    let sidecar_path = temp.join("clipped.sidecar.toml");
+    write_raw_iq_sidecar_with_format_and_sample_rate(&sidecar_path, "iq16_le", 5_000_000.0);
+
+    let out_dir = temp.join("inspect-out");
+    let output = run_bijux(
+        &[
+            "gnss",
+            "inspect",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--report",
+            "json",
+            "--out",
+            out_dir.to_str().expect("out dir"),
+        ],
+        &repo_root(),
+    );
+
+    assert!(output.status.success(), "inspect failed: {}", String::from_utf8_lossy(&output.stderr));
+    let report = load_json(&out_dir.join("inspect_report.json"));
+    let metrics = report
+        .get("front_end_metrics")
+        .expect("front_end_metrics present");
+    assert_precision_refusal_metrics(metrics, 128, 6.25);
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
 }
