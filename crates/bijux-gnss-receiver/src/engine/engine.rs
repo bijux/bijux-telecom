@@ -57,12 +57,35 @@ impl Receiver {
                 name: "front_end_dc_imbalance_before_removal",
                 value: removed.dc_imbalance,
             });
+            runtime.metrics.metric(Metric {
+                name: "front_end_i_power_before_removal",
+                value: removed.i_power,
+            });
+            runtime.metrics.metric(Metric {
+                name: "front_end_q_power_before_removal",
+                value: removed.q_power,
+            });
+            runtime.metrics.metric(Metric {
+                name: "front_end_iq_power_ratio_before_removal",
+                value: removed.iq_power_ratio,
+            });
+            runtime.metrics.metric(Metric {
+                name: "front_end_power_imbalance_warning_before_removal",
+                value: if removed.power_imbalance_warning { 1.0 } else { 0.0 },
+            });
             runtime.trace.record(TraceRecord {
                 name: "front_end_dc_removal",
                 fields: vec![
                     ("sample_count", removed.sample_count.to_string()),
                     ("i_mean", format!("{:.9}", removed.i_mean)),
                     ("q_mean", format!("{:.9}", removed.q_mean)),
+                    ("i_power", format!("{:.9}", removed.i_power)),
+                    ("q_power", format!("{:.9}", removed.q_power)),
+                    ("iq_power_ratio", format!("{:.9}", removed.iq_power_ratio)),
+                    (
+                        "power_imbalance_warning",
+                        removed.power_imbalance_warning.to_string(),
+                    ),
                     ("rms", format!("{:.9}", removed.rms)),
                     ("dc_imbalance", format!("{:.9}", removed.dc_imbalance)),
                 ],
