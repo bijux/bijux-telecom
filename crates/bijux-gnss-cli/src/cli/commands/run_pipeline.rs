@@ -31,6 +31,7 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
         &mut profile,
         CommonOverrides { seed: common.seed, deterministic: common.deterministic },
     );
+    apply_acquisition_doppler_overrides(&mut profile, doppler_search_hz, doppler_step_hz);
     let raw_iq_metadata = resolve_raw_iq_metadata(&common, dataset.as_ref())?;
     apply_raw_iq_metadata(&mut profile, &raw_iq_metadata, sampling_hz, if_hz)?;
     apply_overrides(&mut profile, None, None, code_hz, code_length);
@@ -42,8 +43,7 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
     let frame = load_acquisition_frame(&input_file, &config, &raw_iq_metadata)?;
     let signal_quality = measure_signal_quality_from_samples(&raw_iq_metadata, &frame.iq);
     let runtime = runtime_config_from_env(&common, None);
-    let acquisition =
-        AcquisitionEngine::new(config, runtime).with_doppler(doppler_search_hz, doppler_step_hz);
+    let acquisition = AcquisitionEngine::new(config, runtime);
     let sats = bijux_gnss_infra::api::core::prns_to_sats(&prn);
     let results = acquisition.run_fft_topn(
         &frame,

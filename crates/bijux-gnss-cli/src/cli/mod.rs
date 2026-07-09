@@ -107,6 +107,19 @@ fn artifact_header(
     )?)
 }
 
+fn apply_acquisition_doppler_overrides(
+    profile: &mut ReceiverConfig,
+    doppler_search_hz: Option<i32>,
+    doppler_step_hz: Option<i32>,
+) {
+    if let Some(search_hz) = doppler_search_hz {
+        profile.acquisition.doppler_search_hz = search_hz;
+    }
+    if let Some(step_hz) = doppler_step_hz {
+        profile.acquisition.doppler_step_hz = step_hz;
+    }
+}
+
 fn write_manifest<T: Serialize>(
     common: &CommonArgs,
     command: &str,

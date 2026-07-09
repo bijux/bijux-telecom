@@ -46,11 +46,13 @@ pub(crate) enum GnssCommand {
         #[arg(long)]
         code_length: Option<usize>,
 
-        #[arg(long, alias = "doppler", default_value_t = 10_000)]
-        doppler_search_hz: i32,
+        /// Override the receiver profile's maximum Doppler search range, in Hz.
+        #[arg(long, alias = "doppler")]
+        doppler_search_hz: Option<i32>,
 
-        #[arg(long, default_value_t = 500)]
-        doppler_step_hz: i32,
+        /// Override the receiver profile's Doppler bin width, in Hz.
+        #[arg(long)]
+        doppler_step_hz: Option<i32>,
 
         #[arg(long, default_value_t = 0)]
         offset_bytes: u64,
@@ -89,11 +91,13 @@ pub(crate) enum GnssCommand {
         #[arg(long)]
         code_length: Option<usize>,
 
-        #[arg(long, alias = "doppler", default_value_t = 10_000)]
-        doppler_search_hz: i32,
+        /// Override the receiver profile's maximum Doppler search range, in Hz.
+        #[arg(long, alias = "doppler")]
+        doppler_search_hz: Option<i32>,
 
-        #[arg(long, default_value_t = 500)]
-        doppler_step_hz: i32,
+        /// Override the receiver profile's Doppler bin width, in Hz.
+        #[arg(long)]
+        doppler_step_hz: Option<i32>,
 
         #[arg(long, default_value_t = 0)]
         offset_bytes: u64,
