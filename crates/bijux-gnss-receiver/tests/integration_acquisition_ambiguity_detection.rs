@@ -84,6 +84,35 @@ fn acquisition_marks_comparable_competing_peaks_as_ambiguous() {
 }
 
 #[test]
+fn acquisition_preserves_runner_up_as_ranked_alternative() {
+    let sat = gps_l1_ca_satellite();
+    let config = ambiguity_profile();
+    let frame = competing_peak_frame(
+        &config,
+        0.001,
+        [competing_signal(sat, 0.0, 300.0, 44.0), competing_signal(sat, 250.0, 300.0, 44.0)],
+        0x2407_2001,
+    );
+    let run = AcquisitionEngine::new(config.clone(), ReceiverRuntime::default())
+        .with_doppler(config.acquisition_doppler_search_hz, config.acquisition_doppler_step_hz)
+        .run_fft_topn_with_explain(&frame, &[sat], 4, 1, 1);
+
+    let primary = &run.results[0][0];
+    let alternative = run.results[0].get(1).expect("runner-up candidate");
+
+    assert_eq!(primary.hypothesis.to_string(), "ambiguous", "{run:?}");
+    assert_eq!(alternative.hypothesis.to_string(), "rejected", "{run:?}");
+    assert_eq!(alternative.score, 0.0, "{run:?}");
+    assert!(
+        alternative
+            .explain_selection_reason
+            .as_deref()
+            .is_some_and(|reason| reason.starts_with("ranked_alternative:")),
+        "{run:?}"
+    );
+}
+
+#[test]
 fn acquisition_explainability_reports_multipath_suspicion_for_delayed_secondary_peaks() {
     let sat = gps_l1_ca_satellite();
     let config = ambiguity_profile();
