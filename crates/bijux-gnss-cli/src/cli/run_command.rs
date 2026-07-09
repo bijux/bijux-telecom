@@ -134,6 +134,16 @@ fn format_search_summary(report: &AcquisitionReport) -> String {
     )
 }
 
+fn format_doppler_search(settings: DopplerSearchSettings) -> String {
+    format!(
+        "+/-{} Hz in {} Hz bins ({} bins, IF {:.1} Hz)",
+        settings.max_search_hz,
+        settings.bin_width_hz,
+        settings.bin_count,
+        settings.intermediate_freq_hz
+    )
+}
+
 fn print_acquisition_table(report: &AcquisitionReport) {
     println!(
         "I mean: {:.6}  Q mean: {:.6}  I power: {:.6}  Q power: {:.6}  I/Q ratio: {:.6}  Power warning: {}  Quadrature error(deg): {}  Quadrature warning: {}  Clipping(%): {}  Clipping warning: {}  Centered RMS: {:.6e}  Zero-signal: {}  Zero-signal reason: {}  Precision claims allowed: {}  Precision refusal: {}  RMS: {:.6}  DC imbalance: {:.6}",
@@ -160,6 +170,7 @@ fn print_acquisition_table(report: &AcquisitionReport) {
         report.front_end_metrics.rms,
         report.front_end_metrics.dc_imbalance
     );
+    println!("Doppler search: {}", format_doppler_search(report.doppler_search));
     println!("Search summary: {}", format_search_summary(report));
     println!("Reported PRNs: {}", format_reported_prns(report));
     println!("Sat\tCarrier(Hz)\tCodePhase\tPeak\tPeak/Mean\tPeak/2nd\tHypothesis\tReason");

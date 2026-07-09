@@ -120,6 +120,26 @@ fn apply_acquisition_doppler_overrides(
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+struct DopplerSearchSettings {
+    max_search_hz: i32,
+    bin_width_hz: i32,
+    bin_count: usize,
+    intermediate_freq_hz: f64,
+}
+
+fn doppler_search_settings(profile: &ReceiverConfig) -> DopplerSearchSettings {
+    let max_search_hz = profile.acquisition.doppler_search_hz.max(0);
+    let bin_width_hz = profile.acquisition.doppler_step_hz.max(1);
+    let bin_count = ((max_search_hz / bin_width_hz) as usize * 2) + 1;
+    DopplerSearchSettings {
+        max_search_hz,
+        bin_width_hz,
+        bin_count,
+        intermediate_freq_hz: profile.intermediate_freq_hz,
+    }
+}
+
 fn write_manifest<T: Serialize>(
     common: &CommonArgs,
     command: &str,

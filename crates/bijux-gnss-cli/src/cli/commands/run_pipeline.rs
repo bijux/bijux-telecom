@@ -73,6 +73,7 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
         search_summary: bijux_gnss_infra::api::core::AcqSearchSummary::from_results(
             &primary_results,
         ),
+        doppler_search: doppler_search_settings(&profile),
         front_end_metrics: signal_quality.front_end_metrics.clone(),
         signal_quality,
         reported_prns: summarize_reported_prns(&rows),

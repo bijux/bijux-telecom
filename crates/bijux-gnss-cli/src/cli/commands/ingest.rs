@@ -65,6 +65,7 @@ fn handle_track(command: GnssCommand) -> Result<()> {
     
                     let report = TrackingReport {
                         sats: sats.clone(),
+                        doppler_search: doppler_search_settings(&profile),
                         front_end_metrics: signal_quality.front_end_metrics.clone(),
                         signal_quality,
                         epochs: tracks
