@@ -1,9 +1,10 @@
 //! Doppler and carrier-frequency conversion helpers.
 //!
-//! Acquisition and tracking work with an absolute carrier frequency inside the
-//! sampled band, while downstream measurement artifacts report Doppler relative
-//! to the configured intermediate frequency. These helpers keep that
-//! sign-sensitive conversion explicit in one place.
+//! Synthetic signal generation, acquisition, and tracking all model the carrier
+//! as an absolute in-band frequency. Public Doppler outputs, however, remain an
+//! IF-relative quantity. These helpers keep that sign-sensitive conversion
+//! explicit in one place so the signal model and receiver pipeline use the same
+//! convention.
 
 /// Convert a Doppler offset into an absolute carrier frequency inside the
 /// sampled band.
@@ -38,6 +39,16 @@ mod tests {
         let carrier_hz = carrier_hz_from_doppler_hz(intermediate_freq_hz, doppler_hz);
 
         assert_eq!(carrier_hz, 4_128_750.0);
+        assert_eq!(doppler_hz_from_carrier_hz(intermediate_freq_hz, carrier_hz), doppler_hz);
+    }
+
+    #[test]
+    fn zero_if_carrier_matches_doppler_bin() {
+        let intermediate_freq_hz = 0.0;
+        let doppler_hz = 750.0;
+        let carrier_hz = carrier_hz_from_doppler_hz(intermediate_freq_hz, doppler_hz);
+
+        assert_eq!(carrier_hz, doppler_hz);
         assert_eq!(doppler_hz_from_carrier_hz(intermediate_freq_hz, carrier_hz), doppler_hz);
     }
 }

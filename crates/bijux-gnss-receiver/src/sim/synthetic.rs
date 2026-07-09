@@ -11,6 +11,7 @@ use bijux_gnss_signal::api::SignalSource;
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::io::data::SampleSourceError;
+use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
 use bijux_gnss_nav::api::GpsEphemeris;
 use bijux_gnss_signal::api::{
     advance_code_phase_seconds, code_value_at_phase, generate_ca_code, samples_per_code,
@@ -648,7 +649,10 @@ fn synthetic_intermediate_frequency_hz(intermediate_freq_hz: f64, sat: SatId) ->
 }
 
 fn synthetic_carrier_hz(intermediate_freq_hz: f64, sat: SatId, doppler_hz: f64) -> f64 {
-    synthetic_intermediate_frequency_hz(intermediate_freq_hz, sat) + doppler_hz
+    carrier_hz_from_doppler_hz(
+        synthetic_intermediate_frequency_hz(intermediate_freq_hz, sat),
+        doppler_hz,
+    )
 }
 
 fn synthetic_constellation_carrier_hz(sat: SatId) -> f64 {
