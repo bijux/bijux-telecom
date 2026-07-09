@@ -135,7 +135,7 @@ fn load_frame(
     let mut source = FileSamples::open_raw_iq(path, metadata.clone())
         .with_context(|| format!("failed to open {}", path.display()))?;
 
-    let frame = match source.next_frame(samples_per_code)? {
+    let mut frame = match source.next_frame(samples_per_code)? {
         Some(frame) => frame,
         None => bail!("no samples available in {}", path.display()),
     };
@@ -144,6 +144,9 @@ fn load_frame(
             "not enough samples: need {samples_per_code}, got {}",
             frame.len()
         );
+    }
+    if config.remove_dc_offset {
+        bijux_gnss_infra::api::signal::remove_dc_offset_in_place(&mut frame.iq);
     }
     Ok(frame)
 }
@@ -560,9 +563,12 @@ fn write_ephemeris(
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_raw_iq_metadata, enforce_locked_capture_value};
-    use crate::ReceiverConfig;
+    use super::{apply_raw_iq_metadata, enforce_locked_capture_value, load_frame};
+    use crate::{ReceiverConfig, ReceiverPipelineConfig};
     use crate::RawIqMetadata;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn locked_capture_value_rejects_drift() {
@@ -590,5 +596,48 @@ mod tests {
         assert_eq!(profile.sample_rate_hz, metadata.sample_rate_hz);
         assert_eq!(profile.intermediate_freq_hz, metadata.intermediate_freq_hz);
         assert_eq!(profile.quantization_bits, 16);
+    }
+
+    fn temp_file_path(name: &str) -> PathBuf {
+        let nanos =
+            SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos();
+        std::env::temp_dir().join(format!("bijux_{}_{}_{}.iq", name, std::process::id(), nanos))
+    }
+
+    #[test]
+    fn load_frame_removes_dc_offset_when_enabled() {
+        let path = temp_file_path("load_frame_dc_removal");
+        let sample_count = 4_092usize;
+        let mut raw = Vec::with_capacity(sample_count * 2);
+        for _ in 0..sample_count {
+            raw.push(64u8);
+            raw.push(0u8);
+        }
+        fs::write(&path, raw).expect("write iq8 fixture");
+
+        let metadata = RawIqMetadata {
+            format: bijux_gnss_infra::api::signal::IqSampleFormat::Iq8,
+            sample_rate_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            capture_start_utc: "2026-07-09T00:00:00Z".to_string(),
+            offset_bytes: 0,
+            quantization_bits: Some(8),
+            notes: None,
+        };
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: metadata.sample_rate_hz,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            remove_dc_offset: true,
+            ..ReceiverPipelineConfig::default()
+        };
+
+        let frame = load_frame(&path, &config, &metadata).expect("load frame");
+        let metrics = bijux_gnss_infra::api::signal::measure_iq_front_end_metrics(&frame.iq);
+
+        assert!(metrics.i_mean.abs() < 1e-6, "i_mean={}", metrics.i_mean);
+        assert!(metrics.q_mean.abs() < 1e-6, "q_mean={}", metrics.q_mean);
+
+        fs::remove_file(&path).expect("remove iq8 fixture");
     }
 }

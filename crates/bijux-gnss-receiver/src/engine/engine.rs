@@ -11,6 +11,7 @@ use bijux_gnss_core::api::{
     signal_registry, Constellation, InputError, SatId, SignalBand, SignalCode, SignalSupportRow,
     SupportMatrix, SupportStatus,
 };
+use bijux_gnss_signal::api::remove_dc_offset_in_place;
 use std::time::Instant;
 
 impl Receiver {
@@ -35,7 +36,7 @@ impl Receiver {
             self.config().code_freq_basis_hz,
             self.config().code_length,
         );
-        let frame = match input.next_frame(samples_per_code) {
+        let mut frame = match input.next_frame(samples_per_code) {
             Ok(Some(frame)) => frame,
             Ok(None) => return Ok(RunArtifacts::default()),
             Err(err) => {
@@ -50,6 +51,23 @@ impl Receiver {
                 }));
             }
         };
+        if self.config().remove_dc_offset {
+            let removed = remove_dc_offset_in_place(&mut frame.iq);
+            runtime.metrics.metric(Metric {
+                name: "front_end_dc_imbalance_before_removal",
+                value: removed.dc_imbalance,
+            });
+            runtime.trace.record(TraceRecord {
+                name: "front_end_dc_removal",
+                fields: vec![
+                    ("sample_count", removed.sample_count.to_string()),
+                    ("i_mean", format!("{:.9}", removed.i_mean)),
+                    ("q_mean", format!("{:.9}", removed.q_mean)),
+                    ("rms", format!("{:.9}", removed.rms)),
+                    ("dc_imbalance", format!("{:.9}", removed.dc_imbalance)),
+                ],
+            });
+        }
 
         let sats: Vec<SatId> =
             (1..=32).map(|prn| SatId { constellation: Constellation::Gps, prn }).collect();
