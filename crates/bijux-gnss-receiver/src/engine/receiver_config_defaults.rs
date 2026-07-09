@@ -3,7 +3,7 @@
 use bijux_gnss_core::api::SchemaVersion;
 
 use crate::engine::receiver_config::{
-    default_tracking_integration_ms, AcquisitionConfig, NavigationConfig,
+    default_tracking_integration_ms, AcquisitionConfig, FrontEndConfig, NavigationConfig,
     NavigationWeightingConfig, PppConfig, ReceiverConfig, ScienceThresholdsConfig, TrackingConfig,
 };
 
@@ -16,6 +16,7 @@ impl Default for ReceiverConfig {
             quantization_bits: 16,
             code_freq_basis_hz: 1_023_000.0,
             code_length: 1023,
+            front_end: FrontEndConfig::default(),
             seed: 1,
             acquisition: AcquisitionConfig::default(),
             tracking: TrackingConfig::default(),

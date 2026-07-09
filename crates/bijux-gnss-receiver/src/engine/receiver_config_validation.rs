@@ -243,6 +243,7 @@ impl ReceiverConfig {
         ReceiverPipelineConfig {
             sampling_freq_hz: self.sample_rate_hz,
             intermediate_freq_hz: self.intermediate_freq_hz,
+            remove_dc_offset: self.front_end.remove_dc_offset,
             code_freq_basis_hz: self.code_freq_basis_hz,
             code_length: self.code_length,
             channels: self.tracking.max_channels,

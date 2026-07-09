@@ -24,6 +24,9 @@ pub struct ReceiverConfig {
     pub code_freq_basis_hz: f64,
     /// Code length in chips.
     pub code_length: usize,
+    /// Front-end conditioning configuration.
+    #[serde(default)]
+    pub front_end: FrontEndConfig,
     /// RNG seed for deterministic operations.
     pub seed: u64,
     /// Acquisition configuration.
@@ -41,6 +44,8 @@ pub struct ReceiverPipelineConfig {
     pub sampling_freq_hz: f64,
     /// Intermediate frequency, in Hz.
     pub intermediate_freq_hz: f64,
+    /// Whether mean I/Q offset should be removed before acquisition consumes a frame.
+    pub remove_dc_offset: bool,
     /// Code frequency basis, in Hz.
     pub code_freq_basis_hz: f64,
     /// Code length in chips.
@@ -102,6 +107,7 @@ impl Default for ReceiverPipelineConfig {
         Self {
             sampling_freq_hz: 5_000_000.0,
             intermediate_freq_hz: 0.0,
+            remove_dc_offset: false,
             code_freq_basis_hz: 1_023_000.0,
             code_length: 1023,
             channels: 12,
@@ -131,6 +137,14 @@ impl Default for ReceiverPipelineConfig {
             science_thresholds: ScienceThresholdsConfig::default(),
         }
     }
+}
+
+/// Front-end conditioning options applied before acquisition.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+pub struct FrontEndConfig {
+    /// Remove the mean I/Q offset from the acquisition frame before processing.
+    #[serde(default)]
+    pub remove_dc_offset: bool,
 }
 
 /// Tracking parameters for a specific band.
