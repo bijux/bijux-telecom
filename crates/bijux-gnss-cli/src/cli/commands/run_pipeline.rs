@@ -125,6 +125,8 @@ fn acquisition_row_from_result(result: &bijux_gnss_infra::api::core::AcqResult) 
         .unwrap_or((None, None));
     AcquisitionRow {
         sat: result.sat,
+        candidate_rank: result.candidate_rank,
+        is_primary_candidate: result.is_primary_candidate,
         carrier_hz: result.carrier_hz.0,
         coarse_carrier_hz,
         doppler_refinement_hz,

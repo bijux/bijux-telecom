@@ -14,6 +14,8 @@ struct AcquisitionReport {
 #[derive(Debug, Serialize, Clone)]
 struct AcquisitionRow {
     sat: SatId,
+    candidate_rank: u8,
+    is_primary_candidate: bool,
     carrier_hz: f64,
     coarse_carrier_hz: Option<f64>,
     doppler_refinement_hz: Option<f64>,
@@ -42,6 +44,9 @@ struct ReportedPrn {
 fn summarize_reported_prns(rows: &[AcquisitionRow]) -> Vec<ReportedPrn> {
     let mut by_prn = std::collections::BTreeMap::<SatId, ReportedPrn>::new();
     for row in rows {
+        if !row.is_primary_candidate {
+            continue;
+        }
         let classification = match row.hypothesis.as_str() {
             "accepted" => "accepted",
             "ambiguous" => "candidate",
@@ -162,6 +167,8 @@ mod report_tests {
     fn gps_row(prn: u8, hypothesis: &str, peak_mean_ratio: f32) -> AcquisitionRow {
         AcquisitionRow {
             sat: SatId { constellation: Constellation::Gps, prn },
+            candidate_rank: 1,
+            is_primary_candidate: true,
             carrier_hz: 500.0 * prn as f64,
             coarse_carrier_hz: None,
             doppler_refinement_hz: None,
@@ -196,6 +203,21 @@ mod report_tests {
         assert_eq!(reported_prns[0].classification, "accepted");
         assert_eq!(reported_prns[1].sat.prn, 12);
         assert_eq!(reported_prns[1].classification, "candidate");
+    }
+
+    #[test]
+    fn summarize_reported_prns_ignores_non_primary_candidates() {
+        let mut alternative = gps_row(7, "accepted", 12.0);
+        alternative.candidate_rank = 2;
+        alternative.is_primary_candidate = false;
+        let primary = gps_row(7, "ambiguous", 7.0);
+
+        let reported_prns = summarize_reported_prns(&[alternative, primary.clone()]);
+
+        assert_eq!(reported_prns.len(), 1);
+        assert_eq!(reported_prns[0].sat.prn, primary.sat.prn);
+        assert_eq!(reported_prns[0].classification, "candidate");
+        assert_eq!(reported_prns[0].peak_mean_ratio, primary.peak_mean_ratio);
     }
 }
 
