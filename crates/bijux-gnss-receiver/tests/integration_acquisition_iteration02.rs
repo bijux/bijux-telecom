@@ -3,7 +3,7 @@ use std::path::Path;
 
 use bijux_gnss_core::api::{AcqHypothesis, SampleTime, SamplesFrame, SatId, Seconds};
 use bijux_gnss_receiver::api::{
-    sim::{generate_l1_ca, SyntheticSignalParams},
+    sim::{generate_l1_ca, generate_l1_ca_multi, SyntheticScenario, SyntheticSignalParams},
     AcquisitionEngine, ReceiverPipelineConfig, ReceiverRuntime,
 };
 use bijux_gnss_signal::api::samples_per_code;
@@ -144,6 +144,18 @@ fn frame_from_fixture(config: &ReceiverPipelineConfig, fixture: &AcqFixture) -> 
                 vec![Complex::new(0.0, 0.0); samples],
             )
         }
+        "noise_only" => generate_l1_ca_multi(
+            config,
+            &SyntheticScenario {
+                sample_rate_hz: config.sampling_freq_hz,
+                intermediate_freq_hz: config.intermediate_freq_hz,
+                duration_s,
+                seed: fixture.seed,
+                satellites: Vec::new(),
+                ephemerides: Vec::new(),
+                id: fixture.id.clone(),
+            },
+        ),
         other => panic!("unsupported fixture kind: {other}"),
     }
 }
