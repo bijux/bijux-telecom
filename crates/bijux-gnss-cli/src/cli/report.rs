@@ -15,6 +15,9 @@ struct AcquisitionReport {
 struct AcquisitionRow {
     sat: SatId,
     carrier_hz: f64,
+    coarse_carrier_hz: Option<f64>,
+    doppler_refinement_hz: Option<f64>,
+    doppler_refinement_bins: Option<f64>,
     code_phase_samples: usize,
     peak: f32,
     peak_mean_ratio: f32,
@@ -154,6 +157,9 @@ mod report_tests {
         AcquisitionRow {
             sat: SatId { constellation: Constellation::Gps, prn },
             carrier_hz: 500.0 * prn as f64,
+            coarse_carrier_hz: None,
+            doppler_refinement_hz: None,
+            doppler_refinement_bins: None,
             code_phase_samples: 42,
             peak: peak_mean_ratio * 10.0,
             peak_mean_ratio,

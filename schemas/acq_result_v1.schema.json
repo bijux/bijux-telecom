@@ -68,10 +68,32 @@
         "sat": { "$ref": "#/definitions/SatId" },
         "source_time": { "$ref": "#/definitions/ReceiverSampleTrace" },
         "carrier_hz": { "type": "number" },
+        "doppler_refinement": { "$ref": "#/definitions/AcqDopplerRefinement" },
         "code_phase_samples": { "type": "integer", "minimum": 0 },
         "peak": { "type": "number" },
         "peak_second_ratio": { "type": "number" },
         "hypothesis": { "type": "string" }
+      }
+    },
+    "AcqDopplerRefinement": {
+      "type": "object",
+      "required": [
+        "method",
+        "coarse_carrier_hz",
+        "offset_hz",
+        "offset_bins",
+        "left_peak",
+        "center_peak",
+        "right_peak"
+      ],
+      "properties": {
+        "method": { "type": "string" },
+        "coarse_carrier_hz": { "type": "number" },
+        "offset_hz": { "type": "number" },
+        "offset_bins": { "type": "number" },
+        "left_peak": { "type": "number" },
+        "center_peak": { "type": "number" },
+        "right_peak": { "type": "number" }
       }
     }
   }

@@ -185,12 +185,29 @@ fn print_acquisition_table(report: &AcquisitionReport) {
     println!("Code-phase search: {}", format_code_phase_search(&report.code_phase_search));
     println!("Search summary: {}", format_search_summary(report));
     println!("Reported PRNs: {}", format_reported_prns(report));
-    println!("Sat\tCarrier(Hz)\tCodePhase\tPeak\tPeak/Mean\tPeak/2nd\tHypothesis\tReason");
+    println!(
+        "Sat\tCarrier(Hz)\tCoarseCarrier(Hz)\tRefine(Hz)\tRefine(Bins)\tCodePhase\tPeak\tPeak/Mean\tPeak/2nd\tHypothesis\tReason"
+    );
     for row in &report.results {
+        let coarse_carrier_hz = row
+            .coarse_carrier_hz
+            .map(|value| format!("{value:.1}"))
+            .unwrap_or_else(|| "n/a".to_string());
+        let doppler_refinement_hz = row
+            .doppler_refinement_hz
+            .map(|value| format!("{value:.3}"))
+            .unwrap_or_else(|| "n/a".to_string());
+        let doppler_refinement_bins = row
+            .doppler_refinement_bins
+            .map(|value| format!("{value:.6}"))
+            .unwrap_or_else(|| "n/a".to_string());
         println!(
-            "{}\t{:.1}\t{}\t{:.3}\t{:.2}\t{:.2}\t{}\t{}",
+            "{}\t{:.1}\t{}\t{}\t{}\t{}\t{:.3}\t{:.2}\t{:.2}\t{}\t{}",
             format_sat(row.sat),
             row.carrier_hz,
+            coarse_carrier_hz,
+            doppler_refinement_hz,
+            doppler_refinement_bins,
             row.code_phase_samples,
             row.peak,
             row.peak_mean_ratio,

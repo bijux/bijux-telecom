@@ -105,9 +105,23 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
 }
 
 fn acquisition_row_from_result(result: &bijux_gnss_infra::api::core::AcqResult) -> AcquisitionRow {
+    let (coarse_carrier_hz, doppler_refinement_hz, doppler_refinement_bins) = result
+        .doppler_refinement
+        .as_ref()
+        .map(|refinement| {
+            (
+                Some(refinement.coarse_carrier_hz.0),
+                Some(refinement.offset_hz),
+                Some(refinement.offset_bins),
+            )
+        })
+        .unwrap_or((None, None, None));
     AcquisitionRow {
         sat: result.sat,
         carrier_hz: result.carrier_hz.0,
+        coarse_carrier_hz,
+        doppler_refinement_hz,
+        doppler_refinement_bins,
         code_phase_samples: result.code_phase_samples,
         peak: result.peak,
         peak_mean_ratio: result.peak_mean_ratio,
