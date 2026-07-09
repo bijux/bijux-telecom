@@ -17,8 +17,8 @@ pub struct DatasetEntry {
     pub format: IqSampleFormat,
     /// Sample rate in Hz when declared directly in the registry.
     pub sample_rate_hz: Option<f64>,
-    /// Intermediate frequency in Hz.
-    pub intermediate_freq_hz: f64,
+    /// Intermediate frequency in Hz when declared directly in the registry.
+    pub intermediate_freq_hz: Option<f64>,
     /// Capture start timestamp in UTC.
     pub capture_start_utc: Option<String>,
     /// Expected satellites.
@@ -67,11 +67,12 @@ impl DatasetEntry {
     /// Build explicit raw IQ metadata from a registry entry when it carries all required fields.
     pub fn raw_iq_metadata(&self) -> Option<RawIqMetadata> {
         let sample_rate_hz = self.sample_rate_hz?;
+        let intermediate_freq_hz = self.intermediate_freq_hz?;
         let capture_start_utc = self.capture_start_utc.clone()?;
         Some(RawIqMetadata {
             format: self.format,
             sample_rate_hz,
-            intermediate_freq_hz: self.intermediate_freq_hz,
+            intermediate_freq_hz,
             capture_start_utc,
             offset_bytes: 0,
             quantization_bits: None,
@@ -349,6 +350,54 @@ sidecar = "{}"
             resolve_raw_iq_metadata(Some(&entry), None).expect("resolve raw iq metadata");
 
         assert_eq!(metadata.sample_rate_hz, 5_000_000.0);
+        assert_eq!(metadata.quantization_bits, Some(16));
+    }
+
+    #[test]
+    fn resolve_raw_iq_metadata_uses_sidecar_when_registry_omits_intermediate_frequency() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let sidecar_path = temp.path().join("demo.sidecar.toml");
+        fs::write(
+            &sidecar_path,
+            r#"
+format = "iq16_le"
+sample_rate_hz = 5000000.0
+intermediate_freq_hz = 250000.0
+capture_start_utc = "2026-07-09T00:00:00Z"
+quantization_bits = 16
+"#,
+        )
+        .expect("write sidecar");
+        let registry_path = temp.path().join("registry.toml");
+        fs::write(
+            &registry_path,
+            format!(
+                r#"
+version = 1
+
+[[entries]]
+id = "demo"
+path = "{}"
+format = "iq16_le"
+sample_rate_hz = 5000000.0
+capture_start_utc = "2026-07-09T00:00:00Z"
+expected_sats = [1]
+expected_region = "N/A"
+expected_time_utc = "N/A"
+sidecar = "{}"
+"#,
+                temp.path().join("demo.iq16").display(),
+                sidecar_path.display()
+            ),
+        )
+        .expect("write registry");
+
+        let registry = DatasetRegistry::load(&registry_path).expect("load registry");
+        let entry = registry.find("demo").expect("find dataset");
+        let metadata =
+            resolve_raw_iq_metadata(Some(&entry), None).expect("resolve raw iq metadata");
+
+        assert_eq!(metadata.intermediate_freq_hz, 250_000.0);
         assert_eq!(metadata.quantization_bits, Some(16));
     }
 
