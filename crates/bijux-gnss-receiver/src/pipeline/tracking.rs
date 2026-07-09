@@ -23,6 +23,9 @@ const SAMPLE_RATE_MISMATCH_MIN_PHASE_DRIFT_SAMPLES: f64 = 12.0;
 const SAMPLE_RATE_MISMATCH_MIN_ACQUISITION_SCORE: f32 = 0.9;
 const SAMPLE_RATE_MISMATCH_WINDOW_EPOCHS: usize = 4;
 const SAMPLE_RATE_MISMATCH_MIN_UNSTABLE_EPOCHS_IN_WINDOW: usize = 3;
+const CYCLE_SLIP_PHASE_DELTA_CYCLES: f64 = 0.35;
+const NAV_BIT_PHASE_STEP_CYCLES: f64 = 0.5;
+const NAV_BIT_PHASE_STEP_TOLERANCE_CYCLES: f64 = 0.1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelState {
@@ -108,6 +111,8 @@ struct LoopState {
     code_phase_samples: f64,
     prev_prompt: Option<Complex<f32>>,
     prev_prompt_phase_cycles: Option<f64>,
+    nav_bit_phase_offset_cycles: f64,
+    nav_bit_transition_count: u32,
     state: ChannelState,
     unlocked_count: u8,
 }
@@ -138,6 +143,14 @@ struct CodePhaseStabilityDiagnostic {
     first_unstable_epoch_index: usize,
     max_abs_phase_step_samples: f64,
     phase_step_limit_samples: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PromptPhaseDecision {
+    aligned_phase_cycles: f64,
+    nav_bit_phase_offset_cycles: f64,
+    nav_bit_transition: bool,
+    cycle_slip: bool,
 }
 
 /// Tracking engine with basic E/P/L correlation per epoch.
@@ -499,6 +512,8 @@ impl Tracking {
             code_phase_samples,
             prev_prompt: None,
             prev_prompt_phase_cycles: None,
+            nav_bit_phase_offset_cycles: 0.0,
+            nav_bit_transition_count: 0,
             state: ChannelState::Acquired,
             unlocked_count: 0,
         };
@@ -560,6 +575,8 @@ impl Tracking {
                         code_phase_samples: acq.code_phase_samples as f64,
                         prev_prompt: None,
                         prev_prompt_phase_cycles: None,
+                        nav_bit_phase_offset_cycles: 0.0,
+                        nav_bit_transition_count: 0,
                         state: ChannelState::Acquired,
                         unlocked_count: 0,
                     },
@@ -704,22 +721,22 @@ impl Tracking {
             let anti_false_lock =
                 (corr.early.norm() - corr.late.norm()).abs() < 0.2 * corr.prompt.norm();
 
-            let mut cycle_slip = false;
-            let mut cycle_slip_reason = None;
-            if let Some(previous_phase_cycles) = state.prev_prompt_phase_cycles {
-                let mut delta = phase_cycles - previous_phase_cycles;
-                while delta > 0.5 {
-                    delta -= 1.0;
-                }
-                while delta < -0.5 {
-                    delta += 1.0;
-                }
-                if delta.abs() > 0.35 {
-                    cycle_slip = true;
-                    cycle_slip_reason = Some("phase_discontinuity".to_string());
-                }
+            let phase_decision = classify_prompt_phase(
+                phase_cycles,
+                state.prev_prompt_phase_cycles,
+                state.nav_bit_phase_offset_cycles,
+            );
+            state.prev_prompt_phase_cycles = Some(phase_decision.aligned_phase_cycles);
+            state.nav_bit_phase_offset_cycles = phase_decision.nav_bit_phase_offset_cycles;
+            if phase_decision.nav_bit_transition {
+                state.nav_bit_transition_count = state.nav_bit_transition_count.saturating_add(1);
             }
-            state.prev_prompt_phase_cycles = Some(phase_cycles);
+
+            let cycle_slip = phase_decision.cycle_slip;
+            let mut cycle_slip_reason = None;
+            if cycle_slip {
+                cycle_slip_reason = Some("phase_discontinuity".to_string());
+            }
 
             let from_state = state.state;
             let transition = deterministic_transition_rule(
@@ -805,7 +822,7 @@ impl Tracking {
                 dll_lock,
                 fll_lock,
                 cycle_slip,
-                nav_bit_lock: false,
+                nav_bit_lock: state.nav_bit_transition_count > 0,
                 dll_err,
                 pll_err,
                 fll_err,
@@ -917,6 +934,46 @@ fn default_tracking_assumptions(config: &ReceiverPipelineConfig) -> TrackingAssu
         fll_bw_hz: config.fll_bw_hz,
         discriminator_family: "early_prompt_late".to_string(),
         aiding_mode: "none".to_string(),
+    }
+}
+
+fn classify_prompt_phase(
+    raw_phase_cycles: f64,
+    previous_aligned_phase_cycles: Option<f64>,
+    nav_bit_phase_offset_cycles: f64,
+) -> PromptPhaseDecision {
+    let same_offset_phase = wrap_phase_cycles(raw_phase_cycles - nav_bit_phase_offset_cycles);
+    let Some(previous_aligned_phase_cycles) = previous_aligned_phase_cycles else {
+        return PromptPhaseDecision {
+            aligned_phase_cycles: same_offset_phase,
+            nav_bit_phase_offset_cycles,
+            nav_bit_transition: false,
+            cycle_slip: false,
+        };
+    };
+
+    let same_delta = wrapped_phase_delta_cycles(same_offset_phase, previous_aligned_phase_cycles);
+    let flipped_offset = wrap_phase_cycles(nav_bit_phase_offset_cycles + NAV_BIT_PHASE_STEP_CYCLES);
+    let flipped_phase = wrap_phase_cycles(raw_phase_cycles - flipped_offset);
+    let flipped_delta = wrapped_phase_delta_cycles(flipped_phase, previous_aligned_phase_cycles);
+
+    let nav_bit_transition = same_delta.abs() > CYCLE_SLIP_PHASE_DELTA_CYCLES
+        && (same_delta.abs() - NAV_BIT_PHASE_STEP_CYCLES).abs()
+            <= NAV_BIT_PHASE_STEP_TOLERANCE_CYCLES
+        && flipped_delta.abs() <= NAV_BIT_PHASE_STEP_TOLERANCE_CYCLES
+        && flipped_delta.abs() < same_delta.abs();
+
+    let (aligned_phase_cycles, nav_bit_phase_offset_cycles, chosen_delta) = if nav_bit_transition {
+        (flipped_phase, flipped_offset, flipped_delta)
+    } else {
+        (same_offset_phase, nav_bit_phase_offset_cycles, same_delta)
+    };
+
+    PromptPhaseDecision {
+        aligned_phase_cycles,
+        nav_bit_phase_offset_cycles,
+        nav_bit_transition,
+        cycle_slip: chosen_delta.abs() > CYCLE_SLIP_PHASE_DELTA_CYCLES,
     }
 }
 
@@ -1038,6 +1095,18 @@ fn wrapped_code_phase_delta(
     delta
 }
 
+fn wrap_phase_cycles(phase_cycles: f64) -> f64 {
+    let mut wrapped = phase_cycles.rem_euclid(1.0);
+    if wrapped > 0.5 {
+        wrapped -= 1.0;
+    }
+    wrapped
+}
+
+fn wrapped_phase_delta_cycles(next_phase_cycles: f64, previous_phase_cycles: f64) -> f64 {
+    wrap_phase_cycles(next_phase_cycles - previous_phase_cycles)
+}
+
 impl Tracking {
     fn quick_reacquire(
         &self,
@@ -1127,6 +1196,25 @@ mod tests {
         assert_eq!(decision.to_state, ChannelState::Lost);
         assert_eq!(decision.reason, "lock_lost");
         assert_eq!(decision.next_unlocked_count, 2);
+    }
+
+    #[test]
+    fn classify_prompt_phase_recovers_continuity_across_nav_bit_flip() {
+        let decision = super::classify_prompt_phase(-0.39, Some(0.11), 0.0);
+
+        assert!(decision.nav_bit_transition);
+        assert!(!decision.cycle_slip);
+        assert!((decision.aligned_phase_cycles - 0.11).abs() <= 0.02);
+        assert!((decision.nav_bit_phase_offset_cycles - 0.5).abs() <= f64::EPSILON);
+    }
+
+    #[test]
+    fn classify_prompt_phase_preserves_cycle_slip_for_non_nav_jump() {
+        let decision = super::classify_prompt_phase(0.36, Some(0.0), 0.0);
+
+        assert!(!decision.nav_bit_transition);
+        assert!(decision.cycle_slip);
+        assert!((decision.nav_bit_phase_offset_cycles - 0.0).abs() <= f64::EPSILON);
     }
 
     #[test]
