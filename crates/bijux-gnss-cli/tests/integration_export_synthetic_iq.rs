@@ -173,6 +173,133 @@ fn export_synthetic_iq_emits_truth_bundle_and_ingestable_capture() {
 }
 
 #[test]
+fn acquire_report_and_artifact_preserve_ranked_alternatives_per_prn() {
+    let repo = repo_root();
+    let temp = temp_dir_path("acquisition_ranked_alternatives");
+    fs::create_dir_all(&temp).expect("create temp dir");
+    let scenario_path = temp.join("ranked_alternatives.toml");
+    fs::write(
+        &scenario_path,
+        r#"id = "ranked_alternatives"
+sample_rate_hz = 4092000.0
+intermediate_freq_hz = 0.0
+duration_s = 0.001
+seed = 24071996
+
+[[satellites]]
+sat = { constellation = "Gps", prn = 7 }
+doppler_hz = 0.0
+code_phase_chips = 300.0
+carrier_phase_rad = 0.0
+cn0_db_hz = 44.0
+data_bit_flip = false
+
+[[satellites]]
+sat = { constellation = "Gps", prn = 7 }
+doppler_hz = 250.0
+code_phase_chips = 300.0
+carrier_phase_rad = 0.0
+cn0_db_hz = 44.0
+data_bit_flip = false
+"#,
+    )
+    .expect("write scenario");
+
+    let export_dir = temp.join("export");
+    fs::create_dir_all(&export_dir).expect("create export dir");
+    let export_output = run_bijux(
+        &[
+            "gnss",
+            "export-synthetic-iq",
+            "--scenario",
+            scenario_path.to_str().expect("scenario path"),
+            "--report",
+            "json",
+            "--out",
+            export_dir.to_str().expect("export dir"),
+        ],
+        &repo,
+    );
+    assert!(
+        export_output.status.success(),
+        "export-synthetic-iq failed: {}",
+        String::from_utf8_lossy(&export_output.stderr)
+    );
+
+    let iq_path = export_dir.join("artifacts").join("ranked_alternatives.iq16");
+    let sidecar_path = export_dir.join("artifacts").join("ranked_alternatives.sidecar.toml");
+    let acquire_dir = temp.join("acquire");
+    fs::create_dir_all(&acquire_dir).expect("create acquire dir");
+    let acquire_output = run_bijux(
+        &[
+            "gnss",
+            "acquire",
+            "--unregistered-dataset",
+            "--file",
+            iq_path.to_str().expect("iq path"),
+            "--sidecar",
+            sidecar_path.to_str().expect("sidecar path"),
+            "--config",
+            "configs/receiver_low_rate.toml",
+            "--prn",
+            "7",
+            "--doppler-search-hz",
+            "500",
+            "--doppler-step-hz",
+            "250",
+            "--top",
+            "4",
+            "--report",
+            "json",
+            "--out",
+            acquire_dir.to_str().expect("acquire dir"),
+        ],
+        &repo,
+    );
+    assert!(
+        acquire_output.status.success(),
+        "acquire failed: {}",
+        String::from_utf8_lossy(&acquire_output.stderr)
+    );
+
+    let acquire_report: Value = serde_json::from_str(
+        &fs::read_to_string(acquire_dir.join("acquire_report.json")).expect("read acquire report"),
+    )
+    .expect("parse acquire report");
+    assert_eq!(acquire_report["search_summary"]["ambiguous"], 1, "{acquire_report}");
+
+    let results = acquire_report["results"].as_array().expect("results");
+    assert!(results.len() >= 2, "{acquire_report}");
+    assert_eq!(results[0]["candidate_rank"], 1, "{acquire_report}");
+    assert_eq!(results[0]["is_primary_candidate"], true, "{acquire_report}");
+    assert_eq!(results[0]["hypothesis"], "ambiguous", "{acquire_report}");
+    assert_eq!(results[1]["candidate_rank"], 2, "{acquire_report}");
+    assert_eq!(results[1]["is_primary_candidate"], false, "{acquire_report}");
+    assert_eq!(results[1]["hypothesis"], "rejected", "{acquire_report}");
+    assert!(
+        results[1]["selection_reason"]
+            .as_str()
+            .is_some_and(|reason| reason.starts_with("ranked_alternative:")),
+        "{acquire_report}"
+    );
+
+    let acq_artifact = fs::read_to_string(acquire_dir.join("artifacts").join("acq.jsonl"))
+        .expect("read acq artifact");
+    let artifact_rows: Vec<Value> = acq_artifact
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("parse artifact row"))
+        .collect();
+    assert!(artifact_rows.len() >= 2);
+    assert_eq!(artifact_rows[0]["payload"]["candidate_rank"], 1);
+    assert_eq!(artifact_rows[0]["payload"]["is_primary_candidate"], true);
+    assert_eq!(artifact_rows[1]["payload"]["candidate_rank"], 2);
+    assert_eq!(artifact_rows[1]["payload"]["is_primary_candidate"], false);
+    assert_eq!(artifact_rows[1]["payload"]["hypothesis"], "rejected");
+
+    fs::remove_dir_all(&temp).expect("remove temp dir");
+}
+
+#[test]
 fn acquire_report_exposes_refined_doppler_for_fractional_synthetic_truth() {
     let repo = repo_root();
     let temp = temp_dir_path("acquisition_refinement_report");
