@@ -9,7 +9,7 @@ use thiserror::Error;
 use bijux_gnss_core::api::{SampleClock, SampleTime, SamplesFrame, Seconds};
 
 use bijux_gnss_signal::api::{
-    iq_i16_to_samples, IqSampleFormat, RawIqMetadata, SampleSource, SignalSource,
+    iq_i16_to_samples, iq_i8_to_samples, IqSampleFormat, RawIqMetadata, SampleSource, SignalSource,
 };
 
 #[derive(Debug, Error)]
@@ -151,9 +151,23 @@ fn decode_samples(
     raw_bytes: &[u8],
 ) -> Result<(Vec<bijux_gnss_core::api::Sample>, usize), SampleSourceError> {
     match metadata.format {
+        IqSampleFormat::Iq8 => decode_i8_samples(raw_bytes),
         IqSampleFormat::Iq16Le => decode_i16_le_samples(raw_bytes),
         other => Err(SampleSourceError::UnsupportedFormat(other)),
     }
+}
+
+fn decode_i8_samples(
+    raw_bytes: &[u8],
+) -> Result<(Vec<bijux_gnss_core::api::Sample>, usize), SampleSourceError> {
+    if raw_bytes.len() % 2 != 0 {
+        return Err(SampleSourceError::InvalidIqLength);
+    }
+    let mut i8_buf = vec![0i8; raw_bytes.len()];
+    for (idx, byte) in raw_bytes.iter().enumerate() {
+        i8_buf[idx] = *byte as i8;
+    }
+    Ok((iq_i8_to_samples(&i8_buf), raw_bytes.len() / 2))
 }
 
 fn decode_i16_le_samples(

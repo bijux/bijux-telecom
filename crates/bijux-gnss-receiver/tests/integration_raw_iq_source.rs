@@ -38,6 +38,32 @@ fn file_samples_open_raw_iq_uses_declared_metadata() {
 }
 
 #[test]
+fn file_samples_decode_signed_8bit_iq() {
+    let path = temp_file_path("raw_iq_iq8");
+    fs::write(&path, [0x80u8, 0x7fu8, 0x40u8, 0xc0u8]).expect("write iq file");
+
+    let metadata = RawIqMetadata {
+        format: IqSampleFormat::Iq8,
+        sample_rate_hz: 2_000_000.0,
+        intermediate_freq_hz: 0.0,
+        capture_start_utc: "2026-07-09T00:00:00Z".to_string(),
+        offset_bytes: 0,
+        quantization_bits: Some(8),
+        notes: None,
+    };
+    let mut source = FileSamples::open_raw_iq(&path, metadata).expect("open raw iq");
+    let frame = source.next_frame(2).expect("read frame").expect("frame");
+
+    assert_eq!(frame.len(), 2);
+    assert!((frame.iq[0].re + 1.0).abs() < 1e-6);
+    assert!((frame.iq[0].im - 0.9921875).abs() < 1e-6);
+    assert!((frame.iq[1].re - 0.5).abs() < 1e-6);
+    assert!((frame.iq[1].im + 0.5).abs() < 1e-6);
+
+    fs::remove_file(&path).expect("remove iq file");
+}
+
+#[test]
 fn file_samples_rejects_unsupported_raw_iq_format() {
     let path = temp_file_path("raw_iq_unsupported");
     fs::write(&path, [0u8; 8]).expect("write iq file");
