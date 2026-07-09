@@ -12,6 +12,9 @@ pub enum SignalError {
     /// Code rate must be finite and strictly positive.
     #[error("invalid code rate")]
     InvalidCodeRate,
+    /// Carrier frequency must be finite.
+    #[error("invalid carrier frequency")]
+    InvalidCarrierFrequency,
     /// Code phase must be finite.
     #[error("invalid code phase")]
     InvalidCodePhase,

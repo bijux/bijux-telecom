@@ -3,7 +3,9 @@
 //! Signal processing utilities.
 
 use crate::codes::ca_code::{generate_ca_code, Prn};
+use crate::dsp::nco::Nco;
 use crate::error::SignalError;
+use num_complex::Complex;
 
 /// Compute the number of samples per C/A code period (1 ms) given sampling
 /// frequency and code parameters.
@@ -92,6 +94,29 @@ pub fn sample_ca_code(
     sample_code(&code, sample_rate_hz, code_rate_hz, start_chip_phase, sample_count)
 }
 
+/// Mix a carrier down to baseband from an absolute sample origin.
+pub fn wipeoff_carrier(
+    samples: &[Complex<f32>],
+    carrier_hz: f64,
+    sample_rate_hz: f64,
+    start_sample_index: u64,
+    phase_offset_rad: f64,
+) -> Result<Vec<Complex<f32>>, SignalError> {
+    validate_sample_rate(sample_rate_hz)?;
+    validate_carrier_frequency(carrier_hz)?;
+    validate_code_phase(phase_offset_rad)?;
+
+    let mut nco =
+        Nco::from_sample_index(carrier_hz, sample_rate_hz, start_sample_index, phase_offset_rad);
+    let mut mixed = Vec::with_capacity(samples.len());
+    for sample in samples {
+        let (sin, cos) = nco.next_sin_cos();
+        let rot = Complex::new(cos as f32, -sin as f32);
+        mixed.push(*sample * rot);
+    }
+    Ok(mixed)
+}
+
 fn code_value_at_phase_unchecked(code: &[i8], chip_phase: f64) -> f32 {
     let wrapped = chip_phase.rem_euclid(code.len() as f64);
     let chip_index = wrapped.floor() as usize;
@@ -115,6 +140,13 @@ fn validate_code_rate(code_rate_hz: f64) -> Result<(), SignalError> {
 fn validate_code_phase(chip_phase: f64) -> Result<(), SignalError> {
     if !chip_phase.is_finite() {
         return Err(SignalError::InvalidCodePhase);
+    }
+    Ok(())
+}
+
+fn validate_carrier_frequency(carrier_hz: f64) -> Result<(), SignalError> {
+    if !carrier_hz.is_finite() {
+        return Err(SignalError::InvalidCarrierFrequency);
     }
     Ok(())
 }
