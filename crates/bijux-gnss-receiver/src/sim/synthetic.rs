@@ -320,6 +320,52 @@ pub struct SyntheticAcquisitionDopplerValidationReport {
     pub satellites: Vec<SyntheticAcquisitionDopplerValidationSatellite>,
 }
 
+/// Per-satellite acquisition validation row for a specific coherent integration profile.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionCoherentIntegrationSatellite {
+    /// Satellite identifier.
+    pub sat: SatId,
+    /// Coherent integration length under test, in milliseconds.
+    pub coherent_ms: u32,
+    /// Noncoherent integration count under test.
+    pub noncoherent: u32,
+    /// Code-phase error in samples.
+    pub code_phase_error_samples: usize,
+    /// Doppler error in Hz.
+    pub doppler_error_hz: f64,
+    /// Doppler error in acquisition bins.
+    pub doppler_error_bins: f64,
+    /// Peak-to-mean ratio for the selected acquisition result.
+    pub peak_mean_ratio: f32,
+    /// Acquisition hypothesis returned by the receiver.
+    pub hypothesis: String,
+    /// Whether both code-phase and Doppler checks passed for this profile.
+    pub pass: bool,
+}
+
+/// Truth-guided acquisition validation report for a coherent integration profile.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionCoherentIntegrationReport {
+    /// Stable scenario identifier for this capture.
+    pub scenario_id: String,
+    /// Coherent integration length under test, in milliseconds.
+    pub coherent_ms: u32,
+    /// Noncoherent integration count under test.
+    pub noncoherent: u32,
+    /// Allowed code-phase error in samples.
+    pub code_phase_tolerance_samples: usize,
+    /// Allowed Doppler error in acquisition bins.
+    pub doppler_tolerance_bins: usize,
+    /// Allowed Doppler error in Hz.
+    pub doppler_tolerance_hz: f64,
+    /// Capture sample rate in Hz.
+    pub sample_rate_hz: f64,
+    /// Whether every measured satellite passed the requested tolerances.
+    pub pass: bool,
+    /// Per-satellite validation rows.
+    pub satellites: Vec<SyntheticAcquisitionCoherentIntegrationSatellite>,
+}
+
 /// Per-satellite comparison between coarse acquisition Doppler bins and refined Doppler estimates.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticAcquisitionDopplerRefinementSatellite {
@@ -821,6 +867,67 @@ pub fn validate_truth_guided_acquisition_doppler(
         tolerance_hz,
         sample_rate_hz: truth.sample_rate_hz,
         doppler_step_hz,
+        pass,
+        satellites,
+    }
+}
+
+/// Validate acquisition code phase and Doppler for a coherent integration profile.
+pub fn validate_truth_guided_acquisition_coherent_integration(
+    config: &ReceiverPipelineConfig,
+    frame: &SamplesFrame,
+    truth: &SyntheticIqTruthBundle,
+    coherent_ms: u32,
+    noncoherent: u32,
+    code_phase_tolerance_samples: usize,
+    doppler_tolerance_bins: usize,
+) -> SyntheticAcquisitionCoherentIntegrationReport {
+    let mut profile_config = config.clone();
+    profile_config.acquisition_integration_ms = coherent_ms;
+    profile_config.acquisition_noncoherent = noncoherent;
+
+    let code_phase_report = validate_truth_guided_acquisition_code_phase(
+        &profile_config,
+        frame,
+        truth,
+        code_phase_tolerance_samples,
+    );
+    let doppler_report = validate_truth_guided_acquisition_doppler(
+        &profile_config,
+        frame,
+        truth,
+        doppler_tolerance_bins,
+    );
+
+    let satellites = code_phase_report
+        .satellites
+        .iter()
+        .zip(doppler_report.satellites.iter())
+        .map(|(code_phase_row, doppler_row)| {
+            debug_assert_eq!(code_phase_row.sat.prn, doppler_row.sat.prn);
+            SyntheticAcquisitionCoherentIntegrationSatellite {
+                sat: code_phase_row.sat,
+                coherent_ms,
+                noncoherent,
+                code_phase_error_samples: code_phase_row.code_phase_error_samples,
+                doppler_error_hz: doppler_row.doppler_error_hz,
+                doppler_error_bins: doppler_row.doppler_error_bins,
+                peak_mean_ratio: code_phase_row.peak_mean_ratio,
+                hypothesis: code_phase_row.hypothesis.clone(),
+                pass: code_phase_row.pass && doppler_row.pass,
+            }
+        })
+        .collect::<Vec<_>>();
+    let pass = !satellites.is_empty() && satellites.iter().all(|row| row.pass);
+
+    SyntheticAcquisitionCoherentIntegrationReport {
+        scenario_id: truth.scenario_id.clone(),
+        coherent_ms,
+        noncoherent,
+        code_phase_tolerance_samples,
+        doppler_tolerance_bins,
+        doppler_tolerance_hz: doppler_report.tolerance_hz,
+        sample_rate_hz: truth.sample_rate_hz,
         pass,
         satellites,
     }
@@ -1329,6 +1436,7 @@ mod tests {
         nav_bit_sign_at_time_s, signal_amplitude_from_cn0,
         validate_truth_guided_acquisition_code_phase,
         validate_truth_guided_acquisition_code_phase_refinement,
+        validate_truth_guided_acquisition_coherent_integration,
         validate_truth_guided_acquisition_doppler, validate_truth_guided_cn0,
         wrapped_code_phase_error_samples, wrapped_code_phase_error_samples_f64, SatState,
         SyntheticNavBitMode, SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource,
@@ -1887,6 +1995,64 @@ mod tests {
             best_improvement_samples > 0.0,
             "expected at least one fractional synthetic fixture to improve"
         );
+    }
+
+    #[test]
+    fn truth_guided_acquisition_coherent_integration_report_combines_code_phase_and_doppler() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            acquisition_doppler_search_hz: 10_000,
+            acquisition_doppler_step_hz: 500,
+            ..ReceiverPipelineConfig::default()
+        };
+        let scenario = SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            duration_s: 0.04,
+            seed: 2_407_1985,
+            satellites: vec![SyntheticSignalParams {
+                sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                doppler_hz: 750.0,
+                code_phase_chips: 200.25,
+                carrier_phase_rad: 0.0,
+                cn0_db_hz: 58.0,
+                data_bit_flip: false,
+            }],
+            ephemerides: Vec::new(),
+            id: "acquisition-coherent-integration-profile".to_string(),
+        };
+        let frame = generate_l1_ca_multi(&config, &scenario);
+        let bundle = build_iq16_capture_bundle(
+            &scenario.id,
+            &scenario,
+            &frame,
+            "2026-07-09T00:00:00Z",
+            Some("unit acquisition coherent integration validation".to_string()),
+        );
+        let scaled_frame = SamplesFrame::new(
+            frame.t0,
+            frame.dt_s,
+            frame.iq.iter().map(|sample| *sample * bundle.truth.output_scale_applied).collect(),
+        );
+
+        let report = validate_truth_guided_acquisition_coherent_integration(
+            &config,
+            &scaled_frame,
+            &bundle.truth,
+            1,
+            1,
+            2,
+            1,
+        );
+
+        assert!(report.pass, "{report:?}");
+        assert_eq!(report.coherent_ms, 1);
+        assert_eq!(report.noncoherent, 1);
+        assert_eq!(report.satellites.len(), 1);
+        assert!(report.satellites[0].pass, "{:?}", report.satellites[0]);
     }
 
     #[test]
