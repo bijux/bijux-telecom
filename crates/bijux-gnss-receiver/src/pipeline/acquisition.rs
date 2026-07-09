@@ -5,8 +5,8 @@ use std::sync::Mutex;
 
 use bijux_gnss_core::api::{
     acq_result_stability_key, stable_acq_result_keys, AcqAssumptions, AcqEvidence, AcqExplain,
-    AcqExplainCandidate, AcqHypothesis, AcqResult, AcqThresholdProvenance, Hertz, SamplesFrame,
-    SatId,
+    AcqExplainCandidate, AcqHypothesis, AcqResult, AcqThresholdProvenance, Hertz,
+    ReceiverSampleTrace, SamplesFrame, SatId,
 };
 use num_complex::Complex;
 use rustfft::{num_traits::Zero, FftPlanner};
@@ -266,6 +266,7 @@ impl Acquisition {
                 &assumptions,
                 &threshold_provenance,
                 self.config.intermediate_freq_hz,
+                ReceiverSampleTrace::from_sample_time(frame.t0),
                 front_end_metrics.zero_signal_reason.as_deref(),
                 emit_explanations,
             );
@@ -338,6 +339,7 @@ impl Acquisition {
 
                 candidates.push(AcqResult {
                     sat,
+                    source_time: ReceiverSampleTrace::from_sample_time(frame.t0),
                     carrier_hz: Hertz(carrier),
                     code_phase_samples: peak_idx,
                     peak,
@@ -665,6 +667,7 @@ fn zero_signal_run(
     assumptions: &AcqAssumptions,
     threshold_provenance: &AcqThresholdProvenance,
     intermediate_freq_hz: f64,
+    source_time: ReceiverSampleTrace,
     zero_signal_reason: Option<&str>,
     emit_explanations: bool,
 ) -> AcquisitionRun {
@@ -675,6 +678,7 @@ fn zero_signal_run(
     for &sat in sats {
         let result = AcqResult {
             sat,
+            source_time,
             carrier_hz: Hertz(intermediate_freq_hz),
             code_phase_samples: 0,
             peak: 0.0,
@@ -842,6 +846,7 @@ mod tests {
         let mut rows = vec![
             AcqResult {
                 sat,
+                source_time: ReceiverSampleTrace::default(),
                 carrier_hz: Hertz(100.0),
                 code_phase_samples: 10,
                 peak: 10.0,
@@ -859,6 +864,7 @@ mod tests {
             },
             AcqResult {
                 sat,
+                source_time: ReceiverSampleTrace::default(),
                 carrier_hz: Hertz(50.0),
                 code_phase_samples: 20,
                 peak: 10.0,
@@ -956,6 +962,7 @@ mod tests {
     ) -> AcqResult {
         AcqResult {
             sat,
+            source_time: ReceiverSampleTrace::default(),
             carrier_hz: Hertz(carrier_hz),
             code_phase_samples: 0,
             peak: peak_mean_ratio,
