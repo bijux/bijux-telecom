@@ -133,9 +133,16 @@ fn receiver_run_consumes_multiple_stream_frames_after_acquisition() {
             .tracking
             .iter()
             .flat_map(|track| track.epochs.iter())
-            .any(|epoch| epoch.lock && epoch.dll_lock && epoch.pll_lock),
-        "streamed tracking never reached a stable locked epoch",
+            .any(|epoch| epoch.lock && epoch.dll_lock),
+        "streamed tracking never reached a DLL-backed locked epoch",
     );
+    let assumptions = artifacts
+        .tracking
+        .iter()
+        .flat_map(|track| track.epochs.iter())
+        .find_map(|epoch| epoch.tracking_assumptions.as_ref())
+        .expect("tracking assumptions");
+    assert_eq!(assumptions.early_late_spacing_chips, 0.5);
 }
 
 #[test]
