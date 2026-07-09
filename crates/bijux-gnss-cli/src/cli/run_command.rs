@@ -109,9 +109,13 @@ fn format_optional_percent(value: Option<f64>) -> String {
         .unwrap_or_else(|| "n/a".to_string())
 }
 
+fn format_optional_reason(value: Option<&str>) -> String {
+    value.unwrap_or("n/a").to_string()
+}
+
 fn print_acquisition_table(report: &AcquisitionReport) {
     println!(
-        "I mean: {:.6}  Q mean: {:.6}  I power: {:.6}  Q power: {:.6}  I/Q ratio: {:.6}  Power warning: {}  Quadrature error(deg): {}  Quadrature warning: {}  Clipping(%): {}  Clipping warning: {}  Precision claims allowed: {}  RMS: {:.6}  DC imbalance: {:.6}",
+        "I mean: {:.6}  Q mean: {:.6}  I power: {:.6}  Q power: {:.6}  I/Q ratio: {:.6}  Power warning: {}  Quadrature error(deg): {}  Quadrature warning: {}  Clipping(%): {}  Clipping warning: {}  Centered RMS: {:.6e}  Zero-signal: {}  Zero-signal reason: {}  Precision claims allowed: {}  Precision refusal: {}  RMS: {:.6}  DC imbalance: {:.6}",
         report.front_end_metrics.i_mean,
         report.front_end_metrics.q_mean,
         report.front_end_metrics.i_power,
@@ -122,7 +126,16 @@ fn print_acquisition_table(report: &AcquisitionReport) {
         report.front_end_metrics.quadrature_error_warning,
         format_optional_percent(report.front_end_metrics.clipping_pct),
         report.front_end_metrics.clipping_warning,
+        report.front_end_metrics.centered_rms,
+        report.front_end_metrics.zero_signal_detected,
+        format_optional_reason(report.front_end_metrics.zero_signal_reason.as_deref()),
         report.front_end_metrics.precision_claims_allowed,
+        format_optional_reason(
+            report
+                .front_end_metrics
+                .precision_claims_refused_reason
+                .as_deref(),
+        ),
         report.front_end_metrics.rms,
         report.front_end_metrics.dc_imbalance
     );
@@ -141,10 +154,10 @@ fn print_acquisition_table(report: &AcquisitionReport) {
 }
 fn print_inspect_table(report: &InspectReport) {
     println!(
-        "Format\tSampleRate(Hz)\tIF(Hz)\tCaptureStartUtc\tSamples\tIMean\tQMean\tIPower\tQPower\tIqPowerRatio\tPowerWarning\tQuadratureErrorDeg\tQuadratureWarning\tClippingPct\tClippingWarning\tPrecisionClaimsAllowed\tRms\tDcImbalance\tNoiseFloor(dB)"
+        "Format\tSampleRate(Hz)\tIF(Hz)\tCaptureStartUtc\tSamples\tIMean\tQMean\tIPower\tQPower\tIqPowerRatio\tPowerWarning\tQuadratureErrorDeg\tQuadratureWarning\tClippingPct\tClippingWarning\tCenteredRms\tZeroSignalDetected\tZeroSignalReason\tPrecisionClaimsAllowed\tPrecisionRefusal\tRms\tDcImbalance\tNoiseFloor(dB)"
     );
     println!(
-        "{}\t{:.1}\t{:.1}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.2}",
+        "{}\t{:.1}\t{:.1}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{:.6e}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.2}",
         report.format,
         report.sample_rate_hz,
         report.intermediate_freq_hz,
@@ -160,7 +173,16 @@ fn print_inspect_table(report: &InspectReport) {
         report.front_end_metrics.quadrature_error_warning,
         format_optional_percent(report.front_end_metrics.clipping_pct),
         report.front_end_metrics.clipping_warning,
+        report.front_end_metrics.centered_rms,
+        report.front_end_metrics.zero_signal_detected,
+        format_optional_reason(report.front_end_metrics.zero_signal_reason.as_deref()),
         report.front_end_metrics.precision_claims_allowed,
+        format_optional_reason(
+            report
+                .front_end_metrics
+                .precision_claims_refused_reason
+                .as_deref(),
+        ),
         report.front_end_metrics.rms,
         report.front_end_metrics.dc_imbalance,
         report.noise_floor_db
