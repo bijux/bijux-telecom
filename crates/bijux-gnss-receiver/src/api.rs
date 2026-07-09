@@ -4,7 +4,10 @@
 /// Receiver configuration and schema.
 pub use crate::engine::receiver_config::{ReceiverConfig, ReceiverError, ReceiverPipelineConfig};
 /// Receiver runtime options (side-effectful controls).
-pub use crate::engine::runtime::{ReceiverRuntime, ReceiverRuntimeConfig};
+pub use crate::engine::runtime::{
+    Metric, MetricsSink, NullLogger, ReceiverRuntime, ReceiverRuntimeConfig, TraceRecord,
+    TraceSink,
+};
 
 /// I/O helpers.
 pub use crate::io::data::{FileSamples, MemorySamples, SampleSourceError};
