@@ -203,6 +203,12 @@ fn handle_validate_synthetic_iq(command: GnssCommand) -> Result<()> {
             &truth_bundle,
             acquisition_code_phase_tolerance_samples,
         );
+    let acquisition_code_phase_refinement_validation =
+        bijux_gnss_infra::api::receiver::sim::validate_truth_guided_acquisition_code_phase_refinement(
+            &config,
+            &frame,
+            &truth_bundle,
+        );
     let acquisition_doppler_validation =
         bijux_gnss_infra::api::receiver::sim::validate_truth_guided_acquisition_doppler(
             &config,
@@ -220,6 +226,7 @@ fn handle_validate_synthetic_iq(command: GnssCommand) -> Result<()> {
         input_truth: truth.display().to_string(),
         validation,
         acquisition_code_phase_validation,
+        acquisition_code_phase_refinement_validation,
         acquisition_doppler_validation,
     };
     emit_synthetic_iq_validation_report(&common, &report)?;
@@ -227,6 +234,7 @@ fn handle_validate_synthetic_iq(command: GnssCommand) -> Result<()> {
 
     if !report.validation.pass
         || !report.acquisition_code_phase_validation.pass
+        || !report.acquisition_code_phase_refinement_validation.pass
         || !report.acquisition_doppler_validation.pass
     {
         let cn0_failures = report
@@ -276,12 +284,33 @@ fn handle_validate_synthetic_iq(command: GnssCommand) -> Result<()> {
             })
             .collect::<Vec<_>>()
             .join(", ");
+        let acquisition_code_phase_refinement_failures = report
+            .acquisition_code_phase_refinement_validation
+            .satellites
+            .iter()
+            .filter(|row| !row.pass)
+            .map(|row| {
+                format!(
+                    "{}:{:.6}:{:.6}:{:.6}",
+                    format_sat(row.sat),
+                    row.expected_code_phase_samples,
+                    row.coarse_error_samples,
+                    row.refined_error_samples
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
         let mut failure_sections = Vec::new();
         if !cn0_failures.is_empty() {
             failure_sections.push(format!("cn0={cn0_failures}"));
         }
         if !acquisition_failures.is_empty() {
             failure_sections.push(format!("acq_code_phase={acquisition_failures}"));
+        }
+        if !acquisition_code_phase_refinement_failures.is_empty() {
+            failure_sections.push(format!(
+                "acq_code_phase_refinement={acquisition_code_phase_refinement_failures}"
+            ));
         }
         if !acquisition_doppler_failures.is_empty() {
             failure_sections.push(format!("acq_doppler={acquisition_doppler_failures}"));

@@ -186,7 +186,7 @@ fn print_acquisition_table(report: &AcquisitionReport) {
     println!("Search summary: {}", format_search_summary(report));
     println!("Reported PRNs: {}", format_reported_prns(report));
     println!(
-        "Sat\tCarrier(Hz)\tCoarseCarrier(Hz)\tRefine(Hz)\tRefine(Bins)\tCodePhase\tPeak\tPeak/Mean\tPeak/2nd\tHypothesis\tReason"
+        "Sat\tCarrier(Hz)\tCoarseCarrier(Hz)\tRefine(Hz)\tRefine(Bins)\tCodePhase\tRefinedCodePhase\tCodePhaseRefine\tPeak\tPeak/Mean\tPeak/2nd\tHypothesis\tReason"
     );
     for row in &report.results {
         let coarse_carrier_hz = row
@@ -201,14 +201,24 @@ fn print_acquisition_table(report: &AcquisitionReport) {
             .doppler_refinement_bins
             .map(|value| format!("{value:.6}"))
             .unwrap_or_else(|| "n/a".to_string());
+        let refined_code_phase_samples = row
+            .refined_code_phase_samples
+            .map(|value| format!("{value:.6}"))
+            .unwrap_or_else(|| "n/a".to_string());
+        let code_phase_refinement_samples = row
+            .code_phase_refinement_samples
+            .map(|value| format!("{value:.6}"))
+            .unwrap_or_else(|| "n/a".to_string());
         println!(
-            "{}\t{:.1}\t{}\t{}\t{}\t{}\t{:.3}\t{:.2}\t{:.2}\t{}\t{}",
+            "{}\t{:.1}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.3}\t{:.2}\t{:.2}\t{}\t{}",
             format_sat(row.sat),
             row.carrier_hz,
             coarse_carrier_hz,
             doppler_refinement_hz,
             doppler_refinement_bins,
             row.code_phase_samples,
+            refined_code_phase_samples,
+            code_phase_refinement_samples,
             row.peak,
             row.peak_mean_ratio,
             row.peak_second_ratio,
@@ -256,10 +266,7 @@ fn print_synthetic_iq_validation_table(report: &SyntheticIqValidationReport) {
         "Acquisition code-phase tolerance (samples): {}",
         report.acquisition_code_phase_validation.tolerance_samples
     );
-    println!(
-        "Acquisition code-phase pass: {}",
-        report.acquisition_code_phase_validation.pass
-    );
+    println!("Acquisition code-phase pass: {}", report.acquisition_code_phase_validation.pass);
     for row in &report.acquisition_code_phase_validation.satellites {
         println!(
             "{}\texpected={}\tmeasured={}\terror={}\tpeak/mean={:.3}\thypothesis={}\tpass={}",
@@ -273,14 +280,29 @@ fn print_synthetic_iq_validation_table(report: &SyntheticIqValidationReport) {
         );
     }
     println!(
+        "Acquisition code-phase refinement pass: {}",
+        report.acquisition_code_phase_refinement_validation.pass
+    );
+    for row in &report.acquisition_code_phase_refinement_validation.satellites {
+        println!(
+            "{}\texpected={:.6}\tcoarse={}\trefined={:.6}\tcoarse_err={:.6}\trefined_err={:.6}\timprovement_m={:.6}\thypothesis={}\tpass={}",
+            format_sat(row.sat),
+            row.expected_code_phase_samples,
+            row.coarse_code_phase_samples,
+            row.refined_code_phase_samples,
+            row.coarse_error_samples,
+            row.refined_error_samples,
+            row.improvement_m,
+            row.hypothesis,
+            row.pass
+        );
+    }
+    println!(
         "Acquisition Doppler tolerance: {} bins ({:.3} Hz)",
         report.acquisition_doppler_validation.tolerance_bins,
         report.acquisition_doppler_validation.tolerance_hz
     );
-    println!(
-        "Acquisition Doppler pass: {}",
-        report.acquisition_doppler_validation.pass
-    );
+    println!("Acquisition Doppler pass: {}", report.acquisition_doppler_validation.pass);
     for row in &report.acquisition_doppler_validation.satellites {
         println!(
             "{}\tinjected={:.3}\tmeasured={:.3}\terror={:.3}\terror_bins={:.3}\tpeak/mean={:.3}\thypothesis={}\tpass={}",

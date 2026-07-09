@@ -53,14 +53,9 @@ fn handle_acquire(command: GnssCommand) -> Result<()> {
         profile.acquisition.noncoherent_integration,
     );
 
-    let primary_results = results
-        .iter()
-        .filter_map(|candidates| candidates.first().cloned())
-        .collect::<Vec<_>>();
-    let primary_rows = primary_results
-        .iter()
-        .map(acquisition_row_from_result)
-        .collect::<Vec<_>>();
+    let primary_results =
+        results.iter().filter_map(|candidates| candidates.first().cloned()).collect::<Vec<_>>();
+    let primary_rows = primary_results.iter().map(acquisition_row_from_result).collect::<Vec<_>>();
     let mut rows = Vec::new();
     for candidates in &results {
         for r in candidates {
@@ -116,6 +111,13 @@ fn acquisition_row_from_result(result: &bijux_gnss_infra::api::core::AcqResult) 
             )
         })
         .unwrap_or((None, None, None));
+    let (refined_code_phase_samples, code_phase_refinement_samples) = result
+        .code_phase_refinement
+        .as_ref()
+        .map(|refinement| {
+            (Some(refinement.refined_code_phase_samples), Some(refinement.offset_samples))
+        })
+        .unwrap_or((None, None));
     AcquisitionRow {
         sat: result.sat,
         carrier_hz: result.carrier_hz.0,
@@ -123,6 +125,8 @@ fn acquisition_row_from_result(result: &bijux_gnss_infra::api::core::AcqResult) 
         doppler_refinement_hz,
         doppler_refinement_bins,
         code_phase_samples: result.code_phase_samples,
+        refined_code_phase_samples,
+        code_phase_refinement_samples,
         peak: result.peak,
         peak_mean_ratio: result.peak_mean_ratio,
         peak_second_ratio: result.peak_second_ratio,
@@ -356,7 +360,11 @@ fn handle_run(command: GnssCommand) -> Result<()> {
         epochs: artifacts.processed_input_epochs,
         processed_input_samples: artifacts.processed_input_samples,
         acquisitions: artifacts.acquisitions.len(),
-        tracked_channels: artifacts.tracking.iter().filter(|track| !track.epochs.is_empty()).count(),
+        tracked_channels: artifacts
+            .tracking
+            .iter()
+            .filter(|track| !track.epochs.is_empty())
+            .count(),
         observation_epochs: artifacts.observations.len(),
         front_end_metrics: signal_quality.front_end_metrics.clone(),
         signal_quality,

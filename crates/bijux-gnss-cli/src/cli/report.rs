@@ -19,6 +19,8 @@ struct AcquisitionRow {
     doppler_refinement_hz: Option<f64>,
     doppler_refinement_bins: Option<f64>,
     code_phase_samples: usize,
+    refined_code_phase_samples: Option<f64>,
+    code_phase_refinement_samples: Option<f64>,
     peak: f32,
     peak_mean_ratio: f32,
     peak_second_ratio: f32,
@@ -144,6 +146,8 @@ struct SyntheticIqValidationReport {
     validation: bijux_gnss_infra::api::receiver::sim::SyntheticCn0ValidationReport,
     acquisition_code_phase_validation:
         bijux_gnss_infra::api::receiver::sim::SyntheticAcquisitionCodePhaseValidationReport,
+    acquisition_code_phase_refinement_validation:
+        bijux_gnss_infra::api::receiver::sim::SyntheticAcquisitionCodePhaseRefinementReport,
     acquisition_doppler_validation:
         bijux_gnss_infra::api::receiver::sim::SyntheticAcquisitionDopplerValidationReport,
 }
@@ -161,6 +165,8 @@ mod report_tests {
             doppler_refinement_hz: None,
             doppler_refinement_bins: None,
             code_phase_samples: 42,
+            refined_code_phase_samples: None,
+            code_phase_refinement_samples: None,
             peak: peak_mean_ratio * 10.0,
             peak_mean_ratio,
             peak_second_ratio: 1.1,
