@@ -14,6 +14,17 @@ fn iq_i8_to_samples_normalizes_signed_pairs() {
 }
 
 #[test]
+fn iq_i16_to_samples_normalizes_signed_pairs() {
+    let samples = iq_i16_to_samples(&[-32768, 32767, 16384, -16384]);
+
+    assert_eq!(samples.len(), 2);
+    assert!((samples[0].re + 1.0).abs() < 1e-6);
+    assert!((samples[0].im - 0.9999695).abs() < 1e-6);
+    assert!((samples[1].re - 0.5).abs() < 1e-6);
+    assert!((samples[1].im + 0.5).abs() < 1e-6);
+}
+
+#[test]
 fn iq_i8_and_i16_conversions_agree_on_equivalent_levels() {
     let iq8 = iq_i8_to_samples(&[-128, 64, 127, -64]);
     let iq16 = iq_i16_to_samples(&[-32768, 16384, 32512, -16384]);
