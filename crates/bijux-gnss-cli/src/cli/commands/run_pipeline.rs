@@ -317,11 +317,15 @@ fn handle_validatesidecar(command: GnssCommand) -> Result<()> {
                     validate_sidecar_schema(&spec)?;
                     println!("sidecar ok: {}", sidecar_file.display());
                     let dataset = load_dataset(&common)?;
+                    let mut manifest_common = common.clone();
+                    manifest_common.sidecar = Some(sidecar_file.clone());
+                    let mut manifest_profile = ReceiverConfig::default();
+                    apply_raw_iq_metadata(&mut manifest_profile, &spec, None, None)?;
                     let summary = serde_json::json!({ "sidecar": sidecar_file.display().to_string() });
                     write_manifest(
-                        &common,
+                        &manifest_common,
                         "validate_sidecar",
-                        &ReceiverConfig::default(),
+                        &manifest_profile,
                         dataset.as_ref(),
                         &summary,
                     )?;
