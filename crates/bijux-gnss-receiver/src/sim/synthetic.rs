@@ -114,6 +114,17 @@ pub struct SyntheticIqTruthBundle {
     pub satellites: Vec<SyntheticSatelliteTruth>,
 }
 
+/// Encoded synthetic capture bundle ready to write to disk.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticIqCaptureBundle {
+    /// Raw interleaved IQ bytes in the declared output format.
+    pub raw_iq_bytes: Vec<u8>,
+    /// Sidecar metadata for the encoded raw IQ file.
+    pub metadata: RawIqMetadata,
+    /// Machine-readable truth for the emitted capture.
+    pub truth: SyntheticIqTruthBundle,
+}
+
 /// Build a machine-readable truth bundle for an emitted synthetic capture.
 pub fn build_truth_bundle(
     scenario_id: &str,
@@ -154,6 +165,41 @@ pub fn build_truth_bundle(
             })
             .collect(),
     }
+}
+
+/// Encode a generated synthetic frame as an IQ16 little-endian capture with truth metadata.
+pub fn build_iq16_capture_bundle(
+    scenario_id: &str,
+    scenario: &SyntheticScenario,
+    frame: &SamplesFrame,
+    capture_start_utc: &str,
+    notes: Option<String>,
+) -> SyntheticIqCaptureBundle {
+    let peak_component_before_scaling = peak_component(&frame.iq);
+    let output_scale_applied = if peak_component_before_scaling <= 0.999 {
+        1.0
+    } else {
+        0.999 / peak_component_before_scaling
+    };
+    let raw_iq_bytes = encode_iq16_le_bytes(&frame.iq, output_scale_applied);
+    let metadata = RawIqMetadata {
+        format: IqSampleFormat::Iq16Le,
+        sample_rate_hz: frame.t0.sample_rate_hz,
+        intermediate_freq_hz: scenario.intermediate_freq_hz,
+        capture_start_utc: capture_start_utc.to_string(),
+        offset_bytes: 0,
+        quantization_bits: Some(16),
+        notes,
+    };
+    let truth = build_truth_bundle(
+        scenario_id,
+        scenario,
+        frame,
+        &metadata,
+        peak_component_before_scaling,
+        output_scale_applied,
+    );
+    SyntheticIqCaptureBundle { raw_iq_bytes, metadata, truth }
 }
 
 /// Generate a synthetic GPS L1 C/A signal at the receiver sample rate.
@@ -359,6 +405,27 @@ fn nav_bit_mode(params: &SyntheticSignalParams) -> SyntheticNavBitMode {
     }
 }
 
+fn peak_component(samples: &[Complex<f32>]) -> f32 {
+    samples
+        .iter()
+        .flat_map(|sample| [sample.re.abs(), sample.im.abs()])
+        .fold(0.0f32, f32::max)
+}
+
+fn encode_iq16_le_bytes(samples: &[Complex<f32>], scale: f32) -> Vec<u8> {
+    let mut encoded = Vec::with_capacity(samples.len() * 4);
+    for sample in samples {
+        encoded.extend_from_slice(&quantize_i16_component(sample.re * scale).to_le_bytes());
+        encoded.extend_from_slice(&quantize_i16_component(sample.im * scale).to_le_bytes());
+    }
+    encoded
+}
+
+fn quantize_i16_component(value: f32) -> i16 {
+    let scaled = (value * 32768.0).round();
+    scaled.clamp(-32768.0, 32767.0) as i16
+}
+
 fn nav_bit_segments(
     sample_rate_hz: f64,
     sample_count: u64,
@@ -437,8 +504,8 @@ impl XorShift64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_truth_bundle, generate_l1_ca_multi, SyntheticNavBitMode, SyntheticScenario,
-        SyntheticSignalParams, SyntheticSignalSource,
+        build_iq16_capture_bundle, build_truth_bundle, generate_l1_ca_multi, SyntheticNavBitMode,
+        SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource,
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
     use bijux_gnss_core::api::{Constellation, SatId, SamplesFrame};
@@ -573,5 +640,70 @@ mod tests {
         assert_eq!(alternating.nav_bit_segments[2].start_sample, 160_000);
         assert_eq!(alternating.nav_bit_segments[2].end_sample, frame.len() as u64);
         assert_eq!(alternating.nav_bit_segments[2].bit, 1);
+    }
+
+    #[test]
+    fn iq16_capture_bundle_scales_without_clipping_and_preserves_truth() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let scenario = SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            duration_s: 0.01,
+            seed: 91,
+            satellites: vec![
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                    doppler_hz: 500.0,
+                    code_phase_chips: 200.0,
+                    carrier_phase_rad: 0.0,
+                    cn0_db_hz: 58.0,
+                    data_bit_flip: true,
+                },
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                    doppler_hz: -1000.0,
+                    code_phase_chips: 321.0,
+                    carrier_phase_rad: 0.2,
+                    cn0_db_hz: 56.0,
+                    data_bit_flip: false,
+                },
+            ],
+            ephemerides: Vec::new(),
+            id: "iq16-bundle".to_string(),
+        };
+        let frame = generate_l1_ca_multi(&config, &scenario);
+
+        let bundle = build_iq16_capture_bundle(
+            &scenario.id,
+            &scenario,
+            &frame,
+            "2026-07-09T00:00:00Z",
+            Some("synthetic iq bundle".to_string()),
+        );
+
+        assert_eq!(bundle.metadata.format, IqSampleFormat::Iq16Le);
+        assert_eq!(bundle.metadata.quantization_bits, Some(16));
+        assert_eq!(bundle.truth.scenario_id, "iq16-bundle");
+        assert_eq!(bundle.truth.sample_count, frame.len());
+        assert_eq!(bundle.truth.sample_rate_hz, 4_092_000.0);
+        assert_eq!(bundle.raw_iq_bytes.len(), frame.len() * 4);
+        assert!(bundle.truth.peak_component_before_scaling > 0.0);
+        assert!(bundle.truth.output_scale_applied > 0.0);
+        assert!(bundle.truth.output_scale_applied <= 1.0);
+
+        assert!(
+            bundle
+                .raw_iq_bytes
+                .chunks_exact(2)
+                .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
+                .any(|sample| sample != 0),
+            "encoded synthetic capture should contain non-zero samples"
+        );
     }
 }
