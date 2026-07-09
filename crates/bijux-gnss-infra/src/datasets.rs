@@ -8,6 +8,7 @@ use bijux_gnss_signal::api::RawIqMetadata;
 
 pub type DatasetEntry = crate::dataset::DatasetEntry;
 pub type DatasetRegistry = crate::dataset::DatasetRegistry;
+pub type RecordedCaptureProvenance = crate::dataset::RecordedCaptureProvenance;
 
 pub fn parse_ecef(text: &str) -> Result<[f64; 3], bijux_gnss_receiver::api::core::InputError> {
     crate::parse::core::parse_ecef(text)

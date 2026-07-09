@@ -6,6 +6,23 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Recorded capture provenance for a registered dataset.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct RecordedCaptureProvenance {
+    /// Canonical source URL for the original recording.
+    pub source_url: String,
+    /// License string or URL that governs redistribution.
+    pub license: String,
+    /// Required credit line for downstream users.
+    pub attribution: String,
+    /// Front-end hardware used for the original capture.
+    pub hardware: Option<String>,
+    /// RF center frequency in Hz when it is known exactly.
+    pub center_frequency_hz: Option<u64>,
+    /// Optional repository-local receiver profile tuned for this capture.
+    pub recommended_config: Option<String>,
+}
+
 /// Dataset registry entry.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DatasetEntry {
@@ -29,6 +46,9 @@ pub struct DatasetEntry {
     pub expected_time_utc: Option<String>,
     /// Sidecar metadata path.
     pub sidecar: Option<String>,
+    /// Recorded capture provenance when the dataset comes from a real RF recording.
+    #[serde(default)]
+    pub recorded_capture: Option<RecordedCaptureProvenance>,
 }
 
 /// Dataset registry file.
@@ -53,6 +73,12 @@ impl DatasetRegistry {
             entry.path = resolve_registry_path(base_dir, &entry.path);
             entry.sidecar =
                 entry.sidecar.as_ref().map(|value| resolve_registry_path(base_dir, value));
+            if let Some(recorded_capture) = &mut entry.recorded_capture {
+                recorded_capture.recommended_config = recorded_capture
+                    .recommended_config
+                    .as_ref()
+                    .map(|value| resolve_registry_path(base_dir, value));
+            }
         }
         Ok(registry)
     }
@@ -251,6 +277,58 @@ sidecar = "datasets/demo/demo.sidecar.toml"
             .sidecar
             .as_deref()
             .expect("sidecar")
+            .starts_with(root.to_string_lossy().as_ref()));
+    }
+
+    #[test]
+    fn dataset_registry_load_preserves_recorded_capture_provenance() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = temp.path();
+        fs::create_dir_all(root.join("datasets/recorded")).expect("create dataset dir");
+        fs::create_dir_all(root.join("configs")).expect("create configs dir");
+        let registry_path = root.join("registry.toml");
+        fs::write(
+            &registry_path,
+            r#"
+version = 1
+
+[[entries]]
+id = "gps_l1_live_sky"
+path = "datasets/recorded/live_sky.iq16"
+format = "iq16_le"
+sample_rate_hz = 4000000.0
+intermediate_freq_hz = 0.0
+capture_start_utc = "2022-03-27T11:32:04.2147593125Z"
+expected_sats = [31]
+expected_region = "N/A"
+expected_time_utc = "2022-03-27T11:32:04Z"
+sidecar = "datasets/recorded/live_sky.sidecar.toml"
+
+[entries.recorded_capture]
+source_url = "https://doi.org/10.5281/zenodo.6394603"
+license = "CC-BY-4.0"
+attribution = "Daniel Estévez"
+hardware = "USRP B205mini"
+center_frequency_hz = 1575420000
+recommended_config = "configs/receiver_live_sky_gps_l1.toml"
+"#,
+        )
+        .expect("write registry");
+
+        let registry = DatasetRegistry::load(&registry_path).expect("load registry");
+        let entry = registry.find("gps_l1_live_sky").expect("find dataset");
+        let recorded_capture =
+            entry.recorded_capture.as_ref().expect("recorded capture provenance");
+
+        assert_eq!(recorded_capture.source_url, "https://doi.org/10.5281/zenodo.6394603");
+        assert_eq!(recorded_capture.license, "CC-BY-4.0");
+        assert_eq!(recorded_capture.attribution, "Daniel Estévez");
+        assert_eq!(recorded_capture.hardware.as_deref(), Some("USRP B205mini"));
+        assert_eq!(recorded_capture.center_frequency_hz, Some(1_575_420_000));
+        assert!(recorded_capture
+            .recommended_config
+            .as_deref()
+            .expect("recommended config")
             .starts_with(root.to_string_lossy().as_ref()));
     }
 
