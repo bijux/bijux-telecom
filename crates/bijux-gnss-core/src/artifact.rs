@@ -200,6 +200,27 @@ pub mod v1 {
                         ));
                     }
                 }
+                if self.candidate_rank == 0 {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Error,
+                        "GNSS_ACQ_CANDIDATE_RANK_INVALID",
+                        "acquisition candidate rank must be at least 1",
+                    ));
+                }
+                if self.is_primary_candidate && self.candidate_rank != 1 {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Error,
+                        "GNSS_ACQ_PRIMARY_CANDIDATE_RANK_INVALID",
+                        "primary acquisition candidate must use rank 1",
+                    ));
+                }
+                if !self.is_primary_candidate && self.candidate_rank == 1 {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Error,
+                        "GNSS_ACQ_ALTERNATIVE_CANDIDATE_RANK_INVALID",
+                        "non-primary acquisition candidates must use rank 2 or greater",
+                    ));
+                }
                 events.extend(validate_receiver_sample_trace(
                     self.source_time,
                     "acquisition",

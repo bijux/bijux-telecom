@@ -1453,6 +1453,8 @@ mod tests {
         let acquisition = bijux_gnss_core::api::AcqResult {
             sat,
             source_time: bijux_gnss_core::api::ReceiverSampleTrace::from_sample_time(frame.t0),
+            candidate_rank: 1,
+            is_primary_candidate: true,
             carrier_hz: bijux_gnss_core::api::Hertz(1_000.0),
             code_phase_samples: 10,
             peak: 10.0,

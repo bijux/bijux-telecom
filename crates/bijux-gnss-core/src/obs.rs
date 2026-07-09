@@ -23,6 +23,14 @@ fn default_phase_search_mode() -> String {
     "full_code".to_string()
 }
 
+fn default_candidate_rank() -> u8 {
+    1
+}
+
+fn default_is_primary_candidate() -> bool {
+    true
+}
+
 pub const TRACKING_STATE_MODEL_VERSION: u32 = 1;
 pub const OBSERVATION_MODEL_VERSION: u32 = 1;
 pub const OBSERVATION_DOWNSTREAM_PROFILE_VERSION: u32 = 1;
@@ -377,6 +385,10 @@ pub struct AcqResult {
     pub sat: SatId,
     #[serde(default)]
     pub source_time: ReceiverSampleTrace,
+    #[serde(default = "default_candidate_rank")]
+    pub candidate_rank: u8,
+    #[serde(default = "default_is_primary_candidate")]
+    pub is_primary_candidate: bool,
     pub carrier_hz: Hertz,
     pub code_phase_samples: usize,
     pub peak: f32,
@@ -465,9 +477,11 @@ pub fn acq_result_stability_key(result: &AcqResult) -> String {
         .map(|uncertainty| format!("|{:.6}|{:.6}", uncertainty.doppler_hz, uncertainty.code_phase_samples))
         .unwrap_or_default();
     format!(
-        "{:?}-{:02}|{:.3}|{}|{:.6}|{:.6}|{:.6}|{}{}{}{}",
+        "{:?}-{:02}|{}|{}|{:.3}|{}|{:.6}|{:.6}|{:.6}|{}{}{}{}",
         result.sat.constellation,
         result.sat.prn,
+        result.candidate_rank,
+        result.is_primary_candidate,
         result.carrier_hz.0,
         result.code_phase_samples,
         result.peak_mean_ratio,
@@ -1212,6 +1226,8 @@ mod tests {
         AcqResult {
             sat,
             source_time: ReceiverSampleTrace::default(),
+            candidate_rank: 1,
+            is_primary_candidate: true,
             carrier_hz: Hertz(0.0),
             code_phase_samples: 0,
             peak: 0.0,

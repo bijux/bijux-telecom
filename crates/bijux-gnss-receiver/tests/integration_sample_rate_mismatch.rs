@@ -12,6 +12,8 @@ fn accepted_acquisition(sat: SatId, carrier_hz: f64, code_phase_samples: usize) 
     AcqResult {
         sat,
         source_time: ReceiverSampleTrace::default(),
+        candidate_rank: 1,
+        is_primary_candidate: true,
         carrier_hz: Hertz(carrier_hz),
         code_phase_samples,
         peak: 1.0,

@@ -67,6 +67,8 @@
       "properties": {
         "sat": { "$ref": "#/definitions/SatId" },
         "source_time": { "$ref": "#/definitions/ReceiverSampleTrace" },
+        "candidate_rank": { "type": "integer", "minimum": 1 },
+        "is_primary_candidate": { "type": "boolean" },
         "carrier_hz": { "type": "number" },
         "doppler_refinement": { "$ref": "#/definitions/AcqDopplerRefinement" },
         "code_phase_refinement": { "$ref": "#/definitions/AcqCodePhaseRefinement" },

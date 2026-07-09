@@ -329,6 +329,8 @@ mod tests {
             payload: AcqResult {
                 sat: SatId { constellation: Constellation::Gps, prn: 3 },
                 source_time: ReceiverSampleTrace::from_sample_index(4_092, 4_092_000.0),
+                candidate_rank: 1,
+                is_primary_candidate: true,
                 carrier_hz: Hertz(500.0),
                 code_phase_samples: 17,
                 peak: 10.0,

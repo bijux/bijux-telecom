@@ -460,6 +460,8 @@ impl Acquisition {
                 grid_candidates.push(AcqResult {
                     sat,
                     source_time: ReceiverSampleTrace::from_sample_time(frame.t0),
+                    candidate_rank: 1,
+                    is_primary_candidate: true,
                     carrier_hz: Hertz(carrier),
                     code_phase_samples: correlation_metrics.peak_idx,
                     peak: correlation_metrics.peak,
@@ -920,6 +922,8 @@ fn zero_signal_run(
         let result = AcqResult {
             sat,
             source_time,
+            candidate_rank: 1,
+            is_primary_candidate: true,
             carrier_hz: Hertz(intermediate_freq_hz),
             code_phase_samples: 0,
             peak: 0.0,
@@ -984,6 +988,8 @@ fn insufficient_frame_run(
         let result = AcqResult {
             sat,
             source_time,
+            candidate_rank: 1,
+            is_primary_candidate: true,
             carrier_hz: Hertz(intermediate_freq_hz),
             code_phase_samples: 0,
             peak: 0.0,
@@ -1063,6 +1069,8 @@ fn unsupported_coherent_integration_run(
         let result = AcqResult {
             sat,
             source_time,
+            candidate_rank: 1,
+            is_primary_candidate: true,
             carrier_hz: Hertz(intermediate_freq_hz),
             code_phase_samples: 0,
             peak: 0.0,
@@ -2069,6 +2077,8 @@ mod tests {
             AcqResult {
                 sat,
                 source_time: ReceiverSampleTrace::default(),
+                candidate_rank: 1,
+                is_primary_candidate: true,
                 carrier_hz: Hertz(100.0),
                 code_phase_samples: 10,
                 peak: 10.0,
@@ -2090,6 +2100,8 @@ mod tests {
             AcqResult {
                 sat,
                 source_time: ReceiverSampleTrace::default(),
+                candidate_rank: 1,
+                is_primary_candidate: true,
                 carrier_hz: Hertz(50.0),
                 code_phase_samples: 20,
                 peak: 10.0,
@@ -2307,6 +2319,8 @@ mod tests {
         AcqResult {
             sat,
             source_time: ReceiverSampleTrace::default(),
+            candidate_rank: 1,
+            is_primary_candidate: true,
             carrier_hz: Hertz(carrier_hz),
             code_phase_samples: 0,
             peak: peak_mean_ratio,
