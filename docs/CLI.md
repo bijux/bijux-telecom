@@ -74,10 +74,10 @@ bijux gnss acquire --dataset gps_l1_2022_03_27_excerpt --config configs/receiver
 
 ### Inspect Published C/A PRN Assignment
 ```bash
-bijux gnss ca-code --prn 1 --count 10 --with-reference
+bijux gnss ca-code --prn 1 --start-chip 1022 --count 4 --with-reference
 ```
 
-This prints the published G2 tap pair, G2 delay, first-10-chip octal reference, and the requested chip prefix.
+This prints the published G2 tap pair, G2 delay, period length, wrapped chip offset, first-10-chip octal reference, and the requested chip window across the period boundary.
 
 ### Export Synthetic IQ Truth Bundle
 ```bash

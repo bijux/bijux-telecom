@@ -3,6 +3,7 @@
 ## Signal Model Assumptions
 - GPS L1 C/A code only.
 - GPS L1 C/A PRNs 1-32 are validated against the published GPS SPS Table 2-1 tap pairs, delays, and first-ten-chip references.
+- GPS L1 C/A period length is fixed at 1023 chips and the generated sequence repeats exactly on that boundary for PRNs 1-32.
 - Ideal spreading codes (±1) without front-end distortions.
 - Additive noise approximated in tracking metrics.
 
