@@ -172,6 +172,25 @@ pub(crate) enum GnssCommand {
         sweep: Vec<String>,
     },
 
+    /// Export a deterministic synthetic raw IQ bundle and matching truth artifact
+    ExportSyntheticIq {
+        /// Synthetic scenario TOML file
+        #[arg(long, value_name = "FILE")]
+        scenario: PathBuf,
+
+        /// Output directory for the generated run bundle
+        #[arg(long, alias = "output", value_name = "DIR")]
+        out: Option<PathBuf>,
+
+        /// Report output format
+        #[arg(long, value_enum, default_value_t = ReportFormat::Table)]
+        report: ReportFormat,
+
+        /// Synthetic capture start timestamp written into the sidecar
+        #[arg(long, default_value = "2026-07-09T00:00:00Z")]
+        capture_start_utc: String,
+    },
+
     /// Artifact validation and conversion
     Artifact {
         #[command(subcommand)]

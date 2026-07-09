@@ -7,6 +7,7 @@ include!("cli/report.rs");
 include!("cli/output.rs");
 include!("cli/commands/ingest.rs");
 include!("cli/commands/run_pipeline.rs");
+include!("cli/commands/synthetic.rs");
 include!("cli/commands/diagnostics.rs");
 include!("cli/commands/validate.rs");
 include!("cli/commands/analyze.rs");

@@ -8,6 +8,7 @@ fn run_command(command: GnssCommand) -> Result<()> {
         cmd @ GnssCommand::Inspect { .. } => handle_inspect(cmd),
         cmd @ GnssCommand::Rtk { .. } => handle_rtk(cmd),
         cmd @ GnssCommand::Experiment { .. } => handle_experiment(cmd),
+        cmd @ GnssCommand::ExportSyntheticIq { .. } => handle_export_synthetic_iq(cmd),
         cmd @ GnssCommand::ValidateConfig { .. } => handle_validateconfig(cmd),
         cmd @ GnssCommand::Config { .. } => handle_config(cmd),
         cmd @ GnssCommand::ValidateArtifacts { .. } => handle_validateartifacts(cmd),
@@ -167,6 +168,18 @@ fn print_acquisition_table(report: &AcquisitionReport) {
             format_optional_reason(row.selection_reason.as_deref()),
         );
     }
+}
+
+fn print_synthetic_iq_export_table(report: &SyntheticIqExportReport) {
+    let sats = report.satellites.iter().map(|sat| format_sat(*sat)).collect::<Vec<_>>().join(", ");
+    println!("Scenario: {}", report.scenario_id);
+    println!("Seed: {}", report.seed);
+    println!("Sample rate (Hz): {:.1}", report.sample_rate_hz);
+    println!("Samples: {}", report.sample_count);
+    println!("Satellites: {}", sats);
+    println!("IQ: {}", report.output_iq);
+    println!("Sidecar: {}", report.output_sidecar);
+    println!("Truth: {}", report.output_truth);
 }
 fn print_inspect_table(report: &InspectReport) {
     println!(

@@ -51,9 +51,8 @@ fn summarize_reported_prns(rows: &[AcquisitionRow]) -> Vec<ReportedPrn> {
         }
     }
     let mut reported_prns: Vec<_> = by_prn.into_values().collect();
-    reported_prns.sort_by(|left, right| {
-        reported_prn_sort_key(left).cmp(&reported_prn_sort_key(right))
-    });
+    reported_prns
+        .sort_by(|left, right| reported_prn_sort_key(left).cmp(&reported_prn_sort_key(right)));
     reported_prns
 }
 
@@ -100,6 +99,18 @@ struct ExperimentRunResult {
 #[derive(Debug, Serialize)]
 struct ExperimentSummary {
     runs: Vec<ExperimentRunResult>,
+}
+
+#[derive(Debug, Serialize)]
+struct SyntheticIqExportReport {
+    scenario_id: String,
+    seed: u64,
+    sample_count: usize,
+    sample_rate_hz: f64,
+    output_iq: String,
+    output_sidecar: String,
+    output_truth: String,
+    satellites: Vec<SatId>,
 }
 
 #[cfg(test)]
