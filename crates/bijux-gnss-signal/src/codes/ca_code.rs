@@ -24,6 +24,17 @@ pub struct CaCodeAssignment {
     pub first_ten_chips_octal: u16,
 }
 
+/// Summary metrics derived from one full-period C/A autocorrelation trace.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CaCodeAutocorrelationSummary {
+    /// Zero-shift autocorrelation peak.
+    pub peak: i16,
+    /// Maximum absolute value observed outside the zero-shift peak.
+    pub max_nonzero_abs: i16,
+    /// Sorted unique non-zero-shift autocorrelation values.
+    pub unique_nonzero_values: Vec<i16>,
+}
+
 impl CaCodeAssignment {
     fn zero_based_g2_taps(self) -> (usize, usize) {
         (usize::from(self.g2_taps.0 - 1), usize::from(self.g2_taps.1 - 1))
@@ -271,6 +282,54 @@ pub fn generate_ca_code_chips(
     }
 
     Ok(code)
+}
+
+/// Compute the periodic correlation between two equal-length chip sequences.
+pub fn periodic_correlation(
+    left: &[i8],
+    right: &[i8],
+) -> Result<Vec<i16>, crate::error::SignalError> {
+    if left.len() != right.len() {
+        return Err(crate::error::SignalError::CorrelationLengthMismatch {
+            left: left.len(),
+            right: right.len(),
+        });
+    }
+
+    let chip_count = left.len();
+    let mut correlation = Vec::with_capacity(chip_count);
+
+    for shift in 0..chip_count {
+        let mut sum = 0i16;
+        for chip_index in 0..chip_count {
+            sum +=
+                i16::from(left[chip_index]) * i16::from(right[(chip_index + shift) % chip_count]);
+        }
+        correlation.push(sum);
+    }
+
+    Ok(correlation)
+}
+
+/// Compute the full-period periodic autocorrelation of one GPS L1 C/A code.
+pub fn ca_code_periodic_autocorrelation(prn: Prn) -> Result<Vec<i16>, crate::error::SignalError> {
+    let code = generate_ca_code(prn)?;
+    periodic_correlation(&code, &code)
+}
+
+/// Summarize the periodic autocorrelation of one GPS L1 C/A code.
+pub fn ca_code_autocorrelation_summary(
+    prn: Prn,
+) -> Result<CaCodeAutocorrelationSummary, crate::error::SignalError> {
+    let correlation = ca_code_periodic_autocorrelation(prn)?;
+    let peak = correlation.first().copied().unwrap_or_default();
+    let mut unique_nonzero_values = correlation.iter().copied().skip(1).collect::<Vec<_>>();
+    unique_nonzero_values.sort_unstable();
+    unique_nonzero_values.dedup();
+    let max_nonzero_abs =
+        correlation.iter().copied().skip(1).map(i16::abs).max().unwrap_or_default();
+
+    Ok(CaCodeAutocorrelationSummary { peak, max_nonzero_abs, unique_nonzero_values })
 }
 
 fn shift_register(reg: &mut [i8; 10], feedback: i8) {
