@@ -6,6 +6,10 @@ pub use crate::codes::ca_code::{generate_ca_code, Prn};
 pub use crate::dsp::nco::Nco;
 /// Signal processing utilities.
 pub use crate::dsp::signal::samples_per_code;
+/// Front-end quality metrics derived from complex I/Q samples.
+pub use crate::dsp::quality::{
+    measure_iq_front_end_metrics, IqFrontEndAnalyzer, IqFrontEndMetrics,
+};
 /// Tracking helpers.
 pub use crate::dsp::tracking::{adaptive_bandwidth, code_at, discriminators, estimate_cn0_dbhz};
 /// Error types.
