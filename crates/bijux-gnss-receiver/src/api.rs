@@ -5,8 +5,7 @@
 pub use crate::engine::receiver_config::{ReceiverConfig, ReceiverError, ReceiverPipelineConfig};
 /// Receiver runtime options (side-effectful controls).
 pub use crate::engine::runtime::{
-    Metric, MetricsSink, NullLogger, ReceiverRuntime, ReceiverRuntimeConfig, TraceRecord,
-    TraceSink,
+    Metric, MetricsSink, NullLogger, ReceiverRuntime, ReceiverRuntimeConfig, TraceRecord, TraceSink,
 };
 
 /// I/O helpers.
@@ -32,6 +31,8 @@ pub use crate::ports::{ArtifactSink, SampleSource};
 
 /// Acquisition engine.
 pub use crate::pipeline::acquisition::Acquisition as AcquisitionEngine;
+/// Carrier/Doppler conversion helpers.
+pub use crate::pipeline::doppler::{carrier_hz_from_doppler_hz, doppler_hz_from_carrier_hz};
 /// Navigation engine and helpers.
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]

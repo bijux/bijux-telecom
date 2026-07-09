@@ -6,6 +6,7 @@
 //! a single namespace without deep paths.
 
 pub mod acquisition;
+pub mod doppler;
 #[cfg(feature = "nav")]
 pub mod navigation;
 pub mod observations;
