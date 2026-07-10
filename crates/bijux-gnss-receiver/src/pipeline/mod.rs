@@ -7,6 +7,7 @@
 
 pub mod acquisition;
 pub mod doppler;
+pub mod hatch;
 #[cfg(feature = "nav")]
 pub mod navigation;
 pub mod observations;

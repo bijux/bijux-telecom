@@ -18,6 +18,7 @@ use bijux_gnss_core::api::{
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::pipeline::doppler::doppler_hz_from_carrier_hz;
+use crate::pipeline::hatch::HatchFilterState;
 use crate::pipeline::tracking::TrackingResult;
 use crate::pipeline::{StepReport, StepStats};
 use bijux_gnss_signal::api::samples_per_code;
@@ -69,17 +70,6 @@ struct CarrierPhaseObservation {
     continuity: CarrierPhaseContinuity,
     arc_start_epoch_idx: u64,
     arc_start_sample_index: u64,
-}
-
-#[derive(Debug, Clone)]
-struct HatchState {
-    smoothed_m: f64,
-    count: u32,
-    last_carrier_cycles: f64,
-    last_divergence_m: f64,
-    age: u32,
-    resets: u32,
-    initialized: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -366,7 +356,7 @@ pub fn observations_from_tracking_results_with_gps_anchor(
     use std::collections::BTreeMap;
 
     let mut by_epoch: BTreeMap<u64, ObsEpoch> = BTreeMap::new();
-    let mut hatch: std::collections::HashMap<bijux_gnss_core::api::SigId, HatchState> =
+    let mut hatch: std::collections::HashMap<bijux_gnss_core::api::SigId, HatchFilterState> =
         std::collections::HashMap::new();
     let mut slips: std::collections::HashMap<bijux_gnss_core::api::SigId, CycleSlipState> =
         std::collections::HashMap::new();
@@ -398,27 +388,13 @@ pub fn observations_from_tracking_results_with_gps_anchor(
             entry.discontinuity |= epoch.discontinuity;
             for mut sat in epoch.sats {
                 let lambda_m = SPEED_OF_LIGHT_MPS / sat.metadata.signal.carrier_hz.value();
-                let state = hatch.entry(sat.signal_id).or_insert(HatchState {
-                    smoothed_m: sat.pseudorange_m.0,
-                    count: 0,
-                    last_carrier_cycles: sat.carrier_phase_cycles.0,
-                    last_divergence_m: 0.0,
-                    age: 0,
-                    resets: 0,
-                    initialized: false,
-                });
-                let window = hatch_window.max(1) as f64;
+                let state = hatch.entry(sat.signal_id).or_default();
                 if !sat.lock_flags.code_lock {
-                    if state.initialized {
-                        state.resets = state.resets.saturating_add(1);
-                    }
-                    state.initialized = false;
-                    state.count = 0;
-                    state.age = 0;
+                    state.clear_arc();
                     slips.remove(&sat.signal_id);
                     sat.metadata.smoothing_window = hatch_window;
                     sat.metadata.smoothing_age = 0;
-                    sat.metadata.smoothing_resets = state.resets;
+                    sat.metadata.smoothing_resets = state.reset_count();
                     sat.error_model = Some(observation_error_model(&sat, 0.0));
                     apply_pseudorange_physics_rejection(&mut sat);
                     entry.sats.push(sat);
@@ -429,10 +405,9 @@ pub fn observations_from_tracking_results_with_gps_anchor(
                 let raw_pseudorange_m = sat.pseudorange_m.0;
                 let raw_divergence_m = raw_pseudorange_m - sat.carrier_phase_cycles.0 * lambda_m;
                 let threshold_m = slip_threshold_m(sat.cn0_dbhz, sat.elevation_deg);
-                let mut divergence_jump = 0.0;
+                let divergence_jump = state.divergence_jump_m(raw_divergence_m).unwrap_or(0.0);
                 let mut smoothing_cycle_slip_reason = None;
-                if supports_code_carrier_slip_detection && state.initialized {
-                    divergence_jump = (raw_divergence_m - state.last_divergence_m).abs();
+                if supports_code_carrier_slip_detection {
                     if divergence_jump > threshold_m {
                         smoothing_cycle_slip_reason = Some("code_carrier_divergence");
                     }
@@ -453,35 +428,19 @@ pub fn observations_from_tracking_results_with_gps_anchor(
                 }
                 apply_cycle_slip_surface(&mut sat, smoothing_cycle_slip_reason);
                 if sat.lock_flags.cycle_slip {
-                    if state.initialized {
-                        state.resets = state.resets.saturating_add(1);
-                    }
-                    state.initialized = false;
-                    state.count = 0;
-                    state.age = 0;
+                    state.clear_arc();
                 }
-                if !state.initialized {
-                    state.smoothed_m = raw_pseudorange_m;
-                    state.count = 1;
-                    state.last_carrier_cycles = sat.carrier_phase_cycles.0;
-                    state.last_divergence_m = raw_divergence_m;
-                    state.initialized = true;
-                    state.age = 1;
-                } else {
-                    let delta_carrier =
-                        (sat.carrier_phase_cycles.0 - state.last_carrier_cycles) * lambda_m;
-                    let pred = state.smoothed_m + delta_carrier;
-                    let count = (state.count as f64).min(window);
-                    state.smoothed_m = pred + (raw_pseudorange_m - pred) / count;
-                    state.count = state.count.saturating_add(1);
-                    state.last_carrier_cycles = sat.carrier_phase_cycles.0;
-                    state.last_divergence_m = raw_divergence_m;
-                    state.age = state.age.saturating_add(1);
-                }
-                sat.pseudorange_m = Meters(state.smoothed_m);
+                let smoothing = state.observe(
+                    raw_pseudorange_m,
+                    sat.carrier_phase_cycles.0,
+                    raw_divergence_m,
+                    lambda_m,
+                    hatch_window,
+                );
+                sat.pseudorange_m = Meters(smoothing.smoothed_pseudorange_m);
                 sat.metadata.smoothing_window = hatch_window;
-                sat.metadata.smoothing_age = state.age;
-                sat.metadata.smoothing_resets = state.resets;
+                sat.metadata.smoothing_age = smoothing.smoothing_age_epochs;
+                sat.metadata.smoothing_resets = smoothing.reset_count;
                 if supports_code_carrier_slip_detection {
                     slips.insert(
                         sat.signal_id,
