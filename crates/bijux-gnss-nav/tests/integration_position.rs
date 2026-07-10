@@ -1,4 +1,6 @@
 #![allow(missing_docs)]
+mod support;
+
 use bijux_gnss_core::api::{Constellation, GpsTime, ObsSignalTiming, SatId, Seconds};
 use bijux_gnss_nav::api::{
     ephemerides_from_decoded_gps_l1ca_lnav, geodetic_to_ecef, parse_rinex_nav, sat_state_gps_l1ca,
@@ -6,6 +8,9 @@ use bijux_gnss_nav::api::{
     GpsL1CaLnavSubframe1Clock, GpsL1CaLnavSubframe2Orbit, GpsL1CaLnavSubframe3Orbit,
     GpsL1CaLnavSubframeAlignment, GpsL1CaTlmWord, GpsL1CaWordParitySummary, PositionObservation,
     PositionSolver,
+};
+use support::position_truth::{
+    sample_ephemerides, sample_ephemeris, timed_position_observation,
 };
 
 #[test]
@@ -38,12 +43,7 @@ fn position_observation_constructible() {
 #[test]
 fn position_solver_refuses_observations_without_signal_timing() {
     let t_rx_s = 504_018.07;
-    let ephs = vec![
-        make_eph(1, 0.0, 0.0),
-        make_eph(2, 0.8, 0.9),
-        make_eph(3, 1.6, 1.8),
-        make_eph(4, 2.4, 2.7),
-    ];
+    let ephs = sample_ephemerides();
     let observations = ephs
         .iter()
         .map(|eph| PositionObservation {
@@ -63,12 +63,7 @@ fn position_solver_refuses_observations_without_signal_timing() {
 #[test]
 fn position_solver_refuses_inconsistent_signal_timing() {
     let t_rx_s = 504_018.07;
-    let ephs = vec![
-        make_eph(1, 0.0, 0.0),
-        make_eph(2, 0.8, 0.9),
-        make_eph(3, 1.6, 1.8),
-        make_eph(4, 2.4, 2.7),
-    ];
+    let ephs = sample_ephemerides();
     let observations = ephs
         .iter()
         .map(|eph| {
@@ -82,53 +77,6 @@ fn position_solver_refuses_inconsistent_signal_timing() {
         .collect::<Vec<_>>();
 
     assert!(PositionSolver::new().solve_wls(&observations, &ephs, t_rx_s).is_none());
-}
-
-fn make_eph(prn: u8, omega0: f64, m0: f64) -> GpsEphemeris {
-    GpsEphemeris {
-        sat: SatId { constellation: Constellation::Gps, prn },
-        iodc: 1,
-        iode: 1,
-        week: 2209,
-        sv_health: 0,
-        toe_s: 504_000.0,
-        toc_s: 504_018.0,
-        sqrt_a: 5153.7954775,
-        e: 0.01,
-        i0: 0.94,
-        idot: 0.0,
-        omega0,
-        omegadot: 0.0,
-        w: 0.0,
-        m0,
-        delta_n: 0.0,
-        cuc: 0.0,
-        cus: 0.0,
-        crc: 0.0,
-        crs: 0.0,
-        cic: 0.0,
-        cis: 0.0,
-        af0: 0.0,
-        af1: 0.0,
-        af2: 0.0,
-        tgd: 0.0,
-    }
-}
-
-fn timed_position_observation(sat: SatId, pseudorange_m: f64, t_rx_s: f64) -> PositionObservation {
-    let signal_travel_time_s = pseudorange_m / 299_792_458.0;
-    PositionObservation {
-        sat,
-        pseudorange_m,
-        cn0_dbhz: 45.0,
-        elevation_deg: None,
-        weight: 1.0,
-        gps_receive_time: Some(GpsTime { week: 0, tow_s: t_rx_s }),
-        signal_timing: Some(ObsSignalTiming {
-            signal_travel_time_s: Seconds(signal_travel_time_s),
-            transmit_gps_time: GpsTime { week: 0, tow_s: t_rx_s - signal_travel_time_s },
-        }),
-    }
 }
 
 fn decoded_lnav_subframes_from_ephemeris(eph: &GpsEphemeris) -> Vec<GpsL1CaLnavDecodedSubframe> {
@@ -236,10 +184,10 @@ fn decoded_lnav_subframes_from_ephemeris(eph: &GpsEphemeris) -> Vec<GpsL1CaLnavD
 #[test]
 fn rinex_nav_ephemeris_feeds_position_solver() {
     let source = vec![
-        make_eph(1, 0.0, 0.0),
-        make_eph(2, 0.8, 0.9),
-        make_eph(3, 1.6, 1.8),
-        make_eph(4, 2.4, 2.7),
+        sample_ephemeris(1, 0.0, 0.0),
+        sample_ephemeris(2, 0.8, 0.9),
+        sample_ephemeris(3, 1.6, 1.8),
+        sample_ephemeris(4, 2.4, 2.7),
     ];
     let path = std::env::temp_dir().join(format!(
         "bijux-rinex-nav-position-{}-{}.rnx",
@@ -287,10 +235,10 @@ fn rinex_nav_ephemeris_feeds_position_solver() {
 #[test]
 fn decoded_lnav_ephemeris_feeds_position_solver() {
     let source = vec![
-        make_eph(1, 0.0, 0.0),
-        make_eph(2, 0.8, 0.9),
-        make_eph(3, 1.6, 1.8),
-        make_eph(4, 2.4, 2.7),
+        sample_ephemeris(1, 0.0, 0.0),
+        sample_ephemeris(2, 0.8, 0.9),
+        sample_ephemeris(3, 1.6, 1.8),
+        sample_ephemeris(4, 2.4, 2.7),
     ];
     let parsed = source
         .iter()
