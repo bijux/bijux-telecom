@@ -102,6 +102,21 @@ fn track(config: &ReceiverPipelineConfig, sat: SatId, start_epoch_idx: u64) -> T
     }
 }
 
+fn track_from_epochs(sat: SatId, epochs: Vec<TrackEpoch>) -> TrackingResult {
+    TrackingResult {
+        sat,
+        carrier_hz: 0.0,
+        code_phase_samples: 0.0,
+        acquisition_hypothesis: "accepted".to_string(),
+        acquisition_score: 1.0,
+        acquisition_code_phase_samples: 0,
+        acquisition_carrier_hz: 0.0,
+        acq_to_track_state: "accepted".to_string(),
+        epochs,
+        transitions: Vec::new(),
+    }
+}
+
 #[test]
 fn grouped_observation_epochs_follow_configured_tracking_interval() {
     let config = observation_config(10);
@@ -123,4 +138,30 @@ fn grouped_observation_epochs_follow_configured_tracking_interval() {
     assert_eq!(actual_interval_samples, expected_interval_samples);
     assert!((second_epoch.t_rx_s.0 - first_epoch.t_rx_s.0 - 0.010).abs() <= 1.0e-12);
     assert!(report.output.iter().all(|epoch| epoch.valid));
+}
+
+#[test]
+fn grouped_observation_epochs_reject_off_interval_spacing() {
+    let config = observation_config(10);
+    let sat = SatId { constellation: Constellation::Gps, prn: 3 };
+    let base_epoch_idx = 70;
+    let base_sample_index = base_epoch_idx * observation_interval_samples(&config);
+    let first_epoch = tracking_epoch(&config, sat, base_epoch_idx, base_sample_index);
+    let second_epoch = tracking_epoch(
+        &config,
+        sat,
+        base_epoch_idx + 1,
+        base_sample_index + observation_interval_samples(&config) + 512,
+    );
+
+    let report =
+        observations_from_tracking_results(&config, &[track_from_epochs(sat, vec![first_epoch, second_epoch])], 10);
+    let invalid_epoch = report.output.iter().find(|epoch| epoch.epoch_idx == 71).expect("epoch 71");
+
+    assert!(!invalid_epoch.valid);
+    assert_eq!(invalid_epoch.decision_reason.as_deref(), Some("invalid_observation_timing"));
+    assert!(report
+        .events
+        .iter()
+        .any(|event| event.code == "GNSS_OBS_TIME_INTERVAL_INVALID"));
 }
