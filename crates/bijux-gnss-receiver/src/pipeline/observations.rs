@@ -398,6 +398,28 @@ pub fn observations_from_tracking_results_with_gps_anchor(
                     entry.sats.push(sat);
                     continue;
                 }
+                let raw_pseudorange_m = sat.pseudorange_m.0;
+                let raw_divergence_m = raw_pseudorange_m - sat.carrier_phase_cycles.0 * lambda_m;
+                let threshold_m = slip_threshold_m(sat.cn0_dbhz, sat.elevation_deg);
+                let mut divergence_jump = 0.0;
+                if state.initialized {
+                    divergence_jump = (raw_divergence_m - state.last_divergence_m).abs();
+                    if divergence_jump > threshold_m {
+                        sat.lock_flags.cycle_slip = true;
+                    }
+                }
+                // Geometry-free/Melbourne-Wubbena style placeholder for cycle slip detection.
+                let gf_cycles = sat.carrier_phase_cycles.0 - raw_pseudorange_m / lambda_m;
+                if let Some(last_gf_cycles) = slips
+                    .get(&sat.signal_id)
+                    .filter(|slip_state| slip_state.initialized)
+                    .map(|slip_state| slip_state.last_gf_cycles)
+                {
+                    let delta = gf_cycles - last_gf_cycles;
+                    if delta.abs() > GEOFREE_SLIP_THRESHOLD_CYCLES {
+                        sat.lock_flags.cycle_slip = true;
+                    }
+                }
                 if sat.lock_flags.cycle_slip {
                     if state.initialized {
                         state.resets = state.resets.saturating_add(1);
@@ -405,14 +427,12 @@ pub fn observations_from_tracking_results_with_gps_anchor(
                     state.initialized = false;
                     state.count = 0;
                     state.age = 0;
-                    slips.remove(&sat.signal_id);
                 }
                 if !state.initialized {
-                    state.smoothed_m = sat.pseudorange_m.0;
+                    state.smoothed_m = raw_pseudorange_m;
                     state.count = 1;
                     state.last_carrier_cycles = sat.carrier_phase_cycles.0;
-                    state.last_divergence_m =
-                        sat.pseudorange_m.0 - sat.carrier_phase_cycles.0 * lambda_m;
+                    state.last_divergence_m = raw_divergence_m;
                     state.initialized = true;
                     state.age = 1;
                 } else {
@@ -420,35 +440,20 @@ pub fn observations_from_tracking_results_with_gps_anchor(
                         (sat.carrier_phase_cycles.0 - state.last_carrier_cycles) * lambda_m;
                     let pred = state.smoothed_m + delta_carrier;
                     let count = (state.count as f64).min(window);
-                    state.smoothed_m = pred + (sat.pseudorange_m.0 - pred) / count;
+                    state.smoothed_m = pred + (raw_pseudorange_m - pred) / count;
                     state.count = state.count.saturating_add(1);
                     state.last_carrier_cycles = sat.carrier_phase_cycles.0;
-                    state.last_divergence_m =
-                        sat.pseudorange_m.0 - sat.carrier_phase_cycles.0 * lambda_m;
+                    state.last_divergence_m = raw_divergence_m;
                     state.age = state.age.saturating_add(1);
                 }
                 sat.pseudorange_m = Meters(state.smoothed_m);
                 sat.metadata.smoothing_window = hatch_window;
                 sat.metadata.smoothing_age = state.age;
                 sat.metadata.smoothing_resets = state.resets;
-                let divergence_m = sat.pseudorange_m.0 - sat.carrier_phase_cycles.0 * lambda_m;
-                let threshold_m = slip_threshold_m(sat.cn0_dbhz, sat.elevation_deg);
-                let divergence_jump = (divergence_m - state.last_divergence_m).abs();
-                if divergence_jump > threshold_m {
-                    sat.lock_flags.cycle_slip = true;
-                }
-                // Geometry-free/Melbourne-Wubbena style placeholder for cycle slip detection.
-                let gf_cycles = sat.carrier_phase_cycles.0 - sat.pseudorange_m.0 / lambda_m;
-                let slip_state = slips
-                    .entry(sat.signal_id)
-                    .or_insert(CycleSlipState { last_gf_cycles: gf_cycles, initialized: true });
-                if slip_state.initialized {
-                    let delta = gf_cycles - slip_state.last_gf_cycles;
-                    if delta.abs() > GEOFREE_SLIP_THRESHOLD_CYCLES {
-                        sat.lock_flags.cycle_slip = true;
-                    }
-                }
-                slip_state.last_gf_cycles = gf_cycles;
+                slips.insert(
+                    sat.signal_id,
+                    CycleSlipState { last_gf_cycles: gf_cycles, initialized: true },
+                );
                 sat.multipath_suspect = divergence_jump > threshold_m * 0.8;
                 let tracking_uncertainty = sat.metadata.tracking_uncertainty.clone();
                 let pseudorange_sigma_m = sat.pseudorange_var_m2.sqrt();
@@ -1431,6 +1436,53 @@ mod tests {
         assert_eq!(relocked.metadata.smoothing_age, 1);
         assert_eq!(relocked.metadata.smoothing_resets, 1);
         assert!((relocked.pseudorange_m.0 - expected_raw).abs() <= f64::EPSILON);
+    }
+
+    #[test]
+    fn observations_restart_hatch_smoothing_on_detected_cycle_slip() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 1_023_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let carrier_hz = crate::pipeline::doppler::carrier_hz_from_doppler_hz(0.0, 125.0);
+        let track = TrackingResult {
+            sat: SatId { constellation: Constellation::Gps, prn: 20 },
+            carrier_hz,
+            code_phase_samples: 0.0,
+            acquisition_hypothesis: "accepted".to_string(),
+            acquisition_score: 1.0,
+            acquisition_code_phase_samples: 0,
+            acquisition_carrier_hz: carrier_hz,
+            acq_to_track_state: "accepted".to_string(),
+            epochs: vec![
+                make_tracking_epoch_with_alignment(20, &config, 70, carrier_hz, 10.0, 68, 0.0),
+                make_tracking_epoch_with_alignment(20, &config, 71, carrier_hz, 10.125, 68, 0.0),
+                make_tracking_epoch_with_alignment(20, &config, 72, carrier_hz, 10.250, 68, 0.02),
+                make_tracking_epoch_with_alignment(20, &config, 73, carrier_hz, 10.375, 68, 0.02),
+            ],
+            transitions: Vec::new(),
+        };
+
+        let report = observations_from_tracking_results(&config, &[track], 10);
+        let sats = report.output.iter().map(|epoch| &epoch.sats[0]).collect::<Vec<_>>();
+        let slipped = sats[2];
+        let post_slip = sats[3];
+        let expected_raw = aligned_pseudorange_m(&config, 68, 0.02);
+
+        assert_eq!(
+            sats.iter().map(|sat| sat.metadata.smoothing_age).collect::<Vec<_>>(),
+            vec![1, 2, 1, 2]
+        );
+        assert_eq!(
+            sats.iter().map(|sat| sat.metadata.smoothing_resets).collect::<Vec<_>>(),
+            vec![0, 0, 1, 1]
+        );
+        assert!(slipped.lock_flags.cycle_slip);
+        assert!((slipped.pseudorange_m.0 - expected_raw).abs() <= f64::EPSILON);
+        assert_eq!(post_slip.metadata.smoothing_age, 2);
     }
 
     #[test]
