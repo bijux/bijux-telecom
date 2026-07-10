@@ -715,6 +715,64 @@ mod pvt_tests {
         solutions.remove(0)
     }
 
+    fn solve_pvt_case_with_decoded_lnav_reports(
+        case_name: &str,
+        ephs: &[GpsEphemeris],
+        pvt_case: &SyntheticPvtCase,
+    ) -> bijux_gnss_infra::api::core::NavSolutionEpoch {
+        let root = std::env::temp_dir().join(format!(
+            "bijux_pvt_{}_{}_{}",
+            case_name,
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos()
+        ));
+        fs::create_dir_all(&root).expect("create test root");
+        let obs_path = root.join("obs.jsonl");
+        let eph_path = root.join("nav_decode_reports.json");
+        fs::write(
+            &obs_path,
+            format!(
+                "{}\n",
+                serde_json::to_string(&pvt_case.obs_epoch).expect("serialize observation epoch")
+            ),
+        )
+        .expect("write obs");
+        let reports = ephs
+            .iter()
+            .map(|eph| {
+                serde_json::json!({
+                    "sat": eph.sat,
+                    "reference_week": eph.week,
+                    "decoded_subframes": decoded_lnav_subframes_from_ephemeris(eph),
+                    "ephemerides": []
+                })
+            })
+            .collect::<Vec<_>>();
+        fs::write(
+            &eph_path,
+            serde_json::to_string_pretty(&reports).expect("serialize nav decode reports"),
+        )
+        .expect("write nav decode reports");
+
+        let common = sample_common_args(root.clone());
+        let out_dir = artifacts_dir(&common, "pvt", None).expect("artifacts dir");
+        fs::create_dir_all(&out_dir).expect("create pvt artifacts dir");
+        handle_pvt(GnssCommand::Pvt {
+            common: common.clone(),
+            obs: obs_path,
+            eph: eph_path,
+            ekf: false,
+        })
+        .expect("pvt command");
+
+        let nav_path = out_dir.join("pvt.jsonl");
+        let mut solutions = read_nav_solutions(&nav_path).expect("read nav solutions");
+        fs::remove_dir_all(root).expect("remove test root");
+
+        assert_eq!(solutions.len(), 1);
+        solutions.remove(0)
+    }
+
     fn decoded_lnav_subframes_from_ephemeris(
         eph: &GpsEphemeris,
     ) -> Vec<GpsL1CaLnavDecodedSubframe> {
@@ -969,6 +1027,30 @@ mod pvt_tests {
         );
         let zero_clock_solution = solve_pvt_case_with_rinex_nav(
             "broadcast_clock_rinex_zero_clock",
+            &clear_broadcast_clock_parameters(&ephemerides),
+            &pvt_case,
+        );
+
+        let corrected_error_m = position_error_3d_m(&corrected_solution, pvt_case.truth_ecef_m);
+        let zero_clock_error_m = position_error_3d_m(&zero_clock_solution, pvt_case.truth_ecef_m);
+
+        assert!(corrected_solution.valid);
+        assert!(corrected_error_m < 5.0);
+        assert!(zero_clock_error_m > corrected_error_m + 20.0);
+        assert!((corrected_solution.clock_bias_s.0 - pvt_case.receiver_clock_bias_s).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn pvt_command_uses_broadcast_satellite_clock_correction_from_decoded_lnav() {
+        let (ephemerides, pvt_case) = broadcast_clock_pvt_case(2.75e-4);
+
+        let corrected_solution = solve_pvt_case_with_decoded_lnav_reports(
+            "broadcast_clock_decoded_lnav_corrected",
+            &ephemerides,
+            &pvt_case,
+        );
+        let zero_clock_solution = solve_pvt_case_with_decoded_lnav_reports(
+            "broadcast_clock_decoded_lnav_zero_clock",
             &clear_broadcast_clock_parameters(&ephemerides),
             &pvt_case,
         );
