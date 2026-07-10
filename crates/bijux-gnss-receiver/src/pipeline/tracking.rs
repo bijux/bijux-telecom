@@ -3854,6 +3854,52 @@ mod tests {
     }
 
     #[test]
+    fn tracking_channel_state_report_keeps_degraded_final_state() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 9 };
+        let report = super::tracking_channel_state_report(&tracking_result_with_epochs(
+            3,
+            sat,
+            vec![
+                track_epoch_with_state(0, true, "tracking", Some("carrier_converged")),
+                track_epoch_with_state(1, true, "degraded", Some("signal_fade")),
+            ],
+        ));
+
+        assert_eq!(
+            report.emitted_states.iter().map(|event| event.state).collect::<Vec<_>>(),
+            vec![
+                super::TrackingChannelState::Acquired,
+                super::TrackingChannelState::Locked,
+                super::TrackingChannelState::Degraded,
+            ]
+        );
+        assert_eq!(report.final_state, super::TrackingChannelState::Degraded);
+        assert_eq!(report.final_reason.as_deref(), Some("signal_fade"));
+    }
+
+    #[test]
+    fn tracking_channel_state_report_suppresses_duplicate_refused_markers() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 16 };
+        let report = super::tracking_channel_state_report(&tracking_result_with_epochs(
+            1,
+            sat,
+            vec![
+                track_epoch_with_state(0, false, "pull_in", Some("carrier_pull_in")),
+                track_epoch_with_state(1, false, "pull_in", Some("cn0_below_tracking_lock_floor")),
+                track_epoch_with_state(2, false, "pull_in", Some("cn0_below_tracking_lock_floor")),
+                track_epoch_with_state(3, false, "pull_in", Some("cn0_below_tracking_lock_floor")),
+            ],
+        ));
+
+        let refused_count = report
+            .emitted_states
+            .iter()
+            .filter(|event| event.state == super::TrackingChannelState::Refused)
+            .count();
+        assert_eq!(refused_count, 1, "{report:?}");
+    }
+
+    #[test]
     #[cfg(feature = "alloc-audit")]
     fn tracking_allocations_under_threshold() {
         let config = crate::engine::receiver_config::ReceiverPipelineConfig::default();
