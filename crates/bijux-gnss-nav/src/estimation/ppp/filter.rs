@@ -20,7 +20,8 @@ use crate::estimation::ppp::config::{PppConvergenceState, PppHealth, PppSolution
 use crate::formats::precise_products::{ProductDiagnostics, ProductsProvider};
 use crate::linalg::Matrix;
 use crate::orbits::gps::{
-    gps_satellite_clock_correction, sat_state_gps_l1ca, GpsEphemeris, GpsSatState,
+    gps_ephemeris_age, gps_satellite_clock_correction, sat_state_gps_l1ca, GpsEphemeris,
+    GpsSatState,
 };
 
 impl PppFilter {
@@ -293,12 +294,20 @@ impl PppFilter {
         t_s: f64,
     ) -> Option<(GpsSatState, f64, bool)> {
         let mut diag = ProductDiagnostics::default();
-        let state = products
-            .sat_state(sat, t_s, &mut diag)
-            .or_else(|| Some(sat_state_gps_l1ca(eph, t_s, 0.0)))?;
-        let clock_correction = products
-            .clock_correction(sat, t_s, &mut diag)
-            .unwrap_or_else(|| gps_satellite_clock_correction(eph, t_s));
+        let state = match products.sat_state(sat, t_s, &mut diag) {
+            Some(state) => state,
+            None => {
+                diag.fallback(format!("precise state missing for {:?}, using broadcast", sat));
+                sat_state_gps_l1ca_if_current(eph, sat, t_s, &mut diag)?
+            }
+        };
+        let clock_correction = match products.clock_correction(sat, t_s, &mut diag) {
+            Some(clock_correction) => clock_correction,
+            None => {
+                diag.fallback(format!("precise clock missing for {:?}, using broadcast", sat));
+                gps_satellite_clock_correction_if_current(eph, sat, t_s, &mut diag)?
+            }
+        };
         let fallback = !diag.fallbacks.is_empty();
         Some((state, clock_correction.bias_s, fallback))
     }
@@ -377,4 +386,41 @@ impl PppFilter {
         });
         self.health.pruned_states += pruned;
     }
+}
+
+fn sat_state_gps_l1ca_if_current(
+    eph: &GpsEphemeris,
+    sat: SatId,
+    t_s: f64,
+    diag: &mut ProductDiagnostics,
+) -> Option<GpsSatState> {
+    validate_broadcast_ephemeris(eph, sat, t_s, diag)?;
+    Some(sat_state_gps_l1ca(eph, t_s, 0.0))
+}
+
+fn gps_satellite_clock_correction_if_current(
+    eph: &GpsEphemeris,
+    sat: SatId,
+    t_s: f64,
+    diag: &mut ProductDiagnostics,
+) -> Option<crate::orbits::gps::GpsSatelliteClockCorrection> {
+    validate_broadcast_ephemeris(eph, sat, t_s, diag)?;
+    Some(gps_satellite_clock_correction(eph, t_s))
+}
+
+fn validate_broadcast_ephemeris(
+    eph: &GpsEphemeris,
+    sat: SatId,
+    t_s: f64,
+    diag: &mut ProductDiagnostics,
+) -> Option<()> {
+    let age = gps_ephemeris_age(eph, t_s);
+    if age.is_stale() {
+        diag.fallback(format!(
+            "broadcast ephemeris stale for {:?} at {:.3}s (toe_age_s={:.3}, toc_age_s={:.3}, limit_s={:.3})",
+            sat, t_s, age.toe_age_s, age.toc_age_s, age.max_age_s
+        ));
+        return None;
+    }
+    Some(())
 }

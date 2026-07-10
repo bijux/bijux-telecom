@@ -148,6 +148,40 @@ fn make_obs_with_slips(epoch_idx: u64, t_rx_s: f64, prns: &[u8]) -> ObsEpoch {
     }
 }
 
+fn make_obs_group(epoch_idx: u64, t_rx_s: f64, prns: &[u8]) -> ObsEpoch {
+    let mut epoch = make_obs(epoch_idx, t_rx_s, prns[0]);
+    for &prn in &prns[1..] {
+        epoch.sats.push(make_obs(epoch_idx, t_rx_s, prn).sats[0].clone());
+    }
+    epoch
+}
+
+struct EmptyProducts;
+
+impl bijux_gnss_nav::api::ProductsProvider for EmptyProducts {
+    fn sat_state(
+        &self,
+        _sat: SatId,
+        _t_s: f64,
+        _diag: &mut bijux_gnss_nav::api::ProductDiagnostics,
+    ) -> Option<bijux_gnss_nav::api::GpsSatState> {
+        None
+    }
+
+    fn clock_correction(
+        &self,
+        _sat: SatId,
+        _t_s: f64,
+        _diag: &mut bijux_gnss_nav::api::ProductDiagnostics,
+    ) -> Option<bijux_gnss_nav::api::GpsSatelliteClockCorrection> {
+        None
+    }
+
+    fn coverage_s(&self, _sat: SatId) -> Option<(f64, f64)> {
+        None
+    }
+}
+
 #[test]
 fn ppp_resets_on_gap() {
     let cfg = PppConfig { reset_gap_s: 0.01, ..PppConfig::default() };
@@ -163,35 +197,23 @@ fn ppp_resets_on_gap() {
 
 #[test]
 fn ppp_handles_missing_products() {
-    struct EmptyProducts;
-    impl bijux_gnss_nav::api::ProductsProvider for EmptyProducts {
-        fn sat_state(
-            &self,
-            _sat: SatId,
-            _t_s: f64,
-            _diag: &mut bijux_gnss_nav::api::ProductDiagnostics,
-        ) -> Option<bijux_gnss_nav::api::GpsSatState> {
-            None
-        }
-
-        fn clock_correction(
-            &self,
-            _sat: SatId,
-            _t_s: f64,
-            _diag: &mut bijux_gnss_nav::api::ProductDiagnostics,
-        ) -> Option<bijux_gnss_nav::api::GpsSatelliteClockCorrection> {
-            None
-        }
-
-        fn coverage_s(&self, _sat: SatId) -> Option<(f64, f64)> {
-            None
-        }
-    }
     let mut ppp = PppFilter::new(PppConfig::default());
     let ephs = vec![make_eph(1), make_eph(2), make_eph(3), make_eph(4)];
     let epoch = make_obs(1, 0.0, 1);
     let sol = ppp.solve_epoch(&epoch, &ephs, &EmptyProducts);
     assert!(sol.is_none());
+}
+
+#[test]
+fn ppp_uses_current_broadcast_fallbacks_when_precise_products_are_missing() {
+    let mut ppp = PppFilter::new(PppConfig::default());
+    let ephs = vec![make_eph(1), make_eph(2), make_eph(3), make_eph(4)];
+    let epoch = make_obs_group(1, 0.0, &[1, 2, 3, 4]);
+
+    let _ = ppp.solve_epoch(&epoch, &ephs, &EmptyProducts);
+
+    assert_eq!(ppp.health.warnings.len(), 4);
+    assert!(ppp.health.warnings.iter().all(|warning| warning.contains("products fallback used")));
 }
 
 #[test]
@@ -266,5 +288,16 @@ fn ppp_iono_storm_triggers_residual_gate() {
         sat.pseudorange_m = bijux_gnss_core::api::Meters(sat.pseudorange_m.0 + 50_000.0);
     }
     let sol = ppp.solve_epoch(&epoch, &ephs, &products);
+    assert!(sol.is_none());
+}
+
+#[test]
+fn ppp_rejects_stale_broadcast_fallbacks() {
+    let mut ppp = PppFilter::new(PppConfig::default());
+    let ephs = vec![make_eph(1), make_eph(2), make_eph(3), make_eph(4)];
+    let epoch = make_obs_group(1, 7_201.0, &[1, 2, 3, 4]);
+
+    let sol = ppp.solve_epoch(&epoch, &ephs, &EmptyProducts);
+
     assert!(sol.is_none());
 }
