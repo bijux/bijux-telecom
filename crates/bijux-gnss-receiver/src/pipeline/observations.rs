@@ -378,23 +378,7 @@ pub fn observations_from_tracking_results_with_gps_anchor(
                     sat.metadata.smoothing_window = hatch_window;
                     sat.metadata.smoothing_age = 0;
                     sat.metadata.smoothing_resets = state.resets;
-                    let tracking_uncertainty = sat.metadata.tracking_uncertainty.clone();
-                    let pseudorange_sigma_m = sat.pseudorange_var_m2.sqrt();
-                    let tracking_jitter_m = tracking_uncertainty
-                        .as_ref()
-                        .map(|uncertainty| {
-                            uncertainty.code_phase_samples * SPEED_OF_LIGHT_MPS
-                                / config.sampling_freq_hz
-                        })
-                        .unwrap_or_else(|| (1.0 / sat.cn0_dbhz.max(1.0)) * 10.0);
-                    let thermal_noise_m =
-                        tracking_uncertainty.as_ref().map(|_| pseudorange_sigma_m).unwrap_or(1.0);
-                    sat.error_model = Some(bijux_gnss_core::api::MeasurementErrorModel {
-                        thermal_noise_m: Meters(thermal_noise_m),
-                        tracking_jitter_m: Meters(tracking_jitter_m),
-                        multipath_proxy_m: Meters(0.0),
-                        clock_error_m: Meters(0.0),
-                    });
+                    sat.error_model = Some(observation_error_model(config, &sat, 0.0));
                     entry.sats.push(sat);
                     continue;
                 }
@@ -455,23 +439,7 @@ pub fn observations_from_tracking_results_with_gps_anchor(
                     CycleSlipState { last_gf_cycles: gf_cycles, initialized: true },
                 );
                 sat.multipath_suspect = divergence_jump > threshold_m * 0.8;
-                let tracking_uncertainty = sat.metadata.tracking_uncertainty.clone();
-                let pseudorange_sigma_m = sat.pseudorange_var_m2.sqrt();
-                let tracking_jitter_m = tracking_uncertainty
-                    .as_ref()
-                    .map(|uncertainty| {
-                        uncertainty.code_phase_samples * SPEED_OF_LIGHT_MPS
-                            / config.sampling_freq_hz
-                    })
-                    .unwrap_or_else(|| (1.0 / sat.cn0_dbhz.max(1.0)) * 10.0);
-                let thermal_noise_m =
-                    tracking_uncertainty.as_ref().map(|_| pseudorange_sigma_m).unwrap_or(1.0);
-                sat.error_model = Some(bijux_gnss_core::api::MeasurementErrorModel {
-                    thermal_noise_m: Meters(thermal_noise_m),
-                    tracking_jitter_m: Meters(tracking_jitter_m),
-                    multipath_proxy_m: Meters(divergence_jump),
-                    clock_error_m: Meters(0.0),
-                });
+                sat.error_model = Some(observation_error_model(config, &sat, divergence_jump));
                 entry.sats.push(sat);
             }
         }
@@ -854,6 +822,29 @@ fn slip_threshold_m(cn0_dbhz: f64, elevation_deg: Option<f64>) -> f64 {
     let elev = elevation_deg.unwrap_or(30.0).clamp(0.0, 90.0);
     let elev_factor = 1.0 + (30.0 - elev).max(0.0) / 30.0;
     5.0 * cn0_factor * elev_factor
+}
+
+fn observation_error_model(
+    config: &ReceiverPipelineConfig,
+    sat: &ObsSatellite,
+    multipath_proxy_m: f64,
+) -> bijux_gnss_core::api::MeasurementErrorModel {
+    let tracking_uncertainty = sat.metadata.tracking_uncertainty.clone();
+    let pseudorange_sigma_m = sat.pseudorange_var_m2.sqrt();
+    let tracking_jitter_m = tracking_uncertainty
+        .as_ref()
+        .map(|uncertainty| {
+            uncertainty.code_phase_samples * SPEED_OF_LIGHT_MPS / config.sampling_freq_hz
+        })
+        .unwrap_or_else(|| (1.0 / sat.cn0_dbhz.max(1.0)) * 10.0);
+    let thermal_noise_m = tracking_uncertainty.as_ref().map(|_| pseudorange_sigma_m).unwrap_or(1.0);
+
+    bijux_gnss_core::api::MeasurementErrorModel {
+        thermal_noise_m: Meters(thermal_noise_m),
+        tracking_jitter_m: Meters(tracking_jitter_m),
+        multipath_proxy_m: Meters(multipath_proxy_m),
+        clock_error_m: Meters(0.0),
+    }
 }
 
 fn tracking_lock_quality(epoch: &TrackEpoch) -> f64 {
