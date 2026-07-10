@@ -716,7 +716,7 @@ mod pvt_tests {
         let eph_path = root.join("nav_decode_reports.json");
 
         let ephs = sample_ephemerides();
-        let pvt_case = sample_pvt_case(&ephs, 0.0);
+        let pvt_case = sample_pvt_case(&ephs, 2.75e-4);
         fs::write(
             &obs_path,
             format!("{}\n", serde_json::to_string(&pvt_case.obs_epoch).expect("serialize obs")),
@@ -753,8 +753,16 @@ mod pvt_tests {
         let solutions = read_nav_solutions(&nav_path).expect("read nav solutions");
 
         assert_eq!(solutions.len(), 1);
-        assert_eq!(solutions[0].sat_count, 4);
-        assert_eq!(solutions[0].used_sat_count, 4);
+        assert!(solutions[0].valid);
+        assert_eq!(solutions[0].sat_count, 5);
+        assert_eq!(solutions[0].used_sat_count, 5);
+        assert_eq!(solutions[0].rejected_sat_count, 0);
+        assert!((solutions[0].ecef_x_m.0 - pvt_case.truth_ecef_m.0).abs() < 5.0);
+        assert!((solutions[0].ecef_y_m.0 - pvt_case.truth_ecef_m.1).abs() < 5.0);
+        assert!((solutions[0].ecef_z_m.0 - pvt_case.truth_ecef_m.2).abs() < 5.0);
+        assert!(solutions[0].clock_bias_s.0.is_finite());
+        assert!(solutions[0].clock_bias_s.0 > 0.0);
+        assert!(solutions[0].clock_bias_s.0 <= pvt_case.receiver_clock_bias_s);
 
         fs::remove_dir_all(root).expect("remove test root");
     }
