@@ -35,7 +35,8 @@ impl StateModel for NavClockModel {
     }
 
     fn propagate(&self, x: &mut [f64], p: &mut Matrix, dt_s: f64) {
-        if x.len() < 8 {
+        let n = x.len();
+        if n < 8 {
             return;
         }
         x[0] += x[3] * dt_s;
@@ -43,13 +44,13 @@ impl StateModel for NavClockModel {
         x[2] += x[5] * dt_s;
         x[6] += x[7] * dt_s;
 
-        let mut f = Matrix::identity(8);
+        let mut f = Matrix::identity(n);
         f[(0, 3)] = dt_s;
         f[(1, 4)] = dt_s;
         f[(2, 5)] = dt_s;
         f[(6, 7)] = dt_s;
 
-        let mut q = Matrix::new(8, 8, 0.0);
+        let mut q = Matrix::new(n, n, 0.0);
         q[(0, 0)] = self.noise.pos_m * self.noise.pos_m;
         q[(1, 1)] = self.noise.pos_m * self.noise.pos_m;
         q[(2, 2)] = self.noise.pos_m * self.noise.pos_m;
@@ -59,16 +60,48 @@ impl StateModel for NavClockModel {
         q[(6, 6)] = self.noise.clock_bias_s * self.noise.clock_bias_s;
         q[(7, 7)] = self.noise.clock_drift_s * self.noise.clock_drift_s;
 
-        if x.len() > 8 && self.noise.ztd_m > 0.0 {
+        if n > 8 && self.noise.ztd_m > 0.0 {
             let idx = 8;
-            if idx < q.rows() {
-                q[(idx, idx)] = self.noise.ztd_m * self.noise.ztd_m;
-            }
+            q[(idx, idx)] = self.noise.ztd_m * self.noise.ztd_m;
         }
 
         let ft = f.transpose();
         let p_new = f.mul(p).mul(&ft).add(&q);
         *p = p_new;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nav_clock_model_propagates_extended_state_covariance() {
+        let model = NavClockModel::new(ProcessNoiseConfig {
+            pos_m: 1.0,
+            vel_mps: 0.5,
+            clock_bias_s: 1.0e-4,
+            clock_drift_s: 1.0e-5,
+            ztd_m: 0.25,
+        });
+        let mut x = vec![0.0_f64; 9];
+        x[3] = 3.0;
+        x[4] = 4.0;
+        x[5] = 5.0;
+        x[7] = 2.0e-4;
+        x[8] = 2.3;
+        let mut p = Matrix::identity(9);
+
+        model.propagate(&mut x, &mut p, 2.0);
+
+        assert_eq!(x[0], 6.0);
+        assert_eq!(x[1], 8.0);
+        assert_eq!(x[2], 10.0);
+        assert_eq!(x[6], 4.0e-4);
+        assert_eq!(x[8], 2.3);
+        assert_eq!(p.rows(), 9);
+        assert_eq!(p.cols(), 9);
+        assert!(p[(8, 8)] > 1.0);
     }
 }
 
