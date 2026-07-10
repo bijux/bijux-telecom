@@ -12,6 +12,7 @@ use bijux_gnss_nav::api::{
 use support::position_truth::{
     clear_broadcast_clock_parameters, four_satellite_position_scenario,
     four_satellite_position_scenario_with_ephemerides, iterative_pseudorange_residual_m,
+    iterative_pseudorange_residual_without_earth_rotation_m,
     sample_ephemerides, sample_ephemerides_with_clock_parameters, sample_ephemeris,
     timed_position_observation, BroadcastClockParameters, SyntheticPositionScenario,
 };
@@ -249,6 +250,45 @@ fn single_point_solver_refreshes_biased_geometry_after_state_update() {
             scenario.t_rx_s,
         );
         assert!((residual_m - expected_residual_m).abs() < 1.0e-6);
+    }
+}
+
+#[test]
+fn single_point_solver_residuals_include_earth_rotation_correction() {
+    let scenario = four_satellite_position_scenario(2.75e-4);
+    let solution = PositionSolver::new()
+        .solve_wls(&scenario.observations, &scenario.ephemerides, scenario.t_rx_s)
+        .expect("timed four-satellite observations should solve");
+
+    assert_eq!(solution.used_sat_count, 4);
+    for (sat, residual_m, _weight) in &solution.residuals {
+        let observation = scenario
+            .observations
+            .iter()
+            .find(|observation| observation.sat == *sat)
+            .expect("scenario observation");
+        let ephemeris = scenario
+            .ephemerides
+            .iter()
+            .find(|ephemeris| ephemeris.sat == *sat)
+            .expect("scenario ephemeris");
+        let corrected_residual_m = iterative_pseudorange_residual_m(
+            ephemeris,
+            observation,
+            (solution.ecef_x_m, solution.ecef_y_m, solution.ecef_z_m),
+            solution.clock_bias_s,
+            scenario.t_rx_s,
+        );
+        let uncorrected_residual_m = iterative_pseudorange_residual_without_earth_rotation_m(
+            ephemeris,
+            observation,
+            (solution.ecef_x_m, solution.ecef_y_m, solution.ecef_z_m),
+            solution.clock_bias_s,
+            scenario.t_rx_s,
+        );
+
+        assert!((residual_m - corrected_residual_m).abs() < 1.0e-6);
+        assert!(uncorrected_residual_m.abs() > residual_m.abs() + 1.0);
     }
 }
 
