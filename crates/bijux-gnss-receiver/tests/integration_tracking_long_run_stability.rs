@@ -24,6 +24,10 @@ const STREAMING_TRACKING_EPOCHS_PER_FRAME: usize = 250;
 const LONG_RUN_LOCKED_CARRIER_ERROR_MAX_HZ: f64 = 5.0;
 const LONG_RUN_LOCKED_CODE_ERROR_MAX_SAMPLES: f64 = 1.0;
 const LONG_RUN_PHASE_STEP_ERROR_MAX_CYCLES: f64 = 0.2;
+const LONG_RUN_CN0_SETTLING_EPOCHS: usize = 8;
+const LONG_RUN_MIN_MEAN_CN0_DBHZ: f64 = 45.0;
+const LONG_RUN_CN0_SPAN_MAX_DBHZ: f64 = 4.0;
+const LONG_RUN_CN0_DRIFT_MAX_DBHZ: f64 = 1.5;
 
 #[derive(Clone)]
 struct LongRunTrackingSession {
@@ -104,6 +108,10 @@ fn long_run_tracking_session() -> &'static LongRunTrackingSession {
     RUN.get_or_init(run_long_run_tracking_session)
 }
 
+fn mean(values: &[f64]) -> f64 {
+    values.iter().sum::<f64>() / values.len() as f64
+}
+
 #[test]
 fn tracking_session_consumes_full_ten_minute_signal_span() {
     let run = long_run_tracking_session();
@@ -143,6 +151,20 @@ fn tracking_session_maintains_stable_long_run_lock_metrics() {
         .into_iter()
         .map(|step_cycles| (step_cycles - expected_phase_step_cycles).abs())
         .collect::<Vec<_>>();
+    let cn0_values_dbhz = stable_window
+        .iter()
+        .skip(LONG_RUN_CN0_SETTLING_EPOCHS)
+        .map(|epoch| epoch.cn0_dbhz)
+        .collect::<Vec<_>>();
+    let cn0_head = &cn0_values_dbhz[..500];
+    let cn0_tail = &cn0_values_dbhz[cn0_values_dbhz.len() - 500..];
+    let mean_cn0_dbhz = mean(&cn0_values_dbhz);
+    let cn0_span_dbhz = cn0_values_dbhz
+        .iter()
+        .copied()
+        .fold(f64::NEG_INFINITY, f64::max)
+        - cn0_values_dbhz.iter().copied().fold(f64::INFINITY, f64::min);
+    let cn0_drift_dbhz = (mean(cn0_head) - mean(cn0_tail)).abs();
 
     assert!(
         stable_window.len() >= REQUIRED_STABLE_TRACKING_EPOCHS,
@@ -167,5 +189,23 @@ fn tracking_session_maintains_stable_long_run_lock_metrics() {
             .iter()
             .all(|error_cycles| error_cycles.is_finite() && *error_cycles <= LONG_RUN_PHASE_STEP_ERROR_MAX_CYCLES),
         "phase_step_errors_cycles={phase_step_errors_cycles:?}"
+    );
+    assert!(
+        cn0_values_dbhz.iter().all(|cn0_dbhz| cn0_dbhz.is_finite()),
+        "cn0_values_dbhz contained non-finite values"
+    );
+    assert!(
+        mean_cn0_dbhz >= LONG_RUN_MIN_MEAN_CN0_DBHZ,
+        "mean_cn0_dbhz={mean_cn0_dbhz}"
+    );
+    assert!(
+        cn0_span_dbhz <= LONG_RUN_CN0_SPAN_MAX_DBHZ,
+        "cn0_span_dbhz={cn0_span_dbhz}"
+    );
+    assert!(
+        cn0_drift_dbhz <= LONG_RUN_CN0_DRIFT_MAX_DBHZ,
+        "cn0_drift_dbhz={cn0_drift_dbhz} mean_head={} mean_tail={}",
+        mean(cn0_head),
+        mean(cn0_tail)
     );
 }
