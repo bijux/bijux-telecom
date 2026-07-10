@@ -1896,6 +1896,66 @@ mod tests {
     }
 
     #[test]
+    fn observations_preserve_tracking_cn0_on_unlock_rows() {
+        let config = ReceiverPipelineConfig::default();
+        let sat = SatId { constellation: Constellation::Gps, prn: 11 };
+        let expected_cn0_dbhz = 31.25;
+        let unlocked_epoch = TrackEpoch {
+            epoch: Epoch { index: 70 },
+            sample_index: epoch_sample_index(&config, 70),
+            source_time: ReceiverSampleTrace::from_sample_index(
+                epoch_sample_index(&config, 70),
+                config.sampling_freq_hz,
+            ),
+            sat,
+            lock: false,
+            pll_lock: false,
+            dll_lock: false,
+            fll_lock: false,
+            cn0_dbhz: expected_cn0_dbhz,
+            lock_state: "lost".to_string(),
+            lock_state_reason: Some("prompt_power_drop".to_string()),
+            ..TrackEpoch::default()
+        };
+        let report = observations_from_tracking_results(&config, &[track_from_epoch(unlocked_epoch)], 10);
+        let epoch = report.output.first().expect("observation epoch");
+        let sat = epoch.sats.first().expect("observation satellite");
+
+        assert_eq!(sat.observation_status, ObservationStatus::Missing);
+        assert!((sat.cn0_dbhz - expected_cn0_dbhz).abs() <= f64::EPSILON, "{sat:?}");
+    }
+
+    #[test]
+    fn observations_preserve_tracking_cn0_on_inconsistent_rows() {
+        let config = ReceiverPipelineConfig::default();
+        let sat = SatId { constellation: Constellation::Gps, prn: 12 };
+        let expected_cn0_dbhz = 36.5;
+        let mismatch_epoch = TrackEpoch {
+            epoch: Epoch { index: 70 },
+            sample_index: epoch_sample_index(&config, 70),
+            source_time: ReceiverSampleTrace::from_sample_index(
+                epoch_sample_index(&config, 70),
+                config.sampling_freq_hz,
+            ),
+            sat,
+            lock: true,
+            pll_lock: false,
+            dll_lock: false,
+            cn0_dbhz: expected_cn0_dbhz,
+            lock_state: "tracking".to_string(),
+            lock_state_reason: Some("sample_rate_mismatch".to_string()),
+            ..TrackEpoch::default()
+        };
+        let report =
+            observations_from_tracking_results(&config, &[track_from_epoch(mismatch_epoch)], 10);
+        let epoch = report.output.first().expect("observation epoch");
+        let sat = epoch.sats.first().expect("observation satellite");
+
+        assert_eq!(sat.observation_status, ObservationStatus::Inconsistent);
+        assert!((sat.cn0_dbhz - expected_cn0_dbhz).abs() <= f64::EPSILON, "{sat:?}");
+    }
+
+    #[test]
     fn observations_keep_doppler_on_tracking_unlock_epoch() {
         let config = ReceiverPipelineConfig::default();
         let sat = SatId { constellation: Constellation::Gps, prn: 12 };
