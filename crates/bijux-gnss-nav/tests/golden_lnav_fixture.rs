@@ -1,14 +1,11 @@
 #![allow(missing_docs)]
-use bijux_gnss_nav::api::decode_rawephem_hex;
+mod support;
+
+use support::broadcast_reference::gps_prn1_20220513_fixture;
 
 #[test]
 fn rawephem_fixture_decodes_broadcast_ephemeris_fields() {
-    // From NovAtel RAWEPHEMA ASCII example (GPS PRN 1, week 2209, ref secs 504000).
-    let sub1 = "8b0284a1b8a52850000724918b913e21a92dc6ee0b217b0c00ffb72fac04";
-    let sub2 = "8b0284a1b92b21fac82899520ec7b7fb31061550921d09a10d62b87b0c7c";
-    let sub3 = "8b0284a1b9adff7d74db71f3ffaa2840ed6e0fe024cddf1effadc82106c4";
-
-    let eph = decode_rawephem_hex(1, sub1, sub2, sub3, 2209).expect("decoded ephemeris");
+    let eph = gps_prn1_20220513_fixture().ephemeris;
     let angle_lsb = 2f64.powi(-31) * std::f64::consts::PI;
     let rate_lsb = 2f64.powi(-43) * std::f64::consts::PI;
 
