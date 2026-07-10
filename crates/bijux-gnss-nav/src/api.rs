@@ -21,8 +21,9 @@ pub use crate::estimation::ekf::state::{Ekf, EkfConfig, MeasurementKind};
 pub use crate::estimation::ekf::traits::MeasurementModel;
 /// Position solver (least squares) and helpers.
 pub use crate::estimation::position::solver::{
-    ecef_to_enu, ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef, weight_from_cn0_elev,
-    position_observation_has_valid_satellite_time, PositionObservation, PositionSolver,
+    ecef_to_enu, ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef,
+    position_measurement_weight, position_observation_has_valid_satellite_time,
+    weight_from_cn0_elev, weight_from_pseudorange_sigma, PositionObservation, PositionSolver,
     WeightingConfig,
 };
 /// PPP configuration and filter.

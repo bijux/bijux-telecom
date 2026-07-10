@@ -642,3 +642,32 @@ pub fn weight_from_cn0_elev(cn0_dbhz: f64, elev_deg: f64, config: WeightingConfi
     let w_cn0 = (cn0_dbhz / config.cn0_ref_dbhz).max(config.min_weight);
     (w_elev * w_cn0).max(config.min_weight)
 }
+
+/// Convert a pseudorange standard deviation in meters into a least-squares weight.
+///
+/// The returned value is the inverse measurement variance in m^-2. Invalid or
+/// missing sigma values fall back to unit weighting.
+pub fn weight_from_pseudorange_sigma(pseudorange_sigma_m: Option<f64>) -> f64 {
+    let Some(sigma_m) = pseudorange_sigma_m else {
+        return 1.0;
+    };
+    if !sigma_m.is_finite() || sigma_m <= 0.0 {
+        return 1.0;
+    }
+    1.0 / sigma_m.powi(2)
+}
+
+/// Build a composite code-pseudorange weight from geometry and measurement sigma.
+///
+/// The geometry term is driven by C/N0 and elevation when available. The sigma
+/// term is always driven by inverse pseudorange variance when available.
+pub fn position_measurement_weight(
+    cn0_dbhz: f64,
+    elev_deg: Option<f64>,
+    pseudorange_sigma_m: Option<f64>,
+    config: WeightingConfig,
+) -> f64 {
+    let geometry_weight =
+        elev_deg.map(|elev| weight_from_cn0_elev(cn0_dbhz, elev, config)).unwrap_or(1.0);
+    geometry_weight * weight_from_pseudorange_sigma(pseudorange_sigma_m)
+}
