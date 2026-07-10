@@ -773,8 +773,7 @@ mod pvt_tests {
         assert!((solutions[0].ecef_y_m.0 - pvt_case.truth_ecef_m.1).abs() < 5.0);
         assert!((solutions[0].ecef_z_m.0 - pvt_case.truth_ecef_m.2).abs() < 5.0);
         assert!(solutions[0].clock_bias_s.0.is_finite());
-        assert!(solutions[0].clock_bias_s.0 > 0.0);
-        assert!(solutions[0].clock_bias_s.0 <= pvt_case.receiver_clock_bias_s);
+        assert!((solutions[0].clock_bias_s.0 - pvt_case.receiver_clock_bias_s).abs() < 1.0e-9);
 
         fs::remove_dir_all(root).expect("remove test root");
     }
