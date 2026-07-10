@@ -58,7 +58,28 @@ fn degraded_tracking_inflates_uncertainty_over_fully_locked_epochs() {
     );
 }
 
+#[test]
+fn weaker_cn0_inflates_emitted_code_uncertainty() {
+    let config = tracking_uncertainty_config();
+    let strong_epochs = track_uncertainty_case_with_duration(&config, 58.0, 0.08);
+    let weak_epochs = track_uncertainty_case_with_duration(&config, 35.0, 0.08);
+    let strong_means =
+        mean_all_tracking_uncertainty(&strong_epochs).expect("strong-signal uncertainty");
+    let weak_means = mean_all_tracking_uncertainty(&weak_epochs).expect("weak-signal uncertainty");
+
+    assert!(
+        weak_means.0 > strong_means.0,
+        "weaker C/N0 should inflate emitted code uncertainty: strong={strong_means:?} weak={weak_means:?}"
+    );
+}
+
 fn tracking_uncertainty_config() -> ReceiverPipelineConfig {
+    tracking_uncertainty_config_with_integration_ms(1)
+}
+
+fn tracking_uncertainty_config_with_integration_ms(
+    tracking_integration_ms: u32,
+) -> ReceiverPipelineConfig {
     ReceiverPipelineConfig {
         sampling_freq_hz: 4_092_000.0,
         intermediate_freq_hz: 0.0,
@@ -69,6 +90,7 @@ fn tracking_uncertainty_config() -> ReceiverPipelineConfig {
         dll_bw_hz: 2.0,
         pll_bw_hz: 18.0,
         fll_bw_hz: 12.0,
+        tracking_integration_ms,
         ..ReceiverPipelineConfig::default()
     }
 }
@@ -77,11 +99,19 @@ fn track_uncertainty_case(
     config: &ReceiverPipelineConfig,
     cn0_db_hz: f32,
 ) -> Vec<bijux_gnss_core::api::TrackEpoch> {
+    track_uncertainty_case_with_duration(config, cn0_db_hz, TRACKING_UNCERTAINTY_DURATION_S)
+}
+
+fn track_uncertainty_case_with_duration(
+    config: &ReceiverPipelineConfig,
+    cn0_db_hz: f32,
+    duration_s: f64,
+) -> Vec<bijux_gnss_core::api::TrackEpoch> {
     let scenario = SyntheticScenario {
         sample_rate_hz: config.sampling_freq_hz,
         intermediate_freq_hz: config.intermediate_freq_hz,
         receiver_clock_frequency_bias_hz: 0.0,
-        duration_s: TRACKING_UNCERTAINTY_DURATION_S,
+        duration_s,
         seed: 0x7100_7000 + cn0_db_hz.round() as u64,
         satellites: vec![SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Gps, prn: 7 },
@@ -166,6 +196,13 @@ fn mean_fully_locked_tracking_uncertainty(
 ) -> Option<(f64, f64, f64, f64)> {
     let locked_epochs = fully_locked_tracking_epochs(epochs);
     mean_tracking_uncertainty_rows(&locked_epochs)
+}
+
+fn mean_all_tracking_uncertainty(
+    epochs: &[bijux_gnss_core::api::TrackEpoch],
+) -> Option<(f64, f64, f64, f64)> {
+    let rows = epochs.iter().collect::<Vec<_>>();
+    mean_tracking_uncertainty_rows(&rows)
 }
 
 fn mean_degraded_tracking_uncertainty(
