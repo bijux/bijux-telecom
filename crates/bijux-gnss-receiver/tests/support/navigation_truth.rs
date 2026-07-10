@@ -1,8 +1,13 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{Constellation, SatId};
+use bijux_gnss_core::api::{
+    AcqCodePhaseRefinement, AcqHypothesis, AcqResult, AcqUncertainty, Hertz, ReceiverSampleTrace,
+    SignalBand,
+};
 use bijux_gnss_nav::api::{sat_state_gps_l1ca, GpsEphemeris};
 use bijux_gnss_receiver::api::{
+    carrier_hz_from_doppler_hz,
     sim::{SyntheticScenario, SyntheticSignalParams},
     ReceiverPipelineConfig,
 };
@@ -92,6 +97,55 @@ pub fn synthetic_pseudorange_m(
         tau = next_tau;
     }
     pseudorange_m
+}
+
+pub fn truth_seeded_acquisition_results(
+    config: &ReceiverPipelineConfig,
+    source_time: ReceiverSampleTrace,
+    scenario: &SyntheticScenario,
+) -> Vec<AcqResult> {
+    scenario
+        .satellites
+        .iter()
+        .map(|signal| {
+            let code_phase_samples = signal.code_phase_chips.round().clamp(0.0, 1022.0);
+            AcqResult {
+                sat: signal.sat,
+                signal_band: SignalBand::L1,
+                source_time,
+                candidate_rank: 1,
+                is_primary_candidate: true,
+                doppler_hz: Hertz(signal.doppler_hz),
+                carrier_hz: Hertz(carrier_hz_from_doppler_hz(
+                    config.intermediate_freq_hz,
+                    signal.doppler_hz,
+                )),
+                code_phase_samples: code_phase_samples as usize,
+                peak: 1.0,
+                second_peak: 0.1,
+                mean: 0.1,
+                peak_mean_ratio: 10.0,
+                peak_second_ratio: 10.0,
+                cn0_proxy: signal.cn0_db_hz,
+                score: 1.0,
+                hypothesis: AcqHypothesis::Accepted,
+                assumptions: None,
+                evidence: Vec::new(),
+                threshold_provenance: None,
+                explain_selection_reason: Some("truth_seed".to_string()),
+                doppler_refinement: None,
+                code_phase_refinement: Some(AcqCodePhaseRefinement {
+                    method: "truth_seed".to_string(),
+                    offset_samples: 0.0,
+                    refined_code_phase_samples: signal.code_phase_chips,
+                    left_correlation_norm: 1.0,
+                    center_correlation_norm: 1.0,
+                    right_correlation_norm: 1.0,
+                }),
+                uncertainty: Some(AcqUncertainty { doppler_hz: 1.0, code_phase_samples: 0.25 }),
+            }
+        })
+        .collect()
 }
 
 fn make_near_isorange_ephemeris(prn: u8, omega0: f64, m0: f64, t_ref_s: f64) -> GpsEphemeris {
