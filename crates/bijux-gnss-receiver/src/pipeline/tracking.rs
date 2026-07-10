@@ -209,6 +209,7 @@ struct CarrierLoopInput {
 #[derive(Debug, Clone, Copy)]
 struct PromptPhaseDecision {
     aligned_phase_cycles: f64,
+    aligned_phase_delta_cycles: f64,
     nav_bit_phase_offset_cycles: f64,
     nav_bit_transition: bool,
     cycle_slip: bool,
@@ -782,7 +783,7 @@ impl Tracking {
                 ));
             }
 
-            let (dll_err, _raw_pll_err, fll_err, lock) =
+            let (dll_err, _raw_pll_err, _raw_fll_err, lock) =
                 discriminators(corr.early, corr.prompt, corr.late, state.prev_prompt);
             state.prev_prompt = Some(corr.prompt);
             let phase_cycles = corr.prompt.arg() as f64 / (2.0 * std::f64::consts::PI);
@@ -818,8 +819,10 @@ impl Tracking {
             let coherent_integration_s =
                 coherent_integration_seconds(epoch_frame.len(), self.config.sampling_freq_hz);
             let fll_err_hz =
-                carrier_frequency_error_hz_from_phase_delta(fll_err as f64, coherent_integration_s)
-                    as f32;
+                carrier_frequency_error_hz_from_phase_delta(
+                    phase_decision.aligned_phase_delta_cycles * std::f64::consts::TAU,
+                    coherent_integration_s,
+                ) as f32;
             let raw_pll_lock = pll_err.abs() < PLL_LOCK_MAX_PHASE_ERROR_RAD;
             let raw_fll_lock = (fll_err_hz as f64).abs() <= fll_lock_threshold_hz(fll_bw);
             state.pull_in_stable_epochs = update_pull_in_stable_epochs(
@@ -1086,6 +1089,7 @@ fn classify_prompt_phase(
     let Some(previous_aligned_phase_cycles) = previous_aligned_phase_cycles else {
         return PromptPhaseDecision {
             aligned_phase_cycles: same_offset_phase,
+            aligned_phase_delta_cycles: 0.0,
             nav_bit_phase_offset_cycles,
             nav_bit_transition: false,
             cycle_slip: false,
@@ -1111,6 +1115,7 @@ fn classify_prompt_phase(
 
     PromptPhaseDecision {
         aligned_phase_cycles,
+        aligned_phase_delta_cycles: chosen_delta,
         nav_bit_phase_offset_cycles,
         nav_bit_transition,
         cycle_slip: chosen_delta.abs() > CYCLE_SLIP_PHASE_DELTA_CYCLES,
@@ -1504,6 +1509,7 @@ mod tests {
         assert!(decision.nav_bit_transition);
         assert!(!decision.cycle_slip);
         assert!((decision.aligned_phase_cycles - 0.11).abs() <= 0.02);
+        assert!(decision.aligned_phase_delta_cycles.abs() <= 0.02);
         assert!((decision.nav_bit_phase_offset_cycles - 0.5).abs() <= f64::EPSILON);
     }
 
@@ -1513,6 +1519,7 @@ mod tests {
 
         assert!(!decision.nav_bit_transition);
         assert!(decision.cycle_slip);
+        assert!((decision.aligned_phase_delta_cycles - 0.36).abs() <= 1.0e-9);
         assert!((decision.nav_bit_phase_offset_cycles - 0.0).abs() <= f64::EPSILON);
     }
 
