@@ -838,12 +838,12 @@ impl Tracking {
             }
 
             let cycle_slip = phase_decision.cycle_slip;
-            let cycle_slip_reason = cycle_slip.then(|| LossOfLockCause::PhaseJump.reason().to_string());
+            let cycle_slip_reason =
+                cycle_slip.then(|| LossOfLockCause::PhaseJump.reason().to_string());
             let prompt_power = corr.prompt.norm();
             state.prompt_power_reference =
                 update_prompt_power_reference(state.prompt_power_reference, prompt_power);
-            let prompt_power_ratio =
-                prompt_power_ratio(prompt_power, state.prompt_power_reference);
+            let prompt_power_ratio = prompt_power_ratio(prompt_power, state.prompt_power_reference);
 
             let cn0_dbhz = track_epoch.cn0_dbhz;
             let (dll_bw, pll_bw, fll_bw) = adaptive_bandwidth(
@@ -1103,12 +1103,13 @@ fn classify_loss_of_lock_cause(
     prompt_power_ratio: Option<f32>,
     unstable_discriminator_epochs: u8,
 ) -> Option<LossOfLockCause> {
-    if cycle_slip {
+    let strong_prompt = prompt_power_ratio
+        .is_some_and(|ratio| ratio >= DISCRIMINATOR_INSTABILITY_MIN_PROMPT_POWER_RATIO);
+    if cycle_slip && strong_prompt {
         return Some(LossOfLockCause::PhaseJump);
     }
     if matches!(from_state, ChannelState::Tracking | ChannelState::Degraded)
-        && prompt_power_ratio
-            .is_some_and(|ratio| ratio <= PROMPT_POWER_DROP_RATIO_THRESHOLD)
+        && prompt_power_ratio.is_some_and(|ratio| ratio <= PROMPT_POWER_DROP_RATIO_THRESHOLD)
     {
         return Some(LossOfLockCause::PromptPowerDrop);
     }
@@ -1119,10 +1120,7 @@ fn classify_loss_of_lock_cause(
 }
 
 fn is_sustained_lock_loss_reason(reason: &str) -> bool {
-    matches!(
-        reason,
-        "lock_lost" | "prompt_power_drop" | "discriminator_instability" | "phase_jump"
-    )
+    matches!(reason, "lock_lost" | "prompt_power_drop" | "discriminator_instability" | "phase_jump")
 }
 
 #[derive(Debug, Clone)]
@@ -1170,10 +1168,8 @@ fn deterministic_transition_rule(
         }
         let next_degraded_epochs = degraded_epochs.saturating_add(1);
         if next_degraded_epochs > short_fade_epoch_budget {
-            let loss_reason = loss_of_lock_cause
-                .unwrap_or(LossOfLockCause::PromptPowerDrop)
-                .reason()
-                .to_string();
+            let loss_reason =
+                loss_of_lock_cause.unwrap_or(LossOfLockCause::PromptPowerDrop).reason().to_string();
             return TransitionDecision {
                 to_state: ChannelState::Lost,
                 reason: loss_reason,
@@ -1242,10 +1238,7 @@ fn sustained_lock_loss_reacquire_seed(epochs: &[TrackEpoch]) -> Option<(f64, f64
     for epoch in epochs {
         if !epoch.lock
             && epoch.lock_state == "lost"
-            && epoch
-                .lock_state_reason
-                .as_deref()
-                .is_some_and(is_sustained_lock_loss_reason)
+            && epoch.lock_state_reason.as_deref().is_some_and(is_sustained_lock_loss_reason)
         {
             consecutive_lost_epochs += 1;
             if consecutive_lost_epochs >= 3 {
@@ -1802,17 +1795,22 @@ mod tests {
     }
 
     #[test]
+    fn classify_loss_of_lock_cause_treats_weak_prompt_cycle_slips_as_prompt_power_drop() {
+        let cause = super::classify_loss_of_lock_cause(ChannelState::Tracking, true, Some(0.1), 0);
+
+        assert_eq!(cause, Some(super::LossOfLockCause::PromptPowerDrop));
+    }
+
+    #[test]
     fn classify_loss_of_lock_cause_detects_prompt_power_drop() {
-        let cause =
-            super::classify_loss_of_lock_cause(ChannelState::Tracking, false, Some(0.1), 0);
+        let cause = super::classify_loss_of_lock_cause(ChannelState::Tracking, false, Some(0.1), 0);
 
         assert_eq!(cause, Some(super::LossOfLockCause::PromptPowerDrop));
     }
 
     #[test]
     fn classify_loss_of_lock_cause_detects_discriminator_instability() {
-        let cause =
-            super::classify_loss_of_lock_cause(ChannelState::Tracking, false, Some(0.8), 2);
+        let cause = super::classify_loss_of_lock_cause(ChannelState::Tracking, false, Some(0.8), 2);
 
         assert_eq!(cause, Some(super::LossOfLockCause::DiscriminatorInstability));
     }

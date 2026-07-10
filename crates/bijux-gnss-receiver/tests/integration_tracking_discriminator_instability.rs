@@ -125,9 +125,7 @@ fn tracking_reports_discriminator_instability_before_phase_slip() {
         "discriminator instability must surface before any phase slip classification: epochs={epochs:?}"
     );
     assert!(
-        epochs
-            .iter()
-            .all(|epoch| epoch.lock_state_reason.as_deref() != Some("prompt_power_drop")),
+        epochs.iter().all(|epoch| epoch.lock_state_reason.as_deref() != Some("prompt_power_drop")),
         "strong-prompt instability must not be mislabeled as prompt-power loss: epochs={epochs:?}"
     );
 }

@@ -97,7 +97,8 @@ fn tracking_reports_prompt_power_drop_after_sustained_signal_loss() {
         "tracking must establish lock before the power drop: epochs={epochs:?}"
     );
 
-    let prompt_power_drop_indices = epoch_indices_with_lock_state_reason(epochs, "prompt_power_drop");
+    let prompt_power_drop_indices =
+        epoch_indices_with_lock_state_reason(epochs, "prompt_power_drop");
     assert!(
         !prompt_power_drop_indices.is_empty(),
         "sustained fades must emit explicit prompt_power_drop loss reasons: epochs={epochs:?}"
@@ -116,9 +117,7 @@ fn tracking_reports_prompt_power_drop_after_sustained_signal_loss() {
         "generic lock_lost must not mask a prompt-power collapse: epochs={epochs:?}"
     );
     assert!(
-        prompt_power_drop_indices
-            .iter()
-            .all(|index| epochs[*index].cycle_slip_reason.is_none()),
+        prompt_power_drop_indices.iter().all(|index| epochs[*index].cycle_slip_reason.is_none()),
         "prompt-power loss must not be mislabeled as a phase event: epochs={epochs:?}"
     );
 }

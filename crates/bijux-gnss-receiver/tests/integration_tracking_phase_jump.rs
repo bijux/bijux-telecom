@@ -111,9 +111,7 @@ fn tracking_reports_phase_jump_on_carrier_discontinuity() {
         "phase jumps must become explicit loss-of-lock events with cycle-slip evidence: epochs={epochs:?}"
     );
     assert!(
-        epochs
-            .iter()
-            .all(|epoch| epoch.lock_state_reason.as_deref() != Some("prompt_power_drop")),
+        epochs.iter().all(|epoch| epoch.lock_state_reason.as_deref() != Some("prompt_power_drop")),
         "carrier discontinuities must not be mislabeled as prompt-power loss: epochs={epochs:?}"
     );
 }

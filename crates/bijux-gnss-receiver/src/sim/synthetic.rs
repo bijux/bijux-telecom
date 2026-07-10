@@ -2833,8 +2833,7 @@ mod tests {
         build_iq16_capture_bundle, build_truth_bundle, expected_acquisition_code_phase_samples,
         expected_acquisition_code_phase_samples_f64, generate_l1_ca, generate_l1_ca_multi,
         generate_l1_ca_with_doppler_ramp, generate_l1_ca_with_fades,
-        generate_l1_ca_with_phase_windows,
-        measure_noise_only_acquisition_false_alarm_rate,
+        generate_l1_ca_with_phase_windows, measure_noise_only_acquisition_false_alarm_rate,
         measure_noise_only_acquisition_false_alarm_rates,
         measure_truth_guided_acquisition_detection_probability,
         measure_truth_guided_acquisition_detection_rate, measure_truth_guided_tracking_lock_rate,
@@ -2849,9 +2848,9 @@ mod tests {
         SyntheticAcquisitionDetectionRateCase, SyntheticAcquisitionFalseAlarmRateCase,
         SyntheticAcquisitionSampleRateValidationCase, SyntheticDopplerRampParams,
         SyntheticFadeWindow, SyntheticNavBitMode, SyntheticPhaseWindow, SyntheticScenario,
-        SyntheticSignalParams,
-        SyntheticSignalSource, SyntheticTrackingLockRateCase, SyntheticTrackingSensitivityTrial,
-        SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
+        SyntheticSignalParams, SyntheticSignalSource, SyntheticTrackingLockRateCase,
+        SyntheticTrackingSensitivityTrial, SYNTHETIC_COMPLEX_NOISE_POWER,
+        SYNTHETIC_NOISE_STD_PER_COMPONENT,
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
     use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds};
@@ -3256,9 +3255,7 @@ mod tests {
         let phase_end = (0.004 * config.sampling_freq_hz).round() as usize;
         assert!(signal_only.iq[..phase_start].iter().all(|sample| sample.im.abs() <= 1.0e-6));
         assert!(
-            signal_only.iq[phase_start..phase_end]
-                .iter()
-                .any(|sample| sample.im.abs() > 1.0e-3),
+            signal_only.iq[phase_start..phase_end].iter().any(|sample| sample.im.abs() > 1.0e-3),
             "windowed samples must carry a rotated quadrature component"
         );
         assert!(signal_only.iq[phase_end..].iter().all(|sample| sample.im.abs() <= 1.0e-6));
@@ -3285,11 +3282,7 @@ mod tests {
         let rotated = generate_l1_ca_with_phase_windows(
             &config,
             params,
-            &[SyntheticPhaseWindow {
-                start_s: 0.002,
-                end_s: 0.004,
-                phase_offset_rad: 0.8,
-            }],
+            &[SyntheticPhaseWindow { start_s: 0.002, end_s: 0.004, phase_offset_rad: 0.8 }],
             0xFACE_0001,
             0.010,
         );
