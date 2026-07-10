@@ -158,11 +158,7 @@ fn measure_signal_quality_from_raw_iq(
     let front_end_metrics = analyzer.finish();
     let estimated_noise_floor_db =
         estimate_noise_floor_from_raw_iq(path, metadata, max_samples, &front_end_metrics)?;
-    Ok(build_signal_quality_report(
-        metadata,
-        front_end_metrics,
-        estimated_noise_floor_db,
-    ))
+    Ok(build_signal_quality_report(metadata, front_end_metrics, estimated_noise_floor_db))
 }
 
 fn estimate_noise_floor_from_raw_iq(
@@ -222,8 +218,8 @@ fn histogram_percentile_power(histogram: &[u64], sample_count: usize, percentile
     if sample_count == 0 {
         return SIGNAL_QUALITY_NOISE_FLOOR_POWER_EPSILON;
     }
-    let target_rank = ((sample_count.saturating_sub(1)) as f64 * percentile.clamp(0.0, 1.0))
-        .floor() as u64;
+    let target_rank =
+        ((sample_count.saturating_sub(1)) as f64 * percentile.clamp(0.0, 1.0)).floor() as u64;
     let mut seen = 0u64;
     for (idx, count) in histogram.iter().enumerate() {
         seen += *count;
@@ -277,10 +273,8 @@ fn load_acquisition_frame(
     config: &ReceiverPipelineConfig,
     metadata: &RawIqMetadata,
 ) -> Result<SamplesFrame> {
-    let code_periods = acquisition_code_periods(
-        config.acquisition_integration_ms,
-        config.acquisition_noncoherent,
-    );
+    let code_periods =
+        acquisition_code_periods(config.acquisition_integration_ms, config.acquisition_noncoherent);
     load_frame_window(path, config, metadata, code_periods)
 }
 
@@ -536,6 +530,7 @@ fn write_track_timeseries(
                 channel_uid: String::new(),
                 tracking_provenance: String::new(),
                 tracking_assumptions: None,
+                signal_delay_alignment: None,
                 tracking_uncertainty: None,
                 processing_ms: None,
             },
@@ -559,7 +554,7 @@ fn write_obs_timeseries(
     let out_dir = artifacts_dir(common, "track", dataset)?;
     let header = artifact_header(common, profile, dataset)?;
     let runtime = runtime_config_from_env(common, None);
-    let obs_report = bijux_gnss_infra::api::receiver::observations_from_tracking_results_with_gps_anchor(
+    let obs_report = bijux_gnss_infra::api::receiver::observation_artifacts_from_tracking_results_with_gps_anchor(
         config,
         dataset
             .and_then(|entry| entry.capture_start_utc.as_deref())
@@ -567,7 +562,8 @@ fn write_obs_timeseries(
         tracks,
         hatch_window,
     );
-    let mut obs = obs_report.output;
+    let mut obs = obs_report.output.epochs;
+    let residuals = obs_report.output.residuals;
     for event in obs_report.events {
         runtime.logger.event(&event);
     }
@@ -595,6 +591,18 @@ fn write_obs_timeseries(
         let timing_path = out_dir.join("timing_obs.jsonl");
         fs::write(&timing_path, timing_lines.join("\n"))?;
     }
+    let residual_path = out_dir.join("observation_residuals.jsonl");
+    let mut residual_lines = Vec::new();
+    for residual in residuals {
+        let wrapped = ObservationResidualEpochV1 { header: header.clone(), payload: residual };
+        residual_lines.push(serde_json::to_string(&wrapped)?);
+    }
+    fs::write(&residual_path, residual_lines.join("\n"))?;
+    validate_jsonl_schema(
+        &schema_path("observation_residual_epoch_v1.schema.json"),
+        &residual_path,
+        false,
+    )?;
     let combos = bijux_gnss_infra::api::nav::combinations_from_obs_epochs(
         &obs,
         bijux_gnss_infra::api::core::SignalBand::L1,
@@ -610,6 +618,12 @@ fn write_obs_timeseries(
         validate_jsonl_schema(&schema_path("combinations.schema.json"), &combo_path, false)?;
     }
     Ok(())
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ObservationResidualEpochV1 {
+    header: ArtifactHeaderV1,
+    payload: bijux_gnss_infra::api::receiver::ObservationResidualEpochReport,
 }
 
 fn read_tracking_dump(path: &Path) -> Result<Vec<TrackingRow>> {
@@ -702,7 +716,9 @@ struct NavDecodeEphemerisReportInput {
     ephemerides: Vec<GpsEphemeris>,
 }
 
-fn ephemerides_from_nav_decode_report(report: NavDecodeEphemerisReportInput) -> Result<Vec<GpsEphemeris>> {
+fn ephemerides_from_nav_decode_report(
+    report: NavDecodeEphemerisReportInput,
+) -> Result<Vec<GpsEphemeris>> {
     if !report.decoded_subframes.is_empty() {
         if let Some(reference_week) = report.reference_week {
             let (ephs, _rejections) =
@@ -858,11 +874,11 @@ mod tests {
         TrackingRow,
     };
     use crate::RawIqMetadata;
-    use crate::{ReceiverConfig, ReceiverPipelineConfig};
+    use crate::{CommonArgs, ReceiverConfig, ReceiverPipelineConfig, ReportFormat};
     use bijux_gnss_infra::api::core::{
         ArtifactHeaderV1, Chips, Constellation, Cycles, Epoch, Hertz, Meters, NavLifecycleState,
         NavSolutionEpoch, NavUncertaintyClass, ReceiverSampleTrace, SatId, Seconds,
-        SolutionStatus, SolutionValidity, TrackEpoch, TrackEpochV1,
+        SignalDelayAlignment, SolutionStatus, SolutionValidity, TrackEpoch, TrackEpochV1,
         NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
     };
     use bijux_gnss_infra::api::nav::{write_rinex_nav, GpsEphemeris};
@@ -934,8 +950,11 @@ mod tests {
             "ephemerides": [eph.clone()]
         });
 
-        fs::write(&path, serde_json::to_string_pretty(&report).expect("serialize nav decode report"))
-            .expect("write nav decode report");
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&report).expect("serialize nav decode report"),
+        )
+        .expect("write nav decode report");
         let parsed = read_ephemeris(&path).expect("read nav decode report");
         fs::remove_file(&path).expect("remove nav decode report");
 
@@ -954,7 +973,10 @@ mod tests {
             SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos()
         ));
         let first = sample_ephemeris();
-        let second = GpsEphemeris { sat: SatId { constellation: Constellation::Gps, prn: 9 }, ..sample_ephemeris() };
+        let second = GpsEphemeris {
+            sat: SatId { constellation: Constellation::Gps, prn: 9 },
+            ..sample_ephemeris()
+        };
         let reports = serde_json::json!([
             {
                 "sat": first.sat,
@@ -970,8 +992,11 @@ mod tests {
             }
         ]);
 
-        fs::write(&path, serde_json::to_string_pretty(&reports).expect("serialize nav decode reports"))
-            .expect("write nav decode reports");
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&reports).expect("serialize nav decode reports"),
+        )
+        .expect("write nav decode reports");
         let parsed = read_ephemeris(&path).expect("read nav decode report array");
         fs::remove_file(&path).expect("remove nav decode reports");
 
@@ -983,6 +1008,26 @@ mod tests {
     fn temp_file_path(name: &str) -> PathBuf {
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos();
         std::env::temp_dir().join(format!("bijux_{}_{}_{}.iq", name, std::process::id(), nanos))
+    }
+
+    fn temp_output_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos();
+        std::env::temp_dir().join(format!("bijux_{}_{}_{}", name, std::process::id(), nanos))
+    }
+
+    fn sample_common_args(out_dir: PathBuf) -> CommonArgs {
+        CommonArgs {
+            config: None,
+            dataset: None,
+            unregistered_dataset: true,
+            out: Some(out_dir),
+            report: ReportFormat::Json,
+            seed: None,
+            deterministic: true,
+            dump: None,
+            sidecar: None,
+            resume: None,
+        }
     }
 
     fn sample_ephemeris() -> GpsEphemeris {
@@ -1122,8 +1167,8 @@ mod tests {
             ..ReceiverPipelineConfig::default()
         };
 
-        let frame = super::load_tracking_frame(&path, &config, &metadata)
-            .expect("load tracking frame");
+        let frame =
+            super::load_tracking_frame(&path, &config, &metadata).expect("load tracking frame");
         assert_eq!(frame.len(), sample_count);
 
         fs::remove_file(&path).expect("remove iq8 fixture");
@@ -1180,6 +1225,7 @@ mod tests {
                 channel_uid: "Gps-12-ch00".to_string(),
                 tracking_provenance: "test".to_string(),
                 tracking_assumptions: None,
+                signal_delay_alignment: None,
                 tracking_uncertainty: None,
                 processing_ms: None,
             },
@@ -1267,8 +1313,7 @@ mod tests {
         let path = temp_file_path("load_acquisition_frame_window");
         let coherent_ms = 5u32;
         let noncoherent = 4u32;
-        let sample_count =
-            4_092usize * super::acquisition_code_periods(coherent_ms, noncoherent);
+        let sample_count = 4_092usize * super::acquisition_code_periods(coherent_ms, noncoherent);
         let mut raw = Vec::with_capacity(sample_count * 2);
         for _ in 0..sample_count {
             raw.push(8u8);
@@ -1372,12 +1417,138 @@ mod tests {
         assert_eq!(payload["source_time"]["sample_index"], 6_138);
         assert_eq!(payload["source_time"]["sample_rate_hz"], 4_092_000.0);
         assert_eq!(payload["source_time"]["receiver_time_s"], 0.0015);
-        assert_eq!(
-            payload["source_observation_epoch_id"],
-            "epoch-0000000012-sample-000000006138"
-        );
+        assert_eq!(payload["source_observation_epoch_id"], "epoch-0000000012-sample-000000006138");
 
         fs::remove_file(&path).expect("remove nav solution output");
         fs::remove_dir(&out_dir).expect("remove output directory");
+    }
+
+    #[test]
+    fn write_obs_timeseries_emits_observation_residual_artifact() {
+        let out_dir = temp_output_dir("obs_residual_output");
+        let common = sample_common_args(out_dir.clone());
+        let profile = ReceiverConfig::default();
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 1_023_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Gps, prn: 19 };
+        let carrier_hz = bijux_gnss_infra::api::receiver::carrier_hz_from_doppler_hz(0.0, 125.0);
+        let track = bijux_gnss_infra::api::receiver::TrackingResult {
+            sat,
+            carrier_hz,
+            code_phase_samples: 0.0,
+            acquisition_hypothesis: "accepted".to_string(),
+            acquisition_score: 1.0,
+            acquisition_code_phase_samples: 0,
+            acquisition_carrier_hz: carrier_hz,
+            acq_to_track_state: "accepted".to_string(),
+            epochs: vec![
+                TrackEpoch {
+                    epoch: Epoch { index: 70 },
+                    sample_index: 70 * 1023,
+                    source_time: ReceiverSampleTrace::from_sample_index(70 * 1023, 1_023_000.0),
+                    sat,
+                    prompt_i: 1.0,
+                    prompt_q: 0.0,
+                    early_i: 0.0,
+                    early_q: 0.0,
+                    late_i: 0.0,
+                    late_q: 0.0,
+                    carrier_hz: Hertz(carrier_hz),
+                    carrier_phase_cycles: Cycles(10.0),
+                    code_rate_hz: Hertz(1_023_000.0),
+                    code_phase_samples: Chips(0.0),
+                    lock: true,
+                    cn0_dbhz: 45.0,
+                    pll_lock: true,
+                    dll_lock: true,
+                    fll_lock: true,
+                    cycle_slip: false,
+                    nav_bit_lock: false,
+                    navigation_bit_sign: None,
+                    dll_err: 0.0,
+                    pll_err: 0.0,
+                    fll_err: 0.0,
+                    anti_false_lock: false,
+                    cycle_slip_reason: None,
+                    lock_state: "tracking".to_string(),
+                    lock_state_reason: Some("stable_tracking".to_string()),
+                    channel_id: None,
+                    channel_uid: String::new(),
+                    tracking_provenance: "test".to_string(),
+                    tracking_assumptions: None,
+                    signal_delay_alignment: Some(SignalDelayAlignment {
+                        whole_code_periods: 68,
+                        source: "synthetic_truth".to_string(),
+                    }),
+                    tracking_uncertainty: None,
+                    processing_ms: None,
+                },
+                TrackEpoch {
+                    epoch: Epoch { index: 71 },
+                    sample_index: 71 * 1023,
+                    source_time: ReceiverSampleTrace::from_sample_index(71 * 1023, 1_023_000.0),
+                    sat,
+                    prompt_i: 1.0,
+                    prompt_q: 0.0,
+                    early_i: 0.0,
+                    early_q: 0.0,
+                    late_i: 0.0,
+                    late_q: 0.0,
+                    carrier_hz: Hertz(carrier_hz),
+                    carrier_phase_cycles: Cycles(10.125),
+                    code_rate_hz: Hertz(1_023_000.0),
+                    code_phase_samples: Chips(0.0),
+                    lock: true,
+                    cn0_dbhz: 45.0,
+                    pll_lock: true,
+                    dll_lock: true,
+                    fll_lock: true,
+                    cycle_slip: false,
+                    nav_bit_lock: false,
+                    navigation_bit_sign: None,
+                    dll_err: 0.0,
+                    pll_err: 0.0,
+                    fll_err: 0.0,
+                    anti_false_lock: false,
+                    cycle_slip_reason: None,
+                    lock_state: "tracking".to_string(),
+                    lock_state_reason: Some("stable_tracking".to_string()),
+                    channel_id: None,
+                    channel_uid: String::new(),
+                    tracking_provenance: "test".to_string(),
+                    tracking_assumptions: None,
+                    signal_delay_alignment: Some(SignalDelayAlignment {
+                        whole_code_periods: 68,
+                        source: "synthetic_truth".to_string(),
+                    }),
+                    tracking_uncertainty: None,
+                    processing_ms: None,
+                },
+            ],
+            transitions: Vec::new(),
+        };
+
+        super::write_obs_timeseries(&common, &config, &[track], 10, &profile, None)
+            .expect("write observation artifacts");
+
+        let artifacts_dir = super::artifacts_dir(&common, "track", None).expect("artifacts dir");
+        let residual_path = artifacts_dir.join("observation_residuals.jsonl");
+        let residual_text = fs::read_to_string(&residual_path).expect("read residual artifact");
+        let first_line = residual_text.lines().next().expect("residual line");
+        let payload: serde_json::Value = serde_json::from_str(first_line).expect("parse residual");
+        let raw_pseudorange_m = payload["payload"]["sats"][0]["pseudorange_m"]["raw"]
+            .as_f64()
+            .expect("raw pseudorange");
+
+        assert_eq!(payload["payload"]["artifact_id"], "obs-epoch-0000000070");
+        assert_eq!(payload["payload"]["accepted"], true);
+        assert!(raw_pseudorange_m > 0.0);
+
+        fs::remove_dir_all(&out_dir).expect("remove output directory");
     }
 }
