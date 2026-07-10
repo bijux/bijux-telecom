@@ -12,10 +12,18 @@ use bijux_gnss_receiver::api::{
 };
 
 use support::navigation_truth::truth_seeded_acquisition_results;
+use support::tracking_truth::{
+    carrier_frequency_error_hz, carrier_phase_steps_cycles, code_phase_error_samples,
+    stable_tracking_window,
+};
 
 const LONG_RUN_DURATION_S: f64 = 601.0;
 const LONG_RUN_TRACKING_INTEGRATION_MS: u32 = 20;
+const REQUIRED_STABLE_TRACKING_EPOCHS: usize = 30_000;
 const STREAMING_TRACKING_EPOCHS_PER_FRAME: usize = 250;
+const LONG_RUN_LOCKED_CARRIER_ERROR_MAX_HZ: f64 = 5.0;
+const LONG_RUN_LOCKED_CODE_ERROR_MAX_SAMPLES: f64 = 1.0;
+const LONG_RUN_PHASE_STEP_ERROR_MAX_CYCLES: f64 = 0.2;
 
 #[derive(Clone)]
 struct LongRunTrackingSession {
@@ -110,4 +118,54 @@ fn tracking_session_consumes_full_ten_minute_signal_span() {
     assert_eq!(run.artifacts.processed_input_epochs, expected_input_epochs);
     assert_eq!(run.artifacts.tracking.len(), 1, "{:?}", run.artifacts.tracking);
     assert_eq!(track.epochs.len(), expected_tracking_epochs, "epochs={:?}", track.epochs);
+}
+
+#[test]
+fn tracking_session_maintains_stable_long_run_lock_metrics() {
+    let run = long_run_tracking_session();
+    let scenario = long_run_tracking_scenario(&run.config);
+    let signal = scenario.satellites.first().expect("long-run signal");
+    let track = run.artifacts.tracking.first().expect("tracked channel");
+    let stable_window = stable_tracking_window(&track.epochs, REQUIRED_STABLE_TRACKING_EPOCHS);
+    let expected_code_phase_samples =
+        signal.code_phase_chips * run.config.sampling_freq_hz / run.config.code_freq_basis_hz;
+    let expected_phase_step_cycles =
+        signal.doppler_hz * LONG_RUN_TRACKING_INTEGRATION_MS as f64 / 1000.0;
+    let carrier_errors_hz = stable_window
+        .iter()
+        .map(|epoch| carrier_frequency_error_hz(epoch, signal.doppler_hz))
+        .collect::<Vec<_>>();
+    let code_errors_samples = stable_window
+        .iter()
+        .map(|epoch| code_phase_error_samples(&run.config, epoch, expected_code_phase_samples))
+        .collect::<Vec<_>>();
+    let phase_step_errors_cycles = carrier_phase_steps_cycles(stable_window)
+        .into_iter()
+        .map(|step_cycles| (step_cycles - expected_phase_step_cycles).abs())
+        .collect::<Vec<_>>();
+
+    assert!(
+        stable_window.len() >= REQUIRED_STABLE_TRACKING_EPOCHS,
+        "stable_window_len={} total_epochs={}",
+        stable_window.len(),
+        track.epochs.len(),
+    );
+    assert!(
+        carrier_errors_hz
+            .iter()
+            .all(|error_hz| *error_hz <= LONG_RUN_LOCKED_CARRIER_ERROR_MAX_HZ),
+        "carrier_errors_hz={carrier_errors_hz:?}"
+    );
+    assert!(
+        code_errors_samples
+            .iter()
+            .all(|error_samples| *error_samples <= LONG_RUN_LOCKED_CODE_ERROR_MAX_SAMPLES),
+        "code_errors_samples={code_errors_samples:?}"
+    );
+    assert!(
+        phase_step_errors_cycles
+            .iter()
+            .all(|error_cycles| error_cycles.is_finite() && *error_cycles <= LONG_RUN_PHASE_STEP_ERROR_MAX_CYCLES),
+        "phase_step_errors_cycles={phase_step_errors_cycles:?}"
+    );
 }
