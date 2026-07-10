@@ -5,8 +5,8 @@ mod support;
 use bijux_gnss_core::api::{Constellation, SatId};
 use bijux_gnss_receiver::api::{
     sim::{
-        measure_truth_guided_tracking_lock_rate, SyntheticSignalParams,
-        SyntheticTrackingLockRateCase,
+        measure_truth_guided_tracking_lock_probability, measure_truth_guided_tracking_lock_rate,
+        SyntheticSignalParams, SyntheticTrackingLockRateCase,
     },
     ReceiverPipelineConfig,
 };
@@ -33,6 +33,57 @@ fn tracking_lock_rate_report_runs_multiple_measurement_points() {
     assert_eq!(
         report.points[0].seeded_code_phase_error_samples,
         LOW_CN0_SEEDED_CODE_PHASE_ERROR_SAMPLES
+    );
+}
+
+#[test]
+fn tracking_lock_rate_reports_cn0_sensitivity() {
+    let report = measure_truth_guided_tracking_lock_rate(
+        &low_cn0_tracking_profile(),
+        &[
+            tracking_lock_rate_case(20.0),
+            tracking_lock_rate_case(24.0),
+            tracking_lock_rate_case(28.0),
+            tracking_lock_rate_case(32.0),
+        ],
+        &trial_seeds(0x2407_19A1, TRACKING_LOCK_RATE_TRIAL_COUNT),
+        "tracking_lock_rate_cn0",
+    );
+
+    assert_eq!(report.points.len(), 4);
+    assert!(
+        report.points.last().expect("strongest cn0").lock_probability
+            > report.points.first().expect("weakest cn0").lock_probability,
+        "expected stronger C/N0 to improve stable tracking lock probability: {report:?}"
+    );
+}
+
+#[test]
+fn tracking_refuses_stable_lock_below_cn0_floor() {
+    let weak_case = tracking_lock_rate_case(24.0);
+    let report = measure_truth_guided_tracking_lock_probability(
+        &low_cn0_tracking_profile(),
+        weak_case.signal,
+        weak_case.duration_s,
+        &trial_seeds(0x2407_19A2, TRACKING_LOCK_RATE_TRIAL_COUNT),
+        "tracking_low_cn0_refusal",
+        weak_case.seeded_doppler_error_hz,
+        weak_case.seeded_code_phase_error_samples,
+        weak_case.min_locked_epochs,
+    );
+
+    assert_eq!(report.trial_count, TRACKING_LOCK_RATE_TRIAL_COUNT);
+    assert_eq!(report.stable_lock_count, 0, "{report:?}");
+    assert_eq!(report.refused_lock_count, TRACKING_LOCK_RATE_TRIAL_COUNT, "{report:?}");
+    assert!(
+        report.trials.iter().all(|trial| {
+            !trial.stable_lock
+                && trial.refused_lock
+                && trial.first_lock_epoch_index.is_none()
+                && trial.final_lock_state != "tracking"
+                && trial.final_lock_state_reason.as_deref() == Some("cn0_below_tracking_lock_floor")
+        }),
+        "{report:?}"
     );
 }
 
