@@ -78,6 +78,33 @@ Files: `ephemeris.json`
 Invariants:
 - ephemeris fields present for decoded PRNs
 
+### nav decode report
+Purpose: navigation-bit demodulation and LNAV subframe alignment from tracking prompt history.
+Files: `nav_decode_report.json`
+Units: milliseconds, prompt indices, bits.
+Invariants:
+- `bit_start_ms` is the selected 20 ms GPS L1 C/A bit boundary offset within the prompt history
+- `aligned_subframes[*].start_prompt_index` equals `bit_start_ms + start_bit_index * 20`
+- `aligned_subframes[*].end_prompt_index_exclusive` equals
+  `bit_start_ms + end_bit_index_exclusive * 20`
+- `aligned_subframes[*].start_bit_index` values are monotonic
+- `preamble_hits` equals `aligned_subframes.len()`
+
+The report includes:
+- `sat`
+- `bit_start_ms`
+- `bit_signs`
+- `aligned_subframes[*].start_bit_index`
+- `aligned_subframes[*].end_bit_index_exclusive`
+- `aligned_subframes[*].start_prompt_index`
+- `aligned_subframes[*].end_prompt_index_exclusive`
+- `aligned_subframes[*].inverted`
+- `aligned_subframes[*].word_count`
+- `aligned_subframes[*].parity_ok_count`
+- `preamble_hits`
+- `parity_pass_rate`
+- `ephemerides`
+
 ### pvt (NavSolutionEpochV1)
 Purpose: position/clock solutions.
 Files: `pvt.jsonl`
