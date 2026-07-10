@@ -4,6 +4,8 @@ use bijux_gnss_core::api::TrackEpoch;
 use bijux_gnss_receiver::api::ReceiverPipelineConfig;
 use bijux_gnss_signal::api::samples_per_code;
 
+const GPS_LNAV_NAV_BIT_PERIOD_S: f64 = 0.02;
+
 pub fn wrapped_code_phase_error_samples(
     config: &ReceiverPipelineConfig,
     measured_code_phase_samples: f64,
@@ -50,6 +52,19 @@ pub fn post_lock_epochs(epochs: &[TrackEpoch]) -> &[TrackEpoch] {
     &epochs[first_lock_epoch_index..]
 }
 
+pub fn nav_bit_transition_epoch_indices(epochs: &[TrackEpoch], sample_rate_hz: f64) -> Vec<usize> {
+    let nav_bit_period_samples = gps_lnav_nav_bit_period_samples(sample_rate_hz);
+    epochs
+        .windows(2)
+        .enumerate()
+        .filter_map(|(index, pair)| {
+            let previous_bit_index = pair[0].sample_index / nav_bit_period_samples;
+            let current_bit_index = pair[1].sample_index / nav_bit_period_samples;
+            (previous_bit_index != current_bit_index).then_some(index + 1)
+        })
+        .collect()
+}
+
 pub fn post_lock_carrier_frequency_errors_hz(
     epochs: &[TrackEpoch],
     expected_carrier_hz: f64,
@@ -71,12 +86,16 @@ pub fn post_lock_code_phase_errors_samples(
         .collect()
 }
 
+fn gps_lnav_nav_bit_period_samples(sample_rate_hz: f64) -> u64 {
+    ((sample_rate_hz * GPS_LNAV_NAV_BIT_PERIOD_S).round() as u64).max(1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         carrier_frequency_error_hz, code_phase_error_samples, first_tracking_lock_epoch_index,
-        post_lock_carrier_frequency_errors_hz, post_lock_code_phase_errors_samples,
-        post_lock_epochs,
+        nav_bit_transition_epoch_indices, post_lock_carrier_frequency_errors_hz,
+        post_lock_code_phase_errors_samples, post_lock_epochs,
         wrapped_code_phase_error_samples,
     };
     use bijux_gnss_core::api::{Chips, Cycles, Epoch, Hertz, TrackEpoch};
@@ -188,6 +207,21 @@ mod tests {
                 .map(|epoch| epoch.epoch.index)
                 .collect::<Vec<_>>(),
             vec![1, 2]
+        );
+    }
+
+    #[test]
+    fn nav_bit_transition_epoch_indices_report_twenty_millisecond_boundaries() {
+        let epochs = (0..45)
+            .map(|epoch_index| TrackEpoch {
+                sample_index: epoch_index * 4_092,
+                ..TrackEpoch::default()
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            nav_bit_transition_epoch_indices(&epochs, 4_092_000.0),
+            vec![20, 40]
         );
     }
 
