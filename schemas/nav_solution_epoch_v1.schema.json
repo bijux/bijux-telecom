@@ -61,6 +61,8 @@
         "ecef_x_m",
         "ecef_y_m",
         "ecef_z_m",
+        "clock_bias_s",
+        "clock_bias_m",
         "status",
         "valid",
         "source_observation_epoch_id"
@@ -72,6 +74,8 @@
         "ecef_x_m": { "type": "number" },
         "ecef_y_m": { "type": "number" },
         "ecef_z_m": { "type": "number" },
+        "clock_bias_s": { "type": "number" },
+        "clock_bias_m": { "type": "number" },
         "status": { "type": "string" },
         "valid": { "type": "boolean" },
         "source_observation_epoch_id": { "type": "string", "minLength": 1 }

@@ -416,6 +416,7 @@ struct NavSolutionOutput {
     llh_deg: [f64; 3],
     velocity_mps: Option<[f64; 3]>,
     clock_bias_s: f64,
+    clock_bias_m: f64,
     clock_drift_s_per_s: f64,
     covariance: NavSolutionCovariance,
     fix_quality: bijux_gnss_infra::api::core::NavQualityFlag,
@@ -457,6 +458,7 @@ fn write_nav_solution_outputs(
             llh_deg: [sol.latitude_deg, sol.longitude_deg, sol.altitude_m.0],
             velocity_mps: None,
             clock_bias_s: sol.clock_bias_s.0,
+            clock_bias_m: sol.clock_bias_m.0,
             clock_drift_s_per_s: sol.clock_drift_s_per_s,
             covariance: NavSolutionCovariance {
                 sigma_h_m: sol.sigma_h_m.map(|m| m.0),
@@ -1365,6 +1367,7 @@ mod tests {
             longitude_deg: 18.0,
             altitude_m: Meters(4.0),
             clock_bias_s: Seconds(0.001),
+            clock_bias_m: Meters(299_792.458),
             clock_drift_s_per_s: 0.0,
             pdop: 1.0,
             rms_m: Meters(2.0),
@@ -1418,6 +1421,8 @@ mod tests {
         assert_eq!(payload["source_time"]["sample_rate_hz"], 4_092_000.0);
         assert_eq!(payload["source_time"]["receiver_time_s"], 0.0015);
         assert_eq!(payload["source_observation_epoch_id"], "epoch-0000000012-sample-000000006138");
+        assert_eq!(payload["clock_bias_s"], 0.001);
+        assert_eq!(payload["clock_bias_m"], 299_792.458);
 
         fs::remove_file(&path).expect("remove nav solution output");
         fs::remove_dir(&out_dir).expect("remove output directory");
