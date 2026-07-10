@@ -75,6 +75,10 @@ fn encode_word(data: u32, prev_d29: u8, prev_d30: u8) -> [u8; 30] {
     bits
 }
 
+fn flip_signed_bit(bits: &mut [i8], bit_index: usize) {
+    bits[bit_index] *= -1;
+}
+
 fn compute_parity(data_bits: &[u8], d29_star: u8, d30_star: u8) -> (u8, u8, u8, u8, u8, u8) {
     let d = |i: usize| -> u8 { data_bits[i - 1] };
     let p1 = d(1)
@@ -517,6 +521,67 @@ fn nav_decode_reports_aligned_lnav_subframes_from_wrapped_track_artifact() {
     assert_eq!(decoded_subframes[1]["how"]["alert"], true);
     assert_eq!(decoded_subframes[1]["how"]["anti_spoof"], true);
     assert_eq!(decoded_subframes[1]["word_parity_ok"].as_array().map(|items| items.len()), Some(10));
+
+    fs::remove_dir_all(&temp).expect("remove temp dir");
+}
+
+#[test]
+fn nav_decode_reports_failed_lnav_parity_from_wrapped_track_artifact() {
+    let repo = repo_root();
+    let temp = temp_dir_path("nav_decode_failed_parity");
+    fs::create_dir_all(&temp).expect("create temp dir");
+    let sat = SatId { constellation: Constellation::Gps, prn: 12 };
+    let mut bits = encode_subframe_with_how(1, 1, false, false);
+    flip_signed_bit(&mut bits, 29);
+
+    let track_path = temp.join("track.jsonl");
+    write_track_artifact_from_bits(&track_path, sat, 5, &bits);
+
+    let nav_dir = temp.join("nav");
+    fs::create_dir_all(&nav_dir).expect("create nav dir");
+    let nav_output = run_bijux(
+        &[
+            "gnss",
+            "nav",
+            "decode",
+            "--unregistered-dataset",
+            "--track",
+            track_path.to_str().expect("track path"),
+            "--prn",
+            "12",
+            "--config",
+            "configs/receiver_low_rate.toml",
+            "--report",
+            "json",
+            "--out",
+            nav_dir.to_str().expect("nav dir"),
+        ],
+        &repo,
+    );
+    assert!(
+        nav_output.status.success(),
+        "nav decode failed: {}",
+        String::from_utf8_lossy(&nav_output.stderr)
+    );
+
+    let report: Value = serde_json::from_str(
+        &fs::read_to_string(nav_dir.join("nav_decode_report.json")).expect("read nav report"),
+    )
+    .expect("parse nav report");
+    let decoded_subframes = report["decoded_subframes"].as_array().expect("decoded_subframes");
+    let failed_word_indexes = decoded_subframes[0]["parity"]["failed_word_indexes"]
+        .as_array()
+        .expect("failed_word_indexes");
+
+    assert_eq!(report["bit_start_ms"], 5);
+    assert_eq!(report["parity_word_count"], 10);
+    assert!(report["parity_failed_words"].as_u64().expect("parity_failed_words") >= 1);
+    assert!(report["parity_pass_rate"].as_f64().expect("parity_pass_rate") < 1.0);
+    assert!(!failed_word_indexes.is_empty(), "report={report}");
+    assert!(
+        failed_word_indexes.iter().any(|word_index| word_index.as_u64() == Some(0)),
+        "report={report}"
+    );
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
 }
