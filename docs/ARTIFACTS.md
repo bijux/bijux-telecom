@@ -57,6 +57,9 @@ Invariants:
   the tracking artifact did not emit uncertainty
 - `ObsSatellite.pseudorange_var_m2` uses the larger of `thermal_noise_m` and `tracking_jitter_m`
   so downstream weighting does not understate weak or poorly locked code observations
+- for code-locked rows, `ObsSatellite.pseudorange_m` may be Hatch-smoothed; the emitted
+  `metadata.smoothing_age`, `metadata.smoothing_window`, and `metadata.smoothing_resets`
+  fully describe the active smoothing arc and gain cap
 - impossible code ranges are rejected in-band with explicit observation reasons:
   `non_finite_pseudorange`, `non_positive_pseudorange`, or `pseudorange_out_of_bounds`;
   those satellites make the containing epoch reject with `inconsistent_observable`

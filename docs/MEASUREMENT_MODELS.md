@@ -41,6 +41,9 @@ sanity checks). Any violation must emit diagnostics and mark the measurement as 
 - Hatch smoothing contract: observation metadata declares `smoothing_window`,
   `smoothing_age`, and `smoothing_resets` for code smoothing state. `smoothing_age = 0` means
   the epoch was not eligible for smoothing, typically because tracking lost code lock.
+- Gain contract: when a new smoothing arc starts, the first usable code row emits the raw
+  pseudorange with `smoothing_age = 1`; the second usable row blends the carrier prediction and
+  raw code with a `1/2` Hatch gain; later rows cap the gain at `1 / smoothing_window`.
 - Reset contract: Hatch smoothing must not cross a cycle-slip or unlock boundary. Explicit
   tracking slips, observation-layer divergence slips, and geometry-free slip triggers reset the
   smoothing state and restart the current epoch from the raw pseudorange with `smoothing_age = 1`.
