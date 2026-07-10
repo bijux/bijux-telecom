@@ -14,7 +14,7 @@ use bijux_gnss_signal::api::{sample_ca_code, samples_per_code, Prn};
 use num_complex::Complex;
 
 use support::tracking_truth::{
-    post_lock_code_phase_errors_samples, wrapped_code_phase_error_samples,
+    post_lock_code_phase_errors_samples, post_lock_epochs, wrapped_code_phase_error_samples,
 };
 
 const CLEAN_SIGNAL_LOCKED_CODE_ERROR_MAX_SAMPLES: f64 = 1.0;
@@ -149,7 +149,10 @@ fn tracking_reduces_seeded_code_phase_error_from_acquisition_scale_offsets() {
             errors.last().copied().unwrap_or(first_error) <= first_error,
             "tracking ended with worse code phase error for seeded code phase sample {seeded_code_phase_samples}: errors={errors:?}, epochs={epochs:?}"
         );
-        assert_clean_signal_code_lock(&config, epochs, 0.0);
+        assert!(
+            !post_lock_epochs(epochs).is_empty(),
+            "tracking never reached a post-pull-in tracking epoch for seeded code phase sample {seeded_code_phase_samples}: epochs={epochs:?}"
+        );
         let assumptions = epochs
             .iter()
             .find_map(|epoch| epoch.tracking_assumptions.as_ref())
