@@ -24,6 +24,7 @@ const DLL_CODE_PHASE_CORRECTION_GAIN: f64 = 0.5;
 const SAMPLE_RATE_MISMATCH_MIN_CN0_DBHZ: f64 = 18.0;
 const TRACKING_LOCK_MIN_CN0_DBHZ: f64 = 28.0;
 const TRACKING_LOCK_REFUSAL_EPOCHS: u8 = 3;
+const SHORT_FADE_MAX_DURATION_S: f64 = 0.100;
 const SAMPLE_RATE_MISMATCH_MIN_PHASE_DRIFT_FRACTION: f64 = 0.0025;
 const SAMPLE_RATE_MISMATCH_MIN_PHASE_DRIFT_SAMPLES: f64 = 12.0;
 const SAMPLE_RATE_MISMATCH_WINDOW_EPOCHS: usize = 4;
@@ -41,6 +42,7 @@ pub enum ChannelState {
     Acquired,
     PullIn,
     Tracking,
+    Degraded,
     Lost,
 }
 
@@ -51,6 +53,7 @@ impl std::fmt::Display for ChannelState {
             Self::Acquired => "acquired",
             Self::PullIn => "pull_in",
             Self::Tracking => "tracking",
+            Self::Degraded => "degraded",
             Self::Lost => "lost",
         };
         write!(f, "{value}")
@@ -125,6 +128,7 @@ struct LoopState {
     nav_bit_transition_count: u32,
     pull_in_stable_epochs: u8,
     weak_cn0_epochs: u8,
+    degraded_epochs: u16,
     state: ChannelState,
     unlocked_count: u8,
 }
@@ -221,7 +225,7 @@ struct PromptPhaseDecision {
 }
 
 fn should_apply_fll(state: ChannelState, raw_fll_lock: bool) -> bool {
-    state == ChannelState::PullIn || !raw_fll_lock
+    matches!(state, ChannelState::PullIn | ChannelState::Degraded) || !raw_fll_lock
 }
 
 /// Tracking engine with basic E/P/L correlation per epoch.
@@ -575,6 +579,7 @@ impl Tracking {
             nav_bit_transition_count: 0,
             pull_in_stable_epochs: 0,
             weak_cn0_epochs: 0,
+            degraded_epochs: 0,
             state: ChannelState::Acquired,
             unlocked_count: 0,
         };
@@ -642,6 +647,7 @@ impl Tracking {
                         nav_bit_transition_count: 0,
                         pull_in_stable_epochs: 0,
                         weak_cn0_epochs: 0,
+                        degraded_epochs: 0,
                         state: ChannelState::Acquired,
                         unlocked_count: 0,
                     },
@@ -870,6 +876,7 @@ impl Tracking {
                     to_state: ChannelState::PullIn,
                     reason: "cn0_below_tracking_lock_floor".to_string(),
                     next_unlocked_count: state.unlocked_count.saturating_add(1),
+                    next_degraded_epochs: 0,
                 }
             } else {
                 deterministic_transition_rule(
@@ -879,9 +886,12 @@ impl Tracking {
                     anti_false_lock,
                     cycle_slip,
                     state.unlocked_count,
+                    state.degraded_epochs,
+                    short_fade_epoch_budget(tracking_params),
                 )
             };
             state.unlocked_count = transition.next_unlocked_count;
+            state.degraded_epochs = transition.next_degraded_epochs;
             state.state = transition.to_state;
             if cycle_slip {
                 cycle_slip_reason = match cycle_slip_reason {
@@ -895,6 +905,7 @@ impl Tracking {
                 ChannelState::Acquired => "acquired".to_string(),
                 ChannelState::PullIn => "pull_in".to_string(),
                 ChannelState::Tracking => "tracking".to_string(),
+                ChannelState::Degraded => "degraded".to_string(),
                 ChannelState::Lost => "lost".to_string(),
             };
             let lock_state_reason = Some(transition.reason.clone());
@@ -1026,6 +1037,7 @@ struct TransitionDecision {
     to_state: ChannelState,
     reason: String,
     next_unlocked_count: u8,
+    next_degraded_epochs: u16,
 }
 
 fn deterministic_transition_rule(
@@ -1035,12 +1047,48 @@ fn deterministic_transition_rule(
     anti_false_lock: bool,
     cycle_slip: bool,
     unlocked_count: u8,
+    degraded_epochs: u16,
+    short_fade_epoch_budget: u16,
 ) -> TransitionDecision {
     if cycle_slip {
         return TransitionDecision {
             to_state: ChannelState::Lost,
             reason: "cycle_slip".to_string(),
             next_unlocked_count: unlocked_count.saturating_add(1),
+            next_degraded_epochs: 0,
+        };
+    }
+    if from_state == ChannelState::Degraded {
+        if ready_for_tracking {
+            return TransitionDecision {
+                to_state: ChannelState::Tracking,
+                reason: "fade_recovered".to_string(),
+                next_unlocked_count: 0,
+                next_degraded_epochs: 0,
+            };
+        }
+        let next_degraded_epochs = degraded_epochs.saturating_add(1);
+        if next_degraded_epochs > short_fade_epoch_budget {
+            return TransitionDecision {
+                to_state: ChannelState::Lost,
+                reason: "lock_lost".to_string(),
+                next_unlocked_count: 1,
+                next_degraded_epochs: 0,
+            };
+        }
+        return TransitionDecision {
+            to_state: ChannelState::Degraded,
+            reason: "signal_fade".to_string(),
+            next_unlocked_count: 0,
+            next_degraded_epochs,
+        };
+    }
+    if from_state == ChannelState::Tracking && !ready_for_tracking {
+        return TransitionDecision {
+            to_state: ChannelState::Degraded,
+            reason: "signal_fade".to_string(),
+            next_unlocked_count: 0,
+            next_degraded_epochs: 1,
         };
     }
     if ready_for_tracking {
@@ -1048,6 +1096,7 @@ fn deterministic_transition_rule(
             to_state: ChannelState::Tracking,
             reason: "carrier_converged".to_string(),
             next_unlocked_count: 0,
+            next_degraded_epochs: 0,
         };
     }
     if lock {
@@ -1055,6 +1104,7 @@ fn deterministic_transition_rule(
             to_state: ChannelState::PullIn,
             reason: "carrier_pull_in".to_string(),
             next_unlocked_count: 0,
+            next_degraded_epochs: 0,
         };
     }
     if anti_false_lock {
@@ -1062,6 +1112,7 @@ fn deterministic_transition_rule(
             to_state: ChannelState::PullIn,
             reason: "anti_false_lock".to_string(),
             next_unlocked_count: unlocked_count.saturating_add(1),
+            next_degraded_epochs: 0,
         };
     }
     let next_unlocked = unlocked_count.saturating_add(1);
@@ -1070,12 +1121,14 @@ fn deterministic_transition_rule(
             to_state: ChannelState::Lost,
             reason: "lock_lost".to_string(),
             next_unlocked_count: next_unlocked,
+            next_degraded_epochs: 0,
         };
     }
     TransitionDecision {
         to_state: ChannelState::PullIn,
         reason: "carrier_pull_in".to_string(),
         next_unlocked_count: next_unlocked,
+        next_degraded_epochs: 0,
     }
 }
 
@@ -1362,6 +1415,11 @@ fn fll_lock_threshold_hz(fll_bw_hz: f64) -> f64 {
     fll_bw_hz.max(5.0)
 }
 
+fn short_fade_epoch_budget(tracking_params: TrackingParams) -> u16 {
+    let integration_ms = tracking_params.integration_ms.max(1) as f64;
+    ((SHORT_FADE_MAX_DURATION_S * 1000.0) / integration_ms).ceil() as u16
+}
+
 fn update_pull_in_stable_epochs(
     current_stable_epochs: u8,
     prompt_lock: bool,
@@ -1380,7 +1438,7 @@ fn update_prelock_cn0_refusal(
     weak_cn0_epochs: u8,
     cn0_dbhz: f64,
 ) -> (u8, bool, bool) {
-    if current_state == ChannelState::Tracking {
+    if matches!(current_state, ChannelState::Tracking | ChannelState::Degraded) {
         return (0, true, false);
     }
     if !cn0_dbhz.is_finite() || cn0_dbhz >= TRACKING_LOCK_MIN_CN0_DBHZ {
@@ -1510,23 +1568,35 @@ mod tests {
             false,
             true,
             1,
+            0,
+            100,
         );
         assert_eq!(decision.to_state, ChannelState::Lost);
         assert_eq!(decision.reason, "cycle_slip");
         assert_eq!(decision.next_unlocked_count, 2);
+        assert_eq!(decision.next_degraded_epochs, 0);
     }
 
     #[test]
     fn deterministic_transition_rule_promotes_lock() {
-        let decision =
-            super::deterministic_transition_rule(ChannelState::PullIn, true, true, false, false, 2);
+        let decision = super::deterministic_transition_rule(
+            ChannelState::PullIn,
+            true,
+            true,
+            false,
+            false,
+            2,
+            0,
+            100,
+        );
         assert_eq!(decision.to_state, ChannelState::Tracking);
         assert_eq!(decision.reason, "carrier_converged");
         assert_eq!(decision.next_unlocked_count, 0);
+        assert_eq!(decision.next_degraded_epochs, 0);
     }
 
     #[test]
-    fn deterministic_transition_rule_marks_loss_after_tracking_failures() {
+    fn deterministic_transition_rule_degrades_tracking_during_short_fade() {
         let decision = super::deterministic_transition_rule(
             ChannelState::Tracking,
             false,
@@ -1534,10 +1604,49 @@ mod tests {
             false,
             false,
             1,
+            0,
+            100,
+        );
+        assert_eq!(decision.to_state, ChannelState::Degraded);
+        assert_eq!(decision.reason, "signal_fade");
+        assert_eq!(decision.next_unlocked_count, 0);
+        assert_eq!(decision.next_degraded_epochs, 1);
+    }
+
+    #[test]
+    fn deterministic_transition_rule_recovers_after_short_fade() {
+        let decision = super::deterministic_transition_rule(
+            ChannelState::Degraded,
+            true,
+            true,
+            false,
+            false,
+            0,
+            4,
+            100,
+        );
+        assert_eq!(decision.to_state, ChannelState::Tracking);
+        assert_eq!(decision.reason, "fade_recovered");
+        assert_eq!(decision.next_unlocked_count, 0);
+        assert_eq!(decision.next_degraded_epochs, 0);
+    }
+
+    #[test]
+    fn deterministic_transition_rule_marks_loss_after_fade_budget_exhaustion() {
+        let decision = super::deterministic_transition_rule(
+            ChannelState::Degraded,
+            false,
+            false,
+            false,
+            false,
+            0,
+            100,
+            100,
         );
         assert_eq!(decision.to_state, ChannelState::Lost);
         assert_eq!(decision.reason, "lock_lost");
-        assert_eq!(decision.next_unlocked_count, 2);
+        assert_eq!(decision.next_unlocked_count, 1);
+        assert_eq!(decision.next_degraded_epochs, 0);
     }
 
     #[test]
@@ -1549,11 +1658,14 @@ mod tests {
             false,
             false,
             1,
+            0,
+            100,
         );
 
         assert_eq!(decision.to_state, ChannelState::PullIn);
         assert_eq!(decision.reason, "carrier_pull_in");
         assert_eq!(decision.next_unlocked_count, 0);
+        assert_eq!(decision.next_degraded_epochs, 0);
     }
 
     #[test]
@@ -1576,6 +1688,12 @@ mod tests {
 
         let (weak_epochs, supports_lock, refuse_lock) =
             super::update_prelock_cn0_refusal(ChannelState::Tracking, 2, 20.0);
+        assert_eq!(weak_epochs, 0);
+        assert!(supports_lock);
+        assert!(!refuse_lock);
+
+        let (weak_epochs, supports_lock, refuse_lock) =
+            super::update_prelock_cn0_refusal(ChannelState::Degraded, 2, 20.0);
         assert_eq!(weak_epochs, 0);
         assert!(supports_lock);
         assert!(!refuse_lock);
@@ -2042,6 +2160,7 @@ mod tests {
     #[test]
     fn should_apply_fll_keeps_frequency_assistance_until_fll_relocks() {
         assert!(super::should_apply_fll(super::ChannelState::PullIn, true));
+        assert!(super::should_apply_fll(super::ChannelState::Degraded, true));
         assert!(super::should_apply_fll(super::ChannelState::Tracking, false));
         assert!(!super::should_apply_fll(super::ChannelState::Tracking, true));
     }
@@ -2310,6 +2429,7 @@ mod tests {
             let fixture = load_tracking_fixture(fixture_raw, fixture_name);
             let mut state = parse_state(&fixture.initial_state);
             let mut unlocked = 0u8;
+            let mut degraded_epochs = 0u16;
             for event in &fixture.events {
                 let decision = super::deterministic_transition_rule(
                     state,
@@ -2318,9 +2438,12 @@ mod tests {
                     event.anti_false_lock,
                     event.cycle_slip,
                     unlocked,
+                    degraded_epochs,
+                    100,
                 );
                 state = decision.to_state;
                 unlocked = decision.next_unlocked_count;
+                degraded_epochs = decision.next_degraded_epochs;
             }
             assert_eq!(
                 state,
@@ -2415,6 +2538,7 @@ mod tests {
             "Acquired" => ChannelState::Acquired,
             "PullIn" => ChannelState::PullIn,
             "Tracking" => ChannelState::Tracking,
+            "Degraded" => ChannelState::Degraded,
             "Lost" => ChannelState::Lost,
             _ => panic!("unsupported state {value}"),
         }
