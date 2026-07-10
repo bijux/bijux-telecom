@@ -38,6 +38,7 @@ const DISCRIMINATOR_INSTABILITY_MIN_PROMPT_POWER_RATIO: f32 = 0.5;
 const DISCRIMINATOR_INSTABILITY_REQUIRED_EPOCHS: u8 = 2;
 const PULL_IN_REQUIRED_STABLE_EPOCHS: u8 = 1;
 const FLL_PULL_IN_MAX_CORRECTION_BW_MULTIPLIER: f64 = 4.0;
+const REACQUISITION_REQUIRED_LOST_EPOCHS: usize = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelState {
@@ -136,6 +137,8 @@ struct LoopState {
     unstable_discriminator_epochs: u8,
     state: ChannelState,
     unlocked_count: u8,
+    lost_reason: Option<String>,
+    reacquisition_pending: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -227,6 +230,21 @@ struct PromptPhaseDecision {
     nav_bit_phase_offset_cycles: f64,
     nav_bit_transition: bool,
     cycle_slip: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ReacquisitionSeed {
+    carrier_hz: f64,
+    code_phase_samples: f64,
+    cn0_dbhz: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReacquisitionOutcome {
+    NotNeeded,
+    SeedUnavailable,
+    Failed,
+    Started,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -464,48 +482,7 @@ impl Tracking {
     ) -> Vec<TrackingResult> {
         let mut incremental_tracking = self.begin_incremental_tracking(acquisitions);
         self.track_incremental_frame(&mut incremental_tracking, frame);
-        self.reacquire_incremental_tracking(&mut incremental_tracking, frame);
         self.finish_incremental_tracking(incremental_tracking)
-    }
-
-    fn reacquire_incremental_tracking(
-        &self,
-        tracking: &mut IncrementalTrackingState,
-        frame: &SamplesFrame,
-    ) {
-        for channel in &mut tracking.channels {
-            let reacquire_seed = sustained_lock_loss_reacquire_seed(&channel.epochs);
-            let Some((carrier_hz, code_phase_samples)) = reacquire_seed else {
-                continue;
-            };
-            let Some(channel_frame) = tracking_frame_from_start_sample(
-                frame,
-                Some(channel.start_source_time.sample_index),
-            ) else {
-                continue;
-            };
-            let Some((carrier_hz, code_phase_samples)) = self.quick_reacquire(
-                &channel_frame,
-                channel.sat,
-                carrier_hz,
-                code_phase_samples,
-                channel.acquisition_uncertainty.as_ref(),
-            ) else {
-                continue;
-            };
-            let (epochs, transitions) = self.track_epochs(
-                &channel_frame,
-                channel.channel_id,
-                channel.sat,
-                carrier_hz,
-                code_phase_samples,
-                channel.state.acquisition_cn0_proxy_dbhz,
-                channel.tracking_params,
-                self.epochs_in_frame(&channel_frame, channel.tracking_params),
-            );
-            channel.epochs = epochs;
-            channel.transitions.extend(transitions);
-        }
     }
 
     fn apply_sample_rate_mismatch_diagnostic(
@@ -594,6 +571,8 @@ impl Tracking {
             unstable_discriminator_epochs: 0,
             state: ChannelState::Acquired,
             unlocked_count: 0,
+            lost_reason: None,
+            reacquisition_pending: false,
         };
 
         let mut out = Vec::new();
@@ -664,6 +643,8 @@ impl Tracking {
                         unstable_discriminator_epochs: 0,
                         state: ChannelState::Acquired,
                         unlocked_count: 0,
+                        lost_reason: None,
+                        reacquisition_pending: false,
                     },
                     epochs: Vec::new(),
                     transitions: Vec::new(),
@@ -689,16 +670,37 @@ impl Tracking {
             ) else {
                 continue;
             };
-            self.append_tracked_epochs(
-                &channel_frame,
-                channel.channel_id,
-                channel.sat,
+            let samples_per_epoch = tracking_epoch_samples(
+                self.config.sampling_freq_hz,
+                self.config.code_freq_basis_hz,
+                self.config.code_length,
                 channel.tracking_params,
-                self.epochs_in_frame(&channel_frame, channel.tracking_params),
-                &mut channel.state,
-                &mut channel.epochs,
-                &mut channel.transitions,
             );
+            let mut epoch_start = 0usize;
+            while epoch_start < channel_frame.len() {
+                let epoch_end = (epoch_start + samples_per_epoch).min(channel_frame.len());
+                let epoch_frame = frame_slice(&channel_frame, epoch_start, epoch_end);
+                let reacquisition_outcome = self.try_reacquire_channel(channel, &epoch_frame);
+                let epoch_count_before = channel.epochs.len();
+                let transition_count_before = channel.transitions.len();
+                self.append_tracked_epochs(
+                    &epoch_frame,
+                    channel.channel_id,
+                    channel.sat,
+                    channel.tracking_params,
+                    1,
+                    &mut channel.state,
+                    &mut channel.epochs,
+                    &mut channel.transitions,
+                );
+                apply_reacquisition_annotations(
+                    &mut channel.state,
+                    &mut channel.epochs[epoch_count_before..],
+                    &mut channel.transitions[transition_count_before..],
+                    reacquisition_outcome,
+                );
+                epoch_start = epoch_end;
+            }
         }
     }
 
@@ -924,6 +926,14 @@ impl Tracking {
             state.unlocked_count = transition.next_unlocked_count;
             state.degraded_epochs = transition.next_degraded_epochs;
             state.state = transition.to_state;
+            if state.state == ChannelState::Lost {
+                state.reacquisition_pending = false;
+                if from_state != ChannelState::Lost {
+                    state.lost_reason = Some(transition.reason.clone());
+                }
+            } else {
+                state.lost_reason = None;
+            }
 
             let lock_state = match state.state {
                 ChannelState::Idle => "idle".to_string(),
@@ -1157,6 +1167,14 @@ fn deterministic_transition_rule(
             next_degraded_epochs: 0,
         };
     }
+    if from_state == ChannelState::Lost {
+        return TransitionDecision {
+            to_state: ChannelState::Lost,
+            reason: "lost".to_string(),
+            next_unlocked_count: unlocked_count,
+            next_degraded_epochs: 0,
+        };
+    }
     if from_state == ChannelState::Degraded {
         if ready_for_tracking {
             return TransitionDecision {
@@ -1241,7 +1259,7 @@ fn sustained_lock_loss_reacquire_seed(epochs: &[TrackEpoch]) -> Option<(f64, f64
             && epoch.lock_state_reason.as_deref().is_some_and(is_sustained_lock_loss_reason)
         {
             consecutive_lost_epochs += 1;
-            if consecutive_lost_epochs >= 3 {
+            if consecutive_lost_epochs >= REACQUISITION_REQUIRED_LOST_EPOCHS {
                 return Some((epoch.carrier_hz.0, epoch.code_phase_samples.0));
             }
             continue;
@@ -1288,6 +1306,17 @@ fn tracking_frame_from_start_sample(
         frame.dt_s,
         frame.iq[offset..].to_vec(),
     ))
+}
+
+fn frame_slice(frame: &SamplesFrame, start: usize, end: usize) -> SamplesFrame {
+    SamplesFrame::new(
+        SampleTime {
+            sample_index: frame.t0.sample_index + start as u64,
+            sample_rate_hz: frame.t0.sample_rate_hz,
+        },
+        frame.dt_s,
+        frame.iq[start..end].to_vec(),
+    )
 }
 
 fn classify_prompt_phase(
@@ -1594,7 +1623,94 @@ fn apply_carrier_loop(input: CarrierLoopInput) -> CarrierLoopUpdate {
     CarrierLoopUpdate { carrier_hz, carrier_phase_cycles }
 }
 
+fn apply_reacquisition_annotations(
+    state: &mut LoopState,
+    epochs: &mut [TrackEpoch],
+    transitions: &mut [TrackTransition],
+    reacquisition_outcome: ReacquisitionOutcome,
+) {
+    let Some(last_epoch) = epochs.last_mut() else {
+        return;
+    };
+
+    if state.reacquisition_pending
+        && last_epoch.lock_state == ChannelState::Tracking.to_string()
+        && last_epoch.lock_state_reason.as_deref() == Some("carrier_converged")
+    {
+        last_epoch.lock_state_reason = Some("reacquired".to_string());
+        if let Some(last_transition) = transitions.last_mut() {
+            if last_transition.to_state == ChannelState::Tracking.to_string()
+                && last_transition.reason == "carrier_converged"
+            {
+                last_transition.reason = "reacquired".to_string();
+            }
+        }
+        state.reacquisition_pending = false;
+        return;
+    }
+
+    if last_epoch.lock_state == ChannelState::Lost.to_string() {
+        match reacquisition_outcome {
+            ReacquisitionOutcome::Failed => {
+                last_epoch.lock_state_reason = Some("reacquisition_failed".to_string());
+            }
+            ReacquisitionOutcome::SeedUnavailable | ReacquisitionOutcome::NotNeeded => {
+                if let Some(lost_reason) = state.lost_reason.as_ref() {
+                    last_epoch.lock_state_reason = Some(lost_reason.clone());
+                }
+            }
+            ReacquisitionOutcome::Started => {}
+        }
+    }
+}
+
 impl Tracking {
+    fn try_reacquire_channel(
+        &self,
+        channel: &mut IncrementalTrackingChannel,
+        frame: &SamplesFrame,
+    ) -> ReacquisitionOutcome {
+        if channel.state.state != ChannelState::Lost {
+            return ReacquisitionOutcome::NotNeeded;
+        }
+        let Some((carrier_hz, code_phase_samples)) =
+            sustained_lock_loss_reacquire_seed(&channel.epochs)
+        else {
+            return ReacquisitionOutcome::SeedUnavailable;
+        };
+        let Some(seed) = self.quick_reacquire(
+            frame,
+            channel.sat,
+            carrier_hz,
+            code_phase_samples,
+            channel.acquisition_uncertainty.as_ref(),
+        ) else {
+            return ReacquisitionOutcome::Failed;
+        };
+
+        channel.state = LoopState {
+            carrier_hz: seed.carrier_hz,
+            carrier_phase_cycles: 0.0,
+            code_rate_hz: self.config.code_freq_basis_hz,
+            code_phase_samples: seed.code_phase_samples,
+            acquisition_cn0_proxy_dbhz: seed.cn0_dbhz,
+            prev_prompt: None,
+            prev_prompt_phase_cycles: None,
+            nav_bit_phase_offset_cycles: 0.0,
+            nav_bit_transition_count: 0,
+            pull_in_stable_epochs: 0,
+            weak_cn0_epochs: 0,
+            degraded_epochs: 0,
+            prompt_power_reference: 0.0,
+            unstable_discriminator_epochs: 0,
+            state: ChannelState::Acquired,
+            unlocked_count: 0,
+            lost_reason: None,
+            reacquisition_pending: true,
+        };
+        ReacquisitionOutcome::Started
+    }
+
     fn quick_reacquire(
         &self,
         frame: &SamplesFrame,
@@ -1602,7 +1718,7 @@ impl Tracking {
         carrier_hz: f64,
         code_phase_samples: f64,
         acquisition_uncertainty: Option<&AcqUncertainty>,
-    ) -> Option<(f64, f64)> {
+    ) -> Option<ReacquisitionSeed> {
         let doppler_step_hz = self.config.acquisition_doppler_step_hz.max(1) as f64;
         let doppler_step = acquisition_uncertainty
             .map(|uncertainty| uncertainty.doppler_hz.clamp(doppler_step_hz / 2.0, doppler_step_hz))
@@ -1613,7 +1729,7 @@ impl Tracking {
         let doppler_bins = [-2.0, -1.0, 0.0, 1.0, 2.0].map(|bin| bin * doppler_step);
         let code_bins = [-2.0, -1.0, 0.0, 1.0, 2.0].map(|bin| bin * code_step);
         let mut best = None;
-        let mut best_metric = 0.0_f32;
+        let mut best_cn0_dbhz = f64::NEG_INFINITY;
         for d in doppler_bins {
             for c in code_bins {
                 let corr = self.correlate_epoch(
@@ -1625,10 +1741,28 @@ impl Tracking {
                     code_phase_samples + c,
                     0.5,
                 );
-                let metric = corr.prompt.norm();
-                if metric > best_metric {
-                    best_metric = metric;
-                    best = Some((carrier_hz + d, code_phase_samples + c));
+                let cn0_dbhz = estimate_cn0_dbhz(
+                    corr.prompt,
+                    corr.early - corr.late,
+                    self.config.sampling_freq_hz,
+                    frame.len() as f64,
+                    corr.early_late_noise_weight_energy,
+                );
+                let (_, _, _, prompt_lock) =
+                    discriminators(corr.early, corr.prompt, corr.late, None);
+                let anti_false_lock =
+                    (corr.early.norm() - corr.late.norm()).abs() < 0.2 * corr.prompt.norm();
+                if prompt_lock
+                    && !anti_false_lock
+                    && cn0_dbhz >= TRACKING_LOCK_MIN_CN0_DBHZ
+                    && cn0_dbhz > best_cn0_dbhz
+                {
+                    best_cn0_dbhz = cn0_dbhz;
+                    best = Some(ReacquisitionSeed {
+                        carrier_hz: carrier_hz + d,
+                        code_phase_samples: code_phase_samples + c,
+                        cn0_dbhz,
+                    });
                 }
             }
         }
