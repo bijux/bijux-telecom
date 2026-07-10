@@ -472,6 +472,22 @@ pub mod v1 {
                         "PVT position contains NaN/Inf",
                     ));
                 }
+                if !self.clock_bias_s.0.is_finite() || !self.clock_bias_m.0.is_finite() {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Error,
+                        "GNSS_NAV_CLOCK_BIAS_INVALID",
+                        "nav solution clock bias contains NaN/Inf",
+                    ));
+                } else {
+                    let expected_clock_bias_m = self.clock_bias_s.0 * 299_792_458.0;
+                    if (self.clock_bias_m.0 - expected_clock_bias_m).abs() > 1.0e-6 {
+                        events.push(DiagnosticEvent::new(
+                            DiagnosticSeverity::Error,
+                            "GNSS_NAV_CLOCK_BIAS_UNITS_INCONSISTENT",
+                            "nav solution clock bias meters do not match clock bias seconds",
+                        ));
+                    }
+                }
                 if self.model_version == 0 {
                     events.push(DiagnosticEvent::new(
                         DiagnosticSeverity::Error,

@@ -16,6 +16,7 @@ fn sample_solution() -> NavSolutionEpoch {
         longitude_deg: -122.0,
         altitude_m: Meters(20.0),
         clock_bias_s: Seconds(0.0),
+        clock_bias_m: Meters(0.0),
         clock_drift_s_per_s: 0.0,
         pdop: 1.5,
         rms_m: Meters(2.0),
@@ -97,4 +98,15 @@ fn nav_artifact_validation_warns_on_missing_refusal_metadata() {
     solution.explain_decision.clear();
     let diagnostics = solution.validate_payload();
     assert!(diagnostics.iter().any(|event| event.code == "GNSS_NAV_REFUSAL_CLASS_MISSING"));
+}
+
+#[test]
+fn nav_artifact_validation_rejects_inconsistent_clock_bias_units() {
+    let mut solution = sample_solution();
+    solution.clock_bias_s = Seconds(1.0e-4);
+    solution.clock_bias_m = Meters(1.0);
+    let diagnostics = solution.validate_payload();
+    assert!(diagnostics
+        .iter()
+        .any(|event| event.code == "GNSS_NAV_CLOCK_BIAS_UNITS_INCONSISTENT"));
 }
