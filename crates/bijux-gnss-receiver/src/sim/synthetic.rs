@@ -2428,8 +2428,20 @@ fn generate_l1_ca_multi_signal_only(
 impl SyntheticSignalSource {
     /// Build a streaming synthetic source from a scenario without materializing the full capture.
     pub fn new(config: &ReceiverPipelineConfig, scenario: &SyntheticScenario) -> Self {
+        Self::with_noise_std(config, scenario, SYNTHETIC_NOISE_STD_PER_COMPONENT)
+    }
+
+    /// Build a streaming synthetic source that emits only the deterministic signal component.
+    pub fn new_signal_only(config: &ReceiverPipelineConfig, scenario: &SyntheticScenario) -> Self {
+        Self::with_noise_std(config, scenario, 0.0)
+    }
+
+    fn with_noise_std(
+        config: &ReceiverPipelineConfig,
+        scenario: &SyntheticScenario,
+        noise_std: f32,
+    ) -> Self {
         let sample_count = (scenario.duration_s * config.sampling_freq_hz).round() as usize;
-        let noise_std = SYNTHETIC_NOISE_STD_PER_COMPONENT;
 
         Self {
             sample_rate_hz: config.sampling_freq_hz,
@@ -2476,9 +2488,13 @@ impl SignalSource for SyntheticSignalSource {
             for sat in &self.sat_states {
                 sample += sat.sample_at(t);
             }
-            let noise_i = self.rng.next_gaussian() * self.noise_std;
-            let noise_q = self.rng.next_gaussian() * self.noise_std;
-            iq.push(sample + Complex::new(noise_i, noise_q));
+            if self.noise_std <= f32::EPSILON {
+                iq.push(sample);
+            } else {
+                let noise_i = self.rng.next_gaussian() * self.noise_std;
+                let noise_q = self.rng.next_gaussian() * self.noise_std;
+                iq.push(sample + Complex::new(noise_i, noise_q));
+            }
         }
         self.next_sample_index += count as u64;
         self.remaining_samples -= count;
@@ -4400,5 +4416,54 @@ mod tests {
             },
             truth,
         }
+    }
+
+    #[test]
+    fn signal_only_streaming_source_matches_signal_only_frame_generation() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 1_023_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let scenario = SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 0.0,
+            duration_s: 0.004,
+            seed: 17,
+            satellites: vec![
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                    doppler_hz: -120.0,
+                    code_phase_chips: 64.0,
+                    carrier_phase_rad: 0.25,
+                    cn0_db_hz: 55.0,
+                    data_bit_flip: false,
+                },
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 11 },
+                    doppler_hz: 180.0,
+                    code_phase_chips: 288.5,
+                    carrier_phase_rad: 0.75,
+                    cn0_db_hz: 55.0,
+                    data_bit_flip: false,
+                },
+            ],
+            ephemerides: Vec::new(),
+            id: "signal-only-streaming".to_string(),
+        };
+        let expected = super::generate_l1_ca_multi_signal_only(&config, &scenario);
+        let mut source = super::SyntheticSignalSource::new_signal_only(&config, &scenario);
+        let streamed = source
+            .next_frame(expected.len())
+            .expect("streaming signal-only frame")
+            .expect("non-empty signal-only source");
+
+        assert_eq!(streamed.t0, expected.t0);
+        assert_eq!(streamed.dt_s, expected.dt_s);
+        assert_eq!(streamed.iq, expected.iq);
+        assert!(source.is_done());
     }
 }
