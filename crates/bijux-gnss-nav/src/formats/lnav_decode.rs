@@ -569,6 +569,20 @@ mod tests {
         (value as u32) & mask
     }
 
+    fn decode_subframe_words(hex: &str) -> Vec<u32> {
+        super::decode_subframe_hex(hex).expect("subframe words")
+    }
+
+    fn encode_subframe_words(words: &[u32]) -> String {
+        let mut bytes = Vec::with_capacity(30);
+        for &word in words {
+            bytes.push(((word >> 16) & 0xFF) as u8);
+            bytes.push(((word >> 8) & 0xFF) as u8);
+            bytes.push((word & 0xFF) as u8);
+        }
+        hex::encode(bytes)
+    }
+
     #[test]
     fn signed_decodes_32_bit_negative_values_without_overflow() {
         assert_eq!(signed(0x8000_0000, 32), i32::MIN);
@@ -769,5 +783,19 @@ mod tests {
                 < f64::EPSILON
         );
         assert!((orbit.idot - idot_raw as f64 * 2f64.powi(-43) * std::f64::consts::PI).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn rawephem_decode_refuses_mixed_iode_subframes() {
+        let sub1 = "8b0284a1b8a52850000724918b913e21a92dc6ee0b217b0c00ffb72fac04";
+        let sub2 = "8b0284a1b92b21fac82899520ec7b7fb31061550921d09a10d62b87b0c7c";
+        let mut sub3_words =
+            decode_subframe_words("8b0284a1b9adff7d74db71f3ffaa2840ed6e0fe024cddf1effadc82106c4");
+        set_bits(&mut sub3_words[9], 1, 8, 0x22);
+        let sub3 = encode_subframe_words(&sub3_words);
+
+        let eph = super::decode_rawephem_hex(1, sub1, sub2, &sub3);
+
+        assert!(eph.is_none());
     }
 }

@@ -956,6 +956,39 @@ mod tests {
     }
 
     #[test]
+    fn decode_subframes_refuse_mixed_issue_numbers() {
+        let mut bits = encode_subframe_1_with_clock(1, 42, 0, 0x1A5, 21_600, 0, 0, 0, 0);
+        bits.extend(encode_subframe_2_with_orbit(
+            2,
+            0xA5,
+            -512,
+            1234,
+            -0x1234_5678,
+            -777,
+            0x0123_4567,
+            911,
+            0x0056_789A,
+            21_600,
+        ));
+        bits.extend(encode_subframe_3_with_orbit(
+            3,
+            0x22,
+            -321,
+            0x2345_6789_u32 as i32,
+            654,
+            -0x1234_0000,
+            2047,
+            0x1112_1314_u32 as i32,
+            -0x34567,
+            0x1234,
+        ));
+
+        let (ephemerides, _stats) = decode_subframes(&bits);
+
+        assert!(ephemerides.is_empty(), "ephemerides={ephemerides:?}");
+    }
+
+    #[test]
     fn corrupted_payload_bit_fails_word_parity() {
         let mut bits = encode_single_word_signed(0xABCDE);
         flip_signed_bit(&mut bits, 12);
