@@ -553,6 +553,17 @@ mod tests {
         bits
     }
 
+    fn flip_signed_bit(bits: &mut [i8], bit_index: usize) {
+        bits[bit_index] *= -1;
+    }
+
+    fn encode_single_word_signed(data: u32) -> Vec<i8> {
+        encode_word(data, 0, 0)
+            .into_iter()
+            .map(|bit| if bit == 1 { 1 } else { -1 })
+            .collect()
+    }
+
     fn encode_subframe(subframe_id: u8, tow_count: u32) -> Vec<i8> {
         encode_subframe_with_how(subframe_id, tow_count, false, false)
     }
@@ -683,5 +694,33 @@ mod tests {
         assert_eq!(decoded[0].word_parity_ok.len(), 10);
         assert_eq!(decoded[0].word_parity_ok[0], decoded[0].tlm.parity_ok);
         assert_eq!(decoded[0].word_parity_ok[1], decoded[0].how.parity_ok);
+        assert_eq!(decoded[0].parity.word_count, 10);
+        assert_eq!(decoded[0].parity.passed_word_count + decoded[0].parity.failed_word_indexes.len(), 10);
+    }
+
+    #[test]
+    fn corrupted_payload_bit_fails_word_parity() {
+        let mut bits = encode_single_word_signed(0xABCDE);
+        flip_signed_bit(&mut bits, 12);
+
+        let words = decode_words(&bits);
+
+        assert_eq!(words.len(), 1);
+        assert!(!words[0].parity_ok, "words={words:?}");
+        let parity = summarize_word_parity(&words);
+        assert_eq!(parity.failed_word_indexes, vec![0]);
+    }
+
+    #[test]
+    fn corrupted_parity_bit_fails_word_parity() {
+        let mut bits = encode_single_word_signed(0xABCDE);
+        flip_signed_bit(&mut bits, 29);
+
+        let words = decode_words(&bits);
+
+        assert_eq!(words.len(), 1);
+        assert!(!words[0].parity_ok, "words={words:?}");
+        let parity = summarize_word_parity(&words);
+        assert_eq!(parity.failed_word_indexes, vec![0]);
     }
 }
