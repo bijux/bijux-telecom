@@ -13,7 +13,7 @@ use bijux_gnss_signal::api::SignalSource;
 use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::io::data::SampleSourceError;
 use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
-use bijux_gnss_nav::api::GpsEphemeris;
+use bijux_gnss_nav::api::{sat_state_gps_l1ca, GpsEphemeris};
 use bijux_gnss_signal::api::{
     advance_code_phase_seconds, code_value_at_phase, generate_ca_code, samples_per_code,
     IqSampleFormat, Prn, RawIqMetadata,
@@ -336,10 +336,40 @@ pub fn validate_truth_guided_observations(
             if observed_rows.is_empty() {
                 notes.push("no_comparable_observation_rows".to_string());
             }
+            let pseudorange_errors =
+                if let Some(ephemeris) = truth.ephemerides.iter().find(|eph| eph.sat == sat_truth.sat)
+                {
+                    let aligned_rows = observed_rows
+                        .iter()
+                        .filter(|row| {
+                            row.observation.metadata.pseudorange_model
+                                == "tracked_code_phase_alignment"
+                        })
+                        .collect::<Vec<_>>();
+                    if aligned_rows.is_empty() {
+                        notes.push("no_absolute_pseudorange_rows".to_string());
+                    }
+                    aligned_rows
+                        .into_iter()
+                        .map(|row| {
+                            let receive_time_s =
+                                reference.receive_time_s + row.sample_index as f64 / config.sampling_freq_hz;
+                            row.observation.pseudorange_m.0
+                                - synthetic_pseudorange_m(
+                                    ephemeris,
+                                    receive_time_s,
+                                    reference.receiver_ecef_m,
+                                )
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    notes.push("missing_ephemeris_for_pseudorange_truth".to_string());
+                    Vec::new()
+                };
 
             SyntheticObservationValidationSatellite {
                 sat: sat_truth.sat,
-                pseudorange_error_m: None,
+                pseudorange_error_m: summarize_observation_errors(&pseudorange_errors),
                 carrier_phase_error_cycles: None,
                 carrier_phase_arcs_evaluated: 0,
                 doppler_error_hz: summarize_observation_errors(&doppler_errors),
@@ -379,6 +409,29 @@ fn comparable_satellite_observations<'a>(
             })
         })
         .collect()
+}
+
+fn synthetic_pseudorange_m(
+    ephemeris: &GpsEphemeris,
+    receive_time_s: f64,
+    receiver_ecef_m: [f64; 3],
+) -> f64 {
+    let mut tau_s = 0.07;
+    let mut pseudorange_m = 0.0;
+    for _ in 0..10 {
+        let sat = sat_state_gps_l1ca(ephemeris, receive_time_s - tau_s, tau_s);
+        let dx = receiver_ecef_m[0] - sat.x_m;
+        let dy = receiver_ecef_m[1] - sat.y_m;
+        let dz = receiver_ecef_m[2] - sat.z_m;
+        let geometric_range_m = (dx * dx + dy * dy + dz * dz).sqrt();
+        pseudorange_m = geometric_range_m - sat.clock_correction.bias_s * SPEED_OF_LIGHT_MPS;
+        let next_tau_s = pseudorange_m / SPEED_OF_LIGHT_MPS;
+        if (next_tau_s - tau_s).abs() < 1.0e-12 {
+            break;
+        }
+        tau_s = next_tau_s;
+    }
+    pseudorange_m
 }
 
 /// Per-satellite acquisition code-phase comparison between clean synthetic truth and receiver output.
