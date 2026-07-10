@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use bijux_gnss_core::api::{Constellation, SatId};
+use bijux_gnss_core::api::{Constellation, GpsTime, ObsSignalTiming, SatId, Seconds};
 use bijux_gnss_nav::api::{
     geodetic_to_ecef, sat_state_gps_l1ca, GpsEphemeris, PositionObservation, PositionSolver,
 };
@@ -140,6 +140,22 @@ fn make_eph(prn: u8, omega0: f64, m0: f64, t_ref_s: f64) -> GpsEphemeris {
     }
 }
 
+fn timed_position_observation(sat: SatId, pseudorange_m: f64, t_rx_s: f64) -> PositionObservation {
+    let signal_travel_time_s = pseudorange_m / 299_792_458.0;
+    PositionObservation {
+        sat,
+        pseudorange_m,
+        cn0_dbhz: 45.0,
+        elevation_deg: Some(45.0),
+        weight: 1.0,
+        gps_receive_time: Some(GpsTime { week: 0, tow_s: t_rx_s }),
+        signal_timing: Some(ObsSignalTiming {
+            signal_travel_time_s: Seconds(signal_travel_time_s),
+            transmit_gps_time: GpsTime { week: 0, tow_s: t_rx_s - signal_travel_time_s },
+        }),
+    }
+}
+
 fn build_observations(
     t_rx_s: f64,
     position_ecef: (f64, f64, f64),
@@ -148,17 +164,28 @@ fn build_observations(
     ephs.iter()
         .map(|eph| {
             let pseudorange_m = synthetic_pseudorange_m(eph, t_rx_s, position_ecef);
-            PositionObservation {
-                sat: eph.sat,
-                pseudorange_m,
-                cn0_dbhz: 45.0,
-                elevation_deg: Some(45.0),
-                weight: 1.0,
-                gps_receive_time: None,
-                signal_timing: None,
-            }
+            timed_position_observation(eph.sat, pseudorange_m, t_rx_s)
         })
         .collect()
+}
+
+#[test]
+fn navigation_solver_refuses_receiver_fixtures_without_signal_timing() {
+    let fixture_path = load_fixture_paths().into_iter().next().expect("fixture path");
+    let fixture = load_fixture(&fixture_path);
+    let truth_ecef =
+        geodetic_to_ecef(fixture.truth.lat_deg, fixture.truth.lon_deg, fixture.truth.alt_m);
+    let ephs = fixture
+        .ephemerides
+        .iter()
+        .map(|row| make_eph(row.prn, row.omega0, row.m0, fixture.t_rx_s))
+        .collect::<Vec<_>>();
+    let mut observations = build_observations(fixture.t_rx_s, truth_ecef, &ephs);
+    for observation in &mut observations {
+        observation.signal_timing = None;
+    }
+
+    assert!(PositionSolver::new().solve_wls(&observations, &ephs, fixture.t_rx_s).is_none());
 }
 
 fn synthetic_pseudorange_m(eph: &GpsEphemeris, t_rx_s: f64, position_ecef: (f64, f64, f64)) -> f64 {
