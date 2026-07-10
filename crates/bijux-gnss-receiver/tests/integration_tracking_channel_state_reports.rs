@@ -4,8 +4,11 @@ use bijux_gnss_core::api::{
     AcqHypothesis, AcqResult, Constellation, Hertz, ReceiverSampleTrace, SatId, SignalBand,
 };
 use bijux_gnss_receiver::api::{
-    sim::{generate_l1_ca, generate_l1_ca_with_fades, SyntheticFadeWindow, SyntheticSignalParams},
-    ReceiverPipelineConfig, ReceiverRuntime, TrackingChannelState, TrackingEngine,
+    sim::{
+        generate_l1_ca, generate_l1_ca_with_fades, SyntheticFadeWindow, SyntheticScenario,
+        SyntheticSignalParams, SyntheticSignalSource,
+    },
+    Receiver, ReceiverPipelineConfig, ReceiverRuntime, TrackingChannelState, TrackingEngine,
 };
 
 fn accepted_acquisition(sat: SatId, doppler_hz: f64, code_phase_samples: usize) -> AcqResult {
@@ -114,4 +117,43 @@ fn tracking_session_reports_degraded_channel_state_during_short_fade() {
         report.emitted_states.iter().any(|event| event.state == TrackingChannelState::Degraded),
         "{report:?}"
     );
+}
+
+#[test]
+fn receiver_run_exports_channel_state_reports() {
+    let config = tracking_config();
+    let sat = SatId { constellation: Constellation::Gps, prn: 21 };
+    let scenario = SyntheticScenario {
+        sample_rate_hz: config.sampling_freq_hz,
+        intermediate_freq_hz: config.intermediate_freq_hz,
+        receiver_clock_frequency_bias_hz: 0.0,
+        duration_s: 0.012,
+        seed: 0xC11E_A003,
+        satellites: vec![SyntheticSignalParams {
+            sat,
+            doppler_hz: 0.0,
+            code_phase_chips: 0.0,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 60.0,
+            data_bit_flip: false,
+        }],
+        ephemerides: Vec::new(),
+        id: "tracking-channel-state-report-run".to_string(),
+    };
+    let mut source = SyntheticSignalSource::new_signal_only(&config, &scenario);
+    let receiver = Receiver::new(config, ReceiverRuntime::default());
+    let artifacts = receiver.run(&mut source).expect("receiver run");
+
+    assert!(!artifacts.channel_state_reports.is_empty(), "{artifacts:?}");
+    assert_eq!(artifacts.channel_state_reports.len(), artifacts.tracking.len(), "{artifacts:?}");
+
+    for (report, tracking) in artifacts.channel_state_reports.iter().zip(&artifacts.tracking) {
+        assert_eq!(report.sat, tracking.sat, "{report:?}");
+        assert!(!report.channel_uid.is_empty(), "{report:?}");
+        assert_eq!(
+            report.emitted_states.first().map(|event| event.state),
+            Some(TrackingChannelState::Acquired),
+            "{report:?}"
+        );
+    }
 }
