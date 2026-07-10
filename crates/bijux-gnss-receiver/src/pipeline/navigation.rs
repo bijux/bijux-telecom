@@ -328,6 +328,7 @@ impl Navigation {
             longitude_deg: solution.longitude_deg,
             altitude_m: Meters(solution.altitude_m),
             clock_bias_s: Seconds(solution.clock_bias_s),
+            clock_bias_m: Meters(solution.clock_bias_s * 299_792_458.0),
             clock_drift_s_per_s,
             pdop: solution.pdop,
             rms_m: Meters(solution.rms_m),
@@ -607,6 +608,7 @@ fn invalid_solution_epoch(
         longitude_deg: 0.0,
         altitude_m: Meters(0.0),
         clock_bias_s: Seconds(0.0),
+        clock_bias_m: Meters(0.0),
         clock_drift_s_per_s: 0.0,
         pdop: 0.0,
         rms_m: Meters(0.0),
@@ -969,6 +971,7 @@ mod tests {
             longitude_deg: 0.0,
             altitude_m: Meters(0.0),
             clock_bias_s: Seconds(0.0),
+            clock_bias_m: Meters(0.0),
             clock_drift_s_per_s: 0.0,
             pdop: 1.0,
             rms_m: Meters(1.0),
@@ -1381,6 +1384,7 @@ mod tests {
         assert!((solution.ecef_y_m.0 - truth.1).abs() < 5.0);
         assert!((solution.ecef_z_m.0 - truth.2).abs() < 5.0);
         assert!((solution.clock_bias_s.0 - receiver_clock_bias_s).abs() < 1.0e-9);
+        assert!((solution.clock_bias_m.0 - receiver_clock_bias_s * 299_792_458.0).abs() < 1.0e-6);
     }
 
     #[test]

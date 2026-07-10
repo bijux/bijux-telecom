@@ -982,6 +982,8 @@ pub struct NavSolutionEpoch {
     pub longitude_deg: f64,
     pub altitude_m: Meters,
     pub clock_bias_s: Seconds,
+    #[serde(default = "default_nav_clock_bias_m")]
+    pub clock_bias_m: Meters,
     #[serde(default)]
     pub clock_drift_s_per_s: f64,
     pub pdop: f64,
@@ -1055,6 +1057,10 @@ pub struct NavSolutionEpoch {
 
 fn default_nav_solution_model_version() -> u32 {
     NAV_SOLUTION_MODEL_VERSION
+}
+
+fn default_nav_clock_bias_m() -> Meters {
+    Meters(0.0)
 }
 
 fn default_nav_output_stability_signature_version() -> u32 {

@@ -435,6 +435,7 @@ mod tests {
                 longitude_deg: 18.0,
                 altitude_m: Meters(4.0),
                 clock_bias_s: Seconds(0.0),
+                clock_bias_m: Meters(0.0),
                 clock_drift_s_per_s: 0.0,
                 pdop: 1.0,
                 rms_m: Meters(2.0),
