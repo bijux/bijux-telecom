@@ -988,9 +988,16 @@ mod tests {
             0x1234,
         ));
 
-        let (ephemerides, _stats) = decode_subframes(&bits);
+        let (ephemerides, stats) = decode_subframes(&bits);
 
         assert!(ephemerides.is_empty(), "ephemerides={ephemerides:?}");
+        assert_eq!(stats.ephemeris_rejections.len(), 1, "stats={stats:?}");
+        assert_eq!(
+            stats.ephemeris_rejections[0].reason,
+            crate::formats::lnav_decode::GpsL1CaLnavEphemerisRejectionReason::IodeMismatch
+        );
+        assert_eq!(stats.ephemeris_rejections[0].existing_iode, Some(0xA5));
+        assert_ne!(stats.ephemeris_rejections[0].incoming_iode, stats.ephemeris_rejections[0].existing_iode);
     }
 
     #[test]
