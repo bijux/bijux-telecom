@@ -5,7 +5,7 @@ use std::io::{BufWriter, Write};
 use std::path::Path;
 use std::sync::OnceLock;
 
-use bijux_gnss_core::api::{Constellation, IoError, ParseError, SatId};
+use bijux_gnss_core::api::{gps_to_utc, Constellation, GpsTime, IoError, LeapSeconds, ParseError, SatId};
 use regex::Regex;
 use time::{Date, Month, PrimitiveDateTime, Time};
 
@@ -112,6 +112,90 @@ fn parse_rinex_epoch_utc(
     Ok(bijux_gnss_core::api::UtcTime {
         unix_s: utc.unix_timestamp_nanos() as f64 / 1_000_000_000.0,
     })
+}
+
+fn format_rinex_nav_float(value: f64) -> String {
+    format!("{value:>19.12E}").replace('E', "D")
+}
+
+fn gps_time_to_utc_datetime(gps_time: GpsTime) -> Result<time::OffsetDateTime, IoError> {
+    let utc = gps_to_utc(gps_time, &LeapSeconds::default_table());
+    time::OffsetDateTime::from_unix_timestamp_nanos((utc.unix_s * 1_000_000_000.0).round() as i128)
+        .map_err(|err| IoError { message: format!("invalid GPS-to-UTC conversion: {err}") })
+}
+
+fn write_rinex_nav_record(writer: &mut BufWriter<File>, eph: &GpsEphemeris) -> Result<(), IoError> {
+    let utc = gps_time_to_utc_datetime(GpsTime { week: eph.week, tow_s: eph.toc_s })?;
+    write_header_line(
+        writer,
+        &format!(
+            "G{:02} {:04} {:02} {:02} {:02} {:02} {:02}{}{}{}",
+            eph.sat.prn,
+            utc.year(),
+            u8::from(utc.month()),
+            utc.day(),
+            utc.hour(),
+            utc.minute(),
+            utc.second(),
+            format_rinex_nav_float(eph.af0),
+            format_rinex_nav_float(eph.af1),
+            format_rinex_nav_float(eph.af2),
+        ),
+    )?;
+    for line in [
+        format!(
+            "    {}{}{}{}",
+            format_rinex_nav_float(eph.iode as f64),
+            format_rinex_nav_float(eph.crs),
+            format_rinex_nav_float(eph.delta_n),
+            format_rinex_nav_float(eph.m0),
+        ),
+        format!(
+            "    {}{}{}{}",
+            format_rinex_nav_float(eph.cuc),
+            format_rinex_nav_float(eph.e),
+            format_rinex_nav_float(eph.cus),
+            format_rinex_nav_float(eph.sqrt_a),
+        ),
+        format!(
+            "    {}{}{}{}",
+            format_rinex_nav_float(eph.toe_s),
+            format_rinex_nav_float(eph.cic),
+            format_rinex_nav_float(eph.omega0),
+            format_rinex_nav_float(eph.cis),
+        ),
+        format!(
+            "    {}{}{}{}",
+            format_rinex_nav_float(eph.i0),
+            format_rinex_nav_float(eph.crc),
+            format_rinex_nav_float(eph.w),
+            format_rinex_nav_float(eph.omegadot),
+        ),
+        format!(
+            "    {}{}{}{}",
+            format_rinex_nav_float(eph.idot),
+            format_rinex_nav_float(0.0),
+            format_rinex_nav_float(eph.week as f64),
+            format_rinex_nav_float(0.0),
+        ),
+        format!(
+            "    {}{}{}{}",
+            format_rinex_nav_float(0.0),
+            format_rinex_nav_float(eph.sv_health as f64),
+            format_rinex_nav_float(eph.tgd),
+            format_rinex_nav_float(eph.iodc as f64),
+        ),
+        format!(
+            "    {}{}{}{}",
+            format_rinex_nav_float(eph.toe_s),
+            format_rinex_nav_float(0.0),
+            format_rinex_nav_float(0.0),
+            format_rinex_nav_float(0.0),
+        ),
+    ] {
+        write_header_line(writer, &line)?;
+    }
+    Ok(())
 }
 
 fn parse_rinex_nav_year(year: i32, version: f64) -> i32 {
@@ -301,7 +385,7 @@ pub fn write_rinex_nav(path: &Path, ephs: &[GpsEphemeris], _strict: bool) -> Res
     let mut writer = BufWriter::new(file);
     write_header_line(
         &mut writer,
-        "     3.04           NAVIGATION DATA     M (MIXED)           RINEX VERSION / TYPE",
+        "     3.04           NAVIGATION DATA     G (GPS)             RINEX VERSION / TYPE",
     )?;
     write_header_line(&mut writer, "bijux-gnss                              PGM / RUN BY / DATE")?;
     write_header_line(
@@ -310,8 +394,7 @@ pub fn write_rinex_nav(path: &Path, ephs: &[GpsEphemeris], _strict: bool) -> Res
     )?;
 
     for eph in ephs {
-        let line = format!("G{:02} 0 0 0 0 0 0 0 0 0 0 0 0 0 0", eph.sat.prn);
-        write_header_line(&mut writer, &line)?;
+        write_rinex_nav_record(&mut writer, eph)?;
     }
 
     writer.flush().map_err(|e| IoError { message: e.to_string() })?;
@@ -340,10 +423,42 @@ pub fn parse_rinex_obs_header(data: &str) -> Result<(), ParseError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_rinex_epoch_utc, parse_rinex_float, parse_rinex_nav, parse_rinex_nav_header,
-        parse_rinex_numeric_fields,
+        format_rinex_nav_float, parse_rinex_epoch_utc, parse_rinex_float, parse_rinex_nav,
+        parse_rinex_nav_header, parse_rinex_numeric_fields, write_rinex_nav,
     };
     use bijux_gnss_core::api::{Constellation, SatId};
+    use crate::orbits::gps::GpsEphemeris;
+
+    fn sample_ephemeris() -> GpsEphemeris {
+        GpsEphemeris {
+            sat: SatId { constellation: Constellation::Gps, prn: 8 },
+            iodc: 97,
+            iode: 11,
+            week: 2209,
+            sv_health: 0,
+            toe_s: 345_600.0,
+            toc_s: 504_018.0,
+            sqrt_a: 5_153.795_477_5,
+            e: 1.234_567_890_123e-2,
+            i0: 9.4e-1,
+            idot: 7.8e-10,
+            omega0: 1.5,
+            omegadot: -8.9e-9,
+            w: 2.1e-1,
+            m0: 6.0e-1,
+            delta_n: 4.5e-9,
+            cuc: 1.2e-6,
+            cus: 2.3e-6,
+            crc: 321.0,
+            crs: 25.0,
+            cic: 4.5e-8,
+            cis: 5.6e-8,
+            af0: -1.234_567_890_123e-4,
+            af1: 2.345_678_901_234e-12,
+            af2: 0.0,
+            tgd: -1.9e-8,
+        }
+    }
 
     #[test]
     fn rinex_nav_header_reports_version_and_mixed_flag() {
@@ -365,6 +480,15 @@ bijux-gnss                              PGM / RUN BY / DATE
         let value = parse_rinex_float("-1.981128007174D-04").expect("D exponent float");
 
         assert!((value + 1.981_128_007_174e-4).abs() < 1.0e-16);
+    }
+
+    #[test]
+    fn rinex_nav_float_formats_fortran_exponents() {
+        let field = format_rinex_nav_float(-1.981_128_007_174e-4);
+
+        assert_eq!(field.len(), 19);
+        assert!(field.contains('D'));
+        assert!(!field.contains('E'));
     }
 
     #[test]
@@ -445,5 +569,32 @@ bijux-gnss                              PGM / RUN BY / DATE
         assert_eq!(ephs.len(), 1);
         assert_eq!(ephs[0].week, 2209);
         assert_eq!(ephs[0].sat.prn, 1);
+    }
+
+    #[test]
+    fn write_rinex_nav_round_trips_through_parser() {
+        let eph = sample_ephemeris();
+        let path = std::env::temp_dir().join(format!(
+            "bijux-rinex-nav-roundtrip-{}-{}.rnx",
+            std::process::id(),
+            eph.sat.prn
+        ));
+
+        write_rinex_nav(&path, std::slice::from_ref(&eph), true).expect("write nav");
+        let data = std::fs::read_to_string(&path).expect("read nav");
+        let parsed = parse_rinex_nav(&data).expect("parse written nav");
+        std::fs::remove_file(&path).expect("remove nav fixture");
+
+        assert_eq!(parsed.len(), 1);
+        let parsed = &parsed[0];
+        assert_eq!(parsed.sat, eph.sat);
+        assert_eq!(parsed.week, eph.week);
+        assert_eq!(parsed.iode, eph.iode);
+        assert_eq!(parsed.iodc, eph.iodc);
+        assert!((parsed.toe_s - eph.toe_s).abs() < 1.0e-9);
+        assert!((parsed.toc_s - eph.toc_s).abs() < 1.0e-6);
+        assert!((parsed.af0 - eph.af0).abs() < 1.0e-16);
+        assert!((parsed.af1 - eph.af1).abs() < 1.0e-24);
+        assert!((parsed.tgd - eph.tgd).abs() < 1.0e-18);
     }
 }
