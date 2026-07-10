@@ -1860,8 +1860,8 @@ mod tests {
     use crate::engine::runtime::ReceiverRuntime;
     use crate::sim::synthetic::{generate_l1_ca, SyntheticSignalParams};
     use bijux_gnss_core::api::{
-        AcqHypothesis, Chips, Constellation, Epoch, Hertz, SampleTime, SamplesFrame, SatId,
-        Seconds, TrackEpoch,
+        AcqHypothesis, AcqUncertainty, Chips, Constellation, Epoch, Hertz, SampleTime,
+        SamplesFrame, SatId, Seconds, TrackEpoch,
     };
     use bijux_gnss_signal::api::{
         advance_code_phase_seconds, discriminators, first_order_angular_loop_coefficients,
@@ -2005,6 +2005,26 @@ mod tests {
     }
 
     #[test]
+    fn deterministic_transition_rule_grants_short_fade_grace_to_degraded_instability() {
+        let decision = super::deterministic_transition_rule(
+            ChannelState::Degraded,
+            false,
+            false,
+            false,
+            Some(super::LossOfLockCause::DiscriminatorInstability),
+            0,
+            super::DEGRADED_FADE_INSTABILITY_GRACE_EPOCHS,
+            100,
+        );
+        assert_eq!(decision.to_state, ChannelState::Degraded);
+        assert_eq!(decision.reason, "signal_fade");
+        assert_eq!(
+            decision.next_degraded_epochs,
+            super::DEGRADED_FADE_INSTABILITY_GRACE_EPOCHS + 1
+        );
+    }
+
+    #[test]
     fn classify_loss_of_lock_cause_prioritizes_phase_jump() {
         let cause = super::classify_loss_of_lock_cause(ChannelState::Tracking, true, Some(0.9), 3);
 
@@ -2088,6 +2108,39 @@ mod tests {
         ];
 
         assert_eq!(super::sustained_lock_loss_reacquire_seed(&epochs), Some((2.0, 2.5)));
+    }
+
+    #[test]
+    fn reacquisition_seed_matches_respects_acquisition_uncertainty_tolerances() {
+        let tracking = Tracking::new(ReceiverPipelineConfig::default(), ReceiverRuntime::default());
+        let uncertainty = AcqUncertainty { doppler_hz: 250.0, code_phase_samples: 0.75 };
+
+        assert!(tracking.reacquisition_seed_matches(
+            super::ReacquisitionSeed {
+                carrier_hz: 1250.0,
+                code_phase_samples: 42.0,
+                cn0_dbhz: 36.0,
+            },
+            super::ReacquisitionSeed {
+                carrier_hz: 1400.0,
+                code_phase_samples: 42.5,
+                cn0_dbhz: 34.0,
+            },
+            Some(&uncertainty),
+        ));
+        assert!(!tracking.reacquisition_seed_matches(
+            super::ReacquisitionSeed {
+                carrier_hz: 1250.0,
+                code_phase_samples: 42.0,
+                cn0_dbhz: 36.0,
+            },
+            super::ReacquisitionSeed {
+                carrier_hz: 1705.0,
+                code_phase_samples: 43.0,
+                cn0_dbhz: 34.0,
+            },
+            Some(&uncertainty),
+        ));
     }
 
     #[test]
