@@ -413,7 +413,10 @@ fn write_track_artifact_from_bits(path: &Path, sat: SatId, prompt_offset_ms: usi
                 payload: TrackEpoch {
                     epoch: Epoch { index: epoch_idx as u64 },
                     sample_index,
-                    source_time: ReceiverSampleTrace::from_sample_index(sample_index, sample_rate_hz),
+                    source_time: ReceiverSampleTrace::from_sample_index(
+                        sample_index,
+                        sample_rate_hz,
+                    ),
                     sat,
                     prompt_i: 0.25,
                     prompt_q: 0.0,
@@ -698,7 +701,10 @@ fn nav_decode_reports_aligned_lnav_subframes_from_wrapped_track_artifact() {
     assert_eq!(decoded_subframes[1]["how"]["subframe_id"], 2);
     assert_eq!(decoded_subframes[1]["how"]["alert"], true);
     assert_eq!(decoded_subframes[1]["how"]["anti_spoof"], true);
-    assert_eq!(decoded_subframes[1]["word_parity_ok"].as_array().map(|items| items.len()), Some(10));
+    assert_eq!(
+        decoded_subframes[1]["word_parity_ok"].as_array().map(|items| items.len()),
+        Some(10)
+    );
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
 }
@@ -770,7 +776,8 @@ fn nav_decode_reports_lnav_subframe_1_clock_fields_from_wrapped_track_artifact()
     let temp = temp_dir_path("nav_decode_subframe_clock");
     fs::create_dir_all(&temp).expect("create temp dir");
     let sat = SatId { constellation: Constellation::Gps, prn: 12 };
-    let bits = encode_subframe_1_with_clock(3, 987, 0b10_1101, 0x2AB, 21_600, -12, 3_210, -123_456, -20);
+    let bits =
+        encode_subframe_1_with_clock(3, 987, 0b10_1101, 0x2AB, 21_600, -12, 3_210, -123_456, -20);
 
     let track_path = temp.join("track.jsonl");
     write_track_artifact_from_bits(&track_path, sat, 9, &bits);
@@ -906,6 +913,59 @@ fn nav_decode_reports_lnav_orbit_subframes_from_wrapped_track_artifact() {
     assert!(decoded_subframes[1]["clock"].is_null(), "report={report}");
     assert!(decoded_subframes[1]["orbit_subframe_2"].is_null(), "report={report}");
     assert_eq!(decoded_subframes[1]["orbit_subframe_3"]["iode"], 90);
+
+    fs::remove_dir_all(&temp).expect("remove temp dir");
+}
+
+#[test]
+fn nav_decode_reports_explicit_reference_week() {
+    let repo = repo_root();
+    let temp = temp_dir_path("nav_decode_reference_week");
+    fs::create_dir_all(&temp).expect("create temp dir");
+    let sat = SatId { constellation: Constellation::Gps, prn: 12 };
+    let bits =
+        encode_subframe_1_with_clock(3, 987, 0b10_1101, 0x2AB, 21_600, -12, 3_210, -123_456, -20);
+
+    let track_path = temp.join("track.jsonl");
+    write_track_artifact_from_bits(&track_path, sat, 9, &bits);
+
+    let nav_dir = temp.join("nav");
+    fs::create_dir_all(&nav_dir).expect("create nav dir");
+    let nav_output = run_bijux(
+        &[
+            "gnss",
+            "nav",
+            "decode",
+            "--unregistered-dataset",
+            "--track",
+            track_path.to_str().expect("track path"),
+            "--prn",
+            "12",
+            "--reference-week",
+            "2209",
+            "--config",
+            "configs/receiver_low_rate.toml",
+            "--report",
+            "json",
+            "--out",
+            nav_dir.to_str().expect("nav dir"),
+        ],
+        &repo,
+    );
+    assert!(
+        nav_output.status.success(),
+        "nav decode failed: {}",
+        String::from_utf8_lossy(&nav_output.stderr)
+    );
+
+    let report: Value = serde_json::from_str(
+        &fs::read_to_string(nav_dir.join("nav_decode_report.json")).expect("read nav report"),
+    )
+    .expect("parse nav report");
+
+    assert_eq!(report["sat"]["prn"], 12);
+    assert_eq!(report["reference_week"], 2209);
+    assert_eq!(report["decoded_subframes"][0]["clock"]["week"], 987);
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
 }

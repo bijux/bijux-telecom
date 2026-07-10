@@ -143,6 +143,7 @@ fn handle_nav(command: GnssCommand) -> Result<()> {
                         }
                         let report = NavDecodeReport {
                             sat: target,
+                            reference_week,
                             bit_start_ms: demodulation.bit_start_ms,
                             bit_signs,
                             aligned_subframes: decoded_stream

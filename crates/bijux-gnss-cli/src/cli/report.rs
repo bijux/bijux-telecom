@@ -339,6 +339,7 @@ struct TrackingRow {
 #[derive(Debug, Serialize)]
 struct NavDecodeReport {
     sat: SatId,
+    reference_week: Option<u32>,
     bit_start_ms: usize,
     bit_signs: Vec<i8>,
     aligned_subframes: Vec<bijux_gnss_infra::api::nav::GpsL1CaLnavSubframeAlignment>,
