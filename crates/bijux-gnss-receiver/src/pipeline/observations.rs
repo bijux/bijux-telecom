@@ -262,6 +262,7 @@ fn observations_from_tracking_with_provenance(
                 observation_uncertainty_class: observation_uncertainty_label(cn0_dbhz).to_string(),
                 pseudorange_model: pseudorange.model.to_string(),
                 carrier_phase_model: "tracked_carrier_cycles".to_string(),
+                doppler_model: doppler_model_label().to_string(),
                 carrier_phase_continuity: carrier_phase_continuity_label(
                     carrier_phase.continuity,
                 )
@@ -559,6 +560,10 @@ fn observation_support_label(
             support_class_label(ObservationSupportClass::Unsupported)
         }
     }
+}
+
+fn doppler_model_label() -> &'static str {
+    "tracked_carrier_hz_minus_intermediate_freq"
 }
 
 fn pseudorange_from_tracking_epoch(
