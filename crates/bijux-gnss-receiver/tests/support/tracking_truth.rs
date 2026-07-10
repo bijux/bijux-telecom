@@ -78,6 +78,31 @@ pub fn post_lock_epochs(epochs: &[TrackEpoch]) -> &[TrackEpoch] {
     &epochs[first_lock_epoch_index..]
 }
 
+pub fn stable_tracking_window(epochs: &[TrackEpoch], min_locked_epochs: usize) -> &[TrackEpoch] {
+    if min_locked_epochs == 0 {
+        return epochs;
+    }
+
+    for start in 0..epochs.len() {
+        let window = &epochs[start..];
+        if window.len() < min_locked_epochs {
+            return &[];
+        }
+        if window.iter().all(|epoch| {
+            epoch.lock
+                && epoch.lock_state == "tracking"
+                && epoch.pll_lock
+                && epoch.fll_lock
+                && !epoch.cycle_slip
+                && epoch.lock_state_reason.as_deref() != Some("lock_lost")
+        }) {
+            return window;
+        }
+    }
+
+    &[]
+}
+
 pub fn nav_bit_transition_epoch_indices(epochs: &[TrackEpoch], sample_rate_hz: f64) -> Vec<usize> {
     let nav_bit_period_samples = gps_lnav_nav_bit_period_samples(sample_rate_hz);
     epochs
@@ -142,7 +167,7 @@ mod tests {
         code_phase_error_samples, expected_linear_doppler_hz, first_tracking_lock_epoch_index,
         nav_bit_transition_epoch_indices, post_lock_carrier_frequency_errors_hz,
         post_lock_carrier_frequency_errors_under_linear_doppler_hz,
-        post_lock_code_phase_errors_samples, post_lock_epochs,
+        post_lock_code_phase_errors_samples, post_lock_epochs, stable_tracking_window,
         wrapped_code_phase_error_samples,
     };
     use bijux_gnss_core::api::{Chips, Cycles, Epoch, Hertz, TrackEpoch};
@@ -177,11 +202,8 @@ mod tests {
 
     #[test]
     fn carrier_frequency_error_under_linear_doppler_hz_uses_epoch_sample_index() {
-        let epoch = TrackEpoch {
-            sample_index: 8_000,
-            carrier_hz: Hertz(116.5),
-            ..TrackEpoch::default()
-        };
+        let epoch =
+            TrackEpoch { sample_index: 8_000, carrier_hz: Hertz(116.5), ..TrackEpoch::default() };
 
         assert_eq!(
             carrier_frequency_error_under_linear_doppler_hz(&epoch, 4_000.0, 100.0, 8.0),
@@ -268,12 +290,73 @@ mod tests {
         ];
 
         assert_eq!(
-            post_lock_epochs(&epochs)
+            post_lock_epochs(&epochs).iter().map(|epoch| epoch.epoch.index).collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+    }
+
+    #[test]
+    fn stable_tracking_window_returns_first_sustained_tracking_slice() {
+        let epochs = vec![
+            TrackEpoch {
+                lock: true,
+                pll_lock: false,
+                fll_lock: true,
+                lock_state: "pull_in".to_string(),
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                epoch: Epoch { index: 1 },
+                lock: true,
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                epoch: Epoch { index: 2 },
+                lock: true,
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                ..TrackEpoch::default()
+            },
+        ];
+
+        assert_eq!(
+            stable_tracking_window(&epochs, 2)
                 .iter()
                 .map(|epoch| epoch.epoch.index)
                 .collect::<Vec<_>>(),
             vec![1, 2]
         );
+    }
+
+    #[test]
+    fn stable_tracking_window_rejects_short_or_lost_lock_sequences() {
+        let epochs = vec![
+            TrackEpoch {
+                epoch: Epoch { index: 0 },
+                lock: true,
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                lock_state_reason: Some("carrier_converged".to_string()),
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                epoch: Epoch { index: 1 },
+                lock: true,
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                lock_state_reason: Some("lock_lost".to_string()),
+                ..TrackEpoch::default()
+            },
+        ];
+
+        assert!(stable_tracking_window(&epochs, 2).is_empty());
+        assert!(stable_tracking_window(&epochs, 3).is_empty());
     }
 
     #[test]
@@ -285,10 +368,7 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        assert_eq!(
-            nav_bit_transition_epoch_indices(&epochs, 4_092_000.0),
-            vec![20, 40]
-        );
+        assert_eq!(nav_bit_transition_epoch_indices(&epochs, 4_092_000.0), vec![20, 40]);
     }
 
     #[test]
@@ -397,9 +477,6 @@ mod tests {
             },
         ];
 
-        assert_eq!(
-            post_lock_code_phase_errors_samples(&config, &epochs, 2.0),
-            vec![5.0, 2.0]
-        );
+        assert_eq!(post_lock_code_phase_errors_samples(&config, &epochs, 2.0), vec![5.0, 2.0]);
     }
 }
