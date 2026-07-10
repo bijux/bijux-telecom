@@ -134,3 +134,37 @@ pub fn pseudorange_from_truth(
     }
     pseudorange_m
 }
+
+pub fn iterative_pseudorange_residual_m(
+    eph: &GpsEphemeris,
+    observation: &PositionObservation,
+    receiver_ecef_m: (f64, f64, f64),
+    receiver_clock_bias_s: f64,
+    t_rx_s: f64,
+) -> f64 {
+    let receive_tow_s = observation
+        .gps_receive_time
+        .map(|gps_time| gps_time.tow_s)
+        .unwrap_or(t_rx_s);
+    let mut tau = observation
+        .signal_timing
+        .map(|timing| timing.signal_travel_time_s.0)
+        .unwrap_or(observation.pseudorange_m / SPEED_OF_LIGHT_MPS);
+    let mut predicted_pseudorange_m = 0.0;
+    for _ in 0..10 {
+        let state = sat_state_gps_l1ca(eph, receive_tow_s - tau, tau);
+        let dx = receiver_ecef_m.0 - state.x_m;
+        let dy = receiver_ecef_m.1 - state.y_m;
+        let dz = receiver_ecef_m.2 - state.z_m;
+        let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
+        predicted_pseudorange_m = range_m
+            + receiver_clock_bias_s * SPEED_OF_LIGHT_MPS
+            - state.clock_correction.bias_s * SPEED_OF_LIGHT_MPS;
+        let next_tau = predicted_pseudorange_m / SPEED_OF_LIGHT_MPS;
+        if (next_tau - tau).abs() < 1.0e-12 {
+            break;
+        }
+        tau = next_tau;
+    }
+    observation.pseudorange_m - predicted_pseudorange_m
+}
