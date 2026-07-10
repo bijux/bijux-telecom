@@ -72,6 +72,20 @@ sanity checks). Any violation must emit diagnostics and mark the measurement as 
   `δṫ_r(k+1) = δṫ_r(k) + w_d`.
 - Bias is estimated in WLS/PPP; drift is tracked explicitly in filtering models.
 
+## Navigation Consumption Contract
+- Navigation must not solve from fallback code observations that omit `ObsSignalTiming`.
+- `PositionObservation.signal_timing` is required for navigation use and must remain internally
+  consistent with both pseudorange and receive time.
+- Required timing checks:
+  - `signal_travel_time_s` is finite and positive.
+  - `pseudorange_m / c` matches `signal_travel_time_s` within the solver tolerance.
+  - receive time minus transmit time matches `signal_travel_time_s` within the solver tolerance.
+- Receiver behavior:
+  - observations with invalid satellite timing are excluded before navigation solve,
+  - excluded satellites are surfaced as `TimeInconsistency` rejects,
+  - if fewer than four timed GPS observations remain, navigation must refuse with
+    `InvalidSatelliteTime`.
+
 ## Satellite Clock Model
 - Broadcast GPS clock correction is carried as `GpsSatelliteClockCorrection`.
 - Applied broadcast bias:
