@@ -763,6 +763,9 @@ mod pvt_tests {
         let nav_path =
             artifacts_dir(&common, "pvt", None).expect("artifacts dir").join("pvt.jsonl");
         let solutions = read_nav_solutions(&nav_path).expect("read nav solutions");
+        let raw_nav_line = fs::read_to_string(&nav_path).expect("read raw nav artifact");
+        let raw_nav: serde_json::Value =
+            serde_json::from_str(raw_nav_line.lines().next().unwrap_or("")).expect("parse raw nav");
 
         assert_eq!(solutions.len(), 1);
         assert!(solutions[0].valid);
@@ -774,6 +777,17 @@ mod pvt_tests {
         assert!((solutions[0].ecef_z_m.0 - pvt_case.truth_ecef_m.2).abs() < 5.0);
         assert!(solutions[0].clock_bias_s.0.is_finite());
         assert!((solutions[0].clock_bias_s.0 - pvt_case.receiver_clock_bias_s).abs() < 1.0e-9);
+        assert!((solutions[0].clock_bias_m.0 - pvt_case.receiver_clock_bias_s * SPEED_OF_LIGHT_MPS)
+            .abs()
+            < 1.0e-6);
+        assert!((raw_nav["payload"]["clock_bias_s"].as_f64().expect("clock bias seconds")
+            - pvt_case.receiver_clock_bias_s)
+            .abs()
+            < 1.0e-9);
+        assert!((raw_nav["payload"]["clock_bias_m"].as_f64().expect("clock bias meters")
+            - pvt_case.receiver_clock_bias_s * SPEED_OF_LIGHT_MPS)
+            .abs()
+            < 1.0e-6);
 
         fs::remove_dir_all(root).expect("remove test root");
     }
