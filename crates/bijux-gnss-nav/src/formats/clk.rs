@@ -9,6 +9,7 @@ use bijux_gnss_core::api::{Constellation, SatId};
 pub struct ClkRecord {
     pub epoch_s: f64,
     pub bias_s: f64,
+    pub sigma_s: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -35,13 +36,21 @@ impl ClkProvider {
             let hour: u32 = parts[5].parse().map_err(|_| "invalid hour")?;
             let min: u32 = parts[6].parse().map_err(|_| "invalid min")?;
             let sec: f64 = parts[7].parse().map_err(|_| "invalid sec")?;
-            let bias_s: f64 =
-                parts.last().ok_or("missing bias")?.parse().map_err(|_| "invalid bias")?;
+            let value_count: usize = parts[8].parse().map_err(|_| "invalid value count")?;
+            if value_count == 0 || parts.len() < 9 + value_count {
+                return Err("missing clock values".to_string());
+            }
+            let bias_s: f64 = parts[9].parse().map_err(|_| "invalid bias")?;
+            let sigma_s = if value_count >= 2 {
+                Some(parts[10].parse().map_err(|_| "invalid sigma")?)
+            } else {
+                None
+            };
             let days = days_from_civil(year, month, day);
             let epoch_abs = days as f64 * 86_400.0 + hour as f64 * 3600.0 + min as f64 * 60.0 + sec;
             let base = *epoch0.get_or_insert(epoch_abs);
             let epoch_s = epoch_abs - base;
-            records.entry(sat).or_default().push(ClkRecord { epoch_s, bias_s });
+            records.entry(sat).or_default().push(ClkRecord { epoch_s, bias_s, sigma_s });
         }
         Ok(Self { records })
     }
@@ -75,6 +84,36 @@ impl ClkProvider {
                 Some(b.bias_s + w * (a.bias_s - b.bias_s))
             }
             (Some(b), Some(_)) => Some(b.bias_s),
+            _ => None,
+        }
+    }
+
+    pub fn sigma_s(&self, sat: SatId, t_s: f64) -> Option<f64> {
+        let list = self.records.get(&sat)?;
+        if list.len() == 1 {
+            return list[0].sigma_s;
+        }
+        let mut before = None;
+        let mut after = None;
+        for rec in list {
+            if rec.epoch_s <= t_s {
+                before = Some(rec);
+            }
+            if rec.epoch_s >= t_s {
+                after = Some(rec);
+                break;
+            }
+        }
+        match (before, after) {
+            (Some(b), Some(a))
+                if (a.epoch_s - b.epoch_s).abs() > 0.0
+                    && b.sigma_s.is_some()
+                    && a.sigma_s.is_some() =>
+            {
+                let w = (t_s - b.epoch_s) / (a.epoch_s - b.epoch_s);
+                Some(b.sigma_s? + w * (a.sigma_s? - b.sigma_s?))
+            }
+            (Some(b), Some(_)) => b.sigma_s,
             _ => None,
         }
     }
