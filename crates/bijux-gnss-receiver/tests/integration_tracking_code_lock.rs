@@ -3,12 +3,15 @@
 mod support;
 
 use bijux_gnss_core::api::{
-    AcqHypothesis, AcqResult, Constellation, Hertz, ReceiverSampleTrace, SatId, SignalBand,
+    AcqHypothesis, AcqResult, Constellation, Hertz, ReceiverSampleTrace, SampleTime, SamplesFrame,
+    SatId, Seconds, SignalBand,
 };
 use bijux_gnss_receiver::api::{
     sim::{generate_l1_ca, SyntheticSignalParams},
     ReceiverPipelineConfig, ReceiverRuntime, TrackingEngine,
 };
+use bijux_gnss_signal::api::{sample_ca_code, samples_per_code, Prn};
+use num_complex::Complex;
 
 use support::tracking_truth::wrapped_code_phase_error_samples;
 
@@ -113,4 +116,59 @@ fn tracking_reduces_seeded_code_phase_error_from_acquisition_scale_offsets() {
             .expect("tracking assumptions");
         assert_eq!(assumptions.early_late_spacing_chips, 0.5);
     }
+}
+
+#[test]
+fn tracking_steers_code_rate_toward_faster_signal_code() {
+    let config = ReceiverPipelineConfig {
+        sampling_freq_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 1_023_000.0,
+        code_length: 1023,
+        channels: 4,
+        early_late_spacing_chips: 0.5,
+        dll_bw_hz: 900.0,
+        pll_bw_hz: 0.0,
+        fll_bw_hz: 0.0,
+        ..ReceiverPipelineConfig::default()
+    };
+    let sat = SatId { constellation: Constellation::Gps, prn: 19 };
+    let sample_count = samples_per_code(
+        config.sampling_freq_hz,
+        config.code_freq_basis_hz,
+        config.code_length,
+    ) * 12;
+    let signal_code_rate_hz = config.code_freq_basis_hz + 300.0;
+    let code_phase_chips = 144.25;
+    let code_phase_samples =
+        code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
+    let frame = SamplesFrame::new(
+        SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
+        Seconds(1.0 / config.sampling_freq_hz),
+        sample_ca_code(
+            Prn(sat.prn),
+            config.sampling_freq_hz,
+            signal_code_rate_hz,
+            code_phase_chips,
+            sample_count,
+        )
+        .expect("valid sampled code with faster signal code rate")
+        .into_iter()
+        .map(|value| Complex::new(value, 0.0))
+        .collect(),
+    );
+    let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
+
+    let tracks = tracking.track_from_acquisition(
+        &frame,
+        &[accepted_acquisition(sat, 0.0, code_phase_samples.round() as usize)],
+    );
+    let epochs = &tracks.first().expect("track").epochs;
+    let last_epoch = epochs.last().expect("last tracking epoch");
+
+    assert!(
+        last_epoch.code_rate_hz.0 > config.code_freq_basis_hz,
+        "last_code_rate_hz={} epochs={epochs:?}",
+        last_epoch.code_rate_hz.0,
+    );
 }

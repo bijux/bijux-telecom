@@ -191,9 +191,22 @@ fn tracking_correlator_preserves_prompt_phase_across_sixty_second_offset() {
     let offset_code_phase_samples =
         offset_code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
 
-    let first = tracking.correlate_epoch(&first_frame, sat, carrier_hz, code_phase_samples, 0.5);
-    let offset =
-        tracking.correlate_epoch(&offset_frame, sat, carrier_hz, offset_code_phase_samples, 0.5);
+    let first = tracking.correlate_epoch(
+        &first_frame,
+        sat,
+        carrier_hz,
+        config.code_freq_basis_hz,
+        code_phase_samples,
+        0.5,
+    );
+    let offset = tracking.correlate_epoch(
+        &offset_frame,
+        sat,
+        carrier_hz,
+        config.code_freq_basis_hz,
+        offset_code_phase_samples,
+        0.5,
+    );
 
     let first_phase = first.prompt.arg();
     let offset_phase = offset.prompt.arg();

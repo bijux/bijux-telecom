@@ -59,8 +59,14 @@ fn synthetic_nav_bits_flip_prompt_polarity_every_twenty_milliseconds() {
             .expect("valid epoch code phase");
             let epoch_code_phase_samples =
                 epoch_code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
-            let correlator =
-                tracking.correlate_epoch(&epoch_frame, sat, 0.0, epoch_code_phase_samples, 0.5);
+            let correlator = tracking.correlate_epoch(
+                &epoch_frame,
+                sat,
+                0.0,
+                config.code_freq_basis_hz,
+                epoch_code_phase_samples,
+                0.5,
+            );
             correlator.prompt.re as f64
         })
         .collect::<Vec<_>>();
