@@ -1151,6 +1151,31 @@ mod pvt_tests {
     }
 
     #[test]
+    fn pvt_command_decoded_lnav_solution_prefers_earth_rotation_correction() {
+        let ephemerides = sample_ephemerides();
+        let pvt_case = sample_pvt_case(&ephemerides, 2.75e-4);
+        let solution = solve_pvt_case_with_decoded_lnav_reports(
+            "earth_rotation_decoded_lnav",
+            &ephemerides,
+            &pvt_case,
+        );
+
+        let corrected_rms_m =
+            pvt_residual_rms_with_earth_rotation_mode_m(&solution, &ephemerides, &pvt_case, true);
+        let uncorrected_rms_m = pvt_residual_rms_with_earth_rotation_mode_m(
+            &solution,
+            &ephemerides,
+            &pvt_case,
+            false,
+        );
+
+        assert!(solution.valid);
+        assert!(position_error_3d_m(&solution, pvt_case.truth_ecef_m) < 5.0);
+        assert!(corrected_rms_m < 1.0e-3);
+        assert!(uncorrected_rms_m > corrected_rms_m + 1.0);
+    }
+
+    #[test]
     fn pvt_command_downweights_high_variance_satellite() {
         let ephs = sample_ephemerides();
         let low_variance_case = sample_pvt_case_with_adjustments(
