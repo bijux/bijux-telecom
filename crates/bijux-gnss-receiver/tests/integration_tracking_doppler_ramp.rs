@@ -11,6 +11,7 @@ use bijux_gnss_receiver::api::{
 };
 
 use support::tracking_truth::{
+    carrier_frequency_error_under_linear_doppler_hz, code_phase_error_samples,
     first_tracking_lock_epoch_index, post_lock_carrier_frequency_errors_under_linear_doppler_hz,
     post_lock_epochs,
 };
@@ -18,6 +19,7 @@ use support::tracking_truth::{
 const CLEAN_DOPPLER_RAMP_CN0_DB_HZ: f32 = 75.0;
 const CLEAN_DOPPLER_RAMP_DURATION_S: f64 = 0.060;
 const CLEAN_DOPPLER_RAMP_LOCKED_CARRIER_ERROR_MAX_HZ: f64 = 10.0;
+const CLEAN_DOPPLER_RAMP_LOCKED_CODE_ERROR_MAX_SAMPLES: f64 = 1.0;
 
 fn accepted_acquisition(sat: SatId, doppler_hz: f64, code_phase_samples: usize) -> AcqResult {
     AcqResult {
@@ -101,6 +103,26 @@ fn track_clean_doppler_ramp_case(
     tracks.first().expect("track").epochs.clone()
 }
 
+fn stable_tracking_window(
+    epochs: &[bijux_gnss_core::api::TrackEpoch],
+) -> &[bijux_gnss_core::api::TrackEpoch] {
+    epochs
+        .iter()
+        .enumerate()
+        .find_map(|(start, _)| {
+            epochs[start..]
+                .iter()
+                .all(|epoch| {
+                    epoch.lock
+                        && epoch.lock_state == "tracking"
+                        && !epoch.cycle_slip
+                        && epoch.lock_state_reason.as_deref() != Some("lock_lost")
+                })
+                .then_some(&epochs[start..])
+        })
+        .unwrap_or(&[])
+}
+
 #[test]
 fn tracking_reaches_and_preserves_lock_under_positive_doppler_ramp() {
     let config = doppler_ramp_tracking_config();
@@ -157,5 +179,59 @@ fn tracking_keeps_bounded_carrier_error_under_positive_doppler_ramp() {
             .iter()
             .all(|error_hz| *error_hz <= CLEAN_DOPPLER_RAMP_LOCKED_CARRIER_ERROR_MAX_HZ),
         "carrier error exceeded doppler ramp threshold {CLEAN_DOPPLER_RAMP_LOCKED_CARRIER_ERROR_MAX_HZ} Hz: post_lock_errors_hz={post_lock_errors_hz:?}, epochs={epochs:?}"
+    );
+}
+
+#[test]
+fn tracking_preserves_lock_and_code_phase_under_negative_doppler_ramp() {
+    let config = doppler_ramp_tracking_config();
+    let sat = SatId { constellation: Constellation::Gps, prn: 22 };
+    let initial_doppler_hz = -220.0;
+    let doppler_rate_hz_per_s = -35.0;
+    let code_phase_chips = 388.5;
+    let epochs = track_clean_doppler_ramp_case(
+        &config,
+        sat,
+        initial_doppler_hz,
+        doppler_rate_hz_per_s,
+        code_phase_chips,
+        0.15,
+    );
+    let expected_code_phase_samples =
+        code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
+    let stable_window = stable_tracking_window(&epochs);
+    let carrier_errors_hz = stable_window
+        .iter()
+        .map(|epoch| {
+            carrier_frequency_error_under_linear_doppler_hz(
+                epoch,
+                config.sampling_freq_hz,
+                initial_doppler_hz,
+                doppler_rate_hz_per_s,
+            )
+        })
+        .collect::<Vec<_>>();
+    let code_errors_samples = stable_window
+        .iter()
+        .map(|epoch| code_phase_error_samples(&config, epoch, expected_code_phase_samples))
+        .collect::<Vec<_>>();
+
+    assert!(!stable_window.is_empty(), "epochs={epochs:?}");
+    assert!(
+        stable_window.len() >= 40,
+        "tracking did not maintain a long stable window under negative ramp: stable_window_len={}, epochs={epochs:?}",
+        stable_window.len()
+    );
+    assert!(
+        carrier_errors_hz
+            .iter()
+            .all(|error_hz| *error_hz <= CLEAN_DOPPLER_RAMP_LOCKED_CARRIER_ERROR_MAX_HZ),
+        "carrier error exceeded negative-ramp threshold {CLEAN_DOPPLER_RAMP_LOCKED_CARRIER_ERROR_MAX_HZ} Hz: carrier_errors_hz={carrier_errors_hz:?}, epochs={epochs:?}"
+    );
+    assert!(
+        code_errors_samples
+            .iter()
+            .all(|error_samples| *error_samples <= CLEAN_DOPPLER_RAMP_LOCKED_CODE_ERROR_MAX_SAMPLES),
+        "code error exceeded negative-ramp threshold {CLEAN_DOPPLER_RAMP_LOCKED_CODE_ERROR_MAX_SAMPLES} samples: code_errors_samples={code_errors_samples:?}, epochs={epochs:?}"
     );
 }
