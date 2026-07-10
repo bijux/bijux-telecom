@@ -766,6 +766,37 @@ mod nav_trace_tests {
         }
     }
 
+    fn sample_eph(prn: u8, toe_s: f64, toc_s: f64) -> GpsEphemeris {
+        GpsEphemeris {
+            sat: SatId { constellation: Constellation::Gps, prn },
+            iodc: 0,
+            iode: 0,
+            week: 2000,
+            sv_health: 0,
+            toe_s,
+            toc_s,
+            sqrt_a: 5153.7954775,
+            e: 0.01,
+            i0: 0.94,
+            idot: 0.0,
+            omega0: 1.9,
+            omegadot: 0.0,
+            w: 0.2,
+            m0: 0.6,
+            delta_n: 0.0,
+            cuc: 0.0,
+            cus: 0.0,
+            crc: 0.0,
+            crs: 0.0,
+            cic: 0.0,
+            cis: 0.0,
+            af0: 0.0,
+            af1: 0.0,
+            af2: 0.0,
+            tgd: 0.0,
+        }
+    }
+
     #[test]
     fn cli_nav_trace_identity_uses_observation_manifest() {
         let obs = sample_obs_epoch(true);
@@ -799,34 +830,8 @@ mod nav_trace_tests {
         let receive_gps_time =
             bijux_gnss_infra::api::core::GpsTime { week: 2200, tow_s: 345_600.08 };
         let tau_s = 0.074;
-        let eph = GpsEphemeris {
-            sat: SatId { constellation: Constellation::Gps, prn: 8 },
-            iodc: 0,
-            iode: 0,
-            week: receive_gps_time.week,
-            sv_health: 0,
-            toe_s: 345_600.0,
-            toc_s: 345_600.0,
-            sqrt_a: 5153.7954775,
-            e: 0.01,
-            i0: 0.94,
-            idot: 0.0,
-            omega0: 1.9,
-            omegadot: 0.0,
-            w: 0.2,
-            m0: 0.6,
-            delta_n: 0.0,
-            cuc: 0.0,
-            cus: 0.0,
-            crc: 0.0,
-            crs: 0.0,
-            cic: 0.0,
-            cis: 0.0,
-            af0: 0.0,
-            af1: 0.0,
-            af2: 0.0,
-            tgd: 0.0,
-        };
+        let mut eph = sample_eph(8, 345_600.0, 345_600.0);
+        eph.week = receive_gps_time.week;
         let sat = ObsSatellite {
             signal_id: SigId { sat: eph.sat, band: SignalBand::L1, code: SignalCode::Ca },
             pseudorange_m: Meters(tau_s * 299_792_458.0),
@@ -871,6 +876,27 @@ mod nav_trace_tests {
         assert!((from_helper.x_m - uncorrected.x_m).abs() > 0.01);
         assert!((from_helper.y_m - uncorrected.y_m).abs() > 0.01);
     }
+
+    #[test]
+    fn cli_ekf_rejects_stale_ephemeris() {
+        let mut obs = sample_obs_epoch(false);
+        obs.t_rx_s = Seconds(7_201.0);
+        obs.tow_s = Some(Seconds(7_201.0));
+
+        let eph = sample_eph(3, 0.0, 0.0);
+        let mut ctx = Some(EkfContext::new());
+
+        let solution =
+            solve_epoch_ekf(&mut ctx, &obs, &[eph]).expect("cli ekf solve").expect("solution");
+
+        assert_eq!(solution.status, SolutionStatus::Degraded);
+        assert_eq!(solution.used_sat_count, 0);
+        assert_eq!(solution.rejected_sat_count, 1);
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "stale_ephemeris_rejections=1"));
+    }
 }
 
 fn solve_epoch_ekf(
@@ -887,6 +913,7 @@ fn solve_epoch_ekf(
     ctx.ekf.predict(&ctx.model, dt_s);
 
     let mut used = 0;
+    let mut stale_ephemeris_rejections = 0usize;
     let mut sats: Vec<&bijux_gnss_infra::api::core::ObsSatellite> = obs.sats.iter().collect();
     sats.sort_by_key(|s| s.signal_id);
     let sat_count = sats.len();
@@ -896,6 +923,10 @@ fn solve_epoch_ekf(
             Some(e) => e,
             None => continue,
         };
+        if !bijux_gnss_infra::api::nav::is_ephemeris_valid(eph, receive_tow_s) {
+            stale_ephemeris_rejections += 1;
+            continue;
+        }
         let _corr = bijux_gnss_infra::api::nav::compute_corrections(&ctx.corrections);
         let state = cli_nav_satellite_state(sat, eph, receive_tow_s);
         let state_next = cli_nav_satellite_state(sat, eph, receive_tow_s + 0.1);
@@ -993,6 +1024,11 @@ fn solve_epoch_ekf(
     } else {
         bijux_gnss_infra::api::core::SolutionStatus::Float
     };
+    let mut explain_reasons = vec![format!("usable_satellites={used}")];
+    if stale_ephemeris_rejections > 0 {
+        explain_reasons
+            .push(format!("stale_ephemeris_rejections={stale_ephemeris_rejections}"));
+    }
     let mut solution = bijux_gnss_infra::api::core::NavSolutionEpoch {
         epoch: bijux_gnss_infra::api::core::Epoch { index: obs.epoch_idx },
         t_rx_s: obs.t_rx_s,
@@ -1067,7 +1103,7 @@ fn solve_epoch_ekf(
         artifact_id: String::new(),
         source_observation_epoch_id: String::new(),
         explain_decision: "cli_navigation_solution".to_string(),
-        explain_reasons: vec![format!("usable_satellites={used}")],
+        explain_reasons,
         provenance: None,
         sat_count,
         used_sat_count: used,
