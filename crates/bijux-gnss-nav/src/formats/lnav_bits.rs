@@ -670,6 +670,128 @@ mod tests {
         bits
     }
 
+    fn encode_subframe_2_with_orbit(
+        tow_count: u32,
+        iode: u8,
+        crs_raw: i32,
+        delta_n_raw: i32,
+        m0_raw: i32,
+        cuc_raw: i32,
+        e_raw: u32,
+        cus_raw: i32,
+        sqrt_a_raw: u32,
+        toe_raw: u32,
+    ) -> Vec<i8> {
+        let mut tlm = 0_u32;
+        set_bits(&mut tlm, 1, 8, 0x8B);
+
+        let mut how = 0_u32;
+        set_bits(&mut how, 1, 17, tow_count);
+        set_bits(&mut how, 20, 3, 2);
+
+        let mut w3 = 0_u32;
+        set_bits(&mut w3, 1, 8, iode as u32);
+        set_bits(&mut w3, 9, 16, encode_signed(crs_raw, 16));
+
+        let mut w4 = 0_u32;
+        set_bits(&mut w4, 1, 16, encode_signed(delta_n_raw, 16));
+        set_bits(&mut w4, 17, 8, ((m0_raw as u32) >> 24) & 0xFF);
+
+        let mut w5 = 0_u32;
+        set_bits(&mut w5, 1, 24, (m0_raw as u32) & 0xFF_FFFF);
+
+        let mut w6 = 0_u32;
+        set_bits(&mut w6, 1, 16, encode_signed(cuc_raw, 16));
+        set_bits(&mut w6, 17, 8, (e_raw >> 24) & 0xFF);
+
+        let mut w7 = 0_u32;
+        set_bits(&mut w7, 1, 24, e_raw & 0xFF_FFFF);
+
+        let mut w8 = 0_u32;
+        set_bits(&mut w8, 1, 16, encode_signed(cus_raw, 16));
+        set_bits(&mut w8, 17, 8, (sqrt_a_raw >> 24) & 0xFF);
+
+        let mut w9 = 0_u32;
+        set_bits(&mut w9, 1, 24, sqrt_a_raw & 0xFF_FFFF);
+
+        let mut w10 = 0_u32;
+        set_bits(&mut w10, 1, 16, toe_raw);
+
+        let words = [tlm, how, w3, w4, w5, w6, w7, w8, w9, w10];
+
+        let mut prev_d29 = 0_u8;
+        let mut prev_d30 = 0_u8;
+        let mut bits = Vec::with_capacity(GPS_L1CA_LNAV_SUBFRAME_LENGTH_BITS);
+        for data in words {
+            let encoded = encode_word(data, prev_d29, prev_d30);
+            prev_d29 = encoded[28];
+            prev_d30 = encoded[29];
+            bits.extend(encoded.into_iter().map(|bit| if bit == 1 { 1 } else { -1 }));
+        }
+        bits
+    }
+
+    fn encode_subframe_3_with_orbit(
+        tow_count: u32,
+        iode: u8,
+        cic_raw: i32,
+        omega0_raw: i32,
+        cis_raw: i32,
+        i0_raw: i32,
+        crc_raw: i32,
+        w_raw: i32,
+        omegadot_raw: i32,
+        idot_raw: i32,
+    ) -> Vec<i8> {
+        let mut tlm = 0_u32;
+        set_bits(&mut tlm, 1, 8, 0x8B);
+
+        let mut how = 0_u32;
+        set_bits(&mut how, 1, 17, tow_count);
+        set_bits(&mut how, 20, 3, 3);
+
+        let mut w3 = 0_u32;
+        set_bits(&mut w3, 1, 16, encode_signed(cic_raw, 16));
+        set_bits(&mut w3, 17, 8, ((omega0_raw as u32) >> 24) & 0xFF);
+
+        let mut w4 = 0_u32;
+        set_bits(&mut w4, 1, 24, (omega0_raw as u32) & 0xFF_FFFF);
+
+        let mut w5 = 0_u32;
+        set_bits(&mut w5, 1, 16, encode_signed(cis_raw, 16));
+        set_bits(&mut w5, 17, 8, ((i0_raw as u32) >> 24) & 0xFF);
+
+        let mut w6 = 0_u32;
+        set_bits(&mut w6, 1, 24, (i0_raw as u32) & 0xFF_FFFF);
+
+        let mut w7 = 0_u32;
+        set_bits(&mut w7, 1, 16, encode_signed(crc_raw, 16));
+        set_bits(&mut w7, 17, 8, ((w_raw as u32) >> 24) & 0xFF);
+
+        let mut w8 = 0_u32;
+        set_bits(&mut w8, 1, 24, (w_raw as u32) & 0xFF_FFFF);
+
+        let mut w9 = 0_u32;
+        set_bits(&mut w9, 1, 24, encode_signed(omegadot_raw, 24));
+
+        let mut w10 = 0_u32;
+        set_bits(&mut w10, 1, 8, iode as u32);
+        set_bits(&mut w10, 9, 14, encode_signed(idot_raw, 14));
+
+        let words = [tlm, how, w3, w4, w5, w6, w7, w8, w9, w10];
+
+        let mut prev_d29 = 0_u8;
+        let mut prev_d30 = 0_u8;
+        let mut bits = Vec::with_capacity(GPS_L1CA_LNAV_SUBFRAME_LENGTH_BITS);
+        for data in words {
+            let encoded = encode_word(data, prev_d29, prev_d30);
+            prev_d29 = encoded[28];
+            prev_d30 = encoded[29];
+            bits.extend(encoded.into_iter().map(|bit| if bit == 1 { 1 } else { -1 }));
+        }
+        bits
+    }
+
     #[test]
     fn aligned_subframes_report_bit_and_prompt_boundaries() {
         let mut bits = vec![-1; 17];
@@ -786,6 +908,49 @@ mod tests {
         assert!((clock.af1 - 3_210.0 * 2f64.powi(-43)).abs() < f64::EPSILON);
         assert!((clock.af0 - -123_456.0 * 2f64.powi(-31)).abs() < f64::EPSILON);
         assert!((clock.tgd - -20.0 * 2f64.powi(-31)).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn decoded_subframes_emit_subframe_2_and_3_orbit_fields() {
+        let mut bits = encode_subframe_2_with_orbit(
+            3,
+            0xA5,
+            -512,
+            1234,
+            -0x1234_5678,
+            -777,
+            0x0123_4567,
+            911,
+            0x0056_789A,
+            21_600,
+        );
+        bits.extend(encode_subframe_3_with_orbit(
+            4,
+            0x5A,
+            -321,
+            0x2345_6789_u32 as i32,
+            654,
+            -0x1234_0000,
+            2047,
+            0x1112_1314_u32 as i32,
+            -0x34567,
+            0x1234,
+        ));
+
+        let decoded = decode_gps_l1ca_lnav_subframes(&bits, 2);
+
+        assert_eq!(decoded.len(), 2, "decoded={decoded:?}");
+        assert_eq!(decoded[0].how.subframe_id, 2);
+        assert!(decoded[0].clock.is_none());
+        assert!(decoded[0].orbit_subframe_3.is_none());
+        let subframe_2 = decoded[0].orbit_subframe_2.as_ref().expect("subframe 2 orbit");
+        assert_eq!(subframe_2.iode, 0xA5);
+
+        assert_eq!(decoded[1].how.subframe_id, 3);
+        assert!(decoded[1].clock.is_none());
+        assert!(decoded[1].orbit_subframe_2.is_none());
+        let subframe_3 = decoded[1].orbit_subframe_3.as_ref().expect("subframe 3 orbit");
+        assert_eq!(subframe_3.iode, 0x5A);
     }
 
     #[test]
