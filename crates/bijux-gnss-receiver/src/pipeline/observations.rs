@@ -42,10 +42,12 @@ struct PseudorangeComputation {
 #[derive(Debug, Clone)]
 struct CarrierPhaseArcState {
     phase_cycles: f64,
+    doppler_hz: f64,
     last_sample_index: u64,
     arc_start_epoch_idx: u64,
     arc_start_sample_index: u64,
     pending_reset: Option<CarrierPhaseContinuity>,
+    pending_reset_reason: Option<String>,
     initialized: bool,
 }
 
@@ -63,6 +65,7 @@ enum CarrierPhaseContinuity {
 struct CarrierPhaseObservation {
     phase_cycles: Cycles,
     cycle_slip: bool,
+    cycle_slip_reason: Option<String>,
     continuity: CarrierPhaseContinuity,
     arc_start_epoch_idx: u64,
     arc_start_sample_index: u64,
@@ -93,6 +96,9 @@ struct PseudorangeUncertaintyModel {
 }
 
 const GEOFREE_SLIP_THRESHOLD_CYCLES: f64 = 0.5;
+const BASE_CARRIER_PHASE_DISCONTINUITY_THRESHOLD_CYCLES: f64 = 0.25;
+const BASE_CARRIER_PHASE_RESIDUAL_THRESHOLD_CYCLES: f64 = 0.15;
+const BASE_DOPPLER_JUMP_THRESHOLD_HZ: f64 = 150.0;
 
 pub fn observations_from_tracking(
     config: &ReceiverPipelineConfig,
@@ -119,10 +125,12 @@ fn observations_from_tracking_with_provenance(
 
     let mut carrier_phase_state = CarrierPhaseArcState {
         phase_cycles: 0.0,
+        doppler_hz: 0.0,
         last_sample_index: 0,
         arc_start_epoch_idx: 0,
         arc_start_sample_index: 0,
         pending_reset: None,
+        pending_reset_reason: None,
         initialized: false,
     };
 
@@ -188,12 +196,13 @@ fn observations_from_tracking_with_provenance(
             epoch,
             tracked_carrier_phase_cycles,
             doppler_hz.0,
+            config.sampling_freq_hz,
             discontinuity,
             &mut carrier_phase_state,
         );
 
         let cn0_dbhz = epoch.cn0_dbhz;
-        let lock_quality = tracking_lock_quality(epoch);
+        let lock_quality = tracking_lock_quality(epoch, carrier_phase.cycle_slip);
         let tracking_uncertainty = epoch.tracking_uncertainty.clone();
         let pseudorange_uncertainty = pseudorange_uncertainty_model(
             config,
@@ -216,7 +225,11 @@ fn observations_from_tracking_with_provenance(
             classify_observation_status(epoch, cn0_dbhz);
         let observation_lock_state =
             observation_lock_state(epoch, carrier_phase.cycle_slip).to_string();
-        let observation_lock_reason = observation_lock_reason(epoch, carrier_phase.cycle_slip);
+        let observation_lock_reason = observation_lock_reason(
+            epoch,
+            carrier_phase.cycle_slip,
+            carrier_phase.cycle_slip_reason.as_deref(),
+        );
         let mut signal = bijux_gnss_core::api::signal_spec_gps_l1_ca();
         signal.code_rate_hz = config.code_freq_basis_hz;
         let observation_epoch_id = observation_epoch_id(epoch.epoch.index, epoch.sample_index);
@@ -297,6 +310,7 @@ fn observations_from_tracking_with_provenance(
                 tracking_uncertainty,
             },
         };
+        apply_cycle_slip_surface(&mut sat, carrier_phase.cycle_slip_reason.as_deref());
         apply_pseudorange_physics_rejection(&mut sat);
         sat.metadata.observation_status =
             observation_status_label(sat.observation_status).to_string();
@@ -410,28 +424,34 @@ pub fn observations_from_tracking_results_with_gps_anchor(
                     entry.sats.push(sat);
                     continue;
                 }
+                let supports_code_carrier_slip_detection =
+                    sat.metadata.pseudorange_model == "tracked_code_phase_alignment";
                 let raw_pseudorange_m = sat.pseudorange_m.0;
                 let raw_divergence_m = raw_pseudorange_m - sat.carrier_phase_cycles.0 * lambda_m;
                 let threshold_m = slip_threshold_m(sat.cn0_dbhz, sat.elevation_deg);
                 let mut divergence_jump = 0.0;
-                if state.initialized {
+                let mut smoothing_cycle_slip_reason = None;
+                if supports_code_carrier_slip_detection && state.initialized {
                     divergence_jump = (raw_divergence_m - state.last_divergence_m).abs();
                     if divergence_jump > threshold_m {
-                        sat.lock_flags.cycle_slip = true;
+                        smoothing_cycle_slip_reason = Some("code_carrier_divergence");
                     }
                 }
                 // Geometry-free/Melbourne-Wubbena style placeholder for cycle slip detection.
                 let gf_cycles = sat.carrier_phase_cycles.0 - raw_pseudorange_m / lambda_m;
-                if let Some(last_gf_cycles) = slips
-                    .get(&sat.signal_id)
-                    .filter(|slip_state| slip_state.initialized)
-                    .map(|slip_state| slip_state.last_gf_cycles)
-                {
-                    let delta = gf_cycles - last_gf_cycles;
-                    if delta.abs() > GEOFREE_SLIP_THRESHOLD_CYCLES {
-                        sat.lock_flags.cycle_slip = true;
+                if supports_code_carrier_slip_detection {
+                    if let Some(last_gf_cycles) = slips
+                        .get(&sat.signal_id)
+                        .filter(|slip_state| slip_state.initialized)
+                        .map(|slip_state| slip_state.last_gf_cycles)
+                    {
+                        let delta = gf_cycles - last_gf_cycles;
+                        if delta.abs() > GEOFREE_SLIP_THRESHOLD_CYCLES {
+                            smoothing_cycle_slip_reason.get_or_insert("geometry_free_jump");
+                        }
                     }
                 }
+                apply_cycle_slip_surface(&mut sat, smoothing_cycle_slip_reason);
                 if sat.lock_flags.cycle_slip {
                     if state.initialized {
                         state.resets = state.resets.saturating_add(1);
@@ -462,10 +482,14 @@ pub fn observations_from_tracking_results_with_gps_anchor(
                 sat.metadata.smoothing_window = hatch_window;
                 sat.metadata.smoothing_age = state.age;
                 sat.metadata.smoothing_resets = state.resets;
-                slips.insert(
-                    sat.signal_id,
-                    CycleSlipState { last_gf_cycles: gf_cycles, initialized: true },
-                );
+                if supports_code_carrier_slip_detection {
+                    slips.insert(
+                        sat.signal_id,
+                        CycleSlipState { last_gf_cycles: gf_cycles, initialized: true },
+                    );
+                } else {
+                    slips.remove(&sat.signal_id);
+                }
                 sat.multipath_suspect = divergence_jump > threshold_m * 0.8;
                 sat.error_model = Some(observation_error_model(&sat, divergence_jump));
                 apply_pseudorange_physics_rejection(&mut sat);
@@ -644,44 +668,92 @@ fn carrier_phase_observation(
     epoch: &TrackEpoch,
     tracked_carrier_phase_cycles: f64,
     doppler_hz: f64,
+    sample_rate_hz: f64,
     discontinuity: bool,
     state: &mut CarrierPhaseArcState,
 ) -> CarrierPhaseObservation {
     if !carrier_phase_tracking_usable(epoch) {
+        let mut cycle_slip_reason = None;
         if epoch.cycle_slip {
+            cycle_slip_reason = Some(explicit_cycle_slip_reason(epoch, "cycle_slip"));
             record_pending_reset(
                 &mut state.pending_reset,
+                &mut state.pending_reset_reason,
                 CarrierPhaseContinuity::ResetAfterCycleSlip,
+                cycle_slip_reason.as_deref(),
             );
         } else if discontinuity {
             record_pending_reset(
                 &mut state.pending_reset,
+                &mut state.pending_reset_reason,
                 CarrierPhaseContinuity::ResetAfterDiscontinuity,
+                Some("sample_discontinuity"),
             );
         } else if state.initialized {
+            cycle_slip_reason = Some("loss_of_lock".to_string());
             record_pending_reset(
                 &mut state.pending_reset,
+                &mut state.pending_reset_reason,
                 CarrierPhaseContinuity::ResetAfterUnlock,
+                cycle_slip_reason.as_deref(),
             );
         }
         state.initialized = false;
         return CarrierPhaseObservation {
             phase_cycles: Cycles(tracked_carrier_phase_cycles),
-            cycle_slip: epoch.cycle_slip,
+            cycle_slip: cycle_slip_reason.is_some(),
+            cycle_slip_reason,
             continuity: CarrierPhaseContinuity::Unusable,
             arc_start_epoch_idx: 0,
             arc_start_sample_index: 0,
         };
     }
 
-    let predicted_slip = state.initialized
-        && (tracked_carrier_phase_cycles - (state.phase_cycles + doppler_hz * 0.001)).abs() > 0.25;
-    let reset_reason = if epoch.cycle_slip || predicted_slip {
-        Some(CarrierPhaseContinuity::ResetAfterCycleSlip)
+    let delta_seconds =
+        carrier_phase_delta_seconds(state.last_sample_index, epoch.sample_index, sample_rate_hz);
+    let observed_phase_delta_cycles = tracked_carrier_phase_cycles - state.phase_cycles;
+    let predicted_from_previous_doppler_cycles = state.doppler_hz * delta_seconds;
+    let predicted_from_trapezoid_cycles = 0.5 * (state.doppler_hz + doppler_hz) * delta_seconds;
+    let phase_discontinuity = state.initialized
+        && (observed_phase_delta_cycles - predicted_from_previous_doppler_cycles).abs()
+            > carrier_phase_discontinuity_threshold_cycles(epoch);
+    let doppler_jump = state.initialized
+        && (doppler_hz - state.doppler_hz).abs() > doppler_jump_threshold_hz(epoch);
+    let phase_residual = state.initialized
+        && (observed_phase_delta_cycles - predicted_from_trapezoid_cycles).abs()
+            > carrier_phase_residual_threshold_cycles(epoch);
+    let explicit_reset = if epoch.cycle_slip {
+        Some((
+            CarrierPhaseContinuity::ResetAfterCycleSlip,
+            explicit_cycle_slip_reason(epoch, "cycle_slip"),
+        ))
     } else if discontinuity && state.initialized {
-        Some(CarrierPhaseContinuity::ResetAfterDiscontinuity)
+        Some((
+            CarrierPhaseContinuity::ResetAfterDiscontinuity,
+            "sample_discontinuity".to_string(),
+        ))
+    } else if doppler_jump {
+        Some((
+            CarrierPhaseContinuity::ResetAfterCycleSlip,
+            "doppler_jump".to_string(),
+        ))
+    } else if phase_discontinuity {
+        Some((
+            CarrierPhaseContinuity::ResetAfterCycleSlip,
+            "carrier_phase_discontinuity".to_string(),
+        ))
+    } else if phase_residual {
+        Some((
+            CarrierPhaseContinuity::ResetAfterCycleSlip,
+            "phase_residual".to_string(),
+        ))
     } else {
-        state.pending_reset.take()
+        None
+    };
+    let (reset_reason, cycle_slip_reason) = if let Some((continuity, reason)) = explicit_reset {
+        (Some(continuity), Some(reason))
+    } else {
+        (state.pending_reset.take(), state.pending_reset_reason.take())
     };
 
     let continuity = if !state.initialized {
@@ -691,7 +763,7 @@ fn carrier_phase_observation(
     } else {
         CarrierPhaseContinuity::Continuous
     };
-    let cycle_slip = matches!(
+    let cycle_slip = cycle_slip_reason.is_some() || matches!(
         continuity,
         CarrierPhaseContinuity::ResetAfterCycleSlip
             | CarrierPhaseContinuity::ResetAfterUnlock
@@ -703,12 +775,14 @@ fn carrier_phase_observation(
         state.arc_start_sample_index = epoch.sample_index;
     }
     state.phase_cycles = tracked_carrier_phase_cycles;
+    state.doppler_hz = doppler_hz;
     state.last_sample_index = epoch.sample_index;
     state.initialized = true;
 
     CarrierPhaseObservation {
         phase_cycles: Cycles(tracked_carrier_phase_cycles),
         cycle_slip,
+        cycle_slip_reason,
         continuity,
         arc_start_epoch_idx: state.arc_start_epoch_idx,
         arc_start_sample_index: state.arc_start_sample_index,
@@ -722,9 +796,77 @@ fn carrier_phase_tracking_usable(epoch: &TrackEpoch) -> bool {
         && epoch.carrier_phase_cycles.0.is_finite()
 }
 
+fn explicit_cycle_slip_reason(epoch: &TrackEpoch, fallback: &str) -> String {
+    epoch
+        .cycle_slip_reason
+        .clone()
+        .or_else(|| epoch.lock_state_reason.clone())
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+fn carrier_phase_delta_seconds(
+    previous_sample_index: u64,
+    current_sample_index: u64,
+    sample_rate_hz: f64,
+) -> f64 {
+    if !sample_rate_hz.is_finite() || sample_rate_hz <= 0.0 {
+        return 0.0;
+    }
+    current_sample_index.saturating_sub(previous_sample_index) as f64 / sample_rate_hz
+}
+
+fn carrier_phase_discontinuity_threshold_cycles(epoch: &TrackEpoch) -> f64 {
+    carrier_phase_threshold_cycles(
+        BASE_CARRIER_PHASE_DISCONTINUITY_THRESHOLD_CYCLES,
+        epoch.cn0_dbhz,
+        epoch.tracking_uncertainty
+            .as_ref()
+            .map(|uncertainty| uncertainty.carrier_phase_cycles * 6.0)
+            .unwrap_or(0.0),
+    )
+}
+
+fn carrier_phase_residual_threshold_cycles(epoch: &TrackEpoch) -> f64 {
+    carrier_phase_threshold_cycles(
+        BASE_CARRIER_PHASE_RESIDUAL_THRESHOLD_CYCLES,
+        epoch.cn0_dbhz,
+        epoch.tracking_uncertainty
+            .as_ref()
+            .map(|uncertainty| uncertainty.carrier_phase_cycles * 4.0)
+            .unwrap_or(0.0),
+    )
+}
+
+fn carrier_phase_threshold_cycles(base_threshold_cycles: f64, cn0_dbhz: f64, floor: f64) -> f64 {
+    let cn0_scale = if cn0_dbhz.is_finite() {
+        (45.0 / cn0_dbhz.clamp(25.0, 60.0)).sqrt()
+    } else {
+        1.5
+    };
+    (base_threshold_cycles * cn0_scale).max(base_threshold_cycles).max(floor)
+}
+
+fn doppler_jump_threshold_hz(epoch: &TrackEpoch) -> f64 {
+    let cn0_scale = if epoch.cn0_dbhz.is_finite() {
+        45.0 / epoch.cn0_dbhz.clamp(25.0, 60.0)
+    } else {
+        2.0
+    };
+    let uncertainty_floor = epoch
+        .tracking_uncertainty
+        .as_ref()
+        .map(|uncertainty| (uncertainty.doppler_hz * 6.0).max(25.0))
+        .unwrap_or(0.0);
+    (BASE_DOPPLER_JUMP_THRESHOLD_HZ * cn0_scale)
+        .max(BASE_DOPPLER_JUMP_THRESHOLD_HZ)
+        .max(uncertainty_floor)
+}
+
 fn record_pending_reset(
     pending: &mut Option<CarrierPhaseContinuity>,
+    pending_reason: &mut Option<String>,
     candidate: CarrierPhaseContinuity,
+    reason: Option<&str>,
 ) {
     if pending
         .map(|current| {
@@ -733,6 +875,7 @@ fn record_pending_reset(
         .unwrap_or(true)
     {
         *pending = Some(candidate);
+        *pending_reason = reason.map(str::to_string);
     }
 }
 
@@ -940,7 +1083,7 @@ fn observation_error_model(
     }
 }
 
-fn tracking_lock_quality(epoch: &TrackEpoch) -> f64 {
+fn tracking_lock_quality(epoch: &TrackEpoch, observation_cycle_slip: bool) -> f64 {
     let mut quality =
         if epoch.cn0_dbhz.is_finite() { (epoch.cn0_dbhz / 60.0).clamp(0.0, 1.0) } else { 0.0 };
     if epoch.anti_false_lock {
@@ -960,6 +1103,9 @@ fn tracking_lock_quality(epoch: &TrackEpoch) -> f64 {
     }
     if !epoch.fll_lock {
         quality *= 0.9;
+    }
+    if observation_cycle_slip {
+        quality *= 0.2;
     }
     quality
 }
@@ -983,11 +1129,15 @@ fn observation_lock_state(epoch: &TrackEpoch, observation_cycle_slip: bool) -> &
     }
 }
 
-fn observation_lock_reason(epoch: &TrackEpoch, observation_cycle_slip: bool) -> Option<String> {
+fn observation_lock_reason(
+    epoch: &TrackEpoch,
+    observation_cycle_slip: bool,
+    cycle_slip_reason: Option<&str>,
+) -> Option<String> {
     if observation_cycle_slip {
-        return epoch
-            .cycle_slip_reason
-            .clone()
+        return cycle_slip_reason
+            .map(str::to_string)
+            .or_else(|| epoch.cycle_slip_reason.clone())
             .or_else(|| epoch.lock_state_reason.clone())
             .or_else(|| Some("cycle_slip".to_string()));
     }
@@ -995,6 +1145,39 @@ fn observation_lock_reason(epoch: &TrackEpoch, observation_cycle_slip: bool) -> 
         .lock_state_reason
         .clone()
         .or_else(|| epoch.anti_false_lock.then(|| "anti_false_lock".to_string()))
+}
+
+fn apply_cycle_slip_surface(sat: &mut ObsSatellite, reason: Option<&str>) {
+    if !sat.lock_flags.cycle_slip && reason.is_none() {
+        return;
+    }
+    let already_cycle_slip = sat.metadata.observation_lock_state == "cycle_slip";
+    sat.lock_flags.cycle_slip = true;
+    push_observation_reject_reason(&mut sat.observation_reject_reasons, "cycle_slip");
+    if let Some(reason) = reason {
+        push_observation_reject_reason(&mut sat.observation_reject_reasons, reason);
+    }
+    sat.metadata.observation_lock_state = "cycle_slip".to_string();
+    sat.metadata.tracking_lock_state = "cycle_slip".to_string();
+    if !already_cycle_slip
+        || sat
+            .metadata
+            .observation_lock_reason
+            .as_deref()
+            .is_none_or(|current| current == "cycle_slip")
+    {
+        sat.metadata.observation_lock_reason =
+            Some(reason.unwrap_or("cycle_slip").to_string());
+    }
+    sat.metadata.lock_quality *= 0.2;
+}
+
+fn push_observation_reject_reason(reasons: &mut Vec<String>, reason: &str) {
+    if reasons.iter().any(|existing| existing == reason) {
+        return;
+    }
+    reasons.push(reason.to_string());
+    reasons.sort();
 }
 
 fn tracking_time_tag(epoch: &TrackEpoch, last_locked_sample: &mut Option<u64>) -> (String, u64) {
