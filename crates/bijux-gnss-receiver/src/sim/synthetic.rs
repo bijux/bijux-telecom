@@ -52,6 +52,16 @@ pub struct SyntheticFadeWindow {
     pub signal_scale: f32,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPhaseWindow {
+    /// Phase-offset start time in seconds, inclusive.
+    pub start_s: f64,
+    /// Phase-offset end time in seconds, exclusive.
+    pub end_s: f64,
+    /// Additive carrier phase offset applied inside the window.
+    pub phase_offset_rad: f64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyntheticScenario {
     pub sample_rate_hz: f64,
@@ -2240,6 +2250,30 @@ pub fn generate_l1_ca_with_fades(
     SamplesFrame::new(signal_only.t0, Seconds(dt_s), iq)
 }
 
+/// Generate a synthetic GPS L1 C/A signal with deterministic carrier phase-offset windows.
+pub fn generate_l1_ca_with_phase_windows(
+    config: &ReceiverPipelineConfig,
+    params: SyntheticSignalParams,
+    phase_windows: &[SyntheticPhaseWindow],
+    seed: u64,
+    duration_s: f64,
+) -> SamplesFrame {
+    let mut signal_only = generate_l1_ca_signal_only(config, params, duration_s);
+    apply_synthetic_phase_windows(&mut signal_only, phase_windows);
+    let clock = SampleClock::new(config.sampling_freq_hz);
+    let dt_s = clock.dt_s();
+    let noise_std = SYNTHETIC_NOISE_STD_PER_COMPONENT;
+    let mut rng = XorShift64::new(seed);
+    let mut iq = Vec::with_capacity(signal_only.len());
+    for sample in signal_only.iq {
+        let noise_i = rng.next_gaussian() * noise_std;
+        let noise_q = rng.next_gaussian() * noise_std;
+        let noise = Complex::new(noise_i, noise_q);
+        iq.push(sample + noise);
+    }
+    SamplesFrame::new(signal_only.t0, Seconds(dt_s), iq)
+}
+
 pub fn generate_l1_ca_multi(
     config: &ReceiverPipelineConfig,
     scenario: &SyntheticScenario,
@@ -2326,6 +2360,23 @@ fn apply_synthetic_fade_windows(frame: &mut SamplesFrame, fade_windows: &[Synthe
     }
 }
 
+fn apply_synthetic_phase_windows(frame: &mut SamplesFrame, phase_windows: &[SyntheticPhaseWindow]) {
+    if phase_windows.is_empty() {
+        return;
+    }
+
+    let sample_rate_hz = frame.t0.sample_rate_hz;
+    for (offset, sample) in frame.iq.iter_mut().enumerate() {
+        let sample_time_s = (frame.t0.sample_index as f64 + offset as f64) / sample_rate_hz;
+        let phase_offset_rad = synthetic_phase_offset_at_time_s(phase_windows, sample_time_s);
+        if phase_offset_rad.abs() <= f64::EPSILON {
+            continue;
+        }
+        let rotation = Complex::from_polar(1.0_f32, phase_offset_rad as f32);
+        *sample *= rotation;
+    }
+}
+
 fn synthetic_signal_scale_at_time_s(
     fade_windows: &[SyntheticFadeWindow],
     sample_time_s: f64,
@@ -2334,6 +2385,17 @@ fn synthetic_signal_scale_at_time_s(
         .iter()
         .filter(|window| sample_time_s >= window.start_s && sample_time_s < window.end_s)
         .fold(1.0_f32, |signal_scale, window| signal_scale * window.signal_scale)
+}
+
+fn synthetic_phase_offset_at_time_s(
+    phase_windows: &[SyntheticPhaseWindow],
+    sample_time_s: f64,
+) -> f64 {
+    phase_windows
+        .iter()
+        .filter(|window| sample_time_s >= window.start_s && sample_time_s < window.end_s)
+        .map(|window| window.phase_offset_rad)
+        .sum()
 }
 
 fn generate_l1_ca_multi_signal_only(
@@ -2771,6 +2833,7 @@ mod tests {
         build_iq16_capture_bundle, build_truth_bundle, expected_acquisition_code_phase_samples,
         expected_acquisition_code_phase_samples_f64, generate_l1_ca, generate_l1_ca_multi,
         generate_l1_ca_with_doppler_ramp, generate_l1_ca_with_fades,
+        generate_l1_ca_with_phase_windows,
         measure_noise_only_acquisition_false_alarm_rate,
         measure_noise_only_acquisition_false_alarm_rates,
         measure_truth_guided_acquisition_detection_probability,
@@ -2785,7 +2848,8 @@ mod tests {
         wrapped_code_phase_error_samples, wrapped_code_phase_error_samples_f64, SatState,
         SyntheticAcquisitionDetectionRateCase, SyntheticAcquisitionFalseAlarmRateCase,
         SyntheticAcquisitionSampleRateValidationCase, SyntheticDopplerRampParams,
-        SyntheticFadeWindow, SyntheticNavBitMode, SyntheticScenario, SyntheticSignalParams,
+        SyntheticFadeWindow, SyntheticNavBitMode, SyntheticPhaseWindow, SyntheticScenario,
+        SyntheticSignalParams,
         SyntheticSignalSource, SyntheticTrackingLockRateCase, SyntheticTrackingSensitivityTrial,
         SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
     };
@@ -3159,6 +3223,82 @@ mod tests {
             baseline.iq[fade_start..fade_end] != faded.iq[fade_start..fade_end],
             "the attenuated window must differ from the unfaded baseline"
         );
+    }
+
+    #[test]
+    fn synthetic_phase_window_rotates_signal_only_inside_configured_window() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 1_023_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let params = SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Gps, prn: 5 },
+            doppler_hz: 0.0,
+            code_phase_chips: 0.0,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 60.0,
+            data_bit_flip: false,
+        };
+        let mut signal_only = super::generate_l1_ca_signal_only(&config, params, 0.010);
+        super::apply_synthetic_phase_windows(
+            &mut signal_only,
+            &[SyntheticPhaseWindow {
+                start_s: 0.002,
+                end_s: 0.004,
+                phase_offset_rad: std::f64::consts::FRAC_PI_2,
+            }],
+        );
+
+        let phase_start = (0.002 * config.sampling_freq_hz).round() as usize;
+        let phase_end = (0.004 * config.sampling_freq_hz).round() as usize;
+        assert!(signal_only.iq[..phase_start].iter().all(|sample| sample.im.abs() <= 1.0e-6));
+        assert!(
+            signal_only.iq[phase_start..phase_end]
+                .iter()
+                .any(|sample| sample.im.abs() > 1.0e-3),
+            "windowed samples must carry a rotated quadrature component"
+        );
+        assert!(signal_only.iq[phase_end..].iter().all(|sample| sample.im.abs() <= 1.0e-6));
+    }
+
+    #[test]
+    fn synthetic_phase_generator_preserves_noise_outside_the_rotated_window() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 1_023_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let params = SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Gps, prn: 5 },
+            doppler_hz: 0.0,
+            code_phase_chips: 0.0,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 60.0,
+            data_bit_flip: false,
+        };
+        let baseline = generate_l1_ca(&config, params, 0xFACE_0001, 0.010);
+        let rotated = generate_l1_ca_with_phase_windows(
+            &config,
+            params,
+            &[SyntheticPhaseWindow {
+                start_s: 0.002,
+                end_s: 0.004,
+                phase_offset_rad: 0.8,
+            }],
+            0xFACE_0001,
+            0.010,
+        );
+
+        let phase_start = (0.002 * config.sampling_freq_hz).round() as usize;
+        let phase_end = (0.004 * config.sampling_freq_hz).round() as usize;
+        assert_eq!(baseline.iq[..phase_start], rotated.iq[..phase_start]);
+        assert_eq!(baseline.iq[phase_end..], rotated.iq[phase_end..]);
+        assert_ne!(baseline.iq[phase_start..phase_end], rotated.iq[phase_start..phase_end]);
     }
 
     #[test]
