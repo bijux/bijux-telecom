@@ -8,6 +8,14 @@ use bijux_gnss_nav::api::{
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct BroadcastClockParameters {
+    pub af0_s: f64,
+    pub af1_s_per_s: f64,
+    pub af2_s_per_s2: f64,
+    pub tgd_s: f64,
+}
+
 #[derive(Debug, Clone)]
 pub struct SyntheticPositionScenario {
     pub ephemerides: Vec<GpsEphemeris>,
@@ -20,7 +28,16 @@ pub struct SyntheticPositionScenario {
 pub fn four_satellite_position_scenario(
     receiver_clock_bias_s: f64,
 ) -> SyntheticPositionScenario {
-    let ephemerides = sample_ephemerides();
+    four_satellite_position_scenario_with_ephemerides(
+        receiver_clock_bias_s,
+        sample_ephemerides(),
+    )
+}
+
+pub fn four_satellite_position_scenario_with_ephemerides(
+    receiver_clock_bias_s: f64,
+    ephemerides: Vec<GpsEphemeris>,
+) -> SyntheticPositionScenario {
     let truth_ecef_m = geodetic_to_ecef(37.0, -122.0, 10.0);
     let t_rx_s = 504_018.07 + receiver_clock_bias_s;
     let observations = ephemerides
@@ -45,15 +62,54 @@ pub fn four_satellite_position_scenario(
 }
 
 pub fn sample_ephemerides() -> Vec<GpsEphemeris> {
+    sample_ephemerides_with_clock_parameters(&[])
+}
+
+pub fn sample_ephemerides_with_clock_parameters(
+    clock_parameters_by_prn: &[(u8, BroadcastClockParameters)],
+) -> Vec<GpsEphemeris> {
+    let clock_parameters_by_prn = clock_parameters_by_prn
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeMap<_, _>>();
     vec![
-        sample_ephemeris(1, 0.0, 0.0),
-        sample_ephemeris(2, 0.8, 0.9),
-        sample_ephemeris(3, 1.6, 1.8),
-        sample_ephemeris(4, 2.4, 2.7),
+        sample_ephemeris_with_clock_parameters(
+            1,
+            0.0,
+            0.0,
+            clock_parameters_by_prn.get(&1).copied().unwrap_or_default(),
+        ),
+        sample_ephemeris_with_clock_parameters(
+            2,
+            0.8,
+            0.9,
+            clock_parameters_by_prn.get(&2).copied().unwrap_or_default(),
+        ),
+        sample_ephemeris_with_clock_parameters(
+            3,
+            1.6,
+            1.8,
+            clock_parameters_by_prn.get(&3).copied().unwrap_or_default(),
+        ),
+        sample_ephemeris_with_clock_parameters(
+            4,
+            2.4,
+            2.7,
+            clock_parameters_by_prn.get(&4).copied().unwrap_or_default(),
+        ),
     ]
 }
 
 pub fn sample_ephemeris(prn: u8, omega0: f64, m0: f64) -> GpsEphemeris {
+    sample_ephemeris_with_clock_parameters(prn, omega0, m0, BroadcastClockParameters::default())
+}
+
+pub fn sample_ephemeris_with_clock_parameters(
+    prn: u8,
+    omega0: f64,
+    m0: f64,
+    clock_parameters: BroadcastClockParameters,
+) -> GpsEphemeris {
     GpsEphemeris {
         sat: SatId { constellation: Constellation::Gps, prn },
         iodc: 1,
@@ -77,11 +133,25 @@ pub fn sample_ephemeris(prn: u8, omega0: f64, m0: f64) -> GpsEphemeris {
         crs: 0.0,
         cic: 0.0,
         cis: 0.0,
-        af0: 0.0,
-        af1: 0.0,
-        af2: 0.0,
-        tgd: 0.0,
+        af0: clock_parameters.af0_s,
+        af1: clock_parameters.af1_s_per_s,
+        af2: clock_parameters.af2_s_per_s2,
+        tgd: clock_parameters.tgd_s,
     }
+}
+
+pub fn clear_broadcast_clock_parameters(ephemerides: &[GpsEphemeris]) -> Vec<GpsEphemeris> {
+    ephemerides
+        .iter()
+        .cloned()
+        .map(|mut ephemeris| {
+            ephemeris.af0 = 0.0;
+            ephemeris.af1 = 0.0;
+            ephemeris.af2 = 0.0;
+            ephemeris.tgd = 0.0;
+            ephemeris
+        })
+        .collect()
 }
 
 pub fn timed_position_observation(sat: SatId, pseudorange_m: f64, t_rx_s: f64) -> PositionObservation {
