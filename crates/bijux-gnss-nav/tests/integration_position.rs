@@ -10,9 +10,73 @@ use bijux_gnss_nav::api::{
     PositionSolver,
 };
 use support::position_truth::{
-    four_satellite_position_scenario, iterative_pseudorange_residual_m, sample_ephemerides, sample_ephemeris,
-    timed_position_observation,
+    clear_broadcast_clock_parameters, four_satellite_position_scenario,
+    four_satellite_position_scenario_with_ephemerides, iterative_pseudorange_residual_m,
+    sample_ephemerides, sample_ephemerides_with_clock_parameters, sample_ephemeris,
+    timed_position_observation, BroadcastClockParameters, SyntheticPositionScenario,
 };
+
+fn broadcast_clock_fixture_parameters() -> [(u8, BroadcastClockParameters); 4] {
+    [
+        (
+            1,
+            BroadcastClockParameters {
+                af0_s: 240.0e-9,
+                af1_s_per_s: 0.0,
+                af2_s_per_s2: 0.0,
+                tgd_s: -8.0e-9,
+            },
+        ),
+        (
+            2,
+            BroadcastClockParameters {
+                af0_s: -170.0e-9,
+                af1_s_per_s: 0.0,
+                af2_s_per_s2: 0.0,
+                tgd_s: 6.0e-9,
+            },
+        ),
+        (
+            3,
+            BroadcastClockParameters {
+                af0_s: 330.0e-9,
+                af1_s_per_s: 0.0,
+                af2_s_per_s2: 0.0,
+                tgd_s: -4.0e-9,
+            },
+        ),
+        (
+            4,
+            BroadcastClockParameters {
+                af0_s: -95.0e-9,
+                af1_s_per_s: 0.0,
+                af2_s_per_s2: 0.0,
+                tgd_s: 10.0e-9,
+            },
+        ),
+    ]
+}
+
+fn broadcast_clock_position_scenario(
+    receiver_clock_bias_s: f64,
+) -> SyntheticPositionScenario {
+    four_satellite_position_scenario_with_ephemerides(
+        receiver_clock_bias_s,
+        sample_ephemerides_with_clock_parameters(&broadcast_clock_fixture_parameters()),
+    )
+}
+
+fn position_error_3d_m(
+    ecef_x_m: f64,
+    ecef_y_m: f64,
+    ecef_z_m: f64,
+    truth_ecef_m: (f64, f64, f64),
+) -> f64 {
+    let dx = ecef_x_m - truth_ecef_m.0;
+    let dy = ecef_y_m - truth_ecef_m.1;
+    let dz = ecef_z_m - truth_ecef_m.2;
+    (dx * dx + dy * dy + dz * dz).sqrt()
+}
 
 #[test]
 fn position_solver_returns_solution() {
@@ -188,6 +252,36 @@ fn single_point_solver_refreshes_biased_geometry_after_state_update() {
     }
 }
 
+#[test]
+fn single_point_solver_uses_broadcast_satellite_clock_correction() {
+    let scenario = broadcast_clock_position_scenario(2.75e-4);
+    let zero_clock_ephemerides = clear_broadcast_clock_parameters(&scenario.ephemerides);
+
+    let corrected_solution = PositionSolver::new()
+        .solve_wls(&scenario.observations, &scenario.ephemerides, scenario.t_rx_s)
+        .expect("broadcast clock corrected position should solve");
+    let zero_clock_solution = PositionSolver::new()
+        .solve_wls(&scenario.observations, &zero_clock_ephemerides, scenario.t_rx_s)
+        .expect("zero-clock comparison position should still solve");
+
+    let corrected_error_m = position_error_3d_m(
+        corrected_solution.ecef_x_m,
+        corrected_solution.ecef_y_m,
+        corrected_solution.ecef_z_m,
+        scenario.truth_ecef_m,
+    );
+    let zero_clock_error_m = position_error_3d_m(
+        zero_clock_solution.ecef_x_m,
+        zero_clock_solution.ecef_y_m,
+        zero_clock_solution.ecef_z_m,
+        scenario.truth_ecef_m,
+    );
+
+    assert!(corrected_error_m < 5.0);
+    assert!(zero_clock_error_m > corrected_error_m + 20.0);
+    assert!((corrected_solution.clock_bias_s - scenario.receiver_clock_bias_s).abs() < 1.0e-9);
+}
+
 fn decoded_lnav_subframes_from_ephemeris(eph: &GpsEphemeris) -> Vec<GpsL1CaLnavDecodedSubframe> {
     let alignment = |subframe_index: usize| GpsL1CaLnavSubframeAlignment {
         start_bit_index: subframe_index * 300,
@@ -342,6 +436,57 @@ fn rinex_nav_ephemeris_feeds_position_solver() {
 }
 
 #[test]
+fn rinex_nav_position_solver_uses_broadcast_satellite_clock_correction() {
+    let scenario = broadcast_clock_position_scenario(2.75e-4);
+    let corrected_path = std::env::temp_dir().join(format!(
+        "bijux-rinex-nav-clock-corrected-{}-{}.rnx",
+        std::process::id(),
+        scenario.ephemerides.len()
+    ));
+    let zero_clock_path = std::env::temp_dir().join(format!(
+        "bijux-rinex-nav-zero-clock-{}-{}.rnx",
+        std::process::id(),
+        scenario.ephemerides.len()
+    ));
+    write_rinex_nav(&corrected_path, &scenario.ephemerides, true).expect("write corrected rinex nav");
+    write_rinex_nav(&zero_clock_path, &clear_broadcast_clock_parameters(&scenario.ephemerides), true)
+        .expect("write zero-clock rinex nav");
+    let corrected = parse_rinex_nav(
+        &std::fs::read_to_string(&corrected_path).expect("read corrected rinex nav"),
+    )
+    .expect("parse corrected rinex nav");
+    let zero_clock = parse_rinex_nav(
+        &std::fs::read_to_string(&zero_clock_path).expect("read zero-clock rinex nav"),
+    )
+    .expect("parse zero-clock rinex nav");
+    std::fs::remove_file(&corrected_path).expect("remove corrected rinex nav");
+    std::fs::remove_file(&zero_clock_path).expect("remove zero-clock rinex nav");
+
+    let corrected_solution = PositionSolver::new()
+        .solve_wls(&scenario.observations, &corrected, scenario.t_rx_s)
+        .expect("corrected rinex position should solve");
+    let zero_clock_solution = PositionSolver::new()
+        .solve_wls(&scenario.observations, &zero_clock, scenario.t_rx_s)
+        .expect("zero-clock rinex position should still solve");
+
+    let corrected_error_m = position_error_3d_m(
+        corrected_solution.ecef_x_m,
+        corrected_solution.ecef_y_m,
+        corrected_solution.ecef_z_m,
+        scenario.truth_ecef_m,
+    );
+    let zero_clock_error_m = position_error_3d_m(
+        zero_clock_solution.ecef_x_m,
+        zero_clock_solution.ecef_y_m,
+        zero_clock_solution.ecef_z_m,
+        scenario.truth_ecef_m,
+    );
+
+    assert!(corrected_error_m < 5.0);
+    assert!(zero_clock_error_m > corrected_error_m + 20.0);
+}
+
+#[test]
 fn decoded_lnav_ephemeris_feeds_position_solver() {
     let source = vec![
         sample_ephemeris(1, 0.0, 0.0),
@@ -394,4 +539,60 @@ fn decoded_lnav_ephemeris_feeds_position_solver() {
     assert!((solution.ecef_x_m - rx_x).abs() < 5.0);
     assert!((solution.ecef_y_m - rx_y).abs() < 5.0);
     assert!((solution.ecef_z_m - rx_z).abs() < 5.0);
+}
+
+#[test]
+fn decoded_lnav_position_solver_uses_broadcast_satellite_clock_correction() {
+    let scenario = broadcast_clock_position_scenario(2.75e-4);
+    let zero_clock_ephemerides = clear_broadcast_clock_parameters(&scenario.ephemerides);
+    let corrected = scenario
+        .ephemerides
+        .iter()
+        .map(|eph| {
+            let (ephemerides, rejections) = ephemerides_from_decoded_gps_l1ca_lnav(
+                eph.sat.prn,
+                &decoded_lnav_subframes_from_ephemeris(eph),
+                Some(eph.week),
+            );
+            assert!(rejections.is_empty(), "rejections={rejections:?}");
+            assert_eq!(ephemerides.len(), 1, "ephemerides={ephemerides:?}");
+            ephemerides.into_iter().next().expect("decoded corrected ephemeris")
+        })
+        .collect::<Vec<_>>();
+    let zero_clock = zero_clock_ephemerides
+        .iter()
+        .map(|eph| {
+            let (ephemerides, rejections) = ephemerides_from_decoded_gps_l1ca_lnav(
+                eph.sat.prn,
+                &decoded_lnav_subframes_from_ephemeris(eph),
+                Some(eph.week),
+            );
+            assert!(rejections.is_empty(), "rejections={rejections:?}");
+            assert_eq!(ephemerides.len(), 1, "ephemerides={ephemerides:?}");
+            ephemerides.into_iter().next().expect("decoded zero-clock ephemeris")
+        })
+        .collect::<Vec<_>>();
+
+    let corrected_solution = PositionSolver::new()
+        .solve_wls(&scenario.observations, &corrected, scenario.t_rx_s)
+        .expect("corrected decoded LNAV position should solve");
+    let zero_clock_solution = PositionSolver::new()
+        .solve_wls(&scenario.observations, &zero_clock, scenario.t_rx_s)
+        .expect("zero-clock decoded LNAV position should still solve");
+
+    let corrected_error_m = position_error_3d_m(
+        corrected_solution.ecef_x_m,
+        corrected_solution.ecef_y_m,
+        corrected_solution.ecef_z_m,
+        scenario.truth_ecef_m,
+    );
+    let zero_clock_error_m = position_error_3d_m(
+        zero_clock_solution.ecef_x_m,
+        zero_clock_solution.ecef_y_m,
+        zero_clock_solution.ecef_z_m,
+        scenario.truth_ecef_m,
+    );
+
+    assert!(corrected_error_m < 5.0);
+    assert!(zero_clock_error_m > corrected_error_m + 20.0);
 }
