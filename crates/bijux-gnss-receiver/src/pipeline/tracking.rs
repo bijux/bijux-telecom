@@ -239,8 +239,9 @@ impl Tracking {
         );
         let n = samples_per_code.min(frame.len());
         let code = ca_code_or_default(sat.prn);
-        let chips_per_sample = code_rate_hz / sample_rate_hz;
-        let base_chip_phase = code_phase_samples * chips_per_sample;
+        let nominal_chips_per_sample = self.config.code_freq_basis_hz / sample_rate_hz;
+        let tracked_chips_per_sample = code_rate_hz / sample_rate_hz;
+        let base_chip_phase = code_phase_samples * nominal_chips_per_sample;
 
         let mixed = wipeoff_carrier(
             &frame.iq[..n],
@@ -256,7 +257,7 @@ impl Tracking {
         let mut early_late_noise_weight_energy = 0.0f64;
 
         for (i, mixed_sample) in mixed.iter().take(n).enumerate() {
-            let chip_phase = base_chip_phase + i as f64 * chips_per_sample;
+            let chip_phase = base_chip_phase + i as f64 * tracked_chips_per_sample;
             let early_code = Complex::new(
                 code_value_at_phase(&code, chip_phase - early_late_spacing_chips).unwrap_or(0.0),
                 0.0,
@@ -1053,7 +1054,7 @@ fn advance_code_phase_samples(
 }
 
 fn apply_dll_code_loop(input: CodeLoopInput) -> CodeLoopUpdate {
-    let code_rate_hz = input.current_code_rate_hz + input.dll_bw_hz * input.dll_err as f64;
+    let code_rate_hz = input.current_code_rate_hz - input.dll_bw_hz * input.dll_err as f64;
     let code_phase_samples = advance_code_phase_samples(
         input.current_code_phase_samples,
         input.epoch_len_samples,
@@ -1228,7 +1229,7 @@ mod tests {
         AcqHypothesis, Chips, Epoch, SampleTime, SamplesFrame, SatId, Seconds, TrackEpoch,
     };
     use bijux_gnss_signal::api::{
-        advance_code_phase_seconds, sample_ca_code, samples_per_code, Prn,
+        advance_code_phase_seconds, discriminators, sample_ca_code, samples_per_code, Prn,
     };
     use num_complex::Complex;
     use serde::Deserialize;
@@ -1426,7 +1427,7 @@ mod tests {
             samples_per_code: 5_000,
         });
 
-        assert!((update.code_rate_hz - 1_023_000.5).abs() < 1.0e-9, "{update:?}");
+        assert!((update.code_rate_hz - 1_022_999.5).abs() < 1.0e-9, "{update:?}");
     }
 
     #[test]
@@ -1526,7 +1527,7 @@ mod tests {
             config.code_freq_basis_hz,
             config.code_length,
         );
-        let signal_code_rate_hz = config.code_freq_basis_hz + 300.0;
+        let signal_code_rate_hz = config.code_freq_basis_hz + 1_200.0;
         let code_phase_chips = 87.375;
         let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 9 };
         let code_phase_samples =
@@ -1570,6 +1571,72 @@ mod tests {
         );
         assert!(matched.prompt.norm() > matched.early.norm());
         assert!(matched.prompt.norm() > matched.late.norm());
+    }
+
+    #[test]
+    fn dll_pull_in_increases_code_rate_for_faster_signal() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            channels: 12,
+            ..ReceiverPipelineConfig::default()
+        };
+        let tracking = Tracking::new(config.clone(), ReceiverRuntime::default());
+        let samples_per_epoch = samples_per_code(
+            config.sampling_freq_hz,
+            config.code_freq_basis_hz,
+            config.code_length,
+        );
+        let signal_code_rate_hz = config.code_freq_basis_hz + 300.0;
+        let code_phase_chips = 211.625;
+        let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 14 };
+        let code_phase_samples =
+            code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
+        let samples = sample_ca_code(
+            Prn(sat.prn),
+            config.sampling_freq_hz,
+            signal_code_rate_hz,
+            code_phase_chips,
+            samples_per_epoch,
+        )
+        .expect("valid sampled code with faster signal code rate");
+        let frame = SamplesFrame::new(
+            SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
+            Seconds(1.0 / config.sampling_freq_hz),
+            samples.into_iter().map(|value| Complex::new(value, 0.0)).collect(),
+        );
+
+        let correlator = tracking.correlate_epoch(
+            &frame,
+            sat,
+            0.0,
+            config.code_freq_basis_hz,
+            code_phase_samples,
+            0.5,
+        );
+        let (dll_err, _, _, _) = discriminators(
+            correlator.early,
+            correlator.prompt,
+            correlator.late,
+            None,
+        );
+        let code_loop = super::apply_dll_code_loop(super::CodeLoopInput {
+            current_code_rate_hz: config.code_freq_basis_hz,
+            current_code_phase_samples: code_phase_samples,
+            epoch_len_samples: samples_per_epoch,
+            nominal_code_rate_hz: config.code_freq_basis_hz,
+            dll_bw_hz: 900.0,
+            dll_err,
+            samples_per_chip: samples_per_epoch as f64 / config.code_length as f64,
+            samples_per_code: samples_per_epoch,
+        });
+
+        assert!(
+            code_loop.code_rate_hz > config.code_freq_basis_hz,
+            "dll_err={dll_err} code_loop={code_loop:?}",
+        );
     }
 
     #[test]
