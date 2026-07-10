@@ -298,8 +298,9 @@ mod tests {
     use bijux_gnss_receiver::api::core::{
         AcqHypothesis, AcqResult, AcqResultV1, ArtifactHeaderV1, Constellation, Epoch, Hertz,
         Meters, NavLifecycleState, NavSolutionEpoch, NavSolutionEpochV1, NavUncertaintyClass,
-        ReceiverSampleTrace, SatId, Seconds, SignalBand, SolutionStatus, SolutionValidity, TrackEpoch,
-        TrackEpochV1, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
+        ReceiverSampleTrace, SatId, Seconds, SignalBand, SolutionStatus, SolutionValidity,
+        TrackEpoch, TrackEpochV1, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
+        NAV_SOLUTION_MODEL_VERSION,
     };
     use std::fs;
     use tempfile::tempdir;
@@ -380,6 +381,7 @@ mod tests {
                     late_i: 0.0,
                     late_q: 0.0,
                     carrier_hz: Hertz(500.0),
+                    carrier_phase_cycles: bijux_gnss_receiver::api::core::Cycles(0.0),
                     code_rate_hz: Hertz(1_023_000.0),
                     code_phase_samples: bijux_gnss_receiver::api::core::Chips(0.0),
                     lock: true,
@@ -400,6 +402,7 @@ mod tests {
                     channel_uid: String::new(),
                     tracking_provenance: String::new(),
                     tracking_assumptions: None,
+                    tracking_uncertainty: None,
                     processing_ms: None,
                 },
             })
