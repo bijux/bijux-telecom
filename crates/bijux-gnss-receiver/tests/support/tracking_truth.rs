@@ -39,6 +39,17 @@ pub fn carrier_frequency_error_hz(epoch: &TrackEpoch, expected_carrier_hz: f64) 
     (epoch.carrier_hz.0 - expected_carrier_hz).abs()
 }
 
+pub fn carrier_phase_step_cycles(previous: &TrackEpoch, current: &TrackEpoch) -> f64 {
+    current.carrier_phase_cycles.0 - previous.carrier_phase_cycles.0
+}
+
+pub fn carrier_phase_steps_cycles(epochs: &[TrackEpoch]) -> Vec<f64> {
+    epochs
+        .windows(2)
+        .map(|pair| carrier_phase_step_cycles(&pair[0], &pair[1]))
+        .collect()
+}
+
 pub fn expected_linear_doppler_hz(
     sample_index: u64,
     sample_rate_hz: f64,
@@ -206,7 +217,8 @@ fn gps_lnav_nav_bit_period_samples(sample_rate_hz: f64) -> u64 {
 mod tests {
     use super::{
         carrier_frequency_error_hz, carrier_frequency_error_under_linear_doppler_hz,
-        code_phase_error_samples, epoch_indices_with_lock_state,
+        carrier_phase_step_cycles, carrier_phase_steps_cycles, code_phase_error_samples,
+        epoch_indices_with_lock_state,
         epoch_indices_with_lock_state_reason, expected_linear_doppler_hz,
         first_tracking_lock_epoch_index, mean_tracking_cn0_dbhz, nav_bit_transition_epoch_indices,
         post_lock_carrier_frequency_errors_hz,
@@ -237,6 +249,25 @@ mod tests {
         let epoch = TrackEpoch { carrier_hz: Hertz(101.5), ..TrackEpoch::default() };
 
         assert_eq!(carrier_frequency_error_hz(&epoch, 100.0), 1.5);
+    }
+
+    #[test]
+    fn carrier_phase_step_cycles_measures_unwrapped_phase_change() {
+        let previous = TrackEpoch { carrier_phase_cycles: Cycles(10.25), ..TrackEpoch::default() };
+        let current = TrackEpoch { carrier_phase_cycles: Cycles(10.375), ..TrackEpoch::default() };
+
+        assert_eq!(carrier_phase_step_cycles(&previous, &current), 0.125);
+    }
+
+    #[test]
+    fn carrier_phase_steps_cycles_collects_adjacent_phase_changes() {
+        let epochs = vec![
+            TrackEpoch { carrier_phase_cycles: Cycles(4.0), ..TrackEpoch::default() },
+            TrackEpoch { carrier_phase_cycles: Cycles(4.125), ..TrackEpoch::default() },
+            TrackEpoch { carrier_phase_cycles: Cycles(4.375), ..TrackEpoch::default() },
+        ];
+
+        assert_eq!(carrier_phase_steps_cycles(&epochs), vec![0.125, 0.25]);
     }
 
     #[test]
