@@ -10,7 +10,8 @@ Every measurement emitted by the pipeline MUST satisfy:
 - Sign conventions:
   - Pseudorange is positive, increasing with geometric range.
   - Doppler is positive when carrier phase is increasing.
-  - Carrier phase is in cycles; continuity between epochs is expected except on cycle slip.
+  - Carrier phase is in cycles; continuity between epochs is expected except at explicit
+    ambiguity-arc boundaries.
 - Units:
   - Pseudorange: meters.
   - Carrier phase: cycles.
@@ -35,7 +36,15 @@ sanity checks). Any violation must emit diagnostics and mark the measurement as 
 ## Carrier Phase
 - Model: `φ = (ρ + c(δt_r - δt_s) + T - I) / λ + N + ε`
 - Units: cycles
-- Notes: `N` is integer ambiguity. Carrier phase is continuous and must remain consistent with Doppler integration.
+- Notes: `N` is integer ambiguity. Carrier phase is continuous and must remain consistent with
+  Doppler integration.
+- Receiver contract: observation metadata declares `carrier_phase_model =
+  "tracked_carrier_cycles"` and one of these continuity labels:
+  `arc_start`, `continuous`, `reset_after_cycle_slip`, `reset_after_unlock`,
+  `reset_after_discontinuity`, or `unusable`.
+- Arc contract: `carrier_phase_arc_start_epoch_idx` and
+  `carrier_phase_arc_start_sample_index` identify the start of the current ambiguity arc. They
+  change only when a new usable carrier-phase arc begins.
 
 ## Doppler
 - Model: `f_D = d/dt(φ)`
