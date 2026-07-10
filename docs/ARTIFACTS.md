@@ -52,6 +52,9 @@ Invariants:
 - observation metadata records `carrier_phase_model`, `carrier_phase_continuity`,
   `carrier_phase_arc_start_epoch_idx`, and `carrier_phase_arc_start_sample_index` so downstream
   ambiguity handling can identify usable carrier-phase arcs and reset boundaries
+- observation metadata records `doppler_model` so downstream consumers can interpret Doppler
+  provenance; the current tracking-backed observation contract emits
+  `tracked_carrier_hz_minus_intermediate_freq`
 - valid `carrier_phase_continuity` values are `arc_start`, `continuous`,
   `reset_after_cycle_slip`, `reset_after_unlock`, `reset_after_discontinuity`, and `unusable`
 

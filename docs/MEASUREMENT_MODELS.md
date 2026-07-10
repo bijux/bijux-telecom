@@ -52,6 +52,9 @@ sanity checks). Any violation must emit diagnostics and mark the measurement as 
 - Sign convention: positive Doppler implies increasing carrier phase.
 - Receiver contract: acquisition and tracking may carry an absolute in-band `carrier_hz`, while
   reported Doppler observations are the IF-relative offset `carrier_hz - intermediate_freq_hz`.
+- Observation metadata contract: observation metadata declares `doppler_model =
+  "tracked_carrier_hz_minus_intermediate_freq"` for Doppler emitted from tracked carrier
+  frequency and configured intermediate frequency.
 - Acquisition search contract: each carrier bin is formed explicitly as
   `carrier_hz = intermediate_freq_hz + doppler_hz`, so zero-IF and high-IF inputs use the same
   Doppler-bin semantics and only differ by the configured carrier offset.
