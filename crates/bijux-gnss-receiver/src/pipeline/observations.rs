@@ -940,6 +940,16 @@ mod tests {
         epoch_idx: u64,
         carrier_hz: f64,
     ) -> TrackEpoch {
+        make_tracking_epoch_with_phase(prn, config, epoch_idx, carrier_hz, 0.0)
+    }
+
+    fn make_tracking_epoch_with_phase(
+        prn: u8,
+        config: &ReceiverPipelineConfig,
+        epoch_idx: u64,
+        carrier_hz: f64,
+        carrier_phase_cycles: f64,
+    ) -> TrackEpoch {
         let sample_index = epoch_idx
             * samples_per_code(
                 config.sampling_freq_hz,
@@ -957,6 +967,7 @@ mod tests {
             prompt_i: 1.0,
             prompt_q: 0.0,
             carrier_hz: Hertz(carrier_hz),
+            carrier_phase_cycles: Cycles(carrier_phase_cycles),
             code_rate_hz: Hertz(config.code_freq_basis_hz),
             code_phase_samples: Chips(0.0),
             lock: true,
@@ -976,6 +987,15 @@ mod tests {
             processing_ms: None,
             ..TrackEpoch::default()
         }
+    }
+
+    fn epoch_sample_index(config: &ReceiverPipelineConfig, epoch_idx: u64) -> u64 {
+        epoch_idx
+            * samples_per_code(
+                config.sampling_freq_hz,
+                config.code_freq_basis_hz,
+                config.code_length,
+            ) as u64
     }
 
     fn make_track(prn: u8, config: &ReceiverPipelineConfig) -> TrackingResult {
@@ -1100,6 +1120,147 @@ mod tests {
 
         assert!(report.events.is_empty(), "unexpected diagnostics: {:?}", report.events);
         assert_eq!(dopplers, vec![(3, 125.0), (8, -175.0)]);
+    }
+
+    #[test]
+    fn observations_mark_carrier_phase_arc_start_and_continuity() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let carrier_hz = crate::pipeline::doppler::carrier_hz_from_doppler_hz(0.0, 125.0);
+        let epochs = vec![
+            make_tracking_epoch_with_phase(6, &config, 70, carrier_hz, 10.00),
+            make_tracking_epoch_with_phase(6, &config, 71, carrier_hz, 10.125),
+            make_tracking_epoch_with_phase(6, &config, 72, carrier_hz, 10.250),
+        ];
+
+        let (observations, diagnostics) = observations_from_tracking(&config, &epochs);
+
+        assert!(diagnostics.is_empty(), "unexpected diagnostics: {diagnostics:?}");
+        assert_eq!(observations.len(), 3);
+        assert_eq!(observations[0].sats[0].metadata.carrier_phase_continuity, "arc_start");
+        assert_eq!(observations[0].sats[0].metadata.carrier_phase_arc_start_epoch_idx, 70);
+        assert_eq!(
+            observations[0].sats[0].metadata.carrier_phase_arc_start_sample_index,
+            observations[0].sats[0].metadata.time_tag_sample_index
+        );
+        assert_eq!(observations[1].sats[0].metadata.carrier_phase_continuity, "continuous");
+        assert_eq!(observations[2].sats[0].metadata.carrier_phase_continuity, "continuous");
+        assert!((observations[1].sats[0].carrier_phase_cycles.0 - 10.125).abs() <= f64::EPSILON);
+        assert_eq!(
+            observations[2].sats[0].metadata.carrier_phase_arc_start_sample_index,
+            observations[0].sats[0].metadata.carrier_phase_arc_start_sample_index
+        );
+    }
+
+    #[test]
+    fn observations_reset_carrier_phase_arc_after_unlock() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let carrier_hz = crate::pipeline::doppler::carrier_hz_from_doppler_hz(0.0, 100.0);
+        let unlocked_epoch = TrackEpoch {
+            epoch: Epoch { index: 71 },
+            sample_index: epoch_sample_index(&config, 71),
+            source_time: ReceiverSampleTrace::from_sample_index(
+                epoch_sample_index(&config, 71),
+                config.sampling_freq_hz,
+            ),
+            sat: SatId { constellation: Constellation::Gps, prn: 10 },
+            carrier_hz: Hertz(carrier_hz),
+            lock: false,
+            pll_lock: false,
+            dll_lock: false,
+            fll_lock: false,
+            lock_state: "lost".to_string(),
+            ..TrackEpoch::default()
+        };
+        let track = TrackingResult {
+            sat: SatId { constellation: Constellation::Gps, prn: 10 },
+            carrier_hz: carrier_hz,
+            code_phase_samples: 0.0,
+            acquisition_hypothesis: "accepted".to_string(),
+            acquisition_score: 1.0,
+            acquisition_code_phase_samples: 0,
+            acquisition_carrier_hz: carrier_hz,
+            acq_to_track_state: "accepted".to_string(),
+            epochs: vec![
+                make_tracking_epoch_with_phase(10, &config, 70, carrier_hz, 8.0),
+                unlocked_epoch,
+                make_tracking_epoch_with_phase(10, &config, 72, carrier_hz, 0.5),
+            ],
+            transitions: Vec::new(),
+        };
+
+        let report = observations_from_tracking_results(&config, &[track], 10);
+        let unlocked = &report.output[1].sats[0];
+        let relocked = &report.output[2].sats[0];
+
+        assert_eq!(unlocked.metadata.carrier_phase_continuity, "unusable");
+        assert_eq!(unlocked.metadata.carrier_phase_arc_start_epoch_idx, 0);
+        assert_eq!(relocked.metadata.carrier_phase_continuity, "reset_after_unlock");
+        assert_eq!(relocked.metadata.carrier_phase_arc_start_epoch_idx, 72);
+        assert_eq!(
+            relocked.metadata.carrier_phase_arc_start_sample_index,
+            epoch_sample_index(&config, 72)
+        );
+        assert!(relocked.lock_flags.cycle_slip);
+        assert!((relocked.carrier_phase_cycles.0 - 0.5).abs() <= f64::EPSILON);
+    }
+
+    #[test]
+    fn observations_reset_carrier_phase_arc_after_cycle_slip() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let carrier_hz = crate::pipeline::doppler::carrier_hz_from_doppler_hz(0.0, 125.0);
+        let slip_epoch = TrackEpoch {
+            cycle_slip: true,
+            cycle_slip_reason: Some("phase_jump".to_string()),
+            ..make_tracking_epoch_with_phase(12, &config, 71, carrier_hz, 21.0)
+        };
+        let track = TrackingResult {
+            sat: SatId { constellation: Constellation::Gps, prn: 12 },
+            carrier_hz,
+            code_phase_samples: 0.0,
+            acquisition_hypothesis: "accepted".to_string(),
+            acquisition_score: 1.0,
+            acquisition_code_phase_samples: 0,
+            acquisition_carrier_hz: carrier_hz,
+            acq_to_track_state: "accepted".to_string(),
+            epochs: vec![
+                make_tracking_epoch_with_phase(12, &config, 70, carrier_hz, 10.0),
+                slip_epoch,
+                make_tracking_epoch_with_phase(12, &config, 72, carrier_hz, 21.125),
+            ],
+            transitions: Vec::new(),
+        };
+
+        let report = observations_from_tracking_results(&config, &[track], 10);
+        let slipped = &report.output[1].sats[0];
+        let post_slip = &report.output[2].sats[0];
+
+        assert_eq!(slipped.metadata.carrier_phase_continuity, "reset_after_cycle_slip");
+        assert_eq!(slipped.metadata.carrier_phase_arc_start_epoch_idx, 71);
+        assert!(slipped.lock_flags.cycle_slip);
+        assert_eq!(post_slip.metadata.carrier_phase_continuity, "continuous");
+        assert_eq!(post_slip.metadata.carrier_phase_arc_start_epoch_idx, 71);
+        assert_eq!(
+            post_slip.metadata.carrier_phase_arc_start_sample_index,
+            epoch_sample_index(&config, 71)
+        );
     }
 
     #[test]
