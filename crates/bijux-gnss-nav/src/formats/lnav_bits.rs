@@ -1,6 +1,8 @@
 #![allow(missing_docs)]
 #![allow(dead_code)]
 
+use serde::{Deserialize, Serialize};
+
 use crate::formats::lnav_decode::{
     get_bits, parse_subframe1, parse_subframe2, parse_subframe3, EphemerisBuilder, EphemerisPart,
 };
@@ -9,13 +11,13 @@ use crate::orbits::gps::GpsEphemeris;
 const GPS_L1CA_PREAMBLE: [u8; 8] = [1, 0, 0, 0, 1, 0, 1, 1];
 const GPS_L1CA_NAV_BIT_LENGTH_MS: usize = 20;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BitSyncResult {
     pub bit_start_ms: usize,
     pub bits: Vec<i8>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GpsL1CaNavigationBit {
     pub bit_index: usize,
     pub start_prompt_index: usize,
@@ -24,7 +26,7 @@ pub struct GpsL1CaNavigationBit {
     pub prompt_sum: f32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GpsL1CaNavigationBits {
     pub bit_start_ms: usize,
     pub bits: Vec<GpsL1CaNavigationBit>,

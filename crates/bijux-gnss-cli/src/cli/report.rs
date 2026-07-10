@@ -321,6 +321,8 @@ struct TrackingRow {
     fll_lock: bool,
     cycle_slip: bool,
     nav_bit_lock: bool,
+    #[serde(default)]
+    navigation_bit_sign: Option<i8>,
     dll_err: f32,
     pll_err: f32,
     fll_err: f32,
@@ -337,6 +339,8 @@ struct TrackingRow {
 #[derive(Debug, Serialize)]
 struct NavDecodeReport {
     sat: SatId,
+    bit_start_ms: usize,
+    bit_signs: Vec<i8>,
     preamble_hits: usize,
     parity_pass_rate: f64,
     ephemerides: Vec<bijux_gnss_infra::api::nav::GpsEphemeris>,

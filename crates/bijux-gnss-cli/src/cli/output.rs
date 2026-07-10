@@ -270,7 +270,7 @@ fn emit_report<T: Serialize>(common: &CommonArgs, command: &str, report: &T) -> 
     Ok(())
 }
 
-const TRACKING_DIAGNOSTIC_CODE_PERIODS: usize = 12;
+const TRACKING_HISTORY_CODE_PERIODS: usize = 80;
 
 fn load_acquisition_frame(
     path: &Path,
@@ -291,7 +291,7 @@ fn load_tracking_frame(
 ) -> Result<SamplesFrame> {
     let samples_per_code =
         samples_per_code(metadata.sample_rate_hz, config.code_freq_basis_hz, config.code_length);
-    let desired_samples = samples_per_code.saturating_mul(TRACKING_DIAGNOSTIC_CODE_PERIODS);
+    let desired_samples = samples_per_code.saturating_mul(TRACKING_HISTORY_CODE_PERIODS);
     let mut source = FileSamples::open_raw_iq(path, metadata.clone())
         .with_context(|| format!("failed to open {}", path.display()))?;
 
@@ -536,6 +536,7 @@ fn write_track_timeseries(
                 channel_uid: String::new(),
                 tracking_provenance: String::new(),
                 tracking_assumptions: None,
+                tracking_uncertainty: None,
                 processing_ms: None,
             },
         };
@@ -610,15 +611,59 @@ fn write_obs_timeseries(
 
 fn read_tracking_dump(path: &Path) -> Result<Vec<TrackingRow>> {
     let data = fs::read_to_string(path)?;
+    if let Ok(report) = serde_json::from_str::<TrackingReport>(&data) {
+        return Ok(report.epochs);
+    }
     let mut rows = Vec::new();
     for line in data.lines() {
         if line.trim().is_empty() {
             continue;
         }
-        let row: TrackingRow = serde_json::from_str(line)?;
-        rows.push(row);
+        if line.contains("\"header\"") && line.contains("\"payload\"") {
+            let wrapped: TrackEpochV1 = serde_json::from_str(line)?;
+            if wrapped.header.schema_version != ArtifactReadPolicy::LATEST {
+                bail!("unsupported track schema_version {}", wrapped.header.schema_version);
+            }
+            rows.push(tracking_row_from_epoch(wrapped.payload));
+        } else {
+            let row: TrackingRow = serde_json::from_str(line)?;
+            rows.push(row);
+        }
     }
     Ok(rows)
+}
+
+fn tracking_row_from_epoch(epoch: TrackEpoch) -> TrackingRow {
+    TrackingRow {
+        epoch_idx: epoch.epoch.index,
+        sample_index: epoch.sample_index,
+        sat: epoch.sat,
+        carrier_hz: epoch.carrier_hz.0,
+        carrier_phase_cycles: epoch.carrier_phase_cycles.0,
+        code_rate_hz: epoch.code_rate_hz.0,
+        code_phase_samples: epoch.code_phase_samples.0,
+        prompt_i: epoch.prompt_i,
+        prompt_q: epoch.prompt_q,
+        early_i: epoch.early_i,
+        early_q: epoch.early_q,
+        late_i: epoch.late_i,
+        late_q: epoch.late_q,
+        lock: epoch.lock,
+        cn0_dbhz: epoch.cn0_dbhz,
+        pll_lock: epoch.pll_lock,
+        dll_lock: epoch.dll_lock,
+        fll_lock: epoch.fll_lock,
+        cycle_slip: epoch.cycle_slip,
+        nav_bit_lock: epoch.nav_bit_lock,
+        navigation_bit_sign: epoch.navigation_bit_sign,
+        dll_err: epoch.dll_err,
+        pll_err: epoch.pll_err,
+        fll_err: epoch.fll_err,
+        anti_false_lock: epoch.anti_false_lock,
+        cycle_slip_reason: epoch.cycle_slip_reason,
+        lock_state: epoch.lock_state,
+        lock_state_reason: epoch.lock_state_reason,
+    }
 }
 
 fn read_obs_epochs(path: &Path) -> Result<Vec<ObsEpoch>> {
@@ -745,13 +790,15 @@ fn write_ephemeris(
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_raw_iq_metadata, enforce_locked_capture_value, load_frame_window,
+        apply_raw_iq_metadata, enforce_locked_capture_value, load_frame_window, read_tracking_dump,
+        DopplerSearchSettings, RawIqSignalQualityReport, TrackingReport, TrackingRow,
     };
     use crate::RawIqMetadata;
     use crate::{ReceiverConfig, ReceiverPipelineConfig};
     use bijux_gnss_infra::api::core::{
-        Epoch, Meters, NavLifecycleState, NavSolutionEpoch, NavUncertaintyClass,
-        ReceiverSampleTrace, Seconds, SolutionStatus, SolutionValidity,
+        ArtifactHeaderV1, Chips, Constellation, Cycles, Epoch, Hertz, Meters, NavLifecycleState,
+        NavSolutionEpoch, NavUncertaintyClass, ReceiverSampleTrace, SatId, Seconds,
+        SolutionStatus, SolutionValidity, TrackEpoch, TrackEpochV1,
         NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
     };
     use std::fs;
@@ -789,6 +836,29 @@ mod tests {
     fn temp_file_path(name: &str) -> PathBuf {
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos();
         std::env::temp_dir().join(format!("bijux_{}_{}_{}.iq", name, std::process::id(), nanos))
+    }
+
+    fn sample_front_end_metrics() -> bijux_gnss_infra::api::signal::IqFrontEndMetrics {
+        bijux_gnss_infra::api::signal::IqFrontEndMetrics {
+            sample_count: 4_092,
+            i_mean: 0.0,
+            q_mean: 0.0,
+            i_power: 1.0,
+            q_power: 1.0,
+            iq_power_ratio: 1.0,
+            power_imbalance_warning: false,
+            quadrature_error_deg: Some(0.0),
+            quadrature_error_warning: false,
+            clipping_pct: Some(0.0),
+            clipping_warning: false,
+            centered_rms: 1.0,
+            zero_signal_detected: false,
+            zero_signal_reason: None,
+            precision_claims_allowed: true,
+            precision_claims_refused_reason: None,
+            rms: 1.0,
+            dc_imbalance: 0.0,
+        }
     }
 
     #[test]
@@ -850,7 +920,7 @@ mod tests {
     #[test]
     fn load_tracking_frame_reads_multiple_code_periods() {
         let path = temp_file_path("load_tracking_frame_window");
-        let sample_count = 4_092usize * super::TRACKING_DIAGNOSTIC_CODE_PERIODS;
+        let sample_count = 4_092usize * super::TRACKING_HISTORY_CODE_PERIODS;
         let mut raw = Vec::with_capacity(sample_count * 2);
         for _ in 0..sample_count {
             raw.push(16u8);
@@ -879,6 +949,139 @@ mod tests {
         assert_eq!(frame.len(), sample_count);
 
         fs::remove_file(&path).expect("remove iq8 fixture");
+    }
+
+    #[test]
+    fn read_tracking_dump_accepts_wrapped_track_artifacts() {
+        let path = temp_file_path("read_tracking_dump_artifact");
+        let wrapped = TrackEpochV1 {
+            header: ArtifactHeaderV1 {
+                schema_version: 1,
+                producer: "test".to_string(),
+                producer_version: "0.1.0".to_string(),
+                created_at_unix_ms: 0,
+                git_sha: "test".to_string(),
+                config_hash: "test".to_string(),
+                dataset_id: None,
+                toolchain: "rustc test".to_string(),
+                features: Vec::new(),
+                deterministic: true,
+                git_dirty: false,
+            },
+            payload: TrackEpoch {
+                epoch: Epoch { index: 7 },
+                sample_index: 28_644,
+                source_time: ReceiverSampleTrace::from_sample_index(28_644, 4_092_000.0),
+                sat: SatId { constellation: Constellation::Gps, prn: 12 },
+                prompt_i: -12.0,
+                prompt_q: 3.0,
+                early_i: -8.0,
+                early_q: 1.0,
+                late_i: -7.0,
+                late_q: 2.0,
+                carrier_hz: Hertz(120.0),
+                carrier_phase_cycles: Cycles(0.25),
+                code_rate_hz: Hertz(1_023_000.0),
+                code_phase_samples: Chips(144.0),
+                lock: true,
+                cn0_dbhz: 45.0,
+                pll_lock: true,
+                dll_lock: true,
+                fll_lock: true,
+                cycle_slip: false,
+                nav_bit_lock: true,
+                navigation_bit_sign: Some(-1),
+                dll_err: 0.0,
+                pll_err: 0.0,
+                fll_err: 0.0,
+                anti_false_lock: false,
+                cycle_slip_reason: None,
+                lock_state: "tracking".to_string(),
+                lock_state_reason: None,
+                channel_id: Some(0),
+                channel_uid: "Gps-12-ch00".to_string(),
+                tracking_provenance: "test".to_string(),
+                tracking_assumptions: None,
+                tracking_uncertainty: None,
+                processing_ms: None,
+            },
+        };
+        fs::write(&path, serde_json::to_string(&wrapped).expect("serialize track artifact"))
+            .expect("write artifact");
+
+        let rows = read_tracking_dump(&path).expect("read tracking dump");
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].epoch_idx, 7);
+        assert_eq!(rows[0].sat.prn, 12);
+        assert_eq!(rows[0].navigation_bit_sign, Some(-1));
+
+        fs::remove_file(&path).expect("remove track artifact");
+    }
+
+    #[test]
+    fn read_tracking_dump_accepts_track_report_json() {
+        let path = temp_file_path("read_tracking_dump_report");
+        let report = TrackingReport {
+            sats: vec![SatId { constellation: Constellation::Gps, prn: 12 }],
+            doppler_search: DopplerSearchSettings {
+                max_search_hz: 5_000,
+                bin_width_hz: 500,
+                bin_count: 21,
+                intermediate_freq_hz: 0.0,
+            },
+            front_end_metrics: sample_front_end_metrics(),
+            signal_quality: RawIqSignalQualityReport {
+                format: "iq8".to_string(),
+                sample_rate_hz: 4_092_000.0,
+                intermediate_freq_hz: 0.0,
+                capture_start_utc: "2026-07-10T00:00:00Z".to_string(),
+                analyzed_samples: 4_092,
+                usable_duration_s: 0.001,
+                estimated_noise_floor_db: -30.0,
+                front_end_metrics: sample_front_end_metrics(),
+            },
+            epochs: vec![TrackingRow {
+                epoch_idx: 3,
+                sample_index: 12_276,
+                sat: SatId { constellation: Constellation::Gps, prn: 12 },
+                carrier_hz: 120.0,
+                carrier_phase_cycles: 0.5,
+                code_rate_hz: 1_023_000.0,
+                code_phase_samples: 144.0,
+                prompt_i: 4.0,
+                prompt_q: 2.0,
+                early_i: 0.0,
+                early_q: 0.0,
+                late_i: 0.0,
+                late_q: 0.0,
+                lock: true,
+                cn0_dbhz: 45.0,
+                pll_lock: true,
+                dll_lock: true,
+                fll_lock: true,
+                cycle_slip: false,
+                nav_bit_lock: true,
+                navigation_bit_sign: Some(1),
+                dll_err: 0.0,
+                pll_err: 0.0,
+                fll_err: 0.0,
+                anti_false_lock: false,
+                cycle_slip_reason: None,
+                lock_state: "tracking".to_string(),
+                lock_state_reason: None,
+            }],
+        };
+        fs::write(&path, serde_json::to_string_pretty(&report).expect("serialize track report"))
+            .expect("write report");
+
+        let rows = read_tracking_dump(&path).expect("read tracking report");
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].epoch_idx, 3);
+        assert_eq!(rows[0].navigation_bit_sign, Some(1));
+
+        fs::remove_file(&path).expect("remove track report");
     }
 
     #[test]

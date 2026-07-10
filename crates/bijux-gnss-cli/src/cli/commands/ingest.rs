@@ -89,6 +89,7 @@ fn handle_track(command: GnssCommand) -> Result<()> {
                                     cycle_slip: e.cycle_slip,
                                     anti_false_lock: e.anti_false_lock,
                                     nav_bit_lock: e.nav_bit_lock,
+                                    navigation_bit_sign: e.navigation_bit_sign,
                                     cycle_slip_reason: e.cycle_slip_reason.clone(),
                                     lock_state: e.lock_state.clone(),
                                     lock_state_reason: e.lock_state_reason.clone(),

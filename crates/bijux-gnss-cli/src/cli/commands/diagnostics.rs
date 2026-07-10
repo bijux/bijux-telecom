@@ -112,23 +112,26 @@ fn handle_nav(command: GnssCommand) -> Result<()> {
                     NavCommand::Decode { common, track, prn } => {
                         let _ = runtime_config_from_env(&common, None);
                         let rows = read_tracking_dump(&track)?;
-                        let mut prompt = Vec::new();
                         let target = SatId {
                             constellation: Constellation::Gps,
                             prn,
                         };
                         let mut sorted: Vec<_> = rows.into_iter().filter(|r| r.sat == target).collect();
                         sorted.sort_by_key(|r| r.epoch_idx);
-                        for row in sorted {
-                            prompt.push(row.prompt_i);
-                        }
-                        let bits = bijux_gnss_infra::api::nav::bit_sync_from_prompt(&prompt);
-                        let (mut ephs, stats) = bijux_gnss_infra::api::nav::decode_subframes(&bits.bits);
+                        let prompt = sorted.iter().map(|row| row.prompt_i).collect::<Vec<_>>();
+                        let demodulation =
+                            bijux_gnss_infra::api::nav::demodulate_gps_l1ca_navigation_bits(&prompt);
+                        let bit_signs =
+                            demodulation.bits.iter().map(|bit| bit.sign).collect::<Vec<_>>();
+                        let (mut ephs, stats) =
+                            bijux_gnss_infra::api::nav::decode_subframes(&bit_signs);
                         for eph in ephs.iter_mut() {
                             eph.sat = target;
                         }
                         let report = NavDecodeReport {
                             sat: target,
+                            bit_start_ms: demodulation.bit_start_ms,
+                            bit_signs,
                             preamble_hits: stats.preamble_hits,
                             parity_pass_rate: stats.parity_pass_rate,
                             ephemerides: ephs.clone(),
