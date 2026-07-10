@@ -35,6 +35,55 @@ fn position_observation_constructible() {
     assert_eq!(obs.sat.prn, 3);
 }
 
+#[test]
+fn position_solver_refuses_observations_without_signal_timing() {
+    let t_rx_s = 504_018.07;
+    let ephs = vec![
+        make_eph(1, 0.0, 0.0),
+        make_eph(2, 0.8, 0.9),
+        make_eph(3, 1.6, 1.8),
+        make_eph(4, 2.4, 2.7),
+    ];
+    let observations = ephs
+        .iter()
+        .map(|eph| PositionObservation {
+            sat: eph.sat,
+            pseudorange_m: 21_000_000.0,
+            cn0_dbhz: 45.0,
+            elevation_deg: None,
+            weight: 1.0,
+            gps_receive_time: Some(GpsTime { week: 0, tow_s: t_rx_s }),
+            signal_timing: None,
+        })
+        .collect::<Vec<_>>();
+
+    assert!(PositionSolver::new().solve_wls(&observations, &ephs, t_rx_s).is_none());
+}
+
+#[test]
+fn position_solver_refuses_inconsistent_signal_timing() {
+    let t_rx_s = 504_018.07;
+    let ephs = vec![
+        make_eph(1, 0.0, 0.0),
+        make_eph(2, 0.8, 0.9),
+        make_eph(3, 1.6, 1.8),
+        make_eph(4, 2.4, 2.7),
+    ];
+    let observations = ephs
+        .iter()
+        .map(|eph| {
+            let mut obs = timed_position_observation(eph.sat, 21_000_000.0, t_rx_s);
+            obs.signal_timing = obs.signal_timing.map(|mut timing| {
+                timing.signal_travel_time_s = Seconds(timing.signal_travel_time_s.0 + 0.01);
+                timing
+            });
+            obs
+        })
+        .collect::<Vec<_>>();
+
+    assert!(PositionSolver::new().solve_wls(&observations, &ephs, t_rx_s).is_none());
+}
+
 fn make_eph(prn: u8, omega0: f64, m0: f64) -> GpsEphemeris {
     GpsEphemeris {
         sat: SatId { constellation: Constellation::Gps, prn },

@@ -4,7 +4,10 @@ use crate::orbits::gps::{
     is_ephemeris_valid, sat_state_gps_l1ca, sat_state_gps_l1ca_from_observation, GpsEphemeris,
     GpsSatState,
 };
-use bijux_gnss_core::api::{GpsTime, ObsSignalTiming, SatId};
+use bijux_gnss_core::api::{GpsTime, MeasurementRejectReason, ObsSignalTiming, SatId};
+
+const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
+const SIGNAL_TIMING_CONSISTENCY_TOLERANCE_S: f64 = 1.0e-6;
 
 #[derive(Debug, Clone)]
 pub struct PositionSolution {
@@ -88,6 +91,18 @@ impl PositionSolver {
         }
         let mut observations = observations.to_vec();
         observations.sort_by_key(|obs| (obs.sat.constellation as u8, obs.sat.prn));
+        let mut timing_rejected = Vec::new();
+        observations.retain(|obs| {
+            if position_observation_has_valid_satellite_time(obs, t_rx_s) {
+                true
+            } else {
+                timing_rejected.push((obs.sat, MeasurementRejectReason::TimeInconsistency));
+                false
+            }
+        });
+        if observations.len() < 4 {
+            return None;
+        }
         let mut x = 0.0_f64;
         let mut y = 0.0_f64;
         let mut z = 0.0_f64;
@@ -95,7 +110,7 @@ impl PositionSolver {
 
         let mut used: Vec<(PositionObservation, GpsSatState, f64)> = Vec::new();
 
-        let mut rejected = Vec::new();
+        let mut rejected = timing_rejected;
         let mut residuals = Vec::new();
         let mut cov = None;
         let mut cov_symmetrized = false;
@@ -340,6 +355,38 @@ impl PositionSolver {
             rejected_sat_count,
         })
     }
+}
+
+fn position_observation_has_valid_satellite_time(obs: &PositionObservation, t_rx_s: f64) -> bool {
+    let Some(signal_timing) = obs.signal_timing else {
+        return false;
+    };
+    let signal_travel_time_s = signal_timing.signal_travel_time_s.0;
+    if !signal_travel_time_s.is_finite() || signal_travel_time_s <= 0.0 {
+        return false;
+    }
+    if !obs.pseudorange_m.is_finite() {
+        return false;
+    }
+    let pseudorange_travel_time_s = obs.pseudorange_m / SPEED_OF_LIGHT_MPS;
+    if (pseudorange_travel_time_s - signal_travel_time_s).abs()
+        > SIGNAL_TIMING_CONSISTENCY_TOLERANCE_S
+    {
+        return false;
+    }
+    if !signal_timing.transmit_gps_time.tow_s.is_finite() {
+        return false;
+    }
+    let receive_delta_s = if let Some(receive_gps_time) = obs.gps_receive_time {
+        ((receive_gps_time.week as i64 - signal_timing.transmit_gps_time.week as i64) as f64
+            * 604_800.0)
+            + receive_gps_time.tow_s
+            - signal_timing.transmit_gps_time.tow_s
+    } else {
+        t_rx_s - signal_timing.transmit_gps_time.tow_s
+    };
+    receive_delta_s.is_finite()
+        && (receive_delta_s - signal_travel_time_s).abs() <= SIGNAL_TIMING_CONSISTENCY_TOLERANCE_S
 }
 
 fn sanitize_covariance(mut cov: [[f64; 4]; 4]) -> ([[f64; 4]; 4], bool, bool, Option<f64>) {
