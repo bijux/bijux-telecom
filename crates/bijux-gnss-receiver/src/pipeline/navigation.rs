@@ -308,7 +308,14 @@ impl Navigation {
                 ));
             }
         };
-        let (clock_bias_s, clock_drift_s_per_s) = self.clock.update(solution.clock_bias_s, 0.001);
+        let dt_s = self
+            .last_solution
+            .as_ref()
+            .map(|last| (obs.t_rx_s.0 - last.t_rx_s.0).abs())
+            .filter(|dt_s| dt_s.is_finite() && *dt_s > 0.0)
+            .unwrap_or(1.0);
+        let (_smoothed_clock_bias_s, clock_drift_s_per_s) =
+            self.clock.update(solution.clock_bias_s, dt_s);
         self.last_ecef = Some((solution.ecef_x_m, solution.ecef_y_m, solution.ecef_z_m));
         let mut nav_epoch = NavSolutionEpoch {
             epoch: bijux_gnss_core::api::Epoch { index: obs.epoch_idx },
@@ -320,7 +327,7 @@ impl Navigation {
             latitude_deg: solution.latitude_deg,
             longitude_deg: solution.longitude_deg,
             altitude_m: Meters(solution.altitude_m),
-            clock_bias_s: Seconds(clock_bias_s),
+            clock_bias_s: Seconds(solution.clock_bias_s),
             clock_drift_s_per_s,
             pdop: solution.pdop,
             rms_m: Meters(solution.rms_m),
