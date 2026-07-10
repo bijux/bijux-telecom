@@ -1693,6 +1693,48 @@ mod tests {
     }
 
     #[test]
+    fn observations_preserve_tracking_cn0_on_accepted_rows() {
+        let config = ReceiverPipelineConfig::default();
+        let sat = SatId { constellation: Constellation::Gps, prn: 10 };
+        let expected_cn0_dbhz = 47.5;
+        let track = TrackingResult {
+            sat,
+            carrier_hz: 0.0,
+            code_phase_samples: 0.0,
+            acquisition_hypothesis: "accepted".to_string(),
+            acquisition_score: 1.0,
+            acquisition_code_phase_samples: 0,
+            acquisition_carrier_hz: 0.0,
+            acq_to_track_state: "accepted".to_string(),
+            epochs: vec![TrackEpoch {
+                epoch: Epoch { index: 70 },
+                sample_index: epoch_sample_index(&config, 70),
+                source_time: ReceiverSampleTrace::from_sample_index(
+                    epoch_sample_index(&config, 70),
+                    config.sampling_freq_hz,
+                ),
+                sat,
+                lock: true,
+                cn0_dbhz: expected_cn0_dbhz,
+                pll_lock: true,
+                dll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                lock_state_reason: Some("stable_tracking".to_string()),
+                ..TrackEpoch::default()
+            }],
+            transitions: Vec::new(),
+        };
+
+        let report = observations_from_tracking_results(&config, &[track], 10);
+        let epoch = report.output.first().expect("observation epoch");
+        let sat = epoch.sats.first().expect("observation satellite");
+
+        assert_eq!(sat.observation_status, ObservationStatus::Accepted);
+        assert!((sat.cn0_dbhz - expected_cn0_dbhz).abs() <= f64::EPSILON, "{sat:?}");
+    }
+
+    #[test]
     fn observations_declare_if_relative_doppler_contract() {
         let config = ReceiverPipelineConfig {
             sampling_freq_hz: 4_092_000.0,
