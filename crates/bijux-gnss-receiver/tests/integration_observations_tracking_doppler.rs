@@ -169,6 +169,18 @@ fn stable_tracking_dopplers_hz(observations: &[ObsEpoch]) -> Vec<f64> {
         .collect()
 }
 
+fn stable_tracking_sats(observations: &[ObsEpoch]) -> Vec<&bijux_gnss_core::api::ObsSatellite> {
+    observations
+        .iter()
+        .flat_map(|epoch| epoch.sats.iter())
+        .filter(|sat| {
+            sat.metadata.tracking_state == "tracking"
+                && sat.lock_flags.code_lock
+                && sat.lock_flags.carrier_lock
+        })
+        .collect()
+}
+
 fn stable_tracking_observation_rows(observations: &[ObsEpoch]) -> Vec<(u64, f64)> {
     observations
         .iter()
@@ -189,6 +201,22 @@ fn expected_linear_doppler_hz(
     doppler_rate_hz_per_s: f64,
 ) -> f64 {
     initial_doppler_hz + ((sample_index as f64) / sample_rate_hz) * doppler_rate_hz_per_s
+}
+
+#[test]
+fn observations_declare_tracked_if_relative_doppler_model() {
+    let config = observation_tracking_config(2_000.0);
+    let sat = SatId { constellation: Constellation::Gps, prn: 13 };
+    let observations = observations_from_tracks(
+        &config,
+        vec![observation_track_with_constant_doppler(&config, sat, -180.0)],
+    );
+    let stable_sats = stable_tracking_sats(&observations);
+
+    assert!(!stable_sats.is_empty(), "observations={observations:?}");
+    assert!(stable_sats.iter().all(|sat| {
+        sat.metadata.doppler_model == "tracked_carrier_hz_minus_intermediate_freq"
+    }));
 }
 
 #[test]
