@@ -29,6 +29,15 @@ const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 const OBS_WEAK_CN0_DBHZ: f64 = 25.0;
 
 #[derive(Debug, Clone)]
+struct PseudorangeComputation {
+    pseudorange_m: Meters,
+    timing: Option<ObsSignalTiming>,
+    model: &'static str,
+    alignment_source: Option<String>,
+    alignment_resolved: bool,
+}
+
+#[derive(Debug, Clone)]
 struct PhaseState {
     phase_cycles: f64,
     last_phase_cycles: f64,
@@ -122,18 +131,15 @@ fn observations_from_tracking_with_provenance(
         }
         last_sample_index = Some(epoch.sample_index);
 
-        let code_phase_chips = epoch.code_phase_samples.0 / samples_per_chip;
-        let code_epoch = epoch.epoch.index as f64;
-        let code_time_s =
-            (code_epoch * config.code_length as f64 + code_phase_chips) / code_rate_hz;
-        let pseudorange_m =
-            Meters(code_time_s * SPEED_OF_LIGHT_MPS + clock_bias_s * SPEED_OF_LIGHT_MPS);
-        let signal_travel_time_s = Seconds(pseudorange_m.0 / SPEED_OF_LIGHT_MPS);
         let receive_gps_time = capture_start_gps_time.map(|gps_time| gps_time.offset_seconds(t_rx_s.0));
-        let signal_timing = receive_gps_time.map(|gps_time| ObsSignalTiming {
-            signal_travel_time_s,
-            transmit_gps_time: gps_time.offset_seconds(-signal_travel_time_s.0),
-        });
+        let pseudorange = pseudorange_from_tracking_epoch(
+            config,
+            epoch,
+            samples_per_chip,
+            code_rate_hz,
+            receive_gps_time,
+            clock_bias_s,
+        );
 
         let tracked_carrier_phase_cycles = epoch.carrier_phase_cycles.0;
         let doppler_hz = bijux_gnss_core::api::Hertz(doppler_hz_from_carrier_hz(
@@ -186,7 +192,7 @@ fn observations_from_tracking_with_provenance(
                 band: SignalBand::L1,
                 code: bijux_gnss_core::api::SignalCode::Ca,
             },
-            pseudorange_m,
+            pseudorange_m: pseudorange.pseudorange_m,
             pseudorange_var_m2: variance_m2,
             carrier_phase_cycles: Cycles(phase_state.phase_cycles),
             carrier_phase_var_cycles2,
@@ -205,7 +211,7 @@ fn observations_from_tracking_with_provenance(
             elevation_deg: None,
             azimuth_deg: None,
             weight: None,
-            timing: signal_timing,
+            timing: pseudorange.timing,
             error_model: None,
             metadata: ObsMetadata {
                 tracking_mode: "scalar".to_string(),
@@ -230,9 +236,14 @@ fn observations_from_tracking_with_provenance(
                 observation_status: observation_status_label(observation_status).to_string(),
                 observation_reject_reasons,
                 observation_epoch_id: observation_epoch_id.clone(),
-                observation_support_class: observation_support_label(observation_status)
-                    .to_string(),
+                observation_support_class: observation_support_label(
+                    observation_status,
+                    pseudorange.alignment_resolved,
+                )
+                .to_string(),
                 observation_uncertainty_class: observation_uncertainty_label(cn0_dbhz).to_string(),
+                pseudorange_model: pseudorange.model.to_string(),
+                signal_delay_alignment_source: pseudorange.alignment_source.unwrap_or_default(),
                 time_tag_source,
                 time_tag_sample_index,
                 time_tag_sample_rate_hz: config.sampling_freq_hz,
@@ -427,8 +438,9 @@ pub fn observations_from_tracking_results_with_gps_anchor(
             sat.metadata.observation_status =
                 observation_status_label(sat.observation_status).to_string();
             sat.metadata.observation_reject_reasons = sat.observation_reject_reasons.clone();
+            let alignment_resolved = sat.metadata.pseudorange_model == "tracked_code_phase_alignment";
             sat.metadata.observation_support_class =
-                observation_support_label(sat.observation_status).to_string();
+                observation_support_label(sat.observation_status, alignment_resolved).to_string();
             sat.metadata.observation_uncertainty_class =
                 observation_uncertainty_label(sat.cn0_dbhz).to_string();
         }
@@ -506,15 +518,61 @@ fn observation_status_label(status: ObservationStatus) -> &'static str {
     }
 }
 
-fn observation_support_label(status: ObservationStatus) -> &'static str {
+fn observation_support_label(
+    status: ObservationStatus,
+    alignment_resolved: bool,
+) -> &'static str {
     match status {
-        ObservationStatus::Accepted => support_class_label(ObservationSupportClass::Supported),
+        ObservationStatus::Accepted if alignment_resolved => {
+            support_class_label(ObservationSupportClass::Supported)
+        }
+        ObservationStatus::Accepted => support_class_label(ObservationSupportClass::Degraded),
         ObservationStatus::Weak | ObservationStatus::Missing => {
             support_class_label(ObservationSupportClass::Degraded)
         }
         ObservationStatus::Inconsistent | ObservationStatus::Rejected => {
             support_class_label(ObservationSupportClass::Unsupported)
         }
+    }
+}
+
+fn pseudorange_from_tracking_epoch(
+    config: &ReceiverPipelineConfig,
+    epoch: &TrackEpoch,
+    samples_per_chip: f64,
+    code_rate_hz: f64,
+    receive_gps_time: Option<GpsTime>,
+    clock_bias_s: f64,
+) -> PseudorangeComputation {
+    let code_phase_chips = epoch.code_phase_samples.0 / samples_per_chip;
+    if let Some(alignment) = &epoch.signal_delay_alignment {
+        let code_time_s =
+            (alignment.whole_code_periods as f64 * config.code_length as f64 + code_phase_chips)
+                / code_rate_hz;
+        let pseudorange_m =
+            Meters(code_time_s * SPEED_OF_LIGHT_MPS + clock_bias_s * SPEED_OF_LIGHT_MPS);
+        let signal_travel_time_s = Seconds(pseudorange_m.0 / SPEED_OF_LIGHT_MPS);
+        let timing = receive_gps_time.map(|gps_time| ObsSignalTiming {
+            signal_travel_time_s,
+            transmit_gps_time: gps_time.offset_seconds(-signal_travel_time_s.0),
+        });
+        return PseudorangeComputation {
+            pseudorange_m,
+            timing,
+            model: "tracked_code_phase_alignment",
+            alignment_source: Some(alignment.source.clone()),
+            alignment_resolved: true,
+        };
+    }
+
+    let code_epoch = epoch.epoch.index as f64;
+    let code_time_s = (code_epoch * config.code_length as f64 + code_phase_chips) / code_rate_hz;
+    PseudorangeComputation {
+        pseudorange_m: Meters(code_time_s * SPEED_OF_LIGHT_MPS + clock_bias_s * SPEED_OF_LIGHT_MPS),
+        timing: None,
+        model: "receiver_epoch_fallback",
+        alignment_source: None,
+        alignment_resolved: false,
     }
 }
 
@@ -739,7 +797,7 @@ pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bijux_gnss_core::api::{Chips, Epoch, Hertz, SatId, TrackingUncertainty};
+    use bijux_gnss_core::api::{Chips, Epoch, Hertz, SatId, SignalDelayAlignment, TrackingUncertainty};
 
     fn make_tracking_epoch(
         prn: u8,
@@ -747,7 +805,12 @@ mod tests {
         epoch_idx: u64,
         carrier_hz: f64,
     ) -> TrackEpoch {
-        let sample_index = epoch_idx * 4092;
+        let sample_index = epoch_idx
+            * samples_per_code(
+                config.sampling_freq_hz,
+                config.code_freq_basis_hz,
+                config.code_length,
+            ) as u64;
         TrackEpoch {
             epoch: Epoch { index: epoch_idx },
             sample_index,
@@ -949,7 +1012,11 @@ mod tests {
     #[test]
     fn observations_stamp_receive_and_transmit_gps_times_from_anchor() {
         let config = ReceiverPipelineConfig::default();
-        let track = make_track(4, &config);
+        let mut track = make_track(4, &config);
+        track.epochs[0].signal_delay_alignment = Some(SignalDelayAlignment {
+            whole_code_periods: 70,
+            source: "synthetic_truth".to_string(),
+        });
         let capture_start_gps_time = GpsTime { week: 2200, tow_s: 345_600.0 };
 
         let report = observations_from_tracking_results_with_gps_anchor(
@@ -968,6 +1035,26 @@ mod tests {
         assert!((timing.signal_travel_time_s.0 - sat.pseudorange_m.0 / SPEED_OF_LIGHT_MPS).abs() <= 1.0e-12);
         assert_eq!(timing.transmit_gps_time.week, 2200);
         assert!((timing.transmit_gps_time.tow_s - 345_600.0).abs() <= 1.0e-9);
+    }
+
+    #[test]
+    fn observations_without_alignment_keep_fallback_model_and_omit_signal_timing() {
+        let config = ReceiverPipelineConfig::default();
+        let track = make_track(5, &config);
+        let capture_start_gps_time = GpsTime { week: 2200, tow_s: 345_600.0 };
+
+        let report = observations_from_tracking_results_with_gps_anchor(
+            &config,
+            Some(capture_start_gps_time),
+            &[track],
+            10,
+        );
+        let sat = report.output.first().expect("observation epoch").sats.first().expect("sat");
+
+        assert_eq!(sat.metadata.pseudorange_model, "receiver_epoch_fallback");
+        assert_eq!(sat.metadata.observation_support_class, "degraded");
+        assert!(sat.metadata.signal_delay_alignment_source.is_empty());
+        assert!(sat.timing.is_none());
     }
 
     #[test]
