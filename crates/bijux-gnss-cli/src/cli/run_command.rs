@@ -589,7 +589,9 @@ mod inspect_dataset_tests {
 
 #[cfg(test)]
 mod runtime_config_tests {
-    use super::{capture_start_gps_time, runtime_config_from_capture_start, CommonArgs, ReportFormat};
+    use super::{
+        capture_start_gps_time, runtime_config_from_capture_start, CommonArgs, ReportFormat,
+    };
 
     fn common_args() -> CommonArgs {
         CommonArgs {
@@ -608,19 +610,15 @@ mod runtime_config_tests {
 
     #[test]
     fn capture_start_gps_time_parses_rfc3339_timestamp() {
-        let gps_time =
-            capture_start_gps_time("2022-03-27T11:32:04.2147593125Z").expect("gps time");
+        let gps_time = capture_start_gps_time("2022-03-27T11:32:04.2147593125Z").expect("gps time");
         assert_eq!(gps_time.week, 2203);
         assert!((gps_time.tow_s - 41_542.2147593125).abs() <= 1.0e-6);
     }
 
     #[test]
     fn runtime_config_from_capture_start_sets_runtime_anchor() {
-        let runtime = runtime_config_from_capture_start(
-            &common_args(),
-            None,
-            Some("2026-07-09T00:00:00Z"),
-        );
+        let runtime =
+            runtime_config_from_capture_start(&common_args(), None, Some("2026-07-09T00:00:00Z"));
 
         let gps_time = runtime.config.capture_start_gps_time.expect("runtime gps anchor");
         assert_eq!(gps_time.week, 2426);
@@ -795,6 +793,84 @@ mod nav_trace_tests {
         assert!(solution.artifact_id.starts_with("nav-epoch-0000000007-"));
         assert!(solution.stability_signature.contains("src="));
     }
+
+    #[test]
+    fn cli_nav_satellite_state_uses_signal_timing_when_available() {
+        let receive_gps_time =
+            bijux_gnss_infra::api::core::GpsTime { week: 2200, tow_s: 345_600.08 };
+        let tau_s = 0.074;
+        let eph = GpsEphemeris {
+            sat: SatId { constellation: Constellation::Gps, prn: 8 },
+            iodc: 0,
+            iode: 0,
+            week: receive_gps_time.week,
+            sv_health: 0,
+            toe_s: 345_600.0,
+            toc_s: 345_600.0,
+            sqrt_a: 5153.7954775,
+            e: 0.01,
+            i0: 0.94,
+            idot: 0.0,
+            omega0: 1.9,
+            omegadot: 0.0,
+            w: 0.2,
+            m0: 0.6,
+            delta_n: 0.0,
+            cuc: 0.0,
+            cus: 0.0,
+            crc: 0.0,
+            crs: 0.0,
+            cic: 0.0,
+            cis: 0.0,
+            af0: 0.0,
+            af1: 0.0,
+            af2: 0.0,
+            tgd: 0.0,
+        };
+        let sat = ObsSatellite {
+            signal_id: SigId { sat: eph.sat, band: SignalBand::L1, code: SignalCode::Ca },
+            pseudorange_m: Meters(tau_s * 299_792_458.0),
+            pseudorange_var_m2: 25.0,
+            carrier_phase_cycles: bijux_gnss_infra::api::core::Cycles(12_345.0),
+            carrier_phase_var_cycles2: 1.0,
+            doppler_hz: bijux_gnss_infra::api::core::Hertz(-1_250.0),
+            doppler_var_hz2: 4.0,
+            cn0_dbhz: 42.5,
+            lock_flags: LockFlags {
+                code_lock: true,
+                carrier_lock: true,
+                bit_lock: true,
+                cycle_slip: false,
+            },
+            multipath_suspect: false,
+            observation_status: ObservationStatus::Accepted,
+            observation_reject_reasons: Vec::new(),
+            elevation_deg: Some(45.0),
+            azimuth_deg: Some(120.0),
+            weight: None,
+            timing: Some(bijux_gnss_infra::api::core::ObsSignalTiming {
+                signal_travel_time_s: Seconds(tau_s),
+                transmit_gps_time: receive_gps_time.offset_seconds(-tau_s),
+            }),
+            error_model: None,
+            metadata: ObsMetadata { signal: signal_spec_gps_l1_ca(), ..ObsMetadata::default() },
+        };
+
+        let from_helper = cli_nav_satellite_state(&sat, &eph, receive_gps_time.tow_s);
+        let corrected = bijux_gnss_infra::api::nav::sat_state_gps_l1ca_at_receive_time(
+            &eph,
+            receive_gps_time.tow_s,
+            tau_s,
+        );
+        let uncorrected =
+            bijux_gnss_infra::api::nav::sat_state_gps_l1ca(&eph, receive_gps_time.tow_s, 0.0);
+
+        assert!((from_helper.x_m - corrected.x_m).abs() < 1.0e-9);
+        assert!((from_helper.y_m - corrected.y_m).abs() < 1.0e-9);
+        assert!((from_helper.z_m - corrected.z_m).abs() < 1.0e-9);
+        assert!((from_helper.x_m - uncorrected.x_m).abs() > 0.01);
+        assert!((from_helper.y_m - uncorrected.y_m).abs() > 0.01);
+    }
 }
 
 fn solve_epoch_ekf(
@@ -814,14 +890,15 @@ fn solve_epoch_ekf(
     let mut sats: Vec<&bijux_gnss_infra::api::core::ObsSatellite> = obs.sats.iter().collect();
     sats.sort_by_key(|s| s.signal_id);
     let sat_count = sats.len();
+    let receive_tow_s = obs.gps_time().map(|gps_time| gps_time.tow_s).unwrap_or(obs.t_rx_s.0);
     for sat in sats {
         let eph = match ephs.iter().find(|e| e.sat == sat.signal_id.sat) {
             Some(e) => e,
             None => continue,
         };
         let _corr = bijux_gnss_infra::api::nav::compute_corrections(&ctx.corrections);
-        let state = sat_state_gps_l1ca(eph, obs.t_rx_s.0, 0.0);
-        let state_next = sat_state_gps_l1ca(eph, obs.t_rx_s.0 + 0.1, 0.0);
+        let state = cli_nav_satellite_state(sat, eph, receive_tow_s);
+        let state_next = cli_nav_satellite_state(sat, eph, receive_tow_s + 0.1);
         let sat_vel = [
             (state_next.x_m - state.x_m) / 0.1,
             (state_next.y_m - state.y_m) / 0.1,
@@ -1004,6 +1081,22 @@ fn solve_epoch_ekf(
     };
     populate_cli_nav_solution_trace_identity(obs, &mut solution);
     Ok(Some(solution))
+}
+
+fn cli_nav_satellite_state(
+    sat: &bijux_gnss_infra::api::core::ObsSatellite,
+    eph: &GpsEphemeris,
+    receive_tow_s: f64,
+) -> bijux_gnss_infra::api::nav::GpsSatState {
+    let signal_travel_time_s = sat
+        .timing
+        .map(|timing| timing.signal_travel_time_s.0)
+        .unwrap_or(sat.pseudorange_m.0 / 299_792_458.0);
+    bijux_gnss_infra::api::nav::sat_state_gps_l1ca_at_receive_time(
+        eph,
+        receive_tow_s,
+        signal_travel_time_s,
+    )
 }
 
 fn populate_cli_nav_solution_trace_identity(

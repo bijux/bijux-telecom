@@ -19,7 +19,7 @@ use bijux_gnss_infra::api::{
 };
 use bijux_gnss_infra::api::RunManifest;
 use bijux_gnss_infra::api::nav::{
-    elevation_azimuth_deg, sat_state_gps_l1ca, CodeBiasProvider, GpsEphemeris, GpsEphemerisV1,
+    elevation_azimuth_deg, CodeBiasProvider, GpsEphemeris, GpsEphemerisV1,
     Matrix, NavClockModel, PhaseBiasProvider, ProcessNoiseConfig, PseudorangeMeasurement,
     WeightingConfig, write_rinex_nav, write_rinex_obs,
 };
