@@ -2,7 +2,7 @@
 use std::fs;
 
 use bijux_gnss_receiver::api::{
-    observations_from_tracking,
+    observations_from_tracking_results,
     sim::{generate_l1_ca_multi, SyntheticScenario},
     AcquisitionEngine, ReceiverPipelineConfig, TrackingEngine,
 };
@@ -36,8 +36,7 @@ fn numerical_sanity_pipeline() {
     }
 
     let tracking = TrackingEngine::new(config.clone(), runtime);
-    let tracks =
-        tracking.track_from_acquisition(&frame, &acq_results);
+    let tracks = tracking.track_from_acquisition(&frame, &acq_results);
 
     for track in &tracks {
         for epoch in &track.epochs {
@@ -52,11 +51,7 @@ fn numerical_sanity_pipeline() {
         }
     }
 
-    let obs_epochs = if let Some(first) = tracks.first() {
-        observations_from_tracking(&config, &first.epochs).0
-    } else {
-        Vec::new()
-    };
+    let obs_epochs = observations_from_tracking_results(&config, &tracks, 10).output;
     for epoch in &obs_epochs {
         assert!(epoch.t_rx_s.0.is_finite());
         for sat in &epoch.sats {
