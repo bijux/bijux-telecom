@@ -58,6 +58,9 @@ Invariants:
 - observation metadata records `doppler_model` so downstream consumers can interpret Doppler
   provenance; the current tracking-backed observation contract emits
   `tracked_carrier_hz_minus_intermediate_freq`
+- every `ObsSatellite` row carries Doppler and `doppler_model` even when the row is degraded,
+  missing, or inconsistent, so reviewers and downstream tooling can inspect rejected satellite
+  dynamics without reconstructing carrier state from tracking artifacts
 - valid `carrier_phase_continuity` values are `arc_start`, `continuous`,
   `reset_after_cycle_slip`, `reset_after_unlock`, `reset_after_discontinuity`, and `unusable`
 

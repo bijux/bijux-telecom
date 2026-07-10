@@ -67,6 +67,9 @@ sanity checks). Any violation must emit diagnostics and mark the measurement as 
 - Observation metadata contract: observation metadata declares `doppler_model =
   "tracked_carrier_hz_minus_intermediate_freq"` for Doppler emitted from tracked carrier
   frequency and configured intermediate frequency.
+- Emission contract: every observation row carries a finite Doppler value and explicit
+  `doppler_model`, including degraded rows that later reject for weak lock or inconsistent
+  tracking state. The Doppler contract is per satellite per epoch, not only for accepted rows.
 - Acquisition search contract: each carrier bin is formed explicitly as
   `carrier_hz = intermediate_freq_hz + doppler_hz`, so zero-IF and high-IF inputs use the same
   Doppler-bin semantics and only differ by the configured carrier offset.

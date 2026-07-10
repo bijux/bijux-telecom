@@ -7,8 +7,8 @@ These are the shared types exchanged across layers. They live in `bijux-gnss-cor
 - `AcqSearchSummary`: per-PRN acquisition decision counts for a configured search set
 - `ObsEpoch`: per-epoch observables (pseudorange, phase, doppler, CN0) plus anchored GPS receive
   time when dataset timing is known
-- `ObsMetadata`: observation provenance, timing source, pseudorange model, and carrier-phase arc
-  continuity contract
+- `ObsMetadata`: observation provenance, timing source, pseudorange model, explicit Doppler model,
+  and carrier-phase arc continuity contract
 - `ObsSignalTiming`: per-satellite signal travel time and GPS transmit time derived from the
   receive-time anchor and pseudorange, emitted only when the tracked signal delay is resolved
 - `SignalDelayAlignment`: resolved whole-code-period alignment carried from acquisition/tracking
