@@ -527,6 +527,54 @@ fn rinex_nav_position_solver_uses_broadcast_satellite_clock_correction() {
 }
 
 #[test]
+fn rinex_nav_position_solver_residuals_include_earth_rotation_correction() {
+    let scenario = four_satellite_position_scenario(2.75e-4);
+    let path = std::env::temp_dir().join(format!(
+        "bijux-rinex-nav-earth-rotation-{}-{}.rnx",
+        std::process::id(),
+        scenario.ephemerides.len()
+    ));
+    write_rinex_nav(&path, &scenario.ephemerides, true).expect("write rinex nav");
+    let parsed = parse_rinex_nav(&std::fs::read_to_string(&path).expect("read rinex nav"))
+        .expect("parse rinex nav");
+    std::fs::remove_file(&path).expect("remove rinex nav");
+
+    let solution = PositionSolver::new()
+        .solve_wls(&scenario.observations, &parsed, scenario.t_rx_s)
+        .expect("parsed rinex nav should support a position solve");
+
+    assert_eq!(solution.used_sat_count, 4);
+    for (sat, residual_m, _weight) in &solution.residuals {
+        let observation = scenario
+            .observations
+            .iter()
+            .find(|observation| observation.sat == *sat)
+            .expect("scenario observation");
+        let ephemeris = parsed
+            .iter()
+            .find(|ephemeris| ephemeris.sat == *sat)
+            .expect("parsed ephemeris");
+        let corrected_residual_m = iterative_pseudorange_residual_m(
+            ephemeris,
+            observation,
+            (solution.ecef_x_m, solution.ecef_y_m, solution.ecef_z_m),
+            solution.clock_bias_s,
+            scenario.t_rx_s,
+        );
+        let uncorrected_residual_m = iterative_pseudorange_residual_without_earth_rotation_m(
+            ephemeris,
+            observation,
+            (solution.ecef_x_m, solution.ecef_y_m, solution.ecef_z_m),
+            solution.clock_bias_s,
+            scenario.t_rx_s,
+        );
+
+        assert!((residual_m - corrected_residual_m).abs() < 1.0e-6);
+        assert!(uncorrected_residual_m.abs() > residual_m.abs() + 1.0);
+    }
+}
+
+#[test]
 fn decoded_lnav_ephemeris_feeds_position_solver() {
     let source = vec![
         sample_ephemeris(1, 0.0, 0.0),
@@ -635,4 +683,57 @@ fn decoded_lnav_position_solver_uses_broadcast_satellite_clock_correction() {
 
     assert!(corrected_error_m < 5.0);
     assert!(zero_clock_error_m > corrected_error_m + 20.0);
+}
+
+#[test]
+fn decoded_lnav_position_solver_residuals_include_earth_rotation_correction() {
+    let scenario = four_satellite_position_scenario(2.75e-4);
+    let parsed = scenario
+        .ephemerides
+        .iter()
+        .map(|eph| {
+            let (ephemerides, rejections) = ephemerides_from_decoded_gps_l1ca_lnav(
+                eph.sat.prn,
+                &decoded_lnav_subframes_from_ephemeris(eph),
+                Some(eph.week),
+            );
+            assert!(rejections.is_empty(), "rejections={rejections:?}");
+            assert_eq!(ephemerides.len(), 1, "ephemerides={ephemerides:?}");
+            ephemerides.into_iter().next().expect("decoded ephemeris")
+        })
+        .collect::<Vec<_>>();
+
+    let solution = PositionSolver::new()
+        .solve_wls(&scenario.observations, &parsed, scenario.t_rx_s)
+        .expect("decoded LNAV ephemerides should support a position solve");
+
+    assert_eq!(solution.used_sat_count, 4);
+    for (sat, residual_m, _weight) in &solution.residuals {
+        let observation = scenario
+            .observations
+            .iter()
+            .find(|observation| observation.sat == *sat)
+            .expect("scenario observation");
+        let ephemeris = parsed
+            .iter()
+            .find(|ephemeris| ephemeris.sat == *sat)
+            .expect("decoded ephemeris");
+        let corrected_residual_m = iterative_pseudorange_residual_m(
+            ephemeris,
+            observation,
+            (solution.ecef_x_m, solution.ecef_y_m, solution.ecef_z_m),
+            solution.clock_bias_s,
+            scenario.t_rx_s,
+        );
+        let uncorrected_residual_m = iterative_pseudorange_residual_without_earth_rotation_m(
+            ephemeris,
+            observation,
+            (solution.ecef_x_m, solution.ecef_y_m, solution.ecef_z_m),
+            solution.clock_bias_s,
+            scenario.t_rx_s,
+        );
+
+        assert!((residual_m - corrected_residual_m).abs() < 1.0e-6);
+        assert!(uncorrected_residual_m.abs() > residual_m.abs() + 1.0);
+    }
 }
