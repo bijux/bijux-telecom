@@ -75,6 +75,14 @@ fn runtime_config_from_env(
     common: &CommonArgs,
     run_dir: Option<PathBuf>,
 ) -> bijux_gnss_infra::api::receiver::ReceiverRuntime {
+    runtime_config_from_capture_start(common, run_dir, None)
+}
+
+fn runtime_config_from_capture_start(
+    common: &CommonArgs,
+    run_dir: Option<PathBuf>,
+    capture_start_utc: Option<&str>,
+) -> bijux_gnss_infra::api::receiver::ReceiverRuntime {
     if common.deterministic {
         std::env::set_var("RAYON_NUM_THREADS", "1");
         std::env::set_var("BIJUX_DETERMINISTIC", "1");
@@ -84,8 +92,20 @@ fn runtime_config_from_env(
         trace_dir: common.dump.clone(),
         run_dir: run_dir.or_else(|| std::env::var("BIJUX_RUN_DIR").ok().map(PathBuf::from)),
         diagnostics_dump: std::env::var("BIJUX_DIAGNOSTICS_DUMP").ok().as_deref() == Some("1"),
+        capture_start_gps_time: capture_start_utc.and_then(capture_start_gps_time),
     };
     bijux_gnss_infra::api::receiver::ReceiverRuntime::new(config)
+}
+
+fn capture_start_gps_time(capture_start_utc: &str) -> Option<bijux_gnss_infra::api::core::GpsTime> {
+    let utc = time::OffsetDateTime::parse(
+        capture_start_utc,
+        &time::format_description::well_known::Rfc3339,
+    )
+    .ok()?;
+    Some(bijux_gnss_infra::api::nav::gps_time_from_utc(bijux_gnss_infra::api::core::UtcTime {
+        unix_s: utc.unix_timestamp_nanos() as f64 / 1_000_000_000.0,
+    }))
 }
 use bijux_gnss_infra::api::core::format_sat;
 

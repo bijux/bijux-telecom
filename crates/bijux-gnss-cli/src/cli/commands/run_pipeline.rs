@@ -344,8 +344,12 @@ fn handle_run(command: GnssCommand) -> Result<()> {
         bail!("invalid command for handler");
     };
 
-    let runtime = runtime_config_from_env(&common, None);
     let dataset = load_dataset(&common)?;
+    let runtime = runtime_config_from_capture_start(
+        &common,
+        None,
+        dataset.as_ref().and_then(|entry| entry.capture_start_utc.as_deref()),
+    );
     let mut profile = load_config(&common)?;
     apply_common_overrides(
         &mut profile,
