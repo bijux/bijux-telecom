@@ -2048,8 +2048,7 @@ impl SatState {
     }
 
     fn carrier_phase_rad_at(&self, t: f64) -> f64 {
-        let initial_carrier_hz =
-            self.if_hz + self.doppler_hz + self.receiver_clock_frequency_bias_hz;
+        let initial_carrier_hz = self.carrier_hz_at(0.0);
         self.carrier_phase_rad
             + std::f64::consts::TAU
                 * (initial_carrier_hz * t + 0.5 * self.doppler_rate_hz_per_s * t * t)

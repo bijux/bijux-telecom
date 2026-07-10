@@ -39,6 +39,32 @@ pub fn carrier_frequency_error_hz(epoch: &TrackEpoch, expected_carrier_hz: f64) 
     (epoch.carrier_hz.0 - expected_carrier_hz).abs()
 }
 
+pub fn expected_linear_doppler_hz(
+    sample_index: u64,
+    sample_rate_hz: f64,
+    initial_doppler_hz: f64,
+    doppler_rate_hz_per_s: f64,
+) -> f64 {
+    initial_doppler_hz + ((sample_index as f64) / sample_rate_hz) * doppler_rate_hz_per_s
+}
+
+pub fn carrier_frequency_error_under_linear_doppler_hz(
+    epoch: &TrackEpoch,
+    sample_rate_hz: f64,
+    initial_doppler_hz: f64,
+    doppler_rate_hz_per_s: f64,
+) -> f64 {
+    carrier_frequency_error_hz(
+        epoch,
+        expected_linear_doppler_hz(
+            epoch.sample_index,
+            sample_rate_hz,
+            initial_doppler_hz,
+            doppler_rate_hz_per_s,
+        ),
+    )
+}
+
 pub fn first_tracking_lock_epoch_index(epochs: &[TrackEpoch]) -> Option<usize> {
     epochs
         .iter()
@@ -75,6 +101,25 @@ pub fn post_lock_carrier_frequency_errors_hz(
         .collect()
 }
 
+pub fn post_lock_carrier_frequency_errors_under_linear_doppler_hz(
+    epochs: &[TrackEpoch],
+    sample_rate_hz: f64,
+    initial_doppler_hz: f64,
+    doppler_rate_hz_per_s: f64,
+) -> Vec<f64> {
+    post_lock_epochs(epochs)
+        .iter()
+        .map(|epoch| {
+            carrier_frequency_error_under_linear_doppler_hz(
+                epoch,
+                sample_rate_hz,
+                initial_doppler_hz,
+                doppler_rate_hz_per_s,
+            )
+        })
+        .collect()
+}
+
 pub fn post_lock_code_phase_errors_samples(
     config: &ReceiverPipelineConfig,
     epochs: &[TrackEpoch],
@@ -93,8 +138,10 @@ fn gps_lnav_nav_bit_period_samples(sample_rate_hz: f64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        carrier_frequency_error_hz, code_phase_error_samples, first_tracking_lock_epoch_index,
+        carrier_frequency_error_hz, carrier_frequency_error_under_linear_doppler_hz,
+        code_phase_error_samples, expected_linear_doppler_hz, first_tracking_lock_epoch_index,
         nav_bit_transition_epoch_indices, post_lock_carrier_frequency_errors_hz,
+        post_lock_carrier_frequency_errors_under_linear_doppler_hz,
         post_lock_code_phase_errors_samples, post_lock_epochs,
         wrapped_code_phase_error_samples,
     };
@@ -121,6 +168,25 @@ mod tests {
         let epoch = TrackEpoch { carrier_hz: Hertz(101.5), ..TrackEpoch::default() };
 
         assert_eq!(carrier_frequency_error_hz(&epoch, 100.0), 1.5);
+    }
+
+    #[test]
+    fn expected_linear_doppler_hz_applies_rate_from_sample_time() {
+        assert_eq!(expected_linear_doppler_hz(6_000, 4_000.0, 100.0, 8.0), 112.0);
+    }
+
+    #[test]
+    fn carrier_frequency_error_under_linear_doppler_hz_uses_epoch_sample_index() {
+        let epoch = TrackEpoch {
+            sample_index: 8_000,
+            carrier_hz: Hertz(116.5),
+            ..TrackEpoch::default()
+        };
+
+        assert_eq!(
+            carrier_frequency_error_under_linear_doppler_hz(&epoch, 4_000.0, 100.0, 8.0),
+            0.5
+        );
     }
 
     #[test]
@@ -257,6 +323,43 @@ mod tests {
         ];
 
         assert_eq!(post_lock_carrier_frequency_errors_hz(&epochs, 100.0), vec![1.5, 0.75]);
+    }
+
+    #[test]
+    fn post_lock_linear_carrier_frequency_errors_starts_at_first_tracking_lock_epoch() {
+        let epochs = vec![
+            TrackEpoch {
+                sample_index: 0,
+                carrier_hz: Hertz(90.0),
+                pll_lock: false,
+                fll_lock: true,
+                lock_state: "pull_in".to_string(),
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                sample_index: 4_000,
+                carrier_hz: Hertz(110.5),
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                sample_index: 8_000,
+                carrier_hz: Hertz(120.75),
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                ..TrackEpoch::default()
+            },
+        ];
+
+        assert_eq!(
+            post_lock_carrier_frequency_errors_under_linear_doppler_hz(
+                &epochs, 4_000.0, 100.0, 10.0
+            ),
+            vec![0.5, 0.75]
+        );
     }
 
     #[test]
