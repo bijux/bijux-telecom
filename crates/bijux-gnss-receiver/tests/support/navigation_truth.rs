@@ -36,7 +36,7 @@ pub fn four_satellite_pvt_scenario(config: &ReceiverPipelineConfig) -> Synthetic
                 / SPEED_OF_LIGHT_MPS
         })
         .collect::<Vec<_>>();
-    let target_epoch_idx = shared_epoch_index(&pseudorange_chips);
+    let pseudorange_epoch_base = shared_pseudorange_epoch_base(&pseudorange_chips);
     let satellites = ephemerides
         .iter()
         .zip([-1_150.0, -300.0, 450.0, 1_100.0])
@@ -44,7 +44,7 @@ pub fn four_satellite_pvt_scenario(config: &ReceiverPipelineConfig) -> Synthetic
         .map(|((ephemeris, doppler_hz), pseudorange_chips)| SyntheticSignalParams {
             sat: ephemeris.sat,
             doppler_hz,
-            code_phase_chips: encode_code_phase_chips(pseudorange_chips, target_epoch_idx),
+            code_phase_chips: encode_code_phase_chips(pseudorange_chips, pseudorange_epoch_base),
             carrier_phase_rad: 0.0,
             cn0_db_hz: 52.0,
             data_bit_flip: false,
@@ -64,7 +64,7 @@ pub fn four_satellite_pvt_scenario(config: &ReceiverPipelineConfig) -> Synthetic
         },
         ephemerides,
         truth_ecef_m,
-        target_epoch_idx,
+        target_epoch_idx: 0,
     }
 }
 
@@ -121,7 +121,7 @@ fn make_near_isorange_ephemeris(prn: u8, omega0: f64, m0: f64, t_ref_s: f64) -> 
     }
 }
 
-fn shared_epoch_index(pseudorange_chips: &[f64]) -> u64 {
+fn shared_pseudorange_epoch_base(pseudorange_chips: &[f64]) -> u64 {
     let mut epoch_indices =
         pseudorange_chips.iter().map(|chips| (chips / GPS_L1_CA_CODE_PERIOD_CHIPS).floor() as u64);
     let target_epoch_idx = epoch_indices.next().expect("pseudorange chip counts");
