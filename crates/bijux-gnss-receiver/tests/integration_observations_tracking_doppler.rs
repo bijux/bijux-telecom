@@ -6,7 +6,10 @@ use bijux_gnss_core::api::{
 };
 use bijux_gnss_receiver::api::{
     carrier_hz_from_doppler_hz, observations_from_tracking_results,
-    sim::{generate_l1_ca, SyntheticSignalParams},
+    sim::{
+        generate_l1_ca, generate_l1_ca_with_doppler_ramp, SyntheticDopplerRampParams,
+        SyntheticSignalParams,
+    },
     ReceiverPipelineConfig, ReceiverRuntime, TrackingEngine,
 };
 
@@ -118,6 +121,74 @@ fn stable_tracking_dopplers_hz(observations: &[ObsEpoch]) -> Vec<f64> {
         .collect()
 }
 
+fn stable_tracking_observation_rows(observations: &[ObsEpoch]) -> Vec<(u64, f64)> {
+    observations
+        .iter()
+        .flat_map(|epoch| epoch.sats.iter())
+        .filter(|sat| {
+            sat.metadata.tracking_state == "tracking"
+                && sat.lock_flags.code_lock
+                && sat.lock_flags.carrier_lock
+        })
+        .map(|sat| (sat.metadata.time_tag_sample_index, sat.doppler_hz.0))
+        .collect()
+}
+
+fn expected_linear_doppler_hz(
+    sample_index: u64,
+    sample_rate_hz: f64,
+    initial_doppler_hz: f64,
+    doppler_rate_hz_per_s: f64,
+) -> f64 {
+    initial_doppler_hz + ((sample_index as f64) / sample_rate_hz) * doppler_rate_hz_per_s
+}
+
+fn track_observation_ramp_case(
+    config: &ReceiverPipelineConfig,
+    sat: SatId,
+    initial_doppler_hz: f64,
+    doppler_rate_hz_per_s: f64,
+    seeded_doppler_hz: f64,
+    code_phase_chips: f64,
+    carrier_phase_rad: f64,
+) -> Vec<ObsEpoch> {
+    let expected_code_phase_samples =
+        code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
+    let frame = generate_l1_ca_with_doppler_ramp(
+        config,
+        SyntheticDopplerRampParams {
+            signal: SyntheticSignalParams {
+                sat,
+                doppler_hz: initial_doppler_hz,
+                code_phase_chips,
+                carrier_phase_rad,
+                cn0_db_hz: CLEAN_TRACKED_DOPPLER_CN0_DB_HZ,
+                data_bit_flip: false,
+            },
+            doppler_rate_hz_per_s,
+        },
+        0x0B5E_0002,
+        CLEAN_TRACKED_DOPPLER_DURATION_S,
+    );
+    let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
+    let mut tracks = tracking.track_from_acquisition(
+        &frame,
+        &[accepted_acquisition(
+            config,
+            sat,
+            seeded_doppler_hz,
+            expected_code_phase_samples.round() as usize,
+        )],
+    );
+    for track in &mut tracks {
+        track.epochs.retain(|epoch| epoch.epoch.index >= VALID_OBSERVATION_START_EPOCH_INDEX);
+    }
+    let report = observations_from_tracking_results(config, &tracks, 10);
+
+    assert!(report.events.is_empty(), "unexpected observation diagnostics: {:?}", report.events);
+    report.output
+}
+
 #[test]
 fn observations_match_clean_constant_tracking_doppler() {
     let config = observation_tracking_config(0.0);
@@ -149,5 +220,37 @@ fn observations_preserve_negative_tracked_doppler_with_intermediate_frequency() 
             .iter()
             .all(|doppler_hz| (*doppler_hz - true_doppler_hz).abs() <= CLEAN_TRACKED_DOPPLER_MAX_ERROR_HZ),
         "if-aware observation doppler exceeded tolerance {CLEAN_TRACKED_DOPPLER_MAX_ERROR_HZ} Hz: stable_dopplers_hz={stable_dopplers_hz:?}, observations={observations:?}"
+    );
+}
+
+#[test]
+fn observations_follow_positive_tracked_doppler_ramp() {
+    let config = observation_tracking_config(0.0);
+    let sat = SatId { constellation: Constellation::Gps, prn: 16 };
+    let initial_doppler_hz = 180.0;
+    let doppler_rate_hz_per_s = 40.0;
+    let observations = track_observation_ramp_case(
+        &config,
+        sat,
+        initial_doppler_hz,
+        doppler_rate_hz_per_s,
+        120.0,
+        211.25,
+        0.40,
+    );
+    let stable_rows = stable_tracking_observation_rows(&observations);
+
+    assert!(!stable_rows.is_empty(), "observations={observations:?}");
+    assert!(
+        stable_rows.iter().all(|(sample_index, doppler_hz)| {
+            let expected = expected_linear_doppler_hz(
+                *sample_index,
+                config.sampling_freq_hz,
+                initial_doppler_hz,
+                doppler_rate_hz_per_s,
+            );
+            (*doppler_hz - expected).abs() <= CLEAN_TRACKED_DOPPLER_MAX_ERROR_HZ
+        }),
+        "ramped observation doppler exceeded tolerance {CLEAN_TRACKED_DOPPLER_MAX_ERROR_HZ} Hz: stable_rows={stable_rows:?}, observations={observations:?}"
     );
 }
