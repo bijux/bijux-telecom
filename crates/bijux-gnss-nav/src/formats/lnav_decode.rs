@@ -3,6 +3,7 @@
 
 use crate::formats::lnav_bits::GpsWord;
 use crate::orbits::gps::GpsEphemeris;
+use crate::time::gps_week_rollover;
 use bijux_gnss_core::api::{Constellation, SatId};
 use serde::{Deserialize, Serialize};
 
@@ -303,6 +304,7 @@ pub struct EphemerisPart {
 #[derive(Debug, Default, Clone)]
 pub struct EphemerisBuilder {
     prn: u8,
+    reference_week: Option<u32>,
     iodc: Option<u16>,
     iode: Option<u8>,
     week: Option<u16>,
@@ -331,6 +333,10 @@ pub struct EphemerisBuilder {
 }
 
 impl EphemerisBuilder {
+    pub fn with_reference_week(prn: u8, reference_week: u32) -> Self {
+        Self { prn, reference_week: Some(reference_week), ..Default::default() }
+    }
+
     pub fn merge(&mut self, part: EphemerisPart) -> Result<(), GpsL1CaLnavEphemerisRejection> {
         self.check_issue_consistency(&part)?;
 
@@ -418,7 +424,7 @@ impl EphemerisBuilder {
             sat: SatId { constellation: Constellation::Gps, prn: self.prn },
             iodc: self.iodc?,
             iode: self.iode?,
-            week: self.week?,
+            week: gps_week_rollover(self.week?, self.reference_week?),
             sv_health: self.sv_health?,
             toe_s: self.toe_s?,
             toc_s: self.toc_s?,
@@ -446,7 +452,8 @@ impl EphemerisBuilder {
 
     pub fn reset(&mut self) {
         let prn = self.prn;
-        *self = Self { prn, ..Default::default() };
+        let reference_week = self.reference_week;
+        *self = Self { prn, reference_week, ..Default::default() };
     }
 
     fn check_issue_consistency(
@@ -529,11 +536,17 @@ pub fn decode_subframe_hex(hex: &str) -> Option<Vec<u32>> {
     Some(words)
 }
 
-pub fn decode_rawephem_hex(prn: u8, sub1: &str, sub2: &str, sub3: &str) -> Option<GpsEphemeris> {
+pub fn decode_rawephem_hex(
+    prn: u8,
+    sub1: &str,
+    sub2: &str,
+    sub3: &str,
+    reference_week: u32,
+) -> Option<GpsEphemeris> {
     let w1 = decode_subframe_hex(sub1)?;
     let w2 = decode_subframe_hex(sub2)?;
     let w3 = decode_subframe_hex(sub3)?;
-    let mut builder = EphemerisBuilder { prn, ..Default::default() };
+    let mut builder = EphemerisBuilder::with_reference_week(prn, reference_week);
     let words1: Vec<GpsWord> = w1
         .into_iter()
         .map(|data| GpsWord { data, parity_ok: true, d29_star: 0, d30_star: 0 })
@@ -786,6 +799,17 @@ mod tests {
     }
 
     #[test]
+    fn rawephem_decode_resolves_full_week_from_reference_week() {
+        let sub1 = "8b0284a1b8a52850000724918b913e21a92dc6ee0b217b0c00ffb72fac04";
+        let sub2 = "8b0284a1b92b21fac82899520ec7b7fb31061550921d09a10d62b87b0c7c";
+        let sub3 = "8b0284a1b9adff7d74db71f3ffaa2840ed6e0fe024cddf1effadc82106c4";
+
+        let eph = super::decode_rawephem_hex(1, sub1, sub2, sub3, 2209).expect("decoded ephemeris");
+
+        assert_eq!(eph.week, 2209);
+    }
+
+    #[test]
     fn rawephem_decode_refuses_mixed_iode_subframes() {
         let sub1 = "8b0284a1b8a52850000724918b913e21a92dc6ee0b217b0c00ffb72fac04";
         let sub2 = "8b0284a1b92b21fac82899520ec7b7fb31061550921d09a10d62b87b0c7c";
@@ -794,7 +818,7 @@ mod tests {
         set_bits(&mut sub3_words[9], 1, 8, 0x22);
         let sub3 = encode_subframe_words(&sub3_words);
 
-        let eph = super::decode_rawephem_hex(1, sub1, sub2, &sub3);
+        let eph = super::decode_rawephem_hex(1, sub1, sub2, &sub3, 2209);
 
         assert!(eph.is_none());
     }

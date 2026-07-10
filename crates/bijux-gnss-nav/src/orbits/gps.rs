@@ -14,7 +14,7 @@ pub struct GpsEphemeris {
     pub sat: SatId,
     pub iodc: u16,
     pub iode: u8,
-    pub week: u16,
+    pub week: u32,
     pub sv_health: u8,
     pub toe_s: f64,
     pub toc_s: f64,

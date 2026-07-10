@@ -8,12 +8,12 @@ fn rawephem_fixture_decodes_broadcast_ephemeris_fields() {
     let sub2 = "8b0284a1b92b21fac82899520ec7b7fb31061550921d09a10d62b87b0c7c";
     let sub3 = "8b0284a1b9adff7d74db71f3ffaa2840ed6e0fe024cddf1effadc82106c4";
 
-    let eph = decode_rawephem_hex(1, sub1, sub2, sub3).expect("decoded ephemeris");
+    let eph = decode_rawephem_hex(1, sub1, sub2, sub3, 2209).expect("decoded ephemeris");
     let angle_lsb = 2f64.powi(-31) * std::f64::consts::PI;
     let rate_lsb = 2f64.powi(-43) * std::f64::consts::PI;
 
     assert_eq!(eph.sat.prn, 1);
-    assert_eq!(eph.week, 2209 % 1024);
+    assert_eq!(eph.week, 2209);
     assert_eq!(eph.sv_health, 0);
     assert_eq!(eph.iodc, 33);
     assert_eq!(eph.iode, 33);
