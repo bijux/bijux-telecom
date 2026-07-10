@@ -1,5 +1,5 @@
 #![allow(missing_docs)]
-use bijux_gnss_core::api::{Constellation, SatId};
+use bijux_gnss_core::api::{Constellation, GpsTime, ObsSignalTiming, SatId, Seconds};
 use bijux_gnss_nav::api::{
     ephemerides_from_decoded_gps_l1ca_lnav, geodetic_to_ecef, parse_rinex_nav, sat_state_gps_l1ca,
     write_rinex_nav, Ephemeris, GpsEphemeris, GpsL1CaHowWord, GpsL1CaLnavDecodedSubframe,
@@ -63,6 +63,22 @@ fn make_eph(prn: u8, omega0: f64, m0: f64) -> GpsEphemeris {
         af1: 0.0,
         af2: 0.0,
         tgd: 0.0,
+    }
+}
+
+fn timed_position_observation(sat: SatId, pseudorange_m: f64, t_rx_s: f64) -> PositionObservation {
+    let signal_travel_time_s = pseudorange_m / 299_792_458.0;
+    PositionObservation {
+        sat,
+        pseudorange_m,
+        cn0_dbhz: 45.0,
+        elevation_deg: None,
+        weight: 1.0,
+        gps_receive_time: Some(GpsTime { week: 0, tow_s: t_rx_s }),
+        signal_timing: Some(ObsSignalTiming {
+            signal_travel_time_s: Seconds(signal_travel_time_s),
+            transmit_gps_time: GpsTime { week: 0, tow_s: t_rx_s - signal_travel_time_s },
+        }),
     }
 }
 
@@ -206,15 +222,7 @@ fn rinex_nav_ephemeris_feeds_position_solver() {
                 }
                 tau = next_tau;
             }
-            PositionObservation {
-                sat: eph.sat,
-                pseudorange_m,
-                cn0_dbhz: 45.0,
-                elevation_deg: None,
-                weight: 1.0,
-                gps_receive_time: None,
-                signal_timing: None,
-            }
+            timed_position_observation(eph.sat, pseudorange_m, t_rx_s)
         })
         .collect::<Vec<_>>();
 
@@ -269,15 +277,7 @@ fn decoded_lnav_ephemeris_feeds_position_solver() {
                 }
                 tau = next_tau;
             }
-            PositionObservation {
-                sat: eph.sat,
-                pseudorange_m,
-                cn0_dbhz: 45.0,
-                elevation_deg: None,
-                weight: 1.0,
-                gps_receive_time: None,
-                signal_timing: None,
-            }
+            timed_position_observation(eph.sat, pseudorange_m, t_rx_s)
         })
         .collect::<Vec<_>>();
 

@@ -35,6 +35,22 @@ fn make_eph(prn: u8, omega0: f64, m0: f64) -> GpsEphemeris {
     }
 }
 
+fn timed_position_observation(sat: SatId, pseudorange_m: f64, t_rx_s: f64) -> PositionObservation {
+    let signal_travel_time_s = pseudorange_m / 299_792_458.0;
+    PositionObservation {
+        sat,
+        pseudorange_m,
+        cn0_dbhz: 45.0,
+        elevation_deg: None,
+        weight: 1.0,
+        gps_receive_time: Some(GpsTime { week: 0, tow_s: t_rx_s }),
+        signal_timing: Some(ObsSignalTiming {
+            signal_travel_time_s: Seconds(signal_travel_time_s),
+            transmit_gps_time: GpsTime { week: 0, tow_s: t_rx_s - signal_travel_time_s },
+        }),
+    }
+}
+
 #[test]
 fn fault_injection_rejects_bad_pseudorange() {
     let (rx_x, rx_y, rx_z) = geodetic_to_ecef(37.0, -122.0, 10.0);
@@ -60,15 +76,7 @@ fn fault_injection_rejects_bad_pseudorange() {
         if eph.sat.prn == 3 {
             pr += 1000.0;
         }
-        obs.push(PositionObservation {
-            sat: eph.sat,
-            pseudorange_m: pr,
-            cn0_dbhz: 45.0,
-            elevation_deg: None,
-            weight: 1.0,
-            gps_receive_time: None,
-            signal_timing: None,
-        });
+        obs.push(timed_position_observation(eph.sat, pr, t_rx_s));
     }
 
     let solver = PositionSolver { raim: true, residual_gate_m: 300.0, ..PositionSolver::new() };
@@ -162,15 +170,11 @@ fn position_solver_rejects_stale_ephemeris_when_current_satellites_can_still_sol
         let dy = rx_y - state.y_m;
         let dz = rx_z - state.z_m;
         let range = (dx * dx + dy * dy + dz * dz).sqrt();
-        obs.push(PositionObservation {
-            sat: eph.sat,
-            pseudorange_m: range - state.clock_correction.bias_s * 299_792_458.0,
-            cn0_dbhz: 45.0,
-            elevation_deg: None,
-            weight: 1.0,
-            gps_receive_time: None,
-            signal_timing: None,
-        });
+        obs.push(timed_position_observation(
+            eph.sat,
+            range - state.clock_correction.bias_s * 299_792_458.0,
+            t_rx_s,
+        ));
     }
 
     let solution = PositionSolver::new()
