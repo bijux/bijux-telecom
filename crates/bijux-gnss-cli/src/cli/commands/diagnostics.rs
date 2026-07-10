@@ -121,6 +121,8 @@ fn handle_nav(command: GnssCommand) -> Result<()> {
                         let prompt = sorted.iter().map(|row| row.prompt_i).collect::<Vec<_>>();
                         let demodulation =
                             bijux_gnss_infra::api::nav::demodulate_gps_l1ca_navigation_bits(&prompt);
+                        let alignment =
+                            bijux_gnss_infra::api::nav::align_gps_l1ca_lnav_from_prompt(&prompt);
                         let bit_signs =
                             demodulation.bits.iter().map(|bit| bit.sign).collect::<Vec<_>>();
                         let (mut ephs, stats) =
@@ -132,6 +134,7 @@ fn handle_nav(command: GnssCommand) -> Result<()> {
                             sat: target,
                             bit_start_ms: demodulation.bit_start_ms,
                             bit_signs,
+                            aligned_subframes: alignment.subframes,
                             preamble_hits: stats.preamble_hits,
                             parity_pass_rate: stats.parity_pass_rate,
                             ephemerides: ephs.clone(),
