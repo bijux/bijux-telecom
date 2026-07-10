@@ -35,6 +35,10 @@ fn default_signal_band() -> SignalBand {
     SignalBand::L1
 }
 
+fn default_cycles_zero() -> Cycles {
+    Cycles(0.0)
+}
+
 pub const TRACKING_STATE_MODEL_VERSION: u32 = 1;
 pub const OBSERVATION_MODEL_VERSION: u32 = 1;
 pub const OBSERVATION_DOWNSTREAM_PROFILE_VERSION: u32 = 1;
@@ -558,6 +562,8 @@ pub struct TrackEpoch {
     #[serde(default)]
     pub late_q: f32,
     pub carrier_hz: Hertz,
+    #[serde(default = "default_cycles_zero")]
+    pub carrier_phase_cycles: Cycles,
     pub code_rate_hz: Hertz,
     pub code_phase_samples: Chips,
     pub lock: bool,
@@ -604,6 +610,7 @@ impl Default for TrackEpoch {
             late_i: 0.0,
             late_q: 0.0,
             carrier_hz: Hertz(0.0),
+            carrier_phase_cycles: Cycles(0.0),
             code_rate_hz: Hertz(0.0),
             code_phase_samples: Chips(0.0),
             lock: false,
