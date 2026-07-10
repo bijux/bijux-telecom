@@ -213,3 +213,29 @@ fn tracking_steers_code_rate_toward_faster_signal_code() {
         best_code_rate_hz,
     );
 }
+
+#[test]
+fn tracking_holds_clean_code_lock_for_fractional_phase_seed() {
+    let config = ReceiverPipelineConfig {
+        sampling_freq_hz: 4_000_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 1_023_000.0,
+        code_length: 1023,
+        channels: 4,
+        early_late_spacing_chips: 0.5,
+        dll_bw_hz: 2.0,
+        pll_bw_hz: 15.0,
+        fll_bw_hz: 10.0,
+        ..ReceiverPipelineConfig::default()
+    };
+    let sat = SatId { constellation: Constellation::Gps, prn: 14 };
+    let code_phase_chips = 144.375;
+    let expected_code_phase_samples =
+        code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
+    let seeded_code_phase_samples = expected_code_phase_samples.round() as usize;
+    let epochs =
+        track_clean_code_case(&config, sat, code_phase_chips, 0.012, seeded_code_phase_samples);
+
+    assert!(epochs.len() >= CLEAN_SIGNAL_MIN_LOCKED_CODE_EPOCHS, "epochs={epochs:?}");
+    assert_clean_signal_code_lock(&config, &epochs, expected_code_phase_samples);
+}
