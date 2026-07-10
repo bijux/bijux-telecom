@@ -49,6 +49,13 @@ pub struct PositionObservation {
 }
 
 #[derive(Debug, Clone)]
+struct PositionSolveInput {
+    observation: PositionObservation,
+    ephemeris: GpsEphemeris,
+    receive_tow_s: f64,
+}
+
+#[derive(Debug, Clone)]
 pub struct PositionSolver {
     pub max_iterations: usize,
     pub convergence_m: f64,
@@ -111,6 +118,10 @@ impl PositionSolver {
         let mut used: Vec<(PositionObservation, GpsSatState, f64)> = Vec::new();
 
         let mut rejected = timing_rejected;
+        let inputs = resolve_position_inputs(&observations, ephemerides, t_rx_s, &mut rejected);
+        if inputs.len() < 4 {
+            return None;
+        }
         let mut residuals = Vec::new();
         let mut cov = None;
         let mut cov_symmetrized = false;
@@ -118,33 +129,15 @@ impl PositionSolver {
         let mut cov_max_variance = None;
         for _ in 0..self.max_iterations {
             used.clear();
-            for obs in &observations {
-                let eph = match ephemerides.iter().find(|e| e.sat == obs.sat) {
-                    Some(eph) => eph,
-                    None => {
-                        rejected.push((
-                            obs.sat,
-                            bijux_gnss_core::api::MeasurementRejectReason::InvalidEphemeris,
-                        ));
-                        continue;
-                    }
-                };
-                let receive_tow_s =
-                    obs.gps_receive_time.map(|gps_time| gps_time.tow_s).unwrap_or(t_rx_s);
-                if !is_ephemeris_valid(eph, receive_tow_s) {
-                    rejected.push((
-                        obs.sat,
-                        bijux_gnss_core::api::MeasurementRejectReason::InvalidEphemeris,
-                    ));
-                    continue;
-                }
+            for input in &inputs {
+                let obs = &input.observation;
                 let mut tau = obs
                     .signal_timing
                     .map(|timing| timing.signal_travel_time_s.0)
                     .unwrap_or(obs.pseudorange_m / 299_792_458.0);
                 let mut state = sat_state_gps_l1ca_from_observation(
-                    eph,
-                    receive_tow_s,
+                    &input.ephemeris,
+                    input.receive_tow_s,
                     obs.pseudorange_m,
                     obs.signal_timing,
                 );
@@ -161,7 +154,7 @@ impl PositionSolver {
                         converged = true;
                     }
                     tau = next_tau;
-                    state = sat_state_gps_l1ca(eph, receive_tow_s - tau, tau);
+                    state = sat_state_gps_l1ca(&input.ephemeris, input.receive_tow_s - tau, tau);
                     if converged {
                         break;
                     }
@@ -355,6 +348,36 @@ impl PositionSolver {
             rejected_sat_count,
         })
     }
+}
+
+fn resolve_position_inputs(
+    observations: &[PositionObservation],
+    ephemerides: &[GpsEphemeris],
+    t_rx_s: f64,
+    rejected: &mut Vec<(SatId, MeasurementRejectReason)>,
+) -> Vec<PositionSolveInput> {
+    observations
+        .iter()
+        .filter_map(|obs| {
+            let Some(ephemeris) = ephemerides.iter().find(|eph| eph.sat == obs.sat) else {
+                rejected.push((obs.sat, MeasurementRejectReason::InvalidEphemeris));
+                return None;
+            };
+            let receive_tow_s = obs
+                .gps_receive_time
+                .map(|gps_time| gps_time.tow_s)
+                .unwrap_or(t_rx_s);
+            if !is_ephemeris_valid(ephemeris, receive_tow_s) {
+                rejected.push((obs.sat, MeasurementRejectReason::InvalidEphemeris));
+                return None;
+            }
+            Some(PositionSolveInput {
+                observation: obs.clone(),
+                ephemeris: ephemeris.clone(),
+                receive_tow_s,
+            })
+        })
+        .collect()
 }
 
 /// Returns whether a position observation carries a finite and internally consistent
