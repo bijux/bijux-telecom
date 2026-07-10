@@ -2696,6 +2696,30 @@ mod tests {
     }
 
     #[test]
+    fn code_value_at_tracking_phase_wraps_fractional_chip_phases() {
+        let code = vec![1_i8, -1, 1, -1];
+
+        assert_eq!(super::code_value_at_tracking_phase(&code, 0.25), 1.0);
+        assert_eq!(super::code_value_at_tracking_phase(&code, 1.75), -1.0);
+        assert_eq!(super::code_value_at_tracking_phase(&code, 4.10), 1.0);
+        assert_eq!(super::code_value_at_tracking_phase(&code, -0.10), -1.0);
+    }
+
+    #[test]
+    fn tracking_frame_start_offset_clamps_to_visible_frame_samples() {
+        let frame = SamplesFrame::new(
+            SampleTime { sample_index: 100, sample_rate_hz: 1_023_000.0 },
+            Seconds(1.0 / 1_023_000.0),
+            vec![Complex::new(0.0_f32, 0.0); 16],
+        );
+
+        assert_eq!(super::tracking_frame_start_offset(&frame, None), Some(0));
+        assert_eq!(super::tracking_frame_start_offset(&frame, Some(90)), Some(0));
+        assert_eq!(super::tracking_frame_start_offset(&frame, Some(108)), Some(8));
+        assert_eq!(super::tracking_frame_start_offset(&frame, Some(116)), None);
+    }
+
+    #[test]
     fn refresh_lock_reference_cn0_dbhz_only_updates_on_reliable_lock() {
         assert_eq!(super::refresh_lock_reference_cn0_dbhz(48.0, 52.0, true), 52.0);
         assert_eq!(super::refresh_lock_reference_cn0_dbhz(48.0, 30.0, false), 48.0);
