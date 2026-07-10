@@ -1427,6 +1427,42 @@ mod tests {
     }
 
     #[test]
+    fn observations_declare_if_relative_doppler_contract() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 2_000.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Gps, prn: 10 };
+        let expected_doppler_hz = -250.0;
+        let carrier_hz = crate::pipeline::doppler::carrier_hz_from_doppler_hz(
+            config.intermediate_freq_hz,
+            expected_doppler_hz,
+        );
+        let track = TrackingResult {
+            sat,
+            carrier_hz,
+            code_phase_samples: 0.0,
+            acquisition_hypothesis: "accepted".to_string(),
+            acquisition_score: 1.0,
+            acquisition_code_phase_samples: 0,
+            acquisition_carrier_hz: carrier_hz,
+            acq_to_track_state: "accepted".to_string(),
+            epochs: vec![make_tracking_epoch(10, &config, 70, carrier_hz)],
+            transitions: Vec::new(),
+        };
+
+        let report = observations_from_tracking_results(&config, &[track], 10);
+        let epoch = report.output.first().expect("observation epoch");
+        let sat = epoch.sats.first().expect("observation satellite");
+
+        assert_eq!(sat.metadata.doppler_model, "tracked_carrier_hz_minus_intermediate_freq");
+        assert!((sat.doppler_hz.0 - expected_doppler_hz).abs() <= f64::EPSILON, "{sat:?}");
+    }
+
+    #[test]
     fn observation_metadata_sets_support_and_uncertainty_classes() {
         let config = ReceiverPipelineConfig::default();
         let sat = SatId { constellation: Constellation::Gps, prn: 7 };
