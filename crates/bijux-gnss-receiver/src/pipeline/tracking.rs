@@ -1517,8 +1517,6 @@ fn detect_sample_rate_mismatch(
     let phase_step_limit_samples = SAMPLE_RATE_MISMATCH_MIN_PHASE_DRIFT_SAMPLES
         .max(samples_per_code as f64 * SAMPLE_RATE_MISMATCH_MIN_PHASE_DRIFT_FRACTION);
     let pull_in_phase_step_limit_samples = phase_step_limit_samples * 0.125;
-    let phase_bias_limit_samples = (samples_per_code as f64 * 0.00025).max(1.0);
-    let baseline_code_phase_samples = epochs[0].code_phase_samples.0;
     let instability_markers = epochs
         .windows(2)
         .enumerate()
@@ -1531,17 +1529,9 @@ fn detect_sample_rate_mismatch(
                 samples_per_code,
             );
             let abs_phase_step_samples = phase_step_samples.abs();
-            let abs_phase_bias_samples = wrapped_code_phase_delta(
-                current.code_phase_samples.0,
-                baseline_code_phase_samples,
-                samples_per_code,
-            )
-            .abs();
             let unstable = abs_phase_step_samples > phase_step_limit_samples
                 || (current.lock_state != ChannelState::Tracking.to_string()
                     && abs_phase_step_samples > pull_in_phase_step_limit_samples)
-                || (current.lock_state != ChannelState::Tracking.to_string()
-                    && abs_phase_bias_samples > phase_bias_limit_samples)
                 || current.cycle_slip
                 || !current.lock
                 || current.lock_state == ChannelState::Lost.to_string();

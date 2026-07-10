@@ -18,6 +18,7 @@ pub struct SyntheticPvtScenario {
     pub ephemerides: Vec<GpsEphemeris>,
     pub truth_ecef_m: (f64, f64, f64),
     pub target_epoch_idx: u64,
+    pub pseudorange_epoch_base: u64,
 }
 
 pub fn four_satellite_pvt_scenario(config: &ReceiverPipelineConfig) -> SyntheticPvtScenario {
@@ -28,6 +29,7 @@ pub fn four_satellite_pvt_scenario(config: &ReceiverPipelineConfig) -> Synthetic
         make_near_isorange_ephemeris(7, 0.8, 0.8, t_rx_s),
         make_near_isorange_ephemeris(11, 1.6, 1.6, t_rx_s),
         make_near_isorange_ephemeris(19, 2.4, 2.4, t_rx_s),
+        make_near_isorange_ephemeris(23, 3.2, 3.2, t_rx_s),
     ];
     let pseudorange_chips = ephemerides
         .iter()
@@ -39,7 +41,7 @@ pub fn four_satellite_pvt_scenario(config: &ReceiverPipelineConfig) -> Synthetic
     let pseudorange_epoch_base = shared_pseudorange_epoch_base(&pseudorange_chips);
     let satellites = ephemerides
         .iter()
-        .zip([-1_150.0, -300.0, 450.0, 1_100.0])
+        .zip([-1_500.0, -700.0, 0.0, 700.0, 1_500.0])
         .zip(pseudorange_chips.iter().copied())
         .map(|((ephemeris, doppler_hz), pseudorange_chips)| SyntheticSignalParams {
             sat: ephemeris.sat,
@@ -65,6 +67,7 @@ pub fn four_satellite_pvt_scenario(config: &ReceiverPipelineConfig) -> Synthetic
         ephemerides,
         truth_ecef_m,
         target_epoch_idx: 0,
+        pseudorange_epoch_base,
     }
 }
 

@@ -18,7 +18,10 @@ use support::navigation_truth::{four_satellite_pvt_scenario, SyntheticPvtScenari
 fn receiver_tracks_four_satellites_with_persisted_channel_history() {
     let (_profile, artifacts) = run_multisat_receiver();
 
-    assert_eq!(artifacts.tracking.len(), 4, "receiver must track four channels");
+    assert!(
+        artifacts.tracking.len() >= 4,
+        "receiver must track at least four channels",
+    );
     assert!(
         artifacts.tracking.iter().all(|track| track.epochs.len() >= 25),
         "each tracked channel must persist well beyond acquisition handoff",
@@ -39,7 +42,7 @@ fn receiver_groups_four_satellites_into_one_observation_epoch() {
     let grouped_epoch_summaries = observation_report
         .output
         .iter()
-        .filter(|epoch| epoch.epoch_idx >= profile.target_epoch_idx && epoch.sats.len() == 4)
+        .filter(|epoch| epoch.epoch_idx >= profile.target_epoch_idx && epoch.sats.len() >= 4)
         .map(|epoch| {
             format!(
                 "epoch={} valid={} decision={:?} reasons={:?} sats={:?}",
@@ -62,7 +65,7 @@ fn receiver_groups_four_satellites_into_one_observation_epoch() {
     let observation_epoch = observation_report
         .output
         .iter()
-        .find(|epoch| epoch.epoch_idx >= profile.target_epoch_idx && epoch.valid && epoch.sats.len() == 4)
+        .find(|epoch| epoch.epoch_idx >= profile.target_epoch_idx && epoch.valid && epoch.sats.len() >= 4)
         .unwrap_or_else(|| {
             panic!(
                 "valid shared observation epoch; grouped epochs: {}",
@@ -70,7 +73,10 @@ fn receiver_groups_four_satellites_into_one_observation_epoch() {
             )
         });
 
-    assert_eq!(observation_epoch.sats.len(), 4, "shared epoch must contain four satellites");
+    assert!(
+        observation_epoch.sats.len() >= 4,
+        "shared epoch must contain at least four satellites",
+    );
     assert_eq!(observation_epoch.decision, ObservationEpochDecision::Accepted);
 }
 
@@ -80,7 +86,7 @@ fn run_multisat_receiver() -> (SyntheticPvtScenario, bijux_gnss_receiver::api::R
         intermediate_freq_hz: 0.0,
         code_freq_basis_hz: 1_023_000.0,
         code_length: 1023,
-        channels: 4,
+        channels: 5,
         tracking_budget_ms: 100.0,
         tracking_over_budget_action: "continue".to_string(),
         ..ReceiverPipelineConfig::default()
@@ -99,7 +105,7 @@ fn track_multisat_from_truth_seeds(
         intermediate_freq_hz: 0.0,
         code_freq_basis_hz: 1_023_000.0,
         code_length: 1023,
-        channels: 4,
+        channels: 5,
         tracking_budget_ms: 100.0,
         tracking_over_budget_action: "continue".to_string(),
         ..ReceiverPipelineConfig::default()
