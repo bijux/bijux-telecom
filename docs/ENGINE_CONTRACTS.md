@@ -39,4 +39,7 @@ These are the shared types exchanged across layers. They live in `bijux-gnss-cor
   degraded and rejected observation rows
 - Every `ObsSatellite` row carries `observation_lock_state`; current contract values are
   `acquired`, `pull_in`, `locked`, `degraded`, `lost`, `reacquired`, `cycle_slip`, and `inactive`
+- `lock_flags.cycle_slip` is raised for observation-detected carrier-phase discontinuities,
+  loss-of-lock arc breaks, Doppler jumps, and phase residual failures; code-carrier divergence and
+  geometry-free slip causes are limited to rows with resolved code alignment
 - `SolutionStatus` determines `valid` flag

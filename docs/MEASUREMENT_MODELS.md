@@ -45,6 +45,10 @@ sanity checks). Any violation must emit diagnostics and mark the measurement as 
   tracking slips, observation-layer divergence slips, and geometry-free slip triggers reset the
   smoothing state and restart the current epoch from the raw pseudorange with `smoothing_age = 1`.
   Unlock epochs do not seed a new smoothing arc; they emit `smoothing_age = 0` until lock resumes.
+- Slip-source contract: code-carrier divergence and geometry-free slip checks are only valid when
+  the observation row carries resolved absolute code alignment
+  (`pseudorange_model = "tracked_code_phase_alignment"`). Fallback receiver-epoch code rows do
+  not emit those slip causes.
 
 ## Carrier Phase
 - Model: `φ = (ρ + c(δt_r - δt_s) + T - I) / λ + N + ε`
@@ -58,6 +62,10 @@ sanity checks). Any violation must emit diagnostics and mark the measurement as 
 - Arc contract: `carrier_phase_arc_start_epoch_idx` and
   `carrier_phase_arc_start_sample_index` identify the start of the current ambiguity arc. They
   change only when a new usable carrier-phase arc begins.
+- Slip-trigger contract: observation rows raise `lock_flags.cycle_slip` and transition
+  `observation_lock_state` to `cycle_slip` when the receiver detects a carrier-phase
+  discontinuity, a loss-of-lock arc break, an implausible Doppler jump, or a phase residual that
+  exceeds the observation continuity tolerance.
 
 ## Doppler
 - Model: `f_D = d/dt(φ)`
@@ -95,7 +103,8 @@ sanity checks). Any violation must emit diagnostics and mark the measurement as 
   cycle slip detected while building carrier-phase observables is preserved even when the upstream
   tracking epoch did not already expose the slip as its final lifecycle state.
 - Reason contract: `observation_lock_reason` carries the receiver's explicit lock-state cause when
-  available, such as `signal_fade` or `reacquired`.
+  available, such as `signal_fade`, `reacquired`, `loss_of_lock`, `doppler_jump`,
+  `carrier_phase_discontinuity`, or `phase_residual`.
 
 ## Receiver Clock Model
 - State: receiver clock bias `δt_r` and drift `δṫ_r` (seconds and seconds/second).

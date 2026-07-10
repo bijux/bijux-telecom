@@ -71,12 +71,16 @@ Invariants:
 - every `ObsSatellite` row carries `metadata.observation_lock_state`; current values are
   `acquired`, `pull_in`, `locked`, `degraded`, `lost`, `reacquired`, `cycle_slip`, and `inactive`
 - when the receiver has an explicit lock-state cause, `metadata.observation_lock_reason` preserves
-  it alongside the lock state
+  it alongside the lock state; cycle-slip rows preserve explicit causes such as `loss_of_lock`,
+  `doppler_jump`, `carrier_phase_discontinuity`, `phase_residual`,
+  `code_carrier_divergence`, and `geometry_free_jump`
 - every `ObsSatellite` row carries Doppler and `doppler_model` even when the row is degraded,
   missing, or inconsistent, so reviewers and downstream tooling can inspect rejected satellite
   dynamics without reconstructing carrier state from tracking artifacts
 - valid `carrier_phase_continuity` values are `arc_start`, `continuous`,
   `reset_after_cycle_slip`, `reset_after_unlock`, `reset_after_discontinuity`, and `unusable`
+- code-carrier divergence and geometry-free cycle-slip reasons only appear on rows whose
+  `metadata.pseudorange_model` is `tracked_code_phase_alignment`
 
 ### track (TrackEpochV1)
 Purpose: per-epoch tracking outputs.
