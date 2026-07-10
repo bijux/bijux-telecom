@@ -10,10 +10,14 @@ use bijux_gnss_receiver::api::{
     ReceiverPipelineConfig, ReceiverRuntime, TrackingEngine,
 };
 
-use support::tracking_truth::{first_tracking_lock_epoch_index, post_lock_epochs};
+use support::tracking_truth::{
+    first_tracking_lock_epoch_index, post_lock_carrier_frequency_errors_under_linear_doppler_hz,
+    post_lock_epochs,
+};
 
 const CLEAN_DOPPLER_RAMP_CN0_DB_HZ: f32 = 75.0;
 const CLEAN_DOPPLER_RAMP_DURATION_S: f64 = 0.060;
+const CLEAN_DOPPLER_RAMP_LOCKED_CARRIER_ERROR_MAX_HZ: f64 = 10.0;
 
 fn accepted_acquisition(sat: SatId, doppler_hz: f64, code_phase_samples: usize) -> AcqResult {
     AcqResult {
@@ -123,5 +127,35 @@ fn tracking_reaches_and_preserves_lock_under_positive_doppler_ramp() {
             .iter()
             .all(|epoch| !epoch.cycle_slip && epoch.lock_state_reason.as_deref() != Some("lock_lost")),
         "tracking reported cycle slip or lock loss after ramp lock at epoch {first_lock_epoch_index}: epochs={epochs:?}"
+    );
+}
+
+#[test]
+fn tracking_keeps_bounded_carrier_error_under_positive_doppler_ramp() {
+    let config = doppler_ramp_tracking_config();
+    let sat = SatId { constellation: Constellation::Gps, prn: 16 };
+    let initial_doppler_hz = 180.0;
+    let doppler_rate_hz_per_s = 40.0;
+    let epochs = track_clean_doppler_ramp_case(
+        &config,
+        sat,
+        initial_doppler_hz,
+        doppler_rate_hz_per_s,
+        211.25,
+        0.40,
+    );
+    let post_lock_errors_hz = post_lock_carrier_frequency_errors_under_linear_doppler_hz(
+        &epochs,
+        config.sampling_freq_hz,
+        initial_doppler_hz,
+        doppler_rate_hz_per_s,
+    );
+
+    assert!(!post_lock_errors_hz.is_empty(), "epochs={epochs:?}");
+    assert!(
+        post_lock_errors_hz
+            .iter()
+            .all(|error_hz| *error_hz <= CLEAN_DOPPLER_RAMP_LOCKED_CARRIER_ERROR_MAX_HZ),
+        "carrier error exceeded doppler ramp threshold {CLEAN_DOPPLER_RAMP_LOCKED_CARRIER_ERROR_MAX_HZ} Hz: post_lock_errors_hz={post_lock_errors_hz:?}, epochs={epochs:?}"
     );
 }
