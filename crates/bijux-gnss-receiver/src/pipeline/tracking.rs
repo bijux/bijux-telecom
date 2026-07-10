@@ -1511,6 +1511,68 @@ mod tests {
     }
 
     #[test]
+    fn correlate_epoch_uses_tracked_code_rate_for_code_rate_offset_signal() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            channels: 12,
+            ..ReceiverPipelineConfig::default()
+        };
+        let tracking = Tracking::new(config.clone(), ReceiverRuntime::default());
+        let sample_count = samples_per_code(
+            config.sampling_freq_hz,
+            config.code_freq_basis_hz,
+            config.code_length,
+        );
+        let signal_code_rate_hz = config.code_freq_basis_hz + 300.0;
+        let code_phase_chips = 87.375;
+        let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 9 };
+        let code_phase_samples =
+            code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
+        let samples = sample_ca_code(
+            Prn(sat.prn),
+            config.sampling_freq_hz,
+            signal_code_rate_hz,
+            code_phase_chips,
+            sample_count,
+        )
+        .expect("valid sampled code with signal code-rate offset");
+        let frame = SamplesFrame::new(
+            SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
+            Seconds(1.0 / config.sampling_freq_hz),
+            samples.into_iter().map(|value| Complex::new(value, 0.0)).collect(),
+        );
+
+        let nominal = tracking.correlate_epoch(
+            &frame,
+            sat,
+            0.0,
+            config.code_freq_basis_hz,
+            code_phase_samples,
+            0.5,
+        );
+        let matched = tracking.correlate_epoch(
+            &frame,
+            sat,
+            0.0,
+            signal_code_rate_hz,
+            code_phase_samples,
+            0.5,
+        );
+
+        assert!(
+            matched.prompt.norm() > nominal.prompt.norm(),
+            "matched_prompt={} nominal_prompt={}",
+            matched.prompt.norm(),
+            nominal.prompt.norm(),
+        );
+        assert!(matched.prompt.norm() > matched.early.norm());
+        assert!(matched.prompt.norm() > matched.late.norm());
+    }
+
+    #[test]
     fn detect_sample_rate_mismatch_flags_persistent_phase_drift() {
         let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 11 };
         let epochs = [0.0, 24.0, 48.0, 72.0, 96.0]
