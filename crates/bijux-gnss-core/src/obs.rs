@@ -620,6 +620,8 @@ pub struct TrackEpoch {
     #[serde(default)]
     pub tracking_assumptions: Option<TrackingAssumptions>,
     #[serde(default)]
+    pub signal_delay_alignment: Option<SignalDelayAlignment>,
+    #[serde(default)]
     pub tracking_uncertainty: Option<TrackingUncertainty>,
     #[serde(default)]
     pub processing_ms: Option<f64>,
@@ -661,6 +663,7 @@ impl Default for TrackEpoch {
             channel_uid: String::new(),
             tracking_provenance: String::new(),
             tracking_assumptions: None,
+            signal_delay_alignment: None,
             tracking_uncertainty: None,
             processing_ms: None,
         }
@@ -724,6 +727,10 @@ pub struct ObsMetadata {
     #[serde(default)]
     pub observation_uncertainty_class: String,
     #[serde(default)]
+    pub pseudorange_model: String,
+    #[serde(default)]
+    pub signal_delay_alignment_source: String,
+    #[serde(default)]
     pub time_tag_source: String,
     #[serde(default)]
     pub time_tag_sample_index: u64,
@@ -762,6 +769,8 @@ impl Default for ObsMetadata {
             observation_epoch_id: String::new(),
             observation_support_class: "supported".to_string(),
             observation_uncertainty_class: "unknown".to_string(),
+            pseudorange_model: "receiver_epoch_fallback".to_string(),
+            signal_delay_alignment_source: String::new(),
             time_tag_source: String::new(),
             time_tag_sample_index: 0,
             time_tag_sample_rate_hz: 0.0,

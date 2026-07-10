@@ -481,6 +481,7 @@ impl Acquisition {
                     explain_selection_reason: None,
                     doppler_refinement: None,
                     code_phase_refinement: None,
+                    signal_delay_alignment: None,
                     uncertainty: None,
                 });
 
@@ -953,6 +954,7 @@ fn zero_signal_run(
             explain_selection_reason: Some(candidate_reason.clone()),
             doppler_refinement: None,
             code_phase_refinement: None,
+            signal_delay_alignment: None,
             uncertainty: None,
         };
         if emit_explanations {
@@ -1021,6 +1023,7 @@ fn insufficient_frame_run(
             explain_selection_reason: Some(candidate_reason.clone()),
             doppler_refinement: None,
             code_phase_refinement: None,
+            signal_delay_alignment: None,
             uncertainty: None,
         };
         if emit_explanations {
@@ -1104,6 +1107,7 @@ fn unsupported_coherent_integration_run(
             explain_selection_reason: Some(candidate_reason.clone()),
             doppler_refinement: None,
             code_phase_refinement: None,
+            signal_delay_alignment: None,
             uncertainty: None,
         };
         if emit_explanations {
@@ -2127,6 +2131,7 @@ mod tests {
                 explain_selection_reason: None,
                 doppler_refinement: None,
                 code_phase_refinement: None,
+                signal_delay_alignment: None,
                 uncertainty: None,
             },
             AcqResult {
@@ -2152,6 +2157,7 @@ mod tests {
                 explain_selection_reason: None,
                 doppler_refinement: None,
                 code_phase_refinement: None,
+                signal_delay_alignment: None,
                 uncertainty: None,
             },
         ];
@@ -2373,6 +2379,7 @@ mod tests {
             explain_selection_reason: None,
             doppler_refinement: None,
             code_phase_refinement: None,
+            signal_delay_alignment: None,
             uncertainty: None,
         }
     }

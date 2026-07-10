@@ -90,6 +90,7 @@ fn tracking_epoch(
         lock_state: "tracking".to_string(),
         lock_state_reason: None,
         tracking_assumptions: None,
+        signal_delay_alignment: None,
         channel_id: Some(0),
         channel_uid: "Gps-07-ch00".to_string(),
         tracking_provenance: "integration_observations_doppler_sign".to_string(),

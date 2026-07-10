@@ -157,6 +157,7 @@ pub fn truth_seeded_acquisition_results(
                     center_correlation_norm: 1.0,
                     right_correlation_norm: 1.0,
                 }),
+                signal_delay_alignment: None,
                 uncertainty: Some(AcqUncertainty { doppler_hz: 1.0, code_phase_samples: 0.25 }),
             }
         })

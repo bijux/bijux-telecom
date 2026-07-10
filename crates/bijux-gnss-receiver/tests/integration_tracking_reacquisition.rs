@@ -41,6 +41,7 @@ fn accepted_acquisition(sat: SatId, code_phase_samples: usize) -> AcqResult {
         explain_selection_reason: Some("tracking_reacquisition_start".to_string()),
         doppler_refinement: None,
         code_phase_refinement: None,
+        signal_delay_alignment: None,
         uncertainty: None,
     }
 }

@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use bijux_gnss_core::api::{
     AcqHypothesis, AcqTrackingSeed, AcqUncertainty, Chips, Constellation, Cycles, Hertz,
-    ReceiverSampleTrace, SampleClock, SampleTime, SamplesFrame, SatId, Seconds, SignalBand,
-    TrackEpoch, TrackTransition, TrackingAssumptions, TrackingUncertainty,
+    ReceiverSampleTrace, SampleClock, SampleTime, SamplesFrame, SatId, Seconds,
+    SignalBand, SignalDelayAlignment, TrackEpoch, TrackTransition, TrackingAssumptions,
+    TrackingUncertainty,
 };
 
 use crate::engine::receiver_config::{ReceiverPipelineConfig, TrackingParams};
@@ -207,6 +208,7 @@ struct LoopState {
     carrier_phase_cycles: f64,
     code_rate_hz: f64,
     code_phase_samples: f64,
+    signal_delay_alignment: Option<SignalDelayAlignment>,
     acquisition_cn0_proxy_dbhz: f64,
     lock_reference_cn0_dbhz: f64,
     prev_prompt: Option<Complex<f32>>,
@@ -612,6 +614,7 @@ impl Tracking {
             ),
             tracking_assumptions: Some(default_tracking_assumptions(&self.config)),
             tracking_uncertainty: None,
+            signal_delay_alignment: None,
             processing_ms: None,
         };
         (track_epoch, correlator)
@@ -759,6 +762,7 @@ impl Tracking {
             code_rate_hz: self.config.code_freq_basis_hz,
             code_phase_samples,
             acquisition_cn0_proxy_dbhz,
+            signal_delay_alignment: None,
             lock_reference_cn0_dbhz: acquisition_cn0_proxy_dbhz,
             prev_prompt: None,
             prev_prompt_phase_cycles: None,
@@ -840,6 +844,7 @@ impl Tracking {
                         carrier_phase_cycles: 0.0,
                         code_rate_hz: self.config.code_freq_basis_hz,
                         code_phase_samples: context.seed.code_phase_samples.0,
+                        signal_delay_alignment: context.seed.signal_delay_alignment.clone(),
                         acquisition_cn0_proxy_dbhz: context.acquisition_cn0_proxy_dbhz,
                         lock_reference_cn0_dbhz: context.acquisition_cn0_proxy_dbhz,
                         prev_prompt: None,
@@ -1372,6 +1377,7 @@ impl Tracking {
             lock_state,
             lock_state_reason,
             tracking_assumptions: Some(tracking_assumptions(tracking_params)),
+            signal_delay_alignment: state.signal_delay_alignment.clone(),
             tracking_uncertainty,
             ..track_epoch
         });
@@ -2465,6 +2471,7 @@ impl Tracking {
             carrier_phase_cycles: 0.0,
             code_rate_hz: self.config.code_freq_basis_hz,
             code_phase_samples: seed.code_phase_samples,
+            signal_delay_alignment: channel.state.signal_delay_alignment.clone(),
             acquisition_cn0_proxy_dbhz: seed.cn0_dbhz,
             lock_reference_cn0_dbhz: seed.cn0_dbhz,
             prev_prompt: None,
@@ -2854,6 +2861,7 @@ mod tests {
                 explain_selection_reason: Some("diagnostic_lock_trace".to_string()),
                 doppler_refinement: None,
                 code_phase_refinement: None,
+                signal_delay_alignment: None,
                 uncertainty: None,
             };
             let tracks = tracking.track_from_acquisition(&frame, &[acquisition]);
@@ -3842,6 +3850,7 @@ mod tests {
             explain_selection_reason: None,
             doppler_refinement: None,
             code_phase_refinement: None,
+            signal_delay_alignment: None,
             uncertainty: None,
         };
 

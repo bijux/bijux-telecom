@@ -1992,6 +1992,7 @@ fn seeded_tracking_acquisition(
         explain_selection_reason: Some(explain_selection_reason),
         doppler_refinement: None,
         code_phase_refinement: None,
+        signal_delay_alignment: None,
         uncertainty: None,
     }
 }

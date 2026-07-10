@@ -69,6 +69,7 @@ fn accepted_acquisition(sat: SatId, doppler_hz: f64, code_phase_samples: usize) 
         explain_selection_reason: Some("seeded_pll_tracking_start".to_string()),
         doppler_refinement: None,
         code_phase_refinement: None,
+        signal_delay_alignment: None,
         uncertainty: None,
     }
 }

@@ -45,6 +45,7 @@ fn accepted_acquisition(
         explain_selection_reason: Some("tracking_handoff".to_string()),
         doppler_refinement: None,
         code_phase_refinement: None,
+        signal_delay_alignment: None,
         uncertainty,
     }
 }
