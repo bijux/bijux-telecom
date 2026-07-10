@@ -60,6 +60,10 @@ Invariants:
   `tracked_carrier_hz_minus_intermediate_freq`
 - every `ObsSatellite` row carries finite C/N0 within the shared convention bounds, including
   accepted, degraded, missing, and inconsistent rows
+- every `ObsSatellite` row carries `metadata.observation_lock_state`; current values are
+  `acquired`, `pull_in`, `locked`, `degraded`, `lost`, `reacquired`, `cycle_slip`, and `inactive`
+- when the receiver has an explicit lock-state cause, `metadata.observation_lock_reason` preserves
+  it alongside the lock state
 - every `ObsSatellite` row carries Doppler and `doppler_model` even when the row is degraded,
   missing, or inconsistent, so reviewers and downstream tooling can inspect rejected satellite
   dynamics without reconstructing carrier state from tracking artifacts

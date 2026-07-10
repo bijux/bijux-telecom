@@ -20,6 +20,7 @@ Every measurement emitted by the pipeline MUST satisfy:
 - Each measurement must declare:
   - Signal identity (`SigId`: constellation + band + code).
   - Quality flags (lock flags, cycle slip, and explicit reject reason when applicable).
+  - Observation lock state and, when present, the receiver reason for that state.
   - Variance or error model where available.
 
 The contract is enforced in validation and navigation (reject reasons, chi-square gating, and
@@ -84,6 +85,17 @@ sanity checks). Any violation must emit diagnostics and mark the measurement as 
 - Validation contract: observation validation rejects non-finite C/N0 and values outside the
   shared convention bounds before navigation or downstream artifact consumers can treat the row as
   valid.
+
+## Observation Lock State
+- Receiver contract: every observation row carries `observation_lock_state` in addition to raw
+  `tracking_state` and boolean `lock_flags`.
+- State contract: current emitted values are `acquired`, `pull_in`, `locked`, `degraded`, `lost`,
+  `reacquired`, `cycle_slip`, and `inactive`.
+- Derivation contract: observation lock state is derived from the emitted observation row, so a
+  cycle slip detected while building carrier-phase observables is preserved even when the upstream
+  tracking epoch did not already expose the slip as its final lifecycle state.
+- Reason contract: `observation_lock_reason` carries the receiver's explicit lock-state cause when
+  available, such as `signal_fade` or `reacquired`.
 
 ## Receiver Clock Model
 - State: receiver clock bias `δt_r` and drift `δṫ_r` (seconds and seconds/second).

@@ -8,7 +8,7 @@ These are the shared types exchanged across layers. They live in `bijux-gnss-cor
 - `ObsEpoch`: per-epoch observables (pseudorange, phase, doppler, CN0) plus anchored GPS receive
   time when dataset timing is known
 - `ObsMetadata`: observation provenance, timing source, pseudorange model, explicit Doppler model,
-  and carrier-phase arc continuity contract
+  carrier-phase arc continuity contract, and per-row observation lock state
 - `ObsSignalTiming`: per-satellite signal travel time and GPS transmit time derived from the
   receive-time anchor and pseudorange, emitted only when the tracked signal delay is resolved
 - `SignalDelayAlignment`: resolved whole-code-period alignment carried from acquisition/tracking
@@ -34,4 +34,6 @@ These are the shared types exchanged across layers. They live in `bijux-gnss-cor
 - No NaNs/Inf in artifacts
 - Every `ObsSatellite` row carries a finite C/N0 value within shared convention bounds, including
   degraded and rejected observation rows
+- Every `ObsSatellite` row carries `observation_lock_state`; current contract values are
+  `acquired`, `pull_in`, `locked`, `degraded`, `lost`, `reacquired`, `cycle_slip`, and `inactive`
 - `SolutionStatus` determines `valid` flag
