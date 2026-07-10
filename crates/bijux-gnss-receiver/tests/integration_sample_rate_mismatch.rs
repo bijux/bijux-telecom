@@ -71,8 +71,12 @@ fn tracking_preserves_stable_code_phase_with_matching_sample_rate() {
     let frame = synthetic_frame(&config, 0.0);
     let sat = SatId { constellation: Constellation::Gps, prn: 11 };
     let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
-    let acquisitions =
-        vec![accepted_acquisition(sat, config.intermediate_freq_hz, 0, tight_tracking_uncertainty())];
+    let acquisitions = vec![accepted_acquisition(
+        sat,
+        config.intermediate_freq_hz,
+        0,
+        tight_tracking_uncertainty(),
+    )];
 
     let tracks = tracking.track_from_acquisition(&frame, &acquisitions);
     let epochs = &tracks.first().expect("track").epochs;

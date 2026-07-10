@@ -59,8 +59,27 @@ pub fn first_order_loop_coefficients(
         return FirstOrderLoopCoefficients { error_blend: 0.0, rate_gain_hz: 0.0 };
     }
 
-    let normalized_bandwidth =
-        std::f64::consts::TAU * noise_bandwidth_hz * coherent_integration_s;
+    let normalized_bandwidth = noise_bandwidth_hz * coherent_integration_s;
+    let error_blend = 1.0 - (-normalized_bandwidth).exp();
+    let rate_gain_hz = error_blend / coherent_integration_s;
+
+    FirstOrderLoopCoefficients { error_blend, rate_gain_hz }
+}
+
+/// Derive first-order coefficients for carrier-frequency loops from angular bandwidth.
+pub fn first_order_angular_loop_coefficients(
+    noise_bandwidth_hz: f64,
+    coherent_integration_s: f64,
+) -> FirstOrderLoopCoefficients {
+    if !noise_bandwidth_hz.is_finite()
+        || noise_bandwidth_hz <= 0.0
+        || !coherent_integration_s.is_finite()
+        || coherent_integration_s <= 0.0
+    {
+        return FirstOrderLoopCoefficients { error_blend: 0.0, rate_gain_hz: 0.0 };
+    }
+
+    let normalized_bandwidth = std::f64::consts::TAU * noise_bandwidth_hz * coherent_integration_s;
     let error_blend = 1.0 - (-normalized_bandwidth).exp();
     let rate_gain_hz = error_blend / coherent_integration_s;
 
@@ -79,19 +98,14 @@ pub fn phase_lock_loop_coefficients(
         || !coherent_integration_s.is_finite()
         || coherent_integration_s <= 0.0
     {
-        return PhaseLockLoopCoefficients {
-            phase_blend: 0.0,
-            frequency_gain_hz_per_rad: 0.0,
-        };
+        return PhaseLockLoopCoefficients { phase_blend: 0.0, frequency_gain_hz_per_rad: 0.0 };
     }
 
-    let normalized_bandwidth =
-        std::f64::consts::TAU * noise_bandwidth_hz * coherent_integration_s;
+    let normalized_bandwidth = std::f64::consts::TAU * noise_bandwidth_hz * coherent_integration_s;
     let natural_frequency = normalized_bandwidth * (8.0 * PLL_DAMPING_RATIO)
         / (4.0 * PLL_DAMPING_RATIO * PLL_DAMPING_RATIO + 1.0);
-    let denominator = 1.0
-        + 2.0 * PLL_DAMPING_RATIO * natural_frequency
-        + natural_frequency * natural_frequency;
+    let denominator =
+        1.0 + 2.0 * PLL_DAMPING_RATIO * natural_frequency + natural_frequency * natural_frequency;
     let phase_blend = (4.0 * PLL_DAMPING_RATIO * natural_frequency) / denominator;
     let frequency_blend = (4.0 * natural_frequency * natural_frequency) / denominator;
     let frequency_gain_hz_per_rad =
@@ -163,7 +177,8 @@ pub fn code_at(code: &[i8], samples_per_chip: f64, sample_index: f64) -> Complex
 mod tests {
     use super::{
         carrier_frequency_error_hz_from_phase_delta, discriminators, estimate_cn0_dbhz,
-        first_order_loop_coefficients, phase_lock_loop_coefficients,
+        first_order_angular_loop_coefficients, first_order_loop_coefficients,
+        phase_lock_loop_coefficients,
     };
     use num_complex::Complex;
 
@@ -263,5 +278,14 @@ mod tests {
             wide.frequency_gain_hz_per_rad > narrow.frequency_gain_hz_per_rad,
             "{wide:?} {narrow:?}"
         );
+    }
+
+    #[test]
+    fn angular_first_order_loop_coefficients_strengthen_frequency_response() {
+        let linear = first_order_loop_coefficients(10.0, 0.001);
+        let angular = first_order_angular_loop_coefficients(10.0, 0.001);
+
+        assert!(angular.error_blend > linear.error_blend, "{angular:?} {linear:?}");
+        assert!(angular.rate_gain_hz > linear.rate_gain_hz, "{angular:?} {linear:?}");
     }
 }

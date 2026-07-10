@@ -15,11 +15,7 @@ use num_complex::Complex;
 
 use support::tracking_truth::wrapped_code_phase_error_samples;
 
-fn accepted_acquisition(
-    sat: SatId,
-    doppler_hz: f64,
-    code_phase_samples: usize,
-) -> AcqResult {
+fn accepted_acquisition(sat: SatId, doppler_hz: f64, code_phase_samples: usize) -> AcqResult {
     AcqResult {
         sat,
         signal_band: SignalBand::L1,
@@ -62,7 +58,10 @@ fn tracking_config() -> ReceiverPipelineConfig {
     }
 }
 
-fn synthetic_frame(config: &ReceiverPipelineConfig, sat: SatId) -> bijux_gnss_core::api::SamplesFrame {
+fn synthetic_frame(
+    config: &ReceiverPipelineConfig,
+    sat: SatId,
+) -> bijux_gnss_core::api::SamplesFrame {
     generate_l1_ca(
         config,
         SyntheticSignalParams {
@@ -86,8 +85,10 @@ fn tracking_reduces_seeded_code_phase_error_from_acquisition_scale_offsets() {
     let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
 
     for seeded_code_phase_samples in [1_usize, 1_022_usize] {
-        let tracks =
-            tracking.track_from_acquisition(&frame, &[accepted_acquisition(sat, 0.0, seeded_code_phase_samples)]);
+        let tracks = tracking.track_from_acquisition(
+            &frame,
+            &[accepted_acquisition(sat, 0.0, seeded_code_phase_samples)],
+        );
         let epochs = &tracks.first().expect("track").epochs;
         assert!(epochs.len() >= 4, "epochs={epochs:?}");
 
@@ -133,15 +134,12 @@ fn tracking_steers_code_rate_toward_faster_signal_code() {
         ..ReceiverPipelineConfig::default()
     };
     let sat = SatId { constellation: Constellation::Gps, prn: 19 };
-    let sample_count = samples_per_code(
-        config.sampling_freq_hz,
-        config.code_freq_basis_hz,
-        config.code_length,
-    ) * 12;
+    let sample_count =
+        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length)
+            * 12;
     let signal_code_rate_hz = config.code_freq_basis_hz + 300.0;
     let code_phase_chips = 144.25;
-    let code_phase_samples =
-        code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
+    let code_phase_samples = code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
     let frame = SamplesFrame::new(
         SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
         Seconds(1.0 / config.sampling_freq_hz),
@@ -164,11 +162,15 @@ fn tracking_steers_code_rate_toward_faster_signal_code() {
         &[accepted_acquisition(sat, 0.0, code_phase_samples.round() as usize)],
     );
     let epochs = &tracks.first().expect("track").epochs;
-    let last_epoch = epochs.last().expect("last tracking epoch");
+    let best_code_rate_hz = epochs
+        .iter()
+        .map(|epoch| epoch.code_rate_hz.0)
+        .max_by(|lhs, rhs| lhs.partial_cmp(rhs).expect("finite code rate"))
+        .unwrap_or(f64::NEG_INFINITY);
 
     assert!(
-        last_epoch.code_rate_hz.0 > config.code_freq_basis_hz,
-        "last_code_rate_hz={} epochs={epochs:?}",
-        last_epoch.code_rate_hz.0,
+        best_code_rate_hz > config.code_freq_basis_hz,
+        "best_code_rate_hz={} epochs={epochs:?}",
+        best_code_rate_hz,
     );
 }

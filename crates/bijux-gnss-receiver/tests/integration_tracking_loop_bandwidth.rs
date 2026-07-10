@@ -71,10 +71,10 @@ fn wider_pll_bandwidth_produces_stronger_first_epoch_carrier_correction() {
     );
     let acquisition = accepted_acquisition(sat, seeded_doppler_hz, 0);
 
-    let narrow_tracks =
-        TrackingEngine::new(narrow, ReceiverRuntime::default()).track_from_acquisition(&frame, &[acquisition.clone()]);
-    let wide_tracks =
-        TrackingEngine::new(wide, ReceiverRuntime::default()).track_from_acquisition(&frame, &[acquisition]);
+    let narrow_tracks = TrackingEngine::new(narrow, ReceiverRuntime::default())
+        .track_from_acquisition(&frame, &[acquisition.clone()]);
+    let wide_tracks = TrackingEngine::new(wide, ReceiverRuntime::default())
+        .track_from_acquisition(&frame, &[acquisition]);
 
     let narrow_first_epoch = &narrow_tracks.first().expect("narrow track").epochs[0];
     let wide_first_epoch = &wide_tracks.first().expect("wide track").epochs[0];
@@ -121,10 +121,10 @@ fn wider_fll_bandwidth_produces_stronger_pull_in_frequency_step() {
     );
     let acquisition = accepted_acquisition(sat, seeded_doppler_hz, 0);
 
-    let narrow_tracks =
-        TrackingEngine::new(narrow, ReceiverRuntime::default()).track_from_acquisition(&frame, &[acquisition.clone()]);
-    let wide_tracks =
-        TrackingEngine::new(wide, ReceiverRuntime::default()).track_from_acquisition(&frame, &[acquisition]);
+    let narrow_tracks = TrackingEngine::new(narrow, ReceiverRuntime::default())
+        .track_from_acquisition(&frame, &[acquisition.clone()]);
+    let wide_tracks = TrackingEngine::new(wide, ReceiverRuntime::default())
+        .track_from_acquisition(&frame, &[acquisition]);
 
     let narrow_epoch = &narrow_tracks.first().expect("narrow track").epochs[1];
     let wide_epoch = &wide_tracks.first().expect("wide track").epochs[1];

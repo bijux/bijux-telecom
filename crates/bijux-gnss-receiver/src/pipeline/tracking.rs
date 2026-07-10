@@ -15,8 +15,8 @@ use bijux_gnss_core::api::Sample;
 use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::{
     adaptive_bandwidth, carrier_frequency_error_hz_from_phase_delta, code_value_at_phase,
-    discriminators, estimate_cn0_dbhz, first_order_loop_coefficients,
-    phase_lock_loop_coefficients, wipeoff_carrier,
+    discriminators, estimate_cn0_dbhz, first_order_angular_loop_coefficients,
+    first_order_loop_coefficients, phase_lock_loop_coefficients, wipeoff_carrier,
 };
 use bijux_gnss_signal::api::{generate_ca_code, Prn};
 
@@ -1135,7 +1135,8 @@ fn advance_code_phase_samples(
 
 fn apply_dll_code_loop(input: CodeLoopInput) -> CodeLoopUpdate {
     let coefficients = first_order_loop_coefficients(input.dll_bw_hz, input.coherent_integration_s);
-    let code_rate_hz = input.current_code_rate_hz - coefficients.rate_gain_hz * input.dll_err as f64;
+    let code_rate_hz =
+        input.current_code_rate_hz - coefficients.rate_gain_hz * input.dll_err as f64;
     let code_phase_samples = advance_code_phase_samples(
         input.current_code_phase_samples,
         input.epoch_len_samples,
@@ -1183,6 +1184,9 @@ fn detect_sample_rate_mismatch(
 
     let phase_step_limit_samples = SAMPLE_RATE_MISMATCH_MIN_PHASE_DRIFT_SAMPLES
         .max(samples_per_code as f64 * SAMPLE_RATE_MISMATCH_MIN_PHASE_DRIFT_FRACTION);
+    let pull_in_phase_step_limit_samples = phase_step_limit_samples * 0.125;
+    let phase_bias_limit_samples = (samples_per_code as f64 * 0.00025).max(1.0);
+    let baseline_code_phase_samples = epochs[0].code_phase_samples.0;
     let instability_markers = epochs
         .windows(2)
         .enumerate()
@@ -1195,11 +1199,19 @@ fn detect_sample_rate_mismatch(
                 samples_per_code,
             );
             let abs_phase_step_samples = phase_step_samples.abs();
+            let abs_phase_bias_samples = wrapped_code_phase_delta(
+                current.code_phase_samples.0,
+                baseline_code_phase_samples,
+                samples_per_code,
+            )
+            .abs();
             let unstable = abs_phase_step_samples > phase_step_limit_samples
+                || (current.lock_state != ChannelState::Tracking.to_string()
+                    && abs_phase_step_samples > pull_in_phase_step_limit_samples)
+                || (current.lock_state != ChannelState::Tracking.to_string()
+                    && abs_phase_bias_samples > phase_bias_limit_samples)
                 || current.cycle_slip
                 || !current.lock
-                || !current.dll_lock
-                || !current.pll_lock
                 || current.lock_state == ChannelState::Lost.to_string();
             let supported = current.cn0_dbhz.is_finite()
                 && current.cn0_dbhz >= SAMPLE_RATE_MISMATCH_MIN_CN0_DBHZ;
@@ -1325,7 +1337,7 @@ fn apply_carrier_loop(input: CarrierLoopInput) -> CarrierLoopUpdate {
     let pll_coefficients =
         phase_lock_loop_coefficients(input.pll_bw_hz, input.coherent_integration_s);
     let fll_coefficients =
-        first_order_loop_coefficients(input.fll_bw_hz, input.coherent_integration_s);
+        first_order_angular_loop_coefficients(input.fll_bw_hz, input.coherent_integration_s);
     let mut carrier_hz = input.current_carrier_hz;
     if input.apply_fll {
         carrier_hz += bounded_fll_pull_in_correction_hz(
@@ -1394,8 +1406,9 @@ mod tests {
         AcqHypothesis, Chips, Epoch, SampleTime, SamplesFrame, SatId, Seconds, TrackEpoch,
     };
     use bijux_gnss_signal::api::{
-        advance_code_phase_seconds, discriminators, first_order_loop_coefficients,
-        phase_lock_loop_coefficients, sample_ca_code, samples_per_code, Prn,
+        advance_code_phase_seconds, discriminators, first_order_angular_loop_coefficients,
+        first_order_loop_coefficients, phase_lock_loop_coefficients, sample_ca_code,
+        samples_per_code, Prn,
     };
     use num_complex::Complex;
     use serde::Deserialize;
@@ -1902,8 +1915,7 @@ mod tests {
 
         let pll_coefficients = phase_lock_loop_coefficients(8.0, 0.001);
         assert!(
-            (update.carrier_hz
-                - (1_000.0 + pll_coefficients.frequency_gain_hz_per_rad * 0.25))
+            (update.carrier_hz - (1_000.0 + pll_coefficients.frequency_gain_hz_per_rad * 0.25))
                 .abs()
                 < 1.0e-9,
             "{update:?}"
@@ -1929,7 +1941,7 @@ mod tests {
         });
 
         let pll_coefficients = phase_lock_loop_coefficients(8.0, 0.001);
-        let fll_coefficients = first_order_loop_coefficients(10.0, 0.001);
+        let fll_coefficients = first_order_angular_loop_coefficients(10.0, 0.001);
         let expected_carrier_hz = 80.0
             + super::bounded_fll_pull_in_correction_hz(30.0 * fll_coefficients.error_blend, 10.0)
             + pll_coefficients.frequency_gain_hz_per_rad * 0.25;
