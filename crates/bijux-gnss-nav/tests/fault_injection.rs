@@ -135,3 +135,50 @@ fn position_solver_uses_explicit_observation_timing_for_ephemeris_age() {
     let solution = solver.solve_wls(&obs, &ephs, relative_receiver_time_s);
     assert!(solution.is_some(), "explicit observation timing should keep ephemerides usable");
 }
+
+#[test]
+fn position_solver_rejects_stale_ephemeris_when_current_satellites_can_still_solve() {
+    let (rx_x, rx_y, rx_z) = geodetic_to_ecef(37.0, -122.0, 10.0);
+    let t_rx_s = 100_000.0;
+
+    let mut ephs = vec![
+        make_eph(1, 0.0, 0.0),
+        make_eph(2, 0.8, 0.9),
+        make_eph(3, 1.6, 1.8),
+        make_eph(4, 2.4, 2.7),
+        make_eph(5, 3.2, 3.6),
+    ];
+    for eph in &mut ephs[..4] {
+        eph.toe_s = t_rx_s;
+        eph.toc_s = t_rx_s;
+    }
+    ephs[4].toe_s = t_rx_s - 7_201.0;
+    ephs[4].toc_s = t_rx_s - 7_201.0;
+
+    let mut obs = Vec::new();
+    for eph in &ephs {
+        let state = sat_state_gps_l1ca(eph, t_rx_s, 0.07);
+        let dx = rx_x - state.x_m;
+        let dy = rx_y - state.y_m;
+        let dz = rx_z - state.z_m;
+        let range = (dx * dx + dy * dy + dz * dz).sqrt();
+        obs.push(PositionObservation {
+            sat: eph.sat,
+            pseudorange_m: range - state.clock_correction.bias_s * 299_792_458.0,
+            cn0_dbhz: 45.0,
+            elevation_deg: None,
+            weight: 1.0,
+            gps_receive_time: None,
+            signal_timing: None,
+        });
+    }
+
+    let solution = PositionSolver::new()
+        .solve_wls(&obs, &ephs, t_rx_s)
+        .expect("current satellites should still solve");
+
+    assert!(solution.rejected.iter().any(|(sat, reason)| {
+        *sat == SatId { constellation: Constellation::Gps, prn: 5 }
+            && *reason == bijux_gnss_core::api::MeasurementRejectReason::InvalidEphemeris
+    }));
+}
