@@ -42,9 +42,13 @@ Invariants:
 - when dataset metadata provides `capture_start_utc`, `ObsEpoch.gps_week` and `ObsEpoch.tow_s`
   carry the anchored GPS receive time for the epoch
 - when GPS receive time is anchored, each `ObsSatellite.timing` records the explicit
-  `signal_travel_time_s` and `transmit_gps_time` used to connect pseudorange to satellite state
+  `signal_travel_time_s` and `transmit_gps_time` used to connect pseudorange to satellite state,
+  but only for observations whose metadata `pseudorange_model` is
+  `tracked_code_phase_alignment`
 - observation metadata may carry source `tracking_uncertainty` so downstream weighting can use
   tracking-derived uncertainty instead of CN0-only heuristics
+- observation metadata records `pseudorange_model` and `signal_delay_alignment_source` so
+  downstream consumers can distinguish resolved absolute code range from receiver-epoch fallback
 
 ### track (TrackEpochV1)
 Purpose: per-epoch tracking outputs.

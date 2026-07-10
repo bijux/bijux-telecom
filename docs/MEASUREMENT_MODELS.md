@@ -28,6 +28,9 @@ sanity checks). Any violation must emit diagnostics and mark the measurement as 
 - Model: `P = ρ + c(δt_r - δt_s) + T - I + ε`
 - Units: meters
 - Notes: `ρ` is geometric range, `T` troposphere delay, `I` ionosphere delay (positive for code).
+- Receiver contract: absolute code pseudorange is emitted when tracking carries a resolved
+  `SignalDelayAlignment` whole-code-period count. If alignment is absent, the observation remains a
+  receiver-epoch fallback estimate and must not emit `ObsSignalTiming`.
 
 ## Carrier Phase
 - Model: `φ = (ρ + c(δt_r - δt_s) + T - I) / λ + N + ε`
