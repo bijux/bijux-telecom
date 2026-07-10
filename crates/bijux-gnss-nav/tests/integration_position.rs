@@ -23,6 +23,8 @@ fn position_observation_constructible() {
         cn0_dbhz: 40.0,
         elevation_deg: None,
         weight: 1.0,
+        gps_receive_time: None,
+        signal_timing: None,
     };
     assert_eq!(obs.sat.prn, 3);
 }

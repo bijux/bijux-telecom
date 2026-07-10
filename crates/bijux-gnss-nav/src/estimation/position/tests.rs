@@ -57,6 +57,8 @@ fn pvt_sanity() {
             cn0_dbhz: 40.0,
             elevation_deg: None,
             weight: 1.0,
+            gps_receive_time: None,
+            signal_timing: None,
         },
         PositionObservation {
             sat: SatId { constellation: Constellation::Gps, prn: 1 },
@@ -64,6 +66,8 @@ fn pvt_sanity() {
             cn0_dbhz: 40.0,
             elevation_deg: None,
             weight: 1.0,
+            gps_receive_time: None,
+            signal_timing: None,
         },
         PositionObservation {
             sat: SatId { constellation: Constellation::Gps, prn: 1 },
@@ -71,6 +75,8 @@ fn pvt_sanity() {
             cn0_dbhz: 40.0,
             elevation_deg: None,
             weight: 1.0,
+            gps_receive_time: None,
+            signal_timing: None,
         },
         PositionObservation {
             sat: SatId { constellation: Constellation::Gps, prn: 1 },
@@ -78,6 +84,8 @@ fn pvt_sanity() {
             cn0_dbhz: 40.0,
             elevation_deg: None,
             weight: 1.0,
+            gps_receive_time: None,
+            signal_timing: None,
         },
     ];
     let res = solver.solve_wls(&obs, &[eph], 0.0);

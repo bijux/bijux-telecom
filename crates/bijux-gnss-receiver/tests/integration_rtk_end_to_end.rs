@@ -146,6 +146,8 @@ fn float_baseline_close_to_truth() {
             cn0_dbhz: 45.0,
             elevation_deg: None,
             weight: 1.0,
+            gps_receive_time: None,
+            signal_timing: None,
         });
     }
     let solver = PositionSolver::new();

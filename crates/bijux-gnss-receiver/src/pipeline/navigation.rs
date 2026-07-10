@@ -205,6 +205,8 @@ impl Navigation {
                     cn0_dbhz: s.cn0_dbhz,
                     elevation_deg: elevation,
                     weight: weight * tracking_mode_weight,
+                    gps_receive_time: obs.gps_time(),
+                    signal_timing: s.timing,
                 })
             })
             .collect();

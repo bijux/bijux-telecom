@@ -154,6 +154,8 @@ fn build_observations(
                 cn0_dbhz: 45.0,
                 elevation_deg: Some(45.0),
                 weight: 1.0,
+                gps_receive_time: None,
+                signal_timing: None,
             }
         })
         .collect()

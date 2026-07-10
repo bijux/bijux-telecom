@@ -1,5 +1,5 @@
 #![allow(missing_docs)]
-use bijux_gnss_core::api::{Constellation, SatId};
+use bijux_gnss_core::api::{Constellation, GpsTime, ObsSignalTiming, SatId, Seconds};
 use bijux_gnss_nav::api::{
     geodetic_to_ecef, sat_state_gps_l1ca, GpsEphemeris, PositionObservation, PositionSolver,
 };
@@ -66,6 +66,8 @@ fn fault_injection_rejects_bad_pseudorange() {
             cn0_dbhz: 45.0,
             elevation_deg: None,
             weight: 1.0,
+            gps_receive_time: None,
+            signal_timing: None,
         });
     }
 
@@ -77,4 +79,59 @@ fn fault_injection_rejects_bad_pseudorange() {
             .iter()
             .any(|(sat, _)| { *sat == SatId { constellation: Constellation::Gps, prn: 3 } }));
     }
+}
+
+#[test]
+fn position_solver_uses_explicit_observation_timing_for_ephemeris_age() {
+    let (rx_x, rx_y, rx_z) = geodetic_to_ecef(37.0, -122.0, 10.0);
+    let relative_receiver_time_s = 0.07;
+    let receive_gps_time = GpsTime { week: 2200, tow_s: 345_600.07 };
+
+    let mut ephs = vec![
+        make_eph(1, 0.0, 0.0),
+        make_eph(2, 0.8, 0.9),
+        make_eph(3, 1.6, 1.8),
+        make_eph(4, 2.4, 2.7),
+    ];
+    for eph in &mut ephs {
+        eph.toe_s = 345_600.0;
+        eph.toc_s = 345_600.0;
+        eph.week = receive_gps_time.week;
+    }
+
+    let mut obs = Vec::new();
+    for eph in &ephs {
+        let mut tau = 0.07;
+        let mut pseudorange_m = 0.0;
+        for _ in 0..10 {
+            let state = sat_state_gps_l1ca(eph, receive_gps_time.tow_s - tau, tau);
+            let dx = rx_x - state.x_m;
+            let dy = rx_y - state.y_m;
+            let dz = rx_z - state.z_m;
+            let range = (dx * dx + dy * dy + dz * dz).sqrt();
+            pseudorange_m = range - state.clock_bias_s * 299_792_458.0;
+            let next_tau = pseudorange_m / 299_792_458.0;
+            if (next_tau - tau).abs() < 1.0e-12 {
+                break;
+            }
+            tau = next_tau;
+        }
+        obs.push(PositionObservation {
+            sat: eph.sat,
+            pseudorange_m,
+            cn0_dbhz: 45.0,
+            elevation_deg: None,
+            weight: 1.0,
+            gps_receive_time: Some(receive_gps_time),
+            signal_timing: Some(ObsSignalTiming {
+                signal_travel_time_s: Seconds(pseudorange_m / 299_792_458.0),
+                transmit_gps_time: receive_gps_time
+                    .offset_seconds(-(pseudorange_m / 299_792_458.0)),
+            }),
+        });
+    }
+
+    let solver = PositionSolver::new();
+    let solution = solver.solve_wls(&obs, &ephs, relative_receiver_time_s);
+    assert!(solution.is_some(), "explicit observation timing should keep ephemerides usable");
 }

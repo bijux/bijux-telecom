@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use crate::orbits::gps::{is_ephemeris_valid, sat_state_gps_l1ca, GpsEphemeris, GpsSatState};
-use bijux_gnss_core::api::SatId;
+use bijux_gnss_core::api::{GpsTime, ObsSignalTiming, SatId};
 
 #[derive(Debug, Clone)]
 pub struct PositionSolution {
@@ -38,6 +38,8 @@ pub struct PositionObservation {
     pub cn0_dbhz: f64,
     pub elevation_deg: Option<f64>,
     pub weight: f64,
+    pub gps_receive_time: Option<GpsTime>,
+    pub signal_timing: Option<ObsSignalTiming>,
 }
 
 #[derive(Debug, Clone)]
@@ -109,15 +111,24 @@ impl PositionSolver {
                         continue;
                     }
                 };
-                if !is_ephemeris_valid(eph, t_rx_s) {
+                let receive_tow_s =
+                    obs.gps_receive_time.map(|gps_time| gps_time.tow_s).unwrap_or(t_rx_s);
+                if !is_ephemeris_valid(eph, receive_tow_s) {
                     rejected.push((
                         obs.sat,
                         bijux_gnss_core::api::MeasurementRejectReason::InvalidEphemeris,
                     ));
                     continue;
                 }
-                let mut tau = obs.pseudorange_m / 299_792_458.0;
-                let mut state = sat_state_gps_l1ca(eph, t_rx_s - tau, tau);
+                let mut tau = obs
+                    .signal_timing
+                    .map(|timing| timing.signal_travel_time_s.0)
+                    .unwrap_or(obs.pseudorange_m / 299_792_458.0);
+                let mut transmit_tow_s = obs
+                    .signal_timing
+                    .map(|timing| timing.transmit_gps_time.tow_s)
+                    .unwrap_or(receive_tow_s - tau);
+                let mut state = sat_state_gps_l1ca(eph, transmit_tow_s, tau);
                 let mut converged = false;
                 for _ in 0..5 {
                     let dx = x - state.x_m;
@@ -131,7 +142,8 @@ impl PositionSolver {
                         converged = true;
                     }
                     tau = next_tau;
-                    state = sat_state_gps_l1ca(eph, t_rx_s - tau, tau);
+                    transmit_tow_s = receive_tow_s - tau;
+                    state = sat_state_gps_l1ca(eph, transmit_tow_s, tau);
                     if converged {
                         break;
                     }
