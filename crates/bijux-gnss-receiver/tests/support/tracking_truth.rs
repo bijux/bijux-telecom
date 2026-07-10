@@ -21,6 +21,18 @@ pub fn wrapped_code_phase_error_samples(
     }
 }
 
+pub fn code_phase_error_samples(
+    config: &ReceiverPipelineConfig,
+    epoch: &TrackEpoch,
+    expected_code_phase_samples: f64,
+) -> f64 {
+    wrapped_code_phase_error_samples(
+        config,
+        epoch.code_phase_samples.0,
+        expected_code_phase_samples,
+    )
+}
+
 pub fn carrier_frequency_error_hz(epoch: &TrackEpoch, expected_carrier_hz: f64) -> f64 {
     (epoch.carrier_hz.0 - expected_carrier_hz).abs()
 }
@@ -47,10 +59,10 @@ pub fn post_lock_carrier_frequency_errors_hz(
 #[cfg(test)]
 mod tests {
     use super::{
-        carrier_frequency_error_hz, first_tracking_lock_epoch_index,
+        carrier_frequency_error_hz, code_phase_error_samples, first_tracking_lock_epoch_index,
         post_lock_carrier_frequency_errors_hz, wrapped_code_phase_error_samples,
     };
-    use bijux_gnss_core::api::{Cycles, Epoch, Hertz, TrackEpoch};
+    use bijux_gnss_core::api::{Chips, Cycles, Epoch, Hertz, TrackEpoch};
     use bijux_gnss_receiver::api::ReceiverPipelineConfig;
 
     #[test]
@@ -73,6 +85,20 @@ mod tests {
         let epoch = TrackEpoch { carrier_hz: Hertz(101.5), ..TrackEpoch::default() };
 
         assert_eq!(carrier_frequency_error_hz(&epoch, 100.0), 1.5);
+    }
+
+    #[test]
+    fn code_phase_error_samples_uses_wrapped_distance_for_epoch() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 1_023_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let epoch = TrackEpoch { code_phase_samples: Chips(1_020.0), ..TrackEpoch::default() };
+
+        assert_eq!(code_phase_error_samples(&config, &epoch, 2.0), 5.0);
     }
 
     #[test]
