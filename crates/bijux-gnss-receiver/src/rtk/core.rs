@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use super::metrics::{baseline_from_ecef, jitter_summary, BaselineSolution, JitterSummary};
 use bijux_gnss_core::api::{
-    AmbiguityId, Constellation, ObsEpoch, ObsSatellite, ReceiverRole, SigId,
+    AmbiguityId, Constellation, ObsEpoch, ObsSatellite, ObsSignalTiming, ReceiverRole, SigId,
 };
 
 #[derive(Debug, Clone)]
@@ -127,6 +127,8 @@ impl EpochAligner {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SdObservation {
     pub sig: SigId,
+    pub pseudorange_m: f64,
+    pub signal_timing: Option<ObsSignalTiming>,
     pub code_m: f64,
     pub phase_cycles: f64,
     pub doppler_hz: f64,
@@ -140,6 +142,10 @@ pub struct SdObservation {
 pub struct DdObservation {
     pub sig: SigId,
     pub ref_sig: SigId,
+    pub signal_pseudorange_m: f64,
+    pub signal_timing: Option<ObsSignalTiming>,
+    pub ref_signal_pseudorange_m: f64,
+    pub ref_signal_timing: Option<ObsSignalTiming>,
     pub code_m: f64,
     pub phase_cycles: f64,
     pub doppler_hz: f64,
@@ -247,6 +253,8 @@ pub fn build_sd(base: &ObsEpoch, rover: &ObsEpoch) -> Vec<SdObservation> {
             let variance_phase = rover_phase_var + base_phase_var;
             out.push(SdObservation {
                 sig: sat.signal_id,
+                pseudorange_m: representative_pseudorange_m(sat, base_sat),
+                signal_timing: representative_signal_timing(sat.timing, base_sat.timing),
                 code_m: sat.pseudorange_m.0 - base_sat.pseudorange_m.0,
                 phase_cycles: sat.carrier_phase_cycles.0 - base_sat.carrier_phase_cycles.0,
                 doppler_hz: sat.doppler_hz.0 - base_sat.doppler_hz.0,
@@ -309,6 +317,10 @@ pub fn build_dd(sd: &[SdObservation], ref_sig: SigId) -> Vec<DdObservation> {
         out.push(DdObservation {
             sig: s.sig,
             ref_sig: ref_sd.sig,
+            signal_pseudorange_m: s.pseudorange_m,
+            signal_timing: s.signal_timing,
+            ref_signal_pseudorange_m: ref_sd.pseudorange_m,
+            ref_signal_timing: ref_sd.signal_timing,
             code_m: s.code_m - ref_sd.code_m,
             phase_cycles: s.phase_cycles - ref_sd.phase_cycles,
             doppler_hz: s.doppler_hz - ref_sd.doppler_hz,
@@ -354,6 +366,17 @@ pub fn dd_covariance(dd: &DdObservation) -> DdCovarianceModel {
         variance_phase: dd.variance_phase,
         inter_frequency_corr: None,
     }
+}
+
+fn representative_pseudorange_m(rover_sat: &ObsSatellite, base_sat: &ObsSatellite) -> f64 {
+    (rover_sat.pseudorange_m.0 + base_sat.pseudorange_m.0) * 0.5
+}
+
+fn representative_signal_timing(
+    rover_timing: Option<ObsSignalTiming>,
+    base_timing: Option<ObsSignalTiming>,
+) -> Option<ObsSignalTiming> {
+    rover_timing.or(base_timing)
 }
 
 fn variance_from_cn0_elev(cn0_dbhz: f64, elevation_deg: Option<f64>, kind: MeasurementKind) -> f64 {
@@ -408,8 +431,18 @@ pub fn solve_baseline_dd(
     for obs in dd {
         let eph = ephs.iter().find(|e| e.sat == obs.sig.sat)?;
         let eph_ref = ephs.iter().find(|e| e.sat == obs.ref_sig.sat)?;
-        let sat = bijux_gnss_nav::api::sat_state_gps_l1ca(eph, t_rx_s, 0.0);
-        let sat_ref = bijux_gnss_nav::api::sat_state_gps_l1ca(eph_ref, t_rx_s, 0.0);
+        let sat = bijux_gnss_nav::api::sat_state_gps_l1ca_from_observation(
+            eph,
+            t_rx_s,
+            obs.signal_pseudorange_m,
+            obs.signal_timing,
+        );
+        let sat_ref = bijux_gnss_nav::api::sat_state_gps_l1ca_from_observation(
+            eph_ref,
+            t_rx_s,
+            obs.ref_signal_pseudorange_m,
+            obs.ref_signal_timing,
+        );
         let u = los_unit(base_ecef_m, [sat.x_m, sat.y_m, sat.z_m]);
         let u_ref = los_unit(base_ecef_m, [sat_ref.x_m, sat_ref.y_m, sat_ref.z_m]);
         h.push([u_ref[0] - u[0], u_ref[1] - u[1], u_ref[2] - u[2]]);

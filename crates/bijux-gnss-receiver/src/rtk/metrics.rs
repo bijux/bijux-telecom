@@ -157,8 +157,18 @@ pub fn dd_residual_metrics(
     for obs in dd {
         let eph = ephs.iter().find(|e| e.sat == obs.sig.sat)?;
         let eph_ref = ephs.iter().find(|e| e.sat == obs.ref_sig.sat)?;
-        let sat = bijux_gnss_nav::api::sat_state_gps_l1ca(eph, t_rx_s, 0.0);
-        let sat_ref = bijux_gnss_nav::api::sat_state_gps_l1ca(eph_ref, t_rx_s, 0.0);
+        let sat = bijux_gnss_nav::api::sat_state_gps_l1ca_from_observation(
+            eph,
+            t_rx_s,
+            obs.signal_pseudorange_m,
+            obs.signal_timing,
+        );
+        let sat_ref = bijux_gnss_nav::api::sat_state_gps_l1ca_from_observation(
+            eph_ref,
+            t_rx_s,
+            obs.ref_signal_pseudorange_m,
+            obs.ref_signal_timing,
+        );
         let u = los_unit(base_ecef_m, [sat.x_m, sat.y_m, sat.z_m]);
         let u_ref = los_unit(base_ecef_m, [sat_ref.x_m, sat_ref.y_m, sat_ref.z_m]);
         let h = [u_ref[0] - u[0], u_ref[1] - u[1], u_ref[2] - u[2]];
