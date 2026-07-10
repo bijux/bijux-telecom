@@ -4,8 +4,21 @@
 use crate::formats::lnav_bits::GpsWord;
 use crate::orbits::gps::GpsEphemeris;
 use bijux_gnss_core::api::{Constellation, SatId};
+use serde::{Deserialize, Serialize};
 
-pub fn parse_subframe1(words: &[GpsWord]) -> Option<EphemerisPart> {
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GpsL1CaLnavSubframe1Clock {
+    pub week: u16,
+    pub iodc: u16,
+    pub sv_health: u8,
+    pub toc_s: f64,
+    pub af0: f64,
+    pub af1: f64,
+    pub af2: f64,
+    pub tgd: f64,
+}
+
+pub fn decode_subframe1_clock(words: &[GpsWord]) -> Option<GpsL1CaLnavSubframe1Clock> {
     if words.len() < 10 {
         return None;
     }
@@ -16,21 +29,29 @@ pub fn parse_subframe1(words: &[GpsWord]) -> Option<EphemerisPart> {
     let w10 = words[9].data;
 
     let week = get_bits(w3, 1, 10) as u16;
+    let sv_health = get_bits(w3, 17, 6) as u8;
     let iodc_msb = get_bits(w3, 23, 2) as u16;
     let iodc_lsb = get_bits(w8, 1, 8) as u16;
     let iodc = (iodc_msb << 8) | iodc_lsb;
     let tgd = signed(get_bits(w7, 17, 8), 8) as f64 * 2f64.powi(-31);
-    let toc = get_bits(w8, 9, 16) as f64 * 16.0;
+    let toc_s = get_bits(w8, 9, 16) as f64 * 16.0;
     let af2 = signed(get_bits(w9, 1, 8), 8) as f64 * 2f64.powi(-55);
     let af1 = signed(get_bits(w9, 9, 16), 16) as f64 * 2f64.powi(-43);
     let af0 = signed(get_bits(w10, 1, 22), 22) as f64 * 2f64.powi(-31);
 
+    Some(GpsL1CaLnavSubframe1Clock { week, iodc, sv_health, toc_s, af0, af1, af2, tgd })
+}
+
+pub fn parse_subframe1(words: &[GpsWord]) -> Option<EphemerisPart> {
+    let clock = decode_subframe1_clock(words)?;
+
     Some(EphemerisPart {
-        iodc: Some(iodc),
+        iodc: Some(clock.iodc),
         iode: None,
-        week: Some(week),
+        week: Some(clock.week),
+        sv_health: Some(clock.sv_health),
         toe_s: None,
-        toc_s: Some(toc),
+        toc_s: Some(clock.toc_s),
         sqrt_a: None,
         e: None,
         i0: None,
@@ -46,10 +67,10 @@ pub fn parse_subframe1(words: &[GpsWord]) -> Option<EphemerisPart> {
         crs: None,
         cic: None,
         cis: None,
-        af0: Some(af0),
-        af1: Some(af1),
-        af2: Some(af2),
-        tgd: Some(tgd),
+        af0: Some(clock.af0),
+        af1: Some(clock.af1),
+        af2: Some(clock.af2),
+        tgd: Some(clock.tgd),
     })
 }
 
@@ -82,6 +103,7 @@ pub fn parse_subframe2(words: &[GpsWord]) -> Option<EphemerisPart> {
         iodc: None,
         iode: Some(iode),
         week: None,
+        sv_health: None,
         toe_s: Some(toe),
         toc_s: None,
         sqrt_a: Some(sqrt_a),
@@ -139,6 +161,7 @@ pub fn parse_subframe3(words: &[GpsWord]) -> Option<EphemerisPart> {
         iodc: None,
         iode: Some(iode),
         week: None,
+        sv_health: None,
         toe_s: None,
         toc_s: None,
         sqrt_a: None,
@@ -178,6 +201,7 @@ pub struct EphemerisPart {
     iodc: Option<u16>,
     iode: Option<u8>,
     week: Option<u16>,
+    sv_health: Option<u8>,
     toe_s: Option<f64>,
     toc_s: Option<f64>,
     sqrt_a: Option<f64>,
@@ -207,6 +231,7 @@ pub struct EphemerisBuilder {
     iodc: Option<u16>,
     iode: Option<u8>,
     week: Option<u16>,
+    sv_health: Option<u8>,
     toe_s: Option<f64>,
     toc_s: Option<f64>,
     sqrt_a: Option<f64>,
@@ -240,6 +265,9 @@ impl EphemerisBuilder {
         }
         if let Some(value) = part.week {
             self.week = Some(value);
+        }
+        if let Some(value) = part.sv_health {
+            self.sv_health = Some(value);
         }
         if let Some(value) = part.toe_s {
             self.toe_s = Some(value);
@@ -312,6 +340,7 @@ impl EphemerisBuilder {
             iodc: self.iodc?,
             iode: self.iode?,
             week: self.week?,
+            sv_health: self.sv_health?,
             toe_s: self.toe_s?,
             toc_s: self.toc_s?,
             sqrt_a: self.sqrt_a?,

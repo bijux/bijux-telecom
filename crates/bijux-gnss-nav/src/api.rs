@@ -37,7 +37,9 @@ pub use crate::formats::lnav_bits::{
     GpsL1CaLnavDecodedSubframe, GpsL1CaLnavSubframeAlignment, GpsL1CaNavigationBit,
     GpsL1CaNavigationBits, GpsL1CaTlmWord, GpsL1CaWordParitySummary,
 };
-pub use crate::formats::lnav_decode::{decode_rawephem_hex, decode_subframe_hex};
+pub use crate::formats::lnav_decode::{
+    decode_rawephem_hex, decode_subframe_hex, decode_subframe1_clock, GpsL1CaLnavSubframe1Clock,
+};
 /// Precise product providers (SP3/CLK) and fallbacks.
 pub use crate::formats::precise_products::{
     BroadcastProductsProvider, ProductDiagnostics, Products, ProductsProvider,

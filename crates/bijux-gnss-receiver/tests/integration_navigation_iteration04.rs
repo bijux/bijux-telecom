@@ -115,6 +115,7 @@ fn make_eph(prn: u8, omega0: f64, m0: f64, t_ref_s: f64) -> GpsEphemeris {
         iodc: 0,
         iode: 0,
         week: 0,
+        sv_health: 0,
         toe_s: t_ref_s,
         toc_s: t_ref_s,
         sqrt_a: 5153.7954775,

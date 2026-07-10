@@ -947,6 +947,7 @@ mod tests {
             iodc: 0,
             iode: 0,
             week: 0,
+            sv_health: 0,
             toe_s: t_ref_s,
             toc_s: t_ref_s,
             sqrt_a: 5153.7954775,
