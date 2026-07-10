@@ -105,6 +105,12 @@ pub fn validate_obs_epochs(epochs: &[ObsEpoch]) -> Result<(), String> {
             if !known_doppler_model(&sat.metadata.doppler_model) {
                 return Err("unknown doppler model".to_string());
             }
+            if sat.metadata.observation_lock_state.is_empty() {
+                return Err("missing observation lock state".to_string());
+            }
+            if !known_observation_lock_state(&sat.metadata.observation_lock_state) {
+                return Err("unknown observation lock state".to_string());
+            }
         }
     }
     Ok(())
@@ -112,6 +118,20 @@ pub fn validate_obs_epochs(epochs: &[ObsEpoch]) -> Result<(), String> {
 
 fn known_doppler_model(model: &str) -> bool {
     model == OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET
+}
+
+fn known_observation_lock_state(state: &str) -> bool {
+    matches!(
+        state,
+        "acquired"
+            | "pull_in"
+            | "locked"
+            | "degraded"
+            | "lost"
+            | "reacquired"
+            | "cycle_slip"
+            | "inactive"
+    )
 }
 
 #[cfg(test)]
@@ -207,5 +227,27 @@ mod tests {
 
         let error = validate_obs_epochs(&[epoch]).expect_err("excessive cn0 must fail");
         assert_eq!(error, "cn0 out of bounds");
+    }
+
+    #[test]
+    fn validate_obs_epochs_rejects_missing_observation_lock_state() {
+        let mut epoch =
+            observation_epoch_with_models_and_cn0("tracked_carrier_hz_minus_intermediate_freq", 45.0);
+        epoch.sats[0].metadata.observation_lock_state.clear();
+
+        let error =
+            validate_obs_epochs(&[epoch]).expect_err("missing observation lock state must fail");
+        assert_eq!(error, "missing observation lock state");
+    }
+
+    #[test]
+    fn validate_obs_epochs_rejects_unknown_observation_lock_state() {
+        let mut epoch =
+            observation_epoch_with_models_and_cn0("tracked_carrier_hz_minus_intermediate_freq", 45.0);
+        epoch.sats[0].metadata.observation_lock_state = "transitional".to_string();
+
+        let error =
+            validate_obs_epochs(&[epoch]).expect_err("unknown observation lock state must fail");
+        assert_eq!(error, "unknown observation lock state");
     }
 }

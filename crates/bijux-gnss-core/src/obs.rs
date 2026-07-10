@@ -38,7 +38,7 @@ fn default_cycles_zero() -> Cycles {
 }
 
 pub const TRACKING_STATE_MODEL_VERSION: u32 = 1;
-pub const OBSERVATION_MODEL_VERSION: u32 = 2;
+pub const OBSERVATION_MODEL_VERSION: u32 = 3;
 pub const OBSERVATION_DOWNSTREAM_PROFILE_VERSION: u32 = 1;
 pub const NAV_SOLUTION_MODEL_VERSION: u32 = 1;
 pub const NAV_OUTPUT_STABILITY_SIGNATURE_VERSION: u32 = 1;
@@ -161,6 +161,10 @@ pub struct ObsEpochManifest {
 
 fn default_observation_downstream_profile_version() -> u32 {
     OBSERVATION_DOWNSTREAM_PROFILE_VERSION
+}
+
+fn default_observation_lock_state() -> String {
+    "inactive".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -717,6 +721,10 @@ pub struct ObsMetadata {
     pub tracking_state: String,
     #[serde(default)]
     pub tracking_lock_state: String,
+    #[serde(default = "default_observation_lock_state")]
+    pub observation_lock_state: String,
+    #[serde(default)]
+    pub observation_lock_reason: Option<String>,
     #[serde(default)]
     pub tracking_lock_quality: f64,
     #[serde(default)]
@@ -776,6 +784,8 @@ impl Default for ObsMetadata {
             acq_to_track_state: String::new(),
             tracking_state: String::new(),
             tracking_lock_state: String::new(),
+            observation_lock_state: default_observation_lock_state(),
+            observation_lock_reason: None,
             tracking_lock_quality: 0.0,
             observation_status: "accepted".to_string(),
             observation_reject_reasons: Vec::new(),
@@ -1374,6 +1384,14 @@ mod tests {
         let metadata = ObsMetadata::default();
 
         assert_eq!(metadata.doppler_model, OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET);
+    }
+
+    #[test]
+    fn obs_metadata_defaults_observation_lock_contract() {
+        let metadata = ObsMetadata::default();
+
+        assert_eq!(metadata.observation_lock_state, "inactive");
+        assert_eq!(metadata.observation_lock_reason, None);
     }
 
     #[test]
