@@ -185,12 +185,23 @@ fn compute_parity(data_bits: &[u8], d29_star: u8, d30_star: u8) -> (u8, u8, u8, 
 }
 
 fn encode_subframe(subframe_id: u8, tow_count: u32) -> Vec<i8> {
+    encode_subframe_with_how(subframe_id, tow_count, false, false)
+}
+
+fn encode_subframe_with_how(
+    subframe_id: u8,
+    tow_count: u32,
+    alert: bool,
+    anti_spoof: bool,
+) -> Vec<i8> {
     let mut tlm = 0_u32;
     set_bits(&mut tlm, 1, 8, 0x8B);
 
     let mut how = 0_u32;
     set_bits(&mut how, 1, 17, tow_count);
-    set_bits(&mut how, 19, 3, subframe_id as u32);
+    set_bits(&mut how, 18, 1, u32::from(alert));
+    set_bits(&mut how, 19, 1, u32::from(anti_spoof));
+    set_bits(&mut how, 20, 3, subframe_id as u32);
 
     let mut words = vec![tlm, how];
     for offset in 0..8_u32 {
@@ -447,7 +458,7 @@ fn nav_decode_reports_aligned_lnav_subframes_from_wrapped_track_artifact() {
     fs::create_dir_all(&temp).expect("create temp dir");
     let sat = SatId { constellation: Constellation::Gps, prn: 12 };
     let mut bits = encode_subframe(1, 1);
-    bits.extend(encode_subframe(2, 2));
+    bits.extend(encode_subframe_with_how(2, 2, true, true));
 
     let track_path = temp.join("track.jsonl");
     write_track_artifact_from_bits(&track_path, sat, 7, &bits);
@@ -484,16 +495,28 @@ fn nav_decode_reports_aligned_lnav_subframes_from_wrapped_track_artifact() {
     )
     .expect("parse nav report");
     let aligned_subframes = report["aligned_subframes"].as_array().expect("aligned_subframes");
+    let decoded_subframes = report["decoded_subframes"].as_array().expect("decoded_subframes");
 
     assert_eq!(report["bit_start_ms"], 7);
     assert_eq!(report["preamble_hits"], 2);
     assert_eq!(aligned_subframes.len(), 2, "report={report}");
+    assert_eq!(decoded_subframes.len(), 2, "report={report}");
     assert_eq!(aligned_subframes[0]["start_bit_index"], 0);
     assert_eq!(aligned_subframes[0]["start_prompt_index"], 7);
     assert_eq!(aligned_subframes[0]["word_count"], 10);
     assert_eq!(aligned_subframes[1]["start_bit_index"], 300);
     assert_eq!(aligned_subframes[1]["start_prompt_index"], 6007);
     assert_eq!(aligned_subframes[1]["end_prompt_index_exclusive"], 12007);
+    assert_eq!(decoded_subframes[0]["tlm"]["preamble"], 139);
+    assert_eq!(decoded_subframes[0]["how"]["tow_count"], 1);
+    assert_eq!(decoded_subframes[0]["how"]["subframe_id"], 1);
+    assert_eq!(decoded_subframes[0]["how"]["alert"], false);
+    assert_eq!(decoded_subframes[0]["how"]["anti_spoof"], false);
+    assert_eq!(decoded_subframes[1]["how"]["tow_count"], 2);
+    assert_eq!(decoded_subframes[1]["how"]["subframe_id"], 2);
+    assert_eq!(decoded_subframes[1]["how"]["alert"], true);
+    assert_eq!(decoded_subframes[1]["how"]["anti_spoof"], true);
+    assert_eq!(decoded_subframes[1]["word_parity_ok"].as_array().map(|items| items.len()), Some(10));
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
 }
