@@ -11,14 +11,16 @@ use bijux_gnss_receiver::api::{
 };
 
 use support::tracking_truth::{
-    carrier_frequency_error_hz, code_phase_error_samples, nav_bit_transition_epoch_indices,
-    post_lock_epochs, wrapped_code_phase_error_samples,
+    carrier_frequency_error_hz, carrier_phase_steps_cycles, code_phase_error_samples,
+    nav_bit_transition_epoch_indices, post_lock_epochs, wrapped_code_phase_error_samples,
 };
 
 const CLEAN_NAV_BIT_CN0_DB_HZ: f32 = 52.0;
 const CLEAN_NAV_BIT_DURATION_S: f64 = 0.065;
 const CLEAN_NAV_BIT_LOCKED_CARRIER_ERROR_MAX_HZ: f64 = 15.0;
 const CLEAN_NAV_BIT_LOCKED_CODE_ERROR_MAX_SAMPLES: f64 = 1.0;
+const CLEAN_NAV_BIT_MIN_PHASE_STEP_CYCLES: f64 = 0.01;
+const CLEAN_NAV_BIT_MAX_PHASE_STEP_CYCLES: f64 = 0.35;
 
 fn accepted_acquisition(sat: SatId, doppler_hz: f64, code_phase_samples: usize) -> AcqResult {
     AcqResult {
@@ -88,11 +90,7 @@ fn track_clean_nav_bit_case(
     let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
     let tracks = tracking.track_from_acquisition(
         &frame,
-        &[accepted_acquisition(
-            sat,
-            doppler_hz,
-            expected_code_phase_samples.round() as usize,
-        )],
+        &[accepted_acquisition(sat, doppler_hz, expected_code_phase_samples.round() as usize)],
     );
 
     tracks.first().expect("track").epochs.clone()
@@ -142,13 +140,11 @@ fn tracking_reports_nav_bit_lock_across_clean_bit_transition_windows() {
         "tracking never reported nav-bit lock: epochs={epochs:?}"
     );
     assert!(
-        post_lock
-            .iter()
-            .any(|epoch| wrapped_code_phase_error_samples(
-                &config,
-                epoch.code_phase_samples.0,
-                expected_code_phase_samples
-            ) <= 1.0),
+        post_lock.iter().any(|epoch| wrapped_code_phase_error_samples(
+            &config,
+            epoch.code_phase_samples.0,
+            expected_code_phase_samples
+        ) <= 1.0),
         "tracking never settled near the seeded code phase in nav-bit scenario: epochs={epochs:?}"
     );
 }
@@ -222,5 +218,39 @@ fn tracking_keeps_bounded_code_and_carrier_errors_after_nav_bit_lock() {
             .iter()
             .all(|error_samples| *error_samples <= CLEAN_NAV_BIT_LOCKED_CODE_ERROR_MAX_SAMPLES),
         "code error exceeded nav-bit lock threshold {CLEAN_NAV_BIT_LOCKED_CODE_ERROR_MAX_SAMPLES} samples: code_errors_samples={code_errors_samples:?}, epochs={epochs:?}"
+    );
+}
+
+#[test]
+fn tracking_keeps_carrier_phase_continuous_through_nav_bit_transition() {
+    let config = nav_bit_tracking_config();
+    let sat = SatId { constellation: Constellation::Gps, prn: 12 };
+    let epochs = track_clean_nav_bit_case(&config, sat, 120.0, 144.375, 0.3);
+    let first_transition_epoch_index =
+        first_post_lock_nav_bit_transition_epoch_index(&epochs, config.sampling_freq_hz);
+    let transition_window = &epochs[first_transition_epoch_index.saturating_sub(1)..];
+    let phase_steps_cycles = carrier_phase_steps_cycles(transition_window);
+
+    assert!(
+        transition_window.len() >= 3,
+        "tracking did not leave enough epochs around the first nav-bit transition: epochs={epochs:?}"
+    );
+    assert!(
+        phase_steps_cycles
+            .iter()
+            .all(|step_cycles| step_cycles.is_finite()),
+        "carrier phase steps must remain finite through nav-bit transitions: phase_steps_cycles={phase_steps_cycles:?}, epochs={epochs:?}"
+    );
+    assert!(
+        phase_steps_cycles
+            .iter()
+            .all(|step_cycles| *step_cycles >= CLEAN_NAV_BIT_MIN_PHASE_STEP_CYCLES),
+        "carrier phase must keep advancing through nav-bit transitions instead of wrapping backward: phase_steps_cycles={phase_steps_cycles:?}, epochs={epochs:?}"
+    );
+    assert!(
+        phase_steps_cycles
+            .iter()
+            .all(|step_cycles| *step_cycles <= CLEAN_NAV_BIT_MAX_PHASE_STEP_CYCLES),
+        "carrier phase must not take slip-sized jumps at nav-bit transitions: phase_steps_cycles={phase_steps_cycles:?}, epochs={epochs:?}"
     );
 }
