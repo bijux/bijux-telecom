@@ -1,5 +1,6 @@
 #![allow(missing_docs)]
 
+use bijux_gnss_core::api::TrackEpoch;
 use bijux_gnss_receiver::api::ReceiverPipelineConfig;
 use bijux_gnss_signal::api::samples_per_code;
 
@@ -20,9 +21,14 @@ pub fn wrapped_code_phase_error_samples(
     }
 }
 
+pub fn carrier_frequency_error_hz(epoch: &TrackEpoch, expected_carrier_hz: f64) -> f64 {
+    (epoch.carrier_hz.0 - expected_carrier_hz).abs()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::wrapped_code_phase_error_samples;
+    use super::{carrier_frequency_error_hz, wrapped_code_phase_error_samples};
+    use bijux_gnss_core::api::{Hertz, TrackEpoch};
     use bijux_gnss_receiver::api::ReceiverPipelineConfig;
 
     #[test]
@@ -38,5 +44,12 @@ mod tests {
         let error = wrapped_code_phase_error_samples(&config, 1_020.0, 2.0);
 
         assert_eq!(error, 5.0);
+    }
+
+    #[test]
+    fn carrier_frequency_error_hz_measures_absolute_offset() {
+        let epoch = TrackEpoch { carrier_hz: Hertz(101.5), ..TrackEpoch::default() };
+
+        assert_eq!(carrier_frequency_error_hz(&epoch, 100.0), 1.5);
     }
 }
