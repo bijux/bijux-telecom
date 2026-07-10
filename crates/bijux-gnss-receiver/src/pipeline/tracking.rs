@@ -33,6 +33,9 @@ const CYCLE_SLIP_PHASE_DELTA_CYCLES: f64 = 0.35;
 const NAV_BIT_PHASE_STEP_CYCLES: f64 = 0.5;
 const NAV_BIT_PHASE_STEP_TOLERANCE_CYCLES: f64 = 0.1;
 const PLL_LOCK_MAX_PHASE_ERROR_RAD: f32 = 0.2;
+const PROMPT_POWER_DROP_RATIO_THRESHOLD: f32 = 0.2;
+const DISCRIMINATOR_INSTABILITY_MIN_PROMPT_POWER_RATIO: f32 = 0.5;
+const DISCRIMINATOR_INSTABILITY_REQUIRED_EPOCHS: u8 = 2;
 const PULL_IN_REQUIRED_STABLE_EPOCHS: u8 = 1;
 const FLL_PULL_IN_MAX_CORRECTION_BW_MULTIPLIER: f64 = 4.0;
 
@@ -129,6 +132,8 @@ struct LoopState {
     pull_in_stable_epochs: u8,
     weak_cn0_epochs: u8,
     degraded_epochs: u16,
+    prompt_power_reference: f32,
+    unstable_discriminator_epochs: u8,
     state: ChannelState,
     unlocked_count: u8,
 }
@@ -222,6 +227,23 @@ struct PromptPhaseDecision {
     nav_bit_phase_offset_cycles: f64,
     nav_bit_transition: bool,
     cycle_slip: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LossOfLockCause {
+    PromptPowerDrop,
+    DiscriminatorInstability,
+    PhaseJump,
+}
+
+impl LossOfLockCause {
+    fn reason(self) -> &'static str {
+        match self {
+            Self::PromptPowerDrop => "prompt_power_drop",
+            Self::DiscriminatorInstability => "discriminator_instability",
+            Self::PhaseJump => "phase_jump",
+        }
+    }
 }
 
 fn should_apply_fll(state: ChannelState, raw_fll_lock: bool) -> bool {
@@ -568,6 +590,8 @@ impl Tracking {
             pull_in_stable_epochs: 0,
             weak_cn0_epochs: 0,
             degraded_epochs: 0,
+            prompt_power_reference: 0.0,
+            unstable_discriminator_epochs: 0,
             state: ChannelState::Acquired,
             unlocked_count: 0,
         };
@@ -636,6 +660,8 @@ impl Tracking {
                         pull_in_stable_epochs: 0,
                         weak_cn0_epochs: 0,
                         degraded_epochs: 0,
+                        prompt_power_reference: 0.0,
+                        unstable_discriminator_epochs: 0,
                         state: ChannelState::Acquired,
                         unlocked_count: 0,
                     },
@@ -812,10 +838,12 @@ impl Tracking {
             }
 
             let cycle_slip = phase_decision.cycle_slip;
-            let mut cycle_slip_reason = None;
-            if cycle_slip {
-                cycle_slip_reason = Some("phase_discontinuity".to_string());
-            }
+            let cycle_slip_reason = cycle_slip.then(|| LossOfLockCause::PhaseJump.reason().to_string());
+            let prompt_power = corr.prompt.norm();
+            state.prompt_power_reference =
+                update_prompt_power_reference(state.prompt_power_reference, prompt_power);
+            let prompt_power_ratio =
+                prompt_power_ratio(prompt_power, state.prompt_power_reference);
 
             let cn0_dbhz = track_epoch.cn0_dbhz;
             let (dll_bw, pll_bw, fll_bw) = adaptive_bandwidth(
@@ -842,6 +870,21 @@ impl Tracking {
                     as f32;
             let raw_pll_lock = pll_err.abs() < PLL_LOCK_MAX_PHASE_ERROR_RAD;
             let raw_fll_lock = (fll_err_hz as f64).abs() <= fll_lock_threshold_hz(fll_bw);
+            state.unstable_discriminator_epochs = update_discriminator_instability_epochs(
+                state.unstable_discriminator_epochs,
+                state.state,
+                prompt_power_ratio,
+                raw_pll_lock,
+                raw_fll_lock,
+                cycle_slip,
+                anti_false_lock,
+            );
+            let loss_of_lock_cause = classify_loss_of_lock_cause(
+                state.state,
+                cycle_slip,
+                prompt_power_ratio,
+                state.unstable_discriminator_epochs,
+            );
             state.pull_in_stable_epochs = update_pull_in_stable_epochs(
                 state.pull_in_stable_epochs,
                 lock,
@@ -872,7 +915,7 @@ impl Tracking {
                     lock,
                     ready_for_tracking,
                     anti_false_lock,
-                    cycle_slip,
+                    loss_of_lock_cause,
                     state.unlocked_count,
                     state.degraded_epochs,
                     short_fade_epoch_budget(tracking_params),
@@ -881,12 +924,6 @@ impl Tracking {
             state.unlocked_count = transition.next_unlocked_count;
             state.degraded_epochs = transition.next_degraded_epochs;
             state.state = transition.to_state;
-            if cycle_slip {
-                cycle_slip_reason = match cycle_slip_reason {
-                    Some(reason) => Some(reason),
-                    None => Some("cycle_slip_detected".to_string()),
-                };
-            }
 
             let lock_state = match state.state {
                 ChannelState::Idle => "idle".to_string(),
@@ -897,10 +934,6 @@ impl Tracking {
                 ChannelState::Lost => "lost".to_string(),
             };
             let lock_state_reason = Some(transition.reason.clone());
-
-            if cycle_slip_reason.is_none() && state.state == ChannelState::Lost && !lock {
-                cycle_slip_reason = Some("lock_reacquire".to_string());
-            }
 
             let dll_lock = dll_err.abs() < 0.2;
             let pll_lock = raw_pll_lock && ready_for_tracking;
@@ -1020,6 +1053,78 @@ fn epoch_lock_quality(
     quality
 }
 
+fn update_prompt_power_reference(current_reference: f32, prompt_power: f32) -> f32 {
+    if !prompt_power.is_finite() || prompt_power <= 0.0 {
+        return current_reference;
+    }
+    if !current_reference.is_finite() || current_reference <= 0.0 {
+        return prompt_power;
+    }
+    (current_reference * 0.98).max(prompt_power)
+}
+
+fn prompt_power_ratio(prompt_power: f32, prompt_power_reference: f32) -> Option<f32> {
+    if !prompt_power.is_finite()
+        || !prompt_power_reference.is_finite()
+        || prompt_power_reference <= 0.0
+    {
+        return None;
+    }
+    Some(prompt_power / prompt_power_reference)
+}
+
+fn update_discriminator_instability_epochs(
+    current_epochs: u8,
+    from_state: ChannelState,
+    prompt_power_ratio: Option<f32>,
+    raw_pll_lock: bool,
+    raw_fll_lock: bool,
+    cycle_slip: bool,
+    anti_false_lock: bool,
+) -> u8 {
+    let strong_prompt = prompt_power_ratio
+        .is_some_and(|ratio| ratio >= DISCRIMINATOR_INSTABILITY_MIN_PROMPT_POWER_RATIO);
+    let unstable = matches!(from_state, ChannelState::Tracking | ChannelState::Degraded)
+        && strong_prompt
+        && !raw_pll_lock
+        && !raw_fll_lock
+        && !cycle_slip
+        && !anti_false_lock;
+    if unstable {
+        current_epochs.saturating_add(1)
+    } else {
+        0
+    }
+}
+
+fn classify_loss_of_lock_cause(
+    from_state: ChannelState,
+    cycle_slip: bool,
+    prompt_power_ratio: Option<f32>,
+    unstable_discriminator_epochs: u8,
+) -> Option<LossOfLockCause> {
+    if cycle_slip {
+        return Some(LossOfLockCause::PhaseJump);
+    }
+    if matches!(from_state, ChannelState::Tracking | ChannelState::Degraded)
+        && prompt_power_ratio
+            .is_some_and(|ratio| ratio <= PROMPT_POWER_DROP_RATIO_THRESHOLD)
+    {
+        return Some(LossOfLockCause::PromptPowerDrop);
+    }
+    if unstable_discriminator_epochs >= DISCRIMINATOR_INSTABILITY_REQUIRED_EPOCHS {
+        return Some(LossOfLockCause::DiscriminatorInstability);
+    }
+    None
+}
+
+fn is_sustained_lock_loss_reason(reason: &str) -> bool {
+    matches!(
+        reason,
+        "lock_lost" | "prompt_power_drop" | "discriminator_instability" | "phase_jump"
+    )
+}
+
 #[derive(Debug, Clone)]
 struct TransitionDecision {
     to_state: ChannelState,
@@ -1033,11 +1138,27 @@ fn deterministic_transition_rule(
     lock: bool,
     ready_for_tracking: bool,
     anti_false_lock: bool,
-    cycle_slip: bool,
+    loss_of_lock_cause: Option<LossOfLockCause>,
     unlocked_count: u8,
     degraded_epochs: u16,
     short_fade_epoch_budget: u16,
 ) -> TransitionDecision {
+    if loss_of_lock_cause == Some(LossOfLockCause::PhaseJump) {
+        return TransitionDecision {
+            to_state: ChannelState::Lost,
+            reason: LossOfLockCause::PhaseJump.reason().to_string(),
+            next_unlocked_count: unlocked_count.saturating_add(1),
+            next_degraded_epochs: 0,
+        };
+    }
+    if loss_of_lock_cause == Some(LossOfLockCause::DiscriminatorInstability) {
+        return TransitionDecision {
+            to_state: ChannelState::Lost,
+            reason: LossOfLockCause::DiscriminatorInstability.reason().to_string(),
+            next_unlocked_count: unlocked_count.saturating_add(1),
+            next_degraded_epochs: 0,
+        };
+    }
     if from_state == ChannelState::Degraded {
         if ready_for_tracking {
             return TransitionDecision {
@@ -1049,9 +1170,13 @@ fn deterministic_transition_rule(
         }
         let next_degraded_epochs = degraded_epochs.saturating_add(1);
         if next_degraded_epochs > short_fade_epoch_budget {
+            let loss_reason = loss_of_lock_cause
+                .unwrap_or(LossOfLockCause::PromptPowerDrop)
+                .reason()
+                .to_string();
             return TransitionDecision {
                 to_state: ChannelState::Lost,
-                reason: "lock_lost".to_string(),
+                reason: loss_reason,
                 next_unlocked_count: 1,
                 next_degraded_epochs: 0,
             };
@@ -1069,14 +1194,6 @@ fn deterministic_transition_rule(
             reason: "signal_fade".to_string(),
             next_unlocked_count: 0,
             next_degraded_epochs: 1,
-        };
-    }
-    if cycle_slip {
-        return TransitionDecision {
-            to_state: ChannelState::Lost,
-            reason: "cycle_slip".to_string(),
-            next_unlocked_count: unlocked_count.saturating_add(1),
-            next_degraded_epochs: 0,
         };
     }
     if ready_for_tracking {
@@ -1125,7 +1242,10 @@ fn sustained_lock_loss_reacquire_seed(epochs: &[TrackEpoch]) -> Option<(f64, f64
     for epoch in epochs {
         if !epoch.lock
             && epoch.lock_state == "lost"
-            && epoch.lock_state_reason.as_deref() == Some("lock_lost")
+            && epoch
+                .lock_state_reason
+                .as_deref()
+                .is_some_and(is_sustained_lock_loss_reason)
         {
             consecutive_lost_epochs += 1;
             if consecutive_lost_epochs >= 3 {
@@ -1573,13 +1693,13 @@ mod tests {
             false,
             false,
             false,
-            true,
+            Some(super::LossOfLockCause::PhaseJump),
             1,
             0,
             100,
         );
         assert_eq!(decision.to_state, ChannelState::Lost);
-        assert_eq!(decision.reason, "cycle_slip");
+        assert_eq!(decision.reason, "phase_jump");
         assert_eq!(decision.next_unlocked_count, 2);
         assert_eq!(decision.next_degraded_epochs, 0);
     }
@@ -1591,7 +1711,7 @@ mod tests {
             true,
             true,
             false,
-            false,
+            None,
             2,
             0,
             100,
@@ -1609,7 +1729,7 @@ mod tests {
             false,
             false,
             false,
-            false,
+            None,
             1,
             0,
             100,
@@ -1627,7 +1747,7 @@ mod tests {
             true,
             true,
             false,
-            false,
+            None,
             0,
             4,
             100,
@@ -1645,15 +1765,15 @@ mod tests {
             false,
             false,
             false,
-            true,
+            Some(super::LossOfLockCause::PhaseJump),
             0,
             2,
             100,
         );
-        assert_eq!(decision.to_state, ChannelState::Degraded);
-        assert_eq!(decision.reason, "signal_fade");
-        assert_eq!(decision.next_unlocked_count, 0);
-        assert_eq!(decision.next_degraded_epochs, 3);
+        assert_eq!(decision.to_state, ChannelState::Lost);
+        assert_eq!(decision.reason, "phase_jump");
+        assert_eq!(decision.next_unlocked_count, 1);
+        assert_eq!(decision.next_degraded_epochs, 0);
     }
 
     #[test]
@@ -1663,15 +1783,63 @@ mod tests {
             false,
             false,
             false,
-            false,
+            Some(super::LossOfLockCause::PromptPowerDrop),
             0,
             100,
             100,
         );
         assert_eq!(decision.to_state, ChannelState::Lost);
-        assert_eq!(decision.reason, "lock_lost");
+        assert_eq!(decision.reason, "prompt_power_drop");
         assert_eq!(decision.next_unlocked_count, 1);
         assert_eq!(decision.next_degraded_epochs, 0);
+    }
+
+    #[test]
+    fn classify_loss_of_lock_cause_prioritizes_phase_jump() {
+        let cause = super::classify_loss_of_lock_cause(ChannelState::Tracking, true, Some(0.9), 3);
+
+        assert_eq!(cause, Some(super::LossOfLockCause::PhaseJump));
+    }
+
+    #[test]
+    fn classify_loss_of_lock_cause_detects_prompt_power_drop() {
+        let cause =
+            super::classify_loss_of_lock_cause(ChannelState::Tracking, false, Some(0.1), 0);
+
+        assert_eq!(cause, Some(super::LossOfLockCause::PromptPowerDrop));
+    }
+
+    #[test]
+    fn classify_loss_of_lock_cause_detects_discriminator_instability() {
+        let cause =
+            super::classify_loss_of_lock_cause(ChannelState::Tracking, false, Some(0.8), 2);
+
+        assert_eq!(cause, Some(super::LossOfLockCause::DiscriminatorInstability));
+    }
+
+    #[test]
+    fn update_discriminator_instability_epochs_requires_strong_prompt() {
+        let epochs = super::update_discriminator_instability_epochs(
+            1,
+            ChannelState::Tracking,
+            Some(0.7),
+            false,
+            false,
+            false,
+            false,
+        );
+        assert_eq!(epochs, 2);
+
+        let reset = super::update_discriminator_instability_epochs(
+            epochs,
+            ChannelState::Tracking,
+            Some(0.1),
+            false,
+            false,
+            false,
+            false,
+        );
+        assert_eq!(reset, 0);
     }
 
     #[test]
@@ -1697,13 +1865,24 @@ mod tests {
     }
 
     #[test]
+    fn sustained_lock_loss_reacquire_seed_accepts_explicit_loss_causes() {
+        let epochs = vec![
+            track_epoch_with_state(0, false, "lost", Some("prompt_power_drop")),
+            track_epoch_with_state(1, false, "lost", Some("prompt_power_drop")),
+            track_epoch_with_state(2, false, "lost", Some("prompt_power_drop")),
+        ];
+
+        assert_eq!(super::sustained_lock_loss_reacquire_seed(&epochs), Some((2.0, 2.5)));
+    }
+
+    #[test]
     fn deterministic_transition_rule_holds_pull_in_until_carrier_converges() {
         let decision = super::deterministic_transition_rule(
             ChannelState::PullIn,
             true,
             false,
             false,
-            false,
+            None,
             1,
             0,
             100,
@@ -2483,7 +2662,7 @@ mod tests {
                     event.lock,
                     event.lock,
                     event.anti_false_lock,
-                    event.cycle_slip,
+                    event.cycle_slip.then_some(super::LossOfLockCause::PhaseJump),
                     unlocked,
                     degraded_epochs,
                     100,
