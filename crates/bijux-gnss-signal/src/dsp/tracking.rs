@@ -14,6 +14,20 @@ pub fn adaptive_bandwidth(dll_bw: f64, pll_bw: f64, fll_bw: f64, cn0_dbhz: f64) 
     }
 }
 
+/// Convert a carrier phase delta over one coherent interval into residual frequency error.
+pub fn carrier_frequency_error_hz_from_phase_delta(
+    phase_delta_rad: f64,
+    coherent_integration_s: f64,
+) -> f64 {
+    if !phase_delta_rad.is_finite()
+        || !coherent_integration_s.is_finite()
+        || coherent_integration_s <= 0.0
+    {
+        return 0.0;
+    }
+    phase_delta_rad / (std::f64::consts::TAU * coherent_integration_s)
+}
+
 /// DLL/PLL/FLL discriminators from early/prompt/late.
 pub fn discriminators(
     early: Complex<f32>,
@@ -75,7 +89,7 @@ pub fn code_at(code: &[i8], samples_per_chip: f64, sample_index: f64) -> Complex
 
 #[cfg(test)]
 mod tests {
-    use super::{discriminators, estimate_cn0_dbhz};
+    use super::{carrier_frequency_error_hz_from_phase_delta, discriminators, estimate_cn0_dbhz};
     use num_complex::Complex;
 
     #[test]
@@ -134,5 +148,19 @@ mod tests {
         assert_eq!(estimate_cn0_dbhz(prompt, noise, 0.0, 4092.0, 8_184.0), 0.0);
         assert_eq!(estimate_cn0_dbhz(prompt, noise, 4_092_000.0, 0.0, 8_184.0), 0.0);
         assert_eq!(estimate_cn0_dbhz(prompt, noise, 4_092_000.0, 4092.0, 0.0), 0.0);
+    }
+
+    #[test]
+    fn carrier_frequency_error_hz_from_phase_delta_matches_quarter_cycle_over_one_ms() {
+        let measured =
+            carrier_frequency_error_hz_from_phase_delta(std::f64::consts::FRAC_PI_2, 0.001);
+
+        assert!((measured - 250.0).abs() < 1.0e-9, "measured={measured}");
+    }
+
+    #[test]
+    fn carrier_frequency_error_hz_from_phase_delta_rejects_invalid_inputs() {
+        assert_eq!(carrier_frequency_error_hz_from_phase_delta(f64::NAN, 0.001), 0.0);
+        assert_eq!(carrier_frequency_error_hz_from_phase_delta(0.5, 0.0), 0.0);
     }
 }

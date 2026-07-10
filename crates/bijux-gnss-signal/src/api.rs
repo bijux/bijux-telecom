@@ -22,7 +22,10 @@ pub use crate::dsp::signal::{
     sample_code, samples_per_code, wipeoff_carrier,
 };
 /// Tracking helpers.
-pub use crate::dsp::tracking::{adaptive_bandwidth, code_at, discriminators, estimate_cn0_dbhz};
+pub use crate::dsp::tracking::{
+    adaptive_bandwidth, carrier_frequency_error_hz_from_phase_delta, code_at, discriminators,
+    estimate_cn0_dbhz,
+};
 /// Error types.
 pub use crate::error::SignalError;
 /// Raw IQ metadata contracts.
