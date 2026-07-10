@@ -452,19 +452,7 @@ impl Tracking {
         frame: &SamplesFrame,
     ) {
         for channel in &mut tracking.channels {
-            let mut consecutive_lock_loss = 0usize;
-            let mut reacquire_seed = None;
-            for epoch in &channel.epochs {
-                if epoch.lock {
-                    consecutive_lock_loss = 0;
-                    continue;
-                }
-                consecutive_lock_loss += 1;
-                if consecutive_lock_loss >= 3 {
-                    reacquire_seed = Some((epoch.carrier_hz.0, epoch.code_phase_samples.0));
-                    break;
-                }
-            }
+            let reacquire_seed = sustained_lock_loss_reacquire_seed(&channel.epochs);
             let Some((carrier_hz, code_phase_samples)) = reacquire_seed else {
                 continue;
             };
@@ -1050,14 +1038,6 @@ fn deterministic_transition_rule(
     degraded_epochs: u16,
     short_fade_epoch_budget: u16,
 ) -> TransitionDecision {
-    if cycle_slip {
-        return TransitionDecision {
-            to_state: ChannelState::Lost,
-            reason: "cycle_slip".to_string(),
-            next_unlocked_count: unlocked_count.saturating_add(1),
-            next_degraded_epochs: 0,
-        };
-    }
     if from_state == ChannelState::Degraded {
         if ready_for_tracking {
             return TransitionDecision {
@@ -1089,6 +1069,14 @@ fn deterministic_transition_rule(
             reason: "signal_fade".to_string(),
             next_unlocked_count: 0,
             next_degraded_epochs: 1,
+        };
+    }
+    if cycle_slip {
+        return TransitionDecision {
+            to_state: ChannelState::Lost,
+            reason: "cycle_slip".to_string(),
+            next_unlocked_count: unlocked_count.saturating_add(1),
+            next_degraded_epochs: 0,
         };
     }
     if ready_for_tracking {
@@ -1130,6 +1118,24 @@ fn deterministic_transition_rule(
         next_unlocked_count: next_unlocked,
         next_degraded_epochs: 0,
     }
+}
+
+fn sustained_lock_loss_reacquire_seed(epochs: &[TrackEpoch]) -> Option<(f64, f64)> {
+    let mut consecutive_lost_epochs = 0usize;
+    for epoch in epochs {
+        if !epoch.lock
+            && epoch.lock_state == "lost"
+            && epoch.lock_state_reason.as_deref() == Some("lock_lost")
+        {
+            consecutive_lost_epochs += 1;
+            if consecutive_lost_epochs >= 3 {
+                return Some((epoch.carrier_hz.0, epoch.code_phase_samples.0));
+            }
+            continue;
+        }
+        consecutive_lost_epochs = 0;
+    }
+    None
 }
 
 fn default_tracking_assumptions(config: &ReceiverPipelineConfig) -> TrackingAssumptions {
@@ -1524,7 +1530,8 @@ mod tests {
     use crate::engine::runtime::ReceiverRuntime;
     use crate::sim::synthetic::{generate_l1_ca, SyntheticSignalParams};
     use bijux_gnss_core::api::{
-        AcqHypothesis, Chips, Epoch, SampleTime, SamplesFrame, SatId, Seconds, TrackEpoch,
+        AcqHypothesis, Chips, Constellation, Epoch, Hertz, SampleTime, SamplesFrame, SatId,
+        Seconds, TrackEpoch,
     };
     use bijux_gnss_signal::api::{
         advance_code_phase_seconds, discriminators, first_order_angular_loop_coefficients,
@@ -1632,6 +1639,24 @@ mod tests {
     }
 
     #[test]
+    fn deterministic_transition_rule_keeps_degraded_state_during_fade_cycle_slip() {
+        let decision = super::deterministic_transition_rule(
+            ChannelState::Degraded,
+            false,
+            false,
+            false,
+            true,
+            0,
+            2,
+            100,
+        );
+        assert_eq!(decision.to_state, ChannelState::Degraded);
+        assert_eq!(decision.reason, "signal_fade");
+        assert_eq!(decision.next_unlocked_count, 0);
+        assert_eq!(decision.next_degraded_epochs, 3);
+    }
+
+    #[test]
     fn deterministic_transition_rule_marks_loss_after_fade_budget_exhaustion() {
         let decision = super::deterministic_transition_rule(
             ChannelState::Degraded,
@@ -1647,6 +1672,28 @@ mod tests {
         assert_eq!(decision.reason, "lock_lost");
         assert_eq!(decision.next_unlocked_count, 1);
         assert_eq!(decision.next_degraded_epochs, 0);
+    }
+
+    #[test]
+    fn sustained_lock_loss_reacquire_seed_ignores_degraded_short_fade_epochs() {
+        let epochs = vec![
+            track_epoch_with_state(0, false, "degraded", Some("signal_fade")),
+            track_epoch_with_state(1, false, "degraded", Some("signal_fade")),
+            track_epoch_with_state(2, false, "degraded", Some("signal_fade")),
+        ];
+
+        assert_eq!(super::sustained_lock_loss_reacquire_seed(&epochs), None);
+    }
+
+    #[test]
+    fn sustained_lock_loss_reacquire_seed_requires_three_lost_epochs() {
+        let epochs = vec![
+            track_epoch_with_state(0, false, "lost", Some("lock_lost")),
+            track_epoch_with_state(1, false, "lost", Some("lock_lost")),
+            track_epoch_with_state(2, false, "lost", Some("lock_lost")),
+        ];
+
+        assert_eq!(super::sustained_lock_loss_reacquire_seed(&epochs), Some((2.0, 2.5)));
     }
 
     #[test]
@@ -2451,6 +2498,25 @@ mod tests {
                 "fixture {} final state mismatch",
                 fixture.id
             );
+        }
+    }
+
+    fn track_epoch_with_state(
+        epoch_index: u32,
+        lock: bool,
+        lock_state: &str,
+        lock_state_reason: Option<&str>,
+    ) -> TrackEpoch {
+        TrackEpoch {
+            epoch: Epoch { index: epoch_index as u64 },
+            sample_index: epoch_index as u64,
+            sat: SatId { constellation: Constellation::Gps, prn: 1 },
+            carrier_hz: Hertz(epoch_index as f64),
+            code_phase_samples: Chips(epoch_index as f64 + 0.5),
+            lock,
+            lock_state: lock_state.to_string(),
+            lock_state_reason: lock_state_reason.map(str::to_string),
+            ..TrackEpoch::default()
         }
     }
 
