@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{Constellation, GpsTime, ObsSignalTiming, SatId, Seconds};
