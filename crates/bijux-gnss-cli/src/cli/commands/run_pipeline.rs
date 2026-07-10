@@ -392,9 +392,9 @@ fn handle_run(command: GnssCommand) -> Result<()> {
 mod pvt_tests {
     use super::*;
     use bijux_gnss_infra::api::core::{
-        signal_spec_gps_l1_ca, Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite,
-        ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
-        SigId, SignalBand, SignalCode,
+        signal_spec_gps_l1_ca, Constellation, GpsTime, LockFlags, ObsEpoch, ObsMetadata,
+        ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationStatus,
+        ReceiverRole, ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
     };
     use bijux_gnss_infra::api::nav::{
         parse_rinex_nav, sat_state_gps_l1ca, write_rinex_nav, GpsEphemeris, GpsL1CaHowWord,
@@ -405,6 +405,14 @@ mod pvt_tests {
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
+
+    struct SyntheticPvtCase {
+        obs_epoch: ObsEpoch,
+        truth_ecef_m: (f64, f64, f64),
+        receiver_clock_bias_s: f64,
+    }
 
     fn sample_common_args(out: PathBuf) -> CommonArgs {
         CommonArgs {
@@ -455,8 +463,8 @@ mod pvt_tests {
             .collect()
     }
 
-    fn sample_obs_epoch(ephs: &[GpsEphemeris]) -> ObsEpoch {
-        let t_rx_s = 504_018.07;
+    fn sample_pvt_case(ephs: &[GpsEphemeris], receiver_clock_bias_s: f64) -> SyntheticPvtCase {
+        let t_rx_s = 504_018.07 + receiver_clock_bias_s;
         let (rx_x, rx_y, rx_z) = bijux_gnss_infra::api::nav::geodetic_to_ecef(37.0, -122.0, 10.0);
         let sats = ephs
             .iter()
@@ -469,13 +477,16 @@ mod pvt_tests {
                     let dy = rx_y - state.y_m;
                     let dz = rx_z - state.z_m;
                     let range = (dx * dx + dy * dy + dz * dz).sqrt();
-                    pseudorange_m = range - state.clock_correction.bias_s * 299_792_458.0;
-                    let next_tau = pseudorange_m / 299_792_458.0;
+                    pseudorange_m = range
+                        + receiver_clock_bias_s * SPEED_OF_LIGHT_MPS
+                        - state.clock_correction.bias_s * SPEED_OF_LIGHT_MPS;
+                    let next_tau = pseudorange_m / SPEED_OF_LIGHT_MPS;
                     if (next_tau - tau).abs() < 1.0e-12 {
                         break;
                     }
                     tau = next_tau;
                 }
+                let signal_travel_time_s = pseudorange_m / SPEED_OF_LIGHT_MPS;
                 ObsSatellite {
                     signal_id: SigId { sat: eph.sat, band: SignalBand::L1, code: SignalCode::Ca },
                     pseudorange_m: bijux_gnss_infra::api::core::Meters(pseudorange_m),
@@ -499,7 +510,10 @@ mod pvt_tests {
                     elevation_deg: None,
                     azimuth_deg: None,
                     weight: None,
-                    timing: None,
+                    timing: Some(ObsSignalTiming {
+                        signal_travel_time_s: Seconds(signal_travel_time_s),
+                        transmit_gps_time: GpsTime { week: 2209, tow_s: t_rx_s - signal_travel_time_s },
+                    }),
                     error_model: None,
                     metadata: ObsMetadata {
                         tracking_mode: "test".to_string(),
@@ -515,20 +529,24 @@ mod pvt_tests {
             })
             .collect();
 
-        ObsEpoch {
-            t_rx_s: bijux_gnss_infra::api::core::Seconds(t_rx_s),
-            source_time: ReceiverSampleTrace::from_sample_index(1, 1_000.0),
-            gps_week: Some(2209),
-            tow_s: Some(bijux_gnss_infra::api::core::Seconds(t_rx_s)),
-            epoch_idx: 1,
-            discontinuity: false,
-            valid: true,
-            processing_ms: None,
-            role: ReceiverRole::Rover,
-            sats,
-            decision: ObservationEpochDecision::Accepted,
-            decision_reason: Some("accepted_observables_present".to_string()),
-            manifest: None,
+        SyntheticPvtCase {
+            obs_epoch: ObsEpoch {
+                t_rx_s: Seconds(t_rx_s),
+                source_time: ReceiverSampleTrace::from_sample_index(1, 1_000.0),
+                gps_week: Some(2209),
+                tow_s: Some(Seconds(t_rx_s)),
+                epoch_idx: 1,
+                discontinuity: false,
+                valid: true,
+                processing_ms: None,
+                role: ReceiverRole::Rover,
+                sats,
+                decision: ObservationEpochDecision::Accepted,
+                decision_reason: Some("accepted_observables_present".to_string()),
+                manifest: None,
+            },
+            truth_ecef_m: (rx_x, rx_y, rx_z),
+            receiver_clock_bias_s,
         }
     }
 
@@ -648,8 +666,11 @@ mod pvt_tests {
         let eph_path = root.join("nav.rnx");
 
         let ephs = sample_ephemerides();
-        let obs = sample_obs_epoch(&ephs);
-        fs::write(&obs_path, format!("{}\n", serde_json::to_string(&obs).expect("serialize obs")))
+        let pvt_case = sample_pvt_case(&ephs, 0.0);
+        fs::write(
+            &obs_path,
+            format!("{}\n", serde_json::to_string(&pvt_case.obs_epoch).expect("serialize obs")),
+        )
             .expect("write obs");
         write_rinex_nav(&eph_path, &ephs, true).expect("write rinex nav");
         let rinex = fs::read_to_string(&eph_path).expect("read rinex nav");
@@ -687,8 +708,11 @@ mod pvt_tests {
         let eph_path = root.join("nav_decode_reports.json");
 
         let ephs = sample_ephemerides();
-        let obs = sample_obs_epoch(&ephs);
-        fs::write(&obs_path, format!("{}\n", serde_json::to_string(&obs).expect("serialize obs")))
+        let pvt_case = sample_pvt_case(&ephs, 0.0);
+        fs::write(
+            &obs_path,
+            format!("{}\n", serde_json::to_string(&pvt_case.obs_epoch).expect("serialize obs")),
+        )
             .expect("write obs");
         let reports = ephs
             .iter()
