@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use bijux_gnss_core::api::{
     AcqHypothesis, AcqTrackingSeed, AcqUncertainty, Chips, Constellation, Cycles, Hertz,
     ReceiverSampleTrace, SampleClock, SampleTime, SamplesFrame, SatId, Seconds, SignalBand,
-    TrackEpoch, TrackTransition, TrackingAssumptions,
+    TrackEpoch, TrackTransition, TrackingAssumptions, TrackingUncertainty,
 };
 
 use crate::engine::receiver_config::{ReceiverPipelineConfig, TrackingParams};
@@ -55,6 +55,11 @@ const REACQUISITION_REFERENCE_CN0_MARGIN_DBHZ: f64 = 12.0;
 const REACQUISITION_STABLE_TRACKING_EPOCHS: u8 = 5;
 const TRACKING_CN0_WINDOW_EPOCHS: usize = 8;
 const TRACKING_CN0_MIN_WINDOW_EPOCHS: usize = 4;
+const TRACKING_UNCERTAINTY_WINDOW_EPOCHS: usize = 8;
+const TRACKING_UNCERTAINTY_MIN_CODE_PHASE_SAMPLES: f64 = 0.01;
+const TRACKING_UNCERTAINTY_MIN_CARRIER_PHASE_CYCLES: f64 = 0.001;
+const TRACKING_UNCERTAINTY_MIN_DOPPLER_HZ: f64 = 0.01;
+const TRACKING_UNCERTAINTY_MIN_CN0_DBHZ: f64 = 0.05;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelState {
@@ -213,6 +218,10 @@ struct LoopState {
     degraded_epochs: u16,
     prompt_power_reference: f32,
     prompt_cn0_window: VecDeque<Complex<f32>>,
+    code_error_window_samples: VecDeque<f64>,
+    carrier_phase_error_window_cycles: VecDeque<f64>,
+    doppler_error_window_hz: VecDeque<f64>,
+    cn0_estimate_window_dbhz: VecDeque<f64>,
     unstable_discriminator_epochs: u8,
     state: ChannelState,
     unlocked_count: u8,
@@ -277,6 +286,20 @@ struct CodeLoopUpdate {
 struct CarrierLoopUpdate {
     carrier_hz: f64,
     carrier_phase_cycles: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TrackingUncertaintyInputs {
+    samples_per_chip: f64,
+    dll_err: f32,
+    pll_err_rad: f64,
+    fll_err_hz: f64,
+    cn0_dbhz: f64,
+    cn0_reference_dbhz: f64,
+    channel_locked: bool,
+    anti_false_lock: bool,
+    cycle_slip: bool,
+    channel_state: ChannelState,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -587,6 +610,7 @@ impl Tracking {
                 channel_id, sat.constellation, sat.prn
             ),
             tracking_assumptions: Some(default_tracking_assumptions(&self.config)),
+            tracking_uncertainty: None,
             processing_ms: None,
         };
         (track_epoch, correlator)
@@ -744,6 +768,10 @@ impl Tracking {
             degraded_epochs: 0,
             prompt_power_reference: 0.0,
             prompt_cn0_window: VecDeque::new(),
+            code_error_window_samples: VecDeque::new(),
+            carrier_phase_error_window_cycles: VecDeque::new(),
+            doppler_error_window_hz: VecDeque::new(),
+            cn0_estimate_window_dbhz: VecDeque::new(),
             unstable_discriminator_epochs: 0,
             state: ChannelState::Acquired,
             unlocked_count: 0,
@@ -822,6 +850,10 @@ impl Tracking {
                         degraded_epochs: 0,
                         prompt_power_reference: 0.0,
                         prompt_cn0_window: VecDeque::new(),
+                        code_error_window_samples: VecDeque::new(),
+                        carrier_phase_error_window_cycles: VecDeque::new(),
+                        doppler_error_window_hz: VecDeque::new(),
+                        cn0_estimate_window_dbhz: VecDeque::new(),
                         unstable_discriminator_epochs: 0,
                         state: ChannelState::Acquired,
                         unlocked_count: 0,
@@ -1194,10 +1226,38 @@ impl Tracking {
         state.unlocked_count = transition.next_unlocked_count;
         state.degraded_epochs = transition.next_degraded_epochs;
         state.state = transition.to_state;
+        push_tracking_uncertainty_sample(
+            &mut state.code_error_window_samples,
+            (dll_err.abs() as f64) * samples_per_chip,
+        );
+        push_tracking_uncertainty_sample(
+            &mut state.carrier_phase_error_window_cycles,
+            (pll_err.abs() as f64) / std::f64::consts::TAU,
+        );
+        push_tracking_uncertainty_sample(
+            &mut state.doppler_error_window_hz,
+            (fll_err_hz as f64).abs(),
+        );
+        push_tracking_uncertainty_sample(&mut state.cn0_estimate_window_dbhz, cn0_dbhz);
+        let tracking_uncertainty = Some(estimate_tracking_uncertainty(
+            state,
+            TrackingUncertaintyInputs {
+                samples_per_chip,
+                dll_err,
+                pll_err_rad: pll_err as f64,
+                fll_err_hz: fll_err_hz as f64,
+                cn0_dbhz,
+                cn0_reference_dbhz: state.lock_reference_cn0_dbhz,
+                channel_locked: state.state != ChannelState::Lost && sustained_prompt_lock,
+                anti_false_lock,
+                cycle_slip,
+                channel_state: state.state,
+            },
+        ));
         if state.state == ChannelState::Lost {
             state.reacquisition_pending = false;
             state.reacquisition_attempt_epochs = 0;
-            state.prompt_cn0_window.clear();
+            clear_tracking_uncertainty_windows(state);
             if from_state != ChannelState::Lost {
                 state.lost_reason = Some(transition.reason.clone());
                 state.reacquisition_candidate = None;
@@ -1215,7 +1275,7 @@ impl Tracking {
                 state.reacquisition_attempt_epochs = 0;
             }
             if !matches!(state.state, ChannelState::Tracking | ChannelState::Degraded) {
-                state.prompt_cn0_window.clear();
+                clear_tracking_uncertainty_windows(state);
             }
         }
 
@@ -1309,6 +1369,7 @@ impl Tracking {
             lock_state,
             lock_state_reason,
             tracking_assumptions: Some(tracking_assumptions(tracking_params)),
+            tracking_uncertainty,
             ..track_epoch
         });
     }
@@ -1565,6 +1626,106 @@ fn update_windowed_tracking_cn0_estimate(
     let cn0_linear =
         coherent_signal_power * sample_rate_hz / (coherent_samples as f64 * noise_variance);
     Some(10.0 * cn0_linear.max(1e-12).log10())
+}
+
+fn push_tracking_uncertainty_sample(window: &mut VecDeque<f64>, value: f64) {
+    if !value.is_finite() || value < 0.0 {
+        return;
+    }
+    window.push_back(value);
+    while window.len() > TRACKING_UNCERTAINTY_WINDOW_EPOCHS {
+        window.pop_front();
+    }
+}
+
+fn rms_window(window: &VecDeque<f64>) -> Option<f64> {
+    let count = window.len();
+    if count == 0 {
+        return None;
+    }
+    Some((window.iter().map(|value| value * value).sum::<f64>() / count as f64).sqrt())
+}
+
+fn stddev_window(window: &VecDeque<f64>) -> Option<f64> {
+    let count = window.len();
+    if count < 2 {
+        return None;
+    }
+    let mean = window.iter().sum::<f64>() / count as f64;
+    Some(
+        (window.iter().map(|value| (value - mean).powi(2)).sum::<f64>() / (count - 1) as f64)
+            .sqrt(),
+    )
+}
+
+fn tracking_uncertainty_state_scale(
+    channel_state: ChannelState,
+    channel_locked: bool,
+    anti_false_lock: bool,
+    cycle_slip: bool,
+) -> f64 {
+    let mut scale = match channel_state {
+        ChannelState::Tracking => 1.0,
+        ChannelState::Degraded => 2.0,
+        ChannelState::PullIn | ChannelState::Acquired => 4.0,
+        ChannelState::Lost | ChannelState::Idle => 8.0,
+    };
+    if !channel_locked {
+        scale *= 2.0;
+    }
+    if anti_false_lock {
+        scale *= 2.0;
+    }
+    if cycle_slip {
+        scale *= 4.0;
+    }
+    scale
+}
+
+fn estimate_tracking_uncertainty(
+    state: &LoopState,
+    input: TrackingUncertaintyInputs,
+) -> TrackingUncertainty {
+    let state_scale = tracking_uncertainty_state_scale(
+        input.channel_state,
+        input.channel_locked,
+        input.anti_false_lock,
+        input.cycle_slip,
+    );
+    let code_fallback = ((input.dll_err.abs() as f64) * input.samples_per_chip)
+        .max(TRACKING_UNCERTAINTY_MIN_CODE_PHASE_SAMPLES);
+    let carrier_fallback = ((input.pll_err_rad.abs()) / std::f64::consts::TAU)
+        .max(TRACKING_UNCERTAINTY_MIN_CARRIER_PHASE_CYCLES);
+    let doppler_fallback = input.fll_err_hz.abs().max(TRACKING_UNCERTAINTY_MIN_DOPPLER_HZ);
+    let cn0_fallback =
+        (input.cn0_dbhz - input.cn0_reference_dbhz).abs().max(TRACKING_UNCERTAINTY_MIN_CN0_DBHZ);
+
+    TrackingUncertainty {
+        code_phase_samples: rms_window(&state.code_error_window_samples)
+            .unwrap_or(code_fallback)
+            .max(code_fallback)
+            * state_scale,
+        carrier_phase_cycles: rms_window(&state.carrier_phase_error_window_cycles)
+            .unwrap_or(carrier_fallback)
+            .max(carrier_fallback)
+            * state_scale,
+        doppler_hz: rms_window(&state.doppler_error_window_hz)
+            .unwrap_or(doppler_fallback)
+            .max(doppler_fallback)
+            * state_scale,
+        cn0_dbhz: stddev_window(&state.cn0_estimate_window_dbhz)
+            .unwrap_or(cn0_fallback)
+            .max(TRACKING_UNCERTAINTY_MIN_CN0_DBHZ)
+            * state_scale,
+    }
+}
+
+fn clear_tracking_uncertainty_windows(state: &mut LoopState) {
+    state.prompt_cn0_window.clear();
+    state.code_error_window_samples.clear();
+    state.carrier_phase_error_window_cycles.clear();
+    state.doppler_error_window_hz.clear();
+    state.cn0_estimate_window_dbhz.clear();
 }
 
 fn update_discriminator_instability_epochs(
@@ -2294,6 +2455,10 @@ impl Tracking {
             degraded_epochs: 0,
             prompt_power_reference: 0.0,
             prompt_cn0_window: VecDeque::new(),
+            code_error_window_samples: VecDeque::new(),
+            carrier_phase_error_window_cycles: VecDeque::new(),
+            doppler_error_window_hz: VecDeque::new(),
+            cn0_estimate_window_dbhz: VecDeque::new(),
             unstable_discriminator_epochs: 0,
             state: ChannelState::Acquired,
             unlocked_count: 0,
