@@ -416,6 +416,14 @@ mod pvt_tests {
     }
 
     #[derive(Debug, Clone, Copy, Default)]
+    struct BroadcastClockParameters {
+        af0_s: f64,
+        af1_s_per_s: f64,
+        af2_s_per_s2: f64,
+        tgd_s: f64,
+    }
+
+    #[derive(Debug, Clone, Copy, Default)]
     struct SyntheticSatelliteAdjustment {
         pseudorange_bias_m: f64,
         pseudorange_sigma_m: Option<f64>,
@@ -439,9 +447,20 @@ mod pvt_tests {
     }
 
     fn sample_ephemerides() -> Vec<GpsEphemeris> {
+        sample_ephemerides_with_clock_parameters(&[])
+    }
+
+    fn sample_ephemerides_with_clock_parameters(
+        clock_parameters_by_prn: &[(u8, BroadcastClockParameters)],
+    ) -> Vec<GpsEphemeris> {
+        let clock_parameters_by_prn =
+            clock_parameters_by_prn.iter().copied().collect::<BTreeMap<_, _>>();
         [(1, 0.0, 0.0), (2, 0.8, 0.9), (3, 1.6, 1.8), (4, 2.4, 2.7), (5, 3.2, 3.6)]
             .into_iter()
-            .map(|(prn, omega0, m0)| GpsEphemeris {
+            .map(|(prn, omega0, m0)| {
+                let clock_parameters =
+                    clock_parameters_by_prn.get(&prn).copied().unwrap_or_default();
+                GpsEphemeris {
                 sat: SatId { constellation: Constellation::Gps, prn },
                 iodc: 1,
                 iode: 1,
@@ -464,12 +483,83 @@ mod pvt_tests {
                 crs: 0.0,
                 cic: 0.0,
                 cis: 0.0,
-                af0: 0.0,
-                af1: 0.0,
-                af2: 0.0,
-                tgd: 0.0,
+                af0: clock_parameters.af0_s,
+                af1: clock_parameters.af1_s_per_s,
+                af2: clock_parameters.af2_s_per_s2,
+                tgd: clock_parameters.tgd_s,
+            }
             })
             .collect()
+    }
+
+    fn clear_broadcast_clock_parameters(ephemerides: &[GpsEphemeris]) -> Vec<GpsEphemeris> {
+        ephemerides
+            .iter()
+            .cloned()
+            .map(|mut ephemeris| {
+                ephemeris.af0 = 0.0;
+                ephemeris.af1 = 0.0;
+                ephemeris.af2 = 0.0;
+                ephemeris.tgd = 0.0;
+                ephemeris
+            })
+            .collect()
+    }
+
+    fn broadcast_clock_fixture_parameters() -> [(u8, BroadcastClockParameters); 5] {
+        [
+            (
+                1,
+                BroadcastClockParameters {
+                    af0_s: 240.0e-9,
+                    af1_s_per_s: 0.0,
+                    af2_s_per_s2: 0.0,
+                    tgd_s: -8.0e-9,
+                },
+            ),
+            (
+                2,
+                BroadcastClockParameters {
+                    af0_s: -170.0e-9,
+                    af1_s_per_s: 0.0,
+                    af2_s_per_s2: 0.0,
+                    tgd_s: 6.0e-9,
+                },
+            ),
+            (
+                3,
+                BroadcastClockParameters {
+                    af0_s: 330.0e-9,
+                    af1_s_per_s: 0.0,
+                    af2_s_per_s2: 0.0,
+                    tgd_s: -4.0e-9,
+                },
+            ),
+            (
+                4,
+                BroadcastClockParameters {
+                    af0_s: -95.0e-9,
+                    af1_s_per_s: 0.0,
+                    af2_s_per_s2: 0.0,
+                    tgd_s: 10.0e-9,
+                },
+            ),
+            (
+                5,
+                BroadcastClockParameters {
+                    af0_s: 210.0e-9,
+                    af1_s_per_s: 0.0,
+                    af2_s_per_s2: 0.0,
+                    tgd_s: -5.0e-9,
+                },
+            ),
+        ]
+    }
+
+    fn broadcast_clock_pvt_case(receiver_clock_bias_s: f64) -> (Vec<GpsEphemeris>, SyntheticPvtCase) {
+        let ephemerides = sample_ephemerides_with_clock_parameters(&broadcast_clock_fixture_parameters());
+        let pvt_case = sample_pvt_case(&ephemerides, receiver_clock_bias_s);
+        (ephemerides, pvt_case)
     }
 
     fn sample_pvt_case(ephs: &[GpsEphemeris], receiver_clock_bias_s: f64) -> SyntheticPvtCase {
@@ -866,6 +956,30 @@ mod pvt_tests {
             < 1.0e-6);
 
         fs::remove_dir_all(root).expect("remove test root");
+    }
+
+    #[test]
+    fn pvt_command_uses_broadcast_satellite_clock_correction_from_rinex_navigation() {
+        let (ephemerides, pvt_case) = broadcast_clock_pvt_case(2.75e-4);
+
+        let corrected_solution = solve_pvt_case_with_rinex_nav(
+            "broadcast_clock_rinex_corrected",
+            &ephemerides,
+            &pvt_case,
+        );
+        let zero_clock_solution = solve_pvt_case_with_rinex_nav(
+            "broadcast_clock_rinex_zero_clock",
+            &clear_broadcast_clock_parameters(&ephemerides),
+            &pvt_case,
+        );
+
+        let corrected_error_m = position_error_3d_m(&corrected_solution, pvt_case.truth_ecef_m);
+        let zero_clock_error_m = position_error_3d_m(&zero_clock_solution, pvt_case.truth_ecef_m);
+
+        assert!(corrected_solution.valid);
+        assert!(corrected_error_m < 5.0);
+        assert!(zero_clock_error_m > corrected_error_m + 20.0);
+        assert!((corrected_solution.clock_bias_s.0 - pvt_case.receiver_clock_bias_s).abs() < 1.0e-9);
     }
 
     #[test]
