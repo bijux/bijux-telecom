@@ -123,6 +123,16 @@ fn handle_nav(command: GnssCommand) -> Result<()> {
                             bijux_gnss_infra::api::nav::demodulate_gps_l1ca_navigation_bits(&prompt);
                         let decoded_stream =
                             bijux_gnss_infra::api::nav::decode_gps_l1ca_lnav_from_prompt(&prompt);
+                        let parity_word_count = decoded_stream
+                            .subframes
+                            .iter()
+                            .map(|subframe| subframe.parity.word_count)
+                            .sum::<usize>();
+                        let parity_failed_words = decoded_stream
+                            .subframes
+                            .iter()
+                            .map(|subframe| subframe.parity.failed_word_indexes.len())
+                            .sum::<usize>();
                         let bit_signs =
                             demodulation.bits.iter().map(|bit| bit.sign).collect::<Vec<_>>();
                         let (mut ephs, stats) =
@@ -140,6 +150,8 @@ fn handle_nav(command: GnssCommand) -> Result<()> {
                                 .map(|subframe| subframe.alignment.clone())
                                 .collect(),
                             decoded_subframes: decoded_stream.subframes,
+                            parity_word_count,
+                            parity_failed_words,
                             preamble_hits: stats.preamble_hits,
                             parity_pass_rate: stats.parity_pass_rate,
                             ephemerides: ephs.clone(),
