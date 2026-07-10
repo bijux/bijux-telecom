@@ -14,15 +14,15 @@ use support::tracking_truth::epoch_indices_with_lock_state_reason;
 
 const PRELOCK_CN0_DBHZ: f32 = 60.0;
 
-fn accepted_acquisition(sat: SatId, code_phase_samples: usize) -> AcqResult {
+fn accepted_acquisition(sat: SatId, doppler_hz: f64, code_phase_samples: usize) -> AcqResult {
     AcqResult {
         sat,
         signal_band: SignalBand::L1,
         source_time: ReceiverSampleTrace::default(),
         candidate_rank: 1,
         is_primary_candidate: true,
-        doppler_hz: Hertz(0.0),
-        carrier_hz: Hertz(0.0),
+        doppler_hz: Hertz(doppler_hz),
+        carrier_hz: Hertz(doppler_hz),
         code_phase_samples,
         peak: 1.0,
         second_peak: 0.1,
@@ -61,13 +61,14 @@ fn tracking_config() -> ReceiverPipelineConfig {
 fn tracking_reports_phase_jump_on_carrier_discontinuity() {
     let config = tracking_config();
     let sat = SatId { constellation: Constellation::Gps, prn: 21 };
+    let doppler_hz = 120.0;
     let jump_start_s = 0.030;
     let jump_start_sample = (jump_start_s * config.sampling_freq_hz).round() as u64;
     let frame = generate_l1_ca_with_phase_windows(
         &config,
         SyntheticSignalParams {
             sat,
-            doppler_hz: 0.0,
+            doppler_hz,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz: PRELOCK_CN0_DBHZ,
@@ -82,7 +83,8 @@ fn tracking_reports_phase_jump_on_carrier_discontinuity() {
         0.090,
     );
     let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
-    let tracks = tracking.track_from_acquisition(&frame, &[accepted_acquisition(sat, 0)]);
+    let tracks =
+        tracking.track_from_acquisition(&frame, &[accepted_acquisition(sat, doppler_hz, 0)]);
     let epochs = &tracks.first().expect("track").epochs;
 
     assert!(
@@ -113,5 +115,57 @@ fn tracking_reports_phase_jump_on_carrier_discontinuity() {
     assert!(
         epochs.iter().all(|epoch| epoch.lock_state_reason.as_deref() != Some("prompt_power_drop")),
         "carrier discontinuities must not be mislabeled as prompt-power loss: epochs={epochs:?}"
+    );
+}
+
+#[test]
+fn tracking_limits_carrier_phase_discontinuities_to_phase_jump_boundaries() {
+    let config = tracking_config();
+    let sat = SatId { constellation: Constellation::Gps, prn: 21 };
+    let doppler_hz = 120.0;
+    let jump_start_s = 0.030;
+    let jump_start_sample = (jump_start_s * config.sampling_freq_hz).round() as u64;
+    let frame = generate_l1_ca_with_phase_windows(
+        &config,
+        SyntheticSignalParams {
+            sat,
+            doppler_hz,
+            code_phase_chips: 0.0,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: PRELOCK_CN0_DBHZ,
+            data_bit_flip: false,
+        },
+        &[SyntheticPhaseWindow {
+            start_s: jump_start_s,
+            end_s: 0.090,
+            phase_offset_rad: std::f64::consts::TAU * 0.38,
+        }],
+        0xA11C_E5E2,
+        0.090,
+    );
+    let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
+    let tracks =
+        tracking.track_from_acquisition(&frame, &[accepted_acquisition(sat, doppler_hz, 0)]);
+    let epochs = &tracks.first().expect("track").epochs;
+    let phase_jump_indices = epoch_indices_with_lock_state_reason(epochs, "phase_jump");
+    let first_phase_jump_index = *phase_jump_indices
+        .first()
+        .unwrap_or_else(|| panic!("missing explicit phase jump epoch: epochs={epochs:?}"));
+
+    assert!(
+        epochs[..first_phase_jump_index]
+            .iter()
+            .all(|epoch| !epoch.cycle_slip && epoch.lock_state_reason.as_deref() != Some("phase_jump")),
+        "tracking must not emit phase-jump slips before the injected discontinuity: epochs={epochs:?}"
+    );
+    assert!(
+        phase_jump_indices
+            .iter()
+            .all(|index| epochs[*index].sample_index >= jump_start_sample),
+        "phase-jump slips must align with or follow the injected discontinuity window: epochs={epochs:?}"
+    );
+    assert!(
+        epochs[first_phase_jump_index].cycle_slip && epochs[first_phase_jump_index].lock_state == "lost",
+        "carrier phase discontinuities must be confined to explicit phase-jump loss boundaries: epochs={epochs:?}"
     );
 }
