@@ -60,8 +60,8 @@ fn broadcast_products_expose_full_broadcast_clock_terms() {
 fn precise_clk_bias_overrides_broadcast_clock_terms() {
     let eph = make_eph(1);
     let clk_data = "\
-AS G01 2020 01 01 00 00 00.000000  0  0.000000  0.000000001
-AS G01 2020 01 01 00 15 00.000000  0  0.000000  0.000000003
+AS G01 2020 01 01 00 00 00.000000  1  0.000000001
+AS G01 2020 01 01 00 15 00.000000  1  0.000000003
 ";
     let clk = clk_data.parse().expect("clk parse");
     let products = Products::new(BroadcastProductsProvider::new(vec![eph.clone()])).with_clk(clk);
@@ -83,8 +83,8 @@ AS G01 2020 01 01 00 15 00.000000  0  0.000000  0.000000003
 fn precise_clk_falls_back_to_broadcast_clock_terms_out_of_coverage() {
     let eph = make_eph(1);
     let clk_data = "\
-AS G01 2020 01 01 00 00 00.000000  0  0.000000  0.000000001
-AS G01 2020 01 01 00 15 00.000000  0  0.000000  0.000000003
+AS G01 2020 01 01 00 00 00.000000  1  0.000000001
+AS G01 2020 01 01 00 15 00.000000  1  0.000000003
 ";
     let clk = clk_data.parse().expect("clk parse");
     let products = Products::new(BroadcastProductsProvider::new(vec![eph.clone()])).with_clk(clk);
