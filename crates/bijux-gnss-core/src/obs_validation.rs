@@ -6,7 +6,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::api::{
-    ObsEpoch, SatId, Seconds, SignalBand, OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET,
+    ConventionsConfig, ObsEpoch, SatId, Seconds, SignalBand,
+    OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET,
 };
 
 /// Event describing missing band observations over time.
@@ -56,6 +57,7 @@ pub fn check_inter_frequency_alignment(epochs: &[ObsEpoch]) -> InterFrequencyAli
 }
 
 pub fn validate_obs_epochs(epochs: &[ObsEpoch]) -> Result<(), String> {
+    let conventions = ConventionsConfig::default();
     let mut last_t: Option<Seconds> = None;
     for epoch in epochs {
         if let Some(prev) = last_t {
@@ -90,6 +92,13 @@ pub fn validate_obs_epochs(epochs: &[ObsEpoch]) -> Result<(), String> {
             {
                 return Err("negative variance".to_string());
             }
+            if !sat.cn0_dbhz.is_finite() {
+                return Err("non-finite cn0".to_string());
+            }
+            if sat.cn0_dbhz < conventions.min_cn0_dbhz || sat.cn0_dbhz > conventions.max_cn0_dbhz
+            {
+                return Err("cn0 out of bounds".to_string());
+            }
             if sat.metadata.doppler_model.is_empty() {
                 return Err("missing doppler model".to_string());
             }
@@ -114,7 +123,7 @@ mod tests {
         Seconds, SigId, SignalBand, SignalCode,
     };
 
-    fn observation_epoch_with_doppler_model(doppler_model: &str) -> ObsEpoch {
+    fn observation_epoch_with_models_and_cn0(doppler_model: &str, cn0_dbhz: f64) -> ObsEpoch {
         ObsEpoch {
             t_rx_s: Seconds(0.07),
             source_time: ReceiverSampleTrace::from_sample_index(286_440, 4_092_000.0),
@@ -137,7 +146,7 @@ mod tests {
                 carrier_phase_var_cycles2: 1.0,
                 doppler_hz: Hertz(125.0),
                 doppler_var_hz2: 1.0,
-                cn0_dbhz: 45.0,
+                cn0_dbhz,
                 lock_flags: LockFlags {
                     code_lock: true,
                     carrier_lock: true,
@@ -162,7 +171,7 @@ mod tests {
 
     #[test]
     fn validate_obs_epochs_rejects_missing_doppler_model() {
-        let epoch = observation_epoch_with_doppler_model("");
+        let epoch = observation_epoch_with_models_and_cn0("", 45.0);
 
         let error = validate_obs_epochs(&[epoch]).expect_err("missing doppler model must fail");
         assert_eq!(error, "missing doppler model");
@@ -170,9 +179,33 @@ mod tests {
 
     #[test]
     fn validate_obs_epochs_rejects_unknown_doppler_model() {
-        let epoch = observation_epoch_with_doppler_model("legacy_absolute_doppler_hz");
+        let epoch = observation_epoch_with_models_and_cn0("legacy_absolute_doppler_hz", 45.0);
 
         let error = validate_obs_epochs(&[epoch]).expect_err("unknown doppler model must fail");
         assert_eq!(error, "unknown doppler model");
+    }
+
+    #[test]
+    fn validate_obs_epochs_rejects_non_finite_cn0() {
+        let epoch = observation_epoch_with_models_and_cn0("tracked_carrier_hz_minus_intermediate_freq", f64::NAN);
+
+        let error = validate_obs_epochs(&[epoch]).expect_err("non-finite cn0 must fail");
+        assert_eq!(error, "non-finite cn0");
+    }
+
+    #[test]
+    fn validate_obs_epochs_rejects_negative_cn0() {
+        let epoch = observation_epoch_with_models_and_cn0("tracked_carrier_hz_minus_intermediate_freq", -1.0);
+
+        let error = validate_obs_epochs(&[epoch]).expect_err("negative cn0 must fail");
+        assert_eq!(error, "cn0 out of bounds");
+    }
+
+    #[test]
+    fn validate_obs_epochs_rejects_excessive_cn0() {
+        let epoch = observation_epoch_with_models_and_cn0("tracked_carrier_hz_minus_intermediate_freq", 81.0);
+
+        let error = validate_obs_epochs(&[epoch]).expect_err("excessive cn0 must fail");
+        assert_eq!(error, "cn0 out of bounds");
     }
 }
