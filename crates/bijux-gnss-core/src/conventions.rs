@@ -87,6 +87,23 @@ pub fn check_obs_epoch_sanity(epoch: &ObsEpoch) -> Vec<DiagnosticEvent> {
                 "obs pseudorange out of bounds",
             ));
         }
+        if let Some(timing) = sat.timing {
+            if timing.signal_travel_time_s.0 <= 0.0 || !timing.signal_travel_time_s.0.is_finite() {
+                events.push(DiagnosticEvent::new(
+                    DiagnosticSeverity::Error,
+                    "GNSS_OBS_SIGNAL_TRAVEL_TIME_INVALID",
+                    "obs signal travel time must be finite and positive",
+                ));
+            }
+            let expected_pseudorange_m = timing.signal_travel_time_s.0 * 299_792_458.0;
+            if (sat.pseudorange_m.0 - expected_pseudorange_m).abs() > 1.0 {
+                events.push(DiagnosticEvent::new(
+                    DiagnosticSeverity::Error,
+                    "GNSS_OBS_PSEUDORANGE_TIMING_MISMATCH",
+                    "obs pseudorange must match signal travel time",
+                ));
+            }
+        }
     }
     events
 }
@@ -153,8 +170,15 @@ pub fn doppler_from_phase_increment(
 
 #[cfg(test)]
 mod tests {
-    use super::{carrier_phase_increment, compile_time_unit_checks, doppler_from_phase_increment};
-    use crate::api::{Hertz, Seconds};
+    use super::{
+        carrier_phase_increment, check_obs_epoch_sanity, compile_time_unit_checks,
+        doppler_from_phase_increment,
+    };
+    use crate::api::{
+        Constellation, Cycles, GpsTime, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata,
+        ObsSatellite, ObsSignalTiming, ReceiverRole, SatId, Seconds, SigId, SignalBand,
+        SignalCode,
+    };
 
     #[test]
     fn unit_type_compile_checks() {
@@ -175,5 +199,58 @@ mod tests {
         assert!(delta_neg.0 < 0.0);
         let recovered_neg = doppler_from_phase_increment(delta_neg, dt);
         assert!((recovered_neg.0 - doppler_neg.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn obs_epoch_sanity_rejects_pseudorange_timing_mismatch() {
+        let epoch = ObsEpoch {
+            t_rx_s: Seconds(1.0),
+            source_time: crate::api::ReceiverSampleTrace::from_sample_index(1_000, 1_000.0),
+            gps_week: Some(2200),
+            tow_s: Some(Seconds(345_600.0)),
+            epoch_idx: 1_000,
+            discontinuity: false,
+            valid: true,
+            processing_ms: None,
+            role: ReceiverRole::Rover,
+            sats: vec![ObsSatellite {
+                signal_id: SigId {
+                    sat: SatId { constellation: Constellation::Gps, prn: 1 },
+                    band: SignalBand::L1,
+                    code: SignalCode::Ca,
+                },
+                pseudorange_m: Meters(20_200_000.0),
+                pseudorange_var_m2: 1.0,
+                carrier_phase_cycles: Cycles(0.0),
+                carrier_phase_var_cycles2: 1.0,
+                doppler_hz: Hertz(0.0),
+                doppler_var_hz2: 1.0,
+                cn0_dbhz: 45.0,
+                lock_flags: LockFlags {
+                    code_lock: true,
+                    carrier_lock: true,
+                    bit_lock: false,
+                    cycle_slip: false,
+                },
+                multipath_suspect: false,
+                observation_status: crate::api::ObservationStatus::Accepted,
+                observation_reject_reasons: Vec::new(),
+                elevation_deg: None,
+                azimuth_deg: None,
+                weight: None,
+                timing: Some(ObsSignalTiming {
+                    signal_travel_time_s: Seconds(0.01),
+                    transmit_gps_time: GpsTime { week: 2200, tow_s: 345_599.99 },
+                }),
+                error_model: None,
+                metadata: ObsMetadata::default(),
+            }],
+            decision: crate::api::ObservationEpochDecision::Accepted,
+            decision_reason: None,
+            manifest: None,
+        };
+
+        let events = check_obs_epoch_sanity(&epoch);
+        assert!(events.iter().any(|event| event.code == "GNSS_OBS_PSEUDORANGE_TIMING_MISMATCH"));
     }
 }

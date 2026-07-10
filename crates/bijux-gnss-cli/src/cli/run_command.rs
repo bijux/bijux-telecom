@@ -614,6 +614,7 @@ mod nav_trace_tests {
                 elevation_deg: Some(45.0),
                 azimuth_deg: Some(120.0),
                 weight: None,
+                timing: None,
                 error_model: None,
                 metadata: ObsMetadata {
                     signal: signal_spec_gps_l1_ca(),

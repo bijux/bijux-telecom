@@ -1005,6 +1005,7 @@ mod tests {
                     elevation_deg: Some(45.0),
                     azimuth_deg: Some(0.0),
                     weight: Some(1.0),
+                    timing: None,
                     error_model: None,
                     metadata: ObsMetadata {
                         tracking_mode: "synthetic".to_string(),

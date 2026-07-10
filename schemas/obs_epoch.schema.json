@@ -16,6 +16,91 @@
     }
   },
   "definitions": {
+    "SatId": {
+      "type": "object",
+      "required": ["constellation", "prn"],
+      "properties": {
+        "constellation": { "type": "string" },
+        "prn": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "SigId": {
+      "type": "object",
+      "required": ["sat", "band", "code"],
+      "properties": {
+        "sat": { "$ref": "#/definitions/SatId" },
+        "band": { "type": "string" },
+        "code": { "type": "string" }
+      }
+    },
+    "SignalSpec": {
+      "type": "object",
+      "required": ["constellation", "band", "code", "code_rate_hz", "carrier_hz"],
+      "properties": {
+        "constellation": { "type": "string" },
+        "band": { "type": "string" },
+        "code": { "type": "string" },
+        "code_rate_hz": { "type": "number" },
+        "carrier_hz": { "type": "number" }
+      }
+    },
+    "LockFlags": {
+      "type": "object",
+      "required": ["code_lock", "carrier_lock", "bit_lock", "cycle_slip"],
+      "properties": {
+        "code_lock": { "type": "boolean" },
+        "carrier_lock": { "type": "boolean" },
+        "bit_lock": { "type": "boolean" },
+        "cycle_slip": { "type": "boolean" }
+      }
+    },
+    "GpsTime": {
+      "type": "object",
+      "required": ["week", "tow_s"],
+      "properties": {
+        "week": { "type": "integer", "minimum": 0 },
+        "tow_s": { "type": "number", "minimum": 0 }
+      }
+    },
+    "ObsSignalTiming": {
+      "type": "object",
+      "required": ["signal_travel_time_s", "transmit_gps_time"],
+      "properties": {
+        "signal_travel_time_s": { "type": "number", "exclusiveMinimum": 0 },
+        "transmit_gps_time": { "$ref": "#/definitions/GpsTime" }
+      }
+    },
+    "ObsMetadata": {
+      "type": "object",
+      "required": [
+        "tracking_mode",
+        "integration_ms",
+        "lock_quality",
+        "smoothing_window",
+        "smoothing_age",
+        "smoothing_resets",
+        "signal"
+      ],
+      "properties": {
+        "tracking_mode": { "type": "string" },
+        "integration_ms": { "type": "integer", "minimum": 0 },
+        "lock_quality": { "type": "number" },
+        "smoothing_window": { "type": "integer", "minimum": 0 },
+        "smoothing_age": { "type": "integer", "minimum": 0 },
+        "smoothing_resets": { "type": "integer", "minimum": 0 },
+        "signal": { "$ref": "#/definitions/SignalSpec" }
+      }
+    },
+    "MeasurementErrorModel": {
+      "type": ["object", "null"],
+      "required": ["thermal_noise_m", "tracking_jitter_m", "multipath_proxy_m", "clock_error_m"],
+      "properties": {
+        "thermal_noise_m": { "type": "number" },
+        "tracking_jitter_m": { "type": "number" },
+        "multipath_proxy_m": { "type": "number" },
+        "clock_error_m": { "type": "number" }
+      }
+    },
     "ObsSatellite": {
       "type": "object",
       "required": [
@@ -44,79 +129,15 @@
         "elevation_deg": { "type": ["number", "null"] },
         "azimuth_deg": { "type": ["number", "null"] },
         "weight": { "type": ["number", "null"] },
+        "timing": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/definitions/ObsSignalTiming" }
+          ]
+        },
         "error_model": { "$ref": "#/definitions/MeasurementErrorModel" },
         "metadata": { "$ref": "#/definitions/ObsMetadata" }
-      }
-    },
-    "LockFlags": {
-      "type": "object",
-      "required": ["code_lock", "carrier_lock", "bit_lock", "cycle_slip"],
-      "properties": {
-        "code_lock": { "type": "boolean" },
-        "carrier_lock": { "type": "boolean" },
-        "bit_lock": { "type": "boolean" },
-        "cycle_slip": { "type": "boolean" }
-      }
-    }
-    ,
-    "SignalSpec": {
-      "type": "object",
-      "required": ["constellation", "band", "code", "code_rate_hz", "carrier_hz"],
-      "properties": {
-        "constellation": { "type": "string" },
-        "band": { "type": "string" },
-        "code": { "type": "string" },
-        "code_rate_hz": { "type": "number" },
-        "carrier_hz": { "type": "number" }
-      }
-    },
-    "ObsMetadata": {
-      "type": "object",
-      "required": [
-        "tracking_mode",
-        "integration_ms",
-        "lock_quality",
-        "smoothing_window",
-        "smoothing_age",
-        "smoothing_resets",
-        "signal"
-      ],
-      "properties": {
-        "tracking_mode": { "type": "string" },
-        "integration_ms": { "type": "integer" },
-        "lock_quality": { "type": "number" },
-        "smoothing_window": { "type": "integer" },
-        "smoothing_age": { "type": "integer" },
-        "smoothing_resets": { "type": "integer" },
-        "signal": { "$ref": "#/definitions/SignalSpec" }
-      }
-    },
-    "MeasurementErrorModel": {
-      "type": ["object", "null"],
-      "required": ["thermal_noise_m", "tracking_jitter_m", "multipath_proxy_m", "clock_error_m"],
-      "properties": {
-        "thermal_noise_m": { "type": "number" },
-        "tracking_jitter_m": { "type": "number" },
-        "multipath_proxy_m": { "type": "number" },
-        "clock_error_m": { "type": "number" }
       }
     }
   }
 }
-    "SatId": {
-      "type": "object",
-      "required": ["constellation", "prn"],
-      "properties": {
-        "constellation": { "type": "string" },
-        "prn": { "type": "integer" }
-      }
-    },
-    "SigId": {
-      "type": "object",
-      "required": ["sat", "band", "code"],
-      "properties": {
-        "sat": { "$ref": "#/definitions/SatId" },
-        "band": { "type": "string" },
-        "code": { "type": "string" }
-      }
-    },

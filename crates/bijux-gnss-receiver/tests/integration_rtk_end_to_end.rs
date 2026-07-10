@@ -83,6 +83,7 @@ fn make_obs_epoch(
                 elevation_deg: None,
                 azimuth_deg: None,
                 weight: None,
+                timing: None,
                 error_model: None,
                 metadata: ObsMetadata {
                     tracking_mode: "synthetic".to_string(),

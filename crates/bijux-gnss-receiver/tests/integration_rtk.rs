@@ -46,6 +46,7 @@ fn make_epoch(t_rx_s: f64, prn: u8) -> ObsEpoch {
             elevation_deg: None,
             azimuth_deg: None,
             weight: None,
+            timing: None,
             error_model: None,
             metadata: ObsMetadata {
                 tracking_mode: "scalar".to_string(),

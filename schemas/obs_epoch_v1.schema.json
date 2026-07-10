@@ -45,6 +45,14 @@
         "receiver_time_s": { "type": "number" }
       }
     },
+    "GpsTime": {
+      "type": "object",
+      "required": ["week", "tow_s"],
+      "properties": {
+        "week": { "type": "integer", "minimum": 0 },
+        "tow_s": { "type": "number", "minimum": 0 }
+      }
+    },
     "SatId": {
       "type": "object",
       "required": ["constellation", "prn"],
@@ -129,6 +137,14 @@
         "cycle_slip": { "type": "boolean" }
       }
     },
+    "ObsSignalTiming": {
+      "type": "object",
+      "required": ["signal_travel_time_s", "transmit_gps_time"],
+      "properties": {
+        "signal_travel_time_s": { "type": "number", "exclusiveMinimum": 0 },
+        "transmit_gps_time": { "$ref": "#/definitions/GpsTime" }
+      }
+    },
     "ObsSatellite": {
       "type": "object",
       "required": [
@@ -155,6 +171,12 @@
         "cn0_dbhz": { "type": "number" },
         "lock_flags": { "$ref": "#/definitions/LockFlags" },
         "multipath_suspect": { "type": "boolean" },
+        "timing": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/definitions/ObsSignalTiming" }
+          ]
+        },
         "metadata": { "$ref": "#/definitions/ObsMetadata" }
       }
     },

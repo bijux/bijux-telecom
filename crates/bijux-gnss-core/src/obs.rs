@@ -38,7 +38,7 @@ fn default_cycles_zero() -> Cycles {
 }
 
 pub const TRACKING_STATE_MODEL_VERSION: u32 = 1;
-pub const OBSERVATION_MODEL_VERSION: u32 = 1;
+pub const OBSERVATION_MODEL_VERSION: u32 = 2;
 pub const OBSERVATION_DOWNSTREAM_PROFILE_VERSION: u32 = 1;
 pub const NAV_SOLUTION_MODEL_VERSION: u32 = 1;
 pub const NAV_OUTPUT_STABILITY_SIGNATURE_VERSION: u32 = 1;
@@ -761,6 +761,12 @@ pub struct MeasurementErrorModel {
     pub clock_error_m: Meters,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct ObsSignalTiming {
+    pub signal_travel_time_s: Seconds,
+    pub transmit_gps_time: crate::api::GpsTime,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObsSatellite {
     pub signal_id: SigId,
@@ -780,6 +786,8 @@ pub struct ObsSatellite {
     pub elevation_deg: Option<f64>,
     pub azimuth_deg: Option<f64>,
     pub weight: Option<f64>,
+    #[serde(default)]
+    pub timing: Option<ObsSignalTiming>,
     pub error_model: Option<MeasurementErrorModel>,
     pub metadata: ObsMetadata,
 }
@@ -789,7 +797,7 @@ pub struct ObsEpoch {
     pub t_rx_s: Seconds,
     #[serde(default)]
     pub source_time: ReceiverSampleTrace,
-    pub gps_week: Option<u16>,
+    pub gps_week: Option<u32>,
     pub tow_s: Option<Seconds>,
     pub epoch_idx: u64,
     pub discontinuity: bool,
@@ -812,8 +820,19 @@ pub fn obs_epoch_stability_key(epoch: &ObsEpoch) -> String {
         .sats
         .iter()
         .map(|sat| {
+            let timing_key = sat
+                .timing
+                .map(|timing| {
+                    format!(
+                        ":{:.12}:{}:{:.12}",
+                        timing.signal_travel_time_s.0,
+                        timing.transmit_gps_time.week,
+                        timing.transmit_gps_time.tow_s
+                    )
+                })
+                .unwrap_or_default();
             format!(
-                "{:?}-{:02}:{:?}:{:?}:{:.3}:{:.6}:{:.3}:{:.6}",
+                "{:?}-{:02}:{:?}:{:?}:{:.3}:{:.6}:{:.3}:{:.6}{}",
                 sat.signal_id.sat.constellation,
                 sat.signal_id.sat.prn,
                 sat.signal_id.band,
@@ -821,7 +840,8 @@ pub fn obs_epoch_stability_key(epoch: &ObsEpoch) -> String {
                 sat.pseudorange_m.0,
                 sat.carrier_phase_cycles.0,
                 sat.doppler_hz.0,
-                sat.cn0_dbhz
+                sat.cn0_dbhz,
+                timing_key
             )
         })
         .collect::<Vec<_>>();
@@ -837,6 +857,10 @@ pub fn obs_epoch_stability_key(epoch: &ObsEpoch) -> String {
 }
 
 impl ObsEpoch {
+    pub fn gps_time(&self) -> Option<crate::api::GpsTime> {
+        Some(crate::api::GpsTime { week: self.gps_week?, tow_s: self.tow_s?.0 })
+    }
+
     /// Validate basic physics sanity checks for this epoch.
     pub fn validate_physics(&self) -> Vec<crate::api::DiagnosticEvent> {
         let mut events = crate::api::check_obs_epoch_sanity(self);

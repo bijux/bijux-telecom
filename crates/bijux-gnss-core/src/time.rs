@@ -217,6 +217,10 @@ impl GpsTime {
     pub fn to_seconds(&self) -> f64 {
         self.week as f64 * 604_800.0 + self.tow_s
     }
+
+    pub fn offset_seconds(&self, delta_s: f64) -> Self {
+        Self::from_seconds(self.to_seconds() + delta_s)
+    }
 }
 
 pub fn gps_to_utc(gps: GpsTime, leap: &LeapSeconds) -> UtcTime {
@@ -244,4 +248,25 @@ pub(crate) fn tai_to_utc(tai: TaiTime, leap: &LeapSeconds) -> UtcTime {
 pub(crate) fn utc_to_tai(utc: UtcTime, leap: &LeapSeconds) -> TaiTime {
     let offset = leap.offset_at_utc(utc.unix_s);
     TaiTime { tai_s: utc.unix_s + offset as f64 + 19.0 }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GpsTime;
+
+    #[test]
+    fn gps_time_offset_seconds_advances_across_week_boundary() {
+        let gps = GpsTime { week: 2200, tow_s: 604_799.75 };
+        let shifted = gps.offset_seconds(1.0);
+        assert_eq!(shifted.week, 2201);
+        assert!((shifted.tow_s - 0.75).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn gps_time_offset_seconds_rewinds_within_week() {
+        let gps = GpsTime { week: 2200, tow_s: 10.0 };
+        let shifted = gps.offset_seconds(-0.25);
+        assert_eq!(shifted.week, 2200);
+        assert!((shifted.tow_s - 9.75).abs() < 1.0e-9);
+    }
 }

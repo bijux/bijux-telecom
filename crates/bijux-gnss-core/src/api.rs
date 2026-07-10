@@ -54,7 +54,7 @@ pub use crate::obs::{
     MeasurementErrorModel, MeasurementRejectReason, NavAssumptions, NavHealthEvent,
     NavLifecycleState, NavProvenance, NavQualityFlag, NavRefusalClass, NavResidual,
     NavSolutionEpoch, NavUncertaintyClass, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest,
-    ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus,
+    ObsMetadata, ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationStatus,
     ObservationSupportClass, ObservationUncertaintyClass, ReceiverRole, Sample, SamplesFrame,
     SatObservationDecision, SignalSupportRow, SingleDifference, SolutionStatus, SolutionValidity,
     SupportMatrix, SupportStatus, TrackEpoch, TrackTransition, TrackingAssumptions,

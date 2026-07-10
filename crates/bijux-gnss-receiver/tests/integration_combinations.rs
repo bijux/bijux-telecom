@@ -43,6 +43,7 @@ fn make_dual_freq_epoch(p1: f64, p2: f64, phi1: f64, phi2: f64) -> ObsEpoch {
                 elevation_deg: None,
                 azimuth_deg: None,
                 weight: None,
+                timing: None,
                 error_model: None,
                 metadata: ObsMetadata {
                     tracking_mode: "test".to_string(),
@@ -76,6 +77,7 @@ fn make_dual_freq_epoch(p1: f64, p2: f64, phi1: f64, phi2: f64) -> ObsEpoch {
                 elevation_deg: None,
                 azimuth_deg: None,
                 weight: None,
+                timing: None,
                 error_model: None,
                 metadata: ObsMetadata {
                     tracking_mode: "test".to_string(),

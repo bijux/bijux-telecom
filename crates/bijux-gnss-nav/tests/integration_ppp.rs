@@ -70,6 +70,7 @@ fn make_obs(epoch_idx: u64, t_rx_s: f64, prn: u8) -> ObsEpoch {
             elevation_deg: None,
             azimuth_deg: None,
             weight: None,
+            timing: None,
             error_model: None,
             metadata: ObsMetadata {
                 tracking_mode: "test".to_string(),
@@ -115,6 +116,7 @@ fn make_obs_with_slips(epoch_idx: u64, t_rx_s: f64, prns: &[u8]) -> ObsEpoch {
                 elevation_deg: None,
                 azimuth_deg: None,
                 weight: None,
+                timing: None,
                 error_model: None,
                 metadata: ObsMetadata {
                     tracking_mode: "test".to_string(),

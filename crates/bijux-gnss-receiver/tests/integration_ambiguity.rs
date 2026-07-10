@@ -47,6 +47,7 @@ fn ambiguity_resets_on_cycle_slip() {
         elevation_deg: None,
         azimuth_deg: None,
         weight: None,
+        timing: None,
         error_model: None,
         metadata: ObsMetadata {
             tracking_mode: "scalar".to_string(),

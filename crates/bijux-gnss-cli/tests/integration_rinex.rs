@@ -42,6 +42,7 @@ fn rinex_obs_has_header() {
             elevation_deg: None,
             azimuth_deg: None,
             weight: None,
+            timing: None,
             error_model: None,
             metadata: ObsMetadata {
                 tracking_mode: "test".to_string(),

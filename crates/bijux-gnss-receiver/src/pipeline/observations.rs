@@ -197,6 +197,7 @@ fn observations_from_tracking_with_provenance(
             elevation_deg: None,
             azimuth_deg: None,
             weight: None,
+            timing: None,
             error_model: None,
             metadata: ObsMetadata {
                 tracking_mode: "scalar".to_string(),
@@ -672,6 +673,7 @@ pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
             elevation_deg: Some(45.0),
             azimuth_deg: Some(0.0),
             weight: Some(1.0),
+            timing: None,
             error_model: None,
             metadata: ObsMetadata {
                 tracking_mode: "scalar".to_string(),
