@@ -44,7 +44,7 @@ pub struct GpsSatelliteClockCorrection {
     pub bias_s: f64,
     pub drift_s_per_s: f64,
     pub drift_rate_s_per_s2: f64,
-    pub polynomial_bias_s: f64,
+    pub base_bias_s: f64,
     pub relativistic_s: f64,
     pub group_delay_s: f64,
 }
@@ -55,7 +55,7 @@ impl GpsSatelliteClockCorrection {
             bias_s,
             drift_s_per_s: 0.0,
             drift_rate_s_per_s2: 0.0,
-            polynomial_bias_s: bias_s,
+            base_bias_s: bias_s,
             relativistic_s: 0.0,
             group_delay_s: 0.0,
         }
@@ -175,14 +175,14 @@ fn satellite_clock_correction_from_sin_e(
     sin_e: f64,
 ) -> GpsSatelliteClockCorrection {
     let dt = wrap_time(t_tx_s - eph.toc_s);
-    let polynomial_bias_s = eph.af0 + eph.af1 * dt + eph.af2 * dt * dt;
+    let base_bias_s = eph.af0 + eph.af1 * dt + eph.af2 * dt * dt;
     let relativistic_s = RELATIVISTIC_F * eph.e * eph.sqrt_a * sin_e;
     let group_delay_s = eph.tgd;
     GpsSatelliteClockCorrection {
-        bias_s: polynomial_bias_s + relativistic_s - group_delay_s,
+        bias_s: base_bias_s + relativistic_s - group_delay_s,
         drift_s_per_s: eph.af1 + 2.0 * eph.af2 * dt,
         drift_rate_s_per_s2: 2.0 * eph.af2,
-        polynomial_bias_s,
+        base_bias_s,
         relativistic_s,
         group_delay_s,
     }
@@ -369,11 +369,11 @@ mod tests {
         };
         let correction = gps_satellite_clock_correction(&eph, 1_600.0);
         let dt = 1_500.0;
-        let expected_polynomial = eph.af0 + eph.af1 * dt + eph.af2 * dt * dt;
-        assert!((correction.polynomial_bias_s - expected_polynomial).abs() < 1e-18);
+        let expected_base_bias = eph.af0 + eph.af1 * dt + eph.af2 * dt * dt;
+        assert!((correction.base_bias_s - expected_base_bias).abs() < 1e-18);
         assert!(correction.relativistic_s.abs() > 0.0);
         assert!((correction.group_delay_s - eph.tgd).abs() < 1e-18);
-        let expected_bias = expected_polynomial + correction.relativistic_s - eph.tgd;
+        let expected_bias = expected_base_bias + correction.relativistic_s - eph.tgd;
         assert!((correction.bias_s - expected_bias).abs() < 1e-18);
     }
 
