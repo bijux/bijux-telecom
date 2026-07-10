@@ -5,8 +5,8 @@ use std::f32::consts::TAU;
 use num_complex::Complex;
 
 use bijux_gnss_core::api::{
-    AcqHypothesis, AcqResult, Constellation, Hertz, ReceiverSampleTrace, SampleClock, SampleTime,
-    SamplesFrame, SatId, Seconds, SignalBand,
+    stats, AcqHypothesis, AcqResult, Constellation, Hertz, ReceiverSampleTrace, SampleClock,
+    SampleTime, SamplesFrame, SatId, Seconds, SignalBand,
 };
 use bijux_gnss_signal::api::SignalSource;
 
@@ -221,6 +221,85 @@ pub struct SyntheticCn0ValidationReport {
     pub pass: bool,
     /// Per-satellite comparison rows.
     pub satellites: Vec<SyntheticCn0ValidationSatellite>,
+}
+
+/// Absolute synthetic reference used when comparing emitted observations against truth.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticObservationTruthReference {
+    /// Absolute receiver receive time at capture sample zero, in seconds.
+    pub receive_time_s: f64,
+    /// Receiver truth position in ECEF meters.
+    pub receiver_ecef_m: [f64; 3],
+}
+
+/// Summary of one observation-error distribution.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticObservationErrorStats {
+    /// Count of comparable observation rows.
+    pub count: usize,
+    /// Signed mean error.
+    pub mean_error: f64,
+    /// Median absolute error.
+    pub median_abs_error: f64,
+    /// Root-mean-square error magnitude.
+    pub rms_error: f64,
+    /// 95th percentile absolute error.
+    pub p95_abs_error: f64,
+    /// Maximum absolute error.
+    pub max_abs_error: f64,
+}
+
+/// Per-satellite observation truth comparison summary.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticObservationValidationSatellite {
+    /// Satellite identifier.
+    pub sat: SatId,
+    /// Aggregated pseudorange error statistics in meters.
+    pub pseudorange_error_m: Option<SyntheticObservationErrorStats>,
+    /// Aggregated ambiguity-aligned carrier-phase residual statistics in cycles.
+    pub carrier_phase_error_cycles: Option<SyntheticObservationErrorStats>,
+    /// Number of carrier-phase arcs aligned before residual aggregation.
+    pub carrier_phase_arcs_evaluated: usize,
+    /// Aggregated Doppler error statistics in Hz.
+    pub doppler_error_hz: Option<SyntheticObservationErrorStats>,
+    /// Aggregated C/N0 error statistics in dB-Hz.
+    pub cn0_error_db_hz: Option<SyntheticObservationErrorStats>,
+    /// Reasons a metric could not be evaluated for this satellite.
+    pub notes: Vec<String>,
+}
+
+/// Truth-guided observation validation report for a synthetic scenario.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticObservationValidationReport {
+    /// Stable scenario identifier for this validation run.
+    pub scenario_id: String,
+    /// Capture sample rate in Hz.
+    pub sample_rate_hz: f64,
+    /// Hatch-smoothing window applied before observation comparison.
+    pub hatch_window: u32,
+    /// Absolute receive-time anchor used for geometric pseudorange truth.
+    pub reference_receive_time_s: f64,
+    /// Per-satellite observation truth summaries.
+    pub satellites: Vec<SyntheticObservationValidationSatellite>,
+}
+
+fn summarize_observation_errors(errors: &[f64]) -> Option<SyntheticObservationErrorStats> {
+    if errors.is_empty() {
+        return None;
+    }
+
+    let signed = stats(errors);
+    let absolute_errors = errors.iter().map(|error| error.abs()).collect::<Vec<_>>();
+    let absolute = stats(&absolute_errors);
+
+    Some(SyntheticObservationErrorStats {
+        count: signed.count,
+        mean_error: signed.mean,
+        median_abs_error: absolute.median,
+        rms_error: signed.rms,
+        p95_abs_error: absolute.p95,
+        max_abs_error: absolute.max,
+    })
 }
 
 /// Per-satellite acquisition code-phase comparison between clean synthetic truth and receiver output.
@@ -2840,6 +2919,7 @@ mod tests {
         measure_truth_guided_acquisition_detection_probability,
         measure_truth_guided_acquisition_detection_rate, measure_truth_guided_tracking_lock_rate,
         nav_bit_index_at_time_s, nav_bit_sign_at_time_s, signal_amplitude_from_cn0,
+        summarize_observation_errors,
         synthetic_tracking_sensitivity_report, validate_truth_guided_acquisition_code_phase,
         validate_truth_guided_acquisition_code_phase_refinement,
         validate_truth_guided_acquisition_coherent_integration,
@@ -4037,6 +4117,19 @@ mod tests {
         assert_eq!(report.points[1].doppler_hz, 750.0);
         assert_eq!(report.points[1].coherent_ms, 5);
         assert_eq!(report.points[1].noncoherent, 1);
+    }
+
+    #[test]
+    fn observation_error_summary_tracks_bias_and_absolute_magnitude() {
+        let summary =
+            summarize_observation_errors(&[-2.0, 1.0, 3.0]).expect("error summary must exist");
+
+        assert_eq!(summary.count, 3);
+        assert!((summary.mean_error - (2.0 / 3.0)).abs() <= 1.0e-12, "{summary:?}");
+        assert!((summary.median_abs_error - 2.0).abs() <= 1.0e-12, "{summary:?}");
+        assert!((summary.rms_error - (14.0_f64 / 3.0).sqrt()).abs() <= 1.0e-12, "{summary:?}");
+        assert!((summary.p95_abs_error - 3.0).abs() <= 1.0e-12, "{summary:?}");
+        assert!((summary.max_abs_error - 3.0).abs() <= 1.0e-12, "{summary:?}");
     }
 
     #[test]
