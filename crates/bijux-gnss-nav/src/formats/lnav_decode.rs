@@ -44,6 +44,23 @@ pub struct GpsL1CaLnavSubframe3Orbit {
     pub idot: f64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GpsL1CaLnavEphemerisRejectionReason {
+    IodeMismatch,
+    IodcIodeMismatch,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GpsL1CaLnavEphemerisRejection {
+    pub subframe_id: u8,
+    pub reason: GpsL1CaLnavEphemerisRejectionReason,
+    pub existing_iodc: Option<u16>,
+    pub existing_iode: Option<u8>,
+    pub incoming_iodc: Option<u16>,
+    pub incoming_iode: Option<u8>,
+}
+
 pub fn decode_subframe1_clock(words: &[GpsWord]) -> Option<GpsL1CaLnavSubframe1Clock> {
     if words.len() < 10 {
         return None;
@@ -314,7 +331,9 @@ pub struct EphemerisBuilder {
 }
 
 impl EphemerisBuilder {
-    pub fn merge(&mut self, part: EphemerisPart) {
+    pub fn merge(&mut self, part: EphemerisPart) -> Result<(), GpsL1CaLnavEphemerisRejection> {
+        self.check_issue_consistency(&part)?;
+
         if let Some(value) = part.iodc {
             self.iodc = Some(value);
         }
@@ -390,6 +409,8 @@ impl EphemerisBuilder {
         if let Some(value) = part.tgd {
             self.tgd = Some(value);
         }
+
+        Ok(())
     }
 
     pub fn try_build(&self) -> Option<GpsEphemeris> {
@@ -421,6 +442,67 @@ impl EphemerisBuilder {
             af2: self.af2?,
             tgd: self.tgd?,
         })
+    }
+
+    pub fn reset(&mut self) {
+        let prn = self.prn;
+        *self = Self { prn, ..Default::default() };
+    }
+
+    fn check_issue_consistency(
+        &self,
+        part: &EphemerisPart,
+    ) -> Result<(), GpsL1CaLnavEphemerisRejection> {
+        if let (Some(existing_iode), Some(incoming_iode)) = (self.iode, part.iode) {
+            if existing_iode != incoming_iode {
+                return Err(GpsL1CaLnavEphemerisRejection {
+                    subframe_id: ephemeris_part_subframe_id(part),
+                    reason: GpsL1CaLnavEphemerisRejectionReason::IodeMismatch,
+                    existing_iodc: self.iodc,
+                    existing_iode: self.iode,
+                    incoming_iodc: part.iodc,
+                    incoming_iode: part.iode,
+                });
+            }
+        }
+
+        if let (Some(existing_iodc), Some(incoming_iode)) = (self.iodc, part.iode) {
+            if (existing_iodc & 0xFF) as u8 != incoming_iode {
+                return Err(GpsL1CaLnavEphemerisRejection {
+                    subframe_id: ephemeris_part_subframe_id(part),
+                    reason: GpsL1CaLnavEphemerisRejectionReason::IodcIodeMismatch,
+                    existing_iodc: self.iodc,
+                    existing_iode: self.iode,
+                    incoming_iodc: part.iodc,
+                    incoming_iode: part.iode,
+                });
+            }
+        }
+
+        if let (Some(existing_iode), Some(incoming_iodc)) = (self.iode, part.iodc) {
+            if existing_iode != (incoming_iodc & 0xFF) as u8 {
+                return Err(GpsL1CaLnavEphemerisRejection {
+                    subframe_id: ephemeris_part_subframe_id(part),
+                    reason: GpsL1CaLnavEphemerisRejectionReason::IodcIodeMismatch,
+                    existing_iodc: self.iodc,
+                    existing_iode: self.iode,
+                    incoming_iodc: part.iodc,
+                    incoming_iode: part.iode,
+                });
+            }
+        }
+
+        Ok(())
+    }
+}
+
+fn ephemeris_part_subframe_id(part: &EphemerisPart) -> u8 {
+    if part.iodc.is_some() {
+        1
+    } else if part.toe_s.is_some() {
+        2
+    } else {
+        3
     }
 }
 
@@ -464,9 +546,9 @@ pub fn decode_rawephem_hex(prn: u8, sub1: &str, sub2: &str, sub3: &str) -> Optio
         .into_iter()
         .map(|data| GpsWord { data, parity_ok: true, d29_star: 0, d30_star: 0 })
         .collect();
-    builder.merge(parse_subframe1(&words1)?);
-    builder.merge(parse_subframe2(&words2)?);
-    builder.merge(parse_subframe3(&words3)?);
+    builder.merge(parse_subframe1(&words1)?).ok()?;
+    builder.merge(parse_subframe2(&words2)?).ok()?;
+    builder.merge(parse_subframe3(&words3)?).ok()?;
     builder.try_build()
 }
 

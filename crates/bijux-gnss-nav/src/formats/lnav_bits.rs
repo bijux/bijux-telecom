@@ -457,10 +457,12 @@ pub fn decode_subframes(bits: &[i8]) -> (Vec<GpsEphemeris>, LnavDecodeStats) {
             let info = subframe_info_from_how(&subframe.words[1]);
             if info.subframe_id == 1 || info.subframe_id == 2 || info.subframe_id == 3 {
                 if let Some(part) = parse_ephemeris(&subframe.words, info.subframe_id) {
-                    builder.merge(part);
-                    if let Some(eph) = builder.try_build() {
+                    if builder.merge(part.clone()).is_err() {
+                        builder.reset();
+                        let _ = builder.merge(part);
+                    } else if let Some(eph) = builder.try_build() {
                         ephemerides.push(eph);
-                        builder = EphemerisBuilder::default();
+                        builder.reset();
                     }
                 }
             }
