@@ -39,8 +39,13 @@ pub use crate::pipeline::doppler::{carrier_hz_from_doppler_hz, doppler_hz_from_c
 pub use crate::pipeline::navigation::{EkfState, Navigation, NavigationEngine};
 /// Observation-building helpers.
 pub use crate::pipeline::observations::{
-    observations_from_tracking, observations_from_tracking_results,
-    observations_from_tracking_results_with_gps_anchor,
+    observation_artifacts_from_tracking_results,
+    observation_artifacts_from_tracking_results_with_gps_anchor,
+    observation_residuals_from_tracking_results,
+    observation_residuals_from_tracking_results_with_gps_anchor, observations_from_tracking,
+    observations_from_tracking_results, observations_from_tracking_results_with_gps_anchor,
+    ObservationPipelineArtifacts, ObservationResidualEpochReport, ObservationResidualSatellite,
+    ObservationResidualValue,
 };
 /// Tracking engine and related types.
 pub use crate::pipeline::tracking::{
@@ -129,6 +134,8 @@ pub struct RunArtifacts {
     pub observation_decisions: Vec<bijux_gnss_core::api::ObsDecisionArtifact>,
     /// Observation epochs captured during the run.
     pub observations: Vec<bijux_gnss_core::api::ObsEpoch>,
+    /// Observation residual reports captured during the run.
+    pub observation_residuals: Vec<ObservationResidualEpochReport>,
     /// Signal support matrix artifact.
     pub support_matrix: Option<bijux_gnss_core::api::SupportMatrix>,
     /// Navigation solution epochs captured during the run.

@@ -5,7 +5,7 @@ use crate::api::{Receiver, ReceiverEngine, RunArtifacts};
 use crate::engine::metrics::write_metrics_summary;
 use crate::engine::runtime::{Metric, TraceRecord};
 use crate::pipeline::observations::{
-    observation_decisions_from_epochs, observations_from_tracking_results_with_gps_anchor,
+    observation_artifacts_from_tracking_results_with_gps_anchor, observation_decisions_from_epochs,
 };
 use bijux_gnss_core::api::{
     signal_registry, Constellation, InputError, SatId, SignalBand, SignalCode, SignalSupportRow,
@@ -269,16 +269,17 @@ impl Receiver {
             fields: vec![("stage", "observations".to_string())],
         });
         let observation_start = Instant::now();
-        let observation_report = observations_from_tracking_results_with_gps_anchor(
+        let observation_report = observation_artifacts_from_tracking_results_with_gps_anchor(
             self.config(),
             self.runtime().config.capture_start_gps_time,
             &tracking_results,
             self.config().hatch_window,
         );
-        let observation_decisions = observation_decisions_from_epochs(&observation_report.output);
+        let observation_output = observation_report.output;
+        let observation_decisions = observation_decisions_from_epochs(&observation_output.epochs);
         let observation_ms = observation_start.elapsed().as_secs_f64() * 1000.0;
         let observation_decisions_count = observation_decisions.len();
-        let observation_epoch_count = observation_report.output.len() as f64;
+        let observation_epoch_count = observation_output.epochs.len() as f64;
         runtime.metrics.metric(Metric { name: "stage_observation_ms", value: observation_ms });
         runtime
             .metrics
@@ -287,7 +288,7 @@ impl Receiver {
             name: "pipeline_stage_complete",
             fields: vec![
                 ("stage", "observations".to_string()),
-                ("epochs", observation_report.output.len().to_string()),
+                ("epochs", observation_output.epochs.len().to_string()),
                 ("decision_artifacts", observation_decisions_count.to_string()),
             ],
         });
@@ -321,8 +322,9 @@ impl Receiver {
             track_transitions,
             channel_state_reports,
             tracking: tracking_results,
-            observations: observation_report.output,
+            observations: observation_output.epochs,
             observation_decisions,
+            observation_residuals: observation_output.residuals,
             support_matrix: Some(build_support_matrix()),
             navigation: Vec::new(),
         };
