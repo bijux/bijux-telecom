@@ -258,12 +258,7 @@ impl Tracking {
         early_late_spacing_chips: f64,
     ) -> CorrelatorOutput {
         let sample_rate_hz = self.config.sampling_freq_hz;
-        let samples_per_code = samples_per_code(
-            sample_rate_hz,
-            self.config.code_freq_basis_hz,
-            self.config.code_length,
-        );
-        let n = samples_per_code.min(frame.len());
+        let n = frame.len();
         let code = ca_code_or_default(sat.prn);
         let nominal_chips_per_sample = self.config.code_freq_basis_hz / sample_rate_hz;
         let tracked_chips_per_sample = code_rate_hz / sample_rate_hz;
@@ -333,12 +328,7 @@ impl Tracking {
             code_phase_samples,
             early_late_spacing_chips,
         );
-        let coherent_samples = samples_per_code(
-            self.config.sampling_freq_hz,
-            self.config.code_freq_basis_hz,
-            self.config.code_length,
-        )
-        .min(frame.len());
+        let coherent_samples = frame.len();
         let cn0_dbhz = estimate_cn0_dbhz(
             correlator.prompt,
             correlator.early - correlator.late,
@@ -481,7 +471,7 @@ impl Tracking {
                 carrier_hz,
                 code_phase_samples,
                 channel.tracking_params,
-                self.epochs_in_frame(&channel_frame),
+                self.epochs_in_frame(&channel_frame, channel.tracking_params),
             );
             channel.epochs = epochs;
             channel.transitions.extend(transitions);
@@ -534,13 +524,16 @@ impl Tracking {
         }
     }
 
-    fn epochs_in_frame(&self, frame: &SamplesFrame) -> usize {
-        let samples_per_code = samples_per_code(
-            self.config.sampling_freq_hz,
-            self.config.code_freq_basis_hz,
-            self.config.code_length,
-        );
-        (frame.len() / samples_per_code).max(1)
+    fn epochs_in_frame(&self, frame: &SamplesFrame, tracking_params: TrackingParams) -> usize {
+        tracking_epoch_count(
+            frame.len(),
+            tracking_epoch_samples(
+                self.config.sampling_freq_hz,
+                self.config.code_freq_basis_hz,
+                self.config.code_length,
+                tracking_params,
+            ),
+        )
     }
 
     fn track_epochs(
@@ -659,7 +652,7 @@ impl Tracking {
                 channel.channel_id,
                 channel.sat,
                 channel.tracking_params,
-                self.epochs_in_frame(&channel_frame),
+                self.epochs_in_frame(&channel_frame, channel.tracking_params),
                 &mut channel.state,
                 &mut channel.epochs,
                 &mut channel.transitions,
@@ -739,11 +732,17 @@ impl Tracking {
             self.config.code_freq_basis_hz,
             self.config.code_length,
         );
+        let samples_per_epoch = tracking_epoch_samples(
+            self.config.sampling_freq_hz,
+            self.config.code_freq_basis_hz,
+            self.config.code_length,
+            tracking_params,
+        );
         let samples_per_chip = samples_per_code as f64 / self.config.code_length as f64;
         for epoch_idx in 0..epochs {
             let alloc_before = crate::engine::alloc::allocation_count();
-            let start = epoch_idx * samples_per_code;
-            let end = (start + samples_per_code).min(frame.len());
+            let start = epoch_idx * samples_per_epoch;
+            let end = (start + samples_per_epoch).min(frame.len());
             if start >= end {
                 break;
             }
@@ -1269,6 +1268,24 @@ fn wrapped_phase_delta_cycles(next_phase_cycles: f64, previous_phase_cycles: f64
     wrap_phase_cycles(next_phase_cycles - previous_phase_cycles)
 }
 
+fn tracking_epoch_samples(
+    sample_rate_hz: f64,
+    code_freq_basis_hz: f64,
+    code_length: usize,
+    tracking_params: TrackingParams,
+) -> usize {
+    let code_period_samples = samples_per_code(sample_rate_hz, code_freq_basis_hz, code_length);
+    code_period_samples.saturating_mul(tracking_params.integration_ms.max(1) as usize)
+}
+
+fn tracking_epoch_count(frame_len_samples: usize, epoch_len_samples: usize) -> usize {
+    let epoch_len_samples = epoch_len_samples.max(1);
+    if frame_len_samples == 0 {
+        return 0;
+    }
+    frame_len_samples.div_ceil(epoch_len_samples)
+}
+
 fn coherent_integration_seconds(epoch_len_samples: usize, sample_rate_hz: f64) -> f64 {
     if !sample_rate_hz.is_finite() || sample_rate_hz <= 0.0 {
         return 0.0;
@@ -1576,6 +1593,29 @@ mod tests {
             5_000,
         );
         assert!(next < 250.0, "next={next}");
+    }
+
+    #[test]
+    fn tracking_epoch_samples_scale_with_configured_integration_ms() {
+        let tracking_params = crate::engine::receiver_config::TrackingParams {
+            early_late_spacing_chips: 0.5,
+            dll_bw_hz: 2.0,
+            pll_bw_hz: 15.0,
+            fll_bw_hz: 10.0,
+            integration_ms: 7,
+        };
+
+        let epoch_samples =
+            super::tracking_epoch_samples(5_000_000.0, 1_023_000.0, 1023, tracking_params);
+
+        assert_eq!(epoch_samples, 35_000);
+    }
+
+    #[test]
+    fn tracking_epoch_count_includes_trailing_partial_epoch() {
+        assert_eq!(super::tracking_epoch_count(60, 20), 3);
+        assert_eq!(super::tracking_epoch_count(61, 20), 4);
+        assert_eq!(super::tracking_epoch_count(0, 20), 0);
     }
 
     #[test]

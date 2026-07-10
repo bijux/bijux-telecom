@@ -183,6 +183,7 @@ fn tracking_uses_explicit_signal_band_parameters() {
         .first()
         .and_then(|track| track.epochs.first())
         .expect("tracked epoch");
+    let epochs = &tracks.first().expect("track").epochs;
     let assumptions = first_epoch
         .tracking_assumptions
         .as_ref()
@@ -193,6 +194,9 @@ fn tracking_uses_explicit_signal_band_parameters() {
     assert_eq!(assumptions.dll_bw_hz, 4.5);
     assert_eq!(assumptions.pll_bw_hz, 18.0);
     assert_eq!(assumptions.fll_bw_hz, 6.5);
+    assert_eq!(epochs.len(), 2, "epochs={epochs:?}");
+    assert_eq!(epochs[0].sample_index, 0);
+    assert_eq!(epochs[1].sample_index, 35_000);
     assert!(
         first_epoch.tracking_provenance.contains("acq_signal_band=L2"),
         "tracking provenance must preserve the explicit acquisition band: {first_epoch:?}"
