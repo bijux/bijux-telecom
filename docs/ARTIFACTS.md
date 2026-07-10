@@ -39,6 +39,10 @@ Units: meters, seconds, hertz, cycles.
 Invariants:
 - epochs are monotonic
 - no NaNs/Inf in measurements
+- when dataset metadata provides `capture_start_utc`, `ObsEpoch.gps_week` and `ObsEpoch.tow_s`
+  carry the anchored GPS receive time for the epoch
+- when GPS receive time is anchored, each `ObsSatellite.timing` records the explicit
+  `signal_travel_time_s` and `transmit_gps_time` used to connect pseudorange to satellite state
 - observation metadata may carry source `tracking_uncertainty` so downstream weighting can use
   tracking-derived uncertainty instead of CN0-only heuristics
 

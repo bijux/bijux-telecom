@@ -21,6 +21,10 @@ Sidecars must specify:
 - `intermediate_freq_hz`
 - `capture_start_utc`
 
+`capture_start_utc` is not only descriptive metadata. It anchors sample index zero to GPS time so
+observation artifacts can emit `gps_week`, `tow_s`, signal travel time, and satellite transmit
+time consistently.
+
 Optional sidecar fields include:
 - `offset_bytes`
 - `quantization_bits`
