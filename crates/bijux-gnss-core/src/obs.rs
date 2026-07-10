@@ -396,6 +396,12 @@ pub struct AcqUncertainty {
     pub code_phase_samples: f64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SignalDelayAlignment {
+    pub whole_code_periods: u64,
+    pub source: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcqTrackingSeed {
     pub sat: SatId,
@@ -403,6 +409,8 @@ pub struct AcqTrackingSeed {
     pub source_time: ReceiverSampleTrace,
     pub doppler_hz: Hertz,
     pub code_phase_samples: Chips,
+    #[serde(default)]
+    pub signal_delay_alignment: Option<SignalDelayAlignment>,
     pub uncertainty: Option<AcqUncertainty>,
 }
 
@@ -443,6 +451,8 @@ pub struct AcqResult {
     #[serde(default)]
     pub code_phase_refinement: Option<AcqCodePhaseRefinement>,
     #[serde(default)]
+    pub signal_delay_alignment: Option<SignalDelayAlignment>,
+    #[serde(default)]
     pub uncertainty: Option<AcqUncertainty>,
 }
 
@@ -461,6 +471,7 @@ impl AcqResult {
             source_time: self.source_time,
             doppler_hz: self.doppler_hz,
             code_phase_samples: Chips(self.resolved_code_phase_samples()),
+            signal_delay_alignment: self.signal_delay_alignment.clone(),
             uncertainty: self.uncertainty.clone(),
         }
     }
@@ -528,8 +539,13 @@ pub fn acq_result_stability_key(result: &AcqResult) -> String {
             format!("|{:.6}|{:.6}", uncertainty.doppler_hz, uncertainty.code_phase_samples)
         })
         .unwrap_or_default();
+    let signal_delay_alignment_key = result
+        .signal_delay_alignment
+        .as_ref()
+        .map(|alignment| format!("|{}|{}", alignment.whole_code_periods, alignment.source))
+        .unwrap_or_default();
     format!(
-        "{:?}-{:02}|{}|{}|{:.3}|{}|{:.6}|{:.6}|{:.6}|{}{}{}{}",
+        "{:?}-{:02}|{}|{}|{:.3}|{}|{:.6}|{:.6}|{:.6}|{}{}{}{}{}",
         result.sat.constellation,
         result.sat.prn,
         result.candidate_rank,
@@ -543,6 +559,7 @@ pub fn acq_result_stability_key(result: &AcqResult) -> String {
         doppler_refinement_key,
         code_phase_refinement_key,
         uncertainty_key,
+        signal_delay_alignment_key,
     )
 }
 
@@ -1172,6 +1189,7 @@ mod tests {
         AcqSearchSummary, AcqUncertainty, Constellation, Hertz, LeapSeconds, ReceiverSampleTrace,
         SatId, SignalBand, UtcTime,
     };
+    use super::{acq_result_stability_key, SignalDelayAlignment};
     use crate::time::utc_to_gps;
 
     #[test]
@@ -1265,6 +1283,10 @@ mod tests {
                 center_correlation_norm: 1.0,
                 right_correlation_norm: 0.7,
             }),
+            signal_delay_alignment: Some(SignalDelayAlignment {
+                whole_code_periods: 68,
+                source: "synthetic_truth".to_string(),
+            }),
             uncertainty: Some(AcqUncertainty { doppler_hz: 125.0, code_phase_samples: 0.25 }),
         };
 
@@ -1275,7 +1297,31 @@ mod tests {
         assert_eq!(seed.source_time, result.source_time);
         assert_eq!(seed.doppler_hz.0, 750.0);
         assert!((seed.code_phase_samples.0 - 100.125).abs() <= f64::EPSILON);
+        assert_eq!(
+            seed.signal_delay_alignment,
+            Some(SignalDelayAlignment {
+                whole_code_periods: 68,
+                source: "synthetic_truth".to_string(),
+            })
+        );
         assert_eq!(seed.uncertainty.as_ref().map(|u| u.doppler_hz), Some(125.0));
+    }
+
+    #[test]
+    fn acq_result_stability_key_includes_signal_delay_alignment() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 9 };
+        let mut base = acq_result_for_summary(sat, AcqHypothesis::Accepted);
+        base.signal_delay_alignment = Some(SignalDelayAlignment {
+            whole_code_periods: 68,
+            source: "synthetic_truth".to_string(),
+        });
+        let mut changed = base.clone();
+        changed.signal_delay_alignment = Some(SignalDelayAlignment {
+            whole_code_periods: 69,
+            source: "synthetic_truth".to_string(),
+        });
+
+        assert_ne!(acq_result_stability_key(&base), acq_result_stability_key(&changed));
     }
 
     #[test]
@@ -1316,6 +1362,7 @@ mod tests {
             explain_selection_reason: None,
             doppler_refinement: None,
             code_phase_refinement: None,
+            signal_delay_alignment: None,
             uncertainty: None,
         }
     }
