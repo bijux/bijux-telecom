@@ -357,7 +357,12 @@ impl PositionSolver {
     }
 }
 
-fn position_observation_has_valid_satellite_time(obs: &PositionObservation, t_rx_s: f64) -> bool {
+/// Returns whether a position observation carries a finite and internally consistent
+/// transmit-time description for navigation use.
+pub fn position_observation_has_valid_satellite_time(
+    obs: &PositionObservation,
+    t_rx_s: f64,
+) -> bool {
     let Some(signal_timing) = obs.signal_timing else {
         return false;
     };
