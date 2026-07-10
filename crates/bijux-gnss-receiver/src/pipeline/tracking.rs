@@ -36,9 +36,12 @@ const PLL_LOCK_MAX_PHASE_ERROR_RAD: f32 = 0.2;
 const PROMPT_POWER_DROP_RATIO_THRESHOLD: f32 = 0.2;
 const DISCRIMINATOR_INSTABILITY_MIN_PROMPT_POWER_RATIO: f32 = 0.5;
 const DISCRIMINATOR_INSTABILITY_REQUIRED_EPOCHS: u8 = 2;
+const DEGRADED_FADE_INSTABILITY_GRACE_EPOCHS: u16 = 2;
 const PULL_IN_REQUIRED_STABLE_EPOCHS: u8 = 1;
 const FLL_PULL_IN_MAX_CORRECTION_BW_MULTIPLIER: f64 = 4.0;
 const REACQUISITION_REQUIRED_LOST_EPOCHS: usize = 3;
+const REACQUISITION_CONFIRMATION_EPOCHS: u8 = 2;
+const REACQUISITION_PULL_IN_EPOCH_BUDGET: u8 = 20;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelState {
@@ -138,7 +141,10 @@ struct LoopState {
     state: ChannelState,
     unlocked_count: u8,
     lost_reason: Option<String>,
+    reacquisition_candidate: Option<ReacquisitionSeed>,
+    reacquisition_candidate_streak: u8,
     reacquisition_pending: bool,
+    reacquisition_attempt_epochs: u8,
 }
 
 #[derive(Debug, Clone)]
@@ -572,7 +578,10 @@ impl Tracking {
             state: ChannelState::Acquired,
             unlocked_count: 0,
             lost_reason: None,
+            reacquisition_candidate: None,
+            reacquisition_candidate_streak: 0,
             reacquisition_pending: false,
+            reacquisition_attempt_epochs: 0,
         };
 
         let mut out = Vec::new();
@@ -644,7 +653,10 @@ impl Tracking {
                         state: ChannelState::Acquired,
                         unlocked_count: 0,
                         lost_reason: None,
+                        reacquisition_candidate: None,
+                        reacquisition_candidate_streak: 0,
                         reacquisition_pending: false,
+                        reacquisition_attempt_epochs: 0,
                     },
                     epochs: Vec::new(),
                     transitions: Vec::new(),
@@ -928,11 +940,19 @@ impl Tracking {
             state.state = transition.to_state;
             if state.state == ChannelState::Lost {
                 state.reacquisition_pending = false;
+                state.reacquisition_attempt_epochs = 0;
                 if from_state != ChannelState::Lost {
                     state.lost_reason = Some(transition.reason.clone());
+                    state.reacquisition_candidate = None;
+                    state.reacquisition_candidate_streak = 0;
                 }
             } else {
                 state.lost_reason = None;
+                state.reacquisition_candidate = None;
+                state.reacquisition_candidate_streak = 0;
+                if !state.reacquisition_pending {
+                    state.reacquisition_attempt_epochs = 0;
+                }
             }
 
             let lock_state = match state.state {
@@ -1159,7 +1179,10 @@ fn deterministic_transition_rule(
             next_degraded_epochs: 0,
         };
     }
-    if loss_of_lock_cause == Some(LossOfLockCause::DiscriminatorInstability) {
+    if loss_of_lock_cause == Some(LossOfLockCause::DiscriminatorInstability)
+        && (from_state != ChannelState::Degraded
+            || degraded_epochs < DEGRADED_FADE_INSTABILITY_GRACE_EPOCHS)
+    {
         return TransitionDecision {
             to_state: ChannelState::Lost,
             reason: LossOfLockCause::DiscriminatorInstability.reason().to_string(),
@@ -1646,7 +1669,27 @@ fn apply_reacquisition_annotations(
             }
         }
         state.reacquisition_pending = false;
+        state.reacquisition_attempt_epochs = 0;
         return;
+    }
+
+    if state.reacquisition_pending {
+        state.reacquisition_attempt_epochs = state.reacquisition_attempt_epochs.saturating_add(1);
+        if state.reacquisition_attempt_epochs >= REACQUISITION_PULL_IN_EPOCH_BUDGET {
+            last_epoch.lock_state = ChannelState::Lost.to_string();
+            last_epoch.lock_state_reason = Some("reacquisition_failed".to_string());
+            if let Some(last_transition) = transitions.last_mut() {
+                last_transition.to_state = ChannelState::Lost.to_string();
+                last_transition.reason = "reacquisition_failed".to_string();
+            }
+            state.state = ChannelState::Lost;
+            state.lost_reason = Some("reacquisition_failed".to_string());
+            state.reacquisition_pending = false;
+            state.reacquisition_attempt_epochs = 0;
+            state.unlocked_count = 0;
+            state.degraded_epochs = 0;
+            return;
+        }
     }
 
     if last_epoch.lock_state == ChannelState::Lost.to_string() {
@@ -1676,6 +1719,8 @@ impl Tracking {
         let Some((carrier_hz, code_phase_samples)) =
             sustained_lock_loss_reacquire_seed(&channel.epochs)
         else {
+            channel.state.reacquisition_candidate = None;
+            channel.state.reacquisition_candidate_streak = 0;
             return ReacquisitionOutcome::SeedUnavailable;
         };
         let Some(seed) = self.quick_reacquire(
@@ -1685,8 +1730,26 @@ impl Tracking {
             code_phase_samples,
             channel.acquisition_uncertainty.as_ref(),
         ) else {
+            channel.state.reacquisition_candidate = None;
+            channel.state.reacquisition_candidate_streak = 0;
             return ReacquisitionOutcome::Failed;
         };
+        let candidate_streak = if channel.state.reacquisition_candidate.is_some_and(|candidate| {
+            self.reacquisition_seed_matches(
+                candidate,
+                seed,
+                channel.acquisition_uncertainty.as_ref(),
+            )
+        }) {
+            channel.state.reacquisition_candidate_streak.saturating_add(1)
+        } else {
+            1
+        };
+        channel.state.reacquisition_candidate = Some(seed);
+        channel.state.reacquisition_candidate_streak = candidate_streak;
+        if candidate_streak < REACQUISITION_CONFIRMATION_EPOCHS {
+            return ReacquisitionOutcome::Failed;
+        }
 
         channel.state = LoopState {
             carrier_hz: seed.carrier_hz,
@@ -1706,9 +1769,29 @@ impl Tracking {
             state: ChannelState::Acquired,
             unlocked_count: 0,
             lost_reason: None,
+            reacquisition_candidate: None,
+            reacquisition_candidate_streak: 0,
             reacquisition_pending: true,
+            reacquisition_attempt_epochs: 0,
         };
         ReacquisitionOutcome::Started
+    }
+
+    fn reacquisition_seed_matches(
+        &self,
+        left: ReacquisitionSeed,
+        right: ReacquisitionSeed,
+        acquisition_uncertainty: Option<&AcqUncertainty>,
+    ) -> bool {
+        let doppler_step_hz = self.config.acquisition_doppler_step_hz.max(1) as f64;
+        let doppler_tolerance_hz = acquisition_uncertainty
+            .map(|uncertainty| uncertainty.doppler_hz.clamp(doppler_step_hz / 2.0, doppler_step_hz))
+            .unwrap_or(doppler_step_hz);
+        let code_tolerance_samples = acquisition_uncertainty
+            .map(|uncertainty| uncertainty.code_phase_samples.clamp(0.5, 2.0))
+            .unwrap_or(1.0);
+        (left.carrier_hz - right.carrier_hz).abs() <= doppler_tolerance_hz
+            && (left.code_phase_samples - right.code_phase_samples).abs() <= code_tolerance_samples
     }
 
     fn quick_reacquire(
