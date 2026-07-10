@@ -3,7 +3,7 @@
 use bijux_gnss_core::api::SatId;
 
 use crate::orbits::gps::{
-    gps_satellite_clock_correction, sat_state_gps_l1ca, GpsEphemeris,
+    gps_ephemeris_age, gps_satellite_clock_correction, sat_state_gps_l1ca, GpsEphemeris,
     GpsSatState, GpsSatelliteClockCorrection,
 };
 
@@ -52,6 +52,24 @@ impl BroadcastProductsProvider {
     pub fn new(ephs: Vec<GpsEphemeris>) -> Self {
         Self { ephs }
     }
+
+    fn active_ephemeris(
+        &self,
+        sat: SatId,
+        t_s: f64,
+        diag: &mut ProductDiagnostics,
+    ) -> Option<&GpsEphemeris> {
+        let eph = self.ephs.iter().find(|e| e.sat == sat)?;
+        let age = gps_ephemeris_age(eph, t_s);
+        if age.is_stale() {
+            diag.fallback(format!(
+                "broadcast ephemeris stale for {:?} at {:.3}s (toe_age_s={:.3}, toc_age_s={:.3}, limit_s={:.3})",
+                sat, t_s, age.toe_age_s, age.toc_age_s, age.max_age_s
+            ));
+            return None;
+        }
+        Some(eph)
+    }
 }
 
 impl ProductsProvider for BroadcastProductsProvider {
@@ -59,9 +77,9 @@ impl ProductsProvider for BroadcastProductsProvider {
         &self,
         sat: SatId,
         t_s: f64,
-        _diag: &mut ProductDiagnostics,
+        diag: &mut ProductDiagnostics,
     ) -> Option<GpsSatState> {
-        let eph = self.ephs.iter().find(|e| e.sat == sat)?;
+        let eph = self.active_ephemeris(sat, t_s, diag)?;
         Some(sat_state_gps_l1ca(eph, t_s, 0.0))
     }
 
@@ -69,9 +87,9 @@ impl ProductsProvider for BroadcastProductsProvider {
         &self,
         sat: SatId,
         t_s: f64,
-        _diag: &mut ProductDiagnostics,
+        diag: &mut ProductDiagnostics,
     ) -> Option<GpsSatelliteClockCorrection> {
-        let eph = self.ephs.iter().find(|e| e.sat == sat)?;
+        let eph = self.active_ephemeris(sat, t_s, diag)?;
         Some(gps_satellite_clock_correction(eph, t_s))
     }
 

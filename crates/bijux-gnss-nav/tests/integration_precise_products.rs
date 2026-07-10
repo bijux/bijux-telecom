@@ -100,3 +100,31 @@ AS G01 2020 01 01 00 15 00.000000  1  0.000000003
     assert!((correction.relativistic_s - expected.relativistic_s).abs() < 1e-18);
     assert!((correction.group_delay_s - expected.group_delay_s).abs() < 1e-18);
 }
+
+#[test]
+fn stale_broadcast_ephemeris_is_rejected_for_satellite_state() {
+    let eph = make_eph(1);
+    let provider = BroadcastProductsProvider::new(vec![eph.clone()]);
+    let mut diag = ProductDiagnostics::default();
+
+    let state = provider.sat_state(eph.sat, 7_201.0, &mut diag);
+
+    assert!(state.is_none());
+    assert_eq!(diag.fallbacks.len(), 1);
+    assert!(diag.fallbacks[0].contains("broadcast ephemeris stale"));
+    assert!(diag.fallbacks[0].contains("toe_age_s=7201.000"));
+}
+
+#[test]
+fn stale_broadcast_ephemeris_is_rejected_for_clock_correction() {
+    let eph = make_eph(1);
+    let provider = BroadcastProductsProvider::new(vec![eph.clone()]);
+    let mut diag = ProductDiagnostics::default();
+
+    let correction = provider.clock_correction(eph.sat, 7_201.0, &mut diag);
+
+    assert!(correction.is_none());
+    assert_eq!(diag.fallbacks.len(), 1);
+    assert!(diag.fallbacks[0].contains("broadcast ephemeris stale"));
+    assert!(diag.fallbacks[0].contains("toc_age_s=7201.000"));
+}
