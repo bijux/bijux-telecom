@@ -387,3 +387,183 @@ fn handle_run(command: GnssCommand) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod pvt_tests {
+    use super::*;
+    use bijux_gnss_infra::api::core::{
+        signal_spec_gps_l1_ca, Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite,
+        ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
+        SigId, SignalBand, SignalCode,
+    };
+    use bijux_gnss_infra::api::nav::{parse_rinex_nav, sat_state_gps_l1ca, write_rinex_nav, GpsEphemeris};
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn sample_common_args(out: PathBuf) -> CommonArgs {
+        CommonArgs {
+            config: None,
+            dataset: None,
+            unregistered_dataset: true,
+            out: Some(out),
+            report: ReportFormat::Json,
+            seed: None,
+            deterministic: true,
+            dump: None,
+            sidecar: None,
+            resume: None,
+        }
+    }
+
+    fn sample_ephemerides() -> Vec<GpsEphemeris> {
+        [
+            (1, 0.0, 0.0),
+            (2, 0.8, 0.9),
+            (3, 1.6, 1.8),
+            (4, 2.4, 2.7),
+        ]
+        .into_iter()
+        .map(|(prn, omega0, m0)| GpsEphemeris {
+            sat: SatId { constellation: Constellation::Gps, prn },
+            iodc: 1,
+            iode: 1,
+            week: 2209,
+            sv_health: 0,
+            toe_s: 504_000.0,
+            toc_s: 504_018.0,
+            sqrt_a: 5153.7954775,
+            e: 0.01,
+            i0: 0.94,
+            idot: 0.0,
+            omega0,
+            omegadot: 0.0,
+            w: 0.0,
+            m0,
+            delta_n: 0.0,
+            cuc: 0.0,
+            cus: 0.0,
+            crc: 0.0,
+            crs: 0.0,
+            cic: 0.0,
+            cis: 0.0,
+            af0: 0.0,
+            af1: 0.0,
+            af2: 0.0,
+            tgd: 0.0,
+        })
+        .collect()
+    }
+
+    fn sample_obs_epoch(ephs: &[GpsEphemeris]) -> ObsEpoch {
+        let t_rx_s = 504_018.07;
+        let (rx_x, rx_y, rx_z) = bijux_gnss_infra::api::nav::geodetic_to_ecef(37.0, -122.0, 10.0);
+        let sats = ephs
+            .iter()
+            .map(|eph| {
+                let mut tau = 0.07;
+                let mut pseudorange_m = 0.0;
+                for _ in 0..10 {
+                    let state = sat_state_gps_l1ca(eph, t_rx_s - tau, tau);
+                    let dx = rx_x - state.x_m;
+                    let dy = rx_y - state.y_m;
+                    let dz = rx_z - state.z_m;
+                    let range = (dx * dx + dy * dy + dz * dz).sqrt();
+                    pseudorange_m = range - state.clock_correction.bias_s * 299_792_458.0;
+                    let next_tau = pseudorange_m / 299_792_458.0;
+                    if (next_tau - tau).abs() < 1.0e-12 {
+                        break;
+                    }
+                    tau = next_tau;
+                }
+                ObsSatellite {
+                    signal_id: SigId {
+                        sat: eph.sat,
+                        band: SignalBand::L1,
+                        code: SignalCode::Ca,
+                    },
+                    pseudorange_m: bijux_gnss_infra::api::core::Meters(pseudorange_m),
+                    pseudorange_var_m2: 4.0,
+                    carrier_phase_cycles: bijux_gnss_infra::api::core::Cycles(1_000.0 + eph.sat.prn as f64),
+                    carrier_phase_var_cycles2: 0.01,
+                    doppler_hz: bijux_gnss_infra::api::core::Hertz(-500.0),
+                    doppler_var_hz2: 4.0,
+                    cn0_dbhz: 45.0,
+                    lock_flags: LockFlags {
+                        code_lock: true,
+                        carrier_lock: true,
+                        bit_lock: false,
+                        cycle_slip: false,
+                    },
+                    multipath_suspect: false,
+                    observation_status: ObservationStatus::Accepted,
+                    observation_reject_reasons: Vec::new(),
+                    elevation_deg: None,
+                    azimuth_deg: None,
+                    weight: None,
+                    timing: None,
+                    error_model: None,
+                    metadata: ObsMetadata {
+                        tracking_mode: "test".to_string(),
+                        integration_ms: 1,
+                        lock_quality: 45.0,
+                        smoothing_window: 0,
+                        smoothing_age: 0,
+                        smoothing_resets: 0,
+                        signal: signal_spec_gps_l1_ca(),
+                        ..ObsMetadata::default()
+                    },
+                }
+            })
+            .collect();
+
+        ObsEpoch {
+            t_rx_s: bijux_gnss_infra::api::core::Seconds(t_rx_s),
+            source_time: ReceiverSampleTrace::from_sample_index(1, 1_000.0),
+            gps_week: Some(2209),
+            tow_s: Some(bijux_gnss_infra::api::core::Seconds(t_rx_s)),
+            epoch_idx: 1,
+            discontinuity: false,
+            valid: true,
+            processing_ms: None,
+            role: ReceiverRole::Rover,
+            sats,
+            decision: ObservationEpochDecision::Accepted,
+            decision_reason: Some("accepted_observables_present".to_string()),
+            manifest: None,
+        }
+    }
+
+    #[test]
+    fn pvt_command_accepts_rinex_navigation_input() {
+        let root = std::env::temp_dir().join(format!(
+            "bijux_pvt_rinex_nav_{}_{}",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos()
+        ));
+        fs::create_dir_all(&root).expect("create test root");
+        let obs_path = root.join("obs.jsonl");
+        let eph_path = root.join("nav.rnx");
+
+        let ephs = sample_ephemerides();
+        let obs = sample_obs_epoch(&ephs);
+        fs::write(&obs_path, format!("{}\n", serde_json::to_string(&obs).expect("serialize obs")))
+            .expect("write obs");
+        write_rinex_nav(&eph_path, &ephs, true).expect("write rinex nav");
+        let rinex = fs::read_to_string(&eph_path).expect("read rinex nav");
+        assert_eq!(parse_rinex_nav(&rinex).expect("parse rinex nav").len(), ephs.len());
+
+        let common = sample_common_args(root.clone());
+        handle_pvt(GnssCommand::Pvt { common: common.clone(), obs: obs_path, eph: eph_path, ekf: false })
+            .expect("pvt command");
+
+        let nav_path = artifacts_dir(&common, "pvt", None).expect("artifacts dir").join("pvt.jsonl");
+        let solutions = read_nav_solutions(&nav_path).expect("read nav solutions");
+
+        assert_eq!(solutions.len(), 1);
+        assert_eq!(solutions[0].sat_count, 4);
+        assert_eq!(solutions[0].used_sat_count, 4);
+
+        fs::remove_dir_all(root).expect("remove test root");
+    }
+}
