@@ -74,6 +74,15 @@ impl StateModel for NavClockModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand, SignalCode};
+
+    fn sample_sig_id() -> SigId {
+        SigId {
+            sat: SatId { constellation: Constellation::Gps, prn: 7 },
+            band: SignalBand::L1,
+            code: SignalCode::Ca,
+        }
+    }
 
     #[test]
     fn nav_clock_model_propagates_extended_state_covariance() {
@@ -102,6 +111,61 @@ mod tests {
         assert_eq!(p.rows(), 9);
         assert_eq!(p.cols(), 9);
         assert!(p[(8, 8)] > 1.0);
+    }
+
+    #[test]
+    fn pseudorange_measurement_subtracts_satellite_clock_bias() {
+        let measurement = PseudorangeMeasurement {
+            sig: sample_sig_id(),
+            z_m: 0.0,
+            sat_pos_m: [20_200_000.0, -1_500_000.0, 21_300_000.0],
+            sat_clock_s: 240.0e-9,
+            tropo_m: 3.2,
+            iono_m: 1.4,
+            sigma_m: 2.0,
+            elevation_deg: Some(45.0),
+            ztd_index: None,
+            isb_index: None,
+        };
+        let state = [1_117_194.907, -4_842_953.615, 3_985_351.233, 0.0, 0.0, 0.0, 2.75e-4, 0.0];
+        let mut corrected = [0.0];
+        let mut zero_clock = [0.0];
+
+        measurement.h(&state, &mut corrected);
+        PseudorangeMeasurement { sat_clock_s: 0.0, ..measurement.clone() }.h(&state, &mut zero_clock);
+
+        let expected_delta_m = 299_792_458.0 * measurement.sat_clock_s;
+
+        assert!((zero_clock[0] - corrected[0] - expected_delta_m).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn carrier_phase_measurement_subtracts_satellite_clock_bias() {
+        let measurement = CarrierPhaseMeasurement {
+            sig: sample_sig_id(),
+            z_cycles: 0.0,
+            sat_pos_m: [20_200_000.0, -1_500_000.0, 21_300_000.0],
+            sat_clock_s: -170.0e-9,
+            tropo_m: 2.6,
+            iono_m: 0.8,
+            wavelength_m: 0.190_293_672_798_364_87,
+            ambiguity_index: None,
+            sigma_cycles: 0.05,
+            elevation_deg: Some(45.0),
+            ztd_index: None,
+            isb_index: None,
+        };
+        let state = [1_117_194.907, -4_842_953.615, 3_985_351.233, 0.0, 0.0, 0.0, 2.75e-4, 0.0];
+        let mut corrected = [0.0];
+        let mut zero_clock = [0.0];
+
+        measurement.h(&state, &mut corrected);
+        CarrierPhaseMeasurement { sat_clock_s: 0.0, ..measurement.clone() }.h(&state, &mut zero_clock);
+
+        let expected_delta_cycles =
+            299_792_458.0 * measurement.sat_clock_s / measurement.wavelength_m;
+
+        assert!((zero_clock[0] - corrected[0] - expected_delta_cycles).abs() < 1.0e-6);
     }
 }
 
