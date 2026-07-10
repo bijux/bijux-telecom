@@ -70,6 +70,14 @@ pub struct GpsSatState {
     pub clock_correction: GpsSatelliteClockCorrection,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct GpsEarthRotationCorrection {
+    pub signal_travel_time_s: f64,
+    pub rotation_rad: f64,
+    pub delta_x_m: f64,
+    pub delta_y_m: f64,
+}
+
 pub fn gps_satellite_clock_correction(
     eph: &GpsEphemeris,
     t_tx_s: f64,
@@ -81,6 +89,35 @@ pub fn gps_satellite_clock_correction(
     let m = eph.m0 + n * tk;
     let (_e_anom, sin_e, _cos_e) = solve_kepler(m, eph.e);
     satellite_clock_correction_from_sin_e(eph, t_tx_s, sin_e)
+}
+
+pub fn gps_earth_rotation_correction(
+    x_m: f64,
+    y_m: f64,
+    signal_travel_time_s: f64,
+) -> GpsEarthRotationCorrection {
+    let rotation_rad = OMEGA_E_DOT * signal_travel_time_s;
+    let (x_rotated_m, y_rotated_m) = if rotation_rad.abs() > 0.0 {
+        let cos_rot = rotation_rad.cos();
+        let sin_rot = rotation_rad.sin();
+        (cos_rot * x_m + sin_rot * y_m, -sin_rot * x_m + cos_rot * y_m)
+    } else {
+        (x_m, y_m)
+    };
+    GpsEarthRotationCorrection {
+        signal_travel_time_s,
+        rotation_rad,
+        delta_x_m: x_rotated_m - x_m,
+        delta_y_m: y_rotated_m - y_m,
+    }
+}
+
+pub fn sat_state_gps_l1ca_at_receive_time(
+    eph: &GpsEphemeris,
+    receive_tow_s: f64,
+    signal_travel_time_s: f64,
+) -> GpsSatState {
+    sat_state_gps_l1ca(eph, receive_tow_s - signal_travel_time_s, signal_travel_time_s)
 }
 
 pub fn sat_state_gps_l1ca(eph: &GpsEphemeris, t_tx_s: f64, tau_s: f64) -> GpsSatState {
@@ -115,24 +152,13 @@ pub fn sat_state_gps_l1ca(eph: &GpsEphemeris, t_tx_s: f64, tau_s: f64) -> GpsSat
     let mut y = x_orb * sin_omega + y_orb * cos_i * cos_omega;
     let z = y_orb * sin_i;
 
-    let rot = OMEGA_E_DOT * tau_s;
-    if rot.abs() > 0.0 {
-        let cos_rot = rot.cos();
-        let sin_rot = rot.sin();
-        let xr = cos_rot * x + sin_rot * y;
-        let yr = -sin_rot * x + cos_rot * y;
-        x = xr;
-        y = yr;
-    }
+    let earth_rotation = gps_earth_rotation_correction(x, y, tau_s);
+    x += earth_rotation.delta_x_m;
+    y += earth_rotation.delta_y_m;
 
     let clock = satellite_clock_correction_from_sin_e(eph, t_tx_s, sin_e);
 
-    GpsSatState {
-        x_m: x,
-        y_m: y,
-        z_m: z,
-        clock_correction: clock,
-    }
+    GpsSatState { x_m: x, y_m: y, z_m: z, clock_correction: clock }
 }
 
 pub fn is_ephemeris_valid(eph: &GpsEphemeris, t_s: f64) -> bool {
@@ -267,6 +293,83 @@ mod tests {
         let state = sat_state_gps_l1ca(&eph, 0.0, 0.0);
         let radius = (state.x_m * state.x_m + state.y_m * state.y_m + state.z_m * state.z_m).sqrt();
         assert!((radius - 26_560_000.0).abs() < 5_000_000.0);
+    }
+
+    #[test]
+    fn earth_rotation_correction_is_identity_for_zero_travel_time() {
+        let correction = gps_earth_rotation_correction(12_345.0, -67_890.0, 0.0);
+
+        assert_eq!(correction.signal_travel_time_s, 0.0);
+        assert_eq!(correction.rotation_rad, 0.0);
+        assert_eq!(correction.delta_x_m, 0.0);
+        assert_eq!(correction.delta_y_m, 0.0);
+    }
+
+    #[test]
+    fn earth_rotation_correction_matches_explicit_rotation_matrix() {
+        let x_m = 15_600_000.0;
+        let y_m = 21_700_000.0;
+        let tau_s = 0.082;
+        let rotation_rad = OMEGA_E_DOT * tau_s;
+        let cos_rot = rotation_rad.cos();
+        let sin_rot = rotation_rad.sin();
+        let expected_x_m = cos_rot * x_m + sin_rot * y_m;
+        let expected_y_m = -sin_rot * x_m + cos_rot * y_m;
+
+        let correction = gps_earth_rotation_correction(x_m, y_m, tau_s);
+
+        assert!((correction.rotation_rad - rotation_rad).abs() < 1.0e-18);
+        assert!((x_m + correction.delta_x_m - expected_x_m).abs() < 1.0e-9);
+        assert!((y_m + correction.delta_y_m - expected_y_m).abs() < 1.0e-9);
+        assert!(correction.delta_x_m.abs() > 0.01);
+        assert!(correction.delta_y_m.abs() > 0.01);
+    }
+
+    #[test]
+    fn receive_time_helper_matches_transmit_time_state_evaluation() {
+        let eph = GpsEphemeris {
+            sat: SatId { constellation: Constellation::Gps, prn: 3 },
+            iodc: 0,
+            iode: 0,
+            week: 0,
+            sv_health: 0,
+            toe_s: 0.0,
+            toc_s: 0.0,
+            sqrt_a: 5153.7954775,
+            e: 0.01,
+            i0: 0.94,
+            idot: 0.0,
+            omega0: 1.4,
+            omegadot: 0.0,
+            w: 0.2,
+            m0: 0.7,
+            delta_n: 0.0,
+            cuc: 0.0,
+            cus: 0.0,
+            crc: 0.0,
+            crs: 0.0,
+            cic: 0.0,
+            cis: 0.0,
+            af0: 0.0,
+            af1: 0.0,
+            af2: 0.0,
+            tgd: 0.0,
+        };
+        let receive_tow_s = 345_600.0;
+        let tau_s = 0.074;
+
+        let from_receive_time = sat_state_gps_l1ca_at_receive_time(&eph, receive_tow_s, tau_s);
+        let from_transmit_time = sat_state_gps_l1ca(&eph, receive_tow_s - tau_s, tau_s);
+
+        assert!((from_receive_time.x_m - from_transmit_time.x_m).abs() < 1.0e-9);
+        assert!((from_receive_time.y_m - from_transmit_time.y_m).abs() < 1.0e-9);
+        assert!((from_receive_time.z_m - from_transmit_time.z_m).abs() < 1.0e-9);
+        assert!(
+            (from_receive_time.clock_correction.bias_s
+                - from_transmit_time.clock_correction.bias_s)
+                .abs()
+                < 1.0e-18
+        );
     }
 
     #[test]
