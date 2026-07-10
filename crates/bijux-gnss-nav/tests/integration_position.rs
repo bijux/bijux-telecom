@@ -150,6 +150,44 @@ fn single_point_solver_refreshes_unbiased_geometry_after_state_update() {
     }
 }
 
+#[test]
+fn single_point_solver_refreshes_biased_geometry_after_state_update() {
+    let scenario = four_satellite_position_scenario(2.75e-4);
+    let solver = PositionSolver {
+        max_iterations: 1,
+        residual_gate_m: 1.0e9,
+        chi_square_gate: 1.0e18,
+        robust: false,
+        raim: false,
+        ..PositionSolver::new()
+    };
+    let solution = solver
+        .solve_wls(&scenario.observations, &scenario.ephemerides, scenario.t_rx_s)
+        .expect("single-iteration biased geometry should still produce a solution");
+
+    assert_eq!(solution.used_sat_count, 4);
+    for (sat, residual_m, _weight) in &solution.residuals {
+        let observation = scenario
+            .observations
+            .iter()
+            .find(|observation| observation.sat == *sat)
+            .expect("scenario observation");
+        let ephemeris = scenario
+            .ephemerides
+            .iter()
+            .find(|ephemeris| ephemeris.sat == *sat)
+            .expect("scenario ephemeris");
+        let expected_residual_m = iterative_pseudorange_residual_m(
+            ephemeris,
+            observation,
+            (solution.ecef_x_m, solution.ecef_y_m, solution.ecef_z_m),
+            solution.clock_bias_s,
+            scenario.t_rx_s,
+        );
+        assert!((residual_m - expected_residual_m).abs() < 1.0e-6);
+    }
+}
+
 fn decoded_lnav_subframes_from_ephemeris(eph: &GpsEphemeris) -> Vec<GpsL1CaLnavDecodedSubframe> {
     let alignment = |subframe_index: usize| GpsL1CaLnavSubframeAlignment {
         start_bit_index: subframe_index * 300,
