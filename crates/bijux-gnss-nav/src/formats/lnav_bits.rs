@@ -10,6 +10,7 @@ use crate::orbits::gps::GpsEphemeris;
 
 const GPS_L1CA_PREAMBLE: [u8; 8] = [1, 0, 0, 0, 1, 0, 1, 1];
 const GPS_L1CA_NAV_BIT_LENGTH_MS: usize = 20;
+const GPS_L1CA_LNAV_SUBFRAME_LENGTH_BITS: usize = 300;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BitSyncResult {
@@ -30,6 +31,17 @@ pub struct GpsL1CaNavigationBit {
 pub struct GpsL1CaNavigationBits {
     pub bit_start_ms: usize,
     pub bits: Vec<GpsL1CaNavigationBit>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GpsL1CaLnavSubframeAlignment {
+    pub start_bit_index: usize,
+    pub end_bit_index_exclusive: usize,
+    pub start_prompt_index: usize,
+    pub end_prompt_index_exclusive: usize,
+    pub inverted: bool,
+    pub word_count: usize,
+    pub parity_ok_count: usize,
 }
 
 pub fn demodulate_gps_l1ca_navigation_bits(prompt_i: &[f32]) -> GpsL1CaNavigationBits {
@@ -107,6 +119,12 @@ pub fn find_preamble(bits: &[i8]) -> Option<(usize, bool)> {
         }
     }
     None
+}
+
+#[derive(Debug, Clone)]
+struct AlignedGpsL1CaLnavSubframe {
+    alignment: GpsL1CaLnavSubframeAlignment,
+    words: Vec<GpsWord>,
 }
 
 #[derive(Debug, Clone)]
@@ -279,55 +297,54 @@ pub struct LnavDecodeStats {
     pub parity_pass_rate: f64,
 }
 
+pub fn align_gps_l1ca_lnav_subframes(
+    bits: &[i8],
+    bit_start_ms: usize,
+) -> Vec<GpsL1CaLnavSubframeAlignment> {
+    aligned_gps_l1ca_lnav_subframes(bits, bit_start_ms)
+        .into_iter()
+        .map(|subframe| subframe.alignment)
+        .collect()
+}
+
 pub fn decode_subframes(bits: &[i8]) -> (Vec<GpsEphemeris>, LnavDecodeStats) {
     let mut ephemerides = Vec::new();
-    let mut preamble_hits = 0;
     let mut parity_ok = 0;
     let mut parity_total = 0;
     let mut builder = EphemerisBuilder::default();
 
-    let mut idx = 0;
-    while idx + 300 <= bits.len() {
-        let chunk = &bits[idx..idx + 300];
-        if let Some((preamble_idx, inverted)) = find_preamble(chunk) {
-            if preamble_idx != 0 {
-                idx += preamble_idx;
-                continue;
+    let aligned_subframes = aligned_gps_l1ca_lnav_subframes(bits, 0);
+    for subframe in &aligned_subframes {
+        for word in &subframe.words {
+            parity_total += 1;
+            if word.parity_ok {
+                parity_ok += 1;
             }
-            preamble_hits += 1;
-            let mut chunk_bits = chunk.to_vec();
-            if inverted {
-                for b in chunk_bits.iter_mut() {
-                    *b *= -1;
-                }
-            }
-            let words = decode_words(&chunk_bits);
-            for w in &words {
-                parity_total += 1;
-                if w.parity_ok {
-                    parity_ok += 1;
-                }
-            }
-            if words.len() >= 10 {
-                let info = parse_how(&words[1]);
-                if info.subframe_id == 1 || info.subframe_id == 2 || info.subframe_id == 3 {
-                    if let Some(part) = parse_ephemeris(&words, info.subframe_id) {
-                        builder.merge(part);
-                        if let Some(eph) = builder.try_build() {
-                            ephemerides.push(eph);
-                            builder = EphemerisBuilder::default();
-                        }
+        }
+        if subframe.words.len() >= 10 {
+            let info = parse_how(&subframe.words[1]);
+            if info.subframe_id == 1 || info.subframe_id == 2 || info.subframe_id == 3 {
+                if let Some(part) = parse_ephemeris(&subframe.words, info.subframe_id) {
+                    builder.merge(part);
+                    if let Some(eph) = builder.try_build() {
+                        ephemerides.push(eph);
+                        builder = EphemerisBuilder::default();
                     }
                 }
             }
         }
-        idx += 300;
     }
 
     let parity_pass_rate =
         if parity_total > 0 { parity_ok as f64 / parity_total as f64 } else { 0.0 };
 
-    (ephemerides, LnavDecodeStats { preamble_hits, parity_pass_rate })
+    (
+        ephemerides,
+        LnavDecodeStats {
+            preamble_hits: aligned_subframes.len(),
+            parity_pass_rate,
+        },
+    )
 }
 
 fn parse_how(word: &GpsWord) -> SubframeInfo {
@@ -342,5 +359,134 @@ fn parse_ephemeris(words: &[GpsWord], subframe_id: u8) -> Option<EphemerisPart> 
         2 => parse_subframe2(words),
         3 => parse_subframe3(words),
         _ => None,
+    }
+}
+
+fn aligned_gps_l1ca_lnav_subframes(
+    bits: &[i8],
+    bit_start_ms: usize,
+) -> Vec<AlignedGpsL1CaLnavSubframe> {
+    let mut aligned_subframes = Vec::new();
+    let mut idx = 0;
+    while idx + GPS_L1CA_LNAV_SUBFRAME_LENGTH_BITS <= bits.len() {
+        let chunk = &bits[idx..idx + GPS_L1CA_LNAV_SUBFRAME_LENGTH_BITS];
+        if let Some((preamble_idx, inverted)) = find_preamble(chunk) {
+            if preamble_idx != 0 {
+                idx += preamble_idx;
+                continue;
+            }
+            let mut chunk_bits = chunk.to_vec();
+            if inverted {
+                for bit in &mut chunk_bits {
+                    *bit *= -1;
+                }
+            }
+            let words = decode_words(&chunk_bits);
+            let parity_ok_count = words.iter().filter(|word| word.parity_ok).count();
+            let alignment = GpsL1CaLnavSubframeAlignment {
+                start_bit_index: idx,
+                end_bit_index_exclusive: idx + GPS_L1CA_LNAV_SUBFRAME_LENGTH_BITS,
+                start_prompt_index: bit_start_ms + idx * GPS_L1CA_NAV_BIT_LENGTH_MS,
+                end_prompt_index_exclusive: bit_start_ms
+                    + (idx + GPS_L1CA_LNAV_SUBFRAME_LENGTH_BITS) * GPS_L1CA_NAV_BIT_LENGTH_MS,
+                inverted,
+                word_count: words.len(),
+                parity_ok_count,
+            };
+            aligned_subframes.push(AlignedGpsL1CaLnavSubframe { alignment, words });
+        }
+        idx += GPS_L1CA_LNAV_SUBFRAME_LENGTH_BITS;
+    }
+    aligned_subframes
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn set_bits(data: &mut u32, start: usize, len: usize, value: u32) {
+        let shift = 24 - (start - 1) - len;
+        let mask = ((1_u32 << len) - 1) << shift;
+        *data &= !mask;
+        *data |= (value << shift) & mask;
+    }
+
+    fn encode_word(data: u32, prev_d29: u8, prev_d30: u8) -> [u8; 30] {
+        let mut bits = [0_u8; 30];
+        for (i, bit) in bits.iter_mut().enumerate().take(24) {
+            let shift = 23 - i;
+            *bit = ((data >> shift) & 1) as u8;
+        }
+        let (p1, p2, p3, p4, p5, p6) = compute_parity(&bits[..24], prev_d29, prev_d30);
+        bits[24] = p1;
+        bits[25] = p2;
+        bits[26] = p3;
+        bits[27] = p4;
+        bits[28] = p5;
+        bits[29] = p6;
+        if prev_d30 == 1 {
+            for bit in &mut bits {
+                *bit = 1 - *bit;
+            }
+        }
+        bits
+    }
+
+    fn encode_subframe(subframe_id: u8, tow_count: u32) -> Vec<i8> {
+        let mut tlm = 0_u32;
+        set_bits(&mut tlm, 1, 8, 0x8B);
+
+        let mut how = 0_u32;
+        set_bits(&mut how, 1, 17, tow_count);
+        set_bits(&mut how, 19, 3, subframe_id as u32);
+
+        let mut words = vec![tlm, how];
+        for offset in 0..8_u32 {
+            words.push(0x012345 + offset * 0x010101);
+        }
+
+        let mut prev_d29 = 0_u8;
+        let mut prev_d30 = 0_u8;
+        let mut bits = Vec::with_capacity(GPS_L1CA_LNAV_SUBFRAME_LENGTH_BITS);
+        for data in words {
+            let encoded = encode_word(data, prev_d29, prev_d30);
+            prev_d29 = encoded[28];
+            prev_d30 = encoded[29];
+            bits.extend(encoded.into_iter().map(|bit| if bit == 1 { 1 } else { -1 }));
+        }
+        bits
+    }
+
+    #[test]
+    fn aligned_subframes_report_bit_and_prompt_boundaries() {
+        let mut bits = vec![-1; 17];
+        bits.extend(encode_subframe(1, 1));
+
+        let aligned = align_gps_l1ca_lnav_subframes(&bits, 3);
+
+        assert_eq!(aligned.len(), 1, "aligned={aligned:?}");
+        assert_eq!(aligned[0].start_bit_index, 17);
+        assert_eq!(aligned[0].end_bit_index_exclusive, 317);
+        assert_eq!(aligned[0].start_prompt_index, 343);
+        assert_eq!(aligned[0].end_prompt_index_exclusive, 6343);
+        assert!(!aligned[0].inverted);
+        assert_eq!(aligned[0].word_count, 10);
+        assert!(aligned[0].parity_ok_count > 0, "aligned={aligned:?}");
+    }
+
+    #[test]
+    fn aligned_subframes_normalize_inverted_preamble_polarity() {
+        let bits = encode_subframe(2, 2)
+            .into_iter()
+            .map(|bit| bit * -1)
+            .collect::<Vec<_>>();
+
+        let aligned = align_gps_l1ca_lnav_subframes(&bits, 0);
+
+        assert_eq!(aligned.len(), 1, "aligned={aligned:?}");
+        assert_eq!(aligned[0].start_bit_index, 0);
+        assert!(aligned[0].inverted);
+        assert_eq!(aligned[0].word_count, 10);
+        assert!(aligned[0].parity_ok_count > 0, "aligned={aligned:?}");
     }
 }
