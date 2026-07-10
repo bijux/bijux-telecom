@@ -256,6 +256,23 @@ pub mod v1 {
                         "tracking epoch contains NaN/Inf",
                     ));
                 }
+                if let Some(uncertainty) = &self.tracking_uncertainty {
+                    if !uncertainty.code_phase_samples.is_finite()
+                        || !uncertainty.carrier_phase_cycles.is_finite()
+                        || !uncertainty.doppler_hz.is_finite()
+                        || !uncertainty.cn0_dbhz.is_finite()
+                        || uncertainty.code_phase_samples < 0.0
+                        || uncertainty.carrier_phase_cycles < 0.0
+                        || uncertainty.doppler_hz < 0.0
+                        || uncertainty.cn0_dbhz < 0.0
+                    {
+                        events.push(DiagnosticEvent::new(
+                            DiagnosticSeverity::Error,
+                            "GNSS_NUMERIC_TRACK_UNCERTAINTY_INVALID",
+                            "tracking uncertainty contains invalid values",
+                        ));
+                    }
+                }
                 events.extend(validate_receiver_sample_trace(
                     self.source_time,
                     "tracking",
