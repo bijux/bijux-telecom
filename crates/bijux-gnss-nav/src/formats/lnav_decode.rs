@@ -414,11 +414,79 @@ pub fn decode_rawephem_hex(prn: u8, sub1: &str, sub2: &str, sub3: &str) -> Optio
 
 #[cfg(test)]
 mod tests {
-    use super::signed;
+    use super::{decode_subframe1_clock, signed};
+    use crate::formats::lnav_bits::GpsWord;
+
+    fn set_bits(data: &mut u32, start: usize, len: usize, value: u32) {
+        let shift = 24 - (start - 1) - len;
+        let mask = ((1_u32 << len) - 1) << shift;
+        *data &= !mask;
+        *data |= (value << shift) & mask;
+    }
+
+    fn encode_signed(value: i32, bits: usize) -> u32 {
+        let mask = (1_u32 << bits) - 1;
+        (value as u32) & mask
+    }
 
     #[test]
     fn signed_decodes_32_bit_negative_values_without_overflow() {
         assert_eq!(signed(0x8000_0000, 32), i32::MIN);
         assert_eq!(signed(0xFFFF_FFFF, 32), -1);
+    }
+
+    #[test]
+    fn subframe_1_clock_decodes_week_health_and_clock_terms() {
+        let week = 987_u16;
+        let sv_health = 0b10_1101_u8;
+        let iodc = 0x2AB_u16;
+        let tgd_raw = -20_i32;
+        let toc_raw = 21_600_u32;
+        let af2_raw = -12_i32;
+        let af1_raw = 3_210_i32;
+        let af0_raw = -123_456_i32;
+
+        let mut w3 = 0_u32;
+        set_bits(&mut w3, 1, 10, week as u32);
+        set_bits(&mut w3, 17, 6, sv_health as u32);
+        set_bits(&mut w3, 23, 2, ((iodc >> 8) & 0b11) as u32);
+
+        let mut w7 = 0_u32;
+        set_bits(&mut w7, 17, 8, encode_signed(tgd_raw, 8));
+
+        let mut w8 = 0_u32;
+        set_bits(&mut w8, 1, 8, (iodc & 0xFF) as u32);
+        set_bits(&mut w8, 9, 16, toc_raw);
+
+        let mut w9 = 0_u32;
+        set_bits(&mut w9, 1, 8, encode_signed(af2_raw, 8));
+        set_bits(&mut w9, 9, 16, encode_signed(af1_raw, 16));
+
+        let mut w10 = 0_u32;
+        set_bits(&mut w10, 1, 22, encode_signed(af0_raw, 22));
+
+        let words = vec![
+            GpsWord { data: 0, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: 0, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: w3, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: 0, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: 0, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: 0, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: w7, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: w8, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: w9, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: w10, parity_ok: true, d29_star: 0, d30_star: 0 },
+        ];
+
+        let clock = decode_subframe1_clock(&words).expect("subframe 1 clock");
+
+        assert_eq!(clock.week, week);
+        assert_eq!(clock.sv_health, sv_health);
+        assert_eq!(clock.iodc, iodc);
+        assert!((clock.tgd - tgd_raw as f64 * 2f64.powi(-31)).abs() < f64::EPSILON);
+        assert!((clock.toc_s - toc_raw as f64 * 16.0).abs() < f64::EPSILON);
+        assert!((clock.af2 - af2_raw as f64 * 2f64.powi(-55)).abs() < f64::EPSILON);
+        assert!((clock.af1 - af1_raw as f64 * 2f64.powi(-43)).abs() < f64::EPSILON);
+        assert!((clock.af0 - af0_raw as f64 * 2f64.powi(-31)).abs() < f64::EPSILON);
     }
 }
