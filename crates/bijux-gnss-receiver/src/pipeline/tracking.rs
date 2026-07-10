@@ -413,6 +413,7 @@ impl Tracking {
             SatId { constellation: Constellation::Gps, prn: 1 },
             0.0,
             0.0,
+            f64::INFINITY,
             self.config.tracking_params(SignalBand::L1),
             5,
         );
@@ -484,6 +485,7 @@ impl Tracking {
                 channel.sat,
                 carrier_hz,
                 code_phase_samples,
+                channel.state.acquisition_cn0_proxy_dbhz,
                 channel.tracking_params,
                 self.epochs_in_frame(&channel_frame, channel.tracking_params),
             );
@@ -557,6 +559,7 @@ impl Tracking {
         sat: SatId,
         carrier_hz: f64,
         code_phase_samples: f64,
+        acquisition_cn0_proxy_dbhz: f64,
         tracking_params: TrackingParams,
         epochs: usize,
     ) -> (Vec<TrackEpoch>, Vec<TrackTransition>) {
@@ -565,7 +568,7 @@ impl Tracking {
             carrier_phase_cycles: 0.0,
             code_rate_hz: self.config.code_freq_basis_hz,
             code_phase_samples,
-            acquisition_cn0_proxy_dbhz: f64::INFINITY,
+            acquisition_cn0_proxy_dbhz,
             prev_prompt: None,
             prev_prompt_phase_cycles: None,
             nav_bit_phase_offset_cycles: 0.0,
