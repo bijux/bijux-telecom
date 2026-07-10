@@ -40,6 +40,7 @@ pub use crate::pipeline::navigation::{EkfState, Navigation, NavigationEngine};
 /// Observation-building helpers.
 pub use crate::pipeline::observations::{
     observations_from_tracking, observations_from_tracking_results,
+    observations_from_tracking_results_with_gps_anchor,
 };
 /// Tracking engine and related types.
 pub use crate::pipeline::tracking::{

@@ -5,7 +5,7 @@ use crate::api::{Receiver, ReceiverEngine, RunArtifacts};
 use crate::engine::metrics::write_metrics_summary;
 use crate::engine::runtime::{Metric, TraceRecord};
 use crate::pipeline::observations::{
-    observation_decisions_from_epochs, observations_from_tracking_results,
+    observation_decisions_from_epochs, observations_from_tracking_results_with_gps_anchor,
 };
 use bijux_gnss_core::api::{
     signal_registry, Constellation, InputError, SatId, SignalBand, SignalCode, SignalSupportRow,
@@ -269,8 +269,9 @@ impl Receiver {
             fields: vec![("stage", "observations".to_string())],
         });
         let observation_start = Instant::now();
-        let observation_report = observations_from_tracking_results(
+        let observation_report = observations_from_tracking_results_with_gps_anchor(
             self.config(),
+            self.runtime().config.capture_start_gps_time,
             &tracking_results,
             self.config().hatch_window,
         );

@@ -559,8 +559,11 @@ fn write_obs_timeseries(
     let out_dir = artifacts_dir(common, "track", dataset)?;
     let header = artifact_header(common, profile, dataset)?;
     let runtime = runtime_config_from_env(common, None);
-    let obs_report = bijux_gnss_infra::api::receiver::observations_from_tracking_results(
+    let obs_report = bijux_gnss_infra::api::receiver::observations_from_tracking_results_with_gps_anchor(
         config,
+        dataset
+            .and_then(|entry| entry.capture_start_utc.as_deref())
+            .and_then(capture_start_gps_time),
         tracks,
         hatch_window,
     );

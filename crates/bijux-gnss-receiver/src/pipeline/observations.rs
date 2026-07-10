@@ -9,10 +9,11 @@
 //! TODO(ref-grade): add literature citations for CN0 weighting and multipath heuristics.
 
 use bijux_gnss_core::api::{
-    Cycles, DiagnosticEvent, DiagnosticSeverity, LockFlags, Meters, ObsDecisionArtifact, ObsEpoch,
-    ObsEpochManifest, ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus,
-    ObservationSupportClass, ObservationUncertaintyClass, ReceiverRole, ReceiverSampleTrace,
-    SatObservationDecision, Seconds, SigId, SignalBand, TrackEpoch,
+    Cycles, DiagnosticEvent, DiagnosticSeverity, GpsTime, LockFlags, Meters, ObsDecisionArtifact,
+    ObsEpoch, ObsEpochManifest, ObsMetadata, ObsSatellite, ObsSignalTiming,
+    ObservationEpochDecision, ObservationStatus, ObservationSupportClass,
+    ObservationUncertaintyClass, ReceiverRole, ReceiverSampleTrace, SatObservationDecision,
+    Seconds, SigId, SignalBand, TrackEpoch,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -57,11 +58,12 @@ pub fn observations_from_tracking(
     config: &ReceiverPipelineConfig,
     epochs: &[TrackEpoch],
 ) -> (Vec<ObsEpoch>, Vec<DiagnosticEvent>) {
-    observations_from_tracking_with_provenance(config, None, epochs)
+    observations_from_tracking_with_provenance(config, None, None, epochs)
 }
 
 fn observations_from_tracking_with_provenance(
     config: &ReceiverPipelineConfig,
+    capture_start_gps_time: Option<GpsTime>,
     track: Option<&TrackingResult>,
     epochs: &[TrackEpoch],
 ) -> (Vec<ObsEpoch>, Vec<DiagnosticEvent>) {
@@ -126,6 +128,12 @@ fn observations_from_tracking_with_provenance(
             (code_epoch * config.code_length as f64 + code_phase_chips) / code_rate_hz;
         let pseudorange_m =
             Meters(code_time_s * SPEED_OF_LIGHT_MPS + clock_bias_s * SPEED_OF_LIGHT_MPS);
+        let signal_travel_time_s = Seconds(pseudorange_m.0 / SPEED_OF_LIGHT_MPS);
+        let receive_gps_time = capture_start_gps_time.map(|gps_time| gps_time.offset_seconds(t_rx_s.0));
+        let signal_timing = receive_gps_time.map(|gps_time| ObsSignalTiming {
+            signal_travel_time_s,
+            transmit_gps_time: gps_time.offset_seconds(-signal_travel_time_s.0),
+        });
 
         let tracked_carrier_phase_cycles = epoch.carrier_phase_cycles.0;
         let doppler_hz = bijux_gnss_core::api::Hertz(doppler_hz_from_carrier_hz(
@@ -197,7 +205,7 @@ fn observations_from_tracking_with_provenance(
             elevation_deg: None,
             azimuth_deg: None,
             weight: None,
-            timing: None,
+            timing: signal_timing,
             error_model: None,
             metadata: ObsMetadata {
                 tracking_mode: "scalar".to_string(),
@@ -235,8 +243,8 @@ fn observations_from_tracking_with_provenance(
         let mut epoch = ObsEpoch {
             t_rx_s,
             source_time: epoch.source_time,
-            gps_week: None,
-            tow_s: None,
+            gps_week: receive_gps_time.map(|gps_time| gps_time.week),
+            tow_s: receive_gps_time.map(|gps_time| Seconds(gps_time.tow_s)),
             epoch_idx: epoch.epoch.index,
             discontinuity,
             valid: true,
@@ -267,6 +275,15 @@ pub fn observations_from_tracking_results(
     tracks: &[TrackingResult],
     hatch_window: u32,
 ) -> StepReport<Vec<ObsEpoch>> {
+    observations_from_tracking_results_with_gps_anchor(config, None, tracks, hatch_window)
+}
+
+pub fn observations_from_tracking_results_with_gps_anchor(
+    config: &ReceiverPipelineConfig,
+    capture_start_gps_time: Option<GpsTime>,
+    tracks: &[TrackingResult],
+    hatch_window: u32,
+) -> StepReport<Vec<ObsEpoch>> {
     use std::collections::BTreeMap;
 
     let mut by_epoch: BTreeMap<u64, ObsEpoch> = BTreeMap::new();
@@ -277,7 +294,12 @@ pub fn observations_from_tracking_results(
     let mut diagnostics = Vec::new();
     for track in tracks {
         let (obs, mut events) =
-            observations_from_tracking_with_provenance(config, Some(track), &track.epochs);
+            observations_from_tracking_with_provenance(
+                config,
+                capture_start_gps_time,
+                Some(track),
+                &track.epochs,
+            );
         diagnostics.append(&mut events);
         for epoch in obs {
             let entry = by_epoch.entry(epoch.epoch_idx).or_insert_with(|| ObsEpoch {
@@ -922,6 +944,30 @@ mod tests {
             assert_eq!(manifest.version, bijux_gnss_core::api::OBSERVATION_MODEL_VERSION);
             assert_eq!(manifest.epoch_id, bijux_gnss_core::api::obs_epoch_stability_key(epoch));
         }
+    }
+
+    #[test]
+    fn observations_stamp_receive_and_transmit_gps_times_from_anchor() {
+        let config = ReceiverPipelineConfig::default();
+        let track = make_track(4, &config);
+        let capture_start_gps_time = GpsTime { week: 2200, tow_s: 345_600.0 };
+
+        let report = observations_from_tracking_results_with_gps_anchor(
+            &config,
+            Some(capture_start_gps_time),
+            &[track],
+            10,
+        );
+        let epoch = report.output.first().expect("observation epoch");
+        let sat = epoch.sats.first().expect("observation satellite");
+        let timing = sat.timing.expect("signal timing");
+
+        assert_eq!(epoch.gps_week, Some(2200));
+        let tow_s = epoch.tow_s.expect("epoch tow");
+        assert!((tow_s.0 - 345_600.07).abs() <= 1.0e-6);
+        assert!((timing.signal_travel_time_s.0 - sat.pseudorange_m.0 / SPEED_OF_LIGHT_MPS).abs() <= 1.0e-12);
+        assert_eq!(timing.transmit_gps_time.week, 2200);
+        assert!((timing.transmit_gps_time.tow_s - 345_600.0).abs() <= 1.0e-9);
     }
 
     #[test]
