@@ -22,6 +22,8 @@ use bijux_gnss_signal::api::{generate_ca_code, Prn};
 
 const DLL_CODE_PHASE_CORRECTION_GAIN: f64 = 0.5;
 const SAMPLE_RATE_MISMATCH_MIN_CN0_DBHZ: f64 = 18.0;
+const TRACKING_LOCK_MIN_CN0_DBHZ: f64 = 28.0;
+const TRACKING_LOCK_REFUSAL_EPOCHS: u8 = 3;
 const SAMPLE_RATE_MISMATCH_MIN_PHASE_DRIFT_FRACTION: f64 = 0.0025;
 const SAMPLE_RATE_MISMATCH_MIN_PHASE_DRIFT_SAMPLES: f64 = 12.0;
 const SAMPLE_RATE_MISMATCH_WINDOW_EPOCHS: usize = 4;
@@ -116,11 +118,13 @@ struct LoopState {
     carrier_phase_cycles: f64,
     code_rate_hz: f64,
     code_phase_samples: f64,
+    acquisition_cn0_proxy_dbhz: f64,
     prev_prompt: Option<Complex<f32>>,
     prev_prompt_phase_cycles: Option<f64>,
     nav_bit_phase_offset_cycles: f64,
     nav_bit_transition_count: u32,
     pull_in_stable_epochs: u8,
+    weak_cn0_epochs: u8,
     state: ChannelState,
     unlocked_count: u8,
 }
@@ -137,6 +141,7 @@ struct TrackingStartContext {
     acquisition_score: f32,
     acquisition_code_phase_samples: usize,
     acquisition_carrier_hz: f64,
+    acquisition_cn0_proxy_dbhz: f64,
     acq_to_track_state: String,
 }
 
@@ -251,6 +256,7 @@ impl Tracking {
                 self.config.intermediate_freq_hz,
                 acquisition.doppler_hz.0,
             ),
+            acquisition_cn0_proxy_dbhz: acquisition.cn0_proxy as f64,
             acq_to_track_state: acq_to_track_state(&acquisition.hypothesis).to_string(),
         })
     }
@@ -559,11 +565,13 @@ impl Tracking {
             carrier_phase_cycles: 0.0,
             code_rate_hz: self.config.code_freq_basis_hz,
             code_phase_samples,
+            acquisition_cn0_proxy_dbhz: f64::INFINITY,
             prev_prompt: None,
             prev_prompt_phase_cycles: None,
             nav_bit_phase_offset_cycles: 0.0,
             nav_bit_transition_count: 0,
             pull_in_stable_epochs: 0,
+            weak_cn0_epochs: 0,
             state: ChannelState::Acquired,
             unlocked_count: 0,
         };
@@ -602,6 +610,7 @@ impl Tracking {
                         ("prn", context.seed.sat.prn.to_string()),
                         ("hypothesis", context.acquisition_hypothesis.clone()),
                         ("to_track", context.acq_to_track_state.clone()),
+                        ("cn0_proxy_dbhz", format!("{:.3}", context.acquisition_cn0_proxy_dbhz)),
                     ],
                 });
                 IncrementalTrackingChannel {
@@ -623,11 +632,13 @@ impl Tracking {
                         carrier_phase_cycles: 0.0,
                         code_rate_hz: self.config.code_freq_basis_hz,
                         code_phase_samples: context.seed.code_phase_samples.0,
+                        acquisition_cn0_proxy_dbhz: context.acquisition_cn0_proxy_dbhz,
                         prev_prompt: None,
                         prev_prompt_phase_cycles: None,
                         nav_bit_phase_offset_cycles: 0.0,
                         nav_bit_transition_count: 0,
                         pull_in_stable_epochs: 0,
+                        weak_cn0_epochs: 0,
                         state: ChannelState::Acquired,
                         unlocked_count: 0,
                     },
@@ -818,8 +829,10 @@ impl Tracking {
             );
             let coherent_integration_s =
                 coherent_integration_seconds(epoch_frame.len(), self.config.sampling_freq_hz);
-            let raw_fll_err_hz =
-                carrier_frequency_error_hz_from_phase_delta(raw_fll_err as f64, coherent_integration_s);
+            let raw_fll_err_hz = carrier_frequency_error_hz_from_phase_delta(
+                raw_fll_err as f64,
+                coherent_integration_s,
+            );
             let nav_bit_aware_fll_err_hz = carrier_frequency_error_hz_from_phase_delta(
                 phase_decision.aligned_phase_delta_cycles * std::f64::consts::TAU,
                 coherent_integration_s,
@@ -828,7 +841,8 @@ impl Tracking {
                 || state.nav_bit_phase_offset_cycles.abs() > f64::EPSILON
                 || phase_decision.nav_bit_phase_offset_cycles.abs() > f64::EPSILON;
             let fll_err_hz =
-                if use_nav_bit_aware_fll { nav_bit_aware_fll_err_hz } else { raw_fll_err_hz } as f32;
+                if use_nav_bit_aware_fll { nav_bit_aware_fll_err_hz } else { raw_fll_err_hz }
+                    as f32;
             let raw_pll_lock = pll_err.abs() < PLL_LOCK_MAX_PHASE_ERROR_RAD;
             let raw_fll_lock = (fll_err_hz as f64).abs() <= fll_lock_threshold_hz(fll_bw);
             state.pull_in_stable_epochs = update_pull_in_stable_epochs(
@@ -838,17 +852,32 @@ impl Tracking {
                 raw_fll_lock,
                 cycle_slip,
             );
-            let ready_for_tracking = state.pull_in_stable_epochs >= PULL_IN_REQUIRED_STABLE_EPOCHS;
+            let (weak_cn0_epochs, cn0_supports_lock, refuse_lock) = update_prelock_cn0_refusal(
+                state.state,
+                state.weak_cn0_epochs,
+                state.acquisition_cn0_proxy_dbhz,
+            );
+            state.weak_cn0_epochs = weak_cn0_epochs;
+            let ready_for_tracking =
+                cn0_supports_lock && state.pull_in_stable_epochs >= PULL_IN_REQUIRED_STABLE_EPOCHS;
 
             let from_state = state.state;
-            let transition = deterministic_transition_rule(
-                from_state,
-                lock,
-                ready_for_tracking,
-                anti_false_lock,
-                cycle_slip,
-                state.unlocked_count,
-            );
+            let transition = if refuse_lock {
+                TransitionDecision {
+                    to_state: ChannelState::PullIn,
+                    reason: "cn0_below_tracking_lock_floor".to_string(),
+                    next_unlocked_count: state.unlocked_count.saturating_add(1),
+                }
+            } else {
+                deterministic_transition_rule(
+                    from_state,
+                    lock,
+                    ready_for_tracking,
+                    anti_false_lock,
+                    cycle_slip,
+                    state.unlocked_count,
+                )
+            };
             state.unlocked_count = transition.next_unlocked_count;
             state.state = transition.to_state;
             if cycle_slip {
@@ -1343,6 +1372,22 @@ fn update_pull_in_stable_epochs(
     current_stable_epochs.saturating_add(1)
 }
 
+fn update_prelock_cn0_refusal(
+    current_state: ChannelState,
+    weak_cn0_epochs: u8,
+    cn0_dbhz: f64,
+) -> (u8, bool, bool) {
+    if current_state == ChannelState::Tracking {
+        return (0, true, false);
+    }
+    if !cn0_dbhz.is_finite() || cn0_dbhz >= TRACKING_LOCK_MIN_CN0_DBHZ {
+        return (0, cn0_dbhz.is_finite(), false);
+    }
+
+    let next_weak_cn0_epochs = weak_cn0_epochs.saturating_add(1);
+    (next_weak_cn0_epochs, false, next_weak_cn0_epochs >= TRACKING_LOCK_REFUSAL_EPOCHS)
+}
+
 fn bounded_fll_pull_in_correction_hz(fll_err_hz: f64, fll_bw_hz: f64) -> f64 {
     let max_correction_hz = fll_bw_hz.abs().max(1.0) * FLL_PULL_IN_MAX_CORRECTION_BW_MULTIPLIER;
     fll_err_hz.clamp(-max_correction_hz, max_correction_hz)
@@ -1506,6 +1551,31 @@ mod tests {
         assert_eq!(decision.to_state, ChannelState::PullIn);
         assert_eq!(decision.reason, "carrier_pull_in");
         assert_eq!(decision.next_unlocked_count, 0);
+    }
+
+    #[test]
+    fn prelock_cn0_refusal_trips_after_repeated_weak_epochs() {
+        let (weak_epochs, supports_lock, refuse_lock) =
+            super::update_prelock_cn0_refusal(ChannelState::PullIn, 2, 20.0);
+
+        assert_eq!(weak_epochs, 3);
+        assert!(!supports_lock);
+        assert!(refuse_lock);
+    }
+
+    #[test]
+    fn prelock_cn0_refusal_resets_on_supported_signal_or_established_tracking() {
+        let (weak_epochs, supports_lock, refuse_lock) =
+            super::update_prelock_cn0_refusal(ChannelState::PullIn, 2, 30.0);
+        assert_eq!(weak_epochs, 0);
+        assert!(supports_lock);
+        assert!(!refuse_lock);
+
+        let (weak_epochs, supports_lock, refuse_lock) =
+            super::update_prelock_cn0_refusal(ChannelState::Tracking, 2, 20.0);
+        assert_eq!(weak_epochs, 0);
+        assert!(supports_lock);
+        assert!(!refuse_lock);
     }
 
     #[test]
