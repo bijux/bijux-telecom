@@ -256,6 +256,16 @@ pub mod v1 {
                         "tracking epoch contains NaN/Inf",
                     ));
                 }
+                if self
+                    .navigation_bit_sign
+                    .is_some_and(|sign| sign != -1 && sign != 1)
+                {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Error,
+                        "GNSS_TRACK_NAVIGATION_BIT_SIGN_INVALID",
+                        "tracking epoch navigation bit sign must be -1 or 1",
+                    ));
+                }
                 if let Some(uncertainty) = &self.tracking_uncertainty {
                     if !uncertainty.code_phase_samples.is_finite()
                         || !uncertainty.carrier_phase_cycles.is_finite()

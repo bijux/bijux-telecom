@@ -581,6 +581,8 @@ pub struct TrackEpoch {
     pub fll_lock: bool,
     pub cycle_slip: bool,
     pub nav_bit_lock: bool,
+    #[serde(default)]
+    pub navigation_bit_sign: Option<i8>,
     pub dll_err: f32,
     pub pll_err: f32,
     pub fll_err: f32,
@@ -630,6 +632,7 @@ impl Default for TrackEpoch {
             fll_lock: false,
             cycle_slip: false,
             nav_bit_lock: false,
+            navigation_bit_sign: None,
             dll_err: 0.0,
             pll_err: 0.0,
             fll_err: 0.0,
