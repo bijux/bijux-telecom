@@ -125,6 +125,27 @@ pub fn nav_bit_transition_epoch_indices(epochs: &[TrackEpoch], sample_rate_hz: f
         .collect()
 }
 
+pub fn epoch_indices_with_lock_state(epochs: &[TrackEpoch], lock_state: &str) -> Vec<usize> {
+    epochs
+        .iter()
+        .enumerate()
+        .filter_map(|(index, epoch)| (epoch.lock_state == lock_state).then_some(index))
+        .collect()
+}
+
+pub fn epoch_indices_with_lock_state_reason(
+    epochs: &[TrackEpoch],
+    lock_state_reason: &str,
+) -> Vec<usize> {
+    epochs
+        .iter()
+        .enumerate()
+        .filter_map(|(index, epoch)| {
+            (epoch.lock_state_reason.as_deref() == Some(lock_state_reason)).then_some(index)
+        })
+        .collect()
+}
+
 pub fn post_lock_carrier_frequency_errors_hz(
     epochs: &[TrackEpoch],
     expected_carrier_hz: f64,
@@ -173,8 +194,10 @@ fn gps_lnav_nav_bit_period_samples(sample_rate_hz: f64) -> u64 {
 mod tests {
     use super::{
         carrier_frequency_error_hz, carrier_frequency_error_under_linear_doppler_hz,
-        code_phase_error_samples, expected_linear_doppler_hz, first_tracking_lock_epoch_index,
-        nav_bit_transition_epoch_indices, post_lock_carrier_frequency_errors_hz,
+        code_phase_error_samples, epoch_indices_with_lock_state,
+        epoch_indices_with_lock_state_reason, expected_linear_doppler_hz,
+        first_tracking_lock_epoch_index, nav_bit_transition_epoch_indices,
+        post_lock_carrier_frequency_errors_hz,
         post_lock_carrier_frequency_errors_under_linear_doppler_hz,
         post_lock_code_phase_errors_samples, post_lock_epochs, stable_tracking_window,
         wrapped_code_phase_error_samples,
@@ -258,6 +281,42 @@ mod tests {
         ];
 
         assert_eq!(first_tracking_lock_epoch_index(&epochs), Some(1));
+    }
+
+    #[test]
+    fn epoch_indices_with_lock_state_collects_matching_epochs() {
+        let epochs = vec![
+            TrackEpoch { lock_state: "pull_in".to_string(), ..TrackEpoch::default() },
+            TrackEpoch { lock_state: "degraded".to_string(), ..TrackEpoch::default() },
+            TrackEpoch { lock_state: "degraded".to_string(), ..TrackEpoch::default() },
+            TrackEpoch { lock_state: "tracking".to_string(), ..TrackEpoch::default() },
+        ];
+
+        assert_eq!(epoch_indices_with_lock_state(&epochs, "degraded"), vec![1, 2]);
+    }
+
+    #[test]
+    fn epoch_indices_with_lock_state_reason_collects_matching_epochs() {
+        let epochs = vec![
+            TrackEpoch {
+                lock_state_reason: Some("carrier_pull_in".to_string()),
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                lock_state_reason: Some("signal_fade".to_string()),
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                lock_state_reason: Some("signal_fade".to_string()),
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                lock_state_reason: Some("fade_recovered".to_string()),
+                ..TrackEpoch::default()
+            },
+        ];
+
+        assert_eq!(epoch_indices_with_lock_state_reason(&epochs, "signal_fade"), vec![1, 2]);
     }
 
     #[test]
