@@ -38,10 +38,32 @@ struct PseudorangeComputation {
 }
 
 #[derive(Debug, Clone)]
-struct PhaseState {
+struct CarrierPhaseArcState {
     phase_cycles: f64,
-    last_phase_cycles: f64,
+    last_sample_index: u64,
+    arc_start_epoch_idx: u64,
+    arc_start_sample_index: u64,
+    pending_reset: Option<CarrierPhaseContinuity>,
     initialized: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CarrierPhaseContinuity {
+    Unusable,
+    ArcStart,
+    Continuous,
+    ResetAfterCycleSlip,
+    ResetAfterUnlock,
+    ResetAfterDiscontinuity,
+}
+
+#[derive(Debug, Clone)]
+struct CarrierPhaseObservation {
+    phase_cycles: Cycles,
+    cycle_slip: bool,
+    continuity: CarrierPhaseContinuity,
+    arc_start_epoch_idx: u64,
+    arc_start_sample_index: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -86,8 +108,14 @@ fn observations_from_tracking_with_provenance(
     let code_rate_hz = config.code_freq_basis_hz;
     let meters_per_sample = SPEED_OF_LIGHT_MPS / config.sampling_freq_hz;
 
-    let mut phase_state =
-        PhaseState { phase_cycles: 0.0, last_phase_cycles: 0.0, initialized: false };
+    let mut carrier_phase_state = CarrierPhaseArcState {
+        phase_cycles: 0.0,
+        last_sample_index: 0,
+        arc_start_epoch_idx: 0,
+        arc_start_sample_index: 0,
+        pending_reset: None,
+        initialized: false,
+    };
 
     let mut out = Vec::with_capacity(epochs.len());
     let mut diagnostics = Vec::new();
@@ -146,23 +174,13 @@ fn observations_from_tracking_with_provenance(
             config.intermediate_freq_hz,
             epoch.carrier_hz.0,
         ));
-        let dt_s = 0.001;
-        let mut cycle_slip = false;
-
-        if !phase_state.initialized {
-            phase_state.phase_cycles = tracked_carrier_phase_cycles;
-            phase_state.last_phase_cycles = tracked_carrier_phase_cycles;
-            phase_state.initialized = true;
-        } else {
-            let predicted = phase_state.phase_cycles + doppler_hz.0 * dt_s;
-            let measured = tracked_carrier_phase_cycles;
-            let residual = (measured - predicted).abs();
-            if residual > 0.25 {
-                cycle_slip = true;
-            }
-            phase_state.phase_cycles = measured;
-            phase_state.last_phase_cycles = measured;
-        }
+        let carrier_phase = carrier_phase_observation(
+            epoch,
+            tracked_carrier_phase_cycles,
+            doppler_hz.0,
+            discontinuity,
+            &mut carrier_phase_state,
+        );
 
         let cn0_dbhz = epoch.cn0_dbhz;
         let lock_quality = tracking_lock_quality(epoch);
@@ -194,7 +212,7 @@ fn observations_from_tracking_with_provenance(
             },
             pseudorange_m: pseudorange.pseudorange_m,
             pseudorange_var_m2: variance_m2,
-            carrier_phase_cycles: Cycles(phase_state.phase_cycles),
+            carrier_phase_cycles: carrier_phase.phase_cycles,
             carrier_phase_var_cycles2,
             doppler_hz,
             doppler_var_hz2,
@@ -203,7 +221,7 @@ fn observations_from_tracking_with_provenance(
                 code_lock: epoch.lock,
                 carrier_lock: epoch.pll_lock,
                 bit_lock: false,
-                cycle_slip,
+                cycle_slip: carrier_phase.cycle_slip,
             },
             multipath_suspect: false,
             observation_status,
@@ -243,6 +261,13 @@ fn observations_from_tracking_with_provenance(
                 .to_string(),
                 observation_uncertainty_class: observation_uncertainty_label(cn0_dbhz).to_string(),
                 pseudorange_model: pseudorange.model.to_string(),
+                carrier_phase_model: "tracked_carrier_cycles".to_string(),
+                carrier_phase_continuity: carrier_phase_continuity_label(
+                    carrier_phase.continuity,
+                )
+                .to_string(),
+                carrier_phase_arc_start_epoch_idx: carrier_phase.arc_start_epoch_idx,
+                carrier_phase_arc_start_sample_index: carrier_phase.arc_start_sample_index,
                 signal_delay_alignment_source: pseudorange.alignment_source.unwrap_or_default(),
                 time_tag_source,
                 time_tag_sample_index,
@@ -573,6 +598,116 @@ fn pseudorange_from_tracking_epoch(
         model: "receiver_epoch_fallback",
         alignment_source: None,
         alignment_resolved: false,
+    }
+}
+
+fn carrier_phase_observation(
+    epoch: &TrackEpoch,
+    tracked_carrier_phase_cycles: f64,
+    doppler_hz: f64,
+    discontinuity: bool,
+    state: &mut CarrierPhaseArcState,
+) -> CarrierPhaseObservation {
+    if !carrier_phase_tracking_usable(epoch) {
+        if epoch.cycle_slip {
+            record_pending_reset(&mut state.pending_reset, CarrierPhaseContinuity::ResetAfterCycleSlip);
+        } else if discontinuity {
+            record_pending_reset(
+                &mut state.pending_reset,
+                CarrierPhaseContinuity::ResetAfterDiscontinuity,
+            );
+        } else if state.initialized {
+            record_pending_reset(&mut state.pending_reset, CarrierPhaseContinuity::ResetAfterUnlock);
+        }
+        state.initialized = false;
+        return CarrierPhaseObservation {
+            phase_cycles: Cycles(tracked_carrier_phase_cycles),
+            cycle_slip: epoch.cycle_slip,
+            continuity: CarrierPhaseContinuity::Unusable,
+            arc_start_epoch_idx: 0,
+            arc_start_sample_index: 0,
+        };
+    }
+
+    let predicted_slip = state.initialized
+        && (tracked_carrier_phase_cycles - (state.phase_cycles + doppler_hz * 0.001)).abs() > 0.25;
+    let reset_reason = if epoch.cycle_slip || predicted_slip {
+        Some(CarrierPhaseContinuity::ResetAfterCycleSlip)
+    } else if discontinuity && state.initialized {
+        Some(CarrierPhaseContinuity::ResetAfterDiscontinuity)
+    } else {
+        state.pending_reset.take()
+    };
+
+    let continuity = if !state.initialized {
+        reset_reason.unwrap_or(CarrierPhaseContinuity::ArcStart)
+    } else if let Some(reason) = reset_reason {
+        reason
+    } else {
+        CarrierPhaseContinuity::Continuous
+    };
+    let cycle_slip = matches!(
+        continuity,
+        CarrierPhaseContinuity::ResetAfterCycleSlip
+            | CarrierPhaseContinuity::ResetAfterUnlock
+            | CarrierPhaseContinuity::ResetAfterDiscontinuity
+    );
+
+    if continuity != CarrierPhaseContinuity::Continuous {
+        state.arc_start_epoch_idx = epoch.epoch.index;
+        state.arc_start_sample_index = epoch.sample_index;
+    }
+    state.phase_cycles = tracked_carrier_phase_cycles;
+    state.last_sample_index = epoch.sample_index;
+    state.initialized = true;
+
+    CarrierPhaseObservation {
+        phase_cycles: Cycles(tracked_carrier_phase_cycles),
+        cycle_slip,
+        continuity,
+        arc_start_epoch_idx: state.arc_start_epoch_idx,
+        arc_start_sample_index: state.arc_start_sample_index,
+    }
+}
+
+fn carrier_phase_tracking_usable(epoch: &TrackEpoch) -> bool {
+    epoch.lock
+        && epoch.pll_lock
+        && epoch.lock_state != "lost"
+        && epoch.carrier_phase_cycles.0.is_finite()
+}
+
+fn record_pending_reset(
+    pending: &mut Option<CarrierPhaseContinuity>,
+    candidate: CarrierPhaseContinuity,
+) {
+    if pending
+        .map(|current| carrier_phase_reset_priority(candidate) >= carrier_phase_reset_priority(current))
+        .unwrap_or(true)
+    {
+        *pending = Some(candidate);
+    }
+}
+
+fn carrier_phase_reset_priority(value: CarrierPhaseContinuity) -> u8 {
+    match value {
+        CarrierPhaseContinuity::ResetAfterCycleSlip => 3,
+        CarrierPhaseContinuity::ResetAfterDiscontinuity => 2,
+        CarrierPhaseContinuity::ResetAfterUnlock => 1,
+        CarrierPhaseContinuity::Unusable
+        | CarrierPhaseContinuity::ArcStart
+        | CarrierPhaseContinuity::Continuous => 0,
+    }
+}
+
+fn carrier_phase_continuity_label(value: CarrierPhaseContinuity) -> &'static str {
+    match value {
+        CarrierPhaseContinuity::Unusable => "unusable",
+        CarrierPhaseContinuity::ArcStart => "arc_start",
+        CarrierPhaseContinuity::Continuous => "continuous",
+        CarrierPhaseContinuity::ResetAfterCycleSlip => "reset_after_cycle_slip",
+        CarrierPhaseContinuity::ResetAfterUnlock => "reset_after_unlock",
+        CarrierPhaseContinuity::ResetAfterDiscontinuity => "reset_after_discontinuity",
     }
 }
 
