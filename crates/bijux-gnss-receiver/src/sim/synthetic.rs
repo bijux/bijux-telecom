@@ -1993,20 +1993,29 @@ fn stable_tracking_window_bounds(
         return Some((0, epochs.len()));
     }
 
-    for start in 0..epochs.len() {
-        let window = &epochs[start..];
-        if window.len() < min_locked_epochs {
-            return None;
+    let mut stable_start = None;
+    for (index, epoch) in epochs.iter().enumerate() {
+        let stable = epoch.lock
+            && epoch.lock_state == "tracking"
+            && epoch.pll_lock
+            && epoch.fll_lock
+            && !epoch.cycle_slip
+            && epoch.lock_state_reason.as_deref() != Some("lock_lost");
+        match (stable_start, stable) {
+            (None, true) => stable_start = Some(index),
+            (Some(start), false) => {
+                if index - start >= min_locked_epochs {
+                    return Some((start, index - start));
+                }
+                stable_start = None;
+            }
+            _ => {}
         }
-        if window.iter().all(|epoch| {
-            epoch.lock
-                && epoch.lock_state == "tracking"
-                && epoch.pll_lock
-                && epoch.fll_lock
-                && !epoch.cycle_slip
-                && epoch.lock_state_reason.as_deref() != Some("lock_lost")
-        }) {
-            return Some((start, window.len()));
+    }
+
+    if let Some(start) = stable_start {
+        if epochs.len() - start >= min_locked_epochs {
+            return Some((start, epochs.len() - start));
         }
     }
 

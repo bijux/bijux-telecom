@@ -83,20 +83,29 @@ pub fn stable_tracking_window(epochs: &[TrackEpoch], min_locked_epochs: usize) -
         return epochs;
     }
 
-    for start in 0..epochs.len() {
-        let window = &epochs[start..];
-        if window.len() < min_locked_epochs {
-            return &[];
+    let mut stable_start = None;
+    for (index, epoch) in epochs.iter().enumerate() {
+        let stable = epoch.lock
+            && epoch.lock_state == "tracking"
+            && epoch.pll_lock
+            && epoch.fll_lock
+            && !epoch.cycle_slip
+            && epoch.lock_state_reason.as_deref() != Some("lock_lost");
+        match (stable_start, stable) {
+            (None, true) => stable_start = Some(index),
+            (Some(start), false) => {
+                if index - start >= min_locked_epochs {
+                    return &epochs[start..index];
+                }
+                stable_start = None;
+            }
+            _ => {}
         }
-        if window.iter().all(|epoch| {
-            epoch.lock
-                && epoch.lock_state == "tracking"
-                && epoch.pll_lock
-                && epoch.fll_lock
-                && !epoch.cycle_slip
-                && epoch.lock_state_reason.as_deref() != Some("lock_lost")
-        }) {
-            return window;
+    }
+
+    if let Some(start) = stable_start {
+        if epochs.len() - start >= min_locked_epochs {
+            return &epochs[start..];
         }
     }
 
@@ -357,6 +366,53 @@ mod tests {
 
         assert!(stable_tracking_window(&epochs, 2).is_empty());
         assert!(stable_tracking_window(&epochs, 3).is_empty());
+    }
+
+    #[test]
+    fn stable_tracking_window_keeps_first_qualifying_contiguous_segment() {
+        let epochs = vec![
+            TrackEpoch {
+                epoch: Epoch { index: 0 },
+                lock: true,
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                epoch: Epoch { index: 1 },
+                lock: true,
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                epoch: Epoch { index: 2 },
+                lock: false,
+                pll_lock: false,
+                fll_lock: false,
+                lock_state: "lost".to_string(),
+                lock_state_reason: Some("lock_lost".to_string()),
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                epoch: Epoch { index: 3 },
+                lock: true,
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                ..TrackEpoch::default()
+            },
+        ];
+
+        assert_eq!(
+            stable_tracking_window(&epochs, 2)
+                .iter()
+                .map(|epoch| epoch.epoch.index)
+                .collect::<Vec<_>>(),
+            vec![0, 1]
+        );
     }
 
     #[test]
