@@ -1171,8 +1171,17 @@ mod tests {
         let utc = UtcTime { unix_s: 1_700_000_000.0 };
         let gps = utc_to_gps(utc, &table);
         let offset = table.offset_at_utc(utc.unix_s);
-        let expected = utc.unix_s + offset as f64;
+        let expected = utc.unix_s - 315_964_800.0 + offset as f64;
         assert!((gps.to_seconds() - expected).abs() < 1e-6);
+    }
+
+    #[test]
+    fn utc_to_gps_anchors_week_zero_to_gps_epoch() {
+        let table = LeapSeconds::default_table();
+        let gps = utc_to_gps(UtcTime { unix_s: 315_964_800.0 }, &table);
+
+        assert_eq!(gps.week, 0);
+        assert_eq!(gps.tow_s, 0.0);
     }
 
     #[test]

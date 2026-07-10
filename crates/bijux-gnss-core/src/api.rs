@@ -77,8 +77,8 @@ pub use crate::reference_validation::{
 pub use crate::stats::{lla_to_ecef, stats, StatsSummary};
 /// Time and epoch structures.
 pub use crate::time::{
-    Epoch, GpsTime, LeapSecondEntry, LeapSeconds, ReceiverSampleTrace, SampleClock, SampleTime,
-    TaiTime, UtcTime,
+    gps_to_utc, utc_to_gps, Epoch, GpsTime, LeapSecondEntry, LeapSeconds, ReceiverSampleTrace,
+    SampleClock, SampleTime, TaiTime, UtcTime,
 };
 /// Strong units for physical quantities.
 pub use crate::units::{

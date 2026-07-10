@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{GpsTime, UtcTime};
+use bijux_gnss_core::api::{utc_to_gps, GpsTime, LeapSeconds, UtcTime};
 
 pub fn normalize_tow(tow_s: f64) -> f64 {
     if tow_s.is_finite() {
@@ -28,7 +28,7 @@ pub fn gps_week_rollover(week: u16, reference_week: u32) -> u32 {
 }
 
 pub fn gps_time_from_utc(utc: UtcTime) -> GpsTime {
-    GpsTime::from_seconds(utc.unix_s)
+    utc_to_gps(utc, &LeapSeconds::default_table())
 }
 
 #[cfg(test)]

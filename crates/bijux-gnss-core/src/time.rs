@@ -4,6 +4,8 @@
 use crate::units::Seconds;
 use serde::{Deserialize, Serialize};
 
+const GPS_UNIX_EPOCH_OFFSET_S: f64 = 315_964_800.0;
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct SampleTime {
     pub sample_index: u64,
@@ -217,8 +219,8 @@ impl GpsTime {
     }
 }
 
-pub(crate) fn gps_to_utc(gps: GpsTime, leap: &LeapSeconds) -> UtcTime {
-    let gps_s = gps.to_seconds();
+pub fn gps_to_utc(gps: GpsTime, leap: &LeapSeconds) -> UtcTime {
+    let gps_s = gps.to_seconds() + GPS_UNIX_EPOCH_OFFSET_S;
     let mut offset = leap.latest_offset();
     let mut utc_s = gps_s - offset as f64;
     let adjusted = leap.offset_at_utc(utc_s);
@@ -229,9 +231,9 @@ pub(crate) fn gps_to_utc(gps: GpsTime, leap: &LeapSeconds) -> UtcTime {
     UtcTime { unix_s: utc_s }
 }
 
-pub(crate) fn utc_to_gps(utc: UtcTime, leap: &LeapSeconds) -> GpsTime {
+pub fn utc_to_gps(utc: UtcTime, leap: &LeapSeconds) -> GpsTime {
     let offset = leap.offset_at_utc(utc.unix_s);
-    GpsTime::from_seconds(utc.unix_s + offset as f64)
+    GpsTime::from_seconds(utc.unix_s - GPS_UNIX_EPOCH_OFFSET_S + offset as f64)
 }
 
 pub(crate) fn tai_to_utc(tai: TaiTime, leap: &LeapSeconds) -> UtcTime {
