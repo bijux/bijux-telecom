@@ -474,9 +474,16 @@ pub fn observations_from_tracking_results_with_gps_anchor(
         }
     }
     let mut out = Vec::new();
+    let mut previous_epoch: Option<ObsEpoch> = None;
     for mut epoch in by_epoch.into_values() {
         bijux_gnss_core::api::sort_obs_sats(&mut epoch);
         apply_epoch_decision(&mut epoch);
+        if let Some(prev) = previous_epoch.as_ref() {
+            if let Some(event) = observation_timing_interval_diagnostic(config, prev, &epoch) {
+                diagnostics.push(event);
+                reject_epoch_for_invalid_timing(&mut epoch);
+            }
+        }
         let source_time = epoch.source_time;
         let artifact_id = format!("obs-epoch-{:010}", epoch.epoch_idx);
         epoch.t_rx_s = source_time.receiver_time_s;
@@ -513,6 +520,7 @@ pub fn observations_from_tracking_results_with_gps_anchor(
             epoch.valid = false;
             diagnostics.extend(events);
         }
+        previous_epoch = Some(epoch.clone());
         out.push(epoch);
     }
     #[cfg(feature = "reference-checks")]
@@ -525,6 +533,54 @@ pub fn observations_from_tracking_results_with_gps_anchor(
         }
     }
     StepReport { output: out, events: diagnostics, stats: StepStats::default() }
+}
+
+fn observation_timing_interval_diagnostic(
+    config: &ReceiverPipelineConfig,
+    previous: &ObsEpoch,
+    current: &ObsEpoch,
+) -> Option<DiagnosticEvent> {
+    let expected_sample_interval = observation_interval_samples(config);
+    let actual_sample_interval =
+        current.source_time.sample_index.saturating_sub(previous.source_time.sample_index);
+    let actual_interval_s = current.t_rx_s.0 - previous.t_rx_s.0;
+    let expected_interval_s = expected_sample_interval as f64 / config.sampling_freq_hz;
+    let tolerance_s = receiver_time_tolerance_s(config.sampling_freq_hz);
+
+    if actual_sample_interval == expected_sample_interval
+        && (actual_interval_s - expected_interval_s).abs() <= tolerance_s
+    {
+        return None;
+    }
+
+    Some(
+        DiagnosticEvent::new(
+            DiagnosticSeverity::Error,
+            "GNSS_OBS_TIME_INTERVAL_INVALID",
+            format!(
+                "observation epoch spacing {} samples ({actual_interval_s:.9}s) does not match configured interval {} samples ({expected_interval_s:.9}s)",
+                actual_sample_interval, expected_sample_interval
+            ),
+        )
+        .with_context("epoch", current.epoch_idx.to_string())
+        .with_context("previous_epoch", previous.epoch_idx.to_string())
+        .with_context("stage", "observations"),
+    )
+}
+
+fn observation_interval_samples(config: &ReceiverPipelineConfig) -> u64 {
+    let samples_per_code =
+        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
+    let integration_ms = config.tracking_params(SignalBand::L1).integration_ms.max(1) as u64;
+    samples_per_code as u64 * integration_ms
+}
+
+fn reject_epoch_for_invalid_timing(epoch: &mut ObsEpoch) {
+    epoch.valid = false;
+    if epoch.decision == ObservationEpochDecision::Accepted {
+        epoch.decision = ObservationEpochDecision::Rejected;
+        epoch.decision_reason = Some("invalid_observation_timing".to_string());
+    }
 }
 
 pub fn observation_decisions_from_epochs(epochs: &[ObsEpoch]) -> Vec<ObsDecisionArtifact> {
@@ -1439,6 +1495,14 @@ mod tests {
             ) as u64
     }
 
+    fn observation_sample_index(
+        config: &ReceiverPipelineConfig,
+        initial_sample_index: u64,
+        observation_offset: u64,
+    ) -> u64 {
+        initial_sample_index + observation_offset * observation_interval_samples(config)
+    }
+
     fn make_track(prn: u8, config: &ReceiverPipelineConfig) -> TrackingResult {
         let sat = SatId { constellation: Constellation::Gps, prn };
         let epoch = make_tracking_epoch(prn, config, 70, 0.0);
@@ -1957,6 +2021,62 @@ mod tests {
             .events
             .iter()
             .any(|event| event.code == "OBS_GROUPED_RECEIVER_TIME_MISMATCH"));
+    }
+
+    #[test]
+    fn observations_accept_expected_epoch_timing_interval() {
+        let config = ReceiverPipelineConfig { tracking_integration_ms: 10, ..ReceiverPipelineConfig::default() };
+        let base_epoch_idx = 70;
+        let base_sample_index = epoch_sample_index(&config, base_epoch_idx);
+        let next_epoch_idx = base_epoch_idx + 1;
+        let mut next_epoch = make_tracking_epoch(3, &config, next_epoch_idx, 0.0);
+        next_epoch.sample_index = observation_sample_index(&config, base_sample_index, 1);
+        next_epoch.source_time =
+            ReceiverSampleTrace::from_sample_index(next_epoch.sample_index, config.sampling_freq_hz);
+
+        let report = observations_from_tracking_results(
+            &config,
+            &[
+                track_from_epoch(make_tracking_epoch(3, &config, base_epoch_idx, 0.0)),
+                track_from_epoch(next_epoch),
+            ],
+            10,
+        );
+
+        assert_eq!(report.output.len(), 2);
+        assert!(report.events.iter().all(|event| event.code != "GNSS_OBS_TIME_INTERVAL_INVALID"));
+        assert!(report.output.iter().all(|epoch| epoch.valid));
+    }
+
+    #[test]
+    fn observations_reject_invalid_epoch_timing_interval() {
+        let config = ReceiverPipelineConfig { tracking_integration_ms: 10, ..ReceiverPipelineConfig::default() };
+        let base_epoch_idx = 70;
+        let base_sample_index = epoch_sample_index(&config, base_epoch_idx);
+        let next_epoch_idx = base_epoch_idx + 1;
+        let mut next_epoch = make_tracking_epoch(3, &config, next_epoch_idx, 0.0);
+        next_epoch.sample_index = observation_sample_index(&config, base_sample_index, 1)
+            + observation_interval_samples(&config) / 10;
+        next_epoch.source_time =
+            ReceiverSampleTrace::from_sample_index(next_epoch.sample_index, config.sampling_freq_hz);
+
+        let report = observations_from_tracking_results(
+            &config,
+            &[
+                track_from_epoch(make_tracking_epoch(3, &config, base_epoch_idx, 0.0)),
+                track_from_epoch(next_epoch),
+            ],
+            10,
+        );
+        let epoch = report.output.iter().find(|epoch| epoch.epoch_idx == next_epoch_idx).expect("epoch");
+
+        assert!(!epoch.valid);
+        assert_eq!(epoch.decision, ObservationEpochDecision::Rejected);
+        assert_eq!(epoch.decision_reason.as_deref(), Some("invalid_observation_timing"));
+        assert!(report
+            .events
+            .iter()
+            .any(|event| event.code == "GNSS_OBS_TIME_INTERVAL_INVALID"));
     }
 
     #[test]
