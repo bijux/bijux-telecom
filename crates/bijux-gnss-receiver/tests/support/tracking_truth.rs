@@ -56,11 +56,26 @@ pub fn post_lock_carrier_frequency_errors_hz(
         .collect()
 }
 
+pub fn post_lock_code_phase_errors_samples(
+    config: &ReceiverPipelineConfig,
+    epochs: &[TrackEpoch],
+    expected_code_phase_samples: f64,
+) -> Vec<f64> {
+    let Some(first_lock_epoch_index) = first_tracking_lock_epoch_index(epochs) else {
+        return Vec::new();
+    };
+    epochs[first_lock_epoch_index..]
+        .iter()
+        .map(|epoch| code_phase_error_samples(config, epoch, expected_code_phase_samples))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         carrier_frequency_error_hz, code_phase_error_samples, first_tracking_lock_epoch_index,
-        post_lock_carrier_frequency_errors_hz, wrapped_code_phase_error_samples,
+        post_lock_carrier_frequency_errors_hz, post_lock_code_phase_errors_samples,
+        wrapped_code_phase_error_samples,
     };
     use bijux_gnss_core::api::{Chips, Cycles, Epoch, Hertz, TrackEpoch};
     use bijux_gnss_receiver::api::ReceiverPipelineConfig;
@@ -159,5 +174,46 @@ mod tests {
         ];
 
         assert_eq!(post_lock_carrier_frequency_errors_hz(&epochs, 100.0), vec![1.5, 0.75]);
+    }
+
+    #[test]
+    fn post_lock_code_phase_errors_samples_starts_at_first_tracking_lock_epoch() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 1_023_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let epochs = vec![
+            TrackEpoch {
+                code_phase_samples: Chips(20.0),
+                pll_lock: false,
+                fll_lock: true,
+                lock_state: "pull_in".to_string(),
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                epoch: Epoch { index: 1 },
+                code_phase_samples: Chips(1_020.0),
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                epoch: Epoch { index: 2 },
+                code_phase_samples: Chips(4.0),
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                ..TrackEpoch::default()
+            },
+        ];
+
+        assert_eq!(
+            post_lock_code_phase_errors_samples(&config, &epochs, 2.0),
+            vec![5.0, 2.0]
+        );
     }
 }
