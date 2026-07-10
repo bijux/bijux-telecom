@@ -5,7 +5,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::api::{ObsEpoch, SatId, Seconds, SignalBand};
+use crate::api::{
+    ObsEpoch, SatId, Seconds, SignalBand, OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET,
+};
 
 /// Event describing missing band observations over time.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,7 +90,89 @@ pub fn validate_obs_epochs(epochs: &[ObsEpoch]) -> Result<(), String> {
             {
                 return Err("negative variance".to_string());
             }
+            if sat.metadata.doppler_model.is_empty() {
+                return Err("missing doppler model".to_string());
+            }
+            if !known_doppler_model(&sat.metadata.doppler_model) {
+                return Err("unknown doppler model".to_string());
+            }
         }
     }
     Ok(())
+}
+
+fn known_doppler_model(model: &str) -> bool {
+    model == OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_obs_epochs;
+    use crate::api::{
+        Constellation, Cycles, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
+        ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
+        Seconds, SigId, SignalBand, SignalCode,
+    };
+
+    fn observation_epoch_with_doppler_model(doppler_model: &str) -> ObsEpoch {
+        ObsEpoch {
+            t_rx_s: Seconds(0.07),
+            source_time: ReceiverSampleTrace::from_sample_index(286_440, 4_092_000.0),
+            gps_week: None,
+            tow_s: None,
+            epoch_idx: 70,
+            discontinuity: false,
+            valid: true,
+            processing_ms: None,
+            role: ReceiverRole::Rover,
+            sats: vec![ObsSatellite {
+                signal_id: SigId {
+                    sat: SatId { constellation: Constellation::Gps, prn: 4 },
+                    band: SignalBand::L1,
+                    code: SignalCode::Ca,
+                },
+                pseudorange_m: Meters(21_000_000.0),
+                pseudorange_var_m2: 1.0,
+                carrier_phase_cycles: Cycles(12.25),
+                carrier_phase_var_cycles2: 1.0,
+                doppler_hz: Hertz(125.0),
+                doppler_var_hz2: 1.0,
+                cn0_dbhz: 45.0,
+                lock_flags: LockFlags {
+                    code_lock: true,
+                    carrier_lock: true,
+                    bit_lock: false,
+                    cycle_slip: false,
+                },
+                multipath_suspect: false,
+                observation_status: ObservationStatus::Accepted,
+                observation_reject_reasons: Vec::new(),
+                elevation_deg: None,
+                azimuth_deg: None,
+                weight: None,
+                timing: None,
+                error_model: None,
+                metadata: ObsMetadata { doppler_model: doppler_model.to_string(), ..ObsMetadata::default() },
+            }],
+            decision: ObservationEpochDecision::Accepted,
+            decision_reason: None,
+            manifest: None,
+        }
+    }
+
+    #[test]
+    fn validate_obs_epochs_rejects_missing_doppler_model() {
+        let epoch = observation_epoch_with_doppler_model("");
+
+        let error = validate_obs_epochs(&[epoch]).expect_err("missing doppler model must fail");
+        assert_eq!(error, "missing doppler model");
+    }
+
+    #[test]
+    fn validate_obs_epochs_rejects_unknown_doppler_model() {
+        let epoch = observation_epoch_with_doppler_model("legacy_absolute_doppler_hz");
+
+        let error = validate_obs_epochs(&[epoch]).expect_err("unknown doppler model must fail");
+        assert_eq!(error, "unknown doppler model");
+    }
 }
