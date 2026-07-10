@@ -107,7 +107,7 @@ impl SampleClock {
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct GpsTime {
-    pub week: u16,
+    pub week: u32,
     pub tow_s: f64,
 }
 
@@ -209,8 +209,7 @@ impl GpsTime {
         let mut seconds = total_seconds.max(0.0);
         let week = (seconds / week_seconds).floor() as u64;
         seconds -= week as f64 * week_seconds;
-        let week_mod = (week % 1024) as u16;
-        Self { week: week_mod, tow_s: seconds }
+        Self { week: week as u32, tow_s: seconds }
     }
 
     pub fn to_seconds(&self) -> f64 {

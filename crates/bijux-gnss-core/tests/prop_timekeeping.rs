@@ -7,8 +7,7 @@ proptest! {
     fn gps_time_roundtrip(seconds in 0.0f64..10_000_000.0f64) {
         let t = GpsTime::from_seconds(seconds);
         let back = t.to_seconds();
-        let expected = seconds % (604_800.0 * 1024.0);
-        prop_assert!((back - expected).abs() < 1e-6);
+        prop_assert!((back - seconds).abs() < 1e-6);
     }
 
     #[test]

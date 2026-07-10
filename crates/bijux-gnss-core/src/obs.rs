@@ -1172,9 +1172,7 @@ mod tests {
         let gps = utc_to_gps(utc, &table);
         let offset = table.offset_at_utc(utc.unix_s);
         let expected = utc.unix_s + offset as f64;
-        let cycle = 604_800.0 * 1024.0;
-        let diff = (gps.to_seconds() - expected).abs();
-        assert!((diff % cycle) < 1e-6);
+        assert!((gps.to_seconds() - expected).abs() < 1e-6);
     }
 
     #[test]
