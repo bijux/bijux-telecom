@@ -7,7 +7,7 @@ use bijux_gnss_core::api::{
     NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
 };
 use bijux_gnss_nav::api::{
-    elevation_azimuth_deg, sat_state_gps_l1ca, weight_from_cn0_elev, GpsEphemeris,
+    elevation_azimuth_deg, sat_state_gps_l1ca_from_observation, weight_from_cn0_elev, GpsEphemeris,
     PositionObservation, PositionSolver, WeightingConfig,
 };
 
@@ -172,7 +172,7 @@ impl Navigation {
                 if elevation.is_none() {
                     if let Some((rx_x, rx_y, rx_z)) = self.last_ecef {
                         if let Some(eph) = eph.iter().find(|e| e.sat == s.signal_id.sat) {
-                            let sat = sat_state_gps_l1ca(eph, obs.t_rx_s.0, 0.0);
+                            let sat = navigation_satellite_state(obs, s, eph);
                             let (_az, el) =
                                 elevation_azimuth_deg(rx_x, rx_y, rx_z, sat.x_m, sat.y_m, sat.z_m);
                             elevation = Some(el);
@@ -851,6 +851,15 @@ fn classify_validity(solution: &NavSolutionEpoch) -> bijux_gnss_core::api::Solut
     SolutionValidity::Stable
 }
 
+fn navigation_satellite_state(
+    obs: &ObsEpoch,
+    sat: &bijux_gnss_core::api::ObsSatellite,
+    eph: &GpsEphemeris,
+) -> bijux_gnss_nav::api::GpsSatState {
+    let receive_tow_s = obs.gps_time().map(|gps_time| gps_time.tow_s).unwrap_or(obs.t_rx_s.0);
+    sat_state_gps_l1ca_from_observation(eph, receive_tow_s, sat.pseudorange_m.0, sat.timing)
+}
+
 #[derive(Debug, Clone)]
 struct ClockModel {
     bias_s: f64,
@@ -880,8 +889,8 @@ mod tests {
     use super::*;
     use crate::pipeline::observations::fake_obs_epoch_for_nav_tests;
     use bijux_gnss_core::api::{
-        Constellation, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
-        ObservationEpochDecision, ObservationStatus, ObservationSupportClass,
+        Constellation, GpsTime, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
+        ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ObservationSupportClass,
         ObservationUncertaintyClass, ReceiverRole, SatId, Seconds, SigId, SignalBand, SignalCode,
         SignalSpec,
     };
@@ -1088,6 +1097,68 @@ mod tests {
             tau = next_tau;
         }
         pseudorange_m
+    }
+
+    #[test]
+    fn navigation_satellite_state_uses_observation_timing_when_available() {
+        let eph = make_eph(6, 1.2, 0.8, 345_600.0);
+        let tau_s = 0.074;
+        let receive_gps_time = GpsTime { week: 2200, tow_s: 345_600.08 };
+        let pseudorange_m = tau_s * 299_792_458.0;
+        let sat = ObsSatellite {
+            signal_id: SigId { sat: eph.sat, band: SignalBand::L1, code: SignalCode::Ca },
+            pseudorange_m: Meters(pseudorange_m),
+            pseudorange_var_m2: 4.0,
+            carrier_phase_cycles: bijux_gnss_core::api::Cycles(0.0),
+            carrier_phase_var_cycles2: 1.0,
+            doppler_hz: bijux_gnss_core::api::Hertz(0.0),
+            doppler_var_hz2: 4.0,
+            cn0_dbhz: 45.0,
+            lock_flags: LockFlags {
+                code_lock: true,
+                carrier_lock: true,
+                bit_lock: true,
+                cycle_slip: false,
+            },
+            multipath_suspect: false,
+            observation_status: ObservationStatus::Accepted,
+            observation_reject_reasons: Vec::new(),
+            elevation_deg: None,
+            azimuth_deg: None,
+            weight: Some(1.0),
+            timing: Some(ObsSignalTiming {
+                signal_travel_time_s: Seconds(tau_s),
+                transmit_gps_time: receive_gps_time.offset_seconds(-tau_s),
+            }),
+            error_model: None,
+            metadata: ObsMetadata::default(),
+        };
+        let obs = ObsEpoch {
+            t_rx_s: Seconds(1.0),
+            source_time: bijux_gnss_core::api::ReceiverSampleTrace::from_sample_index(0, 1_000.0),
+            gps_week: Some(receive_gps_time.week),
+            tow_s: Some(Seconds(receive_gps_time.tow_s)),
+            epoch_idx: 1,
+            discontinuity: false,
+            valid: true,
+            processing_ms: None,
+            role: ReceiverRole::Rover,
+            sats: vec![sat.clone()],
+            decision: ObservationEpochDecision::Accepted,
+            decision_reason: Some("accepted_observables_present".to_string()),
+            manifest: None,
+        };
+
+        let from_navigation = navigation_satellite_state(&obs, &sat, &eph);
+        let from_timing =
+            sat_state_gps_l1ca(&eph, sat.timing.expect("timing").transmit_gps_time.tow_s, tau_s);
+        let uncorrected = sat_state_gps_l1ca(&eph, receive_gps_time.tow_s, 0.0);
+
+        assert!((from_navigation.x_m - from_timing.x_m).abs() < 1.0e-9);
+        assert!((from_navigation.y_m - from_timing.y_m).abs() < 1.0e-9);
+        assert!((from_navigation.z_m - from_timing.z_m).abs() < 1.0e-9);
+        assert!((from_navigation.x_m - uncorrected.x_m).abs() > 0.01);
+        assert!((from_navigation.y_m - uncorrected.y_m).abs() > 0.01);
     }
 
     #[test]
