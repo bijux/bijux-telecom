@@ -58,8 +58,8 @@ pub use crate::obs::{
     ObservationSupportClass, ObservationUncertaintyClass, ReceiverRole, Sample, SamplesFrame,
     SatObservationDecision, SignalSupportRow, SingleDifference, SolutionStatus, SolutionValidity,
     SupportMatrix, SupportStatus, TrackEpoch, TrackTransition, TrackingAssumptions,
-    TrackingLifecycleState, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
-    OBSERVATION_DOWNSTREAM_PROFILE_VERSION, OBSERVATION_MODEL_VERSION,
+    TrackingLifecycleState, TrackingUncertainty, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
+    NAV_SOLUTION_MODEL_VERSION, OBSERVATION_DOWNSTREAM_PROFILE_VERSION, OBSERVATION_MODEL_VERSION,
     TRACKING_STATE_MODEL_VERSION,
 };
 pub use crate::obs_validation::{

@@ -65,6 +65,14 @@ pub struct TrackingAssumptions {
     pub aiding_mode: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TrackingUncertainty {
+    pub code_phase_samples: f64,
+    pub carrier_phase_cycles: f64,
+    pub doppler_hz: f64,
+    pub cn0_dbhz: f64,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum SupportStatus {
     Supported,
@@ -593,6 +601,8 @@ pub struct TrackEpoch {
     #[serde(default)]
     pub tracking_assumptions: Option<TrackingAssumptions>,
     #[serde(default)]
+    pub tracking_uncertainty: Option<TrackingUncertainty>,
+    #[serde(default)]
     pub processing_ms: Option<f64>,
 }
 
@@ -631,6 +641,7 @@ impl Default for TrackEpoch {
             channel_uid: String::new(),
             tracking_provenance: String::new(),
             tracking_assumptions: None,
+            tracking_uncertainty: None,
             processing_ms: None,
         }
     }
@@ -698,6 +709,8 @@ pub struct ObsMetadata {
     pub time_tag_sample_index: u64,
     #[serde(default)]
     pub time_tag_sample_rate_hz: f64,
+    #[serde(default)]
+    pub tracking_uncertainty: Option<TrackingUncertainty>,
 }
 
 impl Default for ObsMetadata {
@@ -732,6 +745,7 @@ impl Default for ObsMetadata {
             time_tag_source: String::new(),
             time_tag_sample_index: 0,
             time_tag_sample_rate_hz: 0.0,
+            tracking_uncertainty: None,
         }
     }
 }
