@@ -186,6 +186,18 @@ pub fn post_lock_code_phase_errors_samples(
         .collect()
 }
 
+pub fn stable_tracking_cn0_estimates(epochs: &[TrackEpoch], min_locked_epochs: usize) -> Vec<f64> {
+    stable_tracking_window(epochs, min_locked_epochs)
+        .iter()
+        .filter_map(|epoch| epoch.cn0_dbhz.is_finite().then_some(epoch.cn0_dbhz))
+        .collect()
+}
+
+pub fn mean_tracking_cn0_dbhz(epochs: &[TrackEpoch], min_locked_epochs: usize) -> Option<f64> {
+    let cn0_values = stable_tracking_cn0_estimates(epochs, min_locked_epochs);
+    (!cn0_values.is_empty()).then_some(cn0_values.iter().sum::<f64>() / cn0_values.len() as f64)
+}
+
 fn gps_lnav_nav_bit_period_samples(sample_rate_hz: f64) -> u64 {
     ((sample_rate_hz * GPS_LNAV_NAV_BIT_PERIOD_S).round() as u64).max(1)
 }
@@ -196,11 +208,11 @@ mod tests {
         carrier_frequency_error_hz, carrier_frequency_error_under_linear_doppler_hz,
         code_phase_error_samples, epoch_indices_with_lock_state,
         epoch_indices_with_lock_state_reason, expected_linear_doppler_hz,
-        first_tracking_lock_epoch_index, nav_bit_transition_epoch_indices,
+        first_tracking_lock_epoch_index, mean_tracking_cn0_dbhz, nav_bit_transition_epoch_indices,
         post_lock_carrier_frequency_errors_hz,
         post_lock_carrier_frequency_errors_under_linear_doppler_hz,
-        post_lock_code_phase_errors_samples, post_lock_epochs, stable_tracking_window,
-        wrapped_code_phase_error_samples,
+        post_lock_code_phase_errors_samples, post_lock_epochs, stable_tracking_cn0_estimates,
+        stable_tracking_window, wrapped_code_phase_error_samples,
     };
     use bijux_gnss_core::api::{Chips, Cycles, Epoch, Hertz, TrackEpoch};
     use bijux_gnss_receiver::api::ReceiverPipelineConfig;
@@ -593,5 +605,73 @@ mod tests {
         ];
 
         assert_eq!(post_lock_code_phase_errors_samples(&config, &epochs, 2.0), vec![5.0, 2.0]);
+    }
+
+    #[test]
+    fn stable_tracking_cn0_estimates_keep_only_finite_stable_epochs() {
+        let epochs = vec![
+            TrackEpoch {
+                lock: true,
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                cn0_dbhz: 45.0,
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                lock: true,
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                cn0_dbhz: f64::NAN,
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                lock: true,
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                cn0_dbhz: 47.0,
+                ..TrackEpoch::default()
+            },
+        ];
+
+        let cn0_values = stable_tracking_cn0_estimates(&epochs, 3);
+
+        assert_eq!(cn0_values, vec![45.0, 47.0]);
+    }
+
+    #[test]
+    fn mean_tracking_cn0_dbhz_averages_stable_window() {
+        let epochs = vec![
+            TrackEpoch {
+                lock: true,
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                cn0_dbhz: 45.0,
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                lock: true,
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                cn0_dbhz: 47.0,
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                lock: true,
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                cn0_dbhz: 49.0,
+                ..TrackEpoch::default()
+            },
+        ];
+
+        let mean_cn0_dbhz = mean_tracking_cn0_dbhz(&epochs, 3).expect("mean cn0");
+
+        assert!((mean_cn0_dbhz - 47.0).abs() <= f64::EPSILON);
     }
 }
