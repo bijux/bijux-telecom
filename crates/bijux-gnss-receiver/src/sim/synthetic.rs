@@ -1,5 +1,6 @@
 #![allow(missing_docs)]
 
+use std::collections::BTreeMap;
 use std::f32::consts::TAU;
 
 use num_complex::Complex;
@@ -366,12 +367,43 @@ pub fn validate_truth_guided_observations(
                     notes.push("missing_ephemeris_for_pseudorange_truth".to_string());
                     Vec::new()
                 };
+            let mut carrier_phase_differences_by_arc = BTreeMap::<u64, Vec<f64>>::new();
+            let sat_state = SatState::new_with_receiver_clock_frequency_bias_hz(
+                config,
+                *sat_truth,
+                truth.receiver_clock_frequency_bias_hz,
+            );
+            for row in &observed_rows {
+                if !row.observation.lock_flags.carrier_lock
+                    || row.observation.metadata.carrier_phase_continuity == "unusable"
+                {
+                    continue;
+                }
+                let truth_cycles = sat_state.carrier_phase_rad_at(
+                    row.sample_index as f64 / config.sampling_freq_hz,
+                ) / std::f64::consts::TAU;
+                carrier_phase_differences_by_arc
+                    .entry(row.observation.metadata.carrier_phase_arc_start_sample_index)
+                    .or_default()
+                    .push(row.observation.carrier_phase_cycles.0 - truth_cycles);
+            }
+            if carrier_phase_differences_by_arc.is_empty() {
+                notes.push("no_usable_carrier_phase_rows".to_string());
+            }
+            let carrier_phase_arcs_evaluated = carrier_phase_differences_by_arc.len();
+            let mut carrier_phase_errors = Vec::new();
+            for arc_differences in carrier_phase_differences_by_arc.into_values() {
+                let arc_bias_cycles = stats(&arc_differences).median;
+                carrier_phase_errors.extend(
+                    arc_differences.into_iter().map(|difference| difference - arc_bias_cycles),
+                );
+            }
 
             SyntheticObservationValidationSatellite {
                 sat: sat_truth.sat,
                 pseudorange_error_m: summarize_observation_errors(&pseudorange_errors),
-                carrier_phase_error_cycles: None,
-                carrier_phase_arcs_evaluated: 0,
+                carrier_phase_error_cycles: summarize_observation_errors(&carrier_phase_errors),
+                carrier_phase_arcs_evaluated,
                 doppler_error_hz: summarize_observation_errors(&doppler_errors),
                 cn0_error_db_hz: summarize_observation_errors(&cn0_errors),
                 notes,
