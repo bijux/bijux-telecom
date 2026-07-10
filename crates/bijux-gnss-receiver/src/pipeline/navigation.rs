@@ -1,16 +1,16 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    check_nav_solution_sanity, is_solution_valid, obs_epoch_stability_key, Constellation, Meters,
-    MeasurementRejectReason, NavAssumptions, NavLifecycleState, NavProvenance, NavRefusalClass,
-    NavResidual, NavSolutionEpoch, NavUncertaintyClass, ObsEpoch, Seconds, SolutionStatus,
-    SolutionValidity,
-    NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
+    check_nav_solution_sanity, is_solution_valid, obs_epoch_stability_key, Constellation,
+    MeasurementRejectReason, Meters, NavAssumptions, NavLifecycleState, NavProvenance,
+    NavRefusalClass, NavResidual, NavSolutionEpoch, NavUncertaintyClass, ObsEpoch, Seconds,
+    SolutionStatus, SolutionValidity, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
+    NAV_SOLUTION_MODEL_VERSION,
 };
 use bijux_gnss_nav::api::{
-    elevation_azimuth_deg, position_observation_has_valid_satellite_time,
-    sat_state_gps_l1ca_from_observation, weight_from_cn0_elev, GpsEphemeris, PositionObservation,
-    PositionSolver, WeightingConfig,
+    elevation_azimuth_deg, position_measurement_weight,
+    position_observation_has_valid_satellite_time, sat_state_gps_l1ca_from_observation,
+    GpsEphemeris, PositionObservation, PositionSolver, WeightingConfig,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -212,9 +212,19 @@ impl Navigation {
                 } else {
                     self.config.weighting.tracking_mode_scalar_weight
                 };
-                let weight = elevation
-                    .map(|el| weight_from_cn0_elev(s.cn0_dbhz, el, weight_config))
-                    .unwrap_or(1.0);
+                let pseudorange_sigma_m = if s.pseudorange_var_m2.is_finite()
+                    && s.pseudorange_var_m2 > 0.0
+                {
+                    Some(s.pseudorange_var_m2.sqrt())
+                } else {
+                    None
+                };
+                let weight = position_measurement_weight(
+                    s.cn0_dbhz,
+                    elevation,
+                    pseudorange_sigma_m,
+                    weight_config,
+                );
                 observation.elevation_deg = elevation;
                 observation.weight = weight * tracking_mode_weight;
                 Some(observation)
@@ -370,12 +380,14 @@ impl Navigation {
             stability_signature: String::new(),
             stability_signature_version: NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
         };
-        nav_epoch.residuals.extend(invalid_satellite_time_sats.iter().copied().map(|sat| NavResidual {
-            sat,
-            residual_m: Meters(0.0),
-            rejected: true,
-            weight: None,
-            reject_reason: Some(MeasurementRejectReason::TimeInconsistency),
+        nav_epoch.residuals.extend(invalid_satellite_time_sats.iter().copied().map(|sat| {
+            NavResidual {
+                sat,
+                residual_m: Meters(0.0),
+                rejected: true,
+                weight: None,
+                reject_reason: Some(MeasurementRejectReason::TimeInconsistency),
+            }
         }));
         nav_epoch.sat_count += invalid_satellite_time_sats.len();
         nav_epoch.rejected_sat_count += invalid_satellite_time_sats.len();
@@ -794,10 +806,16 @@ fn build_provenance(
         .filter(|residual| !residual.rejected)
         .map(|residual| residual.sat)
         .collect::<Vec<_>>();
-    let weighting_mode =
-        if config.weighting.enabled { "cn0_elevation_weighted" } else { "uniform" };
-    let solver_family =
-        if observations.iter().any(|row| row.weight < 0.999) { "wls_weighted" } else { "wls" };
+    let weighting_mode = if config.weighting.enabled {
+        "cn0_elevation_sigma_weighted"
+    } else {
+        "sigma_weighted"
+    };
+    let solver_family = if observations.iter().any(|row| (row.weight - 1.0).abs() > 1.0e-6) {
+        "wls_weighted"
+    } else {
+        "wls"
+    };
     NavProvenance {
         solver_family: solver_family.to_string(),
         weighting_mode: weighting_mode.to_string(),
