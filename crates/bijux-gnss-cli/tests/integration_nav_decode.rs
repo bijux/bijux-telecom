@@ -54,6 +54,11 @@ fn set_bits(data: &mut u32, start: usize, len: usize, value: u32) {
     *data |= (value << shift) & mask;
 }
 
+fn encode_signed(value: i32, bits: usize) -> u32 {
+    let mask = (1_u32 << bits) - 1;
+    (value as u32) & mask
+}
+
 fn encode_word(data: u32, prev_d29: u8, prev_d30: u8) -> [u8; 30] {
     let mut bits = [0_u8; 30];
     for (i, bit) in bits.iter_mut().enumerate().take(24) {
@@ -211,6 +216,57 @@ fn encode_subframe_with_how(
     for offset in 0..8_u32 {
         words.push(0x012345 + offset * 0x010101);
     }
+
+    let mut prev_d29 = 0_u8;
+    let mut prev_d30 = 0_u8;
+    let mut bits = Vec::with_capacity(300);
+    for data in words {
+        let encoded = encode_word(data, prev_d29, prev_d30);
+        prev_d29 = encoded[28];
+        prev_d30 = encoded[29];
+        bits.extend(encoded.into_iter().map(|bit| if bit == 1 { 1 } else { -1 }));
+    }
+    bits
+}
+
+fn encode_subframe_1_with_clock(
+    tow_count: u32,
+    week: u16,
+    sv_health: u8,
+    iodc: u16,
+    toc_raw: u32,
+    af2_raw: i32,
+    af1_raw: i32,
+    af0_raw: i32,
+    tgd_raw: i32,
+) -> Vec<i8> {
+    let mut tlm = 0_u32;
+    set_bits(&mut tlm, 1, 8, 0x8B);
+
+    let mut how = 0_u32;
+    set_bits(&mut how, 1, 17, tow_count);
+    set_bits(&mut how, 20, 3, 1);
+
+    let mut w3 = 0_u32;
+    set_bits(&mut w3, 1, 10, week as u32);
+    set_bits(&mut w3, 17, 6, sv_health as u32);
+    set_bits(&mut w3, 23, 2, ((iodc >> 8) & 0b11) as u32);
+
+    let mut w7 = 0_u32;
+    set_bits(&mut w7, 17, 8, encode_signed(tgd_raw, 8));
+
+    let mut w8 = 0_u32;
+    set_bits(&mut w8, 1, 8, (iodc & 0xFF) as u32);
+    set_bits(&mut w8, 9, 16, toc_raw);
+
+    let mut w9 = 0_u32;
+    set_bits(&mut w9, 1, 8, encode_signed(af2_raw, 8));
+    set_bits(&mut w9, 9, 16, encode_signed(af1_raw, 16));
+
+    let mut w10 = 0_u32;
+    set_bits(&mut w10, 1, 22, encode_signed(af0_raw, 22));
+
+    let words = [tlm, how, w3, 0, 0, 0, w7, w8, w9, w10];
 
     let mut prev_d29 = 0_u8;
     let mut prev_d30 = 0_u8;
@@ -582,6 +638,70 @@ fn nav_decode_reports_failed_lnav_parity_from_wrapped_track_artifact() {
         failed_word_indexes.iter().any(|word_index| word_index.as_u64() == Some(0)),
         "report={report}"
     );
+
+    fs::remove_dir_all(&temp).expect("remove temp dir");
+}
+
+#[test]
+fn nav_decode_reports_lnav_subframe_1_clock_fields_from_wrapped_track_artifact() {
+    let repo = repo_root();
+    let temp = temp_dir_path("nav_decode_subframe_clock");
+    fs::create_dir_all(&temp).expect("create temp dir");
+    let sat = SatId { constellation: Constellation::Gps, prn: 12 };
+    let bits = encode_subframe_1_with_clock(3, 987, 0b10_1101, 0x2AB, 21_600, -12, 3_210, -123_456, -20);
+
+    let track_path = temp.join("track.jsonl");
+    write_track_artifact_from_bits(&track_path, sat, 9, &bits);
+
+    let nav_dir = temp.join("nav");
+    fs::create_dir_all(&nav_dir).expect("create nav dir");
+    let nav_output = run_bijux(
+        &[
+            "gnss",
+            "nav",
+            "decode",
+            "--unregistered-dataset",
+            "--track",
+            track_path.to_str().expect("track path"),
+            "--prn",
+            "12",
+            "--config",
+            "configs/receiver_low_rate.toml",
+            "--report",
+            "json",
+            "--out",
+            nav_dir.to_str().expect("nav dir"),
+        ],
+        &repo,
+    );
+    assert!(
+        nav_output.status.success(),
+        "nav decode failed: {}",
+        String::from_utf8_lossy(&nav_output.stderr)
+    );
+
+    let report: Value = serde_json::from_str(
+        &fs::read_to_string(nav_dir.join("nav_decode_report.json")).expect("read nav report"),
+    )
+    .expect("parse nav report");
+    let decoded_subframes = report["decoded_subframes"].as_array().expect("decoded_subframes");
+    let clock = &decoded_subframes[0]["clock"];
+    let af2 = clock["af2"].as_f64().expect("af2");
+    let af1 = clock["af1"].as_f64().expect("af1");
+    let af0 = clock["af0"].as_f64().expect("af0");
+    let tgd = clock["tgd"].as_f64().expect("tgd");
+
+    assert_eq!(report["bit_start_ms"], 9);
+    assert_eq!(decoded_subframes.len(), 1, "report={report}");
+    assert_eq!(decoded_subframes[0]["how"]["subframe_id"], 1);
+    assert_eq!(clock["week"], 987);
+    assert_eq!(clock["sv_health"], 45);
+    assert_eq!(clock["iodc"], 683);
+    assert_eq!(clock["toc_s"], 345600.0);
+    assert!((af2 - -12.0_f64 * 2f64.powi(-55)).abs() < f64::EPSILON);
+    assert!((af1 - 3210.0_f64 * 2f64.powi(-43)).abs() < f64::EPSILON);
+    assert!((af0 - -123456.0_f64 * 2f64.powi(-31)).abs() < f64::EPSILON);
+    assert!((tgd - -20.0_f64 * 2f64.powi(-31)).abs() < f64::EPSILON);
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
 }
