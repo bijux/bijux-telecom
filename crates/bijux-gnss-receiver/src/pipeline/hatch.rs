@@ -52,12 +52,17 @@ impl HatchFilterState {
             self.initialized = true;
             self.smoothing_age_epochs = 1;
         } else {
+            let capped_window_epochs = window_epochs.max(1);
             let delta_carrier_m = (carrier_phase_cycles - self.last_carrier_cycles) * lambda_m;
             let predicted_pseudorange_m = self.smoothed_pseudorange_m + delta_carrier_m;
-            let effective_count = (self.observation_count as f64).min(window_epochs.max(1) as f64);
+            let effective_count = self
+                .observation_count
+                .saturating_add(1)
+                .min(capped_window_epochs) as f64;
             self.smoothed_pseudorange_m = predicted_pseudorange_m
                 + (raw_pseudorange_m - predicted_pseudorange_m) / effective_count;
-            self.observation_count = self.observation_count.saturating_add(1);
+            self.observation_count =
+                self.observation_count.saturating_add(1).min(capped_window_epochs);
             self.last_carrier_cycles = carrier_phase_cycles;
             self.last_divergence_m = raw_divergence_m;
             self.smoothing_age_epochs = self.smoothing_age_epochs.saturating_add(1);
