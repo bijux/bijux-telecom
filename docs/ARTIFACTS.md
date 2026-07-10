@@ -110,7 +110,12 @@ The report includes:
 - `decoded_subframes[*].how.anti_spoof`
 - `decoded_subframes[*].how.subframe_id`
 - `decoded_subframes[*].how.parity_ok`
+- `decoded_subframes[*].parity.word_count`
+- `decoded_subframes[*].parity.passed_word_count`
+- `decoded_subframes[*].parity.failed_word_indexes`
 - `decoded_subframes[*].word_parity_ok`
+- `parity_word_count`
+- `parity_failed_words`
 - `preamble_hits`
 - `parity_pass_rate`
 - `ephemerides`
