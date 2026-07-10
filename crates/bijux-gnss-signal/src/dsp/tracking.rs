@@ -59,7 +59,9 @@ pub fn first_order_loop_coefficients(
         return FirstOrderLoopCoefficients { error_blend: 0.0, rate_gain_hz: 0.0 };
     }
 
-    let error_blend = 1.0 - (-noise_bandwidth_hz * coherent_integration_s).exp();
+    let normalized_bandwidth =
+        std::f64::consts::TAU * noise_bandwidth_hz * coherent_integration_s;
+    let error_blend = 1.0 - (-normalized_bandwidth).exp();
     let rate_gain_hz = error_blend / coherent_integration_s;
 
     FirstOrderLoopCoefficients { error_blend, rate_gain_hz }
@@ -83,7 +85,8 @@ pub fn phase_lock_loop_coefficients(
         };
     }
 
-    let normalized_bandwidth = noise_bandwidth_hz * coherent_integration_s;
+    let normalized_bandwidth =
+        std::f64::consts::TAU * noise_bandwidth_hz * coherent_integration_s;
     let natural_frequency = normalized_bandwidth * (8.0 * PLL_DAMPING_RATIO)
         / (4.0 * PLL_DAMPING_RATIO * PLL_DAMPING_RATIO + 1.0);
     let denominator = 1.0

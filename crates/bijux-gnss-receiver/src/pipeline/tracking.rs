@@ -15,7 +15,8 @@ use bijux_gnss_core::api::Sample;
 use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::{
     adaptive_bandwidth, carrier_frequency_error_hz_from_phase_delta, code_value_at_phase,
-    discriminators, estimate_cn0_dbhz, first_order_loop_coefficients, wipeoff_carrier,
+    discriminators, estimate_cn0_dbhz, first_order_loop_coefficients,
+    phase_lock_loop_coefficients, wipeoff_carrier,
 };
 use bijux_gnss_signal::api::{generate_ca_code, Prn};
 
@@ -197,6 +198,7 @@ struct CarrierLoopInput {
     current_carrier_phase_cycles: f64,
     epoch_len_samples: usize,
     sample_rate_hz: f64,
+    coherent_integration_s: f64,
     pll_bw_hz: f64,
     pll_err_rad: f64,
     fll_bw_hz: f64,
@@ -884,6 +886,7 @@ impl Tracking {
                 current_carrier_phase_cycles: state.carrier_phase_cycles,
                 epoch_len_samples: epoch_frame.len(),
                 sample_rate_hz: self.config.sampling_freq_hz,
+                coherent_integration_s,
                 pll_bw_hz: pll_bw,
                 pll_err_rad: pll_err as f64,
                 fll_bw_hz: fll_bw,
@@ -1319,15 +1322,22 @@ fn bounded_fll_pull_in_correction_hz(fll_err_hz: f64, fll_bw_hz: f64) -> f64 {
 }
 
 fn apply_carrier_loop(input: CarrierLoopInput) -> CarrierLoopUpdate {
+    let pll_coefficients =
+        phase_lock_loop_coefficients(input.pll_bw_hz, input.coherent_integration_s);
+    let fll_coefficients =
+        first_order_loop_coefficients(input.fll_bw_hz, input.coherent_integration_s);
     let mut carrier_hz = input.current_carrier_hz;
     if input.apply_fll {
-        carrier_hz += bounded_fll_pull_in_correction_hz(input.fll_err_hz, input.fll_bw_hz);
+        carrier_hz += bounded_fll_pull_in_correction_hz(
+            input.fll_err_hz * fll_coefficients.error_blend,
+            input.fll_bw_hz,
+        );
     }
-    carrier_hz += input.pll_bw_hz * input.pll_err_rad;
+    carrier_hz += pll_coefficients.frequency_gain_hz_per_rad * input.pll_err_rad;
 
     let carrier_phase_cycles = input.current_carrier_phase_cycles
         + input.current_carrier_hz * input.epoch_len_samples as f64 / input.sample_rate_hz
-        + input.pll_err_rad / std::f64::consts::TAU;
+        + pll_coefficients.phase_blend * input.pll_err_rad / std::f64::consts::TAU;
 
     CarrierLoopUpdate { carrier_hz, carrier_phase_cycles }
 }
@@ -1384,7 +1394,8 @@ mod tests {
         AcqHypothesis, Chips, Epoch, SampleTime, SamplesFrame, SatId, Seconds, TrackEpoch,
     };
     use bijux_gnss_signal::api::{
-        advance_code_phase_seconds, discriminators, sample_ca_code, samples_per_code, Prn,
+        advance_code_phase_seconds, discriminators, first_order_loop_coefficients,
+        phase_lock_loop_coefficients, sample_ca_code, samples_per_code, Prn,
     };
     use num_complex::Complex;
     use serde::Deserialize;
@@ -1623,11 +1634,12 @@ mod tests {
 
     #[test]
     fn apply_dll_code_loop_updates_code_rate_from_discriminator() {
+        let coherent_integration_s = 5_000.0 / 1_023_000.0;
         let update = super::apply_dll_code_loop(super::CodeLoopInput {
             current_code_rate_hz: 1_023_000.0,
             current_code_phase_samples: 250.0,
             epoch_len_samples: 5_000,
-            coherent_integration_s: 5_000.0 / 1_023_000.0,
+            coherent_integration_s,
             nominal_code_rate_hz: 1_023_000.0,
             dll_bw_hz: 2.0,
             dll_err: 0.25,
@@ -1635,7 +1647,9 @@ mod tests {
             samples_per_code: 5_000,
         });
 
-        assert!((update.code_rate_hz - 1_022_999.5024358).abs() < 1.0e-6, "{update:?}");
+        let expected = 1_023_000.0
+            - first_order_loop_coefficients(2.0, coherent_integration_s).rate_gain_hz * 0.25;
+        assert!((update.code_rate_hz - expected).abs() < 1.0e-9, "{update:?}");
     }
 
     #[test]
@@ -1878,6 +1892,7 @@ mod tests {
             current_carrier_phase_cycles: 12.0,
             epoch_len_samples: 4_092,
             sample_rate_hz: 4_092_000.0,
+            coherent_integration_s: 0.001,
             pll_bw_hz: 8.0,
             pll_err_rad: 0.25,
             fll_bw_hz: 0.0,
@@ -1885,8 +1900,16 @@ mod tests {
             apply_fll: false,
         });
 
-        assert!((update.carrier_hz - 1_002.0).abs() < 1.0e-9, "{update:?}");
-        let expected_phase_cycles = 12.0 + 1.0 + 0.25 / std::f64::consts::TAU;
+        let pll_coefficients = phase_lock_loop_coefficients(8.0, 0.001);
+        assert!(
+            (update.carrier_hz
+                - (1_000.0 + pll_coefficients.frequency_gain_hz_per_rad * 0.25))
+                .abs()
+                < 1.0e-9,
+            "{update:?}"
+        );
+        let expected_phase_cycles =
+            12.0 + 1.0 + pll_coefficients.phase_blend * 0.25 / std::f64::consts::TAU;
         assert!((update.carrier_phase_cycles - expected_phase_cycles).abs() < 1.0e-9, "{update:?}",);
     }
 
@@ -1897,6 +1920,7 @@ mod tests {
             current_carrier_phase_cycles: 12.0,
             epoch_len_samples: 4_092,
             sample_rate_hz: 4_092_000.0,
+            coherent_integration_s: 0.001,
             pll_bw_hz: 8.0,
             pll_err_rad: 0.25,
             fll_bw_hz: 10.0,
@@ -1904,7 +1928,45 @@ mod tests {
             apply_fll: true,
         });
 
-        assert!((update.carrier_hz - 112.0).abs() < 1.0e-9, "{update:?}");
+        let pll_coefficients = phase_lock_loop_coefficients(8.0, 0.001);
+        let fll_coefficients = first_order_loop_coefficients(10.0, 0.001);
+        let expected_carrier_hz = 80.0
+            + super::bounded_fll_pull_in_correction_hz(30.0 * fll_coefficients.error_blend, 10.0)
+            + pll_coefficients.frequency_gain_hz_per_rad * 0.25;
+        assert!((update.carrier_hz - expected_carrier_hz).abs() < 1.0e-9, "{update:?}");
+    }
+
+    #[test]
+    fn apply_carrier_loop_uses_coherent_interval_to_scale_frequency_gain() {
+        let short = super::apply_carrier_loop(super::CarrierLoopInput {
+            current_carrier_hz: 1_000.0,
+            current_carrier_phase_cycles: 12.0,
+            epoch_len_samples: 4_092,
+            sample_rate_hz: 4_092_000.0,
+            coherent_integration_s: 0.001,
+            pll_bw_hz: 8.0,
+            pll_err_rad: 0.25,
+            fll_bw_hz: 0.0,
+            fll_err_hz: 0.0,
+            apply_fll: false,
+        });
+        let long = super::apply_carrier_loop(super::CarrierLoopInput {
+            current_carrier_hz: 1_000.0,
+            current_carrier_phase_cycles: 12.0,
+            epoch_len_samples: 40_920,
+            sample_rate_hz: 4_092_000.0,
+            coherent_integration_s: 0.010,
+            pll_bw_hz: 8.0,
+            pll_err_rad: 0.25,
+            fll_bw_hz: 0.0,
+            fll_err_hz: 0.0,
+            apply_fll: false,
+        });
+
+        assert!(
+            (long.carrier_hz - 1_000.0).abs() > (short.carrier_hz - 1_000.0).abs(),
+            "short={short:?} long={long:?}"
+        );
     }
 
     #[test]
