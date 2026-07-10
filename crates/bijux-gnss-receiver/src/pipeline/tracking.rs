@@ -29,7 +29,7 @@ const CYCLE_SLIP_PHASE_DELTA_CYCLES: f64 = 0.35;
 const NAV_BIT_PHASE_STEP_CYCLES: f64 = 0.5;
 const NAV_BIT_PHASE_STEP_TOLERANCE_CYCLES: f64 = 0.1;
 const PLL_LOCK_MAX_PHASE_ERROR_RAD: f32 = 0.2;
-const PULL_IN_REQUIRED_STABLE_EPOCHS: u8 = 2;
+const PULL_IN_REQUIRED_STABLE_EPOCHS: u8 = 1;
 const FLL_PULL_IN_MAX_CORRECTION_BW_MULTIPLIER: f64 = 4.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1302,9 +1302,8 @@ fn apply_carrier_loop(input: CarrierLoopInput) -> CarrierLoopUpdate {
     let mut carrier_hz = input.current_carrier_hz;
     if input.apply_fll {
         carrier_hz += bounded_fll_pull_in_correction_hz(input.fll_err_hz, input.fll_bw_hz);
-    } else {
-        carrier_hz += input.pll_bw_hz * input.pll_err_rad;
     }
+    carrier_hz += input.pll_bw_hz * input.pll_err_rad;
 
     let carrier_phase_cycles = input.current_carrier_phase_cycles
         + input.current_carrier_hz * input.epoch_len_samples as f64 / input.sample_rate_hz
@@ -1828,7 +1827,7 @@ mod tests {
             apply_fll: true,
         });
 
-        assert!((update.carrier_hz - 110.0).abs() < 1.0e-9, "{update:?}");
+        assert!((update.carrier_hz - 112.0).abs() < 1.0e-9, "{update:?}");
     }
 
     #[test]
