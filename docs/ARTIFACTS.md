@@ -46,9 +46,17 @@ Invariants:
   but only for observations whose metadata `pseudorange_model` is
   `tracked_code_phase_alignment`
 - observation metadata may carry source `tracking_uncertainty` so downstream weighting can use
-  tracking-derived uncertainty instead of CN0-only heuristics
+  tracking-derived jitter together with the observation-layer thermal floor instead of CN0-only
+  heuristics
 - observation metadata records `pseudorange_model` and `signal_delay_alignment_source` so
   downstream consumers can distinguish resolved absolute code range from receiver-epoch fallback
+- when present, `ObsSatellite.error_model.thermal_noise_m` reflects the tracked code measurement
+  floor from C/N0, coherent integration length, DLL lock state, and lock quality
+- when present, `ObsSatellite.error_model.tracking_jitter_m` reflects tracking-derived code phase
+  jitter, preferring `tracking_uncertainty` and falling back to DLL discriminator error only when
+  the tracking artifact did not emit uncertainty
+- `ObsSatellite.pseudorange_var_m2` uses the larger of `thermal_noise_m` and `tracking_jitter_m`
+  so downstream weighting does not understate weak or poorly locked code observations
 - impossible code ranges are rejected in-band with explicit observation reasons:
   `non_finite_pseudorange`, `non_positive_pseudorange`, or `pseudorange_out_of_bounds`;
   those satellites make the containing epoch reject with `inconsistent_observable`

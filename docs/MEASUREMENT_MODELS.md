@@ -133,4 +133,14 @@ sanity checks). Any violation must emit diagnostics and mark the measurement as 
 
 ## Noise/Weighting
 - CN₀- and elevation-weighted variance is used in navigation solvers.
+- Observation pseudorange variance is built from two explicit code-error components:
+  `thermal_noise_m` and `tracking_jitter_m`.
+- `tracking_jitter_m` prefers per-epoch `TrackingUncertainty.code_phase_samples` from tracking and
+  falls back to the tracked DLL discriminator error only when the tracking layer did not emit that
+  uncertainty.
+- `thermal_noise_m` is a measurement floor derived from tracked C/N0, configured coherent
+  integration length, DLL lock state, and observation lock quality.
+- The emitted pseudorange sigma is the larger of those two components, so observation weighting
+  cannot become tighter than the current thermal floor even when the recent tracking jitter window
+  is unusually small.
 - See `NavigationWeightingConfig` for the current policy knobs.

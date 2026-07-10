@@ -13,8 +13,11 @@ These are the shared types exchanged across layers. They live in `bijux-gnss-cor
   receive-time anchor and pseudorange, emitted only when the tracked signal delay is resolved
 - `SignalDelayAlignment`: resolved whole-code-period alignment carried from acquisition/tracking
   when absolute pseudorange is known
-- `TrackingUncertainty`: per-epoch code phase, carrier phase, Doppler, and C/N0 uncertainty
-- `LockFlags`: lock quality
+- `TrackingUncertainty`: per-epoch tracking-derived code phase, carrier phase, Doppler, and C/N0
+  uncertainty
+- `LockFlags`: raw code, carrier, bit, and cycle-slip booleans
+- `ObsMetadata.lock_quality`: derived observation lock-quality scalar used by the observation
+  uncertainty model
 - `SolutionStatus`: validity state (Invalid, Degraded, Coarse, Converged, Float, Fixed)
 
 ## Navigation
