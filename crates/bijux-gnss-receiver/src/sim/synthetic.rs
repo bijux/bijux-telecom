@@ -42,6 +42,16 @@ pub struct SyntheticDopplerRampParams {
     pub doppler_rate_hz_per_s: f64,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticFadeWindow {
+    /// Fade start time in seconds, inclusive.
+    pub start_s: f64,
+    /// Fade end time in seconds, exclusive.
+    pub end_s: f64,
+    /// Multiplicative scale applied to the synthetic signal inside the window.
+    pub signal_scale: f32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyntheticScenario {
     pub sample_rate_hz: f64,
@@ -2206,6 +2216,30 @@ pub fn generate_l1_ca_with_doppler_ramp(
     SamplesFrame::new(signal_only.t0, Seconds(dt_s), iq)
 }
 
+/// Generate a synthetic GPS L1 C/A signal with deterministic signal-power fades.
+pub fn generate_l1_ca_with_fades(
+    config: &ReceiverPipelineConfig,
+    params: SyntheticSignalParams,
+    fade_windows: &[SyntheticFadeWindow],
+    seed: u64,
+    duration_s: f64,
+) -> SamplesFrame {
+    let mut signal_only = generate_l1_ca_signal_only(config, params, duration_s);
+    apply_synthetic_fade_windows(&mut signal_only, fade_windows);
+    let clock = SampleClock::new(config.sampling_freq_hz);
+    let dt_s = clock.dt_s();
+    let noise_std = SYNTHETIC_NOISE_STD_PER_COMPONENT;
+    let mut rng = XorShift64::new(seed);
+    let mut iq = Vec::with_capacity(signal_only.len());
+    for sample in signal_only.iq {
+        let noise_i = rng.next_gaussian() * noise_std;
+        let noise_q = rng.next_gaussian() * noise_std;
+        let noise = Complex::new(noise_i, noise_q);
+        iq.push(sample + noise);
+    }
+    SamplesFrame::new(signal_only.t0, Seconds(dt_s), iq)
+}
+
 pub fn generate_l1_ca_multi(
     config: &ReceiverPipelineConfig,
     scenario: &SyntheticScenario,
@@ -2257,6 +2291,49 @@ fn generate_l1_ca_with_doppler_ramp_signal_only(
     }
     let t0 = SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz };
     SamplesFrame::new(t0, Seconds(dt_s), iq)
+}
+
+fn generate_l1_ca_signal_only(
+    config: &ReceiverPipelineConfig,
+    params: SyntheticSignalParams,
+    duration_s: f64,
+) -> SamplesFrame {
+    generate_l1_ca_multi_signal_only(
+        config,
+        &SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 0.0,
+            duration_s,
+            seed: 0,
+            satellites: vec![params],
+            ephemerides: Vec::new(),
+            id: "synthetic".to_string(),
+        },
+    )
+}
+
+fn apply_synthetic_fade_windows(frame: &mut SamplesFrame, fade_windows: &[SyntheticFadeWindow]) {
+    if fade_windows.is_empty() {
+        return;
+    }
+
+    let sample_rate_hz = frame.t0.sample_rate_hz;
+    for (offset, sample) in frame.iq.iter_mut().enumerate() {
+        let sample_time_s = (frame.t0.sample_index as f64 + offset as f64) / sample_rate_hz;
+        let signal_scale = synthetic_signal_scale_at_time_s(fade_windows, sample_time_s);
+        *sample *= signal_scale;
+    }
+}
+
+fn synthetic_signal_scale_at_time_s(
+    fade_windows: &[SyntheticFadeWindow],
+    sample_time_s: f64,
+) -> f32 {
+    fade_windows
+        .iter()
+        .filter(|window| sample_time_s >= window.start_s && sample_time_s < window.end_s)
+        .fold(1.0_f32, |signal_scale, window| signal_scale * window.signal_scale)
 }
 
 fn generate_l1_ca_multi_signal_only(
@@ -2693,7 +2770,8 @@ mod tests {
     use super::{
         build_iq16_capture_bundle, build_truth_bundle, expected_acquisition_code_phase_samples,
         expected_acquisition_code_phase_samples_f64, generate_l1_ca, generate_l1_ca_multi,
-        generate_l1_ca_with_doppler_ramp, measure_noise_only_acquisition_false_alarm_rate,
+        generate_l1_ca_with_doppler_ramp, generate_l1_ca_with_fades,
+        measure_noise_only_acquisition_false_alarm_rate,
         measure_noise_only_acquisition_false_alarm_rates,
         measure_truth_guided_acquisition_detection_probability,
         measure_truth_guided_acquisition_detection_rate, measure_truth_guided_tracking_lock_rate,
@@ -2707,8 +2785,8 @@ mod tests {
         wrapped_code_phase_error_samples, wrapped_code_phase_error_samples_f64, SatState,
         SyntheticAcquisitionDetectionRateCase, SyntheticAcquisitionFalseAlarmRateCase,
         SyntheticAcquisitionSampleRateValidationCase, SyntheticDopplerRampParams,
-        SyntheticNavBitMode, SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource,
-        SyntheticTrackingLockRateCase, SyntheticTrackingSensitivityTrial,
+        SyntheticFadeWindow, SyntheticNavBitMode, SyntheticScenario, SyntheticSignalParams,
+        SyntheticSignalSource, SyntheticTrackingLockRateCase, SyntheticTrackingSensitivityTrial,
         SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -3003,6 +3081,83 @@ mod tests {
         assert!(
             (actual_extra_phase_step - expected_extra_phase_step).abs() <= 1e-6,
             "receiver clock bias phase step mismatch: actual={actual_extra_phase_step}, expected={expected_extra_phase_step}"
+        );
+    }
+
+    #[test]
+    fn synthetic_fade_windows_zero_signal_inside_the_requested_interval() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 1_023_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let params = SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Gps, prn: 5 },
+            doppler_hz: 0.0,
+            code_phase_chips: 0.0,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 60.0,
+            data_bit_flip: false,
+        };
+        let mut signal_only = super::generate_l1_ca_signal_only(&config, params, 0.010);
+        super::apply_synthetic_fade_windows(
+            &mut signal_only,
+            &[SyntheticFadeWindow { start_s: 0.002, end_s: 0.004, signal_scale: 0.0 }],
+        );
+
+        let fade_start = (0.002 * config.sampling_freq_hz).round() as usize;
+        let fade_end = (0.004 * config.sampling_freq_hz).round() as usize;
+        assert!(
+            signal_only.iq[..fade_start].iter().any(|sample| sample.norm_sqr() > 0.0),
+            "samples before the fade must preserve signal energy"
+        );
+        assert!(
+            signal_only.iq[fade_start..fade_end]
+                .iter()
+                .all(|sample| sample.norm_sqr() <= f32::EPSILON),
+            "samples inside the fade window must be fully attenuated"
+        );
+        assert!(
+            signal_only.iq[fade_end..].iter().any(|sample| sample.norm_sqr() > 0.0),
+            "samples after the fade must preserve signal energy"
+        );
+    }
+
+    #[test]
+    fn synthetic_fade_generator_preserves_noise_outside_the_attenuated_signal_window() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 1_023_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let params = SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Gps, prn: 5 },
+            doppler_hz: 0.0,
+            code_phase_chips: 0.0,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 60.0,
+            data_bit_flip: false,
+        };
+        let baseline = generate_l1_ca(&config, params, 0xFADE_0001, 0.010);
+        let faded = generate_l1_ca_with_fades(
+            &config,
+            params,
+            &[SyntheticFadeWindow { start_s: 0.002, end_s: 0.004, signal_scale: 0.0 }],
+            0xFADE_0001,
+            0.010,
+        );
+
+        let fade_start = (0.002 * config.sampling_freq_hz).round() as usize;
+        let fade_end = (0.004 * config.sampling_freq_hz).round() as usize;
+        assert_eq!(baseline.iq[..fade_start], faded.iq[..fade_start]);
+        assert_eq!(baseline.iq[fade_end..], faded.iq[fade_end..]);
+        assert!(
+            baseline.iq[fade_start..fade_end] != faded.iq[fade_start..fade_end],
+            "the attenuated window must differ from the unfaded baseline"
         );
     }
 
