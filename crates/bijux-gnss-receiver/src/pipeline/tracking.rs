@@ -3,6 +3,7 @@
 use std::collections::VecDeque;
 
 use num_complex::Complex;
+use serde::{Deserialize, Serialize};
 
 use bijux_gnss_core::api::{
     AcqHypothesis, AcqTrackingSeed, AcqUncertainty, Chips, Constellation, Cycles, Hertz,
@@ -79,6 +80,51 @@ impl std::fmt::Display for ChannelState {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrackingChannelState {
+    Acquired,
+    PullIn,
+    Locked,
+    Degraded,
+    Lost,
+    Reacquired,
+    Refused,
+}
+
+impl std::fmt::Display for TrackingChannelState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let value = match self {
+            Self::Acquired => "acquired",
+            Self::PullIn => "pull_in",
+            Self::Locked => "locked",
+            Self::Degraded => "degraded",
+            Self::Lost => "lost",
+            Self::Reacquired => "reacquired",
+            Self::Refused => "refused",
+        };
+        write!(f, "{value}")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrackingChannelStateEvent {
+    pub state: TrackingChannelState,
+    pub epoch_idx: u64,
+    pub sample_index: u64,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrackingChannelStateReport {
+    pub sat: SatId,
+    pub channel_id: u8,
+    pub channel_uid: String,
+    pub final_state: TrackingChannelState,
+    pub final_reason: Option<String>,
+    pub emitted_states: Vec<TrackingChannelStateEvent>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelEvent {
     Acquire,
@@ -139,6 +185,7 @@ pub struct TrackingArtifacts {
     pub processed_input_samples: u64,
     pub processed_input_epochs: u64,
     pub track_transitions: Vec<TrackTransition>,
+    pub channel_state_reports: Vec<TrackingChannelStateReport>,
     pub tracking: Vec<TrackingResult>,
 }
 
@@ -534,7 +581,7 @@ impl Tracking {
             lock_state: ChannelState::Idle.to_string(),
             lock_state_reason: Some("initializing".to_string()),
             channel_id: Some(channel_id),
-            channel_uid: format!("{:?}-{:02}-ch{:02}", sat.constellation, sat.prn, channel_id),
+            channel_uid: tracking_channel_uid(sat, channel_id),
             tracking_provenance: format!(
                 "channel={} sat={:?}-{}",
                 channel_id, sat.constellation, sat.prn
@@ -614,10 +661,13 @@ impl Tracking {
         let tracking = self.finish_incremental_tracking(session.tracking);
         let track_transitions =
             tracking.iter().flat_map(|result| result.transitions.iter().cloned()).collect();
+        let channel_state_reports =
+            tracking.iter().map(tracking_channel_state_report).collect::<Vec<_>>();
         TrackingArtifacts {
             processed_input_samples: session.processed_input_samples,
             processed_input_epochs: session.processed_input_epochs,
             track_transitions,
+            channel_state_reports,
             tracking,
         }
     }
@@ -1272,6 +1322,104 @@ fn acq_to_track_state(hypothesis: &AcqHypothesis) -> &'static str {
         AcqHypothesis::Rejected => "rejected",
         AcqHypothesis::Deferred => "deferred",
     }
+}
+
+fn tracking_channel_uid(sat: SatId, channel_id: u8) -> String {
+    format!("{:?}-{:02}-ch{:02}", sat.constellation, sat.prn, channel_id)
+}
+
+fn tracking_channel_state_report(result: &TrackingResult) -> TrackingChannelStateReport {
+    let sat = result.sat;
+    let channel_id = result.epochs.first().and_then(|epoch| epoch.channel_id).unwrap_or_default();
+    let channel_uid = result
+        .epochs
+        .first()
+        .map(|epoch| epoch.channel_uid.clone())
+        .unwrap_or_else(|| tracking_channel_uid(sat, channel_id));
+    let initial_epoch_idx = result.epochs.first().map(|epoch| epoch.epoch.index).unwrap_or(0);
+    let initial_sample_index = result.epochs.first().map(|epoch| epoch.sample_index).unwrap_or(0);
+    let mut emitted_states = vec![TrackingChannelStateEvent {
+        state: TrackingChannelState::Acquired,
+        epoch_idx: initial_epoch_idx,
+        sample_index: initial_sample_index,
+        reason: None,
+    }];
+    let mut last_steady_state = Some(TrackingChannelState::Acquired);
+
+    for epoch in &result.epochs {
+        if let Some(steady_state) = tracking_channel_steady_state(epoch) {
+            if last_steady_state != Some(steady_state) {
+                emitted_states.push(TrackingChannelStateEvent {
+                    state: steady_state,
+                    epoch_idx: epoch.epoch.index,
+                    sample_index: epoch.sample_index,
+                    reason: epoch.lock_state_reason.clone(),
+                });
+                last_steady_state = Some(steady_state);
+            }
+        }
+
+        if let Some(marker_state) =
+            tracking_channel_marker_state(epoch.lock_state_reason.as_deref())
+        {
+            let duplicate_marker =
+                emitted_states.last().is_some_and(|event| event.state == marker_state);
+            if !duplicate_marker {
+                emitted_states.push(TrackingChannelStateEvent {
+                    state: marker_state,
+                    epoch_idx: epoch.epoch.index,
+                    sample_index: epoch.sample_index,
+                    reason: epoch.lock_state_reason.clone(),
+                });
+            }
+        }
+    }
+
+    let (final_state, final_reason) = result
+        .epochs
+        .last()
+        .map(|epoch| {
+            (
+                tracking_channel_final_state(epoch).unwrap_or(TrackingChannelState::Acquired),
+                epoch.lock_state_reason.clone(),
+            )
+        })
+        .unwrap_or((TrackingChannelState::Acquired, None));
+
+    TrackingChannelStateReport {
+        sat,
+        channel_id,
+        channel_uid,
+        final_state,
+        final_reason,
+        emitted_states,
+    }
+}
+
+fn tracking_channel_steady_state(epoch: &TrackEpoch) -> Option<TrackingChannelState> {
+    match epoch.lock_state.as_str() {
+        "acquired" => Some(TrackingChannelState::Acquired),
+        "pull_in" => Some(TrackingChannelState::PullIn),
+        "tracking" => Some(TrackingChannelState::Locked),
+        "degraded" => Some(TrackingChannelState::Degraded),
+        "lost" => Some(TrackingChannelState::Lost),
+        _ => None,
+    }
+}
+
+fn tracking_channel_marker_state(reason: Option<&str>) -> Option<TrackingChannelState> {
+    match reason {
+        Some("reacquired") => Some(TrackingChannelState::Reacquired),
+        Some("cn0_below_tracking_lock_floor") => Some(TrackingChannelState::Refused),
+        _ => None,
+    }
+}
+
+fn tracking_channel_final_state(epoch: &TrackEpoch) -> Option<TrackingChannelState> {
+    if epoch.lock_state_reason.as_deref() == Some("cn0_below_tracking_lock_floor") {
+        return Some(TrackingChannelState::Refused);
+    }
+    tracking_channel_steady_state(epoch)
 }
 
 fn ca_code_or_default(prn: u8) -> Vec<i8> {
@@ -3614,6 +3762,95 @@ mod tests {
             lock_state_reason: lock_state_reason.map(str::to_string),
             ..TrackEpoch::default()
         }
+    }
+
+    fn tracking_result_with_epochs(
+        channel_id: u8,
+        sat: SatId,
+        epochs: Vec<TrackEpoch>,
+    ) -> super::TrackingResult {
+        let epochs = epochs
+            .into_iter()
+            .map(|mut epoch| {
+                epoch.channel_id = Some(channel_id);
+                epoch.channel_uid = super::tracking_channel_uid(sat, channel_id);
+                epoch.sat = sat;
+                epoch
+            })
+            .collect();
+        super::TrackingResult {
+            sat,
+            carrier_hz: 0.0,
+            code_phase_samples: 0.0,
+            acquisition_hypothesis: "accepted".to_string(),
+            acquisition_score: 1.0,
+            acquisition_code_phase_samples: 0,
+            acquisition_carrier_hz: 0.0,
+            acq_to_track_state: "accepted".to_string(),
+            epochs,
+            transitions: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn tracking_channel_state_report_emits_unique_steady_states_and_reacquired_marker() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+        let report = super::tracking_channel_state_report(&tracking_result_with_epochs(
+            2,
+            sat,
+            vec![
+                track_epoch_with_state(0, false, "pull_in", Some("carrier_pull_in")),
+                track_epoch_with_state(1, true, "tracking", Some("carrier_converged")),
+                track_epoch_with_state(2, false, "lost", Some("prompt_power_drop")),
+                track_epoch_with_state(3, false, "pull_in", Some("carrier_pull_in")),
+                track_epoch_with_state(4, true, "tracking", Some("reacquired")),
+                track_epoch_with_state(5, true, "tracking", Some("stable_tracking")),
+            ],
+        ));
+
+        let emitted_states =
+            report.emitted_states.iter().map(|event| event.state).collect::<Vec<_>>();
+        assert_eq!(
+            emitted_states,
+            vec![
+                super::TrackingChannelState::Acquired,
+                super::TrackingChannelState::PullIn,
+                super::TrackingChannelState::Locked,
+                super::TrackingChannelState::Lost,
+                super::TrackingChannelState::PullIn,
+                super::TrackingChannelState::Locked,
+                super::TrackingChannelState::Reacquired,
+            ]
+        );
+        assert_eq!(report.final_state, super::TrackingChannelState::Locked);
+        assert_eq!(report.final_reason.as_deref(), Some("stable_tracking"));
+    }
+
+    #[test]
+    fn tracking_channel_state_report_marks_cn0_lock_refusal() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 16 };
+        let report = super::tracking_channel_state_report(&tracking_result_with_epochs(
+            1,
+            sat,
+            vec![
+                track_epoch_with_state(0, false, "pull_in", Some("carrier_pull_in")),
+                track_epoch_with_state(1, false, "pull_in", Some("cn0_below_tracking_lock_floor")),
+                track_epoch_with_state(2, false, "pull_in", Some("cn0_below_tracking_lock_floor")),
+            ],
+        ));
+
+        let emitted_states =
+            report.emitted_states.iter().map(|event| event.state).collect::<Vec<_>>();
+        assert_eq!(
+            emitted_states,
+            vec![
+                super::TrackingChannelState::Acquired,
+                super::TrackingChannelState::PullIn,
+                super::TrackingChannelState::Refused,
+            ]
+        );
+        assert_eq!(report.final_state, super::TrackingChannelState::Refused);
+        assert_eq!(report.final_reason.as_deref(), Some("cn0_below_tracking_lock_floor"));
     }
 
     #[test]

@@ -44,7 +44,8 @@ pub use crate::pipeline::observations::{
 /// Tracking engine and related types.
 pub use crate::pipeline::tracking::{
     Channel, ChannelEvent, ChannelState, CorrelatorOutput, Tracking as TrackingEngine,
-    TrackingArtifacts, TrackingResult, TrackingSession,
+    TrackingArtifacts, TrackingChannelState, TrackingChannelStateEvent, TrackingChannelStateReport,
+    TrackingResult, TrackingSession,
 };
 /// Pipeline step report helpers.
 pub use crate::pipeline::{StepReport, StepStats};
@@ -119,6 +120,8 @@ pub struct RunArtifacts {
     pub acquisition_explain: Vec<bijux_gnss_core::api::AcqExplain>,
     /// Track transition artifacts captured during the run.
     pub track_transitions: Vec<bijux_gnss_core::api::TrackTransition>,
+    /// Per-channel tracking state reports captured during the run.
+    pub channel_state_reports: Vec<TrackingChannelStateReport>,
     /// Tracking reports captured during the run.
     pub tracking: Vec<TrackingResult>,
     /// Observation decision artifacts captured during the run.

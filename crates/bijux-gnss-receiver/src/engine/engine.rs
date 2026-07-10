@@ -243,6 +243,7 @@ impl Receiver {
         }
         let tracking_artifacts = tracking.finish_tracking_session(tracking_session);
         let track_transitions = tracking_artifacts.track_transitions.clone();
+        let channel_state_reports = tracking_artifacts.channel_state_reports.clone();
         let tracking_results = tracking_artifacts.tracking;
         let tracking_ms = tracking_start.elapsed().as_secs_f64() * 1000.0;
         let track_channel_count: f64 =
@@ -313,6 +314,7 @@ impl Receiver {
             acquisitions,
             acquisition_explain,
             track_transitions,
+            channel_state_reports,
             tracking: tracking_results,
             observations: observation_report.output,
             observation_decisions,
