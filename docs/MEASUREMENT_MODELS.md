@@ -106,6 +106,21 @@ sanity checks). Any violation must emit diagnostics and mark the measurement as 
   shared convention bounds before navigation or downstream artifact consumers can treat the row as
   valid.
 
+## Synthetic Truth Validation
+- Receiver contract: `validate_truth_guided_observations` reports pseudorange, carrier-phase,
+  Doppler, and C/N0 error summaries per satellite from emitted observation rows, not from a
+  separate synthetic-only measurement path.
+- Pseudorange contract: absolute code validation requires both resolved
+  `tracked_code_phase_alignment` rows and an explicit synthetic receive-time anchor at capture
+  sample zero together with receiver ECEF truth. Without either input, the report records why
+  pseudorange truth could not be evaluated for that satellite.
+- Carrier-phase contract: carrier-phase truth is evaluated as an ambiguity-aligned residual.
+  Each continuous carrier arc fits its own constant phase bias before residual statistics are
+  aggregated, so the report measures phase consistency without claiming that the absolute
+  ambiguity is known.
+- Comparability contract: Doppler and C/N0 truth comparisons use finite observation rows that are
+  still scientifically comparable (`accepted` or `weak`) and exclude inconsistent rows.
+
 ## Observation Lock State
 - Receiver contract: every observation row carries `observation_lock_state` in addition to raw
   `tracking_state` and boolean `lock_flags`.
