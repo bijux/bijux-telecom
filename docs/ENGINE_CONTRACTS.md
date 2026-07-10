@@ -32,4 +32,6 @@ These are the shared types exchanged across layers. They live in `bijux-gnss-cor
 - Acquisition returns one selected outcome per searched PRN, even when the frame is too short for a usable search
 - Epochs are monotonic in `t_rx_s`
 - No NaNs/Inf in artifacts
+- Every `ObsSatellite` row carries a finite C/N0 value within shared convention bounds, including
+  degraded and rejected observation rows
 - `SolutionStatus` determines `valid` flag

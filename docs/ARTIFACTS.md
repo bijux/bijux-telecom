@@ -58,6 +58,8 @@ Invariants:
 - observation metadata records `doppler_model` so downstream consumers can interpret Doppler
   provenance; the current tracking-backed observation contract emits
   `tracked_carrier_hz_minus_intermediate_freq`
+- every `ObsSatellite` row carries finite C/N0 within the shared convention bounds, including
+  accepted, degraded, missing, and inconsistent rows
 - every `ObsSatellite` row carries Doppler and `doppler_model` even when the row is degraded,
   missing, or inconsistent, so reviewers and downstream tooling can inspect rejected satellite
   dynamics without reconstructing carrier state from tracking artifacts

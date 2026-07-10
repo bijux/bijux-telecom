@@ -74,6 +74,17 @@ sanity checks). Any violation must emit diagnostics and mark the measurement as 
   `carrier_hz = intermediate_freq_hz + doppler_hz`, so zero-IF and high-IF inputs use the same
   Doppler-bin semantics and only differ by the configured carrier offset.
 
+## C/N0
+- Units: dB-Hz.
+- Receiver contract: every observation row carries the tracked per-epoch C/N0 estimate, not only
+  accepted rows.
+- Emission contract: grouped multisatellite observation epochs preserve each satellite's own C/N0
+  value; degraded, missing, and inconsistent rows still emit that C/N0 alongside their explicit
+  reject reason.
+- Validation contract: observation validation rejects non-finite C/N0 and values outside the
+  shared convention bounds before navigation or downstream artifact consumers can treat the row as
+  valid.
+
 ## Receiver Clock Model
 - State: receiver clock bias `δt_r` and drift `δṫ_r` (seconds and seconds/second).
 - Dynamics (discrete): `δt_r(k+1) = δt_r(k) + δṫ_r(k) * Δt + w_b`,
