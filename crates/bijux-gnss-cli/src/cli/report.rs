@@ -343,6 +343,7 @@ struct NavDecodeReport {
     bit_signs: Vec<i8>,
     aligned_subframes: Vec<bijux_gnss_infra::api::nav::GpsL1CaLnavSubframeAlignment>,
     decoded_subframes: Vec<bijux_gnss_infra::api::nav::GpsL1CaLnavDecodedSubframe>,
+    ephemeris_rejections: Vec<bijux_gnss_infra::api::nav::GpsL1CaLnavEphemerisRejection>,
     parity_word_count: usize,
     parity_failed_words: usize,
     preamble_hits: usize,

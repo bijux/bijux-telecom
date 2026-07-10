@@ -150,6 +150,7 @@ fn handle_nav(command: GnssCommand) -> Result<()> {
                                 .map(|subframe| subframe.alignment.clone())
                                 .collect(),
                             decoded_subframes: decoded_stream.subframes,
+                            ephemeris_rejections: stats.ephemeris_rejections.clone(),
                             parity_word_count,
                             parity_failed_words,
                             preamble_hits: stats.preamble_hits,

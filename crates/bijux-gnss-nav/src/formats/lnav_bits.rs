@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 use crate::formats::lnav_decode::{
     decode_subframe1_clock, decode_subframe2_orbit, decode_subframe3_orbit, get_bits,
     parse_subframe1, parse_subframe2, parse_subframe3, EphemerisBuilder, EphemerisPart,
-    GpsL1CaLnavSubframe1Clock, GpsL1CaLnavSubframe2Orbit, GpsL1CaLnavSubframe3Orbit,
+    GpsL1CaLnavEphemerisRejection, GpsL1CaLnavSubframe1Clock, GpsL1CaLnavSubframe2Orbit,
+    GpsL1CaLnavSubframe3Orbit,
 };
 use crate::orbits::gps::GpsEphemeris;
 
@@ -397,6 +398,7 @@ pub struct SubframeInfo {
 pub struct LnavDecodeStats {
     pub preamble_hits: usize,
     pub parity_pass_rate: f64,
+    pub ephemeris_rejections: Vec<GpsL1CaLnavEphemerisRejection>,
 }
 
 pub fn align_gps_l1ca_lnav_subframes(
@@ -443,6 +445,7 @@ pub fn decode_subframes(bits: &[i8]) -> (Vec<GpsEphemeris>, LnavDecodeStats) {
     let mut ephemerides = Vec::new();
     let mut parity_ok = 0;
     let mut parity_total = 0;
+    let mut ephemeris_rejections = Vec::new();
     let mut builder = EphemerisBuilder::default();
 
     let aligned_subframes = aligned_gps_l1ca_lnav_subframes(bits, 0);
@@ -457,7 +460,8 @@ pub fn decode_subframes(bits: &[i8]) -> (Vec<GpsEphemeris>, LnavDecodeStats) {
             let info = subframe_info_from_how(&subframe.words[1]);
             if info.subframe_id == 1 || info.subframe_id == 2 || info.subframe_id == 3 {
                 if let Some(part) = parse_ephemeris(&subframe.words, info.subframe_id) {
-                    if builder.merge(part.clone()).is_err() {
+                    if let Err(rejection) = builder.merge(part.clone()) {
+                        ephemeris_rejections.push(rejection);
                         builder.reset();
                         let _ = builder.merge(part);
                     } else if let Some(eph) = builder.try_build() {
@@ -477,6 +481,7 @@ pub fn decode_subframes(bits: &[i8]) -> (Vec<GpsEphemeris>, LnavDecodeStats) {
         LnavDecodeStats {
             preamble_hits: aligned_subframes.len(),
             parity_pass_rate,
+            ephemeris_rejections,
         },
     )
 }
