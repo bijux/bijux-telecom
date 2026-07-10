@@ -731,6 +731,8 @@ pub struct ObsMetadata {
     #[serde(default)]
     pub carrier_phase_model: String,
     #[serde(default)]
+    pub doppler_model: String,
+    #[serde(default)]
     pub carrier_phase_continuity: String,
     #[serde(default)]
     pub carrier_phase_arc_start_epoch_idx: u64,
@@ -779,6 +781,7 @@ impl Default for ObsMetadata {
             observation_uncertainty_class: "unknown".to_string(),
             pseudorange_model: "receiver_epoch_fallback".to_string(),
             carrier_phase_model: "tracked_carrier_cycles".to_string(),
+            doppler_model: "tracked_carrier_hz_minus_intermediate_freq".to_string(),
             carrier_phase_continuity: "unusable".to_string(),
             carrier_phase_arc_start_epoch_idx: 0,
             carrier_phase_arc_start_sample_index: 0,
@@ -870,7 +873,7 @@ pub fn obs_epoch_stability_key(epoch: &ObsEpoch) -> String {
                 })
                 .unwrap_or_default();
             format!(
-                "{:?}-{:02}:{:?}:{:?}:{:.3}:{:.6}:{:.3}:{:.6}:{}:{}:{}{}",
+                "{:?}-{:02}:{:?}:{:?}:{:.3}:{:.6}:{:.3}:{}:{:.6}:{}:{}:{}{}",
                 sat.signal_id.sat.constellation,
                 sat.signal_id.sat.prn,
                 sat.signal_id.band,
@@ -878,6 +881,7 @@ pub fn obs_epoch_stability_key(epoch: &ObsEpoch) -> String {
                 sat.pseudorange_m.0,
                 sat.carrier_phase_cycles.0,
                 sat.doppler_hz.0,
+                sat.metadata.doppler_model,
                 sat.cn0_dbhz,
                 sat.metadata.carrier_phase_continuity,
                 sat.metadata.carrier_phase_arc_start_epoch_idx,
@@ -1363,6 +1367,13 @@ mod tests {
     }
 
     #[test]
+    fn obs_metadata_defaults_doppler_contract() {
+        let metadata = ObsMetadata::default();
+
+        assert_eq!(metadata.doppler_model, "tracked_carrier_hz_minus_intermediate_freq");
+    }
+
+    #[test]
     fn obs_epoch_stability_key_includes_carrier_phase_arc_metadata() {
         let sat_id = SatId { constellation: Constellation::Gps, prn: 4 };
         let base = ObsEpoch {
@@ -1417,6 +1428,58 @@ mod tests {
         changed.sats[0].metadata.carrier_phase_continuity = "reset_after_cycle_slip".to_string();
         changed.sats[0].metadata.carrier_phase_arc_start_epoch_idx = 73;
         changed.sats[0].metadata.carrier_phase_arc_start_sample_index = 298_716;
+
+        assert_ne!(obs_epoch_stability_key(&base), obs_epoch_stability_key(&changed));
+    }
+
+    #[test]
+    fn obs_epoch_stability_key_includes_doppler_model() {
+        let sat_id = SatId { constellation: Constellation::Gps, prn: 4 };
+        let base = ObsEpoch {
+            t_rx_s: crate::api::Seconds(0.07),
+            source_time: ReceiverSampleTrace::from_sample_index(286_440, 4_092_000.0),
+            gps_week: None,
+            tow_s: None,
+            epoch_idx: 70,
+            discontinuity: false,
+            valid: true,
+            processing_ms: None,
+            role: ReceiverRole::Rover,
+            sats: vec![ObsSatellite {
+                signal_id: crate::api::SigId {
+                    sat: sat_id,
+                    band: SignalBand::L1,
+                    code: crate::api::SignalCode::Ca,
+                },
+                pseudorange_m: crate::api::Meters(21_000_000.0),
+                pseudorange_var_m2: 1.0,
+                carrier_phase_cycles: Cycles(12.25),
+                carrier_phase_var_cycles2: 1.0,
+                doppler_hz: Hertz(125.0),
+                doppler_var_hz2: 1.0,
+                cn0_dbhz: 45.0,
+                lock_flags: LockFlags {
+                    code_lock: true,
+                    carrier_lock: true,
+                    bit_lock: false,
+                    cycle_slip: false,
+                },
+                multipath_suspect: false,
+                observation_status: ObservationStatus::Accepted,
+                observation_reject_reasons: Vec::new(),
+                elevation_deg: None,
+                azimuth_deg: None,
+                weight: None,
+                timing: None,
+                error_model: None,
+                metadata: ObsMetadata::default(),
+            }],
+            decision: ObservationEpochDecision::Accepted,
+            decision_reason: None,
+            manifest: None,
+        };
+        let mut changed = base.clone();
+        changed.sats[0].metadata.doppler_model = "legacy_absolute_doppler_hz".to_string();
 
         assert_ne!(obs_epoch_stability_key(&base), obs_epoch_stability_key(&changed));
     }
