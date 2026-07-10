@@ -7,6 +7,7 @@ use crate::formats::lnav_decode::{
 use crate::orbits::gps::GpsEphemeris;
 
 const GPS_L1CA_PREAMBLE: [u8; 8] = [1, 0, 0, 0, 1, 0, 1, 1];
+const GPS_L1CA_NAV_BIT_LENGTH_MS: usize = 20;
 
 #[derive(Debug, Clone)]
 pub struct BitSyncResult {
@@ -14,16 +15,34 @@ pub struct BitSyncResult {
     pub bits: Vec<i8>,
 }
 
-pub fn bit_sync_from_prompt(prompt_i: &[f32]) -> BitSyncResult {
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpsL1CaNavigationBit {
+    pub bit_index: usize,
+    pub start_prompt_index: usize,
+    pub end_prompt_index_exclusive: usize,
+    pub sign: i8,
+    pub prompt_sum: f32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpsL1CaNavigationBits {
+    pub bit_start_ms: usize,
+    pub bits: Vec<GpsL1CaNavigationBit>,
+}
+
+pub fn demodulate_gps_l1ca_navigation_bits(prompt_i: &[f32]) -> GpsL1CaNavigationBits {
     let mut best_offset = 0;
     let mut best_metric = f64::MIN;
-    for offset in 0..20 {
+    for offset in 0..GPS_L1CA_NAV_BIT_LENGTH_MS {
         let mut metric = 0.0_f64;
         let mut idx = offset;
-        while idx + 20 <= prompt_i.len() {
-            let sum: f64 = prompt_i[idx..idx + 20].iter().map(|v| *v as f64).sum();
+        while idx + GPS_L1CA_NAV_BIT_LENGTH_MS <= prompt_i.len() {
+            let sum: f64 = prompt_i[idx..idx + GPS_L1CA_NAV_BIT_LENGTH_MS]
+                .iter()
+                .map(|v| *v as f64)
+                .sum();
             metric += sum.abs();
-            idx += 20;
+            idx += GPS_L1CA_NAV_BIT_LENGTH_MS;
         }
         if metric > best_metric {
             best_metric = metric;
@@ -33,13 +52,30 @@ pub fn bit_sync_from_prompt(prompt_i: &[f32]) -> BitSyncResult {
 
     let mut bits = Vec::new();
     let mut idx = best_offset;
-    while idx + 20 <= prompt_i.len() {
-        let sum: f64 = prompt_i[idx..idx + 20].iter().map(|v| *v as f64).sum();
-        bits.push(if sum >= 0.0 { 1 } else { -1 });
-        idx += 20;
+    let mut bit_index = 0;
+    while idx + GPS_L1CA_NAV_BIT_LENGTH_MS <= prompt_i.len() {
+        let end_prompt_index_exclusive = idx + GPS_L1CA_NAV_BIT_LENGTH_MS;
+        let prompt_sum: f32 = prompt_i[idx..end_prompt_index_exclusive].iter().sum();
+        bits.push(GpsL1CaNavigationBit {
+            bit_index,
+            start_prompt_index: idx,
+            end_prompt_index_exclusive,
+            sign: if prompt_sum >= 0.0 { 1 } else { -1 },
+            prompt_sum,
+        });
+        idx = end_prompt_index_exclusive;
+        bit_index += 1;
     }
 
-    BitSyncResult { bit_start_ms: best_offset, bits }
+    GpsL1CaNavigationBits { bit_start_ms: best_offset, bits }
+}
+
+pub fn bit_sync_from_prompt(prompt_i: &[f32]) -> BitSyncResult {
+    let demodulation = demodulate_gps_l1ca_navigation_bits(prompt_i);
+    BitSyncResult {
+        bit_start_ms: demodulation.bit_start_ms,
+        bits: demodulation.bits.into_iter().map(|bit| bit.sign).collect(),
+    }
 }
 
 pub fn find_preamble(bits: &[i8]) -> Option<(usize, bool)> {

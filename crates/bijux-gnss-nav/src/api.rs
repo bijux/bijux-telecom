@@ -29,7 +29,10 @@ pub use crate::estimation::ppp::config::{
     PppArMode, PppConfig, PppConvergenceConfig, PppFilter, PppProcessNoise, PppSolutionEpoch,
 };
 /// Format parsing and output.
-pub use crate::formats::lnav_bits::{bit_sync_from_prompt, decode_subframes};
+pub use crate::formats::lnav_bits::{
+    bit_sync_from_prompt, decode_subframes, demodulate_gps_l1ca_navigation_bits,
+    GpsL1CaNavigationBit, GpsL1CaNavigationBits,
+};
 pub use crate::formats::lnav_decode::{decode_rawephem_hex, decode_subframe_hex};
 /// Precise product providers (SP3/CLK) and fallbacks.
 pub use crate::formats::precise_products::{
