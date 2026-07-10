@@ -26,6 +26,7 @@ fn sample_track_epoch() -> TrackEpoch {
         fll_lock: true,
         cycle_slip: false,
         nav_bit_lock: false,
+        navigation_bit_sign: None,
         dll_err: 0.0,
         pll_err: 0.0,
         fll_err: 0.0,
@@ -70,6 +71,21 @@ fn tracking_artifact_validation_rejects_invalid_uncertainty() {
 
     assert!(
         diagnostics.iter().any(|event| event.code == "GNSS_NUMERIC_TRACK_UNCERTAINTY_INVALID"),
+        "{diagnostics:?}"
+    );
+}
+
+#[test]
+fn tracking_artifact_validation_rejects_invalid_navigation_bit_sign() {
+    let mut epoch = sample_track_epoch();
+    epoch.navigation_bit_sign = Some(0);
+
+    let diagnostics = epoch.validate_payload();
+
+    assert!(
+        diagnostics
+            .iter()
+            .any(|event| event.code == "GNSS_TRACK_NAVIGATION_BIT_SIGN_INVALID"),
         "{diagnostics:?}"
     );
 }
