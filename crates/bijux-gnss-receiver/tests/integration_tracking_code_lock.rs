@@ -13,7 +13,31 @@ use bijux_gnss_receiver::api::{
 use bijux_gnss_signal::api::{sample_ca_code, samples_per_code, Prn};
 use num_complex::Complex;
 
-use support::tracking_truth::wrapped_code_phase_error_samples;
+use support::tracking_truth::{
+    post_lock_code_phase_errors_samples, wrapped_code_phase_error_samples,
+};
+
+const CLEAN_SIGNAL_LOCKED_CODE_ERROR_MAX_SAMPLES: f64 = 1.0;
+const CLEAN_SIGNAL_MIN_LOCKED_CODE_EPOCHS: usize = 5;
+
+fn assert_clean_signal_code_lock(
+    config: &ReceiverPipelineConfig,
+    epochs: &[bijux_gnss_core::api::TrackEpoch],
+    expected_code_phase_samples: f64,
+) {
+    let post_lock_errors_samples =
+        post_lock_code_phase_errors_samples(config, epochs, expected_code_phase_samples);
+    assert!(
+        post_lock_errors_samples.len() >= CLEAN_SIGNAL_MIN_LOCKED_CODE_EPOCHS,
+        "tracking did not maintain enough locked epochs for clean code-phase validation: post_lock_errors_samples={post_lock_errors_samples:?}, epochs={epochs:?}"
+    );
+    assert!(
+        post_lock_errors_samples
+            .iter()
+            .all(|error_samples| *error_samples <= CLEAN_SIGNAL_LOCKED_CODE_ERROR_MAX_SAMPLES),
+        "locked code phase error exceeded clean-signal threshold {CLEAN_SIGNAL_LOCKED_CODE_ERROR_MAX_SAMPLES} samples: post_lock_errors_samples={post_lock_errors_samples:?}, epochs={epochs:?}"
+    );
+}
 
 fn accepted_acquisition(sat: SatId, doppler_hz: f64, code_phase_samples: usize) -> AcqResult {
     AcqResult {
@@ -111,6 +135,7 @@ fn tracking_reduces_seeded_code_phase_error_from_acquisition_scale_offsets() {
             errors.last().copied().unwrap_or(first_error) <= first_error,
             "tracking ended with worse code phase error for seeded code phase sample {seeded_code_phase_samples}: errors={errors:?}, epochs={epochs:?}"
         );
+        assert_clean_signal_code_lock(&config, epochs, 0.0);
         let assumptions = epochs
             .iter()
             .find_map(|epoch| epoch.tracking_assumptions.as_ref())
