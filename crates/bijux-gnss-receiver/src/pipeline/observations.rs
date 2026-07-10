@@ -1854,6 +1854,88 @@ mod tests {
     }
 
     #[test]
+    fn observations_keep_doppler_on_tracking_unlock_epoch() {
+        let config = ReceiverPipelineConfig::default();
+        let sat = SatId { constellation: Constellation::Gps, prn: 12 };
+        let expected_doppler_hz = 125.0;
+        let carrier_hz = crate::pipeline::doppler::carrier_hz_from_doppler_hz(
+            config.intermediate_freq_hz,
+            expected_doppler_hz,
+        );
+        let unlocked_epoch = TrackEpoch {
+            epoch: Epoch { index: 70 },
+            sample_index: epoch_sample_index(&config, 70),
+            source_time: ReceiverSampleTrace::from_sample_index(
+                epoch_sample_index(&config, 70),
+                config.sampling_freq_hz,
+            ),
+            sat,
+            carrier_hz: Hertz(carrier_hz),
+            code_rate_hz: Hertz(config.code_freq_basis_hz),
+            lock: false,
+            pll_lock: false,
+            dll_lock: false,
+            fll_lock: false,
+            cn0_dbhz: 45.0,
+            lock_state: "lost".to_string(),
+            lock_state_reason: Some("prompt_power_drop".to_string()),
+            ..TrackEpoch::default()
+        };
+        let report = observations_from_tracking_results(&config, &[track_from_epoch(unlocked_epoch)], 10);
+        let epoch = report.output.first().expect("observation epoch");
+        let sat = epoch.sats.first().expect("observation satellite");
+
+        assert_eq!(sat.observation_status, ObservationStatus::Missing);
+        assert_eq!(
+            sat.metadata.doppler_model,
+            bijux_gnss_core::api::OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET
+        );
+        assert!((sat.doppler_hz.0 - expected_doppler_hz).abs() <= f64::EPSILON, "{sat:?}");
+        assert!(sat.doppler_var_hz2.is_finite());
+    }
+
+    #[test]
+    fn observations_keep_doppler_on_sample_rate_mismatch_epoch() {
+        let config = ReceiverPipelineConfig::default();
+        let sat = SatId { constellation: Constellation::Gps, prn: 13 };
+        let expected_doppler_hz = -80.0;
+        let carrier_hz = crate::pipeline::doppler::carrier_hz_from_doppler_hz(
+            config.intermediate_freq_hz,
+            expected_doppler_hz,
+        );
+        let mismatch_epoch = TrackEpoch {
+            epoch: Epoch { index: 70 },
+            sample_index: epoch_sample_index(&config, 70),
+            source_time: ReceiverSampleTrace::from_sample_index(
+                epoch_sample_index(&config, 70),
+                config.sampling_freq_hz,
+            ),
+            sat,
+            carrier_hz: Hertz(carrier_hz),
+            code_rate_hz: Hertz(config.code_freq_basis_hz),
+            lock: true,
+            pll_lock: false,
+            dll_lock: false,
+            cn0_dbhz: 45.0,
+            lock_state: "tracking".to_string(),
+            lock_state_reason: Some("sample_rate_mismatch".to_string()),
+            ..TrackEpoch::default()
+        };
+        let report =
+            observations_from_tracking_results(&config, &[track_from_epoch(mismatch_epoch)], 10);
+        let epoch = report.output.first().expect("observation epoch");
+        let sat = epoch.sats.first().expect("observation satellite");
+
+        assert_eq!(sat.observation_status, ObservationStatus::Inconsistent);
+        assert_eq!(
+            sat.metadata.doppler_model,
+            bijux_gnss_core::api::OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET
+        );
+        assert!((sat.doppler_hz.0 - expected_doppler_hz).abs() <= f64::EPSILON, "{sat:?}");
+        assert!(sat.doppler_var_hz2.is_finite());
+    }
+
+    #[test]
     fn observations_reject_non_positive_pseudorange() {
         let config = ReceiverPipelineConfig::default();
         let carrier_hz = crate::pipeline::doppler::carrier_hz_from_doppler_hz(0.0, 0.0);
