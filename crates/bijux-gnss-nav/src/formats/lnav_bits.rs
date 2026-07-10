@@ -44,6 +44,13 @@ pub struct GpsL1CaLnavSubframeAlignment {
     pub parity_ok_count: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GpsL1CaLnavAlignment {
+    pub bit_start_ms: usize,
+    pub bit_count: usize,
+    pub subframes: Vec<GpsL1CaLnavSubframeAlignment>,
+}
+
 pub fn demodulate_gps_l1ca_navigation_bits(prompt_i: &[f32]) -> GpsL1CaNavigationBits {
     let mut best_offset = 0;
     let mut best_metric = f64::MIN;
@@ -89,6 +96,17 @@ pub fn bit_sync_from_prompt(prompt_i: &[f32]) -> BitSyncResult {
     BitSyncResult {
         bit_start_ms: demodulation.bit_start_ms,
         bits: demodulation.bits.into_iter().map(|bit| bit.sign).collect(),
+    }
+}
+
+pub fn align_gps_l1ca_lnav_from_prompt(prompt_i: &[f32]) -> GpsL1CaLnavAlignment {
+    let demodulation = demodulate_gps_l1ca_navigation_bits(prompt_i);
+    let bit_signs = demodulation.bits.iter().map(|bit| bit.sign).collect::<Vec<_>>();
+    let subframes = align_gps_l1ca_lnav_subframes(&bit_signs, demodulation.bit_start_ms);
+    GpsL1CaLnavAlignment {
+        bit_start_ms: demodulation.bit_start_ms,
+        bit_count: bit_signs.len(),
+        subframes,
     }
 }
 
@@ -488,5 +506,25 @@ mod tests {
         assert!(aligned[0].inverted);
         assert_eq!(aligned[0].word_count, 10);
         assert!(aligned[0].parity_ok_count > 0, "aligned={aligned:?}");
+    }
+
+    #[test]
+    fn prompt_history_alignment_uses_demodulated_bit_offset() {
+        let mut prompt = vec![0.25_f32; 7];
+        for bit in encode_subframe(3, 3) {
+            prompt.extend(std::iter::repeat_n(bit as f32, GPS_L1CA_NAV_BIT_LENGTH_MS));
+        }
+
+        let alignment = align_gps_l1ca_lnav_from_prompt(&prompt);
+
+        assert_eq!(alignment.bit_start_ms, 7);
+        assert_eq!(alignment.bit_count, GPS_L1CA_LNAV_SUBFRAME_LENGTH_BITS);
+        assert_eq!(alignment.subframes.len(), 1, "alignment={alignment:?}");
+        assert_eq!(alignment.subframes[0].start_bit_index, 0);
+        assert_eq!(alignment.subframes[0].start_prompt_index, 7);
+        assert_eq!(
+            alignment.subframes[0].end_prompt_index_exclusive,
+            7 + GPS_L1CA_LNAV_SUBFRAME_LENGTH_BITS * GPS_L1CA_NAV_BIT_LENGTH_MS
+        );
     }
 }
