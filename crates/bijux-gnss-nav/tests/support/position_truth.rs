@@ -213,6 +213,41 @@ pub fn iterative_pseudorange_residual_m(
     receiver_clock_bias_s: f64,
     t_rx_s: f64,
 ) -> f64 {
+    iterative_pseudorange_residual_with_earth_rotation_mode_m(
+        eph,
+        observation,
+        receiver_ecef_m,
+        receiver_clock_bias_s,
+        t_rx_s,
+        true,
+    )
+}
+
+pub fn iterative_pseudorange_residual_without_earth_rotation_m(
+    eph: &GpsEphemeris,
+    observation: &PositionObservation,
+    receiver_ecef_m: (f64, f64, f64),
+    receiver_clock_bias_s: f64,
+    t_rx_s: f64,
+) -> f64 {
+    iterative_pseudorange_residual_with_earth_rotation_mode_m(
+        eph,
+        observation,
+        receiver_ecef_m,
+        receiver_clock_bias_s,
+        t_rx_s,
+        false,
+    )
+}
+
+fn iterative_pseudorange_residual_with_earth_rotation_mode_m(
+    eph: &GpsEphemeris,
+    observation: &PositionObservation,
+    receiver_ecef_m: (f64, f64, f64),
+    receiver_clock_bias_s: f64,
+    t_rx_s: f64,
+    apply_earth_rotation: bool,
+) -> f64 {
     let receive_tow_s = observation
         .gps_receive_time
         .map(|gps_time| gps_time.tow_s)
@@ -221,9 +256,32 @@ pub fn iterative_pseudorange_residual_m(
         .signal_timing
         .map(|timing| timing.signal_travel_time_s.0)
         .unwrap_or(observation.pseudorange_m / SPEED_OF_LIGHT_MPS);
+    let predicted_pseudorange_m = iterative_predicted_pseudorange_m(
+        eph,
+        receiver_ecef_m,
+        receiver_clock_bias_s,
+        receive_tow_s,
+        &mut tau,
+        apply_earth_rotation,
+    );
+    observation.pseudorange_m - predicted_pseudorange_m
+}
+
+fn iterative_predicted_pseudorange_m(
+    eph: &GpsEphemeris,
+    receiver_ecef_m: (f64, f64, f64),
+    receiver_clock_bias_s: f64,
+    receive_tow_s: f64,
+    tau_s: &mut f64,
+    apply_earth_rotation: bool,
+) -> f64 {
     let mut predicted_pseudorange_m = 0.0;
     for _ in 0..10 {
-        let state = sat_state_gps_l1ca(eph, receive_tow_s - tau, tau);
+        let state = sat_state_gps_l1ca(
+            eph,
+            receive_tow_s - *tau_s,
+            if apply_earth_rotation { *tau_s } else { 0.0 },
+        );
         let dx = receiver_ecef_m.0 - state.x_m;
         let dy = receiver_ecef_m.1 - state.y_m;
         let dz = receiver_ecef_m.2 - state.z_m;
@@ -232,10 +290,10 @@ pub fn iterative_pseudorange_residual_m(
             + receiver_clock_bias_s * SPEED_OF_LIGHT_MPS
             - state.clock_correction.bias_s * SPEED_OF_LIGHT_MPS;
         let next_tau = predicted_pseudorange_m / SPEED_OF_LIGHT_MPS;
-        if (next_tau - tau).abs() < 1.0e-12 {
+        if (next_tau - *tau_s).abs() < 1.0e-12 {
             break;
         }
-        tau = next_tau;
+        *tau_s = next_tau;
     }
-    observation.pseudorange_m - predicted_pseudorange_m
+    predicted_pseudorange_m
 }
