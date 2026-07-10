@@ -92,6 +92,7 @@ fn tracking_epoch(
         channel_id: Some(0),
         channel_uid: "Gps-07-ch00".to_string(),
         tracking_provenance: "integration_observations_doppler_sign".to_string(),
+        tracking_uncertainty: None,
         processing_ms: None,
     }
 }

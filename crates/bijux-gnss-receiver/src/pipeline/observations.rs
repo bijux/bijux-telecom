@@ -1,7 +1,8 @@
 #![allow(missing_docs)]
 //! Observation error model assumptions:
-//! - thermal_noise_m = 1.0 m (fixed placeholder).
-//! - tracking_jitter_m = 10 / max(cn0_dbhz, 1) meters (heuristic CN0-derived jitter).
+//! - pseudorange and Doppler variance prefer tracking-produced uncertainty when available.
+//! - thermal_noise_m falls back to a fixed 1.0 m placeholder only when tracking did not emit uncertainty.
+//! - tracking_jitter_m falls back to a CN0-derived heuristic only for legacy epochs without tracking uncertainty.
 //! - multipath_proxy_m = |Δ divergence| meters (proxy, not a modeled multipath estimator).
 //! - clock_error_m = 0.0 m (placeholder).
 //!
@@ -72,6 +73,7 @@ fn observations_from_tracking_with_provenance(
         samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
     let samples_per_chip = samples_per_code as f64 / config.code_length as f64;
     let code_rate_hz = config.code_freq_basis_hz;
+    let meters_per_sample = SPEED_OF_LIGHT_MPS / config.sampling_freq_hz;
 
     let mut phase_state =
         PhaseState { phase_cycles: 0.0, last_phase_cycles: 0.0, initialized: false };
@@ -150,8 +152,21 @@ fn observations_from_tracking_with_provenance(
 
         let cn0_dbhz = epoch.cn0_dbhz;
         let lock_quality = tracking_lock_quality(epoch);
+        let tracking_uncertainty = epoch.tracking_uncertainty.clone();
 
-        let variance_m2 = (1.0 / cn0_dbhz.max(1.0)).powi(2);
+        let pseudorange_sigma_m = tracking_uncertainty
+            .as_ref()
+            .map(|uncertainty| uncertainty.code_phase_samples * meters_per_sample)
+            .unwrap_or_else(|| 1.0 / cn0_dbhz.max(1.0));
+        let variance_m2 = pseudorange_sigma_m.powi(2);
+        let carrier_phase_var_cycles2 = tracking_uncertainty
+            .as_ref()
+            .map(|uncertainty| uncertainty.carrier_phase_cycles.powi(2))
+            .unwrap_or(variance_m2 * 0.01);
+        let doppler_var_hz2 = tracking_uncertainty
+            .as_ref()
+            .map(|uncertainty| uncertainty.doppler_hz.powi(2))
+            .unwrap_or(4.0);
         let (observation_status, observation_reject_reasons) =
             classify_observation_status(epoch, cn0_dbhz);
         let mut signal = bijux_gnss_core::api::signal_spec_gps_l1_ca();
@@ -166,9 +181,9 @@ fn observations_from_tracking_with_provenance(
             pseudorange_m,
             pseudorange_var_m2: variance_m2,
             carrier_phase_cycles: Cycles(phase_state.phase_cycles),
-            carrier_phase_var_cycles2: variance_m2 * 0.01,
+            carrier_phase_var_cycles2,
             doppler_hz,
-            doppler_var_hz2: 4.0,
+            doppler_var_hz2,
             cn0_dbhz,
             lock_flags: LockFlags {
                 code_lock: epoch.lock,
@@ -212,6 +227,7 @@ fn observations_from_tracking_with_provenance(
                 time_tag_source,
                 time_tag_sample_index,
                 time_tag_sample_rate_hz: config.sampling_freq_hz,
+                tracking_uncertainty,
             },
         };
 
@@ -340,9 +356,20 @@ pub fn observations_from_tracking_results(
                 }
                 slip_state.last_gf_cycles = gf_cycles;
                 sat.multipath_suspect = divergence_jump > threshold_m * 0.8;
+                let tracking_uncertainty = sat.metadata.tracking_uncertainty.clone();
+                let pseudorange_sigma_m = sat.pseudorange_var_m2.sqrt();
+                let tracking_jitter_m = tracking_uncertainty
+                    .as_ref()
+                    .map(|uncertainty| {
+                        uncertainty.code_phase_samples * SPEED_OF_LIGHT_MPS
+                            / config.sampling_freq_hz
+                    })
+                    .unwrap_or_else(|| (1.0 / sat.cn0_dbhz.max(1.0)) * 10.0);
+                let thermal_noise_m =
+                    tracking_uncertainty.as_ref().map(|_| pseudorange_sigma_m).unwrap_or(1.0);
                 sat.error_model = Some(bijux_gnss_core::api::MeasurementErrorModel {
-                    thermal_noise_m: Meters(1.0),
-                    tracking_jitter_m: Meters((1.0 / sat.cn0_dbhz.max(1.0)) * 10.0),
+                    thermal_noise_m: Meters(thermal_noise_m),
+                    tracking_jitter_m: Meters(tracking_jitter_m),
                     multipath_proxy_m: Meters(divergence_jump),
                     clock_error_m: Meters(0.0),
                 });
@@ -688,7 +715,7 @@ pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bijux_gnss_core::api::{Chips, Epoch, Hertz, SatId};
+    use bijux_gnss_core::api::{Chips, Epoch, Hertz, SatId, TrackingUncertainty};
 
     fn make_tracking_epoch(
         prn: u8,
@@ -770,8 +797,10 @@ mod tests {
             ..ReceiverPipelineConfig::default()
         };
         let doppler_hz = -250.0;
-        let carrier_hz =
-            crate::pipeline::doppler::carrier_hz_from_doppler_hz(config.intermediate_freq_hz, doppler_hz);
+        let carrier_hz = crate::pipeline::doppler::carrier_hz_from_doppler_hz(
+            config.intermediate_freq_hz,
+            doppler_hz,
+        );
         let epochs = vec![
             make_tracking_epoch(7, &config, 70, carrier_hz),
             make_tracking_epoch(7, &config, 71, carrier_hz),
@@ -891,6 +920,74 @@ mod tests {
             assert_eq!(manifest.version, bijux_gnss_core::api::OBSERVATION_MODEL_VERSION);
             assert_eq!(manifest.epoch_id, bijux_gnss_core::api::obs_epoch_stability_key(epoch));
         }
+    }
+
+    #[test]
+    fn observations_preserve_tracking_uncertainty_and_measurement_variances() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Gps, prn: 9 };
+        let uncertainty = TrackingUncertainty {
+            code_phase_samples: 0.25,
+            carrier_phase_cycles: 0.05,
+            doppler_hz: 1.5,
+            cn0_dbhz: 0.75,
+        };
+        let track = TrackingResult {
+            sat,
+            carrier_hz: 0.0,
+            code_phase_samples: 0.0,
+            acquisition_hypothesis: "accepted".to_string(),
+            acquisition_score: 1.0,
+            acquisition_code_phase_samples: 0,
+            acquisition_carrier_hz: 0.0,
+            acq_to_track_state: "accepted".to_string(),
+            epochs: vec![TrackEpoch {
+                epoch: Epoch { index: 70 },
+                sample_index: 70 * 4092,
+                source_time: ReceiverSampleTrace::from_sample_index(
+                    70 * 4092,
+                    config.sampling_freq_hz,
+                ),
+                sat,
+                lock: true,
+                cn0_dbhz: 48.0,
+                pll_lock: true,
+                dll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                lock_state_reason: Some("stable_tracking".to_string()),
+                tracking_uncertainty: Some(uncertainty.clone()),
+                ..TrackEpoch::default()
+            }],
+            transitions: Vec::new(),
+        };
+
+        let report = observations_from_tracking_results(&config, &[track], 10);
+        let epoch = report.output.first().expect("observation epoch");
+        let sat = epoch.sats.first().expect("observation satellite");
+        let meters_per_sample = SPEED_OF_LIGHT_MPS / config.sampling_freq_hz;
+        let expected_pseudorange_sigma_m = uncertainty.code_phase_samples * meters_per_sample;
+
+        assert_eq!(sat.metadata.tracking_uncertainty.as_ref(), Some(&uncertainty));
+        assert!(
+            (sat.pseudorange_var_m2 - expected_pseudorange_sigma_m.powi(2)).abs() <= 1.0e-9,
+            "{sat:?}"
+        );
+        assert!(
+            (sat.carrier_phase_var_cycles2 - uncertainty.carrier_phase_cycles.powi(2)).abs()
+                <= 1.0e-12,
+            "{sat:?}"
+        );
+        assert!((sat.doppler_var_hz2 - uncertainty.doppler_hz.powi(2)).abs() <= 1.0e-12, "{sat:?}");
+        let error_model = sat.error_model.as_ref().expect("error model");
+        assert!((error_model.thermal_noise_m.0 - expected_pseudorange_sigma_m).abs() <= 1.0e-9);
+        assert!((error_model.tracking_jitter_m.0 - expected_pseudorange_sigma_m).abs() <= 1.0e-9);
     }
 
     #[test]
