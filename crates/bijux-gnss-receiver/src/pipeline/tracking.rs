@@ -1649,6 +1649,89 @@ mod tests {
     }
 
     #[test]
+    fn correlate_epoch_uses_tracked_carrier_phase_for_phase_offset_signal() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            channels: 12,
+            ..ReceiverPipelineConfig::default()
+        };
+        let tracking = Tracking::new(config.clone(), ReceiverRuntime::default());
+        let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 5 };
+        let carrier_phase_rad = 0.35;
+        let carrier_phase_cycles = carrier_phase_rad / std::f64::consts::TAU;
+        let frame = generate_l1_ca(
+            &config,
+            SyntheticSignalParams {
+                sat,
+                doppler_hz: 0.0,
+                code_phase_chips: 0.0,
+                carrier_phase_rad,
+                cn0_db_hz: 70.0,
+                data_bit_flip: false,
+            },
+            0xC0A5_1E,
+            0.001,
+        );
+
+        let unmatched = tracking.correlate_epoch(
+            &frame,
+            sat,
+            0.0,
+            0.0,
+            config.code_freq_basis_hz,
+            0.0,
+            0.5,
+        );
+        let matched = tracking.correlate_epoch(
+            &frame,
+            sat,
+            0.0,
+            carrier_phase_cycles,
+            config.code_freq_basis_hz,
+            0.0,
+            0.5,
+        );
+
+        assert!(
+            matched.prompt.re > unmatched.prompt.re,
+            "matched={:?} unmatched={:?}",
+            matched.prompt,
+            unmatched.prompt,
+        );
+        assert!(
+            matched.prompt.im.abs() < unmatched.prompt.im.abs(),
+            "matched={:?} unmatched={:?}",
+            matched.prompt,
+            unmatched.prompt,
+        );
+    }
+
+    #[test]
+    fn apply_carrier_loop_advances_phase_and_frequency_from_pll_error() {
+        let update = super::apply_carrier_loop(super::CarrierLoopInput {
+            current_carrier_hz: 1_000.0,
+            current_carrier_phase_cycles: 12.0,
+            epoch_len_samples: 4_092,
+            sample_rate_hz: 4_092_000.0,
+            pll_bw_hz: 8.0,
+            pll_err_rad: 0.25,
+            fll_bw_hz: 0.0,
+            fll_err_rad: 0.0,
+            apply_fll: false,
+        });
+
+        assert!((update.carrier_hz - 1_002.0).abs() < 1.0e-9, "{update:?}");
+        let expected_phase_cycles = 12.0 + 1.0 + 0.25 / std::f64::consts::TAU;
+        assert!(
+            (update.carrier_phase_cycles - expected_phase_cycles).abs() < 1.0e-9,
+            "{update:?}",
+        );
+    }
+
+    #[test]
     fn dll_pull_in_increases_code_rate_for_faster_signal() {
         let config = ReceiverPipelineConfig {
             sampling_freq_hz: 4_092_000.0,
