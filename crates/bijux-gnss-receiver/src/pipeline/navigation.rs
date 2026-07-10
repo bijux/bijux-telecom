@@ -1355,6 +1355,35 @@ mod tests {
     }
 
     #[test]
+    fn synthetic_solution_preserves_solved_receiver_clock_bias() {
+        let config = ReceiverPipelineConfig::default();
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+        let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
+        let receiver_clock_bias_s = 2.75e-4;
+        let t_rx_s = 100_000.0 + receiver_clock_bias_s;
+        let ephs = vec![
+            make_eph(1, 0.0, 0.0, t_rx_s),
+            make_eph(2, 0.8, 0.9, t_rx_s),
+            make_eph(3, 1.6, 1.8, t_rx_s),
+            make_eph(4, 2.4, 2.7, t_rx_s),
+            make_eph(5, 3.2, 3.6, t_rx_s),
+        ];
+        let obs = make_obs_epoch_for_solution_with_clock_bias(
+            14,
+            t_rx_s,
+            truth,
+            &ephs,
+            receiver_clock_bias_s,
+        );
+        let solution = nav.solve_epoch(&obs, &ephs).expect("biased synthetic solution");
+
+        assert!((solution.ecef_x_m.0 - truth.0).abs() < 5.0);
+        assert!((solution.ecef_y_m.0 - truth.1).abs() < 5.0);
+        assert!((solution.ecef_z_m.0 - truth.2).abs() < 5.0);
+        assert!((solution.clock_bias_s.0 - receiver_clock_bias_s).abs() < 1.0e-9);
+    }
+
+    #[test]
     fn deterministic_solution_transition_handles_refusal_and_regression() {
         assert_eq!(
             deterministic_solution_transition(
