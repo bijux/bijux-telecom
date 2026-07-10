@@ -18,6 +18,32 @@ pub struct GpsL1CaLnavSubframe1Clock {
     pub tgd: f64,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GpsL1CaLnavSubframe2Orbit {
+    pub iode: u8,
+    pub crs: f64,
+    pub delta_n: f64,
+    pub m0: f64,
+    pub cuc: f64,
+    pub e: f64,
+    pub cus: f64,
+    pub sqrt_a: f64,
+    pub toe_s: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GpsL1CaLnavSubframe3Orbit {
+    pub iode: u8,
+    pub cic: f64,
+    pub omega0: f64,
+    pub cis: f64,
+    pub i0: f64,
+    pub crc: f64,
+    pub w: f64,
+    pub omegadot: f64,
+    pub idot: f64,
+}
+
 pub fn decode_subframe1_clock(words: &[GpsWord]) -> Option<GpsL1CaLnavSubframe1Clock> {
     if words.len() < 10 {
         return None;
@@ -75,6 +101,38 @@ pub fn parse_subframe1(words: &[GpsWord]) -> Option<EphemerisPart> {
 }
 
 pub fn parse_subframe2(words: &[GpsWord]) -> Option<EphemerisPart> {
+    let orbit = decode_subframe2_orbit(words)?;
+
+    Some(EphemerisPart {
+        iodc: None,
+        iode: Some(orbit.iode),
+        week: None,
+        sv_health: None,
+        toe_s: Some(orbit.toe_s),
+        toc_s: None,
+        sqrt_a: Some(orbit.sqrt_a),
+        e: Some(orbit.e),
+        i0: None,
+        idot: None,
+        omega0: None,
+        omegadot: None,
+        w: None,
+        m0: Some(orbit.m0),
+        delta_n: Some(orbit.delta_n),
+        cuc: Some(orbit.cuc),
+        cus: Some(orbit.cus),
+        crc: None,
+        crs: Some(orbit.crs),
+        cic: None,
+        cis: None,
+        af0: None,
+        af1: None,
+        af2: None,
+        tgd: None,
+    })
+}
+
+pub fn decode_subframe2_orbit(words: &[GpsWord]) -> Option<GpsL1CaLnavSubframe2Orbit> {
     if words.len() < 10 {
         return None;
     }
@@ -99,28 +157,44 @@ pub fn parse_subframe2(words: &[GpsWord]) -> Option<EphemerisPart> {
     let sqrt_a = (get_bits(w8, 17, 8) << 24 | get_bits(w9, 1, 24)) as f64 * 2f64.powi(-19);
     let toe = get_bits(w10, 1, 16) as f64 * 16.0;
 
+    Some(GpsL1CaLnavSubframe2Orbit {
+        iode,
+        crs,
+        delta_n,
+        m0,
+        cuc,
+        e,
+        cus,
+        sqrt_a,
+        toe_s: toe,
+    })
+}
+
+pub fn parse_subframe3(words: &[GpsWord]) -> Option<EphemerisPart> {
+    let orbit = decode_subframe3_orbit(words)?;
+
     Some(EphemerisPart {
         iodc: None,
-        iode: Some(iode),
+        iode: Some(orbit.iode),
         week: None,
         sv_health: None,
-        toe_s: Some(toe),
+        toe_s: None,
         toc_s: None,
-        sqrt_a: Some(sqrt_a),
-        e: Some(e),
-        i0: None,
-        idot: None,
-        omega0: None,
-        omegadot: None,
-        w: None,
-        m0: Some(m0),
-        delta_n: Some(delta_n),
-        cuc: Some(cuc),
-        cus: Some(cus),
-        crc: None,
-        crs: Some(crs),
-        cic: None,
-        cis: None,
+        sqrt_a: None,
+        e: None,
+        i0: Some(orbit.i0),
+        idot: Some(orbit.idot),
+        omega0: Some(orbit.omega0),
+        omegadot: Some(orbit.omegadot),
+        w: Some(orbit.w),
+        m0: None,
+        delta_n: None,
+        cuc: None,
+        cus: None,
+        crc: Some(orbit.crc),
+        crs: None,
+        cic: Some(orbit.cic),
+        cis: Some(orbit.cis),
         af0: None,
         af1: None,
         af2: None,
@@ -128,7 +202,7 @@ pub fn parse_subframe2(words: &[GpsWord]) -> Option<EphemerisPart> {
     })
 }
 
-pub fn parse_subframe3(words: &[GpsWord]) -> Option<EphemerisPart> {
+pub fn decode_subframe3_orbit(words: &[GpsWord]) -> Option<GpsL1CaLnavSubframe3Orbit> {
     if words.len() < 10 {
         return None;
     }
@@ -157,32 +231,16 @@ pub fn parse_subframe3(words: &[GpsWord]) -> Option<EphemerisPart> {
     let iode = get_bits(w10, 1, 8) as u8;
     let idot = signed(get_bits(w10, 9, 14), 14) as f64 * 2f64.powi(-43) * std::f64::consts::PI;
 
-    Some(EphemerisPart {
-        iodc: None,
-        iode: Some(iode),
-        week: None,
-        sv_health: None,
-        toe_s: None,
-        toc_s: None,
-        sqrt_a: None,
-        e: None,
-        i0: Some(i0),
-        idot: Some(idot),
-        omega0: Some(omega0),
-        omegadot: Some(omegadot),
-        w: Some(w),
-        m0: None,
-        delta_n: None,
-        cuc: None,
-        cus: None,
-        crc: Some(crc),
-        crs: None,
-        cic: Some(cic),
-        cis: Some(cis),
-        af0: None,
-        af1: None,
-        af2: None,
-        tgd: None,
+    Some(GpsL1CaLnavSubframe3Orbit {
+        iode,
+        cic,
+        omega0,
+        cis,
+        i0,
+        crc,
+        w,
+        omegadot,
+        idot,
     })
 }
 
