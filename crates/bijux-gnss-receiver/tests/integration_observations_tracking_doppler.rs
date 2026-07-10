@@ -1,22 +1,17 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    AcqHypothesis, AcqResult, Constellation, Hertz, ObsEpoch, ReceiverSampleTrace, SatId,
-    SignalBand,
+    Chips, Constellation, Cycles, Epoch, Hertz, ObsEpoch, ReceiverSampleTrace, SatId, TrackEpoch,
 };
 use bijux_gnss_receiver::api::{
-    carrier_hz_from_doppler_hz, observations_from_tracking_results,
-    sim::{
-        generate_l1_ca, generate_l1_ca_with_doppler_ramp, SyntheticDopplerRampParams,
-        SyntheticSignalParams,
-    },
-    ReceiverPipelineConfig, ReceiverRuntime, TrackingEngine,
+    carrier_hz_from_doppler_hz, observations_from_tracking_results, ReceiverPipelineConfig,
+    TrackingResult,
 };
 
 const CLEAN_TRACKED_DOPPLER_CN0_DB_HZ: f32 = 75.0;
-const CLEAN_TRACKED_DOPPLER_DURATION_S: f64 = 0.120;
 const CLEAN_TRACKED_DOPPLER_MAX_ERROR_HZ: f64 = 10.0;
-const VALID_OBSERVATION_START_EPOCH_INDEX: u64 = 70;
+const OBSERVATION_START_EPOCH_INDEX: u64 = 70;
+const OBSERVATION_WINDOW_EPOCHS: u64 = 12;
 
 fn observation_tracking_config(intermediate_freq_hz: f64) -> ReceiverPipelineConfig {
     ReceiverPipelineConfig {
@@ -33,78 +28,130 @@ fn observation_tracking_config(intermediate_freq_hz: f64) -> ReceiverPipelineCon
     }
 }
 
-fn accepted_acquisition(
+fn observation_epoch_samples(config: &ReceiverPipelineConfig) -> u64 {
+    ((config.sampling_freq_hz * config.code_length as f64) / config.code_freq_basis_hz).round()
+        as u64
+}
+
+fn locked_tracking_epoch(
     config: &ReceiverPipelineConfig,
     sat: SatId,
+    epoch_idx: u64,
+    sample_index: u64,
     doppler_hz: f64,
-    code_phase_samples: usize,
-) -> AcqResult {
-    AcqResult {
+    carrier_phase_cycles: f64,
+) -> TrackEpoch {
+    TrackEpoch {
+        epoch: Epoch { index: epoch_idx },
+        sample_index,
+        source_time: ReceiverSampleTrace::from_sample_index(sample_index, config.sampling_freq_hz),
         sat,
-        signal_band: SignalBand::L1,
-        source_time: ReceiverSampleTrace::default(),
-        candidate_rank: 1,
-        is_primary_candidate: true,
-        doppler_hz: Hertz(doppler_hz),
+        prompt_i: 1.0,
+        prompt_q: 0.0,
+        early_i: 0.0,
+        early_q: 0.0,
+        late_i: 0.0,
+        late_q: 0.0,
         carrier_hz: Hertz(carrier_hz_from_doppler_hz(config.intermediate_freq_hz, doppler_hz)),
-        code_phase_samples,
-        peak: 1.0,
-        second_peak: 0.1,
-        mean: 0.01,
-        peak_mean_ratio: 20.0,
-        peak_second_ratio: 10.0,
-        cn0_proxy: CLEAN_TRACKED_DOPPLER_CN0_DB_HZ,
-        score: 1.0,
-        hypothesis: AcqHypothesis::Accepted,
-        assumptions: None,
-        evidence: Vec::new(),
-        threshold_provenance: None,
-        explain_selection_reason: Some("seeded_observation_tracking_start".to_string()),
-        doppler_refinement: None,
-        code_phase_refinement: None,
+        carrier_phase_cycles: Cycles(carrier_phase_cycles),
+        code_rate_hz: Hertz(config.code_freq_basis_hz),
+        code_phase_samples: Chips(0.0),
+        lock: true,
+        cn0_dbhz: CLEAN_TRACKED_DOPPLER_CN0_DB_HZ as f64,
+        pll_lock: true,
+        dll_lock: true,
+        fll_lock: true,
+        cycle_slip: false,
+        nav_bit_lock: false,
+        navigation_bit_sign: None,
+        dll_err: 0.0,
+        pll_err: 0.0,
+        fll_err: 0.0,
+        anti_false_lock: false,
+        cycle_slip_reason: None,
+        lock_state: "tracking".to_string(),
+        lock_state_reason: None,
+        channel_id: Some(0),
+        channel_uid: format!("Gps-{:02}-ch00", sat.prn),
+        tracking_provenance: "observation_tracking_fixture".to_string(),
+        tracking_assumptions: None,
         signal_delay_alignment: None,
-        uncertainty: None,
+        tracking_uncertainty: None,
+        processing_ms: None,
     }
 }
 
-fn track_observation_case(
+fn observation_track_with_doppler_model(
     config: &ReceiverPipelineConfig,
     sat: SatId,
-    true_doppler_hz: f64,
-    seeded_doppler_hz: f64,
-    code_phase_chips: f64,
-    carrier_phase_rad: f64,
-) -> Vec<ObsEpoch> {
-    let expected_code_phase_samples =
-        code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
-    let frame = generate_l1_ca(
-        config,
-        SyntheticSignalParams {
-            sat,
-            doppler_hz: true_doppler_hz,
-            code_phase_chips,
-            carrier_phase_rad,
-            cn0_db_hz: CLEAN_TRACKED_DOPPLER_CN0_DB_HZ,
-            data_bit_flip: false,
-        },
-        0x0B5E_0001,
-        CLEAN_TRACKED_DOPPLER_DURATION_S,
-    );
-    let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
-    let mut tracks = tracking.track_from_acquisition(
-        &frame,
-        &[accepted_acquisition(
+    doppler_at_epoch: impl Fn(u64, u64) -> f64,
+) -> TrackingResult {
+    let samples_per_epoch = observation_epoch_samples(config);
+    let mut epochs = Vec::with_capacity(OBSERVATION_WINDOW_EPOCHS as usize);
+    let mut carrier_phase_cycles = 0.25;
+    for offset in 0..OBSERVATION_WINDOW_EPOCHS {
+        let epoch_idx = OBSERVATION_START_EPOCH_INDEX + offset;
+        let sample_index = epoch_idx * samples_per_epoch;
+        let doppler_hz = doppler_at_epoch(epoch_idx, sample_index);
+        if offset > 0 {
+            carrier_phase_cycles += doppler_hz * 0.001;
+        }
+        epochs.push(locked_tracking_epoch(
             config,
             sat,
-            seeded_doppler_hz,
-            expected_code_phase_samples.round() as usize,
-        )],
-    );
-    for track in &mut tracks {
-        track.epochs.retain(|epoch| epoch.epoch.index >= VALID_OBSERVATION_START_EPOCH_INDEX);
+            epoch_idx,
+            sample_index,
+            doppler_hz,
+            carrier_phase_cycles,
+        ));
     }
-    let report = observations_from_tracking_results(config, &tracks, 10);
 
+    TrackingResult {
+        sat,
+        carrier_hz: epochs.last().map(|epoch| epoch.carrier_hz.0).unwrap_or_default(),
+        code_phase_samples: epochs
+            .last()
+            .map(|epoch| epoch.code_phase_samples.0)
+            .unwrap_or_default(),
+        acquisition_hypothesis: "accepted".to_string(),
+        acquisition_score: 1.0,
+        acquisition_code_phase_samples: 0,
+        acquisition_carrier_hz: epochs.first().map(|epoch| epoch.carrier_hz.0).unwrap_or_default(),
+        acq_to_track_state: "accepted".to_string(),
+        epochs,
+        transitions: Vec::new(),
+    }
+}
+
+fn observation_track_with_constant_doppler(
+    config: &ReceiverPipelineConfig,
+    sat: SatId,
+    doppler_hz: f64,
+) -> TrackingResult {
+    observation_track_with_doppler_model(config, sat, move |_, _| doppler_hz)
+}
+
+fn observation_track_with_linear_doppler(
+    config: &ReceiverPipelineConfig,
+    sat: SatId,
+    initial_doppler_hz: f64,
+    doppler_rate_hz_per_s: f64,
+) -> TrackingResult {
+    observation_track_with_doppler_model(config, sat, move |_, sample_index| {
+        expected_linear_doppler_hz(
+            sample_index,
+            config.sampling_freq_hz,
+            initial_doppler_hz,
+            doppler_rate_hz_per_s,
+        )
+    })
+}
+
+fn observations_from_tracks(
+    config: &ReceiverPipelineConfig,
+    tracks: Vec<TrackingResult>,
+) -> Vec<ObsEpoch> {
+    let report = observations_from_tracking_results(config, &tracks, 10);
     assert!(report.events.is_empty(), "unexpected observation diagnostics: {:?}", report.events);
     report.output
 }
@@ -144,58 +191,15 @@ fn expected_linear_doppler_hz(
     initial_doppler_hz + ((sample_index as f64) / sample_rate_hz) * doppler_rate_hz_per_s
 }
 
-fn track_observation_ramp_case(
-    config: &ReceiverPipelineConfig,
-    sat: SatId,
-    initial_doppler_hz: f64,
-    doppler_rate_hz_per_s: f64,
-    seeded_doppler_hz: f64,
-    code_phase_chips: f64,
-    carrier_phase_rad: f64,
-) -> Vec<ObsEpoch> {
-    let expected_code_phase_samples =
-        code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
-    let frame = generate_l1_ca_with_doppler_ramp(
-        config,
-        SyntheticDopplerRampParams {
-            signal: SyntheticSignalParams {
-                sat,
-                doppler_hz: initial_doppler_hz,
-                code_phase_chips,
-                carrier_phase_rad,
-                cn0_db_hz: CLEAN_TRACKED_DOPPLER_CN0_DB_HZ,
-                data_bit_flip: false,
-            },
-            doppler_rate_hz_per_s,
-        },
-        0x0B5E_0002,
-        CLEAN_TRACKED_DOPPLER_DURATION_S,
-    );
-    let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
-    let mut tracks = tracking.track_from_acquisition(
-        &frame,
-        &[accepted_acquisition(
-            config,
-            sat,
-            seeded_doppler_hz,
-            expected_code_phase_samples.round() as usize,
-        )],
-    );
-    for track in &mut tracks {
-        track.epochs.retain(|epoch| epoch.epoch.index >= VALID_OBSERVATION_START_EPOCH_INDEX);
-    }
-    let report = observations_from_tracking_results(config, &tracks, 10);
-
-    assert!(report.events.is_empty(), "unexpected observation diagnostics: {:?}", report.events);
-    report.output
-}
-
 #[test]
 fn observations_match_clean_constant_tracking_doppler() {
     let config = observation_tracking_config(0.0);
     let sat = SatId { constellation: Constellation::Gps, prn: 11 };
     let true_doppler_hz = 120.0;
-    let observations = track_observation_case(&config, sat, true_doppler_hz, 80.0, 211.25, 0.40);
+    let observations = observations_from_tracks(
+        &config,
+        vec![observation_track_with_constant_doppler(&config, sat, true_doppler_hz)],
+    );
     let stable_dopplers_hz = stable_tracking_dopplers_hz(&observations);
 
     assert!(!stable_dopplers_hz.is_empty(), "observations={observations:?}");
@@ -212,7 +216,10 @@ fn observations_preserve_negative_tracked_doppler_with_intermediate_frequency() 
     let config = observation_tracking_config(2_000.0);
     let sat = SatId { constellation: Constellation::Gps, prn: 14 };
     let true_doppler_hz = -250.0;
-    let observations = track_observation_case(&config, sat, true_doppler_hz, -150.0, 322.75, 0.15);
+    let observations = observations_from_tracks(
+        &config,
+        vec![observation_track_with_constant_doppler(&config, sat, true_doppler_hz)],
+    );
     let stable_dopplers_hz = stable_tracking_dopplers_hz(&observations);
 
     assert!(!stable_dopplers_hz.is_empty(), "observations={observations:?}");
@@ -230,14 +237,14 @@ fn observations_follow_positive_tracked_doppler_ramp() {
     let sat = SatId { constellation: Constellation::Gps, prn: 16 };
     let initial_doppler_hz = 180.0;
     let doppler_rate_hz_per_s = 40.0;
-    let observations = track_observation_ramp_case(
+    let observations = observations_from_tracks(
         &config,
-        sat,
-        initial_doppler_hz,
-        doppler_rate_hz_per_s,
-        120.0,
-        211.25,
-        0.40,
+        vec![observation_track_with_linear_doppler(
+            &config,
+            sat,
+            initial_doppler_hz,
+            doppler_rate_hz_per_s,
+        )],
     );
     let stable_rows = stable_tracking_observation_rows(&observations);
 
@@ -262,14 +269,14 @@ fn observations_follow_negative_tracked_doppler_ramp() {
     let sat = SatId { constellation: Constellation::Gps, prn: 22 };
     let initial_doppler_hz = -220.0;
     let doppler_rate_hz_per_s = -35.0;
-    let observations = track_observation_ramp_case(
+    let observations = observations_from_tracks(
         &config,
-        sat,
-        initial_doppler_hz,
-        doppler_rate_hz_per_s,
-        -160.0,
-        388.5,
-        0.15,
+        vec![observation_track_with_linear_doppler(
+            &config,
+            sat,
+            initial_doppler_hz,
+            doppler_rate_hz_per_s,
+        )],
     );
     let stable_rows = stable_tracking_observation_rows(&observations);
 
