@@ -68,10 +68,18 @@ pub struct GpsL1CaHowWord {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GpsL1CaWordParitySummary {
+    pub word_count: usize,
+    pub passed_word_count: usize,
+    pub failed_word_indexes: Vec<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GpsL1CaLnavDecodedSubframe {
     pub alignment: GpsL1CaLnavSubframeAlignment,
     pub tlm: GpsL1CaTlmWord,
     pub how: GpsL1CaHowWord,
+    pub parity: GpsL1CaWordParitySummary,
     pub word_parity_ok: Vec<bool>,
 }
 
@@ -360,6 +368,19 @@ pub fn decode_how_word(word: &GpsWord) -> GpsL1CaHowWord {
     }
 }
 
+pub fn summarize_word_parity(words: &[GpsWord]) -> GpsL1CaWordParitySummary {
+    let failed_word_indexes = words
+        .iter()
+        .enumerate()
+        .filter_map(|(word_index, word)| (!word.parity_ok).then_some(word_index))
+        .collect::<Vec<_>>();
+    GpsL1CaWordParitySummary {
+        word_count: words.len(),
+        passed_word_count: words.len() - failed_word_indexes.len(),
+        failed_word_indexes,
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SubframeInfo {
     pub tow_s: f64,
@@ -396,6 +417,7 @@ pub fn decode_gps_l1ca_lnav_subframes(
             Some(GpsL1CaLnavDecodedSubframe {
                 tlm: decode_tlm_word(&subframe.words[0]),
                 how: decode_how_word(&subframe.words[1]),
+                parity: summarize_word_parity(&subframe.words),
                 word_parity_ok: subframe.words.iter().map(|word| word.parity_ok).collect(),
                 alignment: subframe.alignment,
             })
