@@ -35,6 +35,12 @@ pub struct SyntheticSignalParams {
     pub data_bit_flip: bool,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticDopplerRampParams {
+    pub signal: SyntheticSignalParams,
+    pub doppler_rate_hz_per_s: f64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyntheticScenario {
     pub sample_rate_hz: f64,
@@ -1810,6 +1816,31 @@ pub fn generate_l1_ca(
     )
 }
 
+/// Generate a synthetic GPS L1 C/A signal whose Doppler evolves linearly over time.
+///
+/// The `doppler_rate_hz_per_s` term models a moving-receiver or moving-satellite scenario
+/// where the instantaneous carrier Doppler shifts continuously during the capture.
+pub fn generate_l1_ca_with_doppler_ramp(
+    config: &ReceiverPipelineConfig,
+    params: SyntheticDopplerRampParams,
+    seed: u64,
+    duration_s: f64,
+) -> SamplesFrame {
+    let signal_only = generate_l1_ca_with_doppler_ramp_signal_only(config, params, duration_s);
+    let clock = SampleClock::new(config.sampling_freq_hz);
+    let dt_s = clock.dt_s();
+    let noise_std = SYNTHETIC_NOISE_STD_PER_COMPONENT;
+    let mut rng = XorShift64::new(seed);
+    let mut iq = Vec::with_capacity(signal_only.len());
+    for sample in signal_only.iq {
+        let noise_i = rng.next_gaussian() * noise_std;
+        let noise_q = rng.next_gaussian() * noise_std;
+        let noise = Complex::new(noise_i, noise_q);
+        iq.push(sample + noise);
+    }
+    SamplesFrame::new(signal_only.t0, Seconds(dt_s), iq)
+}
+
 pub fn generate_l1_ca_multi(
     config: &ReceiverPipelineConfig,
     scenario: &SyntheticScenario,
@@ -1838,6 +1869,29 @@ pub struct SyntheticSignalSource {
     noise_std: f32,
     sat_states: Vec<SatState>,
     rng: XorShift64,
+}
+
+fn generate_l1_ca_with_doppler_ramp_signal_only(
+    config: &ReceiverPipelineConfig,
+    params: SyntheticDopplerRampParams,
+    duration_s: f64,
+) -> SamplesFrame {
+    let clock = SampleClock::new(config.sampling_freq_hz);
+    let dt_s = clock.dt_s();
+    let sample_count = (duration_s * config.sampling_freq_hz).round() as usize;
+    let sat_state = SatState::new_with_doppler_rate_and_receiver_clock_frequency_bias_hz(
+        config,
+        params.signal,
+        0.0,
+        params.doppler_rate_hz_per_s,
+    );
+    let mut iq = Vec::with_capacity(sample_count);
+    for n in 0..sample_count {
+        let t = n as f64 * dt_s;
+        iq.push(sat_state.sample_at(t));
+    }
+    let t0 = SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz };
+    SamplesFrame::new(t0, Seconds(dt_s), iq)
 }
 
 fn generate_l1_ca_multi_signal_only(
@@ -1939,6 +1993,7 @@ impl SignalSource for SyntheticSignalSource {
 #[derive(Debug, Clone)]
 struct SatState {
     doppler_hz: f64,
+    doppler_rate_hz_per_s: f64,
     receiver_clock_frequency_bias_hz: f64,
     code_phase_chips: f64,
     carrier_phase_rad: f64,
@@ -1956,8 +2011,23 @@ impl SatState {
         params: SyntheticSignalParams,
         receiver_clock_frequency_bias_hz: f64,
     ) -> Self {
+        Self::new_with_doppler_rate_and_receiver_clock_frequency_bias_hz(
+            config,
+            params,
+            receiver_clock_frequency_bias_hz,
+            0.0,
+        )
+    }
+
+    fn new_with_doppler_rate_and_receiver_clock_frequency_bias_hz(
+        config: &ReceiverPipelineConfig,
+        params: SyntheticSignalParams,
+        receiver_clock_frequency_bias_hz: f64,
+        doppler_rate_hz_per_s: f64,
+    ) -> Self {
         Self {
             doppler_hz: params.doppler_hz,
+            doppler_rate_hz_per_s,
             receiver_clock_frequency_bias_hz,
             code_phase_chips: params.code_phase_chips,
             carrier_phase_rad: params.carrier_phase_rad,
@@ -1968,6 +2038,21 @@ impl SatState {
             if_hz: synthetic_intermediate_frequency_hz(config.intermediate_freq_hz, params.sat),
             sample_rate_hz: config.sampling_freq_hz,
         }
+    }
+
+    fn carrier_hz_at(&self, t: f64) -> f64 {
+        self.if_hz
+            + self.doppler_hz
+            + self.receiver_clock_frequency_bias_hz
+            + self.doppler_rate_hz_per_s * t
+    }
+
+    fn carrier_phase_rad_at(&self, t: f64) -> f64 {
+        let initial_carrier_hz =
+            self.if_hz + self.doppler_hz + self.receiver_clock_frequency_bias_hz;
+        self.carrier_phase_rad
+            + std::f64::consts::TAU
+                * (initial_carrier_hz * t + 0.5 * self.doppler_rate_hz_per_s * t * t)
     }
 
     fn sample_at(&self, t: f64) -> Complex<f32> {
@@ -1981,8 +2066,7 @@ impl SatState {
         let chip = code_value_at_phase(&self.code, code_phase).unwrap_or(1.0);
         let data_bit = nav_bit_value_at_time_s(self.data_bit_flip, t);
 
-        let carrier_hz = self.if_hz + self.doppler_hz + self.receiver_clock_frequency_bias_hz;
-        let phase = self.carrier_phase_rad as f32 + TAU * (carrier_hz as f32) * (t as f32);
+        let phase = self.carrier_phase_rad_at(t) as f32;
         let carrier = Complex::new(phase.cos(), phase.sin());
 
         let amplitude = signal_amplitude_from_cn0(self.cn0_db_hz, self.sample_rate_hz);
@@ -2244,7 +2328,8 @@ impl XorShift64 {
 mod tests {
     use super::{
         build_iq16_capture_bundle, build_truth_bundle, expected_acquisition_code_phase_samples,
-        expected_acquisition_code_phase_samples_f64, generate_l1_ca_multi,
+        expected_acquisition_code_phase_samples_f64, generate_l1_ca,
+        generate_l1_ca_multi, generate_l1_ca_with_doppler_ramp,
         measure_noise_only_acquisition_false_alarm_rate,
         measure_noise_only_acquisition_false_alarm_rates,
         measure_truth_guided_acquisition_detection_probability,
@@ -2258,9 +2343,9 @@ mod tests {
         validate_truth_guided_acquisition_sample_rates, validate_truth_guided_cn0,
         wrapped_code_phase_error_samples, wrapped_code_phase_error_samples_f64, SatState,
         SyntheticAcquisitionDetectionRateCase, SyntheticAcquisitionFalseAlarmRateCase,
-        SyntheticAcquisitionSampleRateValidationCase, SyntheticNavBitMode, SyntheticScenario,
-        SyntheticSignalParams, SyntheticSignalSource, SYNTHETIC_COMPLEX_NOISE_POWER,
-        SYNTHETIC_NOISE_STD_PER_COMPONENT,
+        SyntheticAcquisitionSampleRateValidationCase, SyntheticDopplerRampParams,
+        SyntheticNavBitMode, SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource,
+        SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
     use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds};
@@ -2554,6 +2639,97 @@ mod tests {
         assert!(
             (actual_extra_phase_step - expected_extra_phase_step).abs() <= 1e-6,
             "receiver clock bias phase step mismatch: actual={actual_extra_phase_step}, expected={expected_extra_phase_step}"
+        );
+    }
+
+    #[test]
+    fn zero_doppler_rate_matches_constant_synthetic_generator() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let params = SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Gps, prn: 9 },
+            doppler_hz: 750.0,
+            code_phase_chips: 144.375,
+            carrier_phase_rad: 0.15,
+            cn0_db_hz: 58.0,
+            data_bit_flip: false,
+        };
+        let baseline = generate_l1_ca(&config, params, 0xD0A0_0001, 0.020);
+        let ramped = generate_l1_ca_with_doppler_ramp(
+            &config,
+            SyntheticDopplerRampParams {
+                signal: params,
+                doppler_rate_hz_per_s: 0.0,
+            },
+            0xD0A0_0001,
+            0.020,
+        );
+
+        assert_eq!(ramped.t0.sample_index, baseline.t0.sample_index);
+        assert_eq!(ramped.t0.sample_rate_hz, baseline.t0.sample_rate_hz);
+        assert_eq!(ramped.dt_s.0, baseline.dt_s.0);
+        assert_eq!(ramped.iq, baseline.iq);
+    }
+
+    #[test]
+    fn doppler_ramp_updates_instantaneous_carrier_frequency_linearly() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let params = SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Gps, prn: 14 },
+            doppler_hz: 1_200.0,
+            code_phase_chips: 0.0,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 60.0,
+            data_bit_flip: false,
+        };
+        let sat_state = SatState::new_with_doppler_rate_and_receiver_clock_frequency_bias_hz(
+            &config, params, 150.0, 40.0,
+        );
+
+        assert!((sat_state.carrier_hz_at(0.0) - 1_350.0).abs() <= 1e-12);
+        assert!((sat_state.carrier_hz_at(0.25) - 1_360.0).abs() <= 1e-12);
+        assert!((sat_state.carrier_hz_at(0.50) - 1_370.0).abs() <= 1e-12);
+    }
+
+    #[test]
+    fn doppler_ramp_integrates_into_carrier_phase_quadratically() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let params = SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Gps, prn: 21 },
+            doppler_hz: 900.0,
+            code_phase_chips: 0.0,
+            carrier_phase_rad: 0.35,
+            cn0_db_hz: 60.0,
+            data_bit_flip: false,
+        };
+        let sat_state = SatState::new_with_doppler_rate_and_receiver_clock_frequency_bias_hz(
+            &config, params, 100.0, -25.0,
+        );
+        let t_s = 0.40;
+        let expected_phase_rad = 0.35
+            + std::f64::consts::TAU * ((1_000.0 * t_s) + 0.5 * (-25.0) * t_s * t_s);
+
+        assert!(
+            (sat_state.carrier_phase_rad_at(t_s) - expected_phase_rad).abs() <= 1e-9,
+            "carrier phase ramp mismatch: actual={}, expected={expected_phase_rad}",
+            sat_state.carrier_phase_rad_at(t_s)
         );
     }
 
