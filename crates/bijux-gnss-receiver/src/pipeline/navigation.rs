@@ -1052,10 +1052,21 @@ mod tests {
         position_ecef: (f64, f64, f64),
         ephs: &[GpsEphemeris],
     ) -> NavFixtureEpoch {
+        make_obs_epoch_for_solution_with_clock_bias(epoch_idx, t_rx_s, position_ecef, ephs, 0.0)
+    }
+
+    fn make_obs_epoch_for_solution_with_clock_bias(
+        epoch_idx: u64,
+        t_rx_s: f64,
+        position_ecef: (f64, f64, f64),
+        ephs: &[GpsEphemeris],
+        receiver_clock_bias_s: f64,
+    ) -> NavFixtureEpoch {
         let sats = ephs
             .iter()
             .map(|eph| {
-                let pseudorange_m = synthetic_pseudorange_m(eph, t_rx_s, position_ecef);
+                let pseudorange_m =
+                    synthetic_pseudorange_m(eph, t_rx_s, position_ecef, receiver_clock_bias_s);
                 ObsSatellite {
                     signal_id: SigId { sat: eph.sat, band: SignalBand::L1, code: SignalCode::Ca },
                     pseudorange_m: Meters(pseudorange_m),
@@ -1146,6 +1157,7 @@ mod tests {
         eph: &GpsEphemeris,
         t_rx_s: f64,
         position_ecef: (f64, f64, f64),
+        receiver_clock_bias_s: f64,
     ) -> f64 {
         let c = 299_792_458.0;
         let mut tau = 0.07;
@@ -1156,7 +1168,7 @@ mod tests {
             let dy = position_ecef.1 - sat.y_m;
             let dz = position_ecef.2 - sat.z_m;
             let range = (dx * dx + dy * dy + dz * dz).sqrt();
-            pseudorange_m = range - sat.clock_correction.bias_s * c;
+            pseudorange_m = range + receiver_clock_bias_s * c - sat.clock_correction.bias_s * c;
             let next_tau = pseudorange_m / c;
             if (next_tau - tau).abs() < 1e-12 {
                 break;
