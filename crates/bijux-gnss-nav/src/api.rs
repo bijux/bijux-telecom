@@ -46,7 +46,9 @@ pub use crate::formats::lnav_decode::{
 pub use crate::formats::precise_products::{
     BroadcastProductsProvider, ProductDiagnostics, Products, ProductsProvider,
 };
-pub use crate::formats::rinex::{parse_rinex_obs_header, write_rinex_nav, write_rinex_obs};
+pub use crate::formats::rinex::{
+    parse_rinex_nav, parse_rinex_obs_header, write_rinex_nav, write_rinex_obs,
+};
 /// Precise product parsing helpers.
 pub use crate::formats::{clk::ClkProvider, sp3::Sp3Provider};
 /// Linear algebra helper.

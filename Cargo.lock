@@ -226,8 +226,10 @@ dependencies = [
  "bijux-gnss-policies",
  "criterion",
  "hex",
+ "regex",
  "serde",
  "thiserror 2.0.18",
+ "time",
 ]
 
 [[package]]
