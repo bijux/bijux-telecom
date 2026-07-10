@@ -402,6 +402,7 @@ mod pvt_tests {
         GpsL1CaLnavSubframe3Orbit, GpsL1CaLnavSubframeAlignment, GpsL1CaTlmWord,
         GpsL1CaWordParitySummary,
     };
+    use std::collections::BTreeMap;
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -412,6 +413,14 @@ mod pvt_tests {
         obs_epoch: ObsEpoch,
         truth_ecef_m: (f64, f64, f64),
         receiver_clock_bias_s: f64,
+    }
+
+    #[derive(Debug, Clone, Copy, Default)]
+    struct SyntheticSatelliteAdjustment {
+        pseudorange_bias_m: f64,
+        pseudorange_sigma_m: Option<f64>,
+        cn0_dbhz: Option<f64>,
+        elevation_deg: Option<f64>,
     }
 
     fn sample_common_args(out: PathBuf) -> CommonArgs {
@@ -464,11 +473,22 @@ mod pvt_tests {
     }
 
     fn sample_pvt_case(ephs: &[GpsEphemeris], receiver_clock_bias_s: f64) -> SyntheticPvtCase {
+        sample_pvt_case_with_adjustments(ephs, receiver_clock_bias_s, &[])
+    }
+
+    fn sample_pvt_case_with_adjustments(
+        ephs: &[GpsEphemeris],
+        receiver_clock_bias_s: f64,
+        adjustments: &[(u8, SyntheticSatelliteAdjustment)],
+    ) -> SyntheticPvtCase {
         let t_rx_s = 504_018.07 + receiver_clock_bias_s;
         let (rx_x, rx_y, rx_z) = bijux_gnss_infra::api::nav::geodetic_to_ecef(37.0, -122.0, 10.0);
+        let adjustments_by_prn =
+            adjustments.iter().copied().collect::<BTreeMap<u8, SyntheticSatelliteAdjustment>>();
         let sats = ephs
             .iter()
             .map(|eph| {
+                let adjustment = adjustments_by_prn.get(&eph.sat.prn).copied().unwrap_or_default();
                 let mut tau = 0.07;
                 let mut pseudorange_m = 0.0;
                 for _ in 0..10 {
@@ -486,18 +506,20 @@ mod pvt_tests {
                     }
                     tau = next_tau;
                 }
+                pseudorange_m += adjustment.pseudorange_bias_m;
                 let signal_travel_time_s = pseudorange_m / SPEED_OF_LIGHT_MPS;
+                let pseudorange_sigma_m = adjustment.pseudorange_sigma_m.unwrap_or(2.0);
                 ObsSatellite {
                     signal_id: SigId { sat: eph.sat, band: SignalBand::L1, code: SignalCode::Ca },
                     pseudorange_m: bijux_gnss_infra::api::core::Meters(pseudorange_m),
-                    pseudorange_var_m2: 4.0,
+                    pseudorange_var_m2: pseudorange_sigma_m.powi(2),
                     carrier_phase_cycles: bijux_gnss_infra::api::core::Cycles(
                         1_000.0 + eph.sat.prn as f64,
                     ),
                     carrier_phase_var_cycles2: 0.01,
                     doppler_hz: bijux_gnss_infra::api::core::Hertz(-500.0),
                     doppler_var_hz2: 4.0,
-                    cn0_dbhz: 45.0,
+                    cn0_dbhz: adjustment.cn0_dbhz.unwrap_or(45.0),
                     lock_flags: LockFlags {
                         code_lock: true,
                         carrier_lock: true,
@@ -507,7 +529,7 @@ mod pvt_tests {
                     multipath_suspect: false,
                     observation_status: ObservationStatus::Accepted,
                     observation_reject_reasons: Vec::new(),
-                    elevation_deg: None,
+                    elevation_deg: adjustment.elevation_deg,
                     azimuth_deg: None,
                     weight: None,
                     timing: Some(ObsSignalTiming {
@@ -548,6 +570,59 @@ mod pvt_tests {
             truth_ecef_m: (rx_x, rx_y, rx_z),
             receiver_clock_bias_s,
         }
+    }
+
+    fn position_error_3d_m(
+        solution: &bijux_gnss_infra::api::core::NavSolutionEpoch,
+        truth_ecef_m: (f64, f64, f64),
+    ) -> f64 {
+        let dx = solution.ecef_x_m.0 - truth_ecef_m.0;
+        let dy = solution.ecef_y_m.0 - truth_ecef_m.1;
+        let dz = solution.ecef_z_m.0 - truth_ecef_m.2;
+        (dx * dx + dy * dy + dz * dz).sqrt()
+    }
+
+    fn solve_pvt_case_with_rinex_nav(
+        case_name: &str,
+        ephs: &[GpsEphemeris],
+        pvt_case: &SyntheticPvtCase,
+    ) -> bijux_gnss_infra::api::core::NavSolutionEpoch {
+        let root = std::env::temp_dir().join(format!(
+            "bijux_pvt_{}_{}_{}",
+            case_name,
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos()
+        ));
+        fs::create_dir_all(&root).expect("create test root");
+        let obs_path = root.join("obs.jsonl");
+        let eph_path = root.join("nav.rnx");
+        fs::write(
+            &obs_path,
+            format!(
+                "{}\n",
+                serde_json::to_string(&pvt_case.obs_epoch).expect("serialize observation epoch")
+            ),
+        )
+        .expect("write obs");
+        write_rinex_nav(&eph_path, ephs, true).expect("write rinex nav");
+
+        let common = sample_common_args(root.clone());
+        let out_dir = artifacts_dir(&common, "pvt", None).expect("artifacts dir");
+        fs::create_dir_all(&out_dir).expect("create pvt artifacts dir");
+        handle_pvt(GnssCommand::Pvt {
+            common: common.clone(),
+            obs: obs_path,
+            eph: eph_path,
+            ekf: false,
+        })
+        .expect("pvt command");
+
+        let nav_path = out_dir.join("pvt.jsonl");
+        let mut solutions = read_nav_solutions(&nav_path).expect("read nav solutions");
+        fs::remove_dir_all(root).expect("remove test root");
+
+        assert_eq!(solutions.len(), 1);
+        solutions.remove(0)
     }
 
     fn decoded_lnav_subframes_from_ephemeris(
@@ -765,5 +840,56 @@ mod pvt_tests {
         assert!(solutions[0].clock_bias_s.0 <= pvt_case.receiver_clock_bias_s);
 
         fs::remove_dir_all(root).expect("remove test root");
+    }
+
+    #[test]
+    fn pvt_command_downweights_high_variance_satellite() {
+        let ephs = sample_ephemerides();
+        let low_variance_case = sample_pvt_case_with_adjustments(
+            &ephs,
+            2.75e-4,
+            &[(
+                5,
+                SyntheticSatelliteAdjustment {
+                    pseudorange_bias_m: 80.0,
+                    pseudorange_sigma_m: Some(2.0),
+                    ..SyntheticSatelliteAdjustment::default()
+                },
+            )],
+        );
+        let high_variance_case = sample_pvt_case_with_adjustments(
+            &ephs,
+            2.75e-4,
+            &[(
+                5,
+                SyntheticSatelliteAdjustment {
+                    pseudorange_bias_m: 80.0,
+                    pseudorange_sigma_m: Some(200.0),
+                    ..SyntheticSatelliteAdjustment::default()
+                },
+            )],
+        );
+
+        let low_variance_solution = solve_pvt_case_with_rinex_nav(
+            "low_variance_bias",
+            &ephs,
+            &low_variance_case,
+        );
+        let high_variance_solution = solve_pvt_case_with_rinex_nav(
+            "high_variance_bias",
+            &ephs,
+            &high_variance_case,
+        );
+
+        let low_variance_error_m =
+            position_error_3d_m(&low_variance_solution, low_variance_case.truth_ecef_m);
+        let high_variance_error_m =
+            position_error_3d_m(&high_variance_solution, high_variance_case.truth_ecef_m);
+        let provenance = high_variance_solution.provenance.as_ref().expect("nav provenance");
+
+        assert!(high_variance_solution.valid);
+        assert_eq!(provenance.solver_family, "wls_weighted");
+        assert_eq!(provenance.weighting_mode, "cn0_elevation_sigma_weighted");
+        assert!(high_variance_error_m < low_variance_error_m);
     }
 }
