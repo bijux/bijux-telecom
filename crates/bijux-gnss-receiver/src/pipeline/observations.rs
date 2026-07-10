@@ -9,8 +9,8 @@
 //! TODO(ref-grade): add literature citations for CN0 weighting and multipath heuristics.
 
 use bijux_gnss_core::api::{
-    Cycles, DiagnosticEvent, DiagnosticSeverity, GpsTime, LockFlags, Meters, ObsDecisionArtifact,
-    ObsEpoch, ObsEpochManifest, ObsMetadata, ObsSatellite, ObsSignalTiming,
+    ConventionsConfig, Cycles, DiagnosticEvent, DiagnosticSeverity, GpsTime, LockFlags, Meters,
+    ObsDecisionArtifact, ObsEpoch, ObsEpochManifest, ObsMetadata, ObsSatellite, ObsSignalTiming,
     ObservationEpochDecision, ObservationStatus, ObservationSupportClass,
     ObservationUncertaintyClass, ReceiverRole, ReceiverSampleTrace, SatObservationDecision,
     Seconds, SigId, SignalBand, TrackEpoch,
@@ -204,7 +204,7 @@ fn observations_from_tracking_with_provenance(
         let mut signal = bijux_gnss_core::api::signal_spec_gps_l1_ca();
         signal.code_rate_hz = config.code_freq_basis_hz;
         let observation_epoch_id = observation_epoch_id(epoch.epoch.index, epoch.sample_index);
-        let sat = ObsSatellite {
+        let mut sat = ObsSatellite {
             signal_id: SigId {
                 sat: epoch.sat,
                 band: SignalBand::L1,
@@ -276,6 +276,13 @@ fn observations_from_tracking_with_provenance(
                 tracking_uncertainty,
             },
         };
+        apply_pseudorange_physics_rejection(&mut sat);
+        sat.metadata.observation_status =
+            observation_status_label(sat.observation_status).to_string();
+        sat.metadata.observation_reject_reasons = sat.observation_reject_reasons.clone();
+        sat.metadata.observation_support_class =
+            observation_support_label(sat.observation_status, pseudorange.alignment_resolved)
+                .to_string();
 
         let mut epoch = ObsEpoch {
             t_rx_s,
@@ -379,6 +386,7 @@ pub fn observations_from_tracking_results_with_gps_anchor(
                     sat.metadata.smoothing_age = 0;
                     sat.metadata.smoothing_resets = state.resets;
                     sat.error_model = Some(observation_error_model(config, &sat, 0.0));
+                    apply_pseudorange_physics_rejection(&mut sat);
                     entry.sats.push(sat);
                     continue;
                 }
@@ -440,6 +448,7 @@ pub fn observations_from_tracking_results_with_gps_anchor(
                 );
                 sat.multipath_suspect = divergence_jump > threshold_m * 0.8;
                 sat.error_model = Some(observation_error_model(config, &sat, divergence_jump));
+                apply_pseudorange_physics_rejection(&mut sat);
                 entry.sats.push(sat);
             }
         }
@@ -786,12 +795,6 @@ fn classify_observation_status(
 }
 
 fn apply_epoch_decision(epoch: &mut ObsEpoch) {
-    if let Err(reason) = bijux_gnss_core::api::validate_obs_epochs(std::slice::from_ref(epoch)) {
-        epoch.decision = ObservationEpochDecision::Rejected;
-        epoch.decision_reason = Some(format!("malformed_observation_set:{reason}"));
-        epoch.valid = false;
-        return;
-    }
     let accepted_count = epoch
         .sats
         .iter()
@@ -812,8 +815,40 @@ fn apply_epoch_decision(epoch: &mut ObsEpoch) {
         epoch.valid = false;
         return;
     }
+    if let Err(reason) = bijux_gnss_core::api::validate_obs_epochs(std::slice::from_ref(epoch)) {
+        epoch.decision = ObservationEpochDecision::Rejected;
+        epoch.decision_reason = Some(format!("malformed_observation_set:{reason}"));
+        epoch.valid = false;
+        return;
+    }
     epoch.decision = ObservationEpochDecision::Accepted;
     epoch.decision_reason = Some("accepted_observables_present".to_string());
+}
+
+fn apply_pseudorange_physics_rejection(sat: &mut ObsSatellite) {
+    let mut reasons = pseudorange_physics_reject_reasons(sat.pseudorange_m);
+    if reasons.is_empty() {
+        return;
+    }
+    sat.observation_status = ObservationStatus::Inconsistent;
+    sat.observation_reject_reasons.append(&mut reasons);
+    sat.observation_reject_reasons.sort();
+    sat.observation_reject_reasons.dedup();
+}
+
+fn pseudorange_physics_reject_reasons(pseudorange_m: Meters) -> Vec<String> {
+    let pseudorange_m = pseudorange_m.0;
+    if !pseudorange_m.is_finite() {
+        return vec!["non_finite_pseudorange".to_string()];
+    }
+    if pseudorange_m <= 0.0 {
+        return vec!["non_positive_pseudorange".to_string()];
+    }
+    let cfg = ConventionsConfig::default();
+    if pseudorange_m < cfg.min_pseudorange_m || pseudorange_m > cfg.max_pseudorange_m {
+        return vec!["pseudorange_out_of_bounds".to_string()];
+    }
+    Vec::new()
 }
 
 fn slip_threshold_m(cn0_dbhz: f64, elevation_deg: Option<f64>) -> f64 {
@@ -1088,6 +1123,22 @@ mod tests {
             acquisition_code_phase_samples: 0,
             acquisition_carrier_hz: 0.0,
             acq_to_track_state: "deferred".to_string(),
+            epochs: vec![epoch],
+            transitions: Vec::new(),
+        }
+    }
+
+    fn track_from_epoch(epoch: TrackEpoch) -> TrackingResult {
+        let sat = epoch.sat;
+        TrackingResult {
+            sat,
+            carrier_hz: epoch.carrier_hz.0,
+            code_phase_samples: epoch.code_phase_samples.0,
+            acquisition_hypothesis: "accepted".to_string(),
+            acquisition_score: 1.0,
+            acquisition_code_phase_samples: 0,
+            acquisition_carrier_hz: epoch.carrier_hz.0,
+            acq_to_track_state: "accepted".to_string(),
             epochs: vec![epoch],
             transitions: Vec::new(),
         }
@@ -1797,5 +1848,66 @@ mod tests {
             .any(|reason| reason == "sample_rate_mismatch"));
         assert_eq!(epoch.decision, ObservationEpochDecision::Rejected);
         assert_eq!(epoch.decision_reason.as_deref(), Some("inconsistent_observable"));
+    }
+
+    #[test]
+    fn observations_reject_non_positive_pseudorange() {
+        let config = ReceiverPipelineConfig::default();
+        let carrier_hz = crate::pipeline::doppler::carrier_hz_from_doppler_hz(0.0, 0.0);
+        let epoch = make_tracking_epoch_with_alignment(12, &config, 70, carrier_hz, 0.0, 0, -8.0);
+        let report = observations_from_tracking_results(&config, &[track_from_epoch(epoch)], 10);
+
+        let epoch = report.output.first().expect("observation epoch");
+        let sat = epoch.sats.first().expect("observation satellite");
+
+        assert_eq!(sat.observation_status, ObservationStatus::Inconsistent);
+        assert!(sat
+            .observation_reject_reasons
+            .iter()
+            .any(|reason| reason == "non_positive_pseudorange"));
+        assert_eq!(epoch.decision, ObservationEpochDecision::Rejected);
+        assert_eq!(epoch.decision_reason.as_deref(), Some("inconsistent_observable"));
+        assert!(!epoch.valid);
+    }
+
+    #[test]
+    fn observations_reject_out_of_bounds_pseudorange() {
+        let config = ReceiverPipelineConfig::default();
+        let carrier_hz = crate::pipeline::doppler::carrier_hz_from_doppler_hz(0.0, 0.0);
+        let epoch =
+            make_tracking_epoch_with_alignment(13, &config, 70, carrier_hz, 0.0, 200_000, 0.0);
+        let report = observations_from_tracking_results(&config, &[track_from_epoch(epoch)], 10);
+
+        let epoch = report.output.first().expect("observation epoch");
+        let sat = epoch.sats.first().expect("observation satellite");
+
+        assert_eq!(sat.observation_status, ObservationStatus::Inconsistent);
+        assert!(sat
+            .observation_reject_reasons
+            .iter()
+            .any(|reason| reason == "pseudorange_out_of_bounds"));
+        assert_eq!(epoch.decision, ObservationEpochDecision::Rejected);
+        assert_eq!(epoch.decision_reason.as_deref(), Some("inconsistent_observable"));
+        assert!(!epoch.valid);
+    }
+
+    #[test]
+    fn observations_reject_non_finite_pseudorange() {
+        let config = ReceiverPipelineConfig::default();
+        let carrier_hz = crate::pipeline::doppler::carrier_hz_from_doppler_hz(0.0, 0.0);
+        let epoch =
+            make_tracking_epoch_with_alignment(14, &config, 70, carrier_hz, 0.0, 68, f64::NAN);
+        let (epochs, _) = observations_from_tracking(&config, &[epoch]);
+        let epoch = epochs.first().expect("observation epoch");
+        let sat = epoch.sats.first().expect("observation satellite");
+
+        assert_eq!(sat.observation_status, ObservationStatus::Inconsistent);
+        assert!(sat
+            .observation_reject_reasons
+            .iter()
+            .any(|reason| reason == "non_finite_pseudorange"));
+        assert_eq!(epoch.decision, ObservationEpochDecision::Rejected);
+        assert_eq!(epoch.decision_reason.as_deref(), Some("inconsistent_observable"));
+        assert!(!epoch.valid);
     }
 }
