@@ -24,7 +24,6 @@ use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_core::api::{Constellation, Hertz, SatId, SignalCode};
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
-const TWO_PI: f64 = std::f64::consts::PI * 2.0;
 const OBS_WEAK_CN0_DBHZ: f64 = 25.0;
 
 #[derive(Debug, Clone)]
@@ -126,7 +125,7 @@ fn observations_from_tracking_with_provenance(
         let pseudorange_m =
             Meters(code_time_s * SPEED_OF_LIGHT_MPS + clock_bias_s * SPEED_OF_LIGHT_MPS);
 
-        let prompt_phase_cycles = (epoch.prompt_q as f64).atan2(epoch.prompt_i as f64) / TWO_PI;
+        let tracked_carrier_phase_cycles = epoch.carrier_phase_cycles.0;
         let doppler_hz = bijux_gnss_core::api::Hertz(doppler_hz_from_carrier_hz(
             config.intermediate_freq_hz,
             epoch.carrier_hz.0,
@@ -135,23 +134,17 @@ fn observations_from_tracking_with_provenance(
         let mut cycle_slip = false;
 
         if !phase_state.initialized {
-            phase_state.phase_cycles = prompt_phase_cycles;
-            phase_state.last_phase_cycles = prompt_phase_cycles;
+            phase_state.phase_cycles = tracked_carrier_phase_cycles;
+            phase_state.last_phase_cycles = tracked_carrier_phase_cycles;
             phase_state.initialized = true;
         } else {
             let predicted = phase_state.phase_cycles + doppler_hz.0 * dt_s;
-            let mut measured = prompt_phase_cycles;
-            let delta = measured - phase_state.last_phase_cycles;
-            if delta > 0.5 {
-                measured -= 1.0;
-            } else if delta < -0.5 {
-                measured += 1.0;
-            }
+            let measured = tracked_carrier_phase_cycles;
             let residual = (measured - predicted).abs();
             if residual > 0.25 {
                 cycle_slip = true;
             }
-            phase_state.phase_cycles = predicted + (measured - predicted);
+            phase_state.phase_cycles = measured;
             phase_state.last_phase_cycles = measured;
         }
 
@@ -179,7 +172,7 @@ fn observations_from_tracking_with_provenance(
             cn0_dbhz,
             lock_flags: LockFlags {
                 code_lock: epoch.lock,
-                carrier_lock: epoch.lock,
+                carrier_lock: epoch.pll_lock,
                 bit_lock: false,
                 cycle_slip,
             },
