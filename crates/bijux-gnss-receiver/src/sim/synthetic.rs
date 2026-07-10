@@ -5,8 +5,8 @@ use std::f32::consts::TAU;
 use num_complex::Complex;
 
 use bijux_gnss_core::api::{
-    stats, AcqHypothesis, AcqResult, Constellation, Hertz, ReceiverSampleTrace, SampleClock,
-    SampleTime, SamplesFrame, SatId, Seconds, SignalBand,
+    stats, AcqHypothesis, AcqResult, Constellation, Hertz, ObsEpoch, ObservationStatus,
+    ReceiverSampleTrace, SampleClock, SampleTime, SamplesFrame, SatId, Seconds, SignalBand,
 };
 use bijux_gnss_signal::api::SignalSource;
 
@@ -300,6 +300,85 @@ fn summarize_observation_errors(errors: &[f64]) -> Option<SyntheticObservationEr
         p95_abs_error: absolute.p95,
         max_abs_error: absolute.max,
     })
+}
+
+struct ObservedSatelliteRow<'a> {
+    sample_index: u64,
+    observation: &'a bijux_gnss_core::api::ObsSatellite,
+}
+
+/// Measure emitted observation values against synthetic truth on a per-satellite basis.
+pub fn validate_truth_guided_observations(
+    config: &ReceiverPipelineConfig,
+    tracks: &[crate::pipeline::tracking::TrackingResult],
+    truth: &SyntheticScenario,
+    reference: &SyntheticObservationTruthReference,
+    hatch_window: u32,
+) -> SyntheticObservationValidationReport {
+    let observations =
+        crate::pipeline::observations::observations_from_tracking_results(config, tracks, hatch_window)
+            .output;
+    let satellites = truth
+        .satellites
+        .iter()
+        .map(|sat_truth| {
+            let observed_rows = comparable_satellite_observations(&observations, sat_truth.sat);
+            let expected_doppler_hz = sat_truth.doppler_hz + truth.receiver_clock_frequency_bias_hz;
+            let doppler_errors = observed_rows
+                .iter()
+                .map(|row| row.observation.doppler_hz.0 - expected_doppler_hz)
+                .collect::<Vec<_>>();
+            let cn0_errors = observed_rows
+                .iter()
+                .map(|row| row.observation.cn0_dbhz - sat_truth.cn0_db_hz as f64)
+                .collect::<Vec<_>>();
+            let mut notes = Vec::new();
+            if observed_rows.is_empty() {
+                notes.push("no_comparable_observation_rows".to_string());
+            }
+
+            SyntheticObservationValidationSatellite {
+                sat: sat_truth.sat,
+                pseudorange_error_m: None,
+                carrier_phase_error_cycles: None,
+                carrier_phase_arcs_evaluated: 0,
+                doppler_error_hz: summarize_observation_errors(&doppler_errors),
+                cn0_error_db_hz: summarize_observation_errors(&cn0_errors),
+                notes,
+            }
+        })
+        .collect();
+
+    SyntheticObservationValidationReport {
+        scenario_id: truth.id.clone(),
+        sample_rate_hz: truth.sample_rate_hz,
+        hatch_window,
+        reference_receive_time_s: reference.receive_time_s,
+        satellites,
+    }
+}
+
+fn comparable_satellite_observations<'a>(
+    observations: &'a [ObsEpoch],
+    sat: SatId,
+) -> Vec<ObservedSatelliteRow<'a>> {
+    observations
+        .iter()
+        .filter(|epoch| epoch.valid)
+        .flat_map(|epoch| {
+            epoch.sats.iter().filter_map(move |observation| {
+                (observation.signal_id.sat == sat
+                    && matches!(
+                        observation.observation_status,
+                        ObservationStatus::Accepted | ObservationStatus::Weak
+                    ))
+                    .then_some(ObservedSatelliteRow {
+                        sample_index: epoch.source_time.sample_index,
+                        observation,
+                    })
+            })
+        })
+        .collect()
 }
 
 /// Per-satellite acquisition code-phase comparison between clean synthetic truth and receiver output.
