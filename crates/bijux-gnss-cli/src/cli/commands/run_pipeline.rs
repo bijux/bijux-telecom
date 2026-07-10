@@ -396,7 +396,12 @@ mod pvt_tests {
         ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
         SigId, SignalBand, SignalCode,
     };
-    use bijux_gnss_infra::api::nav::{parse_rinex_nav, sat_state_gps_l1ca, write_rinex_nav, GpsEphemeris};
+    use bijux_gnss_infra::api::nav::{
+        parse_rinex_nav, sat_state_gps_l1ca, write_rinex_nav, GpsEphemeris, GpsL1CaHowWord,
+        GpsL1CaLnavDecodedSubframe, GpsL1CaLnavSubframe1Clock, GpsL1CaLnavSubframe2Orbit,
+        GpsL1CaLnavSubframe3Orbit, GpsL1CaLnavSubframeAlignment, GpsL1CaTlmWord,
+        GpsL1CaWordParitySummary,
+    };
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -417,42 +422,37 @@ mod pvt_tests {
     }
 
     fn sample_ephemerides() -> Vec<GpsEphemeris> {
-        [
-            (1, 0.0, 0.0),
-            (2, 0.8, 0.9),
-            (3, 1.6, 1.8),
-            (4, 2.4, 2.7),
-        ]
-        .into_iter()
-        .map(|(prn, omega0, m0)| GpsEphemeris {
-            sat: SatId { constellation: Constellation::Gps, prn },
-            iodc: 1,
-            iode: 1,
-            week: 2209,
-            sv_health: 0,
-            toe_s: 504_000.0,
-            toc_s: 504_018.0,
-            sqrt_a: 5153.7954775,
-            e: 0.01,
-            i0: 0.94,
-            idot: 0.0,
-            omega0,
-            omegadot: 0.0,
-            w: 0.0,
-            m0,
-            delta_n: 0.0,
-            cuc: 0.0,
-            cus: 0.0,
-            crc: 0.0,
-            crs: 0.0,
-            cic: 0.0,
-            cis: 0.0,
-            af0: 0.0,
-            af1: 0.0,
-            af2: 0.0,
-            tgd: 0.0,
-        })
-        .collect()
+        [(1, 0.0, 0.0), (2, 0.8, 0.9), (3, 1.6, 1.8), (4, 2.4, 2.7)]
+            .into_iter()
+            .map(|(prn, omega0, m0)| GpsEphemeris {
+                sat: SatId { constellation: Constellation::Gps, prn },
+                iodc: 1,
+                iode: 1,
+                week: 2209,
+                sv_health: 0,
+                toe_s: 504_000.0,
+                toc_s: 504_018.0,
+                sqrt_a: 5153.7954775,
+                e: 0.01,
+                i0: 0.94,
+                idot: 0.0,
+                omega0,
+                omegadot: 0.0,
+                w: 0.0,
+                m0,
+                delta_n: 0.0,
+                cuc: 0.0,
+                cus: 0.0,
+                crc: 0.0,
+                crs: 0.0,
+                cic: 0.0,
+                cis: 0.0,
+                af0: 0.0,
+                af1: 0.0,
+                af2: 0.0,
+                tgd: 0.0,
+            })
+            .collect()
     }
 
     fn sample_obs_epoch(ephs: &[GpsEphemeris]) -> ObsEpoch {
@@ -477,14 +477,12 @@ mod pvt_tests {
                     tau = next_tau;
                 }
                 ObsSatellite {
-                    signal_id: SigId {
-                        sat: eph.sat,
-                        band: SignalBand::L1,
-                        code: SignalCode::Ca,
-                    },
+                    signal_id: SigId { sat: eph.sat, band: SignalBand::L1, code: SignalCode::Ca },
                     pseudorange_m: bijux_gnss_infra::api::core::Meters(pseudorange_m),
                     pseudorange_var_m2: 4.0,
-                    carrier_phase_cycles: bijux_gnss_infra::api::core::Cycles(1_000.0 + eph.sat.prn as f64),
+                    carrier_phase_cycles: bijux_gnss_infra::api::core::Cycles(
+                        1_000.0 + eph.sat.prn as f64,
+                    ),
                     carrier_phase_var_cycles2: 0.01,
                     doppler_hz: bijux_gnss_infra::api::core::Hertz(-500.0),
                     doppler_var_hz2: 4.0,
@@ -534,6 +532,110 @@ mod pvt_tests {
         }
     }
 
+    fn decoded_lnav_subframes_from_ephemeris(
+        eph: &GpsEphemeris,
+    ) -> Vec<GpsL1CaLnavDecodedSubframe> {
+        let alignment = |subframe_index: usize| GpsL1CaLnavSubframeAlignment {
+            start_bit_index: subframe_index * 300,
+            end_bit_index_exclusive: (subframe_index + 1) * 300,
+            start_prompt_index: subframe_index * 6_000,
+            end_prompt_index_exclusive: (subframe_index + 1) * 6_000,
+            inverted: false,
+            word_count: 10,
+            parity_ok_count: 10,
+        };
+        let tlm = GpsL1CaTlmWord { preamble: 0x8B, parity_ok: true };
+        let parity = GpsL1CaWordParitySummary {
+            word_count: 10,
+            passed_word_count: 10,
+            failed_word_indexes: Vec::new(),
+        };
+        let word_parity_ok = vec![true; 10];
+
+        vec![
+            GpsL1CaLnavDecodedSubframe {
+                alignment: alignment(0),
+                tlm: tlm.clone(),
+                how: GpsL1CaHowWord {
+                    tow_count: (eph.toc_s / 6.0) as u32,
+                    tow_start_s: (eph.toc_s / 6.0) as u32 * 6,
+                    alert: false,
+                    anti_spoof: false,
+                    subframe_id: 1,
+                    parity_ok: true,
+                },
+                clock: Some(GpsL1CaLnavSubframe1Clock {
+                    week: (eph.week % 1024) as u16,
+                    iodc: eph.iodc,
+                    sv_health: eph.sv_health,
+                    toc_s: eph.toc_s,
+                    af0: eph.af0,
+                    af1: eph.af1,
+                    af2: eph.af2,
+                    tgd: eph.tgd,
+                }),
+                orbit_subframe_2: None,
+                orbit_subframe_3: None,
+                parity: parity.clone(),
+                word_parity_ok: word_parity_ok.clone(),
+            },
+            GpsL1CaLnavDecodedSubframe {
+                alignment: alignment(1),
+                tlm: tlm.clone(),
+                how: GpsL1CaHowWord {
+                    tow_count: (eph.toe_s / 6.0) as u32,
+                    tow_start_s: (eph.toe_s / 6.0) as u32 * 6,
+                    alert: false,
+                    anti_spoof: false,
+                    subframe_id: 2,
+                    parity_ok: true,
+                },
+                clock: None,
+                orbit_subframe_2: Some(GpsL1CaLnavSubframe2Orbit {
+                    iode: eph.iode,
+                    crs: eph.crs,
+                    delta_n: eph.delta_n,
+                    m0: eph.m0,
+                    cuc: eph.cuc,
+                    e: eph.e,
+                    cus: eph.cus,
+                    sqrt_a: eph.sqrt_a,
+                    toe_s: eph.toe_s,
+                }),
+                orbit_subframe_3: None,
+                parity: parity.clone(),
+                word_parity_ok: word_parity_ok.clone(),
+            },
+            GpsL1CaLnavDecodedSubframe {
+                alignment: alignment(2),
+                tlm,
+                how: GpsL1CaHowWord {
+                    tow_count: (eph.toe_s / 6.0) as u32 + 1,
+                    tow_start_s: ((eph.toe_s / 6.0) as u32 + 1) * 6,
+                    alert: false,
+                    anti_spoof: false,
+                    subframe_id: 3,
+                    parity_ok: true,
+                },
+                clock: None,
+                orbit_subframe_2: None,
+                orbit_subframe_3: Some(GpsL1CaLnavSubframe3Orbit {
+                    iode: eph.iode,
+                    cic: eph.cic,
+                    omega0: eph.omega0,
+                    cis: eph.cis,
+                    i0: eph.i0,
+                    crc: eph.crc,
+                    w: eph.w,
+                    omegadot: eph.omegadot,
+                    idot: eph.idot,
+                }),
+                parity,
+                word_parity_ok,
+            },
+        ]
+    }
+
     #[test]
     fn pvt_command_accepts_rinex_navigation_input() {
         let root = std::env::temp_dir().join(format!(
@@ -554,10 +656,68 @@ mod pvt_tests {
         assert_eq!(parse_rinex_nav(&rinex).expect("parse rinex nav").len(), ephs.len());
 
         let common = sample_common_args(root.clone());
-        handle_pvt(GnssCommand::Pvt { common: common.clone(), obs: obs_path, eph: eph_path, ekf: false })
-            .expect("pvt command");
+        handle_pvt(GnssCommand::Pvt {
+            common: common.clone(),
+            obs: obs_path,
+            eph: eph_path,
+            ekf: false,
+        })
+        .expect("pvt command");
 
-        let nav_path = artifacts_dir(&common, "pvt", None).expect("artifacts dir").join("pvt.jsonl");
+        let nav_path =
+            artifacts_dir(&common, "pvt", None).expect("artifacts dir").join("pvt.jsonl");
+        let solutions = read_nav_solutions(&nav_path).expect("read nav solutions");
+
+        assert_eq!(solutions.len(), 1);
+        assert_eq!(solutions[0].sat_count, 4);
+        assert_eq!(solutions[0].used_sat_count, 4);
+
+        fs::remove_dir_all(root).expect("remove test root");
+    }
+
+    #[test]
+    fn pvt_command_accepts_decoded_lnav_report_array() {
+        let root = std::env::temp_dir().join(format!(
+            "bijux_pvt_decoded_lnav_{}_{}",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos()
+        ));
+        fs::create_dir_all(&root).expect("create test root");
+        let obs_path = root.join("obs.jsonl");
+        let eph_path = root.join("nav_decode_reports.json");
+
+        let ephs = sample_ephemerides();
+        let obs = sample_obs_epoch(&ephs);
+        fs::write(&obs_path, format!("{}\n", serde_json::to_string(&obs).expect("serialize obs")))
+            .expect("write obs");
+        let reports = ephs
+            .iter()
+            .map(|eph| {
+                serde_json::json!({
+                    "sat": eph.sat,
+                    "reference_week": eph.week,
+                    "decoded_subframes": decoded_lnav_subframes_from_ephemeris(eph),
+                    "ephemerides": []
+                })
+            })
+            .collect::<Vec<_>>();
+        fs::write(
+            &eph_path,
+            serde_json::to_string_pretty(&reports).expect("serialize nav decode reports"),
+        )
+        .expect("write nav decode reports");
+
+        let common = sample_common_args(root.clone());
+        handle_pvt(GnssCommand::Pvt {
+            common: common.clone(),
+            obs: obs_path,
+            eph: eph_path,
+            ekf: false,
+        })
+        .expect("pvt command");
+
+        let nav_path =
+            artifacts_dir(&common, "pvt", None).expect("artifacts dir").join("pvt.jsonl");
         let solutions = read_nav_solutions(&nav_path).expect("read nav solutions");
 
         assert_eq!(solutions.len(), 1);

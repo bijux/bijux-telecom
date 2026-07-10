@@ -702,12 +702,7 @@ struct NavDecodeEphemerisReportInput {
     ephemerides: Vec<GpsEphemeris>,
 }
 
-fn read_nav_decode_ephemerides(data: &str) -> Result<Option<Vec<GpsEphemeris>>> {
-    if !data.contains("\"decoded_subframes\"") || !data.contains("\"sat\"") {
-        return Ok(None);
-    }
-
-    let report: NavDecodeEphemerisReportInput = serde_json::from_str(data)?;
+fn ephemerides_from_nav_decode_report(report: NavDecodeEphemerisReportInput) -> Result<Vec<GpsEphemeris>> {
     if !report.decoded_subframes.is_empty() {
         if let Some(reference_week) = report.reference_week {
             let (ephs, _rejections) =
@@ -716,19 +711,37 @@ fn read_nav_decode_ephemerides(data: &str) -> Result<Option<Vec<GpsEphemeris>>> 
                     &report.decoded_subframes,
                     Some(reference_week),
                 );
-            return Ok(Some(ephs));
+            return Ok(ephs);
         }
         if !report.ephemerides.is_empty() {
-            return Ok(Some(report.ephemerides));
+            return Ok(report.ephemerides);
         }
         bail!("decoded LNAV report is missing reference_week and embedded ephemerides");
     }
 
     if !report.ephemerides.is_empty() {
-        return Ok(Some(report.ephemerides));
+        return Ok(report.ephemerides);
     }
 
-    Ok(None)
+    Ok(Vec::new())
+}
+
+fn read_nav_decode_ephemerides(data: &str) -> Result<Option<Vec<GpsEphemeris>>> {
+    if !data.contains("\"decoded_subframes\"") || !data.contains("\"sat\"") {
+        return Ok(None);
+    }
+
+    if data.trim_start().starts_with('[') {
+        let reports: Vec<NavDecodeEphemerisReportInput> = serde_json::from_str(data)?;
+        let mut ephemerides = Vec::new();
+        for report in reports {
+            ephemerides.extend(ephemerides_from_nav_decode_report(report)?);
+        }
+        return Ok(Some(ephemerides));
+    }
+
+    let report: NavDecodeEphemerisReportInput = serde_json::from_str(data)?;
+    Ok(Some(ephemerides_from_nav_decode_report(report)?))
 }
 
 fn read_ephemeris(path: &Path) -> Result<Vec<GpsEphemeris>> {
@@ -931,6 +944,40 @@ mod tests {
         assert_eq!(parsed[0].week, eph.week);
         assert_eq!(parsed[0].iode, eph.iode);
         assert_eq!(parsed[0].iodc, eph.iodc);
+    }
+
+    #[test]
+    fn read_ephemeris_accepts_nav_decode_report_arrays() {
+        let path = std::env::temp_dir().join(format!(
+            "bijux_read_ephemeris_nav_decode_array_{}_{}.json",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos()
+        ));
+        let first = sample_ephemeris();
+        let second = GpsEphemeris { sat: SatId { constellation: Constellation::Gps, prn: 9 }, ..sample_ephemeris() };
+        let reports = serde_json::json!([
+            {
+                "sat": first.sat,
+                "reference_week": first.week,
+                "decoded_subframes": [],
+                "ephemerides": [first.clone()]
+            },
+            {
+                "sat": second.sat,
+                "reference_week": second.week,
+                "decoded_subframes": [],
+                "ephemerides": [second.clone()]
+            }
+        ]);
+
+        fs::write(&path, serde_json::to_string_pretty(&reports).expect("serialize nav decode reports"))
+            .expect("write nav decode reports");
+        let parsed = read_ephemeris(&path).expect("read nav decode report array");
+        fs::remove_file(&path).expect("remove nav decode reports");
+
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].sat, first.sat);
+        assert_eq!(parsed[1].sat, second.sat);
     }
 
     fn temp_file_path(name: &str) -> PathBuf {
