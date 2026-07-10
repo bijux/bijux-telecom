@@ -11,6 +11,7 @@ use bijux_gnss_receiver::api::{
     sim::{SyntheticScenario, SyntheticSignalParams},
     ReceiverPipelineConfig,
 };
+use bijux_gnss_signal::api::samples_per_code;
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 const GPS_L1_CA_CODE_RATE_HZ: f64 = 1_023_000.0;
@@ -112,11 +113,17 @@ pub fn truth_seeded_acquisition_results(
     source_time: ReceiverSampleTrace,
     scenario: &SyntheticScenario,
 ) -> Vec<AcqResult> {
+    let samples_per_chip =
+        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length)
+            as f64
+            / config.code_length as f64;
     scenario
         .satellites
         .iter()
         .map(|signal| {
-            let code_phase_samples = signal.code_phase_chips.round().clamp(0.0, 1022.0);
+            let code_phase_samples = (signal.code_phase_chips * samples_per_chip)
+                .round()
+                .clamp(0.0, (config.code_length as f64 * samples_per_chip) - 1.0);
             AcqResult {
                 sat: signal.sat,
                 signal_band: SignalBand::L1,
@@ -145,7 +152,7 @@ pub fn truth_seeded_acquisition_results(
                 code_phase_refinement: Some(AcqCodePhaseRefinement {
                     method: "truth_seed".to_string(),
                     offset_samples: 0.0,
-                    refined_code_phase_samples: signal.code_phase_chips,
+                    refined_code_phase_samples: signal.code_phase_chips * samples_per_chip,
                     left_correlation_norm: 1.0,
                     center_correlation_norm: 1.0,
                     right_correlation_norm: 1.0,
@@ -205,4 +212,55 @@ fn encode_code_phase_chips(pseudorange_chips: f64, target_epoch_idx: u64) -> f64
         "code phase chips must fit within one C/A period",
     );
     code_phase_chips
+}
+
+#[cfg(test)]
+mod tests {
+    use super::truth_seeded_acquisition_results;
+    use bijux_gnss_core::api::{Constellation, ReceiverSampleTrace, SatId};
+    use bijux_gnss_receiver::api::{
+        sim::{SyntheticScenario, SyntheticSignalParams},
+        ReceiverPipelineConfig,
+    };
+
+    #[test]
+    fn truth_seeded_acquisition_scales_code_phase_by_samples_per_chip() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 2_046_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let scenario = SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 0.0,
+            duration_s: 0.010,
+            seed: 9,
+            satellites: vec![SyntheticSignalParams {
+                sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                doppler_hz: 0.0,
+                code_phase_chips: 123.5,
+                carrier_phase_rad: 0.0,
+                cn0_db_hz: 45.0,
+                data_bit_flip: false,
+            }],
+            ephemerides: Vec::new(),
+            id: "truth-seed-scaling".to_string(),
+        };
+
+        let seeded = truth_seeded_acquisition_results(&config, ReceiverSampleTrace::default(), &scenario);
+        let acquisition = seeded.first().expect("seeded acquisition");
+
+        assert_eq!(acquisition.code_phase_samples, 247);
+        assert_eq!(
+            acquisition
+                .code_phase_refinement
+                .as_ref()
+                .expect("refined phase")
+                .refined_code_phase_samples,
+            247.0
+        );
+    }
 }
