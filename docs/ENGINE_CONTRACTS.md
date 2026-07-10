@@ -38,6 +38,8 @@ These are the shared types exchanged across layers. They live in `bijux-gnss-cor
   `source_time`, `t_rx_s`, and manifest `source_sample_index` identify the same receiver instant
 - Satellites that disagree on grouped receiver time are marked inconsistent and force the
   containing observation epoch to reject
+- Consecutive observation epochs must match the configured tracking integration interval within
+  receiver-time tolerance; off-interval epochs reject with `invalid_observation_timing`
 - No NaNs/Inf in artifacts
 - Every `ObsSatellite` row carries a finite C/N0 value within shared convention bounds, including
   degraded and rejected observation rows

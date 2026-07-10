@@ -30,6 +30,10 @@ sanity checks). Any violation must emit diagnostics and mark the measurement as 
   receiver instant. A satellite row with a different receiver sample trace must reject with
   `receiver_time_mismatch` or `receiver_sample_trace_mismatch`, and the containing epoch must
   reject with `inconsistent_observable`.
+- Observation cadence contract: consecutive emitted observation epochs must be separated by the
+  configured tracking integration interval. The receiver validates both sample-index spacing and
+  `t_rx_s` spacing against that interval within receiver-time tolerance. Any off-interval epoch
+  emits `GNSS_OBS_TIME_INTERVAL_INVALID` and rejects with `invalid_observation_timing`.
 
 ## Code (Pseudorange)
 - Model: `P = ρ + c(δt_r - δt_s) + T - I + ε`
