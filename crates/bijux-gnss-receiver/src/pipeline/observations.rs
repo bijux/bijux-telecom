@@ -1109,6 +1109,14 @@ mod tests {
         }
     }
 
+    fn make_observation_ready_epoch(
+        prn: u8,
+        config: &ReceiverPipelineConfig,
+        epoch_idx: u64,
+    ) -> TrackEpoch {
+        make_tracking_epoch_with_alignment(prn, config, epoch_idx, 0.0, 0.0, 68, 128.0)
+    }
+
     fn aligned_pseudorange_m(
         config: &ReceiverPipelineConfig,
         whole_code_periods: u64,
@@ -1756,6 +1764,83 @@ mod tests {
 
         assert_eq!(sat.observation_status, ObservationStatus::Accepted);
         assert!((sat.cn0_dbhz - expected_cn0_dbhz).abs() <= f64::EPSILON, "{sat:?}");
+    }
+
+    #[test]
+    fn observations_record_locked_observation_lock_state() {
+        let config = ReceiverPipelineConfig::default();
+        let epoch = make_observation_ready_epoch(14, &config, 70);
+        let report = observations_from_tracking_results(&config, &[track_from_epoch(epoch)], 10);
+        let sat = report.output[0].sats.first().expect("observation satellite");
+
+        assert_eq!(sat.metadata.observation_lock_state, "locked");
+        assert_eq!(sat.metadata.observation_lock_reason.as_deref(), Some("stable_tracking"));
+        assert_eq!(sat.metadata.tracking_lock_state, sat.metadata.observation_lock_state);
+    }
+
+    #[test]
+    fn observations_record_degraded_observation_lock_state() {
+        let config = ReceiverPipelineConfig::default();
+        let mut epoch = make_observation_ready_epoch(15, &config, 70);
+        epoch.lock_state = "degraded".to_string();
+        epoch.lock_state_reason = Some("signal_fade".to_string());
+        let report = observations_from_tracking_results(&config, &[track_from_epoch(epoch)], 10);
+        let sat = report.output[0].sats.first().expect("observation satellite");
+
+        assert_eq!(sat.metadata.observation_lock_state, "degraded");
+        assert_eq!(sat.metadata.observation_lock_reason.as_deref(), Some("signal_fade"));
+        assert_eq!(sat.metadata.tracking_lock_state, sat.metadata.observation_lock_state);
+    }
+
+    #[test]
+    fn observations_record_lost_observation_lock_state() {
+        let config = ReceiverPipelineConfig::default();
+        let mut epoch = make_observation_ready_epoch(16, &config, 70);
+        epoch.lock = false;
+        epoch.pll_lock = false;
+        epoch.dll_lock = false;
+        epoch.fll_lock = false;
+        epoch.lock_state = "lost".to_string();
+        epoch.lock_state_reason = Some("prompt_power_drop".to_string());
+        let report = observations_from_tracking_results(&config, &[track_from_epoch(epoch)], 10);
+        let sat = report.output[0].sats.first().expect("observation satellite");
+
+        assert_eq!(sat.metadata.observation_lock_state, "lost");
+        assert_eq!(sat.metadata.observation_lock_reason.as_deref(), Some("prompt_power_drop"));
+        assert_eq!(sat.metadata.tracking_lock_state, sat.metadata.observation_lock_state);
+    }
+
+    #[test]
+    fn observations_record_reacquired_observation_lock_state() {
+        let config = ReceiverPipelineConfig::default();
+        let mut epoch = make_observation_ready_epoch(17, &config, 70);
+        epoch.lock_state_reason = Some("reacquired".to_string());
+        let report = observations_from_tracking_results(&config, &[track_from_epoch(epoch)], 10);
+        let sat = report.output[0].sats.first().expect("observation satellite");
+
+        assert_eq!(sat.metadata.observation_lock_state, "reacquired");
+        assert_eq!(sat.metadata.observation_lock_reason.as_deref(), Some("reacquired"));
+        assert_eq!(sat.metadata.tracking_lock_state, sat.metadata.observation_lock_state);
+    }
+
+    #[test]
+    fn observations_record_cycle_slip_observation_lock_state() {
+        let config = ReceiverPipelineConfig::default();
+        let mut epoch = make_observation_ready_epoch(18, &config, 70);
+        epoch.lock = false;
+        epoch.pll_lock = false;
+        epoch.dll_lock = false;
+        epoch.fll_lock = false;
+        epoch.cycle_slip = true;
+        epoch.cycle_slip_reason = Some("phase_jump".to_string());
+        epoch.lock_state = "lost".to_string();
+        epoch.lock_state_reason = Some("phase_jump".to_string());
+        let report = observations_from_tracking_results(&config, &[track_from_epoch(epoch)], 10);
+        let sat = report.output[0].sats.first().expect("observation satellite");
+
+        assert_eq!(sat.metadata.observation_lock_state, "cycle_slip");
+        assert_eq!(sat.metadata.observation_lock_reason.as_deref(), Some("phase_jump"));
+        assert_eq!(sat.metadata.tracking_lock_state, sat.metadata.observation_lock_state);
     }
 
     #[test]
