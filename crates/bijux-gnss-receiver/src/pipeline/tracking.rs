@@ -7,9 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use bijux_gnss_core::api::{
     AcqHypothesis, AcqTrackingSeed, AcqUncertainty, Chips, Constellation, Cycles, Hertz,
-    ReceiverSampleTrace, SampleClock, SampleTime, SamplesFrame, SatId, Seconds,
-    SignalBand, SignalDelayAlignment, TrackEpoch, TrackTransition, TrackingAssumptions,
-    TrackingUncertainty,
+    ReceiverSampleTrace, SampleClock, SampleTime, SamplesFrame, SatId, Seconds, SignalBand,
+    SignalDelayAlignment, TrackEpoch, TrackTransition, TrackingAssumptions, TrackingUncertainty,
 };
 
 use crate::engine::receiver_config::{ReceiverPipelineConfig, TrackingParams};
@@ -298,7 +297,9 @@ struct TrackingUncertaintyInputs {
     fll_err_hz: f64,
     cn0_dbhz: f64,
     cn0_reference_dbhz: f64,
+    integration_ms: u32,
     channel_locked: bool,
+    dll_locked: bool,
     anti_false_lock: bool,
     cycle_slip: bool,
     channel_state: ChannelState,
@@ -1255,7 +1256,9 @@ impl Tracking {
                 fll_err_hz: fll_err_hz as f64,
                 cn0_dbhz,
                 cn0_reference_dbhz: state.lock_reference_cn0_dbhz,
+                integration_ms: tracking_params.integration_ms,
                 channel_locked: state.state != ChannelState::Lost && sustained_prompt_lock,
+                dll_locked: state.state != ChannelState::Lost && dll_err.abs() < 0.2,
                 anti_false_lock,
                 cycle_slip,
                 channel_state: state.state,
@@ -1688,6 +1691,7 @@ fn stddev_window(window: &VecDeque<f64>) -> Option<f64> {
 fn tracking_uncertainty_state_scale(
     channel_state: ChannelState,
     channel_locked: bool,
+    dll_locked: bool,
     anti_false_lock: bool,
     cycle_slip: bool,
 ) -> f64 {
@@ -1699,6 +1703,9 @@ fn tracking_uncertainty_state_scale(
     };
     if !channel_locked {
         scale *= 2.0;
+    }
+    if !dll_locked {
+        scale *= 1.5;
     }
     if anti_false_lock {
         scale *= 2.0;
@@ -1716,11 +1723,18 @@ fn estimate_tracking_uncertainty(
     let state_scale = tracking_uncertainty_state_scale(
         input.channel_state,
         input.channel_locked,
+        input.dll_locked,
         input.anti_false_lock,
         input.cycle_slip,
     );
+    let coherent_integration_scale = 1.0 / (input.integration_ms.max(1) as f64).sqrt();
+    let cn0_scale = if input.cn0_dbhz.is_finite() {
+        10.0_f64.powf(((45.0 - input.cn0_dbhz).clamp(-15.0, 20.0)) / 20.0)
+    } else {
+        4.0
+    };
     let code_fallback = ((input.dll_err.abs() as f64) * input.samples_per_chip)
-        .max(TRACKING_UNCERTAINTY_MIN_CODE_PHASE_SAMPLES);
+        .max(TRACKING_UNCERTAINTY_MIN_CODE_PHASE_SAMPLES * cn0_scale * coherent_integration_scale);
     let carrier_fallback = ((input.pll_err_rad.abs()) / std::f64::consts::TAU)
         .max(TRACKING_UNCERTAINTY_MIN_CARRIER_PHASE_CYCLES);
     let doppler_fallback = input.fll_err_hz.abs().max(TRACKING_UNCERTAINTY_MIN_DOPPLER_HZ);
@@ -3263,6 +3277,134 @@ mod tests {
             super::tracking_epoch_samples(5_000_000.0, 1_023_000.0, 1023, tracking_params);
 
         assert_eq!(epoch_samples, 35_000);
+    }
+
+    fn empty_loop_state() -> super::LoopState {
+        super::LoopState {
+            carrier_hz: 0.0,
+            carrier_phase_cycles: 0.0,
+            code_rate_hz: 0.0,
+            code_phase_samples: 0.0,
+            signal_delay_alignment: None,
+            acquisition_cn0_proxy_dbhz: 45.0,
+            lock_reference_cn0_dbhz: 45.0,
+            prev_prompt: None,
+            prev_prompt_phase_cycles: None,
+            nav_bit_phase_offset_cycles: 0.0,
+            nav_bit_transition_count: 0,
+            pull_in_stable_epochs: 0,
+            weak_cn0_epochs: 0,
+            degraded_epochs: 0,
+            prompt_power_reference: 0.0,
+            prompt_cn0_window: std::collections::VecDeque::new(),
+            code_error_window_samples: std::collections::VecDeque::new(),
+            carrier_phase_error_window_cycles: std::collections::VecDeque::new(),
+            doppler_error_window_hz: std::collections::VecDeque::new(),
+            cn0_estimate_window_dbhz: std::collections::VecDeque::new(),
+            unstable_discriminator_epochs: 0,
+            state: ChannelState::Tracking,
+            unlocked_count: 0,
+            lost_reason: None,
+            reacquisition_candidate: None,
+            reacquisition_candidate_streak: 0,
+            reacquisition_pending: false,
+            reacquisition_attempt_epochs: 0,
+            reacquisition_stable_tracking_epochs: 0,
+        }
+    }
+
+    #[test]
+    fn tracking_uncertainty_rewards_longer_coherent_integration() {
+        let state = empty_loop_state();
+        let short = super::estimate_tracking_uncertainty(
+            &state,
+            super::TrackingUncertaintyInputs {
+                samples_per_chip: 4.0,
+                dll_err: 0.0,
+                pll_err_rad: 0.0,
+                fll_err_hz: 0.0,
+                cn0_dbhz: 45.0,
+                cn0_reference_dbhz: 45.0,
+                integration_ms: 1,
+                channel_locked: true,
+                dll_locked: true,
+                anti_false_lock: false,
+                cycle_slip: false,
+                channel_state: ChannelState::Tracking,
+            },
+        );
+        let long = super::estimate_tracking_uncertainty(
+            &state,
+            super::TrackingUncertaintyInputs {
+                integration_ms: 10,
+                ..super::TrackingUncertaintyInputs {
+                    samples_per_chip: 4.0,
+                    dll_err: 0.0,
+                    pll_err_rad: 0.0,
+                    fll_err_hz: 0.0,
+                    cn0_dbhz: 45.0,
+                    cn0_reference_dbhz: 45.0,
+                    integration_ms: 1,
+                    channel_locked: true,
+                    dll_locked: true,
+                    anti_false_lock: false,
+                    cycle_slip: false,
+                    channel_state: ChannelState::Tracking,
+                }
+            },
+        );
+
+        assert!(
+            long.code_phase_samples < short.code_phase_samples,
+            "longer coherent integration should tighten code-phase uncertainty: short={short:?} long={long:?}"
+        );
+    }
+
+    #[test]
+    fn tracking_uncertainty_penalizes_dll_unlock() {
+        let state = empty_loop_state();
+        let locked = super::estimate_tracking_uncertainty(
+            &state,
+            super::TrackingUncertaintyInputs {
+                samples_per_chip: 4.0,
+                dll_err: 0.0,
+                pll_err_rad: 0.0,
+                fll_err_hz: 0.0,
+                cn0_dbhz: 45.0,
+                cn0_reference_dbhz: 45.0,
+                integration_ms: 1,
+                channel_locked: true,
+                dll_locked: true,
+                anti_false_lock: false,
+                cycle_slip: false,
+                channel_state: ChannelState::Tracking,
+            },
+        );
+        let unlocked = super::estimate_tracking_uncertainty(
+            &state,
+            super::TrackingUncertaintyInputs {
+                dll_locked: false,
+                ..super::TrackingUncertaintyInputs {
+                    samples_per_chip: 4.0,
+                    dll_err: 0.0,
+                    pll_err_rad: 0.0,
+                    fll_err_hz: 0.0,
+                    cn0_dbhz: 45.0,
+                    cn0_reference_dbhz: 45.0,
+                    integration_ms: 1,
+                    channel_locked: true,
+                    dll_locked: true,
+                    anti_false_lock: false,
+                    cycle_slip: false,
+                    channel_state: ChannelState::Tracking,
+                }
+            },
+        );
+
+        assert!(
+            unlocked.code_phase_samples > locked.code_phase_samples,
+            "loss of DLL lock should inflate code-phase uncertainty: locked={locked:?} unlocked={unlocked:?}"
+        );
     }
 
     #[test]
