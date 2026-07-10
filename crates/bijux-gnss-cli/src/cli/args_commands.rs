@@ -125,7 +125,7 @@ pub(crate) enum GnssCommand {
         #[arg(long, value_name = "FILE")]
         obs: PathBuf,
 
-        /// Ephemeris JSON (from nav decode)
+        /// Broadcast ephemeris JSON, RINEX NAV, or nav-decode report
         #[arg(long, value_name = "FILE")]
         eph: PathBuf,
 
@@ -162,7 +162,7 @@ pub(crate) enum GnssCommand {
         #[arg(long, value_name = "FILE")]
         rover_obs: PathBuf,
 
-        /// Ephemeris JSON
+        /// Broadcast ephemeris JSON, RINEX NAV, or nav-decode report
         #[arg(long, value_name = "FILE")]
         eph: PathBuf,
 
