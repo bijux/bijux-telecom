@@ -60,8 +60,8 @@ pub use crate::orbits::ephemeris::{CsvEphemerisProvider, Ephemeris, EphemerisPro
 /// Broadcast ephemeris and satellite state.
 pub use crate::orbits::gps::{
     gps_earth_rotation_correction, gps_satellite_clock_correction, sat_state_gps_l1ca,
-    sat_state_gps_l1ca_at_receive_time, GpsEarthRotationCorrection, GpsEphemeris, GpsSatState,
-    GpsSatelliteClockCorrection,
+    sat_state_gps_l1ca_at_receive_time, sat_state_gps_l1ca_from_observation,
+    GpsEarthRotationCorrection, GpsEphemeris, GpsSatState, GpsSatelliteClockCorrection,
 };
 /// Time helpers.
 pub use crate::time::{gps_time_from_utc, gps_week_rollover, normalize_tow};

@@ -1,6 +1,9 @@
 #![allow(missing_docs)]
 
-use crate::orbits::gps::{is_ephemeris_valid, sat_state_gps_l1ca, GpsEphemeris, GpsSatState};
+use crate::orbits::gps::{
+    is_ephemeris_valid, sat_state_gps_l1ca, sat_state_gps_l1ca_from_observation, GpsEphemeris,
+    GpsSatState,
+};
 use bijux_gnss_core::api::{GpsTime, ObsSignalTiming, SatId};
 
 #[derive(Debug, Clone)]
@@ -124,11 +127,12 @@ impl PositionSolver {
                     .signal_timing
                     .map(|timing| timing.signal_travel_time_s.0)
                     .unwrap_or(obs.pseudorange_m / 299_792_458.0);
-                let mut transmit_tow_s = obs
-                    .signal_timing
-                    .map(|timing| timing.transmit_gps_time.tow_s)
-                    .unwrap_or(receive_tow_s - tau);
-                let mut state = sat_state_gps_l1ca(eph, transmit_tow_s, tau);
+                let mut state = sat_state_gps_l1ca_from_observation(
+                    eph,
+                    receive_tow_s,
+                    obs.pseudorange_m,
+                    obs.signal_timing,
+                );
                 let mut converged = false;
                 for _ in 0..5 {
                     let dx = x - state.x_m;
@@ -142,8 +146,7 @@ impl PositionSolver {
                         converged = true;
                     }
                     tau = next_tau;
-                    transmit_tow_s = receive_tow_s - tau;
-                    state = sat_state_gps_l1ca(eph, transmit_tow_s, tau);
+                    state = sat_state_gps_l1ca(eph, receive_tow_s - tau, tau);
                     if converged {
                         break;
                     }
@@ -206,8 +209,7 @@ impl PositionSolver {
             let dy = y - state.y_m;
             let dz = z - state.z_m;
             let range = (dx * dx + dy * dy + dz * dz).sqrt();
-            let pred =
-                range + cb * 299_792_458.0 - state.clock_correction.bias_s * 299_792_458.0;
+            let pred = range + cb * 299_792_458.0 - state.clock_correction.bias_s * 299_792_458.0;
             let res = obs.pseudorange_m - pred;
             let sigma_m = (1.0 / obs.weight.max(1e-6)).sqrt();
             let norm = res / sigma_m;

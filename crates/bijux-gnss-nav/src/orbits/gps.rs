@@ -2,12 +2,13 @@
 
 use serde::{Deserialize, Serialize};
 
-use bijux_gnss_core::api::SatId;
+use bijux_gnss_core::api::{ObsSignalTiming, SatId};
 
 const OMEGA_E_DOT: f64 = 7.292_115_146_7e-5;
 const MU: f64 = 3.986_005e14;
 const RELATIVISTIC_F: f64 = -4.442_807_633e-10;
 const MAX_EPHEMERIS_AGE_S: f64 = 7200.0;
+const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GpsEphemeris {
@@ -118,6 +119,21 @@ pub fn sat_state_gps_l1ca_at_receive_time(
     signal_travel_time_s: f64,
 ) -> GpsSatState {
     sat_state_gps_l1ca(eph, receive_tow_s - signal_travel_time_s, signal_travel_time_s)
+}
+
+pub fn sat_state_gps_l1ca_from_observation(
+    eph: &GpsEphemeris,
+    receive_tow_s: f64,
+    pseudorange_m: f64,
+    signal_timing: Option<ObsSignalTiming>,
+) -> GpsSatState {
+    let signal_travel_time_s = signal_timing
+        .map(|timing| timing.signal_travel_time_s.0)
+        .unwrap_or(pseudorange_m / SPEED_OF_LIGHT_MPS);
+    let transmit_tow_s = signal_timing
+        .map(|timing| timing.transmit_gps_time.tow_s)
+        .unwrap_or(receive_tow_s - signal_travel_time_s);
+    sat_state_gps_l1ca(eph, transmit_tow_s, signal_travel_time_s)
 }
 
 pub fn sat_state_gps_l1ca(eph: &GpsEphemeris, t_tx_s: f64, tau_s: f64) -> GpsSatState {
@@ -370,6 +386,59 @@ mod tests {
                 .abs()
                 < 1.0e-18
         );
+    }
+
+    #[test]
+    fn observation_helper_uses_explicit_transmit_time_when_available() {
+        let eph = GpsEphemeris {
+            sat: SatId { constellation: Constellation::Gps, prn: 8 },
+            iodc: 0,
+            iode: 0,
+            week: 2200,
+            sv_health: 0,
+            toe_s: 345_600.0,
+            toc_s: 345_600.0,
+            sqrt_a: 5153.7954775,
+            e: 0.01,
+            i0: 0.94,
+            idot: 0.0,
+            omega0: 2.1,
+            omegadot: 0.0,
+            w: 0.1,
+            m0: 0.4,
+            delta_n: 0.0,
+            cuc: 0.0,
+            cus: 0.0,
+            crc: 0.0,
+            crs: 0.0,
+            cic: 0.0,
+            cis: 0.0,
+            af0: 0.0,
+            af1: 0.0,
+            af2: 0.0,
+            tgd: 0.0,
+        };
+        let receive_tow_s = 345_600.07;
+        let tau_s = 0.073;
+        let timing = ObsSignalTiming {
+            signal_travel_time_s: bijux_gnss_core::api::Seconds(tau_s),
+            transmit_gps_time: bijux_gnss_core::api::GpsTime {
+                week: eph.week,
+                tow_s: receive_tow_s - tau_s,
+            },
+        };
+
+        let from_observation = sat_state_gps_l1ca_from_observation(
+            &eph,
+            receive_tow_s,
+            tau_s * SPEED_OF_LIGHT_MPS,
+            Some(timing),
+        );
+        let from_explicit_timing = sat_state_gps_l1ca(&eph, timing.transmit_gps_time.tow_s, tau_s);
+
+        assert!((from_observation.x_m - from_explicit_timing.x_m).abs() < 1.0e-9);
+        assert!((from_observation.y_m - from_explicit_timing.y_m).abs() < 1.0e-9);
+        assert!((from_observation.z_m - from_explicit_timing.z_m).abs() < 1.0e-9);
     }
 
     #[test]
