@@ -20,8 +20,9 @@ fn assert_clean_signal_carrier_lock(
     epochs: &[bijux_gnss_core::api::TrackEpoch],
     true_doppler_hz: f64,
 ) {
-    let first_lock_epoch_index = first_tracking_lock_epoch_index(epochs)
-        .unwrap_or_else(|| panic!("tracking never reached a stable carrier lock window: epochs={epochs:?}"));
+    let first_lock_epoch_index = first_tracking_lock_epoch_index(epochs).unwrap_or_else(|| {
+        panic!("tracking never reached a stable carrier lock window: epochs={epochs:?}")
+    });
     let post_lock_errors_hz = post_lock_carrier_frequency_errors_hz(epochs, true_doppler_hz);
     assert!(
         post_lock_errors_hz.len() >= CLEAN_SIGNAL_MIN_LOCKED_EPOCHS,
@@ -41,11 +42,7 @@ fn assert_clean_signal_carrier_lock(
     );
 }
 
-fn accepted_acquisition(
-    sat: SatId,
-    doppler_hz: f64,
-    code_phase_samples: usize,
-) -> AcqResult {
+fn accepted_acquisition(sat: SatId, doppler_hz: f64, code_phase_samples: usize) -> AcqResult {
     AcqResult {
         sat,
         signal_band: SignalBand::L1,
@@ -106,10 +103,8 @@ fn tracking_reduces_seeded_carrier_error_and_emits_tracked_phase() {
     );
     let tracking = TrackingEngine::new(config, ReceiverRuntime::default());
 
-    let tracks = tracking.track_from_acquisition(
-        &frame,
-        &[accepted_acquisition(sat, seeded_doppler_hz, 0)],
-    );
+    let tracks =
+        tracking.track_from_acquisition(&frame, &[accepted_acquisition(sat, seeded_doppler_hz, 0)]);
     let epochs = &tracks.first().expect("track").epochs;
     assert!(epochs.len() >= 10, "epochs={epochs:?}");
 
@@ -134,10 +129,7 @@ fn tracking_reduces_seeded_carrier_error_and_emits_tracked_phase() {
         "tracked carrier phase never moved off zero: epochs={epochs:?}"
     );
     assert!(
-        epochs
-            .last()
-            .map(|epoch| epoch.pll_err.abs())
-            .unwrap_or(f32::INFINITY)
+        epochs.last().map(|epoch| epoch.pll_err.abs()).unwrap_or(f32::INFINITY)
             < epochs[0].pll_err.abs(),
         "tracking did not reduce pll phase error: epochs={epochs:?}"
     );
