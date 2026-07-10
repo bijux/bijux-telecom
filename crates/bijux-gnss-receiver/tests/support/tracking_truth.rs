@@ -43,14 +43,18 @@ pub fn first_tracking_lock_epoch_index(epochs: &[TrackEpoch]) -> Option<usize> {
         .position(|epoch| epoch.pll_lock && epoch.fll_lock && epoch.lock_state == "tracking")
 }
 
+pub fn post_lock_epochs(epochs: &[TrackEpoch]) -> &[TrackEpoch] {
+    let Some(first_lock_epoch_index) = first_tracking_lock_epoch_index(epochs) else {
+        return &[];
+    };
+    &epochs[first_lock_epoch_index..]
+}
+
 pub fn post_lock_carrier_frequency_errors_hz(
     epochs: &[TrackEpoch],
     expected_carrier_hz: f64,
 ) -> Vec<f64> {
-    let Some(first_lock_epoch_index) = first_tracking_lock_epoch_index(epochs) else {
-        return Vec::new();
-    };
-    epochs[first_lock_epoch_index..]
+    post_lock_epochs(epochs)
         .iter()
         .map(|epoch| carrier_frequency_error_hz(epoch, expected_carrier_hz))
         .collect()
@@ -61,10 +65,7 @@ pub fn post_lock_code_phase_errors_samples(
     epochs: &[TrackEpoch],
     expected_code_phase_samples: f64,
 ) -> Vec<f64> {
-    let Some(first_lock_epoch_index) = first_tracking_lock_epoch_index(epochs) else {
-        return Vec::new();
-    };
-    epochs[first_lock_epoch_index..]
+    post_lock_epochs(epochs)
         .iter()
         .map(|epoch| code_phase_error_samples(config, epoch, expected_code_phase_samples))
         .collect()
@@ -75,6 +76,7 @@ mod tests {
     use super::{
         carrier_frequency_error_hz, code_phase_error_samples, first_tracking_lock_epoch_index,
         post_lock_carrier_frequency_errors_hz, post_lock_code_phase_errors_samples,
+        post_lock_epochs,
         wrapped_code_phase_error_samples,
     };
     use bijux_gnss_core::api::{Chips, Cycles, Epoch, Hertz, TrackEpoch};
@@ -140,6 +142,53 @@ mod tests {
         ];
 
         assert_eq!(first_tracking_lock_epoch_index(&epochs), Some(1));
+    }
+
+    #[test]
+    fn post_lock_epochs_returns_empty_when_tracking_never_locks() {
+        let epochs = vec![TrackEpoch {
+            pll_lock: false,
+            fll_lock: true,
+            lock_state: "pull_in".to_string(),
+            ..TrackEpoch::default()
+        }];
+
+        assert!(post_lock_epochs(&epochs).is_empty());
+    }
+
+    #[test]
+    fn post_lock_epochs_starts_at_first_tracking_lock_epoch() {
+        let epochs = vec![
+            TrackEpoch {
+                epoch: Epoch { index: 0 },
+                pll_lock: false,
+                fll_lock: true,
+                lock_state: "pull_in".to_string(),
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                epoch: Epoch { index: 1 },
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                epoch: Epoch { index: 2 },
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                ..TrackEpoch::default()
+            },
+        ];
+
+        assert_eq!(
+            post_lock_epochs(&epochs)
+                .iter()
+                .map(|epoch| epoch.epoch.index)
+                .collect::<Vec<_>>(),
+            vec![1, 2]
+        );
     }
 
     #[test]
