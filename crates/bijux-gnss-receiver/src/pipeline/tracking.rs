@@ -2715,6 +2715,60 @@ mod tests {
     }
 
     #[test]
+    fn apply_carrier_loop_accumulates_unwrapped_phase_across_epochs() {
+        let first = super::apply_carrier_loop(super::CarrierLoopInput {
+            current_carrier_hz: 1_500.0,
+            current_carrier_phase_cycles: 128.25,
+            epoch_len_samples: 4_092,
+            sample_rate_hz: 4_092_000.0,
+            coherent_integration_s: 0.001,
+            pll_bw_hz: 8.0,
+            pll_err_rad: 0.0,
+            fll_bw_hz: 0.0,
+            fll_err_hz: 0.0,
+            apply_fll: false,
+        });
+        let second = super::apply_carrier_loop(super::CarrierLoopInput {
+            current_carrier_hz: first.carrier_hz,
+            current_carrier_phase_cycles: first.carrier_phase_cycles,
+            epoch_len_samples: 4_092,
+            sample_rate_hz: 4_092_000.0,
+            coherent_integration_s: 0.001,
+            pll_bw_hz: 8.0,
+            pll_err_rad: 0.0,
+            fll_bw_hz: 0.0,
+            fll_err_hz: 0.0,
+            apply_fll: false,
+        });
+
+        assert!((first.carrier_phase_cycles - 129.75).abs() < 1.0e-9, "{first:?}");
+        assert!((second.carrier_phase_cycles - 131.25).abs() < 1.0e-9, "{second:?}");
+        assert!(
+            (second.carrier_phase_cycles - first.carrier_phase_cycles - 1.5).abs() < 1.0e-9,
+            "{first:?} {second:?}"
+        );
+    }
+
+    #[test]
+    fn apply_carrier_loop_preserves_continuous_phase_for_negative_doppler() {
+        let update = super::apply_carrier_loop(super::CarrierLoopInput {
+            current_carrier_hz: -850.0,
+            current_carrier_phase_cycles: 512.875,
+            epoch_len_samples: 8_184,
+            sample_rate_hz: 4_092_000.0,
+            coherent_integration_s: 0.002,
+            pll_bw_hz: 8.0,
+            pll_err_rad: 0.0,
+            fll_bw_hz: 0.0,
+            fll_err_hz: 0.0,
+            apply_fll: false,
+        });
+
+        assert!((update.carrier_hz + 850.0).abs() < 1.0e-9, "{update:?}");
+        assert!((update.carrier_phase_cycles - 511.175).abs() < 1.0e-9, "{update:?}");
+    }
+
+    #[test]
     fn should_apply_fll_keeps_frequency_assistance_until_fll_relocks() {
         assert!(super::should_apply_fll(super::ChannelState::PullIn, true));
         assert!(super::should_apply_fll(super::ChannelState::Degraded, true));
