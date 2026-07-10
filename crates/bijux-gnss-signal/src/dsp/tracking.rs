@@ -156,9 +156,11 @@ pub fn estimate_cn0_dbhz(
     }
     let signal_power = (prompt.norm_sqr() as f64).max(1e-12);
     let noise_power = (noise.norm_sqr() as f64).max(1e-12);
-    let snr = (signal_power / noise_power).max(1e-12);
-    let cn0_linear =
-        (snr * noise_weight_energy * sample_rate_hz / prompt_coherent_gain.powi(2)).max(1e-12);
+    let noise_power_per_sample = noise_power / noise_weight_energy;
+    let prompt_noise_power = prompt_coherent_gain * noise_power_per_sample;
+    let coherent_signal_power = (signal_power - prompt_noise_power).max(1e-12);
+    let signal_power_per_sample = coherent_signal_power / prompt_coherent_gain.powi(2);
+    let cn0_linear = (signal_power_per_sample * sample_rate_hz / noise_power_per_sample).max(1e-12);
     10.0 * cn0_linear.log10()
 }
 
@@ -219,10 +221,13 @@ mod tests {
         let noise_weight_energy = 8_184.0_f64;
         let expected_cn0_dbhz = 58.0;
         let expected_cn0_linear = 10.0_f64.powf(expected_cn0_dbhz / 10.0);
-        let prompt_to_noise_power_ratio =
-            expected_cn0_linear * coherent_samples.powi(2) / (noise_weight_energy * sample_rate_hz);
-        let prompt = Complex::new(prompt_to_noise_power_ratio.sqrt() as f32, 0.0);
         let noise = Complex::new(1.0, 0.0);
+        let noise_power_per_sample = noise.norm_sqr() as f64 / noise_weight_energy;
+        let prompt_noise_power = coherent_samples * noise_power_per_sample;
+        let coherent_signal_power =
+            expected_cn0_linear * coherent_samples.powi(2) * noise_power_per_sample
+                / sample_rate_hz;
+        let prompt = Complex::new((coherent_signal_power + prompt_noise_power).sqrt() as f32, 0.0);
 
         let measured =
             estimate_cn0_dbhz(prompt, noise, sample_rate_hz, coherent_samples, noise_weight_energy);
