@@ -1910,4 +1910,17 @@ mod tests {
         assert_eq!(epoch.decision_reason.as_deref(), Some("inconsistent_observable"));
         assert!(!epoch.valid);
     }
+
+    #[test]
+    fn observation_decisions_surface_impossible_pseudorange_reason() {
+        let config = ReceiverPipelineConfig::default();
+        let carrier_hz = crate::pipeline::doppler::carrier_hz_from_doppler_hz(0.0, 0.0);
+        let epoch = make_tracking_epoch_with_alignment(15, &config, 70, carrier_hz, 0.0, 0, -8.0);
+        let report = observations_from_tracking_results(&config, &[track_from_epoch(epoch)], 10);
+        let decisions = observation_decisions_from_epochs(&report.output);
+        let decision = decisions.first().expect("observation decision");
+
+        assert_eq!(decision.decision, ObservationEpochDecision::Rejected);
+        assert!(decision.reasons.iter().any(|reason| reason == "non_positive_pseudorange"));
+    }
 }
