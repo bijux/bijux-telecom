@@ -82,38 +82,52 @@ fn tracking_config() -> ReceiverPipelineConfig {
     }
 }
 
-fn synthetic_frame(
+fn synthetic_frame_with_code_phase(
     config: &ReceiverPipelineConfig,
     sat: SatId,
+    code_phase_chips: f64,
+    duration_s: f64,
 ) -> bijux_gnss_core::api::SamplesFrame {
     generate_l1_ca(
         config,
         SyntheticSignalParams {
             sat,
             doppler_hz: 0.0,
-            code_phase_chips: 0.0,
+            code_phase_chips,
             carrier_phase_rad: 0.0,
             cn0_db_hz: 52.0,
             data_bit_flip: false,
         },
         0xD11C_600D,
-        0.012,
+        duration_s,
     )
+}
+
+fn track_clean_code_case(
+    config: &ReceiverPipelineConfig,
+    sat: SatId,
+    code_phase_chips: f64,
+    duration_s: f64,
+    seeded_code_phase_samples: usize,
+) -> Vec<bijux_gnss_core::api::TrackEpoch> {
+    let frame = synthetic_frame_with_code_phase(config, sat, code_phase_chips, duration_s);
+    let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
+    let tracks = tracking.track_from_acquisition(
+        &frame,
+        &[accepted_acquisition(sat, 0.0, seeded_code_phase_samples)],
+    );
+
+    tracks.first().expect("track").epochs.clone()
 }
 
 #[test]
 fn tracking_reduces_seeded_code_phase_error_from_acquisition_scale_offsets() {
     let config = tracking_config();
     let sat = SatId { constellation: Constellation::Gps, prn: 11 };
-    let frame = synthetic_frame(&config, sat);
-    let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
 
     for seeded_code_phase_samples in [1_usize, 1_022_usize] {
-        let tracks = tracking.track_from_acquisition(
-            &frame,
-            &[accepted_acquisition(sat, 0.0, seeded_code_phase_samples)],
-        );
-        let epochs = &tracks.first().expect("track").epochs;
+        let epochs = track_clean_code_case(&config, sat, 0.0, 0.012, seeded_code_phase_samples);
+        let epochs = &epochs;
         assert!(epochs.len() >= 4, "epochs={epochs:?}");
 
         let errors = epochs
