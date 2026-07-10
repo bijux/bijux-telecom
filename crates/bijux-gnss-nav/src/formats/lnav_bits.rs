@@ -51,6 +51,37 @@ pub struct GpsL1CaLnavAlignment {
     pub subframes: Vec<GpsL1CaLnavSubframeAlignment>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GpsL1CaTlmWord {
+    pub preamble: u8,
+    pub parity_ok: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GpsL1CaHowWord {
+    pub tow_count: u32,
+    pub tow_start_s: u32,
+    pub alert: bool,
+    pub anti_spoof: bool,
+    pub subframe_id: u8,
+    pub parity_ok: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GpsL1CaLnavDecodedSubframe {
+    pub alignment: GpsL1CaLnavSubframeAlignment,
+    pub tlm: GpsL1CaTlmWord,
+    pub how: GpsL1CaHowWord,
+    pub word_parity_ok: Vec<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GpsL1CaLnavDecodedStream {
+    pub bit_start_ms: usize,
+    pub bit_count: usize,
+    pub subframes: Vec<GpsL1CaLnavDecodedSubframe>,
+}
+
 pub fn demodulate_gps_l1ca_navigation_bits(prompt_i: &[f32]) -> GpsL1CaNavigationBits {
     let mut best_offset = 0;
     let mut best_metric = f64::MIN;
@@ -104,6 +135,17 @@ pub fn align_gps_l1ca_lnav_from_prompt(prompt_i: &[f32]) -> GpsL1CaLnavAlignment
     let bit_signs = demodulation.bits.iter().map(|bit| bit.sign).collect::<Vec<_>>();
     let subframes = align_gps_l1ca_lnav_subframes(&bit_signs, demodulation.bit_start_ms);
     GpsL1CaLnavAlignment {
+        bit_start_ms: demodulation.bit_start_ms,
+        bit_count: bit_signs.len(),
+        subframes,
+    }
+}
+
+pub fn decode_gps_l1ca_lnav_from_prompt(prompt_i: &[f32]) -> GpsL1CaLnavDecodedStream {
+    let demodulation = demodulate_gps_l1ca_navigation_bits(prompt_i);
+    let bit_signs = demodulation.bits.iter().map(|bit| bit.sign).collect::<Vec<_>>();
+    let subframes = decode_gps_l1ca_lnav_subframes(&bit_signs, demodulation.bit_start_ms);
+    GpsL1CaLnavDecodedStream {
         bit_start_ms: demodulation.bit_start_ms,
         bit_count: bit_signs.len(),
         subframes,
@@ -302,6 +344,22 @@ pub fn compute_parity(data_bits: &[u8], d29_star: u8, d30_star: u8) -> (u8, u8, 
     (p1, p2, p3, p4, p5, p6)
 }
 
+pub fn decode_tlm_word(word: &GpsWord) -> GpsL1CaTlmWord {
+    GpsL1CaTlmWord { preamble: get_bits(word.data, 1, 8) as u8, parity_ok: word.parity_ok }
+}
+
+pub fn decode_how_word(word: &GpsWord) -> GpsL1CaHowWord {
+    let tow_count = get_bits(word.data, 1, 17);
+    GpsL1CaHowWord {
+        tow_count,
+        tow_start_s: tow_count * 6,
+        alert: get_bits(word.data, 18, 1) == 1,
+        anti_spoof: get_bits(word.data, 19, 1) == 1,
+        subframe_id: get_bits(word.data, 20, 3) as u8,
+        parity_ok: word.parity_ok,
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SubframeInfo {
     pub tow_s: f64,
@@ -325,6 +383,26 @@ pub fn align_gps_l1ca_lnav_subframes(
         .collect()
 }
 
+pub fn decode_gps_l1ca_lnav_subframes(
+    bits: &[i8],
+    bit_start_ms: usize,
+) -> Vec<GpsL1CaLnavDecodedSubframe> {
+    aligned_gps_l1ca_lnav_subframes(bits, bit_start_ms)
+        .into_iter()
+        .filter_map(|subframe| {
+            if subframe.words.len() < 2 {
+                return None;
+            }
+            Some(GpsL1CaLnavDecodedSubframe {
+                tlm: decode_tlm_word(&subframe.words[0]),
+                how: decode_how_word(&subframe.words[1]),
+                word_parity_ok: subframe.words.iter().map(|word| word.parity_ok).collect(),
+                alignment: subframe.alignment,
+            })
+        })
+        .collect()
+}
+
 pub fn decode_subframes(bits: &[i8]) -> (Vec<GpsEphemeris>, LnavDecodeStats) {
     let mut ephemerides = Vec::new();
     let mut parity_ok = 0;
@@ -340,7 +418,7 @@ pub fn decode_subframes(bits: &[i8]) -> (Vec<GpsEphemeris>, LnavDecodeStats) {
             }
         }
         if subframe.words.len() >= 10 {
-            let info = parse_how(&subframe.words[1]);
+            let info = subframe_info_from_how(&subframe.words[1]);
             if info.subframe_id == 1 || info.subframe_id == 2 || info.subframe_id == 3 {
                 if let Some(part) = parse_ephemeris(&subframe.words, info.subframe_id) {
                     builder.merge(part);
@@ -365,10 +443,13 @@ pub fn decode_subframes(bits: &[i8]) -> (Vec<GpsEphemeris>, LnavDecodeStats) {
     )
 }
 
-fn parse_how(word: &GpsWord) -> SubframeInfo {
-    let tow = get_bits(word.data, 1, 17) as f64 * 6.0;
-    let subframe_id = get_bits(word.data, 19, 3) as u8;
-    SubframeInfo { tow_s: tow, subframe_id, parity_ok_count: if word.parity_ok { 1 } else { 0 } }
+fn subframe_info_from_how(word: &GpsWord) -> SubframeInfo {
+    let how = decode_how_word(word);
+    SubframeInfo {
+        tow_s: how.tow_start_s as f64,
+        subframe_id: how.subframe_id,
+        parity_ok_count: if how.parity_ok { 1 } else { 0 },
+    }
 }
 
 fn parse_ephemeris(words: &[GpsWord], subframe_id: u8) -> Option<EphemerisPart> {
@@ -451,12 +532,23 @@ mod tests {
     }
 
     fn encode_subframe(subframe_id: u8, tow_count: u32) -> Vec<i8> {
+        encode_subframe_with_how(subframe_id, tow_count, false, false)
+    }
+
+    fn encode_subframe_with_how(
+        subframe_id: u8,
+        tow_count: u32,
+        alert: bool,
+        anti_spoof: bool,
+    ) -> Vec<i8> {
         let mut tlm = 0_u32;
         set_bits(&mut tlm, 1, 8, 0x8B);
 
         let mut how = 0_u32;
         set_bits(&mut how, 1, 17, tow_count);
-        set_bits(&mut how, 19, 3, subframe_id as u32);
+        set_bits(&mut how, 18, 1, u32::from(alert));
+        set_bits(&mut how, 19, 1, u32::from(anti_spoof));
+        set_bits(&mut how, 20, 3, subframe_id as u32);
 
         let mut words = vec![tlm, how];
         for offset in 0..8_u32 {
