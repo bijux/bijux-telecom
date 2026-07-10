@@ -2,13 +2,16 @@
 
 mod support;
 
-use bijux_gnss_core::api::{Constellation, SatId};
+use bijux_gnss_core::api::{
+    AcqHypothesis, AcqResult, Constellation, Hertz, ReceiverSampleTrace, SatId, SignalBand,
+};
 use bijux_gnss_receiver::api::{
     sim::{
-        measure_truth_guided_tracking_lock_probability, measure_truth_guided_tracking_lock_rate,
-        SyntheticSignalParams, SyntheticTrackingLockRateCase,
+        generate_l1_ca, measure_truth_guided_tracking_lock_probability,
+        measure_truth_guided_tracking_lock_rate, SyntheticSignalParams,
+        SyntheticTrackingLockRateCase,
     },
-    ReceiverPipelineConfig,
+    ReceiverPipelineConfig, ReceiverRuntime, TrackingChannelState, TrackingEngine,
 };
 
 const TRACKING_LOCK_RATE_TRIAL_COUNT: usize = 12;
@@ -123,4 +126,65 @@ fn trial_seeds(base_seed: u64, count: usize) -> Vec<u64> {
     (0..count)
         .map(|index| base_seed.wrapping_add((index as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15)))
         .collect()
+}
+
+fn accepted_acquisition(
+    config: &ReceiverPipelineConfig,
+    signal: SyntheticSignalParams,
+    seeded_doppler_error_hz: f64,
+    seeded_code_phase_error_samples: isize,
+) -> AcqResult {
+    let code_phase_samples = (signal.code_phase_chips * config.sampling_freq_hz
+        / config.code_freq_basis_hz)
+        .round() as isize
+        + seeded_code_phase_error_samples;
+    AcqResult {
+        sat: signal.sat,
+        signal_band: SignalBand::L1,
+        source_time: ReceiverSampleTrace::default(),
+        candidate_rank: 1,
+        is_primary_candidate: true,
+        doppler_hz: Hertz(signal.doppler_hz - seeded_doppler_error_hz),
+        carrier_hz: Hertz(signal.doppler_hz - seeded_doppler_error_hz),
+        code_phase_samples: code_phase_samples.max(0) as usize,
+        peak: 1.0,
+        second_peak: 0.1,
+        mean: 0.01,
+        peak_mean_ratio: 20.0,
+        peak_second_ratio: 10.0,
+        cn0_proxy: signal.cn0_db_hz,
+        score: 1.0,
+        hypothesis: AcqHypothesis::Accepted,
+        assumptions: None,
+        evidence: Vec::new(),
+        threshold_provenance: None,
+        explain_selection_reason: Some("low_cn0_tracking_seed".to_string()),
+        doppler_refinement: None,
+        code_phase_refinement: None,
+        uncertainty: None,
+    }
+}
+
+#[test]
+fn tracking_session_reports_refused_channel_state_below_cn0_floor() {
+    let config = low_cn0_tracking_profile();
+    let case = tracking_lock_rate_case(24.0);
+    let frame = generate_l1_ca(&config, case.signal, 0x2407_19A3, case.duration_s);
+    let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
+    let mut session = tracking.begin_tracking_session(&[accepted_acquisition(
+        &config,
+        case.signal,
+        case.seeded_doppler_error_hz,
+        case.seeded_code_phase_error_samples,
+    )]);
+    tracking.track_session_frame(&mut session, &frame);
+    let artifacts = tracking.finish_tracking_session(session);
+    let report = artifacts.channel_state_reports.first().expect("channel state report");
+
+    assert!(
+        report.emitted_states.iter().any(|event| event.state == TrackingChannelState::Refused),
+        "{report:?}"
+    );
+    assert_eq!(report.final_state, TrackingChannelState::Refused);
+    assert_eq!(report.final_reason.as_deref(), Some("cn0_below_tracking_lock_floor"));
 }
