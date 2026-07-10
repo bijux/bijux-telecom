@@ -71,6 +71,7 @@ fn tracking_epoch(
         late_i: 0.0,
         late_q: 0.0,
         carrier_hz: Hertz(carrier_hz),
+        carrier_phase_cycles: bijux_gnss_core::api::Cycles(prompt_phase_cycles),
         code_rate_hz: Hertz(config.code_freq_basis_hz),
         code_phase_samples: Chips(0.0),
         lock: true,

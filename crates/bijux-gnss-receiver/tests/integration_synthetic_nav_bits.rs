@@ -63,6 +63,7 @@ fn synthetic_nav_bits_flip_prompt_polarity_every_twenty_milliseconds() {
                 &epoch_frame,
                 sat,
                 0.0,
+                0.0,
                 config.code_freq_basis_hz,
                 epoch_code_phase_samples,
                 0.5,
