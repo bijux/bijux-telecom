@@ -672,6 +672,71 @@ mod pvt_tests {
         (dx * dx + dy * dy + dz * dz).sqrt()
     }
 
+    fn iterative_pseudorange_residual_with_earth_rotation_mode_m(
+        eph: &GpsEphemeris,
+        sat: &ObsSatellite,
+        receiver_ecef_m: (f64, f64, f64),
+        receiver_clock_bias_s: f64,
+        receive_tow_s: f64,
+        apply_earth_rotation: bool,
+    ) -> f64 {
+        let mut tau = sat
+            .timing
+            .map(|timing| timing.signal_travel_time_s.0)
+            .unwrap_or(sat.pseudorange_m.0 / SPEED_OF_LIGHT_MPS);
+        let mut predicted_pseudorange_m = 0.0;
+        for _ in 0..10 {
+            let state = sat_state_gps_l1ca(
+                eph,
+                receive_tow_s - tau,
+                if apply_earth_rotation { tau } else { 0.0 },
+            );
+            let dx = receiver_ecef_m.0 - state.x_m;
+            let dy = receiver_ecef_m.1 - state.y_m;
+            let dz = receiver_ecef_m.2 - state.z_m;
+            let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
+            predicted_pseudorange_m = range_m
+                + receiver_clock_bias_s * SPEED_OF_LIGHT_MPS
+                - state.clock_correction.bias_s * SPEED_OF_LIGHT_MPS;
+            let next_tau = predicted_pseudorange_m / SPEED_OF_LIGHT_MPS;
+            if (next_tau - tau).abs() < 1.0e-12 {
+                break;
+            }
+            tau = next_tau;
+        }
+        sat.pseudorange_m.0 - predicted_pseudorange_m
+    }
+
+    fn pvt_residual_rms_with_earth_rotation_mode_m(
+        solution: &bijux_gnss_infra::api::core::NavSolutionEpoch,
+        ephs: &[GpsEphemeris],
+        pvt_case: &SyntheticPvtCase,
+        apply_earth_rotation: bool,
+    ) -> f64 {
+        let receive_tow_s = pvt_case.obs_epoch.tow_s.expect("receive tow").0;
+        let residual_sum_squares_m2 = pvt_case
+            .obs_epoch
+            .sats
+            .iter()
+            .map(|sat| {
+                let ephemeris = ephs
+                    .iter()
+                    .find(|ephemeris| ephemeris.sat == sat.signal_id.sat)
+                    .expect("matching ephemeris");
+                let residual_m = iterative_pseudorange_residual_with_earth_rotation_mode_m(
+                    ephemeris,
+                    sat,
+                    (solution.ecef_x_m.0, solution.ecef_y_m.0, solution.ecef_z_m.0),
+                    solution.clock_bias_s.0,
+                    receive_tow_s,
+                    apply_earth_rotation,
+                );
+                residual_m * residual_m
+            })
+            .sum::<f64>();
+        (residual_sum_squares_m2 / pvt_case.obs_epoch.sats.len() as f64).sqrt()
+    }
+
     fn solve_pvt_case_with_rinex_nav(
         case_name: &str,
         ephs: &[GpsEphemeris],
@@ -1038,6 +1103,27 @@ mod pvt_tests {
         assert!(corrected_error_m < 5.0);
         assert!(zero_clock_error_m > corrected_error_m + 20.0);
         assert!((corrected_solution.clock_bias_s.0 - pvt_case.receiver_clock_bias_s).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn pvt_command_rinex_solution_prefers_earth_rotation_correction() {
+        let ephemerides = sample_ephemerides();
+        let pvt_case = sample_pvt_case(&ephemerides, 2.75e-4);
+        let solution = solve_pvt_case_with_rinex_nav("earth_rotation_rinex", &ephemerides, &pvt_case);
+
+        let corrected_rms_m =
+            pvt_residual_rms_with_earth_rotation_mode_m(&solution, &ephemerides, &pvt_case, true);
+        let uncorrected_rms_m = pvt_residual_rms_with_earth_rotation_mode_m(
+            &solution,
+            &ephemerides,
+            &pvt_case,
+            false,
+        );
+
+        assert!(solution.valid);
+        assert!(position_error_3d_m(&solution, pvt_case.truth_ecef_m) < 5.0);
+        assert!(corrected_rms_m < 1.0e-3);
+        assert!(uncorrected_rms_m > corrected_rms_m + 1.0);
     }
 
     #[test]
