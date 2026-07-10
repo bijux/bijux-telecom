@@ -24,7 +24,8 @@ pub use crate::dsp::signal::{
 /// Tracking helpers.
 pub use crate::dsp::tracking::{
     adaptive_bandwidth, carrier_frequency_error_hz_from_phase_delta, code_at, discriminators,
-    estimate_cn0_dbhz,
+    estimate_cn0_dbhz, first_order_loop_coefficients, phase_lock_loop_coefficients,
+    FirstOrderLoopCoefficients, PhaseLockLoopCoefficients,
 };
 /// Error types.
 pub use crate::error::SignalError;
