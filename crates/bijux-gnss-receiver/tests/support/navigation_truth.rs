@@ -98,7 +98,7 @@ pub fn synthetic_pseudorange_m(
         let dy = truth_ecef_m.1 - sat.y_m;
         let dz = truth_ecef_m.2 - sat.z_m;
         let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
-        pseudorange_m = range_m - sat.clock_bias_s * SPEED_OF_LIGHT_MPS;
+        pseudorange_m = range_m - sat.clock_correction.bias_s * SPEED_OF_LIGHT_MPS;
         let next_tau = pseudorange_m / SPEED_OF_LIGHT_MPS;
         if (next_tau - tau).abs() < 1e-12 {
             break;

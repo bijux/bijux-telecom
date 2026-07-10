@@ -56,7 +56,7 @@ fn fault_injection_rejects_bad_pseudorange() {
         let dy = rx_y - state.y_m;
         let dz = rx_z - state.z_m;
         let range = (dx * dx + dy * dy + dz * dz).sqrt();
-        let mut pr = range + 299_792_458.0 * (0.0 - state.clock_bias_s);
+        let mut pr = range + 299_792_458.0 * (0.0 - state.clock_correction.bias_s);
         if eph.sat.prn == 3 {
             pr += 1000.0;
         }
@@ -109,7 +109,7 @@ fn position_solver_uses_explicit_observation_timing_for_ephemeris_age() {
             let dy = rx_y - state.y_m;
             let dz = rx_z - state.z_m;
             let range = (dx * dx + dy * dy + dz * dz).sqrt();
-            pseudorange_m = range - state.clock_bias_s * 299_792_458.0;
+            pseudorange_m = range - state.clock_correction.bias_s * 299_792_458.0;
             let next_tau = pseudorange_m / 299_792_458.0;
             if (next_tau - tau).abs() < 1.0e-12 {
                 break;

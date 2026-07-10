@@ -5,7 +5,7 @@ use std::str::FromStr;
 
 use bijux_gnss_core::api::{Constellation, SatId};
 
-use crate::orbits::gps::GpsSatState;
+use crate::orbits::gps::{GpsSatState, GpsSatelliteClockCorrection};
 
 #[derive(Debug, Clone)]
 pub struct Sp3Record {
@@ -68,9 +68,7 @@ impl Sp3Provider {
                 x_m: r.x_m,
                 y_m: r.y_m,
                 z_m: r.z_m,
-                clock_bias_s: 0.0,
-                clock_drift_s: 0.0,
-                relativistic_s: 0.0,
+                clock_correction: GpsSatelliteClockCorrection::from_bias_s(0.0),
             });
         }
         let mut before = None;
@@ -91,18 +89,14 @@ impl Sp3Provider {
                     x_m: b.x_m + w * (a.x_m - b.x_m),
                     y_m: b.y_m + w * (a.y_m - b.y_m),
                     z_m: b.z_m + w * (a.z_m - b.z_m),
-                    clock_bias_s: 0.0,
-                    clock_drift_s: 0.0,
-                    relativistic_s: 0.0,
+                    clock_correction: GpsSatelliteClockCorrection::from_bias_s(0.0),
                 })
             }
             (Some(b), Some(_)) => Some(GpsSatState {
                 x_m: b.x_m,
                 y_m: b.y_m,
                 z_m: b.z_m,
-                clock_bias_s: 0.0,
-                clock_drift_s: 0.0,
-                relativistic_s: 0.0,
+                clock_correction: GpsSatelliteClockCorrection::from_bias_s(0.0),
             }),
             _ => None,
         }

@@ -1080,7 +1080,7 @@ mod tests {
             let dy = position_ecef.1 - sat.y_m;
             let dz = position_ecef.2 - sat.z_m;
             let range = (dx * dx + dy * dy + dz * dz).sqrt();
-            pseudorange_m = range - sat.clock_bias_s * c;
+            pseudorange_m = range - sat.clock_correction.bias_s * c;
             let next_tau = pseudorange_m / c;
             if (next_tau - tau).abs() < 1e-12 {
                 break;

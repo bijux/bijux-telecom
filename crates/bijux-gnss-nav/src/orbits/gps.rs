@@ -67,9 +67,7 @@ pub struct GpsSatState {
     pub x_m: f64,
     pub y_m: f64,
     pub z_m: f64,
-    pub clock_bias_s: f64,
-    pub clock_drift_s: f64,
-    pub relativistic_s: f64,
+    pub clock_correction: GpsSatelliteClockCorrection,
 }
 
 pub fn gps_satellite_clock_correction(
@@ -133,9 +131,7 @@ pub fn sat_state_gps_l1ca(eph: &GpsEphemeris, t_tx_s: f64, tau_s: f64) -> GpsSat
         x_m: x,
         y_m: y,
         z_m: z,
-        clock_bias_s: clock.bias_s,
-        clock_drift_s: clock.drift_s_per_s,
-        relativistic_s: clock.relativistic_s,
+        clock_correction: clock,
     }
 }
 
@@ -338,7 +334,7 @@ mod tests {
             tgd: 0.0,
         };
         let state = sat_state_gps_l1ca(&eph, 1000.0, 0.0);
-        assert!(state.relativistic_s.abs() > 0.0);
+        assert!(state.clock_correction.relativistic_s.abs() > 0.0);
     }
 
     #[test]

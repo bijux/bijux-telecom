@@ -63,7 +63,7 @@ fn make_obs_epoch(
                     code: bijux_gnss_core::api::SignalCode::Ca,
                 },
                 pseudorange_m: bijux_gnss_core::api::Meters(
-                    range + 299_792_458.0 * (0.0 - sat.clock_bias_s),
+                    range + 299_792_458.0 * (0.0 - sat.clock_correction.bias_s),
                 ),
                 pseudorange_var_m2: 4.0,
                 carrier_phase_cycles: bijux_gnss_core::api::Cycles(range / lambda_m),
@@ -142,7 +142,7 @@ fn float_baseline_close_to_truth() {
         let range = (dx * dx + dy * dy + dz * dz).sqrt();
         obs.push(PositionObservation {
             sat: eph.sat,
-            pseudorange_m: range + 299_792_458.0 * (0.0 - sat.clock_bias_s),
+            pseudorange_m: range + 299_792_458.0 * (0.0 - sat.clock_correction.bias_s),
             cn0_dbhz: 45.0,
             elevation_deg: None,
             weight: 1.0,

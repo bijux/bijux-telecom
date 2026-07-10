@@ -136,7 +136,7 @@ impl PositionSolver {
                     let dz = z - state.z_m;
                     let range = (dx * dx + dy * dy + dz * dz).sqrt();
                     let next_tau = (range + cb * 299_792_458.0
-                        - state.clock_bias_s * 299_792_458.0)
+                        - state.clock_correction.bias_s * 299_792_458.0)
                         / 299_792_458.0;
                     if (next_tau - tau).abs() < 1e-9 {
                         converged = true;
@@ -164,7 +164,8 @@ impl PositionSolver {
                 let dy = y - state.y_m;
                 let dz = z - state.z_m;
                 let range = (dx * dx + dy * dy + dz * dz).sqrt();
-                let pred = range + cb * 299_792_458.0 - state.clock_bias_s * 299_792_458.0;
+                let pred =
+                    range + cb * 299_792_458.0 - state.clock_correction.bias_s * 299_792_458.0;
                 let res = obs.pseudorange_m - pred;
                 residuals.push((obs.sat, res));
                 let hx = dx / range;
@@ -205,7 +206,8 @@ impl PositionSolver {
             let dy = y - state.y_m;
             let dz = z - state.z_m;
             let range = (dx * dx + dy * dy + dz * dz).sqrt();
-            let pred = range + cb * 299_792_458.0 - state.clock_bias_s * 299_792_458.0;
+            let pred =
+                range + cb * 299_792_458.0 - state.clock_correction.bias_s * 299_792_458.0;
             let res = obs.pseudorange_m - pred;
             let sigma_m = (1.0 / obs.weight.max(1e-6)).sqrt();
             let norm = res / sigma_m;
