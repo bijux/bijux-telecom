@@ -524,6 +524,7 @@ fn write_track_timeseries(
                 fll_lock: epoch.fll_lock,
                 cycle_slip: epoch.cycle_slip,
                 nav_bit_lock: epoch.nav_bit_lock,
+                navigation_bit_sign: epoch.navigation_bit_sign,
                 dll_err: epoch.dll_err,
                 pll_err: epoch.pll_err,
                 fll_err: epoch.fll_err,

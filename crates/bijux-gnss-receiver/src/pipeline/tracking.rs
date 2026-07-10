@@ -596,6 +596,7 @@ impl Tracking {
             fll_lock: false,
             cycle_slip: false,
             nav_bit_lock: false,
+            navigation_bit_sign: None,
             dll_err: 0.0,
             pll_err: 0.0,
             fll_err: 0.0,
@@ -955,6 +956,7 @@ impl Tracking {
                     channel.acquisition_uncertainty.as_ref(),
                     &mut channel.epochs,
                 );
+                annotate_navigation_bit_signs(channel.sat, &mut channel.epochs);
                 let stability_signature = tracking_stability_signature(&channel.epochs);
                 let outcome = if channel.epochs.is_empty() { "not_tracked" } else { "tracked" };
                 self.runtime.trace.record(TraceRecord {
@@ -1361,6 +1363,7 @@ impl Tracking {
             fll_lock,
             cycle_slip,
             nav_bit_lock: state.nav_bit_transition_count > 0,
+            navigation_bit_sign: None,
             dll_err,
             pll_err,
             fll_err: fll_err_hz,
@@ -1374,6 +1377,24 @@ impl Tracking {
         });
     }
 }
+
+#[cfg(feature = "nav")]
+fn annotate_navigation_bit_signs(sat: SatId, epochs: &mut [TrackEpoch]) {
+    if sat.constellation != Constellation::Gps || epochs.is_empty() {
+        return;
+    }
+
+    let prompt_history = epochs.iter().map(|epoch| epoch.prompt_i).collect::<Vec<_>>();
+    let demodulation = bijux_gnss_nav::api::demodulate_gps_l1ca_navigation_bits(&prompt_history);
+    for bit in demodulation.bits {
+        for epoch in epochs[bit.start_prompt_index..bit.end_prompt_index_exclusive].iter_mut() {
+            epoch.navigation_bit_sign = Some(bit.sign);
+        }
+    }
+}
+
+#[cfg(not(feature = "nav"))]
+fn annotate_navigation_bit_signs(_sat: SatId, _epochs: &mut [TrackEpoch]) {}
 
 fn acq_to_track_state(hypothesis: &AcqHypothesis) -> &'static str {
     match hypothesis {
