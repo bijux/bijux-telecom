@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 mod support;
 
-use bijux_gnss_core::api::{Constellation, GpsTime, ObsSignalTiming, SatId, Seconds};
+use bijux_gnss_core::api::{Constellation, GpsTime, SatId, Seconds};
 use bijux_gnss_nav::api::{
     ephemerides_from_decoded_gps_l1ca_lnav, geodetic_to_ecef, parse_rinex_nav, sat_state_gps_l1ca,
     write_rinex_nav, Ephemeris, GpsEphemeris, GpsL1CaHowWord, GpsL1CaLnavDecodedSubframe,
@@ -10,7 +10,8 @@ use bijux_gnss_nav::api::{
     PositionSolver,
 };
 use support::position_truth::{
-    sample_ephemerides, sample_ephemeris, timed_position_observation,
+    four_satellite_position_scenario, sample_ephemerides, sample_ephemeris,
+    timed_position_observation,
 };
 
 #[test]
@@ -77,6 +78,23 @@ fn position_solver_refuses_inconsistent_signal_timing() {
         .collect::<Vec<_>>();
 
     assert!(PositionSolver::new().solve_wls(&observations, &ephs, t_rx_s).is_none());
+}
+
+#[test]
+fn single_point_solver_recovers_four_satellite_fix() {
+    let scenario = four_satellite_position_scenario(0.0);
+    let solution = PositionSolver::new()
+        .solve_wls(&scenario.observations, &scenario.ephemerides, scenario.t_rx_s)
+        .expect("timed four-satellite observations should solve");
+
+    assert_eq!(solution.sat_count, 4);
+    assert_eq!(solution.used_sat_count, 4);
+    assert_eq!(solution.rejected_sat_count, 0);
+    assert!(solution.rejected.is_empty(), "unexpected rejections: {:?}", solution.rejected);
+    assert!((solution.ecef_x_m - scenario.truth_ecef_m.0).abs() < 5.0);
+    assert!((solution.ecef_y_m - scenario.truth_ecef_m.1).abs() < 5.0);
+    assert!((solution.ecef_z_m - scenario.truth_ecef_m.2).abs() < 5.0);
+    assert!(solution.clock_bias_s.abs() < 1.0e-9);
 }
 
 fn decoded_lnav_subframes_from_ephemeris(eph: &GpsEphemeris) -> Vec<GpsL1CaLnavDecodedSubframe> {
