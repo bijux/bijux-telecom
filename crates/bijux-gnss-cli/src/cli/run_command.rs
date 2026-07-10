@@ -588,6 +588,47 @@ mod inspect_dataset_tests {
 }
 
 #[cfg(test)]
+mod runtime_config_tests {
+    use super::{capture_start_gps_time, runtime_config_from_capture_start, CommonArgs, ReportFormat};
+
+    fn common_args() -> CommonArgs {
+        CommonArgs {
+            config: None,
+            dataset: None,
+            unregistered_dataset: true,
+            out: None,
+            report: ReportFormat::Table,
+            seed: None,
+            deterministic: false,
+            dump: None,
+            sidecar: None,
+            resume: None,
+        }
+    }
+
+    #[test]
+    fn capture_start_gps_time_parses_rfc3339_timestamp() {
+        let gps_time =
+            capture_start_gps_time("2022-03-27T11:32:04.2147593125Z").expect("gps time");
+        assert_eq!(gps_time.week, 2203);
+        assert!((gps_time.tow_s - 41_542.2147593125).abs() <= 1.0e-6);
+    }
+
+    #[test]
+    fn runtime_config_from_capture_start_sets_runtime_anchor() {
+        let runtime = runtime_config_from_capture_start(
+            &common_args(),
+            None,
+            Some("2026-07-09T00:00:00Z"),
+        );
+
+        let gps_time = runtime.config.capture_start_gps_time.expect("runtime gps anchor");
+        assert_eq!(gps_time.week, 2426);
+        assert!((gps_time.tow_s - 345_618.0).abs() <= 1.0e-9);
+    }
+}
+
+#[cfg(test)]
 mod nav_trace_tests {
     use super::*;
     use bijux_gnss_infra::api::core::{
