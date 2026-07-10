@@ -25,6 +25,11 @@ Every measurement emitted by the pipeline MUST satisfy:
 
 The contract is enforced in validation and navigation (reject reasons, chi-square gating, and
 sanity checks). Any violation must emit diagnostics and mark the measurement as rejected.
+- Grouped observation contract: when multiple satellites share one emitted `ObsEpoch`, the epoch
+  `source_time`, `t_rx_s`, and manifest `source_sample_index` must all identify the same common
+  receiver instant. A satellite row with a different receiver sample trace must reject with
+  `receiver_time_mismatch` or `receiver_sample_trace_mismatch`, and the containing epoch must
+  reject with `inconsistent_observable`.
 
 ## Code (Pseudorange)
 - Model: `P = ρ + c(δt_r - δt_s) + T - I + ε`

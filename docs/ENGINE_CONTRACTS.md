@@ -34,6 +34,10 @@ These are the shared types exchanged across layers. They live in `bijux-gnss-cor
 ## Invariants
 - Acquisition returns one selected outcome per searched PRN, even when the frame is too short for a usable search
 - Epochs are monotonic in `t_rx_s`
+- Every grouped multisatellite `ObsEpoch` is anchored to one common receiver sample trace;
+  `source_time`, `t_rx_s`, and manifest `source_sample_index` identify the same receiver instant
+- Satellites that disagree on grouped receiver time are marked inconsistent and force the
+  containing observation epoch to reject
 - No NaNs/Inf in artifacts
 - Every `ObsSatellite` row carries a finite C/N0 value within shared convention bounds, including
   degraded and rejected observation rows
