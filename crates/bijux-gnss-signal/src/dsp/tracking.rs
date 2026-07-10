@@ -75,8 +75,38 @@ pub fn code_at(code: &[i8], samples_per_chip: f64, sample_index: f64) -> Complex
 
 #[cfg(test)]
 mod tests {
-    use super::estimate_cn0_dbhz;
+    use super::{discriminators, estimate_cn0_dbhz};
     use num_complex::Complex;
+
+    #[test]
+    fn dll_discriminator_is_positive_when_early_energy_exceeds_late_energy() {
+        let (dll, pll, fll, lock) = discriminators(
+            Complex::new(8.0, 0.0),
+            Complex::new(12.0, 0.0),
+            Complex::new(4.0, 0.0),
+            None,
+        );
+
+        assert!(dll > 0.0, "dll={dll}");
+        assert_eq!(pll, 0.0);
+        assert_eq!(fll, 0.0);
+        assert!(lock);
+    }
+
+    #[test]
+    fn dll_discriminator_is_negative_when_late_energy_exceeds_early_energy() {
+        let (dll, pll, fll, lock) = discriminators(
+            Complex::new(4.0, 0.0),
+            Complex::new(12.0, 0.0),
+            Complex::new(8.0, 0.0),
+            None,
+        );
+
+        assert!(dll < 0.0, "dll={dll}");
+        assert_eq!(pll, 0.0);
+        assert_eq!(fll, 0.0);
+        assert!(lock);
+    }
 
     #[test]
     fn estimate_cn0_dbhz_recovers_known_cn0_from_prompt_and_noise_weighting() {
