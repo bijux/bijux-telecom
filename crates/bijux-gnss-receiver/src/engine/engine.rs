@@ -205,14 +205,18 @@ impl Receiver {
 
         let tracking =
             crate::pipeline::tracking::Tracking::new(self.config().clone(), self.runtime().clone());
-        let has_trackable_channels =
-            acquisitions.iter().take(self.config().channels.max(1)).any(|acq| {
+        let has_trackable_channels = acquisitions
+            .iter()
+            .filter(|acq| {
                 matches!(
                     acq.hypothesis,
                     bijux_gnss_core::api::AcqHypothesis::Accepted
                         | bijux_gnss_core::api::AcqHypothesis::Ambiguous
                 )
-            });
+            })
+            .take(self.config().channels.max(1))
+            .next()
+            .is_some();
         let mut tracking_session = tracking.begin_tracking_session(&acquisitions);
         tracking.track_session_frame(&mut tracking_session, &frame);
         if has_trackable_channels {

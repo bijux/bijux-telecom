@@ -107,19 +107,15 @@ fn assert_signal_quality_report_shape(
         Some(expected_sample_rate_hz)
     );
     assert_eq!(
-        signal_quality
-            .get("intermediate_freq_hz")
-            .and_then(Value::as_f64),
+        signal_quality.get("intermediate_freq_hz").and_then(Value::as_f64),
         Some(expected_intermediate_frequency_hz)
     );
     assert_eq!(
         signal_quality.get("analyzed_samples").and_then(Value::as_u64),
         Some(expected_analyzed_samples)
     );
-    let usable_duration_s = signal_quality
-        .get("usable_duration_s")
-        .and_then(Value::as_f64)
-        .expect("usable_duration_s");
+    let usable_duration_s =
+        signal_quality.get("usable_duration_s").and_then(Value::as_f64).expect("usable_duration_s");
     assert!(usable_duration_s > 0.0, "usable_duration_s={usable_duration_s}");
     assert!(
         signal_quality
@@ -129,9 +125,7 @@ fn assert_signal_quality_report_shape(
         "signal_quality={signal_quality}"
     );
     assert_dc_only_metrics(
-        signal_quality
-            .get("front_end_metrics")
-            .expect("front_end_metrics present"),
+        signal_quality.get("front_end_metrics").expect("front_end_metrics present"),
         expected_analyzed_samples,
     );
 }
@@ -386,10 +380,7 @@ fn acquire_reports_front_end_metrics_from_acquisition_window() {
     assert_dc_only_metrics(metrics, 5_000);
     let signal_quality = report.get("signal_quality").expect("signal_quality present");
     assert_eq!(signal_quality.get("analyzed_samples").and_then(Value::as_u64), Some(5_000));
-    assert_eq!(
-        signal_quality.get("front_end_metrics"),
-        report.get("front_end_metrics")
-    );
+    assert_eq!(signal_quality.get("front_end_metrics"), report.get("front_end_metrics"));
     let standalone_signal_quality = load_json(&out_dir.join("signal_quality_report.json"));
     assert_eq!(standalone_signal_quality, *signal_quality);
 
@@ -432,10 +423,7 @@ fn track_reports_front_end_metrics_from_acquisition_window() {
     assert_dc_only_metrics(metrics, 5_000);
     let signal_quality = report.get("signal_quality").expect("signal_quality present");
     assert_eq!(signal_quality.get("analyzed_samples").and_then(Value::as_u64), Some(5_000));
-    assert_eq!(
-        signal_quality.get("front_end_metrics"),
-        report.get("front_end_metrics")
-    );
+    assert_eq!(signal_quality.get("front_end_metrics"), report.get("front_end_metrics"));
     let standalone_signal_quality = load_json(&out_dir.join("signal_quality_report.json"));
     assert_eq!(standalone_signal_quality, *signal_quality);
 
@@ -448,7 +436,7 @@ fn track_report_uses_epoch_tracking_state_for_clean_capture() {
     fs::create_dir_all(&temp).expect("create temp dir");
 
     let iq_path = temp.join("clean.iq8");
-    write_synthetic_iq8_capture_with_signal_if_and_duration_s(&iq_path, 5_000_000.0, 0.0, 0.012);
+    write_synthetic_iq8_capture_with_signal_if_and_duration_s(&iq_path, 4_000_000.0, 0.0, 0.012);
     let sidecar_path = temp.join("clean.sidecar.toml");
     write_raw_iq_sidecar_with_format_sample_rate_and_if(&sidecar_path, "iq8", 5_000_000.0, 0.0);
 
@@ -478,16 +466,11 @@ fn track_report_uses_epoch_tracking_state_for_clean_capture() {
 
     assert!(output.status.success(), "track failed: {}", String::from_utf8_lossy(&output.stderr));
     let report = load_json(&out_dir.join("track_report.json"));
-    let rows = report
-        .get("epochs")
-        .and_then(Value::as_array)
-        .expect("track epoch rows");
+    let rows = report.get("epochs").and_then(Value::as_array).expect("track epoch rows");
     assert!(rows.len() >= 2, "rows={rows:?}");
 
-    let first_code_phase = rows[0]
-        .get("code_phase_samples")
-        .and_then(Value::as_f64)
-        .expect("first code phase");
+    let first_code_phase =
+        rows[0].get("code_phase_samples").and_then(Value::as_f64).expect("first code phase");
     let first_carrier_hz =
         rows[0].get("carrier_hz").and_then(Value::as_f64).expect("first carrier");
     assert!(
@@ -547,19 +530,16 @@ fn inspect_reports_front_end_metrics_from_requested_samples() {
     assert_eq!(report.get("total_samples").and_then(Value::as_u64), Some(4));
     let usable_duration_s =
         report.get("usable_duration_s").and_then(Value::as_f64).expect("usable_duration_s");
-    assert!((usable_duration_s - 4.0 / 5_000_000.0).abs() <= 1e-12, "usable_duration_s={usable_duration_s}");
+    assert!(
+        (usable_duration_s - 4.0 / 5_000_000.0).abs() <= 1e-12,
+        "usable_duration_s={usable_duration_s}"
+    );
     let signal_quality = report.get("signal_quality").expect("signal_quality present");
     assert_eq!(signal_quality.get("format").and_then(Value::as_str), Some("Iq8"));
     assert_eq!(signal_quality.get("sample_rate_hz").and_then(Value::as_f64), Some(5_000_000.0));
-    assert_eq!(
-        signal_quality.get("intermediate_freq_hz").and_then(Value::as_f64),
-        Some(0.0)
-    );
+    assert_eq!(signal_quality.get("intermediate_freq_hz").and_then(Value::as_f64), Some(0.0));
     assert_eq!(signal_quality.get("analyzed_samples").and_then(Value::as_u64), Some(4));
-    assert_eq!(
-        signal_quality.get("front_end_metrics"),
-        report.get("front_end_metrics")
-    );
+    assert_eq!(signal_quality.get("front_end_metrics"), report.get("front_end_metrics"));
     let standalone_signal_quality = load_json(&out_dir.join("signal_quality_report.json"));
     assert_eq!(standalone_signal_quality, *signal_quality);
 
@@ -601,10 +581,7 @@ fn run_reports_front_end_metrics_for_stream_start() {
     assert_eq!(report.get("epochs").and_then(Value::as_u64), Some(1));
     let signal_quality = report.get("signal_quality").expect("signal_quality present");
     assert_eq!(signal_quality.get("analyzed_samples").and_then(Value::as_u64), Some(5_000));
-    assert_eq!(
-        signal_quality.get("front_end_metrics"),
-        report.get("front_end_metrics")
-    );
+    assert_eq!(signal_quality.get("front_end_metrics"), report.get("front_end_metrics"));
     let standalone_signal_quality = load_json(&out_dir.join("signal_quality_report.json"));
     assert_eq!(standalone_signal_quality, *signal_quality);
 
@@ -617,7 +594,7 @@ fn run_reports_streamed_tracking_progress_for_clean_capture() {
     fs::create_dir_all(&temp).expect("create temp dir");
 
     let iq_path = temp.join("demo.iq8");
-    write_synthetic_iq8_capture_with_signal_if_and_duration_s(&iq_path, 5_000_000.0, 0.0, 0.012);
+    write_synthetic_iq8_capture_with_signal_if_and_duration_s(&iq_path, 5_000_000.0, 0.0, 0.060);
     let sidecar_path = temp.join("demo.sidecar.toml");
     write_raw_iq_sidecar(&sidecar_path);
 
@@ -641,8 +618,8 @@ fn run_reports_streamed_tracking_progress_for_clean_capture() {
 
     assert!(output.status.success(), "run failed: {}", String::from_utf8_lossy(&output.stderr));
     let report = load_json(&out_dir.join("run_report.json"));
-    assert_eq!(report.get("epochs").and_then(Value::as_u64), Some(12));
-    assert_eq!(report.get("processed_input_samples").and_then(Value::as_u64), Some(60_000));
+    assert_eq!(report.get("epochs").and_then(Value::as_u64), Some(60));
+    assert_eq!(report.get("processed_input_samples").and_then(Value::as_u64), Some(300_000));
     assert!(
         report.get("tracked_channels").and_then(Value::as_u64).unwrap_or(0) >= 1,
         "tracked_channels={report}",
@@ -656,10 +633,7 @@ fn run_reports_streamed_tracking_progress_for_clean_capture() {
         "acquisitions={report}",
     );
     let signal_quality = report.get("signal_quality").expect("signal_quality present");
-    assert_eq!(
-        signal_quality.get("analyzed_samples").and_then(Value::as_u64),
-        Some(60_000)
-    );
+    assert_eq!(signal_quality.get("analyzed_samples").and_then(Value::as_u64), Some(300_000));
     let standalone_signal_quality = load_json(&out_dir.join("signal_quality_report.json"));
     assert_eq!(standalone_signal_quality, *signal_quality);
 
@@ -695,7 +669,11 @@ fn raw_iq_workflows_emit_required_signal_quality_fields() {
         ],
         &repo_root(),
     );
-    assert!(inspect.status.success(), "inspect failed: {}", String::from_utf8_lossy(&inspect.stderr));
+    assert!(
+        inspect.status.success(),
+        "inspect failed: {}",
+        String::from_utf8_lossy(&inspect.stderr)
+    );
 
     let acquire_out = temp.join("acquire-out");
     let acquire = run_bijux(
@@ -716,7 +694,11 @@ fn raw_iq_workflows_emit_required_signal_quality_fields() {
         ],
         &repo_root(),
     );
-    assert!(acquire.status.success(), "acquire failed: {}", String::from_utf8_lossy(&acquire.stderr));
+    assert!(
+        acquire.status.success(),
+        "acquire failed: {}",
+        String::from_utf8_lossy(&acquire.stderr)
+    );
 
     let track_out = temp.join("track-out");
     let track = run_bijux(
@@ -986,12 +968,7 @@ fn acquire_reports_signal_outside_search_range_for_wrong_if_capture() {
     let iq_path = temp.join("wrong-if.cf32");
     write_synthetic_cf32_capture_with_signal_if(&iq_path, 5_000_000.0, 1_750.0);
     let sidecar_path = temp.join("wrong-if.sidecar.toml");
-    write_raw_iq_sidecar_with_format_sample_rate_and_if(
-        &sidecar_path,
-        "cf32_le",
-        5_000_000.0,
-        0.0,
-    );
+    write_raw_iq_sidecar_with_format_sample_rate_and_if(&sidecar_path, "cf32_le", 5_000_000.0, 0.0);
 
     let out_dir = temp.join("acquire-out");
     let output = run_bijux(
@@ -1044,12 +1021,7 @@ fn acquire_table_reports_search_range_rejection_for_wrong_if_capture() {
     let iq_path = temp.join("wrong-if.cf32");
     write_synthetic_cf32_capture_with_signal_if(&iq_path, 5_000_000.0, 1_750.0);
     let sidecar_path = temp.join("wrong-if.sidecar.toml");
-    write_raw_iq_sidecar_with_format_sample_rate_and_if(
-        &sidecar_path,
-        "cf32_le",
-        5_000_000.0,
-        0.0,
-    );
+    write_raw_iq_sidecar_with_format_sample_rate_and_if(&sidecar_path, "cf32_le", 5_000_000.0, 0.0);
 
     let output = run_bijux(
         &[
@@ -1090,7 +1062,7 @@ fn track_reports_sample_rate_mismatch_for_wrong_sample_rate_capture() {
     fs::create_dir_all(&temp).expect("create temp dir");
 
     let iq_path = temp.join("wrong-sample-rate.iq8");
-    write_synthetic_iq8_capture_with_signal_if_and_duration_s(&iq_path, 5_000_000.0, 0.0, 0.012);
+    write_synthetic_iq8_capture_with_signal_if_and_duration_s(&iq_path, 4_000_000.0, 0.0, 0.012);
     let sidecar_path = temp.join("wrong-sample-rate.sidecar.toml");
     write_raw_iq_sidecar_with_format_sample_rate_and_if(&sidecar_path, "iq8", 5_200_000.0, 0.0);
 
@@ -1120,10 +1092,7 @@ fn track_reports_sample_rate_mismatch_for_wrong_sample_rate_capture() {
 
     assert!(output.status.success(), "track failed: {}", String::from_utf8_lossy(&output.stderr));
     let report = load_json(&out_dir.join("track_report.json"));
-    let rows = report
-        .get("epochs")
-        .and_then(Value::as_array)
-        .expect("track epoch rows");
+    let rows = report.get("epochs").and_then(Value::as_array).expect("track epoch rows");
     assert!(
         rows.iter().any(|row| {
             row.get("lock_state_reason")
