@@ -237,7 +237,8 @@ fn front_end_provenance(
     profile: &ReceiverConfig,
     dataset: Option<&DatasetEntry>,
 ) -> Result<FrontEndProvenance, InputError> {
-    let raw_iq_metadata = resolve_raw_iq_metadata(dataset, args.sidecar.map(|path| path.as_path())).ok();
+    let raw_iq_metadata =
+        resolve_raw_iq_metadata(dataset, args.sidecar.map(|path| path.as_path())).ok();
     let sidecar_used = args.sidecar.is_some();
     if sidecar_used && raw_iq_metadata.is_none() {
         resolve_raw_iq_metadata(dataset, args.sidecar.map(|path| path.as_path()))?;
@@ -269,9 +270,12 @@ fn resolve_run_context(
     args: &RunContextArgs<'_>,
     command: &str,
     dataset: Option<&DatasetEntry>,
-) -> Result<&'static RunContext, InputError> {
-    if let Some(ctx) = RUN_CONTEXT.get() {
-        return Ok(ctx);
+) -> Result<RunContext, InputError> {
+    let should_reuse_cached_context = args.out.is_none() && args.resume.is_none();
+    if should_reuse_cached_context {
+        if let Some(ctx) = RUN_CONTEXT.get() {
+            return Ok(ctx.clone());
+        }
     }
     if dataset.is_none() && !args.unregistered_dataset {
         return Err(InputError {
@@ -299,8 +303,10 @@ fn resolve_run_context(
     let layout = RunDirLayout::new(run_dir);
     layout.create()?;
     let ctx = RunContext { layout };
-    let _ = RUN_CONTEXT.set(ctx);
-    Ok(RUN_CONTEXT.get().expect("run context set"))
+    if should_reuse_cached_context {
+        let _ = RUN_CONTEXT.set(ctx.clone());
+    }
+    Ok(ctx)
 }
 
 /// Resolve run directory path.
