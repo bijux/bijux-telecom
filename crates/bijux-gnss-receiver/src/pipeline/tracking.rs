@@ -14,7 +14,8 @@ use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
 use bijux_gnss_core::api::Sample;
 use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::{
-    adaptive_bandwidth, code_value_at_phase, discriminators, estimate_cn0_dbhz, wipeoff_carrier,
+    adaptive_bandwidth, carrier_frequency_error_hz_from_phase_delta, code_value_at_phase,
+    discriminators, estimate_cn0_dbhz, wipeoff_carrier,
 };
 use bijux_gnss_signal::api::{generate_ca_code, Prn};
 
@@ -27,6 +28,8 @@ const SAMPLE_RATE_MISMATCH_MIN_UNSTABLE_EPOCHS_IN_WINDOW: usize = 3;
 const CYCLE_SLIP_PHASE_DELTA_CYCLES: f64 = 0.35;
 const NAV_BIT_PHASE_STEP_CYCLES: f64 = 0.5;
 const NAV_BIT_PHASE_STEP_TOLERANCE_CYCLES: f64 = 0.1;
+const PLL_LOCK_MAX_PHASE_ERROR_RAD: f32 = 0.2;
+const PULL_IN_REQUIRED_STABLE_EPOCHS: u8 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelState {
@@ -115,6 +118,7 @@ struct LoopState {
     prev_prompt_phase_cycles: Option<f64>,
     nav_bit_phase_offset_cycles: f64,
     nav_bit_transition_count: u32,
+    pull_in_stable_epochs: u8,
     state: ChannelState,
     unlocked_count: u8,
 }
@@ -263,8 +267,12 @@ impl Tracking {
         let nominal_chips_per_sample = self.config.code_freq_basis_hz / sample_rate_hz;
         let tracked_chips_per_sample = code_rate_hz / sample_rate_hz;
         let base_chip_phase = code_phase_samples * nominal_chips_per_sample;
-        let carrier_phase_offset_rad =
-            carrier_phase_offset_rad(carrier_freq_hz, sample_rate_hz, frame.t0.sample_index, carrier_phase_cycles);
+        let carrier_phase_offset_rad = carrier_phase_offset_rad(
+            carrier_freq_hz,
+            sample_rate_hz,
+            frame.t0.sample_index,
+            carrier_phase_cycles,
+        );
 
         let mixed = wipeoff_carrier(
             &frame.iq[..n],
@@ -553,6 +561,7 @@ impl Tracking {
             prev_prompt_phase_cycles: None,
             nav_bit_phase_offset_cycles: 0.0,
             nav_bit_transition_count: 0,
+            pull_in_stable_epochs: 0,
             state: ChannelState::Acquired,
             unlocked_count: 0,
         };
@@ -616,6 +625,7 @@ impl Tracking {
                         prev_prompt_phase_cycles: None,
                         nav_bit_phase_offset_cycles: 0.0,
                         nav_bit_transition_count: 0,
+                        pull_in_stable_epochs: 0,
                         state: ChannelState::Acquired,
                         unlocked_count: 0,
                     },
@@ -791,10 +801,34 @@ impl Tracking {
                 cycle_slip_reason = Some("phase_discontinuity".to_string());
             }
 
+            let cn0_dbhz = track_epoch.cn0_dbhz;
+            let (dll_bw, pll_bw, fll_bw) = adaptive_bandwidth(
+                tracking_params.dll_bw_hz,
+                tracking_params.pll_bw_hz,
+                tracking_params.fll_bw_hz,
+                cn0_dbhz,
+            );
+            let coherent_integration_s =
+                coherent_integration_seconds(epoch_frame.len(), self.config.sampling_freq_hz);
+            let fll_err_hz =
+                carrier_frequency_error_hz_from_phase_delta(fll_err as f64, coherent_integration_s)
+                    as f32;
+            let raw_pll_lock = pll_err.abs() < PLL_LOCK_MAX_PHASE_ERROR_RAD;
+            let raw_fll_lock = (fll_err_hz as f64).abs() <= fll_lock_threshold_hz(fll_bw);
+            state.pull_in_stable_epochs = update_pull_in_stable_epochs(
+                state.pull_in_stable_epochs,
+                lock,
+                raw_pll_lock,
+                raw_fll_lock,
+                cycle_slip,
+            );
+            let ready_for_tracking = state.pull_in_stable_epochs >= PULL_IN_REQUIRED_STABLE_EPOCHS;
+
             let from_state = state.state;
             let transition = deterministic_transition_rule(
                 from_state,
                 lock,
+                ready_for_tracking,
                 anti_false_lock,
                 cycle_slip,
                 state.unlocked_count,
@@ -822,8 +856,8 @@ impl Tracking {
             }
 
             let dll_lock = dll_err.abs() < 0.2;
-            let pll_lock = pll_err.abs() < 0.2;
-            let fll_lock = fll_err.abs() < 0.2;
+            let pll_lock = raw_pll_lock && ready_for_tracking;
+            let fll_lock = raw_fll_lock;
             if track_epoch.early_i.is_infinite() || track_epoch.late_i.is_infinite() {
                 self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
                     bijux_gnss_core::api::DiagnosticSeverity::Warning,
@@ -832,13 +866,6 @@ impl Tracking {
                 ));
             }
 
-            let cn0_dbhz = track_epoch.cn0_dbhz;
-            let (dll_bw, pll_bw, fll_bw) = adaptive_bandwidth(
-                tracking_params.dll_bw_hz,
-                tracking_params.pll_bw_hz,
-                tracking_params.fll_bw_hz,
-                cn0_dbhz,
-            );
             let code_loop = apply_dll_code_loop(CodeLoopInput {
                 current_code_rate_hz: state.code_rate_hz,
                 current_code_phase_samples: state.code_phase_samples,
@@ -858,7 +885,7 @@ impl Tracking {
                 pll_bw_hz: pll_bw,
                 pll_err_rad: pll_err as f64,
                 fll_bw_hz: fll_bw,
-                fll_err_rad: fll_err as f64,
+                fll_err_rad: fll_err_hz as f64,
                 apply_fll: state.state == ChannelState::PullIn,
             });
             state.carrier_hz = carrier_loop.carrier_hz;
@@ -893,7 +920,7 @@ impl Tracking {
                 nav_bit_lock: state.nav_bit_transition_count > 0,
                 dll_err,
                 pll_err,
-                fll_err,
+                fll_err: fll_err_hz,
                 anti_false_lock,
                 cycle_slip_reason,
                 lock_state,
@@ -954,6 +981,7 @@ struct TransitionDecision {
 fn deterministic_transition_rule(
     from_state: ChannelState,
     lock: bool,
+    ready_for_tracking: bool,
     anti_false_lock: bool,
     cycle_slip: bool,
     unlocked_count: u8,
@@ -965,10 +993,17 @@ fn deterministic_transition_rule(
             next_unlocked_count: unlocked_count.saturating_add(1),
         };
     }
-    if lock {
+    if ready_for_tracking {
         return TransitionDecision {
             to_state: ChannelState::Tracking,
-            reason: "locked".to_string(),
+            reason: "carrier_converged".to_string(),
+            next_unlocked_count: 0,
+        };
+    }
+    if lock {
+        return TransitionDecision {
+            to_state: ChannelState::PullIn,
+            reason: "carrier_pull_in".to_string(),
             next_unlocked_count: 0,
         };
     }
@@ -989,7 +1024,7 @@ fn deterministic_transition_rule(
     }
     TransitionDecision {
         to_state: ChannelState::PullIn,
-        reason: "pulling".to_string(),
+        reason: "carrier_pull_in".to_string(),
         next_unlocked_count: next_unlocked,
     }
 }
@@ -1233,6 +1268,30 @@ fn wrapped_phase_delta_cycles(next_phase_cycles: f64, previous_phase_cycles: f64
     wrap_phase_cycles(next_phase_cycles - previous_phase_cycles)
 }
 
+fn coherent_integration_seconds(epoch_len_samples: usize, sample_rate_hz: f64) -> f64 {
+    if !sample_rate_hz.is_finite() || sample_rate_hz <= 0.0 {
+        return 0.0;
+    }
+    epoch_len_samples as f64 / sample_rate_hz
+}
+
+fn fll_lock_threshold_hz(fll_bw_hz: f64) -> f64 {
+    fll_bw_hz.max(5.0)
+}
+
+fn update_pull_in_stable_epochs(
+    current_stable_epochs: u8,
+    prompt_lock: bool,
+    pll_lock: bool,
+    fll_lock: bool,
+    cycle_slip: bool,
+) -> u8 {
+    if cycle_slip || !prompt_lock || !pll_lock || !fll_lock {
+        return 0;
+    }
+    current_stable_epochs.saturating_add(1)
+}
+
 fn apply_carrier_loop(input: CarrierLoopInput) -> CarrierLoopUpdate {
     let mut carrier_hz = input.current_carrier_hz;
     if input.apply_fll {
@@ -1269,16 +1328,15 @@ impl Tracking {
         let mut best_metric = 0.0_f32;
         for d in doppler_bins {
             for c in code_bins {
-                let corr =
-                    self.correlate_epoch(
-                        frame,
-                        sat,
-                        carrier_hz + d,
-                        0.0,
-                        self.config.code_freq_basis_hz,
-                        code_phase_samples + c,
-                        0.5,
-                    );
+                let corr = self.correlate_epoch(
+                    frame,
+                    sat,
+                    carrier_hz + d,
+                    0.0,
+                    self.config.code_freq_basis_hz,
+                    code_phase_samples + c,
+                    0.5,
+                );
                 let metric = corr.prompt.norm();
                 if metric > best_metric {
                     best_metric = metric;
@@ -1332,8 +1390,14 @@ mod tests {
 
     #[test]
     fn deterministic_transition_rule_handles_cycle_slip_first() {
-        let decision =
-            super::deterministic_transition_rule(ChannelState::Tracking, false, false, true, 1);
+        let decision = super::deterministic_transition_rule(
+            ChannelState::Tracking,
+            false,
+            false,
+            false,
+            true,
+            1,
+        );
         assert_eq!(decision.to_state, ChannelState::Lost);
         assert_eq!(decision.reason, "cycle_slip");
         assert_eq!(decision.next_unlocked_count, 2);
@@ -1342,19 +1406,41 @@ mod tests {
     #[test]
     fn deterministic_transition_rule_promotes_lock() {
         let decision =
-            super::deterministic_transition_rule(ChannelState::PullIn, true, false, false, 2);
+            super::deterministic_transition_rule(ChannelState::PullIn, true, true, false, false, 2);
         assert_eq!(decision.to_state, ChannelState::Tracking);
-        assert_eq!(decision.reason, "locked");
+        assert_eq!(decision.reason, "carrier_converged");
         assert_eq!(decision.next_unlocked_count, 0);
     }
 
     #[test]
     fn deterministic_transition_rule_marks_loss_after_tracking_failures() {
-        let decision =
-            super::deterministic_transition_rule(ChannelState::Tracking, false, false, false, 1);
+        let decision = super::deterministic_transition_rule(
+            ChannelState::Tracking,
+            false,
+            false,
+            false,
+            false,
+            1,
+        );
         assert_eq!(decision.to_state, ChannelState::Lost);
         assert_eq!(decision.reason, "lock_lost");
         assert_eq!(decision.next_unlocked_count, 2);
+    }
+
+    #[test]
+    fn deterministic_transition_rule_holds_pull_in_until_carrier_converges() {
+        let decision = super::deterministic_transition_rule(
+            ChannelState::PullIn,
+            true,
+            false,
+            false,
+            false,
+            1,
+        );
+
+        assert_eq!(decision.to_state, ChannelState::PullIn);
+        assert_eq!(decision.reason, "carrier_pull_in");
+        assert_eq!(decision.next_unlocked_count, 0);
     }
 
     #[test]
@@ -1676,15 +1762,8 @@ mod tests {
             0.001,
         );
 
-        let unmatched = tracking.correlate_epoch(
-            &frame,
-            sat,
-            0.0,
-            0.0,
-            config.code_freq_basis_hz,
-            0.0,
-            0.5,
-        );
+        let unmatched =
+            tracking.correlate_epoch(&frame, sat, 0.0, 0.0, config.code_freq_basis_hz, 0.0, 0.5);
         let matched = tracking.correlate_epoch(
             &frame,
             sat,
@@ -1725,10 +1804,7 @@ mod tests {
 
         assert!((update.carrier_hz - 1_002.0).abs() < 1.0e-9, "{update:?}");
         let expected_phase_cycles = 12.0 + 1.0 + 0.25 / std::f64::consts::TAU;
-        assert!(
-            (update.carrier_phase_cycles - expected_phase_cycles).abs() < 1.0e-9,
-            "{update:?}",
-        );
+        assert!((update.carrier_phase_cycles - expected_phase_cycles).abs() < 1.0e-9, "{update:?}",);
     }
 
     #[test]
@@ -1775,12 +1851,8 @@ mod tests {
             code_phase_samples,
             0.5,
         );
-        let (dll_err, _, _, _) = discriminators(
-            correlator.early,
-            correlator.prompt,
-            correlator.late,
-            None,
-        );
+        let (dll_err, _, _, _) =
+            discriminators(correlator.early, correlator.prompt, correlator.late, None);
         let code_loop = super::apply_dll_code_loop(super::CodeLoopInput {
             current_code_rate_hz: config.code_freq_basis_hz,
             current_code_phase_samples: code_phase_samples,
@@ -1968,6 +2040,7 @@ mod tests {
             for event in &fixture.events {
                 let decision = super::deterministic_transition_rule(
                     state,
+                    event.lock,
                     event.lock,
                     event.anti_false_lock,
                     event.cycle_slip,
