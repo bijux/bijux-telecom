@@ -87,67 +87,11 @@ pub fn decode_subframe1_clock(words: &[GpsWord]) -> Option<GpsL1CaLnavSubframe1C
 }
 
 pub fn parse_subframe1(words: &[GpsWord]) -> Option<EphemerisPart> {
-    let clock = decode_subframe1_clock(words)?;
-
-    Some(EphemerisPart {
-        iodc: Some(clock.iodc),
-        iode: None,
-        week: Some(clock.week),
-        sv_health: Some(clock.sv_health),
-        toe_s: None,
-        toc_s: Some(clock.toc_s),
-        sqrt_a: None,
-        e: None,
-        i0: None,
-        idot: None,
-        omega0: None,
-        omegadot: None,
-        w: None,
-        m0: None,
-        delta_n: None,
-        cuc: None,
-        cus: None,
-        crc: None,
-        crs: None,
-        cic: None,
-        cis: None,
-        af0: Some(clock.af0),
-        af1: Some(clock.af1),
-        af2: Some(clock.af2),
-        tgd: Some(clock.tgd),
-    })
+    Some(ephemeris_part_from_subframe1_clock(&decode_subframe1_clock(words)?))
 }
 
 pub fn parse_subframe2(words: &[GpsWord]) -> Option<EphemerisPart> {
-    let orbit = decode_subframe2_orbit(words)?;
-
-    Some(EphemerisPart {
-        iodc: None,
-        iode: Some(orbit.iode),
-        week: None,
-        sv_health: None,
-        toe_s: Some(orbit.toe_s),
-        toc_s: None,
-        sqrt_a: Some(orbit.sqrt_a),
-        e: Some(orbit.e),
-        i0: None,
-        idot: None,
-        omega0: None,
-        omegadot: None,
-        w: None,
-        m0: Some(orbit.m0),
-        delta_n: Some(orbit.delta_n),
-        cuc: Some(orbit.cuc),
-        cus: Some(orbit.cus),
-        crc: None,
-        crs: Some(orbit.crs),
-        cic: None,
-        cis: None,
-        af0: None,
-        af1: None,
-        af2: None,
-        tgd: None,
-    })
+    Some(ephemeris_part_from_subframe2_orbit(&decode_subframe2_orbit(words)?))
 }
 
 pub fn decode_subframe2_orbit(words: &[GpsWord]) -> Option<GpsL1CaLnavSubframe2Orbit> {
@@ -175,23 +119,75 @@ pub fn decode_subframe2_orbit(words: &[GpsWord]) -> Option<GpsL1CaLnavSubframe2O
     let sqrt_a = (get_bits(w8, 17, 8) << 24 | get_bits(w9, 1, 24)) as f64 * 2f64.powi(-19);
     let toe = get_bits(w10, 1, 16) as f64 * 16.0;
 
-    Some(GpsL1CaLnavSubframe2Orbit {
-        iode,
-        crs,
-        delta_n,
-        m0,
-        cuc,
-        e,
-        cus,
-        sqrt_a,
-        toe_s: toe,
-    })
+    Some(GpsL1CaLnavSubframe2Orbit { iode, crs, delta_n, m0, cuc, e, cus, sqrt_a, toe_s: toe })
 }
 
 pub fn parse_subframe3(words: &[GpsWord]) -> Option<EphemerisPart> {
-    let orbit = decode_subframe3_orbit(words)?;
+    Some(ephemeris_part_from_subframe3_orbit(&decode_subframe3_orbit(words)?))
+}
 
-    Some(EphemerisPart {
+pub fn ephemeris_part_from_subframe1_clock(clock: &GpsL1CaLnavSubframe1Clock) -> EphemerisPart {
+    EphemerisPart {
+        iodc: Some(clock.iodc),
+        iode: None,
+        week: Some(clock.week),
+        sv_health: Some(clock.sv_health),
+        toe_s: None,
+        toc_s: Some(clock.toc_s),
+        sqrt_a: None,
+        e: None,
+        i0: None,
+        idot: None,
+        omega0: None,
+        omegadot: None,
+        w: None,
+        m0: None,
+        delta_n: None,
+        cuc: None,
+        cus: None,
+        crc: None,
+        crs: None,
+        cic: None,
+        cis: None,
+        af0: Some(clock.af0),
+        af1: Some(clock.af1),
+        af2: Some(clock.af2),
+        tgd: Some(clock.tgd),
+    }
+}
+
+pub fn ephemeris_part_from_subframe2_orbit(orbit: &GpsL1CaLnavSubframe2Orbit) -> EphemerisPart {
+    EphemerisPart {
+        iodc: None,
+        iode: Some(orbit.iode),
+        week: None,
+        sv_health: None,
+        toe_s: Some(orbit.toe_s),
+        toc_s: None,
+        sqrt_a: Some(orbit.sqrt_a),
+        e: Some(orbit.e),
+        i0: None,
+        idot: None,
+        omega0: None,
+        omegadot: None,
+        w: None,
+        m0: Some(orbit.m0),
+        delta_n: Some(orbit.delta_n),
+        cuc: Some(orbit.cuc),
+        cus: Some(orbit.cus),
+        crc: None,
+        crs: Some(orbit.crs),
+        cic: None,
+        cis: None,
+        af0: None,
+        af1: None,
+        af2: None,
+        tgd: None,
+    }
+}
+
+pub fn ephemeris_part_from_subframe3_orbit(orbit: &GpsL1CaLnavSubframe3Orbit) -> EphemerisPart {
+    EphemerisPart {
         iodc: None,
         iode: Some(orbit.iode),
         week: None,
@@ -217,7 +213,7 @@ pub fn parse_subframe3(words: &[GpsWord]) -> Option<EphemerisPart> {
         af1: None,
         af2: None,
         tgd: None,
-    })
+    }
 }
 
 pub fn decode_subframe3_orbit(words: &[GpsWord]) -> Option<GpsL1CaLnavSubframe3Orbit> {
@@ -249,17 +245,7 @@ pub fn decode_subframe3_orbit(words: &[GpsWord]) -> Option<GpsL1CaLnavSubframe3O
     let iode = get_bits(w10, 1, 8) as u8;
     let idot = signed(get_bits(w10, 9, 14), 14) as f64 * 2f64.powi(-43) * std::f64::consts::PI;
 
-    Some(GpsL1CaLnavSubframe3Orbit {
-        iode,
-        cic,
-        omega0,
-        cis,
-        i0,
-        crc,
-        w,
-        omegadot,
-        idot,
-    })
+    Some(GpsL1CaLnavSubframe3Orbit { iode, cic, omega0, cis, i0, crc, w, omegadot, idot })
 }
 
 pub fn get_bits(data: u32, start: usize, len: usize) -> u32 {
@@ -333,6 +319,10 @@ pub struct EphemerisBuilder {
 }
 
 impl EphemerisBuilder {
+    pub fn with_prn(prn: u8) -> Self {
+        Self { prn, ..Default::default() }
+    }
+
     pub fn with_reference_week(prn: u8, reference_week: u32) -> Self {
         Self { prn, reference_week: Some(reference_week), ..Default::default() }
     }
@@ -718,7 +708,9 @@ mod tests {
             (orbit.delta_n - delta_n_raw as f64 * 2f64.powi(-43) * std::f64::consts::PI).abs()
                 < f64::EPSILON
         );
-        assert!((orbit.m0 - m0_raw as f64 * 2f64.powi(-31) * std::f64::consts::PI).abs() < f64::EPSILON);
+        assert!(
+            (orbit.m0 - m0_raw as f64 * 2f64.powi(-31) * std::f64::consts::PI).abs() < f64::EPSILON
+        );
         assert!((orbit.cuc - cuc_raw as f64 * 2f64.powi(-29)).abs() < f64::EPSILON);
         assert!((orbit.e - e_raw as f64 * 2f64.powi(-33)).abs() < f64::EPSILON);
         assert!((orbit.cus - cus_raw as f64 * 2f64.powi(-29)).abs() < f64::EPSILON);
@@ -788,14 +780,21 @@ mod tests {
                 < f64::EPSILON
         );
         assert!((orbit.cis - cis_raw as f64 * 2f64.powi(-29)).abs() < f64::EPSILON);
-        assert!((orbit.i0 - i0_raw as f64 * 2f64.powi(-31) * std::f64::consts::PI).abs() < f64::EPSILON);
+        assert!(
+            (orbit.i0 - i0_raw as f64 * 2f64.powi(-31) * std::f64::consts::PI).abs() < f64::EPSILON
+        );
         assert!((orbit.crc - crc_raw as f64 * 2f64.powi(-5)).abs() < f64::EPSILON);
-        assert!((orbit.w - w_raw as f64 * 2f64.powi(-31) * std::f64::consts::PI).abs() < f64::EPSILON);
+        assert!(
+            (orbit.w - w_raw as f64 * 2f64.powi(-31) * std::f64::consts::PI).abs() < f64::EPSILON
+        );
         assert!(
             (orbit.omegadot - omegadot_raw as f64 * 2f64.powi(-43) * std::f64::consts::PI).abs()
                 < f64::EPSILON
         );
-        assert!((orbit.idot - idot_raw as f64 * 2f64.powi(-43) * std::f64::consts::PI).abs() < f64::EPSILON);
+        assert!(
+            (orbit.idot - idot_raw as f64 * 2f64.powi(-43) * std::f64::consts::PI).abs()
+                < f64::EPSILON
+        );
     }
 
     #[test]

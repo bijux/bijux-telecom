@@ -32,8 +32,9 @@ pub use crate::estimation::ppp::config::{
 pub use crate::formats::lnav_bits::{
     align_gps_l1ca_lnav_from_prompt, align_gps_l1ca_lnav_subframes, bit_sync_from_prompt,
     decode_gps_l1ca_lnav_from_prompt, decode_gps_l1ca_lnav_subframes, decode_how_word,
-    decode_subframes, decode_tlm_word, demodulate_gps_l1ca_navigation_bits, summarize_word_parity,
-    GpsL1CaHowWord, GpsL1CaLnavAlignment, GpsL1CaLnavDecodedStream, GpsL1CaLnavDecodedSubframe,
+    decode_subframes, decode_tlm_word, demodulate_gps_l1ca_navigation_bits,
+    ephemerides_from_decoded_gps_l1ca_lnav, summarize_word_parity, GpsL1CaHowWord,
+    GpsL1CaLnavAlignment, GpsL1CaLnavDecodedStream, GpsL1CaLnavDecodedSubframe,
     GpsL1CaLnavSubframeAlignment, GpsL1CaNavigationBit, GpsL1CaNavigationBits, GpsL1CaTlmWord,
     GpsL1CaWordParitySummary,
 };
@@ -63,8 +64,8 @@ pub use crate::orbits::ephemeris::{CsvEphemerisProvider, Ephemeris, EphemerisPro
 pub use crate::orbits::gps::{
     gps_earth_rotation_correction, gps_ephemeris_age, gps_satellite_clock_correction,
     is_ephemeris_valid, sat_state_gps_l1ca, sat_state_gps_l1ca_at_receive_time,
-    sat_state_gps_l1ca_from_observation, GpsEarthRotationCorrection, GpsEphemeris,
-    GpsEphemerisAge, GpsSatState, GpsSatelliteClockCorrection,
+    sat_state_gps_l1ca_from_observation, GpsEarthRotationCorrection, GpsEphemeris, GpsEphemerisAge,
+    GpsSatState, GpsSatelliteClockCorrection,
 };
 /// Time helpers.
 pub use crate::time::{gps_time_from_utc, gps_week_rollover, normalize_tow};

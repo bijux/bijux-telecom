@@ -4,10 +4,11 @@
 use serde::{Deserialize, Serialize};
 
 use crate::formats::lnav_decode::{
-    decode_subframe1_clock, decode_subframe2_orbit, decode_subframe3_orbit, get_bits,
-    parse_subframe1, parse_subframe2, parse_subframe3, EphemerisBuilder, EphemerisPart,
-    GpsL1CaLnavEphemerisRejection, GpsL1CaLnavSubframe1Clock, GpsL1CaLnavSubframe2Orbit,
-    GpsL1CaLnavSubframe3Orbit,
+    decode_subframe1_clock, decode_subframe2_orbit, decode_subframe3_orbit,
+    ephemeris_part_from_subframe1_clock, ephemeris_part_from_subframe2_orbit,
+    ephemeris_part_from_subframe3_orbit, get_bits, parse_subframe1, parse_subframe2,
+    parse_subframe3, EphemerisBuilder, EphemerisPart, GpsL1CaLnavEphemerisRejection,
+    GpsL1CaLnavSubframe1Clock, GpsL1CaLnavSubframe2Orbit, GpsL1CaLnavSubframe3Orbit,
 };
 use crate::orbits::gps::GpsEphemeris;
 
@@ -103,10 +104,8 @@ pub fn demodulate_gps_l1ca_navigation_bits(prompt_i: &[f32]) -> GpsL1CaNavigatio
         let mut metric = 0.0_f64;
         let mut idx = offset;
         while idx + GPS_L1CA_NAV_BIT_LENGTH_MS <= prompt_i.len() {
-            let sum: f64 = prompt_i[idx..idx + GPS_L1CA_NAV_BIT_LENGTH_MS]
-                .iter()
-                .map(|v| *v as f64)
-                .sum();
+            let sum: f64 =
+                prompt_i[idx..idx + GPS_L1CA_NAV_BIT_LENGTH_MS].iter().map(|v| *v as f64).sum();
             metric += sum.abs();
             idx += GPS_L1CA_NAV_BIT_LENGTH_MS;
         }
@@ -422,7 +421,8 @@ pub fn decode_gps_l1ca_lnav_subframes(
                 return None;
             }
             let how = decode_how_word(&subframe.words[1]);
-            let clock = (how.subframe_id == 1).then(|| decode_subframe1_clock(&subframe.words)).flatten();
+            let clock =
+                (how.subframe_id == 1).then(|| decode_subframe1_clock(&subframe.words)).flatten();
             let orbit_subframe_2 =
                 (how.subframe_id == 2).then(|| decode_subframe2_orbit(&subframe.words)).flatten();
             let orbit_subframe_3 =
@@ -441,51 +441,56 @@ pub fn decode_gps_l1ca_lnav_subframes(
         .collect()
 }
 
-pub fn decode_subframes(bits: &[i8], reference_week: Option<u32>) -> (Vec<GpsEphemeris>, LnavDecodeStats) {
-    let mut ephemerides = Vec::new();
-    let mut parity_ok = 0;
-    let mut parity_total = 0;
-    let mut ephemeris_rejections = Vec::new();
-    let mut builder = reference_week
-        .map(|week| EphemerisBuilder::with_reference_week(0, week))
-        .unwrap_or_default();
-
-    let aligned_subframes = aligned_gps_l1ca_lnav_subframes(bits, 0);
-    for subframe in &aligned_subframes {
-        for word in &subframe.words {
-            parity_total += 1;
-            if word.parity_ok {
-                parity_ok += 1;
-            }
-        }
-        if subframe.words.len() >= 10 {
-            let info = subframe_info_from_how(&subframe.words[1]);
-            if info.subframe_id == 1 || info.subframe_id == 2 || info.subframe_id == 3 {
-                if let Some(part) = parse_ephemeris(&subframe.words, info.subframe_id) {
-                    if let Err(rejection) = builder.merge(part.clone()) {
-                        ephemeris_rejections.push(rejection);
-                        builder.reset();
-                        let _ = builder.merge(part);
-                    } else if let Some(eph) = builder.try_build() {
-                        ephemerides.push(eph);
-                        builder.reset();
-                    }
-                }
-            }
-        }
-    }
-
+pub fn decode_subframes(
+    bits: &[i8],
+    reference_week: Option<u32>,
+) -> (Vec<GpsEphemeris>, LnavDecodeStats) {
+    let decoded_subframes = decode_gps_l1ca_lnav_subframes(bits, 0);
+    let parity_total =
+        decoded_subframes.iter().map(|subframe| subframe.parity.word_count).sum::<usize>();
+    let parity_ok =
+        decoded_subframes.iter().map(|subframe| subframe.parity.passed_word_count).sum::<usize>();
     let parity_pass_rate =
         if parity_total > 0 { parity_ok as f64 / parity_total as f64 } else { 0.0 };
+    let (ephemerides, ephemeris_rejections) =
+        ephemerides_from_decoded_gps_l1ca_lnav(0, &decoded_subframes, reference_week);
 
     (
         ephemerides,
         LnavDecodeStats {
-            preamble_hits: aligned_subframes.len(),
+            preamble_hits: decoded_subframes.len(),
             parity_pass_rate,
             ephemeris_rejections,
         },
     )
+}
+
+pub fn ephemerides_from_decoded_gps_l1ca_lnav(
+    prn: u8,
+    subframes: &[GpsL1CaLnavDecodedSubframe],
+    reference_week: Option<u32>,
+) -> (Vec<GpsEphemeris>, Vec<GpsL1CaLnavEphemerisRejection>) {
+    let mut ephemerides = Vec::new();
+    let mut ephemeris_rejections = Vec::new();
+    let mut builder = reference_week
+        .map(|week| EphemerisBuilder::with_reference_week(prn, week))
+        .unwrap_or_else(|| EphemerisBuilder::with_prn(prn));
+
+    for subframe in subframes {
+        let Some(part) = ephemeris_part_from_decoded_subframe(subframe) else {
+            continue;
+        };
+        if let Err(rejection) = builder.merge(part.clone()) {
+            ephemeris_rejections.push(rejection);
+            builder.reset();
+            let _ = builder.merge(part);
+        } else if let Some(eph) = builder.try_build() {
+            ephemerides.push(eph);
+            builder.reset();
+        }
+    }
+
+    (ephemerides, ephemeris_rejections)
 }
 
 fn subframe_info_from_how(word: &GpsWord) -> SubframeInfo {
@@ -504,6 +509,21 @@ fn parse_ephemeris(words: &[GpsWord], subframe_id: u8) -> Option<EphemerisPart> 
         3 => parse_subframe3(words),
         _ => None,
     }
+}
+
+fn ephemeris_part_from_decoded_subframe(
+    subframe: &GpsL1CaLnavDecodedSubframe,
+) -> Option<EphemerisPart> {
+    if let Some(clock) = &subframe.clock {
+        return Some(ephemeris_part_from_subframe1_clock(clock));
+    }
+    if let Some(orbit) = &subframe.orbit_subframe_2 {
+        return Some(ephemeris_part_from_subframe2_orbit(orbit));
+    }
+    if let Some(orbit) = &subframe.orbit_subframe_3 {
+        return Some(ephemeris_part_from_subframe3_orbit(orbit));
+    }
+    None
 }
 
 fn aligned_gps_l1ca_lnav_subframes(
@@ -586,10 +606,7 @@ mod tests {
     }
 
     fn encode_single_word_signed(data: u32) -> Vec<i8> {
-        encode_word(data, 0, 0)
-            .into_iter()
-            .map(|bit| if bit == 1 { 1 } else { -1 })
-            .collect()
+        encode_word(data, 0, 0).into_iter().map(|bit| if bit == 1 { 1 } else { -1 }).collect()
     }
 
     fn encode_subframe(subframe_id: u8, tow_count: u32) -> Vec<i8> {
@@ -801,6 +818,39 @@ mod tests {
         bits
     }
 
+    fn decoded_subframe_from_hex(hex: &str) -> GpsL1CaLnavDecodedSubframe {
+        let words = crate::formats::lnav_decode::decode_subframe_hex(hex)
+            .expect("subframe words")
+            .into_iter()
+            .map(|data| GpsWord { data, parity_ok: true, d29_star: 0, d30_star: 0 })
+            .collect::<Vec<_>>();
+        let how = decode_how_word(&words[1]);
+        let clock = (how.subframe_id == 1).then(|| decode_subframe1_clock(&words)).flatten();
+        let orbit_subframe_2 =
+            (how.subframe_id == 2).then(|| decode_subframe2_orbit(&words)).flatten();
+        let orbit_subframe_3 =
+            (how.subframe_id == 3).then(|| decode_subframe3_orbit(&words)).flatten();
+        GpsL1CaLnavDecodedSubframe {
+            alignment: GpsL1CaLnavSubframeAlignment {
+                start_bit_index: 0,
+                end_bit_index_exclusive: GPS_L1CA_LNAV_SUBFRAME_LENGTH_BITS,
+                start_prompt_index: 0,
+                end_prompt_index_exclusive: GPS_L1CA_LNAV_SUBFRAME_LENGTH_BITS
+                    * GPS_L1CA_NAV_BIT_LENGTH_MS,
+                inverted: false,
+                word_count: words.len(),
+                parity_ok_count: words.len(),
+            },
+            tlm: decode_tlm_word(&words[0]),
+            clock,
+            orbit_subframe_2,
+            orbit_subframe_3,
+            how,
+            parity: summarize_word_parity(&words),
+            word_parity_ok: vec![true; words.len()],
+        }
+    }
+
     #[test]
     fn aligned_subframes_report_bit_and_prompt_boundaries() {
         let mut bits = vec![-1; 17];
@@ -820,10 +870,7 @@ mod tests {
 
     #[test]
     fn aligned_subframes_normalize_inverted_preamble_polarity() {
-        let bits = encode_subframe(2, 2)
-            .into_iter()
-            .map(|bit| bit * -1)
-            .collect::<Vec<_>>();
+        let bits = encode_subframe(2, 2).into_iter().map(|bit| bit * -1).collect::<Vec<_>>();
 
         let aligned = align_gps_l1ca_lnav_subframes(&bits, 0);
 
@@ -880,10 +927,8 @@ mod tests {
 
     #[test]
     fn decoded_subframes_emit_control_words_and_word_parity() {
-        let decoded = decode_gps_l1ca_lnav_subframes(
-            &encode_subframe_with_how(5, 54_321, true, false),
-            11,
-        );
+        let decoded =
+            decode_gps_l1ca_lnav_subframes(&encode_subframe_with_how(5, 54_321, true, false), 11);
 
         assert_eq!(decoded.len(), 1, "decoded={decoded:?}");
         assert_eq!(decoded[0].alignment.start_prompt_index, 11);
@@ -896,13 +941,18 @@ mod tests {
         assert_eq!(decoded[0].word_parity_ok[0], decoded[0].tlm.parity_ok);
         assert_eq!(decoded[0].word_parity_ok[1], decoded[0].how.parity_ok);
         assert_eq!(decoded[0].parity.word_count, 10);
-        assert_eq!(decoded[0].parity.passed_word_count + decoded[0].parity.failed_word_indexes.len(), 10);
+        assert_eq!(
+            decoded[0].parity.passed_word_count + decoded[0].parity.failed_word_indexes.len(),
+            10
+        );
     }
 
     #[test]
     fn decoded_subframes_emit_subframe_1_clock_fields() {
         let decoded = decode_gps_l1ca_lnav_subframes(
-            &encode_subframe_1_with_clock(3, 987, 0b10_1101, 0x2AB, 21_600, -12, 3_210, -123_456, -20),
+            &encode_subframe_1_with_clock(
+                3, 987, 0b10_1101, 0x2AB, 21_600, -12, 3_210, -123_456, -20,
+            ),
             4,
         );
 
@@ -963,6 +1013,32 @@ mod tests {
     }
 
     #[test]
+    fn decoded_subframes_assemble_broadcast_ephemeris() {
+        let decoded = vec![
+            decoded_subframe_from_hex(
+                "8b0284a1b8a52850000724918b913e21a92dc6ee0b217b0c00ffb72fac04",
+            ),
+            decoded_subframe_from_hex(
+                "8b0284a1b92b21fac82899520ec7b7fb31061550921d09a10d62b87b0c7c",
+            ),
+            decoded_subframe_from_hex(
+                "8b0284a1b9adff7d74db71f3ffaa2840ed6e0fe024cddf1effadc82106c4",
+            ),
+        ];
+        let (ephemerides, rejections) =
+            ephemerides_from_decoded_gps_l1ca_lnav(1, &decoded, Some(2209));
+
+        assert!(rejections.is_empty(), "rejections={rejections:?}");
+        assert_eq!(ephemerides.len(), 1, "ephemerides={ephemerides:?}");
+        assert_eq!(ephemerides[0].sat.prn, 1);
+        assert_eq!(ephemerides[0].week, 2209);
+        assert_eq!(ephemerides[0].iodc, 33);
+        assert_eq!(ephemerides[0].iode, 33);
+        assert!((ephemerides[0].toe_s - 504_000.0).abs() < 16.0);
+        assert!((ephemerides[0].toc_s - 504_000.0).abs() < 1.0);
+    }
+
+    #[test]
     fn decode_subframes_refuse_mixed_issue_numbers() {
         let mut bits = encode_subframe_1_with_clock(1, 42, 0, 0x1A5, 21_600, 0, 0, 0, 0);
         bits.extend(encode_subframe_2_with_orbit(
@@ -999,7 +1075,52 @@ mod tests {
             crate::formats::lnav_decode::GpsL1CaLnavEphemerisRejectionReason::IodeMismatch
         );
         assert_eq!(stats.ephemeris_rejections[0].existing_iode, Some(0xA5));
-        assert_ne!(stats.ephemeris_rejections[0].incoming_iode, stats.ephemeris_rejections[0].existing_iode);
+        assert_ne!(
+            stats.ephemeris_rejections[0].incoming_iode,
+            stats.ephemeris_rejections[0].existing_iode
+        );
+    }
+
+    #[test]
+    fn decoded_subframes_refuse_mixed_issue_numbers() {
+        let mut bits = encode_subframe_1_with_clock(1, 42, 0, 0x1A5, 21_600, 0, 0, 0, 0);
+        bits.extend(encode_subframe_2_with_orbit(
+            2,
+            0xA5,
+            -512,
+            1234,
+            -0x1234_5678,
+            -777,
+            0x0123_4567,
+            911,
+            0x0056_789A,
+            21_600,
+        ));
+        bits.extend(encode_subframe_3_with_orbit(
+            3,
+            0x22,
+            -321,
+            0x2345_6789_u32 as i32,
+            654,
+            -0x1234_0000,
+            2047,
+            0x1112_1314_u32 as i32,
+            -0x34567,
+            0x1234,
+        ));
+
+        let decoded = decode_gps_l1ca_lnav_subframes(&bits, 0);
+        let (ephemerides, rejections) =
+            ephemerides_from_decoded_gps_l1ca_lnav(12, &decoded, Some(2209));
+
+        assert!(ephemerides.is_empty(), "ephemerides={ephemerides:?}");
+        assert_eq!(rejections.len(), 1, "rejections={rejections:?}");
+        assert_eq!(
+            rejections[0].reason,
+            crate::formats::lnav_decode::GpsL1CaLnavEphemerisRejectionReason::IodeMismatch
+        );
+        assert_eq!(rejections[0].existing_iode, Some(0xA5));
+        assert_ne!(rejections[0].incoming_iode, rejections[0].existing_iode);
     }
 
     #[test]
