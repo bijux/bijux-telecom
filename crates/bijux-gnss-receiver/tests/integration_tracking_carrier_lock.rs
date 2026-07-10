@@ -10,11 +10,14 @@ use bijux_gnss_receiver::api::{
     ReceiverPipelineConfig, ReceiverRuntime, TrackingEngine,
 };
 use support::tracking_truth::{
-    first_tracking_lock_epoch_index, post_lock_carrier_frequency_errors_hz,
+    carrier_phase_steps_cycles, first_tracking_lock_epoch_index,
+    post_lock_carrier_frequency_errors_hz, stable_tracking_window,
 };
 
 const CLEAN_SIGNAL_LOCKED_CARRIER_ERROR_MAX_HZ: f64 = 5.0;
 const CLEAN_SIGNAL_MIN_LOCKED_EPOCHS: usize = 5;
+const CLEAN_SIGNAL_MIN_PHASE_STEP_CYCLES: f64 = 0.01;
+const CLEAN_SIGNAL_MAX_PHASE_STEP_CYCLES: f64 = 0.35;
 
 fn assert_clean_signal_carrier_lock(
     epochs: &[bijux_gnss_core::api::TrackEpoch],
@@ -132,5 +135,65 @@ fn tracking_reduces_seeded_carrier_error_and_emits_tracked_phase() {
         epochs.last().map(|epoch| epoch.pll_err.abs()).unwrap_or(f32::INFINITY)
             < epochs[0].pll_err.abs(),
         "tracking did not reduce pll phase error: epochs={epochs:?}"
+    );
+}
+
+#[test]
+fn tracking_keeps_carrier_phase_continuous_after_carrier_lock() {
+    let config = ReceiverPipelineConfig {
+        sampling_freq_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 1_023_000.0,
+        code_length: 1023,
+        channels: 4,
+        early_late_spacing_chips: 0.5,
+        dll_bw_hz: 2.0,
+        pll_bw_hz: 15.0,
+        fll_bw_hz: 0.0,
+        ..ReceiverPipelineConfig::default()
+    };
+    let sat = SatId { constellation: Constellation::Gps, prn: 23 };
+    let true_doppler_hz = 120.0;
+    let frame = generate_l1_ca(
+        &config,
+        SyntheticSignalParams {
+            sat,
+            doppler_hz: true_doppler_hz,
+            code_phase_chips: 0.0,
+            carrier_phase_rad: 0.30,
+            cn0_db_hz: 60.0,
+            data_bit_flip: false,
+        },
+        0xA112_0052,
+        0.020,
+    );
+    let tracking = TrackingEngine::new(config, ReceiverRuntime::default());
+    let tracks =
+        tracking.track_from_acquisition(&frame, &[accepted_acquisition(sat, 80.0, 0)]);
+    let epochs = &tracks.first().expect("track").epochs;
+    let stable_window = stable_tracking_window(epochs, CLEAN_SIGNAL_MIN_LOCKED_EPOCHS);
+    let phase_steps_cycles = carrier_phase_steps_cycles(stable_window);
+
+    assert!(
+        stable_window.len() >= CLEAN_SIGNAL_MIN_LOCKED_EPOCHS,
+        "tracking never produced a sustained carrier-lock window: epochs={epochs:?}"
+    );
+    assert!(
+        phase_steps_cycles
+            .iter()
+            .all(|step_cycles| step_cycles.is_finite()),
+        "carrier phase steps must remain finite after lock: phase_steps_cycles={phase_steps_cycles:?}, epochs={epochs:?}"
+    );
+    assert!(
+        phase_steps_cycles
+            .iter()
+            .all(|step_cycles| *step_cycles >= CLEAN_SIGNAL_MIN_PHASE_STEP_CYCLES),
+        "carrier phase must keep moving forward after lock instead of stalling or wrapping backward: phase_steps_cycles={phase_steps_cycles:?}, epochs={epochs:?}"
+    );
+    assert!(
+        phase_steps_cycles
+            .iter()
+            .all(|step_cycles| *step_cycles <= CLEAN_SIGNAL_MAX_PHASE_STEP_CYCLES),
+        "carrier phase must stay continuous after lock instead of taking slip-sized jumps: phase_steps_cycles={phase_steps_cycles:?}, epochs={epochs:?}"
     );
 }
