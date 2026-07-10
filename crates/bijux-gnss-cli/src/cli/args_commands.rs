@@ -499,6 +499,10 @@ pub(crate) enum NavCommand {
         /// PRN to decode
         #[arg(long)]
         prn: u8,
+
+        /// Full GPS week used to resolve the LNAV 10-bit week field
+        #[arg(long)]
+        reference_week: Option<u32>,
     },
 }
 

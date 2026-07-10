@@ -441,12 +441,14 @@ pub fn decode_gps_l1ca_lnav_subframes(
         .collect()
 }
 
-pub fn decode_subframes(bits: &[i8]) -> (Vec<GpsEphemeris>, LnavDecodeStats) {
+pub fn decode_subframes(bits: &[i8], reference_week: Option<u32>) -> (Vec<GpsEphemeris>, LnavDecodeStats) {
     let mut ephemerides = Vec::new();
     let mut parity_ok = 0;
     let mut parity_total = 0;
     let mut ephemeris_rejections = Vec::new();
-    let mut builder = EphemerisBuilder::default();
+    let mut builder = reference_week
+        .map(|week| EphemerisBuilder::with_reference_week(0, week))
+        .unwrap_or_default();
 
     let aligned_subframes = aligned_gps_l1ca_lnav_subframes(bits, 0);
     for subframe in &aligned_subframes {
@@ -988,7 +990,7 @@ mod tests {
             0x1234,
         ));
 
-        let (ephemerides, stats) = decode_subframes(&bits);
+        let (ephemerides, stats) = decode_subframes(&bits, None);
 
         assert!(ephemerides.is_empty(), "ephemerides={ephemerides:?}");
         assert_eq!(stats.ephemeris_rejections.len(), 1, "stats={stats:?}");

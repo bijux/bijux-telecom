@@ -109,13 +109,14 @@ fn handle_nav(command: GnssCommand) -> Result<()> {
     let dataset = load_dataset(common)?;
 
     match command {
-                    NavCommand::Decode { common, track, prn } => {
+                    NavCommand::Decode { common, track, prn, reference_week } => {
                         let _ = runtime_config_from_env(&common, None);
                         let rows = read_tracking_dump(&track)?;
                         let target = SatId {
                             constellation: Constellation::Gps,
                             prn,
                         };
+                        let reference_week = nav_reference_week(reference_week, dataset.as_ref())?;
                         let mut sorted: Vec<_> = rows.into_iter().filter(|r| r.sat == target).collect();
                         sorted.sort_by_key(|r| r.epoch_idx);
                         let prompt = sorted.iter().map(|row| row.prompt_i).collect::<Vec<_>>();
@@ -136,7 +137,7 @@ fn handle_nav(command: GnssCommand) -> Result<()> {
                         let bit_signs =
                             demodulation.bits.iter().map(|bit| bit.sign).collect::<Vec<_>>();
                         let (mut ephs, stats) =
-                            bijux_gnss_infra::api::nav::decode_subframes(&bit_signs);
+                            bijux_gnss_infra::api::nav::decode_subframes(&bit_signs, reference_week);
                         for eph in ephs.iter_mut() {
                             eph.sat = target;
                         }
@@ -164,6 +165,33 @@ fn handle_nav(command: GnssCommand) -> Result<()> {
                 }
 
     Ok(())
+}
+
+fn nav_reference_week(
+    explicit_reference_week: Option<u32>,
+    dataset: Option<&bijux_gnss_infra::api::DatasetEntry>,
+) -> Result<Option<u32>> {
+    if let Some(reference_week) = explicit_reference_week {
+        return Ok(Some(reference_week));
+    }
+
+    let Some(capture_start_utc) = dataset.and_then(|entry| entry.capture_start_utc.as_deref()) else {
+        return Ok(None);
+    };
+
+    Ok(Some(reference_week_from_capture_start_utc(capture_start_utc)?))
+}
+
+fn reference_week_from_capture_start_utc(capture_start_utc: &str) -> Result<u32> {
+    let utc = time::OffsetDateTime::parse(
+        capture_start_utc,
+        &time::format_description::well_known::Rfc3339,
+    )
+    .map_err(|err| eyre!("failed to parse capture_start_utc {capture_start_utc:?}: {err}"))?;
+    let utc = bijux_gnss_infra::api::core::UtcTime {
+        unix_s: utc.unix_timestamp_nanos() as f64 / 1_000_000_000.0,
+    };
+    Ok(bijux_gnss_infra::api::nav::gps_time_from_utc(utc).week)
 }
 
 fn handle_rtk(command: GnssCommand) -> Result<()> {
@@ -3314,8 +3342,8 @@ fn handle_doctor(command: GnssCommand) -> Result<()> {
 mod diagnostics_tests {
     use super::{
         advanced_gate_report, artifact_inventory_report, compare_run_evidence, explain_run_scope,
-        export_bundle_report, machine_catalog_report, medium_gate_report, operator_status_report,
-        replay_audit_report, verify_repro_bundle, AdvancedGateMode,
+        export_bundle_report, machine_catalog_report, medium_gate_report, nav_reference_week,
+        operator_status_report, replay_audit_report, verify_repro_bundle, AdvancedGateMode,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -3347,6 +3375,40 @@ mod diagnostics_tests {
         fs::write(base.join("artifacts").join("obs.jsonl"), "{\"payload\":{\"artifact_id\":\"obs-1\"}}\n")
             .expect("artifact write");
         base
+    }
+
+    fn dataset_entry_with_capture_start(capture_start_utc: &str) -> bijux_gnss_infra::api::DatasetEntry {
+        bijux_gnss_infra::api::DatasetEntry {
+            id: "demo".to_string(),
+            path: "datasets/demo.iq16".to_string(),
+            format: bijux_gnss_infra::api::signal::IqSampleFormat::Iq16Le,
+            sample_rate_hz: Some(4_092_000.0),
+            intermediate_freq_hz: Some(0.0),
+            capture_start_utc: Some(capture_start_utc.to_string()),
+            expected_sats: vec![1],
+            expected_region: None,
+            expected_time_utc: None,
+            sidecar: None,
+            recorded_capture: None,
+        }
+    }
+
+    #[test]
+    fn nav_reference_week_prefers_explicit_value() {
+        let dataset = dataset_entry_with_capture_start("2022-05-08T00:00:00Z");
+
+        let reference_week = nav_reference_week(Some(2209), Some(&dataset)).expect("reference week");
+
+        assert_eq!(reference_week, Some(2209));
+    }
+
+    #[test]
+    fn nav_reference_week_derives_full_week_from_dataset_capture_time() {
+        let dataset = dataset_entry_with_capture_start("2022-05-08T00:00:00Z");
+
+        let reference_week = nav_reference_week(None, Some(&dataset)).expect("reference week");
+
+        assert_eq!(reference_week, Some(2209));
     }
 
     #[test]
