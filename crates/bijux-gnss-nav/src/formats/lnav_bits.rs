@@ -4,8 +4,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::formats::lnav_decode::{
-    decode_subframe1_clock, get_bits, parse_subframe1, parse_subframe2, parse_subframe3,
-    EphemerisBuilder, EphemerisPart, GpsL1CaLnavSubframe1Clock,
+    decode_subframe1_clock, decode_subframe2_orbit, decode_subframe3_orbit, get_bits,
+    parse_subframe1, parse_subframe2, parse_subframe3, EphemerisBuilder, EphemerisPart,
+    GpsL1CaLnavSubframe1Clock, GpsL1CaLnavSubframe2Orbit, GpsL1CaLnavSubframe3Orbit,
 };
 use crate::orbits::gps::GpsEphemeris;
 
@@ -81,6 +82,8 @@ pub struct GpsL1CaLnavDecodedSubframe {
     pub tlm: GpsL1CaTlmWord,
     pub how: GpsL1CaHowWord,
     pub clock: Option<GpsL1CaLnavSubframe1Clock>,
+    pub orbit_subframe_2: Option<GpsL1CaLnavSubframe2Orbit>,
+    pub orbit_subframe_3: Option<GpsL1CaLnavSubframe3Orbit>,
     pub parity: GpsL1CaWordParitySummary,
     pub word_parity_ok: Vec<bool>,
 }
@@ -417,11 +420,16 @@ pub fn decode_gps_l1ca_lnav_subframes(
                 return None;
             }
             let how = decode_how_word(&subframe.words[1]);
+            let clock = (how.subframe_id == 1).then(|| decode_subframe1_clock(&subframe.words)).flatten();
+            let orbit_subframe_2 =
+                (how.subframe_id == 2).then(|| decode_subframe2_orbit(&subframe.words)).flatten();
+            let orbit_subframe_3 =
+                (how.subframe_id == 3).then(|| decode_subframe3_orbit(&subframe.words)).flatten();
             Some(GpsL1CaLnavDecodedSubframe {
                 tlm: decode_tlm_word(&subframe.words[0]),
-                clock: (how.subframe_id == 1)
-                    .then(|| decode_subframe1_clock(&subframe.words))
-                    .flatten(),
+                clock,
+                orbit_subframe_2,
+                orbit_subframe_3,
                 how,
                 parity: summarize_word_parity(&subframe.words),
                 word_parity_ok: subframe.words.iter().map(|word| word.parity_ok).collect(),
