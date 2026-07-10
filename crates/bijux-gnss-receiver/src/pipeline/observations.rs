@@ -386,7 +386,24 @@ pub fn observations_from_tracking_results_with_gps_anchor(
                 manifest: None,
             });
             entry.discontinuity |= epoch.discontinuity;
+            let time_mismatch_reasons =
+                grouped_epoch_time_mismatch_reasons(entry, &epoch).unwrap_or_default();
+            let incoming_epoch_idx = epoch.epoch_idx;
+            let incoming_source_time = epoch.source_time;
+            let incoming_t_rx_s = epoch.t_rx_s;
             for mut sat in epoch.sats {
+                if !time_mismatch_reasons.is_empty() {
+                    mark_grouped_epoch_time_mismatch(&mut sat, &time_mismatch_reasons);
+                    diagnostics.push(grouped_epoch_time_mismatch_diagnostic(
+                        entry,
+                        incoming_epoch_idx,
+                        incoming_source_time,
+                        incoming_t_rx_s,
+                        &sat,
+                    ));
+                    entry.sats.push(sat);
+                    continue;
+                }
                 let lambda_m = SPEED_OF_LIGHT_MPS / sat.metadata.signal.carrier_hz.value();
                 let state = hatch.entry(sat.signal_id).or_default();
                 if !sat.lock_flags.code_lock {
@@ -1137,6 +1154,82 @@ fn push_observation_reject_reason(reasons: &mut Vec<String>, reason: &str) {
     reasons.sort();
 }
 
+fn grouped_epoch_time_mismatch_reasons(
+    grouped: &ObsEpoch,
+    incoming: &ObsEpoch,
+) -> Option<Vec<&'static str>> {
+    if grouped.sats.is_empty() {
+        return None;
+    }
+
+    let mut reasons = Vec::new();
+    let tolerance_s =
+        receiver_time_tolerance_s(grouped.source_time.sample_rate_hz.max(incoming.source_time.sample_rate_hz));
+
+    if (grouped.t_rx_s.0 - incoming.t_rx_s.0).abs() > tolerance_s {
+        reasons.push("receiver_time_mismatch");
+    }
+    if grouped.source_time.sample_index != incoming.source_time.sample_index
+        || (grouped.source_time.sample_rate_hz - incoming.source_time.sample_rate_hz).abs()
+            > f64::EPSILON
+    {
+        reasons.push("receiver_sample_trace_mismatch");
+    }
+    if grouped.gps_week != incoming.gps_week
+        || !optional_seconds_match(grouped.tow_s, incoming.tow_s, tolerance_s)
+    {
+        reasons.push("gps_receive_time_mismatch");
+    }
+
+    (!reasons.is_empty()).then_some(reasons)
+}
+
+fn receiver_time_tolerance_s(sample_rate_hz: f64) -> f64 {
+    if sample_rate_hz.is_finite() && sample_rate_hz > 0.0 {
+        (0.5 / sample_rate_hz).max(1.0e-12)
+    } else {
+        1.0e-12
+    }
+}
+
+fn optional_seconds_match(lhs: Option<Seconds>, rhs: Option<Seconds>, tolerance_s: f64) -> bool {
+    match (lhs, rhs) {
+        (Some(lhs), Some(rhs)) => (lhs.0 - rhs.0).abs() <= tolerance_s,
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+fn mark_grouped_epoch_time_mismatch(sat: &mut ObsSatellite, reasons: &[&str]) {
+    sat.observation_status = ObservationStatus::Inconsistent;
+    for reason in reasons {
+        push_observation_reject_reason(&mut sat.observation_reject_reasons, reason);
+    }
+}
+
+fn grouped_epoch_time_mismatch_diagnostic(
+    grouped: &ObsEpoch,
+    incoming_epoch_idx: u64,
+    incoming_source_time: ReceiverSampleTrace,
+    incoming_t_rx_s: Seconds,
+    sat: &ObsSatellite,
+) -> DiagnosticEvent {
+    DiagnosticEvent::new(
+        DiagnosticSeverity::Error,
+        "OBS_GROUPED_RECEIVER_TIME_MISMATCH",
+        format!(
+            "satellite {} sample trace {}@{}s does not match grouped epoch {}@{}s",
+            sat.signal_id.sat.prn,
+            incoming_source_time.sample_index,
+            incoming_t_rx_s.0,
+            grouped.source_time.sample_index,
+            grouped.t_rx_s.0
+        ),
+    )
+    .with_context("epoch", incoming_epoch_idx.to_string())
+    .with_context("stage", "observations")
+}
+
 fn tracking_time_tag(epoch: &TrackEpoch, last_locked_sample: &mut Option<u64>) -> (String, u64) {
     if epoch.lock || epoch.lock_state == "tracking" || epoch.lock_state == "acquired" {
         *last_locked_sample = Some(epoch.sample_index);
@@ -1828,6 +1921,42 @@ mod tests {
         assert_eq!(epoch.t_rx_s, epoch.source_time.receiver_time_s);
         assert_eq!(manifest.source_sample_index, expected_sample_index);
         assert_eq!(manifest.source_time, epoch.source_time);
+    }
+
+    #[test]
+    fn grouped_observation_epochs_reject_mixed_receiver_times() {
+        let config = ReceiverPipelineConfig::default();
+        let expected_sample_index = epoch_sample_index(&config, 70);
+        let shifted_sample_index = epoch_sample_index(&config, 71);
+        let mut shifted_epoch = make_tracking_epoch(8, &config, 70, 0.0);
+        shifted_epoch.sample_index = shifted_sample_index;
+        shifted_epoch.source_time =
+            ReceiverSampleTrace::from_sample_index(shifted_sample_index, config.sampling_freq_hz);
+
+        let report = observations_from_tracking_results(
+            &config,
+            &[make_track(3, &config), track_from_epoch(shifted_epoch)],
+            10,
+        );
+        let epoch = report.output.iter().find(|epoch| epoch.epoch_idx == 70).expect("epoch");
+        let shifted_sat = epoch.sats.iter().find(|sat| sat.signal_id.sat.prn == 8).expect("sat");
+
+        assert_eq!(epoch.source_time.sample_index, expected_sample_index);
+        assert_eq!(epoch.decision, ObservationEpochDecision::Rejected);
+        assert_eq!(epoch.decision_reason.as_deref(), Some("inconsistent_observable"));
+        assert_eq!(shifted_sat.observation_status, ObservationStatus::Inconsistent);
+        assert!(shifted_sat
+            .observation_reject_reasons
+            .iter()
+            .any(|reason| reason == "receiver_time_mismatch"));
+        assert!(shifted_sat
+            .observation_reject_reasons
+            .iter()
+            .any(|reason| reason == "receiver_sample_trace_mismatch"));
+        assert!(report
+            .events
+            .iter()
+            .any(|event| event.code == "OBS_GROUPED_RECEIVER_TIME_MISMATCH"));
     }
 
     #[test]
