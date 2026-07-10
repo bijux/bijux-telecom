@@ -85,6 +85,32 @@ Invariants:
 - code-carrier divergence and geometry-free cycle-slip reasons only appear on rows whose
   `metadata.pseudorange_model` is `tracked_code_phase_alignment`
 
+### observation residuals (ObservationResidualEpochV1)
+Purpose: per-epoch observation residual audit aligned to emitted observation epochs.
+Files: `observation_residuals.jsonl`
+Units: meters, cycles, hertz, dB-Hz.
+Invariants:
+- every residual row shares the observation `artifact_id`, `epoch_id`, `epoch_idx`, and
+  `source_time` of the grouped `obs.jsonl` epoch it audits
+- every residual satellite row records the raw upstream measurement that entered the observation
+  layer, the corrected measurement emitted by the observation layer, and the satellite
+  accept/reject surface (`accepted`, `observation_status`, `observation_reject_reasons`)
+- every residual value records `expected`, `residual`, and `reference_model` when the observation
+  layer has a real reference available; otherwise those fields remain null instead of inventing a
+  placeholder truth source
+- pseudorange residual rows use the raw pre-Hatch code measurement as `raw`, the emitted
+  pseudorange as `corrected`, and the anchored signal-travel-time range as `expected` when the
+  dataset provides GPS receive-time anchoring
+- carrier-phase residual rows use the tracked carrier phase as `raw`, the emitted carrier phase as
+  `corrected`, and a previous-epoch continuous-arc prediction as `expected` only for rows whose
+  observation metadata declares `carrier_phase_continuity = continuous`
+- Doppler residual rows preserve the tracking-backed observation Doppler as both the raw source and
+  the expected reference, so any future observation-layer Doppler correction becomes visible as a
+  non-zero residual instead of being hidden
+- C/N0 residual rows preserve the tracking-backed C/N0 as both the raw source and the expected
+  reference, while `sigma` comes from tracking uncertainty when available
+- `sigma` values are non-negative and use the same observation variances exposed in `obs.jsonl`
+
 ### track (TrackEpochV1)
 Purpose: per-epoch tracking outputs.
 Files: `track.jsonl`

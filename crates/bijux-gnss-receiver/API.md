@@ -18,11 +18,14 @@ I/O + ports
 Engines + helpers
 - `Receiver`: top-level receiver entrypoint (constructed with `ReceiverPipelineConfig` + `ReceiverRuntimeConfig`).
 - `ReceiverEngine`: trait for a receiver pipeline runner.
-- `RunArtifacts`: artifacts captured during a run.
+- `RunArtifacts`: artifacts captured during a run, including observation residual reports.
 - `AcquisitionEngine`: acquisition engine implementation.
 - `TrackingEngine`: tracking engine implementation.
 - `TrackingResult`, `Channel`, `ChannelState`, `ChannelEvent`, `CorrelatorOutput`.
 - `observations_from_tracking`, `observations_from_tracking_results`.
+- `observation_artifacts_from_tracking_results`, `observation_residuals_from_tracking_results`.
+- `ObservationPipelineArtifacts`, `ObservationResidualEpochReport`, `ObservationResidualSatellite`,
+  `ObservationResidualValue`.
 
 Navigation (feature-gated: `nav`)
 - `NavigationEngine`, `Navigation`, `EkfState`.
