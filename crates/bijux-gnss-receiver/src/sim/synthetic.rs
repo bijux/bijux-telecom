@@ -802,8 +802,11 @@ pub fn validate_truth_guided_cn0(
         .satellites
         .iter()
         .map(|sat_truth| {
-            let isolated_frame =
-                regenerate_isolated_scaled_satellite_frame(config, frame, truth, sat_truth);
+            // Measure the coherent signal deterministically and combine it with the known
+            // synthetic noise floor from truth metadata to avoid replay-noise bias in CN0 checks.
+            let isolated_frame = regenerate_isolated_scaled_satellite_signal_only_frame(
+                config, frame, truth, sat_truth,
+            );
             let mut cn0_values = Vec::with_capacity(measured_epochs);
             for epoch_index in 0..measured_epochs {
                 let start = epoch_index * coherent_samples_per_epoch;
@@ -2009,24 +2012,6 @@ fn measure_cn0_from_prompt_with_known_noise(
     let cn0_linear =
         signal_power_per_sample * sample_rate_hz / scaled_noise_power_per_complex_sample;
     10.0 * cn0_linear.max(1e-12).log10()
-}
-
-fn regenerate_isolated_scaled_satellite_frame(
-    config: &ReceiverPipelineConfig,
-    measured_frame: &SamplesFrame,
-    truth: &SyntheticIqTruthBundle,
-    sat_truth: &SyntheticSatelliteTruth,
-) -> SamplesFrame {
-    let isolated_frame = generate_l1_ca_multi(
-        config,
-        &isolated_satellite_scenario(measured_frame, truth, sat_truth),
-    );
-    let iq = isolated_frame
-        .iq
-        .iter()
-        .map(|sample| *sample * truth.output_scale_applied)
-        .collect::<Vec<_>>();
-    SamplesFrame::new(measured_frame.t0, measured_frame.dt_s, iq)
 }
 
 fn regenerate_isolated_scaled_satellite_signal_only_frame(
