@@ -472,7 +472,7 @@ pub fn decode_rawephem_hex(prn: u8, sub1: &str, sub2: &str, sub3: &str) -> Optio
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_subframe1_clock, signed};
+    use super::{decode_subframe1_clock, decode_subframe2_orbit, decode_subframe3_orbit, signed};
     use crate::formats::lnav_bits::GpsWord;
 
     fn set_bits(data: &mut u32, start: usize, len: usize, value: u32) {
@@ -546,5 +546,146 @@ mod tests {
         assert!((clock.af2 - af2_raw as f64 * 2f64.powi(-55)).abs() < f64::EPSILON);
         assert!((clock.af1 - af1_raw as f64 * 2f64.powi(-43)).abs() < f64::EPSILON);
         assert!((clock.af0 - af0_raw as f64 * 2f64.powi(-31)).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn subframe_2_orbit_decodes_ephemeris_fields() {
+        let iode = 0xA5_u8;
+        let crs_raw = -512_i32;
+        let delta_n_raw = 1234_i32;
+        let m0_raw = -0x1234_5678_i32;
+        let cuc_raw = -777_i32;
+        let e_raw = 0x0123_4567_u32;
+        let cus_raw = 911_i32;
+        let sqrt_a_raw = 0x0056_789A_u32;
+        let toe_raw = 21_600_u32;
+
+        let mut w3 = 0_u32;
+        set_bits(&mut w3, 1, 8, iode as u32);
+        set_bits(&mut w3, 9, 16, encode_signed(crs_raw, 16));
+
+        let mut w4 = 0_u32;
+        set_bits(&mut w4, 1, 16, encode_signed(delta_n_raw, 16));
+        set_bits(&mut w4, 17, 8, ((m0_raw as u32) >> 24) & 0xFF);
+
+        let mut w5 = 0_u32;
+        set_bits(&mut w5, 1, 24, (m0_raw as u32) & 0xFF_FFFF);
+
+        let mut w6 = 0_u32;
+        set_bits(&mut w6, 1, 16, encode_signed(cuc_raw, 16));
+        set_bits(&mut w6, 17, 8, (e_raw >> 24) & 0xFF);
+
+        let mut w7 = 0_u32;
+        set_bits(&mut w7, 1, 24, e_raw & 0xFF_FFFF);
+
+        let mut w8 = 0_u32;
+        set_bits(&mut w8, 1, 16, encode_signed(cus_raw, 16));
+        set_bits(&mut w8, 17, 8, (sqrt_a_raw >> 24) & 0xFF);
+
+        let mut w9 = 0_u32;
+        set_bits(&mut w9, 1, 24, sqrt_a_raw & 0xFF_FFFF);
+
+        let mut w10 = 0_u32;
+        set_bits(&mut w10, 1, 16, toe_raw);
+
+        let words = vec![
+            GpsWord { data: 0, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: 0, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: w3, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: w4, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: w5, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: w6, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: w7, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: w8, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: w9, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: w10, parity_ok: true, d29_star: 0, d30_star: 0 },
+        ];
+
+        let orbit = decode_subframe2_orbit(&words).expect("subframe 2 orbit");
+
+        assert_eq!(orbit.iode, iode);
+        assert!((orbit.crs - crs_raw as f64 * 2f64.powi(-5)).abs() < f64::EPSILON);
+        assert!(
+            (orbit.delta_n - delta_n_raw as f64 * 2f64.powi(-43) * std::f64::consts::PI).abs()
+                < f64::EPSILON
+        );
+        assert!((orbit.m0 - m0_raw as f64 * 2f64.powi(-31) * std::f64::consts::PI).abs() < f64::EPSILON);
+        assert!((orbit.cuc - cuc_raw as f64 * 2f64.powi(-29)).abs() < f64::EPSILON);
+        assert!((orbit.e - e_raw as f64 * 2f64.powi(-33)).abs() < f64::EPSILON);
+        assert!((orbit.cus - cus_raw as f64 * 2f64.powi(-29)).abs() < f64::EPSILON);
+        assert!((orbit.sqrt_a - sqrt_a_raw as f64 * 2f64.powi(-19)).abs() < f64::EPSILON);
+        assert!((orbit.toe_s - toe_raw as f64 * 16.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn subframe_3_orbit_decodes_ephemeris_fields() {
+        let iode = 0x5A_u8;
+        let cic_raw = -321_i32;
+        let omega0_raw = 0x2345_6789_u32 as i32;
+        let cis_raw = 654_i32;
+        let i0_raw = -0x1234_0000_i32;
+        let crc_raw = 2047_i32;
+        let w_raw = 0x1112_1314_u32 as i32;
+        let omegadot_raw = -0x34567_i32;
+        let idot_raw = 0x1234_i32;
+
+        let mut w3 = 0_u32;
+        set_bits(&mut w3, 1, 16, encode_signed(cic_raw, 16));
+        set_bits(&mut w3, 17, 8, ((omega0_raw as u32) >> 24) & 0xFF);
+
+        let mut w4 = 0_u32;
+        set_bits(&mut w4, 1, 24, (omega0_raw as u32) & 0xFF_FFFF);
+
+        let mut w5 = 0_u32;
+        set_bits(&mut w5, 1, 16, encode_signed(cis_raw, 16));
+        set_bits(&mut w5, 17, 8, ((i0_raw as u32) >> 24) & 0xFF);
+
+        let mut w6 = 0_u32;
+        set_bits(&mut w6, 1, 24, (i0_raw as u32) & 0xFF_FFFF);
+
+        let mut w7 = 0_u32;
+        set_bits(&mut w7, 1, 16, encode_signed(crc_raw, 16));
+        set_bits(&mut w7, 17, 8, ((w_raw as u32) >> 24) & 0xFF);
+
+        let mut w8 = 0_u32;
+        set_bits(&mut w8, 1, 24, (w_raw as u32) & 0xFF_FFFF);
+
+        let mut w9 = 0_u32;
+        set_bits(&mut w9, 1, 24, encode_signed(omegadot_raw, 24));
+
+        let mut w10 = 0_u32;
+        set_bits(&mut w10, 1, 8, iode as u32);
+        set_bits(&mut w10, 9, 14, encode_signed(idot_raw, 14));
+
+        let words = vec![
+            GpsWord { data: 0, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: 0, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: w3, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: w4, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: w5, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: w6, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: w7, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: w8, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: w9, parity_ok: true, d29_star: 0, d30_star: 0 },
+            GpsWord { data: w10, parity_ok: true, d29_star: 0, d30_star: 0 },
+        ];
+
+        let orbit = decode_subframe3_orbit(&words).expect("subframe 3 orbit");
+
+        assert_eq!(orbit.iode, iode);
+        assert!((orbit.cic - cic_raw as f64 * 2f64.powi(-29)).abs() < f64::EPSILON);
+        assert!(
+            (orbit.omega0 - omega0_raw as f64 * 2f64.powi(-31) * std::f64::consts::PI).abs()
+                < f64::EPSILON
+        );
+        assert!((orbit.cis - cis_raw as f64 * 2f64.powi(-29)).abs() < f64::EPSILON);
+        assert!((orbit.i0 - i0_raw as f64 * 2f64.powi(-31) * std::f64::consts::PI).abs() < f64::EPSILON);
+        assert!((orbit.crc - crc_raw as f64 * 2f64.powi(-5)).abs() < f64::EPSILON);
+        assert!((orbit.w - w_raw as f64 * 2f64.powi(-31) * std::f64::consts::PI).abs() < f64::EPSILON);
+        assert!(
+            (orbit.omegadot - omegadot_raw as f64 * 2f64.powi(-43) * std::f64::consts::PI).abs()
+                < f64::EPSILON
+        );
+        assert!((orbit.idot - idot_raw as f64 * 2f64.powi(-43) * std::f64::consts::PI).abs() < f64::EPSILON);
     }
 }
