@@ -77,6 +77,7 @@ Purpose: decoded ephemerides.
 Files: `ephemeris.json`
 Invariants:
 - ephemeris fields present for decoded PRNs
+- `payload[*].week` is the resolved full GPS week, not the 10-bit LNAV broadcast field
 
 ### nav decode report
 Purpose: navigation-bit demodulation and LNAV subframe alignment from tracking prompt history.
@@ -113,6 +114,7 @@ The report includes:
 - `decoded_subframes[*].clock`
   Present when `decoded_subframes[*].how.subframe_id == 1`.
 - `decoded_subframes[*].clock.week`
+  Raw 10-bit LNAV week field before rollover resolution.
 - `decoded_subframes[*].clock.sv_health`
 - `decoded_subframes[*].clock.iodc`
 - `decoded_subframes[*].clock.toc_s`

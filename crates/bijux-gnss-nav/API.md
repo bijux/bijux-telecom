@@ -4,6 +4,8 @@ Stable public API surface exposed via `crates/bijux-gnss-nav/src/api.rs`.
 
 Navigation models
 - `GpsEphemerisV1`, `GpsEphemeris`, `NavClockModel`.
+- `GpsEphemeris.week` is the resolved full GPS week.
+- LNAV ephemeris decoders require explicit reference-week context to expand the 10-bit broadcast week.
 - Measurement models: `PseudorangeMeasurement` and related helpers.
 
 State + math
