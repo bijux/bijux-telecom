@@ -32,6 +32,13 @@ sanity checks). Any violation must emit diagnostics and mark the measurement as 
 - Receiver contract: absolute code pseudorange is emitted when tracking carries a resolved
   `SignalDelayAlignment` whole-code-period count. If alignment is absent, the observation remains a
   receiver-epoch fallback estimate and must not emit `ObsSignalTiming`.
+- Hatch smoothing contract: observation metadata declares `smoothing_window`,
+  `smoothing_age`, and `smoothing_resets` for code smoothing state. `smoothing_age = 0` means
+  the epoch was not eligible for smoothing, typically because tracking lost code lock.
+- Reset contract: Hatch smoothing must not cross a cycle-slip or unlock boundary. Explicit
+  tracking slips, observation-layer divergence slips, and geometry-free slip triggers reset the
+  smoothing state and restart the current epoch from the raw pseudorange with `smoothing_age = 1`.
+  Unlock epochs do not seed a new smoothing arc; they emit `smoothing_age = 0` until lock resumes.
 
 ## Carrier Phase
 - Model: `φ = (ρ + c(δt_r - δt_s) + T - I) / λ + N + ε`
