@@ -367,9 +367,43 @@ pub fn observations_from_tracking_results_with_gps_anchor(
                     initialized: false,
                 });
                 let window = hatch_window.max(1) as f64;
-                if sat.lock_flags.cycle_slip || !sat.lock_flags.code_lock {
+                if !sat.lock_flags.code_lock {
+                    if state.initialized {
+                        state.resets = state.resets.saturating_add(1);
+                    }
                     state.initialized = false;
-                    state.resets = state.resets.saturating_add(1);
+                    state.count = 0;
+                    state.age = 0;
+                    slips.remove(&sat.signal_id);
+                    sat.metadata.smoothing_window = hatch_window;
+                    sat.metadata.smoothing_age = 0;
+                    sat.metadata.smoothing_resets = state.resets;
+                    let tracking_uncertainty = sat.metadata.tracking_uncertainty.clone();
+                    let pseudorange_sigma_m = sat.pseudorange_var_m2.sqrt();
+                    let tracking_jitter_m = tracking_uncertainty
+                        .as_ref()
+                        .map(|uncertainty| {
+                            uncertainty.code_phase_samples * SPEED_OF_LIGHT_MPS
+                                / config.sampling_freq_hz
+                        })
+                        .unwrap_or_else(|| (1.0 / sat.cn0_dbhz.max(1.0)) * 10.0);
+                    let thermal_noise_m =
+                        tracking_uncertainty.as_ref().map(|_| pseudorange_sigma_m).unwrap_or(1.0);
+                    sat.error_model = Some(bijux_gnss_core::api::MeasurementErrorModel {
+                        thermal_noise_m: Meters(thermal_noise_m),
+                        tracking_jitter_m: Meters(tracking_jitter_m),
+                        multipath_proxy_m: Meters(0.0),
+                        clock_error_m: Meters(0.0),
+                    });
+                    entry.sats.push(sat);
+                    continue;
+                }
+                if sat.lock_flags.cycle_slip {
+                    if state.initialized {
+                        state.resets = state.resets.saturating_add(1);
+                    }
+                    state.initialized = false;
+                    state.count = 0;
                     state.age = 0;
                     slips.remove(&sat.signal_id);
                 }
@@ -1013,6 +1047,23 @@ mod tests {
         }
     }
 
+    fn aligned_pseudorange_m(
+        config: &ReceiverPipelineConfig,
+        whole_code_periods: u64,
+        code_phase_samples: f64,
+    ) -> f64 {
+        let code_phase_chips =
+            code_phase_samples / (samples_per_code(
+                config.sampling_freq_hz,
+                config.code_freq_basis_hz,
+                config.code_length,
+            ) as f64
+                / config.code_length as f64);
+        ((whole_code_periods as f64 * config.code_length as f64) + code_phase_chips)
+            / config.code_freq_basis_hz
+            * SPEED_OF_LIGHT_MPS
+    }
+
     fn epoch_sample_index(config: &ReceiverPipelineConfig, epoch_idx: u64) -> u64 {
         epoch_idx
             * samples_per_code(
@@ -1328,6 +1379,58 @@ mod tests {
             vec![1, 2, 3]
         );
         assert!(sats.iter().all(|sat| sat.metadata.smoothing_resets == 0));
+    }
+
+    #[test]
+    fn observations_leave_hatch_smoothing_uninitialized_during_unlock() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 1_023_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let carrier_hz = crate::pipeline::doppler::carrier_hz_from_doppler_hz(0.0, 125.0);
+        let unlocked_epoch = TrackEpoch {
+            lock: false,
+            pll_lock: false,
+            dll_lock: false,
+            fll_lock: false,
+            lock_state: "lost".to_string(),
+            lock_state_reason: Some("prompt_power_drop".to_string()),
+            ..make_tracking_epoch_with_alignment(19, &config, 71, carrier_hz, 10.125, 68, 0.0)
+        };
+        let track = TrackingResult {
+            sat: SatId { constellation: Constellation::Gps, prn: 19 },
+            carrier_hz,
+            code_phase_samples: 0.0,
+            acquisition_hypothesis: "accepted".to_string(),
+            acquisition_score: 1.0,
+            acquisition_code_phase_samples: 0,
+            acquisition_carrier_hz: carrier_hz,
+            acq_to_track_state: "accepted".to_string(),
+            epochs: vec![
+                make_tracking_epoch_with_alignment(19, &config, 70, carrier_hz, 10.0, 68, 0.0),
+                unlocked_epoch,
+                make_tracking_epoch_with_alignment(19, &config, 72, carrier_hz, 10.250, 68, 0.0),
+            ],
+            transitions: Vec::new(),
+        };
+
+        let report = observations_from_tracking_results(&config, &[track], 10);
+        let locked = &report.output[0].sats[0];
+        let unlocked = &report.output[1].sats[0];
+        let relocked = &report.output[2].sats[0];
+        let expected_raw = aligned_pseudorange_m(&config, 68, 0.0);
+
+        assert_eq!(locked.metadata.smoothing_age, 1);
+        assert_eq!(locked.metadata.smoothing_resets, 0);
+        assert_eq!(unlocked.metadata.smoothing_age, 0);
+        assert_eq!(unlocked.metadata.smoothing_resets, 1);
+        assert!((unlocked.pseudorange_m.0 - expected_raw).abs() <= f64::EPSILON);
+        assert_eq!(relocked.metadata.smoothing_age, 1);
+        assert_eq!(relocked.metadata.smoothing_resets, 1);
+        assert!((relocked.pseudorange_m.0 - expected_raw).abs() <= f64::EPSILON);
     }
 
     #[test]
