@@ -129,26 +129,24 @@ impl PositionSolver {
         let mut z = 0.0_f64;
         let mut cb = 0.0_f64;
 
-        let mut used = Vec::new();
-
         let mut rejected = timing_rejected;
         let inputs = resolve_position_inputs(&observations, ephemerides, t_rx_s, &mut rejected);
         if inputs.len() < 4 {
             return None;
         }
+        let mut estimate = PositionEstimate {
+            ecef_x_m: x,
+            ecef_y_m: y,
+            ecef_z_m: z,
+            clock_bias_s: cb,
+        };
+        let mut used = resolve_satellite_geometry(&inputs, estimate)?;
         let mut residuals = Vec::new();
         let mut cov = None;
         let mut cov_symmetrized = false;
         let mut cov_clamped = false;
         let mut cov_max_variance = None;
         for _ in 0..self.max_iterations {
-            let estimate = PositionEstimate {
-                ecef_x_m: x,
-                ecef_y_m: y,
-                ecef_z_m: z,
-                clock_bias_s: cb,
-            };
-            used = resolve_satellite_geometry(&inputs, estimate)?;
             if used.len() < 4 {
                 return None;
             }
@@ -182,20 +180,27 @@ impl PositionSolver {
             y += dy;
             z += dz;
             cb += dcb / 299_792_458.0;
-            if (dx * dx + dy * dy + dz * dz).sqrt() < self.convergence_m {
-                break;
-            }
-        }
-
-        let mut filtered = Vec::new();
-        for geometry in &used {
-            let estimate = PositionEstimate {
+            estimate = PositionEstimate {
                 ecef_x_m: x,
                 ecef_y_m: y,
                 ecef_z_m: z,
                 clock_bias_s: cb,
             };
-            let (res, _design_row) = linearized_pseudorange_row(estimate, geometry);
+            if (dx * dx + dy * dy + dz * dz).sqrt() < self.convergence_m {
+                break;
+            }
+            used = resolve_satellite_geometry(&inputs, estimate)?;
+        }
+
+        let final_estimate = estimate;
+        used = resolve_satellite_geometry(&inputs, final_estimate)?;
+        if used.len() < 4 {
+            return None;
+        }
+
+        let mut filtered = Vec::new();
+        for geometry in &used {
+            let (res, _design_row) = linearized_pseudorange_row(final_estimate, geometry);
             let sigma_m = (1.0 / geometry.observation.weight.max(1e-6)).sqrt();
             let norm = res / sigma_m;
             if res.abs() > self.residual_gate_m || (norm * norm) > self.chi_square_gate {
@@ -238,9 +243,9 @@ impl PositionSolver {
                 let mut h_sep = Vec::new();
                 let mut v_sep = Vec::new();
                 for (_obs, state, res) in &subset {
-                    let dx = x - state.x_m;
-                    let dy = y - state.y_m;
-                    let dz = z - state.z_m;
+                    let dx = final_estimate.ecef_x_m - state.x_m;
+                    let dy = final_estimate.ecef_y_m - state.y_m;
+                    let dz = final_estimate.ecef_z_m - state.z_m;
                     let range = (dx * dx + dy * dy + dz * dz).sqrt();
                     let hx = dx / range;
                     let hy = dy / range;
@@ -263,9 +268,9 @@ impl PositionSolver {
         let mut h = Vec::new();
         let mut v = Vec::new();
         for (_obs, state, res) in &filtered {
-            let dx = x - state.x_m;
-            let dy = y - state.y_m;
-            let dz = z - state.z_m;
+            let dx = final_estimate.ecef_x_m - state.x_m;
+            let dy = final_estimate.ecef_y_m - state.y_m;
+            let dz = final_estimate.ecef_z_m - state.z_m;
             let range = (dx * dx + dy * dy + dz * dz).sqrt();
             let hx = dx / range;
             let hy = dy / range;
