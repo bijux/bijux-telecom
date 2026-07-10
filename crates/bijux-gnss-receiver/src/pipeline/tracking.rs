@@ -15,7 +15,7 @@ use bijux_gnss_core::api::Sample;
 use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::{
     adaptive_bandwidth, carrier_frequency_error_hz_from_phase_delta, code_value_at_phase,
-    discriminators, estimate_cn0_dbhz, wipeoff_carrier,
+    discriminators, estimate_cn0_dbhz, first_order_loop_coefficients, wipeoff_carrier,
 };
 use bijux_gnss_signal::api::{generate_ca_code, Prn};
 
@@ -183,6 +183,7 @@ struct CodeLoopInput {
     current_code_rate_hz: f64,
     current_code_phase_samples: f64,
     epoch_len_samples: usize,
+    coherent_integration_s: f64,
     nominal_code_rate_hz: f64,
     dll_bw_hz: f64,
     dll_err: f32,
@@ -870,6 +871,7 @@ impl Tracking {
                 current_code_rate_hz: state.code_rate_hz,
                 current_code_phase_samples: state.code_phase_samples,
                 epoch_len_samples: epoch_frame.len(),
+                coherent_integration_s,
                 nominal_code_rate_hz: self.config.code_freq_basis_hz,
                 dll_bw_hz: dll_bw,
                 dll_err,
@@ -1129,7 +1131,8 @@ fn advance_code_phase_samples(
 }
 
 fn apply_dll_code_loop(input: CodeLoopInput) -> CodeLoopUpdate {
-    let code_rate_hz = input.current_code_rate_hz - input.dll_bw_hz * input.dll_err as f64;
+    let coefficients = first_order_loop_coefficients(input.dll_bw_hz, input.coherent_integration_s);
+    let code_rate_hz = input.current_code_rate_hz - coefficients.rate_gain_hz * input.dll_err as f64;
     let code_phase_samples = advance_code_phase_samples(
         input.current_code_phase_samples,
         input.epoch_len_samples,
@@ -1624,6 +1627,7 @@ mod tests {
             current_code_rate_hz: 1_023_000.0,
             current_code_phase_samples: 250.0,
             epoch_len_samples: 5_000,
+            coherent_integration_s: 5_000.0 / 1_023_000.0,
             nominal_code_rate_hz: 1_023_000.0,
             dll_bw_hz: 2.0,
             dll_err: 0.25,
@@ -1631,7 +1635,38 @@ mod tests {
             samples_per_code: 5_000,
         });
 
-        assert!((update.code_rate_hz - 1_022_999.5).abs() < 1.0e-9, "{update:?}");
+        assert!((update.code_rate_hz - 1_022_999.5024358).abs() < 1.0e-6, "{update:?}");
+    }
+
+    #[test]
+    fn apply_dll_code_loop_uses_coherent_interval_to_scale_gain() {
+        let short = super::apply_dll_code_loop(super::CodeLoopInput {
+            current_code_rate_hz: 1_023_000.0,
+            current_code_phase_samples: 250.0,
+            epoch_len_samples: 4_092,
+            coherent_integration_s: 0.001,
+            nominal_code_rate_hz: 1_023_000.0,
+            dll_bw_hz: 2.0,
+            dll_err: 0.25,
+            samples_per_chip: 4.0,
+            samples_per_code: 4_092,
+        });
+        let long = super::apply_dll_code_loop(super::CodeLoopInput {
+            current_code_rate_hz: 1_023_000.0,
+            current_code_phase_samples: 250.0,
+            epoch_len_samples: 40_920,
+            coherent_integration_s: 0.010,
+            nominal_code_rate_hz: 1_023_000.0,
+            dll_bw_hz: 2.0,
+            dll_err: 0.25,
+            samples_per_chip: 4.0,
+            samples_per_code: 40_920,
+        });
+
+        assert!(
+            (short.code_rate_hz - 1_023_000.0).abs() > (long.code_rate_hz - 1_023_000.0).abs(),
+            "short={short:?} long={long:?}"
+        );
     }
 
     #[test]
@@ -1641,6 +1676,7 @@ mod tests {
             current_code_rate_hz: 1_023_000.0,
             current_code_phase_samples,
             epoch_len_samples: 5_000,
+            coherent_integration_s: 5_000.0 / 1_023_000.0,
             nominal_code_rate_hz: 1_023_000.0,
             dll_bw_hz: 2.0,
             dll_err: 0.4,
@@ -1658,6 +1694,7 @@ mod tests {
             current_code_rate_hz: 1_023_000.0,
             current_code_phase_samples,
             epoch_len_samples: 5_000,
+            coherent_integration_s: 5_000.0 / 1_023_000.0,
             nominal_code_rate_hz: 1_023_000.0,
             dll_bw_hz: 2.0,
             dll_err: -0.4,
@@ -1920,6 +1957,7 @@ mod tests {
             current_code_rate_hz: config.code_freq_basis_hz,
             current_code_phase_samples: code_phase_samples,
             epoch_len_samples: samples_per_epoch,
+            coherent_integration_s: samples_per_epoch as f64 / config.sampling_freq_hz,
             nominal_code_rate_hz: config.code_freq_basis_hz,
             dll_bw_hz: 900.0,
             dll_err,
