@@ -30,6 +30,7 @@ const NAV_BIT_PHASE_STEP_CYCLES: f64 = 0.5;
 const NAV_BIT_PHASE_STEP_TOLERANCE_CYCLES: f64 = 0.1;
 const PLL_LOCK_MAX_PHASE_ERROR_RAD: f32 = 0.2;
 const PULL_IN_REQUIRED_STABLE_EPOCHS: u8 = 2;
+const FLL_PULL_IN_MAX_CORRECTION_BW_MULTIPLIER: f64 = 4.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelState {
@@ -198,7 +199,7 @@ struct CarrierLoopInput {
     pll_bw_hz: f64,
     pll_err_rad: f64,
     fll_bw_hz: f64,
-    fll_err_rad: f64,
+    fll_err_hz: f64,
     apply_fll: bool,
 }
 
@@ -885,7 +886,7 @@ impl Tracking {
                 pll_bw_hz: pll_bw,
                 pll_err_rad: pll_err as f64,
                 fll_bw_hz: fll_bw,
-                fll_err_rad: fll_err_hz as f64,
+                fll_err_hz: fll_err_hz as f64,
                 apply_fll: state.state == ChannelState::PullIn,
             });
             state.carrier_hz = carrier_loop.carrier_hz;
@@ -1292,12 +1293,18 @@ fn update_pull_in_stable_epochs(
     current_stable_epochs.saturating_add(1)
 }
 
+fn bounded_fll_pull_in_correction_hz(fll_err_hz: f64, fll_bw_hz: f64) -> f64 {
+    let max_correction_hz = fll_bw_hz.abs().max(1.0) * FLL_PULL_IN_MAX_CORRECTION_BW_MULTIPLIER;
+    fll_err_hz.clamp(-max_correction_hz, max_correction_hz)
+}
+
 fn apply_carrier_loop(input: CarrierLoopInput) -> CarrierLoopUpdate {
     let mut carrier_hz = input.current_carrier_hz;
     if input.apply_fll {
-        carrier_hz += input.fll_bw_hz * input.fll_err_rad;
+        carrier_hz += bounded_fll_pull_in_correction_hz(input.fll_err_hz, input.fll_bw_hz);
+    } else {
+        carrier_hz += input.pll_bw_hz * input.pll_err_rad;
     }
-    carrier_hz += input.pll_bw_hz * input.pll_err_rad;
 
     let carrier_phase_cycles = input.current_carrier_phase_cycles
         + input.current_carrier_hz * input.epoch_len_samples as f64 / input.sample_rate_hz
@@ -1798,13 +1805,30 @@ mod tests {
             pll_bw_hz: 8.0,
             pll_err_rad: 0.25,
             fll_bw_hz: 0.0,
-            fll_err_rad: 0.0,
+            fll_err_hz: 0.0,
             apply_fll: false,
         });
 
         assert!((update.carrier_hz - 1_002.0).abs() < 1.0e-9, "{update:?}");
         let expected_phase_cycles = 12.0 + 1.0 + 0.25 / std::f64::consts::TAU;
         assert!((update.carrier_phase_cycles - expected_phase_cycles).abs() < 1.0e-9, "{update:?}",);
+    }
+
+    #[test]
+    fn apply_carrier_loop_uses_fll_correction_during_pull_in() {
+        let update = super::apply_carrier_loop(super::CarrierLoopInput {
+            current_carrier_hz: 80.0,
+            current_carrier_phase_cycles: 12.0,
+            epoch_len_samples: 4_092,
+            sample_rate_hz: 4_092_000.0,
+            pll_bw_hz: 8.0,
+            pll_err_rad: 0.25,
+            fll_bw_hz: 10.0,
+            fll_err_hz: 30.0,
+            apply_fll: true,
+        });
+
+        assert!((update.carrier_hz - 110.0).abs() < 1.0e-9, "{update:?}");
     }
 
     #[test]
