@@ -101,6 +101,16 @@ The report includes:
 - `aligned_subframes[*].inverted`
 - `aligned_subframes[*].word_count`
 - `aligned_subframes[*].parity_ok_count`
+- `decoded_subframes[*].alignment`
+- `decoded_subframes[*].tlm.preamble`
+- `decoded_subframes[*].tlm.parity_ok`
+- `decoded_subframes[*].how.tow_count`
+- `decoded_subframes[*].how.tow_start_s`
+- `decoded_subframes[*].how.alert`
+- `decoded_subframes[*].how.anti_spoof`
+- `decoded_subframes[*].how.subframe_id`
+- `decoded_subframes[*].how.parity_ok`
+- `decoded_subframes[*].word_parity_ok`
 - `preamble_hits`
 - `parity_pass_rate`
 - `ephemerides`
