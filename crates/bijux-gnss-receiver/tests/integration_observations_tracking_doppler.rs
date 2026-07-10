@@ -113,7 +113,6 @@ fn stable_tracking_dopplers_hz(observations: &[ObsEpoch]) -> Vec<f64> {
             sat.metadata.tracking_state == "tracking"
                 && sat.lock_flags.code_lock
                 && sat.lock_flags.carrier_lock
-                && !sat.lock_flags.cycle_slip
         })
         .map(|sat| sat.doppler_hz.0)
         .collect()
@@ -133,5 +132,22 @@ fn observations_match_clean_constant_tracking_doppler() {
             .iter()
             .all(|doppler_hz| (*doppler_hz - true_doppler_hz).abs() <= CLEAN_TRACKED_DOPPLER_MAX_ERROR_HZ),
         "stable observation doppler exceeded clean-tracking tolerance {CLEAN_TRACKED_DOPPLER_MAX_ERROR_HZ} Hz: stable_dopplers_hz={stable_dopplers_hz:?}, observations={observations:?}"
+    );
+}
+
+#[test]
+fn observations_preserve_negative_tracked_doppler_with_intermediate_frequency() {
+    let config = observation_tracking_config(2_000.0);
+    let sat = SatId { constellation: Constellation::Gps, prn: 14 };
+    let true_doppler_hz = -250.0;
+    let observations = track_observation_case(&config, sat, true_doppler_hz, -150.0, 322.75, 0.15);
+    let stable_dopplers_hz = stable_tracking_dopplers_hz(&observations);
+
+    assert!(!stable_dopplers_hz.is_empty(), "observations={observations:?}");
+    assert!(
+        stable_dopplers_hz
+            .iter()
+            .all(|doppler_hz| (*doppler_hz - true_doppler_hz).abs() <= CLEAN_TRACKED_DOPPLER_MAX_ERROR_HZ),
+        "if-aware observation doppler exceeded tolerance {CLEAN_TRACKED_DOPPLER_MAX_ERROR_HZ} Hz: stable_dopplers_hz={stable_dopplers_hz:?}, observations={observations:?}"
     );
 }
