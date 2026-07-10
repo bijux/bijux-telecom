@@ -1352,7 +1352,7 @@ fn apply_carrier_loop(input: CarrierLoopInput) -> CarrierLoopUpdate {
     carrier_hz += pll_coefficients.frequency_gain_hz_per_rad * input.pll_err_rad;
 
     let carrier_phase_cycles = input.current_carrier_phase_cycles
-        + input.current_carrier_hz * input.epoch_len_samples as f64 / input.sample_rate_hz
+        + carrier_hz * input.epoch_len_samples as f64 / input.sample_rate_hz
         + pll_coefficients.phase_blend * input.pll_err_rad / std::f64::consts::TAU;
 
     CarrierLoopUpdate { carrier_hz, carrier_phase_cycles }
@@ -1924,8 +1924,9 @@ mod tests {
                 < 1.0e-9,
             "{update:?}"
         );
-        let expected_phase_cycles =
-            12.0 + 1.0 + pll_coefficients.phase_blend * 0.25 / std::f64::consts::TAU;
+        let expected_phase_cycles = 12.0
+            + (1_000.0 + pll_coefficients.frequency_gain_hz_per_rad * 0.25) * 0.001
+            + pll_coefficients.phase_blend * 0.25 / std::f64::consts::TAU;
         assert!((update.carrier_phase_cycles - expected_phase_cycles).abs() < 1.0e-9, "{update:?}",);
     }
 
