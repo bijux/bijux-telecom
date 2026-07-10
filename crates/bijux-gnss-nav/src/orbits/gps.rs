@@ -79,6 +79,24 @@ pub struct GpsEarthRotationCorrection {
     pub delta_y_m: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GpsEphemerisAge {
+    pub reference_time_s: f64,
+    pub toe_age_s: f64,
+    pub toc_age_s: f64,
+    pub max_age_s: f64,
+}
+
+impl GpsEphemerisAge {
+    pub fn is_valid(&self) -> bool {
+        self.toe_age_s <= self.max_age_s && self.toc_age_s <= self.max_age_s
+    }
+
+    pub fn is_stale(&self) -> bool {
+        !self.is_valid()
+    }
+}
+
 pub fn gps_satellite_clock_correction(
     eph: &GpsEphemeris,
     t_tx_s: f64,
@@ -177,10 +195,17 @@ pub fn sat_state_gps_l1ca(eph: &GpsEphemeris, t_tx_s: f64, tau_s: f64) -> GpsSat
     GpsSatState { x_m: x, y_m: y, z_m: z, clock_correction: clock }
 }
 
+pub fn gps_ephemeris_age(eph: &GpsEphemeris, reference_time_s: f64) -> GpsEphemerisAge {
+    GpsEphemerisAge {
+        reference_time_s,
+        toe_age_s: wrap_time(reference_time_s - eph.toe_s).abs(),
+        toc_age_s: wrap_time(reference_time_s - eph.toc_s).abs(),
+        max_age_s: MAX_EPHEMERIS_AGE_S,
+    }
+}
+
 pub fn is_ephemeris_valid(eph: &GpsEphemeris, t_s: f64) -> bool {
-    let toe_age = wrap_time(t_s - eph.toe_s).abs();
-    let toc_age = wrap_time(t_s - eph.toc_s).abs();
-    toe_age <= MAX_EPHEMERIS_AGE_S && toc_age <= MAX_EPHEMERIS_AGE_S
+    gps_ephemeris_age(eph, t_s).is_valid()
 }
 
 pub fn solve_kepler(m: f64, e: f64) -> (f64, f64, f64) {
@@ -585,5 +610,88 @@ mod tests {
         let expected_drift_rate = 2.0 * eph.af2;
         assert!((correction.drift_s_per_s - expected_drift).abs() < 1e-24);
         assert!((correction.drift_rate_s_per_s2 - expected_drift_rate).abs() < 1e-30);
+    }
+
+    fn sample_eph() -> GpsEphemeris {
+        GpsEphemeris {
+            sat: SatId { constellation: Constellation::Gps, prn: 1 },
+            iodc: 0,
+            iode: 0,
+            week: 0,
+            sv_health: 0,
+            toe_s: 100_000.0,
+            toc_s: 100_000.0,
+            sqrt_a: 5153.7954775,
+            e: 0.01,
+            i0: 0.94,
+            idot: 0.0,
+            omega0: 0.0,
+            omegadot: 0.0,
+            w: 0.0,
+            m0: 0.0,
+            delta_n: 0.0,
+            cuc: 0.0,
+            cus: 0.0,
+            crc: 0.0,
+            crs: 0.0,
+            cic: 0.0,
+            cis: 0.0,
+            af0: 0.0,
+            af1: 0.0,
+            af2: 0.0,
+            tgd: 0.0,
+        }
+    }
+
+    #[test]
+    fn ephemeris_age_stays_valid_at_limit() {
+        let eph = sample_eph();
+
+        let age = gps_ephemeris_age(&eph, eph.toe_s + MAX_EPHEMERIS_AGE_S);
+
+        assert_eq!(age.toe_age_s, MAX_EPHEMERIS_AGE_S);
+        assert_eq!(age.toc_age_s, MAX_EPHEMERIS_AGE_S);
+        assert!(age.is_valid());
+        assert!(!age.is_stale());
+        assert!(is_ephemeris_valid(&eph, eph.toe_s + MAX_EPHEMERIS_AGE_S));
+    }
+
+    #[test]
+    fn ephemeris_age_rejects_stale_toe() {
+        let mut eph = sample_eph();
+        eph.toc_s = eph.toe_s + 30.0;
+
+        let age = gps_ephemeris_age(&eph, eph.toe_s + MAX_EPHEMERIS_AGE_S + 1.0);
+
+        assert!(age.toe_age_s > age.max_age_s);
+        assert!(age.toc_age_s <= age.max_age_s);
+        assert!(!age.is_valid());
+        assert!(age.is_stale());
+        assert!(!is_ephemeris_valid(&eph, eph.toe_s + MAX_EPHEMERIS_AGE_S + 1.0));
+    }
+
+    #[test]
+    fn ephemeris_age_rejects_stale_toc() {
+        let mut eph = sample_eph();
+        eph.toe_s = eph.toc_s + 30.0;
+
+        let age = gps_ephemeris_age(&eph, eph.toc_s + MAX_EPHEMERIS_AGE_S + 1.0);
+
+        assert!(age.toe_age_s <= age.max_age_s);
+        assert!(age.toc_age_s > age.max_age_s);
+        assert!(!age.is_valid());
+    }
+
+    #[test]
+    fn ephemeris_age_wraps_week_rollover() {
+        let mut eph = sample_eph();
+        eph.toe_s = 604_799.0;
+        eph.toc_s = 604_799.0;
+
+        let age = gps_ephemeris_age(&eph, 1.0);
+
+        assert_eq!(age.toe_age_s, 2.0);
+        assert_eq!(age.toc_age_s, 2.0);
+        assert!(age.is_valid());
     }
 }
