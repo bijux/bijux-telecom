@@ -254,3 +254,35 @@ fn observations_follow_positive_tracked_doppler_ramp() {
         "ramped observation doppler exceeded tolerance {CLEAN_TRACKED_DOPPLER_MAX_ERROR_HZ} Hz: stable_rows={stable_rows:?}, observations={observations:?}"
     );
 }
+
+#[test]
+fn observations_follow_negative_tracked_doppler_ramp() {
+    let config = observation_tracking_config(0.0);
+    let sat = SatId { constellation: Constellation::Gps, prn: 22 };
+    let initial_doppler_hz = -220.0;
+    let doppler_rate_hz_per_s = -35.0;
+    let observations = track_observation_ramp_case(
+        &config,
+        sat,
+        initial_doppler_hz,
+        doppler_rate_hz_per_s,
+        -160.0,
+        388.5,
+        0.15,
+    );
+    let stable_rows = stable_tracking_observation_rows(&observations);
+
+    assert!(!stable_rows.is_empty(), "observations={observations:?}");
+    assert!(
+        stable_rows.iter().all(|(sample_index, doppler_hz)| {
+            let expected = expected_linear_doppler_hz(
+                *sample_index,
+                config.sampling_freq_hz,
+                initial_doppler_hz,
+                doppler_rate_hz_per_s,
+            );
+            (*doppler_hz - expected).abs() <= CLEAN_TRACKED_DOPPLER_MAX_ERROR_HZ
+        }),
+        "negative-ramp observation doppler exceeded tolerance {CLEAN_TRACKED_DOPPLER_MAX_ERROR_HZ} Hz: stable_rows={stable_rows:?}, observations={observations:?}"
+    );
+}
