@@ -1,8 +1,9 @@
 #![allow(missing_docs)]
 
 use crate::estimation::position::solver::{
-    ecef_to_enu, ecef_to_geodetic, geodetic_to_ecef, invert_4x4, PositionObservation,
-    PositionSolver,
+    ecef_to_enu, ecef_to_geodetic, geodetic_to_ecef, invert_4x4,
+    position_measurement_weight, weight_from_cn0_elev, weight_from_pseudorange_sigma,
+    PositionObservation, PositionSolver, WeightingConfig,
 };
 use crate::orbits::gps::GpsEphemeris;
 use bijux_gnss_core::api::{Constellation, SatId};
@@ -111,4 +112,33 @@ fn enu_zero_at_reference() {
     assert!(e.abs() < 1e-6);
     assert!(n.abs() < 1e-6);
     assert!(u.abs() < 1e-6);
+}
+
+#[test]
+fn pseudorange_sigma_weight_prefers_smaller_sigma() {
+    let precise = weight_from_pseudorange_sigma(Some(2.0));
+    let noisy = weight_from_pseudorange_sigma(Some(20.0));
+
+    assert!((precise - 0.25).abs() < 1.0e-12);
+    assert!((noisy - 0.0025).abs() < 1.0e-12);
+    assert!(precise > noisy);
+}
+
+#[test]
+fn composite_position_weight_multiplies_geometry_and_sigma_terms() {
+    let config = WeightingConfig::default();
+    let geometry_weight = weight_from_cn0_elev(45.0, 30.0, config);
+    let sigma_weight = weight_from_pseudorange_sigma(Some(4.0));
+    let composite = position_measurement_weight(45.0, Some(30.0), Some(4.0), config);
+
+    assert!((composite - (geometry_weight * sigma_weight)).abs() < 1.0e-12);
+}
+
+#[test]
+fn composite_position_weight_falls_back_to_unit_sigma_weight() {
+    let config = WeightingConfig::default();
+    let geometry_only = position_measurement_weight(45.0, Some(30.0), None, config);
+    let invalid_sigma = position_measurement_weight(45.0, Some(30.0), Some(f64::NAN), config);
+
+    assert!((geometry_only - invalid_sigma).abs() < 1.0e-12);
 }
