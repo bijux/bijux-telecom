@@ -783,7 +783,7 @@ impl Tracking {
                 ));
             }
 
-            let (dll_err, _raw_pll_err, _raw_fll_err, lock) =
+            let (dll_err, _raw_pll_err, raw_fll_err, lock) =
                 discriminators(corr.early, corr.prompt, corr.late, state.prev_prompt);
             state.prev_prompt = Some(corr.prompt);
             let phase_cycles = corr.prompt.arg() as f64 / (2.0 * std::f64::consts::PI);
@@ -818,11 +818,17 @@ impl Tracking {
             );
             let coherent_integration_s =
                 coherent_integration_seconds(epoch_frame.len(), self.config.sampling_freq_hz);
+            let raw_fll_err_hz =
+                carrier_frequency_error_hz_from_phase_delta(raw_fll_err as f64, coherent_integration_s);
+            let nav_bit_aware_fll_err_hz = carrier_frequency_error_hz_from_phase_delta(
+                phase_decision.aligned_phase_delta_cycles * std::f64::consts::TAU,
+                coherent_integration_s,
+            );
+            let use_nav_bit_aware_fll = phase_decision.nav_bit_transition
+                || state.nav_bit_phase_offset_cycles.abs() > f64::EPSILON
+                || phase_decision.nav_bit_phase_offset_cycles.abs() > f64::EPSILON;
             let fll_err_hz =
-                carrier_frequency_error_hz_from_phase_delta(
-                    phase_decision.aligned_phase_delta_cycles * std::f64::consts::TAU,
-                    coherent_integration_s,
-                ) as f32;
+                if use_nav_bit_aware_fll { nav_bit_aware_fll_err_hz } else { raw_fll_err_hz } as f32;
             let raw_pll_lock = pll_err.abs() < PLL_LOCK_MAX_PHASE_ERROR_RAD;
             let raw_fll_lock = (fll_err_hz as f64).abs() <= fll_lock_threshold_hz(fll_bw);
             state.pull_in_stable_epochs = update_pull_in_stable_epochs(
