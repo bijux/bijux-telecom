@@ -214,6 +214,10 @@ struct PromptPhaseDecision {
     cycle_slip: bool,
 }
 
+fn should_apply_fll(state: ChannelState, raw_fll_lock: bool) -> bool {
+    state == ChannelState::PullIn || !raw_fll_lock
+}
+
 /// Tracking engine with basic E/P/L correlation per epoch.
 pub struct Tracking {
     config: ReceiverPipelineConfig,
@@ -891,7 +895,7 @@ impl Tracking {
                 pll_err_rad: pll_err as f64,
                 fll_bw_hz: fll_bw,
                 fll_err_hz: fll_err_hz as f64,
-                apply_fll: state.state == ChannelState::PullIn,
+                apply_fll: should_apply_fll(state.state, raw_fll_lock),
             });
             state.carrier_hz = carrier_loop.carrier_hz;
             state.carrier_phase_cycles = carrier_loop.carrier_phase_cycles;
@@ -1946,6 +1950,13 @@ mod tests {
             + super::bounded_fll_pull_in_correction_hz(30.0 * fll_coefficients.error_blend, 10.0)
             + pll_coefficients.frequency_gain_hz_per_rad * 0.25;
         assert!((update.carrier_hz - expected_carrier_hz).abs() < 1.0e-9, "{update:?}");
+    }
+
+    #[test]
+    fn should_apply_fll_keeps_frequency_assistance_until_fll_relocks() {
+        assert!(super::should_apply_fll(super::ChannelState::PullIn, true));
+        assert!(super::should_apply_fll(super::ChannelState::Tracking, false));
+        assert!(!super::should_apply_fll(super::ChannelState::Tracking, true));
     }
 
     #[test]
