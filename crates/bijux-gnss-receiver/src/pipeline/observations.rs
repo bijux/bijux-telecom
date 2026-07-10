@@ -201,6 +201,8 @@ fn observations_from_tracking_with_provenance(
             .unwrap_or(4.0);
         let (observation_status, observation_reject_reasons) =
             classify_observation_status(epoch, cn0_dbhz);
+        let observation_lock_state = observation_lock_state(epoch).to_string();
+        let observation_lock_reason = observation_lock_reason(epoch);
         let mut signal = bijux_gnss_core::api::signal_spec_gps_l1_ca();
         signal.code_rate_hz = config.code_freq_basis_hz;
         let observation_epoch_id = observation_epoch_id(epoch.epoch.index, epoch.sample_index);
@@ -249,7 +251,9 @@ fn observations_from_tracking_with_provenance(
                 acquisition_carrier_hz: track.map(|t| t.acquisition_carrier_hz).unwrap_or_default(),
                 acq_to_track_state: track.map(|t| t.acq_to_track_state.clone()).unwrap_or_default(),
                 tracking_state: epoch.lock_state.clone(),
-                tracking_lock_state: tracking_lock_state(epoch),
+                tracking_lock_state: observation_lock_state.clone(),
+                observation_lock_state,
+                observation_lock_reason,
                 tracking_lock_quality: lock_quality,
                 observation_status: observation_status_label(observation_status).to_string(),
                 observation_reject_reasons,
@@ -905,17 +909,37 @@ fn tracking_lock_quality(epoch: &TrackEpoch) -> f64 {
     quality
 }
 
-fn tracking_lock_state(epoch: &TrackEpoch) -> String {
+fn observation_lock_state(epoch: &TrackEpoch) -> &'static str {
     if epoch.cycle_slip {
-        return "cycle_slip".to_string();
+        return "cycle_slip";
     }
-    if epoch.anti_false_lock {
-        return "anti_false_lock".to_string();
+    if epoch.lock_state_reason.as_deref() == Some("reacquired") {
+        return "reacquired";
     }
-    if !epoch.lock {
-        return "unlocked".to_string();
+    match epoch.lock_state.as_str() {
+        "tracking" => "locked",
+        "acquired" => "acquired",
+        "pull_in" => "pull_in",
+        "degraded" => "degraded",
+        "lost" => "lost",
+        "inactive" => "inactive",
+        _ if epoch.lock => "locked",
+        _ => "inactive",
     }
-    epoch.lock_state.clone()
+}
+
+fn observation_lock_reason(epoch: &TrackEpoch) -> Option<String> {
+    if epoch.cycle_slip {
+        return epoch
+            .cycle_slip_reason
+            .clone()
+            .or_else(|| epoch.lock_state_reason.clone())
+            .or_else(|| Some("cycle_slip".to_string()));
+    }
+    epoch
+        .lock_state_reason
+        .clone()
+        .or_else(|| epoch.anti_false_lock.then(|| "anti_false_lock".to_string()))
 }
 
 fn tracking_time_tag(epoch: &TrackEpoch, last_locked_sample: &mut Option<u64>) -> (String, u64) {
