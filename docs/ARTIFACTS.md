@@ -39,6 +39,8 @@ Units: meters, seconds, hertz, cycles.
 Invariants:
 - epochs are monotonic
 - no NaNs/Inf in measurements
+- observation metadata may carry source `tracking_uncertainty` so downstream weighting can use
+  tracking-derived uncertainty instead of CN0-only heuristics
 
 ### track (TrackEpochV1)
 Purpose: per-epoch tracking outputs.
@@ -47,6 +49,8 @@ Units: hertz, seconds, cycles.
 Invariants:
 - carrier/code NCO values finite
 - prompt I/Q finite
+- when present, `tracking_uncertainty` carries non-negative per-epoch uncertainty for code phase
+  (samples), carrier phase (cycles), Doppler (Hz), and C/N0 (dB-Hz)
 
 ### acq (AcqResultV1)
 Purpose: acquisition hits/candidates.

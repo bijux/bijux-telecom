@@ -6,6 +6,7 @@ These are the shared types exchanged across layers. They live in `bijux-gnss-cor
 - `SamplesFrame`: time-tagged IQ samples
 - `AcqSearchSummary`: per-PRN acquisition decision counts for a configured search set
 - `ObsEpoch`: per-epoch observables (pseudorange, phase, doppler, CN0)
+- `TrackingUncertainty`: per-epoch code phase, carrier phase, Doppler, and C/N0 uncertainty
 - `LockFlags`: lock quality
 - `SolutionStatus`: validity state (Invalid, Degraded, Coarse, Converged, Float, Fixed)
 

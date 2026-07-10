@@ -60,6 +60,21 @@
         "prn": { "type": "integer", "minimum": 1 }
       }
     },
+    "TrackingUncertainty": {
+      "type": "object",
+      "required": [
+        "code_phase_samples",
+        "carrier_phase_cycles",
+        "doppler_hz",
+        "cn0_dbhz"
+      ],
+      "properties": {
+        "code_phase_samples": { "type": "number", "minimum": 0 },
+        "carrier_phase_cycles": { "type": "number", "minimum": 0 },
+        "doppler_hz": { "type": "number", "minimum": 0 },
+        "cn0_dbhz": { "type": "number", "minimum": 0 }
+      }
+    },
     "TrackEpoch": {
       "type": "object",
       "required": [
@@ -82,7 +97,13 @@
         "code_rate_hz": { "type": "number" },
         "code_phase_samples": { "type": "number" },
         "lock": { "type": "boolean" },
-        "cn0_dbhz": { "type": "number" }
+        "cn0_dbhz": { "type": "number" },
+        "tracking_uncertainty": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/definitions/TrackingUncertainty" }
+          ]
+        }
       }
     }
   }

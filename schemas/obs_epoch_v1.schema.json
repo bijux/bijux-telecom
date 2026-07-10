@@ -73,6 +73,21 @@
         "carrier_hz": { "type": "number" }
       }
     },
+    "TrackingUncertainty": {
+      "type": "object",
+      "required": [
+        "code_phase_samples",
+        "carrier_phase_cycles",
+        "doppler_hz",
+        "cn0_dbhz"
+      ],
+      "properties": {
+        "code_phase_samples": { "type": "number", "minimum": 0 },
+        "carrier_phase_cycles": { "type": "number", "minimum": 0 },
+        "doppler_hz": { "type": "number", "minimum": 0 },
+        "cn0_dbhz": { "type": "number", "minimum": 0 }
+      }
+    },
     "ObsMetadata": {
       "type": "object",
       "required": [
@@ -95,7 +110,13 @@
         "smoothing_resets": { "type": "integer", "minimum": 0 },
         "signal": { "$ref": "#/definitions/SignalSpec" },
         "time_tag_sample_index": { "type": "integer", "minimum": 0 },
-        "time_tag_sample_rate_hz": { "type": "number", "exclusiveMinimum": 0 }
+        "time_tag_sample_rate_hz": { "type": "number", "exclusiveMinimum": 0 },
+        "tracking_uncertainty": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/definitions/TrackingUncertainty" }
+          ]
+        }
       }
     },
     "LockFlags": {
