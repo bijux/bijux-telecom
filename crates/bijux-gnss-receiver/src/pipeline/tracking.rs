@@ -126,6 +126,21 @@ pub struct TrackingResult {
     pub transitions: Vec<TrackTransition>,
 }
 
+#[derive(Debug, Default, Clone)]
+pub struct TrackingArtifacts {
+    pub processed_input_samples: u64,
+    pub processed_input_epochs: u64,
+    pub track_transitions: Vec<TrackTransition>,
+    pub tracking: Vec<TrackingResult>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TrackingSession {
+    tracking: IncrementalTrackingState,
+    processed_input_samples: u64,
+    processed_input_epochs: u64,
+}
+
 #[derive(Debug, Clone)]
 struct LoopState {
     carrier_hz: f64,
@@ -491,9 +506,43 @@ impl Tracking {
         frame: &SamplesFrame,
         acquisitions: &[bijux_gnss_core::api::AcqResult],
     ) -> Vec<TrackingResult> {
-        let mut incremental_tracking = self.begin_incremental_tracking(acquisitions);
-        self.track_incremental_frame(&mut incremental_tracking, frame);
-        self.finish_incremental_tracking(incremental_tracking)
+        let mut session = self.begin_tracking_session(acquisitions);
+        self.track_session_frame(&mut session, frame);
+        self.finish_tracking_session(session).tracking
+    }
+
+    pub fn begin_tracking_session(
+        &self,
+        acquisitions: &[bijux_gnss_core::api::AcqResult],
+    ) -> TrackingSession {
+        TrackingSession {
+            tracking: self.begin_incremental_tracking(acquisitions),
+            processed_input_samples: 0,
+            processed_input_epochs: 0,
+        }
+    }
+
+    pub fn track_session_frame(&self, session: &mut TrackingSession, frame: &SamplesFrame) {
+        let samples_per_code = samples_per_code(
+            self.config.sampling_freq_hz,
+            self.config.code_freq_basis_hz,
+            self.config.code_length,
+        );
+        session.processed_input_samples += frame.len() as u64;
+        session.processed_input_epochs += code_periods_in_frame(frame.len(), samples_per_code);
+        self.track_incremental_frame(&mut session.tracking, frame);
+    }
+
+    pub fn finish_tracking_session(&self, session: TrackingSession) -> TrackingArtifacts {
+        let tracking = self.finish_incremental_tracking(session.tracking);
+        let track_transitions =
+            tracking.iter().flat_map(|result| result.transitions.iter().cloned()).collect();
+        TrackingArtifacts {
+            processed_input_samples: session.processed_input_samples,
+            processed_input_epochs: session.processed_input_epochs,
+            track_transitions,
+            tracking,
+        }
     }
 
     fn apply_sample_rate_mismatch_diagnostic(
@@ -1401,6 +1450,13 @@ fn frame_slice(frame: &SamplesFrame, start: usize, end: usize) -> SamplesFrame {
         frame.dt_s,
         frame.iq[start..end].to_vec(),
     )
+}
+
+fn code_periods_in_frame(frame_len: usize, samples_per_code: usize) -> u64 {
+    if frame_len == 0 {
+        return 0;
+    }
+    (frame_len / samples_per_code.max(1)).max(1) as u64
 }
 
 fn classify_prompt_phase(

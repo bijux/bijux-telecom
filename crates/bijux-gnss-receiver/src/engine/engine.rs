@@ -94,10 +94,7 @@ impl Receiver {
                     ("i_power", format!("{:.9}", removed.i_power)),
                     ("q_power", format!("{:.9}", removed.q_power)),
                     ("iq_power_ratio", format!("{:.9}", removed.iq_power_ratio)),
-                    (
-                        "power_imbalance_warning",
-                        removed.power_imbalance_warning.to_string(),
-                    ),
+                    ("power_imbalance_warning", removed.power_imbalance_warning.to_string()),
                     (
                         "quadrature_error_deg",
                         removed
@@ -105,10 +102,7 @@ impl Receiver {
                             .map(|value| format!("{value:.9}"))
                             .unwrap_or_else(|| "n/a".to_string()),
                     ),
-                    (
-                        "quadrature_error_warning",
-                        removed.quadrature_error_warning.to_string(),
-                    ),
+                    ("quadrature_error_warning", removed.quadrature_error_warning.to_string()),
                     ("rms", format!("{:.9}", removed.rms)),
                     ("dc_imbalance", format!("{:.9}", removed.dc_imbalance)),
                 ],
@@ -211,13 +205,16 @@ impl Receiver {
 
         let tracking =
             crate::pipeline::tracking::Tracking::new(self.config().clone(), self.runtime().clone());
-        let mut processed_input_samples = frame.len() as u64;
-        let mut processed_input_epochs = code_periods_in_frame(frame.len(), samples_per_code);
-        let has_trackable_channels = acquisitions.iter().take(self.config().channels.max(1)).any(
-            |acq| matches!(acq.hypothesis, bijux_gnss_core::api::AcqHypothesis::Accepted | bijux_gnss_core::api::AcqHypothesis::Ambiguous),
-        );
-        let mut incremental_tracking = tracking.begin_incremental_tracking(&acquisitions);
-        tracking.track_incremental_frame(&mut incremental_tracking, &frame);
+        let has_trackable_channels =
+            acquisitions.iter().take(self.config().channels.max(1)).any(|acq| {
+                matches!(
+                    acq.hypothesis,
+                    bijux_gnss_core::api::AcqHypothesis::Accepted
+                        | bijux_gnss_core::api::AcqHypothesis::Ambiguous
+                )
+            });
+        let mut tracking_session = tracking.begin_tracking_session(&acquisitions);
+        tracking.track_session_frame(&mut tracking_session, &frame);
         if has_trackable_channels {
             let tracking_frame_len = streaming_tracking_frame_len(samples_per_code);
             loop {
@@ -241,15 +238,12 @@ impl Receiver {
                 if self.config().remove_dc_offset {
                     remove_dc_offset_in_place(&mut tracking_frame.iq);
                 }
-                processed_input_samples += tracking_frame.len() as u64;
-                processed_input_epochs +=
-                    code_periods_in_frame(tracking_frame.len(), samples_per_code);
-                tracking.track_incremental_frame(&mut incremental_tracking, &tracking_frame);
+                tracking.track_session_frame(&mut tracking_session, &tracking_frame);
             }
         }
-        let tracking_results = tracking.finish_incremental_tracking(incremental_tracking);
-        let track_transitions: Vec<_> =
-            tracking_results.iter().flat_map(|result| result.transitions.iter().cloned()).collect();
+        let tracking_artifacts = tracking.finish_tracking_session(tracking_session);
+        let track_transitions = tracking_artifacts.track_transitions.clone();
+        let tracking_results = tracking_artifacts.tracking;
         let tracking_ms = tracking_start.elapsed().as_secs_f64() * 1000.0;
         let track_channel_count: f64 =
             tracking_results.iter().filter(|result| !result.epochs.is_empty()).count() as f64;
@@ -314,8 +308,8 @@ impl Receiver {
         });
 
         let artifacts = RunArtifacts {
-            processed_input_samples,
-            processed_input_epochs,
+            processed_input_samples: tracking_artifacts.processed_input_samples,
+            processed_input_epochs: tracking_artifacts.processed_input_epochs,
             acquisitions,
             acquisition_explain,
             track_transitions,
@@ -347,13 +341,6 @@ impl Receiver {
 
 fn streaming_tracking_frame_len(samples_per_code: usize) -> usize {
     samples_per_code.saturating_mul(STREAMING_TRACKING_CODE_PERIODS.max(1))
-}
-
-fn code_periods_in_frame(frame_len: usize, samples_per_code: usize) -> u64 {
-    if frame_len == 0 {
-        return 0;
-    }
-    (frame_len / samples_per_code.max(1)).max(1) as u64
 }
 
 fn build_support_matrix() -> SupportMatrix {
