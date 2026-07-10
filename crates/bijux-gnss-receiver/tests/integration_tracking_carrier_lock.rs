@@ -1,5 +1,7 @@
 #![allow(missing_docs)]
 
+mod support;
+
 use bijux_gnss_core::api::{
     AcqHypothesis, AcqResult, Constellation, Hertz, ReceiverSampleTrace, SatId, SignalBand,
 };
@@ -7,6 +9,37 @@ use bijux_gnss_receiver::api::{
     sim::{generate_l1_ca, SyntheticSignalParams},
     ReceiverPipelineConfig, ReceiverRuntime, TrackingEngine,
 };
+use support::tracking_truth::{
+    first_tracking_lock_epoch_index, post_lock_carrier_frequency_errors_hz,
+};
+
+const CLEAN_SIGNAL_LOCKED_CARRIER_ERROR_MAX_HZ: f64 = 5.0;
+const CLEAN_SIGNAL_MIN_LOCKED_EPOCHS: usize = 5;
+
+fn assert_clean_signal_carrier_lock(
+    epochs: &[bijux_gnss_core::api::TrackEpoch],
+    true_doppler_hz: f64,
+) {
+    let first_lock_epoch_index = first_tracking_lock_epoch_index(epochs)
+        .unwrap_or_else(|| panic!("tracking never reached a stable carrier lock window: epochs={epochs:?}"));
+    let post_lock_errors_hz = post_lock_carrier_frequency_errors_hz(epochs, true_doppler_hz);
+    assert!(
+        post_lock_errors_hz.len() >= CLEAN_SIGNAL_MIN_LOCKED_EPOCHS,
+        "tracking did not maintain enough locked epochs for clean-signal validation: first_lock_epoch_index={first_lock_epoch_index}, post_lock_errors_hz={post_lock_errors_hz:?}, epochs={epochs:?}"
+    );
+    assert!(
+        post_lock_errors_hz
+            .iter()
+            .all(|error_hz| *error_hz <= CLEAN_SIGNAL_LOCKED_CARRIER_ERROR_MAX_HZ),
+        "locked carrier frequency error exceeded clean-signal threshold {CLEAN_SIGNAL_LOCKED_CARRIER_ERROR_MAX_HZ} Hz: post_lock_errors_hz={post_lock_errors_hz:?}, epochs={epochs:?}"
+    );
+    assert!(
+        epochs[first_lock_epoch_index..]
+            .iter()
+            .all(|epoch| epoch.lock_state == "tracking" && epoch.pll_lock && epoch.fll_lock),
+        "carrier lock window must remain in tracking once declared: epochs={epochs:?}"
+    );
+}
 
 fn accepted_acquisition(
     sat: SatId,
@@ -91,6 +124,7 @@ fn tracking_reduces_seeded_carrier_error_and_emits_tracked_phase() {
         best_freq_error < first_freq_error,
         "tracking did not reduce carrier frequency error: first_freq_error={first_freq_error}, best_freq_error={best_freq_error}, epochs={epochs:?}"
     );
+    assert_clean_signal_carrier_lock(epochs, true_doppler_hz);
     assert!(
         epochs.iter().all(|epoch| epoch.carrier_phase_cycles.0.is_finite()),
         "tracked carrier phase must remain finite: epochs={epochs:?}"
