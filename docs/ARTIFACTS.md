@@ -110,6 +110,16 @@ The report includes:
 - `decoded_subframes[*].how.anti_spoof`
 - `decoded_subframes[*].how.subframe_id`
 - `decoded_subframes[*].how.parity_ok`
+- `decoded_subframes[*].clock`
+  Present when `decoded_subframes[*].how.subframe_id == 1`.
+- `decoded_subframes[*].clock.week`
+- `decoded_subframes[*].clock.sv_health`
+- `decoded_subframes[*].clock.iodc`
+- `decoded_subframes[*].clock.toc_s`
+- `decoded_subframes[*].clock.af0`
+- `decoded_subframes[*].clock.af1`
+- `decoded_subframes[*].clock.af2`
+- `decoded_subframes[*].clock.tgd`
 - `decoded_subframes[*].parity.word_count`
 - `decoded_subframes[*].parity.passed_word_count`
 - `decoded_subframes[*].parity.failed_word_indexes`
