@@ -120,6 +120,28 @@ The report includes:
 - `decoded_subframes[*].clock.af1`
 - `decoded_subframes[*].clock.af2`
 - `decoded_subframes[*].clock.tgd`
+- `decoded_subframes[*].orbit_subframe_2`
+  Present when `decoded_subframes[*].how.subframe_id == 2`.
+- `decoded_subframes[*].orbit_subframe_2.iode`
+- `decoded_subframes[*].orbit_subframe_2.crs`
+- `decoded_subframes[*].orbit_subframe_2.delta_n`
+- `decoded_subframes[*].orbit_subframe_2.m0`
+- `decoded_subframes[*].orbit_subframe_2.cuc`
+- `decoded_subframes[*].orbit_subframe_2.e`
+- `decoded_subframes[*].orbit_subframe_2.cus`
+- `decoded_subframes[*].orbit_subframe_2.sqrt_a`
+- `decoded_subframes[*].orbit_subframe_2.toe_s`
+- `decoded_subframes[*].orbit_subframe_3`
+  Present when `decoded_subframes[*].how.subframe_id == 3`.
+- `decoded_subframes[*].orbit_subframe_3.iode`
+- `decoded_subframes[*].orbit_subframe_3.cic`
+- `decoded_subframes[*].orbit_subframe_3.omega0`
+- `decoded_subframes[*].orbit_subframe_3.cis`
+- `decoded_subframes[*].orbit_subframe_3.i0`
+- `decoded_subframes[*].orbit_subframe_3.crc`
+- `decoded_subframes[*].orbit_subframe_3.w`
+- `decoded_subframes[*].orbit_subframe_3.omegadot`
+- `decoded_subframes[*].orbit_subframe_3.idot`
 - `decoded_subframes[*].parity.word_count`
 - `decoded_subframes[*].parity.passed_word_count`
 - `decoded_subframes[*].parity.failed_word_indexes`
