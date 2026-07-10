@@ -693,6 +693,10 @@ fn read_obs_epochs(path: &Path) -> Result<Vec<ObsEpoch>> {
 
 fn read_ephemeris(path: &Path) -> Result<Vec<GpsEphemeris>> {
     let data = fs::read_to_string(path)?;
+    if data.contains("RINEX VERSION / TYPE") && data.contains("NAVIGATION DATA") {
+        return bijux_gnss_infra::api::nav::parse_rinex_nav(&data)
+            .map_err(|err| eyre!("RINEX NAV parse failed: {}", err.message));
+    }
     if data.contains("\"header\"") {
         let wrapped: GpsEphemerisV1 = serde_json::from_str(&data)?;
         if wrapped.header.schema_version != ArtifactReadPolicy::LATEST {
@@ -793,8 +797,9 @@ fn write_ephemeris(
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_raw_iq_metadata, enforce_locked_capture_value, load_frame_window, read_tracking_dump,
-        DopplerSearchSettings, RawIqSignalQualityReport, TrackingReport, TrackingRow,
+        apply_raw_iq_metadata, enforce_locked_capture_value, load_frame_window, read_ephemeris,
+        read_tracking_dump, DopplerSearchSettings, RawIqSignalQualityReport, TrackingReport,
+        TrackingRow,
     };
     use crate::RawIqMetadata;
     use crate::{ReceiverConfig, ReceiverPipelineConfig};
@@ -804,6 +809,7 @@ mod tests {
         SolutionStatus, SolutionValidity, TrackEpoch, TrackEpochV1,
         NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
     };
+    use bijux_gnss_infra::api::nav::{write_rinex_nav, GpsEphemeris};
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -836,9 +842,61 @@ mod tests {
         assert_eq!(profile.quantization_bits, 16);
     }
 
+    #[test]
+    fn read_ephemeris_accepts_rinex_navigation_files() {
+        let path = std::env::temp_dir().join(format!(
+            "bijux_read_ephemeris_rinex_{}_{}.rnx",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos()
+        ));
+        let eph = sample_ephemeris();
+
+        write_rinex_nav(&path, std::slice::from_ref(&eph), true).expect("write rinex nav");
+        let parsed = read_ephemeris(&path).expect("read rinex nav");
+        fs::remove_file(&path).expect("remove rinex nav");
+
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].sat, eph.sat);
+        assert_eq!(parsed[0].week, eph.week);
+        assert_eq!(parsed[0].iode, eph.iode);
+        assert_eq!(parsed[0].iodc, eph.iodc);
+        assert!((parsed[0].toe_s - eph.toe_s).abs() < 1.0e-9);
+    }
+
     fn temp_file_path(name: &str) -> PathBuf {
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos();
         std::env::temp_dir().join(format!("bijux_{}_{}_{}.iq", name, std::process::id(), nanos))
+    }
+
+    fn sample_ephemeris() -> GpsEphemeris {
+        GpsEphemeris {
+            sat: SatId { constellation: Constellation::Gps, prn: 8 },
+            iodc: 97,
+            iode: 11,
+            week: 2209,
+            sv_health: 0,
+            toe_s: 345_600.0,
+            toc_s: 504_018.0,
+            sqrt_a: 5_153.795_477_5,
+            e: 1.234_567_890_123e-2,
+            i0: 9.4e-1,
+            idot: 7.8e-10,
+            omega0: 1.5,
+            omegadot: -8.9e-9,
+            w: 2.1e-1,
+            m0: 6.0e-1,
+            delta_n: 4.5e-9,
+            cuc: 1.2e-6,
+            cus: 2.3e-6,
+            crc: 321.0,
+            crs: 25.0,
+            cic: 4.5e-8,
+            cis: 5.6e-8,
+            af0: -1.234_567_890_123e-4,
+            af1: 2.345_678_901_234e-12,
+            af2: 0.0,
+            tgd: -1.9e-8,
+        }
     }
 
     fn sample_front_end_metrics() -> bijux_gnss_infra::api::signal::IqFrontEndMetrics {
