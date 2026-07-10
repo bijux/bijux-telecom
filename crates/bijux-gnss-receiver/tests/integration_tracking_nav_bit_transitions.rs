@@ -11,11 +11,14 @@ use bijux_gnss_receiver::api::{
 };
 
 use support::tracking_truth::{
-    nav_bit_transition_epoch_indices, post_lock_epochs, wrapped_code_phase_error_samples,
+    carrier_frequency_error_hz, code_phase_error_samples, nav_bit_transition_epoch_indices,
+    post_lock_epochs, wrapped_code_phase_error_samples,
 };
 
 const CLEAN_NAV_BIT_CN0_DB_HZ: f32 = 52.0;
 const CLEAN_NAV_BIT_DURATION_S: f64 = 0.065;
+const CLEAN_NAV_BIT_LOCKED_CARRIER_ERROR_MAX_HZ: f64 = 15.0;
+const CLEAN_NAV_BIT_LOCKED_CODE_ERROR_MAX_SAMPLES: f64 = 1.0;
 
 fn accepted_acquisition(sat: SatId, doppler_hz: f64, code_phase_samples: usize) -> AcqResult {
     AcqResult {
@@ -95,6 +98,33 @@ fn track_clean_nav_bit_case(
     tracks.first().expect("track").epochs.clone()
 }
 
+fn first_post_lock_nav_bit_transition_epoch_index(
+    epochs: &[bijux_gnss_core::api::TrackEpoch],
+    sample_rate_hz: f64,
+) -> usize {
+    let first_lock_epoch_index = epochs
+        .iter()
+        .position(|epoch| epoch.lock_state == "tracking" && epoch.pll_lock && epoch.fll_lock)
+        .unwrap_or_else(|| panic!("tracking never reached stable lock: epochs={epochs:?}"));
+    nav_bit_transition_epoch_indices(epochs, sample_rate_hz)
+        .into_iter()
+        .find(|epoch_index| *epoch_index >= first_lock_epoch_index)
+        .unwrap_or_else(|| {
+            panic!(
+                "tracking never observed a nav-bit transition after lock: first_lock_epoch_index={first_lock_epoch_index}, epochs={epochs:?}"
+            )
+        })
+}
+
+fn post_transition_epochs(
+    epochs: &[bijux_gnss_core::api::TrackEpoch],
+    sample_rate_hz: f64,
+) -> &[bijux_gnss_core::api::TrackEpoch] {
+    let first_transition_epoch_index =
+        first_post_lock_nav_bit_transition_epoch_index(epochs, sample_rate_hz);
+    &epochs[first_transition_epoch_index..]
+}
+
 #[test]
 fn tracking_reports_nav_bit_lock_across_clean_bit_transition_windows() {
     let config = nav_bit_tracking_config();
@@ -120,5 +150,77 @@ fn tracking_reports_nav_bit_lock_across_clean_bit_transition_windows() {
                 expected_code_phase_samples
             ) <= 1.0),
         "tracking never settled near the seeded code phase in nav-bit scenario: epochs={epochs:?}"
+    );
+}
+
+#[test]
+fn tracking_preserves_channel_lock_after_the_first_post_lock_nav_bit_transition() {
+    let config = nav_bit_tracking_config();
+    let sat = SatId { constellation: Constellation::Gps, prn: 12 };
+    let epochs = track_clean_nav_bit_case(&config, sat, 120.0, 144.375, 0.3);
+    let first_transition_epoch_index =
+        first_post_lock_nav_bit_transition_epoch_index(&epochs, config.sampling_freq_hz);
+    let post_transition_epochs = post_transition_epochs(&epochs, config.sampling_freq_hz);
+
+    assert!(
+        post_transition_epochs
+            .iter()
+            .all(|epoch| epoch.lock),
+        "prompt lock dropped after nav-bit transition at epoch {first_transition_epoch_index}: epochs={epochs:?}"
+    );
+    assert!(
+        post_transition_epochs
+            .iter()
+            .all(|epoch| epoch.lock_state != "lost" && !epoch.cycle_slip),
+        "tracking reported loss or cycle slip after nav-bit transition at epoch {first_transition_epoch_index}: epochs={epochs:?}"
+    );
+    assert!(
+        post_transition_epochs
+            .iter()
+            .all(|epoch| epoch.lock_state_reason.as_deref() != Some("lock_lost")),
+        "tracking reported explicit lock loss after nav-bit transition at epoch {first_transition_epoch_index}: epochs={epochs:?}"
+    );
+    assert!(
+        post_transition_epochs
+            .iter()
+            .any(|epoch| epoch.nav_bit_lock),
+        "tracking never advertised nav-bit lock after the first nav-bit transition: epochs={epochs:?}"
+    );
+}
+
+#[test]
+fn tracking_keeps_bounded_code_and_carrier_errors_after_nav_bit_lock() {
+    let config = nav_bit_tracking_config();
+    let sat = SatId { constellation: Constellation::Gps, prn: 12 };
+    let true_doppler_hz = 120.0;
+    let code_phase_chips = 144.375;
+    let expected_code_phase_samples =
+        code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
+    let epochs = track_clean_nav_bit_case(&config, sat, true_doppler_hz, code_phase_chips, 0.3);
+    let post_transition_epochs = post_transition_epochs(&epochs, config.sampling_freq_hz);
+    let carrier_errors_hz = post_transition_epochs
+        .iter()
+        .map(|epoch| carrier_frequency_error_hz(epoch, true_doppler_hz))
+        .collect::<Vec<_>>();
+    let code_errors_samples = post_transition_epochs
+        .iter()
+        .map(|epoch| code_phase_error_samples(&config, epoch, expected_code_phase_samples))
+        .collect::<Vec<_>>();
+
+    assert!(
+        post_transition_epochs.iter().all(|epoch| epoch.nav_bit_lock),
+        "nav-bit lock did not remain asserted after the first nav-bit transition: epochs={epochs:?}"
+    );
+    assert!(
+        carrier_errors_hz
+            .iter()
+            .all(|error_hz| *error_hz <= CLEAN_NAV_BIT_LOCKED_CARRIER_ERROR_MAX_HZ),
+        "carrier error exceeded nav-bit lock threshold {CLEAN_NAV_BIT_LOCKED_CARRIER_ERROR_MAX_HZ} Hz: carrier_errors_hz={carrier_errors_hz:?}, epochs={epochs:?}"
+    );
+    assert!(
+        code_errors_samples
+            .iter()
+            .all(|error_samples| *error_samples <= CLEAN_NAV_BIT_LOCKED_CODE_ERROR_MAX_SAMPLES),
+        "code error exceeded nav-bit lock threshold {CLEAN_NAV_BIT_LOCKED_CODE_ERROR_MAX_SAMPLES} samples: code_errors_samples={code_errors_samples:?}, epochs={epochs:?}"
     );
 }
