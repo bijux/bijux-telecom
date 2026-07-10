@@ -142,7 +142,9 @@ fn wrap_time(mut t: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::formats::lnav_bits::{bit_sync_from_prompt, compute_parity, decode_words};
+    use crate::formats::lnav_bits::{
+        bit_sync_from_prompt, compute_parity, decode_words, demodulate_gps_l1ca_navigation_bits,
+    };
     use bijux_gnss_core::api::{Constellation, SatId};
 
     fn encode_word(data: u32, prev_d29: u8, prev_d30: u8) -> [u8; 30] {
@@ -227,6 +229,28 @@ mod tests {
         assert_eq!(result.bits.len(), 2);
         assert_eq!(result.bits[0], -1);
         assert_eq!(result.bits[1], 1);
+    }
+
+    #[test]
+    fn demodulated_navigation_bits_preserve_windows_and_prompt_sums() {
+        let mut prompt = vec![0.25_f32; 3];
+        prompt.extend(std::iter::repeat_n(1.5_f32, 20));
+        prompt.extend(std::iter::repeat_n(-0.5_f32, 20));
+
+        let demodulation = demodulate_gps_l1ca_navigation_bits(&prompt);
+
+        assert_eq!(demodulation.bit_start_ms, 3);
+        assert_eq!(demodulation.bits.len(), 2);
+        assert_eq!(demodulation.bits[0].bit_index, 0);
+        assert_eq!(demodulation.bits[0].start_prompt_index, 3);
+        assert_eq!(demodulation.bits[0].end_prompt_index_exclusive, 23);
+        assert_eq!(demodulation.bits[0].sign, 1);
+        assert!((demodulation.bits[0].prompt_sum - 30.0).abs() <= f32::EPSILON);
+        assert_eq!(demodulation.bits[1].bit_index, 1);
+        assert_eq!(demodulation.bits[1].start_prompt_index, 23);
+        assert_eq!(demodulation.bits[1].end_prompt_index_exclusive, 43);
+        assert_eq!(demodulation.bits[1].sign, -1);
+        assert!((demodulation.bits[1].prompt_sum + 10.0).abs() <= f32::EPSILON);
     }
 
     #[test]
