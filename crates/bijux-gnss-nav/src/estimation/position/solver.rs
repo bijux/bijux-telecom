@@ -55,6 +55,20 @@ struct PositionSolveInput {
     receive_tow_s: f64,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct PositionEstimate {
+    ecef_x_m: f64,
+    ecef_y_m: f64,
+    ecef_z_m: f64,
+    clock_bias_s: f64,
+}
+
+#[derive(Debug, Clone)]
+struct SatelliteGeometry {
+    observation: PositionObservation,
+    state: GpsSatState,
+}
+
 #[derive(Debug, Clone)]
 pub struct PositionSolver {
     pub max_iterations: usize,
@@ -115,7 +129,7 @@ impl PositionSolver {
         let mut z = 0.0_f64;
         let mut cb = 0.0_f64;
 
-        let mut used: Vec<(PositionObservation, GpsSatState, f64)> = Vec::new();
+        let mut used = Vec::new();
 
         let mut rejected = timing_rejected;
         let inputs = resolve_position_inputs(&observations, ephemerides, t_rx_s, &mut rejected);
@@ -128,69 +142,31 @@ impl PositionSolver {
         let mut cov_clamped = false;
         let mut cov_max_variance = None;
         for _ in 0..self.max_iterations {
-            used.clear();
-            for input in &inputs {
-                let obs = &input.observation;
-                let mut tau = obs
-                    .signal_timing
-                    .map(|timing| timing.signal_travel_time_s.0)
-                    .unwrap_or(obs.pseudorange_m / 299_792_458.0);
-                let mut state = sat_state_gps_l1ca_from_observation(
-                    &input.ephemeris,
-                    input.receive_tow_s,
-                    obs.pseudorange_m,
-                    obs.signal_timing,
-                );
-                let mut converged = false;
-                for _ in 0..5 {
-                    let dx = x - state.x_m;
-                    let dy = y - state.y_m;
-                    let dz = z - state.z_m;
-                    let range = (dx * dx + dy * dy + dz * dz).sqrt();
-                    let next_tau = (range + cb * 299_792_458.0
-                        - state.clock_correction.bias_s * 299_792_458.0)
-                        / 299_792_458.0;
-                    if (next_tau - tau).abs() < 1e-9 {
-                        converged = true;
-                    }
-                    tau = next_tau;
-                    state = sat_state_gps_l1ca(&input.ephemeris, input.receive_tow_s - tau, tau);
-                    if converged {
-                        break;
-                    }
-                }
-                if !converged {
-                    return None;
-                }
-                used.push((obs.clone(), state, tau));
-            }
+            let estimate = PositionEstimate {
+                ecef_x_m: x,
+                ecef_y_m: y,
+                ecef_z_m: z,
+                clock_bias_s: cb,
+            };
+            used = resolve_satellite_geometry(&inputs, estimate)?;
             if used.len() < 4 {
                 return None;
             }
             let mut h = Vec::new();
             let mut v = Vec::new();
             residuals.clear();
-            for (obs, state, _tau) in &used {
-                let dx = x - state.x_m;
-                let dy = y - state.y_m;
-                let dz = z - state.z_m;
-                let range = (dx * dx + dy * dy + dz * dz).sqrt();
-                let pred =
-                    range + cb * 299_792_458.0 - state.clock_correction.bias_s * 299_792_458.0;
-                let res = obs.pseudorange_m - pred;
-                residuals.push((obs.sat, res));
-                let hx = dx / range;
-                let hy = dy / range;
-                let hz = dz / range;
-                h.push([hx, hy, hz, 1.0]);
-                v.push(res);
+            for geometry in &used {
+                let (residual_m, design_row) = linearized_pseudorange_row(estimate, geometry);
+                residuals.push((geometry.observation.sat, residual_m));
+                h.push(design_row);
+                v.push(residual_m);
             }
 
             let mut weights =
                 if self.robust { huber_weights(&v, self.huber_k) } else { vec![1.0; v.len()] };
-            for (i, (obs, _, _)) in used.iter().enumerate() {
+            for (i, geometry) in used.iter().enumerate() {
                 if let Some(w) = weights.get_mut(i) {
-                    *w *= obs.weight;
+                    *w *= geometry.observation.weight;
                 }
             }
             let (dx, dy, dz, dcb, cov_out) = solve_weighted_normal_eq(&h, &v, &weights)?;
@@ -212,19 +188,23 @@ impl PositionSolver {
         }
 
         let mut filtered = Vec::new();
-        for (obs, state, _tau) in &used {
-            let dx = x - state.x_m;
-            let dy = y - state.y_m;
-            let dz = z - state.z_m;
-            let range = (dx * dx + dy * dy + dz * dz).sqrt();
-            let pred = range + cb * 299_792_458.0 - state.clock_correction.bias_s * 299_792_458.0;
-            let res = obs.pseudorange_m - pred;
-            let sigma_m = (1.0 / obs.weight.max(1e-6)).sqrt();
+        for geometry in &used {
+            let estimate = PositionEstimate {
+                ecef_x_m: x,
+                ecef_y_m: y,
+                ecef_z_m: z,
+                clock_bias_s: cb,
+            };
+            let (res, _design_row) = linearized_pseudorange_row(estimate, geometry);
+            let sigma_m = (1.0 / geometry.observation.weight.max(1e-6)).sqrt();
             let norm = res / sigma_m;
             if res.abs() > self.residual_gate_m || (norm * norm) > self.chi_square_gate {
-                rejected.push((obs.sat, bijux_gnss_core::api::MeasurementRejectReason::Outlier));
+                rejected.push((
+                    geometry.observation.sat,
+                    bijux_gnss_core::api::MeasurementRejectReason::Outlier,
+                ));
             } else {
-                filtered.push((obs.clone(), state.clone(), res));
+                filtered.push((geometry.observation.clone(), geometry.state.clone(), res));
             }
         }
 
@@ -378,6 +358,90 @@ fn resolve_position_inputs(
             })
         })
         .collect()
+}
+
+fn resolve_satellite_geometry(
+    inputs: &[PositionSolveInput],
+    estimate: PositionEstimate,
+) -> Option<Vec<SatelliteGeometry>> {
+    let mut geometry = Vec::with_capacity(inputs.len());
+    for input in inputs {
+        let obs = &input.observation;
+        let mut tau = obs
+            .signal_timing
+            .map(|timing| timing.signal_travel_time_s.0)
+            .unwrap_or(obs.pseudorange_m / 299_792_458.0);
+        let mut state = sat_state_gps_l1ca_from_observation(
+            &input.ephemeris,
+            input.receive_tow_s,
+            obs.pseudorange_m,
+            obs.signal_timing,
+        );
+        let mut converged = false;
+        for _ in 0..5 {
+            let range_m = geometric_range_m(estimate, &state);
+            let next_tau = predicted_signal_travel_time_s(
+                range_m,
+                estimate.clock_bias_s,
+                state.clock_correction.bias_s,
+            );
+            if (next_tau - tau).abs() < 1.0e-9 {
+                converged = true;
+            }
+            tau = next_tau;
+            state = sat_state_gps_l1ca(&input.ephemeris, input.receive_tow_s - tau, tau);
+            if converged {
+                break;
+            }
+        }
+        if !converged {
+            return None;
+        }
+        geometry.push(SatelliteGeometry { observation: obs.clone(), state });
+    }
+    Some(geometry)
+}
+
+fn linearized_pseudorange_row(
+    estimate: PositionEstimate,
+    geometry: &SatelliteGeometry,
+) -> (f64, [f64; 4]) {
+    let dx = estimate.ecef_x_m - geometry.state.x_m;
+    let dy = estimate.ecef_y_m - geometry.state.y_m;
+    let dz = estimate.ecef_z_m - geometry.state.z_m;
+    let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
+    let predicted_pseudorange_m = predicted_pseudorange_m(
+        range_m,
+        estimate.clock_bias_s,
+        geometry.state.clock_correction.bias_s,
+    );
+    let residual_m = geometry.observation.pseudorange_m - predicted_pseudorange_m;
+    let design_row = [dx / range_m, dy / range_m, dz / range_m, 1.0];
+    (residual_m, design_row)
+}
+
+fn geometric_range_m(estimate: PositionEstimate, state: &GpsSatState) -> f64 {
+    let dx = estimate.ecef_x_m - state.x_m;
+    let dy = estimate.ecef_y_m - state.y_m;
+    let dz = estimate.ecef_z_m - state.z_m;
+    (dx * dx + dy * dy + dz * dz).sqrt()
+}
+
+fn predicted_signal_travel_time_s(
+    range_m: f64,
+    receiver_clock_bias_s: f64,
+    satellite_clock_bias_s: f64,
+) -> f64 {
+    predicted_pseudorange_m(range_m, receiver_clock_bias_s, satellite_clock_bias_s)
+        / SPEED_OF_LIGHT_MPS
+}
+
+fn predicted_pseudorange_m(
+    range_m: f64,
+    receiver_clock_bias_s: f64,
+    satellite_clock_bias_s: f64,
+) -> f64 {
+    range_m + receiver_clock_bias_s * SPEED_OF_LIGHT_MPS - satellite_clock_bias_s * SPEED_OF_LIGHT_MPS
 }
 
 /// Returns whether a position observation carries a finite and internally consistent
