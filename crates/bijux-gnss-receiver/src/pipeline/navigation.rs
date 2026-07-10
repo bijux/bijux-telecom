@@ -2,13 +2,15 @@
 
 use bijux_gnss_core::api::{
     check_nav_solution_sanity, is_solution_valid, obs_epoch_stability_key, Constellation, Meters,
-    NavAssumptions, NavLifecycleState, NavProvenance, NavRefusalClass, NavResidual,
-    NavSolutionEpoch, NavUncertaintyClass, ObsEpoch, Seconds, SolutionStatus, SolutionValidity,
+    MeasurementRejectReason, NavAssumptions, NavLifecycleState, NavProvenance, NavRefusalClass,
+    NavResidual, NavSolutionEpoch, NavUncertaintyClass, ObsEpoch, Seconds, SolutionStatus,
+    SolutionValidity,
     NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
 };
 use bijux_gnss_nav::api::{
-    elevation_azimuth_deg, sat_state_gps_l1ca_from_observation, weight_from_cn0_elev, GpsEphemeris,
-    PositionObservation, PositionSolver, WeightingConfig,
+    elevation_azimuth_deg, position_observation_has_valid_satellite_time,
+    sat_state_gps_l1ca_from_observation, weight_from_cn0_elev, GpsEphemeris, PositionObservation,
+    PositionSolver, WeightingConfig,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -163,12 +165,26 @@ impl Navigation {
                 "mixed-constellation observations detected; unsupported signals are excluded",
             ));
         }
+        let mut invalid_satellite_time_sats = Vec::new();
         let observations: Vec<PositionObservation> = obs
             .sats
             .iter()
             .filter(|s| s.signal_id.sat.constellation == Constellation::Gps)
             .filter_map(|s| {
-                let mut elevation = s.elevation_deg;
+                let mut observation = PositionObservation {
+                    sat: s.signal_id.sat,
+                    pseudorange_m: s.pseudorange_m.0,
+                    cn0_dbhz: s.cn0_dbhz,
+                    elevation_deg: s.elevation_deg,
+                    weight: 1.0,
+                    gps_receive_time: obs.gps_time(),
+                    signal_timing: s.timing,
+                };
+                if !position_observation_has_valid_satellite_time(&observation, obs.t_rx_s.0) {
+                    invalid_satellite_time_sats.push(observation.sat);
+                    return None;
+                }
+                let mut elevation = observation.elevation_deg;
                 if elevation.is_none() {
                     if let Some((rx_x, rx_y, rx_z)) = self.last_ecef {
                         if let Some(eph) = eph.iter().find(|e| e.sat == s.signal_id.sat) {
@@ -199,28 +215,42 @@ impl Navigation {
                 let weight = elevation
                     .map(|el| weight_from_cn0_elev(s.cn0_dbhz, el, weight_config))
                     .unwrap_or(1.0);
-                Some(PositionObservation {
-                    sat: s.signal_id.sat,
-                    pseudorange_m: s.pseudorange_m.0,
-                    cn0_dbhz: s.cn0_dbhz,
-                    elevation_deg: elevation,
-                    weight: weight * tracking_mode_weight,
-                    gps_receive_time: obs.gps_time(),
-                    signal_timing: s.timing,
-                })
+                observation.elevation_deg = elevation;
+                observation.weight = weight * tracking_mode_weight;
+                Some(observation)
             })
             .collect();
+        if !invalid_satellite_time_sats.is_empty() {
+            self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                "NAV_INVALID_SATELLITE_TIME",
+                "excluded observations without valid satellite timing",
+            ));
+        }
         if observations.len() < 4 {
             self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
                 bijux_gnss_core::api::DiagnosticSeverity::Warning,
                 "NAV_INSUFFICIENT_SATS",
                 "insufficient satellites for navigation solution",
             ));
-            let refusal = if has_unsupported_constellation {
+            let refusal = if !invalid_satellite_time_sats.is_empty() {
+                NavRefusalClass::InvalidSatelliteTime
+            } else if has_unsupported_constellation {
                 NavRefusalClass::MixedConstellationInput
             } else {
                 NavRefusalClass::InsufficientGeometry
             };
+            let mut explain_reasons = vec![
+                "insufficient_geometry".to_string(),
+                format!("supported_satellites={}", observations.len()),
+            ];
+            if !invalid_satellite_time_sats.is_empty() {
+                explain_reasons.push("invalid_satellite_time".to_string());
+                explain_reasons.push(format!(
+                    "invalid_satellite_time_count={}",
+                    invalid_satellite_time_sats.len()
+                ));
+            }
             return Some(self.degraded_from_last(
                 obs,
                 source_observation_epoch_id,
@@ -229,10 +259,7 @@ impl Navigation {
                     status: SolutionStatus::Degraded,
                     refusal_class: Some(refusal),
                     explain_decision: "refused".to_string(),
-                    explain_reasons: vec![
-                        "insufficient_geometry".to_string(),
-                        format!("supported_satellites={}", observations.len()),
-                    ],
+                    explain_reasons,
                 },
                 assumptions,
             ));
@@ -343,6 +370,15 @@ impl Navigation {
             stability_signature: String::new(),
             stability_signature_version: NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
         };
+        nav_epoch.residuals.extend(invalid_satellite_time_sats.iter().copied().map(|sat| NavResidual {
+            sat,
+            residual_m: Meters(0.0),
+            rejected: true,
+            weight: None,
+            reject_reason: Some(MeasurementRejectReason::TimeInconsistency),
+        }));
+        nav_epoch.sat_count += invalid_satellite_time_sats.len();
+        nav_epoch.rejected_sat_count += invalid_satellite_time_sats.len();
 
         if solution.covariance_symmetrized {
             nav_epoch.health.push(bijux_gnss_core::api::NavHealthEvent::CovarianceSymmetrized);
@@ -1016,7 +1052,13 @@ mod tests {
                     elevation_deg: Some(45.0),
                     azimuth_deg: Some(0.0),
                     weight: Some(1.0),
-                    timing: None,
+                    timing: Some(ObsSignalTiming {
+                        signal_travel_time_s: Seconds(pseudorange_m / 299_792_458.0),
+                        transmit_gps_time: GpsTime {
+                            week: 0,
+                            tow_s: t_rx_s - (pseudorange_m / 299_792_458.0),
+                        },
+                    }),
                     error_model: None,
                     metadata: ObsMetadata {
                         tracking_mode: "synthetic".to_string(),
@@ -1198,6 +1240,20 @@ mod tests {
             .any(|reason| reason == "input_observation_marked_invalid"));
         assert_eq!(solution.lifecycle_state, NavLifecycleState::Invalid);
         assert_eq!(solution.model_version, NAV_SOLUTION_MODEL_VERSION);
+    }
+
+    #[test]
+    fn navigation_refuses_observations_without_valid_satellite_time() {
+        let config = ReceiverPipelineConfig::default();
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+        let mut obs = fake_obs_epoch_for_nav_tests(13);
+        for sat in &mut obs.sats {
+            sat.timing = None;
+        }
+        let solution = nav.solve_epoch(&obs, &[]).expect("timing refusal");
+        assert_eq!(solution.status, SolutionStatus::Held);
+        assert_eq!(solution.refusal_class, Some(NavRefusalClass::InvalidSatelliteTime));
+        assert!(solution.explain_reasons.iter().any(|reason| reason == "invalid_satellite_time"));
     }
 
     #[test]

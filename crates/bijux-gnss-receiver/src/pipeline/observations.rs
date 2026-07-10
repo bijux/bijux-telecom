@@ -897,6 +897,7 @@ fn tracking_time_tag(epoch: &TrackEpoch, last_locked_sample: &mut Option<u64>) -
 
 #[cfg(test)]
 pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
+    let receive_tow_s = epoch_idx as f64 * 0.001;
     let sats = (1..=4)
         .map(|prn| ObsSatellite {
             signal_id: SigId {
@@ -923,7 +924,13 @@ pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
             elevation_deg: Some(45.0),
             azimuth_deg: Some(0.0),
             weight: Some(1.0),
-            timing: None,
+            timing: Some(ObsSignalTiming {
+                signal_travel_time_s: Seconds((20_200_000.0 + prn as f64) / SPEED_OF_LIGHT_MPS),
+                transmit_gps_time: GpsTime {
+                    week: 0,
+                    tow_s: receive_tow_s - ((20_200_000.0 + prn as f64) / SPEED_OF_LIGHT_MPS),
+                },
+            }),
             error_model: None,
             metadata: ObsMetadata {
                 tracking_mode: "scalar".to_string(),
@@ -938,7 +945,7 @@ pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
         })
         .collect();
     ObsEpoch {
-        t_rx_s: Seconds(epoch_idx as f64 * 0.001),
+        t_rx_s: Seconds(receive_tow_s),
         source_time: ReceiverSampleTrace::from_sample_index(epoch_idx, 1_000.0),
         gps_week: None,
         tow_s: None,

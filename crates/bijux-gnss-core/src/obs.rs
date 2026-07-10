@@ -213,6 +213,7 @@ pub enum NavUncertaintyClass {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum NavRefusalClass {
     InsufficientGeometry,
+    InvalidSatelliteTime,
     InvalidEphemeris,
     InconsistentObservations,
     SolverFailure,
