@@ -1,5 +1,7 @@
 #![allow(missing_docs)]
 
+use std::collections::VecDeque;
+
 use num_complex::Complex;
 
 use bijux_gnss_core::api::{
@@ -42,6 +44,8 @@ const FLL_PULL_IN_MAX_CORRECTION_BW_MULTIPLIER: f64 = 4.0;
 const REACQUISITION_REQUIRED_LOST_EPOCHS: usize = 3;
 const REACQUISITION_CONFIRMATION_EPOCHS: u8 = 2;
 const REACQUISITION_PULL_IN_EPOCH_BUDGET: u8 = 20;
+const TRACKING_CN0_WINDOW_EPOCHS: usize = 8;
+const TRACKING_CN0_MIN_WINDOW_EPOCHS: usize = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelState {
@@ -137,6 +141,7 @@ struct LoopState {
     weak_cn0_epochs: u8,
     degraded_epochs: u16,
     prompt_power_reference: f32,
+    prompt_cn0_window: VecDeque<Complex<f32>>,
     unstable_discriminator_epochs: u8,
     state: ChannelState,
     unlocked_count: u8,
@@ -562,6 +567,7 @@ impl Tracking {
             weak_cn0_epochs: 0,
             degraded_epochs: 0,
             prompt_power_reference: 0.0,
+            prompt_cn0_window: VecDeque::new(),
             unstable_discriminator_epochs: 0,
             state: ChannelState::Acquired,
             unlocked_count: 0,
@@ -637,6 +643,7 @@ impl Tracking {
                         weak_cn0_epochs: 0,
                         degraded_epochs: 0,
                         prompt_power_reference: 0.0,
+                        prompt_cn0_window: VecDeque::new(),
                         unstable_discriminator_epochs: 0,
                         state: ChannelState::Acquired,
                         unlocked_count: 0,
@@ -847,7 +854,19 @@ impl Tracking {
                 update_prompt_power_reference(state.prompt_power_reference, prompt_power);
             let prompt_power_ratio = prompt_power_ratio(prompt_power, state.prompt_power_reference);
 
-            let cn0_dbhz = track_epoch.cn0_dbhz;
+            let mut cn0_dbhz = state.acquisition_cn0_proxy_dbhz;
+            if !cn0_dbhz.is_finite() || cn0_dbhz <= 0.0 {
+                cn0_dbhz = track_epoch.cn0_dbhz;
+            }
+            if let Some(windowed_cn0_dbhz) = update_windowed_tracking_cn0_estimate(
+                &mut state.prompt_cn0_window,
+                aligned_prompt(corr.prompt, phase_decision.nav_bit_phase_offset_cycles),
+                self.config.sampling_freq_hz,
+                epoch_frame.len(),
+            ) {
+                cn0_dbhz = windowed_cn0_dbhz;
+            }
+            track_epoch.cn0_dbhz = cn0_dbhz;
             let (dll_bw, pll_bw, fll_bw) = adaptive_bandwidth(
                 tracking_params.dll_bw_hz,
                 tracking_params.pll_bw_hz,
@@ -929,6 +948,7 @@ impl Tracking {
             if state.state == ChannelState::Lost {
                 state.reacquisition_pending = false;
                 state.reacquisition_attempt_epochs = 0;
+                state.prompt_cn0_window.clear();
                 if from_state != ChannelState::Lost {
                     state.lost_reason = Some(transition.reason.clone());
                     state.reacquisition_candidate = None;
@@ -940,6 +960,9 @@ impl Tracking {
                 state.reacquisition_candidate_streak = 0;
                 if !state.reacquisition_pending {
                     state.reacquisition_attempt_epochs = 0;
+                }
+                if !matches!(state.state, ChannelState::Tracking | ChannelState::Degraded) {
+                    state.prompt_cn0_window.clear();
                 }
             }
 
@@ -1089,6 +1112,56 @@ fn prompt_power_ratio(prompt_power: f32, prompt_power_reference: f32) -> Option<
         return None;
     }
     Some(prompt_power / prompt_power_reference)
+}
+
+fn aligned_prompt(prompt: Complex<f32>, nav_bit_phase_offset_cycles: f64) -> Complex<f32> {
+    if !prompt.re.is_finite() || !prompt.im.is_finite() {
+        return Complex::new(0.0, 0.0);
+    }
+    let phase_rad = (-nav_bit_phase_offset_cycles * std::f64::consts::TAU) as f32;
+    let rotation = Complex::new(phase_rad.cos(), phase_rad.sin());
+    prompt * rotation
+}
+
+fn update_windowed_tracking_cn0_estimate(
+    prompt_cn0_window: &mut VecDeque<Complex<f32>>,
+    aligned_prompt: Complex<f32>,
+    sample_rate_hz: f64,
+    coherent_samples: usize,
+) -> Option<f64> {
+    if !sample_rate_hz.is_finite() || sample_rate_hz <= 0.0 || coherent_samples == 0 {
+        return None;
+    }
+    if !aligned_prompt.re.is_finite() || !aligned_prompt.im.is_finite() {
+        prompt_cn0_window.clear();
+        return None;
+    }
+    prompt_cn0_window.push_back(aligned_prompt);
+    while prompt_cn0_window.len() > TRACKING_CN0_WINDOW_EPOCHS {
+        prompt_cn0_window.pop_front();
+    }
+    if prompt_cn0_window.len() < TRACKING_CN0_MIN_WINDOW_EPOCHS {
+        return None;
+    }
+
+    let window_len = prompt_cn0_window.len() as f64;
+    let mean_prompt = prompt_cn0_window
+        .iter()
+        .copied()
+        .fold(Complex::new(0.0f32, 0.0f32), |acc, value| acc + value)
+        / window_len as f32;
+    let noise_variance =
+        prompt_cn0_window.iter().map(|value| (*value - mean_prompt).norm_sqr() as f64).sum::<f64>()
+            / (window_len - 1.0);
+    if !noise_variance.is_finite() || noise_variance <= 0.0 {
+        return None;
+    }
+
+    let coherent_signal_power =
+        ((mean_prompt.norm_sqr() as f64) - noise_variance / window_len).max(1e-12);
+    let cn0_linear =
+        coherent_signal_power * sample_rate_hz / (coherent_samples as f64 * noise_variance);
+    Some(10.0 * cn0_linear.max(1e-12).log10())
 }
 
 fn update_discriminator_instability_epochs(
@@ -1754,6 +1827,7 @@ impl Tracking {
             weak_cn0_epochs: 0,
             degraded_epochs: 0,
             prompt_power_reference: 0.0,
+            prompt_cn0_window: VecDeque::new(),
             unstable_discriminator_epochs: 0,
             state: ChannelState::Acquired,
             unlocked_count: 0,
