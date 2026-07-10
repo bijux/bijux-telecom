@@ -86,6 +86,22 @@ fn track(config: &ReceiverPipelineConfig, sat: SatId, epoch_indices: &[u64]) -> 
     }
 }
 
+fn track_from_epoch(epoch: TrackEpoch) -> TrackingResult {
+    let sat = epoch.sat;
+    TrackingResult {
+        sat,
+        carrier_hz: epoch.carrier_hz.0,
+        code_phase_samples: epoch.code_phase_samples.0,
+        acquisition_hypothesis: "accepted".to_string(),
+        acquisition_score: 1.0,
+        acquisition_code_phase_samples: 0,
+        acquisition_carrier_hz: epoch.carrier_hz.0,
+        acq_to_track_state: "accepted".to_string(),
+        epochs: vec![epoch],
+        transitions: Vec::new(),
+    }
+}
+
 #[test]
 fn grouped_observation_epochs_share_one_receiver_time() {
     let config = observation_config();
@@ -115,4 +131,40 @@ fn grouped_observation_epochs_share_one_receiver_time() {
             .iter()
             .all(|sat| sat.metadata.time_tag_sample_index == expected_sample_index));
     }
+}
+
+#[test]
+fn grouped_observation_epochs_reject_mixed_receiver_time_inputs() {
+    let config = observation_config();
+    let sat_a = SatId { constellation: Constellation::Gps, prn: 3 };
+    let sat_b = SatId { constellation: Constellation::Gps, prn: 7 };
+    let mut shifted_epoch = tracking_epoch(&config, sat_b, 70);
+    let shifted_sample_index = 71 * samples_per_epoch(&config);
+    shifted_epoch.sample_index = shifted_sample_index;
+    shifted_epoch.source_time =
+        ReceiverSampleTrace::from_sample_index(shifted_sample_index, config.sampling_freq_hz);
+
+    let report = observations_from_tracking_results(
+        &config,
+        &[track(&config, sat_a, &[70]), track_from_epoch(shifted_epoch)],
+        10,
+    );
+    let epoch = report.output.iter().find(|epoch| epoch.epoch_idx == 70).expect("epoch");
+    let shifted_sat = epoch.sats.iter().find(|sat| sat.signal_id.sat == sat_b).expect("sat");
+
+    assert!(!epoch.valid);
+    assert_eq!(epoch.source_time.sample_index, 70 * samples_per_epoch(&config));
+    assert_eq!(epoch.decision_reason.as_deref(), Some("inconsistent_observable"));
+    assert!(shifted_sat
+        .observation_reject_reasons
+        .iter()
+        .any(|reason| reason == "receiver_time_mismatch"));
+    assert!(shifted_sat
+        .observation_reject_reasons
+        .iter()
+        .any(|reason| reason == "receiver_sample_trace_mismatch"));
+    assert!(report
+        .events
+        .iter()
+        .any(|event| event.code == "OBS_GROUPED_RECEIVER_TIME_MISMATCH"));
 }
