@@ -909,3 +909,82 @@ fn nav_decode_reports_lnav_orbit_subframes_from_wrapped_track_artifact() {
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
 }
+
+#[test]
+fn nav_decode_reports_lnav_ephemeris_refusals_from_wrapped_track_artifact() {
+    let repo = repo_root();
+    let temp = temp_dir_path("nav_decode_ephemeris_refusal");
+    fs::create_dir_all(&temp).expect("create temp dir");
+    let sat = SatId { constellation: Constellation::Gps, prn: 12 };
+    let mut bits = encode_subframe_1_with_clock(1, 42, 0, 0x1A5, 21_600, 0, 0, 0, 0);
+    bits.extend(encode_subframe_2_with_orbit(
+        2,
+        0xA5,
+        -512,
+        1234,
+        -0x1234_5678,
+        -777,
+        0x0123_4567,
+        911,
+        0x0056_789A,
+        21_600,
+    ));
+    bits.extend(encode_subframe_3_with_orbit(
+        3,
+        0x22,
+        -321,
+        0x2345_6789_u32 as i32,
+        654,
+        -0x1234_0000,
+        2047,
+        0x1112_1314_u32 as i32,
+        -0x34567,
+        0x1234,
+    ));
+
+    let track_path = temp.join("track.jsonl");
+    write_track_artifact_from_bits(&track_path, sat, 6, &bits);
+
+    let nav_dir = temp.join("nav");
+    fs::create_dir_all(&nav_dir).expect("create nav dir");
+    let nav_output = run_bijux(
+        &[
+            "gnss",
+            "nav",
+            "decode",
+            "--unregistered-dataset",
+            "--track",
+            track_path.to_str().expect("track path"),
+            "--prn",
+            "12",
+            "--config",
+            "configs/receiver_low_rate.toml",
+            "--report",
+            "json",
+            "--out",
+            nav_dir.to_str().expect("nav dir"),
+        ],
+        &repo,
+    );
+    assert!(
+        nav_output.status.success(),
+        "nav decode failed: {}",
+        String::from_utf8_lossy(&nav_output.stderr)
+    );
+
+    let report: Value = serde_json::from_str(
+        &fs::read_to_string(nav_dir.join("nav_decode_report.json")).expect("read nav report"),
+    )
+    .expect("parse nav report");
+    let ephemeris_rejections =
+        report["ephemeris_rejections"].as_array().expect("ephemeris_rejections");
+
+    assert_eq!(report["bit_start_ms"], 6);
+    assert!(report["ephemerides"].as_array().expect("ephemerides").is_empty(), "report={report}");
+    assert_eq!(ephemeris_rejections.len(), 1, "report={report}");
+    assert_eq!(ephemeris_rejections[0]["reason"], "iode_mismatch");
+    assert_eq!(ephemeris_rejections[0]["existing_iode"], 165);
+    assert_ne!(ephemeris_rejections[0]["incoming_iode"], ephemeris_rejections[0]["existing_iode"]);
+
+    fs::remove_dir_all(&temp).expect("remove temp dir");
+}
