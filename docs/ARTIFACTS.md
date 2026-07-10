@@ -142,6 +142,13 @@ The report includes:
 - `decoded_subframes[*].orbit_subframe_3.w`
 - `decoded_subframes[*].orbit_subframe_3.omegadot`
 - `decoded_subframes[*].orbit_subframe_3.idot`
+- `ephemeris_rejections[*].subframe_id`
+- `ephemeris_rejections[*].reason`
+  Current values include `iode_mismatch` and `iodc_iode_mismatch`.
+- `ephemeris_rejections[*].existing_iodc`
+- `ephemeris_rejections[*].existing_iode`
+- `ephemeris_rejections[*].incoming_iodc`
+- `ephemeris_rejections[*].incoming_iode`
 - `decoded_subframes[*].parity.word_count`
 - `decoded_subframes[*].parity.passed_word_count`
 - `decoded_subframes[*].parity.failed_word_indexes`
