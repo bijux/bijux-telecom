@@ -18,6 +18,7 @@ mod error;
 mod geo;
 mod ids;
 mod obs;
+mod obs_validation;
 mod reference_validation;
 mod stats;
 mod time;

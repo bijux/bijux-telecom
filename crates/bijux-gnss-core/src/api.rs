@@ -46,22 +46,25 @@ pub use crate::ids::{
 };
 /// Observation and tracking contracts.
 pub use crate::obs::{
-    acq_result_stability_key, check_inter_frequency_alignment, obs_epoch_stability_key,
-    stable_acq_result_keys, validate_obs_epochs, AcqAssumptions, AcqCodePhaseRefinement,
-    AcqDopplerRefinement, AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqRequest,
-    AcqResult, AcqSearchSummary, AcqThresholdProvenance, AcqTrackingSeed, AcqUncertainty,
-    AmbiguityId, AmbiguityState, AmbiguityStatus, BandLagEvent, DoubleDifference,
-    InterFrequencyAlignmentReport, InterSystemBias, LockFlags, MeasurementErrorModel,
-    MeasurementRejectReason, NavAssumptions, NavHealthEvent, NavLifecycleState, NavProvenance,
-    NavQualityFlag, NavRefusalClass, NavResidual, NavSolutionEpoch, NavUncertaintyClass,
-    ObsDecisionArtifact, ObsEpoch, ObsEpochManifest, ObsMetadata, ObsSatellite,
-    ObservationEpochDecision, ObservationStatus, ObservationSupportClass,
-    ObservationUncertaintyClass, ReceiverRole, Sample, SamplesFrame, SatObservationDecision,
-    SignalSupportRow, SingleDifference, SolutionStatus, SolutionValidity, SupportMatrix,
-    SupportStatus, TrackEpoch, TrackTransition, TrackingAssumptions,
+    acq_result_stability_key, obs_epoch_stability_key, stable_acq_result_keys,
+    trackable_acq_tracking_seeds, AcqAssumptions, AcqCodePhaseRefinement, AcqDopplerRefinement,
+    AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqRequest, AcqResult,
+    AcqSearchSummary, AcqThresholdProvenance, AcqTrackingSeed, AcqUncertainty, AmbiguityId,
+    AmbiguityState, AmbiguityStatus, DoubleDifference, InterSystemBias, LockFlags,
+    MeasurementErrorModel, MeasurementRejectReason, NavAssumptions, NavHealthEvent,
+    NavLifecycleState, NavProvenance, NavQualityFlag, NavRefusalClass, NavResidual,
+    NavSolutionEpoch, NavUncertaintyClass, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest,
+    ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus,
+    ObservationSupportClass, ObservationUncertaintyClass, ReceiverRole, Sample, SamplesFrame,
+    SatObservationDecision, SignalSupportRow, SingleDifference, SolutionStatus, SolutionValidity,
+    SupportMatrix, SupportStatus, TrackEpoch, TrackTransition, TrackingAssumptions,
     TrackingLifecycleState, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
     OBSERVATION_DOWNSTREAM_PROFILE_VERSION, OBSERVATION_MODEL_VERSION,
-    TRACKING_STATE_MODEL_VERSION, trackable_acq_tracking_seeds,
+    TRACKING_STATE_MODEL_VERSION,
+};
+pub use crate::obs_validation::{
+    check_inter_frequency_alignment, validate_obs_epochs, BandLagEvent,
+    InterFrequencyAlignmentReport,
 };
 /// Engine boundary nav epoch alias.
 pub type NavEpoch = NavSolutionEpoch;
