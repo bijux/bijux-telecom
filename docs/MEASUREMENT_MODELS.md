@@ -50,6 +50,20 @@ sanity checks). Any violation must emit diagnostics and mark the measurement as 
   `δṫ_r(k+1) = δṫ_r(k) + w_d`.
 - Bias is estimated in WLS/PPP; drift is tracked explicitly in filtering models.
 
+## Satellite Clock Model
+- Broadcast GPS clock correction is carried as `GpsSatelliteClockCorrection`.
+- Applied broadcast bias:
+  `δt_s = base_bias_s + relativistic_s - group_delay_s`.
+- Broadcast base bias is the LNAV polynomial:
+  `base_bias_s = af0 + af1 * Δt + af2 * Δt²`, with `Δt = t_tx - toc`.
+- Broadcast drift and drift rate are exposed explicitly as:
+  `drift_s_per_s = af1 + 2 * af2 * Δt` and `drift_rate_s_per_s2 = 2 * af2`.
+- `GpsSatState` carries the full `clock_correction` alongside ECEF position so pseudorange
+  generation and navigation solvers use one consistent clock surface.
+- When precise CLK products are available, `ProductsProvider::clock_correction` supplies a
+  bias-only correction with zero relativistic and group-delay terms; callers must not reapply
+  broadcast-only terms on top of a precise clock bias.
+
 ## Noise/Weighting
 - CN₀- and elevation-weighted variance is used in navigation solvers.
 - See `NavigationWeightingConfig` for the current policy knobs.
