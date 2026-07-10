@@ -537,18 +537,6 @@ impl Tracking {
         }
     }
 
-    fn epochs_in_frame(&self, frame: &SamplesFrame, tracking_params: TrackingParams) -> usize {
-        tracking_epoch_count(
-            frame.len(),
-            tracking_epoch_samples(
-                self.config.sampling_freq_hz,
-                self.config.code_freq_basis_hz,
-                self.config.code_length,
-                tracking_params,
-            ),
-        )
-    }
-
     fn track_epochs(
         &self,
         frame: &SamplesFrame,
@@ -1567,6 +1555,7 @@ fn tracking_epoch_samples(
     code_period_samples.saturating_mul(tracking_params.integration_ms.max(1) as usize)
 }
 
+#[cfg(test)]
 fn tracking_epoch_count(frame_len_samples: usize, epoch_len_samples: usize) -> usize {
     let epoch_len_samples = epoch_len_samples.max(1);
     if frame_len_samples == 0 {
