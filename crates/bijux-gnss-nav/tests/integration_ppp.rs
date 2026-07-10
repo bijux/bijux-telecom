@@ -174,12 +174,12 @@ fn ppp_handles_missing_products() {
             None
         }
 
-        fn clock_bias_s(
+        fn clock_correction(
             &self,
             _sat: SatId,
             _t_s: f64,
             _diag: &mut bijux_gnss_nav::api::ProductDiagnostics,
-        ) -> Option<f64> {
+        ) -> Option<bijux_gnss_nav::api::GpsSatelliteClockCorrection> {
             None
         }
 

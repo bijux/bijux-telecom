@@ -2,7 +2,10 @@
 
 use bijux_gnss_core::api::SatId;
 
-use crate::orbits::gps::{sat_state_gps_l1ca, GpsEphemeris, GpsSatState};
+use crate::orbits::gps::{
+    gps_satellite_clock_correction, sat_state_gps_l1ca, GpsEphemeris,
+    GpsSatState, GpsSatelliteClockCorrection,
+};
 
 use crate::formats::clk::ClkProvider;
 use crate::formats::sp3::Sp3Provider;
@@ -31,7 +34,12 @@ impl Default for ProductDiagnostics {
 pub trait ProductsProvider {
     fn sat_state(&self, sat: SatId, t_s: f64, diag: &mut ProductDiagnostics)
         -> Option<GpsSatState>;
-    fn clock_bias_s(&self, sat: SatId, t_s: f64, diag: &mut ProductDiagnostics) -> Option<f64>;
+    fn clock_correction(
+        &self,
+        sat: SatId,
+        t_s: f64,
+        diag: &mut ProductDiagnostics,
+    ) -> Option<GpsSatelliteClockCorrection>;
     fn coverage_s(&self, sat: SatId) -> Option<(f64, f64)>;
 }
 
@@ -57,9 +65,14 @@ impl ProductsProvider for BroadcastProductsProvider {
         Some(sat_state_gps_l1ca(eph, t_s, 0.0))
     }
 
-    fn clock_bias_s(&self, sat: SatId, t_s: f64, _diag: &mut ProductDiagnostics) -> Option<f64> {
+    fn clock_correction(
+        &self,
+        sat: SatId,
+        t_s: f64,
+        _diag: &mut ProductDiagnostics,
+    ) -> Option<GpsSatelliteClockCorrection> {
         let eph = self.ephs.iter().find(|e| e.sat == sat)?;
-        Some(sat_state_gps_l1ca(eph, t_s, 0.0).clock_bias_s)
+        Some(gps_satellite_clock_correction(eph, t_s))
     }
 
     fn coverage_s(&self, _sat: SatId) -> Option<(f64, f64)> {
@@ -112,12 +125,17 @@ impl ProductsProvider for Products {
         self.broadcast.sat_state(sat, t_s, diag)
     }
 
-    fn clock_bias_s(&self, sat: SatId, t_s: f64, diag: &mut ProductDiagnostics) -> Option<f64> {
+    fn clock_correction(
+        &self,
+        sat: SatId,
+        t_s: f64,
+        diag: &mut ProductDiagnostics,
+    ) -> Option<GpsSatelliteClockCorrection> {
         if let Some(clk) = &self.clk {
             if let Some((start, end)) = clk.coverage_s(sat) {
                 if t_s >= start && t_s <= end {
                     if let Some(bias) = clk.bias_s(sat, t_s) {
-                        return Some(bias);
+                        return Some(GpsSatelliteClockCorrection::from_bias_s(bias));
                     }
                 } else {
                     diag.fallback(format!("CLK out of coverage for {:?}", sat));
@@ -125,7 +143,7 @@ impl ProductsProvider for Products {
             }
         }
         diag.fallback(format!("CLK missing for {:?}, using broadcast", sat));
-        self.broadcast.clock_bias_s(sat, t_s, diag)
+        self.broadcast.clock_correction(sat, t_s, diag)
     }
 
     fn coverage_s(&self, sat: SatId) -> Option<(f64, f64)> {

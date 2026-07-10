@@ -19,7 +19,9 @@ use crate::estimation::position::solver::{elevation_azimuth_deg, weight_from_cn0
 use crate::estimation::ppp::config::{PppConvergenceState, PppHealth, PppSolutionEpoch};
 use crate::formats::precise_products::{ProductDiagnostics, ProductsProvider};
 use crate::linalg::Matrix;
-use crate::orbits::gps::{sat_state_gps_l1ca, GpsEphemeris, GpsSatState};
+use crate::orbits::gps::{
+    gps_satellite_clock_correction, sat_state_gps_l1ca, GpsEphemeris, GpsSatState,
+};
 
 impl PppFilter {
     pub fn new(config: PppConfig) -> Self {
@@ -294,10 +296,11 @@ impl PppFilter {
         let state = products
             .sat_state(sat, t_s, &mut diag)
             .or_else(|| Some(sat_state_gps_l1ca(eph, t_s, 0.0)))?;
-        let clock_bias_s = products.clock_bias_s(sat, t_s, &mut diag).unwrap_or(state.clock_bias_s);
+        let clock_correction = products
+            .clock_correction(sat, t_s, &mut diag)
+            .unwrap_or_else(|| gps_satellite_clock_correction(eph, t_s));
         let fallback = !diag.fallbacks.is_empty();
-        let relativistic = state.relativistic_s;
-        Some((state, clock_bias_s + relativistic, fallback))
+        Some((state, clock_correction.bias_s, fallback))
     }
 
     fn ensure_states(&mut self, sats: &[&ObsSatellite]) {

@@ -59,7 +59,10 @@ pub use crate::models::atmosphere::{
 /// Ephemeris provider traits and helpers.
 pub use crate::orbits::ephemeris::{CsvEphemerisProvider, Ephemeris, EphemerisProvider};
 /// Broadcast ephemeris and satellite state.
-pub use crate::orbits::gps::{sat_state_gps_l1ca, GpsEphemeris, GpsSatState};
+pub use crate::orbits::gps::{
+    gps_satellite_clock_correction, sat_state_gps_l1ca, GpsEphemeris, GpsSatState,
+    GpsSatelliteClockCorrection,
+};
 /// Time helpers.
 pub use crate::time::{gps_time_from_utc, gps_week_rollover, normalize_tow};
 
