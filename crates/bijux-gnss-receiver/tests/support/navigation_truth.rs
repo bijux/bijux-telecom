@@ -1,10 +1,10 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{Constellation, SatId};
 use bijux_gnss_core::api::{
     AcqCodePhaseRefinement, AcqHypothesis, AcqResult, AcqUncertainty, Hertz, ReceiverSampleTrace,
     SignalBand,
 };
+use bijux_gnss_core::api::{Constellation, SatId};
 use bijux_gnss_nav::api::{sat_state_gps_l1ca, GpsEphemeris};
 use bijux_gnss_receiver::api::{
     carrier_hz_from_doppler_hz,
@@ -27,6 +27,14 @@ pub struct SyntheticPvtScenario {
 }
 
 pub fn four_satellite_pvt_scenario(config: &ReceiverPipelineConfig) -> SyntheticPvtScenario {
+    multisatellite_pvt_scenario(config, 0.125, "four-satellite-pvt-readiness")
+}
+
+pub fn multisatellite_pvt_scenario(
+    config: &ReceiverPipelineConfig,
+    duration_s: f64,
+    scenario_id: &str,
+) -> SyntheticPvtScenario {
     let t_rx_s = 100_000.0;
     let truth_ecef_m = (5_000.0, -4_000.0, 3_000.0);
     let ephemerides = vec![
@@ -63,11 +71,11 @@ pub fn four_satellite_pvt_scenario(config: &ReceiverPipelineConfig) -> Synthetic
             sample_rate_hz: config.sampling_freq_hz,
             intermediate_freq_hz: config.intermediate_freq_hz,
             receiver_clock_frequency_bias_hz: 0.0,
-            duration_s: 0.125,
+            duration_s,
             seed: 0x5EED_66,
             satellites,
             ephemerides: ephemerides.clone(),
-            id: "four-satellite-pvt-readiness".to_string(),
+            id: scenario_id.to_string(),
         },
         ephemerides,
         truth_ecef_m,
