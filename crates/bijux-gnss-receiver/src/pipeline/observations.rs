@@ -460,11 +460,9 @@ pub fn observations_from_tracking_results_with_gps_anchor(
     for mut epoch in by_epoch.into_values() {
         bijux_gnss_core::api::sort_obs_sats(&mut epoch);
         apply_epoch_decision(&mut epoch);
-        let source_sample_index =
-            epoch.sats.iter().map(|sat| sat.metadata.time_tag_sample_index).min().unwrap_or(0);
-        let source_time =
-            ReceiverSampleTrace::from_sample_index(source_sample_index, config.sampling_freq_hz);
+        let source_time = epoch.source_time;
         let artifact_id = format!("obs-epoch-{:010}", epoch.epoch_idx);
+        epoch.t_rx_s = source_time.receiver_time_s;
         epoch.source_time = source_time;
         let epoch_key = bijux_gnss_core::api::obs_epoch_stability_key(&epoch);
         epoch.manifest = Some(ObsEpochManifest {
@@ -472,7 +470,7 @@ pub fn observations_from_tracking_results_with_gps_anchor(
             artifact_id: artifact_id.clone(),
             epoch_id: epoch_key,
             source_epoch_idx: epoch.epoch_idx,
-            source_sample_index,
+            source_sample_index: source_time.sample_index,
             source_time,
             decision: epoch.decision,
             downstream_profile_version:
@@ -1811,6 +1809,25 @@ mod tests {
             assert_eq!(manifest.version, bijux_gnss_core::api::OBSERVATION_MODEL_VERSION);
             assert_eq!(manifest.epoch_id, bijux_gnss_core::api::obs_epoch_stability_key(epoch));
         }
+    }
+
+    #[test]
+    fn grouped_observation_epochs_preserve_common_receiver_sample_trace() {
+        let config = ReceiverPipelineConfig::default();
+        let epoch_idx = 70;
+        let expected_sample_index = epoch_sample_index(&config, epoch_idx);
+        let tracks = vec![make_track(3, &config), make_track(8, &config)];
+
+        let report = observations_from_tracking_results(&config, &tracks, 10);
+        let epoch = report.output.iter().find(|epoch| epoch.epoch_idx == epoch_idx).expect("epoch");
+        let manifest = epoch.manifest.as_ref().expect("manifest");
+
+        assert_eq!(epoch.sats.len(), 2);
+        assert_eq!(epoch.source_time.sample_index, expected_sample_index);
+        assert_eq!(epoch.source_time.sample_rate_hz, config.sampling_freq_hz);
+        assert_eq!(epoch.t_rx_s, epoch.source_time.receiver_time_s);
+        assert_eq!(manifest.source_sample_index, expected_sample_index);
+        assert_eq!(manifest.source_time, epoch.source_time);
     }
 
     #[test]
