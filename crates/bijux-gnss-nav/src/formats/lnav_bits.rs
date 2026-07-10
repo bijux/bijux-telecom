@@ -538,6 +538,11 @@ mod tests {
         *data |= (value << shift) & mask;
     }
 
+    fn encode_signed(value: i32, bits: usize) -> u32 {
+        let mask = (1_u32 << bits) - 1;
+        (value as u32) & mask
+    }
+
     fn encode_word(data: u32, prev_d29: u8, prev_d30: u8) -> [u8; 30] {
         let mut bits = [0_u8; 30];
         for (i, bit) in bits.iter_mut().enumerate().take(24) {
@@ -593,6 +598,57 @@ mod tests {
         for offset in 0..8_u32 {
             words.push(0x012345 + offset * 0x010101);
         }
+
+        let mut prev_d29 = 0_u8;
+        let mut prev_d30 = 0_u8;
+        let mut bits = Vec::with_capacity(GPS_L1CA_LNAV_SUBFRAME_LENGTH_BITS);
+        for data in words {
+            let encoded = encode_word(data, prev_d29, prev_d30);
+            prev_d29 = encoded[28];
+            prev_d30 = encoded[29];
+            bits.extend(encoded.into_iter().map(|bit| if bit == 1 { 1 } else { -1 }));
+        }
+        bits
+    }
+
+    fn encode_subframe_1_with_clock(
+        tow_count: u32,
+        week: u16,
+        sv_health: u8,
+        iodc: u16,
+        toc_raw: u32,
+        af2_raw: i32,
+        af1_raw: i32,
+        af0_raw: i32,
+        tgd_raw: i32,
+    ) -> Vec<i8> {
+        let mut tlm = 0_u32;
+        set_bits(&mut tlm, 1, 8, 0x8B);
+
+        let mut how = 0_u32;
+        set_bits(&mut how, 1, 17, tow_count);
+        set_bits(&mut how, 20, 3, 1);
+
+        let mut w3 = 0_u32;
+        set_bits(&mut w3, 1, 10, week as u32);
+        set_bits(&mut w3, 17, 6, sv_health as u32);
+        set_bits(&mut w3, 23, 2, ((iodc >> 8) & 0b11) as u32);
+
+        let mut w7 = 0_u32;
+        set_bits(&mut w7, 17, 8, encode_signed(tgd_raw, 8));
+
+        let mut w8 = 0_u32;
+        set_bits(&mut w8, 1, 8, (iodc & 0xFF) as u32);
+        set_bits(&mut w8, 9, 16, toc_raw);
+
+        let mut w9 = 0_u32;
+        set_bits(&mut w9, 1, 8, encode_signed(af2_raw, 8));
+        set_bits(&mut w9, 9, 16, encode_signed(af1_raw, 16));
+
+        let mut w10 = 0_u32;
+        set_bits(&mut w10, 1, 22, encode_signed(af0_raw, 22));
+
+        let words = [tlm, how, w3, 0, 0, 0, w7, w8, w9, w10];
 
         let mut prev_d29 = 0_u8;
         let mut prev_d30 = 0_u8;
@@ -702,6 +758,26 @@ mod tests {
         assert_eq!(decoded[0].word_parity_ok[1], decoded[0].how.parity_ok);
         assert_eq!(decoded[0].parity.word_count, 10);
         assert_eq!(decoded[0].parity.passed_word_count + decoded[0].parity.failed_word_indexes.len(), 10);
+    }
+
+    #[test]
+    fn decoded_subframes_emit_subframe_1_clock_fields() {
+        let decoded = decode_gps_l1ca_lnav_subframes(
+            &encode_subframe_1_with_clock(3, 987, 0b10_1101, 0x2AB, 21_600, -12, 3_210, -123_456, -20),
+            4,
+        );
+
+        assert_eq!(decoded.len(), 1, "decoded={decoded:?}");
+        let clock = decoded[0].clock.as_ref().expect("subframe 1 clock");
+        assert_eq!(decoded[0].how.subframe_id, 1);
+        assert_eq!(clock.week, 987);
+        assert_eq!(clock.sv_health, 0b10_1101);
+        assert_eq!(clock.iodc, 0x2AB);
+        assert!((clock.toc_s - 345_600.0).abs() < f64::EPSILON);
+        assert!((clock.af2 - -12.0 * 2f64.powi(-55)).abs() < f64::EPSILON);
+        assert!((clock.af1 - 3_210.0 * 2f64.powi(-43)).abs() < f64::EPSILON);
+        assert!((clock.af0 - -123_456.0 * 2f64.powi(-31)).abs() < f64::EPSILON);
+        assert!((clock.tgd - -20.0 * 2f64.powi(-31)).abs() < f64::EPSILON);
     }
 
     #[test]
