@@ -619,4 +619,47 @@ mod tests {
             7 + GPS_L1CA_LNAV_SUBFRAME_LENGTH_BITS * GPS_L1CA_NAV_BIT_LENGTH_MS
         );
     }
+
+    #[test]
+    fn decoded_tlm_word_reports_preamble_and_parity() {
+        let bits = encode_subframe(1, 1);
+        let words = decode_words(&bits);
+        let tlm = decode_tlm_word(&words[0]);
+
+        assert_eq!(tlm.preamble, 0x8B);
+        assert!(tlm.parity_ok, "tlm={tlm:?}");
+    }
+
+    #[test]
+    fn decoded_how_word_reports_tow_flags_and_subframe_id() {
+        let bits = encode_subframe_with_how(4, 12_345, true, true);
+        let words = decode_words(&bits);
+        let how = decode_how_word(&words[1]);
+
+        assert_eq!(how.tow_count, 12_345);
+        assert_eq!(how.tow_start_s, 74_070);
+        assert!(how.alert, "how={how:?}");
+        assert!(how.anti_spoof, "how={how:?}");
+        assert_eq!(how.subframe_id, 4);
+        assert!(how.parity_ok, "how={how:?}");
+    }
+
+    #[test]
+    fn decoded_subframes_emit_control_words_and_word_parity() {
+        let decoded = decode_gps_l1ca_lnav_subframes(
+            &encode_subframe_with_how(5, 54_321, true, false),
+            11,
+        );
+
+        assert_eq!(decoded.len(), 1, "decoded={decoded:?}");
+        assert_eq!(decoded[0].alignment.start_prompt_index, 11);
+        assert_eq!(decoded[0].tlm.preamble, 0x8B);
+        assert_eq!(decoded[0].how.tow_count, 54_321);
+        assert_eq!(decoded[0].how.subframe_id, 5);
+        assert!(decoded[0].how.alert);
+        assert!(!decoded[0].how.anti_spoof);
+        assert_eq!(decoded[0].word_parity_ok.len(), 10);
+        assert_eq!(decoded[0].word_parity_ok[0], decoded[0].tlm.parity_ok);
+        assert_eq!(decoded[0].word_parity_ok[1], decoded[0].how.parity_ok);
+    }
 }
