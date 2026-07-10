@@ -201,8 +201,9 @@ fn observations_from_tracking_with_provenance(
             .unwrap_or(4.0);
         let (observation_status, observation_reject_reasons) =
             classify_observation_status(epoch, cn0_dbhz);
-        let observation_lock_state = observation_lock_state(epoch).to_string();
-        let observation_lock_reason = observation_lock_reason(epoch);
+        let observation_lock_state =
+            observation_lock_state(epoch, carrier_phase.cycle_slip).to_string();
+        let observation_lock_reason = observation_lock_reason(epoch, carrier_phase.cycle_slip);
         let mut signal = bijux_gnss_core::api::signal_spec_gps_l1_ca();
         signal.code_rate_hz = config.code_freq_basis_hz;
         let observation_epoch_id = observation_epoch_id(epoch.epoch.index, epoch.sample_index);
@@ -909,8 +910,8 @@ fn tracking_lock_quality(epoch: &TrackEpoch) -> f64 {
     quality
 }
 
-fn observation_lock_state(epoch: &TrackEpoch) -> &'static str {
-    if epoch.cycle_slip {
+fn observation_lock_state(epoch: &TrackEpoch, observation_cycle_slip: bool) -> &'static str {
+    if observation_cycle_slip {
         return "cycle_slip";
     }
     if epoch.lock_state_reason.as_deref() == Some("reacquired") {
@@ -928,8 +929,8 @@ fn observation_lock_state(epoch: &TrackEpoch) -> &'static str {
     }
 }
 
-fn observation_lock_reason(epoch: &TrackEpoch) -> Option<String> {
-    if epoch.cycle_slip {
+fn observation_lock_reason(epoch: &TrackEpoch, observation_cycle_slip: bool) -> Option<String> {
+    if observation_cycle_slip {
         return epoch
             .cycle_slip_reason
             .clone()
