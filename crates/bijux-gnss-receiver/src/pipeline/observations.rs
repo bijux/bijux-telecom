@@ -579,7 +579,7 @@ fn observation_support_label(
 }
 
 fn doppler_model_label() -> &'static str {
-    "tracked_carrier_hz_minus_intermediate_freq"
+    bijux_gnss_core::api::OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET
 }
 
 fn pseudorange_from_tracking_epoch(
@@ -1724,7 +1724,10 @@ mod tests {
         let epoch = report.output.first().expect("observation epoch");
         let sat = epoch.sats.first().expect("observation satellite");
 
-        assert_eq!(sat.metadata.doppler_model, "tracked_carrier_hz_minus_intermediate_freq");
+        assert_eq!(
+            sat.metadata.doppler_model,
+            bijux_gnss_core::api::OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET
+        );
         assert!((sat.doppler_hz.0 - expected_doppler_hz).abs() <= f64::EPSILON, "{sat:?}");
     }
 

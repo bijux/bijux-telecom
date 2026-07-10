@@ -1,7 +1,8 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    Chips, Constellation, Cycles, Epoch, Hertz, ObsEpoch, ReceiverSampleTrace, SatId, TrackEpoch,
+    Chips, Constellation, Cycles, Epoch, Hertz, ObsEpoch,
+    OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET, ReceiverSampleTrace, SatId, TrackEpoch,
 };
 use bijux_gnss_receiver::api::{
     carrier_hz_from_doppler_hz, observations_from_tracking_results, ReceiverPipelineConfig,
@@ -215,7 +216,7 @@ fn observations_declare_tracked_if_relative_doppler_model() {
 
     assert!(!stable_sats.is_empty(), "observations={observations:?}");
     assert!(stable_sats.iter().all(|sat| {
-        sat.metadata.doppler_model == "tracked_carrier_hz_minus_intermediate_freq"
+        sat.metadata.doppler_model == OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET
     }));
 }
 

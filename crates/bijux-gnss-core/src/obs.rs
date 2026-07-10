@@ -42,6 +42,8 @@ pub const OBSERVATION_MODEL_VERSION: u32 = 2;
 pub const OBSERVATION_DOWNSTREAM_PROFILE_VERSION: u32 = 1;
 pub const NAV_SOLUTION_MODEL_VERSION: u32 = 1;
 pub const NAV_OUTPUT_STABILITY_SIGNATURE_VERSION: u32 = 1;
+pub const OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET: &str =
+    "tracked_carrier_hz_minus_intermediate_freq";
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TrackingLifecycleState {
@@ -782,7 +784,7 @@ impl Default for ObsMetadata {
             observation_uncertainty_class: "unknown".to_string(),
             pseudorange_model: "receiver_epoch_fallback".to_string(),
             carrier_phase_model: "tracked_carrier_cycles".to_string(),
-            doppler_model: "tracked_carrier_hz_minus_intermediate_freq".to_string(),
+            doppler_model: OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET.to_string(),
             carrier_phase_continuity: "unusable".to_string(),
             carrier_phase_arc_start_epoch_idx: 0,
             carrier_phase_arc_start_sample_index: 0,
@@ -1215,7 +1217,7 @@ pub(crate) fn melbourne_wubbena_m(
 mod tests {
     use super::{
         acq_result_stability_key, obs_epoch_stability_key, ObsEpoch, ObsMetadata, ObsSatellite,
-        SignalDelayAlignment,
+        SignalDelayAlignment, OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET,
     };
     use crate::api::{
         trackable_acq_tracking_seeds, AcqCodePhaseRefinement, AcqHypothesis, AcqResult,
@@ -1371,7 +1373,7 @@ mod tests {
     fn obs_metadata_defaults_doppler_contract() {
         let metadata = ObsMetadata::default();
 
-        assert_eq!(metadata.doppler_model, "tracked_carrier_hz_minus_intermediate_freq");
+        assert_eq!(metadata.doppler_model, OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET);
     }
 
     #[test]

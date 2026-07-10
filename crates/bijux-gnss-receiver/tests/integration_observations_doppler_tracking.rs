@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    AcqHypothesis, AcqResult, Constellation, Hertz, ObsEpoch, ReceiverSampleTrace, SatId,
-    SignalBand,
+    AcqHypothesis, AcqResult, Constellation, Hertz, ObsEpoch,
+    OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET, ReceiverSampleTrace, SatId, SignalBand,
 };
 use bijux_gnss_receiver::api::{
     observations_from_tracking_results,
@@ -102,7 +102,7 @@ fn observations_emit_positive_doppler_from_tracking_output() {
 
     assert!(!locked_rows.is_empty(), "observations={observations:?}");
     assert!(locked_rows.iter().all(|(doppler_model, doppler_hz)| {
-        doppler_model == "tracked_carrier_hz_minus_intermediate_freq"
+        doppler_model == OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET
             && (*doppler_hz - true_doppler_hz).abs() <= CLEAN_TRACKING_DOPPLER_MAX_ERROR_HZ
     }));
 }
@@ -117,7 +117,7 @@ fn observations_emit_negative_if_relative_doppler_from_tracking_output() {
 
     assert!(!locked_rows.is_empty(), "observations={observations:?}");
     assert!(locked_rows.iter().all(|(doppler_model, doppler_hz)| {
-        doppler_model == "tracked_carrier_hz_minus_intermediate_freq"
+        doppler_model == OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET
             && (*doppler_hz - true_doppler_hz).abs() <= CLEAN_TRACKING_DOPPLER_MAX_ERROR_HZ
     }));
 }
