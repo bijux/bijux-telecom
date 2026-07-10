@@ -21,6 +21,7 @@ const CLEAN_NAV_BIT_LOCKED_CARRIER_ERROR_MAX_HZ: f64 = 15.0;
 const CLEAN_NAV_BIT_LOCKED_CODE_ERROR_MAX_SAMPLES: f64 = 1.0;
 const CLEAN_NAV_BIT_MIN_PHASE_STEP_CYCLES: f64 = 0.01;
 const CLEAN_NAV_BIT_MAX_PHASE_STEP_CYCLES: f64 = 0.35;
+const GPS_L1CA_NAV_BIT_PERIOD_MS: usize = 20;
 
 fn accepted_acquisition(sat: SatId, doppler_hz: f64, code_phase_samples: usize) -> AcqResult {
     AcqResult {
@@ -252,5 +253,42 @@ fn tracking_keeps_carrier_phase_continuous_through_nav_bit_transition() {
             .iter()
             .all(|step_cycles| *step_cycles <= CLEAN_NAV_BIT_MAX_PHASE_STEP_CYCLES),
         "carrier phase must not take slip-sized jumps at nav-bit transitions: phase_steps_cycles={phase_steps_cycles:?}, epochs={epochs:?}"
+    );
+}
+
+#[test]
+fn tracking_recovers_navigation_bit_signs_from_prompt_history() {
+    let config = nav_bit_tracking_config();
+    let sat = SatId { constellation: Constellation::Gps, prn: 12 };
+    let epochs = track_clean_nav_bit_case(&config, sat, 120.0, 144.375, 0.3);
+    let recovered_epochs = epochs
+        .iter()
+        .filter_map(|epoch| epoch.navigation_bit_sign.map(|sign| (epoch.sample_index, sign)))
+        .collect::<Vec<_>>();
+    let expected_recovered_epoch_count = (epochs.len() / GPS_L1CA_NAV_BIT_PERIOD_MS)
+        * GPS_L1CA_NAV_BIT_PERIOD_MS;
+    let recovered_blocks = recovered_epochs.chunks_exact(GPS_L1CA_NAV_BIT_PERIOD_MS).collect::<Vec<_>>();
+
+    assert!(!recovered_epochs.is_empty(), "tracking did not recover nav-bit signs: epochs={epochs:?}");
+    assert_eq!(
+        recovered_epochs.len(),
+        expected_recovered_epoch_count,
+        "tracking should recover one sign for every complete 20 ms navigation bit window: epochs={epochs:?}"
+    );
+    assert_eq!(
+        recovered_blocks.len(),
+        3,
+        "synthetic 65 ms run should yield three complete recovered navigation bits: recovered_epochs={recovered_epochs:?}, epochs={epochs:?}"
+    );
+    assert!(
+        recovered_blocks.iter().all(|block| {
+            let block_sign = block[0].1;
+            block.iter().all(|(_, sign)| *sign == block_sign)
+        }),
+        "recovered navigation-bit signs must remain constant within each 20 ms block: recovered_epochs={recovered_epochs:?}, epochs={epochs:?}"
+    );
+    assert!(
+        recovered_blocks.windows(2).all(|pair| pair[0][0].1 == -pair[1][0].1),
+        "adjacent recovered navigation-bit blocks must flip sign in the alternating synthetic scenario: recovered_epochs={recovered_epochs:?}, epochs={epochs:?}"
     );
 }
