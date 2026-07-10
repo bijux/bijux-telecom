@@ -97,6 +97,21 @@ fn single_point_solver_recovers_four_satellite_fix() {
     assert!(solution.clock_bias_s.abs() < 1.0e-9);
 }
 
+#[test]
+fn single_point_solver_recovers_receiver_clock_bias() {
+    let scenario = four_satellite_position_scenario(2.75e-4);
+    let solution = PositionSolver::new()
+        .solve_wls(&scenario.observations, &scenario.ephemerides, scenario.t_rx_s)
+        .expect("biased timed pseudoranges should solve");
+
+    assert_eq!(solution.used_sat_count, 4);
+    assert_eq!(solution.rejected_sat_count, 0);
+    assert!((solution.ecef_x_m - scenario.truth_ecef_m.0).abs() < 5.0);
+    assert!((solution.ecef_y_m - scenario.truth_ecef_m.1).abs() < 5.0);
+    assert!((solution.ecef_z_m - scenario.truth_ecef_m.2).abs() < 5.0);
+    assert!((solution.clock_bias_s - scenario.receiver_clock_bias_s).abs() < 1.0e-9);
+}
+
 fn decoded_lnav_subframes_from_ephemeris(eph: &GpsEphemeris) -> Vec<GpsL1CaLnavDecodedSubframe> {
     let alignment = |subframe_index: usize| GpsL1CaLnavSubframeAlignment {
         start_bit_index: subframe_index * 300,
