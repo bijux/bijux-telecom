@@ -32,6 +32,11 @@ sanity checks). Any violation must emit diagnostics and mark the measurement as 
 - Receiver contract: absolute code pseudorange is emitted when tracking carries a resolved
   `SignalDelayAlignment` whole-code-period count. If alignment is absent, the observation remains a
   receiver-epoch fallback estimate and must not emit `ObsSignalTiming`.
+- Refusal contract: observations must reject impossible code ranges before navigation use.
+  Explicit reject reasons are:
+  `non_finite_pseudorange`, `non_positive_pseudorange`, and `pseudorange_out_of_bounds`.
+  These mark the satellite observation inconsistent and force the containing observation epoch to
+  reject with `inconsistent_observable`.
 - Hatch smoothing contract: observation metadata declares `smoothing_window`,
   `smoothing_age`, and `smoothing_resets` for code smoothing state. `smoothing_age = 0` means
   the epoch was not eligible for smoothing, typically because tracking lost code lock.

@@ -49,6 +49,9 @@ Invariants:
   tracking-derived uncertainty instead of CN0-only heuristics
 - observation metadata records `pseudorange_model` and `signal_delay_alignment_source` so
   downstream consumers can distinguish resolved absolute code range from receiver-epoch fallback
+- impossible code ranges are rejected in-band with explicit observation reasons:
+  `non_finite_pseudorange`, `non_positive_pseudorange`, or `pseudorange_out_of_bounds`;
+  those satellites make the containing epoch reject with `inconsistent_observable`
 - observation metadata records `carrier_phase_model`, `carrier_phase_continuity`,
   `carrier_phase_arc_start_epoch_idx`, and `carrier_phase_arc_start_sample_index` so downstream
   ambiguity handling can identify usable carrier-phase arcs and reset boundaries
