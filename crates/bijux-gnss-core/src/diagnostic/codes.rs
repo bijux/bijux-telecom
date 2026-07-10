@@ -64,6 +64,12 @@ pub const DIAGNOSTIC_CODES: &[DiagnosticCode] = &[
         mitigation: "Ensure obs epochs are ordered by t_rx_s.",
     },
     DiagnosticCode {
+        code: "GNSS_OBS_TIME_INTERVAL_INVALID",
+        severity: DiagnosticSeverity::Error,
+        meaning: "Observation epoch spacing does not match the configured integration interval",
+        mitigation: "Check tracking integration_ms, sample clock, and observation sample indices.",
+    },
+    DiagnosticCode {
         code: "GNSS_OBS_ID_INVALID",
         severity: DiagnosticSeverity::Error,
         meaning: "Observation contains invalid signal or satellite IDs",

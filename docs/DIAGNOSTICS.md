@@ -19,6 +19,7 @@ This document defines canonical diagnostic codes and how they are used.
 | `GNSS_NUMERIC_OBS_INVALID` | Error | Observation contains NaN/Inf | Check tracking outputs and observables conversion. |
 | `GNSS_NUMERIC_PVT_INVALID` | Error | Navigation solution contains NaN/Inf | Inspect measurement inputs and solver configuration. |
 | `GNSS_NUMERIC_T_RX_INVALID` | Error | Receiver time tag is not finite | Check sample clock and epoch timing logic. |
+| `GNSS_OBS_TIME_INTERVAL_INVALID` | Error | Observation epoch spacing does not match the configured integration interval | Check `tracking.integration_ms`, sample clock, and observation sample indices. |
 | `GNSS_EPOCH_ALIGN_FAIL` | Warning | Base/rover epoch alignment failed or had gaps | Check dataset timing and alignment tolerance. |
 | `NAV_EPHEMERIS_GAP` | Warning | Ephemeris coverage gap detected | Provide a dataset with complete ephemeris coverage. |
 | `TRACK_LOSS_OF_LOCK` | Warning | Tracking reported loss of lock | Inspect signal strength and tracking loop parameters. |
