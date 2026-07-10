@@ -3,7 +3,7 @@
 use num_complex::Complex;
 
 use bijux_gnss_core::api::{
-    AcqHypothesis, AcqTrackingSeed, AcqUncertainty, Chips, Constellation, Hertz,
+    AcqHypothesis, AcqTrackingSeed, AcqUncertainty, Chips, Constellation, Cycles, Hertz,
     ReceiverSampleTrace, SampleClock, SampleTime, SamplesFrame, SatId, Seconds, SignalBand,
     TrackEpoch, TrackTransition, TrackingAssumptions,
 };
@@ -108,6 +108,7 @@ pub struct TrackingResult {
 #[derive(Debug, Clone)]
 struct LoopState {
     carrier_hz: f64,
+    carrier_phase_cycles: f64,
     code_rate_hz: f64,
     code_phase_samples: f64,
     prev_prompt: Option<Complex<f32>>,
@@ -167,6 +168,12 @@ struct CodeLoopUpdate {
 }
 
 #[derive(Debug, Clone, Copy)]
+struct CarrierLoopUpdate {
+    carrier_hz: f64,
+    carrier_phase_cycles: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
 struct CodeLoopInput {
     current_code_rate_hz: f64,
     current_code_phase_samples: f64,
@@ -176,6 +183,19 @@ struct CodeLoopInput {
     dll_err: f32,
     samples_per_chip: f64,
     samples_per_code: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CarrierLoopInput {
+    current_carrier_hz: f64,
+    current_carrier_phase_cycles: f64,
+    epoch_len_samples: usize,
+    sample_rate_hz: f64,
+    pll_bw_hz: f64,
+    pll_err_rad: f64,
+    fll_bw_hz: f64,
+    fll_err_rad: f64,
+    apply_fll: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -227,6 +247,7 @@ impl Tracking {
         frame: &SamplesFrame,
         sat: SatId,
         carrier_freq_hz: f64,
+        carrier_phase_cycles: f64,
         code_rate_hz: f64,
         code_phase_samples: f64,
         early_late_spacing_chips: f64,
@@ -242,13 +263,15 @@ impl Tracking {
         let nominal_chips_per_sample = self.config.code_freq_basis_hz / sample_rate_hz;
         let tracked_chips_per_sample = code_rate_hz / sample_rate_hz;
         let base_chip_phase = code_phase_samples * nominal_chips_per_sample;
+        let carrier_phase_offset_rad =
+            carrier_phase_offset_rad(carrier_freq_hz, sample_rate_hz, frame.t0.sample_index, carrier_phase_cycles);
 
         let mixed = wipeoff_carrier(
             &frame.iq[..n],
             carrier_freq_hz,
             sample_rate_hz,
             frame.t0.sample_index,
-            0.0,
+            carrier_phase_offset_rad,
         )
         .expect("tracking carrier wipeoff requires finite carrier inputs");
         let mut early = Complex::new(0.0f32, 0.0f32);
@@ -285,6 +308,7 @@ impl Tracking {
         channel_id: u8,
         sat: SatId,
         carrier_freq_hz: f64,
+        carrier_phase_cycles: f64,
         code_rate_hz: f64,
         code_phase_samples: f64,
         early_late_spacing_chips: f64,
@@ -295,6 +319,7 @@ impl Tracking {
             frame,
             sat,
             carrier_freq_hz,
+            carrier_phase_cycles,
             code_rate_hz,
             code_phase_samples,
             early_late_spacing_chips,
@@ -331,6 +356,7 @@ impl Tracking {
             late_i: correlator.late.re,
             late_q: correlator.late.im,
             carrier_hz: Hertz(carrier_freq_hz),
+            carrier_phase_cycles: Cycles(carrier_phase_cycles),
             code_rate_hz: Hertz(code_rate_hz),
             code_phase_samples: Chips(code_phase_samples),
             lock: correlator.prompt.norm() > 0.0,
@@ -520,6 +546,7 @@ impl Tracking {
     ) -> (Vec<TrackEpoch>, Vec<TrackTransition>) {
         let mut state = LoopState {
             carrier_hz,
+            carrier_phase_cycles: 0.0,
             code_rate_hz: self.config.code_freq_basis_hz,
             code_phase_samples,
             prev_prompt: None,
@@ -582,6 +609,7 @@ impl Tracking {
                     tracking_params,
                     state: LoopState {
                         carrier_hz: context.acquisition_carrier_hz,
+                        carrier_phase_cycles: 0.0,
                         code_rate_hz: self.config.code_freq_basis_hz,
                         code_phase_samples: context.seed.code_phase_samples.0,
                         prev_prompt: None,
@@ -722,6 +750,7 @@ impl Tracking {
                 channel_id,
                 sat,
                 state.carrier_hz,
+                state.carrier_phase_cycles,
                 state.code_rate_hz,
                 state.code_phase_samples,
                 tracking_params.early_late_spacing_chips,
@@ -736,7 +765,7 @@ impl Tracking {
                 ));
             }
 
-            let (dll_err, pll_err, fll_err, lock) =
+            let (dll_err, _raw_pll_err, fll_err, lock) =
                 discriminators(corr.early, corr.prompt, corr.late, state.prev_prompt);
             state.prev_prompt = Some(corr.prompt);
             let phase_cycles = corr.prompt.arg() as f64 / (2.0 * std::f64::consts::PI);
@@ -751,6 +780,7 @@ impl Tracking {
             );
             state.prev_prompt_phase_cycles = Some(phase_decision.aligned_phase_cycles);
             state.nav_bit_phase_offset_cycles = phase_decision.nav_bit_phase_offset_cycles;
+            let pll_err = (phase_decision.aligned_phase_cycles * std::f64::consts::TAU) as f32;
             if phase_decision.nav_bit_transition {
                 state.nav_bit_transition_count = state.nav_bit_transition_count.saturating_add(1);
             }
@@ -820,10 +850,19 @@ impl Tracking {
                 samples_per_code,
             });
             state.code_rate_hz = code_loop.code_rate_hz;
-            if state.state == ChannelState::PullIn {
-                state.carrier_hz += fll_bw * fll_err as f64;
-            }
-            state.carrier_hz += pll_bw * pll_err as f64;
+            let carrier_loop = apply_carrier_loop(CarrierLoopInput {
+                current_carrier_hz: state.carrier_hz,
+                current_carrier_phase_cycles: state.carrier_phase_cycles,
+                epoch_len_samples: epoch_frame.len(),
+                sample_rate_hz: self.config.sampling_freq_hz,
+                pll_bw_hz: pll_bw,
+                pll_err_rad: pll_err as f64,
+                fll_bw_hz: fll_bw,
+                fll_err_rad: fll_err as f64,
+                apply_fll: state.state == ChannelState::PullIn,
+            });
+            state.carrier_hz = carrier_loop.carrier_hz;
+            state.carrier_phase_cycles = carrier_loop.carrier_phase_cycles;
             state.code_phase_samples = code_loop.code_phase_samples;
 
             if state.state != from_state {
@@ -844,6 +883,7 @@ impl Tracking {
             out.push(TrackEpoch {
                 lock,
                 carrier_hz: Hertz(state.carrier_hz),
+                carrier_phase_cycles: Cycles(state.carrier_phase_cycles),
                 code_rate_hz: Hertz(state.code_rate_hz),
                 code_phase_samples: Chips(state.code_phase_samples),
                 pll_lock,
@@ -1173,8 +1213,38 @@ fn wrap_phase_cycles(phase_cycles: f64) -> f64 {
     wrapped
 }
 
+fn wrap_phase_rad(phase_rad: f64) -> f64 {
+    phase_rad.rem_euclid(std::f64::consts::TAU)
+}
+
+fn carrier_phase_offset_rad(
+    carrier_hz: f64,
+    sample_rate_hz: f64,
+    sample_index: u64,
+    carrier_phase_cycles: f64,
+) -> f64 {
+    wrap_phase_rad(
+        carrier_phase_cycles * std::f64::consts::TAU
+            - std::f64::consts::TAU * carrier_hz * (sample_index as f64 / sample_rate_hz),
+    )
+}
+
 fn wrapped_phase_delta_cycles(next_phase_cycles: f64, previous_phase_cycles: f64) -> f64 {
     wrap_phase_cycles(next_phase_cycles - previous_phase_cycles)
+}
+
+fn apply_carrier_loop(input: CarrierLoopInput) -> CarrierLoopUpdate {
+    let mut carrier_hz = input.current_carrier_hz;
+    if input.apply_fll {
+        carrier_hz += input.fll_bw_hz * input.fll_err_rad;
+    }
+    carrier_hz += input.pll_bw_hz * input.pll_err_rad;
+
+    let carrier_phase_cycles = input.current_carrier_phase_cycles
+        + input.current_carrier_hz * input.epoch_len_samples as f64 / input.sample_rate_hz
+        + input.pll_err_rad / std::f64::consts::TAU;
+
+    CarrierLoopUpdate { carrier_hz, carrier_phase_cycles }
 }
 
 impl Tracking {
@@ -1204,6 +1274,7 @@ impl Tracking {
                         frame,
                         sat,
                         carrier_hz + d,
+                        0.0,
                         self.config.code_freq_basis_hz,
                         code_phase_samples + c,
                         0.5,
@@ -1361,6 +1432,7 @@ mod tests {
                 0,
                 sat,
                 0.0,
+                0.0,
                 config.code_freq_basis_hz,
                 epoch_code_phase_samples,
                 0.5,
@@ -1502,6 +1574,7 @@ mod tests {
             &frame,
             sat,
             0.0,
+            0.0,
             config.code_freq_basis_hz,
             code_phase_samples,
             0.5,
@@ -1550,6 +1623,7 @@ mod tests {
             &frame,
             sat,
             0.0,
+            0.0,
             config.code_freq_basis_hz,
             code_phase_samples,
             0.5,
@@ -1557,6 +1631,7 @@ mod tests {
         let matched = tracking.correlate_epoch(
             &frame,
             sat,
+            0.0,
             0.0,
             signal_code_rate_hz,
             code_phase_samples,
@@ -1611,6 +1686,7 @@ mod tests {
         let correlator = tracking.correlate_epoch(
             &frame,
             sat,
+            0.0,
             0.0,
             config.code_freq_basis_hz,
             code_phase_samples,
