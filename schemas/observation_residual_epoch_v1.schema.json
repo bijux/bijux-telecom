@@ -1,0 +1,130 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ObservationResidualEpochV1",
+  "type": "object",
+  "required": ["header", "payload"],
+  "properties": {
+    "header": { "$ref": "#/definitions/ArtifactHeader" },
+    "payload": { "$ref": "#/definitions/ObservationResidualEpochReport" }
+  },
+  "definitions": {
+    "ArtifactHeader": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "producer",
+        "producer_version",
+        "created_at_unix_ms",
+        "git_sha",
+        "config_hash",
+        "toolchain",
+        "features",
+        "deterministic",
+        "git_dirty"
+      ],
+      "properties": {
+        "schema_version": { "type": "integer", "const": 1 },
+        "producer": { "type": "string" },
+        "producer_version": { "type": "string" },
+        "created_at_unix_ms": { "type": "integer", "minimum": 0 },
+        "git_sha": { "type": "string" },
+        "config_hash": { "type": "string" },
+        "dataset_id": { "type": ["string", "null"] },
+        "toolchain": { "type": "string" },
+        "features": { "type": "array", "items": { "type": "string" } },
+        "deterministic": { "type": "boolean" },
+        "git_dirty": { "type": "boolean" }
+      }
+    },
+    "ReceiverSampleTrace": {
+      "type": "object",
+      "required": ["sample_index", "sample_rate_hz", "receiver_time_s"],
+      "properties": {
+        "sample_index": { "type": "integer", "minimum": 0 },
+        "sample_rate_hz": { "type": "number", "exclusiveMinimum": 0 },
+        "receiver_time_s": { "type": "number" }
+      }
+    },
+    "SatId": {
+      "type": "object",
+      "required": ["constellation", "prn"],
+      "properties": {
+        "constellation": { "type": "string" },
+        "prn": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "SigId": {
+      "type": "object",
+      "required": ["sat", "band", "code"],
+      "properties": {
+        "sat": { "$ref": "#/definitions/SatId" },
+        "band": { "type": "string" },
+        "code": { "type": "string" }
+      }
+    },
+    "ObservationResidualValue": {
+      "type": "object",
+      "required": ["raw", "corrected", "expected", "residual", "sigma", "reference_model"],
+      "properties": {
+        "raw": { "type": "number" },
+        "corrected": { "type": "number" },
+        "expected": { "type": ["number", "null"] },
+        "residual": { "type": ["number", "null"] },
+        "sigma": { "type": ["number", "null"], "minimum": 0 },
+        "reference_model": { "type": ["string", "null"] }
+      }
+    },
+    "ObservationResidualSatellite": {
+      "type": "object",
+      "required": [
+        "signal_id",
+        "accepted",
+        "observation_status",
+        "observation_reject_reasons",
+        "pseudorange_m",
+        "carrier_phase_cycles",
+        "doppler_hz",
+        "cn0_dbhz"
+      ],
+      "properties": {
+        "signal_id": { "$ref": "#/definitions/SigId" },
+        "accepted": { "type": "boolean" },
+        "observation_status": { "type": "string" },
+        "observation_reject_reasons": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "pseudorange_m": { "$ref": "#/definitions/ObservationResidualValue" },
+        "carrier_phase_cycles": { "$ref": "#/definitions/ObservationResidualValue" },
+        "doppler_hz": { "$ref": "#/definitions/ObservationResidualValue" },
+        "cn0_dbhz": { "$ref": "#/definitions/ObservationResidualValue" }
+      }
+    },
+    "ObservationResidualEpochReport": {
+      "type": "object",
+      "required": [
+        "artifact_id",
+        "epoch_id",
+        "epoch_idx",
+        "source_time",
+        "accepted",
+        "decision",
+        "decision_reason",
+        "sats"
+      ],
+      "properties": {
+        "artifact_id": { "type": "string", "minLength": 1 },
+        "epoch_id": { "type": "string", "minLength": 1 },
+        "epoch_idx": { "type": "integer", "minimum": 0 },
+        "source_time": { "$ref": "#/definitions/ReceiverSampleTrace" },
+        "accepted": { "type": "boolean" },
+        "decision": { "type": "string" },
+        "decision_reason": { "type": ["string", "null"] },
+        "sats": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ObservationResidualSatellite" }
+        }
+      }
+    }
+  }
+}
