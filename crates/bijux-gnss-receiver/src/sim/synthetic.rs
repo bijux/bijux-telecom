@@ -178,11 +178,11 @@ pub struct SyntheticCn0ValidationSatellite {
     pub sat: SatId,
     /// Injected carrier-to-noise density ratio in dB-Hz.
     pub injected_cn0_db_hz: f32,
-    /// Mean truth-guided receiver estimate across measured epochs.
+    /// Mean tracking-correlator estimate across the measured stable tracking window.
     pub measured_mean_cn0_dbhz: f64,
-    /// Minimum truth-guided receiver estimate across measured epochs.
+    /// Minimum tracking-correlator estimate across the measured stable tracking window.
     pub measured_min_cn0_dbhz: f64,
-    /// Maximum truth-guided receiver estimate across measured epochs.
+    /// Maximum tracking-correlator estimate across the measured stable tracking window.
     pub measured_max_cn0_dbhz: f64,
     /// Mean estimate minus injected truth, in dB-Hz.
     pub cn0_delta_db: f64,
@@ -190,7 +190,7 @@ pub struct SyntheticCn0ValidationSatellite {
     pub signal_amplitude: f32,
     /// Injected complex amplitude after the export scaling factor is applied.
     pub output_signal_amplitude: f32,
-    /// Count of coherent epochs measured for this satellite.
+    /// Count of stable tracking epochs measured for this satellite.
     pub epochs_measured: usize,
     /// Whether the measured mean stayed within the requested tolerance.
     pub pass: bool,
@@ -923,59 +923,41 @@ pub fn validate_truth_guided_cn0(
         samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length)
             .min(frame.len());
     let coherent_integration_s = coherent_samples_per_epoch as f64 * frame.dt_s.0;
-    let tracking = crate::pipeline::tracking::Tracking::new(
-        config.clone(),
-        crate::engine::runtime::ReceiverRuntime::default(),
-    );
-    let early_late_spacing_chips = config.tracking_params(SignalBand::L1).early_late_spacing_chips;
-    let measured_epochs =
-        if coherent_samples_per_epoch == 0 { 0 } else { frame.len() / coherent_samples_per_epoch };
+    let period_samples =
+        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
     let satellites = truth
         .satellites
         .iter()
         .map(|sat_truth| {
-            // Measure the coherent signal deterministically and combine it with the known
-            // synthetic noise floor from truth metadata to avoid replay-noise bias in CN0 checks.
-            let isolated_frame = regenerate_isolated_scaled_satellite_signal_only_frame(
+            let isolated_frame = regenerate_isolated_scaled_satellite_frame_with_noise(
                 config, frame, truth, sat_truth,
             );
-            let mut cn0_values = Vec::with_capacity(measured_epochs);
-            for epoch_index in 0..measured_epochs {
-                let start = epoch_index * coherent_samples_per_epoch;
-                let end = start + coherent_samples_per_epoch;
-                let epoch_frame = SamplesFrame::new(
-                    SampleTime {
-                        sample_index: isolated_frame.t0.sample_index + start as u64,
-                        sample_rate_hz: isolated_frame.t0.sample_rate_hz,
-                    },
-                    isolated_frame.dt_s,
-                    isolated_frame.iq[start..end].to_vec(),
-                );
-                let code_phase_samples = code_phase_samples_at_epoch_start(
+            let tracking = crate::pipeline::tracking::Tracking::new(
+                config.clone(),
+                crate::engine::runtime::ReceiverRuntime::default(),
+            );
+            let seeded_code_phase_samples = wrap_seeded_code_phase_samples(
+                expected_acquisition_code_phase_samples(
                     config,
-                    &epoch_frame,
+                    &isolated_frame,
                     sat_truth.code_phase_chips,
-                );
-                let carrier_hz = synthetic_truth_carrier_hz(truth, sat_truth);
-                let (track_epoch, _) = tracking.track_epoch(
-                    &epoch_frame,
-                    0,
+                ) as isize,
+                period_samples,
+            );
+            let tracks = tracking.track_from_acquisition(
+                &isolated_frame,
+                &[seeded_tracking_acquisition(
                     sat_truth.sat,
-                    carrier_hz,
-                    0.0,
-                    config.code_freq_basis_hz,
-                    code_phase_samples,
-                    early_late_spacing_chips,
-                );
-                let prompt = Complex::new(track_epoch.prompt_i, track_epoch.prompt_q);
-                cn0_values.push(measure_cn0_from_prompt_with_known_noise(
-                    prompt,
-                    truth.output_scale_applied,
-                    truth.noise_power_per_complex_sample as f64,
-                    frame.t0.sample_rate_hz,
-                    coherent_samples_per_epoch as f64,
-                ));
-            }
+                    synthetic_truth_measured_doppler_hz(truth, sat_truth),
+                    seeded_code_phase_samples,
+                    sat_truth.cn0_db_hz,
+                    format!("truth_guided_cn0_tracking_seed_{}", sat_truth.sat.prn),
+                )],
+            );
+            let cn0_values = tracks
+                .first()
+                .map(|track| stable_tracking_cn0_values(&track.epochs))
+                .unwrap_or_default();
 
             let measured_mean_cn0_dbhz = if cn0_values.is_empty() {
                 0.0
@@ -1016,6 +998,20 @@ pub fn validate_truth_guided_cn0(
         pass,
         satellites,
     }
+}
+
+const TRACKING_CN0_MIN_STABLE_EPOCHS: usize = 5;
+
+fn stable_tracking_cn0_values(epochs: &[crate::api::core::TrackEpoch]) -> Vec<f64> {
+    let Some((start, count)) =
+        stable_tracking_window_bounds(epochs, TRACKING_CN0_MIN_STABLE_EPOCHS)
+    else {
+        return Vec::new();
+    };
+    epochs[start..start + count]
+        .iter()
+        .filter_map(|epoch| epoch.cn0_dbhz.is_finite().then_some(epoch.cn0_dbhz))
+        .collect()
 }
 
 /// Convert a truth-model code phase into the receiver's acquisition-reported sample convention.
@@ -2583,24 +2579,6 @@ fn signal_amplitude_from_cn0(cn0_db_hz: f32, sample_rate_hz: f64) -> f32 {
     ((cn0_linear * SYNTHETIC_COMPLEX_NOISE_POWER) / sample_rate_hz).sqrt() as f32
 }
 
-fn measure_cn0_from_prompt_with_known_noise(
-    prompt: Complex<f32>,
-    output_scale_applied: f32,
-    noise_power_per_complex_sample: f64,
-    sample_rate_hz: f64,
-    prompt_coherent_gain: f64,
-) -> f64 {
-    let scaled_noise_power_per_complex_sample =
-        noise_power_per_complex_sample * (output_scale_applied as f64).powi(2);
-    let prompt_noise_power = scaled_noise_power_per_complex_sample * prompt_coherent_gain;
-    let prompt_power = prompt.norm_sqr() as f64;
-    let signal_power_per_sample =
-        ((prompt_power - prompt_noise_power).max(1e-12)) / prompt_coherent_gain.powi(2);
-    let cn0_linear =
-        signal_power_per_sample * sample_rate_hz / scaled_noise_power_per_complex_sample;
-    10.0 * cn0_linear.max(1e-12).log10()
-}
-
 fn regenerate_isolated_scaled_satellite_signal_only_frame(
     config: &ReceiverPipelineConfig,
     measured_frame: &SamplesFrame,
@@ -2608,6 +2586,24 @@ fn regenerate_isolated_scaled_satellite_signal_only_frame(
     sat_truth: &SyntheticSatelliteTruth,
 ) -> SamplesFrame {
     let isolated_frame = generate_l1_ca_multi_signal_only(
+        config,
+        &isolated_satellite_scenario(measured_frame, truth, sat_truth),
+    );
+    let iq = isolated_frame
+        .iq
+        .iter()
+        .map(|sample| *sample * truth.output_scale_applied)
+        .collect::<Vec<_>>();
+    SamplesFrame::new(measured_frame.t0, measured_frame.dt_s, iq)
+}
+
+fn regenerate_isolated_scaled_satellite_frame_with_noise(
+    config: &ReceiverPipelineConfig,
+    measured_frame: &SamplesFrame,
+    truth: &SyntheticIqTruthBundle,
+    sat_truth: &SyntheticSatelliteTruth,
+) -> SamplesFrame {
+    let isolated_frame = generate_l1_ca_multi(
         config,
         &isolated_satellite_scenario(measured_frame, truth, sat_truth),
     );
@@ -2678,17 +2674,6 @@ fn synthetic_truth_measured_doppler_hz(
     sat_truth: &SyntheticSatelliteTruth,
 ) -> f64 {
     sat_truth.doppler_hz + truth.receiver_clock_frequency_bias_hz
-}
-
-fn synthetic_truth_carrier_hz(
-    truth: &SyntheticIqTruthBundle,
-    sat_truth: &SyntheticSatelliteTruth,
-) -> f64 {
-    synthetic_carrier_hz(
-        truth.intermediate_freq_hz,
-        sat_truth.sat,
-        synthetic_truth_measured_doppler_hz(truth, sat_truth),
-    )
 }
 
 fn synthetic_constellation_carrier_hz(sat: SatId) -> f64 {
@@ -3520,7 +3505,8 @@ mod tests {
         assert_eq!(report.satellites.len(), 1);
         for row in &report.satellites {
             assert!(row.pass, "{row:?}");
-            assert_eq!(row.epochs_measured, 10);
+            assert!(row.epochs_measured >= super::TRACKING_CN0_MIN_STABLE_EPOCHS, "{row:?}");
+            assert!(row.epochs_measured <= 10, "{row:?}");
             assert!(row.cn0_delta_db.abs() <= 3.0, "{row:?}");
             assert!(row.measured_max_cn0_dbhz >= row.measured_min_cn0_dbhz);
         }
