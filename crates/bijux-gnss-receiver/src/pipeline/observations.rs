@@ -27,6 +27,8 @@ use bijux_gnss_core::api::{Constellation, Hertz, SatId, SignalCode};
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 const OBS_WEAK_CN0_DBHZ: f64 = 25.0;
+const OBS_BASE_THERMAL_CODE_SIGMA_SAMPLES: f64 = 0.02;
+const OBS_MIN_TRACKING_JITTER_SAMPLES: f64 = 0.01;
 
 #[derive(Debug, Clone)]
 struct PseudorangeComputation {
@@ -81,6 +83,13 @@ struct HatchState {
 struct CycleSlipState {
     last_gf_cycles: f64,
     initialized: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PseudorangeUncertaintyModel {
+    sigma_m: f64,
+    thermal_noise_m: f64,
+    tracking_jitter_m: f64,
 }
 
 const GEOFREE_SLIP_THRESHOLD_CYCLES: f64 = 0.5;
@@ -159,7 +168,8 @@ fn observations_from_tracking_with_provenance(
         }
         last_sample_index = Some(epoch.sample_index);
 
-        let receive_gps_time = capture_start_gps_time.map(|gps_time| gps_time.offset_seconds(t_rx_s.0));
+        let receive_gps_time =
+            capture_start_gps_time.map(|gps_time| gps_time.offset_seconds(t_rx_s.0));
         let pseudorange = pseudorange_from_tracking_epoch(
             config,
             epoch,
@@ -185,12 +195,15 @@ fn observations_from_tracking_with_provenance(
         let cn0_dbhz = epoch.cn0_dbhz;
         let lock_quality = tracking_lock_quality(epoch);
         let tracking_uncertainty = epoch.tracking_uncertainty.clone();
+        let pseudorange_uncertainty = pseudorange_uncertainty_model(
+            config,
+            epoch,
+            samples_per_chip,
+            meters_per_sample,
+            lock_quality,
+        );
 
-        let pseudorange_sigma_m = tracking_uncertainty
-            .as_ref()
-            .map(|uncertainty| uncertainty.code_phase_samples * meters_per_sample)
-            .unwrap_or_else(|| 1.0 / cn0_dbhz.max(1.0));
-        let variance_m2 = pseudorange_sigma_m.powi(2);
+        let variance_m2 = pseudorange_uncertainty.sigma_m.powi(2);
         let carrier_phase_var_cycles2 = tracking_uncertainty
             .as_ref()
             .map(|uncertainty| uncertainty.carrier_phase_cycles.powi(2))
@@ -233,7 +246,12 @@ fn observations_from_tracking_with_provenance(
             azimuth_deg: None,
             weight: None,
             timing: pseudorange.timing,
-            error_model: None,
+            error_model: Some(bijux_gnss_core::api::MeasurementErrorModel {
+                thermal_noise_m: Meters(pseudorange_uncertainty.thermal_noise_m),
+                tracking_jitter_m: Meters(pseudorange_uncertainty.tracking_jitter_m),
+                multipath_proxy_m: Meters(0.0),
+                clock_error_m: Meters(0.0),
+            }),
             metadata: ObsMetadata {
                 tracking_mode: "scalar".to_string(),
                 integration_ms: config.tracking_integration_ms,
@@ -268,10 +286,8 @@ fn observations_from_tracking_with_provenance(
                 pseudorange_model: pseudorange.model.to_string(),
                 carrier_phase_model: "tracked_carrier_cycles".to_string(),
                 doppler_model: doppler_model_label().to_string(),
-                carrier_phase_continuity: carrier_phase_continuity_label(
-                    carrier_phase.continuity,
-                )
-                .to_string(),
+                carrier_phase_continuity: carrier_phase_continuity_label(carrier_phase.continuity)
+                    .to_string(),
                 carrier_phase_arc_start_epoch_idx: carrier_phase.arc_start_epoch_idx,
                 carrier_phase_arc_start_sample_index: carrier_phase.arc_start_sample_index,
                 signal_delay_alignment_source: pseudorange.alignment_source.unwrap_or_default(),
@@ -342,13 +358,12 @@ pub fn observations_from_tracking_results_with_gps_anchor(
         std::collections::HashMap::new();
     let mut diagnostics = Vec::new();
     for track in tracks {
-        let (obs, mut events) =
-            observations_from_tracking_with_provenance(
-                config,
-                capture_start_gps_time,
-                Some(track),
-                &track.epochs,
-            );
+        let (obs, mut events) = observations_from_tracking_with_provenance(
+            config,
+            capture_start_gps_time,
+            Some(track),
+            &track.epochs,
+        );
         diagnostics.append(&mut events);
         for epoch in obs {
             let entry = by_epoch.entry(epoch.epoch_idx).or_insert_with(|| ObsEpoch {
@@ -390,7 +405,7 @@ pub fn observations_from_tracking_results_with_gps_anchor(
                     sat.metadata.smoothing_window = hatch_window;
                     sat.metadata.smoothing_age = 0;
                     sat.metadata.smoothing_resets = state.resets;
-                    sat.error_model = Some(observation_error_model(config, &sat, 0.0));
+                    sat.error_model = Some(observation_error_model(&sat, 0.0));
                     apply_pseudorange_physics_rejection(&mut sat);
                     entry.sats.push(sat);
                     continue;
@@ -452,7 +467,7 @@ pub fn observations_from_tracking_results_with_gps_anchor(
                     CycleSlipState { last_gf_cycles: gf_cycles, initialized: true },
                 );
                 sat.multipath_suspect = divergence_jump > threshold_m * 0.8;
-                sat.error_model = Some(observation_error_model(config, &sat, divergence_jump));
+                sat.error_model = Some(observation_error_model(&sat, divergence_jump));
                 apply_pseudorange_physics_rejection(&mut sat);
                 entry.sats.push(sat);
             }
@@ -485,7 +500,8 @@ pub fn observations_from_tracking_results_with_gps_anchor(
             sat.metadata.observation_status =
                 observation_status_label(sat.observation_status).to_string();
             sat.metadata.observation_reject_reasons = sat.observation_reject_reasons.clone();
-            let alignment_resolved = sat.metadata.pseudorange_model == "tracked_code_phase_alignment";
+            let alignment_resolved =
+                sat.metadata.pseudorange_model == "tracked_code_phase_alignment";
             sat.metadata.observation_support_class =
                 observation_support_label(sat.observation_status, alignment_resolved).to_string();
             sat.metadata.observation_uncertainty_class =
@@ -565,10 +581,7 @@ fn observation_status_label(status: ObservationStatus) -> &'static str {
     }
 }
 
-fn observation_support_label(
-    status: ObservationStatus,
-    alignment_resolved: bool,
-) -> &'static str {
+fn observation_support_label(status: ObservationStatus, alignment_resolved: bool) -> &'static str {
     match status {
         ObservationStatus::Accepted if alignment_resolved => {
             support_class_label(ObservationSupportClass::Supported)
@@ -597,9 +610,9 @@ fn pseudorange_from_tracking_epoch(
 ) -> PseudorangeComputation {
     let code_phase_chips = epoch.code_phase_samples.0 / samples_per_chip;
     if let Some(alignment) = &epoch.signal_delay_alignment {
-        let code_time_s =
-            (alignment.whole_code_periods as f64 * config.code_length as f64 + code_phase_chips)
-                / code_rate_hz;
+        let code_time_s = (alignment.whole_code_periods as f64 * config.code_length as f64
+            + code_phase_chips)
+            / code_rate_hz;
         let pseudorange_m =
             Meters(code_time_s * SPEED_OF_LIGHT_MPS + clock_bias_s * SPEED_OF_LIGHT_MPS);
         let signal_travel_time_s = Seconds(pseudorange_m.0 / SPEED_OF_LIGHT_MPS);
@@ -636,14 +649,20 @@ fn carrier_phase_observation(
 ) -> CarrierPhaseObservation {
     if !carrier_phase_tracking_usable(epoch) {
         if epoch.cycle_slip {
-            record_pending_reset(&mut state.pending_reset, CarrierPhaseContinuity::ResetAfterCycleSlip);
+            record_pending_reset(
+                &mut state.pending_reset,
+                CarrierPhaseContinuity::ResetAfterCycleSlip,
+            );
         } else if discontinuity {
             record_pending_reset(
                 &mut state.pending_reset,
                 CarrierPhaseContinuity::ResetAfterDiscontinuity,
             );
         } else if state.initialized {
-            record_pending_reset(&mut state.pending_reset, CarrierPhaseContinuity::ResetAfterUnlock);
+            record_pending_reset(
+                &mut state.pending_reset,
+                CarrierPhaseContinuity::ResetAfterUnlock,
+            );
         }
         state.initialized = false;
         return CarrierPhaseObservation {
@@ -708,7 +727,9 @@ fn record_pending_reset(
     candidate: CarrierPhaseContinuity,
 ) {
     if pending
-        .map(|current| carrier_phase_reset_priority(candidate) >= carrier_phase_reset_priority(current))
+        .map(|current| {
+            carrier_phase_reset_priority(candidate) >= carrier_phase_reset_priority(current)
+        })
         .unwrap_or(true)
     {
         *pending = Some(candidate);
@@ -864,31 +885,64 @@ fn slip_threshold_m(cn0_dbhz: f64, elevation_deg: Option<f64>) -> f64 {
     5.0 * cn0_factor * elev_factor
 }
 
-fn observation_error_model(
+fn pseudorange_uncertainty_model(
     config: &ReceiverPipelineConfig,
+    epoch: &TrackEpoch,
+    samples_per_chip: f64,
+    meters_per_sample: f64,
+    lock_quality: f64,
+) -> PseudorangeUncertaintyModel {
+    let tracking_jitter_samples = epoch
+        .tracking_uncertainty
+        .as_ref()
+        .map(|uncertainty| uncertainty.code_phase_samples)
+        .unwrap_or_else(|| {
+            ((epoch.dll_err.abs() as f64) * samples_per_chip).max(OBS_MIN_TRACKING_JITTER_SAMPLES)
+        });
+    let cn0_scale = if epoch.cn0_dbhz.is_finite() {
+        10.0_f64.powf(((45.0 - epoch.cn0_dbhz).clamp(-15.0, 20.0)) / 20.0)
+    } else {
+        4.0
+    };
+    let integration_scale = 1.0 / (config.tracking_integration_ms.max(1) as f64).sqrt();
+    let dll_scale = if epoch.dll_lock { 1.0 } else { 1.5 };
+    let lock_quality_scale = 1.0 / lock_quality.clamp(0.25, 1.0);
+    let thermal_noise_samples = OBS_BASE_THERMAL_CODE_SIGMA_SAMPLES
+        * cn0_scale
+        * integration_scale
+        * dll_scale
+        * lock_quality_scale;
+    let discriminator_samples =
+        (epoch.dll_err.abs() as f64) * samples_per_chip * dll_scale * lock_quality_scale;
+    let tracking_jitter_m = tracking_jitter_samples * meters_per_sample;
+    let thermal_noise_m = thermal_noise_samples.max(discriminator_samples) * meters_per_sample;
+    let sigma_m = tracking_jitter_m.max(thermal_noise_m);
+
+    PseudorangeUncertaintyModel { sigma_m, thermal_noise_m, tracking_jitter_m }
+}
+
+fn observation_error_model(
     sat: &ObsSatellite,
     multipath_proxy_m: f64,
 ) -> bijux_gnss_core::api::MeasurementErrorModel {
-    let tracking_uncertainty = sat.metadata.tracking_uncertainty.clone();
-    let pseudorange_sigma_m = sat.pseudorange_var_m2.sqrt();
-    let tracking_jitter_m = tracking_uncertainty
+    let fallback_sigma_m = sat.pseudorange_var_m2.sqrt();
+    let (thermal_noise_m, tracking_jitter_m) = sat
+        .error_model
         .as_ref()
-        .map(|uncertainty| {
-            uncertainty.code_phase_samples * SPEED_OF_LIGHT_MPS / config.sampling_freq_hz
-        })
-        .unwrap_or_else(|| (1.0 / sat.cn0_dbhz.max(1.0)) * 10.0);
-    let thermal_noise_m = tracking_uncertainty.as_ref().map(|_| pseudorange_sigma_m).unwrap_or(1.0);
+        .map(|model| (model.thermal_noise_m, model.tracking_jitter_m))
+        .unwrap_or((Meters(fallback_sigma_m), Meters(fallback_sigma_m)));
 
     bijux_gnss_core::api::MeasurementErrorModel {
-        thermal_noise_m: Meters(thermal_noise_m),
-        tracking_jitter_m: Meters(tracking_jitter_m),
+        thermal_noise_m,
+        tracking_jitter_m,
         multipath_proxy_m: Meters(multipath_proxy_m),
         clock_error_m: Meters(0.0),
     }
 }
 
 fn tracking_lock_quality(epoch: &TrackEpoch) -> f64 {
-    let mut quality = (epoch.cn0_dbhz / 60.0).clamp(0.0, 1.0);
+    let mut quality =
+        if epoch.cn0_dbhz.is_finite() { (epoch.cn0_dbhz / 60.0).clamp(0.0, 1.0) } else { 0.0 };
     if epoch.anti_false_lock {
         quality *= 0.5;
     }
@@ -1034,7 +1088,9 @@ pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bijux_gnss_core::api::{Chips, Epoch, Hertz, SatId, SignalDelayAlignment, TrackingUncertainty};
+    use bijux_gnss_core::api::{
+        Chips, Epoch, Hertz, SatId, SignalDelayAlignment, TrackingUncertainty,
+    };
 
     fn make_tracking_epoch(
         prn: u8,
@@ -1106,7 +1162,13 @@ mod tests {
                 whole_code_periods,
                 source: "synthetic_truth".to_string(),
             }),
-            ..make_tracking_epoch_with_phase(prn, config, epoch_idx, carrier_hz, carrier_phase_cycles)
+            ..make_tracking_epoch_with_phase(
+                prn,
+                config,
+                epoch_idx,
+                carrier_hz,
+                carrier_phase_cycles,
+            )
         }
     }
 
@@ -1123,8 +1185,8 @@ mod tests {
         whole_code_periods: u64,
         code_phase_samples: f64,
     ) -> f64 {
-        let code_phase_chips =
-            code_phase_samples / (samples_per_code(
+        let code_phase_chips = code_phase_samples
+            / (samples_per_code(
                 config.sampling_freq_hz,
                 config.code_freq_basis_hz,
                 config.code_length,
@@ -1632,7 +1694,10 @@ mod tests {
         assert_eq!(epoch.gps_week, Some(2200));
         let tow_s = epoch.tow_s.expect("epoch tow");
         assert!((tow_s.0 - 345_600.07).abs() <= 1.0e-6);
-        assert!((timing.signal_travel_time_s.0 - sat.pseudorange_m.0 / SPEED_OF_LIGHT_MPS).abs() <= 1.0e-12);
+        assert!(
+            (timing.signal_travel_time_s.0 - sat.pseudorange_m.0 / SPEED_OF_LIGHT_MPS).abs()
+                <= 1.0e-12
+        );
         assert_eq!(timing.transmit_gps_time.week, 2200);
         assert!((timing.transmit_gps_time.tow_s - 345_600.0).abs() <= 1.0e-9);
     }
@@ -1721,8 +1786,108 @@ mod tests {
         );
         assert!((sat.doppler_var_hz2 - uncertainty.doppler_hz.powi(2)).abs() <= 1.0e-12, "{sat:?}");
         let error_model = sat.error_model.as_ref().expect("error model");
-        assert!((error_model.thermal_noise_m.0 - expected_pseudorange_sigma_m).abs() <= 1.0e-9);
         assert!((error_model.tracking_jitter_m.0 - expected_pseudorange_sigma_m).abs() <= 1.0e-9);
+        assert!(error_model.thermal_noise_m.0 > 0.0, "{error_model:?}");
+        assert!(
+            error_model.thermal_noise_m.0 <= error_model.tracking_jitter_m.0,
+            "{error_model:?}"
+        );
+    }
+
+    #[test]
+    fn observations_inflate_pseudorange_variance_for_weaker_cn0() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let mut strong_epoch = make_observation_ready_epoch(30, &config, 70);
+        strong_epoch.cn0_dbhz = 48.0;
+        let mut weak_epoch = make_observation_ready_epoch(31, &config, 70);
+        weak_epoch.cn0_dbhz = 28.0;
+
+        let strong =
+            observations_from_tracking_results(&config, &[track_from_epoch(strong_epoch)], 10);
+        let weak = observations_from_tracking_results(&config, &[track_from_epoch(weak_epoch)], 10);
+        let strong_sat = strong.output[0].sats.first().expect("strong satellite");
+        let weak_sat = weak.output[0].sats.first().expect("weak satellite");
+
+        assert!(
+            weak_sat.pseudorange_var_m2 > strong_sat.pseudorange_var_m2,
+            "weaker C/N0 should inflate pseudorange variance: strong={strong_sat:?} weak={weak_sat:?}"
+        );
+    }
+
+    #[test]
+    fn observations_reward_longer_tracking_integration_in_pseudorange_variance() {
+        let short_config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            tracking_integration_ms: 1,
+            ..ReceiverPipelineConfig::default()
+        };
+        let long_config =
+            ReceiverPipelineConfig { tracking_integration_ms: 10, ..short_config.clone() };
+        let mut short_epoch = make_observation_ready_epoch(32, &short_config, 70);
+        short_epoch.cn0_dbhz = 40.0;
+        let mut long_epoch = make_observation_ready_epoch(32, &long_config, 70);
+        long_epoch.cn0_dbhz = 40.0;
+
+        let short =
+            observations_from_tracking_results(&short_config, &[track_from_epoch(short_epoch)], 10);
+        let long =
+            observations_from_tracking_results(&long_config, &[track_from_epoch(long_epoch)], 10);
+        let short_sat = short.output[0].sats.first().expect("short integration satellite");
+        let long_sat = long.output[0].sats.first().expect("long integration satellite");
+
+        assert!(
+            long_sat.pseudorange_var_m2 < short_sat.pseudorange_var_m2,
+            "longer coherent integration should tighten pseudorange variance: short={short_sat:?} long={long_sat:?}"
+        );
+    }
+
+    #[test]
+    fn observations_inflate_pseudorange_variance_when_dll_lock_is_lost() {
+        let config = ReceiverPipelineConfig::default();
+        let locked_epoch = make_observation_ready_epoch(33, &config, 70);
+        let mut unlocked_epoch = make_observation_ready_epoch(34, &config, 70);
+        unlocked_epoch.dll_lock = false;
+
+        let locked =
+            observations_from_tracking_results(&config, &[track_from_epoch(locked_epoch)], 10);
+        let unlocked =
+            observations_from_tracking_results(&config, &[track_from_epoch(unlocked_epoch)], 10);
+        let locked_sat = locked.output[0].sats.first().expect("locked satellite");
+        let unlocked_sat = unlocked.output[0].sats.first().expect("unlocked satellite");
+
+        assert!(
+            unlocked_sat.pseudorange_var_m2 > locked_sat.pseudorange_var_m2,
+            "loss of DLL lock should inflate pseudorange variance: locked={locked_sat:?} unlocked={unlocked_sat:?}"
+        );
+    }
+
+    #[test]
+    fn observations_inflate_pseudorange_variance_for_low_lock_quality() {
+        let config = ReceiverPipelineConfig::default();
+        let locked_epoch = make_observation_ready_epoch(35, &config, 70);
+        let mut guarded_epoch = make_observation_ready_epoch(36, &config, 70);
+        guarded_epoch.anti_false_lock = true;
+
+        let locked =
+            observations_from_tracking_results(&config, &[track_from_epoch(locked_epoch)], 10);
+        let guarded =
+            observations_from_tracking_results(&config, &[track_from_epoch(guarded_epoch)], 10);
+        let locked_sat = locked.output[0].sats.first().expect("locked satellite");
+        let guarded_sat = guarded.output[0].sats.first().expect("guarded satellite");
+
+        assert!(
+            guarded_sat.pseudorange_var_m2 > locked_sat.pseudorange_var_m2,
+            "lower lock quality should inflate pseudorange variance: locked={locked_sat:?} guarded={guarded_sat:?}"
+        );
     }
 
     #[test]
@@ -1887,24 +2052,12 @@ mod tests {
     fn observation_metadata_sets_support_and_uncertainty_classes() {
         let config = ReceiverPipelineConfig::default();
         let sat = SatId { constellation: Constellation::Gps, prn: 7 };
-        let weak = TrackEpoch {
-            epoch: Epoch { index: 0 },
-            sample_index: 0,
-            sat,
-            lock: true,
-            cn0_dbhz: 20.0,
-            lock_state: "tracking".to_string(),
-            ..TrackEpoch::default()
-        };
-        let missing = TrackEpoch {
-            epoch: Epoch { index: 0 },
-            sample_index: 0,
-            sat: SatId { constellation: Constellation::Gps, prn: 8 },
-            lock: false,
-            cn0_dbhz: 45.0,
-            lock_state: "lost".to_string(),
-            ..TrackEpoch::default()
-        };
+        let mut weak = make_observation_ready_epoch(7, &config, 70);
+        weak.cn0_dbhz = 20.0;
+        let mut missing = make_observation_ready_epoch(8, &config, 70);
+        missing.lock = false;
+        missing.cn0_dbhz = 45.0;
+        missing.lock_state = "lost".to_string();
         let tracks = vec![
             TrackingResult {
                 sat,
@@ -1932,7 +2085,7 @@ mod tests {
             },
         ];
         let report = observations_from_tracking_results(&config, &tracks, 10);
-        let epoch = report.output.iter().find(|row| row.epoch_idx == 0).expect("epoch");
+        let epoch = report.output.iter().find(|row| row.epoch_idx == 70).expect("epoch");
         let labels = epoch
             .sats
             .iter()
@@ -2027,7 +2180,8 @@ mod tests {
             lock_state_reason: Some("prompt_power_drop".to_string()),
             ..TrackEpoch::default()
         };
-        let report = observations_from_tracking_results(&config, &[track_from_epoch(unlocked_epoch)], 10);
+        let report =
+            observations_from_tracking_results(&config, &[track_from_epoch(unlocked_epoch)], 10);
         let epoch = report.output.first().expect("observation epoch");
         let sat = epoch.sats.first().expect("observation satellite");
 
@@ -2093,7 +2247,8 @@ mod tests {
             lock_state_reason: Some("prompt_power_drop".to_string()),
             ..TrackEpoch::default()
         };
-        let report = observations_from_tracking_results(&config, &[track_from_epoch(unlocked_epoch)], 10);
+        let report =
+            observations_from_tracking_results(&config, &[track_from_epoch(unlocked_epoch)], 10);
         let epoch = report.output.first().expect("observation epoch");
         let sat = epoch.sats.first().expect("observation satellite");
 
