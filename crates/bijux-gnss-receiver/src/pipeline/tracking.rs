@@ -34,16 +34,24 @@ const SAMPLE_RATE_MISMATCH_MIN_UNSTABLE_EPOCHS_IN_WINDOW: usize = 3;
 const CYCLE_SLIP_PHASE_DELTA_CYCLES: f64 = 0.35;
 const NAV_BIT_PHASE_STEP_CYCLES: f64 = 0.5;
 const NAV_BIT_PHASE_STEP_TOLERANCE_CYCLES: f64 = 0.1;
-const PLL_LOCK_MAX_PHASE_ERROR_RAD: f32 = 0.2;
+const PLL_LOCK_MAX_PHASE_ERROR_RAD: f32 = 0.35;
+const PLL_HOLD_MAX_PHASE_ERROR_RAD: f32 = 0.45;
+const ANTI_FALSE_LOCK_MAX_EARLY_LATE_TO_PROMPT_RATIO: f32 = 0.9;
 const PROMPT_POWER_DROP_RATIO_THRESHOLD: f32 = 0.2;
 const DISCRIMINATOR_INSTABILITY_MIN_PROMPT_POWER_RATIO: f32 = 0.5;
 const DISCRIMINATOR_INSTABILITY_REQUIRED_EPOCHS: u8 = 2;
 const DEGRADED_FADE_INSTABILITY_GRACE_EPOCHS: u16 = 2;
+const SHORT_FADE_RECOVERY_GRACE_EPOCHS: u16 = 5;
+// If prompt energy returns near the short-fade boundary, the loops may need a
+// few extra epochs to re-enter tracking without opening a long interruption gap.
+const SHORT_FADE_RELOCK_EVIDENCE_GRACE_EPOCHS: u16 = 3;
 const PULL_IN_REQUIRED_STABLE_EPOCHS: u8 = 1;
 const FLL_PULL_IN_MAX_CORRECTION_BW_MULTIPLIER: f64 = 4.0;
 const REACQUISITION_REQUIRED_LOST_EPOCHS: usize = 3;
 const REACQUISITION_CONFIRMATION_EPOCHS: u8 = 2;
 const REACQUISITION_PULL_IN_EPOCH_BUDGET: u8 = 20;
+const REACQUISITION_REFERENCE_CN0_MARGIN_DBHZ: f64 = 12.0;
+const REACQUISITION_STABLE_TRACKING_EPOCHS: u8 = 5;
 const TRACKING_CN0_WINDOW_EPOCHS: usize = 8;
 const TRACKING_CN0_MIN_WINDOW_EPOCHS: usize = 4;
 
@@ -148,6 +156,7 @@ struct LoopState {
     code_rate_hz: f64,
     code_phase_samples: f64,
     acquisition_cn0_proxy_dbhz: f64,
+    lock_reference_cn0_dbhz: f64,
     prev_prompt: Option<Complex<f32>>,
     prev_prompt_phase_cycles: Option<f64>,
     nav_bit_phase_offset_cycles: f64,
@@ -165,6 +174,7 @@ struct LoopState {
     reacquisition_candidate_streak: u8,
     reacquisition_pending: bool,
     reacquisition_attempt_epochs: u8,
+    reacquisition_stable_tracking_epochs: u8,
 }
 
 #[derive(Debug, Clone)]
@@ -247,6 +257,7 @@ struct CarrierLoopInput {
     fll_bw_hz: f64,
     fll_err_hz: f64,
     apply_fll: bool,
+    apply_pll_frequency: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -263,6 +274,14 @@ struct ReacquisitionSeed {
     carrier_hz: f64,
     code_phase_samples: f64,
     cn0_dbhz: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct SustainedLockLossSeed {
+    carrier_hz: f64,
+    code_phase_samples: f64,
+    code_rate_hz: f64,
+    sample_index: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -288,10 +307,6 @@ impl LossOfLockCause {
             Self::PhaseJump => "phase_jump",
         }
     }
-}
-
-fn should_apply_fll(state: ChannelState, raw_fll_lock: bool) -> bool {
-    matches!(state, ChannelState::PullIn | ChannelState::Degraded) || !raw_fll_lock
 }
 
 /// Tracking engine with basic E/P/L correlation per epoch.
@@ -608,6 +623,7 @@ impl Tracking {
             code_rate_hz: self.config.code_freq_basis_hz,
             code_phase_samples,
             acquisition_cn0_proxy_dbhz,
+            lock_reference_cn0_dbhz: acquisition_cn0_proxy_dbhz,
             prev_prompt: None,
             prev_prompt_phase_cycles: None,
             nav_bit_phase_offset_cycles: 0.0,
@@ -625,6 +641,7 @@ impl Tracking {
             reacquisition_candidate_streak: 0,
             reacquisition_pending: false,
             reacquisition_attempt_epochs: 0,
+            reacquisition_stable_tracking_epochs: 0,
         };
 
         let mut out = Vec::new();
@@ -684,6 +701,7 @@ impl Tracking {
                         code_rate_hz: self.config.code_freq_basis_hz,
                         code_phase_samples: context.seed.code_phase_samples.0,
                         acquisition_cn0_proxy_dbhz: context.acquisition_cn0_proxy_dbhz,
+                        lock_reference_cn0_dbhz: context.acquisition_cn0_proxy_dbhz,
                         prev_prompt: None,
                         prev_prompt_phase_cycles: None,
                         nav_bit_phase_offset_cycles: 0.0,
@@ -701,6 +719,7 @@ impl Tracking {
                         reacquisition_candidate_streak: 0,
                         reacquisition_pending: false,
                         reacquisition_attempt_epochs: 0,
+                        reacquisition_stable_tracking_epochs: 0,
                     },
                     epochs: Vec::new(),
                     transitions: Vec::new(),
@@ -880,8 +899,7 @@ impl Tracking {
             state.prev_prompt = Some(corr.prompt);
             let phase_cycles = corr.prompt.arg() as f64 / (2.0 * std::f64::consts::PI);
 
-            let anti_false_lock =
-                (corr.early.norm() - corr.late.norm()).abs() < 0.2 * corr.prompt.norm();
+            let anti_false_lock = anti_false_lock_detected(corr.early, corr.prompt, corr.late);
 
             let phase_decision = classify_prompt_phase(
                 phase_cycles,
@@ -899,9 +917,19 @@ impl Tracking {
             let cycle_slip_reason =
                 cycle_slip.then(|| LossOfLockCause::PhaseJump.reason().to_string());
             let prompt_power = corr.prompt.norm();
-            state.prompt_power_reference =
-                update_prompt_power_reference(state.prompt_power_reference, prompt_power);
+            state.prompt_power_reference = refresh_prompt_power_reference(
+                state.prompt_power_reference,
+                prompt_power,
+                state.state,
+                anti_false_lock,
+            );
             let prompt_power_ratio = prompt_power_ratio(prompt_power, state.prompt_power_reference);
+            let sustained_prompt_lock = lock
+                || (matches!(state.state, ChannelState::Tracking | ChannelState::Degraded)
+                    && prompt_power_ratio.is_some_and(|ratio| {
+                        ratio >= DISCRIMINATOR_INSTABILITY_MIN_PROMPT_POWER_RATIO
+                    })
+                    && !cycle_slip);
 
             let mut cn0_dbhz = state.acquisition_cn0_proxy_dbhz;
             if !cn0_dbhz.is_finite() || cn0_dbhz <= 0.0 {
@@ -968,10 +996,47 @@ impl Tracking {
                 state.acquisition_cn0_proxy_dbhz,
             );
             state.weak_cn0_epochs = weak_cn0_epochs;
-            let ready_for_tracking =
-                cn0_supports_lock && state.pull_in_stable_epochs >= PULL_IN_REQUIRED_STABLE_EPOCHS;
-
             let from_state = state.state;
+            let sustained_pll_lock = raw_pll_lock
+                || (matches!(from_state, ChannelState::Tracking | ChannelState::Degraded)
+                    && pll_err.abs() < PLL_HOLD_MAX_PHASE_ERROR_RAD);
+            let steady_state_tracking_ready = if from_state == ChannelState::Degraded {
+                cn0_supports_lock
+                    && lock
+                    && raw_pll_lock
+                    && raw_fll_lock
+                    && !cycle_slip
+                    && !anti_false_lock
+            } else {
+                cn0_supports_lock
+                    && sustained_prompt_lock
+                    && sustained_pll_lock
+                    && !cycle_slip
+                    && !anti_false_lock
+            };
+            let ready_for_tracking = if matches!(
+                from_state,
+                ChannelState::Tracking | ChannelState::Degraded
+            ) {
+                steady_state_tracking_ready
+            } else {
+                cn0_supports_lock
+                    && state.pull_in_stable_epochs >= PULL_IN_REQUIRED_STABLE_EPOCHS
+            };
+            let short_fade_relock_evidence =
+                !anti_false_lock && !cycle_slip && (raw_pll_lock || raw_fll_lock);
+            let reliable_reacquisition_reference = cn0_supports_lock
+                && sustained_prompt_lock
+                && raw_pll_lock
+                && raw_fll_lock
+                && !cycle_slip
+                && !anti_false_lock;
+            state.lock_reference_cn0_dbhz = refresh_lock_reference_cn0_dbhz(
+                state.lock_reference_cn0_dbhz,
+                cn0_dbhz,
+                reliable_reacquisition_reference,
+            );
+
             let transition = if refuse_lock {
                 TransitionDecision {
                     to_state: ChannelState::PullIn,
@@ -982,13 +1047,14 @@ impl Tracking {
             } else {
                 deterministic_transition_rule(
                     from_state,
-                    lock,
+                    sustained_prompt_lock,
                     ready_for_tracking,
                     anti_false_lock,
                     loss_of_lock_cause,
                     state.unlocked_count,
                     state.degraded_epochs,
                     short_fade_epoch_budget(tracking_params),
+                    short_fade_relock_evidence,
                 )
             };
             state.unlocked_count = transition.next_unlocked_count;
@@ -1002,11 +1068,15 @@ impl Tracking {
                     state.lost_reason = Some(transition.reason.clone());
                     state.reacquisition_candidate = None;
                     state.reacquisition_candidate_streak = 0;
+                    state.reacquisition_stable_tracking_epochs = 0;
                 }
             } else {
                 state.lost_reason = None;
                 state.reacquisition_candidate = None;
                 state.reacquisition_candidate_streak = 0;
+                if !state.reacquisition_pending {
+                    state.reacquisition_stable_tracking_epochs = 0;
+                }
                 if !state.reacquisition_pending {
                     state.reacquisition_attempt_epochs = 0;
                 }
@@ -1025,9 +1095,17 @@ impl Tracking {
             };
             let lock_state_reason = Some(transition.reason.clone());
 
-            let dll_lock = dll_err.abs() < 0.2;
-            let pll_lock = raw_pll_lock && ready_for_tracking;
-            let fll_lock = raw_fll_lock;
+            let channel_locked = state.state != ChannelState::Lost && sustained_prompt_lock;
+            let dll_lock = state.state != ChannelState::Lost && dll_err.abs() < 0.2;
+            let pll_lock = state.state != ChannelState::Lost
+                && cn0_supports_lock
+                && sustained_prompt_lock
+                && sustained_pll_lock
+                && !cycle_slip;
+            let fll_lock = state.state != ChannelState::Lost
+                && (raw_fll_lock
+                    || (matches!(state.state, ChannelState::Tracking | ChannelState::Degraded)
+                        && pll_lock));
             if track_epoch.early_i.is_infinite() || track_epoch.late_i.is_infinite() {
                 self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
                     bijux_gnss_core::api::DiagnosticSeverity::Warning,
@@ -1048,6 +1126,7 @@ impl Tracking {
                 samples_per_code,
             });
             state.code_rate_hz = code_loop.code_rate_hz;
+            let apply_fll = fll_bw > 0.0 && should_apply_fll(state.state, raw_fll_lock);
             let carrier_loop = apply_carrier_loop(CarrierLoopInput {
                 current_carrier_hz: state.carrier_hz,
                 current_carrier_phase_cycles: state.carrier_phase_cycles,
@@ -1058,7 +1137,8 @@ impl Tracking {
                 pll_err_rad: pll_err as f64,
                 fll_bw_hz: fll_bw,
                 fll_err_hz: fll_err_hz as f64,
-                apply_fll: should_apply_fll(state.state, raw_fll_lock),
+                apply_fll,
+                apply_pll_frequency: !apply_fll,
             });
             state.carrier_hz = carrier_loop.carrier_hz;
             state.carrier_phase_cycles = carrier_loop.carrier_phase_cycles;
@@ -1080,7 +1160,7 @@ impl Tracking {
             }
 
             out.push(TrackEpoch {
-                lock,
+                lock: channel_locked,
                 carrier_hz: Hertz(state.carrier_hz),
                 carrier_phase_cycles: Cycles(state.carrier_phase_cycles),
                 code_rate_hz: Hertz(state.code_rate_hz),
@@ -1153,6 +1233,32 @@ fn update_prompt_power_reference(current_reference: f32, prompt_power: f32) -> f
     (current_reference * 0.98).max(prompt_power)
 }
 
+fn refresh_prompt_power_reference(
+    current_reference: f32,
+    prompt_power: f32,
+    state: ChannelState,
+    anti_false_lock: bool,
+) -> f32 {
+    if !current_reference.is_finite() || current_reference <= 0.0 {
+        return update_prompt_power_reference(current_reference, prompt_power);
+    }
+    if matches!(state, ChannelState::Tracking) && !anti_false_lock {
+        return update_prompt_power_reference(current_reference, prompt_power);
+    }
+    current_reference
+}
+
+fn refresh_lock_reference_cn0_dbhz(
+    current_reference: f64,
+    cn0_dbhz: f64,
+    reliable_tracking_lock: bool,
+) -> f64 {
+    if reliable_tracking_lock && cn0_dbhz.is_finite() && cn0_dbhz > 0.0 {
+        return cn0_dbhz;
+    }
+    current_reference
+}
+
 fn prompt_power_ratio(prompt_power: f32, prompt_power_reference: f32) -> Option<f32> {
     if !prompt_power.is_finite()
         || !prompt_power_reference.is_finite()
@@ -1170,6 +1276,25 @@ fn aligned_prompt(prompt: Complex<f32>, nav_bit_phase_offset_cycles: f64) -> Com
     let phase_rad = (-nav_bit_phase_offset_cycles * std::f64::consts::TAU) as f32;
     let rotation = Complex::new(phase_rad.cos(), phase_rad.sin());
     prompt * rotation
+}
+
+fn anti_false_lock_detected(
+    early: Complex<f32>,
+    prompt: Complex<f32>,
+    late: Complex<f32>,
+) -> bool {
+    let prompt_norm = prompt.norm();
+    if !prompt_norm.is_finite() || prompt_norm <= 0.0 {
+        return true;
+    }
+
+    let early_late_mean = (early.norm() + late.norm()) * 0.5;
+    !early_late_mean.is_finite()
+        || early_late_mean >= prompt_norm * ANTI_FALSE_LOCK_MAX_EARLY_LATE_TO_PROMPT_RATIO
+}
+
+fn should_apply_fll(state: ChannelState, raw_fll_lock: bool) -> bool {
+    matches!(state, ChannelState::PullIn | ChannelState::Degraded) || !raw_fll_lock
 }
 
 fn update_windowed_tracking_cn0_estimate(
@@ -1260,7 +1385,14 @@ fn classify_loss_of_lock_cause(
 }
 
 fn is_sustained_lock_loss_reason(reason: &str) -> bool {
-    matches!(reason, "lock_lost" | "prompt_power_drop" | "discriminator_instability" | "phase_jump")
+    matches!(
+        reason,
+        "lock_lost"
+            | "prompt_power_drop"
+            | "discriminator_instability"
+            | "phase_jump"
+            | "reacquisition_failed"
+    )
 }
 
 #[derive(Debug, Clone)]
@@ -1280,6 +1412,7 @@ fn deterministic_transition_rule(
     unlocked_count: u8,
     degraded_epochs: u16,
     short_fade_epoch_budget: u16,
+    short_fade_relock_evidence: bool,
 ) -> TransitionDecision {
     if loss_of_lock_cause == Some(LossOfLockCause::PhaseJump) {
         return TransitionDecision {
@@ -1318,7 +1451,14 @@ fn deterministic_transition_rule(
             };
         }
         let next_degraded_epochs = degraded_epochs.saturating_add(1);
-        if next_degraded_epochs > short_fade_epoch_budget {
+        let effective_short_fade_budget = short_fade_epoch_budget.saturating_add(
+            if short_fade_relock_evidence {
+                SHORT_FADE_RELOCK_EVIDENCE_GRACE_EPOCHS
+            } else {
+                0
+            },
+        );
+        if next_degraded_epochs > effective_short_fade_budget {
             let loss_reason =
                 loss_of_lock_cause.unwrap_or(LossOfLockCause::PromptPowerDrop).reason().to_string();
             return TransitionDecision {
@@ -1384,7 +1524,7 @@ fn deterministic_transition_rule(
     }
 }
 
-fn sustained_lock_loss_reacquire_seed(epochs: &[TrackEpoch]) -> Option<(f64, f64)> {
+fn sustained_lock_loss_reacquire_seed(epochs: &[TrackEpoch]) -> Option<SustainedLockLossSeed> {
     let mut consecutive_lost_epochs = 0usize;
     for epoch in epochs {
         if !epoch.lock
@@ -1393,13 +1533,30 @@ fn sustained_lock_loss_reacquire_seed(epochs: &[TrackEpoch]) -> Option<(f64, f64
         {
             consecutive_lost_epochs += 1;
             if consecutive_lost_epochs >= REACQUISITION_REQUIRED_LOST_EPOCHS {
-                return Some((epoch.carrier_hz.0, epoch.code_phase_samples.0));
+                return Some(SustainedLockLossSeed {
+                    carrier_hz: epoch.carrier_hz.0,
+                    code_phase_samples: epoch.code_phase_samples.0,
+                    code_rate_hz: epoch.code_rate_hz.0,
+                    sample_index: epoch.sample_index,
+                });
             }
             continue;
         }
         consecutive_lost_epochs = 0;
     }
     None
+}
+
+fn project_reacquisition_code_phase_samples(
+    seed: SustainedLockLossSeed,
+    target_sample_index: u64,
+    nominal_code_rate_hz: f64,
+    samples_per_code: usize,
+) -> f64 {
+    let elapsed_samples = target_sample_index.saturating_sub(seed.sample_index) as f64;
+    let projected_code_phase_samples =
+        seed.code_phase_samples + elapsed_samples * (seed.code_rate_hz / nominal_code_rate_hz);
+    wrap_code_phase_samples(projected_code_phase_samples, samples_per_code)
 }
 
 fn default_tracking_assumptions(config: &ReceiverPipelineConfig) -> TrackingAssumptions {
@@ -1697,6 +1854,7 @@ fn fll_lock_threshold_hz(fll_bw_hz: f64) -> f64 {
 fn short_fade_epoch_budget(tracking_params: TrackingParams) -> u16 {
     let integration_ms = tracking_params.integration_ms.max(1) as f64;
     ((SHORT_FADE_MAX_DURATION_S * 1000.0) / integration_ms).ceil() as u16
+        + SHORT_FADE_RECOVERY_GRACE_EPOCHS
 }
 
 fn update_pull_in_stable_epochs(
@@ -1718,7 +1876,8 @@ fn update_prelock_cn0_refusal(
     cn0_dbhz: f64,
 ) -> (u8, bool, bool) {
     if matches!(current_state, ChannelState::Tracking | ChannelState::Degraded) {
-        return (0, true, false);
+        let cn0_supports_lock = cn0_dbhz.is_finite() && cn0_dbhz >= TRACKING_LOCK_MIN_CN0_DBHZ;
+        return (0, cn0_supports_lock, false);
     }
     if !cn0_dbhz.is_finite() || cn0_dbhz >= TRACKING_LOCK_MIN_CN0_DBHZ {
         return (0, cn0_dbhz.is_finite(), false);
@@ -1733,6 +1892,14 @@ fn bounded_fll_pull_in_correction_hz(fll_err_hz: f64, fll_bw_hz: f64) -> f64 {
     fll_err_hz.clamp(-max_correction_hz, max_correction_hz)
 }
 
+fn reacquisition_min_cn0_dbhz(lock_reference_cn0_dbhz: f64) -> f64 {
+    if !lock_reference_cn0_dbhz.is_finite() || lock_reference_cn0_dbhz <= 0.0 {
+        return TRACKING_LOCK_MIN_CN0_DBHZ;
+    }
+    (lock_reference_cn0_dbhz - REACQUISITION_REFERENCE_CN0_MARGIN_DBHZ)
+        .max(TRACKING_LOCK_MIN_CN0_DBHZ)
+}
+
 fn apply_carrier_loop(input: CarrierLoopInput) -> CarrierLoopUpdate {
     let pll_coefficients =
         phase_lock_loop_coefficients(input.pll_bw_hz, input.coherent_integration_s);
@@ -1745,7 +1912,9 @@ fn apply_carrier_loop(input: CarrierLoopInput) -> CarrierLoopUpdate {
             input.fll_bw_hz,
         );
     }
-    carrier_hz += pll_coefficients.frequency_gain_hz_per_rad * input.pll_err_rad;
+    if input.apply_pll_frequency {
+        carrier_hz += pll_coefficients.frequency_gain_hz_per_rad * input.pll_err_rad;
+    }
 
     let carrier_phase_cycles = input.current_carrier_phase_cycles
         + carrier_hz * input.epoch_len_samples as f64 / input.sample_rate_hz
@@ -1764,7 +1933,23 @@ fn apply_reacquisition_annotations(
         return;
     };
 
+    if state.reacquisition_pending {
+        let stable_tracking_epoch = last_epoch.lock
+            && last_epoch.lock_state == ChannelState::Tracking.to_string()
+            && last_epoch.lock_state_reason.as_deref() == Some("carrier_converged")
+            && last_epoch.pll_lock
+            && last_epoch.fll_lock
+            && !last_epoch.cycle_slip
+            && !last_epoch.anti_false_lock;
+        state.reacquisition_stable_tracking_epochs = if stable_tracking_epoch {
+            state.reacquisition_stable_tracking_epochs.saturating_add(1)
+        } else {
+            0
+        };
+    }
+
     if state.reacquisition_pending
+        && state.reacquisition_stable_tracking_epochs >= REACQUISITION_STABLE_TRACKING_EPOCHS
         && last_epoch.lock_state == ChannelState::Tracking.to_string()
         && last_epoch.lock_state_reason.as_deref() == Some("carrier_converged")
     {
@@ -1778,6 +1963,7 @@ fn apply_reacquisition_annotations(
         }
         state.reacquisition_pending = false;
         state.reacquisition_attempt_epochs = 0;
+        state.reacquisition_stable_tracking_epochs = 0;
         return;
     }
 
@@ -1794,6 +1980,7 @@ fn apply_reacquisition_annotations(
             state.lost_reason = Some("reacquisition_failed".to_string());
             state.reacquisition_pending = false;
             state.reacquisition_attempt_epochs = 0;
+            state.reacquisition_stable_tracking_epochs = 0;
             state.unlocked_count = 0;
             state.degraded_epochs = 0;
             return;
@@ -1824,18 +2011,27 @@ impl Tracking {
         if channel.state.state != ChannelState::Lost {
             return ReacquisitionOutcome::NotNeeded;
         }
-        let Some((carrier_hz, code_phase_samples)) =
-            sustained_lock_loss_reacquire_seed(&channel.epochs)
-        else {
+        let Some(sustained_loss_seed) = sustained_lock_loss_reacquire_seed(&channel.epochs) else {
             channel.state.reacquisition_candidate = None;
             channel.state.reacquisition_candidate_streak = 0;
             return ReacquisitionOutcome::SeedUnavailable;
         };
+        let reacquisition_code_phase_samples = project_reacquisition_code_phase_samples(
+            sustained_loss_seed,
+            frame.t0.sample_index,
+            self.config.code_freq_basis_hz,
+            samples_per_code(
+                self.config.sampling_freq_hz,
+                self.config.code_freq_basis_hz,
+                self.config.code_length,
+            ),
+        );
         let Some(seed) = self.quick_reacquire(
             frame,
             channel.sat,
-            carrier_hz,
-            code_phase_samples,
+            sustained_loss_seed.carrier_hz,
+            reacquisition_code_phase_samples,
+            channel.state.lock_reference_cn0_dbhz,
             channel.acquisition_uncertainty.as_ref(),
         ) else {
             channel.state.reacquisition_candidate = None;
@@ -1865,6 +2061,7 @@ impl Tracking {
             code_rate_hz: self.config.code_freq_basis_hz,
             code_phase_samples: seed.code_phase_samples,
             acquisition_cn0_proxy_dbhz: seed.cn0_dbhz,
+            lock_reference_cn0_dbhz: seed.cn0_dbhz,
             prev_prompt: None,
             prev_prompt_phase_cycles: None,
             nav_bit_phase_offset_cycles: 0.0,
@@ -1882,6 +2079,7 @@ impl Tracking {
             reacquisition_candidate_streak: 0,
             reacquisition_pending: true,
             reacquisition_attempt_epochs: 0,
+            reacquisition_stable_tracking_epochs: 0,
         };
         ReacquisitionOutcome::Started
     }
@@ -1898,7 +2096,7 @@ impl Tracking {
             .unwrap_or(doppler_step_hz);
         let code_tolerance_samples = acquisition_uncertainty
             .map(|uncertainty| uncertainty.code_phase_samples.clamp(0.5, 2.0))
-            .unwrap_or(1.0);
+            .unwrap_or(2.0);
         (left.carrier_hz - right.carrier_hz).abs() <= doppler_tolerance_hz
             && (left.code_phase_samples - right.code_phase_samples).abs() <= code_tolerance_samples
     }
@@ -1909,6 +2107,7 @@ impl Tracking {
         sat: SatId,
         carrier_hz: f64,
         code_phase_samples: f64,
+        lock_reference_cn0_dbhz: f64,
         acquisition_uncertainty: Option<&AcqUncertainty>,
     ) -> Option<ReacquisitionSeed> {
         let doppler_step_hz = self.config.acquisition_doppler_step_hz.max(1) as f64;
@@ -1922,6 +2121,7 @@ impl Tracking {
         let code_bins = [-2.0, -1.0, 0.0, 1.0, 2.0].map(|bin| bin * code_step);
         let mut best = None;
         let mut best_cn0_dbhz = f64::NEG_INFINITY;
+        let min_cn0_dbhz = reacquisition_min_cn0_dbhz(lock_reference_cn0_dbhz);
         for d in doppler_bins {
             for c in code_bins {
                 let corr = self.correlate_epoch(
@@ -1940,13 +2140,9 @@ impl Tracking {
                     frame.len() as f64,
                     corr.early_late_noise_weight_energy,
                 );
-                let (_, _, _, prompt_lock) =
-                    discriminators(corr.early, corr.prompt, corr.late, None);
-                let anti_false_lock =
-                    (corr.early.norm() - corr.late.norm()).abs() < 0.2 * corr.prompt.norm();
-                if prompt_lock
-                    && !anti_false_lock
-                    && cn0_dbhz >= TRACKING_LOCK_MIN_CN0_DBHZ
+                let anti_false_lock = anti_false_lock_detected(corr.early, corr.prompt, corr.late);
+                if !anti_false_lock
+                    && cn0_dbhz >= min_cn0_dbhz
                     && cn0_dbhz > best_cn0_dbhz
                 {
                     best_cn0_dbhz = cn0_dbhz;
@@ -2016,6 +2212,7 @@ mod tests {
             1,
             0,
             100,
+            false,
         );
         assert_eq!(decision.to_state, ChannelState::Lost);
         assert_eq!(decision.reason, "phase_jump");
@@ -2034,6 +2231,7 @@ mod tests {
             2,
             0,
             100,
+            false,
         );
         assert_eq!(decision.to_state, ChannelState::Tracking);
         assert_eq!(decision.reason, "carrier_converged");
@@ -2052,6 +2250,7 @@ mod tests {
             1,
             0,
             100,
+            false,
         );
         assert_eq!(decision.to_state, ChannelState::Degraded);
         assert_eq!(decision.reason, "signal_fade");
@@ -2070,6 +2269,7 @@ mod tests {
             0,
             4,
             100,
+            false,
         );
         assert_eq!(decision.to_state, ChannelState::Tracking);
         assert_eq!(decision.reason, "fade_recovered");
@@ -2088,6 +2288,7 @@ mod tests {
             0,
             2,
             100,
+            false,
         );
         assert_eq!(decision.to_state, ChannelState::Lost);
         assert_eq!(decision.reason, "phase_jump");
@@ -2106,6 +2307,7 @@ mod tests {
             0,
             100,
             100,
+            false,
         );
         assert_eq!(decision.to_state, ChannelState::Lost);
         assert_eq!(decision.reason, "prompt_power_drop");
@@ -2124,6 +2326,7 @@ mod tests {
             0,
             super::DEGRADED_FADE_INSTABILITY_GRACE_EPOCHS,
             100,
+            false,
         );
         assert_eq!(decision.to_state, ChannelState::Degraded);
         assert_eq!(decision.reason, "signal_fade");
@@ -2187,6 +2390,112 @@ mod tests {
     }
 
     #[test]
+    fn signal_only_profiles_maintain_sustained_tracking_across_doppler_polarity() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            channels: 1,
+            early_late_spacing_chips: 0.5,
+            dll_bw_hz: 2.0,
+            pll_bw_hz: 18.0,
+            fll_bw_hz: 12.0,
+            ..ReceiverPipelineConfig::default()
+        };
+        const MIN_TRACKING_EPOCHS: usize = 950;
+        const MIN_SUSTAINED_TRACKING_EPOCHS: usize = 900;
+        let tracking = Tracking::new(config.clone(), ReceiverRuntime::default());
+        for (sat, truth_doppler_hz, code_phase_chips, carrier_phase_rad, code_phase_samples) in [
+            (SatId { constellation: Constellation::Gps, prn: 3 }, -300.0, 32.0, 0.1, 128),
+            (SatId { constellation: Constellation::Gps, prn: 7 }, -100.0, 256.0, 0.3, 1024),
+            (SatId { constellation: Constellation::Gps, prn: 11 }, 125.0, 512.0, 0.5, 2048),
+            (SatId { constellation: Constellation::Gps, prn: 19 }, 325.0, 768.0, 0.7, 3072),
+        ] {
+            let frame = generate_l1_ca(
+                &config,
+                SyntheticSignalParams {
+                    sat,
+                    doppler_hz: truth_doppler_hz,
+                    code_phase_chips,
+                    carrier_phase_rad,
+                    cn0_db_hz: 55.0,
+                    data_bit_flip: false,
+                },
+                0xD1A6_6001 ^ sat.prn as u64,
+                1.000,
+            );
+            let acquisition = bijux_gnss_core::api::AcqResult {
+                sat,
+                signal_band: bijux_gnss_core::api::SignalBand::L1,
+                source_time: bijux_gnss_core::api::ReceiverSampleTrace::default(),
+                candidate_rank: 1,
+                is_primary_candidate: true,
+                doppler_hz: bijux_gnss_core::api::Hertz(truth_doppler_hz),
+                carrier_hz: bijux_gnss_core::api::Hertz(truth_doppler_hz),
+                code_phase_samples,
+                peak: 1.0,
+                second_peak: 0.1,
+                mean: 0.01,
+                peak_mean_ratio: 20.0,
+                peak_second_ratio: 10.0,
+                cn0_proxy: 55.0,
+                score: 1.0,
+                hypothesis: bijux_gnss_core::api::AcqHypothesis::Accepted,
+                assumptions: None,
+                evidence: Vec::new(),
+                threshold_provenance: None,
+                explain_selection_reason: Some("diagnostic_lock_trace".to_string()),
+                doppler_refinement: None,
+                code_phase_refinement: None,
+                uncertainty: None,
+            };
+            let tracks = tracking.track_from_acquisition(&frame, &[acquisition]);
+            let epochs = &tracks.first().expect("track").epochs;
+
+            let tracking_epochs =
+                epochs.iter().filter(|epoch| epoch.lock_state == "tracking").count();
+            let cycle_slip_epochs = epochs.iter().filter(|epoch| epoch.cycle_slip).count();
+            let longest_tracking_run = epochs
+                .iter()
+                .fold((0usize, 0usize), |(best, current), epoch| {
+                    if epoch.lock_state == "tracking"
+                        && epoch.lock
+                        && epoch.pll_lock
+                        && epoch.fll_lock
+                    {
+                        let next = current + 1;
+                        (best.max(next), next)
+                    } else {
+                        (best, 0)
+                    }
+                })
+                .0;
+
+            assert!(
+                tracking_epochs >= MIN_TRACKING_EPOCHS,
+                "signal-only tracking must stay in tracking state across the full one-second profile: sat={:?}-{} tracking_epochs={} epochs={epochs:?}",
+                sat.constellation,
+                sat.prn,
+                tracking_epochs
+            );
+            assert_eq!(
+                cycle_slip_epochs, 0,
+                "signal-only tracking must not report cycle slips on clean one-second profiles: sat={:?}-{} epochs={epochs:?}",
+                sat.constellation,
+                sat.prn
+            );
+            assert!(
+                longest_tracking_run >= MIN_SUSTAINED_TRACKING_EPOCHS,
+                "signal-only tracking must keep a long contiguous tracking run across clean one-second profiles: sat={:?}-{} longest_tracking_run={} epochs={epochs:?}",
+                sat.constellation,
+                sat.prn,
+                longest_tracking_run
+            );
+        }
+    }
+
+    #[test]
     fn sustained_lock_loss_reacquire_seed_ignores_degraded_short_fade_epochs() {
         let epochs = vec![
             track_epoch_with_state(0, false, "degraded", Some("signal_fade")),
@@ -2205,7 +2514,15 @@ mod tests {
             track_epoch_with_state(2, false, "lost", Some("lock_lost")),
         ];
 
-        assert_eq!(super::sustained_lock_loss_reacquire_seed(&epochs), Some((2.0, 2.5)));
+        assert_eq!(
+            super::sustained_lock_loss_reacquire_seed(&epochs),
+            Some(super::SustainedLockLossSeed {
+                carrier_hz: 2.0,
+                code_phase_samples: 2.5,
+                code_rate_hz: 0.0,
+                sample_index: 2,
+            })
+        );
     }
 
     #[test]
@@ -2216,7 +2533,53 @@ mod tests {
             track_epoch_with_state(2, false, "lost", Some("prompt_power_drop")),
         ];
 
-        assert_eq!(super::sustained_lock_loss_reacquire_seed(&epochs), Some((2.0, 2.5)));
+        assert_eq!(
+            super::sustained_lock_loss_reacquire_seed(&epochs),
+            Some(super::SustainedLockLossSeed {
+                carrier_hz: 2.0,
+                code_phase_samples: 2.5,
+                code_rate_hz: 0.0,
+                sample_index: 2,
+            })
+        );
+    }
+
+    #[test]
+    fn sustained_lock_loss_reacquire_seed_allows_retry_after_failed_attempt() {
+        let epochs = vec![
+            track_epoch_with_state(0, false, "lost", Some("reacquisition_failed")),
+            track_epoch_with_state(1, false, "lost", Some("reacquisition_failed")),
+            track_epoch_with_state(2, false, "lost", Some("reacquisition_failed")),
+        ];
+
+        assert_eq!(
+            super::sustained_lock_loss_reacquire_seed(&epochs),
+            Some(super::SustainedLockLossSeed {
+                carrier_hz: 2.0,
+                code_phase_samples: 2.5,
+                code_rate_hz: 0.0,
+                sample_index: 2,
+            })
+        );
+    }
+
+    #[test]
+    fn project_reacquisition_code_phase_samples_advances_loss_anchor_to_current_epoch() {
+        let seed = super::SustainedLockLossSeed {
+            carrier_hz: 1200.0,
+            code_phase_samples: 5.5,
+            code_rate_hz: 1_023_000.0,
+            sample_index: 1_000,
+        };
+
+        let projected = super::project_reacquisition_code_phase_samples(
+            seed,
+            1_000 + 2 * 1_023,
+            1_023_000.0,
+            1_023,
+        );
+
+        assert_eq!(projected, 5.5);
     }
 
     #[test]
@@ -2253,6 +2616,23 @@ mod tests {
     }
 
     #[test]
+    fn reacquisition_min_cn0_dbhz_preserves_lock_reference_headroom() {
+        assert_eq!(super::reacquisition_min_cn0_dbhz(60.0), 48.0);
+        assert_eq!(super::reacquisition_min_cn0_dbhz(35.0), 28.0);
+        assert_eq!(
+            super::reacquisition_min_cn0_dbhz(f64::NAN),
+            super::TRACKING_LOCK_MIN_CN0_DBHZ
+        );
+    }
+
+    #[test]
+    fn refresh_lock_reference_cn0_dbhz_only_updates_on_reliable_lock() {
+        assert_eq!(super::refresh_lock_reference_cn0_dbhz(48.0, 52.0, true), 52.0);
+        assert_eq!(super::refresh_lock_reference_cn0_dbhz(48.0, 30.0, false), 48.0);
+        assert_eq!(super::refresh_lock_reference_cn0_dbhz(48.0, f64::NAN, true), 48.0);
+    }
+
+    #[test]
     fn deterministic_transition_rule_holds_pull_in_until_carrier_converges() {
         let decision = super::deterministic_transition_rule(
             ChannelState::PullIn,
@@ -2263,6 +2643,7 @@ mod tests {
             1,
             0,
             100,
+            false,
         );
 
         assert_eq!(decision.to_state, ChannelState::PullIn);
@@ -2292,13 +2673,13 @@ mod tests {
         let (weak_epochs, supports_lock, refuse_lock) =
             super::update_prelock_cn0_refusal(ChannelState::Tracking, 2, 20.0);
         assert_eq!(weak_epochs, 0);
-        assert!(supports_lock);
+        assert!(!supports_lock);
         assert!(!refuse_lock);
 
         let (weak_epochs, supports_lock, refuse_lock) =
             super::update_prelock_cn0_refusal(ChannelState::Degraded, 2, 20.0);
         assert_eq!(weak_epochs, 0);
-        assert!(supports_lock);
+        assert!(!supports_lock);
         assert!(!refuse_lock);
     }
 
@@ -2447,6 +2828,19 @@ mod tests {
             super::tracking_epoch_samples(5_000_000.0, 1_023_000.0, 1023, tracking_params);
 
         assert_eq!(epoch_samples, 35_000);
+    }
+
+    #[test]
+    fn short_fade_epoch_budget_reserves_post_fade_recovery_window() {
+        let tracking_params = crate::engine::receiver_config::TrackingParams {
+            early_late_spacing_chips: 0.5,
+            dll_bw_hz: 2.0,
+            pll_bw_hz: 15.0,
+            fll_bw_hz: 10.0,
+            integration_ms: 1,
+        };
+
+        assert_eq!(super::short_fade_epoch_budget(tracking_params), 105);
     }
 
     #[test]
@@ -2722,6 +3116,7 @@ mod tests {
             fll_bw_hz: 0.0,
             fll_err_hz: 0.0,
             apply_fll: false,
+            apply_pll_frequency: true,
         });
 
         let pll_coefficients = phase_lock_loop_coefficients(8.0, 0.001);
@@ -2750,13 +3145,12 @@ mod tests {
             fll_bw_hz: 10.0,
             fll_err_hz: 30.0,
             apply_fll: true,
+            apply_pll_frequency: false,
         });
 
-        let pll_coefficients = phase_lock_loop_coefficients(8.0, 0.001);
         let fll_coefficients = first_order_angular_loop_coefficients(10.0, 0.001);
         let expected_carrier_hz = 80.0
-            + super::bounded_fll_pull_in_correction_hz(30.0 * fll_coefficients.error_blend, 10.0)
-            + pll_coefficients.frequency_gain_hz_per_rad * 0.25;
+            + super::bounded_fll_pull_in_correction_hz(30.0 * fll_coefficients.error_blend, 10.0);
         assert!((update.carrier_hz - expected_carrier_hz).abs() < 1.0e-9, "{update:?}");
     }
 
@@ -2773,6 +3167,7 @@ mod tests {
             fll_bw_hz: 0.0,
             fll_err_hz: 0.0,
             apply_fll: false,
+            apply_pll_frequency: true,
         });
         let second = super::apply_carrier_loop(super::CarrierLoopInput {
             current_carrier_hz: first.carrier_hz,
@@ -2785,6 +3180,7 @@ mod tests {
             fll_bw_hz: 0.0,
             fll_err_hz: 0.0,
             apply_fll: false,
+            apply_pll_frequency: true,
         });
 
         assert!((first.carrier_phase_cycles - 129.75).abs() < 1.0e-9, "{first:?}");
@@ -2808,18 +3204,11 @@ mod tests {
             fll_bw_hz: 0.0,
             fll_err_hz: 0.0,
             apply_fll: false,
+            apply_pll_frequency: true,
         });
 
         assert!((update.carrier_hz + 850.0).abs() < 1.0e-9, "{update:?}");
         assert!((update.carrier_phase_cycles - 511.175).abs() < 1.0e-9, "{update:?}");
-    }
-
-    #[test]
-    fn should_apply_fll_keeps_frequency_assistance_until_fll_relocks() {
-        assert!(super::should_apply_fll(super::ChannelState::PullIn, true));
-        assert!(super::should_apply_fll(super::ChannelState::Degraded, true));
-        assert!(super::should_apply_fll(super::ChannelState::Tracking, false));
-        assert!(!super::should_apply_fll(super::ChannelState::Tracking, true));
     }
 
     #[test]
@@ -2835,6 +3224,7 @@ mod tests {
             fll_bw_hz: 0.0,
             fll_err_hz: 0.0,
             apply_fll: false,
+            apply_pll_frequency: true,
         });
         let long = super::apply_carrier_loop(super::CarrierLoopInput {
             current_carrier_hz: 1_000.0,
@@ -2847,6 +3237,7 @@ mod tests {
             fll_bw_hz: 0.0,
             fll_err_hz: 0.0,
             apply_fll: false,
+            apply_pll_frequency: true,
         });
 
         assert!(
@@ -3097,6 +3488,7 @@ mod tests {
                     unlocked,
                     degraded_epochs,
                     100,
+                    false,
                 );
                 state = decision.to_state;
                 unlocked = decision.next_unlocked_count;
