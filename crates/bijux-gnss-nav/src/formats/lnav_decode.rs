@@ -169,12 +169,8 @@ pub fn get_bits(data: u32, start: usize, len: usize) -> u32 {
 }
 
 fn signed(value: u32, bits: usize) -> i32 {
-    let sign_bit = 1_u32 << (bits - 1);
-    if value & sign_bit != 0 {
-        (value as i32) - (1_i32 << bits)
-    } else {
-        value as i32
-    }
+    let shift = 32 - bits;
+    ((value << shift) as i32) >> shift
 }
 
 #[derive(Debug, Default, Clone)]
@@ -385,4 +381,15 @@ pub fn decode_rawephem_hex(prn: u8, sub1: &str, sub2: &str, sub3: &str) -> Optio
     builder.merge(parse_subframe2(&words2)?);
     builder.merge(parse_subframe3(&words3)?);
     builder.try_build()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::signed;
+
+    #[test]
+    fn signed_decodes_32_bit_negative_values_without_overflow() {
+        assert_eq!(signed(0x8000_0000, 32), i32::MIN);
+        assert_eq!(signed(0xFFFF_FFFF, 32), -1);
+    }
 }
