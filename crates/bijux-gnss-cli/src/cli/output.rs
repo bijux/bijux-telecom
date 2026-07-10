@@ -512,6 +512,9 @@ fn write_track_timeseries(
                 late_i: epoch.late_i,
                 late_q: epoch.late_q,
                 carrier_hz: bijux_gnss_infra::api::core::Hertz(epoch.carrier_hz),
+                carrier_phase_cycles: bijux_gnss_infra::api::core::Cycles(
+                    epoch.carrier_phase_cycles,
+                ),
                 code_rate_hz: bijux_gnss_infra::api::core::Hertz(epoch.code_rate_hz),
                 code_phase_samples: bijux_gnss_infra::api::core::Chips(epoch.code_phase_samples),
                 lock: epoch.lock,

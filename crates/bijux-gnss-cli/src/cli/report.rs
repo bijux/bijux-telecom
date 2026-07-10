@@ -300,6 +300,8 @@ struct TrackingRow {
     sample_index: u64,
     sat: SatId,
     carrier_hz: f64,
+    #[serde(default)]
+    carrier_phase_cycles: f64,
     code_rate_hz: f64,
     code_phase_samples: f64,
     prompt_i: f32,

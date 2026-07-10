@@ -72,6 +72,7 @@ fn handle_track(command: GnssCommand) -> Result<()> {
                                     sample_index: e.sample_index,
                                     sat: t.sat,
                                     carrier_hz: e.carrier_hz.0,
+                                    carrier_phase_cycles: e.carrier_phase_cycles.0,
                                     code_rate_hz: e.code_rate_hz.0,
                                     code_phase_samples: e.code_phase_samples.0,
                                     prompt_i: e.prompt_i,

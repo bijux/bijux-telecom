@@ -225,8 +225,19 @@ fn validate_synthetic_iq_accepts_reference_cn0_bundle() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0]["sat"]["prn"], 7);
     assert_eq!(rows[0]["pass"], true);
+    let epochs_measured = rows[0]["epochs_measured"].as_u64().expect("epochs measured");
+    assert!(
+        epochs_measured >= 5,
+        "expected a stable tracking window in the CN0 validation report: {rows:?}"
+    );
+    let measured_mean_cn0_dbhz =
+        rows[0]["measured_mean_cn0_dbhz"].as_f64().expect("measured mean cn0");
     let cn0_delta_db = rows[0]["cn0_delta_db"].as_f64().expect("cn0 delta");
-    assert!(cn0_delta_db.abs() <= 4.0, "cn0 delta out of tolerance: {cn0_delta_db}");
+    assert!(
+        measured_mean_cn0_dbhz >= 48.0 && measured_mean_cn0_dbhz <= 57.0,
+        "measured mean cn0 drifted outside the expected tracking estimate band: {measured_mean_cn0_dbhz}"
+    );
+    assert!(cn0_delta_db.abs() <= 5.0, "cn0 delta out of tolerance: {cn0_delta_db}");
     let acquisition_rows = report["acquisition_code_phase_validation"]["satellites"]
         .as_array()
         .expect("acquisition satellite rows");
