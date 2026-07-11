@@ -4,10 +4,10 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use bijux_gnss_core::api::{
-    acq_result_stability_key, stable_acq_result_keys, AcqAssumptions, AcqCodePhaseRefinement,
-    AcqDopplerRefinement, AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqResult,
-    AcqThresholdProvenance, AcqUncertainty, Hertz, ReceiverSampleTrace, SamplesFrame, SatId,
-    SignalBand,
+    acq_result_stability_key, default_acquisition_signal, stable_acq_result_keys, AcqAssumptions,
+    AcqCodePhaseRefinement, AcqDopplerRefinement, AcqEvidence, AcqExplain, AcqExplainCandidate,
+    AcqHypothesis, AcqResult, AcqThresholdProvenance, AcqUncertainty, Hertz, ReceiverSampleTrace,
+    SamplesFrame, SatId, SignalBand, SignalCode,
 };
 use num_complex::Complex;
 use rustfft::{num_traits::Zero, FftPlanner};
@@ -20,7 +20,8 @@ use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
 use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
 use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::{
-    generate_ca_code, measure_iq_front_end_metrics, sample_code, wipeoff_carrier, Prn,
+    generate_ca_code, measure_iq_front_end_metrics, sample_code, sample_galileo_e1_boc11_code,
+    wipeoff_carrier, GalileoE1Channel, Prn,
 };
 
 /// Acquisition engine (coarse search).
@@ -69,6 +70,7 @@ const WRONG_PRN_PEAK_SECOND_RATIO_MAX: f32 = 1.1;
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 struct CodeFftCacheKey {
     sat: SatId,
+    signal_band: SignalBand,
     samples_per_code: usize,
     sampling_hz_bits: u64,
     if_hz_bits: u64,
@@ -83,6 +85,7 @@ struct CodeFftCacheKey {
 impl CodeFftCacheKey {
     fn from_runtime(
         config: &ReceiverPipelineConfig,
+        model: &AcquisitionSignalModel,
         sat: SatId,
         samples_per_code: usize,
         doppler_search_hz: i32,
@@ -90,11 +93,12 @@ impl CodeFftCacheKey {
     ) -> Self {
         Self {
             sat,
+            signal_band: model.signal_band,
             samples_per_code,
             sampling_hz_bits: config.sampling_freq_hz.to_bits(),
             if_hz_bits: config.intermediate_freq_hz.to_bits(),
-            code_hz_bits: config.code_freq_basis_hz.to_bits(),
-            code_length: config.code_length,
+            code_hz_bits: model.code_rate_hz.to_bits(),
+            code_length: model.code_length,
             doppler_search_hz,
             doppler_step_hz,
             model_version: ACQUISITION_CACHE_MODEL_VERSION,
@@ -119,6 +123,89 @@ impl CacheMissReason {
 }
 
 type CodeFftCache = HashMap<CodeFftCacheKey, Vec<Complex<f32>>>;
+
+#[derive(Debug, Clone, Copy)]
+struct AcquisitionSignalModel {
+    signal_band: SignalBand,
+    code_rate_hz: f64,
+    code_length: usize,
+    code_period_ms: u32,
+    local_code_kind: LocalCodeKind,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum LocalCodeKind {
+    GpsCa { prn: u8 },
+    GalileoE1B { prn: u8 },
+    FallbackCa { prn: u8 },
+}
+
+impl AcquisitionSignalModel {
+    fn for_sat(config: &ReceiverPipelineConfig, sat: SatId) -> Self {
+        match default_acquisition_signal(sat.constellation) {
+            Some(signal)
+                if signal.spec.code == SignalCode::Ca && signal.spec.band == SignalBand::L1 =>
+            {
+                Self {
+                    signal_band: SignalBand::L1,
+                    code_rate_hz: signal.spec.code_rate_hz,
+                    code_length: signal.code_length.unwrap_or(config.code_length as u32) as usize,
+                    code_period_ms: 1,
+                    local_code_kind: LocalCodeKind::GpsCa { prn: sat.prn },
+                }
+            }
+            Some(signal)
+                if signal.spec.code == SignalCode::E1B && signal.spec.band == SignalBand::E1 =>
+            {
+                Self {
+                    signal_band: SignalBand::E1,
+                    code_rate_hz: signal.spec.code_rate_hz,
+                    code_length: signal.code_length.unwrap_or(4092) as usize,
+                    code_period_ms: 4,
+                    local_code_kind: LocalCodeKind::GalileoE1B { prn: sat.prn },
+                }
+            }
+            _ => Self {
+                signal_band: SignalBand::L1,
+                code_rate_hz: config.code_freq_basis_hz,
+                code_length: config.code_length,
+                code_period_ms: ((config.code_length as f64 / config.code_freq_basis_hz) * 1_000.0)
+                    .round()
+                    .max(1.0) as u32,
+                local_code_kind: LocalCodeKind::FallbackCa { prn: sat.prn },
+            },
+        }
+    }
+
+    fn samples_per_code(self, sampling_freq_hz: f64) -> usize {
+        samples_per_code(sampling_freq_hz, self.code_rate_hz, self.code_length)
+    }
+
+    fn coherent_periods(self, coherent_ms: u32) -> Option<u32> {
+        if coherent_ms == 0 || coherent_ms % self.code_period_ms != 0 {
+            return None;
+        }
+        Some(coherent_ms / self.code_period_ms)
+    }
+
+    fn local_code_period(self, sampling_freq_hz: f64, samples_per_code: usize) -> Vec<f32> {
+        match self.local_code_kind {
+            LocalCodeKind::GpsCa { prn } | LocalCodeKind::FallbackCa { prn } => {
+                let code = ca_code_or_default(prn);
+                sample_code(&code, sampling_freq_hz, self.code_rate_hz, 0.0, samples_per_code)
+                    .unwrap_or_else(|_| vec![1.0; samples_per_code])
+            }
+            LocalCodeKind::GalileoE1B { prn } => sample_galileo_e1_boc11_code(
+                prn,
+                GalileoE1Channel::E1B,
+                sampling_freq_hz,
+                0.0,
+                samples_per_code,
+            )
+            .unwrap_or_else(|_| vec![1.0; samples_per_code]),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SearchWindowEdge {
@@ -291,19 +378,6 @@ impl Acquisition {
         noncoherent: u32,
         emit_explanations: bool,
     ) -> AcquisitionRun {
-        let samples_per_code = samples_per_code(
-            self.config.sampling_freq_hz,
-            self.config.code_freq_basis_hz,
-            self.config.code_length,
-        );
-        let total_ms = (coherent_ms * noncoherent).max(1) as usize;
-        let required = samples_per_code * total_ms;
-        let assumptions = self.full_code_search_assumptions(
-            frame.len(),
-            coherent_ms,
-            noncoherent,
-            samples_per_code,
-        );
         let threshold_provenance = AcqThresholdProvenance {
             coherent_ms,
             noncoherent,
@@ -326,43 +400,17 @@ impl Acquisition {
                 stats.deferred_count = stats.deferred_count.saturating_add(sats.len() as u64);
             });
             return unsupported_coherent_integration_run(
+                &self.config,
                 sats,
-                &assumptions,
                 &threshold_provenance,
                 self.config.intermediate_freq_hz,
                 ReceiverSampleTrace::from_sample_time(frame.t0),
                 coherent_ms,
-                emit_explanations,
-            );
-        }
-        if frame.len() < required {
-            self.runtime.trace.record(TraceRecord {
-                name: "acquisition_input_rejection",
-                fields: vec![
-                    ("reason", "insufficient_frame".to_string()),
-                    ("available_samples", frame.len().to_string()),
-                    ("required_samples", required.to_string()),
-                    ("sat_count", sats.len().to_string()),
-                ],
-            });
-            self.with_stats(|stats| {
-                stats.deferred_count = stats.deferred_count.saturating_add(sats.len() as u64);
-            });
-            return insufficient_frame_run(
-                sats,
-                &assumptions,
-                &threshold_provenance,
-                self.config.intermediate_freq_hz,
-                ReceiverSampleTrace::from_sample_time(frame.t0),
                 frame.len(),
-                required,
                 emit_explanations,
             );
         }
-
         let mut planner = FftPlanner::<f32>::new();
-        let fft = planner.plan_fft_forward(samples_per_code);
-        let ifft = planner.plan_fft_inverse(samples_per_code);
 
         self.with_stats(|stats| {
             stats.sat_count += sats.len() as u64;
@@ -381,11 +429,12 @@ impl Acquisition {
                 stats.rejected_count = stats.rejected_count.saturating_add(sats.len() as u64);
             });
             return zero_signal_run(
+                &self.config,
                 sats,
-                &assumptions,
                 &threshold_provenance,
                 self.config.intermediate_freq_hz,
                 ReceiverSampleTrace::from_sample_time(frame.t0),
+                frame.len(),
                 front_end_metrics.zero_signal_reason.as_deref(),
                 emit_explanations,
             );
@@ -395,9 +444,54 @@ impl Acquisition {
         self.with_stats(|stats| {
             stats.doppler_bins +=
                 doppler_bin_count(self.doppler_search_hz, self.doppler_step_hz) * sats.len() as u64;
-            stats.code_search_bins += (samples_per_code * sats.len()) as u64;
         });
         for &sat in sats {
+            let signal_model = AcquisitionSignalModel::for_sat(&self.config, sat);
+            let samples_per_code = signal_model.samples_per_code(self.config.sampling_freq_hz);
+            let assumptions = self.full_code_search_assumptions(
+                frame.len(),
+                coherent_ms,
+                noncoherent,
+                samples_per_code,
+            );
+            let coherent_periods = match signal_model.coherent_periods(coherent_ms) {
+                Some(periods) => periods,
+                None => {
+                    sat_evaluations.push(AcquisitionSatEvaluation {
+                        sat,
+                        candidates: unsupported_coherent_integration_candidates(
+                            sat,
+                            signal_model,
+                            &assumptions,
+                            &threshold_provenance,
+                            self.config.intermediate_freq_hz,
+                            ReceiverSampleTrace::from_sample_time(frame.t0),
+                            coherent_ms,
+                        ),
+                        search_window_diagnostic: None,
+                    });
+                    continue;
+                }
+            };
+            let required =
+                samples_per_code * coherent_periods.max(1) as usize * noncoherent.max(1) as usize;
+            if frame.len() < required {
+                sat_evaluations.push(AcquisitionSatEvaluation {
+                    sat,
+                    candidates: insufficient_frame_candidates(
+                        sat,
+                        signal_model,
+                        &assumptions,
+                        &threshold_provenance,
+                        self.config.intermediate_freq_hz,
+                        ReceiverSampleTrace::from_sample_time(frame.t0),
+                        frame.len(),
+                        required,
+                    ),
+                    search_window_diagnostic: None,
+                });
+                continue;
+            }
             self.runtime.trace.record(TraceRecord {
                 name: "acquisition_sat_start",
                 fields: vec![
@@ -405,8 +499,20 @@ impl Acquisition {
                     ("prn", sat.prn.to_string()),
                 ],
             });
-            let code_fft =
-                self.code_fft(sat, samples_per_code, coherent_ms, noncoherent, fft.as_ref());
+            self.with_stats(|stats| {
+                stats.code_search_bins =
+                    stats.code_search_bins.saturating_add(samples_per_code as u64);
+            });
+            let fft = planner.plan_fft_forward(samples_per_code);
+            let ifft = planner.plan_fft_inverse(samples_per_code);
+            let code_fft = self.code_fft(
+                signal_model,
+                sat,
+                samples_per_code,
+                coherent_ms,
+                noncoherent,
+                fft.as_ref(),
+            );
             let mut grid_candidates = Vec::new();
 
             let mut doppler = -self.doppler_search_hz;
@@ -418,9 +524,9 @@ impl Acquisition {
                 for nc in 0..noncoherent {
                     let mut coherent_corr: Vec<Complex<f32>> =
                         vec![Complex::zero(); samples_per_code];
-                    for c in 0..coherent_ms {
-                        let offset_ms = (nc * coherent_ms + c) as usize;
-                        let start = offset_ms * samples_per_code;
+                    for c in 0..coherent_periods {
+                        let offset_period = (nc * coherent_periods + c) as usize;
+                        let start = offset_period * samples_per_code;
                         let end = start + samples_per_code;
                         let block = &frame.iq[start..end];
 
@@ -459,7 +565,7 @@ impl Acquisition {
                 let cn0_proxy = peak_mean_ratio * 10.0;
                 grid_candidates.push(AcqResult {
                     sat,
-                    signal_band: SignalBand::L1,
+                    signal_band: signal_model.signal_band,
                     source_time: ReceiverSampleTrace::from_sample_time(frame.t0),
                     candidate_rank: 1,
                     is_primary_candidate: true,
@@ -512,6 +618,7 @@ impl Acquisition {
             refine_acquisition_candidates(
                 self,
                 frame,
+                signal_model,
                 sat,
                 &mut candidates,
                 &grid_candidates,
@@ -558,6 +665,7 @@ impl Acquisition {
                         let multipath_diagnostic = classify_delayed_secondary_peak(
                             &self.config,
                             frame,
+                            signal_model,
                             sat,
                             candidate.carrier_hz.0,
                             candidate.code_phase_samples,
@@ -587,7 +695,7 @@ impl Acquisition {
                                     competing_peak_ratio,
                                     diagnostic,
                                     samples_per_code,
-                                    self.config.code_length,
+                                    signal_model.code_length,
                                     decision.score,
                                 ),
                                 None => selected_candidate_reason(
@@ -784,6 +892,7 @@ impl Acquisition {
 
     fn code_fft(
         &self,
+        signal_model: AcquisitionSignalModel,
         sat: SatId,
         samples_per_code: usize,
         _coherent_ms: u32,
@@ -792,6 +901,7 @@ impl Acquisition {
     ) -> Vec<Complex<f32>> {
         let key = CodeFftCacheKey::from_runtime(
             &self.config,
+            &signal_model,
             sat,
             samples_per_code,
             self.doppler_search_hz,
@@ -845,8 +955,8 @@ impl Acquisition {
                 ("policy_version", ACQUISITION_CACHE_POLICY_VERSION.to_string()),
             ],
         });
-        let code = ca_code_or_default(sat.prn);
-        let local_code = sample_local_code_period(&self.config, &code, samples_per_code);
+        let local_code =
+            signal_model.local_code_period(self.config.sampling_freq_hz, samples_per_code);
         let mut code_fft: Vec<Complex<f32>> =
             local_code.iter().map(|&x| Complex::new(x, 0.0)).collect();
         fft.process(&mut code_fft);
@@ -859,24 +969,24 @@ impl Acquisition {
     fn estimate_acquisition_code_phase_refinement(
         &self,
         frame: &SamplesFrame,
+        signal_model: AcquisitionSignalModel,
         sat: SatId,
         carrier_hz: f64,
         coarse_code_phase_samples: usize,
         coherent_ms: u32,
         noncoherent: u32,
     ) -> Option<AcqCodePhaseRefinement> {
-        let samples_per_code = samples_per_code(
-            self.config.sampling_freq_hz,
-            self.config.code_freq_basis_hz,
-            self.config.code_length,
-        );
+        let samples_per_code = signal_model.samples_per_code(self.config.sampling_freq_hz);
+        let coherent_periods = signal_model.coherent_periods(coherent_ms)?;
         if samples_per_code == 0
-            || frame.len() < samples_per_code * (coherent_ms * noncoherent) as usize
+            || frame.len()
+                < samples_per_code * coherent_periods.max(1) as usize * noncoherent.max(1) as usize
         {
             return None;
         }
         let correlation_profile = measure_code_phase_profile(
             &self.config,
+            signal_model,
             frame,
             sat,
             carrier_hz,
@@ -918,45 +1028,41 @@ fn doppler_bin_count(search_hz: i32, step_hz: i32) -> u64 {
 }
 
 fn zero_signal_run(
+    config: &ReceiverPipelineConfig,
     sats: &[SatId],
-    assumptions: &AcqAssumptions,
     threshold_provenance: &AcqThresholdProvenance,
     intermediate_freq_hz: f64,
     source_time: ReceiverSampleTrace,
+    frame_samples: usize,
     zero_signal_reason: Option<&str>,
     emit_explanations: bool,
 ) -> AcquisitionRun {
-    let candidate_reason = zero_signal_candidate_reason(zero_signal_reason);
     let mut results = Vec::with_capacity(sats.len());
     let mut explains = Vec::new();
 
     for &sat in sats {
-        let result = AcqResult {
-            sat,
-            signal_band: SignalBand::L1,
-            source_time,
-            candidate_rank: 1,
-            is_primary_candidate: true,
-            doppler_hz: Hertz(0.0),
-            carrier_hz: Hertz(intermediate_freq_hz),
-            code_phase_samples: 0,
-            peak: 0.0,
-            second_peak: 0.0,
-            mean: 0.0,
-            peak_mean_ratio: 0.0,
-            peak_second_ratio: 0.0,
-            cn0_proxy: 0.0,
-            score: 0.0,
-            hypothesis: AcqHypothesis::Rejected,
-            assumptions: Some(assumptions.clone()),
-            evidence: Vec::new(),
-            threshold_provenance: Some(threshold_provenance.clone()),
-            explain_selection_reason: Some(candidate_reason.clone()),
-            doppler_refinement: None,
-            code_phase_refinement: None,
-            signal_delay_alignment: None,
-            uncertainty: None,
+        let signal_model = AcquisitionSignalModel::for_sat(config, sat);
+        let assumptions = AcqAssumptions {
+            doppler_search_hz: threshold_provenance.doppler_search_hz,
+            doppler_step_hz: threshold_provenance.doppler_step_hz,
+            coherent_ms: threshold_provenance.coherent_ms,
+            noncoherent: threshold_provenance.noncoherent,
+            samples_per_code: signal_model.samples_per_code(config.sampling_freq_hz),
+            frame_samples,
+            code_phase_search_start_sample: 0,
+            code_phase_search_step_samples: 1,
+            code_phase_search_bins: signal_model.samples_per_code(config.sampling_freq_hz),
+            code_phase_search_mode: "full_code".to_string(),
         };
+        let result = zero_signal_candidate(
+            sat,
+            signal_model,
+            &assumptions,
+            threshold_provenance,
+            intermediate_freq_hz,
+            source_time,
+            zero_signal_reason,
+        );
         if emit_explanations {
             explains.push(AcqExplain {
                 sat,
@@ -975,7 +1081,7 @@ fn zero_signal_run(
                     hypothesis: AcqHypothesis::Rejected,
                     score: 0.0,
                     threshold_hit: false,
-                    reason: candidate_reason.clone(),
+                    reason: result.explain_selection_reason.clone().unwrap_or_default(),
                 }],
             });
         }
@@ -985,73 +1091,43 @@ fn zero_signal_run(
     AcquisitionRun { results, explains }
 }
 
-fn insufficient_frame_run(
-    sats: &[SatId],
+fn insufficient_frame_candidates(
+    sat: SatId,
+    signal_model: AcquisitionSignalModel,
     assumptions: &AcqAssumptions,
     threshold_provenance: &AcqThresholdProvenance,
     intermediate_freq_hz: f64,
     source_time: ReceiverSampleTrace,
     available_samples: usize,
     required_samples: usize,
-    emit_explanations: bool,
-) -> AcquisitionRun {
+) -> Vec<AcqResult> {
     let candidate_reason = insufficient_frame_candidate_reason(available_samples, required_samples);
-    let mut results = Vec::with_capacity(sats.len());
-    let mut explains = Vec::new();
-
-    for &sat in sats {
-        let result = AcqResult {
-            sat,
-            signal_band: SignalBand::L1,
-            source_time,
-            candidate_rank: 1,
-            is_primary_candidate: true,
-            doppler_hz: Hertz(0.0),
-            carrier_hz: Hertz(intermediate_freq_hz),
-            code_phase_samples: 0,
-            peak: 0.0,
-            second_peak: 0.0,
-            mean: 0.0,
-            peak_mean_ratio: 0.0,
-            peak_second_ratio: 0.0,
-            cn0_proxy: 0.0,
-            score: 0.0,
-            hypothesis: AcqHypothesis::Deferred,
-            assumptions: Some(assumptions.clone()),
-            evidence: Vec::new(),
-            threshold_provenance: Some(threshold_provenance.clone()),
-            explain_selection_reason: Some(candidate_reason.clone()),
-            doppler_refinement: None,
-            code_phase_refinement: None,
-            signal_delay_alignment: None,
-            uncertainty: None,
-        };
-        if emit_explanations {
-            explains.push(AcqExplain {
-                sat,
-                selected_rank: Some(1),
-                selected_reason: "insufficient_frame".to_string(),
-                candidate_count: 1,
-                candidates: vec![AcqExplainCandidate {
-                    rank: 1,
-                    code_phase_samples: 0,
-                    carrier_hz: intermediate_freq_hz,
-                    peak: 0.0,
-                    peak_mean_ratio: 0.0,
-                    peak_second_ratio: 0.0,
-                    second_peak_ratio: 0.0,
-                    mean: 0.0,
-                    hypothesis: AcqHypothesis::Deferred,
-                    score: 0.0,
-                    threshold_hit: false,
-                    reason: candidate_reason.clone(),
-                }],
-            });
-        }
-        results.push(vec![result]);
-    }
-
-    AcquisitionRun { results, explains }
+    vec![AcqResult {
+        sat,
+        signal_band: signal_model.signal_band,
+        source_time,
+        candidate_rank: 1,
+        is_primary_candidate: true,
+        doppler_hz: Hertz(0.0),
+        carrier_hz: Hertz(intermediate_freq_hz),
+        code_phase_samples: 0,
+        peak: 0.0,
+        second_peak: 0.0,
+        mean: 0.0,
+        peak_mean_ratio: 0.0,
+        peak_second_ratio: 0.0,
+        cn0_proxy: 0.0,
+        score: 0.0,
+        hypothesis: AcqHypothesis::Deferred,
+        assumptions: Some(assumptions.clone()),
+        evidence: Vec::new(),
+        threshold_provenance: Some(threshold_provenance.clone()),
+        explain_selection_reason: Some(candidate_reason),
+        doppler_refinement: None,
+        code_phase_refinement: None,
+        signal_delay_alignment: None,
+        uncertainty: None,
+    }]
 }
 
 fn zero_signal_candidate_reason(zero_signal_reason: Option<&str>) -> String {
@@ -1071,45 +1147,41 @@ fn insufficient_frame_candidate_reason(
 }
 
 fn unsupported_coherent_integration_run(
+    config: &ReceiverPipelineConfig,
     sats: &[SatId],
-    assumptions: &AcqAssumptions,
     threshold_provenance: &AcqThresholdProvenance,
     intermediate_freq_hz: f64,
     source_time: ReceiverSampleTrace,
     coherent_ms: u32,
+    frame_samples: usize,
     emit_explanations: bool,
 ) -> AcquisitionRun {
-    let candidate_reason = unsupported_coherent_integration_candidate_reason(coherent_ms);
     let mut results = Vec::with_capacity(sats.len());
     let mut explains = Vec::new();
 
     for &sat in sats {
-        let result = AcqResult {
-            sat,
-            signal_band: SignalBand::L1,
-            source_time,
-            candidate_rank: 1,
-            is_primary_candidate: true,
-            doppler_hz: Hertz(0.0),
-            carrier_hz: Hertz(intermediate_freq_hz),
-            code_phase_samples: 0,
-            peak: 0.0,
-            second_peak: 0.0,
-            mean: 0.0,
-            peak_mean_ratio: 0.0,
-            peak_second_ratio: 0.0,
-            cn0_proxy: 0.0,
-            score: 0.0,
-            hypothesis: AcqHypothesis::Deferred,
-            assumptions: Some(assumptions.clone()),
-            evidence: Vec::new(),
-            threshold_provenance: Some(threshold_provenance.clone()),
-            explain_selection_reason: Some(candidate_reason.clone()),
-            doppler_refinement: None,
-            code_phase_refinement: None,
-            signal_delay_alignment: None,
-            uncertainty: None,
+        let signal_model = AcquisitionSignalModel::for_sat(config, sat);
+        let assumptions = AcqAssumptions {
+            doppler_search_hz: threshold_provenance.doppler_search_hz,
+            doppler_step_hz: threshold_provenance.doppler_step_hz,
+            coherent_ms: threshold_provenance.coherent_ms,
+            noncoherent: threshold_provenance.noncoherent,
+            samples_per_code: signal_model.samples_per_code(config.sampling_freq_hz),
+            frame_samples,
+            code_phase_search_start_sample: 0,
+            code_phase_search_step_samples: 1,
+            code_phase_search_bins: signal_model.samples_per_code(config.sampling_freq_hz),
+            code_phase_search_mode: "full_code".to_string(),
         };
+        let result = unsupported_coherent_integration_candidate(
+            sat,
+            signal_model,
+            &assumptions,
+            threshold_provenance,
+            intermediate_freq_hz,
+            source_time,
+            coherent_ms,
+        );
         if emit_explanations {
             explains.push(AcqExplain {
                 sat,
@@ -1128,7 +1200,7 @@ fn unsupported_coherent_integration_run(
                     hypothesis: AcqHypothesis::Deferred,
                     score: 0.0,
                     threshold_hit: false,
-                    reason: candidate_reason.clone(),
+                    reason: result.explain_selection_reason.clone().unwrap_or_default(),
                 }],
             });
         }
@@ -1136,6 +1208,102 @@ fn unsupported_coherent_integration_run(
     }
 
     AcquisitionRun { results, explains }
+}
+
+fn zero_signal_candidate(
+    sat: SatId,
+    signal_model: AcquisitionSignalModel,
+    assumptions: &AcqAssumptions,
+    threshold_provenance: &AcqThresholdProvenance,
+    intermediate_freq_hz: f64,
+    source_time: ReceiverSampleTrace,
+    zero_signal_reason: Option<&str>,
+) -> AcqResult {
+    AcqResult {
+        sat,
+        signal_band: signal_model.signal_band,
+        source_time,
+        candidate_rank: 1,
+        is_primary_candidate: true,
+        doppler_hz: Hertz(0.0),
+        carrier_hz: Hertz(intermediate_freq_hz),
+        code_phase_samples: 0,
+        peak: 0.0,
+        second_peak: 0.0,
+        mean: 0.0,
+        peak_mean_ratio: 0.0,
+        peak_second_ratio: 0.0,
+        cn0_proxy: 0.0,
+        score: 0.0,
+        hypothesis: AcqHypothesis::Rejected,
+        assumptions: Some(assumptions.clone()),
+        evidence: Vec::new(),
+        threshold_provenance: Some(threshold_provenance.clone()),
+        explain_selection_reason: Some(zero_signal_candidate_reason(zero_signal_reason)),
+        doppler_refinement: None,
+        code_phase_refinement: None,
+        signal_delay_alignment: None,
+        uncertainty: None,
+    }
+}
+
+fn unsupported_coherent_integration_candidates(
+    sat: SatId,
+    signal_model: AcquisitionSignalModel,
+    assumptions: &AcqAssumptions,
+    threshold_provenance: &AcqThresholdProvenance,
+    intermediate_freq_hz: f64,
+    source_time: ReceiverSampleTrace,
+    coherent_ms: u32,
+) -> Vec<AcqResult> {
+    vec![unsupported_coherent_integration_candidate(
+        sat,
+        signal_model,
+        assumptions,
+        threshold_provenance,
+        intermediate_freq_hz,
+        source_time,
+        coherent_ms,
+    )]
+}
+
+fn unsupported_coherent_integration_candidate(
+    sat: SatId,
+    signal_model: AcquisitionSignalModel,
+    assumptions: &AcqAssumptions,
+    threshold_provenance: &AcqThresholdProvenance,
+    intermediate_freq_hz: f64,
+    source_time: ReceiverSampleTrace,
+    coherent_ms: u32,
+) -> AcqResult {
+    AcqResult {
+        sat,
+        signal_band: signal_model.signal_band,
+        source_time,
+        candidate_rank: 1,
+        is_primary_candidate: true,
+        doppler_hz: Hertz(0.0),
+        carrier_hz: Hertz(intermediate_freq_hz),
+        code_phase_samples: 0,
+        peak: 0.0,
+        second_peak: 0.0,
+        mean: 0.0,
+        peak_mean_ratio: 0.0,
+        peak_second_ratio: 0.0,
+        cn0_proxy: 0.0,
+        score: 0.0,
+        hypothesis: AcqHypothesis::Deferred,
+        assumptions: Some(assumptions.clone()),
+        evidence: Vec::new(),
+        threshold_provenance: Some(threshold_provenance.clone()),
+        explain_selection_reason: Some(unsupported_coherent_integration_candidate_reason(
+            coherent_ms,
+        )),
+        doppler_refinement: None,
+        code_phase_refinement: None,
+        signal_delay_alignment: None,
+        uncertainty: None,
+    }
 }
 
 fn unsupported_coherent_integration_candidate_reason(coherent_ms: u32) -> String {
@@ -1157,7 +1325,10 @@ fn signal_outside_search_range(
         return None;
     }
 
-    let hint_threshold = peak_mean_threshold * SEARCH_EDGE_HINT_PEAK_MEAN_RATIO_FRACTION;
+    let best_peak_mean_ratio =
+        candidates.iter().map(|candidate| candidate.peak_mean_ratio).fold(0.0_f32, f32::max);
+    let hint_threshold =
+        peak_mean_threshold.max(best_peak_mean_ratio * SEARCH_EDGE_HINT_PEAK_MEAN_RATIO_FRACTION);
     [
         (
             SearchWindowEdge::Lower,
@@ -1403,6 +1574,7 @@ fn selected_candidate_reason(
 fn classify_delayed_secondary_peak(
     config: &ReceiverPipelineConfig,
     frame: &SamplesFrame,
+    signal_model: AcquisitionSignalModel,
     sat: SatId,
     carrier_hz: f64,
     code_phase_samples: usize,
@@ -1419,13 +1591,20 @@ fn classify_delayed_secondary_peak(
     {
         return None;
     }
-    let correlation_profile =
-        measure_code_phase_profile(config, frame, sat, carrier_hz, coherent_ms, noncoherent)?;
+    let correlation_profile = measure_code_phase_profile(
+        config,
+        signal_model,
+        frame,
+        sat,
+        carrier_hz,
+        coherent_ms,
+        noncoherent,
+    )?;
     delayed_secondary_peak_diagnostic(
         &correlation_profile,
         code_phase_samples,
         samples_per_code,
-        config.code_length,
+        signal_model.code_length,
     )
 }
 
@@ -1479,6 +1658,7 @@ fn competing_candidate_ratio(candidates: &[AcqResult]) -> f32 {
 fn refine_acquisition_candidates(
     acquisition: &Acquisition,
     frame: &SamplesFrame,
+    signal_model: AcquisitionSignalModel,
     sat: SatId,
     candidates: &mut [AcqResult],
     grid_candidates: &[AcqResult],
@@ -1498,6 +1678,7 @@ fn refine_acquisition_candidates(
         }
         candidate.code_phase_refinement = acquisition.estimate_acquisition_code_phase_refinement(
             frame,
+            signal_model,
             sat,
             candidate.carrier_hz.0,
             candidate.code_phase_samples,
@@ -1634,22 +1815,22 @@ fn estimate_acquisition_doppler_refinement(
 
 fn measure_code_phase_profile(
     config: &ReceiverPipelineConfig,
+    signal_model: AcquisitionSignalModel,
     frame: &SamplesFrame,
-    sat: SatId,
+    _sat: SatId,
     carrier_hz: f64,
     coherent_ms: u32,
     noncoherent: u32,
 ) -> Option<Vec<f32>> {
-    let samples_per_code =
-        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
+    let samples_per_code = signal_model.samples_per_code(config.sampling_freq_hz);
+    let coherent_periods = signal_model.coherent_periods(coherent_ms)?;
     if samples_per_code == 0 {
         return None;
     }
     let mut planner = FftPlanner::<f32>::new();
     let fft = planner.plan_fft_forward(samples_per_code);
     let ifft = planner.plan_fft_inverse(samples_per_code);
-    let code = ca_code_or_default(sat.prn);
-    let local_code = sample_local_code_period(config, &code, samples_per_code);
+    let local_code = signal_model.local_code_period(config.sampling_freq_hz, samples_per_code);
     let mut code_fft: Vec<Complex<f32>> =
         local_code.iter().map(|&x| Complex::new(x, 0.0)).collect();
     fft.process(&mut code_fft);
@@ -1657,9 +1838,9 @@ fn measure_code_phase_profile(
 
     for nc in 0..noncoherent {
         let mut coherent_corr: Vec<Complex<f32>> = vec![Complex::zero(); samples_per_code];
-        for c in 0..coherent_ms {
-            let offset_ms = (nc * coherent_ms + c) as usize;
-            let start = offset_ms * samples_per_code;
+        for c in 0..coherent_periods {
+            let offset_period = (nc * coherent_periods + c) as usize;
+            let start = offset_period * samples_per_code;
             let end = start + samples_per_code;
             let block = &frame.iq[start..end];
             let mixed = wipeoff_carrier(
@@ -2087,13 +2268,14 @@ mod tests {
         let acquisition = Acquisition::new(config, ReceiverRuntime::default());
         let mut planner = FftPlanner::<f32>::new();
         let fft = planner.plan_fft_forward(samples_per_code);
+        let signal_model = AcquisitionSignalModel::for_sat(&acquisition.config, sat);
 
-        acquisition.code_fft(sat, samples_per_code, 1, 1, fft.as_ref());
+        acquisition.code_fft(signal_model, sat, samples_per_code, 1, 1, fft.as_ref());
         let after_first_profile = acquisition.stats_snapshot();
         assert_eq!(after_first_profile.cache_misses, 1);
         assert_eq!(after_first_profile.cache_hits, 0);
 
-        acquisition.code_fft(sat, samples_per_code, 1, 4, fft.as_ref());
+        acquisition.code_fft(signal_model, sat, samples_per_code, 1, 4, fft.as_ref());
         let after_second_profile = acquisition.stats_snapshot();
         assert_eq!(after_second_profile.cache_misses, 1);
         assert_eq!(after_second_profile.cache_hits, 1);
@@ -2463,15 +2645,6 @@ fn wrapped_code_phase_offset_samples(
         return 0;
     }
     (secondary_code_phase_samples + period_samples - primary_code_phase_samples) % period_samples
-}
-
-fn sample_local_code_period(
-    config: &ReceiverPipelineConfig,
-    code: &[i8],
-    samples_per_code: usize,
-) -> Vec<f32> {
-    sample_code(code, config.sampling_freq_hz, config.code_freq_basis_hz, 0.0, samples_per_code)
-        .unwrap_or_else(|_| vec![1.0; samples_per_code])
 }
 
 fn ca_code_or_default(prn: u8) -> Vec<i8> {

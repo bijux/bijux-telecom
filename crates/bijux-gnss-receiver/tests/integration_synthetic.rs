@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 use std::f64::consts::TAU;
 
-use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds};
+use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds, SignalBand};
 use bijux_gnss_receiver::api::{
     sim::{generate_l1_ca, SyntheticSignalParams},
     AcquisitionEngine, ReceiverPipelineConfig, TrackingEngine,
@@ -125,20 +125,50 @@ fn golden_acquisition_run_is_stable() {
 }
 
 #[test]
-fn synthetic_supports_multi_constellation_mock() {
-    let config = ReceiverPipelineConfig::default();
-    let _frame = generate_l1_ca(
+fn galileo_e1_acquisition_detects_synthetic_signal() {
+    let config = ReceiverPipelineConfig {
+        sampling_freq_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 1_023_000.0,
+        code_length: 4092,
+        acquisition_integration_ms: 20,
+        acquisition_noncoherent: 1,
+        channels: 12,
+        ..ReceiverPipelineConfig::default()
+    };
+    let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+    let frame = generate_l1_ca(
         &config,
         SyntheticSignalParams {
-            sat: SatId { constellation: Constellation::Galileo, prn: 11 },
-            doppler_hz: 0.0,
-            code_phase_chips: 10.0,
-            carrier_phase_rad: 0.0,
-            cn0_db_hz: 45.0,
+            sat,
+            doppler_hz: 500.0,
+            code_phase_chips: 321.0,
+            carrier_phase_rad: 0.25,
+            cn0_db_hz: 60.0,
             data_bit_flip: false,
         },
-        0x1234,
-        0.001,
+        0xA11C_E1B0,
+        0.020,
+    );
+
+    let acquisition =
+        AcquisitionEngine::new(config, bijux_gnss_receiver::api::ReceiverRuntime::default())
+            .with_doppler(1_000, 500);
+    let mut results = acquisition.run_fft(&frame, &[sat]);
+    let result = results.remove(0);
+
+    assert_eq!(result.sat, sat);
+    assert_eq!(result.signal_band, SignalBand::E1, "result={result:?}");
+    assert_eq!(result.hypothesis.to_string(), "accepted", "result={result:?}");
+    assert!(
+        result.peak_mean_ratio > 10.0,
+        "Galileo E1 peak_mean_ratio too low: {}",
+        result.peak_mean_ratio
+    );
+    assert!(
+        result.peak_second_ratio > 1.2,
+        "Galileo E1 peak_second_ratio too low: {}",
+        result.peak_second_ratio
     );
 }
 
