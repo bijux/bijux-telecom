@@ -351,12 +351,19 @@ pub struct ScienceThresholdsConfig {
     pub min_mean_cn0_dbhz: f64,
     /// Maximum PDOP for accepted navigation solutions.
     pub max_pdop: f64,
+    /// Maximum GDOP for accepted navigation solutions.
+    #[serde(default = "default_science_threshold_max_gdop")]
+    pub max_gdop: f64,
     /// Maximum residual RMS (meters) for accepted navigation solutions.
     pub max_residual_rms_m: f64,
     /// Minimum used satellites for accepted navigation solutions.
     pub min_used_satellites: usize,
     /// Minimum lock quality ratio for stable integrity classification.
     pub min_lock_ratio: f64,
+}
+
+fn default_science_threshold_max_gdop() -> f64 {
+    12.0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

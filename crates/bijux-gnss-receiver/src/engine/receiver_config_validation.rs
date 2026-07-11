@@ -229,6 +229,11 @@ impl ValidateConfig for ReceiverConfig {
                 message: "navigation.science_thresholds.max_pdop must be > 0".to_string(),
             });
         }
+        if self.navigation.science_thresholds.max_gdop <= 0.0 {
+            report.errors.push(ConfigError {
+                message: "navigation.science_thresholds.max_gdop must be > 0".to_string(),
+            });
+        }
         if self.navigation.science_thresholds.max_residual_rms_m <= 0.0 {
             report.errors.push(ConfigError {
                 message: "navigation.science_thresholds.max_residual_rms_m must be > 0".to_string(),

@@ -121,6 +121,7 @@ impl Default for ScienceThresholdsConfig {
         Self {
             min_mean_cn0_dbhz: 28.0,
             max_pdop: 8.0,
+            max_gdop: 12.0,
             max_residual_rms_m: 25.0,
             min_used_satellites: 4,
             min_lock_ratio: 0.7,

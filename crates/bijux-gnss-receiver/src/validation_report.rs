@@ -140,6 +140,8 @@ pub struct ValidationSciencePolicy {
     pub min_mean_cn0_dbhz: f64,
     /// Maximum PDOP for stable geometry.
     pub max_pdop: f64,
+    /// Maximum GDOP for stable geometry.
+    pub max_gdop: f64,
     /// Maximum residual RMS (meters) for stable quality.
     pub max_residual_rms_m: f64,
     /// Minimum used satellites expected for stable geometry.
@@ -153,6 +155,7 @@ impl Default for ValidationSciencePolicy {
         Self {
             min_mean_cn0_dbhz: 28.0,
             max_pdop: 8.0,
+            max_gdop: 12.0,
             max_residual_rms_m: 25.0,
             min_used_satellites: 4,
             min_lock_ratio: 0.7,
@@ -503,6 +506,7 @@ fn classify_integrity(
         let mut reasons = Vec::new();
         if solution.used_sat_count < science_policy.min_used_satellites
             || solution.pdop > science_policy.max_pdop
+            || solution.gdop.unwrap_or(f64::INFINITY) > science_policy.max_gdop
         {
             reasons.push("weak_geometry".to_string());
         }
@@ -1040,5 +1044,26 @@ mod tests {
             };
             assert_eq!(class.class, expected, "case {}", case.name);
         }
+    }
+
+    #[test]
+    fn validation_policy_marks_high_gdop_as_weak_geometry() {
+        let solution = fixture_solution(0, 2.0, 1.0, 4);
+        let report = build_validation_report(
+            &[fixture_track(0, 1.0)],
+            &[],
+            &[NavSolutionEpoch { gdop: Some(20.0), ..solution }],
+            &[],
+            1.0,
+            false,
+            Vec::new(),
+            ValidationSciencePolicy::default(),
+        )
+        .expect("report");
+
+        assert_eq!(
+            report.integrity.first().expect("integrity row").class,
+            NavIntegrityClass::WeakGeometry
+        );
     }
 }

@@ -15,12 +15,7 @@ fn validate_csv_schema(path: &Path, expected: &str, types: &[CsvType]) -> Result
     let mut lines = data.lines();
     let header = lines.next().unwrap_or_default();
     if header.trim() != expected {
-        bail!(
-            "csv schema mismatch in {}: expected {}, got {}",
-            path.display(),
-            expected,
-            header
-        );
+        bail!("csv schema mismatch in {}: expected {}, got {}", path.display(), expected, header);
     }
     for (idx, line) in lines.enumerate() {
         if line.trim().is_empty() {
@@ -76,32 +71,28 @@ fn validate_csv_schema(path: &Path, expected: &str, types: &[CsvType]) -> Result
 fn validate_json_schema(schema_path: &Path, data_path: &Path, strict: bool) -> Result<()> {
     #[cfg(feature = "schema-validate")]
     {
-    let schema_data = fs::read_to_string(schema_path)?;
-    let schema_json: serde_json::Value = serde_json::from_str(&schema_data)?;
-    let compiled = validator_for(&schema_json)
-        .map_err(|e| eyre!("invalid schema {}: {}", schema_path.display(), e))?;
-    let data = fs::read_to_string(data_path)?;
-    let json: serde_json::Value = serde_json::from_str(&data)?;
-    if strict {
-        match &json {
-            serde_json::Value::Array(items) if items.is_empty() => {
-                bail!("{} is empty", data_path.display());
+        let schema_data = fs::read_to_string(schema_path)?;
+        let schema_json: serde_json::Value = serde_json::from_str(&schema_data)?;
+        let compiled = validator_for(&schema_json)
+            .map_err(|e| eyre!("invalid schema {}: {}", schema_path.display(), e))?;
+        let data = fs::read_to_string(data_path)?;
+        let json: serde_json::Value = serde_json::from_str(&data)?;
+        if strict {
+            match &json {
+                serde_json::Value::Array(items) if items.is_empty() => {
+                    bail!("{} is empty", data_path.display());
+                }
+                _ => {}
             }
-            _ => {}
         }
-    }
-    if !compiled.is_valid(&json) {
-        let mut messages = Vec::new();
-        for error in compiled.iter_errors(&json) {
-            messages.push(error.to_string());
+        if !compiled.is_valid(&json) {
+            let mut messages = Vec::new();
+            for error in compiled.iter_errors(&json) {
+                messages.push(error.to_string());
+            }
+            bail!("schema validation failed for {}: {}", data_path.display(), messages.join(", "));
         }
-        bail!(
-            "schema validation failed for {}: {}",
-            data_path.display(),
-            messages.join(", ")
-        );
-    }
-    Ok(())
+        Ok(())
     }
     #[cfg(not(feature = "schema-validate"))]
     {
@@ -119,32 +110,32 @@ fn validate_json_schema(schema_path: &Path, data_path: &Path, strict: bool) -> R
 fn validate_jsonl_schema(schema_path: &Path, data_path: &Path, strict: bool) -> Result<()> {
     #[cfg(feature = "schema-validate")]
     {
-    let schema_data = fs::read_to_string(schema_path)?;
-    let schema_json: serde_json::Value = serde_json::from_str(&schema_data)?;
-    let compiled = validator_for(&schema_json)
-        .map_err(|e| eyre!("invalid schema {}: {}", schema_path.display(), e))?;
-    let data = fs::read_to_string(data_path)?;
-    let mut count = 0usize;
-    for (idx, line) in data.lines().enumerate() {
-        if line.trim().is_empty() {
-            continue;
+        let schema_data = fs::read_to_string(schema_path)?;
+        let schema_json: serde_json::Value = serde_json::from_str(&schema_data)?;
+        let compiled = validator_for(&schema_json)
+            .map_err(|e| eyre!("invalid schema {}: {}", schema_path.display(), e))?;
+        let data = fs::read_to_string(data_path)?;
+        let mut count = 0usize;
+        for (idx, line) in data.lines().enumerate() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let json: serde_json::Value = serde_json::from_str(line)?;
+            count += 1;
+            let errors: Vec<String> = compiled.iter_errors(&json).map(|e| e.to_string()).collect();
+            if !errors.is_empty() {
+                bail!(
+                    "schema validation failed for {} line {}: {}",
+                    data_path.display(),
+                    idx + 1,
+                    errors.join(", ")
+                );
+            }
         }
-        let json: serde_json::Value = serde_json::from_str(line)?;
-        count += 1;
-        let errors: Vec<String> = compiled.iter_errors(&json).map(|e| e.to_string()).collect();
-        if !errors.is_empty() {
-            bail!(
-                "schema validation failed for {} line {}: {}",
-                data_path.display(),
-                idx + 1,
-                errors.join(", ")
-            );
+        if strict && count == 0 {
+            bail!("{} is empty", data_path.display());
         }
-    }
-    if strict && count == 0 {
-        bail!("{} is empty", data_path.display());
-    }
-    Ok(())
+        Ok(())
     }
     #[cfg(not(feature = "schema-validate"))]
     {
@@ -162,28 +153,28 @@ fn validate_jsonl_schema(schema_path: &Path, data_path: &Path, strict: bool) -> 
 fn validate_config_schema(profile: &ReceiverConfig) -> Result<()> {
     #[cfg(feature = "schema-validate")]
     {
-    let schema_path = schema_path("receiver_profile.schema.json");
-    let schema_json: serde_json::Value = if schema_path.exists() {
-        let file_json: serde_json::Value =
-            serde_json::from_str(&fs::read_to_string(&schema_path)?)?;
-        if file_json.get("properties").is_some() {
-            file_json
+        let schema_path = schema_path("receiver_profile.schema.json");
+        let schema_json: serde_json::Value = if schema_path.exists() {
+            let file_json: serde_json::Value =
+                serde_json::from_str(&fs::read_to_string(&schema_path)?)?;
+            if file_json.get("properties").is_some() {
+                file_json
+            } else {
+                serde_json::to_value(schemars::schema_for!(ReceiverConfig))?
+            }
         } else {
             serde_json::to_value(schemars::schema_for!(ReceiverConfig))?
+        };
+        let compiled = validator_for(&schema_json).map_err(|e| eyre!("invalid schema: {}", e))?;
+        let json = serde_json::to_value(profile)?;
+        if !compiled.is_valid(&json) {
+            let mut messages = Vec::new();
+            for error in compiled.iter_errors(&json) {
+                messages.push(error.to_string());
+            }
+            bail!("config schema validation failed: {}", messages.join(", "));
         }
-    } else {
-        serde_json::to_value(schemars::schema_for!(ReceiverConfig))?
-    };
-    let compiled = validator_for(&schema_json).map_err(|e| eyre!("invalid schema: {}", e))?;
-    let json = serde_json::to_value(profile)?;
-    if !compiled.is_valid(&json) {
-        let mut messages = Vec::new();
-        for error in compiled.iter_errors(&json) {
-            messages.push(error.to_string());
-        }
-        bail!("config schema validation failed: {}", messages.join(", "));
-    }
-    Ok(())
+        Ok(())
     }
     #[cfg(not(feature = "schema-validate"))]
     {
@@ -195,20 +186,20 @@ fn validate_config_schema(profile: &ReceiverConfig) -> Result<()> {
 fn validate_sidecar_schema(sidecar: &RawIqMetadata) -> Result<()> {
     #[cfg(feature = "schema-validate")]
     {
-    let schema_path = schema_path("sidecar.schema.json");
-    let schema_data = fs::read_to_string(schema_path)?;
-    let schema_json: serde_json::Value = serde_json::from_str(&schema_data)?;
-    let compiled =
-        validator_for(&schema_json).map_err(|e| eyre!("invalid sidecar schema: {}", e))?;
-    let json = serde_json::to_value(sidecar)?;
-    if !compiled.is_valid(&json) {
-        let mut messages = Vec::new();
-        for error in compiled.iter_errors(&json) {
-            messages.push(error.to_string());
+        let schema_path = schema_path("sidecar.schema.json");
+        let schema_data = fs::read_to_string(schema_path)?;
+        let schema_json: serde_json::Value = serde_json::from_str(&schema_data)?;
+        let compiled =
+            validator_for(&schema_json).map_err(|e| eyre!("invalid sidecar schema: {}", e))?;
+        let json = serde_json::to_value(sidecar)?;
+        if !compiled.is_valid(&json) {
+            let mut messages = Vec::new();
+            for error in compiled.iter_errors(&json) {
+                messages.push(error.to_string());
+            }
+            bail!("sidecar schema validation failed: {}", messages.join(", "));
         }
-        bail!("sidecar schema validation failed: {}", messages.join(", "));
-    }
-    Ok(())
+        Ok(())
     }
     #[cfg(not(feature = "schema-validate"))]
     {
@@ -218,13 +209,7 @@ fn validate_sidecar_schema(sidecar: &RawIqMetadata) -> Result<()> {
 }
 
 fn handle_validateartifacts(command: GnssCommand) -> Result<()> {
-    let GnssCommand::ValidateArtifacts {
-        common,
-        obs,
-        eph,
-        strict,
-    } = command
-    else {
+    let GnssCommand::ValidateArtifacts { common, obs, eph, strict } = command else {
         bail!("invalid command for handler");
     };
 
@@ -257,16 +242,7 @@ fn handle_validateartifacts(command: GnssCommand) -> Result<()> {
 }
 
 fn handle_validate(command: GnssCommand) -> Result<()> {
-    let GnssCommand::Validate {
-        common,
-        file,
-        eph,
-        reference,
-        prn,
-        sp3,
-        clk,
-    } = command
-    else {
+    let GnssCommand::Validate { common, file, eph, reference, prn, sp3, clk } = command else {
         bail!("invalid command for handler");
     };
 
@@ -288,12 +264,7 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
     if !report.errors.is_empty() {
         bail!(
             "config invalid: {}",
-            report
-                .errors
-                .iter()
-                .map(|e| e.message.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
+            report.errors.iter().map(|e| e.message.as_str()).collect::<Vec<_>>().join(", ")
         );
     }
 
@@ -308,11 +279,10 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
     }
 
     let mut solutions = Vec::new();
-    let mut nav_solver =
-        bijux_gnss_infra::api::receiver::Navigation::new(
-            profile.to_pipeline_config(),
-            runtime_config_from_env(&common, None),
-        );
+    let mut nav_solver = bijux_gnss_infra::api::receiver::Navigation::new(
+        profile.to_pipeline_config(),
+        runtime_config_from_env(&common, None),
+    );
     for obs_epoch in &obs {
         if let Some(sol) = nav_solver.solve_epoch(obs_epoch, &nav) {
             solutions.push(sol);
@@ -339,11 +309,7 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
             products = products.with_clk(clk);
         }
         let ok = products.sp3.is_some() || products.clk.is_some();
-        let fallbacks = if ok {
-            Vec::new()
-        } else {
-            vec!["broadcast_only".to_string()]
-        };
+        let fallbacks = if ok { Vec::new() } else { vec!["broadcast_only".to_string()] };
         (ok, fallbacks)
     };
     #[cfg(not(feature = "precise-products"))]
@@ -365,6 +331,7 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
         bijux_gnss_infra::api::receiver::ValidationSciencePolicy {
             min_mean_cn0_dbhz: profile.navigation.science_thresholds.min_mean_cn0_dbhz,
             max_pdop: profile.navigation.science_thresholds.max_pdop,
+            max_gdop: profile.navigation.science_thresholds.max_gdop,
             max_residual_rms_m: profile.navigation.science_thresholds.max_residual_rms_m,
             min_used_satellites: profile.navigation.science_thresholds.min_used_satellites,
             min_lock_ratio: profile.navigation.science_thresholds.min_lock_ratio,
@@ -384,13 +351,7 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
 }
 
 fn handle_validate_reference(command: GnssCommand) -> Result<()> {
-    let GnssCommand::ValidateReference {
-        common,
-        run_dir,
-        reference,
-        align,
-    } = command
-    else {
+    let GnssCommand::ValidateReference { common, run_dir, reference, align } = command else {
         bail!("invalid command for handler");
     };
 
@@ -405,7 +366,8 @@ fn handle_validate_reference(command: GnssCommand) -> Result<()> {
         ReferenceAlign::Nearest => bijux_gnss_infra::api::ReferenceAlign::Nearest,
         ReferenceAlign::Linear => bijux_gnss_infra::api::ReferenceAlign::Linear,
     };
-    let aligned = bijux_gnss_infra::api::validate_reference(&solutions, &reference_epochs, align_policy)?;
+    let aligned =
+        bijux_gnss_infra::api::validate_reference(&solutions, &reference_epochs, align_policy)?;
 
     let report = build_validation_report(
         &[],
@@ -424,13 +386,7 @@ fn handle_validate_reference(command: GnssCommand) -> Result<()> {
     let evidence_path = out_dir.join("validation_evidence_bundle.json");
     fs::write(&evidence_path, serde_json::to_string_pretty(&evidence)?)?;
     let summary = serde_json::json!({ "report": out.display().to_string() });
-    write_manifest(
-        &common,
-        "validate_reference",
-        &ReceiverConfig::default(),
-        None,
-        &summary,
-    )?;
+    write_manifest(&common, "validate_reference", &ReceiverConfig::default(), None, &summary)?;
     Ok(())
 }
 
@@ -450,7 +406,8 @@ fn validation_evidence_bundle(
             *constellation_counts.entry(key).or_insert(0usize) += 1;
             cn0_values.push(sat.cn0_dbhz);
             lock_total += 1;
-            if sat.lock_flags.code_lock && sat.lock_flags.carrier_lock && !sat.lock_flags.cycle_slip {
+            if sat.lock_flags.code_lock && sat.lock_flags.carrier_lock && !sat.lock_flags.cycle_slip
+            {
                 lock_good += 1;
             }
         }
@@ -466,9 +423,13 @@ fn validation_evidence_bundle(
 
     let mut refusal_counts = std::collections::BTreeMap::new();
     let mut pdop_values = Vec::new();
+    let mut gdop_values = Vec::new();
     let mut rms_values = Vec::new();
     for sol in solutions {
         pdop_values.push(sol.pdop);
+        if let Some(gdop) = sol.gdop {
+            gdop_values.push(gdop);
+        }
         rms_values.push(sol.rms_m.0);
         if let Some(refusal) = sol.refusal_class {
             let key = format!("{refusal:?}");
@@ -481,6 +442,12 @@ fn validation_evidence_bundle(
         Some(pdop_values.iter().sum::<f64>() / pdop_values.len() as f64)
     };
     let pdop_max = pdop_values.iter().cloned().reduce(f64::max);
+    let gdop_mean = if gdop_values.is_empty() {
+        None
+    } else {
+        Some(gdop_values.iter().sum::<f64>() / gdop_values.len() as f64)
+    };
+    let gdop_max = gdop_values.iter().cloned().reduce(f64::max);
     let residual_rms_mean = if rms_values.is_empty() {
         None
     } else {
@@ -490,10 +457,7 @@ fn validation_evidence_bundle(
         None
     } else {
         Some(
-            solutions
-                .iter()
-                .map(|sol| sol.used_sat_count as f64)
-                .sum::<f64>()
+            solutions.iter().map(|sol| sol.used_sat_count as f64).sum::<f64>()
                 / solutions.len() as f64,
         )
     };
@@ -505,10 +469,7 @@ fn validation_evidence_bundle(
         .integrity
         .iter()
         .filter(|entry| {
-            !matches!(
-                entry.class,
-                bijux_gnss_infra::api::receiver::NavIntegrityClass::Nominal
-            )
+            !matches!(entry.class, bijux_gnss_infra::api::receiver::NavIntegrityClass::Nominal)
         })
         .count();
 
@@ -529,6 +490,14 @@ fn validation_evidence_bundle(
             ));
         }
     }
+    if let Some(value) = gdop_mean {
+        if value > report.science_policy.max_gdop {
+            claim_evidence_violations.push(format!(
+                "mean_gdop_above_policy:{value:.3}>{}",
+                report.science_policy.max_gdop
+            ));
+        }
+    }
     if let Some(value) = residual_rms_mean {
         if value > report.science_policy.max_residual_rms_m {
             claim_evidence_violations.push(format!(
@@ -545,11 +514,8 @@ fn validation_evidence_bundle(
             ));
         }
     }
-    let lock_quality_ratio = if lock_total == 0 {
-        None
-    } else {
-        Some(lock_good as f64 / lock_total as f64)
-    };
+    let lock_quality_ratio =
+        if lock_total == 0 { None } else { Some(lock_good as f64 / lock_total as f64) };
     if let Some(value) = lock_quality_ratio {
         if value < report.science_policy.min_lock_ratio {
             claim_evidence_violations.push(format!(
@@ -582,6 +548,8 @@ fn validation_evidence_bundle(
             "mean_used_satellites": used_sat_mean,
             "pdop_mean": pdop_mean,
             "pdop_max": pdop_max,
+            "gdop_mean": gdop_mean,
+            "gdop_max": gdop_max,
             "residual_rms_mean_m": residual_rms_mean,
             "refusal_counts": refusal_counts
         },
