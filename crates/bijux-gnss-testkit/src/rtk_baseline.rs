@@ -16,9 +16,9 @@ use bijux_gnss_nav::api::{
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 
-/// Deterministic clean GPS L1 RTK scenario for short-baseline float and accuracy tests.
+/// Deterministic GPS L1 RTK scenario for short-baseline truth and degradation tests.
 #[derive(Debug, Clone)]
-pub struct CleanGpsL1RtkBaselineCase {
+pub struct GpsL1RtkBaselineCase {
     /// Base station position in ECEF meters.
     pub base_ecef_m: [f64; 3],
     /// Rover position in ECEF meters.
@@ -87,7 +87,21 @@ impl RtkBaselineAccuracy {
 }
 
 /// Build a deterministic clean short-baseline GPS L1 RTK scenario.
-pub fn clean_gps_l1_short_baseline_case() -> CleanGpsL1RtkBaselineCase {
+pub fn clean_gps_l1_short_baseline_case() -> GpsL1RtkBaselineCase {
+    gps_l1_short_baseline_case(RtkObservationEnvironment::Clean)
+}
+
+/// Build a deterministic noisy short-baseline GPS L1 RTK scenario.
+pub fn noisy_gps_l1_short_baseline_case() -> GpsL1RtkBaselineCase {
+    gps_l1_short_baseline_case(RtkObservationEnvironment::Noisy)
+}
+
+/// Build a deterministic multipath short-baseline GPS L1 RTK scenario.
+pub fn multipath_gps_l1_short_baseline_case() -> GpsL1RtkBaselineCase {
+    gps_l1_short_baseline_case(RtkObservationEnvironment::Multipath)
+}
+
+fn gps_l1_short_baseline_case(environment: RtkObservationEnvironment) -> GpsL1RtkBaselineCase {
     let base = bijux_gnss_nav::api::geodetic_to_ecef(37.0, -122.0, 10.0);
     let base_ecef_m = [base.0, base.1, base.2];
     let truth_enu_m = [8.5, -4.25, 1.75];
@@ -114,6 +128,7 @@ pub fn clean_gps_l1_short_baseline_case() -> CleanGpsL1RtkBaselineCase {
         base_ecef_m,
         &ephemerides,
         &base_ambiguities_cycles,
+        environment.base_profile(),
     );
     let rover_epoch = make_obs_epoch(
         ReceiverRole::Rover,
@@ -121,6 +136,7 @@ pub fn clean_gps_l1_short_baseline_case() -> CleanGpsL1RtkBaselineCase {
         rover_ecef_m,
         &ephemerides,
         &rover_ambiguities_cycles,
+        environment.rover_profile(),
     );
     let single_differences = rtk_single_differences_from_obs_epochs(&base_epoch, &rover_epoch);
     let reference_sig =
@@ -128,7 +144,7 @@ pub fn clean_gps_l1_short_baseline_case() -> CleanGpsL1RtkBaselineCase {
     let double_differences =
         rtk_double_differences_from_single_differences(&single_differences, reference_sig);
 
-    CleanGpsL1RtkBaselineCase {
+    GpsL1RtkBaselineCase {
         base_ecef_m,
         rover_ecef_m,
         truth_enu_m,
@@ -140,6 +156,66 @@ pub fn clean_gps_l1_short_baseline_case() -> CleanGpsL1RtkBaselineCase {
         single_differences,
         double_differences,
         rover_ambiguities_cycles,
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum RtkObservationEnvironment {
+    Clean,
+    Noisy,
+    Multipath,
+}
+
+impl RtkObservationEnvironment {
+    fn base_profile(self) -> ObservationProfile {
+        match self {
+            Self::Clean | Self::Noisy | Self::Multipath => ObservationProfile::clean(),
+        }
+    }
+
+    fn rover_profile(self) -> ObservationProfile {
+        match self {
+            Self::Clean => ObservationProfile::clean(),
+            Self::Noisy => ObservationProfile {
+                cn0_dbhz: 29.5,
+                pseudorange_var_m2: 6.25,
+                carrier_phase_var_cycles2: 0.25,
+                pseudorange_biases_m: [0.0, 0.85, -0.60, 0.95, -0.75],
+                carrier_biases_cycles: [0.0, 0.40, -0.28, 0.45, -0.34],
+                multipath_suspects: [false, false, false, false, false],
+            },
+            Self::Multipath => ObservationProfile {
+                cn0_dbhz: 32.0,
+                pseudorange_var_m2: 1.44,
+                carrier_phase_var_cycles2: 0.04,
+                pseudorange_biases_m: [0.0, 1.75, -1.10, 1.35, -1.55],
+                carrier_biases_cycles: [0.0, 0.65, -0.42, 0.58, -0.61],
+                multipath_suspects: [false, true, false, true, true],
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ObservationProfile {
+    cn0_dbhz: f64,
+    pseudorange_var_m2: f64,
+    carrier_phase_var_cycles2: f64,
+    pseudorange_biases_m: [f64; 5],
+    carrier_biases_cycles: [f64; 5],
+    multipath_suspects: [bool; 5],
+}
+
+impl ObservationProfile {
+    fn clean() -> Self {
+        Self {
+            cn0_dbhz: 48.0,
+            pseudorange_var_m2: 4.0e-4,
+            carrier_phase_var_cycles2: 1.0e-4,
+            pseudorange_biases_m: [0.0; 5],
+            carrier_biases_cycles: [0.0; 5],
+            multipath_suspects: [false; 5],
+        }
     }
 }
 
@@ -213,11 +289,13 @@ fn make_obs_epoch(
     receiver_ecef_m: [f64; 3],
     ephemerides: &[GpsEphemeris],
     ambiguities_cycles: &BTreeMap<SatId, f64>,
+    profile: ObservationProfile,
 ) -> ObsEpoch {
     let wavelength_m = SPEED_OF_LIGHT_MPS / bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value();
     let sats = ephemerides
         .iter()
-        .map(|ephemeris| {
+        .enumerate()
+        .map(|(index, ephemeris)| {
             let mut travel_time_s = 0.07;
             let sat = loop {
                 let state = sat_state_gps_l1ca_at_receive_time(
@@ -233,7 +311,8 @@ fn make_obs_epoch(
                 travel_time_s = next_travel_time_s;
             };
             let range_m = geometric_range_m(receiver_ecef_m, [sat.x_m, sat.y_m, sat.z_m]);
-            let pseudorange_m = range_m - sat.clock_correction.bias_s * SPEED_OF_LIGHT_MPS;
+            let pseudorange_m = range_m - sat.clock_correction.bias_s * SPEED_OF_LIGHT_MPS
+                + profile.pseudorange_biases_m[index];
             let ambiguity_cycles = ambiguities_cycles.get(&ephemeris.sat).copied().unwrap_or(0.0);
             let timing = ObsSignalTiming {
                 signal_travel_time_s: Seconds(travel_time_s),
@@ -246,21 +325,23 @@ fn make_obs_epoch(
                     code: bijux_gnss_core::api::SignalCode::Ca,
                 },
                 pseudorange_m: bijux_gnss_core::api::Meters(pseudorange_m),
-                pseudorange_var_m2: 4.0e-4,
+                pseudorange_var_m2: profile.pseudorange_var_m2,
                 carrier_phase_cycles: bijux_gnss_core::api::Cycles(
-                    range_m / wavelength_m + ambiguity_cycles,
+                    range_m / wavelength_m
+                        + ambiguity_cycles
+                        + profile.carrier_biases_cycles[index],
                 ),
-                carrier_phase_var_cycles2: 1.0e-4,
+                carrier_phase_var_cycles2: profile.carrier_phase_var_cycles2,
                 doppler_hz: bijux_gnss_core::api::Hertz(0.0),
                 doppler_var_hz2: 4.0,
-                cn0_dbhz: 48.0,
+                cn0_dbhz: profile.cn0_dbhz,
                 lock_flags: LockFlags {
                     code_lock: true,
                     carrier_lock: true,
                     bit_lock: false,
                     cycle_slip: false,
                 },
-                multipath_suspect: false,
+                multipath_suspect: profile.multipath_suspects[index],
                 observation_status: ObservationStatus::Accepted,
                 observation_reject_reasons: Vec::new(),
                 elevation_deg: None,
@@ -271,7 +352,7 @@ fn make_obs_epoch(
                 metadata: ObsMetadata {
                     tracking_mode: "synthetic".to_string(),
                     integration_ms: 1,
-                    lock_quality: 48.0,
+                    lock_quality: profile.cn0_dbhz,
                     smoothing_window: 0,
                     smoothing_age: 0,
                     smoothing_resets: 0,
@@ -332,6 +413,7 @@ fn geometric_range_m(receiver_ecef_m: [f64; 3], sat_ecef_m: [f64; 3]) -> f64 {
 mod tests {
     use super::{
         centimeter_level_rtk_baseline_budget, clean_gps_l1_short_baseline_case,
+        multipath_gps_l1_short_baseline_case, noisy_gps_l1_short_baseline_case,
         rtk_baseline_accuracy,
     };
 
@@ -348,6 +430,24 @@ mod tests {
         assert!(scenario.double_differences.iter().all(|observation| scenario
             .rover_ambiguities_cycles
             .contains_key(&observation.sig.sat)));
+    }
+
+    #[test]
+    fn noisy_and_multipath_rtk_cases_carry_degraded_observation_quality() {
+        let noisy = noisy_gps_l1_short_baseline_case();
+        let multipath = multipath_gps_l1_short_baseline_case();
+
+        assert!(noisy.rover_epoch.sats.iter().all(|sat| sat.cn0_dbhz < 35.0));
+        assert!(noisy
+            .double_differences
+            .iter()
+            .all(|observation| observation.code_m.is_finite()
+                && observation.phase_cycles.is_finite()));
+        assert!(multipath.rover_epoch.sats.iter().any(|sat| sat.multipath_suspect));
+        assert!(multipath
+            .double_differences
+            .iter()
+            .any(|observation| observation.code_m.abs() > 1.0));
     }
 
     #[test]
