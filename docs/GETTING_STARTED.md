@@ -94,3 +94,13 @@ acquisition bin for Doppler recovery.
 
 The reference scenario uses one satellite by design so C/N0 validation stays isolated from later
 tracking and multi-satellite integration work.
+
+## 9) Emit One Final GNSS Accuracy Artifact Per Synthetic Navigation Run
+
+```bash
+bijux gnss validate-synthetic-navigation --scenario configs/scenarios/synthetic_navigation_accuracy.toml --config configs/receiver_low_rate.toml --report json --out artifacts/synthetic_navigation_accuracy
+```
+
+This workflow emits `artifacts/synthetic_navigation_accuracy/artifacts/gnss_accuracy_artifact.json`.
+That file records acquisition, tracking, observation, and PVT stage summaries together with the
+underlying per-stage reports, thresholds, pass/fail, data source, and reference truth.

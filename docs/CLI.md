@@ -36,6 +36,7 @@ Commands:
   experiment           Run parameter sweeps over synthetic scenarios
   export-synthetic-iq  Export a deterministic synthetic raw IQ bundle and matching truth artifact
   validate-synthetic-iq  Validate a synthetic IQ bundle against truth-guided C/N0 expectations
+  validate-synthetic-navigation  Validate a full synthetic navigation scenario from acquisition through PVT
   artifact             Artifact validation and conversion
   validate-config      Validate a receiver profile configuration file
   config               Configuration utilities
@@ -130,6 +131,15 @@ This workflow validates two truth-guided properties from the same bundle:
 Use `--tolerance-db-hz` or `--acquisition-code-phase-tolerance-samples` when you need a stricter
 or looser bound for a specific validation run. Use `--acquisition-doppler-tolerance-bins` when the
 relevant scientific bound should be expressed in acquisition bins rather than raw Hz.
+
+### Validate Synthetic Navigation Accuracy
+```bash
+bijux gnss validate-synthetic-navigation --scenario configs/scenarios/synthetic_navigation_accuracy.toml --config configs/receiver_low_rate.toml --report json --out artifacts/synthetic_navigation_accuracy
+```
+
+This workflow emits `artifacts/gnss_accuracy_artifact.json`, one machine-readable file per run
+that carries acquisition, tracking, observation, and PVT summaries alongside detailed stage
+reports, thresholds, pass/fail, data source, and reference truth.
 
 ### Validate Artifacts
 ```bash

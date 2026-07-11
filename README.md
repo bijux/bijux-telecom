@@ -70,6 +70,17 @@ This workflow verifies that measured prompt-power C/N0 stays within a configured
 injected synthetic truth. The calibration scenario is intentionally single-satellite so the check
 stays isolated from later multi-satellite and fractional-sampling validation work.
 
+For one final run-level GNSS accuracy artifact spanning acquisition through PVT, validate the
+bundled synthetic navigation case:
+
+```bash
+bijux gnss validate-synthetic-navigation --scenario configs/scenarios/synthetic_navigation_accuracy.toml --config configs/receiver_low_rate.toml --report json --out artifacts/synthetic_navigation_accuracy
+```
+
+This command emits `artifacts/synthetic_navigation_accuracy/artifacts/gnss_accuracy_artifact.json`
+with stage summaries, thresholds, pass/fail, data source, reference truth, and detailed
+per-stage reports in one file.
+
 For a public real-RF acquisition example, use the registered live-sky excerpt and its tuned
 profile:
 
