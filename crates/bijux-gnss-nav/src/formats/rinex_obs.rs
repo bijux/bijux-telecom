@@ -1,15 +1,15 @@
 use std::collections::BTreeMap;
 
 use bijux_gnss_core::api::{
-    signal_spec_gps_l1_ca, utc_to_gps, Constellation, Cycles, GpsTime, Hertz, LeapSeconds,
-    LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite, ObservationStatus, ParseError,
-    ReceiverRole, SatId, Seconds, SigId, SignalBand, SignalCode,
+    signal_spec_gps_l1_ca, signal_spec_gps_l2_py, utc_to_gps, Constellation, Cycles, GpsTime,
+    Hertz, LeapSeconds, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
+    ObservationStatus, ParseError, ReceiverRole, SatId, Seconds, SigId, SignalBand, SignalCode,
+    SignalSpec,
 };
 use time::{Date, Month, PrimitiveDateTime, Time};
 
 const OBSERVATION_FIELD_WIDTH: usize = 16;
 const OBSERVATIONS_PER_LINE: usize = 5;
-const GPS_L1_CA_PSEUDORANGE_TYPES: &[&str] = &["C1C", "C1", "C1W"];
 const GPS_UNIX_EPOCH_OFFSET_S: f64 = 315_964_800.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,18 +50,31 @@ pub struct RinexGpsObservationDataset {
     pub approx_position_ecef_m: Option<(f64, f64, f64)>,
     /// Observation interval in seconds if declared in the header.
     pub interval_s: Option<f64>,
-    /// GPS pseudorange observation type used to populate `epochs`.
-    pub pseudorange_observation_type: String,
-    /// GPS carrier-phase observation type used when present.
-    pub carrier_phase_observation_type: Option<String>,
-    /// GPS signal-strength observation type used when present.
-    pub signal_strength_observation_type: Option<String>,
+    /// Per-band GPS observation types imported into `epochs`.
+    pub observation_channels: Vec<RinexGpsObservationChannel>,
     /// GPS observation epochs converted into the workspace observation model.
     pub epochs: Vec<ObsEpoch>,
 }
 
 #[derive(Debug, Clone)]
-struct GpsObservationColumns {
+pub struct RinexGpsObservationChannel {
+    /// Signal band represented by this imported observation channel.
+    pub band: SignalBand,
+    /// Signal code represented by this imported observation channel.
+    pub code: SignalCode,
+    /// Pseudorange observation type used to populate this channel.
+    pub pseudorange_observation_type: String,
+    /// Carrier-phase observation type used when present.
+    pub carrier_phase_observation_type: Option<String>,
+    /// Signal-strength observation type used when present.
+    pub signal_strength_observation_type: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct GpsObservationChannel {
+    band: SignalBand,
+    code: SignalCode,
+    signal: SignalSpec,
     pseudorange_index: usize,
     pseudorange_type: String,
     carrier_phase_index: Option<usize>,
@@ -78,7 +91,9 @@ struct RinexSatelliteToken {
 
 #[derive(Debug, Clone)]
 enum Rinex2Record {
-    Event { special_record_count: usize },
+    Event {
+        special_record_count: usize,
+    },
     ObservationEpoch {
         receive_gps_time: GpsTime,
         discontinuity: bool,
@@ -87,7 +102,9 @@ enum Rinex2Record {
     },
 }
 
-fn parse_rinex_observation_header(data: &str) -> Result<(RinexObservationHeader, usize), ParseError> {
+fn parse_rinex_observation_header(
+    data: &str,
+) -> Result<(RinexObservationHeader, usize), ParseError> {
     let lines = data.lines().collect::<Vec<_>>();
     let mut header = RinexObservationHeader {
         version: 0.0,
@@ -130,13 +147,11 @@ fn parse_rinex_observation_header(data: &str) -> Result<(RinexObservationHeader,
                 line_index += 1;
             }
             "INTERVAL" => {
-                let interval = line
-                    .get(..10)
-                    .unwrap_or_default()
-                    .trim()
-                    .parse::<f64>()
-                    .map_err(|err| ParseError {
-                        message: format!("invalid RINEX OBS interval '{}': {err}", line.trim()),
+                let interval =
+                    line.get(..10).unwrap_or_default().trim().parse::<f64>().map_err(|err| {
+                        ParseError {
+                            message: format!("invalid RINEX OBS interval '{}': {err}", line.trim()),
+                        }
                     })?;
                 header.interval_s = Some(interval);
                 line_index += 1;
@@ -148,7 +163,8 @@ fn parse_rinex_observation_header(data: &str) -> Result<(RinexObservationHeader,
                 line_index += 1;
             }
             "# / TYPES OF OBSERV" => {
-                let (obs_types, consumed_lines) = parse_rinex_2_observation_types(&lines[line_index..])?;
+                let (obs_types, consumed_lines) =
+                    parse_rinex_2_observation_types(&lines[line_index..])?;
                 header.obs_types_v2 = Some(obs_types);
                 line_index += consumed_lines;
             }
@@ -169,9 +185,7 @@ fn parse_rinex_observation_header(data: &str) -> Result<(RinexObservationHeader,
     }
 
     if !saw_version || !saw_observation_data || line_index == 0 {
-        return Err(ParseError {
-            message: "invalid or incomplete RINEX OBS header".to_string(),
-        });
+        return Err(ParseError { message: "invalid or incomplete RINEX OBS header".to_string() });
     }
 
     Ok((header, line_index))
@@ -186,19 +200,18 @@ pub fn parse_rinex_gps_observation_dataset(
 ) -> Result<RinexGpsObservationDataset, ParseError> {
     let lines = data.lines().collect::<Vec<_>>();
     let (header, header_line_count) = parse_rinex_observation_header(data)?;
-    let gps_observation_types =
-        header.gps_observation_types().ok_or_else(|| ParseError {
-            message: "RINEX OBS file does not declare GPS observation types".to_string(),
-        })?;
-    let columns = resolve_gps_observation_columns(gps_observation_types)?;
+    let gps_observation_types = header.gps_observation_types().ok_or_else(|| ParseError {
+        message: "RINEX OBS file does not declare GPS observation types".to_string(),
+    })?;
+    let channels = resolve_gps_observation_channels(gps_observation_types)?;
     let epochs = if header.version >= 3.0 {
-        parse_rinex_3_gps_epochs(&lines[header_line_count..], &header, &columns)?
+        parse_rinex_3_gps_epochs(&lines[header_line_count..], &header, &channels)?
     } else {
         parse_rinex_2_gps_epochs(
             &lines[header_line_count..],
             gps_observation_types,
             header.time_system,
-            &columns,
+            &channels,
         )?
     };
 
@@ -207,9 +220,16 @@ pub fn parse_rinex_gps_observation_dataset(
         marker_name: header.marker_name,
         approx_position_ecef_m: header.approx_position_ecef_m,
         interval_s: header.interval_s,
-        pseudorange_observation_type: columns.pseudorange_type,
-        carrier_phase_observation_type: columns.carrier_phase_type,
-        signal_strength_observation_type: columns.signal_strength_type,
+        observation_channels: channels
+            .iter()
+            .map(|channel| RinexGpsObservationChannel {
+                band: channel.band,
+                code: channel.code,
+                pseudorange_observation_type: channel.pseudorange_type.clone(),
+                carrier_phase_observation_type: channel.carrier_phase_type.clone(),
+                signal_strength_observation_type: channel.signal_strength_type.clone(),
+            })
+            .collect(),
         epochs,
     })
 }
@@ -222,7 +242,7 @@ fn parse_rinex_2_gps_epochs(
     lines: &[&str],
     gps_observation_types: &[String],
     time_system: RinexObservationTimeSystem,
-    columns: &GpsObservationColumns,
+    channels: &[GpsObservationChannel],
 ) -> Result<Vec<ObsEpoch>, ParseError> {
     let mut epochs = Vec::new();
     let mut line_index = 0usize;
@@ -248,32 +268,30 @@ fn parse_rinex_2_gps_epochs(
                 header_line_count,
             } => {
                 line_index += header_line_count;
-                let observation_line_count = observation_record_line_count(gps_observation_types.len());
+                let observation_line_count =
+                    observation_record_line_count(gps_observation_types.len());
                 let mut gps_satellites = Vec::new();
 
                 for satellite in satellites {
                     let record_lines = lines
                         .get(line_index..line_index + observation_line_count)
                         .ok_or_else(|| ParseError {
-                            message: format!(
-                                "truncated RINEX 2 OBS record for satellite {:?}-{:02}",
-                                satellite.constellation, satellite.prn
-                            ),
-                        })?;
+                        message: format!(
+                            "truncated RINEX 2 OBS record for satellite {:?}-{:02}",
+                            satellite.constellation, satellite.prn
+                        ),
+                    })?;
                     let observations =
                         parse_observation_record(record_lines, gps_observation_types.len(), 0)?;
                     line_index += observation_line_count;
                     if satellite.constellation != Constellation::Gps {
                         continue;
                     }
-                    if let Some(observation) = build_gps_observation(
+                    gps_satellites.extend(build_gps_observations(
                         satellite,
-                        receive_gps_time,
                         &observations,
-                        columns,
-                    )? {
-                        gps_satellites.push(observation);
-                    }
+                        channels,
+                    )?);
                 }
 
                 if !gps_satellites.is_empty() {
@@ -295,7 +313,7 @@ fn parse_rinex_2_gps_epochs(
 fn parse_rinex_3_gps_epochs(
     lines: &[&str],
     header: &RinexObservationHeader,
-    columns: &GpsObservationColumns,
+    channels: &[GpsObservationChannel],
 ) -> Result<Vec<ObsEpoch>, ParseError> {
     let mut epochs = Vec::new();
     let mut line_index = 0usize;
@@ -322,8 +340,7 @@ fn parse_rinex_3_gps_epochs(
             let record_start = lines.get(line_index).ok_or_else(|| ParseError {
                 message: "truncated RINEX 3 observation record".to_string(),
             })?;
-            let satellite_token =
-                parse_satellite_token(record_start.get(..3).unwrap_or_default())?;
+            let satellite_token = parse_satellite_token(record_start.get(..3).unwrap_or_default())?;
             let observation_types = observation_types_for_system(header, satellite_token.system);
             if observation_types.is_empty() {
                 return Err(ParseError {
@@ -333,31 +350,29 @@ fn parse_rinex_3_gps_epochs(
                     ),
                 });
             }
-            let record_line_count =
-                rinex_3_observation_record_line_count(&lines[line_index..], observation_types.len());
-            let record_lines = lines.get(line_index..line_index + record_line_count).ok_or_else(
-                || ParseError {
-                    message: format!(
-                        "truncated RINEX 3 OBS record for satellite {:?}-{:02}",
-                        satellite_token.satellite.constellation, satellite_token.satellite.prn
-                    ),
-                },
-            )?;
+            let record_line_count = rinex_3_observation_record_line_count(
+                &lines[line_index..],
+                observation_types.len(),
+            );
+            let record_lines =
+                lines.get(line_index..line_index + record_line_count).ok_or_else(|| {
+                    ParseError {
+                        message: format!(
+                            "truncated RINEX 3 OBS record for satellite {:?}-{:02}",
+                            satellite_token.satellite.constellation, satellite_token.satellite.prn
+                        ),
+                    }
+                })?;
             let observations = parse_observation_record(record_lines, observation_types.len(), 3)?;
             line_index += record_line_count;
             if satellite_token.satellite.constellation != Constellation::Gps {
                 continue;
             }
-            if let Some(observation) =
-                build_gps_observation(
-                    satellite_token.satellite,
-                    receive_gps_time,
-                    &observations,
-                    columns,
-                )?
-            {
-                gps_satellites.push(observation);
-            }
+            gps_satellites.extend(build_gps_observations(
+                satellite_token.satellite,
+                &observations,
+                channels,
+            )?);
         }
 
         if !gps_satellites.is_empty() {
@@ -378,9 +393,9 @@ fn parse_rinex_2_epoch_header(
     lines: &[&str],
     time_system: RinexObservationTimeSystem,
 ) -> Result<Rinex2Record, ParseError> {
-    let line = *lines.first().ok_or_else(|| ParseError {
-        message: "missing RINEX 2 epoch header".to_string(),
-    })?;
+    let line = *lines
+        .first()
+        .ok_or_else(|| ParseError { message: "missing RINEX 2 epoch header".to_string() })?;
     if line.get(..26).unwrap_or_default().trim().is_empty() {
         let flag = parse_u8_field(line, 28, 29, "RINEX 2 OBS epoch flag")?;
         let special_record_count =
@@ -401,9 +416,7 @@ fn parse_rinex_2_epoch_header(
     let flag = parse_u8_field(line, 28, 29, "RINEX 2 OBS epoch flag")?;
     let satellite_count = parse_usize_field(line, 29, 32, "RINEX 2 OBS satellite count")?;
     if flag > 1 {
-        return Ok(Rinex2Record::Event {
-            special_record_count: satellite_count,
-        });
+        return Ok(Rinex2Record::Event { special_record_count: satellite_count });
     }
     let receive_gps_time = rinex_epoch_to_gps_time(
         normalize_rinex_2_year(year),
@@ -483,9 +496,7 @@ fn parse_rinex_3_epoch_header(
         message: format!("invalid RINEX 3 epoch satellite count '{}': {err}", fields[8]),
     })?;
     if flag > 1 {
-        return Err(ParseError {
-            message: format!("unsupported RINEX 3 epoch flag {flag}"),
-        });
+        return Err(ParseError { message: format!("unsupported RINEX 3 epoch flag {flag}") });
     }
     Ok((
         rinex_epoch_to_gps_time(year, month, day, hour, minute, second, time_system)?,
@@ -494,116 +505,188 @@ fn parse_rinex_3_epoch_header(
     ))
 }
 
-fn resolve_gps_observation_columns(observation_types: &[String]) -> Result<GpsObservationColumns, ParseError> {
-    let (pseudorange_index, pseudorange_type) =
-        GPS_L1_CA_PSEUDORANGE_TYPES.iter().find_map(|candidate| {
-            observation_types
-                .iter()
-                .position(|observation_type| observation_type == candidate)
-                .map(|index| (index, (*candidate).to_string()))
-        })
-        .ok_or_else(|| ParseError {
+fn resolve_gps_observation_channels(
+    observation_types: &[String],
+) -> Result<Vec<GpsObservationChannel>, ParseError> {
+    let mut channels = Vec::new();
+
+    for (band, code, signal, pseudorange_candidates, carrier_phase_candidates, signal_strength_candidates) in
+        [
+            (
+                SignalBand::L1,
+                SignalCode::Ca,
+                signal_spec_gps_l1_ca(),
+                vec![
+                    "C1C".to_string(),
+                    "C1".to_string(),
+                    "C1W".to_string(),
+                    "C1P".to_string(),
+                    "P1".to_string(),
+                ],
+                vec![
+                    "L1C".to_string(),
+                    "L1".to_string(),
+                    "L1W".to_string(),
+                    "L1P".to_string(),
+                ],
+                vec![
+                    "S1C".to_string(),
+                    "S1".to_string(),
+                    "S1W".to_string(),
+                    "S1P".to_string(),
+                ],
+            ),
+            (
+                SignalBand::L2,
+                SignalCode::Py,
+                signal_spec_gps_l2_py(),
+                vec![
+                    "C2W".to_string(),
+                    "P2".to_string(),
+                    "C2P".to_string(),
+                    "C2".to_string(),
+                ],
+                vec![
+                    "L2W".to_string(),
+                    "L2P".to_string(),
+                    "L2".to_string(),
+                ],
+                vec![
+                    "S2W".to_string(),
+                    "S2P".to_string(),
+                    "S2".to_string(),
+                ],
+            ),
+        ]
+    {
+        let Some(pseudorange_index) = find_observation_index(observation_types, &pseudorange_candidates)
+        else {
+            continue;
+        };
+        let pseudorange_type = observation_types[pseudorange_index].clone();
+        channels.push(GpsObservationChannel {
+            band,
+            code,
+            signal,
+            pseudorange_index,
+            pseudorange_type,
+            carrier_phase_index: find_observation_index(
+                observation_types,
+                &carrier_phase_candidates,
+            ),
+            carrier_phase_type: find_observation_type(
+                observation_types,
+                &carrier_phase_candidates,
+            ),
+            signal_strength_index: find_observation_index(
+                observation_types,
+                &signal_strength_candidates,
+            ),
+            signal_strength_type: find_observation_type(
+                observation_types,
+                &signal_strength_candidates,
+            ),
+        });
+    }
+
+    if channels.is_empty() {
+        return Err(ParseError {
             message: format!(
-                "RINEX OBS file does not provide a supported GPS L1 pseudorange type; found {}",
+                "RINEX OBS file does not provide a supported GPS observation channel; found {}",
                 observation_types.join(", ")
             ),
-        })?;
-    let suffix = pseudorange_type.get(2..).unwrap_or_default();
-    let carrier_phase_type_candidates =
-        [format!("L1{suffix}"), "L1".to_string(), "L1W".to_string()];
-    let signal_strength_type_candidates =
-        [format!("S1{suffix}"), "S1".to_string(), "S1W".to_string()];
+        });
+    }
 
-    Ok(GpsObservationColumns {
-        pseudorange_index,
-        pseudorange_type,
-        carrier_phase_index: find_observation_index(observation_types, &carrier_phase_type_candidates),
-        carrier_phase_type: find_observation_type(observation_types, &carrier_phase_type_candidates),
-        signal_strength_index: find_observation_index(
-            observation_types,
-            &signal_strength_type_candidates,
-        ),
-        signal_strength_type: find_observation_type(
-            observation_types,
-            &signal_strength_type_candidates,
-        ),
-    })
+    Ok(channels)
 }
 
-fn build_gps_observation(
+fn build_gps_observations(
     satellite: SatId,
-    _receive_gps_time: GpsTime,
     observations: &[Option<f64>],
-    columns: &GpsObservationColumns,
-) -> Result<Option<ObsSatellite>, ParseError> {
-    let pseudorange_m = match observations.get(columns.pseudorange_index).copied().flatten() {
-        Some(value) if value.is_finite() && value > 0.0 => value,
-        Some(value) => {
-            return Err(ParseError {
-                message: format!(
-                    "invalid GPS pseudorange for {:?}-{:02}: {value}",
-                    satellite.constellation, satellite.prn
-                ),
-            });
-        }
-        None => return Ok(None),
+    channels: &[GpsObservationChannel],
+) -> Result<Vec<ObsSatellite>, ParseError> {
+    let mut satellites = Vec::new();
+
+    for channel in channels {
+        let pseudorange_m = match observations.get(channel.pseudorange_index).copied().flatten() {
+            Some(value) if value.is_finite() && value > 0.0 => value,
+            Some(value) => {
+                return Err(ParseError {
+                    message: format!(
+                        "invalid GPS pseudorange for {:?}-{:02} {:?}: {value}",
+                        satellite.constellation, satellite.prn, channel.band
+                    ),
+                });
+            }
+            None => continue,
+        };
+
+        let carrier_phase_cycles = channel
+            .carrier_phase_index
+            .and_then(|index| observations.get(index).copied().flatten())
+            .unwrap_or(0.0);
+        let carrier_phase_present = channel
+            .carrier_phase_index
+            .and_then(|index| observations.get(index).copied().flatten())
+            .is_some();
+        let cn0_dbhz = imported_cn0_dbhz(observations, channel.signal_strength_index);
+        let mut metadata = ObsMetadata::default();
+        metadata.tracking_mode = "rinex_import".to_string();
+        metadata.signal = channel.signal;
+        metadata.tracking_state = "external_file".to_string();
+        metadata.observation_lock_state = "imported".to_string();
+        metadata.pseudorange_model =
+            format!("rinex_observation:{}", channel.pseudorange_type);
+        metadata.carrier_phase_model = channel
+            .carrier_phase_type
+            .as_ref()
+            .map(|observation_type| format!("rinex_observation:{observation_type}"))
+            .unwrap_or_else(|| "unavailable".to_string());
+        metadata.doppler_model = "unavailable".to_string();
+        metadata.time_tag_source = "rinex_epoch_utc".to_string();
+
+        satellites.push(ObsSatellite {
+            signal_id: SigId { sat: satellite, band: channel.band, code: channel.code },
+            pseudorange_m: Meters(pseudorange_m),
+            pseudorange_var_m2: 0.0,
+            carrier_phase_cycles: Cycles(carrier_phase_cycles),
+            carrier_phase_var_cycles2: 0.0,
+            doppler_hz: Hertz(0.0),
+            doppler_var_hz2: 0.0,
+            cn0_dbhz,
+            lock_flags: LockFlags {
+                code_lock: true,
+                carrier_lock: carrier_phase_present,
+                bit_lock: false,
+                cycle_slip: false,
+            },
+            multipath_suspect: false,
+            observation_status: ObservationStatus::Accepted,
+            observation_reject_reasons: Vec::new(),
+            elevation_deg: None,
+            azimuth_deg: None,
+            weight: None,
+            timing: None,
+            error_model: None,
+            metadata,
+        });
+    }
+
+    Ok(satellites)
+}
+
+fn imported_cn0_dbhz(observations: &[Option<f64>], signal_strength_index: Option<usize>) -> f64 {
+    let Some(signal_strength_dbhz) =
+        signal_strength_index.and_then(|index| observations.get(index).copied().flatten())
+    else {
+        return 0.0;
     };
-
-    let carrier_phase_cycles = columns
-        .carrier_phase_index
-        .and_then(|index| observations.get(index).copied().flatten())
-        .unwrap_or(0.0);
-    let carrier_phase_present = columns
-        .carrier_phase_index
-        .and_then(|index| observations.get(index).copied().flatten())
-        .is_some();
-    let cn0_dbhz = columns
-        .signal_strength_index
-        .and_then(|index| observations.get(index).copied().flatten())
-        .unwrap_or(0.0);
-    let mut metadata = ObsMetadata::default();
-    metadata.tracking_mode = "rinex_import".to_string();
-    metadata.signal = signal_spec_gps_l1_ca();
-    metadata.tracking_state = "external_file".to_string();
-    metadata.observation_lock_state = "imported".to_string();
-    metadata.pseudorange_model = format!("rinex_observation:{}", columns.pseudorange_type);
-    metadata.carrier_phase_model = columns
-        .carrier_phase_type
-        .as_ref()
-        .map(|observation_type| format!("rinex_observation:{observation_type}"))
-        .unwrap_or_else(|| "unavailable".to_string());
-    metadata.doppler_model = "unavailable".to_string();
-    metadata.time_tag_source = "rinex_epoch_utc".to_string();
-
-    Ok(Some(ObsSatellite {
-        signal_id: SigId {
-            sat: satellite,
-            band: SignalBand::L1,
-            code: SignalCode::Ca,
-        },
-        pseudorange_m: Meters(pseudorange_m),
-        pseudorange_var_m2: 0.0,
-        carrier_phase_cycles: Cycles(carrier_phase_cycles),
-        carrier_phase_var_cycles2: 0.0,
-        doppler_hz: Hertz(0.0),
-        doppler_var_hz2: 0.0,
-        cn0_dbhz,
-        lock_flags: LockFlags {
-            code_lock: true,
-            carrier_lock: carrier_phase_present,
-            bit_lock: false,
-            cycle_slip: false,
-        },
-        multipath_suspect: false,
-        observation_status: ObservationStatus::Accepted,
-        observation_reject_reasons: Vec::new(),
-        elevation_deg: None,
-        azimuth_deg: None,
-        weight: None,
-        timing: None,
-        error_model: None,
-        metadata,
-    }))
+    if signal_strength_dbhz.is_finite() && (0.0..=80.0).contains(&signal_strength_dbhz) {
+        signal_strength_dbhz
+    } else {
+        0.0
+    }
 }
 
 fn build_obs_epoch(
@@ -699,9 +782,7 @@ fn looks_like_rinex_3_satellite_record(line: &str) -> bool {
 fn parse_satellite_token(token: &str) -> Result<RinexSatelliteToken, ParseError> {
     let trimmed = token.trim();
     if trimmed.is_empty() {
-        return Err(ParseError {
-            message: "empty RINEX OBS satellite token".to_string(),
-        });
+        return Err(ParseError { message: "empty RINEX OBS satellite token".to_string() });
     }
     let (system, constellation, prn_text) = match trimmed.chars().next() {
         Some('G') => ('G', Constellation::Gps, trimmed[1..].trim()),
@@ -773,39 +854,23 @@ fn parse_rinex_float(field: &str) -> Result<f64, ParseError> {
         .trim()
         .replace(['D', 'd'], "E")
         .parse::<f64>()
-        .map_err(|err| ParseError {
-            message: format!("invalid RINEX OBS float '{field}': {err}"),
-        })
+        .map_err(|err| ParseError { message: format!("invalid RINEX OBS float '{field}': {err}") })
 }
 
-fn parse_i32_field(
-    line: &str,
-    start: usize,
-    end: usize,
-    label: &str,
-) -> Result<i32, ParseError> {
+fn parse_i32_field(line: &str, start: usize, end: usize, label: &str) -> Result<i32, ParseError> {
     line.get(start..end)
         .unwrap_or_default()
         .trim()
         .parse::<i32>()
-        .map_err(|err| ParseError {
-            message: format!("invalid {label} '{}': {err}", line.trim()),
-        })
+        .map_err(|err| ParseError { message: format!("invalid {label} '{}': {err}", line.trim()) })
 }
 
-fn parse_u8_field(
-    line: &str,
-    start: usize,
-    end: usize,
-    label: &str,
-) -> Result<u8, ParseError> {
+fn parse_u8_field(line: &str, start: usize, end: usize, label: &str) -> Result<u8, ParseError> {
     line.get(start..end)
         .unwrap_or_default()
         .trim()
         .parse::<u8>()
-        .map_err(|err| ParseError {
-            message: format!("invalid {label} '{}': {err}", line.trim()),
-        })
+        .map_err(|err| ParseError { message: format!("invalid {label} '{}': {err}", line.trim()) })
 }
 
 fn parse_usize_field(
@@ -818,20 +883,12 @@ fn parse_usize_field(
         .unwrap_or_default()
         .trim()
         .parse::<usize>()
-        .map_err(|err| ParseError {
-            message: format!("invalid {label} '{}': {err}", line.trim()),
-        })
+        .map_err(|err| ParseError { message: format!("invalid {label} '{}': {err}", line.trim()) })
 }
 
-fn parse_f64_field(
-    line: &str,
-    start: usize,
-    end: usize,
-    label: &str,
-) -> Result<f64, ParseError> {
-    parse_rinex_float(line.get(start..end).unwrap_or_default()).map_err(|err| ParseError {
-        message: format!("{label}: {}", err.message),
-    })
+fn parse_f64_field(line: &str, start: usize, end: usize, label: &str) -> Result<f64, ParseError> {
+    parse_rinex_float(line.get(start..end).unwrap_or_default())
+        .map_err(|err| ParseError { message: format!("{label}: {}", err.message) })
 }
 
 fn normalize_rinex_2_year(year: i32) -> i32 {
@@ -854,29 +911,20 @@ fn find_observation_type(observation_types: &[String], candidates: &[String]) ->
 }
 
 fn parse_rinex_version(line: &str) -> Result<f64, ParseError> {
-    line.get(..9)
-        .unwrap_or_default()
-        .trim()
-        .parse::<f64>()
-        .map_err(|err| ParseError {
-            message: format!("invalid RINEX OBS version '{}': {err}", line.trim()),
-        })
+    line.get(..9).unwrap_or_default().trim().parse::<f64>().map_err(|err| ParseError {
+        message: format!("invalid RINEX OBS version '{}': {err}", line.trim()),
+    })
 }
 
 fn parse_rinex_2_observation_types(lines: &[&str]) -> Result<(Vec<String>, usize), ParseError> {
     let first_line = lines.first().ok_or_else(|| ParseError {
         message: "missing RINEX OBS observation types line".to_string(),
     })?;
-    let expected_count = first_line
-        .get(..6)
-        .unwrap_or_default()
-        .trim()
-        .parse::<usize>()
-        .map_err(|err| ParseError {
-            message: format!(
-                "invalid RINEX 2 OBS type count '{}': {err}",
-                first_line.trim()
-            ),
+    let expected_count =
+        first_line.get(..6).unwrap_or_default().trim().parse::<usize>().map_err(|err| {
+            ParseError {
+                message: format!("invalid RINEX 2 OBS type count '{}': {err}", first_line.trim()),
+            }
         })?;
     let mut collected = Vec::with_capacity(expected_count);
     let mut consumed_lines = 0usize;
@@ -924,16 +972,11 @@ fn parse_rinex_3_observation_types(
     let system = first_line.chars().next().ok_or_else(|| ParseError {
         message: "missing RINEX 3 observation-system designator".to_string(),
     })?;
-    let expected_count = first_line
-        .get(3..6)
-        .unwrap_or_default()
-        .trim()
-        .parse::<usize>()
-        .map_err(|err| ParseError {
-            message: format!(
-                "invalid RINEX 3 OBS type count '{}': {err}",
-                first_line.trim()
-            ),
+    let expected_count =
+        first_line.get(3..6).unwrap_or_default().trim().parse::<usize>().map_err(|err| {
+            ParseError {
+                message: format!("invalid RINEX 3 OBS type count '{}': {err}", first_line.trim()),
+            }
         })?;
     let mut collected = Vec::with_capacity(expected_count);
     let mut consumed_lines = 0usize;
@@ -985,9 +1028,7 @@ fn parse_three_floats(field: &str, label: &str) -> Result<(f64, f64, f64), Parse
         .split_whitespace()
         .map(str::parse::<f64>)
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|err| ParseError {
-            message: format!("invalid {label}: {err}"),
-        })?;
+        .map_err(|err| ParseError { message: format!("invalid {label}: {err}") })?;
     if values.len() < 3 {
         return Err(ParseError {
             message: format!("{label} requires three numeric fields, found {}", values.len()),
@@ -1000,7 +1041,9 @@ fn parse_three_floats(field: &str, label: &str) -> Result<(f64, f64, f64), Parse
 mod tests {
     use std::path::PathBuf;
 
-    use bijux_gnss_core::api::{Constellation, SatId};
+    use bijux_gnss_core::api::{
+        check_dual_frequency_observations, validate_obs_epochs, Constellation, SatId, SignalBand,
+    };
 
     use super::{parse_rinex_gps_observation_dataset, parse_rinex_observation_header};
 
@@ -1027,10 +1070,7 @@ mod tests {
 
         let gps_observation_types =
             header.gps_observation_types().expect("RINEX 2 observation types present");
-        assert_eq!(
-            gps_observation_types,
-            ["C1", "C2", "C8", "L1", "L2", "L8", "P2"]
-        );
+        assert_eq!(gps_observation_types, ["C1", "C2", "C8", "L1", "L2", "L8", "P2"]);
     }
 
     #[test]
@@ -1038,14 +1078,9 @@ mod tests {
         let data = [
             format!(
                 "{:<60}{}",
-                "     3.04           OBSERVATION DATA    G (GPS)",
-                "RINEX VERSION / TYPE"
+                "     3.04           OBSERVATION DATA    G (GPS)", "RINEX VERSION / TYPE"
             ),
-            format!(
-                "{:<60}{}",
-                "G    5 C1C L1C D1C S1C C5Q",
-                "SYS / # / OBS TYPES"
-            ),
+            format!("{:<60}{}", "G    5 C1C L1C D1C S1C C5Q", "SYS / # / OBS TYPES"),
             format!("{:<60}{}", "", "END OF HEADER"),
         ]
         .join("\n");
@@ -1068,25 +1103,61 @@ mod tests {
         assert!((dataset.version - 2.11).abs() < 1.0e-12);
         assert_eq!(dataset.marker_name.as_deref(), Some("st"));
         assert_eq!(dataset.interval_s, Some(15.0));
-        assert_eq!(dataset.pseudorange_observation_type, "C1");
-        assert_eq!(dataset.carrier_phase_observation_type.as_deref(), Some("L1"));
-        assert_eq!(dataset.signal_strength_observation_type, None);
+        assert_eq!(dataset.observation_channels.len(), 2);
+        assert_eq!(dataset.observation_channels[0].band, SignalBand::L1);
+        assert_eq!(
+            dataset.observation_channels[0].pseudorange_observation_type,
+            "C1"
+        );
+        assert_eq!(
+            dataset.observation_channels[0]
+                .carrier_phase_observation_type
+                .as_deref(),
+            Some("L1")
+        );
+        assert_eq!(dataset.observation_channels[1].band, SignalBand::L2);
+        assert_eq!(
+            dataset.observation_channels[1].pseudorange_observation_type,
+            "P2"
+        );
+        assert_eq!(
+            dataset.observation_channels[1]
+                .carrier_phase_observation_type
+                .as_deref(),
+            Some("L2")
+        );
         assert_eq!(dataset.epochs.len(), 3);
+        validate_obs_epochs(&dataset.epochs).expect("imported dual-frequency epochs must validate");
 
         let first_epoch = &dataset.epochs[0];
         assert_eq!(first_epoch.gps_week, Some(2006));
-        assert_eq!(first_epoch.sats.len(), 5);
+        assert!(first_epoch.sats.len() > 5);
         assert!(first_epoch.valid);
         assert!(!first_epoch.discontinuity);
 
-        let g03 = first_epoch
+        let g03_l1 = first_epoch
             .sats
             .iter()
-            .find(|sat| sat.signal_id.sat == SatId { constellation: Constellation::Gps, prn: 3 })
-            .expect("G03 observation");
-        assert!((g03.pseudorange_m.0 - 22_719_526.844).abs() < 1.0e-6);
-        assert!((g03.carrier_phase_cycles.0 - 119_391_903.878).abs() < 1.0e-6);
-        assert_eq!(g03.timing, None);
+            .find(|sat| {
+                sat.signal_id.sat == SatId { constellation: Constellation::Gps, prn: 3 }
+                    && sat.signal_id.band == SignalBand::L1
+            })
+            .expect("G03 L1 observation");
+        assert!((g03_l1.pseudorange_m.0 - 22_719_526.844).abs() < 1.0e-6);
+        assert!((g03_l1.carrier_phase_cycles.0 - 119_391_903.878).abs() < 1.0e-6);
+        assert_eq!(g03_l1.timing, None);
+
+        let any_l2 = first_epoch
+            .sats
+            .iter()
+            .find(|sat| sat.signal_id.band == SignalBand::L2)
+            .expect("at least one L2 observation");
+        assert!(any_l2.lock_flags.code_lock);
+        assert!(any_l2.lock_flags.carrier_lock);
+
+        let dual_frequency = check_dual_frequency_observations(&dataset.epochs);
+        assert!(dual_frequency.complete_pairs > 0);
+        assert_eq!(dual_frequency.complete_pairs, dual_frequency.l1_l2_pairs);
     }
 
     #[test]
@@ -1094,27 +1165,28 @@ mod tests {
         let data = [
             format!(
                 "{:<60}{}",
-                "     3.04           OBSERVATION DATA    G (GPS)",
-                "RINEX VERSION / TYPE"
+                "     3.04           OBSERVATION DATA    G (GPS)", "RINEX VERSION / TYPE"
             ),
             format!("{:<60}{}", "gps-station", "MARKER NAME"),
-            format!("{:<60}{}", "G    2 C1C L1C", "SYS / # / OBS TYPES"),
+            format!("{:<60}{}", "G    4 C1C L1C C2P L2P", "SYS / # / OBS TYPES"),
             format!("{:<60}{}", "", "END OF HEADER"),
             "> 2022 05 14 00 00 00.0000000  0  2".to_string(),
-            "G01  20345678.123    123456.250".to_string(),
-            "G02  21345678.456    223456.500".to_string(),
+            format!("{:<3}{:>14}  {:>14}  {:>14}  {:>14}", "G01", 20345678.123, 123456.250, 20345680.750, 123450.500),
+            format!("{:<3}{:>14}  {:>14}  {:>14}  {:>14}", "G02", 21345678.456, 223456.500, 21345681.125, 223450.750),
         ]
         .join("\n");
         let dataset =
             parse_rinex_gps_observation_dataset(&data).expect("parse synthetic RINEX 3 data");
 
-        assert_eq!(dataset.pseudorange_observation_type, "C1C");
+        assert_eq!(dataset.observation_channels.len(), 2);
         assert_eq!(dataset.epochs.len(), 1);
-        assert_eq!(dataset.epochs[0].sats.len(), 2);
+        assert_eq!(dataset.epochs[0].sats.len(), 4);
         assert_eq!(
             dataset.epochs[0].sats[0].signal_id.sat,
             SatId { constellation: Constellation::Gps, prn: 1 }
         );
+        let dual_frequency = check_dual_frequency_observations(&dataset.epochs);
+        assert_eq!(dual_frequency.complete_pairs, 2);
     }
 
     #[test]
@@ -1126,15 +1198,23 @@ mod tests {
         assert!((dataset.version - 3.01).abs() < 1.0e-12);
         assert_eq!(dataset.marker_name.as_deref(), Some("MRKR"));
         assert_eq!(dataset.interval_s, Some(30.0));
-        assert_eq!(dataset.pseudorange_observation_type, "C1C");
-        assert_eq!(dataset.carrier_phase_observation_type.as_deref(), Some("L1C"));
-        assert_eq!(dataset.signal_strength_observation_type.as_deref(), None);
+        assert_eq!(dataset.observation_channels.len(), 2);
+        assert_eq!(dataset.observation_channels[0].band, SignalBand::L1);
+        assert_eq!(dataset.observation_channels[1].band, SignalBand::L2);
         assert_eq!(dataset.epochs.len(), 2);
-        assert_eq!(dataset.epochs[0].sats.len(), 10);
-        assert_eq!(
-            dataset.epochs[0].sats[2].signal_id.sat,
-            SatId { constellation: Constellation::Gps, prn: 7 }
-        );
-        assert!((dataset.epochs[0].sats[2].pseudorange_m.0 - 22_227_666.760).abs() < 1.0e-6);
+        validate_obs_epochs(&dataset.epochs).expect("imported mixed-band epochs must validate");
+        assert!(dataset.epochs[0].sats.len() > 10);
+        let g07_l1 = dataset.epochs[0]
+            .sats
+            .iter()
+            .find(|sat| {
+                sat.signal_id.sat == SatId { constellation: Constellation::Gps, prn: 7 }
+                    && sat.signal_id.band == SignalBand::L1
+            })
+            .expect("G07 L1 observation");
+        assert!((g07_l1.pseudorange_m.0 - 22_227_666.760).abs() < 1.0e-6);
+        let dual_frequency = check_dual_frequency_observations(&dataset.epochs);
+        assert!(dual_frequency.complete_pairs > 0);
+        assert_eq!(dual_frequency.complete_pairs, dual_frequency.l1_l2_pairs);
     }
 }

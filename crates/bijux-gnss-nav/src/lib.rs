@@ -30,7 +30,7 @@ pub use crate::estimation::position::solver::{
     PositionSolveRefusalKind,
 };
 pub use crate::formats::rinex_obs::{
-    parse_rinex_gps_observation_dataset, RinexGpsObservationDataset,
+    parse_rinex_gps_observation_dataset, RinexGpsObservationChannel, RinexGpsObservationDataset,
 };
 pub use crate::estimation::position::raim::{
     RaimFaultDetection, RaimFaultDetectionStatus, RaimFaultExclusion,
