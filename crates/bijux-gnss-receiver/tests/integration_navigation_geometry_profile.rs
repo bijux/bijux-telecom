@@ -62,3 +62,106 @@ fn pvt_accuracy_profile_tracks_good_medium_and_poor_geometry() {
         _ => panic!("geometry profile must produce position error measurements: {report:?}"),
     }
 }
+
+#[test]
+fn pvt_accuracy_geometry_profile_improves_with_more_visible_satellites() {
+    let four_satellite_case = build_truth_seeded_navigation_geometry_case(
+        &[3, 7, 11, 19],
+        "navigation_geometry_visibility",
+    );
+    let five_satellite_case = build_truth_seeded_navigation_geometry_case(
+        &[3, 7, 11, 19, 23],
+        "navigation_geometry_visibility",
+    );
+    let six_satellite_case = build_truth_seeded_navigation_geometry_case(
+        &[3, 7, 11, 19, 23, 29],
+        "navigation_geometry_visibility",
+    );
+    let report = summarize_truth_guided_pvt_geometry_profile(
+        &[
+            SyntheticPvtGeometryProfileCase {
+                scenario_id: &four_satellite_case.scenario_id,
+                accuracy: &four_satellite_case.pvt_accuracy,
+            },
+            SyntheticPvtGeometryProfileCase {
+                scenario_id: &six_satellite_case.scenario_id,
+                accuracy: &six_satellite_case.pvt_accuracy,
+            },
+            SyntheticPvtGeometryProfileCase {
+                scenario_id: &five_satellite_case.scenario_id,
+                accuracy: &five_satellite_case.pvt_accuracy,
+            },
+        ],
+        "navigation_geometry_visibility",
+    );
+
+    assert_eq!(report.points.len(), 3);
+    let most_visible = &report.points[0];
+    let intermediate = &report.points[1];
+    let least_visible = &report.points[2];
+    for point in &report.points {
+        assert!(point.ready, "{report:?}");
+        assert!(point.mean_pdop.is_some_and(|pdop| pdop.is_finite() && pdop > 0.0), "{report:?}");
+    }
+    assert!(most_visible.mean_pdop < intermediate.mean_pdop, "{report:?}");
+    assert!(intermediate.mean_pdop < least_visible.mean_pdop, "{report:?}");
+    assert!(most_visible.pass_rate >= least_visible.pass_rate, "{report:?}");
+    match (
+        most_visible.max_position_error_3d_m,
+        intermediate.max_position_error_3d_m,
+        least_visible.max_position_error_3d_m,
+    ) {
+        (Some(most_visible_max), Some(intermediate_max), Some(least_visible_max)) => {
+            assert!(most_visible_max <= least_visible_max, "{report:?}");
+            assert!(intermediate_max <= least_visible_max, "{report:?}");
+        }
+        _ => panic!("visibility profile must produce position error measurements: {report:?}"),
+    }
+}
+
+#[test]
+fn pvt_accuracy_geometry_profile_reports_consistent_pdop_statistics() {
+    let poor_case =
+        build_truth_seeded_navigation_geometry_case(&[7, 11, 19, 23], "navigation_geometry_stats");
+    let medium_case =
+        build_truth_seeded_navigation_geometry_case(&[3, 7, 11, 19], "navigation_geometry_stats");
+    let good_case = build_truth_seeded_navigation_geometry_case(
+        &[3, 7, 11, 19, 23],
+        "navigation_geometry_stats",
+    );
+    let report = summarize_truth_guided_pvt_geometry_profile(
+        &[
+            SyntheticPvtGeometryProfileCase {
+                scenario_id: &poor_case.scenario_id,
+                accuracy: &poor_case.pvt_accuracy,
+            },
+            SyntheticPvtGeometryProfileCase {
+                scenario_id: &good_case.scenario_id,
+                accuracy: &good_case.pvt_accuracy,
+            },
+            SyntheticPvtGeometryProfileCase {
+                scenario_id: &medium_case.scenario_id,
+                accuracy: &medium_case.pvt_accuracy,
+            },
+        ],
+        "navigation_geometry_stats",
+    );
+
+    assert_eq!(report.points.len(), 3);
+    for point in &report.points {
+        match (point.min_pdop, point.mean_pdop, point.max_pdop) {
+            (Some(min_pdop), Some(mean_pdop), Some(max_pdop)) => {
+                assert!(min_pdop > 0.0, "{report:?}");
+                assert!(min_pdop <= mean_pdop, "{report:?}");
+                assert!(mean_pdop <= max_pdop, "{report:?}");
+            }
+            _ => panic!("geometry profile must report finite PDOP statistics: {report:?}"),
+        }
+    }
+
+    let good = &report.points[0];
+    let medium = &report.points[1];
+    let poor = &report.points[2];
+    assert!(good.max_pdop < medium.max_pdop, "{report:?}");
+    assert!(medium.max_pdop < poor.max_pdop, "{report:?}");
+}
