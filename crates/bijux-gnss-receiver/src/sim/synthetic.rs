@@ -522,6 +522,17 @@ pub struct SyntheticReceiverAccuracyBudgets {
     pub pvt: SyntheticPvtAccuracyBudget,
 }
 
+/// Machine-checkable reason a stage accuracy report lacks sufficient synthetic truth coverage.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SyntheticTruthCoverageIssue {
+    /// Satellite identifier when the issue is scoped to one tracked satellite.
+    pub sat: Option<SatId>,
+    /// Navigation epoch index when the issue is scoped to one solution epoch.
+    pub epoch_index: Option<u64>,
+    /// Stable issue code describing the missing or incomplete truth coverage.
+    pub code: String,
+}
+
 /// Per-satellite acquisition budget outcome.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticAcquisitionAccuracySatellite {
@@ -548,6 +559,10 @@ pub struct SyntheticAcquisitionAccuracyReport {
     pub satellite_count: usize,
     /// Number of satellites that satisfied the budget.
     pub passing_satellite_count: usize,
+    /// Whether this report had enough synthetic truth coverage to make a hard accuracy claim.
+    pub truth_coverage_ready: bool,
+    /// Machine-checkable truth-coverage issues that forced or should force validation failure.
+    pub truth_coverage_issues: Vec<SyntheticTruthCoverageIssue>,
     /// Whether every measured satellite satisfied the budget.
     pub pass: bool,
     /// Per-satellite budget outcomes.
@@ -590,6 +605,10 @@ pub struct SyntheticTrackingAccuracyReport {
     pub satellite_count: usize,
     /// Number of satellites that satisfied the budget.
     pub passing_satellite_count: usize,
+    /// Whether this report had enough synthetic truth coverage to make a hard accuracy claim.
+    pub truth_coverage_ready: bool,
+    /// Machine-checkable truth-coverage issues that forced or should force validation failure.
+    pub truth_coverage_issues: Vec<SyntheticTruthCoverageIssue>,
     /// Whether every measured satellite satisfied the budget.
     pub pass: bool,
     /// Per-satellite budget outcomes.
@@ -630,6 +649,10 @@ pub struct SyntheticObservationAccuracyReport {
     pub satellite_count: usize,
     /// Number of satellites that satisfied the budget.
     pub passing_satellite_count: usize,
+    /// Whether this report had enough synthetic truth coverage to make a hard accuracy claim.
+    pub truth_coverage_ready: bool,
+    /// Machine-checkable truth-coverage issues that forced or should force validation failure.
+    pub truth_coverage_issues: Vec<SyntheticTruthCoverageIssue>,
     /// Whether every measured satellite satisfied the budget.
     pub pass: bool,
     /// Per-satellite budget outcomes.
@@ -670,6 +693,10 @@ pub struct SyntheticPvtAccuracyReport {
     pub epoch_count: usize,
     /// Number of epochs that satisfied the budget.
     pub passing_epoch_count: usize,
+    /// Whether this report had enough synthetic truth coverage to make a hard accuracy claim.
+    pub truth_coverage_ready: bool,
+    /// Machine-checkable truth-coverage issues that forced or should force validation failure.
+    pub truth_coverage_issues: Vec<SyntheticTruthCoverageIssue>,
     /// Whether every matched epoch satisfied the budget.
     pub pass: bool,
     /// Per-epoch budget outcomes.
@@ -744,6 +771,130 @@ fn summarize_observation_errors(errors: &[f64]) -> Option<SyntheticObservationEr
         p95_abs_error: absolute.p95,
         max_abs_error: absolute.max,
     })
+}
+
+fn truth_coverage_issue(
+    sat: Option<SatId>,
+    epoch_index: Option<u64>,
+    code: impl Into<String>,
+) -> SyntheticTruthCoverageIssue {
+    SyntheticTruthCoverageIssue { sat, epoch_index, code: code.into() }
+}
+
+fn acquisition_truth_coverage_issues(
+    report: &SyntheticAcquisitionTruthTableReport,
+) -> Vec<SyntheticTruthCoverageIssue> {
+    let mut issues = Vec::new();
+    if report.satellites.is_empty() {
+        issues.push(truth_coverage_issue(None, None, "no_truth_satellites"));
+    }
+    for satellite in &report.satellites {
+        if !satellite.expected_measured_doppler_hz.is_finite() {
+            issues.push(truth_coverage_issue(
+                Some(satellite.sat),
+                None,
+                "non_finite_expected_doppler_truth",
+            ));
+        }
+        if !satellite.measured_doppler_hz.is_finite() {
+            issues.push(truth_coverage_issue(
+                Some(satellite.sat),
+                None,
+                "non_finite_measured_doppler",
+            ));
+        }
+    }
+    issues
+}
+
+fn tracking_truth_coverage_issues(
+    report: &SyntheticTrackingTruthTableReport,
+) -> Vec<SyntheticTruthCoverageIssue> {
+    let mut issues = Vec::new();
+    if report.satellites.is_empty() {
+        issues.push(truth_coverage_issue(None, None, "no_truth_satellites"));
+    }
+    for satellite in &report.satellites {
+        if satellite.epoch_count == 0 {
+            issues.push(truth_coverage_issue(
+                Some(satellite.sat),
+                None,
+                "no_tracking_epochs",
+            ));
+        }
+        if satellite.stable_epoch_count == 0 {
+            issues.push(truth_coverage_issue(
+                Some(satellite.sat),
+                None,
+                "no_stable_tracking_truth_epochs",
+            ));
+        }
+    }
+    issues
+}
+
+fn observation_truth_coverage_issues(
+    report: &SyntheticObservationValidationReport,
+) -> Vec<SyntheticTruthCoverageIssue> {
+    let mut issues = Vec::new();
+    if report.satellites.is_empty() {
+        issues.push(truth_coverage_issue(None, None, "no_truth_satellites"));
+    }
+    for satellite in &report.satellites {
+        if satellite.pseudorange_error_m.is_none() {
+            issues.push(truth_coverage_issue(
+                Some(satellite.sat),
+                None,
+                "missing_pseudorange_truth",
+            ));
+        }
+        if satellite.carrier_phase_error_cycles.is_none() {
+            issues.push(truth_coverage_issue(
+                Some(satellite.sat),
+                None,
+                "missing_carrier_phase_truth",
+            ));
+        }
+        if satellite.doppler_error_hz.is_none() {
+            issues.push(truth_coverage_issue(
+                Some(satellite.sat),
+                None,
+                "missing_doppler_truth",
+            ));
+        }
+        if satellite.cn0_error_db_hz.is_none() {
+            issues.push(truth_coverage_issue(Some(satellite.sat), None, "missing_cn0_truth"));
+        }
+        for note in &satellite.notes {
+            issues.push(truth_coverage_issue(Some(satellite.sat), None, note.clone()));
+        }
+    }
+    issues
+}
+
+fn pvt_truth_coverage_issues(report: &SyntheticPvtTruthTableReport) -> Vec<SyntheticTruthCoverageIssue> {
+    let mut issues = Vec::new();
+    if report.solution_count == 0 {
+        issues.push(truth_coverage_issue(None, None, "no_navigation_solutions"));
+    }
+    if report.matched_epoch_count == 0 {
+        issues.push(truth_coverage_issue(None, None, "no_matched_truth_epochs"));
+    }
+    for epoch_index in &report.unmatched_solution_epochs {
+        issues.push(truth_coverage_issue(
+            None,
+            Some(*epoch_index),
+            "unmatched_solution_epoch",
+        ));
+    }
+    for epoch_index in &report.unused_reference_epochs {
+        issues.push(truth_coverage_issue(
+            None,
+            Some(*epoch_index),
+            "unused_truth_reference_epoch",
+        ));
+    }
+    issues
 }
 
 struct ObservedSatelliteRow<'a> {
@@ -991,6 +1142,8 @@ pub fn validate_acquisition_accuracy_budget(
     report: &SyntheticAcquisitionTruthTableReport,
     budget: SyntheticAcquisitionAccuracyBudget,
 ) -> SyntheticAcquisitionAccuracyReport {
+    let truth_coverage_issues = acquisition_truth_coverage_issues(report);
+    let truth_coverage_ready = truth_coverage_issues.is_empty();
     let satellites = report
         .satellites
         .iter()
@@ -1014,7 +1167,11 @@ pub fn validate_acquisition_accuracy_budget(
         max_code_phase_error_samples: budget.max_code_phase_error_samples,
         satellite_count: satellites.len(),
         passing_satellite_count,
-        pass: !satellites.is_empty() && passing_satellite_count == satellites.len(),
+        truth_coverage_ready,
+        truth_coverage_issues,
+        pass: truth_coverage_ready
+            && !satellites.is_empty()
+            && passing_satellite_count == satellites.len(),
         satellites,
     }
 }
@@ -1024,6 +1181,8 @@ pub fn validate_tracking_accuracy_budget(
     report: &SyntheticTrackingTruthTableReport,
     budget: SyntheticTrackingAccuracyBudget,
 ) -> SyntheticTrackingAccuracyReport {
+    let truth_coverage_issues = tracking_truth_coverage_issues(report);
+    let truth_coverage_ready = truth_coverage_issues.is_empty();
     let satellites = report
         .satellites
         .iter()
@@ -1071,7 +1230,11 @@ pub fn validate_tracking_accuracy_budget(
         max_cn0_error_db_hz: budget.max_cn0_error_db_hz,
         satellite_count: satellites.len(),
         passing_satellite_count,
-        pass: !satellites.is_empty() && passing_satellite_count == satellites.len(),
+        truth_coverage_ready,
+        truth_coverage_issues,
+        pass: truth_coverage_ready
+            && !satellites.is_empty()
+            && passing_satellite_count == satellites.len(),
         satellites,
     }
 }
@@ -1081,6 +1244,8 @@ pub fn validate_observation_accuracy_budget(
     report: &SyntheticObservationValidationReport,
     budget: SyntheticObservationAccuracyBudget,
 ) -> SyntheticObservationAccuracyReport {
+    let truth_coverage_issues = observation_truth_coverage_issues(report);
+    let truth_coverage_ready = truth_coverage_issues.is_empty();
     let satellites = report
         .satellites
         .iter()
@@ -1130,7 +1295,11 @@ pub fn validate_observation_accuracy_budget(
         max_cn0_error_db_hz: budget.max_cn0_error_db_hz,
         satellite_count: satellites.len(),
         passing_satellite_count,
-        pass: !satellites.is_empty() && passing_satellite_count == satellites.len(),
+        truth_coverage_ready,
+        truth_coverage_issues,
+        pass: truth_coverage_ready
+            && !satellites.is_empty()
+            && passing_satellite_count == satellites.len(),
         satellites,
     }
 }
@@ -1140,6 +1309,8 @@ pub fn validate_pvt_accuracy_budget(
     report: &SyntheticPvtTruthTableReport,
     budget: SyntheticPvtAccuracyBudget,
 ) -> SyntheticPvtAccuracyReport {
+    let truth_coverage_issues = pvt_truth_coverage_issues(report);
+    let truth_coverage_ready = truth_coverage_issues.is_empty();
     let epochs = report
         .epochs
         .iter()
@@ -1171,7 +1342,9 @@ pub fn validate_pvt_accuracy_budget(
         max_pdop: budget.max_pdop,
         epoch_count: epochs.len(),
         passing_epoch_count,
-        pass: !epochs.is_empty() && passing_epoch_count == epochs.len(),
+        truth_coverage_ready,
+        truth_coverage_issues,
+        pass: truth_coverage_ready && !epochs.is_empty() && passing_epoch_count == epochs.len(),
         epochs,
     }
 }
