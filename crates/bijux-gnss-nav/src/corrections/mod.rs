@@ -3,6 +3,7 @@
 pub mod atmosphere;
 pub mod biases;
 pub mod combinations;
+pub mod geometry_free;
 
 #[derive(Debug, Clone)]
 pub struct CorrectionContext;

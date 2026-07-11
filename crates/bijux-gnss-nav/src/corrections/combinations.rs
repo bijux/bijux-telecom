@@ -17,6 +17,7 @@ pub struct CombinationObservation {
     pub f2_hz: f64,
     pub if_code_m: Option<f64>,
     pub if_phase_m: Option<f64>,
+    pub geometry_free_phase_m: Option<f64>,
     pub wide_lane_cycles: Option<f64>,
     pub narrow_lane_cycles: Option<f64>,
     pub melbourne_wubbena_m: Option<f64>,
@@ -65,7 +66,7 @@ pub fn combinations_from_obs_epochs(
             }
             let f1_hz = s1.map(|s| s.metadata.signal.carrier_hz.value()).unwrap_or(0.0);
             let f2_hz = s2.map(|s| s.metadata.signal.carrier_hz.value()).unwrap_or(0.0);
-            let (mut if_code_m, mut if_phase_m) = (None, None);
+            let (mut if_code_m, mut if_phase_m, mut geometry_free_phase_m) = (None, None, None);
             let (mut wide_lane_cycles, mut narrow_lane_cycles, mut mw_m) = (None, None, None);
             if let (Some(s1), Some(s2)) = (s1, s2) {
                 if !s1.lock_flags.code_lock
@@ -93,6 +94,7 @@ pub fn combinations_from_obs_epochs(
 
                     if_code_m = Some((f1_2 * p1 - f2_2 * p2) / denom);
                     if_phase_m = Some((f1_2 * phi1_m - f2_2 * phi2_m) / denom);
+                    geometry_free_phase_m = Some(phi1_m - phi2_m);
 
                     let lambda_wl = SPEED_OF_LIGHT_MPS / (f1_hz - f2_hz).abs().max(1.0);
                     let lambda_nl = SPEED_OF_LIGHT_MPS / (f1_hz + f2_hz).max(1.0);
@@ -112,6 +114,7 @@ pub fn combinations_from_obs_epochs(
                 f2_hz,
                 if_code_m,
                 if_phase_m,
+                geometry_free_phase_m,
                 wide_lane_cycles,
                 narrow_lane_cycles,
                 melbourne_wubbena_m: mw_m,

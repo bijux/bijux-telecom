@@ -11,6 +11,10 @@ pub use crate::corrections::atmosphere::{clamp_ztd, AtmosphereConfig};
 pub use crate::corrections::biases::{CodeBiasProvider, PhaseBiasProvider, ZeroBiases};
 /// Corrections and combination helpers.
 pub use crate::corrections::combinations::combinations_from_obs_epochs;
+pub use crate::corrections::geometry_free::{
+    geometry_free_diagnostics_from_obs_epochs, GeometryFreeEvent, GeometryFreeObservation,
+    GeometryFreeThresholds,
+};
 pub use crate::corrections::{compute_corrections, CorrectionContext, Corrections};
 pub use crate::estimation::ekf::models::{
     AmbiguityManager, CarrierPhaseMeasurement, DopplerMeasurement, InterSystemBiasManager,
@@ -59,8 +63,7 @@ pub use crate::formats::{clk::ClkProvider, sp3::Sp3Provider};
 pub use crate::linalg::Matrix;
 /// Atmospheric model scaffolding.
 pub use crate::models::atmosphere::{
-    IonosphereModel, KlobucharCoefficients, KlobucharModel, SaastamoinenModel,
-    TroposphereModel,
+    IonosphereModel, KlobucharCoefficients, KlobucharModel, SaastamoinenModel, TroposphereModel,
 };
 /// Ephemeris provider traits and helpers.
 pub use crate::orbits::ephemeris::{CsvEphemerisProvider, Ephemeris, EphemerisProvider};
