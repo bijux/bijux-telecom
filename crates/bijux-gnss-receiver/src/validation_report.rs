@@ -16,8 +16,9 @@ use bijux_gnss_core::api::{
 };
 use bijux_gnss_nav::api::{
     combinations_from_obs_epochs, ecef_to_enu, geometry_free_diagnostics_from_obs_epochs,
-    GeometryFreeEvent, GeometryFreeThresholds, PppConfig, PppConvergenceConfig, PppProcessNoise,
-    WeightingConfig,
+    melbourne_wubbena_diagnostics_from_obs_epochs, GeometryFreeEvent, GeometryFreeThresholds,
+    MelbourneWubbenaEvent, MelbourneWubbenaThresholds, PppConfig, PppConvergenceConfig,
+    PppProcessNoise, WeightingConfig,
 };
 use serde::{Deserialize, Serialize};
 
@@ -108,6 +109,25 @@ pub struct GeometryFreeReport {
     pub cycle_slip_suspects: usize,
     /// Largest absolute geometry-free delta observed on a continuous arc.
     pub max_abs_delta_m: Option<f64>,
+}
+
+/// Melbourne-Wubbena behavior summary derived from dual-frequency observation pairs.
+#[derive(Debug, Serialize)]
+pub struct MelbourneWubbenaReport {
+    /// Total Melbourne-Wubbena observations evaluated across supported band pairs.
+    pub observations: usize,
+    /// Observations with complete, valid dual-frequency combinations.
+    pub complete_pairs: usize,
+    /// Observations unavailable because the dual-frequency pair was incomplete or invalid.
+    pub unavailable: usize,
+    /// Valid observations that started a new per-satellite Melbourne-Wubbena arc.
+    pub insufficient_history: usize,
+    /// Valid observations whose wide-lane delta stayed below the slip threshold.
+    pub nominal: usize,
+    /// Valid observations whose wide-lane delta reflected a likely slip.
+    pub wide_lane_slip_suspects: usize,
+    /// Largest absolute Melbourne-Wubbena delta observed in wide-lane cycles.
+    pub max_abs_delta_wide_lane_cycles: Option<f64>,
 }
 
 /// Time consistency report for tracking epochs.
@@ -337,6 +357,8 @@ pub struct ValidationReport {
     pub dual_frequency_observations: DualFrequencyObservationReport,
     /// Geometry-free behavior summary for supported dual-frequency pairs.
     pub geometry_free: GeometryFreeReport,
+    /// Melbourne-Wubbena behavior summary for supported dual-frequency pairs.
+    pub melbourne_wubbena: MelbourneWubbenaReport,
     /// PPP readiness report.
     pub ppp_readiness: PppReadinessReport,
     /// Scientific policy used when classifying outputs.
@@ -520,6 +542,7 @@ pub fn build_validation_report_with_budgets(
     let inter_frequency_alignment = check_inter_frequency_alignment(obs);
     let dual_frequency_observations = check_dual_frequency_observations(obs);
     let geometry_free = geometry_free_report(obs, &dual_frequency_observations);
+    let melbourne_wubbena = melbourne_wubbena_report(obs, &dual_frequency_observations);
     let multi_freq_present = dual_frequency_observations.observed_pairs > 0;
     let combinations_valid = dual_frequency_combinations_valid(obs, &dual_frequency_observations);
     let support_matrix = support_status_matrix();
@@ -610,6 +633,7 @@ pub fn build_validation_report_with_budgets(
         inter_frequency_alignment,
         dual_frequency_observations,
         geometry_free,
+        melbourne_wubbena,
         ppp_readiness: PppReadinessReport {
             multi_freq_present,
             combinations_valid,
@@ -753,6 +777,66 @@ fn geometry_free_report(
         ionosphere_drift,
         cycle_slip_suspects,
         max_abs_delta_m,
+    }
+}
+
+fn melbourne_wubbena_report(
+    obs: &[ObsEpoch],
+    dual_frequency_observations: &DualFrequencyObservationReport,
+) -> MelbourneWubbenaReport {
+    let mut observations = 0usize;
+    let mut complete_pairs = 0usize;
+    let mut unavailable = 0usize;
+    let mut insufficient_history = 0usize;
+    let mut nominal = 0usize;
+    let mut wide_lane_slip_suspects = 0usize;
+    let mut max_abs_delta_wide_lane_cycles: Option<f64> = None;
+
+    for (band_1, band_2) in [(SignalBand::L1, SignalBand::L2), (SignalBand::L1, SignalBand::L5)] {
+        let filtered_epochs =
+            dual_frequency_pair_epochs(obs, dual_frequency_observations, band_1, band_2);
+        if filtered_epochs.is_empty() {
+            continue;
+        }
+
+        for diagnostic in melbourne_wubbena_diagnostics_from_obs_epochs(
+            &filtered_epochs,
+            band_1,
+            band_2,
+            MelbourneWubbenaThresholds::default(),
+        ) {
+            observations += 1;
+            if diagnostic.status == "ok" {
+                complete_pairs += 1;
+            } else {
+                unavailable += 1;
+            }
+
+            if let Some(delta_cycles) = diagnostic.delta_from_previous_wide_lane_cycles {
+                let abs_delta_cycles = delta_cycles.abs();
+                max_abs_delta_wide_lane_cycles = Some(
+                    max_abs_delta_wide_lane_cycles
+                        .map_or(abs_delta_cycles, |current| current.max(abs_delta_cycles)),
+                );
+            }
+
+            match diagnostic.event {
+                MelbourneWubbenaEvent::Unavailable => {}
+                MelbourneWubbenaEvent::InsufficientHistory => insufficient_history += 1,
+                MelbourneWubbenaEvent::Nominal => nominal += 1,
+                MelbourneWubbenaEvent::WideLaneSlipSuspect => wide_lane_slip_suspects += 1,
+            }
+        }
+    }
+
+    MelbourneWubbenaReport {
+        observations,
+        complete_pairs,
+        unavailable,
+        insufficient_history,
+        nominal,
+        wide_lane_slip_suspects,
+        max_abs_delta_wide_lane_cycles,
     }
 }
 
@@ -1569,6 +1653,85 @@ mod tests {
         assert_eq!(report.geometry_free.ionosphere_drift, 1);
         assert_eq!(report.geometry_free.cycle_slip_suspects, 1);
         assert!(report.geometry_free.max_abs_delta_m.expect("max delta") > 0.2);
+    }
+
+    #[test]
+    fn validation_report_summarizes_melbourne_wubbena_dynamics() {
+        let report = build_validation_report(
+            &[],
+            &[
+                dual_frequency_epoch(
+                    60,
+                    vec![
+                        dual_frequency_satellite_with_phase(
+                            SignalBand::L1,
+                            SignalCode::Ca,
+                            21_999_999.0,
+                        ),
+                        dual_frequency_satellite_with_phase(
+                            SignalBand::L2,
+                            SignalCode::Py,
+                            22_000_000.5,
+                        ),
+                    ],
+                ),
+                dual_frequency_epoch(
+                    61,
+                    vec![
+                        dual_frequency_satellite_with_phase(
+                            SignalBand::L1,
+                            SignalCode::Ca,
+                            21_999_999.01,
+                        ),
+                        dual_frequency_satellite_with_phase(
+                            SignalBand::L2,
+                            SignalCode::Py,
+                            22_000_000.49,
+                        ),
+                    ],
+                ),
+                dual_frequency_epoch(
+                    62,
+                    vec![
+                        dual_frequency_satellite_with_phase(
+                            SignalBand::L1,
+                            SignalCode::Ca,
+                            22_000_005.5,
+                        ),
+                        dual_frequency_satellite_with_phase(
+                            SignalBand::L2,
+                            SignalCode::Py,
+                            22_000_000.5,
+                        ),
+                    ],
+                ),
+            ],
+            &[
+                fixture_solution(60, 1.0, 0.5, 4),
+                fixture_solution(61, 1.0, 0.5, 4),
+                fixture_solution(62, 1.0, 0.5, 4),
+            ],
+            &[],
+            1.0,
+            true,
+            Vec::new(),
+            ValidationSciencePolicy::default(),
+        )
+        .expect("validation report");
+
+        assert_eq!(report.melbourne_wubbena.observations, 3);
+        assert_eq!(report.melbourne_wubbena.complete_pairs, 3);
+        assert_eq!(report.melbourne_wubbena.unavailable, 0);
+        assert_eq!(report.melbourne_wubbena.insufficient_history, 1);
+        assert_eq!(report.melbourne_wubbena.nominal, 1);
+        assert_eq!(report.melbourne_wubbena.wide_lane_slip_suspects, 1);
+        assert!(
+            report
+                .melbourne_wubbena
+                .max_abs_delta_wide_lane_cycles
+                .expect("max wide-lane delta")
+                >= 0.5
+        );
     }
 
     #[derive(Debug, Deserialize)]
