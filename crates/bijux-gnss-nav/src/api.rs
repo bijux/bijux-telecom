@@ -15,6 +15,9 @@ pub use crate::corrections::geometry_free::{
     geometry_free_diagnostics_from_obs_epochs, GeometryFreeEvent, GeometryFreeObservation,
     GeometryFreeThresholds,
 };
+pub use crate::corrections::iono_free_code::{
+    iono_free_code_from_obs_epochs, IonoFreeCodeObservation,
+};
 pub use crate::corrections::melbourne_wubbena::{
     melbourne_wubbena_diagnostics_from_obs_epochs, MelbourneWubbenaEvent,
     MelbourneWubbenaObservation, MelbourneWubbenaThresholds,

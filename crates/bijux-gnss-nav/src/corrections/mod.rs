@@ -4,6 +4,7 @@ pub mod atmosphere;
 pub mod biases;
 pub mod combinations;
 pub mod geometry_free;
+pub mod iono_free_code;
 pub mod melbourne_wubbena;
 
 #[derive(Debug, Clone)]
