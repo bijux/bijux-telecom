@@ -46,15 +46,12 @@ pub struct CleanSyntheticNavigationRun {
 }
 
 pub fn clean_synthetic_navigation_run() -> CleanSyntheticNavigationRun {
+    navigation_run(clean_synthetic_pvt_scenario())
+}
+
+fn navigation_run(profile: CleanSyntheticPvtScenario) -> CleanSyntheticNavigationRun {
     let config = clean_synthetic_navigation_config();
-    let profile = clean_synthetic_pvt_scenario();
-    let tracking_results = profile
-        .satellites
-        .iter()
-        .map(|satellite| {
-            synthetic_truth_track(&config, &satellite.signal, satellite.whole_code_periods)
-        })
-        .collect::<Vec<_>>();
+    let tracking_results = tracking_results_for_profile(&config, &profile);
     let capture_start_gps_time = profile
         .ephemerides
         .first()
@@ -87,6 +84,17 @@ pub fn clean_synthetic_navigation_run() -> CleanSyntheticNavigationRun {
         solutions,
         reference_epochs,
     }
+}
+
+fn tracking_results_for_profile(
+    config: &ReceiverPipelineConfig,
+    profile: &CleanSyntheticPvtScenario,
+) -> Vec<TrackingResult> {
+    profile
+        .satellites
+        .iter()
+        .map(|satellite| synthetic_truth_track(config, &satellite.signal, satellite.whole_code_periods))
+        .collect()
 }
 
 pub fn clean_synthetic_pvt_budgets() -> ValidationBudgets {
