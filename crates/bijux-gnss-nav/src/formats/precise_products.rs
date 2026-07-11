@@ -7,18 +7,23 @@ use crate::orbits::gps::{
     GpsSatState, GpsSatelliteClockCorrection,
 };
 
-use crate::formats::clk::ClkProvider;
+use crate::formats::clk::{ClkInterpolationSummary, ClkProvider};
 use crate::formats::sp3::{Sp3InterpolationSummary, Sp3Provider};
 
 #[derive(Debug, Clone)]
 pub struct ProductDiagnostics {
     pub fallbacks: Vec<String>,
     pub sp3_interpolation_summary: Option<Sp3InterpolationSummary>,
+    pub clk_interpolation_summary: Option<ClkInterpolationSummary>,
 }
 
 impl ProductDiagnostics {
     pub fn new() -> Self {
-        Self { fallbacks: Vec::new(), sp3_interpolation_summary: None }
+        Self {
+            fallbacks: Vec::new(),
+            sp3_interpolation_summary: None,
+            clk_interpolation_summary: None,
+        }
     }
 
     pub fn fallback(&mut self, msg: impl Into<String>) {
@@ -27,6 +32,10 @@ impl ProductDiagnostics {
 
     pub fn precise_orbit_interpolation(&mut self, summary: Sp3InterpolationSummary) {
         self.sp3_interpolation_summary = Some(summary);
+    }
+
+    pub fn precise_clock_interpolation(&mut self, summary: ClkInterpolationSummary) {
+        self.clk_interpolation_summary = Some(summary);
     }
 }
 
@@ -161,6 +170,9 @@ impl ProductsProvider for Products {
             if let Some((start, end)) = clk.coverage_s(sat) {
                 if t_s >= start && t_s <= end {
                     if let Some(bias) = clk.bias_s(sat, t_s) {
+                        if let Some(summary) = clk.interpolation_summary(sat) {
+                            diag.precise_clock_interpolation(summary);
+                        }
                         return Some(GpsSatelliteClockCorrection::from_bias_s(bias));
                     }
                 } else {
