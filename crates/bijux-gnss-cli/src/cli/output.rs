@@ -497,13 +497,14 @@ fn write_nav_solution_outputs(
     Ok(())
 }
 
-fn write_track_timeseries(
+fn write_track_timeseries_for_command(
     common: &CommonArgs,
+    command: &str,
     report: &TrackingReport,
     profile: &ReceiverConfig,
     dataset: Option<&DatasetEntry>,
 ) -> Result<()> {
-    let out_dir = artifacts_dir(common, "track", dataset)?;
+    let out_dir = artifacts_dir(common, command, dataset)?;
     let header = artifact_header(common, profile, dataset)?;
     let path = out_dir.join("track.jsonl");
     let mut lines = Vec::new();
@@ -562,15 +563,25 @@ fn write_track_timeseries(
     Ok(())
 }
 
-fn write_obs_timeseries(
+fn write_track_timeseries(
     common: &CommonArgs,
+    report: &TrackingReport,
+    profile: &ReceiverConfig,
+    dataset: Option<&DatasetEntry>,
+) -> Result<()> {
+    write_track_timeseries_for_command(common, "track", report, profile, dataset)
+}
+
+fn write_obs_timeseries_for_command(
+    common: &CommonArgs,
+    command: &str,
     config: &ReceiverPipelineConfig,
     tracks: &[bijux_gnss_infra::api::receiver::TrackingResult],
     hatch_window: u32,
     profile: &ReceiverConfig,
     dataset: Option<&DatasetEntry>,
-) -> Result<()> {
-    let out_dir = artifacts_dir(common, "track", dataset)?;
+) -> Result<Vec<ObsEpoch>> {
+    let out_dir = artifacts_dir(common, command, dataset)?;
     let header = artifact_header(common, profile, dataset)?;
     let runtime = runtime_config_from_env(common, None);
     let obs_report = bijux_gnss_infra::api::receiver::observation_artifacts_from_tracking_results_with_gps_anchor(
@@ -636,6 +647,40 @@ fn write_obs_timeseries(
         fs::write(&combo_path, combo_lines.join("\n"))?;
         validate_jsonl_schema(&schema_path("combinations.schema.json"), &combo_path, false)?;
     }
+    Ok(obs)
+}
+
+fn write_obs_timeseries(
+    common: &CommonArgs,
+    config: &ReceiverPipelineConfig,
+    tracks: &[bijux_gnss_infra::api::receiver::TrackingResult],
+    hatch_window: u32,
+    profile: &ReceiverConfig,
+    dataset: Option<&DatasetEntry>,
+) -> Result<Vec<ObsEpoch>> {
+    write_obs_timeseries_for_command(common, "track", config, tracks, hatch_window, profile, dataset)
+}
+
+fn write_tracking_timing_for_command(
+    common: &CommonArgs,
+    command: &str,
+    tracks: &[bijux_gnss_infra::api::receiver::TrackingResult],
+    dataset: Option<&DatasetEntry>,
+) -> Result<()> {
+    let timing_path = artifacts_dir(common, command, dataset)?.join("timing.jsonl");
+    let mut timing_lines = Vec::new();
+    for track in tracks {
+        for epoch in &track.epochs {
+            if let Some(ms) = epoch.processing_ms {
+                timing_lines.push(serde_json::to_string(&serde_json::json!({
+                    "epoch_idx": epoch.epoch.index,
+                    "stage": "tracking",
+                    "processing_ms": ms
+                }))?);
+            }
+        }
+    }
+    fs::write(&timing_path, timing_lines.join("\n"))?;
     Ok(())
 }
 
