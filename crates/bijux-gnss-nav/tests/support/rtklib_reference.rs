@@ -61,8 +61,8 @@ fn parse_rtklib_single_reference(data: &str) -> Result<Vec<RtkLibReferenceEpoch>
                 let epoch = current_epoch.as_mut().ok_or_else(|| {
                     format!("RTKLIB reference line {line_number} declares residual before position")
                 })?;
-                let (gps_time, quality_flag, residual) = parse_sat_line(line_number, &fields)?;
-                ensure_epoch_alignment(line_number, epoch, gps_time, quality_flag)?;
+                let (gps_time, residual) = parse_sat_line(line_number, &fields)?;
+                ensure_epoch_time_alignment(line_number, epoch, gps_time)?;
                 epoch.residuals.push(residual);
             }
             other => {
@@ -128,7 +128,7 @@ fn parse_clk_line(line_number: usize, fields: &[&str]) -> Result<(GpsTime, u8, f
 fn parse_sat_line(
     line_number: usize,
     fields: &[&str],
-) -> Result<(GpsTime, u8, RtkLibReferenceResidual), String> {
+) -> Result<(GpsTime, RtkLibReferenceResidual), String> {
     if fields.len() < 11 {
         return Err(format!(
             "RTKLIB $SAT line {line_number} expected at least 11 fields, found {}",
@@ -141,7 +141,6 @@ fn parse_sat_line(
             week: parse_u32_field(line_number, "$SAT week", fields[1])?,
             tow_s: parse_f64_field(line_number, "$SAT tow_s", fields[2])?,
         },
-        parse_u8_field(line_number, "$SAT quality_flag", fields[4])?,
         RtkLibReferenceResidual {
             sat: parse_sat_token(line_number, fields[3])?,
             azimuth_deg: parse_f64_field(line_number, "$SAT azimuth_deg", fields[5])?,
@@ -168,6 +167,20 @@ fn ensure_epoch_alignment(
         return Err(format!(
             "RTKLIB reference line {line_number} quality flag {quality_flag} does not match active epoch {}",
             epoch.quality_flag
+        ));
+    }
+    Ok(())
+}
+
+fn ensure_epoch_time_alignment(
+    line_number: usize,
+    epoch: &RtkLibReferenceEpoch,
+    gps_time: GpsTime,
+) -> Result<(), String> {
+    if epoch.gps_time != gps_time {
+        return Err(format!(
+            "RTKLIB reference line {line_number} time {:?} does not match active epoch {:?}",
+            gps_time, epoch.gps_time
         ));
     }
     Ok(())
