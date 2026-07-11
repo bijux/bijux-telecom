@@ -474,7 +474,7 @@ fn preferred_dual_frequency_pairs(sat: SatId) -> &'static [(SignalBand, SignalBa
 
 #[cfg(test)]
 mod tests {
-    use super::{iono_free_from_obs, SPEED_OF_LIGHT_MPS};
+    use super::{iono_free_from_obs, wide_lane_from_obs, SPEED_OF_LIGHT_MPS};
     use bijux_gnss_core::api::{
         signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l5, Constellation, Cycles,
         Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite, ObservationEpochDecision,
@@ -700,5 +700,94 @@ mod tests {
             / (f1_2 - f5_2);
 
         assert!((iono_free.phase_m - (base_range_m + expected_ambiguity_m)).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn iono_free_prefers_l1_l2_when_l5_is_also_present() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 3 };
+        let l1 = signal_spec_gps_l1_ca();
+        let l2 = signal_spec_gps_l2_py();
+        let l5 = signal_spec_gps_l5();
+        let epoch = ObsEpoch {
+            t_rx_s: bijux_gnss_core::api::Seconds(0.0),
+            source_time: ReceiverSampleTrace::from_sample_index(0, 1_000.0),
+            gps_week: None,
+            tow_s: None,
+            epoch_idx: 0,
+            discontinuity: false,
+            valid: true,
+            processing_ms: None,
+            role: ReceiverRole::Rover,
+            sats: vec![
+                make_satellite(
+                    sat,
+                    bijux_gnss_core::api::SignalBand::L1,
+                    SignalCode::Ca,
+                    l1,
+                    1.0,
+                    1.0,
+                ),
+                make_satellite(
+                    sat,
+                    bijux_gnss_core::api::SignalBand::L2,
+                    SignalCode::Py,
+                    l2,
+                    2.0,
+                    2.0,
+                ),
+                make_satellite(
+                    sat,
+                    bijux_gnss_core::api::SignalBand::L5,
+                    SignalCode::Unknown,
+                    l5,
+                    3.0,
+                    3.0,
+                ),
+            ],
+            decision: ObservationEpochDecision::Accepted,
+            decision_reason: Some("accepted_observables_present".to_string()),
+            manifest: None,
+        };
+
+        let iono_free = iono_free_from_obs(&epoch, sat).expect("iono-free observation");
+
+        assert_eq!(iono_free.band_1, bijux_gnss_core::api::SignalBand::L1);
+        assert_eq!(iono_free.band_2, bijux_gnss_core::api::SignalBand::L2);
+    }
+
+    #[test]
+    fn wide_lane_falls_back_to_l1_l5_when_l2_is_missing() {
+        let base_range_m = 20_200_000.0;
+        let iono_l1_m = 5.0;
+        let l1 = signal_spec_gps_l1_ca();
+        let l5 = signal_spec_gps_l5();
+        let iono_l5_m = iono_l1_m * (l1.carrier_hz.value() * l1.carrier_hz.value())
+            / (l5.carrier_hz.value() * l5.carrier_hz.value());
+        let lambda1 = SPEED_OF_LIGHT_MPS / l1.carrier_hz.value();
+        let lambda5 = SPEED_OF_LIGHT_MPS / l5.carrier_hz.value();
+        let ambiguity_l1_cycles = 12.0;
+        let ambiguity_l5_cycles = 4.0;
+        let epoch = make_gps_dual_frequency_epoch(
+            bijux_gnss_core::api::SignalBand::L5,
+            SignalCode::Unknown,
+            l5,
+            base_range_m + iono_l1_m,
+            base_range_m + iono_l5_m,
+            carrier_cycles(base_range_m, iono_l1_m, lambda1, ambiguity_l1_cycles),
+            carrier_cycles(base_range_m, iono_l5_m, lambda5, ambiguity_l5_cycles),
+        );
+
+        let wide_lane =
+            wide_lane_from_obs(&epoch, SatId { constellation: Constellation::Gps, prn: 3 })
+                .expect("wide-lane observation");
+
+        let lambda_wl = SPEED_OF_LIGHT_MPS / (l1.carrier_hz.value() - l5.carrier_hz.value()).abs();
+        let expected_cycles = ((-iono_l1_m + iono_l5_m) + lambda1 * ambiguity_l1_cycles
+            - lambda5 * ambiguity_l5_cycles)
+            / lambda_wl;
+
+        assert_eq!(wide_lane.band_1, bijux_gnss_core::api::SignalBand::L1);
+        assert_eq!(wide_lane.band_2, bijux_gnss_core::api::SignalBand::L5);
+        assert!((wide_lane.cycles - expected_cycles).abs() < 1.0e-6);
     }
 }
