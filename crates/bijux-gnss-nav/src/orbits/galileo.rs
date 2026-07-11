@@ -46,6 +46,65 @@ pub struct GalileoClockCorrection {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GalileoSatelliteClockCorrection {
+    pub bias_s: f64,
+    pub drift_s_per_s: f64,
+    pub drift_rate_s_per_s2: f64,
+    pub base_bias_s: f64,
+    pub relativistic_s: f64,
+    pub bgd_e1_e5a_s: f64,
+    pub bgd_e1_e5b_s: f64,
+}
+
+impl GalileoSatelliteClockCorrection {
+    pub fn from_bias_s(bias_s: f64) -> Self {
+        Self {
+            bias_s,
+            drift_s_per_s: 0.0,
+            drift_rate_s_per_s2: 0.0,
+            base_bias_s: bias_s,
+            relativistic_s: 0.0,
+            bgd_e1_e5a_s: 0.0,
+            bgd_e1_e5b_s: 0.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GalileoSatState {
+    pub x_m: f64,
+    pub y_m: f64,
+    pub z_m: f64,
+    pub clock_correction: GalileoSatelliteClockCorrection,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GalileoEarthRotationCorrection {
+    pub signal_travel_time_s: f64,
+    pub rotation_rad: f64,
+    pub delta_x_m: f64,
+    pub delta_y_m: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GalileoNavigationAge {
+    pub reference_time_s: f64,
+    pub toe_age_s: f64,
+    pub toc_age_s: f64,
+    pub max_age_s: f64,
+}
+
+impl GalileoNavigationAge {
+    pub fn is_valid(&self) -> bool {
+        self.toe_age_s <= self.max_age_s && self.toc_age_s <= self.max_age_s
+    }
+
+    pub fn is_stale(&self) -> bool {
+        !self.is_valid()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct GalileoEphemeris {
     pub sat: SatId,
     pub iodnav: u16,
