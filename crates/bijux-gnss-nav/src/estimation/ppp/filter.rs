@@ -6,7 +6,8 @@ use bijux_gnss_core::api::{Constellation, ObsEpoch, ObsSatellite, SatId, SigId};
 
 use super::config::{PppConfig, PppFilter, PppIndices, SPEED_OF_LIGHT_MPS};
 use super::measurements::{
-    iono_free_from_obs, PppIonoFreeCodeMeasurement, PppIonoFreePhaseMeasurement,
+    iono_free_code_observation_from_obs, iono_free_phase_observation_from_obs,
+    PppIonoFreeCodeMeasurement, PppIonoFreePhaseMeasurement,
     PppPhaseMeasurement,
 };
 use super::models::{PppCodeMeasurement, PppProcessModel};
@@ -20,8 +21,8 @@ use crate::estimation::ppp::config::{PppConvergenceState, PppHealth, PppSolution
 use crate::formats::precise_products::{ProductDiagnostics, ProductsProvider};
 use crate::linalg::Matrix;
 use crate::orbits::gps::{
-    gps_ephemeris_age, gps_satellite_clock_correction, sat_state_gps_l1ca, GpsEphemeris,
-    GpsSatState,
+    gps_ephemeris_age, gps_satellite_clock_correction, sat_state_gps_l1ca, select_best_ephemeris,
+    GpsEphemeris, GpsSatState,
 };
 
 impl PppFilter {
@@ -123,10 +124,14 @@ impl PppFilter {
 
         let mut sats: Vec<&ObsSatellite> = obs.sats.iter().collect();
         sats.sort_by_key(|s| s.signal_id);
+        if self.config.use_iono_free {
+            sats = iono_free_satellite_representatives(&sats);
+        }
         self.ensure_states(&sats);
         self.update_wide_lane(obs, &sats);
         let fixed_wl = self.try_fix_wide_lane(obs, &sats);
         let corr = compute_corrections(&self.corrections);
+        let products_time_s = product_reference_time_s(obs);
 
         let mut residuals = Vec::new();
         let mut used = 0;
@@ -135,12 +140,12 @@ impl PppFilter {
             if sat.lock_flags.cycle_slip {
                 slip_count += 1;
             }
-            let eph = match ephs.iter().find(|e| e.sat == sat.signal_id.sat) {
+            let eph = match select_best_ephemeris(ephs, sat.signal_id.sat, products_time_s) {
                 Some(e) => e,
                 None => continue,
             };
             let (state, clock_bias_s, fallback) =
-                match self.sat_state(products, eph, sat.signal_id.sat, obs.t_rx_s.0) {
+                match self.sat_state(products, eph, sat.signal_id.sat, products_time_s) {
                     Some(v) => v,
                     None => continue,
                 };
@@ -168,12 +173,14 @@ impl PppFilter {
             let phase_bias_cycles = self.phase_bias.phase_bias_cycles(sat.signal_id).unwrap_or(0.0);
 
             if self.config.use_iono_free {
-                if let Some(iono_free) = iono_free_from_obs(obs, sat.signal_id.sat) {
+                if let Some(iono_free_code) =
+                    iono_free_code_observation_from_obs(obs, sat.signal_id.sat)
+                {
                     let code = PppIonoFreeCodeMeasurement {
-                        z_m: iono_free.code_m - code_bias_m,
+                        z_m: iono_free_code.code_m - code_bias_m,
                         sat_pos_m: [state.x_m, state.y_m, state.z_m],
                         sat_clock_s: clock_bias_s,
-                        sigma_m: iono_free.code_sigma_m.max(sigma_m),
+                        sigma_m: iono_free_code.code_sigma_m.max(sigma_m),
                         ztd_index: Some(self.indices.ztd),
                         isb_index,
                         corr: corr.clone(),
@@ -183,15 +190,19 @@ impl PppFilter {
                     {
                         used += 1;
                     }
+                }
+                if let Some(iono_free_phase) =
+                    iono_free_phase_observation_from_obs(obs, sat.signal_id.sat)
+                {
                     let phase = PppIonoFreePhaseMeasurement {
-                        z_cycles: iono_free.phase_cycles - phase_bias_cycles,
+                        z_cycles: iono_free_phase.phase_cycles - phase_bias_cycles,
                         sat_pos_m: [state.x_m, state.y_m, state.z_m],
                         sat_clock_s: clock_bias_s,
-                        sigma_cycles: iono_free.phase_sigma_cycles.max(0.05),
+                        sigma_cycles: iono_free_phase.phase_sigma_cycles.max(0.05),
                         ztd_index: Some(self.indices.ztd),
                         isb_index,
                         ambiguity_index: amb_index,
-                        wavelength_m: iono_free.phase_wavelength_m,
+                        wavelength_m: iono_free_phase.phase_wavelength_m,
                         corr: corr.clone(),
                     };
                     let _ = self.ekf.update(&phase);
@@ -392,6 +403,23 @@ impl PppFilter {
     }
 }
 
+fn iono_free_satellite_representatives<'a>(
+    sats: &[&'a ObsSatellite],
+) -> Vec<&'a ObsSatellite> {
+    let mut seen = BTreeSet::new();
+    let mut representatives = Vec::new();
+    for sat in sats {
+        if seen.insert(sat.signal_id.sat) {
+            representatives.push(*sat);
+        }
+    }
+    representatives
+}
+
+fn product_reference_time_s(obs: &ObsEpoch) -> f64 {
+    obs.gps_time().map(|time| time.tow_s).unwrap_or(obs.t_rx_s.0)
+}
+
 fn sat_state_gps_l1ca_if_current(
     eph: &GpsEphemeris,
     sat: SatId,
@@ -431,12 +459,16 @@ fn validate_broadcast_ephemeris(
 
 #[cfg(test)]
 mod tests {
-    use super::PppFilter;
+    use super::{iono_free_satellite_representatives, PppFilter};
     use crate::api::{
         BroadcastProductsProvider, GpsEphemeris, GpsSatState, GpsSatelliteClockCorrection,
         ProductDiagnostics, ProductsProvider, PppConfig,
     };
-    use bijux_gnss_core::api::{Constellation, SatId};
+    use bijux_gnss_core::api::{
+        signal_spec_gps_l1_ca, signal_spec_gps_l2_py, Constellation, Cycles, Hertz, LockFlags,
+        Meters, ObsMetadata, ObsSatellite, ObservationStatus, SatId, SigId, SignalBand,
+        SignalCode,
+    };
 
     #[derive(Debug, Clone)]
     struct StubProductsProvider {
@@ -534,5 +566,55 @@ mod tests {
 
         assert!((clock_bias_s - expected.bias_s).abs() < 1e-18);
         assert!(fallback);
+    }
+
+    #[test]
+    fn iono_free_mode_keeps_one_representative_per_satellite() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+        let l1 = ObsSatellite {
+            signal_id: SigId { sat, band: SignalBand::L1, code: SignalCode::Ca },
+            pseudorange_m: Meters(20_000_000.0),
+            pseudorange_var_m2: 1.0,
+            carrier_phase_cycles: Cycles(100.0),
+            carrier_phase_var_cycles2: 0.01,
+            doppler_hz: Hertz(0.0),
+            doppler_var_hz2: 1.0,
+            cn0_dbhz: 45.0,
+            lock_flags: LockFlags {
+                code_lock: true,
+                carrier_lock: true,
+                bit_lock: false,
+                cycle_slip: false,
+            },
+            multipath_suspect: false,
+            observation_status: ObservationStatus::Accepted,
+            observation_reject_reasons: Vec::new(),
+            elevation_deg: None,
+            azimuth_deg: None,
+            weight: None,
+            timing: None,
+            error_model: None,
+            metadata: ObsMetadata {
+                tracking_mode: "test".to_string(),
+                integration_ms: 1,
+                lock_quality: 45.0,
+                smoothing_window: 0,
+                smoothing_age: 0,
+                smoothing_resets: 0,
+                signal: signal_spec_gps_l1_ca(),
+                ..ObsMetadata::default()
+            },
+        };
+        let l2 = ObsSatellite {
+            signal_id: SigId { sat, band: SignalBand::L2, code: SignalCode::Py },
+            metadata: ObsMetadata { signal: signal_spec_gps_l2_py(), ..l1.metadata.clone() },
+            ..l1.clone()
+        };
+        let sats = vec![&l1, &l2];
+
+        let representatives = iono_free_satellite_representatives(&sats);
+
+        assert_eq!(representatives.len(), 1);
+        assert_eq!(representatives[0].signal_id.band, SignalBand::L1);
     }
 }

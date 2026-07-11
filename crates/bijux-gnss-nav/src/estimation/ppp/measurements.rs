@@ -13,6 +13,23 @@ use super::config::SPEED_OF_LIGHT_MPS;
 use super::models::PppCodeMeasurement;
 
 #[derive(Debug, Clone, Copy)]
+pub struct IonoFreeCodeMeasurementObservation {
+    pub code_m: f64,
+    pub code_sigma_m: f64,
+    pub band_1: SignalBand,
+    pub band_2: SignalBand,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct IonoFreePhaseMeasurementObservation {
+    pub phase_cycles: f64,
+    pub phase_sigma_cycles: f64,
+    pub phase_wavelength_m: f64,
+    pub band_1: SignalBand,
+    pub band_2: SignalBand,
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct IonoFreeObservation {
     pub code_m: f64,
     pub phase_cycles: f64,
@@ -392,6 +409,23 @@ impl MeasurementModel for PppIonoFreePhaseMeasurement {
 }
 
 pub fn iono_free_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<IonoFreeObservation> {
+    let code = iono_free_code_observation_from_obs(obs, sat)?;
+    let phase = iono_free_phase_observation_from_obs(obs, sat)?;
+    Some(IonoFreeObservation {
+        code_m: code.code_m,
+        phase_cycles: phase.phase_cycles,
+        code_sigma_m: code.code_sigma_m,
+        phase_sigma_cycles: phase.phase_sigma_cycles,
+        phase_wavelength_m: phase.phase_wavelength_m,
+        band_1: code.band_1,
+        band_2: code.band_2,
+    })
+}
+
+pub fn iono_free_code_observation_from_obs(
+    obs: &ObsEpoch,
+    sat: SatId,
+) -> Option<IonoFreeCodeMeasurementObservation> {
     let pair = select_dual_frequency_pair(obs, sat)?;
     let code = iono_free_code_from_pair(
         obs.epoch_idx,
@@ -402,6 +436,22 @@ pub fn iono_free_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<IonoFreeObservat
         Some(pair.first),
         Some(pair.second),
     );
+    if code.status != "ok" {
+        return None;
+    }
+    Some(IonoFreeCodeMeasurementObservation {
+        code_m: code.code_m?,
+        code_sigma_m: code.variance_m2?.sqrt(),
+        band_1: pair.first.signal_id.band,
+        band_2: pair.second.signal_id.band,
+    })
+}
+
+pub fn iono_free_phase_observation_from_obs(
+    obs: &ObsEpoch,
+    sat: SatId,
+) -> Option<IonoFreePhaseMeasurementObservation> {
+    let pair = select_dual_frequency_pair(obs, sat)?;
     let phase = iono_free_phase_from_pair(
         obs.epoch_idx,
         obs.t_rx_s.0,
@@ -411,13 +461,11 @@ pub fn iono_free_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<IonoFreeObservat
         Some(pair.first),
         Some(pair.second),
     );
-    if code.status != "ok" || phase.status != "ok" {
+    if phase.status != "ok" {
         return None;
     }
-    Some(IonoFreeObservation {
-        code_m: code.code_m?,
+    Some(IonoFreePhaseMeasurementObservation {
         phase_cycles: phase.phase_cycles?,
-        code_sigma_m: code.variance_m2?.sqrt(),
         phase_sigma_cycles: phase.variance_cycles2?.sqrt(),
         phase_wavelength_m: phase.narrow_lane_wavelength_m?,
         band_1: pair.first.signal_id.band,
@@ -483,7 +531,10 @@ fn preferred_dual_frequency_pairs(sat: SatId) -> &'static [(SignalBand, SignalBa
 
 #[cfg(test)]
 mod tests {
-    use super::{iono_free_from_obs, wide_lane_from_obs, SPEED_OF_LIGHT_MPS};
+    use super::{
+        iono_free_code_observation_from_obs, iono_free_from_obs, iono_free_phase_observation_from_obs,
+        wide_lane_from_obs, SPEED_OF_LIGHT_MPS,
+    };
     use bijux_gnss_core::api::{
         signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l5, Constellation, Cycles,
         Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite, ObservationEpochDecision,
@@ -577,6 +628,29 @@ mod tests {
                 ..ObsMetadata::default()
             },
         }
+    }
+
+    #[test]
+    fn iono_free_code_observation_survives_missing_carrier_phase() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 3 };
+        let mut epoch = make_gps_dual_frequency_epoch(
+            bijux_gnss_core::api::SignalBand::L2,
+            SignalCode::Py,
+            signal_spec_gps_l2_py(),
+            22_000_000.0,
+            22_000_100.0,
+            100_000.0,
+            80_000.0,
+        );
+        epoch.sats[0].lock_flags.carrier_lock = false;
+        epoch.sats[1].lock_flags.carrier_lock = false;
+
+        let code = iono_free_code_observation_from_obs(&epoch, sat).expect("iono-free code");
+        let phase = iono_free_phase_observation_from_obs(&epoch, sat);
+
+        assert!(code.code_m.is_finite());
+        assert!(phase.is_none());
+        assert!(iono_free_from_obs(&epoch, sat).is_none());
     }
 
     fn carrier_cycles(range_m: f64, iono_m: f64, wavelength_m: f64, ambiguity_cycles: f64) -> f64 {

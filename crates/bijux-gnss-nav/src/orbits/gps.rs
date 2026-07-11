@@ -1,5 +1,7 @@
 #![allow(missing_docs)]
 
+use std::cmp::Ordering;
+
 use serde::{Deserialize, Serialize};
 
 use bijux_gnss_core::api::{ObsSignalTiming, SatId};
@@ -215,6 +217,20 @@ pub fn gps_ephemeris_age(eph: &GpsEphemeris, reference_time_s: f64) -> GpsEpheme
 
 pub fn is_ephemeris_valid(eph: &GpsEphemeris, t_s: f64) -> bool {
     gps_ephemeris_age(eph, t_s).is_valid()
+}
+
+pub fn select_best_ephemeris<'a>(
+    ephs: &'a [GpsEphemeris],
+    sat: SatId,
+    reference_time_s: f64,
+) -> Option<&'a GpsEphemeris> {
+    ephs.iter().filter(|eph| eph.sat == sat).min_by(|left, right| {
+        let left_age = gps_ephemeris_age(left, reference_time_s);
+        let right_age = gps_ephemeris_age(right, reference_time_s);
+        let left_score = left_age.toe_age_s.max(left_age.toc_age_s);
+        let right_score = right_age.toe_age_s.max(right_age.toc_age_s);
+        left_score.partial_cmp(&right_score).unwrap_or(Ordering::Equal)
+    })
 }
 
 pub fn solve_kepler(m: f64, e: f64) -> (f64, f64, f64) {
@@ -702,5 +718,23 @@ mod tests {
         assert_eq!(age.toe_age_s, 2.0);
         assert_eq!(age.toc_age_s, 2.0);
         assert!(age.is_valid());
+    }
+
+    #[test]
+    fn select_best_ephemeris_prefers_closest_reference_time() {
+        let mut stale = sample_eph();
+        stale.toe_s = 597_600.0;
+        stale.toc_s = 597_600.0;
+
+        let mut current = sample_eph();
+        current.toe_s = 603_000.0;
+        current.toc_s = 603_000.0;
+
+        let ephemerides = [stale.clone(), current.clone()];
+        let selected = select_best_ephemeris(&ephemerides, current.sat, 15.0)
+            .expect("select best ephemeris");
+
+        assert_eq!(selected.toe_s, current.toe_s);
+        assert_eq!(selected.toc_s, current.toc_s);
     }
 }

@@ -115,6 +115,7 @@ pub use crate::orbits::gps::{
     is_ephemeris_valid, sat_state_gps_l1ca, sat_state_gps_l1ca_at_receive_time,
     sat_state_gps_l1ca_from_observation, GpsBroadcastNavigationData, GpsEarthRotationCorrection,
     GpsEphemeris, GpsEphemerisAge, GpsSatState, GpsSatelliteClockCorrection,
+    select_best_ephemeris,
 };
 /// Time helpers.
 pub use crate::time::{gps_time_from_utc, gps_week_rollover, normalize_tow};

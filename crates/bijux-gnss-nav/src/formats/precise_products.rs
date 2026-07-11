@@ -3,8 +3,8 @@
 use bijux_gnss_core::api::SatId;
 
 use crate::orbits::gps::{
-    gps_ephemeris_age, gps_satellite_clock_correction, sat_state_gps_l1ca, GpsEphemeris,
-    GpsSatState, GpsSatelliteClockCorrection,
+    gps_ephemeris_age, gps_satellite_clock_correction, sat_state_gps_l1ca, select_best_ephemeris,
+    GpsEphemeris, GpsSatState, GpsSatelliteClockCorrection,
 };
 
 use crate::formats::clk::{ClkInterpolationSummary, ClkProvider};
@@ -73,7 +73,7 @@ impl BroadcastProductsProvider {
         t_s: f64,
         diag: &mut ProductDiagnostics,
     ) -> Option<&GpsEphemeris> {
-        let eph = self.ephs.iter().find(|e| e.sat == sat)?;
+        let eph = select_best_ephemeris(&self.ephs, sat, t_s)?;
         let age = gps_ephemeris_age(eph, t_s);
         if age.is_stale() {
             diag.fallback(format!(
