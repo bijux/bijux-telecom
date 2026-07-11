@@ -3,13 +3,13 @@
 use std::collections::BTreeMap;
 
 use super::metrics::{baseline_from_ecef, jitter_summary, BaselineSolution, JitterSummary};
-use bijux_gnss_core::api::{
-    AmbiguityId, Constellation, ObsEpoch, ObsSignalTiming, ReceiverRole, SigId,
-};
+use bijux_gnss_core::api::{Constellation, ObsEpoch, ReceiverRole, SigId};
 use bijux_gnss_nav::api::{
     choose_rtk_single_difference_reference_signal,
     choose_rtk_single_difference_reference_signals_by_constellation,
-    rtk_single_differences_from_obs_epochs, RtkSingleDifferenceObservation,
+    rtk_double_differences_by_constellation, rtk_double_differences_from_single_differences,
+    rtk_single_differences_from_obs_epochs, RtkDoubleDifferenceObservation,
+    RtkSingleDifferenceObservation,
 };
 
 #[derive(Debug, Clone)]
@@ -129,45 +129,7 @@ impl EpochAligner {
 
 pub type SdObservation = RtkSingleDifferenceObservation;
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct DdObservation {
-    pub sig: SigId,
-    pub ref_sig: SigId,
-    pub signal_pseudorange_m: f64,
-    pub signal_timing: Option<ObsSignalTiming>,
-    pub ref_signal_pseudorange_m: f64,
-    pub ref_signal_timing: Option<ObsSignalTiming>,
-    pub code_m: f64,
-    pub phase_cycles: f64,
-    pub doppler_hz: f64,
-    pub variance_code: f64,
-    pub variance_phase: f64,
-    pub canceled: Vec<AmbiguityId>,
-}
-
-impl bijux_gnss_core::api::ArtifactPayloadValidate for DdObservation {
-    fn validate_payload(&self) -> Vec<bijux_gnss_core::api::DiagnosticEvent> {
-        let mut events = Vec::new();
-        if !self.code_m.is_finite()
-            || !self.phase_cycles.is_finite()
-            || !self.doppler_hz.is_finite()
-        {
-            events.push(bijux_gnss_core::api::DiagnosticEvent::new(
-                bijux_gnss_core::api::DiagnosticSeverity::Error,
-                "RTK_DD_NUMERIC_INVALID",
-                "dd observation contains NaN/Inf",
-            ));
-        }
-        if self.variance_code < 0.0 || self.variance_phase < 0.0 {
-            events.push(bijux_gnss_core::api::DiagnosticEvent::new(
-                bijux_gnss_core::api::DiagnosticSeverity::Error,
-                "RTK_DD_VARIANCE_INVALID",
-                "dd observation variance is negative",
-            ));
-        }
-        events
-    }
-}
+pub type DdObservation = RtkDoubleDifferenceObservation;
 
 #[derive(Debug, Clone)]
 pub struct SolutionSeparation {
@@ -188,66 +150,14 @@ pub fn choose_ref_sat_per_constellation(sd: &[SdObservation]) -> BTreeMap<Conste
 }
 
 pub fn build_dd(sd: &[SdObservation], ref_sig: SigId) -> Vec<DdObservation> {
-    let mut ref_sd = None;
-    for s in sd {
-        if s.sig == ref_sig {
-            ref_sd = Some(s);
-            break;
-        }
-    }
-    let Some(ref_sd) = ref_sd else {
-        return Vec::new();
-    };
-    let mut out = Vec::new();
-    for s in sd {
-        if s.sig == ref_sig {
-            continue;
-        }
-        if s.sig.sat.constellation != ref_sd.sig.sat.constellation {
-            continue;
-        }
-        let corr = 0.0;
-        let code_var = s.code_variance_m2 + ref_sd.code_variance_m2
-            - 2.0 * corr * (s.code_variance_m2 * ref_sd.code_variance_m2).sqrt();
-        let phase_var = s.phase_variance_cycles2 + ref_sd.phase_variance_cycles2
-            - 2.0 * corr * (s.phase_variance_cycles2 * ref_sd.phase_variance_cycles2).sqrt();
-        out.push(DdObservation {
-            sig: s.sig,
-            ref_sig: ref_sd.sig,
-            signal_pseudorange_m: s.base_pseudorange_m,
-            signal_timing: s.base_signal_timing,
-            ref_signal_pseudorange_m: ref_sd.base_pseudorange_m,
-            ref_signal_timing: ref_sd.base_signal_timing,
-            code_m: s.code_m - ref_sd.code_m,
-            phase_cycles: s.phase_cycles - ref_sd.phase_cycles,
-            doppler_hz: s.doppler_hz - ref_sd.doppler_hz,
-            variance_code: code_var,
-            variance_phase: phase_var,
-            canceled: vec![
-                s.ambiguity_rover.clone(),
-                s.ambiguity_base.clone(),
-                ref_sd.ambiguity_rover.clone(),
-                ref_sd.ambiguity_base.clone(),
-            ],
-        });
-    }
-    out
+    rtk_double_differences_from_single_differences(sd, ref_sig)
 }
 
 pub fn build_dd_per_constellation(
     sd: &[SdObservation],
     refs: &BTreeMap<Constellation, SigId>,
 ) -> Vec<DdObservation> {
-    let mut out = Vec::new();
-    for (constellation, ref_sig) in refs {
-        let subset: Vec<SdObservation> = sd
-            .iter()
-            .filter(|s| s.ambiguity_rover.sig.sat.constellation == *constellation)
-            .cloned()
-            .collect();
-        out.extend(build_dd(&subset, *ref_sig));
-    }
-    out
+    rtk_double_differences_by_constellation(sd, refs)
 }
 
 #[derive(Debug, Clone)]
@@ -259,8 +169,8 @@ pub struct DdCovarianceModel {
 
 pub fn dd_covariance(dd: &DdObservation) -> DdCovarianceModel {
     DdCovarianceModel {
-        variance_code: dd.variance_code,
-        variance_phase: dd.variance_phase,
+        variance_code: dd.code_variance_m2,
+        variance_phase: dd.phase_variance_cycles2,
         inter_frequency_corr: None,
     }
 }
@@ -303,14 +213,14 @@ pub fn solve_baseline_dd(
         let sat = bijux_gnss_nav::api::sat_state_gps_l1ca_from_observation(
             eph,
             t_rx_s,
-            obs.signal_pseudorange_m,
-            obs.signal_timing,
+            obs.base_signal_pseudorange_m,
+            obs.base_signal_timing,
         );
         let sat_ref = bijux_gnss_nav::api::sat_state_gps_l1ca_from_observation(
             eph_ref,
             t_rx_s,
-            obs.ref_signal_pseudorange_m,
-            obs.ref_signal_timing,
+            obs.base_ref_pseudorange_m,
+            obs.base_ref_signal_timing,
         );
         let u = los_unit(base_ecef_m, [sat.x_m, sat.y_m, sat.z_m]);
         let u_ref = los_unit(base_ecef_m, [sat_ref.x_m, sat_ref.y_m, sat_ref.z_m]);

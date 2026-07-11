@@ -164,7 +164,12 @@ fn rtk_residual_metrics_use_carried_satellite_timing() {
     let ref_sig = choose_ref_sat(&sd).expect("reference satellite");
     let dd = build_dd(&sd, ref_sig);
     assert!(!dd.is_empty());
-    assert!(dd.iter().all(|obs| obs.signal_timing.is_some() && obs.ref_signal_timing.is_some()));
+    assert!(dd.iter().all(|obs| {
+        obs.rover_signal_timing.is_some()
+            && obs.base_signal_timing.is_some()
+            && obs.rover_ref_signal_timing.is_some()
+            && obs.base_ref_signal_timing.is_some()
+    }));
 
     let (timed_rms_m, _timed_predicted_m, _) =
         dd_residual_metrics(&dd, base_ecef_m, truth_baseline.enu_m, &ephs, receive_gps_time.tow_s)
@@ -172,10 +177,14 @@ fn rtk_residual_metrics_use_carried_satellite_timing() {
 
     let mut uncorrected_dd = dd.clone();
     for obs in &mut uncorrected_dd {
-        obs.signal_timing = None;
-        obs.ref_signal_timing = None;
-        obs.signal_pseudorange_m = 1.0;
-        obs.ref_signal_pseudorange_m = 1.0;
+        obs.rover_signal_timing = None;
+        obs.base_signal_timing = None;
+        obs.rover_ref_signal_timing = None;
+        obs.base_ref_signal_timing = None;
+        obs.rover_signal_pseudorange_m = 1.0;
+        obs.base_signal_pseudorange_m = 1.0;
+        obs.rover_ref_pseudorange_m = 1.0;
+        obs.base_ref_pseudorange_m = 1.0;
     }
     let (uncorrected_rms_m, _uncorrected_predicted_m, _) = dd_residual_metrics(
         &uncorrected_dd,

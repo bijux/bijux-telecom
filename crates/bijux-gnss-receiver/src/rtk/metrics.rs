@@ -1,8 +1,10 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_nav::api::{ecef_to_enu, rtk_single_difference_residual_metrics};
+use bijux_gnss_nav::api::{
+    ecef_to_enu, rtk_double_difference_residual_metrics, rtk_single_difference_residual_metrics,
+};
 
-use super::core::{los_unit, solve_baseline_dd, DdObservation, SdObservation, SolutionSeparation};
+use super::core::{solve_baseline_dd, DdObservation, SdObservation, SolutionSeparation};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct JitterSummary {
@@ -147,42 +149,9 @@ pub fn dd_residual_metrics(
     ephs: &[bijux_gnss_nav::api::GpsEphemeris],
     t_rx_s: f64,
 ) -> Option<(f64, f64, usize)> {
-    if dd.is_empty() {
-        return None;
-    }
-    let rover_ecef = enu_to_ecef(base_ecef_m, rover_enu_m);
-    let baseline_vec = [
-        rover_ecef[0] - base_ecef_m[0],
-        rover_ecef[1] - base_ecef_m[1],
-        rover_ecef[2] - base_ecef_m[2],
-    ];
-    let mut residuals = Vec::new();
-    let mut predicted_vars = Vec::new();
-    for obs in dd {
-        let eph = ephs.iter().find(|e| e.sat == obs.sig.sat)?;
-        let eph_ref = ephs.iter().find(|e| e.sat == obs.ref_sig.sat)?;
-        let sat = bijux_gnss_nav::api::sat_state_gps_l1ca_from_observation(
-            eph,
-            t_rx_s,
-            obs.signal_pseudorange_m,
-            obs.signal_timing,
-        );
-        let sat_ref = bijux_gnss_nav::api::sat_state_gps_l1ca_from_observation(
-            eph_ref,
-            t_rx_s,
-            obs.ref_signal_pseudorange_m,
-            obs.ref_signal_timing,
-        );
-        let u = los_unit(base_ecef_m, [sat.x_m, sat.y_m, sat.z_m]);
-        let u_ref = los_unit(base_ecef_m, [sat_ref.x_m, sat_ref.y_m, sat_ref.z_m]);
-        let h = [u_ref[0] - u[0], u_ref[1] - u[1], u_ref[2] - u[2]];
-        let pred = h[0] * baseline_vec[0] + h[1] * baseline_vec[1] + h[2] * baseline_vec[2];
-        residuals.push(obs.code_m - pred);
-        predicted_vars.push(obs.variance_code.max(1e-6));
-    }
-    let rms_obs = (residuals.iter().map(|v| v * v).sum::<f64>() / residuals.len() as f64).sqrt();
-    let rms_pred = (predicted_vars.iter().sum::<f64>() / predicted_vars.len() as f64).sqrt();
-    Some((rms_obs, rms_pred, residuals.len()))
+    let metrics =
+        rtk_double_difference_residual_metrics(dd, base_ecef_m, rover_enu_m, ephs, t_rx_s)?;
+    Some((metrics.residual_rms_m, metrics.predicted_rms_m, metrics.used_observations))
 }
 
 pub fn sd_residual_metrics(
