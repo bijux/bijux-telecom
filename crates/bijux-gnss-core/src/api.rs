@@ -55,18 +55,18 @@ pub use crate::obs::{
     NavLifecycleState, NavProvenance, NavQualityFlag, NavRefusalClass, NavResidual,
     NavSolutionEpoch, NavUncertaintyClass, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest,
     ObsMetadata, ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationStatus,
-    ObservationSupportClass, ObservationUncertaintyClass,
-    OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET, ReceiverRole, Sample, SamplesFrame,
+    ObservationSupportClass, ObservationUncertaintyClass, ReceiverRole, Sample, SamplesFrame,
     SatObservationDecision, SignalDelayAlignment, SignalSupportRow, SingleDifference,
     SolutionStatus, SolutionValidity, SupportMatrix, SupportStatus, TrackEpoch, TrackTransition,
-    TrackingAssumptions,
-    TrackingLifecycleState, TrackingUncertainty, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
-    NAV_SOLUTION_MODEL_VERSION, OBSERVATION_DOWNSTREAM_PROFILE_VERSION, OBSERVATION_MODEL_VERSION,
-    TRACKING_STATE_MODEL_VERSION,
+    TrackingAssumptions, TrackingLifecycleState, TrackingUncertainty,
+    NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
+    OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET, OBSERVATION_DOWNSTREAM_PROFILE_VERSION,
+    OBSERVATION_MODEL_VERSION, TRACKING_STATE_MODEL_VERSION,
 };
 pub use crate::obs_validation::{
-    check_inter_frequency_alignment, validate_obs_epochs, BandLagEvent,
-    InterFrequencyAlignmentReport,
+    check_dual_frequency_observations, check_inter_frequency_alignment, validate_obs_epochs,
+    BandLagEvent, DualFrequencyObservationPair, DualFrequencyObservationReport,
+    DualFrequencyPairIssue, DualFrequencyPairStatus, InterFrequencyAlignmentReport,
 };
 /// Engine boundary nav epoch alias.
 pub type NavEpoch = NavSolutionEpoch;
