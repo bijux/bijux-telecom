@@ -2,7 +2,8 @@
 
 use bijux_gnss_core::api::{
     ecef_to_geodetic, geodetic_to_ecef, Chips, Constellation, Cycles, Epoch, GpsTime, Hertz,
-    ReceiverSampleTrace, SatId, SignalDelayAlignment, TrackEpoch, ValidationReferenceEpoch,
+    NavSolutionEpoch, ReceiverSampleTrace, SatId, SignalDelayAlignment, TrackEpoch,
+    ValidationReferenceEpoch,
 };
 use bijux_gnss_nav::api::{sat_state_gps_l1ca, GpsEphemeris};
 use bijux_gnss_receiver::api::{
@@ -44,6 +45,7 @@ pub struct NavigationMotionProfile {
 pub struct NavigationMotionCase {
     pub scenario_id: String,
     pub motion_profile: NavigationMotionProfile,
+    pub solutions: Vec<NavSolutionEpoch>,
     pub truth_table: SyntheticPvtTruthTableReport,
     pub pvt_accuracy: SyntheticPvtAccuracyReport,
 }
@@ -155,7 +157,13 @@ pub fn build_navigation_motion_case(profile: NavigationMotionProfile) -> Navigat
     let pvt_accuracy =
         validate_pvt_accuracy_budget(&truth_table, truth_guided_receiver_accuracy_budgets().pvt);
 
-    NavigationMotionCase { scenario_id, motion_profile: profile, truth_table, pvt_accuracy }
+    NavigationMotionCase {
+        scenario_id,
+        motion_profile: profile,
+        solutions,
+        truth_table,
+        pvt_accuracy,
+    }
 }
 
 pub fn motion_profile_path_length_m(profile: &NavigationMotionProfile) -> f64 {
@@ -188,7 +196,7 @@ pub fn motion_profile_mean_speed_mps(profile: &NavigationMotionProfile) -> f64 {
 }
 
 fn navigation_motion_config() -> ReceiverPipelineConfig {
-    ReceiverPipelineConfig {
+    let mut config = ReceiverPipelineConfig {
         sampling_freq_hz: 1_023_000.0,
         intermediate_freq_hz: 0.0,
         code_freq_basis_hz: 1_023_000.0,
@@ -198,17 +206,22 @@ fn navigation_motion_config() -> ReceiverPipelineConfig {
         tracking_over_budget_action: "continue".to_string(),
         tropo_enable: false,
         ..ReceiverPipelineConfig::default()
-    }
+    };
+    // This fixture validates receiver-motion truth tracking against an idealized full-sky
+    // synthetic constellation, so it must not cull satellites by a local horizon mask.
+    config.weighting.enabled = false;
+    config.weighting.elev_mask_deg = -90.0;
+    config
 }
 
 fn motion_ephemerides() -> Vec<GpsEphemeris> {
     vec![
-        make_ephemeris(3, 0.0, 0.0),
+        make_ephemeris(3, 0.4, 0.4),
         make_ephemeris(7, 0.8, 0.8),
-        make_ephemeris(11, 1.6, 1.6),
-        make_ephemeris(19, 2.4, 2.4),
-        make_ephemeris(23, 3.2, 3.2),
-        make_ephemeris(29, 4.0, 4.0),
+        make_ephemeris(11, 1.2, 1.2),
+        make_ephemeris(19, 2.0, 2.0),
+        make_ephemeris(23, 2.8, 2.8),
+        make_ephemeris(29, 4.4, 4.4),
     ]
 }
 
