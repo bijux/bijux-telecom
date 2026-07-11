@@ -317,7 +317,8 @@ impl Navigation {
                 ));
                 let refusal_class = match refusal.kind {
                     PositionSolveRefusalKind::InsufficientObservations
-                    | PositionSolveRefusalKind::InsufficientUsableSatellites => {
+                    | PositionSolveRefusalKind::InsufficientUsableSatellites
+                    | PositionSolveRefusalKind::UnderdeterminedRaimExclusion => {
                         NavRefusalClass::InsufficientGeometry
                     }
                     PositionSolveRefusalKind::InvalidSatelliteTime => {
@@ -351,6 +352,7 @@ impl Navigation {
                         | PositionSolveRefusalKind::InvalidSatelliteTime
                         | PositionSolveRefusalKind::InvalidEphemeris
                         | PositionSolveRefusalKind::InsufficientUsableSatellites
+                        | PositionSolveRefusalKind::UnderdeterminedRaimExclusion
                 );
                 return Some(apply_atmosphere_explainability(
                     if is_sparse_refusal {

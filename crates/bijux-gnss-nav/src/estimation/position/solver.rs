@@ -61,6 +61,7 @@ pub enum PositionSolveRefusalKind {
     InvalidSatelliteTime,
     InvalidEphemeris,
     InsufficientUsableSatellites,
+    UnderdeterminedRaimExclusion,
     SolverFailure,
 }
 
