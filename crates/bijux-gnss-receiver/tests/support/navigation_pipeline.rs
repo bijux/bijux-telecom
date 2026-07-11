@@ -148,7 +148,7 @@ fn clean_synthetic_navigation_config() -> ReceiverPipelineConfig {
         intermediate_freq_hz: 0.0,
         code_freq_basis_hz: 1_023_000.0,
         code_length: 1023,
-        channels: 5,
+        channels: 6,
         tracking_budget_ms: 100.0,
         tracking_over_budget_action: "continue".to_string(),
         tropo_enable: false,
@@ -254,10 +254,11 @@ fn clean_synthetic_pvt_scenario() -> CleanSyntheticPvtScenario {
         make_ephemeris(11, 1.6, 1.6),
         make_ephemeris(19, 2.4, 2.4),
         make_ephemeris(23, 3.2, 3.2),
+        make_ephemeris(29, 4.0, 4.0),
     ];
     let satellites = ephemerides
         .iter()
-        .zip([-1_500.0, -700.0, 0.0, 700.0, 1_500.0])
+        .zip([-1_800.0, -1_000.0, -250.0, 500.0, 1_250.0, 2_000.0])
         .map(|(ephemeris, doppler_hz)| {
             let pseudorange_m =
                 synthetic_pseudorange_m(ephemeris, CLEAN_SYNTHETIC_RECEIVE_TIME_S, truth_ecef_m);

@@ -1,0 +1,54 @@
+#![allow(dead_code, missing_docs)]
+
+use bijux_gnss_core::api::{Constellation, MeasurementRejectReason, SatId};
+
+use super::navigation_pipeline::{
+    noisy_synthetic_navigation_run, position_error_3d_m, SatellitePseudorangeNoise,
+    SyntheticPseudorangeNoiseProfile,
+};
+
+pub const BAD_SATELLITE_PSEUDORANGE_BIAS_M: f64 = 1_000.0;
+const BAD_SATELLITE_PRN: u8 = 29;
+
+pub fn single_bad_satellite_profile() -> SyntheticPseudorangeNoiseProfile {
+    SyntheticPseudorangeNoiseProfile {
+        profile_name: "single_bad_satellite",
+        satellites: vec![SatellitePseudorangeNoise {
+            sat: SatId { constellation: Constellation::Gps, prn: BAD_SATELLITE_PRN },
+            pseudorange_noise_m: BAD_SATELLITE_PSEUDORANGE_BIAS_M,
+        }],
+    }
+}
+
+pub fn bad_satellite_prn() -> u8 {
+    BAD_SATELLITE_PRN
+}
+
+pub fn solution_position_errors_m(
+    run: &super::navigation_pipeline::NoisySyntheticNavigationRun,
+) -> Vec<f64> {
+    run.run
+        .solutions
+        .iter()
+        .map(|solution| position_error_3d_m(solution, run.run.profile.truth_ecef_m))
+        .collect()
+}
+
+pub fn rejected_outlier_prns(
+    run: &super::navigation_pipeline::NoisySyntheticNavigationRun,
+) -> Vec<u8> {
+    run.run
+        .solutions
+        .iter()
+        .flat_map(|solution| solution.residuals.iter())
+        .filter(|residual| {
+            residual.rejected && residual.reject_reason == Some(MeasurementRejectReason::Outlier)
+        })
+        .map(|residual| residual.sat.prn)
+        .collect()
+}
+
+pub fn single_bad_satellite_navigation_run() -> super::navigation_pipeline::NoisySyntheticNavigationRun
+{
+    noisy_synthetic_navigation_run(single_bad_satellite_profile())
+}
