@@ -4,7 +4,7 @@ use bijux_gnss_nav::api::{
     ecef_to_enu, rtk_double_difference_residual_metrics, rtk_single_difference_residual_metrics,
 };
 
-use super::core::{solve_baseline_dd, DdObservation, SdObservation, SolutionSeparation};
+use super::core::{solve_float_baseline_dd, DdObservation, SdObservation, SolutionSeparation};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct JitterSummary {
@@ -179,7 +179,7 @@ pub fn solution_separation(
     ephs: &[bijux_gnss_nav::api::GpsEphemeris],
     t_rx_s: f64,
 ) -> Option<Vec<SolutionSeparation>> {
-    let full = solve_baseline_dd(dd, base_ecef_m, ephs, t_rx_s)?;
+    let full = solve_float_baseline_dd(dd, base_ecef_m, ephs, t_rx_s)?;
     if dd.len() < 2 {
         return None;
     }
@@ -187,7 +187,7 @@ pub fn solution_separation(
     for i in 0..dd.len() {
         let mut subset = dd.to_vec();
         let removed = subset.remove(i);
-        if let Some(sol) = solve_baseline_dd(&subset, base_ecef_m, ephs, t_rx_s) {
+        if let Some(sol) = solve_float_baseline_dd(&subset, base_ecef_m, ephs, t_rx_s) {
             let de = sol.enu_m[0] - full.enu_m[0];
             let dn = sol.enu_m[1] - full.enu_m[1];
             let du = sol.enu_m[2] - full.enu_m[2];

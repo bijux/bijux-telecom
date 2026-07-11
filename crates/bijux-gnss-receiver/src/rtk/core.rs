@@ -2,14 +2,14 @@
 
 use std::collections::BTreeMap;
 
-use super::metrics::{baseline_from_ecef, jitter_summary, BaselineSolution, JitterSummary};
+use super::metrics::{jitter_summary, BaselineSolution, JitterSummary};
 use bijux_gnss_core::api::{Constellation, ObsEpoch, ReceiverRole, SigId};
 use bijux_gnss_nav::api::{
     choose_rtk_single_difference_reference_signal,
     choose_rtk_single_difference_reference_signals_by_constellation,
     rtk_double_differences_by_constellation, rtk_double_differences_from_single_differences,
-    rtk_single_differences_from_obs_epochs, RtkDoubleDifferenceObservation,
-    RtkSingleDifferenceObservation,
+    rtk_float_baseline_from_double_differences, rtk_single_differences_from_obs_epochs,
+    RtkDoubleDifferenceObservation, RtkFloatBaselineSolution, RtkSingleDifferenceObservation,
 };
 
 #[derive(Debug, Clone)]
@@ -202,38 +202,21 @@ pub fn solve_baseline_dd(
     ephs: &[bijux_gnss_nav::api::GpsEphemeris],
     t_rx_s: f64,
 ) -> Option<BaselineSolution> {
-    if dd.len() < 3 {
-        return None;
-    }
-    let mut h = Vec::new();
-    let mut v = Vec::new();
-    for obs in dd {
-        let eph = ephs.iter().find(|e| e.sat == obs.sig.sat)?;
-        let eph_ref = ephs.iter().find(|e| e.sat == obs.ref_sig.sat)?;
-        let sat = bijux_gnss_nav::api::sat_state_gps_l1ca_from_observation(
-            eph,
-            t_rx_s,
-            obs.base_signal_pseudorange_m,
-            obs.base_signal_timing,
-        );
-        let sat_ref = bijux_gnss_nav::api::sat_state_gps_l1ca_from_observation(
-            eph_ref,
-            t_rx_s,
-            obs.base_ref_pseudorange_m,
-            obs.base_ref_signal_timing,
-        );
-        let u = los_unit(base_ecef_m, [sat.x_m, sat.y_m, sat.z_m]);
-        let u_ref = los_unit(base_ecef_m, [sat_ref.x_m, sat_ref.y_m, sat_ref.z_m]);
-        h.push([u_ref[0] - u[0], u_ref[1] - u[1], u_ref[2] - u[2]]);
-        v.push(obs.code_m);
-    }
-    let (bx, by, bz, cov) = solve_3x3(&h, &v)?;
-    let mut baseline = baseline_from_ecef(
-        base_ecef_m,
-        [base_ecef_m[0] + bx, base_ecef_m[1] + by, base_ecef_m[2] + bz],
-    );
-    baseline.covariance_m2 = Some(cov);
-    Some(baseline)
+    let solution = solve_float_baseline_dd(dd, base_ecef_m, ephs, t_rx_s)?;
+    Some(BaselineSolution {
+        enu_m: solution.enu_m,
+        covariance_m2: Some(solution.covariance_enu_m2),
+        fixed: false,
+    })
+}
+
+pub fn solve_float_baseline_dd(
+    dd: &[DdObservation],
+    base_ecef_m: [f64; 3],
+    ephs: &[bijux_gnss_nav::api::GpsEphemeris],
+    t_rx_s: f64,
+) -> Option<RtkFloatBaselineSolution> {
+    rtk_float_baseline_from_double_differences(dd, base_ecef_m, ephs, t_rx_s)
 }
 
 pub fn los_unit(base: [f64; 3], sat: [f64; 3]) -> [f64; 3] {
@@ -242,46 +225,6 @@ pub fn los_unit(base: [f64; 3], sat: [f64; 3]) -> [f64; 3] {
     let dz = base[2] - sat[2];
     let r = (dx * dx + dy * dy + dz * dz).sqrt().max(1.0);
     [dx / r, dy / r, dz / r]
-}
-
-fn solve_3x3(h: &[[f64; 3]], v: &[f64]) -> Option<(f64, f64, f64, [[f64; 3]; 3])> {
-    let mut n = [[0.0_f64; 3]; 3];
-    let mut u = [0.0_f64; 3];
-    for (i, row) in h.iter().enumerate() {
-        let wi = 1.0_f64;
-        for r in 0..3 {
-            u[r] += row[r] * v[i] * wi;
-            for c in 0..3 {
-                n[r][c] += row[r] * row[c] * wi;
-            }
-        }
-    }
-    let inv = invert_3x3(n)?;
-    let dx = inv[0][0] * u[0] + inv[0][1] * u[1] + inv[0][2] * u[2];
-    let dy = inv[1][0] * u[0] + inv[1][1] * u[1] + inv[1][2] * u[2];
-    let dz = inv[2][0] * u[0] + inv[2][1] * u[1] + inv[2][2] * u[2];
-    Some((dx, dy, dz, inv))
-}
-
-fn invert_3x3(a: [[f64; 3]; 3]) -> Option<[[f64; 3]; 3]> {
-    let det = a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1])
-        - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
-        + a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0]);
-    if det.abs() < 1e-12 {
-        return None;
-    }
-    let inv_det = 1.0 / det;
-    let mut inv = [[0.0_f64; 3]; 3];
-    inv[0][0] = (a[1][1] * a[2][2] - a[1][2] * a[2][1]) * inv_det;
-    inv[0][1] = (a[0][2] * a[2][1] - a[0][1] * a[2][2]) * inv_det;
-    inv[0][2] = (a[0][1] * a[1][2] - a[0][2] * a[1][1]) * inv_det;
-    inv[1][0] = (a[1][2] * a[2][0] - a[1][0] * a[2][2]) * inv_det;
-    inv[1][1] = (a[0][0] * a[2][2] - a[0][2] * a[2][0]) * inv_det;
-    inv[1][2] = (a[0][2] * a[1][0] - a[0][0] * a[1][2]) * inv_det;
-    inv[2][0] = (a[1][0] * a[2][1] - a[1][1] * a[2][0]) * inv_det;
-    inv[2][1] = (a[0][1] * a[2][0] - a[0][0] * a[2][1]) * inv_det;
-    inv[2][2] = (a[0][0] * a[1][1] - a[0][1] * a[1][0]) * inv_det;
-    Some(inv)
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
