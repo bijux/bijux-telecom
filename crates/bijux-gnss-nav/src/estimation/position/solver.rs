@@ -266,6 +266,28 @@ impl PositionSolver {
                 break solved;
             }
 
+            if let Some((excluded_index, candidate_estimate)) =
+                self.best_single_outlier_candidate(&working_inputs, solved.estimate, klobuchar)
+            {
+                let excluded_sat = working_inputs
+                    .get(excluded_index)
+                    .expect("candidate exclusion must reference an input")
+                    .observation
+                    .sat;
+                push_unique_rejection(
+                    &mut rejected,
+                    excluded_sat,
+                    MeasurementRejectReason::Outlier,
+                );
+                working_inputs = working_inputs
+                    .into_iter()
+                    .enumerate()
+                    .filter_map(|(index, input)| (index != excluded_index).then_some(input))
+                    .collect();
+                estimate = candidate_estimate;
+                continue;
+            }
+
             for &outlier_index in &outlier_indices {
                 let residual = solved
                     .residuals
@@ -831,9 +853,63 @@ impl PositionSolver {
                 let normalized_residual = residual.residual_m / sigma_m;
                 ((residual.residual_m.abs() > self.residual_gate_m)
                     || (normalized_residual * normalized_residual) > self.chi_square_gate)
-                    .then_some(index)
+                    .then_some((index, normalized_residual.abs(), residual.residual_m.abs()))
             })
-            .collect()
+            .max_by(|left, right| {
+                left.1
+                    .partial_cmp(&right.1)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| {
+                        left.2
+                            .partial_cmp(&right.2)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    })
+            })
+            .map(|(index, _normalized_residual, _residual_m)| vec![index])
+            .unwrap_or_default()
+    }
+
+    fn best_single_outlier_candidate(
+        &self,
+        inputs: &[PositionSolveInput],
+        initial_estimate: PositionEstimate,
+        klobuchar: Option<&KlobucharCoefficients>,
+    ) -> Option<(usize, PositionEstimate)> {
+        if inputs.len() < 5 {
+            return None;
+        }
+
+        let mut best_candidate = None;
+        for excluded_index in 0..inputs.len() {
+            let candidate_inputs = inputs
+                .iter()
+                .enumerate()
+                .filter_map(|(index, input)| (index != excluded_index).then_some(input.clone()))
+                .collect::<Vec<_>>();
+            let Some(candidate_solution) =
+                self.solve_working_set(&candidate_inputs, initial_estimate, klobuchar)
+            else {
+                continue;
+            };
+            if !self.outlier_indices(&candidate_solution.residuals).is_empty() {
+                continue;
+            }
+
+            let candidate_rms_m = working_set_rms_m(&candidate_solution.residuals);
+            let better_candidate = best_candidate
+                .as_ref()
+                .map(|(_, best_rms_m, _)| candidate_rms_m < *best_rms_m)
+                .unwrap_or(true);
+            if better_candidate {
+                best_candidate =
+                    Some((excluded_index, candidate_rms_m, candidate_solution.estimate));
+            }
+        }
+
+        best_candidate
+            .map(|(excluded_index, _candidate_rms_m, candidate_estimate)| {
+                (excluded_index, candidate_estimate)
+            })
     }
 }
 
@@ -848,6 +924,14 @@ fn push_unique_rejection(
         return;
     }
     rejected.push((sat, reason));
+}
+
+fn working_set_rms_m(residuals: &[WorkingSetResidual]) -> f64 {
+    if residuals.is_empty() {
+        return 0.0;
+    }
+    let squared_sum = residuals.iter().map(|residual| residual.residual_m.powi(2)).sum::<f64>();
+    (squared_sum / residuals.len() as f64).sqrt()
 }
 
 type NormalEqSolution = (f64, f64, f64, f64, [[f64; 4]; 4]);

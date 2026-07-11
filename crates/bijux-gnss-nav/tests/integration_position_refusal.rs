@@ -24,7 +24,7 @@ fn position_solver_refuses_when_fewer_than_four_observations_remain() {
 }
 
 #[test]
-fn position_solver_refuses_when_outlier_rejection_leaves_three_usable_satellites() {
+fn position_solver_refuses_when_invalid_satellite_time_leaves_three_usable_satellites() {
     let mut scenario = four_satellite_position_scenario(0.0);
     let extra_ephemeris = sample_ephemeris(5, 3.2, 3.6);
     scenario.observations.push(timed_position_observation_from_truth(
@@ -35,26 +35,17 @@ fn position_solver_refuses_when_outlier_rejection_leaves_three_usable_satellites
     ));
     scenario.ephemerides.push(extra_ephemeris);
     let mut observations = scenario.observations.clone();
-    observations[0].pseudorange_m += 1_000.0;
-    if let Some(signal_timing) = &mut observations[0].signal_timing {
-        let delay_s = 1_000.0 / 299_792_458.0;
-        signal_timing.signal_travel_time_s =
-            Seconds(signal_timing.signal_travel_time_s.0 + delay_s);
-        signal_timing.transmit_gps_time = signal_timing.transmit_gps_time.offset_seconds(-delay_s);
-    }
-    observations[1].pseudorange_m -= 1_000.0;
-    if let Some(signal_timing) = &mut observations[1].signal_timing {
-        let delay_s = 1_000.0 / 299_792_458.0;
-        signal_timing.signal_travel_time_s =
-            Seconds(signal_timing.signal_travel_time_s.0 - delay_s);
-        signal_timing.transmit_gps_time = signal_timing.transmit_gps_time.offset_seconds(delay_s);
+    for index in [0usize, 1usize] {
+        if let Some(signal_timing) = &mut observations[index].signal_timing {
+            signal_timing.signal_travel_time_s = Seconds(signal_timing.signal_travel_time_s.0 + 0.01);
+        }
     }
 
     let refusal = PositionSolver::new()
         .try_solve_wls(&observations, &scenario.ephemerides, scenario.t_rx_s)
-        .expect_err("outlier rejection should refuse a three-satellite remainder");
+        .expect_err("invalid timing should leave too few usable satellites");
 
-    assert_eq!(refusal.kind, PositionSolveRefusalKind::InsufficientUsableSatellites);
+    assert_eq!(refusal.kind, PositionSolveRefusalKind::InvalidSatelliteTime);
     assert_eq!(refusal.sat_count, 5);
     assert!(refusal.used_sat_count < 4);
 }

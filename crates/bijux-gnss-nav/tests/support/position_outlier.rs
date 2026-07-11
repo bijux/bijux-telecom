@@ -20,14 +20,15 @@ pub struct BadPseudorangeScenario {
 
 pub fn single_bad_pseudorange_scenario(pseudorange_bias_m: f64) -> BadPseudorangeScenario {
     let mut baseline = four_satellite_position_scenario(0.0);
-    let extra_ephemeris = sample_ephemeris(5, 3.2, 3.6);
-    baseline.observations.push(timed_position_observation_from_truth(
-        &extra_ephemeris,
-        baseline.truth_ecef_m,
-        baseline.t_rx_s,
-        baseline.receiver_clock_bias_s,
-    ));
-    baseline.ephemerides.push(extra_ephemeris);
+    for extra_ephemeris in [sample_ephemeris(5, 3.2, 3.6), sample_ephemeris(6, 4.0, 4.5)] {
+        baseline.observations.push(timed_position_observation_from_truth(
+            &extra_ephemeris,
+            baseline.truth_ecef_m,
+            baseline.t_rx_s,
+            baseline.receiver_clock_bias_s,
+        ));
+        baseline.ephemerides.push(extra_ephemeris);
+    }
 
     let bad_sat = baseline.ephemerides.last().expect("bad-satellite ephemeris").sat;
     let observations = baseline
