@@ -44,6 +44,12 @@ pub use crate::estimation::position::solver::{
 pub use crate::estimation::ppp::config::{
     PppArMode, PppConfig, PppConvergenceConfig, PppFilter, PppProcessNoise, PppSolutionEpoch,
 };
+/// RTK float-baseline helpers.
+pub use crate::estimation::rtk::baseline::{
+    rtk_float_baseline_from_double_differences,
+    rtk_float_baseline_from_double_differences_with_rover_prior, RtkFloatAmbiguityEstimate,
+    RtkFloatBaselineSolution,
+};
 /// RTK double-difference helpers.
 pub use crate::estimation::rtk::double_difference::{
     rtk_double_difference_residual_metrics, rtk_double_differences_by_constellation,
