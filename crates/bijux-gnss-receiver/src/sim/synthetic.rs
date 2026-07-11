@@ -6,8 +6,10 @@ use std::f32::consts::TAU;
 use num_complex::Complex;
 
 use bijux_gnss_core::api::{
-    stats, AcqHypothesis, AcqResult, Constellation, Hertz, ObsEpoch, ObservationStatus,
-    ReceiverSampleTrace, SampleClock, SampleTime, SamplesFrame, SatId, Seconds, SignalBand,
+    ecef_to_enu, ecef_to_geodetic, reference_ecef, stats, AcqHypothesis, AcqResult, Constellation,
+    Hertz, NavQualityFlag, NavSolutionEpoch, ObsEpoch, ObservationStatus, ReceiverSampleTrace,
+    SampleClock, SampleTime, SamplesFrame, SatId, Seconds, SignalBand, SolutionStatus,
+    SolutionValidity, ValidationReferenceEpoch,
 };
 use bijux_gnss_signal::api::SignalSource;
 
@@ -313,6 +315,152 @@ pub struct SyntheticObservationTruthTableReport {
     pub satellites: Vec<SyntheticObservationTruthTableSatellite>,
 }
 
+/// Synthetic truth reference for one PVT solution epoch.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyntheticPvtTruthReferenceEpoch {
+    /// Reference position and time for this navigation epoch.
+    pub position: ValidationReferenceEpoch,
+    /// Receiver clock bias truth in seconds for this navigation epoch.
+    pub clock_bias_s: f64,
+}
+
+/// ECEF coordinates recorded in a synthetic PVT truth table.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPvtTruthTableEcef {
+    /// X coordinate in meters.
+    pub x_m: f64,
+    /// Y coordinate in meters.
+    pub y_m: f64,
+    /// Z coordinate in meters.
+    pub z_m: f64,
+}
+
+/// Geodetic coordinates recorded in a synthetic PVT truth table.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPvtTruthTableGeodetic {
+    /// Latitude in degrees.
+    pub latitude_deg: f64,
+    /// Longitude in degrees.
+    pub longitude_deg: f64,
+    /// Altitude above the ellipsoid in meters.
+    pub altitude_m: f64,
+}
+
+/// ENU error components recorded in a synthetic PVT truth table.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPvtTruthTableEnuError {
+    /// East error in meters.
+    pub east_m: f64,
+    /// North error in meters.
+    pub north_m: f64,
+    /// Up error in meters.
+    pub up_m: f64,
+    /// Horizontal error magnitude in meters.
+    pub horiz_m: f64,
+    /// Vertical error magnitude in meters.
+    pub vert_m: f64,
+    /// 3D position error magnitude in meters.
+    pub error_3d_m: f64,
+}
+
+/// Receiver clock-bias truth comparison recorded in a synthetic PVT truth table.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPvtTruthTableClockBias {
+    /// Truth clock bias in seconds.
+    pub truth_s: f64,
+    /// Measured clock bias in seconds.
+    pub measured_s: f64,
+    /// Measured minus truth clock bias in seconds.
+    pub error_s: f64,
+    /// Truth clock bias in meters.
+    pub truth_m: f64,
+    /// Measured clock bias in meters.
+    pub measured_m: f64,
+    /// Measured minus truth clock bias in meters.
+    pub error_m: f64,
+}
+
+/// DOP values recorded in a synthetic PVT truth table.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPvtTruthTableDop {
+    /// Position dilution of precision.
+    pub pdop: f64,
+    /// Horizontal dilution of precision.
+    pub hdop: Option<f64>,
+    /// Vertical dilution of precision.
+    pub vdop: Option<f64>,
+    /// Geometric dilution of precision.
+    pub gdop: Option<f64>,
+    /// Time dilution of precision.
+    pub tdop: Option<f64>,
+}
+
+/// Per-epoch synthetic PVT truth-table row.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPvtTruthTableEpoch {
+    /// Stable artifact identifier for the navigation solution epoch.
+    pub artifact_id: String,
+    /// Source observation epoch identifier used to produce this navigation solution.
+    pub source_observation_epoch_id: String,
+    /// Receiver navigation epoch index.
+    pub epoch_index: u64,
+    /// Receiver receive time for this solution, in seconds.
+    pub receive_time_s: f64,
+    /// Truth ECEF position.
+    pub truth_ecef_m: SyntheticPvtTruthTableEcef,
+    /// Measured ECEF position.
+    pub measured_ecef_m: SyntheticPvtTruthTableEcef,
+    /// Measured minus truth ECEF error, in meters.
+    pub ecef_error_m: SyntheticPvtTruthTableEcef,
+    /// Truth geodetic position.
+    pub truth_geodetic: SyntheticPvtTruthTableGeodetic,
+    /// Measured geodetic position.
+    pub measured_geodetic: SyntheticPvtTruthTableGeodetic,
+    /// ENU error components.
+    pub enu_error_m: SyntheticPvtTruthTableEnuError,
+    /// Clock-bias truth comparison.
+    pub clock_bias: SyntheticPvtTruthTableClockBias,
+    /// Residual RMS after the navigation solve, in meters.
+    pub residual_rms_m: f64,
+    /// Pre-fit residual RMS, in meters, when available.
+    pub pre_fit_residual_rms_m: Option<f64>,
+    /// Post-fit residual RMS, in meters, when available.
+    pub post_fit_residual_rms_m: Option<f64>,
+    /// Dilution-of-precision values reported for this solution.
+    pub dop: SyntheticPvtTruthTableDop,
+    /// Receiver solution status.
+    pub solution_status: SolutionStatus,
+    /// Receiver solution quality classification.
+    pub solution_quality: NavQualityFlag,
+    /// Receiver solution validity classification.
+    pub solution_validity: SolutionValidity,
+    /// Whether the receiver marked this navigation solution valid.
+    pub valid: bool,
+    /// Number of satellites carried in the solution artifact.
+    pub sat_count: usize,
+    /// Number of satellites used in the final solve.
+    pub used_sat_count: usize,
+    /// Number of rejected satellites reported by the receiver.
+    pub rejected_sat_count: usize,
+}
+
+/// Truth-guided PVT truth table for a synthetic navigation run.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPvtTruthTableReport {
+    /// Stable scenario identifier for this validation run.
+    pub scenario_id: String,
+    /// Count of navigation solutions supplied to the builder.
+    pub solution_count: usize,
+    /// Count of rows with matching synthetic truth.
+    pub matched_epoch_count: usize,
+    /// Solution epochs that had no matching synthetic truth reference.
+    pub unmatched_solution_epochs: Vec<u64>,
+    /// Truth epochs that were not consumed by any navigation solution row.
+    pub unused_reference_epochs: Vec<u64>,
+    /// Per-epoch PVT truth-table rows.
+    pub epochs: Vec<SyntheticPvtTruthTableEpoch>,
+}
+
 /// Summary of one observation-error distribution.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticObservationErrorStats {
@@ -592,6 +740,122 @@ pub fn validate_truth_guided_observations(
         hatch_window: table.hatch_window,
         reference_receive_time_s: table.reference_receive_time_s,
         satellites,
+    }
+}
+
+/// Build a truth-guided PVT table from synthetic navigation solutions.
+pub fn validate_truth_guided_pvt_table(
+    scenario_id: &str,
+    solutions: &[NavSolutionEpoch],
+    reference: &[SyntheticPvtTruthReferenceEpoch],
+) -> SyntheticPvtTruthTableReport {
+    let reference_by_epoch =
+        reference.iter().map(|epoch| (epoch.position.epoch_idx, epoch)).collect::<BTreeMap<_, _>>();
+    let mut epochs = Vec::new();
+    let mut unmatched_solution_epochs = Vec::new();
+    let mut matched_epoch_indices = std::collections::BTreeSet::new();
+
+    for solution in solutions {
+        let Some(reference_epoch) = reference_by_epoch.get(&solution.epoch.index) else {
+            unmatched_solution_epochs.push(solution.epoch.index);
+            continue;
+        };
+
+        matched_epoch_indices.insert(solution.epoch.index);
+        let truth_ecef = reference_ecef(&reference_epoch.position);
+        let truth_geodetic = ecef_to_geodetic(truth_ecef.0, truth_ecef.1, truth_ecef.2);
+        let (east_m, north_m, up_m) = ecef_to_enu(
+            solution.ecef_x_m.0,
+            solution.ecef_y_m.0,
+            solution.ecef_z_m.0,
+            reference_epoch.position.latitude_deg,
+            reference_epoch.position.longitude_deg,
+            reference_epoch.position.altitude_m,
+        );
+        let horiz_m = (east_m * east_m + north_m * north_m).sqrt();
+        let vert_m = up_m.abs();
+        let error_3d_m = (horiz_m * horiz_m + up_m * up_m).sqrt();
+        let clock_bias_truth_m = reference_epoch.clock_bias_s * SPEED_OF_LIGHT_MPS;
+
+        epochs.push(SyntheticPvtTruthTableEpoch {
+            artifact_id: solution.artifact_id.clone(),
+            source_observation_epoch_id: solution.source_observation_epoch_id.clone(),
+            epoch_index: solution.epoch.index,
+            receive_time_s: solution.t_rx_s.0,
+            truth_ecef_m: SyntheticPvtTruthTableEcef {
+                x_m: truth_ecef.0,
+                y_m: truth_ecef.1,
+                z_m: truth_ecef.2,
+            },
+            measured_ecef_m: SyntheticPvtTruthTableEcef {
+                x_m: solution.ecef_x_m.0,
+                y_m: solution.ecef_y_m.0,
+                z_m: solution.ecef_z_m.0,
+            },
+            ecef_error_m: SyntheticPvtTruthTableEcef {
+                x_m: solution.ecef_x_m.0 - truth_ecef.0,
+                y_m: solution.ecef_y_m.0 - truth_ecef.1,
+                z_m: solution.ecef_z_m.0 - truth_ecef.2,
+            },
+            truth_geodetic: SyntheticPvtTruthTableGeodetic {
+                latitude_deg: truth_geodetic.0,
+                longitude_deg: truth_geodetic.1,
+                altitude_m: truth_geodetic.2,
+            },
+            measured_geodetic: SyntheticPvtTruthTableGeodetic {
+                latitude_deg: solution.latitude_deg,
+                longitude_deg: solution.longitude_deg,
+                altitude_m: solution.altitude_m.0,
+            },
+            enu_error_m: SyntheticPvtTruthTableEnuError {
+                east_m,
+                north_m,
+                up_m,
+                horiz_m,
+                vert_m,
+                error_3d_m,
+            },
+            clock_bias: SyntheticPvtTruthTableClockBias {
+                truth_s: reference_epoch.clock_bias_s,
+                measured_s: solution.clock_bias_s.0,
+                error_s: solution.clock_bias_s.0 - reference_epoch.clock_bias_s,
+                truth_m: clock_bias_truth_m,
+                measured_m: solution.clock_bias_m.0,
+                error_m: solution.clock_bias_m.0 - clock_bias_truth_m,
+            },
+            residual_rms_m: solution.rms_m.0,
+            pre_fit_residual_rms_m: solution.pre_fit_residual_rms_m.map(|value| value.0),
+            post_fit_residual_rms_m: solution.post_fit_residual_rms_m.map(|value| value.0),
+            dop: SyntheticPvtTruthTableDop {
+                pdop: solution.pdop,
+                hdop: solution.hdop,
+                vdop: solution.vdop,
+                gdop: solution.gdop,
+                tdop: solution.tdop,
+            },
+            solution_status: solution.status,
+            solution_quality: solution.quality,
+            solution_validity: solution.validity,
+            valid: solution.valid,
+            sat_count: solution.sat_count,
+            used_sat_count: solution.used_sat_count,
+            rejected_sat_count: solution.rejected_sat_count,
+        });
+    }
+
+    let unused_reference_epochs = reference
+        .iter()
+        .map(|epoch| epoch.position.epoch_idx)
+        .filter(|epoch_idx| !matched_epoch_indices.contains(epoch_idx))
+        .collect::<Vec<_>>();
+
+    SyntheticPvtTruthTableReport {
+        scenario_id: scenario_id.to_string(),
+        solution_count: solutions.len(),
+        matched_epoch_count: epochs.len(),
+        unmatched_solution_epochs,
+        unused_reference_epochs,
+        epochs,
     }
 }
 
@@ -1758,8 +2022,11 @@ pub fn validate_truth_guided_tracking_table(
             );
             let expected_measured_doppler_hz =
                 synthetic_truth_measured_doppler_hz(truth, sat_truth);
-            let expected_carrier_hz =
-                synthetic_carrier_hz(truth.intermediate_freq_hz, sat_truth.sat, expected_measured_doppler_hz);
+            let expected_carrier_hz = synthetic_carrier_hz(
+                truth.intermediate_freq_hz,
+                sat_truth.sat,
+                expected_measured_doppler_hz,
+            );
             let seeded_code_phase_samples = wrap_seeded_code_phase_samples(
                 expected_acquisition_code_phase_samples(
                     config,
@@ -1782,10 +2049,7 @@ pub fn validate_truth_guided_tracking_table(
                     format!("truth_guided_tracking_seed_{}", sat_truth.sat.prn),
                 )],
             );
-            let epochs = tracks
-                .first()
-                .map(|track| track.epochs.clone())
-                .unwrap_or_default();
+            let epochs = tracks.first().map(|track| track.epochs.clone()).unwrap_or_default();
             let epoch_rows = epochs
                 .iter()
                 .enumerate()
@@ -1808,7 +2072,8 @@ pub fn validate_truth_guided_tracking_table(
                         config.intermediate_freq_hz,
                         measured_carrier_hz,
                     );
-                    let doppler_error_hz = (measured_doppler_hz - expected_measured_doppler_hz).abs();
+                    let doppler_error_hz =
+                        (measured_doppler_hz - expected_measured_doppler_hz).abs();
                     let measured_cn0_dbhz = epoch.cn0_dbhz;
                     let cn0_error_db = (measured_cn0_dbhz - sat_truth.cn0_db_hz as f64).abs();
                     let stable_tracking_epoch = tracking_epoch_is_stable(epoch);
@@ -1851,15 +2116,10 @@ pub fn validate_truth_guided_tracking_table(
                 .collect::<Vec<_>>();
             let stable_epoch_count =
                 epoch_rows.iter().filter(|row| row.stable_tracking_epoch).count();
-            let first_stable_epoch_index = epoch_rows
-                .iter()
-                .find(|row| row.stable_tracking_epoch)
-                .map(|row| row.epoch_index);
+            let first_stable_epoch_index =
+                epoch_rows.iter().find(|row| row.stable_tracking_epoch).map(|row| row.epoch_index);
             let pass = stable_epoch_count > 0
-                && epoch_rows
-                    .iter()
-                    .filter(|row| row.stable_tracking_epoch)
-                    .all(|row| row.pass);
+                && epoch_rows.iter().filter(|row| row.stable_tracking_epoch).all(|row| row.pass);
 
             SyntheticTrackingTruthTableSatellite {
                 sat: sat_truth.sat,
@@ -1924,8 +2184,8 @@ pub fn validate_truth_guided_acquisition_table(
             );
             let doppler_error_hz = (measured_doppler_hz - expected_measured_doppler_hz).abs();
             let doppler_error_bins = doppler_error_hz / doppler_step_hz as f64;
-            let doppler_pass =
-                measured_doppler_hz.is_finite() && doppler_error_hz <= doppler_tolerance_hz + f64::EPSILON;
+            let doppler_pass = measured_doppler_hz.is_finite()
+                && doppler_error_hz <= doppler_tolerance_hz + f64::EPSILON;
 
             let expected_code_phase_samples = expected_acquisition_code_phase_samples(
                 config,
@@ -3736,23 +3996,28 @@ mod tests {
         measure_truth_guided_acquisition_detection_probability,
         measure_truth_guided_acquisition_detection_rate, measure_truth_guided_tracking_lock_rate,
         nav_bit_index_at_time_s, nav_bit_sign_at_time_s, signal_amplitude_from_cn0,
-        summarize_observation_errors,
-        synthetic_tracking_sensitivity_report, validate_truth_guided_acquisition_code_phase,
+        summarize_observation_errors, synthetic_tracking_sensitivity_report,
+        validate_truth_guided_acquisition_code_phase,
         validate_truth_guided_acquisition_code_phase_refinement,
         validate_truth_guided_acquisition_coherent_integration,
         validate_truth_guided_acquisition_doppler,
         validate_truth_guided_acquisition_receiver_clock_offset,
         validate_truth_guided_acquisition_sample_rates, validate_truth_guided_cn0,
-        wrapped_code_phase_error_samples, wrapped_code_phase_error_samples_f64, SatState,
-        SyntheticAcquisitionDetectionRateCase, SyntheticAcquisitionFalseAlarmRateCase,
-        SyntheticAcquisitionSampleRateValidationCase, SyntheticDopplerRampParams,
-        SyntheticFadeWindow, SyntheticNavBitMode, SyntheticPhaseWindow, SyntheticScenario,
-        SyntheticSignalParams, SyntheticSignalSource, SyntheticTrackingLockRateCase,
-        SyntheticTrackingSensitivityTrial, SYNTHETIC_COMPLEX_NOISE_POWER,
-        SYNTHETIC_NOISE_STD_PER_COMPONENT,
+        validate_truth_guided_pvt_table, wrapped_code_phase_error_samples,
+        wrapped_code_phase_error_samples_f64, SatState, SyntheticAcquisitionDetectionRateCase,
+        SyntheticAcquisitionFalseAlarmRateCase, SyntheticAcquisitionSampleRateValidationCase,
+        SyntheticDopplerRampParams, SyntheticFadeWindow, SyntheticNavBitMode, SyntheticPhaseWindow,
+        SyntheticPvtTruthReferenceEpoch, SyntheticScenario, SyntheticSignalParams,
+        SyntheticSignalSource, SyntheticTrackingLockRateCase, SyntheticTrackingSensitivityTrial,
+        SPEED_OF_LIGHT_MPS, SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
-    use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds};
+    use bijux_gnss_core::api::{
+        ecef_to_geodetic, lla_to_ecef, Constellation, Epoch, Meters, NavLifecycleState,
+        NavQualityFlag, NavSolutionEpoch, NavUncertaintyClass, ReceiverSampleTrace, SampleTime,
+        SamplesFrame, SatId, Seconds, SolutionStatus, SolutionValidity, ValidationReferenceEpoch,
+        NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
+    };
     use bijux_gnss_signal::api::{
         advance_code_phase_seconds, sample_ca_code, samples_per_code, IqSampleFormat, Prn,
         RawIqMetadata, SignalSource,
@@ -3797,6 +4062,122 @@ mod tests {
         assert_eq!(expected.dt_s, streamed.dt_s);
         assert_eq!(expected.iq, streamed.iq);
         assert!(source.is_done());
+    }
+
+    #[test]
+    fn pvt_truth_table_records_truth_measured_values_and_errors() {
+        let truth_ecef = lla_to_ecef(37.0, -122.0, 10.0);
+        let measured_ecef = (truth_ecef.0 + 1.5, truth_ecef.1 - 2.0, truth_ecef.2 + 0.75);
+        let measured_geodetic = ecef_to_geodetic(measured_ecef.0, measured_ecef.1, measured_ecef.2);
+        let truth_clock_bias_s = 2.0e-4;
+        let measured_clock_bias_s = 2.5e-4;
+        let solution = NavSolutionEpoch {
+            epoch: Epoch { index: 7 },
+            t_rx_s: Seconds(100_000.0),
+            source_time: ReceiverSampleTrace::from_sample_index(0, 1.0),
+            ecef_x_m: Meters(measured_ecef.0),
+            ecef_y_m: Meters(measured_ecef.1),
+            ecef_z_m: Meters(measured_ecef.2),
+            latitude_deg: measured_geodetic.0,
+            longitude_deg: measured_geodetic.1,
+            altitude_m: Meters(measured_geodetic.2),
+            clock_bias_s: Seconds(measured_clock_bias_s),
+            clock_bias_m: Meters(measured_clock_bias_s * SPEED_OF_LIGHT_MPS),
+            clock_drift_s_per_s: 0.0,
+            pdop: 1.2,
+            pre_fit_residual_rms_m: Some(Meters(3.5)),
+            post_fit_residual_rms_m: Some(Meters(1.25)),
+            rms_m: Meters(1.25),
+            status: SolutionStatus::Converged,
+            quality: NavQualityFlag::Float,
+            validity: SolutionValidity::Stable,
+            valid: true,
+            processing_ms: None,
+            residuals: Vec::new(),
+            health: Vec::new(),
+            isb: Vec::new(),
+            sigma_h_m: None,
+            sigma_v_m: None,
+            innovation_rms_m: None,
+            normalized_innovation_rms: None,
+            normalized_innovation_max: None,
+            ekf_innovation_rms: None,
+            ekf_condition_number: None,
+            ekf_whiteness_ratio: None,
+            ekf_predicted_variance: None,
+            ekf_observed_variance: None,
+            integrity_hpl_m: None,
+            integrity_vpl_m: None,
+            model_version: NAV_SOLUTION_MODEL_VERSION,
+            lifecycle_state: NavLifecycleState::Converged,
+            uncertainty_class: NavUncertaintyClass::Low,
+            assumptions: None,
+            refusal_class: None,
+            artifact_id: "nav-epoch-0000000007-pvt-truth".to_string(),
+            source_observation_epoch_id: "obs-epoch-0000000007-pvt-truth".to_string(),
+            explain_decision: "accepted".to_string(),
+            explain_reasons: vec!["navigation_solution_usable".to_string()],
+            provenance: None,
+            sat_count: 5,
+            used_sat_count: 4,
+            rejected_sat_count: 1,
+            hdop: Some(0.9),
+            vdop: Some(0.8),
+            gdop: Some(1.3),
+            tdop: Some(0.4),
+            stability_signature: "navsig:v2:pvt-truth".to_string(),
+            stability_signature_version: NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
+        };
+        let reference = SyntheticPvtTruthReferenceEpoch {
+            position: ValidationReferenceEpoch {
+                epoch_idx: 7,
+                t_rx_s: Some(100_000.0),
+                latitude_deg: 37.0,
+                longitude_deg: -122.0,
+                altitude_m: 10.0,
+                ecef_x_m: Some(truth_ecef.0),
+                ecef_y_m: Some(truth_ecef.1),
+                ecef_z_m: Some(truth_ecef.2),
+                vel_x_mps: None,
+                vel_y_mps: None,
+                vel_z_mps: None,
+            },
+            clock_bias_s: truth_clock_bias_s,
+        };
+
+        let report =
+            validate_truth_guided_pvt_table("unit_test_pvt_truth", &[solution], &[reference]);
+        let row = report.epochs.first().expect("pvt truth row");
+
+        assert_eq!(report.solution_count, 1);
+        assert_eq!(report.matched_epoch_count, 1);
+        assert!(report.unmatched_solution_epochs.is_empty());
+        assert!(report.unused_reference_epochs.is_empty());
+        assert_eq!(row.truth_ecef_m.x_m, truth_ecef.0);
+        assert_eq!(row.measured_ecef_m.y_m, measured_ecef.1);
+        assert_eq!(row.ecef_error_m.x_m, 1.5);
+        assert_eq!(row.ecef_error_m.y_m, -2.0);
+        assert_eq!(row.ecef_error_m.z_m, 0.75);
+        assert_eq!(row.truth_geodetic.latitude_deg, 37.0);
+        assert_eq!(row.truth_geodetic.longitude_deg, -122.0);
+        assert_eq!(row.truth_geodetic.altitude_m, 10.0);
+        assert_eq!(row.clock_bias.truth_s, truth_clock_bias_s);
+        assert_eq!(row.clock_bias.measured_s, measured_clock_bias_s);
+        assert_eq!(row.clock_bias.error_s, measured_clock_bias_s - truth_clock_bias_s);
+        assert!(
+            (row.clock_bias.error_m
+                - (measured_clock_bias_s - truth_clock_bias_s) * SPEED_OF_LIGHT_MPS)
+                .abs()
+                <= 1.0e-9
+        );
+        assert_eq!(row.residual_rms_m, 1.25);
+        assert_eq!(row.pre_fit_residual_rms_m, Some(3.5));
+        assert_eq!(row.post_fit_residual_rms_m, Some(1.25));
+        assert_eq!(row.dop.pdop, 1.2);
+        assert_eq!(row.solution_status, SolutionStatus::Converged);
+        assert_eq!(row.solution_quality, NavQualityFlag::Float);
+        assert_eq!(row.solution_validity, SolutionValidity::Stable);
+        assert!(row.valid);
     }
 
     fn collect_frames(source: &mut SyntheticSignalSource, frame_len: usize) -> SamplesFrame {
