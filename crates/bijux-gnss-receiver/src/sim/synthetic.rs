@@ -596,6 +596,64 @@ pub struct SyntheticAcquisitionDopplerValidationReport {
     pub satellites: Vec<SyntheticAcquisitionDopplerValidationSatellite>,
 }
 
+/// Per-satellite acquisition truth-table row for synthetic validation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionTruthTableSatellite {
+    /// Satellite identifier.
+    pub sat: SatId,
+    /// Injected Doppler shift in Hz.
+    pub injected_doppler_hz: f64,
+    /// Expected acquisition Doppler after the common receiver clock bias is applied, in Hz.
+    pub expected_measured_doppler_hz: f64,
+    /// Measured acquisition Doppler in Hz relative to the configured IF.
+    pub measured_doppler_hz: f64,
+    /// Absolute Doppler error in Hz.
+    pub doppler_error_hz: f64,
+    /// Doppler error expressed in acquisition bins.
+    pub doppler_error_bins: f64,
+    /// Injected code phase at the start of the validation frame, in chips.
+    pub injected_code_phase_chips: f64,
+    /// Expected acquisition-reported code phase sample under the receiver search convention.
+    pub expected_code_phase_samples: usize,
+    /// Measured acquisition-reported code phase sample.
+    pub measured_code_phase_samples: usize,
+    /// Wrapped absolute error between expected and measured code phase samples.
+    pub code_phase_error_samples: usize,
+    /// Peak-to-mean ratio for the selected acquisition result.
+    pub peak_mean_ratio: f32,
+    /// Acquisition hypothesis returned by the receiver.
+    pub hypothesis: String,
+    /// Whether the measured Doppler stayed within tolerance.
+    pub doppler_pass: bool,
+    /// Whether the measured code phase stayed within tolerance.
+    pub code_phase_pass: bool,
+    /// Whether both Doppler and code phase stayed within tolerance.
+    pub pass: bool,
+}
+
+/// Truth-guided acquisition truth table for a synthetic capture.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionTruthTableReport {
+    /// Stable scenario identifier for this capture.
+    pub scenario_id: String,
+    /// Allowed Doppler error in acquisition bins.
+    pub doppler_tolerance_bins: usize,
+    /// Allowed Doppler error in Hz.
+    pub doppler_tolerance_hz: f64,
+    /// Allowed wrapped absolute code-phase error in samples.
+    pub code_phase_tolerance_samples: usize,
+    /// Capture sample rate in Hz.
+    pub sample_rate_hz: f64,
+    /// Number of samples in one code period at the configured rate.
+    pub period_samples: usize,
+    /// Effective acquisition Doppler bin width in Hz.
+    pub doppler_step_hz: i32,
+    /// Whether every measured satellite passed the requested tolerances.
+    pub pass: bool,
+    /// Per-satellite truth-table rows.
+    pub satellites: Vec<SyntheticAcquisitionTruthTableSatellite>,
+}
+
 /// Per-satellite acquisition receiver clock-offset comparison row.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticAcquisitionReceiverClockOffsetSatellite {
