@@ -826,7 +826,9 @@ fn read_nav_decode_ephemerides(data: &str) -> Result<Option<Vec<GpsEphemeris>>> 
 
 fn read_broadcast_navigation_data(path: &Path) -> Result<bijux_gnss_infra::api::nav::GpsBroadcastNavigationData> {
     let data = fs::read_to_string(path)?;
-    if data.contains("RINEX VERSION / TYPE") && data.contains("NAVIGATION DATA") {
+    if data.contains("RINEX VERSION / TYPE")
+        && (data.contains("NAVIGATION DATA") || data.contains("NAV DATA"))
+    {
         return bijux_gnss_infra::api::nav::parse_rinex_broadcast_navigation(&data)
             .map_err(|err| eyre!("RINEX NAV parse failed: {}", err.message));
     }
@@ -974,7 +976,7 @@ mod tests {
         GpsEphemeris, KlobucharCoefficients,
     };
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -1024,6 +1026,20 @@ mod tests {
         assert_eq!(parsed[0].iode, eph.iode);
         assert_eq!(parsed[0].iodc, eph.iodc);
         assert!((parsed[0].toe_s - eph.toe_s).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn read_ephemeris_accepts_noaa_nav_data_header() {
+        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(Path::parent)
+            .expect("workspace root");
+        let path = repo_root.join("datasets/recorded/gps_l1_2022_03_27_broadcast_nav.22n");
+
+        let parsed = read_ephemeris(&path).expect("read noaa rinex nav");
+
+        assert!(!parsed.is_empty(), "expected public NOAA NAV file to parse");
+        assert_eq!(parsed[0].sat.constellation, Constellation::Gps);
     }
 
     #[test]
