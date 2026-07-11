@@ -631,4 +631,74 @@ mod tests {
         assert_eq!(iono_free.band_2, bijux_gnss_core::api::SignalBand::L5);
         assert!((iono_free.phase_m - base_range_m).abs() < 1.0e-6);
     }
+
+    #[test]
+    fn iono_free_phase_preserves_l1_l2_ambiguity_term() {
+        let base_range_m = 20_200_000.0;
+        let iono_l1_m = 5.0;
+        let ambiguity_l1_cycles = 17.0;
+        let ambiguity_l2_cycles = 11.0;
+        let l1 = signal_spec_gps_l1_ca();
+        let l2 = signal_spec_gps_l2_py();
+        let iono_l2_m = iono_l1_m * (l1.carrier_hz.value() * l1.carrier_hz.value())
+            / (l2.carrier_hz.value() * l2.carrier_hz.value());
+        let lambda1 = SPEED_OF_LIGHT_MPS / l1.carrier_hz.value();
+        let lambda2 = SPEED_OF_LIGHT_MPS / l2.carrier_hz.value();
+        let epoch = make_gps_dual_frequency_epoch(
+            bijux_gnss_core::api::SignalBand::L2,
+            SignalCode::Py,
+            l2,
+            base_range_m + iono_l1_m,
+            base_range_m + iono_l2_m,
+            carrier_cycles(base_range_m, iono_l1_m, lambda1, ambiguity_l1_cycles),
+            carrier_cycles(base_range_m, iono_l2_m, lambda2, ambiguity_l2_cycles),
+        );
+
+        let iono_free =
+            iono_free_from_obs(&epoch, SatId { constellation: Constellation::Gps, prn: 3 })
+                .expect("iono-free observation");
+
+        let f1_2 = l1.carrier_hz.value() * l1.carrier_hz.value();
+        let f2_2 = l2.carrier_hz.value() * l2.carrier_hz.value();
+        let expected_ambiguity_m = (f1_2 * lambda1 * ambiguity_l1_cycles
+            - f2_2 * lambda2 * ambiguity_l2_cycles)
+            / (f1_2 - f2_2);
+
+        assert!((iono_free.phase_m - (base_range_m + expected_ambiguity_m)).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn iono_free_phase_preserves_l1_l5_ambiguity_term() {
+        let base_range_m = 20_200_000.0;
+        let iono_l1_m = 5.0;
+        let ambiguity_l1_cycles = 19.0;
+        let ambiguity_l5_cycles = 7.0;
+        let l1 = signal_spec_gps_l1_ca();
+        let l5 = signal_spec_gps_l5();
+        let iono_l5_m = iono_l1_m * (l1.carrier_hz.value() * l1.carrier_hz.value())
+            / (l5.carrier_hz.value() * l5.carrier_hz.value());
+        let lambda1 = SPEED_OF_LIGHT_MPS / l1.carrier_hz.value();
+        let lambda5 = SPEED_OF_LIGHT_MPS / l5.carrier_hz.value();
+        let epoch = make_gps_dual_frequency_epoch(
+            bijux_gnss_core::api::SignalBand::L5,
+            SignalCode::Unknown,
+            l5,
+            base_range_m + iono_l1_m,
+            base_range_m + iono_l5_m,
+            carrier_cycles(base_range_m, iono_l1_m, lambda1, ambiguity_l1_cycles),
+            carrier_cycles(base_range_m, iono_l5_m, lambda5, ambiguity_l5_cycles),
+        );
+
+        let iono_free =
+            iono_free_from_obs(&epoch, SatId { constellation: Constellation::Gps, prn: 3 })
+                .expect("iono-free observation");
+
+        let f1_2 = l1.carrier_hz.value() * l1.carrier_hz.value();
+        let f5_2 = l5.carrier_hz.value() * l5.carrier_hz.value();
+        let expected_ambiguity_m = (f1_2 * lambda1 * ambiguity_l1_cycles
+            - f5_2 * lambda5 * ambiguity_l5_cycles)
+            / (f1_2 - f5_2);
+
+        assert!((iono_free.phase_m - (base_range_m + expected_ambiguity_m)).abs() < 1.0e-6);
+    }
 }
