@@ -4,8 +4,8 @@ use std::f64::consts::TAU;
 use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds, SignalBand};
 use bijux_gnss_receiver::api::{
     sim::{
-        expected_acquisition_code_phase_samples, generate_l1_ca, wrapped_code_phase_error_samples_f64,
-        SyntheticSignalParams,
+        expected_acquisition_code_phase_samples, generate_l1_ca,
+        wrapped_code_phase_error_samples_f64, SyntheticSignalParams,
     },
     AcquisitionEngine, ReceiverPipelineConfig, TrackingEngine,
 };
@@ -154,9 +154,11 @@ fn galileo_e1_acquisition_detects_synthetic_signal() {
         0.020,
     );
 
-    let acquisition =
-        AcquisitionEngine::new(config.clone(), bijux_gnss_receiver::api::ReceiverRuntime::default())
-            .with_doppler(1_000, 500);
+    let acquisition = AcquisitionEngine::new(
+        config.clone(),
+        bijux_gnss_receiver::api::ReceiverRuntime::default(),
+    )
+    .with_doppler(1_000, 500);
     let mut results = acquisition.run_fft(&frame, &[sat]);
     let result = results.remove(0);
     let expected_code_phase_samples =
@@ -194,7 +196,9 @@ fn galileo_e1_acquisition_detects_synthetic_signal() {
         result.peak_second_ratio
     );
     assert!(
-        uncertainty.doppler_hz.is_finite() && uncertainty.doppler_hz > 0.0 && uncertainty.doppler_hz < 250.0,
+        uncertainty.doppler_hz.is_finite()
+            && uncertainty.doppler_hz > 0.0
+            && uncertainty.doppler_hz < 250.0,
         "Galileo E1 Doppler uncertainty out of range: {:?}",
         uncertainty
     );

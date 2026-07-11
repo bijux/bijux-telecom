@@ -61,9 +61,11 @@ fn receiver_run_reports_galileo_e1_acquisition_fields() {
         .iter()
         .find(|result| result.sat == sat)
         .expect("Galileo acquisition result");
-    let expected_code_phase_samples =
-        expected_acquisition_code_phase_samples(&config, &galileo_e1_reference_frame(&config), 321.0)
-            as f64;
+    let expected_code_phase_samples = expected_acquisition_code_phase_samples(
+        &config,
+        &galileo_e1_reference_frame(&config),
+        321.0,
+    ) as f64;
     let period_samples =
         samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
     let code_phase_error_samples = wrapped_code_phase_error_samples_f64(
@@ -77,16 +79,14 @@ fn receiver_run_reports_galileo_e1_acquisition_fields() {
     assert_eq!(sat_result.signal_band, SignalBand::E1, "{sat_result:?}");
     assert_eq!(sat_result.hypothesis.to_string(), "accepted", "{sat_result:?}");
     assert_eq!(sat_result.doppler_hz.0, 0.0, "{sat_result:?}");
-    assert!(
-        sat_result.carrier_hz.0.abs() <= 50.0,
-        "carrier estimate drifted: {:?}",
-        sat_result
-    );
+    assert!(sat_result.carrier_hz.0.abs() <= 50.0, "carrier estimate drifted: {:?}", sat_result);
     assert!(sat_result.peak_mean_ratio > 10.0, "{sat_result:?}");
     assert!(sat_result.peak_second_ratio > 1.2, "{sat_result:?}");
     assert!(code_phase_error_samples <= 0.5, "{sat_result:?}");
     assert!(
-        uncertainty.doppler_hz.is_finite() && uncertainty.doppler_hz > 0.0 && uncertainty.doppler_hz < 250.0,
+        uncertainty.doppler_hz.is_finite()
+            && uncertainty.doppler_hz > 0.0
+            && uncertainty.doppler_hz < 250.0,
         "{sat_result:?}"
     );
     assert!(
@@ -97,7 +97,9 @@ fn receiver_run_reports_galileo_e1_acquisition_fields() {
     );
 }
 
-fn galileo_e1_reference_frame(config: &ReceiverPipelineConfig) -> bijux_gnss_core::api::SamplesFrame {
+fn galileo_e1_reference_frame(
+    config: &ReceiverPipelineConfig,
+) -> bijux_gnss_core::api::SamplesFrame {
     let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
     bijux_gnss_receiver::api::sim::generate_l1_ca(
         config,

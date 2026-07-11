@@ -230,7 +230,8 @@ impl Receiver {
         } else {
             None
         };
-        let tracking_preview_frame = build_tracking_preview_frame(&frame, initial_tracking_frame.as_ref());
+        let tracking_preview_frame =
+            build_tracking_preview_frame(&frame, initial_tracking_frame.as_ref());
         let tracking_acquisitions = if has_trackable_channels {
             prioritize_tracking_acquisitions(
                 &tracking,
@@ -392,7 +393,8 @@ fn acquisition_frame_len(
     sats.iter()
         .filter_map(|sat| default_acquisition_signal(sat.constellation))
         .map(|signal| {
-            let code_length = signal.code_length.map(|length| length as usize).unwrap_or(config.code_length);
+            let code_length =
+                signal.code_length.map(|length| length as usize).unwrap_or(config.code_length);
             let samples_per_period =
                 samples_per_code(config.sampling_freq_hz, signal.spec.code_rate_hz, code_length);
             let code_period_ms =
@@ -414,7 +416,9 @@ fn acquisition_frame_len(
         })
 }
 
-fn acquisition_search_sats(config: &crate::engine::receiver_config::ReceiverPipelineConfig) -> Vec<SatId> {
+fn acquisition_search_sats(
+    config: &crate::engine::receiver_config::ReceiverPipelineConfig,
+) -> Vec<SatId> {
     [Constellation::Gps, Constellation::Galileo, Constellation::Glonass, Constellation::Beidou]
         .into_iter()
         .flat_map(|constellation| {
@@ -434,7 +438,8 @@ fn acquisition_signal_matches_config(
     let Some(signal) = default_acquisition_signal(constellation) else {
         return false;
     };
-    let code_length = signal.code_length.map(|length| length as usize).unwrap_or(config.code_length);
+    let code_length =
+        signal.code_length.map(|length| length as usize).unwrap_or(config.code_length);
     (signal.spec.code_rate_hz - config.code_freq_basis_hz).abs() <= f64::EPSILON
         && code_length == config.code_length
 }
@@ -475,14 +480,15 @@ fn prioritize_tracking_acquisitions(
         })
         .collect::<Vec<_>>();
     ranked.sort_by(|(left_summary, left_acq), (right_summary, right_acq)| {
-        compare_tracking_preview_summaries(left_summary, right_summary).then_with(|| {
-            acquisition_hypothesis_rank(left_acq.hypothesis)
-                .cmp(&acquisition_hypothesis_rank(right_acq.hypothesis))
-        })
-        .then_with(|| right_acq.score.total_cmp(&left_acq.score))
-        .then_with(|| right_acq.cn0_proxy.total_cmp(&left_acq.cn0_proxy))
-        .then_with(|| left_acq.sat.constellation.cmp(&right_acq.sat.constellation))
-        .then_with(|| left_acq.sat.prn.cmp(&right_acq.sat.prn))
+        compare_tracking_preview_summaries(left_summary, right_summary)
+            .then_with(|| {
+                acquisition_hypothesis_rank(left_acq.hypothesis)
+                    .cmp(&acquisition_hypothesis_rank(right_acq.hypothesis))
+            })
+            .then_with(|| right_acq.score.total_cmp(&left_acq.score))
+            .then_with(|| right_acq.cn0_proxy.total_cmp(&left_acq.cn0_proxy))
+            .then_with(|| left_acq.sat.constellation.cmp(&right_acq.sat.constellation))
+            .then_with(|| left_acq.sat.prn.cmp(&right_acq.sat.prn))
     });
     ranked.into_iter().take(channel_limit.max(1)).map(|(_, acq)| acq).collect()
 }
@@ -589,7 +595,8 @@ fn support_reason(constellation: Constellation, band: SignalBand, code: SignalCo
     if constellation == Constellation::Gps && band == SignalBand::L1 && code == SignalCode::Ca {
         return "receiver pipeline supports this signal path".to_string();
     }
-    if constellation == Constellation::Galileo && band == SignalBand::E1 && code == SignalCode::E1B {
+    if constellation == Constellation::Galileo && band == SignalBand::E1 && code == SignalCode::E1B
+    {
         return "receiver acquisition supports this signal path; tracking, observations, and navigation remain incomplete".to_string();
     }
     if signal_registry(constellation, band, code).is_some() {
