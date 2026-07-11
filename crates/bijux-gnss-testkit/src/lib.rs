@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 pub mod front_end;
+pub mod reference_coordinate;
 
 use bijux_gnss_infra::api::{DatasetEntry, DatasetRegistry};
 use bijux_gnss_receiver::api::ReceiverConfig;
