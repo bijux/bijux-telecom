@@ -3,7 +3,10 @@ use std::f64::consts::TAU;
 
 use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds, SignalBand};
 use bijux_gnss_receiver::api::{
-    sim::{generate_l1_ca, SyntheticSignalParams},
+    sim::{
+        expected_acquisition_code_phase_samples, generate_l1_ca, wrapped_code_phase_error_samples_f64,
+        SyntheticSignalParams,
+    },
     AcquisitionEngine, ReceiverPipelineConfig, TrackingEngine,
 };
 use bijux_gnss_signal::api::{advance_code_phase_seconds, sample_ca_code, samples_per_code, Prn};
@@ -152,14 +155,34 @@ fn galileo_e1_acquisition_detects_synthetic_signal() {
     );
 
     let acquisition =
-        AcquisitionEngine::new(config, bijux_gnss_receiver::api::ReceiverRuntime::default())
+        AcquisitionEngine::new(config.clone(), bijux_gnss_receiver::api::ReceiverRuntime::default())
             .with_doppler(1_000, 500);
     let mut results = acquisition.run_fft(&frame, &[sat]);
     let result = results.remove(0);
+    let expected_code_phase_samples =
+        expected_acquisition_code_phase_samples(&config, &frame, 321.0) as f64;
+    let period_samples =
+        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
+    let code_phase_error_samples = wrapped_code_phase_error_samples_f64(
+        result.resolved_code_phase_samples(),
+        expected_code_phase_samples,
+        period_samples,
+    );
+    let uncertainty = result.uncertainty.as_ref().expect("Galileo E1 acquisition uncertainty");
 
     assert_eq!(result.sat, sat);
     assert_eq!(result.signal_band, SignalBand::E1, "result={result:?}");
     assert_eq!(result.hypothesis.to_string(), "accepted", "result={result:?}");
+    assert_eq!(result.doppler_hz.0, 500.0, "result={result:?}");
+    assert!(
+        (result.carrier_hz.0 - 500.0).abs() <= 50.0,
+        "Galileo E1 carrier estimate drifted: {}",
+        result.carrier_hz.0
+    );
+    assert!(
+        code_phase_error_samples <= 0.5,
+        "Galileo E1 code-phase error too high: {code_phase_error_samples} samples for {result:?}"
+    );
     assert!(
         result.peak_mean_ratio > 10.0,
         "Galileo E1 peak_mean_ratio too low: {}",
@@ -169,6 +192,18 @@ fn galileo_e1_acquisition_detects_synthetic_signal() {
         result.peak_second_ratio > 1.2,
         "Galileo E1 peak_second_ratio too low: {}",
         result.peak_second_ratio
+    );
+    assert!(
+        uncertainty.doppler_hz.is_finite() && uncertainty.doppler_hz > 0.0 && uncertainty.doppler_hz < 250.0,
+        "Galileo E1 Doppler uncertainty out of range: {:?}",
+        uncertainty
+    );
+    assert!(
+        uncertainty.code_phase_samples.is_finite()
+            && uncertainty.code_phase_samples > 0.0
+            && uncertainty.code_phase_samples < 0.5,
+        "Galileo E1 code-phase uncertainty out of range: {:?}",
+        uncertainty
     );
 }
 
