@@ -9,7 +9,8 @@ use crate::rtk::status::{
 };
 use crate::validation_helpers::{check_budgets, to_validation_stats};
 use bijux_gnss_core::api::{
-    check_inter_frequency_alignment, check_solution_consistency, reference_ecef, stats,
+    check_dual_frequency_observations, check_inter_frequency_alignment, check_solution_consistency,
+    reference_ecef, stats, DualFrequencyObservationReport, DualFrequencyPairStatus,
     InterFrequencyAlignmentReport, NavSolutionEpoch, ObsEpoch, SatId, SignalBand,
     SolutionConsistencyReport, SolutionStatus, ValidationReferenceEpoch,
 };
@@ -310,6 +311,8 @@ pub struct ValidationReport {
     pub consistency_warnings: Vec<String>,
     /// Inter-frequency alignment report.
     pub inter_frequency_alignment: InterFrequencyAlignmentReport,
+    /// Dual-frequency observation support report.
+    pub dual_frequency_observations: DualFrequencyObservationReport,
     /// PPP readiness report.
     pub ppp_readiness: PppReadinessReport,
     /// Scientific policy used when classifying outputs.
@@ -491,16 +494,9 @@ pub fn build_validation_report_with_budgets(
     let time_consistency = check_time_consistency(tracks, sample_rate_hz);
     let consistency = check_solution_consistency(solutions);
     let inter_frequency_alignment = check_inter_frequency_alignment(obs);
-    let multi_freq_present = obs.iter().any(|e| {
-        let mut by_sat: std::collections::BTreeMap<SatId, std::collections::BTreeSet<_>> =
-            std::collections::BTreeMap::new();
-        for sat in &e.sats {
-            by_sat.entry(sat.signal_id.sat).or_default().insert(sat.signal_id.band);
-        }
-        by_sat.values().any(|bands| bands.len() > 1)
-    });
-    let combos = combinations_from_obs_epochs(obs, SignalBand::L1, SignalBand::L2);
-    let combinations_valid = combos.iter().all(|c| c.status == "ok") && !combos.is_empty();
+    let dual_frequency_observations = check_dual_frequency_observations(obs);
+    let multi_freq_present = dual_frequency_observations.observed_pairs > 0;
+    let combinations_valid = dual_frequency_combinations_valid(obs, &dual_frequency_observations);
     let support_matrix = support_status_matrix();
     let ppp_support =
         support_matrix.rows.iter().find(|row| row.mode == AdvancedMode::Ppp).cloned().unwrap_or(
@@ -587,6 +583,7 @@ pub fn build_validation_report_with_budgets(
         nees_mean,
         consistency_warnings,
         inter_frequency_alignment,
+        dual_frequency_observations,
         ppp_readiness: PppReadinessReport {
             multi_freq_present,
             combinations_valid,
@@ -605,6 +602,71 @@ pub fn build_validation_report_with_budgets(
         diagnostic_partition,
         assumptions,
     })
+}
+
+fn dual_frequency_combinations_valid(
+    obs: &[ObsEpoch],
+    dual_frequency_observations: &DualFrequencyObservationReport,
+) -> bool {
+    let mut saw_complete_pair = false;
+
+    for (band_1, band_2) in [(SignalBand::L1, SignalBand::L2), (SignalBand::L1, SignalBand::L5)] {
+        let filtered_epochs =
+            dual_frequency_pair_epochs(obs, dual_frequency_observations, band_1, band_2);
+        if filtered_epochs.is_empty() {
+            continue;
+        }
+
+        let combinations = combinations_from_obs_epochs(&filtered_epochs, band_1, band_2);
+        if combinations.is_empty()
+            || combinations.iter().any(|combination| combination.status != "ok")
+        {
+            return false;
+        }
+
+        saw_complete_pair = true;
+    }
+
+    saw_complete_pair
+}
+
+fn dual_frequency_pair_epochs(
+    obs: &[ObsEpoch],
+    dual_frequency_observations: &DualFrequencyObservationReport,
+    band_1: SignalBand,
+    band_2: SignalBand,
+) -> Vec<ObsEpoch> {
+    let mut satellites_by_epoch: std::collections::BTreeMap<
+        u64,
+        std::collections::BTreeSet<SatId>,
+    > = std::collections::BTreeMap::new();
+    for pair in &dual_frequency_observations.pairs {
+        if pair.band_1 != band_1 || pair.band_2 != band_2 {
+            continue;
+        }
+        if pair.status != DualFrequencyPairStatus::Complete {
+            continue;
+        }
+        satellites_by_epoch.entry(pair.epoch_idx).or_default().insert(pair.sat);
+    }
+
+    let mut filtered_epochs = Vec::new();
+    for epoch in obs {
+        let Some(satellites) = satellites_by_epoch.get(&epoch.epoch_idx) else {
+            continue;
+        };
+
+        let mut filtered_epoch = epoch.clone();
+        filtered_epoch.sats.retain(|satellite| {
+            satellites.contains(&satellite.signal_id.sat)
+                && (satellite.signal_id.band == band_1 || satellite.signal_id.band == band_2)
+        });
+        if !filtered_epoch.sats.is_empty() {
+            filtered_epochs.push(filtered_epoch);
+        }
+    }
+
+    filtered_epochs
 }
 
 fn lock_ratio_by_epoch(tracks: &[TrackingResult]) -> std::collections::BTreeMap<u64, f64> {
@@ -925,7 +987,9 @@ mod tests {
     use super::*;
     use crate::api::TrackingResult;
     use bijux_gnss_core::api::{
-        Chips, Constellation, Epoch, Hertz, NavAssumptions, SatId, TrackEpoch,
+        signal_registry, Chips, Constellation, Cycles, Epoch, Hertz, LockFlags, Meters,
+        NavAssumptions, ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus,
+        ReceiverRole, ReceiverSampleTrace, SatId, SigId, SignalCode, TrackEpoch,
     };
     use serde::Deserialize;
 
@@ -1268,6 +1332,85 @@ mod tests {
         );
     }
 
+    #[test]
+    fn validation_report_marks_l1_l2_dual_frequency_pairs_ready_for_combinations() {
+        let report = build_validation_report(
+            &[],
+            &[dual_frequency_epoch(
+                40,
+                vec![
+                    dual_frequency_satellite(SignalBand::L1, SignalCode::Ca, true, true),
+                    dual_frequency_satellite(SignalBand::L2, SignalCode::Py, true, true),
+                ],
+            )],
+            &[fixture_solution(40, 1.0, 0.5, 4)],
+            &[],
+            1.0,
+            true,
+            Vec::new(),
+            ValidationSciencePolicy::default(),
+        )
+        .expect("validation report");
+
+        assert_eq!(report.dual_frequency_observations.complete_pairs, 1);
+        assert_eq!(report.dual_frequency_observations.l1_l2_pairs, 1);
+        assert!(report.ppp_readiness.multi_freq_present);
+        assert!(report.ppp_readiness.combinations_valid);
+    }
+
+    #[test]
+    fn validation_report_marks_l1_l5_dual_frequency_pairs_ready_for_combinations() {
+        let report = build_validation_report(
+            &[],
+            &[dual_frequency_epoch(
+                41,
+                vec![
+                    dual_frequency_satellite(SignalBand::L1, SignalCode::Ca, true, true),
+                    dual_frequency_satellite(SignalBand::L5, SignalCode::Unknown, true, true),
+                ],
+            )],
+            &[fixture_solution(41, 1.0, 0.5, 4)],
+            &[],
+            1.0,
+            true,
+            Vec::new(),
+            ValidationSciencePolicy::default(),
+        )
+        .expect("validation report");
+
+        assert_eq!(report.dual_frequency_observations.complete_pairs, 1);
+        assert_eq!(report.dual_frequency_observations.l1_l5_pairs, 1);
+        assert!(report.ppp_readiness.multi_freq_present);
+        assert!(report.ppp_readiness.combinations_valid);
+    }
+
+    #[test]
+    fn validation_report_marks_incomplete_dual_frequency_pairs_not_ready_for_combinations() {
+        let report = build_validation_report(
+            &[],
+            &[dual_frequency_epoch(
+                42,
+                vec![
+                    dual_frequency_satellite(SignalBand::L1, SignalCode::Ca, true, true),
+                    dual_frequency_satellite(SignalBand::L2, SignalCode::Py, false, true),
+                ],
+            )],
+            &[fixture_solution(42, 1.0, 0.5, 4)],
+            &[],
+            1.0,
+            true,
+            Vec::new(),
+            ValidationSciencePolicy::default(),
+        )
+        .expect("validation report");
+
+        assert_eq!(report.dual_frequency_observations.complete_pairs, 0);
+        assert_eq!(report.dual_frequency_observations.incomplete_pairs, 2);
+        assert!(report.ppp_readiness.multi_freq_present);
+        assert!(!report.ppp_readiness.combinations_valid);
+        assert!(!report.ppp_readiness.prerequisites_met);
+    }
+
     #[derive(Debug, Deserialize)]
     struct ScienceFixtureCase {
         name: String,
@@ -1351,6 +1494,69 @@ mod tests {
             stability_signature: format!("navsig:v2:fixture:{epoch_idx}"),
             stability_signature_version:
                 bijux_gnss_core::api::NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
+        }
+    }
+
+    fn dual_frequency_epoch(epoch_idx: u64, sats: Vec<ObsSatellite>) -> ObsEpoch {
+        ObsEpoch {
+            t_rx_s: bijux_gnss_core::api::Seconds(epoch_idx as f64),
+            source_time: ReceiverSampleTrace::from_sample_index(epoch_idx, 1.0),
+            gps_week: None,
+            tow_s: None,
+            epoch_idx,
+            discontinuity: false,
+            valid: true,
+            processing_ms: None,
+            role: ReceiverRole::Rover,
+            sats,
+            decision: ObservationEpochDecision::Accepted,
+            decision_reason: Some("accepted_observables_present".to_string()),
+            manifest: None,
+        }
+    }
+
+    fn dual_frequency_satellite(
+        band: SignalBand,
+        code: SignalCode,
+        code_lock: bool,
+        carrier_lock: bool,
+    ) -> ObsSatellite {
+        ObsSatellite {
+            signal_id: SigId {
+                sat: SatId { constellation: Constellation::Gps, prn: 12 },
+                band,
+                code,
+            },
+            pseudorange_m: Meters(22_000_000.0),
+            pseudorange_var_m2: 1.0,
+            carrier_phase_cycles: Cycles(200.0),
+            carrier_phase_var_cycles2: 0.1,
+            doppler_hz: Hertz(15.0),
+            doppler_var_hz2: 1.0,
+            cn0_dbhz: 45.0,
+            lock_flags: LockFlags { code_lock, carrier_lock, bit_lock: true, cycle_slip: false },
+            multipath_suspect: false,
+            observation_status: ObservationStatus::Accepted,
+            observation_reject_reasons: Vec::new(),
+            elevation_deg: Some(45.0),
+            azimuth_deg: Some(120.0),
+            weight: Some(1.0),
+            timing: None,
+            error_model: None,
+            metadata: ObsMetadata {
+                tracking_mode: "scalar".to_string(),
+                integration_ms: 1,
+                lock_quality: 1.0,
+                smoothing_window: 0,
+                smoothing_age: 0,
+                smoothing_resets: 0,
+                signal: signal_registry(Constellation::Gps, band, code)
+                    .expect("dual-frequency signal must exist")
+                    .spec,
+                doppler_model: "tracked_carrier_hz_minus_intermediate_freq".to_string(),
+                observation_lock_state: "locked".to_string(),
+                ..ObsMetadata::default()
+            },
         }
     }
 
