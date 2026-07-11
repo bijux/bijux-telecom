@@ -56,3 +56,25 @@ fn geometry_dops_worsen_when_satellites_cluster() {
     assert!(clustered_dops.pdop > wide_dops.pdop);
     assert!(clustered_dops.gdop > wide_dops.gdop);
 }
+
+#[test]
+fn geometry_dops_match_regular_tetrahedron_reference() {
+    let receiver_ecef_m = [0.0, 0.0, 0.0];
+    let radius_m = 20_200_000.0;
+    let scale = radius_m / 3.0_f64.sqrt();
+    let satellites = vec![
+        [scale, scale, scale],
+        [scale, -scale, -scale],
+        [-scale, scale, -scale],
+        [-scale, -scale, scale],
+    ];
+
+    let dops = position_dops_from_satellite_positions(receiver_ecef_m, &satellites)
+        .expect("tetrahedron dops");
+
+    assert!((dops.hdop - 1.224_744_871_391_589).abs() < 1.0e-12);
+    assert!((dops.vdop - 0.866_025_403_784_438_6).abs() < 1.0e-12);
+    assert!((dops.pdop - 1.5).abs() < 1.0e-12);
+    assert!((dops.tdop - 0.5).abs() < 1.0e-12);
+    assert!((dops.gdop - 1.581_138_830_084_189_8).abs() < 1.0e-12);
+}

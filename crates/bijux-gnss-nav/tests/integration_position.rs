@@ -163,6 +163,22 @@ fn single_point_solver_recovers_four_satellite_fix() {
     assert!((solution.ecef_y_m - scenario.truth_ecef_m.1).abs() < 5.0);
     assert!((solution.ecef_z_m - scenario.truth_ecef_m.2).abs() < 5.0);
     assert!(solution.clock_bias_s.abs() < 1.0e-9);
+    assert!(solution.hdop.is_some());
+    assert!(solution.vdop.is_some());
+    assert!(solution.gdop.is_some());
+    assert!(solution.tdop.is_some());
+    assert!(
+        (solution.pdop.powi(2)
+            - (solution.hdop.expect("hdop").powi(2) + solution.vdop.expect("vdop").powi(2)))
+        .abs()
+            < 1.0e-9
+    );
+    assert!(
+        (solution.gdop.expect("gdop").powi(2)
+            - (solution.pdop.powi(2) + solution.tdop.expect("tdop").powi(2)))
+        .abs()
+            < 1.0e-9
+    );
 }
 
 #[test]
