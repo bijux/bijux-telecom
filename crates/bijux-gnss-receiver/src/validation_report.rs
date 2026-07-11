@@ -217,8 +217,12 @@ pub struct ValidationAssumptionReport {
 pub struct NavResidualReport {
     /// Epoch index.
     pub epoch_idx: u64,
-    /// RMS residual (m).
+    /// Post-fit RMS residual compatibility field (m).
     pub rms_m: f64,
+    /// Pre-fit RMS residual (m), when the solution reports it.
+    pub pre_fit_rms_m: Option<f64>,
+    /// Post-fit RMS residual (m), when the solution reports it.
+    pub post_fit_rms_m: Option<f64>,
     /// PDOP value.
     pub pdop: f64,
     /// Per-satellite residuals.
@@ -424,6 +428,8 @@ pub fn build_validation_report_with_budgets(
         residuals.push(NavResidualReport {
             epoch_idx: sol.epoch.index,
             rms_m: sol.rms_m.0,
+            pre_fit_rms_m: sol.pre_fit_residual_rms_m.map(|value| value.0),
+            post_fit_rms_m: sol.post_fit_residual_rms_m.map(|value| value.0),
             pdop: sol.pdop,
             residuals: per_sat,
             rejected,
@@ -895,6 +901,8 @@ mod tests {
             clock_bias_m: bijux_gnss_core::api::Meters(0.0),
             clock_drift_s_per_s: 0.0,
             pdop: 1.0,
+            pre_fit_residual_rms_m: Some(bijux_gnss_core::api::Meters(0.0)),
+            post_fit_residual_rms_m: Some(bijux_gnss_core::api::Meters(0.0)),
             rms_m: bijux_gnss_core::api::Meters(0.0),
             status: SolutionStatus::Converged,
             quality: SolutionStatus::Converged.quality_flag(),
@@ -1138,6 +1146,8 @@ mod tests {
             clock_bias_m: bijux_gnss_core::api::Meters(0.0),
             clock_drift_s_per_s: 0.0,
             pdop,
+            pre_fit_residual_rms_m: Some(bijux_gnss_core::api::Meters(rms_m)),
+            post_fit_residual_rms_m: Some(bijux_gnss_core::api::Meters(rms_m)),
             rms_m: bijux_gnss_core::api::Meters(rms_m),
             status: SolutionStatus::Converged,
             quality: SolutionStatus::Converged.quality_flag(),
