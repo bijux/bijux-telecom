@@ -4,7 +4,10 @@ use bijux_gnss_core::api::{
     ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, ReceiverSampleTrace, SatId, SigId,
     SignalBand, SignalCode,
 };
-use bijux_gnss_nav::api::combinations_from_obs_epochs;
+use bijux_gnss_nav::api::{
+    combinations_from_obs_epochs, geometry_free_diagnostics_from_obs_epochs, GeometryFreeEvent,
+    GeometryFreeThresholds,
+};
 
 fn make_dual_freq_epoch(p1: f64, p2: f64, phi1: f64, phi2: f64) -> ObsEpoch {
     let sat = SatId { constellation: Constellation::Gps, prn: 1 };
@@ -197,16 +200,16 @@ fn iono_free_reduces_iono_term() {
     let epoch = make_dual_freq_epoch(
         base_range + iono_l1,
         base_range + iono_l2,
-        (base_range - iono_l1)
-            / (bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value() / 299_792_458.0),
-        (base_range - iono_l2)
-            / (bijux_gnss_core::api::GPS_L2_PY_CARRIER_HZ.value() / 299_792_458.0),
+        (base_range - iono_l1) / (299_792_458.0 / bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value()),
+        (base_range - iono_l2) / (299_792_458.0 / bijux_gnss_core::api::GPS_L2_PY_CARRIER_HZ.value()),
     );
     let combos = combinations_from_obs_epochs(&[epoch], SignalBand::L1, SignalBand::L2);
     assert_eq!(combos.len(), 1);
     let combo = &combos[0];
     let if_code = combo.if_code_m.expect("if code");
     assert!((if_code - base_range).abs() < 10.0);
+    let geometry_free = combo.geometry_free_phase_m.expect("geometry-free phase");
+    assert!((geometry_free - 3.0).abs() < 1.0e-6, "{geometry_free}");
 }
 
 #[test]
@@ -217,6 +220,39 @@ fn melbourne_wubbena_detects_slip() {
     let mw1 = combos[0].melbourne_wubbena_m.unwrap();
     let mw2 = combos[1].melbourne_wubbena_m.unwrap();
     assert!((mw2 - mw1).abs() > 1.0);
+}
+
+#[test]
+fn geometry_free_detects_ionosphere_drift() {
+    let diagnostics = geometry_free_diagnostics_from_obs_epochs(
+        &[
+            make_dual_freq_epoch(20_000_000.0, 20_000_002.0, 1000.0, 999.75),
+            make_dual_freq_epoch(20_000_000.0, 20_000_002.0, 1000.0, 999.55),
+        ],
+        SignalBand::L1,
+        SignalBand::L2,
+        GeometryFreeThresholds { ionosphere_delta_m: 0.01, cycle_slip_jump_m: 0.05 },
+    );
+
+    assert_eq!(diagnostics[0].event, GeometryFreeEvent::InsufficientHistory);
+    assert_eq!(diagnostics[1].event, GeometryFreeEvent::IonosphereDrift);
+    assert!(diagnostics[1].delta_from_previous_m.expect("delta") > 0.01);
+}
+
+#[test]
+fn geometry_free_detects_cycle_slip() {
+    let diagnostics = geometry_free_diagnostics_from_obs_epochs(
+        &[
+            make_dual_freq_epoch(20_000_000.0, 20_000_002.0, 1000.0, 1001.0),
+            make_dual_freq_epoch(20_000_000.0, 20_000_002.0, 1001.0, 1001.0),
+        ],
+        SignalBand::L1,
+        SignalBand::L2,
+        GeometryFreeThresholds { ionosphere_delta_m: 0.01, cycle_slip_jump_m: 0.05 },
+    );
+
+    assert_eq!(diagnostics[1].event, GeometryFreeEvent::CycleSlipSuspect);
+    assert!(diagnostics[1].delta_from_previous_m.expect("delta") > 0.05);
 }
 
 #[test]
@@ -237,9 +273,8 @@ fn iono_free_supports_l1_l5_pairs() {
     let epoch = make_l1_l5_epoch(
         base_range + iono_l1,
         base_range + iono_l5,
-        (base_range - iono_l1)
-            / (bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value() / 299_792_458.0),
-        (base_range - iono_l5) / (bijux_gnss_core::api::GPS_L5_CARRIER_HZ.value() / 299_792_458.0),
+        (base_range - iono_l1) / (299_792_458.0 / bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value()),
+        (base_range - iono_l5) / (299_792_458.0 / bijux_gnss_core::api::GPS_L5_CARRIER_HZ.value()),
     );
 
     let combos = combinations_from_obs_epochs(&[epoch], SignalBand::L1, SignalBand::L5);
