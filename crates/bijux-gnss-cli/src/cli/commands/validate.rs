@@ -520,6 +520,7 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
         validation_science_policy(&profile),
     )?;
     let out_dir = artifacts_dir(&common, "validate", dataset.as_ref())?;
+    write_melbourne_wubbena_diagnostics(&out_dir, &obs)?;
     let out = out_dir.join("validation_report.json");
     fs::write(&out, serde_json::to_string_pretty(&report)?)?;
     let evidence = validation_evidence_bundle(&obs, &solutions, &report);
@@ -562,6 +563,7 @@ fn handle_validate_reference(command: GnssCommand) -> Result<()> {
         bijux_gnss_infra::api::receiver::ValidationSciencePolicy::default(),
     )?;
     let out_dir = artifacts_dir(&common, "validate_reference", None)?;
+    write_melbourne_wubbena_diagnostics(&out_dir, &obs)?;
     let out = out_dir.join("validation_report.json");
     fs::write(&out, serde_json::to_string_pretty(&report)?)?;
     let evidence = validation_evidence_bundle(&obs, &solutions, &report);

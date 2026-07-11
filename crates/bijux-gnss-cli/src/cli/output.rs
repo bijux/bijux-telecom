@@ -647,7 +647,39 @@ fn write_obs_timeseries_for_command(
         fs::write(&combo_path, combo_lines.join("\n"))?;
         validate_jsonl_schema(&schema_path("combinations.schema.json"), &combo_path, false)?;
     }
+    write_melbourne_wubbena_diagnostics(&out_dir, &obs)?;
     Ok(obs)
+}
+
+pub(crate) fn write_melbourne_wubbena_diagnostics(out_dir: &Path, obs: &[ObsEpoch]) -> Result<()> {
+    let mut diagnostics = Vec::new();
+    for (band_1, band_2) in [
+        (bijux_gnss_infra::api::core::SignalBand::L1, bijux_gnss_infra::api::core::SignalBand::L2),
+        (bijux_gnss_infra::api::core::SignalBand::L1, bijux_gnss_infra::api::core::SignalBand::L5),
+    ] {
+        let pair_diagnostics = bijux_gnss_infra::api::nav::melbourne_wubbena_diagnostics_from_obs_epochs(
+            obs,
+            band_1,
+            band_2,
+            bijux_gnss_infra::api::nav::MelbourneWubbenaThresholds::default(),
+        );
+        if pair_diagnostics.iter().any(|diagnostic| diagnostic.status == "ok") {
+            diagnostics.extend(pair_diagnostics);
+        }
+    }
+
+    if diagnostics.is_empty() {
+        return Ok(());
+    }
+
+    let path = out_dir.join("melbourne_wubbena.jsonl");
+    let mut lines = Vec::new();
+    for diagnostic in diagnostics {
+        lines.push(serde_json::to_string(&diagnostic)?);
+    }
+    fs::write(&path, lines.join("\n"))?;
+    validate_jsonl_schema(&schema_path("melbourne_wubbena.schema.json"), &path, false)?;
+    Ok(())
 }
 
 fn write_obs_timeseries(
@@ -966,10 +998,13 @@ mod tests {
     use crate::RawIqMetadata;
     use crate::{CommonArgs, ReceiverConfig, ReceiverPipelineConfig, ReportFormat};
     use bijux_gnss_infra::api::core::{
-        ArtifactHeaderV1, ArtifactReadPolicy, Chips, Constellation, Cycles, Epoch, Hertz, Meters,
-        NavLifecycleState, NavSolutionEpoch, NavUncertaintyClass, ReceiverSampleTrace, SatId,
-        Seconds, SignalDelayAlignment, SolutionStatus, SolutionValidity, TrackEpoch, TrackEpochV1,
-        NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
+        signal_spec_gps_l1_ca, signal_spec_gps_l2_py, ArtifactHeaderV1, ArtifactReadPolicy, Chips,
+        Constellation, Cycles, Epoch, Hertz, LockFlags, Meters, NavLifecycleState,
+        NavSolutionEpoch, NavUncertaintyClass, ObsEpoch, ObsMetadata, ObsSatellite,
+        ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
+        Seconds, SigId, SignalBand, SignalCode, SignalDelayAlignment, SolutionStatus,
+        SolutionValidity, TrackEpoch, TrackEpochV1, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
+        NAV_SOLUTION_MODEL_VERSION,
     };
     use bijux_gnss_infra::api::nav::{
         write_rinex_broadcast_navigation, write_rinex_nav, GpsBroadcastNavigationData,
@@ -1227,6 +1262,99 @@ mod tests {
             dump: None,
             sidecar: None,
             resume: None,
+        }
+    }
+
+    fn dual_frequency_epoch(epoch_idx: u64, p1_m: f64, p2_m: f64, phi1_m: f64, phi2_m: f64) -> ObsEpoch {
+        let sat = SatId { constellation: Constellation::Gps, prn: 12 };
+        let l1 = signal_spec_gps_l1_ca();
+        let l2 = signal_spec_gps_l2_py();
+        let l1_wavelength_m = 299_792_458.0 / l1.carrier_hz.value();
+        let l2_wavelength_m = 299_792_458.0 / l2.carrier_hz.value();
+
+        ObsEpoch {
+            t_rx_s: Seconds(epoch_idx as f64),
+            source_time: ReceiverSampleTrace::from_sample_index(epoch_idx, 1.0),
+            gps_week: None,
+            tow_s: None,
+            epoch_idx,
+            discontinuity: false,
+            valid: true,
+            processing_ms: None,
+            role: ReceiverRole::Rover,
+            sats: vec![
+                ObsSatellite {
+                    signal_id: SigId { sat, band: SignalBand::L1, code: SignalCode::Ca },
+                    pseudorange_m: Meters(p1_m),
+                    pseudorange_var_m2: 1.0,
+                    carrier_phase_cycles: Cycles(phi1_m / l1_wavelength_m),
+                    carrier_phase_var_cycles2: 0.01,
+                    doppler_hz: Hertz(0.0),
+                    doppler_var_hz2: 1.0,
+                    cn0_dbhz: 45.0,
+                    lock_flags: LockFlags {
+                        code_lock: true,
+                        carrier_lock: true,
+                        bit_lock: false,
+                        cycle_slip: false,
+                    },
+                    multipath_suspect: false,
+                    observation_status: ObservationStatus::Accepted,
+                    observation_reject_reasons: Vec::new(),
+                    elevation_deg: None,
+                    azimuth_deg: None,
+                    weight: None,
+                    timing: None,
+                    error_model: None,
+                    metadata: ObsMetadata {
+                        tracking_mode: "test".to_string(),
+                        integration_ms: 1,
+                        lock_quality: 1.0,
+                        smoothing_window: 0,
+                        smoothing_age: 0,
+                        smoothing_resets: 0,
+                        signal: l1,
+                        ..ObsMetadata::default()
+                    },
+                },
+                ObsSatellite {
+                    signal_id: SigId { sat, band: SignalBand::L2, code: SignalCode::Py },
+                    pseudorange_m: Meters(p2_m),
+                    pseudorange_var_m2: 1.0,
+                    carrier_phase_cycles: Cycles(phi2_m / l2_wavelength_m),
+                    carrier_phase_var_cycles2: 0.01,
+                    doppler_hz: Hertz(0.0),
+                    doppler_var_hz2: 1.0,
+                    cn0_dbhz: 45.0,
+                    lock_flags: LockFlags {
+                        code_lock: true,
+                        carrier_lock: true,
+                        bit_lock: false,
+                        cycle_slip: false,
+                    },
+                    multipath_suspect: false,
+                    observation_status: ObservationStatus::Accepted,
+                    observation_reject_reasons: Vec::new(),
+                    elevation_deg: None,
+                    azimuth_deg: None,
+                    weight: None,
+                    timing: None,
+                    error_model: None,
+                    metadata: ObsMetadata {
+                        tracking_mode: "test".to_string(),
+                        integration_ms: 1,
+                        lock_quality: 1.0,
+                        smoothing_window: 0,
+                        smoothing_age: 0,
+                        smoothing_resets: 0,
+                        signal: l2,
+                        ..ObsMetadata::default()
+                    },
+                },
+            ],
+            decision: ObservationEpochDecision::Accepted,
+            decision_reason: Some("accepted_observables_present".to_string()),
+            manifest: None,
         }
     }
 
@@ -1766,6 +1894,42 @@ mod tests {
         assert_eq!(payload["payload"]["artifact_id"], "obs-epoch-0000000070");
         assert_eq!(payload["payload"]["accepted"], true);
         assert!(raw_pseudorange_m > 0.0);
+
+        fs::remove_dir_all(&out_dir).expect("remove output directory");
+    }
+
+    #[test]
+    fn write_melbourne_wubbena_diagnostics_emits_wide_lane_events() {
+        let out_dir = temp_output_dir("melbourne_wubbena_output");
+        fs::create_dir_all(&out_dir).expect("create output directory");
+
+        super::write_melbourne_wubbena_diagnostics(
+            &out_dir,
+            &[
+                dual_frequency_epoch(0, 22_000_000.0, 22_000_002.0, 21_999_999.0, 22_000_000.5),
+                dual_frequency_epoch(1, 22_000_000.0, 22_000_002.0, 21_999_999.01, 22_000_000.49),
+                dual_frequency_epoch(2, 22_000_000.0, 22_000_002.0, 22_000_005.5, 22_000_000.5),
+            ],
+        )
+        .expect("write melbourne-wubbena diagnostics");
+
+        let path = out_dir.join("melbourne_wubbena.jsonl");
+        let text = fs::read_to_string(&path).expect("read melbourne-wubbena artifact");
+        let rows: Vec<serde_json::Value> = text
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("parse melbourne-wubbena row"))
+            .collect();
+
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0]["event"], "insufficient_history");
+        assert_eq!(rows[1]["event"], "nominal");
+        assert_eq!(rows[2]["event"], "wide_lane_slip_suspect");
+        assert!(
+            rows[2]["delta_from_previous_wide_lane_cycles"]
+                .as_f64()
+                .expect("wide-lane delta")
+                >= 0.5
+        );
 
         fs::remove_dir_all(&out_dir).expect("remove output directory");
     }
