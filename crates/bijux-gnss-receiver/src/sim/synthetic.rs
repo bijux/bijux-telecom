@@ -988,16 +988,22 @@ pub struct SyntheticPvtTimeProfilePoint {
     pub diverging_epoch_count: usize,
     /// Diverging-solution fraction across truth-matched epochs.
     pub diverging_epoch_rate: f64,
+    /// Number of epochs contributing to each leading and trailing analysis window.
+    pub analysis_window_epoch_count: usize,
     /// Mean 3D position error over the first analysis window, in meters.
     pub first_window_mean_position_error_3d_m: Option<f64>,
     /// Mean 3D position error over the last analysis window, in meters.
     pub last_window_mean_position_error_3d_m: Option<f64>,
+    /// Difference between the trailing and leading mean 3D position error, in meters.
+    pub position_error_growth_m: Option<f64>,
     /// Linear 3D position-error drift slope over receive time, in meters per second.
     pub position_error_drift_m_per_s: Option<f64>,
     /// Mean residual RMS over the first analysis window, in meters.
     pub first_window_mean_residual_rms_m: Option<f64>,
     /// Mean residual RMS over the last analysis window, in meters.
     pub last_window_mean_residual_rms_m: Option<f64>,
+    /// Difference between the trailing and leading mean residual RMS, in meters.
+    pub residual_rms_growth_m: Option<f64>,
     /// Linear residual-RMS drift slope over receive time, in meters per second.
     pub residual_rms_drift_m_per_s: Option<f64>,
     /// Classified time-evolution trend.
@@ -2808,6 +2814,12 @@ pub fn summarize_truth_guided_pvt_time_profile(
                     &residual_rms_m[residual_rms_m.len() - window_len.min(residual_rms_m.len())..],
                 )
             };
+            let position_error_growth_m = first_window_mean_position_error_3d_m
+                .zip(last_window_mean_position_error_3d_m)
+                .map(|(first, last)| last - first);
+            let residual_rms_growth_m = first_window_mean_residual_rms_m
+                .zip(last_window_mean_residual_rms_m)
+                .map(|(first, last)| last - first);
             let position_error_drift_m_per_s =
                 linear_trend_slope(&receive_times_s, &position_error_3d_m);
             let residual_rms_drift_m_per_s = linear_trend_slope(&receive_times_s, &residual_rms_m);
@@ -2832,11 +2844,14 @@ pub fn summarize_truth_guided_pvt_time_profile(
                 stable_epoch_rate,
                 diverging_epoch_count,
                 diverging_epoch_rate,
+                analysis_window_epoch_count: window_len.min(epoch_count),
                 first_window_mean_position_error_3d_m,
                 last_window_mean_position_error_3d_m,
+                position_error_growth_m,
                 position_error_drift_m_per_s,
                 first_window_mean_residual_rms_m,
                 last_window_mean_residual_rms_m,
+                residual_rms_growth_m,
                 residual_rms_drift_m_per_s,
                 trend,
                 truth_coverage_ready: case.accuracy.truth_coverage_ready,
