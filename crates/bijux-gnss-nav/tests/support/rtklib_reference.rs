@@ -92,10 +92,7 @@ fn parse_pos_line(line_number: usize, fields: &[&str]) -> Result<RtkLibReference
     }
 
     Ok(RtkLibReferenceEpoch {
-        gps_time: GpsTime {
-            week: parse_u32_field(line_number, "$POS week", fields[1])?,
-            tow_s: parse_f64_field(line_number, "$POS tow_s", fields[2])?,
-        },
+        gps_time: parse_gps_time_fields(line_number, "$POS", fields[1], fields[2])?,
         quality_flag: parse_u8_field(line_number, "$POS quality_flag", fields[3])?,
         ecef_m: (
             parse_f64_field(line_number, "$POS x_m", fields[4])?,
@@ -116,10 +113,7 @@ fn parse_clk_line(line_number: usize, fields: &[&str]) -> Result<(GpsTime, u8, f
     }
 
     Ok((
-        GpsTime {
-            week: parse_u32_field(line_number, "$CLK week", fields[1])?,
-            tow_s: parse_f64_field(line_number, "$CLK tow_s", fields[2])?,
-        },
+        parse_gps_time_fields(line_number, "$CLK", fields[1], fields[2])?,
         parse_u8_field(line_number, "$CLK quality_flag", fields[3])?,
         parse_f64_field(line_number, "$CLK clock_bias_ns", fields[5])?,
     ))
@@ -137,10 +131,7 @@ fn parse_sat_line(
     }
 
     Ok((
-        GpsTime {
-            week: parse_u32_field(line_number, "$SAT week", fields[1])?,
-            tow_s: parse_f64_field(line_number, "$SAT tow_s", fields[2])?,
-        },
+        parse_gps_time_fields(line_number, "$SAT", fields[1], fields[2])?,
         RtkLibReferenceResidual {
             sat: parse_sat_token(line_number, fields[3])?,
             azimuth_deg: parse_f64_field(line_number, "$SAT azimuth_deg", fields[5])?,
@@ -231,6 +222,21 @@ fn parse_f64_field(line_number: usize, field_name: &str, value: &str) -> Result<
         .trim()
         .parse::<f64>()
         .map_err(|err| format!("invalid {field_name} on line {line_number}: {err}"))
+}
+
+fn parse_gps_time_fields(
+    line_number: usize,
+    record_name: &str,
+    week: &str,
+    tow_s: &str,
+) -> Result<GpsTime, String> {
+    let mut week = parse_u32_field(line_number, &format!("{record_name} week"), week)?;
+    let mut tow_s = parse_f64_field(line_number, &format!("{record_name} tow_s"), tow_s)?;
+    while tow_s >= 604_800.0 {
+        week += 1;
+        tow_s -= 604_800.0;
+    }
+    Ok(GpsTime { week, tow_s })
 }
 
 fn fixture(name: &str) -> String {
