@@ -6,7 +6,8 @@ use bijux_gnss_core::api::{
 };
 use bijux_gnss_nav::api::{
     combinations_from_obs_epochs, geometry_free_diagnostics_from_obs_epochs, GeometryFreeEvent,
-    GeometryFreeThresholds,
+    GeometryFreeThresholds, melbourne_wubbena_diagnostics_from_obs_epochs,
+    MelbourneWubbenaEvent, MelbourneWubbenaThresholds,
 };
 
 fn make_dual_freq_epoch(p1: f64, p2: f64, phi1: f64, phi2: f64) -> ObsEpoch {
@@ -220,6 +221,47 @@ fn melbourne_wubbena_detects_slip() {
     let mw1 = combos[0].melbourne_wubbena_m.unwrap();
     let mw2 = combos[1].melbourne_wubbena_m.unwrap();
     assert!((mw2 - mw1).abs() > 1.0);
+}
+
+#[test]
+fn melbourne_wubbena_marks_nominal_wide_lane_behavior() {
+    let diagnostics = melbourne_wubbena_diagnostics_from_obs_epochs(
+        &[
+            make_dual_freq_epoch(20_000_000.0, 20_000_002.0, 1000.0, 1001.0),
+            make_dual_freq_epoch(20_000_000.0, 20_000_002.0, 1000.01, 1001.0),
+        ],
+        SignalBand::L1,
+        SignalBand::L2,
+        MelbourneWubbenaThresholds { wide_lane_slip_jump_cycles: 0.5 },
+    );
+
+    assert_eq!(diagnostics[0].event, MelbourneWubbenaEvent::InsufficientHistory);
+    assert_eq!(diagnostics[1].event, MelbourneWubbenaEvent::Nominal);
+    assert!(diagnostics[1]
+        .delta_from_previous_wide_lane_cycles
+        .expect("wide-lane delta")
+        .abs()
+        < 0.5);
+}
+
+#[test]
+fn melbourne_wubbena_marks_wide_lane_slip() {
+    let diagnostics = melbourne_wubbena_diagnostics_from_obs_epochs(
+        &[
+            make_dual_freq_epoch(20_000_000.0, 20_000_002.0, 1000.0, 1001.0),
+            make_dual_freq_epoch(20_000_000.0, 20_000_002.0, 1100.0, 1001.0),
+        ],
+        SignalBand::L1,
+        SignalBand::L2,
+        MelbourneWubbenaThresholds { wide_lane_slip_jump_cycles: 0.5 },
+    );
+
+    assert_eq!(diagnostics[1].event, MelbourneWubbenaEvent::WideLaneSlipSuspect);
+    assert!(diagnostics[1]
+        .delta_from_previous_wide_lane_cycles
+        .expect("wide-lane delta")
+        .abs()
+        >= 0.5);
 }
 
 #[test]
