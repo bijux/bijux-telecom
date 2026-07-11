@@ -484,6 +484,15 @@ mod pvt_tests {
         common
     }
 
+    fn sample_common_args_with_profile(
+        out: PathBuf,
+        configure: impl FnOnce(&mut ReceiverConfig),
+    ) -> CommonArgs {
+        let mut common = sample_common_args(out.clone());
+        common.config = Some(write_receiver_config(&out, configure));
+        common
+    }
+
     fn write_receiver_config(root: &Path, configure: impl FnOnce(&mut ReceiverConfig)) -> PathBuf {
         let path = root.join("receiver.toml");
         let mut profile = ReceiverConfig::default();
@@ -910,6 +919,26 @@ mod pvt_tests {
         solutions.remove(0)
     }
 
+    fn solve_pvt_case_with_rinex_nav_profile_and_troposphere(
+        case_name: &str,
+        ephs: &[GpsEphemeris],
+        pvt_case: &SyntheticPvtCase,
+        ekf: bool,
+        tropo_enabled: bool,
+        configure: impl FnOnce(&mut ReceiverConfig),
+    ) -> bijux_gnss_infra::api::core::NavSolutionEpoch {
+        let mut solutions = solve_obs_epochs_with_rinex_nav_profile_and_troposphere(
+            case_name,
+            ephs,
+            &[pvt_case.obs_epoch.clone()],
+            ekf,
+            tropo_enabled,
+            configure,
+        );
+        assert_eq!(solutions.len(), 1);
+        solutions.remove(0)
+    }
+
     fn solve_obs_epochs_with_rinex_nav_mode_and_troposphere(
         case_name: &str,
         ephs: &[GpsEphemeris],
@@ -941,6 +970,52 @@ mod pvt_tests {
         write_rinex_nav(&eph_path, ephs, true).expect("write rinex nav");
 
         let common = sample_common_args_with_troposphere(root.clone(), tropo_enabled);
+        let out_dir = artifacts_dir(&common, "pvt", None).expect("artifacts dir");
+        fs::create_dir_all(&out_dir).expect("create pvt artifacts dir");
+        handle_pvt(GnssCommand::Pvt { common: common.clone(), obs: obs_path, eph: eph_path, ekf })
+            .expect("pvt command");
+
+        let nav_path = out_dir.join("pvt.jsonl");
+        let solutions = read_nav_solutions(&nav_path).expect("read nav solutions");
+        fs::remove_dir_all(root).expect("remove test root");
+        solutions
+    }
+
+    fn solve_obs_epochs_with_rinex_nav_profile_and_troposphere(
+        case_name: &str,
+        ephs: &[GpsEphemeris],
+        obs_epochs: &[ObsEpoch],
+        ekf: bool,
+        tropo_enabled: bool,
+        configure: impl FnOnce(&mut ReceiverConfig),
+    ) -> Vec<bijux_gnss_infra::api::core::NavSolutionEpoch> {
+        let root = std::env::temp_dir().join(format!(
+            "bijux_pvt_profile_{}_{}_{}",
+            case_name,
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos()
+        ));
+        fs::create_dir_all(&root).expect("create test root");
+        let obs_path = root.join("obs.jsonl");
+        let eph_path = root.join("nav.rnx");
+        fs::write(
+            &obs_path,
+            obs_epochs
+                .iter()
+                .map(|obs_epoch| {
+                    serde_json::to_string(obs_epoch).expect("serialize observation epoch")
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+                + "\n",
+        )
+        .expect("write obs");
+        write_rinex_nav(&eph_path, ephs, true).expect("write rinex nav");
+
+        let common = sample_common_args_with_profile(root.clone(), |profile| {
+            profile.navigation.tropo_enable = tropo_enabled;
+            configure(profile);
+        });
         let out_dir = artifacts_dir(&common, "pvt", None).expect("artifacts dir");
         fs::create_dir_all(&out_dir).expect("create pvt artifacts dir");
         handle_pvt(GnssCommand::Pvt { common: common.clone(), obs: obs_path, eph: eph_path, ekf })
@@ -1474,6 +1549,87 @@ mod pvt_tests {
             .iter()
             .any(|reason| reason == "minimum_usable_satellites=4"));
         assert!(!solutions[1].valid);
+    }
+
+    #[test]
+    fn pvt_command_refuses_wls_solution_when_gdop_exceeds_science_threshold() {
+        let ephemerides = sample_ephemerides();
+        let pvt_case = sample_pvt_case(&ephemerides, 2.75e-4);
+        let baseline_solution = solve_pvt_case_with_rinex_nav_mode(
+            "wls_geometry_threshold_baseline",
+            &ephemerides,
+            &pvt_case,
+            false,
+        );
+        let baseline_gdop = baseline_solution.gdop.expect("baseline gdop");
+
+        let refused_solution = solve_pvt_case_with_rinex_nav_profile_and_troposphere(
+            "wls_geometry_threshold_refusal",
+            &ephemerides,
+            &pvt_case,
+            false,
+            true,
+            |profile| {
+                profile.navigation.science_thresholds.max_pdop = 100.0;
+                profile.navigation.science_thresholds.max_gdop = baseline_gdop - 0.01;
+            },
+        );
+
+        assert!(baseline_solution.valid);
+        assert_eq!(refused_solution.status, bijux_gnss_infra::api::core::SolutionStatus::Invalid);
+        assert_eq!(
+            refused_solution.refusal_class,
+            Some(bijux_gnss_infra::api::core::NavRefusalClass::InsufficientGeometry)
+        );
+        assert!((refused_solution.gdop.expect("refused gdop") - baseline_gdop).abs() < 1.0e-9);
+        assert!(refused_solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason.starts_with("gdop_above_threshold:")));
+        assert_eq!(refused_solution.ecef_x_m.0, 0.0);
+        assert_eq!(refused_solution.ecef_y_m.0, 0.0);
+        assert_eq!(refused_solution.ecef_z_m.0, 0.0);
+        assert!(!refused_solution.valid);
+    }
+
+    #[test]
+    fn pvt_command_refuses_ekf_solution_when_pdop_exceeds_science_threshold() {
+        let ephemerides = sample_ephemerides();
+        let pvt_case = sample_pvt_case(&ephemerides, 2.75e-4);
+        let baseline_solution = solve_pvt_case_with_rinex_nav_mode(
+            "ekf_geometry_threshold_baseline",
+            &ephemerides,
+            &pvt_case,
+            true,
+        );
+
+        let refused_solution = solve_pvt_case_with_rinex_nav_profile_and_troposphere(
+            "ekf_geometry_threshold_refusal",
+            &ephemerides,
+            &pvt_case,
+            true,
+            true,
+            |profile| {
+                profile.navigation.science_thresholds.max_pdop = baseline_solution.pdop - 0.01;
+                profile.navigation.science_thresholds.max_gdop = 100.0;
+            },
+        );
+
+        assert!(baseline_solution.valid);
+        assert_eq!(refused_solution.status, bijux_gnss_infra::api::core::SolutionStatus::Invalid);
+        assert_eq!(
+            refused_solution.refusal_class,
+            Some(bijux_gnss_infra::api::core::NavRefusalClass::InsufficientGeometry)
+        );
+        assert!((refused_solution.pdop - baseline_solution.pdop).abs() < 1.0e-9);
+        assert!(refused_solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason.starts_with("pdop_above_threshold:")));
+        assert_eq!(refused_solution.ecef_x_m.0, 0.0);
+        assert_eq!(refused_solution.ecef_y_m.0, 0.0);
+        assert_eq!(refused_solution.ecef_z_m.0, 0.0);
+        assert!(!refused_solution.valid);
     }
 
     #[test]
