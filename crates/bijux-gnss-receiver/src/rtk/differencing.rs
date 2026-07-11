@@ -1,45 +1,23 @@
 #![allow(missing_docs)]
 
-use std::collections::HashMap;
-
 use bijux_gnss_core::api::{
-    AmbiguityId, DoubleDifference, Hertz, Meters, ObsEpoch, ObsSatellite, SigId, SignalBand,
-    SingleDifference,
+    Cycles, DoubleDifference, Hertz, Meters, ObsEpoch, SigId, SingleDifference,
 };
 
-fn ambiguity_id_from_sat(sat: &ObsSatellite) -> AmbiguityId {
-    AmbiguityId {
-        sig: sat.signal_id,
-        signal: match sat.metadata.signal.band {
-            SignalBand::L1 => "L1CA".to_string(),
-            SignalBand::L2 => "L2".to_string(),
-            SignalBand::L5 => "L5".to_string(),
-            _ => "Unknown".to_string(),
-        },
-    }
-}
+use super::core::build_sd;
 
 pub fn single_difference(rover: &ObsEpoch, base: &ObsEpoch) -> Vec<SingleDifference> {
-    let mut base_map: HashMap<SigId, &ObsSatellite> = HashMap::new();
-    for sat in &base.sats {
-        base_map.insert(sat.signal_id, sat);
-    }
-    let mut out = Vec::new();
-    for rover_sat in &rover.sats {
-        if let Some(base_sat) = base_map.get(&rover_sat.signal_id) {
-            out.push(SingleDifference {
-                sig: rover_sat.signal_id,
-                code_m: Meters(rover_sat.pseudorange_m.0 - base_sat.pseudorange_m.0),
-                phase_cycles: bijux_gnss_core::api::Cycles(
-                    rover_sat.carrier_phase_cycles.0 - base_sat.carrier_phase_cycles.0,
-                ),
-                doppler_hz: Hertz(rover_sat.doppler_hz.0 - base_sat.doppler_hz.0),
-                ambiguity_rover: ambiguity_id_from_sat(rover_sat),
-                ambiguity_base: ambiguity_id_from_sat(base_sat),
-            });
-        }
-    }
-    out
+    build_sd(base, rover)
+        .into_iter()
+        .map(|observation| SingleDifference {
+            sig: observation.sig,
+            code_m: Meters(observation.code_m),
+            phase_cycles: Cycles(observation.phase_cycles),
+            doppler_hz: Hertz(observation.doppler_hz),
+            ambiguity_rover: observation.ambiguity_rover,
+            ambiguity_base: observation.ambiguity_base,
+        })
+        .collect()
 }
 
 pub fn double_difference(

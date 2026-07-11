@@ -26,8 +26,8 @@ fn sample_sd_observation() -> SdObservation {
         code_m: 150.0,
         phase_cycles: 0.5,
         doppler_hz: -5.0,
-        variance_code: 4.0,
-        variance_phase: 0.01,
+        code_variance_m2: 4.0,
+        phase_variance_cycles2: 0.01,
         ambiguity_rover: bijux_gnss_core::api::AmbiguityId {
             sig: SigId {
                 sat: SatId { constellation: Constellation::Gps, prn: 7 },

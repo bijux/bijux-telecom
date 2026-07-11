@@ -4,7 +4,12 @@ use std::collections::BTreeMap;
 
 use super::metrics::{baseline_from_ecef, jitter_summary, BaselineSolution, JitterSummary};
 use bijux_gnss_core::api::{
-    AmbiguityId, Constellation, ObsEpoch, ObsSatellite, ObsSignalTiming, ReceiverRole, SigId,
+    AmbiguityId, Constellation, ObsEpoch, ObsSignalTiming, ReceiverRole, SigId,
+};
+use bijux_gnss_nav::api::{
+    choose_rtk_single_difference_reference_signal,
+    choose_rtk_single_difference_reference_signals_by_constellation,
+    rtk_single_differences_from_obs_epochs, RtkSingleDifferenceObservation,
 };
 
 #[derive(Debug, Clone)]
@@ -72,8 +77,6 @@ impl RefSatSelector {
     }
 }
 
-type SignalKey = SigId;
-
 impl EpochAligner {
     pub fn new(tolerance_s: f64) -> Self {
         Self { tolerance_s, aligned: 0, dropped_base: 0, dropped_rover: 0, jitter_s: Vec::new() }
@@ -124,21 +127,7 @@ impl EpochAligner {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct SdObservation {
-    pub sig: SigId,
-    pub rover_pseudorange_m: f64,
-    pub rover_signal_timing: Option<ObsSignalTiming>,
-    pub base_pseudorange_m: f64,
-    pub base_signal_timing: Option<ObsSignalTiming>,
-    pub code_m: f64,
-    pub phase_cycles: f64,
-    pub doppler_hz: f64,
-    pub variance_code: f64,
-    pub variance_phase: f64,
-    pub ambiguity_rover: AmbiguityId,
-    pub ambiguity_base: AmbiguityId,
-}
+pub type SdObservation = RtkSingleDifferenceObservation;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DdObservation {
@@ -154,40 +143,6 @@ pub struct DdObservation {
     pub variance_code: f64,
     pub variance_phase: f64,
     pub canceled: Vec<AmbiguityId>,
-}
-
-impl bijux_gnss_core::api::ArtifactPayloadValidate for SdObservation {
-    fn validate_payload(&self) -> Vec<bijux_gnss_core::api::DiagnosticEvent> {
-        let mut events = Vec::new();
-        if !self.rover_pseudorange_m.is_finite()
-            || !self.base_pseudorange_m.is_finite()
-            || !self.code_m.is_finite()
-            || !self.phase_cycles.is_finite()
-            || !self.doppler_hz.is_finite()
-        {
-            events.push(bijux_gnss_core::api::DiagnosticEvent::new(
-                bijux_gnss_core::api::DiagnosticSeverity::Error,
-                "RTK_SD_NUMERIC_INVALID",
-                "sd observation contains NaN/Inf",
-            ));
-        }
-        if timing_is_invalid(self.rover_signal_timing) || timing_is_invalid(self.base_signal_timing)
-        {
-            events.push(bijux_gnss_core::api::DiagnosticEvent::new(
-                bijux_gnss_core::api::DiagnosticSeverity::Error,
-                "RTK_SD_TIMING_INVALID",
-                "sd observation timing contains NaN/Inf",
-            ));
-        }
-        if self.variance_code < 0.0 || self.variance_phase < 0.0 {
-            events.push(bijux_gnss_core::api::DiagnosticEvent::new(
-                bijux_gnss_core::api::DiagnosticSeverity::Error,
-                "RTK_SD_VARIANCE_INVALID",
-                "sd observation variance is negative",
-            ));
-        }
-        events
-    }
 }
 
 impl bijux_gnss_core::api::ArtifactPayloadValidate for DdObservation {
@@ -220,88 +175,16 @@ pub struct SolutionSeparation {
     pub delta_enu_m: f64,
 }
 
-fn ambiguity_id(sat: &ObsSatellite) -> AmbiguityId {
-    AmbiguityId { sig: sat.signal_id, signal: format!("{:?}", sat.metadata.signal.band) }
-}
-
 pub fn build_sd(base: &ObsEpoch, rover: &ObsEpoch) -> Vec<SdObservation> {
-    let mut base_map: BTreeMap<SignalKey, &ObsSatellite> = BTreeMap::new();
-    for sat in &base.sats {
-        base_map.insert(sat.signal_id, sat);
-    }
-    let mut out = Vec::new();
-    for sat in &rover.sats {
-        let key = sat.signal_id;
-        if let Some(base_sat) = base_map.get(&key) {
-            let rover_code_var = if sat.pseudorange_var_m2 > 0.0 {
-                sat.pseudorange_var_m2
-            } else {
-                variance_from_cn0_elev(sat.cn0_dbhz, sat.elevation_deg, MeasurementKind::Code)
-            };
-            let base_code_var = if base_sat.pseudorange_var_m2 > 0.0 {
-                base_sat.pseudorange_var_m2
-            } else {
-                variance_from_cn0_elev(
-                    base_sat.cn0_dbhz,
-                    base_sat.elevation_deg,
-                    MeasurementKind::Code,
-                )
-            };
-            let rover_phase_var = if sat.carrier_phase_var_cycles2 > 0.0 {
-                sat.carrier_phase_var_cycles2
-            } else {
-                variance_from_cn0_elev(sat.cn0_dbhz, sat.elevation_deg, MeasurementKind::Phase)
-            };
-            let base_phase_var = if base_sat.carrier_phase_var_cycles2 > 0.0 {
-                base_sat.carrier_phase_var_cycles2
-            } else {
-                variance_from_cn0_elev(
-                    base_sat.cn0_dbhz,
-                    base_sat.elevation_deg,
-                    MeasurementKind::Phase,
-                )
-            };
-            let variance_code = rover_code_var + base_code_var;
-            let variance_phase = rover_phase_var + base_phase_var;
-            out.push(SdObservation {
-                sig: sat.signal_id,
-                rover_pseudorange_m: sat.pseudorange_m.0,
-                rover_signal_timing: sat.timing,
-                base_pseudorange_m: base_sat.pseudorange_m.0,
-                base_signal_timing: base_sat.timing,
-                code_m: sat.pseudorange_m.0 - base_sat.pseudorange_m.0,
-                phase_cycles: sat.carrier_phase_cycles.0 - base_sat.carrier_phase_cycles.0,
-                doppler_hz: sat.doppler_hz.0 - base_sat.doppler_hz.0,
-                variance_code,
-                variance_phase,
-                ambiguity_rover: ambiguity_id(sat),
-                ambiguity_base: ambiguity_id(base_sat),
-            });
-        }
-    }
-    out
+    rtk_single_differences_from_obs_epochs(base, rover)
 }
 
 pub fn choose_ref_sat(sd: &[SdObservation]) -> Option<SigId> {
-    sd.iter()
-        .min_by(|a, b| {
-            a.variance_code.partial_cmp(&b.variance_code).unwrap_or(std::cmp::Ordering::Equal)
-        })
-        .map(|s| s.sig)
+    choose_rtk_single_difference_reference_signal(sd)
 }
 
 pub fn choose_ref_sat_per_constellation(sd: &[SdObservation]) -> BTreeMap<Constellation, SigId> {
-    let mut by_const: BTreeMap<Constellation, Vec<SdObservation>> = BTreeMap::new();
-    for s in sd {
-        by_const.entry(s.ambiguity_rover.sig.sat.constellation).or_default().push(s.clone());
-    }
-    let mut out = BTreeMap::new();
-    for (constellation, items) in by_const {
-        if let Some(sig) = choose_ref_sat(&items) {
-            out.insert(constellation, sig);
-        }
-    }
-    out
+    choose_rtk_single_difference_reference_signals_by_constellation(sd)
 }
 
 pub fn build_dd(sd: &[SdObservation], ref_sig: SigId) -> Vec<DdObservation> {
@@ -324,10 +207,10 @@ pub fn build_dd(sd: &[SdObservation], ref_sig: SigId) -> Vec<DdObservation> {
             continue;
         }
         let corr = 0.0;
-        let code_var = s.variance_code + ref_sd.variance_code
-            - 2.0 * corr * (s.variance_code * ref_sd.variance_code).sqrt();
-        let phase_var = s.variance_phase + ref_sd.variance_phase
-            - 2.0 * corr * (s.variance_phase * ref_sd.variance_phase).sqrt();
+        let code_var = s.code_variance_m2 + ref_sd.code_variance_m2
+            - 2.0 * corr * (s.code_variance_m2 * ref_sd.code_variance_m2).sqrt();
+        let phase_var = s.phase_variance_cycles2 + ref_sd.phase_variance_cycles2
+            - 2.0 * corr * (s.phase_variance_cycles2 * ref_sd.phase_variance_cycles2).sqrt();
         out.push(DdObservation {
             sig: s.sig,
             ref_sig: ref_sd.sig,
@@ -380,30 +263,6 @@ pub fn dd_covariance(dd: &DdObservation) -> DdCovarianceModel {
         variance_phase: dd.variance_phase,
         inter_frequency_corr: None,
     }
-}
-
-fn variance_from_cn0_elev(cn0_dbhz: f64, elevation_deg: Option<f64>, kind: MeasurementKind) -> f64 {
-    let cn0_linear = 10.0_f64.powf(cn0_dbhz / 10.0).max(1.0);
-    let elev = elevation_deg.unwrap_or(30.0).to_radians().sin().max(0.1);
-    let base = match kind {
-        MeasurementKind::Code => 10.0,
-        MeasurementKind::Phase => 0.02,
-    };
-    let sigma = base / (cn0_linear.sqrt() * elev);
-    sigma * sigma
-}
-
-fn timing_is_invalid(timing: Option<ObsSignalTiming>) -> bool {
-    let Some(timing) = timing else {
-        return false;
-    };
-    !timing.signal_travel_time_s.0.is_finite() || !timing.transmit_gps_time.tow_s.is_finite()
-}
-
-#[derive(Debug, Clone, Copy)]
-enum MeasurementKind {
-    Code,
-    Phase,
 }
 
 #[derive(Debug, Clone)]

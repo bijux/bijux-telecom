@@ -128,7 +128,7 @@ fn dd_variance_matches_expected_sum() {
     let ref_sig = choose_ref_sat(&sd).expect("ref");
     let dd = build_dd(&sd, ref_sig);
     assert!(dd.is_empty());
-    assert!((sd[0].variance_code - 13.0).abs() < 1e-6);
+    assert!((sd[0].code_variance_m2 - 13.0).abs() < 1e-6);
 }
 
 #[test]
@@ -141,7 +141,7 @@ fn variance_model_decreases_with_cn0() {
     high.sats[0].pseudorange_var_m2 = 0.0;
     let sd_low = build_sd(&low, &low);
     let sd_high = build_sd(&high, &high);
-    assert!(sd_high[0].variance_code < sd_low[0].variance_code);
+    assert!(sd_high[0].code_variance_m2 < sd_low[0].code_variance_m2);
 }
 
 #[test]
