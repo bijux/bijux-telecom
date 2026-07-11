@@ -67,6 +67,16 @@ impl GalileoE1ReferenceCatalog {
             100,
             "unexpected Galileo E1 primary-code reference count"
         );
+        assert_eq!(
+            self.primary_code.iter().filter(|reference| reference.channel == "E1B").count(),
+            50,
+            "unexpected Galileo E1-B reference count"
+        );
+        assert_eq!(
+            self.primary_code.iter().filter(|reference| reference.channel == "E1C").count(),
+            50,
+            "unexpected Galileo E1-C reference count"
+        );
     }
 
     pub fn primary_code_reference(
@@ -129,6 +139,33 @@ pub fn logical_bits_from_code(code: &[i8]) -> String {
         GALILEO_E1_PRIMARY_CODE_CHIPS,
         "unexpected Galileo E1 primary-code length"
     );
+    logical_bits_from_bipolar(code)
+}
+
+pub fn assert_secondary_code_matches_reference(
+    catalog: &GalileoE1ReferenceCatalog,
+    code: &[i8],
+) {
+    let logical_bits = logical_bits_from_bipolar(code);
+    assert_eq!(
+        logical_bits,
+        catalog.secondary_code_bits,
+        "Galileo E1 secondary-code bit mismatch"
+    );
+    assert_eq!(
+        sha256_hex(&logical_bits),
+        catalog.secondary_code_sha256,
+        "Galileo E1 secondary-code fingerprint mismatch"
+    );
+}
+
+pub fn sha256_hex(payload: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(payload.as_bytes());
+    hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn logical_bits_from_bipolar(code: &[i8]) -> String {
     code.iter()
         .map(|chip| match chip {
             1 => '0',
@@ -136,12 +173,6 @@ pub fn logical_bits_from_code(code: &[i8]) -> String {
             _ => panic!("Galileo E1 code must be bipolar, found {chip}"),
         })
         .collect()
-}
-
-pub fn sha256_hex(payload: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(payload.as_bytes());
-    hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn channel_name(channel: GalileoE1Channel) -> &'static str {
