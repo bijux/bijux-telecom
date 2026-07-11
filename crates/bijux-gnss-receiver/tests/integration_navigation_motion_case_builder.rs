@@ -2,8 +2,6 @@
 
 #[path = "support/navigation_motion_profile.rs"]
 mod navigation_motion_profile;
-#[path = "support/navigation_truth.rs"]
-mod navigation_truth;
 
 use navigation_motion_profile::{
     build_navigation_motion_case, motion_profile_mean_speed_mps, motion_profile_path_length_m,

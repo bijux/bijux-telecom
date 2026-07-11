@@ -1,28 +1,30 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    ecef_to_geodetic, Chips, Cycles, Epoch, GpsTime, Hertz, ReceiverSampleTrace,
-    SignalDelayAlignment, TrackEpoch, ValidationReferenceEpoch, GPS_L1_CA_CARRIER_HZ,
+    ecef_to_geodetic, geodetic_to_ecef, Chips, Constellation, Cycles, Epoch, GpsTime, Hertz,
+    ReceiverSampleTrace, SatId, SignalDelayAlignment, TrackEpoch, ValidationReferenceEpoch,
 };
-use bijux_gnss_nav::api::GpsEphemeris;
+use bijux_gnss_nav::api::{sat_state_gps_l1ca, GpsEphemeris};
 use bijux_gnss_receiver::api::{
     observations_from_tracking_results_with_gps_anchor,
     sim::{
         truth_guided_receiver_accuracy_budgets, validate_pvt_accuracy_budget,
         validate_truth_guided_pvt_table, SyntheticPvtAccuracyReport,
-        SyntheticPvtTruthReferenceEpoch, SyntheticPvtTruthTableReport,
+        SyntheticPvtTruthReferenceEpoch, SyntheticPvtTruthTableReport, SyntheticSignalParams,
     },
     Navigation, ReceiverPipelineConfig, ReceiverRuntime, TrackingResult,
 };
 
-use crate::navigation_truth::{multisatellite_pvt_scenario, synthetic_pseudorange_m};
-
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 const GPS_L1_CA_CODE_RATE_HZ: f64 = 1_023_000.0;
 const GPS_L1_CA_CODE_PERIOD_CHIPS: f64 = 1023.0;
-const MOTION_EPOCH_COUNT: usize = 5;
-const MOTION_EPOCH_SPACING_S: f64 = 1.0;
+const MOTION_EPOCH_COUNT: usize = 250;
+const MOTION_EPOCH_SPACING_S: f64 = 0.001;
 const LINEAR_MOTION_VELOCITY_ECEF_MPS: (f64, f64, f64) = (8.0, -3.0, 1.5);
+const MOTION_RECEIVE_TIME_S: f64 = 100_000.0;
+const MOTION_TRUTH_LAT_DEG: f64 = 37.0;
+const MOTION_TRUTH_LON_DEG: f64 = -122.0;
+const MOTION_TRUTH_ALT_M: f64 = 10.0;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NavigationMotionTruthEpoch {
@@ -47,24 +49,23 @@ pub struct NavigationMotionCase {
 }
 
 pub fn synthetic_navigation_motion_profiles() -> Vec<NavigationMotionProfile> {
-    let config = navigation_motion_config();
-    let seed = multisatellite_pvt_scenario(&config, 0.25, "navigation_motion_seed");
-    let receive_time_s = seed.ephemerides.first().expect("navigation motion ephemeris").toe_s;
+    let truth_ecef_m =
+        geodetic_to_ecef(MOTION_TRUTH_LAT_DEG, MOTION_TRUTH_LON_DEG, MOTION_TRUTH_ALT_M);
 
     vec![
         receiver_motion_profile(
             "static_reference",
-            seed.truth_ecef_m,
+            truth_ecef_m,
             (0.0, 0.0, 0.0),
-            receive_time_s,
+            MOTION_RECEIVE_TIME_S,
             MOTION_EPOCH_SPACING_S,
             MOTION_EPOCH_COUNT,
         ),
         receiver_motion_profile(
             "linear_receiver_motion",
-            seed.truth_ecef_m,
+            truth_ecef_m,
             LINEAR_MOTION_VELOCITY_ECEF_MPS,
-            receive_time_s,
+            MOTION_RECEIVE_TIME_S,
             MOTION_EPOCH_SPACING_S,
             MOTION_EPOCH_COUNT,
         ),
@@ -106,7 +107,7 @@ pub fn receiver_motion_profile(
         .map(|epoch_index| {
             let elapsed_s = epoch_index as f64 * epoch_spacing_s;
             NavigationMotionTruthEpoch {
-                epoch_idx: epoch_index as u64,
+                epoch_idx: (elapsed_s * 1000.0).round() as u64,
                 receive_time_s: initial_receive_time_s + elapsed_s,
                 truth_ecef_m: (
                     initial_truth_ecef_m.0 + truth_velocity_ecef_mps.0 * elapsed_s,
@@ -125,20 +126,21 @@ pub fn build_navigation_motion_case(profile: NavigationMotionProfile) -> Navigat
     validate_truth_epochs(&profile.truth_epochs);
 
     let config = navigation_motion_config();
-    let seed = multisatellite_pvt_scenario(&config, 0.25, "navigation_motion_seed");
+    let ephemerides = motion_ephemerides();
+    let signals = motion_satellite_signals(&ephemerides);
     let scenario_id = format!("navigation_motion_profile_{}", profile.profile_name);
     let tracking = truth_seeded_motion_tracking_results(
         &config,
-        &seed.ephemerides,
-        &seed.scenario.satellites,
+        &ephemerides,
+        &signals,
         &profile.truth_epochs,
     );
     let gps_time = Some(GpsTime {
-        week: seed.ephemerides.first().expect("navigation motion ephemeris").week,
+        week: ephemerides.first().expect("navigation motion ephemeris").week,
         tow_s: profile.truth_epochs.first().expect("navigation motion truth epoch").receive_time_s,
     });
     let observations =
-        observations_from_tracking_results_with_gps_anchor(&config, gps_time, &tracking, 10)
+        observations_from_tracking_results_with_gps_anchor(&config, gps_time, &tracking, 1)
             .output
             .into_iter()
             .filter(|epoch| epoch.valid && epoch.sats.len() >= 4)
@@ -146,7 +148,7 @@ pub fn build_navigation_motion_case(profile: NavigationMotionProfile) -> Navigat
     let mut navigation = Navigation::new(config, ReceiverRuntime::default());
     let solutions = observations
         .iter()
-        .filter_map(|epoch| navigation.solve_epoch(epoch, &seed.ephemerides))
+        .filter_map(|epoch| navigation.solve_epoch(epoch, &ephemerides))
         .collect::<Vec<_>>();
     let reference = truth_reference_epochs_for_motion(&profile.truth_epochs, &solutions);
     let truth_table = validate_truth_guided_pvt_table(&scenario_id, &solutions, &reference);
@@ -191,17 +193,98 @@ fn navigation_motion_config() -> ReceiverPipelineConfig {
         intermediate_freq_hz: 0.0,
         code_freq_basis_hz: 1_023_000.0,
         code_length: 1023,
-        channels: 5,
+        channels: 6,
         tracking_budget_ms: 100.0,
         tracking_over_budget_action: "continue".to_string(),
+        tropo_enable: false,
         ..ReceiverPipelineConfig::default()
     }
+}
+
+fn motion_ephemerides() -> Vec<GpsEphemeris> {
+    vec![
+        make_ephemeris(3, 0.0, 0.0),
+        make_ephemeris(7, 0.8, 0.8),
+        make_ephemeris(11, 1.6, 1.6),
+        make_ephemeris(19, 2.4, 2.4),
+        make_ephemeris(23, 3.2, 3.2),
+        make_ephemeris(29, 4.0, 4.0),
+    ]
+}
+
+fn motion_satellite_signals(ephemerides: &[GpsEphemeris]) -> Vec<SyntheticSignalParams> {
+    ephemerides
+        .iter()
+        .zip([-1_800.0, -1_000.0, -250.0, 500.0, 1_250.0, 2_000.0])
+        .map(|(ephemeris, doppler_hz)| SyntheticSignalParams {
+            sat: ephemeris.sat,
+            doppler_hz,
+            code_phase_chips: 0.0,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 52.0,
+            data_bit_flip: false,
+        })
+        .collect()
+}
+
+fn make_ephemeris(prn: u8, omega0: f64, m0: f64) -> GpsEphemeris {
+    GpsEphemeris {
+        sat: SatId { constellation: Constellation::Gps, prn },
+        iodc: 0,
+        iode: 0,
+        week: 0,
+        sv_health: 0,
+        toe_s: MOTION_RECEIVE_TIME_S,
+        toc_s: MOTION_RECEIVE_TIME_S,
+        sqrt_a: 5153.7954775,
+        e: 0.0,
+        i0: 0.94,
+        idot: 0.0,
+        omega0,
+        omegadot: 0.0,
+        w: 0.0,
+        m0,
+        delta_n: 0.0,
+        cuc: 0.0,
+        cus: 0.0,
+        crc: 0.0,
+        crs: 0.0,
+        cic: 0.0,
+        cis: 0.0,
+        af0: 0.0,
+        af1: 0.0,
+        af2: 0.0,
+        tgd: 0.0,
+    }
+}
+
+fn synthetic_pseudorange_m(
+    ephemeris: &GpsEphemeris,
+    receive_time_s: f64,
+    truth_ecef_m: (f64, f64, f64),
+) -> f64 {
+    let mut tau = 0.07;
+    let mut pseudorange_m = 0.0;
+    for _ in 0..10 {
+        let sat = sat_state_gps_l1ca(ephemeris, receive_time_s - tau, tau);
+        let dx = truth_ecef_m.0 - sat.x_m;
+        let dy = truth_ecef_m.1 - sat.y_m;
+        let dz = truth_ecef_m.2 - sat.z_m;
+        let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
+        pseudorange_m = range_m - sat.clock_correction.bias_s * SPEED_OF_LIGHT_MPS;
+        let next_tau = pseudorange_m / SPEED_OF_LIGHT_MPS;
+        if (next_tau - tau).abs() < 1.0e-12 {
+            break;
+        }
+        tau = next_tau;
+    }
+    pseudorange_m
 }
 
 fn truth_seeded_motion_tracking_results(
     config: &ReceiverPipelineConfig,
     ephemerides: &[GpsEphemeris],
-    signals: &[bijux_gnss_receiver::api::sim::SyntheticSignalParams],
+    signals: &[SyntheticSignalParams],
     truth_epochs: &[NavigationMotionTruthEpoch],
 ) -> Vec<TrackingResult> {
     let initial_receive_time_s = truth_epochs
@@ -209,8 +292,6 @@ fn truth_seeded_motion_tracking_results(
         .expect("receiver motion tracking requires a truth epoch")
         .receive_time_s;
     let samples_per_chip = config.sampling_freq_hz / config.code_freq_basis_hz;
-    let lambda_m = SPEED_OF_LIGHT_MPS / GPS_L1_CA_CARRIER_HZ.value();
-
     signals
         .iter()
         .map(|signal| {
@@ -251,7 +332,7 @@ fn truth_seeded_motion_tracking_results(
                         late_i: 0.0,
                         late_q: 0.0,
                         carrier_hz: Hertz(signal.doppler_hz),
-                        carrier_phase_cycles: Cycles(pseudorange_m / lambda_m),
+                        carrier_phase_cycles: Cycles(0.0),
                         code_rate_hz: Hertz(config.code_freq_basis_hz),
                         code_phase_samples: Chips(code_phase_chips * samples_per_chip),
                         lock: true,
