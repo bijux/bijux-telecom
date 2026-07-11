@@ -6,28 +6,24 @@ use std::path::Path;
 use bijux_gnss_core::api::SamplesFrame;
 use bijux_gnss_receiver::api::{
     sim::{
-        build_iq16_capture_bundle, generate_l1_ca_multi, validate_truth_guided_tracking_table,
-        SyntheticIqTruthBundle, SyntheticScenario,
+        build_iq16_capture_bundle, generate_l1_ca_multi, truth_guided_receiver_accuracy_budgets,
+        validate_truth_guided_tracking_table, SyntheticIqTruthBundle, SyntheticScenario,
     },
     ReceiverPipelineConfig,
 };
 
-const TRACKING_CARRIER_TOLERANCE_HZ: f64 = 10.0;
-const TRACKING_DOPPLER_TOLERANCE_HZ: f64 = 10.0;
-const TRACKING_CODE_PHASE_TOLERANCE_SAMPLES: f64 = 1.0;
-const TRACKING_CN0_TOLERANCE_DB_HZ: f64 = 8.0;
-
 #[test]
 fn tracking_truth_table_records_errors_and_lock_state_per_epoch() {
     let fixture = build_truth_table_fixture("synthetic_iq_acquisition_reference_low_rate.toml");
+    let budget = truth_guided_receiver_accuracy_budgets().tracking;
     let report = validate_truth_guided_tracking_table(
         &fixture.config,
         &fixture.frame,
         &fixture.truth,
-        TRACKING_CARRIER_TOLERANCE_HZ,
-        TRACKING_DOPPLER_TOLERANCE_HZ,
-        TRACKING_CODE_PHASE_TOLERANCE_SAMPLES,
-        TRACKING_CN0_TOLERANCE_DB_HZ,
+        budget.max_carrier_error_hz,
+        budget.max_doppler_error_hz,
+        budget.max_code_phase_error_samples,
+        budget.max_cn0_error_db_hz,
     );
 
     assert!(report.pass, "{report:?}");
@@ -62,20 +58,20 @@ fn tracking_truth_table_records_errors_and_lock_state_per_epoch() {
                 assert!(epoch.fll_lock, "{epoch:?}");
                 assert_eq!(epoch.lock_state, "tracking", "{epoch:?}");
                 assert!(
-                    epoch.carrier_error_hz <= TRACKING_CARRIER_TOLERANCE_HZ + f64::EPSILON,
+                    epoch.carrier_error_hz <= budget.max_carrier_error_hz + f64::EPSILON,
                     "{epoch:?}"
                 );
                 assert!(
-                    epoch.doppler_error_hz <= TRACKING_DOPPLER_TOLERANCE_HZ + f64::EPSILON,
+                    epoch.doppler_error_hz <= budget.max_doppler_error_hz + f64::EPSILON,
                     "{epoch:?}"
                 );
                 assert!(
                     epoch.code_phase_error_samples
-                        <= TRACKING_CODE_PHASE_TOLERANCE_SAMPLES + f64::EPSILON,
+                        <= budget.max_code_phase_error_samples + f64::EPSILON,
                     "{epoch:?}"
                 );
                 assert!(
-                    epoch.cn0_error_db <= TRACKING_CN0_TOLERANCE_DB_HZ + f64::EPSILON,
+                    epoch.cn0_error_db <= budget.max_cn0_error_db_hz + f64::EPSILON,
                     "{epoch:?}"
                 );
             }

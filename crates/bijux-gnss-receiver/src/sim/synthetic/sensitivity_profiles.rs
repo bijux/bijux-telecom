@@ -401,6 +401,32 @@ fn seeded_tracking_acquisition(
     }
 }
 
+fn seeded_tracking_acquisition_with_refined_code_phase(
+    sat: SatId,
+    doppler_hz: f64,
+    code_phase_samples: usize,
+    refined_code_phase_samples: f64,
+    cn0_db_hz: f32,
+    explain_selection_reason: String,
+) -> AcqResult {
+    let mut result = seeded_tracking_acquisition(
+        sat,
+        doppler_hz,
+        code_phase_samples,
+        cn0_db_hz,
+        explain_selection_reason,
+    );
+    result.code_phase_refinement = Some(bijux_gnss_core::api::AcqCodePhaseRefinement {
+        method: "truth_guided_tracking_seed".to_string(),
+        offset_samples: refined_code_phase_samples - code_phase_samples as f64,
+        refined_code_phase_samples,
+        left_correlation_norm: 0.0,
+        center_correlation_norm: 1.0,
+        right_correlation_norm: 0.0,
+    });
+    result
+}
+
 fn wrap_seeded_code_phase_samples(code_phase_samples: isize, period_samples: usize) -> usize {
     let period_samples = period_samples.max(1) as isize;
     code_phase_samples.rem_euclid(period_samples) as usize

@@ -314,16 +314,22 @@ pub fn validate_truth_guided_tracking_table(
                 ) as isize,
                 period_samples,
             );
+            let refined_code_phase_samples = expected_acquisition_code_phase_samples_f64(
+                config,
+                &isolated_frame,
+                sat_truth.code_phase_chips,
+            );
             let tracking = crate::pipeline::tracking::Tracking::new(
                 config.clone(),
                 crate::engine::runtime::ReceiverRuntime::default(),
             );
             let tracks = tracking.track_from_acquisition(
                 &isolated_frame,
-                &[seeded_tracking_acquisition(
+                &[seeded_tracking_acquisition_with_refined_code_phase(
                     sat_truth.sat,
                     expected_measured_doppler_hz,
                     seeded_code_phase_samples,
+                    refined_code_phase_samples,
                     sat_truth.cn0_db_hz,
                     format!("truth_guided_tracking_seed_{}", sat_truth.sat.prn),
                 )],

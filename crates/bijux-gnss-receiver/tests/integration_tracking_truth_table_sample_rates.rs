@@ -6,39 +6,35 @@ use std::path::Path;
 use bijux_gnss_core::api::SamplesFrame;
 use bijux_gnss_receiver::api::{
     sim::{
-        build_iq16_capture_bundle, generate_l1_ca_multi, validate_truth_guided_tracking_table,
-        SyntheticIqTruthBundle, SyntheticScenario,
+        build_iq16_capture_bundle, generate_l1_ca_multi, truth_guided_receiver_accuracy_budgets,
+        validate_truth_guided_tracking_table, SyntheticIqTruthBundle, SyntheticScenario,
     },
     ReceiverPipelineConfig,
 };
-
-const TRACKING_CARRIER_TOLERANCE_HZ: f64 = 10.0;
-const TRACKING_DOPPLER_TOLERANCE_HZ: f64 = 10.0;
-const TRACKING_CODE_PHASE_TOLERANCE_SAMPLES: f64 = 1.0;
-const TRACKING_CN0_TOLERANCE_DB_HZ: f64 = 8.0;
 
 #[test]
 fn tracking_truth_table_covers_reference_low_and_high_rate_profiles() {
     let low_rate = build_truth_table_fixture("synthetic_iq_acquisition_reference_low_rate.toml");
     let high_rate = build_truth_table_fixture("synthetic_iq_acquisition_reference_high_rate.toml");
+    let budget = truth_guided_receiver_accuracy_budgets().tracking;
 
     let low_rate_report = validate_truth_guided_tracking_table(
         &low_rate.config,
         &low_rate.frame,
         &low_rate.truth,
-        TRACKING_CARRIER_TOLERANCE_HZ,
-        TRACKING_DOPPLER_TOLERANCE_HZ,
-        TRACKING_CODE_PHASE_TOLERANCE_SAMPLES,
-        TRACKING_CN0_TOLERANCE_DB_HZ,
+        budget.max_carrier_error_hz,
+        budget.max_doppler_error_hz,
+        budget.max_code_phase_error_samples,
+        budget.max_cn0_error_db_hz,
     );
     let high_rate_report = validate_truth_guided_tracking_table(
         &high_rate.config,
         &high_rate.frame,
         &high_rate.truth,
-        TRACKING_CARRIER_TOLERANCE_HZ,
-        TRACKING_DOPPLER_TOLERANCE_HZ,
-        TRACKING_CODE_PHASE_TOLERANCE_SAMPLES,
-        TRACKING_CN0_TOLERANCE_DB_HZ,
+        budget.max_carrier_error_hz,
+        budget.max_doppler_error_hz,
+        budget.max_code_phase_error_samples,
+        budget.max_cn0_error_db_hz,
     );
 
     assert!(low_rate_report.pass, "{low_rate_report:?}");
@@ -67,48 +63,37 @@ fn tracking_truth_table_covers_reference_low_and_high_rate_profiles() {
         high_rate_prn3.epochs[0].expected_code_phase_samples
     );
 
-    for satellite in &low_rate_report.satellites {
-        assert!(satellite.pass, "{satellite:?}");
-        assert!(satellite.stable_epoch_count > 0, "{satellite:?}");
-        assert!(satellite.epochs.iter().any(|epoch| epoch.stable_tracking_epoch), "{satellite:?}");
-        for epoch in satellite.epochs.iter().filter(|epoch| epoch.stable_tracking_epoch) {
-            assert!(epoch.pass, "{epoch:?}");
+    for report in [&low_rate_report, &high_rate_report] {
+        assert!(report.pass, "{report:?}");
+        for satellite in &report.satellites {
+            assert!(satellite.pass, "{satellite:?}");
+            assert!(satellite.stable_epoch_count > 0, "{satellite:?}");
             assert!(
-                epoch.carrier_error_hz <= TRACKING_CARRIER_TOLERANCE_HZ + f64::EPSILON,
-                "{epoch:?}"
+                satellite.epochs.iter().any(|epoch| epoch.stable_tracking_epoch),
+                "{satellite:?}"
             );
-            assert!(
-                epoch.doppler_error_hz <= TRACKING_DOPPLER_TOLERANCE_HZ + f64::EPSILON,
-                "{epoch:?}"
-            );
-            assert!(
-                epoch.code_phase_error_samples
-                    <= TRACKING_CODE_PHASE_TOLERANCE_SAMPLES + f64::EPSILON,
-                "{epoch:?}"
-            );
-            assert!(epoch.cn0_error_db <= TRACKING_CN0_TOLERANCE_DB_HZ + f64::EPSILON, "{epoch:?}");
+            for epoch in satellite.epochs.iter().filter(|epoch| epoch.stable_tracking_epoch) {
+                assert!(epoch.pass, "{epoch:?}");
+                assert!(
+                    epoch.carrier_error_hz <= budget.max_carrier_error_hz + f64::EPSILON,
+                    "{epoch:?}"
+                );
+                assert!(
+                    epoch.doppler_error_hz <= budget.max_doppler_error_hz + f64::EPSILON,
+                    "{epoch:?}"
+                );
+                assert!(
+                    epoch.code_phase_error_samples
+                        <= budget.max_code_phase_error_samples + f64::EPSILON,
+                    "{epoch:?}"
+                );
+                assert!(
+                    epoch.cn0_error_db <= budget.max_cn0_error_db_hz + f64::EPSILON,
+                    "{epoch:?}"
+                );
+            }
         }
     }
-
-    let high_rate_prn7 = high_rate_report
-        .satellites
-        .iter()
-        .find(|satellite| satellite.sat.prn == 7)
-        .expect("high-rate PRN 7 row");
-    assert!(!high_rate_report.pass, "{high_rate_report:?}");
-    assert!(!high_rate_prn7.pass, "{high_rate_prn7:?}");
-    assert!(high_rate_prn7.stable_epoch_count > 0, "{high_rate_prn7:?}");
-    assert!(
-        high_rate_prn7.epochs.iter().any(|epoch| epoch.lock_state == "lost"),
-        "{high_rate_prn7:?}"
-    );
-    assert!(
-        high_rate_prn7.epochs.iter().any(|epoch| {
-            epoch.lock_state_reason.as_deref() == Some("phase_jump")
-                || epoch.lock_state_reason.as_deref() == Some("sample_rate_mismatch")
-        }),
-        "{high_rate_prn7:?}"
-    );
 }
 
 struct TruthTableFixture {

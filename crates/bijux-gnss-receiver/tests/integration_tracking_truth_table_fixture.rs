@@ -1,34 +1,38 @@
 #![allow(missing_docs)]
 
+use std::env;
 use std::fs;
 use std::path::Path;
 
 use bijux_gnss_core::api::SamplesFrame;
 use bijux_gnss_receiver::api::{
     sim::{
-        build_iq16_capture_bundle, generate_l1_ca_multi, validate_truth_guided_tracking_table,
-        SyntheticIqTruthBundle, SyntheticScenario, SyntheticTrackingTruthTableReport,
+        build_iq16_capture_bundle, generate_l1_ca_multi, truth_guided_receiver_accuracy_budgets,
+        validate_truth_guided_tracking_table, SyntheticIqTruthBundle, SyntheticScenario,
+        SyntheticTrackingTruthTableReport,
     },
     ReceiverPipelineConfig,
 };
 
-const TRACKING_CARRIER_TOLERANCE_HZ: f64 = 10.0;
-const TRACKING_DOPPLER_TOLERANCE_HZ: f64 = 10.0;
-const TRACKING_CODE_PHASE_TOLERANCE_SAMPLES: f64 = 1.0;
-const TRACKING_CN0_TOLERANCE_DB_HZ: f64 = 8.0;
+const REGENERATE_TRACKING_TRUTH_FIXTURE_ENV: &str =
+    "BIJUX_REGENERATE_TRACKING_TRUTH_FIXTURE";
 
 #[test]
 fn tracking_truth_table_matches_low_rate_reference_fixture() {
     let fixture = build_truth_table_fixture("synthetic_iq_acquisition_reference_low_rate.toml");
+    let budget = truth_guided_receiver_accuracy_budgets().tracking;
     let report = validate_truth_guided_tracking_table(
         &fixture.config,
         &fixture.frame,
         &fixture.truth,
-        TRACKING_CARRIER_TOLERANCE_HZ,
-        TRACKING_DOPPLER_TOLERANCE_HZ,
-        TRACKING_CODE_PHASE_TOLERANCE_SAMPLES,
-        TRACKING_CN0_TOLERANCE_DB_HZ,
+        budget.max_carrier_error_hz,
+        budget.max_doppler_error_hz,
+        budget.max_code_phase_error_samples,
+        budget.max_cn0_error_db_hz,
     );
+    if env::var_os(REGENERATE_TRACKING_TRUTH_FIXTURE_ENV).is_some() {
+        write_truth_table_fixture("truth_table_reference_low_rate.json", &report);
+    }
     let expected = load_truth_table_fixture("truth_table_reference_low_rate.json");
 
     assert_eq!(report.scenario_id, expected.scenario_id);
@@ -239,6 +243,16 @@ fn load_truth_table_fixture(fixture_file: &str) -> SyntheticTrackingTruthTableRe
         Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/data/tracking/{fixture_file}"));
     let contents = fs::read_to_string(path).expect("truth table fixture");
     serde_json::from_str(&contents).expect("valid truth table fixture")
+}
+
+fn write_truth_table_fixture(
+    fixture_file: &str,
+    report: &SyntheticTrackingTruthTableReport,
+) {
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/data/tracking/{fixture_file}"));
+    let contents = serde_json::to_string_pretty(report).expect("serialize truth table fixture");
+    fs::write(path, format!("{contents}\n")).expect("write truth table fixture");
 }
 
 fn assert_close(label: &str, actual: f64, expected: f64, tolerance: f64) {

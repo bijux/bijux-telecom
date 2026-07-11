@@ -7,7 +7,10 @@ use bijux_gnss_core::api::{
     SatId, Seconds, SignalBand,
 };
 use bijux_gnss_receiver::api::{
-    sim::{generate_l1_ca, SyntheticSignalParams},
+    sim::{
+        expected_acquisition_code_phase_samples, expected_acquisition_code_phase_samples_f64,
+        generate_l1_ca, SyntheticSignalParams,
+    },
     ReceiverPipelineConfig, ReceiverRuntime, TrackingEngine,
 };
 use bijux_gnss_signal::api::{sample_ca_code, samples_per_code, Prn};
@@ -182,7 +185,6 @@ fn tracking_steers_code_rate_toward_faster_signal_code() {
             * 12;
     let signal_code_rate_hz = config.code_freq_basis_hz + 300.0;
     let code_phase_chips = 144.25;
-    let code_phase_samples = code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
     let frame = SamplesFrame::new(
         SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
         Seconds(1.0 / config.sampling_freq_hz),
@@ -198,11 +200,13 @@ fn tracking_steers_code_rate_toward_faster_signal_code() {
         .map(|value| Complex::new(value, 0.0))
         .collect(),
     );
+    let seeded_code_phase_samples =
+        expected_acquisition_code_phase_samples(&config, &frame, code_phase_chips);
     let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
 
     let tracks = tracking.track_from_acquisition(
         &frame,
-        &[accepted_acquisition(sat, 0.0, code_phase_samples.round() as usize)],
+        &[accepted_acquisition(sat, 0.0, seeded_code_phase_samples)],
     );
     let epochs = &tracks.first().expect("track").epochs;
     let best_code_rate_hz = epochs
@@ -234,9 +238,11 @@ fn tracking_holds_clean_code_lock_for_fractional_phase_seed() {
     };
     let sat = SatId { constellation: Constellation::Gps, prn: 14 };
     let code_phase_chips = 144.375;
+    let frame = synthetic_frame_with_code_phase(&config, sat, code_phase_chips, 0.012);
     let expected_code_phase_samples =
-        code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
-    let seeded_code_phase_samples = expected_code_phase_samples.round() as usize;
+        expected_acquisition_code_phase_samples_f64(&config, &frame, code_phase_chips);
+    let seeded_code_phase_samples =
+        expected_acquisition_code_phase_samples(&config, &frame, code_phase_chips);
     let epochs =
         track_clean_code_case(&config, sat, code_phase_chips, 0.012, seeded_code_phase_samples);
 

@@ -34,7 +34,15 @@ const SAMPLE_RATE_MISMATCH_WINDOW_EPOCHS: usize = 4;
 const SAMPLE_RATE_MISMATCH_MIN_UNSTABLE_EPOCHS_IN_WINDOW: usize = 3;
 const CYCLE_SLIP_PHASE_DELTA_CYCLES: f64 = 0.35;
 const NAV_BIT_PHASE_STEP_CYCLES: f64 = 0.5;
-const NAV_BIT_PHASE_STEP_TOLERANCE_CYCLES: f64 = 0.1;
+// Pull-in can still carry a few extra tenths of cycle of residual phase error
+// when the first 20 ms nav-bit edge arrives on a strong high-Doppler signal.
+// Keep the detector wide enough to classify that transition correctly instead
+// of escalating it into a false cycle slip.
+const NAV_BIT_PHASE_STEP_TOLERANCE_CYCLES: f64 = 0.2;
+// Require a meaningful continuity improvement before rewriting a phase jump as
+// a nav-bit edge. This keeps smaller non-nav slips from being mistaken for
+// half-cycle data-bit transitions.
+const NAV_BIT_PHASE_MIN_IMPROVEMENT_CYCLES: f64 = 0.25;
 const DLL_LOCK_MAX_CODE_ERROR: f32 = 0.2;
 const DLL_HOLD_MAX_CODE_ERROR: f32 = 0.4;
 // One-sample-per-chip tracking quantizes the early/late discriminator enough
@@ -469,9 +477,16 @@ impl Tracking {
         let sample_rate_hz = self.config.sampling_freq_hz;
         let samples = &frame.iq[start..end];
         let n = samples.len();
+        let code_period_samples = samples_per_code(
+            sample_rate_hz,
+            self.config.code_freq_basis_hz,
+            self.config.code_length,
+        );
         let nominal_chips_per_sample = self.config.code_freq_basis_hz / sample_rate_hz;
         let tracked_chips_per_sample = code_rate_hz / sample_rate_hz;
-        let base_chip_phase = code_phase_samples * nominal_chips_per_sample;
+        let epoch_start_code_phase_samples =
+            epoch_start_code_phase_samples_from_receiver_phase(code_phase_samples, code_period_samples);
+        let base_chip_phase = epoch_start_code_phase_samples * nominal_chips_per_sample;
         let carrier_phase_offset_rad = carrier_phase_offset_rad(carrier_phase_cycles);
         let carrier_radians_per_sample = std::f64::consts::TAU * carrier_freq_hz / sample_rate_hz;
         let carrier_rotation_step = Complex::new(
@@ -1155,12 +1170,16 @@ impl Tracking {
         let raw_fll_lock =
             !fll_enabled || (fll_err_hz as f64).abs() <= fll_lock_threshold_hz(fll_bw);
         let sustained_dll_lock = raw_dll_lock
-            || (matches!(from_state, ChannelState::Tracking | ChannelState::Degraded)
-                && dll_err.abs()
-                    < dll_hold_threshold(samples_per_chip, tracking_params.early_late_spacing_chips));
+            || (matches!(
+                from_state,
+                ChannelState::PullIn | ChannelState::Tracking | ChannelState::Degraded
+            ) && dll_err.abs()
+                < dll_hold_threshold(samples_per_chip, tracking_params.early_late_spacing_chips));
         let sustained_pll_lock = raw_pll_lock
-            || (matches!(from_state, ChannelState::Tracking | ChannelState::Degraded)
-                && pll_err.abs() < PLL_HOLD_MAX_PHASE_ERROR_RAD);
+            || (matches!(
+                from_state,
+                ChannelState::PullIn | ChannelState::Tracking | ChannelState::Degraded
+            ) && pll_err.abs() < PLL_HOLD_MAX_PHASE_ERROR_RAD);
         let anti_false_lock =
             anti_false_lock_detected(corr.early, corr.prompt, corr.late) && !sustained_pll_lock;
         state.prompt_power_reference = refresh_prompt_power_reference(
@@ -1198,8 +1217,8 @@ impl Tracking {
         state.pull_in_stable_epochs = update_pull_in_stable_epochs(
             state.pull_in_stable_epochs,
             sustained_prompt_lock,
-            raw_dll_lock,
-            raw_pll_lock,
+            sustained_dll_lock,
+            sustained_pll_lock,
             raw_fll_lock,
             cycle_slip,
         );
@@ -1582,6 +1601,24 @@ fn ca_code_or_default(prn: u8) -> Vec<i8> {
 fn code_value_at_tracking_phase(code: &[i8], chip_phase: f64) -> f32 {
     let wrapped_chip_phase = chip_phase.rem_euclid(code.len() as f64);
     code[wrapped_chip_phase.floor() as usize] as f32
+}
+
+fn epoch_start_code_phase_samples_from_receiver_phase(
+    receiver_code_phase_samples: f64,
+    samples_per_code: usize,
+) -> f64 {
+    let code_period_samples = samples_per_code.max(1) as f64;
+    (code_period_samples - receiver_code_phase_samples.rem_euclid(code_period_samples))
+        .rem_euclid(code_period_samples)
+}
+
+fn receiver_code_phase_samples_from_epoch_start_phase(
+    epoch_start_code_phase_samples: f64,
+    samples_per_code: usize,
+) -> f64 {
+    let code_period_samples = samples_per_code.max(1) as f64;
+    (code_period_samples - epoch_start_code_phase_samples.rem_euclid(code_period_samples))
+        .rem_euclid(code_period_samples)
 }
 
 fn epoch_lock_quality(
@@ -2103,6 +2140,7 @@ fn classify_prompt_phase(
         && (same_delta.abs() - NAV_BIT_PHASE_STEP_CYCLES).abs()
             <= NAV_BIT_PHASE_STEP_TOLERANCE_CYCLES
         && flipped_delta.abs() <= NAV_BIT_PHASE_STEP_TOLERANCE_CYCLES
+        && same_delta.abs() - flipped_delta.abs() >= NAV_BIT_PHASE_MIN_IMPROVEMENT_CYCLES
         && flipped_delta.abs() < same_delta.abs();
 
     let (aligned_phase_cycles, nav_bit_phase_offset_cycles, chosen_delta) = if nav_bit_transition {
@@ -2130,12 +2168,20 @@ fn advance_code_phase_samples(
     samples_per_code: usize,
 ) -> f64 {
     let nominal_code_rate_hz = nominal_code_rate_hz.max(1.0);
+    let epoch_start_code_phase_samples = epoch_start_code_phase_samples_from_receiver_phase(
+        current_code_phase_samples,
+        samples_per_code,
+    );
     let code_period_advance_samples =
         epoch_len_samples as f64 * (tracked_code_rate_hz / nominal_code_rate_hz);
     let dll_correction_samples =
         -(dll_err as f64) * samples_per_chip * DLL_CODE_PHASE_CORRECTION_GAIN;
-    wrap_code_phase_samples(
-        current_code_phase_samples + code_period_advance_samples + dll_correction_samples,
+    let next_epoch_start_code_phase_samples = wrap_code_phase_samples(
+        epoch_start_code_phase_samples + code_period_advance_samples + dll_correction_samples,
+        samples_per_code,
+    );
+    receiver_code_phase_samples_from_epoch_start_phase(
+        next_epoch_start_code_phase_samples,
         samples_per_code,
     )
 }
@@ -2300,9 +2346,6 @@ fn wrap_phase_rad(phase_rad: f64) -> f64 {
 }
 
 fn carrier_phase_offset_rad(carrier_phase_cycles: f64) -> f64 {
-    // The tracked carrier phase is already anchored to the current epoch start.
-    // Re-basing it through the absolute sample index corrupts continuity once the
-    // loop has updated carrier frequency across prior epochs.
     wrap_phase_rad(carrier_phase_cycles * std::f64::consts::TAU)
 }
 
@@ -2362,12 +2405,12 @@ fn short_fade_epoch_budget(tracking_params: TrackingParams) -> u16 {
 fn update_pull_in_stable_epochs(
     current_stable_epochs: u8,
     prompt_lock: bool,
-    dll_lock: bool,
+    _dll_lock: bool,
     pll_lock: bool,
     fll_lock: bool,
     cycle_slip: bool,
 ) -> u8 {
-    if cycle_slip || !prompt_lock || !dll_lock || (!pll_lock && !fll_lock) {
+    if cycle_slip || !prompt_lock || (!pll_lock && !fll_lock) {
         return 0;
     }
     current_stable_epochs.saturating_add(1)
@@ -3174,7 +3217,11 @@ mod tests {
             )
             .expect("valid epoch code phase");
             let epoch_code_phase_samples =
-                epoch_code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
+                crate::sim::synthetic::expected_acquisition_code_phase_samples_f64(
+                    &config,
+                    &epoch_frame,
+                    epoch_code_phase_chips,
+                );
             let (epoch, _) = tracking.track_epoch(
                 &epoch_frame,
                 0,
@@ -3231,7 +3278,7 @@ mod tests {
             4.887585532746823,
             5_000,
         );
-        assert!(next < 250.0, "next={next}");
+        assert!(next > 250.0, "next={next}");
     }
 
     #[test]
@@ -3464,7 +3511,7 @@ mod tests {
             samples_per_code: 5_000,
         });
 
-        assert!(update.code_phase_samples < current_code_phase_samples, "update={update:?}");
+        assert!(update.code_phase_samples > current_code_phase_samples, "update={update:?}");
     }
 
     #[test]
@@ -3482,7 +3529,7 @@ mod tests {
             samples_per_code: 5_000,
         });
 
-        assert!(update.code_phase_samples > current_code_phase_samples, "update={update:?}");
+        assert!(update.code_phase_samples < current_code_phase_samples, "update={update:?}");
     }
 
     #[test]
@@ -3503,8 +3550,6 @@ mod tests {
         );
         let code_phase_chips = 245.25;
         let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 3 };
-        let code_phase_samples =
-            code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
         let samples = sample_ca_code(
             Prn(sat.prn),
             config.sampling_freq_hz,
@@ -3518,6 +3563,12 @@ mod tests {
             Seconds(1.0 / config.sampling_freq_hz),
             samples.into_iter().map(|value| Complex::new(value, 0.0)).collect(),
         );
+        let code_phase_samples =
+            crate::sim::synthetic::expected_acquisition_code_phase_samples_f64(
+                &config,
+                &frame,
+                code_phase_chips,
+            );
 
         let correlator = tracking.correlate_epoch(
             &frame,
@@ -3552,8 +3603,6 @@ mod tests {
         let signal_code_rate_hz = config.code_freq_basis_hz + 1_200.0;
         let code_phase_chips = 87.375;
         let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 9 };
-        let code_phase_samples =
-            code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
         let samples = sample_ca_code(
             Prn(sat.prn),
             config.sampling_freq_hz,
@@ -3567,6 +3616,12 @@ mod tests {
             Seconds(1.0 / config.sampling_freq_hz),
             samples.into_iter().map(|value| Complex::new(value, 0.0)).collect(),
         );
+        let code_phase_samples =
+            crate::sim::synthetic::expected_acquisition_code_phase_samples_f64(
+                &config,
+                &frame,
+                code_phase_chips,
+            );
 
         let nominal = tracking.correlate_epoch(
             &frame,
@@ -3867,8 +3922,6 @@ mod tests {
         let signal_code_rate_hz = config.code_freq_basis_hz + 300.0;
         let code_phase_chips = 211.625;
         let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 14 };
-        let code_phase_samples =
-            code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
         let samples = sample_ca_code(
             Prn(sat.prn),
             config.sampling_freq_hz,
@@ -3882,6 +3935,12 @@ mod tests {
             Seconds(1.0 / config.sampling_freq_hz),
             samples.into_iter().map(|value| Complex::new(value, 0.0)).collect(),
         );
+        let code_phase_samples =
+            crate::sim::synthetic::expected_acquisition_code_phase_samples_f64(
+                &config,
+                &frame,
+                code_phase_chips,
+            );
 
         let correlator = tracking.correlate_epoch(
             &frame,
@@ -4068,6 +4127,63 @@ mod tests {
                 .filter(|epoch| epoch.pll_lock && epoch.fll_lock)
                 .all(|epoch| !epoch.anti_false_lock),
             "clean, converged tracking epochs must not remain marked as false lock: {epochs:?}"
+        );
+    }
+
+    #[test]
+    fn correlate_epoch_honors_receiver_code_phase_seed_at_low_sample_rate() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 2_046_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            channels: 1,
+            early_late_spacing_chips: 0.5,
+            dll_bw_hz: 2.0,
+            pll_bw_hz: 18.0,
+            fll_bw_hz: 12.0,
+            ..ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Gps, prn: 3 };
+        let frame = generate_l1_ca(
+            &config,
+            SyntheticSignalParams {
+                sat,
+                doppler_hz: 750.0,
+                code_phase_chips: 200.25,
+                carrier_phase_rad: 0.0,
+                cn0_db_hz: 58.0,
+                data_bit_flip: false,
+            },
+            0x330C_2000,
+            0.04,
+        );
+        let refined_code_phase_samples =
+            crate::sim::synthetic::expected_acquisition_code_phase_samples_f64(
+                &config,
+                &frame,
+                200.25,
+            );
+        let tracking = Tracking::new(config, ReceiverRuntime::default());
+        let correlator = tracking.correlate_epoch(
+            &frame,
+            sat,
+            750.0,
+            0.0,
+            1_023_000.0,
+            refined_code_phase_samples,
+            0.5,
+        );
+
+        assert!(
+            correlator.prompt.norm() > 10_000.0,
+            "receiver-seeded code phase must produce a strong prompt correlation: {:?}",
+            correlator.prompt
+        );
+        assert!(
+            correlator.prompt.re.abs() > correlator.prompt.im.abs() * 100.0,
+            "receiver-seeded code phase must align carrier phase near the real axis: {:?}",
+            correlator.prompt
         );
     }
 
