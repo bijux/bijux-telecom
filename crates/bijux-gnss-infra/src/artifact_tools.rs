@@ -350,6 +350,7 @@ mod tests {
                 explain_selection_reason: Some("accepted_peak".to_string()),
                 doppler_refinement: None,
                 code_phase_refinement: None,
+                signal_delay_alignment: None,
                 uncertainty: None,
             },
         };
@@ -403,6 +404,7 @@ mod tests {
                     channel_uid: String::new(),
                     tracking_provenance: String::new(),
                     tracking_assumptions: None,
+                    signal_delay_alignment: None,
                     tracking_uncertainty: None,
                     processing_ms: None,
                 },
