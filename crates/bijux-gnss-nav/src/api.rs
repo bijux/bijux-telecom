@@ -44,6 +44,11 @@ pub use crate::estimation::position::solver::{
 pub use crate::estimation::ppp::config::{
     PppArMode, PppConfig, PppConvergenceConfig, PppFilter, PppProcessNoise, PppSolutionEpoch,
 };
+/// RTK double-difference helpers.
+pub use crate::estimation::rtk::double_difference::{
+    rtk_double_differences_by_constellation, rtk_double_differences_from_single_differences,
+    RtkDoubleDifferenceObservation,
+};
 /// RTK single-difference helpers.
 pub use crate::estimation::rtk::single_difference::{
     choose_rtk_single_difference_reference_signal,
