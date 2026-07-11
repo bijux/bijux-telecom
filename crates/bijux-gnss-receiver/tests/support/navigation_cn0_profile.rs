@@ -15,7 +15,6 @@ use crate::navigation_truth::{multisatellite_pvt_scenario, truth_seeded_acquisit
 
 pub struct TruthSeededNavigationCn0Case {
     pub scenario_id: String,
-    pub cn0_db_hz: f32,
     pub observations: Vec<ObsEpoch>,
     pub pvt_accuracy: SyntheticPvtAccuracyReport,
 }
@@ -87,5 +86,5 @@ pub fn build_truth_seeded_navigation_cn0_case(
     let pvt_accuracy =
         validate_pvt_accuracy_budget(&truth_table, truth_guided_receiver_accuracy_budgets().pvt);
 
-    TruthSeededNavigationCn0Case { scenario_id, cn0_db_hz, observations, pvt_accuracy }
+    TruthSeededNavigationCn0Case { scenario_id, observations, pvt_accuracy }
 }
