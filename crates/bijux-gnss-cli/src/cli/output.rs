@@ -1929,10 +1929,21 @@ mod tests {
         let raw_pseudorange_m = payload["payload"]["sats"][0]["pseudorange_m"]["raw"]
             .as_f64()
             .expect("raw pseudorange");
+        let carrier_smoothed_code_validation_path =
+            artifacts_dir.join("carrier_smoothed_code_validation.json");
+        let carrier_smoothed_code_validation: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(&carrier_smoothed_code_validation_path)
+                .expect("read carrier-smoothed code validation artifact"),
+        )
+        .expect("parse carrier-smoothed code validation artifact");
 
         assert_eq!(payload["payload"]["artifact_id"], "obs-epoch-0000000070");
         assert_eq!(payload["payload"]["accepted"], true);
         assert!(raw_pseudorange_m > 0.0);
+        assert_eq!(carrier_smoothed_code_validation["observations"], 2);
+        assert_eq!(carrier_smoothed_code_validation["accepted_observations"], 2);
+        assert_eq!(carrier_smoothed_code_validation["cycle_slip_observations"], 0);
+        assert!(carrier_smoothed_code_validation["improvement_verified"].is_null());
 
         fs::remove_dir_all(&out_dir).expect("remove output directory");
     }
