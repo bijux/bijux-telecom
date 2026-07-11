@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{SampleTime, SamplesFrame, Seconds};
+use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds};
 use bijux_gnss_receiver::api::{
     sim::{generate_l1_ca, SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource},
     Receiver, ReceiverPipelineConfig, ReceiverRuntime, SampleSourceError, SignalSource,
@@ -203,4 +203,75 @@ fn receiver_tracks_sixty_seconds_with_bounded_stream_reads() {
         .max()
         .expect("tracking epochs");
     assert_eq!(last_sample_index, expected_samples - 1_023);
+}
+
+#[test]
+fn receiver_tracks_galileo_e1_across_stream_frames() {
+    let config = ReceiverPipelineConfig {
+        sampling_freq_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 1_023_000.0,
+        code_length: 4092,
+        acquisition_doppler_search_hz: 500,
+        acquisition_doppler_step_hz: 500,
+        acquisition_integration_ms: 20,
+        acquisition_noncoherent: 1,
+        channels: 4,
+        tracking_budget_ms: 100.0,
+        tracking_over_budget_action: "continue".to_string(),
+        ..ReceiverPipelineConfig::default()
+    };
+    let scenario = SyntheticScenario {
+        sample_rate_hz: config.sampling_freq_hz,
+        intermediate_freq_hz: config.intermediate_freq_hz,
+        receiver_clock_frequency_bias_hz: 0.0,
+        duration_s: 0.120,
+        seed: 0x6A11_E1F0,
+        satellites: vec![SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Galileo, prn: 11 },
+            doppler_hz: 0.0,
+            code_phase_chips: 321.0,
+            carrier_phase_rad: 0.25,
+            cn0_db_hz: 58.0,
+            data_bit_flip: false,
+        }],
+        ephemerides: Vec::new(),
+        id: "receiver-galileo-stream".to_string(),
+    };
+    let runtime = ReceiverRuntime::default();
+    let receiver = Receiver::new(config.clone(), runtime);
+    let expected_samples = (scenario.duration_s * config.sampling_freq_hz).round() as u64;
+    let galileo_samples_per_code =
+        (config.sampling_freq_hz * (config.code_length as f64 / config.code_freq_basis_hz)).round()
+            as usize;
+    let mut source =
+        CountingSignalSource::new(SyntheticSignalSource::new_signal_only(&config, &scenario));
+
+    let artifacts = receiver.run(&mut source).expect("receiver run");
+    let track = artifacts
+        .tracking
+        .iter()
+        .find(|result| result.sat.constellation == Constellation::Galileo && result.sat.prn == 11)
+        .expect("Galileo tracking result");
+
+    assert!(source.is_done(), "receiver did not consume the Galileo E1 source");
+    assert!(
+        source.request_count >= 2,
+        "receiver did not request separate acquisition and tracking frames"
+    );
+    assert!(
+        source.max_requested_frame_len <= 100 * galileo_samples_per_code,
+        "receiver requested an oversized Galileo tracking frame: {}",
+        source.max_requested_frame_len
+    );
+    assert_eq!(artifacts.processed_input_samples, expected_samples);
+    assert!(
+        track.epochs.len() >= 20,
+        "Galileo tracking did not advance across stream frames: {} epochs",
+        track.epochs.len()
+    );
+    assert!(
+        track.epochs.iter().any(|epoch| epoch.lock && epoch.dll_lock && epoch.pll_lock && epoch.fll_lock),
+        "Galileo tracking never reached a fully locked epoch",
+    );
 }
