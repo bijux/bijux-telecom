@@ -144,17 +144,17 @@ pub fn clean_gps_l1_short_baseline_case() -> CleanGpsL1RtkBaselineCase {
 }
 
 /// Compare an estimated ENU baseline against RTK truth.
-pub fn rtk_baseline_accuracy(estimated_enu_m: [f64; 3], truth_enu_m: [f64; 3]) -> RtkBaselineAccuracy {
+pub fn rtk_baseline_accuracy(
+    estimated_enu_m: [f64; 3],
+    truth_enu_m: [f64; 3],
+) -> RtkBaselineAccuracy {
     let east_error_m = estimated_enu_m[0] - truth_enu_m[0];
     let north_error_m = estimated_enu_m[1] - truth_enu_m[1];
     let up_error_m = estimated_enu_m[2] - truth_enu_m[2];
     let horizontal_error_m = (east_error_m * east_error_m + north_error_m * north_error_m).sqrt();
     let three_dimensional_error_m =
         (horizontal_error_m * horizontal_error_m + up_error_m * up_error_m).sqrt();
-    let max_axis_error_m = east_error_m
-        .abs()
-        .max(north_error_m.abs())
-        .max(up_error_m.abs());
+    let max_axis_error_m = east_error_m.abs().max(north_error_m.abs()).max(up_error_m.abs());
     RtkBaselineAccuracy {
         east_error_m,
         north_error_m,
@@ -345,10 +345,9 @@ mod tests {
             .double_differences
             .iter()
             .all(|observation| observation.ref_sig == scenario.reference_sig));
-        assert!(scenario
-            .double_differences
-            .iter()
-            .all(|observation| scenario.rover_ambiguities_cycles.contains_key(&observation.sig.sat)));
+        assert!(scenario.double_differences.iter().all(|observation| scenario
+            .rover_ambiguities_cycles
+            .contains_key(&observation.sig.sat)));
     }
 
     #[test]
@@ -358,7 +357,9 @@ mod tests {
         assert!((accuracy.east_error_m - 0.01).abs() < 1.0e-12);
         assert!((accuracy.north_error_m + 0.02).abs() < 1.0e-12);
         assert!((accuracy.up_error_m - 0.005).abs() < 1.0e-12);
-        assert!((accuracy.horizontal_error_m - (0.01_f64 * 0.01 + 0.02 * 0.02).sqrt()).abs() < 1.0e-12);
+        assert!(
+            (accuracy.horizontal_error_m - (0.01_f64 * 0.01 + 0.02 * 0.02).sqrt()).abs() < 1.0e-12
+        );
         assert!((accuracy.max_axis_error_m - 0.02).abs() < 1.0e-12);
     }
 
