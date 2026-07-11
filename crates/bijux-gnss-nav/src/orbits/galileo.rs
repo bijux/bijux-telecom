@@ -363,3 +363,252 @@ fn wrap_time(mut t: f64) -> f64 {
     }
     t
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bijux_gnss_core::api::{GpsTime, Seconds};
+
+    const TEST_OMEGA_E_DOT: f64 = 7.292_115_146_7e-5;
+    const TEST_MU: f64 = 3.986_004_418e14;
+    const TEST_RELATIVISTIC_F: f64 = -4.442_807_309e-10;
+
+    fn sample_navigation() -> GalileoBroadcastNavigationData {
+        GalileoBroadcastNavigationData {
+            sat: SatId { constellation: Constellation::Galileo, prn: 19 },
+            iodnav: 0x1A5,
+            gst: GalileoSystemTime { week: 2222, tow_s: 456_789 },
+            sisa_e1_e5b: 77,
+            signal_health: GalileoSignalHealth {
+                e5b_signal_health: 0,
+                e1b_signal_health: 0,
+                e5b_data_valid: true,
+                e1b_data_valid: true,
+            },
+            clock: GalileoClockCorrection {
+                t0c_s: 66_000.0,
+                af0: -1.7e-4,
+                af1: 2.5e-12,
+                af2: -3.0e-19,
+                bgd_e1_e5a_s: -1.1e-9,
+                bgd_e1_e5b_s: 2.4e-9,
+            },
+            ephemeris: GalileoEphemeris {
+                sat: SatId { constellation: Constellation::Galileo, prn: 19 },
+                iodnav: 0x1A5,
+                toe_s: 64_800.0,
+                sqrt_a: 5_440.612_319,
+                e: 0.001_23,
+                i0: 0.953,
+                idot: -2.1e-10,
+                omega0: 1.17,
+                omegadot: -5.8e-9,
+                w: -0.37,
+                m0: 0.84,
+                delta_n: 4.7e-9,
+                cuc: -3.2e-6,
+                cus: 4.1e-6,
+                crc: 178.0,
+                crs: -91.0,
+                cic: 1.9e-7,
+                cis: -2.4e-7,
+            },
+            ionosphere: GalileoIonosphericCorrection {
+                ai0: 0.0,
+                ai1: 0.0,
+                ai2: 0.0,
+                disturbance_flags: GalileoIonosphericDisturbanceFlags {
+                    region_1: false,
+                    region_2: false,
+                    region_3: false,
+                    region_4: false,
+                    region_5: false,
+                },
+            },
+        }
+    }
+
+    fn reference_state(
+        navigation: &GalileoBroadcastNavigationData,
+        transmit_tow_s: f64,
+        signal_travel_time_s: f64,
+    ) -> GalileoSatState {
+        let eph = &navigation.ephemeris;
+        let a = eph.sqrt_a * eph.sqrt_a;
+        let n0 = (TEST_MU / (a * a * a)).sqrt();
+        let n = n0 + eph.delta_n;
+        let tk = reference_wrap_time(transmit_tow_s - eph.toe_s);
+        let m = eph.m0 + n * tk;
+        let e_anom = reference_solve_kepler(m, eph.e);
+        let sin_e = e_anom.sin();
+        let cos_e = e_anom.cos();
+        let v = ((1.0 - eph.e * eph.e).sqrt() * sin_e).atan2(cos_e - eph.e);
+        let phi = v + eph.w;
+        let sin2phi = (2.0 * phi).sin();
+        let cos2phi = (2.0 * phi).cos();
+        let u = phi + eph.cuc * cos2phi + eph.cus * sin2phi;
+        let r = a * (1.0 - eph.e * cos_e) + eph.crc * cos2phi + eph.crs * sin2phi;
+        let i = eph.i0 + eph.idot * tk + eph.cic * cos2phi + eph.cis * sin2phi;
+        let x_orb = r * u.cos();
+        let y_orb = r * u.sin();
+        let omega =
+            eph.omega0 + (eph.omegadot - TEST_OMEGA_E_DOT) * tk - TEST_OMEGA_E_DOT * eph.toe_s;
+
+        let mut x_m = x_orb * omega.cos() - y_orb * i.cos() * omega.sin();
+        let mut y_m = x_orb * omega.sin() + y_orb * i.cos() * omega.cos();
+        let z_m = y_orb * i.sin();
+
+        let rotation_rad = TEST_OMEGA_E_DOT * signal_travel_time_s;
+        let rotated_x_m = rotation_rad.cos() * x_m + rotation_rad.sin() * y_m;
+        let rotated_y_m = -rotation_rad.sin() * x_m + rotation_rad.cos() * y_m;
+        x_m = rotated_x_m;
+        y_m = rotated_y_m;
+
+        let dt = reference_wrap_time(transmit_tow_s - navigation.clock.t0c_s);
+        let base_bias_s =
+            navigation.clock.af0 + navigation.clock.af1 * dt + navigation.clock.af2 * dt * dt;
+        let relativistic_s = TEST_RELATIVISTIC_F * eph.e * eph.sqrt_a * sin_e;
+
+        GalileoSatState {
+            x_m,
+            y_m,
+            z_m,
+            clock_correction: GalileoSatelliteClockCorrection {
+                bias_s: base_bias_s + relativistic_s - navigation.clock.bgd_e1_e5b_s,
+                drift_s_per_s: navigation.clock.af1 + 2.0 * navigation.clock.af2 * dt,
+                drift_rate_s_per_s2: 2.0 * navigation.clock.af2,
+                base_bias_s,
+                relativistic_s,
+                bgd_e1_e5a_s: navigation.clock.bgd_e1_e5a_s,
+                bgd_e1_e5b_s: navigation.clock.bgd_e1_e5b_s,
+            },
+        }
+    }
+
+    fn reference_solve_kepler(m: f64, e: f64) -> f64 {
+        let mut e_anom = m;
+        for _ in 0..12 {
+            let f = e_anom - e * e_anom.sin() - m;
+            let f_prime = 1.0 - e * e_anom.cos();
+            let step = f / f_prime;
+            e_anom -= step;
+            if step.abs() < 1e-12 {
+                break;
+            }
+        }
+        e_anom
+    }
+
+    fn reference_wrap_time(mut t: f64) -> f64 {
+        while t > 302_400.0 {
+            t -= 604_800.0;
+        }
+        while t < -302_400.0 {
+            t += 604_800.0;
+        }
+        t
+    }
+
+    #[test]
+    fn galileo_satellite_state_matches_independent_reference() {
+        let navigation = sample_navigation();
+        let transmit_tow_s = 65_432.123;
+        let signal_travel_time_s = 0.079_2;
+
+        let state = sat_state_galileo_e1(&navigation, transmit_tow_s, signal_travel_time_s);
+        let expected = reference_state(&navigation, transmit_tow_s, signal_travel_time_s);
+
+        assert!((state.x_m - expected.x_m).abs() < 1.0e-6);
+        assert!((state.y_m - expected.y_m).abs() < 1.0e-6);
+        assert!((state.z_m - expected.z_m).abs() < 1.0e-6);
+        assert!((state.clock_correction.bias_s - expected.clock_correction.bias_s).abs() < 1.0e-15);
+        assert!(
+            (state.clock_correction.drift_s_per_s - expected.clock_correction.drift_s_per_s).abs()
+                < 1.0e-20
+        );
+        assert!(
+            (state.clock_correction.relativistic_s - expected.clock_correction.relativistic_s).abs()
+                < 1.0e-18
+        );
+    }
+
+    #[test]
+    fn galileo_earth_rotation_correction_matches_rotation_matrix() {
+        let x_m = 16_400_000.0;
+        let y_m = 20_800_000.0;
+        let signal_travel_time_s = 0.081;
+        let rotation_rad = TEST_OMEGA_E_DOT * signal_travel_time_s;
+        let expected_x_m = rotation_rad.cos() * x_m + rotation_rad.sin() * y_m;
+        let expected_y_m = -rotation_rad.sin() * x_m + rotation_rad.cos() * y_m;
+
+        let correction = galileo_earth_rotation_correction(x_m, y_m, signal_travel_time_s);
+
+        assert!((correction.rotation_rad - rotation_rad).abs() < 1.0e-18);
+        assert!((x_m + correction.delta_x_m - expected_x_m).abs() < 1.0e-9);
+        assert!((y_m + correction.delta_y_m - expected_y_m).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn receive_time_helper_matches_direct_state_evaluation() {
+        let navigation = sample_navigation();
+        let receive_tow_s = 65_432.200;
+        let signal_travel_time_s = 0.077;
+
+        let receive_time_state =
+            sat_state_galileo_e1_at_receive_time(&navigation, receive_tow_s, signal_travel_time_s);
+        let direct_state =
+            sat_state_galileo_e1(&navigation, receive_tow_s - signal_travel_time_s, signal_travel_time_s);
+
+        assert!((receive_time_state.x_m - direct_state.x_m).abs() < 1.0e-9);
+        assert!((receive_time_state.y_m - direct_state.y_m).abs() < 1.0e-9);
+        assert!((receive_time_state.z_m - direct_state.z_m).abs() < 1.0e-9);
+        assert!(
+            (receive_time_state.clock_correction.bias_s - direct_state.clock_correction.bias_s).abs()
+                < 1.0e-18
+        );
+    }
+
+    #[test]
+    fn observation_helper_uses_explicit_signal_timing() {
+        let navigation = sample_navigation();
+        let signal_timing = ObsSignalTiming {
+            signal_travel_time_s: Seconds(0.078),
+            transmit_gps_time: GpsTime { week: navigation.gst.week as u32, tow_s: 65_432.122 },
+        };
+        let state = sat_state_galileo_e1_from_observation(
+            &navigation,
+            65_432.200,
+            24_000_000.0,
+            Some(signal_timing),
+        );
+        let expected =
+            sat_state_galileo_e1(&navigation, signal_timing.transmit_gps_time.tow_s, signal_timing.signal_travel_time_s.0);
+
+        assert!((state.x_m - expected.x_m).abs() < 1.0e-9);
+        assert!((state.y_m - expected.y_m).abs() < 1.0e-9);
+        assert!((state.z_m - expected.z_m).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn galileo_navigation_age_and_selection_follow_reference_time() {
+        let fresh = sample_navigation();
+        let mut stale = sample_navigation();
+        stale.clock.t0c_s -= 18_000.0;
+        stale.ephemeris.toe_s -= 18_000.0;
+
+        let fresh_age = galileo_navigation_age(&fresh, 65_000.0);
+        let stale_age = galileo_navigation_age(&stale, 65_000.0);
+
+        assert!(fresh_age.is_valid());
+        assert!(stale_age.is_stale());
+        assert!(is_galileo_navigation_valid(&fresh, 65_000.0));
+        assert!(!is_galileo_navigation_valid(&stale, 65_000.0));
+
+        let candidates = [stale.clone(), fresh.clone()];
+        let selected = select_best_galileo_navigation(&candidates, fresh.sat, 65_000.0)
+            .expect("best Galileo navigation");
+
+        assert_eq!(selected.iodnav, fresh.iodnav);
+        assert_eq!(selected.clock.t0c_s, fresh.clock.t0c_s);
+    }
+}
