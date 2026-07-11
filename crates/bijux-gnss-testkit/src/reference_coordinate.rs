@@ -156,3 +156,54 @@ fn parse_trusted_reference_coordinate_line(
         source: fields[5].trim().to_string(),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        parse_trusted_reference_coordinates_csv, trusted_reference_coordinate_by_fixture,
+        TrustedReferenceCoordinateError, TRUSTED_REFERENCE_COORDINATE_HEADER,
+    };
+
+    #[test]
+    fn trusted_reference_coordinate_catalog_parses_known_fixture() {
+        let csv = format!(
+            "{TRUSTED_REFERENCE_COORDINATE_HEADER}\nAB43,unavco_ab43_20180114.obs,58.19884205,-136.64080781,26.9246,UNAVCO monument location comment\n"
+        );
+
+        let catalog = parse_trusted_reference_coordinates_csv(&csv).expect("parse trusted coordinates");
+        let coordinate = trusted_reference_coordinate_by_fixture(&catalog, "unavco_ab43_20180114.obs")
+            .expect("fixture coordinate");
+
+        assert_eq!(coordinate.marker_name, "AB43");
+        assert!((coordinate.lat_deg - 58.19884205).abs() < 1.0e-10);
+        assert!((coordinate.lon_deg + 136.64080781).abs() < 1.0e-10);
+        assert!((coordinate.alt_m - 26.9246).abs() < 1.0e-10);
+    }
+
+    #[test]
+    fn trusted_reference_coordinate_catalog_rejects_unexpected_header() {
+        let error = parse_trusted_reference_coordinates_csv("fixture_name,lat_deg\n")
+            .expect_err("unexpected header must fail");
+
+        assert_eq!(
+            error,
+            TrustedReferenceCoordinateError::UnexpectedHeader("fixture_name,lat_deg".to_string())
+        );
+    }
+
+    #[test]
+    fn trusted_reference_coordinate_lookup_rejects_missing_fixture() {
+        let csv = format!(
+            "{TRUSTED_REFERENCE_COORDINATE_HEADER}\nAB43,unavco_ab43_20180114.obs,58.19884205,-136.64080781,26.9246,UNAVCO monument location comment\n"
+        );
+        let catalog = parse_trusted_reference_coordinates_csv(&csv).expect("parse trusted coordinates");
+
+        let error = trusted_reference_coordinate_by_fixture(&catalog, "missing_fixture.obs")
+            .expect_err("missing fixture must fail");
+
+        assert_eq!(
+            error,
+            TrustedReferenceCoordinateError::MissingFixture("missing_fixture.obs".to_string())
+        );
+    }
+}
