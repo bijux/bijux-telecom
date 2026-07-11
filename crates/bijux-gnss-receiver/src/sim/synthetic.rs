@@ -1134,9 +1134,9 @@ fn classify_pvt_time_trend(
     {
         SyntheticPvtTimeTrend::Diverging
     } else if position_growth_m > 0.5
-        || residual_growth_m > 0.5
         || position_slope_m_per_s > 0.1
-        || residual_slope_m_per_s > 0.1
+        || ((position_growth_m > 0.0 || position_slope_m_per_s >= 0.0)
+            && (residual_growth_m > 0.5 || residual_slope_m_per_s > 0.1))
     {
         SyntheticPvtTimeTrend::Drifting
     } else {

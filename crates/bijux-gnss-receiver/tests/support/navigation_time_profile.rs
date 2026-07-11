@@ -28,8 +28,8 @@ const TIME_PROFILE_TRUTH_ALT_M: f64 = 10.0;
 const TIME_PROFILE_SHAPE_BY_SATELLITE: [(u8, f64); 5] =
     [(3, -0.85), (7, 0.40), (11, 1.25), (19, -1.10), (23, 0.55)];
 const TIME_PROFILE_LEVELS_M: [(&str, f64, f64); 3] = [
-    ("stabilizing_navigation_accuracy", 18.0, 0.0),
-    ("drifting_navigation_accuracy", 0.0, 12.0),
+    ("stabilizing_navigation_accuracy", 8.0, 0.0),
+    ("drifting_navigation_accuracy", 0.0, 4.0),
     ("diverging_navigation_accuracy", 0.0, 72.0),
 ];
 
