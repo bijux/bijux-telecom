@@ -128,6 +128,12 @@ struct WorkingSetSolution {
     covariance_max_variance: Option<f64>,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct RaimSolutionSeparation {
+    suspect_sat: SatId,
+    separation_m: f64,
+}
+
 #[derive(Debug, Clone)]
 pub struct PositionSolver {
     pub max_iterations: usize,
@@ -346,39 +352,10 @@ impl PositionSolver {
         }
 
         let final_estimate = working_set.estimate;
-        let mut separation_max = None;
-        let mut separation_suspect = None;
-        if self.raim && filtered.len() >= 5 {
-            for idx in 0..filtered.len() {
-                let mut subset = filtered.clone();
-                let removed = subset.remove(idx);
-                if subset.len() < 4 {
-                    continue;
-                }
-                let mut h_sep = Vec::new();
-                let mut v_sep = Vec::new();
-                for (_obs, state, residual_m, _effective_weight) in &subset {
-                    let dx = final_estimate.ecef_x_m - state.x_m;
-                    let dy = final_estimate.ecef_y_m - state.y_m;
-                    let dz = final_estimate.ecef_z_m - state.z_m;
-                    let range = (dx * dx + dy * dy + dz * dz).sqrt();
-                    let hx = dx / range;
-                    let hy = dy / range;
-                    let hz = dz / range;
-                    h_sep.push([hx, hy, hz, 1.0]);
-                    v_sep.push(*residual_m);
-                }
-                if let Some((dx, dy, dz, _dcb, _)) =
-                    solve_weighted_normal_eq(&h_sep, &v_sep, &vec![1.0; v_sep.len()])
-                {
-                    let delta = (dx * dx + dy * dy + dz * dz).sqrt();
-                    if separation_max.map(|m| delta > m).unwrap_or(true) {
-                        separation_max = Some(delta);
-                        separation_suspect = Some(removed.0.sat);
-                    }
-                }
-            }
-        }
+        let separation = self
+            .raim
+            .then(|| max_solution_separation(&filtered, final_estimate))
+            .flatten();
 
         let mut h = Vec::new();
         let mut v = Vec::new();
@@ -445,8 +422,8 @@ impl PositionSolver {
                 })
                 .collect(),
             rejected,
-            separation_max_m: separation_max,
-            separation_suspect,
+            separation_max_m: separation.map(|separation| separation.separation_m),
+            separation_suspect: separation.map(|separation| separation.suspect_sat),
             covariance_symmetrized: working_set.covariance_symmetrized,
             covariance_clamped: working_set.covariance_clamped,
             covariance_max_variance: working_set.covariance_max_variance,
@@ -932,6 +909,54 @@ fn working_set_rms_m(residuals: &[WorkingSetResidual]) -> f64 {
     }
     let squared_sum = residuals.iter().map(|residual| residual.residual_m.powi(2)).sum::<f64>();
     (squared_sum / residuals.len() as f64).sqrt()
+}
+
+fn max_solution_separation(
+    filtered: &[(PositionObservation, GpsSatState, f64, f64)],
+    final_estimate: PositionEstimate,
+) -> Option<RaimSolutionSeparation> {
+    if filtered.len() < 5 {
+        return None;
+    }
+
+    let mut max_separation = None;
+    for idx in 0..filtered.len() {
+        let mut subset = filtered.to_vec();
+        let removed = subset.remove(idx);
+        if subset.len() < 4 {
+            continue;
+        }
+        let mut h_sep = Vec::with_capacity(subset.len());
+        let mut v_sep = Vec::with_capacity(subset.len());
+        for (_obs, state, residual_m, _effective_weight) in &subset {
+            let dx = final_estimate.ecef_x_m - state.x_m;
+            let dy = final_estimate.ecef_y_m - state.y_m;
+            let dz = final_estimate.ecef_z_m - state.z_m;
+            let range = (dx * dx + dy * dy + dz * dz).sqrt();
+            let hx = dx / range;
+            let hy = dy / range;
+            let hz = dz / range;
+            h_sep.push([hx, hy, hz, 1.0]);
+            v_sep.push(*residual_m);
+        }
+        if let Some((dx, dy, dz, _dcb, _)) =
+            solve_weighted_normal_eq(&h_sep, &v_sep, &vec![1.0; v_sep.len()])
+        {
+            let separation_m = (dx * dx + dy * dy + dz * dz).sqrt();
+            let candidate = RaimSolutionSeparation {
+                suspect_sat: removed.0.sat,
+                separation_m,
+            };
+            if max_separation
+                .map(|current: RaimSolutionSeparation| candidate.separation_m > current.separation_m)
+                .unwrap_or(true)
+            {
+                max_separation = Some(candidate);
+            }
+        }
+    }
+
+    max_separation
 }
 
 type NormalEqSolution = (f64, f64, f64, f64, [[f64; 4]; 4]);
