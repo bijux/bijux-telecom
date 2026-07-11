@@ -4,6 +4,7 @@
 - GPS L1 C/A and Galileo E1 are modeled in the acquisition and synthetic-signal path.
 - GPS L1 C/A PRNs 1-32 are validated against the published GPS SPS Table 2-1 tap pairs, delays, and first-ten-chip references.
 - Galileo E1 PRNs 1-50 use the published E1-B and E1-C 4092-chip memory codes plus the shared E1-C 25-chip CS25 secondary code from the Galileo OS SIS ICD.
+- Galileo E1 code validation is backed by a checked-in reference catalog derived from two independent Annex C transcriptions available in `artifacts/external`; every E1-B and E1-C PRN is checked by full-sequence SHA-256 plus leading and trailing bit windows, and the shared CS25 secondary code is checked bit-for-bit.
 - Synthetic Galileo E1 uses the CBOC(6,1,1/11) composite over the E1-B data and E1-C pilot channels at 1.023 Mcps, with the E1-C pilot secondary code advancing once per 4 ms primary-code period.
 - Acquisition derives the local replica from the selected signal profile: GPS uses L1 C/A, while Galileo E1 uses an E1-B BOC(1,1) replica sized to the 4 ms primary-code period, so synthetic Galileo E1 captures can be acquired without GPS-specific code-length assumptions.
 - GPS L1 C/A period length is fixed at 1023 chips and the generated sequence repeats exactly on that boundary for PRNs 1-32.
