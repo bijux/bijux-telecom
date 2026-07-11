@@ -94,6 +94,7 @@ The dataset provenance and redistribution details live in
 ## Supported Features (Current)
 - GPS L1 C/A acquisition + tracking
 - Observation epoch generation
+- Public RINEX GPS observation import with preserved L1/L2 observation channels
 - PVT solver + RTK/PPP scaffolding
 - Artifact validation + diagnostics summaries
 
