@@ -3,7 +3,7 @@
 use bijux_gnss_core::api::{Constellation, SatId, SignalBand, SignalCode, SupportStatus};
 use bijux_gnss_receiver::api::{
     sim::{SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource},
-    Receiver, ReceiverPipelineConfig, ReceiverRuntime,
+    Receiver, ReceiverPipelineConfig, ReceiverRuntime, TrackingChannelState,
 };
 
 fn galileo_e1_config() -> ReceiverPipelineConfig {
@@ -28,7 +28,7 @@ fn galileo_e1_scenario(sat: SatId) -> SyntheticScenario {
         sample_rate_hz: 4_092_000.0,
         intermediate_freq_hz: 0.0,
         receiver_clock_frequency_bias_hz: 0.0,
-        duration_s: 0.020,
+        duration_s: 0.080,
         seed: 0x6A11_E100,
         satellites: vec![SyntheticSignalParams {
             sat,
@@ -44,7 +44,7 @@ fn galileo_e1_scenario(sat: SatId) -> SyntheticScenario {
 }
 
 #[test]
-fn receiver_reports_galileo_acquisition_without_promoting_it_to_tracking() {
+fn receiver_promotes_galileo_e1_acquisitions_into_tracking() {
     let config = galileo_e1_config();
     let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
     let scenario = galileo_e1_scenario(sat);
@@ -57,15 +57,29 @@ fn receiver_reports_galileo_acquisition_without_promoting_it_to_tracking() {
         .iter()
         .find(|result| result.sat == sat)
         .expect("Galileo acquisition result");
+    let track = artifacts
+        .tracking
+        .iter()
+        .find(|result| result.sat == sat)
+        .expect("Galileo tracking result");
+    let report = artifacts
+        .channel_state_reports
+        .iter()
+        .find(|report| report.sat == sat)
+        .expect("Galileo tracking state report");
 
     assert_eq!(sat_result.signal_band, SignalBand::E1, "{sat_result:?}");
     assert_eq!(sat_result.hypothesis.to_string(), "accepted", "{sat_result:?}");
-    assert!(artifacts.tracking.is_empty(), "{artifacts:?}");
-    assert!(artifacts.channel_state_reports.is_empty(), "{artifacts:?}");
+    assert!(!track.epochs.is_empty(), "{artifacts:?}");
+    assert!(
+        track.epochs.iter().any(|epoch| epoch.lock && epoch.dll_lock && epoch.pll_lock && epoch.fll_lock),
+        "{track:?}",
+    );
+    assert_eq!(report.final_state, TrackingChannelState::Locked, "{report:?}");
 }
 
 #[test]
-fn support_matrix_describes_galileo_e1_as_acquisition_only() {
+fn support_matrix_describes_galileo_e1_as_tracking_ready() {
     let config = galileo_e1_config();
     let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
     let scenario = galileo_e1_scenario(sat);
@@ -85,6 +99,7 @@ fn support_matrix_describes_galileo_e1_as_acquisition_only() {
         .expect("Galileo E1-B support row");
 
     assert!(matches!(row.status, SupportStatus::Planned), "{row:?}");
-    assert!(row.reason.contains("receiver acquisition supports this signal path"), "{row:?}");
-    assert!(row.reason.contains("tracking"), "{row:?}");
+    assert!(row.reason.contains("receiver acquisition and tracking support this signal path"), "{row:?}");
+    assert!(row.reason.contains("observations"), "{row:?}");
+    assert!(row.reason.contains("navigation"), "{row:?}");
 }
