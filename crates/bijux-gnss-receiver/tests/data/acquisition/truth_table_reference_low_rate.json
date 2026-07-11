@@ -1,0 +1,52 @@
+{
+  "scenario_id": "synthetic_iq_acquisition_reference_low_rate",
+  "doppler_tolerance_bins": 1,
+  "doppler_tolerance_hz": 500.0,
+  "code_phase_tolerance_samples": 2,
+  "sample_rate_hz": 2046000.0,
+  "period_samples": 2046,
+  "doppler_step_hz": 500,
+  "pass": true,
+  "satellites": [
+    {
+      "sat": {
+        "constellation": "Gps",
+        "prn": 3
+      },
+      "injected_doppler_hz": 750.0,
+      "expected_measured_doppler_hz": 750.0,
+      "measured_doppler_hz": 749.9999346183166,
+      "doppler_error_hz": 0.00006538168338465766,
+      "doppler_error_bins": 1.3076336676931531e-7,
+      "injected_code_phase_chips": 200.25,
+      "expected_code_phase_samples": 1645,
+      "measured_code_phase_samples": 1646,
+      "code_phase_error_samples": 1,
+      "peak_mean_ratio": 41.3523,
+      "hypothesis": "rejected",
+      "doppler_pass": true,
+      "code_phase_pass": true,
+      "pass": true
+    },
+    {
+      "sat": {
+        "constellation": "Gps",
+        "prn": 7
+      },
+      "injected_doppler_hz": -1000.0,
+      "expected_measured_doppler_hz": -1000.0,
+      "measured_doppler_hz": -1000.0000063753016,
+      "doppler_error_hz": 6.3753016092960024e-6,
+      "doppler_error_bins": 1.2750603218592005e-8,
+      "injected_code_phase_chips": 321.5,
+      "expected_code_phase_samples": 1403,
+      "measured_code_phase_samples": 1403,
+      "code_phase_error_samples": 0,
+      "peak_mean_ratio": 64.065544,
+      "hypothesis": "rejected",
+      "doppler_pass": true,
+      "code_phase_pass": true,
+      "pass": true
+    }
+  ]
+}
