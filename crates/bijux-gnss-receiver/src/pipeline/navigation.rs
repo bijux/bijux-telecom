@@ -560,19 +560,20 @@ impl Navigation {
         let policy_violations =
             scientific_prerequisite_violations(&nav_epoch, &observations, &self.config);
         if decision.explain_decision == "accepted" && !policy_violations.is_empty() {
-            nav_epoch.status = deterministic_solution_transition(
+            let refusal_class = if only_geometry_policy_violations(&policy_violations) {
+                NavRefusalClass::InsufficientGeometry
+            } else {
+                NavRefusalClass::ScientificPrerequisitesTooWeak
+            };
+            nav_epoch = policy_refusal_epoch(
+                nav_epoch,
                 self.last_solution.as_ref().map(|row| row.status),
-                nav_epoch.status,
-                Some(NavRefusalClass::ScientificPrerequisitesTooWeak),
-                false,
+                refusal_class,
+                policy_violations.clone(),
             );
-            nav_epoch.valid = false;
-            nav_epoch.quality = nav_epoch.status.quality_flag();
-            nav_epoch.validity = classify_validity(&nav_epoch);
-            nav_epoch.lifecycle_state = lifecycle_state_from_status(nav_epoch.status);
             decision = NavDecision {
                 status: nav_epoch.status,
-                refusal_class: Some(NavRefusalClass::ScientificPrerequisitesTooWeak),
+                refusal_class: Some(refusal_class),
                 explain_decision: "refused".to_string(),
                 explain_reasons: policy_violations,
             };
@@ -834,6 +835,37 @@ fn sparse_navigation_refusal_epoch(
     solution
 }
 
+fn policy_refusal_epoch(
+    mut solution: NavSolutionEpoch,
+    previous_status: Option<SolutionStatus>,
+    refusal_class: NavRefusalClass,
+    explain_reasons: Vec<String>,
+) -> NavSolutionEpoch {
+    solution.ecef_x_m = Meters(0.0);
+    solution.ecef_y_m = Meters(0.0);
+    solution.ecef_z_m = Meters(0.0);
+    solution.latitude_deg = 0.0;
+    solution.longitude_deg = 0.0;
+    solution.altitude_m = Meters(0.0);
+    solution.clock_bias_s = Seconds(0.0);
+    solution.clock_bias_m = Meters(0.0);
+    solution.clock_drift_s_per_s = 0.0;
+    solution.status = deterministic_solution_transition(
+        previous_status,
+        solution.status,
+        Some(refusal_class),
+        false,
+    );
+    solution.lifecycle_state = lifecycle_state_from_status(solution.status);
+    solution.valid = false;
+    solution.validity = SolutionValidity::Invalid;
+    solution.quality = solution.status.quality_flag();
+    solution.refusal_class = Some(refusal_class);
+    solution.explain_decision = "refused".to_string();
+    solution.explain_reasons = explain_reasons;
+    solution
+}
+
 fn nav_output_stability_signature(solution: &NavSolutionEpoch) -> String {
     let refusal = solution
         .refusal_class
@@ -964,14 +996,30 @@ fn scientific_prerequisite_violations(
             ));
         }
     }
-    if solution.pdop > thresholds.max_pdop {
-        reasons
-            .push(format!("pdop_above_threshold:{:.3}>{:.3}", solution.pdop, thresholds.max_pdop));
-    }
+    reasons.extend(geometry_threshold_violations(solution, thresholds));
     if solution.rms_m.0 > thresholds.max_residual_rms_m {
         reasons.push(format!(
             "residual_rms_above_threshold:{:.3}>{:.3}",
             solution.rms_m.0, thresholds.max_residual_rms_m
+        ));
+    }
+    reasons
+}
+
+fn geometry_threshold_violations(
+    solution: &NavSolutionEpoch,
+    thresholds: &crate::engine::receiver_config::ScienceThresholdsConfig,
+) -> Vec<String> {
+    let mut reasons = Vec::new();
+    if solution.pdop > thresholds.max_pdop {
+        reasons
+            .push(format!("pdop_above_threshold:{:.3}>{:.3}", solution.pdop, thresholds.max_pdop));
+    }
+    if solution.gdop.unwrap_or(f64::INFINITY) > thresholds.max_gdop {
+        reasons.push(format!(
+            "gdop_above_threshold:{:.3}>{:.3}",
+            solution.gdop.unwrap_or(f64::INFINITY),
+            thresholds.max_gdop
         ));
     }
     if solution.used_sat_count < thresholds.min_used_satellites {
@@ -981,6 +1029,16 @@ fn scientific_prerequisite_violations(
         ));
     }
     reasons
+}
+
+fn geometry_violation_reason(reason: &str) -> bool {
+    reason.starts_with("pdop_above_threshold:")
+        || reason.starts_with("gdop_above_threshold:")
+        || reason.starts_with("used_satellites_below_threshold:")
+}
+
+fn only_geometry_policy_violations(reasons: &[String]) -> bool {
+    !reasons.is_empty() && reasons.iter().all(|reason| geometry_violation_reason(reason))
 }
 
 fn build_provenance(
@@ -1756,11 +1814,46 @@ mod tests {
         ];
         let obs = make_obs_epoch_for_solution(17, t_rx_s, truth, &ephs);
         let solution = nav.solve_epoch(&obs, &ephs).expect("solution");
-        assert_eq!(solution.refusal_class, Some(NavRefusalClass::ScientificPrerequisitesTooWeak));
+        assert_eq!(solution.refusal_class, Some(NavRefusalClass::InsufficientGeometry));
         assert_eq!(solution.explain_decision, "refused");
+        assert_eq!(solution.status, SolutionStatus::Invalid);
+        assert_eq!(solution.ecef_x_m.0, 0.0);
         assert!(solution
             .explain_reasons
             .iter()
             .any(|reason| reason.starts_with("pdop_above_threshold:")));
+    }
+
+    #[test]
+    fn scientific_policy_can_refuse_high_gdop_geometry() {
+        let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
+        let t_rx_s = 100_200.0;
+        let ephs = vec![
+            make_eph(1, 0.0, 0.0, t_rx_s),
+            make_eph(2, 0.8, 0.9, t_rx_s),
+            make_eph(3, 1.6, 1.8, t_rx_s),
+            make_eph(4, 2.4, 2.7, t_rx_s),
+        ];
+        let obs = make_obs_epoch_for_solution(18, t_rx_s, truth, &ephs);
+        let baseline_solution = Navigation::new(
+            ReceiverPipelineConfig::default(),
+            crate::engine::runtime::ReceiverRuntime::default(),
+        )
+        .solve_epoch(&obs, &ephs)
+        .expect("baseline solution");
+        let mut config = ReceiverPipelineConfig::default();
+        config.science_thresholds.max_pdop = 100.0;
+        config.science_thresholds.max_gdop = baseline_solution.gdop.expect("baseline gdop") - 0.1;
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+
+        let solution = nav.solve_epoch(&obs, &ephs).expect("gdop refusal");
+
+        assert_eq!(solution.refusal_class, Some(NavRefusalClass::InsufficientGeometry));
+        assert_eq!(solution.status, SolutionStatus::Invalid);
+        assert_eq!(solution.ecef_x_m.0, 0.0);
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason.starts_with("gdop_above_threshold:")));
     }
 }
