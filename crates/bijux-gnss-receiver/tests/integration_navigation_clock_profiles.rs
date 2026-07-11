@@ -158,3 +158,39 @@ fn navigation_clock_profile_report_tracks_clock_induced_doppler_offset() {
     );
     assert_eq!(drifting.max_observation_doppler_offset_error_hz, Some(0.0), "{report:?}");
 }
+
+#[test]
+fn navigation_clock_profile_report_requires_reference_observations_for_drift_validation() {
+    let drifting_case = build_navigation_clock_case(
+        synthetic_navigation_clock_profiles()
+            .into_iter()
+            .find(|profile| profile.profile_name == "oscillator_drift_receiver_clock")
+            .expect("oscillator drift receiver clock profile"),
+    );
+    let report = summarize_truth_guided_pvt_clock_profile(
+        &[SyntheticPvtClockProfileCase {
+            scenario_id: &drifting_case.scenario_id,
+            injected_clock_drift_s_per_s: truth_clock_drift_s_per_s(&drifting_case.clock_profile),
+            expected_observation_doppler_offset_hz: receiver_clock_drift_doppler_offset_hz(
+                truth_clock_drift_s_per_s(&drifting_case.clock_profile),
+            ),
+            observations: &drifting_case.observations,
+            reference_observations: None,
+            solutions: &drifting_case.solutions,
+            accuracy: &drifting_case.pvt_accuracy,
+        }],
+        "navigation_clock_profile",
+    );
+
+    let drifting = report.points.first().expect("drifting clock profile point");
+
+    assert!(!drifting.truth_coverage_ready, "{report:?}");
+    assert!(
+        drifting
+            .truth_coverage_issues
+            .iter()
+            .any(|issue| issue.code == "missing_clock_profile_reference_observations"),
+        "{report:?}"
+    );
+    assert!(!drifting.ready, "{report:?}");
+}

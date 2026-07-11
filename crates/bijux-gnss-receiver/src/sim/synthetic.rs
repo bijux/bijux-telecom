@@ -2590,6 +2590,8 @@ pub fn summarize_truth_guided_pvt_clock_profile(
                     observation_doppler_offsets_hz(case.observations, reference_observations)
                 })
                 .unwrap_or_default();
+            let clock_profile_truth_coverage_issues =
+                clock_profile_truth_coverage_issues(case, observation_doppler_offsets_hz.len());
             let solved_clock_drift_s_per_s = case
                 .solutions
                 .iter()
@@ -2616,6 +2618,10 @@ pub fn summarize_truth_guided_pvt_clock_profile(
             } else {
                 passing_epoch_count as f64 / epoch_count as f64
             };
+            let truth_coverage_ready = case.accuracy.truth_coverage_ready
+                && clock_profile_truth_coverage_issues.is_empty();
+            let mut truth_coverage_issues = case.accuracy.truth_coverage_issues.clone();
+            truth_coverage_issues.extend(clock_profile_truth_coverage_issues);
 
             SyntheticPvtClockProfilePoint {
                 scenario_id: case.scenario_id.to_string(),
@@ -2652,9 +2658,9 @@ pub fn summarize_truth_guided_pvt_clock_profile(
                 rms_residual_rms_m: (!residual_rms_m.is_empty())
                     .then(|| stats(&residual_rms_m).rms),
                 max_residual_rms_m: residual_rms_m.iter().copied().reduce(f64::max),
-                truth_coverage_ready: case.accuracy.truth_coverage_ready,
-                truth_coverage_issues: case.accuracy.truth_coverage_issues.clone(),
-                ready: case.accuracy.truth_coverage_ready
+                truth_coverage_ready,
+                truth_coverage_issues,
+                ready: truth_coverage_ready
                     && epoch_count > 0
                     && !solved_clock_drift_s_per_s.is_empty()
                     && (case.reference_observations.is_some()
@@ -2699,6 +2705,30 @@ fn observation_doppler_offsets_hz(
         }
     }
     offsets_hz
+}
+
+fn clock_profile_truth_coverage_issues(
+    case: &SyntheticPvtClockProfileCase<'_>,
+    observation_doppler_pair_count: usize,
+) -> Vec<SyntheticTruthCoverageIssue> {
+    if case.expected_observation_doppler_offset_hz.abs() <= f64::EPSILON {
+        return Vec::new();
+    }
+    if case.reference_observations.is_none() {
+        return vec![truth_coverage_issue(
+            None,
+            None,
+            "missing_clock_profile_reference_observations",
+        )];
+    }
+    if observation_doppler_pair_count == 0 {
+        return vec![truth_coverage_issue(
+            None,
+            None,
+            "no_clock_profile_observation_doppler_pairs",
+        )];
+    }
+    Vec::new()
 }
 
 /// Summarize truth-guided PVT accuracy across long-run time-evolution points.
