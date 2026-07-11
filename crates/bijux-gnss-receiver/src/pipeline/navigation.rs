@@ -1897,6 +1897,17 @@ mod tests {
                 && residual.rejected
                 && residual.reject_reason == Some(MeasurementRejectReason::Outlier)
         }));
+        let pre_fit_residual_rms_m = solution
+            .pre_fit_residual_rms_m
+            .expect("raim-tested solution should report pre-fit residual RMS");
+        let post_fit_residual_rms_m = solution
+            .post_fit_residual_rms_m
+            .expect("raim-tested solution should report post-fit residual RMS");
+        assert!(
+            pre_fit_residual_rms_m.0 > post_fit_residual_rms_m.0 + 100.0,
+            "RAIM exclusion should materially reduce residual RMS: pre={pre_fit_residual_rms_m:?} post={post_fit_residual_rms_m:?}",
+        );
+        assert!((solution.rms_m.0 - post_fit_residual_rms_m.0).abs() < 1.0e-12);
     }
 
     #[test]
@@ -1940,6 +1951,8 @@ mod tests {
             .explain_reasons
             .iter()
             .any(|reason| reason.starts_with("raim_suspect_prn=")));
+        assert_eq!(solution.pre_fit_residual_rms_m, None);
+        assert_eq!(solution.post_fit_residual_rms_m, None);
     }
 
     #[test]
