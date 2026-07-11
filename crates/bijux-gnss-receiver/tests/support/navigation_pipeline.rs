@@ -77,9 +77,10 @@ pub fn noisy_synthetic_navigation_run_with_satellite_prns(
     noise_profile: SyntheticPseudorangeNoiseProfile,
     satellite_prns: &[u8],
 ) -> NoisySyntheticNavigationRun {
-    let run = navigation_run(
-        clean_synthetic_pvt_scenario_with_satellite_prns_and_noise(&noise_profile, satellite_prns),
-    );
+    let run = navigation_run(clean_synthetic_pvt_scenario_with_satellite_prns_and_noise(
+        &noise_profile,
+        satellite_prns,
+    ));
     NoisySyntheticNavigationRun { noise_profile, run }
 }
 
@@ -127,7 +128,9 @@ fn tracking_results_for_profile(
     profile
         .satellites
         .iter()
-        .map(|satellite| synthetic_truth_track(config, &satellite.signal, satellite.whole_code_periods))
+        .map(|satellite| {
+            synthetic_truth_track(config, &satellite.signal, satellite.whole_code_periods)
+        })
         .collect()
 }
 
@@ -373,10 +376,7 @@ fn inject_pseudorange_noise(
     }
 }
 
-fn pseudorange_noise_for_satellite(
-    satellites: &[SatellitePseudorangeNoise],
-    sat: SatId,
-) -> f64 {
+fn pseudorange_noise_for_satellite(satellites: &[SatellitePseudorangeNoise], sat: SatId) -> f64 {
     satellites
         .iter()
         .find(|satellite| satellite.sat == sat)

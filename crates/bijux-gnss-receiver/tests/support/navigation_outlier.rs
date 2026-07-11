@@ -49,8 +49,8 @@ pub fn rejected_outlier_prns(
         .collect()
 }
 
-pub fn single_bad_satellite_navigation_run() -> super::navigation_pipeline::NoisySyntheticNavigationRun
-{
+pub fn single_bad_satellite_navigation_run(
+) -> super::navigation_pipeline::NoisySyntheticNavigationRun {
     noisy_synthetic_navigation_run(single_bad_satellite_profile())
 }
 
