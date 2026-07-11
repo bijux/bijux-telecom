@@ -898,6 +898,50 @@ pub struct SyntheticPvtMotionProfileReport {
     pub points: Vec<SyntheticPvtMotionProfilePoint>,
 }
 
+/// One truth-guided PVT accuracy measurement point indexed by injected receiver clock drift.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPvtClockProfilePoint {
+    /// Stable scenario identifier for this validation run.
+    pub scenario_id: String,
+    /// Injected receiver clock drift carried by the scenario truth, in seconds per second.
+    pub injected_clock_drift_s_per_s: f64,
+    /// Number of matched PVT epochs compared against truth.
+    pub epoch_count: usize,
+    /// Number of matched PVT epochs that satisfied the hard accuracy budget.
+    pub passing_epoch_count: usize,
+    /// Passing-epoch fraction across the matched PVT epochs.
+    pub pass_rate: f64,
+    /// Final solved receiver clock drift from the navigation solution sequence, in seconds per second.
+    pub final_solved_clock_drift_s_per_s: Option<f64>,
+    /// Mean solved receiver clock drift across the navigation solution sequence, in seconds per second.
+    pub mean_solved_clock_drift_s_per_s: Option<f64>,
+    /// Largest absolute solved-drift error across the navigation solution sequence, in seconds per second.
+    pub max_clock_drift_error_s_per_s: Option<f64>,
+    /// RMS clock-bias error across matched PVT epochs, in meters.
+    pub rms_clock_bias_error_m: Option<f64>,
+    /// Maximum clock-bias error across matched PVT epochs, in meters.
+    pub max_clock_bias_error_m: Option<f64>,
+    /// RMS residual RMS across matched PVT epochs, in meters.
+    pub rms_residual_rms_m: Option<f64>,
+    /// Maximum residual RMS across matched PVT epochs, in meters.
+    pub max_residual_rms_m: Option<f64>,
+    /// Whether synthetic truth coverage remained sufficient for a hard claim.
+    pub truth_coverage_ready: bool,
+    /// Machine-checkable truth-coverage issues that forced or should force validation failure.
+    pub truth_coverage_issues: Vec<SyntheticTruthCoverageIssue>,
+    /// Whether the point had truth-ready PVT comparisons and at least one solved clock-drift estimate.
+    pub ready: bool,
+}
+
+/// Truth-guided PVT accuracy profile across multiple receiver clock-drift points.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPvtClockProfileReport {
+    /// Scenario identifier prefix shared across the measurement points.
+    pub scenario_id_prefix: String,
+    /// Measurement points captured in the report.
+    pub points: Vec<SyntheticPvtClockProfilePoint>,
+}
+
 /// Time-evolution trend classification for a truth-guided PVT accuracy run.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum SyntheticPvtTimeTrend {
@@ -2148,6 +2192,19 @@ pub struct SyntheticPvtMotionProfileCase<'a> {
     pub accuracy: &'a SyntheticPvtAccuracyReport,
 }
 
+/// Borrowed inputs for one receiver clock-drift PVT profile point.
+#[derive(Debug, Clone, Copy)]
+pub struct SyntheticPvtClockProfileCase<'a> {
+    /// Stable scenario identifier for this validation run.
+    pub scenario_id: &'a str,
+    /// Injected receiver clock drift carried by the scenario truth, in seconds per second.
+    pub injected_clock_drift_s_per_s: f64,
+    /// Navigation solutions that should estimate the receiver clock drift.
+    pub solutions: &'a [NavSolutionEpoch],
+    /// Truth-guided PVT accuracy report for the same scenario.
+    pub accuracy: &'a SyntheticPvtAccuracyReport,
+}
+
 /// Borrowed inputs for one long-run synthetic PVT time-profile point.
 #[derive(Debug, Clone, Copy)]
 pub struct SyntheticPvtTimeProfileCase<'a> {
@@ -2499,6 +2556,77 @@ pub fn summarize_truth_guided_pvt_motion_profile(
     });
 
     SyntheticPvtMotionProfileReport { scenario_id_prefix: scenario_id_prefix.to_string(), points }
+}
+
+/// Summarize truth-guided PVT accuracy across multiple injected receiver clock-drift points.
+pub fn summarize_truth_guided_pvt_clock_profile(
+    cases: &[SyntheticPvtClockProfileCase<'_>],
+    scenario_id_prefix: &str,
+) -> SyntheticPvtClockProfileReport {
+    let mut points = cases
+        .iter()
+        .map(|case| {
+            let solved_clock_drift_s_per_s = case
+                .solutions
+                .iter()
+                .map(|solution| solution.clock_drift_s_per_s)
+                .filter(|value| value.is_finite())
+                .collect::<Vec<_>>();
+            let clock_drift_error_s_per_s = solved_clock_drift_s_per_s
+                .iter()
+                .map(|value| (value - case.injected_clock_drift_s_per_s).abs())
+                .collect::<Vec<_>>();
+            let clock_bias_error_m = case
+                .accuracy
+                .epochs
+                .iter()
+                .map(|epoch| epoch.clock_bias_error_m)
+                .collect::<Vec<_>>();
+            let residual_rms_m =
+                case.accuracy.epochs.iter().map(|epoch| epoch.residual_rms_m).collect::<Vec<_>>();
+            let passing_epoch_count =
+                case.accuracy.epochs.iter().filter(|epoch| epoch.pass).count();
+            let epoch_count = case.accuracy.epoch_count;
+            let pass_rate = if epoch_count == 0 {
+                0.0
+            } else {
+                passing_epoch_count as f64 / epoch_count as f64
+            };
+
+            SyntheticPvtClockProfilePoint {
+                scenario_id: case.scenario_id.to_string(),
+                injected_clock_drift_s_per_s: case.injected_clock_drift_s_per_s,
+                epoch_count,
+                passing_epoch_count,
+                pass_rate,
+                final_solved_clock_drift_s_per_s: solved_clock_drift_s_per_s.last().copied(),
+                mean_solved_clock_drift_s_per_s: mean_f64(&solved_clock_drift_s_per_s),
+                max_clock_drift_error_s_per_s: clock_drift_error_s_per_s
+                    .iter()
+                    .copied()
+                    .reduce(f64::max),
+                rms_clock_bias_error_m: (!clock_bias_error_m.is_empty())
+                    .then(|| stats(&clock_bias_error_m).rms),
+                max_clock_bias_error_m: clock_bias_error_m.iter().copied().reduce(f64::max),
+                rms_residual_rms_m: (!residual_rms_m.is_empty())
+                    .then(|| stats(&residual_rms_m).rms),
+                max_residual_rms_m: residual_rms_m.iter().copied().reduce(f64::max),
+                truth_coverage_ready: case.accuracy.truth_coverage_ready,
+                truth_coverage_issues: case.accuracy.truth_coverage_issues.clone(),
+                ready: case.accuracy.truth_coverage_ready
+                    && epoch_count > 0
+                    && !solved_clock_drift_s_per_s.is_empty(),
+            }
+        })
+        .collect::<Vec<_>>();
+    points.sort_by(|left, right| {
+        left.injected_clock_drift_s_per_s
+            .partial_cmp(&right.injected_clock_drift_s_per_s)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| left.scenario_id.cmp(&right.scenario_id))
+    });
+
+    SyntheticPvtClockProfileReport { scenario_id_prefix: scenario_id_prefix.to_string(), points }
 }
 
 /// Summarize truth-guided PVT accuracy across long-run time-evolution points.

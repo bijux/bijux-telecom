@@ -3,6 +3,9 @@
 #[path = "support/navigation_clock_profile.rs"]
 mod navigation_clock_profile;
 
+use bijux_gnss_receiver::api::sim::{
+    summarize_truth_guided_pvt_clock_profile, SyntheticPvtClockProfileCase,
+};
 use navigation_clock_profile::{
     build_navigation_clock_case, synthetic_navigation_clock_profiles, truth_clock_drift_s_per_s,
 };
@@ -29,4 +32,48 @@ fn synthetic_navigation_clock_profiles_produce_truth_ready_navigation_cases() {
         assert!(!case.observations.is_empty());
         assert!(!case.solutions.is_empty());
     }
+}
+
+#[test]
+fn navigation_clock_profile_report_tracks_injected_clock_drift() {
+    let cases = synthetic_navigation_clock_profiles()
+        .into_iter()
+        .map(build_navigation_clock_case)
+        .collect::<Vec<_>>();
+    let report = summarize_truth_guided_pvt_clock_profile(
+        &cases
+            .iter()
+            .map(|case| SyntheticPvtClockProfileCase {
+                scenario_id: &case.scenario_id,
+                injected_clock_drift_s_per_s: truth_clock_drift_s_per_s(&case.clock_profile),
+                solutions: &case.solutions,
+                accuracy: &case.pvt_accuracy,
+            })
+            .collect::<Vec<_>>(),
+        "navigation_clock_profile",
+    );
+
+    assert_eq!(report.points.len(), cases.len());
+
+    let stable = &report.points[0];
+    let drifting = &report.points[1];
+
+    assert!(stable.ready && drifting.ready, "{report:?}");
+    assert_eq!(stable.injected_clock_drift_s_per_s, 0.0);
+    assert!(
+        stable.final_solved_clock_drift_s_per_s.expect("stable drift").abs() <= 1.0e-12,
+        "{report:?}"
+    );
+
+    assert!(drifting.injected_clock_drift_s_per_s > stable.injected_clock_drift_s_per_s);
+    assert_eq!(drifting.epoch_count, drifting.passing_epoch_count, "{report:?}");
+    assert_eq!(drifting.pass_rate, 1.0, "{report:?}");
+    assert!(
+        (drifting.final_solved_clock_drift_s_per_s.expect("final solved drift")
+            - drifting.injected_clock_drift_s_per_s)
+            .abs()
+            <= 1.0e-8,
+        "{report:?}"
+    );
+    assert!(drifting.max_residual_rms_m.expect("residual rms") >= 0.0, "{report:?}");
 }
