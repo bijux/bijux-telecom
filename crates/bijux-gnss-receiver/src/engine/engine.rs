@@ -446,8 +446,7 @@ fn acquisition_signal_matches_config(
 
 fn tracking_signal_supported(acq: &AcqResult) -> bool {
     matches!(acq.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous)
-        && acq.sat.constellation == Constellation::Gps
-        && acq.signal_band == SignalBand::L1
+        && crate::pipeline::tracking::supports_tracking_signal(acq.sat, acq.signal_band)
 }
 
 fn build_tracking_preview_frame(
@@ -597,7 +596,7 @@ fn support_reason(constellation: Constellation, band: SignalBand, code: SignalCo
     }
     if constellation == Constellation::Galileo && band == SignalBand::E1 && code == SignalCode::E1B
     {
-        return "receiver acquisition supports this signal path; tracking, observations, and navigation remain incomplete".to_string();
+        return "receiver acquisition and tracking support this signal path; observations and navigation remain incomplete".to_string();
     }
     if signal_registry(constellation, band, code).is_some() {
         return "signal model registered; receiver pipeline support not yet complete".to_string();
