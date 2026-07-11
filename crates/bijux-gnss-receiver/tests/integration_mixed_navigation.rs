@@ -46,7 +46,12 @@ fn make_gps_ephemeris(prn: u8, omega0: f64, m0: f64, t_ref_s: f64) -> GpsEphemer
     }
 }
 
-fn make_galileo_navigation(prn: u8, omega0: f64, m0: f64, t_ref_s: f64) -> GalileoBroadcastNavigationData {
+fn make_galileo_navigation(
+    prn: u8,
+    omega0: f64,
+    m0: f64,
+    t_ref_s: f64,
+) -> GalileoBroadcastNavigationData {
     GalileoBroadcastNavigationData {
         sat: SatId { constellation: Constellation::Galileo, prn },
         iodnav: prn as u16,
@@ -115,8 +120,7 @@ fn gps_pseudorange_m(
         let dy = truth_ecef_m.1 - state.y_m;
         let dz = truth_ecef_m.2 - state.z_m;
         let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
-        pseudorange_m = range_m
-            + receiver_clock_bias_s * 299_792_458.0
+        pseudorange_m = range_m + receiver_clock_bias_s * 299_792_458.0
             - state.clock_correction.bias_s * 299_792_458.0;
         let next_tau = pseudorange_m / 299_792_458.0;
         if (next_tau - tau).abs() < 1.0e-12 {
@@ -142,8 +146,7 @@ fn galileo_pseudorange_m(
         let dy = truth_ecef_m.1 - state.y_m;
         let dz = truth_ecef_m.2 - state.z_m;
         let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
-        pseudorange_m = range_m
-            + (receiver_clock_bias_s + galileo_bias_s) * 299_792_458.0
+        pseudorange_m = range_m + (receiver_clock_bias_s + galileo_bias_s) * 299_792_458.0
             - state.clock_correction.bias_s * 299_792_458.0;
         let next_tau = pseudorange_m / 299_792_458.0;
         if (next_tau - tau).abs() < 1.0e-12 {
@@ -154,7 +157,13 @@ fn galileo_pseudorange_m(
     pseudorange_m
 }
 
-fn synthetic_satellite(sat: SatId, band: SignalBand, code: SignalCode, pseudorange_m: f64, t_rx_s: f64) -> ObsSatellite {
+fn synthetic_satellite(
+    sat: SatId,
+    band: SignalBand,
+    code: SignalCode,
+    pseudorange_m: f64,
+    t_rx_s: f64,
+) -> ObsSatellite {
     let signal_travel_time_s = pseudorange_m / 299_792_458.0;
     ObsSatellite {
         signal_id: SigId { sat, band, code },
@@ -251,12 +260,8 @@ fn public_navigation_api_solves_mixed_gps_galileo_epoch() {
     };
 
     let mut navigation_data = position_broadcast_navigation_from_gps_ephemerides(&gps_ephemerides);
-    navigation_data.extend(
-        galileo_navigation
-            .iter()
-            .cloned()
-            .map(PositionBroadcastNavigation::Galileo),
-    );
+    navigation_data
+        .extend(galileo_navigation.iter().cloned().map(PositionBroadcastNavigation::Galileo));
 
     let solution = navigation_engine
         .solve_epoch_with_navigation_data(&obs, &navigation_data)

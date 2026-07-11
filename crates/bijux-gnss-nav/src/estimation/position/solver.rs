@@ -15,8 +15,8 @@ use crate::orbits::gps::{
     GpsEphemeris,
 };
 use bijux_gnss_core::api::{
-    Constellation, GpsTime, InterSystemBias, Llh, MeasurementRejectReason, ObsEpoch,
-    ObsSatellite, ObsSignalTiming, ObservationStatus, SatId, Seconds, SignalBand,
+    Constellation, GpsTime, InterSystemBias, Llh, MeasurementRejectReason, ObsEpoch, ObsSatellite,
+    ObsSignalTiming, ObservationStatus, SatId, Seconds, SignalBand,
 };
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
@@ -262,7 +262,11 @@ impl ClockStateModel {
         state.first().copied().unwrap_or(0.0)
     }
 
-    fn constellation_clock_bias_s(&self, state: &[f64], constellation: Constellation) -> Option<f64> {
+    fn constellation_clock_bias_s(
+        &self,
+        state: &[f64],
+        constellation: Constellation,
+    ) -> Option<f64> {
         if constellation == self.reference_constellation {
             return Some(self.reference_clock_bias_s(state));
         }
@@ -763,9 +767,8 @@ impl PositionSolver {
             .map(|cov| {
                 let sigma2 = if !v.is_empty() {
                     let sum = v.iter().map(|r| r * r).sum::<f64>();
-                    let dof =
-                        (v.len() as i32 - final_estimate.clock_model.parameter_len() as i32).max(1)
-                            as f64;
+                    let dof = (v.len() as i32 - final_estimate.clock_model.parameter_len() as i32)
+                        .max(1) as f64;
                     sum / dof
                 } else {
                     0.0
@@ -882,7 +885,10 @@ fn navigation_is_valid(navigation: &PositionBroadcastNavigation, receive_tow_s: 
     }
 }
 
-fn navigation_age_score(navigation: &PositionBroadcastNavigation, receive_tow_s: f64) -> (f64, f64) {
+fn navigation_age_score(
+    navigation: &PositionBroadcastNavigation,
+    receive_tow_s: f64,
+) -> (f64, f64) {
     match navigation {
         PositionBroadcastNavigation::Gps(ephemeris) => {
             let age = gps_ephemeris_age(ephemeris, receive_tow_s);
@@ -965,7 +971,11 @@ mod tests {
         }
     }
 
-    fn sample_galileo_navigation(sat: SatId, toe_s: f64, t0c_s: f64) -> GalileoBroadcastNavigationData {
+    fn sample_galileo_navigation(
+        sat: SatId,
+        toe_s: f64,
+        t0c_s: f64,
+    ) -> GalileoBroadcastNavigationData {
         GalileoBroadcastNavigationData {
             sat,
             iodnav: 0x01,
@@ -1056,11 +1066,8 @@ mod tests {
     fn position_broadcast_navigation_preserves_satellite_identity() {
         let gps_sat = SatId { constellation: Constellation::Gps, prn: 13 };
         let galileo_sat = SatId { constellation: Constellation::Galileo, prn: 19 };
-        let gps_navigation = PositionBroadcastNavigation::Gps(sample_ephemeris(
-            gps_sat,
-            200_000.0,
-            200_000.0,
-        ));
+        let gps_navigation =
+            PositionBroadcastNavigation::Gps(sample_ephemeris(gps_sat, 200_000.0, 200_000.0));
         let galileo_navigation = PositionBroadcastNavigation::Galileo(sample_galileo_navigation(
             galileo_sat,
             64_800.0,
@@ -1076,8 +1083,16 @@ mod tests {
     #[test]
     fn gps_ephemerides_convert_into_position_navigation_entries() {
         let ephemerides = vec![
-            sample_ephemeris(SatId { constellation: Constellation::Gps, prn: 13 }, 100_000.0, 100_000.0),
-            sample_ephemeris(SatId { constellation: Constellation::Gps, prn: 14 }, 200_000.0, 200_000.0),
+            sample_ephemeris(
+                SatId { constellation: Constellation::Gps, prn: 13 },
+                100_000.0,
+                100_000.0,
+            ),
+            sample_ephemeris(
+                SatId { constellation: Constellation::Gps, prn: 14 },
+                200_000.0,
+                200_000.0,
+            ),
         ];
 
         let navigation = position_broadcast_navigation_from_gps_ephemerides(&ephemerides);
@@ -1205,11 +1220,8 @@ fn resolve_satellite_geometry(
             let range_m = geometric_range_m(&estimate, &state);
             let receiver_clock_bias_s =
                 estimate.constellation_clock_bias_s(obs.sat.constellation)?;
-            let next_tau = predicted_signal_travel_time_s(
-                range_m,
-                receiver_clock_bias_s,
-                state.clock_bias_s,
-            );
+            let next_tau =
+                predicted_signal_travel_time_s(range_m, receiver_clock_bias_s, state.clock_bias_s);
             if (next_tau - tau).abs() < 1.0e-9 {
                 converged = true;
             }
@@ -1242,11 +1254,8 @@ fn linearized_pseudorange_row(
         linearized_geometry_row(estimate, geometry.observation.sat.constellation, &geometry.state)?;
     let receiver_clock_bias_s =
         estimate.constellation_clock_bias_s(geometry.observation.sat.constellation)?;
-    let predicted_pseudorange_m = predicted_pseudorange_m(
-        range_m,
-        receiver_clock_bias_s,
-        geometry.state.clock_bias_s,
-    );
+    let predicted_pseudorange_m =
+        predicted_pseudorange_m(range_m, receiver_clock_bias_s, geometry.state.clock_bias_s);
     let residual_m = geometry.observation.pseudorange_m
         - geometry.iono_delay_m
         - geometry.tropo_delay_m
@@ -1541,8 +1550,7 @@ impl PositionSolver {
             }
 
             let weights = self.measurement_weights(&geometry, &residual_values);
-            let (delta, covariance_out) =
-                solve_weighted_normal_eq(&h, &residual_values, &weights)?;
+            let (delta, covariance_out) = solve_weighted_normal_eq(&h, &residual_values, &weights)?;
             let (covariance_out, symmetrized, clamped, max_variance) =
                 sanitize_covariance(covariance_out);
             covariance_symmetrized |= symmetrized;
@@ -1576,7 +1584,8 @@ impl PositionSolver {
                 resolve_satellite_geometry(inputs, &estimate, klobuchar, self.apply_troposphere)?;
         }
 
-        geometry = resolve_satellite_geometry(inputs, &estimate, klobuchar, self.apply_troposphere)?;
+        geometry =
+            resolve_satellite_geometry(inputs, &estimate, klobuchar, self.apply_troposphere)?;
         if geometry.len() < 4 {
             return None;
         }
@@ -1593,7 +1602,7 @@ impl PositionSolver {
         })
     }
 
-fn finalize_working_set_residuals(
+    fn finalize_working_set_residuals(
         &self,
         estimate: &PositionEstimate,
         geometry: &[SatelliteGeometry],
@@ -1783,8 +1792,7 @@ fn max_solution_separation(
             h_sep.push(design_row);
             v_sep.push(*residual_m);
         }
-        if let Some((delta, _)) =
-            solve_weighted_normal_eq(&h_sep, &v_sep, &vec![1.0; v_sep.len()])
+        if let Some((delta, _)) = solve_weighted_normal_eq(&h_sep, &v_sep, &vec![1.0; v_sep.len()])
         {
             let dx = delta.first().copied().unwrap_or(0.0);
             let dy = delta.get(1).copied().unwrap_or(0.0);

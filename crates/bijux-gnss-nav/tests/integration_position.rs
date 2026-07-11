@@ -3,14 +3,14 @@ mod support;
 
 use bijux_gnss_core::api::{Constellation, GpsTime, SatId, Seconds};
 use bijux_gnss_nav::api::{
-    ephemerides_from_decoded_gps_l1ca_lnav, geodetic_to_ecef, parse_rinex_nav, sat_state_gps_l1ca,
-    sat_state_galileo_e1, write_rinex_nav, Ephemeris, GalileoBroadcastNavigationData,
-    GalileoClockCorrection, GalileoEphemeris, GalileoIonosphericCorrection,
-    GalileoIonosphericDisturbanceFlags, GalileoSignalHealth, GalileoSystemTime, GpsEphemeris,
-    GpsL1CaHowWord, GpsL1CaLnavDecodedSubframe, GpsL1CaLnavSubframe1Clock,
-    GpsL1CaLnavSubframe2Orbit, GpsL1CaLnavSubframe3Orbit, GpsL1CaLnavSubframeAlignment,
-    GpsL1CaTlmWord, GpsL1CaWordParitySummary, PositionBroadcastNavigation, PositionObservation,
-    PositionSolver, position_broadcast_navigation_from_gps_ephemerides,
+    ephemerides_from_decoded_gps_l1ca_lnav, geodetic_to_ecef, parse_rinex_nav,
+    position_broadcast_navigation_from_gps_ephemerides, sat_state_galileo_e1, sat_state_gps_l1ca,
+    write_rinex_nav, Ephemeris, GalileoBroadcastNavigationData, GalileoClockCorrection,
+    GalileoEphemeris, GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags,
+    GalileoSignalHealth, GalileoSystemTime, GpsEphemeris, GpsL1CaHowWord,
+    GpsL1CaLnavDecodedSubframe, GpsL1CaLnavSubframe1Clock, GpsL1CaLnavSubframe2Orbit,
+    GpsL1CaLnavSubframe3Orbit, GpsL1CaLnavSubframeAlignment, GpsL1CaTlmWord,
+    GpsL1CaWordParitySummary, PositionBroadcastNavigation, PositionObservation, PositionSolver,
 };
 use support::position_truth::{
     add_klobuchar_delay_to_observations, add_saastamoinen_delay_to_observations,
@@ -152,8 +152,7 @@ fn galileo_pseudorange_from_truth(
         let dy = truth_ecef_m.1 - state.y_m;
         let dz = truth_ecef_m.2 - state.z_m;
         let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
-        pseudorange_m = range_m
-            + (receiver_clock_bias_s + galileo_bias_s) * 299_792_458.0
+        pseudorange_m = range_m + (receiver_clock_bias_s + galileo_bias_s) * 299_792_458.0
             - state.clock_correction.bias_s * 299_792_458.0;
         let next_tau = pseudorange_m / 299_792_458.0;
         if (next_tau - tau).abs() < 1.0e-12 {
@@ -287,10 +286,8 @@ fn single_point_solver_recovers_receiver_clock_bias() {
 #[test]
 fn mixed_gps_galileo_solver_recovers_position_and_clock_split() {
     let gps_ephemerides = sample_ephemerides();
-    let galileo_navigation = vec![
-        sample_galileo_navigation(19, 1.17, 0.84),
-        sample_galileo_navigation(24, -0.83, 1.52),
-    ];
+    let galileo_navigation =
+        vec![sample_galileo_navigation(19, 1.17, 0.84), sample_galileo_navigation(24, -0.83, 1.52)];
     let truth_ecef_m = geodetic_to_ecef(37.0, -122.0, 10.0);
     let receiver_clock_bias_s = 2.75e-4;
     let galileo_bias_s = -1.15e-6;
@@ -319,12 +316,7 @@ fn mixed_gps_galileo_solver_recovers_position_and_clock_split() {
     }));
 
     let mut navigation = position_broadcast_navigation_from_gps_ephemerides(&gps_ephemerides);
-    navigation.extend(
-        galileo_navigation
-            .iter()
-            .cloned()
-            .map(PositionBroadcastNavigation::Galileo),
-    );
+    navigation.extend(galileo_navigation.iter().cloned().map(PositionBroadcastNavigation::Galileo));
 
     let solution = PositionSolver::new()
         .solve_wls_with_navigation_data(&observations, &navigation, t_rx_s)
@@ -334,12 +326,10 @@ fn mixed_gps_galileo_solver_recovers_position_and_clock_split() {
     assert_eq!(solution.used_sat_count, 6);
     assert_eq!(solution.rejected_sat_count, 0);
     assert!(solution.rejected.is_empty(), "unexpected rejections: {:?}", solution.rejected);
-    assert!(position_error_3d_m(
-        solution.ecef_x_m,
-        solution.ecef_y_m,
-        solution.ecef_z_m,
-        truth_ecef_m,
-    ) < 5.0);
+    assert!(
+        position_error_3d_m(solution.ecef_x_m, solution.ecef_y_m, solution.ecef_z_m, truth_ecef_m,)
+            < 5.0
+    );
     assert!((solution.clock_bias_s - receiver_clock_bias_s).abs() < 1.0e-9);
     assert_eq!(solution.inter_system_biases.len(), 1);
     assert_eq!(solution.inter_system_biases[0].constellation, Constellation::Galileo);
