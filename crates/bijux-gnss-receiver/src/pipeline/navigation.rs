@@ -1533,6 +1533,42 @@ mod tests {
     }
 
     #[test]
+    fn synthetic_solution_applies_troposphere_correction_when_enabled() {
+        let corrected_config = ReceiverPipelineConfig::default();
+        let mut corrected_nav =
+            Navigation::new(corrected_config, crate::engine::runtime::ReceiverRuntime::default());
+        let mut uncorrected_config = ReceiverPipelineConfig::default();
+        uncorrected_config.tropo_enable = false;
+        let mut uncorrected_nav =
+            Navigation::new(uncorrected_config, crate::engine::runtime::ReceiverRuntime::default());
+        let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
+        let t_rx_s = 100_050.0;
+        let ephs = vec![
+            make_eph(1, 0.0, 0.0, t_rx_s),
+            make_eph(2, 0.8, 0.9, t_rx_s),
+            make_eph(3, 1.6, 1.8, t_rx_s),
+            make_eph(4, 2.4, 2.7, t_rx_s),
+            make_eph(5, 3.2, 3.6, t_rx_s),
+        ];
+        let obs = make_obs_epoch_for_solution(20, t_rx_s, truth, &ephs);
+
+        let corrected = corrected_nav.solve_epoch(&obs, &ephs).expect("corrected solution");
+        let uncorrected = uncorrected_nav.solve_epoch(&obs, &ephs).expect("uncorrected solution");
+        let corrected_error_m = ((corrected.ecef_x_m.0 - truth.0).powi(2)
+            + (corrected.ecef_y_m.0 - truth.1).powi(2)
+            + (corrected.ecef_z_m.0 - truth.2).powi(2))
+        .sqrt();
+        let uncorrected_error_m = ((uncorrected.ecef_x_m.0 - truth.0).powi(2)
+            + (uncorrected.ecef_y_m.0 - truth.1).powi(2)
+            + (uncorrected.ecef_z_m.0 - truth.2).powi(2))
+        .sqrt();
+
+        assert!(corrected.valid);
+        assert!(corrected_error_m < 5.0);
+        assert!(uncorrected_error_m > corrected_error_m + 3.0);
+    }
+
+    #[test]
     fn deterministic_solution_transition_handles_refusal_and_regression() {
         assert_eq!(
             deterministic_solution_transition(
