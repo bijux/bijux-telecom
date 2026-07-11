@@ -1370,6 +1370,96 @@ fn code_phase_error_samples_to_pseudorange_m(error_samples: f64, sample_rate_hz:
     (error_samples / sample_rate_hz) * SPEED_OF_LIGHT_MPS
 }
 
+/// Build a truth-guided acquisition table from a synthetic capture.
+pub fn validate_truth_guided_acquisition_table(
+    config: &ReceiverPipelineConfig,
+    frame: &SamplesFrame,
+    truth: &SyntheticIqTruthBundle,
+    doppler_tolerance_bins: usize,
+    code_phase_tolerance_samples: usize,
+) -> SyntheticAcquisitionTruthTableReport {
+    let period_samples =
+        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length)
+            .max(1);
+    let doppler_step_hz = config.acquisition_doppler_step_hz.max(1);
+    let doppler_tolerance_hz = doppler_tolerance_bins as f64 * doppler_step_hz as f64;
+    let satellites = truth
+        .satellites
+        .iter()
+        .map(|sat_truth| {
+            let isolated_frame = regenerate_isolated_scaled_satellite_signal_only_frame(
+                config, frame, truth, sat_truth,
+            );
+            let acquisition = crate::pipeline::acquisition::Acquisition::new(
+                config.clone(),
+                crate::engine::runtime::ReceiverRuntime::default(),
+            );
+            let result = acquisition.run_fft(&isolated_frame, &[sat_truth.sat]).remove(0);
+            let has_trackable_hypothesis = matches!(
+                result.hypothesis,
+                crate::api::core::AcqHypothesis::Accepted
+                    | crate::api::core::AcqHypothesis::Ambiguous
+            );
+            let expected_measured_doppler_hz =
+                synthetic_truth_measured_doppler_hz(truth, sat_truth);
+            let measured_doppler_hz = crate::pipeline::doppler::doppler_hz_from_carrier_hz(
+                config.intermediate_freq_hz,
+                result.carrier_hz.0,
+            );
+            let doppler_error_hz = (measured_doppler_hz - expected_measured_doppler_hz).abs();
+            let doppler_error_bins = doppler_error_hz / doppler_step_hz as f64;
+            let doppler_pass = has_trackable_hypothesis
+                && measured_doppler_hz.is_finite()
+                && doppler_error_hz <= doppler_tolerance_hz + f64::EPSILON;
+
+            let expected_code_phase_samples = expected_acquisition_code_phase_samples(
+                config,
+                &isolated_frame,
+                sat_truth.code_phase_chips,
+            );
+            let measured_code_phase_samples = result.code_phase_samples;
+            let code_phase_error_samples = wrapped_code_phase_error_samples(
+                measured_code_phase_samples,
+                expected_code_phase_samples,
+                period_samples,
+            );
+            let code_phase_pass =
+                has_trackable_hypothesis && code_phase_error_samples <= code_phase_tolerance_samples;
+
+            SyntheticAcquisitionTruthTableSatellite {
+                sat: sat_truth.sat,
+                injected_doppler_hz: sat_truth.doppler_hz,
+                expected_measured_doppler_hz,
+                measured_doppler_hz,
+                doppler_error_hz,
+                doppler_error_bins,
+                injected_code_phase_chips: sat_truth.code_phase_chips,
+                expected_code_phase_samples,
+                measured_code_phase_samples,
+                code_phase_error_samples,
+                peak_mean_ratio: result.peak_mean_ratio,
+                hypothesis: result.hypothesis.to_string(),
+                doppler_pass,
+                code_phase_pass,
+                pass: doppler_pass && code_phase_pass,
+            }
+        })
+        .collect::<Vec<_>>();
+    let pass = !satellites.is_empty() && satellites.iter().all(|row| row.pass);
+
+    SyntheticAcquisitionTruthTableReport {
+        scenario_id: truth.scenario_id.clone(),
+        doppler_tolerance_bins,
+        doppler_tolerance_hz,
+        code_phase_tolerance_samples,
+        sample_rate_hz: truth.sample_rate_hz,
+        period_samples,
+        doppler_step_hz,
+        pass,
+        satellites,
+    }
+}
+
 /// Measure truth-guided acquisition code-phase accuracy from a synthetic capture.
 pub fn validate_truth_guided_acquisition_code_phase(
     config: &ReceiverPipelineConfig,
