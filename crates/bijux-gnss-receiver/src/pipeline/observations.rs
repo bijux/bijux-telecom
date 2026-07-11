@@ -934,7 +934,10 @@ fn pseudorange_from_tracking_epoch(
     receive_gps_time: Option<GpsTime>,
     clock_bias_s: f64,
 ) -> PseudorangeComputation {
-    let code_phase_chips = epoch.code_phase_samples.0 / samples_per_chip;
+    let code_phase_chips = aligned_code_phase_chips(
+        config.code_length as f64,
+        epoch.code_phase_samples.0 / samples_per_chip,
+    );
     if let Some(alignment) = &epoch.signal_delay_alignment {
         let code_time_s = (alignment.whole_code_periods as f64 * config.code_length as f64
             + code_phase_chips)
@@ -1081,6 +1084,14 @@ fn carrier_phase_observation(
         arc_start_epoch_idx: state.arc_start_epoch_idx,
         arc_start_sample_index: state.arc_start_sample_index,
     }
+}
+
+fn aligned_code_phase_chips(code_length_chips: f64, tracking_code_phase_chips: f64) -> f64 {
+    if !tracking_code_phase_chips.is_finite() || tracking_code_phase_chips < 0.0 {
+        return tracking_code_phase_chips;
+    }
+    (code_length_chips - tracking_code_phase_chips.rem_euclid(code_length_chips))
+        .rem_euclid(code_length_chips)
 }
 
 fn carrier_phase_tracking_usable(epoch: &TrackEpoch) -> bool {
@@ -1706,7 +1717,7 @@ mod tests {
         code_phase_samples: f64,
     ) -> TrackEpoch {
         TrackEpoch {
-            code_phase_samples: Chips(code_phase_samples),
+            code_phase_samples: Chips(test_tracking_code_phase_samples(config, code_phase_samples)),
             signal_delay_alignment: Some(SignalDelayAlignment {
                 whole_code_periods,
                 source: "synthetic_truth".to_string(),
@@ -1719,6 +1730,21 @@ mod tests {
                 carrier_phase_cycles,
             )
         }
+    }
+
+    fn test_tracking_code_phase_samples(
+        config: &ReceiverPipelineConfig,
+        aligned_code_phase_samples: f64,
+    ) -> f64 {
+        if !aligned_code_phase_samples.is_finite() || aligned_code_phase_samples < 0.0 {
+            return aligned_code_phase_samples;
+        }
+        let period_samples = samples_per_code(
+            config.sampling_freq_hz,
+            config.code_freq_basis_hz,
+            config.code_length,
+        ) as f64;
+        (period_samples - aligned_code_phase_samples).rem_euclid(period_samples)
     }
 
     fn make_observation_ready_epoch(
