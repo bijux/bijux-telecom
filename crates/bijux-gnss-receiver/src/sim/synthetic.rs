@@ -1471,6 +1471,15 @@ fn code_phase_error_samples_to_pseudorange_m(error_samples: f64, sample_rate_hz:
     (error_samples / sample_rate_hz) * SPEED_OF_LIGHT_MPS
 }
 
+fn tracking_epoch_is_stable(epoch: &crate::api::core::TrackEpoch) -> bool {
+    epoch.lock
+        && epoch.lock_state == "tracking"
+        && epoch.pll_lock
+        && epoch.fll_lock
+        && !epoch.cycle_slip
+        && epoch.lock_state_reason.as_deref() != Some("lock_lost")
+}
+
 fn code_phase_samples_at_sample_index(
     config: &ReceiverPipelineConfig,
     sample_rate_hz: f64,
@@ -1487,6 +1496,161 @@ fn code_phase_samples_at_sample_index(
     .expect("synthetic epoch alignment requires a valid code phase model");
     let samples_per_chip = sample_rate_hz / config.code_freq_basis_hz;
     chip_phase * samples_per_chip
+}
+
+/// Build a truth-guided tracking table from a synthetic capture.
+pub fn validate_truth_guided_tracking_table(
+    config: &ReceiverPipelineConfig,
+    frame: &SamplesFrame,
+    truth: &SyntheticIqTruthBundle,
+    carrier_tolerance_hz: f64,
+    doppler_tolerance_hz: f64,
+    code_phase_tolerance_samples: f64,
+    cn0_tolerance_db_hz: f64,
+) -> SyntheticTrackingTruthTableReport {
+    let period_samples =
+        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length)
+            .max(1);
+    let satellites = truth
+        .satellites
+        .iter()
+        .map(|sat_truth| {
+            let isolated_frame = regenerate_isolated_scaled_satellite_frame_with_noise(
+                config, frame, truth, sat_truth,
+            );
+            let expected_measured_doppler_hz =
+                synthetic_truth_measured_doppler_hz(truth, sat_truth);
+            let expected_carrier_hz =
+                synthetic_carrier_hz(truth.intermediate_freq_hz, sat_truth.sat, expected_measured_doppler_hz);
+            let seeded_code_phase_samples = wrap_seeded_code_phase_samples(
+                expected_acquisition_code_phase_samples(
+                    config,
+                    &isolated_frame,
+                    sat_truth.code_phase_chips,
+                ) as isize,
+                period_samples,
+            );
+            let tracking = crate::pipeline::tracking::Tracking::new(
+                config.clone(),
+                crate::engine::runtime::ReceiverRuntime::default(),
+            );
+            let tracks = tracking.track_from_acquisition(
+                &isolated_frame,
+                &[seeded_tracking_acquisition(
+                    sat_truth.sat,
+                    expected_measured_doppler_hz,
+                    seeded_code_phase_samples,
+                    sat_truth.cn0_db_hz,
+                    format!("truth_guided_tracking_seed_{}", sat_truth.sat.prn),
+                )],
+            );
+            let epochs = tracks
+                .first()
+                .map(|track| track.epochs.clone())
+                .unwrap_or_default();
+            let epoch_rows = epochs
+                .iter()
+                .enumerate()
+                .map(|(epoch_index, epoch)| {
+                    let expected_code_phase_samples = code_phase_samples_at_sample_index(
+                        config,
+                        truth.sample_rate_hz,
+                        epoch.sample_index,
+                        sat_truth.code_phase_chips,
+                    );
+                    let measured_code_phase_samples = epoch.code_phase_samples.0;
+                    let code_phase_error_samples = wrapped_code_phase_error_samples_f64(
+                        measured_code_phase_samples,
+                        expected_code_phase_samples,
+                        period_samples,
+                    );
+                    let measured_carrier_hz = epoch.carrier_hz.0;
+                    let carrier_error_hz = (measured_carrier_hz - expected_carrier_hz).abs();
+                    let measured_doppler_hz = crate::pipeline::doppler::doppler_hz_from_carrier_hz(
+                        config.intermediate_freq_hz,
+                        measured_carrier_hz,
+                    );
+                    let doppler_error_hz = (measured_doppler_hz - expected_measured_doppler_hz).abs();
+                    let measured_cn0_dbhz = epoch.cn0_dbhz;
+                    let cn0_error_db = (measured_cn0_dbhz - sat_truth.cn0_db_hz as f64).abs();
+                    let stable_tracking_epoch = tracking_epoch_is_stable(epoch);
+                    let pass = stable_tracking_epoch
+                        && measured_carrier_hz.is_finite()
+                        && measured_doppler_hz.is_finite()
+                        && measured_code_phase_samples.is_finite()
+                        && measured_cn0_dbhz.is_finite()
+                        && carrier_error_hz <= carrier_tolerance_hz + f64::EPSILON
+                        && doppler_error_hz <= doppler_tolerance_hz + f64::EPSILON
+                        && code_phase_error_samples <= code_phase_tolerance_samples + f64::EPSILON
+                        && cn0_error_db <= cn0_tolerance_db_hz + f64::EPSILON;
+
+                    SyntheticTrackingTruthTableEpoch {
+                        epoch_index,
+                        sample_index: epoch.sample_index,
+                        expected_carrier_hz,
+                        measured_carrier_hz,
+                        carrier_error_hz,
+                        expected_doppler_hz: expected_measured_doppler_hz,
+                        measured_doppler_hz,
+                        doppler_error_hz,
+                        expected_code_phase_samples,
+                        measured_code_phase_samples,
+                        code_phase_error_samples,
+                        expected_cn0_db_hz: sat_truth.cn0_db_hz as f64,
+                        measured_cn0_dbhz,
+                        cn0_error_db,
+                        lock: epoch.lock,
+                        pll_lock: epoch.pll_lock,
+                        dll_lock: epoch.dll_lock,
+                        fll_lock: epoch.fll_lock,
+                        cycle_slip: epoch.cycle_slip,
+                        lock_state: epoch.lock_state.clone(),
+                        lock_state_reason: epoch.lock_state_reason.clone(),
+                        stable_tracking_epoch,
+                        pass,
+                    }
+                })
+                .collect::<Vec<_>>();
+            let stable_epoch_count =
+                epoch_rows.iter().filter(|row| row.stable_tracking_epoch).count();
+            let first_stable_epoch_index = epoch_rows
+                .iter()
+                .find(|row| row.stable_tracking_epoch)
+                .map(|row| row.epoch_index);
+            let pass = stable_epoch_count > 0
+                && epoch_rows
+                    .iter()
+                    .filter(|row| row.stable_tracking_epoch)
+                    .all(|row| row.pass);
+
+            SyntheticTrackingTruthTableSatellite {
+                sat: sat_truth.sat,
+                injected_doppler_hz: sat_truth.doppler_hz,
+                expected_measured_doppler_hz,
+                injected_code_phase_chips: sat_truth.code_phase_chips,
+                injected_cn0_db_hz: sat_truth.cn0_db_hz,
+                epoch_count: epoch_rows.len(),
+                stable_epoch_count,
+                first_stable_epoch_index,
+                pass,
+                epochs: epoch_rows,
+            }
+        })
+        .collect::<Vec<_>>();
+    let pass = !satellites.is_empty() && satellites.iter().all(|row| row.pass);
+
+    SyntheticTrackingTruthTableReport {
+        scenario_id: truth.scenario_id.clone(),
+        carrier_tolerance_hz,
+        doppler_tolerance_hz,
+        code_phase_tolerance_samples,
+        cn0_tolerance_db_hz,
+        sample_rate_hz: truth.sample_rate_hz,
+        period_samples,
+        output_scale_applied: truth.output_scale_applied,
+        pass,
+        satellites,
+    }
 }
 
 /// Build a truth-guided acquisition table from a synthetic capture.
@@ -2515,12 +2679,7 @@ fn stable_tracking_window_bounds(
 
     let mut stable_start = None;
     for (index, epoch) in epochs.iter().enumerate() {
-        let stable = epoch.lock
-            && epoch.lock_state == "tracking"
-            && epoch.pll_lock
-            && epoch.fll_lock
-            && !epoch.cycle_slip
-            && epoch.lock_state_reason.as_deref() != Some("lock_lost");
+        let stable = tracking_epoch_is_stable(epoch);
         match (stable_start, stable) {
             (None, true) => stable_start = Some(index),
             (Some(start), false) => {
