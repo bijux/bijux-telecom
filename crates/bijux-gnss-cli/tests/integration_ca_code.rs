@@ -23,11 +23,7 @@ fn run_bijux(args: &[&str], cwd: &Path) -> std::process::Output {
 fn ca_code_prints_requested_chip_prefix() {
     let output = run_bijux(&["gnss", "ca-code", "--prn", "1", "--count", "5"], &repo_root());
 
-    assert!(
-        output.status.success(),
-        "ca-code failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(output.status.success(), "ca-code failed: {}", String::from_utf8_lossy(&output.stderr));
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout.trim_end(), "-1 -1 1 1 -1");
@@ -119,15 +115,7 @@ fn ca_code_with_reference_reports_published_assignment() {
 #[test]
 fn ca_code_with_autocorrelation_reports_expected_summary() {
     let output = run_bijux(
-        &[
-            "gnss",
-            "ca-code",
-            "--prn",
-            "1",
-            "--count",
-            "4",
-            "--with-autocorrelation",
-        ],
+        &["gnss", "ca-code", "--prn", "1", "--count", "4", "--with-autocorrelation"],
         &repo_root(),
     );
 
@@ -199,16 +187,7 @@ fn ca_code_combines_reference_and_autocorrelation_metadata() {
 #[test]
 fn ca_code_with_cross_correlation_reports_expected_summary() {
     let output = run_bijux(
-        &[
-            "gnss",
-            "ca-code",
-            "--prn",
-            "1",
-            "--count",
-            "4",
-            "--cross-correlation-prn",
-            "2",
-        ],
+        &["gnss", "ca-code", "--prn", "1", "--count", "4", "--cross-correlation-prn", "2"],
         &repo_root(),
     );
 

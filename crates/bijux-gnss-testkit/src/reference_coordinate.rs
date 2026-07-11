@@ -42,7 +42,9 @@ pub enum TrustedReferenceCoordinateError {
 impl fmt::Display for TrustedReferenceCoordinateError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ReadFailure(message) => write!(f, "failed to read trusted reference coordinates: {message}"),
+            Self::ReadFailure(message) => {
+                write!(f, "failed to read trusted reference coordinates: {message}")
+            }
             Self::EmptyCatalog => write!(f, "trusted reference coordinate catalog is empty"),
             Self::UnexpectedHeader(header) => {
                 write!(f, "unexpected trusted reference coordinate header '{header}'")
@@ -60,10 +62,9 @@ impl fmt::Display for TrustedReferenceCoordinateError {
             Self::InvalidAltitude { line_number, value } => {
                 write!(f, "invalid altitude on line {line_number}: {value}")
             }
-            Self::MissingFixture(fixture_name) => write!(
-                f,
-                "missing trusted reference coordinate for fixture {fixture_name}"
-            ),
+            Self::MissingFixture(fixture_name) => {
+                write!(f, "missing trusted reference coordinate for fixture {fixture_name}")
+            }
         }
     }
 }
@@ -170,9 +171,11 @@ mod tests {
             "{TRUSTED_REFERENCE_COORDINATE_HEADER}\nAB43,unavco_ab43_20180114.obs,58.19884205,-136.64080781,26.9246,UNAVCO monument location comment\n"
         );
 
-        let catalog = parse_trusted_reference_coordinates_csv(&csv).expect("parse trusted coordinates");
-        let coordinate = trusted_reference_coordinate_by_fixture(&catalog, "unavco_ab43_20180114.obs")
-            .expect("fixture coordinate");
+        let catalog =
+            parse_trusted_reference_coordinates_csv(&csv).expect("parse trusted coordinates");
+        let coordinate =
+            trusted_reference_coordinate_by_fixture(&catalog, "unavco_ab43_20180114.obs")
+                .expect("fixture coordinate");
 
         assert_eq!(coordinate.marker_name, "AB43");
         assert!((coordinate.lat_deg - 58.19884205).abs() < 1.0e-10);
@@ -196,7 +199,8 @@ mod tests {
         let csv = format!(
             "{TRUSTED_REFERENCE_COORDINATE_HEADER}\nAB43,unavco_ab43_20180114.obs,58.19884205,-136.64080781,26.9246,UNAVCO monument location comment\n"
         );
-        let catalog = parse_trusted_reference_coordinates_csv(&csv).expect("parse trusted coordinates");
+        let catalog =
+            parse_trusted_reference_coordinates_csv(&csv).expect("parse trusted coordinates");
 
         let error = trusted_reference_coordinate_by_fixture(&catalog, "missing_fixture.obs")
             .expect_err("missing fixture must fail");

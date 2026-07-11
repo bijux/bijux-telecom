@@ -51,11 +51,7 @@ fn acquire_reports_prns_from_live_sky_excerpt() {
         &repo,
     );
 
-    assert!(
-        output.status.success(),
-        "acquire failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(output.status.success(), "acquire failed: {}", String::from_utf8_lossy(&output.stderr));
 
     let report_path = out_dir.join("acquire_report.json");
     let report: Value =

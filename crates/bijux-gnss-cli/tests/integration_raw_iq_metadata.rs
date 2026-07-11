@@ -54,10 +54,7 @@ capture_start_utc = "2026-07-09T00:00:00Z"
 
     assert!(!output.status.success(), "command unexpectedly succeeded");
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("sample_rate_hz"),
-        "stderr did not mention sample_rate_hz: {stderr}"
-    );
+    assert!(stderr.contains("sample_rate_hz"), "stderr did not mention sample_rate_hz: {stderr}");
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
 }
@@ -161,7 +158,10 @@ sidecar = "{}"
 
     assert!(output.status.success(), "inspect failed: {}", String::from_utf8_lossy(&output.stderr));
     let report = fs::read_to_string(out_dir.join("inspect_report.json")).expect("read report");
-    assert!(report.contains("\"sample_rate_hz\": 5000000.0"), "report missing sidecar sample rate: {report}");
+    assert!(
+        report.contains("\"sample_rate_hz\": 5000000.0"),
+        "report missing sidecar sample rate: {report}"
+    );
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
 }
@@ -323,10 +323,7 @@ capture_start_utc = "2026-07-09T00:00:00Z"
 
     assert!(!output.status.success(), "inspect unexpectedly succeeded");
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("sample_rate_hz"),
-        "stderr did not mention sample_rate_hz: {stderr}"
-    );
+    assert!(stderr.contains("sample_rate_hz"), "stderr did not mention sample_rate_hz: {stderr}");
 
     fs::remove_dir_all(&temp).expect("remove temp dir");
 }

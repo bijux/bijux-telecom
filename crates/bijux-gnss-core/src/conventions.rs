@@ -176,8 +176,7 @@ mod tests {
     };
     use crate::api::{
         Constellation, Cycles, GpsTime, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata,
-        ObsSatellite, ObsSignalTiming, ReceiverRole, SatId, Seconds, SigId, SignalBand,
-        SignalCode,
+        ObsSatellite, ObsSignalTiming, ReceiverRole, SatId, Seconds, SigId, SignalBand, SignalCode,
     };
 
     fn make_obs_epoch(
@@ -275,8 +274,6 @@ mod tests {
         let epoch = make_obs_epoch(20_200_000.0, f64::INFINITY, 345_599.99);
 
         let events = check_obs_epoch_sanity(&epoch);
-        assert!(events
-            .iter()
-            .any(|event| event.code == "GNSS_OBS_SIGNAL_TRAVEL_TIME_INVALID"));
+        assert!(events.iter().any(|event| event.code == "GNSS_OBS_SIGNAL_TRAVEL_TIME_INVALID"));
     }
 }

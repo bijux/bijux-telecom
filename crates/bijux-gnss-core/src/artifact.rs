@@ -256,10 +256,7 @@ pub mod v1 {
                         "tracking epoch contains NaN/Inf",
                     ));
                 }
-                if self
-                    .navigation_bit_sign
-                    .is_some_and(|sign| sign != -1 && sign != 1)
-                {
+                if self.navigation_bit_sign.is_some_and(|sign| sign != -1 && sign != 1) {
                     events.push(DiagnosticEvent::new(
                         DiagnosticSeverity::Error,
                         "GNSS_TRACK_NAVIGATION_BIT_SIGN_INVALID",
@@ -500,12 +497,8 @@ pub mod v1 {
                         "nav solution DOP values contain NaN/Inf",
                     ));
                 }
-                if self
-                    .pre_fit_residual_rms_m
-                    .is_some_and(|value| !value.0.is_finite())
-                    || self
-                        .post_fit_residual_rms_m
-                        .is_some_and(|value| !value.0.is_finite())
+                if self.pre_fit_residual_rms_m.is_some_and(|value| !value.0.is_finite())
+                    || self.post_fit_residual_rms_m.is_some_and(|value| !value.0.is_finite())
                 {
                     events.push(DiagnosticEvent::new(
                         DiagnosticSeverity::Error,

@@ -92,11 +92,7 @@ fn acquire_uses_profile_doppler_search_settings_by_default() {
         &repo,
     );
 
-    assert!(
-        output.status.success(),
-        "acquire failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(output.status.success(), "acquire failed: {}", String::from_utf8_lossy(&output.stderr));
     assert_doppler_search_report(&acquire_dir.join("acquire_report.json"), 1_500, 250, 13);
     assert_code_phase_search_report(&acquire_dir.join("acquire_report.json"), 4_092);
     assert_doppler_search_artifact(&acquire_dir.join("artifacts").join("acq.jsonl"), 1_500, 250);
@@ -140,11 +136,7 @@ fn acquire_can_override_profile_doppler_search_settings() {
         &repo,
     );
 
-    assert!(
-        output.status.success(),
-        "acquire failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(output.status.success(), "acquire failed: {}", String::from_utf8_lossy(&output.stderr));
     assert_doppler_search_report(&acquire_dir.join("acquire_report.json"), 1_000, 500, 5);
     assert_code_phase_search_report(&acquire_dir.join("acquire_report.json"), 4_092);
     assert_doppler_search_artifact(&acquire_dir.join("artifacts").join("acq.jsonl"), 1_000, 500);
@@ -218,13 +210,11 @@ fn assert_doppler_search_artifact(
     for line in contents.lines() {
         let row: Value = serde_json::from_str(line).expect("parse acq artifact row");
         assert_eq!(
-            row["payload"]["assumptions"]["doppler_search_hz"],
-            expected_search_hz,
+            row["payload"]["assumptions"]["doppler_search_hz"], expected_search_hz,
             "unexpected doppler_search_hz row: {row}"
         );
         assert_eq!(
-            row["payload"]["assumptions"]["doppler_step_hz"],
-            expected_step_hz,
+            row["payload"]["assumptions"]["doppler_step_hz"], expected_step_hz,
             "unexpected doppler_step_hz row: {row}"
         );
     }
@@ -247,23 +237,19 @@ fn assert_code_phase_search_artifact(artifact_path: &Path, expected_period_sampl
     for line in contents.lines() {
         let row: Value = serde_json::from_str(line).expect("parse acq artifact row");
         assert_eq!(
-            row["payload"]["assumptions"]["code_phase_search_start_sample"],
-            0,
+            row["payload"]["assumptions"]["code_phase_search_start_sample"], 0,
             "unexpected code_phase_search_start_sample row: {row}"
         );
         assert_eq!(
-            row["payload"]["assumptions"]["code_phase_search_step_samples"],
-            1,
+            row["payload"]["assumptions"]["code_phase_search_step_samples"], 1,
             "unexpected code_phase_search_step_samples row: {row}"
         );
         assert_eq!(
-            row["payload"]["assumptions"]["code_phase_search_bins"],
-            expected_period_samples,
+            row["payload"]["assumptions"]["code_phase_search_bins"], expected_period_samples,
             "unexpected code_phase_search_bins row: {row}"
         );
         assert_eq!(
-            row["payload"]["assumptions"]["code_phase_search_mode"],
-            "full_code",
+            row["payload"]["assumptions"]["code_phase_search_mode"], "full_code",
             "unexpected code_phase_search_mode row: {row}"
         );
     }

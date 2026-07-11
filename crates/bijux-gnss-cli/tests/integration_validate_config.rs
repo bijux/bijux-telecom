@@ -55,10 +55,7 @@ fn validate_config_accepts_live_sky_receiver_profile() {
         stdout.contains("config valid: configs/receiver_live_sky_gps_l1.toml"),
         "stdout did not confirm the validated profile: {stdout}"
     );
-    assert!(
-        out_dir.join("manifest.json").exists(),
-        "validate-config did not emit a manifest"
-    );
+    assert!(out_dir.join("manifest.json").exists(), "validate-config did not emit a manifest");
 
     fs::remove_dir_all(&out_dir).expect("remove output dir");
 }
@@ -92,10 +89,7 @@ fn validate_config_accepts_low_rate_receiver_profile() {
         stdout.contains("config valid: configs/receiver_low_rate.toml"),
         "stdout did not confirm the validated profile: {stdout}"
     );
-    assert!(
-        out_dir.join("manifest.json").exists(),
-        "validate-config did not emit a manifest"
-    );
+    assert!(out_dir.join("manifest.json").exists(), "validate-config did not emit a manifest");
 
     fs::remove_dir_all(&out_dir).expect("remove output dir");
 }

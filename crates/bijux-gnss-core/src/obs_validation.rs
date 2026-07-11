@@ -208,10 +208,7 @@ pub fn validate_obs_epochs(epochs: &[ObsEpoch]) -> Result<(), String> {
 }
 
 fn known_doppler_model(model: &str) -> bool {
-    matches!(
-        model,
-        OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET | "unavailable"
-    )
+    matches!(model, OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET | "unavailable")
 }
 
 fn known_observation_lock_state(state: &str) -> bool {

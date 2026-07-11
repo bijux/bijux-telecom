@@ -84,9 +84,7 @@ fn tracking_artifact_validation_rejects_invalid_navigation_bit_sign() {
     let diagnostics = epoch.validate_payload();
 
     assert!(
-        diagnostics
-            .iter()
-            .any(|event| event.code == "GNSS_TRACK_NAVIGATION_BIT_SIGN_INVALID"),
+        diagnostics.iter().any(|event| event.code == "GNSS_TRACK_NAVIGATION_BIT_SIGN_INVALID"),
         "{diagnostics:?}"
     );
 }

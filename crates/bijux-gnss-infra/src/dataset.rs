@@ -210,9 +210,7 @@ fn validate_required_raw_iq_fields(value: &toml::Value) -> Result<(), InputError
     })?;
     for field in ["format", "sample_rate_hz", "intermediate_freq_hz", "capture_start_utc"] {
         if !table.contains_key(field) {
-            return Err(InputError {
-                message: format!("raw IQ metadata must declare {field}"),
-            });
+            return Err(InputError { message: format!("raw IQ metadata must declare {field}") });
         }
     }
     Ok(())
@@ -495,8 +493,7 @@ quantization_bits = 8
         )
         .expect("write sidecar");
 
-        let err =
-            load_raw_iq_metadata(&sidecar_path).expect_err("quantization mismatch must fail");
+        let err = load_raw_iq_metadata(&sidecar_path).expect_err("quantization mismatch must fail");
         assert!(err.message.contains("quantization_bits"));
         assert!(err.message.contains("Iq16Le"));
     }
@@ -517,8 +514,7 @@ quantization_bits = 16
         )
         .expect("write sidecar");
 
-        let err =
-            load_raw_iq_metadata(&sidecar_path).expect_err("quantization mismatch must fail");
+        let err = load_raw_iq_metadata(&sidecar_path).expect_err("quantization mismatch must fail");
         assert!(err.message.contains("quantization_bits"));
         assert!(err.message.contains("Cf32Le"));
     }
@@ -555,8 +551,8 @@ capture_start_utc = "2026-07-09T00:00:00Z"
         )
         .expect("write sidecar");
 
-        let err =
-            load_raw_iq_metadata(&sidecar_path).expect_err("missing intermediate frequency must fail");
+        let err = load_raw_iq_metadata(&sidecar_path)
+            .expect_err("missing intermediate frequency must fail");
         assert!(err.message.contains("intermediate_freq_hz"));
     }
 

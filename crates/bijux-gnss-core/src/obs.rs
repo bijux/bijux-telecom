@@ -1243,9 +1243,9 @@ mod tests {
     };
     use crate::api::{
         trackable_acq_tracking_seeds, AcqCodePhaseRefinement, AcqHypothesis, AcqResult,
-        AcqSearchSummary, AcqUncertainty, Constellation, Cycles, Hertz, LeapSeconds,
-        LockFlags, ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace,
-        SatId, SignalBand, UtcTime,
+        AcqSearchSummary, AcqUncertainty, Constellation, Cycles, Hertz, LeapSeconds, LockFlags,
+        ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
+        SignalBand, UtcTime,
     };
     use crate::time::utc_to_gps;
 

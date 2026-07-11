@@ -30,11 +30,7 @@ pub fn generate_clipped_iq8_bytes(sample_count: usize, clipped_sample_count: usi
 
     let mut bytes = Vec::with_capacity(sample_count * 2);
     for idx in 0..sample_count {
-        let (i, q) = if idx < clipped_sample_count {
-            (i8::MIN, i8::MAX)
-        } else {
-            (32_i8, -16_i8)
-        };
+        let (i, q) = if idx < clipped_sample_count { (i8::MIN, i8::MAX) } else { (32_i8, -16_i8) };
         bytes.push(i as u8);
         bytes.push(q as u8);
     }
@@ -45,19 +41,13 @@ pub fn generate_clipped_iq8_bytes(sample_count: usize, clipped_sample_count: usi
 ///
 /// The first `clipped_sample_count` complex samples saturate both branches at the quantized rails.
 /// Remaining samples use a fixed non-clipped pattern.
-pub fn generate_clipped_iq16_le_bytes(
-    sample_count: usize,
-    clipped_sample_count: usize,
-) -> Vec<u8> {
+pub fn generate_clipped_iq16_le_bytes(sample_count: usize, clipped_sample_count: usize) -> Vec<u8> {
     assert!(clipped_sample_count <= sample_count);
 
     let mut bytes = Vec::with_capacity(sample_count * 4);
     for idx in 0..sample_count {
-        let (i, q) = if idx < clipped_sample_count {
-            (i16::MIN, i16::MAX)
-        } else {
-            (8_192_i16, -4_096_i16)
-        };
+        let (i, q) =
+            if idx < clipped_sample_count { (i16::MIN, i16::MAX) } else { (8_192_i16, -4_096_i16) };
         bytes.extend_from_slice(&i.to_le_bytes());
         bytes.extend_from_slice(&q.to_le_bytes());
     }
@@ -80,10 +70,7 @@ mod tests {
     #[test]
     fn generate_quadrature_skew_carrier_stays_within_unit_magnitude() {
         let samples = generate_quadrature_skew_carrier(4096, 8.0, 7.5);
-        let peak = samples
-            .iter()
-            .map(|sample| sample.norm())
-            .fold(0.0_f32, f32::max);
+        let peak = samples.iter().map(|sample| sample.norm()).fold(0.0_f32, f32::max);
         assert!(peak <= 2.0_f32.sqrt());
     }
 
@@ -98,9 +85,7 @@ mod tests {
         let bytes = generate_clipped_iq16_le_bytes(3, 1);
         assert_eq!(
             bytes,
-            vec![
-                0x00, 0x80, 0xff, 0x7f, 0x00, 0x20, 0x00, 0xf0, 0x00, 0x20, 0x00, 0xf0,
-            ]
+            vec![0x00, 0x80, 0xff, 0x7f, 0x00, 0x20, 0x00, 0xf0, 0x00, 0x20, 0x00, 0xf0,]
         );
     }
 }
