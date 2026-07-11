@@ -4,7 +4,10 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use bijux_gnss_core::api::{GpsTime, ObsEpoch, SatId};
-use bijux_gnss_nav::api::{GpsBroadcastNavigationData, PositionObservation, PositionSolver};
+use bijux_gnss_nav::api::{
+    sat_state_gps_l1ca_from_observation, GpsBroadcastNavigationData, PositionObservation,
+    PositionSolver,
+};
 use bijux_gnss_nav::parse_rinex_gps_observation_dataset;
 
 use super::public_station_truth::{public_station_truth_by_fixture, PublicStationTruth};
@@ -23,6 +26,12 @@ pub struct SolvedPublicEpoch {
     pub pre_fit_residual_rms_m: f64,
     pub post_fit_residual_rms_m: f64,
     pub residuals: Vec<(SatId, f64, f64)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PublicSatelliteGeometry {
+    pub sat: SatId,
+    pub ecef_m: [f64; 3],
 }
 
 pub fn ab43_public_spp_case() -> &'static PublicSppCase {
@@ -86,6 +95,49 @@ pub fn solve_public_ab43_epoch_with_satellites(
         post_fit_residual_rms_m: solution.post_fit_residual_rms_m,
         residuals: solution.residuals,
     })
+}
+
+pub fn public_ab43_epoch(gps_time: GpsTime) -> Result<&'static ObsEpoch, String> {
+    ab43_public_spp_case()
+        .observations
+        .epochs
+        .iter()
+        .find(|epoch| epoch.gps_time() == Some(gps_time))
+        .ok_or_else(|| format!("no AB43 public epoch found at GPS time {:?}", gps_time))
+}
+
+pub fn public_ab43_satellite_geometry(
+    epoch: &ObsEpoch,
+    sats: &[SatId],
+) -> Result<Vec<PublicSatelliteGeometry>, String> {
+    let case = ab43_public_spp_case();
+    let receive_tow_s = epoch.gps_time().expect("AB43 epoch GPS time").tow_s;
+
+    sats.iter()
+        .map(|sat| {
+            let observation = epoch
+                .sats
+                .iter()
+                .find(|candidate| candidate.signal_id.sat == *sat)
+                .ok_or_else(|| format!("missing AB43 observation for satellite {:?}", sat))?;
+            let ephemeris = case
+                .navigation
+                .ephemerides
+                .iter()
+                .find(|candidate| candidate.sat == *sat)
+                .ok_or_else(|| format!("missing AB43 ephemeris for satellite {:?}", sat))?;
+            let state = sat_state_gps_l1ca_from_observation(
+                ephemeris,
+                receive_tow_s,
+                observation.pseudorange_m.0,
+                observation.timing,
+            );
+            Ok(PublicSatelliteGeometry {
+                sat: *sat,
+                ecef_m: [state.x_m, state.y_m, state.z_m],
+            })
+        })
+        .collect()
 }
 
 fn fixture(name: &str) -> String {
