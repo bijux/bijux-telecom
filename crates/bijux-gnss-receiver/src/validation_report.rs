@@ -1022,6 +1022,90 @@ mod tests {
         assert!(report.nees_mean.is_some());
     }
 
+    #[test]
+    fn validation_report_accepts_reference_position_error_within_budget() {
+        let (x_ref, y_ref, z_ref) = bijux_gnss_core::api::lla_to_ecef(0.0, 0.0, 0.0);
+        let budgets = ValidationBudgets {
+            nav_min_lock_epochs: 0,
+            reference_position_error_3d_m_max: Some(5.0),
+            ..ValidationBudgets::default()
+        };
+        let report = build_validation_report_with_budgets(
+            &[],
+            &[],
+            &[NavSolutionEpoch {
+                ecef_x_m: bijux_gnss_core::api::Meters(x_ref),
+                ecef_y_m: bijux_gnss_core::api::Meters(y_ref),
+                ecef_z_m: bijux_gnss_core::api::Meters(z_ref),
+                ..fixture_solution(11, 1.0, 0.5, 4)
+            }],
+            &[ValidationReferenceEpoch {
+                epoch_idx: 11,
+                t_rx_s: Some(11.0),
+                latitude_deg: 0.0,
+                longitude_deg: 0.0,
+                altitude_m: 0.0,
+                ecef_x_m: Some(x_ref),
+                ecef_y_m: Some(y_ref),
+                ecef_z_m: Some(z_ref),
+                vel_x_mps: None,
+                vel_y_mps: None,
+                vel_z_mps: None,
+            }],
+            1.0,
+            false,
+            Vec::new(),
+            ValidationSciencePolicy::default(),
+            budgets,
+        )
+        .expect("validation report");
+
+        assert!(report.budget_violations.is_empty());
+    }
+
+    #[test]
+    fn validation_report_reports_reference_position_budget_violation() {
+        let (x_ref, y_ref, z_ref) = bijux_gnss_core::api::lla_to_ecef(0.0, 0.0, 0.0);
+        let budgets = ValidationBudgets {
+            nav_min_lock_epochs: 0,
+            reference_position_error_3d_m_max: Some(5.0),
+            ..ValidationBudgets::default()
+        };
+        let report = build_validation_report_with_budgets(
+            &[],
+            &[],
+            &[NavSolutionEpoch {
+                ecef_x_m: bijux_gnss_core::api::Meters(x_ref + 2.0),
+                ecef_y_m: bijux_gnss_core::api::Meters(y_ref + 3.0),
+                ecef_z_m: bijux_gnss_core::api::Meters(z_ref + 4.0),
+                ..fixture_solution(12, 1.0, 0.5, 4)
+            }],
+            &[ValidationReferenceEpoch {
+                epoch_idx: 12,
+                t_rx_s: Some(12.0),
+                latitude_deg: 0.0,
+                longitude_deg: 0.0,
+                altitude_m: 0.0,
+                ecef_x_m: Some(x_ref),
+                ecef_y_m: Some(y_ref),
+                ecef_z_m: Some(z_ref),
+                vel_x_mps: None,
+                vel_y_mps: None,
+                vel_z_mps: None,
+            }],
+            1.0,
+            false,
+            Vec::new(),
+            ValidationSciencePolicy::default(),
+            budgets,
+        )
+        .expect("validation report");
+
+        assert_eq!(report.budget_violations, vec![
+            "reference position 3d error too high at epoch 12: 5.39 m"
+        ]);
+    }
+
     #[derive(Debug, Deserialize)]
     struct ScienceFixtureCase {
         name: String,
