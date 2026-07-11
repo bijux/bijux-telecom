@@ -6,7 +6,7 @@ use bijux_gnss_core::api::{
     ValidationReferenceEpoch,
 };
 use bijux_gnss_nav::api::{geodetic_to_ecef, sat_state_gps_l1ca, GpsEphemeris};
-use bijux_gnss_receiver::api::sim::SyntheticSignalParams;
+use bijux_gnss_receiver::api::sim::{SyntheticPvtTruthReferenceEpoch, SyntheticSignalParams};
 use bijux_gnss_receiver::api::{
     observations_from_tracking_results_with_gps_anchor, Navigation, ReceiverPipelineConfig,
     ReceiverRuntime, TrackingResult, ValidationBudgets,
@@ -27,6 +27,7 @@ pub struct CleanSyntheticPvtScenario {
     pub satellites: Vec<CleanSyntheticSignal>,
     pub truth_ecef_m: (f64, f64, f64),
     pub receive_time_s: f64,
+    pub truth_clock_bias_s: f64,
     pub target_epoch_idx: u64,
 }
 
@@ -64,6 +65,12 @@ pub struct NoisySyntheticNavigationRun {
 
 pub fn clean_synthetic_navigation_run() -> CleanSyntheticNavigationRun {
     navigation_run(clean_synthetic_pvt_scenario())
+}
+
+pub fn clean_synthetic_navigation_run_with_clock_bias(
+    truth_clock_bias_s: f64,
+) -> CleanSyntheticNavigationRun {
+    navigation_run(clean_synthetic_pvt_scenario_with_clock_bias(truth_clock_bias_s))
 }
 
 pub fn noisy_synthetic_navigation_run(
@@ -149,6 +156,19 @@ pub fn position_error_3d_m(solution: &NavSolutionEpoch, truth_ecef_m: (f64, f64,
     let dy = solution.ecef_y_m.0 - truth_ecef_m.1;
     let dz = solution.ecef_z_m.0 - truth_ecef_m.2;
     (dx * dx + dy * dy + dz * dz).sqrt()
+}
+
+pub fn pvt_truth_reference_epochs(
+    run: &CleanSyntheticNavigationRun,
+) -> Vec<SyntheticPvtTruthReferenceEpoch> {
+    run.reference_epochs
+        .iter()
+        .cloned()
+        .map(|position| SyntheticPvtTruthReferenceEpoch {
+            position,
+            clock_bias_s: run.profile.truth_clock_bias_s,
+        })
+        .collect()
 }
 
 pub fn pseudorange_noise_to_code_phase_chips(pseudorange_noise_m: f64) -> f64 {
@@ -256,6 +276,12 @@ fn synthetic_truth_track(
 }
 
 fn clean_synthetic_pvt_scenario() -> CleanSyntheticPvtScenario {
+    clean_synthetic_pvt_scenario_with_clock_bias(0.0)
+}
+
+fn clean_synthetic_pvt_scenario_with_clock_bias(
+    truth_clock_bias_s: f64,
+) -> CleanSyntheticPvtScenario {
     let truth_ecef_m = geodetic_to_ecef(
         CLEAN_SYNTHETIC_TRUTH_LAT_DEG,
         CLEAN_SYNTHETIC_TRUTH_LON_DEG,
@@ -274,7 +300,8 @@ fn clean_synthetic_pvt_scenario() -> CleanSyntheticPvtScenario {
         .zip([-1_800.0, -1_000.0, -250.0, 500.0, 1_250.0, 2_000.0])
         .map(|(ephemeris, doppler_hz)| {
             let pseudorange_m =
-                synthetic_pseudorange_m(ephemeris, CLEAN_SYNTHETIC_RECEIVE_TIME_S, truth_ecef_m);
+                synthetic_pseudorange_m(ephemeris, CLEAN_SYNTHETIC_RECEIVE_TIME_S, truth_ecef_m)
+                    + truth_clock_bias_s * SPEED_OF_LIGHT_MPS;
             let pseudorange_chips = pseudorange_m * GPS_L1_CA_CODE_RATE_HZ / SPEED_OF_LIGHT_MPS;
             let whole_code_periods =
                 (pseudorange_chips / GPS_L1_CA_CODE_PERIOD_CHIPS).floor() as u64;
@@ -299,6 +326,7 @@ fn clean_synthetic_pvt_scenario() -> CleanSyntheticPvtScenario {
         satellites,
         truth_ecef_m,
         receive_time_s: CLEAN_SYNTHETIC_RECEIVE_TIME_S,
+        truth_clock_bias_s,
         target_epoch_idx: 0,
     }
 }
