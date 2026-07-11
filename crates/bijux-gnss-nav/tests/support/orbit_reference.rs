@@ -38,6 +38,22 @@ pub struct OrbitReferenceSummary {
     pub rms_position_error_m: f64,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct BroadcastOrbitAccuracyBudget {
+    pub max_position_error_m: f64,
+    pub max_rms_position_error_m: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct BroadcastOrbitAccuracyReport {
+    pub sample_count: usize,
+    pub max_position_error_m: f64,
+    pub max_rms_position_error_m: f64,
+    pub observed_max_position_error_m: f64,
+    pub observed_rms_position_error_m: f64,
+    pub pass: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct ProviderOrbitReferenceComparison {
     pub errors: Vec<OrbitReferenceError>,
@@ -123,6 +139,27 @@ pub fn summarize_orbit_errors(errors: &[OrbitReferenceError]) -> OrbitReferenceS
         sample_count,
         max_position_error_m,
         rms_position_error_m: mean_square_error_m2.sqrt(),
+    }
+}
+
+pub fn broadcast_orbit_accuracy_budget() -> BroadcastOrbitAccuracyBudget {
+    BroadcastOrbitAccuracyBudget { max_position_error_m: 5.0, max_rms_position_error_m: 3.0 }
+}
+
+pub fn validate_broadcast_orbit_accuracy_budget(
+    errors: &[OrbitReferenceError],
+    budget: BroadcastOrbitAccuracyBudget,
+) -> BroadcastOrbitAccuracyReport {
+    let summary = summarize_orbit_errors(errors);
+
+    BroadcastOrbitAccuracyReport {
+        sample_count: summary.sample_count,
+        max_position_error_m: budget.max_position_error_m,
+        max_rms_position_error_m: budget.max_rms_position_error_m,
+        observed_max_position_error_m: summary.max_position_error_m,
+        observed_rms_position_error_m: summary.rms_position_error_m,
+        pass: summary.max_position_error_m <= budget.max_position_error_m + f64::EPSILON
+            && summary.rms_position_error_m <= budget.max_rms_position_error_m + f64::EPSILON,
     }
 }
 
