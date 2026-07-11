@@ -8,6 +8,11 @@ pub use crate::codes::ca_code::{
     periodic_correlation, CaCodeAssignment, CaCodeAutocorrelationSummary,
     CaCodeCrossCorrelationSummary, Prn, CA_CODE_PERIOD_CHIPS,
 };
+pub use crate::codes::galileo_e1::{
+    galileo_e1c_secondary_code, generate_galileo_e1_primary_code, generate_galileo_e1b_code,
+    generate_galileo_e1c_code, GalileoE1Channel, GALILEO_E1_CODE_RATE_HZ,
+    GALILEO_E1_PRIMARY_CODE_CHIPS, GALILEO_E1_PRIMARY_PERIOD_MS, GALILEO_E1_SECONDARY_CODE_CHIPS,
+};
 /// Numerically controlled oscillator helper.
 pub use crate::dsp::nco::Nco;
 /// Front-end quality metrics derived from complex I/Q samples.

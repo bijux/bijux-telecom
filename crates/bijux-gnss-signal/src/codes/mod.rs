@@ -2,3 +2,5 @@
 #![allow(missing_docs)]
 
 pub mod ca_code;
+pub mod galileo_e1;
+mod galileo_e1_tables;
