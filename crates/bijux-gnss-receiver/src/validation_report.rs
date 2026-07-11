@@ -15,7 +15,8 @@ use bijux_gnss_core::api::{
     SolutionConsistencyReport, SolutionStatus, ValidationReferenceEpoch,
 };
 use bijux_gnss_nav::api::{
-    combinations_from_obs_epochs, ecef_to_enu, PppConfig, PppConvergenceConfig, PppProcessNoise,
+    combinations_from_obs_epochs, ecef_to_enu, geometry_free_diagnostics_from_obs_epochs,
+    GeometryFreeEvent, GeometryFreeThresholds, PppConfig, PppConvergenceConfig, PppProcessNoise,
     WeightingConfig,
 };
 use serde::{Deserialize, Serialize};
@@ -86,6 +87,27 @@ pub struct PppReadinessReport {
     pub claim: AdvancedSolutionClaim,
     /// Support matrix row for PPP.
     pub support: AdvancedSupportRow,
+}
+
+/// Geometry-free behavior summary derived from dual-frequency observation pairs.
+#[derive(Debug, Serialize)]
+pub struct GeometryFreeReport {
+    /// Total geometry-free observations evaluated across supported band pairs.
+    pub observations: usize,
+    /// Observations with complete, valid dual-frequency combinations.
+    pub complete_pairs: usize,
+    /// Observations unavailable because the dual-frequency pair was incomplete or invalid.
+    pub unavailable: usize,
+    /// Valid observations that started a new per-satellite geometry-free arc.
+    pub insufficient_history: usize,
+    /// Valid observations whose geometry-free delta stayed below event thresholds.
+    pub nominal: usize,
+    /// Valid observations whose geometry-free delta reflected dispersive ionosphere drift.
+    pub ionosphere_drift: usize,
+    /// Valid observations whose geometry-free delta reflected a likely cycle slip.
+    pub cycle_slip_suspects: usize,
+    /// Largest absolute geometry-free delta observed on a continuous arc.
+    pub max_abs_delta_m: Option<f64>,
 }
 
 /// Time consistency report for tracking epochs.
@@ -313,6 +335,8 @@ pub struct ValidationReport {
     pub inter_frequency_alignment: InterFrequencyAlignmentReport,
     /// Dual-frequency observation support report.
     pub dual_frequency_observations: DualFrequencyObservationReport,
+    /// Geometry-free behavior summary for supported dual-frequency pairs.
+    pub geometry_free: GeometryFreeReport,
     /// PPP readiness report.
     pub ppp_readiness: PppReadinessReport,
     /// Scientific policy used when classifying outputs.
@@ -495,6 +519,7 @@ pub fn build_validation_report_with_budgets(
     let consistency = check_solution_consistency(solutions);
     let inter_frequency_alignment = check_inter_frequency_alignment(obs);
     let dual_frequency_observations = check_dual_frequency_observations(obs);
+    let geometry_free = geometry_free_report(obs, &dual_frequency_observations);
     let multi_freq_present = dual_frequency_observations.observed_pairs > 0;
     let combinations_valid = dual_frequency_combinations_valid(obs, &dual_frequency_observations);
     let support_matrix = support_status_matrix();
@@ -584,6 +609,7 @@ pub fn build_validation_report_with_budgets(
         consistency_warnings,
         inter_frequency_alignment,
         dual_frequency_observations,
+        geometry_free,
         ppp_readiness: PppReadinessReport {
             multi_freq_present,
             combinations_valid,
@@ -667,6 +693,67 @@ fn dual_frequency_pair_epochs(
     }
 
     filtered_epochs
+}
+
+fn geometry_free_report(
+    obs: &[ObsEpoch],
+    dual_frequency_observations: &DualFrequencyObservationReport,
+) -> GeometryFreeReport {
+    let mut observations = 0usize;
+    let mut complete_pairs = 0usize;
+    let mut unavailable = 0usize;
+    let mut insufficient_history = 0usize;
+    let mut nominal = 0usize;
+    let mut ionosphere_drift = 0usize;
+    let mut cycle_slip_suspects = 0usize;
+    let mut max_abs_delta_m: Option<f64> = None;
+
+    for (band_1, band_2) in [(SignalBand::L1, SignalBand::L2), (SignalBand::L1, SignalBand::L5)] {
+        let filtered_epochs =
+            dual_frequency_pair_epochs(obs, dual_frequency_observations, band_1, band_2);
+        if filtered_epochs.is_empty() {
+            continue;
+        }
+
+        for diagnostic in geometry_free_diagnostics_from_obs_epochs(
+            &filtered_epochs,
+            band_1,
+            band_2,
+            GeometryFreeThresholds::default(),
+        ) {
+            observations += 1;
+            if diagnostic.status == "ok" {
+                complete_pairs += 1;
+            } else {
+                unavailable += 1;
+            }
+
+            if let Some(delta_m) = diagnostic.delta_from_previous_m {
+                let abs_delta_m = delta_m.abs();
+                max_abs_delta_m =
+                    Some(max_abs_delta_m.map_or(abs_delta_m, |current| current.max(abs_delta_m)));
+            }
+
+            match diagnostic.event {
+                GeometryFreeEvent::Unavailable => {}
+                GeometryFreeEvent::InsufficientHistory => insufficient_history += 1,
+                GeometryFreeEvent::Nominal => nominal += 1,
+                GeometryFreeEvent::IonosphereDrift => ionosphere_drift += 1,
+                GeometryFreeEvent::CycleSlipSuspect => cycle_slip_suspects += 1,
+            }
+        }
+    }
+
+    GeometryFreeReport {
+        observations,
+        complete_pairs,
+        unavailable,
+        insufficient_history,
+        nominal,
+        ionosphere_drift,
+        cycle_slip_suspects,
+        max_abs_delta_m,
+    }
 }
 
 fn lock_ratio_by_epoch(tracks: &[TrackingResult]) -> std::collections::BTreeMap<u64, f64> {
