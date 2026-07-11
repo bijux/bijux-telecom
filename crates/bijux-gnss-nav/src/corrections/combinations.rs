@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use bijux_gnss_core::api::{ObsEpoch, ObsSatellite, SatId, SignalBand};
 
 use crate::corrections::iono_free_code::iono_free_code_from_pair;
+use crate::corrections::iono_free_phase::iono_free_phase_from_pair;
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 
@@ -22,6 +23,12 @@ pub struct CombinationObservation {
     pub if_code_status: String,
     pub if_code_reason: String,
     pub if_phase_m: Option<f64>,
+    pub if_phase_var_m2: Option<f64>,
+    pub if_phase_cycles: Option<f64>,
+    pub if_phase_var_cycles2: Option<f64>,
+    pub if_phase_status: String,
+    pub if_phase_reason: String,
+    pub narrow_lane_wavelength_m: Option<f64>,
     pub geometry_free_phase_m: Option<f64>,
     pub wide_lane_cycles: Option<f64>,
     pub narrow_lane_cycles: Option<f64>,
@@ -84,6 +91,15 @@ pub fn combinations_from_obs_epochs(
                 s1.copied(),
                 s2.copied(),
             );
+            let if_phase = iono_free_phase_from_pair(
+                epoch.epoch_idx,
+                epoch.t_rx_s.0,
+                sat_id,
+                band_1,
+                band_2,
+                s1.copied(),
+                s2.copied(),
+            );
             let (mut if_phase_m, mut geometry_free_phase_m) = (None, None);
             let (mut wide_lane_cycles, mut narrow_lane_cycles, mut mw_m) = (None, None, None);
             if let (Some(s1), Some(s2)) = (s1, s2) {
@@ -117,7 +133,7 @@ pub fn combinations_from_obs_epochs(
                         let phi1_m = s1.carrier_phase_cycles.0 * lambda1;
                         let phi2_m = s2.carrier_phase_cycles.0 * lambda2;
 
-                        if_phase_m = Some((f1_2 * phi1_m - f2_2 * phi2_m) / denom);
+                        if_phase_m = if_phase.phase_m;
                         geometry_free_phase_m = Some(phi1_m - phi2_m);
 
                         let lambda_wl = SPEED_OF_LIGHT_MPS / (f1_hz - f2_hz).abs().max(1.0);
@@ -141,7 +157,13 @@ pub fn combinations_from_obs_epochs(
                 if_code_var_m2: if_code.variance_m2,
                 if_code_status: if_code.status,
                 if_code_reason: if_code.reason,
-                if_phase_m,
+                if_phase_m: if_phase.phase_m.or(if_phase_m),
+                if_phase_var_m2: if_phase.variance_m2,
+                if_phase_cycles: if_phase.phase_cycles,
+                if_phase_var_cycles2: if_phase.variance_cycles2,
+                if_phase_status: if_phase.status,
+                if_phase_reason: if_phase.reason,
+                narrow_lane_wavelength_m: if_phase.narrow_lane_wavelength_m,
                 geometry_free_phase_m,
                 wide_lane_cycles,
                 narrow_lane_cycles,
@@ -242,6 +264,8 @@ mod tests {
         assert_eq!(combinations[0].if_code_reason, "ok");
         assert!(combinations[0].if_code_m.is_some());
         assert!(combinations[0].if_code_var_m2.is_some());
+        assert_eq!(combinations[0].if_phase_status, "invalid");
+        assert_eq!(combinations[0].if_phase_reason, "carrier_lock_invalid");
         assert!(combinations[0].if_phase_m.is_none());
     }
 
@@ -258,7 +282,9 @@ mod tests {
         assert_eq!(combinations[0].reason, "lock_invalid");
         assert_eq!(combinations[0].if_code_status, "invalid");
         assert_eq!(combinations[0].if_code_reason, "code_lock_invalid");
+        assert_eq!(combinations[0].if_phase_status, "ok");
+        assert_eq!(combinations[0].if_phase_reason, "ok");
+        assert!(combinations[0].if_phase_m.is_some());
         assert!(combinations[0].if_code_m.is_none());
-        assert!(combinations[0].if_phase_m.is_none());
     }
 }
