@@ -5,7 +5,9 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+bijux-gnss-core = { path = "../bijux-gnss-core", version = "0.1.0" }
 bijux-gnss-infra = { path = "../bijux-gnss-infra", version = "0.1.0" }
+bijux-gnss-nav = { path = "../bijux-gnss-nav", version = "0.1.0", default-features = false }
 num-complex.workspace = true
 serde.workspace = true
 serde_json.workspace = true

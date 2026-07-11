@@ -3,6 +3,7 @@
 
 pub mod front_end;
 pub mod reference_coordinate;
+pub mod rtk_baseline;
 
 use bijux_gnss_infra::api::{DatasetEntry, DatasetRegistry};
 use serde::de::DeserializeOwned;
