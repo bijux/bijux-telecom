@@ -5,7 +5,7 @@ use bijux_gnss_core::api::{Constellation, GpsTime, Llh, ObsSignalTiming, SatId, 
 use bijux_gnss_nav::api::{
     ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef, sat_state_gps_l1ca,
     sat_state_gps_l1ca_from_observation, GpsEphemeris, KlobucharCoefficients, KlobucharModel,
-    PositionObservation,
+    PositionObservation, SaastamoinenModel, TroposphereModel,
 };
 use bijux_gnss_nav::api::IonosphereModel;
 
@@ -198,6 +198,52 @@ pub fn add_klobuchar_delay_to_observations(
                 state.z_m,
             );
             let delay_m = model.delay_m(receiver, azimuth_deg, elevation_deg, Seconds(t_rx_s));
+            let delay_s = delay_m / SPEED_OF_LIGHT_MPS;
+            let mut biased = observation.clone();
+            biased.pseudorange_m += delay_m;
+            if let Some(signal_timing) = &mut biased.signal_timing {
+                signal_timing.signal_travel_time_s = Seconds(signal_timing.signal_travel_time_s.0 + delay_s);
+                signal_timing.transmit_gps_time =
+                    signal_timing.transmit_gps_time.offset_seconds(-delay_s);
+            }
+            biased
+        })
+        .collect()
+}
+
+pub fn add_saastamoinen_delay_to_observations(
+    observations: &[PositionObservation],
+    ephemerides: &[GpsEphemeris],
+    receiver_ecef_m: (f64, f64, f64),
+    t_rx_s: f64,
+) -> Vec<PositionObservation> {
+    let (lat_deg, lon_deg, alt_m) =
+        ecef_to_geodetic(receiver_ecef_m.0, receiver_ecef_m.1, receiver_ecef_m.2);
+    let receiver = Llh { lat_deg, lon_deg, alt_m };
+    let model = SaastamoinenModel;
+
+    observations
+        .iter()
+        .map(|observation| {
+            let ephemeris = ephemerides
+                .iter()
+                .find(|ephemeris| ephemeris.sat == observation.sat)
+                .expect("matching ephemeris");
+            let state = sat_state_gps_l1ca_from_observation(
+                ephemeris,
+                t_rx_s,
+                observation.pseudorange_m,
+                observation.signal_timing,
+            );
+            let (_azimuth_deg, elevation_deg) = elevation_azimuth_deg(
+                receiver_ecef_m.0,
+                receiver_ecef_m.1,
+                receiver_ecef_m.2,
+                state.x_m,
+                state.y_m,
+                state.z_m,
+            );
+            let delay_m = model.delay_m(receiver, elevation_deg, Seconds(t_rx_s));
             let delay_s = delay_m / SPEED_OF_LIGHT_MPS;
             let mut biased = observation.clone();
             biased.pseudorange_m += delay_m;

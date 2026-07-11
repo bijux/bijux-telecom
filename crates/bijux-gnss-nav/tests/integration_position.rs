@@ -10,7 +10,8 @@ use bijux_gnss_nav::api::{
     PositionSolver,
 };
 use support::position_truth::{
-    add_klobuchar_delay_to_observations, clear_broadcast_clock_parameters,
+    add_klobuchar_delay_to_observations, add_saastamoinen_delay_to_observations,
+    clear_broadcast_clock_parameters,
     four_satellite_position_scenario,
     four_satellite_position_scenario_with_ephemerides, iterative_pseudorange_residual_m,
     iterative_pseudorange_residual_without_earth_rotation_m,
@@ -218,6 +219,40 @@ fn single_point_solver_applies_broadcast_ionosphere_correction() {
 
     assert!(corrected_error_m < 5.0);
     assert!(uncorrected_error_m > corrected_error_m + 3.0);
+}
+
+#[test]
+fn single_point_solver_applies_saastamoinen_troposphere_correction() {
+    let scenario = four_satellite_position_scenario(0.0);
+    let troposphere_biased_observations = add_saastamoinen_delay_to_observations(
+        &scenario.observations,
+        &scenario.ephemerides,
+        scenario.truth_ecef_m,
+        scenario.t_rx_s,
+    );
+
+    let corrected_solution = PositionSolver { apply_troposphere: true, ..PositionSolver::new() }
+        .solve_wls(&troposphere_biased_observations, &scenario.ephemerides, scenario.t_rx_s)
+        .expect("troposphere-corrected observations should solve");
+    let uncorrected_solution = PositionSolver::new()
+        .solve_wls(&troposphere_biased_observations, &scenario.ephemerides, scenario.t_rx_s)
+        .expect("uncorrected observations should still solve");
+
+    let corrected_error_m = position_error_3d_m(
+        corrected_solution.ecef_x_m,
+        corrected_solution.ecef_y_m,
+        corrected_solution.ecef_z_m,
+        scenario.truth_ecef_m,
+    );
+    let uncorrected_error_m = position_error_3d_m(
+        uncorrected_solution.ecef_x_m,
+        uncorrected_solution.ecef_y_m,
+        uncorrected_solution.ecef_z_m,
+        scenario.truth_ecef_m,
+    );
+
+    assert!(corrected_error_m < 5.0);
+    assert!(uncorrected_error_m > corrected_error_m + 2.0);
 }
 
 #[test]
