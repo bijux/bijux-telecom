@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::geo::ecef_to_enu;
 use crate::stats::lla_to_ecef;
 
 /// Reference alignment policy.
@@ -52,10 +53,18 @@ pub struct ValidationReferenceEpoch {
 pub struct ReferenceCompareStats {
     /// Number of matched epochs.
     pub count: usize,
+    /// East RMS error (meters).
+    pub east_rms_m: f64,
+    /// North RMS error (meters).
+    pub north_rms_m: f64,
+    /// Up RMS error (meters).
+    pub up_rms_m: f64,
     /// Horizontal RMS error (meters).
     pub horiz_rms_m: f64,
     /// Vertical RMS error (meters).
     pub vert_rms_m: f64,
+    /// 3D RMS error (meters).
+    pub error_3d_rms_m: f64,
 }
 
 /// Solution consistency report for sanity checks.
@@ -149,39 +158,64 @@ pub fn reference_compare(
         ref_map.insert(r.epoch_idx, r);
     }
     let mut rows = Vec::new();
-    rows.push("epoch_idx,dx_m,dy_m,dz_m,horiz_m,vert_m".to_string());
+    rows.push("epoch_idx,east_m,north_m,up_m,horiz_m,vert_m,error_3d_m".to_string());
+    let mut east = Vec::new();
+    let mut north = Vec::new();
+    let mut up = Vec::new();
     let mut horiz = Vec::new();
     let mut vert = Vec::new();
+    let mut error_3d = Vec::new();
     for sol in solutions {
         if let Some(r) = ref_map.get(&sol.epoch.index) {
-            let (x, y, z) = lla_to_ecef(r.latitude_deg, r.longitude_deg, r.altitude_m);
-            let dx = sol.ecef_x_m.0 - x;
-            let dy = sol.ecef_y_m.0 - y;
-            let dz = sol.ecef_z_m.0 - z;
-            let h = (dx * dx + dy * dy).sqrt();
-            let v = dz.abs();
+            let (e, n, u) = ecef_to_enu(
+                sol.ecef_x_m.0,
+                sol.ecef_y_m.0,
+                sol.ecef_z_m.0,
+                r.latitude_deg,
+                r.longitude_deg,
+                r.altitude_m,
+            );
+            let h = (e * e + n * n).sqrt();
+            let v = u.abs();
+            let d3 = (h * h + u * u).sqrt();
+            east.push(e);
+            north.push(n);
+            up.push(u);
             horiz.push(h);
             vert.push(v);
+            error_3d.push(d3);
             rows.push(format!(
-                "{},{:.4},{:.4},{:.4},{:.4},{:.4}",
-                sol.epoch.index, dx, dy, dz, h, v
+                "{},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4}",
+                sol.epoch.index, e, n, u, h, v, d3
             ));
         }
     }
-    let horiz_rms = if horiz.is_empty() {
-        0.0
-    } else {
-        (horiz.iter().map(|v| v * v).sum::<f64>() / horiz.len() as f64).sqrt()
-    };
-    let vert_rms = if vert.is_empty() {
-        0.0
-    } else {
-        (vert.iter().map(|v| v * v).sum::<f64>() / vert.len() as f64).sqrt()
-    };
+    let east_rms = rms(&east);
+    let north_rms = rms(&north);
+    let up_rms = rms(&up);
+    let horiz_rms = rms(&horiz);
+    let vert_rms = rms(&vert);
+    let error_3d_rms = rms(&error_3d);
     (
         rows,
-        ReferenceCompareStats { count: horiz.len(), horiz_rms_m: horiz_rms, vert_rms_m: vert_rms },
+        ReferenceCompareStats {
+            count: horiz.len(),
+            east_rms_m: east_rms,
+            north_rms_m: north_rms,
+            up_rms_m: up_rms,
+            horiz_rms_m: horiz_rms,
+            vert_rms_m: vert_rms,
+            error_3d_rms_m: error_3d_rms,
+        },
     )
+}
+
+fn rms(values: &[f64]) -> f64 {
+    if values.is_empty() {
+        0.0
+    } else {
+        (values.iter().map(|value| value * value).sum::<f64>() / values.len() as f64).sqrt()
+    }
 }
 
 /// Check solution consistency for obvious anomalies.
