@@ -15,6 +15,10 @@ const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 pub struct RtkSingleDifferenceObservation {
     /// Signal identity shared by the base and rover observations.
     pub sig: SigId,
+    /// Lowest contributing C/N0 across rover and base for this signal.
+    pub min_cn0_dbhz: f64,
+    /// Whether either contributing observation was marked multipath-suspect.
+    pub multipath_suspect: bool,
     /// Rover pseudorange used to form the single difference.
     pub rover_pseudorange_m: f64,
     /// Optional rover transmit-time timing carried from the observation.
@@ -58,6 +62,7 @@ impl ArtifactPayloadValidate for RtkSingleDifferenceObservation {
             || !self.code_m.is_finite()
             || !self.phase_cycles.is_finite()
             || !self.doppler_hz.is_finite()
+            || !self.min_cn0_dbhz.is_finite()
         {
             events.push(DiagnosticEvent::new(
                 DiagnosticSeverity::Error,
@@ -119,6 +124,8 @@ pub fn rtk_single_differences_from_obs_epochs(
 
         out.push(RtkSingleDifferenceObservation {
             sig: rover_sat.signal_id,
+            min_cn0_dbhz: rover_sat.cn0_dbhz.min(base_sat.cn0_dbhz),
+            multipath_suspect: rover_sat.multipath_suspect || base_sat.multipath_suspect,
             rover_pseudorange_m: rover_sat.pseudorange_m.0,
             rover_signal_timing: rover_sat.timing,
             base_pseudorange_m: base_sat.pseudorange_m.0,
@@ -143,9 +150,10 @@ pub fn choose_rtk_single_difference_reference_signal(
     observations
         .iter()
         .min_by(|left, right| {
-            left.code_variance_m2
-                .partial_cmp(&right.code_variance_m2)
-                .unwrap_or(std::cmp::Ordering::Equal)
+            left.multipath_suspect
+                .cmp(&right.multipath_suspect)
+                .then_with(|| right.min_cn0_dbhz.total_cmp(&left.min_cn0_dbhz))
+                .then_with(|| left.code_variance_m2.total_cmp(&right.code_variance_m2))
         })
         .map(|observation| observation.sig)
 }

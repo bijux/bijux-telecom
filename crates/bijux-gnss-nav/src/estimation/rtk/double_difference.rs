@@ -16,6 +16,10 @@ pub struct RtkDoubleDifferenceObservation {
     pub sig: SigId,
     /// Signal identity for the chosen reference satellite.
     pub ref_sig: SigId,
+    /// Lowest contributing C/N0 across all four observations in the double difference.
+    pub min_cn0_dbhz: f64,
+    /// Whether any contributing observation was marked multipath-suspect.
+    pub multipath_suspect: bool,
     /// Rover pseudorange for the non-reference satellite.
     pub rover_signal_pseudorange_m: f64,
     /// Optional rover timing for the non-reference satellite.
@@ -67,6 +71,7 @@ impl ArtifactPayloadValidate for RtkDoubleDifferenceObservation {
             || !self.code_m.is_finite()
             || !self.phase_cycles.is_finite()
             || !self.doppler_hz.is_finite()
+            || !self.min_cn0_dbhz.is_finite()
         {
             events.push(DiagnosticEvent::new(
                 DiagnosticSeverity::Error,
@@ -116,6 +121,8 @@ pub fn rtk_double_differences_from_single_differences(
         out.push(RtkDoubleDifferenceObservation {
             sig: observation.sig,
             ref_sig: reference.sig,
+            min_cn0_dbhz: observation.min_cn0_dbhz.min(reference.min_cn0_dbhz),
+            multipath_suspect: observation.multipath_suspect || reference.multipath_suspect,
             rover_signal_pseudorange_m: observation.rover_pseudorange_m,
             rover_signal_timing: observation.rover_signal_timing,
             base_signal_pseudorange_m: observation.base_pseudorange_m,

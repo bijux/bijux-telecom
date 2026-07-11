@@ -177,3 +177,36 @@ fn sd_builder_preserves_rover_and_base_measurements() {
     assert_eq!(sd[0].rover_signal_timing, Some(rover_timing));
     assert_eq!(sd[0].base_signal_timing, Some(base_timing));
 }
+
+#[test]
+fn rtk_differencing_preserves_quality_flags_and_prefers_clean_reference() {
+    let mut rover = make_epoch(4, 20_000_180.0, 1_100.3, -410.0);
+    let mut base = make_epoch(4, 20_000_060.0, 1_099.9, -408.0);
+    let mut clean_rover = make_epoch(9, 20_000_220.0, 1_250.7, -415.0);
+    let clean_base = make_epoch(9, 20_000_100.0, 1_250.1, -414.0);
+
+    rover.sats[0].cn0_dbhz = 27.0;
+    base.sats[0].cn0_dbhz = 29.0;
+    rover.sats[0].multipath_suspect = true;
+    base.sats[0].multipath_suspect = false;
+    clean_rover.sats[0].cn0_dbhz = 46.0;
+
+    rover.sats.push(clean_rover.sats.remove(0));
+    base.sats.push(clean_base.sats[0].clone());
+
+    let sd = build_sd(&base, &rover);
+    assert_eq!(sd.len(), 2);
+    let degraded = sd.iter().find(|observation| observation.sig.sat.prn == 4).expect("degraded");
+    let clean = sd.iter().find(|observation| observation.sig.sat.prn == 9).expect("clean");
+    assert_eq!(degraded.min_cn0_dbhz, 27.0);
+    assert!(degraded.multipath_suspect);
+    assert!(!clean.multipath_suspect);
+
+    let reference = bijux_gnss_receiver::api::choose_ref_sat(&sd).expect("reference");
+    assert_eq!(reference.sat.prn, 9);
+
+    let dd = build_dd(&sd, reference);
+    assert_eq!(dd.len(), 1);
+    assert_eq!(dd[0].min_cn0_dbhz, 27.0);
+    assert!(dd[0].multipath_suspect);
+}
