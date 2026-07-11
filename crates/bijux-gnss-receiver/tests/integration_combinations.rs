@@ -6,8 +6,9 @@ use bijux_gnss_core::api::{
 };
 use bijux_gnss_nav::api::{
     combinations_from_obs_epochs, geometry_free_diagnostics_from_obs_epochs,
-    iono_free_code_from_obs_epochs, melbourne_wubbena_diagnostics_from_obs_epochs,
-    GeometryFreeEvent, GeometryFreeThresholds, MelbourneWubbenaEvent, MelbourneWubbenaThresholds,
+    iono_free_code_from_obs_epochs, iono_free_phase_from_obs_epochs,
+    melbourne_wubbena_diagnostics_from_obs_epochs, GeometryFreeEvent, GeometryFreeThresholds,
+    MelbourneWubbenaEvent, MelbourneWubbenaThresholds,
 };
 
 fn make_dual_freq_epoch(p1: f64, p2: f64, phi1: f64, phi2: f64) -> ObsEpoch {
@@ -367,4 +368,49 @@ fn iono_free_code_api_keeps_code_available_without_carrier_lock() {
     assert_eq!(combinations[0].if_code_status, "ok");
     assert!(combinations[0].if_code_m.is_some());
     assert!(combinations[0].if_phase_m.is_none());
+}
+
+#[test]
+fn iono_free_phase_api_supports_l1_l5_pairs() {
+    let base_range = 20_200_000.0;
+    let iono_l1 = 5.0;
+    let iono_l5 = 9.0;
+    let epoch = make_l1_l5_epoch(
+        base_range + iono_l1,
+        base_range + iono_l5,
+        (base_range - iono_l1)
+            / (299_792_458.0 / bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value()),
+        (base_range - iono_l5) / (299_792_458.0 / bijux_gnss_core::api::GPS_L5_CARRIER_HZ.value()),
+    );
+
+    let observations = iono_free_phase_from_obs_epochs(&[epoch], SignalBand::L1, SignalBand::L5);
+
+    assert_eq!(observations.len(), 1);
+    assert_eq!(observations[0].status, "ok");
+    assert!((observations[0].phase_m.expect("iono-free phase") - base_range).abs() < 10.0);
+    assert!(observations[0].phase_cycles.is_some());
+    assert!(observations[0].narrow_lane_wavelength_m.is_some());
+}
+
+#[test]
+fn iono_free_phase_api_keeps_phase_available_without_code_lock() {
+    let mut epoch = make_dual_freq_epoch(20_200_005.0, 20_200_008.235308182, 1000.0, 1001.0);
+    for satellite in &mut epoch.sats {
+        satellite.lock_flags.code_lock = false;
+        satellite.pseudorange_var_m2 = f64::NAN;
+    }
+
+    let phase = iono_free_phase_from_obs_epochs(&[epoch.clone()], SignalBand::L1, SignalBand::L2);
+    let combinations = combinations_from_obs_epochs(&[epoch], SignalBand::L1, SignalBand::L2);
+
+    assert_eq!(phase.len(), 1);
+    assert_eq!(phase[0].status, "ok");
+    assert!(phase[0].phase_m.is_some());
+    assert!(phase[0].variance_m2.is_some());
+
+    assert_eq!(combinations.len(), 1);
+    assert_eq!(combinations[0].status, "invalid");
+    assert_eq!(combinations[0].if_phase_status, "ok");
+    assert!(combinations[0].if_phase_m.is_some());
+    assert!(combinations[0].if_code_m.is_none());
 }
