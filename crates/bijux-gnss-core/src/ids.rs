@@ -190,6 +190,26 @@ pub fn signal_spec_gps_l5() -> SignalSpec {
     }
 }
 
+pub fn signal_spec_galileo_e1b() -> SignalSpec {
+    SignalSpec {
+        constellation: Constellation::Galileo,
+        band: SignalBand::E1,
+        code: SignalCode::E1B,
+        code_rate_hz: 1_023_000.0,
+        carrier_hz: GALILEO_E1_CARRIER_HZ,
+    }
+}
+
+pub fn signal_spec_galileo_e1c() -> SignalSpec {
+    SignalSpec {
+        constellation: Constellation::Galileo,
+        band: SignalBand::E1,
+        code: SignalCode::E1C,
+        code_rate_hz: 1_023_000.0,
+        carrier_hz: GALILEO_E1_CARRIER_HZ,
+    }
+}
+
 pub fn signal_registry(
     constellation: Constellation,
     band: SignalBand,
@@ -208,7 +228,10 @@ pub fn signal_registry(
             (GPS_L5_CARRIER_HZ, 10_230_000.0, None)
         }
         (Constellation::Galileo, SignalBand::E1, SignalCode::E1B) => {
-            (GALILEO_E1_CARRIER_HZ, 1_023_000.0, None)
+            (GALILEO_E1_CARRIER_HZ, 1_023_000.0, Some(4092))
+        }
+        (Constellation::Galileo, SignalBand::E1, SignalCode::E1C) => {
+            (GALILEO_E1_CARRIER_HZ, 1_023_000.0, Some(4092))
         }
         (Constellation::Galileo, SignalBand::E5, SignalCode::E5a) => {
             (GALILEO_E5_CARRIER_HZ, 10_230_000.0, None)
@@ -225,4 +248,20 @@ pub fn signal_registry(
         _ => return None,
     };
     Some(SignalRegistryEntry { spec: SignalSpec { carrier_hz, code_rate_hz, ..spec }, code_length })
+}
+
+pub fn default_acquisition_signal(constellation: Constellation) -> Option<SignalRegistryEntry> {
+    match constellation {
+        Constellation::Gps => signal_registry(Constellation::Gps, SignalBand::L1, SignalCode::Ca),
+        Constellation::Galileo => {
+            signal_registry(Constellation::Galileo, SignalBand::E1, SignalCode::E1B)
+        }
+        Constellation::Glonass => {
+            signal_registry(Constellation::Glonass, SignalBand::L1, SignalCode::Unknown)
+        }
+        Constellation::Beidou => {
+            signal_registry(Constellation::Beidou, SignalBand::B1, SignalCode::Unknown)
+        }
+        Constellation::Unknown => None,
+    }
 }
