@@ -136,6 +136,16 @@ struct RaimSolutionSeparation {
     separation_m: f64,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct RaimExclusionCandidate {
+    excluded_index: usize,
+    excluded_sat: SatId,
+    candidate_estimate: PositionEstimate,
+    pre_exclusion_rms_m: f64,
+    post_exclusion_rms_m: f64,
+    solution_shift_m: f64,
+}
+
 #[derive(Debug, Clone)]
 pub struct PositionSolver {
     pub max_iterations: usize,
@@ -275,33 +285,30 @@ impl PositionSolver {
                 break solved;
             }
 
-            if let Some((excluded_index, candidate_estimate)) =
-                self.best_single_outlier_candidate(&working_inputs, solved.estimate, klobuchar)
+            if let Some(exclusion_candidate) =
+                self.best_single_outlier_candidate(&working_inputs, &solved, klobuchar)
             {
-                let excluded_sat = working_inputs
-                    .get(excluded_index)
-                    .expect("candidate exclusion must reference an input")
-                    .observation
-                    .sat;
-                let separation_m = solution_separation_m(solved.estimate, candidate_estimate);
+                let separation_m = exclusion_candidate.solution_shift_m;
                 if raim_fault_detection.is_none() && separation_m > self.separation_gate_m {
                     raim_fault_detection = Some(RaimFaultDetection::fault_detected(
-                        excluded_sat,
+                        exclusion_candidate.excluded_sat,
                         separation_m,
                         self.separation_gate_m,
                     ));
                 }
                 push_unique_rejection(
                     &mut rejected,
-                    excluded_sat,
+                    exclusion_candidate.excluded_sat,
                     MeasurementRejectReason::Outlier,
                 );
                 working_inputs = working_inputs
                     .into_iter()
                     .enumerate()
-                    .filter_map(|(index, input)| (index != excluded_index).then_some(input))
+                    .filter_map(|(index, input)| {
+                        (index != exclusion_candidate.excluded_index).then_some(input)
+                    })
                     .collect();
-                estimate = candidate_estimate;
+                estimate = exclusion_candidate.candidate_estimate;
                 continue;
             }
 
@@ -867,13 +874,14 @@ impl PositionSolver {
     fn best_single_outlier_candidate(
         &self,
         inputs: &[PositionSolveInput],
-        initial_estimate: PositionEstimate,
+        solved: &WorkingSetSolution,
         klobuchar: Option<&KlobucharCoefficients>,
-    ) -> Option<(usize, PositionEstimate)> {
+    ) -> Option<RaimExclusionCandidate> {
         if inputs.len() < 5 {
             return None;
         }
 
+        let pre_exclusion_rms_m = working_set_rms_m(&solved.residuals);
         let mut best_candidate = None;
         for excluded_index in 0..inputs.len() {
             let candidate_inputs = inputs
@@ -882,7 +890,7 @@ impl PositionSolver {
                 .filter_map(|(index, input)| (index != excluded_index).then_some(input.clone()))
                 .collect::<Vec<_>>();
             let Some(candidate_solution) =
-                self.solve_working_set(&candidate_inputs, initial_estimate, klobuchar)
+                self.solve_working_set(&candidate_inputs, solved.estimate, klobuchar)
             else {
                 continue;
             };
@@ -891,20 +899,31 @@ impl PositionSolver {
             }
 
             let candidate_rms_m = working_set_rms_m(&candidate_solution.residuals);
+            let excluded_sat = inputs
+                .get(excluded_index)
+                .expect("candidate exclusion must reference an input")
+                .observation
+                .sat;
+            let candidate = RaimExclusionCandidate {
+                excluded_index,
+                excluded_sat,
+                candidate_estimate: candidate_solution.estimate,
+                pre_exclusion_rms_m,
+                post_exclusion_rms_m: candidate_rms_m,
+                solution_shift_m: solution_separation_m(solved.estimate, candidate_solution.estimate),
+            };
             let better_candidate = best_candidate
                 .as_ref()
-                .map(|(_, best_rms_m, _)| candidate_rms_m < *best_rms_m)
+                .map(|best_candidate: &RaimExclusionCandidate| {
+                    candidate.post_exclusion_rms_m < best_candidate.post_exclusion_rms_m
+                })
                 .unwrap_or(true);
             if better_candidate {
-                best_candidate =
-                    Some((excluded_index, candidate_rms_m, candidate_solution.estimate));
+                best_candidate = Some(candidate);
             }
         }
 
         best_candidate
-            .map(|(excluded_index, _candidate_rms_m, candidate_estimate)| {
-                (excluded_index, candidate_estimate)
-            })
     }
 }
 
