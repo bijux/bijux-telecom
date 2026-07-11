@@ -461,6 +461,221 @@ pub struct SyntheticPvtTruthTableReport {
     pub epochs: Vec<SyntheticPvtTruthTableEpoch>,
 }
 
+/// Hard accuracy threshold for truth-guided acquisition validation.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionAccuracyBudget {
+    /// Maximum absolute Doppler error in Hz.
+    pub max_doppler_error_hz: f64,
+    /// Maximum wrapped code-phase error in samples.
+    pub max_code_phase_error_samples: usize,
+}
+
+/// Hard accuracy threshold for truth-guided tracking validation.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticTrackingAccuracyBudget {
+    /// Maximum absolute carrier-frequency error in Hz.
+    pub max_carrier_error_hz: f64,
+    /// Maximum absolute Doppler error in Hz.
+    pub max_doppler_error_hz: f64,
+    /// Maximum wrapped code-phase error in samples.
+    pub max_code_phase_error_samples: f64,
+    /// Maximum absolute C/N0 error in dB-Hz.
+    pub max_cn0_error_db_hz: f64,
+}
+
+/// Hard accuracy threshold for truth-guided observation validation.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticObservationAccuracyBudget {
+    /// Maximum absolute pseudorange error in meters.
+    pub max_pseudorange_error_m: f64,
+    /// Maximum absolute carrier-phase error in cycles.
+    pub max_carrier_phase_error_cycles: f64,
+    /// Maximum absolute Doppler error in Hz.
+    pub max_doppler_error_hz: f64,
+    /// Maximum absolute C/N0 error in dB-Hz.
+    pub max_cn0_error_db_hz: f64,
+}
+
+/// Hard accuracy threshold for truth-guided PVT validation.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPvtAccuracyBudget {
+    /// Maximum 3D position error in meters.
+    pub max_position_error_3d_m: f64,
+    /// Maximum absolute clock-bias error in meters.
+    pub max_clock_bias_error_m: f64,
+    /// Maximum residual RMS in meters.
+    pub max_residual_rms_m: f64,
+    /// Maximum PDOP for an in-budget solution epoch.
+    pub max_pdop: f64,
+}
+
+/// Hard truth-guided accuracy thresholds for receiver stages.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticReceiverAccuracyBudgets {
+    /// Acquisition-stage hard thresholds.
+    pub acquisition: SyntheticAcquisitionAccuracyBudget,
+    /// Tracking-stage hard thresholds.
+    pub tracking: SyntheticTrackingAccuracyBudget,
+    /// Observation-stage hard thresholds.
+    pub observation: SyntheticObservationAccuracyBudget,
+    /// PVT-stage hard thresholds.
+    pub pvt: SyntheticPvtAccuracyBudget,
+}
+
+/// Per-satellite acquisition budget outcome.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionAccuracySatellite {
+    /// Satellite identifier.
+    pub sat: SatId,
+    /// Measured absolute Doppler error in Hz.
+    pub doppler_error_hz: f64,
+    /// Measured wrapped code-phase error in samples.
+    pub code_phase_error_samples: usize,
+    /// Whether this satellite stayed within the configured hard budget.
+    pub pass: bool,
+}
+
+/// Acquisition-stage hard-budget validation report.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAcquisitionAccuracyReport {
+    /// Stable scenario identifier for this capture.
+    pub scenario_id: String,
+    /// Maximum absolute Doppler error allowed in Hz.
+    pub max_doppler_error_hz: f64,
+    /// Maximum wrapped code-phase error allowed in samples.
+    pub max_code_phase_error_samples: usize,
+    /// Number of measured satellites.
+    pub satellite_count: usize,
+    /// Number of satellites that satisfied the budget.
+    pub passing_satellite_count: usize,
+    /// Whether every measured satellite satisfied the budget.
+    pub pass: bool,
+    /// Per-satellite budget outcomes.
+    pub satellites: Vec<SyntheticAcquisitionAccuracySatellite>,
+}
+
+/// Per-satellite tracking budget outcome.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticTrackingAccuracySatellite {
+    /// Satellite identifier.
+    pub sat: SatId,
+    /// Number of stable tracking epochs compared against truth.
+    pub stable_epoch_count: usize,
+    /// Maximum carrier error across stable tracking epochs, in Hz.
+    pub max_carrier_error_hz: f64,
+    /// Maximum Doppler error across stable tracking epochs, in Hz.
+    pub max_doppler_error_hz: f64,
+    /// Maximum wrapped code-phase error across stable tracking epochs, in samples.
+    pub max_code_phase_error_samples: f64,
+    /// Maximum C/N0 error across stable tracking epochs, in dB-Hz.
+    pub max_cn0_error_db_hz: f64,
+    /// Whether this satellite stayed within the configured hard budget.
+    pub pass: bool,
+}
+
+/// Tracking-stage hard-budget validation report.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticTrackingAccuracyReport {
+    /// Stable scenario identifier for this capture.
+    pub scenario_id: String,
+    /// Maximum absolute carrier-frequency error allowed in Hz.
+    pub max_carrier_error_hz: f64,
+    /// Maximum absolute Doppler error allowed in Hz.
+    pub max_doppler_error_hz: f64,
+    /// Maximum wrapped code-phase error allowed in samples.
+    pub max_code_phase_error_samples: f64,
+    /// Maximum absolute C/N0 error allowed in dB-Hz.
+    pub max_cn0_error_db_hz: f64,
+    /// Number of measured satellites.
+    pub satellite_count: usize,
+    /// Number of satellites that satisfied the budget.
+    pub passing_satellite_count: usize,
+    /// Whether every measured satellite satisfied the budget.
+    pub pass: bool,
+    /// Per-satellite budget outcomes.
+    pub satellites: Vec<SyntheticTrackingAccuracySatellite>,
+}
+
+/// Per-satellite observation budget outcome.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticObservationAccuracySatellite {
+    /// Satellite identifier.
+    pub sat: SatId,
+    /// Maximum absolute pseudorange error in meters.
+    pub max_pseudorange_error_m: Option<f64>,
+    /// Maximum absolute carrier-phase error in cycles.
+    pub max_carrier_phase_error_cycles: Option<f64>,
+    /// Maximum absolute Doppler error in Hz.
+    pub max_doppler_error_hz: Option<f64>,
+    /// Maximum absolute C/N0 error in dB-Hz.
+    pub max_cn0_error_db_hz: Option<f64>,
+    /// Whether this satellite stayed within the configured hard budget.
+    pub pass: bool,
+}
+
+/// Observation-stage hard-budget validation report.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticObservationAccuracyReport {
+    /// Stable scenario identifier for this validation run.
+    pub scenario_id: String,
+    /// Maximum absolute pseudorange error allowed in meters.
+    pub max_pseudorange_error_m: f64,
+    /// Maximum absolute carrier-phase error allowed in cycles.
+    pub max_carrier_phase_error_cycles: f64,
+    /// Maximum absolute Doppler error allowed in Hz.
+    pub max_doppler_error_hz: f64,
+    /// Maximum absolute C/N0 error allowed in dB-Hz.
+    pub max_cn0_error_db_hz: f64,
+    /// Number of measured satellites.
+    pub satellite_count: usize,
+    /// Number of satellites that satisfied the budget.
+    pub passing_satellite_count: usize,
+    /// Whether every measured satellite satisfied the budget.
+    pub pass: bool,
+    /// Per-satellite budget outcomes.
+    pub satellites: Vec<SyntheticObservationAccuracySatellite>,
+}
+
+/// Per-epoch PVT budget outcome.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPvtAccuracyEpoch {
+    /// Receiver navigation epoch index.
+    pub epoch_index: u64,
+    /// 3D position error in meters.
+    pub position_error_3d_m: f64,
+    /// Absolute clock-bias error in meters.
+    pub clock_bias_error_m: f64,
+    /// Residual RMS in meters.
+    pub residual_rms_m: f64,
+    /// PDOP reported for this epoch.
+    pub pdop: f64,
+    /// Whether this epoch stayed within the configured hard budget.
+    pub pass: bool,
+}
+
+/// PVT-stage hard-budget validation report.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPvtAccuracyReport {
+    /// Stable scenario identifier for this validation run.
+    pub scenario_id: String,
+    /// Maximum 3D position error allowed in meters.
+    pub max_position_error_3d_m: f64,
+    /// Maximum absolute clock-bias error allowed in meters.
+    pub max_clock_bias_error_m: f64,
+    /// Maximum residual RMS allowed in meters.
+    pub max_residual_rms_m: f64,
+    /// Maximum PDOP allowed for an in-budget epoch.
+    pub max_pdop: f64,
+    /// Number of matched solution epochs.
+    pub epoch_count: usize,
+    /// Number of epochs that satisfied the budget.
+    pub passing_epoch_count: usize,
+    /// Whether every matched epoch satisfied the budget.
+    pub pass: bool,
+    /// Per-epoch budget outcomes.
+    pub epochs: Vec<SyntheticPvtAccuracyEpoch>,
+}
+
 /// Summary of one observation-error distribution.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticObservationErrorStats {
@@ -740,6 +955,224 @@ pub fn validate_truth_guided_observations(
         hatch_window: table.hatch_window,
         reference_receive_time_s: table.reference_receive_time_s,
         satellites,
+    }
+}
+
+/// Return the hard truth-guided receiver accuracy budgets used in synthetic validation.
+pub fn truth_guided_receiver_accuracy_budgets() -> SyntheticReceiverAccuracyBudgets {
+    SyntheticReceiverAccuracyBudgets {
+        acquisition: SyntheticAcquisitionAccuracyBudget {
+            max_doppler_error_hz: 500.0,
+            max_code_phase_error_samples: 2,
+        },
+        tracking: SyntheticTrackingAccuracyBudget {
+            max_carrier_error_hz: 10.0,
+            max_doppler_error_hz: 10.0,
+            max_code_phase_error_samples: 1.0,
+            max_cn0_error_db_hz: 8.0,
+        },
+        observation: SyntheticObservationAccuracyBudget {
+            max_pseudorange_error_m: 5.0e-2,
+            max_carrier_phase_error_cycles: 1.0e-6,
+            max_doppler_error_hz: 1.0e-6,
+            max_cn0_error_db_hz: 1.0e-6,
+        },
+        pvt: SyntheticPvtAccuracyBudget {
+            max_position_error_3d_m: 5.0,
+            max_clock_bias_error_m: 0.5,
+            max_residual_rms_m: 1.0,
+            max_pdop: 3.0,
+        },
+    }
+}
+
+/// Evaluate whether a truth-guided acquisition report satisfies a hard accuracy budget.
+pub fn validate_acquisition_accuracy_budget(
+    report: &SyntheticAcquisitionTruthTableReport,
+    budget: SyntheticAcquisitionAccuracyBudget,
+) -> SyntheticAcquisitionAccuracyReport {
+    let satellites = report
+        .satellites
+        .iter()
+        .map(|satellite| {
+            let pass = satellite.doppler_error_hz.is_finite()
+                && satellite.code_phase_error_samples <= budget.max_code_phase_error_samples
+                && satellite.doppler_error_hz <= budget.max_doppler_error_hz + f64::EPSILON;
+            SyntheticAcquisitionAccuracySatellite {
+                sat: satellite.sat,
+                doppler_error_hz: satellite.doppler_error_hz,
+                code_phase_error_samples: satellite.code_phase_error_samples,
+                pass,
+            }
+        })
+        .collect::<Vec<_>>();
+    let passing_satellite_count = satellites.iter().filter(|satellite| satellite.pass).count();
+
+    SyntheticAcquisitionAccuracyReport {
+        scenario_id: report.scenario_id.clone(),
+        max_doppler_error_hz: budget.max_doppler_error_hz,
+        max_code_phase_error_samples: budget.max_code_phase_error_samples,
+        satellite_count: satellites.len(),
+        passing_satellite_count,
+        pass: !satellites.is_empty() && passing_satellite_count == satellites.len(),
+        satellites,
+    }
+}
+
+/// Evaluate whether a truth-guided tracking report satisfies a hard accuracy budget.
+pub fn validate_tracking_accuracy_budget(
+    report: &SyntheticTrackingTruthTableReport,
+    budget: SyntheticTrackingAccuracyBudget,
+) -> SyntheticTrackingAccuracyReport {
+    let satellites = report
+        .satellites
+        .iter()
+        .map(|satellite| {
+            let stable_epochs = satellite
+                .epochs
+                .iter()
+                .filter(|epoch| epoch.stable_tracking_epoch)
+                .collect::<Vec<_>>();
+            let max_carrier_error_hz =
+                stable_epochs.iter().map(|epoch| epoch.carrier_error_hz).fold(0.0_f64, f64::max);
+            let max_doppler_error_hz =
+                stable_epochs.iter().map(|epoch| epoch.doppler_error_hz).fold(0.0_f64, f64::max);
+            let max_code_phase_error_samples = stable_epochs
+                .iter()
+                .map(|epoch| epoch.code_phase_error_samples)
+                .fold(0.0_f64, f64::max);
+            let max_cn0_error_db_hz =
+                stable_epochs.iter().map(|epoch| epoch.cn0_error_db).fold(0.0_f64, f64::max);
+            let pass = !stable_epochs.is_empty()
+                && max_carrier_error_hz <= budget.max_carrier_error_hz + f64::EPSILON
+                && max_doppler_error_hz <= budget.max_doppler_error_hz + f64::EPSILON
+                && max_code_phase_error_samples
+                    <= budget.max_code_phase_error_samples + f64::EPSILON
+                && max_cn0_error_db_hz <= budget.max_cn0_error_db_hz + f64::EPSILON;
+
+            SyntheticTrackingAccuracySatellite {
+                sat: satellite.sat,
+                stable_epoch_count: stable_epochs.len(),
+                max_carrier_error_hz,
+                max_doppler_error_hz,
+                max_code_phase_error_samples,
+                max_cn0_error_db_hz,
+                pass,
+            }
+        })
+        .collect::<Vec<_>>();
+    let passing_satellite_count = satellites.iter().filter(|satellite| satellite.pass).count();
+
+    SyntheticTrackingAccuracyReport {
+        scenario_id: report.scenario_id.clone(),
+        max_carrier_error_hz: budget.max_carrier_error_hz,
+        max_doppler_error_hz: budget.max_doppler_error_hz,
+        max_code_phase_error_samples: budget.max_code_phase_error_samples,
+        max_cn0_error_db_hz: budget.max_cn0_error_db_hz,
+        satellite_count: satellites.len(),
+        passing_satellite_count,
+        pass: !satellites.is_empty() && passing_satellite_count == satellites.len(),
+        satellites,
+    }
+}
+
+/// Evaluate whether a truth-guided observation report satisfies a hard accuracy budget.
+pub fn validate_observation_accuracy_budget(
+    report: &SyntheticObservationValidationReport,
+    budget: SyntheticObservationAccuracyBudget,
+) -> SyntheticObservationAccuracyReport {
+    let satellites = report
+        .satellites
+        .iter()
+        .map(|satellite| {
+            let max_pseudorange_error_m =
+                satellite.pseudorange_error_m.as_ref().map(|stats| stats.max_abs_error);
+            let max_carrier_phase_error_cycles =
+                satellite.carrier_phase_error_cycles.as_ref().map(|stats| stats.max_abs_error);
+            let max_doppler_error_hz =
+                satellite.doppler_error_hz.as_ref().map(|stats| stats.max_abs_error);
+            let max_cn0_error_db_hz =
+                satellite.cn0_error_db_hz.as_ref().map(|stats| stats.max_abs_error);
+            let pass = max_pseudorange_error_m
+                .zip(max_carrier_phase_error_cycles)
+                .zip(max_doppler_error_hz.zip(max_cn0_error_db_hz))
+                .map(
+                    |(
+                        (pseudorange_error_m, carrier_phase_error_cycles),
+                        (doppler_error_hz, cn0_error_db_hz),
+                    )| {
+                        pseudorange_error_m <= budget.max_pseudorange_error_m + f64::EPSILON
+                            && carrier_phase_error_cycles
+                                <= budget.max_carrier_phase_error_cycles + f64::EPSILON
+                            && doppler_error_hz <= budget.max_doppler_error_hz + f64::EPSILON
+                            && cn0_error_db_hz <= budget.max_cn0_error_db_hz + f64::EPSILON
+                    },
+                )
+                .unwrap_or(false);
+
+            SyntheticObservationAccuracySatellite {
+                sat: satellite.sat,
+                max_pseudorange_error_m,
+                max_carrier_phase_error_cycles,
+                max_doppler_error_hz,
+                max_cn0_error_db_hz,
+                pass,
+            }
+        })
+        .collect::<Vec<_>>();
+    let passing_satellite_count = satellites.iter().filter(|satellite| satellite.pass).count();
+
+    SyntheticObservationAccuracyReport {
+        scenario_id: report.scenario_id.clone(),
+        max_pseudorange_error_m: budget.max_pseudorange_error_m,
+        max_carrier_phase_error_cycles: budget.max_carrier_phase_error_cycles,
+        max_doppler_error_hz: budget.max_doppler_error_hz,
+        max_cn0_error_db_hz: budget.max_cn0_error_db_hz,
+        satellite_count: satellites.len(),
+        passing_satellite_count,
+        pass: !satellites.is_empty() && passing_satellite_count == satellites.len(),
+        satellites,
+    }
+}
+
+/// Evaluate whether a truth-guided PVT report satisfies a hard accuracy budget.
+pub fn validate_pvt_accuracy_budget(
+    report: &SyntheticPvtTruthTableReport,
+    budget: SyntheticPvtAccuracyBudget,
+) -> SyntheticPvtAccuracyReport {
+    let epochs = report
+        .epochs
+        .iter()
+        .map(|epoch| {
+            let clock_bias_error_m = epoch.clock_bias.error_m.abs();
+            let pass = epoch.enu_error_m.error_3d_m
+                <= budget.max_position_error_3d_m + f64::EPSILON
+                && clock_bias_error_m <= budget.max_clock_bias_error_m + f64::EPSILON
+                && epoch.residual_rms_m <= budget.max_residual_rms_m + f64::EPSILON
+                && epoch.dop.pdop <= budget.max_pdop + f64::EPSILON
+                && epoch.valid;
+            SyntheticPvtAccuracyEpoch {
+                epoch_index: epoch.epoch_index,
+                position_error_3d_m: epoch.enu_error_m.error_3d_m,
+                clock_bias_error_m,
+                residual_rms_m: epoch.residual_rms_m,
+                pdop: epoch.dop.pdop,
+                pass,
+            }
+        })
+        .collect::<Vec<_>>();
+    let passing_epoch_count = epochs.iter().filter(|epoch| epoch.pass).count();
+
+    SyntheticPvtAccuracyReport {
+        scenario_id: report.scenario_id.clone(),
+        max_position_error_3d_m: budget.max_position_error_3d_m,
+        max_clock_bias_error_m: budget.max_clock_bias_error_m,
+        max_residual_rms_m: budget.max_residual_rms_m,
+        max_pdop: budget.max_pdop,
+        epoch_count: epochs.len(),
+        passing_epoch_count,
+        pass: !epochs.is_empty() && passing_epoch_count == epochs.len(),
+        epochs,
     }
 }
 
@@ -3997,7 +4430,8 @@ mod tests {
         measure_truth_guided_acquisition_detection_rate, measure_truth_guided_tracking_lock_rate,
         nav_bit_index_at_time_s, nav_bit_sign_at_time_s, signal_amplitude_from_cn0,
         summarize_observation_errors, synthetic_tracking_sensitivity_report,
-        validate_truth_guided_acquisition_code_phase,
+        truth_guided_receiver_accuracy_budgets, validate_acquisition_accuracy_budget,
+        validate_pvt_accuracy_budget, validate_truth_guided_acquisition_code_phase,
         validate_truth_guided_acquisition_code_phase_refinement,
         validate_truth_guided_acquisition_coherent_integration,
         validate_truth_guided_acquisition_doppler,
@@ -4006,10 +4440,14 @@ mod tests {
         validate_truth_guided_pvt_table, wrapped_code_phase_error_samples,
         wrapped_code_phase_error_samples_f64, SatState, SyntheticAcquisitionDetectionRateCase,
         SyntheticAcquisitionFalseAlarmRateCase, SyntheticAcquisitionSampleRateValidationCase,
+        SyntheticAcquisitionTruthTableReport, SyntheticAcquisitionTruthTableSatellite,
         SyntheticDopplerRampParams, SyntheticFadeWindow, SyntheticNavBitMode, SyntheticPhaseWindow,
-        SyntheticPvtTruthReferenceEpoch, SyntheticScenario, SyntheticSignalParams,
-        SyntheticSignalSource, SyntheticTrackingLockRateCase, SyntheticTrackingSensitivityTrial,
-        SPEED_OF_LIGHT_MPS, SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
+        SyntheticPvtTruthReferenceEpoch, SyntheticPvtTruthTableClockBias,
+        SyntheticPvtTruthTableDop, SyntheticPvtTruthTableEcef, SyntheticPvtTruthTableEnuError,
+        SyntheticPvtTruthTableEpoch, SyntheticPvtTruthTableGeodetic, SyntheticPvtTruthTableReport,
+        SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource,
+        SyntheticTrackingLockRateCase, SyntheticTrackingSensitivityTrial, SPEED_OF_LIGHT_MPS,
+        SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
     use bijux_gnss_core::api::{
@@ -4178,6 +4616,138 @@ mod tests {
         assert_eq!(row.solution_quality, NavQualityFlag::Float);
         assert_eq!(row.solution_validity, SolutionValidity::Stable);
         assert!(row.valid);
+    }
+
+    #[test]
+    fn truth_guided_receiver_accuracy_budgets_are_hard_and_positive() {
+        let budgets = truth_guided_receiver_accuracy_budgets();
+
+        assert!(budgets.acquisition.max_doppler_error_hz > 0.0);
+        assert!(budgets.acquisition.max_code_phase_error_samples > 0);
+        assert!(budgets.tracking.max_carrier_error_hz > 0.0);
+        assert!(budgets.tracking.max_doppler_error_hz > 0.0);
+        assert!(budgets.tracking.max_code_phase_error_samples > 0.0);
+        assert!(budgets.tracking.max_cn0_error_db_hz > 0.0);
+        assert!(budgets.observation.max_pseudorange_error_m > 0.0);
+        assert!(budgets.observation.max_carrier_phase_error_cycles > 0.0);
+        assert!(budgets.observation.max_doppler_error_hz > 0.0);
+        assert!(budgets.observation.max_cn0_error_db_hz > 0.0);
+        assert!(budgets.pvt.max_position_error_3d_m > 0.0);
+        assert!(budgets.pvt.max_clock_bias_error_m > 0.0);
+        assert!(budgets.pvt.max_residual_rms_m > 0.0);
+        assert!(budgets.pvt.max_pdop > 0.0);
+    }
+
+    #[test]
+    fn acquisition_accuracy_budget_fails_when_truth_error_exceeds_threshold() {
+        let report = SyntheticAcquisitionTruthTableReport {
+            scenario_id: "acquisition_budget_failure".to_string(),
+            doppler_tolerance_bins: 1,
+            doppler_tolerance_hz: 500.0,
+            code_phase_tolerance_samples: 2,
+            sample_rate_hz: 1_023_000.0,
+            period_samples: 1023,
+            doppler_step_hz: 500,
+            pass: true,
+            satellites: vec![SyntheticAcquisitionTruthTableSatellite {
+                sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                injected_doppler_hz: 750.0,
+                expected_measured_doppler_hz: 750.0,
+                measured_doppler_hz: 1_500.0,
+                doppler_error_hz: 750.0,
+                doppler_error_bins: 1.5,
+                injected_code_phase_chips: 200.25,
+                expected_code_phase_samples: 100,
+                measured_code_phase_samples: 104,
+                code_phase_error_samples: 4,
+                peak_mean_ratio: 10.0,
+                hypothesis: "accepted".to_string(),
+                doppler_pass: false,
+                code_phase_pass: false,
+                pass: false,
+            }],
+        };
+
+        let accuracy = validate_acquisition_accuracy_budget(
+            &report,
+            truth_guided_receiver_accuracy_budgets().acquisition,
+        );
+        let satellite = accuracy.satellites.first().expect("acquisition satellite");
+
+        assert!(!accuracy.pass);
+        assert_eq!(accuracy.passing_satellite_count, 0);
+        assert!(!satellite.pass);
+    }
+
+    #[test]
+    fn pvt_accuracy_budget_fails_invalid_or_out_of_budget_epoch() {
+        let report = SyntheticPvtTruthTableReport {
+            scenario_id: "pvt_budget_failure".to_string(),
+            solution_count: 1,
+            matched_epoch_count: 1,
+            unmatched_solution_epochs: Vec::new(),
+            unused_reference_epochs: Vec::new(),
+            epochs: vec![SyntheticPvtTruthTableEpoch {
+                artifact_id: "nav-epoch-invalid".to_string(),
+                source_observation_epoch_id: "obs-epoch-invalid".to_string(),
+                epoch_index: 9,
+                receive_time_s: 100_000.0,
+                truth_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.0, y_m: 0.0, z_m: 0.0 },
+                measured_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.0, y_m: 0.0, z_m: 6.0 },
+                ecef_error_m: SyntheticPvtTruthTableEcef { x_m: 0.0, y_m: 0.0, z_m: 6.0 },
+                truth_geodetic: SyntheticPvtTruthTableGeodetic {
+                    latitude_deg: 0.0,
+                    longitude_deg: 0.0,
+                    altitude_m: 0.0,
+                },
+                measured_geodetic: SyntheticPvtTruthTableGeodetic {
+                    latitude_deg: 0.0,
+                    longitude_deg: 0.0,
+                    altitude_m: 6.0,
+                },
+                enu_error_m: SyntheticPvtTruthTableEnuError {
+                    east_m: 0.0,
+                    north_m: 0.0,
+                    up_m: 6.0,
+                    horiz_m: 0.0,
+                    vert_m: 6.0,
+                    error_3d_m: 6.0,
+                },
+                clock_bias: SyntheticPvtTruthTableClockBias {
+                    truth_s: 0.0,
+                    measured_s: 1.0e-6,
+                    error_s: 1.0e-6,
+                    truth_m: 0.0,
+                    measured_m: 10.0,
+                    error_m: 10.0,
+                },
+                residual_rms_m: 2.0,
+                pre_fit_residual_rms_m: Some(2.0),
+                post_fit_residual_rms_m: Some(2.0),
+                dop: SyntheticPvtTruthTableDop {
+                    pdop: 4.0,
+                    hdop: Some(2.0),
+                    vdop: Some(2.0),
+                    gdop: Some(4.5),
+                    tdop: Some(1.0),
+                },
+                solution_status: SolutionStatus::Invalid,
+                solution_quality: NavQualityFlag::NoFix,
+                solution_validity: SolutionValidity::Invalid,
+                valid: false,
+                sat_count: 4,
+                used_sat_count: 4,
+                rejected_sat_count: 0,
+            }],
+        };
+
+        let accuracy =
+            validate_pvt_accuracy_budget(&report, truth_guided_receiver_accuracy_budgets().pvt);
+        let epoch = accuracy.epochs.first().expect("pvt epoch");
+
+        assert!(!accuracy.pass);
+        assert_eq!(accuracy.passing_epoch_count, 0);
+        assert!(!epoch.pass);
     }
 
     fn collect_frames(source: &mut SyntheticSignalSource, frame_len: usize) -> SamplesFrame {
