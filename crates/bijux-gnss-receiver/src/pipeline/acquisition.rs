@@ -1406,7 +1406,7 @@ fn acquisition_decision(
             score: 0.0,
         };
     }
-    if !local_peak_separation_ratio.is_finite() || !competing_peak_ratio.is_finite() {
+    if local_peak_separation_ratio.is_nan() || competing_peak_ratio.is_nan() {
         return AcquisitionDecision {
             hypothesis: AcqHypothesis::Ambiguous,
             reason: AcquisitionDecisionReason::AmbiguousRatioThresholds,
@@ -1974,6 +1974,15 @@ mod tests {
         ]);
 
         assert!((ratio - (4.0 / 3.0)).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn acquisition_decision_accepts_absent_competing_candidate_with_strong_local_peak() {
+        let config = ReceiverPipelineConfig::default();
+        let decision = acquisition_decision(12.0, 1.8, 1.8, f32::INFINITY, &config);
+
+        assert_eq!(decision.hypothesis.to_string(), "accepted");
+        assert_eq!(decision.reason, AcquisitionDecisionReason::AcceptedByRatioThresholds);
     }
 
     #[test]

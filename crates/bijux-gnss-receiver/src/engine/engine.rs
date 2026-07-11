@@ -12,7 +12,7 @@ use bijux_gnss_core::api::{
     AcqResult, Constellation, InputError, SamplesFrame, SatId, SignalBand, SignalCode,
     SignalSupportRow, SupportMatrix, SupportStatus, TrackEpoch,
 };
-use bijux_gnss_signal::api::remove_dc_offset_in_place;
+use bijux_gnss_signal::api::{remove_dc_offset_in_place, samples_per_code};
 use std::time::Instant;
 
 const STREAMING_TRACKING_CODE_PERIODS: usize = 100;
@@ -34,12 +34,14 @@ impl Receiver {
         });
         let pipeline_start = Instant::now();
 
-        let samples_per_code = bijux_gnss_signal::api::samples_per_code(
+        let tracking_samples_per_code = samples_per_code(
             self.config().sampling_freq_hz,
             self.config().code_freq_basis_hz,
             self.config().code_length,
         );
-        let mut frame = match input.next_frame(samples_per_code) {
+        let sats = acquisition_search_sats(self.config());
+        let acquisition_frame_len = acquisition_frame_len(self.config(), &sats);
+        let mut frame = match input.next_frame(acquisition_frame_len) {
             Ok(Some(frame)) => frame,
             Ok(None) => return Ok(RunArtifacts::default()),
             Err(err) => {
@@ -109,8 +111,6 @@ impl Receiver {
                 ],
             });
         }
-
-        let sats = acquisition_search_sats(self.config());
 
         runtime.trace.record(TraceRecord {
             name: "pipeline_stage",
@@ -205,19 +205,13 @@ impl Receiver {
 
         let tracking =
             crate::pipeline::tracking::Tracking::new(self.config().clone(), self.runtime().clone());
-        let has_trackable_channels = acquisitions
+        let tracking_candidates = acquisitions
             .iter()
-            .filter(|acq| {
-                matches!(
-                    acq.hypothesis,
-                    bijux_gnss_core::api::AcqHypothesis::Accepted
-                        | bijux_gnss_core::api::AcqHypothesis::Ambiguous
-                )
-            })
-            .take(self.config().channels.max(1))
-            .next()
-            .is_some();
-        let tracking_frame_len = streaming_tracking_frame_len(samples_per_code);
+            .filter(|acq| tracking_signal_supported(acq))
+            .cloned()
+            .collect::<Vec<_>>();
+        let has_trackable_channels = !tracking_candidates.is_empty();
+        let tracking_frame_len = streaming_tracking_frame_len(tracking_samples_per_code);
         let initial_tracking_frame = if has_trackable_channels {
             match input.next_frame(tracking_frame_len) {
                 Ok(frame) => frame,
@@ -241,14 +235,14 @@ impl Receiver {
             prioritize_tracking_acquisitions(
                 &tracking,
                 &tracking_preview_frame,
-                &acquisitions,
+                &tracking_candidates,
                 self.config().channels.max(1),
             )
         } else {
             Vec::new()
         };
         let tracking_acquisitions = if tracking_acquisitions.is_empty() {
-            acquisitions.clone()
+            tracking_candidates
         } else {
             tracking_acquisitions
         };
@@ -391,6 +385,35 @@ fn streaming_tracking_frame_len(samples_per_code: usize) -> usize {
     samples_per_code.saturating_mul(STREAMING_TRACKING_CODE_PERIODS.max(1))
 }
 
+fn acquisition_frame_len(
+    config: &crate::engine::receiver_config::ReceiverPipelineConfig,
+    sats: &[SatId],
+) -> usize {
+    sats.iter()
+        .filter_map(|sat| default_acquisition_signal(sat.constellation))
+        .map(|signal| {
+            let code_length = signal.code_length.map(|length| length as usize).unwrap_or(config.code_length);
+            let samples_per_period =
+                samples_per_code(config.sampling_freq_hz, signal.spec.code_rate_hz, code_length);
+            let code_period_ms =
+                ((code_length as f64 / signal.spec.code_rate_hz) * 1_000.0).round().max(1.0) as u32;
+            let coherent_periods = if config.acquisition_integration_ms == 0
+                || config.acquisition_integration_ms % code_period_ms != 0
+            {
+                1
+            } else {
+                config.acquisition_integration_ms / code_period_ms
+            };
+            samples_per_period
+                * coherent_periods.max(1) as usize
+                * config.acquisition_noncoherent.max(1) as usize
+        })
+        .max()
+        .unwrap_or_else(|| {
+            samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length)
+        })
+}
+
 fn acquisition_search_sats(config: &crate::engine::receiver_config::ReceiverPipelineConfig) -> Vec<SatId> {
     [Constellation::Gps, Constellation::Galileo, Constellation::Glonass, Constellation::Beidou]
         .into_iter()
@@ -414,6 +437,12 @@ fn acquisition_signal_matches_config(
     let code_length = signal.code_length.map(|length| length as usize).unwrap_or(config.code_length);
     (signal.spec.code_rate_hz - config.code_freq_basis_hz).abs() <= f64::EPSILON
         && code_length == config.code_length
+}
+
+fn tracking_signal_supported(acq: &AcqResult) -> bool {
+    matches!(acq.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous)
+        && acq.sat.constellation == Constellation::Gps
+        && acq.signal_band == SignalBand::L1
 }
 
 fn build_tracking_preview_frame(
@@ -559,6 +588,9 @@ fn signal_support_status(
 fn support_reason(constellation: Constellation, band: SignalBand, code: SignalCode) -> String {
     if constellation == Constellation::Gps && band == SignalBand::L1 && code == SignalCode::Ca {
         return "receiver pipeline supports this signal path".to_string();
+    }
+    if constellation == Constellation::Galileo && band == SignalBand::E1 && code == SignalCode::E1B {
+        return "receiver acquisition supports this signal path; tracking, observations, and navigation remain incomplete".to_string();
     }
     if signal_registry(constellation, band, code).is_some() {
         return "signal model registered; receiver pipeline support not yet complete".to_string();
