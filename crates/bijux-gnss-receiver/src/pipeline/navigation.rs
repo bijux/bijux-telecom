@@ -462,7 +462,7 @@ impl Navigation {
             hdop: solution.hdop,
             vdop: solution.vdop,
             gdop: solution.gdop,
-            tdop: None,
+            tdop: solution.tdop,
             stability_signature: String::new(),
             stability_signature_version: NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
         };
@@ -1639,6 +1639,7 @@ mod tests {
         assert!(solution.hdop.is_some());
         assert!(solution.vdop.is_some());
         assert!(solution.gdop.is_some());
+        assert!(solution.tdop.is_some());
         assert!(solution.provenance.is_some());
         assert_eq!(solution.explain_decision, "accepted");
         assert_eq!(solution.refusal_class, None);

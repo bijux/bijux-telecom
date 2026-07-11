@@ -85,6 +85,7 @@ fn synthetic_pvt_regression_fixtures_are_deterministic() {
         assert!(first.hdop.is_some(), "fixture {} missing hdop", fixture.id);
         assert!(first.vdop.is_some(), "fixture {} missing vdop", fixture.id);
         assert!(first.gdop.is_some(), "fixture {} missing gdop", fixture.id);
+        assert!(first.tdop.is_some(), "fixture {} missing tdop", fixture.id);
 
         assert!(
             (first.ecef_x_m - second.ecef_x_m).abs() <= 1e-9,
