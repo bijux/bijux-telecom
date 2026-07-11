@@ -287,13 +287,8 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                 float_cycles: Vec::new(),
                 covariance_cycles2: Vec::new(),
             });
-        let (fix_result, audit) =
+        let (fix_result, mut audit) =
             fixer.fix_with_state(rover.epoch_idx, &float_ambiguity_state, &mut fix_state);
-        let fix_audit = bijux_gnss_infra::api::receiver::RtkFixAuditV1 {
-            header: header.clone(),
-            payload: audit.clone(),
-        };
-        fix_audit_lines.push(serde_json::to_string(&fix_audit)?);
 
         let mut baseline_fixed = false;
         if let Some(float_baseline_solution) = float_baseline.as_ref() {
@@ -314,9 +309,32 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                         &fixed_integers,
                     )
                 {
-                    adjusted.enu_m = conditioned.enu_m;
-                    adjusted.covariance_m2 = Some(conditioned.covariance_enu_m2);
-                    adjusted.fixed = true;
+                    let conditioned_baseline = bijux_gnss_infra::api::receiver::BaselineSolution {
+                        enu_m: conditioned.enu_m,
+                        covariance_m2: Some(conditioned.covariance_enu_m2),
+                        fixed: true,
+                    };
+                    let fixed_guard =
+                        bijux_gnss_infra::api::receiver::evaluate_rtk_fixed_baseline_guard(
+                            &dd,
+                            base_xyz,
+                            &conditioned_baseline,
+                            &ephs,
+                            rover.t_rx_s.0,
+                            bijux_gnss_infra::api::receiver::RtkFixedBaselineGuardPolicy::default(),
+                        );
+                    if fixed_guard.accepted {
+                        adjusted = conditioned_baseline;
+                    } else {
+                        audit.status =
+                            bijux_gnss_infra::api::receiver::RtkAmbiguityFixStatus::Failed;
+                        audit.reason = format!("fixed_guard:{}", fixed_guard.reasons.join(","));
+                        audit.fixed_count = 0;
+                    }
+                } else {
+                    audit.status = bijux_gnss_infra::api::receiver::RtkAmbiguityFixStatus::Failed;
+                    audit.reason = "baseline_conditioning_failed".to_string();
+                    audit.fixed_count = 0;
                 }
             }
             baseline_fixed = adjusted.fixed;
@@ -381,6 +399,11 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
             };
             baseline_lines.push(serde_json::to_string(&wrapped)?);
         }
+        let fix_audit = bijux_gnss_infra::api::receiver::RtkFixAuditV1 {
+            header: header.clone(),
+            payload: audit.clone(),
+        };
+        fix_audit_lines.push(serde_json::to_string(&fix_audit)?);
 
         let correction_input = bijux_gnss_infra::api::receiver::CorrectionInputArtifact {
             epoch_idx: rover.epoch_idx,
@@ -399,7 +422,7 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
             epoch_idx: rover.epoch_idx,
             mode: bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
             float_count: float_ambiguity_state.float_cycles.len(),
-            fixed_count: fix_result.fixed_count,
+            fixed_count: audit.fixed_count,
         };
         let ambiguity_wrapped = bijux_gnss_infra::api::core::ArtifactV1 {
             header: header.clone(),
