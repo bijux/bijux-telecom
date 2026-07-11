@@ -53,7 +53,7 @@ fn aligned_tracking_epoch(
         carrier_hz: Hertz(carrier_hz_from_doppler_hz(config.intermediate_freq_hz, 125.0)),
         carrier_phase_cycles: Cycles(carrier_phase_cycles),
         code_rate_hz: Hertz(config.code_freq_basis_hz),
-        code_phase_samples: Chips(code_phase_samples),
+        code_phase_samples: Chips(tracking_code_phase_samples(config, code_phase_samples)),
         lock: true,
         cn0_dbhz: OBSERVATION_CN0_DBHZ,
         pll_lock: true,
@@ -98,6 +98,14 @@ fn observation_track(sat: SatId, epochs: Vec<TrackEpoch>) -> TrackingResult {
         epochs,
         transitions: Vec::new(),
     }
+}
+
+fn tracking_code_phase_samples(config: &ReceiverPipelineConfig, aligned_code_phase_samples: f64) -> f64 {
+    if !aligned_code_phase_samples.is_finite() || aligned_code_phase_samples < 0.0 {
+        return aligned_code_phase_samples;
+    }
+    (samples_per_epoch(config) as f64 - aligned_code_phase_samples)
+        .rem_euclid(samples_per_epoch(config) as f64)
 }
 
 #[test]

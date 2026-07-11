@@ -219,8 +219,7 @@ fn synthetic_truth_track(
     signal: &bijux_gnss_receiver::api::sim::SyntheticSignalParams,
     whole_code_periods: u64,
 ) -> TrackingResult {
-    let samples_per_chip = config.sampling_freq_hz / config.code_freq_basis_hz;
-    let code_phase_samples = signal.code_phase_chips * samples_per_chip;
+    let code_phase_samples = tracking_code_phase_samples(config, signal.code_phase_chips);
     let carrier_phase_cycles = signal.carrier_phase_rad / std::f64::consts::TAU;
     let epoch = TrackEpoch {
         epoch: Epoch { index: 0 },
@@ -414,6 +413,16 @@ fn pseudorange_noise_for_satellite(satellites: &[SatellitePseudorangeNoise], sat
 
 fn signal_delay_alignment(whole_code_periods: u64) -> Option<SignalDelayAlignment> {
     Some(SignalDelayAlignment { whole_code_periods, source: "synthetic_truth".to_string() })
+}
+
+fn tracking_code_phase_samples(config: &ReceiverPipelineConfig, aligned_code_phase_chips: f64) -> f64 {
+    let samples_per_chip = config.sampling_freq_hz / config.code_freq_basis_hz;
+    let period_samples = samples_per_chip * config.code_length as f64;
+    let aligned_code_phase_samples = aligned_code_phase_chips * samples_per_chip;
+    if !aligned_code_phase_samples.is_finite() || aligned_code_phase_samples < 0.0 {
+        return aligned_code_phase_samples;
+    }
+    (period_samples - aligned_code_phase_samples).rem_euclid(period_samples)
 }
 
 fn make_ephemeris(prn: u8, omega0: f64, m0: f64) -> GpsEphemeris {

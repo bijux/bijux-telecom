@@ -50,7 +50,7 @@ fn aligned_tracking_epoch(
         carrier_hz: Hertz(0.0),
         carrier_phase_cycles: Cycles(0.0),
         code_rate_hz: Hertz(config.code_freq_basis_hz),
-        code_phase_samples: Chips(code_phase_samples),
+        code_phase_samples: Chips(tracking_code_phase_samples(config, code_phase_samples)),
         lock: true,
         cn0_dbhz: 48.0,
         pll_lock: true,
@@ -93,6 +93,14 @@ fn track_from_epoch(epoch: TrackEpoch) -> TrackingResult {
         epochs: vec![epoch],
         transitions: Vec::new(),
     }
+}
+
+fn tracking_code_phase_samples(config: &ReceiverPipelineConfig, aligned_code_phase_samples: f64) -> f64 {
+    if !aligned_code_phase_samples.is_finite() || aligned_code_phase_samples < 0.0 {
+        return aligned_code_phase_samples;
+    }
+    (samples_per_epoch(config) as f64 - aligned_code_phase_samples)
+        .rem_euclid(samples_per_epoch(config) as f64)
 }
 
 #[test]

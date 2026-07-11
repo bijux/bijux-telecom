@@ -256,8 +256,7 @@ fn synthetic_truth_track(
     whole_code_periods: u64,
     epoch_count: usize,
 ) -> TrackingResult {
-    let samples_per_chip = config.sampling_freq_hz / config.code_freq_basis_hz;
-    let code_phase_samples = signal.code_phase_chips * samples_per_chip;
+    let code_phase_samples = tracking_code_phase_samples(config, signal.code_phase_chips);
     let sample_step = (config.sampling_freq_hz * 0.001).round() as u64;
     let base_carrier_phase_cycles = signal.carrier_phase_rad / std::f64::consts::TAU;
 
@@ -333,4 +332,14 @@ fn synthetic_truth_track(
         epochs,
         transitions: Vec::new(),
     }
+}
+
+fn tracking_code_phase_samples(config: &ReceiverPipelineConfig, aligned_code_phase_chips: f64) -> f64 {
+    let samples_per_chip = config.sampling_freq_hz / config.code_freq_basis_hz;
+    let period_samples = samples_per_chip * config.code_length as f64;
+    let aligned_code_phase_samples = aligned_code_phase_chips * samples_per_chip;
+    if !aligned_code_phase_samples.is_finite() || aligned_code_phase_samples < 0.0 {
+        return aligned_code_phase_samples;
+    }
+    (period_samples - aligned_code_phase_samples).rem_euclid(period_samples)
 }
