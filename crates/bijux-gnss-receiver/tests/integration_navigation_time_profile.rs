@@ -7,7 +7,10 @@ use bijux_gnss_receiver::api::sim::{
     summarize_truth_guided_pvt_time_profile, SyntheticPvtTimeTrend,
 };
 
-use navigation_time_profile::{build_navigation_time_cases, truth_guided_time_profile_cases};
+use navigation_time_profile::{
+    build_navigation_time_case, build_navigation_time_cases, navigation_time_profile,
+    truth_guided_time_profile_cases,
+};
 
 fn navigation_time_profile_report() -> bijux_gnss_receiver::api::sim::SyntheticPvtTimeProfileReport
 {
@@ -84,4 +87,65 @@ fn navigation_time_profile_identifies_diverging_accuracy_runs() {
         point.last_window_mean_position_error_3d_m > point.first_window_mean_position_error_3d_m,
         "{report:?}"
     );
+}
+
+#[test]
+fn navigation_time_profile_requires_minimum_long_run_duration() {
+    let short_duration_case = build_navigation_time_case(navigation_time_profile(
+        "short_duration_navigation_accuracy",
+        0.0,
+        4.0,
+        100_000.0,
+        0.1,
+        5,
+    ));
+    let report = summarize_truth_guided_pvt_time_profile(
+        &truth_guided_time_profile_cases(&[short_duration_case]),
+        "navigation_time_profile",
+    );
+    let point = report.points.first().expect("short duration time profile point");
+
+    assert!(!point.truth_coverage_ready, "{report:?}");
+    assert!(
+        point
+            .truth_coverage_issues
+            .iter()
+            .any(|issue| issue.code == "insufficient_time_profile_duration"),
+        "{report:?}"
+    );
+    assert!(!point.ready, "{report:?}");
+}
+
+#[test]
+fn navigation_time_profile_requires_minimum_epoch_count() {
+    let short_epoch_case = build_navigation_time_case(navigation_time_profile(
+        "short_epoch_navigation_accuracy",
+        0.0,
+        4.0,
+        100_000.0,
+        0.5,
+        4,
+    ));
+    let report = summarize_truth_guided_pvt_time_profile(
+        &truth_guided_time_profile_cases(&[short_epoch_case]),
+        "navigation_time_profile",
+    );
+    let point = report.points.first().expect("short epoch time profile point");
+
+    assert!(!point.truth_coverage_ready, "{report:?}");
+    assert!(
+        point
+            .truth_coverage_issues
+            .iter()
+            .any(|issue| issue.code == "insufficient_time_profile_truth_epochs"),
+        "{report:?}"
+    );
+    assert!(
+        point
+            .truth_coverage_issues
+            .iter()
+            .any(|issue| issue.code == "insufficient_time_profile_accuracy_epochs"),
+        "{report:?}"
+    );
+    assert!(!point.ready, "{report:?}");
 }
