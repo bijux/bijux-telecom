@@ -425,7 +425,7 @@ impl PositionSolver {
             v.push(*residual_m);
         }
 
-        let dops = compute_dops(&h);
+        let dops = compute_dops([x, y, z], &h);
         let post_fit_residual_rms_m = if !v.is_empty() {
             let sum = v.iter().map(|r| r * r).sum::<f64>();
             (sum / v.len() as f64).sqrt()
@@ -447,10 +447,12 @@ impl PositionSolver {
                 } else {
                     0.0
                 };
-                let var_x = cov[0][0] * sigma2;
-                let var_y = cov[1][1] * sigma2;
-                let var_z = cov[2][2] * sigma2;
-                ((var_x + var_y).max(0.0).sqrt(), var_z.max(0.0).sqrt())
+                let covariance_xyz = [
+                    [cov[0][0] * sigma2, cov[0][1] * sigma2, cov[0][2] * sigma2],
+                    [cov[1][0] * sigma2, cov[1][1] * sigma2, cov[1][2] * sigma2],
+                    [cov[2][0] * sigma2, cov[2][1] * sigma2, cov[2][2] * sigma2],
+                ];
+                covariance_horizontal_vertical([x, y, z], covariance_xyz).unwrap_or((0.0, 0.0))
             })
             .unwrap_or((0.0, 0.0));
 
@@ -1242,17 +1244,8 @@ pub fn invert_4x4(a: [[f64; 4]; 4]) -> Option<[[f64; 4]; 4]> {
 }
 
 fn compute_pdop(h: &[[f64; 4]]) -> Option<f64> {
-    let mut n = [[0.0_f64; 4]; 4];
-    for row in h {
-        for r in 0..4 {
-            for c in 0..4 {
-                n[r][c] += row[r] * row[c];
-            }
-        }
-    }
-    let inv = invert_4x4(n)?;
-    let pdop = (inv[0][0] + inv[1][1] + inv[2][2]).sqrt();
-    Some(pdop)
+    let inv = normal_matrix_inverse(h)?;
+    Some(position_covariance_trace(inv).sqrt())
 }
 
 pub fn position_dops_from_satellite_positions(
@@ -1273,10 +1266,19 @@ pub fn position_dops_from_satellite_positions(
         }
         h.push([dx / range_m, dy / range_m, dz / range_m, 1.0]);
     }
-    compute_dops(&h)
+    compute_dops(receiver_ecef_m, &h)
 }
 
-fn compute_dops(h: &[[f64; 4]]) -> Option<PositionDops> {
+fn compute_dops(receiver_ecef_m: [f64; 3], h: &[[f64; 4]]) -> Option<PositionDops> {
+    let inv = normal_matrix_inverse(h)?;
+    let pdop = position_covariance_trace(inv).sqrt();
+    let tdop = inv[3][3].max(0.0).sqrt();
+    let gdop = (pdop.powi(2) + tdop.powi(2)).sqrt();
+    let (hdop, vdop) = local_horizontal_vertical_dops(receiver_ecef_m, inv)?;
+    Some(PositionDops { pdop, hdop, vdop, gdop, tdop })
+}
+
+fn normal_matrix_inverse(h: &[[f64; 4]]) -> Option<[[f64; 4]; 4]> {
     let mut n = [[0.0_f64; 4]; 4];
     for row in h {
         for r in 0..4 {
@@ -1285,13 +1287,81 @@ fn compute_dops(h: &[[f64; 4]]) -> Option<PositionDops> {
             }
         }
     }
-    let inv = invert_4x4(n)?;
-    let hdop = (inv[0][0] + inv[1][1]).max(0.0).sqrt();
-    let vdop = inv[2][2].max(0.0).sqrt();
-    let tdop = inv[3][3].max(0.0).sqrt();
-    let pdop = (hdop.powi(2) + vdop.powi(2)).sqrt();
-    let gdop = (pdop.powi(2) + tdop.powi(2)).sqrt();
-    Some(PositionDops { pdop, hdop, vdop, gdop, tdop })
+    invert_4x4(n)
+}
+
+fn position_covariance_trace(inv: [[f64; 4]; 4]) -> f64 {
+    (inv[0][0] + inv[1][1] + inv[2][2]).max(0.0)
+}
+
+fn local_horizontal_vertical_dops(
+    receiver_ecef_m: [f64; 3],
+    inv: [[f64; 4]; 4],
+) -> Option<(f64, f64)> {
+    let covariance_xyz = [
+        [inv[0][0], inv[0][1], inv[0][2]],
+        [inv[1][0], inv[1][1], inv[1][2]],
+        [inv[2][0], inv[2][1], inv[2][2]],
+    ];
+    covariance_horizontal_vertical(receiver_ecef_m, covariance_xyz)
+}
+
+fn covariance_horizontal_vertical(
+    receiver_ecef_m: [f64; 3],
+    covariance_xyz: [[f64; 3]; 3],
+) -> Option<(f64, f64)> {
+    let covariance_enu = ecef_covariance_to_enu(receiver_ecef_m, covariance_xyz)?;
+    let horizontal = (covariance_enu[0][0] + covariance_enu[1][1]).max(0.0).sqrt();
+    let vertical = covariance_enu[2][2].max(0.0).sqrt();
+    Some((horizontal, vertical))
+}
+
+fn ecef_covariance_to_enu(
+    receiver_ecef_m: [f64; 3],
+    covariance_xyz: [[f64; 3]; 3],
+) -> Option<[[f64; 3]; 3]> {
+    let receiver_radius_m = receiver_ecef_m
+        .iter()
+        .map(|component| component * component)
+        .sum::<f64>()
+        .sqrt();
+    if !receiver_radius_m.is_finite() || receiver_radius_m <= 0.0 {
+        return None;
+    }
+
+    let (lat_deg, lon_deg, _alt_m) =
+        ecef_to_geodetic(receiver_ecef_m[0], receiver_ecef_m[1], receiver_ecef_m[2]);
+    if !lat_deg.is_finite() || !lon_deg.is_finite() {
+        return None;
+    }
+    let rotation = ecef_to_enu_rotation(lat_deg.to_radians(), lon_deg.to_radians());
+
+    let mut covariance_enu = [[0.0_f64; 3]; 3];
+    for row in 0..3 {
+        for col in 0..3 {
+            for inner_row in 0..3 {
+                for inner_col in 0..3 {
+                    covariance_enu[row][col] += rotation[row][inner_row]
+                        * covariance_xyz[inner_row][inner_col]
+                        * rotation[col][inner_col];
+                }
+            }
+        }
+    }
+    Some(covariance_enu)
+}
+
+fn ecef_to_enu_rotation(lat_rad: f64, lon_rad: f64) -> [[f64; 3]; 3] {
+    let sin_lat = lat_rad.sin();
+    let cos_lat = lat_rad.cos();
+    let sin_lon = lon_rad.sin();
+    let cos_lon = lon_rad.cos();
+
+    [
+        [-sin_lon, cos_lon, 0.0],
+        [-sin_lat * cos_lon, -sin_lat * sin_lon, cos_lat],
+        [cos_lat * cos_lon, cos_lat * sin_lon, sin_lat],
+    ]
 }
 
 pub fn ecef_to_geodetic(x: f64, y: f64, z: f64) -> (f64, f64, f64) {

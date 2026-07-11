@@ -11,6 +11,34 @@ fn satellite_positions_ecef(geodetic_points: &[(f64, f64, f64)]) -> Vec<[f64; 3]
         .collect()
 }
 
+fn enu_offset_satellite_positions(
+    receiver_lat_deg: f64,
+    receiver_lon_deg: f64,
+    receiver_alt_m: f64,
+    enu_offsets_m: &[[f64; 3]],
+) -> Vec<[f64; 3]> {
+    let (rx_x_m, rx_y_m, rx_z_m) = geodetic_to_ecef(receiver_lat_deg, receiver_lon_deg, receiver_alt_m);
+    let lat = receiver_lat_deg.to_radians();
+    let lon = receiver_lon_deg.to_radians();
+    let sin_lat = lat.sin();
+    let cos_lat = lat.cos();
+    let sin_lon = lon.sin();
+    let cos_lon = lon.cos();
+
+    enu_offsets_m
+        .iter()
+        .map(|offset| {
+            let east_m = offset[0];
+            let north_m = offset[1];
+            let up_m = offset[2];
+            let dx_m = -sin_lon * east_m - sin_lat * cos_lon * north_m + cos_lat * cos_lon * up_m;
+            let dy_m = cos_lon * east_m - sin_lat * sin_lon * north_m + cos_lat * sin_lon * up_m;
+            let dz_m = cos_lat * north_m + sin_lat * up_m;
+            [rx_x_m + dx_m, rx_y_m + dy_m, rx_z_m + dz_m]
+        })
+        .collect()
+}
+
 #[test]
 fn geometry_dops_require_four_satellites() {
     let receiver_ecef_m = {
@@ -59,15 +87,21 @@ fn geometry_dops_worsen_when_satellites_cluster() {
 
 #[test]
 fn geometry_dops_match_regular_tetrahedron_reference() {
-    let receiver_ecef_m = [0.0, 0.0, 0.0];
+    let receiver_lat_deg = 37.0;
+    let receiver_lon_deg = -122.0;
+    let receiver_alt_m = 10.0;
+    let receiver_ecef_m = {
+        let (x_m, y_m, z_m) = geodetic_to_ecef(receiver_lat_deg, receiver_lon_deg, receiver_alt_m);
+        [x_m, y_m, z_m]
+    };
     let radius_m = 20_200_000.0;
     let scale = radius_m / 3.0_f64.sqrt();
-    let satellites = vec![
+    let satellites = enu_offset_satellite_positions(receiver_lat_deg, receiver_lon_deg, receiver_alt_m, &[
         [scale, scale, scale],
         [scale, -scale, -scale],
         [-scale, scale, -scale],
         [-scale, -scale, scale],
-    ];
+    ]);
 
     let dops = position_dops_from_satellite_positions(receiver_ecef_m, &satellites)
         .expect("tetrahedron dops");
