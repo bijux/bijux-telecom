@@ -102,11 +102,30 @@ struct PositionEstimate {
 }
 
 #[derive(Debug, Clone)]
+struct WorkingSetResidual {
+    sat: SatId,
+    residual_m: f64,
+    base_weight: f64,
+    effective_weight: f64,
+}
+
+#[derive(Debug, Clone)]
 struct SatelliteGeometry {
     observation: PositionObservation,
     state: GpsSatState,
     iono_delay_m: f64,
     tropo_delay_m: f64,
+}
+
+#[derive(Debug, Clone)]
+struct WorkingSetSolution {
+    estimate: PositionEstimate,
+    geometry: Vec<SatelliteGeometry>,
+    residuals: Vec<WorkingSetResidual>,
+    covariance: Option<[[f64; 4]; 4]>,
+    covariance_symmetrized: bool,
+    covariance_clamped: bool,
+    covariance_max_variance: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -227,117 +246,40 @@ impl PositionSolver {
                 rejected,
             ));
         }
-        let mut estimate =
+        let initial_estimate =
             PositionEstimate { ecef_x_m: x, ecef_y_m: y, ecef_z_m: z, clock_bias_s: cb };
-        let mut used =
-            resolve_satellite_geometry(&inputs, estimate, klobuchar, self.apply_troposphere)
-                .ok_or_else(|| {
-                    position_solve_refusal(
-                        PositionSolveRefusalKind::SolverFailure,
-                        sat_count,
-                        inputs.len(),
-                        rejected.clone(),
-                    )
-                })?;
-        let mut residuals = Vec::new();
-        let mut cov = None;
-        let mut cov_symmetrized = false;
-        let mut cov_clamped = false;
-        let mut cov_max_variance = None;
-        for _ in 0..self.max_iterations {
-            if used.len() < 4 {
-                return Err(position_solve_refusal(
-                    PositionSolveRefusalKind::InsufficientUsableSatellites,
-                    sat_count,
-                    used.len(),
-                    rejected.clone(),
-                ));
-            }
-            let mut h = Vec::new();
-            let mut v = Vec::new();
-            residuals.clear();
-            for geometry in &used {
-                let (residual_m, design_row) = linearized_pseudorange_row(estimate, geometry);
-                residuals.push((geometry.observation.sat, residual_m));
-                h.push(design_row);
-                v.push(residual_m);
-            }
-
-            let mut weights =
-                if self.robust { huber_weights(&v, self.huber_k) } else { vec![1.0; v.len()] };
-            for (i, geometry) in used.iter().enumerate() {
-                if let Some(w) = weights.get_mut(i) {
-                    *w *= geometry.observation.weight;
-                }
-            }
-            let Some((dx, dy, dz, dcb, cov_out)) = solve_weighted_normal_eq(&h, &v, &weights)
-            else {
-                return Err(position_solve_refusal(
+        let working_set =
+            self.solve_working_set(&inputs, initial_estimate, klobuchar).ok_or_else(|| {
+                position_solve_refusal(
                     PositionSolveRefusalKind::SolverFailure,
                     sat_count,
-                    used.len(),
+                    inputs.len(),
                     rejected.clone(),
-                ));
-            };
-            let (cov_out, sym, clamp, max_var) = sanitize_covariance(cov_out);
-            cov_symmetrized |= sym;
-            cov_clamped |= clamp;
-            if let Some(max_var) = max_var {
-                cov_max_variance =
-                    Some(cov_max_variance.map(|v: f64| v.max(max_var)).unwrap_or(max_var));
-            }
-            cov = Some(cov_out);
-            x += dx;
-            y += dy;
-            z += dz;
-            cb += dcb / 299_792_458.0;
-            estimate = PositionEstimate { ecef_x_m: x, ecef_y_m: y, ecef_z_m: z, clock_bias_s: cb };
-            if (dx * dx + dy * dy + dz * dz).sqrt() < self.convergence_m {
-                break;
-            }
-            used = resolve_satellite_geometry(&inputs, estimate, klobuchar, self.apply_troposphere)
-                .ok_or_else(|| {
-                    position_solve_refusal(
-                        PositionSolveRefusalKind::SolverFailure,
-                        sat_count,
-                        inputs.len(),
-                        rejected.clone(),
-                    )
-                })?;
-        }
-
-        let final_estimate = estimate;
-        used =
-            resolve_satellite_geometry(&inputs, final_estimate, klobuchar, self.apply_troposphere)
-                .ok_or_else(|| {
-                    position_solve_refusal(
-                        PositionSolveRefusalKind::SolverFailure,
-                        sat_count,
-                        inputs.len(),
-                        rejected.clone(),
-                    )
-                })?;
-        if used.len() < 4 {
-            return Err(position_solve_refusal(
-                PositionSolveRefusalKind::InsufficientUsableSatellites,
-                sat_count,
-                used.len(),
-                rejected.clone(),
-            ));
-        }
+                )
+            })?;
+        x = working_set.estimate.ecef_x_m;
+        y = working_set.estimate.ecef_y_m;
+        z = working_set.estimate.ecef_z_m;
+        cb = working_set.estimate.clock_bias_s;
 
         let mut filtered = Vec::new();
-        for geometry in &used {
-            let (res, _design_row) = linearized_pseudorange_row(final_estimate, geometry);
-            let sigma_m = (1.0 / geometry.observation.weight.max(1e-6)).sqrt();
-            let norm = res / sigma_m;
-            if res.abs() > self.residual_gate_m || (norm * norm) > self.chi_square_gate {
+        for (geometry, residual) in working_set.geometry.iter().zip(&working_set.residuals) {
+            let sigma_m = (1.0 / residual.base_weight.max(1e-6)).sqrt();
+            let norm = residual.residual_m / sigma_m;
+            if residual.residual_m.abs() > self.residual_gate_m
+                || (norm * norm) > self.chi_square_gate
+            {
                 rejected.push((
                     geometry.observation.sat,
                     bijux_gnss_core::api::MeasurementRejectReason::Outlier,
                 ));
             } else {
-                filtered.push((geometry.observation.clone(), geometry.state.clone(), res));
+                filtered.push((
+                    geometry.observation.clone(),
+                    geometry.state.clone(),
+                    residual.residual_m,
+                    residual.effective_weight,
+                ));
             }
         }
 
@@ -350,13 +292,14 @@ impl PositionSolver {
             ));
         }
 
+        let final_estimate = working_set.estimate;
         let mut separation_max = None;
         let mut separation_suspect = None;
         if self.raim && filtered.len() >= 5 {
             let (worst_idx, worst_res) = filtered
                 .iter()
                 .enumerate()
-                .map(|(i, (_, _, r))| (i, r.abs()))
+                .map(|(i, (_, _, residual_m, _))| (i, residual_m.abs()))
                 .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
                 .unwrap_or((0, 0.0));
             if worst_res > self.residual_gate_m {
@@ -375,7 +318,7 @@ impl PositionSolver {
                 }
                 let mut h_sep = Vec::new();
                 let mut v_sep = Vec::new();
-                for (_obs, state, res) in &subset {
+                for (_obs, state, residual_m, _effective_weight) in &subset {
                     let dx = final_estimate.ecef_x_m - state.x_m;
                     let dy = final_estimate.ecef_y_m - state.y_m;
                     let dz = final_estimate.ecef_z_m - state.z_m;
@@ -384,7 +327,7 @@ impl PositionSolver {
                     let hy = dy / range;
                     let hz = dz / range;
                     h_sep.push([hx, hy, hz, 1.0]);
-                    v_sep.push(*res);
+                    v_sep.push(*residual_m);
                 }
                 if let Some((dx, dy, dz, _dcb, _)) =
                     solve_weighted_normal_eq(&h_sep, &v_sep, &vec![1.0; v_sep.len()])
@@ -400,7 +343,7 @@ impl PositionSolver {
 
         let mut h = Vec::new();
         let mut v = Vec::new();
-        for (_obs, state, res) in &filtered {
+        for (_obs, state, residual_m, _effective_weight) in &filtered {
             let dx = final_estimate.ecef_x_m - state.x_m;
             let dy = final_estimate.ecef_y_m - state.y_m;
             let dz = final_estimate.ecef_z_m - state.z_m;
@@ -409,7 +352,7 @@ impl PositionSolver {
             let hy = dy / range;
             let hz = dz / range;
             h.push([hx, hy, hz, 1.0]);
-            v.push(*res);
+            v.push(*residual_m);
         }
 
         let dops = compute_dops(&h);
@@ -422,7 +365,8 @@ impl PositionSolver {
 
         let (lat, lon, alt) = ecef_to_geodetic(x, y, z);
 
-        let (sigma_h_m, sigma_v_m) = cov
+        let (sigma_h_m, sigma_v_m) = working_set
+            .covariance
             .map(|cov| {
                 let sigma2 = if !v.is_empty() {
                     let sum = v.iter().map(|r| r * r).sum::<f64>();
@@ -455,13 +399,18 @@ impl PositionSolver {
             rms_m: rms,
             sigma_h_m: Some(sigma_h_m),
             sigma_v_m: Some(sigma_v_m),
-            residuals: filtered.iter().map(|(o, _, r)| (o.sat, *r, o.weight)).collect(),
+            residuals: filtered
+                .iter()
+                .map(|(observation, _state, residual_m, effective_weight)| {
+                    (observation.sat, *residual_m, *effective_weight)
+                })
+                .collect(),
             rejected,
             separation_max_m: separation_max,
             separation_suspect,
-            covariance_symmetrized: cov_symmetrized,
-            covariance_clamped: cov_clamped,
-            covariance_max_variance: cov_max_variance,
+            covariance_symmetrized: working_set.covariance_symmetrized,
+            covariance_clamped: working_set.covariance_clamped,
+            covariance_max_variance: working_set.covariance_max_variance,
             sat_count: observations.len(),
             used_sat_count: filtered.len(),
             rejected_sat_count,
@@ -738,6 +687,123 @@ fn sanitize_covariance(mut cov: [[f64; 4]; 4]) -> ([[f64; 4]; 4], bool, bool, Op
         i += 1;
     }
     (cov, sym, clamp, max_var)
+}
+
+impl PositionSolver {
+    fn solve_working_set(
+        &self,
+        inputs: &[PositionSolveInput],
+        initial_estimate: PositionEstimate,
+        klobuchar: Option<&KlobucharCoefficients>,
+    ) -> Option<WorkingSetSolution> {
+        let mut estimate = initial_estimate;
+        let mut geometry =
+            resolve_satellite_geometry(inputs, estimate, klobuchar, self.apply_troposphere)?;
+        let mut covariance = None;
+        let mut covariance_symmetrized = false;
+        let mut covariance_clamped = false;
+        let mut covariance_max_variance = None;
+
+        for _ in 0..self.max_iterations {
+            if geometry.len() < 4 {
+                return None;
+            }
+
+            let mut h = Vec::with_capacity(geometry.len());
+            let mut residual_values = Vec::with_capacity(geometry.len());
+            for satellite_geometry in &geometry {
+                let (residual_m, design_row) =
+                    linearized_pseudorange_row(estimate, satellite_geometry);
+                residual_values.push(residual_m);
+                h.push(design_row);
+            }
+
+            let weights = self.measurement_weights(&geometry, &residual_values);
+            let (dx, dy, dz, dcb, covariance_out) =
+                solve_weighted_normal_eq(&h, &residual_values, &weights)?;
+            let (covariance_out, symmetrized, clamped, max_variance) =
+                sanitize_covariance(covariance_out);
+            covariance_symmetrized |= symmetrized;
+            covariance_clamped |= clamped;
+            if let Some(max_variance) = max_variance {
+                covariance_max_variance = Some(
+                    covariance_max_variance
+                        .map(|running_max: f64| running_max.max(max_variance))
+                        .unwrap_or(max_variance),
+                );
+            }
+            covariance = Some(covariance_out);
+
+            estimate.ecef_x_m += dx;
+            estimate.ecef_y_m += dy;
+            estimate.ecef_z_m += dz;
+            estimate.clock_bias_s += dcb / SPEED_OF_LIGHT_MPS;
+
+            if (dx * dx + dy * dy + dz * dz).sqrt() < self.convergence_m {
+                break;
+            }
+
+            geometry =
+                resolve_satellite_geometry(inputs, estimate, klobuchar, self.apply_troposphere)?;
+        }
+
+        geometry =
+            resolve_satellite_geometry(inputs, estimate, klobuchar, self.apply_troposphere)?;
+        if geometry.len() < 4 {
+            return None;
+        }
+        let residuals = self.finalize_working_set_residuals(estimate, &geometry);
+
+        Some(WorkingSetSolution {
+            estimate,
+            geometry,
+            residuals,
+            covariance,
+            covariance_symmetrized,
+            covariance_clamped,
+            covariance_max_variance,
+        })
+    }
+
+    fn finalize_working_set_residuals(
+        &self,
+        estimate: PositionEstimate,
+        geometry: &[SatelliteGeometry],
+    ) -> Vec<WorkingSetResidual> {
+        let residual_values = geometry
+            .iter()
+            .map(|satellite_geometry| linearized_pseudorange_row(estimate, satellite_geometry).0)
+            .collect::<Vec<_>>();
+        let weights = self.measurement_weights(geometry, &residual_values);
+
+        geometry
+            .iter()
+            .zip(residual_values)
+            .zip(weights)
+            .map(|((satellite_geometry, residual_m), effective_weight)| WorkingSetResidual {
+                sat: satellite_geometry.observation.sat,
+                residual_m,
+                base_weight: satellite_geometry.observation.weight,
+                effective_weight,
+            })
+            .collect()
+    }
+
+    fn measurement_weights(
+        &self,
+        geometry: &[SatelliteGeometry],
+        residuals: &[f64],
+    ) -> Vec<f64> {
+        let mut weights = if self.robust {
+            huber_weights(residuals, self.huber_k)
+        } else {
+            vec![1.0; residuals.len()]
+        };
+        for (weight, satellite_geometry) in weights.iter_mut().zip(geometry) {
+            *weight *= satellite_geometry.observation.weight;
+        }
+        weights
+    }
 }
 
 type NormalEqSolution = (f64, f64, f64, f64, [[f64; 4]; 4]);
