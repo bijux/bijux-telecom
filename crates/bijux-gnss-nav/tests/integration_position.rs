@@ -4,10 +4,13 @@ mod support;
 use bijux_gnss_core::api::{Constellation, GpsTime, SatId, Seconds};
 use bijux_gnss_nav::api::{
     ephemerides_from_decoded_gps_l1ca_lnav, geodetic_to_ecef, parse_rinex_nav, sat_state_gps_l1ca,
-    write_rinex_nav, Ephemeris, GpsEphemeris, GpsL1CaHowWord, GpsL1CaLnavDecodedSubframe,
-    GpsL1CaLnavSubframe1Clock, GpsL1CaLnavSubframe2Orbit, GpsL1CaLnavSubframe3Orbit,
-    GpsL1CaLnavSubframeAlignment, GpsL1CaTlmWord, GpsL1CaWordParitySummary, PositionObservation,
-    PositionSolver,
+    sat_state_galileo_e1, write_rinex_nav, Ephemeris, GalileoBroadcastNavigationData,
+    GalileoClockCorrection, GalileoEphemeris, GalileoIonosphericCorrection,
+    GalileoIonosphericDisturbanceFlags, GalileoSignalHealth, GalileoSystemTime, GpsEphemeris,
+    GpsL1CaHowWord, GpsL1CaLnavDecodedSubframe, GpsL1CaLnavSubframe1Clock,
+    GpsL1CaLnavSubframe2Orbit, GpsL1CaLnavSubframe3Orbit, GpsL1CaLnavSubframeAlignment,
+    GpsL1CaTlmWord, GpsL1CaWordParitySummary, PositionBroadcastNavigation, PositionObservation,
+    PositionSolver, position_broadcast_navigation_from_gps_ephemerides,
 };
 use support::position_truth::{
     add_klobuchar_delay_to_observations, add_saastamoinen_delay_to_observations,
@@ -15,7 +18,8 @@ use support::position_truth::{
     four_satellite_position_scenario_with_ephemerides, iterative_pseudorange_residual_m,
     iterative_pseudorange_residual_without_earth_rotation_m, sample_ephemerides,
     sample_ephemerides_with_clock_parameters, sample_ephemeris, sample_klobuchar_coefficients,
-    timed_position_observation, BroadcastClockParameters, SyntheticPositionScenario,
+    timed_position_observation, timed_position_observation_from_truth, BroadcastClockParameters,
+    SyntheticPositionScenario,
 };
 
 fn broadcast_clock_fixture_parameters() -> [(u8, BroadcastClockParameters); 4] {
@@ -76,6 +80,88 @@ fn position_error_3d_m(
     let dy = ecef_y_m - truth_ecef_m.1;
     let dz = ecef_z_m - truth_ecef_m.2;
     (dx * dx + dy * dy + dz * dz).sqrt()
+}
+
+fn sample_galileo_navigation(prn: u8, omega0: f64, m0: f64) -> GalileoBroadcastNavigationData {
+    GalileoBroadcastNavigationData {
+        sat: SatId { constellation: Constellation::Galileo, prn },
+        iodnav: prn as u16,
+        gst: GalileoSystemTime { week: 2222, tow_s: 504_018 },
+        sisa_e1_e5b: 77,
+        signal_health: GalileoSignalHealth {
+            e5b_signal_health: 0,
+            e1b_signal_health: 0,
+            e5b_data_valid: true,
+            e1b_data_valid: true,
+        },
+        clock: GalileoClockCorrection {
+            t0c_s: 504_018.0,
+            af0: 0.0,
+            af1: 0.0,
+            af2: 0.0,
+            bgd_e1_e5a_s: 0.0,
+            bgd_e1_e5b_s: 0.0,
+        },
+        ephemeris: GalileoEphemeris {
+            sat: SatId { constellation: Constellation::Galileo, prn },
+            iodnav: prn as u16,
+            toe_s: 504_000.0,
+            sqrt_a: 5_440.612_319,
+            e: 0.001_23,
+            i0: 0.953,
+            idot: -2.1e-10,
+            omega0,
+            omegadot: -5.8e-9,
+            w: -0.37,
+            m0,
+            delta_n: 4.7e-9,
+            cuc: -3.2e-6,
+            cus: 4.1e-6,
+            crc: 178.0,
+            crs: -91.0,
+            cic: 1.9e-7,
+            cis: -2.4e-7,
+        },
+        ionosphere: GalileoIonosphericCorrection {
+            ai0: 0.0,
+            ai1: 0.0,
+            ai2: 0.0,
+            disturbance_flags: GalileoIonosphericDisturbanceFlags {
+                region_1: false,
+                region_2: false,
+                region_3: false,
+                region_4: false,
+                region_5: false,
+            },
+        },
+    }
+}
+
+fn galileo_pseudorange_from_truth(
+    navigation: &GalileoBroadcastNavigationData,
+    truth_ecef_m: (f64, f64, f64),
+    t_rx_s: f64,
+    receiver_clock_bias_s: f64,
+    galileo_bias_s: f64,
+) -> f64 {
+    let mut tau = 0.07;
+    let mut pseudorange_m = 0.0;
+    for _ in 0..10 {
+        let state = sat_state_galileo_e1(navigation, t_rx_s - tau, tau);
+        let dx = truth_ecef_m.0 - state.x_m;
+        let dy = truth_ecef_m.1 - state.y_m;
+        let dz = truth_ecef_m.2 - state.z_m;
+        let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
+        pseudorange_m = range_m
+            + (receiver_clock_bias_s + galileo_bias_s) * 299_792_458.0
+            - state.clock_correction.bias_s * 299_792_458.0;
+        let next_tau = pseudorange_m / 299_792_458.0;
+        if (next_tau - tau).abs() < 1.0e-12 {
+            break;
+        }
+        tau = next_tau;
+    }
+    pseudorange_m
 }
 
 #[test]
@@ -196,6 +282,68 @@ fn single_point_solver_recovers_receiver_clock_bias() {
     assert!((solution.ecef_y_m - scenario.truth_ecef_m.1).abs() < 5.0);
     assert!((solution.ecef_z_m - scenario.truth_ecef_m.2).abs() < 5.0);
     assert!((solution.clock_bias_s - scenario.receiver_clock_bias_s).abs() < 1.0e-9);
+}
+
+#[test]
+fn mixed_gps_galileo_solver_recovers_position_and_clock_split() {
+    let gps_ephemerides = sample_ephemerides();
+    let galileo_navigation = vec![
+        sample_galileo_navigation(19, 1.17, 0.84),
+        sample_galileo_navigation(24, -0.83, 1.52),
+    ];
+    let truth_ecef_m = geodetic_to_ecef(37.0, -122.0, 10.0);
+    let receiver_clock_bias_s = 2.75e-4;
+    let galileo_bias_s = -1.15e-6;
+    let t_rx_s = 504_018.07 + receiver_clock_bias_s;
+
+    let mut observations = gps_ephemerides
+        .iter()
+        .map(|ephemeris| {
+            timed_position_observation_from_truth(
+                ephemeris,
+                truth_ecef_m,
+                t_rx_s,
+                receiver_clock_bias_s,
+            )
+        })
+        .collect::<Vec<_>>();
+    observations.extend(galileo_navigation.iter().map(|navigation| {
+        let pseudorange_m = galileo_pseudorange_from_truth(
+            navigation,
+            truth_ecef_m,
+            t_rx_s,
+            receiver_clock_bias_s,
+            galileo_bias_s,
+        );
+        timed_position_observation(navigation.sat, pseudorange_m, t_rx_s)
+    }));
+
+    let mut navigation = position_broadcast_navigation_from_gps_ephemerides(&gps_ephemerides);
+    navigation.extend(
+        galileo_navigation
+            .iter()
+            .cloned()
+            .map(PositionBroadcastNavigation::Galileo),
+    );
+
+    let solution = PositionSolver::new()
+        .solve_wls_with_navigation_data(&observations, &navigation, t_rx_s)
+        .expect("mixed gps+galileo observations should solve");
+
+    assert_eq!(solution.clock_reference_constellation, Constellation::Gps);
+    assert_eq!(solution.used_sat_count, 6);
+    assert_eq!(solution.rejected_sat_count, 0);
+    assert!(solution.rejected.is_empty(), "unexpected rejections: {:?}", solution.rejected);
+    assert!(position_error_3d_m(
+        solution.ecef_x_m,
+        solution.ecef_y_m,
+        solution.ecef_z_m,
+        truth_ecef_m,
+    ) < 5.0);
+    assert!((solution.clock_bias_s - receiver_clock_bias_s).abs() < 1.0e-9);
+    assert_eq!(solution.inter_system_biases.len(), 1);
+    assert_eq!(solution.inter_system_biases[0].constellation, Constellation::Galileo);
+    assert!((solution.inter_system_biases[0].bias_s.0 - galileo_bias_s).abs() < 1.0e-9);
 }
 
 #[test]
