@@ -2,6 +2,8 @@
 
 use bijux_gnss_core::api::{ObsEpoch, ObsSatellite, SatId, SignalBand};
 
+use crate::corrections::iono_free_code::iono_free_code_from_pair;
+use crate::corrections::iono_free_phase::iono_free_phase_from_pair;
 use crate::corrections::Corrections;
 use crate::estimation::ekf::state::MeasurementKind;
 use crate::estimation::ekf::traits::MeasurementModel;
@@ -13,9 +15,10 @@ use super::models::PppCodeMeasurement;
 #[derive(Debug, Clone, Copy)]
 pub struct IonoFreeObservation {
     pub code_m: f64,
-    pub phase_m: f64,
-    pub f1_hz: f64,
-    pub f2_hz: f64,
+    pub phase_cycles: f64,
+    pub code_sigma_m: f64,
+    pub phase_sigma_cycles: f64,
+    pub phase_wavelength_m: f64,
     pub band_1: SignalBand,
     pub band_2: SignalBand,
 }
@@ -306,8 +309,7 @@ pub struct PppIonoFreePhaseMeasurement {
     pub ztd_index: Option<usize>,
     pub isb_index: Option<usize>,
     pub ambiguity_index: Option<usize>,
-    pub f1_hz: f64,
-    pub f2_hz: f64,
+    pub wavelength_m: f64,
     pub corr: Corrections,
 }
 
@@ -338,17 +340,15 @@ impl MeasurementModel for PppIonoFreePhaseMeasurement {
         let dy = rx[1] - self.sat_pos_m[1];
         let dz = rx[2] - self.sat_pos_m[2];
         let range = (dx * dx + dy * dy + dz * dz).sqrt();
-        let lambda_if = SPEED_OF_LIGHT_MPS
-            / ((self.f1_hz * self.f1_hz - self.f2_hz * self.f2_hz) / (self.f1_hz - self.f2_hz));
-        let mut pred = (range + SPEED_OF_LIGHT_MPS * (x[6] - self.sat_clock_s)) / lambda_if;
+        let mut pred = (range + SPEED_OF_LIGHT_MPS * (x[6] - self.sat_clock_s)) / self.wavelength_m;
         if let Some(idx) = self.ztd_index {
             if let Some(ztd) = x.get(idx) {
-                pred += *ztd / lambda_if;
+                pred += *ztd / self.wavelength_m;
             }
         }
         if let Some(idx) = self.isb_index {
             if let Some(isb) = x.get(idx) {
-                pred += SPEED_OF_LIGHT_MPS * isb / lambda_if;
+                pred += SPEED_OF_LIGHT_MPS * isb / self.wavelength_m;
             }
         }
         if let Some(idx) = self.ambiguity_index {
@@ -365,20 +365,18 @@ impl MeasurementModel for PppIonoFreePhaseMeasurement {
         let dy = x[1] - self.sat_pos_m[1];
         let dz = x[2] - self.sat_pos_m[2];
         let range = (dx * dx + dy * dy + dz * dz).sqrt().max(1.0);
-        let lambda_if = SPEED_OF_LIGHT_MPS
-            / ((self.f1_hz * self.f1_hz - self.f2_hz * self.f2_hz) / (self.f1_hz - self.f2_hz));
-        h[(0, 0)] = (dx / range) / lambda_if;
-        h[(0, 1)] = (dy / range) / lambda_if;
-        h[(0, 2)] = (dz / range) / lambda_if;
-        h[(0, 6)] = SPEED_OF_LIGHT_MPS / lambda_if;
+        h[(0, 0)] = (dx / range) / self.wavelength_m;
+        h[(0, 1)] = (dy / range) / self.wavelength_m;
+        h[(0, 2)] = (dz / range) / self.wavelength_m;
+        h[(0, 6)] = SPEED_OF_LIGHT_MPS / self.wavelength_m;
         if let Some(idx) = self.ztd_index {
             if idx < h.cols() {
-                h[(0, idx)] = 1.0 / lambda_if;
+                h[(0, idx)] = 1.0 / self.wavelength_m;
             }
         }
         if let Some(idx) = self.isb_index {
             if idx < h.cols() {
-                h[(0, idx)] = SPEED_OF_LIGHT_MPS / lambda_if;
+                h[(0, idx)] = SPEED_OF_LIGHT_MPS / self.wavelength_m;
             }
         }
         if let Some(idx) = self.ambiguity_index {
@@ -395,22 +393,33 @@ impl MeasurementModel for PppIonoFreePhaseMeasurement {
 
 pub fn iono_free_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<IonoFreeObservation> {
     let pair = select_dual_frequency_pair(obs, sat)?;
-    let f1 = pair.first.metadata.signal.carrier_hz.value();
-    let f2 = pair.second.metadata.signal.carrier_hz.value();
-    let f1_2 = f1 * f1;
-    let f2_2 = f2 * f2;
-    let denom = (f1_2 - f2_2).max(1.0);
-    let if_code = (f1_2 * pair.first.pseudorange_m.0 - f2_2 * pair.second.pseudorange_m.0) / denom;
-    let lambda1 = SPEED_OF_LIGHT_MPS / f1;
-    let lambda2 = SPEED_OF_LIGHT_MPS / f2;
-    let phi1_m = pair.first.carrier_phase_cycles.0 * lambda1;
-    let phi2_m = pair.second.carrier_phase_cycles.0 * lambda2;
-    let if_phase = (f1_2 * phi1_m - f2_2 * phi2_m) / denom;
+    let code = iono_free_code_from_pair(
+        obs.epoch_idx,
+        obs.t_rx_s.0,
+        sat,
+        pair.first.signal_id.band,
+        pair.second.signal_id.band,
+        Some(pair.first),
+        Some(pair.second),
+    );
+    let phase = iono_free_phase_from_pair(
+        obs.epoch_idx,
+        obs.t_rx_s.0,
+        sat,
+        pair.first.signal_id.band,
+        pair.second.signal_id.band,
+        Some(pair.first),
+        Some(pair.second),
+    );
+    if code.status != "ok" || phase.status != "ok" {
+        return None;
+    }
     Some(IonoFreeObservation {
-        code_m: if_code,
-        phase_m: if_phase,
-        f1_hz: f1,
-        f2_hz: f2,
+        code_m: code.code_m?,
+        phase_cycles: phase.phase_cycles?,
+        code_sigma_m: code.variance_m2?.sqrt(),
+        phase_sigma_cycles: phase.variance_cycles2?.sqrt(),
+        phase_wavelength_m: phase.narrow_lane_wavelength_m?,
         band_1: pair.first.signal_id.band,
         band_2: pair.second.signal_id.band,
     })
@@ -600,7 +609,9 @@ mod tests {
 
         assert_eq!(iono_free.band_1, bijux_gnss_core::api::SignalBand::L1);
         assert_eq!(iono_free.band_2, bijux_gnss_core::api::SignalBand::L2);
-        assert!((iono_free.phase_m - base_range_m).abs() < 1.0e-6);
+        assert!(
+            (iono_free.phase_cycles * iono_free.phase_wavelength_m - base_range_m).abs() < 1.0e-6
+        );
     }
 
     #[test]
@@ -629,7 +640,9 @@ mod tests {
 
         assert_eq!(iono_free.band_1, bijux_gnss_core::api::SignalBand::L1);
         assert_eq!(iono_free.band_2, bijux_gnss_core::api::SignalBand::L5);
-        assert!((iono_free.phase_m - base_range_m).abs() < 1.0e-6);
+        assert!(
+            (iono_free.phase_cycles * iono_free.phase_wavelength_m - base_range_m).abs() < 1.0e-6
+        );
     }
 
     #[test]
@@ -664,7 +677,12 @@ mod tests {
             - f2_2 * lambda2 * ambiguity_l2_cycles)
             / (f1_2 - f2_2);
 
-        assert!((iono_free.phase_m - (base_range_m + expected_ambiguity_m)).abs() < 1.0e-6);
+        assert!(
+            (iono_free.phase_cycles * iono_free.phase_wavelength_m
+                - (base_range_m + expected_ambiguity_m))
+                .abs()
+                < 1.0e-6
+        );
     }
 
     #[test]
@@ -699,7 +717,12 @@ mod tests {
             - f5_2 * lambda5 * ambiguity_l5_cycles)
             / (f1_2 - f5_2);
 
-        assert!((iono_free.phase_m - (base_range_m + expected_ambiguity_m)).abs() < 1.0e-6);
+        assert!(
+            (iono_free.phase_cycles * iono_free.phase_wavelength_m
+                - (base_range_m + expected_ambiguity_m))
+                .abs()
+                < 1.0e-6
+        );
     }
 
     #[test]
