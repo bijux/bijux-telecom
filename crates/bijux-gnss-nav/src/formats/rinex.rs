@@ -11,6 +11,8 @@ use time::{Date, Month, PrimitiveDateTime, Time};
 
 use bijux_gnss_core::api::ObsEpoch;
 
+use crate::models::atmosphere::KlobucharCoefficients;
+use crate::orbits::gps::GpsBroadcastNavigationData;
 use crate::orbits::gps::GpsEphemeris;
 
 fn write_header_line(writer: &mut BufWriter<File>, line: &str) -> Result<(), IoError> {
@@ -26,6 +28,7 @@ fn write_header_line(writer: &mut BufWriter<File>, line: &str) -> Result<(), IoE
 struct RinexNavHeader {
     version: f64,
     is_mixed: bool,
+    klobuchar: Option<KlobucharCoefficients>,
 }
 
 fn rinex_nav_float_regex() -> &'static Regex {
@@ -56,6 +59,8 @@ fn parse_rinex_nav_header(data: &str) -> Result<(RinexNavHeader, usize), ParseEr
     let mut has_end = false;
     let mut header = None;
     let mut header_line_count = 0usize;
+    let mut klobuchar_alpha = None;
+    let mut klobuchar_beta = None;
 
     for line in data.lines() {
         header_line_count += 1;
@@ -69,7 +74,28 @@ fn parse_rinex_nav_header(data: &str) -> Result<(RinexNavHeader, usize), ParseEr
                     message: format!("invalid RINEX NAV version '{}': {err}", &line[..9.min(line.len())]),
                 })?;
             has_type = line.contains("NAVIGATION DATA");
-            header = Some(RinexNavHeader { version, is_mixed: line.contains("M (MIXED)") });
+            header = Some(RinexNavHeader {
+                version,
+                is_mixed: line.contains("M (MIXED)"),
+                klobuchar: None,
+            });
+        }
+        if line.contains("ION ALPHA") {
+            klobuchar_alpha = Some(parse_rinex_klobuchar_header_fields(line, "ION ALPHA")?);
+        } else if line.contains("ION BETA") {
+            klobuchar_beta = Some(parse_rinex_klobuchar_header_fields(line, "ION BETA")?);
+        } else if line.contains("IONOSPHERIC CORR") {
+            match line.get(..4).unwrap_or_default().trim() {
+                "GPSA" => {
+                    klobuchar_alpha =
+                        Some(parse_rinex_klobuchar_header_fields(line, "GPSA IONOSPHERIC CORR")?);
+                }
+                "GPSB" => {
+                    klobuchar_beta =
+                        Some(parse_rinex_klobuchar_header_fields(line, "GPSB IONOSPHERIC CORR")?);
+                }
+                _ => {}
+            }
         }
         if line.contains("END OF HEADER") {
             has_end = true;
@@ -78,9 +104,37 @@ fn parse_rinex_nav_header(data: &str) -> Result<(RinexNavHeader, usize), ParseEr
     }
 
     match (header, has_type, has_end) {
-        (Some(header), true, true) => Ok((header, header_line_count)),
+        (Some(mut header), true, true) => {
+            header.klobuchar = match (klobuchar_alpha, klobuchar_beta) {
+                (Some(alpha), Some(beta)) => Some(KlobucharCoefficients::new(alpha, beta)),
+                (None, None) => None,
+                _ => {
+                    return Err(ParseError {
+                        message: "incomplete GPS Klobuchar coefficients in RINEX NAV header"
+                            .to_string(),
+                    });
+                }
+            };
+            Ok((header, header_line_count))
+        }
         _ => Err(ParseError { message: "invalid or incomplete RINEX NAV header".to_string() }),
     }
+}
+
+fn parse_rinex_klobuchar_header_fields(
+    line: &str,
+    label: &str,
+) -> Result<[f64; 4], ParseError> {
+    let fields = parse_rinex_numeric_fields(line)?;
+    if fields.len() < 4 {
+        return Err(ParseError {
+            message: format!(
+                "{label} requires 4 numeric fields, found {}",
+                fields.len()
+            ),
+        });
+    }
+    Ok([fields[0], fields[1], fields[2], fields[3]])
 }
 
 fn parse_rinex_epoch_utc(
@@ -324,6 +378,12 @@ fn parse_gps_rinex_nav_record(
 }
 
 pub fn parse_rinex_nav(data: &str) -> Result<Vec<GpsEphemeris>, ParseError> {
+    Ok(parse_rinex_broadcast_navigation(data)?.ephemerides)
+}
+
+pub fn parse_rinex_broadcast_navigation(
+    data: &str,
+) -> Result<GpsBroadcastNavigationData, ParseError> {
     let (header, header_line_count) = parse_rinex_nav_header(data)?;
     let lines = data.lines().skip(header_line_count).filter(|line| !line.trim().is_empty()).collect::<Vec<_>>();
     let mut ephemerides = Vec::new();
@@ -351,7 +411,7 @@ pub fn parse_rinex_nav(data: &str) -> Result<Vec<GpsEphemeris>, ParseError> {
         index += line_count;
     }
 
-    Ok(ephemerides)
+    Ok(GpsBroadcastNavigationData { ephemerides, klobuchar: header.klobuchar })
 }
 
 pub fn write_rinex_obs(path: &Path, epochs: &[ObsEpoch], _strict: bool) -> Result<(), IoError> {
@@ -423,9 +483,11 @@ pub fn parse_rinex_obs_header(data: &str) -> Result<(), ParseError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        format_rinex_nav_float, parse_rinex_epoch_utc, parse_rinex_float, parse_rinex_nav,
-        parse_rinex_nav_header, parse_rinex_numeric_fields, write_rinex_nav,
+        format_rinex_nav_float, parse_rinex_broadcast_navigation, parse_rinex_epoch_utc,
+        parse_rinex_float, parse_rinex_nav, parse_rinex_nav_header, parse_rinex_numeric_fields,
+        write_rinex_nav,
     };
+    use crate::models::atmosphere::KlobucharCoefficients;
     use bijux_gnss_core::api::{Constellation, SatId};
     use crate::orbits::gps::GpsEphemeris;
 
@@ -472,7 +534,50 @@ bijux-gnss                              PGM / RUN BY / DATE
 
         assert_eq!(header.version, 3.04);
         assert!(header.is_mixed);
+        assert_eq!(header.klobuchar, None);
         assert_eq!(line_count, 3);
+    }
+
+    #[test]
+    fn parse_rinex_nav_header_reads_rinex_2_klobuchar_coefficients() {
+        let data = "\
+     2.11           NAVIGATION DATA     G (GPS)             RINEX VERSION / TYPE
+bijux-gnss                              PGM / RUN BY / DATE
+ 1.2120D-08 1.4900D-08-5.9600D-08 1.1920D-07          ION ALPHA
+ 1.1670D+05-2.2940D+05-1.3110D+05 1.0490D+06          ION BETA
+                                                            END OF HEADER
+";
+
+        let (header, _) = parse_rinex_nav_header(data).expect("RINEX 2 header");
+
+        assert_eq!(
+            header.klobuchar,
+            Some(KlobucharCoefficients::new(
+                [0.1212e-7, 0.1490e-7, -0.5960e-7, 0.1192e-6],
+                [0.1167e6, -0.2294e6, -0.1311e6, 0.1049e7],
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_rinex_nav_header_reads_rinex_3_klobuchar_coefficients() {
+        let data = "\
+     3.04           NAVIGATION DATA     G (GPS)             RINEX VERSION / TYPE
+bijux-gnss                              PGM / RUN BY / DATE
+GPSA  1.2120D-08 1.4900D-08-5.9600D-08 1.1920D-07       IONOSPHERIC CORR
+GPSB  1.1670D+05-2.2940D+05-1.3110D+05 1.0490D+06       IONOSPHERIC CORR
+                                                            END OF HEADER
+";
+
+        let (header, _) = parse_rinex_nav_header(data).expect("RINEX 3 header");
+
+        assert_eq!(
+            header.klobuchar,
+            Some(KlobucharCoefficients::new(
+                [0.1212e-7, 0.1490e-7, -0.5960e-7, 0.1192e-6],
+                [0.1167e6, -0.2294e6, -0.1311e6, 0.1049e7],
+            ))
+        );
     }
 
     #[test]
@@ -569,6 +674,36 @@ bijux-gnss                              PGM / RUN BY / DATE
         assert_eq!(ephs.len(), 1);
         assert_eq!(ephs[0].week, 2209);
         assert_eq!(ephs[0].sat.prn, 1);
+    }
+
+    #[test]
+    fn parse_rinex_broadcast_navigation_returns_ephemerides_and_klobuchar() {
+        let data = "\
+     3.04           NAVIGATION DATA     G (GPS)             RINEX VERSION / TYPE
+bijux-gnss                              PGM / RUN BY / DATE
+GPSA  1.2120D-08 1.4900D-08-5.9600D-08 1.1920D-07       IONOSPHERIC CORR
+GPSB  1.1670D+05-2.2940D+05-1.3110D+05 1.0490D+06       IONOSPHERIC CORR
+                                                            END OF HEADER
+G01 2022 05 13 20 00 00-1.234567890123D-04 2.345678901234D-12 0.000000000000D+00
+    1.100000000000D+01 2.500000000000D+01 4.500000000000D-09 6.000000000000D-01
+    1.200000000000D-06 1.234567890123D-02 2.300000000000D-06 5.153795477500D+03
+    3.456000000000D+05 4.500000000000D-08 1.500000000000D+00 5.600000000000D-08
+    9.400000000000D-01 3.210000000000D+02 2.100000000000D-01-8.900000000000D-09
+    7.800000000000D-10 0.000000000000D+00 2.209000000000D+03 0.000000000000D+00
+    2.400000000000D+00 0.000000000000D+00-1.900000000000D-08 9.700000000000D+01
+    0.000000000000D+00 4.000000000000D+00 0.000000000000D+00 0.000000000000D+00
+";
+
+        let navigation = parse_rinex_broadcast_navigation(data).expect("broadcast navigation");
+
+        assert_eq!(navigation.ephemerides.len(), 1);
+        assert_eq!(
+            navigation.klobuchar,
+            Some(KlobucharCoefficients::new(
+                [0.1212e-7, 0.1490e-7, -0.5960e-7, 0.1192e-6],
+                [0.1167e6, -0.2294e6, -0.1311e6, 0.1049e7],
+            ))
+        );
     }
 
     #[test]
