@@ -208,7 +208,10 @@ pub fn validate_obs_epochs(epochs: &[ObsEpoch]) -> Result<(), String> {
 }
 
 fn known_doppler_model(model: &str) -> bool {
-    model == OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET
+    matches!(
+        model,
+        OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET | "unavailable"
+    )
 }
 
 fn known_observation_lock_state(state: &str) -> bool {
@@ -222,6 +225,7 @@ fn known_observation_lock_state(state: &str) -> bool {
             | "reacquired"
             | "cycle_slip"
             | "inactive"
+            | "imported"
     )
 }
 
@@ -346,6 +350,14 @@ mod tests {
 
         let error = validate_obs_epochs(&[epoch]).expect_err("unknown doppler model must fail");
         assert_eq!(error, "unknown doppler model");
+    }
+
+    #[test]
+    fn validate_obs_epochs_accepts_imported_observation_metadata() {
+        let mut epoch = observation_epoch_with_models_and_cn0("unavailable", 45.0);
+        epoch.sats[0].metadata.observation_lock_state = "imported".to_string();
+
+        validate_obs_epochs(&[epoch]).expect("imported observation metadata must validate");
     }
 
     #[test]
