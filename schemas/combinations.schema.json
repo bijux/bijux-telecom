@@ -23,6 +23,7 @@
     "f2_hz": { "type": "number" },
     "if_code_m": { "type": ["number", "null"] },
     "if_phase_m": { "type": ["number", "null"] },
+    "geometry_free_phase_m": { "type": ["number", "null"] },
     "wide_lane_cycles": { "type": ["number", "null"] },
     "narrow_lane_cycles": { "type": ["number", "null"] },
     "melbourne_wubbena_m": { "type": ["number", "null"] },
