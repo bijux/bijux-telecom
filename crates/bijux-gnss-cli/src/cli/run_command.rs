@@ -22,6 +22,7 @@ fn run_command(command: GnssCommand) -> Result<()> {
         cmd @ GnssCommand::ConfigSchema { .. } => handle_configschema(cmd),
         cmd @ GnssCommand::Validate { .. } => handle_validate(cmd),
         cmd @ GnssCommand::ValidateReference { .. } => handle_validate_reference(cmd),
+        cmd @ GnssCommand::ValidateCapture { .. } => handle_validate_capture(cmd),
         cmd @ GnssCommand::Run { .. } => handle_run(cmd),
         cmd @ GnssCommand::Rinex { .. } => handle_rinex(cmd),
         cmd @ GnssCommand::Doctor { .. } => handle_doctor(cmd),

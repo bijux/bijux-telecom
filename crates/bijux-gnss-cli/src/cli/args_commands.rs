@@ -421,6 +421,43 @@ pub(crate) enum GnssCommand {
         #[arg(long, value_enum, default_value_t = ReferenceAlign::Nearest)]
         align: ReferenceAlign,
     },
+
+    /// Validate a raw capture end to end from acquisition through navigation attempts
+    ValidateCapture {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        #[arg(long, alias = "path", value_name = "FILE")]
+        file: Option<PathBuf>,
+
+        #[arg(long)]
+        sampling_hz: Option<f64>,
+
+        #[arg(long)]
+        if_hz: Option<f64>,
+
+        #[arg(long)]
+        code_hz: Option<f64>,
+
+        #[arg(long)]
+        code_length: Option<usize>,
+
+        /// Override the receiver profile's maximum Doppler search range, in Hz.
+        #[arg(long, alias = "doppler")]
+        doppler_search_hz: Option<i32>,
+
+        /// Override the receiver profile's Doppler bin width, in Hz.
+        #[arg(long)]
+        doppler_step_hz: Option<i32>,
+
+        /// Broadcast navigation JSON, broadcast ephemeris JSON, or RINEX NAV file
+        #[arg(long, value_name = "FILE")]
+        eph: PathBuf,
+
+        /// Comma-separated PRN list, e.g. "11,12,25,31,32"
+        #[arg(long, value_delimiter = ',', value_parser = clap::value_parser!(u8).range(1..=32))]
+        prn: Vec<u8>,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
