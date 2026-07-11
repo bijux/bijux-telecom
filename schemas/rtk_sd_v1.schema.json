@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RtkSdV1",
+  "type": "object",
+  "required": ["header", "payload"],
+  "properties": {
+    "header": { "$ref": "#/definitions/ArtifactHeader" },
+    "payload": { "$ref": "#/definitions/RtkSingleDifference" }
+  },
+  "definitions": {
+    "ArtifactHeader": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "producer",
+        "producer_version",
+        "created_at_unix_ms",
+        "git_sha",
+        "config_hash",
+        "toolchain",
+        "features",
+        "deterministic",
+        "git_dirty"
+      ],
+      "properties": {
+        "schema_version": { "type": "integer", "const": 1 },
+        "producer": { "type": "string" },
+        "producer_version": { "type": "string" },
+        "created_at_unix_ms": { "type": "integer", "minimum": 0 },
+        "git_sha": { "type": "string" },
+        "config_hash": { "type": "string" },
+        "dataset_id": { "type": ["string", "null"] },
+        "toolchain": { "type": "string" },
+        "features": { "type": "array", "items": { "type": "string" } },
+        "deterministic": { "type": "boolean" },
+        "git_dirty": { "type": "boolean" }
+      }
+    },
+    "RtkSingleDifference": {
+      "type": "object",
+      "required": [
+        "sig",
+        "rover_pseudorange_m",
+        "rover_signal_timing",
+        "base_pseudorange_m",
+        "base_signal_timing",
+        "code_m",
+        "phase_cycles",
+        "doppler_hz",
+        "variance_code",
+        "variance_phase",
+        "ambiguity_rover",
+        "ambiguity_base"
+      ],
+      "properties": {
+        "sig": { "type": "object" },
+        "rover_pseudorange_m": { "type": "number" },
+        "rover_signal_timing": { "type": ["object", "null"] },
+        "base_pseudorange_m": { "type": "number" },
+        "base_signal_timing": { "type": ["object", "null"] },
+        "code_m": { "type": "number" },
+        "phase_cycles": { "type": "number" },
+        "doppler_hz": { "type": "number" },
+        "variance_code": { "type": "number", "minimum": 0.0 },
+        "variance_phase": { "type": "number", "minimum": 0.0 },
+        "ambiguity_rover": { "type": "object" },
+        "ambiguity_base": { "type": "object" }
+      }
+    }
+  }
+}
