@@ -753,6 +753,52 @@ pub struct SyntheticPvtCn0ProfileReport {
     pub points: Vec<SyntheticPvtCn0ProfilePoint>,
 }
 
+/// One synthetic PVT accuracy measurement point indexed by satellite geometry quality.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPvtGeometryProfilePoint {
+    /// Stable scenario identifier for this validation run.
+    pub scenario_id: String,
+    /// Number of matched PVT epochs that contributed geometry measurements.
+    pub epoch_count: usize,
+    /// Number of matched PVT epochs that satisfied the hard accuracy budget.
+    pub passing_epoch_count: usize,
+    /// Passing-epoch fraction across the matched PVT epochs.
+    pub pass_rate: f64,
+    /// Mean PDOP across matched PVT epochs.
+    pub mean_pdop: Option<f64>,
+    /// Minimum PDOP across matched PVT epochs.
+    pub min_pdop: Option<f64>,
+    /// Maximum PDOP across matched PVT epochs.
+    pub max_pdop: Option<f64>,
+    /// RMS 3D position error across matched PVT epochs, in meters.
+    pub rms_position_error_3d_m: Option<f64>,
+    /// Maximum 3D position error across matched PVT epochs, in meters.
+    pub max_position_error_3d_m: Option<f64>,
+    /// RMS clock-bias error across matched PVT epochs, in meters.
+    pub rms_clock_bias_error_m: Option<f64>,
+    /// Maximum clock-bias error across matched PVT epochs, in meters.
+    pub max_clock_bias_error_m: Option<f64>,
+    /// RMS residual RMS across matched PVT epochs, in meters.
+    pub rms_residual_rms_m: Option<f64>,
+    /// Maximum residual RMS across matched PVT epochs, in meters.
+    pub max_residual_rms_m: Option<f64>,
+    /// Whether synthetic truth coverage remained sufficient for a hard claim.
+    pub truth_coverage_ready: bool,
+    /// Machine-checkable truth-coverage issues that forced or should force validation failure.
+    pub truth_coverage_issues: Vec<SyntheticTruthCoverageIssue>,
+    /// Whether the point had truth-ready PVT comparisons and at least one geometry measurement.
+    pub ready: bool,
+}
+
+/// Truth-guided PVT accuracy profile across multiple satellite-geometry points.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPvtGeometryProfileReport {
+    /// Scenario identifier prefix shared across the measurement points.
+    pub scenario_id_prefix: String,
+    /// Measurement points captured in the report.
+    pub points: Vec<SyntheticPvtGeometryProfilePoint>,
+}
+
 /// Aggregated multi-stage accuracy summary at one signal-strength point.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticAccuracyCn0ProfilePoint {
@@ -916,11 +962,7 @@ fn tracking_truth_coverage_issues(
     }
     for satellite in &report.satellites {
         if satellite.epoch_count == 0 {
-            issues.push(truth_coverage_issue(
-                Some(satellite.sat),
-                None,
-                "no_tracking_epochs",
-            ));
+            issues.push(truth_coverage_issue(Some(satellite.sat), None, "no_tracking_epochs"));
         }
         if satellite.stable_epoch_count == 0 {
             issues.push(truth_coverage_issue(
@@ -956,11 +998,7 @@ fn observation_truth_coverage_issues(
             ));
         }
         if satellite.doppler_error_hz.is_none() {
-            issues.push(truth_coverage_issue(
-                Some(satellite.sat),
-                None,
-                "missing_doppler_truth",
-            ));
+            issues.push(truth_coverage_issue(Some(satellite.sat), None, "missing_doppler_truth"));
         }
         if satellite.cn0_error_db_hz.is_none() {
             issues.push(truth_coverage_issue(Some(satellite.sat), None, "missing_cn0_truth"));
@@ -972,7 +1010,9 @@ fn observation_truth_coverage_issues(
     issues
 }
 
-fn pvt_truth_coverage_issues(report: &SyntheticPvtTruthTableReport) -> Vec<SyntheticTruthCoverageIssue> {
+fn pvt_truth_coverage_issues(
+    report: &SyntheticPvtTruthTableReport,
+) -> Vec<SyntheticTruthCoverageIssue> {
     let mut issues = Vec::new();
     if report.solution_count == 0 {
         issues.push(truth_coverage_issue(None, None, "no_navigation_solutions"));
@@ -981,18 +1021,10 @@ fn pvt_truth_coverage_issues(report: &SyntheticPvtTruthTableReport) -> Vec<Synth
         issues.push(truth_coverage_issue(None, None, "no_matched_truth_epochs"));
     }
     for epoch_index in &report.unmatched_solution_epochs {
-        issues.push(truth_coverage_issue(
-            None,
-            Some(*epoch_index),
-            "unmatched_solution_epoch",
-        ));
+        issues.push(truth_coverage_issue(None, Some(*epoch_index), "unmatched_solution_epoch"));
     }
     for epoch_index in &report.unused_reference_epochs {
-        issues.push(truth_coverage_issue(
-            None,
-            Some(*epoch_index),
-            "unused_truth_reference_epoch",
-        ));
+        issues.push(truth_coverage_issue(None, Some(*epoch_index), "unused_truth_reference_epoch"));
     }
     issues
 }
@@ -1460,6 +1492,15 @@ pub struct SyntheticPvtCn0ProfileCase<'a> {
     pub accuracy: &'a SyntheticPvtAccuracyReport,
 }
 
+/// Borrowed inputs for one synthetic PVT geometry profile point.
+#[derive(Debug, Clone, Copy)]
+pub struct SyntheticPvtGeometryProfileCase<'a> {
+    /// Stable scenario identifier for this validation run.
+    pub scenario_id: &'a str,
+    /// Truth-guided PVT accuracy report for the geometry case.
+    pub accuracy: &'a SyntheticPvtAccuracyReport,
+}
+
 /// Summarize truth-guided PVT accuracy across multiple signal-strength points.
 pub fn summarize_truth_guided_pvt_cn0_profile(
     cases: &[SyntheticPvtCn0ProfileCase<'_>],
@@ -1555,6 +1596,71 @@ pub fn summarize_truth_guided_pvt_cn0_profile(
     SyntheticPvtCn0ProfileReport { scenario_id_prefix: scenario_id_prefix.to_string(), points }
 }
 
+/// Summarize truth-guided PVT accuracy across multiple satellite-geometry points.
+pub fn summarize_truth_guided_pvt_geometry_profile(
+    cases: &[SyntheticPvtGeometryProfileCase<'_>],
+    scenario_id_prefix: &str,
+) -> SyntheticPvtGeometryProfileReport {
+    let mut points = cases
+        .iter()
+        .map(|case| {
+            let position_error_3d_m = case
+                .accuracy
+                .epochs
+                .iter()
+                .map(|epoch| epoch.position_error_3d_m)
+                .collect::<Vec<_>>();
+            let clock_bias_error_m = case
+                .accuracy
+                .epochs
+                .iter()
+                .map(|epoch| epoch.clock_bias_error_m)
+                .collect::<Vec<_>>();
+            let residual_rms_m =
+                case.accuracy.epochs.iter().map(|epoch| epoch.residual_rms_m).collect::<Vec<_>>();
+            let pdop = case.accuracy.epochs.iter().map(|epoch| epoch.pdop).collect::<Vec<_>>();
+            let passing_epoch_count =
+                case.accuracy.epochs.iter().filter(|epoch| epoch.pass).count();
+            let epoch_count = case.accuracy.epoch_count;
+            let pass_rate = if epoch_count == 0 {
+                0.0
+            } else {
+                passing_epoch_count as f64 / epoch_count as f64
+            };
+
+            SyntheticPvtGeometryProfilePoint {
+                scenario_id: case.scenario_id.to_string(),
+                epoch_count,
+                passing_epoch_count,
+                pass_rate,
+                mean_pdop: mean_f64(&pdop),
+                min_pdop: pdop.iter().copied().reduce(f64::min),
+                max_pdop: pdop.iter().copied().reduce(f64::max),
+                rms_position_error_3d_m: (!position_error_3d_m.is_empty())
+                    .then(|| stats(&position_error_3d_m).rms),
+                max_position_error_3d_m: position_error_3d_m.iter().copied().reduce(f64::max),
+                rms_clock_bias_error_m: (!clock_bias_error_m.is_empty())
+                    .then(|| stats(&clock_bias_error_m).rms),
+                max_clock_bias_error_m: clock_bias_error_m.iter().copied().reduce(f64::max),
+                rms_residual_rms_m: (!residual_rms_m.is_empty())
+                    .then(|| stats(&residual_rms_m).rms),
+                max_residual_rms_m: residual_rms_m.iter().copied().reduce(f64::max),
+                truth_coverage_ready: case.accuracy.truth_coverage_ready,
+                truth_coverage_issues: case.accuracy.truth_coverage_issues.clone(),
+                ready: case.accuracy.truth_coverage_ready && !pdop.is_empty() && epoch_count > 0,
+            }
+        })
+        .collect::<Vec<_>>();
+    points.sort_by(|left, right| {
+        left.mean_pdop
+            .partial_cmp(&right.mean_pdop)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| left.scenario_id.cmp(&right.scenario_id))
+    });
+
+    SyntheticPvtGeometryProfileReport { scenario_id_prefix: scenario_id_prefix.to_string(), points }
+}
+
 /// Merge acquisition, tracking, and PVT C/N0 profiles into one stage-level output.
 pub fn summarize_truth_guided_accuracy_cn0_profile(
     scenario_id_prefix: &str,
@@ -1612,8 +1718,12 @@ pub fn summarize_truth_guided_accuracy_cn0_profile(
             cn0_db_hz: cn0_tenths_db_hz as f64 / 10.0,
             acquisition_case_count: values.acquisition_detection_probability.len(),
             acquisition_trial_count: values.acquisition_trial_count,
-            acquisition_acceptance_probability_mean: mean_f64(&values.acquisition_acceptance_probability),
-            acquisition_detection_probability_mean: mean_f64(&values.acquisition_detection_probability),
+            acquisition_acceptance_probability_mean: mean_f64(
+                &values.acquisition_acceptance_probability,
+            ),
+            acquisition_detection_probability_mean: mean_f64(
+                &values.acquisition_detection_probability,
+            ),
             tracking_case_count: values.tracking_lock_probability.len(),
             tracking_trial_count: values.tracking_trial_count,
             tracking_lock_probability_mean: mean_f64(&values.tracking_lock_probability),
@@ -4886,41 +4996,42 @@ mod tests {
         measure_truth_guided_acquisition_detection_probability,
         measure_truth_guided_acquisition_detection_rate, measure_truth_guided_tracking_lock_rate,
         nav_bit_index_at_time_s, nav_bit_sign_at_time_s, signal_amplitude_from_cn0,
-        summarize_truth_guided_accuracy_cn0_profile, summarize_truth_guided_pvt_cn0_profile,
-        summarize_observation_errors, synthetic_tracking_sensitivity_report,
-        truth_guided_receiver_accuracy_budgets, validate_acquisition_accuracy_budget,
-        validate_pvt_accuracy_budget, validate_truth_guided_acquisition_code_phase,
+        summarize_observation_errors, summarize_truth_guided_accuracy_cn0_profile,
+        summarize_truth_guided_pvt_cn0_profile, summarize_truth_guided_pvt_geometry_profile,
+        synthetic_tracking_sensitivity_report, truth_guided_receiver_accuracy_budgets,
+        validate_acquisition_accuracy_budget, validate_pvt_accuracy_budget,
+        validate_truth_guided_acquisition_code_phase,
         validate_truth_guided_acquisition_code_phase_refinement,
         validate_truth_guided_acquisition_coherent_integration,
         validate_truth_guided_acquisition_doppler,
         validate_truth_guided_acquisition_receiver_clock_offset,
         validate_truth_guided_acquisition_sample_rates, validate_truth_guided_cn0,
         validate_truth_guided_pvt_table, wrapped_code_phase_error_samples,
-        wrapped_code_phase_error_samples_f64, SatState, SyntheticAcquisitionDetectionRateCase,
-        SyntheticAcquisitionFalseAlarmRateCase, SyntheticAcquisitionSampleRateValidationCase,
-        SyntheticAcquisitionTruthTableReport, SyntheticAcquisitionTruthTableSatellite,
-        SyntheticAcquisitionDetectionRatePoint, SyntheticAcquisitionDetectionRateReport,
-        SyntheticAccuracyCn0ProfileReport, SyntheticPvtAccuracyEpoch, SyntheticPvtAccuracyReport,
-        SyntheticPvtCn0ProfileCase, SyntheticPvtCn0ProfilePoint, SyntheticPvtCn0ProfileReport,
-        SyntheticDopplerRampParams, SyntheticFadeWindow, SyntheticNavBitMode, SyntheticPhaseWindow,
-        SyntheticPvtTruthReferenceEpoch, SyntheticPvtTruthTableClockBias,
-        SyntheticPvtTruthTableDop, SyntheticPvtTruthTableEcef, SyntheticPvtTruthTableEnuError,
-        SyntheticPvtTruthTableEpoch, SyntheticPvtTruthTableGeodetic, SyntheticPvtTruthTableReport,
-        SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource,
+        wrapped_code_phase_error_samples_f64, SatState, SyntheticAccuracyCn0ProfileReport,
+        SyntheticAcquisitionDetectionRateCase, SyntheticAcquisitionDetectionRatePoint,
+        SyntheticAcquisitionDetectionRateReport, SyntheticAcquisitionFalseAlarmRateCase,
+        SyntheticAcquisitionSampleRateValidationCase, SyntheticAcquisitionTruthTableReport,
+        SyntheticAcquisitionTruthTableSatellite, SyntheticDopplerRampParams, SyntheticFadeWindow,
+        SyntheticNavBitMode, SyntheticPhaseWindow, SyntheticPvtAccuracyEpoch,
+        SyntheticPvtAccuracyReport, SyntheticPvtCn0ProfileCase, SyntheticPvtCn0ProfilePoint,
+        SyntheticPvtCn0ProfileReport, SyntheticPvtGeometryProfileCase,
+        SyntheticPvtGeometryProfileReport, SyntheticPvtTruthReferenceEpoch,
+        SyntheticPvtTruthTableClockBias, SyntheticPvtTruthTableDop, SyntheticPvtTruthTableEcef,
+        SyntheticPvtTruthTableEnuError, SyntheticPvtTruthTableEpoch,
+        SyntheticPvtTruthTableGeodetic, SyntheticPvtTruthTableReport, SyntheticScenario,
+        SyntheticSignalParams, SyntheticSignalSource, SyntheticTrackingLockRateCase,
         SyntheticTrackingLockRatePoint, SyntheticTrackingLockRateReport,
-        SyntheticTrackingTruthTableEpoch, SyntheticTrackingTruthTableReport,
-        SyntheticTrackingTruthTableSatellite,
-        SyntheticTrackingLockRateCase, SyntheticTrackingSensitivityTrial, SPEED_OF_LIGHT_MPS,
-        SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
+        SyntheticTrackingSensitivityTrial, SyntheticTrackingTruthTableEpoch,
+        SyntheticTrackingTruthTableReport, SyntheticTrackingTruthTableSatellite,
+        SPEED_OF_LIGHT_MPS, SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
     use bijux_gnss_core::api::{
         ecef_to_geodetic, lla_to_ecef, Constellation, Cycles, Epoch, FreqHz, Hertz, LockFlags,
-        Meters, NavLifecycleState, NavQualityFlag, NavSolutionEpoch, NavUncertaintyClass,
-        ObsEpoch, ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus,
-        ReceiverRole, ReceiverSampleTrace, SampleTime, SamplesFrame, SatId, Seconds, SigId,
-        SignalBand, SignalCode, SignalSpec, SolutionStatus, SolutionValidity,
-        ValidationReferenceEpoch,
+        Meters, NavLifecycleState, NavQualityFlag, NavSolutionEpoch, NavUncertaintyClass, ObsEpoch,
+        ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus, ReceiverRole,
+        ReceiverSampleTrace, SampleTime, SamplesFrame, SatId, Seconds, SigId, SignalBand,
+        SignalCode, SignalSpec, SolutionStatus, SolutionValidity, ValidationReferenceEpoch,
         NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
     };
     use bijux_gnss_signal::api::{
@@ -5221,16 +5332,15 @@ mod tests {
             }],
         };
 
-        let accuracy =
-            super::validate_tracking_accuracy_budget(&report, truth_guided_receiver_accuracy_budgets().tracking);
+        let accuracy = super::validate_tracking_accuracy_budget(
+            &report,
+            truth_guided_receiver_accuracy_budgets().tracking,
+        );
 
         assert!(!accuracy.truth_coverage_ready);
         assert_eq!(accuracy.truth_coverage_issues.len(), 1);
         assert_eq!(accuracy.truth_coverage_issues[0].sat, Some(report.satellites[0].sat));
-        assert_eq!(
-            accuracy.truth_coverage_issues[0].code,
-            "no_stable_tracking_truth_epochs"
-        );
+        assert_eq!(accuracy.truth_coverage_issues[0].code, "no_stable_tracking_truth_epochs");
         assert!(!accuracy.pass);
     }
 
@@ -5307,14 +5417,10 @@ mod tests {
 
     #[test]
     fn pvt_cn0_profile_summarizes_observation_levels_and_epoch_quality() {
-        let weak_observations = vec![
-            sample_obs_epoch(4, &[24.0, 26.0]),
-            sample_obs_epoch(5, &[28.0, 30.0]),
-        ];
-        let strong_observations = vec![
-            sample_obs_epoch(6, &[40.0, 42.0]),
-            sample_obs_epoch(7, &[44.0, 46.0]),
-        ];
+        let weak_observations =
+            vec![sample_obs_epoch(4, &[24.0, 26.0]), sample_obs_epoch(5, &[28.0, 30.0])];
+        let strong_observations =
+            vec![sample_obs_epoch(6, &[40.0, 42.0]), sample_obs_epoch(7, &[44.0, 46.0])];
         let weak_accuracy = SyntheticPvtAccuracyReport {
             scenario_id: "pvt_cn0_profile_weak".to_string(),
             max_position_error_3d_m: 5.0,
@@ -5543,6 +5649,95 @@ mod tests {
         assert_eq!(report.points[1].pvt_max_position_error_3d_m_max, Some(1.5));
     }
 
+    #[test]
+    fn pvt_geometry_profile_sorts_cases_by_mean_pdop() {
+        let poor_accuracy = SyntheticPvtAccuracyReport {
+            scenario_id: "pvt_geometry_profile_poor".to_string(),
+            max_position_error_3d_m: 5.0,
+            max_clock_bias_error_m: 10.0,
+            max_residual_rms_m: 4.0,
+            max_pdop: 6.0,
+            epoch_count: 2,
+            passing_epoch_count: 1,
+            truth_coverage_ready: true,
+            truth_coverage_issues: Vec::new(),
+            pass: false,
+            epochs: vec![
+                SyntheticPvtAccuracyEpoch {
+                    epoch_index: 1,
+                    position_error_3d_m: 3.5,
+                    clock_bias_error_m: 1.75,
+                    residual_rms_m: 1.2,
+                    pdop: 4.0,
+                    pass: false,
+                },
+                SyntheticPvtAccuracyEpoch {
+                    epoch_index: 2,
+                    position_error_3d_m: 4.5,
+                    clock_bias_error_m: 2.25,
+                    residual_rms_m: 1.5,
+                    pdop: 5.5,
+                    pass: true,
+                },
+            ],
+        };
+        let good_accuracy = SyntheticPvtAccuracyReport {
+            scenario_id: "pvt_geometry_profile_good".to_string(),
+            max_position_error_3d_m: 5.0,
+            max_clock_bias_error_m: 10.0,
+            max_residual_rms_m: 4.0,
+            max_pdop: 6.0,
+            epoch_count: 2,
+            passing_epoch_count: 2,
+            truth_coverage_ready: true,
+            truth_coverage_issues: Vec::new(),
+            pass: true,
+            epochs: vec![
+                SyntheticPvtAccuracyEpoch {
+                    epoch_index: 3,
+                    position_error_3d_m: 0.9,
+                    clock_bias_error_m: 0.4,
+                    residual_rms_m: 0.2,
+                    pdop: 1.4,
+                    pass: true,
+                },
+                SyntheticPvtAccuracyEpoch {
+                    epoch_index: 4,
+                    position_error_3d_m: 1.2,
+                    clock_bias_error_m: 0.5,
+                    residual_rms_m: 0.25,
+                    pdop: 1.8,
+                    pass: true,
+                },
+            ],
+        };
+
+        let report: SyntheticPvtGeometryProfileReport = summarize_truth_guided_pvt_geometry_profile(
+            &[
+                SyntheticPvtGeometryProfileCase {
+                    scenario_id: "pvt_geometry_profile_poor",
+                    accuracy: &poor_accuracy,
+                },
+                SyntheticPvtGeometryProfileCase {
+                    scenario_id: "pvt_geometry_profile_good",
+                    accuracy: &good_accuracy,
+                },
+            ],
+            "pvt_geometry_profile",
+        );
+
+        assert_eq!(report.points.len(), 2);
+        assert_eq!(report.points[0].scenario_id, "pvt_geometry_profile_good");
+        assert_eq!(report.points[0].mean_pdop, Some(1.6));
+        assert_eq!(report.points[0].max_pdop, Some(1.8));
+        assert_eq!(report.points[0].passing_epoch_count, 2);
+        assert_eq!(report.points[1].scenario_id, "pvt_geometry_profile_poor");
+        assert_eq!(report.points[1].mean_pdop, Some(4.75));
+        assert_eq!(report.points[1].max_pdop, Some(5.5));
+        assert_eq!(report.points[1].pass_rate, 0.5);
+        assert!(report.points[1].ready);
+    }
+
     fn sample_obs_epoch(epoch_idx: u64, cn0_values_dbhz: &[f64]) -> ObsEpoch {
         ObsEpoch {
             t_rx_s: Seconds(epoch_idx as f64),
@@ -5559,10 +5754,7 @@ mod tests {
                 .enumerate()
                 .map(|(offset, cn0_dbhz)| ObsSatellite {
                     signal_id: SigId {
-                        sat: SatId {
-                            constellation: Constellation::Gps,
-                            prn: 7 + offset as u8,
-                        },
+                        sat: SatId { constellation: Constellation::Gps, prn: 7 + offset as u8 },
                         band: SignalBand::L1,
                         code: SignalCode::Ca,
                     },
