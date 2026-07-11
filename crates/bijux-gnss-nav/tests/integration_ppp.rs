@@ -301,3 +301,16 @@ fn ppp_rejects_stale_broadcast_fallbacks() {
 
     assert!(sol.is_none());
 }
+
+#[test]
+fn ppp_seed_receiver_state_sets_position_and_clock_bias() {
+    let mut ppp = PppFilter::new(PppConfig::default());
+
+    ppp.seed_receiver_state([1.0, 2.0, 3.0], 4.0e-6);
+
+    assert_eq!(ppp.ekf.x[ppp.indices.pos[0]], 1.0);
+    assert_eq!(ppp.ekf.x[ppp.indices.pos[1]], 2.0);
+    assert_eq!(ppp.ekf.x[ppp.indices.pos[2]], 3.0);
+    assert_eq!(ppp.ekf.x[ppp.indices.clock_bias], 4.0e-6);
+    assert_eq!(ppp.last_pos, Some([1.0, 2.0, 3.0]));
+}

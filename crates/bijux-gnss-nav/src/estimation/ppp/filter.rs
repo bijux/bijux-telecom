@@ -96,6 +96,14 @@ impl PppFilter {
         self.corrections = ctx;
     }
 
+    pub fn seed_receiver_state(&mut self, ecef_m: [f64; 3], clock_bias_s: f64) {
+        self.ekf.x[self.indices.pos[0]] = ecef_m[0];
+        self.ekf.x[self.indices.pos[1]] = ecef_m[1];
+        self.ekf.x[self.indices.pos[2]] = ecef_m[2];
+        self.ekf.x[self.indices.clock_bias] = clock_bias_s;
+        self.last_pos = Some(ecef_m);
+    }
+
     pub fn solve_epoch(
         &mut self,
         obs: &ObsEpoch,
