@@ -59,18 +59,19 @@ impl IonosphereModel for KlobucharModel {
         let latitude_semicircles = receiver.lat_deg / 180.0;
         let longitude_semicircles = receiver.lon_deg / 180.0;
         let earth_centered_angle = 0.0137 / (elevation_semicircles + 0.11) - 0.022;
-        let subionospheric_latitude = (latitude_semicircles + earth_centered_angle * azimuth_rad.cos())
-            .clamp(-0.416, 0.416);
+        let subionospheric_latitude =
+            (latitude_semicircles + earth_centered_angle * azimuth_rad.cos()).clamp(-0.416, 0.416);
         let subionospheric_longitude = longitude_semicircles
-            + earth_centered_angle * azimuth_rad.sin() / (subionospheric_latitude * std::f64::consts::PI).cos();
+            + earth_centered_angle * azimuth_rad.sin()
+                / (subionospheric_latitude * std::f64::consts::PI).cos();
         let geomagnetic_latitude = subionospheric_latitude
             + 0.064 * ((subionospheric_longitude - 1.617) * std::f64::consts::PI).cos();
-        let local_time_s =
-            (43_200.0 * subionospheric_longitude + t.0).rem_euclid(SECONDS_PER_DAY);
+        let local_time_s = (43_200.0 * subionospheric_longitude + t.0).rem_euclid(SECONDS_PER_DAY);
         let slant_factor = 1.0 + 16.0 * (0.53 - elevation_semicircles).powi(3);
-        let amplitude_s = klobuchar_polynomial(self.coefficients.alpha, geomagnetic_latitude).max(0.0);
-        let period_s =
-            klobuchar_polynomial(self.coefficients.beta, geomagnetic_latitude).max(MIN_KLOBUCHAR_PERIOD_S);
+        let amplitude_s =
+            klobuchar_polynomial(self.coefficients.alpha, geomagnetic_latitude).max(0.0);
+        let period_s = klobuchar_polynomial(self.coefficients.beta, geomagnetic_latitude)
+            .max(MIN_KLOBUCHAR_PERIOD_S);
         let phase = 2.0 * std::f64::consts::PI * (local_time_s - 50_400.0) / period_s;
         let vertical_delay_s = if phase.abs() <= 1.57 {
             NIGHTTIME_IONO_DELAY_S
@@ -117,7 +118,8 @@ impl SaastamoinenModel {
         if !el_deg.is_finite() || el_deg <= 0.0 {
             return 0.0;
         }
-        let mapped_elevation_deg = (el_deg.max(MIN_TROPOSPHERE_ELEVATION_DEG).powi(2) + 6.25).sqrt();
+        let mapped_elevation_deg =
+            (el_deg.max(MIN_TROPOSPHERE_ELEVATION_DEG).powi(2) + 6.25).sqrt();
         1.0 / mapped_elevation_deg.to_radians().sin()
     }
 }
@@ -146,8 +148,7 @@ fn standard_temperature_k(altitude_m: f64) -> f64 {
 fn standard_water_vapor_pressure_hpa(altitude_m: f64, relative_humidity: f64) -> f64 {
     let temperature_k = standard_temperature_k(altitude_m);
     let temperature_c = temperature_k - 273.15;
-    let saturation_pressure_hpa =
-        6.108 * ((17.15 * temperature_c) / (234.7 + temperature_c)).exp();
+    let saturation_pressure_hpa = 6.108 * ((17.15 * temperature_c) / (234.7 + temperature_c)).exp();
     relative_humidity.clamp(0.0, 1.0) * saturation_pressure_hpa
 }
 
@@ -205,7 +206,8 @@ mod tests {
 
         let low_elevation_delay_m = model.delay_m(receiver, 120.0, 15.0, Seconds(50_400.0));
         let high_elevation_delay_m = model.delay_m(receiver, 120.0, 75.0, Seconds(50_400.0));
-        let low_elevation_floor_m = nighttime_floor.delay_m(receiver, 120.0, 15.0, Seconds(50_400.0));
+        let low_elevation_floor_m =
+            nighttime_floor.delay_m(receiver, 120.0, 15.0, Seconds(50_400.0));
 
         assert!(low_elevation_delay_m.is_finite());
         assert!(high_elevation_delay_m.is_finite());

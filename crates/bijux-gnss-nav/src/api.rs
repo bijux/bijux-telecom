@@ -33,6 +33,9 @@ pub use crate::estimation::ekf::models::{
 /// EKF interface and measurements.
 pub use crate::estimation::ekf::state::{Ekf, EkfConfig, MeasurementKind};
 pub use crate::estimation::ekf::traits::MeasurementModel;
+pub use crate::estimation::position::raim::{
+    RaimFaultDetection, RaimFaultDetectionStatus, RaimFaultExclusion,
+};
 /// Position solver (least squares) and helpers.
 pub use crate::estimation::position::solver::{
     ecef_to_enu, ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef,
@@ -40,9 +43,6 @@ pub use crate::estimation::position::solver::{
     position_observation_has_valid_satellite_time, position_observations_from_epoch,
     weight_from_cn0_elev, weight_from_pseudorange_sigma, PositionDops, PositionObservation,
     PositionSolveRefusal, PositionSolveRefusalKind, PositionSolver, WeightingConfig,
-};
-pub use crate::estimation::position::raim::{
-    RaimFaultDetection, RaimFaultDetectionStatus, RaimFaultExclusion,
 };
 /// PPP configuration and filter.
 pub use crate::estimation::ppp::config::{
@@ -120,9 +120,9 @@ pub use crate::orbits::ephemeris::{CsvEphemerisProvider, Ephemeris, EphemerisPro
 pub use crate::orbits::gps::{
     gps_earth_rotation_correction, gps_ephemeris_age, gps_satellite_clock_correction,
     is_ephemeris_valid, sat_state_gps_l1ca, sat_state_gps_l1ca_at_receive_time,
-    sat_state_gps_l1ca_from_observation, GpsBroadcastNavigationData, GpsEarthRotationCorrection,
-    GpsEphemeris, GpsEphemerisAge, GpsSatState, GpsSatelliteClockCorrection,
-    select_best_ephemeris,
+    sat_state_gps_l1ca_from_observation, select_best_ephemeris, GpsBroadcastNavigationData,
+    GpsEarthRotationCorrection, GpsEphemeris, GpsEphemerisAge, GpsSatState,
+    GpsSatelliteClockCorrection,
 };
 /// Time helpers.
 pub use crate::time::{gps_time_from_utc, gps_week_rollover, normalize_tow};

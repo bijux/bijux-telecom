@@ -109,9 +109,9 @@ mod tests {
         geometry_free_diagnostics_from_obs_epochs, GeometryFreeEvent, GeometryFreeThresholds,
     };
     use bijux_gnss_core::api::{
-        signal_spec_gps_l1_ca, signal_spec_gps_l2_py, Constellation, LockFlags, Meters, ObsEpoch,
-        ObsMetadata, ObsSatellite, ReceiverRole, ReceiverSampleTrace, SatId, Seconds, SigId,
-        SignalBand, SignalCode, ObservationEpochDecision, ObservationStatus, Cycles, Hertz,
+        signal_spec_gps_l1_ca, signal_spec_gps_l2_py, Constellation, Cycles, Hertz, LockFlags,
+        Meters, ObsEpoch, ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus,
+        ReceiverRole, ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
     };
 
     const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
@@ -136,7 +136,9 @@ mod tests {
                     signal_id: SigId { sat, band: SignalBand::L1, code: SignalCode::Ca },
                     pseudorange_m: Meters(22_000_000.0),
                     pseudorange_var_m2: 1.0,
-                    carrier_phase_cycles: Cycles(phi1_m / (SPEED_OF_LIGHT_MPS / l1.carrier_hz.value())),
+                    carrier_phase_cycles: Cycles(
+                        phi1_m / (SPEED_OF_LIGHT_MPS / l1.carrier_hz.value()),
+                    ),
                     carrier_phase_var_cycles2: 0.01,
                     doppler_hz: Hertz(0.0),
                     doppler_var_hz2: 1.0,
@@ -170,7 +172,9 @@ mod tests {
                     signal_id: SigId { sat, band: SignalBand::L2, code: SignalCode::Py },
                     pseudorange_m: Meters(22_000_001.0),
                     pseudorange_var_m2: 1.0,
-                    carrier_phase_cycles: Cycles(phi2_m / (SPEED_OF_LIGHT_MPS / l2.carrier_hz.value())),
+                    carrier_phase_cycles: Cycles(
+                        phi2_m / (SPEED_OF_LIGHT_MPS / l2.carrier_hz.value()),
+                    ),
                     carrier_phase_var_cycles2: 0.01,
                     doppler_hz: Hertz(0.0),
                     doppler_var_hz2: 1.0,

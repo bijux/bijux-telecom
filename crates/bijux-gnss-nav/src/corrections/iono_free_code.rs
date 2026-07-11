@@ -71,7 +71,8 @@ pub(crate) fn iono_free_code_from_pair(
     first: Option<&ObsSatellite>,
     second: Option<&ObsSatellite>,
 ) -> IonoFreeCodeObservation {
-    let f1_hz = first.map(|observation| observation.metadata.signal.carrier_hz.value()).unwrap_or(0.0);
+    let f1_hz =
+        first.map(|observation| observation.metadata.signal.carrier_hz.value()).unwrap_or(0.0);
     let f2_hz =
         second.map(|observation| observation.metadata.signal.carrier_hz.value()).unwrap_or(0.0);
 

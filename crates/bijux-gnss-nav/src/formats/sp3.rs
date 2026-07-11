@@ -67,7 +67,8 @@ impl Sp3Provider {
 
     pub fn sat_state(&self, sat: SatId, t_s: f64) -> Option<GpsSatState> {
         let list = self.records.get(&sat)?;
-        if let Some(record) = list.iter().find(|record| (record.epoch_s - t_s).abs() <= f64::EPSILON)
+        if let Some(record) =
+            list.iter().find(|record| (record.epoch_s - t_s).abs() <= f64::EPSILON)
         {
             return Some(record_state(record));
         }
@@ -126,7 +127,9 @@ fn parse_sat_id(line: &str) -> Result<SatId, String> {
 fn normalize_records(records: &mut BTreeMap<SatId, Vec<Sp3Record>>) {
     let Some(epoch_origin_s) = records
         .values()
-        .filter_map(|sat_records| sat_records.iter().map(|record| record.epoch_s).min_by(f64::total_cmp))
+        .filter_map(|sat_records| {
+            sat_records.iter().map(|record| record.epoch_s).min_by(f64::total_cmp)
+        })
         .min_by(f64::total_cmp)
     else {
         return;
@@ -174,9 +177,7 @@ fn interpolation_support_records<'a>(
     support.sort_by(|(left_index, left), (right_index, right)| {
         let left_dt = (left.epoch_s - t_s).abs();
         let right_dt = (right.epoch_s - t_s).abs();
-        left_dt
-            .total_cmp(&right_dt)
-            .then_with(|| left_index.cmp(right_index))
+        left_dt.total_cmp(&right_dt).then_with(|| left_index.cmp(right_index))
     });
     support.truncate(4);
     support.sort_by(|(_, left), (_, right)| left.epoch_s.total_cmp(&right.epoch_s));
@@ -220,11 +221,7 @@ fn summarize_interpolation_errors(records: &[Sp3Record]) -> Option<Sp3Interpolat
     let max_position_error_m = errors.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let rms_position_error_m =
         (errors.iter().map(|error| error.powi(2)).sum::<f64>() / sample_count as f64).sqrt();
-    Some(Sp3InterpolationSummary {
-        sample_count,
-        max_position_error_m,
-        rms_position_error_m,
-    })
+    Some(Sp3InterpolationSummary { sample_count, max_position_error_m, rms_position_error_m })
 }
 
 fn interpolate_position_error_m(records: &[Sp3Record], index: usize) -> Option<f64> {
@@ -322,9 +319,8 @@ PG01  313.000000  64.000000  21.000000  0.000000
 ";
         let provider: Sp3Provider = data.parse().expect("parse SP3");
         let sat = SatId { constellation: Constellation::Gps, prn: 1 };
-        let summary = provider
-            .interpolation_summary(sat)
-            .expect("interpolation summary for cubic orbit");
+        let summary =
+            provider.interpolation_summary(sat).expect("interpolation summary for cubic orbit");
 
         assert_eq!(summary.sample_count, 3);
         assert!(summary.max_position_error_m.abs() < 1e-6);

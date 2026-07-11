@@ -126,7 +126,13 @@ mod tests {
 
     const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 
-    fn dual_frequency_epoch(epoch_idx: u64, p1_m: f64, p2_m: f64, phi1_m: f64, phi2_m: f64) -> ObsEpoch {
+    fn dual_frequency_epoch(
+        epoch_idx: u64,
+        p1_m: f64,
+        p2_m: f64,
+        phi1_m: f64,
+        phi2_m: f64,
+    ) -> ObsEpoch {
         let sat = SatId { constellation: Constellation::Gps, prn: 9 };
         let l1 = signal_spec_gps_l1_ca();
         let l2 = signal_spec_gps_l2_py();
@@ -146,7 +152,9 @@ mod tests {
                     signal_id: SigId { sat, band: SignalBand::L1, code: SignalCode::Ca },
                     pseudorange_m: Meters(p1_m),
                     pseudorange_var_m2: 1.0,
-                    carrier_phase_cycles: Cycles(phi1_m / (SPEED_OF_LIGHT_MPS / l1.carrier_hz.value())),
+                    carrier_phase_cycles: Cycles(
+                        phi1_m / (SPEED_OF_LIGHT_MPS / l1.carrier_hz.value()),
+                    ),
                     carrier_phase_var_cycles2: 0.01,
                     doppler_hz: Hertz(0.0),
                     doppler_var_hz2: 1.0,
@@ -180,7 +188,9 @@ mod tests {
                     signal_id: SigId { sat, band: SignalBand::L2, code: SignalCode::Py },
                     pseudorange_m: Meters(p2_m),
                     pseudorange_var_m2: 1.0,
-                    carrier_phase_cycles: Cycles(phi2_m / (SPEED_OF_LIGHT_MPS / l2.carrier_hz.value())),
+                    carrier_phase_cycles: Cycles(
+                        phi2_m / (SPEED_OF_LIGHT_MPS / l2.carrier_hz.value()),
+                    ),
                     carrier_phase_var_cycles2: 0.01,
                     doppler_hz: Hertz(0.0),
                     doppler_var_hz2: 1.0,
@@ -231,11 +241,10 @@ mod tests {
 
         assert_eq!(diagnostics[0].event, MelbourneWubbenaEvent::InsufficientHistory);
         assert_eq!(diagnostics[1].event, MelbourneWubbenaEvent::Nominal);
-        assert!(diagnostics[1]
-            .delta_from_previous_wide_lane_cycles
-            .expect("wide-lane delta")
-            .abs()
-            < 0.5);
+        assert!(
+            diagnostics[1].delta_from_previous_wide_lane_cycles.expect("wide-lane delta").abs()
+                < 0.5
+        );
     }
 
     #[test]
@@ -251,10 +260,9 @@ mod tests {
         );
 
         assert_eq!(diagnostics[1].event, MelbourneWubbenaEvent::WideLaneSlipSuspect);
-        assert!(diagnostics[1]
-            .delta_from_previous_wide_lane_cycles
-            .expect("wide-lane delta")
-            .abs()
-            >= 0.5);
+        assert!(
+            diagnostics[1].delta_from_previous_wide_lane_cycles.expect("wide-lane delta").abs()
+                >= 0.5
+        );
     }
 }

@@ -132,7 +132,8 @@ mod tests {
         let mut zero_clock = [0.0];
 
         measurement.h(&state, &mut corrected);
-        PseudorangeMeasurement { sat_clock_s: 0.0, ..measurement.clone() }.h(&state, &mut zero_clock);
+        PseudorangeMeasurement { sat_clock_s: 0.0, ..measurement.clone() }
+            .h(&state, &mut zero_clock);
 
         let expected_delta_m = 299_792_458.0 * measurement.sat_clock_s;
 
@@ -160,7 +161,8 @@ mod tests {
         let mut zero_clock = [0.0];
 
         measurement.h(&state, &mut corrected);
-        CarrierPhaseMeasurement { sat_clock_s: 0.0, ..measurement.clone() }.h(&state, &mut zero_clock);
+        CarrierPhaseMeasurement { sat_clock_s: 0.0, ..measurement.clone() }
+            .h(&state, &mut zero_clock);
 
         let expected_delta_cycles =
             299_792_458.0 * measurement.sat_clock_s / measurement.wavelength_m;

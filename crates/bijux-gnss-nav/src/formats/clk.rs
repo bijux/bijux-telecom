@@ -55,8 +55,7 @@ impl ClkProvider {
                 None
             };
             let days = days_from_civil(year, month, day);
-            let epoch_s =
-                days as f64 * 86_400.0 + hour as f64 * 3600.0 + min as f64 * 60.0 + sec;
+            let epoch_s = days as f64 * 86_400.0 + hour as f64 * 3600.0 + min as f64 * 60.0 + sec;
             records.entry(sat).or_default().push(ClkRecord { epoch_s, bias_s, sigma_s });
         }
         normalize_records(&mut records);
@@ -72,7 +71,8 @@ impl ClkProvider {
 
     pub fn bias_s(&self, sat: SatId, t_s: f64) -> Option<f64> {
         let list = self.records.get(&sat)?;
-        if let Some(record) = list.iter().find(|record| (record.epoch_s - t_s).abs() <= f64::EPSILON)
+        if let Some(record) =
+            list.iter().find(|record| (record.epoch_s - t_s).abs() <= f64::EPSILON)
         {
             return Some(record.bias_s);
         }
@@ -84,7 +84,8 @@ impl ClkProvider {
 
     pub fn sigma_s(&self, sat: SatId, t_s: f64) -> Option<f64> {
         let list = self.records.get(&sat)?;
-        if let Some(record) = list.iter().find(|record| (record.epoch_s - t_s).abs() <= f64::EPSILON)
+        if let Some(record) =
+            list.iter().find(|record| (record.epoch_s - t_s).abs() <= f64::EPSILON)
         {
             return record.sigma_s;
         }
@@ -128,7 +129,9 @@ fn parse_sat_id(id: &str) -> Result<SatId, String> {
 fn normalize_records(records: &mut BTreeMap<SatId, Vec<ClkRecord>>) {
     let Some(epoch_origin_s) = records
         .values()
-        .filter_map(|sat_records| sat_records.iter().map(|record| record.epoch_s).min_by(f64::total_cmp))
+        .filter_map(|sat_records| {
+            sat_records.iter().map(|record| record.epoch_s).min_by(f64::total_cmp)
+        })
         .min_by(f64::total_cmp)
     else {
         return;
@@ -186,9 +189,7 @@ fn interpolation_support_records<'a>(
     support.sort_by(|(left_index, left), (right_index, right)| {
         let left_dt = (left.epoch_s - t_s).abs();
         let right_dt = (right.epoch_s - t_s).abs();
-        left_dt
-            .total_cmp(&right_dt)
-            .then_with(|| left_index.cmp(right_index))
+        left_dt.total_cmp(&right_dt).then_with(|| left_index.cmp(right_index))
     });
     support.truncate(4);
     support.sort_by(|(_, left), (_, right)| left.epoch_s.total_cmp(&right.epoch_s));
@@ -332,9 +333,7 @@ AS G01 2020 01 01 01 00 00.000000  2  0.000000313  0.000000065
 ";
         let provider: ClkProvider = data.parse().expect("parse CLK");
         let sat = SatId { constellation: Constellation::Gps, prn: 1 };
-        let summary = provider
-            .interpolation_summary(sat)
-            .expect("clock interpolation summary");
+        let summary = provider.interpolation_summary(sat).expect("clock interpolation summary");
 
         assert_eq!(summary.sample_count, 3);
         assert!(summary.max_bias_error_s.abs() < 1e-18);

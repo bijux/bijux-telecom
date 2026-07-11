@@ -2,9 +2,8 @@ use std::collections::BTreeMap;
 
 use bijux_gnss_core::api::{
     signal_spec_gps_l1_ca, signal_spec_gps_l2_py, utc_to_gps, Constellation, Cycles, GpsTime,
-    Hertz, LeapSeconds, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
-    ObservationStatus, ParseError, ReceiverRole, SatId, Seconds, SigId, SignalBand, SignalCode,
-    SignalSpec,
+    Hertz, LeapSeconds, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite, ObservationStatus,
+    ParseError, ReceiverRole, SatId, Seconds, SigId, SignalBand, SignalCode, SignalSpec,
 };
 use time::{Date, Month, PrimitiveDateTime, Time};
 
@@ -510,56 +509,39 @@ fn resolve_gps_observation_channels(
 ) -> Result<Vec<GpsObservationChannel>, ParseError> {
     let mut channels = Vec::new();
 
-    for (band, code, signal, pseudorange_candidates, carrier_phase_candidates, signal_strength_candidates) in
-        [
-            (
-                SignalBand::L1,
-                SignalCode::Ca,
-                signal_spec_gps_l1_ca(),
-                vec![
-                    "C1C".to_string(),
-                    "C1".to_string(),
-                    "C1W".to_string(),
-                    "C1P".to_string(),
-                    "P1".to_string(),
-                ],
-                vec![
-                    "L1C".to_string(),
-                    "L1".to_string(),
-                    "L1W".to_string(),
-                    "L1P".to_string(),
-                ],
-                vec![
-                    "S1C".to_string(),
-                    "S1".to_string(),
-                    "S1W".to_string(),
-                    "S1P".to_string(),
-                ],
-            ),
-            (
-                SignalBand::L2,
-                SignalCode::Py,
-                signal_spec_gps_l2_py(),
-                vec![
-                    "C2W".to_string(),
-                    "P2".to_string(),
-                    "C2P".to_string(),
-                    "C2".to_string(),
-                ],
-                vec![
-                    "L2W".to_string(),
-                    "L2P".to_string(),
-                    "L2".to_string(),
-                ],
-                vec![
-                    "S2W".to_string(),
-                    "S2P".to_string(),
-                    "S2".to_string(),
-                ],
-            ),
-        ]
-    {
-        let Some(pseudorange_index) = find_observation_index(observation_types, &pseudorange_candidates)
+    for (
+        band,
+        code,
+        signal,
+        pseudorange_candidates,
+        carrier_phase_candidates,
+        signal_strength_candidates,
+    ) in [
+        (
+            SignalBand::L1,
+            SignalCode::Ca,
+            signal_spec_gps_l1_ca(),
+            vec![
+                "C1C".to_string(),
+                "C1".to_string(),
+                "C1W".to_string(),
+                "C1P".to_string(),
+                "P1".to_string(),
+            ],
+            vec!["L1C".to_string(), "L1".to_string(), "L1W".to_string(), "L1P".to_string()],
+            vec!["S1C".to_string(), "S1".to_string(), "S1W".to_string(), "S1P".to_string()],
+        ),
+        (
+            SignalBand::L2,
+            SignalCode::Py,
+            signal_spec_gps_l2_py(),
+            vec!["C2W".to_string(), "P2".to_string(), "C2P".to_string(), "C2".to_string()],
+            vec!["L2W".to_string(), "L2P".to_string(), "L2".to_string()],
+            vec!["S2W".to_string(), "S2P".to_string(), "S2".to_string()],
+        ),
+    ] {
+        let Some(pseudorange_index) =
+            find_observation_index(observation_types, &pseudorange_candidates)
         else {
             continue;
         };
@@ -574,10 +556,7 @@ fn resolve_gps_observation_channels(
                 observation_types,
                 &carrier_phase_candidates,
             ),
-            carrier_phase_type: find_observation_type(
-                observation_types,
-                &carrier_phase_candidates,
-            ),
+            carrier_phase_type: find_observation_type(observation_types, &carrier_phase_candidates),
             signal_strength_index: find_observation_index(
                 observation_types,
                 &signal_strength_candidates,
@@ -636,8 +615,7 @@ fn build_gps_observations(
         metadata.signal = channel.signal;
         metadata.tracking_state = "external_file".to_string();
         metadata.observation_lock_state = "imported".to_string();
-        metadata.pseudorange_model =
-            format!("rinex_observation:{}", channel.pseudorange_type);
+        metadata.pseudorange_model = format!("rinex_observation:{}", channel.pseudorange_type);
         metadata.carrier_phase_model = channel
             .carrier_phase_type
             .as_ref()
@@ -1105,25 +1083,15 @@ mod tests {
         assert_eq!(dataset.interval_s, Some(15.0));
         assert_eq!(dataset.observation_channels.len(), 2);
         assert_eq!(dataset.observation_channels[0].band, SignalBand::L1);
+        assert_eq!(dataset.observation_channels[0].pseudorange_observation_type, "C1");
         assert_eq!(
-            dataset.observation_channels[0].pseudorange_observation_type,
-            "C1"
-        );
-        assert_eq!(
-            dataset.observation_channels[0]
-                .carrier_phase_observation_type
-                .as_deref(),
+            dataset.observation_channels[0].carrier_phase_observation_type.as_deref(),
             Some("L1")
         );
         assert_eq!(dataset.observation_channels[1].band, SignalBand::L2);
+        assert_eq!(dataset.observation_channels[1].pseudorange_observation_type, "P2");
         assert_eq!(
-            dataset.observation_channels[1].pseudorange_observation_type,
-            "P2"
-        );
-        assert_eq!(
-            dataset.observation_channels[1]
-                .carrier_phase_observation_type
-                .as_deref(),
+            dataset.observation_channels[1].carrier_phase_observation_type.as_deref(),
             Some("L2")
         );
         assert_eq!(dataset.epochs.len(), 3);
@@ -1171,8 +1139,14 @@ mod tests {
             format!("{:<60}{}", "G    4 C1C L1C C2P L2P", "SYS / # / OBS TYPES"),
             format!("{:<60}{}", "", "END OF HEADER"),
             "> 2022 05 14 00 00 00.0000000  0  2".to_string(),
-            format!("{:<3}{:>14}  {:>14}  {:>14}  {:>14}", "G01", 20345678.123, 123456.250, 20345680.750, 123450.500),
-            format!("{:<3}{:>14}  {:>14}  {:>14}  {:>14}", "G02", 21345678.456, 223456.500, 21345681.125, 223450.750),
+            format!(
+                "{:<3}{:>14}  {:>14}  {:>14}  {:>14}",
+                "G01", 20345678.123, 123456.250, 20345680.750, 123450.500
+            ),
+            format!(
+                "{:<3}{:>14}  {:>14}  {:>14}  {:>14}",
+                "G02", 21345678.456, 223456.500, 21345681.125, 223450.750
+            ),
         ]
         .join("\n");
         let dataset =

@@ -5,7 +5,9 @@ use std::io::{BufWriter, Write};
 use std::path::Path;
 use std::sync::OnceLock;
 
-use bijux_gnss_core::api::{gps_to_utc, Constellation, GpsTime, IoError, LeapSeconds, ParseError, SatId};
+use bijux_gnss_core::api::{
+    gps_to_utc, Constellation, GpsTime, IoError, LeapSeconds, ParseError, SatId,
+};
 use regex::Regex;
 use time::{Date, Month, PrimitiveDateTime, Time};
 
@@ -34,8 +36,7 @@ struct RinexNavHeader {
 fn rinex_nav_float_regex() -> &'static Regex {
     static REGEX: OnceLock<Regex> = OnceLock::new();
     REGEX.get_or_init(|| {
-        Regex::new(r"[+-]?\d+(?:\.\d*)?(?:[DdEe][+-]?\d+)?")
-            .expect("valid RINEX NAV float regex")
+        Regex::new(r"[+-]?\d+(?:\.\d*)?(?:[DdEe][+-]?\d+)?").expect("valid RINEX NAV float regex")
     })
 }
 
@@ -48,10 +49,7 @@ fn parse_rinex_float(field: &str) -> Result<f64, ParseError> {
 }
 
 fn parse_rinex_numeric_fields(line: &str) -> Result<Vec<f64>, ParseError> {
-    rinex_nav_float_regex()
-        .find_iter(line)
-        .map(|field| parse_rinex_float(field.as_str()))
-        .collect()
+    rinex_nav_float_regex().find_iter(line).map(|field| parse_rinex_float(field.as_str())).collect()
 }
 
 fn parse_rinex_nav_header(data: &str) -> Result<(RinexNavHeader, usize), ParseError> {
@@ -65,13 +63,14 @@ fn parse_rinex_nav_header(data: &str) -> Result<(RinexNavHeader, usize), ParseEr
     for line in data.lines() {
         header_line_count += 1;
         if header.is_none() && line.contains("RINEX VERSION / TYPE") {
-            let version = line
-                .get(..9)
-                .unwrap_or_default()
-                .trim()
-                .parse::<f64>()
-                .map_err(|err| ParseError {
-                    message: format!("invalid RINEX NAV version '{}': {err}", &line[..9.min(line.len())]),
+            let version =
+                line.get(..9).unwrap_or_default().trim().parse::<f64>().map_err(|err| {
+                    ParseError {
+                        message: format!(
+                            "invalid RINEX NAV version '{}': {err}",
+                            &line[..9.min(line.len())]
+                        ),
+                    }
                 })?;
             has_type = line.contains("NAVIGATION DATA") || line.contains("NAV DATA");
             header = Some(RinexNavHeader {
@@ -121,17 +120,11 @@ fn parse_rinex_nav_header(data: &str) -> Result<(RinexNavHeader, usize), ParseEr
     }
 }
 
-fn parse_rinex_klobuchar_header_fields(
-    line: &str,
-    label: &str,
-) -> Result<[f64; 4], ParseError> {
+fn parse_rinex_klobuchar_header_fields(line: &str, label: &str) -> Result<[f64; 4], ParseError> {
     let fields = parse_rinex_numeric_fields(line)?;
     if fields.len() < 4 {
         return Err(ParseError {
-            message: format!(
-                "{label} requires 4 numeric fields, found {}",
-                fields.len()
-            ),
+            message: format!("{label} requires 4 numeric fields, found {}", fields.len()),
         });
     }
     Ok([fields[0], fields[1], fields[2], fields[3]])
@@ -154,19 +147,13 @@ fn parse_rinex_epoch_utc(
     let nanos = ((second - whole_seconds) * 1_000_000_000.0).round();
     let date = Date::from_calendar_date(
         year,
-        Month::try_from(month).map_err(|_| ParseError {
-            message: format!("invalid RINEX NAV month {month}"),
-        })?,
+        Month::try_from(month)
+            .map_err(|_| ParseError { message: format!("invalid RINEX NAV month {month}") })?,
         day,
     )
     .map_err(|err| ParseError { message: format!("invalid RINEX NAV date: {err}") })?;
-    let time = Time::from_hms_nano(
-        hour,
-        minute,
-        whole_seconds as u8,
-        nanos as u32,
-    )
-    .map_err(|err| ParseError { message: format!("invalid RINEX NAV time: {err}") })?;
+    let time = Time::from_hms_nano(hour, minute, whole_seconds as u8, nanos as u32)
+        .map_err(|err| ParseError { message: format!("invalid RINEX NAV time: {err}") })?;
     let utc = PrimitiveDateTime::new(date, time).assume_utc();
     Ok(bijux_gnss_core::api::UtcTime {
         unix_s: utc.unix_timestamp_nanos() as f64 / 1_000_000_000.0,
@@ -314,29 +301,38 @@ fn parse_gps_rinex_nav_record(
             .trim()
             .strip_prefix('G')
             .ok_or_else(|| ParseError {
-                message: format!("unsupported RINEX NAV satellite identifier '{}'", &first_line[..3.min(first_line.len())]),
+                message: format!(
+                    "unsupported RINEX NAV satellite identifier '{}'",
+                    &first_line[..3.min(first_line.len())]
+                ),
             })?
             .parse::<u8>()
             .map_err(|err| ParseError {
-                message: format!("invalid GPS satellite identifier '{}': {err}", &first_line[..3.min(first_line.len())]),
+                message: format!(
+                    "invalid GPS satellite identifier '{}': {err}",
+                    &first_line[..3.min(first_line.len())]
+                ),
             })?;
         (sat, first_line.get(3..).unwrap_or_default())
     } else {
-        let sat = first_line
-            .get(..2)
-            .unwrap_or_default()
-            .trim()
-            .parse::<u8>()
-            .map_err(|err| ParseError {
-                message: format!("invalid GPS satellite identifier '{}': {err}", &first_line[..2.min(first_line.len())]),
-            })?;
+        let sat = first_line.get(..2).unwrap_or_default().trim().parse::<u8>().map_err(|err| {
+            ParseError {
+                message: format!(
+                    "invalid GPS satellite identifier '{}': {err}",
+                    &first_line[..2.min(first_line.len())]
+                ),
+            }
+        })?;
         (sat, first_line.get(2..).unwrap_or_default())
     };
 
     let line1 = parse_rinex_numeric_fields(first_line_payload)?;
     if line1.len() < 9 {
         return Err(ParseError {
-            message: format!("GPS RINEX NAV first line requires 9 numeric fields, found {}", line1.len()),
+            message: format!(
+                "GPS RINEX NAV first line requires 9 numeric fields, found {}",
+                line1.len()
+            ),
         });
     }
     let line2 = parse_rinex_numeric_fields(lines[1])?;
@@ -420,7 +416,11 @@ pub fn parse_rinex_broadcast_navigation(
     data: &str,
 ) -> Result<GpsBroadcastNavigationData, ParseError> {
     let (header, header_line_count) = parse_rinex_nav_header(data)?;
-    let lines = data.lines().skip(header_line_count).filter(|line| !line.trim().is_empty()).collect::<Vec<_>>();
+    let lines = data
+        .lines()
+        .skip(header_line_count)
+        .filter(|line| !line.trim().is_empty())
+        .collect::<Vec<_>>();
     let mut ephemerides = Vec::new();
     let mut index = 0usize;
 
@@ -796,15 +796,18 @@ G01 2022 05 13 20 00 00-1.234567890123D-04 2.345678901234D-12 0.000000000000D+00
             [0.1212e-7, 0.1490e-7, -0.5960e-7, 0.1192e-6],
             [0.1167e6, -0.2294e6, -0.1311e6, 0.1049e7],
         );
-        let navigation =
-            GpsBroadcastNavigationData { ephemerides: vec![sample_ephemeris()], klobuchar: Some(klobuchar) };
+        let navigation = GpsBroadcastNavigationData {
+            ephemerides: vec![sample_ephemeris()],
+            klobuchar: Some(klobuchar),
+        };
         let path = std::env::temp_dir().join(format!(
             "bijux-rinex-broadcast-navigation-roundtrip-{}-{}.rnx",
             std::process::id(),
             navigation.ephemerides[0].sat.prn
         ));
 
-        write_rinex_broadcast_navigation(&path, &navigation, true).expect("write broadcast navigation");
+        write_rinex_broadcast_navigation(&path, &navigation, true)
+            .expect("write broadcast navigation");
         let data = std::fs::read_to_string(&path).expect("read broadcast navigation");
         let parsed = parse_rinex_broadcast_navigation(&data).expect("parse written navigation");
         std::fs::remove_file(&path).expect("remove nav fixture");
