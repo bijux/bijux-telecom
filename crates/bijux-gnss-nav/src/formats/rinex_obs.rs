@@ -1,5 +1,3 @@
-#![allow(missing_docs)]
-
 use std::collections::BTreeMap;
 
 use bijux_gnss_core::api::{
@@ -34,16 +32,25 @@ impl RinexObservationHeader {
     }
 }
 
+/// GPS observations imported from a RINEX observation file.
 #[derive(Debug, Clone)]
-struct RinexGpsObservationDataset {
-    version: f64,
-    marker_name: Option<String>,
-    approx_position_ecef_m: Option<(f64, f64, f64)>,
-    interval_s: Option<f64>,
-    pseudorange_observation_type: String,
-    carrier_phase_observation_type: Option<String>,
-    signal_strength_observation_type: Option<String>,
-    epochs: Vec<ObsEpoch>,
+pub struct RinexGpsObservationDataset {
+    /// RINEX format version read from the header.
+    pub version: f64,
+    /// Marker name if the file declares one.
+    pub marker_name: Option<String>,
+    /// Approximate station coordinates from `APPROX POSITION XYZ`.
+    pub approx_position_ecef_m: Option<(f64, f64, f64)>,
+    /// Observation interval in seconds if declared in the header.
+    pub interval_s: Option<f64>,
+    /// GPS pseudorange observation type used to populate `epochs`.
+    pub pseudorange_observation_type: String,
+    /// GPS carrier-phase observation type used when present.
+    pub carrier_phase_observation_type: Option<String>,
+    /// GPS signal-strength observation type used when present.
+    pub signal_strength_observation_type: Option<String>,
+    /// GPS observation epochs converted into the workspace observation model.
+    pub epochs: Vec<ObsEpoch>,
 }
 
 #[derive(Debug, Clone)]
@@ -150,7 +157,11 @@ fn parse_rinex_observation_header(data: &str) -> Result<(RinexObservationHeader,
     Ok((header, line_index))
 }
 
-fn parse_rinex_gps_observation_dataset(
+/// Parse GPS observations from a RINEX observation file.
+///
+/// The parser preserves only GPS observation epochs and maps them into `ObsEpoch`
+/// with explicit transmit timing derived from the imported pseudoranges.
+pub fn parse_rinex_gps_observation_dataset(
     data: &str,
 ) -> Result<RinexGpsObservationDataset, ParseError> {
     let lines = data.lines().collect::<Vec<_>>();

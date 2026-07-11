@@ -29,6 +29,9 @@ pub use crate::estimation::position::solver::{
     position_dops_from_satellite_positions, PositionDops, PositionSolveRefusal,
     PositionSolveRefusalKind,
 };
+pub use crate::formats::rinex_obs::{
+    parse_rinex_gps_observation_dataset, RinexGpsObservationDataset,
+};
 pub use crate::estimation::position::raim::{
     RaimFaultDetection, RaimFaultDetectionStatus, RaimFaultExclusion,
 };
