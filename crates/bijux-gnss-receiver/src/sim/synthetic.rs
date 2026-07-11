@@ -1364,8 +1364,11 @@ fn mean_f64(values: &[f64]) -> Option<f64> {
 }
 
 fn time_profile_window_len(epoch_count: usize) -> usize {
-    epoch_count.clamp(1, 25)
+    (epoch_count / 2).clamp(1, 25)
 }
+
+const MIN_TIME_PROFILE_EPOCH_COUNT: usize = 5;
+const MIN_TIME_PROFILE_DURATION_S: f64 = 1.0;
 
 fn linear_trend_slope(receive_times_s: &[f64], values: &[f64]) -> Option<f64> {
     if receive_times_s.len() != values.len() || values.len() < 2 {
@@ -2737,6 +2740,36 @@ fn clock_profile_truth_coverage_issues(
     Vec::new()
 }
 
+fn time_profile_truth_coverage_issues(
+    truth_epoch_count: usize,
+    epoch_count: usize,
+    duration_s: f64,
+    analysis_window_epoch_count: usize,
+    position_error_drift_m_per_s: Option<f64>,
+    residual_rms_drift_m_per_s: Option<f64>,
+) -> Vec<SyntheticTruthCoverageIssue> {
+    let mut issues = Vec::new();
+    if truth_epoch_count < MIN_TIME_PROFILE_EPOCH_COUNT {
+        issues.push(truth_coverage_issue(None, None, "insufficient_time_profile_truth_epochs"));
+    }
+    if epoch_count < MIN_TIME_PROFILE_EPOCH_COUNT {
+        issues.push(truth_coverage_issue(None, None, "insufficient_time_profile_accuracy_epochs"));
+    }
+    if duration_s < MIN_TIME_PROFILE_DURATION_S {
+        issues.push(truth_coverage_issue(None, None, "insufficient_time_profile_duration"));
+    }
+    if analysis_window_epoch_count < 2 {
+        issues.push(truth_coverage_issue(None, None, "insufficient_time_profile_analysis_window"));
+    }
+    if position_error_drift_m_per_s.is_none() {
+        issues.push(truth_coverage_issue(None, None, "missing_time_profile_position_drift_slope"));
+    }
+    if residual_rms_drift_m_per_s.is_none() {
+        issues.push(truth_coverage_issue(None, None, "missing_time_profile_residual_drift_slope"));
+    }
+    issues
+}
+
 /// Summarize truth-guided PVT accuracy across long-run time-evolution points.
 pub fn summarize_truth_guided_pvt_time_profile(
     cases: &[SyntheticPvtTimeProfileCase<'_>],
@@ -2823,6 +2856,19 @@ pub fn summarize_truth_guided_pvt_time_profile(
             let position_error_drift_m_per_s =
                 linear_trend_slope(&receive_times_s, &position_error_3d_m);
             let residual_rms_drift_m_per_s = linear_trend_slope(&receive_times_s, &residual_rms_m);
+            let analysis_window_epoch_count = window_len.min(epoch_count);
+            let time_profile_truth_coverage_issues = time_profile_truth_coverage_issues(
+                truth_epoch_count,
+                epoch_count,
+                duration_s,
+                analysis_window_epoch_count,
+                position_error_drift_m_per_s,
+                residual_rms_drift_m_per_s,
+            );
+            let truth_coverage_ready =
+                case.accuracy.truth_coverage_ready && time_profile_truth_coverage_issues.is_empty();
+            let mut truth_coverage_issues = case.accuracy.truth_coverage_issues.clone();
+            truth_coverage_issues.extend(time_profile_truth_coverage_issues);
             let trend = classify_pvt_time_trend(
                 diverging_epoch_count,
                 first_window_mean_position_error_3d_m,
@@ -2844,7 +2890,7 @@ pub fn summarize_truth_guided_pvt_time_profile(
                 stable_epoch_rate,
                 diverging_epoch_count,
                 diverging_epoch_rate,
-                analysis_window_epoch_count: window_len.min(epoch_count),
+                analysis_window_epoch_count,
                 first_window_mean_position_error_3d_m,
                 last_window_mean_position_error_3d_m,
                 position_error_growth_m,
@@ -2854,11 +2900,9 @@ pub fn summarize_truth_guided_pvt_time_profile(
                 residual_rms_growth_m,
                 residual_rms_drift_m_per_s,
                 trend,
-                truth_coverage_ready: case.accuracy.truth_coverage_ready,
-                truth_coverage_issues: case.accuracy.truth_coverage_issues.clone(),
-                ready: case.accuracy.truth_coverage_ready
-                    && truth_epoch_count >= 2
-                    && epoch_count >= 2,
+                truth_coverage_ready,
+                truth_coverage_issues,
+                ready: truth_coverage_ready,
             }
         })
         .collect::<Vec<_>>();
@@ -7685,29 +7729,31 @@ mod tests {
     fn pvt_time_profile_classifies_stabilizing_drifting_and_diverging_runs() {
         let (stabilizing_truth, stabilizing_accuracy) = time_profile_truth_and_accuracy(
             "pvt_time_profile_stabilizing",
-            &[5.0, 3.0, 1.5, 0.9],
-            &[4.0, 2.5, 1.5, 0.8],
+            &[5.0, 3.5, 2.0, 1.2, 0.8],
+            &[4.0, 2.8, 1.9, 1.1, 0.7],
             &[
                 SolutionValidity::Coarse,
                 SolutionValidity::Converging,
+                SolutionValidity::Stable,
                 SolutionValidity::Stable,
                 SolutionValidity::Stable,
             ],
         );
         let (drifting_truth, drifting_accuracy) = time_profile_truth_and_accuracy(
             "pvt_time_profile_drifting",
-            &[0.4, 0.8, 1.2, 1.8],
-            &[0.3, 0.6, 0.9, 1.3],
-            &[SolutionValidity::Stable; 4],
+            &[0.4, 0.8, 1.2, 1.8, 2.6],
+            &[0.3, 0.6, 0.9, 1.3, 1.8],
+            &[SolutionValidity::Stable; 5],
         );
         let (diverging_truth, diverging_accuracy) = time_profile_truth_and_accuracy(
             "pvt_time_profile_diverging",
-            &[1.0, 4.0, 12.0, 40.0],
-            &[1.0, 4.5, 15.0, 45.0],
+            &[1.0, 4.0, 12.0, 40.0, 95.0],
+            &[1.0, 4.5, 15.0, 45.0, 110.0],
             &[
                 SolutionValidity::Stable,
                 SolutionValidity::Converging,
                 SolutionValidity::Coarse,
+                SolutionValidity::Diverging,
                 SolutionValidity::Diverging,
             ],
         );
@@ -7734,7 +7780,7 @@ mod tests {
         );
 
         assert_eq!(report.points.len(), 3);
-        assert_eq!(report.points[0].duration_s, 3.0);
+        assert_eq!(report.points[0].duration_s, 4.0);
         let stabilizing = report
             .points
             .iter()
