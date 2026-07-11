@@ -38,12 +38,22 @@ fn rtk_float_baseline_solver_recovers_truth_and_ambiguities() {
     assert!((solution.enu_m[1] - scenario.truth_enu_m[1]).abs() < 0.05, "north mismatch");
     assert!((solution.enu_m[2] - scenario.truth_enu_m[2]).abs() < 0.10, "up mismatch");
     assert_eq!(solution.float_ambiguities.len(), scenario.double_differences.len());
+    assert_eq!(solution.ambiguity_covariance_cycles2.len(), scenario.double_differences.len());
+    assert_eq!(solution.enu_ambiguity_covariance_m_cycles.len(), 3);
     assert!(solution.covariance_enu_m2[0][0].is_finite());
     assert!(solution.covariance_enu_m2[1][1].is_finite());
     assert!(solution.covariance_enu_m2[2][2].is_finite());
     assert!(solution.covariance_enu_m2[0][0] > 0.0);
     assert!(solution.covariance_enu_m2[1][1] > 0.0);
     assert!(solution.covariance_enu_m2[2][2] > 0.0);
+    for row in &solution.ambiguity_covariance_cycles2 {
+        assert_eq!(row.len(), scenario.double_differences.len());
+        assert!(row.iter().all(|value| value.is_finite()));
+    }
+    for row in &solution.enu_ambiguity_covariance_m_cycles {
+        assert_eq!(row.len(), scenario.double_differences.len());
+        assert!(row.iter().all(|value| value.is_finite()));
+    }
 
     for ambiguity in &solution.float_ambiguities {
         let expected_cycles = scenario.rover_ambiguities_cycles[&ambiguity.sig.sat]
@@ -98,15 +108,25 @@ fn rtk_float_baseline_artifact_validation_rejects_invalid_values() {
     let solution = RtkFloatBaselineSolution {
         enu_m: [0.0, f64::INFINITY, 0.0],
         covariance_enu_m2: [[0.0, 0.0, 0.0], [0.0, f64::NAN, 0.0], [0.0, 0.0, 0.0]],
+        enu_ambiguity_covariance_m_cycles: vec![vec![f64::INFINITY], vec![0.0], Vec::new()],
         float_ambiguities: vec![ambiguity],
+        ambiguity_covariance_cycles2: vec![vec![f64::NAN]],
     };
 
     let diagnostics = solution.validate_payload();
 
     assert!(diagnostics.iter().any(|event| event.code == "RTK_FLOAT_BASELINE_NUMERIC_INVALID"));
     assert!(diagnostics.iter().any(|event| event.code == "RTK_FLOAT_BASELINE_COVARIANCE_INVALID"));
+    assert!(diagnostics.iter().any(|event| {
+        event.code == "RTK_FLOAT_BASELINE_CROSS_COVARIANCE_SHAPE_INVALID"
+            || event.code == "RTK_FLOAT_BASELINE_CROSS_COVARIANCE_NUMERIC_INVALID"
+    }));
     assert!(diagnostics.iter().any(|event| event.code == "RTK_FLOAT_AMBIGUITY_NUMERIC_INVALID"));
     assert!(diagnostics.iter().any(|event| event.code == "RTK_FLOAT_AMBIGUITY_VARIANCE_INVALID"));
+    assert!(diagnostics.iter().any(|event| {
+        event.code == "RTK_FLOAT_AMBIGUITY_COVARIANCE_NUMERIC_INVALID"
+            || event.code == "RTK_FLOAT_AMBIGUITY_COVARIANCE_SHAPE_INVALID"
+    }));
 }
 
 #[test]

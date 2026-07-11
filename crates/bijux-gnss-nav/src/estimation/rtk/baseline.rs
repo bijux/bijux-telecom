@@ -56,8 +56,12 @@ pub struct RtkFloatBaselineSolution {
     pub enu_m: [f64; 3],
     /// Rover-minus-base covariance in the base-station ENU frame.
     pub covariance_enu_m2: [[f64; 3]; 3],
+    /// Cross-covariance between baseline ENU components and float ambiguities.
+    pub enu_ambiguity_covariance_m_cycles: Vec<Vec<f64>>,
     /// Float double-difference ambiguities estimated alongside the baseline.
     pub float_ambiguities: Vec<RtkFloatAmbiguityEstimate>,
+    /// Full float ambiguity covariance ordered like `float_ambiguities`.
+    pub ambiguity_covariance_cycles2: Vec<Vec<f64>>,
 }
 
 impl ArtifactPayloadValidate for RtkFloatBaselineSolution {
@@ -78,8 +82,54 @@ impl ArtifactPayloadValidate for RtkFloatBaselineSolution {
                 "float baseline covariance contains NaN/Inf",
             ));
         }
+        if self.enu_ambiguity_covariance_m_cycles.len() != 3
+            || self
+                .enu_ambiguity_covariance_m_cycles
+                .iter()
+                .any(|row| row.len() != self.float_ambiguities.len())
+        {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "RTK_FLOAT_BASELINE_CROSS_COVARIANCE_SHAPE_INVALID",
+                "float baseline cross-covariance shape does not match ENU and ambiguity dimensions",
+            ));
+        } else if !self
+            .enu_ambiguity_covariance_m_cycles
+            .iter()
+            .flat_map(|row| row.iter())
+            .all(|value| value.is_finite())
+        {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "RTK_FLOAT_BASELINE_CROSS_COVARIANCE_NUMERIC_INVALID",
+                "float baseline cross-covariance contains NaN/Inf",
+            ));
+        }
         for ambiguity in &self.float_ambiguities {
             events.extend(ambiguity.validate_payload());
+        }
+        if self.ambiguity_covariance_cycles2.len() != self.float_ambiguities.len()
+            || self
+                .ambiguity_covariance_cycles2
+                .iter()
+                .any(|row| row.len() != self.float_ambiguities.len())
+        {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "RTK_FLOAT_AMBIGUITY_COVARIANCE_SHAPE_INVALID",
+                "float ambiguity covariance shape does not match the ambiguity count",
+            ));
+        } else if !self
+            .ambiguity_covariance_cycles2
+            .iter()
+            .flat_map(|row| row.iter())
+            .all(|value| value.is_finite())
+        {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "RTK_FLOAT_AMBIGUITY_COVARIANCE_NUMERIC_INVALID",
+                "float ambiguity covariance contains NaN/Inf",
+            ));
         }
         events
     }
@@ -225,6 +275,8 @@ pub fn rtk_float_baseline_from_double_differences_with_rover_prior(
     let covariance = covariance?;
     let covariance_ecef_m2 = covariance_3x3(&covariance);
     let covariance_enu_m2 = covariance_ecef_to_enu(base_ecef_m, covariance_ecef_m2);
+    let enu_ambiguity_covariance_m_cycles =
+        covariance_enu_ambiguity_block(base_ecef_m, &covariance, 3, ambiguity_count);
     let (lat_deg, lon_deg, alt_m) = crate::estimation::position::solver::ecef_to_geodetic(
         base_ecef_m[0],
         base_ecef_m[1],
@@ -248,11 +300,14 @@ pub fn rtk_float_baseline_from_double_differences_with_rover_prior(
             variance_cycles2: covariance[(3 + index, 3 + index)].max(0.0),
         });
     }
+    let ambiguity_covariance_cycles2 = covariance_block(&covariance, 3, ambiguity_count);
 
     Some(RtkFloatBaselineSolution {
         enu_m: [east_m, north_m, up_m],
         covariance_enu_m2,
+        enu_ambiguity_covariance_m_cycles,
         float_ambiguities,
+        ambiguity_covariance_cycles2,
     })
 }
 
@@ -305,6 +360,64 @@ fn covariance_3x3(covariance: &Matrix) -> [[f64; 3]; 3] {
         }
     }
     out
+}
+
+fn covariance_block(covariance: &Matrix, start: usize, size: usize) -> Vec<Vec<f64>> {
+    let mut block = vec![vec![0.0; size]; size];
+    for row in 0..size {
+        for col in 0..size {
+            block[row][col] = covariance[(start + row, start + col)];
+        }
+    }
+    block
+}
+
+fn covariance_enu_ambiguity_block(
+    base_ecef_m: [f64; 3],
+    covariance: &Matrix,
+    ambiguity_start: usize,
+    ambiguity_count: usize,
+) -> Vec<Vec<f64>> {
+    let rotation = ecef_to_enu_rotation(base_ecef_m);
+    let mut ecef_block = Matrix::new(3, ambiguity_count, 0.0);
+    for row in 0..3 {
+        for col in 0..ambiguity_count {
+            ecef_block[(row, col)] = covariance[(row, ambiguity_start + col)];
+        }
+    }
+    let enu_block = rotation.mul(&ecef_block);
+    let mut out = vec![vec![0.0; ambiguity_count]; 3];
+    for row in 0..3 {
+        for col in 0..ambiguity_count {
+            out[row][col] = enu_block[(row, col)];
+        }
+    }
+    out
+}
+
+fn ecef_to_enu_rotation(base_ecef_m: [f64; 3]) -> Matrix {
+    let (lat_deg, lon_deg, _alt_m) = crate::estimation::position::solver::ecef_to_geodetic(
+        base_ecef_m[0],
+        base_ecef_m[1],
+        base_ecef_m[2],
+    );
+    let (sin_lat, cos_lat) = lat_deg.to_radians().sin_cos();
+    let (sin_lon, cos_lon) = lon_deg.to_radians().sin_cos();
+    Matrix::from_parts(
+        3,
+        3,
+        vec![
+            -sin_lon,
+            cos_lon,
+            0.0,
+            -sin_lat * cos_lon,
+            -sin_lat * sin_lon,
+            cos_lat,
+            cos_lat * cos_lon,
+            cos_lat * sin_lon,
+            sin_lat,
+        ],
+    )
 }
 
 fn covariance_ecef_to_enu(

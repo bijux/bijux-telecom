@@ -4,8 +4,7 @@ use bijux_gnss_receiver::api::{
     build_dd, build_sd, choose_ref_sat, solve_baseline_dd, solve_float_baseline_dd,
 };
 use bijux_gnss_testkit::rtk_baseline::{
-    centimeter_level_rtk_baseline_budget, clean_gps_l1_short_baseline_case,
-    rtk_baseline_accuracy,
+    centimeter_level_rtk_baseline_budget, clean_gps_l1_short_baseline_case, rtk_baseline_accuracy,
 };
 
 #[test]
@@ -34,6 +33,8 @@ fn receiver_float_baseline_solver_projects_nav_solution() {
     assert!((float_solution.enu_m[1] - scenario.truth_enu_m[1]).abs() < 0.05);
     assert!((float_solution.enu_m[2] - scenario.truth_enu_m[2]).abs() < 0.10);
     assert_eq!(float_solution.float_ambiguities.len(), double_differences.len());
+    assert_eq!(float_solution.ambiguity_covariance_cycles2.len(), double_differences.len());
+    assert_eq!(float_solution.enu_ambiguity_covariance_m_cycles.len(), 3);
     assert_eq!(projected_solution.enu_m, float_solution.enu_m);
     assert_eq!(
         projected_solution.covariance_m2.expect("projected covariance"),
