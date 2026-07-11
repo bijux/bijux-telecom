@@ -6,7 +6,10 @@ use bijux_gnss_core::api::{
     AcqHypothesis, AcqResult, Constellation, Hertz, ReceiverSampleTrace, SatId, SignalBand,
 };
 use bijux_gnss_receiver::api::{
-    sim::{generate_l1_ca, SyntheticSignalParams},
+    sim::{
+        expected_acquisition_code_phase_samples, expected_acquisition_code_phase_samples_f64,
+        generate_l1_ca, SyntheticSignalParams,
+    },
     ReceiverPipelineConfig, ReceiverRuntime, TrackingEngine,
 };
 
@@ -74,8 +77,24 @@ fn track_clean_nav_bit_case(
     code_phase_chips: f64,
     carrier_phase_rad: f64,
 ) -> Vec<bijux_gnss_core::api::TrackEpoch> {
-    let expected_code_phase_samples =
-        code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
+    track_clean_nav_bit_case_with_cn0(
+        config,
+        sat,
+        doppler_hz,
+        code_phase_chips,
+        carrier_phase_rad,
+        CLEAN_NAV_BIT_CN0_DB_HZ,
+    )
+}
+
+fn track_clean_nav_bit_case_with_cn0(
+    config: &ReceiverPipelineConfig,
+    sat: SatId,
+    doppler_hz: f64,
+    code_phase_chips: f64,
+    carrier_phase_rad: f64,
+    cn0_db_hz: f32,
+) -> Vec<bijux_gnss_core::api::TrackEpoch> {
     let frame = generate_l1_ca(
         config,
         SyntheticSignalParams {
@@ -83,16 +102,18 @@ fn track_clean_nav_bit_case(
             doppler_hz,
             code_phase_chips,
             carrier_phase_rad,
-            cn0_db_hz: CLEAN_NAV_BIT_CN0_DB_HZ,
+            cn0_db_hz,
             data_bit_flip: true,
         },
         0x57A1_1C7D,
         CLEAN_NAV_BIT_DURATION_S,
     );
+    let seeded_code_phase_samples =
+        expected_acquisition_code_phase_samples(config, &frame, code_phase_chips);
     let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
     let tracks = tracking.track_from_acquisition(
         &frame,
-        &[accepted_acquisition(sat, doppler_hz, expected_code_phase_samples.round() as usize)],
+        &[accepted_acquisition(sat, doppler_hz, seeded_code_phase_samples)],
     );
 
     tracks.first().expect("track").epochs.clone()
@@ -132,7 +153,21 @@ fn tracking_reports_nav_bit_lock_across_clean_bit_transition_windows() {
     let epochs = track_clean_nav_bit_case(&config, sat, 120.0, 144.375, 0.3);
     let post_lock = post_lock_epochs(&epochs);
     let transition_epochs = nav_bit_transition_epoch_indices(&epochs, config.sampling_freq_hz);
-    let expected_code_phase_samples = 144.375 * config.sampling_freq_hz / config.code_freq_basis_hz;
+    let frame = generate_l1_ca(
+        &config,
+        SyntheticSignalParams {
+            sat,
+            doppler_hz: 120.0,
+            code_phase_chips: 144.375,
+            carrier_phase_rad: 0.3,
+            cn0_db_hz: CLEAN_NAV_BIT_CN0_DB_HZ,
+            data_bit_flip: true,
+        },
+        0x57A1_1C7D,
+        CLEAN_NAV_BIT_DURATION_S,
+    );
+    let expected_code_phase_samples =
+        expected_acquisition_code_phase_samples_f64(&config, &frame, 144.375);
 
     assert!(epochs.len() >= 60, "epochs={epochs:?}");
     assert!(!post_lock.is_empty(), "tracking never reached lock: epochs={epochs:?}");
@@ -187,14 +222,52 @@ fn tracking_preserves_channel_lock_after_the_first_post_lock_nav_bit_transition(
 }
 
 #[test]
+fn tracking_reaches_lock_before_high_doppler_nav_bit_transition() {
+    let config = nav_bit_tracking_config();
+    let sat = SatId { constellation: Constellation::Gps, prn: 3 };
+    let epochs = track_clean_nav_bit_case_with_cn0(&config, sat, 750.0, 200.125, 0.0, 58.0);
+    let transition_epochs = nav_bit_transition_epoch_indices(&epochs, config.sampling_freq_hz);
+    let first_transition_epoch_index =
+        *transition_epochs.first().unwrap_or_else(|| panic!("epochs={epochs:?}"));
+    let pre_transition_epochs = &epochs[..first_transition_epoch_index];
+    let post_transition_epochs = &epochs[first_transition_epoch_index..];
+
+    assert!(
+        pre_transition_epochs.iter().any(|epoch| {
+            epoch.lock_state == "tracking" && epoch.pll_lock && epoch.fll_lock && !epoch.cycle_slip
+        }),
+        "tracking never reached a clean locked state before the first nav-bit transition: epochs={epochs:?}"
+    );
+    assert!(
+        post_transition_epochs
+            .iter()
+            .all(|epoch| epoch.lock && epoch.lock_state != "lost" && !epoch.cycle_slip),
+        "tracking did not preserve lock through the first high-doppler nav-bit transition: epochs={epochs:?}"
+    );
+}
+
+#[test]
 fn tracking_keeps_bounded_code_and_carrier_errors_after_nav_bit_lock() {
     let config = nav_bit_tracking_config();
     let sat = SatId { constellation: Constellation::Gps, prn: 12 };
     let true_doppler_hz = 120.0;
     let code_phase_chips = 144.375;
-    let expected_code_phase_samples =
-        code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
     let epochs = track_clean_nav_bit_case(&config, sat, true_doppler_hz, code_phase_chips, 0.3);
+    let frame = generate_l1_ca(
+        &config,
+        SyntheticSignalParams {
+            sat,
+            doppler_hz: true_doppler_hz,
+            code_phase_chips,
+            carrier_phase_rad: 0.3,
+            cn0_db_hz: CLEAN_NAV_BIT_CN0_DB_HZ,
+            data_bit_flip: true,
+        },
+        0x57A1_1C7D,
+        CLEAN_NAV_BIT_DURATION_S,
+    );
+    let expected_code_phase_samples =
+        expected_acquisition_code_phase_samples_f64(&config, &frame, code_phase_chips);
     let post_transition_epochs = post_transition_epochs(&epochs, config.sampling_freq_hz);
     let carrier_errors_hz = post_transition_epochs
         .iter()

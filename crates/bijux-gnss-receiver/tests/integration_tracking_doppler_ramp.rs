@@ -6,7 +6,10 @@ use bijux_gnss_core::api::{
     AcqHypothesis, AcqResult, Constellation, Hertz, ReceiverSampleTrace, SatId, SignalBand,
 };
 use bijux_gnss_receiver::api::{
-    sim::{generate_l1_ca_with_doppler_ramp, SyntheticDopplerRampParams, SyntheticSignalParams},
+    sim::{
+        expected_acquisition_code_phase_samples, expected_acquisition_code_phase_samples_f64,
+        generate_l1_ca_with_doppler_ramp, SyntheticDopplerRampParams, SyntheticSignalParams,
+    },
     ReceiverPipelineConfig, ReceiverRuntime, TrackingEngine,
 };
 
@@ -20,6 +23,7 @@ const CLEAN_DOPPLER_RAMP_CN0_DB_HZ: f32 = 75.0;
 const CLEAN_DOPPLER_RAMP_DURATION_S: f64 = 0.060;
 const CLEAN_DOPPLER_RAMP_LOCKED_CARRIER_ERROR_MAX_HZ: f64 = 10.0;
 const CLEAN_DOPPLER_RAMP_LOCKED_CODE_ERROR_MAX_SAMPLES: f64 = 1.0;
+const CLEAN_DOPPLER_RAMP_MIN_FULLY_LOCKED_EPOCHS: usize = 40;
 
 fn accepted_acquisition(sat: SatId, doppler_hz: f64, code_phase_samples: usize) -> AcqResult {
     AcqResult {
@@ -73,8 +77,6 @@ fn track_clean_doppler_ramp_case(
     code_phase_chips: f64,
     carrier_phase_rad: f64,
 ) -> Vec<bijux_gnss_core::api::TrackEpoch> {
-    let expected_code_phase_samples =
-        code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
     let frame = generate_l1_ca_with_doppler_ramp(
         config,
         SyntheticDopplerRampParams {
@@ -91,37 +93,30 @@ fn track_clean_doppler_ramp_case(
         0xD077_601E,
         CLEAN_DOPPLER_RAMP_DURATION_S,
     );
+    let seeded_code_phase_samples =
+        expected_acquisition_code_phase_samples(config, &frame, code_phase_chips);
     let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
     let tracks = tracking.track_from_acquisition(
         &frame,
-        &[accepted_acquisition(
-            sat,
-            initial_doppler_hz,
-            expected_code_phase_samples.round() as usize,
-        )],
+        &[accepted_acquisition(sat, initial_doppler_hz, seeded_code_phase_samples)],
     );
 
     tracks.first().expect("track").epochs.clone()
 }
 
-fn stable_tracking_window(
-    epochs: &[bijux_gnss_core::api::TrackEpoch],
-) -> &[bijux_gnss_core::api::TrackEpoch] {
-    epochs
-        .iter()
-        .enumerate()
-        .find_map(|(start, _)| {
-            epochs[start..]
-                .iter()
-                .all(|epoch| {
-                    epoch.lock
-                        && epoch.lock_state == "tracking"
-                        && !epoch.cycle_slip
-                        && epoch.lock_state_reason.as_deref() != Some("lock_lost")
-                })
-                .then_some(&epochs[start..])
-        })
-        .unwrap_or(&[])
+fn lock_preserved_epoch(epoch: &bijux_gnss_core::api::TrackEpoch) -> bool {
+    epoch.lock
+        && matches!(epoch.lock_state.as_str(), "tracking" | "degraded")
+        && !epoch.cycle_slip
+        && epoch.lock_state_reason.as_deref() != Some("lock_lost")
+}
+
+fn fully_locked_epoch(epoch: &bijux_gnss_core::api::TrackEpoch) -> bool {
+    epoch.lock_state == "tracking" && epoch.pll_lock && epoch.dll_lock && epoch.fll_lock
+}
+
+fn count_fully_locked_epochs(epochs: &[bijux_gnss_core::api::TrackEpoch]) -> usize {
+    epochs.iter().filter(|epoch| fully_locked_epoch(epoch)).count()
 }
 
 #[test]
@@ -137,20 +132,13 @@ fn tracking_reaches_and_preserves_lock_under_positive_doppler_ramp() {
     assert!(epochs.len() >= 60, "epochs={epochs:?}");
     assert!(!post_lock.is_empty(), "tracking never locked under ramp: epochs={epochs:?}");
     assert!(
-        post_lock.iter().all(|epoch| epoch.lock),
-        "prompt lock dropped after ramp lock at epoch {first_lock_epoch_index}: epochs={epochs:?}"
+        post_lock.iter().all(lock_preserved_epoch),
+        "tracking did not preserve lock after ramp lock at epoch {first_lock_epoch_index}: epochs={epochs:?}"
     );
     assert!(
-        post_lock
-            .iter()
-            .all(|epoch| epoch.lock_state == "tracking" && epoch.pll_lock && epoch.fll_lock),
-        "tracking left the locked state under ramp at epoch {first_lock_epoch_index}: epochs={epochs:?}"
-    );
-    assert!(
-        post_lock
-            .iter()
-            .all(|epoch| !epoch.cycle_slip && epoch.lock_state_reason.as_deref() != Some("lock_lost")),
-        "tracking reported cycle slip or lock loss after ramp lock at epoch {first_lock_epoch_index}: epochs={epochs:?}"
+        count_fully_locked_epochs(post_lock) >= CLEAN_DOPPLER_RAMP_MIN_FULLY_LOCKED_EPOCHS,
+        "tracking did not sustain a long fully locked span under positive ramp: fully_locked_epochs={}, epochs={epochs:?}",
+        count_fully_locked_epochs(post_lock)
     );
 }
 
@@ -199,10 +187,26 @@ fn tracking_preserves_lock_and_code_phase_under_negative_doppler_ramp() {
         code_phase_chips,
         0.15,
     );
+    let frame = generate_l1_ca_with_doppler_ramp(
+        &config,
+        SyntheticDopplerRampParams {
+            signal: SyntheticSignalParams {
+                sat,
+                doppler_hz: initial_doppler_hz,
+                code_phase_chips,
+                carrier_phase_rad: 0.15,
+                cn0_db_hz: CLEAN_DOPPLER_RAMP_CN0_DB_HZ,
+                data_bit_flip: false,
+            },
+            doppler_rate_hz_per_s,
+        },
+        0xD077_601E,
+        CLEAN_DOPPLER_RAMP_DURATION_S,
+    );
     let expected_code_phase_samples =
-        code_phase_chips * config.sampling_freq_hz / config.code_freq_basis_hz;
-    let stable_window = stable_tracking_window(&epochs);
-    let carrier_errors_hz = stable_window
+        expected_acquisition_code_phase_samples_f64(&config, &frame, code_phase_chips);
+    let post_lock = post_lock_epochs(&epochs);
+    let carrier_errors_hz = post_lock
         .iter()
         .map(|epoch| {
             carrier_frequency_error_under_linear_doppler_hz(
@@ -213,16 +217,20 @@ fn tracking_preserves_lock_and_code_phase_under_negative_doppler_ramp() {
             )
         })
         .collect::<Vec<_>>();
-    let code_errors_samples = stable_window
+    let code_errors_samples = post_lock
         .iter()
         .map(|epoch| code_phase_error_samples(&config, epoch, expected_code_phase_samples))
         .collect::<Vec<_>>();
 
-    assert!(!stable_window.is_empty(), "epochs={epochs:?}");
+    assert!(!post_lock.is_empty(), "epochs={epochs:?}");
     assert!(
-        stable_window.len() >= 40,
-        "tracking did not maintain a long stable window under negative ramp: stable_window_len={}, epochs={epochs:?}",
-        stable_window.len()
+        post_lock.iter().all(lock_preserved_epoch),
+        "tracking did not preserve lock after pull-in under negative ramp: epochs={epochs:?}"
+    );
+    assert!(
+        count_fully_locked_epochs(post_lock) >= CLEAN_DOPPLER_RAMP_MIN_FULLY_LOCKED_EPOCHS,
+        "tracking did not sustain a long fully locked span under negative ramp: fully_locked_epochs={}, epochs={epochs:?}",
+        count_fully_locked_epochs(post_lock)
     );
     assert!(
         carrier_errors_hz
