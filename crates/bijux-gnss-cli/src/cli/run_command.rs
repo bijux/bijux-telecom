@@ -726,6 +726,8 @@ mod nav_trace_tests {
             clock_bias_m: Meters(0.0),
             clock_drift_s_per_s: 0.0,
             pdop: 1.5,
+            pre_fit_residual_rms_m: None,
+            post_fit_residual_rms_m: None,
             rms_m: Meters(2.0),
             status: SolutionStatus::Float,
             quality: SolutionStatus::Float.quality_flag(),

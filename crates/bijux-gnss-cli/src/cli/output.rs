@@ -1514,6 +1514,8 @@ mod tests {
             clock_bias_m: Meters(299_792.458),
             clock_drift_s_per_s: 0.0,
             pdop: 1.0,
+            pre_fit_residual_rms_m: None,
+            post_fit_residual_rms_m: None,
             rms_m: Meters(2.0),
             status: SolutionStatus::Converged,
             quality: SolutionStatus::Converged.quality_flag(),
