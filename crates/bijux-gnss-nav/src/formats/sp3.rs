@@ -20,6 +20,13 @@ pub struct Sp3Provider {
     records: BTreeMap<SatId, Vec<Sp3Record>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Sp3InterpolationSummary {
+    pub sample_count: usize,
+    pub max_position_error_m: f64,
+    pub rms_position_error_m: f64,
+}
+
 impl Sp3Provider {
     fn parse_internal(input: &str) -> Result<Self, String> {
         let mut records: BTreeMap<SatId, Vec<Sp3Record>> = BTreeMap::new();
@@ -68,6 +75,11 @@ impl Sp3Provider {
             return Some(record_state(&list[0]));
         }
         interpolate_record_state(list, t_s)
+    }
+
+    pub fn interpolation_summary(&self, sat: SatId) -> Option<Sp3InterpolationSummary> {
+        let records = self.records.get(&sat)?;
+        summarize_interpolation_errors(records)
     }
 }
 
@@ -194,6 +206,46 @@ fn lagrange_coordinate(
     Some(value)
 }
 
+fn summarize_interpolation_errors(records: &[Sp3Record]) -> Option<Sp3InterpolationSummary> {
+    let errors = records
+        .iter()
+        .enumerate()
+        .filter_map(|(index, _)| interpolate_position_error_m(records, index))
+        .collect::<Vec<_>>();
+    if errors.is_empty() {
+        return None;
+    }
+
+    let sample_count = errors.len();
+    let max_position_error_m = errors.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let rms_position_error_m =
+        (errors.iter().map(|error| error.powi(2)).sum::<f64>() / sample_count as f64).sqrt();
+    Some(Sp3InterpolationSummary {
+        sample_count,
+        max_position_error_m,
+        rms_position_error_m,
+    })
+}
+
+fn interpolate_position_error_m(records: &[Sp3Record], index: usize) -> Option<f64> {
+    let target = records.get(index)?;
+    let support = interpolation_support_records(records, target.epoch_s, Some(index));
+    let first_epoch_s = support.first()?.epoch_s;
+    let last_epoch_s = support.last()?.epoch_s;
+    if target.epoch_s <= first_epoch_s || target.epoch_s >= last_epoch_s {
+        return None;
+    }
+
+    let x_m = lagrange_coordinate(&support, target.epoch_s, |record| record.x_m)?;
+    let y_m = lagrange_coordinate(&support, target.epoch_s, |record| record.y_m)?;
+    let z_m = lagrange_coordinate(&support, target.epoch_s, |record| record.z_m)?;
+    let dx_m = x_m - target.x_m;
+    let dy_m = y_m - target.y_m;
+    let dz_m = z_m - target.z_m;
+
+    Some((dx_m * dx_m + dy_m * dy_m + dz_m * dz_m).sqrt())
+}
+
 fn record_state(record: &Sp3Record) -> GpsSatState {
     GpsSatState {
         x_m: record.x_m,
@@ -252,5 +304,30 @@ PG01  10001.000000  20001.000000  30001.000000  0.000000
         assert_eq!(state.x_m, 10_001_000.0);
         assert_eq!(state.y_m, 20_001_000.0);
         assert_eq!(state.z_m, 30_001_000.0);
+    }
+
+    #[test]
+    fn interpolation_summary_measures_cubic_self_consistency() {
+        let data = "\
+* 2020 01 01 00 00 00.000000
+PG01  1.000000  0.000000  5.000000  0.000000
+* 2020 01 01 00 15 00.000000
+PG01  10.000000  1.000000  6.000000  0.000000
+* 2020 01 01 00 30 00.000000
+PG01  49.000000  8.000000  9.000000  0.000000
+* 2020 01 01 00 45 00.000000
+PG01  142.000000  27.000000  14.000000  0.000000
+* 2020 01 01 01 00 00.000000
+PG01  313.000000  64.000000  21.000000  0.000000
+";
+        let provider: Sp3Provider = data.parse().expect("parse SP3");
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        let summary = provider
+            .interpolation_summary(sat)
+            .expect("interpolation summary for cubic orbit");
+
+        assert_eq!(summary.sample_count, 3);
+        assert!(summary.max_position_error_m.abs() < 1e-6);
+        assert!(summary.rms_position_error_m.abs() < 1e-6);
     }
 }
