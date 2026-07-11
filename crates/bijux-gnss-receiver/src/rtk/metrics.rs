@@ -121,6 +121,38 @@ impl bijux_gnss_core::api::ArtifactPayloadValidate for RtkPrecision {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RtkFixedBaselineGuardPolicy {
+    pub min_cn0_dbhz: f64,
+    pub max_code_variance_m2: f64,
+    pub max_phase_variance_cycles2: f64,
+    pub max_residual_scale: f64,
+    pub max_solution_separation_m: f64,
+}
+
+impl Default for RtkFixedBaselineGuardPolicy {
+    fn default() -> Self {
+        Self {
+            min_cn0_dbhz: 35.0,
+            max_code_variance_m2: 1.0,
+            max_phase_variance_cycles2: 0.02,
+            max_residual_scale: 3.0,
+            max_solution_separation_m: 0.75,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RtkFixedBaselineGuardDecision {
+    pub accepted: bool,
+    pub reasons: Vec<String>,
+    pub residual_scale: Option<f64>,
+    pub max_solution_separation_m: Option<f64>,
+    pub multipath_suspect: bool,
+    pub weak_observation_count: usize,
+    pub noisy_observation_count: usize,
+}
+
 pub fn baseline_from_ecef(base_ecef_m: [f64; 3], rover_ecef_m: [f64; 3]) -> BaselineSolution {
     let (lat, lon, alt) =
         bijux_gnss_nav::api::ecef_to_geodetic(base_ecef_m[0], base_ecef_m[1], base_ecef_m[2]);
@@ -199,6 +231,70 @@ pub fn solution_separation(
         None
     } else {
         Some(out)
+    }
+}
+
+pub fn evaluate_rtk_fixed_baseline_guard(
+    dd: &[DdObservation],
+    base_ecef_m: [f64; 3],
+    baseline: &BaselineSolution,
+    ephs: &[bijux_gnss_nav::api::GpsEphemeris],
+    t_rx_s: f64,
+    policy: RtkFixedBaselineGuardPolicy,
+) -> RtkFixedBaselineGuardDecision {
+    let multipath_suspect = dd.iter().any(|observation| observation.multipath_suspect);
+    let weak_observation_count =
+        dd.iter().filter(|observation| observation.min_cn0_dbhz < policy.min_cn0_dbhz).count();
+    let noisy_observation_count = dd
+        .iter()
+        .filter(|observation| {
+            observation.code_variance_m2 > policy.max_code_variance_m2
+                || observation.phase_variance_cycles2 > policy.max_phase_variance_cycles2
+        })
+        .count();
+    let residual_scale = dd_residual_metrics(dd, base_ecef_m, baseline.enu_m, ephs, t_rx_s)
+        .and_then(|(residual_rms_m, predicted_rms_m, _used_observations)| {
+            if predicted_rms_m > 0.0 {
+                Some(residual_rms_m / predicted_rms_m)
+            } else {
+                None
+            }
+        });
+    let max_solution_separation_m =
+        solution_separation(dd, base_ecef_m, ephs, t_rx_s).and_then(|separation| {
+            separation
+                .iter()
+                .map(|item| item.delta_enu_m)
+                .max_by(|left, right| left.total_cmp(right))
+        });
+
+    let mut reasons = Vec::new();
+    if multipath_suspect {
+        reasons.push("multipath_suspect".to_string());
+    }
+    if weak_observation_count > 0 {
+        reasons.push("low_cn0".to_string());
+    }
+    if noisy_observation_count > 0 {
+        reasons.push("high_observation_variance".to_string());
+    }
+    if residual_scale.is_some_and(|scale| scale > policy.max_residual_scale) {
+        reasons.push("residual_scale".to_string());
+    }
+    if max_solution_separation_m
+        .is_some_and(|separation_m| separation_m > policy.max_solution_separation_m)
+    {
+        reasons.push("solution_separation".to_string());
+    }
+
+    RtkFixedBaselineGuardDecision {
+        accepted: reasons.is_empty(),
+        reasons,
+        residual_scale,
+        max_solution_separation_m,
+        multipath_suspect,
+        weak_observation_count,
+        noisy_observation_count,
     }
 }
 
