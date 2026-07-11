@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CarrierSmoothedCodeValidationReport",
+  "type": "object",
+  "required": [
+    "observations",
+    "accepted_observations",
+    "smoothed_observations",
+    "reference_observations",
+    "improvement_observations",
+    "raw_mean_abs_residual_m",
+    "smoothed_mean_abs_residual_m",
+    "improvement_delta_m",
+    "improvement_verified",
+    "cycle_slip_observations",
+    "slip_reset_observations",
+    "slip_preserved_observations",
+    "hidden_slip_observations",
+    "slip_visibility_verified"
+  ],
+  "properties": {
+    "observations": { "type": "integer", "minimum": 0 },
+    "accepted_observations": { "type": "integer", "minimum": 0 },
+    "smoothed_observations": { "type": "integer", "minimum": 0 },
+    "reference_observations": { "type": "integer", "minimum": 0 },
+    "improvement_observations": { "type": "integer", "minimum": 0 },
+    "raw_mean_abs_residual_m": { "type": ["number", "null"] },
+    "smoothed_mean_abs_residual_m": { "type": ["number", "null"] },
+    "improvement_delta_m": { "type": ["number", "null"] },
+    "improvement_verified": { "type": ["boolean", "null"] },
+    "cycle_slip_observations": { "type": "integer", "minimum": 0 },
+    "slip_reset_observations": { "type": "integer", "minimum": 0 },
+    "slip_preserved_observations": { "type": "integer", "minimum": 0 },
+    "hidden_slip_observations": { "type": "integer", "minimum": 0 },
+    "slip_visibility_verified": { "type": ["boolean", "null"] }
+  },
+  "additionalProperties": false
+}
