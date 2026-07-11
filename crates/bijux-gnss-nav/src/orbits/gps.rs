@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use bijux_gnss_core::api::{ObsSignalTiming, SatId};
 
+use crate::models::atmosphere::KlobucharCoefficients;
+
 const OMEGA_E_DOT: f64 = 7.292_115_146_7e-5;
 const MU: f64 = 3.986_005e14;
 const RELATIVISTIC_F: f64 = -4.442_807_633e-10;
@@ -38,6 +40,13 @@ pub struct GpsEphemeris {
     pub af1: f64,
     pub af2: f64,
     pub tgd: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GpsBroadcastNavigationData {
+    pub ephemerides: Vec<GpsEphemeris>,
+    #[serde(default)]
+    pub klobuchar: Option<KlobucharCoefficients>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -58,7 +58,8 @@ pub use crate::formats::{clk::ClkProvider, sp3::Sp3Provider};
 pub use crate::linalg::Matrix;
 /// Atmospheric model scaffolding.
 pub use crate::models::atmosphere::{
-    IonosphereModel, KlobucharModel, SaastamoinenModel, TroposphereModel,
+    IonosphereModel, KlobucharCoefficients, KlobucharModel, SaastamoinenModel,
+    TroposphereModel,
 };
 /// Ephemeris provider traits and helpers.
 pub use crate::orbits::ephemeris::{CsvEphemerisProvider, Ephemeris, EphemerisProvider};
@@ -66,8 +67,8 @@ pub use crate::orbits::ephemeris::{CsvEphemerisProvider, Ephemeris, EphemerisPro
 pub use crate::orbits::gps::{
     gps_earth_rotation_correction, gps_ephemeris_age, gps_satellite_clock_correction,
     is_ephemeris_valid, sat_state_gps_l1ca, sat_state_gps_l1ca_at_receive_time,
-    sat_state_gps_l1ca_from_observation, GpsEarthRotationCorrection, GpsEphemeris, GpsEphemerisAge,
-    GpsSatState, GpsSatelliteClockCorrection,
+    sat_state_gps_l1ca_from_observation, GpsBroadcastNavigationData, GpsEarthRotationCorrection,
+    GpsEphemeris, GpsEphemerisAge, GpsSatState, GpsSatelliteClockCorrection,
 };
 /// Time helpers.
 pub use crate::time::{gps_time_from_utc, gps_week_rollover, normalize_tow};
