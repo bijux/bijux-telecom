@@ -64,9 +64,8 @@ fn validate_capture_reports_public_iq_tracking_and_position_attempts() {
         serde_json::from_str(&fs::read_to_string(&report_path).expect("read capture report"))
             .expect("parse capture report");
 
-    let reported_prns = report["acquisition"]["reported_prns"]
-        .as_array()
-        .expect("reported_prns array");
+    let reported_prns =
+        report["acquisition"]["reported_prns"].as_array().expect("reported_prns array");
     assert!(
         reported_prns.iter().any(|entry| {
             entry["sat"]["constellation"] == "Gps"
@@ -78,15 +77,14 @@ fn validate_capture_reports_public_iq_tracking_and_position_attempts() {
 
     let tracked_prns = report["tracked_prns"].as_array().expect("tracked_prns array");
     assert!(
-        tracked_prns.iter().any(|entry| {
-            entry["sat"]["constellation"] == "Gps" && entry["sat"]["prn"] == 31
-        }),
+        tracked_prns
+            .iter()
+            .any(|entry| { entry["sat"]["constellation"] == "Gps" && entry["sat"]["prn"] == 31 }),
         "expected G31 in tracked PRNs: {report}"
     );
 
-    let attempted_epochs = report["navigation_attempts"]["attempted_epochs"]
-        .as_u64()
-        .expect("attempted epochs");
+    let attempted_epochs =
+        report["navigation_attempts"]["attempted_epochs"].as_u64().expect("attempted epochs");
     let position_attempts = report["position_attempts"].as_array().expect("position attempts");
     assert!(attempted_epochs > 0, "expected at least one navigation attempt: {report}");
     assert_eq!(attempted_epochs as usize, position_attempts.len());
@@ -102,6 +100,17 @@ fn validate_capture_reports_public_iq_tracking_and_position_attempts() {
     assert!(
         out_dir.join("artifacts/validation_report.json").exists(),
         "missing validation report artifact"
+    );
+    let validation_report_path = out_dir.join("artifacts/validation_report.json");
+    let validation_report: Value = serde_json::from_str(
+        &fs::read_to_string(&validation_report_path).expect("read validation report artifact"),
+    )
+    .expect("parse validation report artifact");
+    assert!(
+        validation_report["dual_frequency_observations"]["observed_pairs"]
+            .as_u64()
+            .is_some(),
+        "expected dual-frequency observation summary in validation report: {validation_report}"
     );
     assert!(
         out_dir.join("artifacts/validation_evidence_bundle.json").exists(),
