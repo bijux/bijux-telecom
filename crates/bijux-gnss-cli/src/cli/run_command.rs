@@ -900,6 +900,62 @@ mod nav_trace_tests {
             .iter()
             .any(|reason| reason == "stale_ephemeris_rejections=1"));
     }
+
+    #[test]
+    fn cli_ekf_saastamoinen_delay_is_zero_when_disabled() {
+        let receiver_ecef_m = bijux_gnss_infra::api::nav::geodetic_to_ecef(37.0, -122.0, 10.0);
+        let satellite_ecef_m = bijux_gnss_infra::api::nav::geodetic_to_ecef(37.0, -122.0, 20_200_000.0);
+        let state = bijux_gnss_infra::api::nav::GpsSatState {
+            x_m: satellite_ecef_m.0,
+            y_m: satellite_ecef_m.1,
+            z_m: satellite_ecef_m.2,
+            clock_correction: bijux_gnss_infra::api::nav::GpsSatelliteClockCorrection::from_bias_s(0.0),
+        };
+
+        let delay_m = estimate_ekf_saastamoinen_delay_m(
+            false,
+            [receiver_ecef_m.0, receiver_ecef_m.1, receiver_ecef_m.2],
+            &state,
+        );
+
+        assert_eq!(delay_m, 0.0);
+    }
+
+    #[test]
+    fn cli_ekf_saastamoinen_delay_rejects_implausible_receiver_radius() {
+        let satellite_ecef_m = bijux_gnss_infra::api::nav::geodetic_to_ecef(37.0, -122.0, 20_200_000.0);
+        let state = bijux_gnss_infra::api::nav::GpsSatState {
+            x_m: satellite_ecef_m.0,
+            y_m: satellite_ecef_m.1,
+            z_m: satellite_ecef_m.2,
+            clock_correction: bijux_gnss_infra::api::nav::GpsSatelliteClockCorrection::from_bias_s(0.0),
+        };
+
+        let delay_m = estimate_ekf_saastamoinen_delay_m(true, [0.0, 0.0, 0.0], &state);
+
+        assert_eq!(delay_m, 0.0);
+    }
+
+    #[test]
+    fn cli_ekf_saastamoinen_delay_is_positive_for_visible_satellite() {
+        let receiver_ecef_m = bijux_gnss_infra::api::nav::geodetic_to_ecef(37.0, -122.0, 10.0);
+        let satellite_ecef_m = bijux_gnss_infra::api::nav::geodetic_to_ecef(37.0, -122.0, 20_200_000.0);
+        let state = bijux_gnss_infra::api::nav::GpsSatState {
+            x_m: satellite_ecef_m.0,
+            y_m: satellite_ecef_m.1,
+            z_m: satellite_ecef_m.2,
+            clock_correction: bijux_gnss_infra::api::nav::GpsSatelliteClockCorrection::from_bias_s(0.0),
+        };
+
+        let delay_m = estimate_ekf_saastamoinen_delay_m(
+            true,
+            [receiver_ecef_m.0, receiver_ecef_m.1, receiver_ecef_m.2],
+            &state,
+        );
+
+        assert!(delay_m.is_finite());
+        assert!(delay_m > 2.0);
+    }
 }
 
 fn solve_epoch_ekf(
