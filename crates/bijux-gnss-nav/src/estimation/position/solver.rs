@@ -29,6 +29,8 @@ pub struct PositionSolution {
     pub vdop: Option<f64>,
     pub gdop: Option<f64>,
     pub tdop: Option<f64>,
+    pub pre_fit_residual_rms_m: f64,
+    pub post_fit_residual_rms_m: f64,
     pub rms_m: f64,
     pub sigma_h_m: Option<f64>,
     pub sigma_v_m: Option<f64>,
@@ -272,6 +274,7 @@ impl PositionSolver {
         let mut estimate = initial_estimate;
         let mut raim_fault_detection = None;
         let mut raim_fault_exclusion = None;
+        let mut pre_fit_residual_rms_m = None;
         let working_set = loop {
             let solved = self.solve_working_set(&working_inputs, estimate, klobuchar).ok_or_else(
                 || {
@@ -283,6 +286,9 @@ impl PositionSolver {
                     )
                 },
             )?;
+            if pre_fit_residual_rms_m.is_none() {
+                pre_fit_residual_rms_m = Some(working_set_rms_m(&solved.residuals));
+            }
             let outlier_indices = self.outlier_indices(&solved.residuals);
             if outlier_indices.is_empty() {
                 break solved;
@@ -420,12 +426,14 @@ impl PositionSolver {
         }
 
         let dops = compute_dops(&h);
-        let rms = if !v.is_empty() {
+        let post_fit_residual_rms_m = if !v.is_empty() {
             let sum = v.iter().map(|r| r * r).sum::<f64>();
             (sum / v.len() as f64).sqrt()
         } else {
             0.0
         };
+        let pre_fit_residual_rms_m =
+            pre_fit_residual_rms_m.unwrap_or(post_fit_residual_rms_m);
 
         let (lat, lon, alt) = ecef_to_geodetic(x, y, z);
 
@@ -460,7 +468,9 @@ impl PositionSolver {
             vdop: dops.map(|dops| dops.vdop),
             gdop: dops.map(|dops| dops.gdop),
             tdop: dops.map(|dops| dops.tdop),
-            rms_m: rms,
+            pre_fit_residual_rms_m,
+            post_fit_residual_rms_m,
+            rms_m: post_fit_residual_rms_m,
             sigma_h_m: Some(sigma_h_m),
             sigma_v_m: Some(sigma_v_m),
             residuals: filtered
