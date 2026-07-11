@@ -180,6 +180,16 @@ pub fn signal_spec_gps_l2_py() -> SignalSpec {
     }
 }
 
+pub fn signal_spec_gps_l5() -> SignalSpec {
+    SignalSpec {
+        constellation: Constellation::Gps,
+        band: SignalBand::L5,
+        code: SignalCode::Unknown,
+        code_rate_hz: 10_230_000.0,
+        carrier_hz: GPS_L5_CARRIER_HZ,
+    }
+}
+
 pub fn signal_registry(
     constellation: Constellation,
     band: SignalBand,
