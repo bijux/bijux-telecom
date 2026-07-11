@@ -36,9 +36,13 @@ pub use crate::estimation::ekf::traits::MeasurementModel;
 /// Position solver (least squares) and helpers.
 pub use crate::estimation::position::solver::{
     ecef_to_enu, ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef,
-    position_measurement_weight, position_observation_has_valid_satellite_time,
-    position_observations_from_epoch, weight_from_cn0_elev, weight_from_pseudorange_sigma,
-    PositionObservation, PositionSolver, WeightingConfig,
+    position_dops_from_satellite_positions, position_measurement_weight,
+    position_observation_has_valid_satellite_time, position_observations_from_epoch,
+    weight_from_cn0_elev, weight_from_pseudorange_sigma, PositionDops, PositionObservation,
+    PositionSolveRefusal, PositionSolveRefusalKind, PositionSolver, WeightingConfig,
+};
+pub use crate::estimation::position::raim::{
+    RaimFaultDetection, RaimFaultDetectionStatus, RaimFaultExclusion,
 };
 /// PPP configuration and filter.
 pub use crate::estimation::ppp::config::{
@@ -95,6 +99,9 @@ pub use crate::formats::precise_products::{
 pub use crate::formats::rinex::{
     parse_rinex_broadcast_navigation, parse_rinex_nav, parse_rinex_obs_header,
     write_rinex_broadcast_navigation, write_rinex_nav, write_rinex_obs,
+};
+pub use crate::formats::rinex_obs::{
+    parse_rinex_gps_observation_dataset, RinexGpsObservationChannel, RinexGpsObservationDataset,
 };
 /// Precise product parsing helpers.
 pub use crate::formats::{

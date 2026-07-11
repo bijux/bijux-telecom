@@ -2,7 +2,7 @@
 
 mod support;
 
-use bijux_gnss_nav::position_dops_from_satellite_positions;
+use bijux_gnss_nav::api::position_dops_from_satellite_positions;
 
 use support::public_spp_case::{public_ab43_epoch, public_ab43_satellite_geometry};
 use support::rtklib_reference::{ab43_rtklib_dop_reference, ab43_rtklib_single_reference};
@@ -33,15 +33,12 @@ fn public_ab43_geometry_dops_track_rtklib_reference() {
         );
 
         let epoch = public_ab43_epoch(dop_epoch.gps_time).expect("find AB43 public epoch");
-        let geometry =
-            public_ab43_satellite_geometry(epoch, &dop_epoch.satellites).expect("build AB43 geometry");
-        let satellite_positions = geometry.iter().map(|satellite| satellite.ecef_m).collect::<Vec<_>>();
+        let geometry = public_ab43_satellite_geometry(epoch, &dop_epoch.satellites)
+            .expect("build AB43 geometry");
+        let satellite_positions =
+            geometry.iter().map(|satellite| satellite.ecef_m).collect::<Vec<_>>();
         let dops = position_dops_from_satellite_positions(
-            [
-                position_epoch.ecef_m.0,
-                position_epoch.ecef_m.1,
-                position_epoch.ecef_m.2,
-            ],
+            [position_epoch.ecef_m.0, position_epoch.ecef_m.1, position_epoch.ecef_m.2],
             &satellite_positions,
         )
         .expect("compute public AB43 geometry DOPs");

@@ -1,5 +1,4 @@
-use bijux_gnss_nav::api::geodetic_to_ecef;
-use bijux_gnss_nav::position_dops_from_satellite_positions;
+use bijux_gnss_nav::api::{geodetic_to_ecef, position_dops_from_satellite_positions};
 
 fn satellite_positions_ecef(geodetic_points: &[(f64, f64, f64)]) -> Vec<[f64; 3]> {
     geodetic_points
@@ -17,7 +16,8 @@ fn enu_offset_satellite_positions(
     receiver_alt_m: f64,
     enu_offsets_m: &[[f64; 3]],
 ) -> Vec<[f64; 3]> {
-    let (rx_x_m, rx_y_m, rx_z_m) = geodetic_to_ecef(receiver_lat_deg, receiver_lon_deg, receiver_alt_m);
+    let (rx_x_m, rx_y_m, rx_z_m) =
+        geodetic_to_ecef(receiver_lat_deg, receiver_lon_deg, receiver_alt_m);
     let lat = receiver_lat_deg.to_radians();
     let lon = receiver_lon_deg.to_radians();
     let sin_lat = lat.sin();
@@ -96,12 +96,17 @@ fn geometry_dops_match_regular_tetrahedron_reference() {
     };
     let radius_m = 20_200_000.0;
     let scale = radius_m / 3.0_f64.sqrt();
-    let satellites = enu_offset_satellite_positions(receiver_lat_deg, receiver_lon_deg, receiver_alt_m, &[
-        [scale, scale, scale],
-        [scale, -scale, -scale],
-        [-scale, scale, -scale],
-        [-scale, -scale, scale],
-    ]);
+    let satellites = enu_offset_satellite_positions(
+        receiver_lat_deg,
+        receiver_lon_deg,
+        receiver_alt_m,
+        &[
+            [scale, scale, scale],
+            [scale, -scale, -scale],
+            [-scale, scale, -scale],
+            [-scale, -scale, scale],
+        ],
+    );
 
     let dops = position_dops_from_satellite_positions(receiver_ecef_m, &satellites)
         .expect("tetrahedron dops");

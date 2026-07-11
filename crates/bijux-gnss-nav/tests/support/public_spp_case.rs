@@ -5,16 +5,16 @@ use std::sync::OnceLock;
 
 use bijux_gnss_core::api::{GpsTime, ObsEpoch, SatId};
 use bijux_gnss_nav::api::{
-    position_observations_from_epoch, sat_state_gps_l1ca_from_observation,
-    GpsBroadcastNavigationData, PositionObservation, PositionSolver,
+    parse_rinex_gps_observation_dataset, position_observations_from_epoch,
+    sat_state_gps_l1ca_from_observation, GpsBroadcastNavigationData, PositionObservation,
+    PositionSolver, RinexGpsObservationDataset,
 };
-use bijux_gnss_nav::parse_rinex_gps_observation_dataset;
 
 use super::public_station_truth::{public_station_truth_by_fixture, PublicStationTruth};
 
 pub struct PublicSppCase {
     pub station_truth: PublicStationTruth,
-    pub observations: bijux_gnss_nav::RinexGpsObservationDataset,
+    pub observations: RinexGpsObservationDataset,
     pub navigation: GpsBroadcastNavigationData,
 }
 

@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 //! RTK estimation helpers.
 
 pub mod ambiguity;

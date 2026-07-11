@@ -3,7 +3,7 @@
 mod support;
 
 use bijux_gnss_core::api::MeasurementRejectReason;
-use bijux_gnss_nav::{api::PositionSolver, PositionSolveRefusalKind};
+use bijux_gnss_nav::api::{PositionSolveRefusalKind, PositionSolver};
 
 use support::position_outlier::five_satellite_bad_pseudorange_scenario;
 

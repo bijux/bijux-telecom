@@ -2,8 +2,7 @@
 mod support;
 
 use bijux_gnss_core::api::Seconds;
-use bijux_gnss_nav::api::PositionSolver;
-use bijux_gnss_nav::PositionSolveRefusalKind;
+use bijux_gnss_nav::api::{PositionSolveRefusalKind, PositionSolver};
 use support::position_truth::{
     four_satellite_position_scenario, sample_ephemeris, timed_position_observation_from_truth,
 };

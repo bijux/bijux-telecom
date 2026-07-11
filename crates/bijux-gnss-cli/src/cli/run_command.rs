@@ -32,7 +32,7 @@ fn run_command(command: GnssCommand) -> Result<()> {
     }
 }
 
-use bijux_gnss_nav::{position_dops_from_satellite_positions, PositionDops};
+use bijux_gnss_nav::api::{position_dops_from_satellite_positions, PositionDops};
 
 fn inspect_dataset(
     path: &Path,

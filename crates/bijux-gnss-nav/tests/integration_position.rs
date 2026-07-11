@@ -110,7 +110,7 @@ fn position_observation_constructible() {
 }
 
 #[test]
-fn position_solver_refuses_observations_without_signal_timing() {
+fn position_solver_solves_observations_without_signal_timing_when_pseudoranges_are_finite() {
     let t_rx_s = 504_018.07;
     let ephs = sample_ephemerides();
     let observations = ephs
@@ -126,7 +126,13 @@ fn position_solver_refuses_observations_without_signal_timing() {
         })
         .collect::<Vec<_>>();
 
-    assert!(PositionSolver::new().solve_wls(&observations, &ephs, t_rx_s).is_none());
+    let solution = PositionSolver::new()
+        .solve_wls(&observations, &ephs, t_rx_s)
+        .expect("finite pseudoranges without signal timing should still solve");
+
+    assert!(solution.ecef_x_m.is_finite());
+    assert!(solution.ecef_y_m.is_finite());
+    assert!(solution.ecef_z_m.is_finite());
 }
 
 #[test]

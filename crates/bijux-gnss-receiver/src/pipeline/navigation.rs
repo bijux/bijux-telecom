@@ -10,9 +10,9 @@ use bijux_gnss_core::api::{
 use bijux_gnss_nav::api::{
     elevation_azimuth_deg, position_measurement_weight,
     position_observation_has_valid_satellite_time, sat_state_gps_l1ca_from_observation,
-    GpsEphemeris, KlobucharCoefficients, PositionObservation, PositionSolver, WeightingConfig,
+    GpsEphemeris, KlobucharCoefficients, PositionObservation, PositionSolveRefusalKind,
+    PositionSolver, RaimFaultDetectionStatus, WeightingConfig,
 };
-use bijux_gnss_nav::PositionSolveRefusalKind;
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::engine::runtime::ReceiverRuntime;
@@ -551,8 +551,7 @@ impl Navigation {
             ));
         }
         if let Some(raim_fault_detection) = solution.raim_fault_detection {
-            if raim_fault_detection.status == bijux_gnss_nav::RaimFaultDetectionStatus::FaultDetected
-            {
+            if raim_fault_detection.status == RaimFaultDetectionStatus::FaultDetected {
                 raim_explain_reasons.push("raim_fault_detected".to_string());
                 if let Some(suspect_sat) = raim_fault_detection.suspect_sat {
                     let suspect_reason = format!("raim_suspect_prn={}", suspect_sat.prn);

@@ -9,7 +9,7 @@ use crate::orbits::gps::{
     gps_ephemeris_age, is_ephemeris_valid, sat_state_gps_l1ca, sat_state_gps_l1ca_from_observation,
     GpsEphemeris, GpsSatState,
 };
-use crate::{RaimFaultDetection, RaimFaultExclusion};
+use super::raim::{RaimFaultDetection, RaimFaultExclusion};
 use bijux_gnss_core::api::{
     GpsTime, Llh, MeasurementRejectReason, ObsEpoch, ObsSatellite, ObsSignalTiming,
     ObservationStatus, SatId, Seconds, SignalBand,

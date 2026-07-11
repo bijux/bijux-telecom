@@ -7,10 +7,9 @@ mod support;
 
 use bijux_gnss_core::api::ObsEpoch;
 use bijux_gnss_nav::api::{
-    parse_rinex_broadcast_navigation, position_observations_from_epoch, PositionObservation,
-    PositionSolver,
+    parse_rinex_broadcast_navigation, parse_rinex_gps_observation_dataset,
+    position_observations_from_epoch, PositionObservation, PositionSolver,
 };
-use bijux_gnss_nav::parse_rinex_gps_observation_dataset;
 use bijux_gnss_testkit::reference_coordinate::TrustedReferenceCoordinateError;
 use support::trusted_reference_coordinate::{
     require_trusted_reference_coordinate_by_fixture, trusted_reference_coordinate_ecef_m,

@@ -2,7 +2,7 @@
 
 mod support;
 
-use bijux_gnss_nav::{api::PositionSolver, RaimFaultDetectionStatus};
+use bijux_gnss_nav::api::{PositionSolver, RaimFaultDetectionStatus};
 
 use support::position_outlier::{position_error_3d_m, single_bad_pseudorange_scenario};
 
