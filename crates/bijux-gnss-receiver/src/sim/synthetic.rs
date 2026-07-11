@@ -703,6 +703,98 @@ pub struct SyntheticPvtAccuracyReport {
     pub epochs: Vec<SyntheticPvtAccuracyEpoch>,
 }
 
+/// One synthetic PVT accuracy measurement point indexed by observed signal strength.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPvtCn0ProfilePoint {
+    /// Stable scenario identifier for this validation run.
+    pub scenario_id: String,
+    /// Number of observation epochs that contributed C/N0 measurements.
+    pub observation_epoch_count: usize,
+    /// Mean observation C/N0 across the contributing epochs, in dB-Hz.
+    pub mean_observation_cn0_dbhz: f64,
+    /// Minimum per-epoch mean observation C/N0, in dB-Hz.
+    pub min_observation_cn0_dbhz: f64,
+    /// Maximum per-epoch mean observation C/N0, in dB-Hz.
+    pub max_observation_cn0_dbhz: f64,
+    /// Number of matched PVT epochs compared against truth.
+    pub epoch_count: usize,
+    /// Number of matched PVT epochs that satisfied the hard accuracy budget.
+    pub passing_epoch_count: usize,
+    /// Passing-epoch fraction across the matched PVT epochs.
+    pub pass_rate: f64,
+    /// RMS 3D position error across matched PVT epochs, in meters.
+    pub rms_position_error_3d_m: Option<f64>,
+    /// Maximum 3D position error across matched PVT epochs, in meters.
+    pub max_position_error_3d_m: Option<f64>,
+    /// RMS clock-bias error across matched PVT epochs, in meters.
+    pub rms_clock_bias_error_m: Option<f64>,
+    /// Maximum clock-bias error across matched PVT epochs, in meters.
+    pub max_clock_bias_error_m: Option<f64>,
+    /// RMS residual RMS across matched PVT epochs, in meters.
+    pub rms_residual_rms_m: Option<f64>,
+    /// Maximum residual RMS across matched PVT epochs, in meters.
+    pub max_residual_rms_m: Option<f64>,
+    /// Maximum PDOP across matched PVT epochs.
+    pub max_pdop: Option<f64>,
+    /// Whether synthetic truth coverage remained sufficient for a hard claim.
+    pub truth_coverage_ready: bool,
+    /// Machine-checkable truth-coverage issues that forced or should force validation failure.
+    pub truth_coverage_issues: Vec<SyntheticTruthCoverageIssue>,
+    /// Whether the point had both truth-ready PVT comparisons and observed C/N0 support.
+    pub ready: bool,
+}
+
+/// Truth-guided PVT accuracy profile across multiple signal-strength points.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPvtCn0ProfileReport {
+    /// Scenario identifier prefix shared across the measurement points.
+    pub scenario_id_prefix: String,
+    /// Measurement points captured in the report.
+    pub points: Vec<SyntheticPvtCn0ProfilePoint>,
+}
+
+/// Aggregated multi-stage accuracy summary at one signal-strength point.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAccuracyCn0ProfilePoint {
+    /// Shared signal-strength coordinate for the merged stage metrics, in dB-Hz.
+    pub cn0_db_hz: f64,
+    /// Number of acquisition cases contributing to this point.
+    pub acquisition_case_count: usize,
+    /// Total synthetic acquisition trials contributing to this point.
+    pub acquisition_trial_count: usize,
+    /// Mean acceptance probability across acquisition cases at this point.
+    pub acquisition_acceptance_probability_mean: Option<f64>,
+    /// Mean detection probability across acquisition cases at this point.
+    pub acquisition_detection_probability_mean: Option<f64>,
+    /// Number of tracking cases contributing to this point.
+    pub tracking_case_count: usize,
+    /// Total synthetic tracking trials contributing to this point.
+    pub tracking_trial_count: usize,
+    /// Mean stable-lock probability across tracking cases at this point.
+    pub tracking_lock_probability_mean: Option<f64>,
+    /// Mean refused-lock rate across tracking cases at this point.
+    pub tracking_refused_lock_rate_mean: Option<f64>,
+    /// Number of PVT cases contributing to this point.
+    pub pvt_case_count: usize,
+    /// Total matched PVT epochs contributing to this point.
+    pub pvt_epoch_count: usize,
+    /// Mean PVT pass rate across cases at this point.
+    pub pvt_pass_rate_mean: Option<f64>,
+    /// Mean RMS 3D position error across cases at this point, in meters.
+    pub pvt_rms_position_error_3d_m_mean: Option<f64>,
+    /// Maximum 3D position error observed across cases at this point, in meters.
+    pub pvt_max_position_error_3d_m_max: Option<f64>,
+}
+
+/// Merged acquisition, tracking, and PVT performance profile across signal strength.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticAccuracyCn0ProfileReport {
+    /// Scenario identifier prefix shared across the measurement points.
+    pub scenario_id_prefix: String,
+    /// Merged per-C/N0 measurement points.
+    pub points: Vec<SyntheticAccuracyCn0ProfilePoint>,
+}
+
 /// Summary of one observation-error distribution.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticObservationErrorStats {
@@ -771,6 +863,14 @@ fn summarize_observation_errors(errors: &[f64]) -> Option<SyntheticObservationEr
         p95_abs_error: absolute.p95,
         max_abs_error: absolute.max,
     })
+}
+
+fn mean_f64(values: &[f64]) -> Option<f64> {
+    if values.is_empty() {
+        None
+    } else {
+        Some(values.iter().sum::<f64>() / values.len() as f64)
+    }
 }
 
 fn truth_coverage_issue(
@@ -1347,6 +1447,190 @@ pub fn validate_pvt_accuracy_budget(
         pass: truth_coverage_ready && !epochs.is_empty() && passing_epoch_count == epochs.len(),
         epochs,
     }
+}
+
+/// Borrowed inputs for one synthetic PVT C/N0 profile point.
+#[derive(Debug, Clone, Copy)]
+pub struct SyntheticPvtCn0ProfileCase<'a> {
+    /// Stable scenario identifier for this validation run.
+    pub scenario_id: &'a str,
+    /// Observation epochs that fed the synthetic PVT solver path.
+    pub observations: &'a [ObsEpoch],
+    /// Truth-guided PVT accuracy report for the same scenario.
+    pub accuracy: &'a SyntheticPvtAccuracyReport,
+}
+
+/// Summarize truth-guided PVT accuracy across multiple signal-strength points.
+pub fn summarize_truth_guided_pvt_cn0_profile(
+    cases: &[SyntheticPvtCn0ProfileCase<'_>],
+    scenario_id_prefix: &str,
+) -> SyntheticPvtCn0ProfileReport {
+    let mut points = cases
+        .iter()
+        .map(|case| {
+            let epoch_mean_cn0 = case
+                .observations
+                .iter()
+                .filter_map(|epoch| {
+                    let values = epoch
+                        .sats
+                        .iter()
+                        .filter_map(|sat| sat.cn0_dbhz.is_finite().then_some(sat.cn0_dbhz))
+                        .collect::<Vec<_>>();
+                    if values.is_empty() {
+                        None
+                    } else {
+                        Some(values.iter().sum::<f64>() / values.len() as f64)
+                    }
+                })
+                .collect::<Vec<_>>();
+            let observation_epoch_count = epoch_mean_cn0.len();
+            let mean_observation_cn0_dbhz = if epoch_mean_cn0.is_empty() {
+                0.0
+            } else {
+                epoch_mean_cn0.iter().sum::<f64>() / epoch_mean_cn0.len() as f64
+            };
+            let min_observation_cn0_dbhz =
+                epoch_mean_cn0.iter().copied().reduce(f64::min).unwrap_or(0.0);
+            let max_observation_cn0_dbhz =
+                epoch_mean_cn0.iter().copied().reduce(f64::max).unwrap_or(0.0);
+            let position_error_3d_m = case
+                .accuracy
+                .epochs
+                .iter()
+                .map(|epoch| epoch.position_error_3d_m)
+                .collect::<Vec<_>>();
+            let clock_bias_error_m = case
+                .accuracy
+                .epochs
+                .iter()
+                .map(|epoch| epoch.clock_bias_error_m)
+                .collect::<Vec<_>>();
+            let residual_rms_m =
+                case.accuracy.epochs.iter().map(|epoch| epoch.residual_rms_m).collect::<Vec<_>>();
+            let pdop = case.accuracy.epochs.iter().map(|epoch| epoch.pdop).collect::<Vec<_>>();
+            let passing_epoch_count =
+                case.accuracy.epochs.iter().filter(|epoch| epoch.pass).count();
+            let epoch_count = case.accuracy.epoch_count;
+            let pass_rate = if epoch_count == 0 {
+                0.0
+            } else {
+                passing_epoch_count as f64 / epoch_count as f64
+            };
+
+            SyntheticPvtCn0ProfilePoint {
+                scenario_id: case.scenario_id.to_string(),
+                observation_epoch_count,
+                mean_observation_cn0_dbhz,
+                min_observation_cn0_dbhz,
+                max_observation_cn0_dbhz,
+                epoch_count,
+                passing_epoch_count,
+                pass_rate,
+                rms_position_error_3d_m: (!position_error_3d_m.is_empty())
+                    .then(|| stats(&position_error_3d_m).rms),
+                max_position_error_3d_m: position_error_3d_m.iter().copied().reduce(f64::max),
+                rms_clock_bias_error_m: (!clock_bias_error_m.is_empty())
+                    .then(|| stats(&clock_bias_error_m).rms),
+                max_clock_bias_error_m: clock_bias_error_m.iter().copied().reduce(f64::max),
+                rms_residual_rms_m: (!residual_rms_m.is_empty())
+                    .then(|| stats(&residual_rms_m).rms),
+                max_residual_rms_m: residual_rms_m.iter().copied().reduce(f64::max),
+                max_pdop: pdop.iter().copied().reduce(f64::max),
+                truth_coverage_ready: case.accuracy.truth_coverage_ready,
+                truth_coverage_issues: case.accuracy.truth_coverage_issues.clone(),
+                ready: case.accuracy.truth_coverage_ready
+                    && observation_epoch_count > 0
+                    && epoch_count > 0,
+            }
+        })
+        .collect::<Vec<_>>();
+    points.sort_by(|left, right| {
+        left.mean_observation_cn0_dbhz
+            .partial_cmp(&right.mean_observation_cn0_dbhz)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| left.scenario_id.cmp(&right.scenario_id))
+    });
+
+    SyntheticPvtCn0ProfileReport { scenario_id_prefix: scenario_id_prefix.to_string(), points }
+}
+
+/// Merge acquisition, tracking, and PVT C/N0 profiles into one stage-level output.
+pub fn summarize_truth_guided_accuracy_cn0_profile(
+    scenario_id_prefix: &str,
+    acquisition: &SyntheticAcquisitionDetectionRateReport,
+    tracking: &SyntheticTrackingLockRateReport,
+    pvt: &SyntheticPvtCn0ProfileReport,
+) -> SyntheticAccuracyCn0ProfileReport {
+    #[derive(Default)]
+    struct Accumulator {
+        acquisition_trial_count: usize,
+        acquisition_acceptance_probability: Vec<f64>,
+        acquisition_detection_probability: Vec<f64>,
+        tracking_trial_count: usize,
+        tracking_lock_probability: Vec<f64>,
+        tracking_refused_lock_rate: Vec<f64>,
+        pvt_epoch_count: usize,
+        pvt_pass_rate: Vec<f64>,
+        pvt_rms_position_error_3d_m: Vec<f64>,
+        pvt_max_position_error_3d_m: Vec<f64>,
+    }
+
+    let mut by_cn0 = BTreeMap::<i32, Accumulator>::new();
+    for point in &acquisition.points {
+        let entry = by_cn0.entry((point.cn0_db_hz * 10.0).round() as i32).or_default();
+        entry.acquisition_trial_count += point.trial_count;
+        entry.acquisition_acceptance_probability.push(point.acceptance_probability);
+        entry.acquisition_detection_probability.push(point.detection_probability);
+    }
+    for point in &tracking.points {
+        let entry = by_cn0.entry((point.cn0_db_hz * 10.0).round() as i32).or_default();
+        entry.tracking_trial_count += point.trial_count;
+        entry.tracking_lock_probability.push(point.lock_probability);
+        if point.trial_count > 0 {
+            entry
+                .tracking_refused_lock_rate
+                .push(point.refused_lock_count as f64 / point.trial_count as f64);
+        }
+    }
+    for point in &pvt.points {
+        let entry =
+            by_cn0.entry((point.mean_observation_cn0_dbhz * 10.0).round() as i32).or_default();
+        entry.pvt_epoch_count += point.epoch_count;
+        entry.pvt_pass_rate.push(point.pass_rate);
+        if let Some(rms_position_error_3d_m) = point.rms_position_error_3d_m {
+            entry.pvt_rms_position_error_3d_m.push(rms_position_error_3d_m);
+        }
+        if let Some(max_position_error_3d_m) = point.max_position_error_3d_m {
+            entry.pvt_max_position_error_3d_m.push(max_position_error_3d_m);
+        }
+    }
+
+    let points = by_cn0
+        .into_iter()
+        .map(|(cn0_tenths_db_hz, values)| SyntheticAccuracyCn0ProfilePoint {
+            cn0_db_hz: cn0_tenths_db_hz as f64 / 10.0,
+            acquisition_case_count: values.acquisition_detection_probability.len(),
+            acquisition_trial_count: values.acquisition_trial_count,
+            acquisition_acceptance_probability_mean: mean_f64(&values.acquisition_acceptance_probability),
+            acquisition_detection_probability_mean: mean_f64(&values.acquisition_detection_probability),
+            tracking_case_count: values.tracking_lock_probability.len(),
+            tracking_trial_count: values.tracking_trial_count,
+            tracking_lock_probability_mean: mean_f64(&values.tracking_lock_probability),
+            tracking_refused_lock_rate_mean: mean_f64(&values.tracking_refused_lock_rate),
+            pvt_case_count: values.pvt_pass_rate.len(),
+            pvt_epoch_count: values.pvt_epoch_count,
+            pvt_pass_rate_mean: mean_f64(&values.pvt_pass_rate),
+            pvt_rms_position_error_3d_m_mean: mean_f64(&values.pvt_rms_position_error_3d_m),
+            pvt_max_position_error_3d_m_max: values
+                .pvt_max_position_error_3d_m
+                .iter()
+                .copied()
+                .reduce(f64::max),
+        })
+        .collect::<Vec<_>>();
+
+    SyntheticAccuracyCn0ProfileReport { scenario_id_prefix: scenario_id_prefix.to_string(), points }
 }
 
 /// Build a truth-guided PVT table from synthetic navigation solutions.
@@ -4602,6 +4886,7 @@ mod tests {
         measure_truth_guided_acquisition_detection_probability,
         measure_truth_guided_acquisition_detection_rate, measure_truth_guided_tracking_lock_rate,
         nav_bit_index_at_time_s, nav_bit_sign_at_time_s, signal_amplitude_from_cn0,
+        summarize_truth_guided_accuracy_cn0_profile, summarize_truth_guided_pvt_cn0_profile,
         summarize_observation_errors, synthetic_tracking_sensitivity_report,
         truth_guided_receiver_accuracy_budgets, validate_acquisition_accuracy_budget,
         validate_pvt_accuracy_budget, validate_truth_guided_acquisition_code_phase,
@@ -4614,11 +4899,15 @@ mod tests {
         wrapped_code_phase_error_samples_f64, SatState, SyntheticAcquisitionDetectionRateCase,
         SyntheticAcquisitionFalseAlarmRateCase, SyntheticAcquisitionSampleRateValidationCase,
         SyntheticAcquisitionTruthTableReport, SyntheticAcquisitionTruthTableSatellite,
+        SyntheticAcquisitionDetectionRatePoint, SyntheticAcquisitionDetectionRateReport,
+        SyntheticAccuracyCn0ProfileReport, SyntheticPvtAccuracyEpoch, SyntheticPvtAccuracyReport,
+        SyntheticPvtCn0ProfileCase, SyntheticPvtCn0ProfilePoint, SyntheticPvtCn0ProfileReport,
         SyntheticDopplerRampParams, SyntheticFadeWindow, SyntheticNavBitMode, SyntheticPhaseWindow,
         SyntheticPvtTruthReferenceEpoch, SyntheticPvtTruthTableClockBias,
         SyntheticPvtTruthTableDop, SyntheticPvtTruthTableEcef, SyntheticPvtTruthTableEnuError,
         SyntheticPvtTruthTableEpoch, SyntheticPvtTruthTableGeodetic, SyntheticPvtTruthTableReport,
         SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource,
+        SyntheticTrackingLockRatePoint, SyntheticTrackingLockRateReport,
         SyntheticTrackingTruthTableEpoch, SyntheticTrackingTruthTableReport,
         SyntheticTrackingTruthTableSatellite,
         SyntheticTrackingLockRateCase, SyntheticTrackingSensitivityTrial, SPEED_OF_LIGHT_MPS,
@@ -4626,9 +4915,12 @@ mod tests {
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
     use bijux_gnss_core::api::{
-        ecef_to_geodetic, lla_to_ecef, Constellation, Epoch, Meters, NavLifecycleState,
-        NavQualityFlag, NavSolutionEpoch, NavUncertaintyClass, ReceiverSampleTrace, SampleTime,
-        SamplesFrame, SatId, Seconds, SolutionStatus, SolutionValidity, ValidationReferenceEpoch,
+        ecef_to_geodetic, lla_to_ecef, Constellation, Cycles, Epoch, FreqHz, Hertz, LockFlags,
+        Meters, NavLifecycleState, NavQualityFlag, NavSolutionEpoch, NavUncertaintyClass,
+        ObsEpoch, ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus,
+        ReceiverRole, ReceiverSampleTrace, SampleTime, SamplesFrame, SatId, Seconds, SigId,
+        SignalBand, SignalCode, SignalSpec, SolutionStatus, SolutionValidity,
+        ValidationReferenceEpoch,
         NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
     };
     use bijux_gnss_signal::api::{
@@ -5011,6 +5303,306 @@ mod tests {
         assert!(!accuracy.pass);
         assert_eq!(accuracy.passing_epoch_count, 0);
         assert!(!epoch.pass);
+    }
+
+    #[test]
+    fn pvt_cn0_profile_summarizes_observation_levels_and_epoch_quality() {
+        let weak_observations = vec![
+            sample_obs_epoch(4, &[24.0, 26.0]),
+            sample_obs_epoch(5, &[28.0, 30.0]),
+        ];
+        let strong_observations = vec![
+            sample_obs_epoch(6, &[40.0, 42.0]),
+            sample_obs_epoch(7, &[44.0, 46.0]),
+        ];
+        let weak_accuracy = SyntheticPvtAccuracyReport {
+            scenario_id: "pvt_cn0_profile_weak".to_string(),
+            max_position_error_3d_m: 5.0,
+            max_clock_bias_error_m: 10.0,
+            max_residual_rms_m: 4.0,
+            max_pdop: 6.0,
+            epoch_count: 2,
+            passing_epoch_count: 1,
+            truth_coverage_ready: true,
+            truth_coverage_issues: Vec::new(),
+            pass: false,
+            epochs: vec![
+                SyntheticPvtAccuracyEpoch {
+                    epoch_index: 4,
+                    position_error_3d_m: 2.0,
+                    clock_bias_error_m: 1.0,
+                    residual_rms_m: 0.5,
+                    pdop: 2.0,
+                    pass: true,
+                },
+                SyntheticPvtAccuracyEpoch {
+                    epoch_index: 5,
+                    position_error_3d_m: 4.0,
+                    clock_bias_error_m: 3.0,
+                    residual_rms_m: 1.5,
+                    pdop: 3.0,
+                    pass: false,
+                },
+            ],
+        };
+        let strong_accuracy = SyntheticPvtAccuracyReport {
+            scenario_id: "pvt_cn0_profile_strong".to_string(),
+            max_position_error_3d_m: 5.0,
+            max_clock_bias_error_m: 10.0,
+            max_residual_rms_m: 4.0,
+            max_pdop: 6.0,
+            epoch_count: 2,
+            passing_epoch_count: 2,
+            truth_coverage_ready: true,
+            truth_coverage_issues: Vec::new(),
+            pass: true,
+            epochs: vec![
+                SyntheticPvtAccuracyEpoch {
+                    epoch_index: 6,
+                    position_error_3d_m: 1.0,
+                    clock_bias_error_m: 0.5,
+                    residual_rms_m: 0.25,
+                    pdop: 1.5,
+                    pass: true,
+                },
+                SyntheticPvtAccuracyEpoch {
+                    epoch_index: 7,
+                    position_error_3d_m: 1.5,
+                    clock_bias_error_m: 0.75,
+                    residual_rms_m: 0.5,
+                    pdop: 1.75,
+                    pass: true,
+                },
+            ],
+        };
+
+        let report = summarize_truth_guided_pvt_cn0_profile(
+            &[
+                SyntheticPvtCn0ProfileCase {
+                    scenario_id: "pvt_cn0_profile_strong",
+                    observations: &strong_observations,
+                    accuracy: &strong_accuracy,
+                },
+                SyntheticPvtCn0ProfileCase {
+                    scenario_id: "pvt_cn0_profile_weak",
+                    observations: &weak_observations,
+                    accuracy: &weak_accuracy,
+                },
+            ],
+            "pvt_cn0_profile",
+        );
+
+        assert_eq!(report.points.len(), 2);
+        assert_eq!(report.points[0].scenario_id, "pvt_cn0_profile_weak");
+        assert!((report.points[0].mean_observation_cn0_dbhz - 27.0).abs() <= 1.0e-12);
+        assert_eq!(report.points[0].min_observation_cn0_dbhz, 25.0);
+        assert_eq!(report.points[0].max_observation_cn0_dbhz, 29.0);
+        assert_eq!(report.points[0].passing_epoch_count, 1);
+        assert!((report.points[0].pass_rate - 0.5).abs() <= 1.0e-12);
+        assert_eq!(report.points[0].max_position_error_3d_m, Some(4.0));
+        assert!(report.points[0].ready);
+        assert_eq!(report.points[1].scenario_id, "pvt_cn0_profile_strong");
+        assert!((report.points[1].mean_observation_cn0_dbhz - 43.0).abs() <= 1.0e-12);
+        assert_eq!(report.points[1].passing_epoch_count, 2);
+        assert!((report.points[1].pass_rate - 1.0).abs() <= 1.0e-12);
+        assert_eq!(report.points[1].max_position_error_3d_m, Some(1.5));
+    }
+
+    #[test]
+    fn accuracy_cn0_profile_merges_stage_metrics_by_signal_level() {
+        let acquisition = SyntheticAcquisitionDetectionRateReport {
+            scenario_id_prefix: "accuracy_cn0_profile".to_string(),
+            code_phase_tolerance_samples: 2,
+            doppler_tolerance_bins: 1,
+            doppler_step_hz: 500,
+            points: vec![
+                SyntheticAcquisitionDetectionRatePoint {
+                    sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                    cn0_db_hz: 27.0,
+                    doppler_hz: 250.0,
+                    coherent_ms: 1,
+                    noncoherent: 1,
+                    trial_count: 4,
+                    accepted_count: 2,
+                    detected_count: 1,
+                    acceptance_probability: 0.5,
+                    detection_probability: 0.25,
+                    mean_peak_mean_ratio: 3.0,
+                },
+                SyntheticAcquisitionDetectionRatePoint {
+                    sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                    cn0_db_hz: 43.0,
+                    doppler_hz: 250.0,
+                    coherent_ms: 1,
+                    noncoherent: 1,
+                    trial_count: 4,
+                    accepted_count: 4,
+                    detected_count: 4,
+                    acceptance_probability: 1.0,
+                    detection_probability: 1.0,
+                    mean_peak_mean_ratio: 12.0,
+                },
+            ],
+        };
+        let tracking = SyntheticTrackingLockRateReport {
+            scenario_id_prefix: "accuracy_cn0_profile".to_string(),
+            points: vec![
+                SyntheticTrackingLockRatePoint {
+                    sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                    cn0_db_hz: 27.0,
+                    duration_s: 0.08,
+                    seeded_doppler_error_hz: 60.0,
+                    seeded_code_phase_error_samples: 1,
+                    min_locked_epochs: 4,
+                    trial_count: 4,
+                    stable_lock_count: 1,
+                    refused_lock_count: 2,
+                    lock_probability: 0.25,
+                    mean_locked_epochs: 2.0,
+                },
+                SyntheticTrackingLockRatePoint {
+                    sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                    cn0_db_hz: 43.0,
+                    duration_s: 0.08,
+                    seeded_doppler_error_hz: 60.0,
+                    seeded_code_phase_error_samples: 1,
+                    min_locked_epochs: 4,
+                    trial_count: 4,
+                    stable_lock_count: 4,
+                    refused_lock_count: 0,
+                    lock_probability: 1.0,
+                    mean_locked_epochs: 8.0,
+                },
+            ],
+        };
+        let pvt = SyntheticPvtCn0ProfileReport {
+            scenario_id_prefix: "accuracy_cn0_profile".to_string(),
+            points: vec![
+                SyntheticPvtCn0ProfilePoint {
+                    scenario_id: "pvt_weak".to_string(),
+                    observation_epoch_count: 2,
+                    mean_observation_cn0_dbhz: 27.0,
+                    min_observation_cn0_dbhz: 25.0,
+                    max_observation_cn0_dbhz: 29.0,
+                    epoch_count: 2,
+                    passing_epoch_count: 1,
+                    pass_rate: 0.5,
+                    rms_position_error_3d_m: Some(3.0),
+                    max_position_error_3d_m: Some(4.0),
+                    rms_clock_bias_error_m: Some(2.0),
+                    max_clock_bias_error_m: Some(3.0),
+                    rms_residual_rms_m: Some(1.0),
+                    max_residual_rms_m: Some(1.5),
+                    max_pdop: Some(3.0),
+                    truth_coverage_ready: true,
+                    truth_coverage_issues: Vec::new(),
+                    ready: true,
+                },
+                SyntheticPvtCn0ProfilePoint {
+                    scenario_id: "pvt_strong".to_string(),
+                    observation_epoch_count: 2,
+                    mean_observation_cn0_dbhz: 43.0,
+                    min_observation_cn0_dbhz: 41.0,
+                    max_observation_cn0_dbhz: 45.0,
+                    epoch_count: 2,
+                    passing_epoch_count: 2,
+                    pass_rate: 1.0,
+                    rms_position_error_3d_m: Some(1.25),
+                    max_position_error_3d_m: Some(1.5),
+                    rms_clock_bias_error_m: Some(0.625),
+                    max_clock_bias_error_m: Some(0.75),
+                    rms_residual_rms_m: Some(0.375),
+                    max_residual_rms_m: Some(0.5),
+                    max_pdop: Some(1.75),
+                    truth_coverage_ready: true,
+                    truth_coverage_issues: Vec::new(),
+                    ready: true,
+                },
+            ],
+        };
+
+        let report: SyntheticAccuracyCn0ProfileReport = summarize_truth_guided_accuracy_cn0_profile(
+            "accuracy_cn0_profile",
+            &acquisition,
+            &tracking,
+            &pvt,
+        );
+
+        assert_eq!(report.points.len(), 2);
+        assert_eq!(report.points[0].cn0_db_hz, 27.0);
+        assert_eq!(report.points[0].acquisition_case_count, 1);
+        assert_eq!(report.points[0].tracking_case_count, 1);
+        assert_eq!(report.points[0].pvt_case_count, 1);
+        assert_eq!(report.points[0].acquisition_detection_probability_mean, Some(0.25));
+        assert_eq!(report.points[0].tracking_lock_probability_mean, Some(0.25));
+        assert_eq!(report.points[0].pvt_pass_rate_mean, Some(0.5));
+        assert_eq!(report.points[1].cn0_db_hz, 43.0);
+        assert_eq!(report.points[1].acquisition_detection_probability_mean, Some(1.0));
+        assert_eq!(report.points[1].tracking_lock_probability_mean, Some(1.0));
+        assert_eq!(report.points[1].pvt_pass_rate_mean, Some(1.0));
+        assert_eq!(report.points[1].pvt_max_position_error_3d_m_max, Some(1.5));
+    }
+
+    fn sample_obs_epoch(epoch_idx: u64, cn0_values_dbhz: &[f64]) -> ObsEpoch {
+        ObsEpoch {
+            t_rx_s: Seconds(epoch_idx as f64),
+            source_time: ReceiverSampleTrace::from_sample_index(epoch_idx, 1.0),
+            gps_week: Some(0),
+            tow_s: Some(Seconds(epoch_idx as f64)),
+            epoch_idx,
+            discontinuity: false,
+            valid: true,
+            processing_ms: None,
+            role: ReceiverRole::Rover,
+            sats: cn0_values_dbhz
+                .iter()
+                .enumerate()
+                .map(|(offset, cn0_dbhz)| ObsSatellite {
+                    signal_id: SigId {
+                        sat: SatId {
+                            constellation: Constellation::Gps,
+                            prn: 7 + offset as u8,
+                        },
+                        band: SignalBand::L1,
+                        code: SignalCode::Ca,
+                    },
+                    pseudorange_m: Meters(20_000_000.0 + offset as f64),
+                    pseudorange_var_m2: 1.0,
+                    carrier_phase_cycles: Cycles(1000.0 + offset as f64),
+                    carrier_phase_var_cycles2: 1.0,
+                    doppler_hz: Hertz(-500.0 + offset as f64),
+                    doppler_var_hz2: 1.0,
+                    cn0_dbhz: *cn0_dbhz,
+                    lock_flags: LockFlags {
+                        code_lock: true,
+                        carrier_lock: true,
+                        bit_lock: true,
+                        cycle_slip: false,
+                    },
+                    multipath_suspect: false,
+                    observation_status: ObservationStatus::Accepted,
+                    observation_reject_reasons: Vec::new(),
+                    elevation_deg: Some(45.0),
+                    azimuth_deg: Some(90.0),
+                    weight: Some(1.0),
+                    timing: None,
+                    error_model: None,
+                    metadata: ObsMetadata {
+                        signal: SignalSpec {
+                            constellation: Constellation::Gps,
+                            band: SignalBand::L1,
+                            code: SignalCode::Ca,
+                            code_rate_hz: 1_023_000.0,
+                            carrier_hz: FreqHz(1_575_420_000.0),
+                        },
+                        ..ObsMetadata::default()
+                    },
+                })
+                .collect(),
+            decision: ObservationEpochDecision::Accepted,
+            decision_reason: Some("synthetic_cn0_profile".to_string()),
+            manifest: None,
+        }
     }
 
     fn collect_frames(source: &mut SyntheticSignalSource, frame_len: usize) -> SamplesFrame {
