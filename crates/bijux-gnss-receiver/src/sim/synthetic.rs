@@ -972,6 +972,107 @@ pub struct SyntheticTrackingLockRateReport {
     pub points: Vec<SyntheticTrackingLockRatePoint>,
 }
 
+/// Per-epoch tracking truth-table row for synthetic validation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticTrackingTruthTableEpoch {
+    /// Zero-based epoch index inside the satellite track.
+    pub epoch_index: usize,
+    /// Absolute sample index at the start of the epoch.
+    pub sample_index: u64,
+    /// Expected carrier frequency in Hz at this epoch.
+    pub expected_carrier_hz: f64,
+    /// Measured carrier frequency in Hz at this epoch.
+    pub measured_carrier_hz: f64,
+    /// Absolute carrier-frequency error in Hz.
+    pub carrier_error_hz: f64,
+    /// Expected Doppler in Hz at this epoch.
+    pub expected_doppler_hz: f64,
+    /// Measured Doppler in Hz at this epoch.
+    pub measured_doppler_hz: f64,
+    /// Absolute Doppler error in Hz.
+    pub doppler_error_hz: f64,
+    /// Expected code phase in samples at this epoch.
+    pub expected_code_phase_samples: f64,
+    /// Measured code phase in samples at this epoch.
+    pub measured_code_phase_samples: f64,
+    /// Wrapped absolute code-phase error in samples.
+    pub code_phase_error_samples: f64,
+    /// Expected C/N0 in dB-Hz at this epoch.
+    pub expected_cn0_db_hz: f64,
+    /// Measured C/N0 in dB-Hz at this epoch.
+    pub measured_cn0_dbhz: f64,
+    /// Absolute C/N0 error in dB-Hz.
+    pub cn0_error_db: f64,
+    /// Whether the prompt detector reported signal lock.
+    pub lock: bool,
+    /// Whether the PLL reported lock.
+    pub pll_lock: bool,
+    /// Whether the DLL reported lock.
+    pub dll_lock: bool,
+    /// Whether the FLL reported lock.
+    pub fll_lock: bool,
+    /// Whether the receiver reported a cycle slip at this epoch.
+    pub cycle_slip: bool,
+    /// Receiver lock-state label for this epoch.
+    pub lock_state: String,
+    /// Receiver lock-state reason for this epoch, when one was emitted.
+    pub lock_state_reason: Option<String>,
+    /// Whether this epoch belongs to a stable tracking window.
+    pub stable_tracking_epoch: bool,
+    /// Whether every tracked error stayed within tolerance for this stable epoch.
+    pub pass: bool,
+}
+
+/// Per-satellite tracking truth table for synthetic validation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticTrackingTruthTableSatellite {
+    /// Satellite identifier.
+    pub sat: SatId,
+    /// Injected Doppler shift in Hz.
+    pub injected_doppler_hz: f64,
+    /// Expected measured Doppler after the receiver clock bias is applied, in Hz.
+    pub expected_measured_doppler_hz: f64,
+    /// Injected code phase at sample zero, in chips.
+    pub injected_code_phase_chips: f64,
+    /// Injected carrier-to-noise density ratio in dB-Hz.
+    pub injected_cn0_db_hz: f32,
+    /// Count of recorded epochs for this satellite.
+    pub epoch_count: usize,
+    /// Count of epochs inside stable tracking windows.
+    pub stable_epoch_count: usize,
+    /// First stable tracking epoch index, when one exists.
+    pub first_stable_epoch_index: Option<usize>,
+    /// Whether every stable tracking epoch stayed within tolerance.
+    pub pass: bool,
+    /// Per-epoch truth-table rows.
+    pub epochs: Vec<SyntheticTrackingTruthTableEpoch>,
+}
+
+/// Truth-guided tracking truth table for a synthetic capture.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticTrackingTruthTableReport {
+    /// Stable scenario identifier for this capture.
+    pub scenario_id: String,
+    /// Allowed carrier-frequency error in Hz.
+    pub carrier_tolerance_hz: f64,
+    /// Allowed Doppler error in Hz.
+    pub doppler_tolerance_hz: f64,
+    /// Allowed wrapped absolute code-phase error in samples.
+    pub code_phase_tolerance_samples: f64,
+    /// Allowed absolute C/N0 error in dB-Hz.
+    pub cn0_tolerance_db_hz: f64,
+    /// Capture sample rate in Hz.
+    pub sample_rate_hz: f64,
+    /// Number of samples in one code period at the configured rate.
+    pub period_samples: usize,
+    /// Output scale applied before quantization.
+    pub output_scale_applied: f32,
+    /// Whether every measured satellite passed the requested tolerances.
+    pub pass: bool,
+    /// Per-satellite truth-table rows.
+    pub satellites: Vec<SyntheticTrackingTruthTableSatellite>,
+}
+
 /// Noise-only false-alarm summary for a synthetic acquisition profile.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticAcquisitionFalseAlarmReport {
@@ -1368,6 +1469,24 @@ pub fn wrapped_code_phase_error_samples_f64(
 
 fn code_phase_error_samples_to_pseudorange_m(error_samples: f64, sample_rate_hz: f64) -> f64 {
     (error_samples / sample_rate_hz) * SPEED_OF_LIGHT_MPS
+}
+
+fn code_phase_samples_at_sample_index(
+    config: &ReceiverPipelineConfig,
+    sample_rate_hz: f64,
+    sample_index: u64,
+    code_phase_chips: f64,
+) -> f64 {
+    let start_s = sample_index as f64 / sample_rate_hz;
+    let chip_phase = advance_code_phase_seconds(
+        code_phase_chips,
+        config.code_freq_basis_hz,
+        start_s,
+        config.code_length,
+    )
+    .expect("synthetic epoch alignment requires a valid code phase model");
+    let samples_per_chip = sample_rate_hz / config.code_freq_basis_hz;
+    chip_phase * samples_per_chip
 }
 
 /// Build a truth-guided acquisition table from a synthetic capture.
@@ -3045,16 +3164,12 @@ fn code_phase_samples_at_epoch_start(
     frame: &SamplesFrame,
     code_phase_chips: f64,
 ) -> f64 {
-    let start_s = frame.t0.sample_index as f64 / frame.t0.sample_rate_hz;
-    let chip_phase = advance_code_phase_seconds(
+    code_phase_samples_at_sample_index(
+        config,
+        frame.t0.sample_rate_hz,
+        frame.t0.sample_index,
         code_phase_chips,
-        config.code_freq_basis_hz,
-        start_s,
-        config.code_length,
     )
-    .expect("synthetic epoch alignment requires a valid code phase model");
-    let samples_per_chip = frame.t0.sample_rate_hz / config.code_freq_basis_hz;
-    chip_phase * samples_per_chip
 }
 
 fn synthetic_intermediate_frequency_hz(intermediate_freq_hz: f64, sat: SatId) -> f64 {
