@@ -159,7 +159,9 @@ pub struct DdObservation {
 impl bijux_gnss_core::api::ArtifactPayloadValidate for SdObservation {
     fn validate_payload(&self) -> Vec<bijux_gnss_core::api::DiagnosticEvent> {
         let mut events = Vec::new();
-        if !self.code_m.is_finite()
+        if !self.rover_pseudorange_m.is_finite()
+            || !self.base_pseudorange_m.is_finite()
+            || !self.code_m.is_finite()
             || !self.phase_cycles.is_finite()
             || !self.doppler_hz.is_finite()
         {
@@ -167,6 +169,14 @@ impl bijux_gnss_core::api::ArtifactPayloadValidate for SdObservation {
                 bijux_gnss_core::api::DiagnosticSeverity::Error,
                 "RTK_SD_NUMERIC_INVALID",
                 "sd observation contains NaN/Inf",
+            ));
+        }
+        if timing_is_invalid(self.rover_signal_timing) || timing_is_invalid(self.base_signal_timing)
+        {
+            events.push(bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Error,
+                "RTK_SD_TIMING_INVALID",
+                "sd observation timing contains NaN/Inf",
             ));
         }
         if self.variance_code < 0.0 || self.variance_phase < 0.0 {
@@ -381,6 +391,13 @@ fn variance_from_cn0_elev(cn0_dbhz: f64, elevation_deg: Option<f64>, kind: Measu
     };
     let sigma = base / (cn0_linear.sqrt() * elev);
     sigma * sigma
+}
+
+fn timing_is_invalid(timing: Option<ObsSignalTiming>) -> bool {
+    let Some(timing) = timing else {
+        return false;
+    };
+    !timing.signal_travel_time_s.0.is_finite() || !timing.transmit_gps_time.tow_s.is_finite()
 }
 
 #[derive(Debug, Clone, Copy)]
