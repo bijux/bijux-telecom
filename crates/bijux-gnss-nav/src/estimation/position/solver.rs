@@ -42,6 +42,15 @@ pub struct PositionSolution {
     pub rejected_sat_count: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PositionDops {
+    pub pdop: f64,
+    pub hdop: f64,
+    pub vdop: f64,
+    pub gdop: f64,
+    pub tdop: f64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PositionSolveRefusalKind {
     InsufficientObservations,
@@ -402,7 +411,7 @@ impl PositionSolver {
             v.push(*res);
         }
 
-        let (pdop, hdop, vdop, gdop) = compute_dops(&h).unwrap_or((0.0, None, None, None));
+        let dops = compute_dops(&h);
         let rms = if !v.is_empty() {
             let sum = v.iter().map(|r| r * r).sum::<f64>();
             (sum / v.len() as f64).sqrt()
@@ -437,10 +446,10 @@ impl PositionSolver {
             longitude_deg: lon,
             altitude_m: alt,
             clock_bias_s: cb,
-            pdop,
-            hdop,
-            vdop,
-            gdop,
+            pdop: dops.map(|dops| dops.pdop).unwrap_or(0.0),
+            hdop: dops.map(|dops| dops.hdop),
+            vdop: dops.map(|dops| dops.vdop),
+            gdop: dops.map(|dops| dops.gdop),
             rms_m: rms,
             sigma_h_m: Some(sigma_h_m),
             sigma_v_m: Some(sigma_v_m),
@@ -829,9 +838,28 @@ fn compute_pdop(h: &[[f64; 4]]) -> Option<f64> {
     Some(pdop)
 }
 
-type DopTuple = (f64, Option<f64>, Option<f64>, Option<f64>);
+pub fn position_dops_from_satellite_positions(
+    receiver_ecef_m: [f64; 3],
+    satellite_positions_ecef_m: &[[f64; 3]],
+) -> Option<PositionDops> {
+    if satellite_positions_ecef_m.len() < 4 {
+        return None;
+    }
+    let mut h = Vec::with_capacity(satellite_positions_ecef_m.len());
+    for satellite_ecef_m in satellite_positions_ecef_m {
+        let dx = receiver_ecef_m[0] - satellite_ecef_m[0];
+        let dy = receiver_ecef_m[1] - satellite_ecef_m[1];
+        let dz = receiver_ecef_m[2] - satellite_ecef_m[2];
+        let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
+        if !range_m.is_finite() || range_m <= 0.0 {
+            return None;
+        }
+        h.push([dx / range_m, dy / range_m, dz / range_m, 1.0]);
+    }
+    compute_dops(&h)
+}
 
-fn compute_dops(h: &[[f64; 4]]) -> Option<DopTuple> {
+fn compute_dops(h: &[[f64; 4]]) -> Option<PositionDops> {
     let mut n = [[0.0_f64; 4]; 4];
     for row in h {
         for r in 0..4 {
@@ -846,7 +874,7 @@ fn compute_dops(h: &[[f64; 4]]) -> Option<DopTuple> {
     let tdop = inv[3][3].max(0.0).sqrt();
     let pdop = (hdop.powi(2) + vdop.powi(2)).sqrt();
     let gdop = (pdop.powi(2) + tdop.powi(2)).sqrt();
-    Some((pdop, Some(hdop), Some(vdop), Some(gdop)))
+    Some(PositionDops { pdop, hdop, vdop, gdop, tdop })
 }
 
 pub fn ecef_to_geodetic(x: f64, y: f64, z: f64) -> (f64, f64, f64) {
