@@ -905,12 +905,24 @@ pub struct SyntheticPvtClockProfilePoint {
     pub scenario_id: String,
     /// Injected receiver clock drift carried by the scenario truth, in seconds per second.
     pub injected_clock_drift_s_per_s: f64,
+    /// Expected observation-Doppler offset induced by the injected clock drift, in hertz.
+    pub expected_observation_doppler_offset_hz: f64,
     /// Number of matched PVT epochs compared against truth.
     pub epoch_count: usize,
     /// Number of matched PVT epochs that satisfied the hard accuracy budget.
     pub passing_epoch_count: usize,
     /// Passing-epoch fraction across the matched PVT epochs.
     pub pass_rate: f64,
+    /// Number of observation Doppler pairs compared against the stable reference observations.
+    pub observation_doppler_pair_count: usize,
+    /// Mean observed observation-Doppler offset relative to the stable reference observations, in hertz.
+    pub observed_mean_observation_doppler_offset_hz: Option<f64>,
+    /// Minimum observed observation-Doppler offset relative to the stable reference observations, in hertz.
+    pub observed_min_observation_doppler_offset_hz: Option<f64>,
+    /// Maximum observed observation-Doppler offset relative to the stable reference observations, in hertz.
+    pub observed_max_observation_doppler_offset_hz: Option<f64>,
+    /// Largest absolute observation-Doppler offset error relative to the expected clock-induced offset, in hertz.
+    pub max_observation_doppler_offset_error_hz: Option<f64>,
     /// Final solved receiver clock drift from the navigation solution sequence, in seconds per second.
     pub final_solved_clock_drift_s_per_s: Option<f64>,
     /// Mean solved receiver clock drift across the navigation solution sequence, in seconds per second.
@@ -2199,6 +2211,12 @@ pub struct SyntheticPvtClockProfileCase<'a> {
     pub scenario_id: &'a str,
     /// Injected receiver clock drift carried by the scenario truth, in seconds per second.
     pub injected_clock_drift_s_per_s: f64,
+    /// Expected observation-Doppler offset induced by the injected clock drift, in hertz.
+    pub expected_observation_doppler_offset_hz: f64,
+    /// Observation epochs produced by the drifting or stable receiver-clock scenario.
+    pub observations: &'a [ObsEpoch],
+    /// Stable-reference observation epochs used to measure the clock-induced Doppler offset.
+    pub reference_observations: Option<&'a [ObsEpoch]>,
     /// Navigation solutions that should estimate the receiver clock drift.
     pub solutions: &'a [NavSolutionEpoch],
     /// Truth-guided PVT accuracy report for the same scenario.
@@ -2566,6 +2584,12 @@ pub fn summarize_truth_guided_pvt_clock_profile(
     let mut points = cases
         .iter()
         .map(|case| {
+            let observation_doppler_offsets_hz = case
+                .reference_observations
+                .map(|reference_observations| {
+                    observation_doppler_offsets_hz(case.observations, reference_observations)
+                })
+                .unwrap_or_default();
             let solved_clock_drift_s_per_s = case
                 .solutions
                 .iter()
@@ -2596,9 +2620,26 @@ pub fn summarize_truth_guided_pvt_clock_profile(
             SyntheticPvtClockProfilePoint {
                 scenario_id: case.scenario_id.to_string(),
                 injected_clock_drift_s_per_s: case.injected_clock_drift_s_per_s,
+                expected_observation_doppler_offset_hz: case.expected_observation_doppler_offset_hz,
                 epoch_count,
                 passing_epoch_count,
                 pass_rate,
+                observation_doppler_pair_count: observation_doppler_offsets_hz.len(),
+                observed_mean_observation_doppler_offset_hz: mean_f64(
+                    &observation_doppler_offsets_hz,
+                ),
+                observed_min_observation_doppler_offset_hz: observation_doppler_offsets_hz
+                    .iter()
+                    .copied()
+                    .reduce(f64::min),
+                observed_max_observation_doppler_offset_hz: observation_doppler_offsets_hz
+                    .iter()
+                    .copied()
+                    .reduce(f64::max),
+                max_observation_doppler_offset_error_hz: observation_doppler_offsets_hz
+                    .iter()
+                    .map(|value| (value - case.expected_observation_doppler_offset_hz).abs())
+                    .reduce(f64::max),
                 final_solved_clock_drift_s_per_s: solved_clock_drift_s_per_s.last().copied(),
                 mean_solved_clock_drift_s_per_s: mean_f64(&solved_clock_drift_s_per_s),
                 max_clock_drift_error_s_per_s: clock_drift_error_s_per_s
@@ -2615,7 +2656,9 @@ pub fn summarize_truth_guided_pvt_clock_profile(
                 truth_coverage_issues: case.accuracy.truth_coverage_issues.clone(),
                 ready: case.accuracy.truth_coverage_ready
                     && epoch_count > 0
-                    && !solved_clock_drift_s_per_s.is_empty(),
+                    && !solved_clock_drift_s_per_s.is_empty()
+                    && (case.reference_observations.is_some()
+                        || case.expected_observation_doppler_offset_hz.abs() <= f64::EPSILON),
             }
         })
         .collect::<Vec<_>>();
@@ -2627,6 +2670,35 @@ pub fn summarize_truth_guided_pvt_clock_profile(
     });
 
     SyntheticPvtClockProfileReport { scenario_id_prefix: scenario_id_prefix.to_string(), points }
+}
+
+fn observation_doppler_offsets_hz(
+    observations: &[ObsEpoch],
+    reference_observations: &[ObsEpoch],
+) -> Vec<f64> {
+    let reference_by_epoch = reference_observations
+        .iter()
+        .map(|epoch| {
+            let sats = epoch
+                .sats
+                .iter()
+                .map(|sat| (sat.signal_id, sat.doppler_hz.0))
+                .collect::<BTreeMap<_, _>>();
+            (epoch.epoch_idx, sats)
+        })
+        .collect::<BTreeMap<_, _>>();
+    let mut offsets_hz = Vec::new();
+    for epoch in observations {
+        let Some(reference_sats) = reference_by_epoch.get(&epoch.epoch_idx) else {
+            continue;
+        };
+        for sat in &epoch.sats {
+            if let Some(reference_doppler_hz) = reference_sats.get(&sat.signal_id) {
+                offsets_hz.push(sat.doppler_hz.0 - reference_doppler_hz);
+            }
+        }
+    }
+    offsets_hz
 }
 
 /// Summarize truth-guided PVT accuracy across long-run time-evolution points.
