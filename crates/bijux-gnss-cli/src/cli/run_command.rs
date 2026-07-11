@@ -1351,6 +1351,12 @@ fn solve_epoch_ekf(
         clock_bias_m: bijux_gnss_infra::api::core::Meters(ctx.ekf.x[6] * 299_792_458.0),
         clock_drift_s_per_s: ctx.ekf.x.get(7).copied().unwrap_or(0.0),
         pdop: 0.0,
+        pre_fit_residual_rms_m: Some(bijux_gnss_infra::api::core::Meters(
+            ctx.ekf.health.innovation_rms,
+        )),
+        post_fit_residual_rms_m: Some(bijux_gnss_infra::api::core::Meters(
+            ctx.ekf.health.innovation_rms,
+        )),
         rms_m: bijux_gnss_infra::api::core::Meters(ctx.ekf.health.innovation_rms),
         status,
         quality: status.quality_flag(),
@@ -1501,6 +1507,8 @@ fn cli_nav_refusal_epoch(
         clock_bias_m: bijux_gnss_infra::api::core::Meters(0.0),
         clock_drift_s_per_s: 0.0,
         pdop: 0.0,
+        pre_fit_residual_rms_m: None,
+        post_fit_residual_rms_m: None,
         rms_m: bijux_gnss_infra::api::core::Meters(0.0),
         status: bijux_gnss_infra::api::core::SolutionStatus::Invalid,
         quality: bijux_gnss_infra::api::core::SolutionStatus::Invalid.quality_flag(),
