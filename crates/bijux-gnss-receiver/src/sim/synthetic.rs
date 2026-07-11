@@ -849,6 +849,54 @@ pub struct SyntheticPvtMultipathProfileReport {
     pub points: Vec<SyntheticPvtMultipathProfilePoint>,
 }
 
+/// One synthetic PVT accuracy measurement point indexed by receiver-motion truth path.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPvtMotionProfilePoint {
+    /// Stable scenario identifier for this validation run.
+    pub scenario_id: String,
+    /// Number of truth epochs in the receiver-motion reference path.
+    pub truth_epoch_count: usize,
+    /// Whether the truth path contains measurable receiver displacement.
+    pub moving: bool,
+    /// Total receiver path length across the truth epochs, in meters.
+    pub path_length_m: f64,
+    /// Mean receiver speed across the truth epochs, in meters per second.
+    pub mean_speed_mps: f64,
+    /// Number of matched PVT epochs compared against truth.
+    pub epoch_count: usize,
+    /// Number of matched PVT epochs that satisfied the hard accuracy budget.
+    pub passing_epoch_count: usize,
+    /// Passing-epoch fraction across the matched PVT epochs.
+    pub pass_rate: f64,
+    /// Number of truth-matched epochs whose solution validity remained stable.
+    pub stable_epoch_count: usize,
+    /// Stable-solution fraction across truth-matched epochs.
+    pub stable_epoch_rate: f64,
+    /// RMS 3D position error across matched PVT epochs, in meters.
+    pub rms_position_error_3d_m: Option<f64>,
+    /// Maximum 3D position error across matched PVT epochs, in meters.
+    pub max_position_error_3d_m: Option<f64>,
+    /// RMS residual RMS across matched PVT epochs, in meters.
+    pub rms_residual_rms_m: Option<f64>,
+    /// Maximum residual RMS across matched PVT epochs, in meters.
+    pub max_residual_rms_m: Option<f64>,
+    /// Whether synthetic truth coverage remained sufficient for a hard claim.
+    pub truth_coverage_ready: bool,
+    /// Machine-checkable truth-coverage issues that forced or should force validation failure.
+    pub truth_coverage_issues: Vec<SyntheticTruthCoverageIssue>,
+    /// Whether the point had truth-ready PVT comparisons and at least one matched epoch.
+    pub ready: bool,
+}
+
+/// Truth-guided PVT accuracy profile across multiple receiver-motion truth paths.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPvtMotionProfileReport {
+    /// Scenario identifier prefix shared across the measurement points.
+    pub scenario_id_prefix: String,
+    /// Measurement points captured in the report.
+    pub points: Vec<SyntheticPvtMotionProfilePoint>,
+}
+
 /// Aggregated multi-stage accuracy summary at one signal-strength point.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticAccuracyCn0ProfilePoint {
@@ -1568,6 +1616,17 @@ pub struct SyntheticPvtMultipathProfileCase<'a> {
     pub accuracy: &'a SyntheticPvtAccuracyReport,
 }
 
+/// Borrowed inputs for one synthetic PVT receiver-motion profile point.
+#[derive(Debug, Clone, Copy)]
+pub struct SyntheticPvtMotionProfileCase<'a> {
+    /// Stable scenario identifier for this validation run.
+    pub scenario_id: &'a str,
+    /// Truth-guided PVT truth table for the same scenario.
+    pub truth_table: &'a SyntheticPvtTruthTableReport,
+    /// Truth-guided PVT accuracy report for the same scenario.
+    pub accuracy: &'a SyntheticPvtAccuracyReport,
+}
+
 /// Summarize truth-guided PVT accuracy across multiple signal-strength points.
 pub fn summarize_truth_guided_pvt_cn0_profile(
     cases: &[SyntheticPvtCn0ProfileCase<'_>],
@@ -1813,6 +1872,101 @@ pub fn summarize_truth_guided_pvt_multipath_profile(
         scenario_id_prefix: scenario_id_prefix.to_string(),
         points,
     }
+}
+
+/// Summarize truth-guided PVT accuracy across multiple receiver-motion truth paths.
+pub fn summarize_truth_guided_pvt_motion_profile(
+    cases: &[SyntheticPvtMotionProfileCase<'_>],
+    scenario_id_prefix: &str,
+) -> SyntheticPvtMotionProfileReport {
+    let mut points = cases
+        .iter()
+        .map(|case| {
+            let position_error_3d_m = case
+                .accuracy
+                .epochs
+                .iter()
+                .map(|epoch| epoch.position_error_3d_m)
+                .collect::<Vec<_>>();
+            let residual_rms_m =
+                case.accuracy.epochs.iter().map(|epoch| epoch.residual_rms_m).collect::<Vec<_>>();
+            let passing_epoch_count =
+                case.accuracy.epochs.iter().filter(|epoch| epoch.pass).count();
+            let epoch_count = case.accuracy.epoch_count;
+            let pass_rate = if epoch_count == 0 {
+                0.0
+            } else {
+                passing_epoch_count as f64 / epoch_count as f64
+            };
+            let stable_epoch_count = case
+                .truth_table
+                .epochs
+                .iter()
+                .filter(|epoch| epoch.solution_validity == SolutionValidity::Stable)
+                .count();
+            let truth_epoch_count = case.truth_table.epochs.len();
+            let stable_epoch_rate = if truth_epoch_count == 0 {
+                0.0
+            } else {
+                stable_epoch_count as f64 / truth_epoch_count as f64
+            };
+            let truth_path_segments = case
+                .truth_table
+                .epochs
+                .windows(2)
+                .map(|window| {
+                    let previous = &window[0].truth_ecef_m;
+                    let current = &window[1].truth_ecef_m;
+                    let dx = current.x_m - previous.x_m;
+                    let dy = current.y_m - previous.y_m;
+                    let dz = current.z_m - previous.z_m;
+                    let dt_s = window[1].receive_time_s - window[0].receive_time_s;
+                    ((dx * dx + dy * dy + dz * dz).sqrt(), dt_s)
+                })
+                .collect::<Vec<_>>();
+            let path_length_m =
+                truth_path_segments.iter().map(|(segment_length_m, _)| *segment_length_m).sum();
+            let duration_s = truth_path_segments.iter().map(|(_, dt_s)| *dt_s).sum::<f64>();
+            let mean_speed_mps = if duration_s <= 0.0 { 0.0 } else { path_length_m / duration_s };
+
+            SyntheticPvtMotionProfilePoint {
+                scenario_id: case.scenario_id.to_string(),
+                truth_epoch_count,
+                moving: path_length_m > 0.0,
+                path_length_m,
+                mean_speed_mps,
+                epoch_count,
+                passing_epoch_count,
+                pass_rate,
+                stable_epoch_count,
+                stable_epoch_rate,
+                rms_position_error_3d_m: (!position_error_3d_m.is_empty())
+                    .then(|| stats(&position_error_3d_m).rms),
+                max_position_error_3d_m: position_error_3d_m.iter().copied().reduce(f64::max),
+                rms_residual_rms_m: (!residual_rms_m.is_empty())
+                    .then(|| stats(&residual_rms_m).rms),
+                max_residual_rms_m: residual_rms_m.iter().copied().reduce(f64::max),
+                truth_coverage_ready: case.accuracy.truth_coverage_ready,
+                truth_coverage_issues: case.accuracy.truth_coverage_issues.clone(),
+                ready: case.accuracy.truth_coverage_ready
+                    && truth_epoch_count > 0
+                    && epoch_count > 0,
+            }
+        })
+        .collect::<Vec<_>>();
+    points.sort_by(|left, right| {
+        left.path_length_m
+            .partial_cmp(&right.path_length_m)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                left.mean_speed_mps
+                    .partial_cmp(&right.mean_speed_mps)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| left.scenario_id.cmp(&right.scenario_id))
+    });
+
+    SyntheticPvtMotionProfileReport { scenario_id_prefix: scenario_id_prefix.to_string(), points }
 }
 
 /// Merge acquisition, tracking, and PVT C/N0 profiles into one stage-level output.
@@ -5152,9 +5306,10 @@ mod tests {
         nav_bit_index_at_time_s, nav_bit_sign_at_time_s, signal_amplitude_from_cn0,
         summarize_observation_errors, summarize_truth_guided_accuracy_cn0_profile,
         summarize_truth_guided_pvt_cn0_profile, summarize_truth_guided_pvt_geometry_profile,
-        summarize_truth_guided_pvt_multipath_profile, synthetic_tracking_sensitivity_report,
-        truth_guided_receiver_accuracy_budgets, validate_acquisition_accuracy_budget,
-        validate_pvt_accuracy_budget, validate_truth_guided_acquisition_code_phase,
+        summarize_truth_guided_pvt_motion_profile, summarize_truth_guided_pvt_multipath_profile,
+        synthetic_tracking_sensitivity_report, truth_guided_receiver_accuracy_budgets,
+        validate_acquisition_accuracy_budget, validate_pvt_accuracy_budget,
+        validate_truth_guided_acquisition_code_phase,
         validate_truth_guided_acquisition_code_phase_refinement,
         validate_truth_guided_acquisition_coherent_integration,
         validate_truth_guided_acquisition_doppler,
@@ -5169,7 +5324,8 @@ mod tests {
         SyntheticNavBitMode, SyntheticPhaseWindow, SyntheticPvtAccuracyEpoch,
         SyntheticPvtAccuracyReport, SyntheticPvtCn0ProfileCase, SyntheticPvtCn0ProfilePoint,
         SyntheticPvtCn0ProfileReport, SyntheticPvtGeometryProfileCase,
-        SyntheticPvtGeometryProfileReport, SyntheticPvtMultipathProfileCase,
+        SyntheticPvtGeometryProfileReport, SyntheticPvtMotionProfileCase,
+        SyntheticPvtMotionProfileReport, SyntheticPvtMultipathProfileCase,
         SyntheticPvtMultipathProfileReport, SyntheticPvtTruthReferenceEpoch,
         SyntheticPvtTruthTableClockBias, SyntheticPvtTruthTableDop, SyntheticPvtTruthTableEcef,
         SyntheticPvtTruthTableEnuError, SyntheticPvtTruthTableEpoch,
@@ -6087,6 +6243,323 @@ mod tests {
         assert_eq!(report.points[1].stable_epoch_count, 0);
         assert_eq!(report.points[1].diverging_epoch_count, 1);
         assert_eq!(report.points[1].max_residual_rms_m, Some(60.0));
+        assert!(report.points[1].ready);
+    }
+
+    #[test]
+    fn pvt_motion_profile_sorts_cases_by_truth_path_length() {
+        let static_truth = SyntheticPvtTruthTableReport {
+            scenario_id: "pvt_motion_profile_static".to_string(),
+            solution_count: 2,
+            matched_epoch_count: 2,
+            unmatched_solution_epochs: Vec::new(),
+            unused_reference_epochs: Vec::new(),
+            epochs: vec![
+                SyntheticPvtTruthTableEpoch {
+                    artifact_id: "static-artifact-1".to_string(),
+                    source_observation_epoch_id: "static-source-1".to_string(),
+                    epoch_index: 1,
+                    receive_time_s: 100.0,
+                    truth_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.0, y_m: 0.0, z_m: 0.0 },
+                    measured_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.2, y_m: 0.0, z_m: 0.0 },
+                    ecef_error_m: SyntheticPvtTruthTableEcef { x_m: 0.2, y_m: 0.0, z_m: 0.0 },
+                    truth_geodetic: SyntheticPvtTruthTableGeodetic {
+                        latitude_deg: 0.0,
+                        longitude_deg: 0.0,
+                        altitude_m: 0.0,
+                    },
+                    measured_geodetic: SyntheticPvtTruthTableGeodetic {
+                        latitude_deg: 0.0,
+                        longitude_deg: 0.0,
+                        altitude_m: 0.2,
+                    },
+                    enu_error_m: SyntheticPvtTruthTableEnuError {
+                        east_m: 0.2,
+                        north_m: 0.0,
+                        up_m: 0.0,
+                        horiz_m: 0.2,
+                        vert_m: 0.0,
+                        error_3d_m: 0.2,
+                    },
+                    clock_bias: SyntheticPvtTruthTableClockBias {
+                        truth_s: 0.0,
+                        measured_s: 0.0,
+                        error_s: 0.0,
+                        truth_m: 0.0,
+                        measured_m: 0.0,
+                        error_m: 0.0,
+                    },
+                    residual_rms_m: 0.4,
+                    pre_fit_residual_rms_m: Some(0.4),
+                    post_fit_residual_rms_m: Some(0.4),
+                    dop: SyntheticPvtTruthTableDop {
+                        pdop: 1.4,
+                        hdop: Some(1.0),
+                        vdop: Some(0.9),
+                        gdop: Some(1.6),
+                        tdop: Some(0.5),
+                    },
+                    solution_status: SolutionStatus::Converged,
+                    solution_quality: NavQualityFlag::Float,
+                    solution_validity: SolutionValidity::Stable,
+                    valid: true,
+                    sat_count: 5,
+                    used_sat_count: 5,
+                    rejected_sat_count: 0,
+                },
+                SyntheticPvtTruthTableEpoch {
+                    artifact_id: "static-artifact-2".to_string(),
+                    source_observation_epoch_id: "static-source-2".to_string(),
+                    epoch_index: 2,
+                    receive_time_s: 101.0,
+                    truth_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.0, y_m: 0.0, z_m: 0.0 },
+                    measured_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.3, y_m: 0.0, z_m: 0.0 },
+                    ecef_error_m: SyntheticPvtTruthTableEcef { x_m: 0.3, y_m: 0.0, z_m: 0.0 },
+                    truth_geodetic: SyntheticPvtTruthTableGeodetic {
+                        latitude_deg: 0.0,
+                        longitude_deg: 0.0,
+                        altitude_m: 0.0,
+                    },
+                    measured_geodetic: SyntheticPvtTruthTableGeodetic {
+                        latitude_deg: 0.0,
+                        longitude_deg: 0.0,
+                        altitude_m: 0.3,
+                    },
+                    enu_error_m: SyntheticPvtTruthTableEnuError {
+                        east_m: 0.3,
+                        north_m: 0.0,
+                        up_m: 0.0,
+                        horiz_m: 0.3,
+                        vert_m: 0.0,
+                        error_3d_m: 0.3,
+                    },
+                    clock_bias: SyntheticPvtTruthTableClockBias {
+                        truth_s: 0.0,
+                        measured_s: 0.0,
+                        error_s: 0.0,
+                        truth_m: 0.0,
+                        measured_m: 0.0,
+                        error_m: 0.0,
+                    },
+                    residual_rms_m: 0.45,
+                    pre_fit_residual_rms_m: Some(0.45),
+                    post_fit_residual_rms_m: Some(0.45),
+                    dop: SyntheticPvtTruthTableDop {
+                        pdop: 1.4,
+                        hdop: Some(1.0),
+                        vdop: Some(0.9),
+                        gdop: Some(1.6),
+                        tdop: Some(0.5),
+                    },
+                    solution_status: SolutionStatus::Converged,
+                    solution_quality: NavQualityFlag::Float,
+                    solution_validity: SolutionValidity::Stable,
+                    valid: true,
+                    sat_count: 5,
+                    used_sat_count: 5,
+                    rejected_sat_count: 0,
+                },
+            ],
+        };
+        let moving_truth = SyntheticPvtTruthTableReport {
+            scenario_id: "pvt_motion_profile_linear_motion".to_string(),
+            solution_count: 2,
+            matched_epoch_count: 2,
+            unmatched_solution_epochs: Vec::new(),
+            unused_reference_epochs: Vec::new(),
+            epochs: vec![
+                SyntheticPvtTruthTableEpoch {
+                    artifact_id: "moving-artifact-1".to_string(),
+                    source_observation_epoch_id: "moving-source-1".to_string(),
+                    epoch_index: 1,
+                    receive_time_s: 100.0,
+                    truth_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.0, y_m: 0.0, z_m: 0.0 },
+                    measured_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.2, y_m: 0.0, z_m: 0.0 },
+                    ecef_error_m: SyntheticPvtTruthTableEcef { x_m: 0.2, y_m: 0.0, z_m: 0.0 },
+                    truth_geodetic: SyntheticPvtTruthTableGeodetic {
+                        latitude_deg: 0.0,
+                        longitude_deg: 0.0,
+                        altitude_m: 0.0,
+                    },
+                    measured_geodetic: SyntheticPvtTruthTableGeodetic {
+                        latitude_deg: 0.0,
+                        longitude_deg: 0.0,
+                        altitude_m: 0.2,
+                    },
+                    enu_error_m: SyntheticPvtTruthTableEnuError {
+                        east_m: 0.2,
+                        north_m: 0.0,
+                        up_m: 0.0,
+                        horiz_m: 0.2,
+                        vert_m: 0.0,
+                        error_3d_m: 0.2,
+                    },
+                    clock_bias: SyntheticPvtTruthTableClockBias {
+                        truth_s: 0.0,
+                        measured_s: 0.0,
+                        error_s: 0.0,
+                        truth_m: 0.0,
+                        measured_m: 0.0,
+                        error_m: 0.0,
+                    },
+                    residual_rms_m: 0.4,
+                    pre_fit_residual_rms_m: Some(0.4),
+                    post_fit_residual_rms_m: Some(0.4),
+                    dop: SyntheticPvtTruthTableDop {
+                        pdop: 1.5,
+                        hdop: Some(1.1),
+                        vdop: Some(0.9),
+                        gdop: Some(1.7),
+                        tdop: Some(0.5),
+                    },
+                    solution_status: SolutionStatus::Converged,
+                    solution_quality: NavQualityFlag::Float,
+                    solution_validity: SolutionValidity::Stable,
+                    valid: true,
+                    sat_count: 5,
+                    used_sat_count: 5,
+                    rejected_sat_count: 0,
+                },
+                SyntheticPvtTruthTableEpoch {
+                    artifact_id: "moving-artifact-2".to_string(),
+                    source_observation_epoch_id: "moving-source-2".to_string(),
+                    epoch_index: 2,
+                    receive_time_s: 101.0,
+                    truth_ecef_m: SyntheticPvtTruthTableEcef { x_m: 10.0, y_m: 0.0, z_m: 0.0 },
+                    measured_ecef_m: SyntheticPvtTruthTableEcef { x_m: 10.5, y_m: 0.0, z_m: 0.0 },
+                    ecef_error_m: SyntheticPvtTruthTableEcef { x_m: 0.5, y_m: 0.0, z_m: 0.0 },
+                    truth_geodetic: SyntheticPvtTruthTableGeodetic {
+                        latitude_deg: 0.0,
+                        longitude_deg: 0.0,
+                        altitude_m: 0.0,
+                    },
+                    measured_geodetic: SyntheticPvtTruthTableGeodetic {
+                        latitude_deg: 0.0,
+                        longitude_deg: 0.0,
+                        altitude_m: 0.5,
+                    },
+                    enu_error_m: SyntheticPvtTruthTableEnuError {
+                        east_m: 0.5,
+                        north_m: 0.0,
+                        up_m: 0.0,
+                        horiz_m: 0.5,
+                        vert_m: 0.0,
+                        error_3d_m: 0.5,
+                    },
+                    clock_bias: SyntheticPvtTruthTableClockBias {
+                        truth_s: 0.0,
+                        measured_s: 0.0,
+                        error_s: 0.0,
+                        truth_m: 0.0,
+                        measured_m: 0.0,
+                        error_m: 0.0,
+                    },
+                    residual_rms_m: 0.5,
+                    pre_fit_residual_rms_m: Some(0.5),
+                    post_fit_residual_rms_m: Some(0.5),
+                    dop: SyntheticPvtTruthTableDop {
+                        pdop: 1.5,
+                        hdop: Some(1.1),
+                        vdop: Some(0.9),
+                        gdop: Some(1.7),
+                        tdop: Some(0.5),
+                    },
+                    solution_status: SolutionStatus::Converged,
+                    solution_quality: NavQualityFlag::Float,
+                    solution_validity: SolutionValidity::Stable,
+                    valid: true,
+                    sat_count: 5,
+                    used_sat_count: 5,
+                    rejected_sat_count: 0,
+                },
+            ],
+        };
+        let static_accuracy = SyntheticPvtAccuracyReport {
+            scenario_id: "pvt_motion_profile_static".to_string(),
+            max_position_error_3d_m: 5.0,
+            max_clock_bias_error_m: 10.0,
+            max_residual_rms_m: 4.0,
+            max_pdop: 6.0,
+            epoch_count: 2,
+            passing_epoch_count: 2,
+            truth_coverage_ready: true,
+            truth_coverage_issues: Vec::new(),
+            pass: true,
+            epochs: vec![
+                SyntheticPvtAccuracyEpoch {
+                    epoch_index: 1,
+                    position_error_3d_m: 0.2,
+                    clock_bias_error_m: 0.0,
+                    residual_rms_m: 0.4,
+                    pdop: 1.4,
+                    pass: true,
+                },
+                SyntheticPvtAccuracyEpoch {
+                    epoch_index: 2,
+                    position_error_3d_m: 0.3,
+                    clock_bias_error_m: 0.0,
+                    residual_rms_m: 0.45,
+                    pdop: 1.4,
+                    pass: true,
+                },
+            ],
+        };
+        let moving_accuracy = SyntheticPvtAccuracyReport {
+            scenario_id: "pvt_motion_profile_linear_motion".to_string(),
+            max_position_error_3d_m: 5.0,
+            max_clock_bias_error_m: 10.0,
+            max_residual_rms_m: 4.0,
+            max_pdop: 6.0,
+            epoch_count: 2,
+            passing_epoch_count: 2,
+            truth_coverage_ready: true,
+            truth_coverage_issues: Vec::new(),
+            pass: true,
+            epochs: vec![
+                SyntheticPvtAccuracyEpoch {
+                    epoch_index: 1,
+                    position_error_3d_m: 0.2,
+                    clock_bias_error_m: 0.0,
+                    residual_rms_m: 0.4,
+                    pdop: 1.5,
+                    pass: true,
+                },
+                SyntheticPvtAccuracyEpoch {
+                    epoch_index: 2,
+                    position_error_3d_m: 0.5,
+                    clock_bias_error_m: 0.0,
+                    residual_rms_m: 0.5,
+                    pdop: 1.5,
+                    pass: true,
+                },
+            ],
+        };
+
+        let report: SyntheticPvtMotionProfileReport = summarize_truth_guided_pvt_motion_profile(
+            &[
+                SyntheticPvtMotionProfileCase {
+                    scenario_id: "pvt_motion_profile_linear_motion",
+                    truth_table: &moving_truth,
+                    accuracy: &moving_accuracy,
+                },
+                SyntheticPvtMotionProfileCase {
+                    scenario_id: "pvt_motion_profile_static",
+                    truth_table: &static_truth,
+                    accuracy: &static_accuracy,
+                },
+            ],
+            "pvt_motion_profile",
+        );
+
+        assert_eq!(report.points.len(), 2);
+        assert_eq!(report.points[0].scenario_id, "pvt_motion_profile_static");
+        assert!(!report.points[0].moving);
+        assert_eq!(report.points[0].path_length_m, 0.0);
+        assert_eq!(report.points[1].scenario_id, "pvt_motion_profile_linear_motion");
+        assert!(report.points[1].moving);
+        assert_eq!(report.points[1].path_length_m, 10.0);
+        assert_eq!(report.points[1].mean_speed_mps, 10.0);
+        assert_eq!(report.points[1].stable_epoch_count, 2);
         assert!(report.points[1].ready);
     }
 
