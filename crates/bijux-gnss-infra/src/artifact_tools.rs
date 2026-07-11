@@ -478,7 +478,7 @@ mod tests {
                 vdop: None,
                 gdop: None,
                 tdop: None,
-                stability_signature: "navsig:v1:test".to_string(),
+                stability_signature: "navsig:v2:test".to_string(),
                 stability_signature_version: NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
             },
         };

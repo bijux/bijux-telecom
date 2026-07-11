@@ -899,7 +899,8 @@ mod nav_trace_tests {
 
         assert_eq!(solution.source_observation_epoch_id, "epoch-0000000007-sample-000004092000");
         assert_eq!(solution.artifact_id, "nav-epoch-0000000007-epoch-0000000007");
-        assert!(solution.stability_signature.starts_with("navsig:v1:"));
+        assert!(solution.stability_signature.starts_with("navsig:v2:"));
+        assert!(solution.stability_signature.contains(":tdop=na:"));
         assert!(solution.validate_payload().is_empty());
     }
 
@@ -1726,7 +1727,7 @@ fn cli_nav_output_stability_signature(
     solution: &bijux_gnss_infra::api::core::NavSolutionEpoch,
 ) -> String {
     format!(
-        "navsig:v{}:epoch={}:src={}@{}:status={:?}:lifecycle={:?}:valid={}:sat={}:used={}:rej={}:pdop={:.3}:rms={:.3}:decision={}",
+        "navsig:v{}:epoch={}:src={}@{}:status={:?}:lifecycle={:?}:valid={}:sat={}:used={}:rej={}:pdop={:.3}:hdop={}:vdop={}:gdop={}:tdop={}:rms={:.3}:decision={}",
         bijux_gnss_infra::api::core::NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
         solution.epoch.index,
         cli_nav_trace_short_id(&solution.source_observation_epoch_id),
@@ -1738,9 +1739,17 @@ fn cli_nav_output_stability_signature(
         solution.used_sat_count,
         solution.rejected_sat_count,
         solution.pdop,
+        format_optional_nav_dop(solution.hdop),
+        format_optional_nav_dop(solution.vdop),
+        format_optional_nav_dop(solution.gdop),
+        format_optional_nav_dop(solution.tdop),
         solution.rms_m.0,
         solution.explain_decision
     )
+}
+
+fn format_optional_nav_dop(value: Option<f64>) -> String {
+    value.map(|dop| format!("{dop:.3}")).unwrap_or_else(|| "na".to_string())
 }
 
 fn cli_nav_trace_short_id(value: &str) -> String {

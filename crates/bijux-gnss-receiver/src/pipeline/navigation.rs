@@ -874,7 +874,7 @@ fn nav_output_stability_signature(solution: &NavSolutionEpoch) -> String {
         .map(|value| format!("{value:?}"))
         .unwrap_or_else(|| "None".to_string());
     format!(
-        "navsig:v{}:epoch={}:src={}:status={:?}:lifecycle={:?}:valid={}:sat={}:used={}:rej={}:pdop={:.3}:rms={:.3}:refusal={}:decision={}",
+        "navsig:v{}:epoch={}:src={}:status={:?}:lifecycle={:?}:valid={}:sat={}:used={}:rej={}:pdop={:.3}:hdop={}:vdop={}:gdop={}:tdop={}:rms={:.3}:refusal={}:decision={}",
         NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
         solution.epoch.index,
         format!(
@@ -889,10 +889,18 @@ fn nav_output_stability_signature(solution: &NavSolutionEpoch) -> String {
         solution.used_sat_count,
         solution.rejected_sat_count,
         solution.pdop,
+        format_optional_nav_dop(solution.hdop),
+        format_optional_nav_dop(solution.vdop),
+        format_optional_nav_dop(solution.gdop),
+        format_optional_nav_dop(solution.tdop),
         solution.rms_m.0,
         refusal,
         solution.explain_decision
     )
+}
+
+fn format_optional_nav_dop(value: Option<f64>) -> String {
+    value.map(|dop| format!("{dop:.3}")).unwrap_or_else(|| "na".to_string())
 }
 
 fn source_observation_epoch_id(obs: &ObsEpoch) -> String {
@@ -1251,7 +1259,7 @@ mod tests {
             vdop: Some(1.2),
             gdop: Some(1.5),
             tdop: Some(0.7),
-            stability_signature: "navsig:v1:sample".to_string(),
+            stability_signature: "navsig:v2:sample".to_string(),
             stability_signature_version: NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
         }
     }
@@ -1649,7 +1657,8 @@ mod tests {
             .explain_reasons
             .iter()
             .any(|reason| reason == "troposphere_correction=saastamoinen"));
-        assert!(solution.stability_signature.starts_with("navsig:v1:"));
+        assert!(solution.stability_signature.starts_with("navsig:v2:"));
+        assert!(solution.stability_signature.contains(":tdop="));
         assert_eq!(solution.stability_signature_version, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION);
     }
 
