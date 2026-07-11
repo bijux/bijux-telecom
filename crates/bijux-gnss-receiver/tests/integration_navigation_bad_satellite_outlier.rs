@@ -13,6 +13,7 @@ fn navigation_pipeline_rejects_bad_satellite_pseudorange_and_preserves_truth() {
     let rejected_prns = rejected_outlier_prns(&run);
     let position_errors_m = solution_position_errors_m(&run);
     let suspect_reason = format!("raim_suspect_prn={}", bad_satellite_prn());
+    let excluded_reason = format!("raim_excluded_prn={}", bad_satellite_prn());
 
     assert!(
         !run.run.solutions.is_empty(),
@@ -51,6 +52,31 @@ fn navigation_pipeline_rejects_bad_satellite_pseudorange_and_preserves_truth() {
             .iter()
             .any(|solution| solution.explain_reasons.iter().any(|reason| reason == &suspect_reason)),
         "expected at least one navigation epoch to name PRN {} as the RAIM suspect: {:?}",
+        bad_satellite_prn(),
+        run.run
+            .solutions
+            .iter()
+            .map(|solution| (solution.epoch.index, solution.status, solution.explain_reasons.clone()))
+            .collect::<Vec<_>>(),
+    );
+    assert!(
+        run.run
+            .solutions
+            .iter()
+            .any(|solution| solution.explain_reasons.iter().any(|reason| reason == "raim_fault_excluded")),
+        "expected at least one navigation epoch to report RAIM fault exclusion: {:?}",
+        run.run
+            .solutions
+            .iter()
+            .map(|solution| (solution.epoch.index, solution.status, solution.explain_reasons.clone()))
+            .collect::<Vec<_>>(),
+    );
+    assert!(
+        run.run
+            .solutions
+            .iter()
+            .any(|solution| solution.explain_reasons.iter().any(|reason| reason == &excluded_reason)),
+        "expected at least one navigation epoch to name PRN {} as the excluded RAIM satellite: {:?}",
         bad_satellite_prn(),
         run.run
             .solutions
