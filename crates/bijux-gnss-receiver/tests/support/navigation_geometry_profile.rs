@@ -12,6 +12,7 @@ use crate::navigation_pipeline::{
     SyntheticPseudorangeNoiseProfile,
 };
 
+#[allow(dead_code)]
 pub struct TruthSeededNavigationGeometryCase {
     pub scenario_id: String,
     pub visible_satellite_prns: Vec<u8>,
