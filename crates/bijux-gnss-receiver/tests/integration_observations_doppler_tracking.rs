@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    AcqHypothesis, AcqResult, Constellation, Hertz, ObsEpoch,
-    OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET, ReceiverSampleTrace, SatId, SignalBand,
+    AcqHypothesis, AcqResult, Constellation, Hertz, ObsEpoch, ReceiverSampleTrace, SatId,
+    SignalBand, OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET,
 };
 use bijux_gnss_receiver::api::{
     observations_from_tracking_results,
@@ -76,10 +76,8 @@ fn track_clean_signal(
         0.020,
     );
     let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
-    let tracks = tracking.track_from_acquisition(
-        &frame,
-        &[accepted_acquisition(sat, true_doppler_hz, 0)],
-    );
+    let tracks =
+        tracking.track_from_acquisition(&frame, &[accepted_acquisition(sat, true_doppler_hz, 0)]);
     observations_from_tracking_results(config, &tracks, 10).output
 }
 

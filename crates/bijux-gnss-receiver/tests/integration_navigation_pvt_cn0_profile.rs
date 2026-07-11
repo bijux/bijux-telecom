@@ -1,9 +1,9 @@
 #![allow(missing_docs)]
 
-#[path = "support/navigation_truth.rs"]
-mod navigation_truth;
 #[path = "support/navigation_cn0_profile.rs"]
 mod navigation_cn0_profile;
+#[path = "support/navigation_truth.rs"]
+mod navigation_truth;
 
 use bijux_gnss_receiver::api::sim::{
     summarize_truth_guided_pvt_cn0_profile, SyntheticPvtCn0ProfileCase,
@@ -50,7 +50,9 @@ fn pvt_accuracy_profile_tracks_signal_strength_from_weak_to_strong() {
     assert!(strong.epoch_count > 0, "{report:?}");
     assert!(strong.pass_rate >= weak.pass_rate, "{report:?}");
     match (weak.max_position_error_3d_m, strong.max_position_error_3d_m) {
-        (Some(weak_max), Some(strong_max)) => assert!(strong_max <= weak_max + 1.0e-9, "{report:?}"),
+        (Some(weak_max), Some(strong_max)) => {
+            assert!(strong_max <= weak_max + 1.0e-9, "{report:?}")
+        }
         (None, Some(_)) => {}
         (_, None) => panic!("strong signal must produce a PVT error measurement: {report:?}"),
     }

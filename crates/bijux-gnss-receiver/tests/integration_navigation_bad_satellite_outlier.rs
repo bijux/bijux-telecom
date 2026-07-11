@@ -25,7 +25,11 @@ fn navigation_pipeline_rejects_bad_satellite_pseudorange_and_preserves_truth() {
         run.run
             .solutions
             .iter()
-            .map(|solution| (solution.epoch.index, solution.used_sat_count, solution.rejected_sat_count))
+            .map(|solution| (
+                solution.epoch.index,
+                solution.used_sat_count,
+                solution.rejected_sat_count
+            ))
             .collect::<Vec<_>>(),
     );
     assert!(
@@ -35,40 +39,52 @@ fn navigation_pipeline_rejects_bad_satellite_pseudorange_and_preserves_truth() {
         rejected_prns,
     );
     assert!(
-        run.run
-            .solutions
+        run.run.solutions.iter().any(|solution| solution
+            .explain_reasons
             .iter()
-            .any(|solution| solution.explain_reasons.iter().any(|reason| reason == "raim_fault_detected")),
+            .any(|reason| reason == "raim_fault_detected")),
         "expected at least one navigation epoch to report RAIM fault detection: {:?}",
         run.run
             .solutions
             .iter()
-            .map(|solution| (solution.epoch.index, solution.status, solution.explain_reasons.clone()))
+            .map(|solution| (
+                solution.epoch.index,
+                solution.status,
+                solution.explain_reasons.clone()
+            ))
             .collect::<Vec<_>>(),
     );
     assert!(
-        run.run
-            .solutions
+        run.run.solutions.iter().any(|solution| solution
+            .explain_reasons
             .iter()
-            .any(|solution| solution.explain_reasons.iter().any(|reason| reason == &suspect_reason)),
+            .any(|reason| reason == &suspect_reason)),
         "expected at least one navigation epoch to name PRN {} as the RAIM suspect: {:?}",
         bad_satellite_prn(),
         run.run
             .solutions
             .iter()
-            .map(|solution| (solution.epoch.index, solution.status, solution.explain_reasons.clone()))
+            .map(|solution| (
+                solution.epoch.index,
+                solution.status,
+                solution.explain_reasons.clone()
+            ))
             .collect::<Vec<_>>(),
     );
     assert!(
-        run.run
-            .solutions
+        run.run.solutions.iter().any(|solution| solution
+            .explain_reasons
             .iter()
-            .any(|solution| solution.explain_reasons.iter().any(|reason| reason == "raim_fault_excluded")),
+            .any(|reason| reason == "raim_fault_excluded")),
         "expected at least one navigation epoch to report RAIM fault exclusion: {:?}",
         run.run
             .solutions
             .iter()
-            .map(|solution| (solution.epoch.index, solution.status, solution.explain_reasons.clone()))
+            .map(|solution| (
+                solution.epoch.index,
+                solution.status,
+                solution.explain_reasons.clone()
+            ))
             .collect::<Vec<_>>(),
     );
     assert!(
@@ -90,7 +106,11 @@ fn navigation_pipeline_rejects_bad_satellite_pseudorange_and_preserves_truth() {
         run.run
             .solutions
             .iter()
-            .map(|solution| (solution.epoch.index, solution.used_sat_count, solution.rejected_sat_count))
+            .map(|solution| (
+                solution.epoch.index,
+                solution.used_sat_count,
+                solution.rejected_sat_count
+            ))
             .collect::<Vec<_>>(),
     );
     assert!(

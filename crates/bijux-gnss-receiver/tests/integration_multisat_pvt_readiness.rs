@@ -2,9 +2,7 @@
 
 mod support;
 
-use bijux_gnss_core::api::{
-    ObservationEpochDecision, ReceiverSampleTrace,
-};
+use bijux_gnss_core::api::{ObservationEpochDecision, ReceiverSampleTrace};
 use bijux_gnss_receiver::api::{
     observations_from_tracking_results,
     sim::{generate_l1_ca_multi, SyntheticSignalSource},
@@ -19,10 +17,7 @@ use support::navigation_truth::{
 fn receiver_tracks_four_satellites_with_persisted_channel_history() {
     let (_profile, artifacts) = run_multisat_receiver();
 
-    assert!(
-        artifacts.tracking.len() >= 4,
-        "receiver must track at least four channels",
-    );
+    assert!(artifacts.tracking.len() >= 4, "receiver must track at least four channels",);
     assert!(
         artifacts.tracking.iter().all(|track| track.epochs.len() >= 25),
         "each tracked channel must persist well beyond acquisition handoff",
@@ -66,7 +61,9 @@ fn receiver_groups_four_satellites_into_one_observation_epoch() {
     let observation_epoch = observation_report
         .output
         .iter()
-        .find(|epoch| epoch.epoch_idx >= profile.target_epoch_idx && epoch.valid && epoch.sats.len() >= 4)
+        .find(|epoch| {
+            epoch.epoch_idx >= profile.target_epoch_idx && epoch.valid && epoch.sats.len() >= 4
+        })
         .unwrap_or_else(|| {
             panic!(
                 "valid shared observation epoch; grouped epochs: {}",
@@ -114,7 +111,8 @@ fn track_multisat_from_truth_seeds(
     let profile = four_satellite_pvt_scenario(&config);
     let frame = generate_l1_ca_multi(&config, &profile.scenario);
     let source_time = ReceiverSampleTrace::from_sample_time(frame.t0);
-    let acquisition_results = truth_seeded_acquisition_results(&config, source_time, &profile.scenario);
+    let acquisition_results =
+        truth_seeded_acquisition_results(&config, source_time, &profile.scenario);
     let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
     let tracks = tracking.track_from_acquisition(&frame, &acquisition_results);
     (config, profile, tracks)

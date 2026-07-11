@@ -266,11 +266,15 @@ fn tracking_recovers_navigation_bit_signs_from_prompt_history() {
         .iter()
         .filter_map(|epoch| epoch.navigation_bit_sign.map(|sign| (epoch.sample_index, sign)))
         .collect::<Vec<_>>();
-    let expected_recovered_epoch_count = (epochs.len() / GPS_L1CA_NAV_BIT_PERIOD_MS)
-        * GPS_L1CA_NAV_BIT_PERIOD_MS;
-    let recovered_blocks = recovered_epochs.chunks_exact(GPS_L1CA_NAV_BIT_PERIOD_MS).collect::<Vec<_>>();
+    let expected_recovered_epoch_count =
+        (epochs.len() / GPS_L1CA_NAV_BIT_PERIOD_MS) * GPS_L1CA_NAV_BIT_PERIOD_MS;
+    let recovered_blocks =
+        recovered_epochs.chunks_exact(GPS_L1CA_NAV_BIT_PERIOD_MS).collect::<Vec<_>>();
 
-    assert!(!recovered_epochs.is_empty(), "tracking did not recover nav-bit signs: epochs={epochs:?}");
+    assert!(
+        !recovered_epochs.is_empty(),
+        "tracking did not recover nav-bit signs: epochs={epochs:?}"
+    );
     assert_eq!(
         recovered_epochs.len(),
         expected_recovered_epoch_count,

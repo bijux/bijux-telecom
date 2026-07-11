@@ -24,7 +24,8 @@ fn navigation_accuracy_artifact_fixture_builds_truth_ready_stage_reports() {
     assert!(fixture.observation_accuracy.satellite_count > 0, "{:?}", fixture.observation_accuracy);
     assert!(fixture.pvt_accuracy.epoch_count > 0, "{:?}", fixture.pvt_accuracy);
     assert!(
-        fixture.observation_accuracy
+        fixture
+            .observation_accuracy
             .satellites
             .iter()
             .any(|satellite| satellite.max_pseudorange_error_m.is_some()),

@@ -4,9 +4,9 @@ use bijux_gnss_core::api::{GpsTime, ObsEpoch, ReceiverSampleTrace, ValidationRef
 use bijux_gnss_receiver::api::{
     observations_from_tracking_results_with_gps_anchor,
     sim::{
-        truth_guided_receiver_accuracy_budgets, validate_pvt_accuracy_budget,
+        generate_l1_ca_multi, truth_guided_receiver_accuracy_budgets, validate_pvt_accuracy_budget,
         validate_truth_guided_pvt_table, SyntheticPvtAccuracyReport,
-        SyntheticPvtTruthReferenceEpoch, generate_l1_ca_multi,
+        SyntheticPvtTruthReferenceEpoch,
     },
     Navigation, ReceiverPipelineConfig, ReceiverRuntime, TrackingEngine,
 };
@@ -33,8 +33,7 @@ pub fn build_truth_seeded_navigation_cn0_case(
         tracking_over_budget_action: "continue".to_string(),
         ..ReceiverPipelineConfig::default()
     };
-    let scenario_id =
-        format!("{scenario_id_prefix}_cn0_{:03}", (cn0_db_hz * 10.0).round() as i32);
+    let scenario_id = format!("{scenario_id_prefix}_cn0_{:03}", (cn0_db_hz * 10.0).round() as i32);
     let mut profile = multisatellite_pvt_scenario(&config, 0.25, &scenario_id);
     for signal in &mut profile.scenario.satellites {
         signal.cn0_db_hz = cn0_db_hz;
@@ -50,19 +49,19 @@ pub fn build_truth_seeded_navigation_cn0_case(
         week: profile.ephemerides.first().expect("synthetic ephemeris").week,
         tow_s: receive_time_s,
     });
-    let observations = observations_from_tracking_results_with_gps_anchor(
-        &config,
-        gps_time,
-        &tracks,
-        10,
-    )
-    .output
-    .into_iter()
-    .filter(|epoch| epoch.epoch_idx >= profile.target_epoch_idx && epoch.valid && epoch.sats.len() >= 4)
-    .collect::<Vec<_>>();
+    let observations =
+        observations_from_tracking_results_with_gps_anchor(&config, gps_time, &tracks, 10)
+            .output
+            .into_iter()
+            .filter(|epoch| {
+                epoch.epoch_idx >= profile.target_epoch_idx && epoch.valid && epoch.sats.len() >= 4
+            })
+            .collect::<Vec<_>>();
     let mut navigation = Navigation::new(config, ReceiverRuntime::default());
-    let solutions =
-        observations.iter().filter_map(|epoch| navigation.solve_epoch(epoch, &profile.ephemerides)).collect::<Vec<_>>();
+    let solutions = observations
+        .iter()
+        .filter_map(|epoch| navigation.solve_epoch(epoch, &profile.ephemerides))
+        .collect::<Vec<_>>();
     let reference = solutions
         .iter()
         .map(|solution| SyntheticPvtTruthReferenceEpoch {

@@ -1,9 +1,9 @@
 #![allow(missing_docs)]
 
-#[path = "support/navigation_truth.rs"]
-mod navigation_truth;
 #[path = "support/navigation_cn0_profile.rs"]
 mod navigation_cn0_profile;
+#[path = "support/navigation_truth.rs"]
+mod navigation_truth;
 
 use bijux_gnss_receiver::api::sim::{
     summarize_truth_guided_pvt_cn0_profile, SyntheticPvtCn0ProfileCase,
@@ -37,8 +37,5 @@ fn truth_seeded_navigation_cn0_cases_preserve_signal_strength_ordering() {
             > report.points[0].mean_observation_cn0_dbhz + 8.0,
         "{report:?}"
     );
-    assert!(
-        report.points[1].epoch_count >= report.points[0].epoch_count,
-        "{report:?}"
-    );
+    assert!(report.points[1].epoch_count >= report.points[0].epoch_count, "{report:?}");
 }

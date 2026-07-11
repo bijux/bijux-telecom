@@ -4,7 +4,9 @@ use bijux_gnss_core::api::{
     Chips, Constellation, Cycles, Epoch, Hertz, ObservationStatus, ReceiverSampleTrace, SatId,
     TrackEpoch,
 };
-use bijux_gnss_receiver::api::{observations_from_tracking_results, ReceiverPipelineConfig, TrackingResult};
+use bijux_gnss_receiver::api::{
+    observations_from_tracking_results, ReceiverPipelineConfig, TrackingResult,
+};
 
 fn observation_config() -> ReceiverPipelineConfig {
     ReceiverPipelineConfig {
@@ -104,11 +106,8 @@ fn grouped_observation_epochs_emit_cn0_for_each_satellite() {
         10,
     );
 
-    let grouped_epochs = report
-        .output
-        .iter()
-        .filter(|epoch| epoch.sats.len() == 2)
-        .collect::<Vec<_>>();
+    let grouped_epochs =
+        report.output.iter().filter(|epoch| epoch.sats.len() == 2).collect::<Vec<_>>();
 
     assert_eq!(grouped_epochs.len(), 2, "report={:?}", report.output);
     for epoch in grouped_epochs {
@@ -133,16 +132,10 @@ fn grouped_observation_epochs_preserve_per_satellite_cn0_values() {
     let epoch70 = report.output.iter().find(|epoch| epoch.epoch_idx == 70).expect("epoch 70");
     let epoch71 = report.output.iter().find(|epoch| epoch.epoch_idx == 71).expect("epoch 71");
 
-    let sat70 = epoch70
-        .sats
-        .iter()
-        .map(|sat| (sat.signal_id.sat.prn, sat.cn0_dbhz))
-        .collect::<Vec<_>>();
-    let sat71 = epoch71
-        .sats
-        .iter()
-        .map(|sat| (sat.signal_id.sat.prn, sat.cn0_dbhz))
-        .collect::<Vec<_>>();
+    let sat70 =
+        epoch70.sats.iter().map(|sat| (sat.signal_id.sat.prn, sat.cn0_dbhz)).collect::<Vec<_>>();
+    let sat71 =
+        epoch71.sats.iter().map(|sat| (sat.signal_id.sat.prn, sat.cn0_dbhz)).collect::<Vec<_>>();
 
     assert_eq!(sat70, vec![(5, 44.5), (9, 33.0)]);
     assert_eq!(sat71, vec![(5, 45.5), (9, 34.0)]);

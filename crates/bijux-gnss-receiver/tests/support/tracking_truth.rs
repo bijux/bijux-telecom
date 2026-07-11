@@ -44,10 +44,7 @@ pub fn carrier_phase_step_cycles(previous: &TrackEpoch, current: &TrackEpoch) ->
 }
 
 pub fn carrier_phase_steps_cycles(epochs: &[TrackEpoch]) -> Vec<f64> {
-    epochs
-        .windows(2)
-        .map(|pair| carrier_phase_step_cycles(&pair[0], &pair[1]))
-        .collect()
+    epochs.windows(2).map(|pair| carrier_phase_step_cycles(&pair[0], &pair[1])).collect()
 }
 
 pub fn expected_linear_doppler_hz(
@@ -218,10 +215,9 @@ mod tests {
     use super::{
         carrier_frequency_error_hz, carrier_frequency_error_under_linear_doppler_hz,
         carrier_phase_step_cycles, carrier_phase_steps_cycles, code_phase_error_samples,
-        epoch_indices_with_lock_state,
-        epoch_indices_with_lock_state_reason, expected_linear_doppler_hz,
-        first_tracking_lock_epoch_index, mean_tracking_cn0_dbhz, nav_bit_transition_epoch_indices,
-        post_lock_carrier_frequency_errors_hz,
+        epoch_indices_with_lock_state, epoch_indices_with_lock_state_reason,
+        expected_linear_doppler_hz, first_tracking_lock_epoch_index, mean_tracking_cn0_dbhz,
+        nav_bit_transition_epoch_indices, post_lock_carrier_frequency_errors_hz,
         post_lock_carrier_frequency_errors_under_linear_doppler_hz,
         post_lock_code_phase_errors_samples, post_lock_epochs, stable_tracking_cn0_estimates,
         stable_tracking_window, wrapped_code_phase_error_samples,

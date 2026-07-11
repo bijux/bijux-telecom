@@ -4,9 +4,8 @@ mod support;
 
 use bijux_gnss_core::api::{ReceiverSampleTrace, SignalDelayAlignment};
 use bijux_gnss_receiver::api::{
-    observations_from_tracking_results,
-    sim::generate_l1_ca_multi,
-    ReceiverPipelineConfig, ReceiverRuntime, TrackingEngine,
+    observations_from_tracking_results, sim::generate_l1_ca_multi, ReceiverPipelineConfig,
+    ReceiverRuntime, TrackingEngine,
 };
 
 use support::navigation_truth::{
@@ -45,7 +44,9 @@ fn observations_use_resolved_signal_delay_alignment_for_pseudorange() {
     let observation_epoch = observation_report
         .output
         .iter()
-        .find(|epoch| epoch.epoch_idx == profile.target_epoch_idx && epoch.valid && epoch.sats.len() >= 4)
+        .find(|epoch| {
+            epoch.epoch_idx == profile.target_epoch_idx && epoch.valid && epoch.sats.len() >= 4
+        })
         .expect("aligned observation epoch");
 
     for sat in &observation_epoch.sats {

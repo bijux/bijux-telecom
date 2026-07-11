@@ -42,10 +42,7 @@ fn tracking_truth_table_records_errors_and_lock_state_per_epoch() {
         assert_eq!(satellite.epoch_count, satellite.epochs.len(), "{satellite:?}");
         assert!(satellite.stable_epoch_count > 0, "{satellite:?}");
         assert!(satellite.first_stable_epoch_index.is_some(), "{satellite:?}");
-        assert!(
-            satellite.epochs.iter().any(|epoch| !epoch.stable_tracking_epoch),
-            "{satellite:?}"
-        );
+        assert!(satellite.epochs.iter().any(|epoch| !epoch.stable_tracking_epoch), "{satellite:?}");
 
         for epoch in &satellite.epochs {
             assert!(!epoch.lock_state.is_empty(), "{epoch:?}");
@@ -85,20 +82,14 @@ fn tracking_truth_table_records_errors_and_lock_state_per_epoch() {
         }
     }
 
-    let prn3 = report
-        .satellites
-        .iter()
-        .find(|satellite| satellite.sat.prn == 3)
-        .expect("PRN 3 row");
+    let prn3 =
+        report.satellites.iter().find(|satellite| satellite.sat.prn == 3).expect("PRN 3 row");
     assert_eq!(prn3.injected_doppler_hz, 750.0);
     assert_eq!(prn3.injected_code_phase_chips, 200.25);
     assert_eq!(prn3.injected_cn0_db_hz, 58.0);
 
-    let prn7 = report
-        .satellites
-        .iter()
-        .find(|satellite| satellite.sat.prn == 7)
-        .expect("PRN 7 row");
+    let prn7 =
+        report.satellites.iter().find(|satellite| satellite.sat.prn == 7).expect("PRN 7 row");
     assert_eq!(prn7.injected_doppler_hz, -1_000.0);
     assert_eq!(prn7.injected_code_phase_chips, 321.5);
     assert_eq!(prn7.injected_cn0_db_hz, 52.0);

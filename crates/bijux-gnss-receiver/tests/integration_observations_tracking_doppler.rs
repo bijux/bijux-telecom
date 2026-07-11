@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    Chips, Constellation, Cycles, Epoch, Hertz, ObsEpoch,
-    OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET, ReceiverSampleTrace, SatId, TrackEpoch,
+    Chips, Constellation, Cycles, Epoch, Hertz, ObsEpoch, ReceiverSampleTrace, SatId, TrackEpoch,
+    OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET,
 };
 use bijux_gnss_receiver::api::{
     carrier_hz_from_doppler_hz, observations_from_tracking_results, ReceiverPipelineConfig,

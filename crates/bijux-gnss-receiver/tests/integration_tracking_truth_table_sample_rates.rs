@@ -70,18 +70,17 @@ fn tracking_truth_table_covers_reference_low_and_high_rate_profiles() {
     for satellite in &low_rate_report.satellites {
         assert!(satellite.pass, "{satellite:?}");
         assert!(satellite.stable_epoch_count > 0, "{satellite:?}");
-        assert!(
-            satellite.epochs.iter().any(|epoch| epoch.stable_tracking_epoch),
-            "{satellite:?}"
-        );
-        for epoch in satellite
-            .epochs
-            .iter()
-            .filter(|epoch| epoch.stable_tracking_epoch)
-        {
+        assert!(satellite.epochs.iter().any(|epoch| epoch.stable_tracking_epoch), "{satellite:?}");
+        for epoch in satellite.epochs.iter().filter(|epoch| epoch.stable_tracking_epoch) {
             assert!(epoch.pass, "{epoch:?}");
-            assert!(epoch.carrier_error_hz <= TRACKING_CARRIER_TOLERANCE_HZ + f64::EPSILON, "{epoch:?}");
-            assert!(epoch.doppler_error_hz <= TRACKING_DOPPLER_TOLERANCE_HZ + f64::EPSILON, "{epoch:?}");
+            assert!(
+                epoch.carrier_error_hz <= TRACKING_CARRIER_TOLERANCE_HZ + f64::EPSILON,
+                "{epoch:?}"
+            );
+            assert!(
+                epoch.doppler_error_hz <= TRACKING_DOPPLER_TOLERANCE_HZ + f64::EPSILON,
+                "{epoch:?}"
+            );
             assert!(
                 epoch.code_phase_error_samples
                     <= TRACKING_CODE_PHASE_TOLERANCE_SAMPLES + f64::EPSILON,
@@ -100,10 +99,7 @@ fn tracking_truth_table_covers_reference_low_and_high_rate_profiles() {
     assert!(!high_rate_prn7.pass, "{high_rate_prn7:?}");
     assert!(high_rate_prn7.stable_epoch_count > 0, "{high_rate_prn7:?}");
     assert!(
-        high_rate_prn7
-            .epochs
-            .iter()
-            .any(|epoch| epoch.lock_state == "lost"),
+        high_rate_prn7.epochs.iter().any(|epoch| epoch.lock_state == "lost"),
         "{high_rate_prn7:?}"
     );
     assert!(

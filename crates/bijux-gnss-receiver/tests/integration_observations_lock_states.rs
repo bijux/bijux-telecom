@@ -141,7 +141,8 @@ fn observation_epochs_preserve_cycle_slip_lock_state() {
         .iter()
         .flat_map(|epoch| epoch.sats.iter().map(move |sat| (epoch.epoch_idx, sat)))
         .filter(|(epoch_idx, sat)| {
-            *epoch_idx >= jump_start_epoch_idx && sat.metadata.observation_lock_state == "cycle_slip"
+            *epoch_idx >= jump_start_epoch_idx
+                && sat.metadata.observation_lock_state == "cycle_slip"
         })
         .collect::<Vec<_>>();
 

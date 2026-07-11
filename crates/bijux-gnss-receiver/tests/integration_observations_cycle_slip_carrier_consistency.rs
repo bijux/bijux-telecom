@@ -122,10 +122,7 @@ fn observations_flag_doppler_jump_cycle_slips() {
     assert_eq!(slipped.metadata.observation_lock_state, "cycle_slip");
     assert_eq!(slipped.metadata.observation_lock_reason.as_deref(), Some("doppler_jump"));
     assert_eq!(slipped.metadata.carrier_phase_continuity, "reset_after_cycle_slip");
-    assert!(slipped
-        .observation_reject_reasons
-        .iter()
-        .any(|reason| reason == "doppler_jump"));
+    assert!(slipped.observation_reject_reasons.iter().any(|reason| reason == "doppler_jump"));
 }
 
 #[test]
@@ -149,10 +146,7 @@ fn observations_flag_phase_residual_cycle_slips() {
     assert!(slipped.lock_flags.cycle_slip, "{slipped:?}");
     assert_eq!(slipped.metadata.observation_lock_reason.as_deref(), Some("phase_residual"));
     assert_eq!(slipped.metadata.carrier_phase_continuity, "reset_after_cycle_slip");
-    assert!(slipped
-        .observation_reject_reasons
-        .iter()
-        .any(|reason| reason == "phase_residual"));
+    assert!(slipped.observation_reject_reasons.iter().any(|reason| reason == "phase_residual"));
 }
 
 #[test]

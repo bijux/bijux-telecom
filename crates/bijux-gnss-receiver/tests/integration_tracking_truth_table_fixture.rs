@@ -35,15 +35,30 @@ fn tracking_truth_table_matches_low_rate_reference_fixture() {
     assert_eq!(report.period_samples, expected.period_samples);
     assert_eq!(report.pass, expected.pass);
     assert_eq!(report.satellites.len(), expected.satellites.len());
-    assert_close("carrier_tolerance_hz", report.carrier_tolerance_hz, expected.carrier_tolerance_hz, 1.0e-12);
-    assert_close("doppler_tolerance_hz", report.doppler_tolerance_hz, expected.doppler_tolerance_hz, 1.0e-12);
+    assert_close(
+        "carrier_tolerance_hz",
+        report.carrier_tolerance_hz,
+        expected.carrier_tolerance_hz,
+        1.0e-12,
+    );
+    assert_close(
+        "doppler_tolerance_hz",
+        report.doppler_tolerance_hz,
+        expected.doppler_tolerance_hz,
+        1.0e-12,
+    );
     assert_close(
         "code_phase_tolerance_samples",
         report.code_phase_tolerance_samples,
         expected.code_phase_tolerance_samples,
         1.0e-12,
     );
-    assert_close("cn0_tolerance_db_hz", report.cn0_tolerance_db_hz, expected.cn0_tolerance_db_hz, 1.0e-12);
+    assert_close(
+        "cn0_tolerance_db_hz",
+        report.cn0_tolerance_db_hz,
+        expected.cn0_tolerance_db_hz,
+        1.0e-12,
+    );
     assert_close("sample_rate_hz", report.sample_rate_hz, expected.sample_rate_hz, 1.0e-12);
     assert_close(
         "output_scale_applied",
@@ -52,11 +67,16 @@ fn tracking_truth_table_matches_low_rate_reference_fixture() {
         1.0e-8,
     );
 
-    for (actual_satellite, expected_satellite) in report.satellites.iter().zip(expected.satellites.iter()) {
+    for (actual_satellite, expected_satellite) in
+        report.satellites.iter().zip(expected.satellites.iter())
+    {
         assert_eq!(actual_satellite.sat, expected_satellite.sat);
         assert_eq!(actual_satellite.epoch_count, expected_satellite.epoch_count);
         assert_eq!(actual_satellite.stable_epoch_count, expected_satellite.stable_epoch_count);
-        assert_eq!(actual_satellite.first_stable_epoch_index, expected_satellite.first_stable_epoch_index);
+        assert_eq!(
+            actual_satellite.first_stable_epoch_index,
+            expected_satellite.first_stable_epoch_index
+        );
         assert_eq!(actual_satellite.pass, expected_satellite.pass);
         assert_eq!(actual_satellite.epochs.len(), expected_satellite.epochs.len());
         assert_close(
@@ -84,7 +104,9 @@ fn tracking_truth_table_matches_low_rate_reference_fixture() {
             1.0e-12,
         );
 
-        for (actual_epoch, expected_epoch) in actual_satellite.epochs.iter().zip(expected_satellite.epochs.iter()) {
+        for (actual_epoch, expected_epoch) in
+            actual_satellite.epochs.iter().zip(expected_satellite.epochs.iter())
+        {
             assert_eq!(actual_epoch.epoch_index, expected_epoch.epoch_index);
             assert_eq!(actual_epoch.sample_index, expected_epoch.sample_index);
             assert_eq!(actual_epoch.lock, expected_epoch.lock);
@@ -96,12 +118,42 @@ fn tracking_truth_table_matches_low_rate_reference_fixture() {
             assert_eq!(actual_epoch.lock_state_reason, expected_epoch.lock_state_reason);
             assert_eq!(actual_epoch.stable_tracking_epoch, expected_epoch.stable_tracking_epoch);
             assert_eq!(actual_epoch.pass, expected_epoch.pass);
-            assert_close("expected_carrier_hz", actual_epoch.expected_carrier_hz, expected_epoch.expected_carrier_hz, 1.0e-12);
-            assert_close("measured_carrier_hz", actual_epoch.measured_carrier_hz, expected_epoch.measured_carrier_hz, 1.0e-9);
-            assert_close("carrier_error_hz", actual_epoch.carrier_error_hz, expected_epoch.carrier_error_hz, 1.0e-12);
-            assert_close("expected_doppler_hz", actual_epoch.expected_doppler_hz, expected_epoch.expected_doppler_hz, 1.0e-12);
-            assert_close("measured_doppler_hz", actual_epoch.measured_doppler_hz, expected_epoch.measured_doppler_hz, 1.0e-9);
-            assert_close("doppler_error_hz", actual_epoch.doppler_error_hz, expected_epoch.doppler_error_hz, 1.0e-12);
+            assert_close(
+                "expected_carrier_hz",
+                actual_epoch.expected_carrier_hz,
+                expected_epoch.expected_carrier_hz,
+                1.0e-12,
+            );
+            assert_close(
+                "measured_carrier_hz",
+                actual_epoch.measured_carrier_hz,
+                expected_epoch.measured_carrier_hz,
+                1.0e-9,
+            );
+            assert_close(
+                "carrier_error_hz",
+                actual_epoch.carrier_error_hz,
+                expected_epoch.carrier_error_hz,
+                1.0e-12,
+            );
+            assert_close(
+                "expected_doppler_hz",
+                actual_epoch.expected_doppler_hz,
+                expected_epoch.expected_doppler_hz,
+                1.0e-12,
+            );
+            assert_close(
+                "measured_doppler_hz",
+                actual_epoch.measured_doppler_hz,
+                expected_epoch.measured_doppler_hz,
+                1.0e-9,
+            );
+            assert_close(
+                "doppler_error_hz",
+                actual_epoch.doppler_error_hz,
+                expected_epoch.doppler_error_hz,
+                1.0e-12,
+            );
             assert_close(
                 "expected_code_phase_samples",
                 actual_epoch.expected_code_phase_samples,
@@ -120,9 +172,24 @@ fn tracking_truth_table_matches_low_rate_reference_fixture() {
                 expected_epoch.code_phase_error_samples,
                 1.0e-12,
             );
-            assert_close("expected_cn0_db_hz", actual_epoch.expected_cn0_db_hz, expected_epoch.expected_cn0_db_hz, 1.0e-12);
-            assert_close("measured_cn0_dbhz", actual_epoch.measured_cn0_dbhz, expected_epoch.measured_cn0_dbhz, 1.0e-9);
-            assert_close("cn0_error_db", actual_epoch.cn0_error_db, expected_epoch.cn0_error_db, 1.0e-12);
+            assert_close(
+                "expected_cn0_db_hz",
+                actual_epoch.expected_cn0_db_hz,
+                expected_epoch.expected_cn0_db_hz,
+                1.0e-12,
+            );
+            assert_close(
+                "measured_cn0_dbhz",
+                actual_epoch.measured_cn0_dbhz,
+                expected_epoch.measured_cn0_dbhz,
+                1.0e-9,
+            );
+            assert_close(
+                "cn0_error_db",
+                actual_epoch.cn0_error_db,
+                expected_epoch.cn0_error_db,
+                1.0e-12,
+            );
         }
     }
 }
@@ -168,8 +235,8 @@ fn load_scenario(scenario_file: &str) -> SyntheticScenario {
 }
 
 fn load_truth_table_fixture(fixture_file: &str) -> SyntheticTrackingTruthTableReport {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join(format!("tests/data/tracking/{fixture_file}"));
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/data/tracking/{fixture_file}"));
     let contents = fs::read_to_string(path).expect("truth table fixture");
     serde_json::from_str(&contents).expect("valid truth table fixture")
 }

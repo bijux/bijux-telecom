@@ -94,7 +94,8 @@ fn run_long_run_tracking_session() -> LongRunTrackingSession {
     tracking.track_session_frame(&mut session, &acquisition_frame);
 
     let streaming_frame_len = tracking_epoch_samples * STREAMING_TRACKING_EPOCHS_PER_FRAME;
-    while let Some(frame) = source.next_frame(streaming_frame_len).expect("synthetic tracking frame")
+    while let Some(frame) =
+        source.next_frame(streaming_frame_len).expect("synthetic tracking frame")
     {
         tracking.track_session_frame(&mut session, &frame);
     }
@@ -119,8 +120,7 @@ fn tracking_session_consumes_full_ten_minute_signal_span() {
     let expected_input_epochs = (LONG_RUN_DURATION_S * 1000.0).round() as u64;
     let track = run.artifacts.tracking.first().expect("tracked channel");
     let expected_tracking_epochs =
-        ((LONG_RUN_DURATION_S * 1000.0) / LONG_RUN_TRACKING_INTEGRATION_MS as f64).round()
-            as usize;
+        ((LONG_RUN_DURATION_S * 1000.0) / LONG_RUN_TRACKING_INTEGRATION_MS as f64).round() as usize;
 
     assert_eq!(run.artifacts.processed_input_samples, expected_samples);
     assert_eq!(run.artifacts.processed_input_epochs, expected_input_epochs);
@@ -159,10 +159,7 @@ fn tracking_session_maintains_stable_long_run_lock_metrics() {
     let cn0_head = &cn0_values_dbhz[..500];
     let cn0_tail = &cn0_values_dbhz[cn0_values_dbhz.len() - 500..];
     let mean_cn0_dbhz = mean(&cn0_values_dbhz);
-    let cn0_span_dbhz = cn0_values_dbhz
-        .iter()
-        .copied()
-        .fold(f64::NEG_INFINITY, f64::max)
+    let cn0_span_dbhz = cn0_values_dbhz.iter().copied().fold(f64::NEG_INFINITY, f64::max)
         - cn0_values_dbhz.iter().copied().fold(f64::INFINITY, f64::min);
     let cn0_drift_dbhz = (mean(cn0_head) - mean(cn0_tail)).abs();
 
@@ -173,9 +170,7 @@ fn tracking_session_maintains_stable_long_run_lock_metrics() {
         track.epochs.len(),
     );
     assert!(
-        carrier_errors_hz
-            .iter()
-            .all(|error_hz| *error_hz <= LONG_RUN_LOCKED_CARRIER_ERROR_MAX_HZ),
+        carrier_errors_hz.iter().all(|error_hz| *error_hz <= LONG_RUN_LOCKED_CARRIER_ERROR_MAX_HZ),
         "carrier_errors_hz={carrier_errors_hz:?}"
     );
     assert!(
@@ -185,23 +180,16 @@ fn tracking_session_maintains_stable_long_run_lock_metrics() {
         "code_errors_samples={code_errors_samples:?}"
     );
     assert!(
-        phase_step_errors_cycles
-            .iter()
-            .all(|error_cycles| error_cycles.is_finite() && *error_cycles <= LONG_RUN_PHASE_STEP_ERROR_MAX_CYCLES),
+        phase_step_errors_cycles.iter().all(|error_cycles| error_cycles.is_finite()
+            && *error_cycles <= LONG_RUN_PHASE_STEP_ERROR_MAX_CYCLES),
         "phase_step_errors_cycles={phase_step_errors_cycles:?}"
     );
     assert!(
         cn0_values_dbhz.iter().all(|cn0_dbhz| cn0_dbhz.is_finite()),
         "cn0_values_dbhz contained non-finite values"
     );
-    assert!(
-        mean_cn0_dbhz >= LONG_RUN_MIN_MEAN_CN0_DBHZ,
-        "mean_cn0_dbhz={mean_cn0_dbhz}"
-    );
-    assert!(
-        cn0_span_dbhz <= LONG_RUN_CN0_SPAN_MAX_DBHZ,
-        "cn0_span_dbhz={cn0_span_dbhz}"
-    );
+    assert!(mean_cn0_dbhz >= LONG_RUN_MIN_MEAN_CN0_DBHZ, "mean_cn0_dbhz={mean_cn0_dbhz}");
+    assert!(cn0_span_dbhz <= LONG_RUN_CN0_SPAN_MAX_DBHZ, "cn0_span_dbhz={cn0_span_dbhz}");
     assert!(
         cn0_drift_dbhz <= LONG_RUN_CN0_DRIFT_MAX_DBHZ,
         "cn0_drift_dbhz={cn0_drift_dbhz} mean_head={} mean_tail={}",

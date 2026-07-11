@@ -216,12 +216,7 @@ fn navigation_accuracy_artifact_summarizes_observation_pvt_and_overall_status() 
     );
     assert_eq!(
         artifact.pvt.summary.observed_max_residual_rms_m,
-        fixture
-            .pvt_accuracy
-            .epochs
-            .iter()
-            .map(|epoch| epoch.residual_rms_m)
-            .max_by(f64::total_cmp)
+        fixture.pvt_accuracy.epochs.iter().map(|epoch| epoch.residual_rms_m).max_by(f64::total_cmp)
     );
     assert_eq!(
         artifact.pvt.summary.observed_max_pdop,

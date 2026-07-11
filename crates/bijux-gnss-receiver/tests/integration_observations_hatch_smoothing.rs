@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    Chips, Constellation, Cycles, Epoch, Hertz, ReceiverSampleTrace, SatId,
-    SignalDelayAlignment, TrackEpoch,
+    Chips, Constellation, Cycles, Epoch, Hertz, ReceiverSampleTrace, SatId, SignalDelayAlignment,
+    TrackEpoch,
 };
 use bijux_gnss_receiver::api::{
     carrier_hz_from_doppler_hz, observations_from_tracking_results, ReceiverPipelineConfig,
@@ -89,7 +89,8 @@ fn aligned_pseudorange_m(
     whole_code_periods: u64,
     code_phase_samples: f64,
 ) -> f64 {
-    let code_phase_chips = code_phase_samples / samples_per_epoch(config) as f64 * config.code_length as f64;
+    let code_phase_chips =
+        code_phase_samples / samples_per_epoch(config) as f64 * config.code_length as f64;
     ((whole_code_periods as f64 * config.code_length as f64) + code_phase_chips)
         / config.code_freq_basis_hz
         * 299_792_458.0
@@ -99,7 +100,10 @@ fn observation_track(sat: SatId, epochs: Vec<TrackEpoch>) -> TrackingResult {
     TrackingResult {
         sat,
         carrier_hz: epochs.last().map(|epoch| epoch.carrier_hz.0).unwrap_or_default(),
-        code_phase_samples: epochs.last().map(|epoch| epoch.code_phase_samples.0).unwrap_or_default(),
+        code_phase_samples: epochs
+            .last()
+            .map(|epoch| epoch.code_phase_samples.0)
+            .unwrap_or_default(),
         acquisition_hypothesis: "accepted".to_string(),
         acquisition_score: 1.0,
         acquisition_code_phase_samples: 0,

@@ -32,10 +32,7 @@ fn tracking_accuracy_budget_enforces_hard_truth_thresholds() {
     assert_eq!(report.scenario_id, truth_table.scenario_id);
     assert_eq!(report.max_carrier_error_hz, budgets.tracking.max_carrier_error_hz);
     assert_eq!(report.max_doppler_error_hz, budgets.tracking.max_doppler_error_hz);
-    assert_eq!(
-        report.max_code_phase_error_samples,
-        budgets.tracking.max_code_phase_error_samples
-    );
+    assert_eq!(report.max_code_phase_error_samples, budgets.tracking.max_code_phase_error_samples);
     assert_eq!(report.max_cn0_error_db_hz, budgets.tracking.max_cn0_error_db_hz);
     assert_eq!(report.satellite_count, truth_table.satellites.len());
     assert_eq!(report.passing_satellite_count, report.satellite_count);

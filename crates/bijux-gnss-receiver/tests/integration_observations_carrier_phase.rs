@@ -122,7 +122,8 @@ fn observations_mark_phase_jump_carrier_phase_as_unusable() {
         0.090,
     );
     let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
-    let tracks = tracking.track_from_acquisition(&frame, &[accepted_acquisition(sat, doppler_hz, 0)]);
+    let tracks =
+        tracking.track_from_acquisition(&frame, &[accepted_acquisition(sat, doppler_hz, 0)]);
     let phase_jump_epoch_idx = tracks
         .first()
         .expect("track")
@@ -146,15 +147,15 @@ fn observations_mark_phase_jump_carrier_phase_as_unusable() {
         .find(|(_, sat)| {
             sat.metadata.carrier_phase_continuity == "unusable" && sat.lock_flags.cycle_slip
         })
-        .unwrap_or_else(|| panic!("missing phase-jump carrier-phase rejection: {:?}", report.output));
+        .unwrap_or_else(|| {
+            panic!("missing phase-jump carrier-phase rejection: {:?}", report.output)
+        });
 
     assert_eq!(slipped_sat.metadata.carrier_phase_model, "tracked_carrier_cycles");
     assert_eq!(slipped_sat.metadata.tracking_state, "lost");
     assert!(!slipped_sat.lock_flags.carrier_lock);
-    assert!(
-        slipped_sat
-            .observation_reject_reasons
-            .iter()
-            .any(|reason| reason == "cycle_slip" || reason == "tracking_unlock")
-    );
+    assert!(slipped_sat
+        .observation_reject_reasons
+        .iter()
+        .any(|reason| reason == "cycle_slip" || reason == "tracking_unlock"));
 }

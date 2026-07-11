@@ -1,10 +1,12 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    Chips, Constellation, Cycles, Epoch, Hertz, ObservationStatus,
-    OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET, ReceiverSampleTrace, SatId, TrackEpoch,
+    Chips, Constellation, Cycles, Epoch, Hertz, ObservationStatus, ReceiverSampleTrace, SatId,
+    TrackEpoch, OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET,
 };
-use bijux_gnss_receiver::api::{observations_from_tracking_results, ReceiverPipelineConfig, TrackingResult};
+use bijux_gnss_receiver::api::{
+    observations_from_tracking_results, ReceiverPipelineConfig, TrackingResult,
+};
 
 fn observation_config() -> ReceiverPipelineConfig {
     ReceiverPipelineConfig {
@@ -104,11 +106,8 @@ fn grouped_observation_epochs_emit_doppler_for_each_satellite() {
         10,
     );
 
-    let grouped_epochs = report
-        .output
-        .iter()
-        .filter(|epoch| epoch.sats.len() == 2)
-        .collect::<Vec<_>>();
+    let grouped_epochs =
+        report.output.iter().filter(|epoch| epoch.sats.len() == 2).collect::<Vec<_>>();
 
     assert_eq!(grouped_epochs.len(), 2, "report={:?}", report.output);
     for epoch in grouped_epochs {

@@ -1,9 +1,9 @@
 #![allow(missing_docs)]
 
-#[path = "support/navigation_pvt_truth_table.rs"]
-mod navigation_pvt_truth_table;
 #[path = "support/navigation_pipeline.rs"]
 mod navigation_pipeline;
+#[path = "support/navigation_pvt_truth_table.rs"]
+mod navigation_pvt_truth_table;
 
 use navigation_pvt_truth_table::build_pvt_truth_table_fixture;
 

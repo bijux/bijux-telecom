@@ -8,11 +8,7 @@ use support::navigation_noise::{synthetic_pvt_noise_evidence, synthetic_pvt_nois
 fn noisy_synthetic_navigation_increases_position_error_with_pseudorange_noise() {
     let points = synthetic_pvt_noise_sweep();
 
-    assert!(
-        points.len() >= 2,
-        "expected multiple noise profiles, got {}",
-        points.len()
-    );
+    assert!(points.len() >= 2, "expected multiple noise profiles, got {}", points.len());
 
     for window in points.windows(2) {
         let current = &window[0];

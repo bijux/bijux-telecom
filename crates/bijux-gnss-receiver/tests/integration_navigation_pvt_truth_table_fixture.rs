@@ -3,10 +3,10 @@
 use std::fs;
 use std::path::Path;
 
-#[path = "support/navigation_pvt_truth_table.rs"]
-mod navigation_pvt_truth_table;
 #[path = "support/navigation_pipeline.rs"]
 mod navigation_pipeline;
+#[path = "support/navigation_pvt_truth_table.rs"]
+mod navigation_pvt_truth_table;
 
 use bijux_gnss_receiver::api::sim::SyntheticPvtTruthTableReport;
 use serde_json::Value;

@@ -169,8 +169,7 @@ fn tracking_keeps_carrier_phase_continuous_after_carrier_lock() {
         0.020,
     );
     let tracking = TrackingEngine::new(config, ReceiverRuntime::default());
-    let tracks =
-        tracking.track_from_acquisition(&frame, &[accepted_acquisition(sat, 80.0, 0)]);
+    let tracks = tracking.track_from_acquisition(&frame, &[accepted_acquisition(sat, 80.0, 0)]);
     let epochs = &tracks.first().expect("track").epochs;
     let stable_window = stable_tracking_window(epochs, CLEAN_SIGNAL_MIN_LOCKED_EPOCHS);
     let phase_steps_cycles = carrier_phase_steps_cycles(stable_window);

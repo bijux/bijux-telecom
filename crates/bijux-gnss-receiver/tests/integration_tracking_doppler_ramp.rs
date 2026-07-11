@@ -129,8 +129,9 @@ fn tracking_reaches_and_preserves_lock_under_positive_doppler_ramp() {
     let config = doppler_ramp_tracking_config();
     let sat = SatId { constellation: Constellation::Gps, prn: 16 };
     let epochs = track_clean_doppler_ramp_case(&config, sat, 180.0, 40.0, 211.25, 0.40);
-    let first_lock_epoch_index = first_tracking_lock_epoch_index(&epochs)
-        .unwrap_or_else(|| panic!("tracking never reached stable lock under ramp: epochs={epochs:?}"));
+    let first_lock_epoch_index = first_tracking_lock_epoch_index(&epochs).unwrap_or_else(|| {
+        panic!("tracking never reached stable lock under ramp: epochs={epochs:?}")
+    });
     let post_lock = post_lock_epochs(&epochs);
 
     assert!(epochs.len() >= 60, "epochs={epochs:?}");

@@ -154,14 +154,14 @@ fn grouped_observation_epochs_reject_off_interval_spacing() {
         base_sample_index + observation_interval_samples(&config) + 512,
     );
 
-    let report =
-        observations_from_tracking_results(&config, &[track_from_epochs(sat, vec![first_epoch, second_epoch])], 10);
+    let report = observations_from_tracking_results(
+        &config,
+        &[track_from_epochs(sat, vec![first_epoch, second_epoch])],
+        10,
+    );
     let invalid_epoch = report.output.iter().find(|epoch| epoch.epoch_idx == 71).expect("epoch 71");
 
     assert!(!invalid_epoch.valid);
     assert_eq!(invalid_epoch.decision_reason.as_deref(), Some("invalid_observation_timing"));
-    assert!(report
-        .events
-        .iter()
-        .any(|event| event.code == "GNSS_OBS_TIME_INTERVAL_INVALID"));
+    assert!(report.events.iter().any(|event| event.code == "GNSS_OBS_TIME_INTERVAL_INVALID"));
 }

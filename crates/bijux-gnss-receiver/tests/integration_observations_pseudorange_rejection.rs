@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    Chips, Constellation, Cycles, Epoch, Hertz, ObservationEpochDecision, ReceiverSampleTrace,
-    ObservationStatus, SatId, SignalDelayAlignment, TrackEpoch,
+    Chips, Constellation, Cycles, Epoch, Hertz, ObservationEpochDecision, ObservationStatus,
+    ReceiverSampleTrace, SatId, SignalDelayAlignment, TrackEpoch,
 };
 use bijux_gnss_receiver::api::{
     observations_from_tracking_results, ReceiverPipelineConfig, TrackingResult,
@@ -106,21 +106,12 @@ fn grouped_epoch_rejects_non_positive_pseudorange_satellite() {
     ];
 
     let report = observations_from_tracking_results(&config, &tracks, 10);
-    let epoch = report
-        .output
-        .iter()
-        .find(|epoch| epoch.epoch_idx == 70)
-        .expect("shared observation epoch");
-    let valid = epoch
-        .sats
-        .iter()
-        .find(|sat| sat.signal_id.sat == valid_sat)
-        .expect("valid satellite");
-    let invalid = epoch
-        .sats
-        .iter()
-        .find(|sat| sat.signal_id.sat == invalid_sat)
-        .expect("invalid satellite");
+    let epoch =
+        report.output.iter().find(|epoch| epoch.epoch_idx == 70).expect("shared observation epoch");
+    let valid =
+        epoch.sats.iter().find(|sat| sat.signal_id.sat == valid_sat).expect("valid satellite");
+    let invalid =
+        epoch.sats.iter().find(|sat| sat.signal_id.sat == invalid_sat).expect("invalid satellite");
 
     assert_eq!(valid.observation_status, ObservationStatus::Accepted);
     assert_eq!(epoch.decision, ObservationEpochDecision::Rejected);
@@ -142,16 +133,10 @@ fn grouped_epoch_rejects_out_of_bounds_pseudorange_satellite() {
     ];
 
     let report = observations_from_tracking_results(&config, &tracks, 10);
-    let epoch = report
-        .output
-        .iter()
-        .find(|epoch| epoch.epoch_idx == 70)
-        .expect("shared observation epoch");
-    let invalid = epoch
-        .sats
-        .iter()
-        .find(|sat| sat.signal_id.sat == invalid_sat)
-        .expect("invalid satellite");
+    let epoch =
+        report.output.iter().find(|epoch| epoch.epoch_idx == 70).expect("shared observation epoch");
+    let invalid =
+        epoch.sats.iter().find(|sat| sat.signal_id.sat == invalid_sat).expect("invalid satellite");
 
     assert_eq!(epoch.decision, ObservationEpochDecision::Rejected);
     assert_eq!(epoch.decision_reason.as_deref(), Some("inconsistent_observable"));

@@ -128,9 +128,8 @@ fn observations_reduce_code_noise_with_hatch_smoothing() {
     let carrier_delta_cycles = 0.125;
     let carrier_delta_samples = carrier_delta_cycles * lambda_m / meters_per_sample;
     let epoch_count = 18usize;
-    let truth_code_phase_samples = (0..epoch_count)
-        .map(|offset| offset as f64 * carrier_delta_samples)
-        .collect::<Vec<_>>();
+    let truth_code_phase_samples =
+        (0..epoch_count).map(|offset| offset as f64 * carrier_delta_samples).collect::<Vec<_>>();
     let noisy_code_phase_samples = truth_code_phase_samples
         .iter()
         .enumerate()
@@ -175,8 +174,9 @@ fn observations_reduce_code_noise_with_hatch_smoothing() {
         .iter()
         .enumerate()
         .map(|(offset, sat)| {
-            (sat.pseudorange_m.0 - aligned_pseudorange_m(&config, 68, truth_code_phase_samples[offset]))
-                .abs()
+            (sat.pseudorange_m.0
+                - aligned_pseudorange_m(&config, 68, truth_code_phase_samples[offset]))
+            .abs()
         })
         .collect::<Vec<_>>();
     let steady_state_start = 4usize;

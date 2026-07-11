@@ -28,8 +28,7 @@ fn golden_tracking_from_scenario() {
     let acq_results = acq.run_fft(&frame, &sats);
 
     let tracking = TrackingEngine::new(config, runtime);
-    let tracks =
-        tracking.track_from_acquisition(&frame, &acq_results);
+    let tracks = tracking.track_from_acquisition(&frame, &acq_results);
 
     for track in &tracks {
         assert!(!track.epochs.is_empty());

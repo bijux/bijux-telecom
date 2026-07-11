@@ -252,7 +252,8 @@ mod tests {
             id: "truth-seed-scaling".to_string(),
         };
 
-        let seeded = truth_seeded_acquisition_results(&config, ReceiverSampleTrace::default(), &scenario);
+        let seeded =
+            truth_seeded_acquisition_results(&config, ReceiverSampleTrace::default(), &scenario);
         let acquisition = seeded.first().expect("seeded acquisition");
 
         assert_eq!(acquisition.code_phase_samples, 247);

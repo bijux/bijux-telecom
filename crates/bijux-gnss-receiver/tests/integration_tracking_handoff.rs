@@ -141,7 +141,10 @@ fn tracking_starts_from_explicit_acquisition_sample_index() {
     let acquisition = accepted_acquisition(
         sat,
         SignalBand::L1,
-        ReceiverSampleTrace::from_sample_index(explicit_start_sample_index, config.sampling_freq_hz),
+        ReceiverSampleTrace::from_sample_index(
+            explicit_start_sample_index,
+            config.sampling_freq_hz,
+        ),
         0.0,
         0,
         tight_uncertainty(),
@@ -180,15 +183,9 @@ fn tracking_uses_explicit_signal_band_parameters() {
 
     let tracking = TrackingEngine::new(config, ReceiverRuntime::default());
     let tracks = tracking.track_from_acquisition(&frame, &[acquisition]);
-    let first_epoch = tracks
-        .first()
-        .and_then(|track| track.epochs.first())
-        .expect("tracked epoch");
+    let first_epoch = tracks.first().and_then(|track| track.epochs.first()).expect("tracked epoch");
     let epochs = &tracks.first().expect("track").epochs;
-    let assumptions = first_epoch
-        .tracking_assumptions
-        .as_ref()
-        .expect("tracking assumptions");
+    let assumptions = first_epoch.tracking_assumptions.as_ref().expect("tracking assumptions");
 
     assert_eq!(assumptions.integration_ms, 7);
     assert_eq!(assumptions.early_late_spacing_chips, 0.25);

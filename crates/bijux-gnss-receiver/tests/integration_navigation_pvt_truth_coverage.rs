@@ -1,9 +1,9 @@
 #![allow(missing_docs)]
 
-#[path = "support/navigation_pvt_truth_table.rs"]
-mod navigation_pvt_truth_table;
 #[path = "support/navigation_pipeline.rs"]
 mod navigation_pipeline;
+#[path = "support/navigation_pvt_truth_table.rs"]
+mod navigation_pvt_truth_table;
 
 use bijux_gnss_receiver::api::sim::{
     truth_guided_receiver_accuracy_budgets, validate_pvt_accuracy_budget,
@@ -28,17 +28,11 @@ fn pvt_accuracy_budget_requires_matched_truth_epochs() {
     assert!(!accuracy.truth_coverage_ready, "{accuracy:?}");
     assert!(!accuracy.pass, "{accuracy:?}");
     assert!(
-        accuracy
-            .truth_coverage_issues
-            .iter()
-            .any(|issue| issue.code == "no_matched_truth_epochs"),
+        accuracy.truth_coverage_issues.iter().any(|issue| issue.code == "no_matched_truth_epochs"),
         "{accuracy:?}"
     );
     assert!(
-        accuracy
-            .truth_coverage_issues
-            .iter()
-            .any(|issue| issue.code == "unmatched_solution_epoch"),
+        accuracy.truth_coverage_issues.iter().any(|issue| issue.code == "unmatched_solution_epoch"),
         "{accuracy:?}"
     );
 }
@@ -47,10 +41,8 @@ fn pvt_accuracy_budget_requires_matched_truth_epochs() {
 fn pvt_accuracy_budget_requires_full_reference_consumption() {
     let fixture = build_pvt_truth_table_fixture("clean_synthetic_navigation_pvt_truth", 0.0);
     let mut reference_epochs = pvt_truth_reference_epochs(&fixture.run);
-    let mut extra_reference = reference_epochs
-        .last()
-        .cloned()
-        .expect("clean synthetic navigation reference epoch");
+    let mut extra_reference =
+        reference_epochs.last().cloned().expect("clean synthetic navigation reference epoch");
     extra_reference.position.epoch_idx += 1;
     reference_epochs.push(extra_reference);
 

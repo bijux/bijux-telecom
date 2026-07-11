@@ -163,8 +163,5 @@ fn grouped_observation_epochs_reject_mixed_receiver_time_inputs() {
         .observation_reject_reasons
         .iter()
         .any(|reason| reason == "receiver_sample_trace_mismatch"));
-    assert!(report
-        .events
-        .iter()
-        .any(|event| event.code == "OBS_GROUPED_RECEIVER_TIME_MISMATCH"));
+    assert!(report.events.iter().any(|event| event.code == "OBS_GROUPED_RECEIVER_TIME_MISMATCH"));
 }

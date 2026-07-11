@@ -6,9 +6,7 @@ use bijux_gnss_core::api::{
     ValidationReferenceEpoch,
 };
 use bijux_gnss_receiver::api::{
-    carrier_hz_from_doppler_hz,
-    observations_from_tracking_results_with_gps_anchor, Navigation, ReceiverPipelineConfig,
-    ReceiverRuntime, TrackingResult,
+    carrier_hz_from_doppler_hz, observations_from_tracking_results_with_gps_anchor,
     sim::{
         build_iq16_capture_bundle, build_truth_guided_gnss_accuracy_artifact, generate_l1_ca_multi,
         truth_guided_receiver_accuracy_budgets, validate_acquisition_accuracy_budget,
@@ -22,6 +20,7 @@ use bijux_gnss_receiver::api::{
         SyntheticObservationTruthReference, SyntheticPvtAccuracyReport,
         SyntheticPvtTruthReferenceEpoch, SyntheticTrackingAccuracyReport,
     },
+    Navigation, ReceiverPipelineConfig, ReceiverRuntime, TrackingResult,
 };
 
 #[path = "navigation_truth.rs"]
@@ -132,7 +131,8 @@ pub fn build_navigation_accuracy_artifact_fixture() -> NavigationAccuracyArtifac
         .filter_map(|epoch| navigation.solve_epoch(epoch, &profile.ephemerides))
         .collect::<Vec<_>>();
     let pvt_reference = synthetic_pvt_reference_epochs(&profile, &solutions);
-    let pvt_truth = validate_truth_guided_pvt_table(&profile.scenario.id, &solutions, &pvt_reference);
+    let pvt_truth =
+        validate_truth_guided_pvt_table(&profile.scenario.id, &solutions, &pvt_reference);
     let pvt_accuracy = validate_pvt_accuracy_budget(&pvt_truth, budgets.pvt);
 
     let data_source = SyntheticGnssAccuracyDataSource {
@@ -144,7 +144,11 @@ pub fn build_navigation_accuracy_artifact_fixture() -> NavigationAccuracyArtifac
     };
     let reference_truth = SyntheticGnssAccuracyReferenceTruth {
         truth_kind: "synthetic_signal_and_position_truth".to_string(),
-        receiver_ecef_m: Some([profile.truth_ecef_m.0, profile.truth_ecef_m.1, profile.truth_ecef_m.2]),
+        receiver_ecef_m: Some([
+            profile.truth_ecef_m.0,
+            profile.truth_ecef_m.1,
+            profile.truth_ecef_m.2,
+        ]),
         reference_receive_time_s: Some(SYNTHETIC_REFERENCE_RECEIVE_TIME_S),
         satellite_count: profile.ephemerides.len(),
         reference_epoch_count: pvt_reference.len(),
@@ -240,7 +244,9 @@ fn truth_aligned_tracks(
         .scenario
         .satellites
         .iter()
-        .map(|signal| synthetic_truth_track(config, signal, profile.pseudorange_epoch_base, epoch_count))
+        .map(|signal| {
+            synthetic_truth_track(config, signal, profile.pseudorange_epoch_base, epoch_count)
+        })
         .collect()
 }
 

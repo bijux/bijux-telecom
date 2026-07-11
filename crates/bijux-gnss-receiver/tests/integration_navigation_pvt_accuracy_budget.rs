@@ -1,9 +1,9 @@
 #![allow(missing_docs)]
 
-#[path = "support/navigation_pvt_truth_table.rs"]
-mod navigation_pvt_truth_table;
 #[path = "support/navigation_pipeline.rs"]
 mod navigation_pipeline;
+#[path = "support/navigation_pvt_truth_table.rs"]
+mod navigation_pvt_truth_table;
 
 use bijux_gnss_receiver::api::sim::{
     truth_guided_receiver_accuracy_budgets, validate_pvt_accuracy_budget,
@@ -36,10 +36,7 @@ fn pvt_accuracy_budget_enforces_hard_truth_thresholds() {
             epoch.clock_bias_error_m <= report.max_clock_bias_error_m + f64::EPSILON,
             "{epoch:?}"
         );
-        assert!(
-            epoch.residual_rms_m <= report.max_residual_rms_m + f64::EPSILON,
-            "{epoch:?}"
-        );
+        assert!(epoch.residual_rms_m <= report.max_residual_rms_m + f64::EPSILON, "{epoch:?}");
         assert!(epoch.pdop <= report.max_pdop + f64::EPSILON, "{epoch:?}");
     }
 }

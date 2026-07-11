@@ -68,7 +68,9 @@ pub fn synthetic_pvt_noise_evidence(points: &[SyntheticPvtNoiseSweepPoint]) -> S
         .map(|point| {
             format!(
                 "{}: noise_max={:.3}m position_error_max={:.3}m",
-                point.profile_name, point.max_abs_pseudorange_noise_m, point.max_position_error_3d_m
+                point.profile_name,
+                point.max_abs_pseudorange_noise_m,
+                point.max_position_error_3d_m
             )
         })
         .collect::<Vec<_>>()

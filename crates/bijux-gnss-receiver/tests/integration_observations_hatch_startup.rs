@@ -149,8 +149,7 @@ fn observations_blend_second_hatch_epoch_with_carrier_prediction() {
     let raw_epoch1_m =
         aligned_pseudorange_m(&config, 68, carrier_delta_samples + code_noise_samples);
     let predicted_epoch1_m = raw_epoch0_m + (10.125 - 10.000) * lambda_m;
-    let expected_smoothed_epoch1_m =
-        predicted_epoch1_m + (raw_epoch1_m - predicted_epoch1_m) / 2.0;
+    let expected_smoothed_epoch1_m = predicted_epoch1_m + (raw_epoch1_m - predicted_epoch1_m) / 2.0;
 
     assert!((sats[0].pseudorange_m.0 - raw_epoch0_m).abs() <= 1.0e-9, "{:?}", sats[0]);
     assert!(

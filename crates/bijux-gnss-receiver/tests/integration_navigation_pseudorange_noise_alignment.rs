@@ -40,7 +40,8 @@ fn noisy_synthetic_navigation_preserves_injected_pseudorange_offsets() {
         let observed_delta_m = noisy_pseudorange_m - clean_pseudorange_m;
 
         assert!(
-            (observed_delta_m - injected.pseudorange_noise_m).abs() <= PSEUDORANGE_NOISE_TOLERANCE_M,
+            (observed_delta_m - injected.pseudorange_noise_m).abs()
+                <= PSEUDORANGE_NOISE_TOLERANCE_M,
             "expected {:?} to carry {} m, observed {} m",
             injected.sat,
             injected.pseudorange_noise_m,

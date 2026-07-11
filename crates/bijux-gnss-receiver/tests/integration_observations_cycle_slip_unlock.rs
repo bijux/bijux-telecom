@@ -131,10 +131,7 @@ fn observations_flag_loss_of_lock_cycle_slips_across_unlock_boundary() {
     assert_eq!(unlocked.metadata.observation_lock_state, "cycle_slip");
     assert_eq!(unlocked.metadata.observation_lock_reason.as_deref(), Some("loss_of_lock"));
     assert_eq!(unlocked.metadata.carrier_phase_continuity, "unusable");
-    assert!(unlocked
-        .observation_reject_reasons
-        .iter()
-        .any(|reason| reason == "loss_of_lock"));
+    assert!(unlocked.observation_reject_reasons.iter().any(|reason| reason == "loss_of_lock"));
 
     assert!(relocked.lock_flags.cycle_slip, "{relocked:?}");
     assert_eq!(relocked.metadata.observation_lock_state, "cycle_slip");
