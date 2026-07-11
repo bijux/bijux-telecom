@@ -15,6 +15,10 @@ pub use crate::corrections::geometry_free::{
     geometry_free_diagnostics_from_obs_epochs, GeometryFreeEvent, GeometryFreeObservation,
     GeometryFreeThresholds,
 };
+pub use crate::corrections::melbourne_wubbena::{
+    melbourne_wubbena_diagnostics_from_obs_epochs, MelbourneWubbenaEvent,
+    MelbourneWubbenaObservation, MelbourneWubbenaThresholds,
+};
 pub use crate::corrections::{compute_corrections, CorrectionContext, Corrections};
 pub use crate::estimation::ekf::models::{
     AmbiguityManager, CarrierPhaseMeasurement, DopplerMeasurement, InterSystemBiasManager,
