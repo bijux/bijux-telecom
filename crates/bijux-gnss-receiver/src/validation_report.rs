@@ -250,6 +250,21 @@ pub struct ReferencePositionErrorEpoch {
     pub error_3d_m: f64,
 }
 
+/// Coverage summary for trusted reference coordinates used in position validation.
+#[derive(Debug, Serialize)]
+pub struct ReferenceCoordinateCoverageReport {
+    /// Whether the current validation budgets require trusted reference coordinates.
+    pub required: bool,
+    /// Whether every solved navigation epoch had a matching trusted reference coordinate.
+    pub ready: bool,
+    /// Number of solved navigation epochs that matched trusted reference coordinates.
+    pub matched_solution_epoch_count: usize,
+    /// Solved navigation epochs that lacked trusted reference coordinates.
+    pub unmatched_solution_epochs: Vec<u64>,
+    /// Trusted reference epochs that were provided but not consumed by any solved navigation epoch.
+    pub unused_reference_epochs: Vec<u64>,
+}
+
 /// Validation report output structure.
 #[derive(Debug, Serialize)]
 pub struct ValidationReport {
@@ -275,6 +290,8 @@ pub struct ValidationReport {
     pub fix_timeline: Vec<FixTimelineEntry>,
     /// Reference-position error components for matched epochs.
     pub reference_position_errors: Vec<ReferencePositionErrorEpoch>,
+    /// Coverage status for trusted reference coordinates used by position validation.
+    pub reference_coordinate_coverage: ReferenceCoordinateCoverageReport,
     /// Residuals per epoch.
     pub residuals: Vec<NavResidualReport>,
     /// Time consistency report.
@@ -371,11 +388,14 @@ pub fn build_validation_report_with_budgets(
     let mut vert_by_time = Vec::new();
     let mut fix_timeline = Vec::new();
     let mut reference_position_errors = Vec::new();
+    let mut unmatched_solution_epochs = Vec::new();
+    let mut matched_reference_epochs = std::collections::BTreeSet::new();
     let mut residuals = Vec::new();
     let mut nees_values = Vec::new();
 
     for sol in solutions {
         if let Some(r) = ref_map.get(&sol.epoch.index) {
+            matched_reference_epochs.insert(sol.epoch.index);
             let (east, north, up) = ecef_to_enu(
                 sol.ecef_x_m.0,
                 sol.ecef_y_m.0,
@@ -411,6 +431,8 @@ pub fn build_validation_report_with_budgets(
                     nees_values.push(nees);
                 }
             }
+        } else {
+            unmatched_solution_epochs.push(sol.epoch.index);
         }
         fix_timeline.push(FixTimelineEntry {
             epoch_idx: sol.epoch.index,
@@ -436,6 +458,22 @@ pub fn build_validation_report_with_budgets(
         });
     }
 
+    let unused_reference_epochs = reference
+        .iter()
+        .map(|epoch| epoch.epoch_idx)
+        .filter(|epoch_idx| !matched_reference_epochs.contains(epoch_idx))
+        .collect::<Vec<_>>();
+    let reference_coordinate_required =
+        budgets.reference_position_error_3d_m_max.is_some() && !solutions.is_empty();
+    let reference_coordinate_coverage = ReferenceCoordinateCoverageReport {
+        required: reference_coordinate_required,
+        ready: !reference_coordinate_required
+            || (unmatched_solution_epochs.is_empty() && !reference_position_errors.is_empty()),
+        matched_solution_epoch_count: reference_position_errors.len(),
+        unmatched_solution_epochs,
+        unused_reference_epochs,
+    };
+
     let east_stats = to_validation_stats(stats(&east_errors));
     let north_stats = to_validation_stats(stats(&north_errors));
     let up_stats = to_validation_stats(stats(&up_errors));
@@ -443,7 +481,13 @@ pub fn build_validation_report_with_budgets(
     let vert_stats = to_validation_stats(stats(&vert_errors));
     let error_3d_stats = to_validation_stats(stats(&error_3d));
     let convergence = convergence_report(&horiz_by_time, &vert_by_time);
-    let violations = check_budgets(tracks, solutions, &reference_position_errors, &budgets);
+    let violations = check_budgets(
+        tracks,
+        solutions,
+        &reference_position_errors,
+        &reference_coordinate_coverage,
+        &budgets,
+    );
     let time_consistency = check_time_consistency(tracks, sample_rate_hz);
     let consistency = check_solution_consistency(solutions);
     let inter_frequency_alignment = check_inter_frequency_alignment(obs);
@@ -533,6 +577,7 @@ pub fn build_validation_report_with_budgets(
         convergence,
         fix_timeline,
         reference_position_errors,
+        reference_coordinate_coverage,
         residuals,
         time_consistency,
         consistency,
@@ -1095,6 +1140,9 @@ mod tests {
         .expect("validation report");
 
         assert!(report.budget_violations.is_empty());
+        assert!(report.reference_coordinate_coverage.required);
+        assert!(report.reference_coordinate_coverage.ready);
+        assert!(report.reference_coordinate_coverage.unmatched_solution_epochs.is_empty());
     }
 
     #[test]
@@ -1135,9 +1183,89 @@ mod tests {
         )
         .expect("validation report");
 
-        assert_eq!(report.budget_violations, vec![
-            "reference position 3d error too high at epoch 12: 5.39 m"
-        ]);
+        assert_eq!(
+            report.budget_violations,
+            vec!["reference position 3d error too high at epoch 12: 5.39 m"]
+        );
+        assert!(report.reference_coordinate_coverage.required);
+        assert!(report.reference_coordinate_coverage.ready);
+    }
+
+    #[test]
+    fn validation_report_requires_reference_coordinates_when_budget_is_set() {
+        let budgets = ValidationBudgets {
+            nav_min_lock_epochs: 0,
+            reference_position_error_3d_m_max: Some(5.0),
+            ..ValidationBudgets::default()
+        };
+        let report = build_validation_report_with_budgets(
+            &[],
+            &[],
+            &[fixture_solution(21, 1.0, 0.5, 4)],
+            &[],
+            1.0,
+            false,
+            Vec::new(),
+            ValidationSciencePolicy::default(),
+            budgets,
+        )
+        .expect("validation report");
+
+        assert!(report.reference_coordinate_coverage.required);
+        assert!(!report.reference_coordinate_coverage.ready);
+        assert_eq!(report.reference_coordinate_coverage.matched_solution_epoch_count, 0);
+        assert_eq!(report.reference_coordinate_coverage.unmatched_solution_epochs, vec![21]);
+        assert_eq!(
+            report.budget_violations,
+            vec!["reference coordinates unavailable for solution epochs: 21"]
+        );
+    }
+
+    #[test]
+    fn validation_report_requires_reference_coordinates_for_all_solution_epochs() {
+        let budgets = ValidationBudgets {
+            nav_min_lock_epochs: 0,
+            reference_position_error_3d_m_max: Some(5.0),
+            ..ValidationBudgets::default()
+        };
+        let (x_ref, y_ref, z_ref) = bijux_gnss_core::api::lla_to_ecef(0.0, 0.0, 0.0);
+        let mut matched_solution = fixture_solution(30, 1.0, 0.5, 4);
+        matched_solution.ecef_x_m = bijux_gnss_core::api::Meters(x_ref);
+        matched_solution.ecef_y_m = bijux_gnss_core::api::Meters(y_ref);
+        matched_solution.ecef_z_m = bijux_gnss_core::api::Meters(z_ref);
+        let report = build_validation_report_with_budgets(
+            &[],
+            &[],
+            &[matched_solution, fixture_solution(31, 1.0, 0.5, 4)],
+            &[ValidationReferenceEpoch {
+                epoch_idx: 30,
+                t_rx_s: Some(30.0),
+                latitude_deg: 0.0,
+                longitude_deg: 0.0,
+                altitude_m: 0.0,
+                ecef_x_m: Some(x_ref),
+                ecef_y_m: Some(y_ref),
+                ecef_z_m: Some(z_ref),
+                vel_x_mps: None,
+                vel_y_mps: None,
+                vel_z_mps: None,
+            }],
+            1.0,
+            false,
+            Vec::new(),
+            ValidationSciencePolicy::default(),
+            budgets,
+        )
+        .expect("validation report");
+
+        assert!(report.reference_coordinate_coverage.required);
+        assert!(!report.reference_coordinate_coverage.ready);
+        assert_eq!(report.reference_coordinate_coverage.matched_solution_epoch_count, 1);
+        assert_eq!(report.reference_coordinate_coverage.unmatched_solution_epochs, vec![31]);
+        assert_eq!(
+            report.budget_violations,
+            vec!["reference coordinates unavailable for solution epochs: 31"]
+        );
     }
 
     #[derive(Debug, Deserialize)]
