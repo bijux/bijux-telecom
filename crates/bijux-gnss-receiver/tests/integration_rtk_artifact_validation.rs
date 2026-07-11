@@ -13,6 +13,8 @@ fn sample_sd_observation() -> SdObservation {
             band: SignalBand::L1,
             code: bijux_gnss_core::api::SignalCode::Ca,
         },
+        min_cn0_dbhz: 43.5,
+        multipath_suspect: false,
         rover_pseudorange_m: 20_000_250.0,
         rover_signal_timing: Some(ObsSignalTiming {
             signal_travel_time_s: Seconds(0.067_001),
@@ -59,6 +61,8 @@ fn sample_dd_observation() -> DdObservation {
             band: SignalBand::L1,
             code: bijux_gnss_core::api::SignalCode::Ca,
         },
+        min_cn0_dbhz: 41.0,
+        multipath_suspect: false,
         rover_signal_pseudorange_m: 20_000_250.0,
         rover_signal_timing: Some(ObsSignalTiming {
             signal_travel_time_s: Seconds(0.067_001),
@@ -98,6 +102,7 @@ fn sd_artifact_validation_accepts_finite_observables() {
 fn sd_artifact_validation_rejects_invalid_receiver_observables() {
     let mut observation = sample_sd_observation();
     observation.rover_pseudorange_m = f64::NAN;
+    observation.min_cn0_dbhz = f64::NAN;
     observation.base_signal_timing = Some(ObsSignalTiming {
         signal_travel_time_s: Seconds(f64::INFINITY),
         transmit_gps_time: GpsTime { week: 2200, tow_s: 345_600.123_003 },
@@ -119,6 +124,7 @@ fn dd_artifact_validation_accepts_finite_observables() {
 fn dd_artifact_validation_rejects_invalid_receiver_observables() {
     let mut observation = sample_dd_observation();
     observation.rover_signal_pseudorange_m = f64::NAN;
+    observation.min_cn0_dbhz = f64::NAN;
     observation.base_ref_signal_timing = Some(ObsSignalTiming {
         signal_travel_time_s: Seconds(f64::INFINITY),
         transmit_gps_time: GpsTime { week: 2200, tow_s: 345_600.122_903 },
