@@ -14,10 +14,8 @@ fn broadcast_orbit_reference_fixtures_cover_each_compared_epoch() {
             fixture.label
         );
 
-        let (coverage_start_s, coverage_end_s) = fixture
-            .sp3
-            .coverage_s(fixture.sat)
-            .expect("SP3 coverage for orbit reference fixture");
+        let (coverage_start_s, coverage_end_s) =
+            fixture.sp3.coverage_s(fixture.sat).expect("SP3 coverage for orbit reference fixture");
         let samples = orbit_reference_samples(&fixture);
         assert!(
             !samples.is_empty(),

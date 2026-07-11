@@ -22,7 +22,5 @@ fn broadcast_orbit_accuracy_budget_enforces_hard_reference_thresholds() {
     assert_eq!(report.max_position_error_m, budget.max_position_error_m);
     assert_eq!(report.max_rms_position_error_m, budget.max_rms_position_error_m);
     assert!(report.observed_max_position_error_m <= report.max_position_error_m + f64::EPSILON);
-    assert!(
-        report.observed_rms_position_error_m <= report.max_rms_position_error_m + f64::EPSILON
-    );
+    assert!(report.observed_rms_position_error_m <= report.max_rms_position_error_m + f64::EPSILON);
 }

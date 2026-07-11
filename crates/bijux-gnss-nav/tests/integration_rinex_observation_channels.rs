@@ -16,11 +16,7 @@ fn public_rinex_2_import_exposes_valid_l1_l2_observation_channels() {
         .expect("parse public RINEX 2 observations");
 
     assert_eq!(
-        dataset
-            .observation_channels
-            .iter()
-            .map(|channel| channel.band)
-            .collect::<Vec<_>>(),
+        dataset.observation_channels.iter().map(|channel| channel.band).collect::<Vec<_>>(),
         vec![SignalBand::L1, SignalBand::L2]
     );
     validate_obs_epochs(&dataset.epochs).expect("public RINEX 2 epochs must validate");
@@ -36,11 +32,7 @@ fn public_rinex_3_import_exposes_valid_l1_l2_observation_channels() {
         .expect("parse public RINEX 3 observations");
 
     assert_eq!(
-        dataset
-            .observation_channels
-            .iter()
-            .map(|channel| channel.band)
-            .collect::<Vec<_>>(),
+        dataset.observation_channels.iter().map(|channel| channel.band).collect::<Vec<_>>(),
         vec![SignalBand::L1, SignalBand::L2]
     );
     validate_obs_epochs(&dataset.epochs).expect("public RINEX 3 epochs must validate");

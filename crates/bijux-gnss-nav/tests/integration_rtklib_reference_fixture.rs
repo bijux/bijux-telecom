@@ -60,10 +60,26 @@ fn rtklib_dop_reference_fixture_covers_ab43_public_spp_epochs() {
             "RTKLIB AB43 DOP epoch at TOW {:.1}s should retain seven GPS satellites",
             epoch.gps_time.tow_s
         );
-        assert!(epoch.gdop.is_finite(), "RTKLIB GDOP should be finite at TOW {:.1}s", epoch.gps_time.tow_s);
-        assert!(epoch.pdop.is_finite(), "RTKLIB PDOP should be finite at TOW {:.1}s", epoch.gps_time.tow_s);
-        assert!(epoch.hdop.is_finite(), "RTKLIB HDOP should be finite at TOW {:.1}s", epoch.gps_time.tow_s);
-        assert!(epoch.vdop.is_finite(), "RTKLIB VDOP should be finite at TOW {:.1}s", epoch.gps_time.tow_s);
+        assert!(
+            epoch.gdop.is_finite(),
+            "RTKLIB GDOP should be finite at TOW {:.1}s",
+            epoch.gps_time.tow_s
+        );
+        assert!(
+            epoch.pdop.is_finite(),
+            "RTKLIB PDOP should be finite at TOW {:.1}s",
+            epoch.gps_time.tow_s
+        );
+        assert!(
+            epoch.hdop.is_finite(),
+            "RTKLIB HDOP should be finite at TOW {:.1}s",
+            epoch.gps_time.tow_s
+        );
+        assert!(
+            epoch.vdop.is_finite(),
+            "RTKLIB VDOP should be finite at TOW {:.1}s",
+            epoch.gps_time.tow_s
+        );
         assert!(
             (epoch.pdop * epoch.pdop - (epoch.hdop * epoch.hdop + epoch.vdop * epoch.vdop)).abs()
                 < 1.0e-9,

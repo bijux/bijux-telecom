@@ -54,9 +54,8 @@ PG01  313.000000  64.000000  21.000000  0.000000
     let sp3 = sp3_data.parse().expect("parse SP3");
     let products = Products::new(BroadcastProductsProvider::new(vec![eph.clone()])).with_sp3(sp3);
     let mut diag = ProductDiagnostics::default();
-    let state = products
-        .sat_state(eph.sat, 1_350.0, &mut diag)
-        .expect("precise orbit state from SP3");
+    let state =
+        products.sat_state(eph.sat, 1_350.0, &mut diag).expect("precise orbit state from SP3");
 
     assert!(diag.fallbacks.is_empty());
     assert!((state.x_m - 24_250.0).abs() < 1e-6);

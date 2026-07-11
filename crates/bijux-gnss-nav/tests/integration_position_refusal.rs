@@ -36,7 +36,8 @@ fn position_solver_refuses_when_invalid_satellite_time_leaves_three_usable_satel
     let mut observations = scenario.observations.clone();
     for index in [0usize, 1usize] {
         if let Some(signal_timing) = &mut observations[index].signal_timing {
-            signal_timing.signal_travel_time_s = Seconds(signal_timing.signal_travel_time_s.0 + 0.01);
+            signal_timing.signal_travel_time_s =
+                Seconds(signal_timing.signal_travel_time_s.0 + 0.01);
         }
     }
 

@@ -2,8 +2,8 @@
 
 use bijux_gnss_core::api::{Constellation, SatId};
 use bijux_gnss_nav::api::{
-    gps_satellite_clock_correction, BroadcastProductsProvider, GpsEphemeris,
-    ProductDiagnostics, Products, ProductsProvider,
+    gps_satellite_clock_correction, BroadcastProductsProvider, GpsEphemeris, ProductDiagnostics,
+    Products, ProductsProvider,
 };
 
 fn make_eph(prn: u8) -> GpsEphemeris {
@@ -42,9 +42,8 @@ fn broadcast_products_expose_full_broadcast_clock_terms() {
     let eph = make_eph(1);
     let provider = BroadcastProductsProvider::new(vec![eph.clone()]);
     let mut diag = ProductDiagnostics::default();
-    let correction = provider
-        .clock_correction(eph.sat, 1_600.0, &mut diag)
-        .expect("broadcast clock correction");
+    let correction =
+        provider.clock_correction(eph.sat, 1_600.0, &mut diag).expect("broadcast clock correction");
     let expected = gps_satellite_clock_correction(&eph, 1_600.0);
 
     assert!(diag.fallbacks.is_empty());
@@ -66,9 +65,8 @@ AS G01 2020 01 01 00 15 00.000000  1  0.000000003
     let clk = clk_data.parse().expect("clk parse");
     let products = Products::new(BroadcastProductsProvider::new(vec![eph.clone()])).with_clk(clk);
     let mut diag = ProductDiagnostics::default();
-    let correction = products
-        .clock_correction(eph.sat, 900.0, &mut diag)
-        .expect("precise clock correction");
+    let correction =
+        products.clock_correction(eph.sat, 900.0, &mut diag).expect("precise clock correction");
 
     assert!(diag.fallbacks.is_empty());
     assert!((correction.bias_s - 3.0e-9).abs() < 1e-18);

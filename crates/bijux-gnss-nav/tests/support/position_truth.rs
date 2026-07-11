@@ -2,12 +2,12 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{Constellation, GpsTime, Llh, ObsSignalTiming, SatId, Seconds};
+use bijux_gnss_nav::api::IonosphereModel;
 use bijux_gnss_nav::api::{
     ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef, sat_state_gps_l1ca,
     sat_state_gps_l1ca_from_observation, GpsEphemeris, KlobucharCoefficients, KlobucharModel,
     PositionObservation, SaastamoinenModel, TroposphereModel,
 };
-use bijux_gnss_nav::api::IonosphereModel;
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 
@@ -28,13 +28,8 @@ pub struct SyntheticPositionScenario {
     pub t_rx_s: f64,
 }
 
-pub fn four_satellite_position_scenario(
-    receiver_clock_bias_s: f64,
-) -> SyntheticPositionScenario {
-    four_satellite_position_scenario_with_ephemerides(
-        receiver_clock_bias_s,
-        sample_ephemerides(),
-    )
+pub fn four_satellite_position_scenario(receiver_clock_bias_s: f64) -> SyntheticPositionScenario {
+    four_satellite_position_scenario_with_ephemerides(receiver_clock_bias_s, sample_ephemerides())
 }
 
 pub fn four_satellite_position_scenario_with_ephemerides(
@@ -46,12 +41,7 @@ pub fn four_satellite_position_scenario_with_ephemerides(
     let observations = ephemerides
         .iter()
         .map(|eph| {
-            timed_position_observation_from_truth(
-                eph,
-                truth_ecef_m,
-                t_rx_s,
-                receiver_clock_bias_s,
-            )
+            timed_position_observation_from_truth(eph, truth_ecef_m, t_rx_s, receiver_clock_bias_s)
         })
         .collect();
 
@@ -71,10 +61,8 @@ pub fn sample_ephemerides() -> Vec<GpsEphemeris> {
 pub fn sample_ephemerides_with_clock_parameters(
     clock_parameters_by_prn: &[(u8, BroadcastClockParameters)],
 ) -> Vec<GpsEphemeris> {
-    let clock_parameters_by_prn = clock_parameters_by_prn
-        .iter()
-        .copied()
-        .collect::<std::collections::BTreeMap<_, _>>();
+    let clock_parameters_by_prn =
+        clock_parameters_by_prn.iter().copied().collect::<std::collections::BTreeMap<_, _>>();
     vec![
         sample_ephemeris_with_clock_parameters(
             1,
@@ -202,7 +190,8 @@ pub fn add_klobuchar_delay_to_observations(
             let mut biased = observation.clone();
             biased.pseudorange_m += delay_m;
             if let Some(signal_timing) = &mut biased.signal_timing {
-                signal_timing.signal_travel_time_s = Seconds(signal_timing.signal_travel_time_s.0 + delay_s);
+                signal_timing.signal_travel_time_s =
+                    Seconds(signal_timing.signal_travel_time_s.0 + delay_s);
                 signal_timing.transmit_gps_time =
                     signal_timing.transmit_gps_time.offset_seconds(-delay_s);
             }
@@ -248,7 +237,8 @@ pub fn add_saastamoinen_delay_to_observations(
             let mut biased = observation.clone();
             biased.pseudorange_m += delay_m;
             if let Some(signal_timing) = &mut biased.signal_timing {
-                signal_timing.signal_travel_time_s = Seconds(signal_timing.signal_travel_time_s.0 + delay_s);
+                signal_timing.signal_travel_time_s =
+                    Seconds(signal_timing.signal_travel_time_s.0 + delay_s);
                 signal_timing.transmit_gps_time =
                     signal_timing.transmit_gps_time.offset_seconds(-delay_s);
             }
@@ -257,7 +247,11 @@ pub fn add_saastamoinen_delay_to_observations(
         .collect()
 }
 
-pub fn timed_position_observation(sat: SatId, pseudorange_m: f64, t_rx_s: f64) -> PositionObservation {
+pub fn timed_position_observation(
+    sat: SatId,
+    pseudorange_m: f64,
+    t_rx_s: f64,
+) -> PositionObservation {
     let signal_travel_time_s = pseudorange_m / SPEED_OF_LIGHT_MPS;
     PositionObservation {
         sat,
@@ -297,8 +291,7 @@ pub fn pseudorange_from_truth(
         let dy = truth_ecef_m.1 - state.y_m;
         let dz = truth_ecef_m.2 - state.z_m;
         let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
-        pseudorange_m = range_m
-            + receiver_clock_bias_s * SPEED_OF_LIGHT_MPS
+        pseudorange_m = range_m + receiver_clock_bias_s * SPEED_OF_LIGHT_MPS
             - state.clock_correction.bias_s * SPEED_OF_LIGHT_MPS;
         let next_tau = pseudorange_m / SPEED_OF_LIGHT_MPS;
         if (next_tau - tau).abs() < 1.0e-12 {
@@ -351,10 +344,8 @@ fn iterative_pseudorange_residual_with_earth_rotation_mode_m(
     t_rx_s: f64,
     apply_earth_rotation: bool,
 ) -> f64 {
-    let receive_tow_s = observation
-        .gps_receive_time
-        .map(|gps_time| gps_time.tow_s)
-        .unwrap_or(t_rx_s);
+    let receive_tow_s =
+        observation.gps_receive_time.map(|gps_time| gps_time.tow_s).unwrap_or(t_rx_s);
     let mut tau = observation
         .signal_timing
         .map(|timing| timing.signal_travel_time_s.0)
@@ -389,8 +380,7 @@ fn iterative_predicted_pseudorange_m(
         let dy = receiver_ecef_m.1 - state.y_m;
         let dz = receiver_ecef_m.2 - state.z_m;
         let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
-        predicted_pseudorange_m = range_m
-            + receiver_clock_bias_s * SPEED_OF_LIGHT_MPS
+        predicted_pseudorange_m = range_m + receiver_clock_bias_s * SPEED_OF_LIGHT_MPS
             - state.clock_correction.bias_s * SPEED_OF_LIGHT_MPS;
         let next_tau = predicted_pseudorange_m / SPEED_OF_LIGHT_MPS;
         if (next_tau - *tau_s).abs() < 1.0e-12 {

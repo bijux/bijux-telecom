@@ -54,8 +54,9 @@ pub fn trusted_reference_coordinate_ecef_m(
 
 fn trusted_reference_coordinate_catalog(
 ) -> Result<&'static Vec<TrustedReferenceCoordinate>, TrustedReferenceCoordinateError> {
-    static CATALOG: OnceLock<Result<Vec<TrustedReferenceCoordinate>, TrustedReferenceCoordinateError>> =
-        OnceLock::new();
+    static CATALOG: OnceLock<
+        Result<Vec<TrustedReferenceCoordinate>, TrustedReferenceCoordinateError>,
+    > = OnceLock::new();
     CATALOG
         .get_or_init(|| {
             load_trusted_reference_coordinates(

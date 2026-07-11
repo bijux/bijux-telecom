@@ -50,7 +50,8 @@ fn position_solver_excludes_single_bad_pseudorange_and_recovers_truth() {
         guarded
             .rejected
             .iter()
-            .any(|(sat, reason)| *sat == scenario.bad_sat && *reason == MeasurementRejectReason::Outlier),
+            .any(|(sat, reason)| *sat == scenario.bad_sat
+                && *reason == MeasurementRejectReason::Outlier),
         "expected {:?} to be rejected as an outlier: {:?}",
         scenario.bad_sat,
         guarded.rejected,
@@ -82,10 +83,9 @@ fn position_solver_reports_positive_effective_weights_for_retained_satellites() 
         .expect("guarded solution");
 
     assert!(
-        solution
-            .residuals
-            .iter()
-            .all(|(sat, _residual_m, weight)| *sat != scenario.bad_sat && weight.is_finite() && *weight > 0.0),
+        solution.residuals.iter().all(|(sat, _residual_m, weight)| *sat != scenario.bad_sat
+            && weight.is_finite()
+            && *weight > 0.0),
         "retained satellites should carry positive effective weights: {:?}",
         solution.residuals,
     );

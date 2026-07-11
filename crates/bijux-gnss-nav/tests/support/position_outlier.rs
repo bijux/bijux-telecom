@@ -1,6 +1,6 @@
 #![allow(dead_code, missing_docs)]
 
-use bijux_gnss_core::api::{Seconds, SatId};
+use bijux_gnss_core::api::{SatId, Seconds};
 use bijux_gnss_nav::api::PositionObservation;
 
 use super::position_truth::{

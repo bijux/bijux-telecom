@@ -11,12 +11,10 @@ use bijux_gnss_nav::api::{
 };
 use support::position_truth::{
     add_klobuchar_delay_to_observations, add_saastamoinen_delay_to_observations,
-    clear_broadcast_clock_parameters,
-    four_satellite_position_scenario,
+    clear_broadcast_clock_parameters, four_satellite_position_scenario,
     four_satellite_position_scenario_with_ephemerides, iterative_pseudorange_residual_m,
-    iterative_pseudorange_residual_without_earth_rotation_m,
-    sample_ephemerides, sample_ephemerides_with_clock_parameters, sample_ephemeris,
-    sample_klobuchar_coefficients,
+    iterative_pseudorange_residual_without_earth_rotation_m, sample_ephemerides,
+    sample_ephemerides_with_clock_parameters, sample_ephemeris, sample_klobuchar_coefficients,
     timed_position_observation, BroadcastClockParameters, SyntheticPositionScenario,
 };
 
@@ -61,9 +59,7 @@ fn broadcast_clock_fixture_parameters() -> [(u8, BroadcastClockParameters); 4] {
     ]
 }
 
-fn broadcast_clock_position_scenario(
-    receiver_clock_bias_s: f64,
-) -> SyntheticPositionScenario {
+fn broadcast_clock_position_scenario(receiver_clock_bias_s: f64) -> SyntheticPositionScenario {
     four_satellite_position_scenario_with_ephemerides(
         receiver_clock_bias_s,
         sample_ephemerides_with_clock_parameters(&broadcast_clock_fixture_parameters()),
@@ -588,9 +584,14 @@ fn rinex_nav_position_solver_uses_broadcast_satellite_clock_correction() {
         std::process::id(),
         scenario.ephemerides.len()
     ));
-    write_rinex_nav(&corrected_path, &scenario.ephemerides, true).expect("write corrected rinex nav");
-    write_rinex_nav(&zero_clock_path, &clear_broadcast_clock_parameters(&scenario.ephemerides), true)
-        .expect("write zero-clock rinex nav");
+    write_rinex_nav(&corrected_path, &scenario.ephemerides, true)
+        .expect("write corrected rinex nav");
+    write_rinex_nav(
+        &zero_clock_path,
+        &clear_broadcast_clock_parameters(&scenario.ephemerides),
+        true,
+    )
+    .expect("write zero-clock rinex nav");
     let corrected = parse_rinex_nav(
         &std::fs::read_to_string(&corrected_path).expect("read corrected rinex nav"),
     )
@@ -650,10 +651,8 @@ fn rinex_nav_position_solver_residuals_include_earth_rotation_correction() {
             .iter()
             .find(|observation| observation.sat == *sat)
             .expect("scenario observation");
-        let ephemeris = parsed
-            .iter()
-            .find(|ephemeris| ephemeris.sat == *sat)
-            .expect("parsed ephemeris");
+        let ephemeris =
+            parsed.iter().find(|ephemeris| ephemeris.sat == *sat).expect("parsed ephemeris");
         let corrected_residual_m = iterative_pseudorange_residual_m(
             ephemeris,
             observation,
@@ -814,10 +813,8 @@ fn decoded_lnav_position_solver_residuals_include_earth_rotation_correction() {
             .iter()
             .find(|observation| observation.sat == *sat)
             .expect("scenario observation");
-        let ephemeris = parsed
-            .iter()
-            .find(|ephemeris| ephemeris.sat == *sat)
-            .expect("decoded ephemeris");
+        let ephemeris =
+            parsed.iter().find(|ephemeris| ephemeris.sat == *sat).expect("decoded ephemeris");
         let corrected_residual_m = iterative_pseudorange_residual_m(
             ephemeris,
             observation,

@@ -3,9 +3,7 @@
 use std::path::PathBuf;
 
 use bijux_gnss_core::api::SatId;
-use bijux_gnss_nav::api::{
-    decode_rawephem_hex, ClkProvider, GpsEphemeris, Sp3Provider,
-};
+use bijux_gnss_nav::api::{decode_rawephem_hex, ClkProvider, GpsEphemeris, Sp3Provider};
 
 pub struct BroadcastReferenceFixture {
     pub label: &'static str,
@@ -60,15 +58,11 @@ pub fn gps_prn2_20220514_fixture() -> BroadcastReferenceFixture {
 }
 
 fn load_sp3(name: &str) -> Sp3Provider {
-    read_fixture(name)
-        .parse()
-        .unwrap_or_else(|_| panic!("parse SP3 fixture {name}"))
+    read_fixture(name).parse().unwrap_or_else(|_| panic!("parse SP3 fixture {name}"))
 }
 
 fn load_clk(name: &str) -> ClkProvider {
-    read_fixture(name)
-        .parse()
-        .unwrap_or_else(|_| panic!("parse CLK fixture {name}"))
+    read_fixture(name).parse().unwrap_or_else(|_| panic!("parse CLK fixture {name}"))
 }
 
 fn read_fixture(name: &str) -> String {

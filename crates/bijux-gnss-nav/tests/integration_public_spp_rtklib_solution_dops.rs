@@ -4,9 +4,7 @@ mod support;
 
 use bijux_gnss_nav::api::PositionSolver;
 
-use support::public_spp_case::{
-    ab43_public_spp_case, position_observations, public_ab43_epoch,
-};
+use support::public_spp_case::{ab43_public_spp_case, position_observations, public_ab43_epoch};
 use support::rtklib_reference::ab43_rtklib_dop_reference;
 
 fn assert_close(label: &str, actual: f64, expected: f64, tolerance: f64) {

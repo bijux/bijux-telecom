@@ -10,10 +10,8 @@ const GPS_BROADCAST_POSITION_TOLERANCE_M: f64 = 5.0;
 #[test]
 fn broadcast_position_matches_igs_reference_within_documented_tolerance() {
     for fixture in [gps_prn1_20220513_fixture(), gps_prn2_20220514_fixture()] {
-        for (&transmit_tow_s, &reference_t_s) in fixture
-            .transmit_times_s
-            .iter()
-            .zip(fixture.reference_times_s.iter())
+        for (&transmit_tow_s, &reference_t_s) in
+            fixture.transmit_times_s.iter().zip(fixture.reference_times_s.iter())
         {
             let broadcast = sat_state_gps_l1ca(&fixture.ephemeris, transmit_tow_s, 0.0);
             let precise = fixture
