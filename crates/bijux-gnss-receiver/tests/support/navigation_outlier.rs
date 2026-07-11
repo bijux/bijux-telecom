@@ -3,12 +3,13 @@
 use bijux_gnss_core::api::{Constellation, MeasurementRejectReason, SatId};
 
 use super::navigation_pipeline::{
-    noisy_synthetic_navigation_run, position_error_3d_m, SatellitePseudorangeNoise,
-    SyntheticPseudorangeNoiseProfile,
+    noisy_synthetic_navigation_run, noisy_synthetic_navigation_run_with_satellite_prns,
+    position_error_3d_m, SatellitePseudorangeNoise, SyntheticPseudorangeNoiseProfile,
 };
 
 pub const BAD_SATELLITE_PSEUDORANGE_BIAS_M: f64 = 1_000.0;
 const BAD_SATELLITE_PRN: u8 = 29;
+const UNDERDETERMINED_RAIM_VISIBLE_PRNS: [u8; 5] = [3, 7, 11, 19, BAD_SATELLITE_PRN];
 
 pub fn single_bad_satellite_profile() -> SyntheticPseudorangeNoiseProfile {
     SyntheticPseudorangeNoiseProfile {
@@ -51,4 +52,12 @@ pub fn rejected_outlier_prns(
 pub fn single_bad_satellite_navigation_run() -> super::navigation_pipeline::NoisySyntheticNavigationRun
 {
     noisy_synthetic_navigation_run(single_bad_satellite_profile())
+}
+
+pub fn underdetermined_bad_satellite_navigation_run(
+) -> super::navigation_pipeline::NoisySyntheticNavigationRun {
+    noisy_synthetic_navigation_run_with_satellite_prns(
+        single_bad_satellite_profile(),
+        &UNDERDETERMINED_RAIM_VISIBLE_PRNS,
+    )
 }

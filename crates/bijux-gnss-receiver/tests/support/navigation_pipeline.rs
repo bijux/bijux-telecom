@@ -73,6 +73,16 @@ pub fn noisy_synthetic_navigation_run(
     NoisySyntheticNavigationRun { noise_profile, run }
 }
 
+pub fn noisy_synthetic_navigation_run_with_satellite_prns(
+    noise_profile: SyntheticPseudorangeNoiseProfile,
+    satellite_prns: &[u8],
+) -> NoisySyntheticNavigationRun {
+    let run = navigation_run(
+        clean_synthetic_pvt_scenario_with_satellite_prns_and_noise(&noise_profile, satellite_prns),
+    );
+    NoisySyntheticNavigationRun { noise_profile, run }
+}
+
 fn navigation_run(profile: CleanSyntheticPvtScenario) -> CleanSyntheticNavigationRun {
     let config = clean_synthetic_navigation_config();
     let tracking_results = tracking_results_for_profile(&config, &profile);
@@ -294,7 +304,56 @@ fn clean_synthetic_pvt_scenario_with_noise(
     noise_profile: &SyntheticPseudorangeNoiseProfile,
 ) -> CleanSyntheticPvtScenario {
     let mut scenario = clean_synthetic_pvt_scenario();
+    inject_pseudorange_noise(&mut scenario, noise_profile);
+    scenario
+}
 
+fn clean_synthetic_pvt_scenario_with_satellite_prns_and_noise(
+    noise_profile: &SyntheticPseudorangeNoiseProfile,
+    satellite_prns: &[u8],
+) -> CleanSyntheticPvtScenario {
+    let mut scenario = clean_synthetic_pvt_scenario_with_satellite_prns(satellite_prns);
+    inject_pseudorange_noise(&mut scenario, noise_profile);
+    scenario
+}
+
+fn clean_synthetic_pvt_scenario_with_satellite_prns(
+    satellite_prns: &[u8],
+) -> CleanSyntheticPvtScenario {
+    assert!(
+        !satellite_prns.is_empty(),
+        "synthetic navigation scenario requires at least one visible satellite",
+    );
+
+    let mut scenario = clean_synthetic_pvt_scenario();
+    let requested_prns = satellite_prns.iter().copied().collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        requested_prns.len(),
+        satellite_prns.len(),
+        "synthetic navigation scenario requires unique visible-satellite PRNs",
+    );
+
+    scenario.ephemerides.retain(|ephemeris| requested_prns.contains(&ephemeris.sat.prn));
+    scenario.satellites.retain(|satellite| requested_prns.contains(&satellite.signal.sat.prn));
+
+    assert_eq!(
+        scenario.ephemerides.len(),
+        requested_prns.len(),
+        "synthetic navigation scenario requested an unknown ephemeris PRN",
+    );
+    assert_eq!(
+        scenario.satellites.len(),
+        requested_prns.len(),
+        "synthetic navigation scenario requested an unknown tracking PRN",
+    );
+
+    scenario
+}
+
+fn inject_pseudorange_noise(
+    scenario: &mut CleanSyntheticPvtScenario,
+    noise_profile: &SyntheticPseudorangeNoiseProfile,
+) {
     for satellite in &mut scenario.satellites {
         let injected_noise_m =
             pseudorange_noise_for_satellite(&noise_profile.satellites, satellite.signal.sat);
@@ -312,8 +371,6 @@ fn clean_synthetic_pvt_scenario_with_noise(
         satellite.whole_code_periods = whole_code_periods;
         satellite.signal.code_phase_chips = code_phase_chips;
     }
-
-    scenario
 }
 
 fn pseudorange_noise_for_satellite(
