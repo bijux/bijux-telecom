@@ -415,3 +415,196 @@ fn incoming_word_type(word: &GalileoInavWord) -> u8 {
         GalileoInavWord::Status(_) => 5,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        decode_galileo_inav_clock_word, decode_galileo_inav_ephemeris_1_word,
+        decode_galileo_inav_ephemeris_2_word, decode_galileo_inav_ephemeris_3_word,
+        decode_galileo_inav_status_word,
+    };
+
+    fn set_bits(payload: &mut u128, start: usize, len: usize, value: u128) {
+        let shift = 128 - (start - 1) - len;
+        let mask = ((1_u128 << len) - 1) << shift;
+        *payload &= !mask;
+        *payload |= (value << shift) & mask;
+    }
+
+    fn encode_signed(value: i64, bits: usize) -> u128 {
+        let mask = (1_u128 << bits) - 1;
+        (value as u128) & mask
+    }
+
+    #[test]
+    fn ephemeris_word_1_decodes_toe_and_kepler_terms() {
+        let mut payload = 0_u128;
+        let iodnav = 0x1A5_u16;
+        let toe_raw = 4_321_u16;
+        let m0_raw = -0x1234_567_i64;
+        let e_raw = 0x2345_6789_u32;
+        let sqrt_a_raw = 0x1234_5678_u32;
+
+        set_bits(&mut payload, 1, 6, 1);
+        set_bits(&mut payload, 7, 10, iodnav as u128);
+        set_bits(&mut payload, 17, 14, toe_raw as u128);
+        set_bits(&mut payload, 31, 32, encode_signed(m0_raw, 32));
+        set_bits(&mut payload, 63, 32, e_raw as u128);
+        set_bits(&mut payload, 95, 32, sqrt_a_raw as u128);
+
+        let word = decode_galileo_inav_ephemeris_1_word(payload).expect("word type 1");
+
+        assert_eq!(word.iodnav, iodnav);
+        assert!((word.toe_s - toe_raw as f64 * 60.0).abs() < f64::EPSILON);
+        assert!((word.m0 - m0_raw as f64 * 2f64.powi(-31) * std::f64::consts::PI).abs() < 1e-12);
+        assert!((word.e - e_raw as f64 * 2f64.powi(-33)).abs() < f64::EPSILON);
+        assert!((word.sqrt_a - sqrt_a_raw as f64 * 2f64.powi(-19)).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn ephemeris_words_2_and_3_decode_orbit_corrections() {
+        let mut word_2 = 0_u128;
+        let mut word_3 = 0_u128;
+
+        let iodnav = 0x155_u16;
+        let omega0_raw = 0x1234_5678_u32 as i64;
+        let i0_raw = -0x1111_222_i64;
+        let w_raw = 0x3141_5926_u32 as i64;
+        let idot_raw = -0x0A55_i64;
+        let omegadot_raw = -0x54_321_i64;
+        let delta_n_raw = 0x1234_i64;
+        let cuc_raw = -777_i64;
+        let cus_raw = 888_i64;
+        let crc_raw = 1_234_i64;
+        let crs_raw = -1_111_i64;
+        let sisa_e1_e5b = 0xAB_u8;
+
+        set_bits(&mut word_2, 1, 6, 2);
+        set_bits(&mut word_2, 7, 10, iodnav as u128);
+        set_bits(&mut word_2, 17, 32, encode_signed(omega0_raw, 32));
+        set_bits(&mut word_2, 49, 32, encode_signed(i0_raw, 32));
+        set_bits(&mut word_2, 81, 32, encode_signed(w_raw, 32));
+        set_bits(&mut word_2, 113, 14, encode_signed(idot_raw, 14));
+
+        set_bits(&mut word_3, 1, 6, 3);
+        set_bits(&mut word_3, 7, 10, iodnav as u128);
+        set_bits(&mut word_3, 17, 24, encode_signed(omegadot_raw, 24));
+        set_bits(&mut word_3, 41, 16, encode_signed(delta_n_raw, 16));
+        set_bits(&mut word_3, 57, 16, encode_signed(cuc_raw, 16));
+        set_bits(&mut word_3, 73, 16, encode_signed(cus_raw, 16));
+        set_bits(&mut word_3, 89, 16, encode_signed(crc_raw, 16));
+        set_bits(&mut word_3, 105, 16, encode_signed(crs_raw, 16));
+        set_bits(&mut word_3, 121, 8, sisa_e1_e5b as u128);
+
+        let word_2 = decode_galileo_inav_ephemeris_2_word(word_2).expect("word type 2");
+        let word_3 = decode_galileo_inav_ephemeris_3_word(word_3).expect("word type 3");
+
+        assert_eq!(word_2.iodnav, iodnav);
+        assert!(
+            (word_2.omega0 - omega0_raw as f64 * 2f64.powi(-31) * std::f64::consts::PI).abs()
+                < 1e-12
+        );
+        assert!((word_2.i0 - i0_raw as f64 * 2f64.powi(-31) * std::f64::consts::PI).abs() < 1e-12);
+        assert!((word_2.w - w_raw as f64 * 2f64.powi(-31) * std::f64::consts::PI).abs() < 1e-12);
+        assert!(
+            (word_2.idot - idot_raw as f64 * 2f64.powi(-43) * std::f64::consts::PI).abs()
+                < 1e-15
+        );
+
+        assert_eq!(word_3.iodnav, iodnav);
+        assert!(
+            (word_3.omegadot - omegadot_raw as f64 * 2f64.powi(-43) * std::f64::consts::PI).abs()
+                < 1e-15
+        );
+        assert!(
+            (word_3.delta_n - delta_n_raw as f64 * 2f64.powi(-43) * std::f64::consts::PI).abs()
+                < 1e-15
+        );
+        assert!((word_3.cuc - cuc_raw as f64 * 2f64.powi(-29)).abs() < f64::EPSILON);
+        assert!((word_3.cus - cus_raw as f64 * 2f64.powi(-29)).abs() < f64::EPSILON);
+        assert!((word_3.crc - crc_raw as f64 * 2f64.powi(-5)).abs() < f64::EPSILON);
+        assert!((word_3.crs - crs_raw as f64 * 2f64.powi(-5)).abs() < f64::EPSILON);
+        assert_eq!(word_3.sisa_e1_e5b, sisa_e1_e5b);
+    }
+
+    #[test]
+    fn clock_word_decodes_satellite_id_and_clock_terms() {
+        let mut payload = 0_u128;
+        let iodnav = 0x12C_u16;
+        let svid = 24_u8;
+        let cic_raw = -432_i64;
+        let cis_raw = 321_i64;
+        let t0c_raw = 1_234_u16;
+        let af0_raw = -0x12_345_i64;
+        let af1_raw = 0x1A_55_u32 as i64;
+        let af2_raw = -0x11_i64;
+
+        set_bits(&mut payload, 1, 6, 4);
+        set_bits(&mut payload, 7, 10, iodnav as u128);
+        set_bits(&mut payload, 17, 6, svid as u128);
+        set_bits(&mut payload, 23, 16, encode_signed(cic_raw, 16));
+        set_bits(&mut payload, 39, 16, encode_signed(cis_raw, 16));
+        set_bits(&mut payload, 55, 14, t0c_raw as u128);
+        set_bits(&mut payload, 69, 31, encode_signed(af0_raw, 31));
+        set_bits(&mut payload, 100, 21, encode_signed(af1_raw, 21));
+        set_bits(&mut payload, 121, 6, encode_signed(af2_raw, 6));
+
+        let word = decode_galileo_inav_clock_word(payload).expect("word type 4");
+
+        assert_eq!(word.iodnav, iodnav);
+        assert_eq!(word.svid, svid);
+        assert!((word.cic - cic_raw as f64 * 2f64.powi(-29)).abs() < f64::EPSILON);
+        assert!((word.cis - cis_raw as f64 * 2f64.powi(-29)).abs() < f64::EPSILON);
+        assert!((word.clock.t0c_s - t0c_raw as f64 * 60.0).abs() < f64::EPSILON);
+        assert!((word.clock.af0 - af0_raw as f64 * 2f64.powi(-34)).abs() < f64::EPSILON);
+        assert!((word.clock.af1 - af1_raw as f64 * 2f64.powi(-46)).abs() < f64::EPSILON);
+        assert!((word.clock.af2 - af2_raw as f64 * 2f64.powi(-59)).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn status_word_decodes_gst_health_and_group_delay() {
+        let mut payload = 0_u128;
+        let ai0_raw = 321_u16;
+        let ai1_raw = -211_i64;
+        let ai2_raw = 0x123_i64;
+        let bgd_e1_e5a_raw = -44_i64;
+        let bgd_e1_e5b_raw = 55_i64;
+        let week = 2_048_u16;
+        let tow = 345_678_u32;
+
+        set_bits(&mut payload, 1, 6, 5);
+        set_bits(&mut payload, 7, 11, ai0_raw as u128);
+        set_bits(&mut payload, 18, 11, encode_signed(ai1_raw, 11));
+        set_bits(&mut payload, 29, 14, encode_signed(ai2_raw, 14));
+        set_bits(&mut payload, 43, 1, 1);
+        set_bits(&mut payload, 45, 1, 1);
+        set_bits(&mut payload, 47, 1, 1);
+        set_bits(&mut payload, 48, 10, encode_signed(bgd_e1_e5a_raw, 10));
+        set_bits(&mut payload, 58, 10, encode_signed(bgd_e1_e5b_raw, 10));
+        set_bits(&mut payload, 68, 2, 2);
+        set_bits(&mut payload, 70, 2, 1);
+        set_bits(&mut payload, 72, 1, 0);
+        set_bits(&mut payload, 73, 1, 1);
+        set_bits(&mut payload, 74, 12, week as u128);
+        set_bits(&mut payload, 86, 20, tow as u128);
+
+        let word = decode_galileo_inav_status_word(payload).expect("word type 5");
+
+        assert!((word.ionosphere.ai0 - ai0_raw as f64 * 2f64.powi(-2)).abs() < f64::EPSILON);
+        assert!((word.ionosphere.ai1 - ai1_raw as f64 * 2f64.powi(-8)).abs() < f64::EPSILON);
+        assert!((word.ionosphere.ai2 - ai2_raw as f64 * 2f64.powi(-15)).abs() < f64::EPSILON);
+        assert!(word.ionosphere.disturbance_flags.region_1);
+        assert!(!word.ionosphere.disturbance_flags.region_2);
+        assert!(word.ionosphere.disturbance_flags.region_3);
+        assert!(!word.ionosphere.disturbance_flags.region_4);
+        assert!(word.ionosphere.disturbance_flags.region_5);
+        assert!((word.bgd_e1_e5a_s - bgd_e1_e5a_raw as f64 * 2f64.powi(-32)).abs() < f64::EPSILON);
+        assert!((word.bgd_e1_e5b_s - bgd_e1_e5b_raw as f64 * 2f64.powi(-32)).abs() < f64::EPSILON);
+        assert_eq!(word.signal_health.e5b_signal_health, 2);
+        assert_eq!(word.signal_health.e1b_signal_health, 1);
+        assert!(word.signal_health.e5b_data_valid);
+        assert!(!word.signal_health.e1b_data_valid);
+        assert_eq!(word.gst.week, week);
+        assert_eq!(word.gst.tow_s, tow);
+    }
+}
