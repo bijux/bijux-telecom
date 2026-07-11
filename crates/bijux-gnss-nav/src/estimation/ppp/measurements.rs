@@ -16,12 +16,16 @@ pub struct IonoFreeObservation {
     pub phase_m: f64,
     pub f1_hz: f64,
     pub f2_hz: f64,
+    pub band_1: SignalBand,
+    pub band_2: SignalBand,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct WideLaneObservation {
     pub cycles: f64,
     pub variance: f64,
+    pub band_1: SignalBand,
+    pub band_2: SignalBand,
 }
 
 #[derive(Clone, Copy)]
@@ -402,7 +406,14 @@ pub fn iono_free_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<IonoFreeObservat
     let phi1_m = pair.first.carrier_phase_cycles.0 * lambda1;
     let phi2_m = pair.second.carrier_phase_cycles.0 * lambda2;
     let if_phase = (f1_2 * phi1_m - f2_2 * phi2_m) / denom;
-    Some(IonoFreeObservation { code_m: if_code, phase_m: if_phase, f1_hz: f1, f2_hz: f2 })
+    Some(IonoFreeObservation {
+        code_m: if_code,
+        phase_m: if_phase,
+        f1_hz: f1,
+        f2_hz: f2,
+        band_1: pair.first.signal_id.band,
+        band_2: pair.second.signal_id.band,
+    })
 }
 
 pub fn wide_lane_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<WideLaneObservation> {
@@ -416,7 +427,12 @@ pub fn wide_lane_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<WideLaneObservat
     let lambda_wl = SPEED_OF_LIGHT_MPS / (f1 - f2).abs().max(1.0);
     let wl_cycles = (phi1_m - phi2_m) / lambda_wl;
     let variance = pair.first.carrier_phase_var_cycles2 + pair.second.carrier_phase_var_cycles2;
-    Some(WideLaneObservation { cycles: wl_cycles, variance })
+    Some(WideLaneObservation {
+        cycles: wl_cycles,
+        variance,
+        band_1: pair.first.signal_id.band,
+        band_2: pair.second.signal_id.band,
+    })
 }
 
 pub fn ratio_fix(float: f64, variance: f64) -> (f64, i64) {
@@ -448,7 +464,9 @@ fn select_dual_frequency_pair(
 
 fn preferred_dual_frequency_pairs(sat: SatId) -> &'static [(SignalBand, SignalBand)] {
     match sat.constellation {
-        bijux_gnss_core::api::Constellation::Gps => &[(SignalBand::L1, SignalBand::L2)],
+        bijux_gnss_core::api::Constellation::Gps => {
+            &[(SignalBand::L1, SignalBand::L2), (SignalBand::L1, SignalBand::L5)]
+        }
         bijux_gnss_core::api::Constellation::Galileo => &[(SignalBand::E1, SignalBand::E5)],
         _ => &[],
     }
