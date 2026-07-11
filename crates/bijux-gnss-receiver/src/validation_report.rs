@@ -937,7 +937,63 @@ mod tests {
         .expect("validation report");
         assert!(report.horiz_error_m.rms <= 1e-6);
         assert!(report.vert_error_m.rms <= 1e-6);
+        assert!(report.error_3d_m.rms <= 1e-6);
+        assert_eq!(report.reference_position_errors.len(), 1);
         assert_eq!(report.integrity.len(), 1);
+    }
+
+    #[test]
+    fn validation_report_emits_enu_reference_components() {
+        let (x_ref, y_ref, z_ref) = bijux_gnss_core::api::lla_to_ecef(0.0, 0.0, 0.0);
+        let solution = NavSolutionEpoch {
+            ecef_x_m: bijux_gnss_core::api::Meters(x_ref + 3.0),
+            ecef_y_m: bijux_gnss_core::api::Meters(y_ref + 1.0),
+            ecef_z_m: bijux_gnss_core::api::Meters(z_ref + 2.0),
+            sigma_h_m: Some(bijux_gnss_core::api::Meters(2.0)),
+            sigma_v_m: Some(bijux_gnss_core::api::Meters(3.0)),
+            ..fixture_solution(7, 1.0, 0.5, 4)
+        };
+        let reference = ValidationReferenceEpoch {
+            epoch_idx: 7,
+            t_rx_s: Some(7.0),
+            latitude_deg: 0.0,
+            longitude_deg: 0.0,
+            altitude_m: 0.0,
+            ecef_x_m: Some(x_ref),
+            ecef_y_m: Some(y_ref),
+            ecef_z_m: Some(z_ref),
+            vel_x_mps: None,
+            vel_y_mps: None,
+            vel_z_mps: None,
+        };
+
+        let report = build_validation_report(
+            &[],
+            &[],
+            &[solution],
+            &[reference],
+            1.0,
+            false,
+            Vec::new(),
+            ValidationSciencePolicy::default(),
+        )
+        .expect("validation report");
+
+        let error = report.reference_position_errors.first().expect("reference position error");
+        assert_eq!(error.epoch_idx, 7);
+        assert!((error.east_m - 1.0).abs() < 1.0e-12);
+        assert!((error.north_m - 2.0).abs() < 1.0e-12);
+        assert!((error.up_m - 3.0).abs() < 1.0e-12);
+        assert!((error.horiz_m - 5.0_f64.sqrt()).abs() < 1.0e-12);
+        assert!((error.vert_m - 3.0).abs() < 1.0e-12);
+        assert!((error.error_3d_m - 14.0_f64.sqrt()).abs() < 1.0e-12);
+        assert!((report.east_error_m.rms - 1.0).abs() < 1.0e-12);
+        assert!((report.north_error_m.rms - 2.0).abs() < 1.0e-12);
+        assert!((report.up_error_m.rms - 3.0).abs() < 1.0e-12);
+        assert!((report.horiz_error_m.rms - 5.0_f64.sqrt()).abs() < 1.0e-12);
+        assert!((report.vert_error_m.rms - 3.0).abs() < 1.0e-12);
+        assert!((report.error_3d_m.rms - 14.0_f64.sqrt()).abs() < 1.0e-12);
+        assert!(report.nees_mean.is_some());
     }
 
     #[derive(Debug, Deserialize)]
