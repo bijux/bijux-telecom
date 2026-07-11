@@ -1,0 +1,593 @@
+{
+  "scenario_id": "four-satellite-pvt-readiness",
+  "sample_rate_hz": 1023000.0,
+  "hatch_window": 10,
+  "reference_receive_time_s": 100000.0,
+  "satellites": [
+    {
+      "sat": {
+        "constellation": "Gps",
+        "prn": 3
+      },
+      "injected_doppler_hz": -250.0,
+      "expected_measured_doppler_hz": -250.0,
+      "injected_code_phase_chips": 593.1465602097451,
+      "injected_cn0_db_hz": 52.0,
+      "epoch_count": 3,
+      "carrier_phase_arcs_evaluated": 1,
+      "notes": [],
+      "epochs": [
+        {
+          "artifact_id": "obs-epoch-0000000000",
+          "epoch_id": "epoch:0|sample:0|t:0.000000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.242:0.000000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-07:L1:Ca:26557101.392:0.000000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-19:L1:Ca:26559974.015:0.000000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-23:L1:Ca:26555538.781:0.000000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0",
+          "epoch_index": 0,
+          "sample_index": 0,
+          "observation_status": "Accepted",
+          "observation_reject_reasons": [],
+          "pseudorange_m": {
+            "truth": 26555559.241673045,
+            "measured": 26555559.241673045,
+            "sigma": 73.26306402737048,
+            "residual": 0.0
+          },
+          "carrier_phase_cycles": {
+            "truth": 0.0,
+            "measured": 0.0,
+            "sigma": 0.05,
+            "residual": 0.0
+          },
+          "carrier_phase_arc_start_sample_index": 0,
+          "carrier_phase_arc_bias_cycles": 0.0,
+          "doppler_hz": {
+            "truth": -250.0,
+            "measured": -250.0,
+            "sigma": 0.25,
+            "residual": 0.0
+          },
+          "cn0_db_hz": {
+            "truth": 52.0,
+            "measured": 52.0,
+            "sigma": 0.75,
+            "residual": 0.0
+          }
+        },
+        {
+          "artifact_id": "obs-epoch-0000000001",
+          "epoch_id": "epoch:1|sample:1023|t:0.001000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.218:-0.250000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-07:L1:Ca:26557101.380:-0.125000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-19:L1:Ca:26559974.027:0.125000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-23:L1:Ca:26555538.805:0.250000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0",
+          "epoch_index": 1,
+          "sample_index": 1023,
+          "observation_status": "Accepted",
+          "observation_reject_reasons": [],
+          "pseudorange_m": {
+            "truth": 26555559.24129212,
+            "measured": 26555559.217886336,
+            "sigma": 73.26306402737048,
+            "residual": -0.023405782878398895
+          },
+          "carrier_phase_cycles": {
+            "truth": -0.25,
+            "measured": -0.25,
+            "sigma": 0.05,
+            "residual": 0.0
+          },
+          "carrier_phase_arc_start_sample_index": 0,
+          "carrier_phase_arc_bias_cycles": 0.0,
+          "doppler_hz": {
+            "truth": -250.0,
+            "measured": -250.0,
+            "sigma": 0.25,
+            "residual": 0.0
+          },
+          "cn0_db_hz": {
+            "truth": 52.0,
+            "measured": 52.0,
+            "sigma": 0.75,
+            "residual": 0.0
+          }
+        },
+        {
+          "artifact_id": "obs-epoch-0000000002",
+          "epoch_id": "epoch:2|sample:2046|t:0.002000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.194:-0.500000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-07:L1:Ca:26557101.368:-0.250000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-19:L1:Ca:26559974.039:0.250000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-23:L1:Ca:26555538.829:0.500000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0",
+          "epoch_index": 2,
+          "sample_index": 2046,
+          "observation_status": "Accepted",
+          "observation_reject_reasons": [],
+          "pseudorange_m": {
+            "truth": 26555559.240911186,
+            "measured": 26555559.194099627,
+            "sigma": 73.26306402737048,
+            "residual": -0.046811558306217194
+          },
+          "carrier_phase_cycles": {
+            "truth": -0.5,
+            "measured": -0.5,
+            "sigma": 0.05,
+            "residual": 0.0
+          },
+          "carrier_phase_arc_start_sample_index": 0,
+          "carrier_phase_arc_bias_cycles": 0.0,
+          "doppler_hz": {
+            "truth": -250.0,
+            "measured": -250.0,
+            "sigma": 0.25,
+            "residual": 0.0
+          },
+          "cn0_db_hz": {
+            "truth": 52.0,
+            "measured": 52.0,
+            "sigma": 0.75,
+            "residual": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "sat": {
+        "constellation": "Gps",
+        "prn": 7
+      },
+      "injected_doppler_hz": -125.0,
+      "expected_measured_doppler_hz": -125.0,
+      "injected_code_phase_chips": 598.4089342235675,
+      "injected_cn0_db_hz": 52.0,
+      "epoch_count": 3,
+      "carrier_phase_arcs_evaluated": 1,
+      "notes": [],
+      "epochs": [
+        {
+          "artifact_id": "obs-epoch-0000000000",
+          "epoch_id": "epoch:0|sample:0|t:0.000000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.242:0.000000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-07:L1:Ca:26557101.392:0.000000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-19:L1:Ca:26559974.015:0.000000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-23:L1:Ca:26555538.781:0.000000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0",
+          "epoch_index": 0,
+          "sample_index": 0,
+          "observation_status": "Accepted",
+          "observation_reject_reasons": [],
+          "pseudorange_m": {
+            "truth": 26557101.392250285,
+            "measured": 26557101.39225029,
+            "sigma": 73.26306402737048,
+            "residual": 3.725290298461914e-9
+          },
+          "carrier_phase_cycles": {
+            "truth": 0.0,
+            "measured": 0.0,
+            "sigma": 0.05,
+            "residual": 0.0
+          },
+          "carrier_phase_arc_start_sample_index": 0,
+          "carrier_phase_arc_bias_cycles": 0.0,
+          "doppler_hz": {
+            "truth": -125.0,
+            "measured": -125.0,
+            "sigma": 0.25,
+            "residual": 0.0
+          },
+          "cn0_db_hz": {
+            "truth": 52.0,
+            "measured": 52.0,
+            "sigma": 0.75,
+            "residual": 0.0
+          }
+        },
+        {
+          "artifact_id": "obs-epoch-0000000001",
+          "epoch_id": "epoch:1|sample:1023|t:0.001000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.218:-0.250000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-07:L1:Ca:26557101.380:-0.125000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-19:L1:Ca:26559974.027:0.125000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-23:L1:Ca:26555538.805:0.250000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0",
+          "epoch_index": 1,
+          "sample_index": 1023,
+          "observation_status": "Accepted",
+          "observation_reject_reasons": [],
+          "pseudorange_m": {
+            "truth": 26557101.39245241,
+            "measured": 26557101.380356934,
+            "sigma": 73.26306402737048,
+            "residual": -0.012095477432012558
+          },
+          "carrier_phase_cycles": {
+            "truth": -0.125,
+            "measured": -0.125,
+            "sigma": 0.05,
+            "residual": 0.0
+          },
+          "carrier_phase_arc_start_sample_index": 0,
+          "carrier_phase_arc_bias_cycles": 0.0,
+          "doppler_hz": {
+            "truth": -125.0,
+            "measured": -125.0,
+            "sigma": 0.25,
+            "residual": 0.0
+          },
+          "cn0_db_hz": {
+            "truth": 52.0,
+            "measured": 52.0,
+            "sigma": 0.75,
+            "residual": 0.0
+          }
+        },
+        {
+          "artifact_id": "obs-epoch-0000000002",
+          "epoch_id": "epoch:2|sample:2046|t:0.002000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.194:-0.500000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-07:L1:Ca:26557101.368:-0.250000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-19:L1:Ca:26559974.039:0.250000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-23:L1:Ca:26555538.829:0.500000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0",
+          "epoch_index": 2,
+          "sample_index": 2046,
+          "observation_status": "Accepted",
+          "observation_reject_reasons": [],
+          "pseudorange_m": {
+            "truth": 26557101.392654542,
+            "measured": 26557101.36846358,
+            "sigma": 73.26306402737048,
+            "residual": -0.024190962314605713
+          },
+          "carrier_phase_cycles": {
+            "truth": -0.25,
+            "measured": -0.25,
+            "sigma": 0.05,
+            "residual": 0.0
+          },
+          "carrier_phase_arc_start_sample_index": 0,
+          "carrier_phase_arc_bias_cycles": 0.0,
+          "doppler_hz": {
+            "truth": -125.0,
+            "measured": -125.0,
+            "sigma": 0.25,
+            "residual": 0.0
+          },
+          "cn0_db_hz": {
+            "truth": 52.0,
+            "measured": 52.0,
+            "sigma": 0.75,
+            "residual": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "sat": {
+        "constellation": "Gps",
+        "prn": 11
+      },
+      "injected_doppler_hz": 0.0,
+      "expected_measured_doppler_hz": 0.0,
+      "injected_code_phase_chips": 618.0043865136831,
+      "injected_cn0_db_hz": 52.0,
+      "epoch_count": 3,
+      "carrier_phase_arcs_evaluated": 1,
+      "notes": [],
+      "epochs": [
+        {
+          "artifact_id": "obs-epoch-0000000000",
+          "epoch_id": "epoch:0|sample:0|t:0.000000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.242:0.000000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-07:L1:Ca:26557101.392:0.000000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-19:L1:Ca:26559974.015:0.000000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-23:L1:Ca:26555538.781:0.000000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0",
+          "epoch_index": 0,
+          "sample_index": 0,
+          "observation_status": "Accepted",
+          "observation_reject_reasons": [],
+          "pseudorange_m": {
+            "truth": 26562843.88375339,
+            "measured": 26562843.88375339,
+            "sigma": 73.26306402737048,
+            "residual": 0.0
+          },
+          "carrier_phase_cycles": {
+            "truth": 0.0,
+            "measured": 0.0,
+            "sigma": 0.05,
+            "residual": 0.0
+          },
+          "carrier_phase_arc_start_sample_index": 0,
+          "carrier_phase_arc_bias_cycles": 0.0,
+          "doppler_hz": {
+            "truth": 0.0,
+            "measured": 0.0,
+            "sigma": 0.25,
+            "residual": 0.0
+          },
+          "cn0_db_hz": {
+            "truth": 52.0,
+            "measured": 52.0,
+            "sigma": 0.75,
+            "residual": 0.0
+          }
+        },
+        {
+          "artifact_id": "obs-epoch-0000000001",
+          "epoch_id": "epoch:1|sample:1023|t:0.001000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.218:-0.250000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-07:L1:Ca:26557101.380:-0.125000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-19:L1:Ca:26559974.027:0.125000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-23:L1:Ca:26555538.805:0.250000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0",
+          "epoch_index": 1,
+          "sample_index": 1023,
+          "observation_status": "Accepted",
+          "observation_reject_reasons": [],
+          "pseudorange_m": {
+            "truth": 26562843.883958995,
+            "measured": 26562843.88375339,
+            "sigma": 73.26306402737048,
+            "residual": -0.00020560622215270996
+          },
+          "carrier_phase_cycles": {
+            "truth": 0.0,
+            "measured": 0.0,
+            "sigma": 0.05,
+            "residual": 0.0
+          },
+          "carrier_phase_arc_start_sample_index": 0,
+          "carrier_phase_arc_bias_cycles": 0.0,
+          "doppler_hz": {
+            "truth": 0.0,
+            "measured": 0.0,
+            "sigma": 0.25,
+            "residual": 0.0
+          },
+          "cn0_db_hz": {
+            "truth": 52.0,
+            "measured": 52.0,
+            "sigma": 0.75,
+            "residual": 0.0
+          }
+        },
+        {
+          "artifact_id": "obs-epoch-0000000002",
+          "epoch_id": "epoch:2|sample:2046|t:0.002000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.194:-0.500000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-07:L1:Ca:26557101.368:-0.250000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-19:L1:Ca:26559974.039:0.250000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-23:L1:Ca:26555538.829:0.500000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0",
+          "epoch_index": 2,
+          "sample_index": 2046,
+          "observation_status": "Accepted",
+          "observation_reject_reasons": [],
+          "pseudorange_m": {
+            "truth": 26562843.8841646,
+            "measured": 26562843.88375339,
+            "sigma": 73.26306402737048,
+            "residual": -0.0004112124443054199
+          },
+          "carrier_phase_cycles": {
+            "truth": 0.0,
+            "measured": 0.0,
+            "sigma": 0.05,
+            "residual": 0.0
+          },
+          "carrier_phase_arc_start_sample_index": 0,
+          "carrier_phase_arc_bias_cycles": 0.0,
+          "doppler_hz": {
+            "truth": 0.0,
+            "measured": 0.0,
+            "sigma": 0.25,
+            "residual": 0.0
+          },
+          "cn0_db_hz": {
+            "truth": 52.0,
+            "measured": 52.0,
+            "sigma": 0.75,
+            "residual": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "sat": {
+        "constellation": "Gps",
+        "prn": 19
+      },
+      "injected_doppler_hz": 125.0,
+      "expected_measured_doppler_hz": 125.0,
+      "injected_code_phase_chips": 608.211358895438,
+      "injected_cn0_db_hz": 52.0,
+      "epoch_count": 3,
+      "carrier_phase_arcs_evaluated": 1,
+      "notes": [],
+      "epochs": [
+        {
+          "artifact_id": "obs-epoch-0000000000",
+          "epoch_id": "epoch:0|sample:0|t:0.000000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.242:0.000000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-07:L1:Ca:26557101.392:0.000000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-19:L1:Ca:26559974.015:0.000000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-23:L1:Ca:26555538.781:0.000000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0",
+          "epoch_index": 0,
+          "sample_index": 0,
+          "observation_status": "Accepted",
+          "observation_reject_reasons": [],
+          "pseudorange_m": {
+            "truth": 26559974.014915723,
+            "measured": 26559974.014915723,
+            "sigma": 73.26306402737048,
+            "residual": 0.0
+          },
+          "carrier_phase_cycles": {
+            "truth": 0.0,
+            "measured": 0.0,
+            "sigma": 0.05,
+            "residual": 0.0
+          },
+          "carrier_phase_arc_start_sample_index": 0,
+          "carrier_phase_arc_bias_cycles": 0.0,
+          "doppler_hz": {
+            "truth": 125.0,
+            "measured": 125.0,
+            "sigma": 0.25,
+            "residual": 0.0
+          },
+          "cn0_db_hz": {
+            "truth": 52.0,
+            "measured": 52.0,
+            "sigma": 0.75,
+            "residual": 0.0
+          }
+        },
+        {
+          "artifact_id": "obs-epoch-0000000001",
+          "epoch_id": "epoch:1|sample:1023|t:0.001000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.218:-0.250000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-07:L1:Ca:26557101.380:-0.125000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-19:L1:Ca:26559974.027:0.125000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-23:L1:Ca:26555538.805:0.250000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0",
+          "epoch_index": 1,
+          "sample_index": 1023,
+          "observation_status": "Accepted",
+          "observation_reject_reasons": [],
+          "pseudorange_m": {
+            "truth": 26559974.014910564,
+            "measured": 26559974.026809078,
+            "sigma": 73.26306402737048,
+            "residual": 0.01189851388335228
+          },
+          "carrier_phase_cycles": {
+            "truth": 0.125,
+            "measured": 0.125,
+            "sigma": 0.05,
+            "residual": 0.0
+          },
+          "carrier_phase_arc_start_sample_index": 0,
+          "carrier_phase_arc_bias_cycles": 0.0,
+          "doppler_hz": {
+            "truth": 125.0,
+            "measured": 125.0,
+            "sigma": 0.25,
+            "residual": 0.0
+          },
+          "cn0_db_hz": {
+            "truth": 52.0,
+            "measured": 52.0,
+            "sigma": 0.75,
+            "residual": 0.0
+          }
+        },
+        {
+          "artifact_id": "obs-epoch-0000000002",
+          "epoch_id": "epoch:2|sample:2046|t:0.002000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.194:-0.500000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-07:L1:Ca:26557101.368:-0.250000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-19:L1:Ca:26559974.039:0.250000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-23:L1:Ca:26555538.829:0.500000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0",
+          "epoch_index": 2,
+          "sample_index": 2046,
+          "observation_status": "Accepted",
+          "observation_reject_reasons": [],
+          "pseudorange_m": {
+            "truth": 26559974.014905408,
+            "measured": 26559974.038702432,
+            "sigma": 73.26306402737048,
+            "residual": 0.02379702404141426
+          },
+          "carrier_phase_cycles": {
+            "truth": 0.25,
+            "measured": 0.25,
+            "sigma": 0.05,
+            "residual": 0.0
+          },
+          "carrier_phase_arc_start_sample_index": 0,
+          "carrier_phase_arc_bias_cycles": 0.0,
+          "doppler_hz": {
+            "truth": 125.0,
+            "measured": 125.0,
+            "sigma": 0.25,
+            "residual": 0.0
+          },
+          "cn0_db_hz": {
+            "truth": 52.0,
+            "measured": 52.0,
+            "sigma": 0.75,
+            "residual": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "sat": {
+        "constellation": "Gps",
+        "prn": 23
+      },
+      "injected_doppler_hz": 250.0,
+      "expected_measured_doppler_hz": 250.0,
+      "injected_code_phase_chips": 593.076742507692,
+      "injected_cn0_db_hz": 52.0,
+      "epoch_count": 3,
+      "carrier_phase_arcs_evaluated": 1,
+      "notes": [],
+      "epochs": [
+        {
+          "artifact_id": "obs-epoch-0000000000",
+          "epoch_id": "epoch:0|sample:0|t:0.000000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.242:0.000000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-07:L1:Ca:26557101.392:0.000000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-19:L1:Ca:26559974.015:0.000000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0;Gps-23:L1:Ca:26555538.781:0.000000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0",
+          "epoch_index": 0,
+          "sample_index": 0,
+          "observation_status": "Accepted",
+          "observation_reject_reasons": [],
+          "pseudorange_m": {
+            "truth": 26555538.781437945,
+            "measured": 26555538.78143794,
+            "sigma": 73.26306402737048,
+            "residual": -3.725290298461914e-9
+          },
+          "carrier_phase_cycles": {
+            "truth": 0.0,
+            "measured": 0.0,
+            "sigma": 0.05,
+            "residual": 0.0
+          },
+          "carrier_phase_arc_start_sample_index": 0,
+          "carrier_phase_arc_bias_cycles": 0.0,
+          "doppler_hz": {
+            "truth": 250.0,
+            "measured": 250.0,
+            "sigma": 0.25,
+            "residual": 0.0
+          },
+          "cn0_db_hz": {
+            "truth": 52.0,
+            "measured": 52.0,
+            "sigma": 0.75,
+            "residual": 0.0
+          }
+        },
+        {
+          "artifact_id": "obs-epoch-0000000001",
+          "epoch_id": "epoch:1|sample:1023|t:0.001000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.218:-0.250000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-07:L1:Ca:26557101.380:-0.125000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-19:L1:Ca:26559974.027:0.125000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-23:L1:Ca:26555538.805:0.250000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0",
+          "epoch_index": 1,
+          "sample_index": 1023,
+          "observation_status": "Accepted",
+          "observation_reject_reasons": [],
+          "pseudorange_m": {
+            "truth": 26555538.781804938,
+            "measured": 26555538.80522465,
+            "sigma": 73.26306402737048,
+            "residual": 0.023419711738824844
+          },
+          "carrier_phase_cycles": {
+            "truth": 0.25,
+            "measured": 0.25,
+            "sigma": 0.05,
+            "residual": 0.0
+          },
+          "carrier_phase_arc_start_sample_index": 0,
+          "carrier_phase_arc_bias_cycles": 0.0,
+          "doppler_hz": {
+            "truth": 250.0,
+            "measured": 250.0,
+            "sigma": 0.25,
+            "residual": 0.0
+          },
+          "cn0_db_hz": {
+            "truth": 52.0,
+            "measured": 52.0,
+            "sigma": 0.75,
+            "residual": 0.0
+          }
+        },
+        {
+          "artifact_id": "obs-epoch-0000000002",
+          "epoch_id": "epoch:2|sample:2046|t:0.002000000|decision:Accepted|sats:Gps-03:L1:Ca:26555559.194:-0.500000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-07:L1:Ca:26557101.368:-0.250000:-125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-11:L1:Ca:26562843.884:0.000000:0.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-19:L1:Ca:26559974.039:0.250000:125.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0;Gps-23:L1:Ca:26555538.829:0.500000:250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:continuous:0:0",
+          "epoch_index": 2,
+          "sample_index": 2046,
+          "observation_status": "Accepted",
+          "observation_reject_reasons": [],
+          "pseudorange_m": {
+            "truth": 26555538.78217193,
+            "measured": 26555538.82901136,
+            "sigma": 73.26306402737048,
+            "residual": 0.04683942720293999
+          },
+          "carrier_phase_cycles": {
+            "truth": 0.5,
+            "measured": 0.5,
+            "sigma": 0.05,
+            "residual": 0.0
+          },
+          "carrier_phase_arc_start_sample_index": 0,
+          "carrier_phase_arc_bias_cycles": 0.0,
+          "doppler_hz": {
+            "truth": 250.0,
+            "measured": 250.0,
+            "sigma": 0.25,
+            "residual": 0.0
+          },
+          "cn0_db_hz": {
+            "truth": 52.0,
+            "measured": 52.0,
+            "sigma": 0.75,
+            "residual": 0.0
+          }
+        }
+      ]
+    }
+  ]
+}
