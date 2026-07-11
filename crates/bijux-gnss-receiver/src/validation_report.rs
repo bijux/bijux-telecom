@@ -1498,6 +1498,79 @@ mod tests {
         assert!(!report.ppp_readiness.prerequisites_met);
     }
 
+    #[test]
+    fn validation_report_summarizes_geometry_free_dynamics() {
+        let report = build_validation_report(
+            &[],
+            &[
+                dual_frequency_epoch(
+                    50,
+                    vec![
+                        dual_frequency_satellite_with_phase(
+                            SignalBand::L1,
+                            SignalCode::Ca,
+                            22_000_000.0,
+                        ),
+                        dual_frequency_satellite_with_phase(
+                            SignalBand::L2,
+                            SignalCode::Py,
+                            21_999_999.50,
+                        ),
+                    ],
+                ),
+                dual_frequency_epoch(
+                    51,
+                    vec![
+                        dual_frequency_satellite_with_phase(
+                            SignalBand::L1,
+                            SignalCode::Ca,
+                            22_000_000.0,
+                        ),
+                        dual_frequency_satellite_with_phase(
+                            SignalBand::L2,
+                            SignalCode::Py,
+                            21_999_999.46,
+                        ),
+                    ],
+                ),
+                dual_frequency_epoch(
+                    52,
+                    vec![
+                        dual_frequency_satellite_with_phase(
+                            SignalBand::L1,
+                            SignalCode::Ca,
+                            22_000_000.0,
+                        ),
+                        dual_frequency_satellite_with_phase(
+                            SignalBand::L2,
+                            SignalCode::Py,
+                            21_999_999.20,
+                        ),
+                    ],
+                ),
+            ],
+            &[
+                fixture_solution(50, 1.0, 0.5, 4),
+                fixture_solution(51, 1.0, 0.5, 4),
+                fixture_solution(52, 1.0, 0.5, 4),
+            ],
+            &[],
+            1.0,
+            true,
+            Vec::new(),
+            ValidationSciencePolicy::default(),
+        )
+        .expect("validation report");
+
+        assert_eq!(report.geometry_free.observations, 3);
+        assert_eq!(report.geometry_free.complete_pairs, 3);
+        assert_eq!(report.geometry_free.unavailable, 0);
+        assert_eq!(report.geometry_free.insufficient_history, 1);
+        assert_eq!(report.geometry_free.ionosphere_drift, 1);
+        assert_eq!(report.geometry_free.cycle_slip_suspects, 1);
+        assert!(report.geometry_free.max_abs_delta_m.expect("max delta") > 0.2);
+    }
+
     #[derive(Debug, Deserialize)]
     struct ScienceFixtureCase {
         name: String,
@@ -1645,6 +1718,17 @@ mod tests {
                 ..ObsMetadata::default()
             },
         }
+    }
+
+    fn dual_frequency_satellite_with_phase(
+        band: SignalBand,
+        code: SignalCode,
+        phase_m: f64,
+    ) -> ObsSatellite {
+        let mut satellite = dual_frequency_satellite(band, code, true, true);
+        let wavelength_m = 299_792_458.0 / satellite.metadata.signal.carrier_hz.value();
+        satellite.carrier_phase_cycles = Cycles(phase_m / wavelength_m);
+        satellite
     }
 
     fn fixture_track(epoch_idx: u64, lock_ratio: f64) -> TrackingResult {
