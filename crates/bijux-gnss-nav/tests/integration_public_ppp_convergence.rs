@@ -11,8 +11,8 @@ use support::public_ppp_case::{
 fn public_ab43_ppp_run_reports_convergence_metrics() {
     let diagnostics = diagnose_public_ab43_ppp_epochs(public_ab43_ppp_config())
         .expect("diagnose AB43 public PPP epochs");
-    let solutions = solve_public_ab43_ppp(public_ab43_ppp_config())
-        .expect("solve AB43 public PPP case");
+    let solutions =
+        solve_public_ab43_ppp(public_ab43_ppp_config()).expect("solve AB43 public PPP case");
     let metrics = public_ppp_convergence_metrics(&solutions)
         .expect("compute AB43 public PPP convergence metrics");
 

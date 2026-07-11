@@ -731,8 +731,8 @@ mod tests {
         current.toc_s = 603_000.0;
 
         let ephemerides = [stale.clone(), current.clone()];
-        let selected = select_best_ephemeris(&ephemerides, current.sat, 15.0)
-            .expect("select best ephemeris");
+        let selected =
+            select_best_ephemeris(&ephemerides, current.sat, 15.0).expect("select best ephemeris");
 
         assert_eq!(selected.toe_s, current.toe_s);
         assert_eq!(selected.toc_s, current.toc_s);

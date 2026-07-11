@@ -532,8 +532,8 @@ fn preferred_dual_frequency_pairs(sat: SatId) -> &'static [(SignalBand, SignalBa
 #[cfg(test)]
 mod tests {
     use super::{
-        iono_free_code_observation_from_obs, iono_free_from_obs, iono_free_phase_observation_from_obs,
-        wide_lane_from_obs, SPEED_OF_LIGHT_MPS,
+        iono_free_code_observation_from_obs, iono_free_from_obs,
+        iono_free_phase_observation_from_obs, wide_lane_from_obs, SPEED_OF_LIGHT_MPS,
     };
     use bijux_gnss_core::api::{
         signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l5, Constellation, Cycles,

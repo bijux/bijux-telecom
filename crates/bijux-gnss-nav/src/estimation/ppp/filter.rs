@@ -7,8 +7,7 @@ use bijux_gnss_core::api::{Constellation, ObsEpoch, ObsSatellite, SatId, SigId};
 use super::config::{PppConfig, PppFilter, PppIndices, SPEED_OF_LIGHT_MPS};
 use super::measurements::{
     iono_free_code_observation_from_obs, iono_free_phase_observation_from_obs,
-    PppIonoFreeCodeMeasurement, PppIonoFreePhaseMeasurement,
-    PppPhaseMeasurement,
+    PppIonoFreeCodeMeasurement, PppIonoFreePhaseMeasurement, PppPhaseMeasurement,
 };
 use super::models::{PppCodeMeasurement, PppProcessModel};
 use super::state::estimate_sigma;
@@ -403,9 +402,7 @@ impl PppFilter {
     }
 }
 
-fn iono_free_satellite_representatives<'a>(
-    sats: &[&'a ObsSatellite],
-) -> Vec<&'a ObsSatellite> {
+fn iono_free_satellite_representatives<'a>(sats: &[&'a ObsSatellite]) -> Vec<&'a ObsSatellite> {
     let mut seen = BTreeSet::new();
     let mut representatives = Vec::new();
     for sat in sats {
@@ -462,12 +459,11 @@ mod tests {
     use super::{iono_free_satellite_representatives, PppFilter};
     use crate::api::{
         BroadcastProductsProvider, GpsEphemeris, GpsSatState, GpsSatelliteClockCorrection,
-        ProductDiagnostics, ProductsProvider, PppConfig,
+        PppConfig, ProductDiagnostics, ProductsProvider,
     };
     use bijux_gnss_core::api::{
         signal_spec_gps_l1_ca, signal_spec_gps_l2_py, Constellation, Cycles, Hertz, LockFlags,
-        Meters, ObsMetadata, ObsSatellite, ObservationStatus, SatId, SigId, SignalBand,
-        SignalCode,
+        Meters, ObsMetadata, ObsSatellite, ObservationStatus, SatId, SigId, SignalBand, SignalCode,
     };
 
     #[derive(Debug, Clone)]
@@ -541,9 +537,8 @@ mod tests {
         let provider = StubProductsProvider { state, precise_clock_bias_s: Some(2.5e-9) };
         let filter = PppFilter::new(PppConfig::default());
 
-        let (_state, clock_bias_s, fallback) = filter
-            .sat_state(&provider, &eph, eph.sat, t_s)
-            .expect("PPP precise clock state");
+        let (_state, clock_bias_s, fallback) =
+            filter.sat_state(&provider, &eph, eph.sat, t_s).expect("PPP precise clock state");
 
         assert!((clock_bias_s - 2.5e-9).abs() < 1e-18);
         assert!(!fallback);
