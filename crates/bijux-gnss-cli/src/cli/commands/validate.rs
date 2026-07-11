@@ -543,8 +543,12 @@ fn validation_evidence_bundle(
         "numerical": {
             "solution_epochs": solutions.len(),
             "stable_solution_epochs": stable_solution_count,
+            "east_error_rms_m": report.east_error_m.rms,
+            "north_error_rms_m": report.north_error_m.rms,
+            "up_error_rms_m": report.up_error_m.rms,
             "horiz_error_rms_m": report.horiz_error_m.rms,
             "vert_error_rms_m": report.vert_error_m.rms,
+            "error_3d_rms_m": report.error_3d_m.rms,
             "mean_used_satellites": used_sat_mean,
             "pdop_mean": pdop_mean,
             "pdop_max": pdop_max,
