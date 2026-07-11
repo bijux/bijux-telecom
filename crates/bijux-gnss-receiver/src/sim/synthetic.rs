@@ -233,6 +233,86 @@ pub struct SyntheticObservationTruthReference {
     pub receiver_ecef_m: [f64; 3],
 }
 
+/// Truth-guided value recorded for one observation observable.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticObservationTruthTableValue {
+    /// Expected synthetic truth value for this observable.
+    pub truth: Option<f64>,
+    /// Measured receiver value for this observable.
+    pub measured: f64,
+    /// Reported one-sigma uncertainty for this observable, when the receiver exposes one.
+    pub sigma: Option<f64>,
+    /// Signed residual between the measured value and the truth value, when comparable.
+    pub residual: Option<f64>,
+}
+
+/// Per-epoch observation truth-table row for synthetic validation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticObservationTruthTableEpoch {
+    /// Stable artifact identifier for the source observation epoch.
+    pub artifact_id: String,
+    /// Stable identity key for the source observation epoch.
+    pub epoch_id: String,
+    /// Receiver observation epoch index.
+    pub epoch_index: u64,
+    /// Absolute sample index at the start of the observation epoch.
+    pub sample_index: u64,
+    /// Observation status reported by the receiver.
+    pub observation_status: ObservationStatus,
+    /// Receiver reasons for degraded or rejected observation handling.
+    pub observation_reject_reasons: Vec<String>,
+    /// Pseudorange truth row in meters.
+    pub pseudorange_m: SyntheticObservationTruthTableValue,
+    /// Carrier-phase truth row in cycles.
+    pub carrier_phase_cycles: SyntheticObservationTruthTableValue,
+    /// Carrier-phase arc anchor for ambiguity alignment, when one exists.
+    pub carrier_phase_arc_start_sample_index: Option<u64>,
+    /// Ambiguity bias removed from the carrier-phase truth comparison, in cycles.
+    pub carrier_phase_arc_bias_cycles: Option<f64>,
+    /// Doppler truth row in Hz.
+    pub doppler_hz: SyntheticObservationTruthTableValue,
+    /// C/N0 truth row in dB-Hz.
+    pub cn0_db_hz: SyntheticObservationTruthTableValue,
+}
+
+/// Per-satellite observation truth table for synthetic validation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticObservationTruthTableSatellite {
+    /// Satellite identifier.
+    pub sat: SatId,
+    /// Injected Doppler shift in Hz.
+    pub injected_doppler_hz: f64,
+    /// Expected measured Doppler after the receiver clock bias is applied, in Hz.
+    pub expected_measured_doppler_hz: f64,
+    /// Injected code phase at sample zero, in chips.
+    pub injected_code_phase_chips: f64,
+    /// Injected carrier-to-noise density ratio in dB-Hz.
+    pub injected_cn0_db_hz: f32,
+    /// Number of truth-table rows recorded for this satellite.
+    pub epoch_count: usize,
+    /// Number of carrier-phase arcs aligned before residual evaluation.
+    pub carrier_phase_arcs_evaluated: usize,
+    /// Reasons one or more observables could not be compared against synthetic truth.
+    pub notes: Vec<String>,
+    /// Per-epoch truth-table rows.
+    pub epochs: Vec<SyntheticObservationTruthTableEpoch>,
+}
+
+/// Truth-guided observation truth table for a synthetic scenario.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticObservationTruthTableReport {
+    /// Stable scenario identifier for this validation run.
+    pub scenario_id: String,
+    /// Capture sample rate in Hz.
+    pub sample_rate_hz: f64,
+    /// Hatch-smoothing window applied before observation comparison.
+    pub hatch_window: u32,
+    /// Absolute receive-time anchor used for geometric pseudorange truth.
+    pub reference_receive_time_s: f64,
+    /// Per-satellite truth-table rows.
+    pub satellites: Vec<SyntheticObservationTruthTableSatellite>,
+}
+
 /// Summary of one observation-error distribution.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticObservationErrorStats {
@@ -304,8 +384,158 @@ fn summarize_observation_errors(errors: &[f64]) -> Option<SyntheticObservationEr
 }
 
 struct ObservedSatelliteRow<'a> {
+    artifact_id: String,
+    epoch_id: String,
+    epoch_index: u64,
     sample_index: u64,
     observation: &'a bijux_gnss_core::api::ObsSatellite,
+}
+
+/// Build a truth-guided observation table from synthetic tracking inputs.
+pub fn validate_truth_guided_observation_table(
+    config: &ReceiverPipelineConfig,
+    tracks: &[crate::pipeline::tracking::TrackingResult],
+    truth: &SyntheticScenario,
+    reference: &SyntheticObservationTruthReference,
+    hatch_window: u32,
+) -> SyntheticObservationTruthTableReport {
+    let observations = crate::pipeline::observations::observation_artifacts_from_tracking_results(
+        config,
+        tracks,
+        hatch_window,
+    )
+    .output
+    .epochs;
+    let satellites = truth
+        .satellites
+        .iter()
+        .map(|sat_truth| {
+            let observed_rows = comparable_satellite_observations(&observations, sat_truth.sat);
+            let expected_doppler_hz = sat_truth.doppler_hz + truth.receiver_clock_frequency_bias_hz;
+            let mut notes = Vec::new();
+            if observed_rows.is_empty() {
+                notes.push("no_comparable_observation_rows".to_string());
+            }
+            let ephemeris =
+                truth.ephemerides.iter().find(|candidate| candidate.sat == sat_truth.sat);
+            if ephemeris.is_none() {
+                notes.push("missing_ephemeris_for_pseudorange_truth".to_string());
+            } else if !observed_rows.iter().any(|row| {
+                row.observation.metadata.pseudorange_model == "tracked_code_phase_alignment"
+            }) {
+                notes.push("no_absolute_pseudorange_rows".to_string());
+            }
+            let sat_state = SatState::new_with_receiver_clock_frequency_bias_hz(
+                config,
+                *sat_truth,
+                truth.receiver_clock_frequency_bias_hz,
+            );
+            let carrier_phase_arc_bias_cycles =
+                carrier_phase_arc_bias_cycles_by_start_sample(config, &sat_state, &observed_rows);
+            if carrier_phase_arc_bias_cycles.is_empty() {
+                notes.push("no_usable_carrier_phase_rows".to_string());
+            }
+            let epochs = observed_rows
+                .iter()
+                .map(|row| {
+                    let pseudorange_truth_m = ephemeris.and_then(|ephemeris| {
+                        (row.observation.metadata.pseudorange_model
+                            == "tracked_code_phase_alignment")
+                            .then(|| {
+                                let receive_time_s = reference.receive_time_s
+                                    + row.sample_index as f64 / config.sampling_freq_hz;
+                                synthetic_pseudorange_m(
+                                    ephemeris,
+                                    receive_time_s,
+                                    reference.receiver_ecef_m,
+                                )
+                            })
+                    });
+                    let carrier_phase_truth_cycles = Some(
+                        sat_state.carrier_phase_rad_at(
+                            row.sample_index as f64 / config.sampling_freq_hz,
+                        ) / std::f64::consts::TAU,
+                    );
+                    let carrier_phase_arc_start_sample_index =
+                        carrier_phase_arc_start_sample_index(row.observation);
+                    let carrier_phase_arc_bias =
+                        carrier_phase_arc_start_sample_index.and_then(|arc_start| {
+                            carrier_phase_arc_bias_cycles.get(&arc_start).copied()
+                        });
+
+                    SyntheticObservationTruthTableEpoch {
+                        artifact_id: row.artifact_id.clone(),
+                        epoch_id: row.epoch_id.clone(),
+                        epoch_index: row.epoch_index,
+                        sample_index: row.sample_index,
+                        observation_status: row.observation.observation_status,
+                        observation_reject_reasons: row
+                            .observation
+                            .observation_reject_reasons
+                            .clone(),
+                        pseudorange_m: SyntheticObservationTruthTableValue {
+                            truth: pseudorange_truth_m,
+                            measured: row.observation.pseudorange_m.0,
+                            sigma: Some(row.observation.pseudorange_var_m2.sqrt()),
+                            residual: pseudorange_truth_m
+                                .map(|truth_m| row.observation.pseudorange_m.0 - truth_m),
+                        },
+                        carrier_phase_cycles: SyntheticObservationTruthTableValue {
+                            truth: carrier_phase_truth_cycles,
+                            measured: row.observation.carrier_phase_cycles.0,
+                            sigma: Some(row.observation.carrier_phase_var_cycles2.sqrt()),
+                            residual: carrier_phase_truth_cycles.zip(carrier_phase_arc_bias).map(
+                                |(truth_cycles, arc_bias_cycles)| {
+                                    row.observation.carrier_phase_cycles.0
+                                        - truth_cycles
+                                        - arc_bias_cycles
+                                },
+                            ),
+                        },
+                        carrier_phase_arc_start_sample_index,
+                        carrier_phase_arc_bias_cycles: carrier_phase_arc_bias,
+                        doppler_hz: SyntheticObservationTruthTableValue {
+                            truth: Some(expected_doppler_hz),
+                            measured: row.observation.doppler_hz.0,
+                            sigma: Some(row.observation.doppler_var_hz2.sqrt()),
+                            residual: Some(row.observation.doppler_hz.0 - expected_doppler_hz),
+                        },
+                        cn0_db_hz: SyntheticObservationTruthTableValue {
+                            truth: Some(sat_truth.cn0_db_hz as f64),
+                            measured: row.observation.cn0_dbhz,
+                            sigma: row
+                                .observation
+                                .metadata
+                                .tracking_uncertainty
+                                .as_ref()
+                                .map(|uncertainty| uncertainty.cn0_dbhz),
+                            residual: Some(row.observation.cn0_dbhz - sat_truth.cn0_db_hz as f64),
+                        },
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            SyntheticObservationTruthTableSatellite {
+                sat: sat_truth.sat,
+                injected_doppler_hz: sat_truth.doppler_hz,
+                expected_measured_doppler_hz: expected_doppler_hz,
+                injected_code_phase_chips: sat_truth.code_phase_chips,
+                injected_cn0_db_hz: sat_truth.cn0_db_hz,
+                epoch_count: epochs.len(),
+                carrier_phase_arcs_evaluated: carrier_phase_arc_bias_cycles.len(),
+                notes,
+                epochs,
+            }
+        })
+        .collect();
+
+    SyntheticObservationTruthTableReport {
+        scenario_id: truth.id.clone(),
+        sample_rate_hz: truth.sample_rate_hz,
+        hatch_window,
+        reference_receive_time_s: reference.receive_time_s,
+        satellites,
+    }
 }
 
 /// Measure emitted observation values against synthetic truth on a per-satellite basis.
@@ -316,108 +546,89 @@ pub fn validate_truth_guided_observations(
     reference: &SyntheticObservationTruthReference,
     hatch_window: u32,
 ) -> SyntheticObservationValidationReport {
-    let observations =
-        crate::pipeline::observations::observations_from_tracking_results(config, tracks, hatch_window)
-            .output;
-    let satellites = truth
+    let table =
+        validate_truth_guided_observation_table(config, tracks, truth, reference, hatch_window);
+    let satellites = table
         .satellites
         .iter()
-        .map(|sat_truth| {
-            let observed_rows = comparable_satellite_observations(&observations, sat_truth.sat);
-            let expected_doppler_hz = sat_truth.doppler_hz + truth.receiver_clock_frequency_bias_hz;
-            let doppler_errors = observed_rows
-                .iter()
-                .map(|row| row.observation.doppler_hz.0 - expected_doppler_hz)
-                .collect::<Vec<_>>();
-            let cn0_errors = observed_rows
-                .iter()
-                .map(|row| row.observation.cn0_dbhz - sat_truth.cn0_db_hz as f64)
-                .collect::<Vec<_>>();
-            let mut notes = Vec::new();
-            if observed_rows.is_empty() {
-                notes.push("no_comparable_observation_rows".to_string());
-            }
-            let pseudorange_errors =
-                if let Some(ephemeris) = truth.ephemerides.iter().find(|eph| eph.sat == sat_truth.sat)
-                {
-                    let aligned_rows = observed_rows
-                        .iter()
-                        .filter(|row| {
-                            row.observation.metadata.pseudorange_model
-                                == "tracked_code_phase_alignment"
-                        })
-                        .collect::<Vec<_>>();
-                    if aligned_rows.is_empty() {
-                        notes.push("no_absolute_pseudorange_rows".to_string());
-                    }
-                    aligned_rows
-                        .into_iter()
-                        .map(|row| {
-                            let receive_time_s =
-                                reference.receive_time_s + row.sample_index as f64 / config.sampling_freq_hz;
-                            row.observation.pseudorange_m.0
-                                - synthetic_pseudorange_m(
-                                    ephemeris,
-                                    receive_time_s,
-                                    reference.receiver_ecef_m,
-                                )
-                        })
-                        .collect::<Vec<_>>()
-                } else {
-                    notes.push("missing_ephemeris_for_pseudorange_truth".to_string());
-                    Vec::new()
-                };
-            let mut carrier_phase_differences_by_arc = BTreeMap::<u64, Vec<f64>>::new();
-            let sat_state = SatState::new_with_receiver_clock_frequency_bias_hz(
-                config,
-                *sat_truth,
-                truth.receiver_clock_frequency_bias_hz,
-            );
-            for row in &observed_rows {
-                if !row.observation.lock_flags.carrier_lock
-                    || row.observation.metadata.carrier_phase_continuity == "unusable"
-                {
-                    continue;
-                }
-                let truth_cycles = sat_state.carrier_phase_rad_at(
-                    row.sample_index as f64 / config.sampling_freq_hz,
-                ) / std::f64::consts::TAU;
-                carrier_phase_differences_by_arc
-                    .entry(row.observation.metadata.carrier_phase_arc_start_sample_index)
-                    .or_default()
-                    .push(row.observation.carrier_phase_cycles.0 - truth_cycles);
-            }
-            if carrier_phase_differences_by_arc.is_empty() {
-                notes.push("no_usable_carrier_phase_rows".to_string());
-            }
-            let carrier_phase_arcs_evaluated = carrier_phase_differences_by_arc.len();
-            let mut carrier_phase_errors = Vec::new();
-            for arc_differences in carrier_phase_differences_by_arc.into_values() {
-                let arc_bias_cycles = stats(&arc_differences).median;
-                carrier_phase_errors.extend(
-                    arc_differences.into_iter().map(|difference| difference - arc_bias_cycles),
-                );
-            }
-
-            SyntheticObservationValidationSatellite {
-                sat: sat_truth.sat,
-                pseudorange_error_m: summarize_observation_errors(&pseudorange_errors),
-                carrier_phase_error_cycles: summarize_observation_errors(&carrier_phase_errors),
-                carrier_phase_arcs_evaluated,
-                doppler_error_hz: summarize_observation_errors(&doppler_errors),
-                cn0_error_db_hz: summarize_observation_errors(&cn0_errors),
-                notes,
-            }
+        .map(|satellite| SyntheticObservationValidationSatellite {
+            sat: satellite.sat,
+            pseudorange_error_m: summarize_observation_errors(
+                &satellite
+                    .epochs
+                    .iter()
+                    .filter_map(|epoch| epoch.pseudorange_m.residual)
+                    .collect::<Vec<_>>(),
+            ),
+            carrier_phase_error_cycles: summarize_observation_errors(
+                &satellite
+                    .epochs
+                    .iter()
+                    .filter_map(|epoch| epoch.carrier_phase_cycles.residual)
+                    .collect::<Vec<_>>(),
+            ),
+            carrier_phase_arcs_evaluated: satellite.carrier_phase_arcs_evaluated,
+            doppler_error_hz: summarize_observation_errors(
+                &satellite
+                    .epochs
+                    .iter()
+                    .filter_map(|epoch| epoch.doppler_hz.residual)
+                    .collect::<Vec<_>>(),
+            ),
+            cn0_error_db_hz: summarize_observation_errors(
+                &satellite
+                    .epochs
+                    .iter()
+                    .filter_map(|epoch| epoch.cn0_db_hz.residual)
+                    .collect::<Vec<_>>(),
+            ),
+            notes: satellite.notes.clone(),
         })
         .collect();
 
     SyntheticObservationValidationReport {
-        scenario_id: truth.id.clone(),
-        sample_rate_hz: truth.sample_rate_hz,
-        hatch_window,
-        reference_receive_time_s: reference.receive_time_s,
+        scenario_id: table.scenario_id,
+        sample_rate_hz: table.sample_rate_hz,
+        hatch_window: table.hatch_window,
+        reference_receive_time_s: table.reference_receive_time_s,
         satellites,
     }
+}
+
+fn carrier_phase_arc_start_sample_index(
+    observation: &bijux_gnss_core::api::ObsSatellite,
+) -> Option<u64> {
+    (observation.lock_flags.carrier_lock
+        && observation.metadata.carrier_phase_continuity != "unusable")
+        .then_some(observation.metadata.carrier_phase_arc_start_sample_index)
+}
+
+fn carrier_phase_arc_bias_cycles_by_start_sample(
+    config: &ReceiverPipelineConfig,
+    sat_state: &SatState,
+    observed_rows: &[ObservedSatelliteRow<'_>],
+) -> BTreeMap<u64, f64> {
+    let mut differences_by_arc = BTreeMap::<u64, Vec<f64>>::new();
+    for row in observed_rows {
+        let Some(arc_start_sample_index) = carrier_phase_arc_start_sample_index(row.observation)
+        else {
+            continue;
+        };
+        let truth_cycles = sat_state
+            .carrier_phase_rad_at(row.sample_index as f64 / config.sampling_freq_hz)
+            / std::f64::consts::TAU;
+        differences_by_arc
+            .entry(arc_start_sample_index)
+            .or_default()
+            .push(row.observation.carrier_phase_cycles.0 - truth_cycles);
+    }
+
+    differences_by_arc
+        .into_iter()
+        .map(|(arc_start_sample_index, differences)| {
+            (arc_start_sample_index, stats(&differences).median)
+        })
+        .collect()
 }
 
 fn comparable_satellite_observations<'a>(
@@ -428,16 +639,29 @@ fn comparable_satellite_observations<'a>(
         .iter()
         .filter(|epoch| epoch.valid)
         .flat_map(|epoch| {
+            let artifact_id = epoch
+                .manifest
+                .as_ref()
+                .map(|manifest| manifest.artifact_id.clone())
+                .unwrap_or_else(|| format!("obs-epoch-{:010}", epoch.epoch_idx));
+            let epoch_id = epoch
+                .manifest
+                .as_ref()
+                .map(|manifest| manifest.epoch_id.clone())
+                .unwrap_or_else(|| bijux_gnss_core::api::obs_epoch_stability_key(epoch));
             epoch.sats.iter().filter_map(move |observation| {
                 (observation.signal_id.sat == sat
                     && matches!(
                         observation.observation_status,
                         ObservationStatus::Accepted | ObservationStatus::Weak
                     ))
-                    .then_some(ObservedSatelliteRow {
-                        sample_index: epoch.source_time.sample_index,
-                        observation,
-                    })
+                .then_some(ObservedSatelliteRow {
+                    artifact_id: artifact_id.clone(),
+                    epoch_id: epoch_id.clone(),
+                    epoch_index: epoch.epoch_idx,
+                    sample_index: epoch.source_time.sample_index,
+                    observation,
+                })
             })
         })
         .collect()
