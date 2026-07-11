@@ -6,14 +6,17 @@ use super::raim::{RaimFaultDetection, RaimFaultExclusion};
 use crate::models::atmosphere::{
     IonosphereModel, KlobucharCoefficients, KlobucharModel, SaastamoinenModel, TroposphereModel,
 };
-use crate::orbits::galileo::GalileoBroadcastNavigationData;
+use crate::orbits::galileo::{
+    galileo_navigation_age, is_galileo_navigation_valid, sat_state_galileo_e1,
+    sat_state_galileo_e1_from_observation, GalileoBroadcastNavigationData,
+};
 use crate::orbits::gps::{
     gps_ephemeris_age, is_ephemeris_valid, sat_state_gps_l1ca, sat_state_gps_l1ca_from_observation,
-    GpsEphemeris, GpsSatState,
+    GpsEphemeris,
 };
 use bijux_gnss_core::api::{
-    Constellation, GpsTime, Llh, MeasurementRejectReason, ObsEpoch, ObsSatellite,
-    ObsSignalTiming, ObservationStatus, SatId, Seconds, SignalBand,
+    Constellation, GpsTime, InterSystemBias, Llh, MeasurementRejectReason, ObsEpoch,
+    ObsSatellite, ObsSignalTiming, ObservationStatus, SatId, Seconds, SignalBand,
 };
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
@@ -27,7 +30,9 @@ pub struct PositionSolution {
     pub latitude_deg: f64,
     pub longitude_deg: f64,
     pub altitude_m: f64,
+    pub clock_reference_constellation: Constellation,
     pub clock_bias_s: f64,
+    pub inter_system_biases: Vec<InterSystemBias>,
     pub pdop: f64,
     pub hdop: Option<f64>,
     pub vdop: Option<f64>,
@@ -186,19 +191,164 @@ fn signal_band_rank(band: SignalBand) -> u8 {
     }
 }
 
+fn constellation_primary_band(constellation: Constellation) -> SignalBand {
+    match constellation {
+        Constellation::Gps => SignalBand::L1,
+        Constellation::Galileo => SignalBand::E1,
+        Constellation::Glonass => SignalBand::L1,
+        Constellation::Beidou => SignalBand::B1,
+        Constellation::Unknown => SignalBand::Unknown,
+    }
+}
+
 #[derive(Debug, Clone)]
 struct PositionSolveInput {
     observation: PositionObservation,
-    ephemeris: GpsEphemeris,
+    navigation: PositionBroadcastNavigation,
     receive_tow_s: f64,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ClockStateModel {
+    reference_constellation: Constellation,
+    offset_constellations: Vec<Constellation>,
+}
+
+impl ClockStateModel {
+    fn from_constellations<I>(constellations: I) -> Option<Self>
+    where
+        I: IntoIterator<Item = Constellation>,
+    {
+        let unique = constellations.into_iter().collect::<std::collections::BTreeSet<_>>();
+        if unique.is_empty() {
+            return None;
+        }
+        let reference_constellation = if unique.contains(&Constellation::Gps) {
+            Constellation::Gps
+        } else {
+            *unique.iter().next().expect("non-empty constellation set")
+        };
+        let offset_constellations = unique
+            .into_iter()
+            .filter(|constellation| *constellation != reference_constellation)
+            .collect();
+        Some(Self { reference_constellation, offset_constellations })
+    }
+
+    fn from_inputs(inputs: &[PositionSolveInput]) -> Option<Self> {
+        Self::from_constellations(inputs.iter().map(|input| input.observation.sat.constellation))
+    }
+
+    fn state_len(&self) -> usize {
+        1 + self.offset_constellations.len()
+    }
+
+    fn parameter_len(&self) -> usize {
+        3 + self.state_len()
+    }
+
+    fn offset_index(&self, constellation: Constellation) -> Option<usize> {
+        self.offset_constellations
+            .iter()
+            .position(|candidate| *candidate == constellation)
+            .map(|index| index + 1)
+    }
+
+    fn contains(&self, constellation: Constellation) -> bool {
+        constellation == self.reference_constellation || self.offset_index(constellation).is_some()
+    }
+
+    fn reference_clock_bias_s(&self, state: &[f64]) -> f64 {
+        state.first().copied().unwrap_or(0.0)
+    }
+
+    fn constellation_clock_bias_s(&self, state: &[f64], constellation: Constellation) -> Option<f64> {
+        if constellation == self.reference_constellation {
+            return Some(self.reference_clock_bias_s(state));
+        }
+        let offset_index = self.offset_index(constellation)?;
+        Some(self.reference_clock_bias_s(state) + state.get(offset_index).copied().unwrap_or(0.0))
+    }
+
+    fn design_row(&self, constellation: Constellation) -> Option<Vec<f64>> {
+        if !self.contains(constellation) {
+            return None;
+        }
+        let mut row = vec![0.0; self.state_len()];
+        row[0] = 1.0;
+        if let Some(offset_index) = self.offset_index(constellation) {
+            row[offset_index] = 1.0;
+        }
+        Some(row)
+    }
+
+    fn reproject_state(&self, previous: &ClockStateModel, previous_state: &[f64]) -> Vec<f64> {
+        let mut projected_state = vec![0.0; self.state_len()];
+        projected_state[0] = previous
+            .constellation_clock_bias_s(previous_state, self.reference_constellation)
+            .unwrap_or(previous.reference_clock_bias_s(previous_state));
+        for (index, constellation) in self.offset_constellations.iter().copied().enumerate() {
+            let constellation_bias_s = previous
+                .constellation_clock_bias_s(previous_state, constellation)
+                .unwrap_or(projected_state[0]);
+            projected_state[index + 1] = constellation_bias_s - projected_state[0];
+        }
+        projected_state
+    }
+
+    fn inter_system_biases(&self, state: &[f64]) -> Vec<InterSystemBias> {
+        self.offset_constellations
+            .iter()
+            .enumerate()
+            .map(|(index, constellation)| InterSystemBias {
+                constellation: *constellation,
+                band: Some(constellation_primary_band(*constellation)),
+                bias_s: Seconds(state.get(index + 1).copied().unwrap_or(0.0)),
+            })
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone)]
 struct PositionEstimate {
     ecef_x_m: f64,
     ecef_y_m: f64,
     ecef_z_m: f64,
-    clock_bias_s: f64,
+    clock_model: ClockStateModel,
+    clock_state_s: Vec<f64>,
+}
+
+impl PositionEstimate {
+    fn origin(clock_model: ClockStateModel) -> Self {
+        Self {
+            ecef_x_m: 0.0,
+            ecef_y_m: 0.0,
+            ecef_z_m: 0.0,
+            clock_state_s: vec![0.0; clock_model.state_len()],
+            clock_model,
+        }
+    }
+
+    fn reproject(&self, clock_model: ClockStateModel) -> Self {
+        if self.clock_model == clock_model {
+            return self.clone();
+        }
+        Self {
+            ecef_x_m: self.ecef_x_m,
+            ecef_y_m: self.ecef_y_m,
+            ecef_z_m: self.ecef_z_m,
+            clock_state_s: clock_model.reproject_state(&self.clock_model, &self.clock_state_s),
+            clock_model,
+        }
+    }
+
+    fn reference_clock_bias_s(&self) -> f64 {
+        self.clock_model.reference_clock_bias_s(&self.clock_state_s)
+    }
+
+    fn constellation_clock_bias_s(&self, constellation: Constellation) -> Option<f64> {
+        self.clock_model.constellation_clock_bias_s(&self.clock_state_s, constellation)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -209,10 +359,18 @@ struct WorkingSetResidual {
     effective_weight: f64,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct SatelliteState {
+    x_m: f64,
+    y_m: f64,
+    z_m: f64,
+    clock_bias_s: f64,
+}
+
 #[derive(Debug, Clone)]
 struct SatelliteGeometry {
     observation: PositionObservation,
-    state: GpsSatState,
+    state: SatelliteState,
     iono_delay_m: f64,
     tropo_delay_m: f64,
 }
@@ -222,7 +380,7 @@ struct WorkingSetSolution {
     estimate: PositionEstimate,
     geometry: Vec<SatelliteGeometry>,
     residuals: Vec<WorkingSetResidual>,
-    covariance: Option<[[f64; 4]; 4]>,
+    covariance: Option<Vec<Vec<f64>>>,
     covariance_symmetrized: bool,
     covariance_clamped: bool,
     covariance_max_variance: Option<f64>,
@@ -234,7 +392,7 @@ struct RaimSolutionSeparation {
     separation_m: f64,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct RaimExclusionCandidate {
     excluded_index: usize,
     excluded_sat: SatId,
@@ -293,7 +451,13 @@ impl PositionSolver {
         ephemerides: &[GpsEphemeris],
         t_rx_s: f64,
     ) -> Result<PositionSolution, PositionSolveRefusal> {
-        self.try_solve_wls_with_broadcast_ionosphere(observations, ephemerides, t_rx_s, None)
+        let navigation = position_broadcast_navigation_from_gps_ephemerides(ephemerides);
+        self.try_solve_wls_with_navigation_data_and_broadcast_ionosphere(
+            observations,
+            &navigation,
+            t_rx_s,
+            None,
+        )
     }
 
     pub fn solve_wls_with_broadcast_ionosphere(
@@ -303,14 +467,75 @@ impl PositionSolver {
         t_rx_s: f64,
         klobuchar: Option<&KlobucharCoefficients>,
     ) -> Option<PositionSolution> {
-        self.try_solve_wls_with_broadcast_ionosphere(observations, ephemerides, t_rx_s, klobuchar)
-            .ok()
+        let navigation = position_broadcast_navigation_from_gps_ephemerides(ephemerides);
+        self.try_solve_wls_with_navigation_data_and_broadcast_ionosphere(
+            observations,
+            &navigation,
+            t_rx_s,
+            klobuchar,
+        )
+        .ok()
     }
 
     pub fn try_solve_wls_with_broadcast_ionosphere(
         &self,
         observations: &[PositionObservation],
         ephemerides: &[GpsEphemeris],
+        t_rx_s: f64,
+        klobuchar: Option<&KlobucharCoefficients>,
+    ) -> Result<PositionSolution, PositionSolveRefusal> {
+        let navigation = position_broadcast_navigation_from_gps_ephemerides(ephemerides);
+        self.try_solve_wls_with_navigation_data_and_broadcast_ionosphere(
+            observations,
+            &navigation,
+            t_rx_s,
+            klobuchar,
+        )
+    }
+
+    pub fn solve_wls_with_navigation_data(
+        &self,
+        observations: &[PositionObservation],
+        navigation: &[PositionBroadcastNavigation],
+        t_rx_s: f64,
+    ) -> Option<PositionSolution> {
+        self.try_solve_wls_with_navigation_data(observations, navigation, t_rx_s).ok()
+    }
+
+    pub fn try_solve_wls_with_navigation_data(
+        &self,
+        observations: &[PositionObservation],
+        navigation: &[PositionBroadcastNavigation],
+        t_rx_s: f64,
+    ) -> Result<PositionSolution, PositionSolveRefusal> {
+        self.try_solve_wls_with_navigation_data_and_broadcast_ionosphere(
+            observations,
+            navigation,
+            t_rx_s,
+            None,
+        )
+    }
+
+    pub fn solve_wls_with_navigation_data_and_broadcast_ionosphere(
+        &self,
+        observations: &[PositionObservation],
+        navigation: &[PositionBroadcastNavigation],
+        t_rx_s: f64,
+        klobuchar: Option<&KlobucharCoefficients>,
+    ) -> Option<PositionSolution> {
+        self.try_solve_wls_with_navigation_data_and_broadcast_ionosphere(
+            observations,
+            navigation,
+            t_rx_s,
+            klobuchar,
+        )
+        .ok()
+    }
+
+    pub fn try_solve_wls_with_navigation_data_and_broadcast_ionosphere(
+        &self,
+        observations: &[PositionObservation],
+        navigation: &[PositionBroadcastNavigation],
         t_rx_s: f64,
         klobuchar: Option<&KlobucharCoefficients>,
     ) -> Result<PositionSolution, PositionSolveRefusal> {
@@ -347,13 +572,8 @@ impl PositionSolver {
                 timing_rejected,
             ));
         }
-        let mut x = 0.0_f64;
-        let mut y = 0.0_f64;
-        let mut z = 0.0_f64;
-        let mut cb = 0.0_f64;
-
         let mut rejected = timing_rejected;
-        let inputs = resolve_position_inputs(&observations, ephemerides, t_rx_s, &mut rejected);
+        let inputs = resolve_position_inputs(&observations, navigation, t_rx_s, &mut rejected);
         if inputs.len() < 4 {
             return Err(position_solve_refusal(
                 PositionSolveRefusalKind::InvalidEphemeris,
@@ -362,8 +582,15 @@ impl PositionSolver {
                 rejected,
             ));
         }
-        let initial_estimate =
-            PositionEstimate { ecef_x_m: x, ecef_y_m: y, ecef_z_m: z, clock_bias_s: cb };
+        let clock_model = ClockStateModel::from_inputs(&inputs).ok_or_else(|| {
+            position_solve_refusal(
+                PositionSolveRefusalKind::InvalidEphemeris,
+                sat_count,
+                inputs.len(),
+                rejected.clone(),
+            )
+        })?;
+        let initial_estimate = PositionEstimate::origin(clock_model);
         let mut working_inputs = inputs;
         let mut estimate = initial_estimate;
         let mut raim_fault_detection = None;
@@ -466,10 +693,10 @@ impl PositionSolver {
                 .collect();
             estimate = solved.estimate;
         };
-        x = working_set.estimate.ecef_x_m;
-        y = working_set.estimate.ecef_y_m;
-        z = working_set.estimate.ecef_z_m;
-        cb = working_set.estimate.clock_bias_s;
+        let x = working_set.estimate.ecef_x_m;
+        let y = working_set.estimate.ecef_y_m;
+        let z = working_set.estimate.ecef_z_m;
+        let cb = working_set.estimate.reference_clock_bias_s();
 
         let filtered = working_set
             .geometry
@@ -495,7 +722,7 @@ impl PositionSolver {
 
         let final_estimate = working_set.estimate;
         let separation =
-            self.raim.then(|| max_solution_separation(&filtered, final_estimate)).flatten();
+            self.raim.then(|| max_solution_separation(&filtered, &final_estimate)).flatten();
         if raim_fault_detection.is_none() {
             if let Some(separation) = separation {
                 raim_fault_detection =
@@ -505,15 +732,18 @@ impl PositionSolver {
 
         let mut h = Vec::new();
         let mut v = Vec::new();
-        for (_obs, state, residual_m, _effective_weight) in &filtered {
-            let dx = final_estimate.ecef_x_m - state.x_m;
-            let dy = final_estimate.ecef_y_m - state.y_m;
-            let dz = final_estimate.ecef_z_m - state.z_m;
-            let range = (dx * dx + dy * dy + dz * dz).sqrt();
-            let hx = dx / range;
-            let hy = dy / range;
-            let hz = dz / range;
-            h.push([hx, hy, hz, 1.0]);
+        for (observation, state, residual_m, _effective_weight) in &filtered {
+            let (_range_m, design_row) =
+                linearized_geometry_row(&final_estimate, observation.sat.constellation, state)
+                    .ok_or_else(|| {
+                        position_solve_refusal(
+                            PositionSolveRefusalKind::SolverFailure,
+                            sat_count,
+                            filtered.len(),
+                            rejected.clone(),
+                        )
+                    })?;
+            h.push(design_row);
             v.push(*residual_m);
         }
 
@@ -533,7 +763,9 @@ impl PositionSolver {
             .map(|cov| {
                 let sigma2 = if !v.is_empty() {
                     let sum = v.iter().map(|r| r * r).sum::<f64>();
-                    let dof = (v.len() as i32 - 4).max(1) as f64;
+                    let dof =
+                        (v.len() as i32 - final_estimate.clock_model.parameter_len() as i32).max(1)
+                            as f64;
                     sum / dof
                 } else {
                     0.0
@@ -555,7 +787,11 @@ impl PositionSolver {
             latitude_deg: lat,
             longitude_deg: lon,
             altitude_m: alt,
+            clock_reference_constellation: final_estimate.clock_model.reference_constellation,
             clock_bias_s: cb,
+            inter_system_biases: final_estimate
+                .clock_model
+                .inter_system_biases(&final_estimate.clock_state_s),
             pdop: dops.map(|dops| dops.pdop).unwrap_or(0.0),
             hdop: dops.map(|dops| dops.hdop),
             vdop: dops.map(|dops| dops.vdop),
@@ -598,7 +834,7 @@ fn position_solve_refusal(
 
 fn resolve_position_inputs(
     observations: &[PositionObservation],
-    ephemerides: &[GpsEphemeris],
+    navigation: &[PositionBroadcastNavigation],
     t_rx_s: f64,
     rejected: &mut Vec<(SatId, MeasurementRejectReason)>,
 ) -> Vec<PositionSolveInput> {
@@ -607,18 +843,56 @@ fn resolve_position_inputs(
         .filter_map(|obs| {
             let receive_tow_s =
                 obs.gps_receive_time.map(|gps_time| gps_time.tow_s).unwrap_or(t_rx_s);
-            let Some(ephemeris) = select_valid_ephemeris(ephemerides, obs.sat, receive_tow_s)
+            let Some(navigation) = select_valid_navigation(navigation, obs.sat, receive_tow_s)
             else {
                 rejected.push((obs.sat, MeasurementRejectReason::InvalidEphemeris));
                 return None;
             };
             Some(PositionSolveInput {
                 observation: obs.clone(),
-                ephemeris: ephemeris.clone(),
+                navigation: navigation.clone(),
                 receive_tow_s,
             })
         })
         .collect()
+}
+
+fn select_valid_navigation(
+    navigation: &[PositionBroadcastNavigation],
+    sat: SatId,
+    receive_tow_s: f64,
+) -> Option<&PositionBroadcastNavigation> {
+    navigation
+        .iter()
+        .filter(|entry| entry.sat() == sat)
+        .filter(|entry| navigation_is_valid(entry, receive_tow_s))
+        .min_by(|left, right| {
+            let left_age = navigation_age_score(left, receive_tow_s);
+            let right_age = navigation_age_score(right, receive_tow_s);
+            left_age.0.total_cmp(&right_age.0).then_with(|| left_age.1.total_cmp(&right_age.1))
+        })
+}
+
+fn navigation_is_valid(navigation: &PositionBroadcastNavigation, receive_tow_s: f64) -> bool {
+    match navigation {
+        PositionBroadcastNavigation::Gps(ephemeris) => is_ephemeris_valid(ephemeris, receive_tow_s),
+        PositionBroadcastNavigation::Galileo(navigation) => {
+            is_galileo_navigation_valid(navigation, receive_tow_s)
+        }
+    }
+}
+
+fn navigation_age_score(navigation: &PositionBroadcastNavigation, receive_tow_s: f64) -> (f64, f64) {
+    match navigation {
+        PositionBroadcastNavigation::Gps(ephemeris) => {
+            let age = gps_ephemeris_age(ephemeris, receive_tow_s);
+            (age.toe_age_s.max(age.toc_age_s), age.toe_age_s + age.toc_age_s)
+        }
+        PositionBroadcastNavigation::Galileo(navigation) => {
+            let age = galileo_navigation_age(navigation, receive_tow_s);
+            (age.toe_age_s.max(age.toc_age_s), age.toe_age_s + age.toc_age_s)
+        }
+    }
 }
 
 fn select_valid_ephemeris(
@@ -762,14 +1036,20 @@ mod tests {
             sample_ephemeris(sat, 100_000.0, 100_000.0),
             sample_ephemeris(sat, 200_000.0, 200_000.0),
         ];
+        let navigation = position_broadcast_navigation_from_gps_ephemerides(&ephemerides);
         let mut rejected = Vec::new();
 
-        let inputs = resolve_position_inputs(&observations, &ephemerides, 200_030.0, &mut rejected);
+        let inputs = resolve_position_inputs(&observations, &navigation, 200_030.0, &mut rejected);
 
         assert!(rejected.is_empty());
         assert_eq!(inputs.len(), 1);
-        assert_eq!(inputs[0].ephemeris.toe_s, 200_000.0);
-        assert_eq!(inputs[0].ephemeris.toc_s, 200_000.0);
+        match &inputs[0].navigation {
+            PositionBroadcastNavigation::Gps(ephemeris) => {
+                assert_eq!(ephemeris.toe_s, 200_000.0);
+                assert_eq!(ephemeris.toc_s, 200_000.0);
+            }
+            PositionBroadcastNavigation::Galileo(_) => panic!("expected gps navigation"),
+        }
     }
 
     #[test]
@@ -903,7 +1183,7 @@ mod tests {
 
 fn resolve_satellite_geometry(
     inputs: &[PositionSolveInput],
-    estimate: PositionEstimate,
+    estimate: &PositionEstimate,
     klobuchar: Option<&KlobucharCoefficients>,
     apply_troposphere: bool,
 ) -> Option<Vec<SatelliteGeometry>> {
@@ -914,25 +1194,27 @@ fn resolve_satellite_geometry(
             .signal_timing
             .map(|timing| timing.signal_travel_time_s.0)
             .unwrap_or(obs.pseudorange_m / 299_792_458.0);
-        let mut state = sat_state_gps_l1ca_from_observation(
-            &input.ephemeris,
+        let mut state = satellite_state_from_observation(
+            &input.navigation,
             input.receive_tow_s,
             obs.pseudorange_m,
             obs.signal_timing,
         );
         let mut converged = false;
         for _ in 0..5 {
-            let range_m = geometric_range_m(estimate, &state);
+            let range_m = geometric_range_m(&estimate, &state);
+            let receiver_clock_bias_s =
+                estimate.constellation_clock_bias_s(obs.sat.constellation)?;
             let next_tau = predicted_signal_travel_time_s(
                 range_m,
-                estimate.clock_bias_s,
-                state.clock_correction.bias_s,
+                receiver_clock_bias_s,
+                state.clock_bias_s,
             );
             if (next_tau - tau).abs() < 1.0e-9 {
                 converged = true;
             }
             tau = next_tau;
-            state = sat_state_gps_l1ca(&input.ephemeris, input.receive_tow_s - tau, tau);
+            state = satellite_state_at_time(&input.navigation, input.receive_tow_s - tau, tau);
             if converged {
                 break;
             }
@@ -940,8 +1222,8 @@ fn resolve_satellite_geometry(
         if !converged {
             return None;
         }
-        let iono_delay_m = estimate_klobuchar_delay_m(estimate, input, &state, klobuchar);
-        let tropo_delay_m = estimate_saastamoinen_delay_m(estimate, &state, apply_troposphere);
+        let iono_delay_m = estimate_klobuchar_delay_m(&estimate, input, &state, klobuchar);
+        let tropo_delay_m = estimate_saastamoinen_delay_m(&estimate, &state, apply_troposphere);
         geometry.push(SatelliteGeometry {
             observation: obs.clone(),
             state,
@@ -953,35 +1235,40 @@ fn resolve_satellite_geometry(
 }
 
 fn linearized_pseudorange_row(
-    estimate: PositionEstimate,
+    estimate: &PositionEstimate,
     geometry: &SatelliteGeometry,
-) -> (f64, [f64; 4]) {
-    let dx = estimate.ecef_x_m - geometry.state.x_m;
-    let dy = estimate.ecef_y_m - geometry.state.y_m;
-    let dz = estimate.ecef_z_m - geometry.state.z_m;
-    let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
+) -> Option<(f64, Vec<f64>)> {
+    let (range_m, mut design_row) =
+        linearized_geometry_row(estimate, geometry.observation.sat.constellation, &geometry.state)?;
+    let receiver_clock_bias_s =
+        estimate.constellation_clock_bias_s(geometry.observation.sat.constellation)?;
     let predicted_pseudorange_m = predicted_pseudorange_m(
         range_m,
-        estimate.clock_bias_s,
-        geometry.state.clock_correction.bias_s,
+        receiver_clock_bias_s,
+        geometry.state.clock_bias_s,
     );
     let residual_m = geometry.observation.pseudorange_m
         - geometry.iono_delay_m
         - geometry.tropo_delay_m
         - predicted_pseudorange_m;
-    let design_row = [dx / range_m, dy / range_m, dz / range_m, 1.0];
-    (residual_m, design_row)
+    design_row[0] /= range_m;
+    design_row[1] /= range_m;
+    design_row[2] /= range_m;
+    Some((residual_m, design_row))
 }
 
 fn estimate_klobuchar_delay_m(
-    estimate: PositionEstimate,
+    estimate: &PositionEstimate,
     input: &PositionSolveInput,
-    state: &GpsSatState,
+    state: &SatelliteState,
     klobuchar: Option<&KlobucharCoefficients>,
 ) -> f64 {
     let Some(coefficients) = klobuchar else {
         return 0.0;
     };
+    if input.observation.sat.constellation != Constellation::Gps {
+        return 0.0;
+    }
     let receiver_radius_m =
         (estimate.ecef_x_m.powi(2) + estimate.ecef_y_m.powi(2) + estimate.ecef_z_m.powi(2)).sqrt();
     if !receiver_radius_m.is_finite() || receiver_radius_m < 1.0 {
@@ -1010,8 +1297,8 @@ fn estimate_klobuchar_delay_m(
 }
 
 fn estimate_saastamoinen_delay_m(
-    estimate: PositionEstimate,
-    state: &GpsSatState,
+    estimate: &PositionEstimate,
+    state: &SatelliteState,
     apply_troposphere: bool,
 ) -> f64 {
     if !apply_troposphere {
@@ -1047,7 +1334,7 @@ fn estimate_saastamoinen_delay_m(
     model.delay_m(receiver, elevation_deg, Seconds(0.0))
 }
 
-fn geometric_range_m(estimate: PositionEstimate, state: &GpsSatState) -> f64 {
+fn geometric_range_m(estimate: &PositionEstimate, state: &SatelliteState) -> f64 {
     let dx = estimate.ecef_x_m - state.x_m;
     let dy = estimate.ecef_y_m - state.y_m;
     let dz = estimate.ecef_z_m - state.z_m;
@@ -1070,6 +1357,94 @@ fn predicted_pseudorange_m(
 ) -> f64 {
     range_m + receiver_clock_bias_s * SPEED_OF_LIGHT_MPS
         - satellite_clock_bias_s * SPEED_OF_LIGHT_MPS
+}
+
+fn linearized_geometry_row(
+    estimate: &PositionEstimate,
+    constellation: Constellation,
+    state: &SatelliteState,
+) -> Option<(f64, Vec<f64>)> {
+    let dx = estimate.ecef_x_m - state.x_m;
+    let dy = estimate.ecef_y_m - state.y_m;
+    let dz = estimate.ecef_z_m - state.z_m;
+    let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
+    if !range_m.is_finite() || range_m <= 0.0 {
+        return None;
+    }
+    let mut design_row = vec![0.0; estimate.clock_model.parameter_len()];
+    design_row[0] = dx;
+    design_row[1] = dy;
+    design_row[2] = dz;
+    let clock_design = estimate.clock_model.design_row(constellation)?;
+    for (index, coefficient) in clock_design.into_iter().enumerate() {
+        design_row[index + 3] = coefficient;
+    }
+    Some((range_m, design_row))
+}
+
+fn satellite_state_from_observation(
+    navigation: &PositionBroadcastNavigation,
+    receive_tow_s: f64,
+    pseudorange_m: f64,
+    signal_timing: Option<ObsSignalTiming>,
+) -> SatelliteState {
+    match navigation {
+        PositionBroadcastNavigation::Gps(ephemeris) => {
+            let state = sat_state_gps_l1ca_from_observation(
+                ephemeris,
+                receive_tow_s,
+                pseudorange_m,
+                signal_timing,
+            );
+            SatelliteState {
+                x_m: state.x_m,
+                y_m: state.y_m,
+                z_m: state.z_m,
+                clock_bias_s: state.clock_correction.bias_s,
+            }
+        }
+        PositionBroadcastNavigation::Galileo(navigation) => {
+            let state = sat_state_galileo_e1_from_observation(
+                navigation,
+                receive_tow_s,
+                pseudorange_m,
+                signal_timing,
+            );
+            SatelliteState {
+                x_m: state.x_m,
+                y_m: state.y_m,
+                z_m: state.z_m,
+                clock_bias_s: state.clock_correction.bias_s,
+            }
+        }
+    }
+}
+
+fn satellite_state_at_time(
+    navigation: &PositionBroadcastNavigation,
+    transmit_tow_s: f64,
+    signal_travel_time_s: f64,
+) -> SatelliteState {
+    match navigation {
+        PositionBroadcastNavigation::Gps(ephemeris) => {
+            let state = sat_state_gps_l1ca(ephemeris, transmit_tow_s, signal_travel_time_s);
+            SatelliteState {
+                x_m: state.x_m,
+                y_m: state.y_m,
+                z_m: state.z_m,
+                clock_bias_s: state.clock_correction.bias_s,
+            }
+        }
+        PositionBroadcastNavigation::Galileo(navigation) => {
+            let state = sat_state_galileo_e1(navigation, transmit_tow_s, signal_travel_time_s);
+            SatelliteState {
+                x_m: state.x_m,
+                y_m: state.y_m,
+                z_m: state.z_m,
+                clock_bias_s: state.clock_correction.bias_s,
+            }
+        }
+    }
 }
 
 /// Returns whether a position observation carries a finite and internally consistent
@@ -1109,14 +1484,14 @@ pub fn position_observation_has_valid_satellite_time(
         && (receive_delta_s - signal_travel_time_s).abs() <= SIGNAL_TIMING_CONSISTENCY_TOLERANCE_S
 }
 
-fn sanitize_covariance(mut cov: [[f64; 4]; 4]) -> ([[f64; 4]; 4], bool, bool, Option<f64>) {
+fn sanitize_covariance(mut cov: Vec<Vec<f64>>) -> (Vec<Vec<f64>>, bool, bool, Option<f64>) {
     let mut sym = false;
     let mut clamp = false;
     let mut max_var = None;
     let mut i = 0;
-    while i < 4 {
+    while i < cov.len() {
         let mut j = 0;
-        while j < 4 {
+        while j < cov.len() {
             if (cov[i][j] - cov[j][i]).abs() > 1e-9 {
                 sym = true;
                 let avg = 0.5 * (cov[i][j] + cov[j][i]);
@@ -1142,9 +1517,10 @@ impl PositionSolver {
         initial_estimate: PositionEstimate,
         klobuchar: Option<&KlobucharCoefficients>,
     ) -> Option<WorkingSetSolution> {
-        let mut estimate = initial_estimate;
+        let clock_model = ClockStateModel::from_inputs(inputs)?;
+        let mut estimate = initial_estimate.reproject(clock_model);
         let mut geometry =
-            resolve_satellite_geometry(inputs, estimate, klobuchar, self.apply_troposphere)?;
+            resolve_satellite_geometry(inputs, &estimate, klobuchar, self.apply_troposphere)?;
         let mut covariance = None;
         let mut covariance_symmetrized = false;
         let mut covariance_clamped = false;
@@ -1159,13 +1535,13 @@ impl PositionSolver {
             let mut residual_values = Vec::with_capacity(geometry.len());
             for satellite_geometry in &geometry {
                 let (residual_m, design_row) =
-                    linearized_pseudorange_row(estimate, satellite_geometry);
+                    linearized_pseudorange_row(&estimate, satellite_geometry)?;
                 residual_values.push(residual_m);
                 h.push(design_row);
             }
 
             let weights = self.measurement_weights(&geometry, &residual_values);
-            let (dx, dy, dz, dcb, covariance_out) =
+            let (delta, covariance_out) =
                 solve_weighted_normal_eq(&h, &residual_values, &weights)?;
             let (covariance_out, symmetrized, clamped, max_variance) =
                 sanitize_covariance(covariance_out);
@@ -1180,24 +1556,31 @@ impl PositionSolver {
             }
             covariance = Some(covariance_out);
 
-            estimate.ecef_x_m += dx;
-            estimate.ecef_y_m += dy;
-            estimate.ecef_z_m += dz;
-            estimate.clock_bias_s += dcb / SPEED_OF_LIGHT_MPS;
+            estimate.ecef_x_m += delta.first().copied().unwrap_or(0.0);
+            estimate.ecef_y_m += delta.get(1).copied().unwrap_or(0.0);
+            estimate.ecef_z_m += delta.get(2).copied().unwrap_or(0.0);
+            for (index, clock_delta_m) in delta.iter().copied().skip(3).enumerate() {
+                if let Some(clock_state_s) = estimate.clock_state_s.get_mut(index) {
+                    *clock_state_s += clock_delta_m / SPEED_OF_LIGHT_MPS;
+                }
+            }
 
+            let dx = delta.first().copied().unwrap_or(0.0);
+            let dy = delta.get(1).copied().unwrap_or(0.0);
+            let dz = delta.get(2).copied().unwrap_or(0.0);
             if (dx * dx + dy * dy + dz * dz).sqrt() < self.convergence_m {
                 break;
             }
 
             geometry =
-                resolve_satellite_geometry(inputs, estimate, klobuchar, self.apply_troposphere)?;
+                resolve_satellite_geometry(inputs, &estimate, klobuchar, self.apply_troposphere)?;
         }
 
-        geometry = resolve_satellite_geometry(inputs, estimate, klobuchar, self.apply_troposphere)?;
+        geometry = resolve_satellite_geometry(inputs, &estimate, klobuchar, self.apply_troposphere)?;
         if geometry.len() < 4 {
             return None;
         }
-        let residuals = self.finalize_working_set_residuals(estimate, &geometry);
+        let residuals = self.finalize_working_set_residuals(&estimate, &geometry);
 
         Some(WorkingSetSolution {
             estimate,
@@ -1210,14 +1593,18 @@ impl PositionSolver {
         })
     }
 
-    fn finalize_working_set_residuals(
+fn finalize_working_set_residuals(
         &self,
-        estimate: PositionEstimate,
+        estimate: &PositionEstimate,
         geometry: &[SatelliteGeometry],
     ) -> Vec<WorkingSetResidual> {
         let residual_values = geometry
             .iter()
-            .map(|satellite_geometry| linearized_pseudorange_row(estimate, satellite_geometry).0)
+            .map(|satellite_geometry| {
+                linearized_pseudorange_row(&estimate, satellite_geometry)
+                    .map(|row| row.0)
+                    .expect("working-set geometry must linearize")
+            })
             .collect::<Vec<_>>();
         let weights = self.measurement_weights(geometry, &residual_values);
 
@@ -1286,7 +1673,7 @@ impl PositionSolver {
                 .filter_map(|(index, input)| (index != excluded_index).then_some(input.clone()))
                 .collect::<Vec<_>>();
             let Some(candidate_solution) =
-                self.solve_working_set(&candidate_inputs, solved.estimate, klobuchar)
+                self.solve_working_set(&candidate_inputs, solved.estimate.clone(), klobuchar)
             else {
                 continue;
             };
@@ -1300,16 +1687,15 @@ impl PositionSolver {
                 .expect("candidate exclusion must reference an input")
                 .observation
                 .sat;
+            let solution_shift_m =
+                solution_separation_m(&solved.estimate, &candidate_solution.estimate);
             let candidate = RaimExclusionCandidate {
                 excluded_index,
                 excluded_sat,
                 candidate_estimate: candidate_solution.estimate,
                 pre_exclusion_rms_m,
                 post_exclusion_rms_m: candidate_rms_m,
-                solution_shift_m: solution_separation_m(
-                    solved.estimate,
-                    candidate_solution.estimate,
-                ),
+                solution_shift_m,
             };
             let better_candidate = best_candidate
                 .as_ref()
@@ -1348,7 +1734,7 @@ fn working_set_rms_m(residuals: &[WorkingSetResidual]) -> f64 {
     (squared_sum / residuals.len() as f64).sqrt()
 }
 
-fn solution_separation_m(left: PositionEstimate, right: PositionEstimate) -> f64 {
+fn solution_separation_m(left: &PositionEstimate, right: &PositionEstimate) -> f64 {
     let dx = left.ecef_x_m - right.ecef_x_m;
     let dy = left.ecef_y_m - right.ecef_y_m;
     let dz = left.ecef_z_m - right.ecef_z_m;
@@ -1375,8 +1761,8 @@ fn raim_fault_detection_from_separation(
 }
 
 fn max_solution_separation(
-    filtered: &[(PositionObservation, GpsSatState, f64, f64)],
-    final_estimate: PositionEstimate,
+    filtered: &[(PositionObservation, SatelliteState, f64, f64)],
+    final_estimate: &PositionEstimate,
 ) -> Option<RaimSolutionSeparation> {
     if filtered.len() < 5 {
         return None;
@@ -1391,20 +1777,18 @@ fn max_solution_separation(
         }
         let mut h_sep = Vec::with_capacity(subset.len());
         let mut v_sep = Vec::with_capacity(subset.len());
-        for (_obs, state, residual_m, _effective_weight) in &subset {
-            let dx = final_estimate.ecef_x_m - state.x_m;
-            let dy = final_estimate.ecef_y_m - state.y_m;
-            let dz = final_estimate.ecef_z_m - state.z_m;
-            let range = (dx * dx + dy * dy + dz * dz).sqrt();
-            let hx = dx / range;
-            let hy = dy / range;
-            let hz = dz / range;
-            h_sep.push([hx, hy, hz, 1.0]);
+        for (observation, state, residual_m, _effective_weight) in &subset {
+            let (_range_m, design_row) =
+                linearized_geometry_row(final_estimate, observation.sat.constellation, state)?;
+            h_sep.push(design_row);
             v_sep.push(*residual_m);
         }
-        if let Some((dx, dy, dz, _dcb, _)) =
+        if let Some((delta, _)) =
             solve_weighted_normal_eq(&h_sep, &v_sep, &vec![1.0; v_sep.len()])
         {
+            let dx = delta.first().copied().unwrap_or(0.0);
+            let dy = delta.get(1).copied().unwrap_or(0.0);
+            let dz = delta.get(2).copied().unwrap_or(0.0);
             let separation_m = (dx * dx + dy * dy + dz * dz).sqrt();
             let candidate = RaimSolutionSeparation { suspect_sat: removed.0.sat, separation_m };
             if max_separation
@@ -1421,26 +1805,32 @@ fn max_solution_separation(
     max_separation
 }
 
-type NormalEqSolution = (f64, f64, f64, f64, [[f64; 4]; 4]);
+type NormalEqSolution = (Vec<f64>, Vec<Vec<f64>>);
 
-fn solve_weighted_normal_eq(h: &[[f64; 4]], v: &[f64], w: &[f64]) -> Option<NormalEqSolution> {
-    let mut n = [[0.0_f64; 4]; 4];
-    let mut u = [0.0_f64; 4];
+fn solve_weighted_normal_eq(h: &[Vec<f64>], v: &[f64], w: &[f64]) -> Option<NormalEqSolution> {
+    let dimension = h.first()?.len();
+    let mut n = vec![vec![0.0_f64; dimension]; dimension];
+    let mut u = vec![0.0_f64; dimension];
     for (i, row) in h.iter().enumerate() {
         let wi = w.get(i).copied().unwrap_or(1.0);
-        for r in 0..4 {
+        if row.len() != dimension {
+            return None;
+        }
+        for r in 0..dimension {
             u[r] += row[r] * v[i] * wi;
-            for c in 0..4 {
+            for c in 0..dimension {
                 n[r][c] += row[r] * row[c] * wi;
             }
         }
     }
-    let inv = invert_4x4(n)?;
-    let dx = inv[0][0] * u[0] + inv[0][1] * u[1] + inv[0][2] * u[2] + inv[0][3] * u[3];
-    let dy = inv[1][0] * u[0] + inv[1][1] * u[1] + inv[1][2] * u[2] + inv[1][3] * u[3];
-    let dz = inv[2][0] * u[0] + inv[2][1] * u[1] + inv[2][2] * u[2] + inv[2][3] * u[3];
-    let dcb = inv[3][0] * u[0] + inv[3][1] * u[1] + inv[3][2] * u[2] + inv[3][3] * u[3];
-    Some((dx, dy, dz, dcb, inv))
+    let inv = invert_matrix(n)?;
+    let mut delta = vec![0.0_f64; dimension];
+    for row in 0..dimension {
+        for col in 0..dimension {
+            delta[row] += inv[row][col] * u[col];
+        }
+    }
+    Some((delta, inv))
 }
 
 fn huber_weights(residuals: &[f64], k: f64) -> Vec<f64> {
@@ -1507,9 +1897,60 @@ pub fn invert_4x4(a: [[f64; 4]; 4]) -> Option<[[f64; 4]; 4]> {
     Some(inv)
 }
 
-fn compute_pdop(h: &[[f64; 4]]) -> Option<f64> {
+fn invert_matrix(mut matrix: Vec<Vec<f64>>) -> Option<Vec<Vec<f64>>> {
+    let dimension = matrix.len();
+    if dimension == 0 || matrix.iter().any(|row| row.len() != dimension) {
+        return None;
+    }
+    let mut augmented = vec![vec![0.0_f64; dimension * 2]; dimension];
+    for row in 0..dimension {
+        for col in 0..dimension {
+            augmented[row][col] = matrix[row][col];
+        }
+        augmented[row][row + dimension] = 1.0;
+    }
+    for pivot_col in 0..dimension {
+        let mut pivot_row = pivot_col;
+        let mut pivot_abs = augmented[pivot_col][pivot_col].abs();
+        for (row_index, row) in augmented.iter().enumerate().skip(pivot_col + 1) {
+            if row[pivot_col].abs() > pivot_abs {
+                pivot_abs = row[pivot_col].abs();
+                pivot_row = row_index;
+            }
+        }
+        if pivot_abs < 1.0e-12 {
+            return None;
+        }
+        if pivot_row != pivot_col {
+            augmented.swap(pivot_col, pivot_row);
+        }
+        let pivot_inverse = 1.0 / augmented[pivot_col][pivot_col];
+        for col in pivot_col..(dimension * 2) {
+            augmented[pivot_col][col] *= pivot_inverse;
+        }
+        for row in 0..dimension {
+            if row == pivot_col {
+                continue;
+            }
+            let factor = augmented[row][pivot_col];
+            for col in pivot_col..(dimension * 2) {
+                augmented[row][col] -= factor * augmented[pivot_col][col];
+            }
+        }
+    }
+    let mut inverse = vec![vec![0.0_f64; dimension]; dimension];
+    for row in 0..dimension {
+        for col in 0..dimension {
+            inverse[row][col] = augmented[row][col + dimension];
+        }
+    }
+    matrix.clear();
+    Some(inverse)
+}
+
+fn compute_pdop(h: &[Vec<f64>]) -> Option<f64> {
     let inv = normal_matrix_inverse(h)?;
-    Some(position_covariance_trace(inv).sqrt())
+    Some(position_covariance_trace(&inv).sqrt())
 }
 
 pub fn position_dops_from_satellite_positions(
@@ -1528,39 +1969,43 @@ pub fn position_dops_from_satellite_positions(
         if !range_m.is_finite() || range_m <= 0.0 {
             return None;
         }
-        h.push([dx / range_m, dy / range_m, dz / range_m, 1.0]);
+        h.push(vec![dx / range_m, dy / range_m, dz / range_m, 1.0]);
     }
     compute_dops(receiver_ecef_m, &h)
 }
 
-fn compute_dops(receiver_ecef_m: [f64; 3], h: &[[f64; 4]]) -> Option<PositionDops> {
+fn compute_dops(receiver_ecef_m: [f64; 3], h: &[Vec<f64>]) -> Option<PositionDops> {
     let inv = normal_matrix_inverse(h)?;
-    let pdop = position_covariance_trace(inv).sqrt();
+    let pdop = position_covariance_trace(&inv).sqrt();
     let tdop = inv[3][3].max(0.0).sqrt();
     let gdop = (pdop.powi(2) + tdop.powi(2)).sqrt();
-    let (hdop, vdop) = local_horizontal_vertical_dops(receiver_ecef_m, inv)?;
+    let (hdop, vdop) = local_horizontal_vertical_dops(receiver_ecef_m, &inv)?;
     Some(PositionDops { pdop, hdop, vdop, gdop, tdop })
 }
 
-fn normal_matrix_inverse(h: &[[f64; 4]]) -> Option<[[f64; 4]; 4]> {
-    let mut n = [[0.0_f64; 4]; 4];
+fn normal_matrix_inverse(h: &[Vec<f64>]) -> Option<Vec<Vec<f64>>> {
+    let dimension = h.first()?.len();
+    let mut n = vec![vec![0.0_f64; dimension]; dimension];
     for row in h {
-        for r in 0..4 {
-            for c in 0..4 {
+        if row.len() != dimension {
+            return None;
+        }
+        for r in 0..dimension {
+            for c in 0..dimension {
                 n[r][c] += row[r] * row[c];
             }
         }
     }
-    invert_4x4(n)
+    invert_matrix(n)
 }
 
-fn position_covariance_trace(inv: [[f64; 4]; 4]) -> f64 {
+fn position_covariance_trace(inv: &[Vec<f64>]) -> f64 {
     (inv[0][0] + inv[1][1] + inv[2][2]).max(0.0)
 }
 
 fn local_horizontal_vertical_dops(
     receiver_ecef_m: [f64; 3],
-    inv: [[f64; 4]; 4],
+    inv: &[Vec<f64>],
 ) -> Option<(f64, f64)> {
     let covariance_xyz = [
         [inv[0][0], inv[0][1], inv[0][2]],
