@@ -405,7 +405,8 @@ mod pvt_tests {
     };
     use bijux_gnss_infra::api::nav::{
         ecef_to_geodetic, elevation_azimuth_deg, parse_rinex_nav, sat_state_gps_l1ca,
-        write_rinex_nav, GpsBroadcastNavigationData, GpsEphemeris, GpsL1CaHowWord,
+        write_rinex_broadcast_navigation, write_rinex_nav, GpsBroadcastNavigationData,
+        GpsEphemeris, GpsL1CaHowWord,
         GpsL1CaLnavDecodedSubframe, GpsL1CaLnavSubframe1Clock, GpsL1CaLnavSubframe2Orbit,
         GpsL1CaLnavSubframe3Orbit, GpsL1CaLnavSubframeAlignment, GpsL1CaTlmWord,
         GpsL1CaWordParitySummary, IonosphereModel, KlobucharCoefficients, KlobucharModel,
@@ -890,6 +891,51 @@ mod pvt_tests {
             serde_json::to_string_pretty(navigation).expect("serialize broadcast navigation"),
         )
         .expect("write broadcast navigation");
+
+        let common = sample_common_args(root.clone());
+        let out_dir = artifacts_dir(&common, "pvt", None).expect("artifacts dir");
+        fs::create_dir_all(&out_dir).expect("create pvt artifacts dir");
+        handle_pvt(GnssCommand::Pvt {
+            common: common.clone(),
+            obs: obs_path,
+            eph: eph_path,
+            ekf,
+        })
+        .expect("pvt command");
+
+        let nav_path = out_dir.join("pvt.jsonl");
+        let mut solutions = read_nav_solutions(&nav_path).expect("read nav solutions");
+        fs::remove_dir_all(root).expect("remove test root");
+
+        assert_eq!(solutions.len(), 1);
+        solutions.remove(0)
+    }
+
+    fn solve_pvt_case_with_rinex_broadcast_navigation_data(
+        case_name: &str,
+        navigation: &GpsBroadcastNavigationData,
+        pvt_case: &SyntheticPvtCase,
+        ekf: bool,
+    ) -> bijux_gnss_infra::api::core::NavSolutionEpoch {
+        let root = std::env::temp_dir().join(format!(
+            "bijux_pvt_rinex_broadcast_navigation_{}_{}_{}",
+            case_name,
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos()
+        ));
+        fs::create_dir_all(&root).expect("create test root");
+        let obs_path = root.join("obs.jsonl");
+        let eph_path = root.join("nav.rnx");
+        fs::write(
+            &obs_path,
+            format!(
+                "{}\n",
+                serde_json::to_string(&pvt_case.obs_epoch).expect("serialize observation epoch")
+            ),
+        )
+        .expect("write obs");
+        write_rinex_broadcast_navigation(&eph_path, navigation, true)
+            .expect("write rinex broadcast navigation");
 
         let common = sample_common_args(root.clone());
         let out_dir = artifacts_dir(&common, "pvt", None).expect("artifacts dir");
@@ -1424,6 +1470,41 @@ mod pvt_tests {
         );
         let uncorrected_solution = solve_pvt_case_with_rinex_nav(
             "broadcast_ionosphere_wls_uncorrected",
+            &ephemerides,
+            &ionosphere_biased_case,
+        );
+
+        let corrected_error_m = position_error_3d_m(&corrected_solution, clean_case.truth_ecef_m);
+        let uncorrected_error_m = position_error_3d_m(&uncorrected_solution, clean_case.truth_ecef_m);
+
+        assert!(corrected_solution.valid);
+        assert!(corrected_solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "ionosphere_correction=klobuchar_broadcast"));
+        assert!(corrected_error_m < 5.0);
+        assert!(uncorrected_error_m > corrected_error_m + 3.0);
+    }
+
+    #[test]
+    fn pvt_command_applies_rinex_broadcast_ionosphere_correction_in_wls() {
+        let ephemerides = sample_ephemerides();
+        let klobuchar = sample_klobuchar_coefficients();
+        let navigation = GpsBroadcastNavigationData {
+            ephemerides: ephemerides.clone(),
+            klobuchar: Some(klobuchar),
+        };
+        let clean_case = sample_pvt_case(&ephemerides, 2.75e-4);
+        let ionosphere_biased_case = add_klobuchar_delay_to_pvt_case(&clean_case, &ephemerides, klobuchar);
+
+        let corrected_solution = solve_pvt_case_with_rinex_broadcast_navigation_data(
+            "rinex_broadcast_ionosphere_wls_corrected",
+            &navigation,
+            &ionosphere_biased_case,
+            false,
+        );
+        let uncorrected_solution = solve_pvt_case_with_rinex_nav(
+            "rinex_broadcast_ionosphere_wls_uncorrected",
             &ephemerides,
             &ionosphere_biased_case,
         );
