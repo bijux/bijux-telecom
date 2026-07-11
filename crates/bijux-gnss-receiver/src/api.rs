@@ -65,10 +65,14 @@ pub use crate::pipeline::{StepReport, StepStats};
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use crate::rtk::ambiguity::{
-    decorrelate_lambda, float_from_state, ratio_from_candidates, ratio_test,
-    search_integer_candidates, select_partial_fix, AmbiguityFixResult, AmbiguityManager,
-    DecorrelatedAmbiguities, FixAuditEvent, FixPolicy, FixState, FloatAmbiguitySolution,
-    IntegerCandidate, NaiveFixer,
+    rtk_ambiguity_state_from_fixed_solution, rtk_candidate_ratio,
+    rtk_conditioned_baseline_from_fixed_ambiguities,
+    rtk_float_ambiguity_state_from_baseline_solution, rtk_float_ambiguity_state_from_filter_state,
+    rtk_integer_ambiguity_candidates, rtk_lambda_decorrelate, rtk_ratio_test_acceptance,
+    rtk_select_partial_ambiguity_fix, RtkAmbiguityFixAudit, RtkAmbiguityFixPolicy,
+    RtkAmbiguityFixResult, RtkAmbiguityFixState, RtkAmbiguityFixStatus, RtkAmbiguityTracker,
+    RtkConditionedBaselineSolution, RtkDecorrelatedAmbiguityState, RtkDoubleDifferenceAmbiguityId,
+    RtkFloatAmbiguityState, RtkIntegerAmbiguityCandidate, RtkRatioTestFixer,
 };
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
