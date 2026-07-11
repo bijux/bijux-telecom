@@ -7,7 +7,7 @@ use crate::orbits::gps::{
     is_ephemeris_valid, sat_state_gps_l1ca, sat_state_gps_l1ca_from_observation, GpsEphemeris,
     GpsSatState,
 };
-use crate::RaimFaultDetection;
+use crate::{RaimFaultDetection, RaimFaultExclusion};
 use bijux_gnss_core::api::{
     GpsTime, Llh, MeasurementRejectReason, ObsSignalTiming, SatId, Seconds,
 };
@@ -35,6 +35,7 @@ pub struct PositionSolution {
     pub residuals: Vec<(SatId, f64, f64)>,
     pub rejected: Vec<(SatId, bijux_gnss_core::api::MeasurementRejectReason)>,
     pub raim_fault_detection: Option<RaimFaultDetection>,
+    pub raim_fault_exclusion: Option<RaimFaultExclusion>,
     pub separation_max_m: Option<f64>,
     pub separation_suspect: Option<SatId>,
     pub covariance_symmetrized: bool,
@@ -269,6 +270,7 @@ impl PositionSolver {
         let mut working_inputs = inputs;
         let mut estimate = initial_estimate;
         let mut raim_fault_detection = None;
+        let mut raim_fault_exclusion = None;
         let working_set = loop {
             let solved = self.solve_working_set(&working_inputs, estimate, klobuchar).ok_or_else(
                 || {
@@ -295,6 +297,14 @@ impl PositionSolver {
                         separation_m,
                         self.separation_gate_m,
                     ));
+                }
+                if raim_fault_exclusion.is_none() {
+                    raim_fault_exclusion = Some(RaimFaultExclusion {
+                        excluded_sat: exclusion_candidate.excluded_sat,
+                        pre_exclusion_rms_m: exclusion_candidate.pre_exclusion_rms_m,
+                        post_exclusion_rms_m: exclusion_candidate.post_exclusion_rms_m,
+                        solution_shift_m: exclusion_candidate.solution_shift_m,
+                    });
                 }
                 push_unique_rejection(
                     &mut rejected,
@@ -447,6 +457,7 @@ impl PositionSolver {
                 .collect(),
             rejected,
             raim_fault_detection,
+            raim_fault_exclusion,
             separation_max_m: separation.map(|separation| separation.separation_m),
             separation_suspect: separation.map(|separation| separation.suspect_sat),
             covariance_symmetrized: working_set.covariance_symmetrized,
