@@ -73,7 +73,7 @@ fn parse_rinex_nav_header(data: &str) -> Result<(RinexNavHeader, usize), ParseEr
                 .map_err(|err| ParseError {
                     message: format!("invalid RINEX NAV version '{}': {err}", &line[..9.min(line.len())]),
                 })?;
-            has_type = line.contains("NAVIGATION DATA");
+            has_type = line.contains("NAVIGATION DATA") || line.contains("NAV DATA");
             header = Some(RinexNavHeader {
                 version,
                 is_mixed: line.contains("M (MIXED)"),
@@ -135,6 +135,11 @@ fn parse_rinex_klobuchar_header_fields(
         });
     }
     Ok([fields[0], fields[1], fields[2], fields[3]])
+}
+
+fn pad_rinex_nav_record_fields(mut fields: Vec<f64>) -> [f64; 4] {
+    fields.resize(4, 0.0);
+    [fields[0], fields[1], fields[2], fields[3]]
 }
 
 fn parse_rinex_epoch_utc(
@@ -341,13 +346,29 @@ fn parse_gps_rinex_nav_record(
     let line6 = parse_rinex_numeric_fields(lines[5])?;
     let line7 = parse_rinex_numeric_fields(lines[6])?;
 
-    for (line_index, fields) in [(2, &line2), (3, &line3), (4, &line4), (5, &line5), (6, &line6), (7, &line7)] {
-        if fields.len() < 4 {
+    for (line_index, fields, min_required) in [
+        (2, &line2, 4usize),
+        (3, &line3, 4usize),
+        (4, &line4, 4usize),
+        (5, &line5, 4usize),
+        (6, &line6, 4usize),
+        (7, &line7, 2usize),
+    ] {
+        if fields.len() < min_required {
             return Err(ParseError {
-                message: format!("GPS RINEX NAV line {line_index} requires 4 numeric fields, found {}", fields.len()),
+                message: format!(
+                    "GPS RINEX NAV line {line_index} requires at least {min_required} numeric fields, found {}",
+                    fields.len()
+                ),
             });
         }
     }
+    let line2 = pad_rinex_nav_record_fields(line2);
+    let line3 = pad_rinex_nav_record_fields(line3);
+    let line4 = pad_rinex_nav_record_fields(line4);
+    let line5 = pad_rinex_nav_record_fields(line5);
+    let line6 = pad_rinex_nav_record_fields(line6);
+    let line7 = pad_rinex_nav_record_fields(line7);
 
     let year = parse_rinex_nav_year(line1[0] as i32, header.version);
     let utc = parse_rinex_epoch_utc(
