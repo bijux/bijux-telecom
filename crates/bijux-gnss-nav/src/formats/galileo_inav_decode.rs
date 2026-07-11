@@ -119,19 +119,17 @@ pub fn decode_galileo_broadcast_navigation_data(
 pub fn decode_galileo_broadcast_navigation_data_payloads(
     payloads: &[u128],
 ) -> Result<Option<GalileoBroadcastNavigationData>, GalileoInavBatchRejection> {
-    let words = payloads
-        .iter()
-        .copied()
-        .map(decode_galileo_inav_word)
-        .collect::<Option<Vec<_>>>()
-        .ok_or(GalileoInavBatchRejection {
-            word_type: 0,
-            reason: GalileoInavBatchRejectionReason::DecodeFailure,
-            existing_iodnav: None,
-            incoming_iodnav: None,
-            existing_svid: None,
-            incoming_svid: None,
-        })?;
+    let words =
+        payloads.iter().copied().map(decode_galileo_inav_word).collect::<Option<Vec<_>>>().ok_or(
+            GalileoInavBatchRejection {
+                word_type: 0,
+                reason: GalileoInavBatchRejectionReason::DecodeFailure,
+                existing_iodnav: None,
+                incoming_iodnav: None,
+                existing_svid: None,
+                incoming_svid: None,
+            },
+        )?;
     decode_galileo_broadcast_navigation_data(&words)
 }
 
@@ -153,9 +151,7 @@ pub fn decode_galileo_inav_ephemeris_2_word(payload: u128) -> Option<GalileoInav
             * std::f64::consts::PI,
         i0: signed(get_bits(payload, 49, 32), 32) as f64 * 2f64.powi(-31) * std::f64::consts::PI,
         w: signed(get_bits(payload, 81, 32), 32) as f64 * 2f64.powi(-31) * std::f64::consts::PI,
-        idot: signed(get_bits(payload, 113, 14), 14) as f64
-            * 2f64.powi(-43)
-            * std::f64::consts::PI,
+        idot: signed(get_bits(payload, 113, 14), 14) as f64 * 2f64.powi(-43) * std::f64::consts::PI,
     })
 }
 
@@ -419,10 +415,11 @@ fn incoming_word_type(word: &GalileoInavWord) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::{
-        decode_galileo_broadcast_navigation_data, decode_galileo_broadcast_navigation_data_payloads,
-        decode_galileo_inav_clock_word, decode_galileo_inav_ephemeris_1_word,
-        decode_galileo_inav_ephemeris_2_word, decode_galileo_inav_ephemeris_3_word,
-        decode_galileo_inav_status_word, decode_galileo_inav_word, GalileoInavBatchRejectionReason,
+        decode_galileo_broadcast_navigation_data,
+        decode_galileo_broadcast_navigation_data_payloads, decode_galileo_inav_clock_word,
+        decode_galileo_inav_ephemeris_1_word, decode_galileo_inav_ephemeris_2_word,
+        decode_galileo_inav_ephemeris_3_word, decode_galileo_inav_status_word,
+        decode_galileo_inav_word, GalileoInavBatchRejectionReason,
     };
     use bijux_gnss_core::api::Constellation;
 
@@ -570,8 +567,7 @@ mod tests {
         assert!((word_2.i0 - i0_raw as f64 * 2f64.powi(-31) * std::f64::consts::PI).abs() < 1e-12);
         assert!((word_2.w - w_raw as f64 * 2f64.powi(-31) * std::f64::consts::PI).abs() < 1e-12);
         assert!(
-            (word_2.idot - idot_raw as f64 * 2f64.powi(-43) * std::f64::consts::PI).abs()
-                < 1e-15
+            (word_2.idot - idot_raw as f64 * 2f64.powi(-43) * std::f64::consts::PI).abs() < 1e-15
         );
 
         assert_eq!(word_3.iodnav, iodnav);
