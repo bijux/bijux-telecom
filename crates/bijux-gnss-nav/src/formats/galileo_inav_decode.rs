@@ -419,10 +419,12 @@ fn incoming_word_type(word: &GalileoInavWord) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::{
+        decode_galileo_broadcast_navigation_data, decode_galileo_broadcast_navigation_data_payloads,
         decode_galileo_inav_clock_word, decode_galileo_inav_ephemeris_1_word,
         decode_galileo_inav_ephemeris_2_word, decode_galileo_inav_ephemeris_3_word,
-        decode_galileo_inav_status_word,
+        decode_galileo_inav_status_word, decode_galileo_inav_word, GalileoInavBatchRejectionReason,
     };
+    use bijux_gnss_core::api::Constellation;
 
     fn set_bits(payload: &mut u128, start: usize, len: usize, value: u128) {
         let shift = 128 - (start - 1) - len;
@@ -434,6 +436,67 @@ mod tests {
     fn encode_signed(value: i64, bits: usize) -> u128 {
         let mask = (1_u128 << bits) - 1;
         (value as u128) & mask
+    }
+
+    fn sample_batch_payloads() -> [u128; 5] {
+        let iodnav = 0x1A5_u16;
+        let mut word_1 = 0_u128;
+        let mut word_2 = 0_u128;
+        let mut word_3 = 0_u128;
+        let mut word_4 = 0_u128;
+        let mut word_5 = 0_u128;
+
+        set_bits(&mut word_1, 1, 6, 1);
+        set_bits(&mut word_1, 7, 10, iodnav as u128);
+        set_bits(&mut word_1, 17, 14, 2_345);
+        set_bits(&mut word_1, 31, 32, encode_signed(-0x1020_304_i64, 32));
+        set_bits(&mut word_1, 63, 32, 0x0123_4567);
+        set_bits(&mut word_1, 95, 32, 0x0987_6543);
+
+        set_bits(&mut word_2, 1, 6, 2);
+        set_bits(&mut word_2, 7, 10, iodnav as u128);
+        set_bits(&mut word_2, 17, 32, encode_signed(0x1020_3040_i64, 32));
+        set_bits(&mut word_2, 49, 32, encode_signed(-0x1234_567_i64, 32));
+        set_bits(&mut word_2, 81, 32, encode_signed(0x2345_6789_i64, 32));
+        set_bits(&mut word_2, 113, 14, encode_signed(-0x03A5_i64, 14));
+
+        set_bits(&mut word_3, 1, 6, 3);
+        set_bits(&mut word_3, 7, 10, iodnav as u128);
+        set_bits(&mut word_3, 17, 24, encode_signed(-0x04_321_i64, 24));
+        set_bits(&mut word_3, 41, 16, encode_signed(0x0F0F_i64, 16));
+        set_bits(&mut word_3, 57, 16, encode_signed(-321_i64, 16));
+        set_bits(&mut word_3, 73, 16, encode_signed(654_i64, 16));
+        set_bits(&mut word_3, 89, 16, encode_signed(1_111_i64, 16));
+        set_bits(&mut word_3, 105, 16, encode_signed(-2_222_i64, 16));
+        set_bits(&mut word_3, 121, 8, 77);
+
+        set_bits(&mut word_4, 1, 6, 4);
+        set_bits(&mut word_4, 7, 10, iodnav as u128);
+        set_bits(&mut word_4, 17, 6, 19);
+        set_bits(&mut word_4, 23, 16, encode_signed(-123_i64, 16));
+        set_bits(&mut word_4, 39, 16, encode_signed(456_i64, 16));
+        set_bits(&mut word_4, 55, 14, 1_111);
+        set_bits(&mut word_4, 69, 31, encode_signed(-0x1ABCD_i64, 31));
+        set_bits(&mut word_4, 100, 21, encode_signed(0x01234_i64, 21));
+        set_bits(&mut word_4, 121, 6, encode_signed(-0x09_i64, 6));
+
+        set_bits(&mut word_5, 1, 6, 5);
+        set_bits(&mut word_5, 7, 11, 211);
+        set_bits(&mut word_5, 18, 11, encode_signed(-87_i64, 11));
+        set_bits(&mut word_5, 29, 14, encode_signed(0x00A5_i64, 14));
+        set_bits(&mut word_5, 43, 1, 1);
+        set_bits(&mut word_5, 44, 1, 1);
+        set_bits(&mut word_5, 46, 1, 1);
+        set_bits(&mut word_5, 48, 10, encode_signed(-12_i64, 10));
+        set_bits(&mut word_5, 58, 10, encode_signed(23_i64, 10));
+        set_bits(&mut word_5, 68, 2, 0);
+        set_bits(&mut word_5, 70, 2, 2);
+        set_bits(&mut word_5, 72, 1, 0);
+        set_bits(&mut word_5, 73, 1, 0);
+        set_bits(&mut word_5, 74, 12, 2_222);
+        set_bits(&mut word_5, 86, 20, 456_789);
+
+        [word_1, word_2, word_3, word_4, word_5]
     }
 
     #[test]
@@ -606,5 +669,58 @@ mod tests {
         assert!(!word.signal_health.e1b_data_valid);
         assert_eq!(word.gst.week, week);
         assert_eq!(word.gst.tow_s, tow);
+    }
+
+    #[test]
+    fn assembled_batch_exposes_time_satellite_health_ephemeris_and_clock_fields() {
+        let words = sample_batch_payloads()
+            .into_iter()
+            .map(|payload| decode_galileo_inav_word(payload).expect("decoded word"))
+            .collect::<Vec<_>>();
+
+        let nav = decode_galileo_broadcast_navigation_data(&words)
+            .expect("consistent batch")
+            .expect("complete batch");
+
+        assert_eq!(nav.sat.constellation, Constellation::Galileo);
+        assert_eq!(nav.sat.prn, 19);
+        assert_eq!(nav.iodnav, 0x1A5);
+        assert_eq!(nav.gst.week, 2_222);
+        assert_eq!(nav.gst.tow_s, 456_789);
+        assert_eq!(nav.signal_health.e5b_signal_health, 0);
+        assert_eq!(nav.signal_health.e1b_signal_health, 2);
+        assert!(nav.signal_health.e5b_data_valid);
+        assert!(nav.signal_health.e1b_data_valid);
+        assert_eq!(nav.sisa_e1_e5b, 77);
+        assert_eq!(nav.ephemeris.sat, nav.sat);
+        assert_eq!(nav.ephemeris.iodnav, nav.iodnav);
+        assert!((nav.clock.bgd_e1_e5a_s - (-12_i64) as f64 * 2f64.powi(-32)).abs() < f64::EPSILON);
+        assert!((nav.clock.bgd_e1_e5b_s - 23_f64 * 2f64.powi(-32)).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn payload_batch_decoder_rejects_mixed_issue_numbers() {
+        let mut payloads = sample_batch_payloads();
+        set_bits(&mut payloads[2], 7, 10, 0x155);
+
+        let rejection = decode_galileo_broadcast_navigation_data_payloads(&payloads)
+            .expect_err("mixed IODnav batch");
+
+        assert_eq!(rejection.reason, GalileoInavBatchRejectionReason::IodnavMismatch);
+        assert_eq!(rejection.word_type, 3);
+        assert_eq!(rejection.existing_iodnav, Some(0x1A5));
+        assert_eq!(rejection.incoming_iodnav, Some(0x155));
+    }
+
+    #[test]
+    fn payload_batch_decoder_reports_decode_failures() {
+        let mut payloads = sample_batch_payloads();
+        set_bits(&mut payloads[4], 1, 6, 63);
+
+        let rejection = decode_galileo_broadcast_navigation_data_payloads(&payloads)
+            .expect_err("unsupported word type");
+
+        assert_eq!(rejection.reason, GalileoInavBatchRejectionReason::DecodeFailure);
+        assert_eq!(rejection.word_type, 0);
     }
 }
