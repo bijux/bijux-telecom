@@ -1,0 +1,73 @@
+{
+  "scenario_id": "clean_synthetic_navigation_pvt_truth",
+  "solution_count": 1,
+  "matched_epoch_count": 1,
+  "unmatched_solution_epochs": [],
+  "unused_reference_epochs": [],
+  "epochs": [
+    {
+      "artifact_id": "nav-epoch-0000000000-epoch:0|sample:0",
+      "source_observation_epoch_id": "epoch:0|sample:0|t:0.000000000|decision:Accepted|sats:Gps-03:L1:Ca:25062994.938:0.000000:-1800.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:0.083601152294:0:99999.916398847708;Gps-07:L1:Ca:28301353.680:0.000000:-1000.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:0.094403154333:0:99999.905596845667;Gps-11:L1:Ca:25307994.160:0.000000:-250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:0.084418381733:0:99999.915581618261;Gps-19:L1:Ca:20247256.752:0.000000:500.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:0.067537578786:0:99999.932462421217;Gps-23:L1:Ca:25708846.047:0.000000:1250.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:0.085755479703:0:99999.914244520303;Gps-29:L1:Ca:32423836.112:0.000000:2000.000:tracked_carrier_hz_minus_intermediate_freq:52.000000:arc_start:0:0:0.108154275557:0:99999.891845724444",
+      "epoch_index": 0,
+      "receive_time_s": 0.0,
+      "truth_ecef_m": {
+        "x_m": -2702588.8324926673,
+        "y_m": -4325046.226438757,
+        "z_m": 3817399.1784983957
+      },
+      "measured_ecef_m": {
+        "x_m": -2702588.832492667,
+        "y_m": -4325046.22643876,
+        "z_m": 3817399.1784983953
+      },
+      "ecef_error_m": {
+        "x_m": 4.656612873077393e-10,
+        "y_m": -2.7939677238464355e-9,
+        "z_m": -4.656612873077393e-10
+      },
+      "truth_geodetic": {
+        "latitude_deg": 37.0,
+        "longitude_deg": -122.0,
+        "altitude_m": 10.0
+      },
+      "measured_geodetic": {
+        "latitude_deg": 36.999999999999986,
+        "longitude_deg": -121.99999999999997,
+        "altitude_m": 10.000000001862645
+      },
+      "enu_error_m": {
+        "east_m": 1.875480488667104e-9,
+        "north_m": -1.6493399830109673e-9,
+        "up_m": 1.4149865963888906e-9,
+        "horiz_m": 2.497548686798641e-9,
+        "vert_m": 1.4149865963888906e-9,
+        "error_3d_m": 2.8705289601203874e-9
+      },
+      "clock_bias": {
+        "truth_s": 0.0,
+        "measured_s": -2.1788053648823287e-18,
+        "error_s": -2.1788053648823287e-18,
+        "truth_m": 0.0,
+        "measured_m": -6.531894158416602e-10,
+        "error_m": -6.531894158416602e-10
+      },
+      "residual_rms_m": 3.725290298461914e-9,
+      "pre_fit_residual_rms_m": 3.725290298461914e-9,
+      "post_fit_residual_rms_m": 3.725290298461914e-9,
+      "dop": {
+        "pdop": 1.77985582595363,
+        "hdop": 1.586310908990907,
+        "vdop": 0.8071582627945524,
+        "gdop": 1.890101934294344,
+        "tdop": 0.6360806244825747
+      },
+      "solution_status": "Converged",
+      "solution_quality": "Float",
+      "solution_validity": "Stable",
+      "valid": true,
+      "sat_count": 6,
+      "used_sat_count": 6,
+      "rejected_sat_count": 0
+    }
+  ]
+}
