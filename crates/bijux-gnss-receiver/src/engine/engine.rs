@@ -8,8 +8,9 @@ use crate::pipeline::observations::{
     observation_artifacts_from_tracking_results_with_gps_anchor, observation_decisions_from_epochs,
 };
 use bijux_gnss_core::api::{
-    signal_registry, AcqHypothesis, AcqResult, Constellation, InputError, SamplesFrame, SatId,
-    SignalBand, SignalCode, SignalSupportRow, SupportMatrix, SupportStatus, TrackEpoch,
+    default_acquisition_sats, default_acquisition_signal, signal_registry, AcqHypothesis,
+    AcqResult, Constellation, InputError, SamplesFrame, SatId, SignalBand, SignalCode,
+    SignalSupportRow, SupportMatrix, SupportStatus, TrackEpoch,
 };
 use bijux_gnss_signal::api::remove_dc_offset_in_place;
 use std::time::Instant;
@@ -109,8 +110,7 @@ impl Receiver {
             });
         }
 
-        let sats: Vec<SatId> =
-            (1..=32).map(|prn| SatId { constellation: Constellation::Gps, prn }).collect();
+        let sats = acquisition_search_sats(self.config());
 
         runtime.trace.record(TraceRecord {
             name: "pipeline_stage",
@@ -389,6 +389,31 @@ impl Receiver {
 
 fn streaming_tracking_frame_len(samples_per_code: usize) -> usize {
     samples_per_code.saturating_mul(STREAMING_TRACKING_CODE_PERIODS.max(1))
+}
+
+fn acquisition_search_sats(config: &crate::engine::receiver_config::ReceiverPipelineConfig) -> Vec<SatId> {
+    [Constellation::Gps, Constellation::Galileo, Constellation::Glonass, Constellation::Beidou]
+        .into_iter()
+        .flat_map(|constellation| {
+            if acquisition_signal_matches_config(config, constellation) {
+                default_acquisition_sats(constellation)
+            } else {
+                Vec::new()
+            }
+        })
+        .collect()
+}
+
+fn acquisition_signal_matches_config(
+    config: &crate::engine::receiver_config::ReceiverPipelineConfig,
+    constellation: Constellation,
+) -> bool {
+    let Some(signal) = default_acquisition_signal(constellation) else {
+        return false;
+    };
+    let code_length = signal.code_length.map(|length| length as usize).unwrap_or(config.code_length);
+    (signal.spec.code_rate_hz - config.code_freq_basis_hz).abs() <= f64::EPSILON
+        && code_length == config.code_length
 }
 
 fn build_tracking_preview_frame(

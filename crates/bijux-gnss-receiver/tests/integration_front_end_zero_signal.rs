@@ -148,3 +148,28 @@ fn deterministic_noise_only_input_never_produces_accepted_satellites() {
         .iter()
         .all(|result| result.hypothesis.to_string() != AcqHypothesis::Accepted.to_string()));
 }
+
+#[test]
+fn galileo_e1_zero_signal_searches_registered_galileo_catalog() {
+    let mut profile = ReceiverConfig::default();
+    profile.sample_rate_hz = 4_092_000.0;
+    profile.intermediate_freq_hz = 0.0;
+    profile.code_freq_basis_hz = 1_023_000.0;
+    profile.code_length = 4092;
+    profile.acquisition.integration_ms = 20;
+    profile.acquisition.noncoherent_integration = 1;
+    profile.acquisition.doppler_search_hz = 1_500;
+    profile.acquisition.doppler_step_hz = 250;
+
+    let mut source = SingleFrameSource { frame: Some(zero_signal_frame(&profile)) };
+    let artifacts = Receiver::new(profile.to_pipeline_config(), ReceiverRuntime::default())
+        .run(&mut source)
+        .expect("run Galileo zero-signal receiver pipeline");
+
+    assert_eq!(artifacts.acquisitions.len(), 50);
+    assert!(artifacts.acquisitions.iter().all(|result| {
+        result.sat.constellation == bijux_gnss_core::api::Constellation::Galileo
+            && result.hypothesis.to_string() == AcqHypothesis::Rejected.to_string()
+    }));
+    assert_eq!(artifacts.acquisition_explain.len(), 50);
+}
