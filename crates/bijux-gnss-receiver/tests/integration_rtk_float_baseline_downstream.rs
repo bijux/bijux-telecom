@@ -3,7 +3,10 @@
 use bijux_gnss_receiver::api::{
     build_dd, build_sd, choose_ref_sat, solve_baseline_dd, solve_float_baseline_dd,
 };
-use bijux_gnss_testkit::rtk_baseline::clean_gps_l1_short_baseline_case;
+use bijux_gnss_testkit::rtk_baseline::{
+    centimeter_level_rtk_baseline_budget, clean_gps_l1_short_baseline_case,
+    rtk_baseline_accuracy,
+};
 
 #[test]
 fn receiver_float_baseline_solver_projects_nav_solution() {
@@ -37,4 +40,26 @@ fn receiver_float_baseline_solver_projects_nav_solution() {
         float_solution.covariance_enu_m2
     );
     assert!(!projected_solution.fixed);
+}
+
+#[test]
+fn receiver_float_baseline_solver_reaches_centimeter_accuracy() {
+    let scenario = clean_gps_l1_short_baseline_case();
+
+    let single_differences = build_sd(&scenario.base_epoch, &scenario.rover_epoch);
+    let reference = choose_ref_sat(&single_differences).expect("reference");
+    let double_differences = build_dd(&single_differences, reference);
+    let solution = solve_float_baseline_dd(
+        &double_differences,
+        scenario.base_ecef_m,
+        &scenario.ephemerides,
+        scenario.receive_gps_time.tow_s,
+    )
+    .expect("float solution");
+    let accuracy = rtk_baseline_accuracy(solution.enu_m, scenario.truth_enu_m);
+
+    assert!(
+        accuracy.satisfies(centimeter_level_rtk_baseline_budget()),
+        "accuracy={accuracy:?} solution={solution:?}"
+    );
 }
