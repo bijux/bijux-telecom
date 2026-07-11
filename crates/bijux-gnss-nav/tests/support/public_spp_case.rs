@@ -56,11 +56,22 @@ pub fn position_observations(epoch: &ObsEpoch) -> Vec<PositionObservation> {
 }
 
 pub fn solve_public_ab43_epoch(epoch: &ObsEpoch) -> Result<SolvedPublicEpoch, String> {
+    solve_public_ab43_epoch_with_satellites(epoch, None)
+}
+
+pub fn solve_public_ab43_epoch_with_satellites(
+    epoch: &ObsEpoch,
+    sats: Option<&[SatId]>,
+) -> Result<SolvedPublicEpoch, String> {
     let case = ab43_public_spp_case();
     let solver = PositionSolver { raim: false, apply_troposphere: true, ..PositionSolver::new() };
+    let observations = position_observations(epoch)
+        .into_iter()
+        .filter(|observation| sats.map(|sats| sats.contains(&observation.sat)).unwrap_or(true))
+        .collect::<Vec<_>>();
     let solution = solver
         .try_solve_wls_with_broadcast_ionosphere(
-            &position_observations(epoch),
+            &observations,
             &case.navigation.ephemerides,
             epoch.gps_time().expect("AB43 epoch GPS time").tow_s,
             case.navigation.klobuchar.as_ref(),
