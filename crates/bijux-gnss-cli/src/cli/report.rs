@@ -235,6 +235,7 @@ struct EkfContext {
     last_t_rx_s: Option<f64>,
     ambiguity: bijux_gnss_infra::api::nav::AmbiguityManager,
     isb: bijux_gnss_infra::api::nav::InterSystemBiasManager,
+    tropo_enabled: bool,
     ztd_index: Option<usize>,
     atmosphere: bijux_gnss_infra::api::nav::AtmosphereConfig,
     code_bias: bijux_gnss_infra::api::nav::ZeroBiases,
@@ -243,10 +244,15 @@ struct EkfContext {
 }
 
 impl EkfContext {
+    #[cfg(test)]
     fn new() -> Self {
+        Self::new_with_troposphere(true, 2.3)
+    }
+
+    fn new_with_troposphere(tropo_enabled: bool, tropo_ztd_m: f64) -> Self {
         let x = vec![0.0_f64; 8];
         let p = Matrix::identity(8);
-        let mut ekf = bijux_gnss_infra::api::nav::Ekf::new(
+        let ekf = bijux_gnss_infra::api::nav::Ekf::new(
             x,
             p,
             bijux_gnss_infra::api::nav::EkfConfig {
@@ -259,11 +265,6 @@ impl EkfContext {
                 divergence_max_variance: 1e12,
             },
         );
-        let ztd_index = {
-            let idx = ekf.x.len();
-            ekf.add_state("ztd_m", 2.3, 10.0);
-            Some(idx)
-        };
         Self {
             ekf,
             model: NavClockModel::new(ProcessNoiseConfig {
@@ -271,13 +272,18 @@ impl EkfContext {
                 vel_mps: 1.0,
                 clock_bias_s: 1e-4,
                 clock_drift_s: 1e-5,
-                ztd_m: 0.01,
+                ztd_m: 0.0,
             }),
             last_t_rx_s: None,
             ambiguity: bijux_gnss_infra::api::nav::AmbiguityManager::new(),
             isb: bijux_gnss_infra::api::nav::InterSystemBiasManager::new(),
-            ztd_index,
-            atmosphere: bijux_gnss_infra::api::nav::AtmosphereConfig::default(),
+            tropo_enabled,
+            ztd_index: None,
+            atmosphere: bijux_gnss_infra::api::nav::AtmosphereConfig {
+                enable_ztd: tropo_enabled,
+                ztd_initial_m: tropo_ztd_m,
+                ..bijux_gnss_infra::api::nav::AtmosphereConfig::default()
+            },
             code_bias: bijux_gnss_infra::api::nav::ZeroBiases,
             phase_bias: bijux_gnss_infra::api::nav::ZeroBiases,
             corrections: bijux_gnss_infra::api::nav::CorrectionContext,

@@ -162,18 +162,31 @@ fn handle_pvt(command: GnssCommand) -> Result<()> {
     let mut solutions = Vec::new();
     let mut timing_lines = Vec::new();
     let header = artifact_header(&common, &profile, dataset.as_ref())?;
+    let pipeline_config = profile.to_pipeline_config();
     let mut nav = if !ekf {
         Some(bijux_gnss_infra::api::receiver::Navigation::new(
-            ReceiverConfig::default().to_pipeline_config(),
+            pipeline_config.clone(),
             runtime.clone(),
         ))
     } else {
         None
     };
-    let mut ekf_ctx = if ekf { Some(EkfContext::new()) } else { None };
+    let mut ekf_ctx = if ekf {
+        Some(EkfContext::new_with_troposphere(
+            pipeline_config.tropo_enable,
+            pipeline_config.tropo_ztd_m,
+        ))
+    } else {
+        None
+    };
     for obs_epoch in obs_epochs {
         let solution = if ekf {
-            solve_epoch_ekf(&mut ekf_ctx, &obs_epoch, &ephs, broadcast_navigation.klobuchar.as_ref())?
+            solve_epoch_ekf(
+                &mut ekf_ctx,
+                &obs_epoch,
+                &ephs,
+                broadcast_navigation.klobuchar.as_ref(),
+            )?
         } else {
             nav.as_mut().and_then(|nav| {
                 nav.solve_epoch_with_broadcast_ionosphere(
@@ -410,10 +423,11 @@ mod pvt_tests {
         GpsL1CaLnavDecodedSubframe, GpsL1CaLnavSubframe1Clock, GpsL1CaLnavSubframe2Orbit,
         GpsL1CaLnavSubframe3Orbit, GpsL1CaLnavSubframeAlignment, GpsL1CaTlmWord,
         GpsL1CaWordParitySummary, IonosphereModel, KlobucharCoefficients, KlobucharModel,
+        SaastamoinenModel, TroposphereModel,
     };
     use std::collections::BTreeMap;
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
@@ -453,6 +467,32 @@ mod pvt_tests {
             sidecar: None,
             resume: None,
         }
+    }
+
+    fn sample_common_args_with_troposphere(out: PathBuf, tropo_enabled: bool) -> CommonArgs {
+        let mut common = sample_common_args(out.clone());
+        if tropo_enabled == ReceiverConfig::default().navigation.tropo_enable {
+            return common;
+        }
+        common.config = Some(write_receiver_config(&out, |profile| {
+            profile.navigation.tropo_enable = tropo_enabled;
+        }));
+        common
+    }
+
+    fn write_receiver_config(
+        root: &Path,
+        configure: impl FnOnce(&mut ReceiverConfig),
+    ) -> PathBuf {
+        let path = root.join("receiver.toml");
+        let mut profile = ReceiverConfig::default();
+        configure(&mut profile);
+        fs::write(
+            &path,
+            toml::to_string_pretty(&profile).expect("serialize receiver config"),
+        )
+        .expect("write receiver config");
+        path
     }
 
     fn sample_ephemerides() -> Vec<GpsEphemeris> {
@@ -587,6 +627,28 @@ mod pvt_tests {
         receiver_clock_bias_s: f64,
         adjustments: &[(u8, SyntheticSatelliteAdjustment)],
     ) -> SyntheticPvtCase {
+        add_saastamoinen_delay_to_pvt_case(
+            &sample_troposphere_free_pvt_case_with_adjustments(
+                ephs,
+                receiver_clock_bias_s,
+                adjustments,
+            ),
+            ephs,
+        )
+    }
+
+    fn sample_troposphere_free_pvt_case(
+        ephs: &[GpsEphemeris],
+        receiver_clock_bias_s: f64,
+    ) -> SyntheticPvtCase {
+        sample_troposphere_free_pvt_case_with_adjustments(ephs, receiver_clock_bias_s, &[])
+    }
+
+    fn sample_troposphere_free_pvt_case_with_adjustments(
+        ephs: &[GpsEphemeris],
+        receiver_clock_bias_s: f64,
+        adjustments: &[(u8, SyntheticSatelliteAdjustment)],
+    ) -> SyntheticPvtCase {
         let t_rx_s = 504_018.07 + receiver_clock_bias_s;
         let (rx_x, rx_y, rx_z) = bijux_gnss_infra::api::nav::geodetic_to_ecef(37.0, -122.0, 10.0);
         let adjustments_by_prn =
@@ -678,6 +740,53 @@ mod pvt_tests {
         }
     }
 
+    fn add_saastamoinen_delay_to_pvt_case(
+        pvt_case: &SyntheticPvtCase,
+        ephs: &[GpsEphemeris],
+    ) -> SyntheticPvtCase {
+        let (lat_deg, lon_deg, alt_m) = ecef_to_geodetic(
+            pvt_case.truth_ecef_m.0,
+            pvt_case.truth_ecef_m.1,
+            pvt_case.truth_ecef_m.2,
+        );
+        let receiver = bijux_gnss_infra::api::core::Llh { lat_deg, lon_deg, alt_m };
+        let model = SaastamoinenModel;
+        let mut biased_epoch = pvt_case.obs_epoch.clone();
+        for sat in &mut biased_epoch.sats {
+            let ephemeris = ephs
+                .iter()
+                .find(|ephemeris| ephemeris.sat == sat.signal_id.sat)
+                .expect("matching ephemeris");
+            let timing = sat.timing.expect("timing");
+            let state = sat_state_gps_l1ca(
+                ephemeris,
+                timing.transmit_gps_time.tow_s,
+                timing.signal_travel_time_s.0,
+            );
+            let (_azimuth_deg, elevation_deg) = elevation_azimuth_deg(
+                pvt_case.truth_ecef_m.0,
+                pvt_case.truth_ecef_m.1,
+                pvt_case.truth_ecef_m.2,
+                state.x_m,
+                state.y_m,
+                state.z_m,
+            );
+            let delay_m =
+                model.delay_m(receiver, elevation_deg, Seconds(pvt_case.obs_epoch.t_rx_s.0));
+            let delay_s = delay_m / SPEED_OF_LIGHT_MPS;
+            sat.pseudorange_m.0 += delay_m;
+            sat.timing = Some(ObsSignalTiming {
+                signal_travel_time_s: Seconds(timing.signal_travel_time_s.0 + delay_s),
+                transmit_gps_time: timing.transmit_gps_time.offset_seconds(-delay_s),
+            });
+        }
+        SyntheticPvtCase {
+            obs_epoch: biased_epoch,
+            truth_ecef_m: pvt_case.truth_ecef_m,
+            receiver_clock_bias_s: pvt_case.receiver_clock_bias_s,
+        }
+    }
+
     fn position_error_3d_m(
         solution: &bijux_gnss_infra::api::core::NavSolutionEpoch,
         truth_ecef_m: (f64, f64, f64),
@@ -758,7 +867,7 @@ mod pvt_tests {
         ephs: &[GpsEphemeris],
         pvt_case: &SyntheticPvtCase,
     ) -> bijux_gnss_infra::api::core::NavSolutionEpoch {
-        solve_pvt_case_with_rinex_nav_mode(case_name, ephs, pvt_case, false)
+        solve_pvt_case_with_rinex_nav_mode_and_troposphere(case_name, ephs, pvt_case, false, true)
     }
 
     fn solve_pvt_case_with_rinex_nav_mode(
@@ -766,6 +875,16 @@ mod pvt_tests {
         ephs: &[GpsEphemeris],
         pvt_case: &SyntheticPvtCase,
         ekf: bool,
+    ) -> bijux_gnss_infra::api::core::NavSolutionEpoch {
+        solve_pvt_case_with_rinex_nav_mode_and_troposphere(case_name, ephs, pvt_case, ekf, true)
+    }
+
+    fn solve_pvt_case_with_rinex_nav_mode_and_troposphere(
+        case_name: &str,
+        ephs: &[GpsEphemeris],
+        pvt_case: &SyntheticPvtCase,
+        ekf: bool,
+        tropo_enabled: bool,
     ) -> bijux_gnss_infra::api::core::NavSolutionEpoch {
         let root = std::env::temp_dir().join(format!(
             "bijux_pvt_{}_{}_{}",
@@ -786,7 +905,7 @@ mod pvt_tests {
         .expect("write obs");
         write_rinex_nav(&eph_path, ephs, true).expect("write rinex nav");
 
-        let common = sample_common_args(root.clone());
+        let common = sample_common_args_with_troposphere(root.clone(), tropo_enabled);
         let out_dir = artifacts_dir(&common, "pvt", None).expect("artifacts dir");
         fs::create_dir_all(&out_dir).expect("create pvt artifacts dir");
         handle_pvt(GnssCommand::Pvt {
@@ -809,6 +928,15 @@ mod pvt_tests {
         case_name: &str,
         ephs: &[GpsEphemeris],
         pvt_case: &SyntheticPvtCase,
+    ) -> bijux_gnss_infra::api::core::NavSolutionEpoch {
+        solve_pvt_case_with_decoded_lnav_reports_and_troposphere(case_name, ephs, pvt_case, true)
+    }
+
+    fn solve_pvt_case_with_decoded_lnav_reports_and_troposphere(
+        case_name: &str,
+        ephs: &[GpsEphemeris],
+        pvt_case: &SyntheticPvtCase,
+        tropo_enabled: bool,
     ) -> bijux_gnss_infra::api::core::NavSolutionEpoch {
         let root = std::env::temp_dir().join(format!(
             "bijux_pvt_{}_{}_{}",
@@ -844,7 +972,7 @@ mod pvt_tests {
         )
         .expect("write nav decode reports");
 
-        let common = sample_common_args(root.clone());
+        let common = sample_common_args_with_troposphere(root.clone(), tropo_enabled);
         let out_dir = artifacts_dir(&common, "pvt", None).expect("artifacts dir");
         fs::create_dir_all(&out_dir).expect("create pvt artifacts dir");
         handle_pvt(GnssCommand::Pvt {
@@ -863,11 +991,12 @@ mod pvt_tests {
         solutions.remove(0)
     }
 
-    fn solve_pvt_case_with_broadcast_navigation_data(
+    fn solve_pvt_case_with_broadcast_navigation_data_and_troposphere(
         case_name: &str,
         navigation: &GpsBroadcastNavigationData,
         pvt_case: &SyntheticPvtCase,
         ekf: bool,
+        tropo_enabled: bool,
     ) -> bijux_gnss_infra::api::core::NavSolutionEpoch {
         let root = std::env::temp_dir().join(format!(
             "bijux_pvt_broadcast_navigation_{}_{}_{}",
@@ -892,7 +1021,7 @@ mod pvt_tests {
         )
         .expect("write broadcast navigation");
 
-        let common = sample_common_args(root.clone());
+        let common = sample_common_args_with_troposphere(root.clone(), tropo_enabled);
         let out_dir = artifacts_dir(&common, "pvt", None).expect("artifacts dir");
         fs::create_dir_all(&out_dir).expect("create pvt artifacts dir");
         handle_pvt(GnssCommand::Pvt {
@@ -911,11 +1040,12 @@ mod pvt_tests {
         solutions.remove(0)
     }
 
-    fn solve_pvt_case_with_rinex_broadcast_navigation_data(
+    fn solve_pvt_case_with_rinex_broadcast_navigation_data_and_troposphere(
         case_name: &str,
         navigation: &GpsBroadcastNavigationData,
         pvt_case: &SyntheticPvtCase,
         ekf: bool,
+        tropo_enabled: bool,
     ) -> bijux_gnss_infra::api::core::NavSolutionEpoch {
         let root = std::env::temp_dir().join(format!(
             "bijux_pvt_rinex_broadcast_navigation_{}_{}_{}",
@@ -937,7 +1067,7 @@ mod pvt_tests {
         write_rinex_broadcast_navigation(&eph_path, navigation, true)
             .expect("write rinex broadcast navigation");
 
-        let common = sample_common_args(root.clone());
+        let common = sample_common_args_with_troposphere(root.clone(), tropo_enabled);
         let out_dir = artifacts_dir(&common, "pvt", None).expect("artifacts dir");
         fs::create_dir_all(&out_dir).expect("create pvt artifacts dir");
         handle_pvt(GnssCommand::Pvt {
@@ -1274,8 +1404,14 @@ mod pvt_tests {
     #[test]
     fn pvt_command_rinex_solution_prefers_earth_rotation_correction() {
         let ephemerides = sample_ephemerides();
-        let pvt_case = sample_pvt_case(&ephemerides, 2.75e-4);
-        let solution = solve_pvt_case_with_rinex_nav("earth_rotation_rinex", &ephemerides, &pvt_case);
+        let pvt_case = sample_troposphere_free_pvt_case(&ephemerides, 2.75e-4);
+        let solution = solve_pvt_case_with_rinex_nav_mode_and_troposphere(
+            "earth_rotation_rinex",
+            &ephemerides,
+            &pvt_case,
+            false,
+            false,
+        );
 
         let corrected_rms_m =
             pvt_residual_rms_with_earth_rotation_mode_m(&solution, &ephemerides, &pvt_case, true);
@@ -1319,11 +1455,12 @@ mod pvt_tests {
     #[test]
     fn pvt_command_decoded_lnav_solution_prefers_earth_rotation_correction() {
         let ephemerides = sample_ephemerides();
-        let pvt_case = sample_pvt_case(&ephemerides, 2.75e-4);
-        let solution = solve_pvt_case_with_decoded_lnav_reports(
+        let pvt_case = sample_troposphere_free_pvt_case(&ephemerides, 2.75e-4);
+        let solution = solve_pvt_case_with_decoded_lnav_reports_and_troposphere(
             "earth_rotation_decoded_lnav",
             &ephemerides,
             &pvt_case,
+            false,
         );
 
         let corrected_rms_m =
@@ -1442,8 +1579,14 @@ mod pvt_tests {
     #[test]
     fn pvt_command_marks_wls_solution_ionosphere_uncorrected_without_broadcast_model() {
         let ephemerides = sample_ephemerides();
-        let pvt_case = sample_pvt_case(&ephemerides, 2.75e-4);
-        let solution = solve_pvt_case_with_rinex_nav("ionosphere_uncorrected_wls", &ephemerides, &pvt_case);
+        let pvt_case = sample_troposphere_free_pvt_case(&ephemerides, 2.75e-4);
+        let solution = solve_pvt_case_with_rinex_nav_mode_and_troposphere(
+            "ionosphere_uncorrected_wls",
+            &ephemerides,
+            &pvt_case,
+            false,
+            false,
+        );
 
         assert!(solution
             .explain_reasons
@@ -1459,19 +1602,22 @@ mod pvt_tests {
             ephemerides: ephemerides.clone(),
             klobuchar: Some(klobuchar),
         };
-        let clean_case = sample_pvt_case(&ephemerides, 2.75e-4);
+        let clean_case = sample_troposphere_free_pvt_case(&ephemerides, 2.75e-4);
         let ionosphere_biased_case = add_klobuchar_delay_to_pvt_case(&clean_case, &ephemerides, klobuchar);
 
-        let corrected_solution = solve_pvt_case_with_broadcast_navigation_data(
+        let corrected_solution = solve_pvt_case_with_broadcast_navigation_data_and_troposphere(
             "broadcast_ionosphere_wls_corrected",
             &navigation,
             &ionosphere_biased_case,
             false,
+            false,
         );
-        let uncorrected_solution = solve_pvt_case_with_rinex_nav(
+        let uncorrected_solution = solve_pvt_case_with_rinex_nav_mode_and_troposphere(
             "broadcast_ionosphere_wls_uncorrected",
             &ephemerides,
             &ionosphere_biased_case,
+            false,
+            false,
         );
 
         let corrected_error_m = position_error_3d_m(&corrected_solution, clean_case.truth_ecef_m);
@@ -1494,19 +1640,23 @@ mod pvt_tests {
             ephemerides: ephemerides.clone(),
             klobuchar: Some(klobuchar),
         };
-        let clean_case = sample_pvt_case(&ephemerides, 2.75e-4);
+        let clean_case = sample_troposphere_free_pvt_case(&ephemerides, 2.75e-4);
         let ionosphere_biased_case = add_klobuchar_delay_to_pvt_case(&clean_case, &ephemerides, klobuchar);
 
-        let corrected_solution = solve_pvt_case_with_rinex_broadcast_navigation_data(
+        let corrected_solution =
+            solve_pvt_case_with_rinex_broadcast_navigation_data_and_troposphere(
             "rinex_broadcast_ionosphere_wls_corrected",
             &navigation,
             &ionosphere_biased_case,
             false,
+            false,
         );
-        let uncorrected_solution = solve_pvt_case_with_rinex_nav(
+        let uncorrected_solution = solve_pvt_case_with_rinex_nav_mode_and_troposphere(
             "rinex_broadcast_ionosphere_wls_uncorrected",
             &ephemerides,
             &ionosphere_biased_case,
+            false,
+            false,
         );
 
         let corrected_error_m = position_error_3d_m(&corrected_solution, clean_case.truth_ecef_m);
@@ -1524,9 +1674,14 @@ mod pvt_tests {
     #[test]
     fn pvt_command_marks_ekf_solution_ionosphere_uncorrected_without_broadcast_model() {
         let ephemerides = sample_ephemerides();
-        let pvt_case = sample_pvt_case(&ephemerides, 2.75e-4);
-        let solution =
-            solve_pvt_case_with_rinex_nav_mode("ionosphere_uncorrected_ekf", &ephemerides, &pvt_case, true);
+        let pvt_case = sample_troposphere_free_pvt_case(&ephemerides, 2.75e-4);
+        let solution = solve_pvt_case_with_rinex_nav_mode_and_troposphere(
+            "ionosphere_uncorrected_ekf",
+            &ephemerides,
+            &pvt_case,
+            true,
+            false,
+        );
 
         assert!(solution
             .explain_reasons
@@ -1542,20 +1697,22 @@ mod pvt_tests {
             ephemerides: ephemerides.clone(),
             klobuchar: Some(klobuchar),
         };
-        let clean_case = sample_pvt_case(&ephemerides, 2.75e-4);
+        let clean_case = sample_troposphere_free_pvt_case(&ephemerides, 2.75e-4);
         let ionosphere_biased_case = add_klobuchar_delay_to_pvt_case(&clean_case, &ephemerides, klobuchar);
 
-        let corrected_solution = solve_pvt_case_with_broadcast_navigation_data(
+        let corrected_solution = solve_pvt_case_with_broadcast_navigation_data_and_troposphere(
             "broadcast_ionosphere_ekf_corrected",
             &navigation,
             &ionosphere_biased_case,
             true,
+            false,
         );
-        let uncorrected_solution = solve_pvt_case_with_rinex_nav_mode(
+        let uncorrected_solution = solve_pvt_case_with_rinex_nav_mode_and_troposphere(
             "broadcast_ionosphere_ekf_uncorrected",
             &ephemerides,
             &ionosphere_biased_case,
             true,
+            false,
         );
 
         let corrected_error_m = position_error_3d_m(&corrected_solution, clean_case.truth_ecef_m);
@@ -1577,20 +1734,23 @@ mod pvt_tests {
             ephemerides: ephemerides.clone(),
             klobuchar: Some(klobuchar),
         };
-        let clean_case = sample_pvt_case(&ephemerides, 2.75e-4);
+        let clean_case = sample_troposphere_free_pvt_case(&ephemerides, 2.75e-4);
         let ionosphere_biased_case = add_klobuchar_delay_to_pvt_case(&clean_case, &ephemerides, klobuchar);
 
-        let corrected_solution = solve_pvt_case_with_rinex_broadcast_navigation_data(
+        let corrected_solution =
+            solve_pvt_case_with_rinex_broadcast_navigation_data_and_troposphere(
             "rinex_broadcast_ionosphere_ekf_corrected",
             &navigation,
             &ionosphere_biased_case,
             true,
+            false,
         );
-        let uncorrected_solution = solve_pvt_case_with_rinex_nav_mode(
+        let uncorrected_solution = solve_pvt_case_with_rinex_nav_mode_and_troposphere(
             "rinex_broadcast_ionosphere_ekf_uncorrected",
             &ephemerides,
             &ionosphere_biased_case,
             true,
+            false,
         );
 
         let corrected_error_m = position_error_3d_m(&corrected_solution, clean_case.truth_ecef_m);
@@ -1601,6 +1761,86 @@ mod pvt_tests {
             .explain_reasons
             .iter()
             .any(|reason| reason == "ionosphere_correction=klobuchar_broadcast"));
+        assert!(corrected_error_m < uncorrected_error_m);
+    }
+
+    #[test]
+    fn pvt_command_marks_wls_solution_troposphere_uncorrected_when_disabled() {
+        let ephemerides = sample_ephemerides();
+        let pvt_case = sample_troposphere_free_pvt_case(&ephemerides, 2.75e-4);
+        let solution = solve_pvt_case_with_rinex_nav_mode_and_troposphere(
+            "troposphere_uncorrected_wls",
+            &ephemerides,
+            &pvt_case,
+            false,
+            false,
+        );
+
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "troposphere_uncorrected"));
+    }
+
+    #[test]
+    fn pvt_command_applies_saastamoinen_troposphere_correction_in_wls() {
+        let ephemerides = sample_ephemerides();
+        let clean_case = sample_troposphere_free_pvt_case(&ephemerides, 2.75e-4);
+        let troposphere_biased_case = add_saastamoinen_delay_to_pvt_case(&clean_case, &ephemerides);
+
+        let corrected_solution = solve_pvt_case_with_rinex_nav(
+            "saastamoinen_troposphere_wls_corrected",
+            &ephemerides,
+            &troposphere_biased_case,
+        );
+        let uncorrected_solution = solve_pvt_case_with_rinex_nav_mode_and_troposphere(
+            "saastamoinen_troposphere_wls_uncorrected",
+            &ephemerides,
+            &troposphere_biased_case,
+            false,
+            false,
+        );
+
+        let corrected_error_m = position_error_3d_m(&corrected_solution, clean_case.truth_ecef_m);
+        let uncorrected_error_m = position_error_3d_m(&uncorrected_solution, clean_case.truth_ecef_m);
+
+        assert!(corrected_solution.valid);
+        assert!(corrected_solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "troposphere_correction=saastamoinen"));
+        assert!(corrected_error_m < 5.0);
+        assert!(uncorrected_error_m > corrected_error_m + 3.0);
+    }
+
+    #[test]
+    fn pvt_command_applies_saastamoinen_troposphere_correction_in_ekf() {
+        let ephemerides = sample_ephemerides();
+        let clean_case = sample_troposphere_free_pvt_case(&ephemerides, 2.75e-4);
+        let troposphere_biased_case = add_saastamoinen_delay_to_pvt_case(&clean_case, &ephemerides);
+
+        let corrected_solution = solve_pvt_case_with_rinex_nav_mode(
+            "saastamoinen_troposphere_ekf_corrected",
+            &ephemerides,
+            &troposphere_biased_case,
+            true,
+        );
+        let uncorrected_solution = solve_pvt_case_with_rinex_nav_mode_and_troposphere(
+            "saastamoinen_troposphere_ekf_uncorrected",
+            &ephemerides,
+            &troposphere_biased_case,
+            true,
+            false,
+        );
+
+        let corrected_error_m = position_error_3d_m(&corrected_solution, clean_case.truth_ecef_m);
+        let uncorrected_error_m = position_error_3d_m(&uncorrected_solution, clean_case.truth_ecef_m);
+
+        assert!(corrected_solution.valid);
+        assert!(corrected_solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "troposphere_correction=saastamoinen"));
         assert!(corrected_error_m < uncorrected_error_m);
     }
 }

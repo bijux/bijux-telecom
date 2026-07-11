@@ -911,8 +911,8 @@ fn solve_epoch_ekf(
     let Some(ctx) = ctx.as_mut() else {
         return Ok(None);
     };
-    if klobuchar.is_some() && ekf_position_is_uninitialized(ctx) {
-        prime_ekf_state_from_wls(ctx, obs, ephs, klobuchar);
+    if (klobuchar.is_some() || ctx.tropo_enabled) && ekf_position_is_uninitialized(ctx) {
+        prime_ekf_state_from_wls(ctx, obs, ephs, klobuchar, ctx.tropo_enabled);
     }
     let dt_s =
         if let Some(prev) = ctx.last_t_rx_s { (obs.t_rx_s.0 - prev).max(1e-3) } else { 0.001 };
@@ -952,6 +952,8 @@ fn solve_epoch_ekf(
             receive_tow_s,
             &state,
         );
+        let tropo_m =
+            estimate_ekf_saastamoinen_delay_m(ctx.tropo_enabled, [rx_x, rx_y, rx_z], &state);
         let weight = bijux_gnss_infra::api::nav::weight_from_cn0_elev(
             sat.cn0_dbhz,
             el,
@@ -967,11 +969,11 @@ fn solve_epoch_ekf(
         let code_bias_m = ctx.code_bias.code_bias_m(sat.signal_id).unwrap_or(0.0);
         let meas = PseudorangeMeasurement {
             sig: sat.signal_id,
-            z_m: sat.pseudorange_m.0 - code_bias_m - iono_m,
+            z_m: sat.pseudorange_m.0 - code_bias_m,
             sat_pos_m: [state.x_m, state.y_m, state.z_m],
             sat_clock_s: state.clock_correction.bias_s,
-            tropo_m: 0.0,
-            iono_m: 0.0,
+            tropo_m,
+            iono_m,
             sigma_m,
             elevation_deg: Some(el),
             ztd_index: ctx.ztd_index,
@@ -1002,7 +1004,7 @@ fn solve_epoch_ekf(
             z_cycles: sat.carrier_phase_cycles.0 - phase_bias_cycles,
             sat_pos_m: [state.x_m, state.y_m, state.z_m],
             sat_clock_s: state.clock_correction.bias_s,
-            tropo_m: 0.0,
+            tropo_m,
             iono_m,
             wavelength_m: 299_792_458.0 / sat.metadata.signal.carrier_hz.value(),
             ambiguity_index: Some(amb_idx),
@@ -1046,6 +1048,11 @@ fn solve_epoch_ekf(
         "ionosphere_correction=klobuchar_broadcast".to_string()
     } else {
         "ionosphere_uncorrected".to_string()
+    });
+    explain_reasons.push(if ctx.tropo_enabled {
+        "troposphere_correction=saastamoinen".to_string()
+    } else {
+        "troposphere_uncorrected".to_string()
     });
     let mut solution = bijux_gnss_infra::api::core::NavSolutionEpoch {
         epoch: bijux_gnss_infra::api::core::Epoch { index: obs.epoch_idx },
@@ -1148,6 +1155,7 @@ fn prime_ekf_state_from_wls(
     obs: &ObsEpoch,
     ephs: &[GpsEphemeris],
     klobuchar: Option<&bijux_gnss_infra::api::nav::KlobucharCoefficients>,
+    tropo_enabled: bool,
 ) {
     let observations = obs
         .sats
@@ -1172,8 +1180,11 @@ fn prime_ekf_state_from_wls(
     if observations.len() < 4 {
         return;
     }
-    let Some(solution) = bijux_gnss_infra::api::nav::PositionSolver::new()
-        .solve_wls_with_broadcast_ionosphere(
+    let Some(solution) = bijux_gnss_infra::api::nav::PositionSolver {
+        apply_troposphere: tropo_enabled,
+        ..bijux_gnss_infra::api::nav::PositionSolver::new()
+    }
+    .solve_wls_with_broadcast_ionosphere(
             &observations,
             ephs,
             obs.gps_time().map(|gps_time| gps_time.tow_s).unwrap_or(obs.t_rx_s.0),
@@ -1228,6 +1239,52 @@ fn estimate_ekf_klobuchar_delay_m(
         azimuth_deg,
         elevation_deg,
         bijux_gnss_infra::api::core::Seconds(receive_tow_s),
+    )
+}
+
+fn estimate_ekf_saastamoinen_delay_m(
+    tropo_enabled: bool,
+    receiver_ecef_m: [f64; 3],
+    state: &bijux_gnss_infra::api::nav::GpsSatState,
+) -> f64 {
+    if !tropo_enabled {
+        return 0.0;
+    }
+    let radius_m =
+        (receiver_ecef_m[0].powi(2) + receiver_ecef_m[1].powi(2) + receiver_ecef_m[2].powi(2)).sqrt();
+    if !radius_m.is_finite() || !(6_000_000.0..=7_000_000.0).contains(&radius_m) {
+        return 0.0;
+    }
+    let (lat_deg, lon_deg, alt_m) = bijux_gnss_infra::api::nav::ecef_to_geodetic(
+        receiver_ecef_m[0],
+        receiver_ecef_m[1],
+        receiver_ecef_m[2],
+    );
+    if !lat_deg.is_finite()
+        || !lon_deg.is_finite()
+        || !alt_m.is_finite()
+        || !(-1_000.0..=20_000.0).contains(&alt_m)
+    {
+        return 0.0;
+    }
+    let receiver = bijux_gnss_infra::api::core::Llh { lat_deg, lon_deg, alt_m };
+    let (_azimuth_deg, elevation_deg) = elevation_azimuth_deg(
+        receiver_ecef_m[0],
+        receiver_ecef_m[1],
+        receiver_ecef_m[2],
+        state.x_m,
+        state.y_m,
+        state.z_m,
+    );
+    if !elevation_deg.is_finite() || elevation_deg <= 0.0 {
+        return 0.0;
+    }
+    let model = bijux_gnss_infra::api::nav::SaastamoinenModel;
+    bijux_gnss_infra::api::nav::TroposphereModel::delay_m(
+        &model,
+        receiver,
+        elevation_deg,
+        bijux_gnss_infra::api::core::Seconds(0.0),
     )
 }
 

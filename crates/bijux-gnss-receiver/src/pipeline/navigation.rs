@@ -102,6 +102,7 @@ impl Navigation {
         solver.robust = config.robust_solver;
         solver.huber_k = config.huber_k;
         solver.raim = config.raim;
+        solver.apply_troposphere = config.tropo_enable;
         Self {
             config,
             runtime,
@@ -130,7 +131,7 @@ impl Navigation {
         let nav_artifact_id = nav_artifact_id(obs.epoch_idx, &source_observation_epoch_id);
         let assumptions = nav_assumptions(eph.len());
         if !obs.valid {
-            return Some(apply_ionosphere_explainability(
+            return Some(apply_atmosphere_explainability(
                 invalid_solution_epoch(
                     obs,
                     source_observation_epoch_id,
@@ -141,6 +142,7 @@ impl Navigation {
                     assumptions,
                 ),
                 klobuchar,
+                self.config.tropo_enable,
             ));
         }
         let input_constellations = obs
@@ -153,7 +155,7 @@ impl Navigation {
             input_constellations.iter().any(|constellation| *constellation != Constellation::Gps);
 
         if has_unsupported_constellation && !has_supported_gps {
-            return Some(apply_ionosphere_explainability(
+            return Some(apply_atmosphere_explainability(
                 invalid_solution_epoch(
                     obs,
                     source_observation_epoch_id,
@@ -171,6 +173,7 @@ impl Navigation {
                     assumptions,
                 ),
                 klobuchar,
+                self.config.tropo_enable,
             ));
         }
         if has_unsupported_constellation && has_supported_gps {
@@ -227,13 +230,12 @@ impl Navigation {
                 } else {
                     self.config.weighting.tracking_mode_scalar_weight
                 };
-                let pseudorange_sigma_m = if s.pseudorange_var_m2.is_finite()
-                    && s.pseudorange_var_m2 > 0.0
-                {
-                    Some(s.pseudorange_var_m2.sqrt())
-                } else {
-                    None
-                };
+                let pseudorange_sigma_m =
+                    if s.pseudorange_var_m2.is_finite() && s.pseudorange_var_m2 > 0.0 {
+                        Some(s.pseudorange_var_m2.sqrt())
+                    } else {
+                        None
+                    };
                 let weight = position_measurement_weight(
                     s.cn0_dbhz,
                     elevation,
@@ -276,7 +278,7 @@ impl Navigation {
                     invalid_satellite_time_sats.len()
                 ));
             }
-            return Some(apply_ionosphere_explainability(
+            return Some(apply_atmosphere_explainability(
                 self.degraded_from_last(
                     obs,
                     source_observation_epoch_id,
@@ -290,14 +292,17 @@ impl Navigation {
                     assumptions,
                 ),
                 klobuchar,
+                self.config.tropo_enable,
             ));
         }
         let eph_covered_count =
             observations.iter().filter(|row| eph.iter().any(|entry| entry.sat == row.sat)).count();
-        let solution = match self
-            .solver
-            .solve_wls_with_broadcast_ionosphere(&observations, eph, obs.t_rx_s.0, klobuchar)
-        {
+        let solution = match self.solver.solve_wls_with_broadcast_ionosphere(
+            &observations,
+            eph,
+            obs.t_rx_s.0,
+            klobuchar,
+        ) {
             Some(solution) => solution,
             None => {
                 self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
@@ -312,7 +317,7 @@ impl Navigation {
                 } else {
                     NavRefusalClass::SolverFailure
                 };
-                return Some(apply_ionosphere_explainability(
+                return Some(apply_atmosphere_explainability(
                     self.degraded_from_last(
                         obs,
                         source_observation_epoch_id,
@@ -329,6 +334,7 @@ impl Navigation {
                         assumptions,
                     ),
                     klobuchar,
+                    self.config.tropo_enable,
                 ));
             }
         };
@@ -527,7 +533,11 @@ impl Navigation {
         nav_epoch.explain_decision = decision.explain_decision;
         nav_epoch.explain_reasons = decision.explain_reasons;
         nav_epoch.refusal_class = decision.refusal_class;
-        apply_ionosphere_explainability_in_place(&mut nav_epoch, klobuchar);
+        apply_atmosphere_explainability_in_place(
+            &mut nav_epoch,
+            klobuchar,
+            self.config.tropo_enable,
+        );
         nav_epoch.stability_signature = nav_output_stability_signature(&nav_epoch);
         if let Some(sigma_h) = nav_epoch.sigma_h_m {
             nav_epoch.integrity_hpl_m = Some(sigma_h.0 * 6.0);
@@ -593,25 +603,35 @@ impl Navigation {
     }
 }
 
-fn apply_ionosphere_explainability(
+fn apply_atmosphere_explainability(
     mut solution: NavSolutionEpoch,
     klobuchar: Option<&KlobucharCoefficients>,
+    tropo_enabled: bool,
 ) -> NavSolutionEpoch {
-    apply_ionosphere_explainability_in_place(&mut solution, klobuchar);
+    apply_atmosphere_explainability_in_place(&mut solution, klobuchar, tropo_enabled);
     solution
 }
 
-fn apply_ionosphere_explainability_in_place(
+fn apply_atmosphere_explainability_in_place(
     solution: &mut NavSolutionEpoch,
     klobuchar: Option<&KlobucharCoefficients>,
+    tropo_enabled: bool,
 ) {
-    let reason = if klobuchar.is_some() {
+    let ionosphere_reason = if klobuchar.is_some() {
         "ionosphere_correction=klobuchar_broadcast"
     } else {
         "ionosphere_uncorrected"
     };
-    if !solution.explain_reasons.iter().any(|existing| existing == reason) {
-        solution.explain_reasons.push(reason.to_string());
+    if !solution.explain_reasons.iter().any(|existing| existing == ionosphere_reason) {
+        solution.explain_reasons.push(ionosphere_reason.to_string());
+    }
+    let troposphere_reason = if tropo_enabled {
+        "troposphere_correction=saastamoinen"
+    } else {
+        "troposphere_uncorrected"
+    };
+    if !solution.explain_reasons.iter().any(|existing| existing == troposphere_reason) {
+        solution.explain_reasons.push(troposphere_reason.to_string());
     }
 }
 
@@ -862,11 +882,8 @@ fn build_provenance(
         .filter(|residual| !residual.rejected)
         .map(|residual| residual.sat)
         .collect::<Vec<_>>();
-    let weighting_mode = if config.weighting.enabled {
-        "cn0_elevation_sigma_weighted"
-    } else {
-        "sigma_weighted"
-    };
+    let weighting_mode =
+        if config.weighting.enabled { "cn0_elevation_sigma_weighted" } else { "sigma_weighted" };
     let solver_family = if observations.iter().any(|row| (row.weight - 1.0).abs() > 1.0e-6) {
         "wls_weighted"
     } else {
@@ -1004,7 +1021,10 @@ mod tests {
         ObservationUncertaintyClass, ReceiverRole, SatId, Seconds, SigId, SignalBand, SignalCode,
         SignalSpec,
     };
-    use bijux_gnss_nav::api::{geodetic_to_ecef, sat_state_gps_l1ca, GpsEphemeris};
+    use bijux_gnss_nav::api::{
+        ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef, sat_state_gps_l1ca,
+        GpsEphemeris, SaastamoinenModel, TroposphereModel,
+    };
 
     fn sample_last_solution() -> NavSolutionEpoch {
         NavSolutionEpoch {
@@ -1232,7 +1252,20 @@ mod tests {
             }
             tau = next_tau;
         }
-        pseudorange_m
+        let sat = sat_state_gps_l1ca(eph, t_rx_s - tau, tau);
+        let (lat_deg, lon_deg, alt_m) =
+            ecef_to_geodetic(position_ecef.0, position_ecef.1, position_ecef.2);
+        let (_azimuth_deg, elevation_deg) = elevation_azimuth_deg(
+            position_ecef.0,
+            position_ecef.1,
+            position_ecef.2,
+            sat.x_m,
+            sat.y_m,
+            sat.z_m,
+        );
+        let receiver = bijux_gnss_core::api::Llh { lat_deg, lon_deg, alt_m };
+        let model = SaastamoinenModel;
+        pseudorange_m + model.delay_m(receiver, elevation_deg, Seconds(t_rx_s))
     }
 
     #[test]
@@ -1408,6 +1441,10 @@ mod tests {
         assert_eq!(solution.refusal_class, None);
         assert!(solution.valid);
         assert!(solution.explain_reasons.iter().any(|reason| reason == "ionosphere_uncorrected"));
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "troposphere_correction=saastamoinen"));
         assert!(solution.stability_signature.starts_with("navsig:v1:"));
         assert_eq!(solution.stability_signature_version, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION);
     }
@@ -1439,6 +1476,30 @@ mod tests {
             .explain_reasons
             .iter()
             .any(|reason| reason == "ionosphere_correction=klobuchar_broadcast"));
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "troposphere_correction=saastamoinen"));
+    }
+
+    #[test]
+    fn synthetic_solution_marks_troposphere_uncorrected_when_disabled() {
+        let mut config = ReceiverPipelineConfig::default();
+        config.tropo_enable = false;
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+        let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
+        let t_rx_s = 100_000.0;
+        let ephs = vec![
+            make_eph(1, 0.0, 0.0, t_rx_s),
+            make_eph(2, 0.8, 0.9, t_rx_s),
+            make_eph(3, 1.6, 1.8, t_rx_s),
+            make_eph(4, 2.4, 2.7, t_rx_s),
+            make_eph(5, 3.2, 3.6, t_rx_s),
+        ];
+        let obs = make_obs_epoch_for_solution(19, t_rx_s, truth, &ephs);
+        let solution = nav.solve_epoch(&obs, &ephs).expect("synthetic solution");
+
+        assert!(solution.explain_reasons.iter().any(|reason| reason == "troposphere_uncorrected"));
     }
 
     #[test]
