@@ -7,8 +7,9 @@ use bijux_gnss_receiver::api::sim::{
     summarize_truth_guided_pvt_clock_profile, SyntheticPvtClockProfileCase,
 };
 use navigation_clock_profile::{
-    build_navigation_clock_case, receiver_clock_drift_doppler_offset_hz,
-    synthetic_navigation_clock_profiles, truth_clock_drift_s_per_s,
+    build_navigation_clock_case, build_navigation_clock_cases, navigation_clock_case,
+    receiver_clock_drift_doppler_offset_hz, synthetic_navigation_clock_profiles,
+    truth_clock_drift_s_per_s, truth_guided_clock_profile_cases,
 };
 
 #[test]
@@ -37,36 +38,9 @@ fn synthetic_navigation_clock_profiles_produce_truth_ready_navigation_cases() {
 
 #[test]
 fn navigation_clock_profile_report_tracks_injected_clock_drift() {
-    let cases = synthetic_navigation_clock_profiles()
-        .into_iter()
-        .map(build_navigation_clock_case)
-        .collect::<Vec<_>>();
-    let stable_case = cases
-        .iter()
-        .find(|case| case.clock_profile.profile_name == "stable_receiver_clock")
-        .expect("stable receiver clock case");
+    let cases = build_navigation_clock_cases();
     let report = summarize_truth_guided_pvt_clock_profile(
-        &cases
-            .iter()
-            .map(|case| {
-                let expected_observation_doppler_offset_hz = receiver_clock_drift_doppler_offset_hz(
-                    truth_clock_drift_s_per_s(&case.clock_profile),
-                );
-                let reference_observations = (case.clock_profile.profile_name
-                    != "stable_receiver_clock")
-                    .then_some(stable_case.observations.as_slice());
-
-                SyntheticPvtClockProfileCase {
-                    scenario_id: &case.scenario_id,
-                    injected_clock_drift_s_per_s: truth_clock_drift_s_per_s(&case.clock_profile),
-                    expected_observation_doppler_offset_hz,
-                    observations: &case.observations,
-                    reference_observations,
-                    solutions: &case.solutions,
-                    accuracy: &case.pvt_accuracy,
-                }
-            })
-            .collect::<Vec<_>>(),
+        &truth_guided_clock_profile_cases(&cases),
         "navigation_clock_profile",
     );
 
@@ -97,18 +71,9 @@ fn navigation_clock_profile_report_tracks_injected_clock_drift() {
 
 #[test]
 fn navigation_clock_profile_report_tracks_clock_induced_doppler_offset() {
-    let cases = synthetic_navigation_clock_profiles()
-        .into_iter()
-        .map(build_navigation_clock_case)
-        .collect::<Vec<_>>();
-    let stable_case = cases
-        .iter()
-        .find(|case| case.clock_profile.profile_name == "stable_receiver_clock")
-        .expect("stable receiver clock case");
-    let drifting_case = cases
-        .iter()
-        .find(|case| case.clock_profile.profile_name == "oscillator_drift_receiver_clock")
-        .expect("oscillator drift receiver clock case");
+    let cases = build_navigation_clock_cases();
+    let stable_case = navigation_clock_case(&cases, "stable_receiver_clock");
+    let drifting_case = navigation_clock_case(&cases, "oscillator_drift_receiver_clock");
     let expected_doppler_offset_hz = receiver_clock_drift_doppler_offset_hz(
         truth_clock_drift_s_per_s(&drifting_case.clock_profile),
     );

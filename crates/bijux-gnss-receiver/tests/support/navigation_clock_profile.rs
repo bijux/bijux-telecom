@@ -10,7 +10,7 @@ use bijux_gnss_receiver::api::{
     observations_from_tracking_results_with_gps_anchor,
     sim::{
         truth_guided_receiver_accuracy_budgets, validate_pvt_accuracy_budget,
-        validate_truth_guided_pvt_table, SyntheticPvtAccuracyReport,
+        validate_truth_guided_pvt_table, SyntheticPvtAccuracyReport, SyntheticPvtClockProfileCase,
         SyntheticPvtTruthReferenceEpoch, SyntheticPvtTruthTableReport, SyntheticSignalParams,
     },
     Navigation, ReceiverPipelineConfig, ReceiverRuntime, TrackingResult,
@@ -86,6 +86,20 @@ pub fn synthetic_navigation_clock_profile(profile_name: &str) -> NavigationClock
         .into_iter()
         .find(|profile| profile.profile_name == profile_name)
         .unwrap_or_else(|| panic!("unknown navigation clock profile: {profile_name}"))
+}
+
+pub fn build_navigation_clock_cases() -> Vec<NavigationClockCase> {
+    synthetic_navigation_clock_profiles().into_iter().map(build_navigation_clock_case).collect()
+}
+
+pub fn navigation_clock_case<'a>(
+    cases: &'a [NavigationClockCase],
+    profile_name: &str,
+) -> &'a NavigationClockCase {
+    cases
+        .iter()
+        .find(|case| case.clock_profile.profile_name == profile_name)
+        .unwrap_or_else(|| panic!("unknown navigation clock case: {profile_name}"))
 }
 
 pub fn receiver_clock_profile(
@@ -170,6 +184,34 @@ pub fn build_navigation_clock_case(profile: NavigationClockProfile) -> Navigatio
 
 pub fn receiver_clock_drift_doppler_offset_hz(clock_drift_s_per_s: f64) -> f64 {
     -GPS_L1_CA_CARRIER_HZ.value() * clock_drift_s_per_s
+}
+
+pub fn truth_guided_clock_profile_cases<'a>(
+    cases: &'a [NavigationClockCase],
+) -> Vec<SyntheticPvtClockProfileCase<'a>> {
+    let stable_case = navigation_clock_case(cases, "stable_receiver_clock");
+
+    cases
+        .iter()
+        .map(|case| {
+            let expected_observation_doppler_offset_hz = receiver_clock_drift_doppler_offset_hz(
+                truth_clock_drift_s_per_s(&case.clock_profile),
+            );
+            let reference_observations = (case.clock_profile.profile_name
+                != "stable_receiver_clock")
+                .then_some(stable_case.observations.as_slice());
+
+            SyntheticPvtClockProfileCase {
+                scenario_id: &case.scenario_id,
+                injected_clock_drift_s_per_s: truth_clock_drift_s_per_s(&case.clock_profile),
+                expected_observation_doppler_offset_hz,
+                observations: &case.observations,
+                reference_observations,
+                solutions: &case.solutions,
+                accuracy: &case.pvt_accuracy,
+            }
+        })
+        .collect()
 }
 
 pub fn clock_profile_base_doppler_hz(sat: SatId) -> f64 {
