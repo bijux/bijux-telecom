@@ -107,10 +107,28 @@ fn validate_capture_reports_public_iq_tracking_and_position_attempts() {
     )
     .expect("parse validation report artifact");
     assert!(
-        validation_report["dual_frequency_observations"]["observed_pairs"]
-            .as_u64()
-            .is_some(),
+        validation_report["dual_frequency_observations"]["observed_pairs"].as_u64().is_some(),
         "expected dual-frequency observation summary in validation report: {validation_report}"
+    );
+    assert!(
+        validation_report["carrier_smoothed_code"]["observations"].as_u64().is_some(),
+        "expected carrier-smoothed code validation summary in validation report: {validation_report}"
+    );
+    let carrier_smoothed_code_validation_path =
+        out_dir.join("artifacts/carrier_smoothed_code_validation.json");
+    assert!(
+        carrier_smoothed_code_validation_path.exists(),
+        "missing carrier-smoothed code validation artifact"
+    );
+    let carrier_smoothed_code_validation: Value = serde_json::from_str(
+        &fs::read_to_string(&carrier_smoothed_code_validation_path)
+            .expect("read carrier-smoothed code validation artifact"),
+    )
+    .expect("parse carrier-smoothed code validation artifact");
+    assert_eq!(
+        validation_report["carrier_smoothed_code"],
+        carrier_smoothed_code_validation,
+        "expected validate-capture report to surface the emitted carrier-smoothed code validation artifact"
     );
     assert!(
         out_dir.join("artifacts/validation_evidence_bundle.json").exists(),
