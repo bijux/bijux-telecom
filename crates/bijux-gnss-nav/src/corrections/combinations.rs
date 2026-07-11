@@ -4,6 +4,8 @@ use std::collections::BTreeMap;
 
 use bijux_gnss_core::api::{ObsEpoch, ObsSatellite, SatId, SignalBand};
 
+use crate::corrections::iono_free_code::iono_free_code_from_pair;
+
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -16,6 +18,9 @@ pub struct CombinationObservation {
     pub f1_hz: f64,
     pub f2_hz: f64,
     pub if_code_m: Option<f64>,
+    pub if_code_var_m2: Option<f64>,
+    pub if_code_status: String,
+    pub if_code_reason: String,
     pub if_phase_m: Option<f64>,
     pub geometry_free_phase_m: Option<f64>,
     pub wide_lane_cycles: Option<f64>,
@@ -31,6 +36,7 @@ pub enum CombinationStatus {
     MissingFrequency,
     LockInvalid,
     VarianceInvalid,
+    FrequencyInvalid,
 }
 
 fn status_reason(status: CombinationStatus) -> (String, String) {
@@ -42,6 +48,9 @@ fn status_reason(status: CombinationStatus) -> (String, String) {
         CombinationStatus::LockInvalid => ("invalid".to_string(), "lock_invalid".to_string()),
         CombinationStatus::VarianceInvalid => {
             ("invalid".to_string(), "variance_invalid".to_string())
+        }
+        CombinationStatus::FrequencyInvalid => {
+            ("invalid".to_string(), "frequency_invalid".to_string())
         }
     }
 }
@@ -66,7 +75,16 @@ pub fn combinations_from_obs_epochs(
             }
             let f1_hz = s1.map(|s| s.metadata.signal.carrier_hz.value()).unwrap_or(0.0);
             let f2_hz = s2.map(|s| s.metadata.signal.carrier_hz.value()).unwrap_or(0.0);
-            let (mut if_code_m, mut if_phase_m, mut geometry_free_phase_m) = (None, None, None);
+            let if_code = iono_free_code_from_pair(
+                epoch.epoch_idx,
+                epoch.t_rx_s.0,
+                sat_id,
+                band_1,
+                band_2,
+                s1.copied(),
+                s2.copied(),
+            );
+            let (mut if_phase_m, mut geometry_free_phase_m) = (None, None);
             let (mut wide_lane_cycles, mut narrow_lane_cycles, mut mw_m) = (None, None, None);
             if let (Some(s1), Some(s2)) = (s1, s2) {
                 if !s1.lock_flags.code_lock
@@ -84,23 +102,30 @@ pub fn combinations_from_obs_epochs(
                 } else {
                     let f1_2 = f1_hz * f1_hz;
                     let f2_2 = f2_hz * f2_hz;
-                    let denom = (f1_2 - f2_2).max(1.0);
-                    let p1 = s1.pseudorange_m.0;
-                    let p2 = s2.pseudorange_m.0;
-                    let lambda1 = SPEED_OF_LIGHT_MPS / f1_hz.max(1.0);
-                    let lambda2 = SPEED_OF_LIGHT_MPS / f2_hz.max(1.0);
-                    let phi1_m = s1.carrier_phase_cycles.0 * lambda1;
-                    let phi2_m = s2.carrier_phase_cycles.0 * lambda2;
+                    let denom = f1_2 - f2_2;
+                    if !f1_hz.is_finite()
+                        || !f2_hz.is_finite()
+                        || f1_hz <= 0.0
+                        || f2_hz <= 0.0
+                        || !denom.is_finite()
+                        || denom.abs() <= f64::EPSILON
+                    {
+                        status = CombinationStatus::FrequencyInvalid;
+                    } else {
+                        let lambda1 = SPEED_OF_LIGHT_MPS / f1_hz.max(1.0);
+                        let lambda2 = SPEED_OF_LIGHT_MPS / f2_hz.max(1.0);
+                        let phi1_m = s1.carrier_phase_cycles.0 * lambda1;
+                        let phi2_m = s2.carrier_phase_cycles.0 * lambda2;
 
-                    if_code_m = Some((f1_2 * p1 - f2_2 * p2) / denom);
-                    if_phase_m = Some((f1_2 * phi1_m - f2_2 * phi2_m) / denom);
-                    geometry_free_phase_m = Some(phi1_m - phi2_m);
+                        if_phase_m = Some((f1_2 * phi1_m - f2_2 * phi2_m) / denom);
+                        geometry_free_phase_m = Some(phi1_m - phi2_m);
 
-                    let lambda_wl = SPEED_OF_LIGHT_MPS / (f1_hz - f2_hz).abs().max(1.0);
-                    let lambda_nl = SPEED_OF_LIGHT_MPS / (f1_hz + f2_hz).max(1.0);
-                    wide_lane_cycles = Some((phi1_m - phi2_m) / lambda_wl);
-                    narrow_lane_cycles = Some((phi1_m + phi2_m) / lambda_nl);
-                    mw_m = Some((phi1_m - phi2_m) - (p1 - p2));
+                        let lambda_wl = SPEED_OF_LIGHT_MPS / (f1_hz - f2_hz).abs().max(1.0);
+                        let lambda_nl = SPEED_OF_LIGHT_MPS / (f1_hz + f2_hz).max(1.0);
+                        wide_lane_cycles = Some((phi1_m - phi2_m) / lambda_wl);
+                        narrow_lane_cycles = Some((phi1_m + phi2_m) / lambda_nl);
+                        mw_m = Some((phi1_m - phi2_m) - (s1.pseudorange_m.0 - s2.pseudorange_m.0));
+                    }
                 }
             }
             let (status_str, reason) = status_reason(status);
@@ -112,7 +137,10 @@ pub fn combinations_from_obs_epochs(
                 band_2,
                 f1_hz,
                 f2_hz,
-                if_code_m,
+                if_code_m: if_code.code_m,
+                if_code_var_m2: if_code.variance_m2,
+                if_code_status: if_code.status,
+                if_code_reason: if_code.reason,
                 if_phase_m,
                 geometry_free_phase_m,
                 wide_lane_cycles,
@@ -124,4 +152,113 @@ pub fn combinations_from_obs_epochs(
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::combinations_from_obs_epochs;
+    use bijux_gnss_core::api::{
+        signal_spec_gps_l1_ca, signal_spec_gps_l2_py, Constellation, Cycles, Hertz, LockFlags,
+        Meters, ObsEpoch, ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus,
+        ReceiverRole, ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
+    };
+
+    fn dual_frequency_epoch(code_lock: bool, carrier_lock: bool) -> ObsEpoch {
+        let sat = SatId { constellation: Constellation::Gps, prn: 3 };
+        let l1 = signal_spec_gps_l1_ca();
+        let l2 = signal_spec_gps_l2_py();
+
+        ObsEpoch {
+            t_rx_s: Seconds(0.0),
+            source_time: ReceiverSampleTrace::from_sample_index(0, 1_000.0),
+            gps_week: None,
+            tow_s: None,
+            epoch_idx: 0,
+            discontinuity: false,
+            valid: true,
+            processing_ms: None,
+            role: ReceiverRole::Rover,
+            sats: vec![
+                satellite(sat, SignalBand::L1, SignalCode::Ca, l1, code_lock, carrier_lock),
+                satellite(sat, SignalBand::L2, SignalCode::Py, l2, code_lock, carrier_lock),
+            ],
+            decision: ObservationEpochDecision::Accepted,
+            decision_reason: Some("accepted_observables_present".to_string()),
+            manifest: None,
+        }
+    }
+
+    fn satellite(
+        sat: SatId,
+        band: SignalBand,
+        code: SignalCode,
+        signal: bijux_gnss_core::api::SignalSpec,
+        code_lock: bool,
+        carrier_lock: bool,
+    ) -> ObsSatellite {
+        ObsSatellite {
+            signal_id: SigId { sat, band, code },
+            pseudorange_m: Meters(20_200_000.0),
+            pseudorange_var_m2: 1.0,
+            carrier_phase_cycles: Cycles(1000.0),
+            carrier_phase_var_cycles2: 0.01,
+            doppler_hz: Hertz(0.0),
+            doppler_var_hz2: 1.0,
+            cn0_dbhz: 45.0,
+            lock_flags: LockFlags { code_lock, carrier_lock, bit_lock: false, cycle_slip: false },
+            multipath_suspect: false,
+            observation_status: ObservationStatus::Accepted,
+            observation_reject_reasons: Vec::new(),
+            elevation_deg: None,
+            azimuth_deg: None,
+            weight: None,
+            timing: None,
+            error_model: None,
+            metadata: ObsMetadata {
+                tracking_mode: "test".to_string(),
+                integration_ms: 1,
+                lock_quality: 45.0,
+                smoothing_window: 0,
+                smoothing_age: 0,
+                smoothing_resets: 0,
+                signal,
+                ..ObsMetadata::default()
+            },
+        }
+    }
+
+    #[test]
+    fn combinations_keep_iono_free_code_when_carrier_phase_is_unavailable() {
+        let combinations = combinations_from_obs_epochs(
+            &[dual_frequency_epoch(true, false)],
+            SignalBand::L1,
+            SignalBand::L2,
+        );
+
+        assert_eq!(combinations.len(), 1);
+        assert_eq!(combinations[0].status, "invalid");
+        assert_eq!(combinations[0].reason, "lock_invalid");
+        assert_eq!(combinations[0].if_code_status, "ok");
+        assert_eq!(combinations[0].if_code_reason, "ok");
+        assert!(combinations[0].if_code_m.is_some());
+        assert!(combinations[0].if_code_var_m2.is_some());
+        assert!(combinations[0].if_phase_m.is_none());
+    }
+
+    #[test]
+    fn combinations_keep_full_combination_invalid_when_code_lock_is_missing() {
+        let combinations = combinations_from_obs_epochs(
+            &[dual_frequency_epoch(false, true)],
+            SignalBand::L1,
+            SignalBand::L2,
+        );
+
+        assert_eq!(combinations.len(), 1);
+        assert_eq!(combinations[0].status, "invalid");
+        assert_eq!(combinations[0].reason, "lock_invalid");
+        assert_eq!(combinations[0].if_code_status, "invalid");
+        assert_eq!(combinations[0].if_code_reason, "code_lock_invalid");
+        assert!(combinations[0].if_code_m.is_none());
+        assert!(combinations[0].if_phase_m.is_none());
+    }
 }
