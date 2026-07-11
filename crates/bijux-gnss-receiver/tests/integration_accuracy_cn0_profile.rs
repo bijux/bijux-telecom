@@ -1,17 +1,17 @@
 #![allow(missing_docs)]
 
-#[path = "support/navigation_truth.rs"]
-mod navigation_truth;
 #[path = "support/navigation_cn0_profile.rs"]
 mod navigation_cn0_profile;
+#[path = "support/navigation_truth.rs"]
+mod navigation_truth;
 
 use bijux_gnss_core::api::{Constellation, SatId};
 use bijux_gnss_receiver::api::{
     sim::{
         measure_truth_guided_acquisition_detection_rate, measure_truth_guided_tracking_lock_rate,
         summarize_truth_guided_accuracy_cn0_profile, summarize_truth_guided_pvt_cn0_profile,
-        SyntheticAcquisitionDetectionRateCase, SyntheticPvtCn0ProfileCase,
-        SyntheticSignalParams, SyntheticTrackingLockRateCase,
+        SyntheticAcquisitionDetectionRateCase, SyntheticPvtCn0ProfileCase, SyntheticSignalParams,
+        SyntheticTrackingLockRateCase,
     },
     ReceiverPipelineConfig,
 };
@@ -83,8 +83,12 @@ fn merged_accuracy_profile_includes_acquisition_tracking_and_pvt_by_signal_stren
         &[17, 29, 43, 59],
         "accuracy_cn0_profile_tracking",
     );
-    let report =
-        summarize_truth_guided_accuracy_cn0_profile("accuracy_cn0_profile", &acquisition, &tracking, &pvt);
+    let report = summarize_truth_guided_accuracy_cn0_profile(
+        "accuracy_cn0_profile",
+        &acquisition,
+        &tracking,
+        &pvt,
+    );
 
     assert_eq!(report.points.len(), 3, "{report:?}");
     assert!(report.points.iter().all(|point| point.acquisition_case_count == 1), "{report:?}");
@@ -105,7 +109,8 @@ fn merged_accuracy_profile_includes_acquisition_tracking_and_pvt_by_signal_stren
         "{report:?}"
     );
     assert!(
-        strong.pvt_pass_rate_mean.unwrap_or_default() >= weak.pvt_pass_rate_mean.unwrap_or_default(),
+        strong.pvt_pass_rate_mean.unwrap_or_default()
+            >= weak.pvt_pass_rate_mean.unwrap_or_default(),
         "{report:?}"
     );
 }

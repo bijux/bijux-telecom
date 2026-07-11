@@ -40,11 +40,8 @@ fn file_samples_open_raw_iq_uses_declared_metadata() {
 #[test]
 fn file_samples_decode_signed_16bit_little_endian_iq() {
     let path = temp_file_path("raw_iq_iq16");
-    fs::write(
-        &path,
-        [0x00u8, 0x80u8, 0xffu8, 0x7fu8, 0x00u8, 0x40u8, 0x00u8, 0xc0u8],
-    )
-    .expect("write iq file");
+    fs::write(&path, [0x00u8, 0x80u8, 0xffu8, 0x7fu8, 0x00u8, 0x40u8, 0x00u8, 0xc0u8])
+        .expect("write iq file");
 
     let metadata = RawIqMetadata {
         format: IqSampleFormat::Iq16Le,
@@ -99,8 +96,8 @@ fn file_samples_decode_complex_float32_little_endian_iq() {
     fs::write(
         &path,
         [
-            0x00u8, 0x00u8, 0x80u8, 0xbfu8, 0x00u8, 0x00u8, 0x40u8, 0x3fu8, 0x00u8, 0x00u8,
-            0x00u8, 0x3fu8, 0x00u8, 0x00u8, 0x80u8, 0xbeu8,
+            0x00u8, 0x00u8, 0x80u8, 0xbfu8, 0x00u8, 0x00u8, 0x40u8, 0x3fu8, 0x00u8, 0x00u8, 0x00u8,
+            0x3fu8, 0x00u8, 0x00u8, 0x80u8, 0xbeu8,
         ],
     )
     .expect("write iq file");

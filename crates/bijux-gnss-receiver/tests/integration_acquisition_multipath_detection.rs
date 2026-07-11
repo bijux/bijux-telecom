@@ -13,10 +13,7 @@ fn acquisition_multipath_harness_preserves_ranked_candidates() {
     let frame = delayed_secondary_path_frame(
         &config,
         0.001,
-        [
-            path_signal(sat, 0.0, 300.0, 46.0),
-            path_signal(sat, 0.0, 360.0, 42.0),
-        ],
+        [path_signal(sat, 0.0, 300.0, 46.0), path_signal(sat, 0.0, 360.0, 42.0)],
         0x2407_4501,
     );
     let run = AcquisitionEngine::new(config.clone(), ReceiverRuntime::default())
@@ -38,10 +35,7 @@ fn acquisition_reports_delayed_secondary_peak_as_multipath_suspicion() {
     let frame = delayed_secondary_path_frame(
         &config,
         0.001,
-        [
-            path_signal(sat, 0.0, 300.0, 46.0),
-            path_signal(sat, 0.0, 360.0, 42.0),
-        ],
+        [path_signal(sat, 0.0, 300.0, 46.0), path_signal(sat, 0.0, 360.0, 42.0)],
         0x2407_4502,
     );
     let run = AcquisitionEngine::new(config.clone(), ReceiverRuntime::default())
@@ -52,10 +46,7 @@ fn acquisition_reports_delayed_secondary_peak_as_multipath_suspicion() {
 
     assert_eq!(best.hypothesis.to_string(), "ambiguous", "{run:?}");
     assert_eq!(explain.selected_reason, "multipath_suspect", "{run:?}");
-    assert!(
-        explain.candidates[0].reason.contains("delayed secondary peak"),
-        "{run:?}"
-    );
+    assert!(explain.candidates[0].reason.contains("delayed secondary peak"), "{run:?}");
 }
 
 #[test]
@@ -65,10 +56,7 @@ fn acquisition_search_summary_counts_multipath_suspicion_as_degraded() {
     let frame = delayed_secondary_path_frame(
         &config,
         0.001,
-        [
-            path_signal(sat, 0.0, 300.0, 46.0),
-            path_signal(sat, 0.0, 360.0, 42.0),
-        ],
+        [path_signal(sat, 0.0, 300.0, 46.0), path_signal(sat, 0.0, 360.0, 42.0)],
         0x2407_4503,
     );
     let results = AcquisitionEngine::new(config.clone(), ReceiverRuntime::default())

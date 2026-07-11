@@ -29,11 +29,7 @@ fn acquisition_and_tracking_profiles_improve_with_stronger_signal() {
     };
     let acquisition = measure_truth_guided_acquisition_detection_rate(
         &config,
-        &[
-            acquisition_case(sat, 24.0),
-            acquisition_case(sat, 32.0),
-            acquisition_case(sat, 52.0),
-        ],
+        &[acquisition_case(sat, 24.0), acquisition_case(sat, 32.0), acquisition_case(sat, 52.0)],
         &[17, 29, 43, 59],
         "stage_cn0_profile_acquisition",
         2,
@@ -41,11 +37,7 @@ fn acquisition_and_tracking_profiles_improve_with_stronger_signal() {
     );
     let tracking = measure_truth_guided_tracking_lock_rate(
         &config,
-        &[
-            tracking_case(sat, 24.0),
-            tracking_case(sat, 32.0),
-            tracking_case(sat, 52.0),
-        ],
+        &[tracking_case(sat, 24.0), tracking_case(sat, 32.0), tracking_case(sat, 52.0)],
         &[17, 29, 43, 59],
         "stage_cn0_profile_tracking",
     );
@@ -71,10 +63,7 @@ fn acquisition_and_tracking_profiles_improve_with_stronger_signal() {
     let weak_tracking = &tracking.points[0];
     let strong_tracking = &tracking.points[2];
     assert!(strong_tracking.lock_probability > weak_tracking.lock_probability, "{tracking:?}");
-    assert!(
-        strong_tracking.mean_locked_epochs >= weak_tracking.mean_locked_epochs,
-        "{tracking:?}"
-    );
+    assert!(strong_tracking.mean_locked_epochs >= weak_tracking.mean_locked_epochs, "{tracking:?}");
 }
 
 fn acquisition_case(sat: SatId, cn0_db_hz: f32) -> SyntheticAcquisitionDetectionRateCase {

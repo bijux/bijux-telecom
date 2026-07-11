@@ -20,10 +20,7 @@ struct CapturedMetrics {
 
 impl MetricsSink for CapturedMetrics {
     fn metric(&self, m: Metric) {
-        self.values
-            .lock()
-            .expect("metric lock")
-            .push((m.name.to_string(), m.value));
+        self.values.lock().expect("metric lock").push((m.name.to_string(), m.value));
     }
 }
 
@@ -42,16 +39,10 @@ impl SignalSource for SingleFrameSource {
     type Error = bijux_gnss_receiver::api::SampleSourceError;
 
     fn sample_rate_hz(&self) -> f64 {
-        self.frame
-            .as_ref()
-            .map(|frame| frame.t0.sample_rate_hz)
-            .unwrap_or(4_092_000.0)
+        self.frame.as_ref().map(|frame| frame.t0.sample_rate_hz).unwrap_or(4_092_000.0)
     }
 
-    fn next_frame(
-        &mut self,
-        _frame_len: usize,
-    ) -> Result<Option<SamplesFrame>, Self::Error> {
+    fn next_frame(&mut self, _frame_len: usize) -> Result<Option<SamplesFrame>, Self::Error> {
         Ok(self.frame.take())
     }
 
@@ -102,16 +93,18 @@ fn receiver_dc_removal_preserves_or_improves_biased_acquisition_margin() {
     let mut disabled_profile = profile.clone();
     disabled_profile.front_end.remove_dc_offset = false;
     let mut disabled_source = SingleFrameSource { frame: Some(biased.clone()) };
-    let disabled_artifacts = Receiver::new(disabled_profile.to_pipeline_config(), ReceiverRuntime::default())
-        .run(&mut disabled_source)
-        .expect("run without dc removal");
+    let disabled_artifacts =
+        Receiver::new(disabled_profile.to_pipeline_config(), ReceiverRuntime::default())
+            .run(&mut disabled_source)
+            .expect("run without dc removal");
 
     let mut enabled_profile = profile;
     enabled_profile.front_end.remove_dc_offset = true;
     let mut enabled_source = SingleFrameSource { frame: Some(biased) };
-    let enabled_artifacts = Receiver::new(enabled_profile.to_pipeline_config(), ReceiverRuntime::default())
-        .run(&mut enabled_source)
-        .expect("run with dc removal");
+    let enabled_artifacts =
+        Receiver::new(enabled_profile.to_pipeline_config(), ReceiverRuntime::default())
+            .run(&mut enabled_source)
+            .expect("run with dc removal");
 
     let disabled = disabled_artifacts
         .acquisitions
@@ -187,15 +180,15 @@ fn receiver_dc_removal_reports_power_imbalance_diagnostics() {
 
     let values = metrics.values.lock().expect("metric lock");
     assert!(
-        values.iter().any(|(name, value)| {
-            name == "front_end_i_power_before_removal" && *value > 0.0
-        }),
+        values
+            .iter()
+            .any(|(name, value)| { name == "front_end_i_power_before_removal" && *value > 0.0 }),
         "missing I power metric"
     );
     assert!(
-        values.iter().any(|(name, value)| {
-            name == "front_end_q_power_before_removal" && *value > 0.0
-        }),
+        values
+            .iter()
+            .any(|(name, value)| { name == "front_end_q_power_before_removal" && *value > 0.0 }),
         "missing Q power metric"
     );
     assert!(
@@ -218,26 +211,22 @@ fn receiver_dc_removal_reports_power_imbalance_diagnostics() {
     );
 
     let events = trace.events.lock().expect("trace lock");
-    let event = events
+    let event =
+        events.iter().find(|event| event.name == "front_end_dc_removal").expect("dc removal trace");
+    assert!(event
+        .fields
         .iter()
-        .find(|event| event.name == "front_end_dc_removal")
-        .expect("dc removal trace");
-    assert!(
-        event.fields.iter().any(|(name, value)| *name == "iq_power_ratio" && !value.is_empty())
-    );
-    assert!(
-        event.fields.iter().any(|(name, value)| {
-            *name == "power_imbalance_warning" && value == "true"
-        })
-    );
-    assert!(
-        event.fields.iter().any(|(name, value)| {
-            *name == "quadrature_error_deg" && !value.is_empty()
-        })
-    );
-    assert!(
-        event.fields.iter().any(|(name, value)| {
-            *name == "quadrature_error_warning" && value == "false"
-        })
-    );
+        .any(|(name, value)| *name == "iq_power_ratio" && !value.is_empty()));
+    assert!(event
+        .fields
+        .iter()
+        .any(|(name, value)| { *name == "power_imbalance_warning" && value == "true" }));
+    assert!(event
+        .fields
+        .iter()
+        .any(|(name, value)| { *name == "quadrature_error_deg" && !value.is_empty() }));
+    assert!(event
+        .fields
+        .iter()
+        .any(|(name, value)| { *name == "quadrature_error_warning" && value == "false" }));
 }

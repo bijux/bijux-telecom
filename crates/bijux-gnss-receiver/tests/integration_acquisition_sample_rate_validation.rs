@@ -7,8 +7,8 @@ use bijux_gnss_core::api::SamplesFrame;
 use bijux_gnss_receiver::api::{
     sim::{
         build_iq16_capture_bundle, generate_l1_ca_multi,
-        validate_truth_guided_acquisition_sample_rates, SyntheticAcquisitionSampleRateValidationCase,
-        SyntheticIqTruthBundle, SyntheticScenario,
+        validate_truth_guided_acquisition_sample_rates,
+        SyntheticAcquisitionSampleRateValidationCase, SyntheticIqTruthBundle, SyntheticScenario,
     },
     ReceiverPipelineConfig,
 };
@@ -18,11 +18,8 @@ fn acquisition_reference_profiles_pass_validation_at_low_and_high_sample_rates()
     let low_rate = build_validation_case("synthetic_iq_acquisition_reference_low_rate.toml");
     let high_rate = build_validation_case("synthetic_iq_acquisition_reference_high_rate.toml");
 
-    let report = validate_truth_guided_acquisition_sample_rates(
-        &[low_rate.case(), high_rate.case()],
-        2,
-        1,
-    );
+    let report =
+        validate_truth_guided_acquisition_sample_rates(&[low_rate.case(), high_rate.case()], 2, 1);
 
     assert!(report.pass, "{report:?}");
     assert_eq!(report.distinct_sample_rate_count, 2);
@@ -83,7 +80,8 @@ fn build_validation_case(scenario_file: &str) -> ValidationCaseFixture {
 }
 
 fn load_scenario(scenario_file: &str) -> SyntheticScenario {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../configs/scenarios/{scenario_file}"));
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(format!("../../configs/scenarios/{scenario_file}"));
     let contents = fs::read_to_string(path).expect("scenario file");
     toml::from_str(&contents).expect("valid scenario")
 }

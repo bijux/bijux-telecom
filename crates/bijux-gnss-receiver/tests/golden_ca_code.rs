@@ -25,8 +25,7 @@ fn ca_code_reference_hashes_match_all_prns() {
 #[test]
 fn repeated_ca_code_reference_hashes_match_all_prns() {
     for (prn, expected_hash) in EXPECTED_REPEATED_CA_CODE_HASHES {
-        let code =
-            generate_ca_code_chips(Prn(prn), CA_CODE_PERIOD_CHIPS * 2).expect("valid PRN");
+        let code = generate_ca_code_chips(Prn(prn), CA_CODE_PERIOD_CHIPS * 2).expect("valid PRN");
         let actual_hash = fnv1a_hash(&code);
         assert_eq!(actual_hash, expected_hash, "PRN {prn} repeated hash mismatch");
     }

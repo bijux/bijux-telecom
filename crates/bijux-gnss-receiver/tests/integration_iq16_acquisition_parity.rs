@@ -118,10 +118,8 @@ fn quantize_component(value: f32) -> i16 {
 }
 
 fn normalize_iq(samples: &mut [num_complex::Complex<f32>]) {
-    let peak = samples
-        .iter()
-        .flat_map(|sample| [sample.re.abs(), sample.im.abs()])
-        .fold(0.0f32, f32::max);
+    let peak =
+        samples.iter().flat_map(|sample| [sample.re.abs(), sample.im.abs()]).fold(0.0f32, f32::max);
     if peak <= 0.999 {
         return;
     }

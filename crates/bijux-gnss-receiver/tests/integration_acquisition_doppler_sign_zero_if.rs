@@ -42,10 +42,8 @@ fn acquisition_recovers_positive_and_negative_doppler_sign_at_zero_if() {
             0xD077E200 + doppler_hz.abs() as u64,
             COHERENT_MS as f64 * samples_per_code as f64 / config.sampling_freq_hz,
         );
-        let result = acquisition
-            .run_fft_topn(&frame, &[sat], 1, COHERENT_MS, 1)
-            .remove(0)
-            .remove(0);
+        let result =
+            acquisition.run_fft_topn(&frame, &[sat], 1, COHERENT_MS, 1).remove(0).remove(0);
         let recovered_doppler_hz =
             doppler_hz_from_carrier_hz(config.intermediate_freq_hz, result.carrier_hz.0);
 

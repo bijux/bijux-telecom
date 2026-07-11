@@ -15,7 +15,13 @@ use bijux_gnss_receiver::api::{
 #[test]
 fn acquisition_truth_table_matches_low_rate_reference_fixture() {
     let fixture = build_truth_table_fixture("synthetic_iq_acquisition_reference_low_rate.toml");
-    let report = validate_truth_guided_acquisition_table(&fixture.config, &fixture.frame, &fixture.truth, 1, 2);
+    let report = validate_truth_guided_acquisition_table(
+        &fixture.config,
+        &fixture.frame,
+        &fixture.truth,
+        1,
+        2,
+    );
     let expected = load_truth_table_fixture("truth_table_reference_low_rate.json");
 
     assert_eq!(report.scenario_id, expected.scenario_id);
@@ -33,11 +39,22 @@ fn acquisition_truth_table_matches_low_rate_reference_fixture() {
     );
     assert_eq!(report.satellites.len(), expected.satellites.len());
 
-    for (actual_satellite, expected_satellite) in report.satellites.iter().zip(expected.satellites.iter()) {
+    for (actual_satellite, expected_satellite) in
+        report.satellites.iter().zip(expected.satellites.iter())
+    {
         assert_eq!(actual_satellite.sat, expected_satellite.sat);
-        assert_eq!(actual_satellite.expected_code_phase_samples, expected_satellite.expected_code_phase_samples);
-        assert_eq!(actual_satellite.measured_code_phase_samples, expected_satellite.measured_code_phase_samples);
-        assert_eq!(actual_satellite.code_phase_error_samples, expected_satellite.code_phase_error_samples);
+        assert_eq!(
+            actual_satellite.expected_code_phase_samples,
+            expected_satellite.expected_code_phase_samples
+        );
+        assert_eq!(
+            actual_satellite.measured_code_phase_samples,
+            expected_satellite.measured_code_phase_samples
+        );
+        assert_eq!(
+            actual_satellite.code_phase_error_samples,
+            expected_satellite.code_phase_error_samples
+        );
         assert_eq!(actual_satellite.hypothesis, expected_satellite.hypothesis);
         assert_eq!(actual_satellite.doppler_pass, expected_satellite.doppler_pass);
         assert_eq!(actual_satellite.code_phase_pass, expected_satellite.code_phase_pass);

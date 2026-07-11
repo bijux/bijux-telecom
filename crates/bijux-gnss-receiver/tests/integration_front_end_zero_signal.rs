@@ -37,10 +37,7 @@ impl SignalSource for SingleFrameSource {
     type Error = bijux_gnss_receiver::api::SampleSourceError;
 
     fn sample_rate_hz(&self) -> f64 {
-        self.frame
-            .as_ref()
-            .map(|frame| frame.t0.sample_rate_hz)
-            .unwrap_or(4_092_000.0)
+        self.frame.as_ref().map(|frame| frame.t0.sample_rate_hz).unwrap_or(4_092_000.0)
     }
 
     fn next_frame(&mut self, _frame_len: usize) -> Result<Option<SamplesFrame>, Self::Error> {
@@ -54,11 +51,8 @@ impl SignalSource for SingleFrameSource {
 
 fn zero_signal_frame(profile: &ReceiverConfig) -> SamplesFrame {
     let config = profile.to_pipeline_config();
-    let sample_count = samples_per_code(
-        config.sampling_freq_hz,
-        config.code_freq_basis_hz,
-        config.code_length,
-    );
+    let sample_count =
+        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
     SamplesFrame::new(
         SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
         Seconds(1.0 / config.sampling_freq_hz),
@@ -109,16 +103,13 @@ fn receiver_rejects_zero_signal_window_before_search() {
         .acquisitions
         .iter()
         .all(|result| result.hypothesis.to_string() == AcqHypothesis::Rejected.to_string()));
-    assert!(artifacts
-        .acquisitions
-        .iter()
-        .all(|result| {
-            result
-                .explain_selection_reason
-                .as_deref()
-                .expect("zero-signal explain reason")
-                .contains("zero_signal_input")
-        }));
+    assert!(artifacts.acquisitions.iter().all(|result| {
+        result
+            .explain_selection_reason
+            .as_deref()
+            .expect("zero-signal explain reason")
+            .contains("zero_signal_input")
+    }));
     assert_eq!(artifacts.acquisition_explain.len(), 32);
     assert!(artifacts.tracking.iter().all(|result| result.epochs.is_empty()));
     assert!(artifacts.observations.is_empty());
@@ -128,8 +119,14 @@ fn receiver_rejects_zero_signal_window_before_search() {
         .iter()
         .find(|event| event.name == "acquisition_front_end_rejection")
         .expect("front-end rejection trace");
-    assert!(event.fields.iter().any(|(name, value)| *name == "reason" && value == "zero_signal_input"));
-    assert!(event.fields.iter().any(|(name, value)| *name == "centered_rms" && value == "0.000000000"));
+    assert!(event
+        .fields
+        .iter()
+        .any(|(name, value)| *name == "reason" && value == "zero_signal_input"));
+    assert!(event
+        .fields
+        .iter()
+        .any(|(name, value)| *name == "centered_rms" && value == "0.000000000"));
 }
 
 #[test]

@@ -62,8 +62,11 @@ fn acquisition_refinement_recovers_fractional_doppler_more_closely_than_the_raw_
         );
         let scaled_frame = scaled_frame(&frame, bundle.truth.output_scale_applied);
 
-        let report =
-            validate_truth_guided_acquisition_doppler_refinement(&config, &scaled_frame, &bundle.truth);
+        let report = validate_truth_guided_acquisition_doppler_refinement(
+            &config,
+            &scaled_frame,
+            &bundle.truth,
+        );
 
         assert!(report.pass, "{report:?}");
         assert_eq!(report.sample_rate_hz, sampling_freq_hz);

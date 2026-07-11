@@ -231,9 +231,7 @@ fn requested_sats(fixture: &AcqFixture) -> Vec<SatId> {
 
 impl AcqFixture {
     fn signals(&self) -> &[FixtureSignal] {
-        self.signals
-            .as_deref()
-            .expect("synthetic_multi fixtures must define signals")
+        self.signals.as_deref().expect("synthetic_multi fixtures must define signals")
     }
 }
 

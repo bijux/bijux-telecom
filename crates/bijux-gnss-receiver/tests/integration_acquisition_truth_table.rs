@@ -15,7 +15,13 @@ use bijux_gnss_receiver::api::{
 #[test]
 fn acquisition_truth_table_records_estimates_and_errors_per_satellite() {
     let fixture = build_truth_table_fixture("synthetic_iq_acquisition_reference_low_rate.toml");
-    let report = validate_truth_guided_acquisition_table(&fixture.config, &fixture.frame, &fixture.truth, 1, 2);
+    let report = validate_truth_guided_acquisition_table(
+        &fixture.config,
+        &fixture.frame,
+        &fixture.truth,
+        1,
+        2,
+    );
 
     assert!(report.pass, "{report:?}");
     assert_eq!(report.scenario_id, "synthetic_iq_acquisition_reference_low_rate");
@@ -31,8 +37,14 @@ fn acquisition_truth_table_records_estimates_and_errors_per_satellite() {
         assert!(satellite.code_phase_pass, "{satellite:?}");
         assert!(satellite.measured_doppler_hz.is_finite(), "{satellite:?}");
         assert!(satellite.peak_mean_ratio.is_finite(), "{satellite:?}");
-        assert!(satellite.doppler_error_hz <= report.doppler_tolerance_hz + f64::EPSILON, "{satellite:?}");
-        assert!(satellite.code_phase_error_samples <= report.code_phase_tolerance_samples, "{satellite:?}");
+        assert!(
+            satellite.doppler_error_hz <= report.doppler_tolerance_hz + f64::EPSILON,
+            "{satellite:?}"
+        );
+        assert!(
+            satellite.code_phase_error_samples <= report.code_phase_tolerance_samples,
+            "{satellite:?}"
+        );
         assert!(
             matches!(
                 satellite.hypothesis.as_str(),
@@ -42,19 +54,13 @@ fn acquisition_truth_table_records_estimates_and_errors_per_satellite() {
         );
     }
 
-    let prn3 = report
-        .satellites
-        .iter()
-        .find(|satellite| satellite.sat.prn == 3)
-        .expect("PRN 3 row");
+    let prn3 =
+        report.satellites.iter().find(|satellite| satellite.sat.prn == 3).expect("PRN 3 row");
     assert_eq!(prn3.injected_doppler_hz, 750.0);
     assert_eq!(prn3.injected_code_phase_chips, 200.25);
 
-    let prn7 = report
-        .satellites
-        .iter()
-        .find(|satellite| satellite.sat.prn == 7)
-        .expect("PRN 7 row");
+    let prn7 =
+        report.satellites.iter().find(|satellite| satellite.sat.prn == 7).expect("PRN 7 row");
     assert_eq!(prn7.injected_doppler_hz, -1_000.0);
     assert_eq!(prn7.injected_code_phase_chips, 321.5);
 }

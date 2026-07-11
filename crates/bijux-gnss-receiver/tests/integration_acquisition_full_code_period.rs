@@ -18,8 +18,11 @@ fn acquisition_searches_first_and_last_code_phase_bins_at_configured_sample_rate
             channels: 12,
             ..ReceiverPipelineConfig::default()
         };
-        let samples_per_code =
-            samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
+        let samples_per_code = samples_per_code(
+            config.sampling_freq_hz,
+            config.code_freq_basis_hz,
+            config.code_length,
+        );
         let sat = SatId { constellation: Constellation::Gps, prn: 7 };
         let acquisition =
             AcquisitionEngine::new(config.clone(), ReceiverRuntime::default()).with_doppler(0, 500);
@@ -32,7 +35,10 @@ fn acquisition_searches_first_and_last_code_phase_bins_at_configured_sample_rate
                 SyntheticSignalParams {
                     sat,
                     doppler_hz: 0.0,
-                    code_phase_chips: code_phase_chips_for_sample(&config, expected_code_phase_sample),
+                    code_phase_chips: code_phase_chips_for_sample(
+                        &config,
+                        expected_code_phase_sample,
+                    ),
                     carrier_phase_rad: 0.0,
                     cn0_db_hz: 60.0,
                     data_bit_flip: false,

@@ -61,7 +61,8 @@ fn acquisition_recovers_clean_synthetic_doppler_within_one_bin_at_multiple_sampl
         );
         let scaled_frame = scaled_frame(&frame, bundle.truth.output_scale_applied);
 
-        let report = validate_truth_guided_acquisition_doppler(&config, &scaled_frame, &bundle.truth, 1);
+        let report =
+            validate_truth_guided_acquisition_doppler(&config, &scaled_frame, &bundle.truth, 1);
 
         assert!(report.pass, "{report:?}");
         assert_eq!(report.sample_rate_hz, sampling_freq_hz);
