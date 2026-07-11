@@ -117,6 +117,12 @@ pub use crate::models::atmosphere::{
 /// Ephemeris provider traits and helpers.
 pub use crate::orbits::ephemeris::{CsvEphemerisProvider, Ephemeris, EphemerisProvider};
 /// Broadcast ephemeris and satellite state.
+pub use crate::orbits::galileo::{
+    GalileoBroadcastNavigationData, GalileoClockCorrection, GalileoEphemeris,
+    GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags, GalileoSignalHealth,
+    GalileoSystemTime,
+};
+/// Broadcast ephemeris and satellite state.
 pub use crate::orbits::gps::{
     gps_earth_rotation_correction, gps_ephemeris_age, gps_satellite_clock_correction,
     is_ephemeris_valid, sat_state_gps_l1ca, sat_state_gps_l1ca_at_receive_time,
