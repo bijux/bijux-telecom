@@ -1,6 +1,6 @@
 use bijux_gnss_core::api::{
-    default_acquisition_signal, signal_registry, signal_spec_galileo_e1b, signal_spec_galileo_e1c,
-    Constellation, SignalBand, SignalCode,
+    default_acquisition_sats, default_acquisition_signal, signal_registry,
+    signal_spec_galileo_e1b, signal_spec_galileo_e1c, Constellation, SignalBand, SignalCode,
 };
 
 #[test]
@@ -40,4 +40,20 @@ fn galileo_e1_signal_specs_are_distinct() {
     assert_eq!(e1b.code, SignalCode::E1B);
     assert_eq!(e1c.code, SignalCode::E1C);
     assert_eq!(e1b.carrier_hz, e1c.carrier_hz);
+}
+
+#[test]
+fn default_acquisition_catalog_covers_registered_galileo_prns() {
+    let sats = default_acquisition_sats(Constellation::Galileo);
+
+    assert_eq!(sats.len(), 50);
+    assert_eq!(sats.first().copied(), Some(bijux_gnss_core::api::SatId {
+        constellation: Constellation::Galileo,
+        prn: 1,
+    }));
+    assert_eq!(sats.last().copied(), Some(bijux_gnss_core::api::SatId {
+        constellation: Constellation::Galileo,
+        prn: 50,
+    }));
+    assert!(sats.iter().all(|sat| sat.constellation == Constellation::Galileo));
 }

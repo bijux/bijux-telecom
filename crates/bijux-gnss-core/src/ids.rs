@@ -82,9 +82,26 @@ pub fn format_sat(sat: SatId) -> String {
     format!("{:?}-{}", sat.constellation, sat.prn)
 }
 
+/// Return the default acquisition satellite catalog for one constellation.
+pub fn default_acquisition_sats(constellation: Constellation) -> Vec<SatId> {
+    match constellation {
+        Constellation::Gps => sat_ids_for_prn_range(constellation, 1..=32),
+        // The Galileo E1 code catalog currently spans PRNs 1 through 50 in the signal crate.
+        Constellation::Galileo => sat_ids_for_prn_range(constellation, 1..=50),
+        _ => Vec::new(),
+    }
+}
+
 /// Convert GPS PRNs into satellite IDs.
 pub fn prns_to_sats(prns: &[u8]) -> Vec<SatId> {
     prns.iter().map(|&prn| SatId { constellation: Constellation::Gps, prn }).collect()
+}
+
+fn sat_ids_for_prn_range(
+    constellation: Constellation,
+    prns: std::ops::RangeInclusive<u8>,
+) -> Vec<SatId> {
+    prns.map(|prn| SatId { constellation, prn }).collect()
 }
 
 fn constellation_rank(constellation: Constellation) -> u8 {
