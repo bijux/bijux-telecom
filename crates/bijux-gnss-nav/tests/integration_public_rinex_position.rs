@@ -10,7 +10,7 @@ use bijux_gnss_nav::api::{
     parse_rinex_broadcast_navigation, PositionObservation, PositionSolver,
 };
 use bijux_gnss_nav::parse_rinex_gps_observation_dataset;
-use support::public_station_truth::public_station_truth_by_fixture;
+use support::public_station_truth::{public_station_truth_by_fixture, station_enu_error_m};
 
 fn fixture(name: &str) -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data").join(name);
@@ -60,6 +60,7 @@ fn public_rinex_obs_and_nav_resolve_near_station_position() {
     let mut solved_epochs = 0usize;
     let mut best_error_m = f64::INFINITY;
     let mut worst_error_m = 0.0_f64;
+    let mut best_enu_error = None;
     let mut refusals = BTreeMap::new();
     for epoch in &observations.epochs {
         let position_observations = position_observations(epoch);
@@ -82,7 +83,14 @@ fn public_rinex_obs_and_nav_resolve_near_station_position() {
             solution.ecef_z_m,
             truth_ecef_m,
         );
-        best_error_m = best_error_m.min(position_error_m);
+        let enu_error = station_enu_error_m(
+            (solution.ecef_x_m, solution.ecef_y_m, solution.ecef_z_m),
+            &station_truth,
+        );
+        if position_error_m < best_error_m {
+            best_error_m = position_error_m;
+            best_enu_error = Some(enu_error);
+        }
         worst_error_m = worst_error_m.max(position_error_m);
         solved_epochs += 1;
     }
@@ -98,5 +106,22 @@ fn public_rinex_obs_and_nav_resolve_near_station_position() {
     assert!(
         worst_error_m < 150.0,
         "worst successful public-dataset position error {worst_error_m:.3} m exceeds tolerance"
+    );
+    let best_enu_error = best_enu_error.expect("successful public solution should record ENU error");
+    assert!(
+        best_enu_error.horizontal_m < 1.0,
+        "best public-station horizontal error {0:.3} m exceeds tolerance; east={1:.3}m north={2:.3}m up={3:.3}m",
+        best_enu_error.horizontal_m,
+        best_enu_error.east_m,
+        best_enu_error.north_m,
+        best_enu_error.up_m,
+    );
+    assert!(
+        best_enu_error.up_m.abs() < 0.5,
+        "best public-station vertical error {0:.3} m exceeds tolerance; east={1:.3}m north={2:.3}m horizontal={3:.3}m",
+        best_enu_error.up_m,
+        best_enu_error.east_m,
+        best_enu_error.north_m,
+        best_enu_error.horizontal_m,
     );
 }
