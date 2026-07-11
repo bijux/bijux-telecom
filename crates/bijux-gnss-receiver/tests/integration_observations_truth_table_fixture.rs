@@ -72,7 +72,9 @@ fn assert_json_close(actual: &Value, expected: &Value, tolerance: f64, path: &st
         }
         (Value::Array(actual), Value::Array(expected)) => {
             assert_eq!(actual.len(), expected.len(), "array length mismatch at {path}");
-            for (index, (actual_item, expected_item)) in actual.iter().zip(expected.iter()).enumerate() {
+            for (index, (actual_item, expected_item)) in
+                actual.iter().zip(expected.iter()).enumerate()
+            {
                 assert_json_close(
                     actual_item,
                     expected_item,
@@ -84,9 +86,8 @@ fn assert_json_close(actual: &Value, expected: &Value, tolerance: f64, path: &st
         (Value::Object(actual), Value::Object(expected)) => {
             assert_eq!(actual.len(), expected.len(), "object field count mismatch at {path}");
             for (key, expected_value) in expected {
-                let actual_value = actual
-                    .get(key)
-                    .unwrap_or_else(|| panic!("missing field at {path}.{key}"));
+                let actual_value =
+                    actual.get(key).unwrap_or_else(|| panic!("missing field at {path}.{key}"));
                 assert_json_close(
                     actual_value,
                     expected_value,
