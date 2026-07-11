@@ -4,10 +4,13 @@
 mod navigation_accuracy_artifact;
 
 use bijux_gnss_receiver::api::sim::{
-    build_truth_guided_gnss_accuracy_artifact, SyntheticGnssAccuracyArtifactCase,
+    build_truth_guided_gnss_accuracy_artifact, write_truth_guided_gnss_accuracy_artifact,
+    SyntheticGnssAccuracyArtifact, SyntheticGnssAccuracyArtifactCase,
 };
 
-use navigation_accuracy_artifact::build_navigation_accuracy_artifact_fixture;
+use navigation_accuracy_artifact::{
+    build_navigation_accuracy_artifact, build_navigation_accuracy_artifact_fixture,
+};
 
 #[test]
 fn navigation_accuracy_artifact_summarizes_acquisition_and_tracking_stages() {
@@ -252,4 +255,53 @@ fn navigation_accuracy_artifact_summarizes_observation_pvt_and_overall_status() 
             && fixture.observation_accuracy.truth_coverage_ready
             && fixture.pvt_accuracy.truth_coverage_ready
     );
+}
+
+#[test]
+fn navigation_accuracy_artifact_writes_single_json_file() {
+    let artifact = build_navigation_accuracy_artifact();
+    let unique_suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system time after unix epoch")
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!(
+        "bijux-navigation-accuracy-artifact-{}-{unique_suffix}.json",
+        std::process::id()
+    ));
+
+    write_truth_guided_gnss_accuracy_artifact(&path, &artifact).expect("write accuracy artifact");
+
+    let bytes = std::fs::read(&path).expect("read emitted accuracy artifact");
+    let parsed: SyntheticGnssAccuracyArtifact =
+        serde_json::from_slice(&bytes).expect("parse emitted accuracy artifact");
+    let value: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("inspect emitted accuracy artifact");
+
+    assert_eq!(parsed.schema_version, artifact.schema_version);
+    assert_eq!(parsed.scenario_id, artifact.scenario_id);
+    assert_eq!(parsed.pass, artifact.pass);
+    assert_eq!(parsed.truth_coverage_ready, artifact.truth_coverage_ready);
+    assert_eq!(parsed.data_source, artifact.data_source);
+    assert_eq!(parsed.reference_truth, artifact.reference_truth);
+    assert_eq!(parsed.acquisition.summary, artifact.acquisition.summary);
+    assert_eq!(parsed.observation.summary, artifact.observation.summary);
+    assert_eq!(parsed.pvt.summary, artifact.pvt.summary);
+    assert_eq!(parsed.tracking.summary.pass, artifact.tracking.summary.pass);
+    assert_eq!(
+        parsed.tracking.summary.passing_satellite_count,
+        artifact.tracking.summary.passing_satellite_count
+    );
+    assert_eq!(
+        parsed.tracking.summary.threshold_max_carrier_error_hz,
+        artifact.tracking.summary.threshold_max_carrier_error_hz
+    );
+    assert_eq!(value["scenario_id"], artifact.scenario_id);
+    assert_eq!(value["data_source"]["source_kind"], artifact.data_source.source_kind);
+    assert_eq!(value["reference_truth"]["truth_kind"], artifact.reference_truth.truth_kind);
+    assert!(value["acquisition"]["summary"]["threshold_max_doppler_error_hz"].is_number());
+    assert!(value["tracking"]["summary"]["observed_max_carrier_error_hz"].is_number());
+    assert!(value["observation"]["summary"]["threshold_max_pseudorange_error_m"].is_number());
+    assert!(value["pvt"]["summary"]["threshold_max_position_error_3d_m"].is_number());
+
+    std::fs::remove_file(path).expect("remove emitted accuracy artifact");
 }
