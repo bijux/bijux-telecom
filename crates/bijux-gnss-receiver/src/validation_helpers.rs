@@ -2,12 +2,15 @@
 #![allow(missing_docs)]
 
 use crate::pipeline::tracking::TrackingResult;
-use crate::validation_report::{ValidationBudgets, ValidationErrorStats};
+use crate::validation_report::{
+    ReferencePositionErrorEpoch, ValidationBudgets, ValidationErrorStats,
+};
 use bijux_gnss_core::api::{NavSolutionEpoch, StatsSummary};
 
 pub(crate) fn check_budgets(
     tracks: &[TrackingResult],
     solutions: &[NavSolutionEpoch],
+    reference_position_errors: &[ReferencePositionErrorEpoch],
     budgets: &ValidationBudgets,
 ) -> Vec<String> {
     let mut violations = Vec::new();
@@ -83,6 +86,16 @@ pub(crate) fn check_budgets(
             ));
         }
     }
+    if let Some(max_error_m) = budgets.reference_position_error_3d_m_max {
+        for error in reference_position_errors {
+            if error.error_3d_m > max_error_m {
+                violations.push(format!(
+                    "reference position 3d error too high at epoch {}: {:.2} m",
+                    error.epoch_idx, error.error_3d_m
+                ));
+            }
+        }
+    }
     violations
 }
 
@@ -109,6 +122,7 @@ impl Default for ValidationBudgets {
             nav_rejected_ratio_max: 0.5,
             nav_nan_max: 0,
             nav_min_lock_epochs: 3,
+            reference_position_error_3d_m_max: None,
         }
     }
 }

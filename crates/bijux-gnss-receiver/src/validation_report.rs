@@ -131,6 +131,8 @@ pub struct ValidationBudgets {
     pub nav_nan_max: usize,
     /// Minimum lock epochs before nav update.
     pub nav_min_lock_epochs: u64,
+    /// Maximum allowed 3D reference-position error (m), when a reference is available.
+    pub reference_position_error_3d_m_max: Option<f64>,
 }
 
 /// Scientific policy used for validation and integrity classification.
@@ -324,6 +326,32 @@ pub fn build_validation_report(
     product_fallbacks: Vec<String>,
     science_policy: ValidationSciencePolicy,
 ) -> Result<ValidationReport, bijux_gnss_core::api::InputError> {
+    build_validation_report_with_budgets(
+        tracks,
+        obs,
+        solutions,
+        reference,
+        sample_rate_hz,
+        products_ok,
+        product_fallbacks,
+        science_policy,
+        ValidationBudgets::default(),
+    )
+}
+
+/// Build the validation report for a run with explicit validation budgets.
+#[allow(clippy::too_many_arguments)]
+pub fn build_validation_report_with_budgets(
+    tracks: &[TrackingResult],
+    obs: &[ObsEpoch],
+    solutions: &[NavSolutionEpoch],
+    reference: &[ValidationReferenceEpoch],
+    sample_rate_hz: f64,
+    products_ok: bool,
+    product_fallbacks: Vec<String>,
+    science_policy: ValidationSciencePolicy,
+    budgets: ValidationBudgets,
+) -> Result<ValidationReport, bijux_gnss_core::api::InputError> {
     let mut ref_map = std::collections::BTreeMap::new();
     for r in reference {
         ref_map.insert(r.epoch_idx, r);
@@ -374,9 +402,8 @@ pub fn build_validation_report(
             });
             if let (Some(sig_h), Some(sig_v)) = (sol.sigma_h_m, sol.sigma_v_m) {
                 if sig_h.0 > 0.0 && sig_v.0 > 0.0 {
-                    let nees =
-                        (east * east + north * north) / (sig_h.0 * sig_h.0)
-                            + (up * up) / (sig_v.0 * sig_v.0);
+                    let nees = (east * east + north * north) / (sig_h.0 * sig_h.0)
+                        + (up * up) / (sig_v.0 * sig_v.0);
                     nees_values.push(nees);
                 }
             }
@@ -410,8 +437,7 @@ pub fn build_validation_report(
     let vert_stats = to_validation_stats(stats(&vert_errors));
     let error_3d_stats = to_validation_stats(stats(&error_3d));
     let convergence = convergence_report(&horiz_by_time, &vert_by_time);
-    let budgets = ValidationBudgets::default();
-    let violations = check_budgets(tracks, solutions, &budgets);
+    let violations = check_budgets(tracks, solutions, &reference_position_errors, &budgets);
     let time_consistency = check_time_consistency(tracks, sample_rate_hz);
     let consistency = check_solution_consistency(solutions);
     let inter_frequency_alignment = check_inter_frequency_alignment(obs);
