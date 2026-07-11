@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+#![allow(dead_code, missing_docs)]
 
 use bijux_gnss_core::api::{
     ecef_to_geodetic, geodetic_to_ecef, Chips, Constellation, Cycles, Epoch, GpsTime, Hertz,
