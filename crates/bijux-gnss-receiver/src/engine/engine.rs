@@ -8,8 +8,8 @@ use crate::pipeline::observations::{
     observation_artifacts_from_tracking_results_with_gps_anchor, observation_decisions_from_epochs,
 };
 use bijux_gnss_core::api::{
-    signal_registry, Constellation, InputError, SatId, SignalBand, SignalCode, SignalSupportRow,
-    SupportMatrix, SupportStatus,
+    signal_registry, AcqHypothesis, AcqResult, Constellation, InputError, SamplesFrame, SatId,
+    SignalBand, SignalCode, SignalSupportRow, SupportMatrix, SupportStatus, TrackEpoch,
 };
 use bijux_gnss_signal::api::remove_dc_offset_in_place;
 use std::time::Instant;
@@ -217,23 +217,62 @@ impl Receiver {
             .take(self.config().channels.max(1))
             .next()
             .is_some();
-        let mut tracking_session = tracking.begin_tracking_session(&acquisitions);
+        let tracking_frame_len = streaming_tracking_frame_len(samples_per_code);
+        let initial_tracking_frame = if has_trackable_channels {
+            match input.next_frame(tracking_frame_len) {
+                Ok(frame) => frame,
+                Err(err) => {
+                    crate::engine::diagnostics::dump_on_error(
+                        self.runtime(),
+                        &format!("input error: {err}"),
+                        None,
+                        None,
+                    );
+                    return Err(crate::engine::receiver_config::ReceiverError::Input(InputError {
+                        message: err.to_string(),
+                    }));
+                }
+            }
+        } else {
+            None
+        };
+        let tracking_preview_frame = build_tracking_preview_frame(&frame, initial_tracking_frame.as_ref());
+        let tracking_acquisitions = if has_trackable_channels {
+            prioritize_tracking_acquisitions(
+                &tracking,
+                &tracking_preview_frame,
+                &acquisitions,
+                self.config().channels.max(1),
+            )
+        } else {
+            Vec::new()
+        };
+        let tracking_acquisitions = if tracking_acquisitions.is_empty() {
+            acquisitions.clone()
+        } else {
+            tracking_acquisitions
+        };
+        let mut tracking_session = tracking.begin_tracking_session(&tracking_acquisitions);
         tracking.track_session_frame(&mut tracking_session, &frame);
         if has_trackable_channels {
-            let tracking_frame_len = streaming_tracking_frame_len(samples_per_code);
+            let mut pending_tracking_frame = initial_tracking_frame;
             loop {
-                let next_frame = match input.next_frame(tracking_frame_len) {
-                    Ok(frame) => frame,
-                    Err(err) => {
-                        crate::engine::diagnostics::dump_on_error(
-                            self.runtime(),
-                            &format!("input error: {err}"),
-                            None,
-                            None,
-                        );
-                        return Err(crate::engine::receiver_config::ReceiverError::Input(
-                            InputError { message: err.to_string() },
-                        ));
+                let next_frame = if pending_tracking_frame.is_some() {
+                    pending_tracking_frame.take()
+                } else {
+                    match input.next_frame(tracking_frame_len) {
+                        Ok(frame) => frame,
+                        Err(err) => {
+                            crate::engine::diagnostics::dump_on_error(
+                                self.runtime(),
+                                &format!("input error: {err}"),
+                                None,
+                                None,
+                            );
+                            return Err(crate::engine::receiver_config::ReceiverError::Input(
+                                InputError { message: err.to_string() },
+                            ));
+                        }
                     }
                 };
                 let Some(mut tracking_frame) = next_frame else {
@@ -350,6 +389,84 @@ impl Receiver {
 
 fn streaming_tracking_frame_len(samples_per_code: usize) -> usize {
     samples_per_code.saturating_mul(STREAMING_TRACKING_CODE_PERIODS.max(1))
+}
+
+fn build_tracking_preview_frame(
+    acquisition_frame: &SamplesFrame,
+    initial_tracking_frame: Option<&SamplesFrame>,
+) -> SamplesFrame {
+    let mut iq = acquisition_frame.iq.clone();
+    if let Some(initial_tracking_frame) = initial_tracking_frame {
+        iq.extend_from_slice(&initial_tracking_frame.iq);
+    }
+    SamplesFrame::new(acquisition_frame.t0, acquisition_frame.dt_s, iq)
+}
+
+fn prioritize_tracking_acquisitions(
+    tracking: &crate::pipeline::tracking::Tracking,
+    preview_frame: &SamplesFrame,
+    acquisitions: &[AcqResult],
+    channel_limit: usize,
+) -> Vec<AcqResult> {
+    let mut ranked = acquisitions
+        .iter()
+        .filter(|acq| matches!(acq.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous))
+        .map(|acq| {
+            let preview = tracking.track_from_acquisition(preview_frame, std::slice::from_ref(acq));
+            let summary = preview
+                .first()
+                .map(|result| preview_tracking_summary(&result.epochs))
+                .unwrap_or_default();
+            (summary, acq.clone())
+        })
+        .collect::<Vec<_>>();
+    ranked.sort_by(|(left_summary, left_acq), (right_summary, right_acq)| {
+        compare_tracking_preview_summaries(left_summary, right_summary).then_with(|| {
+            acquisition_hypothesis_rank(left_acq.hypothesis)
+                .cmp(&acquisition_hypothesis_rank(right_acq.hypothesis))
+        })
+        .then_with(|| right_acq.score.total_cmp(&left_acq.score))
+        .then_with(|| right_acq.cn0_proxy.total_cmp(&left_acq.cn0_proxy))
+        .then_with(|| left_acq.sat.constellation.cmp(&right_acq.sat.constellation))
+        .then_with(|| left_acq.sat.prn.cmp(&right_acq.sat.prn))
+    });
+    ranked.into_iter().take(channel_limit.max(1)).map(|(_, acq)| acq).collect()
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct TrackingPreviewSummary {
+    locked_epoch_count: usize,
+    first_locked_epoch_index: Option<usize>,
+}
+
+fn preview_tracking_summary(epochs: &[TrackEpoch]) -> TrackingPreviewSummary {
+    let first_locked_epoch_index = epochs.iter().position(|epoch| epoch.lock && epoch.dll_lock);
+    let locked_epoch_count = epochs.iter().filter(|epoch| epoch.lock && epoch.dll_lock).count();
+    TrackingPreviewSummary { locked_epoch_count, first_locked_epoch_index }
+}
+
+fn compare_tracking_preview_summaries(
+    left: &TrackingPreviewSummary,
+    right: &TrackingPreviewSummary,
+) -> std::cmp::Ordering {
+    (right.locked_epoch_count > 0)
+        .cmp(&(left.locked_epoch_count > 0))
+        .then_with(|| right.locked_epoch_count.cmp(&left.locked_epoch_count))
+        .then_with(|| match (left.first_locked_epoch_index, right.first_locked_epoch_index) {
+            (Some(left_index), Some(right_index)) => left_index.cmp(&right_index),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        })
+}
+
+fn acquisition_hypothesis_rank(hypothesis: AcqHypothesis) -> u8 {
+    match hypothesis {
+        AcqHypothesis::Accepted => 0,
+        AcqHypothesis::Ambiguous => 1,
+        AcqHypothesis::Rejected => 2,
+        AcqHypothesis::Deferred => 3,
+    }
 }
 
 fn build_support_matrix() -> SupportMatrix {

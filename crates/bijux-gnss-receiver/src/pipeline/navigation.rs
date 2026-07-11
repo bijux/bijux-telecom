@@ -1575,7 +1575,7 @@ mod tests {
     }
 
     #[test]
-    fn navigation_degrades_on_solver_failure() {
+    fn navigation_refuses_epochs_without_ephemeris_even_with_last_solution() {
         let config = ReceiverPipelineConfig::default();
         let mut nav = Navigation {
             config,
@@ -1587,7 +1587,7 @@ mod tests {
         };
         let obs = fake_obs_epoch_for_nav_tests(10);
         let solution = nav.solve_epoch(&obs, &[]).expect("degraded solution");
-        assert_eq!(solution.status, SolutionStatus::Held);
+        assert_eq!(solution.status, SolutionStatus::Invalid);
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::InvalidEphemeris));
         assert_eq!(solution.explain_decision, "refused");
         assert_eq!(solution.epoch.index, 10);
@@ -1617,11 +1617,21 @@ mod tests {
     fn navigation_refuses_observations_without_valid_satellite_time() {
         let config = ReceiverPipelineConfig::default();
         let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
-        let mut obs = fake_obs_epoch_for_nav_tests(13);
+        let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
+        let t_rx_s = 100_000.0;
+        let ephs = vec![
+            make_eph(1, 0.0, 0.0, t_rx_s),
+            make_eph(2, 0.8, 0.9, t_rx_s),
+            make_eph(3, 1.6, 1.8, t_rx_s),
+            make_eph(4, 2.4, 2.7, t_rx_s),
+        ];
+        let mut obs = make_obs_epoch_for_solution(13, t_rx_s, truth, &ephs);
         for sat in &mut obs.sats {
-            sat.timing = None;
+            let transmit_gps_time = sat.timing.expect("timing").transmit_gps_time;
+            sat.timing =
+                Some(ObsSignalTiming { signal_travel_time_s: Seconds(0.0), transmit_gps_time });
         }
-        let solution = nav.solve_epoch(&obs, &[]).expect("timing refusal");
+        let solution = nav.solve_epoch(&obs, &ephs).expect("timing refusal");
         assert_eq!(solution.status, SolutionStatus::Invalid);
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::InvalidSatelliteTime));
         assert!(!solution.valid);

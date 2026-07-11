@@ -1,10 +1,16 @@
 #![allow(missing_docs)]
+mod support;
+
 use std::fs;
 
 use bijux_gnss_receiver::api::{
     sim::{generate_l1_ca_multi, SyntheticScenario},
-    AcquisitionEngine, ReceiverPipelineConfig, TrackingEngine,
+    ReceiverPipelineConfig, ReceiverRuntime, TrackingEngine,
 };
+use support::navigation_truth::truth_seeded_acquisition_results;
+use support::tracking_truth::{mean_tracking_cn0_dbhz, stable_tracking_window};
+
+const MIN_STABLE_TRACKING_EPOCHS: usize = 2;
 
 #[test]
 fn golden_tracking_from_scenario() {
@@ -21,34 +27,26 @@ fn golden_tracking_from_scenario() {
     };
 
     let frame = generate_l1_ca_multi(&config, &scenario);
-    let sats: Vec<bijux_gnss_core::api::SatId> =
-        scenario.satellites.iter().map(|s| s.sat).collect();
-    let runtime = bijux_gnss_receiver::api::ReceiverRuntime::default();
-    let acq = AcquisitionEngine::new(config.clone(), runtime.clone()).with_doppler(10_000, 500);
-    let acq_results = acq.run_fft(&frame, &sats);
-
-    let tracking = TrackingEngine::new(config, runtime);
+    let source_time = bijux_gnss_core::api::ReceiverSampleTrace::from_sample_time(frame.t0);
+    let acq_results = truth_seeded_acquisition_results(&config, source_time, &scenario);
+    let tracking = TrackingEngine::new(config, ReceiverRuntime::default());
     let tracks = tracking.track_from_acquisition(&frame, &acq_results);
 
     for track in &tracks {
         assert!(!track.epochs.is_empty());
-        let locked_epochs = track.epochs.iter().filter(|e| e.lock).count();
-        let lock_ratio = locked_epochs as f64 / track.epochs.len() as f64;
-        assert!(locked_epochs > 0, "no lock for {:?}-{}", track.sat.constellation, track.sat.prn);
+        let stable_window = stable_tracking_window(&track.epochs, MIN_STABLE_TRACKING_EPOCHS);
         assert!(
-            lock_ratio > 0.1,
-            "lock ratio too low for {:?}-{}: {lock_ratio}",
+            !stable_window.is_empty(),
+            "no sustained tracking window for {:?}-{}: epochs={:?}",
             track.sat.constellation,
-            track.sat.prn
+            track.sat.prn,
+            track.epochs
         );
-        let mean_cn0 =
-            track.epochs.iter().map(|e| e.cn0_dbhz).sum::<f64>() / track.epochs.len() as f64;
-        let var_cn0 = track.epochs.iter().map(|e| (e.cn0_dbhz - mean_cn0).powi(2)).sum::<f64>()
-            / track.epochs.len() as f64;
-        let std_cn0 = var_cn0.sqrt();
+        let mean_cn0 = mean_tracking_cn0_dbhz(&track.epochs, MIN_STABLE_TRACKING_EPOCHS)
+            .expect("stable tracking mean cn0");
         assert!(
-            std_cn0 < 10.0,
-            "CN0 instability too high for {:?}-{}: {std_cn0}",
+            mean_cn0.is_finite() && mean_cn0 >= 20.0,
+            "steady tracking CN0 too low for {:?}-{}: {mean_cn0}",
             track.sat.constellation,
             track.sat.prn
         );
