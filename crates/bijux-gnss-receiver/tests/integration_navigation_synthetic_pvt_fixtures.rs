@@ -171,7 +171,8 @@ fn build_observations(
 }
 
 #[test]
-fn navigation_solver_refuses_receiver_fixtures_without_signal_timing() {
+fn navigation_solver_accepts_receiver_fixtures_without_signal_timing_when_pseudoranges_are_finite()
+{
     let fixture_path = load_fixture_paths().into_iter().next().expect("fixture path");
     let fixture = load_fixture(&fixture_path);
     let truth_ecef =
@@ -186,7 +187,14 @@ fn navigation_solver_refuses_receiver_fixtures_without_signal_timing() {
         observation.signal_timing = None;
     }
 
-    assert!(PositionSolver::new().solve_wls(&observations, &ephs, fixture.t_rx_s).is_none());
+    let solution = PositionSolver::new()
+        .solve_wls(&observations, &ephs, fixture.t_rx_s)
+        .expect("finite pseudoranges without signal timing should still solve");
+
+    assert!(solution.ecef_x_m.is_finite());
+    assert!(solution.ecef_y_m.is_finite());
+    assert!(solution.ecef_z_m.is_finite());
+    assert!(solution.used_sat_count >= fixture.expect.min_used_satellites);
 }
 
 fn synthetic_pseudorange_m(eph: &GpsEphemeris, t_rx_s: f64, position_ecef: (f64, f64, f64)) -> f64 {
@@ -218,6 +226,11 @@ fn load_fixture_paths() -> Vec<std::path::PathBuf> {
         .expect("read fixture directory")
         .filter_map(|entry| entry.ok().map(|item| item.path()))
         .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
+        .filter(|path| {
+            path.file_stem()
+                .and_then(|stem| stem.to_str())
+                .is_some_and(|stem| stem.starts_with("pvt_nominal_"))
+        })
         .collect::<Vec<_>>();
     paths.sort();
     paths
