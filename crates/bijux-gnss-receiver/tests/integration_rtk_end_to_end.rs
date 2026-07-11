@@ -8,6 +8,7 @@ use bijux_gnss_nav::api::{
 };
 use bijux_gnss_receiver::api::{
     baseline_from_ecef, build_dd, build_sd, choose_ref_sat, solution_separation, solve_baseline_dd,
+    solve_float_baseline_dd,
 };
 
 fn make_eph(prn: u8, omega0: f64, m0: f64) -> GpsEphemeris {
@@ -178,12 +179,21 @@ fn rtk_dd_solution_close_to_baseline() {
     let sd = build_sd(&base_epoch, &rover_epoch);
     let ref_sig = choose_ref_sat(&sd).expect("ref sig");
     let dd = build_dd(&sd, ref_sig);
-    let baseline =
-        solve_baseline_dd(&dd, [base.0, base.1, base.2], &ephs, t_rx_s).expect("baseline");
+    let float_baseline =
+        solve_float_baseline_dd(&dd, [base.0, base.1, base.2], &ephs, t_rx_s).expect("baseline");
+    let baseline = solve_baseline_dd(&dd, [base.0, base.1, base.2], &ephs, t_rx_s)
+        .expect("projected baseline");
     let expected = baseline_from_ecef([base.0, base.1, base.2], [rover.0, rover.1, rover.2]);
 
-    assert!((baseline.enu_m[0] - expected.enu_m[0]).abs() < 500.0, "east error too large");
-    assert!((baseline.enu_m[1] - expected.enu_m[1]).abs() < 500.0, "north error too large");
+    assert!((float_baseline.enu_m[0] - expected.enu_m[0]).abs() < 1.0, "east error too large");
+    assert!((float_baseline.enu_m[1] - expected.enu_m[1]).abs() < 1.0, "north error too large");
+    assert!((float_baseline.enu_m[2] - expected.enu_m[2]).abs() < 2.0, "up error too large");
+    assert_eq!(baseline.enu_m, float_baseline.enu_m);
+    assert_eq!(
+        baseline.covariance_m2.expect("projected covariance"),
+        float_baseline.covariance_enu_m2
+    );
+    assert_eq!(float_baseline.float_ambiguities.len(), dd.len());
 }
 
 #[test]
