@@ -4,27 +4,17 @@
 mod navigation_time_profile;
 
 use bijux_gnss_receiver::api::sim::{
-    summarize_truth_guided_pvt_time_profile, SyntheticPvtTimeProfileCase, SyntheticPvtTimeTrend,
+    summarize_truth_guided_pvt_time_profile, SyntheticPvtTimeTrend,
 };
 
-use navigation_time_profile::{build_navigation_time_case, synthetic_navigation_time_profiles};
+use navigation_time_profile::{build_navigation_time_cases, truth_guided_time_profile_cases};
 
 fn navigation_time_profile_report() -> bijux_gnss_receiver::api::sim::SyntheticPvtTimeProfileReport
 {
-    let cases = synthetic_navigation_time_profiles()
-        .into_iter()
-        .map(build_navigation_time_case)
-        .collect::<Vec<_>>();
+    let cases = build_navigation_time_cases();
 
     summarize_truth_guided_pvt_time_profile(
-        &cases
-            .iter()
-            .map(|case| SyntheticPvtTimeProfileCase {
-                scenario_id: &case.scenario_id,
-                truth_table: &case.truth_table,
-                accuracy: &case.pvt_accuracy,
-            })
-            .collect::<Vec<_>>(),
+        &truth_guided_time_profile_cases(&cases),
         "navigation_time_profile",
     )
 }

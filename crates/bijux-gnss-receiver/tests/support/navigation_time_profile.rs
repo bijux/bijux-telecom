@@ -10,7 +10,7 @@ use bijux_gnss_receiver::api::{
     observations_from_tracking_results_with_gps_anchor,
     sim::{
         truth_guided_receiver_accuracy_budgets, validate_pvt_accuracy_budget,
-        validate_truth_guided_pvt_table, SyntheticPvtAccuracyReport,
+        validate_truth_guided_pvt_table, SyntheticPvtAccuracyReport, SyntheticPvtTimeProfileCase,
         SyntheticPvtTruthReferenceEpoch, SyntheticPvtTruthTableReport,
     },
     Navigation, ReceiverPipelineConfig, ReceiverRuntime, TrackingResult,
@@ -56,32 +56,45 @@ pub struct NavigationTimeCase {
     pub solutions: Vec<NavSolutionEpoch>,
 }
 
-pub fn synthetic_navigation_time_profiles() -> Vec<NavigationTimeProfile> {
+pub fn navigation_time_profile(
+    profile_name: &'static str,
+    start_level_m: f64,
+    end_level_m: f64,
+    initial_receive_time_s: f64,
+    epoch_spacing_s: f64,
+    epoch_count: usize,
+) -> NavigationTimeProfile {
     let truth_ecef_m = geodetic_to_ecef(
         TIME_PROFILE_TRUTH_LAT_DEG,
         TIME_PROFILE_TRUTH_LON_DEG,
         TIME_PROFILE_TRUTH_ALT_M,
     );
 
+    let truth_epochs = (0..epoch_count)
+        .map(|epoch_index| {
+            let elapsed_s = epoch_index as f64 * epoch_spacing_s;
+            NavigationTimeTruthEpoch {
+                epoch_idx: (elapsed_s * 1000.0).round() as u64,
+                receive_time_s: initial_receive_time_s + elapsed_s,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    NavigationTimeProfile { profile_name, truth_ecef_m, truth_epochs, start_level_m, end_level_m }
+}
+
+pub fn synthetic_navigation_time_profiles() -> Vec<NavigationTimeProfile> {
     TIME_PROFILE_LEVELS_M
         .into_iter()
         .map(|(profile_name, start_level_m, end_level_m)| {
-            let truth_epochs = (0..TIME_PROFILE_EPOCH_COUNT)
-                .map(|epoch_index| {
-                    let elapsed_s = epoch_index as f64 * TIME_PROFILE_EPOCH_SPACING_S;
-                    NavigationTimeTruthEpoch {
-                        epoch_idx: (elapsed_s * 1000.0).round() as u64,
-                        receive_time_s: TIME_PROFILE_RECEIVE_TIME_S + elapsed_s,
-                    }
-                })
-                .collect::<Vec<_>>();
-            NavigationTimeProfile {
+            navigation_time_profile(
                 profile_name,
-                truth_ecef_m,
-                truth_epochs,
                 start_level_m,
                 end_level_m,
-            }
+                TIME_PROFILE_RECEIVE_TIME_S,
+                TIME_PROFILE_EPOCH_SPACING_S,
+                TIME_PROFILE_EPOCH_COUNT,
+            )
         })
         .collect()
 }
@@ -91,6 +104,33 @@ pub fn synthetic_navigation_time_profile(profile_name: &str) -> NavigationTimePr
         .into_iter()
         .find(|profile| profile.profile_name == profile_name)
         .unwrap_or_else(|| panic!("unknown navigation time profile: {profile_name}"))
+}
+
+pub fn build_navigation_time_cases() -> Vec<NavigationTimeCase> {
+    synthetic_navigation_time_profiles().into_iter().map(build_navigation_time_case).collect()
+}
+
+pub fn navigation_time_case<'a>(
+    cases: &'a [NavigationTimeCase],
+    profile_name: &str,
+) -> &'a NavigationTimeCase {
+    cases
+        .iter()
+        .find(|case| case.time_profile.profile_name == profile_name)
+        .unwrap_or_else(|| panic!("unknown navigation time case: {profile_name}"))
+}
+
+pub fn truth_guided_time_profile_cases<'a>(
+    cases: &'a [NavigationTimeCase],
+) -> Vec<SyntheticPvtTimeProfileCase<'a>> {
+    cases
+        .iter()
+        .map(|case| SyntheticPvtTimeProfileCase {
+            scenario_id: &case.scenario_id,
+            truth_table: &case.truth_table,
+            accuracy: &case.pvt_accuracy,
+        })
+        .collect()
 }
 
 pub fn build_navigation_time_case(profile: NavigationTimeProfile) -> NavigationTimeCase {
