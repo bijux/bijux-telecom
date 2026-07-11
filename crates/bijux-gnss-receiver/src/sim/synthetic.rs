@@ -24,6 +24,7 @@ use bijux_gnss_signal::api::{
 use serde::{Deserialize, Serialize};
 
 const SYNTHETIC_IQ_TRUTH_SCHEMA_VERSION: u32 = 3;
+const SYNTHETIC_GNSS_ACCURACY_ARTIFACT_SCHEMA_VERSION: u32 = 1;
 const GPS_L1_CA_NAV_BIT_PERIOD_S: f64 = 0.02;
 const SYNTHETIC_COMPLEX_NOISE_POWER: f64 = 1.0;
 const SYNTHETIC_NOISE_STD_PER_COMPONENT: f32 = std::f32::consts::FRAC_1_SQRT_2;
@@ -1055,6 +1056,224 @@ pub struct SyntheticObservationValidationReport {
     pub satellites: Vec<SyntheticObservationValidationSatellite>,
 }
 
+/// Data-source summary for one GNSS accuracy artifact.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticGnssAccuracyDataSource {
+    /// Stable source kind used to interpret the run origin.
+    pub source_kind: String,
+    /// Sample rate used for the validation run, in Hz.
+    pub sample_rate_hz: f64,
+    /// Intermediate frequency used for the validation run, in Hz.
+    pub intermediate_freq_hz: f64,
+    /// Total synthetic capture duration, in seconds.
+    pub duration_s: f64,
+    /// Number of satellites present in the source scenario.
+    pub satellite_count: usize,
+}
+
+/// Reference-truth summary for one GNSS accuracy artifact.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticGnssAccuracyReferenceTruth {
+    /// Stable truth kind used to interpret the reference source.
+    pub truth_kind: String,
+    /// Receiver ECEF reference coordinates when available, in meters.
+    pub receiver_ecef_m: Option<[f64; 3]>,
+    /// Absolute receive-time anchor for the truth reference, in seconds.
+    pub reference_receive_time_s: Option<f64>,
+    /// Number of satellites covered by the reference truth.
+    pub satellite_count: usize,
+    /// Number of truth epochs available to the validation run.
+    pub reference_epoch_count: usize,
+}
+
+/// Compact acquisition-stage summary carried by a final GNSS accuracy artifact.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticGnssAcquisitionStageSummary {
+    /// Whether the acquisition stage satisfied its hard thresholds.
+    pub pass: bool,
+    /// Whether synthetic truth coverage was sufficient for the stage claim.
+    pub truth_coverage_ready: bool,
+    /// Number of measured satellites.
+    pub satellite_count: usize,
+    /// Number of satellites that satisfied the stage budget.
+    pub passing_satellite_count: usize,
+    /// Largest absolute Doppler error observed across measured satellites, in Hz.
+    pub observed_max_doppler_error_hz: Option<f64>,
+    /// Largest wrapped code-phase error observed across measured satellites, in samples.
+    pub observed_max_code_phase_error_samples: Option<usize>,
+    /// Maximum absolute Doppler error allowed in Hz.
+    pub threshold_max_doppler_error_hz: f64,
+    /// Maximum wrapped code-phase error allowed in samples.
+    pub threshold_max_code_phase_error_samples: usize,
+}
+
+/// Compact tracking-stage summary carried by a final GNSS accuracy artifact.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticGnssTrackingStageSummary {
+    /// Whether the tracking stage satisfied its hard thresholds.
+    pub pass: bool,
+    /// Whether synthetic truth coverage was sufficient for the stage claim.
+    pub truth_coverage_ready: bool,
+    /// Number of measured satellites.
+    pub satellite_count: usize,
+    /// Number of satellites that satisfied the stage budget.
+    pub passing_satellite_count: usize,
+    /// Largest carrier-frequency error observed across measured satellites, in Hz.
+    pub observed_max_carrier_error_hz: Option<f64>,
+    /// Largest Doppler error observed across measured satellites, in Hz.
+    pub observed_max_doppler_error_hz: Option<f64>,
+    /// Largest wrapped code-phase error observed across measured satellites, in samples.
+    pub observed_max_code_phase_error_samples: Option<f64>,
+    /// Largest C/N0 error observed across measured satellites, in dB-Hz.
+    pub observed_max_cn0_error_db_hz: Option<f64>,
+    /// Maximum absolute carrier-frequency error allowed in Hz.
+    pub threshold_max_carrier_error_hz: f64,
+    /// Maximum absolute Doppler error allowed in Hz.
+    pub threshold_max_doppler_error_hz: f64,
+    /// Maximum wrapped code-phase error allowed in samples.
+    pub threshold_max_code_phase_error_samples: f64,
+    /// Maximum absolute C/N0 error allowed in dB-Hz.
+    pub threshold_max_cn0_error_db_hz: f64,
+}
+
+/// Compact observation-stage summary carried by a final GNSS accuracy artifact.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticGnssObservationStageSummary {
+    /// Whether the observation stage satisfied its hard thresholds.
+    pub pass: bool,
+    /// Whether synthetic truth coverage was sufficient for the stage claim.
+    pub truth_coverage_ready: bool,
+    /// Number of measured satellites.
+    pub satellite_count: usize,
+    /// Number of satellites that satisfied the stage budget.
+    pub passing_satellite_count: usize,
+    /// Largest pseudorange error observed across measured satellites, in meters.
+    pub observed_max_pseudorange_error_m: Option<f64>,
+    /// Largest carrier-phase error observed across measured satellites, in cycles.
+    pub observed_max_carrier_phase_error_cycles: Option<f64>,
+    /// Largest Doppler error observed across measured satellites, in Hz.
+    pub observed_max_doppler_error_hz: Option<f64>,
+    /// Largest C/N0 error observed across measured satellites, in dB-Hz.
+    pub observed_max_cn0_error_db_hz: Option<f64>,
+    /// Maximum absolute pseudorange error allowed in meters.
+    pub threshold_max_pseudorange_error_m: f64,
+    /// Maximum absolute carrier-phase error allowed in cycles.
+    pub threshold_max_carrier_phase_error_cycles: f64,
+    /// Maximum absolute Doppler error allowed in Hz.
+    pub threshold_max_doppler_error_hz: f64,
+    /// Maximum absolute C/N0 error allowed in dB-Hz.
+    pub threshold_max_cn0_error_db_hz: f64,
+}
+
+/// Compact PVT-stage summary carried by a final GNSS accuracy artifact.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticGnssPvtStageSummary {
+    /// Whether the PVT stage satisfied its hard thresholds.
+    pub pass: bool,
+    /// Whether synthetic truth coverage was sufficient for the stage claim.
+    pub truth_coverage_ready: bool,
+    /// Number of measured navigation epochs.
+    pub epoch_count: usize,
+    /// Number of epochs that satisfied the stage budget.
+    pub passing_epoch_count: usize,
+    /// Largest 3D position error observed across measured epochs, in meters.
+    pub observed_max_position_error_3d_m: Option<f64>,
+    /// Largest absolute clock-bias error observed across measured epochs, in meters.
+    pub observed_max_clock_bias_error_m: Option<f64>,
+    /// Largest residual RMS observed across measured epochs, in meters.
+    pub observed_max_residual_rms_m: Option<f64>,
+    /// Largest PDOP observed across measured epochs.
+    pub observed_max_pdop: Option<f64>,
+    /// Maximum 3D position error allowed in meters.
+    pub threshold_max_position_error_3d_m: f64,
+    /// Maximum absolute clock-bias error allowed in meters.
+    pub threshold_max_clock_bias_error_m: f64,
+    /// Maximum residual RMS allowed in meters.
+    pub threshold_max_residual_rms_m: f64,
+    /// Maximum PDOP allowed for an in-budget epoch.
+    pub threshold_max_pdop: f64,
+}
+
+/// Final acquisition-stage artifact payload with both compact summary and detailed report.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticGnssAcquisitionStageArtifact {
+    /// Compact stage summary used for run-level pass/fail review.
+    pub summary: SyntheticGnssAcquisitionStageSummary,
+    /// Detailed acquisition accuracy report for per-satellite review.
+    pub report: SyntheticAcquisitionAccuracyReport,
+}
+
+/// Final tracking-stage artifact payload with both compact summary and detailed report.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticGnssTrackingStageArtifact {
+    /// Compact stage summary used for run-level pass/fail review.
+    pub summary: SyntheticGnssTrackingStageSummary,
+    /// Detailed tracking accuracy report for per-satellite review.
+    pub report: SyntheticTrackingAccuracyReport,
+}
+
+/// Final observation-stage artifact payload with both compact summary and detailed report.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticGnssObservationStageArtifact {
+    /// Compact stage summary used for run-level pass/fail review.
+    pub summary: SyntheticGnssObservationStageSummary,
+    /// Detailed observation accuracy report for per-satellite review.
+    pub report: SyntheticObservationAccuracyReport,
+}
+
+/// Final PVT-stage artifact payload with both compact summary and detailed report.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticGnssPvtStageArtifact {
+    /// Compact stage summary used for run-level pass/fail review.
+    pub summary: SyntheticGnssPvtStageSummary,
+    /// Detailed PVT accuracy report for per-epoch review.
+    pub report: SyntheticPvtAccuracyReport,
+}
+
+/// Borrowed inputs for building one final GNSS accuracy artifact.
+#[derive(Debug, Clone)]
+pub struct SyntheticGnssAccuracyArtifactCase<'a> {
+    /// Stable scenario identifier for the validation run.
+    pub scenario_id: &'a str,
+    /// Data-source summary for the validation run.
+    pub data_source: SyntheticGnssAccuracyDataSource,
+    /// Reference-truth summary for the validation run.
+    pub reference_truth: SyntheticGnssAccuracyReferenceTruth,
+    /// Detailed acquisition-stage accuracy report.
+    pub acquisition: &'a SyntheticAcquisitionAccuracyReport,
+    /// Detailed tracking-stage accuracy report.
+    pub tracking: &'a SyntheticTrackingAccuracyReport,
+    /// Detailed observation-stage accuracy report.
+    pub observation: &'a SyntheticObservationAccuracyReport,
+    /// Detailed PVT-stage accuracy report.
+    pub pvt: &'a SyntheticPvtAccuracyReport,
+}
+
+/// Final truth-guided GNSS accuracy artifact for one validation run.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticGnssAccuracyArtifact {
+    /// Schema version for the artifact payload.
+    pub schema_version: u32,
+    /// Stable scenario identifier for the validation run.
+    pub scenario_id: String,
+    /// Whether every stage satisfied its hard thresholds.
+    pub pass: bool,
+    /// Whether every stage had enough truth coverage for a hard claim.
+    pub truth_coverage_ready: bool,
+    /// Validation-run source summary.
+    pub data_source: SyntheticGnssAccuracyDataSource,
+    /// Validation-run reference-truth summary.
+    pub reference_truth: SyntheticGnssAccuracyReferenceTruth,
+    /// Acquisition-stage artifact payload.
+    pub acquisition: SyntheticGnssAcquisitionStageArtifact,
+    /// Tracking-stage artifact payload.
+    pub tracking: SyntheticGnssTrackingStageArtifact,
+    /// Observation-stage artifact payload.
+    pub observation: SyntheticGnssObservationStageArtifact,
+    /// PVT-stage artifact payload.
+    pub pvt: SyntheticGnssPvtStageArtifact,
+}
+
 fn summarize_observation_errors(errors: &[f64]) -> Option<SyntheticObservationErrorStats> {
     if errors.is_empty() {
         return None;
@@ -1703,6 +1922,171 @@ pub fn validate_pvt_accuracy_budget(
         truth_coverage_issues,
         pass: truth_coverage_ready && !epochs.is_empty() && passing_epoch_count == epochs.len(),
         epochs,
+    }
+}
+
+fn summarize_gnss_acquisition_stage(
+    report: &SyntheticAcquisitionAccuracyReport,
+) -> SyntheticGnssAcquisitionStageSummary {
+    SyntheticGnssAcquisitionStageSummary {
+        pass: report.pass,
+        truth_coverage_ready: report.truth_coverage_ready,
+        satellite_count: report.satellite_count,
+        passing_satellite_count: report.passing_satellite_count,
+        observed_max_doppler_error_hz: report
+            .satellites
+            .iter()
+            .map(|satellite| satellite.doppler_error_hz)
+            .max_by(f64::total_cmp),
+        observed_max_code_phase_error_samples: report
+            .satellites
+            .iter()
+            .map(|satellite| satellite.code_phase_error_samples)
+            .max(),
+        threshold_max_doppler_error_hz: report.max_doppler_error_hz,
+        threshold_max_code_phase_error_samples: report.max_code_phase_error_samples,
+    }
+}
+
+fn summarize_gnss_tracking_stage(
+    report: &SyntheticTrackingAccuracyReport,
+) -> SyntheticGnssTrackingStageSummary {
+    SyntheticGnssTrackingStageSummary {
+        pass: report.pass,
+        truth_coverage_ready: report.truth_coverage_ready,
+        satellite_count: report.satellite_count,
+        passing_satellite_count: report.passing_satellite_count,
+        observed_max_carrier_error_hz: report
+            .satellites
+            .iter()
+            .map(|satellite| satellite.max_carrier_error_hz)
+            .max_by(f64::total_cmp),
+        observed_max_doppler_error_hz: report
+            .satellites
+            .iter()
+            .map(|satellite| satellite.max_doppler_error_hz)
+            .max_by(f64::total_cmp),
+        observed_max_code_phase_error_samples: report
+            .satellites
+            .iter()
+            .map(|satellite| satellite.max_code_phase_error_samples)
+            .max_by(f64::total_cmp),
+        observed_max_cn0_error_db_hz: report
+            .satellites
+            .iter()
+            .map(|satellite| satellite.max_cn0_error_db_hz)
+            .max_by(f64::total_cmp),
+        threshold_max_carrier_error_hz: report.max_carrier_error_hz,
+        threshold_max_doppler_error_hz: report.max_doppler_error_hz,
+        threshold_max_code_phase_error_samples: report.max_code_phase_error_samples,
+        threshold_max_cn0_error_db_hz: report.max_cn0_error_db_hz,
+    }
+}
+
+fn summarize_gnss_observation_stage(
+    report: &SyntheticObservationAccuracyReport,
+) -> SyntheticGnssObservationStageSummary {
+    SyntheticGnssObservationStageSummary {
+        pass: report.pass,
+        truth_coverage_ready: report.truth_coverage_ready,
+        satellite_count: report.satellite_count,
+        passing_satellite_count: report.passing_satellite_count,
+        observed_max_pseudorange_error_m: report
+            .satellites
+            .iter()
+            .filter_map(|satellite| satellite.max_pseudorange_error_m)
+            .max_by(f64::total_cmp),
+        observed_max_carrier_phase_error_cycles: report
+            .satellites
+            .iter()
+            .filter_map(|satellite| satellite.max_carrier_phase_error_cycles)
+            .max_by(f64::total_cmp),
+        observed_max_doppler_error_hz: report
+            .satellites
+            .iter()
+            .filter_map(|satellite| satellite.max_doppler_error_hz)
+            .max_by(f64::total_cmp),
+        observed_max_cn0_error_db_hz: report
+            .satellites
+            .iter()
+            .filter_map(|satellite| satellite.max_cn0_error_db_hz)
+            .max_by(f64::total_cmp),
+        threshold_max_pseudorange_error_m: report.max_pseudorange_error_m,
+        threshold_max_carrier_phase_error_cycles: report.max_carrier_phase_error_cycles,
+        threshold_max_doppler_error_hz: report.max_doppler_error_hz,
+        threshold_max_cn0_error_db_hz: report.max_cn0_error_db_hz,
+    }
+}
+
+fn summarize_gnss_pvt_stage(report: &SyntheticPvtAccuracyReport) -> SyntheticGnssPvtStageSummary {
+    SyntheticGnssPvtStageSummary {
+        pass: report.pass,
+        truth_coverage_ready: report.truth_coverage_ready,
+        epoch_count: report.epoch_count,
+        passing_epoch_count: report.passing_epoch_count,
+        observed_max_position_error_3d_m: report
+            .epochs
+            .iter()
+            .map(|epoch| epoch.position_error_3d_m)
+            .max_by(f64::total_cmp),
+        observed_max_clock_bias_error_m: report
+            .epochs
+            .iter()
+            .map(|epoch| epoch.clock_bias_error_m)
+            .max_by(f64::total_cmp),
+        observed_max_residual_rms_m: report
+            .epochs
+            .iter()
+            .map(|epoch| epoch.residual_rms_m)
+            .max_by(f64::total_cmp),
+        observed_max_pdop: report.epochs.iter().map(|epoch| epoch.pdop).max_by(f64::total_cmp),
+        threshold_max_position_error_3d_m: report.max_position_error_3d_m,
+        threshold_max_clock_bias_error_m: report.max_clock_bias_error_m,
+        threshold_max_residual_rms_m: report.max_residual_rms_m,
+        threshold_max_pdop: report.max_pdop,
+    }
+}
+
+/// Build one final truth-guided GNSS accuracy artifact from stage-level validation reports.
+pub fn build_truth_guided_gnss_accuracy_artifact(
+    case: SyntheticGnssAccuracyArtifactCase<'_>,
+) -> SyntheticGnssAccuracyArtifact {
+    let acquisition = SyntheticGnssAcquisitionStageArtifact {
+        summary: summarize_gnss_acquisition_stage(case.acquisition),
+        report: case.acquisition.clone(),
+    };
+    let tracking = SyntheticGnssTrackingStageArtifact {
+        summary: summarize_gnss_tracking_stage(case.tracking),
+        report: case.tracking.clone(),
+    };
+    let observation = SyntheticGnssObservationStageArtifact {
+        summary: summarize_gnss_observation_stage(case.observation),
+        report: case.observation.clone(),
+    };
+    let pvt = SyntheticGnssPvtStageArtifact {
+        summary: summarize_gnss_pvt_stage(case.pvt),
+        report: case.pvt.clone(),
+    };
+    let truth_coverage_ready = acquisition.summary.truth_coverage_ready
+        && tracking.summary.truth_coverage_ready
+        && observation.summary.truth_coverage_ready
+        && pvt.summary.truth_coverage_ready;
+    let pass = acquisition.summary.pass
+        && tracking.summary.pass
+        && observation.summary.pass
+        && pvt.summary.pass;
+
+    SyntheticGnssAccuracyArtifact {
+        schema_version: SYNTHETIC_GNSS_ACCURACY_ARTIFACT_SCHEMA_VERSION,
+        scenario_id: case.scenario_id.to_string(),
+        pass,
+        truth_coverage_ready,
+        data_source: case.data_source,
+        reference_truth: case.reference_truth,
+        acquisition,
+        tracking,
+        observation,
+        pvt,
     }
 }
 
