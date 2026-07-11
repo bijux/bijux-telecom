@@ -413,17 +413,16 @@ mod pvt_tests {
     use super::*;
     use bijux_gnss_infra::api::core::{
         signal_spec_gps_l1_ca, Constellation, GpsTime, LockFlags, ObsEpoch, ObsMetadata,
-        ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationStatus,
-        ReceiverRole, ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
+        ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ReceiverRole,
+        ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
     };
     use bijux_gnss_infra::api::nav::{
         ecef_to_geodetic, elevation_azimuth_deg, parse_rinex_nav, sat_state_gps_l1ca,
         write_rinex_broadcast_navigation, write_rinex_nav, GpsBroadcastNavigationData,
-        GpsEphemeris, GpsL1CaHowWord,
-        GpsL1CaLnavDecodedSubframe, GpsL1CaLnavSubframe1Clock, GpsL1CaLnavSubframe2Orbit,
-        GpsL1CaLnavSubframe3Orbit, GpsL1CaLnavSubframeAlignment, GpsL1CaTlmWord,
-        GpsL1CaWordParitySummary, IonosphereModel, KlobucharCoefficients, KlobucharModel,
-        SaastamoinenModel, TroposphereModel,
+        GpsEphemeris, GpsL1CaHowWord, GpsL1CaLnavDecodedSubframe, GpsL1CaLnavSubframe1Clock,
+        GpsL1CaLnavSubframe2Orbit, GpsL1CaLnavSubframe3Orbit, GpsL1CaLnavSubframeAlignment,
+        GpsL1CaTlmWord, GpsL1CaWordParitySummary, IonosphereModel, KlobucharCoefficients,
+        KlobucharModel, SaastamoinenModel, TroposphereModel,
     };
     use std::collections::BTreeMap;
     use std::fs;
@@ -480,18 +479,12 @@ mod pvt_tests {
         common
     }
 
-    fn write_receiver_config(
-        root: &Path,
-        configure: impl FnOnce(&mut ReceiverConfig),
-    ) -> PathBuf {
+    fn write_receiver_config(root: &Path, configure: impl FnOnce(&mut ReceiverConfig)) -> PathBuf {
         let path = root.join("receiver.toml");
         let mut profile = ReceiverConfig::default();
         configure(&mut profile);
-        fs::write(
-            &path,
-            toml::to_string_pretty(&profile).expect("serialize receiver config"),
-        )
-        .expect("write receiver config");
+        fs::write(&path, toml::to_string_pretty(&profile).expect("serialize receiver config"))
+            .expect("write receiver config");
         path
     }
 
@@ -510,33 +503,33 @@ mod pvt_tests {
                 let clock_parameters =
                     clock_parameters_by_prn.get(&prn).copied().unwrap_or_default();
                 GpsEphemeris {
-                sat: SatId { constellation: Constellation::Gps, prn },
-                iodc: 1,
-                iode: 1,
-                week: 2209,
-                sv_health: 0,
-                toe_s: 504_000.0,
-                toc_s: 504_018.0,
-                sqrt_a: 5153.7954775,
-                e: 0.01,
-                i0: 0.94,
-                idot: 0.0,
-                omega0,
-                omegadot: 0.0,
-                w: 0.0,
-                m0,
-                delta_n: 0.0,
-                cuc: 0.0,
-                cus: 0.0,
-                crc: 0.0,
-                crs: 0.0,
-                cic: 0.0,
-                cis: 0.0,
-                af0: clock_parameters.af0_s,
-                af1: clock_parameters.af1_s_per_s,
-                af2: clock_parameters.af2_s_per_s2,
-                tgd: clock_parameters.tgd_s,
-            }
+                    sat: SatId { constellation: Constellation::Gps, prn },
+                    iodc: 1,
+                    iode: 1,
+                    week: 2209,
+                    sv_health: 0,
+                    toe_s: 504_000.0,
+                    toc_s: 504_018.0,
+                    sqrt_a: 5153.7954775,
+                    e: 0.01,
+                    i0: 0.94,
+                    idot: 0.0,
+                    omega0,
+                    omegadot: 0.0,
+                    w: 0.0,
+                    m0,
+                    delta_n: 0.0,
+                    cuc: 0.0,
+                    cus: 0.0,
+                    crc: 0.0,
+                    crs: 0.0,
+                    cic: 0.0,
+                    cis: 0.0,
+                    af0: clock_parameters.af0_s,
+                    af1: clock_parameters.af1_s_per_s,
+                    af2: clock_parameters.af2_s_per_s2,
+                    tgd: clock_parameters.tgd_s,
+                }
             })
             .collect()
     }
@@ -612,8 +605,11 @@ mod pvt_tests {
         ]
     }
 
-    fn broadcast_clock_pvt_case(receiver_clock_bias_s: f64) -> (Vec<GpsEphemeris>, SyntheticPvtCase) {
-        let ephemerides = sample_ephemerides_with_clock_parameters(&broadcast_clock_fixture_parameters());
+    fn broadcast_clock_pvt_case(
+        receiver_clock_bias_s: f64,
+    ) -> (Vec<GpsEphemeris>, SyntheticPvtCase) {
+        let ephemerides =
+            sample_ephemerides_with_clock_parameters(&broadcast_clock_fixture_parameters());
         let pvt_case = sample_pvt_case(&ephemerides, receiver_clock_bias_s);
         (ephemerides, pvt_case)
     }
@@ -665,8 +661,7 @@ mod pvt_tests {
                     let dy = rx_y - state.y_m;
                     let dz = rx_z - state.z_m;
                     let range = (dx * dx + dy * dy + dz * dz).sqrt();
-                    pseudorange_m = range
-                        + receiver_clock_bias_s * SPEED_OF_LIGHT_MPS
+                    pseudorange_m = range + receiver_clock_bias_s * SPEED_OF_LIGHT_MPS
                         - state.clock_correction.bias_s * SPEED_OF_LIGHT_MPS;
                     let next_tau = pseudorange_m / SPEED_OF_LIGHT_MPS;
                     if (next_tau - tau).abs() < 1.0e-12 {
@@ -702,7 +697,10 @@ mod pvt_tests {
                     weight: None,
                     timing: Some(ObsSignalTiming {
                         signal_travel_time_s: Seconds(signal_travel_time_s),
-                        transmit_gps_time: GpsTime { week: 2209, tow_s: t_rx_s - signal_travel_time_s },
+                        transmit_gps_time: GpsTime {
+                            week: 2209,
+                            tow_s: t_rx_s - signal_travel_time_s,
+                        },
                     }),
                     error_model: None,
                     metadata: ObsMetadata {
@@ -820,8 +818,7 @@ mod pvt_tests {
             let dy = receiver_ecef_m.1 - state.y_m;
             let dz = receiver_ecef_m.2 - state.z_m;
             let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
-            predicted_pseudorange_m = range_m
-                + receiver_clock_bias_s * SPEED_OF_LIGHT_MPS
+            predicted_pseudorange_m = range_m + receiver_clock_bias_s * SPEED_OF_LIGHT_MPS
                 - state.clock_correction.bias_s * SPEED_OF_LIGHT_MPS;
             let next_tau = predicted_pseudorange_m / SPEED_OF_LIGHT_MPS;
             if (next_tau - tau).abs() < 1.0e-12 {
@@ -886,6 +883,24 @@ mod pvt_tests {
         ekf: bool,
         tropo_enabled: bool,
     ) -> bijux_gnss_infra::api::core::NavSolutionEpoch {
+        let mut solutions = solve_obs_epochs_with_rinex_nav_mode_and_troposphere(
+            case_name,
+            ephs,
+            &[pvt_case.obs_epoch.clone()],
+            ekf,
+            tropo_enabled,
+        );
+        assert_eq!(solutions.len(), 1);
+        solutions.remove(0)
+    }
+
+    fn solve_obs_epochs_with_rinex_nav_mode_and_troposphere(
+        case_name: &str,
+        ephs: &[GpsEphemeris],
+        obs_epochs: &[ObsEpoch],
+        ekf: bool,
+        tropo_enabled: bool,
+    ) -> Vec<bijux_gnss_infra::api::core::NavSolutionEpoch> {
         let root = std::env::temp_dir().join(format!(
             "bijux_pvt_{}_{}_{}",
             case_name,
@@ -897,10 +912,14 @@ mod pvt_tests {
         let eph_path = root.join("nav.rnx");
         fs::write(
             &obs_path,
-            format!(
-                "{}\n",
-                serde_json::to_string(&pvt_case.obs_epoch).expect("serialize observation epoch")
-            ),
+            obs_epochs
+                .iter()
+                .map(|obs_epoch| {
+                    serde_json::to_string(obs_epoch).expect("serialize observation epoch")
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+                + "\n",
         )
         .expect("write obs");
         write_rinex_nav(&eph_path, ephs, true).expect("write rinex nav");
@@ -908,20 +927,13 @@ mod pvt_tests {
         let common = sample_common_args_with_troposphere(root.clone(), tropo_enabled);
         let out_dir = artifacts_dir(&common, "pvt", None).expect("artifacts dir");
         fs::create_dir_all(&out_dir).expect("create pvt artifacts dir");
-        handle_pvt(GnssCommand::Pvt {
-            common: common.clone(),
-            obs: obs_path,
-            eph: eph_path,
-            ekf,
-        })
-        .expect("pvt command");
+        handle_pvt(GnssCommand::Pvt { common: common.clone(), obs: obs_path, eph: eph_path, ekf })
+            .expect("pvt command");
 
         let nav_path = out_dir.join("pvt.jsonl");
-        let mut solutions = read_nav_solutions(&nav_path).expect("read nav solutions");
+        let solutions = read_nav_solutions(&nav_path).expect("read nav solutions");
         fs::remove_dir_all(root).expect("remove test root");
-
-        assert_eq!(solutions.len(), 1);
-        solutions.remove(0)
+        solutions
     }
 
     fn solve_pvt_case_with_decoded_lnav_reports(
@@ -1024,13 +1036,8 @@ mod pvt_tests {
         let common = sample_common_args_with_troposphere(root.clone(), tropo_enabled);
         let out_dir = artifacts_dir(&common, "pvt", None).expect("artifacts dir");
         fs::create_dir_all(&out_dir).expect("create pvt artifacts dir");
-        handle_pvt(GnssCommand::Pvt {
-            common: common.clone(),
-            obs: obs_path,
-            eph: eph_path,
-            ekf,
-        })
-        .expect("pvt command");
+        handle_pvt(GnssCommand::Pvt { common: common.clone(), obs: obs_path, eph: eph_path, ekf })
+            .expect("pvt command");
 
         let nav_path = out_dir.join("pvt.jsonl");
         let mut solutions = read_nav_solutions(&nav_path).expect("read nav solutions");
@@ -1070,13 +1077,8 @@ mod pvt_tests {
         let common = sample_common_args_with_troposphere(root.clone(), tropo_enabled);
         let out_dir = artifacts_dir(&common, "pvt", None).expect("artifacts dir");
         fs::create_dir_all(&out_dir).expect("create pvt artifacts dir");
-        handle_pvt(GnssCommand::Pvt {
-            common: common.clone(),
-            obs: obs_path,
-            eph: eph_path,
-            ekf,
-        })
-        .expect("pvt command");
+        handle_pvt(GnssCommand::Pvt { common: common.clone(), obs: obs_path, eph: eph_path, ekf })
+            .expect("pvt command");
 
         let nav_path = out_dir.join("pvt.jsonl");
         let mut solutions = read_nav_solutions(&nav_path).expect("read nav solutions");
@@ -1118,8 +1120,12 @@ mod pvt_tests {
                 state.y_m,
                 state.z_m,
             );
-            let delay_m =
-                model.delay_m(receiver, azimuth_deg, elevation_deg, Seconds(pvt_case.obs_epoch.t_rx_s.0));
+            let delay_m = model.delay_m(
+                receiver,
+                azimuth_deg,
+                elevation_deg,
+                Seconds(pvt_case.obs_epoch.t_rx_s.0),
+            );
             let delay_s = delay_m / SPEED_OF_LIGHT_MPS;
             sat.pseudorange_m.0 += delay_m;
             sat.timing = Some(ObsSignalTiming {
@@ -1255,7 +1261,7 @@ mod pvt_tests {
             &obs_path,
             format!("{}\n", serde_json::to_string(&pvt_case.obs_epoch).expect("serialize obs")),
         )
-            .expect("write obs");
+        .expect("write obs");
         write_rinex_nav(&eph_path, &ephs, true).expect("write rinex nav");
         let rinex = fs::read_to_string(&eph_path).expect("read rinex nav");
         assert_eq!(parse_rinex_nav(&rinex).expect("parse rinex nav").len(), ephs.len());
@@ -1286,17 +1292,23 @@ mod pvt_tests {
         assert!((solutions[0].ecef_z_m.0 - pvt_case.truth_ecef_m.2).abs() < 5.0);
         assert!(solutions[0].clock_bias_s.0.is_finite());
         assert!((solutions[0].clock_bias_s.0 - pvt_case.receiver_clock_bias_s).abs() < 1.0e-9);
-        assert!((solutions[0].clock_bias_m.0 - pvt_case.receiver_clock_bias_s * SPEED_OF_LIGHT_MPS)
-            .abs()
-            < 1.0e-6);
-        assert!((raw_nav["payload"]["clock_bias_s"].as_f64().expect("clock bias seconds")
-            - pvt_case.receiver_clock_bias_s)
-            .abs()
-            < 1.0e-9);
-        assert!((raw_nav["payload"]["clock_bias_m"].as_f64().expect("clock bias meters")
-            - pvt_case.receiver_clock_bias_s * SPEED_OF_LIGHT_MPS)
-            .abs()
-            < 1.0e-6);
+        assert!(
+            (solutions[0].clock_bias_m.0 - pvt_case.receiver_clock_bias_s * SPEED_OF_LIGHT_MPS)
+                .abs()
+                < 1.0e-6
+        );
+        assert!(
+            (raw_nav["payload"]["clock_bias_s"].as_f64().expect("clock bias seconds")
+                - pvt_case.receiver_clock_bias_s)
+                .abs()
+                < 1.0e-9
+        );
+        assert!(
+            (raw_nav["payload"]["clock_bias_m"].as_f64().expect("clock bias meters")
+                - pvt_case.receiver_clock_bias_s * SPEED_OF_LIGHT_MPS)
+                .abs()
+                < 1.0e-6
+        );
 
         fs::remove_dir_all(root).expect("remove test root");
     }
@@ -1318,7 +1330,7 @@ mod pvt_tests {
             &obs_path,
             format!("{}\n", serde_json::to_string(&pvt_case.obs_epoch).expect("serialize obs")),
         )
-            .expect("write obs");
+        .expect("write obs");
         let reports = ephs
             .iter()
             .map(|eph| {
@@ -1362,17 +1374,23 @@ mod pvt_tests {
         assert!((solutions[0].ecef_z_m.0 - pvt_case.truth_ecef_m.2).abs() < 5.0);
         assert!(solutions[0].clock_bias_s.0.is_finite());
         assert!((solutions[0].clock_bias_s.0 - pvt_case.receiver_clock_bias_s).abs() < 1.0e-9);
-        assert!((solutions[0].clock_bias_m.0 - pvt_case.receiver_clock_bias_s * SPEED_OF_LIGHT_MPS)
-            .abs()
-            < 1.0e-6);
-        assert!((raw_nav["payload"]["clock_bias_s"].as_f64().expect("clock bias seconds")
-            - pvt_case.receiver_clock_bias_s)
-            .abs()
-            < 1.0e-9);
-        assert!((raw_nav["payload"]["clock_bias_m"].as_f64().expect("clock bias meters")
-            - pvt_case.receiver_clock_bias_s * SPEED_OF_LIGHT_MPS)
-            .abs()
-            < 1.0e-6);
+        assert!(
+            (solutions[0].clock_bias_m.0 - pvt_case.receiver_clock_bias_s * SPEED_OF_LIGHT_MPS)
+                .abs()
+                < 1.0e-6
+        );
+        assert!(
+            (raw_nav["payload"]["clock_bias_s"].as_f64().expect("clock bias seconds")
+                - pvt_case.receiver_clock_bias_s)
+                .abs()
+                < 1.0e-9
+        );
+        assert!(
+            (raw_nav["payload"]["clock_bias_m"].as_f64().expect("clock bias meters")
+                - pvt_case.receiver_clock_bias_s * SPEED_OF_LIGHT_MPS)
+                .abs()
+                < 1.0e-6
+        );
 
         fs::remove_dir_all(root).expect("remove test root");
     }
@@ -1398,7 +1416,9 @@ mod pvt_tests {
         assert!(corrected_solution.valid);
         assert!(corrected_error_m < 5.0);
         assert!(zero_clock_error_m > corrected_error_m + 20.0);
-        assert!((corrected_solution.clock_bias_s.0 - pvt_case.receiver_clock_bias_s).abs() < 1.0e-9);
+        assert!(
+            (corrected_solution.clock_bias_s.0 - pvt_case.receiver_clock_bias_s).abs() < 1.0e-9
+        );
     }
 
     #[test]
@@ -1415,12 +1435,8 @@ mod pvt_tests {
 
         let corrected_rms_m =
             pvt_residual_rms_with_earth_rotation_mode_m(&solution, &ephemerides, &pvt_case, true);
-        let uncorrected_rms_m = pvt_residual_rms_with_earth_rotation_mode_m(
-            &solution,
-            &ephemerides,
-            &pvt_case,
-            false,
-        );
+        let uncorrected_rms_m =
+            pvt_residual_rms_with_earth_rotation_mode_m(&solution, &ephemerides, &pvt_case, false);
 
         assert!(solution.valid);
         assert!(position_error_3d_m(&solution, pvt_case.truth_ecef_m) < 5.0);
@@ -1449,7 +1465,9 @@ mod pvt_tests {
         assert!(corrected_solution.valid);
         assert!(corrected_error_m < 5.0);
         assert!(zero_clock_error_m > corrected_error_m + 20.0);
-        assert!((corrected_solution.clock_bias_s.0 - pvt_case.receiver_clock_bias_s).abs() < 1.0e-9);
+        assert!(
+            (corrected_solution.clock_bias_s.0 - pvt_case.receiver_clock_bias_s).abs() < 1.0e-9
+        );
     }
 
     #[test]
@@ -1465,12 +1483,8 @@ mod pvt_tests {
 
         let corrected_rms_m =
             pvt_residual_rms_with_earth_rotation_mode_m(&solution, &ephemerides, &pvt_case, true);
-        let uncorrected_rms_m = pvt_residual_rms_with_earth_rotation_mode_m(
-            &solution,
-            &ephemerides,
-            &pvt_case,
-            false,
-        );
+        let uncorrected_rms_m =
+            pvt_residual_rms_with_earth_rotation_mode_m(&solution, &ephemerides, &pvt_case, false);
 
         assert!(solution.valid);
         assert!(position_error_3d_m(&solution, pvt_case.truth_ecef_m) < 5.0);
@@ -1506,16 +1520,10 @@ mod pvt_tests {
             )],
         );
 
-        let low_variance_solution = solve_pvt_case_with_rinex_nav(
-            "low_variance_bias",
-            &ephs,
-            &low_variance_case,
-        );
-        let high_variance_solution = solve_pvt_case_with_rinex_nav(
-            "high_variance_bias",
-            &ephs,
-            &high_variance_case,
-        );
+        let low_variance_solution =
+            solve_pvt_case_with_rinex_nav("low_variance_bias", &ephs, &low_variance_case);
+        let high_variance_solution =
+            solve_pvt_case_with_rinex_nav("high_variance_bias", &ephs, &high_variance_case);
 
         let low_variance_error_m =
             position_error_3d_m(&low_variance_solution, low_variance_case.truth_ecef_m);
@@ -1588,10 +1596,7 @@ mod pvt_tests {
             false,
         );
 
-        assert!(solution
-            .explain_reasons
-            .iter()
-            .any(|reason| reason == "ionosphere_uncorrected"));
+        assert!(solution.explain_reasons.iter().any(|reason| reason == "ionosphere_uncorrected"));
     }
 
     #[test]
@@ -1603,7 +1608,8 @@ mod pvt_tests {
             klobuchar: Some(klobuchar),
         };
         let clean_case = sample_troposphere_free_pvt_case(&ephemerides, 2.75e-4);
-        let ionosphere_biased_case = add_klobuchar_delay_to_pvt_case(&clean_case, &ephemerides, klobuchar);
+        let ionosphere_biased_case =
+            add_klobuchar_delay_to_pvt_case(&clean_case, &ephemerides, klobuchar);
 
         let corrected_solution = solve_pvt_case_with_broadcast_navigation_data_and_troposphere(
             "broadcast_ionosphere_wls_corrected",
@@ -1621,7 +1627,8 @@ mod pvt_tests {
         );
 
         let corrected_error_m = position_error_3d_m(&corrected_solution, clean_case.truth_ecef_m);
-        let uncorrected_error_m = position_error_3d_m(&uncorrected_solution, clean_case.truth_ecef_m);
+        let uncorrected_error_m =
+            position_error_3d_m(&uncorrected_solution, clean_case.truth_ecef_m);
 
         assert!(corrected_solution.valid);
         assert!(corrected_solution
@@ -1641,16 +1648,17 @@ mod pvt_tests {
             klobuchar: Some(klobuchar),
         };
         let clean_case = sample_troposphere_free_pvt_case(&ephemerides, 2.75e-4);
-        let ionosphere_biased_case = add_klobuchar_delay_to_pvt_case(&clean_case, &ephemerides, klobuchar);
+        let ionosphere_biased_case =
+            add_klobuchar_delay_to_pvt_case(&clean_case, &ephemerides, klobuchar);
 
         let corrected_solution =
             solve_pvt_case_with_rinex_broadcast_navigation_data_and_troposphere(
-            "rinex_broadcast_ionosphere_wls_corrected",
-            &navigation,
-            &ionosphere_biased_case,
-            false,
-            false,
-        );
+                "rinex_broadcast_ionosphere_wls_corrected",
+                &navigation,
+                &ionosphere_biased_case,
+                false,
+                false,
+            );
         let uncorrected_solution = solve_pvt_case_with_rinex_nav_mode_and_troposphere(
             "rinex_broadcast_ionosphere_wls_uncorrected",
             &ephemerides,
@@ -1660,7 +1668,8 @@ mod pvt_tests {
         );
 
         let corrected_error_m = position_error_3d_m(&corrected_solution, clean_case.truth_ecef_m);
-        let uncorrected_error_m = position_error_3d_m(&uncorrected_solution, clean_case.truth_ecef_m);
+        let uncorrected_error_m =
+            position_error_3d_m(&uncorrected_solution, clean_case.truth_ecef_m);
 
         assert!(corrected_solution.valid);
         assert!(corrected_solution
@@ -1683,10 +1692,7 @@ mod pvt_tests {
             false,
         );
 
-        assert!(solution
-            .explain_reasons
-            .iter()
-            .any(|reason| reason == "ionosphere_uncorrected"));
+        assert!(solution.explain_reasons.iter().any(|reason| reason == "ionosphere_uncorrected"));
     }
 
     #[test]
@@ -1698,7 +1704,8 @@ mod pvt_tests {
             klobuchar: Some(klobuchar),
         };
         let clean_case = sample_troposphere_free_pvt_case(&ephemerides, 2.75e-4);
-        let ionosphere_biased_case = add_klobuchar_delay_to_pvt_case(&clean_case, &ephemerides, klobuchar);
+        let ionosphere_biased_case =
+            add_klobuchar_delay_to_pvt_case(&clean_case, &ephemerides, klobuchar);
 
         let corrected_solution = solve_pvt_case_with_broadcast_navigation_data_and_troposphere(
             "broadcast_ionosphere_ekf_corrected",
@@ -1716,7 +1723,8 @@ mod pvt_tests {
         );
 
         let corrected_error_m = position_error_3d_m(&corrected_solution, clean_case.truth_ecef_m);
-        let uncorrected_error_m = position_error_3d_m(&uncorrected_solution, clean_case.truth_ecef_m);
+        let uncorrected_error_m =
+            position_error_3d_m(&uncorrected_solution, clean_case.truth_ecef_m);
 
         assert!(corrected_solution.valid);
         assert!(corrected_solution
@@ -1735,16 +1743,17 @@ mod pvt_tests {
             klobuchar: Some(klobuchar),
         };
         let clean_case = sample_troposphere_free_pvt_case(&ephemerides, 2.75e-4);
-        let ionosphere_biased_case = add_klobuchar_delay_to_pvt_case(&clean_case, &ephemerides, klobuchar);
+        let ionosphere_biased_case =
+            add_klobuchar_delay_to_pvt_case(&clean_case, &ephemerides, klobuchar);
 
         let corrected_solution =
             solve_pvt_case_with_rinex_broadcast_navigation_data_and_troposphere(
-            "rinex_broadcast_ionosphere_ekf_corrected",
-            &navigation,
-            &ionosphere_biased_case,
-            true,
-            false,
-        );
+                "rinex_broadcast_ionosphere_ekf_corrected",
+                &navigation,
+                &ionosphere_biased_case,
+                true,
+                false,
+            );
         let uncorrected_solution = solve_pvt_case_with_rinex_nav_mode_and_troposphere(
             "rinex_broadcast_ionosphere_ekf_uncorrected",
             &ephemerides,
@@ -1754,7 +1763,8 @@ mod pvt_tests {
         );
 
         let corrected_error_m = position_error_3d_m(&corrected_solution, clean_case.truth_ecef_m);
-        let uncorrected_error_m = position_error_3d_m(&uncorrected_solution, clean_case.truth_ecef_m);
+        let uncorrected_error_m =
+            position_error_3d_m(&uncorrected_solution, clean_case.truth_ecef_m);
 
         assert!(corrected_solution.valid);
         assert!(corrected_solution
@@ -1776,10 +1786,7 @@ mod pvt_tests {
             false,
         );
 
-        assert!(solution
-            .explain_reasons
-            .iter()
-            .any(|reason| reason == "troposphere_uncorrected"));
+        assert!(solution.explain_reasons.iter().any(|reason| reason == "troposphere_uncorrected"));
     }
 
     #[test]
@@ -1802,7 +1809,8 @@ mod pvt_tests {
         );
 
         let corrected_error_m = position_error_3d_m(&corrected_solution, clean_case.truth_ecef_m);
-        let uncorrected_error_m = position_error_3d_m(&uncorrected_solution, clean_case.truth_ecef_m);
+        let uncorrected_error_m =
+            position_error_3d_m(&uncorrected_solution, clean_case.truth_ecef_m);
 
         assert!(corrected_solution.valid);
         assert!(corrected_solution
@@ -1834,7 +1842,8 @@ mod pvt_tests {
         );
 
         let corrected_error_m = position_error_3d_m(&corrected_solution, clean_case.truth_ecef_m);
-        let uncorrected_error_m = position_error_3d_m(&uncorrected_solution, clean_case.truth_ecef_m);
+        let uncorrected_error_m =
+            position_error_3d_m(&uncorrected_solution, clean_case.truth_ecef_m);
 
         assert!(corrected_solution.valid);
         assert!(corrected_solution
