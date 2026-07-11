@@ -342,10 +342,19 @@ impl Navigation {
                         .copied()
                         .map(|sat| (sat, MeasurementRejectReason::TimeInconsistency)),
                 );
-                let explain_reasons = vec![
+                let mut explain_reasons = vec![
                     "position_solver_failed".to_string(),
                     format!("ephemeris_covered_count={eph_covered_count}"),
                 ];
+                if refusal.kind == PositionSolveRefusalKind::UnderdeterminedRaimExclusion {
+                    explain_reasons.push("raim_exclusion_underdetermined".to_string());
+                    if let Some((suspect_sat, _reason)) = rejected.iter().find(|(_sat, reason)| {
+                        *reason == MeasurementRejectReason::Outlier
+                    }) {
+                        explain_reasons.push(format!("raim_suspect_prn={}", suspect_sat.prn));
+                    }
+                    explain_reasons.push(format!("raim_usable_satellites={}", refusal.used_sat_count));
+                }
                 let is_sparse_refusal = matches!(
                     refusal.kind,
                     PositionSolveRefusalKind::InsufficientObservations
@@ -1882,6 +1891,49 @@ mod tests {
                 && residual.rejected
                 && residual.reject_reason == Some(MeasurementRejectReason::Outlier)
         }));
+    }
+
+    #[test]
+    fn synthetic_solution_refuses_underdetermined_raim_exclusion() {
+        let config = ReceiverPipelineConfig::default();
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+        let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
+        let t_rx_s = 100_085.0;
+        let ephs = vec![
+            make_eph(1, 0.0, 0.0, t_rx_s),
+            make_eph(2, 0.8, 0.9, t_rx_s),
+            make_eph(3, 1.6, 1.8, t_rx_s),
+            make_eph(4, 2.4, 2.7, t_rx_s),
+            make_eph(5, 3.2, 3.6, t_rx_s),
+        ];
+        let mut obs = make_obs_epoch_for_solution(22, t_rx_s, truth, &ephs);
+        let bad_sat = SatId { constellation: Constellation::Gps, prn: 5 };
+        let pseudorange_bias_m = 1_000.0;
+        let signal_travel_time_bias_s = pseudorange_bias_m / 299_792_458.0;
+        let bad_observation = obs
+            .sats
+            .iter_mut()
+            .find(|sat| sat.signal_id.sat == bad_sat)
+            .expect("bad-satellite synthetic observation");
+        bad_observation.pseudorange_m.0 += pseudorange_bias_m;
+        if let Some(timing) = &mut bad_observation.timing {
+            timing.signal_travel_time_s.0 += signal_travel_time_bias_s;
+            timing.transmit_gps_time = timing.transmit_gps_time.offset_seconds(-signal_travel_time_bias_s);
+        }
+
+        let solution = nav.solve_epoch(&obs, &ephs).expect("underdetermined refusal");
+
+        assert_eq!(solution.status, SolutionStatus::Invalid);
+        assert_eq!(solution.refusal_class, Some(NavRefusalClass::InsufficientGeometry));
+        assert!(!solution.valid);
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "raim_exclusion_underdetermined"));
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason.starts_with("raim_suspect_prn=")));
     }
 
     #[test]
