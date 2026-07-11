@@ -12,6 +12,7 @@ use bijux_gnss_nav::api::{
     position_observation_has_valid_satellite_time, sat_state_gps_l1ca_from_observation,
     GpsEphemeris, KlobucharCoefficients, PositionObservation, PositionSolver, WeightingConfig,
 };
+use bijux_gnss_nav::PositionSolveRefusalKind;
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::engine::runtime::ReceiverRuntime;
@@ -279,17 +280,21 @@ impl Navigation {
                 ));
             }
             return Some(apply_atmosphere_explainability(
-                self.degraded_from_last(
+                self.current_epoch_refusal(
                     obs,
                     source_observation_epoch_id,
                     nav_artifact_id,
-                    NavDecision {
-                        status: SolutionStatus::Degraded,
-                        refusal_class: Some(refusal),
-                        explain_decision: "refused".to_string(),
-                        explain_reasons,
-                    },
+                    Some(refusal),
+                    "refused".to_string(),
+                    explain_reasons,
                     assumptions,
+                    observations.len() + invalid_satellite_time_sats.len(),
+                    observations.len(),
+                    invalid_satellite_time_sats
+                        .iter()
+                        .copied()
+                        .map(|sat| (sat, MeasurementRejectReason::TimeInconsistency))
+                        .collect(),
                 ),
                 klobuchar,
                 self.config.tropo_enable,
@@ -297,42 +302,84 @@ impl Navigation {
         }
         let eph_covered_count =
             observations.iter().filter(|row| eph.iter().any(|entry| entry.sat == row.sat)).count();
-        let solution = match self.solver.solve_wls_with_broadcast_ionosphere(
+        let solution = match self.solver.try_solve_wls_with_broadcast_ionosphere(
             &observations,
             eph,
             obs.t_rx_s.0,
             klobuchar,
         ) {
-            Some(solution) => solution,
-            None => {
+            Ok(solution) => solution,
+            Err(refusal) => {
                 self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
                     bijux_gnss_core::api::DiagnosticSeverity::Warning,
                     "NAV_SOLVER_FAILED",
                     "nav solver failed to converge",
                 ));
-                let refusal_class = if eph_covered_count < 4 {
-                    NavRefusalClass::InvalidEphemeris
-                } else if eph_covered_count < observations.len() {
-                    NavRefusalClass::PartialDecodedNavigationState
-                } else {
-                    NavRefusalClass::SolverFailure
+                let refusal_class = match refusal.kind {
+                    PositionSolveRefusalKind::InsufficientObservations
+                    | PositionSolveRefusalKind::InsufficientUsableSatellites => {
+                        NavRefusalClass::InsufficientGeometry
+                    }
+                    PositionSolveRefusalKind::InvalidSatelliteTime => {
+                        NavRefusalClass::InvalidSatelliteTime
+                    }
+                    PositionSolveRefusalKind::InvalidEphemeris => NavRefusalClass::InvalidEphemeris,
+                    PositionSolveRefusalKind::SolverFailure => {
+                        if eph_covered_count < 4 {
+                            NavRefusalClass::InvalidEphemeris
+                        } else if eph_covered_count < observations.len() {
+                            NavRefusalClass::PartialDecodedNavigationState
+                        } else {
+                            NavRefusalClass::SolverFailure
+                        }
+                    }
                 };
+                let mut rejected = refusal.rejected;
+                rejected.extend(
+                    invalid_satellite_time_sats
+                        .iter()
+                        .copied()
+                        .map(|sat| (sat, MeasurementRejectReason::TimeInconsistency)),
+                );
+                let explain_reasons = vec![
+                    "position_solver_failed".to_string(),
+                    format!("ephemeris_covered_count={eph_covered_count}"),
+                ];
+                let is_sparse_refusal = matches!(
+                    refusal.kind,
+                    PositionSolveRefusalKind::InsufficientObservations
+                        | PositionSolveRefusalKind::InvalidSatelliteTime
+                        | PositionSolveRefusalKind::InvalidEphemeris
+                        | PositionSolveRefusalKind::InsufficientUsableSatellites
+                );
                 return Some(apply_atmosphere_explainability(
-                    self.degraded_from_last(
-                        obs,
-                        source_observation_epoch_id,
-                        nav_artifact_id,
-                        NavDecision {
-                            status: SolutionStatus::Degraded,
-                            refusal_class: Some(refusal_class),
-                            explain_decision: "refused".to_string(),
-                            explain_reasons: vec![
-                                "position_solver_failed".to_string(),
-                                format!("ephemeris_covered_count={eph_covered_count}"),
-                            ],
-                        },
-                        assumptions,
-                    ),
+                    if is_sparse_refusal {
+                        self.current_epoch_refusal(
+                            obs,
+                            source_observation_epoch_id,
+                            nav_artifact_id,
+                            Some(refusal_class),
+                            "refused".to_string(),
+                            explain_reasons,
+                            assumptions,
+                            refusal.sat_count + invalid_satellite_time_sats.len(),
+                            refusal.used_sat_count,
+                            rejected,
+                        )
+                    } else {
+                        self.degraded_from_last(
+                            obs,
+                            source_observation_epoch_id,
+                            nav_artifact_id,
+                            NavDecision {
+                                status: SolutionStatus::Degraded,
+                                refusal_class: Some(refusal_class),
+                                explain_decision: "refused".to_string(),
+                                explain_reasons,
+                            },
+                            assumptions,
+                        )
+                    },
                     klobuchar,
                     self.config.tropo_enable,
                 ));
@@ -601,6 +648,33 @@ impl Navigation {
         degraded.stability_signature = nav_output_stability_signature(&degraded);
         degraded
     }
+
+    fn current_epoch_refusal(
+        &self,
+        obs: &ObsEpoch,
+        source_observation_epoch_id: String,
+        nav_artifact_id: String,
+        refusal_class: Option<NavRefusalClass>,
+        explain_decision: String,
+        explain_reasons: Vec<String>,
+        assumptions: NavAssumptions,
+        sat_count: usize,
+        used_sat_count: usize,
+        rejected: Vec<(bijux_gnss_core::api::SatId, MeasurementRejectReason)>,
+    ) -> NavSolutionEpoch {
+        sparse_navigation_refusal_epoch(
+            obs,
+            source_observation_epoch_id,
+            nav_artifact_id,
+            refusal_class,
+            explain_decision,
+            explain_reasons,
+            assumptions,
+            sat_count,
+            used_sat_count,
+            rejected,
+        )
+    }
 }
 
 fn apply_atmosphere_explainability(
@@ -718,6 +792,44 @@ fn invalid_solution_epoch(
         stability_signature: String::new(),
         stability_signature_version: NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
     };
+    solution.stability_signature = nav_output_stability_signature(&solution);
+    solution
+}
+
+fn sparse_navigation_refusal_epoch(
+    obs: &ObsEpoch,
+    source_observation_epoch_id: String,
+    artifact_id: String,
+    refusal_class: Option<NavRefusalClass>,
+    explain_decision: String,
+    explain_reasons: Vec<String>,
+    assumptions: NavAssumptions,
+    sat_count: usize,
+    used_sat_count: usize,
+    rejected: Vec<(bijux_gnss_core::api::SatId, MeasurementRejectReason)>,
+) -> NavSolutionEpoch {
+    let mut solution = invalid_solution_epoch(
+        obs,
+        source_observation_epoch_id,
+        artifact_id,
+        refusal_class,
+        explain_decision,
+        explain_reasons,
+        assumptions,
+    );
+    solution.residuals = rejected
+        .into_iter()
+        .map(|(sat, reject_reason)| NavResidual {
+            sat,
+            residual_m: Meters(0.0),
+            rejected: true,
+            weight: None,
+            reject_reason: Some(reject_reason),
+        })
+        .collect();
+    solution.sat_count = sat_count;
+    solution.used_sat_count = used_sat_count;
+    solution.rejected_sat_count = solution.residuals.len();
     solution.stability_signature = nav_output_stability_signature(&solution);
     solution
 }
@@ -1378,8 +1490,10 @@ mod tests {
             sat.timing = None;
         }
         let solution = nav.solve_epoch(&obs, &[]).expect("timing refusal");
-        assert_eq!(solution.status, SolutionStatus::Held);
+        assert_eq!(solution.status, SolutionStatus::Invalid);
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::InvalidSatelliteTime));
+        assert!(!solution.valid);
+        assert_eq!(solution.used_sat_count, 0);
         assert!(solution.explain_reasons.iter().any(|reason| reason == "invalid_satellite_time"));
     }
 
@@ -1406,9 +1520,37 @@ mod tests {
             sat.signal_id.sat.constellation = Constellation::Galileo;
         }
         let solution = nav.solve_epoch(&obs, &[]).expect("mixed constellation solution");
-        assert_eq!(solution.status, SolutionStatus::Held);
+        assert_eq!(solution.status, SolutionStatus::Invalid);
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::MixedConstellationInput));
         assert_eq!(solution.explain_decision, "refused");
+        assert!(!solution.valid);
+    }
+
+    #[test]
+    fn sparse_current_epoch_refusal_does_not_reuse_last_solution_position() {
+        let config = ReceiverPipelineConfig::default();
+        let mut nav = Navigation {
+            config,
+            runtime: crate::engine::runtime::ReceiverRuntime::default(),
+            solver: PositionSolver::new(),
+            clock: ClockModel::new(),
+            last_ecef: Some((10.0, 20.0, 30.0)),
+            last_solution: Some(sample_last_solution()),
+        };
+        let mut obs = fake_obs_epoch_for_nav_tests(18);
+        obs.sats.truncate(3);
+
+        let solution = nav.solve_epoch(&obs, &[]).expect("sparse refusal");
+
+        assert_eq!(solution.status, SolutionStatus::Invalid);
+        assert_eq!(solution.refusal_class, Some(NavRefusalClass::InsufficientGeometry));
+        assert_eq!(solution.epoch.index, 18);
+        assert_eq!(solution.used_sat_count, 3);
+        assert_eq!(solution.sat_count, 3);
+        assert_eq!(solution.ecef_x_m.0, 0.0);
+        assert_eq!(solution.ecef_y_m.0, 0.0);
+        assert_eq!(solution.ecef_z_m.0, 0.0);
+        assert!(!solution.valid);
     }
 
     #[test]
