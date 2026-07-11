@@ -2,45 +2,44 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use bijux_gnss_infra::api::core::{
-    sort_obs_sats, validate_obs_epochs, AcqAssumptions, AcqResult, AcqResultV1,
-    ArtifactHeaderV1, ArtifactReadPolicy, DiagnosticEvent, DiagnosticSeverity, Constellation, NavSolutionEpochV1,
-    NavSolutionEpoch, ObsEpoch, ObsEpochV1, SamplesFrame, SatId, SchemaVersion, TrackEpoch,
+    sort_obs_sats, validate_obs_epochs, AcqAssumptions, AcqResult, AcqResultV1, ArtifactHeaderV1,
+    ArtifactReadPolicy, Constellation, DiagnosticEvent, DiagnosticSeverity, NavSolutionEpoch,
+    NavSolutionEpochV1, ObsEpoch, ObsEpochV1, SamplesFrame, SatId, SchemaVersion, TrackEpoch,
     TrackEpochV1, ValidateConfig,
 };
-use bijux_gnss_infra::api::{artifact_explain, artifact_validate, prepare_run};
-use bijux_gnss_infra::api::parse_ecef;
-use bijux_gnss_infra::api::build_validation_report;
-use bijux_gnss_infra::api::{ValidationReferenceEpoch, ValidationReport};
-use bijux_gnss_infra::api::{DatasetEntry, DatasetRegistry};
-use bijux_gnss_infra::api::{expand_sweep, parse_sweep};
 use bijux_gnss_infra::api::hash_config;
-use bijux_gnss_infra::api::{
-    apply_common_overrides, apply_overrides, apply_sweep_value, CommonOverrides,
-};
-use bijux_gnss_infra::api::RunManifest;
 use bijux_gnss_infra::api::nav::{
-    elevation_azimuth_deg, CodeBiasProvider, GpsEphemeris, GpsEphemerisV1,
-    Matrix, NavClockModel, PhaseBiasProvider, ProcessNoiseConfig, PseudorangeMeasurement,
-    WeightingConfig, write_rinex_nav, write_rinex_obs,
+    elevation_azimuth_deg, write_rinex_nav, write_rinex_obs, CodeBiasProvider, GpsEphemeris,
+    GpsEphemerisV1, Matrix, NavClockModel, PhaseBiasProvider, ProcessNoiseConfig,
+    PseudorangeMeasurement, WeightingConfig,
 };
+use bijux_gnss_infra::api::parse_ecef;
 use bijux_gnss_infra::api::receiver::{
-    AcquisitionEngine, FileSamples, Receiver, ReceiverPipelineConfig, ReceiverConfig,
+    AcquisitionEngine, FileSamples, Receiver, ReceiverConfig, ReceiverPipelineConfig,
 };
 use bijux_gnss_infra::api::signal::{
     ca_code_assignment, ca_code_autocorrelation_summary, ca_code_cross_correlation_summary,
     generate_ca_code_chips, samples_per_code, Prn, RawIqMetadata, SignalSource,
     CA_CODE_PERIOD_CHIPS,
 };
+use bijux_gnss_infra::api::RunManifest;
+use bijux_gnss_infra::api::{
+    apply_common_overrides, apply_overrides, apply_sweep_value, CommonOverrides,
+};
+use bijux_gnss_infra::api::{artifact_explain, artifact_validate, prepare_run};
+use bijux_gnss_infra::api::{
+    build_validation_report, build_validation_report_from_observation_artifacts,
+};
+use bijux_gnss_infra::api::{expand_sweep, parse_sweep};
+use bijux_gnss_infra::api::{DatasetEntry, DatasetRegistry};
+use bijux_gnss_infra::api::{ValidationReferenceEpoch, ValidationReport};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use eyre::{bail, eyre, Context, ContextCompat, Result};
 use serde::{Deserialize, Serialize};
 
 fn workspace_root() -> &'static Path {
     let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    crate_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .expect("workspace root")
+    crate_dir.parent().and_then(|p| p.parent()).expect("workspace root")
 }
 
 #[derive(Clone, Copy)]
@@ -76,11 +75,7 @@ fn infra_args(common: &CommonArgs) -> bijux_gnss_infra::api::RunContextArgs<'_> 
 }
 
 fn run_dir(common: &CommonArgs, command: &str, dataset: Option<&DatasetEntry>) -> Result<PathBuf> {
-    Ok(bijux_gnss_infra::api::run_dir(
-        &infra_args(common),
-        command,
-        dataset,
-    )?)
+    Ok(bijux_gnss_infra::api::run_dir(&infra_args(common), command, dataset)?)
 }
 
 fn artifacts_dir(
@@ -88,11 +83,7 @@ fn artifacts_dir(
     command: &str,
     dataset: Option<&DatasetEntry>,
 ) -> Result<PathBuf> {
-    Ok(bijux_gnss_infra::api::artifacts_dir(
-        &infra_args(common),
-        command,
-        dataset,
-    )?)
+    Ok(bijux_gnss_infra::api::artifacts_dir(&infra_args(common), command, dataset)?)
 }
 
 fn artifact_header(
@@ -100,11 +91,7 @@ fn artifact_header(
     profile: &ReceiverConfig,
     dataset: Option<&DatasetEntry>,
 ) -> Result<ArtifactHeaderV1> {
-    Ok(bijux_gnss_infra::api::artifact_header(
-        &infra_args(common),
-        profile,
-        dataset,
-    )?)
+    Ok(bijux_gnss_infra::api::artifact_header(&infra_args(common), profile, dataset)?)
 }
 
 fn apply_acquisition_doppler_overrides(
@@ -150,11 +137,8 @@ struct CodePhaseSearchSettings {
 }
 
 fn code_phase_search_settings(profile: &ReceiverConfig) -> CodePhaseSearchSettings {
-    let period_samples = samples_per_code(
-        profile.sample_rate_hz,
-        profile.code_freq_basis_hz,
-        profile.code_length,
-    );
+    let period_samples =
+        samples_per_code(profile.sample_rate_hz, profile.code_freq_basis_hz, profile.code_length);
     CodePhaseSearchSettings {
         start_sample: 0,
         step_samples: 1,

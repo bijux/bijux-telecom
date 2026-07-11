@@ -297,13 +297,10 @@ fn handle_validate_capture(command: GnssCommand) -> Result<()> {
 
     let acquisition = AcquisitionEngine::new(config.clone(), runtime.clone());
     let acquisitions = acquisition.run_fft(&frame, &sats);
-    let acquisition_rows =
-        acquisitions.iter().map(acquisition_row_from_result).collect::<Vec<_>>();
+    let acquisition_rows = acquisitions.iter().map(acquisition_row_from_result).collect::<Vec<_>>();
     let acquisition_report = AcquisitionReport {
         sats: sats.clone(),
-        search_summary: bijux_gnss_infra::api::core::AcqSearchSummary::from_results(
-            &acquisitions,
-        ),
+        search_summary: bijux_gnss_infra::api::core::AcqSearchSummary::from_results(&acquisitions),
         doppler_search: doppler_search_settings(&profile),
         code_phase_search: acquisitions
             .iter()
@@ -317,10 +314,8 @@ fn handle_validate_capture(command: GnssCommand) -> Result<()> {
         results: acquisition_rows,
     };
 
-    let tracking = bijux_gnss_infra::api::receiver::TrackingEngine::new(
-        config.clone(),
-        runtime.clone(),
-    );
+    let tracking =
+        bijux_gnss_infra::api::receiver::TrackingEngine::new(config.clone(), runtime.clone());
     let tracks = tracking.track_from_acquisition(&frame, &acquisitions);
     let tracking_report = TrackingReport {
         sats,
@@ -372,7 +367,7 @@ fn handle_validate_capture(command: GnssCommand) -> Result<()> {
         &profile,
         dataset.as_ref(),
     )?;
-    let obs = write_obs_timeseries_for_command(
+    let observation_artifacts = write_obs_timeseries_for_command(
         &common,
         "validate_capture",
         &config,
@@ -384,10 +379,9 @@ fn handle_validate_capture(command: GnssCommand) -> Result<()> {
     write_tracking_timing_for_command(&common, "validate_capture", &tracks, dataset.as_ref())?;
 
     let nav = read_ephemeris(&eph)?;
-    let mut nav_solver =
-        bijux_gnss_infra::api::receiver::Navigation::new(config, runtime.clone());
+    let mut nav_solver = bijux_gnss_infra::api::receiver::Navigation::new(config, runtime.clone());
     let mut solutions = Vec::new();
-    for obs_epoch in &obs {
+    for obs_epoch in &observation_artifacts.epochs {
         if let Some(solution) = nav_solver.solve_epoch(obs_epoch, &nav) {
             solutions.push(solution);
         }
@@ -396,9 +390,9 @@ fn handle_validate_capture(command: GnssCommand) -> Result<()> {
     let out_dir = artifacts_dir(&common, "validate_capture", dataset.as_ref())?;
     write_nav_solution_outputs(&out_dir, &solutions)?;
 
-    let validation = build_validation_report(
+    let validation = build_validation_report_from_observation_artifacts(
         &tracks,
-        &obs,
+        &observation_artifacts,
         &solutions,
         &[],
         profile.sample_rate_hz,
@@ -408,7 +402,8 @@ fn handle_validate_capture(command: GnssCommand) -> Result<()> {
     )?;
     let validation_path = out_dir.join("validation_report.json");
     fs::write(&validation_path, serde_json::to_string_pretty(&validation)?)?;
-    let evidence = validation_evidence_bundle(&obs, &solutions, &validation);
+    let evidence =
+        validation_evidence_bundle(&observation_artifacts.epochs, &solutions, &validation);
     let evidence_path = out_dir.join("validation_evidence_bundle.json");
     fs::write(&evidence_path, serde_json::to_string_pretty(&evidence)?)?;
 
@@ -416,7 +411,7 @@ fn handle_validate_capture(command: GnssCommand) -> Result<()> {
         acquisition: acquisition_report,
         tracked_prns: summarize_tracked_prns(&tracks),
         tracking_epochs: tracks.iter().map(|track| track.epochs.len()).sum(),
-        observation_epochs: obs.len(),
+        observation_epochs: observation_artifacts.epochs.len(),
         navigation_attempts: summarize_navigation_attempts(&solutions),
         position_attempts: summarize_position_attempts(&solutions),
         validation,
@@ -656,15 +651,10 @@ fn validation_evidence_bundle(
             !matches!(entry.class, bijux_gnss_infra::api::receiver::NavIntegrityClass::Nominal)
         })
         .count();
-    let reference_position_budget_pass = report
-        .budgets
-        .reference_position_error_3d_m_max
-        .and_then(|budget_m| {
+    let reference_position_budget_pass =
+        report.budgets.reference_position_error_3d_m_max.and_then(|budget_m| {
             (!report.reference_position_errors.is_empty()).then_some(
-                report
-                    .reference_position_errors
-                    .iter()
-                    .all(|error| error.error_3d_m <= budget_m),
+                report.reference_position_errors.iter().all(|error| error.error_3d_m <= budget_m),
             )
         });
 

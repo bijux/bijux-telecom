@@ -580,7 +580,7 @@ fn write_obs_timeseries_for_command(
     hatch_window: u32,
     profile: &ReceiverConfig,
     dataset: Option<&DatasetEntry>,
-) -> Result<Vec<ObsEpoch>> {
+) -> Result<bijux_gnss_infra::api::receiver::ObservationPipelineArtifacts> {
     let out_dir = artifacts_dir(common, command, dataset)?;
     let header = artifact_header(common, profile, dataset)?;
     let runtime = runtime_config_from_env(common, None);
@@ -592,15 +592,14 @@ fn write_obs_timeseries_for_command(
         tracks,
         hatch_window,
     );
-    let mut obs = obs_report.output.epochs;
-    let residuals = obs_report.output.residuals;
+    let mut observation_artifacts = obs_report.output;
     for event in obs_report.events {
         runtime.logger.event(&event);
     }
     let path = out_dir.join("obs.jsonl");
     let mut lines = Vec::new();
     let mut timing_lines = Vec::new();
-    for epoch in &mut obs {
+    for epoch in &mut observation_artifacts.epochs {
         if common.deterministic {
             sort_obs_sats(epoch);
         }
@@ -623,8 +622,9 @@ fn write_obs_timeseries_for_command(
     }
     let residual_path = out_dir.join("observation_residuals.jsonl");
     let mut residual_lines = Vec::new();
-    for residual in residuals {
-        let wrapped = ObservationResidualEpochV1 { header: header.clone(), payload: residual };
+    for residual in &observation_artifacts.residuals {
+        let wrapped =
+            ObservationResidualEpochV1 { header: header.clone(), payload: residual.clone() };
         residual_lines.push(serde_json::to_string(&wrapped)?);
     }
     fs::write(&residual_path, residual_lines.join("\n"))?;
@@ -634,7 +634,7 @@ fn write_obs_timeseries_for_command(
         false,
     )?;
     let combos = bijux_gnss_infra::api::nav::combinations_from_obs_epochs(
-        &obs,
+        &observation_artifacts.epochs,
         bijux_gnss_infra::api::core::SignalBand::L1,
         bijux_gnss_infra::api::core::SignalBand::L2,
     );
@@ -647,8 +647,9 @@ fn write_obs_timeseries_for_command(
         fs::write(&combo_path, combo_lines.join("\n"))?;
         validate_jsonl_schema(&schema_path("combinations.schema.json"), &combo_path, false)?;
     }
-    write_melbourne_wubbena_diagnostics(&out_dir, &obs)?;
-    Ok(obs)
+    write_melbourne_wubbena_diagnostics(&out_dir, &observation_artifacts.epochs)?;
+    write_carrier_smoothed_code_validation(&out_dir, &observation_artifacts)?;
+    Ok(observation_artifacts)
 }
 
 pub(crate) fn write_melbourne_wubbena_diagnostics(out_dir: &Path, obs: &[ObsEpoch]) -> Result<()> {
@@ -657,12 +658,13 @@ pub(crate) fn write_melbourne_wubbena_diagnostics(out_dir: &Path, obs: &[ObsEpoc
         (bijux_gnss_infra::api::core::SignalBand::L1, bijux_gnss_infra::api::core::SignalBand::L2),
         (bijux_gnss_infra::api::core::SignalBand::L1, bijux_gnss_infra::api::core::SignalBand::L5),
     ] {
-        let pair_diagnostics = bijux_gnss_infra::api::nav::melbourne_wubbena_diagnostics_from_obs_epochs(
-            obs,
-            band_1,
-            band_2,
-            bijux_gnss_infra::api::nav::MelbourneWubbenaThresholds::default(),
-        );
+        let pair_diagnostics =
+            bijux_gnss_infra::api::nav::melbourne_wubbena_diagnostics_from_obs_epochs(
+                obs,
+                band_1,
+                band_2,
+                bijux_gnss_infra::api::nav::MelbourneWubbenaThresholds::default(),
+            );
         if pair_diagnostics.iter().any(|diagnostic| diagnostic.status == "ok") {
             diagnostics.extend(pair_diagnostics);
         }
@@ -682,6 +684,23 @@ pub(crate) fn write_melbourne_wubbena_diagnostics(out_dir: &Path, obs: &[ObsEpoc
     Ok(())
 }
 
+fn write_carrier_smoothed_code_validation(
+    out_dir: &Path,
+    observation_artifacts: &bijux_gnss_infra::api::receiver::ObservationPipelineArtifacts,
+) -> Result<()> {
+    let report = bijux_gnss_infra::api::receiver::validate_carrier_smoothed_code_from_artifacts(
+        observation_artifacts,
+    );
+    let path = out_dir.join("carrier_smoothed_code_validation.json");
+    fs::write(&path, serde_json::to_string_pretty(&report)?)?;
+    validate_json_schema(
+        &schema_path("carrier_smoothed_code_validation.schema.json"),
+        &path,
+        false,
+    )?;
+    Ok(())
+}
+
 fn write_obs_timeseries(
     common: &CommonArgs,
     config: &ReceiverPipelineConfig,
@@ -689,8 +708,16 @@ fn write_obs_timeseries(
     hatch_window: u32,
     profile: &ReceiverConfig,
     dataset: Option<&DatasetEntry>,
-) -> Result<Vec<ObsEpoch>> {
-    write_obs_timeseries_for_command(common, "track", config, tracks, hatch_window, profile, dataset)
+) -> Result<bijux_gnss_infra::api::receiver::ObservationPipelineArtifacts> {
+    write_obs_timeseries_for_command(
+        common,
+        "track",
+        config,
+        tracks,
+        hatch_window,
+        profile,
+        dataset,
+    )
 }
 
 fn write_tracking_timing_for_command(
@@ -856,7 +883,9 @@ fn read_nav_decode_ephemerides(data: &str) -> Result<Option<Vec<GpsEphemeris>>> 
     Ok(Some(ephemerides_from_nav_decode_report(report)?))
 }
 
-fn read_broadcast_navigation_data(path: &Path) -> Result<bijux_gnss_infra::api::nav::GpsBroadcastNavigationData> {
+fn read_broadcast_navigation_data(
+    path: &Path,
+) -> Result<bijux_gnss_infra::api::nav::GpsBroadcastNavigationData> {
     let data = fs::read_to_string(path)?;
     if data.contains("RINEX VERSION / TYPE")
         && (data.contains("NAVIGATION DATA") || data.contains("NAV DATA"))
@@ -872,7 +901,9 @@ fn read_broadcast_navigation_data(path: &Path) -> Result<bijux_gnss_infra::api::
     }
     if data.contains("\"header\"") {
         if let Ok(wrapped) = serde_json::from_str::<
-            bijux_gnss_infra::api::core::ArtifactV1<bijux_gnss_infra::api::nav::GpsBroadcastNavigationData>,
+            bijux_gnss_infra::api::core::ArtifactV1<
+                bijux_gnss_infra::api::nav::GpsBroadcastNavigationData,
+            >,
         >(&data)
         {
             if wrapped.header.schema_version != ArtifactReadPolicy::LATEST {
@@ -991,8 +1022,8 @@ fn write_ephemeris(
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_raw_iq_metadata, enforce_locked_capture_value, load_frame_window, read_ephemeris,
-        read_broadcast_navigation_data, read_tracking_dump, DopplerSearchSettings,
+        apply_raw_iq_metadata, enforce_locked_capture_value, load_frame_window,
+        read_broadcast_navigation_data, read_ephemeris, read_tracking_dump, DopplerSearchSettings,
         RawIqSignalQualityReport, TrackingReport, TrackingRow,
     };
     use crate::RawIqMetadata;
@@ -1208,7 +1239,8 @@ mod tests {
             serde_json::to_string_pretty(&wrapped).expect("serialize wrapped navigation payload"),
         )
         .expect("write wrapped navigation payload");
-        let parsed = read_broadcast_navigation_data(&path).expect("read wrapped navigation payload");
+        let parsed =
+            read_broadcast_navigation_data(&path).expect("read wrapped navigation payload");
         fs::remove_file(&path).expect("remove wrapped navigation payload");
 
         assert_eq!(parsed.ephemerides.len(), 1);
@@ -1232,7 +1264,8 @@ mod tests {
 
         write_rinex_broadcast_navigation(&path, &navigation, true)
             .expect("write rinex broadcast navigation");
-        let parsed = read_broadcast_navigation_data(&path).expect("read rinex broadcast navigation");
+        let parsed =
+            read_broadcast_navigation_data(&path).expect("read rinex broadcast navigation");
         fs::remove_file(&path).expect("remove rinex broadcast navigation");
 
         assert_eq!(parsed.ephemerides.len(), 1);
@@ -1265,7 +1298,13 @@ mod tests {
         }
     }
 
-    fn dual_frequency_epoch(epoch_idx: u64, p1_m: f64, p2_m: f64, phi1_m: f64, phi2_m: f64) -> ObsEpoch {
+    fn dual_frequency_epoch(
+        epoch_idx: u64,
+        p1_m: f64,
+        p2_m: f64,
+        phi1_m: f64,
+        phi2_m: f64,
+    ) -> ObsEpoch {
         let sat = SatId { constellation: Constellation::Gps, prn: 12 };
         let l1 = signal_spec_gps_l1_ca();
         let l2 = signal_spec_gps_l2_py();
@@ -1925,9 +1964,7 @@ mod tests {
         assert_eq!(rows[1]["event"], "nominal");
         assert_eq!(rows[2]["event"], "wide_lane_slip_suspect");
         assert!(
-            rows[2]["delta_from_previous_wide_lane_cycles"]
-                .as_f64()
-                .expect("wide-lane delta")
+            rows[2]["delta_from_previous_wide_lane_cycles"].as_f64().expect("wide-lane delta")
                 >= 0.5
         );
 
