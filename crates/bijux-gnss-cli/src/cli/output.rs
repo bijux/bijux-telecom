@@ -765,12 +765,8 @@ fn read_nav_decode_ephemerides(data: &str) -> Result<Option<Vec<GpsEphemeris>>> 
 fn read_broadcast_navigation_data(path: &Path) -> Result<bijux_gnss_infra::api::nav::GpsBroadcastNavigationData> {
     let data = fs::read_to_string(path)?;
     if data.contains("RINEX VERSION / TYPE") && data.contains("NAVIGATION DATA") {
-        let ephemerides = bijux_gnss_infra::api::nav::parse_rinex_nav(&data)
-            .map_err(|err| eyre!("RINEX NAV parse failed: {}", err.message))?;
-        return Ok(bijux_gnss_infra::api::nav::GpsBroadcastNavigationData {
-            ephemerides,
-            klobuchar: None,
-        });
+        return bijux_gnss_infra::api::nav::parse_rinex_broadcast_navigation(&data)
+            .map_err(|err| eyre!("RINEX NAV parse failed: {}", err.message));
     }
     if let Some(ephemerides) = read_nav_decode_ephemerides(&data)? {
         return Ok(bijux_gnss_infra::api::nav::GpsBroadcastNavigationData {
@@ -912,7 +908,8 @@ mod tests {
         NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
     };
     use bijux_gnss_infra::api::nav::{
-        write_rinex_nav, GpsBroadcastNavigationData, GpsEphemeris, KlobucharCoefficients,
+        write_rinex_broadcast_navigation, write_rinex_nav, GpsBroadcastNavigationData,
+        GpsEphemeris, KlobucharCoefficients,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -1100,6 +1097,30 @@ mod tests {
         .expect("write wrapped navigation payload");
         let parsed = read_broadcast_navigation_data(&path).expect("read wrapped navigation payload");
         fs::remove_file(&path).expect("remove wrapped navigation payload");
+
+        assert_eq!(parsed.ephemerides.len(), 1);
+        assert_eq!(parsed.ephemerides[0].sat, ephemeris.sat);
+        assert_eq!(parsed.klobuchar, Some(klobuchar));
+    }
+
+    #[test]
+    fn read_broadcast_navigation_data_accepts_rinex_navigation_klobuchar() {
+        let path = std::env::temp_dir().join(format!(
+            "bijux_read_broadcast_navigation_rinex_{}_{}.rnx",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos()
+        ));
+        let ephemeris = sample_ephemeris();
+        let klobuchar = sample_klobuchar_coefficients();
+        let navigation = GpsBroadcastNavigationData {
+            ephemerides: vec![ephemeris.clone()],
+            klobuchar: Some(klobuchar),
+        };
+
+        write_rinex_broadcast_navigation(&path, &navigation, true)
+            .expect("write rinex broadcast navigation");
+        let parsed = read_broadcast_navigation_data(&path).expect("read rinex broadcast navigation");
+        fs::remove_file(&path).expect("remove rinex broadcast navigation");
 
         assert_eq!(parsed.ephemerides.len(), 1);
         assert_eq!(parsed.ephemerides[0].sat, ephemeris.sat);
