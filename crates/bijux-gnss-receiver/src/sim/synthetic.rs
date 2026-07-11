@@ -799,6 +799,56 @@ pub struct SyntheticPvtGeometryProfileReport {
     pub points: Vec<SyntheticPvtGeometryProfilePoint>,
 }
 
+/// One synthetic PVT accuracy measurement point indexed by injected multipath severity.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPvtMultipathProfilePoint {
+    /// Stable scenario identifier for this validation run.
+    pub scenario_id: String,
+    /// Number of satellites carrying injected multipath bias.
+    pub affected_satellite_count: usize,
+    /// Mean absolute injected pseudorange bias across affected satellites, in meters.
+    pub mean_abs_pseudorange_bias_m: f64,
+    /// Maximum absolute injected pseudorange bias across affected satellites, in meters.
+    pub max_abs_pseudorange_bias_m: f64,
+    /// Number of matched PVT epochs compared against truth.
+    pub epoch_count: usize,
+    /// Number of matched PVT epochs that satisfied the hard accuracy budget.
+    pub passing_epoch_count: usize,
+    /// Passing-epoch fraction across the matched PVT epochs.
+    pub pass_rate: f64,
+    /// Number of truth-matched epochs whose solution validity remained stable.
+    pub stable_epoch_count: usize,
+    /// Stable-solution fraction across truth-matched epochs.
+    pub stable_epoch_rate: f64,
+    /// Number of truth-matched epochs whose solution validity diverged.
+    pub diverging_epoch_count: usize,
+    /// Diverging-solution fraction across truth-matched epochs.
+    pub diverging_epoch_rate: f64,
+    /// RMS 3D position error across matched PVT epochs, in meters.
+    pub rms_position_error_3d_m: Option<f64>,
+    /// Maximum 3D position error across matched PVT epochs, in meters.
+    pub max_position_error_3d_m: Option<f64>,
+    /// RMS residual RMS across matched PVT epochs, in meters.
+    pub rms_residual_rms_m: Option<f64>,
+    /// Maximum residual RMS across matched PVT epochs, in meters.
+    pub max_residual_rms_m: Option<f64>,
+    /// Whether synthetic truth coverage remained sufficient for a hard claim.
+    pub truth_coverage_ready: bool,
+    /// Machine-checkable truth-coverage issues that forced or should force validation failure.
+    pub truth_coverage_issues: Vec<SyntheticTruthCoverageIssue>,
+    /// Whether the point had truth-ready PVT comparisons and at least one matched epoch.
+    pub ready: bool,
+}
+
+/// Truth-guided PVT accuracy profile across multiple synthetic multipath points.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPvtMultipathProfileReport {
+    /// Scenario identifier prefix shared across the measurement points.
+    pub scenario_id_prefix: String,
+    /// Measurement points captured in the report.
+    pub points: Vec<SyntheticPvtMultipathProfilePoint>,
+}
+
 /// Aggregated multi-stage accuracy summary at one signal-strength point.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticAccuracyCn0ProfilePoint {
@@ -1501,6 +1551,23 @@ pub struct SyntheticPvtGeometryProfileCase<'a> {
     pub accuracy: &'a SyntheticPvtAccuracyReport,
 }
 
+/// Borrowed inputs for one synthetic PVT multipath profile point.
+#[derive(Debug, Clone, Copy)]
+pub struct SyntheticPvtMultipathProfileCase<'a> {
+    /// Stable scenario identifier for this validation run.
+    pub scenario_id: &'a str,
+    /// Number of satellites carrying injected multipath bias.
+    pub affected_satellite_count: usize,
+    /// Mean absolute injected pseudorange bias across affected satellites, in meters.
+    pub mean_abs_pseudorange_bias_m: f64,
+    /// Maximum absolute injected pseudorange bias across affected satellites, in meters.
+    pub max_abs_pseudorange_bias_m: f64,
+    /// Truth-guided PVT truth table for the same scenario.
+    pub truth_table: &'a SyntheticPvtTruthTableReport,
+    /// Truth-guided PVT accuracy report for the same scenario.
+    pub accuracy: &'a SyntheticPvtAccuracyReport,
+}
+
 /// Summarize truth-guided PVT accuracy across multiple signal-strength points.
 pub fn summarize_truth_guided_pvt_cn0_profile(
     cases: &[SyntheticPvtCn0ProfileCase<'_>],
@@ -1659,6 +1726,93 @@ pub fn summarize_truth_guided_pvt_geometry_profile(
     });
 
     SyntheticPvtGeometryProfileReport { scenario_id_prefix: scenario_id_prefix.to_string(), points }
+}
+
+/// Summarize truth-guided PVT accuracy across multiple synthetic multipath points.
+pub fn summarize_truth_guided_pvt_multipath_profile(
+    cases: &[SyntheticPvtMultipathProfileCase<'_>],
+    scenario_id_prefix: &str,
+) -> SyntheticPvtMultipathProfileReport {
+    let mut points = cases
+        .iter()
+        .map(|case| {
+            let position_error_3d_m = case
+                .accuracy
+                .epochs
+                .iter()
+                .map(|epoch| epoch.position_error_3d_m)
+                .collect::<Vec<_>>();
+            let residual_rms_m =
+                case.accuracy.epochs.iter().map(|epoch| epoch.residual_rms_m).collect::<Vec<_>>();
+            let passing_epoch_count =
+                case.accuracy.epochs.iter().filter(|epoch| epoch.pass).count();
+            let epoch_count = case.accuracy.epoch_count;
+            let pass_rate = if epoch_count == 0 {
+                0.0
+            } else {
+                passing_epoch_count as f64 / epoch_count as f64
+            };
+            let stable_epoch_count = case
+                .truth_table
+                .epochs
+                .iter()
+                .filter(|epoch| epoch.solution_validity == SolutionValidity::Stable)
+                .count();
+            let diverging_epoch_count = case
+                .truth_table
+                .epochs
+                .iter()
+                .filter(|epoch| epoch.solution_validity == SolutionValidity::Diverging)
+                .count();
+            let truth_epoch_count = case.truth_table.epochs.len();
+            let stable_epoch_rate = if truth_epoch_count == 0 {
+                0.0
+            } else {
+                stable_epoch_count as f64 / truth_epoch_count as f64
+            };
+            let diverging_epoch_rate = if truth_epoch_count == 0 {
+                0.0
+            } else {
+                diverging_epoch_count as f64 / truth_epoch_count as f64
+            };
+
+            SyntheticPvtMultipathProfilePoint {
+                scenario_id: case.scenario_id.to_string(),
+                affected_satellite_count: case.affected_satellite_count,
+                mean_abs_pseudorange_bias_m: case.mean_abs_pseudorange_bias_m,
+                max_abs_pseudorange_bias_m: case.max_abs_pseudorange_bias_m,
+                epoch_count,
+                passing_epoch_count,
+                pass_rate,
+                stable_epoch_count,
+                stable_epoch_rate,
+                diverging_epoch_count,
+                diverging_epoch_rate,
+                rms_position_error_3d_m: (!position_error_3d_m.is_empty())
+                    .then(|| stats(&position_error_3d_m).rms),
+                max_position_error_3d_m: position_error_3d_m.iter().copied().reduce(f64::max),
+                rms_residual_rms_m: (!residual_rms_m.is_empty())
+                    .then(|| stats(&residual_rms_m).rms),
+                max_residual_rms_m: residual_rms_m.iter().copied().reduce(f64::max),
+                truth_coverage_ready: case.accuracy.truth_coverage_ready,
+                truth_coverage_issues: case.accuracy.truth_coverage_issues.clone(),
+                ready: case.accuracy.truth_coverage_ready
+                    && truth_epoch_count > 0
+                    && epoch_count > 0,
+            }
+        })
+        .collect::<Vec<_>>();
+    points.sort_by(|left, right| {
+        left.max_abs_pseudorange_bias_m
+            .partial_cmp(&right.max_abs_pseudorange_bias_m)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| left.scenario_id.cmp(&right.scenario_id))
+    });
+
+    SyntheticPvtMultipathProfileReport {
+        scenario_id_prefix: scenario_id_prefix.to_string(),
+        points,
+    }
 }
 
 /// Merge acquisition, tracking, and PVT C/N0 profiles into one stage-level output.
@@ -4998,9 +5152,9 @@ mod tests {
         nav_bit_index_at_time_s, nav_bit_sign_at_time_s, signal_amplitude_from_cn0,
         summarize_observation_errors, summarize_truth_guided_accuracy_cn0_profile,
         summarize_truth_guided_pvt_cn0_profile, summarize_truth_guided_pvt_geometry_profile,
-        synthetic_tracking_sensitivity_report, truth_guided_receiver_accuracy_budgets,
-        validate_acquisition_accuracy_budget, validate_pvt_accuracy_budget,
-        validate_truth_guided_acquisition_code_phase,
+        summarize_truth_guided_pvt_multipath_profile, synthetic_tracking_sensitivity_report,
+        truth_guided_receiver_accuracy_budgets, validate_acquisition_accuracy_budget,
+        validate_pvt_accuracy_budget, validate_truth_guided_acquisition_code_phase,
         validate_truth_guided_acquisition_code_phase_refinement,
         validate_truth_guided_acquisition_coherent_integration,
         validate_truth_guided_acquisition_doppler,
@@ -5015,7 +5169,8 @@ mod tests {
         SyntheticNavBitMode, SyntheticPhaseWindow, SyntheticPvtAccuracyEpoch,
         SyntheticPvtAccuracyReport, SyntheticPvtCn0ProfileCase, SyntheticPvtCn0ProfilePoint,
         SyntheticPvtCn0ProfileReport, SyntheticPvtGeometryProfileCase,
-        SyntheticPvtGeometryProfileReport, SyntheticPvtTruthReferenceEpoch,
+        SyntheticPvtGeometryProfileReport, SyntheticPvtMultipathProfileCase,
+        SyntheticPvtMultipathProfileReport, SyntheticPvtTruthReferenceEpoch,
         SyntheticPvtTruthTableClockBias, SyntheticPvtTruthTableDop, SyntheticPvtTruthTableEcef,
         SyntheticPvtTruthTableEnuError, SyntheticPvtTruthTableEpoch,
         SyntheticPvtTruthTableGeodetic, SyntheticPvtTruthTableReport, SyntheticScenario,
@@ -5735,6 +5890,203 @@ mod tests {
         assert_eq!(report.points[1].mean_pdop, Some(4.75));
         assert_eq!(report.points[1].max_pdop, Some(5.5));
         assert_eq!(report.points[1].pass_rate, 0.5);
+        assert!(report.points[1].ready);
+    }
+
+    #[test]
+    fn pvt_multipath_profile_sorts_cases_by_injected_bias_and_validity() {
+        let clean_truth = SyntheticPvtTruthTableReport {
+            scenario_id: "pvt_multipath_profile_clean".to_string(),
+            solution_count: 1,
+            matched_epoch_count: 1,
+            unmatched_solution_epochs: Vec::new(),
+            unused_reference_epochs: Vec::new(),
+            epochs: vec![SyntheticPvtTruthTableEpoch {
+                artifact_id: "clean-artifact".to_string(),
+                source_observation_epoch_id: "clean-source".to_string(),
+                epoch_index: 1,
+                receive_time_s: 1.0,
+                truth_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.0, y_m: 0.0, z_m: 0.0 },
+                measured_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.5, y_m: 0.0, z_m: 0.0 },
+                ecef_error_m: SyntheticPvtTruthTableEcef { x_m: 0.5, y_m: 0.0, z_m: 0.0 },
+                truth_geodetic: SyntheticPvtTruthTableGeodetic {
+                    latitude_deg: 0.0,
+                    longitude_deg: 0.0,
+                    altitude_m: 0.0,
+                },
+                measured_geodetic: SyntheticPvtTruthTableGeodetic {
+                    latitude_deg: 0.0,
+                    longitude_deg: 0.0,
+                    altitude_m: 0.5,
+                },
+                enu_error_m: SyntheticPvtTruthTableEnuError {
+                    east_m: 0.5,
+                    north_m: 0.0,
+                    up_m: 0.0,
+                    horiz_m: 0.5,
+                    vert_m: 0.0,
+                    error_3d_m: 0.5,
+                },
+                clock_bias: SyntheticPvtTruthTableClockBias {
+                    truth_s: 0.0,
+                    measured_s: 0.0,
+                    error_s: 0.0,
+                    truth_m: 0.0,
+                    measured_m: 0.0,
+                    error_m: 0.0,
+                },
+                residual_rms_m: 0.75,
+                pre_fit_residual_rms_m: Some(0.75),
+                post_fit_residual_rms_m: Some(0.75),
+                dop: SyntheticPvtTruthTableDop {
+                    pdop: 1.5,
+                    hdop: Some(1.0),
+                    vdop: Some(1.0),
+                    gdop: Some(1.8),
+                    tdop: Some(0.6),
+                },
+                solution_status: SolutionStatus::Converged,
+                solution_quality: NavQualityFlag::Float,
+                solution_validity: SolutionValidity::Stable,
+                valid: true,
+                sat_count: 5,
+                used_sat_count: 5,
+                rejected_sat_count: 0,
+            }],
+        };
+        let severe_truth = SyntheticPvtTruthTableReport {
+            scenario_id: "pvt_multipath_profile_severe".to_string(),
+            solution_count: 1,
+            matched_epoch_count: 1,
+            unmatched_solution_epochs: Vec::new(),
+            unused_reference_epochs: Vec::new(),
+            epochs: vec![SyntheticPvtTruthTableEpoch {
+                artifact_id: "severe-artifact".to_string(),
+                source_observation_epoch_id: "severe-source".to_string(),
+                epoch_index: 2,
+                receive_time_s: 2.0,
+                truth_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.0, y_m: 0.0, z_m: 0.0 },
+                measured_ecef_m: SyntheticPvtTruthTableEcef { x_m: 20.0, y_m: 0.0, z_m: 0.0 },
+                ecef_error_m: SyntheticPvtTruthTableEcef { x_m: 20.0, y_m: 0.0, z_m: 0.0 },
+                truth_geodetic: SyntheticPvtTruthTableGeodetic {
+                    latitude_deg: 0.0,
+                    longitude_deg: 0.0,
+                    altitude_m: 0.0,
+                },
+                measured_geodetic: SyntheticPvtTruthTableGeodetic {
+                    latitude_deg: 0.0,
+                    longitude_deg: 0.0,
+                    altitude_m: 20.0,
+                },
+                enu_error_m: SyntheticPvtTruthTableEnuError {
+                    east_m: 20.0,
+                    north_m: 0.0,
+                    up_m: 0.0,
+                    horiz_m: 20.0,
+                    vert_m: 0.0,
+                    error_3d_m: 20.0,
+                },
+                clock_bias: SyntheticPvtTruthTableClockBias {
+                    truth_s: 0.0,
+                    measured_s: 0.0,
+                    error_s: 0.0,
+                    truth_m: 0.0,
+                    measured_m: 0.0,
+                    error_m: 0.0,
+                },
+                residual_rms_m: 60.0,
+                pre_fit_residual_rms_m: Some(60.0),
+                post_fit_residual_rms_m: Some(60.0),
+                dop: SyntheticPvtTruthTableDop {
+                    pdop: 1.5,
+                    hdop: Some(1.0),
+                    vdop: Some(1.0),
+                    gdop: Some(1.8),
+                    tdop: Some(0.6),
+                },
+                solution_status: SolutionStatus::Degraded,
+                solution_quality: NavQualityFlag::Degraded,
+                solution_validity: SolutionValidity::Diverging,
+                valid: true,
+                sat_count: 5,
+                used_sat_count: 5,
+                rejected_sat_count: 0,
+            }],
+        };
+        let clean_accuracy = SyntheticPvtAccuracyReport {
+            scenario_id: "pvt_multipath_profile_clean".to_string(),
+            max_position_error_3d_m: 5.0,
+            max_clock_bias_error_m: 10.0,
+            max_residual_rms_m: 4.0,
+            max_pdop: 6.0,
+            epoch_count: 1,
+            passing_epoch_count: 1,
+            truth_coverage_ready: true,
+            truth_coverage_issues: Vec::new(),
+            pass: true,
+            epochs: vec![SyntheticPvtAccuracyEpoch {
+                epoch_index: 1,
+                position_error_3d_m: 0.5,
+                clock_bias_error_m: 0.0,
+                residual_rms_m: 0.75,
+                pdop: 1.5,
+                pass: true,
+            }],
+        };
+        let severe_accuracy = SyntheticPvtAccuracyReport {
+            scenario_id: "pvt_multipath_profile_severe".to_string(),
+            max_position_error_3d_m: 5.0,
+            max_clock_bias_error_m: 10.0,
+            max_residual_rms_m: 4.0,
+            max_pdop: 6.0,
+            epoch_count: 1,
+            passing_epoch_count: 0,
+            truth_coverage_ready: true,
+            truth_coverage_issues: Vec::new(),
+            pass: false,
+            epochs: vec![SyntheticPvtAccuracyEpoch {
+                epoch_index: 2,
+                position_error_3d_m: 20.0,
+                clock_bias_error_m: 0.0,
+                residual_rms_m: 60.0,
+                pdop: 1.5,
+                pass: false,
+            }],
+        };
+
+        let report: SyntheticPvtMultipathProfileReport =
+            summarize_truth_guided_pvt_multipath_profile(
+                &[
+                    SyntheticPvtMultipathProfileCase {
+                        scenario_id: "pvt_multipath_profile_severe",
+                        affected_satellite_count: 4,
+                        mean_abs_pseudorange_bias_m: 22.0,
+                        max_abs_pseudorange_bias_m: 35.0,
+                        truth_table: &severe_truth,
+                        accuracy: &severe_accuracy,
+                    },
+                    SyntheticPvtMultipathProfileCase {
+                        scenario_id: "pvt_multipath_profile_clean",
+                        affected_satellite_count: 0,
+                        mean_abs_pseudorange_bias_m: 0.0,
+                        max_abs_pseudorange_bias_m: 0.0,
+                        truth_table: &clean_truth,
+                        accuracy: &clean_accuracy,
+                    },
+                ],
+                "pvt_multipath_profile",
+            );
+
+        assert_eq!(report.points.len(), 2);
+        assert_eq!(report.points[0].scenario_id, "pvt_multipath_profile_clean");
+        assert_eq!(report.points[0].stable_epoch_count, 1);
+        assert_eq!(report.points[0].diverging_epoch_count, 0);
+        assert_eq!(report.points[0].pass_rate, 1.0);
+        assert_eq!(report.points[1].scenario_id, "pvt_multipath_profile_severe");
+        assert_eq!(report.points[1].max_abs_pseudorange_bias_m, 35.0);
+        assert_eq!(report.points[1].stable_epoch_count, 0);
+        assert_eq!(report.points[1].diverging_epoch_count, 1);
+        assert_eq!(report.points[1].max_residual_rms_m, Some(60.0));
         assert!(report.points[1].ready);
     }
 
