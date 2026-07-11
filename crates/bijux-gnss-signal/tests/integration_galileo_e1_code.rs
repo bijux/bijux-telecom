@@ -1,5 +1,6 @@
 use bijux_gnss_signal::api::{
     galileo_e1c_secondary_code, generate_galileo_e1b_code, generate_galileo_e1c_code,
+    sample_galileo_e1_boc11_code, sample_galileo_e1_cboc, GalileoE1Channel,
     GALILEO_E1_PRIMARY_CODE_CHIPS, GALILEO_E1_SECONDARY_CODE_CHIPS,
 };
 
@@ -29,4 +30,24 @@ fn galileo_e1c_secondary_code_is_shared_across_prns() {
 
     assert_eq!(secondary.len(), GALILEO_E1_SECONDARY_CODE_CHIPS);
     assert!(secondary.iter().all(|chip| *chip == -1 || *chip == 1));
+}
+
+#[test]
+fn galileo_e1_boc11_sampling_preserves_chip_transition_shape() {
+    let samples = sample_galileo_e1_boc11_code(1, GalileoE1Channel::E1B, 4_092_000.0, 0.0, 8)
+        .expect("valid E1-B BOC(1,1) sampling");
+
+    assert_eq!(samples.len(), 8);
+    assert_eq!(samples[0], samples[1]);
+    assert_eq!(samples[2], samples[3]);
+    assert_eq!(samples[0], -samples[2]);
+}
+
+#[test]
+fn galileo_e1_cboc_sampling_emits_nonzero_samples() {
+    let samples =
+        sample_galileo_e1_cboc(11, 4_092_000.0, 0.0, 16, 0, 1).expect("valid E1 CBOC sampling");
+
+    assert_eq!(samples.len(), 16);
+    assert!(samples.iter().any(|sample| sample.abs() > f32::EPSILON));
 }

@@ -9,9 +9,12 @@ pub use crate::codes::ca_code::{
     CaCodeCrossCorrelationSummary, Prn, CA_CODE_PERIOD_CHIPS,
 };
 pub use crate::codes::galileo_e1::{
+    boc_subcarrier_value, galileo_e1_cboc_value, galileo_e1c_secondary_chip,
     galileo_e1c_secondary_code, generate_galileo_e1_primary_code, generate_galileo_e1b_code,
-    generate_galileo_e1c_code, GalileoE1Channel, GALILEO_E1_CODE_RATE_HZ,
-    GALILEO_E1_PRIMARY_CODE_CHIPS, GALILEO_E1_PRIMARY_PERIOD_MS, GALILEO_E1_SECONDARY_CODE_CHIPS,
+    generate_galileo_e1c_code, sample_boc_code, sample_galileo_e1_boc11_code,
+    sample_galileo_e1_cboc, GalileoE1Channel, GALILEO_E1_CBOC_ALPHA, GALILEO_E1_CBOC_BETA,
+    GALILEO_E1_CODE_RATE_HZ, GALILEO_E1_PRIMARY_CODE_CHIPS, GALILEO_E1_PRIMARY_PERIOD_MS,
+    GALILEO_E1_SECONDARY_CODE_CHIPS,
 };
 /// Numerically controlled oscillator helper.
 pub use crate::dsp::nco::Nco;
