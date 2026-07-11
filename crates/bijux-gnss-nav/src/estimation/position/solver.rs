@@ -248,41 +248,72 @@ impl PositionSolver {
         }
         let initial_estimate =
             PositionEstimate { ecef_x_m: x, ecef_y_m: y, ecef_z_m: z, clock_bias_s: cb };
-        let working_set =
-            self.solve_working_set(&inputs, initial_estimate, klobuchar).ok_or_else(|| {
-                position_solve_refusal(
-                    PositionSolveRefusalKind::SolverFailure,
+        let mut working_inputs = inputs;
+        let mut estimate = initial_estimate;
+        let working_set = loop {
+            let solved = self.solve_working_set(&working_inputs, estimate, klobuchar).ok_or_else(
+                || {
+                    position_solve_refusal(
+                        PositionSolveRefusalKind::SolverFailure,
+                        sat_count,
+                        working_inputs.len(),
+                        rejected.clone(),
+                    )
+                },
+            )?;
+            let outlier_indices = self.outlier_indices(&solved.residuals);
+            if outlier_indices.is_empty() {
+                break solved;
+            }
+
+            for &outlier_index in &outlier_indices {
+                let residual = solved
+                    .residuals
+                    .get(outlier_index)
+                    .expect("outlier index must reference a residual");
+                push_unique_rejection(
+                    &mut rejected,
+                    residual.sat,
+                    MeasurementRejectReason::Outlier,
+                );
+            }
+
+            let retained_len = working_inputs.len().saturating_sub(outlier_indices.len());
+            if retained_len < 4 {
+                return Err(position_solve_refusal(
+                    PositionSolveRefusalKind::InsufficientUsableSatellites,
                     sat_count,
-                    inputs.len(),
-                    rejected.clone(),
-                )
-            })?;
+                    retained_len,
+                    rejected,
+                ));
+            }
+
+            let retained_indices = outlier_indices.into_iter().collect::<std::collections::BTreeSet<_>>();
+            working_inputs = working_inputs
+                .into_iter()
+                .enumerate()
+                .filter_map(|(index, input)| (!retained_indices.contains(&index)).then_some(input))
+                .collect();
+            estimate = solved.estimate;
+        };
         x = working_set.estimate.ecef_x_m;
         y = working_set.estimate.ecef_y_m;
         z = working_set.estimate.ecef_z_m;
         cb = working_set.estimate.clock_bias_s;
 
-        let mut filtered = Vec::new();
-        for (geometry, residual) in working_set.geometry.iter().zip(&working_set.residuals) {
-            let sigma_m = (1.0 / residual.base_weight.max(1e-6)).sqrt();
-            let norm = residual.residual_m / sigma_m;
-            if residual.residual_m.abs() > self.residual_gate_m
-                || (norm * norm) > self.chi_square_gate
-            {
-                rejected.push((
-                    geometry.observation.sat,
-                    bijux_gnss_core::api::MeasurementRejectReason::Outlier,
-                ));
-            } else {
-                filtered.push((
+        let filtered = working_set
+            .geometry
+            .iter()
+            .zip(&working_set.residuals)
+            .map(|(geometry, residual)| {
+                (
                     geometry.observation.clone(),
                     geometry.state.clone(),
                     residual.residual_m,
                     residual.effective_weight,
-                ));
-            }
-        }
-
+                )
+            })
+            .collect::<Vec<_>>();
         if filtered.len() < 4 {
             return Err(position_solve_refusal(
                 PositionSolveRefusalKind::InsufficientUsableSatellites,
@@ -296,20 +327,6 @@ impl PositionSolver {
         let mut separation_max = None;
         let mut separation_suspect = None;
         if self.raim && filtered.len() >= 5 {
-            let (worst_idx, worst_res) = filtered
-                .iter()
-                .enumerate()
-                .map(|(i, (_, _, residual_m, _))| (i, residual_m.abs()))
-                .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
-                .unwrap_or((0, 0.0));
-            if worst_res > self.residual_gate_m {
-                rejected.push((
-                    filtered[worst_idx].0.sat,
-                    bijux_gnss_core::api::MeasurementRejectReason::Outlier,
-                ));
-                filtered.remove(worst_idx);
-            }
-
             for idx in 0..filtered.len() {
                 let mut subset = filtered.clone();
                 let removed = subset.remove(idx);
@@ -804,6 +821,33 @@ impl PositionSolver {
         }
         weights
     }
+
+    fn outlier_indices(&self, residuals: &[WorkingSetResidual]) -> Vec<usize> {
+        residuals
+            .iter()
+            .enumerate()
+            .filter_map(|(index, residual)| {
+                let sigma_m = (1.0 / residual.base_weight.max(1e-6)).sqrt();
+                let normalized_residual = residual.residual_m / sigma_m;
+                ((residual.residual_m.abs() > self.residual_gate_m)
+                    || (normalized_residual * normalized_residual) > self.chi_square_gate)
+                    .then_some(index)
+            })
+            .collect()
+    }
+}
+
+fn push_unique_rejection(
+    rejected: &mut Vec<(SatId, MeasurementRejectReason)>,
+    sat: SatId,
+    reason: MeasurementRejectReason,
+) {
+    if rejected.iter().any(|(rejected_sat, rejected_reason)| {
+        *rejected_sat == sat && *rejected_reason == reason
+    }) {
+        return;
+    }
+    rejected.push((sat, reason));
 }
 
 type NormalEqSolution = (f64, f64, f64, f64, [[f64; 4]; 4]);
