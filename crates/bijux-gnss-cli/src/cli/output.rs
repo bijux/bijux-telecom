@@ -418,10 +418,20 @@ struct NavSolutionOutput {
     clock_bias_s: f64,
     clock_bias_m: f64,
     clock_drift_s_per_s: f64,
+    dops: NavSolutionDops,
     covariance: NavSolutionCovariance,
     fix_quality: bijux_gnss_infra::api::core::NavQualityFlag,
     validity: bijux_gnss_infra::api::core::SolutionValidity,
     rejected_measurements: usize,
+}
+
+#[derive(Debug, Serialize)]
+struct NavSolutionDops {
+    pdop: f64,
+    hdop: Option<f64>,
+    vdop: Option<f64>,
+    gdop: Option<f64>,
+    tdop: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -460,6 +470,13 @@ fn write_nav_solution_outputs(
             clock_bias_s: sol.clock_bias_s.0,
             clock_bias_m: sol.clock_bias_m.0,
             clock_drift_s_per_s: sol.clock_drift_s_per_s,
+            dops: NavSolutionDops {
+                pdop: sol.pdop,
+                hdop: sol.hdop,
+                vdop: sol.vdop,
+                gdop: sol.gdop,
+                tdop: sol.tdop,
+            },
             covariance: NavSolutionCovariance {
                 sigma_h_m: sol.sigma_h_m.map(|m| m.0),
                 sigma_v_m: sol.sigma_v_m.map(|m| m.0),
@@ -1531,10 +1548,10 @@ mod tests {
             sat_count: 4,
             used_sat_count: 4,
             rejected_sat_count: 0,
-            hdop: None,
-            vdop: None,
-            gdop: None,
-            tdop: None,
+            hdop: Some(0.8),
+            vdop: Some(0.6),
+            gdop: Some(1.05),
+            tdop: Some(0.4),
             stability_signature: "navsig:v1:test".to_string(),
             stability_signature_version: NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
         };
@@ -1551,6 +1568,11 @@ mod tests {
         assert_eq!(payload["source_observation_epoch_id"], "epoch-0000000012-sample-000000006138");
         assert_eq!(payload["clock_bias_s"], 0.001);
         assert_eq!(payload["clock_bias_m"], 299_792.458);
+        assert_eq!(payload["dops"]["pdop"], 1.0);
+        assert_eq!(payload["dops"]["hdop"], 0.8);
+        assert_eq!(payload["dops"]["vdop"], 0.6);
+        assert_eq!(payload["dops"]["gdop"], 1.05);
+        assert_eq!(payload["dops"]["tdop"], 0.4);
 
         fs::remove_file(&path).expect("remove nav solution output");
         fs::remove_dir(&out_dir).expect("remove output directory");

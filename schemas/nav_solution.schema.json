@@ -13,6 +13,7 @@
     "clock_bias_s",
     "clock_bias_m",
     "clock_drift_s_per_s",
+    "dops",
     "covariance",
     "fix_quality",
     "validity",
@@ -53,6 +54,17 @@
     "clock_bias_s": { "type": "number" },
     "clock_bias_m": { "type": "number" },
     "clock_drift_s_per_s": { "type": "number" },
+    "dops": {
+      "type": "object",
+      "required": ["pdop", "hdop", "vdop", "gdop", "tdop"],
+      "properties": {
+        "pdop": { "type": "number" },
+        "hdop": { "type": ["number", "null"] },
+        "vdop": { "type": ["number", "null"] },
+        "gdop": { "type": ["number", "null"] },
+        "tdop": { "type": ["number", "null"] }
+      }
+    },
     "covariance": {
       "type": "object",
       "required": ["sigma_h_m", "sigma_v_m", "covariance_xyz_m2"],
