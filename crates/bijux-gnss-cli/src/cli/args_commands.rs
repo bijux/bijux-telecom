@@ -236,6 +236,16 @@ pub(crate) enum GnssCommand {
         acquisition_doppler_tolerance_bins: usize,
     },
 
+    /// Validate a full synthetic navigation scenario from acquisition through PVT
+    ValidateSyntheticNavigation {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Truth-complete synthetic navigation scenario TOML file
+        #[arg(long, value_name = "FILE")]
+        scenario: PathBuf,
+    },
+
     /// Artifact validation and conversion
     Artifact {
         #[command(subcommand)]

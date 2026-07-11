@@ -12,6 +12,18 @@ fn export_synthetic_iq_args<'a>(
     }
 }
 
+fn synthetic_navigation_args(common: &CommonArgs) -> bijux_gnss_infra::api::RunContextArgs<'_> {
+    bijux_gnss_infra::api::RunContextArgs {
+        config: common.config.as_ref(),
+        dataset_id: None,
+        unregistered_dataset: true,
+        out: common.out.as_ref(),
+        resume: common.resume.as_ref(),
+        deterministic: common.deterministic,
+        sidecar: None,
+    }
+}
+
 fn resolved_scenario_id(
     scenario: &bijux_gnss_infra::api::receiver::sim::SyntheticScenario,
     path: &Path,
@@ -61,6 +73,26 @@ fn emit_synthetic_iq_validation_report(
             println!("wrote {}", report_path.display());
         }
         ReportFormat::Table => print_synthetic_iq_validation_table(report),
+    }
+    Ok(())
+}
+
+fn emit_synthetic_navigation_validation_report(
+    common: &CommonArgs,
+    report: &SyntheticNavigationValidationReport,
+) -> Result<()> {
+    let run_dir =
+        bijux_gnss_infra::api::run_dir(&synthetic_navigation_args(common), "validate_synthetic_navigation", None)
+            .map_err(|err| eyre!(err.message))?;
+    fs::write(run_dir.join("summary.json"), serde_json::to_string_pretty(report)?)?;
+
+    match common.report {
+        ReportFormat::Json => {
+            let report_path = run_dir.join("validate_synthetic_navigation_report.json");
+            fs::write(&report_path, serde_json::to_string_pretty(report)?)?;
+            println!("wrote {}", report_path.display());
+        }
+        ReportFormat::Table => print_synthetic_navigation_validation_table(report),
     }
     Ok(())
 }
@@ -348,6 +380,99 @@ fn handle_validate_synthetic_iq(command: GnssCommand) -> Result<()> {
         }
         bail!("synthetic IQ validation failed: {}", failure_sections.join("; "));
     }
+
+    Ok(())
+}
+
+fn handle_validate_synthetic_navigation(command: GnssCommand) -> Result<()> {
+    let GnssCommand::ValidateSyntheticNavigation { common, scenario } = command else {
+        bail!("invalid command for handler");
+    };
+
+    let scenario_contents = fs::read_to_string(&scenario)
+        .with_context(|| format!("failed to read scenario {}", scenario.display()))?;
+    let scenario_def: bijux_gnss_infra::api::receiver::sim::SyntheticNavigationValidationScenario =
+        toml::from_str(&scenario_contents)
+            .with_context(|| format!("failed to parse scenario {}", scenario.display()))?;
+
+    let mut profile = load_config(&common)?;
+    apply_common_overrides(
+        &mut profile,
+        CommonOverrides { seed: common.seed, deterministic: common.deterministic },
+    );
+    profile.sample_rate_hz = scenario_def.sample_rate_hz;
+    profile.intermediate_freq_hz = scenario_def.intermediate_freq_hz;
+    profile.quantization_bits = 16;
+    profile.seed = scenario_def.seed;
+    validate_config(&profile)?;
+
+    let validation_run = bijux_gnss_infra::api::receiver::sim::validate_synthetic_navigation_run(
+        &profile.to_pipeline_config(),
+        &scenario_def,
+        profile.navigation.hatch_window,
+    )
+    .map_err(|error| eyre!(error.to_string()))?;
+
+    let artifact_dir = bijux_gnss_infra::api::artifacts_dir(
+        &synthetic_navigation_args(&common),
+        "validate_synthetic_navigation",
+        None,
+    )
+    .map_err(|err| eyre!(err.message))?;
+    let artifact_path = artifact_dir.join("gnss_accuracy_artifact.json");
+    bijux_gnss_infra::api::receiver::sim::write_truth_guided_gnss_accuracy_artifact(
+        &artifact_path,
+        &validation_run.artifact,
+    )?;
+    let parsed_artifact: bijux_gnss_infra::api::receiver::sim::SyntheticGnssAccuracyArtifact =
+        serde_json::from_str(
+            &fs::read_to_string(&artifact_path)
+                .with_context(|| format!("failed to read {}", artifact_path.display()))?,
+        )
+        .with_context(|| format!("failed to parse {}", artifact_path.display()))?;
+    if parsed_artifact.scenario_id != validation_run.artifact.scenario_id
+        || parsed_artifact.pass != validation_run.artifact.pass
+        || parsed_artifact.truth_coverage_ready != validation_run.artifact.truth_coverage_ready
+    {
+        bail!("synthetic navigation accuracy artifact summary did not round-trip cleanly");
+    }
+    validate_json_schema(
+        &schema_path("synthetic_gnss_accuracy_artifact.schema.json"),
+        &artifact_path,
+        false,
+    )?;
+
+    let scenario_id = if validation_run.signal_scenario.id.trim().is_empty() {
+        scenario
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .filter(|stem| !stem.trim().is_empty())
+            .unwrap_or("synthetic_navigation_validation")
+            .to_string()
+    } else {
+        validation_run.signal_scenario.id.clone()
+    };
+    let report = SyntheticNavigationValidationReport {
+        scenario_id,
+        scenario_path: scenario.display().to_string(),
+        output_artifact: artifact_path.display().to_string(),
+        pass: validation_run.artifact.pass,
+        truth_coverage_ready: validation_run.artifact.truth_coverage_ready,
+        data_source: validation_run.artifact.data_source.clone(),
+        reference_truth: validation_run.artifact.reference_truth.clone(),
+        acquisition: validation_run.artifact.acquisition.summary.clone(),
+        tracking: validation_run.artifact.tracking.summary.clone(),
+        observation: validation_run.artifact.observation.summary.clone(),
+        pvt: validation_run.artifact.pvt.summary.clone(),
+    };
+    emit_synthetic_navigation_validation_report(&common, &report)?;
+    let _ = bijux_gnss_infra::api::write_manifest(
+        &synthetic_navigation_args(&common),
+        "validate_synthetic_navigation",
+        &profile,
+        None,
+        &serde_json::to_value(&report)?,
+    )?;
 
     Ok(())
 }

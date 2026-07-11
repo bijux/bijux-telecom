@@ -279,6 +279,21 @@ struct SyntheticIqValidationReport {
         SyntheticAcquisitionReceiverClockOffsetValidationReport,
 }
 
+#[derive(Debug, Serialize)]
+struct SyntheticNavigationValidationReport {
+    scenario_id: String,
+    scenario_path: String,
+    output_artifact: String,
+    pass: bool,
+    truth_coverage_ready: bool,
+    data_source: bijux_gnss_infra::api::receiver::sim::SyntheticGnssAccuracyDataSource,
+    reference_truth: bijux_gnss_infra::api::receiver::sim::SyntheticGnssAccuracyReferenceTruth,
+    acquisition: bijux_gnss_infra::api::receiver::sim::SyntheticGnssAcquisitionStageSummary,
+    tracking: bijux_gnss_infra::api::receiver::sim::SyntheticGnssTrackingStageSummary,
+    observation: bijux_gnss_infra::api::receiver::sim::SyntheticGnssObservationStageSummary,
+    pvt: bijux_gnss_infra::api::receiver::sim::SyntheticGnssPvtStageSummary,
+}
+
 #[cfg(test)]
 mod report_tests {
     use super::*;
