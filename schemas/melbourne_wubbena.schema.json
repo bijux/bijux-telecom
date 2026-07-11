@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MelbourneWubbenaObservation",
+  "type": "object",
+  "required": [
+    "epoch_idx",
+    "t_rx_s",
+    "sat",
+    "band_1",
+    "band_2",
+    "status",
+    "reason",
+    "event"
+  ],
+  "properties": {
+    "epoch_idx": { "type": "integer", "minimum": 0 },
+    "t_rx_s": { "type": "number" },
+    "sat": { "$ref": "#/definitions/SatId" },
+    "band_1": { "type": "string" },
+    "band_2": { "type": "string" },
+    "melbourne_wubbena_m": { "type": ["number", "null"] },
+    "delta_from_previous_m": { "type": ["number", "null"] },
+    "delta_from_previous_wide_lane_cycles": { "type": ["number", "null"] },
+    "status": { "type": "string" },
+    "reason": { "type": "string" },
+    "event": {
+      "type": "string",
+      "enum": [
+        "unavailable",
+        "insufficient_history",
+        "nominal",
+        "wide_lane_slip_suspect"
+      ]
+    }
+  },
+  "definitions": {
+    "SatId": {
+      "type": "object",
+      "required": ["constellation", "prn"],
+      "properties": {
+        "constellation": { "type": "string" },
+        "prn": { "type": "integer" }
+      }
+    }
+  }
+}
