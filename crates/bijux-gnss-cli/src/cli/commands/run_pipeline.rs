@@ -785,6 +785,17 @@ mod pvt_tests {
         }
     }
 
+    fn sparse_followup_obs_epoch(base: &ObsEpoch) -> ObsEpoch {
+        let mut obs = base.clone();
+        obs.epoch_idx += 1;
+        obs.source_time = ReceiverSampleTrace::from_sample_index(
+            base.source_time.sample_index + 1_000,
+            base.source_time.sample_rate_hz,
+        );
+        obs.sats.truncate(3);
+        obs
+    }
+
     fn position_error_3d_m(
         solution: &bijux_gnss_infra::api::core::NavSolutionEpoch,
         truth_ecef_m: (f64, f64, f64),
@@ -1393,6 +1404,71 @@ mod pvt_tests {
         );
 
         fs::remove_dir_all(root).expect("remove test root");
+    }
+
+    #[test]
+    fn pvt_command_refuses_sparse_followup_epoch_in_wls_mode() {
+        let ephemerides = sample_ephemerides();
+        let first_case = sample_pvt_case(&ephemerides, 2.75e-4);
+        let second_obs = sparse_followup_obs_epoch(&first_case.obs_epoch);
+
+        let solutions = solve_obs_epochs_with_rinex_nav_mode_and_troposphere(
+            "sparse_followup_wls_refusal",
+            &ephemerides,
+            &[first_case.obs_epoch.clone(), second_obs],
+            false,
+            true,
+        );
+
+        assert_eq!(solutions.len(), 2);
+        assert!(solutions[0].valid);
+        assert_eq!(solutions[1].status, bijux_gnss_infra::api::core::SolutionStatus::Invalid);
+        assert_eq!(
+            solutions[1].refusal_class,
+            Some(bijux_gnss_infra::api::core::NavRefusalClass::InsufficientGeometry)
+        );
+        assert!(solutions[1].used_sat_count < 4);
+        assert_eq!(
+            solutions[1].sat_count,
+            solutions[1].used_sat_count + solutions[1].rejected_sat_count
+        );
+        assert_eq!(solutions[1].ecef_x_m.0, 0.0);
+        assert_eq!(solutions[1].ecef_y_m.0, 0.0);
+        assert_eq!(solutions[1].ecef_z_m.0, 0.0);
+        assert!(!solutions[1].valid);
+    }
+
+    #[test]
+    fn pvt_command_refuses_sparse_followup_epoch_in_ekf_mode() {
+        let ephemerides = sample_ephemerides();
+        let first_case = sample_pvt_case(&ephemerides, 2.75e-4);
+        let second_obs = sparse_followup_obs_epoch(&first_case.obs_epoch);
+
+        let solutions = solve_obs_epochs_with_rinex_nav_mode_and_troposphere(
+            "sparse_followup_ekf_refusal",
+            &ephemerides,
+            &[first_case.obs_epoch.clone(), second_obs],
+            true,
+            true,
+        );
+
+        assert_eq!(solutions.len(), 2);
+        assert!(solutions[0].valid);
+        assert_eq!(solutions[1].status, bijux_gnss_infra::api::core::SolutionStatus::Invalid);
+        assert_eq!(
+            solutions[1].refusal_class,
+            Some(bijux_gnss_infra::api::core::NavRefusalClass::InsufficientGeometry)
+        );
+        assert_eq!(solutions[1].sat_count, 3);
+        assert_eq!(solutions[1].used_sat_count, 3);
+        assert_eq!(solutions[1].ecef_x_m.0, 0.0);
+        assert_eq!(solutions[1].ecef_y_m.0, 0.0);
+        assert_eq!(solutions[1].ecef_z_m.0, 0.0);
+        assert!(solutions[1]
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "minimum_usable_satellites=4"));
+        assert!(!solutions[1].valid);
     }
 
     #[test]
