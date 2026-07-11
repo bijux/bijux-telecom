@@ -488,6 +488,18 @@ pub mod v1 {
                         ));
                     }
                 }
+                if !self.pdop.is_finite()
+                    || self.hdop.is_some_and(|value| !value.is_finite())
+                    || self.vdop.is_some_and(|value| !value.is_finite())
+                    || self.gdop.is_some_and(|value| !value.is_finite())
+                    || self.tdop.is_some_and(|value| !value.is_finite())
+                {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Error,
+                        "GNSS_NAV_DOPS_INVALID",
+                        "nav solution DOP values contain NaN/Inf",
+                    ));
+                }
                 if self.model_version == 0 {
                     events.push(DiagnosticEvent::new(
                         DiagnosticSeverity::Error,

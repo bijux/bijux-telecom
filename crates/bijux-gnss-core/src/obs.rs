@@ -1050,6 +1050,8 @@ pub struct NavSolutionEpoch {
     #[serde(default)]
     pub gdop: Option<f64>,
     #[serde(default)]
+    pub tdop: Option<f64>,
+    #[serde(default)]
     pub stability_signature: String,
     #[serde(default = "default_nav_output_stability_signature_version")]
     pub stability_signature_version: u32,

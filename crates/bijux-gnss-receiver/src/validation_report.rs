@@ -851,6 +851,7 @@ mod tests {
             hdop: Some(1.0),
             vdop: Some(1.0),
             gdop: Some(1.0),
+            tdop: Some(0.5),
             stability_signature: "navsig:v1:golden".to_string(),
             stability_signature_version:
                 bijux_gnss_core::api::NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
@@ -961,6 +962,7 @@ mod tests {
             hdop: Some(pdop),
             vdop: Some(pdop),
             gdop: Some(pdop),
+            tdop: Some(pdop / 2.0),
             stability_signature: format!("navsig:v1:fixture:{epoch_idx}"),
             stability_signature_version:
                 bijux_gnss_core::api::NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,

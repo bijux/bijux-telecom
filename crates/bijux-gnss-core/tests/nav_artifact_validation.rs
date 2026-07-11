@@ -62,6 +62,7 @@ fn sample_solution() -> NavSolutionEpoch {
         hdop: Some(1.0),
         vdop: Some(1.2),
         gdop: Some(1.4),
+        tdop: Some(0.8),
         stability_signature: "navsig:v1:sample".to_string(),
         stability_signature_version: bijux_gnss_core::api::NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
     }
@@ -106,7 +107,13 @@ fn nav_artifact_validation_rejects_inconsistent_clock_bias_units() {
     solution.clock_bias_s = Seconds(1.0e-4);
     solution.clock_bias_m = Meters(1.0);
     let diagnostics = solution.validate_payload();
-    assert!(diagnostics
-        .iter()
-        .any(|event| event.code == "GNSS_NAV_CLOCK_BIAS_UNITS_INCONSISTENT"));
+    assert!(diagnostics.iter().any(|event| event.code == "GNSS_NAV_CLOCK_BIAS_UNITS_INCONSISTENT"));
+}
+
+#[test]
+fn nav_artifact_validation_rejects_non_finite_dops() {
+    let mut solution = sample_solution();
+    solution.tdop = Some(f64::NAN);
+    let diagnostics = solution.validate_payload();
+    assert!(diagnostics.iter().any(|event| event.code == "GNSS_NAV_DOPS_INVALID"));
 }

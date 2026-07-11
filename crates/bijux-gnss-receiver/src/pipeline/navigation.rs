@@ -462,6 +462,7 @@ impl Navigation {
             hdop: solution.hdop,
             vdop: solution.vdop,
             gdop: solution.gdop,
+            tdop: None,
             stability_signature: String::new(),
             stability_signature_version: NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
         };
@@ -790,6 +791,7 @@ fn invalid_solution_epoch(
         hdop: None,
         vdop: None,
         gdop: None,
+        tdop: None,
         stability_signature: String::new(),
         stability_signature_version: NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
     };
@@ -1248,6 +1250,7 @@ mod tests {
             hdop: Some(1.0),
             vdop: Some(1.2),
             gdop: Some(1.5),
+            tdop: Some(0.7),
             stability_signature: "navsig:v1:sample".to_string(),
             stability_signature_version: NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
         }
