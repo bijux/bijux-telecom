@@ -38,6 +38,12 @@ pub struct OrbitReferenceSummary {
     pub rms_position_error_m: f64,
 }
 
+#[derive(Debug, Clone)]
+pub struct ProviderOrbitReferenceComparison {
+    pub errors: Vec<OrbitReferenceError>,
+    pub fallbacks: Vec<String>,
+}
+
 pub fn broadcast_reference_fixtures() -> [BroadcastReferenceFixture; 2] {
     [gps_prn1_20220513_fixture(), gps_prn2_20220514_fixture()]
 }
@@ -82,10 +88,16 @@ pub fn direct_broadcast_orbit_errors(
 pub fn provider_broadcast_orbit_errors(
     fixture: &BroadcastReferenceFixture,
 ) -> Vec<OrbitReferenceError> {
+    provider_broadcast_orbit_comparison(fixture).errors
+}
+
+pub fn provider_broadcast_orbit_comparison(
+    fixture: &BroadcastReferenceFixture,
+) -> ProviderOrbitReferenceComparison {
     let provider = BroadcastProductsProvider::new(vec![fixture.ephemeris.clone()]);
     let mut diagnostics = ProductDiagnostics::new();
 
-    orbit_reference_samples(fixture)
+    let errors = orbit_reference_samples(fixture)
         .into_iter()
         .map(|sample| {
             let state = provider
@@ -93,7 +105,9 @@ pub fn provider_broadcast_orbit_errors(
                 .expect("broadcast provider state for orbit reference sample");
             sample.compare_state(&state)
         })
-        .collect()
+        .collect();
+
+    ProviderOrbitReferenceComparison { errors, fallbacks: diagnostics.fallbacks }
 }
 
 pub fn summarize_orbit_errors(errors: &[OrbitReferenceError]) -> OrbitReferenceSummary {
