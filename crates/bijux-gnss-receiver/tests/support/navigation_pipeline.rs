@@ -36,6 +36,18 @@ pub struct CleanSyntheticSignal {
     pub whole_code_periods: u64,
 }
 
+#[derive(Debug, Clone)]
+pub struct SatellitePseudorangeNoise {
+    pub sat: SatId,
+    pub pseudorange_noise_m: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct SyntheticPseudorangeNoiseProfile {
+    pub profile_name: &'static str,
+    pub satellites: Vec<SatellitePseudorangeNoise>,
+}
+
 pub struct CleanSyntheticNavigationRun {
     pub config: ReceiverPipelineConfig,
     pub profile: CleanSyntheticPvtScenario,
@@ -45,8 +57,20 @@ pub struct CleanSyntheticNavigationRun {
     pub reference_epochs: Vec<ValidationReferenceEpoch>,
 }
 
+pub struct NoisySyntheticNavigationRun {
+    pub noise_profile: SyntheticPseudorangeNoiseProfile,
+    pub run: CleanSyntheticNavigationRun,
+}
+
 pub fn clean_synthetic_navigation_run() -> CleanSyntheticNavigationRun {
     navigation_run(clean_synthetic_pvt_scenario())
+}
+
+pub fn noisy_synthetic_navigation_run(
+    noise_profile: SyntheticPseudorangeNoiseProfile,
+) -> NoisySyntheticNavigationRun {
+    let run = navigation_run(clean_synthetic_pvt_scenario_with_noise(&noise_profile));
+    NoisySyntheticNavigationRun { noise_profile, run }
 }
 
 fn navigation_run(profile: CleanSyntheticPvtScenario) -> CleanSyntheticNavigationRun {
@@ -112,6 +136,10 @@ pub fn position_error_3d_m(solution: &NavSolutionEpoch, truth_ecef_m: (f64, f64,
     let dy = solution.ecef_y_m.0 - truth_ecef_m.1;
     let dz = solution.ecef_z_m.0 - truth_ecef_m.2;
     (dx * dx + dy * dy + dz * dz).sqrt()
+}
+
+pub fn pseudorange_noise_to_code_phase_chips(pseudorange_noise_m: f64) -> f64 {
+    pseudorange_noise_m * GPS_L1_CA_CODE_RATE_HZ / SPEED_OF_LIGHT_MPS
 }
 
 fn clean_synthetic_navigation_config() -> ReceiverPipelineConfig {
@@ -259,6 +287,43 @@ fn clean_synthetic_pvt_scenario() -> CleanSyntheticPvtScenario {
         receive_time_s: CLEAN_SYNTHETIC_RECEIVE_TIME_S,
         target_epoch_idx: 0,
     }
+}
+
+fn clean_synthetic_pvt_scenario_with_noise(
+    noise_profile: &SyntheticPseudorangeNoiseProfile,
+) -> CleanSyntheticPvtScenario {
+    let mut scenario = clean_synthetic_pvt_scenario();
+
+    for satellite in &mut scenario.satellites {
+        let injected_noise_m =
+            pseudorange_noise_for_satellite(&noise_profile.satellites, satellite.signal.sat);
+        if injected_noise_m == 0.0 {
+            continue;
+        }
+
+        let pseudorange_chips = satellite.whole_code_periods as f64 * GPS_L1_CA_CODE_PERIOD_CHIPS
+            + satellite.signal.code_phase_chips
+            + pseudorange_noise_to_code_phase_chips(injected_noise_m);
+        let whole_code_periods = (pseudorange_chips / GPS_L1_CA_CODE_PERIOD_CHIPS).floor() as u64;
+        let code_phase_chips =
+            pseudorange_chips - whole_code_periods as f64 * GPS_L1_CA_CODE_PERIOD_CHIPS;
+
+        satellite.whole_code_periods = whole_code_periods;
+        satellite.signal.code_phase_chips = code_phase_chips;
+    }
+
+    scenario
+}
+
+fn pseudorange_noise_for_satellite(
+    satellites: &[SatellitePseudorangeNoise],
+    sat: SatId,
+) -> f64 {
+    satellites
+        .iter()
+        .find(|satellite| satellite.sat == sat)
+        .map(|satellite| satellite.pseudorange_noise_m)
+        .unwrap_or_default()
 }
 
 fn signal_delay_alignment(whole_code_periods: u64) -> Option<SignalDelayAlignment> {
