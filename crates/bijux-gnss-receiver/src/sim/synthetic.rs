@@ -1498,6 +1498,20 @@ fn code_phase_samples_at_sample_index(
     chip_phase * samples_per_chip
 }
 
+fn expected_tracking_code_phase_samples(
+    config: &ReceiverPipelineConfig,
+    sample_rate_hz: f64,
+    sample_index: u64,
+    code_phase_chips: f64,
+) -> f64 {
+    let period_samples =
+        samples_per_code(sample_rate_hz, config.code_freq_basis_hz, config.code_length).max(1)
+            as f64;
+    let phase_samples =
+        code_phase_samples_at_sample_index(config, sample_rate_hz, sample_index, code_phase_chips);
+    (period_samples - phase_samples.rem_euclid(period_samples)).rem_euclid(period_samples)
+}
+
 /// Build a truth-guided tracking table from a synthetic capture.
 pub fn validate_truth_guided_tracking_table(
     config: &ReceiverPipelineConfig,
@@ -1552,7 +1566,7 @@ pub fn validate_truth_guided_tracking_table(
                 .iter()
                 .enumerate()
                 .map(|(epoch_index, epoch)| {
-                    let expected_code_phase_samples = code_phase_samples_at_sample_index(
+                    let expected_code_phase_samples = expected_tracking_code_phase_samples(
                         config,
                         truth.sample_rate_hz,
                         epoch.sample_index,
