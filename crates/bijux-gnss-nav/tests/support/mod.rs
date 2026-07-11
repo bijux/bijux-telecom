@@ -5,3 +5,4 @@ pub mod position_truth;
 pub mod public_spp_case;
 pub mod public_station_truth;
 pub mod rtklib_reference;
+pub mod trusted_reference_coordinate;

@@ -19,3 +19,4 @@ precise-products = []
 [dev-dependencies]
 criterion = "0.8"
 bijux-gnss-policies.workspace = true
+bijux-gnss-testkit = { path = "../bijux-gnss-testkit", version = "0.1.0" }
