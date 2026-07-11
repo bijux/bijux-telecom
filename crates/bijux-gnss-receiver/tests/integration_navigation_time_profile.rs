@@ -69,3 +69,22 @@ fn navigation_time_profile_identifies_drifting_accuracy_runs() {
     );
     assert!(point.position_error_drift_m_per_s.expect("drifting slope") > 0.0, "{report:?}");
 }
+
+#[test]
+fn navigation_time_profile_identifies_diverging_accuracy_runs() {
+    let report = navigation_time_profile_report();
+    let point = report
+        .points
+        .iter()
+        .find(|point| point.scenario_id == "navigation_time_profile_diverging_navigation_accuracy")
+        .expect("diverging time profile point");
+
+    assert!(point.ready, "{report:?}");
+    assert_eq!(point.trend, SyntheticPvtTimeTrend::Diverging, "{report:?}");
+    assert!(point.pass_rate < 0.5, "{report:?}");
+    assert!(point.position_error_drift_m_per_s.expect("diverging slope") > 1.0, "{report:?}");
+    assert!(
+        point.last_window_mean_position_error_3d_m > point.first_window_mean_position_error_3d_m,
+        "{report:?}"
+    );
+}
