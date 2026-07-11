@@ -322,3 +322,36 @@ fn rtk_float_baseline_artifact_validation_rejects_invalid_values() {
     assert!(diagnostics.iter().any(|event| event.code == "RTK_FLOAT_AMBIGUITY_NUMERIC_INVALID"));
     assert!(diagnostics.iter().any(|event| event.code == "RTK_FLOAT_AMBIGUITY_VARIANCE_INVALID"));
 }
+
+#[test]
+fn rtk_float_baseline_solver_refuses_underdetermined_inputs() {
+    let (base_ecef_m, _, ephemerides, _, _, double_differences, _, _) = setup_float_baseline_case();
+
+    let solution = rtk_float_baseline_from_double_differences(
+        &double_differences[..2],
+        base_ecef_m,
+        &ephemerides,
+        345_600.25,
+    );
+
+    assert!(solution.is_none());
+}
+
+#[test]
+fn rtk_float_baseline_solver_refuses_unsupported_signal_codes() {
+    let (base_ecef_m, _, ephemerides, _, _, mut double_differences, _, _) =
+        setup_float_baseline_case();
+    for observation in &mut double_differences {
+        observation.sig.code = bijux_gnss_core::api::SignalCode::Py;
+        observation.ref_sig.code = bijux_gnss_core::api::SignalCode::Py;
+    }
+
+    let solution = rtk_float_baseline_from_double_differences(
+        &double_differences,
+        base_ecef_m,
+        &ephemerides,
+        345_600.25,
+    );
+
+    assert!(solution.is_none());
+}

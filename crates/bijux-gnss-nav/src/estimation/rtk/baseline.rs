@@ -1,5 +1,6 @@
 use bijux_gnss_core::api::{
     ArtifactPayloadValidate, Constellation, DiagnosticEvent, DiagnosticSeverity, SigId, SignalBand,
+    SignalCode,
 };
 use serde::{Deserialize, Serialize};
 
@@ -373,7 +374,10 @@ fn geometric_range_m(receiver_ecef_m: [f64; 3], satellite_ecef_m: [f64; 3]) -> f
 }
 
 fn wavelength_m(signal: SigId) -> Option<f64> {
-    if signal.sat.constellation != Constellation::Gps || signal.band != SignalBand::L1 {
+    if signal.sat.constellation != Constellation::Gps
+        || signal.band != SignalBand::L1
+        || signal.code != SignalCode::Ca
+    {
         return None;
     }
     Some(SPEED_OF_LIGHT_MPS / bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value())
