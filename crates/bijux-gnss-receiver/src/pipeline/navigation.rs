@@ -9,9 +9,11 @@ use bijux_gnss_core::api::{
 };
 use bijux_gnss_nav::api::{
     elevation_azimuth_deg, position_measurement_weight,
-    position_observation_has_valid_satellite_time, sat_state_gps_l1ca_from_observation,
-    GpsEphemeris, KlobucharCoefficients, PositionObservation, PositionSolveRefusalKind,
-    PositionSolver, RaimFaultDetectionStatus, WeightingConfig,
+    position_broadcast_navigation_from_gps_ephemerides,
+    position_observation_has_valid_satellite_time, sat_state_galileo_e1_from_observation,
+    sat_state_gps_l1ca_from_observation, GpsEphemeris, KlobucharCoefficients,
+    PositionBroadcastNavigation, PositionObservation, PositionSolveRefusalKind, PositionSolver,
+    RaimFaultDetectionStatus, WeightingConfig,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -119,7 +121,8 @@ impl Navigation {
         obs: &ObsEpoch,
         eph: &[GpsEphemeris],
     ) -> Option<NavSolutionEpoch> {
-        self.solve_epoch_with_broadcast_ionosphere(obs, eph, None)
+        let navigation = position_broadcast_navigation_from_gps_ephemerides(eph);
+        self.solve_epoch_with_navigation_data_and_broadcast_ionosphere(obs, &navigation, None)
     }
 
     pub fn solve_epoch_with_broadcast_ionosphere(
@@ -128,9 +131,27 @@ impl Navigation {
         eph: &[GpsEphemeris],
         klobuchar: Option<&KlobucharCoefficients>,
     ) -> Option<NavSolutionEpoch> {
+        let navigation = position_broadcast_navigation_from_gps_ephemerides(eph);
+        self.solve_epoch_with_navigation_data_and_broadcast_ionosphere(obs, &navigation, klobuchar)
+    }
+
+    pub fn solve_epoch_with_navigation_data(
+        &mut self,
+        obs: &ObsEpoch,
+        navigation: &[PositionBroadcastNavigation],
+    ) -> Option<NavSolutionEpoch> {
+        self.solve_epoch_with_navigation_data_and_broadcast_ionosphere(obs, navigation, None)
+    }
+
+    pub fn solve_epoch_with_navigation_data_and_broadcast_ionosphere(
+        &mut self,
+        obs: &ObsEpoch,
+        navigation: &[PositionBroadcastNavigation],
+        klobuchar: Option<&KlobucharCoefficients>,
+    ) -> Option<NavSolutionEpoch> {
         let source_observation_epoch_id = source_observation_epoch_id(obs);
         let nav_artifact_id = nav_artifact_id(obs.epoch_idx, &source_observation_epoch_id);
-        let assumptions = nav_assumptions(eph.len());
+        let assumptions = nav_assumptions(navigation.len());
         if !obs.valid {
             return Some(apply_atmosphere_explainability(
                 invalid_solution_epoch(
@@ -152,10 +173,13 @@ impl Navigation {
             .map(|row| row.signal_id.sat.constellation)
             .collect::<std::collections::BTreeSet<_>>();
         let has_supported_gps = input_constellations.contains(&Constellation::Gps);
-        let has_unsupported_constellation =
-            input_constellations.iter().any(|constellation| *constellation != Constellation::Gps);
+        let has_supported_galileo = input_constellations.contains(&Constellation::Galileo);
+        let has_supported_constellation = has_supported_gps || has_supported_galileo;
+        let has_unsupported_constellation = input_constellations.iter().any(|constellation| {
+            *constellation != Constellation::Gps && *constellation != Constellation::Galileo
+        });
 
-        if has_unsupported_constellation && !has_supported_gps {
+        if !has_supported_constellation {
             return Some(apply_atmosphere_explainability(
                 invalid_solution_epoch(
                     obs,
@@ -177,7 +201,7 @@ impl Navigation {
                 self.config.tropo_enable,
             ));
         }
-        if has_unsupported_constellation && has_supported_gps {
+        if has_unsupported_constellation {
             self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
                 bijux_gnss_core::api::DiagnosticSeverity::Warning,
                 "NAV_MIXED_CONSTELLATION_INPUT",
@@ -188,7 +212,12 @@ impl Navigation {
         let observations: Vec<PositionObservation> = obs
             .sats
             .iter()
-            .filter(|s| s.signal_id.sat.constellation == Constellation::Gps)
+            .filter(|s| {
+                matches!(
+                    s.signal_id.sat.constellation,
+                    Constellation::Gps | Constellation::Galileo
+                )
+            })
             .filter_map(|s| {
                 let mut observation = PositionObservation {
                     sat: s.signal_id.sat,
@@ -206,10 +235,9 @@ impl Navigation {
                 let mut elevation = observation.elevation_deg;
                 if elevation.is_none() {
                     if let Some((rx_x, rx_y, rx_z)) = self.last_ecef {
-                        if let Some(eph) = eph.iter().find(|e| e.sat == s.signal_id.sat) {
-                            let sat = navigation_satellite_state(obs, s, eph);
+                        if let Some(sat) = navigation_satellite_state(obs, s, navigation) {
                             let (_az, el) =
-                                elevation_azimuth_deg(rx_x, rx_y, rx_z, sat.x_m, sat.y_m, sat.z_m);
+                                elevation_azimuth_deg(rx_x, rx_y, rx_z, sat.0, sat.1, sat.2);
                             elevation = Some(el);
                         }
                     }
@@ -300,11 +328,15 @@ impl Navigation {
                 self.config.tropo_enable,
             ));
         }
-        let eph_covered_count =
-            observations.iter().filter(|row| eph.iter().any(|entry| entry.sat == row.sat)).count();
-        let solution = match self.solver.try_solve_wls_with_broadcast_ionosphere(
+        let eph_covered_count = observations
+            .iter()
+            .filter(|row| navigation.iter().any(|entry| entry.sat() == row.sat))
+            .count();
+        let solution = match self
+            .solver
+            .try_solve_wls_with_navigation_data_and_broadcast_ionosphere(
             &observations,
-            eph,
+            navigation,
             obs.t_rx_s.0,
             klobuchar,
         ) {
@@ -407,6 +439,7 @@ impl Navigation {
         let (_smoothed_clock_bias_s, clock_drift_s_per_s) =
             self.clock.update(solution.clock_bias_s, dt_s);
         self.last_ecef = Some((solution.ecef_x_m, solution.ecef_y_m, solution.ecef_z_m));
+        let inter_system_biases = solution.inter_system_biases.clone();
         let mut nav_epoch = NavSolutionEpoch {
             epoch: bijux_gnss_core::api::Epoch { index: obs.epoch_idx },
             t_rx_s: obs.t_rx_s,
@@ -449,7 +482,7 @@ impl Navigation {
                     reject_reason: Some(reason),
                 }))
                 .collect(),
-            isb: Vec::new(),
+            isb: inter_system_biases,
             health: Vec::new(),
             innovation_rms_m: None,
             normalized_innovation_rms: None,
@@ -1222,10 +1255,30 @@ fn classify_validity(solution: &NavSolutionEpoch) -> bijux_gnss_core::api::Solut
 fn navigation_satellite_state(
     obs: &ObsEpoch,
     sat: &bijux_gnss_core::api::ObsSatellite,
-    eph: &GpsEphemeris,
-) -> bijux_gnss_nav::api::GpsSatState {
+    navigation: &[PositionBroadcastNavigation],
+) -> Option<(f64, f64, f64)> {
     let receive_tow_s = obs.gps_time().map(|gps_time| gps_time.tow_s).unwrap_or(obs.t_rx_s.0);
-    sat_state_gps_l1ca_from_observation(eph, receive_tow_s, sat.pseudorange_m.0, sat.timing)
+    let navigation = navigation.iter().find(|entry| entry.sat() == sat.signal_id.sat)?;
+    match navigation {
+        PositionBroadcastNavigation::Gps(ephemeris) => {
+            let state = sat_state_gps_l1ca_from_observation(
+                ephemeris,
+                receive_tow_s,
+                sat.pseudorange_m.0,
+                sat.timing,
+            );
+            Some((state.x_m, state.y_m, state.z_m))
+        }
+        PositionBroadcastNavigation::Galileo(navigation) => {
+            let state = sat_state_galileo_e1_from_observation(
+                navigation,
+                receive_tow_s,
+                sat.pseudorange_m.0,
+                sat.timing,
+            );
+            Some((state.x_m, state.y_m, state.z_m))
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1263,8 +1316,11 @@ mod tests {
         SignalSpec,
     };
     use bijux_gnss_nav::api::{
-        ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef, sat_state_gps_l1ca,
-        GpsEphemeris, SaastamoinenModel, TroposphereModel,
+        ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef, sat_state_galileo_e1,
+        sat_state_gps_l1ca, GalileoBroadcastNavigationData, GalileoClockCorrection,
+        GalileoEphemeris, GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags,
+        GalileoSignalHealth, GalileoSystemTime, GpsEphemeris, SaastamoinenModel,
+        TroposphereModel,
     };
 
     fn sample_last_solution() -> NavSolutionEpoch {
@@ -1512,6 +1568,88 @@ mod tests {
         pseudorange_m + model.delay_m(receiver, elevation_deg, Seconds(t_rx_s))
     }
 
+    fn make_galileo_navigation(prn: u8, omega0: f64, m0: f64) -> GalileoBroadcastNavigationData {
+        GalileoBroadcastNavigationData {
+            sat: SatId { constellation: Constellation::Galileo, prn },
+            iodnav: prn as u16,
+            gst: GalileoSystemTime { week: 2222, tow_s: 100_000 },
+            sisa_e1_e5b: 77,
+            signal_health: GalileoSignalHealth {
+                e5b_signal_health: 0,
+                e1b_signal_health: 0,
+                e5b_data_valid: true,
+                e1b_data_valid: true,
+            },
+            clock: GalileoClockCorrection {
+                t0c_s: 100_000.0,
+                af0: 0.0,
+                af1: 0.0,
+                af2: 0.0,
+                bgd_e1_e5a_s: 0.0,
+                bgd_e1_e5b_s: 0.0,
+            },
+            ephemeris: GalileoEphemeris {
+                sat: SatId { constellation: Constellation::Galileo, prn },
+                iodnav: prn as u16,
+                toe_s: 100_000.0,
+                sqrt_a: 5_440.612_319,
+                e: 0.001_23,
+                i0: 0.953,
+                idot: -2.1e-10,
+                omega0,
+                omegadot: -5.8e-9,
+                w: -0.37,
+                m0,
+                delta_n: 4.7e-9,
+                cuc: -3.2e-6,
+                cus: 4.1e-6,
+                crc: 178.0,
+                crs: -91.0,
+                cic: 1.9e-7,
+                cis: -2.4e-7,
+            },
+            ionosphere: GalileoIonosphericCorrection {
+                ai0: 0.0,
+                ai1: 0.0,
+                ai2: 0.0,
+                disturbance_flags: GalileoIonosphericDisturbanceFlags {
+                    region_1: false,
+                    region_2: false,
+                    region_3: false,
+                    region_4: false,
+                    region_5: false,
+                },
+            },
+        }
+    }
+
+    fn synthetic_galileo_pseudorange_m(
+        navigation: &GalileoBroadcastNavigationData,
+        t_rx_s: f64,
+        position_ecef: (f64, f64, f64),
+        receiver_clock_bias_s: f64,
+        galileo_bias_s: f64,
+    ) -> f64 {
+        let c = 299_792_458.0;
+        let mut tau = 0.07;
+        let mut pseudorange_m = 0.0;
+        for _ in 0..10 {
+            let sat = sat_state_galileo_e1(navigation, t_rx_s - tau, tau);
+            let dx = position_ecef.0 - sat.x_m;
+            let dy = position_ecef.1 - sat.y_m;
+            let dz = position_ecef.2 - sat.z_m;
+            let range = (dx * dx + dy * dy + dz * dz).sqrt();
+            pseudorange_m =
+                range + (receiver_clock_bias_s + galileo_bias_s) * c - sat.clock_correction.bias_s * c;
+            let next_tau = pseudorange_m / c;
+            if (next_tau - tau).abs() < 1e-12 {
+                break;
+            }
+            tau = next_tau;
+        }
+        pseudorange_m
+    }
+
     #[test]
     fn navigation_satellite_state_uses_observation_timing_when_available() {
         let eph = make_eph(6, 1.2, 0.8, 345_600.0);
@@ -1562,16 +1700,18 @@ mod tests {
             manifest: None,
         };
 
-        let from_navigation = navigation_satellite_state(&obs, &sat, &eph);
+        let navigation = vec![PositionBroadcastNavigation::Gps(eph.clone())];
+        let from_navigation =
+            navigation_satellite_state(&obs, &sat, &navigation).expect("navigation state");
         let from_timing =
             sat_state_gps_l1ca(&eph, sat.timing.expect("timing").transmit_gps_time.tow_s, tau_s);
         let uncorrected = sat_state_gps_l1ca(&eph, receive_gps_time.tow_s, 0.0);
 
-        assert!((from_navigation.x_m - from_timing.x_m).abs() < 1.0e-9);
-        assert!((from_navigation.y_m - from_timing.y_m).abs() < 1.0e-9);
-        assert!((from_navigation.z_m - from_timing.z_m).abs() < 1.0e-9);
-        assert!((from_navigation.x_m - uncorrected.x_m).abs() > 0.01);
-        assert!((from_navigation.y_m - uncorrected.y_m).abs() > 0.01);
+        assert!((from_navigation.0 - from_timing.x_m).abs() < 1.0e-9);
+        assert!((from_navigation.1 - from_timing.y_m).abs() < 1.0e-9);
+        assert!((from_navigation.2 - from_timing.z_m).abs() < 1.0e-9);
+        assert!((from_navigation.0 - uncorrected.x_m).abs() > 0.01);
+        assert!((from_navigation.1 - uncorrected.y_m).abs() > 0.01);
     }
 
     #[test]
@@ -1645,7 +1785,7 @@ mod tests {
         let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
         let mut obs = fake_obs_epoch_for_nav_tests(15);
         for sat in &mut obs.sats {
-            sat.signal_id.sat.constellation = Constellation::Galileo;
+            sat.signal_id.sat.constellation = Constellation::Beidou;
         }
         let solution = nav.solve_epoch(&obs, &[]).expect("unsupported constellation solution");
         assert_eq!(solution.status, SolutionStatus::Invalid);
@@ -1654,7 +1794,7 @@ mod tests {
     }
 
     #[test]
-    fn mixed_constellation_without_supported_geometry_refuses_explicitly() {
+    fn mixed_supported_constellation_without_navigation_refuses_invalid_ephemeris() {
         let config = ReceiverPipelineConfig::default();
         let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
         let mut obs = fake_obs_epoch_for_nav_tests(16);
@@ -1663,9 +1803,102 @@ mod tests {
         }
         let solution = nav.solve_epoch(&obs, &[]).expect("mixed constellation solution");
         assert_eq!(solution.status, SolutionStatus::Invalid);
-        assert_eq!(solution.refusal_class, Some(NavRefusalClass::MixedConstellationInput));
+        assert_eq!(solution.refusal_class, Some(NavRefusalClass::InvalidEphemeris));
         assert_eq!(solution.explain_decision, "refused");
         assert!(!solution.valid);
+    }
+
+    #[test]
+    fn mixed_gps_galileo_navigation_solves_and_emits_galileo_bias() {
+        let config = ReceiverPipelineConfig::default();
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+        let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
+        let t_rx_s = 100_000.0;
+        let receiver_clock_bias_s = 2.75e-4;
+        let galileo_bias_s = -1.15e-6;
+        let gps_ephemerides = vec![
+            make_eph(1, 0.0, 0.0, t_rx_s),
+            make_eph(2, 0.8, 0.9, t_rx_s),
+            make_eph(3, 1.6, 1.8, t_rx_s),
+            make_eph(4, 2.4, 2.7, t_rx_s),
+        ];
+        let galileo_navigation = vec![
+            make_galileo_navigation(19, 1.17, 0.84),
+            make_galileo_navigation(24, -0.83, 1.52),
+        ];
+        let mut obs = make_obs_epoch_for_solution_with_clock_bias(
+            17,
+            t_rx_s,
+            truth,
+            &gps_ephemerides,
+            receiver_clock_bias_s,
+        );
+        obs.sats.extend(galileo_navigation.iter().map(|navigation| {
+            let pseudorange_m = synthetic_galileo_pseudorange_m(
+                navigation,
+                t_rx_s,
+                truth,
+                receiver_clock_bias_s,
+                galileo_bias_s,
+            );
+            let signal_travel_time_s = pseudorange_m / 299_792_458.0;
+            ObsSatellite {
+                signal_id: SigId {
+                    sat: navigation.sat,
+                    band: SignalBand::E1,
+                    code: SignalCode::E1B,
+                },
+                pseudorange_m: Meters(pseudorange_m),
+                pseudorange_var_m2: 9.0,
+                carrier_phase_cycles: bijux_gnss_core::api::Cycles(0.0),
+                carrier_phase_var_cycles2: 1.0,
+                doppler_hz: bijux_gnss_core::api::Hertz(0.0),
+                doppler_var_hz2: 4.0,
+                cn0_dbhz: 45.0,
+                lock_flags: LockFlags {
+                    code_lock: true,
+                    carrier_lock: true,
+                    bit_lock: true,
+                    cycle_slip: false,
+                },
+                multipath_suspect: false,
+                observation_status: ObservationStatus::Accepted,
+                observation_reject_reasons: Vec::new(),
+                elevation_deg: None,
+                azimuth_deg: None,
+                weight: Some(1.0),
+                timing: Some(ObsSignalTiming {
+                    signal_travel_time_s: Seconds(signal_travel_time_s),
+                    transmit_gps_time: GpsTime { week: 0, tow_s: t_rx_s - signal_travel_time_s },
+                }),
+                error_model: None,
+                metadata: ObsMetadata::default(),
+            }
+        }));
+
+        let mut navigation = position_broadcast_navigation_from_gps_ephemerides(&gps_ephemerides);
+        navigation.extend(
+            galileo_navigation
+                .iter()
+                .cloned()
+                .map(PositionBroadcastNavigation::Galileo),
+        );
+
+        let solution = nav
+            .solve_epoch_with_navigation_data(&obs, &navigation)
+            .expect("mixed gps+galileo solution");
+
+        assert!(solution.valid);
+        assert!(matches!(
+            solution.status,
+            SolutionStatus::Coarse | SolutionStatus::Converged
+        ));
+        assert_eq!(solution.refusal_class, None);
+        assert_eq!(solution.isb.len(), 1);
+        assert_eq!(solution.isb[0].constellation, Constellation::Galileo);
+        assert!((solution.isb[0].bias_s.0 - galileo_bias_s).abs() < 5.0e-9);
+        assert!((solution.clock_bias_s.0 - receiver_clock_bias_s).abs() < 1.0e-8);
+        assert_eq!(solution.used_sat_count, 6);
     }
 
     #[test]
