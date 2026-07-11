@@ -43,9 +43,18 @@ fn assert_clean_signal_code_lock(
 }
 
 fn accepted_acquisition(sat: SatId, doppler_hz: f64, code_phase_samples: usize) -> AcqResult {
+    accepted_acquisition_with_signal_band(sat, SignalBand::L1, doppler_hz, code_phase_samples)
+}
+
+fn accepted_acquisition_with_signal_band(
+    sat: SatId,
+    signal_band: SignalBand,
+    doppler_hz: f64,
+    code_phase_samples: usize,
+) -> AcqResult {
     AcqResult {
         sat,
-        signal_band: SignalBand::L1,
+        signal_band,
         source_time: ReceiverSampleTrace::default(),
         candidate_rank: 1,
         is_primary_candidate: true,
@@ -77,6 +86,21 @@ fn tracking_config() -> ReceiverPipelineConfig {
         intermediate_freq_hz: 0.0,
         code_freq_basis_hz: 1_023_000.0,
         code_length: 1023,
+        channels: 4,
+        early_late_spacing_chips: 0.5,
+        dll_bw_hz: 2.0,
+        pll_bw_hz: 15.0,
+        fll_bw_hz: 10.0,
+        ..ReceiverPipelineConfig::default()
+    }
+}
+
+fn galileo_tracking_config() -> ReceiverPipelineConfig {
+    ReceiverPipelineConfig {
+        sampling_freq_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 1_023_000.0,
+        code_length: 4092,
         channels: 4,
         early_late_spacing_chips: 0.5,
         dll_bw_hz: 2.0,
@@ -248,4 +272,49 @@ fn tracking_holds_clean_code_lock_for_fractional_phase_seed() {
 
     assert!(epochs.len() >= CLEAN_SIGNAL_MIN_LOCKED_CODE_EPOCHS, "epochs={epochs:?}");
     assert_clean_signal_code_lock(&config, &epochs, expected_code_phase_samples);
+}
+
+#[test]
+fn tracking_holds_galileo_e1_lock_on_clean_synthetic_signal() {
+    let config = galileo_tracking_config();
+    let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+    let code_phase_chips = 321.375;
+    let frame = synthetic_frame_with_code_phase(&config, sat, code_phase_chips, 0.064);
+    let expected_code_phase_samples =
+        expected_acquisition_code_phase_samples_f64(&config, &frame, code_phase_chips);
+    let seeded_code_phase_samples =
+        expected_acquisition_code_phase_samples(&config, &frame, code_phase_chips);
+    let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
+    let tracks = tracking.track_from_acquisition(
+        &frame,
+        &[accepted_acquisition_with_signal_band(
+            sat,
+            SignalBand::E1,
+            0.0,
+            seeded_code_phase_samples,
+        )],
+    );
+    let epochs = &tracks.first().expect("track").epochs;
+    let locked_epochs = post_lock_epochs(epochs);
+    let post_lock_errors_samples =
+        post_lock_code_phase_errors_samples(&config, epochs, expected_code_phase_samples);
+
+    assert!(
+        locked_epochs.len() >= CLEAN_SIGNAL_MIN_LOCKED_CODE_EPOCHS,
+        "tracking did not sustain Galileo E1 lock: epochs={epochs:?}",
+    );
+    assert!(
+        locked_epochs
+            .iter()
+            .all(|epoch| epoch.lock && epoch.dll_lock && epoch.pll_lock && epoch.fll_lock),
+        "Galileo E1 post-lock epochs lost lock flags: epochs={epochs:?}",
+    );
+    assert!(
+        post_lock_errors_samples.iter().all(|error_samples| *error_samples <= 2.0),
+        "Galileo E1 code tracking drifted after lock: post_lock_errors_samples={post_lock_errors_samples:?}, epochs={epochs:?}",
+    );
+    assert!(
+        epochs.iter().all(|epoch| epoch.tracking_provenance.contains("acq_signal_band=E1")),
+        "tracking provenance did not preserve Galileo E1 handoff metadata: epochs={epochs:?}",
+    );
 }
