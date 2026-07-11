@@ -28,6 +28,8 @@ fn run_command(command: GnssCommand) -> Result<()> {
     }
 }
 
+use bijux_gnss_nav::{position_dops_from_satellite_positions, PositionDops};
+
 fn inspect_dataset(
     path: &Path,
     metadata: &RawIqMetadata,
@@ -798,6 +800,95 @@ mod nav_trace_tests {
         }
     }
 
+    fn sample_geometry_eph(prn: u8, omega0: f64, w: f64, m0: f64) -> GpsEphemeris {
+        let mut eph = sample_eph(prn, 1.0, 1.0);
+        eph.omega0 = omega0;
+        eph.w = w;
+        eph.m0 = m0;
+        eph
+    }
+
+    fn sample_consistent_geometry_epoch(
+        receiver_ecef_m: [f64; 3],
+        ephs: &[GpsEphemeris],
+    ) -> ObsEpoch {
+        let mut obs = sample_obs_epoch(false);
+        let receive_tow_s = obs.t_rx_s.0;
+        let carrier_hz = signal_spec_gps_l1_ca().carrier_hz.value();
+        let wavelength_m = 299_792_458.0 / carrier_hz;
+        obs.sats = ephs
+            .iter()
+            .map(|eph| {
+                let state = bijux_gnss_infra::api::nav::sat_state_gps_l1ca(eph, receive_tow_s, 0.0);
+                let state_next =
+                    bijux_gnss_infra::api::nav::sat_state_gps_l1ca(eph, receive_tow_s + 0.1, 0.0);
+                let sat_pos_m = [state.x_m, state.y_m, state.z_m];
+                let sat_vel_mps = [
+                    (state_next.x_m - state.x_m) / 0.1,
+                    (state_next.y_m - state.y_m) / 0.1,
+                    (state_next.z_m - state.z_m) / 0.1,
+                ];
+                let delta = [
+                    sat_pos_m[0] - receiver_ecef_m[0],
+                    sat_pos_m[1] - receiver_ecef_m[1],
+                    sat_pos_m[2] - receiver_ecef_m[2],
+                ];
+                let range_m = (delta[0].powi(2) + delta[1].powi(2) + delta[2].powi(2)).sqrt();
+                let los = [delta[0] / range_m, delta[1] / range_m, delta[2] / range_m];
+                let range_rate_mps =
+                    los[0] * sat_vel_mps[0] + los[1] * sat_vel_mps[1] + los[2] * sat_vel_mps[2];
+                let (azimuth_deg, elevation_deg) = elevation_azimuth_deg(
+                    receiver_ecef_m[0],
+                    receiver_ecef_m[1],
+                    receiver_ecef_m[2],
+                    sat_pos_m[0],
+                    sat_pos_m[1],
+                    sat_pos_m[2],
+                );
+                ObsSatellite {
+                    signal_id: SigId { sat: eph.sat, band: SignalBand::L1, code: SignalCode::Ca },
+                    pseudorange_m: Meters(range_m),
+                    pseudorange_var_m2: 1.0,
+                    carrier_phase_cycles: bijux_gnss_infra::api::core::Cycles(
+                        range_m / wavelength_m,
+                    ),
+                    carrier_phase_var_cycles2: 0.05_f64.powi(2),
+                    doppler_hz: bijux_gnss_infra::api::core::Hertz(-range_rate_mps / wavelength_m),
+                    doppler_var_hz2: 1.0,
+                    cn0_dbhz: 45.0,
+                    lock_flags: LockFlags {
+                        code_lock: true,
+                        carrier_lock: true,
+                        bit_lock: true,
+                        cycle_slip: false,
+                    },
+                    multipath_suspect: false,
+                    observation_status: ObservationStatus::Accepted,
+                    observation_reject_reasons: Vec::new(),
+                    elevation_deg: Some(elevation_deg),
+                    azimuth_deg: Some(azimuth_deg),
+                    weight: None,
+                    timing: None,
+                    error_model: None,
+                    metadata: ObsMetadata {
+                        signal: signal_spec_gps_l1_ca(),
+                        tracking_mode: "test".to_string(),
+                        integration_ms: 20,
+                        lock_quality: 1.0,
+                        smoothing_window: 0,
+                        smoothing_age: 0,
+                        smoothing_resets: 0,
+                        time_tag_source: "receiver_sample_index".to_string(),
+                        time_tag_sample_index: obs.source_time.sample_index,
+                        time_tag_sample_rate_hz: obs.source_time.sample_rate_hz,
+                        ..ObsMetadata::default()
+                    },
+                }
+            })
+            .collect();
+        obs
+    }
+
     #[test]
     fn cli_nav_trace_identity_uses_observation_manifest() {
         let obs = sample_obs_epoch(true);
@@ -932,6 +1023,69 @@ mod nav_trace_tests {
     }
 
     #[test]
+    fn cli_ekf_rejects_poor_geometry_with_dop_evidence() {
+        let receiver_ecef_m = {
+            let ecef = bijux_gnss_infra::api::nav::geodetic_to_ecef(37.3349, -122.0090, 12.0);
+            [ecef.0, ecef.1, ecef.2]
+        };
+        let ephs = vec![
+            sample_geometry_eph(3, 1.90, 0.20, 0.60),
+            sample_geometry_eph(7, 1.97, 0.23, 0.74),
+            sample_geometry_eph(11, 2.08, 0.16, 0.91),
+            sample_geometry_eph(19, 2.21, 0.27, 1.08),
+        ];
+        let obs = sample_consistent_geometry_epoch(receiver_ecef_m, &ephs);
+
+        let mut refusal_ctx =
+            Some(EkfContext::new_with_troposphere(false, 0.0, EkfScienceThresholds::default()));
+        let refusal_ekf = &mut refusal_ctx.as_mut().expect("refusal ekf context").ekf;
+        refusal_ekf.x[0] = receiver_ecef_m[0];
+        refusal_ekf.x[1] = receiver_ecef_m[1];
+        refusal_ekf.x[2] = receiver_ecef_m[2];
+        let refusal_solution = solve_epoch_ekf(&mut refusal_ctx, &obs, &ephs, None)
+            .expect("refusal cli ekf solve")
+            .expect("refusal solution");
+
+        assert_eq!(refusal_solution.status, SolutionStatus::Invalid);
+        assert_eq!(
+            refusal_solution.refusal_class,
+            Some(bijux_gnss_infra::api::core::NavRefusalClass::InsufficientGeometry)
+        );
+        let refusal_gdop = refusal_solution.gdop.expect("refusal gdop");
+        assert!(refusal_solution.pdop > 8.0);
+        assert!(refusal_gdop > 12.0);
+        assert_eq!(refusal_solution.used_sat_count, 4);
+        assert_eq!(refusal_solution.ecef_x_m.0, 0.0);
+        assert_eq!(refusal_solution.ecef_y_m.0, 0.0);
+        assert_eq!(refusal_solution.ecef_z_m.0, 0.0);
+        assert!(refusal_solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason.starts_with("pdop_above_threshold:")));
+        assert!(refusal_solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason.starts_with("gdop_above_threshold:")));
+
+        let mut permissive_ctx = Some(EkfContext::new_with_troposphere(
+            false,
+            0.0,
+            EkfScienceThresholds { max_pdop: 100.0, max_gdop: 110.0, min_used_satellites: 4 },
+        ));
+        let permissive_ekf = &mut permissive_ctx.as_mut().expect("permissive ekf context").ekf;
+        permissive_ekf.x[0] = receiver_ecef_m[0];
+        permissive_ekf.x[1] = receiver_ecef_m[1];
+        permissive_ekf.x[2] = receiver_ecef_m[2];
+        let permissive_solution = solve_epoch_ekf(&mut permissive_ctx, &obs, &ephs, None)
+            .expect("permissive cli ekf solve")
+            .expect("permissive solution");
+
+        assert_eq!(permissive_solution.status, SolutionStatus::Float);
+        assert!((permissive_solution.pdop - refusal_solution.pdop).abs() < 1e-9);
+        assert_eq!(permissive_solution.gdop, refusal_solution.gdop);
+    }
+
+    #[test]
     fn cli_ekf_saastamoinen_delay_is_zero_when_disabled() {
         let receiver_ecef_m = bijux_gnss_infra::api::nav::geodetic_to_ecef(37.0, -122.0, 10.0);
         let satellite_ecef_m =
@@ -1015,6 +1169,7 @@ fn solve_epoch_ekf(
     ctx.ekf.predict(&ctx.model, dt_s);
 
     let mut used = 0;
+    let mut used_satellite_positions = Vec::new();
     let mut stale_ephemeris_rejections = 0usize;
     let mut sats: Vec<&bijux_gnss_infra::api::core::ObsSatellite> = obs.sats.iter().collect();
     sats.sort_by_key(|s| s.signal_id);
@@ -1072,6 +1227,7 @@ fn solve_epoch_ekf(
         };
         if ctx.ekf.update(&meas) {
             used += 1;
+            used_satellite_positions.push([state.x_m, state.y_m, state.z_m]);
         }
 
         let doppler_meas = bijux_gnss_infra::api::nav::DopplerMeasurement {
@@ -1137,10 +1293,21 @@ fn solve_epoch_ekf(
     } else {
         "troposphere_uncorrected".to_string()
     });
-    if used < 4 {
-        explain_reasons.push("minimum_usable_satellites=4".to_string());
+
+    let geometry_dops = position_dops_from_satellite_positions(
+        [ctx.ekf.x[0], ctx.ekf.x[1], ctx.ekf.x[2]],
+        &used_satellite_positions,
+    );
+    let geometry_violations =
+        cli_nav_geometry_threshold_violations(ctx.science_thresholds, used, geometry_dops.as_ref());
+    if !geometry_violations.is_empty() {
+        explain_reasons.extend(geometry_violations);
         let refusal_class = if stale_ephemeris_rejections > 0 {
-            Some(bijux_gnss_infra::api::core::NavRefusalClass::InvalidEphemeris)
+            if used == 0 {
+                Some(bijux_gnss_infra::api::core::NavRefusalClass::InvalidEphemeris)
+            } else {
+                Some(bijux_gnss_infra::api::core::NavRefusalClass::InsufficientGeometry)
+            }
         } else {
             Some(bijux_gnss_infra::api::core::NavRefusalClass::InsufficientGeometry)
         };
@@ -1152,6 +1319,7 @@ fn solve_epoch_ekf(
             refusal_class,
             explain_reasons,
         );
+        populate_cli_nav_solution_dops(&mut solution, geometry_dops.as_ref());
         solution.innovation_rms_m = Some(ctx.ekf.health.innovation_rms);
         solution.ekf_innovation_rms = Some(ctx.ekf.health.innovation_rms);
         solution.ekf_condition_number = ctx.ekf.health.condition_number;
@@ -1251,8 +1419,57 @@ fn solve_epoch_ekf(
         stability_signature_version:
             bijux_gnss_infra::api::core::NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
     };
+    populate_cli_nav_solution_dops(&mut solution, geometry_dops.as_ref());
     populate_cli_nav_solution_trace_identity(obs, &mut solution);
     Ok(Some(solution))
+}
+
+fn cli_nav_geometry_threshold_violations(
+    thresholds: EkfScienceThresholds,
+    used_sat_count: usize,
+    geometry_dops: Option<&PositionDops>,
+) -> Vec<String> {
+    let mut violations = Vec::new();
+    if used_sat_count < thresholds.min_used_satellites {
+        violations.push(format!("minimum_usable_satellites={}", thresholds.min_used_satellites));
+        violations.push(format!(
+            "used_satellites_below_threshold:{used_sat_count}<{}",
+            thresholds.min_used_satellites
+        ));
+    }
+    match geometry_dops {
+        Some(dops) => {
+            if dops.pdop > thresholds.max_pdop {
+                violations.push(format!(
+                    "pdop_above_threshold:{:.3}>{:.3}",
+                    dops.pdop, thresholds.max_pdop
+                ));
+            }
+            if dops.gdop > thresholds.max_gdop {
+                violations.push(format!(
+                    "gdop_above_threshold:{:.3}>{:.3}",
+                    dops.gdop, thresholds.max_gdop
+                ));
+            }
+        }
+        None if used_sat_count >= thresholds.min_used_satellites => {
+            violations.push("geometry_dops_unavailable".to_string());
+        }
+        None => {}
+    }
+    violations
+}
+
+fn populate_cli_nav_solution_dops(
+    solution: &mut bijux_gnss_infra::api::core::NavSolutionEpoch,
+    geometry_dops: Option<&PositionDops>,
+) {
+    if let Some(dops) = geometry_dops {
+        solution.pdop = dops.pdop;
+        solution.hdop = Some(dops.hdop);
+        solution.vdop = Some(dops.vdop);
+        solution.gdop = Some(dops.gdop);
+    }
 }
 
 fn cli_nav_refusal_epoch(

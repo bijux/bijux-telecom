@@ -175,6 +175,11 @@ fn handle_pvt(command: GnssCommand) -> Result<()> {
         Some(EkfContext::new_with_troposphere(
             pipeline_config.tropo_enable,
             pipeline_config.tropo_ztd_m,
+            EkfScienceThresholds {
+                max_pdop: pipeline_config.science_thresholds.max_pdop,
+                max_gdop: pipeline_config.science_thresholds.max_gdop,
+                min_used_satellites: pipeline_config.science_thresholds.min_used_satellites,
+            },
         ))
     } else {
         None

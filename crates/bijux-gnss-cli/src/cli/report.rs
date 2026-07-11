@@ -235,6 +235,7 @@ struct EkfContext {
     last_t_rx_s: Option<f64>,
     ambiguity: bijux_gnss_infra::api::nav::AmbiguityManager,
     isb: bijux_gnss_infra::api::nav::InterSystemBiasManager,
+    science_thresholds: EkfScienceThresholds,
     tropo_enabled: bool,
     ztd_index: Option<usize>,
     atmosphere: bijux_gnss_infra::api::nav::AtmosphereConfig,
@@ -243,13 +244,30 @@ struct EkfContext {
     corrections: bijux_gnss_infra::api::nav::CorrectionContext,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct EkfScienceThresholds {
+    max_pdop: f64,
+    max_gdop: f64,
+    min_used_satellites: usize,
+}
+
+impl Default for EkfScienceThresholds {
+    fn default() -> Self {
+        Self { max_pdop: 8.0, max_gdop: 12.0, min_used_satellites: 4 }
+    }
+}
+
 impl EkfContext {
     #[cfg(test)]
     fn new() -> Self {
-        Self::new_with_troposphere(true, 2.3)
+        Self::new_with_troposphere(true, 2.3, EkfScienceThresholds::default())
     }
 
-    fn new_with_troposphere(tropo_enabled: bool, tropo_ztd_m: f64) -> Self {
+    fn new_with_troposphere(
+        tropo_enabled: bool,
+        tropo_ztd_m: f64,
+        science_thresholds: EkfScienceThresholds,
+    ) -> Self {
         let x = vec![0.0_f64; 8];
         let p = Matrix::identity(8);
         let ekf = bijux_gnss_infra::api::nav::Ekf::new(
@@ -277,6 +295,7 @@ impl EkfContext {
             last_t_rx_s: None,
             ambiguity: bijux_gnss_infra::api::nav::AmbiguityManager::new(),
             isb: bijux_gnss_infra::api::nav::InterSystemBiasManager::new(),
+            science_thresholds,
             tropo_enabled,
             ztd_index: None,
             atmosphere: bijux_gnss_infra::api::nav::AtmosphereConfig {
