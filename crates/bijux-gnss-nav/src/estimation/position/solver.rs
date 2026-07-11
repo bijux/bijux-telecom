@@ -4,8 +4,8 @@ use crate::models::atmosphere::{
     IonosphereModel, KlobucharCoefficients, KlobucharModel, SaastamoinenModel, TroposphereModel,
 };
 use crate::orbits::gps::{
-    is_ephemeris_valid, sat_state_gps_l1ca, sat_state_gps_l1ca_from_observation, GpsEphemeris,
-    GpsSatState,
+    gps_ephemeris_age, is_ephemeris_valid, sat_state_gps_l1ca, sat_state_gps_l1ca_from_observation,
+    GpsEphemeris, GpsSatState,
 };
 use crate::{RaimFaultDetection, RaimFaultExclusion};
 use bijux_gnss_core::api::{
@@ -512,16 +512,12 @@ fn resolve_position_inputs(
     observations
         .iter()
         .filter_map(|obs| {
-            let Some(ephemeris) = ephemerides.iter().find(|eph| eph.sat == obs.sat) else {
+            let receive_tow_s =
+                obs.gps_receive_time.map(|gps_time| gps_time.tow_s).unwrap_or(t_rx_s);
+            let Some(ephemeris) = select_valid_ephemeris(ephemerides, obs.sat, receive_tow_s) else {
                 rejected.push((obs.sat, MeasurementRejectReason::InvalidEphemeris));
                 return None;
             };
-            let receive_tow_s =
-                obs.gps_receive_time.map(|gps_time| gps_time.tow_s).unwrap_or(t_rx_s);
-            if !is_ephemeris_valid(ephemeris, receive_tow_s) {
-                rejected.push((obs.sat, MeasurementRejectReason::InvalidEphemeris));
-                return None;
-            }
             Some(PositionSolveInput {
                 observation: obs.clone(),
                 ephemeris: ephemeris.clone(),
@@ -529,6 +525,108 @@ fn resolve_position_inputs(
             })
         })
         .collect()
+}
+
+fn select_valid_ephemeris(
+    ephemerides: &[GpsEphemeris],
+    sat: SatId,
+    receive_tow_s: f64,
+) -> Option<&GpsEphemeris> {
+    ephemerides
+        .iter()
+        .filter(|ephemeris| ephemeris.sat == sat)
+        .filter(|ephemeris| is_ephemeris_valid(ephemeris, receive_tow_s))
+        .min_by(|left, right| {
+            let left_age = gps_ephemeris_age(left, receive_tow_s);
+            let right_age = gps_ephemeris_age(right, receive_tow_s);
+            let left_max_age_s = left_age.toe_age_s.max(left_age.toc_age_s);
+            let right_max_age_s = right_age.toe_age_s.max(right_age.toc_age_s);
+            left_max_age_s
+                .total_cmp(&right_max_age_s)
+                .then_with(|| {
+                    (left_age.toe_age_s + left_age.toc_age_s)
+                        .total_cmp(&(right_age.toe_age_s + right_age.toc_age_s))
+                })
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{resolve_position_inputs, PositionObservation};
+    use crate::orbits::gps::GpsEphemeris;
+    use bijux_gnss_core::api::{Constellation, SatId};
+
+    fn sample_ephemeris(sat: SatId, toe_s: f64, toc_s: f64) -> GpsEphemeris {
+        GpsEphemeris {
+            sat,
+            iodc: 0,
+            iode: 0,
+            week: 1573,
+            sv_health: 0,
+            toe_s,
+            toc_s,
+            sqrt_a: 5153.7954775,
+            e: 0.01,
+            i0: 0.94,
+            idot: 0.0,
+            omega0: 0.0,
+            omegadot: 0.0,
+            w: 0.0,
+            m0: 0.0,
+            delta_n: 0.0,
+            cuc: 0.0,
+            cus: 0.0,
+            crc: 0.0,
+            crs: 0.0,
+            cic: 0.0,
+            cis: 0.0,
+            af0: 0.0,
+            af1: 0.0,
+            af2: 0.0,
+            tgd: 0.0,
+        }
+    }
+
+    #[test]
+    fn resolve_position_inputs_uses_nearest_valid_ephemeris() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 13 };
+        let observations = vec![PositionObservation {
+            sat,
+            pseudorange_m: 24_000_000.0,
+            cn0_dbhz: 45.0,
+            elevation_deg: None,
+            weight: 1.0,
+            gps_receive_time: None,
+            signal_timing: None,
+        }];
+        let ephemerides = vec![
+            sample_ephemeris(sat, 100_000.0, 100_000.0),
+            sample_ephemeris(sat, 200_000.0, 200_000.0),
+        ];
+        let mut rejected = Vec::new();
+
+        let inputs = resolve_position_inputs(&observations, &ephemerides, 200_030.0, &mut rejected);
+
+        assert!(rejected.is_empty());
+        assert_eq!(inputs.len(), 1);
+        assert_eq!(inputs[0].ephemeris.toe_s, 200_000.0);
+        assert_eq!(inputs[0].ephemeris.toc_s, 200_000.0);
+    }
+
+    #[test]
+    fn position_observation_without_signal_timing_is_valid_when_pseudorange_is_finite() {
+        let observation = PositionObservation {
+            sat: SatId { constellation: Constellation::Gps, prn: 13 },
+            pseudorange_m: 24_000_000.0,
+            cn0_dbhz: 45.0,
+            elevation_deg: None,
+            weight: 1.0,
+            gps_receive_time: None,
+            signal_timing: None,
+        };
+
+        assert!(super::position_observation_has_valid_satellite_time(&observation, 0.0));
+    }
 }
 
 fn resolve_satellite_geometry(
@@ -709,7 +807,7 @@ pub fn position_observation_has_valid_satellite_time(
     t_rx_s: f64,
 ) -> bool {
     let Some(signal_timing) = obs.signal_timing else {
-        return false;
+        return obs.pseudorange_m.is_finite() && obs.pseudorange_m > 0.0;
     };
     let signal_travel_time_s = signal_timing.signal_travel_time_s.0;
     if !signal_travel_time_s.is_finite() || signal_travel_time_s <= 0.0 {
