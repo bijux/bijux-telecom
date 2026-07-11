@@ -181,17 +181,17 @@ impl PppFilter {
             return;
         }
         for sat in sats {
-            let Some((wl_cycles, variance)) = wide_lane_from_obs(obs, sat.signal_id.sat) else {
+            let Some(wide_lane) = wide_lane_from_obs(obs, sat.signal_id.sat) else {
                 continue;
             };
             let entry = self.wl_state.entry(sat.signal_id.sat).or_insert(WlAmbiguity {
-                float_cycles: wl_cycles,
-                variance,
+                float_cycles: wide_lane.cycles,
+                variance: wide_lane.variance,
                 fixed: false,
                 last_update_epoch: obs.epoch_idx,
             });
-            entry.float_cycles = wl_cycles;
-            entry.variance = variance;
+            entry.float_cycles = wide_lane.cycles;
+            entry.variance = wide_lane.variance;
             entry.last_update_epoch = obs.epoch_idx;
         }
     }

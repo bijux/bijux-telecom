@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{ObsEpoch, SatId, SignalBand};
+use bijux_gnss_core::api::{ObsEpoch, ObsSatellite, SatId, SignalBand};
 
 use crate::corrections::Corrections;
 use crate::estimation::ekf::state::MeasurementKind;
@@ -9,6 +9,26 @@ use crate::linalg::Matrix;
 
 use super::config::SPEED_OF_LIGHT_MPS;
 use super::models::PppCodeMeasurement;
+
+#[derive(Debug, Clone, Copy)]
+pub struct IonoFreeObservation {
+    pub code_m: f64,
+    pub phase_m: f64,
+    pub f1_hz: f64,
+    pub f2_hz: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct WideLaneObservation {
+    pub cycles: f64,
+    pub variance: f64,
+}
+
+#[derive(Clone, Copy)]
+struct DualFrequencyObservationPair<'a> {
+    first: &'a ObsSatellite,
+    second: &'a ObsSatellite,
+}
 
 impl MeasurementModel for PppCodeMeasurement {
     fn name(&self) -> &'static str {
@@ -369,60 +389,34 @@ impl MeasurementModel for PppIonoFreePhaseMeasurement {
     }
 }
 
-pub fn iono_free_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<(f64, f64, f64, f64)> {
-    let mut l1 = None;
-    let mut l2 = None;
-    for s in &obs.sats {
-        if s.signal_id.sat != sat {
-            continue;
-        }
-        match s.signal_id.band {
-            SignalBand::L1 | SignalBand::E1 => l1 = Some(s),
-            SignalBand::L2 | SignalBand::E5 => l2 = Some(s),
-            _ => {}
-        }
-    }
-    let l1 = l1?;
-    let l2 = l2?;
-    let f1 = l1.metadata.signal.carrier_hz.value();
-    let f2 = l2.metadata.signal.carrier_hz.value();
+pub fn iono_free_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<IonoFreeObservation> {
+    let pair = select_dual_frequency_pair(obs, sat)?;
+    let f1 = pair.first.metadata.signal.carrier_hz.value();
+    let f2 = pair.second.metadata.signal.carrier_hz.value();
     let f1_2 = f1 * f1;
     let f2_2 = f2 * f2;
     let denom = (f1_2 - f2_2).max(1.0);
-    let if_code = (f1_2 * l1.pseudorange_m.0 - f2_2 * l2.pseudorange_m.0) / denom;
+    let if_code = (f1_2 * pair.first.pseudorange_m.0 - f2_2 * pair.second.pseudorange_m.0) / denom;
     let lambda1 = SPEED_OF_LIGHT_MPS / f1;
     let lambda2 = SPEED_OF_LIGHT_MPS / f2;
-    let phi1_m = l1.carrier_phase_cycles.0 * lambda1;
-    let phi2_m = l2.carrier_phase_cycles.0 * lambda2;
+    let phi1_m = pair.first.carrier_phase_cycles.0 * lambda1;
+    let phi2_m = pair.second.carrier_phase_cycles.0 * lambda2;
     let if_phase = (f1_2 * phi1_m - f2_2 * phi2_m) / denom;
-    Some((if_code, if_phase, f1, f2))
+    Some(IonoFreeObservation { code_m: if_code, phase_m: if_phase, f1_hz: f1, f2_hz: f2 })
 }
 
-pub fn wide_lane_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<(f64, f64)> {
-    let mut l1 = None;
-    let mut l2 = None;
-    for s in &obs.sats {
-        if s.signal_id.sat != sat {
-            continue;
-        }
-        match s.signal_id.band {
-            SignalBand::L1 | SignalBand::E1 => l1 = Some(s),
-            SignalBand::L2 | SignalBand::E5 => l2 = Some(s),
-            _ => {}
-        }
-    }
-    let l1 = l1?;
-    let l2 = l2?;
-    let f1 = l1.metadata.signal.carrier_hz.value();
-    let f2 = l2.metadata.signal.carrier_hz.value();
+pub fn wide_lane_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<WideLaneObservation> {
+    let pair = select_dual_frequency_pair(obs, sat)?;
+    let f1 = pair.first.metadata.signal.carrier_hz.value();
+    let f2 = pair.second.metadata.signal.carrier_hz.value();
     let lambda1 = SPEED_OF_LIGHT_MPS / f1;
     let lambda2 = SPEED_OF_LIGHT_MPS / f2;
-    let phi1_m = l1.carrier_phase_cycles.0 * lambda1;
-    let phi2_m = l2.carrier_phase_cycles.0 * lambda2;
+    let phi1_m = pair.first.carrier_phase_cycles.0 * lambda1;
+    let phi2_m = pair.second.carrier_phase_cycles.0 * lambda2;
     let lambda_wl = SPEED_OF_LIGHT_MPS / (f1 - f2).abs().max(1.0);
     let wl_cycles = (phi1_m - phi2_m) / lambda_wl;
-    let variance = l1.carrier_phase_var_cycles2 + l2.carrier_phase_var_cycles2;
-    Some((wl_cycles, variance))
+    let variance = pair.first.carrier_phase_var_cycles2 + pair.second.carrier_phase_var_cycles2;
+    Some(WideLaneObservation { cycles: wl_cycles, variance })
 }
 
 pub fn ratio_fix(float: f64, variance: f64) -> (f64, i64) {
@@ -432,4 +426,30 @@ pub fn ratio_fix(float: f64, variance: f64) -> (f64, i64) {
     let cost1 = ((float - n1 as f64).powi(2)) / variance.max(1e-6);
     let ratio = if cost0 > 0.0 { cost1 / cost0 } else { 0.0 };
     (ratio, n0)
+}
+
+fn select_dual_frequency_pair(
+    obs: &ObsEpoch,
+    sat: SatId,
+) -> Option<DualFrequencyObservationPair<'_>> {
+    for (first_band, second_band) in preferred_dual_frequency_pairs(sat) {
+        let first = obs.sats.iter().find(|observation| {
+            observation.signal_id.sat == sat && observation.signal_id.band == *first_band
+        });
+        let second = obs.sats.iter().find(|observation| {
+            observation.signal_id.sat == sat && observation.signal_id.band == *second_band
+        });
+        if let (Some(first), Some(second)) = (first, second) {
+            return Some(DualFrequencyObservationPair { first, second });
+        }
+    }
+    None
+}
+
+fn preferred_dual_frequency_pairs(sat: SatId) -> &'static [(SignalBand, SignalBand)] {
+    match sat.constellation {
+        bijux_gnss_core::api::Constellation::Gps => &[(SignalBand::L1, SignalBand::L2)],
+        bijux_gnss_core::api::Constellation::Galileo => &[(SignalBand::E1, SignalBand::E5)],
+        _ => &[],
+    }
 }

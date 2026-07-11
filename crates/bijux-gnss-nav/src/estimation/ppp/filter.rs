@@ -160,11 +160,9 @@ impl PppFilter {
             let phase_bias_cycles = self.phase_bias.phase_bias_cycles(sat.signal_id).unwrap_or(0.0);
 
             if self.config.use_iono_free {
-                if let Some((if_code_m, if_phase_m, f1, f2)) =
-                    iono_free_from_obs(obs, sat.signal_id.sat)
-                {
+                if let Some(iono_free) = iono_free_from_obs(obs, sat.signal_id.sat) {
                     let code = PppIonoFreeCodeMeasurement {
-                        z_m: if_code_m - code_bias_m,
+                        z_m: iono_free.code_m - code_bias_m,
                         sat_pos_m: [state.x_m, state.y_m, state.z_m],
                         sat_clock_s: clock_bias_s,
                         sigma_m,
@@ -177,17 +175,19 @@ impl PppFilter {
                     {
                         used += 1;
                     }
-                    let lambda_if = SPEED_OF_LIGHT_MPS / ((f1 * f1 - f2 * f2) / (f1 - f2));
+                    let lambda_if = SPEED_OF_LIGHT_MPS
+                        / ((iono_free.f1_hz * iono_free.f1_hz - iono_free.f2_hz * iono_free.f2_hz)
+                            / (iono_free.f1_hz - iono_free.f2_hz));
                     let phase = PppIonoFreePhaseMeasurement {
-                        z_cycles: if_phase_m / lambda_if - phase_bias_cycles,
+                        z_cycles: iono_free.phase_m / lambda_if - phase_bias_cycles,
                         sat_pos_m: [state.x_m, state.y_m, state.z_m],
                         sat_clock_s: clock_bias_s,
                         sigma_cycles: 0.05,
                         ztd_index: Some(self.indices.ztd),
                         isb_index,
                         ambiguity_index: amb_index,
-                        f1_hz: f1,
-                        f2_hz: f2,
+                        f1_hz: iono_free.f1_hz,
+                        f2_hz: iono_free.f2_hz,
                         corr: corr.clone(),
                     };
                     let _ = self.ekf.update(&phase);
