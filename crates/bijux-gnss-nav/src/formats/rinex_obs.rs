@@ -2,15 +2,21 @@ use std::collections::BTreeMap;
 
 use bijux_gnss_core::api::{
     signal_spec_gps_l1_ca, utc_to_gps, Constellation, Cycles, GpsTime, Hertz, LeapSeconds,
-    LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite, ObsSignalTiming, ObservationStatus,
-    ParseError, ReceiverRole, SatId, Seconds, SigId, SignalBand, SignalCode,
+    LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite, ObservationStatus, ParseError,
+    ReceiverRole, SatId, Seconds, SigId, SignalBand, SignalCode,
 };
 use time::{Date, Month, PrimitiveDateTime, Time};
 
-const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 const OBSERVATION_FIELD_WIDTH: usize = 16;
 const OBSERVATIONS_PER_LINE: usize = 5;
 const GPS_L1_CA_PSEUDORANGE_TYPES: &[&str] = &["C1C", "C1", "C1W"];
+const GPS_UNIX_EPOCH_OFFSET_S: f64 = 315_964_800.0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RinexObservationTimeSystem {
+    Gps,
+    Utc,
+}
 
 #[derive(Debug, Clone)]
 struct RinexObservationHeader {
@@ -18,6 +24,7 @@ struct RinexObservationHeader {
     marker_name: Option<String>,
     approx_position_ecef_m: Option<(f64, f64, f64)>,
     interval_s: Option<f64>,
+    time_system: RinexObservationTimeSystem,
     obs_types_v2: Option<Vec<String>>,
     obs_types_by_system: BTreeMap<char, Vec<String>>,
 }
@@ -63,6 +70,12 @@ struct GpsObservationColumns {
     signal_strength_type: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct RinexSatelliteToken {
+    system: char,
+    satellite: SatId,
+}
+
 #[derive(Debug, Clone)]
 enum Rinex2Record {
     Event { special_record_count: usize },
@@ -81,6 +94,7 @@ fn parse_rinex_observation_header(data: &str) -> Result<(RinexObservationHeader,
         marker_name: None,
         approx_position_ecef_m: None,
         interval_s: None,
+        time_system: RinexObservationTimeSystem::Gps,
         obs_types_v2: None,
         obs_types_by_system: BTreeMap::new(),
     };
@@ -127,6 +141,12 @@ fn parse_rinex_observation_header(data: &str) -> Result<(RinexObservationHeader,
                 header.interval_s = Some(interval);
                 line_index += 1;
             }
+            "TIME OF FIRST OBS" => {
+                if let Some(time_system) = parse_rinex_time_system(line) {
+                    header.time_system = time_system;
+                }
+                line_index += 1;
+            }
             "# / TYPES OF OBSERV" => {
                 let (obs_types, consumed_lines) = parse_rinex_2_observation_types(&lines[line_index..])?;
                 header.obs_types_v2 = Some(obs_types);
@@ -160,7 +180,7 @@ fn parse_rinex_observation_header(data: &str) -> Result<(RinexObservationHeader,
 /// Parse GPS observations from a RINEX observation file.
 ///
 /// The parser preserves only GPS observation epochs and maps them into `ObsEpoch`
-/// with explicit transmit timing derived from the imported pseudoranges.
+/// with pseudorange and carrier-phase measurements ready for downstream positioning.
 pub fn parse_rinex_gps_observation_dataset(
     data: &str,
 ) -> Result<RinexGpsObservationDataset, ParseError> {
@@ -174,7 +194,12 @@ pub fn parse_rinex_gps_observation_dataset(
     let epochs = if header.version >= 3.0 {
         parse_rinex_3_gps_epochs(&lines[header_line_count..], &header, &columns)?
     } else {
-        parse_rinex_2_gps_epochs(&lines[header_line_count..], gps_observation_types, &columns)?
+        parse_rinex_2_gps_epochs(
+            &lines[header_line_count..],
+            gps_observation_types,
+            header.time_system,
+            &columns,
+        )?
     };
 
     Ok(RinexGpsObservationDataset {
@@ -196,6 +221,7 @@ fn rinex_header_label(line: &str) -> &str {
 fn parse_rinex_2_gps_epochs(
     lines: &[&str],
     gps_observation_types: &[String],
+    time_system: RinexObservationTimeSystem,
     columns: &GpsObservationColumns,
 ) -> Result<Vec<ObsEpoch>, ParseError> {
     let mut epochs = Vec::new();
@@ -209,7 +235,7 @@ fn parse_rinex_2_gps_epochs(
             continue;
         }
 
-        let record = parse_rinex_2_epoch_header(&lines[line_index..])?;
+        let record = parse_rinex_2_epoch_header(&lines[line_index..], time_system)?;
         match record {
             Rinex2Record::Event { special_record_count } => {
                 line_index += 1 + special_record_count;
@@ -287,7 +313,8 @@ fn parse_rinex_3_gps_epochs(
             });
         }
 
-        let (receive_gps_time, discontinuity, satellite_count) = parse_rinex_3_epoch_header(line)?;
+        let (receive_gps_time, discontinuity, satellite_count) =
+            parse_rinex_3_epoch_header(line, header.time_system)?;
         line_index += 1;
         let mut gps_satellites = Vec::new();
 
@@ -295,32 +322,39 @@ fn parse_rinex_3_gps_epochs(
             let record_start = lines.get(line_index).ok_or_else(|| ParseError {
                 message: "truncated RINEX 3 observation record".to_string(),
             })?;
-            let satellite = parse_satellite_token(record_start.get(..3).unwrap_or_default())?;
-            let observation_types = observation_types_for_satellite(header, satellite);
+            let satellite_token =
+                parse_satellite_token(record_start.get(..3).unwrap_or_default())?;
+            let observation_types = observation_types_for_system(header, satellite_token.system);
             if observation_types.is_empty() {
                 return Err(ParseError {
                     message: format!(
-                        "missing RINEX 3 observation types for {:?}-{:02}",
-                        satellite.constellation, satellite.prn
+                        "missing RINEX 3 observation types for {}{:02}",
+                        satellite_token.system, satellite_token.satellite.prn
                     ),
                 });
             }
-            let record_line_count = observation_record_line_count(observation_types.len());
+            let record_line_count =
+                rinex_3_observation_record_line_count(&lines[line_index..], observation_types.len());
             let record_lines = lines.get(line_index..line_index + record_line_count).ok_or_else(
                 || ParseError {
                     message: format!(
                         "truncated RINEX 3 OBS record for satellite {:?}-{:02}",
-                        satellite.constellation, satellite.prn
+                        satellite_token.satellite.constellation, satellite_token.satellite.prn
                     ),
                 },
             )?;
             let observations = parse_observation_record(record_lines, observation_types.len(), 3)?;
             line_index += record_line_count;
-            if satellite.constellation != Constellation::Gps {
+            if satellite_token.satellite.constellation != Constellation::Gps {
                 continue;
             }
             if let Some(observation) =
-                build_gps_observation(satellite, receive_gps_time, &observations, columns)?
+                build_gps_observation(
+                    satellite_token.satellite,
+                    receive_gps_time,
+                    &observations,
+                    columns,
+                )?
             {
                 gps_satellites.push(observation);
             }
@@ -342,6 +376,7 @@ fn parse_rinex_3_gps_epochs(
 
 fn parse_rinex_2_epoch_header(
     lines: &[&str],
+    time_system: RinexObservationTimeSystem,
 ) -> Result<Rinex2Record, ParseError> {
     let line = *lines.first().ok_or_else(|| ParseError {
         message: "missing RINEX 2 epoch header".to_string(),
@@ -370,7 +405,15 @@ fn parse_rinex_2_epoch_header(
             special_record_count: satellite_count,
         });
     }
-    let receive_gps_time = rinex_epoch_to_gps_time(normalize_rinex_2_year(year), month, day, hour, minute, second)?;
+    let receive_gps_time = rinex_epoch_to_gps_time(
+        normalize_rinex_2_year(year),
+        month,
+        day,
+        hour,
+        minute,
+        second,
+        time_system,
+    )?;
     let header_line_count = 1 + satellite_count.saturating_sub(1) / 12;
     let mut satellites = Vec::with_capacity(satellite_count);
 
@@ -384,7 +427,7 @@ fn parse_rinex_2_epoch_header(
             if satellites.len() == satellite_count {
                 break;
             }
-            satellites.push(parse_satellite_token(&chunk)?);
+            satellites.push(parse_satellite_token(&chunk)?.satellite);
         }
     }
 
@@ -405,7 +448,10 @@ fn parse_rinex_2_epoch_header(
     })
 }
 
-fn parse_rinex_3_epoch_header(line: &str) -> Result<(GpsTime, bool, usize), ParseError> {
+fn parse_rinex_3_epoch_header(
+    line: &str,
+    time_system: RinexObservationTimeSystem,
+) -> Result<(GpsTime, bool, usize), ParseError> {
     let fields = line.split_whitespace().collect::<Vec<_>>();
     if fields.len() < 9 || fields.first().copied() != Some(">") {
         return Err(ParseError {
@@ -442,7 +488,7 @@ fn parse_rinex_3_epoch_header(line: &str) -> Result<(GpsTime, bool, usize), Pars
         });
     }
     Ok((
-        rinex_epoch_to_gps_time(year, month, day, hour, minute, second)?,
+        rinex_epoch_to_gps_time(year, month, day, hour, minute, second, time_system)?,
         flag == 1,
         satellite_count,
     ))
@@ -486,7 +532,7 @@ fn resolve_gps_observation_columns(observation_types: &[String]) -> Result<GpsOb
 
 fn build_gps_observation(
     satellite: SatId,
-    receive_gps_time: GpsTime,
+    _receive_gps_time: GpsTime,
     observations: &[Option<f64>],
     columns: &GpsObservationColumns,
 ) -> Result<Option<ObsSatellite>, ParseError> {
@@ -515,8 +561,6 @@ fn build_gps_observation(
         .signal_strength_index
         .and_then(|index| observations.get(index).copied().flatten())
         .unwrap_or(0.0);
-    let signal_travel_time_s = pseudorange_m / SPEED_OF_LIGHT_MPS;
-
     let mut metadata = ObsMetadata::default();
     metadata.tracking_mode = "rinex_import".to_string();
     metadata.signal = signal_spec_gps_l1_ca();
@@ -556,10 +600,7 @@ fn build_gps_observation(
         elevation_deg: None,
         azimuth_deg: None,
         weight: None,
-        timing: Some(ObsSignalTiming {
-            signal_travel_time_s: Seconds(signal_travel_time_s),
-            transmit_gps_time: receive_gps_time.offset_seconds(-signal_travel_time_s),
-        }),
+        timing: None,
         error_model: None,
         metadata,
     }))
@@ -621,6 +662,26 @@ fn observation_record_line_count(observation_count: usize) -> usize {
     observation_count.div_ceil(OBSERVATIONS_PER_LINE)
 }
 
+fn rinex_3_observation_record_line_count(lines: &[&str], observation_count: usize) -> usize {
+    let mut line_count = 1usize;
+    let max_line_count = observation_record_line_count(observation_count);
+
+    while line_count < max_line_count {
+        let Some(next_line) = lines.get(line_count) else {
+            break;
+        };
+        if next_line.trim().is_empty()
+            || next_line.starts_with('>')
+            || looks_like_rinex_3_satellite_record(next_line)
+        {
+            break;
+        }
+        line_count += 1;
+    }
+
+    line_count
+}
+
 fn observation_tokens(line: &str, start: usize, width: usize) -> Vec<String> {
     line.get(start..)
         .unwrap_or_default()
@@ -631,19 +692,24 @@ fn observation_tokens(line: &str, start: usize, width: usize) -> Vec<String> {
         .collect()
 }
 
-fn parse_satellite_token(token: &str) -> Result<SatId, ParseError> {
+fn looks_like_rinex_3_satellite_record(line: &str) -> bool {
+    parse_satellite_token(line.get(..3).unwrap_or_default()).is_ok()
+}
+
+fn parse_satellite_token(token: &str) -> Result<RinexSatelliteToken, ParseError> {
     let trimmed = token.trim();
     if trimmed.is_empty() {
         return Err(ParseError {
             message: "empty RINEX OBS satellite token".to_string(),
         });
     }
-    let (constellation, prn_text) = match trimmed.chars().next() {
-        Some('G') => (Constellation::Gps, &trimmed[1..]),
-        Some('R') => (Constellation::Glonass, &trimmed[1..]),
-        Some('E') => (Constellation::Galileo, &trimmed[1..]),
-        Some('C') => (Constellation::Beidou, &trimmed[1..]),
-        Some(char) if char.is_ascii_digit() => (Constellation::Gps, trimmed),
+    let (system, constellation, prn_text) = match trimmed.chars().next() {
+        Some('G') => ('G', Constellation::Gps, trimmed[1..].trim()),
+        Some('R') => ('R', Constellation::Glonass, trimmed[1..].trim()),
+        Some('E') => ('E', Constellation::Galileo, trimmed[1..].trim()),
+        Some('C') => ('C', Constellation::Beidou, trimmed[1..].trim()),
+        Some('S') => ('S', Constellation::Unknown, trimmed[1..].trim()),
+        Some(char) if char.is_ascii_digit() => ('G', Constellation::Gps, trimmed),
         Some(other) => {
             return Err(ParseError {
                 message: format!("unsupported RINEX OBS constellation designator '{other}'"),
@@ -654,20 +720,14 @@ fn parse_satellite_token(token: &str) -> Result<SatId, ParseError> {
     let prn = prn_text.trim().parse::<u8>().map_err(|err| ParseError {
         message: format!("invalid RINEX OBS satellite identifier '{trimmed}': {err}"),
     })?;
-    Ok(SatId { constellation, prn })
+    Ok(RinexSatelliteToken { system, satellite: SatId { constellation, prn } })
 }
 
-fn observation_types_for_satellite<'a>(
-    header: &'a RinexObservationHeader,
-    satellite: SatId,
-) -> &'a [String] {
-    match satellite.constellation {
-        Constellation::Gps => header.gps_observation_types().unwrap_or(&[]),
-        Constellation::Glonass => header.obs_types_by_system.get(&'R').map(Vec::as_slice).unwrap_or(&[]),
-        Constellation::Galileo => header.obs_types_by_system.get(&'E').map(Vec::as_slice).unwrap_or(&[]),
-        Constellation::Beidou => header.obs_types_by_system.get(&'C').map(Vec::as_slice).unwrap_or(&[]),
-        Constellation::Unknown => &[],
+fn observation_types_for_system(header: &RinexObservationHeader, system: char) -> &[String] {
+    if system == 'G' && header.version < 3.0 {
+        return header.gps_observation_types().unwrap_or(&[]);
     }
+    header.obs_types_by_system.get(&system).map(Vec::as_slice).unwrap_or(&[])
 }
 
 fn rinex_epoch_to_gps_time(
@@ -677,6 +737,7 @@ fn rinex_epoch_to_gps_time(
     hour: u8,
     minute: u8,
     second: f64,
+    time_system: RinexObservationTimeSystem,
 ) -> Result<GpsTime, ParseError> {
     let whole_seconds = second.floor();
     let nanos = ((second - whole_seconds) * 1_000_000_000.0).round();
@@ -690,10 +751,21 @@ fn rinex_epoch_to_gps_time(
     let time = Time::from_hms_nano(hour, minute, whole_seconds as u8, nanos as u32)
         .map_err(|err| ParseError { message: format!("invalid RINEX OBS time: {err}") })?;
     let utc = PrimitiveDateTime::new(date, time).assume_utc();
-    let utc = bijux_gnss_core::api::UtcTime {
-        unix_s: utc.unix_timestamp_nanos() as f64 / 1_000_000_000.0,
-    };
-    Ok(utc_to_gps(utc, &LeapSeconds::default_table()))
+    let unix_s = utc.unix_timestamp_nanos() as f64 / 1_000_000_000.0;
+    Ok(match time_system {
+        RinexObservationTimeSystem::Gps => GpsTime::from_seconds(unix_s - GPS_UNIX_EPOCH_OFFSET_S),
+        RinexObservationTimeSystem::Utc => {
+            utc_to_gps(bijux_gnss_core::api::UtcTime { unix_s }, &LeapSeconds::default_table())
+        }
+    })
+}
+
+fn parse_rinex_time_system(line: &str) -> Option<RinexObservationTimeSystem> {
+    match line.get(48..51).unwrap_or_default().trim() {
+        "" | "GPS" => Some(RinexObservationTimeSystem::Gps),
+        "UTC" => Some(RinexObservationTimeSystem::Utc),
+        _ => None,
+    }
 }
 
 fn parse_rinex_float(field: &str) -> Result<f64, ParseError> {
@@ -930,9 +1002,7 @@ mod tests {
 
     use bijux_gnss_core::api::{Constellation, SatId};
 
-    use super::{
-        parse_rinex_gps_observation_dataset, parse_rinex_observation_header, SPEED_OF_LIGHT_MPS,
-    };
+    use super::{parse_rinex_gps_observation_dataset, parse_rinex_observation_header};
 
     fn fixture(name: &str) -> String {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data").join(name);
@@ -1016,11 +1086,7 @@ mod tests {
             .expect("G03 observation");
         assert!((g03.pseudorange_m.0 - 22_719_526.844).abs() < 1.0e-6);
         assert!((g03.carrier_phase_cycles.0 - 119_391_903.878).abs() < 1.0e-6);
-        let timing = g03.timing.expect("G03 timing");
-        assert!(
-            (timing.signal_travel_time_s.0 - (g03.pseudorange_m.0 / SPEED_OF_LIGHT_MPS)).abs()
-                < 1.0e-12
-        );
+        assert_eq!(g03.timing, None);
     }
 
     #[test]
@@ -1049,5 +1115,26 @@ mod tests {
             dataset.epochs[0].sats[0].signal_id.sat,
             SatId { constellation: Constellation::Gps, prn: 1 }
         );
+    }
+
+    #[test]
+    fn parse_public_rinex_3_mixed_gps_observation_epochs() {
+        let data = fixture("glab_gage_20100305.obs");
+        let dataset =
+            parse_rinex_gps_observation_dataset(&data).expect("parse public RINEX 3 data");
+
+        assert!((dataset.version - 3.01).abs() < 1.0e-12);
+        assert_eq!(dataset.marker_name.as_deref(), Some("MRKR"));
+        assert_eq!(dataset.interval_s, Some(30.0));
+        assert_eq!(dataset.pseudorange_observation_type, "C1C");
+        assert_eq!(dataset.carrier_phase_observation_type.as_deref(), Some("L1C"));
+        assert_eq!(dataset.signal_strength_observation_type.as_deref(), None);
+        assert_eq!(dataset.epochs.len(), 2);
+        assert_eq!(dataset.epochs[0].sats.len(), 10);
+        assert_eq!(
+            dataset.epochs[0].sats[2].signal_id.sat,
+            SatId { constellation: Constellation::Gps, prn: 7 }
+        );
+        assert!((dataset.epochs[0].sats[2].pseudorange_m.0 - 22_227_666.760).abs() < 1.0e-6);
     }
 }
