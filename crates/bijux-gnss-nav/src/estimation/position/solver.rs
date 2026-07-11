@@ -7,6 +7,7 @@ use crate::orbits::gps::{
     is_ephemeris_valid, sat_state_gps_l1ca, sat_state_gps_l1ca_from_observation, GpsEphemeris,
     GpsSatState,
 };
+use crate::RaimFaultDetection;
 use bijux_gnss_core::api::{
     GpsTime, Llh, MeasurementRejectReason, ObsSignalTiming, SatId, Seconds,
 };
@@ -33,6 +34,7 @@ pub struct PositionSolution {
     pub sigma_v_m: Option<f64>,
     pub residuals: Vec<(SatId, f64, f64)>,
     pub rejected: Vec<(SatId, bijux_gnss_core::api::MeasurementRejectReason)>,
+    pub raim_fault_detection: Option<RaimFaultDetection>,
     pub separation_max_m: Option<f64>,
     pub separation_suspect: Option<SatId>,
     pub covariance_symmetrized: bool,
@@ -256,6 +258,7 @@ impl PositionSolver {
             PositionEstimate { ecef_x_m: x, ecef_y_m: y, ecef_z_m: z, clock_bias_s: cb };
         let mut working_inputs = inputs;
         let mut estimate = initial_estimate;
+        let mut raim_fault_detection = None;
         let working_set = loop {
             let solved = self.solve_working_set(&working_inputs, estimate, klobuchar).ok_or_else(
                 || {
@@ -280,6 +283,14 @@ impl PositionSolver {
                     .expect("candidate exclusion must reference an input")
                     .observation
                     .sat;
+                let separation_m = solution_separation_m(solved.estimate, candidate_estimate);
+                if raim_fault_detection.is_none() && separation_m > self.separation_gate_m {
+                    raim_fault_detection = Some(RaimFaultDetection::fault_detected(
+                        excluded_sat,
+                        separation_m,
+                        self.separation_gate_m,
+                    ));
+                }
                 push_unique_rejection(
                     &mut rejected,
                     excluded_sat,
@@ -356,6 +367,12 @@ impl PositionSolver {
             .raim
             .then(|| max_solution_separation(&filtered, final_estimate))
             .flatten();
+        if raim_fault_detection.is_none() {
+            if let Some(separation) = separation {
+                raim_fault_detection =
+                    Some(raim_fault_detection_from_separation(separation, self.separation_gate_m));
+            }
+        }
 
         let mut h = Vec::new();
         let mut v = Vec::new();
@@ -422,6 +439,7 @@ impl PositionSolver {
                 })
                 .collect(),
             rejected,
+            raim_fault_detection,
             separation_max_m: separation.map(|separation| separation.separation_m),
             separation_suspect: separation.map(|separation| separation.suspect_sat),
             covariance_symmetrized: working_set.covariance_symmetrized,
@@ -909,6 +927,28 @@ fn working_set_rms_m(residuals: &[WorkingSetResidual]) -> f64 {
     }
     let squared_sum = residuals.iter().map(|residual| residual.residual_m.powi(2)).sum::<f64>();
     (squared_sum / residuals.len() as f64).sqrt()
+}
+
+fn solution_separation_m(left: PositionEstimate, right: PositionEstimate) -> f64 {
+    let dx = left.ecef_x_m - right.ecef_x_m;
+    let dy = left.ecef_y_m - right.ecef_y_m;
+    let dz = left.ecef_z_m - right.ecef_z_m;
+    (dx * dx + dy * dy + dz * dz).sqrt()
+}
+
+fn raim_fault_detection_from_separation(
+    separation: RaimSolutionSeparation,
+    threshold_m: f64,
+) -> RaimFaultDetection {
+    if separation.separation_m > threshold_m {
+        RaimFaultDetection::fault_detected(
+            separation.suspect_sat,
+            separation.separation_m,
+            threshold_m,
+        )
+    } else {
+        RaimFaultDetection::consistent(separation.separation_m, threshold_m)
+    }
 }
 
 fn max_solution_separation(
