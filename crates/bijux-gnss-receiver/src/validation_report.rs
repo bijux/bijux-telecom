@@ -2,6 +2,11 @@
 
 use crate::api::ReceiverConfig;
 use crate::api::TrackingResult;
+use crate::pipeline::observation_validation::{
+    summarize_carrier_smoothed_code, validate_carrier_smoothed_code_from_artifacts,
+    CarrierSmoothedCodeValidationReport,
+};
+use crate::pipeline::observations::ObservationPipelineArtifacts;
 use crate::rtk::status::{
     apply_downgrade_policy, evaluate_prerequisites, support_status_matrix, AdvancedMaturity,
     AdvancedMode, AdvancedPrerequisites, AdvancedRefusalClass, AdvancedSolutionClaim,
@@ -359,6 +364,8 @@ pub struct ValidationReport {
     pub geometry_free: GeometryFreeReport,
     /// Melbourne-Wubbena behavior summary for supported dual-frequency pairs.
     pub melbourne_wubbena: MelbourneWubbenaReport,
+    /// Carrier-smoothed code behavior summary for Hatch-smoothed pseudorange arcs.
+    pub carrier_smoothed_code: CarrierSmoothedCodeValidationReport,
     /// PPP readiness report.
     pub ppp_readiness: PppReadinessReport,
     /// Scientific policy used when classifying outputs.
@@ -409,11 +416,90 @@ pub fn build_validation_report(
     )
 }
 
+/// Build the validation report for a run from observation artifacts that preserve raw residuals.
+#[allow(clippy::too_many_arguments)]
+pub fn build_validation_report_from_observation_artifacts(
+    tracks: &[TrackingResult],
+    observation_artifacts: &ObservationPipelineArtifacts,
+    solutions: &[NavSolutionEpoch],
+    reference: &[ValidationReferenceEpoch],
+    sample_rate_hz: f64,
+    products_ok: bool,
+    product_fallbacks: Vec<String>,
+    science_policy: ValidationSciencePolicy,
+) -> Result<ValidationReport, bijux_gnss_core::api::InputError> {
+    build_validation_report_from_observation_artifacts_with_budgets(
+        tracks,
+        observation_artifacts,
+        solutions,
+        reference,
+        sample_rate_hz,
+        products_ok,
+        product_fallbacks,
+        science_policy,
+        ValidationBudgets::default(),
+    )
+}
+
 /// Build the validation report for a run with explicit validation budgets.
 #[allow(clippy::too_many_arguments)]
 pub fn build_validation_report_with_budgets(
     tracks: &[TrackingResult],
     obs: &[ObsEpoch],
+    solutions: &[NavSolutionEpoch],
+    reference: &[ValidationReferenceEpoch],
+    sample_rate_hz: f64,
+    products_ok: bool,
+    product_fallbacks: Vec<String>,
+    science_policy: ValidationSciencePolicy,
+    budgets: ValidationBudgets,
+) -> Result<ValidationReport, bijux_gnss_core::api::InputError> {
+    build_validation_report_with_observation_context(
+        tracks,
+        obs,
+        None,
+        solutions,
+        reference,
+        sample_rate_hz,
+        products_ok,
+        product_fallbacks,
+        science_policy,
+        budgets,
+    )
+}
+
+/// Build the validation report for a run from observation artifacts with explicit validation budgets.
+#[allow(clippy::too_many_arguments)]
+pub fn build_validation_report_from_observation_artifacts_with_budgets(
+    tracks: &[TrackingResult],
+    observation_artifacts: &ObservationPipelineArtifacts,
+    solutions: &[NavSolutionEpoch],
+    reference: &[ValidationReferenceEpoch],
+    sample_rate_hz: f64,
+    products_ok: bool,
+    product_fallbacks: Vec<String>,
+    science_policy: ValidationSciencePolicy,
+    budgets: ValidationBudgets,
+) -> Result<ValidationReport, bijux_gnss_core::api::InputError> {
+    build_validation_report_with_observation_context(
+        tracks,
+        &observation_artifacts.epochs,
+        Some(observation_artifacts),
+        solutions,
+        reference,
+        sample_rate_hz,
+        products_ok,
+        product_fallbacks,
+        science_policy,
+        budgets,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_validation_report_with_observation_context(
+    tracks: &[TrackingResult],
+    obs: &[ObsEpoch],
+    observation_artifacts: Option<&ObservationPipelineArtifacts>,
     solutions: &[NavSolutionEpoch],
     reference: &[ValidationReferenceEpoch],
     sample_rate_hz: f64,
@@ -543,6 +629,9 @@ pub fn build_validation_report_with_budgets(
     let dual_frequency_observations = check_dual_frequency_observations(obs);
     let geometry_free = geometry_free_report(obs, &dual_frequency_observations);
     let melbourne_wubbena = melbourne_wubbena_report(obs, &dual_frequency_observations);
+    let carrier_smoothed_code = observation_artifacts
+        .map(validate_carrier_smoothed_code_from_artifacts)
+        .unwrap_or_else(|| summarize_carrier_smoothed_code(obs));
     let multi_freq_present = dual_frequency_observations.observed_pairs > 0;
     let combinations_valid = dual_frequency_combinations_valid(obs, &dual_frequency_observations);
     let support_matrix = support_status_matrix();
@@ -634,6 +723,7 @@ pub fn build_validation_report_with_budgets(
         dual_frequency_observations,
         geometry_free,
         melbourne_wubbena,
+        carrier_smoothed_code,
         ppp_readiness: PppReadinessReport {
             multi_freq_present,
             combinations_valid,
@@ -1583,6 +1673,34 @@ mod tests {
     }
 
     #[test]
+    fn validation_report_surfaces_carrier_smoothed_code_summary_without_raw_residuals() {
+        let report = build_validation_report(
+            &[],
+            &[
+                dual_frequency_epoch(43, vec![carrier_smoothed_code_satellite(1, false)]),
+                dual_frequency_epoch(44, vec![carrier_smoothed_code_satellite(6, false)]),
+                dual_frequency_epoch(45, vec![carrier_smoothed_code_satellite(1, true)]),
+            ],
+            &[fixture_solution(43, 1.0, 0.5, 4)],
+            &[],
+            1.0,
+            false,
+            Vec::new(),
+            ValidationSciencePolicy::default(),
+        )
+        .expect("validation report");
+
+        assert_eq!(report.carrier_smoothed_code.observations, 3);
+        assert_eq!(report.carrier_smoothed_code.accepted_observations, 3);
+        assert_eq!(report.carrier_smoothed_code.smoothed_observations, 3);
+        assert_eq!(report.carrier_smoothed_code.cycle_slip_observations, 1);
+        assert_eq!(report.carrier_smoothed_code.slip_reset_observations, 1);
+        assert_eq!(report.carrier_smoothed_code.hidden_slip_observations, 0);
+        assert_eq!(report.carrier_smoothed_code.improvement_verified, None);
+        assert_eq!(report.carrier_smoothed_code.slip_visibility_verified, Some(true));
+    }
+
+    #[test]
     fn validation_report_summarizes_geometry_free_dynamics() {
         let report = build_validation_report(
             &[],
@@ -1726,10 +1844,7 @@ mod tests {
         assert_eq!(report.melbourne_wubbena.nominal, 1);
         assert_eq!(report.melbourne_wubbena.wide_lane_slip_suspects, 1);
         assert!(
-            report
-                .melbourne_wubbena
-                .max_abs_delta_wide_lane_cycles
-                .expect("max wide-lane delta")
+            report.melbourne_wubbena.max_abs_delta_wide_lane_cycles.expect("max wide-lane delta")
                 >= 0.5
         );
     }
@@ -1891,6 +2006,14 @@ mod tests {
         let mut satellite = dual_frequency_satellite(band, code, true, true);
         let wavelength_m = 299_792_458.0 / satellite.metadata.signal.carrier_hz.value();
         satellite.carrier_phase_cycles = Cycles(phase_m / wavelength_m);
+        satellite
+    }
+
+    fn carrier_smoothed_code_satellite(smoothing_age: u32, cycle_slip: bool) -> ObsSatellite {
+        let mut satellite = dual_frequency_satellite(SignalBand::L1, SignalCode::Ca, true, true);
+        satellite.lock_flags.cycle_slip = cycle_slip;
+        satellite.metadata.smoothing_window = 8;
+        satellite.metadata.smoothing_age = smoothing_age;
         satellite
     }
 

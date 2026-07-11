@@ -37,6 +37,11 @@ pub use crate::pipeline::doppler::{carrier_hz_from_doppler_hz, doppler_hz_from_c
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use crate::pipeline::navigation::{EkfState, Navigation, NavigationEngine};
+/// Carrier-smoothed code validation helpers.
+pub use crate::pipeline::observation_validation::{
+    summarize_carrier_smoothed_code, validate_carrier_smoothed_code,
+    validate_carrier_smoothed_code_from_artifacts, CarrierSmoothedCodeValidationReport,
+};
 /// Observation-building helpers.
 pub use crate::pipeline::observations::{
     observation_artifacts_from_tracking_results,
@@ -107,11 +112,13 @@ pub use crate::sim::synthetic as sim;
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use crate::validation_report::{
-    build_validation_report, build_validation_report_with_budgets, check_time_consistency,
-    ConvergenceReport, DiagnosticPartitionReport, FixTimelineEntry, NavIntegrityClass,
-    NavIntegrityReport, NavResidualReport, PppReadinessReport, ReferencePositionErrorEpoch,
-    TimeConsistencyReport, ValidationAssumptionReport, ValidationBudgets, ValidationErrorStats,
-    ValidationReport, ValidationSciencePolicy,
+    build_validation_report, build_validation_report_from_observation_artifacts,
+    build_validation_report_from_observation_artifacts_with_budgets,
+    build_validation_report_with_budgets, check_time_consistency, ConvergenceReport,
+    DiagnosticPartitionReport, FixTimelineEntry, NavIntegrityClass, NavIntegrityReport,
+    NavResidualReport, PppReadinessReport, ReferencePositionErrorEpoch, TimeConsistencyReport,
+    ValidationAssumptionReport, ValidationBudgets, ValidationErrorStats, ValidationReport,
+    ValidationSciencePolicy,
 };
 
 /// Artifacts produced by a receiver pipeline run.

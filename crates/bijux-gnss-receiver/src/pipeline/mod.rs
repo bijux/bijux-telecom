@@ -10,6 +10,7 @@ pub mod doppler;
 pub mod hatch;
 #[cfg(feature = "nav")]
 pub mod navigation;
+pub mod observation_validation;
 pub mod observations;
 pub mod tracking;
 

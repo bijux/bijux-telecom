@@ -14,9 +14,12 @@ pub use bijux_gnss_receiver::api::core::{lla_to_ecef, stats, StatsSummary};
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use bijux_gnss_receiver::api::{
-    build_validation_report, build_validation_report_with_budgets, check_time_consistency,
-    ConvergenceReport, FixTimelineEntry, NavResidualReport, PppReadinessReport,
-    TimeConsistencyReport, ValidationBudgets, ValidationErrorStats, ValidationReport,
+    build_validation_report, build_validation_report_from_observation_artifacts,
+    build_validation_report_from_observation_artifacts_with_budgets,
+    build_validation_report_with_budgets, check_time_consistency,
+    CarrierSmoothedCodeValidationReport, ConvergenceReport, FixTimelineEntry, NavResidualReport,
+    PppReadinessReport, TimeConsistencyReport, ValidationBudgets, ValidationErrorStats,
+    ValidationReport,
 };
 
 /// Receiver API re-exports for CLI convenience.
