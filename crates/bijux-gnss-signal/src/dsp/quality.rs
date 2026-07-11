@@ -71,10 +71,9 @@ struct ClippingProfile {
 impl ClippingProfile {
     fn from_raw_iq_metadata(metadata: &RawIqMetadata) -> Option<Self> {
         match metadata.format {
-            IqSampleFormat::Iq8 => Some(Self {
-                negative_rail: -128.0 * I8_SCALE,
-                positive_rail: 127.0 * I8_SCALE,
-            }),
+            IqSampleFormat::Iq8 => {
+                Some(Self { negative_rail: -128.0 * I8_SCALE, positive_rail: 127.0 * I8_SCALE })
+            }
             IqSampleFormat::Iq16Le => Some(Self {
                 negative_rail: -32768.0 * I16_SCALE,
                 positive_rail: 32767.0 * I16_SCALE,
@@ -143,63 +142,35 @@ impl IqFrontEndAnalyzer {
         let count = self.sample_count as f64;
         let i_mean = if self.sample_count == 0 { 0.0 } else { self.sum_i / count };
         let q_mean = if self.sample_count == 0 { 0.0 } else { self.sum_q / count };
-        let i_power = if self.sample_count == 0 {
-            0.0
-        } else {
-            self.sum_i_power / count
-        };
-        let q_power = if self.sample_count == 0 {
-            0.0
-        } else {
-            self.sum_q_power / count
-        };
+        let i_power = if self.sample_count == 0 { 0.0 } else { self.sum_i_power / count };
+        let q_power = if self.sample_count == 0 { 0.0 } else { self.sum_q_power / count };
         let iq_power_ratio = iq_power_ratio(i_power, q_power);
         let power_imbalance_warning = power_imbalance_warning(i_power, q_power);
-        let (i_variance, q_variance) =
-            centered_branch_variances(i_mean, q_mean, i_power, q_power);
-        let quadrature_error_deg = quadrature_error_deg(
-            self.sample_count,
-            i_mean,
-            q_mean,
-            i_power,
-            q_power,
-            self.sum_iq,
-        );
+        let (i_variance, q_variance) = centered_branch_variances(i_mean, q_mean, i_power, q_power);
+        let quadrature_error_deg =
+            quadrature_error_deg(self.sample_count, i_mean, q_mean, i_power, q_power, self.sum_iq);
         let quadrature_error_warning = quadrature_error_deg
             .map(|error_deg| error_deg.abs() > QUADRATURE_WARNING_LIMIT_DEG)
             .unwrap_or(false);
-        let clipping_pct = clipping_pct(
-            self.sample_count,
-            self.clipped_sample_count,
-            self.clipping_profile,
-        );
-        let clipping_warning = clipping_pct
-            .map(|pct| pct > CLIPPING_PRECISION_REFUSAL_LIMIT_PCT)
-            .unwrap_or(false);
+        let clipping_pct =
+            clipping_pct(self.sample_count, self.clipped_sample_count, self.clipping_profile);
+        let clipping_warning =
+            clipping_pct.map(|pct| pct > CLIPPING_PRECISION_REFUSAL_LIMIT_PCT).unwrap_or(false);
         let centered_rms = (i_variance + q_variance).sqrt();
         let zero_signal_detected = centered_rms <= ZERO_SIGNAL_CENTERED_RMS_EPSILON;
         let zero_signal_reason = zero_signal_detected.then(|| {
-            format!(
-                "centered RMS {:.6e} indicates no varying signal energy",
-                centered_rms
-            )
+            format!("centered RMS {:.6e} indicates no varying signal energy", centered_rms)
         });
-        let clipping_precision_refusal_reason = clipping_pct
-            .filter(|pct| *pct > CLIPPING_PRECISION_REFUSAL_LIMIT_PCT)
-            .map(|pct| {
+        let clipping_precision_refusal_reason =
+            clipping_pct.filter(|pct| *pct > CLIPPING_PRECISION_REFUSAL_LIMIT_PCT).map(|pct| {
                 format!(
                     "front-end clipping {:.3}% exceeds the {:.3}% precision threshold",
                     pct, CLIPPING_PRECISION_REFUSAL_LIMIT_PCT
                 )
             });
-        let precision_claims_refused_reason = zero_signal_reason
-            .clone()
-            .or(clipping_precision_refusal_reason);
-        let rms = if self.sample_count == 0 {
-            0.0
-        } else {
-            (self.sum_power / count).sqrt()
-        };
+        let precision_claims_refused_reason =
+            zero_signal_reason.clone().or(clipping_precision_refusal_reason);
+        let rms = if self.sample_count == 0 { 0.0 } else { (self.sum_power / count).sqrt() };
         let dc_magnitude = (i_mean * i_mean + q_mean * q_mean).sqrt();
         let dc_imbalance = if rms > 0.0 { dc_magnitude / rms } else { 0.0 };
         IqFrontEndMetrics {
@@ -365,8 +336,8 @@ fn centered_power_quantile(
 mod tests {
     use super::{
         estimate_iq_noise_floor_db, estimate_iq_noise_floor_db_from_metrics,
-        measure_iq_front_end_metrics, measure_raw_iq_front_end_metrics,
-        remove_dc_offset_in_place, IqFrontEndAnalyzer,
+        measure_iq_front_end_metrics, measure_raw_iq_front_end_metrics, remove_dc_offset_in_place,
+        IqFrontEndAnalyzer,
     };
     use crate::raw_iq::{IqSampleFormat, RawIqMetadata};
     use bijux_gnss_core::api::Sample;
@@ -558,12 +529,10 @@ mod tests {
         assert_eq!(metrics.clipping_pct, Some(25.0));
         assert!(metrics.clipping_warning);
         assert!(!metrics.precision_claims_allowed);
-        assert!(
-            metrics
-                .precision_claims_refused_reason
-                .expect("precision refusal reason")
-                .contains("front-end clipping 25.000% exceeds")
-        );
+        assert!(metrics
+            .precision_claims_refused_reason
+            .expect("precision refusal reason")
+            .contains("front-end clipping 25.000% exceeds"));
         assert!(!metrics.zero_signal_detected);
         assert_eq!(metrics.zero_signal_reason, None);
     }
@@ -600,21 +569,17 @@ mod tests {
 
         approx_eq(metrics.centered_rms, 0.0);
         assert!(metrics.zero_signal_detected);
-        assert!(
-            metrics
-                .zero_signal_reason
-                .as_deref()
-                .expect("zero signal reason")
-                .contains("no varying signal energy")
-        );
+        assert!(metrics
+            .zero_signal_reason
+            .as_deref()
+            .expect("zero signal reason")
+            .contains("no varying signal energy"));
         assert!(!metrics.precision_claims_allowed);
-        assert!(
-            metrics
-                .precision_claims_refused_reason
-                .as_deref()
-                .expect("precision refusal reason")
-                .contains("no varying signal energy")
-        );
+        assert!(metrics
+            .precision_claims_refused_reason
+            .as_deref()
+            .expect("precision refusal reason")
+            .contains("no varying signal energy"));
     }
 
     #[test]

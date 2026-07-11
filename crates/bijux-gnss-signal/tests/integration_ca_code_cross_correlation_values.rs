@@ -11,8 +11,7 @@ fn ca_code_cross_correlation_values_match_expected_set_for_all_distinct_prns() {
             let summary = ca_code_cross_correlation_summary(Prn(left_prn), Prn(right_prn))
                 .expect("valid PRN pair");
             assert_eq!(
-                summary.unique_values,
-                EXPECTED_CROSS_CORRELATION_VALUES,
+                summary.unique_values, EXPECTED_CROSS_CORRELATION_VALUES,
                 "cross-correlation value set mismatch for PRNs {left_prn} and {right_prn}"
             );
         }

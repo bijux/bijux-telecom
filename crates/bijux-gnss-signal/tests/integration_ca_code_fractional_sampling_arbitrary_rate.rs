@@ -24,8 +24,8 @@ fn sampled_ca_code_matches_analytic_chip_phase_model_at_arbitrary_rate() {
         .expect("valid arbitrary-rate sampling");
 
         for (sample_index, sample) in samples.iter().enumerate() {
-            let chip_phase =
-                start_chip_phase + sample_index as f64 * GPS_L1_CA_CODE_RATE_HZ / ARBITRARY_SAMPLE_RATE_HZ;
+            let chip_phase = start_chip_phase
+                + sample_index as f64 * GPS_L1_CA_CODE_RATE_HZ / ARBITRARY_SAMPLE_RATE_HZ;
             let wrapped = chip_phase.rem_euclid(CA_CODE_PERIOD_CHIPS as f64);
             let expected = chips[wrapped.floor() as usize] as f32;
             assert!(
