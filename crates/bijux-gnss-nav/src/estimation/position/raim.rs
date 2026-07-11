@@ -37,3 +37,17 @@ impl RaimFaultDetection {
         }
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RaimFaultExclusion {
+    pub excluded_sat: SatId,
+    pub pre_exclusion_rms_m: f64,
+    pub post_exclusion_rms_m: f64,
+    pub solution_shift_m: f64,
+}
+
+impl RaimFaultExclusion {
+    pub fn improved(self) -> bool {
+        self.post_exclusion_rms_m < self.pre_exclusion_rms_m
+    }
+}

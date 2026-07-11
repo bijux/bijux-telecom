@@ -29,4 +29,6 @@ pub use crate::estimation::position::solver::{
     position_dops_from_satellite_positions, PositionDops, PositionSolveRefusal,
     PositionSolveRefusalKind,
 };
-pub use crate::estimation::position::raim::{RaimFaultDetection, RaimFaultDetectionStatus};
+pub use crate::estimation::position::raim::{
+    RaimFaultDetection, RaimFaultDetectionStatus, RaimFaultExclusion,
+};
