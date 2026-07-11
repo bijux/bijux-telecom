@@ -8,20 +8,25 @@ use crate::orbits::gps::{
 };
 
 use crate::formats::clk::ClkProvider;
-use crate::formats::sp3::Sp3Provider;
+use crate::formats::sp3::{Sp3InterpolationSummary, Sp3Provider};
 
 #[derive(Debug, Clone)]
 pub struct ProductDiagnostics {
     pub fallbacks: Vec<String>,
+    pub sp3_interpolation_summary: Option<Sp3InterpolationSummary>,
 }
 
 impl ProductDiagnostics {
     pub fn new() -> Self {
-        Self { fallbacks: Vec::new() }
+        Self { fallbacks: Vec::new(), sp3_interpolation_summary: None }
     }
 
     pub fn fallback(&mut self, msg: impl Into<String>) {
         self.fallbacks.push(msg.into());
+    }
+
+    pub fn precise_orbit_interpolation(&mut self, summary: Sp3InterpolationSummary) {
+        self.sp3_interpolation_summary = Some(summary);
     }
 }
 
@@ -132,6 +137,9 @@ impl ProductsProvider for Products {
             if let Some((start, end)) = sp3.coverage_s(sat) {
                 if t_s >= start && t_s <= end {
                     if let Some(state) = sp3.sat_state(sat, t_s) {
+                        if let Some(summary) = sp3.interpolation_summary(sat) {
+                            diag.precise_orbit_interpolation(summary);
+                        }
                         return Some(state);
                     }
                 } else {
