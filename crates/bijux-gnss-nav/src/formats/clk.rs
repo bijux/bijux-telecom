@@ -70,25 +70,7 @@ impl ClkProvider {
         if list.len() == 1 {
             return Some(list[0].bias_s);
         }
-        let mut before = None;
-        let mut after = None;
-        for rec in list {
-            if rec.epoch_s <= t_s {
-                before = Some(rec);
-            }
-            if rec.epoch_s >= t_s {
-                after = Some(rec);
-                break;
-            }
-        }
-        match (before, after) {
-            (Some(b), Some(a)) if (a.epoch_s - b.epoch_s).abs() > 0.0 => {
-                let w = (t_s - b.epoch_s) / (a.epoch_s - b.epoch_s);
-                Some(b.bias_s + w * (a.bias_s - b.bias_s))
-            }
-            (Some(b), Some(_)) => Some(b.bias_s),
-            _ => None,
-        }
+        interpolate_bias_s(list, t_s)
     }
 
     pub fn sigma_s(&self, sat: SatId, t_s: f64) -> Option<f64> {
@@ -100,29 +82,7 @@ impl ClkProvider {
         if list.len() == 1 {
             return list[0].sigma_s;
         }
-        let mut before = None;
-        let mut after = None;
-        for rec in list {
-            if rec.epoch_s <= t_s {
-                before = Some(rec);
-            }
-            if rec.epoch_s >= t_s {
-                after = Some(rec);
-                break;
-            }
-        }
-        match (before, after) {
-            (Some(b), Some(a))
-                if (a.epoch_s - b.epoch_s).abs() > 0.0
-                    && b.sigma_s.is_some()
-                    && a.sigma_s.is_some() =>
-            {
-                let w = (t_s - b.epoch_s) / (a.epoch_s - b.epoch_s);
-                Some(b.sigma_s? + w * (a.sigma_s? - b.sigma_s?))
-            }
-            (Some(b), Some(_)) => b.sigma_s,
-            _ => None,
-        }
+        interpolate_sigma_s(list, t_s)
     }
 }
 
@@ -167,6 +127,82 @@ fn normalize_records(records: &mut BTreeMap<SatId, Vec<ClkRecord>>) {
         }
         sat_records.dedup_by(|left, right| (left.epoch_s - right.epoch_s).abs() <= f64::EPSILON);
     }
+}
+
+fn interpolate_bias_s(records: &[ClkRecord], t_s: f64) -> Option<f64> {
+    let first_epoch_s = records.first()?.epoch_s;
+    let last_epoch_s = records.last()?.epoch_s;
+    if t_s < first_epoch_s || t_s > last_epoch_s {
+        return None;
+    }
+
+    let support = interpolation_support_records(records, t_s, None);
+    if support.is_empty() {
+        return None;
+    }
+
+    lagrange_scalar(&support, t_s, |record| Some(record.bias_s))
+}
+
+fn interpolate_sigma_s(records: &[ClkRecord], t_s: f64) -> Option<f64> {
+    let first_epoch_s = records.first()?.epoch_s;
+    let last_epoch_s = records.last()?.epoch_s;
+    if t_s < first_epoch_s || t_s > last_epoch_s {
+        return None;
+    }
+
+    let support = interpolation_support_records(records, t_s, None);
+    if support.is_empty() {
+        return None;
+    }
+
+    lagrange_scalar(&support, t_s, |record| record.sigma_s)
+}
+
+fn interpolation_support_records<'a>(
+    records: &'a [ClkRecord],
+    t_s: f64,
+    skip_index: Option<usize>,
+) -> Vec<&'a ClkRecord> {
+    let mut support = records
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| skip_index != Some(*index))
+        .collect::<Vec<_>>();
+    support.sort_by(|(left_index, left), (right_index, right)| {
+        let left_dt = (left.epoch_s - t_s).abs();
+        let right_dt = (right.epoch_s - t_s).abs();
+        left_dt
+            .total_cmp(&right_dt)
+            .then_with(|| left_index.cmp(right_index))
+    });
+    support.truncate(4);
+    support.sort_by(|(_, left), (_, right)| left.epoch_s.total_cmp(&right.epoch_s));
+    support.into_iter().map(|(_, record)| record).collect()
+}
+
+fn lagrange_scalar(
+    support: &[&ClkRecord],
+    t_s: f64,
+    value: impl Fn(&ClkRecord) -> Option<f64>,
+) -> Option<f64> {
+    let mut result = 0.0;
+    for (index, record) in support.iter().enumerate() {
+        let value = value(record)?;
+        let mut basis = 1.0;
+        for (other_index, other) in support.iter().enumerate() {
+            if index == other_index {
+                continue;
+            }
+            let denominator = record.epoch_s - other.epoch_s;
+            if denominator.abs() <= f64::EPSILON {
+                return None;
+            }
+            basis *= (t_s - other.epoch_s) / denominator;
+        }
+        result += basis * value;
+    }
+    Some(result)
 }
 
 fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
