@@ -555,6 +555,7 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                         &baseline_path,
                         false,
                     )?;
+                    validate_jsonl_schema(&schema_path("rtk_sd_v1.schema.json"), &sd_path, false)?;
                     validate_jsonl_schema(
                         &schema_path("rtk_baseline_quality_v1.schema.json"),
                         &baseline_quality_path,
@@ -3346,6 +3347,7 @@ mod diagnostics_tests {
         export_bundle_report, machine_catalog_report, medium_gate_report, nav_reference_week,
         operator_status_report, replay_audit_report, verify_repro_bundle, AdvancedGateMode,
     };
+    use crate::schema_path;
     use std::fs;
     use std::path::PathBuf;
 
@@ -3685,5 +3687,24 @@ mod diagnostics_tests {
             })
             .unwrap_or(false);
         assert!(has_compare);
+    }
+
+    #[test]
+    fn rtk_single_difference_schema_requires_receiver_provenance() {
+        let schema = fs::read_to_string(schema_path("rtk_sd_v1.schema.json")).expect("schema");
+        let schema: serde_json::Value = serde_json::from_str(&schema).expect("schema json");
+        let required = schema
+            .get("definitions")
+            .and_then(|defs| defs.get("RtkSingleDifference"))
+            .and_then(|payload| payload.get("required"))
+            .and_then(|required| required.as_array())
+            .expect("required fields");
+        let required_fields: Vec<&str> =
+            required.iter().filter_map(|field| field.as_str()).collect();
+
+        assert!(required_fields.contains(&"rover_pseudorange_m"));
+        assert!(required_fields.contains(&"rover_signal_timing"));
+        assert!(required_fields.contains(&"base_pseudorange_m"));
+        assert!(required_fields.contains(&"base_signal_timing"));
     }
 }
