@@ -520,14 +520,33 @@ impl Navigation {
         );
 
         let mut raim_explain_reasons = Vec::new();
+        let mut resolved_by_raim_exclusion = false;
+        if let Some(raim_fault_exclusion) = solution.raim_fault_exclusion {
+            raim_explain_reasons.push("raim_fault_excluded".to_string());
+            raim_explain_reasons
+                .push(format!("raim_excluded_prn={}", raim_fault_exclusion.excluded_sat.prn));
+            resolved_by_raim_exclusion = raim_fault_exclusion.improved();
+            self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Info,
+                "NAV_RAIM_SEPARATION",
+                format!(
+                    "raim excluded PRN {}: residual rms {:.2} m -> {:.2} m",
+                    raim_fault_exclusion.excluded_sat.prn,
+                    raim_fault_exclusion.pre_exclusion_rms_m,
+                    raim_fault_exclusion.post_exclusion_rms_m
+                ),
+            ));
+        }
         if let Some(raim_fault_detection) = solution.raim_fault_detection {
             if raim_fault_detection.status == bijux_gnss_nav::RaimFaultDetectionStatus::FaultDetected
             {
-                nav_epoch.status = SolutionStatus::Degraded;
                 raim_explain_reasons.push("raim_fault_detected".to_string());
                 if let Some(suspect_sat) = raim_fault_detection.suspect_sat {
                     let suspect_reason = format!("raim_suspect_prn={}", suspect_sat.prn);
                     raim_explain_reasons.push(suspect_reason);
+                    if !resolved_by_raim_exclusion {
+                        nav_epoch.status = SolutionStatus::Degraded;
+                    }
                     self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
                         bijux_gnss_core::api::DiagnosticSeverity::Warning,
                         "NAV_RAIM_SEPARATION",
@@ -1838,7 +1857,7 @@ mod tests {
 
         let solution = nav.solve_epoch(&obs, &ephs).expect("raim-detected solution");
 
-        assert_eq!(solution.status, SolutionStatus::Degraded);
+        assert_ne!(solution.status, SolutionStatus::Invalid);
         assert!(solution.valid);
         assert!(solution
             .explain_reasons
@@ -1847,7 +1866,15 @@ mod tests {
         assert!(solution
             .explain_reasons
             .iter()
+            .any(|reason| reason == "raim_fault_excluded"));
+        assert!(solution
+            .explain_reasons
+            .iter()
             .any(|reason| reason == "raim_suspect_prn=6"));
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "raim_excluded_prn=6"));
         assert!(solution.residuals.iter().any(|residual| {
             residual.sat == bad_sat
                 && residual.rejected
