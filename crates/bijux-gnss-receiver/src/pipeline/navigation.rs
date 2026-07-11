@@ -519,7 +519,28 @@ impl Navigation {
             false,
         );
 
-        if let Some(sep) = solution.separation_max_m {
+        let mut raim_explain_reasons = Vec::new();
+        if let Some(raim_fault_detection) = solution.raim_fault_detection {
+            if raim_fault_detection.status == bijux_gnss_nav::RaimFaultDetectionStatus::FaultDetected
+            {
+                nav_epoch.status = SolutionStatus::Degraded;
+                raim_explain_reasons.push("raim_fault_detected".to_string());
+                if let Some(suspect_sat) = raim_fault_detection.suspect_sat {
+                    let suspect_reason = format!("raim_suspect_prn={}", suspect_sat.prn);
+                    raim_explain_reasons.push(suspect_reason);
+                    self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
+                        bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                        "NAV_RAIM_SEPARATION",
+                        format!(
+                            "raim fault detected for PRN {}: {:.2} m > {:.2} m",
+                            suspect_sat.prn,
+                            raim_fault_detection.max_solution_separation_m,
+                            raim_fault_detection.threshold_m
+                        ),
+                    ));
+                }
+            }
+        } else if let Some(sep) = solution.separation_max_m {
             if sep > self.solver.separation_gate_m {
                 nav_epoch.status = SolutionStatus::Degraded;
                 self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
@@ -587,6 +608,11 @@ impl Navigation {
             klobuchar,
             self.config.tropo_enable,
         );
+        for reason in raim_explain_reasons {
+            if !nav_epoch.explain_reasons.iter().any(|existing| existing == &reason) {
+                nav_epoch.explain_reasons.push(reason);
+            }
+        }
         nav_epoch.stability_signature = nav_output_stability_signature(&nav_epoch);
         if let Some(sigma_h) = nav_epoch.sigma_h_m {
             nav_epoch.integrity_hpl_m = Some(sigma_h.0 * 6.0);
@@ -1779,6 +1805,54 @@ mod tests {
         assert!(corrected.valid);
         assert!(corrected_error_m < 5.0);
         assert!(uncorrected_error_m > corrected_error_m + 3.0);
+    }
+
+    #[test]
+    fn synthetic_solution_surfaces_raim_fault_detection() {
+        let config = ReceiverPipelineConfig::default();
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+        let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
+        let t_rx_s = 100_075.0;
+        let ephs = vec![
+            make_eph(1, 0.0, 0.0, t_rx_s),
+            make_eph(2, 0.8, 0.9, t_rx_s),
+            make_eph(3, 1.6, 1.8, t_rx_s),
+            make_eph(4, 2.4, 2.7, t_rx_s),
+            make_eph(5, 3.2, 3.6, t_rx_s),
+            make_eph(6, 4.0, 4.5, t_rx_s),
+        ];
+        let mut obs = make_obs_epoch_for_solution(21, t_rx_s, truth, &ephs);
+        let bad_sat = SatId { constellation: Constellation::Gps, prn: 6 };
+        let pseudorange_bias_m = 1_000.0;
+        let signal_travel_time_bias_s = pseudorange_bias_m / 299_792_458.0;
+        let bad_observation = obs
+            .sats
+            .iter_mut()
+            .find(|sat| sat.signal_id.sat == bad_sat)
+            .expect("bad-satellite synthetic observation");
+        bad_observation.pseudorange_m.0 += pseudorange_bias_m;
+        if let Some(timing) = &mut bad_observation.timing {
+            timing.signal_travel_time_s.0 += signal_travel_time_bias_s;
+            timing.transmit_gps_time = timing.transmit_gps_time.offset_seconds(-signal_travel_time_bias_s);
+        }
+
+        let solution = nav.solve_epoch(&obs, &ephs).expect("raim-detected solution");
+
+        assert_eq!(solution.status, SolutionStatus::Degraded);
+        assert!(solution.valid);
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "raim_fault_detected"));
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "raim_suspect_prn=6"));
+        assert!(solution.residuals.iter().any(|residual| {
+            residual.sat == bad_sat
+                && residual.rejected
+                && residual.reject_reason == Some(MeasurementRejectReason::Outlier)
+        }));
     }
 
     #[test]
