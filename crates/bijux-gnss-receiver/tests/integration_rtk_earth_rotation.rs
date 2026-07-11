@@ -7,6 +7,7 @@ use bijux_gnss_core::api::{
 use bijux_gnss_nav::api::{geodetic_to_ecef, sat_state_gps_l1ca_at_receive_time, GpsEphemeris};
 use bijux_gnss_receiver::api::{
     baseline_from_ecef, build_dd, build_sd, choose_ref_sat, dd_residual_metrics,
+    sd_residual_metrics,
 };
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
@@ -188,5 +189,63 @@ fn rtk_residual_metrics_use_carried_satellite_timing() {
     assert!(
         uncorrected_rms_m > timed_rms_m + 1.0e-4,
         "dropping carried timing should measurably worsen DD residuals (timed_rms_m={timed_rms_m:.6}, uncorrected_rms_m={uncorrected_rms_m:.6})"
+    );
+}
+
+#[test]
+fn rtk_single_difference_residuals_use_carried_satellite_timing() {
+    let base = geodetic_to_ecef(37.0, -122.0, 10.0);
+    let rover = geodetic_to_ecef(37.0001, -121.9999, 12.0);
+    let base_ecef_m = [base.0, base.1, base.2];
+    let rover_ecef_m = [rover.0, rover.1, rover.2];
+    let receive_gps_time = GpsTime { week: 2200, tow_s: 345_600.08 };
+    let ephs = vec![
+        make_eph(1, 0.0, 0.0, 345_600.0),
+        make_eph(2, 0.8, 0.9, 345_600.0),
+        make_eph(3, 1.6, 1.8, 345_600.0),
+        make_eph(4, 2.4, 2.7, 345_600.0),
+        make_eph(5, 3.2, 3.6, 345_600.0),
+    ];
+
+    let base_epoch = make_obs_epoch(ReceiverRole::Base, receive_gps_time, base_ecef_m, &ephs);
+    let rover_epoch = make_obs_epoch(ReceiverRole::Rover, receive_gps_time, rover_ecef_m, &ephs);
+    let sd = build_sd(&base_epoch, &rover_epoch);
+    assert!(!sd.is_empty());
+    assert!(sd
+        .iter()
+        .all(|obs| obs.rover_signal_timing.is_some() && obs.base_signal_timing.is_some()));
+
+    let (timed_rms_m, _timed_predicted_m, used_sats) = sd_residual_metrics(
+        &sd,
+        base_ecef_m,
+        rover_ecef_m,
+        &ephs,
+        receive_gps_time.tow_s,
+        receive_gps_time.tow_s,
+    )
+    .expect("timed residual metrics");
+    assert_eq!(used_sats, sd.len());
+
+    let mut uncorrected_sd = sd.clone();
+    for obs in &mut uncorrected_sd {
+        obs.rover_signal_timing = None;
+        obs.base_signal_timing = None;
+        obs.rover_pseudorange_m = 1.0;
+        obs.base_pseudorange_m = 1.0;
+    }
+    let (uncorrected_rms_m, _uncorrected_predicted_m, _) = sd_residual_metrics(
+        &uncorrected_sd,
+        base_ecef_m,
+        rover_ecef_m,
+        &ephs,
+        receive_gps_time.tow_s,
+        receive_gps_time.tow_s,
+    )
+    .expect("uncorrected residual metrics");
+
+    assert!(timed_rms_m < 1.0e-3, "timed SD residuals should be close to truth ({timed_rms_m:.6})");
+    assert!(
+        uncorrected_rms_m > timed_rms_m * 5.0 && uncorrected_rms_m > timed_rms_m + 5.0e-5,
+        "dropping carried timing should measurably worsen SD residuals (timed_rms_m={timed_rms_m:.6}, uncorrected_rms_m={uncorrected_rms_m:.6})"
     );
 }

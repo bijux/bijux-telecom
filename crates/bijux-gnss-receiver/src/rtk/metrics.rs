@@ -1,5 +1,11 @@
 #![allow(missing_docs)]
 
+use bijux_gnss_nav::api::ecef_to_enu;
+
+use super::core::{los_unit, solve_baseline_dd, DdObservation, SdObservation, SolutionSeparation};
+
+const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct JitterSummary {
     pub mean_s: f64,
@@ -181,6 +187,51 @@ pub fn dd_residual_metrics(
     Some((rms_obs, rms_pred, residuals.len()))
 }
 
+pub fn sd_residual_metrics(
+    sd: &[SdObservation],
+    base_ecef_m: [f64; 3],
+    rover_ecef_m: [f64; 3],
+    ephs: &[bijux_gnss_nav::api::GpsEphemeris],
+    base_t_rx_s: f64,
+    rover_t_rx_s: f64,
+) -> Option<(f64, f64, usize)> {
+    if sd.is_empty() {
+        return None;
+    }
+    let mut residuals = Vec::new();
+    let mut predicted_vars = Vec::new();
+    for obs in sd {
+        let eph = ephs.iter().find(|e| e.sat == obs.sig.sat)?;
+        let rover_sat = bijux_gnss_nav::api::sat_state_gps_l1ca_from_observation(
+            eph,
+            rover_t_rx_s,
+            obs.rover_pseudorange_m,
+            obs.rover_signal_timing,
+        );
+        let base_sat = bijux_gnss_nav::api::sat_state_gps_l1ca_from_observation(
+            eph,
+            base_t_rx_s,
+            obs.base_pseudorange_m,
+            obs.base_signal_timing,
+        );
+        let rover_pred = modeled_pseudorange_m(
+            rover_ecef_m,
+            [rover_sat.x_m, rover_sat.y_m, rover_sat.z_m],
+            rover_sat.clock_correction.bias_s,
+        );
+        let base_pred = modeled_pseudorange_m(
+            base_ecef_m,
+            [base_sat.x_m, base_sat.y_m, base_sat.z_m],
+            base_sat.clock_correction.bias_s,
+        );
+        residuals.push(obs.code_m - (rover_pred - base_pred));
+        predicted_vars.push(obs.variance_code.max(1e-6));
+    }
+    let rms_obs = (residuals.iter().map(|v| v * v).sum::<f64>() / residuals.len() as f64).sqrt();
+    let rms_pred = (predicted_vars.iter().sum::<f64>() / predicted_vars.len() as f64).sqrt();
+    Some((rms_obs, rms_pred, residuals.len()))
+}
+
 pub fn solution_separation(
     dd: &[DdObservation],
     base_ecef_m: [f64; 3],
@@ -225,6 +276,18 @@ pub fn apply_fix_hold(mut baseline: BaselineSolution, fixed: bool) -> BaselineSo
     }
     baseline
 }
-use bijux_gnss_nav::api::ecef_to_enu;
 
-use super::core::{los_unit, solve_baseline_dd, DdObservation, SolutionSeparation};
+fn modeled_pseudorange_m(
+    receiver_ecef_m: [f64; 3],
+    sat_ecef_m: [f64; 3],
+    sat_clock_bias_s: f64,
+) -> f64 {
+    geometric_range_m(receiver_ecef_m, sat_ecef_m) - sat_clock_bias_s * SPEED_OF_LIGHT_MPS
+}
+
+fn geometric_range_m(receiver_ecef_m: [f64; 3], sat_ecef_m: [f64; 3]) -> f64 {
+    let dx = receiver_ecef_m[0] - sat_ecef_m[0];
+    let dy = receiver_ecef_m[1] - sat_ecef_m[1];
+    let dz = receiver_ecef_m[2] - sat_ecef_m[2];
+    (dx * dx + dy * dy + dz * dz).sqrt()
+}

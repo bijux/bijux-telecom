@@ -85,7 +85,8 @@ pub use crate::rtk::differencing::{double_difference, single_difference};
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use crate::rtk::metrics::{
     apply_fix_hold, baseline_from_ecef, dd_residual_metrics, enu_to_ecef, jitter_summary,
-    solution_separation, BaselineSolution, JitterSummary, RtkBaselineQuality, RtkPrecision,
+    sd_residual_metrics, solution_separation, BaselineSolution, JitterSummary, RtkBaselineQuality,
+    RtkPrecision,
 };
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
