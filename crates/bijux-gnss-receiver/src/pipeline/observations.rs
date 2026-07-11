@@ -73,12 +73,6 @@ struct CarrierPhaseObservation {
     arc_start_sample_index: u64,
 }
 
-#[derive(Debug, Clone)]
-struct CycleSlipState {
-    last_gf_cycles: f64,
-    initialized: bool,
-}
-
 #[derive(Debug, Clone, Copy)]
 struct PseudorangeUncertaintyModel {
     sigma_m: f64,
@@ -86,7 +80,6 @@ struct PseudorangeUncertaintyModel {
     tracking_jitter_m: f64,
 }
 
-const GEOFREE_SLIP_THRESHOLD_CYCLES: f64 = 0.5;
 const BASE_CARRIER_PHASE_DISCONTINUITY_THRESHOLD_CYCLES: f64 = 0.25;
 const BASE_CARRIER_PHASE_RESIDUAL_THRESHOLD_CYCLES: f64 = 0.15;
 const BASE_DOPPLER_JUMP_THRESHOLD_HZ: f64 = 150.0;
@@ -490,7 +483,6 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
 
     let mut by_epoch: BTreeMap<u64, ObsEpoch> = BTreeMap::new();
     let mut hatch: HashMap<SigId, HatchFilterState> = HashMap::new();
-    let mut slips: HashMap<SigId, CycleSlipState> = HashMap::new();
     let mut raw_snapshots: HashMap<String, RawObservationSnapshot> = HashMap::new();
     let mut diagnostics = Vec::new();
     for track in tracks {
@@ -545,7 +537,6 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
                     raw_snapshots
                         .insert(snapshot_key, raw_observation_snapshot(&sat, sat.pseudorange_m.0));
                     state.clear_arc();
-                    slips.remove(&sat.signal_id);
                     sat.metadata.smoothing_window = hatch_window;
                     sat.metadata.smoothing_age = 0;
                     sat.metadata.smoothing_resets = state.reset_count();
@@ -566,20 +557,6 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
                 if supports_code_carrier_slip_detection && divergence_jump > threshold_m {
                     smoothing_cycle_slip_reason = Some("code_carrier_divergence");
                 }
-                // Geometry-free/Melbourne-Wubbena style placeholder for cycle slip detection.
-                let gf_cycles = sat.carrier_phase_cycles.0 - raw_pseudorange_m / lambda_m;
-                if supports_code_carrier_slip_detection {
-                    if let Some(last_gf_cycles) = slips
-                        .get(&sat.signal_id)
-                        .filter(|slip_state| slip_state.initialized)
-                        .map(|slip_state| slip_state.last_gf_cycles)
-                    {
-                        let delta = gf_cycles - last_gf_cycles;
-                        if delta.abs() > GEOFREE_SLIP_THRESHOLD_CYCLES {
-                            smoothing_cycle_slip_reason.get_or_insert("geometry_free_jump");
-                        }
-                    }
-                }
                 apply_cycle_slip_surface(&mut sat, smoothing_cycle_slip_reason);
                 if sat.lock_flags.cycle_slip {
                     state.clear_arc();
@@ -595,14 +572,6 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
                 sat.metadata.smoothing_window = hatch_window;
                 sat.metadata.smoothing_age = smoothing.smoothing_age_epochs;
                 sat.metadata.smoothing_resets = smoothing.reset_count;
-                if supports_code_carrier_slip_detection {
-                    slips.insert(
-                        sat.signal_id,
-                        CycleSlipState { last_gf_cycles: gf_cycles, initialized: true },
-                    );
-                } else {
-                    slips.remove(&sat.signal_id);
-                }
                 sat.multipath_suspect = divergence_jump > threshold_m * 0.8;
                 sat.error_model = Some(observation_error_model(&sat, divergence_jump));
                 apply_pseudorange_physics_rejection(&mut sat);

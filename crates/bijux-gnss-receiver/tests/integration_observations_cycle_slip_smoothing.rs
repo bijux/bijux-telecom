@@ -130,31 +130,3 @@ fn observations_flag_code_carrier_divergence_cycle_slips() {
         .iter()
         .any(|reason| reason == "code_carrier_divergence"));
 }
-
-#[test]
-fn observations_flag_geometry_free_cycle_slips() {
-    let config = tracking_config();
-    let sat = SatId { constellation: Constellation::Gps, prn: 27 };
-    let report = observations_from_tracking_results(
-        &config,
-        &[observation_track(
-            sat,
-            vec![
-                aligned_tracking_epoch(&config, sat, 70, 10.000, 0.0),
-                aligned_tracking_epoch(&config, sat, 71, 10.125, 0.0),
-                aligned_tracking_epoch(&config, sat, 72, 10.250, 0.00045),
-                aligned_tracking_epoch(&config, sat, 73, 10.375, 0.00045),
-            ],
-        )],
-        10,
-    );
-    let slipped = &report.output[2].sats[0];
-
-    assert!(slipped.lock_flags.cycle_slip, "{slipped:?}");
-    assert_eq!(slipped.metadata.observation_lock_reason.as_deref(), Some("geometry_free_jump"));
-    assert_eq!(slipped.metadata.observation_lock_state, "cycle_slip");
-    assert!(slipped
-        .observation_reject_reasons
-        .iter()
-        .any(|reason| reason == "geometry_free_jump"));
-}
