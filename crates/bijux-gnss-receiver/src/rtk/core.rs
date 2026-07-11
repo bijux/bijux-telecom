@@ -72,7 +72,7 @@ impl RefSatSelector {
     }
 }
 
-type SatKey = bijux_gnss_core::api::SatId;
+type SignalKey = SigId;
 
 impl EpochAligner {
     pub fn new(tolerance_s: f64) -> Self {
@@ -127,8 +127,10 @@ impl EpochAligner {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SdObservation {
     pub sig: SigId,
-    pub pseudorange_m: f64,
-    pub signal_timing: Option<ObsSignalTiming>,
+    pub rover_pseudorange_m: f64,
+    pub rover_signal_timing: Option<ObsSignalTiming>,
+    pub base_pseudorange_m: f64,
+    pub base_signal_timing: Option<ObsSignalTiming>,
     pub code_m: f64,
     pub phase_cycles: f64,
     pub doppler_hz: f64,
@@ -213,13 +215,13 @@ fn ambiguity_id(sat: &ObsSatellite) -> AmbiguityId {
 }
 
 pub fn build_sd(base: &ObsEpoch, rover: &ObsEpoch) -> Vec<SdObservation> {
-    let mut base_map: BTreeMap<SatKey, &ObsSatellite> = BTreeMap::new();
+    let mut base_map: BTreeMap<SignalKey, &ObsSatellite> = BTreeMap::new();
     for sat in &base.sats {
-        base_map.insert(sat.signal_id.sat, sat);
+        base_map.insert(sat.signal_id, sat);
     }
     let mut out = Vec::new();
     for sat in &rover.sats {
-        let key = sat.signal_id.sat;
+        let key = sat.signal_id;
         if let Some(base_sat) = base_map.get(&key) {
             let rover_code_var = if sat.pseudorange_var_m2 > 0.0 {
                 sat.pseudorange_var_m2
@@ -253,8 +255,10 @@ pub fn build_sd(base: &ObsEpoch, rover: &ObsEpoch) -> Vec<SdObservation> {
             let variance_phase = rover_phase_var + base_phase_var;
             out.push(SdObservation {
                 sig: sat.signal_id,
-                pseudorange_m: representative_pseudorange_m(sat, base_sat),
-                signal_timing: representative_signal_timing(sat.timing, base_sat.timing),
+                rover_pseudorange_m: sat.pseudorange_m.0,
+                rover_signal_timing: sat.timing,
+                base_pseudorange_m: base_sat.pseudorange_m.0,
+                base_signal_timing: base_sat.timing,
                 code_m: sat.pseudorange_m.0 - base_sat.pseudorange_m.0,
                 phase_cycles: sat.carrier_phase_cycles.0 - base_sat.carrier_phase_cycles.0,
                 doppler_hz: sat.doppler_hz.0 - base_sat.doppler_hz.0,
@@ -317,10 +321,10 @@ pub fn build_dd(sd: &[SdObservation], ref_sig: SigId) -> Vec<DdObservation> {
         out.push(DdObservation {
             sig: s.sig,
             ref_sig: ref_sd.sig,
-            signal_pseudorange_m: s.pseudorange_m,
-            signal_timing: s.signal_timing,
-            ref_signal_pseudorange_m: ref_sd.pseudorange_m,
-            ref_signal_timing: ref_sd.signal_timing,
+            signal_pseudorange_m: s.base_pseudorange_m,
+            signal_timing: s.base_signal_timing,
+            ref_signal_pseudorange_m: ref_sd.base_pseudorange_m,
+            ref_signal_timing: ref_sd.base_signal_timing,
             code_m: s.code_m - ref_sd.code_m,
             phase_cycles: s.phase_cycles - ref_sd.phase_cycles,
             doppler_hz: s.doppler_hz - ref_sd.doppler_hz,
@@ -366,17 +370,6 @@ pub fn dd_covariance(dd: &DdObservation) -> DdCovarianceModel {
         variance_phase: dd.variance_phase,
         inter_frequency_corr: None,
     }
-}
-
-fn representative_pseudorange_m(rover_sat: &ObsSatellite, base_sat: &ObsSatellite) -> f64 {
-    (rover_sat.pseudorange_m.0 + base_sat.pseudorange_m.0) * 0.5
-}
-
-fn representative_signal_timing(
-    rover_timing: Option<ObsSignalTiming>,
-    base_timing: Option<ObsSignalTiming>,
-) -> Option<ObsSignalTiming> {
-    rover_timing.or(base_timing)
 }
 
 fn variance_from_cn0_elev(cn0_dbhz: f64, elevation_deg: Option<f64>, kind: MeasurementKind) -> f64 {

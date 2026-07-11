@@ -20,13 +20,13 @@ fn ambiguity_id_from_sat(sat: &ObsSatellite) -> AmbiguityId {
 }
 
 pub fn single_difference(rover: &ObsEpoch, base: &ObsEpoch) -> Vec<SingleDifference> {
-    let mut base_map: HashMap<bijux_gnss_core::api::SatId, &ObsSatellite> = HashMap::new();
+    let mut base_map: HashMap<SigId, &ObsSatellite> = HashMap::new();
     for sat in &base.sats {
-        base_map.insert(sat.signal_id.sat, sat);
+        base_map.insert(sat.signal_id, sat);
     }
     let mut out = Vec::new();
     for rover_sat in &rover.sats {
-        if let Some(base_sat) = base_map.get(&rover_sat.signal_id.sat) {
+        if let Some(base_sat) = base_map.get(&rover_sat.signal_id) {
             out.push(SingleDifference {
                 sig: rover_sat.signal_id,
                 code_m: Meters(rover_sat.pseudorange_m.0 - base_sat.pseudorange_m.0),
