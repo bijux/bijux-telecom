@@ -472,6 +472,17 @@ fn validation_evidence_bundle(
             !matches!(entry.class, bijux_gnss_infra::api::receiver::NavIntegrityClass::Nominal)
         })
         .count();
+    let reference_position_budget_pass = report
+        .budgets
+        .reference_position_error_3d_m_max
+        .and_then(|budget_m| {
+            (!report.reference_position_errors.is_empty()).then_some(
+                report
+                    .reference_position_errors
+                    .iter()
+                    .all(|error| error.error_3d_m <= budget_m),
+            )
+        });
 
     let mut claim_evidence_violations = Vec::new();
     if let Some(value) = cn0_mean {
@@ -549,6 +560,10 @@ fn validation_evidence_bundle(
             "horiz_error_rms_m": report.horiz_error_m.rms,
             "vert_error_rms_m": report.vert_error_m.rms,
             "error_3d_rms_m": report.error_3d_m.rms,
+            "reference_match_count": report.reference_position_errors.len(),
+            "reference_error_3d_max_m": report.error_3d_m.max,
+            "reference_error_3d_budget_m_max": report.budgets.reference_position_error_3d_m_max,
+            "reference_error_3d_budget_pass": reference_position_budget_pass,
             "mean_used_satellites": used_sat_mean,
             "pdop_mean": pdop_mean,
             "pdop_max": pdop_max,
@@ -672,5 +687,48 @@ mod validate_tests {
         assert_eq!(evidence["numerical"]["horiz_error_rms_m"], 5.0_f64.sqrt());
         assert_eq!(evidence["numerical"]["vert_error_rms_m"], 3.0);
         assert_eq!(evidence["numerical"]["error_3d_rms_m"], 14.0_f64.sqrt());
+        assert_eq!(evidence["numerical"]["reference_match_count"], 1);
+        assert_eq!(evidence["numerical"]["reference_error_3d_max_m"], 14.0_f64.sqrt());
+        assert!(evidence["numerical"]["reference_error_3d_budget_m_max"].is_null());
+        assert!(evidence["numerical"]["reference_error_3d_budget_pass"].is_null());
+    }
+
+    #[test]
+    fn validation_evidence_bundle_reports_reference_position_budget_status() {
+        let (x_ref, y_ref, z_ref) = bijux_gnss_infra::api::core::lla_to_ecef(0.0, 0.0, 0.0);
+        let solution = sample_solution(x_ref + 3.0, y_ref + 1.0, z_ref + 2.0);
+        let report = bijux_gnss_infra::api::receiver::build_validation_report_with_budgets(
+            &[],
+            &[],
+            std::slice::from_ref(&solution),
+            &[ValidationReferenceEpoch {
+                epoch_idx: 5,
+                t_rx_s: Some(5.0),
+                latitude_deg: 0.0,
+                longitude_deg: 0.0,
+                altitude_m: 0.0,
+                ecef_x_m: Some(x_ref),
+                ecef_y_m: Some(y_ref),
+                ecef_z_m: Some(z_ref),
+                vel_x_mps: None,
+                vel_y_mps: None,
+                vel_z_mps: None,
+            }],
+            1.0,
+            false,
+            Vec::new(),
+            bijux_gnss_infra::api::receiver::ValidationSciencePolicy::default(),
+            bijux_gnss_infra::api::receiver::ValidationBudgets {
+                nav_min_lock_epochs: 0,
+                reference_position_error_3d_m_max: Some(3.0),
+                ..bijux_gnss_infra::api::receiver::ValidationBudgets::default()
+            },
+        )
+        .expect("validation report");
+
+        let evidence = validation_evidence_bundle(&[], &[solution], &report);
+
+        assert_eq!(evidence["numerical"]["reference_error_3d_budget_m_max"], 3.0);
+        assert_eq!(evidence["numerical"]["reference_error_3d_budget_pass"], false);
     }
 }
