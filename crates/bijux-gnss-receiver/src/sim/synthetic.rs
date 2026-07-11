@@ -4619,6 +4619,8 @@ mod tests {
         SyntheticPvtTruthTableDop, SyntheticPvtTruthTableEcef, SyntheticPvtTruthTableEnuError,
         SyntheticPvtTruthTableEpoch, SyntheticPvtTruthTableGeodetic, SyntheticPvtTruthTableReport,
         SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource,
+        SyntheticTrackingTruthTableEpoch, SyntheticTrackingTruthTableReport,
+        SyntheticTrackingTruthTableSatellite,
         SyntheticTrackingLockRateCase, SyntheticTrackingSensitivityTrial, SPEED_OF_LIGHT_MPS,
         SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
     };
@@ -4850,6 +4852,94 @@ mod tests {
         assert!(!accuracy.pass);
         assert_eq!(accuracy.passing_satellite_count, 0);
         assert!(!satellite.pass);
+    }
+
+    #[test]
+    fn acquisition_accuracy_budget_requires_truth_satellites() {
+        let report = SyntheticAcquisitionTruthTableReport {
+            scenario_id: "acquisition_missing_truth".to_string(),
+            doppler_tolerance_bins: 1,
+            doppler_tolerance_hz: 500.0,
+            code_phase_tolerance_samples: 2,
+            sample_rate_hz: 1_023_000.0,
+            period_samples: 1023,
+            doppler_step_hz: 500,
+            pass: false,
+            satellites: Vec::new(),
+        };
+
+        let accuracy = validate_acquisition_accuracy_budget(
+            &report,
+            truth_guided_receiver_accuracy_budgets().acquisition,
+        );
+
+        assert!(!accuracy.truth_coverage_ready);
+        assert_eq!(accuracy.truth_coverage_issues.len(), 1);
+        assert_eq!(accuracy.truth_coverage_issues[0].code, "no_truth_satellites");
+        assert!(!accuracy.pass);
+    }
+
+    #[test]
+    fn tracking_accuracy_budget_requires_stable_truth_epochs() {
+        let report = SyntheticTrackingTruthTableReport {
+            scenario_id: "tracking_missing_truth".to_string(),
+            carrier_tolerance_hz: 10.0,
+            doppler_tolerance_hz: 10.0,
+            code_phase_tolerance_samples: 1.0,
+            cn0_tolerance_db_hz: 8.0,
+            sample_rate_hz: 1_023_000.0,
+            period_samples: 1023,
+            output_scale_applied: 1.0,
+            pass: false,
+            satellites: vec![SyntheticTrackingTruthTableSatellite {
+                sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                injected_doppler_hz: -250.0,
+                expected_measured_doppler_hz: -250.0,
+                injected_code_phase_chips: 100.0,
+                injected_cn0_db_hz: 45.0,
+                epoch_count: 1,
+                stable_epoch_count: 0,
+                first_stable_epoch_index: None,
+                pass: false,
+                epochs: vec![SyntheticTrackingTruthTableEpoch {
+                    epoch_index: 0,
+                    sample_index: 0,
+                    expected_carrier_hz: -250.0,
+                    measured_carrier_hz: -250.0,
+                    carrier_error_hz: 0.0,
+                    expected_doppler_hz: -250.0,
+                    measured_doppler_hz: -250.0,
+                    doppler_error_hz: 0.0,
+                    expected_code_phase_samples: 100.0,
+                    measured_code_phase_samples: 100.0,
+                    code_phase_error_samples: 0.0,
+                    expected_cn0_db_hz: 45.0,
+                    measured_cn0_dbhz: 45.0,
+                    cn0_error_db: 0.0,
+                    lock: false,
+                    pll_lock: false,
+                    dll_lock: false,
+                    fll_lock: false,
+                    cycle_slip: false,
+                    lock_state: "degraded".to_string(),
+                    lock_state_reason: Some("no_stable_truth_window".to_string()),
+                    stable_tracking_epoch: false,
+                    pass: false,
+                }],
+            }],
+        };
+
+        let accuracy =
+            super::validate_tracking_accuracy_budget(&report, truth_guided_receiver_accuracy_budgets().tracking);
+
+        assert!(!accuracy.truth_coverage_ready);
+        assert_eq!(accuracy.truth_coverage_issues.len(), 1);
+        assert_eq!(accuracy.truth_coverage_issues[0].sat, Some(report.satellites[0].sat));
+        assert_eq!(
+            accuracy.truth_coverage_issues[0].code,
+            "no_stable_tracking_truth_epochs"
+        );
+        assert!(!accuracy.pass);
     }
 
     #[test]
