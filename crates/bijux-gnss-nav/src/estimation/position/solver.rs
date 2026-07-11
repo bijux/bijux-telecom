@@ -6,13 +6,14 @@ use super::raim::{RaimFaultDetection, RaimFaultExclusion};
 use crate::models::atmosphere::{
     IonosphereModel, KlobucharCoefficients, KlobucharModel, SaastamoinenModel, TroposphereModel,
 };
+use crate::orbits::galileo::GalileoBroadcastNavigationData;
 use crate::orbits::gps::{
     gps_ephemeris_age, is_ephemeris_valid, sat_state_gps_l1ca, sat_state_gps_l1ca_from_observation,
     GpsEphemeris, GpsSatState,
 };
 use bijux_gnss_core::api::{
-    GpsTime, Llh, MeasurementRejectReason, ObsEpoch, ObsSatellite, ObsSignalTiming,
-    ObservationStatus, SatId, Seconds, SignalBand,
+    Constellation, GpsTime, Llh, MeasurementRejectReason, ObsEpoch, ObsSatellite,
+    ObsSignalTiming, ObservationStatus, SatId, Seconds, SignalBand,
 };
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
@@ -93,6 +94,31 @@ pub struct PositionObservation {
     pub weight: f64,
     pub gps_receive_time: Option<GpsTime>,
     pub signal_timing: Option<ObsSignalTiming>,
+}
+
+#[derive(Debug, Clone)]
+pub enum PositionBroadcastNavigation {
+    Gps(GpsEphemeris),
+    Galileo(GalileoBroadcastNavigationData),
+}
+
+impl PositionBroadcastNavigation {
+    pub fn sat(&self) -> SatId {
+        match self {
+            Self::Gps(ephemeris) => ephemeris.sat,
+            Self::Galileo(navigation) => navigation.sat,
+        }
+    }
+
+    pub fn constellation(&self) -> Constellation {
+        self.sat().constellation
+    }
+}
+
+pub fn position_broadcast_navigation_from_gps_ephemerides(
+    ephemerides: &[GpsEphemeris],
+) -> Vec<PositionBroadcastNavigation> {
+    ephemerides.iter().cloned().map(PositionBroadcastNavigation::Gps).collect()
 }
 
 pub fn position_observations_from_epoch(epoch: &ObsEpoch) -> Vec<PositionObservation> {
@@ -618,7 +644,15 @@ fn select_valid_ephemeris(
 
 #[cfg(test)]
 mod tests {
-    use super::{position_observations_from_epoch, resolve_position_inputs, PositionObservation};
+    use super::{
+        position_broadcast_navigation_from_gps_ephemerides, position_observations_from_epoch,
+        resolve_position_inputs, PositionBroadcastNavigation, PositionObservation,
+    };
+    use crate::orbits::galileo::{
+        GalileoBroadcastNavigationData, GalileoClockCorrection, GalileoEphemeris,
+        GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags, GalileoSignalHealth,
+        GalileoSystemTime,
+    };
     use crate::orbits::gps::GpsEphemeris;
     use bijux_gnss_core::api::{
         Constellation, Cycles, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
@@ -657,6 +691,61 @@ mod tests {
         }
     }
 
+    fn sample_galileo_navigation(sat: SatId, toe_s: f64, t0c_s: f64) -> GalileoBroadcastNavigationData {
+        GalileoBroadcastNavigationData {
+            sat,
+            iodnav: 0x01,
+            gst: GalileoSystemTime { week: 2222, tow_s: toe_s as u32 },
+            sisa_e1_e5b: 0,
+            signal_health: GalileoSignalHealth {
+                e5b_signal_health: 0,
+                e1b_signal_health: 0,
+                e5b_data_valid: true,
+                e1b_data_valid: true,
+            },
+            clock: GalileoClockCorrection {
+                t0c_s,
+                af0: 0.0,
+                af1: 0.0,
+                af2: 0.0,
+                bgd_e1_e5a_s: 0.0,
+                bgd_e1_e5b_s: 0.0,
+            },
+            ephemeris: GalileoEphemeris {
+                sat,
+                iodnav: 0x01,
+                toe_s,
+                sqrt_a: 5_440.612_319,
+                e: 0.001_23,
+                i0: 0.953,
+                idot: -2.1e-10,
+                omega0: 1.17,
+                omegadot: -5.8e-9,
+                w: -0.37,
+                m0: 0.84,
+                delta_n: 4.7e-9,
+                cuc: -3.2e-6,
+                cus: 4.1e-6,
+                crc: 178.0,
+                crs: -91.0,
+                cic: 1.9e-7,
+                cis: -2.4e-7,
+            },
+            ionosphere: GalileoIonosphericCorrection {
+                ai0: 0.0,
+                ai1: 0.0,
+                ai2: 0.0,
+                disturbance_flags: GalileoIonosphericDisturbanceFlags {
+                    region_1: false,
+                    region_2: false,
+                    region_3: false,
+                    region_4: false,
+                    region_5: false,
+                },
+            },
+        }
+    }
+
     #[test]
     fn resolve_position_inputs_uses_nearest_valid_ephemeris() {
         let sat = SatId { constellation: Constellation::Gps, prn: 13 };
@@ -681,6 +770,41 @@ mod tests {
         assert_eq!(inputs.len(), 1);
         assert_eq!(inputs[0].ephemeris.toe_s, 200_000.0);
         assert_eq!(inputs[0].ephemeris.toc_s, 200_000.0);
+    }
+
+    #[test]
+    fn position_broadcast_navigation_preserves_satellite_identity() {
+        let gps_sat = SatId { constellation: Constellation::Gps, prn: 13 };
+        let galileo_sat = SatId { constellation: Constellation::Galileo, prn: 19 };
+        let gps_navigation = PositionBroadcastNavigation::Gps(sample_ephemeris(
+            gps_sat,
+            200_000.0,
+            200_000.0,
+        ));
+        let galileo_navigation = PositionBroadcastNavigation::Galileo(sample_galileo_navigation(
+            galileo_sat,
+            64_800.0,
+            66_000.0,
+        ));
+
+        assert_eq!(gps_navigation.sat(), gps_sat);
+        assert_eq!(gps_navigation.constellation(), Constellation::Gps);
+        assert_eq!(galileo_navigation.sat(), galileo_sat);
+        assert_eq!(galileo_navigation.constellation(), Constellation::Galileo);
+    }
+
+    #[test]
+    fn gps_ephemerides_convert_into_position_navigation_entries() {
+        let ephemerides = vec![
+            sample_ephemeris(SatId { constellation: Constellation::Gps, prn: 13 }, 100_000.0, 100_000.0),
+            sample_ephemeris(SatId { constellation: Constellation::Gps, prn: 14 }, 200_000.0, 200_000.0),
+        ];
+
+        let navigation = position_broadcast_navigation_from_gps_ephemerides(&ephemerides);
+
+        assert_eq!(navigation.len(), 2);
+        assert_eq!(navigation[0].sat(), ephemerides[0].sat);
+        assert_eq!(navigation[1].sat(), ephemerides[1].sat);
     }
 
     #[test]
