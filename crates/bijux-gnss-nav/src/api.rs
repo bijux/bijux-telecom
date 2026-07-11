@@ -78,6 +78,14 @@ pub use crate::estimation::rtk::single_difference::{
     RtkSingleDifferenceObservation, RtkSingleDifferenceResidualMetrics,
 };
 /// Format parsing and output.
+pub use crate::formats::galileo_inav_decode::{
+    decode_galileo_inav_clock_word, decode_galileo_inav_ephemeris_1_word,
+    decode_galileo_inav_ephemeris_2_word, decode_galileo_inav_ephemeris_3_word,
+    decode_galileo_inav_status_word, decode_galileo_inav_word, decode_galileo_inav_word_bytes,
+    decode_galileo_inav_word_hex, GalileoInavClockWord, GalileoInavEphemeris1Word,
+    GalileoInavEphemeris2Word, GalileoInavEphemeris3Word, GalileoInavStatusWord, GalileoInavWord,
+};
+/// Format parsing and output.
 pub use crate::formats::lnav_bits::{
     align_gps_l1ca_lnav_from_prompt, align_gps_l1ca_lnav_subframes, bit_sync_from_prompt,
     decode_gps_l1ca_lnav_from_prompt, decode_gps_l1ca_lnav_subframes, decode_how_word,
