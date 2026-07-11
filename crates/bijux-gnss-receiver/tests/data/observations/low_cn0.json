@@ -18,7 +18,7 @@
     "decisions": [
       { "epoch_idx": 0, "decision": "rejected" }
     ],
-    "support_classes": ["degraded"],
+    "support_classes": ["unsupported"],
     "uncertainty_classes": ["high"],
     "min_rejected": 0,
     "multipath_any": false

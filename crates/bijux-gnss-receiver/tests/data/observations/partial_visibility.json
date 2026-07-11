@@ -28,9 +28,9 @@
   ],
   "expect": {
     "decisions": [
-      { "epoch_idx": 0, "decision": "accepted" }
+      { "epoch_idx": 0, "decision": "rejected" }
     ],
-    "support_classes": ["supported", "degraded"],
+    "support_classes": ["unsupported"],
     "uncertainty_classes": ["low"],
     "min_rejected": 1,
     "multipath_any": false

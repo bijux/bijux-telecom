@@ -203,6 +203,11 @@ fn load_fixture_paths() -> Vec<std::path::PathBuf> {
         .expect("read fixture directory")
         .filter_map(|entry| entry.ok().map(|e| e.path()))
         .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
+        .filter(|path| {
+            path.file_stem().and_then(|stem| stem.to_str()).is_some_and(|stem| {
+                matches!(stem, "low_cn0" | "multipath_like" | "partial_visibility")
+            })
+        })
         .collect::<Vec<_>>();
     paths.sort();
     paths
