@@ -24,3 +24,5 @@ mod time;
 
 /// Public API surface for this crate.
 pub mod api;
+
+pub use crate::estimation::position::solver::{PositionSolveRefusal, PositionSolveRefusalKind};

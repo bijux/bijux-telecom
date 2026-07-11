@@ -1,13 +1,15 @@
 #![allow(missing_docs)]
 
+use crate::models::atmosphere::{
+    IonosphereModel, KlobucharCoefficients, KlobucharModel, SaastamoinenModel, TroposphereModel,
+};
 use crate::orbits::gps::{
     is_ephemeris_valid, sat_state_gps_l1ca, sat_state_gps_l1ca_from_observation, GpsEphemeris,
     GpsSatState,
 };
-use crate::models::atmosphere::{
-    IonosphereModel, KlobucharCoefficients, KlobucharModel, SaastamoinenModel, TroposphereModel,
+use bijux_gnss_core::api::{
+    GpsTime, Llh, MeasurementRejectReason, ObsSignalTiming, SatId, Seconds,
 };
-use bijux_gnss_core::api::{GpsTime, Llh, MeasurementRejectReason, ObsSignalTiming, SatId, Seconds};
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 const SIGNAL_TIMING_CONSISTENCY_TOLERANCE_S: f64 = 1.0e-6;
@@ -38,6 +40,29 @@ pub struct PositionSolution {
     pub sat_count: usize,
     pub used_sat_count: usize,
     pub rejected_sat_count: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PositionSolveRefusalKind {
+    InsufficientObservations,
+    InvalidSatelliteTime,
+    InvalidEphemeris,
+    InsufficientUsableSatellites,
+    SolverFailure,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PositionSolveRefusal {
+    pub kind: PositionSolveRefusalKind,
+    pub sat_count: usize,
+    pub used_sat_count: usize,
+    pub rejected: Vec<(SatId, MeasurementRejectReason)>,
+}
+
+impl PositionSolveRefusal {
+    pub fn rejected_sat_count(&self) -> usize {
+        self.rejected.len()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -114,7 +139,16 @@ impl PositionSolver {
         ephemerides: &[GpsEphemeris],
         t_rx_s: f64,
     ) -> Option<PositionSolution> {
-        self.solve_wls_with_broadcast_ionosphere(observations, ephemerides, t_rx_s, None)
+        self.try_solve_wls(observations, ephemerides, t_rx_s).ok()
+    }
+
+    pub fn try_solve_wls(
+        &self,
+        observations: &[PositionObservation],
+        ephemerides: &[GpsEphemeris],
+        t_rx_s: f64,
+    ) -> Result<PositionSolution, PositionSolveRefusal> {
+        self.try_solve_wls_with_broadcast_ionosphere(observations, ephemerides, t_rx_s, None)
     }
 
     pub fn solve_wls_with_broadcast_ionosphere(
@@ -124,8 +158,25 @@ impl PositionSolver {
         t_rx_s: f64,
         klobuchar: Option<&KlobucharCoefficients>,
     ) -> Option<PositionSolution> {
-        if observations.len() < 4 {
-            return None;
+        self.try_solve_wls_with_broadcast_ionosphere(observations, ephemerides, t_rx_s, klobuchar)
+            .ok()
+    }
+
+    pub fn try_solve_wls_with_broadcast_ionosphere(
+        &self,
+        observations: &[PositionObservation],
+        ephemerides: &[GpsEphemeris],
+        t_rx_s: f64,
+        klobuchar: Option<&KlobucharCoefficients>,
+    ) -> Result<PositionSolution, PositionSolveRefusal> {
+        let sat_count = observations.len();
+        if sat_count < 4 {
+            return Err(position_solve_refusal(
+                PositionSolveRefusalKind::InsufficientObservations,
+                sat_count,
+                sat_count,
+                Vec::new(),
+            ));
         }
         let mut observations = observations.to_vec();
         observations.sort_by_key(|obs| (obs.sat.constellation as u8, obs.sat.prn));
@@ -139,7 +190,17 @@ impl PositionSolver {
             }
         });
         if observations.len() < 4 {
-            return None;
+            let kind = if timing_rejected.is_empty() {
+                PositionSolveRefusalKind::InsufficientObservations
+            } else {
+                PositionSolveRefusalKind::InvalidSatelliteTime
+            };
+            return Err(position_solve_refusal(
+                kind,
+                sat_count,
+                observations.len(),
+                timing_rejected,
+            ));
         }
         let mut x = 0.0_f64;
         let mut y = 0.0_f64;
@@ -149,15 +210,25 @@ impl PositionSolver {
         let mut rejected = timing_rejected;
         let inputs = resolve_position_inputs(&observations, ephemerides, t_rx_s, &mut rejected);
         if inputs.len() < 4 {
-            return None;
+            return Err(position_solve_refusal(
+                PositionSolveRefusalKind::InvalidEphemeris,
+                sat_count,
+                inputs.len(),
+                rejected,
+            ));
         }
-        let mut estimate = PositionEstimate {
-            ecef_x_m: x,
-            ecef_y_m: y,
-            ecef_z_m: z,
-            clock_bias_s: cb,
-        };
-        let mut used = resolve_satellite_geometry(&inputs, estimate, klobuchar, self.apply_troposphere)?;
+        let mut estimate =
+            PositionEstimate { ecef_x_m: x, ecef_y_m: y, ecef_z_m: z, clock_bias_s: cb };
+        let mut used =
+            resolve_satellite_geometry(&inputs, estimate, klobuchar, self.apply_troposphere)
+                .ok_or_else(|| {
+                    position_solve_refusal(
+                        PositionSolveRefusalKind::SolverFailure,
+                        sat_count,
+                        inputs.len(),
+                        rejected.clone(),
+                    )
+                })?;
         let mut residuals = Vec::new();
         let mut cov = None;
         let mut cov_symmetrized = false;
@@ -165,7 +236,12 @@ impl PositionSolver {
         let mut cov_max_variance = None;
         for _ in 0..self.max_iterations {
             if used.len() < 4 {
-                return None;
+                return Err(position_solve_refusal(
+                    PositionSolveRefusalKind::InsufficientUsableSatellites,
+                    sat_count,
+                    used.len(),
+                    rejected.clone(),
+                ));
             }
             let mut h = Vec::new();
             let mut v = Vec::new();
@@ -184,7 +260,15 @@ impl PositionSolver {
                     *w *= geometry.observation.weight;
                 }
             }
-            let (dx, dy, dz, dcb, cov_out) = solve_weighted_normal_eq(&h, &v, &weights)?;
+            let Some((dx, dy, dz, dcb, cov_out)) = solve_weighted_normal_eq(&h, &v, &weights)
+            else {
+                return Err(position_solve_refusal(
+                    PositionSolveRefusalKind::SolverFailure,
+                    sat_count,
+                    used.len(),
+                    rejected.clone(),
+                ));
+            };
             let (cov_out, sym, clamp, max_var) = sanitize_covariance(cov_out);
             cov_symmetrized |= sym;
             cov_clamped |= clamp;
@@ -197,22 +281,39 @@ impl PositionSolver {
             y += dy;
             z += dz;
             cb += dcb / 299_792_458.0;
-            estimate = PositionEstimate {
-                ecef_x_m: x,
-                ecef_y_m: y,
-                ecef_z_m: z,
-                clock_bias_s: cb,
-            };
+            estimate = PositionEstimate { ecef_x_m: x, ecef_y_m: y, ecef_z_m: z, clock_bias_s: cb };
             if (dx * dx + dy * dy + dz * dz).sqrt() < self.convergence_m {
                 break;
             }
-            used = resolve_satellite_geometry(&inputs, estimate, klobuchar, self.apply_troposphere)?;
+            used = resolve_satellite_geometry(&inputs, estimate, klobuchar, self.apply_troposphere)
+                .ok_or_else(|| {
+                    position_solve_refusal(
+                        PositionSolveRefusalKind::SolverFailure,
+                        sat_count,
+                        inputs.len(),
+                        rejected.clone(),
+                    )
+                })?;
         }
 
         let final_estimate = estimate;
-        used = resolve_satellite_geometry(&inputs, final_estimate, klobuchar, self.apply_troposphere)?;
+        used =
+            resolve_satellite_geometry(&inputs, final_estimate, klobuchar, self.apply_troposphere)
+                .ok_or_else(|| {
+                    position_solve_refusal(
+                        PositionSolveRefusalKind::SolverFailure,
+                        sat_count,
+                        inputs.len(),
+                        rejected.clone(),
+                    )
+                })?;
         if used.len() < 4 {
-            return None;
+            return Err(position_solve_refusal(
+                PositionSolveRefusalKind::InsufficientUsableSatellites,
+                sat_count,
+                used.len(),
+                rejected.clone(),
+            ));
         }
 
         let mut filtered = Vec::new();
@@ -231,7 +332,12 @@ impl PositionSolver {
         }
 
         if filtered.len() < 4 {
-            return None;
+            return Err(position_solve_refusal(
+                PositionSolveRefusalKind::InsufficientUsableSatellites,
+                sat_count,
+                filtered.len(),
+                rejected,
+            ));
         }
 
         let mut separation_max = None;
@@ -323,7 +429,7 @@ impl PositionSolver {
             .unwrap_or((0.0, 0.0));
 
         let rejected_sat_count = rejected.len();
-        Some(PositionSolution {
+        Ok(PositionSolution {
             ecef_x_m: x,
             ecef_y_m: y,
             ecef_z_m: z,
@@ -352,6 +458,15 @@ impl PositionSolver {
     }
 }
 
+fn position_solve_refusal(
+    kind: PositionSolveRefusalKind,
+    sat_count: usize,
+    used_sat_count: usize,
+    rejected: Vec<(SatId, MeasurementRejectReason)>,
+) -> PositionSolveRefusal {
+    PositionSolveRefusal { kind, sat_count, used_sat_count, rejected }
+}
+
 fn resolve_position_inputs(
     observations: &[PositionObservation],
     ephemerides: &[GpsEphemeris],
@@ -365,10 +480,8 @@ fn resolve_position_inputs(
                 rejected.push((obs.sat, MeasurementRejectReason::InvalidEphemeris));
                 return None;
             };
-            let receive_tow_s = obs
-                .gps_receive_time
-                .map(|gps_time| gps_time.tow_s)
-                .unwrap_or(t_rx_s);
+            let receive_tow_s =
+                obs.gps_receive_time.map(|gps_time| gps_time.tow_s).unwrap_or(t_rx_s);
             if !is_ephemeris_valid(ephemeris, receive_tow_s) {
                 rejected.push((obs.sat, MeasurementRejectReason::InvalidEphemeris));
                 return None;
@@ -423,7 +536,12 @@ fn resolve_satellite_geometry(
         }
         let iono_delay_m = estimate_klobuchar_delay_m(estimate, input, &state, klobuchar);
         let tropo_delay_m = estimate_saastamoinen_delay_m(estimate, &state, apply_troposphere);
-        geometry.push(SatelliteGeometry { observation: obs.clone(), state, iono_delay_m, tropo_delay_m });
+        geometry.push(SatelliteGeometry {
+            observation: obs.clone(),
+            state,
+            iono_delay_m,
+            tropo_delay_m,
+        });
     }
     Some(geometry)
 }
@@ -441,11 +559,10 @@ fn linearized_pseudorange_row(
         estimate.clock_bias_s,
         geometry.state.clock_correction.bias_s,
     );
-    let residual_m =
-        geometry.observation.pseudorange_m
-            - geometry.iono_delay_m
-            - geometry.tropo_delay_m
-            - predicted_pseudorange_m;
+    let residual_m = geometry.observation.pseudorange_m
+        - geometry.iono_delay_m
+        - geometry.tropo_delay_m
+        - predicted_pseudorange_m;
     let design_row = [dx / range_m, dy / range_m, dz / range_m, 1.0];
     (residual_m, design_row)
 }
@@ -545,7 +662,8 @@ fn predicted_pseudorange_m(
     receiver_clock_bias_s: f64,
     satellite_clock_bias_s: f64,
 ) -> f64 {
-    range_m + receiver_clock_bias_s * SPEED_OF_LIGHT_MPS - satellite_clock_bias_s * SPEED_OF_LIGHT_MPS
+    range_m + receiver_clock_bias_s * SPEED_OF_LIGHT_MPS
+        - satellite_clock_bias_s * SPEED_OF_LIGHT_MPS
 }
 
 /// Returns whether a position observation carries a finite and internally consistent
