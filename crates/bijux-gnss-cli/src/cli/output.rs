@@ -762,25 +762,53 @@ fn read_nav_decode_ephemerides(data: &str) -> Result<Option<Vec<GpsEphemeris>>> 
     Ok(Some(ephemerides_from_nav_decode_report(report)?))
 }
 
-fn read_ephemeris(path: &Path) -> Result<Vec<GpsEphemeris>> {
+fn read_broadcast_navigation_data(path: &Path) -> Result<bijux_gnss_infra::api::nav::GpsBroadcastNavigationData> {
     let data = fs::read_to_string(path)?;
     if data.contains("RINEX VERSION / TYPE") && data.contains("NAVIGATION DATA") {
-        return bijux_gnss_infra::api::nav::parse_rinex_nav(&data)
-            .map_err(|err| eyre!("RINEX NAV parse failed: {}", err.message));
+        let ephemerides = bijux_gnss_infra::api::nav::parse_rinex_nav(&data)
+            .map_err(|err| eyre!("RINEX NAV parse failed: {}", err.message))?;
+        return Ok(bijux_gnss_infra::api::nav::GpsBroadcastNavigationData {
+            ephemerides,
+            klobuchar: None,
+        });
     }
-    if let Some(ephs) = read_nav_decode_ephemerides(&data)? {
-        return Ok(ephs);
+    if let Some(ephemerides) = read_nav_decode_ephemerides(&data)? {
+        return Ok(bijux_gnss_infra::api::nav::GpsBroadcastNavigationData {
+            ephemerides,
+            klobuchar: None,
+        });
     }
     if data.contains("\"header\"") {
+        if let Ok(wrapped) = serde_json::from_str::<
+            bijux_gnss_infra::api::core::ArtifactV1<bijux_gnss_infra::api::nav::GpsBroadcastNavigationData>,
+        >(&data)
+        {
+            if wrapped.header.schema_version != ArtifactReadPolicy::LATEST {
+                bail!(
+                    "unsupported broadcast navigation schema_version {}",
+                    wrapped.header.schema_version
+                );
+            }
+            return Ok(wrapped.payload);
+        }
         let wrapped: GpsEphemerisV1 = serde_json::from_str(&data)?;
         if wrapped.header.schema_version != ArtifactReadPolicy::LATEST {
             bail!("unsupported ephemeris schema_version {}", wrapped.header.schema_version);
         }
-        Ok(wrapped.payload)
-    } else {
-        let ephs: Vec<GpsEphemeris> = serde_json::from_str(&data)?;
-        Ok(ephs)
+        return Ok(bijux_gnss_infra::api::nav::GpsBroadcastNavigationData {
+            ephemerides: wrapped.payload,
+            klobuchar: None,
+        });
     }
+    if data.contains("\"ephemerides\"") {
+        return serde_json::from_str(&data).map_err(Into::into);
+    }
+    let ephemerides: Vec<GpsEphemeris> = serde_json::from_str(&data)?;
+    Ok(bijux_gnss_infra::api::nav::GpsBroadcastNavigationData { ephemerides, klobuchar: None })
+}
+
+fn read_ephemeris(path: &Path) -> Result<Vec<GpsEphemeris>> {
+    Ok(read_broadcast_navigation_data(path)?.ephemerides)
 }
 
 fn read_reference_epochs(path: &Path) -> Result<Vec<ValidationReferenceEpoch>> {
@@ -872,18 +900,20 @@ fn write_ephemeris(
 mod tests {
     use super::{
         apply_raw_iq_metadata, enforce_locked_capture_value, load_frame_window, read_ephemeris,
-        read_tracking_dump, DopplerSearchSettings, RawIqSignalQualityReport, TrackingReport,
-        TrackingRow,
+        read_broadcast_navigation_data, read_tracking_dump, DopplerSearchSettings,
+        RawIqSignalQualityReport, TrackingReport, TrackingRow,
     };
     use crate::RawIqMetadata;
     use crate::{CommonArgs, ReceiverConfig, ReceiverPipelineConfig, ReportFormat};
     use bijux_gnss_infra::api::core::{
-        ArtifactHeaderV1, Chips, Constellation, Cycles, Epoch, Hertz, Meters, NavLifecycleState,
-        NavSolutionEpoch, NavUncertaintyClass, ReceiverSampleTrace, SatId, Seconds,
-        SignalDelayAlignment, SolutionStatus, SolutionValidity, TrackEpoch, TrackEpochV1,
+        ArtifactHeaderV1, ArtifactReadPolicy, Chips, Constellation, Cycles, Epoch, Hertz, Meters,
+        NavLifecycleState, NavSolutionEpoch, NavUncertaintyClass, ReceiverSampleTrace, SatId,
+        Seconds, SignalDelayAlignment, SolutionStatus, SolutionValidity, TrackEpoch, TrackEpochV1,
         NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
     };
-    use bijux_gnss_infra::api::nav::{write_rinex_nav, GpsEphemeris};
+    use bijux_gnss_infra::api::nav::{
+        write_rinex_nav, GpsBroadcastNavigationData, GpsEphemeris, KlobucharCoefficients,
+    };
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -1007,6 +1037,75 @@ mod tests {
         assert_eq!(parsed[1].sat, second.sat);
     }
 
+    #[test]
+    fn read_broadcast_navigation_data_accepts_json_navigation_payload() {
+        let path = std::env::temp_dir().join(format!(
+            "bijux_read_broadcast_navigation_payload_{}_{}.json",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos()
+        ));
+        let ephemeris = sample_ephemeris();
+        let klobuchar = sample_klobuchar_coefficients();
+        let navigation = GpsBroadcastNavigationData {
+            ephemerides: vec![ephemeris.clone()],
+            klobuchar: Some(klobuchar),
+        };
+
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&navigation).expect("serialize navigation payload"),
+        )
+        .expect("write navigation payload");
+        let parsed = read_broadcast_navigation_data(&path).expect("read navigation payload");
+        fs::remove_file(&path).expect("remove navigation payload");
+
+        assert_eq!(parsed.ephemerides.len(), 1);
+        assert_eq!(parsed.ephemerides[0].sat, ephemeris.sat);
+        assert_eq!(parsed.klobuchar, Some(klobuchar));
+    }
+
+    #[test]
+    fn read_broadcast_navigation_data_accepts_wrapped_navigation_payload() {
+        let path = std::env::temp_dir().join(format!(
+            "bijux_read_broadcast_navigation_wrapped_{}_{}.json",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos()
+        ));
+        let ephemeris = sample_ephemeris();
+        let klobuchar = sample_klobuchar_coefficients();
+        let wrapped = bijux_gnss_infra::api::core::ArtifactV1 {
+            header: ArtifactHeaderV1 {
+                schema_version: ArtifactReadPolicy::LATEST,
+                producer: "bijux-gnss-cli".to_string(),
+                producer_version: "test".to_string(),
+                created_at_unix_ms: 0,
+                git_sha: "test".to_string(),
+                config_hash: "test".to_string(),
+                dataset_id: None,
+                toolchain: "test".to_string(),
+                features: Vec::new(),
+                deterministic: true,
+                git_dirty: false,
+            },
+            payload: GpsBroadcastNavigationData {
+                ephemerides: vec![ephemeris.clone()],
+                klobuchar: Some(klobuchar),
+            },
+        };
+
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&wrapped).expect("serialize wrapped navigation payload"),
+        )
+        .expect("write wrapped navigation payload");
+        let parsed = read_broadcast_navigation_data(&path).expect("read wrapped navigation payload");
+        fs::remove_file(&path).expect("remove wrapped navigation payload");
+
+        assert_eq!(parsed.ephemerides.len(), 1);
+        assert_eq!(parsed.ephemerides[0].sat, ephemeris.sat);
+        assert_eq!(parsed.klobuchar, Some(klobuchar));
+    }
+
     fn temp_file_path(name: &str) -> PathBuf {
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos();
         std::env::temp_dir().join(format!("bijux_{}_{}_{}.iq", name, std::process::id(), nanos))
@@ -1061,6 +1160,13 @@ mod tests {
             af2: 0.0,
             tgd: -1.9e-8,
         }
+    }
+
+    fn sample_klobuchar_coefficients() -> KlobucharCoefficients {
+        KlobucharCoefficients::new(
+            [0.1212e-7, 0.1490e-7, -0.5960e-7, 0.1192e-6],
+            [0.1167e6, -0.2294e6, -0.1311e6, 0.1049e7],
+        )
     }
 
     fn sample_front_end_metrics() -> bijux_gnss_infra::api::signal::IqFrontEndMetrics {
