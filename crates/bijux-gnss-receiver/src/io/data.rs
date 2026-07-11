@@ -20,7 +20,6 @@ pub enum SampleSourceError {
 
     #[error("IQ sample stream length is not even")]
     InvalidIqLength,
-
 }
 
 /// Simple in-memory sample source for tests and examples.

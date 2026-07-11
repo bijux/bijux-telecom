@@ -453,8 +453,7 @@ impl Acquisition {
                 }
 
                 let correlation_metrics = correlation_metrics(&noncoherent_acc);
-                let peak_mean_ratio =
-                    correlation_metrics.peak / (correlation_metrics.mean + 1e-6);
+                let peak_mean_ratio = correlation_metrics.peak / (correlation_metrics.mean + 1e-6);
                 let peak_second_ratio =
                     correlation_metrics.peak / (correlation_metrics.second + 1e-6);
                 let cn0_proxy = peak_mean_ratio * 10.0;
@@ -569,14 +568,15 @@ impl Acquisition {
                             candidate.peak_second_ratio,
                             competing_peak_ratio,
                         );
-                        let decision = multipath_diagnostic
-                            .as_ref()
-                            .map_or(decision, |diagnostic| multipath_suspect_decision(
-                                candidate.peak_mean_ratio,
-                                candidate.peak_second_ratio,
-                                competing_peak_ratio,
-                                diagnostic,
-                            ));
+                        let decision =
+                            multipath_diagnostic.as_ref().map_or(decision, |diagnostic| {
+                                multipath_suspect_decision(
+                                    candidate.peak_mean_ratio,
+                                    candidate.peak_second_ratio,
+                                    competing_peak_ratio,
+                                    diagnostic,
+                                )
+                            });
                         candidate.hypothesis = decision.hypothesis;
                         candidate.score = decision.score;
                         candidate.explain_selection_reason =
@@ -1453,8 +1453,8 @@ fn multipath_candidate_reason(
     code_length: usize,
     score: f32,
 ) -> String {
-    let delay_chips =
-        diagnostic.delay_samples as f64 * code_length.max(1) as f64 / samples_per_code.max(1) as f64;
+    let delay_chips = diagnostic.delay_samples as f64 * code_length.max(1) as f64
+        / samples_per_code.max(1) as f64;
     format!(
         "multipath_suspect: delayed secondary peak at sample {} (+{} samples, {:.3} chips) with peak_mean_ratio={:.6}, peak_second_ratio={:.6}, competing_peak_ratio={:.6}, score={:.6}",
         diagnostic.secondary_code_phase_samples,
@@ -1571,8 +1571,8 @@ fn curvature_based_resolution_fraction(
     {
         return None;
     }
-    let normalized_curvature =
-        ((2.0 * center_metric) - left_metric - right_metric).max(0.0) / center_metric.max(f64::EPSILON);
+    let normalized_curvature = ((2.0 * center_metric) - left_metric - right_metric).max(0.0)
+        / center_metric.max(f64::EPSILON);
     if normalized_curvature <= f64::EPSILON {
         return Some(ACQUISITION_UNCERTAINTY_MAX_RESOLUTION_FRACTION);
     }
@@ -2008,13 +2008,9 @@ mod tests {
 
     #[test]
     fn delayed_secondary_peak_diagnostic_ignores_main_lobe_neighbors() {
-        let diagnostic = delayed_secondary_peak_diagnostic(
-            &[1.0, 8.0, 7.6, 7.2, 1.4, 5.5, 1.2, 0.8],
-            1,
-            8,
-            4,
-        )
-        .expect("delayed secondary peak");
+        let diagnostic =
+            delayed_secondary_peak_diagnostic(&[1.0, 8.0, 7.6, 7.2, 1.4, 5.5, 1.2, 0.8], 1, 8, 4)
+                .expect("delayed secondary peak");
 
         assert_eq!(diagnostic.secondary_code_phase_samples, 5);
         assert_eq!(diagnostic.delay_samples, 4);
@@ -2418,8 +2414,8 @@ fn delayed_secondary_peak_diagnostic(
     if correlation_profile.len() < 3 || samples_per_code == 0 || code_length == 0 {
         return None;
     }
-    let min_delay_samples =
-        samples_per_chip(samples_per_code, code_length).saturating_mul(MULTIPATH_SECONDARY_GUARD_CHIPS);
+    let min_delay_samples = samples_per_chip(samples_per_code, code_length)
+        .saturating_mul(MULTIPATH_SECONDARY_GUARD_CHIPS);
     let period_samples = correlation_profile.len();
     let mut best_secondary_idx = None;
     let mut best_secondary_peak = 0.0f32;

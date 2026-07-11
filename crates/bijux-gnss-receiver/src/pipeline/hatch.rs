@@ -55,10 +55,8 @@ impl HatchFilterState {
             let capped_window_epochs = window_epochs.max(1);
             let delta_carrier_m = (carrier_phase_cycles - self.last_carrier_cycles) * lambda_m;
             let predicted_pseudorange_m = self.smoothed_pseudorange_m + delta_carrier_m;
-            let effective_count = self
-                .observation_count
-                .saturating_add(1)
-                .min(capped_window_epochs) as f64;
+            let effective_count =
+                self.observation_count.saturating_add(1).min(capped_window_epochs) as f64;
             self.smoothed_pseudorange_m = predicted_pseudorange_m
                 + (raw_pseudorange_m - predicted_pseudorange_m) / effective_count;
             self.observation_count =

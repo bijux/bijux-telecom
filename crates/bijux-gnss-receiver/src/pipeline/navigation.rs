@@ -348,12 +348,14 @@ impl Navigation {
                 ];
                 if refusal.kind == PositionSolveRefusalKind::UnderdeterminedRaimExclusion {
                     explain_reasons.push("raim_exclusion_underdetermined".to_string());
-                    if let Some((suspect_sat, _reason)) = rejected.iter().find(|(_sat, reason)| {
-                        *reason == MeasurementRejectReason::Outlier
-                    }) {
+                    if let Some((suspect_sat, _reason)) = rejected
+                        .iter()
+                        .find(|(_sat, reason)| *reason == MeasurementRejectReason::Outlier)
+                    {
                         explain_reasons.push(format!("raim_suspect_prn={}", suspect_sat.prn));
                     }
-                    explain_reasons.push(format!("raim_usable_satellites={}", refusal.used_sat_count));
+                    explain_reasons
+                        .push(format!("raim_usable_satellites={}", refusal.used_sat_count));
                 }
                 let is_sparse_refusal = matches!(
                     refusal.kind,
@@ -1868,29 +1870,18 @@ mod tests {
         bad_observation.pseudorange_m.0 += pseudorange_bias_m;
         if let Some(timing) = &mut bad_observation.timing {
             timing.signal_travel_time_s.0 += signal_travel_time_bias_s;
-            timing.transmit_gps_time = timing.transmit_gps_time.offset_seconds(-signal_travel_time_bias_s);
+            timing.transmit_gps_time =
+                timing.transmit_gps_time.offset_seconds(-signal_travel_time_bias_s);
         }
 
         let solution = nav.solve_epoch(&obs, &ephs).expect("raim-detected solution");
 
         assert_ne!(solution.status, SolutionStatus::Invalid);
         assert!(solution.valid);
-        assert!(solution
-            .explain_reasons
-            .iter()
-            .any(|reason| reason == "raim_fault_detected"));
-        assert!(solution
-            .explain_reasons
-            .iter()
-            .any(|reason| reason == "raim_fault_excluded"));
-        assert!(solution
-            .explain_reasons
-            .iter()
-            .any(|reason| reason == "raim_suspect_prn=6"));
-        assert!(solution
-            .explain_reasons
-            .iter()
-            .any(|reason| reason == "raim_excluded_prn=6"));
+        assert!(solution.explain_reasons.iter().any(|reason| reason == "raim_fault_detected"));
+        assert!(solution.explain_reasons.iter().any(|reason| reason == "raim_fault_excluded"));
+        assert!(solution.explain_reasons.iter().any(|reason| reason == "raim_suspect_prn=6"));
+        assert!(solution.explain_reasons.iter().any(|reason| reason == "raim_excluded_prn=6"));
         assert!(solution.residuals.iter().any(|residual| {
             residual.sat == bad_sat
                 && residual.rejected
@@ -1934,7 +1925,8 @@ mod tests {
         bad_observation.pseudorange_m.0 += pseudorange_bias_m;
         if let Some(timing) = &mut bad_observation.timing {
             timing.signal_travel_time_s.0 += signal_travel_time_bias_s;
-            timing.transmit_gps_time = timing.transmit_gps_time.offset_seconds(-signal_travel_time_bias_s);
+            timing.transmit_gps_time =
+                timing.transmit_gps_time.offset_seconds(-signal_travel_time_bias_s);
         }
 
         let solution = nav.solve_epoch(&obs, &ephs).expect("underdetermined refusal");

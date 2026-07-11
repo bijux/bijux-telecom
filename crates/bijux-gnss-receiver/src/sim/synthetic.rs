@@ -326,8 +326,7 @@ pub struct SyntheticCn0ValidationReport {
 fn shared_receiver_epoch_base(
     pseudorange_chips: &[f64],
 ) -> Result<u64, SyntheticNavigationValidationError> {
-    let mut epoch_indices =
-        pseudorange_chips.iter().map(|chips| (chips / 1023.0).floor() as u64);
+    let mut epoch_indices = pseudorange_chips.iter().map(|chips| (chips / 1023.0).floor() as u64);
     let Some(receiver_epoch_base) = epoch_indices.next() else {
         return Err(SyntheticNavigationValidationError::EmptySatelliteSet);
     };
@@ -357,20 +356,15 @@ pub fn build_signal_scenario_from_navigation_validation_scenario(
         .satellites
         .iter()
         .map(|signal| {
-            let ephemeris = scenario
-                .ephemerides
-                .iter()
-                .find(|candidate| candidate.sat == signal.sat)
-                .ok_or(SyntheticNavigationValidationError::MissingEphemeris {
-                    sat: signal.sat,
-                })?;
-            Ok(
-                synthetic_pseudorange_m(
-                    ephemeris,
-                    scenario.reference_receive_time_s,
-                    scenario.receiver_ecef_m,
-                ) * (1_023_000.0 / SPEED_OF_LIGHT_MPS),
-            )
+            let ephemeris =
+                scenario.ephemerides.iter().find(|candidate| candidate.sat == signal.sat).ok_or(
+                    SyntheticNavigationValidationError::MissingEphemeris { sat: signal.sat },
+                )?;
+            Ok(synthetic_pseudorange_m(
+                ephemeris,
+                scenario.reference_receive_time_s,
+                scenario.receiver_ecef_m,
+            ) * (1_023_000.0 / SPEED_OF_LIGHT_MPS))
         })
         .collect::<Result<Vec<_>, SyntheticNavigationValidationError>>()?;
     let receiver_epoch_base = shared_receiver_epoch_base(&pseudorange_chips)?;
@@ -2390,8 +2384,7 @@ pub fn validate_synthetic_navigation_run(
     scenario: &SyntheticNavigationValidationScenario,
     hatch_window: u32,
 ) -> Result<SyntheticNavigationValidationRun, SyntheticNavigationValidationError> {
-    let signal_scenario =
-        build_signal_scenario_from_navigation_validation_scenario(scenario)?;
+    let signal_scenario = build_signal_scenario_from_navigation_validation_scenario(scenario)?;
     let frame = generate_l1_ca_multi(config, &signal_scenario);
     let truth_bundle = build_iq16_capture_bundle(
         &signal_scenario.id,
@@ -2429,11 +2422,7 @@ pub fn validate_synthetic_navigation_run(
         config.clone(),
         crate::engine::runtime::ReceiverRuntime::default(),
     );
-    let sats = signal_scenario
-        .satellites
-        .iter()
-        .map(|satellite| satellite.sat)
-        .collect::<Vec<_>>();
+    let sats = signal_scenario.satellites.iter().map(|satellite| satellite.sat).collect::<Vec<_>>();
     let acquisition_results = acquisition.run_fft(&scaled_frame, &sats);
     let tracking = crate::pipeline::tracking::Tracking::new(
         config.clone(),
@@ -2459,13 +2448,14 @@ pub fn validate_synthetic_navigation_run(
         week: scenario.ephemerides.first().expect("validated ephemerides are non-empty").week,
         tow_s: scenario.reference_receive_time_s,
     });
-    let observation_epochs = crate::pipeline::observations::observations_from_tracking_results_with_gps_anchor(
-        config,
-        gps_time,
-        &tracking_results,
-        hatch_window,
-    )
-    .output;
+    let observation_epochs =
+        crate::pipeline::observations::observations_from_tracking_results_with_gps_anchor(
+            config,
+            gps_time,
+            &tracking_results,
+            hatch_window,
+        )
+        .output;
     let mut navigation = crate::pipeline::navigation::Navigation::new(
         config.clone(),
         crate::engine::runtime::ReceiverRuntime::default(),
@@ -2475,7 +2465,8 @@ pub fn validate_synthetic_navigation_run(
         .filter_map(|epoch| navigation.solve_epoch(epoch, &scenario.ephemerides))
         .collect::<Vec<_>>();
     let pvt_reference = synthetic_navigation_pvt_reference_epochs(scenario, &solutions);
-    let pvt_truth = validate_truth_guided_pvt_table(&signal_scenario.id, &solutions, &pvt_reference);
+    let pvt_truth =
+        validate_truth_guided_pvt_table(&signal_scenario.id, &solutions, &pvt_reference);
     let pvt_accuracy = validate_pvt_accuracy_budget(&pvt_truth, budgets.pvt);
 
     let data_source = SyntheticGnssAccuracyDataSource {
