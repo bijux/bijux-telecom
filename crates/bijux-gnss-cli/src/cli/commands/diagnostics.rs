@@ -14,11 +14,9 @@ fn handle_cacode(command: GnssCommand) -> Result<()> {
     let assignment = ca_code_assignment(Prn(prn))
         .map_err(|err| eyre!("failed to load C/A code assignment for PRN {prn}: {err}"))?;
     let autocorrelation = if with_autocorrelation {
-        Some(
-            ca_code_autocorrelation_summary(Prn(prn)).map_err(|err| {
-                eyre!("failed to compute C/A autocorrelation summary for PRN {prn}: {err}")
-            })?,
-        )
+        Some(ca_code_autocorrelation_summary(Prn(prn)).map_err(|err| {
+            eyre!("failed to compute C/A autocorrelation summary for PRN {prn}: {err}")
+        })?)
     } else {
         None
     };
@@ -43,23 +41,14 @@ fn handle_cacode(command: GnssCommand) -> Result<()> {
         println!("period_chips: {CA_CODE_PERIOD_CHIPS}");
         println!("start_chip: {start_chip}");
         println!("wrapped_start_chip: {wrapped_start_chip}");
-        println!(
-            "g2_taps: {} {}",
-            assignment.g2_taps.0, assignment.g2_taps.1
-        );
+        println!("g2_taps: {} {}", assignment.g2_taps.0, assignment.g2_taps.1);
         println!("g2_delay_chips: {}", assignment.g2_delay_chips);
-        println!(
-            "first_ten_chips_octal: {:04}",
-            assignment.first_ten_chips_octal
-        );
+        println!("first_ten_chips_octal: {:04}", assignment.first_ten_chips_octal);
     }
 
     if let Some(autocorrelation) = autocorrelation {
         println!("autocorrelation_peak: {}", autocorrelation.peak);
-        println!(
-            "autocorrelation_max_nonzero_abs: {}",
-            autocorrelation.max_nonzero_abs
-        );
+        println!("autocorrelation_max_nonzero_abs: {}", autocorrelation.max_nonzero_abs);
         println!(
             "autocorrelation_nonzero_values: {}",
             autocorrelation
@@ -75,10 +64,7 @@ fn handle_cacode(command: GnssCommand) -> Result<()> {
         let other_prn = cross_correlation_prn.expect("cross-correlation PRN");
         println!("cross_correlation_base_prn: {prn}");
         println!("cross_correlation_other_prn: {other_prn}");
-        println!(
-            "cross_correlation_max_abs: {}",
-            cross_correlation.max_abs
-        );
+        println!("cross_correlation_max_abs: {}", cross_correlation.max_abs);
         println!(
             "cross_correlation_values: {}",
             cross_correlation
@@ -109,61 +95,57 @@ fn handle_nav(command: GnssCommand) -> Result<()> {
     let dataset = load_dataset(common)?;
 
     match command {
-                    NavCommand::Decode { common, track, prn, reference_week } => {
-                        let _ = runtime_config_from_env(&common, None);
-                        let rows = read_tracking_dump(&track)?;
-                        let target = SatId {
-                            constellation: Constellation::Gps,
-                            prn,
-                        };
-                        let reference_week = nav_reference_week(reference_week, dataset.as_ref())?;
-                        let mut sorted: Vec<_> = rows.into_iter().filter(|r| r.sat == target).collect();
-                        sorted.sort_by_key(|r| r.epoch_idx);
-                        let prompt = sorted.iter().map(|row| row.prompt_i).collect::<Vec<_>>();
-                        let demodulation =
-                            bijux_gnss_infra::api::nav::demodulate_gps_l1ca_navigation_bits(&prompt);
-                        let decoded_stream =
-                            bijux_gnss_infra::api::nav::decode_gps_l1ca_lnav_from_prompt(&prompt);
-                        let parity_word_count = decoded_stream
-                            .subframes
-                            .iter()
-                            .map(|subframe| subframe.parity.word_count)
-                            .sum::<usize>();
-                        let parity_failed_words = decoded_stream
-                            .subframes
-                            .iter()
-                            .map(|subframe| subframe.parity.failed_word_indexes.len())
-                            .sum::<usize>();
-                        let bit_signs =
-                            demodulation.bits.iter().map(|bit| bit.sign).collect::<Vec<_>>();
-                        let (mut ephs, stats) =
-                            bijux_gnss_infra::api::nav::decode_subframes(&bit_signs, reference_week);
-                        for eph in ephs.iter_mut() {
-                            eph.sat = target;
-                        }
-                        let report = NavDecodeReport {
-                            sat: target,
-                            reference_week,
-                            bit_start_ms: demodulation.bit_start_ms,
-                            bit_signs,
-                            aligned_subframes: decoded_stream
-                                .subframes
-                                .iter()
-                                .map(|subframe| subframe.alignment.clone())
-                                .collect(),
-                            decoded_subframes: decoded_stream.subframes,
-                            ephemeris_rejections: stats.ephemeris_rejections.clone(),
-                            parity_word_count,
-                            parity_failed_words,
-                            preamble_hits: stats.preamble_hits,
-                            parity_pass_rate: stats.parity_pass_rate,
-                            ephemerides: ephs.clone(),
-                        };
-                        emit_report(&common, "nav_decode", &report)?;
-                        write_ephemeris(&common, &ephs, &profile, dataset.as_ref())?;
-                        write_manifest(&common, "nav_decode", &profile, dataset.as_ref(), &report)?;
-                    }
-                }
+        NavCommand::Decode { common, track, prn, reference_week } => {
+            let _ = runtime_config_from_env(&common, None);
+            let rows = read_tracking_dump(&track)?;
+            let target = SatId { constellation: Constellation::Gps, prn };
+            let reference_week = nav_reference_week(reference_week, dataset.as_ref())?;
+            let mut sorted: Vec<_> = rows.into_iter().filter(|r| r.sat == target).collect();
+            sorted.sort_by_key(|r| r.epoch_idx);
+            let prompt = sorted.iter().map(|row| row.prompt_i).collect::<Vec<_>>();
+            let demodulation =
+                bijux_gnss_infra::api::nav::demodulate_gps_l1ca_navigation_bits(&prompt);
+            let decoded_stream =
+                bijux_gnss_infra::api::nav::decode_gps_l1ca_lnav_from_prompt(&prompt);
+            let parity_word_count = decoded_stream
+                .subframes
+                .iter()
+                .map(|subframe| subframe.parity.word_count)
+                .sum::<usize>();
+            let parity_failed_words = decoded_stream
+                .subframes
+                .iter()
+                .map(|subframe| subframe.parity.failed_word_indexes.len())
+                .sum::<usize>();
+            let bit_signs = demodulation.bits.iter().map(|bit| bit.sign).collect::<Vec<_>>();
+            let (mut ephs, stats) =
+                bijux_gnss_infra::api::nav::decode_subframes(&bit_signs, reference_week);
+            for eph in ephs.iter_mut() {
+                eph.sat = target;
+            }
+            let report = NavDecodeReport {
+                sat: target,
+                reference_week,
+                bit_start_ms: demodulation.bit_start_ms,
+                bit_signs,
+                aligned_subframes: decoded_stream
+                    .subframes
+                    .iter()
+                    .map(|subframe| subframe.alignment.clone())
+                    .collect(),
+                decoded_subframes: decoded_stream.subframes,
+                ephemeris_rejections: stats.ephemeris_rejections.clone(),
+                parity_word_count,
+                parity_failed_words,
+                preamble_hits: stats.preamble_hits,
+                parity_pass_rate: stats.parity_pass_rate,
+                ephemerides: ephs.clone(),
+            };
+            emit_report(&common, "nav_decode", &report)?;
+            write_ephemeris(&common, &ephs, &profile, dataset.as_ref())?;
+            write_manifest(&common, "nav_decode", &profile, dataset.as_ref(), &report)?;
+        }
+    }
 
     Ok(())
 }
@@ -176,7 +158,8 @@ fn nav_reference_week(
         return Ok(Some(reference_week));
     }
 
-    let Some(capture_start_utc) = dataset.and_then(|entry| entry.capture_start_utc.as_deref()) else {
+    let Some(capture_start_utc) = dataset.and_then(|entry| entry.capture_start_utc.as_deref())
+    else {
         return Ok(None);
     };
 
@@ -196,390 +179,346 @@ fn reference_week_from_capture_start_utc(capture_start_utc: &str) -> Result<u32>
 }
 
 fn handle_rtk(command: GnssCommand) -> Result<()> {
-    let GnssCommand::Rtk {
-                common,
-                base_obs,
-                rover_obs,
-                eph,
-                base_ecef,
-                tolerance_s,
-                ref_policy,
-            } = command else {
+    let GnssCommand::Rtk { common, base_obs, rover_obs, eph, base_ecef, tolerance_s, ref_policy } =
+        command
+    else {
         bail!("invalid command for handler");
     };
 
     let _ = runtime_config_from_env(&common, None);
-                    let profile = load_config(&common)?;
-                    let dataset = load_dataset(&common)?;
-                    let header = artifact_header(&common, &profile, dataset.as_ref())?;
-                    let base_epochs = read_obs_epochs(&base_obs)?;
-                    let rover_epochs = read_obs_epochs(&rover_obs)?;
-                    let ephs = read_ephemeris(&eph)?;
-                    let base_xyz = parse_ecef(&base_ecef)?;
-    
-                    let mut aligner = bijux_gnss_infra::api::receiver::EpochAligner::new(tolerance_s);
-                    let aligned = aligner.align(&base_epochs, &rover_epochs);
-    
-                    let out_dir = artifacts_dir(&common, "rtk", dataset.as_ref())?;
-    
-                    let mut sd_lines = Vec::new();
-                    let mut dd_lines = Vec::new();
-                    let mut baseline_lines = Vec::new();
-                    let mut baseline_quality_lines = Vec::new();
-                    let mut fix_audit_lines = Vec::new();
-                    let mut precision_lines = Vec::new();
-                    let mut correction_input_lines = Vec::new();
-                    let mut ambiguity_state_lines = Vec::new();
-                    let mut advanced_solution_lines = Vec::new();
-                    let mut fix_state = bijux_gnss_infra::api::receiver::FixState::default();
-                    let fixer = bijux_gnss_infra::api::receiver::NaiveFixer::new(
-                        bijux_gnss_infra::api::receiver::FixPolicy::default(),
-                    );
-                    let support_matrix = bijux_gnss_infra::api::receiver::support_status_matrix();
-                    let mut last_ref: Option<bijux_gnss_infra::api::core::SigId> = None;
-                    let mut ref_selector = bijux_gnss_infra::api::receiver::RefSatSelector::new(5);
-                    let mut ref_selectors: std::collections::BTreeMap<
-                        Constellation,
-                        bijux_gnss_infra::api::receiver::RefSatSelector,
-                    > = std::collections::BTreeMap::new();
-    
-                    for (base, rover) in &aligned {
-                        let sd = bijux_gnss_infra::api::receiver::build_sd(base, rover);
-                        for item in &sd {
-                            let wrapped = bijux_gnss_infra::api::receiver::RtkSdEpochV1 {
-                                header: header.clone(),
-                                payload: item.clone(),
-                            };
-                            sd_lines.push(serde_json::to_string(&wrapped)?);
-                        }
-                        let dd = match ref_policy {
-                            RefPolicy::Global => {
-                                if let Some(ref_sig) = ref_selector.choose(&sd) {
-                                    bijux_gnss_infra::api::receiver::build_dd(&sd, ref_sig)
-                                } else {
-                                    Vec::new()
-                                }
-                            }
-                            RefPolicy::PerConstellation => {
-                                let refs =
-                                    bijux_gnss_infra::api::receiver::choose_ref_sat_per_constellation(&sd);
-                                let mut chosen = std::collections::BTreeMap::new();
-                                for (constellation, sig) in refs {
-                                    let selector =
-                                        ref_selectors.entry(constellation).or_insert_with(|| {
-                                            bijux_gnss_infra::api::receiver::RefSatSelector::new(5)
-                                        });
-                                    let subset: Vec<_> = sd
-                                        .iter()
-                                        .filter(|s| s.sig.sat.constellation == constellation)
-                                        .cloned()
-                                        .collect();
-                                    if let Some(picked) = selector.choose(&subset) {
-                                        chosen.insert(constellation, picked);
-                                    } else {
-                                        chosen.insert(constellation, sig);
-                                    }
-                                }
-                                bijux_gnss_infra::api::receiver::build_dd_per_constellation(&sd, &chosen)
-                            }
-                        };
-                        for item in &dd {
-                            let wrapped = bijux_gnss_infra::api::receiver::RtkDdEpochV1 {
-                                header: header.clone(),
-                                payload: item.clone(),
-                            };
-                            dd_lines.push(serde_json::to_string(&wrapped)?);
-                        }
-                        let ref_sig = dd.first().map(|d| d.ref_sig);
-                        let ref_changed = ref_sig != last_ref;
-                        if ref_sig.is_some() {
-                            last_ref = ref_sig;
-                        }
-    
-                        let mut baseline = bijux_gnss_infra::api::receiver::solve_baseline_dd(
-                            &dd,
-                            base_xyz,
-                            &ephs,
-                            rover.t_rx_s.0,
-                        );
-    
-                        let float = bijux_gnss_infra::api::receiver::FloatAmbiguitySolution {
-                            ids: dd
-                                .iter()
-                                .map(|d| bijux_gnss_infra::api::core::AmbiguityId {
-                                    sig: d.sig,
-                                    signal: format!("{:?}", d.sig.band),
-                                })
-                                .collect(),
-                            float_cycles: dd.iter().map(|d| d.phase_cycles).collect(),
-                            covariance: dd.iter().map(|d| vec![d.variance_phase]).collect(),
-                        };
-                        let (fix_result, audit) =
-                            fixer.fix_with_state(rover.epoch_idx, &float, &mut fix_state);
-                        let fix_audit = bijux_gnss_infra::api::receiver::RtkFixAuditV1 {
-                            header: header.clone(),
-                            payload: audit.clone(),
-                        };
-                        fix_audit_lines.push(serde_json::to_string(&fix_audit)?);
-    
-                        if let Some(baseline_val) = baseline.take() {
-                            let before_rms = bijux_gnss_infra::api::receiver::dd_residual_metrics(
-                                &dd,
-                                base_xyz,
-                                baseline_val.enu_m,
-                                &ephs,
-                            rover.t_rx_s.0,
-                            )
-                            .map(|(rms, _pred, _)| rms);
-                            let mut adjusted = bijux_gnss_infra::api::receiver::apply_fix_hold(
-                                baseline_val,
-                                fix_result.accepted,
-                            );
-                            let after_rms = bijux_gnss_infra::api::receiver::dd_residual_metrics(
-                                &dd,
-                                base_xyz,
-                                adjusted.enu_m,
-                                &ephs,
-                            rover.t_rx_s.0,
-                            )
-                            .map(|(rms, _pred, _)| rms);
-                            if let (Some(before), Some(after)) = (before_rms, after_rms) {
-                                if after > before * 1.1 {
-                                    adjusted.fixed = false;
-                                } else {
-                                    adjusted.fixed = fix_result.accepted;
-                                }
-                            } else {
-                                adjusted.fixed = fix_result.accepted;
-                            }
-                            let (rms_obs, rms_pred, used_sats) =
-                                if let Some((rms_obs, rms_pred, count)) =
-                                    bijux_gnss_infra::api::receiver::dd_residual_metrics(
-                                        &dd,
-                                        base_xyz,
-                                        adjusted.enu_m,
-                                        &ephs,
-                            rover.t_rx_s.0,
-                                    )
-                                {
-                                    (rms_obs, rms_pred, count)
-                                } else {
-                                    (0.0, 0.0, 0)
-                                };
-                            let separation = bijux_gnss_infra::api::receiver::solution_separation(
-                                &dd,
-                                base_xyz,
-                                &ephs,
-                            rover.t_rx_s.0,
-                            );
-                            let mut sep_sig = None;
-                            let mut sep_max = None;
-                            if let Some(seps) = separation {
-                                if let Some(max) = seps
-                                    .iter()
-                                    .max_by(|a, b| a.delta_enu_m.total_cmp(&b.delta_enu_m))
-                                {
-                                    sep_sig = Some(format!("{:?}", max.sig));
-                                    sep_max = Some(max.delta_enu_m);
-                                }
-                            }
-                            if let Some(cov) = adjusted.covariance_m2 {
-                                let sigma_e = cov[0][0].abs().sqrt();
-                                let sigma_n = cov[1][1].abs().sqrt();
-                                let sigma_u = cov[2][2].abs().sqrt();
-                                let sigma_h = (sigma_e * sigma_e + sigma_n * sigma_n).sqrt();
-                                let hpl = sigma_h * 6.0;
-                                let vpl = sigma_u * 6.0;
-                                let quality = bijux_gnss_infra::api::receiver::RtkBaselineQuality {
-                                    epoch_idx: rover.epoch_idx,
-                                    fixed: adjusted.fixed,
-                                    sigma_e,
-                                    sigma_n,
-                                    sigma_u,
-                                    used_sats,
-                                    residual_rms_m: rms_obs,
-                                    predicted_rms_m: rms_pred,
-                                    hpl_m: hpl,
-                                    vpl_m: vpl,
-                                    separation_sig: sep_sig,
-                                    separation_max_m: sep_max,
-                                };
-                                let wrapped = bijux_gnss_infra::api::receiver::RtkBaselineQualityV1 {
-                                    header: header.clone(),
-                                    payload: quality,
-                                };
-                                baseline_quality_lines.push(serde_json::to_string(&wrapped)?);
-                            }
-                            let wrapped = bijux_gnss_infra::api::receiver::RtkBaselineEpochV1 {
-                                header: header.clone(),
-                                payload: adjusted,
-                            };
-                            baseline_lines.push(serde_json::to_string(&wrapped)?);
-                        }
+    let profile = load_config(&common)?;
+    let dataset = load_dataset(&common)?;
+    let header = artifact_header(&common, &profile, dataset.as_ref())?;
+    let base_epochs = read_obs_epochs(&base_obs)?;
+    let rover_epochs = read_obs_epochs(&rover_obs)?;
+    let ephs = read_ephemeris(&eph)?;
+    let base_xyz = parse_ecef(&base_ecef)?;
 
-                        let correction_input =
-                            bijux_gnss_infra::api::receiver::CorrectionInputArtifact {
-                                epoch_idx: rover.epoch_idx,
-                                mode: bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
-                                ephemeris_count: ephs.len(),
-                                products_ok: !ephs.is_empty(),
-                                correction_tags: vec!["broadcast_ephemeris".to_string()],
-                            };
-                        let correction_wrapped = bijux_gnss_infra::api::core::ArtifactV1 {
-                            header: header.clone(),
-                            payload: correction_input,
-                        };
-                        correction_input_lines.push(serde_json::to_string(&correction_wrapped)?);
+    let mut aligner = bijux_gnss_infra::api::receiver::EpochAligner::new(tolerance_s);
+    let aligned = aligner.align(&base_epochs, &rover_epochs);
 
-                        let ambiguity_state =
-                            bijux_gnss_infra::api::receiver::AmbiguityStateArtifact {
-                                epoch_idx: rover.epoch_idx,
-                                mode: bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
-                                float_count: float.float_cycles.len(),
-                                fixed_count: usize::from(fix_result.accepted),
-                            };
-                        let ambiguity_wrapped = bijux_gnss_infra::api::core::ArtifactV1 {
-                            header: header.clone(),
-                            payload: ambiguity_state,
-                        };
-                        ambiguity_state_lines.push(serde_json::to_string(&ambiguity_wrapped)?);
+    let out_dir = artifacts_dir(&common, "rtk", dataset.as_ref())?;
 
-                        let prereq = bijux_gnss_infra::api::receiver::AdvancedPrerequisites {
-                            has_base_observations: !base.sats.is_empty(),
-                            has_rover_observations: !rover.sats.is_empty(),
-                            has_ephemeris: !ephs.is_empty(),
-                            has_reference_frame: true,
-                            has_corrections: true,
-                            has_min_satellites: dd.len() >= 3,
-                            has_ambiguity_state: !float.float_cycles.is_empty(),
-                        };
-                        let prereq_decision =
-                            bijux_gnss_infra::api::receiver::evaluate_prerequisites(
-                                bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
-                                &prereq,
-                            );
-                        let raw_claim = if fix_result.accepted {
-                            bijux_gnss_infra::api::receiver::AdvancedSolutionClaim::Fixed
-                        } else {
-                            bijux_gnss_infra::api::receiver::AdvancedSolutionClaim::Float
-                        };
-                        let (status, downgraded, downgrade_reason, claim) =
-                            bijux_gnss_infra::api::receiver::apply_downgrade_policy(
-                                bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
-                                &prereq_decision,
-                                raw_claim,
-                            );
-                        let source_obs_id = rover
-                            .manifest
-                            .as_ref()
-                            .map(|manifest| manifest.epoch_id.clone())
-                            .unwrap_or_else(|| format!("obs-epoch-{:010}", rover.epoch_idx));
-                        let advanced_solution =
-                            bijux_gnss_infra::api::receiver::AdvancedSolutionArtifact {
-                                epoch_idx: rover.epoch_idx,
-                                mode: bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
-                                status,
-                                downgraded,
-                                downgrade_reason: downgrade_reason.clone(),
-                                prerequisites: prereq,
-                                refusal_class: prereq_decision.refusal_class,
-                                provenance: bijux_gnss_infra::api::receiver::AdvancedSolutionProvenance {
-                                    claim,
-                                    ambiguity_state_count: float.float_cycles.len(),
-                                    correction_source: "broadcast_ephemeris".to_string(),
-                                    fallback_from: downgrade_reason,
-                                    fixed_ratio: fix_result.ratio,
-                                },
-                                artifact_id: format!("rtk-advanced-epoch-{:010}", rover.epoch_idx),
-                                source_observation_epoch_id: source_obs_id,
-                            };
-                        let advanced_wrapped = bijux_gnss_infra::api::core::ArtifactV1 {
-                            header: header.clone(),
-                            payload: advanced_solution,
-                        };
-                        advanced_solution_lines.push(serde_json::to_string(&advanced_wrapped)?);
-    
-                        let slip_count = base
-                            .sats
-                            .iter()
-                            .chain(rover.sats.iter())
-                            .filter(|s| s.lock_flags.cycle_slip)
-                            .count();
-                        let precision = bijux_gnss_infra::api::receiver::RtkPrecision {
-                            epoch_idx: rover.epoch_idx,
-                            fix_accepted: fix_result.accepted,
-                            ratio: fix_result.ratio,
-                            fixed_count: audit.fixed_count,
-                            ref_changed,
-                            slip_count,
-                        };
-                        let wrapped = bijux_gnss_infra::api::receiver::RtkPrecisionV1 {
-                            header: header.clone(),
-                            payload: precision,
-                        };
-                        precision_lines.push(serde_json::to_string(&wrapped)?);
+    let mut sd_lines = Vec::new();
+    let mut dd_lines = Vec::new();
+    let mut baseline_lines = Vec::new();
+    let mut baseline_quality_lines = Vec::new();
+    let mut fix_audit_lines = Vec::new();
+    let mut precision_lines = Vec::new();
+    let mut correction_input_lines = Vec::new();
+    let mut ambiguity_state_lines = Vec::new();
+    let mut advanced_solution_lines = Vec::new();
+    let mut fix_state = bijux_gnss_infra::api::receiver::RtkAmbiguityFixState::default();
+    let fixer = bijux_gnss_infra::api::receiver::RtkRatioTestFixer::new(
+        bijux_gnss_infra::api::receiver::RtkAmbiguityFixPolicy::default(),
+    );
+    let support_matrix = bijux_gnss_infra::api::receiver::support_status_matrix();
+    let mut last_ref: Option<bijux_gnss_infra::api::core::SigId> = None;
+    let mut ref_selector = bijux_gnss_infra::api::receiver::RefSatSelector::new(5);
+    let mut ref_selectors: std::collections::BTreeMap<
+        Constellation,
+        bijux_gnss_infra::api::receiver::RefSatSelector,
+    > = std::collections::BTreeMap::new();
+
+    for (base, rover) in &aligned {
+        let sd = bijux_gnss_infra::api::receiver::build_sd(base, rover);
+        for item in &sd {
+            let wrapped = bijux_gnss_infra::api::receiver::RtkSdEpochV1 {
+                header: header.clone(),
+                payload: item.clone(),
+            };
+            sd_lines.push(serde_json::to_string(&wrapped)?);
+        }
+        let dd = match ref_policy {
+            RefPolicy::Global => {
+                if let Some(ref_sig) = ref_selector.choose(&sd) {
+                    bijux_gnss_infra::api::receiver::build_dd(&sd, ref_sig)
+                } else {
+                    Vec::new()
+                }
+            }
+            RefPolicy::PerConstellation => {
+                let refs = bijux_gnss_infra::api::receiver::choose_ref_sat_per_constellation(&sd);
+                let mut chosen = std::collections::BTreeMap::new();
+                for (constellation, sig) in refs {
+                    let selector = ref_selectors
+                        .entry(constellation)
+                        .or_insert_with(|| bijux_gnss_infra::api::receiver::RefSatSelector::new(5));
+                    let subset: Vec<_> = sd
+                        .iter()
+                        .filter(|s| s.sig.sat.constellation == constellation)
+                        .cloned()
+                        .collect();
+                    if let Some(picked) = selector.choose(&subset) {
+                        chosen.insert(constellation, picked);
+                    } else {
+                        chosen.insert(constellation, sig);
                     }
-    
-                    let sd_path = out_dir.join("rtk_sd.jsonl");
-                    fs::write(&sd_path, sd_lines.join("\n"))?;
-                    let dd_path = out_dir.join("rtk_dd.jsonl");
-                    fs::write(&dd_path, dd_lines.join("\n"))?;
-                    let baseline_path = out_dir.join("rtk_baseline.jsonl");
-                    fs::write(&baseline_path, baseline_lines.join("\n"))?;
-                    let baseline_quality_path = out_dir.join("rtk_baseline_quality.jsonl");
-                    fs::write(&baseline_quality_path, baseline_quality_lines.join("\n"))?;
-                    let fix_audit_path = out_dir.join("rtk_fix_audit.jsonl");
-                    fs::write(&fix_audit_path, fix_audit_lines.join("\n"))?;
-                    let precision_path = out_dir.join("rtk_precision.jsonl");
-                    fs::write(&precision_path, precision_lines.join("\n"))?;
-                    let correction_input_path = out_dir.join("rtk_correction_input.jsonl");
-                    fs::write(&correction_input_path, correction_input_lines.join("\n"))?;
-                    let ambiguity_state_path = out_dir.join("rtk_ambiguity_state.jsonl");
-                    fs::write(&ambiguity_state_path, ambiguity_state_lines.join("\n"))?;
-                    let advanced_solution_path = out_dir.join("rtk_advanced_solution.jsonl");
-                    fs::write(&advanced_solution_path, advanced_solution_lines.join("\n"))?;
-                    let support_matrix_path = out_dir.join("rtk_support_matrix.json");
-                    fs::write(
-                        &support_matrix_path,
-                        serde_json::to_string_pretty(&support_matrix)?,
-                    )?;
-    
-                    let align_report = aligner.report(base_epochs.len(), rover_epochs.len());
-                    fs::write(
-                        out_dir.join("rtk_align.json"),
-                        serde_json::to_string_pretty(&align_report)?,
-                    )?;
-    
-                    validate_json_schema(
-                        &schema_path("rtk_baseline_v1.schema.json"),
-                        &baseline_path,
-                        false,
-                    )?;
-                    validate_jsonl_schema(&schema_path("rtk_sd_v1.schema.json"), &sd_path, false)?;
-                    validate_jsonl_schema(
-                        &schema_path("rtk_baseline_quality_v1.schema.json"),
-                        &baseline_quality_path,
-                        false,
-                    )?;
-                    validate_jsonl_schema(
-                        &schema_path("rtk_fix_audit_v1.schema.json"),
-                        &fix_audit_path,
-                        false,
-                    )?;
-                    validate_jsonl_schema(
-                        &schema_path("rtk_precision_v1.schema.json"),
-                        &precision_path,
-                        false,
-                    )?;
+                }
+                bijux_gnss_infra::api::receiver::build_dd_per_constellation(&sd, &chosen)
+            }
+        };
+        for item in &dd {
+            let wrapped = bijux_gnss_infra::api::receiver::RtkDdEpochV1 {
+                header: header.clone(),
+                payload: item.clone(),
+            };
+            dd_lines.push(serde_json::to_string(&wrapped)?);
+        }
+        let ref_sig = dd.first().map(|d| d.ref_sig);
+        let ref_changed = ref_sig != last_ref;
+        if ref_sig.is_some() {
+            last_ref = ref_sig;
+        }
 
-                    let report = serde_json::json!({
-                        "aligned_epochs": aligned.len(),
-                        "sd_count": sd_lines.len(),
-                        "dd_count": dd_lines.len(),
-                        "advanced_solution_count": advanced_solution_lines.len(),
-                        "support_matrix_path": support_matrix_path.display().to_string()
-                    });
-                    write_manifest(&common, "rtk", &profile, dataset.as_ref(), &report)?;
+        let float_baseline = bijux_gnss_infra::api::receiver::solve_float_baseline_dd(
+            &dd,
+            base_xyz,
+            &ephs,
+            rover.t_rx_s.0,
+        );
+        let float_ambiguity_state = float_baseline
+            .as_ref()
+            .and_then(
+                bijux_gnss_infra::api::receiver::rtk_float_ambiguity_state_from_baseline_solution,
+            )
+            .unwrap_or_else(|| bijux_gnss_infra::api::receiver::RtkFloatAmbiguityState {
+                ids: Vec::new(),
+                float_cycles: Vec::new(),
+                covariance_cycles2: Vec::new(),
+            });
+        let (fix_result, audit) =
+            fixer.fix_with_state(rover.epoch_idx, &float_ambiguity_state, &mut fix_state);
+        let fix_audit = bijux_gnss_infra::api::receiver::RtkFixAuditV1 {
+            header: header.clone(),
+            payload: audit.clone(),
+        };
+        fix_audit_lines.push(serde_json::to_string(&fix_audit)?);
+
+        let mut baseline_fixed = false;
+        if let Some(float_baseline_solution) = float_baseline.as_ref() {
+            let mut adjusted = bijux_gnss_infra::api::receiver::BaselineSolution {
+                enu_m: float_baseline_solution.enu_m,
+                covariance_m2: Some(float_baseline_solution.covariance_enu_m2),
+                fixed: false,
+            };
+            if let Some((fixed_ids, fixed_integers)) =
+                bijux_gnss_infra::api::receiver::rtk_ambiguity_state_from_fixed_solution(
+                    &fix_result,
+                )
+            {
+                if let Some(conditioned) =
+                    bijux_gnss_infra::api::receiver::rtk_conditioned_baseline_from_fixed_ambiguities(
+                        float_baseline_solution,
+                        &fixed_ids,
+                        &fixed_integers,
+                    )
+                {
+                    adjusted.enu_m = conditioned.enu_m;
+                    adjusted.covariance_m2 = Some(conditioned.covariance_enu_m2);
+                    adjusted.fixed = true;
+                }
+            }
+            baseline_fixed = adjusted.fixed;
+            let (rms_obs, rms_pred, used_sats) = if let Some((rms_obs, rms_pred, count)) =
+                bijux_gnss_infra::api::receiver::dd_residual_metrics(
+                    &dd,
+                    base_xyz,
+                    adjusted.enu_m,
+                    &ephs,
+                    rover.t_rx_s.0,
+                ) {
+                (rms_obs, rms_pred, count)
+            } else {
+                (0.0, 0.0, 0)
+            };
+            let separation = bijux_gnss_infra::api::receiver::solution_separation(
+                &dd,
+                base_xyz,
+                &ephs,
+                rover.t_rx_s.0,
+            );
+            let mut sep_sig = None;
+            let mut sep_max = None;
+            if let Some(seps) = separation {
+                if let Some(max) =
+                    seps.iter().max_by(|a, b| a.delta_enu_m.total_cmp(&b.delta_enu_m))
+                {
+                    sep_sig = Some(format!("{:?}", max.sig));
+                    sep_max = Some(max.delta_enu_m);
+                }
+            }
+            if let Some(cov) = adjusted.covariance_m2 {
+                let sigma_e = cov[0][0].abs().sqrt();
+                let sigma_n = cov[1][1].abs().sqrt();
+                let sigma_u = cov[2][2].abs().sqrt();
+                let sigma_h = (sigma_e * sigma_e + sigma_n * sigma_n).sqrt();
+                let hpl = sigma_h * 6.0;
+                let vpl = sigma_u * 6.0;
+                let quality = bijux_gnss_infra::api::receiver::RtkBaselineQuality {
+                    epoch_idx: rover.epoch_idx,
+                    fixed: adjusted.fixed,
+                    sigma_e,
+                    sigma_n,
+                    sigma_u,
+                    used_sats,
+                    residual_rms_m: rms_obs,
+                    predicted_rms_m: rms_pred,
+                    hpl_m: hpl,
+                    vpl_m: vpl,
+                    separation_sig: sep_sig,
+                    separation_max_m: sep_max,
+                };
+                let wrapped = bijux_gnss_infra::api::receiver::RtkBaselineQualityV1 {
+                    header: header.clone(),
+                    payload: quality,
+                };
+                baseline_quality_lines.push(serde_json::to_string(&wrapped)?);
+            }
+            let wrapped = bijux_gnss_infra::api::receiver::RtkBaselineEpochV1 {
+                header: header.clone(),
+                payload: adjusted,
+            };
+            baseline_lines.push(serde_json::to_string(&wrapped)?);
+        }
+
+        let correction_input = bijux_gnss_infra::api::receiver::CorrectionInputArtifact {
+            epoch_idx: rover.epoch_idx,
+            mode: bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
+            ephemeris_count: ephs.len(),
+            products_ok: !ephs.is_empty(),
+            correction_tags: vec!["broadcast_ephemeris".to_string()],
+        };
+        let correction_wrapped = bijux_gnss_infra::api::core::ArtifactV1 {
+            header: header.clone(),
+            payload: correction_input,
+        };
+        correction_input_lines.push(serde_json::to_string(&correction_wrapped)?);
+
+        let ambiguity_state = bijux_gnss_infra::api::receiver::AmbiguityStateArtifact {
+            epoch_idx: rover.epoch_idx,
+            mode: bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
+            float_count: float_ambiguity_state.float_cycles.len(),
+            fixed_count: fix_result.fixed_count,
+        };
+        let ambiguity_wrapped = bijux_gnss_infra::api::core::ArtifactV1 {
+            header: header.clone(),
+            payload: ambiguity_state,
+        };
+        ambiguity_state_lines.push(serde_json::to_string(&ambiguity_wrapped)?);
+
+        let prereq = bijux_gnss_infra::api::receiver::AdvancedPrerequisites {
+            has_base_observations: !base.sats.is_empty(),
+            has_rover_observations: !rover.sats.is_empty(),
+            has_ephemeris: !ephs.is_empty(),
+            has_reference_frame: true,
+            has_corrections: true,
+            has_min_satellites: dd.len() >= 3,
+            has_ambiguity_state: !float_ambiguity_state.float_cycles.is_empty(),
+        };
+        let prereq_decision = bijux_gnss_infra::api::receiver::evaluate_prerequisites(
+            bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
+            &prereq,
+        );
+        let raw_claim = if baseline_fixed {
+            bijux_gnss_infra::api::receiver::AdvancedSolutionClaim::Fixed
+        } else {
+            bijux_gnss_infra::api::receiver::AdvancedSolutionClaim::Float
+        };
+        let (status, downgraded, downgrade_reason, claim) =
+            bijux_gnss_infra::api::receiver::apply_downgrade_policy(
+                bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
+                &prereq_decision,
+                raw_claim,
+            );
+        let source_obs_id = rover
+            .manifest
+            .as_ref()
+            .map(|manifest| manifest.epoch_id.clone())
+            .unwrap_or_else(|| format!("obs-epoch-{:010}", rover.epoch_idx));
+        let advanced_solution = bijux_gnss_infra::api::receiver::AdvancedSolutionArtifact {
+            epoch_idx: rover.epoch_idx,
+            mode: bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
+            status,
+            downgraded,
+            downgrade_reason: downgrade_reason.clone(),
+            prerequisites: prereq,
+            refusal_class: prereq_decision.refusal_class,
+            provenance: bijux_gnss_infra::api::receiver::AdvancedSolutionProvenance {
+                claim,
+                ambiguity_state_count: float_ambiguity_state.float_cycles.len(),
+                correction_source: "broadcast_ephemeris".to_string(),
+                fallback_from: downgrade_reason,
+                fixed_ratio: fix_result.ratio,
+            },
+            artifact_id: format!("rtk-advanced-epoch-{:010}", rover.epoch_idx),
+            source_observation_epoch_id: source_obs_id,
+        };
+        let advanced_wrapped = bijux_gnss_infra::api::core::ArtifactV1 {
+            header: header.clone(),
+            payload: advanced_solution,
+        };
+        advanced_solution_lines.push(serde_json::to_string(&advanced_wrapped)?);
+
+        let slip_count =
+            base.sats.iter().chain(rover.sats.iter()).filter(|s| s.lock_flags.cycle_slip).count();
+        let precision = bijux_gnss_infra::api::receiver::RtkPrecision {
+            epoch_idx: rover.epoch_idx,
+            fix_accepted: baseline_fixed,
+            ratio: fix_result.ratio,
+            fixed_count: audit.fixed_count,
+            ref_changed,
+            slip_count,
+        };
+        let wrapped = bijux_gnss_infra::api::receiver::RtkPrecisionV1 {
+            header: header.clone(),
+            payload: precision,
+        };
+        precision_lines.push(serde_json::to_string(&wrapped)?);
+    }
+
+    let sd_path = out_dir.join("rtk_sd.jsonl");
+    fs::write(&sd_path, sd_lines.join("\n"))?;
+    let dd_path = out_dir.join("rtk_dd.jsonl");
+    fs::write(&dd_path, dd_lines.join("\n"))?;
+    let baseline_path = out_dir.join("rtk_baseline.jsonl");
+    fs::write(&baseline_path, baseline_lines.join("\n"))?;
+    let baseline_quality_path = out_dir.join("rtk_baseline_quality.jsonl");
+    fs::write(&baseline_quality_path, baseline_quality_lines.join("\n"))?;
+    let fix_audit_path = out_dir.join("rtk_fix_audit.jsonl");
+    fs::write(&fix_audit_path, fix_audit_lines.join("\n"))?;
+    let precision_path = out_dir.join("rtk_precision.jsonl");
+    fs::write(&precision_path, precision_lines.join("\n"))?;
+    let correction_input_path = out_dir.join("rtk_correction_input.jsonl");
+    fs::write(&correction_input_path, correction_input_lines.join("\n"))?;
+    let ambiguity_state_path = out_dir.join("rtk_ambiguity_state.jsonl");
+    fs::write(&ambiguity_state_path, ambiguity_state_lines.join("\n"))?;
+    let advanced_solution_path = out_dir.join("rtk_advanced_solution.jsonl");
+    fs::write(&advanced_solution_path, advanced_solution_lines.join("\n"))?;
+    let support_matrix_path = out_dir.join("rtk_support_matrix.json");
+    fs::write(&support_matrix_path, serde_json::to_string_pretty(&support_matrix)?)?;
+
+    let align_report = aligner.report(base_epochs.len(), rover_epochs.len());
+    fs::write(out_dir.join("rtk_align.json"), serde_json::to_string_pretty(&align_report)?)?;
+
+    validate_json_schema(&schema_path("rtk_baseline_v1.schema.json"), &baseline_path, false)?;
+    validate_jsonl_schema(&schema_path("rtk_sd_v1.schema.json"), &sd_path, false)?;
+    validate_jsonl_schema(
+        &schema_path("rtk_baseline_quality_v1.schema.json"),
+        &baseline_quality_path,
+        false,
+    )?;
+    validate_jsonl_schema(&schema_path("rtk_fix_audit_v1.schema.json"), &fix_audit_path, false)?;
+    validate_jsonl_schema(&schema_path("rtk_precision_v1.schema.json"), &precision_path, false)?;
+
+    let report = serde_json::json!({
+        "aligned_epochs": aligned.len(),
+        "sd_count": sd_lines.len(),
+        "dd_count": dd_lines.len(),
+        "advanced_solution_count": advanced_solution_lines.len(),
+        "support_matrix_path": support_matrix_path.display().to_string()
+    });
+    write_manifest(&common, "rtk", &profile, dataset.as_ref(), &report)?;
 
     Ok(())
 }
@@ -632,11 +571,7 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
-        DiagnosticsCommand::Summarize {
-            common,
-            run_dir,
-            top,
-        } => {
+        DiagnosticsCommand::Summarize { common, run_dir, top } => {
             let _ = runtime_config_from_env(&common, None);
             let events = summarize_run_diagnostics(&run_dir)?;
             let summary = bijux_gnss_infra::api::core::aggregate_diagnostics(&events);
@@ -671,7 +606,13 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
                 "diagnostics_summary_report.schema.json",
             )?;
-            write_manifest(&common, "diagnostics_summarize", &ReceiverConfig::default(), None, &report)?;
+            write_manifest(
+                &common,
+                "diagnostics_summarize",
+                &ReceiverConfig::default(),
+                None,
+                &report,
+            )?;
         }
         DiagnosticsCommand::Explain { common, run_dir } => {
             let _ = runtime_config_from_env(&common, None);
@@ -715,11 +656,7 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
-        DiagnosticsCommand::Compare {
-            common,
-            baseline_run_dir,
-            candidate_run_dir,
-        } => {
+        DiagnosticsCommand::Compare { common, baseline_run_dir, candidate_run_dir } => {
             let _ = runtime_config_from_env(&common, None);
             let report = compare_run_evidence(&baseline_run_dir, &candidate_run_dir)?;
             match common.report {
@@ -740,11 +677,7 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
-        DiagnosticsCommand::ReplayAudit {
-            common,
-            baseline_run_dir,
-            candidate_run_dir,
-        } => {
+        DiagnosticsCommand::ReplayAudit { common, baseline_run_dir, candidate_run_dir } => {
             let _ = runtime_config_from_env(&common, None);
             let report = replay_audit_report(&baseline_run_dir, &candidate_run_dir)?;
             match common.report {
@@ -765,18 +698,10 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
-        DiagnosticsCommand::AdvancedGate {
-            common,
-            run_dir,
-            mode,
-            strict,
-        } => {
+        DiagnosticsCommand::AdvancedGate { common, run_dir, mode, strict } => {
             let _ = runtime_config_from_env(&common, None);
             let report = advanced_gate_report(&run_dir, mode)?;
-            let passed = report
-                .get("gate_passed")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
+            let passed = report.get("gate_passed").and_then(|v| v.as_bool()).unwrap_or(false);
             if strict && !passed {
                 return Err(classified_error(
                     CliErrorClass::UnsupportedScience,
@@ -872,17 +797,10 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
-        DiagnosticsCommand::MediumGate {
-            common,
-            run_dir,
-            strict,
-        } => {
+        DiagnosticsCommand::MediumGate { common, run_dir, strict } => {
             let _ = runtime_config_from_env(&common, None);
             let report = medium_gate_report(&run_dir)?;
-            let passed = report
-                .get("gate_passed")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
+            let passed = report.get("gate_passed").and_then(|v| v.as_bool()).unwrap_or(false);
             if strict && !passed {
                 return Err(classified_error(
                     CliErrorClass::UnsupportedScience,
@@ -949,11 +867,7 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
-        DiagnosticsCommand::ExportBundle {
-            common,
-            run_dir,
-            out_dir,
-        } => {
+        DiagnosticsCommand::ExportBundle { common, run_dir, out_dir } => {
             let _ = runtime_config_from_env(&common, None);
             let report = export_bundle_report(&run_dir, out_dir.as_ref())?;
             match common.report {
@@ -1037,11 +951,7 @@ fn handle_diagnostics(command: GnssCommand) -> Result<()> {
                 &report,
             )?;
         }
-        DiagnosticsCommand::HistoryBrowse {
-            common,
-            root_dir,
-            limit,
-        } => {
+        DiagnosticsCommand::HistoryBrowse { common, root_dir, limit } => {
             let _ = runtime_config_from_env(&common, None);
             let report = history_browse_report(&root_dir, limit)?;
             match common.report {
@@ -1343,10 +1253,7 @@ fn print_workflow_table(report: &serde_json::Value) {
     if let Some(stages) = report.get("workflow").and_then(|v| v.as_array()) {
         for stage in stages {
             let label = stage.get("stage").and_then(|v| v.as_str()).unwrap_or("unknown");
-            let command = stage
-                .get("command")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
+            let command = stage.get("command").and_then(|v| v.as_str()).unwrap_or("unknown");
             println!("{label}\t{command}");
         }
     }
@@ -1357,10 +1264,7 @@ fn print_diagnostics_summary_table(entries: Option<&Vec<serde_json::Value>>, top
     if let Some(items) = entries {
         for entry in items.iter().take(top.max(1)) {
             let code = entry.get("code").and_then(|v| v.as_str()).unwrap_or("unknown");
-            let severity = entry
-                .get("severity")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
+            let severity = entry.get("severity").and_then(|v| v.as_str()).unwrap_or("unknown");
             let count = entry.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
             println!("{code}\t{severity}\tcount={count}");
         }
@@ -1395,18 +1299,10 @@ fn print_diagnostics_explain_table(report: &serde_json::Value) {
 }
 
 fn print_verify_repro_table(report: &serde_json::Value) {
-    let audit_ok = report
-        .get("audit_ok")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let fingerprint = report
-        .get("replay_fingerprint")
-        .and_then(|v| v.as_str())
-        .unwrap_or("missing");
-    let issue_count = report
-        .get("issues")
-        .and_then(|v| v.as_array())
-        .map_or(0usize, Vec::len);
+    let audit_ok = report.get("audit_ok").and_then(|v| v.as_bool()).unwrap_or(false);
+    let fingerprint =
+        report.get("replay_fingerprint").and_then(|v| v.as_str()).unwrap_or("missing");
+    let issue_count = report.get("issues").and_then(|v| v.as_array()).map_or(0usize, Vec::len);
     println!("audit_ok\t{audit_ok}");
     println!("issues\t{issue_count}");
     println!("replay_fingerprint\t{fingerprint}");
@@ -1446,27 +1342,15 @@ fn print_compare_report_table(report: &serde_json::Value) {
 }
 
 fn print_replay_audit_table(report: &serde_json::Value) {
-    let class = report
-        .get("classification")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
-    let baseline_command = report
-        .get("baseline_command")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
-    let candidate_command = report
-        .get("candidate_command")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
+    let class = report.get("classification").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let baseline_command =
+        report.get("baseline_command").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let candidate_command =
+        report.get("candidate_command").and_then(|v| v.as_str()).unwrap_or("unknown");
     let reasons = report
         .get("reasons")
         .and_then(|v| v.as_array())
-        .map(|vals| {
-            vals.iter()
-                .filter_map(|v| v.as_str())
-                .collect::<Vec<_>>()
-                .join(",")
-        })
+        .map(|vals| vals.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(","))
         .unwrap_or_default();
     println!("classification\t{class}");
     println!("baseline_command\t{baseline_command}");
@@ -1475,14 +1359,8 @@ fn print_replay_audit_table(report: &serde_json::Value) {
 }
 
 fn print_advanced_gate_table(report: &serde_json::Value) {
-    let mode = report
-        .get("mode")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
-    let passed = report
-        .get("gate_passed")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let mode = report.get("mode").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let passed = report.get("gate_passed").and_then(|v| v.as_bool()).unwrap_or(false);
     let maturity = report
         .get("support")
         .and_then(|v| v.get("maturity"))
@@ -1503,10 +1381,7 @@ fn print_artifact_inventory_table(report: &serde_json::Value) {
     println!("artifact inventory");
     if let Some(groups) = report.get("groups").and_then(|v| v.as_object()) {
         for (group, payload) in groups {
-            let files = payload
-                .get("file_count")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
+            let files = payload.get("file_count").and_then(|v| v.as_u64()).unwrap_or(0);
             println!("{group}\tfiles={files}");
         }
     }
@@ -1517,10 +1392,8 @@ fn print_debug_plan_table(report: &serde_json::Value) {
     if let Some(stages) = report.get("stages").and_then(|v| v.as_array()) {
         for stage in stages {
             let name = stage.get("stage").and_then(|v| v.as_str()).unwrap_or("unknown");
-            let check = stage
-                .get("recommended_check")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
+            let check =
+                stage.get("recommended_check").and_then(|v| v.as_str()).unwrap_or("unknown");
             println!("{name}\t{check}");
         }
     }
@@ -1542,20 +1415,12 @@ fn print_benchmark_summary_table(report: &serde_json::Value) {
 }
 
 fn print_medium_gate_table(report: &serde_json::Value) {
-    let passed = report
-        .get("gate_passed")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let passed = report.get("gate_passed").and_then(|v| v.as_bool()).unwrap_or(false);
     println!("gate_passed\t{passed}");
     let reasons = report
         .get("reasons")
         .and_then(|v| v.as_array())
-        .map(|rows| {
-            rows.iter()
-                .filter_map(|v| v.as_str())
-                .collect::<Vec<_>>()
-                .join(",")
-        })
+        .map(|rows| rows.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(","))
         .unwrap_or_default();
     println!("reasons\t{reasons}");
 }
@@ -1597,14 +1462,8 @@ fn print_channel_summary_table(report: &serde_json::Value) {
 }
 
 fn print_export_bundle_table(report: &serde_json::Value) {
-    let path = report
-        .get("bundle_dir")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
-    let files = report
-        .get("file_count")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
+    let path = report.get("bundle_dir").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let files = report.get("file_count").and_then(|v| v.as_u64()).unwrap_or(0);
     println!("bundle_dir\t{path}");
     println!("file_count\t{files}");
 }
@@ -1614,10 +1473,7 @@ fn print_machine_catalog_table(report: &serde_json::Value) {
     if let Some(rows) = report.get("reports").and_then(|v| v.as_array()) {
         for row in rows {
             let name = row.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
-            let schema = row
-                .get("schema")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
+            let schema = row.get("schema").and_then(|v| v.as_str()).unwrap_or("unknown");
             println!("{name}\t{schema}");
         }
     }
@@ -1627,18 +1483,9 @@ fn print_api_parity_table(report: &serde_json::Value) {
     println!("cli/api parity");
     if let Some(rows) = report.get("workflows").and_then(|v| v.as_array()) {
         for row in rows {
-            let workflow = row
-                .get("workflow")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
-            let cli = row
-                .get("cli_supported")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            let api = row
-                .get("api_supported")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
+            let workflow = row.get("workflow").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let cli = row.get("cli_supported").and_then(|v| v.as_bool()).unwrap_or(false);
+            let api = row.get("api_supported").and_then(|v| v.as_bool()).unwrap_or(false);
             println!("{workflow}\tcli={cli}\tapi={api}");
         }
     }
@@ -1666,20 +1513,14 @@ fn print_history_browse_table(report: &serde_json::Value) {
         for run in runs {
             let dir = run.get("run_dir").and_then(|v| v.as_str()).unwrap_or("unknown");
             let cmd = run.get("command").and_then(|v| v.as_str()).unwrap_or("unknown");
-            let dataset = run
-                .get("dataset_id")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
+            let dataset = run.get("dataset_id").and_then(|v| v.as_str()).unwrap_or("unknown");
             println!("{dir}\t{cmd}\t{dataset}");
         }
     }
 }
 
 fn print_route_explain_table(report: &serde_json::Value) {
-    let topic = report
-        .get("topic")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
+    let topic = report.get("topic").and_then(|v| v.as_str()).unwrap_or("unknown");
     println!("route topic\t{topic}");
     if let Some(steps) = report.get("steps").and_then(|v| v.as_array()) {
         for step in steps {
@@ -1691,31 +1532,19 @@ fn print_route_explain_table(report: &serde_json::Value) {
 }
 
 fn print_operator_workflow_table(report: &serde_json::Value) {
-    let profile = report
-        .get("profile")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
+    let profile = report.get("profile").and_then(|v| v.as_str()).unwrap_or("unknown");
     println!("operator workflow\t{profile}");
     if let Some(steps) = report.get("steps").and_then(|v| v.as_array()) {
         for step in steps {
-            let label = step
-                .get("label")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
-            let command = step
-                .get("command")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
+            let label = step.get("label").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let command = step.get("command").and_then(|v| v.as_str()).unwrap_or("unknown");
             println!("{label}\t{command}");
         }
     }
 }
 
 fn print_operator_ergonomics_table(report: &serde_json::Value) {
-    let score = report
-        .get("ergonomics_score")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.0);
+    let score = report.get("ergonomics_score").and_then(|v| v.as_f64()).unwrap_or(0.0);
     let gate = report
         .get("rigor")
         .and_then(|v| v.get("medium_gate_passed"))
@@ -1737,14 +1566,10 @@ fn print_audit_trail_table(report: &serde_json::Value) {
         .and_then(|v| v.get("deterministic"))
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    let overrides = report
-        .get("override_events")
-        .and_then(|v| v.as_array())
-        .map_or(0usize, Vec::len);
-    let exceptions = report
-        .get("policy_exceptions")
-        .and_then(|v| v.as_array())
-        .map_or(0usize, Vec::len);
+    let overrides =
+        report.get("override_events").and_then(|v| v.as_array()).map_or(0usize, Vec::len);
+    let exceptions =
+        report.get("policy_exceptions").and_then(|v| v.as_array()).map_or(0usize, Vec::len);
     println!("deterministic_replay\t{replay}");
     println!("override_events\t{overrides}");
     println!("policy_exceptions\t{exceptions}");
@@ -1756,11 +1581,8 @@ fn print_dependency_trace_table(report: &serde_json::Value) {
         .and_then(|v| v.get("toolchain"))
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
-    let correction_rows = report
-        .get("corrections")
-        .and_then(|v| v.get("rows"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
+    let correction_rows =
+        report.get("corrections").and_then(|v| v.get("rows")).and_then(|v| v.as_u64()).unwrap_or(0);
     let env_refs = report
         .get("environment")
         .and_then(|v| v.get("reference_count"))
@@ -1772,37 +1594,21 @@ fn print_dependency_trace_table(report: &serde_json::Value) {
 }
 
 fn print_trust_class_table(report: &serde_json::Value) {
-    let class = report
-        .get("trust_class")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
+    let class = report.get("trust_class").and_then(|v| v.as_str()).unwrap_or("unknown");
     let rationale = report
         .get("rationale")
         .and_then(|v| v.as_array())
-        .map(|rows| {
-            rows.iter()
-                .filter_map(|v| v.as_str())
-                .collect::<Vec<_>>()
-                .join(",")
-        })
+        .map(|rows| rows.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(","))
         .unwrap_or_default();
     println!("trust_class\t{class}");
     println!("rationale\t{rationale}");
 }
 
 fn print_integrity_focus_table(report: &serde_json::Value) {
-    let class = report
-        .get("trust_class")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
-    let score = report
-        .get("engineering_trust_score")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.0);
-    let blockers = report
-        .get("blocking_findings")
-        .and_then(|v| v.as_array())
-        .map_or(0usize, Vec::len);
+    let class = report.get("trust_class").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let score = report.get("engineering_trust_score").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let blockers =
+        report.get("blocking_findings").and_then(|v| v.as_array()).map_or(0usize, Vec::len);
     println!("trust_class\t{class}");
     println!("engineering_trust_score\t{score:.2}");
     println!("blocking_findings\t{blockers}");
@@ -1840,8 +1646,8 @@ fn summarize_run_diagnostics(run_dir: &Path) -> Result<Vec<DiagnosticEvent>> {
 fn explain_run_scope(run_dir: &Path) -> Result<serde_json::Value> {
     ensure_run_dir_exists(run_dir)?;
     let manifest_path = run_dir.join("manifest.json");
-    let run_manifest: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&manifest_path)?)
-        .map_err(|err| {
+    let run_manifest: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&manifest_path)?).map_err(|err| {
             classified_error(
                 CliErrorClass::InternalFault,
                 format!("failed parsing manifest {}: {err}", manifest_path.display()),
@@ -1945,10 +1751,8 @@ fn explain_run_scope(run_dir: &Path) -> Result<serde_json::Value> {
             }
             cache_event_total = cache_event_total.saturating_add(1);
             if name == "acquisition_code_fft_cache_miss" {
-                if let Some(reason) = row
-                    .get("fields")
-                    .and_then(|v| v.as_array())
-                    .and_then(|fields| {
+                if let Some(reason) =
+                    row.get("fields").and_then(|v| v.as_array()).and_then(|fields| {
                         fields.iter().find_map(|entry| {
                             let key = entry.get(0).and_then(|v| v.as_str())?;
                             if key == "reason" {
@@ -1959,8 +1763,7 @@ fn explain_run_scope(run_dir: &Path) -> Result<serde_json::Value> {
                         })
                     })
                 {
-                    let next =
-                        cache_events.get(&reason).and_then(|v| v.as_u64()).unwrap_or(0) + 1;
+                    let next = cache_events.get(&reason).and_then(|v| v.as_u64()).unwrap_or(0) + 1;
                     cache_events.insert(reason, serde_json::Value::from(next));
                 }
             }
@@ -2064,24 +1867,15 @@ fn verify_repro_bundle(run_dir: &Path) -> Result<serde_json::Value> {
     );
     fingerprint_payload.insert(
         "replay_scope".to_string(),
-        manifest
-            .get("replay_scope")
-            .cloned()
-            .unwrap_or(serde_json::Value::Null),
+        manifest.get("replay_scope").cloned().unwrap_or(serde_json::Value::Null),
     );
     fingerprint_payload.insert(
         "front_end_provenance".to_string(),
-        manifest
-            .get("front_end_provenance")
-            .cloned()
-            .unwrap_or(serde_json::Value::Null),
+        manifest.get("front_end_provenance").cloned().unwrap_or(serde_json::Value::Null),
     );
     fingerprint_payload.insert(
         "layout_schema_version".to_string(),
-        manifest
-            .get("layout_schema_version")
-            .cloned()
-            .unwrap_or(serde_json::Value::Null),
+        manifest.get("layout_schema_version").cloned().unwrap_or(serde_json::Value::Null),
     );
     let fingerprint_json = serde_json::to_vec(&fingerprint_payload)?;
     let replay_fingerprint = sha256_hex(&fingerprint_json);
@@ -2102,7 +1896,10 @@ fn verify_repro_bundle(run_dir: &Path) -> Result<serde_json::Value> {
     }))
 }
 
-fn compare_run_evidence(baseline_run_dir: &Path, candidate_run_dir: &Path) -> Result<serde_json::Value> {
+fn compare_run_evidence(
+    baseline_run_dir: &Path,
+    candidate_run_dir: &Path,
+) -> Result<serde_json::Value> {
     ensure_run_dir_exists(baseline_run_dir)?;
     ensure_run_dir_exists(candidate_run_dir)?;
     let baseline_repro = verify_repro_bundle(baseline_run_dir)?;
@@ -2174,7 +1971,10 @@ fn compare_run_evidence(baseline_run_dir: &Path, candidate_run_dir: &Path) -> Re
     }))
 }
 
-fn replay_audit_report(baseline_run_dir: &Path, candidate_run_dir: &Path) -> Result<serde_json::Value> {
+fn replay_audit_report(
+    baseline_run_dir: &Path,
+    candidate_run_dir: &Path,
+) -> Result<serde_json::Value> {
     ensure_run_dir_exists(baseline_run_dir)?;
     ensure_run_dir_exists(candidate_run_dir)?;
     let compare = compare_run_evidence(baseline_run_dir, candidate_run_dir)?;
@@ -2215,14 +2015,14 @@ fn replay_audit_report(baseline_run_dir: &Path, candidate_run_dir: &Path) -> Res
     if corrupted_delta != 0 {
         reasons.push("artifact_corruption_delta_detected".to_string());
     }
-    let classification = if baseline_audit_ok && candidate_audit_ok && fingerprint_match && corrupted_delta == 0
-    {
-        "deterministic_match"
-    } else if baseline_audit_ok && candidate_audit_ok {
-        "scientific_or_configuration_drift"
-    } else {
-        "integrity_failure"
-    };
+    let classification =
+        if baseline_audit_ok && candidate_audit_ok && fingerprint_match && corrupted_delta == 0 {
+            "deterministic_match"
+        } else if baseline_audit_ok && candidate_audit_ok {
+            "scientific_or_configuration_drift"
+        } else {
+            "integrity_failure"
+        };
 
     Ok(serde_json::json!({
         "schema_version": 1,
@@ -2259,7 +2059,8 @@ fn advanced_gate_report(run_dir: &Path, mode: AdvancedGateMode) -> Result<serde_
     };
     let support_path = run_dir.join("artifacts").join("rtk").join("rtk_support_matrix.json");
     let support_json = if support_path.exists() {
-        serde_json::from_str::<serde_json::Value>(&fs::read_to_string(&support_path)?).unwrap_or(serde_json::Value::Null)
+        serde_json::from_str::<serde_json::Value>(&fs::read_to_string(&support_path)?)
+            .unwrap_or(serde_json::Value::Null)
     } else {
         serde_json::Value::Null
     };
@@ -2277,21 +2078,14 @@ fn advanced_gate_report(run_dir: &Path, mode: AdvancedGateMode) -> Result<serde_
         .cloned()
         .unwrap_or(serde_json::Value::Null);
 
-    let maturity = support_row
-        .get("maturity")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
-    let real_solver = support_row
-        .get("real_solver")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let maturity = support_row.get("maturity").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let real_solver = support_row.get("real_solver").and_then(|v| v.as_bool()).unwrap_or(false);
 
-    let evidence_path = run_dir
-        .join("artifacts")
-        .join("validate")
-        .join("validation_evidence_bundle.json");
+    let evidence_path =
+        run_dir.join("artifacts").join("validate").join("validation_evidence_bundle.json");
     let evidence_json = if evidence_path.exists() {
-        serde_json::from_str::<serde_json::Value>(&fs::read_to_string(&evidence_path)?).unwrap_or(serde_json::Value::Null)
+        serde_json::from_str::<serde_json::Value>(&fs::read_to_string(&evidence_path)?)
+            .unwrap_or(serde_json::Value::Null)
     } else {
         serde_json::Value::Null
     };
@@ -2422,11 +2216,8 @@ fn benchmark_summary_report(run_dir: &Path) -> Result<serde_json::Value> {
     ensure_run_dir_exists(run_dir)?;
     let obs_path = run_dir.join("artifacts").join("obs").join("obs.jsonl");
     let pvt_path = run_dir.join("artifacts").join("pvt").join("pvt.jsonl");
-    let obs = if obs_path.exists() {
-        read_obs_epochs(&obs_path).unwrap_or_default()
-    } else {
-        Vec::new()
-    };
+    let obs =
+        if obs_path.exists() { read_obs_epochs(&obs_path).unwrap_or_default() } else { Vec::new() };
     let nav = if pvt_path.exists() {
         read_nav_solutions(&pvt_path).unwrap_or_default()
     } else {
@@ -2472,10 +2263,8 @@ fn medium_gate_report(run_dir: &Path) -> Result<serde_json::Value> {
     ensure_run_dir_exists(run_dir)?;
     let explain = explain_run_scope(run_dir)?;
     let repro = verify_repro_bundle(run_dir)?;
-    let evidence_path = run_dir
-        .join("artifacts")
-        .join("validate")
-        .join("validation_evidence_bundle.json");
+    let evidence_path =
+        run_dir.join("artifacts").join("validate").join("validation_evidence_bundle.json");
     let evidence = if evidence_path.exists() {
         serde_json::from_str::<serde_json::Value>(&fs::read_to_string(&evidence_path)?)
             .unwrap_or(serde_json::Value::Null)
@@ -2520,10 +2309,8 @@ fn operator_status_report(run_dir: &Path) -> Result<serde_json::Value> {
     ensure_run_dir_exists(run_dir)?;
     let explain = explain_run_scope(run_dir)?;
     let repro = verify_repro_bundle(run_dir)?;
-    let evidence_path = run_dir
-        .join("artifacts")
-        .join("validate")
-        .join("validation_evidence_bundle.json");
+    let evidence_path =
+        run_dir.join("artifacts").join("validate").join("validation_evidence_bundle.json");
     let evidence = if evidence_path.exists() {
         serde_json::from_str::<serde_json::Value>(&fs::read_to_string(&evidence_path)?)
             .unwrap_or(serde_json::Value::Null)
@@ -2545,11 +2332,7 @@ fn operator_status_report(run_dir: &Path) -> Result<serde_json::Value> {
     } else {
         "evidence_limited"
     };
-    let quality_state = if corrupted == 0 {
-        "artifact_clean"
-    } else {
-        "artifact_corrupted"
-    };
+    let quality_state = if corrupted == 0 { "artifact_clean" } else { "artifact_corrupted" };
     let run_state = if repro.get("audit_ok").and_then(|v| v.as_bool()).unwrap_or(false) {
         "audit_ready"
     } else {
@@ -2573,11 +2356,8 @@ fn operator_status_report(run_dir: &Path) -> Result<serde_json::Value> {
 fn channel_summary_report(run_dir: &Path) -> Result<serde_json::Value> {
     ensure_run_dir_exists(run_dir)?;
     let obs_path = run_dir.join("artifacts").join("obs").join("obs.jsonl");
-    let obs = if obs_path.exists() {
-        read_obs_epochs(&obs_path).unwrap_or_default()
-    } else {
-        Vec::new()
-    };
+    let obs =
+        if obs_path.exists() { read_obs_epochs(&obs_path).unwrap_or_default() } else { Vec::new() };
     let mut per_channel: std::collections::BTreeMap<String, (usize, f64)> =
         std::collections::BTreeMap::new();
     for epoch in &obs {
@@ -2621,25 +2401,15 @@ fn export_bundle_report(run_dir: &Path, out_dir: Option<&PathBuf>) -> Result<ser
     let candidates = vec![
         run_dir.join("manifest.json"),
         run_dir.join("run_report.json"),
-        run_dir
-            .join("artifacts")
-            .join("validate")
-            .join("validation_report.json"),
-        run_dir
-            .join("artifacts")
-            .join("validate")
-            .join("validation_evidence_bundle.json"),
+        run_dir.join("artifacts").join("validate").join("validation_report.json"),
+        run_dir.join("artifacts").join("validate").join("validation_evidence_bundle.json"),
         run_dir.join("trace.ndjson"),
     ];
     for src in candidates {
         if !src.exists() || !src.is_file() {
             continue;
         }
-        let file_name = src
-            .file_name()
-            .and_then(|v| v.to_str())
-            .unwrap_or("unknown")
-            .to_string();
+        let file_name = src.file_name().and_then(|v| v.to_str()).unwrap_or("unknown").to_string();
         let dst = bundle_root.join(&file_name);
         fs::copy(&src, &dst)?;
         let bytes = fs::read(&dst)?;
@@ -2697,7 +2467,7 @@ fn machine_catalog_report() -> serde_json::Value {
         serde_json::json!({"name": "diagnostics_audit_trail", "schema": "schemas/diagnostics_audit_trail_report.schema.json", "schema_version": 1}),
         serde_json::json!({"name": "diagnostics_dependency_trace", "schema": "schemas/diagnostics_dependency_trace_report.schema.json", "schema_version": 1}),
         serde_json::json!({"name": "diagnostics_trust_class", "schema": "schemas/diagnostics_trust_class_report.schema.json", "schema_version": 1}),
-        serde_json::json!({"name": "diagnostics_integrity_focus", "schema": "schemas/diagnostics_integrity_focus_report.schema.json", "schema_version": 1})
+        serde_json::json!({"name": "diagnostics_integrity_focus", "schema": "schemas/diagnostics_integrity_focus_report.schema.json", "schema_version": 1}),
     ];
     serde_json::json!({
         "schema_version": 1,
@@ -2751,13 +2521,8 @@ fn api_parity_report() -> serde_json::Value {
         }),
     ];
     let parity_ok = workflows.iter().all(|row| {
-        row.get("cli_supported")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false)
-            == row
-                .get("api_supported")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
+        row.get("cli_supported").and_then(|v| v.as_bool()).unwrap_or(false)
+            == row.get("api_supported").and_then(|v| v.as_bool()).unwrap_or(false)
     });
     serde_json::json!({
         "schema_version": 1,
@@ -2820,8 +2585,9 @@ fn history_browse_report(root_dir: &Path, limit: usize) -> Result<serde_json::Va
         if !manifest_path.exists() {
             continue;
         }
-        let manifest = serde_json::from_str::<serde_json::Value>(&fs::read_to_string(&manifest_path)?)
-            .unwrap_or(serde_json::Value::Null);
+        let manifest =
+            serde_json::from_str::<serde_json::Value>(&fs::read_to_string(&manifest_path)?)
+                .unwrap_or(serde_json::Value::Null);
         let artifact_files = path.join("artifacts");
         let artifact_file_count = if artifact_files.exists() {
             let mut count = 0usize;
@@ -2870,22 +2636,22 @@ fn route_explain_report(topic: RouteTopic) -> serde_json::Value {
         RouteTopic::Integrity => vec![
             serde_json::json!({"command": "bijux gnss diagnostics medium-gate --run-dir <run_dir> --report table", "reason": "surface critical pass/fail first"}),
             serde_json::json!({"command": "bijux gnss diagnostics advanced-gate --run-dir <run_dir> --mode rtk --report json", "reason": "separate support maturity from evidence failures"}),
-            serde_json::json!({"command": "bijux gnss diagnostics explain --run-dir <run_dir> --report json", "reason": "inspect replay scope, cache, and artifact integrity"})
+            serde_json::json!({"command": "bijux gnss diagnostics explain --run-dir <run_dir> --report json", "reason": "inspect replay scope, cache, and artifact integrity"}),
         ],
         RouteTopic::Replay => vec![
             serde_json::json!({"command": "bijux gnss diagnostics verify-repro --run-dir <run_dir> --report json", "reason": "establish bundle and fingerprint baseline"}),
             serde_json::json!({"command": "bijux gnss diagnostics replay-audit --baseline-run-dir <a> --candidate-run-dir <b> --report table", "reason": "classify deterministic match vs drift"}),
-            serde_json::json!({"command": "bijux gnss diagnostics compare --baseline-run-dir <a> --candidate-run-dir <b> --report json", "reason": "attach quality deltas to replay outcome"})
+            serde_json::json!({"command": "bijux gnss diagnostics compare --baseline-run-dir <a> --candidate-run-dir <b> --report json", "reason": "attach quality deltas to replay outcome"}),
         ],
         RouteTopic::Compare => vec![
             serde_json::json!({"command": "bijux gnss diagnostics compare --baseline-run-dir <a> --candidate-run-dir <b> --report json", "reason": "compute reproducibility and quality delta summary"}),
             serde_json::json!({"command": "bijux gnss diagnostics channel-summary --run-dir <b> --report json", "reason": "inspect channel-level context for differences"}),
-            serde_json::json!({"command": "bijux gnss diagnostics benchmark-summary --run-dir <b> --report json", "reason": "review digestible benchmark metrics with rigor markers"})
+            serde_json::json!({"command": "bijux gnss diagnostics benchmark-summary --run-dir <b> --report json", "reason": "review digestible benchmark metrics with rigor markers"}),
         ],
         RouteTopic::Export => vec![
             serde_json::json!({"command": "bijux gnss diagnostics export-bundle --run-dir <run_dir>", "reason": "create reproducible review package"}),
             serde_json::json!({"command": "bijux gnss diagnostics machine-catalog --report json", "reason": "declare report contracts for downstream systems"}),
-            serde_json::json!({"command": "bijux gnss diagnostics history-browse --root-dir runs --report json", "reason": "find neighboring runs for triage context"})
+            serde_json::json!({"command": "bijux gnss diagnostics history-browse --root-dir runs --report json", "reason": "find neighboring runs for triage context"}),
         ],
     };
     serde_json::json!({
@@ -2901,17 +2667,17 @@ fn operator_workflow_report(profile: WorkflowProfile) -> serde_json::Value {
         WorkflowProfile::Run => vec![
             serde_json::json!({"label": "execute", "command": "bijux gnss run --dataset <id> --config <profile.toml>", "output": "manifest + run_report + artifacts"}),
             serde_json::json!({"label": "status", "command": "bijux gnss diagnostics operator-status --run-dir <run_dir> --report table", "output": "run/quality/evidence states"}),
-            serde_json::json!({"label": "gate", "command": "bijux gnss diagnostics medium-gate --run-dir <run_dir> --strict --report json", "output": "integration gate result"})
+            serde_json::json!({"label": "gate", "command": "bijux gnss diagnostics medium-gate --run-dir <run_dir> --strict --report json", "output": "integration gate result"}),
         ],
         WorkflowProfile::Triage => vec![
             serde_json::json!({"label": "inventory", "command": "bijux gnss diagnostics artifact-inventory --run-dir <run_dir> --report table", "output": "artifact group counts"}),
             serde_json::json!({"label": "route", "command": "bijux gnss diagnostics route-explain --topic integrity --report table", "output": "debugging command path"}),
-            serde_json::json!({"label": "bundle", "command": "bijux gnss diagnostics export-bundle --run-dir <run_dir>", "output": "reproducible review package"})
+            serde_json::json!({"label": "bundle", "command": "bijux gnss diagnostics export-bundle --run-dir <run_dir>", "output": "reproducible review package"}),
         ],
         WorkflowProfile::Compare => vec![
             serde_json::json!({"label": "replay", "command": "bijux gnss diagnostics replay-audit --baseline-run-dir <a> --candidate-run-dir <b> --report table", "output": "determinism classification"}),
             serde_json::json!({"label": "quality", "command": "bijux gnss diagnostics compare --baseline-run-dir <a> --candidate-run-dir <b> --report json", "output": "quality and integrity deltas"}),
-            serde_json::json!({"label": "channel", "command": "bijux gnss diagnostics channel-summary --run-dir <b> --report table", "output": "channel-level context for drift"})
+            serde_json::json!({"label": "channel", "command": "bijux gnss diagnostics channel-summary --run-dir <b> --report table", "output": "channel-level context for drift"}),
         ],
     };
     serde_json::json!({
@@ -2925,10 +2691,7 @@ fn operator_ergonomics_report(run_dir: &Path) -> Result<serde_json::Value> {
     ensure_run_dir_exists(run_dir)?;
     let status = operator_status_report(run_dir)?;
     let gate = medium_gate_report(run_dir)?;
-    let gate_passed = gate
-        .get("gate_passed")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let gate_passed = gate.get("gate_passed").and_then(|v| v.as_bool()).unwrap_or(false);
     let evidence_state = status
         .get("status")
         .and_then(|v| v.get("evidence_state"))
@@ -3011,26 +2774,20 @@ fn audit_trail_report(run_dir: &Path) -> Result<serde_json::Value> {
             let Ok(row) = serde_json::from_str::<serde_json::Value>(line) else {
                 continue;
             };
-            let name = row
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_lowercase();
-            if name.contains("override") || name.contains("exception") || name.contains("replay")
-            {
+            let name = row.get("name").and_then(|v| v.as_str()).unwrap_or_default().to_lowercase();
+            if name.contains("override") || name.contains("exception") || name.contains("replay") {
                 override_events.push(row);
             }
         }
     }
 
     let mut policy_exceptions = Vec::new();
-    let evidence_path = run_dir
-        .join("artifacts")
-        .join("validate")
-        .join("validation_evidence_bundle.json");
+    let evidence_path =
+        run_dir.join("artifacts").join("validate").join("validation_evidence_bundle.json");
     if evidence_path.exists() {
-        let evidence = serde_json::from_str::<serde_json::Value>(&fs::read_to_string(&evidence_path)?)
-            .unwrap_or(serde_json::Value::Null);
+        let evidence =
+            serde_json::from_str::<serde_json::Value>(&fs::read_to_string(&evidence_path)?)
+                .unwrap_or(serde_json::Value::Null);
         if let Some(violations) = evidence
             .get("claim_evidence_guard")
             .and_then(|v| v.get("violations"))
@@ -3059,10 +2816,7 @@ fn dependency_trace_report(run_dir: &Path) -> Result<serde_json::Value> {
     let manifest: serde_json::Value = serde_json::from_str(&fs::read_to_string(&manifest_path)?)
         .unwrap_or(serde_json::Value::Null);
 
-    let correction_path = run_dir
-        .join("artifacts")
-        .join("rtk")
-        .join("rtk_correction_input.jsonl");
+    let correction_path = run_dir.join("artifacts").join("rtk").join("rtk_correction_input.jsonl");
     let mut correction_rows = 0u64;
     let mut correction_tags = std::collections::BTreeSet::new();
     if correction_path.exists() {
@@ -3075,10 +2829,8 @@ fn dependency_trace_report(run_dir: &Path) -> Result<serde_json::Value> {
                 continue;
             };
             correction_rows = correction_rows.saturating_add(1);
-            if let Some(tags) = row
-                .get("payload")
-                .and_then(|v| v.get("correction_tags"))
-                .and_then(|v| v.as_array())
+            if let Some(tags) =
+                row.get("payload").and_then(|v| v.get("correction_tags")).and_then(|v| v.as_array())
             {
                 for tag in tags {
                     if let Some(value) = tag.as_str() {
@@ -3147,10 +2899,7 @@ fn trust_class_report(run_dir: &Path) -> Result<serde_json::Value> {
     let repro = verify_repro_bundle(run_dir)?;
     let benchmark = benchmark_summary_report(run_dir)?;
 
-    let gate_passed = medium_gate
-        .get("gate_passed")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let gate_passed = medium_gate.get("gate_passed").and_then(|v| v.as_bool()).unwrap_or(false);
     let repro_ok = repro.get("audit_ok").and_then(|v| v.as_bool()).unwrap_or(false);
     let nav_epochs = benchmark
         .get("summary")
@@ -3212,19 +2961,10 @@ fn integrity_focus_report(run_dir: &Path) -> Result<serde_json::Value> {
     let medium_gate = medium_gate_report(run_dir)?;
 
     let mut blocking_findings = Vec::new();
-    if !medium_gate
-        .get("gate_passed")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false)
-    {
+    if !medium_gate.get("gate_passed").and_then(|v| v.as_bool()).unwrap_or(false) {
         blocking_findings.push("medium_gate_failed".to_string());
     }
-    if audit
-        .get("policy_exceptions")
-        .and_then(|v| v.as_array())
-        .map_or(0usize, Vec::len)
-        > 0
-    {
+    if audit.get("policy_exceptions").and_then(|v| v.as_array()).map_or(0usize, Vec::len) > 0 {
         blocking_findings.push("policy_exceptions_present".to_string());
     }
     if dependency
@@ -3237,10 +2977,7 @@ fn integrity_focus_report(run_dir: &Path) -> Result<serde_json::Value> {
         blocking_findings.push("correction_trace_missing".to_string());
     }
 
-    let trust_class = trust
-        .get("trust_class")
-        .and_then(|v| v.as_str())
-        .unwrap_or("draft");
+    let trust_class = trust.get("trust_class").and_then(|v| v.as_str()).unwrap_or("draft");
     let base_score = match trust_class {
         "certification_grade" => 1.0,
         "benchmarked" => 0.8,
@@ -3375,12 +3112,17 @@ mod diagnostics_tests {
         )
         .expect("manifest write");
         fs::write(base.join("run_report.json"), "{\"schema_version\":1}\n").expect("report write");
-        fs::write(base.join("artifacts").join("obs.jsonl"), "{\"payload\":{\"artifact_id\":\"obs-1\"}}\n")
-            .expect("artifact write");
+        fs::write(
+            base.join("artifacts").join("obs.jsonl"),
+            "{\"payload\":{\"artifact_id\":\"obs-1\"}}\n",
+        )
+        .expect("artifact write");
         base
     }
 
-    fn dataset_entry_with_capture_start(capture_start_utc: &str) -> bijux_gnss_infra::api::DatasetEntry {
+    fn dataset_entry_with_capture_start(
+        capture_start_utc: &str,
+    ) -> bijux_gnss_infra::api::DatasetEntry {
         bijux_gnss_infra::api::DatasetEntry {
             id: "demo".to_string(),
             path: "datasets/demo.iq16".to_string(),
@@ -3400,7 +3142,8 @@ mod diagnostics_tests {
     fn nav_reference_week_prefers_explicit_value() {
         let dataset = dataset_entry_with_capture_start("2022-05-08T00:00:00Z");
 
-        let reference_week = nav_reference_week(Some(2209), Some(&dataset)).expect("reference week");
+        let reference_week =
+            nav_reference_week(Some(2209), Some(&dataset)).expect("reference week");
 
         assert_eq!(reference_week, Some(2209));
     }
@@ -3517,7 +3260,8 @@ mod diagnostics_tests {
         )
         .expect("manifest write");
         fs::write(base.join("run_report.json"), "{\"schema_version\":1}\n").expect("report write");
-        fs::write(base.join("artifacts").join("obs.jsonl"), "{\"payload\":{}}\n").expect("artifact");
+        fs::write(base.join("artifacts").join("obs.jsonl"), "{\"payload\":{}}\n")
+            .expect("artifact");
 
         let report = verify_repro_bundle(PathBuf::as_path(&base)).expect("report");
         assert_eq!(report.get("audit_ok").and_then(|v| v.as_bool()), Some(true));
@@ -3592,10 +3336,7 @@ mod diagnostics_tests {
             }
         });
         fs::write(
-            run_dir
-                .join("artifacts")
-                .join("validate")
-                .join("validation_evidence_bundle.json"),
+            run_dir.join("artifacts").join("validate").join("validation_evidence_bundle.json"),
             serde_json::to_string_pretty(&evidence).expect("evidence json"),
         )
         .expect("evidence write");
@@ -3611,16 +3352,11 @@ mod diagnostics_tests {
     fn artifact_inventory_report_lists_groups() {
         let run_dir = create_base_run("artifact_inventory", "cfg-artifacts");
         fs::create_dir_all(run_dir.join("artifacts").join("obs")).expect("obs dir");
-        fs::write(
-            run_dir.join("artifacts").join("obs").join("obs.jsonl"),
-            "{\"payload\":{}}\n",
-        )
-        .expect("obs write");
-        let report = artifact_inventory_report(PathBuf::as_path(&run_dir)).expect("inventory report");
-        assert!(report
-            .get("groups")
-            .and_then(|v| v.get("obs"))
-            .is_some());
+        fs::write(run_dir.join("artifacts").join("obs").join("obs.jsonl"), "{\"payload\":{}}\n")
+            .expect("obs write");
+        let report =
+            artifact_inventory_report(PathBuf::as_path(&run_dir)).expect("inventory report");
+        assert!(report.get("groups").and_then(|v| v.get("obs")).is_some());
         let _ = fs::remove_dir_all(run_dir);
     }
 
@@ -3629,10 +3365,7 @@ mod diagnostics_tests {
         let run_dir = create_base_run("medium_gate", "cfg-medium");
         fs::create_dir_all(run_dir.join("artifacts").join("validate")).expect("validate dir");
         fs::write(
-            run_dir
-                .join("artifacts")
-                .join("validate")
-                .join("validation_evidence_bundle.json"),
+            run_dir.join("artifacts").join("validate").join("validation_evidence_bundle.json"),
             "{\"claim_evidence_guard\":{\"supported\":true}}\n",
         )
         .expect("evidence write");
@@ -3646,10 +3379,7 @@ mod diagnostics_tests {
         let run_dir = create_base_run("operator_status", "cfg-status");
         fs::create_dir_all(run_dir.join("artifacts").join("validate")).expect("validate dir");
         fs::write(
-            run_dir
-                .join("artifacts")
-                .join("validate")
-                .join("validation_evidence_bundle.json"),
+            run_dir.join("artifacts").join("validate").join("validation_evidence_bundle.json"),
             "{\"claim_evidence_guard\":{\"supported\":false}}\n",
         )
         .expect("evidence write");
@@ -3662,10 +3392,7 @@ mod diagnostics_tests {
     fn export_bundle_report_writes_bundle_manifest() {
         let run_dir = create_base_run("bundle_export", "cfg-bundle");
         let report = export_bundle_report(PathBuf::as_path(&run_dir), None).expect("bundle");
-        let bundle_dir = report
-            .get("bundle_dir")
-            .and_then(|v| v.as_str())
-            .expect("bundle dir");
+        let bundle_dir = report.get("bundle_dir").and_then(|v| v.as_str()).expect("bundle dir");
         let manifest = PathBuf::from(bundle_dir).join("bundle_manifest.json");
         assert!(manifest.exists());
         let _ = fs::remove_dir_all(run_dir);
