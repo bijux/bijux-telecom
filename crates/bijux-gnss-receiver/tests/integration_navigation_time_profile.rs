@@ -51,3 +51,21 @@ fn navigation_time_profile_identifies_stabilizing_accuracy_runs() {
         "{report:?}"
     );
 }
+
+#[test]
+fn navigation_time_profile_identifies_drifting_accuracy_runs() {
+    let report = navigation_time_profile_report();
+    let point = report
+        .points
+        .iter()
+        .find(|point| point.scenario_id == "navigation_time_profile_drifting_navigation_accuracy")
+        .expect("drifting time profile point");
+
+    assert!(point.ready, "{report:?}");
+    assert_eq!(point.trend, SyntheticPvtTimeTrend::Drifting, "{report:?}");
+    assert!(
+        point.last_window_mean_position_error_3d_m > point.first_window_mean_position_error_3d_m,
+        "{report:?}"
+    );
+    assert!(point.position_error_drift_m_per_s.expect("drifting slope") > 0.0, "{report:?}");
+}
