@@ -10,7 +10,7 @@ use bijux_gnss_core::api::{
 use bijux_gnss_nav::api::{
     elevation_azimuth_deg, position_measurement_weight,
     position_observation_has_valid_satellite_time, sat_state_gps_l1ca_from_observation,
-    GpsEphemeris, PositionObservation, PositionSolver, WeightingConfig,
+    GpsEphemeris, KlobucharCoefficients, PositionObservation, PositionSolver, WeightingConfig,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -117,18 +117,30 @@ impl Navigation {
         obs: &ObsEpoch,
         eph: &[GpsEphemeris],
     ) -> Option<NavSolutionEpoch> {
+        self.solve_epoch_with_broadcast_ionosphere(obs, eph, None)
+    }
+
+    pub fn solve_epoch_with_broadcast_ionosphere(
+        &mut self,
+        obs: &ObsEpoch,
+        eph: &[GpsEphemeris],
+        klobuchar: Option<&KlobucharCoefficients>,
+    ) -> Option<NavSolutionEpoch> {
         let source_observation_epoch_id = source_observation_epoch_id(obs);
         let nav_artifact_id = nav_artifact_id(obs.epoch_idx, &source_observation_epoch_id);
         let assumptions = nav_assumptions(eph.len());
         if !obs.valid {
-            return Some(invalid_solution_epoch(
-                obs,
-                source_observation_epoch_id,
-                nav_artifact_id,
-                Some(NavRefusalClass::InconsistentObservations),
-                "invalid_observation_epoch".to_string(),
-                vec!["input_observation_marked_invalid".to_string()],
-                assumptions,
+            return Some(apply_ionosphere_explainability(
+                invalid_solution_epoch(
+                    obs,
+                    source_observation_epoch_id,
+                    nav_artifact_id,
+                    Some(NavRefusalClass::InconsistentObservations),
+                    "invalid_observation_epoch".to_string(),
+                    vec!["input_observation_marked_invalid".to_string()],
+                    assumptions,
+                ),
+                klobuchar,
             ));
         }
         let input_constellations = obs
@@ -141,21 +153,24 @@ impl Navigation {
             input_constellations.iter().any(|constellation| *constellation != Constellation::Gps);
 
         if has_unsupported_constellation && !has_supported_gps {
-            return Some(invalid_solution_epoch(
-                obs,
-                source_observation_epoch_id,
-                nav_artifact_id,
-                Some(NavRefusalClass::UnsupportedConstellation),
-                "unsupported_constellation_input".to_string(),
-                vec![format!(
-                    "constellations={}",
-                    input_constellations
-                        .iter()
-                        .map(|value| format!("{value:?}"))
-                        .collect::<Vec<_>>()
-                        .join(",")
-                )],
-                assumptions,
+            return Some(apply_ionosphere_explainability(
+                invalid_solution_epoch(
+                    obs,
+                    source_observation_epoch_id,
+                    nav_artifact_id,
+                    Some(NavRefusalClass::UnsupportedConstellation),
+                    "unsupported_constellation_input".to_string(),
+                    vec![format!(
+                        "constellations={}",
+                        input_constellations
+                            .iter()
+                            .map(|value| format!("{value:?}"))
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    )],
+                    assumptions,
+                ),
+                klobuchar,
             ));
         }
         if has_unsupported_constellation && has_supported_gps {
@@ -261,22 +276,28 @@ impl Navigation {
                     invalid_satellite_time_sats.len()
                 ));
             }
-            return Some(self.degraded_from_last(
-                obs,
-                source_observation_epoch_id,
-                nav_artifact_id,
-                NavDecision {
-                    status: SolutionStatus::Degraded,
-                    refusal_class: Some(refusal),
-                    explain_decision: "refused".to_string(),
-                    explain_reasons,
-                },
-                assumptions,
+            return Some(apply_ionosphere_explainability(
+                self.degraded_from_last(
+                    obs,
+                    source_observation_epoch_id,
+                    nav_artifact_id,
+                    NavDecision {
+                        status: SolutionStatus::Degraded,
+                        refusal_class: Some(refusal),
+                        explain_decision: "refused".to_string(),
+                        explain_reasons,
+                    },
+                    assumptions,
+                ),
+                klobuchar,
             ));
         }
         let eph_covered_count =
             observations.iter().filter(|row| eph.iter().any(|entry| entry.sat == row.sat)).count();
-        let solution = match self.solver.solve_wls(&observations, eph, obs.t_rx_s.0) {
+        let solution = match self
+            .solver
+            .solve_wls_with_broadcast_ionosphere(&observations, eph, obs.t_rx_s.0, klobuchar)
+        {
             Some(solution) => solution,
             None => {
                 self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
@@ -291,20 +312,23 @@ impl Navigation {
                 } else {
                     NavRefusalClass::SolverFailure
                 };
-                return Some(self.degraded_from_last(
-                    obs,
-                    source_observation_epoch_id,
-                    nav_artifact_id,
-                    NavDecision {
-                        status: SolutionStatus::Degraded,
-                        refusal_class: Some(refusal_class),
-                        explain_decision: "refused".to_string(),
-                        explain_reasons: vec![
-                            "position_solver_failed".to_string(),
-                            format!("ephemeris_covered_count={eph_covered_count}"),
-                        ],
-                    },
-                    assumptions,
+                return Some(apply_ionosphere_explainability(
+                    self.degraded_from_last(
+                        obs,
+                        source_observation_epoch_id,
+                        nav_artifact_id,
+                        NavDecision {
+                            status: SolutionStatus::Degraded,
+                            refusal_class: Some(refusal_class),
+                            explain_decision: "refused".to_string(),
+                            explain_reasons: vec![
+                                "position_solver_failed".to_string(),
+                                format!("ephemeris_covered_count={eph_covered_count}"),
+                            ],
+                        },
+                        assumptions,
+                    ),
+                    klobuchar,
                 ));
             }
         };
@@ -503,6 +527,7 @@ impl Navigation {
         nav_epoch.explain_decision = decision.explain_decision;
         nav_epoch.explain_reasons = decision.explain_reasons;
         nav_epoch.refusal_class = decision.refusal_class;
+        apply_ionosphere_explainability_in_place(&mut nav_epoch, klobuchar);
         nav_epoch.stability_signature = nav_output_stability_signature(&nav_epoch);
         if let Some(sigma_h) = nav_epoch.sigma_h_m {
             nav_epoch.integrity_hpl_m = Some(sigma_h.0 * 6.0);
@@ -565,6 +590,28 @@ impl Navigation {
         degraded.refusal_class = decision.refusal_class;
         degraded.stability_signature = nav_output_stability_signature(&degraded);
         degraded
+    }
+}
+
+fn apply_ionosphere_explainability(
+    mut solution: NavSolutionEpoch,
+    klobuchar: Option<&KlobucharCoefficients>,
+) -> NavSolutionEpoch {
+    apply_ionosphere_explainability_in_place(&mut solution, klobuchar);
+    solution
+}
+
+fn apply_ionosphere_explainability_in_place(
+    solution: &mut NavSolutionEpoch,
+    klobuchar: Option<&KlobucharCoefficients>,
+) {
+    let reason = if klobuchar.is_some() {
+        "ionosphere_correction=klobuchar_broadcast"
+    } else {
+        "ionosphere_uncorrected"
+    };
+    if !solution.explain_reasons.iter().any(|existing| existing == reason) {
+        solution.explain_reasons.push(reason.to_string());
     }
 }
 
@@ -1047,6 +1094,13 @@ mod tests {
         }
     }
 
+    fn sample_klobuchar_coefficients() -> KlobucharCoefficients {
+        KlobucharCoefficients::new(
+            [0.1212e-7, 0.1490e-7, -0.5960e-7, 0.1192e-6],
+            [0.1167e6, -0.2294e6, -0.1311e6, 0.1049e7],
+        )
+    }
+
     type NavFixtureEpoch = ObsEpoch;
 
     fn make_obs_epoch_for_solution(
@@ -1353,8 +1407,38 @@ mod tests {
         assert_eq!(solution.explain_decision, "accepted");
         assert_eq!(solution.refusal_class, None);
         assert!(solution.valid);
+        assert!(solution.explain_reasons.iter().any(|reason| reason == "ionosphere_uncorrected"));
         assert!(solution.stability_signature.starts_with("navsig:v1:"));
         assert_eq!(solution.stability_signature_version, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION);
+    }
+
+    #[test]
+    fn synthetic_solution_marks_broadcast_ionosphere_correction_when_available() {
+        let config = ReceiverPipelineConfig::default();
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+        let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
+        let t_rx_s = 100_000.0;
+        let ephs = vec![
+            make_eph(1, 0.0, 0.0, t_rx_s),
+            make_eph(2, 0.8, 0.9, t_rx_s),
+            make_eph(3, 1.6, 1.8, t_rx_s),
+            make_eph(4, 2.4, 2.7, t_rx_s),
+            make_eph(5, 3.2, 3.6, t_rx_s),
+        ];
+        let obs = make_obs_epoch_for_solution(18, t_rx_s, truth, &ephs);
+        let solution = nav
+            .solve_epoch_with_broadcast_ionosphere(
+                &obs,
+                &ephs,
+                Some(&sample_klobuchar_coefficients()),
+            )
+            .expect("synthetic solution");
+
+        assert!(solution.valid);
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "ionosphere_correction=klobuchar_broadcast"));
     }
 
     #[test]
