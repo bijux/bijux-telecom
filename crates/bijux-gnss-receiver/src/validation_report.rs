@@ -225,6 +225,25 @@ pub struct NavResidualReport {
     pub rejected: Vec<SatId>,
 }
 
+/// Reference-position error components for one navigation epoch.
+#[derive(Debug, Serialize)]
+pub struct ReferencePositionErrorEpoch {
+    /// Epoch index.
+    pub epoch_idx: u64,
+    /// East error (m).
+    pub east_m: f64,
+    /// North error (m).
+    pub north_m: f64,
+    /// Up error (m).
+    pub up_m: f64,
+    /// Horizontal error magnitude (m).
+    pub horiz_m: f64,
+    /// Vertical error magnitude (m).
+    pub vert_m: f64,
+    /// 3D position error magnitude (m).
+    pub error_3d_m: f64,
+}
+
 /// Validation report output structure.
 #[derive(Debug, Serialize)]
 pub struct ValidationReport {
@@ -232,14 +251,24 @@ pub struct ValidationReport {
     pub samples: usize,
     /// Number of epochs.
     pub epochs: usize,
+    /// East error statistics.
+    pub east_error_m: ValidationErrorStats,
+    /// North error statistics.
+    pub north_error_m: ValidationErrorStats,
+    /// Up error statistics.
+    pub up_error_m: ValidationErrorStats,
     /// Horizontal error statistics.
     pub horiz_error_m: ValidationErrorStats,
     /// Vertical error statistics.
     pub vert_error_m: ValidationErrorStats,
+    /// 3D position error statistics.
+    pub error_3d_m: ValidationErrorStats,
     /// Convergence report.
     pub convergence: ConvergenceReport,
     /// Fix timeline.
     pub fix_timeline: Vec<FixTimelineEntry>,
+    /// Reference-position error components for matched epochs.
+    pub reference_position_errors: Vec<ReferencePositionErrorEpoch>,
     /// Residuals per epoch.
     pub residuals: Vec<NavResidualReport>,
     /// Time consistency report.
@@ -302,36 +331,52 @@ pub fn build_validation_report(
 
     let mut horiz_errors = Vec::new();
     let mut vert_errors = Vec::new();
+    let mut east_errors = Vec::new();
+    let mut north_errors = Vec::new();
+    let mut up_errors = Vec::new();
+    let mut error_3d = Vec::new();
     let mut horiz_by_time = Vec::new();
     let mut vert_by_time = Vec::new();
     let mut fix_timeline = Vec::new();
+    let mut reference_position_errors = Vec::new();
     let mut residuals = Vec::new();
     let mut nees_values = Vec::new();
 
     for sol in solutions {
         if let Some(r) = ref_map.get(&sol.epoch.index) {
-            let (x, y, z) = reference_ecef(r);
-            let dx = sol.ecef_x_m.0 - x;
-            let dy = sol.ecef_y_m.0 - y;
-            let dz = sol.ecef_z_m.0 - z;
-            let horiz = (dx * dx + dy * dy).sqrt();
-            let vert = dz.abs();
+            let (east, north, up) = ecef_to_enu(
+                sol.ecef_x_m.0,
+                sol.ecef_y_m.0,
+                sol.ecef_z_m.0,
+                r.latitude_deg,
+                r.longitude_deg,
+                r.altitude_m,
+            );
+            let horiz = (east * east + north * north).sqrt();
+            let vert = up.abs();
+            let position_3d = (horiz * horiz + up * up).sqrt();
+            east_errors.push(east);
+            north_errors.push(north);
+            up_errors.push(up);
             horiz_errors.push(horiz);
             vert_errors.push(vert);
+            error_3d.push(position_3d);
             horiz_by_time.push((sol.t_rx_s.0, horiz));
             vert_by_time.push((sol.t_rx_s.0, vert));
+            reference_position_errors.push(ReferencePositionErrorEpoch {
+                epoch_idx: sol.epoch.index,
+                east_m: east,
+                north_m: north,
+                up_m: up,
+                horiz_m: horiz,
+                vert_m: vert,
+                error_3d_m: position_3d,
+            });
             if let (Some(sig_h), Some(sig_v)) = (sol.sigma_h_m, sol.sigma_v_m) {
                 if sig_h.0 > 0.0 && sig_v.0 > 0.0 {
-                    let (e, n, u) = ecef_to_enu(
-                        sol.ecef_x_m.0,
-                        sol.ecef_y_m.0,
-                        sol.ecef_z_m.0,
-                        r.latitude_deg,
-                        r.longitude_deg,
-                        r.altitude_m,
-                    );
                     let nees =
-                        (e * e + n * n) / (sig_h.0 * sig_h.0) + (u * u) / (sig_v.0 * sig_v.0);
+                        (east * east + north * north) / (sig_h.0 * sig_h.0)
+                            + (up * up) / (sig_v.0 * sig_v.0);
                     nees_values.push(nees);
                 }
             }
@@ -358,8 +403,12 @@ pub fn build_validation_report(
         });
     }
 
+    let east_stats = to_validation_stats(stats(&east_errors));
+    let north_stats = to_validation_stats(stats(&north_errors));
+    let up_stats = to_validation_stats(stats(&up_errors));
     let horiz_stats = to_validation_stats(stats(&horiz_errors));
     let vert_stats = to_validation_stats(stats(&vert_errors));
+    let error_3d_stats = to_validation_stats(stats(&error_3d));
     let convergence = convergence_report(&horiz_by_time, &vert_by_time);
     let budgets = ValidationBudgets::default();
     let violations = check_budgets(tracks, solutions, &budgets);
@@ -443,10 +492,15 @@ pub fn build_validation_report(
     Ok(ValidationReport {
         samples: tracks.iter().map(|t| t.epochs.len()).sum(),
         epochs: solutions.len(),
+        east_error_m: east_stats,
+        north_error_m: north_stats,
+        up_error_m: up_stats,
         horiz_error_m: horiz_stats,
         vert_error_m: vert_stats,
+        error_3d_m: error_3d_stats,
         convergence,
         fix_timeline,
+        reference_position_errors,
         residuals,
         time_consistency,
         consistency,
@@ -800,13 +854,14 @@ mod tests {
 
     #[test]
     fn golden_reference_validation() {
+        let (ecef_x_m, ecef_y_m, ecef_z_m) = bijux_gnss_core::api::lla_to_ecef(0.0, 0.0, 0.0);
         let sol = NavSolutionEpoch {
             epoch: bijux_gnss_core::api::Epoch { index: 0 },
             t_rx_s: bijux_gnss_core::api::Seconds(0.0),
             source_time: bijux_gnss_core::api::ReceiverSampleTrace::from_sample_index(0, 1.0),
-            ecef_x_m: bijux_gnss_core::api::Meters(1.0),
-            ecef_y_m: bijux_gnss_core::api::Meters(2.0),
-            ecef_z_m: bijux_gnss_core::api::Meters(3.0),
+            ecef_x_m: bijux_gnss_core::api::Meters(ecef_x_m),
+            ecef_y_m: bijux_gnss_core::api::Meters(ecef_y_m),
+            ecef_z_m: bijux_gnss_core::api::Meters(ecef_z_m),
             latitude_deg: 0.0,
             longitude_deg: 0.0,
             altitude_m: bijux_gnss_core::api::Meters(0.0),
@@ -862,9 +917,9 @@ mod tests {
             latitude_deg: 0.0,
             longitude_deg: 0.0,
             altitude_m: 0.0,
-            ecef_x_m: Some(1.0),
-            ecef_y_m: Some(2.0),
-            ecef_z_m: Some(3.0),
+            ecef_x_m: Some(ecef_x_m),
+            ecef_y_m: Some(ecef_y_m),
+            ecef_z_m: Some(ecef_z_m),
             vel_x_mps: None,
             vel_y_mps: None,
             vel_z_mps: None,
