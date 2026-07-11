@@ -41,6 +41,7 @@ This document defines numeric tolerance budgets for deterministic verification a
   `APPROX POSITION XYZ` prior
 - Public PPP convergence reporting: time-to-1m, time-to-decimeter, and final 3D error are derived
   from the truth-referenced 3D error timeline
+- Public PPP convergence snapshot: `crates/bijux-gnss-nav/tests/data/public_ppp_convergence/ab43.json`
 - Public PPP final 3D error budget: `< 1.0 m` on the AB43 regression fixture
 
 ## Determinism
