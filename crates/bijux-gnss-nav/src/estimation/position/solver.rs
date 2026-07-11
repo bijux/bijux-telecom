@@ -291,6 +291,19 @@ impl PositionSolver {
             if let Some(exclusion_candidate) =
                 self.best_single_outlier_candidate(&working_inputs, &solved, klobuchar)
             {
+                if self.raim && !supports_reliable_raim_exclusion(working_inputs.len()) {
+                    push_unique_rejection(
+                        &mut rejected,
+                        exclusion_candidate.excluded_sat,
+                        MeasurementRejectReason::Outlier,
+                    );
+                    return Err(position_solve_refusal(
+                        PositionSolveRefusalKind::UnderdeterminedRaimExclusion,
+                        sat_count,
+                        working_inputs.len().saturating_sub(1),
+                        rejected,
+                    ));
+                }
                 let separation_m = exclusion_candidate.solution_shift_m;
                 if raim_fault_detection.is_none() && separation_m > self.separation_gate_m {
                     raim_fault_detection = Some(RaimFaultDetection::fault_detected(
@@ -965,6 +978,10 @@ fn solution_separation_m(left: PositionEstimate, right: PositionEstimate) -> f64
     let dy = left.ecef_y_m - right.ecef_y_m;
     let dz = left.ecef_z_m - right.ecef_z_m;
     (dx * dx + dy * dy + dz * dz).sqrt()
+}
+
+fn supports_reliable_raim_exclusion(usable_sat_count: usize) -> bool {
+    usable_sat_count >= 6
 }
 
 fn raim_fault_detection_from_separation(
