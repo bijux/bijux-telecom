@@ -7,9 +7,9 @@ use num_complex::Complex;
 
 use bijux_gnss_core::api::{
     ecef_to_enu, ecef_to_geodetic, reference_ecef, stats, AcqHypothesis, AcqResult, Constellation,
-    Hertz, NavQualityFlag, NavSolutionEpoch, ObsEpoch, ObservationStatus, ReceiverSampleTrace,
-    SampleClock, SampleTime, SamplesFrame, SatId, Seconds, SignalBand, SolutionStatus,
-    SolutionValidity, ValidationReferenceEpoch,
+    GpsTime, Hertz, NavQualityFlag, NavSolutionEpoch, ObsEpoch, ObservationStatus,
+    ReceiverSampleTrace, SampleClock, SampleTime, SamplesFrame, SatId, Seconds, SignalBand,
+    SolutionStatus, SolutionValidity, ValidationReferenceEpoch,
 };
 use bijux_gnss_signal::api::SignalSource;
 
@@ -79,6 +79,48 @@ pub struct SyntheticScenario {
     pub ephemerides: Vec<GpsEphemeris>,
     #[serde(default)]
     pub id: String,
+}
+
+/// Per-satellite signal specification for a synthetic navigation validation case.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticNavigationSignalSpec {
+    /// Satellite identifier.
+    pub sat: SatId,
+    /// Injected Doppler shift in Hz.
+    pub doppler_hz: f64,
+    /// Injected carrier phase at sample zero, in radians.
+    pub carrier_phase_rad: f64,
+    /// Injected carrier-to-noise density ratio in dB-Hz.
+    pub cn0_db_hz: f32,
+    /// Whether the synthetic signal should alternate LNAV bits every 20 ms.
+    pub data_bit_flip: bool,
+}
+
+/// Truth-complete synthetic navigation validation case.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyntheticNavigationValidationScenario {
+    /// Stable scenario identifier for the validation run.
+    #[serde(default)]
+    pub id: String,
+    /// Capture sample rate in Hz.
+    pub sample_rate_hz: f64,
+    /// Capture intermediate frequency in Hz.
+    pub intermediate_freq_hz: f64,
+    /// Common receiver clock frequency bias applied to all satellites, in Hz.
+    #[serde(default)]
+    pub receiver_clock_frequency_bias_hz: f64,
+    /// Synthetic capture duration in seconds.
+    pub duration_s: f64,
+    /// Deterministic seed used for noise generation.
+    pub seed: u64,
+    /// Truth receiver coordinates in ECEF meters.
+    pub receiver_ecef_m: [f64; 3],
+    /// Absolute receiver receive-time anchor used for observation and PVT truth, in seconds.
+    pub reference_receive_time_s: f64,
+    /// Per-satellite validation signal specifications.
+    pub satellites: Vec<SyntheticNavigationSignalSpec>,
+    /// Broadcast ephemerides used for geometric truth and navigation.
+    pub ephemerides: Vec<GpsEphemeris>,
 }
 
 /// Deterministic navigation-bit schedule used by a synthetic signal.
@@ -175,6 +217,60 @@ pub struct SyntheticIqCaptureBundle {
     pub truth: SyntheticIqTruthBundle,
 }
 
+/// End-to-end synthetic navigation validation output for one run.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyntheticNavigationValidationRun {
+    /// Truth-complete signal scenario derived from the validation case.
+    pub signal_scenario: SyntheticScenario,
+    /// Machine-readable truth for the scaled synthetic capture.
+    pub truth_bundle: SyntheticIqTruthBundle,
+    /// Truth-guided acquisition accuracy report.
+    pub acquisition_accuracy: SyntheticAcquisitionAccuracyReport,
+    /// Truth-guided tracking accuracy report.
+    pub tracking_accuracy: SyntheticTrackingAccuracyReport,
+    /// Truth-guided observation accuracy report.
+    pub observation_accuracy: SyntheticObservationAccuracyReport,
+    /// Truth-guided PVT accuracy report.
+    pub pvt_accuracy: SyntheticPvtAccuracyReport,
+    /// Final run-level GNSS accuracy artifact.
+    pub artifact: SyntheticGnssAccuracyArtifact,
+}
+
+/// Error raised while building or validating a synthetic navigation scenario.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SyntheticNavigationValidationError {
+    /// The scenario did not declare any satellites.
+    EmptySatelliteSet,
+    /// One or more satellites were missing matching broadcast ephemerides.
+    MissingEphemeris { sat: SatId },
+    /// The declared satellites do not share one receiver code epoch base.
+    InconsistentReceiverEpochBase,
+    /// The scenario did not declare any ephemerides.
+    EmptyEphemerides,
+}
+
+impl std::fmt::Display for SyntheticNavigationValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptySatelliteSet => {
+                write!(f, "synthetic navigation validation scenario must declare satellites")
+            }
+            Self::MissingEphemeris { sat } => {
+                write!(f, "missing ephemeris for {:?}", sat)
+            }
+            Self::InconsistentReceiverEpochBase => write!(
+                f,
+                "synthetic navigation validation satellites must share one receiver code epoch base"
+            ),
+            Self::EmptyEphemerides => {
+                write!(f, "synthetic navigation validation scenario must declare ephemerides")
+            }
+        }
+    }
+}
+
+impl std::error::Error for SyntheticNavigationValidationError {}
+
 /// Per-satellite C/N0 comparison between synthetic truth and receiver measurement.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticCn0ValidationSatellite {
@@ -225,6 +321,89 @@ pub struct SyntheticCn0ValidationReport {
     pub pass: bool,
     /// Per-satellite comparison rows.
     pub satellites: Vec<SyntheticCn0ValidationSatellite>,
+}
+
+fn shared_receiver_epoch_base(
+    pseudorange_chips: &[f64],
+) -> Result<u64, SyntheticNavigationValidationError> {
+    let mut epoch_indices =
+        pseudorange_chips.iter().map(|chips| (chips / 1023.0).floor() as u64);
+    let Some(receiver_epoch_base) = epoch_indices.next() else {
+        return Err(SyntheticNavigationValidationError::EmptySatelliteSet);
+    };
+    if !epoch_indices.all(|epoch_idx| epoch_idx == receiver_epoch_base) {
+        return Err(SyntheticNavigationValidationError::InconsistentReceiverEpochBase);
+    }
+    Ok(receiver_epoch_base)
+}
+
+fn encode_receiver_code_phase_chips(pseudorange_chips: f64, receiver_epoch_base: u64) -> f64 {
+    let code_phase_chips = pseudorange_chips - receiver_epoch_base as f64 * 1023.0;
+    code_phase_chips.rem_euclid(1023.0)
+}
+
+/// Build a signal-complete synthetic scenario from a truth-complete navigation validation case.
+pub fn build_signal_scenario_from_navigation_validation_scenario(
+    scenario: &SyntheticNavigationValidationScenario,
+) -> Result<SyntheticScenario, SyntheticNavigationValidationError> {
+    if scenario.satellites.is_empty() {
+        return Err(SyntheticNavigationValidationError::EmptySatelliteSet);
+    }
+    if scenario.ephemerides.is_empty() {
+        return Err(SyntheticNavigationValidationError::EmptyEphemerides);
+    }
+
+    let pseudorange_chips = scenario
+        .satellites
+        .iter()
+        .map(|signal| {
+            let ephemeris = scenario
+                .ephemerides
+                .iter()
+                .find(|candidate| candidate.sat == signal.sat)
+                .ok_or(SyntheticNavigationValidationError::MissingEphemeris {
+                    sat: signal.sat,
+                })?;
+            Ok(
+                synthetic_pseudorange_m(
+                    ephemeris,
+                    scenario.reference_receive_time_s,
+                    scenario.receiver_ecef_m,
+                ) * (1_023_000.0 / SPEED_OF_LIGHT_MPS),
+            )
+        })
+        .collect::<Result<Vec<_>, SyntheticNavigationValidationError>>()?;
+    let receiver_epoch_base = shared_receiver_epoch_base(&pseudorange_chips)?;
+
+    Ok(SyntheticScenario {
+        sample_rate_hz: scenario.sample_rate_hz,
+        intermediate_freq_hz: scenario.intermediate_freq_hz,
+        receiver_clock_frequency_bias_hz: scenario.receiver_clock_frequency_bias_hz,
+        duration_s: scenario.duration_s,
+        seed: scenario.seed,
+        satellites: scenario
+            .satellites
+            .iter()
+            .zip(pseudorange_chips.iter().copied())
+            .map(|(signal, pseudorange_phase_chips)| SyntheticSignalParams {
+                sat: signal.sat,
+                doppler_hz: signal.doppler_hz,
+                code_phase_chips: encode_receiver_code_phase_chips(
+                    pseudorange_phase_chips,
+                    receiver_epoch_base,
+                ),
+                carrier_phase_rad: signal.carrier_phase_rad,
+                cn0_db_hz: signal.cn0_db_hz,
+                data_bit_flip: signal.data_bit_flip,
+            })
+            .collect(),
+        ephemerides: scenario.ephemerides.clone(),
+        id: if scenario.id.trim().is_empty() {
+            "synthetic_navigation_validation".to_string()
+        } else {
+            scenario.id.clone()
+        },
+    })
 }
 
 /// Absolute synthetic reference used when comparing emitted observations against truth.
@@ -2160,9 +2339,178 @@ pub fn write_truth_guided_gnss_accuracy_artifact(
     path: &std::path::Path,
     artifact: &SyntheticGnssAccuracyArtifact,
 ) -> Result<(), std::io::Error> {
-    let payload = serde_json::to_vec_pretty(artifact)
-        .map_err(|error| std::io::Error::other(format!("failed to serialize gnss accuracy artifact: {error}")))?;
+    let payload = serde_json::to_vec_pretty(artifact).map_err(|error| {
+        std::io::Error::other(format!("failed to serialize gnss accuracy artifact: {error}"))
+    })?;
     std::fs::write(path, payload)
+}
+
+fn scaled_truth_frame(frame: &SamplesFrame, truth: &SyntheticIqTruthBundle) -> SamplesFrame {
+    SamplesFrame::new(
+        frame.t0,
+        frame.dt_s,
+        frame.iq.iter().map(|sample| *sample * truth.output_scale_applied).collect(),
+    )
+}
+
+fn synthetic_navigation_pvt_reference_epochs(
+    scenario: &SyntheticNavigationValidationScenario,
+    solutions: &[NavSolutionEpoch],
+) -> Vec<SyntheticPvtTruthReferenceEpoch> {
+    let (latitude_deg, longitude_deg, altitude_m) = ecef_to_geodetic(
+        scenario.receiver_ecef_m[0],
+        scenario.receiver_ecef_m[1],
+        scenario.receiver_ecef_m[2],
+    );
+
+    solutions
+        .iter()
+        .map(|solution| SyntheticPvtTruthReferenceEpoch {
+            position: ValidationReferenceEpoch {
+                epoch_idx: solution.epoch.index,
+                t_rx_s: Some(solution.t_rx_s.0),
+                latitude_deg,
+                longitude_deg,
+                altitude_m,
+                ecef_x_m: Some(scenario.receiver_ecef_m[0]),
+                ecef_y_m: Some(scenario.receiver_ecef_m[1]),
+                ecef_z_m: Some(scenario.receiver_ecef_m[2]),
+                vel_x_mps: None,
+                vel_y_mps: None,
+                vel_z_mps: None,
+            },
+            clock_bias_s: 0.0,
+        })
+        .collect()
+}
+
+/// Run end-to-end synthetic navigation validation and build one final GNSS accuracy artifact.
+pub fn validate_synthetic_navigation_run(
+    config: &ReceiverPipelineConfig,
+    scenario: &SyntheticNavigationValidationScenario,
+    hatch_window: u32,
+) -> Result<SyntheticNavigationValidationRun, SyntheticNavigationValidationError> {
+    let signal_scenario =
+        build_signal_scenario_from_navigation_validation_scenario(scenario)?;
+    let frame = generate_l1_ca_multi(config, &signal_scenario);
+    let truth_bundle = build_iq16_capture_bundle(
+        &signal_scenario.id,
+        &signal_scenario,
+        &frame,
+        "2026-07-11T00:00:00Z",
+        Some("synthetic navigation validation".to_string()),
+    )
+    .truth;
+    let scaled_frame = scaled_truth_frame(&frame, &truth_bundle);
+    let budgets = truth_guided_receiver_accuracy_budgets();
+
+    let acquisition_truth = validate_truth_guided_acquisition_table(
+        config,
+        &scaled_frame,
+        &truth_bundle,
+        1,
+        budgets.acquisition.max_code_phase_error_samples,
+    );
+    let acquisition_accuracy =
+        validate_acquisition_accuracy_budget(&acquisition_truth, budgets.acquisition);
+
+    let tracking_truth = validate_truth_guided_tracking_table(
+        config,
+        &scaled_frame,
+        &truth_bundle,
+        budgets.tracking.max_carrier_error_hz,
+        budgets.tracking.max_doppler_error_hz,
+        budgets.tracking.max_code_phase_error_samples,
+        budgets.tracking.max_cn0_error_db_hz,
+    );
+    let tracking_accuracy = validate_tracking_accuracy_budget(&tracking_truth, budgets.tracking);
+
+    let acquisition = crate::pipeline::acquisition::Acquisition::new(
+        config.clone(),
+        crate::engine::runtime::ReceiverRuntime::default(),
+    );
+    let sats = signal_scenario
+        .satellites
+        .iter()
+        .map(|satellite| satellite.sat)
+        .collect::<Vec<_>>();
+    let acquisition_results = acquisition.run_fft(&scaled_frame, &sats);
+    let tracking = crate::pipeline::tracking::Tracking::new(
+        config.clone(),
+        crate::engine::runtime::ReceiverRuntime::default(),
+    );
+    let tracking_results = tracking.track_from_acquisition(&scaled_frame, &acquisition_results);
+
+    let observation_reference = SyntheticObservationTruthReference {
+        receive_time_s: scenario.reference_receive_time_s,
+        receiver_ecef_m: scenario.receiver_ecef_m,
+    };
+    let observation_validation = validate_truth_guided_observations(
+        config,
+        &tracking_results,
+        &signal_scenario,
+        &observation_reference,
+        hatch_window,
+    );
+    let observation_accuracy =
+        validate_observation_accuracy_budget(&observation_validation, budgets.observation);
+
+    let gps_time = Some(GpsTime {
+        week: scenario.ephemerides.first().expect("validated ephemerides are non-empty").week,
+        tow_s: scenario.reference_receive_time_s,
+    });
+    let observation_epochs = crate::pipeline::observations::observations_from_tracking_results_with_gps_anchor(
+        config,
+        gps_time,
+        &tracking_results,
+        hatch_window,
+    )
+    .output;
+    let mut navigation = crate::pipeline::navigation::Navigation::new(
+        config.clone(),
+        crate::engine::runtime::ReceiverRuntime::default(),
+    );
+    let solutions = observation_epochs
+        .iter()
+        .filter_map(|epoch| navigation.solve_epoch(epoch, &scenario.ephemerides))
+        .collect::<Vec<_>>();
+    let pvt_reference = synthetic_navigation_pvt_reference_epochs(scenario, &solutions);
+    let pvt_truth = validate_truth_guided_pvt_table(&signal_scenario.id, &solutions, &pvt_reference);
+    let pvt_accuracy = validate_pvt_accuracy_budget(&pvt_truth, budgets.pvt);
+
+    let data_source = SyntheticGnssAccuracyDataSource {
+        source_kind: "synthetic_gps_l1_ca_navigation_validation".to_string(),
+        sample_rate_hz: signal_scenario.sample_rate_hz,
+        intermediate_freq_hz: signal_scenario.intermediate_freq_hz,
+        duration_s: signal_scenario.duration_s,
+        satellite_count: signal_scenario.satellites.len(),
+    };
+    let reference_truth = SyntheticGnssAccuracyReferenceTruth {
+        truth_kind: "synthetic_signal_and_position_truth".to_string(),
+        receiver_ecef_m: Some(scenario.receiver_ecef_m),
+        reference_receive_time_s: Some(scenario.reference_receive_time_s),
+        satellite_count: scenario.ephemerides.len(),
+        reference_epoch_count: pvt_reference.len(),
+    };
+    let artifact = build_truth_guided_gnss_accuracy_artifact(SyntheticGnssAccuracyArtifactCase {
+        scenario_id: &signal_scenario.id,
+        data_source,
+        reference_truth,
+        acquisition: &acquisition_accuracy,
+        tracking: &tracking_accuracy,
+        observation: &observation_accuracy,
+        pvt: &pvt_accuracy,
+    });
+
+    Ok(SyntheticNavigationValidationRun {
+        signal_scenario,
+        truth_bundle,
+        acquisition_accuracy,
+        tracking_accuracy,
+        observation_accuracy,
+        pvt_accuracy,
+        artifact,
+    })
 }
 
 /// Borrowed inputs for one synthetic PVT C/N0 profile point.
