@@ -340,10 +340,61 @@ struct SatState {
     carrier_phase_rad: f64,
     cn0_db_hz: f32,
     data_bit_flip: bool,
-    code: Vec<i8>,
-    code_rate_hz: f64,
+    signal_model: SyntheticSignalModel,
     if_hz: f64,
     sample_rate_hz: f64,
+}
+
+#[derive(Debug, Clone)]
+enum SyntheticSignalModel {
+    GpsL1Ca { code: Vec<i8> },
+    GalileoE1 { e1b_code: Vec<i8>, e1c_code: Vec<i8> },
+}
+
+impl SyntheticSignalModel {
+    fn for_satellite(params: SyntheticSignalParams) -> Self {
+        match params.sat.constellation {
+            Constellation::Galileo => Self::GalileoE1 {
+                e1b_code: bijux_gnss_signal::api::generate_galileo_e1b_code(params.sat.prn)
+                    .unwrap_or_else(|_| vec![1; 4092]),
+                e1c_code: bijux_gnss_signal::api::generate_galileo_e1c_code(params.sat.prn)
+                    .unwrap_or_else(|_| vec![1; 4092]),
+            },
+            _ => Self::GpsL1Ca {
+                code: generate_ca_code(Prn(params.sat.prn)).unwrap_or_else(|_| vec![1; 1023]),
+            },
+        }
+    }
+
+    fn code_rate_hz(&self) -> f64 {
+        match self {
+            Self::GpsL1Ca { .. } => 1_023_000.0,
+            Self::GalileoE1 { .. } => bijux_gnss_signal::api::GALILEO_E1_CODE_RATE_HZ,
+        }
+    }
+
+    fn code_length(&self) -> usize {
+        match self {
+            Self::GpsL1Ca { code } => code.len(),
+            Self::GalileoE1 { e1b_code, .. } => e1b_code.len(),
+        }
+    }
+
+    fn sample_value(&self, chip_phase: f64, primary_code_period_index: usize, data_bit: i8) -> f32 {
+        match self {
+            Self::GpsL1Ca { code } => code_value_at_phase(code, chip_phase).unwrap_or(1.0) * data_bit as f32,
+            Self::GalileoE1 { e1b_code, e1c_code } => {
+                bijux_gnss_signal::api::galileo_e1_cboc_value(
+                    e1b_code,
+                    e1c_code,
+                    chip_phase,
+                    primary_code_period_index,
+                    data_bit,
+                )
+                .unwrap_or(1.0)
+            }
+        }
+    }
 }
 
 impl SatState {
@@ -374,8 +425,7 @@ impl SatState {
             carrier_phase_rad: params.carrier_phase_rad,
             cn0_db_hz: params.cn0_db_hz,
             data_bit_flip: params.data_bit_flip,
-            code: generate_ca_code(Prn(params.sat.prn)).unwrap_or_else(|_| vec![1; 1023]),
-            code_rate_hz: config.code_freq_basis_hz,
+            signal_model: SyntheticSignalModel::for_satellite(params),
             if_hz: synthetic_intermediate_frequency_hz(config.intermediate_freq_hz, params.sat),
             sample_rate_hz: config.sampling_freq_hz,
         }
@@ -396,22 +446,24 @@ impl SatState {
     }
 
     fn sample_at(&self, t: f64) -> Complex<f32> {
-        let code_phase = advance_code_phase_seconds(
-            self.code_phase_chips,
-            self.code_rate_hz,
-            t,
-            self.code.len(),
-        )
-        .expect("synthetic generator requires a valid code phase model");
-        let chip = code_value_at_phase(&self.code, code_phase).unwrap_or(1.0);
-        let data_bit = nav_bit_value_at_time_s(self.data_bit_flip, t);
+        let total_chip_phase = self.code_phase_chips + (self.signal_model.code_rate_hz() * t);
+        let code_length = self.signal_model.code_length() as f64;
+        let primary_code_period_index = if total_chip_phase <= 0.0 {
+            0
+        } else {
+            (total_chip_phase / code_length).floor() as usize
+        };
+        let code_phase = total_chip_phase.rem_euclid(code_length);
+        let data_bit = nav_bit_sign_at_time_s(self.data_bit_flip, t);
+        let signal_value =
+            self.signal_model.sample_value(code_phase, primary_code_period_index, data_bit);
 
         let phase = self.carrier_phase_rad_at(t) as f32;
         let carrier = Complex::new(phase.cos(), phase.sin());
 
         let amplitude = signal_amplitude_from_cn0(self.cn0_db_hz, self.sample_rate_hz);
 
-        carrier * (chip * data_bit * amplitude)
+        carrier * (signal_value * amplitude)
     }
 }
 
@@ -528,10 +580,6 @@ fn nav_bit_mode(params: &SyntheticSignalParams) -> SyntheticNavBitMode {
     } else {
         SyntheticNavBitMode::ConstantPositive
     }
-}
-
-fn nav_bit_value_at_time_s(data_bit_flip: bool, time_s: f64) -> f32 {
-    nav_bit_sign_at_time_s(data_bit_flip, time_s) as f32
 }
 
 fn nav_bit_sign_at_time_s(data_bit_flip: bool, time_s: f64) -> i8 {

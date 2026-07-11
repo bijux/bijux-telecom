@@ -70,6 +70,94 @@
         }
     }
 
+    #[test]
+    fn galileo_e1_signal_only_matches_cboc_reference_samples() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 5_000_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 4092,
+            ..ReceiverPipelineConfig::default()
+        };
+        let params = SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Galileo, prn: 11 },
+            doppler_hz: 0.0,
+            code_phase_chips: 0.0,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 58.0,
+            data_bit_flip: false,
+        };
+        let frame = super::generate_l1_ca_signal_only(&config, params, 20.0 / config.sampling_freq_hz);
+        let expected = bijux_gnss_signal::api::sample_galileo_e1_cboc(
+            params.sat.prn,
+            config.sampling_freq_hz,
+            0.0,
+            20,
+            0,
+            1,
+        )
+        .expect("valid Galileo E1 reference samples");
+        let amplitude = signal_amplitude_from_cn0(params.cn0_db_hz, config.sampling_freq_hz);
+
+        for (index, (sample, expected_value)) in frame.iq.iter().zip(expected.iter()).enumerate() {
+            let scaled = *expected_value * amplitude;
+            assert!(
+                (sample.re - scaled).abs() <= 1.0e-6,
+                "Galileo E1 I mismatch at sample {index}: actual={}, expected={scaled}",
+                sample.re
+            );
+            assert!(
+                sample.im.abs() <= 1.0e-6,
+                "Galileo E1 Q mismatch at sample {index}: actual={}",
+                sample.im
+            );
+        }
+    }
+
+    #[test]
+    fn galileo_e1_secondary_code_advances_each_primary_period() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 4092,
+            ..ReceiverPipelineConfig::default()
+        };
+        let params = SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Galileo, prn: 19 },
+            doppler_hz: 0.0,
+            code_phase_chips: 0.0,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 58.0,
+            data_bit_flip: false,
+        };
+        let period_samples = (config.sampling_freq_hz * 0.004).round() as usize;
+        let frame =
+            super::generate_l1_ca_signal_only(&config, params, 2.0 * period_samples as f64 / config.sampling_freq_hz);
+        let amplitude = signal_amplitude_from_cn0(params.cn0_db_hz, config.sampling_freq_hz);
+        let first_period = bijux_gnss_signal::api::sample_galileo_e1_cboc(
+            params.sat.prn,
+            config.sampling_freq_hz,
+            0.0,
+            1,
+            0,
+            1,
+        )
+        .expect("valid first-period reference");
+        let second_period = bijux_gnss_signal::api::sample_galileo_e1_cboc(
+            params.sat.prn,
+            config.sampling_freq_hz,
+            0.0,
+            1,
+            1,
+            1,
+        )
+        .expect("valid second-period reference");
+
+        assert!((frame.iq[0].re - (first_period[0] * amplitude)).abs() <= 1.0e-6);
+        assert!((frame.iq[period_samples].re - (second_period[0] * amplitude)).abs() <= 1.0e-6);
+    }
+
     fn synthetic_epoch_frame(
         sat_state: &SatState,
         config: &ReceiverPipelineConfig,
@@ -574,4 +662,3 @@
             "encoded synthetic capture should contain non-zero samples"
         );
     }
-
