@@ -20,7 +20,6 @@ pub struct ClkProvider {
 impl ClkProvider {
     fn parse_internal(input: &str) -> Result<Self, String> {
         let mut records: BTreeMap<SatId, Vec<ClkRecord>> = BTreeMap::new();
-        let mut epoch0 = None;
         for line in input.lines() {
             if !line.starts_with("AS") {
                 continue;
@@ -47,11 +46,11 @@ impl ClkProvider {
                 None
             };
             let days = days_from_civil(year, month, day);
-            let epoch_abs = days as f64 * 86_400.0 + hour as f64 * 3600.0 + min as f64 * 60.0 + sec;
-            let base = *epoch0.get_or_insert(epoch_abs);
-            let epoch_s = epoch_abs - base;
+            let epoch_s =
+                days as f64 * 86_400.0 + hour as f64 * 3600.0 + min as f64 * 60.0 + sec;
             records.entry(sat).or_default().push(ClkRecord { epoch_s, bias_s, sigma_s });
         }
+        normalize_records(&mut records);
         Ok(Self { records })
     }
 
@@ -64,6 +63,10 @@ impl ClkProvider {
 
     pub fn bias_s(&self, sat: SatId, t_s: f64) -> Option<f64> {
         let list = self.records.get(&sat)?;
+        if let Some(record) = list.iter().find(|record| (record.epoch_s - t_s).abs() <= f64::EPSILON)
+        {
+            return Some(record.bias_s);
+        }
         if list.len() == 1 {
             return Some(list[0].bias_s);
         }
@@ -90,6 +93,10 @@ impl ClkProvider {
 
     pub fn sigma_s(&self, sat: SatId, t_s: f64) -> Option<f64> {
         let list = self.records.get(&sat)?;
+        if let Some(record) = list.iter().find(|record| (record.epoch_s - t_s).abs() <= f64::EPSILON)
+        {
+            return record.sigma_s;
+        }
         if list.len() == 1 {
             return list[0].sigma_s;
         }
@@ -144,6 +151,24 @@ fn parse_sat_id(id: &str) -> Result<SatId, String> {
     Ok(SatId { constellation, prn })
 }
 
+fn normalize_records(records: &mut BTreeMap<SatId, Vec<ClkRecord>>) {
+    let Some(epoch_origin_s) = records
+        .values()
+        .filter_map(|sat_records| sat_records.iter().map(|record| record.epoch_s).min_by(f64::total_cmp))
+        .min_by(f64::total_cmp)
+    else {
+        return;
+    };
+
+    for sat_records in records.values_mut() {
+        sat_records.sort_by(|left, right| left.epoch_s.total_cmp(&right.epoch_s));
+        for record in sat_records.iter_mut() {
+            record.epoch_s -= epoch_origin_s;
+        }
+        sat_records.dedup_by(|left, right| (left.epoch_s - right.epoch_s).abs() <= f64::EPSILON);
+    }
+}
+
 fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
     let y = year - (month <= 2) as i32;
     let era = if y >= 0 { y } else { y - 399 } / 400;
@@ -152,4 +177,39 @@ fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
     let doy = (153 * (m + if m > 2 { -3 } else { 9 }) + 2) / 5 + day as i32 - 1;
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     (era * 146_097 + doe - 719_468) as i64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ClkProvider;
+    use bijux_gnss_core::api::{Constellation, SatId};
+
+    #[test]
+    fn parse_internal_sorts_and_deduplicates_clock_epochs() {
+        let data = "\
+AS G01 2020 01 01 00 15 00.000000  2  0.000000003  0.000000020
+AS G01 2020 01 01 00 00 00.000000  2  0.000000001  0.000000010
+AS G01 2020 01 01 00 15 00.000000  2  0.000000003  0.000000020
+";
+        let provider: ClkProvider = data.parse().expect("parse CLK");
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        let records = provider.records.get(&sat).expect("satellite clock records");
+
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].epoch_s, 0.0);
+        assert_eq!(records[1].epoch_s, 900.0);
+    }
+
+    #[test]
+    fn exact_epoch_bias_and_sigma_do_not_interpolate() {
+        let data = "\
+AS G01 2020 01 01 00 00 00.000000  2  0.000000001  0.000000010
+AS G01 2020 01 01 00 15 00.000000  2  0.000000003  0.000000020
+";
+        let provider: ClkProvider = data.parse().expect("parse CLK");
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+
+        assert_eq!(provider.bias_s(sat, 900.0), Some(3.0e-9));
+        assert_eq!(provider.sigma_s(sat, 900.0), Some(2.0e-8));
+    }
 }
