@@ -2,11 +2,12 @@
 
 #[path = "support/navigation_pvt_truth_table.rs"]
 mod navigation_pvt_truth_table;
-mod support;
+#[path = "support/navigation_pipeline.rs"]
+mod navigation_pipeline;
 
 use navigation_pvt_truth_table::build_pvt_truth_table_fixture;
 
-use support::navigation_pipeline::position_error_3d_m;
+use navigation_pipeline::position_error_3d_m;
 
 #[test]
 fn pvt_truth_table_records_position_clock_residual_dop_and_status_per_epoch() {

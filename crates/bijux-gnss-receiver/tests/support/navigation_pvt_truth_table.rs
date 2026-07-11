@@ -4,7 +4,7 @@ use bijux_gnss_receiver::api::sim::{
     validate_truth_guided_pvt_table, SyntheticPvtTruthTableReport,
 };
 
-use crate::support::navigation_pipeline::{
+use crate::navigation_pipeline::{
     clean_synthetic_navigation_run, clean_synthetic_navigation_run_with_clock_bias,
     pvt_truth_reference_epochs, CleanSyntheticNavigationRun,
 };

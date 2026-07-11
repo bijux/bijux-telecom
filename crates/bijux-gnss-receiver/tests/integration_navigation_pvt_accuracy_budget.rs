@@ -2,7 +2,8 @@
 
 #[path = "support/navigation_pvt_truth_table.rs"]
 mod navigation_pvt_truth_table;
-mod support;
+#[path = "support/navigation_pipeline.rs"]
+mod navigation_pipeline;
 
 use bijux_gnss_receiver::api::sim::{
     truth_guided_receiver_accuracy_budgets, validate_pvt_accuracy_budget,

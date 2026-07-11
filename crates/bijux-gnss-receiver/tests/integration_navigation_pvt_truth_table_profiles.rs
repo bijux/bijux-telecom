@@ -2,7 +2,8 @@
 
 #[path = "support/navigation_pvt_truth_table.rs"]
 mod navigation_pvt_truth_table;
-mod support;
+#[path = "support/navigation_pipeline.rs"]
+mod navigation_pipeline;
 
 use navigation_pvt_truth_table::build_pvt_truth_table_fixture;
 

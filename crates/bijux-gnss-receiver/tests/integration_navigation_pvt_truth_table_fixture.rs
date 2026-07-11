@@ -5,7 +5,8 @@ use std::path::Path;
 
 #[path = "support/navigation_pvt_truth_table.rs"]
 mod navigation_pvt_truth_table;
-mod support;
+#[path = "support/navigation_pipeline.rs"]
+mod navigation_pipeline;
 
 use bijux_gnss_receiver::api::sim::SyntheticPvtTruthTableReport;
 use serde_json::Value;
