@@ -46,8 +46,9 @@ pub use crate::estimation::ppp::config::{
 };
 /// RTK double-difference helpers.
 pub use crate::estimation::rtk::double_difference::{
-    rtk_double_differences_by_constellation, rtk_double_differences_from_single_differences,
-    RtkDoubleDifferenceObservation,
+    rtk_double_difference_residual_metrics, rtk_double_differences_by_constellation,
+    rtk_double_differences_from_single_differences, RtkDoubleDifferenceObservation,
+    RtkDoubleDifferenceResidualMetrics,
 };
 /// RTK single-difference helpers.
 pub use crate::estimation::rtk::single_difference::{
