@@ -20,7 +20,7 @@ use bijux_gnss_core::api::{
     SolutionConsistencyReport, SolutionStatus, ValidationReferenceEpoch,
 };
 use bijux_gnss_nav::api::{
-    combinations_from_obs_epochs, ecef_to_enu, geometry_free_diagnostics_from_obs_epochs,
+    ecef_to_enu, geometry_free_diagnostics_from_obs_epochs, iono_free_code_from_obs_epochs,
     melbourne_wubbena_diagnostics_from_obs_epochs, GeometryFreeEvent, GeometryFreeThresholds,
     MelbourneWubbenaEvent, MelbourneWubbenaThresholds, PppConfig, PppConvergenceConfig,
     PppProcessNoise, WeightingConfig,
@@ -633,7 +633,7 @@ fn build_validation_report_with_observation_context(
         .map(validate_carrier_smoothed_code_from_artifacts)
         .unwrap_or_else(|| summarize_carrier_smoothed_code(obs));
     let multi_freq_present = dual_frequency_observations.observed_pairs > 0;
-    let combinations_valid = dual_frequency_combinations_valid(obs, &dual_frequency_observations);
+    let combinations_valid = dual_frequency_combinations_valid(obs);
     let support_matrix = support_status_matrix();
     let ppp_support =
         support_matrix.rows.iter().find(|row| row.mode == AdvancedMode::Ppp).cloned().unwrap_or(
@@ -744,23 +744,20 @@ fn build_validation_report_with_observation_context(
     })
 }
 
-fn dual_frequency_combinations_valid(
-    obs: &[ObsEpoch],
-    dual_frequency_observations: &DualFrequencyObservationReport,
-) -> bool {
+fn dual_frequency_combinations_valid(obs: &[ObsEpoch]) -> bool {
     let mut saw_complete_pair = false;
 
     for (band_1, band_2) in [(SignalBand::L1, SignalBand::L2), (SignalBand::L1, SignalBand::L5)] {
-        let filtered_epochs =
-            dual_frequency_pair_epochs(obs, dual_frequency_observations, band_1, band_2);
-        if filtered_epochs.is_empty() {
+        let combinations = iono_free_code_from_obs_epochs(obs, band_1, band_2);
+        let observed_pairs = combinations
+            .iter()
+            .filter(|combination| combination.reason != "missing_frequency")
+            .collect::<Vec<_>>();
+        if observed_pairs.is_empty() {
             continue;
         }
 
-        let combinations = combinations_from_obs_epochs(&filtered_epochs, band_1, band_2);
-        if combinations.is_empty()
-            || combinations.iter().any(|combination| combination.status != "ok")
-        {
+        if observed_pairs.iter().any(|combination| combination.status != "ok") {
             return false;
         }
 
@@ -1670,6 +1667,32 @@ mod tests {
         assert!(report.ppp_readiness.multi_freq_present);
         assert!(!report.ppp_readiness.combinations_valid);
         assert!(!report.ppp_readiness.prerequisites_met);
+    }
+
+    #[test]
+    fn validation_report_accepts_code_ready_pairs_without_carrier_lock() {
+        let report = build_validation_report(
+            &[],
+            &[dual_frequency_epoch(
+                43,
+                vec![
+                    dual_frequency_satellite(SignalBand::L1, SignalCode::Ca, true, false),
+                    dual_frequency_satellite(SignalBand::L2, SignalCode::Py, true, false),
+                ],
+            )],
+            &[fixture_solution(43, 1.0, 0.5, 4)],
+            &[],
+            1.0,
+            true,
+            Vec::new(),
+            ValidationSciencePolicy::default(),
+        )
+        .expect("validation report");
+
+        assert_eq!(report.dual_frequency_observations.complete_pairs, 0);
+        assert_eq!(report.dual_frequency_observations.incomplete_pairs, 2);
+        assert!(report.ppp_readiness.multi_freq_present);
+        assert!(report.ppp_readiness.combinations_valid);
     }
 
     #[test]
