@@ -887,14 +887,18 @@ mod nav_trace_tests {
         let eph = sample_eph(3, 0.0, 0.0);
         let mut ctx = Some(EkfContext::new());
 
-        let solution =
-            solve_epoch_ekf(&mut ctx, &obs, &[eph], None)
-                .expect("cli ekf solve")
-                .expect("solution");
+        let solution = solve_epoch_ekf(&mut ctx, &obs, &[eph], None)
+            .expect("cli ekf solve")
+            .expect("solution");
 
-        assert_eq!(solution.status, SolutionStatus::Degraded);
+        assert_eq!(solution.status, SolutionStatus::Invalid);
+        assert_eq!(
+            solution.refusal_class,
+            Some(bijux_gnss_infra::api::core::NavRefusalClass::InvalidEphemeris)
+        );
         assert_eq!(solution.used_sat_count, 0);
         assert_eq!(solution.rejected_sat_count, 1);
+        assert_eq!(solution.ecef_x_m.0, 0.0);
         assert!(solution
             .explain_reasons
             .iter()
@@ -902,14 +906,43 @@ mod nav_trace_tests {
     }
 
     #[test]
+    fn cli_ekf_refuses_sparse_epoch_without_serializing_filter_state() {
+        let obs = sample_obs_epoch(false);
+        let eph = sample_eph(3, 1.0, 1.0);
+        let mut ctx = Some(EkfContext::new());
+        let ekf = &mut ctx.as_mut().expect("ekf context").ekf;
+        ekf.x[0] = 123.0;
+        ekf.x[1] = 456.0;
+        ekf.x[2] = 789.0;
+
+        let solution = solve_epoch_ekf(&mut ctx, &obs, &[eph], None)
+            .expect("cli ekf solve")
+            .expect("solution");
+
+        assert_eq!(solution.status, SolutionStatus::Invalid);
+        assert_eq!(
+            solution.refusal_class,
+            Some(bijux_gnss_infra::api::core::NavRefusalClass::InsufficientGeometry)
+        );
+        assert_eq!(solution.used_sat_count, 1);
+        assert_eq!(solution.sat_count, 1);
+        assert_eq!(solution.ecef_x_m.0, 0.0);
+        assert_eq!(solution.ecef_y_m.0, 0.0);
+        assert_eq!(solution.ecef_z_m.0, 0.0);
+    }
+
+    #[test]
     fn cli_ekf_saastamoinen_delay_is_zero_when_disabled() {
         let receiver_ecef_m = bijux_gnss_infra::api::nav::geodetic_to_ecef(37.0, -122.0, 10.0);
-        let satellite_ecef_m = bijux_gnss_infra::api::nav::geodetic_to_ecef(37.0, -122.0, 20_200_000.0);
+        let satellite_ecef_m =
+            bijux_gnss_infra::api::nav::geodetic_to_ecef(37.0, -122.0, 20_200_000.0);
         let state = bijux_gnss_infra::api::nav::GpsSatState {
             x_m: satellite_ecef_m.0,
             y_m: satellite_ecef_m.1,
             z_m: satellite_ecef_m.2,
-            clock_correction: bijux_gnss_infra::api::nav::GpsSatelliteClockCorrection::from_bias_s(0.0),
+            clock_correction: bijux_gnss_infra::api::nav::GpsSatelliteClockCorrection::from_bias_s(
+                0.0,
+            ),
         };
 
         let delay_m = estimate_ekf_saastamoinen_delay_m(
@@ -923,12 +956,15 @@ mod nav_trace_tests {
 
     #[test]
     fn cli_ekf_saastamoinen_delay_rejects_implausible_receiver_radius() {
-        let satellite_ecef_m = bijux_gnss_infra::api::nav::geodetic_to_ecef(37.0, -122.0, 20_200_000.0);
+        let satellite_ecef_m =
+            bijux_gnss_infra::api::nav::geodetic_to_ecef(37.0, -122.0, 20_200_000.0);
         let state = bijux_gnss_infra::api::nav::GpsSatState {
             x_m: satellite_ecef_m.0,
             y_m: satellite_ecef_m.1,
             z_m: satellite_ecef_m.2,
-            clock_correction: bijux_gnss_infra::api::nav::GpsSatelliteClockCorrection::from_bias_s(0.0),
+            clock_correction: bijux_gnss_infra::api::nav::GpsSatelliteClockCorrection::from_bias_s(
+                0.0,
+            ),
         };
 
         let delay_m = estimate_ekf_saastamoinen_delay_m(true, [0.0, 0.0, 0.0], &state);
@@ -939,12 +975,15 @@ mod nav_trace_tests {
     #[test]
     fn cli_ekf_saastamoinen_delay_is_positive_for_visible_satellite() {
         let receiver_ecef_m = bijux_gnss_infra::api::nav::geodetic_to_ecef(37.0, -122.0, 10.0);
-        let satellite_ecef_m = bijux_gnss_infra::api::nav::geodetic_to_ecef(37.0, -122.0, 20_200_000.0);
+        let satellite_ecef_m =
+            bijux_gnss_infra::api::nav::geodetic_to_ecef(37.0, -122.0, 20_200_000.0);
         let state = bijux_gnss_infra::api::nav::GpsSatState {
             x_m: satellite_ecef_m.0,
             y_m: satellite_ecef_m.1,
             z_m: satellite_ecef_m.2,
-            clock_correction: bijux_gnss_infra::api::nav::GpsSatelliteClockCorrection::from_bias_s(0.0),
+            clock_correction: bijux_gnss_infra::api::nav::GpsSatelliteClockCorrection::from_bias_s(
+                0.0,
+            ),
         };
 
         let delay_m = estimate_ekf_saastamoinen_delay_m(
@@ -1002,12 +1041,8 @@ fn solve_epoch_ekf(
         let rx_y = ctx.ekf.x[1];
         let rx_z = ctx.ekf.x[2];
         let (_az, el) = elevation_azimuth_deg(rx_x, rx_y, rx_z, state.x_m, state.y_m, state.z_m);
-        let iono_m = estimate_ekf_klobuchar_delay_m(
-            klobuchar,
-            [rx_x, rx_y, rx_z],
-            receive_tow_s,
-            &state,
-        );
+        let iono_m =
+            estimate_ekf_klobuchar_delay_m(klobuchar, [rx_x, rx_y, rx_z], receive_tow_s, &state);
         let tropo_m =
             estimate_ekf_saastamoinen_delay_m(ctx.tropo_enabled, [rx_x, rx_y, rx_z], &state);
         let weight = bijux_gnss_infra::api::nav::weight_from_cn0_elev(
@@ -1088,17 +1123,9 @@ fn solve_epoch_ekf(
         }
     }
 
-    let (lat, lon, alt) =
-        bijux_gnss_infra::api::nav::ecef_to_geodetic(ctx.ekf.x[0], ctx.ekf.x[1], ctx.ekf.x[2]);
-    let status = if used < 4 {
-        bijux_gnss_infra::api::core::SolutionStatus::Degraded
-    } else {
-        bijux_gnss_infra::api::core::SolutionStatus::Float
-    };
     let mut explain_reasons = vec![format!("usable_satellites={used}")];
     if stale_ephemeris_rejections > 0 {
-        explain_reasons
-            .push(format!("stale_ephemeris_rejections={stale_ephemeris_rejections}"));
+        explain_reasons.push(format!("stale_ephemeris_rejections={stale_ephemeris_rejections}"));
     }
     explain_reasons.push(if klobuchar.is_some() {
         "ionosphere_correction=klobuchar_broadcast".to_string()
@@ -1110,6 +1137,33 @@ fn solve_epoch_ekf(
     } else {
         "troposphere_uncorrected".to_string()
     });
+    if used < 4 {
+        explain_reasons.push("minimum_usable_satellites=4".to_string());
+        let refusal_class = if stale_ephemeris_rejections > 0 {
+            Some(bijux_gnss_infra::api::core::NavRefusalClass::InvalidEphemeris)
+        } else {
+            Some(bijux_gnss_infra::api::core::NavRefusalClass::InsufficientGeometry)
+        };
+        let mut solution = cli_nav_refusal_epoch(
+            obs,
+            sat_count,
+            used,
+            sat_count.saturating_sub(used),
+            refusal_class,
+            explain_reasons,
+        );
+        solution.innovation_rms_m = Some(ctx.ekf.health.innovation_rms);
+        solution.ekf_innovation_rms = Some(ctx.ekf.health.innovation_rms);
+        solution.ekf_condition_number = ctx.ekf.health.condition_number;
+        solution.ekf_whiteness_ratio = ctx.ekf.health.whiteness_ratio;
+        solution.ekf_predicted_variance = ctx.ekf.health.predicted_variance;
+        solution.ekf_observed_variance = ctx.ekf.health.observed_variance;
+        populate_cli_nav_solution_trace_identity(obs, &mut solution);
+        return Ok(Some(solution));
+    }
+    let (lat, lon, alt) =
+        bijux_gnss_infra::api::nav::ecef_to_geodetic(ctx.ekf.x[0], ctx.ekf.x[1], ctx.ekf.x[2]);
+    let status = bijux_gnss_infra::api::core::SolutionStatus::Float;
     let mut solution = bijux_gnss_infra::api::core::NavSolutionEpoch {
         epoch: bijux_gnss_infra::api::core::Epoch { index: obs.epoch_idx },
         t_rx_s: obs.t_rx_s,
@@ -1201,6 +1255,71 @@ fn solve_epoch_ekf(
     Ok(Some(solution))
 }
 
+fn cli_nav_refusal_epoch(
+    obs: &ObsEpoch,
+    sat_count: usize,
+    used_sat_count: usize,
+    rejected_sat_count: usize,
+    refusal_class: Option<bijux_gnss_infra::api::core::NavRefusalClass>,
+    explain_reasons: Vec<String>,
+) -> bijux_gnss_infra::api::core::NavSolutionEpoch {
+    bijux_gnss_infra::api::core::NavSolutionEpoch {
+        epoch: bijux_gnss_infra::api::core::Epoch { index: obs.epoch_idx },
+        t_rx_s: obs.t_rx_s,
+        source_time: obs.source_time,
+        ecef_x_m: bijux_gnss_infra::api::core::Meters(0.0),
+        ecef_y_m: bijux_gnss_infra::api::core::Meters(0.0),
+        ecef_z_m: bijux_gnss_infra::api::core::Meters(0.0),
+        latitude_deg: 0.0,
+        longitude_deg: 0.0,
+        altitude_m: bijux_gnss_infra::api::core::Meters(0.0),
+        clock_bias_s: bijux_gnss_infra::api::core::Seconds(0.0),
+        clock_bias_m: bijux_gnss_infra::api::core::Meters(0.0),
+        clock_drift_s_per_s: 0.0,
+        pdop: 0.0,
+        rms_m: bijux_gnss_infra::api::core::Meters(0.0),
+        status: bijux_gnss_infra::api::core::SolutionStatus::Invalid,
+        quality: bijux_gnss_infra::api::core::SolutionStatus::Invalid.quality_flag(),
+        validity: bijux_gnss_infra::api::core::SolutionValidity::Invalid,
+        valid: false,
+        processing_ms: None,
+        residuals: Vec::new(),
+        health: Vec::new(),
+        isb: Vec::new(),
+        sigma_h_m: None,
+        sigma_v_m: None,
+        innovation_rms_m: None,
+        normalized_innovation_rms: None,
+        normalized_innovation_max: None,
+        ekf_innovation_rms: None,
+        ekf_condition_number: None,
+        ekf_whiteness_ratio: None,
+        ekf_predicted_variance: None,
+        ekf_observed_variance: None,
+        integrity_hpl_m: None,
+        integrity_vpl_m: None,
+        model_version: bijux_gnss_infra::api::core::NAV_SOLUTION_MODEL_VERSION,
+        lifecycle_state: bijux_gnss_infra::api::core::NavLifecycleState::Invalid,
+        uncertainty_class: bijux_gnss_infra::api::core::NavUncertaintyClass::Unknown,
+        assumptions: None,
+        refusal_class,
+        artifact_id: String::new(),
+        source_observation_epoch_id: String::new(),
+        explain_decision: "refused".to_string(),
+        explain_reasons,
+        provenance: None,
+        sat_count,
+        used_sat_count,
+        rejected_sat_count,
+        hdop: None,
+        vdop: None,
+        gdop: None,
+        stability_signature: String::new(),
+        stability_signature_version:
+            bijux_gnss_infra::api::core::NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
+    }
+}
+
 fn ekf_position_is_uninitialized(ctx: &EkfContext) -> bool {
     let radius_m = (ctx.ekf.x[0].powi(2) + ctx.ekf.x[1].powi(2) + ctx.ekf.x[2].powi(2)).sqrt();
     !radius_m.is_finite() || radius_m < 1.0
@@ -1241,12 +1360,11 @@ fn prime_ekf_state_from_wls(
         ..bijux_gnss_infra::api::nav::PositionSolver::new()
     }
     .solve_wls_with_broadcast_ionosphere(
-            &observations,
-            ephs,
-            obs.gps_time().map(|gps_time| gps_time.tow_s).unwrap_or(obs.t_rx_s.0),
-            klobuchar,
-        )
-    else {
+        &observations,
+        ephs,
+        obs.gps_time().map(|gps_time| gps_time.tow_s).unwrap_or(obs.t_rx_s.0),
+        klobuchar,
+    ) else {
         return;
     };
     ctx.ekf.x[0] = solution.ecef_x_m;
@@ -1267,7 +1385,8 @@ fn estimate_ekf_klobuchar_delay_m(
         return 0.0;
     };
     let radius_m =
-        (receiver_ecef_m[0].powi(2) + receiver_ecef_m[1].powi(2) + receiver_ecef_m[2].powi(2)).sqrt();
+        (receiver_ecef_m[0].powi(2) + receiver_ecef_m[1].powi(2) + receiver_ecef_m[2].powi(2))
+            .sqrt();
     if !radius_m.is_finite() || radius_m < 1.0 {
         return 0.0;
     }
@@ -1307,7 +1426,8 @@ fn estimate_ekf_saastamoinen_delay_m(
         return 0.0;
     }
     let radius_m =
-        (receiver_ecef_m[0].powi(2) + receiver_ecef_m[1].powi(2) + receiver_ecef_m[2].powi(2)).sqrt();
+        (receiver_ecef_m[0].powi(2) + receiver_ecef_m[1].powi(2) + receiver_ecef_m[2].powi(2))
+            .sqrt();
     if !radius_m.is_finite() || !(6_000_000.0..=7_000_000.0).contains(&radius_m) {
         return 0.0;
     }
