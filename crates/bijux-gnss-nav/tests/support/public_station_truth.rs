@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-use bijux_gnss_nav::api::geodetic_to_ecef;
+use bijux_gnss_nav::api::{ecef_to_enu, geodetic_to_ecef};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PublicStationTruth {
@@ -22,12 +22,42 @@ impl PublicStationTruth {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EnuError {
+    pub east_m: f64,
+    pub north_m: f64,
+    pub up_m: f64,
+    pub horizontal_m: f64,
+    pub three_dimensional_m: f64,
+}
+
 pub fn public_station_truth_by_fixture(fixture_name: &str) -> PublicStationTruth {
     load_public_station_truths()
         .iter()
         .find(|truth| truth.fixture_name == fixture_name)
         .cloned()
         .unwrap_or_else(|| panic!("missing public station truth for fixture {fixture_name}"))
+}
+
+pub fn station_enu_error_m(
+    solution_ecef_m: (f64, f64, f64),
+    truth: &PublicStationTruth,
+) -> EnuError {
+    let (east_m, north_m, up_m) = ecef_to_enu(
+        solution_ecef_m.0,
+        solution_ecef_m.1,
+        solution_ecef_m.2,
+        truth.lat_deg,
+        truth.lon_deg,
+        truth.alt_m,
+    );
+    EnuError {
+        east_m,
+        north_m,
+        up_m,
+        horizontal_m: (east_m * east_m + north_m * north_m).sqrt(),
+        three_dimensional_m: (east_m * east_m + north_m * north_m + up_m * up_m).sqrt(),
+    }
 }
 
 fn load_public_station_truths() -> &'static Vec<PublicStationTruth> {
