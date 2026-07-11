@@ -2090,6 +2090,16 @@ pub fn build_truth_guided_gnss_accuracy_artifact(
     }
 }
 
+/// Persist one final truth-guided GNSS accuracy artifact as a single JSON file.
+pub fn write_truth_guided_gnss_accuracy_artifact(
+    path: &std::path::Path,
+    artifact: &SyntheticGnssAccuracyArtifact,
+) -> Result<(), std::io::Error> {
+    let payload = serde_json::to_vec_pretty(artifact)
+        .map_err(|error| std::io::Error::other(format!("failed to serialize gnss accuracy artifact: {error}")))?;
+    std::fs::write(path, payload)
+}
+
 /// Borrowed inputs for one synthetic PVT C/N0 profile point.
 #[derive(Debug, Clone, Copy)]
 pub struct SyntheticPvtCn0ProfileCase<'a> {
