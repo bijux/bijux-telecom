@@ -1031,6 +1031,32 @@ mod tests {
     }
 
     #[test]
+    fn validation_report_preserves_pre_and_post_fit_residual_rms() {
+        let mut solution = fixture_solution(9, 1.0, 0.5, 4);
+        solution.pre_fit_residual_rms_m = Some(bijux_gnss_core::api::Meters(12.0));
+        solution.post_fit_residual_rms_m = Some(bijux_gnss_core::api::Meters(3.0));
+        solution.rms_m = bijux_gnss_core::api::Meters(3.0);
+
+        let report = build_validation_report(
+            &[],
+            &[],
+            &[solution],
+            &[],
+            1.0,
+            false,
+            Vec::new(),
+            ValidationSciencePolicy::default(),
+        )
+        .expect("validation report");
+
+        let residual = report.residuals.first().expect("residual report");
+        assert_eq!(residual.epoch_idx, 9);
+        assert_eq!(residual.rms_m, 3.0);
+        assert_eq!(residual.pre_fit_rms_m, Some(12.0));
+        assert_eq!(residual.post_fit_rms_m, Some(3.0));
+    }
+
+    #[test]
     fn validation_report_accepts_reference_position_error_within_budget() {
         let (x_ref, y_ref, z_ref) = bijux_gnss_core::api::lla_to_ecef(0.0, 0.0, 0.0);
         let budgets = ValidationBudgets {
