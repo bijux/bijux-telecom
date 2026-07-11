@@ -172,6 +172,20 @@ fn format_rinex_nav_float(value: f64) -> String {
     format!("{value:>19.12E}").replace('E', "D")
 }
 
+fn format_rinex_header_float(value: f64) -> String {
+    format!("{value:>12.4E}").replace('E', "D")
+}
+
+fn format_rinex_klobuchar_header_line(prefix: &str, coefficients: [f64; 4]) -> String {
+    format!(
+        "{prefix:<4}{}{}{}{}       IONOSPHERIC CORR",
+        format_rinex_header_float(coefficients[0]),
+        format_rinex_header_float(coefficients[1]),
+        format_rinex_header_float(coefficients[2]),
+        format_rinex_header_float(coefficients[3]),
+    )
+}
+
 fn gps_time_to_utc_datetime(gps_time: GpsTime) -> Result<time::OffsetDateTime, IoError> {
     let utc = gps_to_utc(gps_time, &LeapSeconds::default_table());
     time::OffsetDateTime::from_unix_timestamp_nanos((utc.unix_s * 1_000_000_000.0).round() as i128)
@@ -441,6 +455,18 @@ pub fn write_rinex_obs(path: &Path, epochs: &[ObsEpoch], _strict: bool) -> Resul
 }
 
 pub fn write_rinex_nav(path: &Path, ephs: &[GpsEphemeris], _strict: bool) -> Result<(), IoError> {
+    write_rinex_broadcast_navigation(
+        path,
+        &GpsBroadcastNavigationData { ephemerides: ephs.to_vec(), klobuchar: None },
+        _strict,
+    )
+}
+
+pub fn write_rinex_broadcast_navigation(
+    path: &Path,
+    navigation: &GpsBroadcastNavigationData,
+    _strict: bool,
+) -> Result<(), IoError> {
     let file = File::create(path).map_err(|e| IoError { message: e.to_string() })?;
     let mut writer = BufWriter::new(file);
     write_header_line(
@@ -448,12 +474,22 @@ pub fn write_rinex_nav(path: &Path, ephs: &[GpsEphemeris], _strict: bool) -> Res
         "     3.04           NAVIGATION DATA     G (GPS)             RINEX VERSION / TYPE",
     )?;
     write_header_line(&mut writer, "bijux-gnss                              PGM / RUN BY / DATE")?;
+    if let Some(klobuchar) = navigation.klobuchar {
+        write_header_line(
+            &mut writer,
+            &format_rinex_klobuchar_header_line("GPSA", klobuchar.alpha),
+        )?;
+        write_header_line(
+            &mut writer,
+            &format_rinex_klobuchar_header_line("GPSB", klobuchar.beta),
+        )?;
+    }
     write_header_line(
         &mut writer,
         "                                                            END OF HEADER",
     )?;
 
-    for eph in ephs {
+    for eph in &navigation.ephemerides {
         write_rinex_nav_record(&mut writer, eph)?;
     }
 
@@ -485,11 +521,11 @@ mod tests {
     use super::{
         format_rinex_nav_float, parse_rinex_broadcast_navigation, parse_rinex_epoch_utc,
         parse_rinex_float, parse_rinex_nav, parse_rinex_nav_header, parse_rinex_numeric_fields,
-        write_rinex_nav,
+        write_rinex_broadcast_navigation, write_rinex_nav,
     };
     use crate::models::atmosphere::KlobucharCoefficients;
+    use crate::orbits::gps::{GpsBroadcastNavigationData, GpsEphemeris};
     use bijux_gnss_core::api::{Constellation, SatId};
-    use crate::orbits::gps::GpsEphemeris;
 
     fn sample_ephemeris() -> GpsEphemeris {
         GpsEphemeris {
@@ -731,5 +767,29 @@ G01 2022 05 13 20 00 00-1.234567890123D-04 2.345678901234D-12 0.000000000000D+00
         assert!((parsed.af0 - eph.af0).abs() < 1.0e-16);
         assert!((parsed.af1 - eph.af1).abs() < 1.0e-24);
         assert!((parsed.tgd - eph.tgd).abs() < 1.0e-18);
+    }
+
+    #[test]
+    fn write_rinex_broadcast_navigation_round_trips_klobuchar() {
+        let klobuchar = KlobucharCoefficients::new(
+            [0.1212e-7, 0.1490e-7, -0.5960e-7, 0.1192e-6],
+            [0.1167e6, -0.2294e6, -0.1311e6, 0.1049e7],
+        );
+        let navigation =
+            GpsBroadcastNavigationData { ephemerides: vec![sample_ephemeris()], klobuchar: Some(klobuchar) };
+        let path = std::env::temp_dir().join(format!(
+            "bijux-rinex-broadcast-navigation-roundtrip-{}-{}.rnx",
+            std::process::id(),
+            navigation.ephemerides[0].sat.prn
+        ));
+
+        write_rinex_broadcast_navigation(&path, &navigation, true).expect("write broadcast navigation");
+        let data = std::fs::read_to_string(&path).expect("read broadcast navigation");
+        let parsed = parse_rinex_broadcast_navigation(&data).expect("parse written navigation");
+        std::fs::remove_file(&path).expect("remove nav fixture");
+
+        assert_eq!(parsed.ephemerides.len(), 1);
+        assert_eq!(parsed.ephemerides[0].sat, navigation.ephemerides[0].sat);
+        assert_eq!(parsed.klobuchar, Some(klobuchar));
     }
 }
