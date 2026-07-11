@@ -7806,6 +7806,69 @@ mod tests {
         assert!(diverging.diverging_epoch_count > 0);
     }
 
+    #[test]
+    fn pvt_time_profile_reports_growth_with_distinct_analysis_windows() {
+        let (truth, accuracy) = time_profile_truth_and_accuracy(
+            "pvt_time_profile_growth_windows",
+            &[0.5, 0.8, 1.3, 2.1, 3.4],
+            &[0.3, 0.5, 0.8, 1.2, 1.7],
+            &[SolutionValidity::Stable; 5],
+        );
+
+        let report = summarize_truth_guided_pvt_time_profile(
+            &[SyntheticPvtTimeProfileCase {
+                scenario_id: "pvt_time_profile_growth_windows",
+                truth_table: &truth,
+                accuracy: &accuracy,
+            }],
+            "pvt_time_profile",
+        );
+        let point = report.points.first().expect("time profile point");
+
+        assert_eq!(point.analysis_window_epoch_count, 2);
+        assert_eq!(point.first_window_mean_position_error_3d_m, Some(0.65));
+        assert_eq!(point.last_window_mean_position_error_3d_m, Some(2.75));
+        assert_eq!(point.position_error_growth_m, Some(2.1));
+        assert_eq!(point.first_window_mean_residual_rms_m, Some(0.4));
+        assert_eq!(point.last_window_mean_residual_rms_m, Some(1.45));
+        assert!(
+            (point.residual_rms_growth_m.expect("residual growth") - 1.05).abs() <= 1.0e-12,
+            "{report:?}"
+        );
+        assert!(point.ready, "{report:?}");
+    }
+
+    #[test]
+    fn pvt_time_profile_reports_insufficient_long_run_evidence() {
+        let (truth, accuracy) = time_profile_truth_and_accuracy(
+            "pvt_time_profile_short_run",
+            &[0.5, 0.7, 1.0, 1.4],
+            &[0.3, 0.4, 0.6, 0.8],
+            &[SolutionValidity::Stable; 4],
+        );
+
+        let report = summarize_truth_guided_pvt_time_profile(
+            &[SyntheticPvtTimeProfileCase {
+                scenario_id: "pvt_time_profile_short_run",
+                truth_table: &truth,
+                accuracy: &accuracy,
+            }],
+            "pvt_time_profile",
+        );
+        let point = report.points.first().expect("time profile point");
+
+        assert!(!point.truth_coverage_ready, "{report:?}");
+        assert!(point
+            .truth_coverage_issues
+            .iter()
+            .any(|issue| issue.code == "insufficient_time_profile_truth_epochs"));
+        assert!(point
+            .truth_coverage_issues
+            .iter()
+            .any(|issue| issue.code == "insufficient_time_profile_accuracy_epochs"));
+        assert!(!point.ready, "{report:?}");
+    }
+
     fn clock_profile_accuracy_report(
         scenario_id: &str,
         epoch_index: u64,
