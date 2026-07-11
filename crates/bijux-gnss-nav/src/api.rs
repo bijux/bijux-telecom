@@ -97,7 +97,10 @@ pub use crate::formats::rinex::{
     write_rinex_broadcast_navigation, write_rinex_nav, write_rinex_obs,
 };
 /// Precise product parsing helpers.
-pub use crate::formats::{clk::ClkProvider, sp3::{Sp3InterpolationSummary, Sp3Provider}};
+pub use crate::formats::{
+    clk::{ClkInterpolationSummary, ClkProvider},
+    sp3::{Sp3InterpolationSummary, Sp3Provider},
+};
 /// Linear algebra helper.
 pub use crate::linalg::Matrix;
 /// Atmospheric model scaffolding.

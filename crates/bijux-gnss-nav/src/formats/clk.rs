@@ -17,6 +17,15 @@ pub struct ClkProvider {
     records: BTreeMap<SatId, Vec<ClkRecord>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ClkInterpolationSummary {
+    pub sample_count: usize,
+    pub max_bias_error_s: f64,
+    pub rms_bias_error_s: f64,
+    pub max_sigma_error_s: Option<f64>,
+    pub rms_sigma_error_s: Option<f64>,
+}
+
 impl ClkProvider {
     fn parse_internal(input: &str) -> Result<Self, String> {
         let mut records: BTreeMap<SatId, Vec<ClkRecord>> = BTreeMap::new();
@@ -83,6 +92,11 @@ impl ClkProvider {
             return list[0].sigma_s;
         }
         interpolate_sigma_s(list, t_s)
+    }
+
+    pub fn interpolation_summary(&self, sat: SatId) -> Option<ClkInterpolationSummary> {
+        let records = self.records.get(&sat)?;
+        summarize_interpolation_errors(records)
     }
 }
 
@@ -205,6 +219,64 @@ fn lagrange_scalar(
     Some(result)
 }
 
+fn summarize_interpolation_errors(records: &[ClkRecord]) -> Option<ClkInterpolationSummary> {
+    let mut bias_errors_s = Vec::new();
+    let mut sigma_errors_s = Vec::new();
+
+    for index in 0..records.len() {
+        if let Some(error_s) = interpolate_bias_error_s(records, index) {
+            bias_errors_s.push(error_s);
+        }
+        if let Some(error_s) = interpolate_sigma_error_s(records, index) {
+            sigma_errors_s.push(error_s);
+        }
+    }
+
+    if bias_errors_s.is_empty() {
+        return None;
+    }
+
+    Some(ClkInterpolationSummary {
+        sample_count: bias_errors_s.len(),
+        max_bias_error_s: bias_errors_s.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+        rms_bias_error_s: rms_error_s(&bias_errors_s),
+        max_sigma_error_s: (!sigma_errors_s.is_empty())
+            .then(|| sigma_errors_s.iter().copied().fold(f64::NEG_INFINITY, f64::max)),
+        rms_sigma_error_s: (!sigma_errors_s.is_empty()).then(|| rms_error_s(&sigma_errors_s)),
+    })
+}
+
+fn interpolate_bias_error_s(records: &[ClkRecord], index: usize) -> Option<f64> {
+    let target = records.get(index)?;
+    let support = interpolation_support_records(records, target.epoch_s, Some(index));
+    let first_epoch_s = support.first()?.epoch_s;
+    let last_epoch_s = support.last()?.epoch_s;
+    if target.epoch_s <= first_epoch_s || target.epoch_s >= last_epoch_s {
+        return None;
+    }
+
+    let bias_s = lagrange_scalar(&support, target.epoch_s, |record| Some(record.bias_s))?;
+    Some((bias_s - target.bias_s).abs())
+}
+
+fn interpolate_sigma_error_s(records: &[ClkRecord], index: usize) -> Option<f64> {
+    let target = records.get(index)?;
+    let target_sigma_s = target.sigma_s?;
+    let support = interpolation_support_records(records, target.epoch_s, Some(index));
+    let first_epoch_s = support.first()?.epoch_s;
+    let last_epoch_s = support.last()?.epoch_s;
+    if target.epoch_s <= first_epoch_s || target.epoch_s >= last_epoch_s {
+        return None;
+    }
+
+    let sigma_s = lagrange_scalar(&support, target.epoch_s, |record| record.sigma_s)?;
+    Some((sigma_s - target_sigma_s).abs())
+}
+
+fn rms_error_s(errors_s: &[f64]) -> f64 {
+    (errors_s.iter().map(|error_s| error_s.powi(2)).sum::<f64>() / errors_s.len() as f64).sqrt()
+}
+
 fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
     let y = year - (month <= 2) as i32;
     let era = if y >= 0 { y } else { y - 399 } / 400;
@@ -247,5 +319,27 @@ AS G01 2020 01 01 00 15 00.000000  2  0.000000003  0.000000020
 
         assert_eq!(provider.bias_s(sat, 900.0), Some(3.0e-9));
         assert_eq!(provider.sigma_s(sat, 900.0), Some(2.0e-8));
+    }
+
+    #[test]
+    fn interpolation_summary_measures_cubic_clock_consistency() {
+        let data = "\
+AS G01 2020 01 01 00 00 00.000000  2  0.000000001  0.000000001
+AS G01 2020 01 01 00 15 00.000000  2  0.000000010  0.000000002
+AS G01 2020 01 01 00 30 00.000000  2  0.000000049  0.000000009
+AS G01 2020 01 01 00 45 00.000000  2  0.000000142  0.000000028
+AS G01 2020 01 01 01 00 00.000000  2  0.000000313  0.000000065
+";
+        let provider: ClkProvider = data.parse().expect("parse CLK");
+        let sat = SatId { constellation: Constellation::Gps, prn: 1 };
+        let summary = provider
+            .interpolation_summary(sat)
+            .expect("clock interpolation summary");
+
+        assert_eq!(summary.sample_count, 3);
+        assert!(summary.max_bias_error_s.abs() < 1e-18);
+        assert!(summary.rms_bias_error_s.abs() < 1e-18);
+        assert!(summary.max_sigma_error_s.expect("sigma summary").abs() < 1e-18);
+        assert!(summary.rms_sigma_error_s.expect("sigma RMS summary").abs() < 1e-18);
     }
 }
