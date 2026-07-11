@@ -129,13 +129,12 @@ pub use crate::orbits::ephemeris::{CsvEphemerisProvider, Ephemeris, EphemerisPro
 /// Broadcast ephemeris and satellite state.
 pub use crate::orbits::galileo::{
     galileo_earth_rotation_correction, galileo_navigation_age,
-    galileo_satellite_clock_correction_e1, is_galileo_navigation_valid,
-    sat_state_galileo_e1, sat_state_galileo_e1_at_receive_time,
-    sat_state_galileo_e1_from_observation, select_best_galileo_navigation,
-    GalileoBroadcastNavigationData, GalileoClockCorrection, GalileoEarthRotationCorrection,
-    GalileoEphemeris, GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags,
-    GalileoNavigationAge, GalileoSatState, GalileoSatelliteClockCorrection, GalileoSignalHealth,
-    GalileoSystemTime,
+    galileo_satellite_clock_correction_e1, is_galileo_navigation_valid, sat_state_galileo_e1,
+    sat_state_galileo_e1_at_receive_time, sat_state_galileo_e1_from_observation,
+    select_best_galileo_navigation, GalileoBroadcastNavigationData, GalileoClockCorrection,
+    GalileoEarthRotationCorrection, GalileoEphemeris, GalileoIonosphericCorrection,
+    GalileoIonosphericDisturbanceFlags, GalileoNavigationAge, GalileoSatState,
+    GalileoSatelliteClockCorrection, GalileoSignalHealth, GalileoSystemTime,
 };
 /// Broadcast ephemeris and satellite state.
 pub use crate::orbits::gps::{

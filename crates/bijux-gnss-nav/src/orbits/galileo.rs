@@ -291,11 +291,7 @@ pub fn sat_state_galileo_e1_at_receive_time(
     receive_tow_s: f64,
     signal_travel_time_s: f64,
 ) -> GalileoSatState {
-    sat_state_galileo_e1(
-        navigation,
-        receive_tow_s - signal_travel_time_s,
-        signal_travel_time_s,
-    )
+    sat_state_galileo_e1(navigation, receive_tow_s - signal_travel_time_s, signal_travel_time_s)
 }
 
 pub fn sat_state_galileo_e1_from_observation(
@@ -336,9 +332,8 @@ fn satellite_clock_correction_from_sin_e(
     sin_e: f64,
 ) -> GalileoSatelliteClockCorrection {
     let dt = wrap_time(t_tx_s - navigation.clock.t0c_s);
-    let base_bias_s = navigation.clock.af0
-        + navigation.clock.af1 * dt
-        + navigation.clock.af2 * dt * dt;
+    let base_bias_s =
+        navigation.clock.af0 + navigation.clock.af1 * dt + navigation.clock.af2 * dt * dt;
     let relativistic_s =
         RELATIVISTIC_F * navigation.ephemeris.e * navigation.ephemeris.sqrt_a * sin_e;
 
@@ -527,7 +522,8 @@ mod tests {
                 < 1.0e-20
         );
         assert!(
-            (state.clock_correction.relativistic_s - expected.clock_correction.relativistic_s).abs()
+            (state.clock_correction.relativistic_s - expected.clock_correction.relativistic_s)
+                .abs()
                 < 1.0e-18
         );
     }
@@ -556,14 +552,18 @@ mod tests {
 
         let receive_time_state =
             sat_state_galileo_e1_at_receive_time(&navigation, receive_tow_s, signal_travel_time_s);
-        let direct_state =
-            sat_state_galileo_e1(&navigation, receive_tow_s - signal_travel_time_s, signal_travel_time_s);
+        let direct_state = sat_state_galileo_e1(
+            &navigation,
+            receive_tow_s - signal_travel_time_s,
+            signal_travel_time_s,
+        );
 
         assert!((receive_time_state.x_m - direct_state.x_m).abs() < 1.0e-9);
         assert!((receive_time_state.y_m - direct_state.y_m).abs() < 1.0e-9);
         assert!((receive_time_state.z_m - direct_state.z_m).abs() < 1.0e-9);
         assert!(
-            (receive_time_state.clock_correction.bias_s - direct_state.clock_correction.bias_s).abs()
+            (receive_time_state.clock_correction.bias_s - direct_state.clock_correction.bias_s)
+                .abs()
                 < 1.0e-18
         );
     }
@@ -581,8 +581,11 @@ mod tests {
             24_000_000.0,
             Some(signal_timing),
         );
-        let expected =
-            sat_state_galileo_e1(&navigation, signal_timing.transmit_gps_time.tow_s, signal_timing.signal_travel_time_s.0);
+        let expected = sat_state_galileo_e1(
+            &navigation,
+            signal_timing.transmit_gps_time.tow_s,
+            signal_timing.signal_travel_time_s.0,
+        );
 
         assert!((state.x_m - expected.x_m).abs() < 1.0e-9);
         assert!((state.y_m - expected.y_m).abs() < 1.0e-9);

@@ -70,15 +70,19 @@ fn public_galileo_state_api_keeps_clock_and_observation_paths_consistent() {
         transmit_gps_time: GpsTime { week: navigation.gst.week as u32, tow_s: 65_432.122 },
     };
 
-    let direct_state =
-        sat_state_galileo_e1(&navigation, signal_timing.transmit_gps_time.tow_s, signal_timing.signal_travel_time_s.0);
+    let direct_state = sat_state_galileo_e1(
+        &navigation,
+        signal_timing.transmit_gps_time.tow_s,
+        signal_timing.signal_travel_time_s.0,
+    );
     let observation_state = sat_state_galileo_e1_from_observation(
         &navigation,
         65_432.200,
         24_000_000.0,
         Some(signal_timing),
     );
-    let clock = galileo_satellite_clock_correction_e1(&navigation, signal_timing.transmit_gps_time.tow_s);
+    let clock =
+        galileo_satellite_clock_correction_e1(&navigation, signal_timing.transmit_gps_time.tow_s);
 
     assert!((direct_state.x_m - observation_state.x_m).abs() < 1.0e-9);
     assert!((direct_state.y_m - observation_state.y_m).abs() < 1.0e-9);
