@@ -47,6 +47,34 @@ pub fn single_bad_pseudorange_scenario(pseudorange_bias_m: f64) -> BadPseudorang
     BadPseudorangeScenario { baseline, observations, bad_sat, pseudorange_bias_m }
 }
 
+pub fn five_satellite_bad_pseudorange_scenario(pseudorange_bias_m: f64) -> BadPseudorangeScenario {
+    let mut baseline = four_satellite_position_scenario(0.0);
+    let extra_ephemeris = sample_ephemeris(5, 3.2, 3.6);
+    baseline.observations.push(timed_position_observation_from_truth(
+        &extra_ephemeris,
+        baseline.truth_ecef_m,
+        baseline.t_rx_s,
+        baseline.receiver_clock_bias_s,
+    ));
+    baseline.ephemerides.push(extra_ephemeris);
+
+    let bad_sat = baseline.ephemerides.last().expect("bad-satellite ephemeris").sat;
+    let observations = baseline
+        .observations
+        .iter()
+        .cloned()
+        .map(|observation| {
+            if observation.sat == bad_sat {
+                observation_with_pseudorange_bias(&observation, pseudorange_bias_m)
+            } else {
+                observation
+            }
+        })
+        .collect();
+
+    BadPseudorangeScenario { baseline, observations, bad_sat, pseudorange_bias_m }
+}
+
 pub fn observation_with_pseudorange_bias(
     observation: &PositionObservation,
     pseudorange_bias_m: f64,
