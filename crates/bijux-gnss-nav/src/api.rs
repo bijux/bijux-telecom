@@ -48,7 +48,8 @@ pub use crate::estimation::ppp::config::{
 pub use crate::estimation::rtk::single_difference::{
     choose_rtk_single_difference_reference_signal,
     choose_rtk_single_difference_reference_signals_by_constellation,
-    rtk_single_differences_from_obs_epochs, RtkSingleDifferenceObservation,
+    rtk_single_difference_residual_metrics, rtk_single_differences_from_obs_epochs,
+    RtkSingleDifferenceObservation, RtkSingleDifferenceResidualMetrics,
 };
 /// Format parsing and output.
 pub use crate::formats::lnav_bits::{

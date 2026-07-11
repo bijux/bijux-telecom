@@ -6,6 +6,10 @@ use bijux_gnss_core::api::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::orbits::gps::{sat_state_gps_l1ca_from_observation, GpsEphemeris};
+
+const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
+
 /// RTK single-difference observation formed as rover minus base for one signal.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RtkSingleDifferenceObservation {
@@ -33,6 +37,17 @@ pub struct RtkSingleDifferenceObservation {
     pub ambiguity_rover: AmbiguityId,
     /// Base ambiguity identifier for the contributing carrier observation.
     pub ambiguity_base: AmbiguityId,
+}
+
+/// Residual summary for a batch of RTK single-difference code observations.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RtkSingleDifferenceResidualMetrics {
+    /// Root-mean-square code residual against the provided base/rover truth.
+    pub residual_rms_m: f64,
+    /// Root-mean-square modeled code variance carried by the observations.
+    pub predicted_rms_m: f64,
+    /// Number of observations contributing to the summary.
+    pub used_observations: usize,
 }
 
 impl ArtifactPayloadValidate for RtkSingleDifferenceObservation {
@@ -157,6 +172,65 @@ pub fn choose_rtk_single_difference_reference_signals_by_constellation(
     out
 }
 
+/// Evaluate single-difference code residuals against known base and rover positions.
+///
+/// This helper uses broadcast GPS ephemerides and any carried transmit-time timing on
+/// the observations to reconstruct satellite states at the relevant receive times.
+pub fn rtk_single_difference_residual_metrics(
+    observations: &[RtkSingleDifferenceObservation],
+    base_ecef_m: [f64; 3],
+    rover_ecef_m: [f64; 3],
+    ephemerides: &[GpsEphemeris],
+    base_receive_time_s: f64,
+    rover_receive_time_s: f64,
+) -> Option<RtkSingleDifferenceResidualMetrics> {
+    if observations.is_empty() {
+        return None;
+    }
+
+    let mut residuals_m = Vec::new();
+    let mut predicted_variances_m2 = Vec::new();
+    for observation in observations {
+        let ephemeris =
+            ephemerides.iter().find(|candidate| candidate.sat == observation.sig.sat)?;
+        let rover_satellite = sat_state_gps_l1ca_from_observation(
+            ephemeris,
+            rover_receive_time_s,
+            observation.rover_pseudorange_m,
+            observation.rover_signal_timing,
+        );
+        let base_satellite = sat_state_gps_l1ca_from_observation(
+            ephemeris,
+            base_receive_time_s,
+            observation.base_pseudorange_m,
+            observation.base_signal_timing,
+        );
+        let rover_modeled_m = modeled_pseudorange_m(
+            rover_ecef_m,
+            [rover_satellite.x_m, rover_satellite.y_m, rover_satellite.z_m],
+            rover_satellite.clock_correction.bias_s,
+        );
+        let base_modeled_m = modeled_pseudorange_m(
+            base_ecef_m,
+            [base_satellite.x_m, base_satellite.y_m, base_satellite.z_m],
+            base_satellite.clock_correction.bias_s,
+        );
+        residuals_m.push(observation.code_m - (rover_modeled_m - base_modeled_m));
+        predicted_variances_m2.push(observation.code_variance_m2.max(1.0e-6));
+    }
+
+    let residual_rms_m = (residuals_m.iter().map(|residual| residual * residual).sum::<f64>()
+        / residuals_m.len() as f64)
+        .sqrt();
+    let predicted_rms_m =
+        (predicted_variances_m2.iter().sum::<f64>() / predicted_variances_m2.len() as f64).sqrt();
+    Some(RtkSingleDifferenceResidualMetrics {
+        residual_rms_m,
+        predicted_rms_m,
+        used_observations: residuals_m.len(),
+    })
+}
+
 fn ambiguity_id_from_satellite(sat: &ObsSatellite) -> AmbiguityId {
     AmbiguityId { sig: sat.signal_id, signal: format!("{:?}", sat.metadata.signal.band) }
 }
@@ -208,4 +282,19 @@ fn timing_is_invalid(timing: Option<ObsSignalTiming>) -> bool {
 enum MeasurementKind {
     Code,
     Phase,
+}
+
+fn modeled_pseudorange_m(
+    receiver_ecef_m: [f64; 3],
+    sat_ecef_m: [f64; 3],
+    sat_clock_bias_s: f64,
+) -> f64 {
+    geometric_range_m(receiver_ecef_m, sat_ecef_m) - sat_clock_bias_s * SPEED_OF_LIGHT_MPS
+}
+
+fn geometric_range_m(receiver_ecef_m: [f64; 3], sat_ecef_m: [f64; 3]) -> f64 {
+    let dx = receiver_ecef_m[0] - sat_ecef_m[0];
+    let dy = receiver_ecef_m[1] - sat_ecef_m[1];
+    let dz = receiver_ecef_m[2] - sat_ecef_m[2];
+    (dx * dx + dy * dy + dz * dz).sqrt()
 }
