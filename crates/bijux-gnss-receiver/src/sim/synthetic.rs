@@ -897,6 +897,71 @@ pub struct SyntheticPvtMotionProfileReport {
     pub points: Vec<SyntheticPvtMotionProfilePoint>,
 }
 
+/// Time-evolution trend classification for a truth-guided PVT accuracy run.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum SyntheticPvtTimeTrend {
+    /// Errors settle or remain bounded over the measured interval.
+    Stabilizing,
+    /// Errors grow over time without the receiver validity diverging.
+    Drifting,
+    /// Errors diverge strongly enough that receiver validity becomes diverging.
+    Diverging,
+}
+
+/// One truth-guided PVT accuracy measurement point indexed by time evolution.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPvtTimeProfilePoint {
+    /// Stable scenario identifier for this validation run.
+    pub scenario_id: String,
+    /// Number of truth-matched epochs in the time series.
+    pub truth_epoch_count: usize,
+    /// Time covered by the matched epochs, in seconds.
+    pub duration_s: f64,
+    /// Number of matched PVT epochs compared against truth.
+    pub epoch_count: usize,
+    /// Number of matched PVT epochs that satisfied the hard accuracy budget.
+    pub passing_epoch_count: usize,
+    /// Passing-epoch fraction across the matched PVT epochs.
+    pub pass_rate: f64,
+    /// Number of truth-matched epochs whose solution validity remained stable.
+    pub stable_epoch_count: usize,
+    /// Stable-solution fraction across truth-matched epochs.
+    pub stable_epoch_rate: f64,
+    /// Number of truth-matched epochs whose solution validity diverged.
+    pub diverging_epoch_count: usize,
+    /// Diverging-solution fraction across truth-matched epochs.
+    pub diverging_epoch_rate: f64,
+    /// Mean 3D position error over the first analysis window, in meters.
+    pub first_window_mean_position_error_3d_m: Option<f64>,
+    /// Mean 3D position error over the last analysis window, in meters.
+    pub last_window_mean_position_error_3d_m: Option<f64>,
+    /// Linear 3D position-error drift slope over receive time, in meters per second.
+    pub position_error_drift_m_per_s: Option<f64>,
+    /// Mean residual RMS over the first analysis window, in meters.
+    pub first_window_mean_residual_rms_m: Option<f64>,
+    /// Mean residual RMS over the last analysis window, in meters.
+    pub last_window_mean_residual_rms_m: Option<f64>,
+    /// Linear residual-RMS drift slope over receive time, in meters per second.
+    pub residual_rms_drift_m_per_s: Option<f64>,
+    /// Classified time-evolution trend.
+    pub trend: SyntheticPvtTimeTrend,
+    /// Whether synthetic truth coverage remained sufficient for a hard claim.
+    pub truth_coverage_ready: bool,
+    /// Machine-checkable truth-coverage issues that forced or should force validation failure.
+    pub truth_coverage_issues: Vec<SyntheticTruthCoverageIssue>,
+    /// Whether the point had truth-ready PVT comparisons and enough epochs to classify time trend.
+    pub ready: bool,
+}
+
+/// Truth-guided PVT accuracy profile across long-run time-evolution points.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPvtTimeProfileReport {
+    /// Scenario identifier prefix shared across the measurement points.
+    pub scenario_id_prefix: String,
+    /// Measurement points captured in the report.
+    pub points: Vec<SyntheticPvtTimeProfilePoint>,
+}
+
 /// Aggregated multi-stage accuracy summary at one signal-strength point.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticAccuracyCn0ProfilePoint {
@@ -1014,6 +1079,68 @@ fn mean_f64(values: &[f64]) -> Option<f64> {
         None
     } else {
         Some(values.iter().sum::<f64>() / values.len() as f64)
+    }
+}
+
+fn time_profile_window_len(epoch_count: usize) -> usize {
+    epoch_count.clamp(1, 25)
+}
+
+fn linear_trend_slope(receive_times_s: &[f64], values: &[f64]) -> Option<f64> {
+    if receive_times_s.len() != values.len() || values.len() < 2 {
+        return None;
+    }
+    let mean_time_s = mean_f64(receive_times_s)?;
+    let mean_value = mean_f64(values)?;
+    let (numerator, denominator) =
+        receive_times_s.iter().zip(values.iter()).fold((0.0, 0.0), |acc, (time_s, value)| {
+            let centered_time_s = time_s - mean_time_s;
+            (
+                acc.0 + centered_time_s * (value - mean_value),
+                acc.1 + centered_time_s * centered_time_s,
+            )
+        });
+    (denominator > f64::EPSILON).then_some(numerator / denominator)
+}
+
+fn classify_pvt_time_trend(
+    diverging_epoch_count: usize,
+    first_window_mean_position_error_3d_m: Option<f64>,
+    last_window_mean_position_error_3d_m: Option<f64>,
+    position_error_drift_m_per_s: Option<f64>,
+    first_window_mean_residual_rms_m: Option<f64>,
+    last_window_mean_residual_rms_m: Option<f64>,
+    residual_rms_drift_m_per_s: Option<f64>,
+) -> SyntheticPvtTimeTrend {
+    if diverging_epoch_count > 0 {
+        return SyntheticPvtTimeTrend::Diverging;
+    }
+
+    let position_growth_m = first_window_mean_position_error_3d_m
+        .zip(last_window_mean_position_error_3d_m)
+        .map(|(first, last)| last - first)
+        .unwrap_or(0.0);
+    let residual_growth_m = first_window_mean_residual_rms_m
+        .zip(last_window_mean_residual_rms_m)
+        .map(|(first, last)| last - first)
+        .unwrap_or(0.0);
+    let position_slope_m_per_s = position_error_drift_m_per_s.unwrap_or(0.0);
+    let residual_slope_m_per_s = residual_rms_drift_m_per_s.unwrap_or(0.0);
+
+    if position_growth_m > 5.0
+        || residual_growth_m > 5.0
+        || position_slope_m_per_s > 1.0
+        || residual_slope_m_per_s > 1.0
+    {
+        SyntheticPvtTimeTrend::Diverging
+    } else if position_growth_m > 0.5
+        || residual_growth_m > 0.5
+        || position_slope_m_per_s > 0.1
+        || residual_slope_m_per_s > 0.1
+    {
+        SyntheticPvtTimeTrend::Drifting
+    } else {
+        SyntheticPvtTimeTrend::Stabilizing
     }
 }
 
@@ -1627,6 +1754,17 @@ pub struct SyntheticPvtMotionProfileCase<'a> {
     pub accuracy: &'a SyntheticPvtAccuracyReport,
 }
 
+/// Borrowed inputs for one long-run synthetic PVT time-profile point.
+#[derive(Debug, Clone, Copy)]
+pub struct SyntheticPvtTimeProfileCase<'a> {
+    /// Stable scenario identifier for this validation run.
+    pub scenario_id: &'a str,
+    /// Truth-guided PVT truth table for the same scenario.
+    pub truth_table: &'a SyntheticPvtTruthTableReport,
+    /// Truth-guided PVT accuracy report for the same scenario.
+    pub accuracy: &'a SyntheticPvtAccuracyReport,
+}
+
 /// Summarize truth-guided PVT accuracy across multiple signal-strength points.
 pub fn summarize_truth_guided_pvt_cn0_profile(
     cases: &[SyntheticPvtCn0ProfileCase<'_>],
@@ -1967,6 +2105,132 @@ pub fn summarize_truth_guided_pvt_motion_profile(
     });
 
     SyntheticPvtMotionProfileReport { scenario_id_prefix: scenario_id_prefix.to_string(), points }
+}
+
+/// Summarize truth-guided PVT accuracy across long-run time-evolution points.
+pub fn summarize_truth_guided_pvt_time_profile(
+    cases: &[SyntheticPvtTimeProfileCase<'_>],
+    scenario_id_prefix: &str,
+) -> SyntheticPvtTimeProfileReport {
+    let mut points = cases
+        .iter()
+        .map(|case| {
+            let epoch_count = case.accuracy.epoch_count;
+            let passing_epoch_count =
+                case.accuracy.epochs.iter().filter(|epoch| epoch.pass).count();
+            let pass_rate = if epoch_count == 0 {
+                0.0
+            } else {
+                passing_epoch_count as f64 / epoch_count as f64
+            };
+            let stable_epoch_count = case
+                .truth_table
+                .epochs
+                .iter()
+                .filter(|epoch| epoch.solution_validity == SolutionValidity::Stable)
+                .count();
+            let diverging_epoch_count = case
+                .truth_table
+                .epochs
+                .iter()
+                .filter(|epoch| epoch.solution_validity == SolutionValidity::Diverging)
+                .count();
+            let truth_epoch_count = case.truth_table.epochs.len();
+            let stable_epoch_rate = if truth_epoch_count == 0 {
+                0.0
+            } else {
+                stable_epoch_count as f64 / truth_epoch_count as f64
+            };
+            let diverging_epoch_rate = if truth_epoch_count == 0 {
+                0.0
+            } else {
+                diverging_epoch_count as f64 / truth_epoch_count as f64
+            };
+            let receive_times_s = case
+                .truth_table
+                .epochs
+                .iter()
+                .map(|epoch| epoch.receive_time_s)
+                .collect::<Vec<_>>();
+            let duration_s = match (receive_times_s.first(), receive_times_s.last()) {
+                (Some(first), Some(last)) if last > first => last - first,
+                _ => 0.0,
+            };
+            let position_error_3d_m = case
+                .accuracy
+                .epochs
+                .iter()
+                .map(|epoch| epoch.position_error_3d_m)
+                .collect::<Vec<_>>();
+            let residual_rms_m =
+                case.accuracy.epochs.iter().map(|epoch| epoch.residual_rms_m).collect::<Vec<_>>();
+            let window_len = time_profile_window_len(epoch_count);
+            let first_window_mean_position_error_3d_m =
+                mean_f64(&position_error_3d_m[..window_len.min(position_error_3d_m.len())]);
+            let last_window_mean_position_error_3d_m = if position_error_3d_m.is_empty() {
+                None
+            } else {
+                mean_f64(
+                    &position_error_3d_m
+                        [position_error_3d_m.len() - window_len.min(position_error_3d_m.len())..],
+                )
+            };
+            let first_window_mean_residual_rms_m =
+                mean_f64(&residual_rms_m[..window_len.min(residual_rms_m.len())]);
+            let last_window_mean_residual_rms_m = if residual_rms_m.is_empty() {
+                None
+            } else {
+                mean_f64(
+                    &residual_rms_m[residual_rms_m.len() - window_len.min(residual_rms_m.len())..],
+                )
+            };
+            let position_error_drift_m_per_s =
+                linear_trend_slope(&receive_times_s, &position_error_3d_m);
+            let residual_rms_drift_m_per_s = linear_trend_slope(&receive_times_s, &residual_rms_m);
+            let trend = classify_pvt_time_trend(
+                diverging_epoch_count,
+                first_window_mean_position_error_3d_m,
+                last_window_mean_position_error_3d_m,
+                position_error_drift_m_per_s,
+                first_window_mean_residual_rms_m,
+                last_window_mean_residual_rms_m,
+                residual_rms_drift_m_per_s,
+            );
+
+            SyntheticPvtTimeProfilePoint {
+                scenario_id: case.scenario_id.to_string(),
+                truth_epoch_count,
+                duration_s,
+                epoch_count,
+                passing_epoch_count,
+                pass_rate,
+                stable_epoch_count,
+                stable_epoch_rate,
+                diverging_epoch_count,
+                diverging_epoch_rate,
+                first_window_mean_position_error_3d_m,
+                last_window_mean_position_error_3d_m,
+                position_error_drift_m_per_s,
+                first_window_mean_residual_rms_m,
+                last_window_mean_residual_rms_m,
+                residual_rms_drift_m_per_s,
+                trend,
+                truth_coverage_ready: case.accuracy.truth_coverage_ready,
+                truth_coverage_issues: case.accuracy.truth_coverage_issues.clone(),
+                ready: case.accuracy.truth_coverage_ready
+                    && truth_epoch_count >= 2
+                    && epoch_count >= 2,
+            }
+        })
+        .collect::<Vec<_>>();
+    points.sort_by(|left, right| {
+        left.duration_s
+            .partial_cmp(&right.duration_s)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| left.scenario_id.cmp(&right.scenario_id))
+    });
+
+    SyntheticPvtTimeProfileReport { scenario_id_prefix: scenario_id_prefix.to_string(), points }
 }
 
 /// Merge acquisition, tracking, and PVT C/N0 profiles into one stage-level output.
@@ -5307,9 +5571,9 @@ mod tests {
         summarize_observation_errors, summarize_truth_guided_accuracy_cn0_profile,
         summarize_truth_guided_pvt_cn0_profile, summarize_truth_guided_pvt_geometry_profile,
         summarize_truth_guided_pvt_motion_profile, summarize_truth_guided_pvt_multipath_profile,
-        synthetic_tracking_sensitivity_report, truth_guided_receiver_accuracy_budgets,
-        validate_acquisition_accuracy_budget, validate_pvt_accuracy_budget,
-        validate_truth_guided_acquisition_code_phase,
+        summarize_truth_guided_pvt_time_profile, synthetic_tracking_sensitivity_report,
+        truth_guided_receiver_accuracy_budgets, validate_acquisition_accuracy_budget,
+        validate_pvt_accuracy_budget, validate_truth_guided_acquisition_code_phase,
         validate_truth_guided_acquisition_code_phase_refinement,
         validate_truth_guided_acquisition_coherent_integration,
         validate_truth_guided_acquisition_doppler,
@@ -5326,7 +5590,8 @@ mod tests {
         SyntheticPvtCn0ProfileReport, SyntheticPvtGeometryProfileCase,
         SyntheticPvtGeometryProfileReport, SyntheticPvtMotionProfileCase,
         SyntheticPvtMotionProfileReport, SyntheticPvtMultipathProfileCase,
-        SyntheticPvtMultipathProfileReport, SyntheticPvtTruthReferenceEpoch,
+        SyntheticPvtMultipathProfileReport, SyntheticPvtTimeProfileCase,
+        SyntheticPvtTimeProfileReport, SyntheticPvtTimeTrend, SyntheticPvtTruthReferenceEpoch,
         SyntheticPvtTruthTableClockBias, SyntheticPvtTruthTableDop, SyntheticPvtTruthTableEcef,
         SyntheticPvtTruthTableEnuError, SyntheticPvtTruthTableEpoch,
         SyntheticPvtTruthTableGeodetic, SyntheticPvtTruthTableReport, SyntheticScenario,
@@ -6561,6 +6826,198 @@ mod tests {
         assert_eq!(report.points[1].mean_speed_mps, 10.0);
         assert_eq!(report.points[1].stable_epoch_count, 2);
         assert!(report.points[1].ready);
+    }
+
+    fn time_profile_truth_and_accuracy(
+        scenario_id: &str,
+        position_error_3d_m: &[f64],
+        residual_rms_m: &[f64],
+        validities: &[SolutionValidity],
+    ) -> (SyntheticPvtTruthTableReport, SyntheticPvtAccuracyReport) {
+        assert_eq!(position_error_3d_m.len(), residual_rms_m.len());
+        assert_eq!(position_error_3d_m.len(), validities.len());
+
+        let truth = SyntheticPvtTruthTableReport {
+            scenario_id: scenario_id.to_string(),
+            solution_count: position_error_3d_m.len(),
+            matched_epoch_count: position_error_3d_m.len(),
+            unmatched_solution_epochs: Vec::new(),
+            unused_reference_epochs: Vec::new(),
+            epochs: position_error_3d_m
+                .iter()
+                .zip(residual_rms_m.iter())
+                .zip(validities.iter())
+                .enumerate()
+                .map(|(index, ((position_error_3d_m, residual_rms_m), validity))| {
+                    SyntheticPvtTruthTableEpoch {
+                        artifact_id: format!("{scenario_id}-artifact-{index}"),
+                        source_observation_epoch_id: format!("{scenario_id}-source-{index}"),
+                        epoch_index: index as u64,
+                        receive_time_s: 100.0 + index as f64,
+                        truth_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.0, y_m: 0.0, z_m: 0.0 },
+                        measured_ecef_m: SyntheticPvtTruthTableEcef {
+                            x_m: *position_error_3d_m,
+                            y_m: 0.0,
+                            z_m: 0.0,
+                        },
+                        ecef_error_m: SyntheticPvtTruthTableEcef {
+                            x_m: *position_error_3d_m,
+                            y_m: 0.0,
+                            z_m: 0.0,
+                        },
+                        truth_geodetic: SyntheticPvtTruthTableGeodetic {
+                            latitude_deg: 0.0,
+                            longitude_deg: 0.0,
+                            altitude_m: 0.0,
+                        },
+                        measured_geodetic: SyntheticPvtTruthTableGeodetic {
+                            latitude_deg: 0.0,
+                            longitude_deg: 0.0,
+                            altitude_m: *position_error_3d_m,
+                        },
+                        enu_error_m: SyntheticPvtTruthTableEnuError {
+                            east_m: *position_error_3d_m,
+                            north_m: 0.0,
+                            up_m: 0.0,
+                            horiz_m: *position_error_3d_m,
+                            vert_m: 0.0,
+                            error_3d_m: *position_error_3d_m,
+                        },
+                        clock_bias: SyntheticPvtTruthTableClockBias {
+                            truth_s: 0.0,
+                            measured_s: 0.0,
+                            error_s: 0.0,
+                            truth_m: 0.0,
+                            measured_m: 0.0,
+                            error_m: 0.0,
+                        },
+                        residual_rms_m: *residual_rms_m,
+                        pre_fit_residual_rms_m: Some(*residual_rms_m),
+                        post_fit_residual_rms_m: Some(*residual_rms_m),
+                        dop: SyntheticPvtTruthTableDop {
+                            pdop: 1.5,
+                            hdop: Some(1.1),
+                            vdop: Some(0.9),
+                            gdop: Some(1.7),
+                            tdop: Some(0.5),
+                        },
+                        solution_status: SolutionStatus::Converged,
+                        solution_quality: NavQualityFlag::Float,
+                        solution_validity: *validity,
+                        valid: *validity != SolutionValidity::Diverging,
+                        sat_count: 5,
+                        used_sat_count: 5,
+                        rejected_sat_count: 0,
+                    }
+                })
+                .collect(),
+        };
+        let accuracy = SyntheticPvtAccuracyReport {
+            scenario_id: scenario_id.to_string(),
+            max_position_error_3d_m: 50.0,
+            max_clock_bias_error_m: 10.0,
+            max_residual_rms_m: 50.0,
+            max_pdop: 6.0,
+            epoch_count: position_error_3d_m.len(),
+            passing_epoch_count: position_error_3d_m.len(),
+            truth_coverage_ready: true,
+            truth_coverage_issues: Vec::new(),
+            pass: true,
+            epochs: position_error_3d_m
+                .iter()
+                .zip(residual_rms_m.iter())
+                .enumerate()
+                .map(|(index, (position_error_3d_m, residual_rms_m))| SyntheticPvtAccuracyEpoch {
+                    epoch_index: index as u64,
+                    position_error_3d_m: *position_error_3d_m,
+                    clock_bias_error_m: 0.0,
+                    residual_rms_m: *residual_rms_m,
+                    pdop: 1.5,
+                    pass: true,
+                })
+                .collect(),
+        };
+
+        (truth, accuracy)
+    }
+
+    #[test]
+    fn pvt_time_profile_classifies_stabilizing_drifting_and_diverging_runs() {
+        let (stabilizing_truth, stabilizing_accuracy) = time_profile_truth_and_accuracy(
+            "pvt_time_profile_stabilizing",
+            &[5.0, 3.0, 1.5, 0.9],
+            &[4.0, 2.5, 1.5, 0.8],
+            &[
+                SolutionValidity::Coarse,
+                SolutionValidity::Converging,
+                SolutionValidity::Stable,
+                SolutionValidity::Stable,
+            ],
+        );
+        let (drifting_truth, drifting_accuracy) = time_profile_truth_and_accuracy(
+            "pvt_time_profile_drifting",
+            &[0.4, 0.8, 1.2, 1.8],
+            &[0.3, 0.6, 0.9, 1.3],
+            &[SolutionValidity::Stable; 4],
+        );
+        let (diverging_truth, diverging_accuracy) = time_profile_truth_and_accuracy(
+            "pvt_time_profile_diverging",
+            &[1.0, 4.0, 12.0, 40.0],
+            &[1.0, 4.5, 15.0, 45.0],
+            &[
+                SolutionValidity::Stable,
+                SolutionValidity::Converging,
+                SolutionValidity::Coarse,
+                SolutionValidity::Diverging,
+            ],
+        );
+
+        let report: SyntheticPvtTimeProfileReport = summarize_truth_guided_pvt_time_profile(
+            &[
+                SyntheticPvtTimeProfileCase {
+                    scenario_id: "pvt_time_profile_diverging",
+                    truth_table: &diverging_truth,
+                    accuracy: &diverging_accuracy,
+                },
+                SyntheticPvtTimeProfileCase {
+                    scenario_id: "pvt_time_profile_stabilizing",
+                    truth_table: &stabilizing_truth,
+                    accuracy: &stabilizing_accuracy,
+                },
+                SyntheticPvtTimeProfileCase {
+                    scenario_id: "pvt_time_profile_drifting",
+                    truth_table: &drifting_truth,
+                    accuracy: &drifting_accuracy,
+                },
+            ],
+            "pvt_time_profile",
+        );
+
+        assert_eq!(report.points.len(), 3);
+        assert_eq!(report.points[0].duration_s, 3.0);
+        let stabilizing = report
+            .points
+            .iter()
+            .find(|point| point.scenario_id == "pvt_time_profile_stabilizing")
+            .expect("stabilizing time profile point");
+        let drifting = report
+            .points
+            .iter()
+            .find(|point| point.scenario_id == "pvt_time_profile_drifting")
+            .expect("drifting time profile point");
+        let diverging = report
+            .points
+            .iter()
+            .find(|point| point.scenario_id == "pvt_time_profile_diverging")
+            .expect("diverging time profile point");
+
+        assert_eq!(stabilizing.trend, SyntheticPvtTimeTrend::Stabilizing);
+        assert_eq!(drifting.trend, SyntheticPvtTimeTrend::Drifting);
+        assert_eq!(diverging.trend, SyntheticPvtTimeTrend::Diverging);
+        assert!(stabilizing.ready && drifting.ready && diverging.ready, "{report:?}");
+        assert!(stabilizing.position_error_drift_m_per_s.expect("stabilizing slope") < 0.0);
+        assert!(drifting.position_error_drift_m_per_s.expect("drifting slope") > 0.0);
+        assert!(diverging.diverging_epoch_count > 0);
     }
 
     fn sample_obs_epoch(epoch_idx: u64, cn0_values_dbhz: &[f64]) -> ObsEpoch {
