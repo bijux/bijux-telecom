@@ -1,8 +1,11 @@
 # GNSS Model Manifest
 
 ## Signal Model Assumptions
-- GPS L1 C/A code only.
+- GPS L1 C/A and Galileo E1 are modeled in the acquisition and synthetic-signal path.
 - GPS L1 C/A PRNs 1-32 are validated against the published GPS SPS Table 2-1 tap pairs, delays, and first-ten-chip references.
+- Galileo E1 PRNs 1-50 use the published E1-B and E1-C 4092-chip memory codes plus the shared E1-C 25-chip CS25 secondary code from the Galileo OS SIS ICD.
+- Synthetic Galileo E1 uses the CBOC(6,1,1/11) composite over the E1-B data and E1-C pilot channels at 1.023 Mcps, with the E1-C pilot secondary code advancing once per 4 ms primary-code period.
+- Acquisition derives the local replica from the selected signal profile: GPS uses L1 C/A, while Galileo E1 uses an E1-B BOC(1,1) replica sized to the 4 ms primary-code period, so synthetic Galileo E1 captures can be acquired without GPS-specific code-length assumptions.
 - GPS L1 C/A period length is fixed at 1023 chips and the generated sequence repeats exactly on that boundary for PRNs 1-32.
 - GPS L1 C/A periodic autocorrelation for PRNs 1-32 is validated with a 1023-chip main peak and non-zero sidelobes limited to `-65`, `-1`, and `63`, with maximum absolute sidelobe magnitude `65`.
 - GPS L1 C/A periodic cross-correlation for every distinct PRN pair in 1-32 is validated with values limited to `-65`, `-1`, and `63`, with maximum absolute magnitude `65`, so no false full-period main peak appears between different codes.
@@ -27,5 +30,5 @@
 
 ## Limitations
 - No ionosphere/troposphere correction by default.
-- Limited constellation support (GPS-focused pipelines).
+- Mixed-constellation support is still partial; Galileo E1 currently covers code generation, synthetic signal generation, and acquisition, but not full Galileo tracking or navigation decode.
 - Navigation accuracy degrades with poor geometry or missing ephemerides.
