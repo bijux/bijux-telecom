@@ -888,7 +888,9 @@ mod nav_trace_tests {
         let mut ctx = Some(EkfContext::new());
 
         let solution =
-            solve_epoch_ekf(&mut ctx, &obs, &[eph]).expect("cli ekf solve").expect("solution");
+            solve_epoch_ekf(&mut ctx, &obs, &[eph], None)
+                .expect("cli ekf solve")
+                .expect("solution");
 
         assert_eq!(solution.status, SolutionStatus::Degraded);
         assert_eq!(solution.used_sat_count, 0);
@@ -904,10 +906,14 @@ fn solve_epoch_ekf(
     ctx: &mut Option<EkfContext>,
     obs: &ObsEpoch,
     ephs: &[GpsEphemeris],
+    klobuchar: Option<&bijux_gnss_infra::api::nav::KlobucharCoefficients>,
 ) -> Result<Option<bijux_gnss_infra::api::core::NavSolutionEpoch>> {
     let Some(ctx) = ctx.as_mut() else {
         return Ok(None);
     };
+    if klobuchar.is_some() && ekf_position_is_uninitialized(ctx) {
+        prime_ekf_state_from_wls(ctx, obs, ephs, klobuchar);
+    }
     let dt_s =
         if let Some(prev) = ctx.last_t_rx_s { (obs.t_rx_s.0 - prev).max(1e-3) } else { 0.001 };
     ctx.last_t_rx_s = Some(obs.t_rx_s.0);
@@ -940,6 +946,12 @@ fn solve_epoch_ekf(
         let rx_y = ctx.ekf.x[1];
         let rx_z = ctx.ekf.x[2];
         let (_az, el) = elevation_azimuth_deg(rx_x, rx_y, rx_z, state.x_m, state.y_m, state.z_m);
+        let iono_m = estimate_ekf_klobuchar_delay_m(
+            klobuchar,
+            [rx_x, rx_y, rx_z],
+            receive_tow_s,
+            &state,
+        );
         let weight = bijux_gnss_infra::api::nav::weight_from_cn0_elev(
             sat.cn0_dbhz,
             el,
@@ -955,7 +967,7 @@ fn solve_epoch_ekf(
         let code_bias_m = ctx.code_bias.code_bias_m(sat.signal_id).unwrap_or(0.0);
         let meas = PseudorangeMeasurement {
             sig: sat.signal_id,
-            z_m: sat.pseudorange_m.0 - code_bias_m,
+            z_m: sat.pseudorange_m.0 - code_bias_m - iono_m,
             sat_pos_m: [state.x_m, state.y_m, state.z_m],
             sat_clock_s: state.clock_correction.bias_s,
             tropo_m: 0.0,
@@ -991,7 +1003,7 @@ fn solve_epoch_ekf(
             sat_pos_m: [state.x_m, state.y_m, state.z_m],
             sat_clock_s: state.clock_correction.bias_s,
             tropo_m: 0.0,
-            iono_m: 0.0,
+            iono_m,
             wavelength_m: 299_792_458.0 / sat.metadata.signal.carrier_hz.value(),
             ambiguity_index: Some(amb_idx),
             sigma_cycles: 0.05,
@@ -1030,6 +1042,11 @@ fn solve_epoch_ekf(
         explain_reasons
             .push(format!("stale_ephemeris_rejections={stale_ephemeris_rejections}"));
     }
+    explain_reasons.push(if klobuchar.is_some() {
+        "ionosphere_correction=klobuchar_broadcast".to_string()
+    } else {
+        "ionosphere_uncorrected".to_string()
+    });
     let mut solution = bijux_gnss_infra::api::core::NavSolutionEpoch {
         epoch: bijux_gnss_infra::api::core::Epoch { index: obs.epoch_idx },
         t_rx_s: obs.t_rx_s,
@@ -1119,6 +1136,99 @@ fn solve_epoch_ekf(
     };
     populate_cli_nav_solution_trace_identity(obs, &mut solution);
     Ok(Some(solution))
+}
+
+fn ekf_position_is_uninitialized(ctx: &EkfContext) -> bool {
+    let radius_m = (ctx.ekf.x[0].powi(2) + ctx.ekf.x[1].powi(2) + ctx.ekf.x[2].powi(2)).sqrt();
+    !radius_m.is_finite() || radius_m < 1.0
+}
+
+fn prime_ekf_state_from_wls(
+    ctx: &mut EkfContext,
+    obs: &ObsEpoch,
+    ephs: &[GpsEphemeris],
+    klobuchar: Option<&bijux_gnss_infra::api::nav::KlobucharCoefficients>,
+) {
+    let observations = obs
+        .sats
+        .iter()
+        .filter(|sat| sat.signal_id.sat.constellation == Constellation::Gps)
+        .map(|sat| bijux_gnss_infra::api::nav::PositionObservation {
+            sat: sat.signal_id.sat,
+            pseudorange_m: sat.pseudorange_m.0,
+            cn0_dbhz: sat.cn0_dbhz,
+            elevation_deg: sat.elevation_deg,
+            weight: 1.0,
+            gps_receive_time: obs.gps_time(),
+            signal_timing: sat.timing,
+        })
+        .filter(|observation| {
+            bijux_gnss_infra::api::nav::position_observation_has_valid_satellite_time(
+                observation,
+                obs.t_rx_s.0,
+            )
+        })
+        .collect::<Vec<_>>();
+    if observations.len() < 4 {
+        return;
+    }
+    let Some(solution) = bijux_gnss_infra::api::nav::PositionSolver::new()
+        .solve_wls_with_broadcast_ionosphere(
+            &observations,
+            ephs,
+            obs.gps_time().map(|gps_time| gps_time.tow_s).unwrap_or(obs.t_rx_s.0),
+            klobuchar,
+        )
+    else {
+        return;
+    };
+    ctx.ekf.x[0] = solution.ecef_x_m;
+    ctx.ekf.x[1] = solution.ecef_y_m;
+    ctx.ekf.x[2] = solution.ecef_z_m;
+    if ctx.ekf.x.len() > 6 {
+        ctx.ekf.x[6] = solution.clock_bias_s;
+    }
+}
+
+fn estimate_ekf_klobuchar_delay_m(
+    klobuchar: Option<&bijux_gnss_infra::api::nav::KlobucharCoefficients>,
+    receiver_ecef_m: [f64; 3],
+    receive_tow_s: f64,
+    state: &bijux_gnss_infra::api::nav::GpsSatState,
+) -> f64 {
+    let Some(coefficients) = klobuchar else {
+        return 0.0;
+    };
+    let radius_m =
+        (receiver_ecef_m[0].powi(2) + receiver_ecef_m[1].powi(2) + receiver_ecef_m[2].powi(2)).sqrt();
+    if !radius_m.is_finite() || radius_m < 1.0 {
+        return 0.0;
+    }
+    let (lat_deg, lon_deg, alt_m) = bijux_gnss_infra::api::nav::ecef_to_geodetic(
+        receiver_ecef_m[0],
+        receiver_ecef_m[1],
+        receiver_ecef_m[2],
+    );
+    let receiver = bijux_gnss_infra::api::core::Llh { lat_deg, lon_deg, alt_m };
+    let (azimuth_deg, elevation_deg) = elevation_azimuth_deg(
+        receiver_ecef_m[0],
+        receiver_ecef_m[1],
+        receiver_ecef_m[2],
+        state.x_m,
+        state.y_m,
+        state.z_m,
+    );
+    if !azimuth_deg.is_finite() || !elevation_deg.is_finite() || elevation_deg <= 0.0 {
+        return 0.0;
+    }
+    let model = bijux_gnss_infra::api::nav::KlobucharModel::new(*coefficients);
+    bijux_gnss_infra::api::nav::IonosphereModel::delay_m(
+        &model,
+        receiver,
+        azimuth_deg,
+        elevation_deg,
+        bijux_gnss_infra::api::core::Seconds(receive_tow_s),
+    )
 }
 
 fn cli_nav_satellite_state(

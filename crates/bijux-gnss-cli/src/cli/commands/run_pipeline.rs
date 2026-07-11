@@ -173,7 +173,7 @@ fn handle_pvt(command: GnssCommand) -> Result<()> {
     let mut ekf_ctx = if ekf { Some(EkfContext::new()) } else { None };
     for obs_epoch in obs_epochs {
         let solution = if ekf {
-            solve_epoch_ekf(&mut ekf_ctx, &obs_epoch, &ephs)?
+            solve_epoch_ekf(&mut ekf_ctx, &obs_epoch, &ephs, broadcast_navigation.klobuchar.as_ref())?
         } else {
             nav.as_mut().and_then(|nav| {
                 nav.solve_epoch_with_broadcast_ionosphere(
@@ -757,6 +757,15 @@ mod pvt_tests {
         ephs: &[GpsEphemeris],
         pvt_case: &SyntheticPvtCase,
     ) -> bijux_gnss_infra::api::core::NavSolutionEpoch {
+        solve_pvt_case_with_rinex_nav_mode(case_name, ephs, pvt_case, false)
+    }
+
+    fn solve_pvt_case_with_rinex_nav_mode(
+        case_name: &str,
+        ephs: &[GpsEphemeris],
+        pvt_case: &SyntheticPvtCase,
+        ekf: bool,
+    ) -> bijux_gnss_infra::api::core::NavSolutionEpoch {
         let root = std::env::temp_dir().join(format!(
             "bijux_pvt_{}_{}_{}",
             case_name,
@@ -783,7 +792,7 @@ mod pvt_tests {
             common: common.clone(),
             obs: obs_path,
             eph: eph_path,
-            ekf: false,
+            ekf,
         })
         .expect("pvt command");
 
@@ -1429,5 +1438,53 @@ mod pvt_tests {
             .any(|reason| reason == "ionosphere_correction=klobuchar_broadcast"));
         assert!(corrected_error_m < 5.0);
         assert!(uncorrected_error_m > corrected_error_m + 3.0);
+    }
+
+    #[test]
+    fn pvt_command_marks_ekf_solution_ionosphere_uncorrected_without_broadcast_model() {
+        let ephemerides = sample_ephemerides();
+        let pvt_case = sample_pvt_case(&ephemerides, 2.75e-4);
+        let solution =
+            solve_pvt_case_with_rinex_nav_mode("ionosphere_uncorrected_ekf", &ephemerides, &pvt_case, true);
+
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "ionosphere_uncorrected"));
+    }
+
+    #[test]
+    fn pvt_command_applies_broadcast_ionosphere_correction_in_ekf() {
+        let ephemerides = sample_ephemerides();
+        let klobuchar = sample_klobuchar_coefficients();
+        let navigation = GpsBroadcastNavigationData {
+            ephemerides: ephemerides.clone(),
+            klobuchar: Some(klobuchar),
+        };
+        let clean_case = sample_pvt_case(&ephemerides, 2.75e-4);
+        let ionosphere_biased_case = add_klobuchar_delay_to_pvt_case(&clean_case, &ephemerides, klobuchar);
+
+        let corrected_solution = solve_pvt_case_with_broadcast_navigation_data(
+            "broadcast_ionosphere_ekf_corrected",
+            &navigation,
+            &ionosphere_biased_case,
+            true,
+        );
+        let uncorrected_solution = solve_pvt_case_with_rinex_nav_mode(
+            "broadcast_ionosphere_ekf_uncorrected",
+            &ephemerides,
+            &ionosphere_biased_case,
+            true,
+        );
+
+        let corrected_error_m = position_error_3d_m(&corrected_solution, clean_case.truth_ecef_m);
+        let uncorrected_error_m = position_error_3d_m(&uncorrected_solution, clean_case.truth_ecef_m);
+
+        assert!(corrected_solution.valid);
+        assert!(corrected_solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "ionosphere_correction=klobuchar_broadcast"));
+        assert!(corrected_error_m < uncorrected_error_m);
     }
 }
