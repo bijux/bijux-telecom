@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 pub mod front_end;
+pub mod public_ppp;
 pub mod public_station;
 pub mod reference_coordinate;
 pub mod rtk_baseline;

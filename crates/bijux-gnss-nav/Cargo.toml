@@ -20,3 +20,4 @@ precise-products = []
 criterion = "0.8"
 bijux-gnss-policies.workspace = true
 bijux-gnss-testkit = { path = "../bijux-gnss-testkit", version = "0.1.0" }
+serde_json.workspace = true
