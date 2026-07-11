@@ -1,13 +1,16 @@
 #![allow(missing_docs)]
 
-use std::path::PathBuf;
 use std::collections::BTreeMap;
+use std::path::PathBuf;
+
+mod support;
 
 use bijux_gnss_core::api::ObsEpoch;
 use bijux_gnss_nav::api::{
     parse_rinex_broadcast_navigation, PositionObservation, PositionSolver,
 };
 use bijux_gnss_nav::parse_rinex_gps_observation_dataset;
+use support::public_station_truth::public_station_truth_by_fixture;
 
 fn fixture(name: &str) -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data").join(name);
@@ -45,12 +48,13 @@ fn position_error_3d_m(
 
 #[test]
 fn public_rinex_obs_and_nav_resolve_near_station_position() {
-    let observations = parse_rinex_gps_observation_dataset(&fixture("unavco_ab43_20180114.obs"))
+    let station_fixture_name = "unavco_ab43_20180114.obs";
+    let observations = parse_rinex_gps_observation_dataset(&fixture(station_fixture_name))
         .expect("parse public RINEX observations");
     let navigation = parse_rinex_broadcast_navigation(&fixture("noaa_brdc0140_20180114.nav"))
         .expect("parse public RINEX navigation");
-    let truth_ecef_m =
-        observations.approx_position_ecef_m.expect("public fixture approximate station position");
+    let station_truth = public_station_truth_by_fixture(station_fixture_name);
+    let truth_ecef_m = station_truth.truth_ecef_m();
     let solver = PositionSolver { raim: false, apply_troposphere: true, ..PositionSolver::new() };
 
     let mut solved_epochs = 0usize;
