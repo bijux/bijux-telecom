@@ -4,7 +4,8 @@ use crate::orbits::gps::{
     is_ephemeris_valid, sat_state_gps_l1ca, sat_state_gps_l1ca_from_observation, GpsEphemeris,
     GpsSatState,
 };
-use bijux_gnss_core::api::{GpsTime, MeasurementRejectReason, ObsSignalTiming, SatId};
+use crate::models::atmosphere::{IonosphereModel, KlobucharCoefficients, KlobucharModel};
+use bijux_gnss_core::api::{GpsTime, Llh, MeasurementRejectReason, ObsSignalTiming, SatId, Seconds};
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 const SIGNAL_TIMING_CONSISTENCY_TOLERANCE_S: f64 = 1.0e-6;
@@ -67,6 +68,7 @@ struct PositionEstimate {
 struct SatelliteGeometry {
     observation: PositionObservation,
     state: GpsSatState,
+    iono_delay_m: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -107,6 +109,16 @@ impl PositionSolver {
         ephemerides: &[GpsEphemeris],
         t_rx_s: f64,
     ) -> Option<PositionSolution> {
+        self.solve_wls_with_broadcast_ionosphere(observations, ephemerides, t_rx_s, None)
+    }
+
+    pub fn solve_wls_with_broadcast_ionosphere(
+        &self,
+        observations: &[PositionObservation],
+        ephemerides: &[GpsEphemeris],
+        t_rx_s: f64,
+        klobuchar: Option<&KlobucharCoefficients>,
+    ) -> Option<PositionSolution> {
         if observations.len() < 4 {
             return None;
         }
@@ -140,7 +152,7 @@ impl PositionSolver {
             ecef_z_m: z,
             clock_bias_s: cb,
         };
-        let mut used = resolve_satellite_geometry(&inputs, estimate)?;
+        let mut used = resolve_satellite_geometry(&inputs, estimate, klobuchar)?;
         let mut residuals = Vec::new();
         let mut cov = None;
         let mut cov_symmetrized = false;
@@ -189,11 +201,11 @@ impl PositionSolver {
             if (dx * dx + dy * dy + dz * dz).sqrt() < self.convergence_m {
                 break;
             }
-            used = resolve_satellite_geometry(&inputs, estimate)?;
+            used = resolve_satellite_geometry(&inputs, estimate, klobuchar)?;
         }
 
         let final_estimate = estimate;
-        used = resolve_satellite_geometry(&inputs, final_estimate)?;
+        used = resolve_satellite_geometry(&inputs, final_estimate, klobuchar)?;
         if used.len() < 4 {
             return None;
         }
@@ -368,6 +380,7 @@ fn resolve_position_inputs(
 fn resolve_satellite_geometry(
     inputs: &[PositionSolveInput],
     estimate: PositionEstimate,
+    klobuchar: Option<&KlobucharCoefficients>,
 ) -> Option<Vec<SatelliteGeometry>> {
     let mut geometry = Vec::with_capacity(inputs.len());
     for input in inputs {
@@ -402,7 +415,8 @@ fn resolve_satellite_geometry(
         if !converged {
             return None;
         }
-        geometry.push(SatelliteGeometry { observation: obs.clone(), state });
+        let iono_delay_m = estimate_klobuchar_delay_m(estimate, input, &state, klobuchar);
+        geometry.push(SatelliteGeometry { observation: obs.clone(), state, iono_delay_m });
     }
     Some(geometry)
 }
@@ -420,9 +434,46 @@ fn linearized_pseudorange_row(
         estimate.clock_bias_s,
         geometry.state.clock_correction.bias_s,
     );
-    let residual_m = geometry.observation.pseudorange_m - predicted_pseudorange_m;
+    let residual_m =
+        geometry.observation.pseudorange_m - geometry.iono_delay_m - predicted_pseudorange_m;
     let design_row = [dx / range_m, dy / range_m, dz / range_m, 1.0];
     (residual_m, design_row)
+}
+
+fn estimate_klobuchar_delay_m(
+    estimate: PositionEstimate,
+    input: &PositionSolveInput,
+    state: &GpsSatState,
+    klobuchar: Option<&KlobucharCoefficients>,
+) -> f64 {
+    let Some(coefficients) = klobuchar else {
+        return 0.0;
+    };
+    let receiver_radius_m =
+        (estimate.ecef_x_m.powi(2) + estimate.ecef_y_m.powi(2) + estimate.ecef_z_m.powi(2)).sqrt();
+    if !receiver_radius_m.is_finite() || receiver_radius_m < 1.0 {
+        return 0.0;
+    }
+    let (latitude_deg, longitude_deg, altitude_m) =
+        ecef_to_geodetic(estimate.ecef_x_m, estimate.ecef_y_m, estimate.ecef_z_m);
+    let receiver = Llh { lat_deg: latitude_deg, lon_deg: longitude_deg, alt_m: altitude_m };
+    let (azimuth_deg, elevation_deg) = elevation_azimuth_deg(
+        estimate.ecef_x_m,
+        estimate.ecef_y_m,
+        estimate.ecef_z_m,
+        state.x_m,
+        state.y_m,
+        state.z_m,
+    );
+    if !azimuth_deg.is_finite() || !elevation_deg.is_finite() || elevation_deg <= 0.0 {
+        return 0.0;
+    }
+    KlobucharModel::new(*coefficients).delay_m(
+        receiver,
+        azimuth_deg,
+        elevation_deg,
+        Seconds(input.receive_tow_s),
+    )
 }
 
 fn geometric_range_m(estimate: PositionEstimate, state: &GpsSatState) -> f64 {

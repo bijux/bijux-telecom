@@ -10,10 +10,12 @@ use bijux_gnss_nav::api::{
     PositionSolver,
 };
 use support::position_truth::{
-    clear_broadcast_clock_parameters, four_satellite_position_scenario,
+    add_klobuchar_delay_to_observations, clear_broadcast_clock_parameters,
+    four_satellite_position_scenario,
     four_satellite_position_scenario_with_ephemerides, iterative_pseudorange_residual_m,
     iterative_pseudorange_residual_without_earth_rotation_m,
     sample_ephemerides, sample_ephemerides_with_clock_parameters, sample_ephemeris,
+    sample_klobuchar_coefficients,
     timed_position_observation, BroadcastClockParameters, SyntheticPositionScenario,
 };
 
@@ -175,6 +177,47 @@ fn single_point_solver_recovers_receiver_clock_bias() {
     assert!((solution.ecef_y_m - scenario.truth_ecef_m.1).abs() < 5.0);
     assert!((solution.ecef_z_m - scenario.truth_ecef_m.2).abs() < 5.0);
     assert!((solution.clock_bias_s - scenario.receiver_clock_bias_s).abs() < 1.0e-9);
+}
+
+#[test]
+fn single_point_solver_applies_broadcast_ionosphere_correction() {
+    let scenario = four_satellite_position_scenario(0.0);
+    let klobuchar = sample_klobuchar_coefficients();
+    let ionosphere_biased_observations = add_klobuchar_delay_to_observations(
+        &scenario.observations,
+        &scenario.ephemerides,
+        scenario.truth_ecef_m,
+        scenario.t_rx_s,
+        klobuchar,
+    );
+
+    let corrected_solution = PositionSolver::new()
+        .solve_wls_with_broadcast_ionosphere(
+            &ionosphere_biased_observations,
+            &scenario.ephemerides,
+            scenario.t_rx_s,
+            Some(&klobuchar),
+        )
+        .expect("ionosphere-corrected observations should solve");
+    let uncorrected_solution = PositionSolver::new()
+        .solve_wls(&ionosphere_biased_observations, &scenario.ephemerides, scenario.t_rx_s)
+        .expect("uncorrected observations should still solve");
+
+    let corrected_error_m = position_error_3d_m(
+        corrected_solution.ecef_x_m,
+        corrected_solution.ecef_y_m,
+        corrected_solution.ecef_z_m,
+        scenario.truth_ecef_m,
+    );
+    let uncorrected_error_m = position_error_3d_m(
+        uncorrected_solution.ecef_x_m,
+        uncorrected_solution.ecef_y_m,
+        uncorrected_solution.ecef_z_m,
+        scenario.truth_ecef_m,
+    );
+
+    assert!(corrected_error_m < 5.0);
+    assert!(uncorrected_error_m > corrected_error_m + 3.0);
 }
 
 #[test]

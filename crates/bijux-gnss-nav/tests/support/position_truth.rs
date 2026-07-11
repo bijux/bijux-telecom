@@ -1,10 +1,13 @@
 #![allow(dead_code)]
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{Constellation, GpsTime, ObsSignalTiming, SatId, Seconds};
+use bijux_gnss_core::api::{Constellation, GpsTime, Llh, ObsSignalTiming, SatId, Seconds};
 use bijux_gnss_nav::api::{
-    geodetic_to_ecef, sat_state_gps_l1ca, GpsEphemeris, PositionObservation,
+    ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef, sat_state_gps_l1ca,
+    sat_state_gps_l1ca_from_observation, GpsEphemeris, KlobucharCoefficients, KlobucharModel,
+    PositionObservation,
 };
+use bijux_gnss_nav::api::IonosphereModel;
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 
@@ -150,6 +153,60 @@ pub fn clear_broadcast_clock_parameters(ephemerides: &[GpsEphemeris]) -> Vec<Gps
             ephemeris.af2 = 0.0;
             ephemeris.tgd = 0.0;
             ephemeris
+        })
+        .collect()
+}
+
+pub fn sample_klobuchar_coefficients() -> KlobucharCoefficients {
+    KlobucharCoefficients::new(
+        [0.1212e-7, 0.1490e-7, -0.5960e-7, 0.1192e-6],
+        [0.1167e6, -0.2294e6, -0.1311e6, 0.1049e7],
+    )
+}
+
+pub fn add_klobuchar_delay_to_observations(
+    observations: &[PositionObservation],
+    ephemerides: &[GpsEphemeris],
+    receiver_ecef_m: (f64, f64, f64),
+    t_rx_s: f64,
+    klobuchar: KlobucharCoefficients,
+) -> Vec<PositionObservation> {
+    let (lat_deg, lon_deg, alt_m) =
+        ecef_to_geodetic(receiver_ecef_m.0, receiver_ecef_m.1, receiver_ecef_m.2);
+    let receiver = Llh { lat_deg, lon_deg, alt_m };
+    let model = KlobucharModel::new(klobuchar);
+
+    observations
+        .iter()
+        .map(|observation| {
+            let ephemeris = ephemerides
+                .iter()
+                .find(|ephemeris| ephemeris.sat == observation.sat)
+                .expect("matching ephemeris");
+            let state = sat_state_gps_l1ca_from_observation(
+                ephemeris,
+                t_rx_s,
+                observation.pseudorange_m,
+                observation.signal_timing,
+            );
+            let (azimuth_deg, elevation_deg) = elevation_azimuth_deg(
+                receiver_ecef_m.0,
+                receiver_ecef_m.1,
+                receiver_ecef_m.2,
+                state.x_m,
+                state.y_m,
+                state.z_m,
+            );
+            let delay_m = model.delay_m(receiver, azimuth_deg, elevation_deg, Seconds(t_rx_s));
+            let delay_s = delay_m / SPEED_OF_LIGHT_MPS;
+            let mut biased = observation.clone();
+            biased.pseudorange_m += delay_m;
+            if let Some(signal_timing) = &mut biased.signal_timing {
+                signal_timing.signal_travel_time_s = Seconds(signal_timing.signal_travel_time_s.0 + delay_s);
+                signal_timing.transmit_gps_time =
+                    signal_timing.transmit_gps_time.offset_seconds(-delay_s);
+            }
+            biased
         })
         .collect()
 }
