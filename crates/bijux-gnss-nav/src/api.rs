@@ -31,8 +31,8 @@ pub use crate::estimation::ekf::traits::MeasurementModel;
 pub use crate::estimation::position::solver::{
     ecef_to_enu, ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef,
     position_measurement_weight, position_observation_has_valid_satellite_time,
-    weight_from_cn0_elev, weight_from_pseudorange_sigma, PositionObservation, PositionSolver,
-    WeightingConfig,
+    position_observations_from_epoch, weight_from_cn0_elev, weight_from_pseudorange_sigma,
+    PositionObservation, PositionSolver, WeightingConfig,
 };
 /// PPP configuration and filter.
 pub use crate::estimation::ppp::config::{

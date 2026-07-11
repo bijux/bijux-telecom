@@ -5,8 +5,8 @@ use std::sync::OnceLock;
 
 use bijux_gnss_core::api::{GpsTime, ObsEpoch, SatId};
 use bijux_gnss_nav::api::{
-    sat_state_gps_l1ca_from_observation, GpsBroadcastNavigationData, PositionObservation,
-    PositionSolver,
+    position_observations_from_epoch, sat_state_gps_l1ca_from_observation,
+    GpsBroadcastNavigationData, PositionObservation, PositionSolver,
 };
 use bijux_gnss_nav::parse_rinex_gps_observation_dataset;
 
@@ -48,20 +48,7 @@ pub fn ab43_public_spp_case() -> &'static PublicSppCase {
 }
 
 pub fn position_observations(epoch: &ObsEpoch) -> Vec<PositionObservation> {
-    let gps_receive_time = epoch.gps_time();
-    epoch
-        .sats
-        .iter()
-        .map(|sat| PositionObservation {
-            sat: sat.signal_id.sat,
-            pseudorange_m: sat.pseudorange_m.0,
-            cn0_dbhz: sat.cn0_dbhz,
-            elevation_deg: sat.elevation_deg,
-            weight: 1.0,
-            gps_receive_time,
-            signal_timing: sat.timing,
-        })
-        .collect()
+    position_observations_from_epoch(epoch)
 }
 
 pub fn solve_public_ab43_epoch(epoch: &ObsEpoch) -> Result<SolvedPublicEpoch, String> {
@@ -115,11 +102,12 @@ pub fn public_ab43_satellite_geometry(
 
     sats.iter()
         .map(|sat| {
-            let observation = epoch
-                .sats
-                .iter()
-                .find(|candidate| candidate.signal_id.sat == *sat)
-                .ok_or_else(|| format!("missing AB43 observation for satellite {:?}", sat))?;
+            let observation =
+                epoch
+                    .sats
+                    .iter()
+                    .find(|candidate| candidate.signal_id.sat == *sat)
+                    .ok_or_else(|| format!("missing AB43 observation for satellite {:?}", sat))?;
             let ephemeris = case
                 .navigation
                 .ephemerides
@@ -132,10 +120,7 @@ pub fn public_ab43_satellite_geometry(
                 observation.pseudorange_m.0,
                 observation.timing,
             );
-            Ok(PublicSatelliteGeometry {
-                sat: *sat,
-                ecef_m: [state.x_m, state.y_m, state.z_m],
-            })
+            Ok(PublicSatelliteGeometry { sat: *sat, ecef_m: [state.x_m, state.y_m, state.z_m] })
         })
         .collect()
 }

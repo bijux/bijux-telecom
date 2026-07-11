@@ -7,7 +7,8 @@ mod support;
 
 use bijux_gnss_core::api::ObsEpoch;
 use bijux_gnss_nav::api::{
-    parse_rinex_broadcast_navigation, PositionObservation, PositionSolver,
+    parse_rinex_broadcast_navigation, position_observations_from_epoch, PositionObservation,
+    PositionSolver,
 };
 use bijux_gnss_nav::parse_rinex_gps_observation_dataset;
 use support::public_station_truth::{public_station_truth_by_fixture, station_enu_error_m};
@@ -18,20 +19,7 @@ fn fixture(name: &str) -> String {
 }
 
 fn position_observations(epoch: &ObsEpoch) -> Vec<PositionObservation> {
-    let gps_receive_time = epoch.gps_time();
-    epoch
-        .sats
-        .iter()
-        .map(|sat| PositionObservation {
-            sat: sat.signal_id.sat,
-            pseudorange_m: sat.pseudorange_m.0,
-            cn0_dbhz: sat.cn0_dbhz,
-            elevation_deg: sat.elevation_deg,
-            weight: 1.0,
-            gps_receive_time,
-            signal_timing: sat.timing,
-        })
-        .collect()
+    position_observations_from_epoch(epoch)
 }
 
 fn position_error_3d_m(
@@ -65,13 +53,12 @@ fn public_rinex_obs_and_nav_resolve_near_station_position() {
     for epoch in &observations.epochs {
         let position_observations = position_observations(epoch);
         let receive_tow_s = epoch.gps_time().expect("epoch GPS time").tow_s;
-        let solution = solver
-            .try_solve_wls_with_broadcast_ionosphere(
-                &position_observations,
-                &navigation.ephemerides,
-                receive_tow_s,
-                navigation.klobuchar.as_ref(),
-            );
+        let solution = solver.try_solve_wls_with_broadcast_ionosphere(
+            &position_observations,
+            &navigation.ephemerides,
+            receive_tow_s,
+            navigation.klobuchar.as_ref(),
+        );
         let Ok(solution) = solution else {
             let refusal = solution.expect_err("refusal");
             *refusals.entry(format!("{:?}", refusal.kind)).or_insert(0usize) += 1;
@@ -107,7 +94,8 @@ fn public_rinex_obs_and_nav_resolve_near_station_position() {
         worst_error_m < 150.0,
         "worst successful public-dataset position error {worst_error_m:.3} m exceeds tolerance"
     );
-    let best_enu_error = best_enu_error.expect("successful public solution should record ENU error");
+    let best_enu_error =
+        best_enu_error.expect("successful public solution should record ENU error");
     assert!(
         best_enu_error.horizontal_m < 1.0,
         "best public-station horizontal error {0:.3} m exceeds tolerance; east={1:.3}m north={2:.3}m up={3:.3}m",

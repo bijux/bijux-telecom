@@ -1,5 +1,7 @@
 #![allow(missing_docs)]
 
+use std::collections::BTreeMap;
+
 use crate::models::atmosphere::{
     IonosphereModel, KlobucharCoefficients, KlobucharModel, SaastamoinenModel, TroposphereModel,
 };
@@ -9,7 +11,8 @@ use crate::orbits::gps::{
 };
 use crate::{RaimFaultDetection, RaimFaultExclusion};
 use bijux_gnss_core::api::{
-    GpsTime, Llh, MeasurementRejectReason, ObsSignalTiming, SatId, Seconds,
+    GpsTime, Llh, MeasurementRejectReason, ObsEpoch, ObsSatellite, ObsSignalTiming,
+    ObservationStatus, SatId, Seconds, SignalBand,
 };
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
@@ -90,6 +93,71 @@ pub struct PositionObservation {
     pub weight: f64,
     pub gps_receive_time: Option<GpsTime>,
     pub signal_timing: Option<ObsSignalTiming>,
+}
+
+pub fn position_observations_from_epoch(epoch: &ObsEpoch) -> Vec<PositionObservation> {
+    let gps_receive_time = epoch.gps_time();
+    let mut preferred_by_sat: BTreeMap<SatId, &ObsSatellite> = BTreeMap::new();
+    for observation in &epoch.sats {
+        preferred_by_sat
+            .entry(observation.signal_id.sat)
+            .and_modify(|current| {
+                if prefer_position_observation(observation, current) {
+                    *current = observation;
+                }
+            })
+            .or_insert(observation);
+    }
+    preferred_by_sat
+        .into_values()
+        .map(|observation| PositionObservation {
+            sat: observation.signal_id.sat,
+            pseudorange_m: observation.pseudorange_m.0,
+            cn0_dbhz: observation.cn0_dbhz,
+            elevation_deg: observation.elevation_deg,
+            weight: 1.0,
+            gps_receive_time,
+            signal_timing: observation.timing,
+        })
+        .collect()
+}
+
+fn prefer_position_observation(candidate: &ObsSatellite, current: &ObsSatellite) -> bool {
+    let candidate_rank = position_observation_preference(candidate);
+    let current_rank = position_observation_preference(current);
+    candidate_rank < current_rank
+}
+
+fn position_observation_preference(observation: &ObsSatellite) -> (u8, u8, u8, u8) {
+    (
+        observation_status_rank(observation.observation_status),
+        signal_band_rank(observation.signal_id.band),
+        if observation.timing.is_some() { 0 } else { 1 },
+        if observation.lock_flags.carrier_lock { 0 } else { 1 },
+    )
+}
+
+fn observation_status_rank(status: ObservationStatus) -> u8 {
+    match status {
+        ObservationStatus::Accepted => 0,
+        ObservationStatus::Weak => 1,
+        ObservationStatus::Missing => 2,
+        ObservationStatus::Rejected => 3,
+        ObservationStatus::Inconsistent => 4,
+    }
+}
+
+fn signal_band_rank(band: SignalBand) -> u8 {
+    match band {
+        SignalBand::L1 => 0,
+        SignalBand::L2 => 1,
+        SignalBand::L5 => 2,
+        SignalBand::E1 => 3,
+        SignalBand::E5 => 4,
+        SignalBand::B1 => 5,
+        SignalBand::B2 => 6,
+        SignalBand::Unknown => 7,
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -276,16 +344,15 @@ impl PositionSolver {
         let mut raim_fault_exclusion = None;
         let mut pre_fit_residual_rms_m = None;
         let working_set = loop {
-            let solved = self.solve_working_set(&working_inputs, estimate, klobuchar).ok_or_else(
-                || {
+            let solved =
+                self.solve_working_set(&working_inputs, estimate, klobuchar).ok_or_else(|| {
                     position_solve_refusal(
                         PositionSolveRefusalKind::SolverFailure,
                         sat_count,
                         working_inputs.len(),
                         rejected.clone(),
                     )
-                },
-            )?;
+                })?;
             if pre_fit_residual_rms_m.is_none() {
                 pre_fit_residual_rms_m = Some(working_set_rms_m(&solved.residuals));
             }
@@ -364,7 +431,8 @@ impl PositionSolver {
                 ));
             }
 
-            let retained_indices = outlier_indices.into_iter().collect::<std::collections::BTreeSet<_>>();
+            let retained_indices =
+                outlier_indices.into_iter().collect::<std::collections::BTreeSet<_>>();
             working_inputs = working_inputs
                 .into_iter()
                 .enumerate()
@@ -400,10 +468,8 @@ impl PositionSolver {
         }
 
         let final_estimate = working_set.estimate;
-        let separation = self
-            .raim
-            .then(|| max_solution_separation(&filtered, final_estimate))
-            .flatten();
+        let separation =
+            self.raim.then(|| max_solution_separation(&filtered, final_estimate)).flatten();
         if raim_fault_detection.is_none() {
             if let Some(separation) = separation {
                 raim_fault_detection =
@@ -432,8 +498,7 @@ impl PositionSolver {
         } else {
             0.0
         };
-        let pre_fit_residual_rms_m =
-            pre_fit_residual_rms_m.unwrap_or(post_fit_residual_rms_m);
+        let pre_fit_residual_rms_m = pre_fit_residual_rms_m.unwrap_or(post_fit_residual_rms_m);
 
         let (lat, lon, alt) = ecef_to_geodetic(x, y, z);
 
@@ -516,7 +581,8 @@ fn resolve_position_inputs(
         .filter_map(|obs| {
             let receive_tow_s =
                 obs.gps_receive_time.map(|gps_time| gps_time.tow_s).unwrap_or(t_rx_s);
-            let Some(ephemeris) = select_valid_ephemeris(ephemerides, obs.sat, receive_tow_s) else {
+            let Some(ephemeris) = select_valid_ephemeris(ephemerides, obs.sat, receive_tow_s)
+            else {
                 rejected.push((obs.sat, MeasurementRejectReason::InvalidEphemeris));
                 return None;
             };
@@ -543,20 +609,22 @@ fn select_valid_ephemeris(
             let right_age = gps_ephemeris_age(right, receive_tow_s);
             let left_max_age_s = left_age.toe_age_s.max(left_age.toc_age_s);
             let right_max_age_s = right_age.toe_age_s.max(right_age.toc_age_s);
-            left_max_age_s
-                .total_cmp(&right_max_age_s)
-                .then_with(|| {
-                    (left_age.toe_age_s + left_age.toc_age_s)
-                        .total_cmp(&(right_age.toe_age_s + right_age.toc_age_s))
-                })
+            left_max_age_s.total_cmp(&right_max_age_s).then_with(|| {
+                (left_age.toe_age_s + left_age.toc_age_s)
+                    .total_cmp(&(right_age.toe_age_s + right_age.toc_age_s))
+            })
         })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_position_inputs, PositionObservation};
+    use super::{position_observations_from_epoch, resolve_position_inputs, PositionObservation};
     use crate::orbits::gps::GpsEphemeris;
-    use bijux_gnss_core::api::{Constellation, SatId};
+    use bijux_gnss_core::api::{
+        Constellation, Cycles, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
+        ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
+        Seconds, SigId, SignalBand, SignalCode,
+    };
 
     fn sample_ephemeris(sat: SatId, toe_s: f64, toc_s: f64) -> GpsEphemeris {
         GpsEphemeris {
@@ -628,6 +696,84 @@ mod tests {
         };
 
         assert!(super::position_observation_has_valid_satellite_time(&observation, 0.0));
+    }
+
+    #[test]
+    fn position_observations_from_epoch_prefers_l1_per_satellite() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+        let epoch = ObsEpoch {
+            t_rx_s: Seconds(1000.0),
+            source_time: ReceiverSampleTrace::from_sample_index(0, 1000.0),
+            gps_week: Some(2000),
+            tow_s: Some(Seconds(1000.0)),
+            epoch_idx: 0,
+            discontinuity: false,
+            valid: true,
+            processing_ms: None,
+            role: ReceiverRole::Rover,
+            sats: vec![
+                ObsSatellite {
+                    signal_id: SigId { sat, band: SignalBand::L2, code: SignalCode::Py },
+                    pseudorange_m: Meters(22_000_010.0),
+                    pseudorange_var_m2: 1.0,
+                    carrier_phase_cycles: Cycles(10.0),
+                    carrier_phase_var_cycles2: 1.0,
+                    doppler_hz: Hertz(0.0),
+                    doppler_var_hz2: 1.0,
+                    cn0_dbhz: 35.0,
+                    lock_flags: LockFlags {
+                        code_lock: true,
+                        carrier_lock: true,
+                        bit_lock: false,
+                        cycle_slip: false,
+                    },
+                    multipath_suspect: false,
+                    observation_status: ObservationStatus::Accepted,
+                    observation_reject_reasons: Vec::new(),
+                    elevation_deg: None,
+                    azimuth_deg: None,
+                    weight: None,
+                    timing: None,
+                    error_model: None,
+                    metadata: ObsMetadata::default(),
+                },
+                ObsSatellite {
+                    signal_id: SigId { sat, band: SignalBand::L1, code: SignalCode::Ca },
+                    pseudorange_m: Meters(22_000_000.0),
+                    pseudorange_var_m2: 1.0,
+                    carrier_phase_cycles: Cycles(20.0),
+                    carrier_phase_var_cycles2: 1.0,
+                    doppler_hz: Hertz(0.0),
+                    doppler_var_hz2: 1.0,
+                    cn0_dbhz: 45.0,
+                    lock_flags: LockFlags {
+                        code_lock: true,
+                        carrier_lock: true,
+                        bit_lock: false,
+                        cycle_slip: false,
+                    },
+                    multipath_suspect: false,
+                    observation_status: ObservationStatus::Accepted,
+                    observation_reject_reasons: Vec::new(),
+                    elevation_deg: None,
+                    azimuth_deg: None,
+                    weight: None,
+                    timing: None,
+                    error_model: None,
+                    metadata: ObsMetadata::default(),
+                },
+            ],
+            decision: ObservationEpochDecision::Accepted,
+            decision_reason: None,
+            manifest: None,
+        };
+
+        let observations = position_observations_from_epoch(&epoch);
+
+        assert_eq!(observations.len(), 1);
+        assert_eq!(observations[0].sat, sat);
+        assert_eq!(observations[0].pseudorange_m, 22_000_000.0);
+        assert_eq!(observations[0].cn0_dbhz, 45.0);
     }
 }
 
@@ -923,8 +1069,7 @@ impl PositionSolver {
                 resolve_satellite_geometry(inputs, estimate, klobuchar, self.apply_troposphere)?;
         }
 
-        geometry =
-            resolve_satellite_geometry(inputs, estimate, klobuchar, self.apply_troposphere)?;
+        geometry = resolve_satellite_geometry(inputs, estimate, klobuchar, self.apply_troposphere)?;
         if geometry.len() < 4 {
             return None;
         }
@@ -965,11 +1110,7 @@ impl PositionSolver {
             .collect()
     }
 
-    fn measurement_weights(
-        &self,
-        geometry: &[SatelliteGeometry],
-        residuals: &[f64],
-    ) -> Vec<f64> {
+    fn measurement_weights(&self, geometry: &[SatelliteGeometry], residuals: &[f64]) -> Vec<f64> {
         let mut weights = if self.robust {
             huber_weights(residuals, self.huber_k)
         } else {
@@ -996,11 +1137,7 @@ impl PositionSolver {
                 left.1
                     .partial_cmp(&right.1)
                     .unwrap_or(std::cmp::Ordering::Equal)
-                    .then_with(|| {
-                        left.2
-                            .partial_cmp(&right.2)
-                            .unwrap_or(std::cmp::Ordering::Equal)
-                    })
+                    .then_with(|| left.2.partial_cmp(&right.2).unwrap_or(std::cmp::Ordering::Equal))
             })
             .map(|(index, _normalized_residual, _residual_m)| vec![index])
             .unwrap_or_default()
@@ -1045,7 +1182,10 @@ impl PositionSolver {
                 candidate_estimate: candidate_solution.estimate,
                 pre_exclusion_rms_m,
                 post_exclusion_rms_m: candidate_rms_m,
-                solution_shift_m: solution_separation_m(solved.estimate, candidate_solution.estimate),
+                solution_shift_m: solution_separation_m(
+                    solved.estimate,
+                    candidate_solution.estimate,
+                ),
             };
             let better_candidate = best_candidate
                 .as_ref()
@@ -1067,9 +1207,10 @@ fn push_unique_rejection(
     sat: SatId,
     reason: MeasurementRejectReason,
 ) {
-    if rejected.iter().any(|(rejected_sat, rejected_reason)| {
-        *rejected_sat == sat && *rejected_reason == reason
-    }) {
+    if rejected
+        .iter()
+        .any(|(rejected_sat, rejected_reason)| *rejected_sat == sat && *rejected_reason == reason)
+    {
         return;
     }
     rejected.push((sat, reason));
@@ -1141,12 +1282,11 @@ fn max_solution_separation(
             solve_weighted_normal_eq(&h_sep, &v_sep, &vec![1.0; v_sep.len()])
         {
             let separation_m = (dx * dx + dy * dy + dz * dz).sqrt();
-            let candidate = RaimSolutionSeparation {
-                suspect_sat: removed.0.sat,
-                separation_m,
-            };
+            let candidate = RaimSolutionSeparation { suspect_sat: removed.0.sat, separation_m };
             if max_separation
-                .map(|current: RaimSolutionSeparation| candidate.separation_m > current.separation_m)
+                .map(|current: RaimSolutionSeparation| {
+                    candidate.separation_m > current.separation_m
+                })
                 .unwrap_or(true)
             {
                 max_separation = Some(candidate);
@@ -1320,11 +1460,8 @@ fn ecef_covariance_to_enu(
     receiver_ecef_m: [f64; 3],
     covariance_xyz: [[f64; 3]; 3],
 ) -> Option<[[f64; 3]; 3]> {
-    let receiver_radius_m = receiver_ecef_m
-        .iter()
-        .map(|component| component * component)
-        .sum::<f64>()
-        .sqrt();
+    let receiver_radius_m =
+        receiver_ecef_m.iter().map(|component| component * component).sum::<f64>().sqrt();
     if !receiver_radius_m.is_finite() || receiver_radius_m <= 0.0 {
         return None;
     }

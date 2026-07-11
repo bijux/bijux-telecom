@@ -6,12 +6,15 @@ use std::path::PathBuf;
 mod support;
 
 use bijux_gnss_core::api::ObsEpoch;
-use bijux_gnss_nav::api::{parse_rinex_broadcast_navigation, PositionObservation, PositionSolver};
+use bijux_gnss_nav::api::{
+    parse_rinex_broadcast_navigation, position_observations_from_epoch, PositionObservation,
+    PositionSolver,
+};
 use bijux_gnss_nav::parse_rinex_gps_observation_dataset;
 use bijux_gnss_testkit::reference_coordinate::TrustedReferenceCoordinateError;
 use support::trusted_reference_coordinate::{
-    require_trusted_reference_coordinate_by_fixture, trusted_reference_coordinate_enu_error_m,
-    trusted_reference_coordinate_ecef_m,
+    require_trusted_reference_coordinate_by_fixture, trusted_reference_coordinate_ecef_m,
+    trusted_reference_coordinate_enu_error_m,
 };
 
 fn fixture(name: &str) -> String {
@@ -20,20 +23,7 @@ fn fixture(name: &str) -> String {
 }
 
 fn position_observations(epoch: &ObsEpoch) -> Vec<PositionObservation> {
-    let gps_receive_time = epoch.gps_time();
-    epoch
-        .sats
-        .iter()
-        .map(|sat| PositionObservation {
-            sat: sat.signal_id.sat,
-            pseudorange_m: sat.pseudorange_m.0,
-            cn0_dbhz: sat.cn0_dbhz,
-            elevation_deg: sat.elevation_deg,
-            weight: 1.0,
-            gps_receive_time,
-            signal_timing: sat.timing,
-        })
-        .collect()
+    position_observations_from_epoch(epoch)
 }
 
 fn position_error_3d_m(
@@ -62,9 +52,8 @@ fn public_position_validation_rejects_missing_trusted_reference_coordinate() {
 #[test]
 fn public_rinex_position_validation_uses_trusted_reference_coordinate() {
     let station_fixture_name = "unavco_ab43_20180114.obs";
-    let trusted_coordinate =
-        require_trusted_reference_coordinate_by_fixture(station_fixture_name)
-            .expect("trusted AB43 reference coordinate");
+    let trusted_coordinate = require_trusted_reference_coordinate_by_fixture(station_fixture_name)
+        .expect("trusted AB43 reference coordinate");
     let observations = parse_rinex_gps_observation_dataset(&fixture(station_fixture_name))
         .expect("parse public RINEX observations");
     let navigation = parse_rinex_broadcast_navigation(&fixture("noaa_brdc0140_20180114.nav"))
