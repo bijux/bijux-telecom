@@ -129,6 +129,66 @@ tracking_mode_vector_weight = 1.2
     config.to_pipeline_config()
 }
 
+fn e1_tracking_override_config() -> ReceiverPipelineConfig {
+    let config: ReceiverConfig = toml::from_str(
+        r#"
+schema_version = 1
+sample_rate_hz = 4092000.0
+intermediate_freq_hz = 0.0
+quantization_bits = 16
+code_freq_basis_hz = 1023000.0
+code_length = 4092
+seed = 1
+
+[acquisition]
+doppler_search_hz = 10000
+doppler_step_hz = 500
+integration_ms = 20
+noncoherent_integration = 1
+peak_mean_threshold = 2.5
+peak_second_threshold = 1.5
+
+[tracking]
+early_late_spacing_chips = 0.5
+dll_bw_hz = 2.0
+pll_bw_hz = 15.0
+fll_bw_hz = 10.0
+max_channels = 8
+per_epoch_budget_ms = 0.7
+integration_ms = 1
+
+[[tracking.per_band]]
+band = "e1"
+early_late_spacing_chips = 0.25
+dll_bw_hz = 4.5
+pll_bw_hz = 18.0
+fll_bw_hz = 6.5
+integration_ms = 2
+
+[navigation]
+robust_solver = true
+huber_k = 30.0
+raim = true
+hatch_window = 100
+iono_mode = "broadcast"
+tropo_enable = true
+tropo_ztd_m = 2.3
+
+[navigation.weighting]
+enabled = true
+min_elev_deg = 5.0
+elev_exponent = 2.0
+cn0_ref_dbhz = 50.0
+min_weight = 0.1
+elev_mask_deg = 5.0
+tracking_mode_scalar_weight = 1.0
+tracking_mode_vector_weight = 1.2
+"#,
+    )
+    .expect("valid receiver config");
+    config.to_pipeline_config()
+}
+
 #[test]
 fn tracking_starts_from_explicit_acquisition_sample_index() {
     let config = ReceiverPipelineConfig::default();
@@ -198,5 +258,39 @@ fn tracking_uses_explicit_signal_band_parameters() {
     assert!(
         first_epoch.tracking_provenance.contains("acq_signal_band=L2"),
         "tracking provenance must preserve the explicit acquisition band: {first_epoch:?}"
+    );
+}
+
+#[test]
+fn tracking_uses_explicit_galileo_e1_parameters() {
+    let config = e1_tracking_override_config();
+    let sat = SatId { constellation: Constellation::Galileo, prn: 15 };
+    let frame = synthetic_frame(&config, sat);
+    let acquisition = accepted_acquisition(
+        sat,
+        SignalBand::E1,
+        ReceiverSampleTrace::from_sample_time(frame.t0),
+        0.0,
+        0,
+        tight_uncertainty(),
+    );
+
+    let tracking = TrackingEngine::new(config, ReceiverRuntime::default());
+    let tracks = tracking.track_from_acquisition(&frame, &[acquisition]);
+    let first_epoch = tracks.first().and_then(|track| track.epochs.first()).expect("tracked epoch");
+    let epochs = &tracks.first().expect("track").epochs;
+    let assumptions = first_epoch.tracking_assumptions.as_ref().expect("tracking assumptions");
+
+    assert_eq!(assumptions.integration_ms, 2);
+    assert_eq!(assumptions.early_late_spacing_chips, 0.25);
+    assert_eq!(assumptions.dll_bw_hz, 4.5);
+    assert_eq!(assumptions.pll_bw_hz, 18.0);
+    assert_eq!(assumptions.fll_bw_hz, 6.5);
+    assert_eq!(epochs.len(), 2, "epochs={epochs:?}");
+    assert_eq!(epochs[0].sample_index, 0);
+    assert_eq!(epochs[1].sample_index, 32_736);
+    assert!(
+        first_epoch.tracking_provenance.contains("acq_signal_band=E1"),
+        "tracking provenance must preserve the explicit Galileo E1 band: {first_epoch:?}"
     );
 }
