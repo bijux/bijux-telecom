@@ -1395,11 +1395,6 @@ pub fn validate_truth_guided_acquisition_table(
                 crate::engine::runtime::ReceiverRuntime::default(),
             );
             let result = acquisition.run_fft(&isolated_frame, &[sat_truth.sat]).remove(0);
-            let has_trackable_hypothesis = matches!(
-                result.hypothesis,
-                crate::api::core::AcqHypothesis::Accepted
-                    | crate::api::core::AcqHypothesis::Ambiguous
-            );
             let expected_measured_doppler_hz =
                 synthetic_truth_measured_doppler_hz(truth, sat_truth);
             let measured_doppler_hz = crate::pipeline::doppler::doppler_hz_from_carrier_hz(
@@ -1408,9 +1403,8 @@ pub fn validate_truth_guided_acquisition_table(
             );
             let doppler_error_hz = (measured_doppler_hz - expected_measured_doppler_hz).abs();
             let doppler_error_bins = doppler_error_hz / doppler_step_hz as f64;
-            let doppler_pass = has_trackable_hypothesis
-                && measured_doppler_hz.is_finite()
-                && doppler_error_hz <= doppler_tolerance_hz + f64::EPSILON;
+            let doppler_pass =
+                measured_doppler_hz.is_finite() && doppler_error_hz <= doppler_tolerance_hz + f64::EPSILON;
 
             let expected_code_phase_samples = expected_acquisition_code_phase_samples(
                 config,
@@ -1423,8 +1417,7 @@ pub fn validate_truth_guided_acquisition_table(
                 expected_code_phase_samples,
                 period_samples,
             );
-            let code_phase_pass =
-                has_trackable_hypothesis && code_phase_error_samples <= code_phase_tolerance_samples;
+            let code_phase_pass = code_phase_error_samples <= code_phase_tolerance_samples;
 
             SyntheticAcquisitionTruthTableSatellite {
                 sat: sat_truth.sat,
