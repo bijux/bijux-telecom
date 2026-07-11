@@ -1053,8 +1053,10 @@ mod nav_trace_tests {
             Some(bijux_gnss_infra::api::core::NavRefusalClass::InsufficientGeometry)
         );
         let refusal_gdop = refusal_solution.gdop.expect("refusal gdop");
+        let refusal_tdop = refusal_solution.tdop.expect("refusal tdop");
         assert!(refusal_solution.pdop > 8.0);
         assert!(refusal_gdop > 12.0);
+        assert!(refusal_tdop.is_finite());
         assert_eq!(refusal_solution.used_sat_count, 4);
         assert_eq!(refusal_solution.ecef_x_m.0, 0.0);
         assert_eq!(refusal_solution.ecef_y_m.0, 0.0);
@@ -1084,6 +1086,7 @@ mod nav_trace_tests {
         assert_eq!(permissive_solution.status, SolutionStatus::Float);
         assert!((permissive_solution.pdop - refusal_solution.pdop).abs() < 1e-9);
         assert_eq!(permissive_solution.gdop, refusal_solution.gdop);
+        assert_eq!(permissive_solution.tdop, refusal_solution.tdop);
     }
 
     #[test]
@@ -1471,6 +1474,7 @@ fn populate_cli_nav_solution_dops(
         solution.hdop = Some(dops.hdop);
         solution.vdop = Some(dops.vdop);
         solution.gdop = Some(dops.gdop);
+        solution.tdop = Some(dops.tdop);
     }
 }
 
