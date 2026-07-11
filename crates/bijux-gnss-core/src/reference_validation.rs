@@ -287,6 +287,8 @@ mod tests {
             clock_bias_m: Meters(0.0),
             clock_drift_s_per_s: 0.0,
             pdop: 1.0,
+            pre_fit_residual_rms_m: Some(Meters(0.0)),
+            post_fit_residual_rms_m: Some(Meters(0.0)),
             rms_m: Meters(0.0),
             status: SolutionStatus::Converged,
             quality: SolutionStatus::Converged.quality_flag(),

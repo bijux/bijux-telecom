@@ -500,6 +500,35 @@ pub mod v1 {
                         "nav solution DOP values contain NaN/Inf",
                     ));
                 }
+                if self
+                    .pre_fit_residual_rms_m
+                    .is_some_and(|value| !value.0.is_finite())
+                    || self
+                        .post_fit_residual_rms_m
+                        .is_some_and(|value| !value.0.is_finite())
+                {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Error,
+                        "GNSS_NAV_RESIDUAL_RMS_INVALID",
+                        "nav solution residual RMS values contain NaN/Inf",
+                    ));
+                }
+                if self.pre_fit_residual_rms_m.is_some() ^ self.post_fit_residual_rms_m.is_some() {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Warning,
+                        "GNSS_NAV_RESIDUAL_RMS_INCOMPLETE",
+                        "nav solution should either provide both residual RMS values or neither",
+                    ));
+                }
+                if let Some(post_fit_residual_rms_m) = self.post_fit_residual_rms_m {
+                    if (post_fit_residual_rms_m.0 - self.rms_m.0).abs() > 1.0e-9 {
+                        events.push(DiagnosticEvent::new(
+                            DiagnosticSeverity::Warning,
+                            "GNSS_NAV_POST_FIT_RMS_MISMATCH",
+                            "nav solution post-fit residual RMS does not match rms_m",
+                        ));
+                    }
+                }
                 if self.model_version == 0 {
                     events.push(DiagnosticEvent::new(
                         DiagnosticSeverity::Error,
@@ -567,6 +596,13 @@ pub mod v1 {
                         DiagnosticSeverity::Warning,
                         "GNSS_NAV_REFUSAL_CLASS_MISSING",
                         "invalid nav solution should carry a refusal_class",
+                    ));
+                }
+                if !self.residuals.is_empty() && self.post_fit_residual_rms_m.is_none() {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Warning,
+                        "GNSS_NAV_POST_FIT_RMS_MISSING",
+                        "nav solution with residuals should carry post-fit residual RMS",
                     ));
                 }
                 events

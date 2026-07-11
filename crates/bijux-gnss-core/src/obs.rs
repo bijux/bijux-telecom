@@ -987,6 +987,10 @@ pub struct NavSolutionEpoch {
     #[serde(default)]
     pub clock_drift_s_per_s: f64,
     pub pdop: f64,
+    #[serde(default)]
+    pub pre_fit_residual_rms_m: Option<Meters>,
+    #[serde(default)]
+    pub post_fit_residual_rms_m: Option<Meters>,
     pub rms_m: Meters,
     pub status: SolutionStatus,
     #[serde(default)]

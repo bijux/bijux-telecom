@@ -19,6 +19,8 @@ fn sample_solution() -> NavSolutionEpoch {
         clock_bias_m: Meters(0.0),
         clock_drift_s_per_s: 0.0,
         pdop: 1.5,
+        pre_fit_residual_rms_m: Some(Meters(2.0)),
+        post_fit_residual_rms_m: Some(Meters(2.0)),
         rms_m: Meters(2.0),
         status: SolutionStatus::Converged,
         quality: SolutionStatus::Converged.quality_flag(),
@@ -116,4 +118,12 @@ fn nav_artifact_validation_rejects_non_finite_dops() {
     solution.tdop = Some(f64::NAN);
     let diagnostics = solution.validate_payload();
     assert!(diagnostics.iter().any(|event| event.code == "GNSS_NAV_DOPS_INVALID"));
+}
+
+#[test]
+fn nav_artifact_validation_warns_on_post_fit_rms_mismatch() {
+    let mut solution = sample_solution();
+    solution.post_fit_residual_rms_m = Some(Meters(3.0));
+    let diagnostics = solution.validate_payload();
+    assert!(diagnostics.iter().any(|event| event.code == "GNSS_NAV_POST_FIT_RMS_MISMATCH"));
 }
