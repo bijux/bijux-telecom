@@ -420,3 +420,111 @@ fn validate_broadcast_ephemeris(
     }
     Some(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::PppFilter;
+    use crate::api::{
+        BroadcastProductsProvider, GpsEphemeris, GpsSatState, GpsSatelliteClockCorrection,
+        ProductDiagnostics, ProductsProvider, PppConfig,
+    };
+    use bijux_gnss_core::api::{Constellation, SatId};
+
+    #[derive(Debug, Clone)]
+    struct StubProductsProvider {
+        state: GpsSatState,
+        precise_clock_bias_s: Option<f64>,
+    }
+
+    impl ProductsProvider for StubProductsProvider {
+        fn sat_state(
+            &self,
+            _sat: SatId,
+            _t_s: f64,
+            _diag: &mut ProductDiagnostics,
+        ) -> Option<GpsSatState> {
+            Some(self.state.clone())
+        }
+
+        fn clock_correction(
+            &self,
+            _sat: SatId,
+            _t_s: f64,
+            _diag: &mut ProductDiagnostics,
+        ) -> Option<GpsSatelliteClockCorrection> {
+            self.precise_clock_bias_s.map(GpsSatelliteClockCorrection::from_bias_s)
+        }
+
+        fn coverage_s(&self, _sat: SatId) -> Option<(f64, f64)> {
+            None
+        }
+    }
+
+    fn make_eph(prn: u8) -> GpsEphemeris {
+        GpsEphemeris {
+            sat: SatId { constellation: Constellation::Gps, prn },
+            iodc: 0,
+            iode: 0,
+            week: 0,
+            sv_health: 0,
+            toe_s: 0.0,
+            toc_s: 0.0,
+            sqrt_a: 5153.7954775,
+            e: 0.02,
+            i0: 0.94,
+            idot: 0.0,
+            omega0: 0.1,
+            omegadot: 0.0,
+            w: 0.2,
+            m0: 0.3,
+            delta_n: 0.0,
+            cuc: 0.0,
+            cus: 0.0,
+            crc: 0.0,
+            crs: 0.0,
+            cic: 0.0,
+            cis: 0.0,
+            af0: 1.0e-4,
+            af1: -2.0e-12,
+            af2: 3.0e-20,
+            tgd: 8.0e-9,
+        }
+    }
+
+    #[test]
+    fn ppp_filter_uses_precise_clock_correction_when_available() {
+        let eph = make_eph(1);
+        let t_s = 1_350.0;
+        let state = BroadcastProductsProvider::new(vec![eph.clone()])
+            .sat_state(eph.sat, t_s, &mut ProductDiagnostics::default())
+            .expect("broadcast state");
+        let provider = StubProductsProvider { state, precise_clock_bias_s: Some(2.5e-9) };
+        let filter = PppFilter::new(PppConfig::default());
+
+        let (_state, clock_bias_s, fallback) = filter
+            .sat_state(&provider, &eph, eph.sat, t_s)
+            .expect("PPP precise clock state");
+
+        assert!((clock_bias_s - 2.5e-9).abs() < 1e-18);
+        assert!(!fallback);
+    }
+
+    #[test]
+    fn ppp_filter_falls_back_to_current_broadcast_clock_when_precise_clock_is_missing() {
+        let eph = make_eph(1);
+        let t_s = 1_350.0;
+        let state = BroadcastProductsProvider::new(vec![eph.clone()])
+            .sat_state(eph.sat, t_s, &mut ProductDiagnostics::default())
+            .expect("broadcast state");
+        let provider = StubProductsProvider { state, precise_clock_bias_s: None };
+        let filter = PppFilter::new(PppConfig::default());
+
+        let (_state, clock_bias_s, fallback) = filter
+            .sat_state(&provider, &eph, eph.sat, t_s)
+            .expect("PPP broadcast fallback clock state");
+        let expected = crate::api::gps_satellite_clock_correction(&eph, t_s);
+
+        assert!((clock_bias_s - expected.bias_s).abs() < 1e-18);
+        assert!(fallback);
+    }
+}
