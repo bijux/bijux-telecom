@@ -5,13 +5,12 @@ pub mod front_end;
 pub mod reference_coordinate;
 
 use bijux_gnss_infra::api::{DatasetEntry, DatasetRegistry};
-use bijux_gnss_receiver::api::ReceiverConfig;
 use serde::de::DeserializeOwned;
 use std::fs;
 use std::path::Path;
 
-/// Load a reference ReceiverConfig from a TOML file.
-pub fn load_reference_config(path: &Path) -> Result<ReceiverConfig, String> {
+/// Load a reference TOML file into a typed struct.
+pub fn load_reference_config<T: DeserializeOwned>(path: &Path) -> Result<T, String> {
     let contents = fs::read_to_string(path).map_err(|e| e.to_string())?;
     toml::from_str(&contents).map_err(|e| e.to_string())
 }
