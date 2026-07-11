@@ -1568,4 +1568,39 @@ mod pvt_tests {
             .any(|reason| reason == "ionosphere_correction=klobuchar_broadcast"));
         assert!(corrected_error_m < uncorrected_error_m);
     }
+
+    #[test]
+    fn pvt_command_applies_rinex_broadcast_ionosphere_correction_in_ekf() {
+        let ephemerides = sample_ephemerides();
+        let klobuchar = sample_klobuchar_coefficients();
+        let navigation = GpsBroadcastNavigationData {
+            ephemerides: ephemerides.clone(),
+            klobuchar: Some(klobuchar),
+        };
+        let clean_case = sample_pvt_case(&ephemerides, 2.75e-4);
+        let ionosphere_biased_case = add_klobuchar_delay_to_pvt_case(&clean_case, &ephemerides, klobuchar);
+
+        let corrected_solution = solve_pvt_case_with_rinex_broadcast_navigation_data(
+            "rinex_broadcast_ionosphere_ekf_corrected",
+            &navigation,
+            &ionosphere_biased_case,
+            true,
+        );
+        let uncorrected_solution = solve_pvt_case_with_rinex_nav_mode(
+            "rinex_broadcast_ionosphere_ekf_uncorrected",
+            &ephemerides,
+            &ionosphere_biased_case,
+            true,
+        );
+
+        let corrected_error_m = position_error_3d_m(&corrected_solution, clean_case.truth_ecef_m);
+        let uncorrected_error_m = position_error_3d_m(&uncorrected_solution, clean_case.truth_ecef_m);
+
+        assert!(corrected_solution.valid);
+        assert!(corrected_solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "ionosphere_correction=klobuchar_broadcast"));
+        assert!(corrected_error_m < uncorrected_error_m);
+    }
 }
