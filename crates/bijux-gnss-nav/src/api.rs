@@ -44,6 +44,12 @@ pub use crate::estimation::position::solver::{
 pub use crate::estimation::ppp::config::{
     PppArMode, PppConfig, PppConvergenceConfig, PppFilter, PppProcessNoise, PppSolutionEpoch,
 };
+/// RTK single-difference helpers.
+pub use crate::estimation::rtk::single_difference::{
+    choose_rtk_single_difference_reference_signal,
+    choose_rtk_single_difference_reference_signals_by_constellation,
+    rtk_single_differences_from_obs_epochs, RtkSingleDifferenceObservation,
+};
 /// Format parsing and output.
 pub use crate::formats::lnav_bits::{
     align_gps_l1ca_lnav_from_prompt, align_gps_l1ca_lnav_subframes, bit_sync_from_prompt,

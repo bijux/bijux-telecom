@@ -5,7 +5,7 @@
 //! - `orbits`: broadcast ephemeris and satellite state
 //! - `formats`: LNAV parsing and precise products I/O
 //! - `corrections`: iono/tropo/bias helpers and combinations
-//! - `estimation`: EKF, PPP, and PVT solvers
+//! - `estimation`: EKF, PPP, PVT, and RTK solvers
 //! - `linalg`: minimal matrix helpers for estimators
 //! - `time`: navigation-time utilities
 //! - Start here: `sat_state_gps_l1ca` and `PositionSolver`
@@ -25,13 +25,13 @@ mod time;
 /// Public API surface for this crate.
 pub mod api;
 
+pub use crate::estimation::position::raim::{
+    RaimFaultDetection, RaimFaultDetectionStatus, RaimFaultExclusion,
+};
 pub use crate::estimation::position::solver::{
     position_dops_from_satellite_positions, PositionDops, PositionSolveRefusal,
     PositionSolveRefusalKind,
 };
 pub use crate::formats::rinex_obs::{
     parse_rinex_gps_observation_dataset, RinexGpsObservationChannel, RinexGpsObservationDataset,
-};
-pub use crate::estimation::position::raim::{
-    RaimFaultDetection, RaimFaultDetectionStatus, RaimFaultExclusion,
 };
