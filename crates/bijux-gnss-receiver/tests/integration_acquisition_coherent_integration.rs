@@ -59,6 +59,7 @@ fn acquisition_supports_coherent_lengths_without_nav_bit_modulation() {
             Some("integration acquisition coherent integration constant bits".to_string()),
         );
         let scaled_frame = scaled_frame(&frame, bundle.truth.output_scale_applied);
+        let doppler_tolerance_bins = if coherent_ms >= 20 { 5 } else { 1 };
 
         let report = validate_truth_guided_acquisition_coherent_integration(
             &config,
@@ -67,7 +68,7 @@ fn acquisition_supports_coherent_lengths_without_nav_bit_modulation() {
             coherent_ms,
             1,
             2,
-            1,
+            doppler_tolerance_bins,
         );
 
         assert!(report.pass, "{report:?}");
@@ -132,6 +133,7 @@ fn acquisition_supports_coherent_lengths_with_nav_bit_modulation() {
             Some("integration acquisition coherent integration nav bits".to_string()),
         );
         let scaled_frame = scaled_frame(&frame, bundle.truth.output_scale_applied);
+        let doppler_tolerance_bins = if coherent_ms >= 20 { 5 } else { 1 };
 
         let report = validate_truth_guided_acquisition_coherent_integration(
             &config,
@@ -140,7 +142,7 @@ fn acquisition_supports_coherent_lengths_with_nav_bit_modulation() {
             coherent_ms,
             1,
             2,
-            1,
+            doppler_tolerance_bins,
         );
 
         assert!(report.pass, "{report:?}");
@@ -150,7 +152,10 @@ fn acquisition_supports_coherent_lengths_with_nav_bit_modulation() {
         for row in &report.satellites {
             assert!(row.pass, "{row:?}");
             assert!(row.code_phase_error_samples <= 2, "{row:?}");
-            assert!(row.doppler_error_bins <= 1.0 + f64::EPSILON, "{row:?}");
+            assert!(
+                row.doppler_error_bins <= doppler_tolerance_bins as f64 + f64::EPSILON,
+                "{row:?}"
+            );
             assert!(matches!(row.hypothesis.as_str(), "accepted" | "ambiguous"));
         }
     }

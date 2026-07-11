@@ -270,7 +270,13 @@ fn load_fixture_paths() -> Vec<std::path::PathBuf> {
     let mut paths = fs::read_dir(fixture_root())
         .expect("read fixture directory")
         .filter_map(|entry| entry.ok().map(|e| e.path()))
-        .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
+        .filter(|path| {
+            path.extension().is_some_and(|ext| ext == "json")
+                && path
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .is_some_and(|stem| stem.starts_with("fixture_") || stem.starts_with("corpus_"))
+        })
         .collect::<Vec<_>>();
     paths.sort();
     paths

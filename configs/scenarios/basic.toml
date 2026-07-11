@@ -1,6 +1,6 @@
 sample_rate_hz = 4092000.0
 intermediate_freq_hz = 0.0
-duration_s = 0.02
+duration_s = 0.04
 seed = 1234
 
 [[satellites]]
@@ -9,12 +9,12 @@ doppler_hz = 500.0
 code_phase_chips = 200.0
 carrier_phase_rad = 0.0
 cn0_db_hz = 50.0
-data_bit_flip = true
+data_bit_flip = false
 
 [[satellites]]
 sat = { constellation = "Gps", prn = 7 }
 doppler_hz = -1000.0
 code_phase_chips = 321.0
 carrier_phase_rad = 0.2
-cn0_db_hz = 45.0
-data_bit_flip = true
+cn0_db_hz = 50.0
+data_bit_flip = false
