@@ -13,4 +13,7 @@ Broadcast models are supported, with scaffolding for estimable states and dual-f
 Deterministic mode fixes seeds, disables nondeterministic parallelism, and enforces stable ordering to make artifacts reproducible.
 
 ## Does the receiver support RTK or PPP?
-The architecture supports both. RTK has a baseline solver and ambiguity scaffolding; PPP has a stateful filter and precise products scaffolding.
+The architecture supports both. RTK has a baseline solver and ambiguity scaffolding. PPP has a
+stateful dual-frequency filter with public-station convergence regression coverage on the AB43
+RINEX fixture when seeded from the file's declared station prior. Public precise-product fixture
+coverage is still narrower than the broadcast-backed public PPP regression.

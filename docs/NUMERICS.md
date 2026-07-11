@@ -35,6 +35,13 @@ This document defines numeric tolerance budgets for deterministic verification a
 
 - Fix ratio: meets configured thresholds
 - Baseline RMS: within expected synthetic truth tolerance
+- Public PPP regression fixture: `unavco_ab43_20180114.obs` with
+  `noaa_brdc0140_20180114.nav`
+- Public PPP epoch coverage: all 9 AB43 epochs solve when the filter is seeded from the RINEX
+  `APPROX POSITION XYZ` prior
+- Public PPP convergence reporting: time-to-1m, time-to-decimeter, and final 3D error are derived
+  from the truth-referenced 3D error timeline
+- Public PPP final 3D error budget: `< 1.0 m` on the AB43 regression fixture
 
 ## Determinism
 
