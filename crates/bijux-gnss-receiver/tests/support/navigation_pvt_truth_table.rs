@@ -10,6 +10,7 @@ use crate::support::navigation_pipeline::{
 };
 
 pub struct PvtTruthTableFixture {
+    #[allow(dead_code)]
     pub run: CleanSyntheticNavigationRun,
     pub report: SyntheticPvtTruthTableReport,
 }
