@@ -67,30 +67,7 @@ impl Sp3Provider {
         if list.len() == 1 {
             return Some(record_state(&list[0]));
         }
-        let mut before = None;
-        let mut after = None;
-        for rec in list {
-            if rec.epoch_s <= t_s {
-                before = Some(rec);
-            }
-            if rec.epoch_s >= t_s {
-                after = Some(rec);
-                break;
-            }
-        }
-        match (before, after) {
-            (Some(b), Some(a)) if (a.epoch_s - b.epoch_s).abs() > 0.0 => {
-                let w = (t_s - b.epoch_s) / (a.epoch_s - b.epoch_s);
-                Some(GpsSatState {
-                    x_m: b.x_m + w * (a.x_m - b.x_m),
-                    y_m: b.y_m + w * (a.y_m - b.y_m),
-                    z_m: b.z_m + w * (a.z_m - b.z_m),
-                    clock_correction: GpsSatelliteClockCorrection::from_bias_s(0.0),
-                })
-            }
-            (Some(b), Some(_)) => Some(record_state(b)),
-            _ => None,
-        }
+        interpolate_record_state(list, t_s)
     }
 }
 
@@ -150,6 +127,71 @@ fn normalize_records(records: &mut BTreeMap<SatId, Vec<Sp3Record>>) {
         }
         sat_records.dedup_by(|left, right| (left.epoch_s - right.epoch_s).abs() <= f64::EPSILON);
     }
+}
+
+fn interpolate_record_state(records: &[Sp3Record], t_s: f64) -> Option<GpsSatState> {
+    let first_epoch_s = records.first()?.epoch_s;
+    let last_epoch_s = records.last()?.epoch_s;
+    if t_s < first_epoch_s || t_s > last_epoch_s {
+        return None;
+    }
+
+    let support = interpolation_support_records(records, t_s, None);
+    if support.is_empty() {
+        return None;
+    }
+
+    Some(GpsSatState {
+        x_m: lagrange_coordinate(&support, t_s, |record| record.x_m)?,
+        y_m: lagrange_coordinate(&support, t_s, |record| record.y_m)?,
+        z_m: lagrange_coordinate(&support, t_s, |record| record.z_m)?,
+        clock_correction: GpsSatelliteClockCorrection::from_bias_s(0.0),
+    })
+}
+
+fn interpolation_support_records<'a>(
+    records: &'a [Sp3Record],
+    t_s: f64,
+    skip_index: Option<usize>,
+) -> Vec<&'a Sp3Record> {
+    let mut support = records
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| skip_index != Some(*index))
+        .collect::<Vec<_>>();
+    support.sort_by(|(left_index, left), (right_index, right)| {
+        let left_dt = (left.epoch_s - t_s).abs();
+        let right_dt = (right.epoch_s - t_s).abs();
+        left_dt
+            .total_cmp(&right_dt)
+            .then_with(|| left_index.cmp(right_index))
+    });
+    support.truncate(4);
+    support.sort_by(|(_, left), (_, right)| left.epoch_s.total_cmp(&right.epoch_s));
+    support.into_iter().map(|(_, record)| record).collect()
+}
+
+fn lagrange_coordinate(
+    support: &[&Sp3Record],
+    t_s: f64,
+    coordinate: impl Fn(&Sp3Record) -> f64,
+) -> Option<f64> {
+    let mut value = 0.0;
+    for (index, record) in support.iter().enumerate() {
+        let mut basis = 1.0;
+        for (other_index, other) in support.iter().enumerate() {
+            if index == other_index {
+                continue;
+            }
+            let denominator = record.epoch_s - other.epoch_s;
+            if denominator.abs() <= f64::EPSILON {
+                return None;
+            }
+            basis *= (t_s - other.epoch_s) / denominator;
+        }
+        value += basis * coordinate(record);
+    }
+    Some(value)
 }
 
 fn record_state(record: &Sp3Record) -> GpsSatState {
