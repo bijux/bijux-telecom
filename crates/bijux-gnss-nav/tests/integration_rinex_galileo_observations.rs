@@ -3,7 +3,7 @@
 use bijux_gnss_core::api::{signal_cycles_to_meters, validate_obs_epochs, SignalBand, SignalCode};
 use bijux_gnss_nav::api::{
     combinations_from_obs_epochs, iono_free_code_from_obs_epochs, iono_free_phase_from_obs_epochs,
-    parse_rinex_galileo_observation_dataset,
+    measured_ionosphere_from_obs_epochs, parse_rinex_galileo_observation_dataset,
 };
 
 fn synthetic_galileo_rinex() -> String {
@@ -51,12 +51,17 @@ fn rinex_galileo_import_supports_dual_frequency_combinations() {
         iono_free_code_from_obs_epochs(&dataset.epochs, SignalBand::E1, SignalBand::E5);
     let iono_free_phase =
         iono_free_phase_from_obs_epochs(&dataset.epochs, SignalBand::E1, SignalBand::E5);
+    let measured_ionosphere =
+        measured_ionosphere_from_obs_epochs(&dataset.epochs, SignalBand::E1, SignalBand::E5);
 
     assert_eq!(combinations.len(), 1);
     assert_eq!(iono_free_code.len(), 1);
     assert_eq!(iono_free_phase.len(), 1);
+    assert_eq!(measured_ionosphere.len(), 1);
     assert_eq!(combinations[0].band_1, SignalBand::E1);
     assert_eq!(combinations[0].band_2, SignalBand::E5);
+    assert_eq!(measured_ionosphere[0].band_1, SignalBand::E1);
+    assert_eq!(measured_ionosphere[0].band_2, SignalBand::E5);
 }
 
 #[test]
@@ -73,6 +78,8 @@ fn rinex_galileo_phase_combinations_follow_signal_specific_wavelengths() {
         combinations_from_obs_epochs(&dataset.epochs, SignalBand::E1, SignalBand::E5);
     let iono_free_phase =
         iono_free_phase_from_obs_epochs(&dataset.epochs, SignalBand::E1, SignalBand::E5);
+    let measured_ionosphere =
+        measured_ionosphere_from_obs_epochs(&dataset.epochs, SignalBand::E1, SignalBand::E5);
 
     let e1_phase_m = signal_cycles_to_meters(e1.carrier_phase_cycles, e1.metadata.signal).0;
     let e5_phase_m = signal_cycles_to_meters(e5.carrier_phase_cycles, e5.metadata.signal).0;
@@ -90,6 +97,22 @@ fn rinex_galileo_phase_combinations_follow_signal_specific_wavelengths() {
     );
     assert!(
         (combinations[0].if_phase_m.expect("iono-free combination phase") - expected_if_phase_m)
+            .abs()
+            < 1.0e-9
+    );
+    assert_eq!(measured_ionosphere.len(), 1);
+    assert_eq!(measured_ionosphere[0].code_status, "ok");
+    assert_eq!(measured_ionosphere[0].phase_status, "ok");
+    assert_eq!(measured_ionosphere[0].phase_arc_reset, true);
+    assert!(
+        (measured_ionosphere[0].code_geometry_free_m.expect("geometry-free code")
+            - (e5.pseudorange_m.0 - e1.pseudorange_m.0))
+            .abs()
+            < 1.0e-9
+    );
+    assert!(
+        (measured_ionosphere[0].phase_geometry_free_m.expect("geometry-free phase")
+            - (e1_phase_m - e5_phase_m))
             .abs()
             < 1.0e-9
     );
