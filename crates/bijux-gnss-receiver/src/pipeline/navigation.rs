@@ -8,14 +8,15 @@ use bijux_gnss_core::api::{
     NAV_SOLUTION_MODEL_VERSION,
 };
 use bijux_gnss_nav::api::{
-    ecef_to_geodetic, elevation_azimuth_deg, position_broadcast_navigation_from_gps_ephemerides,
-    position_measurement_weight, position_observation_has_valid_satellite_time,
-    sat_state_beidou_b1i_from_observation, sat_state_galileo_e1_from_observation,
-    sat_state_glonass_l1_from_observation, sat_state_gps_l1ca_from_observation, GpsEphemeris,
-    KlobucharCoefficients, PositionBroadcastNavigation, PositionFilterMotionClass,
-    PositionObservation, PositionRobustWeighting, PositionSolutionSmoother,
-    PositionSolutionSmootherConfig, PositionSolveRefusalKind, PositionSolver,
-    PositionWeightingModel, RaimFaultDetectionStatus, WeightingConfig,
+    ecef_to_geodetic, elevation_azimuth_deg, formal_protection_levels,
+    position_broadcast_navigation_from_gps_ephemerides, position_measurement_weight,
+    position_observation_has_valid_satellite_time, sat_state_beidou_b1i_from_observation,
+    sat_state_galileo_e1_from_observation, sat_state_glonass_l1_from_observation,
+    sat_state_gps_l1ca_from_observation, GpsEphemeris, KlobucharCoefficients,
+    PositionBroadcastNavigation, PositionFilterMotionClass, PositionObservation,
+    PositionRobustWeighting, PositionSolutionSmoother, PositionSolutionSmootherConfig,
+    PositionSolveRefusalKind, PositionSolver, PositionWeightingModel,
+    RaimFaultDetectionStatus, WeightingConfig,
 };
 
 use crate::engine::receiver_config::{
@@ -773,8 +774,18 @@ impl Navigation {
             }
         }
         nav_epoch.stability_signature = nav_output_stability_signature(&nav_epoch);
-        nav_epoch.integrity_hpl_m = solution.integrity_hpl_m;
-        nav_epoch.integrity_vpl_m = solution.integrity_vpl_m;
+        let protection_levels = nav_epoch.position_covariance_ecef_m2.and_then(|covariance| {
+            formal_protection_levels(
+                [
+                    nav_epoch.ecef_x_m.0,
+                    nav_epoch.ecef_y_m.0,
+                    nav_epoch.ecef_z_m.0,
+                ],
+                covariance,
+            )
+        });
+        nav_epoch.integrity_hpl_m = protection_levels.map(|levels| levels.horizontal_m);
+        nav_epoch.integrity_vpl_m = protection_levels.map(|levels| levels.vertical_m);
 
         if let Some(rms) = nav_epoch.innovation_rms_m {
             self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
