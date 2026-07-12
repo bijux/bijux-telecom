@@ -118,6 +118,12 @@ pub const DIAGNOSTIC_CODES: &[DiagnosticCode] = &[
         mitigation: "Inspect clock model and measurement quality.",
     },
     DiagnosticCode {
+        code: "NAV_SAT_CLOCK_ANOMALY",
+        severity: DiagnosticSeverity::Warning,
+        meaning: "Residual history suggests a single-satellite clock anomaly",
+        mitigation: "Inspect the named satellite clock and compare against peer residual trends.",
+    },
+    DiagnosticCode {
         code: "NAV_EPHEMERIS_GAP",
         severity: DiagnosticSeverity::Warning,
         meaning: "Ephemeris coverage gap detected",

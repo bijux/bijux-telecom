@@ -1043,6 +1043,12 @@ pub enum NavHealthEvent {
     CovarianceClamped { min_eigenvalue: f64 },
     CovarianceDiverged { max_variance: f64 },
     InnovationRejected { reason: String },
+    SatelliteClockAnomaly {
+        sat: SatId,
+        residual_delta_m: f64,
+        peer_median_delta_m: f64,
+        peer_rms_delta_m: f64,
+    },
     ZtdClamped { before_m: f64, after_m: f64 },
 }
 
