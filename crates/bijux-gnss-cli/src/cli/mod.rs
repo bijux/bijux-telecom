@@ -5,7 +5,7 @@ use bijux_gnss_infra::api::core::{
     sort_obs_sats, validate_obs_epochs, AcqAssumptions, AcqResult, AcqResultV1, ArtifactHeaderV1,
     ArtifactReadPolicy, Constellation, DiagnosticEvent, DiagnosticSeverity, NavSolutionEpoch,
     NavSolutionEpochV1, ObsEpoch, ObsEpochV1, SamplesFrame, SatId, SchemaVersion, TrackEpoch,
-    TrackEpochV1, ValidateConfig,
+    SignalBand, TrackEpochV1, ValidateConfig,
 };
 use bijux_gnss_infra::api::hash_config;
 use bijux_gnss_infra::api::nav::{

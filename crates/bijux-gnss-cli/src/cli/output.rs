@@ -519,6 +519,8 @@ fn write_track_timeseries_for_command(
                     profile.sample_rate_hz,
                 ),
                 sat: epoch.sat,
+                signal_band: bijux_gnss_infra::api::core::SignalBand::L1,
+                glonass_frequency_channel: None,
                 prompt_i: epoch.prompt_i,
                 prompt_q: epoch.prompt_q,
                 early_i: epoch.early_i,
@@ -647,9 +649,62 @@ fn write_obs_timeseries_for_command(
         fs::write(&combo_path, combo_lines.join("\n"))?;
         validate_jsonl_schema(&schema_path("combinations.schema.json"), &combo_path, false)?;
     }
+    write_iono_free_code_artifact(&out_dir, &observation_artifacts.epochs, None)?;
     write_melbourne_wubbena_diagnostics(&out_dir, &observation_artifacts.epochs)?;
     write_carrier_smoothed_code_validation(&out_dir, &observation_artifacts)?;
     Ok(observation_artifacts)
+}
+
+fn dual_frequency_pair_observed(obs: &[ObsEpoch], band_1: SignalBand, band_2: SignalBand) -> bool {
+    for epoch in obs {
+        let mut bands_by_sat = std::collections::BTreeMap::<SatId, (bool, bool)>::new();
+        for satellite in &epoch.sats {
+            let entry = bands_by_sat.entry(satellite.signal_id.sat).or_insert((false, false));
+            if satellite.signal_id.band == band_1 {
+                entry.0 = true;
+            }
+            if satellite.signal_id.band == band_2 {
+                entry.1 = true;
+            }
+        }
+        if bands_by_sat.values().any(|(first_seen, second_seen)| *first_seen && *second_seen) {
+            return true;
+        }
+    }
+    false
+}
+
+pub(crate) fn write_iono_free_code_artifact(
+    out_dir: &Path,
+    obs: &[ObsEpoch],
+    biases: Option<&dyn CodeBiasProvider>,
+) -> Result<()> {
+    let mut lines = Vec::new();
+    for (band_1, band_2) in [
+        (SignalBand::L1, SignalBand::L2),
+        (SignalBand::L1, SignalBand::L5),
+        (SignalBand::E1, SignalBand::E5),
+        (SignalBand::B1, SignalBand::B2),
+    ] {
+        if !dual_frequency_pair_observed(obs, band_1, band_2) {
+            continue;
+        }
+        let observations = bijux_gnss_infra::api::nav::iono_free_code_from_obs_epochs_with_biases(
+            obs, band_1, band_2, biases,
+        );
+        for observation in observations {
+            lines.push(serde_json::to_string(&observation)?);
+        }
+    }
+
+    if lines.is_empty() {
+        return Ok(());
+    }
+
+    let path = out_dir.join("iono_free_code.jsonl");
+    fs::write(&path, lines.join("\n"))?;
+    validate_jsonl_schema(&schema_path("iono_free_code.schema.json"), &path, false)?;
+    Ok(())
 }
 
 pub(crate) fn write_melbourne_wubbena_diagnostics(out_dir: &Path, obs: &[ObsEpoch]) -> Result<()> {

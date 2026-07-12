@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "IonoFreeCodeObservation",
+  "type": "object",
+  "required": [
+    "epoch_idx",
+    "t_rx_s",
+    "sat",
+    "band_1",
+    "band_2",
+    "f1_hz",
+    "f2_hz",
+    "status",
+    "reason"
+  ],
+  "properties": {
+    "epoch_idx": { "type": "integer", "minimum": 0 },
+    "t_rx_s": { "type": "number" },
+    "sat": { "$ref": "#/definitions/SatId" },
+    "signal_1": { "$ref": "#/definitions/SigIdOrNull" },
+    "signal_2": { "$ref": "#/definitions/SigIdOrNull" },
+    "band_1": { "type": "string" },
+    "band_2": { "type": "string" },
+    "f1_hz": { "type": "number" },
+    "f2_hz": { "type": "number" },
+    "code_m": { "type": ["number", "null"] },
+    "code_bias_m": { "type": ["number", "null"] },
+    "corrected_code_m": { "type": ["number", "null"] },
+    "variance_m2": { "type": ["number", "null"] },
+    "status": { "type": "string" },
+    "reason": { "type": "string" }
+  },
+  "definitions": {
+    "SatId": {
+      "type": "object",
+      "required": ["constellation", "prn"],
+      "properties": {
+        "constellation": { "type": "string" },
+        "prn": { "type": "integer" }
+      }
+    },
+    "SigId": {
+      "type": "object",
+      "required": ["sat", "band", "code"],
+      "properties": {
+        "sat": { "$ref": "#/definitions/SatId" },
+        "band": { "type": "string" },
+        "code": { "type": "string" }
+      }
+    },
+    "SigIdOrNull": {
+      "anyOf": [
+        { "$ref": "#/definitions/SigId" },
+        { "type": "null" }
+      ]
+    }
+  }
+}
