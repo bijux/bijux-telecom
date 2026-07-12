@@ -109,6 +109,7 @@ impl MeasurementModel for PppCodeMeasurement {
             }
         }
         let mut pred = range + SPEED_OF_LIGHT_MPS * (x[6] - self.sat_clock_s) + tropo - iono;
+        pred += self.antenna_range_correction_m;
         if let Some(idx) = self.isb_index {
             if let Some(isb) = x.get(idx) {
                 pred += SPEED_OF_LIGHT_MPS * isb;
@@ -153,6 +154,7 @@ pub struct PppPhaseMeasurement {
     pub z_cycles: f64,
     pub sat_pos_m: [f64; 3],
     pub sat_clock_s: f64,
+    pub antenna_range_correction_m: f64,
     pub sigma_cycles: f64,
     pub troposphere_mapping: f64,
     pub iono_index: Option<usize>,
@@ -202,7 +204,11 @@ impl MeasurementModel for PppPhaseMeasurement {
                 iono = *v;
             }
         }
-        let mut pred = (range + SPEED_OF_LIGHT_MPS * (x[6] - self.sat_clock_s) + tropo - iono)
+        let mut pred = (range
+            + self.antenna_range_correction_m
+            + SPEED_OF_LIGHT_MPS * (x[6] - self.sat_clock_s)
+            + tropo
+            - iono)
             / self.wavelength_m;
         if let Some(idx) = self.isb_index {
             if let Some(isb) = x.get(idx) {
@@ -259,6 +265,7 @@ pub struct PppIonoFreeCodeMeasurement {
     pub z_m: f64,
     pub sat_pos_m: [f64; 3],
     pub sat_clock_s: f64,
+    pub antenna_range_correction_m: f64,
     pub sigma_m: f64,
     pub troposphere_mapping: f64,
     pub ztd_index: Option<usize>,
@@ -299,7 +306,8 @@ impl MeasurementModel for PppIonoFreeCodeMeasurement {
                 tropo = *ztd * self.troposphere_mapping;
             }
         }
-        let mut pred = range + SPEED_OF_LIGHT_MPS * (x[6] - self.sat_clock_s) + tropo;
+        let mut pred =
+            range + self.antenna_range_correction_m + SPEED_OF_LIGHT_MPS * (x[6] - self.sat_clock_s) + tropo;
         if let Some(idx) = self.isb_index {
             if let Some(isb) = x.get(idx) {
                 pred += SPEED_OF_LIGHT_MPS * isb;
@@ -339,6 +347,7 @@ pub struct PppIonoFreePhaseMeasurement {
     pub z_cycles: f64,
     pub sat_pos_m: [f64; 3],
     pub sat_clock_s: f64,
+    pub antenna_range_correction_m: f64,
     pub sigma_cycles: f64,
     pub troposphere_mapping: f64,
     pub ztd_index: Option<usize>,
@@ -375,7 +384,10 @@ impl MeasurementModel for PppIonoFreePhaseMeasurement {
         let dy = rx[1] - self.sat_pos_m[1];
         let dz = rx[2] - self.sat_pos_m[2];
         let range = (dx * dx + dy * dy + dz * dz).sqrt();
-        let mut pred = (range + SPEED_OF_LIGHT_MPS * (x[6] - self.sat_clock_s)) / self.wavelength_m;
+        let mut pred = (range
+            + self.antenna_range_correction_m
+            + SPEED_OF_LIGHT_MPS * (x[6] - self.sat_clock_s))
+            / self.wavelength_m;
         if let Some(idx) = self.ztd_index {
             if let Some(ztd) = x.get(idx) {
                 pred += *ztd * self.troposphere_mapping / self.wavelength_m;
@@ -556,8 +568,8 @@ fn select_dual_frequency_pair(
 mod tests {
     use super::{
         iono_free_code_observation_from_obs, iono_free_from_obs,
-        iono_free_phase_observation_from_obs, wide_lane_from_obs, PppIonoFreePhaseMeasurement,
-        PppPhaseMeasurement, SPEED_OF_LIGHT_MPS,
+        iono_free_phase_observation_from_obs, wide_lane_from_obs, PppIonoFreeCodeMeasurement,
+        PppIonoFreePhaseMeasurement, PppPhaseMeasurement, SPEED_OF_LIGHT_MPS,
     };
     use crate::corrections::Corrections;
     use crate::estimation::ekf::traits::MeasurementModel;
@@ -1033,6 +1045,7 @@ mod tests {
             z_m: 0.0,
             sat_pos_m: [20_200_000.0, 14_000_000.0, 21_700_000.0],
             sat_clock_s: 0.0,
+            antenna_range_correction_m: 0.4,
             sigma_m: 1.0,
             troposphere_mapping: 2.75,
             iono_index: None,
@@ -1049,11 +1062,11 @@ mod tests {
         let mut predicted = [0.0];
         measurement.h(&state, &mut predicted);
 
-        let dx = state[0] - measurement.sat_pos_m[0];
-        let dy = state[1] - measurement.sat_pos_m[1];
-        let dz = state[2] - measurement.sat_pos_m[2];
+        let dx: f64 = state[0] - measurement.sat_pos_m[0];
+        let dy: f64 = state[1] - measurement.sat_pos_m[1];
+        let dz: f64 = state[2] - measurement.sat_pos_m[2];
         let geometric_range_m = (dx * dx + dy * dy + dz * dz).sqrt();
-        let expected = geometric_range_m + 2.75 * 2.4;
+        let expected = geometric_range_m + 0.4 + 2.75 * 2.4;
 
         assert!((predicted[0] - expected).abs() < 1.0e-9);
 
@@ -1069,6 +1082,7 @@ mod tests {
             z_cycles: 0.0,
             sat_pos_m: [20_200_000.0, 14_000_000.0, 21_700_000.0],
             sat_clock_s: 0.0,
+            antenna_range_correction_m: -0.25,
             sigma_cycles: 0.01,
             troposphere_mapping: 3.1,
             iono_index: None,
@@ -1092,7 +1106,8 @@ mod tests {
         let dy = state[1] - measurement.sat_pos_m[1];
         let dz = state[2] - measurement.sat_pos_m[2];
         let geometric_range_m = (dx * dx + dy * dy + dz * dz).sqrt();
-        let expected = (geometric_range_m + 3.1 * 2.1) / measurement.wavelength_m + state[9];
+        let expected =
+            (geometric_range_m - 0.25 + 3.1 * 2.1) / measurement.wavelength_m + state[9];
 
         assert!((predicted[0] - expected).abs() < 1.0e-9);
 
@@ -1108,6 +1123,7 @@ mod tests {
             z_cycles: 0.0,
             sat_pos_m: [20_200_000.0, 14_000_000.0, 21_700_000.0],
             sat_clock_s: 0.0,
+            antenna_range_correction_m: 0.15,
             sigma_cycles: 0.01,
             troposphere_mapping: 2.2,
             ztd_index: Some(8),
@@ -1130,7 +1146,8 @@ mod tests {
         let dy = state[1] - measurement.sat_pos_m[1];
         let dz = state[2] - measurement.sat_pos_m[2];
         let geometric_range_m = (dx * dx + dy * dy + dz * dz).sqrt();
-        let expected = (geometric_range_m + 2.2 * 2.8) / measurement.wavelength_m + state[9];
+        let expected =
+            (geometric_range_m + 0.15 + 2.2 * 2.8) / measurement.wavelength_m + state[9];
 
         assert!((predicted[0] - expected).abs() < 1.0e-9);
 
@@ -1138,5 +1155,36 @@ mod tests {
         measurement.jacobian(&state, &mut jacobian);
 
         assert!((jacobian[(0, 8)] - 2.2 / measurement.wavelength_m).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn ppp_iono_free_code_measurement_applies_antenna_range_correction() {
+        let measurement = PppIonoFreeCodeMeasurement {
+            z_m: 0.0,
+            sat_pos_m: [20_200_000.0, 14_000_000.0, 21_700_000.0],
+            sat_clock_s: 0.0,
+            antenna_range_correction_m: -0.3,
+            sigma_m: 1.0,
+            troposphere_mapping: 2.4,
+            ztd_index: Some(8),
+            isb_index: None,
+            corr: Corrections::default(),
+        };
+        let mut state = vec![0.0; 9];
+        state[0] = 1_111_111.0;
+        state[1] = -4_222_222.0;
+        state[2] = 4_333_333.0;
+        state[8] = 1.8;
+
+        let mut predicted = [0.0];
+        measurement.h(&state, &mut predicted);
+
+        let dx = state[0] - measurement.sat_pos_m[0];
+        let dy = state[1] - measurement.sat_pos_m[1];
+        let dz = state[2] - measurement.sat_pos_m[2];
+        let geometric_range_m = (dx * dx + dy * dy + dz * dz).sqrt();
+        let expected = geometric_range_m - 0.3 + 2.4 * 1.8;
+
+        assert!((predicted[0] - expected).abs() < 1.0e-9);
     }
 }
