@@ -88,7 +88,9 @@ pub struct PositionFilterEpoch {
     pub velocity_y_mps: f64,
     pub velocity_z_mps: f64,
     pub clock_bias_s: f64,
+    pub clock_bias_sigma_s: f64,
     pub clock_drift_s_per_s: f64,
+    pub clock_drift_sigma_s_per_s: f64,
     pub sigma_h_m: Option<f64>,
     pub sigma_v_m: Option<f64>,
     pub rms_m: f64,
@@ -462,7 +464,14 @@ impl PositionFilter {
             velocity_y_mps: self.ekf.x[self.indices.vel[1]],
             velocity_z_mps: self.ekf.x[self.indices.vel[2]],
             clock_bias_s: solution.clock_bias_s,
+            clock_bias_sigma_s: self.ekf.p[(self.indices.clock_bias, self.indices.clock_bias)]
+                .abs()
+                .sqrt(),
             clock_drift_s_per_s: self.ekf.x[self.indices.clock_drift],
+            clock_drift_sigma_s_per_s: self.ekf.p
+                [(self.indices.clock_drift, self.indices.clock_drift)]
+                .abs()
+                .sqrt(),
             sigma_h_m: solution.sigma_h_m,
             sigma_v_m: solution.sigma_v_m,
             rms_m: solution.rms_m,
@@ -485,6 +494,10 @@ impl PositionFilter {
         let sigma_x_m = self.ekf.p[(self.indices.pos[0], self.indices.pos[0])].abs().sqrt();
         let sigma_y_m = self.ekf.p[(self.indices.pos[1], self.indices.pos[1])].abs().sqrt();
         let sigma_z_m = self.ekf.p[(self.indices.pos[2], self.indices.pos[2])].abs().sqrt();
+        let clock_bias_sigma_s =
+            self.ekf.p[(self.indices.clock_bias, self.indices.clock_bias)].abs().sqrt();
+        let clock_drift_sigma_s_per_s =
+            self.ekf.p[(self.indices.clock_drift, self.indices.clock_drift)].abs().sqrt();
         PositionFilterEpoch {
             t_rx_s,
             ecef_x_m: self.ekf.x[self.indices.pos[0]],
@@ -494,7 +507,9 @@ impl PositionFilter {
             velocity_y_mps: self.ekf.x[self.indices.vel[1]],
             velocity_z_mps: self.ekf.x[self.indices.vel[2]],
             clock_bias_s: self.ekf.x[self.indices.clock_bias],
+            clock_bias_sigma_s,
             clock_drift_s_per_s: self.ekf.x[self.indices.clock_drift],
+            clock_drift_sigma_s_per_s,
             sigma_h_m: Some((sigma_x_m * sigma_x_m + sigma_y_m * sigma_y_m).sqrt()),
             sigma_v_m: Some(sigma_z_m),
             rms_m: self.ekf.health.innovation_rms,
@@ -623,6 +638,19 @@ mod tests {
         assert_eq!(filter.ekf.x[2], 3.0);
         assert_eq!(filter.ekf.x[6], 4.0e-4);
         assert!(filter.initialized);
+    }
+
+    #[test]
+    fn position_filter_epoch_exposes_clock_state_uncertainty() {
+        let filter = PositionFilter::new(PositionFilterConfig::default());
+
+        let epoch = filter.epoch_from_state(0.0, Vec::new(), 0);
+
+        assert_eq!(epoch.clock_bias_sigma_s, filter.config.initial_clock_bias_sigma_s);
+        assert_eq!(
+            epoch.clock_drift_sigma_s_per_s,
+            filter.config.initial_clock_drift_sigma_s_per_s
+        );
     }
 
     #[test]
