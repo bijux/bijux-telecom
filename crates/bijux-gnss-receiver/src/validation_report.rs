@@ -599,6 +599,8 @@ fn build_validation_report_with_observation_context(
             let horiz = (east * east + north * north).sqrt();
             let vert = up.abs();
             let position_3d = (horiz * horiz + up * up).sqrt();
+            let horizontal_margin_m = sol.integrity_hpl_m.map(|hpl_m| hpl_m - horiz);
+            let vertical_margin_m = sol.integrity_vpl_m.map(|vpl_m| vpl_m - vert);
             east_errors.push(east);
             north_errors.push(north);
             up_errors.push(up);
@@ -615,12 +617,12 @@ fn build_validation_report_with_observation_context(
                 horiz_m: horiz,
                 vert_m: vert,
                 error_3d_m: position_3d,
-                hpl_m: None,
-                vpl_m: None,
-                horizontal_within_hpl: None,
-                vertical_within_vpl: None,
-                horizontal_margin_m: None,
-                vertical_margin_m: None,
+                hpl_m: sol.integrity_hpl_m,
+                vpl_m: sol.integrity_vpl_m,
+                horizontal_within_hpl: horizontal_margin_m.map(|margin_m| margin_m >= 0.0),
+                vertical_within_vpl: vertical_margin_m.map(|margin_m| margin_m >= 0.0),
+                horizontal_margin_m,
+                vertical_margin_m,
             });
             covariance_realism_samples.push(crate::covariance_realism::CovarianceRealismEpochSample {
                 receiver_ecef_m: [sol.ecef_x_m.0, sol.ecef_y_m.0, sol.ecef_z_m.0],
