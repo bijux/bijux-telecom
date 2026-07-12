@@ -33,6 +33,7 @@ fn complex_float32_iq_matches_float_fixture_acquisition() {
         &config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz: 500.0,
             code_phase_chips: 321.0,
             carrier_phase_rad: 0.5,

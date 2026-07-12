@@ -36,6 +36,7 @@ fn galileo_e1_report_scenario(sat: SatId) -> SyntheticScenario {
         seed: 0x6A11_E1A5,
         satellites: vec![SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz: 0.0,
             code_phase_chips: 321.0,
             carrier_phase_rad: 0.25,
@@ -105,6 +106,7 @@ fn galileo_e1_reference_frame(
         config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz: 0.0,
             code_phase_chips: 321.0,
             carrier_phase_rad: 0.25,

@@ -1,6 +1,8 @@
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticSignalParams {
     pub sat: SatId,
+    #[serde(default)]
+    pub glonass_frequency_channel: Option<GlonassFrequencyChannel>,
     pub doppler_hz: f64,
     pub code_phase_chips: f64,
     pub carrier_phase_rad: f64,
@@ -54,6 +56,9 @@ pub struct SyntheticScenario {
 pub struct SyntheticNavigationSignalSpec {
     /// Satellite identifier.
     pub sat: SatId,
+    /// GLONASS FDMA channel when the satellite uses the GLONASS L1 signal plan.
+    #[serde(default)]
+    pub glonass_frequency_channel: Option<GlonassFrequencyChannel>,
     /// Injected Doppler shift in Hz.
     pub doppler_hz: f64,
     /// Injected carrier phase at sample zero, in radians.
@@ -121,6 +126,9 @@ pub struct SyntheticNavBitSegment {
 pub struct SyntheticSatelliteTruth {
     /// Satellite identifier.
     pub sat: SatId,
+    /// GLONASS FDMA carrier channel when this truth row models a GLONASS L1 signal.
+    #[serde(default)]
+    pub glonass_frequency_channel: Option<GlonassFrequencyChannel>,
     /// Injected Doppler shift in Hz.
     pub doppler_hz: f64,
     /// Injected code phase at sample zero, in chips.
@@ -349,6 +357,7 @@ pub fn build_signal_scenario_from_navigation_validation_scenario(
             .zip(pseudorange_chips.iter().copied())
             .map(|(signal, pseudorange_phase_chips)| SyntheticSignalParams {
                 sat: signal.sat,
+                glonass_frequency_channel: None,
                 doppler_hz: signal.doppler_hz,
                 code_phase_chips: encode_receiver_code_phase_chips(
                     pseudorange_phase_chips,
@@ -367,4 +376,3 @@ pub fn build_signal_scenario_from_navigation_validation_scenario(
         },
     })
 }
-

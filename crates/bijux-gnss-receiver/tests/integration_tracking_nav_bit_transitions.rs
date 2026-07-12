@@ -99,6 +99,7 @@ fn track_clean_nav_bit_case_with_cn0(
         config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz,
             code_phase_chips,
             carrier_phase_rad,
@@ -157,6 +158,7 @@ fn tracking_reports_nav_bit_lock_across_clean_bit_transition_windows() {
         &config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz: 120.0,
             code_phase_chips: 144.375,
             carrier_phase_rad: 0.3,
@@ -257,6 +259,7 @@ fn tracking_keeps_bounded_code_and_carrier_errors_after_nav_bit_lock() {
         &config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz: true_doppler_hz,
             code_phase_chips,
             carrier_phase_rad: 0.3,

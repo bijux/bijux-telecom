@@ -27,6 +27,7 @@ fn acquisition_fft_detects_synthetic_signal() {
         &config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz: 0.0,
             code_phase_chips: 100.0,
             carrier_phase_rad: 0.0,

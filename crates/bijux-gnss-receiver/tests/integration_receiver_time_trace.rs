@@ -16,6 +16,7 @@ fn receiver_pipeline_preserves_sample_trace_across_stage_outputs() {
         &config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz: 750.0,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,

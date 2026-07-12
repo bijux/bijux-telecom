@@ -521,6 +521,7 @@ fn isolated_satellite_scenario(
         seed: truth.seed,
         satellites: vec![SyntheticSignalParams {
             sat: sat_truth.sat,
+            glonass_frequency_channel: None,
             doppler_hz: sat_truth.doppler_hz,
             code_phase_chips: sat_truth.code_phase_chips,
             carrier_phase_rad: sat_truth.carrier_phase_rad,

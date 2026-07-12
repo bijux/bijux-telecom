@@ -77,6 +77,7 @@ fn weak_signal_frame(
         config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz: 250.0,
             code_phase_chips: 300.0,
             carrier_phase_rad: 0.0,

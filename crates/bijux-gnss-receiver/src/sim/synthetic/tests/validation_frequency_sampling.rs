@@ -18,6 +18,7 @@
             satellites: vec![
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                    glonass_frequency_channel: None,
                     doppler_hz: 750.0,
                     code_phase_chips: 200.25,
                     carrier_phase_rad: 0.0,
@@ -26,6 +27,7 @@
                 },
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                    glonass_frequency_channel: None,
                     doppler_hz: -1_000.0,
                     code_phase_chips: 321.5,
                     carrier_phase_rad: 0.2,
@@ -84,6 +86,7 @@
             satellites: vec![
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                    glonass_frequency_channel: None,
                     doppler_hz: 750.0,
                     code_phase_chips: 200.25,
                     carrier_phase_rad: 0.0,
@@ -92,6 +95,7 @@
                 },
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                    glonass_frequency_channel: None,
                     doppler_hz: -1_000.0,
                     code_phase_chips: 321.5,
                     carrier_phase_rad: 0.2,
@@ -164,6 +168,7 @@
             satellites: vec![
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 11 },
+                    glonass_frequency_channel: None,
                     doppler_hz: 1_250.0,
                     code_phase_chips: 150.25,
                     carrier_phase_rad: 0.0,
@@ -172,6 +177,7 @@
                 },
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 19 },
+                    glonass_frequency_channel: None,
                     doppler_hz: -750.0,
                     code_phase_chips: 420.5,
                     carrier_phase_rad: 0.3,
@@ -335,6 +341,7 @@
             satellites: vec![
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                    glonass_frequency_channel: None,
                     doppler_hz: 750.0,
                     code_phase_chips: 200.25,
                     carrier_phase_rad: 0.0,
@@ -343,6 +350,7 @@
                 },
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                    glonass_frequency_channel: None,
                     doppler_hz: -1_000.0,
                     code_phase_chips: 321.5,
                     carrier_phase_rad: 0.2,
@@ -396,6 +404,7 @@
             satellites: vec![
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                    glonass_frequency_channel: None,
                     doppler_hz: -120.0,
                     code_phase_chips: 64.0,
                     carrier_phase_rad: 0.25,
@@ -404,6 +413,7 @@
                 },
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 11 },
+                    glonass_frequency_channel: None,
                     doppler_hz: 180.0,
                     code_phase_chips: 288.5,
                     carrier_phase_rad: 0.75,

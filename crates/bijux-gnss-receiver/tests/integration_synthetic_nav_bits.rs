@@ -27,6 +27,7 @@ fn synthetic_nav_bits_flip_prompt_polarity_every_twenty_milliseconds() {
         &config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz: 0.0,
             code_phase_chips,
             carrier_phase_rad: 0.0,

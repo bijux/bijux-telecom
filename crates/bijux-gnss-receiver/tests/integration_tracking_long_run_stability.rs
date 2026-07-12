@@ -62,6 +62,7 @@ fn long_run_tracking_scenario(config: &ReceiverPipelineConfig) -> SyntheticScena
         seed: 0x10A6_5E55,
         satellites: vec![SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Gps, prn: 12 },
+            glonass_frequency_channel: None,
             doppler_hz: 0.0,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,

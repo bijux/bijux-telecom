@@ -6,10 +6,10 @@ use std::f32::consts::TAU;
 use num_complex::Complex;
 
 use bijux_gnss_core::api::{
-    ecef_to_enu, ecef_to_geodetic, reference_ecef, stats, AcqHypothesis, AcqResult, Constellation,
-    GpsTime, Hertz, NavQualityFlag, NavSolutionEpoch, ObsEpoch, ObservationStatus,
-    ReceiverSampleTrace, SampleClock, SampleTime, SamplesFrame, SatId, Seconds, SignalBand,
-    SolutionStatus, SolutionValidity, ValidationReferenceEpoch,
+    ecef_to_enu, ecef_to_geodetic, reference_ecef, stats, AcqHypothesis, AcqResult,
+    Constellation, GlonassFrequencyChannel, GpsTime, Hertz, NavQualityFlag, NavSolutionEpoch,
+    ObsEpoch, ObservationStatus, ReceiverSampleTrace, SampleClock, SampleTime, SamplesFrame,
+    SatId, Seconds, SignalBand, SolutionStatus, SolutionValidity, ValidationReferenceEpoch,
 };
 use bijux_gnss_signal::api::SignalSource;
 
@@ -23,7 +23,7 @@ use bijux_gnss_signal::api::{
 };
 use serde::{Deserialize, Serialize};
 
-const SYNTHETIC_IQ_TRUTH_SCHEMA_VERSION: u32 = 3;
+const SYNTHETIC_IQ_TRUTH_SCHEMA_VERSION: u32 = 4;
 const SYNTHETIC_GNSS_ACCURACY_ARTIFACT_SCHEMA_VERSION: u32 = 1;
 const GPS_L1_CA_NAV_BIT_PERIOD_S: f64 = 0.02;
 const SYNTHETIC_COMPLEX_NOISE_POWER: f64 = 1.0;

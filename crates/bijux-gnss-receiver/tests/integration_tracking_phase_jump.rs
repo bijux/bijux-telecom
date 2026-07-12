@@ -69,6 +69,7 @@ fn tracking_reports_phase_jump_on_carrier_discontinuity() {
         &config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
@@ -130,6 +131,7 @@ fn tracking_limits_carrier_phase_discontinuities_to_phase_jump_boundaries() {
         &config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,

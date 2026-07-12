@@ -96,6 +96,7 @@ fn tracking_reduces_seeded_carrier_error_and_emits_tracked_phase() {
         &config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz: true_doppler_hz,
             code_phase_chips: 0.0,
             carrier_phase_rad,
@@ -159,6 +160,7 @@ fn tracking_keeps_carrier_phase_continuous_after_carrier_lock() {
         &config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz: true_doppler_hz,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.30,

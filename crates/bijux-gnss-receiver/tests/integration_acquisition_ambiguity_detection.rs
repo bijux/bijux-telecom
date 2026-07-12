@@ -198,6 +198,7 @@ fn competing_signal(
 ) -> SyntheticSignalParams {
     SyntheticSignalParams {
         sat,
+        glonass_frequency_channel: None,
         doppler_hz,
         code_phase_chips,
         carrier_phase_rad: 0.0,

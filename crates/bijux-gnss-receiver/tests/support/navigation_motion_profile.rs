@@ -231,6 +231,7 @@ fn motion_satellite_signals(ephemerides: &[GpsEphemeris]) -> Vec<SyntheticSignal
         .zip([-1_800.0, -1_000.0, -250.0, 500.0, 1_250.0, 2_000.0])
         .map(|(ephemeris, doppler_hz)| SyntheticSignalParams {
             sat: ephemeris.sat,
+            glonass_frequency_channel: None,
             doppler_hz,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,

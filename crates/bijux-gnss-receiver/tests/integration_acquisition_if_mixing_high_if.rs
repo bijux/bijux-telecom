@@ -32,6 +32,7 @@ fn acquisition_selects_expected_high_if_doppler_bins() {
             &config,
             SyntheticSignalParams {
                 sat,
+                glonass_frequency_channel: None,
                 doppler_hz,
                 code_phase_chips: 200.375,
                 carrier_phase_rad: 0.2,

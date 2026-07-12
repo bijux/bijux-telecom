@@ -31,6 +31,7 @@ fn acquisition_recovers_clean_synthetic_code_phase_within_two_samples_at_multipl
             satellites: vec![
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                    glonass_frequency_channel: None,
                     doppler_hz: 750.0,
                     code_phase_chips: 200.25,
                     carrier_phase_rad: 0.0,
@@ -39,6 +40,7 @@ fn acquisition_recovers_clean_synthetic_code_phase_within_two_samples_at_multipl
                 },
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                    glonass_frequency_channel: None,
                     doppler_hz: -1000.0,
                     code_phase_chips: 321.5,
                     carrier_phase_rad: 0.2,

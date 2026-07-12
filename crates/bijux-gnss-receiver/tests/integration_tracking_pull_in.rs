@@ -58,6 +58,7 @@ fn tracking_converges_carrier_pull_in_before_declaring_pll_lock() {
         &config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz: true_doppler_hz,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.25,

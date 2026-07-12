@@ -112,6 +112,7 @@ fn assert_tracking_recovers_after_short_fade(
         &config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
@@ -204,6 +205,7 @@ fn tracking_keeps_carrier_phase_continuous_after_short_fade_recovery() {
         &config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,

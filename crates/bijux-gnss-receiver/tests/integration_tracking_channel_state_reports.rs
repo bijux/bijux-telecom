@@ -63,6 +63,7 @@ fn tracking_session_reports_locked_channel_state() {
         &config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz: 0.0,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
@@ -98,6 +99,7 @@ fn tracking_session_reports_degraded_channel_state_during_short_fade() {
         &config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz: 0.0,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
@@ -132,6 +134,7 @@ fn receiver_run_exports_channel_state_reports() {
         seed: 0xC11E_A003,
         satellites: vec![SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz: 0.0,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,

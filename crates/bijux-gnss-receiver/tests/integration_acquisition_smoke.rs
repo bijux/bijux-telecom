@@ -29,6 +29,7 @@ fn bench_fft_acquisition_smoke() {
                 constellation: bijux_gnss_core::api::Constellation::Gps,
                 prn: 1,
             },
+            glonass_frequency_channel: None,
             doppler_hz: 0.0,
             code_phase_chips: 100.0,
             carrier_phase_rad: 0.0,

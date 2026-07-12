@@ -71,6 +71,7 @@ fn tracking_reacquires_after_bounded_signal_interruption() {
         &config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz: 0.0,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
@@ -139,6 +140,7 @@ fn tracking_reports_failed_reacquisition_when_signal_does_not_return() {
         &config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz: 0.0,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,

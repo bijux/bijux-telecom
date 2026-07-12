@@ -31,6 +31,7 @@ fn synthetic_correlator_peak_ratio() {
         &config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz: 0.0,
             code_phase_chips,
             carrier_phase_rad: 0.0,
@@ -68,6 +69,7 @@ fn synthetic_correlator_peak_ratio_with_non_integer_samples_per_chip() {
         &config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz: 0.0,
             code_phase_chips,
             carrier_phase_rad: 0.0,
@@ -104,6 +106,7 @@ fn golden_acquisition_run_is_stable() {
         &config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz: 500.0,
             code_phase_chips: 321.0,
             carrier_phase_rad: 0.5,
@@ -144,6 +147,7 @@ fn galileo_e1_acquisition_detects_synthetic_signal() {
         &config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz: 500.0,
             code_phase_chips: 321.0,
             carrier_phase_rad: 0.25,

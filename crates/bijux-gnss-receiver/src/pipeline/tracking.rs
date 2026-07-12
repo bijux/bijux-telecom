@@ -3304,6 +3304,7 @@ mod tests {
             &config,
             SyntheticSignalParams {
                 sat,
+                glonass_frequency_channel: None,
                 doppler_hz: 0.0,
                 code_phase_chips,
                 carrier_phase_rad: 0.0,
@@ -3786,6 +3787,7 @@ mod tests {
             &config,
             SyntheticSignalParams {
                 sat,
+                glonass_frequency_channel: None,
                 doppler_hz: 0.0,
                 code_phase_chips: 0.0,
                 carrier_phase_rad,
@@ -3848,6 +3850,7 @@ mod tests {
             &config,
             SyntheticSignalParams {
                 sat,
+                glonass_frequency_channel: None,
                 doppler_hz: carrier_hz,
                 code_phase_chips: 0.0,
                 carrier_phase_rad: initial_phase_cycles * std::f64::consts::TAU,
@@ -4193,6 +4196,7 @@ mod tests {
             &config,
             SyntheticSignalParams {
                 sat,
+                glonass_frequency_channel: None,
                 doppler_hz: -750.0,
                 code_phase_chips: 211.25,
                 carrier_phase_rad: 0.2,
@@ -4265,6 +4269,7 @@ mod tests {
             &config,
             SyntheticSignalParams {
                 sat,
+                glonass_frequency_channel: None,
                 doppler_hz: 750.0,
                 code_phase_chips: 200.25,
                 carrier_phase_rad: 0.0,
@@ -4321,6 +4326,7 @@ mod tests {
             &config,
             crate::sim::synthetic::SyntheticSignalParams {
                 sat,
+                glonass_frequency_channel: None,
                 doppler_hz: 1_000.0,
                 code_phase_chips: 10.0,
                 carrier_phase_rad: 0.0,

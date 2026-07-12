@@ -31,6 +31,7 @@ fn deterministic_synthetic_runs_match() {
                 constellation: bijux_gnss_core::api::Constellation::Gps,
                 prn: 1,
             },
+            glonass_frequency_channel: None,
             doppler_hz: 1000.0,
             code_phase_chips: 100.0,
             carrier_phase_rad: 0.1,

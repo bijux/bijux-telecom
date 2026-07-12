@@ -18,6 +18,7 @@ fn noncoherent_integration_improves_low_cn0_detection_probability() {
     let seeds = trial_seeds(0x2407_1987, LOW_CN0_TRIAL_COUNT);
     let signal = SyntheticSignalParams {
         sat: SatId { constellation: Constellation::Gps, prn: 7 },
+        glonass_frequency_channel: None,
         doppler_hz: 250.0,
         code_phase_chips: 300.0,
         carrier_phase_rad: 0.0,

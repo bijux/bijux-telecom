@@ -33,6 +33,7 @@ fn acquisition_recovers_positive_and_negative_doppler_sign_at_zero_if() {
             &config,
             SyntheticSignalParams {
                 sat,
+                glonass_frequency_channel: None,
                 doppler_hz,
                 code_phase_chips: 321.0,
                 carrier_phase_rad: 0.5,

@@ -139,6 +139,7 @@ fn detection_rate_case(
     SyntheticAcquisitionDetectionRateCase {
         signal: SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Gps, prn: 7 },
+            glonass_frequency_channel: None,
             doppler_hz,
             code_phase_chips: 300.0,
             carrier_phase_rad: 0.0,

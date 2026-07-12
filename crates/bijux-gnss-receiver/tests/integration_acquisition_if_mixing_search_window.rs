@@ -34,6 +34,7 @@ fn acquisition_reports_upper_edge_when_high_if_signal_sits_outside_search_window
         &signal_config,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz: 0.0,
             code_phase_chips: 210.0,
             carrier_phase_rad: 0.0,

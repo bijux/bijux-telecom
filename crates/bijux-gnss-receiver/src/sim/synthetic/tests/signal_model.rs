@@ -9,6 +9,7 @@
         };
         let params = SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Gps, prn: 11 },
+            glonass_frequency_channel: None,
             doppler_hz: 0.0,
             code_phase_chips: 200.375,
             carrier_phase_rad: 0.0,
@@ -81,6 +82,7 @@
         };
         let params = SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Galileo, prn: 11 },
+            glonass_frequency_channel: None,
             doppler_hz: 0.0,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
@@ -125,6 +127,7 @@
         };
         let params = SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Galileo, prn: 19 },
+            glonass_frequency_channel: None,
             doppler_hz: 0.0,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
@@ -213,6 +216,7 @@
             satellites: vec![
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                    glonass_frequency_channel: None,
                     doppler_hz: 500.0,
                     code_phase_chips: 200.0,
                     carrier_phase_rad: 0.0,
@@ -221,6 +225,7 @@
                 },
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                    glonass_frequency_channel: None,
                     doppler_hz: -750.0,
                     code_phase_chips: 321.0,
                     carrier_phase_rad: 0.2,
@@ -244,7 +249,7 @@
 
         let truth = build_truth_bundle(&scenario.id, &scenario, &frame, &metadata, 1.25, 0.8);
 
-        assert_eq!(truth.schema_version, 3);
+        assert_eq!(truth.schema_version, 4);
         assert_eq!(truth.scenario_id, "truth-bundle");
         assert_eq!(truth.seed, 44);
         assert_eq!(truth.sample_format, IqSampleFormat::Iq16Le);
@@ -262,6 +267,7 @@
             constant.signal_amplitude,
             signal_amplitude_from_cn0(constant.cn0_db_hz, truth.sample_rate_hz)
         );
+        assert_eq!(constant.glonass_frequency_channel, None);
         assert_eq!(constant.nav_bit_mode, SyntheticNavBitMode::ConstantPositive);
         assert_eq!(constant.nav_bit_segments.len(), 1);
         assert_eq!(constant.nav_bit_segments[0].start_sample, 0);
@@ -274,6 +280,7 @@
             signal_amplitude_from_cn0(alternating.cn0_db_hz, truth.sample_rate_hz)
         );
         assert!(constant.signal_amplitude > alternating.signal_amplitude);
+        assert_eq!(alternating.glonass_frequency_channel, None);
         assert_eq!(alternating.nav_bit_mode, SyntheticNavBitMode::AlternatingGpsLnav20ms);
         assert_eq!(alternating.nav_bit_segments.len(), 3);
         assert_eq!(alternating.nav_bit_segments[0].start_sample, 0);
@@ -285,6 +292,54 @@
         assert_eq!(alternating.nav_bit_segments[2].start_sample, 160_000);
         assert_eq!(alternating.nav_bit_segments[2].end_sample, frame.len() as u64);
         assert_eq!(alternating.nav_bit_segments[2].bit, 1);
+    }
+
+    #[test]
+    fn truth_bundle_preserves_glonass_frequency_channel_metadata() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_000_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 511_000.0,
+            code_length: 511,
+            ..ReceiverPipelineConfig::default()
+        };
+        let channel =
+            bijux_gnss_core::api::GlonassFrequencyChannel::new(-4).expect("channel -4 must be valid");
+        let scenario = SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 0.0,
+            duration_s: 0.01,
+            seed: 7,
+            satellites: vec![SyntheticSignalParams {
+                sat: SatId { constellation: Constellation::Glonass, prn: 8 },
+                glonass_frequency_channel: Some(channel),
+                doppler_hz: 250.0,
+                code_phase_chips: 10.0,
+                carrier_phase_rad: 0.0,
+                cn0_db_hz: 48.0,
+                data_bit_flip: false,
+            }],
+            ephemerides: Vec::new(),
+            id: "glonass-truth".to_string(),
+        };
+        let frame = generate_l1_ca_multi(&config, &scenario);
+        let metadata = RawIqMetadata {
+            format: IqSampleFormat::Iq16Le,
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            capture_start_utc: "2026-07-09T00:00:00Z".to_string(),
+            offset_bytes: 0,
+            quantization_bits: Some(16),
+            notes: Some("glonass truth bundle".to_string()),
+        };
+
+        let truth = build_truth_bundle(&scenario.id, &scenario, &frame, &metadata, 1.0, 0.75);
+
+        assert_eq!(truth.schema_version, 4);
+        assert_eq!(truth.satellites.len(), 1);
+        assert_eq!(truth.satellites[0].sat, scenario.satellites[0].sat);
+        assert_eq!(truth.satellites[0].glonass_frequency_channel, Some(channel));
     }
 
     #[test]
@@ -303,6 +358,7 @@
         };
         let params = SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Gps, prn: 3 },
+            glonass_frequency_channel: None,
             doppler_hz: 1_000.0,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
@@ -337,6 +393,7 @@
         };
         let params = SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Gps, prn: 5 },
+            glonass_frequency_channel: None,
             doppler_hz: 0.0,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
@@ -378,6 +435,7 @@
         };
         let params = SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Gps, prn: 5 },
+            glonass_frequency_channel: None,
             doppler_hz: 0.0,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
@@ -414,6 +472,7 @@
         };
         let params = SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Gps, prn: 5 },
+            glonass_frequency_channel: None,
             doppler_hz: 0.0,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
@@ -451,6 +510,7 @@
         };
         let params = SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Gps, prn: 5 },
+            glonass_frequency_channel: None,
             doppler_hz: 0.0,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
@@ -489,6 +549,7 @@
         };
         let params = SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Gps, prn: 9 },
+            glonass_frequency_channel: None,
             doppler_hz: 750.0,
             code_phase_chips: 144.375,
             carrier_phase_rad: 0.15,
@@ -525,6 +586,7 @@
         };
         let params = SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Gps, prn: 14 },
+            glonass_frequency_channel: None,
             doppler_hz: 1_200.0,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
@@ -551,6 +613,7 @@
         };
         let params = SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Gps, prn: 21 },
+            glonass_frequency_channel: None,
             doppler_hz: 900.0,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.35,
@@ -606,6 +669,7 @@
             satellites: vec![
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                    glonass_frequency_channel: None,
                     doppler_hz: 500.0,
                     code_phase_chips: 200.0,
                     carrier_phase_rad: 0.0,
@@ -614,6 +678,7 @@
                 },
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                    glonass_frequency_channel: None,
                     doppler_hz: -1000.0,
                     code_phase_chips: 321.0,
                     carrier_phase_rad: 0.2,

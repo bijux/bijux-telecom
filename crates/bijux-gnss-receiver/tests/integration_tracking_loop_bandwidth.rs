@@ -61,6 +61,7 @@ fn wider_pll_bandwidth_produces_stronger_first_epoch_carrier_correction() {
         &narrow,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz: true_doppler_hz,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.30,
@@ -111,6 +112,7 @@ fn wider_fll_bandwidth_produces_stronger_pull_in_frequency_step() {
         &narrow,
         SyntheticSignalParams {
             sat,
+            glonass_frequency_channel: None,
             doppler_hz: true_doppler_hz,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.25,

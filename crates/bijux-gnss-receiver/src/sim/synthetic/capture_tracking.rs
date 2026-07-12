@@ -28,6 +28,7 @@ pub fn build_truth_bundle(
             .iter()
             .map(|params| SyntheticSatelliteTruth {
                 sat: params.sat,
+                glonass_frequency_channel: params.glonass_frequency_channel,
                 doppler_hz: params.doppler_hz,
                 code_phase_chips: params.code_phase_chips,
                 carrier_phase_rad: params.carrier_phase_rad,

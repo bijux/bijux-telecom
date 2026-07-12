@@ -15,6 +15,7 @@
             seed: 29,
             satellites: vec![SyntheticSignalParams {
                 sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                glonass_frequency_channel: None,
                 doppler_hz: 750.0,
                 code_phase_chips: 15.0,
                 carrier_phase_rad: 0.0,

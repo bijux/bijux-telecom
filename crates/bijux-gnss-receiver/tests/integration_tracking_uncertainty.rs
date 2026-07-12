@@ -115,6 +115,7 @@ fn track_uncertainty_case_with_duration(
         seed: 0x7100_7000 + cn0_db_hz.round() as u64,
         satellites: vec![SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Gps, prn: 7 },
+            glonass_frequency_channel: None,
             doppler_hz: -750.0,
             code_phase_chips: 211.25,
             carrier_phase_rad: 0.2,

@@ -30,6 +30,7 @@ fn acquisition_refinement_improves_fractional_code_phase_initialization() {
             seed: 2_407_1985,
             satellites: vec![SyntheticSignalParams {
                 sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                glonass_frequency_channel: None,
                 doppler_hz: 0.0,
                 code_phase_chips,
                 carrier_phase_rad: 0.0,
