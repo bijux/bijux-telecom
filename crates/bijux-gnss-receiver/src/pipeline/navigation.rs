@@ -8,16 +8,19 @@ use bijux_gnss_core::api::{
     NAV_SOLUTION_MODEL_VERSION,
 };
 use bijux_gnss_nav::api::{
-    elevation_azimuth_deg, position_broadcast_navigation_from_gps_ephemerides,
+    ecef_to_geodetic, elevation_azimuth_deg, position_broadcast_navigation_from_gps_ephemerides,
     position_measurement_weight, position_observation_has_valid_satellite_time,
     sat_state_beidou_b1i_from_observation, sat_state_galileo_e1_from_observation,
     sat_state_glonass_l1_from_observation, sat_state_gps_l1ca_from_observation, GpsEphemeris,
-    KlobucharCoefficients, PositionBroadcastNavigation, PositionObservation,
-    PositionRobustWeighting, PositionSolveRefusalKind, PositionSolver, PositionWeightingModel,
-    RaimFaultDetectionStatus, WeightingConfig,
+    KlobucharCoefficients, PositionBroadcastNavigation, PositionFilterMotionClass,
+    PositionObservation, PositionRobustWeighting, PositionSolutionSmoother,
+    PositionSolutionSmootherConfig, PositionSolveRefusalKind, PositionSolver,
+    PositionWeightingModel, RaimFaultDetectionStatus, WeightingConfig,
 };
 
-use crate::engine::receiver_config::{NavigationWeightingMode, ReceiverPipelineConfig};
+use crate::engine::receiver_config::{
+    NavigationMotionClass, NavigationWeightingMode, ReceiverPipelineConfig,
+};
 use crate::engine::runtime::ReceiverRuntime;
 
 /// Navigation solution derived from observation epochs.
@@ -26,6 +29,7 @@ pub struct Navigation {
     config: ReceiverPipelineConfig,
     runtime: ReceiverRuntime,
     solver: PositionSolver,
+    position_smoother: Option<PositionSolutionSmoother>,
     clock: ClockModel,
     last_ecef: Option<(f64, f64, f64)>,
     last_solution: Option<NavSolutionEpoch>,
@@ -117,10 +121,16 @@ impl Navigation {
         };
         solver.raim = config.raim;
         solver.apply_troposphere = config.tropo_enable;
+        let position_smoother = config.position_solution_smoothing.then(|| {
+            PositionSolutionSmoother::new(position_solution_smoother_config(
+                config.position_solution_motion_class,
+            ))
+        });
         Self {
             config,
             runtime,
             solver,
+            position_smoother,
             clock: ClockModel::new(),
             last_ecef: None,
             last_solution: None,
@@ -466,19 +476,32 @@ impl Navigation {
             .unwrap_or(1.0);
         let (_smoothed_clock_bias_s, clock_drift_s_per_s) =
             self.clock.update(solution.clock_bias_s, dt_s);
-        self.last_ecef = Some((solution.ecef_x_m, solution.ecef_y_m, solution.ecef_z_m));
+        let smoothed_position = self
+            .position_smoother
+            .as_mut()
+            .map(|smoother| smoother.smooth_position_solution(obs.t_rx_s.0, &solution));
+        let (ecef_x_m, ecef_y_m, ecef_z_m) = smoothed_position
+            .as_ref()
+            .map(|position| (position.ecef_x_m, position.ecef_y_m, position.ecef_z_m))
+            .unwrap_or((solution.ecef_x_m, solution.ecef_y_m, solution.ecef_z_m));
+        let (latitude_deg, longitude_deg, altitude_m) =
+            ecef_to_geodetic(ecef_x_m, ecef_y_m, ecef_z_m);
+        self.last_ecef = Some((ecef_x_m, ecef_y_m, ecef_z_m));
         let inter_system_biases = solution.inter_system_biases.clone();
         let mut nav_epoch = NavSolutionEpoch {
             epoch: bijux_gnss_core::api::Epoch { index: obs.epoch_idx },
             t_rx_s: obs.t_rx_s,
             source_time: obs.source_time,
-            ecef_x_m: Meters(solution.ecef_x_m),
-            ecef_y_m: Meters(solution.ecef_y_m),
-            ecef_z_m: Meters(solution.ecef_z_m),
-            position_covariance_ecef_m2: solution.position_covariance_ecef_m2,
-            latitude_deg: solution.latitude_deg,
-            longitude_deg: solution.longitude_deg,
-            altitude_m: Meters(solution.altitude_m),
+            ecef_x_m: Meters(ecef_x_m),
+            ecef_y_m: Meters(ecef_y_m),
+            ecef_z_m: Meters(ecef_z_m),
+            position_covariance_ecef_m2: smoothed_position
+                .as_ref()
+                .and_then(|position| position.position_covariance_ecef_m2)
+                .or(solution.position_covariance_ecef_m2),
+            latitude_deg,
+            longitude_deg,
+            altitude_m: Meters(altitude_m),
             clock_bias_s: Seconds(solution.clock_bias_s),
             clock_bias_m: Meters(solution.clock_bias_s * 299_792_458.0),
             clock_drift_s_per_s,
@@ -514,16 +537,35 @@ impl Navigation {
             constellation_residual_rms: solution.constellation_residual_rms.clone(),
             isb: inter_system_biases,
             health: Vec::new(),
-            sigma_e_m: solution.sigma_e_m.map(Meters),
-            sigma_n_m: solution.sigma_n_m.map(Meters),
-            sigma_u_m: solution.sigma_u_m.map(Meters),
-            horizontal_error_ellipse_major_axis_m: solution
-                .horizontal_error_ellipse_major_axis_m
+            sigma_e_m: smoothed_position
+                .as_ref()
+                .and_then(|position| position.sigma_e_m)
+                .or(solution.sigma_e_m)
                 .map(Meters),
-            horizontal_error_ellipse_minor_axis_m: solution
-                .horizontal_error_ellipse_minor_axis_m
+            sigma_n_m: smoothed_position
+                .as_ref()
+                .and_then(|position| position.sigma_n_m)
+                .or(solution.sigma_n_m)
                 .map(Meters),
-            horizontal_error_ellipse_azimuth_deg: solution.horizontal_error_ellipse_azimuth_deg,
+            sigma_u_m: smoothed_position
+                .as_ref()
+                .and_then(|position| position.sigma_u_m)
+                .or(solution.sigma_u_m)
+                .map(Meters),
+            horizontal_error_ellipse_major_axis_m: smoothed_position
+                .as_ref()
+                .and_then(|position| position.horizontal_error_ellipse_major_axis_m)
+                .or(solution.horizontal_error_ellipse_major_axis_m)
+                .map(Meters),
+            horizontal_error_ellipse_minor_axis_m: smoothed_position
+                .as_ref()
+                .and_then(|position| position.horizontal_error_ellipse_minor_axis_m)
+                .or(solution.horizontal_error_ellipse_minor_axis_m)
+                .map(Meters),
+            horizontal_error_ellipse_azimuth_deg: smoothed_position
+                .as_ref()
+                .and_then(|position| position.horizontal_error_ellipse_azimuth_deg)
+                .or(solution.horizontal_error_ellipse_azimuth_deg),
             innovation_rms_m: None,
             normalized_innovation_rms: None,
             normalized_innovation_max: None,
@@ -554,6 +596,16 @@ impl Navigation {
             stability_signature: String::new(),
             stability_signature_version: NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
         };
+        nav_epoch.sigma_h_m = smoothed_position
+            .as_ref()
+            .and_then(|position| position.sigma_h_m)
+            .or(solution.sigma_h_m)
+            .map(Meters);
+        nav_epoch.sigma_v_m = smoothed_position
+            .as_ref()
+            .and_then(|position| position.sigma_v_m)
+            .or(solution.sigma_v_m)
+            .map(Meters);
         nav_epoch.residuals.extend(invalid_satellite_time_sats.iter().copied().map(|sat| {
             NavResidual {
                 sat,
@@ -851,6 +903,17 @@ fn apply_atmosphere_explainability_in_place(
     if !solution.explain_reasons.iter().any(|existing| existing == troposphere_reason) {
         solution.explain_reasons.push(troposphere_reason.to_string());
     }
+}
+
+fn position_solution_smoother_config(
+    motion_class: NavigationMotionClass,
+) -> PositionSolutionSmootherConfig {
+    PositionSolutionSmootherConfig::for_motion_class(match motion_class {
+        NavigationMotionClass::Static => PositionFilterMotionClass::Static,
+        NavigationMotionClass::Pedestrian => PositionFilterMotionClass::Pedestrian,
+        NavigationMotionClass::Vehicle => PositionFilterMotionClass::Vehicle,
+        NavigationMotionClass::Airborne => PositionFilterMotionClass::Airborne,
+    })
 }
 
 impl bijux_gnss_nav::api::NavEngine for Navigation {
@@ -1872,6 +1935,60 @@ mod tests {
         pseudorange_m
     }
 
+    fn deterministic_pseudorange_offset_m(epoch_idx: u64, prn: u8) -> f64 {
+        let pattern = ((epoch_idx as usize * 17 + prn as usize * 13) % 9) as f64 - 4.0;
+        pattern * 0.85
+    }
+
+    fn apply_deterministic_pseudorange_offsets(obs: &mut NavFixtureEpoch) {
+        for sat in &mut obs.sats {
+            let offset_m = deterministic_pseudorange_offset_m(obs.epoch_idx, sat.signal_id.sat.prn);
+            sat.pseudorange_m.0 += offset_m;
+            if let Some(timing) = sat.timing.as_mut() {
+                timing.signal_travel_time_s = Seconds(sat.pseudorange_m.0 / 299_792_458.0);
+                timing.transmit_gps_time.tow_s = obs.t_rx_s.0 - timing.signal_travel_time_s.0;
+            }
+        }
+    }
+
+    fn translate_truth_ecef_m(
+        truth_ecef_m: (f64, f64, f64),
+        truth_velocity_mps: (f64, f64, f64),
+        dt_s: f64,
+    ) -> (f64, f64, f64) {
+        (
+            truth_ecef_m.0 + truth_velocity_mps.0 * dt_s,
+            truth_ecef_m.1 + truth_velocity_mps.1 * dt_s,
+            truth_ecef_m.2 + truth_velocity_mps.2 * dt_s,
+        )
+    }
+
+    fn solution_error_3d_m(
+        solution: &NavSolutionEpoch,
+        truth_ecef_m: (f64, f64, f64),
+    ) -> f64 {
+        let dx = solution.ecef_x_m.0 - truth_ecef_m.0;
+        let dy = solution.ecef_y_m.0 - truth_ecef_m.1;
+        let dz = solution.ecef_z_m.0 - truth_ecef_m.2;
+        (dx * dx + dy * dy + dz * dz).sqrt()
+    }
+
+    fn solution_trace_path_length_m(solutions: &[NavSolutionEpoch]) -> f64 {
+        solutions
+            .windows(2)
+            .map(|window| {
+                let dx = window[1].ecef_x_m.0 - window[0].ecef_x_m.0;
+                let dy = window[1].ecef_y_m.0 - window[0].ecef_y_m.0;
+                let dz = window[1].ecef_z_m.0 - window[0].ecef_z_m.0;
+                (dx * dx + dy * dy + dz * dz).sqrt()
+            })
+            .sum()
+    }
+
+    fn root_mean_square(values: &[f64]) -> f64 {
+        (values.iter().map(|value| value * value).sum::<f64>() / values.len() as f64).sqrt()
+    }
+
     #[test]
     fn navigation_satellite_state_uses_observation_timing_when_available() {
         let eph = make_eph(6, 1.2, 0.8, 345_600.0);
@@ -2051,6 +2168,7 @@ mod tests {
             config,
             runtime: crate::engine::runtime::ReceiverRuntime::default(),
             solver: PositionSolver::new(),
+            position_smoother: None,
             clock: ClockModel::new(),
             last_ecef: Some((1.0, 2.0, 3.0)),
             last_solution: Some(sample_last_solution()),
@@ -2262,6 +2380,7 @@ mod tests {
             config,
             runtime: crate::engine::runtime::ReceiverRuntime::default(),
             solver: PositionSolver::new(),
+            position_smoother: None,
             clock: ClockModel::new(),
             last_ecef: Some((10.0, 20.0, 30.0)),
             last_solution: Some(sample_last_solution()),
@@ -2626,6 +2745,105 @@ mod tests {
             .any(|reason| reason.starts_with("raim_suspect_prn=")));
         assert_eq!(solution.pre_fit_residual_rms_m, None);
         assert_eq!(solution.post_fit_residual_rms_m, None);
+    }
+
+    #[test]
+    fn navigation_position_solution_smoothing_reduces_static_jitter() {
+        let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
+        let t0_rx_s = 100_090.0;
+        let ephs = vec![
+            make_eph(1, 0.0, 0.0, t0_rx_s),
+            make_eph(2, 0.8, 0.9, t0_rx_s),
+            make_eph(3, 1.6, 1.8, t0_rx_s),
+            make_eph(4, 2.4, 2.7, t0_rx_s),
+            make_eph(5, 3.2, 3.6, t0_rx_s),
+        ];
+        let mut baseline_config = ReceiverPipelineConfig::default();
+        baseline_config.position_solution_smoothing = false;
+        let mut baseline_nav =
+            Navigation::new(baseline_config, crate::engine::runtime::ReceiverRuntime::default());
+        let mut smoothed_config = ReceiverPipelineConfig::default();
+        smoothed_config.position_solution_motion_class = NavigationMotionClass::Static;
+        let mut smoothed_nav =
+            Navigation::new(smoothed_config, crate::engine::runtime::ReceiverRuntime::default());
+        let mut raw_errors_m = Vec::new();
+        let mut smoothed_errors_m = Vec::new();
+        let mut raw_solutions = Vec::new();
+        let mut smoothed_solutions = Vec::new();
+
+        for epoch_idx in 0..60u64 {
+            let t_rx_s = t0_rx_s + epoch_idx as f64;
+            let mut obs = make_obs_epoch_for_solution(epoch_idx, t_rx_s, truth, &ephs);
+            apply_deterministic_pseudorange_offsets(&mut obs);
+            let baseline_solution =
+                baseline_nav.solve_epoch(&obs, &ephs).expect("baseline static solution");
+            let smoothed_solution =
+                smoothed_nav.solve_epoch(&obs, &ephs).expect("smoothed static solution");
+            raw_errors_m.push(solution_error_3d_m(&baseline_solution, truth));
+            smoothed_errors_m.push(solution_error_3d_m(&smoothed_solution, truth));
+            raw_solutions.push(baseline_solution);
+            smoothed_solutions.push(smoothed_solution);
+        }
+
+        assert!(root_mean_square(&smoothed_errors_m) < root_mean_square(&raw_errors_m) * 0.75);
+        assert!(
+            solution_trace_path_length_m(&smoothed_solutions)
+                < solution_trace_path_length_m(&raw_solutions) * 0.4
+        );
+    }
+
+    #[test]
+    fn navigation_position_solution_smoothing_preserves_linear_motion() {
+        let truth_origin = geodetic_to_ecef(37.0, -122.0, 25.0);
+        let truth_velocity_mps = (8.0, -3.0, 1.5);
+        let t0_rx_s = 100_190.0;
+        let ephs = vec![
+            make_eph(1, 0.0, 0.0, t0_rx_s),
+            make_eph(2, 0.8, 0.9, t0_rx_s),
+            make_eph(3, 1.6, 1.8, t0_rx_s),
+            make_eph(4, 2.4, 2.7, t0_rx_s),
+            make_eph(5, 3.2, 3.6, t0_rx_s),
+        ];
+        let mut baseline_config = ReceiverPipelineConfig::default();
+        baseline_config.position_solution_smoothing = false;
+        let mut baseline_nav =
+            Navigation::new(baseline_config, crate::engine::runtime::ReceiverRuntime::default());
+        let mut smoothed_nav =
+            Navigation::new(ReceiverPipelineConfig::default(), crate::engine::runtime::ReceiverRuntime::default());
+        let mut truth_solutions = Vec::new();
+        let mut raw_errors_m = Vec::new();
+        let mut smoothed_errors_m = Vec::new();
+        let mut smoothed_solutions = Vec::new();
+
+        for epoch_idx in 0..60u64 {
+            let truth = translate_truth_ecef_m(truth_origin, truth_velocity_mps, epoch_idx as f64);
+            let t_rx_s = t0_rx_s + epoch_idx as f64;
+            let mut obs = make_obs_epoch_for_solution(epoch_idx, t_rx_s, truth, &ephs);
+            apply_deterministic_pseudorange_offsets(&mut obs);
+            let baseline_solution =
+                baseline_nav.solve_epoch(&obs, &ephs).expect("baseline moving solution");
+            let smoothed_solution =
+                smoothed_nav.solve_epoch(&obs, &ephs).expect("smoothed moving solution");
+            truth_solutions.push(NavSolutionEpoch {
+                ecef_x_m: Meters(truth.0),
+                ecef_y_m: Meters(truth.1),
+                ecef_z_m: Meters(truth.2),
+                ..sample_last_solution()
+            });
+            raw_errors_m.push(solution_error_3d_m(&baseline_solution, truth));
+            smoothed_errors_m.push(solution_error_3d_m(&smoothed_solution, truth));
+            smoothed_solutions.push(smoothed_solution);
+        }
+
+        let truth_path_length_m = solution_trace_path_length_m(&truth_solutions);
+        let smoothed_path_length_m = solution_trace_path_length_m(&smoothed_solutions);
+        let smoothed_final = smoothed_solutions.last().expect("smoothed final solution");
+        let truth_final = translate_truth_ecef_m(truth_origin, truth_velocity_mps, 59.0);
+
+        assert!(root_mean_square(&smoothed_errors_m) <= root_mean_square(&raw_errors_m));
+        assert!(smoothed_path_length_m > truth_path_length_m * 0.9);
+        assert!(smoothed_path_length_m < truth_path_length_m * 1.15);
+        assert!(solution_error_3d_m(smoothed_final, truth_final) < 6.0);
     }
 
     #[test]
