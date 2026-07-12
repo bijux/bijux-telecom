@@ -14,6 +14,7 @@
                     receive_time_s: 100.0,
                     truth_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.0, y_m: 0.0, z_m: 0.0 },
                     measured_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.2, y_m: 0.0, z_m: 0.0 },
+                    position_covariance_ecef_m2: None,
                     ecef_error_m: SyntheticPvtTruthTableEcef { x_m: 0.2, y_m: 0.0, z_m: 0.0 },
                     truth_geodetic: SyntheticPvtTruthTableGeodetic {
                         latitude_deg: 0.0,
@@ -66,6 +67,7 @@
                     receive_time_s: 101.0,
                     truth_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.0, y_m: 0.0, z_m: 0.0 },
                     measured_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.3, y_m: 0.0, z_m: 0.0 },
+                    position_covariance_ecef_m2: None,
                     ecef_error_m: SyntheticPvtTruthTableEcef { x_m: 0.3, y_m: 0.0, z_m: 0.0 },
                     truth_geodetic: SyntheticPvtTruthTableGeodetic {
                         latitude_deg: 0.0,
@@ -127,6 +129,7 @@
                     receive_time_s: 100.0,
                     truth_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.0, y_m: 0.0, z_m: 0.0 },
                     measured_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.2, y_m: 0.0, z_m: 0.0 },
+                    position_covariance_ecef_m2: None,
                     ecef_error_m: SyntheticPvtTruthTableEcef { x_m: 0.2, y_m: 0.0, z_m: 0.0 },
                     truth_geodetic: SyntheticPvtTruthTableGeodetic {
                         latitude_deg: 0.0,
@@ -179,6 +182,7 @@
                     receive_time_s: 101.0,
                     truth_ecef_m: SyntheticPvtTruthTableEcef { x_m: 10.0, y_m: 0.0, z_m: 0.0 },
                     measured_ecef_m: SyntheticPvtTruthTableEcef { x_m: 10.5, y_m: 0.0, z_m: 0.0 },
+                    position_covariance_ecef_m2: None,
                     ecef_error_m: SyntheticPvtTruthTableEcef { x_m: 0.5, y_m: 0.0, z_m: 0.0 },
                     truth_geodetic: SyntheticPvtTruthTableGeodetic {
                         latitude_deg: 0.0,
@@ -447,6 +451,7 @@
                             y_m: 0.0,
                             z_m: 0.0,
                         },
+                        position_covariance_ecef_m2: None,
                         ecef_error_m: SyntheticPvtTruthTableEcef {
                             x_m: *position_error_3d_m,
                             y_m: 0.0,
@@ -671,4 +676,3 @@
             .any(|issue| issue.code == "insufficient_time_profile_accuracy_epochs"));
         assert!(!point.ready, "{report:?}");
     }
-

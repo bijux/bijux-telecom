@@ -27,6 +27,7 @@ fn pvt_truth_table_records_position_clock_residual_dop_and_status_per_epoch() {
         assert_eq!(epoch.measured_ecef_m.x_m, solution.ecef_x_m.0);
         assert_eq!(epoch.measured_ecef_m.y_m, solution.ecef_y_m.0);
         assert_eq!(epoch.measured_ecef_m.z_m, solution.ecef_z_m.0);
+        assert_eq!(epoch.position_covariance_ecef_m2, solution.position_covariance_ecef_m2);
         assert_eq!(epoch.measured_geodetic.latitude_deg, solution.latitude_deg);
         assert_eq!(epoch.measured_geodetic.longitude_deg, solution.longitude_deg);
         assert_eq!(epoch.measured_geodetic.altitude_m, solution.altitude_m.0);

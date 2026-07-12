@@ -47,6 +47,7 @@ pub fn validate_truth_guided_pvt_table(
                 y_m: solution.ecef_y_m.0,
                 z_m: solution.ecef_z_m.0,
             },
+            position_covariance_ecef_m2: solution.position_covariance_ecef_m2,
             ecef_error_m: SyntheticPvtTruthTableEcef {
                 x_m: solution.ecef_x_m.0 - truth_ecef.0,
                 y_m: solution.ecef_y_m.0 - truth_ecef.1,

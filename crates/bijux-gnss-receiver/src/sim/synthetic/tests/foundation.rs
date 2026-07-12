@@ -324,6 +324,7 @@
                 receive_time_s: 100_000.0,
                 truth_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.0, y_m: 0.0, z_m: 0.0 },
                 measured_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.0, y_m: 0.0, z_m: 6.0 },
+                position_covariance_ecef_m2: None,
                 ecef_error_m: SyntheticPvtTruthTableEcef { x_m: 0.0, y_m: 0.0, z_m: 6.0 },
                 truth_geodetic: SyntheticPvtTruthTableGeodetic {
                     latitude_deg: 0.0,

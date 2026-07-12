@@ -187,6 +187,9 @@ pub struct SyntheticPvtTruthTableEpoch {
     pub truth_ecef_m: SyntheticPvtTruthTableEcef,
     /// Measured ECEF position.
     pub measured_ecef_m: SyntheticPvtTruthTableEcef,
+    /// Receiver-reported ECEF position covariance, when the solution emitted one.
+    #[serde(default)]
+    pub position_covariance_ecef_m2: Option<[[f64; 3]; 3]>,
     /// Measured minus truth ECEF error, in meters.
     pub ecef_error_m: SyntheticPvtTruthTableEcef,
     /// Truth geodetic position.
