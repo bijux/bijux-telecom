@@ -8,7 +8,7 @@ use bijux_gnss_core::api::{
 };
 use bijux_gnss_nav::api::{
     combinations_from_obs_epochs, iono_free_code_from_obs_epochs, iono_free_phase_from_obs_epochs,
-    narrow_lane_from_obs_epochs,
+    measured_ionosphere_from_obs_epochs, narrow_lane_from_obs_epochs,
 };
 
 fn satellite(sat: SatId, band: SignalBand, code: SignalCode, signal: SignalSpec) -> ObsSatellite {
@@ -83,11 +83,14 @@ fn public_dual_frequency_outputs_refuse_mixed_constellation_requests() {
         iono_free_code_from_obs_epochs(&[epoch.clone()], SignalBand::L1, SignalBand::L2);
     let iono_free_phase =
         iono_free_phase_from_obs_epochs(&[epoch.clone()], SignalBand::L1, SignalBand::L2);
+    let measured_ionosphere =
+        measured_ionosphere_from_obs_epochs(&[epoch.clone()], SignalBand::L1, SignalBand::L2);
     let narrow_lane = narrow_lane_from_obs_epochs(&[epoch], SignalBand::L1, SignalBand::L2);
 
     assert_eq!(combinations.len(), 2);
     assert_eq!(iono_free_code.len(), 2);
     assert_eq!(iono_free_phase.len(), 2);
+    assert_eq!(measured_ionosphere.len(), 2);
     assert_eq!(narrow_lane.len(), 2);
 
     let invalid_combination = combinations
@@ -102,6 +105,10 @@ fn public_dual_frequency_outputs_refuse_mixed_constellation_requests() {
         .iter()
         .find(|observation| observation.sat.constellation == Constellation::Galileo)
         .expect("galileo phase refusal");
+    let invalid_measured_ionosphere = measured_ionosphere
+        .iter()
+        .find(|observation| observation.sat.constellation == Constellation::Galileo)
+        .expect("galileo measured ionosphere refusal");
     let invalid_narrow_lane = narrow_lane
         .iter()
         .find(|observation| observation.sat.constellation == Constellation::Galileo)
@@ -110,6 +117,8 @@ fn public_dual_frequency_outputs_refuse_mixed_constellation_requests() {
     assert_eq!(invalid_combination.reason, "unsupported_band_pair");
     assert_eq!(invalid_code.reason, "unsupported_band_pair");
     assert_eq!(invalid_phase.reason, "unsupported_band_pair");
+    assert_eq!(invalid_measured_ionosphere.code_reason, "unsupported_band_pair");
+    assert_eq!(invalid_measured_ionosphere.phase_reason, "unsupported_band_pair");
     assert_eq!(invalid_narrow_lane.reason, "unsupported_band_pair");
 }
 
@@ -134,10 +143,14 @@ fn public_dual_frequency_outputs_refuse_mismatched_transmit_time_references() {
         iono_free_code_from_obs_epochs(&[epoch.clone()], SignalBand::L1, SignalBand::L2);
     let iono_free_phase =
         iono_free_phase_from_obs_epochs(&[epoch.clone()], SignalBand::L1, SignalBand::L2);
+    let measured_ionosphere =
+        measured_ionosphere_from_obs_epochs(&[epoch.clone()], SignalBand::L1, SignalBand::L2);
     let narrow_lane = narrow_lane_from_obs_epochs(&[epoch], SignalBand::L1, SignalBand::L2);
 
     assert_eq!(combination[0].reason, "time_system_mismatch");
     assert_eq!(iono_free_code[0].reason, "time_system_mismatch");
     assert_eq!(iono_free_phase[0].reason, "time_system_mismatch");
+    assert_eq!(measured_ionosphere[0].code_reason, "time_system_mismatch");
+    assert_eq!(measured_ionosphere[0].phase_reason, "time_system_mismatch");
     assert_eq!(narrow_lane[0].reason, "time_system_mismatch");
 }
