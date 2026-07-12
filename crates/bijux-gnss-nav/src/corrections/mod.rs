@@ -8,6 +8,7 @@ pub(crate) mod dual_frequency;
 pub mod geometry_free;
 pub mod iono_free_code;
 pub mod iono_free_phase;
+pub mod measured_ionosphere;
 pub mod melbourne_wubbena;
 pub mod narrow_lane;
 
