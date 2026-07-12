@@ -520,6 +520,8 @@ fn galileo_geometry_free_and_iono_free_phase_use_e1_e5_wavelengths() {
     let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
     let e1 = signal_spec_galileo_e1b();
     let e5 = signal_spec_galileo_e5a();
+    let narrow_lane_wavelength_m =
+        299_792_458.0 / (e1.carrier_hz.value() + e5.carrier_hz.value());
     let wide_lane_wavelength_m =
         299_792_458.0 / (e1.carrier_hz.value() - e5.carrier_hz.value()).abs();
     let epoch = make_dual_signal_epoch_from_phase_meters(
@@ -543,6 +545,7 @@ fn galileo_geometry_free_and_iono_free_phase_use_e1_e5_wavelengths() {
     let f1_2 = e1.carrier_hz.value().powi(2);
     let f2_2 = e5.carrier_hz.value().powi(2);
     let expected_if_phase_m = (f1_2 * 24_345_677.0 - f2_2 * 24_345_674.5) / (f1_2 - f2_2);
+    let expected_narrow_lane_cycles = (24_345_677.0 + 24_345_674.5) / narrow_lane_wavelength_m;
     let expected_wide_lane_cycles = (24_345_677.0 - 24_345_674.5) / wide_lane_wavelength_m;
 
     assert_eq!(combinations.len(), 1);
@@ -552,6 +555,20 @@ fn galileo_geometry_free_and_iono_free_phase_use_e1_e5_wavelengths() {
     );
     assert!(
         (combinations[0].if_phase_m.expect("iono-free phase") - expected_if_phase_m).abs() < 1.0e-6
+    );
+    assert!(
+        (combinations[0]
+            .narrow_lane_wavelength_m
+            .expect("narrow-lane wavelength")
+            - narrow_lane_wavelength_m)
+            .abs()
+            < 1.0e-12
+    );
+    assert!(
+        (combinations[0].narrow_lane_cycles.expect("narrow-lane cycles")
+            - expected_narrow_lane_cycles)
+            .abs()
+            < 1.0e-6
     );
     assert!(
         (combinations[0].wide_lane_wavelength_m.expect("wide-lane wavelength")
@@ -574,6 +591,8 @@ fn beidou_geometry_free_and_iono_free_phase_use_b1_b2_wavelengths() {
     let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
     let b1 = signal_spec_beidou_b1i();
     let b2 = signal_spec_beidou_b2i();
+    let narrow_lane_wavelength_m =
+        299_792_458.0 / (b1.carrier_hz.value() + b2.carrier_hz.value());
     let wide_lane_wavelength_m =
         299_792_458.0 / (b1.carrier_hz.value() - b2.carrier_hz.value()).abs();
     let epoch = make_dual_signal_epoch_from_phase_meters(
@@ -597,6 +616,7 @@ fn beidou_geometry_free_and_iono_free_phase_use_b1_b2_wavelengths() {
     let f1_2 = b1.carrier_hz.value().powi(2);
     let f2_2 = b2.carrier_hz.value().powi(2);
     let expected_if_phase_m = (f1_2 * 24_345_677.5 - f2_2 * 24_345_674.25) / (f1_2 - f2_2);
+    let expected_narrow_lane_cycles = (24_345_677.5 + 24_345_674.25) / narrow_lane_wavelength_m;
     let expected_wide_lane_cycles = (24_345_677.5 - 24_345_674.25) / wide_lane_wavelength_m;
 
     assert_eq!(combinations.len(), 1);
@@ -606,6 +626,20 @@ fn beidou_geometry_free_and_iono_free_phase_use_b1_b2_wavelengths() {
     );
     assert!(
         (combinations[0].if_phase_m.expect("iono-free phase") - expected_if_phase_m).abs() < 1.0e-6
+    );
+    assert!(
+        (combinations[0]
+            .narrow_lane_wavelength_m
+            .expect("narrow-lane wavelength")
+            - narrow_lane_wavelength_m)
+            .abs()
+            < 1.0e-12
+    );
+    assert!(
+        (combinations[0].narrow_lane_cycles.expect("narrow-lane cycles")
+            - expected_narrow_lane_cycles)
+            .abs()
+            < 1.0e-6
     );
     assert!(
         (combinations[0].wide_lane_wavelength_m.expect("wide-lane wavelength")
