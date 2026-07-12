@@ -10,12 +10,12 @@
 
 use bijux_gnss_core::api::{
     signal_registry, signal_spec_beidou_b1i, signal_spec_galileo_e1b, signal_spec_glonass_l1,
-    signal_spec_gps_l1_ca, Constellation, ConventionsConfig, Cycles, DiagnosticEvent,
-    DiagnosticSeverity, GpsTime, LockFlags, Meters, ObsDecisionArtifact, ObsEpoch,
-    ObsEpochManifest, ObsMetadata, ObsSatellite, ObsSignalTiming, ObservationEpochDecision,
-    ObservationStatus, ObservationSupportClass, ObservationUncertaintyClass, ReceiverRole,
-    ReceiverSampleTrace, SatObservationDecision, Seconds, SigId, SignalBand, SignalCode,
-    SignalSpec, TrackEpoch, GPS_L1_CA_CARRIER_HZ,
+    signal_spec_gps_l1_ca, signal_spec_gps_l2c, Constellation, ConventionsConfig, Cycles,
+    DiagnosticEvent, DiagnosticSeverity, GpsTime, LockFlags, Meters, ObsDecisionArtifact,
+    ObsEpoch, ObsEpochManifest, ObsMetadata, ObsSatellite, ObsSignalTiming,
+    ObservationEpochDecision, ObservationStatus, ObservationSupportClass,
+    ObservationUncertaintyClass, ReceiverRole, ReceiverSampleTrace, SatObservationDecision,
+    Seconds, SigId, SignalBand, SignalCode, SignalSpec, TrackEpoch, GPS_L1_CA_CARRIER_HZ,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -950,6 +950,7 @@ fn observation_signal_model(
     let signal = match (epoch.sat.constellation, epoch.signal_band, epoch.glonass_frequency_channel)
     {
         (Constellation::Gps, SignalBand::L1, _) => signal_spec_gps_l1_ca(),
+        (Constellation::Gps, SignalBand::L2, _) => signal_spec_gps_l2c(),
         (Constellation::Galileo, SignalBand::E1, _) => signal_spec_galileo_e1b(),
         (Constellation::Beidou, SignalBand::B1, _) => signal_spec_beidou_b1i(),
         (Constellation::Glonass, SignalBand::L1, Some(channel)) => signal_spec_glonass_l1(channel),
@@ -974,6 +975,7 @@ fn observation_signal_model(
 fn tracked_signal_code(epoch: &TrackEpoch) -> SignalCode {
     match (epoch.sat.constellation, epoch.signal_band) {
         (Constellation::Gps, SignalBand::L1) => SignalCode::Ca,
+        (Constellation::Gps, SignalBand::L2) => SignalCode::L2C,
         (Constellation::Galileo, SignalBand::E1) => SignalCode::E1B,
         (Constellation::Beidou, SignalBand::B1) => SignalCode::B1I,
         (Constellation::Glonass, SignalBand::L1) => SignalCode::Unknown,
@@ -984,6 +986,7 @@ fn tracked_signal_code(epoch: &TrackEpoch) -> SignalCode {
 fn fallback_code_length(epoch: &TrackEpoch) -> usize {
     match (epoch.sat.constellation, epoch.signal_band) {
         (Constellation::Gps, SignalBand::L1) => 1023,
+        (Constellation::Gps, SignalBand::L2) => 10230,
         (Constellation::Galileo, SignalBand::E1) => 4092,
         (Constellation::Beidou, SignalBand::B1) => 2046,
         (Constellation::Glonass, SignalBand::L1) => 511,
@@ -1836,6 +1839,31 @@ mod tests {
                 / config.code_length as f64);
         ((whole_code_periods as f64 * config.code_length as f64) + code_phase_chips)
             / config.code_freq_basis_hz
+            * SPEED_OF_LIGHT_MPS
+    }
+
+    fn test_tracking_code_phase_samples_for_signal(
+        config: &ReceiverPipelineConfig,
+        signal: SignalSpec,
+        code_length: usize,
+        aligned_code_phase_chips: f64,
+    ) -> f64 {
+        if !aligned_code_phase_chips.is_finite() || aligned_code_phase_chips < 0.0 {
+            return aligned_code_phase_chips;
+        }
+        let samples_per_chip = config.sampling_freq_hz / signal.code_rate_hz;
+        let period_samples = samples_per_chip * code_length as f64;
+        let aligned_code_phase_samples = aligned_code_phase_chips * samples_per_chip;
+        (period_samples - aligned_code_phase_samples).rem_euclid(period_samples)
+    }
+
+    fn aligned_pseudorange_m_for_signal(
+        signal: SignalSpec,
+        code_length: usize,
+        whole_code_periods: u64,
+        code_phase_chips: f64,
+    ) -> f64 {
+        ((whole_code_periods as f64 * code_length as f64) + code_phase_chips) / signal.code_rate_hz
             * SPEED_OF_LIGHT_MPS
     }
 
@@ -2870,6 +2898,51 @@ mod tests {
             glonass_l1_carrier_hz(channel).value()
         );
         assert!((obs_sat.doppler_hz.0 - expected_doppler_hz).abs() <= f64::EPSILON, "{obs_sat:?}");
+    }
+
+    #[test]
+    fn observations_emit_gps_l2c_signal_identity_and_civil_code_pseudorange() {
+        let signal = signal_spec_gps_l2c();
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 5_115_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: signal.code_rate_hz,
+            code_length: 10230,
+            ..ReceiverPipelineConfig::default()
+        };
+        let whole_code_periods = 4;
+        let aligned_code_phase_chips = 768.0;
+        let expected_pseudorange_m = aligned_pseudorange_m_for_signal(
+            signal,
+            10230,
+            whole_code_periods,
+            aligned_code_phase_chips,
+        );
+        let epoch = TrackEpoch {
+            sat: SatId { constellation: Constellation::Gps, prn: 11 },
+            signal_band: SignalBand::L2,
+            code_rate_hz: Hertz(signal.code_rate_hz),
+            code_phase_samples: Chips(test_tracking_code_phase_samples_for_signal(
+                &config,
+                signal,
+                10230,
+                aligned_code_phase_chips,
+            )),
+            signal_delay_alignment: Some(SignalDelayAlignment {
+                whole_code_periods,
+                source: "synthetic_truth".to_string(),
+            }),
+            ..make_tracking_epoch_with_phase(11, &config, 70, 0.0, 0.0)
+        };
+        let report = observations_from_tracking_results(&config, &[track_from_epoch(epoch)], 10);
+        let obs_sat = report.output[0].sats.first().expect("observation satellite");
+
+        assert_eq!(obs_sat.signal_id.band, SignalBand::L2);
+        assert_eq!(obs_sat.signal_id.code, SignalCode::L2C);
+        assert_eq!(obs_sat.metadata.signal, signal);
+        assert!((obs_sat.metadata.signal.code_rate_hz - 511_500.0).abs() <= f64::EPSILON);
+        assert_eq!(obs_sat.metadata.pseudorange_model, "tracked_code_phase_alignment");
+        assert!((obs_sat.pseudorange_m.0 - expected_pseudorange_m).abs() <= 1.0e-6, "{obs_sat:?}");
     }
 
     #[test]
