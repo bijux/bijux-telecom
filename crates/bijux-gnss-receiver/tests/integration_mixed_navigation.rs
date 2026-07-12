@@ -2,7 +2,7 @@
 
 use bijux_gnss_core::api::{
     Constellation, Cycles, GpsTime, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
-    ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ReceiverRole,
+    ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ReceiverRole, NavRefusalClass,
     ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
 };
 use bijux_gnss_receiver::api::{
@@ -557,4 +557,71 @@ fn public_navigation_api_solves_mixed_gps_galileo_beidou_epoch() {
     assert!((galileo_isb.bias_s.0 - galileo_bias_s).abs() < 5.0e-8);
     assert!((beidou_isb.bias_s.0 - beidou_bias_s).abs() < 5.0e-8);
     assert!((solution.clock_bias_s.0 - receiver_clock_bias_s).abs() < 5.0e-8);
+}
+
+#[test]
+fn public_navigation_api_refuses_mixed_gps_glonass_epoch_without_time_handling() {
+    let config = ReceiverPipelineConfig::default();
+    let runtime = ReceiverRuntime::default();
+    let mut navigation_engine = Navigation::new(config, runtime);
+    let truth_ecef_m = geodetic_to_ecef(37.0, -122.0, 25.0);
+    let t_rx_s = 100_000.0;
+    let receiver_clock_bias_s = 2.75e-4;
+    let gps_ephemerides = vec![
+        make_gps_ephemeris(1, 0.0, 0.0, t_rx_s),
+        make_gps_ephemeris(2, 0.8, 0.9, t_rx_s),
+        make_gps_ephemeris(3, 1.6, 1.8, t_rx_s),
+        make_gps_ephemeris(4, 2.4, 2.7, t_rx_s),
+    ];
+
+    let mut sats = gps_ephemerides
+        .iter()
+        .map(|ephemeris| {
+            synthetic_satellite(
+                ephemeris.sat,
+                SignalBand::L1,
+                SignalCode::Ca,
+                gps_pseudorange_m(ephemeris, t_rx_s, truth_ecef_m, receiver_clock_bias_s),
+                t_rx_s,
+            )
+        })
+        .collect::<Vec<_>>();
+    sats.push(synthetic_satellite(
+        SatId { constellation: Constellation::Glonass, prn: 8 },
+        SignalBand::L1,
+        SignalCode::Unknown,
+        24_000_000.0,
+        t_rx_s,
+    ));
+
+    let obs = ObsEpoch {
+        t_rx_s: Seconds(t_rx_s),
+        source_time: ReceiverSampleTrace::from_sample_index(0, 1_000.0),
+        gps_week: Some(0),
+        tow_s: Some(Seconds(t_rx_s)),
+        epoch_idx: 1,
+        discontinuity: false,
+        valid: true,
+        processing_ms: None,
+        role: ReceiverRole::Rover,
+        sats,
+        decision: ObservationEpochDecision::Accepted,
+        decision_reason: Some("accepted_observables_present".to_string()),
+        manifest: None,
+    };
+
+    let navigation_data = position_broadcast_navigation_from_gps_ephemerides(&gps_ephemerides);
+
+    let solution = navigation_engine
+        .solve_epoch_with_navigation_data(&obs, &navigation_data)
+        .expect("mixed constellation refusal");
+
+    assert!(!solution.valid);
+    assert_eq!(solution.refusal_class, Some(NavRefusalClass::MixedConstellationInput));
+    assert_eq!(solution.explain_decision, "mixed_constellation_time_handling_refused");
+    assert!(solution
+        .explain_reasons
+        .iter()
+        .any(|reason| reason == "unknown_inter_system_time_offset"));
+    assert_eq!(solution.used_sat_count, 0);
 }
