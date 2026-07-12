@@ -1243,6 +1243,7 @@ fn prepare_position_observation(
             model: match config.weighting.mode {
                 NavigationWeightingMode::Elevation => PositionWeightingModel::Elevation,
                 NavigationWeightingMode::Cn0 => PositionWeightingModel::Cn0,
+                NavigationWeightingMode::ElevationCn0 => PositionWeightingModel::ElevationCn0,
             },
             enabled: config.weighting.enabled,
             min_elev_deg: config.weighting.min_elev_deg,
@@ -1273,6 +1274,7 @@ fn build_provenance(
         match config.weighting.mode {
             NavigationWeightingMode::Elevation => "elevation_sigma_weighted",
             NavigationWeightingMode::Cn0 => "cn0_sigma_weighted",
+            NavigationWeightingMode::ElevationCn0 => "elevation_cn0_sigma_weighted",
         }
     };
     let solver_family = if observations.iter().any(|row| (row.weight - 1.0).abs() > 1.0e-6) {

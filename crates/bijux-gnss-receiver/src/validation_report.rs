@@ -1205,6 +1205,9 @@ fn build_ppp_config(profile: &ReceiverConfig) -> PppConfig {
                 crate::engine::receiver_config::NavigationWeightingMode::Cn0 => {
                     PositionWeightingModel::Cn0
                 }
+                crate::engine::receiver_config::NavigationWeightingMode::ElevationCn0 => {
+                    PositionWeightingModel::ElevationCn0
+                }
             },
             enabled: profile.navigation.weighting.enabled,
             min_elev_deg: profile.navigation.weighting.min_elev_deg,

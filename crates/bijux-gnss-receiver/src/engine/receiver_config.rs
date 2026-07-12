@@ -260,6 +260,7 @@ pub enum NavigationWeightingMode {
     #[default]
     Elevation,
     Cn0,
+    ElevationCn0,
 }
 
 impl Default for ConstellationSelectionPolicy {

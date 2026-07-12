@@ -2836,6 +2836,7 @@ pub fn elevation_azimuth_deg(
 pub enum PositionWeightingModel {
     Elevation,
     Cn0,
+    ElevationCn0,
 }
 
 impl Default for PositionWeightingModel {
@@ -2912,6 +2913,12 @@ pub fn position_measurement_weight(
         }
         PositionWeightingModel::Cn0 => {
             cn0_dbhz.map(|cn0| weight_from_cn0(cn0, config)).unwrap_or(1.0)
+        }
+        PositionWeightingModel::ElevationCn0 => {
+            let elevation_weight =
+                elev_deg.map(|elev| weight_from_elevation(elev, config)).unwrap_or(1.0);
+            let cn0_weight = cn0_dbhz.map(|cn0| weight_from_cn0(cn0, config)).unwrap_or(1.0);
+            elevation_weight * cn0_weight
         }
     };
     geometry_weight * weight_from_pseudorange_sigma(pseudorange_sigma_m)
