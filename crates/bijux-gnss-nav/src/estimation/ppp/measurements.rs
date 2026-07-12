@@ -1077,6 +1077,39 @@ mod tests {
     }
 
     #[test]
+    fn ppp_code_measurement_applies_earth_tide_displacement_to_geometry() {
+        let measurement = PppCodeMeasurement {
+            z_m: 0.0,
+            sat_pos_m: [20_200_000.0, 14_000_000.0, 21_700_000.0],
+            sat_clock_s: 0.0,
+            antenna_range_correction_m: 0.0,
+            sigma_m: 1.0,
+            troposphere_mapping: 1.0,
+            iono_index: None,
+            ztd_index: None,
+            isb_index: None,
+            corr: Corrections {
+                earth_tide_m: [0.02, -0.03, 0.04],
+                ..Corrections::default()
+            },
+        };
+        let mut state = vec![0.0; 9];
+        state[0] = 1_111_111.0;
+        state[1] = -4_222_222.0;
+        state[2] = 4_333_333.0;
+
+        let mut predicted = [0.0];
+        measurement.h(&state, &mut predicted);
+
+        let dx = state[0] + 0.02 - measurement.sat_pos_m[0];
+        let dy = state[1] - 0.03 - measurement.sat_pos_m[1];
+        let dz = state[2] + 0.04 - measurement.sat_pos_m[2];
+        let expected = (dx * dx + dy * dy + dz * dz).sqrt();
+
+        assert!((predicted[0] - expected).abs() < 1.0e-9);
+    }
+
+    #[test]
     fn ppp_phase_measurement_maps_zenith_delay_by_elevation() {
         let measurement = PppPhaseMeasurement {
             z_cycles: 0.0,
@@ -1115,6 +1148,42 @@ mod tests {
         measurement.jacobian(&state, &mut jacobian);
 
         assert!((jacobian[(0, 8)] - 3.1 / measurement.wavelength_m).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn ppp_phase_measurement_applies_earth_tide_displacement_to_geometry() {
+        let measurement = PppPhaseMeasurement {
+            z_cycles: 0.0,
+            sat_pos_m: [20_200_000.0, 14_000_000.0, 21_700_000.0],
+            sat_clock_s: 0.0,
+            antenna_range_correction_m: 0.0,
+            sigma_cycles: 0.01,
+            troposphere_mapping: 1.0,
+            iono_index: None,
+            ztd_index: None,
+            isb_index: None,
+            ambiguity_index: Some(9),
+            corr: Corrections {
+                earth_tide_m: [0.02, -0.03, 0.04],
+                ..Corrections::default()
+            },
+            wavelength_m: 0.190_293_672_798,
+        };
+        let mut state = vec![0.0; 10];
+        state[0] = 1_111_111.0;
+        state[1] = -4_222_222.0;
+        state[2] = 4_333_333.0;
+        state[9] = 12.0;
+
+        let mut predicted = [0.0];
+        measurement.h(&state, &mut predicted);
+
+        let dx = state[0] + 0.02 - measurement.sat_pos_m[0];
+        let dy = state[1] - 0.03 - measurement.sat_pos_m[1];
+        let dz = state[2] + 0.04 - measurement.sat_pos_m[2];
+        let expected = (dx * dx + dy * dy + dz * dz).sqrt() / measurement.wavelength_m + state[9];
+
+        assert!((predicted[0] - expected).abs() < 1.0e-9);
     }
 
     #[test]
@@ -1158,6 +1227,41 @@ mod tests {
     }
 
     #[test]
+    fn ppp_iono_free_phase_measurement_applies_earth_tide_displacement_to_geometry() {
+        let measurement = PppIonoFreePhaseMeasurement {
+            z_cycles: 0.0,
+            sat_pos_m: [20_200_000.0, 14_000_000.0, 21_700_000.0],
+            sat_clock_s: 0.0,
+            antenna_range_correction_m: 0.0,
+            sigma_cycles: 0.01,
+            troposphere_mapping: 1.0,
+            ztd_index: None,
+            isb_index: None,
+            ambiguity_index: Some(9),
+            wavelength_m: 0.107,
+            corr: Corrections {
+                earth_tide_m: [0.02, -0.03, 0.04],
+                ..Corrections::default()
+            },
+        };
+        let mut state = vec![0.0; 10];
+        state[0] = 1_111_111.0;
+        state[1] = -4_222_222.0;
+        state[2] = 4_333_333.0;
+        state[9] = 6.0;
+
+        let mut predicted = [0.0];
+        measurement.h(&state, &mut predicted);
+
+        let dx = state[0] + 0.02 - measurement.sat_pos_m[0];
+        let dy = state[1] - 0.03 - measurement.sat_pos_m[1];
+        let dz = state[2] + 0.04 - measurement.sat_pos_m[2];
+        let expected = (dx * dx + dy * dy + dz * dz).sqrt() / measurement.wavelength_m + state[9];
+
+        assert!((predicted[0] - expected).abs() < 1.0e-9);
+    }
+
+    #[test]
     fn ppp_iono_free_code_measurement_applies_antenna_range_correction() {
         let measurement = PppIonoFreeCodeMeasurement {
             z_m: 0.0,
@@ -1184,6 +1288,38 @@ mod tests {
         let dz = state[2] - measurement.sat_pos_m[2];
         let geometric_range_m = (dx * dx + dy * dy + dz * dz).sqrt();
         let expected = geometric_range_m - 0.3 + 2.4 * 1.8;
+
+        assert!((predicted[0] - expected).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn ppp_iono_free_code_measurement_applies_earth_tide_displacement_to_geometry() {
+        let measurement = PppIonoFreeCodeMeasurement {
+            z_m: 0.0,
+            sat_pos_m: [20_200_000.0, 14_000_000.0, 21_700_000.0],
+            sat_clock_s: 0.0,
+            antenna_range_correction_m: 0.0,
+            sigma_m: 1.0,
+            troposphere_mapping: 1.0,
+            ztd_index: None,
+            isb_index: None,
+            corr: Corrections {
+                earth_tide_m: [0.02, -0.03, 0.04],
+                ..Corrections::default()
+            },
+        };
+        let mut state = vec![0.0; 9];
+        state[0] = 1_111_111.0;
+        state[1] = -4_222_222.0;
+        state[2] = 4_333_333.0;
+
+        let mut predicted = [0.0];
+        measurement.h(&state, &mut predicted);
+
+        let dx = state[0] + 0.02 - measurement.sat_pos_m[0];
+        let dy = state[1] - 0.03 - measurement.sat_pos_m[1];
+        let dz = state[2] + 0.04 - measurement.sat_pos_m[2];
+        let expected = (dx * dx + dy * dy + dz * dz).sqrt();
 
         assert!((predicted[0] - expected).abs() < 1.0e-9);
     }
