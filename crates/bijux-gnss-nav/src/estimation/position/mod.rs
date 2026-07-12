@@ -3,6 +3,7 @@
 pub mod filter;
 pub mod navigation;
 pub mod raim;
+pub mod solution_smoother;
 pub mod solver;
 
 #[cfg(test)]
