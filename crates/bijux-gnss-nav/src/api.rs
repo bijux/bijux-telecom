@@ -137,6 +137,13 @@ pub use crate::orbits::galileo::{
     GalileoIonosphericDisturbanceFlags, GalileoNavigationAge, GalileoSatState,
     GalileoSatelliteClockCorrection, GalileoSignalHealth, GalileoSystemTime,
 };
+/// GLONASS navigation domain types.
+pub use crate::orbits::glonass::{
+    glonass_satellite_type_from_word, semicircles_to_radians, GlonassAlmanacEntry,
+    GlonassAlmanacTimeData, GlonassBroadcastNavigationFrame, GlonassFrameTime,
+    GlonassImmediateHealth, GlonassImmediateNavigationData, GlonassSatelliteType,
+    GlonassStateVector, GlonassSystemTime,
+};
 /// Broadcast ephemeris and satellite state.
 pub use crate::orbits::gps::{
     gps_earth_rotation_correction, gps_ephemeris_age, gps_satellite_clock_correction,
