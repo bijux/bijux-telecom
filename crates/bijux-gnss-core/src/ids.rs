@@ -103,6 +103,7 @@ pub enum SignalBand {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum SignalCode {
     Ca,
+    L2C,
     Py,
     E1B,
     E1C,
@@ -210,12 +211,13 @@ fn band_rank(band: SignalBand) -> u8 {
 fn code_rank(code: SignalCode) -> u8 {
     match code {
         SignalCode::Ca => 0,
-        SignalCode::Py => 1,
-        SignalCode::E1B => 2,
-        SignalCode::E1C => 3,
-        SignalCode::E5a => 4,
-        SignalCode::E5b => 5,
-        SignalCode::B1I => 6,
+        SignalCode::L2C => 1,
+        SignalCode::Py => 2,
+        SignalCode::E1B => 3,
+        SignalCode::E1C => 4,
+        SignalCode::E5a => 5,
+        SignalCode::E5b => 6,
+        SignalCode::B1I => 7,
         SignalCode::Unknown => 9,
     }
 }
@@ -235,6 +237,7 @@ impl FreqHz {
 }
 
 pub const GPS_L1_CA_CARRIER_HZ: FreqHz = FreqHz::new(1_575_420_000.0);
+pub const GPS_L2C_CARRIER_HZ: FreqHz = FreqHz::new(1_227_600_000.0);
 pub const GPS_L2_PY_CARRIER_HZ: FreqHz = FreqHz::new(1_227_600_000.0);
 pub const GPS_L5_CARRIER_HZ: FreqHz = FreqHz::new(1_176_450_000.0);
 pub const GALILEO_E1_CARRIER_HZ: FreqHz = FreqHz::new(1_575_420_000.0);
@@ -250,7 +253,7 @@ pub struct SignalRegistryEntry {
     pub code_length: Option<u32>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct SignalSpec {
     pub constellation: Constellation,
     pub band: SignalBand,
@@ -266,6 +269,16 @@ pub fn signal_spec_gps_l1_ca() -> SignalSpec {
         code: SignalCode::Ca,
         code_rate_hz: 1_023_000.0,
         carrier_hz: GPS_L1_CA_CARRIER_HZ,
+    }
+}
+
+pub fn signal_spec_gps_l2c() -> SignalSpec {
+    SignalSpec {
+        constellation: Constellation::Gps,
+        band: SignalBand::L2,
+        code: SignalCode::L2C,
+        code_rate_hz: 511_500.0,
+        carrier_hz: GPS_L2C_CARRIER_HZ,
     }
 }
 
@@ -347,8 +360,11 @@ pub fn signal_registry(
         (Constellation::Gps, SignalBand::L1, SignalCode::Ca) => {
             (GPS_L1_CA_CARRIER_HZ, 1_023_000.0, Some(1023))
         }
+        (Constellation::Gps, SignalBand::L2, SignalCode::L2C) => {
+            (GPS_L2C_CARRIER_HZ, 511_500.0, Some(10230))
+        }
         (Constellation::Gps, SignalBand::L2, SignalCode::Py) => {
-            (GPS_L2_PY_CARRIER_HZ, 10_230_000.0, Some(10230))
+            (GPS_L2_PY_CARRIER_HZ, 10_230_000.0, None)
         }
         (Constellation::Gps, SignalBand::L5, SignalCode::Unknown) => {
             (GPS_L5_CARRIER_HZ, 10_230_000.0, None)
@@ -389,5 +405,37 @@ pub fn default_acquisition_signal(constellation: Constellation) -> Option<Signal
             signal_registry(Constellation::Beidou, SignalBand::B1, SignalCode::B1I)
         }
         Constellation::Unknown => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        signal_registry, signal_spec_gps_l2_py, signal_spec_gps_l2c, Constellation, SignalBand,
+        SignalCode,
+    };
+
+    #[test]
+    fn gps_l2c_signal_spec_matches_civil_code_timing() {
+        let signal = signal_spec_gps_l2c();
+
+        assert_eq!(signal.code, SignalCode::L2C);
+        assert!((signal.code_rate_hz - 511_500.0).abs() <= f64::EPSILON);
+        let registry = signal_registry(Constellation::Gps, SignalBand::L2, SignalCode::L2C)
+            .expect("GPS L2C registry entry");
+        assert_eq!(registry.code_length, Some(10230));
+        assert_eq!(registry.spec, signal);
+    }
+
+    #[test]
+    fn gps_l2_py_signal_spec_preserves_legacy_rate_without_short_code_length() {
+        let signal = signal_spec_gps_l2_py();
+
+        assert_eq!(signal.code, SignalCode::Py);
+        assert!((signal.code_rate_hz - 10_230_000.0).abs() <= f64::EPSILON);
+        let registry = signal_registry(Constellation::Gps, SignalBand::L2, SignalCode::Py)
+            .expect("GPS L2 P(Y) registry entry");
+        assert_eq!(registry.code_length, None);
+        assert_eq!(registry.spec, signal);
     }
 }

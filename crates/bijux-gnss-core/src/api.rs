@@ -42,11 +42,12 @@ pub use crate::ids::{
     glonass_slot_from_sat, glonass_slot_sat, prns_to_sats, signal_registry,
     signal_spec_beidou_b1i,
     signal_spec_galileo_e1b, signal_spec_galileo_e1c, signal_spec_glonass_l1,
-    signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l5, sort_obs_sats, sort_sat_ids,
-    sort_sig_ids, Constellation, FreqHz, GlonassFrequencyChannel, GlonassL1FdmaSignal, GlonassSlot,
-    SatId, SigId, SignalBand, SignalCode, SignalRegistryEntry, SignalSpec, BEIDOU_B1_CARRIER_HZ,
-    BEIDOU_B2_CARRIER_HZ, GALILEO_E1_CARRIER_HZ, GALILEO_E5_CARRIER_HZ, GLONASS_L1_CARRIER_HZ,
-    GLONASS_L1_CHANNEL_SPACING_HZ, GPS_L1_CA_CARRIER_HZ, GPS_L2_PY_CARRIER_HZ, GPS_L5_CARRIER_HZ,
+    signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l2c, signal_spec_gps_l5,
+    sort_obs_sats, sort_sat_ids, sort_sig_ids, Constellation, FreqHz, GlonassFrequencyChannel,
+    GlonassL1FdmaSignal, GlonassSlot, SatId, SigId, SignalBand, SignalCode, SignalRegistryEntry,
+    SignalSpec, BEIDOU_B1_CARRIER_HZ, BEIDOU_B2_CARRIER_HZ, GALILEO_E1_CARRIER_HZ,
+    GALILEO_E5_CARRIER_HZ, GLONASS_L1_CARRIER_HZ, GLONASS_L1_CHANNEL_SPACING_HZ,
+    GPS_L1_CA_CARRIER_HZ, GPS_L2_PY_CARRIER_HZ, GPS_L2C_CARRIER_HZ, GPS_L5_CARRIER_HZ,
 };
 /// Observation and tracking contracts.
 pub use crate::obs::{
