@@ -1,3 +1,4 @@
+pub mod beidou_d1_fixture;
 pub mod broadcast_reference;
 pub mod orbit_reference;
 pub mod position_outlier;
