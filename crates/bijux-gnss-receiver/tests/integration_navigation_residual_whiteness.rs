@@ -103,3 +103,36 @@ fn navigation_pipeline_refuses_persistent_residual_temporal_correlation() {
         refused_solutions.iter().map(|solution| &solution.health).collect::<Vec<_>>(),
     );
 }
+
+#[test]
+fn navigation_pipeline_requires_persistent_streak_before_refusal() {
+    let run = static_residual_temporal_correlation_run();
+    let first_flagged = run
+        .solutions
+        .iter()
+        .find(|solution| !residual_temporal_correlation_health_events(solution).is_empty())
+        .expect("expected at least one flagged epoch");
+
+    assert_eq!(first_flagged.epoch.index, run.anomaly_onset_epoch_index + 1);
+    assert_eq!(first_flagged.status, SolutionStatus::Degraded);
+    assert_eq!(first_flagged.refusal_class, None);
+    assert!(
+        first_flagged
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "residual_whiteness"),
+        "expected residual whiteness explainability on first flagged epoch: {:?}",
+        first_flagged.explain_reasons,
+    );
+    assert!(
+        first_flagged.health.iter().any(|event| matches!(
+            event,
+            NavHealthEvent::ResidualTemporalCorrelation {
+                persistent_suspect_epochs,
+                ..
+            } if *persistent_suspect_epochs == 1
+        )),
+        "expected first flagged epoch to carry a one-epoch suspect streak: {:?}",
+        first_flagged.health,
+    );
+}
