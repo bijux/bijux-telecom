@@ -263,7 +263,7 @@ impl ArtifactPayloadValidate for PppSolutionEpoch {
 
 #[cfg(test)]
 mod tests {
-    use super::{PppArMode, PppConvergenceState, PppSolutionEpoch};
+    use super::{PppArMode, PppConfig, PppConvergenceState, PppSolutionEpoch};
     use bijux_gnss_core::api::ArtifactPayloadValidate;
 
     fn sample_solution() -> PppSolutionEpoch {
@@ -388,6 +388,40 @@ mod tests {
         let diagnostics = solution.validate_payload();
 
         assert!(diagnostics.iter().any(|event| event.code == "PPP_ZTD_SIGMA_INVALID"));
+    }
+
+    #[test]
+    fn ppp_config_builds_troposphere_meteorology_from_complete_inputs() {
+        let config = PppConfig {
+            tropo_pressure_hpa: Some(990.0),
+            tropo_temperature_k: Some(299.15),
+            tropo_relative_humidity: Some(0.65),
+            ..PppConfig::default()
+        };
+
+        let meteorology = config.troposphere_meteorology().expect("complete meteorology");
+
+        assert_eq!(meteorology.pressure_hpa, 990.0);
+        assert_eq!(meteorology.temperature_k, 299.15);
+        assert_eq!(meteorology.relative_humidity, 0.65);
+    }
+
+    #[test]
+    fn ppp_config_ignores_partial_or_non_physical_troposphere_inputs() {
+        let partial = PppConfig {
+            tropo_pressure_hpa: Some(990.0),
+            tropo_temperature_k: Some(299.15),
+            ..PppConfig::default()
+        };
+        let non_physical = PppConfig {
+            tropo_pressure_hpa: Some(50.0),
+            tropo_temperature_k: Some(299.15),
+            tropo_relative_humidity: Some(0.65),
+            ..PppConfig::default()
+        };
+
+        assert!(partial.troposphere_meteorology().is_none());
+        assert!(non_physical.troposphere_meteorology().is_none());
     }
 }
 
