@@ -91,6 +91,7 @@ pub use crate::formats::beidou_b1i_navigation_decode::{
     BeidouD1ClockSubframe, BeidouD1Ephemeris1Subframe, BeidouD1Ephemeris2Subframe,
     BeidouD1Subframe, BeidouD1SubframeRejection, BeidouD1SubframeRejectionReason,
 };
+pub use crate::formats::bias_sinex::{BiasSinexProvider, BiasSinexWindow};
 /// Format parsing and output.
 pub use crate::formats::galileo_inav_decode::{
     decode_galileo_broadcast_navigation_data, decode_galileo_broadcast_navigation_data_payloads,
