@@ -252,6 +252,9 @@ Files: `ppp.jsonl`
 Invariants:
 - state vector finite
 - covariance positive semi-definite (within tolerance)
+- `payload.ztd_m` records the estimated zenith troposphere delay in meters and must be finite
+- `payload.ztd_sigma_m`, when present, records the estimated zenith troposphere delay
+  uncertainty in meters and must be finite and non-negative
 
 ## Compatibility
 
