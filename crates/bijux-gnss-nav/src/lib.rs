@@ -33,6 +33,8 @@ pub use crate::models::antenna::{
 };
 pub use crate::estimation::ppp::config::PppTroposphereSource;
 pub use crate::estimation::rtk::antenna::RtkAntennaCorrectionConfig;
+pub use crate::estimation::rtk::double_difference::rtk_double_difference_residual_metrics_with_antenna_corrections;
+pub use crate::estimation::rtk::single_difference::rtk_single_difference_residual_metrics_with_antenna_corrections;
 
 /// Public API surface for this crate.
 pub mod api;
