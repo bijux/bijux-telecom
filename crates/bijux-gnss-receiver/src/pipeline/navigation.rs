@@ -12,7 +12,8 @@ use bijux_gnss_nav::api::{
     position_broadcast_navigation_from_gps_ephemerides, position_measurement_weight,
     position_observation_has_valid_satellite_time, sat_state_beidou_b1i_from_observation,
     sat_state_galileo_e1_from_observation, sat_state_glonass_l1_from_observation,
-    sat_state_gps_l1ca_from_observation, GpsEphemeris, KlobucharCoefficients,
+    sat_state_gps_l1ca_from_observation, GpsBroadcastNavigationData, GpsEphemeris,
+    KlobucharCoefficients,
     ImpossibleGeometryEvidence, PositionBroadcastNavigation, PositionFilterMotionClass,
     PositionObservation, PositionRobustWeighting, PositionSolutionSmoother,
     PositionSolutionSmootherConfig, PositionSolveRefusalKind, PositionSolver,
@@ -175,6 +176,19 @@ impl Navigation {
     ) -> Option<NavSolutionEpoch> {
         let navigation = position_broadcast_navigation_from_gps_ephemerides(eph);
         self.solve_epoch_with_navigation_data_and_broadcast_ionosphere(obs, &navigation, klobuchar)
+    }
+
+    pub fn solve_epoch_with_gps_broadcast_navigation(
+        &mut self,
+        obs: &ObsEpoch,
+        navigation: &GpsBroadcastNavigationData,
+    ) -> Option<NavSolutionEpoch> {
+        let entries = position_broadcast_navigation_from_gps_ephemerides(&navigation.ephemerides);
+        self.solve_epoch_with_navigation_data_and_broadcast_ionosphere(
+            obs,
+            &entries,
+            navigation.klobuchar.as_ref(),
+        )
     }
 
     pub fn solve_epoch_with_navigation_data(
@@ -2925,6 +2939,40 @@ mod tests {
                 &ephs,
                 Some(&sample_klobuchar_coefficients()),
             )
+            .expect("synthetic solution");
+
+        assert!(solution.valid);
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "ionosphere_correction=klobuchar_broadcast"));
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "troposphere_correction=saastamoinen"));
+    }
+
+    #[test]
+    fn synthetic_solution_uses_gps_broadcast_navigation_klobuchar_payload() {
+        let config = ReceiverPipelineConfig::default();
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+        let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
+        let t_rx_s = 100_000.0;
+        let ephs = vec![
+            make_eph(1, 0.0, 0.0, t_rx_s),
+            make_eph(2, 0.8, 0.9, t_rx_s),
+            make_eph(3, 1.6, 1.8, t_rx_s),
+            make_eph(4, 2.4, 2.7, t_rx_s),
+            make_eph(5, 3.2, 3.6, t_rx_s),
+        ];
+        let obs = make_obs_epoch_for_solution(23, t_rx_s, truth, &ephs);
+        let navigation = GpsBroadcastNavigationData {
+            ephemerides: ephs,
+            klobuchar: Some(sample_klobuchar_coefficients()),
+        };
+
+        let solution = nav
+            .solve_epoch_with_gps_broadcast_navigation(&obs, &navigation)
             .expect("synthetic solution");
 
         assert!(solution.valid);
