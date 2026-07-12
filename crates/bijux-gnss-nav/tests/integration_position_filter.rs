@@ -3,7 +3,8 @@ mod support;
 
 use bijux_gnss_nav::api::{
     geodetic_to_ecef, GpsEphemeris, PositionFilter, PositionFilterConfig,
-    PositionFilterDivergenceReason, PositionSolveRefusalKind,
+    PositionFilterDivergenceReason, PositionSolveRefusalKind, TrajectoryReconstructionInput,
+    trajectory_reconstruction_report,
 };
 
 use support::position_truth::{
@@ -118,6 +119,17 @@ fn observations_for_prns(
         .filter(|observation| visible_prns.contains(&observation.sat.prn))
         .cloned()
         .collect()
+}
+
+fn trajectory_input(
+    solution: &bijux_gnss_nav::api::PositionFilterEpoch,
+    truth_ecef_m: (f64, f64, f64),
+) -> TrajectoryReconstructionInput {
+    TrajectoryReconstructionInput {
+        t_rx_s: solution.t_rx_s,
+        estimated_ecef_m: [solution.ecef_x_m, solution.ecef_y_m, solution.ecef_z_m],
+        truth_ecef_m: [truth_ecef_m.0, truth_ecef_m.1, truth_ecef_m.2],
+    }
 }
 
 fn translate_truth_ecef_m(
@@ -522,6 +534,34 @@ fn sequential_position_filter_tracks_moving_receiver_across_epochs() {
     assert_eq!(filter.last_t_rx_s, Some(epochs.last().expect("moving epochs").t_rx_s));
     assert!(final_velocity_norm_mps.expect("final velocity norm") > 3.0);
     assert!(final_velocity_error_mps.expect("final velocity error") < 6.0);
+}
+
+#[test]
+fn sequential_position_filter_reports_moving_trajectory_error_over_time() {
+    let ephemerides = sample_filter_ephemerides();
+    let truth_velocity_mps = (12.0, -4.0, 1.5);
+    let epochs = moving_receiver_epochs(&ephemerides, 12, 1.0, truth_velocity_mps);
+    let mut filter = PositionFilter::new(PositionFilterConfig::for_vehicle_receiver());
+    let mut trajectory_inputs = Vec::new();
+
+    for epoch in &epochs {
+        let solution = filter
+            .solve_epoch(&epoch.observations, &ephemerides, epoch.t_rx_s)
+            .expect("moving trajectory epoch should solve");
+        trajectory_inputs.push(trajectory_input(&solution, epoch.truth_ecef_m));
+    }
+
+    let report =
+        trajectory_reconstruction_report(&trajectory_inputs).expect("trajectory report should build");
+
+    assert_eq!(report.samples.len(), epochs.len());
+    assert_eq!(report.samples[0].t_rx_s, epochs[0].t_rx_s);
+    assert_eq!(report.samples.last().expect("last sample").t_rx_s, epochs.last().expect("last epoch").t_rx_s);
+    assert!(report.rms_position_error_3d_m < 20.0, "rms_position_error_3d_m={}", report.rms_position_error_3d_m);
+    assert!(report.max_position_error_3d_m < 25.0, "max_position_error_3d_m={}", report.max_position_error_3d_m);
+    assert!(report.final_position_error_3d_m < 20.0, "final_position_error_3d_m={}", report.final_position_error_3d_m);
+    assert!(report.rms_step_error_3d_m.expect("step rms") < 6.0, "rms_step_error_3d_m={:?}", report.rms_step_error_3d_m);
+    assert!(report.max_step_error_3d_m.expect("step max") < 8.5, "max_step_error_3d_m={:?}", report.max_step_error_3d_m);
 }
 
 #[test]
