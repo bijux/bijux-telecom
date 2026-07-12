@@ -954,8 +954,7 @@ fn gps_l5_observations_show_tgd_residuals_when_corrections_are_disabled() {
     let navigation = position_broadcast_navigation_from_gps_ephemerides(&gps_ephemerides);
 
     let corrected_solver = PositionSolver::new();
-    let uncorrected_solver =
-        PositionSolver { apply_broadcast_group_delay: false, ..PositionSolver::new() };
+    let uncorrected_solver = PositionSolver::new().with_broadcast_group_delay(false);
     let corrected_solution = corrected_solver
         .solve_wls_with_navigation_data(&observations, &navigation, t_rx_s)
         .expect("corrected GPS L5 observations should solve");
@@ -1034,8 +1033,7 @@ fn mixed_secondary_band_observations_recover_with_broadcast_group_delay_correcti
 fn mixed_secondary_band_observations_show_group_delay_residuals_when_corrections_are_disabled() {
     let scenario = mixed_secondary_band_case();
     let corrected_solver = PositionSolver::new();
-    let uncorrected_solver =
-        PositionSolver { apply_broadcast_group_delay: false, ..PositionSolver::new() };
+    let uncorrected_solver = PositionSolver::new().with_broadcast_group_delay(false);
     let corrected_solution = corrected_solver
         .solve_wls_with_navigation_data(
             &scenario.observations,

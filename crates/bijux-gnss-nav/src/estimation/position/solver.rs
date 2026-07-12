@@ -484,6 +484,11 @@ impl PositionSolver {
         }
     }
 
+    pub fn with_broadcast_group_delay(mut self, apply_broadcast_group_delay: bool) -> Self {
+        self.apply_broadcast_group_delay = apply_broadcast_group_delay;
+        self
+    }
+
     pub fn solve_wls(
         &self,
         observations: &[PositionObservation],
@@ -2026,6 +2031,13 @@ mod broadcast_group_delay_tests {
     #[test]
     fn position_solver_applies_broadcast_group_delay_by_default() {
         assert!(PositionSolver::new().apply_broadcast_group_delay);
+    }
+
+    #[test]
+    fn position_solver_can_disable_broadcast_group_delay() {
+        assert!(
+            !PositionSolver::new().with_broadcast_group_delay(false).apply_broadcast_group_delay
+        );
     }
 
     #[test]
