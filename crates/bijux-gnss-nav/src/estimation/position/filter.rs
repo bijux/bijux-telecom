@@ -2,12 +2,24 @@
 
 use std::collections::BTreeMap;
 
-use bijux_gnss_core::api::{Constellation, InterSystemBias, SatId};
+use bijux_gnss_core::api::{
+    Constellation, InterSystemBias, MeasurementRejectReason, SatId, SigId, SignalBand, SignalCode,
+};
 
-use crate::estimation::ekf::models::ProcessNoiseConfig;
+use crate::estimation::ekf::models::{NavClockModel, ProcessNoiseConfig, PseudorangeMeasurement};
 use crate::estimation::ekf::state::{Ekf, EkfConfig};
-use crate::estimation::position::solver::WeightingConfig;
+use crate::estimation::position::navigation::{
+    corrected_pseudorange_m, resolve_position_inputs, satellite_state_from_observation,
+    unknown_inter_system_time_offset_sats, PositionSolveInput, SatelliteState,
+};
+use crate::estimation::position::solver::{
+    elevation_azimuth_deg, position_broadcast_navigation_from_gps_ephemerides,
+    position_measurement_weight, position_observation_has_valid_satellite_time,
+    PositionBroadcastNavigation, PositionObservation, PositionSolveRefusal,
+    PositionSolveRefusalKind, PositionSolver, WeightingConfig,
+};
 use crate::linalg::Matrix;
+use crate::orbits::gps::GpsEphemeris;
 
 #[derive(Debug, Clone)]
 pub struct PositionFilterProcessNoise {
@@ -144,6 +156,135 @@ impl PositionFilter {
         self.initialized = true;
     }
 
+    pub fn solve_epoch(
+        &mut self,
+        observations: &[PositionObservation],
+        ephemerides: &[GpsEphemeris],
+        t_rx_s: f64,
+    ) -> Result<PositionFilterEpoch, PositionSolveRefusal> {
+        let navigation = position_broadcast_navigation_from_gps_ephemerides(ephemerides);
+        self.solve_epoch_with_navigation_data(observations, &navigation, t_rx_s)
+    }
+
+    pub fn solve_epoch_with_navigation_data(
+        &mut self,
+        observations: &[PositionObservation],
+        navigation: &[PositionBroadcastNavigation],
+        t_rx_s: f64,
+    ) -> Result<PositionFilterEpoch, PositionSolveRefusal> {
+        let sat_count = observations.len();
+        if sat_count < 4 {
+            return Err(PositionSolveRefusal {
+                kind: PositionSolveRefusalKind::InsufficientObservations,
+                sat_count,
+                used_sat_count: sat_count,
+                rejected: Vec::new(),
+            });
+        }
+
+        let mut observations = observations.to_vec();
+        observations.sort_by_key(|obs| (obs.sat.constellation as u8, obs.sat.prn));
+        let mut rejected = Vec::new();
+        observations.retain(|obs| {
+            if position_observation_has_valid_satellite_time(obs, t_rx_s) {
+                true
+            } else {
+                rejected.push((obs.sat, MeasurementRejectReason::TimeInconsistency));
+                false
+            }
+        });
+        if observations.len() < 4 {
+            let kind = if rejected.is_empty() {
+                PositionSolveRefusalKind::InsufficientObservations
+            } else {
+                PositionSolveRefusalKind::InvalidSatelliteTime
+            };
+            return Err(PositionSolveRefusal {
+                kind,
+                sat_count,
+                used_sat_count: observations.len(),
+                rejected,
+            });
+        }
+
+        let unknown_time_offset_sats =
+            unknown_inter_system_time_offset_sats(&observations, navigation);
+        if !unknown_time_offset_sats.is_empty() {
+            rejected.extend(
+                unknown_time_offset_sats
+                    .iter()
+                    .copied()
+                    .map(|sat| (sat, MeasurementRejectReason::TimeInconsistency)),
+            );
+            return Err(PositionSolveRefusal {
+                kind: PositionSolveRefusalKind::UnknownInterSystemTimeOffset,
+                sat_count,
+                used_sat_count: observations.len().saturating_sub(unknown_time_offset_sats.len()),
+                rejected,
+            });
+        }
+
+        let inputs = resolve_position_inputs(&observations, navigation, t_rx_s, &mut rejected);
+        if inputs.len() < 4 {
+            return Err(PositionSolveRefusal {
+                kind: PositionSolveRefusalKind::InvalidEphemeris,
+                sat_count,
+                used_sat_count: inputs.len(),
+                rejected,
+            });
+        }
+
+        if !self.initialized {
+            let seed = self.initialize_from_wls(&observations, navigation, t_rx_s)?;
+            self.last_t_rx_s = Some(t_rx_s);
+            return Ok(self.epoch_from_seed(t_rx_s, &seed));
+        }
+
+        self.ensure_reference_constellation(&inputs);
+        self.ensure_isb_states(&inputs);
+        let dt_s = (t_rx_s - self.last_t_rx_s.unwrap_or(t_rx_s)).max(self.config.min_dt_s);
+        self.predict(dt_s);
+
+        let mut residuals = Vec::new();
+        let mut used_sat_count = 0;
+        for input in &inputs {
+            let corrected_pseudorange_m = corrected_pseudorange_m(
+                &input.observation,
+                &input.navigation,
+                self.config.apply_broadcast_group_delay,
+            );
+            let Some(state) = satellite_state_from_observation(
+                &input.navigation,
+                input.receive_tow_s,
+                corrected_pseudorange_m,
+                input.observation.signal_timing,
+            ) else {
+                rejected.push((input.observation.sat, MeasurementRejectReason::InvalidEphemeris));
+                continue;
+            };
+
+            let measurement = self.pseudorange_measurement(input, &state, corrected_pseudorange_m);
+            if self.ekf.update(&measurement) {
+                used_sat_count += 1;
+            } else {
+                rejected.push((input.observation.sat, MeasurementRejectReason::Outlier));
+            }
+            residuals.push((input.observation.sat, self.ekf.health.innovation_rms));
+        }
+
+        self.last_t_rx_s = Some(t_rx_s);
+        if used_sat_count < 4 {
+            return Err(PositionSolveRefusal {
+                kind: PositionSolveRefusalKind::InsufficientUsableSatellites,
+                sat_count,
+                used_sat_count,
+                rejected,
+            });
+        }
+
+        Ok(self.epoch_from_state(t_rx_s, residuals, used_sat_count))
+    }
+
     pub(crate) fn process_noise_config(&self) -> ProcessNoiseConfig {
         ProcessNoiseConfig {
             pos_m: self.config.process_noise.pos_m,
@@ -153,11 +294,235 @@ impl PositionFilter {
             ztd_m: 0.0,
         }
     }
+
+    fn initialize_from_wls(
+        &mut self,
+        observations: &[PositionObservation],
+        navigation: &[PositionBroadcastNavigation],
+        t_rx_s: f64,
+    ) -> Result<crate::estimation::position::solver::PositionSolution, PositionSolveRefusal> {
+        let solution = PositionSolver {
+            apply_broadcast_group_delay: self.config.apply_broadcast_group_delay,
+            ..PositionSolver::new()
+        }
+        .try_solve_wls_with_navigation_data(observations, navigation, t_rx_s)?;
+        self.seed_from_solution(&solution);
+        Ok(solution)
+    }
+
+    fn seed_from_solution(
+        &mut self,
+        solution: &crate::estimation::position::solver::PositionSolution,
+    ) {
+        self.seed_receiver_state(
+            [solution.ecef_x_m, solution.ecef_y_m, solution.ecef_z_m],
+            solution.clock_bias_s,
+        );
+        self.reference_constellation = Some(solution.clock_reference_constellation);
+        self.indices.isb.clear();
+        for bias in &solution.inter_system_biases {
+            let state_index = self.ekf.x.len();
+            self.ekf.add_state(
+                &format!("isb_{:?}", bias.constellation),
+                bias.bias_s.0,
+                self.config.initial_clock_bias_sigma_s.powi(2),
+            );
+            self.indices.isb.insert(bias.constellation, state_index);
+        }
+    }
+
+    fn ensure_reference_constellation(&mut self, inputs: &[PositionSolveInput]) {
+        if self.reference_constellation.is_some() {
+            return;
+        }
+        self.reference_constellation = inputs
+            .iter()
+            .map(|input| input.observation.sat.constellation)
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .find(|constellation| *constellation == Constellation::Gps)
+            .or_else(|| inputs.first().map(|input| input.observation.sat.constellation));
+    }
+
+    fn ensure_isb_states(&mut self, inputs: &[PositionSolveInput]) {
+        let Some(reference_constellation) = self.reference_constellation else {
+            return;
+        };
+        for constellation in inputs
+            .iter()
+            .map(|input| input.observation.sat.constellation)
+            .collect::<std::collections::BTreeSet<_>>()
+        {
+            if constellation == reference_constellation
+                || self.indices.isb.contains_key(&constellation)
+            {
+                continue;
+            }
+            let state_index = self.ekf.x.len();
+            self.ekf.add_state(
+                &format!("isb_{constellation:?}"),
+                0.0,
+                self.config.initial_clock_bias_sigma_s.powi(2),
+            );
+            self.indices.isb.insert(constellation, state_index);
+        }
+    }
+
+    fn predict(&mut self, dt_s: f64) {
+        self.ekf.predict(&NavClockModel::new(self.process_noise_config()), dt_s);
+    }
+
+    fn pseudorange_measurement(
+        &self,
+        input: &PositionSolveInput,
+        state: &SatelliteState,
+        corrected_pseudorange_m: f64,
+    ) -> PseudorangeMeasurement {
+        let signal_id =
+            input.observation.signal_id.unwrap_or_else(|| default_signal_id(input.observation.sat));
+        let elevation_deg = input
+            .observation
+            .elevation_deg
+            .or_else(|| current_elevation_deg(&self.ekf.x, &self.indices.pos, state));
+        let sigma_m = pseudorange_sigma_m(&input.observation, elevation_deg, &self.config);
+        let isb_index = self
+            .reference_constellation
+            .filter(|reference_constellation| {
+                input.observation.sat.constellation != *reference_constellation
+            })
+            .and_then(|_| self.indices.isb.get(&input.observation.sat.constellation).copied());
+
+        PseudorangeMeasurement {
+            sig: signal_id,
+            z_m: corrected_pseudorange_m,
+            sat_pos_m: [state.x_m, state.y_m, state.z_m],
+            sat_clock_s: state.clock_bias_s,
+            tropo_m: 0.0,
+            iono_m: 0.0,
+            sigma_m,
+            elevation_deg,
+            ztd_index: None,
+            isb_index,
+        }
+    }
+
+    fn epoch_from_seed(
+        &self,
+        t_rx_s: f64,
+        solution: &crate::estimation::position::solver::PositionSolution,
+    ) -> PositionFilterEpoch {
+        PositionFilterEpoch {
+            t_rx_s,
+            ecef_x_m: solution.ecef_x_m,
+            ecef_y_m: solution.ecef_y_m,
+            ecef_z_m: solution.ecef_z_m,
+            velocity_x_mps: self.ekf.x[self.indices.vel[0]],
+            velocity_y_mps: self.ekf.x[self.indices.vel[1]],
+            velocity_z_mps: self.ekf.x[self.indices.vel[2]],
+            clock_bias_s: solution.clock_bias_s,
+            clock_drift_s_per_s: self.ekf.x[self.indices.clock_drift],
+            sigma_h_m: solution.sigma_h_m,
+            sigma_v_m: solution.sigma_v_m,
+            rms_m: solution.rms_m,
+            residuals: solution
+                .residuals
+                .iter()
+                .map(|(sat, residual_m, _)| (*sat, *residual_m))
+                .collect(),
+            inter_system_biases: solution.inter_system_biases.clone(),
+            used_sat_count: solution.used_sat_count,
+        }
+    }
+
+    fn epoch_from_state(
+        &self,
+        t_rx_s: f64,
+        residuals: Vec<(SatId, f64)>,
+        used_sat_count: usize,
+    ) -> PositionFilterEpoch {
+        let sigma_x_m = self.ekf.p[(self.indices.pos[0], self.indices.pos[0])].abs().sqrt();
+        let sigma_y_m = self.ekf.p[(self.indices.pos[1], self.indices.pos[1])].abs().sqrt();
+        let sigma_z_m = self.ekf.p[(self.indices.pos[2], self.indices.pos[2])].abs().sqrt();
+        PositionFilterEpoch {
+            t_rx_s,
+            ecef_x_m: self.ekf.x[self.indices.pos[0]],
+            ecef_y_m: self.ekf.x[self.indices.pos[1]],
+            ecef_z_m: self.ekf.x[self.indices.pos[2]],
+            velocity_x_mps: self.ekf.x[self.indices.vel[0]],
+            velocity_y_mps: self.ekf.x[self.indices.vel[1]],
+            velocity_z_mps: self.ekf.x[self.indices.vel[2]],
+            clock_bias_s: self.ekf.x[self.indices.clock_bias],
+            clock_drift_s_per_s: self.ekf.x[self.indices.clock_drift],
+            sigma_h_m: Some((sigma_x_m * sigma_x_m + sigma_y_m * sigma_y_m).sqrt()),
+            sigma_v_m: Some(sigma_z_m),
+            rms_m: self.ekf.health.innovation_rms,
+            residuals,
+            inter_system_biases: self.inter_system_biases(),
+            used_sat_count,
+        }
+    }
+
+    fn inter_system_biases(&self) -> Vec<InterSystemBias> {
+        self.indices
+            .isb
+            .iter()
+            .map(|(constellation, index)| InterSystemBias {
+                constellation: *constellation,
+                band: Some(constellation_primary_band(*constellation)),
+                bias_s: bijux_gnss_core::api::Seconds(
+                    self.ekf.x.get(*index).copied().unwrap_or(0.0),
+                ),
+            })
+            .collect()
+    }
+}
+
+fn current_elevation_deg(
+    state: &[f64],
+    pos: &[usize; 3],
+    sat_state: &SatelliteState,
+) -> Option<f64> {
+    let (azimuth_deg, elevation_deg) = elevation_azimuth_deg(
+        state[pos[0]],
+        state[pos[1]],
+        state[pos[2]],
+        sat_state.x_m,
+        sat_state.y_m,
+        sat_state.z_m,
+    );
+    (azimuth_deg.is_finite() && elevation_deg.is_finite()).then_some(elevation_deg)
+}
+
+fn pseudorange_sigma_m(
+    observation: &PositionObservation,
+    elevation_deg: Option<f64>,
+    config: &PositionFilterConfig,
+) -> f64 {
+    let geometry_weight =
+        position_measurement_weight(observation.cn0_dbhz, elevation_deg, None, config.weighting);
+    let total_weight = (geometry_weight * observation.weight.max(1.0e-6)).max(1.0e-6);
+    (config.base_pseudorange_sigma_m / total_weight.sqrt()).max(1.0e-3)
+}
+
+fn constellation_primary_band(constellation: Constellation) -> SignalBand {
+    match constellation {
+        Constellation::Gps => SignalBand::L1,
+        Constellation::Galileo => SignalBand::E1,
+        Constellation::Glonass => SignalBand::L1,
+        Constellation::Beidou => SignalBand::B1,
+        Constellation::Unknown => SignalBand::Unknown,
+    }
+}
+
+fn default_signal_id(sat: SatId) -> SigId {
+    SigId { sat, band: constellation_primary_band(sat.constellation), code: SignalCode::Unknown }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{PositionFilter, PositionFilterConfig};
+    use crate::estimation::position::solver::{PositionObservation, PositionSolveRefusalKind};
+    use bijux_gnss_core::api::{Constellation, SatId};
 
     #[test]
     fn position_filter_uses_eight_state_layout() {
@@ -182,5 +547,27 @@ mod tests {
         assert_eq!(filter.ekf.x[2], 3.0);
         assert_eq!(filter.ekf.x[6], 4.0e-4);
         assert!(filter.initialized);
+    }
+
+    #[test]
+    fn position_filter_refuses_underconstrained_epoch() {
+        let mut filter = PositionFilter::new(PositionFilterConfig::default());
+        let observations = vec![PositionObservation {
+            sat: SatId { constellation: Constellation::Gps, prn: 1 },
+            pseudorange_m: 24_000_000.0,
+            cn0_dbhz: 45.0,
+            elevation_deg: None,
+            weight: 1.0,
+            gps_receive_time: None,
+            signal_timing: None,
+            signal_id: None,
+        }];
+
+        let refusal = filter
+            .solve_epoch(&observations, &[], 0.0)
+            .expect_err("one observation cannot initialize the sequential filter");
+
+        assert_eq!(refusal.kind, PositionSolveRefusalKind::InsufficientObservations);
+        assert_eq!(refusal.sat_count, 1);
     }
 }
