@@ -6,6 +6,7 @@ use bijux_gnss_core::api::{NavHealthEvent, NavRefusalClass, SolutionStatus};
 
 use support::navigation_residual_whiteness::{
     residual_temporal_correlation_health_events, static_residual_temporal_correlation_run,
+    static_rotating_residual_pattern_run,
 };
 
 #[test]
@@ -134,5 +135,52 @@ fn navigation_pipeline_requires_persistent_streak_before_refusal() {
         )),
         "expected first flagged epoch to carry a one-epoch suspect streak: {:?}",
         first_flagged.health,
+    );
+}
+
+#[test]
+fn navigation_pipeline_does_not_flag_rotating_high_rms_residual_patterns() {
+    let run = static_rotating_residual_pattern_run();
+
+    assert!(
+        run.solutions
+            .iter()
+            .all(|solution| residual_temporal_correlation_health_events(solution).is_empty()),
+        "rotating residual pattern should avoid temporal-correlation classification: {:?}",
+        run.solutions
+            .iter()
+            .map(|solution| (
+                solution.epoch.index,
+                solution.status,
+                solution.refusal_class,
+                solution
+                    .residuals
+                    .iter()
+                    .filter(|residual| !residual.rejected)
+                    .map(|residual| (residual.sat.prn, residual.residual_m.0))
+                    .collect::<Vec<_>>(),
+            ))
+            .collect::<Vec<_>>(),
+    );
+    assert!(
+        run.solutions
+            .iter()
+            .filter(|solution| solution.epoch.index >= run.anomaly_onset_epoch_index)
+            .flat_map(|solution| solution.residuals.iter())
+            .filter(|residual| !residual.rejected)
+            .any(|residual| residual.residual_m.0.abs() >= 3.0),
+        "rotating control should still carry materially large residuals after onset: {:?}",
+        run.solutions
+            .iter()
+            .map(|solution| (
+                solution.epoch.index,
+                solution
+                    .residuals
+                    .iter()
+                    .filter(|residual| !residual.rejected)
+                    .map(|residual| residual.residual_m.0)
+                    .collect::<Vec<_>>(),
+            ))
+            .collect::<Vec<_>>(),
     );
 }
