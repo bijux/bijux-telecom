@@ -1040,9 +1040,15 @@ pub enum MeasurementRejectReason {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum NavHealthEvent {
     CovarianceSymmetrized,
-    CovarianceClamped { min_eigenvalue: f64 },
-    CovarianceDiverged { max_variance: f64 },
-    InnovationRejected { reason: String },
+    CovarianceClamped {
+        min_eigenvalue: f64,
+    },
+    CovarianceDiverged {
+        max_variance: f64,
+    },
+    InnovationRejected {
+        reason: String,
+    },
     CommonCodeDopplerAnomaly {
         common_code_step_m: f64,
         common_doppler_step_hz: f64,
@@ -1051,13 +1057,25 @@ pub enum NavHealthEvent {
         code_step_threshold_m: f64,
         doppler_step_threshold_hz: f64,
     },
+    ReplayTimingAnomaly {
+        common_delay_step_m: f64,
+        centered_delay_rms_m: f64,
+        max_centered_delay_m: f64,
+        matched_satellite_count: usize,
+        positive_step_satellite_count: usize,
+        common_delay_step_threshold_m: f64,
+        centered_delay_rms_threshold_m: f64,
+    },
     SatelliteClockAnomaly {
         sat: SatId,
         persistent_suspect_epochs: usize,
         max_solution_separation_m: f64,
         separation_threshold_m: f64,
     },
-    ZtdClamped { before_m: f64, after_m: f64 },
+    ZtdClamped {
+        before_m: f64,
+        after_m: f64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

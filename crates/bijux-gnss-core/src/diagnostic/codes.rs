@@ -130,6 +130,12 @@ pub const DIAGNOSTIC_CODES: &[DiagnosticCode] = &[
         mitigation: "Inspect receiver clock state, peer-satellite Doppler deltas, and spoofing or rebroadcast conditions.",
     },
     DiagnosticCode {
+        code: "NAV_REPLAY_TIMING_ANOMALY",
+        severity: DiagnosticSeverity::Warning,
+        meaning: "Large positive code-delay steps with non-common geometry spread suggest replayed timing",
+        mitigation: "Inspect matched-satellite code steps, receiver clock evolution, and rebroadcast or meaconing conditions.",
+    },
+    DiagnosticCode {
         code: "NAV_EPHEMERIS_GAP",
         severity: DiagnosticSeverity::Warning,
         meaning: "Ephemeris coverage gap detected",
