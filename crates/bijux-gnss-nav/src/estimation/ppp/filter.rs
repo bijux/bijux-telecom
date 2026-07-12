@@ -153,6 +153,17 @@ impl PppFilter {
         }
         self.predict(dt_s);
         self.try_seed_ztd_from_position_state();
+        let receiver_state_pos_m = [
+            self.ekf.x[self.indices.pos[0]],
+            self.ekf.x[self.indices.pos[1]],
+            self.ekf.x[self.indices.pos[2]],
+        ];
+        let mut correction_context = self.corrections.clone();
+        if let Some(ocean_tide_loading_m) =
+            self.config.ocean_tide_loading_displacement_m(receiver_state_pos_m, obs.gps_time())
+        {
+            correction_context.add_earth_tide_m(ocean_tide_loading_m);
+        }
 
         let mut sats: Vec<&ObsSatellite> = obs.sats.iter().collect();
         sats.sort_by_key(|s| s.signal_id);
@@ -162,7 +173,7 @@ impl PppFilter {
         self.ensure_states(&sats);
         self.update_wide_lane(obs, &sats);
         let fixed_wl = self.try_fix_wide_lane(obs, &sats);
-        let corr = compute_corrections(&self.corrections);
+        let corr = compute_corrections(&correction_context);
         let products_time_s = product_reference_time_s(obs);
 
         let mut residuals = Vec::new();
@@ -189,8 +200,16 @@ impl PppFilter {
             let rx_x = self.ekf.x[self.indices.pos[0]];
             let rx_y = self.ekf.x[self.indices.pos[1]];
             let rx_z = self.ekf.x[self.indices.pos[2]];
-            let (_az, el) =
-                elevation_azimuth_deg(rx_x, rx_y, rx_z, state.x_m, state.y_m, state.z_m);
+            let receiver_pos_m =
+                [rx_x + corr.earth_tide_m[0], rx_y + corr.earth_tide_m[1], rx_z + corr.earth_tide_m[2]];
+            let (_az, el) = elevation_azimuth_deg(
+                receiver_pos_m[0],
+                receiver_pos_m[1],
+                receiver_pos_m[2],
+                state.x_m,
+                state.y_m,
+                state.z_m,
+            );
             if !el.is_finite() || el < self.config.weighting.min_elev_deg {
                 continue;
             }
@@ -210,7 +229,6 @@ impl PppFilter {
             let code_bias_m =
                 resolved_code_bias_m(self.code_bias.as_ref(), sat.signal_id, obs.gps_time());
             let phase_bias_cycles = self.phase_bias.phase_bias_cycles(sat.signal_id).unwrap_or(0.0);
-            let receiver_pos_m = [rx_x, rx_y, rx_z];
             let sat_pos_m = [state.x_m, state.y_m, state.z_m];
 
             if self.config.use_iono_free {

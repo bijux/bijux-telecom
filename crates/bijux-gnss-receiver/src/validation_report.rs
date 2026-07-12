@@ -1210,6 +1210,7 @@ fn build_ppp_config(profile: &ReceiverConfig) -> PppConfig {
         tropo_pressure_hpa: None,
         tropo_temperature_k: None,
         tropo_relative_humidity: None,
+        ocean_tide_loading_model: None,
         receiver_antenna_type: p.receiver_antenna_type.clone(),
         receiver_antenna_calibrations: None,
         satellite_antenna_calibrations: None,
