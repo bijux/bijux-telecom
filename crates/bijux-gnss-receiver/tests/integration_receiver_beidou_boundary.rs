@@ -6,7 +6,8 @@ use bijux_gnss_core::api::{
 };
 use bijux_gnss_receiver::api::{
     sim::{SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource},
-    Receiver, ReceiverPipelineConfig, ReceiverRuntime, TrackingChannelState,
+    ConstellationSelectionPolicy, Receiver, ReceiverPipelineConfig, ReceiverRuntime,
+    TrackingChannelState,
 };
 
 fn beidou_b1_config() -> ReceiverPipelineConfig {
@@ -127,4 +128,20 @@ fn support_matrix_describes_beidou_b1i_as_observation_ready() {
         "{row:?}"
     );
     assert!(row.reason.contains("navigation"), "{row:?}");
+}
+
+#[test]
+fn receiver_gps_only_policy_skips_beidou_signal_acquisition() {
+    let mut config = beidou_b1_config();
+    config.constellation_policy = ConstellationSelectionPolicy::GpsOnly;
+    let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
+    let scenario = beidou_b1_scenario(sat);
+    let mut source = SyntheticSignalSource::new_signal_only(&config, &scenario);
+    let receiver = Receiver::new(config, ReceiverRuntime::default());
+
+    let artifacts = receiver.run(&mut source).expect("receiver run");
+
+    assert!(artifacts.acquisitions.is_empty(), "{artifacts:?}");
+    assert!(artifacts.tracking.is_empty(), "{artifacts:?}");
+    assert!(artifacts.observations.is_empty(), "{artifacts:?}");
 }

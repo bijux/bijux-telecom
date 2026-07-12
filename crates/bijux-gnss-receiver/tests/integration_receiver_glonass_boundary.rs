@@ -6,7 +6,7 @@ use bijux_gnss_core::api::{
 };
 use bijux_gnss_receiver::api::{
     sim::{SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource},
-    Receiver, ReceiverPipelineConfig, ReceiverRuntime,
+    ConstellationSelectionPolicy, Receiver, ReceiverPipelineConfig, ReceiverRuntime,
 };
 
 fn glonass_boundary_config(channel: GlonassFrequencyChannel) -> ReceiverPipelineConfig {
@@ -130,4 +130,32 @@ fn receiver_default_run_does_not_guess_glonass_frequency_channels() {
     assert!(row.reason.contains("explicit FDMA channel requests"), "{row:?}");
     assert!(row.reason.contains("tracking"), "{row:?}");
     assert!(row.reason.contains("observations"), "{row:?}");
+}
+
+#[test]
+fn receiver_gps_only_policy_filters_explicit_glonass_requests() {
+    let slot = GlonassSlot::new(8).expect("slot 8 must be valid");
+    let sat = glonass_slot_sat(slot);
+    let channel = GlonassFrequencyChannel::new(-4).expect("channel -4 must be valid");
+    let mut config = glonass_boundary_config(channel);
+    config.constellation_policy = ConstellationSelectionPolicy::GpsOnly;
+    let scenario = glonass_boundary_scenario(sat, channel);
+    let request = AcqRequest {
+        sat,
+        glonass_frequency_channel: Some(channel),
+        doppler_search_hz: 0,
+        doppler_step_hz: 250,
+        coherent_ms: 1,
+        noncoherent: 1,
+    };
+    let mut source = SyntheticSignalSource::new_signal_only(&config, &scenario);
+    let receiver = Receiver::new(config, ReceiverRuntime::default());
+
+    let artifacts = receiver
+        .run_with_acquisition_requests(&mut source, &[request])
+        .expect("receiver run with filtered GLONASS request");
+
+    assert!(artifacts.acquisitions.is_empty(), "{artifacts:?}");
+    assert!(artifacts.tracking.is_empty(), "{artifacts:?}");
+    assert!(artifacts.observations.is_empty(), "{artifacts:?}");
 }

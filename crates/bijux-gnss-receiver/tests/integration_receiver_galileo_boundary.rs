@@ -3,7 +3,8 @@
 use bijux_gnss_core::api::{Constellation, SatId, SignalBand, SignalCode, SupportStatus};
 use bijux_gnss_receiver::api::{
     sim::{SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource},
-    Receiver, ReceiverPipelineConfig, ReceiverRuntime, TrackingChannelState,
+    ConstellationSelectionPolicy, Receiver, ReceiverPipelineConfig, ReceiverRuntime,
+    TrackingChannelState,
 };
 
 fn galileo_e1_config() -> ReceiverPipelineConfig {
@@ -109,4 +110,20 @@ fn support_matrix_describes_galileo_e1_as_tracking_ready() {
     );
     assert!(row.reason.contains("observations"), "{row:?}");
     assert!(row.reason.contains("navigation"), "{row:?}");
+}
+
+#[test]
+fn receiver_gps_only_policy_skips_galileo_signal_acquisition() {
+    let mut config = galileo_e1_config();
+    config.constellation_policy = ConstellationSelectionPolicy::GpsOnly;
+    let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+    let scenario = galileo_e1_scenario(sat);
+    let mut source = SyntheticSignalSource::new_signal_only(&config, &scenario);
+    let receiver = Receiver::new(config, ReceiverRuntime::default());
+
+    let artifacts = receiver.run(&mut source).expect("receiver run");
+
+    assert!(artifacts.acquisitions.is_empty(), "{artifacts:?}");
+    assert!(artifacts.tracking.is_empty(), "{artifacts:?}");
+    assert!(artifacts.observations.is_empty(), "{artifacts:?}");
 }
