@@ -169,6 +169,30 @@ mod tests {
 
         assert!((zero_clock[0] - corrected[0] - expected_delta_cycles).abs() < 1.0e-6);
     }
+
+    #[test]
+    fn doppler_measurement_jacobian_couples_position_and_velocity() {
+        let measurement = DopplerMeasurement {
+            sig: sample_sig_id(),
+            z_hz: 0.0,
+            sat_pos_m: [20_200_000.0, -1_500_000.0, 21_300_000.0],
+            sat_vel_mps: [750.0, -1_200.0, 300.0],
+            wavelength_m: 0.190_293_672_798_364_87,
+            sigma_hz: 0.1,
+        };
+        let state =
+            [1_117_194.907, -4_842_953.615, 3_985_351.233, 32.0, -11.0, 4.0, 2.75e-4, 0.0];
+        let mut jacobian = Matrix::new(1, 8, 0.0);
+
+        measurement.jacobian(&state, &mut jacobian);
+
+        assert!(jacobian[(0, 0)].abs() > 0.0);
+        assert!(jacobian[(0, 1)].abs() > 0.0);
+        assert!(jacobian[(0, 2)].abs() > 0.0);
+        assert!(jacobian[(0, 3)].abs() > 0.0);
+        assert!(jacobian[(0, 4)].abs() > 0.0);
+        assert!(jacobian[(0, 5)].abs() > 0.0);
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -300,6 +324,13 @@ impl MeasurementModel for DopplerMeasurement {
         let dz = x[2] - self.sat_pos_m[2];
         let range = (dx * dx + dy * dy + dz * dz).sqrt().max(1.0);
         let los = [dx / range, dy / range, dz / range];
+        let rel_vel =
+            [x[3] - self.sat_vel_mps[0], x[4] - self.sat_vel_mps[1], x[5] - self.sat_vel_mps[2]];
+        let range_rate = los[0] * rel_vel[0] + los[1] * rel_vel[1] + los[2] * rel_vel[2];
+        let position_scale = -1.0 / (range * self.wavelength_m);
+        h[(0, 0)] = position_scale * (rel_vel[0] - range_rate * los[0]);
+        h[(0, 1)] = position_scale * (rel_vel[1] - range_rate * los[1]);
+        h[(0, 2)] = position_scale * (rel_vel[2] - range_rate * los[2]);
         h[(0, 3)] = -los[0] / self.wavelength_m;
         h[(0, 4)] = -los[1] / self.wavelength_m;
         h[(0, 5)] = -los[2] / self.wavelength_m;
