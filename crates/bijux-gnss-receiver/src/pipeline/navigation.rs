@@ -1001,9 +1001,18 @@ fn policy_refusal_epoch(
     solution.latitude_deg = 0.0;
     solution.longitude_deg = 0.0;
     solution.altitude_m = Meters(0.0);
+    solution.position_covariance_ecef_m2 = None;
     solution.clock_bias_s = Seconds(0.0);
     solution.clock_bias_m = Meters(0.0);
     solution.clock_drift_s_per_s = 0.0;
+    solution.sigma_e_m = None;
+    solution.sigma_n_m = None;
+    solution.sigma_u_m = None;
+    solution.horizontal_error_ellipse_major_axis_m = None;
+    solution.horizontal_error_ellipse_minor_axis_m = None;
+    solution.horizontal_error_ellipse_azimuth_deg = None;
+    solution.sigma_h_m = None;
+    solution.sigma_v_m = None;
     solution.status = deterministic_solution_transition(
         previous_status,
         solution.status,
@@ -2361,6 +2370,20 @@ mod tests {
         assert!(solution.sigma_e_m.expect("east sigma").0.is_finite());
         assert!(solution.sigma_n_m.expect("north sigma").0.is_finite());
         assert!(solution.sigma_u_m.expect("up sigma").0.is_finite());
+        assert!(solution
+            .horizontal_error_ellipse_major_axis_m
+            .expect("ellipse major axis")
+            .0
+            .is_finite());
+        assert!(solution
+            .horizontal_error_ellipse_minor_axis_m
+            .expect("ellipse minor axis")
+            .0
+            .is_finite());
+        assert!(solution
+            .horizontal_error_ellipse_azimuth_deg
+            .expect("ellipse azimuth")
+            .is_finite());
     }
 
     #[test]
@@ -2661,6 +2684,15 @@ mod tests {
         assert_eq!(solution.explain_decision, "refused");
         assert_eq!(solution.status, SolutionStatus::Invalid);
         assert_eq!(solution.ecef_x_m.0, 0.0);
+        assert_eq!(solution.position_covariance_ecef_m2, None);
+        assert_eq!(solution.sigma_e_m, None);
+        assert_eq!(solution.sigma_n_m, None);
+        assert_eq!(solution.sigma_u_m, None);
+        assert_eq!(solution.horizontal_error_ellipse_major_axis_m, None);
+        assert_eq!(solution.horizontal_error_ellipse_minor_axis_m, None);
+        assert_eq!(solution.horizontal_error_ellipse_azimuth_deg, None);
+        assert_eq!(solution.sigma_h_m, None);
+        assert_eq!(solution.sigma_v_m, None);
         assert!(solution
             .explain_reasons
             .iter()
