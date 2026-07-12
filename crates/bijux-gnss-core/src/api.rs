@@ -40,8 +40,8 @@ pub use crate::geo::{
 pub use crate::ids::{
     default_acquisition_sats, default_acquisition_signal, format_sat, glonass_l1_carrier_hz,
     glonass_slot_from_sat, glonass_slot_sat, prns_to_sats, signal_registry,
-    signal_spec_beidou_b1i, signal_spec_galileo_e1b, signal_spec_galileo_e1c,
-    signal_spec_galileo_e5a, signal_spec_glonass_l1,
+    signal_spec_beidou_b1i, signal_spec_beidou_b2i, signal_spec_galileo_e1b,
+    signal_spec_galileo_e1c, signal_spec_galileo_e5a, signal_spec_glonass_l1,
     signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l2c, signal_spec_gps_l5,
     sort_obs_sats, sort_sat_ids, sort_sig_ids, Constellation, FreqHz, GlonassFrequencyChannel,
     GlonassL1FdmaSignal, GlonassSlot, SatId, SigId, SignalBand, SignalCode, SignalRegistryEntry,

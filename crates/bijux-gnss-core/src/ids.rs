@@ -110,6 +110,7 @@ pub enum SignalCode {
     E5a,
     E5b,
     B1I,
+    B2I,
     Unknown,
 }
 
@@ -218,6 +219,7 @@ fn code_rank(code: SignalCode) -> u8 {
         SignalCode::E5a => 5,
         SignalCode::E5b => 6,
         SignalCode::B1I => 7,
+        SignalCode::B2I => 8,
         SignalCode::Unknown => 9,
     }
 }
@@ -352,6 +354,16 @@ pub fn signal_spec_beidou_b1i() -> SignalSpec {
     }
 }
 
+pub fn signal_spec_beidou_b2i() -> SignalSpec {
+    SignalSpec {
+        constellation: Constellation::Beidou,
+        band: SignalBand::B2,
+        code: SignalCode::B2I,
+        code_rate_hz: 2_046_000.0,
+        carrier_hz: BEIDOU_B2_CARRIER_HZ,
+    }
+}
+
 pub fn glonass_l1_carrier_hz(frequency_channel: GlonassFrequencyChannel) -> FreqHz {
     FreqHz::new(
         GLONASS_L1_CARRIER_HZ.value()
@@ -394,8 +406,8 @@ pub fn signal_registry(
         (Constellation::Beidou, SignalBand::B1, SignalCode::B1I) => {
             (BEIDOU_B1_CARRIER_HZ, 2_046_000.0, Some(2046))
         }
-        (Constellation::Beidou, SignalBand::B2, SignalCode::Unknown) => {
-            (BEIDOU_B2_CARRIER_HZ, 2_046_000.0, None)
+        (Constellation::Beidou, SignalBand::B2, SignalCode::B2I) => {
+            (BEIDOU_B2_CARRIER_HZ, 2_046_000.0, Some(2046))
         }
         _ => return None,
     };
@@ -421,8 +433,8 @@ pub fn default_acquisition_signal(constellation: Constellation) -> Option<Signal
 #[cfg(test)]
 mod tests {
     use super::{
-        signal_registry, signal_spec_gps_l2_py, signal_spec_gps_l2c, Constellation, SignalBand,
-        SignalCode,
+        signal_registry, signal_spec_beidou_b2i, signal_spec_gps_l2_py, signal_spec_gps_l2c,
+        Constellation, SignalBand, SignalCode,
     };
 
     #[test]
@@ -446,6 +458,18 @@ mod tests {
         let registry = signal_registry(Constellation::Gps, SignalBand::L2, SignalCode::Py)
             .expect("GPS L2 P(Y) registry entry");
         assert_eq!(registry.code_length, None);
+        assert_eq!(registry.spec, signal);
+    }
+
+    #[test]
+    fn beidou_b2i_signal_spec_matches_open_service_timing() {
+        let signal = signal_spec_beidou_b2i();
+
+        assert_eq!(signal.code, SignalCode::B2I);
+        assert!((signal.code_rate_hz - 2_046_000.0).abs() <= f64::EPSILON);
+        let registry = signal_registry(Constellation::Beidou, SignalBand::B2, SignalCode::B2I)
+            .expect("BeiDou B2I registry entry");
+        assert_eq!(registry.code_length, Some(2046));
         assert_eq!(registry.spec, signal);
     }
 }
