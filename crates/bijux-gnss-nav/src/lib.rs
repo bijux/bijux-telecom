@@ -22,5 +22,7 @@ mod models;
 mod orbits;
 mod time;
 
+pub use crate::estimation::ppp::config::PppTroposphereSource;
+
 /// Public API surface for this crate.
 pub mod api;

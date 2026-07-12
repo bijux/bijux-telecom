@@ -5,6 +5,7 @@ use bijux_gnss_nav::api::{
     BroadcastProductsProvider, GpsBroadcastNavigationData, PppConfig, PppFilter,
     RinexGpsObservationDataset,
 };
+use bijux_gnss_nav::PppTroposphereSource;
 use serde::{Deserialize, Serialize};
 
 use crate::public_station::{station_enu_error_m, PublicStationTruth};
@@ -24,6 +25,7 @@ pub struct PublicPppConvergenceEpoch {
 pub struct PublicPppConvergenceReport {
     pub marker_name: String,
     pub fixture_name: String,
+    pub troposphere_source: PppTroposphereSource,
     pub observation_epoch_count: usize,
     pub solved_epoch_count: usize,
     pub all_epochs_solved: bool,
@@ -59,6 +61,7 @@ pub fn build_public_ppp_convergence_report(
         })?;
 
     let mut filter = PppFilter::new(config);
+    let troposphere_source = filter.config.troposphere_source();
     filter.seed_receiver_state([initial_position.0, initial_position.1, initial_position.2], 0.0);
     let products = BroadcastProductsProvider::new(navigation.ephemerides.clone());
 
@@ -128,6 +131,7 @@ pub fn build_public_ppp_convergence_report(
     Ok(PublicPppConvergenceReport {
         marker_name: station_truth.marker_name.clone(),
         fixture_name: station_truth.fixture_name.clone(),
+        troposphere_source,
         observation_epoch_count: observations.epochs.len(),
         solved_epoch_count,
         all_epochs_solved: solved_epoch_count == observations.epochs.len(),
