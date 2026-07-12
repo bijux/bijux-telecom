@@ -1,9 +1,9 @@
 #![allow(missing_docs)]
 use bijux_gnss_core::api::{
-    signal_meters_to_cycles, signal_spec_galileo_e1b, signal_spec_galileo_e5a,
-    signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l5, Constellation, LockFlags,
-    Meters, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, ReceiverSampleTrace, SatId, SigId,
-    SignalBand, SignalCode, SignalSpec,
+    signal_meters_to_cycles, signal_spec_beidou_b1i, signal_spec_beidou_b2i,
+    signal_spec_galileo_e1b, signal_spec_galileo_e5a, signal_spec_gps_l1_ca, signal_spec_gps_l2_py,
+    signal_spec_gps_l5, Constellation, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
+    ReceiverRole, ReceiverSampleTrace, SatId, SigId, SignalBand, SignalCode, SignalSpec,
 };
 use bijux_gnss_nav::api::{
     combinations_from_obs_epochs, geometry_free_diagnostics_from_obs_epochs,
@@ -546,6 +546,46 @@ fn galileo_geometry_free_and_iono_free_phase_use_e1_e5_wavelengths() {
     assert_eq!(iono_free_phase.len(), 1);
     assert!(
         (combinations[0].geometry_free_phase_m.expect("geometry-free phase") - 2.5).abs() < 1.0e-6
+    );
+    assert!(
+        (combinations[0].if_phase_m.expect("iono-free phase") - expected_if_phase_m).abs() < 1.0e-6
+    );
+    assert!(
+        (iono_free_phase[0].phase_m.expect("iono-free phase") - expected_if_phase_m).abs() < 1.0e-6
+    );
+}
+
+#[test]
+fn beidou_geometry_free_and_iono_free_phase_use_b1_b2_wavelengths() {
+    let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
+    let b1 = signal_spec_beidou_b1i();
+    let b2 = signal_spec_beidou_b2i();
+    let epoch = make_dual_signal_epoch_from_phase_meters(
+        sat,
+        b1,
+        SignalBand::B1,
+        SignalCode::B1I,
+        b2,
+        SignalBand::B2,
+        SignalCode::B2I,
+        24_345_678.125,
+        24_345_679.875,
+        24_345_677.5,
+        24_345_674.25,
+    );
+
+    let combinations =
+        combinations_from_obs_epochs(&[epoch.clone()], SignalBand::B1, SignalBand::B2);
+    let iono_free_phase = iono_free_phase_from_obs_epochs(&[epoch], SignalBand::B1, SignalBand::B2);
+
+    let f1_2 = b1.carrier_hz.value().powi(2);
+    let f2_2 = b2.carrier_hz.value().powi(2);
+    let expected_if_phase_m = (f1_2 * 24_345_677.5 - f2_2 * 24_345_674.25) / (f1_2 - f2_2);
+
+    assert_eq!(combinations.len(), 1);
+    assert_eq!(iono_free_phase.len(), 1);
+    assert!(
+        (combinations[0].geometry_free_phase_m.expect("geometry-free phase") - 3.25).abs() < 1.0e-6
     );
     assert!(
         (combinations[0].if_phase_m.expect("iono-free phase") - expected_if_phase_m).abs() < 1.0e-6
