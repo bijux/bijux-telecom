@@ -10,6 +10,10 @@ const NIGHTTIME_IONO_DELAY_S: f64 = 5.0e-9;
 const MIN_KLOBUCHAR_PERIOD_S: f64 = 72_000.0;
 const MIN_TROPOSPHERE_ELEVATION_DEG: f64 = 0.1;
 const STANDARD_RELATIVE_HUMIDITY: f64 = 0.7;
+const MIN_PHYSICAL_PRESSURE_HPA: f64 = 100.0;
+const MAX_PHYSICAL_PRESSURE_HPA: f64 = 1_100.0;
+const MIN_PHYSICAL_TEMPERATURE_K: f64 = 180.0;
+const MAX_PHYSICAL_TEMPERATURE_K: f64 = 330.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct KlobucharCoefficients {
@@ -29,6 +33,29 @@ pub trait IonosphereModel {
 
 pub trait TroposphereModel {
     fn delay_m(&self, _receiver: Llh, _el_deg: f64, _t: Seconds) -> f64;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct TroposphereMeteorology {
+    pub pressure_hpa: f64,
+    pub temperature_k: f64,
+    pub relative_humidity: f64,
+}
+
+impl TroposphereMeteorology {
+    pub fn new(pressure_hpa: f64, temperature_k: f64, relative_humidity: f64) -> Self {
+        Self { pressure_hpa, temperature_k, relative_humidity }
+    }
+
+    pub fn is_physical(self) -> bool {
+        self.pressure_hpa.is_finite()
+            && self.temperature_k.is_finite()
+            && self.relative_humidity.is_finite()
+            && (MIN_PHYSICAL_PRESSURE_HPA..=MAX_PHYSICAL_PRESSURE_HPA).contains(&self.pressure_hpa)
+            && (MIN_PHYSICAL_TEMPERATURE_K..=MAX_PHYSICAL_TEMPERATURE_K)
+                .contains(&self.temperature_k)
+            && (0.0..=1.0).contains(&self.relative_humidity)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -93,8 +120,25 @@ impl SaastamoinenModel {
         }
         let altitude_m = receiver.alt_m.max(-500.0);
         let pressure_hpa = standard_pressure_hpa(altitude_m);
+        Self::zenith_hydrostatic_delay_from_pressure_m(receiver, pressure_hpa)
+    }
+
+    pub fn zenith_hydrostatic_delay_with_meteorology_m(
+        receiver: Llh,
+        meteorology: TroposphereMeteorology,
+    ) -> f64 {
+        if !meteorology.is_physical() {
+            return 0.0;
+        }
+        Self::zenith_hydrostatic_delay_from_pressure_m(receiver, meteorology.pressure_hpa)
+    }
+
+    fn zenith_hydrostatic_delay_from_pressure_m(receiver: Llh, pressure_hpa: f64) -> f64 {
+        if !receiver.lat_deg.is_finite() || !receiver.alt_m.is_finite() || !pressure_hpa.is_finite() {
+            return 0.0;
+        }
         let latitude_rad = receiver.lat_deg.to_radians();
-        let height_km = altitude_m / 1_000.0;
+        let height_km = receiver.alt_m.max(-500.0) / 1_000.0;
         0.002_276_8 * pressure_hpa
             / (1.0 - 0.002_66 * (2.0 * latitude_rad).cos() - 0.000_28 * height_km)
     }
@@ -107,11 +151,43 @@ impl SaastamoinenModel {
         let temperature_k = standard_temperature_k(altitude_m);
         let water_vapor_pressure_hpa =
             standard_water_vapor_pressure_hpa(altitude_m, STANDARD_RELATIVE_HUMIDITY);
+        Self::zenith_wet_delay_from_conditions_m(temperature_k, water_vapor_pressure_hpa)
+    }
+
+    pub fn zenith_wet_delay_with_meteorology_m(
+        meteorology: TroposphereMeteorology,
+    ) -> f64 {
+        if !meteorology.is_physical() {
+            return 0.0;
+        }
+        let water_vapor_pressure_hpa = saturation_vapor_pressure_hpa(meteorology.temperature_k)
+            * meteorology.relative_humidity;
+        Self::zenith_wet_delay_from_conditions_m(
+            meteorology.temperature_k,
+            water_vapor_pressure_hpa,
+        )
+    }
+
+    fn zenith_wet_delay_from_conditions_m(
+        temperature_k: f64,
+        water_vapor_pressure_hpa: f64,
+    ) -> f64 {
+        if !temperature_k.is_finite() || !water_vapor_pressure_hpa.is_finite() {
+            return 0.0;
+        }
         0.002_277 * (1_255.0 / temperature_k + 0.05) * water_vapor_pressure_hpa
     }
 
     pub fn zenith_delay_m(receiver: Llh) -> f64 {
         Self::zenith_hydrostatic_delay_m(receiver) + Self::zenith_wet_delay_m(receiver)
+    }
+
+    pub fn zenith_delay_with_meteorology_m(
+        receiver: Llh,
+        meteorology: TroposphereMeteorology,
+    ) -> f64 {
+        Self::zenith_hydrostatic_delay_with_meteorology_m(receiver, meteorology)
+            + Self::zenith_wet_delay_with_meteorology_m(meteorology)
     }
 
     pub fn mapping_factor(el_deg: f64) -> f64 {
@@ -147,9 +223,12 @@ fn standard_temperature_k(altitude_m: f64) -> f64 {
 
 fn standard_water_vapor_pressure_hpa(altitude_m: f64, relative_humidity: f64) -> f64 {
     let temperature_k = standard_temperature_k(altitude_m);
+    relative_humidity.clamp(0.0, 1.0) * saturation_vapor_pressure_hpa(temperature_k)
+}
+
+fn saturation_vapor_pressure_hpa(temperature_k: f64) -> f64 {
     let temperature_c = temperature_k - 273.15;
-    let saturation_pressure_hpa = 6.108 * ((17.15 * temperature_c) / (234.7 + temperature_c)).exp();
-    relative_humidity.clamp(0.0, 1.0) * saturation_pressure_hpa
+    6.108 * ((17.15 * temperature_c) / (234.7 + temperature_c)).exp()
 }
 
 #[cfg(test)]
