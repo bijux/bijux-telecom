@@ -32,6 +32,7 @@ pub use crate::models::antenna::{
     SatelliteAntennaCalibration, SatelliteAntennaCalibrations, SatellitePhaseCenterOffset,
 };
 pub use crate::estimation::ppp::config::PppTroposphereSource;
+pub use crate::estimation::rtk::antenna::RtkAntennaCorrectionConfig;
 
 /// Public API surface for this crate.
 pub mod api;
