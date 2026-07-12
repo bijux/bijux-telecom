@@ -3,17 +3,22 @@
 use std::path::PathBuf;
 
 use bijux_gnss_core::api::{
-    first_order_ionosphere_code_delay_m, geodetic_to_ecef, signal_meters_to_cycles,
-    signal_spec_gps_l1_ca, signal_spec_gps_l2_py, Constellation, Cycles, GpsTime, Hertz,
+    ecef_to_geodetic, first_order_ionosphere_code_delay_m, geodetic_to_ecef, signal_meters_to_cycles,
+    signal_spec_galileo_e1b, signal_spec_galileo_e5a, signal_spec_gps_l1_ca,
+    signal_spec_gps_l2_py, Constellation, Cycles, GpsTime, Hertz,
     LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
     ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ReceiverRole,
     ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode, SignalSpec,
 };
 use bijux_gnss_nav::api::{
-    elevation_azimuth_deg, gps_broadcast_ionosphere_residuals_from_obs_epochs,
+    elevation_azimuth_deg, galileo_broadcast_ionosphere_residuals_from_obs_epochs,
+    gps_broadcast_ionosphere_residuals_from_obs_epochs, GalileoBroadcastNavigationData,
+    GalileoClockCorrection, GalileoEphemeris, GalileoIonosphericCorrection,
+    GalileoIonosphericDisturbanceFlags, GalileoSignalHealth, GalileoSystemTime,
     KlobucharCoefficients,
     parse_rinex_broadcast_navigation, parse_rinex_gps_observation_dataset,
     summarize_broadcast_ionosphere_residuals,
+    sat_state_galileo_e1_at_receive_time,
     sat_state_gps_l1ca_at_receive_time, GpsBroadcastNavigationData, GpsEphemeris,
 };
 
@@ -58,6 +63,61 @@ fn sample_klobuchar() -> KlobucharCoefficients {
         [0.1212e-7, 0.1490e-7, -0.5960e-7, 0.1192e-6],
         [0.1167e6, -0.2294e6, -0.1311e6, 0.1049e7],
     )
+}
+
+fn sample_galileo_navigation() -> GalileoBroadcastNavigationData {
+    GalileoBroadcastNavigationData {
+        sat: SatId { constellation: Constellation::Galileo, prn: 19 },
+        iodnav: 19,
+        gst: GalileoSystemTime { week: 2222, tow_s: 504_018 },
+        sisa_e1_e5b: 77,
+        signal_health: GalileoSignalHealth {
+            e5b_signal_health: 0,
+            e1b_signal_health: 0,
+            e5b_data_valid: true,
+            e1b_data_valid: true,
+        },
+        clock: GalileoClockCorrection {
+            t0c_s: 504_018.0,
+            af0: 0.0,
+            af1: 0.0,
+            af2: 0.0,
+            bgd_e1_e5a_s: 0.0,
+            bgd_e1_e5b_s: 0.0,
+        },
+        ephemeris: GalileoEphemeris {
+            sat: SatId { constellation: Constellation::Galileo, prn: 19 },
+            iodnav: 19,
+            toe_s: 504_000.0,
+            sqrt_a: 5_440.612_319,
+            e: 0.001_23,
+            i0: 0.953,
+            idot: -2.1e-10,
+            omega0: 1.17,
+            omegadot: -5.8e-9,
+            w: -0.37,
+            m0: 0.84,
+            delta_n: 4.7e-9,
+            cuc: -3.2e-6,
+            cus: 4.1e-6,
+            crc: 178.0,
+            crs: -91.0,
+            cic: 1.9e-7,
+            cis: -2.4e-7,
+        },
+        ionosphere: GalileoIonosphericCorrection {
+            ai0: 82.0,
+            ai1: 0.18,
+            ai2: -0.01,
+            disturbance_flags: GalileoIonosphericDisturbanceFlags {
+                region_1: false,
+                region_2: false,
+                region_3: false,
+                region_4: false,
+                region_5: false,
+            },
+        },
+    }
 }
 
 fn satellite(
@@ -264,4 +324,119 @@ fn gps_broadcast_ionosphere_residuals_measure_real_public_dual_frequency_data() 
     assert!(phase_band_1.mean_abs_residual_m > 0.1);
     assert!(code_band_1.max_abs_residual_m > code_band_1.mean_abs_residual_m);
     assert!(phase_band_1.max_abs_residual_m > phase_band_1.mean_abs_residual_m);
+}
+
+#[test]
+fn galileo_broadcast_ionosphere_residuals_match_synthetic_nequick_truth() {
+    let receive_tow_s = 504_018.0;
+    let signal_travel_time_s = 0.075;
+    let transmit_gps_time = GpsTime { week: 2222, tow_s: receive_tow_s - signal_travel_time_s };
+    let timing = ObsSignalTiming { signal_travel_time_s: Seconds(signal_travel_time_s), transmit_gps_time };
+    let navigation = sample_galileo_navigation();
+    let state =
+        sat_state_galileo_e1_at_receive_time(&navigation, receive_tow_s, signal_travel_time_s);
+    let (sat_lat_deg, sat_lon_deg, sat_alt_m) = ecef_to_geodetic(state.x_m, state.y_m, state.z_m);
+    let satellite_llh =
+        bijux_gnss_core::api::Llh { lat_deg: sat_lat_deg, lon_deg: sat_lon_deg, alt_m: sat_alt_m };
+    let receiver_llh = (sat_lat_deg, sat_lon_deg, 15.0);
+    let receiver_ecef =
+        geodetic_to_ecef(receiver_llh.0, receiver_llh.1, receiver_llh.2);
+    let geometric_range_m = ((state.x_m - receiver_ecef.0).powi(2)
+        + (state.y_m - receiver_ecef.1).powi(2)
+        + (state.z_m - receiver_ecef.2).powi(2))
+    .sqrt();
+    let e1_signal = signal_spec_galileo_e1b();
+    let e5_signal = signal_spec_galileo_e5a();
+    let e1_id = SigId { sat: navigation.sat, band: SignalBand::E1, code: SignalCode::E1B };
+    let e5_id = SigId { sat: navigation.sat, band: SignalBand::E5, code: SignalCode::E5a };
+    let e1_delay_m = navigation
+        .nequick_delay_m(
+            e1_id,
+            bijux_gnss_core::api::Llh {
+                lat_deg: receiver_llh.0,
+                lon_deg: receiver_llh.1,
+                alt_m: receiver_llh.2,
+            },
+            satellite_llh,
+            GpsTime { week: 2222, tow_s: receive_tow_s },
+        )
+        .expect("broadcast E1 delay");
+    let e5_delay_m = navigation
+        .nequick_delay_m(
+            e5_id,
+            bijux_gnss_core::api::Llh {
+                lat_deg: receiver_llh.0,
+                lon_deg: receiver_llh.1,
+                alt_m: receiver_llh.2,
+            },
+            satellite_llh,
+            GpsTime { week: 2222, tow_s: receive_tow_s },
+        )
+        .expect("broadcast E5 delay");
+    let phase_bias_m = 3.5;
+    let geometry_free_phase_m = (e5_delay_m - e1_delay_m) + phase_bias_m;
+    let reference_phase_m = 22_000_000.0;
+    let epoch = ObsEpoch {
+        t_rx_s: Seconds(receive_tow_s),
+        source_time: ReceiverSampleTrace::from_sample_index(0, 1_000.0),
+        gps_week: Some(2222),
+        tow_s: Some(Seconds(receive_tow_s)),
+        epoch_idx: 0,
+        discontinuity: false,
+        valid: true,
+        processing_ms: None,
+        role: ReceiverRole::Rover,
+        sats: vec![
+            satellite(
+                navigation.sat,
+                SignalBand::E1,
+                SignalCode::E1B,
+                e1_signal,
+                geometric_range_m + e1_delay_m,
+                signal_meters_to_cycles(
+                    Meters(reference_phase_m + geometry_free_phase_m),
+                    e1_signal,
+                )
+                .0,
+                timing,
+            ),
+            satellite(
+                navigation.sat,
+                SignalBand::E5,
+                SignalCode::E5a,
+                e5_signal,
+                geometric_range_m + e5_delay_m,
+                signal_meters_to_cycles(Meters(reference_phase_m), e5_signal).0,
+                timing,
+            ),
+        ],
+        decision: ObservationEpochDecision::Accepted,
+        decision_reason: Some("accepted_observables_present".to_string()),
+        manifest: None,
+    };
+
+    let residuals = galileo_broadcast_ionosphere_residuals_from_obs_epochs(
+        &[epoch],
+        receiver_ecef,
+        &[navigation],
+        SignalBand::E1,
+        SignalBand::E5,
+    );
+
+    assert_eq!(residuals.len(), 1);
+    assert_eq!(residuals[0].broadcast_model, "galileo_nequick");
+    assert_eq!(residuals[0].broadcast_status, "ok");
+    assert_eq!(residuals[0].broadcast_reason, "ok");
+    assert!(
+        residuals[0].code_residual_band_1_m.expect("code E1 residual").abs() < 1.0e-6
+    );
+    assert!(
+        residuals[0].code_residual_band_2_m.expect("code E5 residual").abs() < 1.0e-6
+    );
+    assert!(
+        residuals[0].phase_residual_band_1_m.expect("phase E1 residual").abs() < 1.0e-6
+    );
+    assert!(
+        residuals[0].phase_residual_band_2_m.expect("phase E5 residual").abs() < 1.0e-6
+    );
 }
