@@ -197,6 +197,12 @@ pub fn position_broadcast_navigation_from_gps_ephemerides(
     ephemerides.iter().cloned().map(PositionBroadcastNavigation::Gps).collect()
 }
 
+pub fn position_broadcast_navigation_from_galileo_navigations(
+    navigations: &[GalileoBroadcastNavigationData],
+) -> Vec<PositionBroadcastNavigation> {
+    navigations.iter().cloned().map(PositionBroadcastNavigation::Galileo).collect()
+}
+
 pub fn position_broadcast_navigation_from_glonass_frames(
     navigation_frames: &[GlonassBroadcastNavigationFrame],
 ) -> Vec<PositionBroadcastNavigation> {
