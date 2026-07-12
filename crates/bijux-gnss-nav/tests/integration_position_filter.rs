@@ -565,6 +565,55 @@ fn sequential_position_filter_reports_moving_trajectory_error_over_time() {
 }
 
 #[test]
+fn sequential_position_filter_trajectory_report_beats_independent_epochs() {
+    let ephemerides = sample_filter_ephemerides();
+    let truth_velocity_enu_mps = (8.0, -2.5, 0.8);
+    let truth_velocity_ecef_mps = enu_velocity_to_ecef_mps(37.0, -122.0, truth_velocity_enu_mps);
+    let epochs =
+        moving_receiver_epochs_with_doppler(&ephemerides, 20, 1.0, truth_velocity_ecef_mps, 0.0);
+    let mut dynamic_config = PositionFilterConfig::for_vehicle_receiver();
+    dynamic_config.base_pseudorange_sigma_m = 1.5;
+    dynamic_config.base_doppler_sigma_hz = 0.05;
+    let mut dynamic_filter = PositionFilter::new(dynamic_config.clone());
+    let mut dynamic_inputs = Vec::new();
+    let mut independent_inputs = Vec::new();
+
+    for epoch in &epochs {
+        let dynamic_solution = dynamic_filter
+            .solve_epoch(&epoch.observations, &ephemerides, epoch.t_rx_s)
+            .expect("dynamic moving epoch should solve");
+        let mut independent_filter = PositionFilter::new(dynamic_config.clone());
+        let independent_solution = independent_filter
+            .solve_epoch(&epoch.observations, &ephemerides, epoch.t_rx_s)
+            .expect("independent moving epoch should solve");
+
+        dynamic_inputs.push(trajectory_input(&dynamic_solution, epoch.truth_ecef_m));
+        independent_inputs.push(trajectory_input(&independent_solution, epoch.truth_ecef_m));
+    }
+
+    let dynamic_report =
+        trajectory_reconstruction_report(&dynamic_inputs).expect("dynamic trajectory report should build");
+    let independent_report = trajectory_reconstruction_report(&independent_inputs)
+        .expect("independent trajectory report should build");
+    let truth_distance_m = dynamic_report.cumulative_truth_distance_m;
+    let dynamic_distance_error_m = (dynamic_report.cumulative_estimated_distance_m - truth_distance_m).abs();
+    let independent_distance_error_m =
+        (independent_report.cumulative_estimated_distance_m - truth_distance_m).abs();
+
+    assert!(
+        dynamic_report.rms_step_error_3d_m.expect("dynamic step rms")
+            < independent_report.rms_step_error_3d_m.expect("independent step rms"),
+        "dynamic_rms_step_error_3d_m={:?} independent_rms_step_error_3d_m={:?}",
+        dynamic_report.rms_step_error_3d_m,
+        independent_report.rms_step_error_3d_m
+    );
+    assert!(
+        dynamic_distance_error_m < independent_distance_error_m,
+        "dynamic_distance_error_m={dynamic_distance_error_m} independent_distance_error_m={independent_distance_error_m}"
+    );
+}
+
+#[test]
 fn sequential_position_filter_recovers_velocity_from_doppler_in_enu() {
     let ephemerides = sample_filter_ephemerides();
     let truth_velocity_enu_mps = (8.0, -2.5, 0.8);
