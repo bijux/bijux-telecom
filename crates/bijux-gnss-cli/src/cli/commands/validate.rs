@@ -426,7 +426,7 @@ fn handle_validate_capture(command: GnssCommand) -> Result<()> {
 }
 
 fn handle_validate(command: GnssCommand) -> Result<()> {
-    let GnssCommand::Validate { common, file, eph, reference, prn, sp3, clk } = command else {
+    let GnssCommand::Validate { common, file, eph, reference, prn, sp3, clk, bias_sinex } = command else {
         bail!("invalid command for handler");
     };
 
@@ -492,14 +492,23 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
                 .map_err(|e| eyre!("clk parse error: {}", e))?;
             products = products.with_clk(clk);
         }
-        let ok = products.sp3.is_some() || products.clk.is_some();
+        if let Some(path) = bias_sinex {
+            let data = fs::read_to_string(path)?;
+            let bias_sinex = data
+                .parse::<bijux_gnss_infra::api::nav::BiasSinexProvider>()
+                .map_err(|e| eyre!("bias sinex parse error: {}", e))?;
+            products = products.with_dcb(bias_sinex);
+        }
+        let ok = products.sp3.is_some() || products.clk.is_some() || products.dcb.is_some();
         let fallbacks = if ok { Vec::new() } else { vec!["broadcast_only".to_string()] };
         (ok, fallbacks)
     };
     #[cfg(not(feature = "precise-products"))]
     let (products_ok, product_fallbacks) = {
-        if sp3.is_some() || clk.is_some() {
-            bail!("precise-products feature disabled; recompile with feature to use SP3/CLK");
+        if sp3.is_some() || clk.is_some() || bias_sinex.is_some() {
+            bail!(
+                "precise-products feature disabled; recompile with feature to use SP3/CLK/Bias-SINEX"
+            );
         }
         (false, vec!["precise_products_disabled".to_string()])
     };

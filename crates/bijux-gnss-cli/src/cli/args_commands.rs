@@ -412,6 +412,9 @@ pub(crate) enum GnssCommand {
         /// Precise clock CLK file (optional)
         #[arg(long, value_name = "FILE")]
         clk: Option<PathBuf>,
+        /// Bias-SINEX code bias file for dual-frequency code corrections (optional)
+        #[arg(long = "bias-sinex", alias = "dcb", value_name = "FILE")]
+        bias_sinex: Option<PathBuf>,
     },
 
     /// Validate a run directory against a reference trajectory
