@@ -468,3 +468,103 @@ fn sequential_position_filter_recovers_static_receiver_clock_drift_from_doppler(
         final_solution.clock_drift_sigma_s_per_s
     );
 }
+
+#[test]
+fn sequential_position_filter_maintains_clock_drift_consistency_while_moving() {
+    let ephemerides = sample_filter_ephemerides();
+    let truth_velocity_enu_mps = (8.0, -2.5, 0.8);
+    let truth_velocity_ecef_mps =
+        enu_velocity_to_ecef_mps(37.0, -122.0, truth_velocity_enu_mps);
+    let truth_clock_drift_s_per_s = 5.0e-8;
+    let epochs = moving_receiver_epochs_with_doppler(
+        &ephemerides,
+        40,
+        1.0,
+        truth_velocity_ecef_mps,
+        truth_clock_drift_s_per_s,
+    );
+    let mut config = PositionFilterConfig::default();
+    config.base_pseudorange_sigma_m = 1.5;
+    config.base_doppler_sigma_hz = 0.05;
+    config.initial_velocity_sigma_mps = 10.0;
+    config.initial_clock_drift_sigma_s_per_s = 1.0e-4;
+    config.process_noise.vel_mps = 0.2;
+    config.process_noise.clock_drift_s_per_s = 1.0e-10;
+    let mut filter = PositionFilter::new(config);
+    let mut steady_clock_drifts_s_per_s = Vec::new();
+    let mut final_solution = None;
+    let mut final_velocity_enu_mps = None;
+
+    for (epoch_index, epoch) in epochs.iter().enumerate() {
+        let solution = filter
+            .solve_epoch(&epoch.observations, &ephemerides, epoch.t_rx_s)
+            .expect("moving Doppler clock-drift epoch should solve");
+        let position_error_m = position_error_3d_m(
+            solution.ecef_x_m,
+            solution.ecef_y_m,
+            solution.ecef_z_m,
+            epoch.truth_ecef_m,
+        );
+
+        assert!(position_error_m < 30.0, "position_error_m={position_error_m}");
+
+        if epoch_index >= 10 {
+            steady_clock_drifts_s_per_s.push(solution.clock_drift_s_per_s);
+        }
+
+        final_velocity_enu_mps = Some(ecef_velocity_to_enu_mps(
+            37.0,
+            -122.0,
+            (
+                solution.velocity_x_mps,
+                solution.velocity_y_mps,
+                solution.velocity_z_mps,
+            ),
+        ));
+        final_solution = Some(solution);
+    }
+
+    let final_solution = final_solution.expect("final moving Doppler clock-drift solution");
+    let final_velocity_enu_mps = final_velocity_enu_mps.expect("final moving ENU velocity");
+    let east_error_mps = final_velocity_enu_mps.0 - truth_velocity_enu_mps.0;
+    let north_error_mps = final_velocity_enu_mps.1 - truth_velocity_enu_mps.1;
+    let up_error_mps = final_velocity_enu_mps.2 - truth_velocity_enu_mps.2;
+    let velocity_enu_error_mps =
+        (east_error_mps * east_error_mps + north_error_mps * north_error_mps + up_error_mps * up_error_mps)
+            .sqrt();
+    let final_clock_drift_error_s_per_s =
+        (final_solution.clock_drift_s_per_s
+            - epochs.last().expect("clock-drift epoch").truth_clock_drift_s_per_s)
+            .abs();
+    let final_clock_bias_error_s =
+        (final_solution.clock_bias_s - epochs.last().expect("clock-drift epoch").truth_clock_bias_s)
+            .abs();
+    let steady_clock_drift_spread_s_per_s = clock_drift_spread_s_per_s(&steady_clock_drifts_s_per_s);
+
+    assert!(filter.initialized);
+    assert_eq!(
+        filter.last_t_rx_s,
+        Some(epochs.last().expect("clock-drift epochs").t_rx_s)
+    );
+    assert!(east_error_mps.abs() < 1.0, "east_error_mps={east_error_mps}");
+    assert!(north_error_mps.abs() < 1.0, "north_error_mps={north_error_mps}");
+    assert!(up_error_mps.abs() < 1.0, "up_error_mps={up_error_mps}");
+    assert!(velocity_enu_error_mps < 1.25, "velocity_enu_error_mps={velocity_enu_error_mps}");
+    assert!(
+        final_clock_drift_error_s_per_s < 1.0e-8,
+        "final_clock_drift_error_s_per_s={final_clock_drift_error_s_per_s}"
+    );
+    assert!(
+        final_clock_bias_error_s < 1.0e-7,
+        "final_clock_bias_error_s={final_clock_bias_error_s}"
+    );
+    assert!(
+        steady_clock_drift_spread_s_per_s < 1.0e-8,
+        "steady_clock_drift_spread_s_per_s={steady_clock_drift_spread_s_per_s}"
+    );
+    assert!(
+        final_solution.clock_drift_sigma_s_per_s < 5.0e-6,
+        "clock_drift_sigma_s_per_s={}",
+        final_solution.clock_drift_sigma_s_per_s
+    );
+}
