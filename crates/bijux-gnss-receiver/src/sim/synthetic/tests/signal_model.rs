@@ -162,6 +162,50 @@
     }
 
     #[test]
+    fn beidou_b1i_signal_only_matches_reference_samples() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value()
+                - bijux_gnss_core::api::BEIDOU_B1_CARRIER_HZ.value(),
+            code_freq_basis_hz: 2_046_000.0,
+            code_length: 2046,
+            ..ReceiverPipelineConfig::default()
+        };
+        let params = SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Beidou, prn: 11 },
+            glonass_frequency_channel: None,
+            doppler_hz: 0.0,
+            code_phase_chips: 0.25,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 58.0,
+            data_bit_flip: false,
+        };
+        let frame = super::generate_l1_ca_signal_only(&config, params, 20.0 / config.sampling_freq_hz);
+        let expected = bijux_gnss_signal::api::sample_beidou_b1i_code(
+            params.sat.prn,
+            config.sampling_freq_hz,
+            params.code_phase_chips,
+            20,
+        )
+        .expect("valid BeiDou B1I reference samples");
+        let amplitude = signal_amplitude_from_cn0(params.cn0_db_hz, config.sampling_freq_hz);
+
+        for (index, (sample, expected_value)) in frame.iq.iter().zip(expected.iter()).enumerate() {
+            let scaled = *expected_value * amplitude;
+            assert!(
+                (sample.re - scaled).abs() <= 1.0e-6,
+                "BeiDou B1I I mismatch at sample {index}: actual={}, expected={scaled}",
+                sample.re
+            );
+            assert!(
+                sample.im.abs() <= 1.0e-6,
+                "BeiDou B1I Q mismatch at sample {index}: actual={}",
+                sample.im
+            );
+        }
+    }
+
+    #[test]
     fn glonass_l1_signal_only_matches_reference_samples() {
         let channel =
             bijux_gnss_core::api::GlonassFrequencyChannel::new(-4).expect("channel -4 must be valid");

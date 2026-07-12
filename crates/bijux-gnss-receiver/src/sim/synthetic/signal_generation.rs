@@ -349,6 +349,7 @@ struct SatState {
 enum SyntheticSignalModel {
     GpsL1Ca { code: Vec<i8> },
     GalileoE1 { e1b_code: Vec<i8>, e1c_code: Vec<i8> },
+    BeidouB1I { code: Vec<i8> },
     GlonassL1 { code: Vec<i8> },
 }
 
@@ -360,6 +361,10 @@ impl SyntheticSignalModel {
                     .unwrap_or_else(|_| vec![1; 4092]),
                 e1c_code: bijux_gnss_signal::api::generate_galileo_e1c_code(params.sat.prn)
                     .unwrap_or_else(|_| vec![1; 4092]),
+            },
+            Constellation::Beidou => Self::BeidouB1I {
+                code: bijux_gnss_signal::api::generate_beidou_b1i_code(params.sat.prn)
+                    .unwrap_or_else(|_| vec![1; 2046]),
             },
             Constellation::Glonass => Self::GlonassL1 {
                 code: bijux_gnss_signal::api::generate_glonass_l1_st_code(),
@@ -374,6 +379,7 @@ impl SyntheticSignalModel {
         match self {
             Self::GpsL1Ca { .. } => 1_023_000.0,
             Self::GalileoE1 { .. } => bijux_gnss_signal::api::GALILEO_E1_CODE_RATE_HZ,
+            Self::BeidouB1I { .. } => bijux_gnss_signal::api::BEIDOU_B1I_CODE_RATE_HZ,
             Self::GlonassL1 { .. } => bijux_gnss_signal::api::GLONASS_L1_ST_CODE_RATE_HZ,
         }
     }
@@ -382,6 +388,7 @@ impl SyntheticSignalModel {
         match self {
             Self::GpsL1Ca { code } => code.len(),
             Self::GalileoE1 { e1b_code, .. } => e1b_code.len(),
+            Self::BeidouB1I { code } => code.len(),
             Self::GlonassL1 { code } => code.len(),
         }
     }
@@ -399,7 +406,7 @@ impl SyntheticSignalModel {
                 )
                 .unwrap_or(1.0)
             }
-            Self::GlonassL1 { code } => {
+            Self::BeidouB1I { code } | Self::GlonassL1 { code } => {
                 code_value_at_phase(code, chip_phase).unwrap_or(1.0) * data_bit as f32
             }
         }
@@ -595,6 +602,7 @@ fn synthetic_constellation_carrier_hz(
     match sat.constellation {
         Constellation::Galileo => bijux_gnss_core::api::GALILEO_E1_CARRIER_HZ.value(),
         Constellation::Gps => bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value(),
+        Constellation::Beidou => bijux_gnss_core::api::BEIDOU_B1_CARRIER_HZ.value(),
         Constellation::Glonass => bijux_gnss_core::api::glonass_l1_carrier_hz(
             glonass_frequency_channel.unwrap_or_else(|| {
                 panic!(
