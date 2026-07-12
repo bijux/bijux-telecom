@@ -321,6 +321,7 @@ mod tests {
     use super::*;
     use crate::engine::receiver_config::ConstellationSelectionPolicy;
     use bijux_gnss_core::api::Constellation;
+    use schemars::schema_for;
 
     #[test]
     fn validation_rejects_negative_doppler_search_range() {
@@ -397,5 +398,33 @@ mod tests {
         assert!(pipeline.allows_constellation(Constellation::Glonass));
         assert!(!pipeline.allows_constellation(Constellation::Gps));
         assert_eq!(pipeline.selected_constellations(), &[Constellation::Glonass]);
+    }
+
+    #[test]
+    fn constellation_policy_round_trips_through_toml() {
+        let mut config = ReceiverConfig::default();
+        config.navigation.constellation_policy = ConstellationSelectionPolicy::GalileoOnly;
+
+        let raw = toml::to_string(&config).expect("serialize receiver config");
+        let reparsed: ReceiverConfig = toml::from_str(&raw).expect("parse receiver config");
+
+        assert_eq!(
+            reparsed.navigation.constellation_policy,
+            ConstellationSelectionPolicy::GalileoOnly
+        );
+        assert!(raw.contains("constellation_policy = \"galileo_only\""));
+    }
+
+    #[test]
+    fn receiver_config_schema_lists_constellation_policy_modes() {
+        let schema = schema_for!(ReceiverConfig);
+        let raw = serde_json::to_string(&schema).expect("serialize receiver config schema");
+
+        for value in ["gps_only", "galileo_only", "glonass_only", "beidou_only", "mixed"] {
+            assert!(
+                raw.contains(value),
+                "receiver config schema missing constellation policy value {value}: {raw}"
+            );
+        }
     }
 }
