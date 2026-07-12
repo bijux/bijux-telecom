@@ -349,6 +349,7 @@ struct SatState {
 enum SyntheticSignalModel {
     GpsL1Ca { code: Vec<i8> },
     GalileoE1 { e1b_code: Vec<i8>, e1c_code: Vec<i8> },
+    GlonassL1 { code: Vec<i8> },
 }
 
 impl SyntheticSignalModel {
@@ -360,6 +361,9 @@ impl SyntheticSignalModel {
                 e1c_code: bijux_gnss_signal::api::generate_galileo_e1c_code(params.sat.prn)
                     .unwrap_or_else(|_| vec![1; 4092]),
             },
+            Constellation::Glonass => Self::GlonassL1 {
+                code: bijux_gnss_signal::api::generate_glonass_l1_st_code(),
+            },
             _ => Self::GpsL1Ca {
                 code: generate_ca_code(Prn(params.sat.prn)).unwrap_or_else(|_| vec![1; 1023]),
             },
@@ -370,6 +374,7 @@ impl SyntheticSignalModel {
         match self {
             Self::GpsL1Ca { .. } => 1_023_000.0,
             Self::GalileoE1 { .. } => bijux_gnss_signal::api::GALILEO_E1_CODE_RATE_HZ,
+            Self::GlonassL1 { .. } => bijux_gnss_signal::api::GLONASS_L1_ST_CODE_RATE_HZ,
         }
     }
 
@@ -377,6 +382,7 @@ impl SyntheticSignalModel {
         match self {
             Self::GpsL1Ca { code } => code.len(),
             Self::GalileoE1 { e1b_code, .. } => e1b_code.len(),
+            Self::GlonassL1 { code } => code.len(),
         }
     }
 
@@ -392,6 +398,9 @@ impl SyntheticSignalModel {
                     data_bit,
                 )
                 .unwrap_or(1.0)
+            }
+            Self::GlonassL1 { code } => {
+                code_value_at_phase(code, chip_phase).unwrap_or(1.0) * data_bit as f32
             }
         }
     }

@@ -161,6 +161,51 @@
         assert!((frame.iq[period_samples].re - (second_period[0] * amplitude)).abs() <= 1.0e-6);
     }
 
+    #[test]
+    fn glonass_l1_signal_only_matches_reference_samples() {
+        let channel =
+            bijux_gnss_core::api::GlonassFrequencyChannel::new(-4).expect("channel -4 must be valid");
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 2_044_000.0,
+            intermediate_freq_hz: bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value()
+                - bijux_gnss_core::api::glonass_l1_carrier_hz(channel).value(),
+            code_freq_basis_hz: 511_000.0,
+            code_length: 511,
+            ..ReceiverPipelineConfig::default()
+        };
+        let params = SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Glonass, prn: 8 },
+            glonass_frequency_channel: Some(channel),
+            doppler_hz: 0.0,
+            code_phase_chips: 0.0,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 58.0,
+            data_bit_flip: false,
+        };
+        let frame = super::generate_l1_ca_signal_only(&config, params, 20.0 / config.sampling_freq_hz);
+        let expected = bijux_gnss_signal::api::sample_glonass_l1_st_code(
+            config.sampling_freq_hz,
+            0.0,
+            20,
+        )
+        .expect("valid GLONASS L1 reference samples");
+        let amplitude = signal_amplitude_from_cn0(params.cn0_db_hz, config.sampling_freq_hz);
+
+        for (index, (sample, expected_value)) in frame.iq.iter().zip(expected.iter()).enumerate() {
+            let scaled = *expected_value * amplitude;
+            assert!(
+                (sample.re - scaled).abs() <= 1.0e-6,
+                "GLONASS L1 I mismatch at sample {index}: actual={}, expected={scaled}",
+                sample.re
+            );
+            assert!(
+                sample.im.abs() <= 1.0e-6,
+                "GLONASS L1 Q mismatch at sample {index}: actual={}",
+                sample.im
+            );
+        }
+    }
+
     fn synthetic_epoch_frame(
         sat_state: &SatState,
         config: &ReceiverPipelineConfig,
