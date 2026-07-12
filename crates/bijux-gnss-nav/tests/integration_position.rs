@@ -367,6 +367,108 @@ fn glonass_pseudorange_from_truth(
     pseudorange_m
 }
 
+#[derive(Debug, Clone)]
+struct ControlledMixedGeometryCase {
+    gps_ephemerides: Vec<GpsEphemeris>,
+    galileo_navigation: Vec<GalileoBroadcastNavigationData>,
+    beidou_navigation: Vec<BeidouBroadcastNavigationData>,
+    truth_ecef_m: (f64, f64, f64),
+    t_rx_s: f64,
+    receiver_clock_bias_s: f64,
+    galileo_bias_s: f64,
+    beidou_bias_s: f64,
+}
+
+impl ControlledMixedGeometryCase {
+    fn gps_ephemerides(&self, count: usize) -> Vec<GpsEphemeris> {
+        self.gps_ephemerides.iter().take(count).cloned().collect()
+    }
+
+    fn observations(
+        &self,
+        gps_count: usize,
+        galileo_count: usize,
+        beidou_count: usize,
+    ) -> Vec<PositionObservation> {
+        let mut observations = self
+            .gps_ephemerides
+            .iter()
+            .take(gps_count)
+            .map(|ephemeris| {
+                timed_position_observation_from_truth(
+                    ephemeris,
+                    self.truth_ecef_m,
+                    self.t_rx_s,
+                    self.receiver_clock_bias_s,
+                )
+            })
+            .collect::<Vec<_>>();
+        observations.extend(self.galileo_navigation.iter().take(galileo_count).map(|navigation| {
+            let pseudorange_m = galileo_pseudorange_from_truth(
+                navigation,
+                self.truth_ecef_m,
+                self.t_rx_s,
+                self.receiver_clock_bias_s,
+                self.galileo_bias_s,
+            );
+            timed_position_observation(navigation.sat, pseudorange_m, self.t_rx_s)
+        }));
+        observations.extend(self.beidou_navigation.iter().take(beidou_count).map(|navigation| {
+            let pseudorange_m = beidou_pseudorange_from_truth(
+                navigation,
+                self.truth_ecef_m,
+                self.t_rx_s,
+                self.receiver_clock_bias_s,
+                self.beidou_bias_s,
+            );
+            timed_position_observation(navigation.sat, pseudorange_m, self.t_rx_s)
+        }));
+        observations
+    }
+
+    fn navigation(
+        &self,
+        gps_count: usize,
+        galileo_count: usize,
+        beidou_count: usize,
+    ) -> Vec<PositionBroadcastNavigation> {
+        let gps_ephemerides = self.gps_ephemerides(gps_count);
+        let mut navigation = position_broadcast_navigation_from_gps_ephemerides(&gps_ephemerides);
+        navigation.extend(
+            self.galileo_navigation
+                .iter()
+                .take(galileo_count)
+                .cloned()
+                .map(PositionBroadcastNavigation::Galileo),
+        );
+        let beidou_navigation =
+            self.beidou_navigation.iter().take(beidou_count).cloned().collect::<Vec<_>>();
+        navigation.extend(position_broadcast_navigation_from_beidou_navigations(
+            &beidou_navigation,
+        ));
+        navigation
+    }
+}
+
+fn controlled_mixed_geometry_case() -> ControlledMixedGeometryCase {
+    ControlledMixedGeometryCase {
+        gps_ephemerides: sample_ephemerides(),
+        galileo_navigation: vec![
+            sample_galileo_navigation(19, 1.17, 0.84),
+            sample_galileo_navigation(24, -0.83, 1.52),
+        ],
+        beidou_navigation: vec![
+            sample_beidou_navigation_at(11, 0.77, 0.53, 504_018.0),
+            sample_beidou_navigation_at(12, -1.09, 1.31, 504_018.0),
+        ],
+        truth_ecef_m: geodetic_to_ecef(37.0, -122.0, 10.0),
+        t_rx_s: 504_018.07 + 2.75e-4,
+        receiver_clock_bias_s: 2.75e-4,
+        galileo_bias_s: -1.15e-6,
+        beidou_bias_s: 9.25e-7,
+    }
+}
+
 #[test]
 fn position_solver_returns_solution() {
     let solver = PositionSolver::new();
