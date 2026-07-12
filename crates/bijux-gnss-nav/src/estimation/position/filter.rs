@@ -23,6 +23,7 @@ use crate::estimation::position::solver::{
     PositionBroadcastNavigation, PositionObservation, PositionSolveRefusal,
     PositionSolveRefusalKind, PositionSolver, WeightingConfig,
 };
+use crate::estimation::uncertainty::{covariance_horizontal_vertical, position_covariance_ecef_m2};
 use crate::linalg::Matrix;
 use crate::orbits::gps::GpsEphemeris;
 
@@ -195,6 +196,7 @@ pub struct PositionFilterEpoch {
     pub ecef_x_m: f64,
     pub ecef_y_m: f64,
     pub ecef_z_m: f64,
+    pub position_covariance_ecef_m2: Option<[[f64; 3]; 3]>,
     pub velocity_x_mps: f64,
     pub velocity_y_mps: f64,
     pub velocity_z_mps: f64,
@@ -584,6 +586,7 @@ impl PositionFilter {
             ecef_x_m: solution.ecef_x_m,
             ecef_y_m: solution.ecef_y_m,
             ecef_z_m: solution.ecef_z_m,
+            position_covariance_ecef_m2: solution.position_covariance_ecef_m2,
             velocity_x_mps: self.ekf.x[self.indices.vel[0]],
             velocity_y_mps: self.ekf.x[self.indices.vel[1]],
             velocity_z_mps: self.ekf.x[self.indices.vel[2]],
@@ -615,18 +618,27 @@ impl PositionFilter {
         residuals: Vec<(SatId, f64)>,
         used_sat_count: usize,
     ) -> PositionFilterEpoch {
-        let sigma_x_m = self.ekf.p[(self.indices.pos[0], self.indices.pos[0])].abs().sqrt();
-        let sigma_y_m = self.ekf.p[(self.indices.pos[1], self.indices.pos[1])].abs().sqrt();
-        let sigma_z_m = self.ekf.p[(self.indices.pos[2], self.indices.pos[2])].abs().sqrt();
+        let position_ecef_m = [
+            self.ekf.x[self.indices.pos[0]],
+            self.ekf.x[self.indices.pos[1]],
+            self.ekf.x[self.indices.pos[2]],
+        ];
+        let position_covariance_ecef_m2 =
+            position_covariance_ecef_m2(&self.ekf.p, &self.indices.pos);
+        let (sigma_h_m, sigma_v_m) = position_covariance_ecef_m2
+            .and_then(|covariance| covariance_horizontal_vertical(position_ecef_m, covariance))
+            .map(|(sigma_h_m, sigma_v_m)| (Some(sigma_h_m), Some(sigma_v_m)))
+            .unwrap_or((None, None));
         let clock_bias_sigma_s =
             self.ekf.p[(self.indices.clock_bias, self.indices.clock_bias)].abs().sqrt();
         let clock_drift_sigma_s_per_s =
             self.ekf.p[(self.indices.clock_drift, self.indices.clock_drift)].abs().sqrt();
         PositionFilterEpoch {
             t_rx_s,
-            ecef_x_m: self.ekf.x[self.indices.pos[0]],
-            ecef_y_m: self.ekf.x[self.indices.pos[1]],
-            ecef_z_m: self.ekf.x[self.indices.pos[2]],
+            ecef_x_m: position_ecef_m[0],
+            ecef_y_m: position_ecef_m[1],
+            ecef_z_m: position_ecef_m[2],
+            position_covariance_ecef_m2,
             velocity_x_mps: self.ekf.x[self.indices.vel[0]],
             velocity_y_mps: self.ekf.x[self.indices.vel[1]],
             velocity_z_mps: self.ekf.x[self.indices.vel[2]],
@@ -634,8 +646,8 @@ impl PositionFilter {
             clock_bias_sigma_s,
             clock_drift_s_per_s: self.ekf.x[self.indices.clock_drift],
             clock_drift_sigma_s_per_s,
-            sigma_h_m: Some((sigma_x_m * sigma_x_m + sigma_y_m * sigma_y_m).sqrt()),
-            sigma_v_m: Some(sigma_z_m),
+            sigma_h_m,
+            sigma_v_m,
             rms_m: self.ekf.health.innovation_rms,
             residuals,
             inter_system_biases: self.inter_system_biases(),
@@ -679,8 +691,12 @@ fn pseudorange_sigma_m(
     elevation_deg: Option<f64>,
     config: &PositionFilterConfig,
 ) -> f64 {
-    let geometry_weight =
-        position_measurement_weight(Some(observation.cn0_dbhz), elevation_deg, None, config.weighting);
+    let geometry_weight = position_measurement_weight(
+        Some(observation.cn0_dbhz),
+        elevation_deg,
+        None,
+        config.weighting,
+    );
     let total_weight = (geometry_weight * observation.weight.max(1.0e-6)).max(1.0e-6);
     (config.base_pseudorange_sigma_m / total_weight.sqrt()).max(1.0e-3)
 }
@@ -690,8 +706,12 @@ fn doppler_sigma_hz(
     elevation_deg: Option<f64>,
     config: &PositionFilterConfig,
 ) -> f64 {
-    let geometry_weight =
-        position_measurement_weight(Some(observation.cn0_dbhz), elevation_deg, None, config.weighting);
+    let geometry_weight = position_measurement_weight(
+        Some(observation.cn0_dbhz),
+        elevation_deg,
+        None,
+        config.weighting,
+    );
     let total_weight = (geometry_weight * observation.weight.max(1.0e-6)).max(1.0e-6);
     let modeled_sigma_hz = (config.base_doppler_sigma_hz / total_weight.sqrt()).max(1.0e-3);
     let observed_sigma_hz = observation
@@ -734,7 +754,10 @@ mod tests {
     };
     use bijux_gnss_core::api::{Constellation, SatId};
 
-    fn sample_position_observation(cn0_dbhz: f64, elevation_deg: Option<f64>) -> PositionObservation {
+    fn sample_position_observation(
+        cn0_dbhz: f64,
+        elevation_deg: Option<f64>,
+    ) -> PositionObservation {
         PositionObservation {
             sat: SatId { constellation: Constellation::Gps, prn: 7 },
             pseudorange_m: 24_000_000.0,
@@ -937,10 +960,16 @@ mod tests {
         config.base_pseudorange_sigma_m = 3.0;
         config.weighting = WeightingConfig::default();
 
-        let low_elevation_sigma =
-            pseudorange_sigma_m(&sample_position_observation(45.0, Some(10.0)), Some(10.0), &config);
-        let high_elevation_sigma =
-            pseudorange_sigma_m(&sample_position_observation(45.0, Some(75.0)), Some(75.0), &config);
+        let low_elevation_sigma = pseudorange_sigma_m(
+            &sample_position_observation(45.0, Some(10.0)),
+            Some(10.0),
+            &config,
+        );
+        let high_elevation_sigma = pseudorange_sigma_m(
+            &sample_position_observation(45.0, Some(75.0)),
+            Some(75.0),
+            &config,
+        );
 
         assert!(low_elevation_sigma.is_finite());
         assert!(high_elevation_sigma.is_finite());
@@ -951,15 +980,19 @@ mod tests {
     fn position_filter_assigns_larger_sigma_to_low_cn0_pseudorange() {
         let mut config = PositionFilterConfig::default();
         config.base_pseudorange_sigma_m = 3.0;
-        config.weighting = WeightingConfig {
-            model: PositionWeightingModel::Cn0,
-            ..WeightingConfig::default()
-        };
+        config.weighting =
+            WeightingConfig { model: PositionWeightingModel::Cn0, ..WeightingConfig::default() };
 
-        let weak_signal_sigma =
-            pseudorange_sigma_m(&sample_position_observation(28.0, Some(45.0)), Some(45.0), &config);
-        let strong_signal_sigma =
-            pseudorange_sigma_m(&sample_position_observation(48.0, Some(45.0)), Some(45.0), &config);
+        let weak_signal_sigma = pseudorange_sigma_m(
+            &sample_position_observation(28.0, Some(45.0)),
+            Some(45.0),
+            &config,
+        );
+        let strong_signal_sigma = pseudorange_sigma_m(
+            &sample_position_observation(48.0, Some(45.0)),
+            Some(45.0),
+            &config,
+        );
 
         assert!(weak_signal_sigma.is_finite());
         assert!(strong_signal_sigma.is_finite());
@@ -975,12 +1008,21 @@ mod tests {
             ..WeightingConfig::default()
         };
 
-        let weak_low_sigma =
-            pseudorange_sigma_m(&sample_position_observation(28.0, Some(10.0)), Some(10.0), &config);
-        let strong_low_sigma =
-            pseudorange_sigma_m(&sample_position_observation(48.0, Some(10.0)), Some(10.0), &config);
-        let weak_high_sigma =
-            pseudorange_sigma_m(&sample_position_observation(28.0, Some(75.0)), Some(75.0), &config);
+        let weak_low_sigma = pseudorange_sigma_m(
+            &sample_position_observation(28.0, Some(10.0)),
+            Some(10.0),
+            &config,
+        );
+        let strong_low_sigma = pseudorange_sigma_m(
+            &sample_position_observation(48.0, Some(10.0)),
+            Some(10.0),
+            &config,
+        );
+        let weak_high_sigma = pseudorange_sigma_m(
+            &sample_position_observation(28.0, Some(75.0)),
+            Some(75.0),
+            &config,
+        );
 
         assert!(weak_low_sigma.is_finite());
         assert!(strong_low_sigma.is_finite());
@@ -999,6 +1041,29 @@ mod tests {
         assert_eq!(
             epoch.clock_drift_sigma_s_per_s,
             filter.config.initial_clock_drift_sigma_s_per_s
+        );
+    }
+
+    #[test]
+    fn position_filter_epoch_exposes_ecef_position_covariance() {
+        let filter = PositionFilter::new(PositionFilterConfig::default());
+
+        let epoch = filter.epoch_from_state(0.0, Vec::new(), 0);
+        let covariance = epoch
+            .position_covariance_ecef_m2
+            .expect("filter epoch should emit position covariance");
+
+        assert_eq!(
+            covariance[0][0],
+            filter.config.initial_position_sigma_m * filter.config.initial_position_sigma_m
+        );
+        assert_eq!(
+            covariance[1][1],
+            filter.config.initial_position_sigma_m * filter.config.initial_position_sigma_m
+        );
+        assert_eq!(
+            covariance[2][2],
+            filter.config.initial_position_sigma_m * filter.config.initial_position_sigma_m
         );
     }
 

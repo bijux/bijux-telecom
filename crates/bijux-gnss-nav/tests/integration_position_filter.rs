@@ -422,6 +422,14 @@ fn sequential_position_filter_tracks_static_receiver_across_epochs() {
 
         assert!(position_error_m < 12.0, "position_error_m={position_error_m}");
         assert!(solution.used_sat_count >= 4);
+        let covariance = solution
+            .position_covariance_ecef_m2
+            .expect("position filter should emit position covariance");
+        for row in covariance {
+            for value in row {
+                assert!(value.is_finite());
+            }
+        }
         last_velocity_norm_mps = Some(velocity_norm_mps);
     }
 
