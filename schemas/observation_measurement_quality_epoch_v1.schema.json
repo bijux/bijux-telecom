@@ -1,0 +1,142 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ObservationMeasurementQualityEpochV1",
+  "type": "object",
+  "required": ["header", "payload"],
+  "properties": {
+    "header": { "$ref": "#/definitions/ArtifactHeader" },
+    "payload": { "$ref": "#/definitions/ObservationMeasurementQualityEpochReport" }
+  },
+  "definitions": {
+    "ArtifactHeader": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "producer",
+        "producer_version",
+        "created_at_unix_ms",
+        "git_sha",
+        "config_hash",
+        "toolchain",
+        "features",
+        "deterministic",
+        "git_dirty"
+      ],
+      "properties": {
+        "schema_version": { "type": "integer", "const": 1 },
+        "producer": { "type": "string" },
+        "producer_version": { "type": "string" },
+        "created_at_unix_ms": { "type": "integer", "minimum": 0 },
+        "git_sha": { "type": "string" },
+        "config_hash": { "type": "string" },
+        "dataset_id": { "type": ["string", "null"] },
+        "toolchain": { "type": "string" },
+        "features": { "type": "array", "items": { "type": "string" } },
+        "deterministic": { "type": "boolean" },
+        "git_dirty": { "type": "boolean" }
+      }
+    },
+    "ReceiverSampleTrace": {
+      "type": "object",
+      "required": ["sample_index", "sample_rate_hz", "receiver_time_s"],
+      "properties": {
+        "sample_index": { "type": "integer", "minimum": 0 },
+        "sample_rate_hz": { "type": "number", "exclusiveMinimum": 0 },
+        "receiver_time_s": { "type": "number" }
+      }
+    },
+    "SatId": {
+      "type": "object",
+      "required": ["constellation", "prn"],
+      "properties": {
+        "constellation": { "type": "string" },
+        "prn": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "SigId": {
+      "type": "object",
+      "required": ["sat", "band", "code"],
+      "properties": {
+        "sat": { "$ref": "#/definitions/SatId" },
+        "band": { "type": "string" },
+        "code": { "type": "string" }
+      }
+    },
+    "LockFlags": {
+      "type": "object",
+      "required": ["code_lock", "carrier_lock", "bit_lock", "cycle_slip"],
+      "properties": {
+        "code_lock": { "type": "boolean" },
+        "carrier_lock": { "type": "boolean" },
+        "bit_lock": { "type": "boolean" },
+        "cycle_slip": { "type": "boolean" }
+      }
+    },
+    "ObservationMeasurementQualitySatellite": {
+      "type": "object",
+      "required": [
+        "signal_id",
+        "accepted",
+        "observation_status",
+        "observation_reject_reasons",
+        "cn0_dbhz",
+        "pseudorange_sigma_m",
+        "carrier_phase_sigma_cycles",
+        "doppler_sigma_hz",
+        "cn0_sigma_dbhz",
+        "lock_flags",
+        "observation_lock_state",
+        "observation_lock_reason",
+        "tracking_lock_quality",
+        "cycle_slip",
+        "cycle_slip_reason"
+      ],
+      "properties": {
+        "signal_id": { "$ref": "#/definitions/SigId" },
+        "accepted": { "type": "boolean" },
+        "observation_status": { "type": "string" },
+        "observation_reject_reasons": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "cn0_dbhz": { "type": "number", "minimum": 0 },
+        "pseudorange_sigma_m": { "type": ["number", "null"], "minimum": 0 },
+        "carrier_phase_sigma_cycles": { "type": ["number", "null"], "minimum": 0 },
+        "doppler_sigma_hz": { "type": ["number", "null"], "minimum": 0 },
+        "cn0_sigma_dbhz": { "type": ["number", "null"], "minimum": 0 },
+        "lock_flags": { "$ref": "#/definitions/LockFlags" },
+        "observation_lock_state": { "type": "string" },
+        "observation_lock_reason": { "type": ["string", "null"] },
+        "tracking_lock_quality": { "type": "number", "minimum": 0 },
+        "cycle_slip": { "type": "boolean" },
+        "cycle_slip_reason": { "type": ["string", "null"] }
+      }
+    },
+    "ObservationMeasurementQualityEpochReport": {
+      "type": "object",
+      "required": [
+        "artifact_id",
+        "epoch_id",
+        "epoch_idx",
+        "source_time",
+        "accepted",
+        "decision",
+        "decision_reason",
+        "sats"
+      ],
+      "properties": {
+        "artifact_id": { "type": "string", "minLength": 1 },
+        "epoch_id": { "type": "string", "minLength": 1 },
+        "epoch_idx": { "type": "integer", "minimum": 0 },
+        "source_time": { "$ref": "#/definitions/ReceiverSampleTrace" },
+        "accepted": { "type": "boolean" },
+        "decision": { "type": "string" },
+        "decision_reason": { "type": ["string", "null"] },
+        "sats": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ObservationMeasurementQualitySatellite" }
+        }
+      }
+    }
+  }
+}
