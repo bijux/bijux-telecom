@@ -243,6 +243,98 @@ fn sample_beidou_navigation(prn: u8, omega0: f64, m0: f64) -> BeidouBroadcastNav
     sample_beidou_navigation_at(prn, omega0, m0, 345_618.0)
 }
 
+struct MixedSecondaryBandCase {
+    observations: Vec<PositionObservation>,
+    navigation: Vec<PositionBroadcastNavigation>,
+    truth_ecef_m: (f64, f64, f64),
+    t_rx_s: f64,
+    receiver_clock_bias_s: f64,
+    galileo_bias_s: f64,
+    beidou_bias_s: f64,
+}
+
+fn mixed_secondary_band_case() -> MixedSecondaryBandCase {
+    let gps_ephemerides =
+        sample_ephemerides_with_clock_parameters(&broadcast_clock_fixture_parameters());
+    let galileo_navigation =
+        vec![sample_galileo_navigation(19, 1.17, 0.84), sample_galileo_navigation(24, -0.83, 1.52)];
+    let beidou_navigation = vec![
+        sample_beidou_navigation_at(11, 0.77, 0.53, 504_018.0),
+        sample_beidou_navigation_at(12, -1.09, 1.31, 504_018.0),
+    ];
+    let truth_ecef_m = geodetic_to_ecef(37.0, -122.0, 10.0);
+    let receiver_clock_bias_s = 2.75e-4;
+    let galileo_bias_s = -1.15e-6;
+    let beidou_bias_s = 9.25e-7;
+    let t_rx_s = 504_018.07 + receiver_clock_bias_s;
+
+    let mut observations = gps_ephemerides
+        .iter()
+        .map(|ephemeris| {
+            let signal =
+                SigId { sat: ephemeris.sat, band: SignalBand::L5, code: SignalCode::Unknown };
+            let observation = timed_position_observation_from_truth(
+                ephemeris,
+                truth_ecef_m,
+                t_rx_s,
+                receiver_clock_bias_s,
+            );
+            observation_with_signal_id(
+                observation_with_pseudorange_bias(
+                    observation,
+                    gps_broadcast_group_delay_code_bias_m(signal, ephemeris)
+                        .expect("GPS L5 broadcast group delay bias"),
+                ),
+                signal,
+            )
+        })
+        .collect::<Vec<_>>();
+    observations.extend(galileo_navigation.iter().map(|navigation| {
+        let signal = SigId { sat: navigation.sat, band: SignalBand::E5, code: SignalCode::E5a };
+        let pseudorange_m = galileo_pseudorange_from_truth(
+            navigation,
+            truth_ecef_m,
+            t_rx_s,
+            receiver_clock_bias_s,
+            galileo_bias_s,
+        ) + galileo_broadcast_group_delay_code_bias_m(signal, navigation)
+            .expect("Galileo E5a broadcast group delay bias");
+        observation_with_signal_id(
+            timed_position_observation(navigation.sat, pseudorange_m, t_rx_s),
+            signal,
+        )
+    }));
+    observations.extend(beidou_navigation.iter().map(|navigation| {
+        let signal = SigId { sat: navigation.sat, band: SignalBand::B2, code: SignalCode::B2I };
+        let pseudorange_m = beidou_pseudorange_from_truth(
+            navigation,
+            truth_ecef_m,
+            t_rx_s,
+            receiver_clock_bias_s,
+            beidou_bias_s,
+        ) + beidou_broadcast_group_delay_code_bias_m(signal, navigation)
+            .expect("BeiDou B2I broadcast group delay bias");
+        observation_with_signal_id(
+            timed_position_observation(navigation.sat, pseudorange_m, t_rx_s),
+            signal,
+        )
+    }));
+
+    let mut navigation = position_broadcast_navigation_from_gps_ephemerides(&gps_ephemerides);
+    navigation.extend(galileo_navigation.iter().cloned().map(PositionBroadcastNavigation::Galileo));
+    navigation.extend(position_broadcast_navigation_from_beidou_navigations(&beidou_navigation));
+
+    MixedSecondaryBandCase {
+        observations,
+        navigation,
+        truth_ecef_m,
+        t_rx_s,
+        receiver_clock_bias_s,
+        galileo_bias_s,
+        beidou_bias_s,
+    }
+}
+
 fn galileo_pseudorange_from_truth(
     navigation: &GalileoBroadcastNavigationData,
     truth_ecef_m: (f64, f64, f64),
@@ -902,88 +994,27 @@ fn gps_l5_observations_show_tgd_residuals_when_corrections_are_disabled() {
 
 #[test]
 fn mixed_secondary_band_observations_recover_with_broadcast_group_delay_corrections() {
-    let gps_ephemerides =
-        sample_ephemerides_with_clock_parameters(&broadcast_clock_fixture_parameters());
-    let galileo_navigation =
-        vec![sample_galileo_navigation(19, 1.17, 0.84), sample_galileo_navigation(24, -0.83, 1.52)];
-    let beidou_navigation = vec![
-        sample_beidou_navigation_at(11, 0.77, 0.53, 504_018.0),
-        sample_beidou_navigation_at(12, -1.09, 1.31, 504_018.0),
-    ];
-    let truth_ecef_m = geodetic_to_ecef(37.0, -122.0, 10.0);
-    let receiver_clock_bias_s = 2.75e-4;
-    let galileo_bias_s = -1.15e-6;
-    let beidou_bias_s = 9.25e-7;
-    let t_rx_s = 504_018.07 + receiver_clock_bias_s;
-
-    let mut observations = gps_ephemerides
-        .iter()
-        .map(|ephemeris| {
-            let signal =
-                SigId { sat: ephemeris.sat, band: SignalBand::L5, code: SignalCode::Unknown };
-            let observation = timed_position_observation_from_truth(
-                ephemeris,
-                truth_ecef_m,
-                t_rx_s,
-                receiver_clock_bias_s,
-            );
-            observation_with_signal_id(
-                observation_with_pseudorange_bias(
-                    observation,
-                    gps_broadcast_group_delay_code_bias_m(signal, ephemeris)
-                        .expect("GPS L5 broadcast group delay bias"),
-                ),
-                signal,
-            )
-        })
-        .collect::<Vec<_>>();
-    observations.extend(galileo_navigation.iter().map(|navigation| {
-        let signal = SigId { sat: navigation.sat, band: SignalBand::E5, code: SignalCode::E5a };
-        let pseudorange_m = galileo_pseudorange_from_truth(
-            navigation,
-            truth_ecef_m,
-            t_rx_s,
-            receiver_clock_bias_s,
-            galileo_bias_s,
-        ) + galileo_broadcast_group_delay_code_bias_m(signal, navigation)
-            .expect("Galileo E5a broadcast group delay bias");
-        observation_with_signal_id(
-            timed_position_observation(navigation.sat, pseudorange_m, t_rx_s),
-            signal,
-        )
-    }));
-    observations.extend(beidou_navigation.iter().map(|navigation| {
-        let signal = SigId { sat: navigation.sat, band: SignalBand::B2, code: SignalCode::B2I };
-        let pseudorange_m = beidou_pseudorange_from_truth(
-            navigation,
-            truth_ecef_m,
-            t_rx_s,
-            receiver_clock_bias_s,
-            beidou_bias_s,
-        ) + beidou_broadcast_group_delay_code_bias_m(signal, navigation)
-            .expect("BeiDou B2I broadcast group delay bias");
-        observation_with_signal_id(
-            timed_position_observation(navigation.sat, pseudorange_m, t_rx_s),
-            signal,
-        )
-    }));
-
-    let mut navigation = position_broadcast_navigation_from_gps_ephemerides(&gps_ephemerides);
-    navigation.extend(galileo_navigation.iter().cloned().map(PositionBroadcastNavigation::Galileo));
-    navigation.extend(position_broadcast_navigation_from_beidou_navigations(&beidou_navigation));
-
+    let scenario = mixed_secondary_band_case();
     let solution = PositionSolver::new()
-        .solve_wls_with_navigation_data(&observations, &navigation, t_rx_s)
+        .solve_wls_with_navigation_data(
+            &scenario.observations,
+            &scenario.navigation,
+            scenario.t_rx_s,
+        )
         .expect("mixed secondary-band observations should solve");
 
     assert_eq!(solution.clock_reference_constellation, Constellation::Gps);
     assert_eq!(solution.used_sat_count, 8);
     assert!(solution.rejected.is_empty(), "unexpected rejections: {:?}", solution.rejected);
     assert!(
-        position_error_3d_m(solution.ecef_x_m, solution.ecef_y_m, solution.ecef_z_m, truth_ecef_m)
-            < 5.0
+        position_error_3d_m(
+            solution.ecef_x_m,
+            solution.ecef_y_m,
+            solution.ecef_z_m,
+            scenario.truth_ecef_m,
+        ) < 5.0
     );
-    assert!((solution.clock_bias_s - receiver_clock_bias_s).abs() < 1.0e-8);
+    assert!((solution.clock_bias_s - scenario.receiver_clock_bias_s).abs() < 1.0e-8);
     assert_eq!(solution.inter_system_biases.len(), 2);
     let galileo_isb = solution
         .inter_system_biases
@@ -995,8 +1026,57 @@ fn mixed_secondary_band_observations_recover_with_broadcast_group_delay_correcti
         .iter()
         .find(|bias| bias.constellation == Constellation::Beidou)
         .expect("beidou inter-system bias");
-    assert!((galileo_isb.bias_s.0 - galileo_bias_s).abs() < 1.0e-8);
-    assert!((beidou_isb.bias_s.0 - beidou_bias_s).abs() < 1.0e-8);
+    assert!((galileo_isb.bias_s.0 - scenario.galileo_bias_s).abs() < 1.0e-8);
+    assert!((beidou_isb.bias_s.0 - scenario.beidou_bias_s).abs() < 1.0e-8);
+}
+
+#[test]
+fn mixed_secondary_band_observations_show_group_delay_residuals_when_corrections_are_disabled() {
+    let scenario = mixed_secondary_band_case();
+    let corrected_solver = PositionSolver::new();
+    let uncorrected_solver =
+        PositionSolver { apply_broadcast_group_delay: false, ..PositionSolver::new() };
+    let corrected_solution = corrected_solver
+        .solve_wls_with_navigation_data(
+            &scenario.observations,
+            &scenario.navigation,
+            scenario.t_rx_s,
+        )
+        .expect("corrected mixed secondary-band observations should solve");
+    let uncorrected_solution = uncorrected_solver
+        .solve_wls_with_navigation_data(
+            &scenario.observations,
+            &scenario.navigation,
+            scenario.t_rx_s,
+        )
+        .expect("uncorrected mixed secondary-band observations should still solve");
+
+    let corrected_error_m = position_error_3d_m(
+        corrected_solution.ecef_x_m,
+        corrected_solution.ecef_y_m,
+        corrected_solution.ecef_z_m,
+        scenario.truth_ecef_m,
+    );
+    let uncorrected_error_m = position_error_3d_m(
+        uncorrected_solution.ecef_x_m,
+        uncorrected_solution.ecef_y_m,
+        uncorrected_solution.ecef_z_m,
+        scenario.truth_ecef_m,
+    );
+
+    assert!(corrected_solution.rejected.is_empty());
+    assert!(uncorrected_solution.rejected.is_empty());
+    assert!(corrected_error_m < 5.0);
+    assert!(uncorrected_error_m > corrected_error_m + 1.0);
+    assert!(corrected_solution.post_fit_residual_rms_m < 0.01);
+    assert!(
+        uncorrected_solution.post_fit_residual_rms_m
+            > corrected_solution.post_fit_residual_rms_m + 0.5
+    );
+    assert!(
+        max_abs_residual_m(&uncorrected_solution.residuals)
+            > max_abs_residual_m(&corrected_solution.residuals) + 0.5
+    );
 }
 
 #[test]
