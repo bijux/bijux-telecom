@@ -21,6 +21,7 @@ fn accepted_acquisition(sat: SatId, code_phase_samples: usize) -> AcqResult {
     AcqResult {
         sat,
         signal_band: SignalBand::L1,
+        glonass_frequency_channel: None,
         source_time: ReceiverSampleTrace::default(),
         candidate_rank: 1,
         is_primary_candidate: true,

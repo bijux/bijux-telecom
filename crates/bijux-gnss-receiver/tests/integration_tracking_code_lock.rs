@@ -55,6 +55,7 @@ fn accepted_acquisition_with_signal_band(
     AcqResult {
         sat,
         signal_band,
+        glonass_frequency_channel: None,
         source_time: ReceiverSampleTrace::default(),
         candidate_rank: 1,
         is_primary_candidate: true,

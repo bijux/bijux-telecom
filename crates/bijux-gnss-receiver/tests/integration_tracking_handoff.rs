@@ -25,6 +25,7 @@ fn accepted_acquisition(
     AcqResult {
         sat,
         signal_band,
+        glonass_frequency_channel: None,
         source_time,
         candidate_rank: 1,
         is_primary_candidate: true,

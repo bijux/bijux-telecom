@@ -140,6 +140,7 @@ pub fn truth_seeded_acquisition_results(
             AcqResult {
                 sat: signal.sat,
                 signal_band: SignalBand::L1,
+                glonass_frequency_channel: None,
                 source_time,
                 candidate_rank: 1,
                 is_primary_candidate: true,

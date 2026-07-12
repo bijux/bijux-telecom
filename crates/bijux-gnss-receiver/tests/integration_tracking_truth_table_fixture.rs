@@ -245,10 +245,7 @@ fn load_truth_table_fixture(fixture_file: &str) -> SyntheticTrackingTruthTableRe
     serde_json::from_str(&contents).expect("valid truth table fixture")
 }
 
-fn write_truth_table_fixture(
-    fixture_file: &str,
-    report: &SyntheticTrackingTruthTableReport,
-) {
+fn write_truth_table_fixture(fixture_file: &str, report: &SyntheticTrackingTruthTableReport) {
     let path =
         Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/data/tracking/{fixture_file}"));
     let contents = serde_json::to_string_pretty(report).expect("serialize truth table fixture");
