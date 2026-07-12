@@ -169,6 +169,36 @@ mod tests {
     }
 
     #[test]
+    fn static_nav_clock_model_preserves_position_and_damps_velocity() {
+        let model = StaticNavClockModel::new(
+            ProcessNoiseConfig {
+                pos_m: 1.0,
+                vel_mps: 0.5,
+                clock_bias_s: 1.0e-4,
+                clock_drift_s: 1.0e-5,
+                ztd_m: 0.25,
+            },
+            4.0,
+        );
+        let mut x = vec![10.0_f64, 20.0, 30.0, 3.0, 4.0, 5.0, 0.0, 2.0e-4, 2.3];
+        let mut p = Matrix::identity(9);
+
+        model.propagate(&mut x, &mut p, 2.0);
+
+        assert_eq!(x[0], 10.0);
+        assert_eq!(x[1], 20.0);
+        assert_eq!(x[2], 30.0);
+        assert!(x[3].abs() < 3.0);
+        assert!(x[4].abs() < 4.0);
+        assert!(x[5].abs() < 5.0);
+        assert_eq!(x[6], 4.0e-4);
+        assert_eq!(x[8], 2.3);
+        assert_eq!(p.rows(), 9);
+        assert_eq!(p.cols(), 9);
+        assert!(p[(8, 8)] > 1.0);
+    }
+
+    #[test]
     fn pseudorange_measurement_subtracts_satellite_clock_bias() {
         let measurement = PseudorangeMeasurement {
             sig: sample_sig_id(),
