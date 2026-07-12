@@ -137,6 +137,30 @@ fn pseudorange_sigma_weight_prefers_smaller_sigma() {
 }
 
 #[test]
+fn elevation_weight_prefers_high_elevation_satellites() {
+    let config = WeightingConfig::default();
+    let low_elevation_weight = weight_from_elevation(10.0, config);
+    let high_elevation_weight = weight_from_elevation(75.0, config);
+
+    assert!(low_elevation_weight.is_finite());
+    assert!(high_elevation_weight.is_finite());
+    assert!(low_elevation_weight < high_elevation_weight);
+}
+
+#[test]
+fn elevation_weight_respects_minimum_weight_floor() {
+    let config = WeightingConfig {
+        enabled: true,
+        min_elev_deg: 5.0,
+        elev_exponent: 4.0,
+        min_weight: 0.2,
+    };
+    let horizon_weight = weight_from_elevation(0.0, config);
+
+    assert!((horizon_weight - 0.2).abs() < 1.0e-12);
+}
+
+#[test]
 fn composite_position_weight_multiplies_geometry_and_sigma_terms() {
     let config = WeightingConfig::default();
     let geometry_weight = weight_from_elevation(30.0, config);
