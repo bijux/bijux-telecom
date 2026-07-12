@@ -773,12 +773,8 @@ impl Navigation {
             }
         }
         nav_epoch.stability_signature = nav_output_stability_signature(&nav_epoch);
-        if let Some(sigma_h) = nav_epoch.sigma_h_m {
-            nav_epoch.integrity_hpl_m = Some(sigma_h.0 * 6.0);
-        }
-        if let Some(sigma_v) = nav_epoch.sigma_v_m {
-            nav_epoch.integrity_vpl_m = Some(sigma_v.0 * 6.0);
-        }
+        nav_epoch.integrity_hpl_m = solution.integrity_hpl_m;
+        nav_epoch.integrity_vpl_m = solution.integrity_vpl_m;
 
         if let Some(rms) = nav_epoch.innovation_rms_m {
             self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
