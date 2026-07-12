@@ -2,6 +2,7 @@
 
 pub mod antenna;
 pub mod atmosphere;
+pub mod ocean_tide_loading;
 pub mod nequick;
 
 #[allow(dead_code)]

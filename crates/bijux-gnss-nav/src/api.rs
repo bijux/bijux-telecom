@@ -11,15 +11,15 @@ pub use crate::corrections::atmosphere::{clamp_ztd, AtmosphereConfig};
 pub use crate::corrections::biases::{
     iono_free_code_bias_m, CodeBiasProvider, PhaseBiasProvider, SignalCodeBiases, ZeroBiases,
 };
+pub use crate::corrections::broadcast_group_delay::{
+    beidou_broadcast_group_delay_code_bias_m, galileo_broadcast_group_delay_code_bias_m,
+    gps_broadcast_group_delay_code_bias_m, BroadcastGroupDelayBiases,
+};
 pub use crate::corrections::broadcast_ionosphere_residuals::{
     galileo_broadcast_ionosphere_residuals_from_obs_epochs,
     gps_broadcast_ionosphere_residuals_from_obs_epochs, summarize_broadcast_ionosphere_residuals,
     BroadcastIonosphereResidualObservation, BroadcastIonosphereResidualStats,
     BroadcastIonosphereResidualSummary,
-};
-pub use crate::corrections::broadcast_group_delay::{
-    beidou_broadcast_group_delay_code_bias_m, galileo_broadcast_group_delay_code_bias_m,
-    gps_broadcast_group_delay_code_bias_m, BroadcastGroupDelayBiases,
 };
 /// Corrections and combination helpers.
 pub use crate::corrections::combinations::combinations_from_obs_epochs;
@@ -186,6 +186,9 @@ pub use crate::models::antenna::{
     satellite_antenna_range_correction_m, satellite_band_from_antex_frequency,
     ReceiverAntennaCalibration, ReceiverAntennaCalibrations, ReceiverPhaseCenterOffset,
     SatelliteAntennaCalibration, SatelliteAntennaCalibrations, SatellitePhaseCenterOffset,
+};
+pub use crate::models::ocean_tide_loading::{
+    OceanTideConstituent, OceanTideLoadingConstituent, OceanTideLoadingModel,
 };
 pub use crate::models::nequick::GalileoNequickModel;
 /// BeiDou broadcast navigation and satellite state helpers.

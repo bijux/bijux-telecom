@@ -31,6 +31,9 @@ pub use crate::models::antenna::{
     ReceiverAntennaCalibration, ReceiverAntennaCalibrations, ReceiverPhaseCenterOffset,
     SatelliteAntennaCalibration, SatelliteAntennaCalibrations, SatellitePhaseCenterOffset,
 };
+pub use crate::models::ocean_tide_loading::{
+    OceanTideConstituent, OceanTideLoadingConstituent, OceanTideLoadingModel,
+};
 pub use crate::estimation::ppp::config::PppTroposphereSource;
 pub use crate::estimation::rtk::antenna::RtkAntennaCorrectionConfig;
 pub use crate::estimation::rtk::double_difference::rtk_double_difference_residual_metrics_with_antenna_corrections;
