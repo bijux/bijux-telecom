@@ -1,7 +1,10 @@
 #![allow(missing_docs)]
 mod support;
 
-use bijux_gnss_nav::api::{geodetic_to_ecef, GpsEphemeris, PositionFilter, PositionFilterConfig};
+use bijux_gnss_nav::api::{
+    geodetic_to_ecef, GpsEphemeris, PositionFilter, PositionFilterConfig,
+    PositionFilterDivergenceReason, PositionSolveRefusalKind,
+};
 
 use support::position_truth::{
     gps_l1ca_doppler_from_truth, pseudorange_from_truth, receiver_clock_bias_with_drift_s,
@@ -89,6 +92,21 @@ fn deterministic_pseudorange_offset_m(epoch_index: usize, prn: u8) -> f64 {
 fn deterministic_doppler_offset_hz(epoch_index: usize, prn: u8) -> f64 {
     let pattern = ((epoch_index * 11 + prn as usize * 19) % 9) as f64 - 4.0;
     pattern * 0.0
+}
+
+fn offset_observations_m(
+    observations: &[bijux_gnss_nav::api::PositionObservation],
+    offsets_m: &[f64],
+) -> Vec<bijux_gnss_nav::api::PositionObservation> {
+    observations
+        .iter()
+        .zip(offsets_m.iter().cycle())
+        .map(|(observation, offset_m)| {
+            let mut adjusted = observation.clone();
+            adjusted.pseudorange_m += offset_m;
+            adjusted
+        })
+        .collect()
 }
 
 fn translate_truth_ecef_m(
@@ -947,4 +965,120 @@ fn sequential_position_filter_constant_velocity_profile_beats_independent_epochs
         final_dynamic_velocity_error_mps < 2.0,
         "final_dynamic_velocity_error_mps={final_dynamic_velocity_error_mps}"
     );
+}
+
+#[test]
+fn sequential_position_filter_refuses_innovation_growth_and_recovers() {
+    let ephemerides = sample_filter_ephemerides();
+    let epochs = static_receiver_epochs(&ephemerides, 3, 1.0);
+    let mut config = PositionFilterConfig::default();
+    config.gating_chi2_code = None;
+    config.huber_k = None;
+    config.divergence.max_innovation_rms_m = 80.0;
+    let mut filter = PositionFilter::new(config);
+
+    filter
+        .solve_epoch(&epochs[0].observations, &ephemerides, epochs[0].t_rx_s)
+        .expect("healthy seed epoch should solve");
+
+    let divergent_observations_m =
+        offset_observations_m(&epochs[1].observations, &[240.0, -210.0, 180.0, -150.0]);
+    let refusal = filter
+        .solve_epoch(&divergent_observations_m, &ephemerides, epochs[1].t_rx_s)
+        .expect_err("innovation growth should invalidate the sequential filter");
+
+    assert_eq!(
+        refusal.kind,
+        PositionSolveRefusalKind::FilterDivergence(
+            PositionFilterDivergenceReason::InnovationGrowth
+        )
+    );
+    assert!(!filter.initialized);
+    assert_eq!(filter.last_t_rx_s, None);
+
+    let recovered = filter
+        .solve_epoch(&epochs[2].observations, &ephemerides, epochs[2].t_rx_s)
+        .expect("healthy epoch should reseed after divergence");
+
+    assert!(filter.initialized);
+    assert_eq!(filter.last_t_rx_s, Some(epochs[2].t_rx_s));
+    assert!(recovered.used_sat_count >= 4);
+}
+
+#[test]
+fn sequential_position_filter_refuses_residual_explosion_and_recovers() {
+    let ephemerides = sample_filter_ephemerides();
+    let epochs = static_receiver_epochs(&ephemerides, 7, 1.0);
+    let mut config = PositionFilterConfig::for_static_receiver();
+    config.gating_chi2_code = None;
+    config.huber_k = None;
+    config.base_pseudorange_sigma_m = 0.5;
+    config.process_noise.pos_m = 0.05;
+    config.process_noise.vel_mps = 0.005;
+    config.divergence.max_innovation_rms_m = 500.0;
+    config.divergence.max_normalized_innovation_rms = 1.0;
+    config.divergence.max_condition_number = 1.0e12;
+    let mut filter = PositionFilter::new(config);
+
+    for epoch in &epochs[..5] {
+        filter
+            .solve_epoch(&epoch.observations, &ephemerides, epoch.t_rx_s)
+            .expect("healthy convergence epoch should solve");
+    }
+
+    let divergent_observations_m =
+        offset_observations_m(&epochs[5].observations, &[80.0, -72.0, 64.0, -56.0]);
+    let refusal = filter
+        .solve_epoch(&divergent_observations_m, &ephemerides, epochs[5].t_rx_s)
+        .expect_err("residual explosion should invalidate the sequential filter");
+
+    assert_eq!(
+        refusal.kind,
+        PositionSolveRefusalKind::FilterDivergence(
+            PositionFilterDivergenceReason::ResidualExplosion
+        )
+    );
+    assert!(!filter.initialized);
+    assert_eq!(filter.last_t_rx_s, None);
+
+    let recovered = filter
+        .solve_epoch(&epochs[6].observations, &ephemerides, epochs[6].t_rx_s)
+        .expect("healthy epoch should reseed after residual explosion");
+
+    assert!(filter.initialized);
+    assert_eq!(filter.last_t_rx_s, Some(epochs[6].t_rx_s));
+    assert!(recovered.used_sat_count >= 4);
+}
+
+#[test]
+fn sequential_position_filter_refuses_covariance_collapse_and_recovers() {
+    let ephemerides = sample_filter_ephemerides();
+    let epochs = static_receiver_epochs(&ephemerides, 3, 1.0);
+    let mut filter = PositionFilter::new(PositionFilterConfig::default());
+
+    filter
+        .solve_epoch(&epochs[0].observations, &ephemerides, epochs[0].t_rx_s)
+        .expect("healthy seed epoch should solve");
+    filter.ekf.p[(0, 0)] = -1.0;
+
+    let refusal = filter
+        .solve_epoch(&epochs[1].observations, &ephemerides, epochs[1].t_rx_s)
+        .expect_err("collapsed covariance should invalidate the sequential filter");
+
+    assert_eq!(
+        refusal.kind,
+        PositionSolveRefusalKind::FilterDivergence(
+            PositionFilterDivergenceReason::CovarianceCollapse
+        )
+    );
+    assert!(!filter.initialized);
+    assert_eq!(filter.last_t_rx_s, None);
+
+    let recovered = filter
+        .solve_epoch(&epochs[2].observations, &ephemerides, epochs[2].t_rx_s)
+        .expect("healthy epoch should reseed after covariance collapse");
+
+    assert!(filter.initialized);
+    assert_eq!(filter.last_t_rx_s, Some(epochs[2].t_rx_s));
+    assert!(recovered.used_sat_count >= 4);
 }
