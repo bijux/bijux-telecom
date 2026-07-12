@@ -21,8 +21,9 @@ use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
 use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
 use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::{
-    generate_ca_code, measure_iq_front_end_metrics, sample_code, sample_galileo_e1_boc11_code,
-    sample_glonass_l1_st_code, wipeoff_carrier, GalileoE1Channel, Prn,
+    generate_ca_code, measure_iq_front_end_metrics, sample_beidou_b1i_code, sample_code,
+    sample_galileo_e1_boc11_code, sample_glonass_l1_st_code, wipeoff_carrier,
+    GalileoE1Channel, Prn,
 };
 
 /// Acquisition engine (coarse search).
@@ -139,6 +140,7 @@ struct AcquisitionSignalModel {
 enum LocalCodeKind {
     GpsCa { prn: u8 },
     GalileoE1B { prn: u8 },
+    BeidouB1I { prn: u8 },
     GlonassL1,
     FallbackCa { prn: u8 },
 }
@@ -203,6 +205,21 @@ impl AcquisitionSignalModel {
                     local_code_kind: LocalCodeKind::GalileoE1B { prn: request.sat.prn },
                 })
             }
+            Some(signal)
+                if signal.spec.code == SignalCode::B1I && signal.spec.band == SignalBand::B1 =>
+            {
+                Ok(Self {
+                    signal_band: SignalBand::B1,
+                    code_rate_hz: signal.spec.code_rate_hz,
+                    code_length: signal.code_length.unwrap_or(2046) as usize,
+                    code_period_ms: 1,
+                    search_center_hz: acquisition_signal_center_hz(
+                        config,
+                        signal.spec.carrier_hz.value(),
+                    ),
+                    local_code_kind: LocalCodeKind::BeidouB1I { prn: request.sat.prn },
+                })
+            }
             Some(_signal)
                 if request.sat.constellation == bijux_gnss_core::api::Constellation::Glonass =>
             {
@@ -263,6 +280,10 @@ impl AcquisitionSignalModel {
                 samples_per_code,
             )
             .unwrap_or_else(|_| vec![1.0; samples_per_code]),
+            LocalCodeKind::BeidouB1I { prn } => {
+                sample_beidou_b1i_code(prn, sampling_freq_hz, 0.0, samples_per_code)
+                    .unwrap_or_else(|_| vec![1.0; samples_per_code])
+            }
             LocalCodeKind::GlonassL1 => {
                 sample_glonass_l1_st_code(sampling_freq_hz, 0.0, samples_per_code)
                     .unwrap_or_else(|_| vec![1.0; samples_per_code])
