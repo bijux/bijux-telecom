@@ -2,7 +2,7 @@
 
 use bijux_gnss_infra::api::core::{
     ArtifactHeaderV1, Chips, Constellation, Cycles, Epoch, Hertz, ReceiverSampleTrace, SatId,
-    TrackEpoch, TrackEpochV1,
+    SignalBand, TrackEpoch, TrackEpochV1,
 };
 use serde_json::Value;
 use std::fs;
@@ -418,6 +418,8 @@ fn write_track_artifact_from_bits(path: &Path, sat: SatId, prompt_offset_ms: usi
                         sample_rate_hz,
                     ),
                     sat,
+                    signal_band: SignalBand::L1,
+                    glonass_frequency_channel: None,
                     prompt_i: 0.25,
                     prompt_q: 0.0,
                     early_i: 0.0,
@@ -471,6 +473,8 @@ fn write_track_artifact_from_bits(path: &Path, sat: SatId, prompt_offset_ms: usi
                             sample_rate_hz,
                         ),
                         sat,
+                        signal_band: SignalBand::L1,
+                        glonass_frequency_channel: None,
                         prompt_i: *bit as f32,
                         prompt_q: 0.0,
                         early_i: 0.0,

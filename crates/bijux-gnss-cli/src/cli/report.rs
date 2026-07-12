@@ -352,6 +352,8 @@ mod report_tests {
                         4_000_000.0,
                     ),
                     sat: SatId { constellation: Constellation::Gps, prn },
+                    signal_band: bijux_gnss_infra::api::core::SignalBand::L1,
+                    glonass_frequency_channel: None,
                     prompt_i: 0.0,
                     prompt_q: 0.0,
                     early_i: 0.0,

@@ -226,6 +226,7 @@ fn write_biased_synthetic_iq8_capture(path: &Path, i_bias: f32, q_bias: f32) {
         &pipeline,
         SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Gps, prn: 1 },
+            glonass_frequency_channel: None,
             doppler_hz: 500.0,
             code_phase_chips: 200.0,
             carrier_phase_rad: 0.0,
@@ -269,6 +270,7 @@ fn write_synthetic_iq8_capture_with_signal_if_and_duration_s(
         &pipeline,
         SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Gps, prn: 11 },
+            glonass_frequency_channel: None,
             doppler_hz: 0.0,
             code_phase_chips: 210.0,
             carrier_phase_rad: 0.0,
@@ -309,6 +311,7 @@ fn write_synthetic_cf32_capture_with_signal_if(
         &pipeline,
         SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Gps, prn: 11 },
+            glonass_frequency_channel: None,
             doppler_hz: 0.0,
             code_phase_chips: 210.0,
             carrier_phase_rad: 0.0,
