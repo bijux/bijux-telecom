@@ -124,6 +124,12 @@ pub const DIAGNOSTIC_CODES: &[DiagnosticCode] = &[
         mitigation: "Inspect the named satellite clock and compare against peer residual trends.",
     },
     DiagnosticCode {
+        code: "NAV_COMMON_CODE_DOPPLER_ANOMALY",
+        severity: DiagnosticSeverity::Warning,
+        meaning: "Common code and Doppler steps across satellites suggest coordinated signal manipulation",
+        mitigation: "Inspect receiver clock state, peer-satellite Doppler deltas, and spoofing or rebroadcast conditions.",
+    },
+    DiagnosticCode {
         code: "NAV_EPHEMERIS_GAP",
         severity: DiagnosticSeverity::Warning,
         meaning: "Ephemeris coverage gap detected",

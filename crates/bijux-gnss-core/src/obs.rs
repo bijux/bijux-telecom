@@ -1043,6 +1043,14 @@ pub enum NavHealthEvent {
     CovarianceClamped { min_eigenvalue: f64 },
     CovarianceDiverged { max_variance: f64 },
     InnovationRejected { reason: String },
+    CommonCodeDopplerAnomaly {
+        common_code_step_m: f64,
+        common_doppler_step_hz: f64,
+        matched_satellite_count: usize,
+        aligned_satellite_count: usize,
+        code_step_threshold_m: f64,
+        doppler_step_threshold_hz: f64,
+    },
     SatelliteClockAnomaly {
         sat: SatId,
         persistent_suspect_epochs: usize,
