@@ -967,6 +967,29 @@ mod tests {
     }
 
     #[test]
+    fn position_filter_assigns_larger_sigma_to_low_elevation_and_low_cn0_pseudorange() {
+        let mut config = PositionFilterConfig::default();
+        config.base_pseudorange_sigma_m = 3.0;
+        config.weighting = WeightingConfig {
+            model: PositionWeightingModel::ElevationCn0,
+            ..WeightingConfig::default()
+        };
+
+        let weak_low_sigma =
+            pseudorange_sigma_m(&sample_position_observation(28.0, Some(10.0)), Some(10.0), &config);
+        let strong_low_sigma =
+            pseudorange_sigma_m(&sample_position_observation(48.0, Some(10.0)), Some(10.0), &config);
+        let weak_high_sigma =
+            pseudorange_sigma_m(&sample_position_observation(28.0, Some(75.0)), Some(75.0), &config);
+
+        assert!(weak_low_sigma.is_finite());
+        assert!(strong_low_sigma.is_finite());
+        assert!(weak_high_sigma.is_finite());
+        assert!(weak_low_sigma > strong_low_sigma);
+        assert!(weak_low_sigma > weak_high_sigma);
+    }
+
+    #[test]
     fn position_filter_epoch_exposes_clock_state_uncertainty() {
         let filter = PositionFilter::new(PositionFilterConfig::default());
 
