@@ -797,6 +797,54 @@ fn mixed_gps_galileo_beidou_solver_recovers_position_and_clock_splits() {
 }
 
 #[test]
+fn mixed_gps_galileo_beidou_solver_lowers_dop_against_same_gps_only_case() {
+    let scenario = controlled_mixed_geometry_case();
+
+    let gps_ephemerides = scenario.gps_ephemerides(4);
+    let gps_only = PositionSolver::new()
+        .solve_wls(&scenario.observations(4, 0, 0), &gps_ephemerides, scenario.t_rx_s)
+        .expect("gps-only geometry should solve");
+    let mixed = PositionSolver::new()
+        .solve_wls_with_navigation_data(
+            &scenario.observations(4, 2, 2),
+            &scenario.navigation(4, 2, 2),
+            scenario.t_rx_s,
+        )
+        .expect("mixed geometry should solve");
+
+    assert!(
+        position_error_3d_m(
+            gps_only.ecef_x_m,
+            gps_only.ecef_y_m,
+            gps_only.ecef_z_m,
+            scenario.truth_ecef_m,
+        ) < 5.0
+    );
+    assert!(
+        position_error_3d_m(
+            mixed.ecef_x_m,
+            mixed.ecef_y_m,
+            mixed.ecef_z_m,
+            scenario.truth_ecef_m,
+        ) < 5.0
+    );
+    assert!(gps_only.gdop.is_some());
+    assert!(mixed.gdop.is_some());
+    assert!(
+        mixed.pdop < gps_only.pdop,
+        "expected mixed PDOP {} to improve on GPS-only {}",
+        mixed.pdop,
+        gps_only.pdop
+    );
+    assert!(
+        mixed.gdop.expect("mixed gdop") < gps_only.gdop.expect("gps-only gdop"),
+        "expected mixed GDOP {:?} to improve on GPS-only {:?}",
+        mixed.gdop,
+        gps_only.gdop
+    );
+}
+
+#[test]
 fn mixed_gps_glonass_solver_recovers_position_and_clock_split() {
     let gps_ephemerides = sample_ephemerides();
     let glonass_navigation =
