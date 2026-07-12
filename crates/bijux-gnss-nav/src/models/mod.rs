@@ -1,5 +1,6 @@
 //! Model scaffolding.
 
+pub mod antenna;
 pub mod atmosphere;
 pub mod nequick;
 
