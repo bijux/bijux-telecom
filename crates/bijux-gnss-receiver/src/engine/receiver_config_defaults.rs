@@ -3,8 +3,9 @@
 use bijux_gnss_core::api::SchemaVersion;
 
 use crate::engine::receiver_config::{
-    default_tracking_integration_ms, AcquisitionConfig, FrontEndConfig, NavigationConfig,
-    NavigationWeightingConfig, PppConfig, ReceiverConfig, ScienceThresholdsConfig, TrackingConfig,
+    default_tracking_integration_ms, AcquisitionConfig, ConstellationSelectionPolicy,
+    FrontEndConfig, NavigationConfig, NavigationWeightingConfig, PppConfig, ReceiverConfig,
+    ScienceThresholdsConfig, TrackingConfig,
 };
 
 impl Default for ReceiverConfig {
@@ -67,6 +68,7 @@ impl Default for NavigationConfig {
             tropo_ztd_m: 2.3,
             ppp: PppConfig::default(),
             science_thresholds: ScienceThresholdsConfig::default(),
+            constellation_policy: ConstellationSelectionPolicy::Mixed,
         }
     }
 }

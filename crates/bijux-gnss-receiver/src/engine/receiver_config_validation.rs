@@ -311,6 +311,7 @@ impl ReceiverConfig {
             tropo_ztd_m: self.navigation.tropo_ztd_m,
             ppp: self.navigation.ppp.clone(),
             science_thresholds: self.navigation.science_thresholds.clone(),
+            constellation_policy: self.navigation.constellation_policy,
         }
     }
 }
@@ -318,6 +319,8 @@ impl ReceiverConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::receiver_config::ConstellationSelectionPolicy;
+    use bijux_gnss_core::api::Constellation;
 
     #[test]
     fn validation_rejects_negative_doppler_search_range() {
@@ -374,5 +377,25 @@ mod tests {
         assert!(report.errors.iter().any(|error| {
             error.message == "acquisition.integration_ms must be one of [1, 2, 5, 10, 20]"
         }));
+    }
+
+    #[test]
+    fn default_navigation_constellation_policy_is_mixed() {
+        let config = ReceiverConfig::default();
+
+        assert_eq!(config.navigation.constellation_policy, ConstellationSelectionPolicy::Mixed);
+    }
+
+    #[test]
+    fn pipeline_config_carries_constellation_policy_helpers() {
+        let mut config = ReceiverConfig::default();
+        config.navigation.constellation_policy = ConstellationSelectionPolicy::GlonassOnly;
+
+        let pipeline = config.to_pipeline_config();
+
+        assert_eq!(pipeline.constellation_policy, ConstellationSelectionPolicy::GlonassOnly);
+        assert!(pipeline.allows_constellation(Constellation::Glonass));
+        assert!(!pipeline.allows_constellation(Constellation::Gps));
+        assert_eq!(pipeline.selected_constellations(), &[Constellation::Glonass]);
     }
 }

@@ -2,7 +2,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use bijux_gnss_core::api::{
-    AcqError, ConfigError, InputError, NavError, SchemaVersion, SignalBand, SignalError, TrackError,
+    AcqError, ConfigError, Constellation, InputError, NavError, SchemaVersion, SignalBand,
+    SignalError, TrackError,
 };
 use thiserror::Error;
 
@@ -100,6 +101,8 @@ pub struct ReceiverPipelineConfig {
     pub ppp: PppConfig,
     /// Scientific threshold policy configuration.
     pub science_thresholds: ScienceThresholdsConfig,
+    /// Constellation selection policy for acquisition and navigation.
+    pub constellation_policy: ConstellationSelectionPolicy,
 }
 
 impl Default for ReceiverPipelineConfig {
@@ -135,6 +138,7 @@ impl Default for ReceiverPipelineConfig {
             tropo_ztd_m: 2.3,
             ppp: PppConfig::default(),
             science_thresholds: ScienceThresholdsConfig::default(),
+            constellation_policy: ConstellationSelectionPolicy::Mixed,
         }
     }
 }
@@ -198,6 +202,61 @@ impl ReceiverPipelineConfig {
             fll_bw_hz: self.fll_bw_hz,
             integration_ms: self.tracking_integration_ms,
         }
+    }
+
+    /// Whether this runtime configuration allows a given constellation.
+    pub fn allows_constellation(&self, constellation: Constellation) -> bool {
+        self.constellation_policy.allows(constellation)
+    }
+
+    /// Selected constellations enabled by this runtime configuration.
+    pub fn selected_constellations(&self) -> &'static [Constellation] {
+        self.constellation_policy.selected_constellations()
+    }
+}
+
+/// Receiver constellation-selection policy.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ConstellationSelectionPolicy {
+    /// Allow only GPS.
+    GpsOnly,
+    /// Allow only Galileo.
+    GalileoOnly,
+    /// Allow only GLONASS.
+    GlonassOnly,
+    /// Allow only BeiDou.
+    BeidouOnly,
+    /// Allow every supported constellation.
+    Mixed,
+}
+
+impl ConstellationSelectionPolicy {
+    /// Whether this policy allows a given constellation.
+    pub fn allows(self, constellation: Constellation) -> bool {
+        self.selected_constellations().contains(&constellation)
+    }
+
+    /// Selected constellations enabled by this policy.
+    pub fn selected_constellations(self) -> &'static [Constellation] {
+        match self {
+            Self::GpsOnly => &[Constellation::Gps],
+            Self::GalileoOnly => &[Constellation::Galileo],
+            Self::GlonassOnly => &[Constellation::Glonass],
+            Self::BeidouOnly => &[Constellation::Beidou],
+            Self::Mixed => &[
+                Constellation::Gps,
+                Constellation::Galileo,
+                Constellation::Glonass,
+                Constellation::Beidou,
+            ],
+        }
+    }
+}
+
+impl Default for ConstellationSelectionPolicy {
+    fn default() -> Self {
+        Self::Mixed
     }
 }
 
@@ -342,6 +401,9 @@ pub struct NavigationConfig {
     /// Scientific threshold policy configuration.
     #[serde(default)]
     pub science_thresholds: ScienceThresholdsConfig,
+    /// Constellation selection policy for receiver acquisition and navigation.
+    #[serde(default)]
+    pub constellation_policy: ConstellationSelectionPolicy,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

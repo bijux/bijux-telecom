@@ -2,7 +2,9 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 /// Receiver configuration and schema.
-pub use crate::engine::receiver_config::{ReceiverConfig, ReceiverError, ReceiverPipelineConfig};
+pub use crate::engine::receiver_config::{
+    ConstellationSelectionPolicy, ReceiverConfig, ReceiverError, ReceiverPipelineConfig,
+};
 /// Receiver runtime options (side-effectful controls).
 pub use crate::engine::runtime::{
     Metric, MetricsSink, NullLogger, ReceiverRuntime, ReceiverRuntimeConfig, TraceRecord, TraceSink,
