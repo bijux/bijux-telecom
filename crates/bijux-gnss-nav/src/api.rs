@@ -65,6 +65,10 @@ pub use crate::estimation::position::solver::{
     PositionSolveRefusal, PositionSolveRefusalKind, PositionSolver, PositionWeightingModel,
     WeightingConfig,
 };
+pub use crate::estimation::position::trajectory::{
+    trajectory_reconstruction_report, TrajectoryReconstructionError, TrajectoryReconstructionInput,
+    TrajectoryReconstructionReport, TrajectoryReconstructionSample,
+};
 /// PPP configuration and filter.
 pub use crate::estimation::ppp::config::{
     PppArMode, PppConfig, PppConvergenceConfig, PppFilter, PppProcessNoise, PppSolutionEpoch,
