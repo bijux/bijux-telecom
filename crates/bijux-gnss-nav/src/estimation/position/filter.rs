@@ -94,10 +94,12 @@ impl Default for PositionFilterConfig {
 
 impl PositionFilterConfig {
     pub fn for_static_receiver() -> Self {
-        Self {
-            static_position_model: Some(PositionFilterStaticPositionModel::default()),
-            ..Self::default()
-        }
+        let mut config = Self::default();
+        config.static_position_model = Some(PositionFilterStaticPositionModel::default());
+        config.process_noise.pos_m = 0.5;
+        config.process_noise.vel_mps = 0.05;
+        config.initial_velocity_sigma_mps = 5.0;
+        config
     }
 }
 
@@ -670,6 +672,9 @@ mod tests {
             static_model.velocity_decay_per_s,
             PositionFilterStaticPositionModel::default().velocity_decay_per_s
         );
+        assert_eq!(config.process_noise.pos_m, 0.5);
+        assert_eq!(config.process_noise.vel_mps, 0.05);
+        assert_eq!(config.initial_velocity_sigma_mps, 5.0);
     }
 
     #[test]

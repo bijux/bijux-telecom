@@ -53,6 +53,10 @@ fn clock_drift_spread_s_per_s(clock_drift_samples_s_per_s: &[f64]) -> f64 {
     max_clock_drift_s_per_s - min_clock_drift_s_per_s
 }
 
+fn root_mean_square(values: &[f64]) -> f64 {
+    (values.iter().map(|value| value * value).sum::<f64>() / values.len() as f64).sqrt()
+}
+
 fn sample_filter_ephemerides() -> Vec<GpsEphemeris> {
     let mut ephemerides = vec![
         sample_ephemeris(1, 0.0, 0.0),
@@ -158,6 +162,41 @@ fn static_receiver_epochs(
                             t_rx_s,
                             receiver_clock_bias_s,
                         );
+                    timed_position_observation(ephemeris.sat, pseudorange_m, t_rx_s)
+                })
+                .collect();
+            SequentialPositionEpoch {
+                t_rx_s,
+                truth_ecef_m,
+                truth_clock_bias_s: receiver_clock_bias_s,
+                truth_clock_drift_s_per_s: 0.0,
+                observations,
+            }
+        })
+        .collect()
+}
+
+fn static_receiver_epochs_with_pseudorange_offsets(
+    ephemerides: &[GpsEphemeris],
+    epoch_count: usize,
+    dt_s: f64,
+) -> Vec<SequentialPositionEpoch> {
+    let truth_ecef_m = geodetic_to_ecef(37.0, -122.0, 10.0);
+    let receiver_clock_bias_s = 2.75e-4;
+    let t0_rx_s = 504_018.07 + receiver_clock_bias_s;
+
+    (0..epoch_count)
+        .map(|epoch_index| {
+            let t_rx_s = t0_rx_s + epoch_index as f64 * dt_s;
+            let observations = ephemerides
+                .iter()
+                .map(|ephemeris| {
+                    let pseudorange_m = pseudorange_from_truth(
+                        ephemeris,
+                        truth_ecef_m,
+                        t_rx_s,
+                        receiver_clock_bias_s,
+                    ) + deterministic_pseudorange_offset_m(epoch_index, ephemeris.sat.prn);
                     timed_position_observation(ephemeris.sat, pseudorange_m, t_rx_s)
                 })
                 .collect();
@@ -566,5 +605,58 @@ fn sequential_position_filter_maintains_clock_drift_consistency_while_moving() {
         final_solution.clock_drift_sigma_s_per_s < 5.0e-6,
         "clock_drift_sigma_s_per_s={}",
         final_solution.clock_drift_sigma_s_per_s
+    );
+}
+
+#[test]
+fn sequential_position_filter_static_profile_reduces_late_position_scatter() {
+    let ephemerides = sample_filter_ephemerides();
+    let epochs = static_receiver_epochs_with_pseudorange_offsets(&ephemerides, 30, 1.0);
+    let mut static_config = PositionFilterConfig::for_static_receiver();
+    static_config.base_pseudorange_sigma_m = 1.5;
+    let mut static_filter = PositionFilter::new(static_config);
+    let mut static_errors_m = Vec::new();
+    let mut final_static_velocity_norm_mps = None;
+
+    for epoch in &epochs {
+        let static_solution = static_filter
+            .solve_epoch(&epoch.observations, &ephemerides, epoch.t_rx_s)
+            .expect("static-profile epoch should solve");
+        let static_error_m = position_error_3d_m(
+            static_solution.ecef_x_m,
+            static_solution.ecef_y_m,
+            static_solution.ecef_z_m,
+            epoch.truth_ecef_m,
+        );
+
+        static_errors_m.push(static_error_m);
+        final_static_velocity_norm_mps = Some(
+            (static_solution.velocity_x_mps * static_solution.velocity_x_mps
+                + static_solution.velocity_y_mps * static_solution.velocity_y_mps
+                + static_solution.velocity_z_mps * static_solution.velocity_z_mps)
+                .sqrt(),
+        );
+    }
+
+    let static_early_rms_m = root_mean_square(&static_errors_m[1..10]);
+    let static_late_rms_m = root_mean_square(&static_errors_m[20..30]);
+
+    assert!(static_filter.initialized);
+    assert_eq!(
+        static_filter.last_t_rx_s,
+        Some(epochs.last().expect("static profile epochs").t_rx_s)
+    );
+    assert!(
+        static_late_rms_m < static_early_rms_m,
+        "static_early_rms_m={static_early_rms_m} static_late_rms_m={static_late_rms_m}"
+    );
+    assert!(
+        static_late_rms_m < 0.35,
+        "static_late_rms_m={static_late_rms_m}"
+    );
+    assert!(
+        final_static_velocity_norm_mps.expect("final static velocity norm") < 0.5,
+        "final_static_velocity_norm_mps={:?}",
+        final_static_velocity_norm_mps
     );
 }
