@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use bijux_gnss_core::api::{ObsEpoch, ObsSatellite, SatId, SignalBand};
+use bijux_gnss_core::api::{signal_cycles_to_meters, ObsEpoch, ObsSatellite, SatId, SignalBand};
 
 use crate::corrections::iono_free_code::iono_free_code_from_pair;
 use crate::corrections::iono_free_phase::iono_free_phase_from_pair;
@@ -128,10 +128,10 @@ pub fn combinations_from_obs_epochs(
                     {
                         status = CombinationStatus::FrequencyInvalid;
                     } else {
-                        let lambda1 = SPEED_OF_LIGHT_MPS / f1_hz.max(1.0);
-                        let lambda2 = SPEED_OF_LIGHT_MPS / f2_hz.max(1.0);
-                        let phi1_m = s1.carrier_phase_cycles.0 * lambda1;
-                        let phi2_m = s2.carrier_phase_cycles.0 * lambda2;
+                        let phi1_m =
+                            signal_cycles_to_meters(s1.carrier_phase_cycles, s1.metadata.signal).0;
+                        let phi2_m =
+                            signal_cycles_to_meters(s2.carrier_phase_cycles, s2.metadata.signal).0;
 
                         if_phase_m = if_phase.phase_m;
                         geometry_free_phase_m = Some(phi1_m - phi2_m);
