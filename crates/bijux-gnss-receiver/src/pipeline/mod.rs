@@ -9,6 +9,8 @@ pub mod acquisition;
 pub mod doppler;
 pub mod hatch;
 #[cfg(feature = "nav")]
+pub(crate) mod common_code_doppler_anomaly;
+#[cfg(feature = "nav")]
 pub mod navigation;
 #[cfg(feature = "nav")]
 pub(crate) mod satellite_clock_anomaly;
