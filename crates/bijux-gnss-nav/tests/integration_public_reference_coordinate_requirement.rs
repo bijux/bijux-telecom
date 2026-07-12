@@ -67,11 +67,10 @@ fn public_rinex_position_validation_uses_trusted_reference_coordinate() {
     for epoch in &observations.epochs {
         let observations = position_observations(epoch);
         let receive_tow_s = epoch.gps_time().expect("epoch GPS time").tow_s;
-        let solution = solver.try_solve_wls_with_broadcast_ionosphere(
+        let solution = solver.try_solve_wls_with_gps_broadcast_navigation(
             &observations,
-            &navigation.ephemerides,
+            &navigation,
             receive_tow_s,
-            navigation.klobuchar.as_ref(),
         );
         let Ok(solution) = solution else {
             let refusal = solution.expect_err("refusal");

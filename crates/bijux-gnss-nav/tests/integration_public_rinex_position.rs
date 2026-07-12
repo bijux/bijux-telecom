@@ -52,11 +52,10 @@ fn public_rinex_obs_and_nav_resolve_near_station_position() {
     for epoch in &observations.epochs {
         let position_observations = position_observations(epoch);
         let receive_tow_s = epoch.gps_time().expect("epoch GPS time").tow_s;
-        let solution = solver.try_solve_wls_with_broadcast_ionosphere(
+        let solution = solver.try_solve_wls_with_gps_broadcast_navigation(
             &position_observations,
-            &navigation.ephemerides,
+            &navigation,
             receive_tow_s,
-            navigation.klobuchar.as_ref(),
         );
         let Ok(solution) = solution else {
             let refusal = solution.expect_err("refusal");
@@ -110,5 +109,79 @@ fn public_rinex_obs_and_nav_resolve_near_station_position() {
         best_enu_error.east_m,
         best_enu_error.north_m,
         best_enu_error.horizontal_m,
+    );
+}
+
+#[test]
+fn public_rinex_klobuchar_payload_improves_real_position_error() {
+    let station_fixture_name = "unavco_ab43_20180114.obs";
+    let observations = parse_rinex_gps_observation_dataset(&fixture(station_fixture_name))
+        .expect("parse public RINEX observations");
+    let navigation = parse_rinex_broadcast_navigation(&fixture("noaa_brdc0140_20180114.nav"))
+        .expect("parse public RINEX navigation");
+    let mut uncorrected_navigation = navigation.clone();
+    uncorrected_navigation.klobuchar = None;
+    let station_truth = public_station_truth_by_fixture(station_fixture_name);
+    let truth_ecef_m = station_truth.truth_ecef_m();
+    let solver = PositionSolver { raim: false, apply_troposphere: true, ..PositionSolver::new() };
+
+    let mut compared_epochs = 0usize;
+    let mut improved_epochs = 0usize;
+    let mut corrected_best_error_m = f64::INFINITY;
+    let mut uncorrected_best_error_m = f64::INFINITY;
+    let mut total_improvement_m = 0.0;
+    for epoch in &observations.epochs {
+        let position_observations = position_observations(epoch);
+        let receive_tow_s = epoch.gps_time().expect("epoch GPS time").tow_s;
+        let corrected = solver.try_solve_wls_with_gps_broadcast_navigation(
+            &position_observations,
+            &navigation,
+            receive_tow_s,
+        );
+        let uncorrected = solver.try_solve_wls_with_gps_broadcast_navigation(
+            &position_observations,
+            &uncorrected_navigation,
+            receive_tow_s,
+        );
+        let (Ok(corrected), Ok(uncorrected)) = (corrected, uncorrected) else {
+            continue;
+        };
+
+        let corrected_error_m = position_error_3d_m(
+            corrected.ecef_x_m,
+            corrected.ecef_y_m,
+            corrected.ecef_z_m,
+            truth_ecef_m,
+        );
+        let uncorrected_error_m = position_error_3d_m(
+            uncorrected.ecef_x_m,
+            uncorrected.ecef_y_m,
+            uncorrected.ecef_z_m,
+            truth_ecef_m,
+        );
+        if corrected_error_m + 0.1 < uncorrected_error_m {
+            improved_epochs += 1;
+        }
+        corrected_best_error_m = corrected_best_error_m.min(corrected_error_m);
+        uncorrected_best_error_m = uncorrected_best_error_m.min(uncorrected_error_m);
+        total_improvement_m += uncorrected_error_m - corrected_error_m;
+        compared_epochs += 1;
+    }
+
+    let mean_improvement_m =
+        if compared_epochs > 0 { total_improvement_m / compared_epochs as f64 } else { 0.0 };
+
+    assert!(compared_epochs > 0, "public dataset should yield comparable corrected epochs");
+    assert!(
+        improved_epochs * 2 > compared_epochs,
+        "Klobuchar correction should improve most public epochs; improved={improved_epochs} compared={compared_epochs}"
+    );
+    assert!(
+        mean_improvement_m > 0.5,
+        "mean public position improvement {mean_improvement_m:.3} m is too small"
+    );
+    assert!(
+        corrected_best_error_m + 0.5 < uncorrected_best_error_m,
+        "best corrected public error {corrected_best_error_m:.3} m should beat uncorrected {uncorrected_best_error_m:.3} m"
     );
 }

@@ -66,11 +66,10 @@ pub fn solve_public_ab43_epoch_with_satellites(
         .filter(|observation| sats.map(|sats| sats.contains(&observation.sat)).unwrap_or(true))
         .collect::<Vec<_>>();
     let solution = solver
-        .try_solve_wls_with_broadcast_ionosphere(
+        .try_solve_wls_with_gps_broadcast_navigation(
             &observations,
-            &case.navigation.ephemerides,
+            &case.navigation,
             epoch.gps_time().expect("AB43 epoch GPS time").tow_s,
-            case.navigation.klobuchar.as_ref(),
         )
         .map_err(|err| format!("{:?}", err.kind))?;
 
