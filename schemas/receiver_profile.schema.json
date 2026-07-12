@@ -220,6 +220,13 @@
             "enabled": {
               "type": "boolean"
             },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "elevation",
+                "cn0"
+              ]
+            },
             "min_elev_deg": {
               "type": "number"
             },

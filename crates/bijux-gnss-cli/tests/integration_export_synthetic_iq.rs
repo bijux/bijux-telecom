@@ -390,6 +390,7 @@ tropo_ztd_m = 2.3
 
 [navigation.weighting]
 enabled = true
+mode = "elevation"
 min_elev_deg = 5.0
 elev_exponent = 2.0
 cn0_ref_dbhz = 50.0
