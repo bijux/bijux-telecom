@@ -2,7 +2,9 @@
 
 use std::path::PathBuf;
 
-use bijux_gnss_core::api::{check_dual_frequency_observations, validate_obs_epochs, SignalBand};
+use bijux_gnss_core::api::{
+    check_dual_frequency_observations, validate_obs_epochs, SignalBand, SignalCode,
+};
 use bijux_gnss_nav::api::parse_rinex_gps_observation_dataset;
 
 fn fixture(name: &str) -> String {
@@ -18,6 +20,10 @@ fn public_rinex_2_import_exposes_valid_l1_l2_observation_channels() {
     assert_eq!(
         dataset.observation_channels.iter().map(|channel| channel.band).collect::<Vec<_>>(),
         vec![SignalBand::L1, SignalBand::L2]
+    );
+    assert_eq!(
+        dataset.observation_channels.iter().map(|channel| channel.code).collect::<Vec<_>>(),
+        vec![SignalCode::Ca, SignalCode::Py]
     );
     validate_obs_epochs(&dataset.epochs).expect("public RINEX 2 epochs must validate");
 
@@ -35,9 +41,44 @@ fn public_rinex_3_import_exposes_valid_l1_l2_observation_channels() {
         dataset.observation_channels.iter().map(|channel| channel.band).collect::<Vec<_>>(),
         vec![SignalBand::L1, SignalBand::L2]
     );
+    assert_eq!(
+        dataset.observation_channels.iter().map(|channel| channel.code).collect::<Vec<_>>(),
+        vec![SignalCode::Ca, SignalCode::Py]
+    );
     validate_obs_epochs(&dataset.epochs).expect("public RINEX 3 epochs must validate");
 
     let report = check_dual_frequency_observations(&dataset.epochs);
     assert!(report.complete_pairs > 0);
     assert_eq!(report.complete_pairs, report.l1_l2_pairs);
+}
+
+#[test]
+fn synthetic_rinex_3_import_exposes_l2c_observation_channel() {
+    let data = [
+        format!(
+            "{:<60}{}",
+            "     3.04           OBSERVATION DATA    G (GPS)", "RINEX VERSION / TYPE"
+        ),
+        format!("{:<60}{}", "gps-station", "MARKER NAME"),
+        format!("{:<60}{}", "G    4 C1C L1C C2L L2L", "SYS / # / OBS TYPES"),
+        format!("{:<60}{}", "", "END OF HEADER"),
+        "> 2022 05 14 00 00 00.0000000  0  1".to_string(),
+        format!(
+            "{:<3}{:>14}  {:>14}  {:>14}  {:>14}",
+            "G01", 20345678.123, 123456.250, 20345680.750, 123450.500
+        ),
+    ]
+    .join("\n");
+    let dataset =
+        parse_rinex_gps_observation_dataset(&data).expect("parse synthetic RINEX 3 L2C data");
+
+    assert_eq!(
+        dataset.observation_channels.iter().map(|channel| channel.code).collect::<Vec<_>>(),
+        vec![SignalCode::Ca, SignalCode::L2C]
+    );
+    validate_obs_epochs(&dataset.epochs).expect("synthetic RINEX 3 L2C epochs must validate");
+
+    let report = check_dual_frequency_observations(&dataset.epochs);
+    assert_eq!(report.complete_pairs, 1);
+    assert_eq!(report.l1_l2_pairs, 1);
 }

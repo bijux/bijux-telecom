@@ -1,9 +1,10 @@
 use std::collections::BTreeMap;
 
 use bijux_gnss_core::api::{
-    signal_spec_gps_l1_ca, signal_spec_gps_l2_py, utc_to_gps, Constellation, Cycles, GpsTime,
-    Hertz, LeapSeconds, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite, ObservationStatus,
-    ParseError, ReceiverRole, SatId, Seconds, SigId, SignalBand, SignalCode, SignalSpec,
+    signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l2c, utc_to_gps,
+    Constellation, Cycles, GpsTime, Hertz, LeapSeconds, LockFlags, Meters, ObsEpoch, ObsMetadata,
+    ObsSatellite, ObservationStatus, ParseError, ReceiverRole, SatId, Seconds, SigId, SignalBand,
+    SignalCode, SignalSpec,
 };
 use time::{Date, Month, PrimitiveDateTime, Time};
 
@@ -533,6 +534,14 @@ fn resolve_gps_observation_channels(
         ),
         (
             SignalBand::L2,
+            SignalCode::L2C,
+            signal_spec_gps_l2c(),
+            vec!["C2L".to_string(), "C2M".to_string(), "C2X".to_string()],
+            vec!["L2L".to_string(), "L2M".to_string(), "L2X".to_string()],
+            vec!["S2L".to_string(), "S2M".to_string(), "S2X".to_string()],
+        ),
+        (
+            SignalBand::L2,
             SignalCode::Py,
             signal_spec_gps_l2_py(),
             vec!["C2W".to_string(), "P2".to_string(), "C2P".to_string(), "C2".to_string()],
@@ -1020,7 +1029,8 @@ mod tests {
     use std::path::PathBuf;
 
     use bijux_gnss_core::api::{
-        check_dual_frequency_observations, validate_obs_epochs, Constellation, SatId, SignalBand,
+        check_dual_frequency_observations, signal_spec_gps_l2c, validate_obs_epochs,
+        Constellation, SatId, SignalBand, SignalCode,
     };
 
     use super::{parse_rinex_gps_observation_dataset, parse_rinex_observation_header};
@@ -1083,12 +1093,14 @@ mod tests {
         assert_eq!(dataset.interval_s, Some(15.0));
         assert_eq!(dataset.observation_channels.len(), 2);
         assert_eq!(dataset.observation_channels[0].band, SignalBand::L1);
+        assert_eq!(dataset.observation_channels[0].code, SignalCode::Ca);
         assert_eq!(dataset.observation_channels[0].pseudorange_observation_type, "C1");
         assert_eq!(
             dataset.observation_channels[0].carrier_phase_observation_type.as_deref(),
             Some("L1")
         );
         assert_eq!(dataset.observation_channels[1].band, SignalBand::L2);
+        assert_eq!(dataset.observation_channels[1].code, SignalCode::Py);
         assert_eq!(dataset.observation_channels[1].pseudorange_observation_type, "P2");
         assert_eq!(
             dataset.observation_channels[1].carrier_phase_observation_type.as_deref(),
@@ -1164,6 +1176,41 @@ mod tests {
     }
 
     #[test]
+    fn parse_rinex_3_l2c_observation_epoch() {
+        let data = [
+            format!(
+                "{:<60}{}",
+                "     3.04           OBSERVATION DATA    G (GPS)", "RINEX VERSION / TYPE"
+            ),
+            format!("{:<60}{}", "gps-station", "MARKER NAME"),
+            format!("{:<60}{}", "G    4 C1C L1C C2L L2L", "SYS / # / OBS TYPES"),
+            format!("{:<60}{}", "", "END OF HEADER"),
+            "> 2022 05 14 00 00 00.0000000  0  1".to_string(),
+            format!(
+                "{:<3}{:>14}  {:>14}  {:>14}  {:>14}",
+                "G01", 20345678.123, 123456.250, 20345680.750, 123450.500
+            ),
+        ]
+        .join("\n");
+        let dataset =
+            parse_rinex_gps_observation_dataset(&data).expect("parse synthetic RINEX 3 L2C data");
+
+        assert_eq!(dataset.observation_channels.len(), 2);
+        assert_eq!(dataset.observation_channels[1].band, SignalBand::L2);
+        assert_eq!(dataset.observation_channels[1].code, SignalCode::L2C);
+        assert_eq!(dataset.observation_channels[1].pseudorange_observation_type, "C2L");
+        assert_eq!(dataset.epochs.len(), 1);
+        assert_eq!(dataset.epochs[0].sats.len(), 2);
+        let l2 = dataset.epochs[0]
+            .sats
+            .iter()
+            .find(|sat| sat.signal_id.band == SignalBand::L2)
+            .expect("L2C observation");
+        assert_eq!(l2.signal_id.code, SignalCode::L2C);
+        assert_eq!(l2.metadata.signal, signal_spec_gps_l2c());
+    }
+
+    #[test]
     fn parse_public_rinex_3_mixed_gps_observation_epochs() {
         let data = fixture("glab_gage_20100305.obs");
         let dataset =
@@ -1174,7 +1221,9 @@ mod tests {
         assert_eq!(dataset.interval_s, Some(30.0));
         assert_eq!(dataset.observation_channels.len(), 2);
         assert_eq!(dataset.observation_channels[0].band, SignalBand::L1);
+        assert_eq!(dataset.observation_channels[0].code, SignalCode::Ca);
         assert_eq!(dataset.observation_channels[1].band, SignalBand::L2);
+        assert_eq!(dataset.observation_channels[1].code, SignalCode::Py);
         assert_eq!(dataset.epochs.len(), 2);
         validate_obs_epochs(&dataset.epochs).expect("imported mixed-band epochs must validate");
         assert!(dataset.epochs[0].sats.len() > 10);
