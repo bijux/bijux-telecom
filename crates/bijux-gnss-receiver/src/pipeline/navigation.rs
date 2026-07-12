@@ -517,6 +517,13 @@ impl Navigation {
             sigma_e_m: solution.sigma_e_m.map(Meters),
             sigma_n_m: solution.sigma_n_m.map(Meters),
             sigma_u_m: solution.sigma_u_m.map(Meters),
+            horizontal_error_ellipse_major_axis_m: solution
+                .horizontal_error_ellipse_major_axis_m
+                .map(Meters),
+            horizontal_error_ellipse_minor_axis_m: solution
+                .horizontal_error_ellipse_minor_axis_m
+                .map(Meters),
+            horizontal_error_ellipse_azimuth_deg: solution.horizontal_error_ellipse_azimuth_deg,
             innovation_rms_m: None,
             normalized_innovation_rms: None,
             normalized_innovation_max: None,
@@ -905,6 +912,9 @@ fn invalid_solution_epoch(
         sigma_e_m: None,
         sigma_n_m: None,
         sigma_u_m: None,
+        horizontal_error_ellipse_major_axis_m: None,
+        horizontal_error_ellipse_minor_axis_m: None,
+        horizontal_error_ellipse_azimuth_deg: None,
         sigma_h_m: None,
         sigma_v_m: None,
         innovation_rms_m: None,
@@ -1494,6 +1504,9 @@ mod tests {
             sigma_e_m: None,
             sigma_n_m: None,
             sigma_u_m: None,
+            horizontal_error_ellipse_major_axis_m: None,
+            horizontal_error_ellipse_minor_axis_m: None,
+            horizontal_error_ellipse_azimuth_deg: None,
             sigma_h_m: None,
             sigma_v_m: None,
             innovation_rms_m: None,

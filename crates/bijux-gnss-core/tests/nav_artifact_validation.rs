@@ -47,6 +47,9 @@ fn sample_solution() -> NavSolutionEpoch {
         sigma_e_m: Some(Meters(0.8)),
         sigma_n_m: Some(Meters(0.9)),
         sigma_u_m: Some(Meters(1.2)),
+        horizontal_error_ellipse_major_axis_m: Some(Meters(1.1)),
+        horizontal_error_ellipse_minor_axis_m: Some(Meters(0.7)),
+        horizontal_error_ellipse_azimuth_deg: Some(32.0),
         sigma_h_m: Some(Meters(1.0)),
         sigma_v_m: Some(Meters(1.5)),
         innovation_rms_m: Some(0.5),
@@ -156,6 +159,16 @@ fn nav_artifact_validation_warns_on_missing_enu_position_sigmas() {
 }
 
 #[test]
+fn nav_artifact_validation_warns_on_missing_horizontal_error_ellipse() {
+    let mut solution = sample_solution();
+    solution.horizontal_error_ellipse_major_axis_m = None;
+    let diagnostics = solution.validate_payload();
+    assert!(
+        diagnostics.iter().any(|event| event.code == "GNSS_NAV_HORIZONTAL_ERROR_ELLIPSE_MISSING")
+    );
+}
+
+#[test]
 fn nav_artifact_validation_rejects_constellation_residual_count_mismatch() {
     let mut solution = sample_solution();
     solution.constellation_residual_rms[0].post_fit_sat_count = 2;
@@ -180,4 +193,14 @@ fn nav_artifact_validation_rejects_non_finite_enu_position_sigma() {
     solution.sigma_u_m = Some(Meters(f64::NAN));
     let diagnostics = solution.validate_payload();
     assert!(diagnostics.iter().any(|event| event.code == "GNSS_NAV_POSITION_SIGMA_ENU_INVALID"));
+}
+
+#[test]
+fn nav_artifact_validation_rejects_non_finite_horizontal_error_ellipse() {
+    let mut solution = sample_solution();
+    solution.horizontal_error_ellipse_azimuth_deg = Some(f64::NAN);
+    let diagnostics = solution.validate_payload();
+    assert!(
+        diagnostics.iter().any(|event| event.code == "GNSS_NAV_HORIZONTAL_ERROR_ELLIPSE_INVALID")
+    );
 }

@@ -514,6 +514,52 @@ pub mod v1 {
                         "valid nav solution should carry east, north, and up position standard deviations",
                     ));
                 }
+                let horizontal_error_ellipse = [
+                    self.horizontal_error_ellipse_major_axis_m,
+                    self.horizontal_error_ellipse_minor_axis_m,
+                ];
+                if horizontal_error_ellipse
+                    .iter()
+                    .flatten()
+                    .any(|value| !value.0.is_finite())
+                    || self
+                        .horizontal_error_ellipse_azimuth_deg
+                        .is_some_and(|value| !value.is_finite())
+                {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Error,
+                        "GNSS_NAV_HORIZONTAL_ERROR_ELLIPSE_INVALID",
+                        "nav solution horizontal error ellipse contains NaN/Inf",
+                    ));
+                }
+                if horizontal_error_ellipse.iter().flatten().any(|value| value.0 < 0.0) {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Error,
+                        "GNSS_NAV_HORIZONTAL_ERROR_ELLIPSE_NEGATIVE_AXIS",
+                        "nav solution horizontal error ellipse axes must be non-negative",
+                    ));
+                }
+                if self
+                    .horizontal_error_ellipse_azimuth_deg
+                    .is_some_and(|value| !(0.0..180.0).contains(&value))
+                {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Error,
+                        "GNSS_NAV_HORIZONTAL_ERROR_ELLIPSE_AZIMUTH_RANGE",
+                        "nav solution horizontal error ellipse azimuth must be in [0, 180)",
+                    ));
+                }
+                if self.valid
+                    && (self.horizontal_error_ellipse_major_axis_m.is_none()
+                        || self.horizontal_error_ellipse_minor_axis_m.is_none()
+                        || self.horizontal_error_ellipse_azimuth_deg.is_none())
+                {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Warning,
+                        "GNSS_NAV_HORIZONTAL_ERROR_ELLIPSE_MISSING",
+                        "valid nav solution should carry horizontal error ellipse axes and azimuth",
+                    ));
+                }
                 if !self.clock_bias_s.0.is_finite() || !self.clock_bias_m.0.is_finite() {
                     events.push(DiagnosticEvent::new(
                         DiagnosticSeverity::Error,

@@ -86,6 +86,12 @@ pub struct NavSolutionEpoch {
     pub sigma_n_m: Option<Meters>,
     #[serde(default)]
     pub sigma_u_m: Option<Meters>,
+    #[serde(default)]
+    pub horizontal_error_ellipse_major_axis_m: Option<Meters>,
+    #[serde(default)]
+    pub horizontal_error_ellipse_minor_axis_m: Option<Meters>,
+    #[serde(default)]
+    pub horizontal_error_ellipse_azimuth_deg: Option<f64>,
     pub sigma_h_m: Option<Meters>,
     pub sigma_v_m: Option<Meters>,
     #[serde(default)]
