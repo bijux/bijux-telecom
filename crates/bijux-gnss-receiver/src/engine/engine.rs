@@ -605,6 +605,7 @@ fn build_support_matrix() -> SupportMatrix {
         SignalCode::L2C,
         SignalCode::Py,
         SignalCode::B1I,
+        SignalCode::B2I,
         SignalCode::E1B,
         SignalCode::E1C,
         SignalCode::E5a,
@@ -674,6 +675,10 @@ fn support_reason(constellation: Constellation, band: SignalBand, code: SignalCo
     if constellation == Constellation::Beidou && band == SignalBand::B1 && code == SignalCode::B1I
     {
         return "receiver acquisition, tracking, and observations support this signal path; navigation remains incomplete".to_string();
+    }
+    if constellation == Constellation::Beidou && band == SignalBand::B2 && code == SignalCode::B2I
+    {
+        return "receiver observations and synthetic validation support explicit tracked B2I epochs; acquisition and live tracking remain incomplete".to_string();
     }
     if constellation == Constellation::Glonass
         && band == SignalBand::L1
