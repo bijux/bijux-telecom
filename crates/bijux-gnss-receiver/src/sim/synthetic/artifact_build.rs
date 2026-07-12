@@ -268,6 +268,7 @@ pub fn validate_synthetic_navigation_run(
     let observation_reference = SyntheticObservationTruthReference {
         receive_time_s: scenario.reference_receive_time_s,
         receiver_ecef_m: scenario.receiver_ecef_m,
+        ionosphere_delay_model: None,
     };
     let observation_validation = validate_truth_guided_observations(
         config,

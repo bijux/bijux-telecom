@@ -98,9 +98,7 @@ fn truth_coverage_issue(
     SyntheticTruthCoverageIssue { sat, epoch_index, code: code.into() }
 }
 
-fn tracked_signal_band(
-    track: &crate::pipeline::tracking::TrackingResult,
-) -> Option<SignalBand> {
+fn tracked_signal_band(track: &crate::pipeline::tracking::TrackingResult) -> Option<SignalBand> {
     track.epochs.first().map(|epoch| epoch.signal_band)
 }
 
@@ -258,10 +256,7 @@ pub fn validate_truth_guided_observation_table(
             if tracks.get(signal_index).is_none() {
                 notes.push("missing_tracking_result_for_truth_signal".to_string());
             }
-            if tracks
-                .get(signal_index)
-                .is_some_and(|track| track.sat != sat_truth.sat)
-            {
+            if tracks.get(signal_index).is_some_and(|track| track.sat != sat_truth.sat) {
                 notes.push("truth_signal_tracking_satellite_mismatch".to_string());
             }
             if observed_rows.is_empty() {
@@ -295,12 +290,22 @@ pub fn validate_truth_guided_observation_table(
                             .then(|| {
                                 let receive_time_s = reference.receive_time_s
                                     + row.sample_index as f64 / config.sampling_freq_hz;
-                                synthetic_pseudorange_m(
+                                let geometric_pseudorange_m = synthetic_pseudorange_m(
                                     ephemeris,
                                     receive_time_s,
                                     reference.receiver_ecef_m,
-                                )
+                                );
+                                reference
+                                    .ionosphere_delay_model
+                                    .map(|model| {
+                                        model.pseudorange_m(
+                                            geometric_pseudorange_m,
+                                            row.observation.metadata.signal,
+                                        )
+                                    })
+                                    .unwrap_or(Some(geometric_pseudorange_m))
                             })
+                            .flatten()
                     });
                     let carrier_phase_truth_cycles = Some(
                         sat_state.carrier_phase_rad_at(

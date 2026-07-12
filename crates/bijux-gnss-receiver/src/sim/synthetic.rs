@@ -6,11 +6,11 @@ use std::f32::consts::TAU;
 use num_complex::Complex;
 
 use bijux_gnss_core::api::{
-    ecef_to_enu, ecef_to_geodetic, reference_ecef, stats, AcqHypothesis, AcqResult,
-    Constellation, GlonassFrequencyChannel, GpsTime, Hertz, NavQualityFlag, NavSolutionEpoch,
-    ObsEpoch, ObservationStatus, ReceiverSampleTrace, SampleClock, SampleTime, SamplesFrame,
-    SatId, Seconds, SigId, SignalBand, SignalCode, SolutionStatus, SolutionValidity,
-    ValidationReferenceEpoch,
+    ecef_to_enu, ecef_to_geodetic, first_order_ionosphere_code_delay_m, reference_ecef, stats,
+    AcqHypothesis, AcqResult, Constellation, GlonassFrequencyChannel, GpsTime, Hertz, Meters,
+    NavQualityFlag, NavSolutionEpoch, ObsEpoch, ObservationStatus, ReceiverSampleTrace,
+    SampleClock, SampleTime, SamplesFrame, SatId, Seconds, SigId, SignalBand, SignalCode,
+    SignalSpec, SolutionStatus, SolutionValidity, ValidationReferenceEpoch,
 };
 use bijux_gnss_signal::api::SignalSource;
 
@@ -32,6 +32,7 @@ const SYNTHETIC_NOISE_STD_PER_COMPONENT: f32 = std::f32::consts::FRAC_1_SQRT_2;
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 
 include!("synthetic/scenario.rs");
+include!("synthetic/ionosphere.rs");
 include!("synthetic/observation_truth.rs");
 include!("synthetic/stage_accuracy.rs");
 include!("synthetic/pvt_profile_types.rs");
@@ -63,8 +64,7 @@ mod tests {
         measure_truth_guided_acquisition_detection_rate, measure_truth_guided_tracking_lock_rate,
         nav_bit_index_at_time_s, nav_bit_sign_at_time_s, signal_amplitude_from_cn0,
         summarize_observation_errors, summarize_truth_guided_accuracy_cn0_profile,
-        summarize_truth_guided_pvt_clock_profile,
-        summarize_truth_guided_pvt_cn0_profile,
+        summarize_truth_guided_pvt_clock_profile, summarize_truth_guided_pvt_cn0_profile,
         summarize_truth_guided_pvt_constellation_geometry_profile,
         summarize_truth_guided_pvt_geometry_profile, summarize_truth_guided_pvt_motion_profile,
         summarize_truth_guided_pvt_multipath_profile, summarize_truth_guided_pvt_time_profile,
@@ -83,8 +83,8 @@ mod tests {
         SyntheticAcquisitionSampleRateValidationCase, SyntheticAcquisitionTruthTableReport,
         SyntheticAcquisitionTruthTableSatellite, SyntheticDopplerRampParams, SyntheticFadeWindow,
         SyntheticNavBitMode, SyntheticPhaseWindow, SyntheticPvtAccuracyEpoch,
-        SyntheticPvtAccuracyReport, SyntheticPvtClockProfileCase,
-        SyntheticPvtCn0ProfileCase, SyntheticPvtCn0ProfilePoint, SyntheticPvtCn0ProfileReport,
+        SyntheticPvtAccuracyReport, SyntheticPvtClockProfileCase, SyntheticPvtCn0ProfileCase,
+        SyntheticPvtCn0ProfilePoint, SyntheticPvtCn0ProfileReport,
         SyntheticPvtConstellationGeometryProfileCase,
         SyntheticPvtConstellationGeometryProfileReport, SyntheticPvtGeometryProfileCase,
         SyntheticPvtGeometryProfileReport, SyntheticPvtMotionProfileCase,

@@ -5,6 +5,9 @@ pub struct SyntheticObservationTruthReference {
     pub receive_time_s: f64,
     /// Receiver truth position in ECEF meters.
     pub receiver_ecef_m: [f64; 3],
+    /// Optional first-order ionosphere model applied when deriving signal-specific code truth.
+    #[serde(default)]
+    pub ionosphere_delay_model: Option<SyntheticIonosphereDelayModel>,
 }
 
 /// Truth-guided value recorded for one observation observable.

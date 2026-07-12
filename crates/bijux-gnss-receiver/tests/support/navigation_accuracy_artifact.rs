@@ -73,6 +73,7 @@ pub fn build_navigation_accuracy_artifact_fixture() -> NavigationAccuracyArtifac
     let observation_reference = SyntheticObservationTruthReference {
         receive_time_s: SYNTHETIC_REFERENCE_RECEIVE_TIME_S,
         receiver_ecef_m: [profile.truth_ecef_m.0, profile.truth_ecef_m.1, profile.truth_ecef_m.2],
+        ionosphere_delay_model: None,
     };
     let tracks = truth_aligned_tracks(&config, &profile, 2);
     let frame = generate_l1_ca_multi(&config, &profile.scenario);
