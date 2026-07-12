@@ -419,6 +419,7 @@ mod report_tests {
             valid,
             processing_ms: None,
             residuals: Vec::new(),
+            constellation_residual_rms: Vec::new(),
             health: Vec::new(),
             isb: Vec::new(),
             sigma_h_m: None,
@@ -513,14 +514,20 @@ mod report_tests {
     #[test]
     fn summarize_navigation_attempts_counts_valid_stable_and_refused_epochs() {
         let solutions = vec![
-            sample_solution(0, false, SolutionValidity::Invalid, Some(
-                bijux_gnss_infra::api::core::NavRefusalClass::InconsistentObservations,
-            )),
+            sample_solution(
+                0,
+                false,
+                SolutionValidity::Invalid,
+                Some(bijux_gnss_infra::api::core::NavRefusalClass::InconsistentObservations),
+            ),
             sample_solution(1, true, SolutionValidity::Converging, None),
             sample_solution(2, true, SolutionValidity::Stable, None),
-            sample_solution(3, false, SolutionValidity::Invalid, Some(
-                bijux_gnss_infra::api::core::NavRefusalClass::InsufficientGeometry,
-            )),
+            sample_solution(
+                3,
+                false,
+                SolutionValidity::Invalid,
+                Some(bijux_gnss_infra::api::core::NavRefusalClass::InsufficientGeometry),
+            ),
         ];
 
         let summary = summarize_navigation_attempts(&solutions);
@@ -528,19 +535,19 @@ mod report_tests {
         assert_eq!(summary.attempted_epochs, 4);
         assert_eq!(summary.valid_epochs, 2);
         assert_eq!(summary.stable_epochs, 1);
-        assert_eq!(
-            summary.refusal_counts.get("InconsistentObservations"),
-            Some(&1usize)
-        );
+        assert_eq!(summary.refusal_counts.get("InconsistentObservations"), Some(&1usize));
         assert_eq!(summary.refusal_counts.get("InsufficientGeometry"), Some(&1usize));
     }
 
     #[test]
     fn summarize_position_attempts_preserves_refusal_and_geometry_counts() {
         let solutions = vec![
-            sample_solution(10, false, SolutionValidity::Invalid, Some(
-                bijux_gnss_infra::api::core::NavRefusalClass::InconsistentObservations,
-            )),
+            sample_solution(
+                10,
+                false,
+                SolutionValidity::Invalid,
+                Some(bijux_gnss_infra::api::core::NavRefusalClass::InconsistentObservations),
+            ),
             sample_solution(11, true, SolutionValidity::Stable, None),
         ];
 
@@ -552,10 +559,7 @@ mod report_tests {
         assert_eq!(attempts[0].sat_count, 4);
         assert_eq!(attempts[0].used_sat_count, 4);
         assert_eq!(attempts[0].rejected_sat_count, 0);
-        assert_eq!(
-            attempts[0].refusal_class.as_deref(),
-            Some("InconsistentObservations")
-        );
+        assert_eq!(attempts[0].refusal_class.as_deref(), Some("InconsistentObservations"));
         assert_eq!(attempts[1].epoch_idx, 11);
         assert_eq!(attempts[1].validity, SolutionValidity::Stable);
         assert_eq!(attempts[1].refusal_class, None);

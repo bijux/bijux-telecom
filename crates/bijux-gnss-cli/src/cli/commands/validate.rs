@@ -791,6 +791,7 @@ mod validate_tests {
             valid: true,
             processing_ms: None,
             residuals: Vec::new(),
+            constellation_residual_rms: Vec::new(),
             health: Vec::new(),
             isb: Vec::new(),
             sigma_h_m: None,
