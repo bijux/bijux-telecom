@@ -100,6 +100,14 @@ impl Default for PositionFilterConfig {
 }
 
 impl PositionFilterConfig {
+    pub fn for_constant_velocity_receiver() -> Self {
+        let mut config = Self::default();
+        config.motion_model = PositionFilterMotionModel::ConstantVelocity;
+        config.process_noise.vel_mps = 0.2;
+        config.initial_velocity_sigma_mps = 10.0;
+        config
+    }
+
     pub fn for_static_receiver() -> Self {
         let mut config = Self::default();
         config.motion_model =
@@ -694,6 +702,18 @@ mod tests {
         assert_eq!(config.process_noise.pos_m, 0.5);
         assert_eq!(config.process_noise.vel_mps, 0.05);
         assert_eq!(config.initial_velocity_sigma_mps, 5.0);
+    }
+
+    #[test]
+    fn position_filter_constant_velocity_profile_enables_constant_velocity_model() {
+        let config = PositionFilterConfig::for_constant_velocity_receiver();
+
+        assert!(matches!(
+            config.motion_model,
+            PositionFilterMotionModel::ConstantVelocity
+        ));
+        assert_eq!(config.process_noise.vel_mps, 0.2);
+        assert_eq!(config.initial_velocity_sigma_mps, 10.0);
     }
 
     #[test]
