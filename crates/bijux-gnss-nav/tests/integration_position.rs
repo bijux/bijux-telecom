@@ -719,6 +719,9 @@ fn single_point_solver_reports_ecef_position_covariance() {
     assert!(solution.sigma_e_m.expect("east sigma") > 0.0);
     assert!(solution.sigma_n_m.expect("north sigma") > 0.0);
     assert!(solution.sigma_u_m.expect("up sigma") > 0.0);
+    assert!(solution.horizontal_error_ellipse_major_axis_m.expect("ellipse major axis") > 0.0);
+    assert!(solution.horizontal_error_ellipse_minor_axis_m.expect("ellipse minor axis") > 0.0);
+    assert!(solution.horizontal_error_ellipse_azimuth_deg.expect("ellipse azimuth").is_finite());
 }
 
 #[test]

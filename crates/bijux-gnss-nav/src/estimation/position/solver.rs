@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::estimation::uncertainty::{
-    covariance_enu_standard_deviations_m, covariance_horizontal_vertical,
+    covariance_enu_standard_deviations_m, covariance_horizontal_vertical, horizontal_error_ellipse,
 };
 
 use super::navigation::{
@@ -36,6 +36,9 @@ pub struct PositionSolution {
     pub ecef_y_m: f64,
     pub ecef_z_m: f64,
     pub position_covariance_ecef_m2: Option<[[f64; 3]; 3]>,
+    pub horizontal_error_ellipse_major_axis_m: Option<f64>,
+    pub horizontal_error_ellipse_minor_axis_m: Option<f64>,
+    pub horizontal_error_ellipse_azimuth_deg: Option<f64>,
     pub sigma_e_m: Option<f64>,
     pub sigma_n_m: Option<f64>,
     pub sigma_u_m: Option<f64>,
@@ -868,6 +871,16 @@ impl PositionSolver {
                 (Some(sigma_e_m), Some(sigma_n_m), Some(sigma_u_m))
             })
             .unwrap_or((None, None, None));
+        let (
+            horizontal_error_ellipse_major_axis_m,
+            horizontal_error_ellipse_minor_axis_m,
+            horizontal_error_ellipse_azimuth_deg,
+        ) = position_covariance_ecef_m2
+            .and_then(|covariance_xyz| horizontal_error_ellipse([x, y, z], covariance_xyz))
+            .map(|ellipse| {
+                (Some(ellipse.major_axis_m), Some(ellipse.minor_axis_m), Some(ellipse.azimuth_deg))
+            })
+            .unwrap_or((None, None, None));
         let (sigma_h_m, sigma_v_m) = match (sigma_e_m, sigma_n_m, sigma_u_m) {
             (Some(sigma_e_m), Some(sigma_n_m), Some(sigma_u_m)) => {
                 (Some((sigma_e_m * sigma_e_m + sigma_n_m * sigma_n_m).sqrt()), Some(sigma_u_m))
@@ -881,6 +894,9 @@ impl PositionSolver {
             ecef_y_m: y,
             ecef_z_m: z,
             position_covariance_ecef_m2,
+            horizontal_error_ellipse_major_axis_m,
+            horizontal_error_ellipse_minor_axis_m,
+            horizontal_error_ellipse_azimuth_deg,
             sigma_e_m,
             sigma_n_m,
             sigma_u_m,

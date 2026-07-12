@@ -3,6 +3,13 @@
 use crate::estimation::position::solver::ecef_to_geodetic;
 use crate::linalg::Matrix;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct HorizontalErrorEllipse {
+    pub major_axis_m: f64,
+    pub minor_axis_m: f64,
+    pub azimuth_deg: f64,
+}
+
 pub(crate) fn position_covariance_ecef_m2(
     covariance: &Matrix,
     position_indices: &[usize; 3],
@@ -29,6 +36,34 @@ pub(crate) fn covariance_horizontal_vertical(
         covariance_enu_standard_deviations_m(receiver_ecef_m, covariance_ecef_m2)?;
     let horizontal = (sigma_e_m * sigma_e_m + sigma_n_m * sigma_n_m).sqrt();
     Some((horizontal, sigma_u_m))
+}
+
+pub(crate) fn horizontal_error_ellipse(
+    receiver_ecef_m: [f64; 3],
+    covariance_ecef_m2: [[f64; 3]; 3],
+) -> Option<HorizontalErrorEllipse> {
+    let covariance_enu = covariance_ecef_to_enu(receiver_ecef_m, covariance_ecef_m2)?;
+    let covariance_ee = covariance_enu[0][0];
+    let covariance_nn = covariance_enu[1][1];
+    let covariance_en = covariance_enu[0][1];
+
+    if !covariance_ee.is_finite() || !covariance_nn.is_finite() || !covariance_en.is_finite() {
+        return None;
+    }
+
+    let trace = covariance_ee + covariance_nn;
+    let delta = covariance_ee - covariance_nn;
+    let discriminant = (delta * delta + 4.0 * covariance_en * covariance_en).max(0.0).sqrt();
+    let major_variance = ((trace + discriminant) * 0.5).max(0.0);
+    let minor_variance = ((trace - discriminant) * 0.5).max(0.0);
+    let orientation_from_east_deg = 0.5 * (2.0 * covariance_en).atan2(delta).to_degrees();
+    let azimuth_deg = (90.0 - orientation_from_east_deg).rem_euclid(180.0);
+
+    Some(HorizontalErrorEllipse {
+        major_axis_m: major_variance.sqrt(),
+        minor_axis_m: minor_variance.sqrt(),
+        azimuth_deg,
+    })
 }
 
 pub(crate) fn covariance_enu_standard_deviations_m(
@@ -89,7 +124,9 @@ fn ecef_to_enu_rotation(lat_rad: f64, lon_rad: f64) -> [[f64; 3]; 3] {
 
 #[cfg(test)]
 mod tests {
-    use super::{covariance_ecef_to_enu, covariance_enu_standard_deviations_m};
+    use super::{
+        covariance_ecef_to_enu, covariance_enu_standard_deviations_m, horizontal_error_ellipse,
+    };
 
     #[test]
     fn covariance_conversion_reports_enu_standard_deviations() {
@@ -108,5 +145,18 @@ mod tests {
         assert_eq!(sigma_e_m, 1.0);
         assert_eq!(sigma_n_m, 2.0);
         assert_eq!(sigma_u_m, 3.0);
+    }
+
+    #[test]
+    fn covariance_conversion_reports_horizontal_error_ellipse() {
+        let receiver_ecef_m = [6_378_137.0, 0.0, 0.0];
+        let covariance_ecef_m2 = [[9.0, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 1.0]];
+
+        let ellipse =
+            horizontal_error_ellipse(receiver_ecef_m, covariance_ecef_m2).expect("ellipse");
+
+        assert_eq!(ellipse.major_axis_m, 2.0);
+        assert_eq!(ellipse.minor_axis_m, 1.0);
+        assert_eq!(ellipse.azimuth_deg, 90.0);
     }
 }
