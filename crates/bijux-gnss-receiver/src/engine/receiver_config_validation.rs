@@ -304,6 +304,8 @@ impl ReceiverConfig {
             robust_solver: self.navigation.robust_solver,
             huber_k: self.navigation.huber_k,
             raim: self.navigation.raim,
+            position_solution_smoothing: self.navigation.position_solution_smoothing,
+            position_solution_motion_class: self.navigation.position_solution_motion_class,
             hatch_window: self.navigation.hatch_window,
             weighting: self.navigation.weighting.clone(),
             iono_mode: self.navigation.iono_mode.clone(),
@@ -319,7 +321,9 @@ impl ReceiverConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::receiver_config::{ConstellationSelectionPolicy, NavigationWeightingMode};
+    use crate::engine::receiver_config::{
+        ConstellationSelectionPolicy, NavigationMotionClass, NavigationWeightingMode,
+    };
     use bijux_gnss_core::api::Constellation;
     use schemars::schema_for;
 
@@ -385,6 +389,11 @@ mod tests {
         let config = ReceiverConfig::default();
 
         assert_eq!(config.navigation.constellation_policy, ConstellationSelectionPolicy::Mixed);
+        assert!(config.navigation.position_solution_smoothing);
+        assert_eq!(
+            config.navigation.position_solution_motion_class,
+            NavigationMotionClass::Vehicle
+        );
     }
 
     #[test]
@@ -451,5 +460,23 @@ mod tests {
                 "receiver config schema missing navigation weighting mode value {value}: {raw}"
             );
         }
+    }
+
+    #[test]
+    fn position_solution_smoothing_round_trips_through_toml() {
+        let mut config = ReceiverConfig::default();
+        config.navigation.position_solution_smoothing = false;
+        config.navigation.position_solution_motion_class = NavigationMotionClass::Pedestrian;
+
+        let raw = toml::to_string(&config).expect("serialize receiver config");
+        let reparsed: ReceiverConfig = toml::from_str(&raw).expect("parse receiver config");
+
+        assert!(!reparsed.navigation.position_solution_smoothing);
+        assert_eq!(
+            reparsed.navigation.position_solution_motion_class,
+            NavigationMotionClass::Pedestrian
+        );
+        assert!(raw.contains("position_solution_smoothing = false"));
+        assert!(raw.contains("position_solution_motion_class = \"pedestrian\""));
     }
 }

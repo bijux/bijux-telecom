@@ -87,6 +87,10 @@ pub struct ReceiverPipelineConfig {
     pub huber_k: f64,
     /// Whether RAIM-like checks are enabled.
     pub raim: bool,
+    /// Whether navigation position solutions should be smoothed across epochs.
+    pub position_solution_smoothing: bool,
+    /// Receiver motion class used to tune position-solution smoothing.
+    pub position_solution_motion_class: NavigationMotionClass,
     /// Hatch smoothing window, in epochs.
     pub hatch_window: u32,
     /// Navigation weighting configuration.
@@ -131,6 +135,8 @@ impl Default for ReceiverPipelineConfig {
             robust_solver: true,
             huber_k: 30.0,
             raim: true,
+            position_solution_smoothing: true,
+            position_solution_motion_class: NavigationMotionClass::Vehicle,
             hatch_window: 100,
             weighting: NavigationWeightingConfig::default(),
             iono_mode: "broadcast".to_string(),
@@ -263,6 +269,21 @@ pub enum NavigationWeightingMode {
     ElevationCn0,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Motion class used to tune navigation position-solution smoothing.
+pub enum NavigationMotionClass {
+    /// Receiver is expected to remain stationary.
+    Static,
+    /// Receiver is expected to move at pedestrian speeds.
+    Pedestrian,
+    /// Receiver is expected to move at ground-vehicle speeds.
+    #[default]
+    Vehicle,
+    /// Receiver is expected to move at airborne speeds.
+    Airborne,
+}
+
 impl Default for ConstellationSelectionPolicy {
     fn default() -> Self {
         Self::Mixed
@@ -372,6 +393,10 @@ pub fn default_over_budget_action() -> String {
     "drop_epochs".to_string()
 }
 
+pub fn default_position_solution_smoothing() -> bool {
+    true
+}
+
 pub fn parse_band(text: &str) -> Option<SignalBand> {
     match text.to_lowercase().as_str() {
         "l1" => Some(SignalBand::L1),
@@ -394,6 +419,12 @@ pub struct NavigationConfig {
     pub huber_k: f64,
     /// Enable RAIM-like checks.
     pub raim: bool,
+    /// Smooth navigation position solutions across epochs.
+    #[serde(default = "default_position_solution_smoothing")]
+    pub position_solution_smoothing: bool,
+    /// Motion class used to tune navigation position-solution smoothing.
+    #[serde(default)]
+    pub position_solution_motion_class: NavigationMotionClass,
     /// Hatch smoothing window.
     pub hatch_window: u32,
     /// Weighting configuration.

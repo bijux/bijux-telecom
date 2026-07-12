@@ -3,8 +3,8 @@
 
 /// Receiver configuration and schema.
 pub use crate::engine::receiver_config::{
-    ConstellationSelectionPolicy, NavigationWeightingMode, ReceiverConfig, ReceiverError,
-    ReceiverPipelineConfig,
+    ConstellationSelectionPolicy, NavigationMotionClass, NavigationWeightingMode, ReceiverConfig,
+    ReceiverError, ReceiverPipelineConfig,
 };
 /// Receiver runtime options (side-effectful controls).
 pub use crate::engine::runtime::{
