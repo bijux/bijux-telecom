@@ -19,7 +19,9 @@ use crate::corrections::biases::{
 };
 use crate::corrections::CorrectionContext;
 use crate::estimation::ekf::state::{Ekf, EkfConfig};
-use crate::estimation::position::solver::{elevation_azimuth_deg, position_measurement_weight};
+use crate::estimation::position::solver::{
+    ecef_to_geodetic, elevation_azimuth_deg, position_measurement_weight,
+};
 use crate::estimation::ppp::config::{PppConvergenceState, PppHealth, PppSolutionEpoch};
 use crate::formats::precise_products::{ProductDiagnostics, ProductsProvider};
 use crate::linalg::Matrix;
@@ -129,6 +131,7 @@ impl PppFilter {
         self.ekf.x[self.indices.pos[1]] = ecef_m[1];
         self.ekf.x[self.indices.pos[2]] = ecef_m[2];
         self.ekf.x[self.indices.clock_bias] = clock_bias_s;
+        self.try_seed_ztd_from_position_state();
         self.last_pos = Some(ecef_m);
     }
 
@@ -148,6 +151,7 @@ impl PppFilter {
             self.epoch0_t_s = Some(obs.t_rx_s.0);
         }
         self.predict(dt_s);
+        self.try_seed_ztd_from_position_state();
 
         let mut sats: Vec<&ObsSatellite> = obs.sats.iter().collect();
         sats.sort_by_key(|s| s.signal_id);
@@ -339,6 +343,17 @@ impl PppFilter {
             sigma_h,
             sigma_v,
         ) = estimate_position_uncertainty(&self.ekf, &self.indices.pos, pos);
+        let ztd_m = self.ekf.x.get(self.indices.ztd).copied().unwrap_or(0.0);
+        let ztd_sigma_m = if self.indices.ztd < self.ekf.p.rows() {
+            let variance = self.ekf.p[(self.indices.ztd, self.indices.ztd)];
+            if variance.is_finite() && variance >= 0.0 {
+                Some(variance.sqrt())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         self.update_convergence(t_rx_s, pos, sigma_h, sigma_v);
         self.check_consistency();
         self.adapt_process_noise();
@@ -348,6 +363,8 @@ impl PppFilter {
             ecef_x_m: pos[0],
             ecef_y_m: pos[1],
             ecef_z_m: pos[2],
+            ztd_m,
+            ztd_sigma_m,
             position_covariance_ecef_m2,
             sigma_e_m,
             sigma_n_m,
@@ -437,6 +454,28 @@ impl PppFilter {
             process: self.config.process_noise.clone(),
         };
         self.ekf.predict(&model, dt_s);
+    }
+
+    fn try_seed_ztd_from_position_state(&mut self) {
+        if self.indices.ztd >= self.ekf.x.len() {
+            return;
+        }
+        if self.ekf.x[self.indices.ztd].is_finite() && self.ekf.x[self.indices.ztd] > 0.0 {
+            return;
+        }
+        let ecef_x_m = self.ekf.x[self.indices.pos[0]];
+        let ecef_y_m = self.ekf.x[self.indices.pos[1]];
+        let ecef_z_m = self.ekf.x[self.indices.pos[2]];
+        let radius_m = (ecef_x_m * ecef_x_m + ecef_y_m * ecef_y_m + ecef_z_m * ecef_z_m).sqrt();
+        if !radius_m.is_finite() || !(6_000_000.0..=7_000_000.0).contains(&radius_m) {
+            return;
+        }
+        let (lat_deg, lon_deg, alt_m) = ecef_to_geodetic(ecef_x_m, ecef_y_m, ecef_z_m);
+        if !lat_deg.is_finite() || !lon_deg.is_finite() || !alt_m.is_finite() {
+            return;
+        }
+        let receiver = bijux_gnss_core::api::Llh { lat_deg, lon_deg, alt_m };
+        self.ekf.x[self.indices.ztd] = SaastamoinenModel::zenith_delay_m(receiver);
     }
 
     fn prune_states(&mut self, epoch_idx: u64) {

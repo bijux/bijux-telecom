@@ -92,6 +92,8 @@ pub struct PppSolutionEpoch {
     pub ecef_x_m: f64,
     pub ecef_y_m: f64,
     pub ecef_z_m: f64,
+    pub ztd_m: f64,
+    pub ztd_sigma_m: Option<f64>,
     pub position_covariance_ecef_m2: Option<[[f64; 3]; 3]>,
     pub sigma_e_m: Option<f64>,
     pub sigma_n_m: Option<f64>,
@@ -117,12 +119,34 @@ impl ArtifactPayloadValidate for PppSolutionEpoch {
         if !self.ecef_x_m.is_finite()
             || !self.ecef_y_m.is_finite()
             || !self.ecef_z_m.is_finite()
+            || !self.ztd_m.is_finite()
             || !self.clock_bias_s.is_finite()
         {
             events.push(DiagnosticEvent::new(
                 DiagnosticSeverity::Error,
                 "PPP_EPOCH_INVALID",
                 "PPP solution contains NaN/Inf",
+            ));
+        }
+        if self.ztd_sigma_m.is_some_and(|value| !value.is_finite()) {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "PPP_ZTD_SIGMA_INVALID",
+                "PPP zenith troposphere delay sigma contains NaN/Inf",
+            ));
+        }
+        if self.ztd_sigma_m.is_some_and(|value| value < 0.0) {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "PPP_ZTD_SIGMA_NEGATIVE",
+                "PPP zenith troposphere delay sigma must be non-negative",
+            ));
+        }
+        if self.ztd_sigma_m.is_none() {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Warning,
+                "PPP_ZTD_SIGMA_MISSING",
+                "PPP solution should carry zenith troposphere delay uncertainty",
             ));
         }
         if let Some(covariance) = self.position_covariance_ecef_m2 {
@@ -174,9 +198,7 @@ impl ArtifactPayloadValidate for PppSolutionEpoch {
             self.horizontal_error_ellipse_minor_axis_m,
         ];
         if horizontal_error_ellipse.iter().flatten().any(|value| !value.is_finite())
-            || self
-                .horizontal_error_ellipse_azimuth_deg
-                .is_some_and(|value| !value.is_finite())
+            || self.horizontal_error_ellipse_azimuth_deg.is_some_and(|value| !value.is_finite())
         {
             events.push(DiagnosticEvent::new(
                 DiagnosticSeverity::Error,
@@ -227,6 +249,8 @@ mod tests {
             ecef_x_m: 1.0,
             ecef_y_m: 2.0,
             ecef_z_m: 3.0,
+            ztd_m: 2.35,
+            ztd_sigma_m: Some(0.12),
             position_covariance_ecef_m2: Some([
                 [4.0, 0.5, 0.25],
                 [0.5, 9.0, 0.75],
@@ -284,7 +308,19 @@ mod tests {
 
         let diagnostics = solution.validate_payload();
 
-        assert!(diagnostics.iter().any(|event| event.code == "PPP_HORIZONTAL_ERROR_ELLIPSE_MISSING"));
+        assert!(diagnostics
+            .iter()
+            .any(|event| event.code == "PPP_HORIZONTAL_ERROR_ELLIPSE_MISSING"));
+    }
+
+    #[test]
+    fn ppp_solution_validation_warns_on_missing_ztd_sigma() {
+        let mut solution = sample_solution();
+        solution.ztd_sigma_m = None;
+
+        let diagnostics = solution.validate_payload();
+
+        assert!(diagnostics.iter().any(|event| event.code == "PPP_ZTD_SIGMA_MISSING"));
     }
 
     #[test]
@@ -315,7 +351,19 @@ mod tests {
 
         let diagnostics = solution.validate_payload();
 
-        assert!(diagnostics.iter().any(|event| event.code == "PPP_HORIZONTAL_ERROR_ELLIPSE_INVALID"));
+        assert!(diagnostics
+            .iter()
+            .any(|event| event.code == "PPP_HORIZONTAL_ERROR_ELLIPSE_INVALID"));
+    }
+
+    #[test]
+    fn ppp_solution_validation_rejects_non_finite_ztd_sigma() {
+        let mut solution = sample_solution();
+        solution.ztd_sigma_m = Some(f64::NAN);
+
+        let diagnostics = solution.validate_payload();
+
+        assert!(diagnostics.iter().any(|event| event.code == "PPP_ZTD_SIGMA_INVALID"));
     }
 }
 
