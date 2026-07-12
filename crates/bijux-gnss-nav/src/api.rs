@@ -197,6 +197,7 @@ pub use crate::models::antenna::{
 pub use crate::models::ocean_tide_loading::{
     OceanTideConstituent, OceanTideLoadingConstituent, OceanTideLoadingModel,
 };
+pub use crate::models::solid_earth_tide::SolidEarthTideModel;
 pub use crate::models::nequick::model::GalileoNequickModel;
 /// BeiDou broadcast navigation and satellite state helpers.
 pub use crate::orbits::beidou::{

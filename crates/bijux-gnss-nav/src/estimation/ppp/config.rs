@@ -14,6 +14,7 @@ use crate::estimation::position::solver::WeightingConfig;
 use crate::models::antenna::{ReceiverAntennaCalibrations, SatelliteAntennaCalibrations};
 use crate::models::atmosphere::TroposphereMeteorology;
 use crate::models::ocean_tide_loading::OceanTideLoadingModel;
+use crate::models::solid_earth_tide::SolidEarthTideModel;
 
 pub const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 
@@ -52,6 +53,7 @@ pub struct PppConfig {
     pub tropo_pressure_hpa: Option<f64>,
     pub tropo_temperature_k: Option<f64>,
     pub tropo_relative_humidity: Option<f64>,
+    pub solid_earth_tide_model: Option<SolidEarthTideModel>,
     pub ocean_tide_loading_model: Option<OceanTideLoadingModel>,
     pub receiver_antenna_type: Option<String>,
     pub receiver_antenna_calibrations: Option<ReceiverAntennaCalibrations>,
@@ -88,6 +90,7 @@ impl Default for PppConfig {
             tropo_pressure_hpa: None,
             tropo_temperature_k: None,
             tropo_relative_humidity: None,
+            solid_earth_tide_model: None,
             ocean_tide_loading_model: None,
             receiver_antenna_type: None,
             receiver_antenna_calibrations: None,
@@ -139,6 +142,16 @@ impl PppConfig {
         gps_time: Option<bijux_gnss_core::api::GpsTime>,
     ) -> Option<[f64; 3]> {
         self.ocean_tide_loading_model
+            .as_ref()?
+            .displacement_ecef_m(receiver_ecef_m, gps_time?)
+    }
+
+    pub(crate) fn solid_earth_tide_displacement_m(
+        &self,
+        receiver_ecef_m: [f64; 3],
+        gps_time: Option<bijux_gnss_core::api::GpsTime>,
+    ) -> Option<[f64; 3]> {
+        self.solid_earth_tide_model
             .as_ref()?
             .displacement_ecef_m(receiver_ecef_m, gps_time?)
     }
@@ -306,6 +319,7 @@ mod tests {
     use crate::models::ocean_tide_loading::{
         OceanTideConstituent, OceanTideLoadingConstituent, OceanTideLoadingModel,
     };
+    use crate::models::solid_earth_tide::SolidEarthTideModel;
 
     fn sample_solution() -> PppSolutionEpoch {
         PppSolutionEpoch {
@@ -500,6 +514,30 @@ mod tests {
         assert!((displacement[0] - 0.02).abs() < 1.0e-9);
         assert!(displacement[1].abs() < 1.0e-9);
         assert!(displacement[2].abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn ppp_config_resolves_solid_earth_tide_displacement() {
+        let config = PppConfig {
+            solid_earth_tide_model: Some(SolidEarthTideModel),
+            ..PppConfig::default()
+        };
+
+        let displacement = config
+            .solid_earth_tide_displacement_m(
+                [4_479_597.678, 628_775.774, 4_489_073.842],
+                Some(bijux_gnss_core::api::GpsTime { week: 2200, tow_s: 43_200.0 }),
+            )
+            .expect("solid Earth tide displacement");
+
+        assert!(displacement.into_iter().all(f64::is_finite));
+        let displacement_norm_m =
+            (displacement[0] * displacement[0]
+                + displacement[1] * displacement[1]
+                + displacement[2] * displacement[2])
+                .sqrt();
+        assert!(displacement_norm_m > 0.05);
+        assert!(displacement_norm_m < 0.6);
     }
 }
 
