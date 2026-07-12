@@ -3,14 +3,18 @@
 use std::collections::BTreeMap;
 
 use bijux_gnss_core::api::{
-    Constellation, InterSystemBias, MeasurementRejectReason, SatId, SigId, SignalBand, SignalCode,
+    signal_id_wavelength_m, Constellation, InterSystemBias, MeasurementRejectReason, SatId, SigId,
+    SignalBand, SignalCode,
 };
 
-use crate::estimation::ekf::models::{NavClockModel, ProcessNoiseConfig, PseudorangeMeasurement};
+use crate::estimation::ekf::models::{
+    DopplerMeasurement, NavClockModel, ProcessNoiseConfig, PseudorangeMeasurement,
+};
 use crate::estimation::ekf::state::{Ekf, EkfConfig};
 use crate::estimation::position::navigation::{
-    corrected_pseudorange_m, resolve_position_inputs, satellite_state_from_observation,
-    unknown_inter_system_time_offset_sats, PositionSolveInput, SatelliteState,
+    corrected_pseudorange_m, default_position_signal_id, resolve_position_inputs,
+    satellite_state_from_observation, unknown_inter_system_time_offset_sats, PositionSolveInput,
+    SatelliteState,
 };
 use crate::estimation::position::solver::{
     elevation_azimuth_deg, position_broadcast_navigation_from_gps_ephemerides,
@@ -269,11 +273,16 @@ impl PositionFilter {
                 continue;
             };
 
-            let measurement = self.pseudorange_measurement(input, &state, corrected_pseudorange_m);
-            if self.ekf.update(&measurement) {
-                used_sat_count += 1;
-            } else {
+            let code_measurement =
+                self.pseudorange_measurement(input, &state, corrected_pseudorange_m);
+            if !self.ekf.update(&code_measurement) {
                 rejected.push((input.observation.sat, MeasurementRejectReason::Outlier));
+                continue;
+            }
+            used_sat_count += 1;
+
+            if let Some(doppler_measurement) = self.doppler_measurement(input, &state) {
+                let _ = self.ekf.update(&doppler_measurement);
             }
             residuals.push((input.observation.sat, self.ekf.health.innovation_rms));
         }
@@ -384,8 +393,7 @@ impl PositionFilter {
         state: &SatelliteState,
         corrected_pseudorange_m: f64,
     ) -> PseudorangeMeasurement {
-        let signal_id =
-            input.observation.signal_id.unwrap_or_else(|| default_signal_id(input.observation.sat));
+        let signal_id = resolved_signal_id(&input.observation);
         let elevation_deg = input
             .observation
             .elevation_deg
@@ -410,6 +418,34 @@ impl PositionFilter {
             ztd_index: None,
             isb_index,
         }
+    }
+
+    fn doppler_measurement(
+        &self,
+        input: &PositionSolveInput,
+        state: &SatelliteState,
+    ) -> Option<DopplerMeasurement> {
+        if !self.config.use_doppler {
+            return None;
+        }
+
+        let raw_doppler_hz = input.observation.doppler_hz?;
+        let signal_id = resolved_signal_id(&input.observation);
+        let wavelength_m = signal_id_wavelength_m(signal_id)?.0;
+        let elevation_deg = input
+            .observation
+            .elevation_deg
+            .or_else(|| current_elevation_deg(&self.ekf.x, &self.indices.pos, state));
+        let sigma_hz = doppler_sigma_hz(&input.observation, elevation_deg, &self.config);
+
+        Some(DopplerMeasurement {
+            sig: signal_id,
+            z_hz: raw_doppler_hz + 299_792_458.0 * state.clock_drift_s_per_s / wavelength_m,
+            sat_pos_m: [state.x_m, state.y_m, state.z_m],
+            sat_vel_mps: [state.vx_mps, state.vy_mps, state.vz_mps],
+            wavelength_m,
+            sigma_hz,
+        })
     }
 
     fn epoch_from_seed(
@@ -510,6 +546,23 @@ fn pseudorange_sigma_m(
     (config.base_pseudorange_sigma_m / total_weight.sqrt()).max(1.0e-3)
 }
 
+fn doppler_sigma_hz(
+    observation: &PositionObservation,
+    elevation_deg: Option<f64>,
+    config: &PositionFilterConfig,
+) -> f64 {
+    let geometry_weight =
+        position_measurement_weight(observation.cn0_dbhz, elevation_deg, None, config.weighting);
+    let total_weight = (geometry_weight * observation.weight.max(1.0e-6)).max(1.0e-6);
+    let modeled_sigma_hz = (config.base_doppler_sigma_hz / total_weight.sqrt()).max(1.0e-3);
+    let observed_sigma_hz = observation
+        .doppler_var_hz2
+        .filter(|variance_hz2| variance_hz2.is_finite() && *variance_hz2 > 0.0)
+        .map(f64::sqrt)
+        .unwrap_or(0.0);
+    modeled_sigma_hz.max(observed_sigma_hz)
+}
+
 fn constellation_primary_band(constellation: Constellation) -> SignalBand {
     match constellation {
         Constellation::Gps => SignalBand::L1,
@@ -522,6 +575,13 @@ fn constellation_primary_band(constellation: Constellation) -> SignalBand {
 
 fn default_signal_id(sat: SatId) -> SigId {
     SigId { sat, band: constellation_primary_band(sat.constellation), code: SignalCode::Unknown }
+}
+
+fn resolved_signal_id(observation: &PositionObservation) -> SigId {
+    observation
+        .signal_id
+        .or_else(|| default_position_signal_id(observation.sat))
+        .unwrap_or_else(|| default_signal_id(observation.sat))
 }
 
 #[cfg(test)]
