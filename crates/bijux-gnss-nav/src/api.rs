@@ -44,7 +44,7 @@ pub use crate::estimation::ekf::traits::MeasurementModel;
 /// Position solver (least squares) and helpers.
 pub use crate::estimation::position::filter::{
     PositionFilter, PositionFilterConfig, PositionFilterEpoch, PositionFilterIndices,
-    PositionFilterProcessNoise,
+    PositionFilterProcessNoise, PositionFilterStaticPositionModel,
 };
 pub use crate::estimation::position::raim::{
     RaimFaultDetection, RaimFaultDetectionStatus, RaimFaultExclusion,

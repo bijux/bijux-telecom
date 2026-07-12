@@ -40,8 +40,20 @@ impl Default for PositionFilterProcessNoise {
 }
 
 #[derive(Debug, Clone)]
+pub struct PositionFilterStaticPositionModel {
+    pub velocity_decay_per_s: f64,
+}
+
+impl Default for PositionFilterStaticPositionModel {
+    fn default() -> Self {
+        Self { velocity_decay_per_s: 4.0 }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct PositionFilterConfig {
     pub process_noise: PositionFilterProcessNoise,
+    pub static_position_model: Option<PositionFilterStaticPositionModel>,
     pub weighting: WeightingConfig,
     pub base_pseudorange_sigma_m: f64,
     pub base_doppler_sigma_hz: f64,
@@ -61,6 +73,7 @@ impl Default for PositionFilterConfig {
     fn default() -> Self {
         Self {
             process_noise: PositionFilterProcessNoise::default(),
+            static_position_model: None,
             weighting: WeightingConfig::default(),
             base_pseudorange_sigma_m: 5.0,
             base_doppler_sigma_hz: 1.0,
@@ -74,6 +87,15 @@ impl Default for PositionFilterConfig {
             initial_clock_bias_sigma_s: 1.0e-3,
             initial_clock_drift_sigma_s_per_s: 1.0e-4,
             min_dt_s: 1.0e-3,
+        }
+    }
+}
+
+impl PositionFilterConfig {
+    pub fn for_static_receiver() -> Self {
+        Self {
+            static_position_model: Some(PositionFilterStaticPositionModel::default()),
+            ..Self::default()
         }
     }
 }
@@ -601,7 +623,7 @@ fn resolved_signal_id(observation: &PositionObservation) -> SigId {
 
 #[cfg(test)]
 mod tests {
-    use super::{PositionFilter, PositionFilterConfig};
+    use super::{PositionFilter, PositionFilterConfig, PositionFilterStaticPositionModel};
     use crate::estimation::position::solver::{PositionObservation, PositionSolveRefusalKind};
     use bijux_gnss_core::api::{Constellation, SatId};
 
@@ -623,8 +645,20 @@ mod tests {
         let config = PositionFilterConfig::default();
 
         assert!(config.use_doppler);
+        assert!(config.static_position_model.is_none());
         assert_eq!(config.base_doppler_sigma_hz, 1.0);
         assert_eq!(config.gating_chi2_doppler, Some(100.0));
+    }
+
+    #[test]
+    fn position_filter_static_receiver_profile_enables_static_model() {
+        let config = PositionFilterConfig::for_static_receiver();
+        let static_model = config.static_position_model.expect("static position model");
+
+        assert_eq!(
+            static_model.velocity_decay_per_s,
+            PositionFilterStaticPositionModel::default().velocity_decay_per_s
+        );
     }
 
     #[test]
