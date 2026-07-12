@@ -303,7 +303,7 @@ mod tests {
         PppArMode, PppConfig, PppConvergenceState, PppSolutionEpoch, PppTroposphereSource,
     };
     use bijux_gnss_core::api::ArtifactPayloadValidate;
-    use crate::{
+    use crate::models::ocean_tide_loading::{
         OceanTideConstituent, OceanTideLoadingConstituent, OceanTideLoadingModel,
     };
 
