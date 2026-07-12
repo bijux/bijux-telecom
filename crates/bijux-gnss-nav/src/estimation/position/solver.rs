@@ -9,9 +9,9 @@ use crate::estimation::uncertainty::{
 };
 
 use super::navigation::{
-    corrected_pseudorange_m, resolve_position_inputs, satellite_state_at_time,
-    satellite_state_from_observation, unknown_inter_system_time_offset_sats, PositionSolveInput,
-    SatelliteState,
+    corrected_pseudorange_m, observation_consistency_metrics, resolve_position_inputs,
+    satellite_state_at_time, satellite_state_from_observation,
+    unknown_inter_system_time_offset_sats, PositionSolveInput, SatelliteState,
 };
 use super::raim::{
     formal_protection_levels, PositionProtectionLevels, RaimFaultDetection, RaimFaultExclusion,
@@ -34,6 +34,7 @@ use bijux_gnss_core::api::{
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 const SIGNAL_TIMING_CONSISTENCY_TOLERANCE_S: f64 = 1.0e-6;
+const EPHEMERIS_MISMATCH_CODE_RESIDUAL_GATE_M: f64 = 1_500.0;
 
 #[derive(Debug, Clone)]
 pub struct PositionSolution {
@@ -747,11 +748,21 @@ impl PositionSolver {
             if let Some(exclusion_candidate) =
                 self.best_single_outlier_candidate(&working_inputs, &solved, klobuchar)
             {
-                if self.raim && !supports_reliable_raim_exclusion(working_inputs.len()) {
+                let rejection_reason = rejection_reason_for_excluded_input(
+                    working_inputs
+                        .get(exclusion_candidate.excluded_index)
+                        .expect("candidate exclusion must reference a working input"),
+                    &exclusion_candidate.candidate_estimate,
+                    self.apply_broadcast_group_delay,
+                );
+                if self.raim
+                    && !supports_reliable_raim_exclusion(working_inputs.len())
+                    && rejection_reason != MeasurementRejectReason::InvalidEphemeris
+                {
                     push_unique_rejection(
                         &mut rejected,
                         exclusion_candidate.excluded_sat,
-                        MeasurementRejectReason::Outlier,
+                        rejection_reason,
                     );
                     return Err(position_solve_refusal(
                         PositionSolveRefusalKind::UnderdeterminedRaimExclusion,
@@ -779,7 +790,7 @@ impl PositionSolver {
                 push_unique_rejection(
                     &mut rejected,
                     exclusion_candidate.excluded_sat,
-                    MeasurementRejectReason::Outlier,
+                    rejection_reason,
                 );
                 working_inputs = working_inputs
                     .into_iter()
@@ -793,14 +804,17 @@ impl PositionSolver {
             }
 
             for &outlier_index in &outlier_indices {
-                let residual = solved
-                    .residuals
+                let input = working_inputs
                     .get(outlier_index)
-                    .expect("outlier index must reference a residual");
+                    .expect("outlier index must reference an input");
                 push_unique_rejection(
                     &mut rejected,
-                    residual.sat,
-                    MeasurementRejectReason::Outlier,
+                    input.observation.sat,
+                    rejection_reason_for_excluded_input(
+                        input,
+                        &solved.estimate,
+                        self.apply_broadcast_group_delay,
+                    ),
                 );
             }
 
@@ -2474,7 +2488,23 @@ impl PositionSolver {
             let better_candidate = best_candidate
                 .as_ref()
                 .map(|best_candidate: &RaimExclusionCandidate| {
-                    candidate.post_exclusion_rms_m < best_candidate.post_exclusion_rms_m
+                    let candidate_plausible =
+                        estimate_has_plausible_terrestrial_geometry(&candidate.candidate_estimate);
+                    let best_plausible = estimate_has_plausible_terrestrial_geometry(
+                        &best_candidate.candidate_estimate,
+                    );
+                    candidate_plausible
+                        .cmp(&best_plausible)
+                        .then_with(|| {
+                            candidate
+                                .post_exclusion_rms_m
+                                .total_cmp(&best_candidate.post_exclusion_rms_m)
+                                .reverse()
+                        })
+                        .then_with(|| {
+                            best_candidate.solution_shift_m.total_cmp(&candidate.solution_shift_m)
+                        })
+                        == std::cmp::Ordering::Greater
                 })
                 .unwrap_or(true);
             if better_candidate {
@@ -2523,6 +2553,48 @@ impl PositionSolver {
             compared_subsets,
         })
     }
+}
+
+fn rejection_reason_for_excluded_input(
+    input: &PositionSolveInput,
+    estimate: &PositionEstimate,
+    apply_broadcast_group_delay: bool,
+) -> MeasurementRejectReason {
+    let receiver_clock_bias_s = estimate
+        .constellation_clock_bias_s(input.observation.sat.constellation)
+        .unwrap_or_else(|| estimate.reference_clock_bias_s());
+    let receiver_position_ecef_m = [estimate.ecef_x_m, estimate.ecef_y_m, estimate.ecef_z_m];
+    let gross_ephemeris_mismatch = observation_consistency_metrics(
+        &input.observation,
+        &input.navigation,
+        apply_broadcast_group_delay,
+        receiver_position_ecef_m,
+        receiver_clock_bias_s,
+        None,
+        None,
+    )
+    .map(|metrics| metrics.code_residual_m.abs() >= EPHEMERIS_MISMATCH_CODE_RESIDUAL_GATE_M)
+    .unwrap_or(true);
+
+    if gross_ephemeris_mismatch {
+        MeasurementRejectReason::InvalidEphemeris
+    } else {
+        MeasurementRejectReason::Outlier
+    }
+}
+
+fn estimate_has_plausible_terrestrial_geometry(estimate: &PositionEstimate) -> bool {
+    let radius_m =
+        (estimate.ecef_x_m.powi(2) + estimate.ecef_y_m.powi(2) + estimate.ecef_z_m.powi(2)).sqrt();
+    if !radius_m.is_finite() || !(6_000_000.0..=7_000_000.0).contains(&radius_m) {
+        return false;
+    }
+    let (latitude_deg, longitude_deg, altitude_m) =
+        ecef_to_geodetic(estimate.ecef_x_m, estimate.ecef_y_m, estimate.ecef_z_m);
+    latitude_deg.is_finite()
+        && longitude_deg.is_finite()
+        && altitude_m.is_finite()
+        && (-1_000.0..=20_000.0).contains(&altitude_m)
 }
 
 fn push_unique_rejection(
