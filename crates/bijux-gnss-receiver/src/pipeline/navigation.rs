@@ -13,10 +13,10 @@ use bijux_gnss_nav::api::{
     position_observation_has_valid_satellite_time, sat_state_beidou_b1i_from_observation,
     sat_state_galileo_e1_from_observation, sat_state_glonass_l1_from_observation,
     sat_state_gps_l1ca_from_observation, GpsEphemeris, KlobucharCoefficients,
-    PositionBroadcastNavigation, PositionFilterMotionClass, PositionObservation,
-    PositionRobustWeighting, PositionSolutionSmoother, PositionSolutionSmootherConfig,
-    PositionSolveRefusalKind, PositionSolver, PositionWeightingModel, RaimFaultDetectionStatus,
-    WeightingConfig,
+    ImpossibleGeometryEvidence, PositionBroadcastNavigation, PositionFilterMotionClass,
+    PositionObservation, PositionRobustWeighting, PositionSolutionSmoother,
+    PositionSolutionSmootherConfig, PositionSolveRefusalKind, PositionSolver,
+    PositionWeightingModel, RaimFaultDetectionStatus, WeightingConfig,
 };
 
 use crate::engine::receiver_config::{
@@ -863,6 +863,33 @@ impl Navigation {
         } else {
             nav_epoch.valid = is_solution_valid(nav_epoch.status);
         }
+        if let Some(impossible_geometry) = solution.impossible_geometry {
+            nav_epoch.health.push(bijux_gnss_core::api::NavHealthEvent::ImpossibleGeometry {
+                receiver_radius_m: impossible_geometry.receiver_radius_m,
+                altitude_m: impossible_geometry.altitude_m,
+                used_satellite_count: impossible_geometry.used_satellite_count,
+                min_receiver_radius_m: impossible_geometry.min_receiver_radius_m,
+                max_receiver_radius_m: impossible_geometry.max_receiver_radius_m,
+                min_altitude_m: impossible_geometry.min_altitude_m,
+                max_altitude_m: impossible_geometry.max_altitude_m,
+            });
+            self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                "NAV_IMPOSSIBLE_GEOMETRY",
+                format!(
+                    "impossible terrestrial geometry: receiver radius {:.2} m, altitude {:.2} m across {} satellites",
+                    impossible_geometry.receiver_radius_m,
+                    impossible_geometry.altitude_m,
+                    impossible_geometry.used_satellite_count
+                ),
+            ));
+            nav_epoch = policy_refusal_epoch(
+                nav_epoch,
+                self.last_solution.as_ref().map(|row| row.status),
+                NavRefusalClass::InconsistentObservations,
+                impossible_geometry_explain_reasons(impossible_geometry),
+            );
+        }
         nav_epoch.quality = nav_epoch.status.quality_flag();
 
         let (innovation_rms, norm_rms, norm_max, predicted_var, observed_var) =
@@ -1539,13 +1566,44 @@ fn build_provenance(
     }
 }
 
+fn impossible_geometry_explain_reasons(
+    impossible_geometry: ImpossibleGeometryEvidence,
+) -> Vec<String> {
+    vec![
+        "impossible_geometry".to_string(),
+        format!(
+            "receiver_radius_m={:.3}",
+            impossible_geometry.receiver_radius_m
+        ),
+        format!("altitude_m={:.3}", impossible_geometry.altitude_m),
+        format!(
+            "used_satellites={}",
+            impossible_geometry.used_satellite_count
+        ),
+        format!(
+            "receiver_radius_bounds_m={:.3}..{:.3}",
+            impossible_geometry.min_receiver_radius_m,
+            impossible_geometry.max_receiver_radius_m
+        ),
+        format!(
+            "altitude_bounds_m={:.3}..{:.3}",
+            impossible_geometry.min_altitude_m,
+            impossible_geometry.max_altitude_m
+        ),
+    ]
+}
+
 fn decision_for_solution(solution: &NavSolutionEpoch) -> NavDecision {
     if solution.refusal_class.is_some() || !solution.valid {
         return NavDecision {
             status: solution.status,
             refusal_class: solution.refusal_class,
             explain_decision: "refused".to_string(),
-            explain_reasons: vec!["solution_marked_invalid".to_string()],
+            explain_reasons: if solution.explain_reasons.is_empty() {
+                vec!["solution_marked_invalid".to_string()]
+            } else {
+                solution.explain_reasons.clone()
+            },
         };
     }
     if matches!(solution.status, SolutionStatus::Held | SolutionStatus::Degraded) {
