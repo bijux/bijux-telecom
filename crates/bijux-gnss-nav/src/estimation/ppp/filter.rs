@@ -159,6 +159,11 @@ impl PppFilter {
             self.ekf.x[self.indices.pos[2]],
         ];
         let mut correction_context = self.corrections.clone();
+        if let Some(solid_earth_tide_m) =
+            self.config.solid_earth_tide_displacement_m(receiver_state_pos_m, obs.gps_time())
+        {
+            correction_context.add_earth_tide_m(solid_earth_tide_m);
+        }
         if let Some(ocean_tide_loading_m) =
             self.config.ocean_tide_loading_displacement_m(receiver_state_pos_m, obs.gps_time())
         {
