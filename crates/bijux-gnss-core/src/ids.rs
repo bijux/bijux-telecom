@@ -161,6 +161,9 @@ pub fn default_acquisition_sats(constellation: Constellation) -> Vec<SatId> {
         Constellation::Gps => sat_ids_for_prn_range(constellation, 1..=32),
         // The Galileo E1 code catalog currently spans PRNs 1 through 50 in the signal crate.
         Constellation::Galileo => sat_ids_for_prn_range(constellation, 1..=50),
+        Constellation::Glonass => {
+            sat_ids_for_prn_range(constellation, GlonassSlot::MIN..=GlonassSlot::MAX)
+        }
         _ => Vec::new(),
     }
 }

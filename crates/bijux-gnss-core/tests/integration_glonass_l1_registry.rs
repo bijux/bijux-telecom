@@ -1,5 +1,6 @@
 use bijux_gnss_core::api::{
-    glonass_l1_carrier_hz, glonass_slot_from_sat, glonass_slot_sat, signal_registry,
+    default_acquisition_sats, glonass_l1_carrier_hz, glonass_slot_from_sat, glonass_slot_sat,
+    signal_registry,
     signal_spec_glonass_l1, Constellation, GlonassFrequencyChannel, GlonassL1FdmaSignal,
     GlonassSlot, SignalBand, SignalCode, GLONASS_L1_CARRIER_HZ, GLONASS_L1_CHANNEL_SPACING_HZ,
 };
@@ -53,4 +54,21 @@ fn glonass_l1_signal_descriptor_preserves_slot_channel_and_carrier() {
     assert_eq!(signal.signal_id().code, SignalCode::Unknown);
     assert_eq!(signal.carrier_hz(), spec.carrier_hz);
     assert_eq!(spec.code_rate_hz, 511_000.0);
+}
+
+#[test]
+fn default_glonass_acquisition_catalog_covers_all_slots() {
+    let sats = default_acquisition_sats(Constellation::Glonass);
+
+    assert_eq!(sats.len(), GlonassSlot::MAX as usize);
+    assert_eq!(
+        sats.first().copied(),
+        Some(glonass_slot_sat(GlonassSlot::new(GlonassSlot::MIN).expect("slot 1 must be valid")))
+    );
+    assert_eq!(
+        sats.last().copied(),
+        Some(glonass_slot_sat(
+            GlonassSlot::new(GlonassSlot::MAX).expect("slot 24 must be valid")
+        ))
+    );
 }
