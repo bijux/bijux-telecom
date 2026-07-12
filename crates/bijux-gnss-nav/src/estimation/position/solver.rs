@@ -1081,6 +1081,7 @@ fn select_valid_ephemeris(
 mod tests {
     use super::{
         constellation_residual_rms, position_broadcast_navigation_from_beidou_navigations,
+        position_broadcast_navigation_from_galileo_navigations,
         position_broadcast_navigation_from_glonass_frames,
         position_broadcast_navigation_from_gps_ephemerides, position_observations_from_epoch,
         resolve_position_inputs, robust_weight, robust_weights,
@@ -1386,6 +1387,28 @@ mod tests {
         assert_eq!(navigation.len(), 2);
         assert_eq!(navigation[0].sat(), ephemerides[0].sat);
         assert_eq!(navigation[1].sat(), ephemerides[1].sat);
+    }
+
+    #[test]
+    fn galileo_navigation_convert_into_position_navigation_entries() {
+        let navigations = vec![
+            sample_galileo_navigation(
+                SatId { constellation: Constellation::Galileo, prn: 19 },
+                504_000.0,
+                504_018.0,
+            ),
+            sample_galileo_navigation(
+                SatId { constellation: Constellation::Galileo, prn: 24 },
+                504_000.0,
+                504_018.0,
+            ),
+        ];
+
+        let navigation = position_broadcast_navigation_from_galileo_navigations(&navigations);
+
+        assert_eq!(navigation.len(), 2);
+        assert_eq!(navigation[0].sat(), navigations[0].sat);
+        assert_eq!(navigation[1].sat(), navigations[1].sat);
     }
 
     #[test]
