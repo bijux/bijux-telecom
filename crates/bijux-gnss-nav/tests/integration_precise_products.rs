@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{Constellation, SatId};
+use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand, SignalCode};
 use bijux_gnss_nav::api::{
     gps_satellite_clock_correction, BiasSinexProvider, BroadcastProductsProvider, CodeBiasProvider,
     GpsEphemeris, ProductDiagnostics, Products, ProductsProvider,
@@ -158,4 +158,53 @@ OSB G063 G01 C2W 2016:323:00000 2016:324:00000 ns 19.2886 0.0281
 
     assert!(products.code_bias_m(l1).is_some());
     assert!(products.differential_code_bias_m(l1, l2).is_some());
+}
+
+#[test]
+fn broadcast_products_expose_gps_group_delay_code_biases_by_signal() {
+    let eph = make_eph(1);
+    let products = BroadcastProductsProvider::new(vec![eph.clone()]);
+    let l1 = SigId { sat: eph.sat, band: SignalBand::L1, code: SignalCode::Ca };
+    let l5 = SigId { sat: eph.sat, band: SignalBand::L5, code: SignalCode::Unknown };
+
+    let l1_bias_m = products.code_bias_m(l1).expect("L1 code bias");
+    let l5_bias_m = products.code_bias_m(l5).expect("L5 code bias");
+
+    assert!(l1_bias_m.abs() < 1.0e-12);
+    assert!(l5_bias_m.abs() > 1.0);
+}
+
+#[test]
+fn products_sum_broadcast_group_delay_with_external_code_biases() {
+    let eph = make_eph(1);
+    let dcb = "\
+%=BIA 1.00 COD 2016:327:06748 IGS 2016:323:00000 2016:324:00000 A 00000003
++BIAS/DESCRIPTION
+TIME_SYSTEM G
+-BIAS/DESCRIPTION
++BIAS/SOLUTION
+OSB G063 G01 C1C 2016:323:00000 2016:324:00000 ns 10.2669 0.0257
+OSB G063 G01 C5Q 2016:323:00000 2016:324:00000 ns 14.0000 0.0200
+-BIAS/SOLUTION
+%=ENDBIA
+"
+    .parse::<BiasSinexProvider>()
+    .expect("bias sinex parse");
+    let products = Products::new(BroadcastProductsProvider::new(vec![eph])).with_dcb(dcb);
+    let l1 = SigId {
+        sat: SatId { constellation: Constellation::Gps, prn: 1 },
+        band: SignalBand::L1,
+        code: SignalCode::Ca,
+    };
+    let l5 = SigId {
+        sat: SatId { constellation: Constellation::Gps, prn: 1 },
+        band: SignalBand::L5,
+        code: SignalCode::Unknown,
+    };
+
+    let l1_bias_m = products.code_bias_m(l1).expect("L1 bias");
+    let l5_bias_m = products.code_bias_m(l5).expect("L5 bias");
+
+    assert!(l1_bias_m.abs() > 1.0);
+    assert!(l5_bias_m > l1_bias_m);
 }

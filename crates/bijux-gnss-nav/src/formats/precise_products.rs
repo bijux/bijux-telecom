@@ -3,6 +3,7 @@
 use bijux_gnss_core::api::SatId;
 
 use crate::corrections::biases::CodeBiasProvider;
+use crate::corrections::broadcast_group_delay::gps_broadcast_group_delay_code_bias_m;
 use crate::formats::bias_sinex::BiasSinexProvider;
 use crate::orbits::gps::{
     gps_ephemeris_age, gps_satellite_clock_correction, sat_state_gps_l1ca, select_best_ephemeris,
@@ -204,7 +205,10 @@ impl ProductsProvider for Products {
 
 impl CodeBiasProvider for Products {
     fn code_bias_m(&self, sig: bijux_gnss_core::api::SigId) -> Option<f64> {
-        self.dcb.as_ref()?.code_bias_m(sig)
+        combine_code_bias_terms(
+            self.broadcast.code_bias_m(sig),
+            self.dcb.as_ref().and_then(|provider| provider.code_bias_m(sig)),
+        )
     }
 
     fn code_bias_m_at(
@@ -212,44 +216,42 @@ impl CodeBiasProvider for Products {
         sig: bijux_gnss_core::api::SigId,
         time: Option<bijux_gnss_core::api::GpsTime>,
     ) -> Option<f64> {
-        self.dcb.as_ref()?.code_bias_m_at(sig, time)
+        combine_code_bias_terms(
+            self.broadcast.code_bias_m_at(sig, time),
+            self.dcb.as_ref().and_then(|provider| provider.code_bias_m_at(sig, time)),
+        )
+    }
+}
+
+impl CodeBiasProvider for BroadcastProductsProvider {
+    fn code_bias_m(&self, sig: bijux_gnss_core::api::SigId) -> Option<f64> {
+        let ephemeris = self.ephs.iter().filter(|ephemeris| ephemeris.sat == sig.sat).max_by(
+            |left, right| {
+                left.toc_s.total_cmp(&right.toc_s).then_with(|| left.toe_s.total_cmp(&right.toe_s))
+            },
+        )?;
+        gps_broadcast_group_delay_code_bias_m(sig, ephemeris)
     }
 
-    fn differential_code_bias_m(
+    fn code_bias_m_at(
         &self,
-        first: bijux_gnss_core::api::SigId,
-        second: bijux_gnss_core::api::SigId,
-    ) -> Option<f64> {
-        self.dcb.as_ref()?.differential_code_bias_m(first, second)
-    }
-
-    fn differential_code_bias_m_at(
-        &self,
-        first: bijux_gnss_core::api::SigId,
-        second: bijux_gnss_core::api::SigId,
+        sig: bijux_gnss_core::api::SigId,
         time: Option<bijux_gnss_core::api::GpsTime>,
     ) -> Option<f64> {
-        self.dcb.as_ref()?.differential_code_bias_m_at(first, second, time)
+        let time = time?;
+        let ephemeris = select_best_ephemeris(&self.ephs, sig.sat, time.tow_s)?;
+        gps_ephemeris_age(ephemeris, time.tow_s)
+            .is_valid()
+            .then(|| gps_broadcast_group_delay_code_bias_m(sig, ephemeris))
+            .flatten()
     }
+}
 
-    fn iono_free_code_bias_m(
-        &self,
-        first: bijux_gnss_core::api::SigId,
-        second: bijux_gnss_core::api::SigId,
-        f1_hz: f64,
-        f2_hz: f64,
-    ) -> Option<f64> {
-        self.dcb.as_ref()?.iono_free_code_bias_m(first, second, f1_hz, f2_hz)
-    }
-
-    fn iono_free_code_bias_m_at(
-        &self,
-        first: bijux_gnss_core::api::SigId,
-        second: bijux_gnss_core::api::SigId,
-        f1_hz: f64,
-        f2_hz: f64,
-        time: Option<bijux_gnss_core::api::GpsTime>,
-    ) -> Option<f64> {
-        self.dcb.as_ref()?.iono_free_code_bias_m_at(first, second, f1_hz, f2_hz, time)
+fn combine_code_bias_terms(left: Option<f64>, right: Option<f64>) -> Option<f64> {
+    match (left, right) {
+        (Some(left), Some(right)) => Some(left + right),
+        (Some(left), None) => Some(left),
+        (None, Some(right)) => Some(right),
+        (None, None) => None,
     }
 }
