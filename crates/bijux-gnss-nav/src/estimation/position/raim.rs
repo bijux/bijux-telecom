@@ -14,6 +14,32 @@ pub enum RaimFaultDetectionStatus {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RaimSolutionSeparationSubset {
+    pub excluded_sat: SatId,
+    pub separation_m: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RaimSolutionSeparationCheck {
+    pub reference_sat_count: usize,
+    pub compared_subsets: Vec<RaimSolutionSeparationSubset>,
+}
+
+impl RaimSolutionSeparationCheck {
+    pub fn compared_subset_count(&self) -> usize {
+        self.compared_subsets.len()
+    }
+
+    pub fn max_separation(&self) -> Option<RaimSolutionSeparationSubset> {
+        self.compared_subsets.iter().copied().max_by(|left, right| {
+            left.separation_m
+                .partial_cmp(&right.separation_m)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RaimFaultDetection {
     pub status: RaimFaultDetectionStatus,
     pub suspect_sat: Option<SatId>,

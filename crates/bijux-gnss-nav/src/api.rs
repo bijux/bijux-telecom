@@ -58,7 +58,8 @@ pub use crate::estimation::position::filter::{
 };
 pub use crate::estimation::position::raim::{
     formal_protection_levels, PositionProtectionLevels, RaimFaultDetection,
-    RaimFaultDetectionStatus, RaimFaultExclusion,
+    RaimFaultDetectionStatus, RaimFaultExclusion, RaimSolutionSeparationCheck,
+    RaimSolutionSeparationSubset,
 };
 pub use crate::estimation::position::solution_smoother::{
     PositionSolutionSmoother, PositionSolutionSmootherConfig, PositionSolutionSmootherEpoch,
