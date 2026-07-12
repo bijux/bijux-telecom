@@ -2,8 +2,11 @@
 
 use std::collections::BTreeMap;
 
-use bijux_gnss_core::api::{signal_cycles_to_meters, ObsEpoch, ObsSatellite, SatId, SigId, SignalBand};
+use bijux_gnss_core::api::{
+    signal_cycles_to_meters, ObsEpoch, ObsSatellite, SatId, SigId, SignalBand,
+};
 
+use crate::corrections::dual_frequency::{dual_frequency_pair_issue, DualFrequencyPairIssue};
 use crate::corrections::iono_free_code::iono_free_code_from_pair;
 use crate::corrections::iono_free_phase::iono_free_phase_from_pair;
 use crate::corrections::narrow_lane::narrow_lane_from_pair;
@@ -43,10 +46,13 @@ pub struct CombinationObservation {
     pub reason: String,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CombinationStatus {
     Ok,
     MissingFrequency,
+    UnsupportedBandPair,
+    ConstellationMismatch,
+    TimeSystemMismatch,
     LockInvalid,
     VarianceInvalid,
     FrequencyInvalid,
@@ -57,6 +63,15 @@ fn status_reason(status: CombinationStatus) -> (String, String) {
         CombinationStatus::Ok => ("ok".to_string(), "ok".to_string()),
         CombinationStatus::MissingFrequency => {
             ("invalid".to_string(), "missing_frequency".to_string())
+        }
+        CombinationStatus::UnsupportedBandPair => {
+            ("invalid".to_string(), "unsupported_band_pair".to_string())
+        }
+        CombinationStatus::ConstellationMismatch => {
+            ("invalid".to_string(), "constellation_mismatch".to_string())
+        }
+        CombinationStatus::TimeSystemMismatch => {
+            ("invalid".to_string(), "time_system_mismatch".to_string())
         }
         CombinationStatus::LockInvalid => ("invalid".to_string(), "lock_invalid".to_string()),
         CombinationStatus::VarianceInvalid => {
@@ -111,8 +126,10 @@ pub fn combinations_from_obs_epochs(
             let s1 = sats.iter().find(|s| s.signal_id.band == band_1);
             let s2 = sats.iter().find(|s| s.signal_id.band == band_2);
             let mut status = CombinationStatus::Ok;
-            if s1.is_none() || s2.is_none() {
-                status = CombinationStatus::MissingFrequency;
+            if let Some(issue) =
+                dual_frequency_pair_issue(sat_id, band_1, band_2, s1.copied(), s2.copied())
+            {
+                status = combination_status_from_pair_issue(issue);
             }
             let f1_hz = s1.map(|s| s.metadata.signal.carrier_hz.value()).unwrap_or(0.0);
             let f2_hz = s2.map(|s| s.metadata.signal.carrier_hz.value()).unwrap_or(0.0);
@@ -144,9 +161,11 @@ pub fn combinations_from_obs_epochs(
                 s2.copied(),
             );
             let (mut if_phase_m, mut geometry_free_phase_m) = (None, None);
-            let (mut wide_lane_wavelength_m, mut wide_lane_cycles, mut mw_m) =
-                (None, None, None);
-            if let (Some(s1), Some(s2)) = (s1, s2) {
+            let (mut wide_lane_wavelength_m, mut wide_lane_cycles, mut mw_m) = (None, None, None);
+            if status == CombinationStatus::Ok {
+                let (Some(s1), Some(s2)) = (s1, s2) else {
+                    unreachable!("compatible dual-frequency pairs must include both observations");
+                };
                 if !s1.lock_flags.code_lock
                     || !s1.lock_flags.carrier_lock
                     || !s2.lock_flags.code_lock
@@ -225,6 +244,15 @@ pub fn combinations_from_obs_epochs(
     out
 }
 
+fn combination_status_from_pair_issue(issue: DualFrequencyPairIssue) -> CombinationStatus {
+    match issue {
+        DualFrequencyPairIssue::MissingFrequency => CombinationStatus::MissingFrequency,
+        DualFrequencyPairIssue::UnsupportedBandPair => CombinationStatus::UnsupportedBandPair,
+        DualFrequencyPairIssue::ConstellationMismatch => CombinationStatus::ConstellationMismatch,
+        DualFrequencyPairIssue::TimeSystemMismatch => CombinationStatus::TimeSystemMismatch,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -232,9 +260,10 @@ mod tests {
         wide_lane_wavelength_m_from_frequencies,
     };
     use bijux_gnss_core::api::{
-        signal_spec_gps_l1_ca, signal_spec_gps_l2_py, Constellation, Cycles, Hertz, LockFlags,
-        Meters, ObsEpoch, ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus,
-        ReceiverRole, ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
+        signal_spec_galileo_e1b, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, Constellation,
+        Cycles, GpsTime, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
+        ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ReceiverRole,
+        ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
     };
 
     fn dual_frequency_epoch(code_lock: bool, carrier_lock: bool) -> ObsEpoch {
@@ -353,27 +382,98 @@ mod tests {
         let l1 = signal_spec_gps_l1_ca();
         let l2 = signal_spec_gps_l2_py();
 
-        let wide_lane = wide_lane_wavelength_m_from_frequencies(
-            l1.carrier_hz.value(),
-            l2.carrier_hz.value(),
-        )
-        .expect("wide-lane wavelength");
-        let narrow_lane = narrow_lane_wavelength_m_from_frequencies(
-            l1.carrier_hz.value(),
-            l2.carrier_hz.value(),
-        )
-        .expect("narrow-lane wavelength");
+        let wide_lane =
+            wide_lane_wavelength_m_from_frequencies(l1.carrier_hz.value(), l2.carrier_hz.value())
+                .expect("wide-lane wavelength");
+        let narrow_lane =
+            narrow_lane_wavelength_m_from_frequencies(l1.carrier_hz.value(), l2.carrier_hz.value())
+                .expect("narrow-lane wavelength");
 
         assert!(
-            (wide_lane
-                - 299_792_458.0 / (l1.carrier_hz.value() - l2.carrier_hz.value()).abs())
+            (wide_lane - 299_792_458.0 / (l1.carrier_hz.value() - l2.carrier_hz.value()).abs())
                 .abs()
                 < 1.0e-12
         );
         assert!(
-            (narrow_lane - 299_792_458.0 / (l1.carrier_hz.value() + l2.carrier_hz.value()))
-                .abs()
+            (narrow_lane - 299_792_458.0 / (l1.carrier_hz.value() + l2.carrier_hz.value())).abs()
                 < 1.0e-12
         );
+    }
+
+    #[test]
+    fn combinations_reject_unsupported_band_pairs_before_reporting_missing_frequency() {
+        let combinations = combinations_from_obs_epochs(
+            &[dual_frequency_epoch(true, true)],
+            SignalBand::L2,
+            SignalBand::L5,
+        );
+
+        assert_eq!(combinations.len(), 1);
+        assert_eq!(combinations[0].status, "invalid");
+        assert_eq!(combinations[0].reason, "unsupported_band_pair");
+    }
+
+    #[test]
+    fn combinations_reject_constellation_mismatches() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 3 };
+        let l1 =
+            satellite(sat, SignalBand::L1, SignalCode::Ca, signal_spec_gps_l1_ca(), true, true);
+        let l2 =
+            satellite(sat, SignalBand::L2, SignalCode::Py, signal_spec_galileo_e1b(), true, true);
+        let epoch = ObsEpoch {
+            t_rx_s: Seconds(0.0),
+            source_time: ReceiverSampleTrace::from_sample_index(0, 1_000.0),
+            gps_week: None,
+            tow_s: None,
+            epoch_idx: 0,
+            discontinuity: false,
+            valid: true,
+            processing_ms: None,
+            role: ReceiverRole::Rover,
+            sats: vec![l1, l2],
+            decision: ObservationEpochDecision::Accepted,
+            decision_reason: Some("accepted_observables_present".to_string()),
+            manifest: None,
+        };
+
+        let combinations = combinations_from_obs_epochs(&[epoch], SignalBand::L1, SignalBand::L2);
+
+        assert_eq!(combinations[0].reason, "constellation_mismatch");
+    }
+
+    #[test]
+    fn combinations_reject_transmit_time_mismatches() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 3 };
+        let mut l1 =
+            satellite(sat, SignalBand::L1, SignalCode::Ca, signal_spec_gps_l1_ca(), true, true);
+        let mut l2 =
+            satellite(sat, SignalBand::L2, SignalCode::Py, signal_spec_gps_l2_py(), true, true);
+        l1.timing = Some(ObsSignalTiming {
+            signal_travel_time_s: Seconds(0.075),
+            transmit_gps_time: GpsTime { week: 2200, tow_s: 345_600.0 },
+        });
+        l2.timing = Some(ObsSignalTiming {
+            signal_travel_time_s: Seconds(0.075),
+            transmit_gps_time: GpsTime { week: 2201, tow_s: 0.0 },
+        });
+        let epoch = ObsEpoch {
+            t_rx_s: Seconds(0.0),
+            source_time: ReceiverSampleTrace::from_sample_index(0, 1_000.0),
+            gps_week: None,
+            tow_s: None,
+            epoch_idx: 0,
+            discontinuity: false,
+            valid: true,
+            processing_ms: None,
+            role: ReceiverRole::Rover,
+            sats: vec![l1, l2],
+            decision: ObservationEpochDecision::Accepted,
+            decision_reason: Some("accepted_observables_present".to_string()),
+            manifest: None,
+        };
+
+        let combinations = combinations_from_obs_epochs(&[epoch], SignalBand::L1, SignalBand::L2);
+
+        assert_eq!(combinations[0].reason, "time_system_mismatch");
     }
 }
