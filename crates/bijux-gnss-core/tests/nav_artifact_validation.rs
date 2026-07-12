@@ -12,6 +12,11 @@ fn sample_solution() -> NavSolutionEpoch {
         ecef_x_m: Meters(1_000_000.0),
         ecef_y_m: Meters(2_000_000.0),
         ecef_z_m: Meters(3_000_000.0),
+        position_covariance_ecef_m2: Some([
+            [4.0, 0.5, 0.25],
+            [0.5, 9.0, 0.75],
+            [0.25, 0.75, 16.0],
+        ]),
         latitude_deg: 37.0,
         longitude_deg: -122.0,
         altitude_m: Meters(20.0),
@@ -136,6 +141,16 @@ fn nav_artifact_validation_warns_on_post_fit_rms_mismatch() {
 }
 
 #[test]
+fn nav_artifact_validation_warns_on_missing_position_covariance() {
+    let mut solution = sample_solution();
+    solution.position_covariance_ecef_m2 = None;
+    let diagnostics = solution.validate_payload();
+    assert!(diagnostics
+        .iter()
+        .any(|event| event.code == "GNSS_NAV_POSITION_COVARIANCE_MISSING"));
+}
+
+#[test]
 fn nav_artifact_validation_rejects_constellation_residual_count_mismatch() {
     let mut solution = sample_solution();
     solution.constellation_residual_rms[0].post_fit_sat_count = 2;
@@ -143,4 +158,18 @@ fn nav_artifact_validation_rejects_constellation_residual_count_mismatch() {
     assert!(diagnostics
         .iter()
         .any(|event| event.code == "GNSS_NAV_CONSTELLATION_POST_FIT_COUNT_MISMATCH"));
+}
+
+#[test]
+fn nav_artifact_validation_rejects_non_finite_position_covariance() {
+    let mut solution = sample_solution();
+    solution.position_covariance_ecef_m2 = Some([
+        [1.0, 0.0, 0.0],
+        [0.0, f64::NAN, 0.0],
+        [0.0, 0.0, 1.0],
+    ]);
+    let diagnostics = solution.validate_payload();
+    assert!(diagnostics
+        .iter()
+        .any(|event| event.code == "GNSS_NAV_POSITION_COVARIANCE_INVALID"));
 }

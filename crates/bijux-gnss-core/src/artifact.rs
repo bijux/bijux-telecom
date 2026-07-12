@@ -469,6 +469,28 @@ pub mod v1 {
                         "PVT position contains NaN/Inf",
                     ));
                 }
+                if let Some(covariance) = self.position_covariance_ecef_m2 {
+                    if !covariance.iter().flat_map(|row| row.iter()).all(|value| value.is_finite()) {
+                        events.push(DiagnosticEvent::new(
+                            DiagnosticSeverity::Error,
+                            "GNSS_NAV_POSITION_COVARIANCE_INVALID",
+                            "nav solution position covariance contains NaN/Inf",
+                        ));
+                    }
+                    if covariance[0][0] < 0.0 || covariance[1][1] < 0.0 || covariance[2][2] < 0.0 {
+                        events.push(DiagnosticEvent::new(
+                            DiagnosticSeverity::Error,
+                            "GNSS_NAV_POSITION_COVARIANCE_NEGATIVE_VARIANCE",
+                            "nav solution position covariance diagonal must be non-negative",
+                        ));
+                    }
+                } else if self.valid {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Warning,
+                        "GNSS_NAV_POSITION_COVARIANCE_MISSING",
+                        "valid nav solution should carry an ECEF position covariance matrix",
+                    ));
+                }
                 if !self.clock_bias_s.0.is_finite() || !self.clock_bias_m.0.is_finite() {
                     events.push(DiagnosticEvent::new(
                         DiagnosticSeverity::Error,

@@ -280,6 +280,7 @@ mod tests {
             ecef_x_m: Meters(ecef_x_m),
             ecef_y_m: Meters(ecef_y_m),
             ecef_z_m: Meters(ecef_z_m),
+            position_covariance_ecef_m2: None,
             latitude_deg: 0.0,
             longitude_deg: 0.0,
             altitude_m: Meters(0.0),

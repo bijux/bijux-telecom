@@ -1300,6 +1300,7 @@ mod tests {
             ecef_x_m: bijux_gnss_core::api::Meters(ecef_x_m),
             ecef_y_m: bijux_gnss_core::api::Meters(ecef_y_m),
             ecef_z_m: bijux_gnss_core::api::Meters(ecef_z_m),
+            position_covariance_ecef_m2: None,
             latitude_deg: 0.0,
             longitude_deg: 0.0,
             altitude_m: bijux_gnss_core::api::Meters(0.0),
@@ -1390,6 +1391,7 @@ mod tests {
             ecef_x_m: bijux_gnss_core::api::Meters(x_ref + 3.0),
             ecef_y_m: bijux_gnss_core::api::Meters(y_ref + 1.0),
             ecef_z_m: bijux_gnss_core::api::Meters(z_ref + 2.0),
+            position_covariance_ecef_m2: None,
             sigma_h_m: Some(bijux_gnss_core::api::Meters(2.0)),
             sigma_v_m: Some(bijux_gnss_core::api::Meters(3.0)),
             ..fixture_solution(7, 1.0, 0.5, 4)
@@ -2036,6 +2038,7 @@ mod tests {
             ecef_x_m: bijux_gnss_core::api::Meters(0.0),
             ecef_y_m: bijux_gnss_core::api::Meters(0.0),
             ecef_z_m: bijux_gnss_core::api::Meters(0.0),
+            position_covariance_ecef_m2: None,
             latitude_deg: 0.0,
             longitude_deg: 0.0,
             altitude_m: bijux_gnss_core::api::Meters(0.0),

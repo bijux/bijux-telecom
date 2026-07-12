@@ -50,6 +50,8 @@ pub struct NavSolutionEpoch {
     pub ecef_x_m: Meters,
     pub ecef_y_m: Meters,
     pub ecef_z_m: Meters,
+    #[serde(default)]
+    pub position_covariance_ecef_m2: Option<[[f64; 3]; 3]>,
     pub latitude_deg: f64,
     pub longitude_deg: f64,
     pub altitude_m: Meters,

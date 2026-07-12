@@ -33,6 +33,7 @@
             ecef_x_m: Meters(0.0),
             ecef_y_m: Meters(0.0),
             ecef_z_m: Meters(0.0),
+            position_covariance_ecef_m2: None,
             latitude_deg: 0.0,
             longitude_deg: 0.0,
             altitude_m: Meters(0.0),

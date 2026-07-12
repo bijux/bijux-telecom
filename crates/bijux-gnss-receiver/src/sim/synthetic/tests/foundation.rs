@@ -51,6 +51,7 @@
             ecef_x_m: Meters(measured_ecef.0),
             ecef_y_m: Meters(measured_ecef.1),
             ecef_z_m: Meters(measured_ecef.2),
+            position_covariance_ecef_m2: None,
             latitude_deg: measured_geodetic.0,
             longitude_deg: measured_geodetic.1,
             altitude_m: Meters(measured_geodetic.2),
