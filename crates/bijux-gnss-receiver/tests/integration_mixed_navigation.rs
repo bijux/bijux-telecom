@@ -442,3 +442,119 @@ fn public_navigation_api_solves_mixed_gps_beidou_epoch() {
     assert!((solution.isb[0].bias_s.0 - beidou_bias_s).abs() < 5.0e-8);
     assert!((solution.clock_bias_s.0 - receiver_clock_bias_s).abs() < 5.0e-8);
 }
+
+#[test]
+fn public_navigation_api_solves_mixed_gps_galileo_beidou_epoch() {
+    let config = ReceiverPipelineConfig::default();
+    let runtime = ReceiverRuntime::default();
+    let mut navigation_engine = Navigation::new(config, runtime);
+    let truth_ecef_m = geodetic_to_ecef(37.0, -122.0, 25.0);
+    let t_rx_s = 100_000.0;
+    let receiver_clock_bias_s = 2.75e-4;
+    let galileo_bias_s = -1.15e-6;
+    let beidou_bias_s = 9.25e-7;
+    let gps_ephemerides = vec![
+        make_gps_ephemeris(1, 0.0, 0.0, t_rx_s),
+        make_gps_ephemeris(2, 0.8, 0.9, t_rx_s),
+        make_gps_ephemeris(3, 1.6, 1.8, t_rx_s),
+        make_gps_ephemeris(4, 2.4, 2.7, t_rx_s),
+    ];
+    let galileo_navigation = vec![
+        make_galileo_navigation(19, 1.17, 0.84, t_rx_s),
+        make_galileo_navigation(24, -0.83, 1.52, t_rx_s),
+    ];
+    let beidou_navigation = vec![
+        make_beidou_navigation(11, 0.77, 0.53, t_rx_s),
+        make_beidou_navigation(12, -1.09, 1.31, t_rx_s),
+    ];
+
+    let mut sats = gps_ephemerides
+        .iter()
+        .map(|ephemeris| {
+            synthetic_satellite(
+                ephemeris.sat,
+                SignalBand::L1,
+                SignalCode::Ca,
+                gps_pseudorange_m(ephemeris, t_rx_s, truth_ecef_m, receiver_clock_bias_s),
+                t_rx_s,
+            )
+        })
+        .collect::<Vec<_>>();
+    sats.extend(galileo_navigation.iter().map(|navigation| {
+        synthetic_satellite(
+            navigation.sat,
+            SignalBand::E1,
+            SignalCode::E1B,
+            galileo_pseudorange_m(
+                navigation,
+                t_rx_s,
+                truth_ecef_m,
+                receiver_clock_bias_s,
+                galileo_bias_s,
+            ),
+            t_rx_s,
+        )
+    }));
+    sats.extend(beidou_navigation.iter().map(|navigation| {
+        synthetic_satellite(
+            navigation.sat,
+            SignalBand::B1,
+            SignalCode::B1I,
+            beidou_pseudorange_m(
+                navigation,
+                t_rx_s,
+                truth_ecef_m,
+                receiver_clock_bias_s,
+                beidou_bias_s,
+            ),
+            t_rx_s,
+        )
+    }));
+
+    let obs = ObsEpoch {
+        t_rx_s: Seconds(t_rx_s),
+        source_time: ReceiverSampleTrace::from_sample_index(0, 1_000.0),
+        gps_week: Some(0),
+        tow_s: Some(Seconds(t_rx_s)),
+        epoch_idx: 1,
+        discontinuity: false,
+        valid: true,
+        processing_ms: None,
+        role: ReceiverRole::Rover,
+        sats,
+        decision: ObservationEpochDecision::Accepted,
+        decision_reason: Some("accepted_observables_present".to_string()),
+        manifest: None,
+    };
+
+    let mut navigation_data = position_broadcast_navigation_from_gps_ephemerides(&gps_ephemerides);
+    navigation_data
+        .extend(galileo_navigation.iter().cloned().map(PositionBroadcastNavigation::Galileo));
+    navigation_data.extend(position_broadcast_navigation_from_beidou_navigations(
+        &beidou_navigation,
+    ));
+
+    let solution = navigation_engine
+        .solve_epoch_with_navigation_data(&obs, &navigation_data)
+        .expect("mixed solution");
+
+    assert!(solution.valid);
+    assert_eq!(solution.refusal_class, None);
+    assert_eq!(solution.used_sat_count, 8);
+    assert_eq!(solution.isb.len(), 2);
+    let galileo_isb = solution
+        .isb
+        .iter()
+        .find(|bias| bias.constellation == Constellation::Galileo)
+        .expect("galileo inter-system bias");
+    let beidou_isb = solution
+        .isb
+        .iter()
+        .find(|bias| bias.constellation == Constellation::Beidou)
+        .expect("beidou inter-system bias");
+    assert_eq!(galileo_isb.bias_s.0.signum(), galileo_bias_s.signum());
+    assert_eq!(beidou_isb.bias_s.0.signum(), beidou_bias_s.signum());
+    assert!((galileo_isb.bias_s.0 - galileo_bias_s).abs() < 5.0e-8);
+    assert!((beidou_isb.bias_s.0 - beidou_bias_s).abs() < 5.0e-8);
+    assert!((solution.clock_bias_s.0 - receiver_clock_bias_s).abs() < 5.0e-8);
+}
