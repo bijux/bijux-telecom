@@ -1,9 +1,12 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    signal_cycles_to_meters, GpsTime, ObsEpoch, ObsSatellite, SatId, SigId, SignalBand,
+    signal_cycles_to_meters, signal_wavelength_m,
+    supported_dual_frequency_band_pairs_for_constellation, GpsTime, ObsEpoch, ObsSatellite, SatId,
+    SigId, SignalBand,
 };
 
+use crate::corrections::combinations::wide_lane_wavelength_m_from_frequencies;
 use crate::corrections::iono_free_code::iono_free_code_from_pair;
 use crate::corrections::iono_free_phase::iono_free_phase_from_pair;
 use crate::corrections::Corrections;
@@ -55,6 +58,7 @@ pub struct IonoFreeObservation {
 pub struct WideLaneObservation {
     pub cycles: f64,
     pub variance: f64,
+    pub wavelength_m: f64,
     pub band_1: SignalBand,
     pub band_2: SignalBand,
 }
@@ -497,16 +501,20 @@ pub fn wide_lane_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<WideLaneObservat
     let pair = select_dual_frequency_pair(obs, sat)?;
     let f1 = pair.first.metadata.signal.carrier_hz.value();
     let f2 = pair.second.metadata.signal.carrier_hz.value();
+    let lambda_1 = signal_wavelength_m(pair.first.metadata.signal).0;
+    let lambda_2 = signal_wavelength_m(pair.second.metadata.signal).0;
     let phi1_m =
         signal_cycles_to_meters(pair.first.carrier_phase_cycles, pair.first.metadata.signal).0;
     let phi2_m =
         signal_cycles_to_meters(pair.second.carrier_phase_cycles, pair.second.metadata.signal).0;
-    let lambda_wl = SPEED_OF_LIGHT_MPS / (f1 - f2).abs().max(1.0);
+    let lambda_wl = wide_lane_wavelength_m_from_frequencies(f1, f2)?;
     let wl_cycles = (phi1_m - phi2_m) / lambda_wl;
-    let variance = pair.first.carrier_phase_var_cycles2 + pair.second.carrier_phase_var_cycles2;
+    let variance = (lambda_1 / lambda_wl).powi(2) * pair.first.carrier_phase_var_cycles2
+        + (lambda_2 / lambda_wl).powi(2) * pair.second.carrier_phase_var_cycles2;
     Some(WideLaneObservation {
         cycles: wl_cycles,
         variance,
+        wavelength_m: lambda_wl,
         band_1: pair.first.signal_id.band,
         band_2: pair.second.signal_id.band,
     })
@@ -525,7 +533,9 @@ fn select_dual_frequency_pair(
     obs: &ObsEpoch,
     sat: SatId,
 ) -> Option<DualFrequencyObservationPair<'_>> {
-    for (first_band, second_band) in preferred_dual_frequency_pairs(sat) {
+    for (first_band, second_band) in supported_dual_frequency_band_pairs_for_constellation(
+        sat.constellation,
+    ) {
         let first = obs.sats.iter().find(|observation| {
             observation.signal_id.sat == sat && observation.signal_id.band == *first_band
         });
@@ -539,16 +549,6 @@ fn select_dual_frequency_pair(
     None
 }
 
-fn preferred_dual_frequency_pairs(sat: SatId) -> &'static [(SignalBand, SignalBand)] {
-    match sat.constellation {
-        bijux_gnss_core::api::Constellation::Gps => {
-            &[(SignalBand::L1, SignalBand::L2), (SignalBand::L1, SignalBand::L5)]
-        }
-        bijux_gnss_core::api::Constellation::Galileo => &[(SignalBand::E1, SignalBand::E5)],
-        _ => &[],
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -556,22 +556,26 @@ mod tests {
         iono_free_phase_observation_from_obs, wide_lane_from_obs, SPEED_OF_LIGHT_MPS,
     };
     use bijux_gnss_core::api::{
-        signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l5, Constellation, Cycles,
-        Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite, ObservationEpochDecision,
-        ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId, SigId, SignalCode,
+        signal_spec_beidou_b1i, signal_spec_beidou_b2i, signal_spec_galileo_e1b,
+        signal_spec_galileo_e5a, signal_spec_gps_l1_ca, signal_spec_gps_l2_py,
+        signal_spec_gps_l5, Constellation, Cycles, Hertz, LockFlags, Meters, ObsEpoch,
+        ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus, ReceiverRole,
+        ReceiverSampleTrace, SatId, SigId, SignalCode, SignalSpec,
     };
 
-    fn make_gps_dual_frequency_epoch(
+    fn make_dual_frequency_epoch(
+        sat: SatId,
+        first_band: bijux_gnss_core::api::SignalBand,
+        first_code: SignalCode,
+        first_signal: SignalSpec,
         second_band: bijux_gnss_core::api::SignalBand,
         second_code: SignalCode,
         second_signal: bijux_gnss_core::api::SignalSpec,
         pseudorange_1_m: f64,
-        pseudorange_2_m: f64,
         phase_1_cycles: f64,
+        pseudorange_2_m: f64,
         phase_2_cycles: f64,
     ) -> ObsEpoch {
-        let sat = SatId { constellation: Constellation::Gps, prn: 3 };
-        let signal_1 = signal_spec_gps_l1_ca();
         ObsEpoch {
             t_rx_s: bijux_gnss_core::api::Seconds(0.0),
             source_time: ReceiverSampleTrace::from_sample_index(0, 1_000.0),
@@ -585,9 +589,9 @@ mod tests {
             sats: vec![
                 make_satellite(
                     sat,
-                    bijux_gnss_core::api::SignalBand::L1,
-                    SignalCode::Ca,
-                    signal_1,
+                    first_band,
+                    first_code,
+                    first_signal,
                     pseudorange_1_m,
                     phase_1_cycles,
                 ),
@@ -653,7 +657,11 @@ mod tests {
     #[test]
     fn iono_free_code_observation_survives_missing_carrier_phase() {
         let sat = SatId { constellation: Constellation::Gps, prn: 3 };
-        let mut epoch = make_gps_dual_frequency_epoch(
+        let mut epoch = make_dual_frequency_epoch(
+            sat,
+            bijux_gnss_core::api::SignalBand::L1,
+            SignalCode::Ca,
+            signal_spec_gps_l1_ca(),
             bijux_gnss_core::api::SignalBand::L2,
             SignalCode::Py,
             signal_spec_gps_l2_py(),
@@ -687,13 +695,17 @@ mod tests {
             / (l2.carrier_hz.value() * l2.carrier_hz.value());
         let lambda1 = SPEED_OF_LIGHT_MPS / l1.carrier_hz.value();
         let lambda2 = SPEED_OF_LIGHT_MPS / l2.carrier_hz.value();
-        let epoch = make_gps_dual_frequency_epoch(
+        let epoch = make_dual_frequency_epoch(
+            SatId { constellation: Constellation::Gps, prn: 3 },
+            bijux_gnss_core::api::SignalBand::L1,
+            SignalCode::Ca,
+            l1,
             bijux_gnss_core::api::SignalBand::L2,
             SignalCode::Py,
             l2,
             base_range_m + iono_l1_m,
-            base_range_m + iono_l2_m,
             carrier_cycles(base_range_m, iono_l1_m, lambda1, 0.0),
+            base_range_m + iono_l2_m,
             carrier_cycles(base_range_m, iono_l2_m, lambda2, 0.0),
         );
 
@@ -718,13 +730,17 @@ mod tests {
             / (l5.carrier_hz.value() * l5.carrier_hz.value());
         let lambda1 = SPEED_OF_LIGHT_MPS / l1.carrier_hz.value();
         let lambda5 = SPEED_OF_LIGHT_MPS / l5.carrier_hz.value();
-        let epoch = make_gps_dual_frequency_epoch(
+        let epoch = make_dual_frequency_epoch(
+            SatId { constellation: Constellation::Gps, prn: 3 },
+            bijux_gnss_core::api::SignalBand::L1,
+            SignalCode::Ca,
+            l1,
             bijux_gnss_core::api::SignalBand::L5,
             SignalCode::Unknown,
             l5,
             base_range_m + iono_l1_m,
-            base_range_m + iono_l5_m,
             carrier_cycles(base_range_m, iono_l1_m, lambda1, 0.0),
+            base_range_m + iono_l5_m,
             carrier_cycles(base_range_m, iono_l5_m, lambda5, 0.0),
         );
 
@@ -751,13 +767,17 @@ mod tests {
             / (l2.carrier_hz.value() * l2.carrier_hz.value());
         let lambda1 = SPEED_OF_LIGHT_MPS / l1.carrier_hz.value();
         let lambda2 = SPEED_OF_LIGHT_MPS / l2.carrier_hz.value();
-        let epoch = make_gps_dual_frequency_epoch(
+        let epoch = make_dual_frequency_epoch(
+            SatId { constellation: Constellation::Gps, prn: 3 },
+            bijux_gnss_core::api::SignalBand::L1,
+            SignalCode::Ca,
+            l1,
             bijux_gnss_core::api::SignalBand::L2,
             SignalCode::Py,
             l2,
             base_range_m + iono_l1_m,
-            base_range_m + iono_l2_m,
             carrier_cycles(base_range_m, iono_l1_m, lambda1, ambiguity_l1_cycles),
+            base_range_m + iono_l2_m,
             carrier_cycles(base_range_m, iono_l2_m, lambda2, ambiguity_l2_cycles),
         );
 
@@ -791,13 +811,17 @@ mod tests {
             / (l5.carrier_hz.value() * l5.carrier_hz.value());
         let lambda1 = SPEED_OF_LIGHT_MPS / l1.carrier_hz.value();
         let lambda5 = SPEED_OF_LIGHT_MPS / l5.carrier_hz.value();
-        let epoch = make_gps_dual_frequency_epoch(
+        let epoch = make_dual_frequency_epoch(
+            SatId { constellation: Constellation::Gps, prn: 3 },
+            bijux_gnss_core::api::SignalBand::L1,
+            SignalCode::Ca,
+            l1,
             bijux_gnss_core::api::SignalBand::L5,
             SignalCode::Unknown,
             l5,
             base_range_m + iono_l1_m,
-            base_range_m + iono_l5_m,
             carrier_cycles(base_range_m, iono_l1_m, lambda1, ambiguity_l1_cycles),
+            base_range_m + iono_l5_m,
             carrier_cycles(base_range_m, iono_l5_m, lambda5, ambiguity_l5_cycles),
         );
 
@@ -884,13 +908,17 @@ mod tests {
         let lambda5 = SPEED_OF_LIGHT_MPS / l5.carrier_hz.value();
         let ambiguity_l1_cycles = 12.0;
         let ambiguity_l5_cycles = 4.0;
-        let epoch = make_gps_dual_frequency_epoch(
+        let epoch = make_dual_frequency_epoch(
+            SatId { constellation: Constellation::Gps, prn: 3 },
+            bijux_gnss_core::api::SignalBand::L1,
+            SignalCode::Ca,
+            l1,
             bijux_gnss_core::api::SignalBand::L5,
             SignalCode::Unknown,
             l5,
             base_range_m + iono_l1_m,
-            base_range_m + iono_l5_m,
             carrier_cycles(base_range_m, iono_l1_m, lambda1, ambiguity_l1_cycles),
+            base_range_m + iono_l5_m,
             carrier_cycles(base_range_m, iono_l5_m, lambda5, ambiguity_l5_cycles),
         );
 
@@ -905,6 +933,88 @@ mod tests {
 
         assert_eq!(wide_lane.band_1, bijux_gnss_core::api::SignalBand::L1);
         assert_eq!(wide_lane.band_2, bijux_gnss_core::api::SignalBand::L5);
+        assert!((wide_lane.wavelength_m - lambda_wl).abs() < 1.0e-12);
         assert!((wide_lane.cycles - expected_cycles).abs() < 1.0e-6);
+        assert!(
+            (wide_lane.variance - ((lambda1 / lambda_wl).powi(2) + (lambda5 / lambda_wl).powi(2)) * 0.01)
+                .abs()
+                < 1.0e-12
+        );
+    }
+
+    #[test]
+    fn wide_lane_uses_galileo_e1_e5_wavelength_and_variance() {
+        let sat = SatId { constellation: Constellation::Galileo, prn: 19 };
+        let e1 = signal_spec_galileo_e1b();
+        let e5 = signal_spec_galileo_e5a();
+        let lambda1 = SPEED_OF_LIGHT_MPS / e1.carrier_hz.value();
+        let lambda2 = SPEED_OF_LIGHT_MPS / e5.carrier_hz.value();
+        let ambiguity_1_cycles = 23.0;
+        let ambiguity_2_cycles = 9.0;
+        let base_range_m = 24_000_000.0;
+        let epoch = make_dual_frequency_epoch(
+            sat,
+            bijux_gnss_core::api::SignalBand::E1,
+            SignalCode::E1B,
+            e1,
+            bijux_gnss_core::api::SignalBand::E5,
+            SignalCode::E5a,
+            e5,
+            base_range_m,
+            base_range_m / lambda1 + ambiguity_1_cycles,
+            base_range_m,
+            base_range_m / lambda2 + ambiguity_2_cycles,
+        );
+
+        let wide_lane = wide_lane_from_obs(&epoch, sat).expect("galileo wide-lane observation");
+        let lambda_wl = SPEED_OF_LIGHT_MPS / (e1.carrier_hz.value() - e5.carrier_hz.value()).abs();
+        let expected_cycles =
+            (lambda1 * ambiguity_1_cycles - lambda2 * ambiguity_2_cycles) / lambda_wl;
+        let expected_variance =
+            ((lambda1 / lambda_wl).powi(2) + (lambda2 / lambda_wl).powi(2)) * 0.01;
+
+        assert_eq!(wide_lane.band_1, bijux_gnss_core::api::SignalBand::E1);
+        assert_eq!(wide_lane.band_2, bijux_gnss_core::api::SignalBand::E5);
+        assert!((wide_lane.wavelength_m - lambda_wl).abs() < 1.0e-12);
+        assert!((wide_lane.cycles - expected_cycles).abs() < 1.0e-6);
+        assert!((wide_lane.variance - expected_variance).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn wide_lane_uses_beidou_b1_b2_wavelength_and_variance() {
+        let sat = SatId { constellation: Constellation::Beidou, prn: 7 };
+        let b1 = signal_spec_beidou_b1i();
+        let b2 = signal_spec_beidou_b2i();
+        let lambda1 = SPEED_OF_LIGHT_MPS / b1.carrier_hz.value();
+        let lambda2 = SPEED_OF_LIGHT_MPS / b2.carrier_hz.value();
+        let ambiguity_1_cycles = 21.0;
+        let ambiguity_2_cycles = 8.0;
+        let base_range_m = 24_000_000.0;
+        let epoch = make_dual_frequency_epoch(
+            sat,
+            bijux_gnss_core::api::SignalBand::B1,
+            SignalCode::B1I,
+            b1,
+            bijux_gnss_core::api::SignalBand::B2,
+            SignalCode::B2I,
+            b2,
+            base_range_m,
+            base_range_m / lambda1 + ambiguity_1_cycles,
+            base_range_m,
+            base_range_m / lambda2 + ambiguity_2_cycles,
+        );
+
+        let wide_lane = wide_lane_from_obs(&epoch, sat).expect("beidou wide-lane observation");
+        let lambda_wl = SPEED_OF_LIGHT_MPS / (b1.carrier_hz.value() - b2.carrier_hz.value()).abs();
+        let expected_cycles =
+            (lambda1 * ambiguity_1_cycles - lambda2 * ambiguity_2_cycles) / lambda_wl;
+        let expected_variance =
+            ((lambda1 / lambda_wl).powi(2) + (lambda2 / lambda_wl).powi(2)) * 0.01;
+
+        assert_eq!(wide_lane.band_1, bijux_gnss_core::api::SignalBand::B1);
+        assert_eq!(wide_lane.band_2, bijux_gnss_core::api::SignalBand::B2);
+        assert!((wide_lane.wavelength_m - lambda_wl).abs() < 1.0e-12);
+        assert!((wide_lane.cycles - expected_cycles).abs() < 1.0e-6);
+        assert!((wide_lane.variance - expected_variance).abs() < 1.0e-12);
     }
 }
