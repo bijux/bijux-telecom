@@ -436,12 +436,27 @@ impl PositionFilter {
 
         if !self.initialized {
             let seed = self.initialize_from_wls(&observations, navigation, t_rx_s)?;
+            self.last_visible_sats = visible_sats(&inputs);
             self.last_t_rx_s = Some(t_rx_s);
             return Ok(self.epoch_from_seed(t_rx_s, &seed));
         }
 
+        let current_visible_sats = visible_sats(&inputs);
         self.ensure_reference_constellation(&inputs);
         self.ensure_isb_states(&inputs);
+        if self.position_covariance_invalid() {
+            let refusal = PositionSolveRefusal {
+                kind: PositionSolveRefusalKind::FilterDivergence(
+                    PositionFilterDivergenceReason::CovarianceCollapse,
+                ),
+                sat_count,
+                used_sat_count: 0,
+                rejected,
+            };
+            self.reset_after_divergence();
+            return Err(refusal);
+        }
+        self.apply_visibility_transition(&current_visible_sats);
         if self.position_covariance_collapsed() {
             let refusal = PositionSolveRefusal {
                 kind: PositionSolveRefusalKind::FilterDivergence(
@@ -518,6 +533,7 @@ impl PositionFilter {
             return Err(refusal);
         }
 
+        self.last_visible_sats = current_visible_sats;
         Ok(self.epoch_from_state(t_rx_s, residuals, used_sat_count))
     }
 
@@ -621,6 +637,61 @@ impl PositionFilter {
         }
     }
 
+    fn apply_visibility_transition(&mut self, current_visible_sats: &BTreeSet<SatId>) {
+        if self.last_visible_sats.is_empty() {
+            return;
+        }
+
+        let added_sat_count = current_visible_sats.difference(&self.last_visible_sats).count();
+        let lost_sat_count = self.last_visible_sats.difference(current_visible_sats).count();
+        let changed_sat_count = added_sat_count + lost_sat_count;
+        if changed_sat_count == 0 {
+            return;
+        }
+
+        let inflation = (1.0
+            + self.config.visibility_transition.covariance_inflation_per_satellite
+                * changed_sat_count as f64)
+            .min(self.config.visibility_transition.max_covariance_inflation)
+            .max(1.0);
+
+        for row in 0..self.ekf.p.rows() {
+            for col in 0..self.ekf.p.cols() {
+                self.ekf.p[(row, col)] *= inflation;
+            }
+        }
+
+        self.raise_transition_uncertainty_floors();
+    }
+
+    fn raise_transition_uncertainty_floors(&mut self) {
+        let position_variance_m2 = self.config.visibility_transition.min_position_sigma_m.powi(2);
+        for index in self.indices.pos {
+            self.ekf.p[(index, index)] = self.ekf.p[(index, index)].max(position_variance_m2);
+        }
+
+        let velocity_variance_m2 = self.config.visibility_transition.min_velocity_sigma_mps.powi(2);
+        for index in self.indices.vel {
+            self.ekf.p[(index, index)] = self.ekf.p[(index, index)].max(velocity_variance_m2);
+        }
+
+        let clock_bias_variance_s2 =
+            self.config.visibility_transition.min_clock_bias_sigma_s.powi(2);
+        self.ekf.p[(self.indices.clock_bias, self.indices.clock_bias)] = self.ekf.p
+            [(self.indices.clock_bias, self.indices.clock_bias)]
+            .max(clock_bias_variance_s2);
+
+        let clock_drift_variance_s2 =
+            self.config.visibility_transition.min_clock_drift_sigma_s_per_s.powi(2);
+        self.ekf.p[(self.indices.clock_drift, self.indices.clock_drift)] = self.ekf.p
+            [(self.indices.clock_drift, self.indices.clock_drift)]
+            .max(clock_drift_variance_s2);
+
+        for index in self.indices.isb.values().copied() {
+            self.ekf.p[(index, index)] = self.ekf.p[(index, index)].max(clock_bias_variance_s2);
+        }
+    }
+
     fn divergence_refusal(
         &self,
         sat_count: usize,
@@ -684,11 +755,18 @@ impl PositionFilter {
         None
     }
 
+    fn position_covariance_invalid(&self) -> bool {
+        self.indices.pos.iter().any(|index| {
+            let variance_m2 = self.ekf.p[(*index, *index)];
+            !variance_m2.is_finite() || variance_m2 <= 0.0
+        })
+    }
+
     fn position_covariance_collapsed(&self) -> bool {
         let min_variance_m2 = self.config.divergence.min_position_sigma_m.powi(2);
         self.indices.pos.iter().any(|index| {
             let variance_m2 = self.ekf.p[(*index, *index)];
-            !variance_m2.is_finite() || variance_m2 <= 0.0 || variance_m2 < min_variance_m2
+            variance_m2 < min_variance_m2
         })
     }
 
@@ -896,6 +974,10 @@ fn current_elevation_deg(
         sat_state.z_m,
     );
     (azimuth_deg.is_finite() && elevation_deg.is_finite()).then_some(elevation_deg)
+}
+
+fn visible_sats(inputs: &[PositionSolveInput]) -> BTreeSet<SatId> {
+    inputs.iter().map(|input| input.observation.sat).collect()
 }
 
 fn pseudorange_sigma_m(
