@@ -11,6 +11,7 @@ use crate::corrections::biases::{CodeBiasProvider, PhaseBiasProvider};
 use crate::corrections::CorrectionContext;
 use crate::estimation::ekf::state::Ekf;
 use crate::estimation::position::solver::WeightingConfig;
+use crate::models::atmosphere::TroposphereMeteorology;
 
 pub const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 
@@ -46,6 +47,9 @@ pub struct PppConfig {
     pub drift_window_epochs: usize,
     pub drift_threshold_m: f64,
     pub checkpoint_interval_epochs: u64,
+    pub tropo_pressure_hpa: Option<f64>,
+    pub tropo_temperature_k: Option<f64>,
+    pub tropo_relative_humidity: Option<f64>,
     pub process_noise: PppProcessNoise,
     pub weighting: WeightingConfig,
     pub convergence: PppConvergenceConfig,
@@ -68,6 +72,9 @@ impl Default for PppConfig {
             drift_window_epochs: 100,
             drift_threshold_m: 10.0,
             checkpoint_interval_epochs: 0,
+            tropo_pressure_hpa: None,
+            tropo_temperature_k: None,
+            tropo_relative_humidity: None,
             process_noise: PppProcessNoise {
                 clock_drift_s: 1e-5,
                 ztd_m: 0.01,
@@ -81,6 +88,23 @@ impl Default for PppConfig {
                 sigma_h_m: 1.0,
                 sigma_v_m: 2.0,
             },
+        }
+    }
+}
+
+impl PppConfig {
+    pub(crate) fn troposphere_meteorology(&self) -> Option<TroposphereMeteorology> {
+        match (
+            self.tropo_pressure_hpa,
+            self.tropo_temperature_k,
+            self.tropo_relative_humidity,
+        ) {
+            (Some(pressure_hpa), Some(temperature_k), Some(relative_humidity)) => {
+                let meteorology =
+                    TroposphereMeteorology::new(pressure_hpa, temperature_k, relative_humidity);
+                meteorology.is_physical().then_some(meteorology)
+            }
+            _ => None,
         }
     }
 }

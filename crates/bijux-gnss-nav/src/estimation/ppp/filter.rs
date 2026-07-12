@@ -475,7 +475,11 @@ impl PppFilter {
             return;
         }
         let receiver = bijux_gnss_core::api::Llh { lat_deg, lon_deg, alt_m };
-        self.ekf.x[self.indices.ztd] = SaastamoinenModel::zenith_delay_m(receiver);
+        self.ekf.x[self.indices.ztd] = self
+            .config
+            .troposphere_meteorology()
+            .map(|meteorology| SaastamoinenModel::zenith_delay_with_meteorology_m(receiver, meteorology))
+            .unwrap_or_else(|| SaastamoinenModel::zenith_delay_m(receiver));
     }
 
     fn prune_states(&mut self, epoch_idx: u64) {

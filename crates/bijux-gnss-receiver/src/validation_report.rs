@@ -1207,6 +1207,9 @@ fn build_ppp_config(profile: &ReceiverConfig) -> PppConfig {
         drift_window_epochs: p.drift_window_epochs as usize,
         drift_threshold_m: p.drift_threshold_m,
         checkpoint_interval_epochs: p.checkpoint_interval_epochs,
+        tropo_pressure_hpa: None,
+        tropo_temperature_k: None,
+        tropo_relative_humidity: None,
         process_noise: PppProcessNoise {
             clock_drift_s: p.noise_clock_drift,
             ztd_m: p.noise_ztd,
