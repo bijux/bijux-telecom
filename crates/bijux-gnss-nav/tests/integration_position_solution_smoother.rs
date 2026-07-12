@@ -76,6 +76,7 @@ fn sample_position_solution(
         latitude_deg: 37.0,
         longitude_deg: -122.0,
         altitude_m: 10.0,
+        gps_broadcast_ionosphere_applied: false,
         clock_reference_constellation: Constellation::Gps,
         clock_bias_s: 2.75e-4,
         inter_system_biases: Vec::new(),
@@ -119,17 +120,13 @@ fn position_solution_smoother_reduces_static_jitter() {
 
     for epoch_index in 0..80 {
         let offset_m = deterministic_position_offset_m(epoch_index);
-        let measured_ecef_m = (
-            truth_ecef_m.0 + offset_m.0,
-            truth_ecef_m.1 + offset_m.1,
-            truth_ecef_m.2 + offset_m.2,
-        );
+        let measured_ecef_m =
+            (truth_ecef_m.0 + offset_m.0, truth_ecef_m.1 + offset_m.1, truth_ecef_m.2 + offset_m.2);
         let solution = sample_position_solution(measured_ecef_m, 2.8, 3.6);
         let smoothed = smoother.smooth_position_solution(100_000.0 + epoch_index as f64, &solution);
 
         raw_positions_ecef_m.push(measured_ecef_m);
-        smoothed_positions_ecef_m
-            .push((smoothed.ecef_x_m, smoothed.ecef_y_m, smoothed.ecef_z_m));
+        smoothed_positions_ecef_m.push((smoothed.ecef_x_m, smoothed.ecef_y_m, smoothed.ecef_z_m));
         raw_errors_m.push(position_error_3d_m(
             measured_ecef_m.0,
             measured_ecef_m.1,
@@ -170,17 +167,13 @@ fn position_solution_smoother_preserves_linear_motion() {
         let truth_ecef_m =
             translate_truth_ecef_m(truth_origin_ecef_m, truth_velocity_mps, epoch_index as f64);
         let offset_m = deterministic_position_offset_m(epoch_index);
-        let measured_ecef_m = (
-            truth_ecef_m.0 + offset_m.0,
-            truth_ecef_m.1 + offset_m.1,
-            truth_ecef_m.2 + offset_m.2,
-        );
+        let measured_ecef_m =
+            (truth_ecef_m.0 + offset_m.0, truth_ecef_m.1 + offset_m.1, truth_ecef_m.2 + offset_m.2);
         let solution = sample_position_solution(measured_ecef_m, 2.8, 3.6);
         let smoothed = smoother.smooth_position_solution(100_500.0 + epoch_index as f64, &solution);
 
         truth_positions_ecef_m.push(truth_ecef_m);
-        smoothed_positions_ecef_m
-            .push((smoothed.ecef_x_m, smoothed.ecef_y_m, smoothed.ecef_z_m));
+        smoothed_positions_ecef_m.push((smoothed.ecef_x_m, smoothed.ecef_y_m, smoothed.ecef_z_m));
         raw_errors_m.push(position_error_3d_m(
             measured_ecef_m.0,
             measured_ecef_m.1,

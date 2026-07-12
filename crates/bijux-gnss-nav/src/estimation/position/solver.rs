@@ -47,6 +47,7 @@ pub struct PositionSolution {
     pub latitude_deg: f64,
     pub longitude_deg: f64,
     pub altitude_m: f64,
+    pub gps_broadcast_ionosphere_applied: bool,
     pub clock_reference_constellation: Constellation,
     pub clock_bias_s: f64,
     pub inter_system_biases: Vec<InterSystemBias>,
@@ -549,8 +550,7 @@ impl PositionSolver {
         navigation: &GpsBroadcastNavigationData,
         t_rx_s: f64,
     ) -> Option<PositionSolution> {
-        self.try_solve_wls_with_gps_broadcast_navigation(observations, navigation, t_rx_s)
-            .ok()
+        self.try_solve_wls_with_gps_broadcast_navigation(observations, navigation, t_rx_s).ok()
     }
 
     pub fn try_solve_wls_with_gps_broadcast_navigation(
@@ -924,6 +924,10 @@ impl PositionSolver {
         };
 
         let rejected_sat_count = rejected.len();
+        let gps_broadcast_ionosphere_applied = klobuchar.is_some()
+            && filtered.iter().any(|(observation, _state, _residual_m, _effective_weight)| {
+                observation.sat.constellation == Constellation::Gps
+            });
         Ok(PositionSolution {
             ecef_x_m: x,
             ecef_y_m: y,
@@ -938,6 +942,7 @@ impl PositionSolver {
             latitude_deg: lat,
             longitude_deg: lon,
             altitude_m: alt,
+            gps_broadcast_ionosphere_applied,
             clock_reference_constellation: final_estimate.clock_model.reference_constellation,
             clock_bias_s: cb,
             inter_system_biases: final_estimate

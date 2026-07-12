@@ -117,14 +117,7 @@ impl PositionSolutionSmoother {
         measurement_covariance_m2: [[f64; 3]; 3],
         t_rx_s: f64,
     ) {
-        self.state = [
-            position_ecef_m[0],
-            position_ecef_m[1],
-            position_ecef_m[2],
-            0.0,
-            0.0,
-            0.0,
-        ];
+        self.state = [position_ecef_m[0], position_ecef_m[1], position_ecef_m[2], 0.0, 0.0, 0.0];
         self.covariance = [[0.0; 6]; 6];
         for row in 0..3 {
             for col in 0..3 {
@@ -153,7 +146,11 @@ impl PositionSolutionSmoother {
         self.covariance = predicted_covariance;
     }
 
-    fn update(&mut self, measurement_position_m: [f64; 3], measurement_covariance_m2: [[f64; 3]; 3]) {
+    fn update(
+        &mut self,
+        measurement_position_m: [f64; 3],
+        measurement_covariance_m2: [[f64; 3]; 3],
+    ) {
         let predicted_position_m = [self.state[0], self.state[1], self.state[2]];
         let innovation_m = [
             measurement_position_m[0] - predicted_position_m[0],
@@ -192,11 +189,7 @@ impl PositionSolutionSmoother {
         ) = position_covariance_ecef_m2
             .and_then(|covariance| horizontal_error_ellipse(position_ecef_m, covariance))
             .map(|ellipse| {
-                (
-                    Some(ellipse.major_axis_m),
-                    Some(ellipse.minor_axis_m),
-                    Some(ellipse.azimuth_deg),
-                )
+                (Some(ellipse.major_axis_m), Some(ellipse.minor_axis_m), Some(ellipse.azimuth_deg))
             })
             .unwrap_or((None, None, None));
         let (sigma_h_m, sigma_v_m) = position_covariance_ecef_m2
@@ -285,8 +278,7 @@ fn enforce_covariance_floor(
     floor_variance_m2: f64,
 ) -> [[f64; 3]; 3] {
     for axis in 0..3 {
-        if !covariance_m2[axis][axis].is_finite() || covariance_m2[axis][axis] < floor_variance_m2
-        {
+        if !covariance_m2[axis][axis].is_finite() || covariance_m2[axis][axis] < floor_variance_m2 {
             covariance_m2[axis][axis] = floor_variance_m2;
         }
     }
@@ -345,7 +337,10 @@ fn kalman_gain(
     for row in 0..6 {
         for measurement_axis in 0..3 {
             gain[row][measurement_axis] = (0..3)
-                .map(|column| covariance[row][column] * innovation_covariance_inverse[column][measurement_axis])
+                .map(|column| {
+                    covariance[row][column]
+                        * innovation_covariance_inverse[column][measurement_axis]
+                })
                 .sum();
         }
     }
@@ -363,10 +358,8 @@ fn joseph_covariance_update(
             identity_minus_kh[row][col] -= kalman_gain[row][col];
         }
     }
-    let left = mat6_mul(
-        &mat6_mul(&identity_minus_kh, covariance),
-        &mat6_transpose(&identity_minus_kh),
-    );
+    let left =
+        mat6_mul(&mat6_mul(&identity_minus_kh, covariance), &mat6_transpose(&identity_minus_kh));
     let mut right = [[0.0; 6]; 6];
     for row in 0..6 {
         for col in 0..6 {
@@ -386,11 +379,7 @@ fn joseph_covariance_update(
 
 fn diagonal3(diagonal: impl Into<Diagonal3>) -> [[f64; 3]; 3] {
     let diagonal = diagonal.into();
-    [
-        [diagonal.0[0], 0.0, 0.0],
-        [0.0, diagonal.0[1], 0.0],
-        [0.0, 0.0, diagonal.0[2]],
-    ]
+    [[diagonal.0[0], 0.0, 0.0], [0.0, diagonal.0[1], 0.0], [0.0, 0.0, diagonal.0[2]]]
 }
 
 struct Diagonal3([f64; 3]);
@@ -512,19 +501,12 @@ mod tests {
 
     #[test]
     fn smoother_config_tracks_motion_class_defaults() {
-        let mut config = PositionSolutionSmootherConfig::for_motion_class(
-            PositionFilterMotionClass::Static,
-        );
-        assert!(matches!(
-            config.motion_model,
-            PositionFilterMotionModel::StaticPosition(_)
-        ));
+        let mut config =
+            PositionSolutionSmootherConfig::for_motion_class(PositionFilterMotionClass::Static);
+        assert!(matches!(config.motion_model, PositionFilterMotionModel::StaticPosition(_)));
         config.apply_motion_class(PositionFilterMotionClass::Airborne);
         assert_eq!(config.motion_class, PositionFilterMotionClass::Airborne);
-        assert!(matches!(
-            config.motion_model,
-            PositionFilterMotionModel::ConstantVelocity
-        ));
+        assert!(matches!(config.motion_model, PositionFilterMotionModel::ConstantVelocity));
     }
 
     #[test]
@@ -546,11 +528,7 @@ mod tests {
             ecef_x_m,
             ecef_y_m,
             ecef_z_m,
-            position_covariance_ecef_m2: Some([
-                [9.0, 0.5, 0.1],
-                [0.5, 9.0, 0.2],
-                [0.1, 0.2, 16.0],
-            ]),
+            position_covariance_ecef_m2: Some([[9.0, 0.5, 0.1], [0.5, 9.0, 0.2], [0.1, 0.2, 16.0]]),
             horizontal_error_ellipse_major_axis_m: Some(3.5),
             horizontal_error_ellipse_minor_axis_m: Some(2.9),
             horizontal_error_ellipse_azimuth_deg: Some(21.0),
@@ -560,6 +538,7 @@ mod tests {
             latitude_deg: 37.0,
             longitude_deg: -122.0,
             altitude_m: 10.0,
+            gps_broadcast_ionosphere_applied: false,
             clock_reference_constellation: bijux_gnss_core::api::Constellation::Gps,
             clock_bias_s: 2.5e-4,
             inter_system_biases: Vec::new(),

@@ -16,10 +16,10 @@ use bijux_gnss_nav::api::{
     GalileoSignalHealth, GalileoSystemTime, GlonassAlmanacTimeData,
     GlonassBroadcastNavigationFrame, GlonassFrameTime, GlonassImmediateHealth,
     GlonassImmediateNavigationData, GlonassSatelliteType, GlonassStateVector, GlonassSystemTime,
-    GpsEphemeris, GpsL1CaHowWord, GpsL1CaLnavDecodedSubframe, GpsL1CaLnavSubframe1Clock,
-    GpsL1CaLnavSubframe2Orbit, GpsL1CaLnavSubframe3Orbit, GpsL1CaLnavSubframeAlignment,
-    GpsL1CaTlmWord, GpsL1CaWordParitySummary, PositionBroadcastNavigation, PositionObservation,
-    PositionRobustWeighting, PositionSolver, GpsBroadcastNavigationData,
+    GpsBroadcastNavigationData, GpsEphemeris, GpsL1CaHowWord, GpsL1CaLnavDecodedSubframe,
+    GpsL1CaLnavSubframe1Clock, GpsL1CaLnavSubframe2Orbit, GpsL1CaLnavSubframe3Orbit,
+    GpsL1CaLnavSubframeAlignment, GpsL1CaTlmWord, GpsL1CaWordParitySummary,
+    PositionBroadcastNavigation, PositionObservation, PositionRobustWeighting, PositionSolver,
 };
 use support::position_truth::{
     add_klobuchar_delay_to_observations, add_saastamoinen_delay_to_observations,
@@ -1294,6 +1294,8 @@ fn single_point_solver_applies_broadcast_ionosphere_correction() {
         scenario.truth_ecef_m,
     );
 
+    assert!(corrected_solution.gps_broadcast_ionosphere_applied);
+    assert!(!uncorrected_solution.gps_broadcast_ionosphere_applied);
     assert!(corrected_error_m < 5.0);
     assert!(uncorrected_error_m > corrected_error_m + 3.0);
 }
@@ -1322,11 +1324,7 @@ fn single_point_solver_uses_gps_broadcast_navigation_klobuchar_payload() {
         )
         .expect("broadcast navigation payload should solve");
     let uncorrected_solution = PositionSolver::new()
-        .solve_wls(
-            &ionosphere_biased_observations,
-            &navigation.ephemerides,
-            scenario.t_rx_s,
-        )
+        .solve_wls(&ionosphere_biased_observations, &navigation.ephemerides, scenario.t_rx_s)
         .expect("uncorrected observations should still solve");
 
     let corrected_error_m = position_error_3d_m(
@@ -1342,6 +1340,8 @@ fn single_point_solver_uses_gps_broadcast_navigation_klobuchar_payload() {
         scenario.truth_ecef_m,
     );
 
+    assert!(corrected_solution.gps_broadcast_ionosphere_applied);
+    assert!(!uncorrected_solution.gps_broadcast_ionosphere_applied);
     assert!(corrected_error_m < 5.0);
     assert!(uncorrected_error_m > corrected_error_m + 3.0);
 }
