@@ -106,7 +106,7 @@ impl PppFilter {
             },
             code_bias: Box::new(ZeroBiases),
             phase_bias: Box::new(ZeroBiases),
-            corrections: CorrectionContext,
+            corrections: CorrectionContext::default(),
             residual_history: BTreeMap::new(),
             drift_history: Vec::new(),
             wl_state: BTreeMap::new(),
