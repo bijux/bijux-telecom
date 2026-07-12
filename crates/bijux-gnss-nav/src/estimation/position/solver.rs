@@ -13,7 +13,9 @@ use super::navigation::{
     satellite_state_from_observation, unknown_inter_system_time_offset_sats, PositionSolveInput,
     SatelliteState,
 };
-use super::raim::{RaimFaultDetection, RaimFaultExclusion};
+use super::raim::{
+    formal_protection_levels, PositionProtectionLevels, RaimFaultDetection, RaimFaultExclusion,
+};
 use crate::models::atmosphere::{
     IonosphereModel, KlobucharCoefficients, KlobucharModel, SaastamoinenModel, TroposphereModel,
 };
@@ -61,6 +63,8 @@ pub struct PositionSolution {
     pub rms_m: f64,
     pub sigma_h_m: Option<f64>,
     pub sigma_v_m: Option<f64>,
+    pub integrity_hpl_m: Option<f64>,
+    pub integrity_vpl_m: Option<f64>,
     pub residuals: Vec<(SatId, f64, f64)>,
     pub constellation_residual_rms: Vec<NavConstellationResidualRms>,
     pub rejected: Vec<(SatId, bijux_gnss_core::api::MeasurementRejectReason)>,
@@ -929,6 +933,11 @@ impl PositionSolver {
             }
             _ => (None, None),
         };
+        let protection_levels = position_covariance_ecef_m2
+            .and_then(|covariance_xyz| formal_protection_levels([x, y, z], covariance_xyz));
+        let (integrity_hpl_m, integrity_vpl_m) = protection_levels
+            .map(|levels: PositionProtectionLevels| (Some(levels.horizontal_m), Some(levels.vertical_m)))
+            .unwrap_or((None, None));
 
         let rejected_sat_count = rejected.len();
         let broadcast_ionosphere_applied =
@@ -963,6 +972,8 @@ impl PositionSolver {
             rms_m: post_fit_residual_rms_m,
             sigma_h_m,
             sigma_v_m,
+            integrity_hpl_m,
+            integrity_vpl_m,
             residuals: filtered
                 .iter()
                 .map(|(observation, _state, residual_m, effective_weight)| {

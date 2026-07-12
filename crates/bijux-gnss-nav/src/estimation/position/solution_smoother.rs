@@ -552,6 +552,8 @@ mod tests {
             rms_m: 0.8,
             sigma_h_m: Some(2.8),
             sigma_v_m: Some(4.0),
+            integrity_hpl_m: Some(21.0),
+            integrity_vpl_m: Some(24.0),
             residuals: Vec::new(),
             constellation_residual_rms: Vec::new(),
             rejected: Vec::new(),

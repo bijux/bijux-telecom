@@ -57,7 +57,8 @@ pub use crate::estimation::position::filter::{
     PositionFilterStaticPositionModel,
 };
 pub use crate::estimation::position::raim::{
-    RaimFaultDetection, RaimFaultDetectionStatus, RaimFaultExclusion,
+    formal_protection_levels, PositionProtectionLevels, RaimFaultDetection,
+    RaimFaultDetectionStatus, RaimFaultExclusion,
 };
 pub use crate::estimation::position::solution_smoother::{
     PositionSolutionSmoother, PositionSolutionSmootherConfig, PositionSolutionSmootherEpoch,

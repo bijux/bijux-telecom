@@ -90,6 +90,8 @@ fn sample_position_solution(
         rms_m: 0.8,
         sigma_h_m: Some(sigma_h_m),
         sigma_v_m: Some(sigma_v_m),
+        integrity_hpl_m: Some(sigma_h_m * 7.2),
+        integrity_vpl_m: Some(sigma_v_m * 6.0),
         residuals: Vec::new(),
         constellation_residual_rms: Vec::new(),
         rejected: Vec::new(),
