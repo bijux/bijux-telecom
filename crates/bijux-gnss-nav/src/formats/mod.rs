@@ -1,5 +1,6 @@
 #![allow(missing_docs)]
 
+pub mod antex;
 pub mod beidou_b1i_navigation_decode;
 pub mod bias_sinex;
 pub mod clk;

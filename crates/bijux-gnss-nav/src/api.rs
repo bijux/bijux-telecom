@@ -160,6 +160,7 @@ pub use crate::formats::rinex::{
     parse_rinex_broadcast_navigation, parse_rinex_nav, parse_rinex_obs_header,
     write_rinex_broadcast_navigation, write_rinex_nav, write_rinex_obs,
 };
+pub use crate::formats::antex::parse_antex_satellite_calibrations;
 pub use crate::formats::rinex_obs::{
     parse_rinex_beidou_observation_dataset, parse_rinex_galileo_observation_dataset,
     parse_rinex_gps_observation_dataset, RinexBeidouObservationChannel,
@@ -177,6 +178,10 @@ pub use crate::linalg::Matrix;
 /// Atmospheric model scaffolding.
 pub use crate::models::atmosphere::{
     IonosphereModel, KlobucharCoefficients, KlobucharModel, SaastamoinenModel, TroposphereModel,
+};
+pub use crate::models::antenna::{
+    satellite_antenna_range_correction_m, satellite_band_from_antex_frequency,
+    SatelliteAntennaCalibration, SatelliteAntennaCalibrations, SatellitePhaseCenterOffset,
 };
 pub use crate::models::nequick::GalileoNequickModel;
 /// BeiDou broadcast navigation and satellite state helpers.

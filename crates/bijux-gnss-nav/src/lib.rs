@@ -22,6 +22,11 @@ mod models;
 mod orbits;
 mod time;
 
+pub use crate::formats::antex::parse_antex_satellite_calibrations;
+pub use crate::models::antenna::{
+    satellite_antenna_range_correction_m, satellite_band_from_antex_frequency,
+    SatelliteAntennaCalibration, SatelliteAntennaCalibrations, SatellitePhaseCenterOffset,
+};
 pub use crate::estimation::ppp::config::PppTroposphereSource;
 
 /// Public API surface for this crate.
