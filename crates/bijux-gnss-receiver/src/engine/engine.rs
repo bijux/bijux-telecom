@@ -602,6 +602,7 @@ fn build_support_matrix() -> SupportMatrix {
     ];
     let codes = [
         SignalCode::Ca,
+        SignalCode::L2C,
         SignalCode::Py,
         SignalCode::B1I,
         SignalCode::E1B,
@@ -654,6 +655,9 @@ fn signal_support_status(
 fn support_reason(constellation: Constellation, band: SignalBand, code: SignalCode) -> String {
     if constellation == Constellation::Gps && band == SignalBand::L1 && code == SignalCode::Ca {
         return "receiver pipeline supports this signal path".to_string();
+    }
+    if constellation == Constellation::Gps && band == SignalBand::L2 && code == SignalCode::L2C {
+        return "receiver observations and synthetic validation support explicit tracked L2C epochs; acquisition and live tracking remain incomplete".to_string();
     }
     if constellation == Constellation::Galileo && band == SignalBand::E1 && code == SignalCode::E1B
     {
