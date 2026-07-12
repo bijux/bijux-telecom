@@ -3,7 +3,7 @@
 mod support;
 
 use bijux_gnss_core::api::MeasurementRejectReason;
-use bijux_gnss_nav::api::PositionSolver;
+use bijux_gnss_nav::api::{PositionRobustWeighting, PositionSolver};
 
 use support::position_outlier::{position_error_3d_m, single_bad_pseudorange_scenario};
 
@@ -14,7 +14,7 @@ fn position_solver_excludes_single_bad_pseudorange_and_recovers_truth() {
     let scenario = single_bad_pseudorange_scenario(BAD_PSEUDORANGE_BIAS_M);
     let guarded_solver = PositionSolver::new();
     let mut unguarded_solver = PositionSolver::new();
-    unguarded_solver.robust = false;
+    unguarded_solver.robust_weighting = PositionRobustWeighting::Disabled;
     unguarded_solver.raim = false;
     unguarded_solver.residual_gate_m = 1.0e9;
     unguarded_solver.chi_square_gate = 1.0e12;

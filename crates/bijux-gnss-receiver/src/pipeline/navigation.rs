@@ -13,7 +13,8 @@ use bijux_gnss_nav::api::{
     sat_state_beidou_b1i_from_observation, sat_state_galileo_e1_from_observation,
     sat_state_glonass_l1_from_observation, sat_state_gps_l1ca_from_observation, GpsEphemeris,
     KlobucharCoefficients, PositionBroadcastNavigation, PositionObservation,
-    PositionSolveRefusalKind, PositionSolver, RaimFaultDetectionStatus, WeightingConfig,
+    PositionRobustWeighting, PositionSolveRefusalKind, PositionSolver,
+    RaimFaultDetectionStatus, WeightingConfig,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -102,8 +103,11 @@ impl Default for EkfState {
 impl Navigation {
     pub fn new(config: ReceiverPipelineConfig, runtime: ReceiverRuntime) -> Self {
         let mut solver = PositionSolver::new();
-        solver.robust = config.robust_solver;
-        solver.huber_k = config.huber_k;
+        solver.robust_weighting = if config.robust_solver {
+            PositionRobustWeighting::huber(config.huber_k)
+        } else {
+            PositionRobustWeighting::Disabled
+        };
         solver.raim = config.raim;
         solver.apply_troposphere = config.tropo_enable;
         Self {

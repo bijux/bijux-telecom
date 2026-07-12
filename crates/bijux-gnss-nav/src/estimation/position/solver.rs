@@ -432,12 +432,28 @@ pub struct PositionSolver {
     pub convergence_m: f64,
     pub residual_gate_m: f64,
     pub chi_square_gate: f64,
-    pub robust: bool,
-    pub huber_k: f64,
+    pub robust_weighting: PositionRobustWeighting,
     pub raim: bool,
     pub separation_gate_m: f64,
     pub apply_broadcast_group_delay: bool,
     pub apply_troposphere: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PositionRobustWeighting {
+    Disabled,
+    Huber { threshold_m: f64 },
+    TukeyBiweight { threshold_m: f64 },
+}
+
+impl PositionRobustWeighting {
+    pub fn huber(threshold_m: f64) -> Self {
+        Self::Huber { threshold_m }
+    }
+
+    pub fn tukey_biweight(threshold_m: f64) -> Self {
+        Self::TukeyBiweight { threshold_m }
+    }
 }
 
 impl Default for PositionSolver {
@@ -453,8 +469,7 @@ impl PositionSolver {
             convergence_m: 1e-3,
             residual_gate_m: 150.0,
             chi_square_gate: 9.0,
-            robust: true,
-            huber_k: 30.0,
+            robust_weighting: PositionRobustWeighting::huber(30.0),
             raim: true,
             separation_gate_m: 50.0,
             apply_broadcast_group_delay: true,
@@ -2061,11 +2076,7 @@ impl PositionSolver {
     }
 
     fn measurement_weights(&self, geometry: &[SatelliteGeometry], residuals: &[f64]) -> Vec<f64> {
-        let mut weights = if self.robust {
-            huber_weights(residuals, self.huber_k)
-        } else {
-            vec![1.0; residuals.len()]
-        };
+        let mut weights = robust_weights(residuals, self.robust_weighting);
         for (weight, satellite_geometry) in weights.iter_mut().zip(geometry) {
             *weight *= satellite_geometry.observation.weight;
         }
@@ -2309,18 +2320,36 @@ fn solve_weighted_normal_eq(h: &[Vec<f64>], v: &[f64], w: &[f64]) -> Option<Norm
     Some((delta, inv))
 }
 
-fn huber_weights(residuals: &[f64], k: f64) -> Vec<f64> {
+fn robust_weights(
+    residuals: &[f64],
+    robust_weighting: PositionRobustWeighting,
+) -> Vec<f64> {
     residuals
         .iter()
-        .map(|r| {
-            let a = r.abs();
-            if a <= k {
+        .map(|residual_m| robust_weight(residual_m.abs(), robust_weighting))
+        .collect()
+}
+
+fn robust_weight(residual_abs_m: f64, robust_weighting: PositionRobustWeighting) -> f64 {
+    match robust_weighting {
+        PositionRobustWeighting::Disabled => 1.0,
+        PositionRobustWeighting::Huber { threshold_m } => {
+            if residual_abs_m <= threshold_m {
                 1.0
             } else {
-                k / a
+                threshold_m / residual_abs_m
             }
-        })
-        .collect()
+        }
+        PositionRobustWeighting::TukeyBiweight { threshold_m } => {
+            if residual_abs_m >= threshold_m {
+                0.0
+            } else {
+                let scaled_residual = residual_abs_m / threshold_m;
+                let attenuation = 1.0 - scaled_residual * scaled_residual;
+                attenuation * attenuation
+            }
+        }
+    }
 }
 
 pub fn invert_4x4(a: [[f64; 4]; 4]) -> Option<[[f64; 4]; 4]> {

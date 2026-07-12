@@ -2,7 +2,9 @@
 
 mod support;
 
-use bijux_gnss_nav::api::{PositionSolver, RaimFaultDetectionStatus};
+use bijux_gnss_nav::api::{
+    PositionRobustWeighting, PositionSolver, RaimFaultDetectionStatus,
+};
 
 use support::position_outlier::{position_error_3d_m, single_bad_pseudorange_scenario};
 
@@ -13,7 +15,7 @@ fn raim_fault_exclusion_reports_improved_solution_for_single_bad_pseudorange() {
     let scenario = single_bad_pseudorange_scenario(BAD_PSEUDORANGE_BIAS_M);
     let guarded_solver = PositionSolver::new();
     let mut unguarded_solver = PositionSolver::new();
-    unguarded_solver.robust = false;
+    unguarded_solver.robust_weighting = PositionRobustWeighting::Disabled;
     unguarded_solver.raim = false;
     unguarded_solver.residual_gate_m = 1.0e9;
     unguarded_solver.chi_square_gate = 1.0e12;
