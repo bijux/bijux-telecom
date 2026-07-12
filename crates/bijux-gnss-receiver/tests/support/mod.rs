@@ -1,5 +1,6 @@
 pub mod navigation_clock_profile;
 pub mod navigation_common_code_doppler_anomaly;
+pub mod navigation_impossible_geometry;
 pub mod navigation_noise;
 pub mod navigation_outlier;
 pub mod navigation_pipeline;
