@@ -854,6 +854,56 @@ mod tests {
     }
 
     #[test]
+    fn position_filter_motion_classes_order_prediction_covariance_growth() {
+        let mut static_filter = PositionFilter::new(PositionFilterConfig::for_static_receiver());
+        let mut pedestrian_filter =
+            PositionFilter::new(PositionFilterConfig::for_pedestrian_receiver());
+        let mut vehicle_filter = PositionFilter::new(PositionFilterConfig::for_vehicle_receiver());
+        let mut airborne_filter = PositionFilter::new(PositionFilterConfig::for_airborne_receiver());
+
+        for filter in [
+            &mut static_filter,
+            &mut pedestrian_filter,
+            &mut vehicle_filter,
+            &mut airborne_filter,
+        ] {
+            filter.seed_receiver_state([0.0, 0.0, 0.0], 0.0);
+            filter.ekf.x[3] = 15.0;
+            filter.ekf.x[4] = -4.0;
+            filter.ekf.x[5] = 1.0;
+            for index in 0..8 {
+                filter.ekf.p[(index, index)] = 1.0;
+            }
+        }
+
+        static_filter.predict(1.0);
+        pedestrian_filter.predict(1.0);
+        vehicle_filter.predict(1.0);
+        airborne_filter.predict(1.0);
+
+        let position_variances = [
+            static_filter.ekf.p[(0, 0)],
+            pedestrian_filter.ekf.p[(0, 0)],
+            vehicle_filter.ekf.p[(0, 0)],
+            airborne_filter.ekf.p[(0, 0)],
+        ];
+        let velocity_variances = [
+            static_filter.ekf.p[(3, 3)],
+            pedestrian_filter.ekf.p[(3, 3)],
+            vehicle_filter.ekf.p[(3, 3)],
+            airborne_filter.ekf.p[(3, 3)],
+        ];
+
+        assert!(position_variances[0] < position_variances[1]);
+        assert!(position_variances[1] < position_variances[2]);
+        assert!(position_variances[2] < position_variances[3]);
+
+        assert!(velocity_variances[0] < velocity_variances[1]);
+        assert!(velocity_variances[1] < velocity_variances[2]);
+        assert!(velocity_variances[2] < velocity_variances[3]);
+    }
+
+    #[test]
     fn position_filter_seed_receiver_state_updates_position_and_clock() {
         let mut filter = PositionFilter::new(PositionFilterConfig::default());
 
