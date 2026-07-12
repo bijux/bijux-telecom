@@ -1530,6 +1530,8 @@ mod tests {
             horizontal_error_ellipse_azimuth_deg: Some(42.0),
             sigma_h_m: Some(bijux_gnss_core::api::Meters(2.0)),
             sigma_v_m: Some(bijux_gnss_core::api::Meters(3.0)),
+            integrity_hpl_m: Some(3.0),
+            integrity_vpl_m: Some(4.0),
             ..fixture_solution(7, 1.0, 0.5, 4)
         };
         let reference = ValidationReferenceEpoch {
@@ -1566,6 +1568,12 @@ mod tests {
         assert!((error.horiz_m - 5.0_f64.sqrt()).abs() < 1.0e-12);
         assert!((error.vert_m - 3.0).abs() < 1.0e-12);
         assert!((error.error_3d_m - 14.0_f64.sqrt()).abs() < 1.0e-12);
+        assert_eq!(error.hpl_m, Some(3.0));
+        assert_eq!(error.vpl_m, Some(4.0));
+        assert_eq!(error.horizontal_within_hpl, Some(true));
+        assert_eq!(error.vertical_within_vpl, Some(true));
+        assert!((error.horizontal_margin_m.expect("horizontal margin") - (3.0 - 5.0_f64.sqrt())).abs() < 1.0e-12);
+        assert!((error.vertical_margin_m.expect("vertical margin") - 1.0).abs() < 1.0e-12);
         assert!((report.east_error_m.rms - 1.0).abs() < 1.0e-12);
         assert!((report.north_error_m.rms - 2.0).abs() < 1.0e-12);
         assert!((report.up_error_m.rms - 3.0).abs() < 1.0e-12);
@@ -1587,6 +1595,63 @@ mod tests {
         assert!((horizontal_nees - 2.0).abs() < 1.0e-5, "{horizontal_nees}");
         assert!((vertical_normalized_error - 1.0).abs() < 1.0e-9, "{vertical_normalized_error}");
         assert!((position_nees - 3.0).abs() < 1.0e-5, "{position_nees}");
+        assert_eq!(report.protection_levels.matched_epoch_count, 1);
+        assert_eq!(report.protection_levels.horizontal_reported_epoch_count, 1);
+        assert_eq!(report.protection_levels.vertical_reported_epoch_count, 1);
+        assert_eq!(report.protection_levels.horizontal_contained_epoch_count, 1);
+        assert_eq!(report.protection_levels.vertical_contained_epoch_count, 1);
+        assert!(report.protection_levels.horizontal_breach_epochs.is_empty());
+        assert!(report.protection_levels.vertical_breach_epochs.is_empty());
+    }
+
+    #[test]
+    fn validation_report_summarizes_protection_level_breaches() {
+        let (x_ref, y_ref, z_ref) = bijux_gnss_core::api::lla_to_ecef(0.0, 0.0, 0.0);
+        let solution = NavSolutionEpoch {
+            ecef_x_m: bijux_gnss_core::api::Meters(x_ref + 3.0),
+            ecef_y_m: bijux_gnss_core::api::Meters(y_ref + 1.0),
+            ecef_z_m: bijux_gnss_core::api::Meters(z_ref + 4.0),
+            integrity_hpl_m: Some(1.0),
+            integrity_vpl_m: Some(2.0),
+            ..fixture_solution(8, 1.0, 0.5, 4)
+        };
+        let reference = ValidationReferenceEpoch {
+            epoch_idx: 8,
+            t_rx_s: Some(8.0),
+            latitude_deg: 0.0,
+            longitude_deg: 0.0,
+            altitude_m: 0.0,
+            ecef_x_m: Some(x_ref),
+            ecef_y_m: Some(y_ref),
+            ecef_z_m: Some(z_ref),
+            vel_x_mps: None,
+            vel_y_mps: None,
+            vel_z_mps: None,
+        };
+
+        let report = build_validation_report(
+            &[],
+            &[],
+            &[solution],
+            &[reference],
+            1.0,
+            false,
+            Vec::new(),
+            ValidationSciencePolicy::default(),
+        )
+        .expect("validation report");
+
+        let error = report.reference_position_errors.first().expect("reference position error");
+        assert_eq!(error.horizontal_within_hpl, Some(false));
+        assert_eq!(error.vertical_within_vpl, Some(false));
+        assert!(error.horizontal_margin_m.expect("horizontal margin") < 0.0);
+        assert!(error.vertical_margin_m.expect("vertical margin") < 0.0);
+        assert_eq!(report.protection_levels.horizontal_breach_epochs, vec![8]);
+        assert_eq!(report.protection_levels.vertical_breach_epochs, vec![8]);
+        assert_eq!(report.protection_levels.horizontal_contained_epoch_count, 0);
+        assert_eq!(report.protection_levels.vertical_contained_epoch_count, 0);
+        assert!(report.protection_levels.min_horizontal_margin_m.expect("horizontal min margin") < 0.0);
+        assert!(report.protection_levels.min_vertical_margin_m.expect("vertical min margin") < 0.0);
     }
 
     #[test]
