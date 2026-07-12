@@ -146,10 +146,15 @@ pub use crate::orbits::galileo::{
 };
 /// GLONASS navigation domain types.
 pub use crate::orbits::glonass::{
-    glonass_satellite_type_from_word, semicircles_to_radians, GlonassAlmanacEntry,
-    GlonassAlmanacTimeData, GlonassBroadcastNavigationFrame, GlonassFrameTime,
-    GlonassImmediateHealth, GlonassImmediateNavigationData, GlonassSatelliteType,
-    GlonassStateVector, GlonassSystemTime,
+    glonass_earth_rotation_correction, glonass_gps_minus_glonass_s, glonass_navigation_age,
+    glonass_satellite_clock_correction, glonass_satellite_type_from_word,
+    is_glonass_navigation_valid, sat_state_glonass_l1, sat_state_glonass_l1_at_receive_time,
+    sat_state_glonass_l1_from_observation, select_best_glonass_navigation,
+    semicircles_to_radians, GlonassAlmanacEntry, GlonassAlmanacTimeData,
+    GlonassBroadcastNavigationFrame, GlonassEarthRotationCorrection, GlonassFrameTime,
+    GlonassImmediateHealth, GlonassImmediateNavigationData, GlonassNavigationAge,
+    GlonassSatState, GlonassSatelliteClockCorrection, GlonassSatelliteType, GlonassStateVector,
+    GlonassSystemTime,
 };
 /// Broadcast ephemeris and satellite state.
 pub use crate::orbits::gps::{
