@@ -1315,7 +1315,7 @@ fn solve_epoch_ekf(
             z_hz: sat.doppler_hz.0,
             sat_pos_m: [state.x_m, state.y_m, state.z_m],
             sat_vel_mps: sat_vel,
-            wavelength_m: 299_792_458.0 / sat.metadata.signal.carrier_hz.value(),
+            wavelength_m: bijux_gnss_infra::api::core::signal_wavelength_m(sat.metadata.signal).0,
             sigma_hz: 2.0,
         };
         ctx.ekf.update(&doppler_meas);
@@ -1333,7 +1333,7 @@ fn solve_epoch_ekf(
             sat_clock_s: state.clock_correction.bias_s,
             tropo_m,
             iono_m,
-            wavelength_m: 299_792_458.0 / sat.metadata.signal.carrier_hz.value(),
+            wavelength_m: bijux_gnss_infra::api::core::signal_wavelength_m(sat.metadata.signal).0,
             ambiguity_index: Some(amb_idx),
             sigma_cycles: 0.05,
             elevation_deg: Some(el),
