@@ -4,9 +4,9 @@ use std::cmp::Ordering;
 
 use serde::{Deserialize, Serialize};
 
-use bijux_gnss_core::api::{ObsSignalTiming, SatId};
+use bijux_gnss_core::api::{Llh, ObsSignalTiming, SatId, Seconds};
 
-use crate::models::atmosphere::KlobucharCoefficients;
+use crate::models::atmosphere::{IonosphereModel, KlobucharCoefficients, KlobucharModel};
 
 const OMEGA_E_DOT: f64 = 7.292_115_146_7e-5;
 const MU: f64 = 3.986_005e14;
@@ -49,6 +49,23 @@ pub struct GpsBroadcastNavigationData {
     pub ephemerides: Vec<GpsEphemeris>,
     #[serde(default)]
     pub klobuchar: Option<KlobucharCoefficients>,
+}
+
+impl GpsBroadcastNavigationData {
+    pub fn klobuchar_model(&self) -> Option<KlobucharModel> {
+        self.klobuchar.map(KlobucharModel::new)
+    }
+
+    pub fn klobuchar_delay_l1_m(
+        &self,
+        receiver: Llh,
+        az_deg: f64,
+        el_deg: f64,
+        receive_tow_s: f64,
+    ) -> Option<f64> {
+        self.klobuchar_model()
+            .map(|model| model.delay_m(receiver, az_deg, el_deg, Seconds(receive_tow_s)))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -286,7 +303,7 @@ mod tests {
     use crate::formats::lnav_bits::{
         bit_sync_from_prompt, compute_parity, decode_words, demodulate_gps_l1ca_navigation_bits,
     };
-    use bijux_gnss_core::api::{Constellation, SatId};
+    use bijux_gnss_core::api::{Constellation, Llh, SatId, Seconds};
 
     fn encode_word(data: u32, prev_d29: u8, prev_d30: u8) -> [u8; 30] {
         let mut bits = [0_u8; 30];
@@ -635,6 +652,43 @@ mod tests {
         let expected_drift_rate = 2.0 * eph.af2;
         assert!((correction.drift_s_per_s - expected_drift).abs() < 1e-24);
         assert!((correction.drift_rate_s_per_s2 - expected_drift_rate).abs() < 1e-30);
+    }
+
+    #[test]
+    fn broadcast_navigation_returns_no_klobuchar_delay_without_coefficients() {
+        let navigation = GpsBroadcastNavigationData { ephemerides: Vec::new(), klobuchar: None };
+
+        assert_eq!(
+            navigation.klobuchar_delay_l1_m(
+                Llh { lat_deg: 37.0, lon_deg: -122.0, alt_m: 10.0 },
+                120.0,
+                30.0,
+                50_400.0,
+            ),
+            None
+        );
+        assert!(navigation.klobuchar_model().is_none());
+    }
+
+    #[test]
+    fn broadcast_navigation_klobuchar_delay_matches_model_delay() {
+        let coefficients = KlobucharCoefficients::new(
+            [0.1212e-7, 0.1490e-7, -0.5960e-7, 0.1192e-6],
+            [0.1167e6, -0.2294e6, -0.1311e6, 0.1049e7],
+        );
+        let navigation = GpsBroadcastNavigationData {
+            ephemerides: Vec::new(),
+            klobuchar: Some(coefficients),
+        };
+        let receiver = Llh { lat_deg: 37.0, lon_deg: -122.0, alt_m: 10.0 };
+        let model_delay_m =
+            KlobucharModel::new(coefficients).delay_m(receiver, 120.0, 30.0, Seconds(50_400.0));
+        let navigation_delay_m = navigation
+            .klobuchar_delay_l1_m(receiver, 120.0, 30.0, 50_400.0)
+            .expect("broadcast navigation delay");
+
+        assert!((navigation_delay_m - model_delay_m).abs() < 1.0e-12);
+        assert!(navigation_delay_m > 0.0);
     }
 
     fn sample_eph() -> GpsEphemeris {
