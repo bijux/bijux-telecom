@@ -2,8 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 
+use bijux_gnss_core::api::{Constellation, SatId};
+
 use crate::orbits::beidou::{
-    BeidouClockCorrection, BeidouIonosphericCorrection, BeidouSignalHealth, BeidouSystemTime,
+    BeidouBroadcastNavigationData, BeidouClockCorrection, BeidouEphemeris,
+    BeidouIonosphericCorrection, BeidouSignalHealth, BeidouSystemTime,
 };
 
 const BEIDOU_D1_SUBFRAME_BITS: usize = 300;
@@ -69,6 +72,23 @@ pub struct BeidouD1SubframeRejection {
     pub subframe_id: Option<u8>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BeidouD1BatchRejectionReason {
+    InvalidSatelliteId,
+    DuplicateSubframe,
+    NonConsecutiveSow,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BeidouD1BatchRejection {
+    pub reason: BeidouD1BatchRejectionReason,
+    pub sat: Option<SatId>,
+    pub subframe_id: Option<u8>,
+    pub expected_sow_s: Option<u32>,
+    pub incoming_sow_s: Option<u32>,
+}
+
 pub fn decode_beidou_b1i_subframe(
     bits: &[u8],
 ) -> Result<BeidouD1Subframe, BeidouD1SubframeRejection> {
@@ -108,6 +128,27 @@ pub fn decode_beidou_b1i_ephemeris_2_subframe(
 ) -> Result<BeidouD1Ephemeris2Subframe, BeidouD1SubframeRejection> {
     let normalized = normalize_bits(bits)?;
     decode_beidou_b1i_ephemeris_2_subframe_bits(&normalized)
+}
+
+pub fn decode_beidou_broadcast_navigation_data(
+    sat: SatId,
+    subframes: &[BeidouD1Subframe],
+) -> Result<Option<BeidouBroadcastNavigationData>, BeidouD1BatchRejection> {
+    if sat.constellation != Constellation::Beidou {
+        return Err(BeidouD1BatchRejection {
+            reason: BeidouD1BatchRejectionReason::InvalidSatelliteId,
+            sat: Some(sat),
+            subframe_id: None,
+            expected_sow_s: None,
+            incoming_sow_s: None,
+        });
+    }
+
+    let mut builder = BeidouD1BatchBuilder::new(sat);
+    for subframe in subframes {
+        builder.merge(subframe)?;
+    }
+    Ok(builder.try_build())
 }
 
 fn decode_beidou_b1i_clock_subframe_bits(
@@ -268,13 +309,160 @@ fn signed_from_unsigned(value: u64, bits: usize) -> i64 {
     ((value << shift) as i64) >> shift
 }
 
+#[derive(Debug, Default, Clone)]
+struct BeidouD1BatchBuilder {
+    sat: Option<SatId>,
+    clock: Option<BeidouD1ClockSubframe>,
+    ephemeris_1: Option<BeidouD1Ephemeris1Subframe>,
+    ephemeris_2: Option<BeidouD1Ephemeris2Subframe>,
+}
+
+impl BeidouD1BatchBuilder {
+    fn new(sat: SatId) -> Self {
+        Self { sat: Some(sat), ..Self::default() }
+    }
+
+    fn merge(&mut self, subframe: &BeidouD1Subframe) -> Result<(), BeidouD1BatchRejection> {
+        self.check_sow_progression(subframe)?;
+
+        match subframe {
+            BeidouD1Subframe::Clock(clock) => {
+                if self.clock.is_some() {
+                    return Err(self.duplicate_rejection(1, clock.bdt.sow_s));
+                }
+                self.clock = Some(clock.clone());
+            }
+            BeidouD1Subframe::Ephemeris1(ephemeris_1) => {
+                if self.ephemeris_1.is_some() {
+                    return Err(self.duplicate_rejection(2, ephemeris_1.sow_s));
+                }
+                self.ephemeris_1 = Some(ephemeris_1.clone());
+            }
+            BeidouD1Subframe::Ephemeris2(ephemeris_2) => {
+                if self.ephemeris_2.is_some() {
+                    return Err(self.duplicate_rejection(3, ephemeris_2.sow_s));
+                }
+                self.ephemeris_2 = Some(ephemeris_2.clone());
+            }
+        }
+
+        Ok(())
+    }
+
+    fn try_build(&self) -> Option<BeidouBroadcastNavigationData> {
+        let sat = self.sat?;
+        let clock = self.clock.as_ref()?;
+        let ephemeris_1 = self.ephemeris_1.as_ref()?;
+        let ephemeris_2 = self.ephemeris_2.as_ref()?;
+        let toe_s = ((((ephemeris_1.toe_msb2 as u32) << 15) | u32::from(ephemeris_2.toe_lsb15))
+            as f64)
+            * 8.0;
+
+        Some(BeidouBroadcastNavigationData {
+            sat,
+            bdt: clock.bdt,
+            urai: clock.urai,
+            signal_health: clock.signal_health,
+            clock: clock.clock,
+            ephemeris: BeidouEphemeris {
+                sat,
+                aode: clock.aode,
+                toe_s,
+                sqrt_a: ephemeris_1.sqrt_a,
+                e: ephemeris_1.e,
+                i0: ephemeris_2.i0,
+                idot: ephemeris_2.idot,
+                omega0: ephemeris_2.omega0,
+                omegadot: ephemeris_2.omegadot,
+                w: ephemeris_2.w,
+                m0: ephemeris_1.m0,
+                delta_n: ephemeris_1.delta_n,
+                cuc: ephemeris_1.cuc,
+                cus: ephemeris_1.cus,
+                crc: ephemeris_1.crc,
+                crs: ephemeris_1.crs,
+                cic: ephemeris_2.cic,
+                cis: ephemeris_2.cis,
+            },
+            ionosphere: clock.ionosphere,
+        })
+    }
+
+    fn check_sow_progression(
+        &self,
+        incoming: &BeidouD1Subframe,
+    ) -> Result<(), BeidouD1BatchRejection> {
+        let (subframe_id, incoming_sow_s, expected_sow_s) = match incoming {
+            BeidouD1Subframe::Clock(clock) => (
+                1,
+                clock.bdt.sow_s,
+                self.ephemeris_1.as_ref().map(|subframe| previous_sow(subframe.sow_s)).or_else(
+                    || {
+                        self.ephemeris_2
+                            .as_ref()
+                            .map(|subframe| previous_sow(previous_sow(subframe.sow_s)))
+                    },
+                ),
+            ),
+            BeidouD1Subframe::Ephemeris1(ephemeris_1) => (
+                2,
+                ephemeris_1.sow_s,
+                self.clock.as_ref().map(|subframe| next_sow(subframe.bdt.sow_s)).or_else(|| {
+                    self.ephemeris_2.as_ref().map(|subframe| previous_sow(subframe.sow_s))
+                }),
+            ),
+            BeidouD1Subframe::Ephemeris2(ephemeris_2) => (
+                3,
+                ephemeris_2.sow_s,
+                self.ephemeris_1.as_ref().map(|subframe| next_sow(subframe.sow_s)).or_else(|| {
+                    self.clock.as_ref().map(|subframe| next_sow(next_sow(subframe.bdt.sow_s)))
+                }),
+            ),
+        };
+
+        if let Some(expected_sow_s) = expected_sow_s {
+            if expected_sow_s != incoming_sow_s {
+                return Err(BeidouD1BatchRejection {
+                    reason: BeidouD1BatchRejectionReason::NonConsecutiveSow,
+                    sat: self.sat,
+                    subframe_id: Some(subframe_id),
+                    expected_sow_s: Some(expected_sow_s),
+                    incoming_sow_s: Some(incoming_sow_s),
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    fn duplicate_rejection(&self, subframe_id: u8, incoming_sow_s: u32) -> BeidouD1BatchRejection {
+        BeidouD1BatchRejection {
+            reason: BeidouD1BatchRejectionReason::DuplicateSubframe,
+            sat: self.sat,
+            subframe_id: Some(subframe_id),
+            expected_sow_s: None,
+            incoming_sow_s: Some(incoming_sow_s),
+        }
+    }
+}
+
+fn next_sow(sow_s: u32) -> u32 {
+    (sow_s + 6) % 604_800
+}
+
+fn previous_sow(sow_s: u32) -> u32 {
+    (sow_s + 604_800 - 6) % 604_800
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         decode_beidou_b1i_clock_subframe, decode_beidou_b1i_ephemeris_1_subframe,
-        decode_beidou_b1i_ephemeris_2_subframe, decode_beidou_b1i_subframe, BeidouD1Subframe,
+        decode_beidou_b1i_ephemeris_2_subframe, decode_beidou_b1i_subframe,
+        decode_beidou_broadcast_navigation_data, BeidouD1BatchRejectionReason, BeidouD1Subframe,
         BEIDOU_D1_PREAMBLE, BEIDOU_D1_SUBFRAME_BITS,
     };
+    use bijux_gnss_core::api::{Constellation, SatId};
 
     fn set_unsigned_bits(
         bits: &mut [u8; BEIDOU_D1_SUBFRAME_BITS],
@@ -445,5 +633,58 @@ mod tests {
             decode_beidou_b1i_subframe(&ephemeris_2_bits).expect("subframe"),
             BeidouD1Subframe::Ephemeris2(_)
         ));
+    }
+
+    #[test]
+    fn broadcast_navigation_assembly_combines_clock_and_ephemeris() {
+        let clock = decode_beidou_b1i_subframe(&sample_clock_subframe()).expect("clock");
+        let ephemeris_1 =
+            decode_beidou_b1i_subframe(&sample_ephemeris_1_subframe()).expect("ephemeris 1");
+        let ephemeris_2 =
+            decode_beidou_b1i_subframe(&sample_ephemeris_2_subframe()).expect("ephemeris 2");
+
+        let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
+        let navigation = decode_beidou_broadcast_navigation_data(
+            sat,
+            &[clock.clone(), ephemeris_1.clone(), ephemeris_2.clone()],
+        )
+        .expect("navigation assembly")
+        .expect("complete navigation");
+
+        assert_eq!(navigation.sat, sat);
+        assert_eq!(navigation.bdt.week, 1_234);
+        assert_eq!(navigation.ephemeris.aode, 19);
+        assert_eq!(navigation.ephemeris.toe_s, (((0b10_u32 << 15) | 0x4321_u32) as f64) * 8.0);
+        assert_eq!(navigation.clock.aodc, 17);
+        assert!(navigation.signal_health.autonomous_satellite_good);
+    }
+
+    #[test]
+    fn broadcast_navigation_rejects_duplicate_subframe() {
+        let clock = decode_beidou_b1i_subframe(&sample_clock_subframe()).expect("clock");
+        let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
+
+        let rejection = decode_beidou_broadcast_navigation_data(sat, &[clock.clone(), clock])
+            .expect_err("duplicate subframe rejection");
+
+        assert_eq!(rejection.reason, BeidouD1BatchRejectionReason::DuplicateSubframe);
+        assert_eq!(rejection.subframe_id, Some(1));
+    }
+
+    #[test]
+    fn broadcast_navigation_rejects_nonconsecutive_sow() {
+        let clock = decode_beidou_b1i_subframe(&sample_clock_subframe()).expect("clock");
+        let mut ephemeris_1_bits = sample_ephemeris_1_subframe();
+        set_split_unsigned_bits(&mut ephemeris_1_bits, &[(19, 8), (31, 12)], 345_700);
+        let ephemeris_1 = decode_beidou_b1i_subframe(&ephemeris_1_bits).expect("ephemeris 1");
+        let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
+
+        let rejection = decode_beidou_broadcast_navigation_data(sat, &[clock, ephemeris_1])
+            .expect_err("sow mismatch rejection");
+
+        assert_eq!(rejection.reason, BeidouD1BatchRejectionReason::NonConsecutiveSow);
+        assert_eq!(rejection.subframe_id, Some(2));
+        assert_eq!(rejection.expected_sow_s, Some(345_684));
+        assert_eq!(rejection.incoming_sow_s, Some(345_700));
     }
 }

@@ -82,9 +82,10 @@ pub use crate::estimation::rtk::single_difference::{
 /// BeiDou B1I D1 navigation decoding.
 pub use crate::formats::beidou_b1i_navigation_decode::{
     decode_beidou_b1i_clock_subframe, decode_beidou_b1i_ephemeris_1_subframe,
-    decode_beidou_b1i_ephemeris_2_subframe, decode_beidou_b1i_subframe, BeidouD1ClockSubframe,
-    BeidouD1Ephemeris1Subframe, BeidouD1Ephemeris2Subframe, BeidouD1Subframe,
-    BeidouD1SubframeRejection, BeidouD1SubframeRejectionReason,
+    decode_beidou_b1i_ephemeris_2_subframe, decode_beidou_b1i_subframe,
+    decode_beidou_broadcast_navigation_data, BeidouD1BatchRejection, BeidouD1BatchRejectionReason,
+    BeidouD1ClockSubframe, BeidouD1Ephemeris1Subframe, BeidouD1Ephemeris2Subframe,
+    BeidouD1Subframe, BeidouD1SubframeRejection, BeidouD1SubframeRejectionReason,
 };
 /// Format parsing and output.
 pub use crate::formats::galileo_inav_decode::{
