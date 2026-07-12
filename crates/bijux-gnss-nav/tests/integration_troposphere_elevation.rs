@@ -1,5 +1,9 @@
 #![allow(missing_docs)]
 
+use std::env;
+use std::fs;
+use std::path::Path;
+
 mod support;
 
 use bijux_gnss_core::api::{Llh, Seconds};
@@ -7,10 +11,17 @@ use bijux_gnss_nav::api::{
     ecef_to_geodetic, elevation_azimuth_deg, sat_state_gps_l1ca_from_observation,
     SaastamoinenModel, TroposphereModel,
 };
-use bijux_gnss_testkit::public_troposphere::LOW_ELEVATION_CEILING_DEG;
+use bijux_gnss_testkit::public_troposphere::{
+    build_public_troposphere_elevation_report, PublicTroposphereElevationReport,
+    LOW_ELEVATION_CEILING_DEG,
+};
 use support::position_truth::{
     add_saastamoinen_delay_to_observations, four_satellite_position_scenario,
 };
+use support::public_spp_case::ab43_public_spp_case;
+
+const REGENERATE_PUBLIC_TROPOSPHERE_FIXTURE_ENV: &str =
+    "BIJUX_REGENERATE_PUBLIC_TROPOSPHERE_FIXTURE";
 
 #[derive(Debug, Clone, Copy)]
 struct ResidualSample {
@@ -53,6 +64,55 @@ fn synthetic_low_elevation_residuals_improve_with_troposphere_correction() {
     assert!(
         mean_abs_improvement_m(&low_samples) > mean_abs_improvement_m(&high_samples),
         "low-elevation residual improvement should exceed high-elevation improvement; low={low_samples:?} high={high_samples:?}"
+    );
+}
+
+#[test]
+fn public_ab43_troposphere_correction_improves_low_elevation_residuals() {
+    let case = ab43_public_spp_case();
+    let report = build_public_troposphere_elevation_report(
+        &case.observations,
+        &case.navigation,
+        &case.station_truth,
+    )
+    .expect("build AB43 public troposphere elevation report");
+    if env::var_os(REGENERATE_PUBLIC_TROPOSPHERE_FIXTURE_ENV).is_some() {
+        write_public_troposphere_fixture("public_troposphere_elevation/ab43.json", &report);
+    }
+    let expected = load_public_troposphere_fixture_text("public_troposphere_elevation/ab43.json");
+    let actual =
+        format!("{}\n", serde_json::to_string_pretty(&report).expect("serialize troposphere report"));
+
+    assert_eq!(
+        actual,
+        expected,
+        "AB43 troposphere elevation report drifted; set {REGENERATE_PUBLIC_TROPOSPHERE_FIXTURE_ENV}=1 to refresh the fixture when the new behavior is intended",
+    );
+
+    let low_bucket = report
+        .buckets
+        .iter()
+        .find(|bucket| bucket.bucket_name == "low")
+        .expect("low-elevation bucket");
+    let high_bucket = report
+        .buckets
+        .iter()
+        .find(|bucket| bucket.bucket_name == "high")
+        .expect("high-elevation bucket");
+
+    assert!(report.compared_epoch_count > 0, "AB43 report should compare solved epochs");
+    assert!(low_bucket.sample_count > 0, "AB43 report should include low-elevation samples");
+    assert!(
+        report.overall_mean_abs_improvement_m > 0.5,
+        "AB43 overall residual improvement should remain meaningful: {report:?}"
+    );
+    assert!(
+        low_bucket.mean_abs_improvement_m > 0.5,
+        "AB43 low-elevation residuals should improve with troposphere correction: {low_bucket:?}"
+    );
+    assert!(
+        low_bucket.mean_abs_improvement_m > high_bucket.mean_abs_improvement_m,
+        "AB43 low-elevation improvement should exceed high-elevation improvement; low={low_bucket:?} high={high_bucket:?}"
     );
 }
 
@@ -107,4 +167,25 @@ fn mean_abs_improvement_m(samples: &[ResidualSample]) -> f64 {
         .map(|sample| sample.uncorrected_abs_residual_m - sample.corrected_abs_residual_m)
         .sum::<f64>()
         / samples.len() as f64
+}
+
+fn load_public_troposphere_fixture_text(fixture_file: &str) -> String {
+    fs::read_to_string(public_troposphere_fixture_path(fixture_file))
+        .expect("public troposphere elevation fixture")
+}
+
+fn write_public_troposphere_fixture(
+    fixture_file: &str,
+    report: &PublicTroposphereElevationReport,
+) {
+    let path = public_troposphere_fixture_path(fixture_file);
+    let parent = path.parent().expect("fixture parent directory");
+    fs::create_dir_all(parent).expect("create troposphere fixture directory");
+    let contents =
+        serde_json::to_string_pretty(report).expect("serialize public troposphere fixture");
+    fs::write(path, format!("{contents}\n")).expect("write public troposphere fixture");
+}
+
+fn public_troposphere_fixture_path(fixture_file: &str) -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data").join(fixture_file)
 }
