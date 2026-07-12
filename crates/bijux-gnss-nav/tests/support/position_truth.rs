@@ -250,6 +250,28 @@ pub fn add_saastamoinen_delay_to_observations(
         .collect()
 }
 
+pub fn add_satellite_delay_biases_to_observations(
+    observations: &[PositionObservation],
+    delay_biases_by_sat_m: &[(SatId, f64)],
+) -> Vec<PositionObservation> {
+    let delay_biases_by_sat_m =
+        delay_biases_by_sat_m.iter().copied().collect::<std::collections::BTreeMap<_, _>>();
+    observations
+        .iter()
+        .map(|observation| {
+            let delay_m = delay_biases_by_sat_m.get(&observation.sat).copied().unwrap_or(0.0);
+            delay_bias_to_observation(observation, delay_m)
+        })
+        .collect()
+}
+
+pub fn add_uniform_delay_bias_to_observations(
+    observations: &[PositionObservation],
+    delay_m: f64,
+) -> Vec<PositionObservation> {
+    observations.iter().map(|observation| delay_bias_to_observation(observation, delay_m)).collect()
+}
+
 pub fn timed_position_observation(
     sat: SatId,
     pseudorange_m: f64,
@@ -361,14 +383,12 @@ pub fn gps_l1ca_doppler_from_truth(
         truth_velocity_ecef_mps.1 - sat_vy_mps,
         truth_velocity_ecef_mps.2 - sat_vz_mps,
     ];
-    let range_rate_mps =
-        los[0] * relative_velocity_mps[0]
-            + los[1] * relative_velocity_mps[1]
-            + los[2] * relative_velocity_mps[2];
+    let range_rate_mps = los[0] * relative_velocity_mps[0]
+        + los[1] * relative_velocity_mps[1]
+        + los[2] * relative_velocity_mps[2];
 
     -range_rate_mps / wavelength_m
-        + SPEED_OF_LIGHT_MPS
-            * (receiver_clock_drift_s_per_s - state.clock_correction.drift_s_per_s)
+        + SPEED_OF_LIGHT_MPS * (receiver_clock_drift_s_per_s - state.clock_correction.drift_s_per_s)
             / wavelength_m
 }
 
@@ -386,6 +406,21 @@ fn gps_satellite_velocity_mps(
         (next.y_m - previous.y_m) * inverse_dt,
         (next.z_m - previous.z_m) * inverse_dt,
     )
+}
+
+fn delay_bias_to_observation(
+    observation: &PositionObservation,
+    delay_m: f64,
+) -> PositionObservation {
+    let delay_s = delay_m / SPEED_OF_LIGHT_MPS;
+    let mut biased = observation.clone();
+    biased.pseudorange_m += delay_m;
+    if let Some(signal_timing) = &mut biased.signal_timing {
+        signal_timing.signal_travel_time_s =
+            Seconds(signal_timing.signal_travel_time_s.0 + delay_s);
+        signal_timing.transmit_gps_time = signal_timing.transmit_gps_time.offset_seconds(-delay_s);
+    }
+    biased
 }
 
 pub fn iterative_pseudorange_residual_m(
