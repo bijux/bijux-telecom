@@ -26,6 +26,20 @@ use crate::orbits::gps::{
     GpsEphemeris, GpsSatState,
 };
 
+fn resolved_iono_free_code_bias_m(
+    provider: &dyn CodeBiasProvider,
+    observation: super::measurements::IonoFreeCodeMeasurementObservation,
+) -> f64 {
+    iono_free_code_bias_m(
+        provider,
+        observation.signal_1,
+        observation.signal_2,
+        observation.f1_hz,
+        observation.f2_hz,
+    )
+    .unwrap_or(0.0)
+}
+
 impl PppFilter {
     pub fn new(config: PppConfig) -> Self {
         let x = vec![0.0_f64; 9];
@@ -177,14 +191,8 @@ impl PppFilter {
                 if let Some(iono_free_code) =
                     iono_free_code_observation_from_obs(obs, sat.signal_id.sat)
                 {
-                    let iono_free_code_bias_m = iono_free_code_bias_m(
-                        self.code_bias.as_ref(),
-                        iono_free_code.signal_1,
-                        iono_free_code.signal_2,
-                        iono_free_code.f1_hz,
-                        iono_free_code.f2_hz,
-                    )
-                    .unwrap_or(0.0);
+                    let iono_free_code_bias_m =
+                        resolved_iono_free_code_bias_m(self.code_bias.as_ref(), iono_free_code);
                     let code = PppIonoFreeCodeMeasurement {
                         z_m: iono_free_code.code_m - iono_free_code_bias_m,
                         sat_pos_m: [state.x_m, state.y_m, state.z_m],
@@ -466,14 +474,17 @@ fn validate_broadcast_ephemeris(
 
 #[cfg(test)]
 mod tests {
-    use super::{iono_free_satellite_representatives, PppFilter};
+    use super::{iono_free_satellite_representatives, resolved_iono_free_code_bias_m, PppFilter};
     use crate::api::{
         BroadcastProductsProvider, GpsEphemeris, GpsSatState, GpsSatelliteClockCorrection,
         PppConfig, ProductDiagnostics, ProductsProvider,
     };
+    use crate::corrections::biases::{CodeBias, SignalCodeBiases};
+    use crate::estimation::ppp::measurements::iono_free_code_observation_from_obs;
     use bijux_gnss_core::api::{
         signal_spec_gps_l1_ca, signal_spec_gps_l2_py, Constellation, Cycles, Hertz, LockFlags,
-        Meters, ObsMetadata, ObsSatellite, ObservationStatus, SatId, SigId, SignalBand, SignalCode,
+        Meters, ObsEpoch, ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus,
+        ReceiverRole, ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
     };
 
     #[derive(Debug, Clone)]
@@ -621,5 +632,75 @@ mod tests {
 
         assert_eq!(representatives.len(), 1);
         assert_eq!(representatives[0].signal_id.band, SignalBand::L1);
+    }
+
+    #[test]
+    fn ppp_filter_resolves_iono_free_code_bias_from_both_signals() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+        let l1 = ObsSatellite {
+            signal_id: SigId { sat, band: SignalBand::L1, code: SignalCode::Ca },
+            pseudorange_m: Meters(20_200_010.0),
+            pseudorange_var_m2: 1.0,
+            carrier_phase_cycles: Cycles(100.0),
+            carrier_phase_var_cycles2: 0.01,
+            doppler_hz: Hertz(0.0),
+            doppler_var_hz2: 1.0,
+            cn0_dbhz: 45.0,
+            lock_flags: LockFlags {
+                code_lock: true,
+                carrier_lock: true,
+                bit_lock: false,
+                cycle_slip: false,
+            },
+            multipath_suspect: false,
+            observation_status: ObservationStatus::Accepted,
+            observation_reject_reasons: Vec::new(),
+            elevation_deg: None,
+            azimuth_deg: None,
+            weight: None,
+            timing: None,
+            error_model: None,
+            metadata: ObsMetadata {
+                tracking_mode: "test".to_string(),
+                integration_ms: 1,
+                lock_quality: 45.0,
+                smoothing_window: 0,
+                smoothing_age: 0,
+                smoothing_resets: 0,
+                signal: signal_spec_gps_l1_ca(),
+                ..ObsMetadata::default()
+            },
+        };
+        let l2 = ObsSatellite {
+            signal_id: SigId { sat, band: SignalBand::L2, code: SignalCode::Py },
+            pseudorange_m: Meters(20_200_005.0),
+            metadata: ObsMetadata { signal: signal_spec_gps_l2_py(), ..l1.metadata.clone() },
+            ..l1.clone()
+        };
+        let obs = ObsEpoch {
+            t_rx_s: Seconds(0.0),
+            source_time: ReceiverSampleTrace::from_sample_index(0, 1_000.0),
+            gps_week: None,
+            tow_s: None,
+            epoch_idx: 0,
+            discontinuity: false,
+            valid: true,
+            processing_ms: None,
+            role: ReceiverRole::Rover,
+            sats: vec![l1, l2],
+            decision: ObservationEpochDecision::Accepted,
+            decision_reason: Some("accepted_observables_present".to_string()),
+            manifest: None,
+        };
+        let measurement = iono_free_code_observation_from_obs(&obs, sat).expect("iono-free code");
+        let bias_table = SignalCodeBiases::from_biases([
+            CodeBias { sig: measurement.signal_1, bias_m: 2.0 },
+            CodeBias { sig: measurement.signal_2, bias_m: -0.5 },
+        ]);
+
+        let resolved_bias_m = resolved_iono_free_code_bias_m(&bias_table, measurement);
+
+        assert!((resolved_bias_m - 2.0).abs() > 1.0e-3);
+        assert!(resolved_bias_m.is_finite());
     }
 }
