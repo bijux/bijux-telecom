@@ -9,15 +9,14 @@
 //! TODO(ref-grade): add literature citations for CN0 weighting and multipath heuristics.
 
 use bijux_gnss_core::api::{
-    signal_registry, signal_spec_beidou_b1i, signal_spec_beidou_b2i, signal_spec_galileo_e1b,
-    signal_spec_glonass_l1, signal_spec_galileo_e5a, signal_spec_gps_l1_ca,
-    signal_spec_gps_l2c, signal_spec_gps_l5,
+    signal_cycles_to_meters, signal_registry, signal_spec_beidou_b1i, signal_spec_beidou_b2i,
+    signal_spec_galileo_e1b, signal_spec_glonass_l1, signal_spec_galileo_e5a,
+    signal_spec_gps_l1_ca, signal_spec_gps_l2c, signal_spec_gps_l5, signal_wavelength_m,
     Constellation, ConventionsConfig, Cycles, DiagnosticEvent, DiagnosticSeverity, GpsTime,
-    LockFlags, Meters, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest, ObsMetadata,
-    ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationStatus,
-    ObservationSupportClass, ObservationUncertaintyClass, ReceiverRole, ReceiverSampleTrace,
-    SatObservationDecision, Seconds, SigId, SignalBand, SignalCode, SignalSpec, TrackEpoch,
-    GPS_L1_CA_CARRIER_HZ,
+    LockFlags, Meters, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest, ObsMetadata, ObsSatellite,
+    ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ObservationSupportClass,
+    ObservationUncertaintyClass, ReceiverRole, ReceiverSampleTrace, SatObservationDecision,
+    Seconds, SigId, SignalBand, SignalCode, SignalSpec, TrackEpoch, GPS_L1_CA_CARRIER_HZ,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -537,7 +536,7 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
                     entry.sats.push(sat);
                     continue;
                 }
-                let lambda_m = SPEED_OF_LIGHT_MPS / sat.metadata.signal.carrier_hz.value();
+                let lambda_m = signal_wavelength_m(sat.metadata.signal).0;
                 let state = hatch.entry(sat.signal_id).or_default();
                 if !sat.lock_flags.code_lock {
                     raw_snapshots
@@ -556,7 +555,8 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
                 let raw_pseudorange_m = sat.pseudorange_m.0;
                 raw_snapshots
                     .insert(snapshot_key, raw_observation_snapshot(&sat, raw_pseudorange_m));
-                let raw_divergence_m = raw_pseudorange_m - sat.carrier_phase_cycles.0 * lambda_m;
+                let raw_divergence_m =
+                    raw_pseudorange_m - signal_cycles_to_meters(sat.carrier_phase_cycles, sat.metadata.signal).0;
                 let threshold_m = slip_threshold_m(sat.cn0_dbhz, sat.elevation_deg);
                 let divergence_jump = state.divergence_jump_m(raw_divergence_m).unwrap_or(0.0);
                 let mut smoothing_cycle_slip_reason = None;
