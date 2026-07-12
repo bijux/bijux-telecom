@@ -15,8 +15,8 @@ use bijux_gnss_nav::api::{
     sat_state_gps_l1ca_from_observation, GpsEphemeris, KlobucharCoefficients,
     PositionBroadcastNavigation, PositionFilterMotionClass, PositionObservation,
     PositionRobustWeighting, PositionSolutionSmoother, PositionSolutionSmootherConfig,
-    PositionSolveRefusalKind, PositionSolver, PositionWeightingModel,
-    RaimFaultDetectionStatus, WeightingConfig,
+    PositionSolveRefusalKind, PositionSolver, PositionWeightingModel, RaimFaultDetectionStatus,
+    WeightingConfig,
 };
 
 use crate::engine::receiver_config::{
@@ -24,6 +24,7 @@ use crate::engine::receiver_config::{
 };
 use crate::engine::runtime::ReceiverRuntime;
 use crate::pipeline::common_code_doppler_anomaly::detect_common_code_doppler_anomaly;
+use crate::pipeline::replay_timing_anomaly::detect_replay_timing_anomaly;
 use crate::pipeline::satellite_clock_anomaly::{
     advance_satellite_clock_suspect_streak, detect_satellite_clock_anomaly,
 };
@@ -675,6 +676,7 @@ impl Navigation {
 
         let mut raim_explain_reasons = Vec::new();
         let mut common_anomaly_explain_reasons = Vec::new();
+        let mut replay_timing_explain_reasons = Vec::new();
         let mut resolved_by_raim_exclusion = false;
         let mut clock_anomaly_explain_reasons = Vec::new();
         if let Some(solution_separation) = solution.raim_solution_separation.as_ref() {
@@ -751,14 +753,12 @@ impl Navigation {
             next_satellite_clock_suspect_streak,
         ) {
             nav_epoch.status = SolutionStatus::Degraded;
-            nav_epoch
-                .health
-                .push(bijux_gnss_core::api::NavHealthEvent::SatelliteClockAnomaly {
-                    sat: clock_anomaly.sat,
-                    persistent_suspect_epochs: clock_anomaly.persistent_suspect_epochs,
-                    max_solution_separation_m: clock_anomaly.max_solution_separation_m,
-                    separation_threshold_m: clock_anomaly.separation_threshold_m,
-                });
+            nav_epoch.health.push(bijux_gnss_core::api::NavHealthEvent::SatelliteClockAnomaly {
+                sat: clock_anomaly.sat,
+                persistent_suspect_epochs: clock_anomaly.persistent_suspect_epochs,
+                max_solution_separation_m: clock_anomaly.max_solution_separation_m,
+                separation_threshold_m: clock_anomaly.separation_threshold_m,
+            });
             clock_anomaly_explain_reasons.push("satellite_clock_anomaly".to_string());
             clock_anomaly_explain_reasons
                 .push(format!("satellite_clock_anomaly_prn={}", clock_anomaly.sat.prn));
@@ -781,21 +781,17 @@ impl Navigation {
             &observations,
         ) {
             nav_epoch.status = SolutionStatus::Degraded;
-            nav_epoch
-                .health
-                .push(bijux_gnss_core::api::NavHealthEvent::CommonCodeDopplerAnomaly {
-                    common_code_step_m: common_anomaly.common_code_step_m,
-                    common_doppler_step_hz: common_anomaly.common_doppler_step_hz,
-                    matched_satellite_count: common_anomaly.matched_satellite_count,
-                    aligned_satellite_count: common_anomaly.aligned_satellite_count,
-                    code_step_threshold_m: common_anomaly.code_step_threshold_m,
-                    doppler_step_threshold_hz: common_anomaly.doppler_step_threshold_hz,
-                });
+            nav_epoch.health.push(bijux_gnss_core::api::NavHealthEvent::CommonCodeDopplerAnomaly {
+                common_code_step_m: common_anomaly.common_code_step_m,
+                common_doppler_step_hz: common_anomaly.common_doppler_step_hz,
+                matched_satellite_count: common_anomaly.matched_satellite_count,
+                aligned_satellite_count: common_anomaly.aligned_satellite_count,
+                code_step_threshold_m: common_anomaly.code_step_threshold_m,
+                doppler_step_threshold_hz: common_anomaly.doppler_step_threshold_hz,
+            });
             common_anomaly_explain_reasons.push("common_code_doppler_anomaly".to_string());
-            common_anomaly_explain_reasons.push(format!(
-                "common_code_step_m={:.3}",
-                common_anomaly.common_code_step_m
-            ));
+            common_anomaly_explain_reasons
+                .push(format!("common_code_step_m={:.3}", common_anomaly.common_code_step_m));
             common_anomaly_explain_reasons.push(format!(
                 "common_doppler_step_hz={:.3}",
                 common_anomaly.common_doppler_step_hz
@@ -809,6 +805,46 @@ impl Navigation {
                     common_anomaly.common_doppler_step_hz,
                     common_anomaly.aligned_satellite_count,
                     common_anomaly.matched_satellite_count
+                ),
+            ));
+        }
+        if let Some(replay_timing_anomaly) = detect_replay_timing_anomaly(
+            self.last_solution.as_ref(),
+            self.last_position_observations.as_deref(),
+            &nav_epoch,
+            &observations,
+        ) {
+            nav_epoch.status = SolutionStatus::Degraded;
+            nav_epoch.health.push(bijux_gnss_core::api::NavHealthEvent::ReplayTimingAnomaly {
+                common_delay_step_m: replay_timing_anomaly.common_delay_step_m,
+                centered_delay_rms_m: replay_timing_anomaly.centered_delay_rms_m,
+                max_centered_delay_m: replay_timing_anomaly.max_centered_delay_m,
+                matched_satellite_count: replay_timing_anomaly.matched_satellite_count,
+                positive_step_satellite_count: replay_timing_anomaly.positive_step_satellite_count,
+                common_delay_step_threshold_m: replay_timing_anomaly.common_delay_step_threshold_m,
+                centered_delay_rms_threshold_m: replay_timing_anomaly
+                    .centered_delay_rms_threshold_m,
+            });
+            replay_timing_explain_reasons.push("replay_timing_anomaly".to_string());
+            replay_timing_explain_reasons.push(format!(
+                "common_delay_step_m={:.3}",
+                replay_timing_anomaly.common_delay_step_m
+            ));
+            replay_timing_explain_reasons.push(format!(
+                "centered_delay_rms_m={:.3}",
+                replay_timing_anomaly.centered_delay_rms_m
+            ));
+            self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                "NAV_REPLAY_TIMING_ANOMALY",
+                format!(
+                    "positive code-delay steps suggest replayed timing: median {:.2} m, centered rms {:.2} m, max {:.2} m across {}/{} matched satellites; clock step {:.2} m",
+                    replay_timing_anomaly.common_delay_step_m,
+                    replay_timing_anomaly.centered_delay_rms_m,
+                    replay_timing_anomaly.max_centered_delay_m,
+                    replay_timing_anomaly.positive_step_satellite_count,
+                    replay_timing_anomaly.matched_satellite_count,
+                    replay_timing_anomaly.clock_step_m
                 ),
             ));
         }
@@ -885,14 +921,15 @@ impl Navigation {
                 nav_epoch.explain_reasons.push(reason);
             }
         }
+        for reason in replay_timing_explain_reasons {
+            if !nav_epoch.explain_reasons.iter().any(|existing| existing == &reason) {
+                nav_epoch.explain_reasons.push(reason);
+            }
+        }
         nav_epoch.stability_signature = nav_output_stability_signature(&nav_epoch);
         let protection_levels = nav_epoch.position_covariance_ecef_m2.and_then(|covariance| {
             formal_protection_levels(
-                [
-                    nav_epoch.ecef_x_m.0,
-                    nav_epoch.ecef_y_m.0,
-                    nav_epoch.ecef_z_m.0,
-                ],
+                [nav_epoch.ecef_x_m.0, nav_epoch.ecef_y_m.0, nav_epoch.ecef_z_m.0],
                 covariance,
             )
         });
