@@ -126,9 +126,9 @@ pub use crate::validation_report::{
     build_validation_report_from_observation_artifacts_with_budgets,
     build_validation_report_with_budgets, check_time_consistency, ConvergenceReport,
     DiagnosticPartitionReport, FixTimelineEntry, NavIntegrityClass, NavIntegrityReport,
-    NavResidualReport, PppReadinessReport, ReferencePositionErrorEpoch, TimeConsistencyReport,
-    ValidationAssumptionReport, ValidationBudgets, ValidationErrorStats, ValidationReport,
-    ValidationSciencePolicy,
+    NavConstellationResidualReport, NavResidualReport, PppReadinessReport,
+    ReferencePositionErrorEpoch, TimeConsistencyReport, ValidationAssumptionReport,
+    ValidationBudgets, ValidationErrorStats, ValidationReport, ValidationSciencePolicy,
 };
 
 /// Artifacts produced by a receiver pipeline run.

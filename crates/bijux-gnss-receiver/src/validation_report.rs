@@ -262,6 +262,21 @@ pub struct ValidationAssumptionReport {
 
 /// Navigation residual report per epoch.
 #[derive(Debug, Serialize)]
+pub struct NavConstellationResidualReport {
+    /// Constellation represented by the summary.
+    pub constellation: String,
+    /// Pre-fit residual RMS for that constellation (m).
+    pub pre_fit_rms_m: Option<f64>,
+    /// Post-fit residual RMS for that constellation (m).
+    pub post_fit_rms_m: Option<f64>,
+    /// Number of satellites contributing to the pre-fit RMS.
+    pub pre_fit_sat_count: usize,
+    /// Number of satellites contributing to the post-fit RMS.
+    pub post_fit_sat_count: usize,
+}
+
+/// Navigation residual report per epoch.
+#[derive(Debug, Serialize)]
 pub struct NavResidualReport {
     /// Epoch index.
     pub epoch_idx: u64,
@@ -275,6 +290,8 @@ pub struct NavResidualReport {
     pub pdop: f64,
     /// Per-satellite residuals.
     pub residuals: Vec<(SatId, f64)>,
+    /// Per-constellation residual RMS summaries.
+    pub constellation_residual_rms: Vec<NavConstellationResidualReport>,
     /// Rejected satellites.
     pub rejected: Vec<SatId>,
 }
@@ -589,6 +606,17 @@ fn build_validation_report_with_observation_context(
             post_fit_rms_m: sol.post_fit_residual_rms_m.map(|value| value.0),
             pdop: sol.pdop,
             residuals: per_sat,
+            constellation_residual_rms: sol
+                .constellation_residual_rms
+                .iter()
+                .map(|summary| NavConstellationResidualReport {
+                    constellation: format!("{:?}", summary.constellation),
+                    pre_fit_rms_m: summary.pre_fit_rms_m.map(|value| value.0),
+                    post_fit_rms_m: summary.post_fit_rms_m.map(|value| value.0),
+                    pre_fit_sat_count: summary.pre_fit_sat_count,
+                    post_fit_sat_count: summary.post_fit_sat_count,
+                })
+                .collect(),
             rejected,
         });
     }
@@ -1277,6 +1305,7 @@ mod tests {
             valid: true,
             processing_ms: None,
             residuals: Vec::new(),
+            constellation_residual_rms: Vec::new(),
             health: Vec::new(),
             isb: Vec::new(),
             sigma_h_m: None,
@@ -1403,6 +1432,22 @@ mod tests {
         solution.pre_fit_residual_rms_m = Some(bijux_gnss_core::api::Meters(12.0));
         solution.post_fit_residual_rms_m = Some(bijux_gnss_core::api::Meters(3.0));
         solution.rms_m = bijux_gnss_core::api::Meters(3.0);
+        solution.constellation_residual_rms = vec![
+            bijux_gnss_core::api::NavConstellationResidualRms {
+                constellation: Constellation::Gps,
+                pre_fit_rms_m: Some(bijux_gnss_core::api::Meters(10.0)),
+                post_fit_rms_m: Some(bijux_gnss_core::api::Meters(2.0)),
+                pre_fit_sat_count: 4,
+                post_fit_sat_count: 4,
+            },
+            bijux_gnss_core::api::NavConstellationResidualRms {
+                constellation: Constellation::Galileo,
+                pre_fit_rms_m: Some(bijux_gnss_core::api::Meters(16.0)),
+                post_fit_rms_m: Some(bijux_gnss_core::api::Meters(5.0)),
+                pre_fit_sat_count: 2,
+                post_fit_sat_count: 2,
+            },
+        ];
 
         let report = build_validation_report(
             &[],
@@ -1421,6 +1466,13 @@ mod tests {
         assert_eq!(residual.rms_m, 3.0);
         assert_eq!(residual.pre_fit_rms_m, Some(12.0));
         assert_eq!(residual.post_fit_rms_m, Some(3.0));
+        assert_eq!(residual.constellation_residual_rms.len(), 2);
+        assert_eq!(residual.constellation_residual_rms[0].constellation, "Gps");
+        assert_eq!(residual.constellation_residual_rms[0].pre_fit_rms_m, Some(10.0));
+        assert_eq!(residual.constellation_residual_rms[0].post_fit_rms_m, Some(2.0));
+        assert_eq!(residual.constellation_residual_rms[0].pre_fit_sat_count, 4);
+        assert_eq!(residual.constellation_residual_rms[0].post_fit_sat_count, 4);
+        assert_eq!(residual.constellation_residual_rms[1].constellation, "Galileo");
     }
 
     #[test]
@@ -1915,6 +1967,7 @@ mod tests {
             sigma_h_m: Some(bijux_gnss_core::api::Meters(1.0)),
             sigma_v_m: Some(bijux_gnss_core::api::Meters(1.0)),
             residuals: Vec::new(),
+            constellation_residual_rms: Vec::new(),
             isb: Vec::new(),
             health: Vec::new(),
             innovation_rms_m: None,

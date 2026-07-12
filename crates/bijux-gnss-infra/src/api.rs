@@ -17,9 +17,9 @@ pub use bijux_gnss_receiver::api::{
     build_validation_report, build_validation_report_from_observation_artifacts,
     build_validation_report_from_observation_artifacts_with_budgets,
     build_validation_report_with_budgets, check_time_consistency,
-    CarrierSmoothedCodeValidationReport, ConvergenceReport, FixTimelineEntry, NavResidualReport,
-    PppReadinessReport, TimeConsistencyReport, ValidationBudgets, ValidationErrorStats,
-    ValidationReport,
+    CarrierSmoothedCodeValidationReport, ConvergenceReport, FixTimelineEntry,
+    NavConstellationResidualReport, NavResidualReport, PppReadinessReport,
+    TimeConsistencyReport, ValidationBudgets, ValidationErrorStats, ValidationReport,
 };
 
 /// Receiver API re-exports for CLI convenience.
