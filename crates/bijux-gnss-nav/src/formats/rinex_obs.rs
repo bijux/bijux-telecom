@@ -21,6 +21,28 @@ enum RinexObservationTimeSystem {
     Utc,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RinexCodeBiasState {
+    Unknown,
+    Applied,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RinexCodeBiasStatus {
+    pub state: RinexCodeBiasState,
+    pub source: Option<String>,
+}
+
+impl RinexCodeBiasStatus {
+    fn unknown() -> Self {
+        Self { state: RinexCodeBiasState::Unknown, source: None }
+    }
+
+    fn applied(source: String) -> Self {
+        Self { state: RinexCodeBiasState::Applied, source: Some(source) }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct RinexObservationHeader {
     version: f64,
@@ -30,6 +52,7 @@ struct RinexObservationHeader {
     time_system: RinexObservationTimeSystem,
     obs_types_v2: Option<Vec<String>>,
     obs_types_by_system: BTreeMap<char, Vec<String>>,
+    dcbs_applied_by_system: BTreeMap<char, String>,
 }
 
 impl RinexObservationHeader {
@@ -52,6 +75,14 @@ impl RinexObservationHeader {
             self.obs_types_v2.as_deref()
         }
     }
+
+    fn code_bias_status(&self, system: char) -> RinexCodeBiasStatus {
+        self.dcbs_applied_by_system
+            .get(&system)
+            .cloned()
+            .map(RinexCodeBiasStatus::applied)
+            .unwrap_or_else(RinexCodeBiasStatus::unknown)
+    }
 }
 
 /// GPS observations imported from a RINEX observation file.
@@ -65,6 +96,8 @@ pub struct RinexGpsObservationDataset {
     pub approx_position_ecef_m: Option<(f64, f64, f64)>,
     /// Observation interval in seconds if declared in the header.
     pub interval_s: Option<f64>,
+    /// Differential code-bias provenance declared by the RINEX header for this system.
+    pub code_bias_status: RinexCodeBiasStatus,
     /// Per-band GPS observation types imported into `epochs`.
     pub observation_channels: Vec<RinexGpsObservationChannel>,
     /// GPS observation epochs converted into the workspace observation model.
@@ -95,6 +128,8 @@ pub struct RinexGalileoObservationDataset {
     pub approx_position_ecef_m: Option<(f64, f64, f64)>,
     /// Observation interval in seconds if declared in the header.
     pub interval_s: Option<f64>,
+    /// Differential code-bias provenance declared by the RINEX header for this system.
+    pub code_bias_status: RinexCodeBiasStatus,
     /// Per-band Galileo observation types imported into `epochs`.
     pub observation_channels: Vec<RinexGalileoObservationChannel>,
     /// Galileo observation epochs converted into the workspace observation model.
@@ -125,6 +160,8 @@ pub struct RinexBeidouObservationDataset {
     pub approx_position_ecef_m: Option<(f64, f64, f64)>,
     /// Observation interval in seconds if declared in the header.
     pub interval_s: Option<f64>,
+    /// Differential code-bias provenance declared by the RINEX header for this system.
+    pub code_bias_status: RinexCodeBiasStatus,
     /// Per-band BeiDou observation types imported into `epochs`.
     pub observation_channels: Vec<RinexBeidouObservationChannel>,
     /// BeiDou observation epochs converted into the workspace observation model.
@@ -189,6 +226,7 @@ fn parse_rinex_observation_header(
         time_system: RinexObservationTimeSystem::Gps,
         obs_types_v2: None,
         obs_types_by_system: BTreeMap::new(),
+        dcbs_applied_by_system: BTreeMap::new(),
     };
     let mut saw_version = false;
     let mut saw_observation_data = false;
@@ -249,6 +287,12 @@ fn parse_rinex_observation_header(
                 header.obs_types_by_system.insert(system, obs_types);
                 line_index += consumed_lines;
             }
+            "SYS / DCBS APPLIED" => {
+                if let Some((system, source)) = parse_rinex_code_bias_status(line) {
+                    header.dcbs_applied_by_system.insert(system, source);
+                }
+                line_index += 1;
+            }
             "END OF HEADER" => {
                 line_index += 1;
                 break;
@@ -279,6 +323,7 @@ pub fn parse_rinex_gps_observation_dataset(
         message: "RINEX OBS file does not declare GPS observation types".to_string(),
     })?;
     let channels = resolve_gps_observation_channels(gps_observation_types)?;
+    let code_bias_status = header.code_bias_status('G');
     let epochs = if header.version >= 3.0 {
         parse_rinex_3_constellation_epochs(
             &lines[header_line_count..],
@@ -302,6 +347,7 @@ pub fn parse_rinex_gps_observation_dataset(
         marker_name: header.marker_name,
         approx_position_ecef_m: header.approx_position_ecef_m,
         interval_s: header.interval_s,
+        code_bias_status,
         observation_channels: channels
             .iter()
             .map(|channel| RinexGpsObservationChannel {
@@ -329,6 +375,7 @@ pub fn parse_rinex_galileo_observation_dataset(
         message: "RINEX OBS file does not declare Galileo observation types".to_string(),
     })?;
     let channels = resolve_galileo_observation_channels(galileo_observation_types)?;
+    let code_bias_status = header.code_bias_status('E');
     let epochs = if header.version >= 3.0 {
         parse_rinex_3_constellation_epochs(
             &lines[header_line_count..],
@@ -352,6 +399,7 @@ pub fn parse_rinex_galileo_observation_dataset(
         marker_name: header.marker_name,
         approx_position_ecef_m: header.approx_position_ecef_m,
         interval_s: header.interval_s,
+        code_bias_status,
         observation_channels: channels
             .iter()
             .map(|channel| RinexGalileoObservationChannel {
@@ -379,6 +427,7 @@ pub fn parse_rinex_beidou_observation_dataset(
         message: "RINEX OBS file does not declare BeiDou observation types".to_string(),
     })?;
     let channels = resolve_beidou_observation_channels(beidou_observation_types)?;
+    let code_bias_status = header.code_bias_status('C');
     let epochs = if header.version >= 3.0 {
         parse_rinex_3_constellation_epochs(
             &lines[header_line_count..],
@@ -402,6 +451,7 @@ pub fn parse_rinex_beidou_observation_dataset(
         marker_name: header.marker_name,
         approx_position_ecef_m: header.approx_position_ecef_m,
         interval_s: header.interval_s,
+        code_bias_status,
         observation_channels: channels
             .iter()
             .map(|channel| RinexBeidouObservationChannel {
@@ -418,6 +468,18 @@ pub fn parse_rinex_beidou_observation_dataset(
 
 fn rinex_header_label(line: &str) -> &str {
     line.get(60..).unwrap_or_default().trim()
+}
+
+fn parse_rinex_code_bias_status(line: &str) -> Option<(char, String)> {
+    let system = line.chars().next()?.to_ascii_uppercase();
+    if !matches!(system, 'G' | 'E' | 'C' | 'R') {
+        return None;
+    }
+    let source = line.get(..60).unwrap_or_default().trim().to_string();
+    if source.is_empty() {
+        return None;
+    }
+    Some((system, source))
 }
 
 fn parse_rinex_2_constellation_epochs(
@@ -1404,6 +1466,7 @@ mod tests {
     use super::{
         parse_rinex_beidou_observation_dataset, parse_rinex_galileo_observation_dataset,
         parse_rinex_gps_observation_dataset, parse_rinex_observation_header,
+        RinexCodeBiasState,
     };
 
     fn fixture(name: &str) -> String {
@@ -1462,6 +1525,8 @@ mod tests {
         assert!((dataset.version - 2.11).abs() < 1.0e-12);
         assert_eq!(dataset.marker_name.as_deref(), Some("st"));
         assert_eq!(dataset.interval_s, Some(15.0));
+        assert_eq!(dataset.code_bias_status.state, RinexCodeBiasState::Unknown);
+        assert_eq!(dataset.code_bias_status.source, None);
         assert_eq!(dataset.observation_channels.len(), 2);
         assert_eq!(dataset.observation_channels[0].band, SignalBand::L1);
         assert_eq!(dataset.observation_channels[0].code, SignalCode::Ca);
@@ -1535,6 +1600,7 @@ mod tests {
         let dataset =
             parse_rinex_gps_observation_dataset(&data).expect("parse synthetic RINEX 3 data");
 
+        assert_eq!(dataset.code_bias_status.state, RinexCodeBiasState::Unknown);
         assert_eq!(dataset.observation_channels.len(), 2);
         assert_eq!(dataset.epochs.len(), 1);
         assert_eq!(dataset.epochs[0].sats.len(), 4);
@@ -1718,6 +1784,11 @@ mod tests {
         assert!((dataset.version - 3.01).abs() < 1.0e-12);
         assert_eq!(dataset.marker_name.as_deref(), Some("MRKR"));
         assert_eq!(dataset.interval_s, Some(30.0));
+        assert_eq!(dataset.code_bias_status.state, RinexCodeBiasState::Applied);
+        assert_eq!(
+            dataset.code_bias_status.source.as_deref(),
+            Some("G CC2NONCC          p1c1bias.hist @ goby.nrl.navy.mil")
+        );
         assert_eq!(dataset.observation_channels.len(), 2);
         assert_eq!(dataset.observation_channels[0].band, SignalBand::L1);
         assert_eq!(dataset.observation_channels[0].code, SignalCode::Ca);

@@ -135,6 +135,7 @@ pub use crate::formats::rinex_obs::{
     parse_rinex_gps_observation_dataset, RinexBeidouObservationChannel,
     RinexBeidouObservationDataset, RinexGalileoObservationChannel,
     RinexGalileoObservationDataset, RinexGpsObservationChannel, RinexGpsObservationDataset,
+    RinexCodeBiasState, RinexCodeBiasStatus,
 };
 /// Precise product parsing helpers.
 pub use crate::formats::{
