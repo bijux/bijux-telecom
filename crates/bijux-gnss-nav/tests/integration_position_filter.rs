@@ -1024,6 +1024,56 @@ fn sequential_position_filter_stays_stable_when_satellite_rises() {
 }
 
 #[test]
+fn sequential_position_filter_stays_stable_when_satellite_set_changes() {
+    let ephemerides = sample_filter_ephemerides();
+    let epochs = static_receiver_epochs(&ephemerides, 8, 1.0);
+    let mut config = PositionFilterConfig::for_static_receiver();
+    config.base_pseudorange_sigma_m = 1.5;
+    let mut filter = PositionFilter::new(config);
+    let mut post_transition_position_errors_m = Vec::new();
+
+    for (epoch_index, epoch) in epochs.iter().enumerate() {
+        let visible_prns = if epoch_index < 3 {
+            &[1, 2, 3, 4, 5, 6][..]
+        } else {
+            &[2, 3, 4, 5, 6, 7][..]
+        };
+        let observations = observations_for_prns(&epoch.observations, visible_prns);
+        let solution = filter
+            .solve_epoch(&observations, &ephemerides, epoch.t_rx_s)
+            .expect("satellite set changes should not destabilize the sequential filter");
+        let position_error_m = position_error_3d_m(
+            solution.ecef_x_m,
+            solution.ecef_y_m,
+            solution.ecef_z_m,
+            epoch.truth_ecef_m,
+        );
+
+        assert!(position_error_m < 15.0, "position_error_m={position_error_m}");
+        assert_eq!(solution.used_sat_count, visible_prns.len());
+        assert_eq!(filter.last_visible_sats.len(), visible_prns.len());
+
+        if epoch_index >= 3 {
+            post_transition_position_errors_m.push(position_error_m);
+        }
+    }
+
+    assert!(filter.initialized);
+    assert_eq!(filter.last_visible_sats.len(), 6);
+    assert!(filter.last_visible_sats.iter().any(|sat| sat.prn == 7));
+    assert!(!filter.last_visible_sats.iter().any(|sat| sat.prn == 1));
+    assert_eq!(
+        filter.last_t_rx_s,
+        Some(epochs.last().expect("set-change epochs").t_rx_s)
+    );
+    assert!(
+        root_mean_square(&post_transition_position_errors_m) < 6.0,
+        "post_transition_rms_m={}",
+        root_mean_square(&post_transition_position_errors_m)
+    );
+}
+
+#[test]
 fn sequential_position_filter_refuses_innovation_growth_and_recovers() {
     let ephemerides = sample_filter_ephemerides();
     let epochs = static_receiver_epochs(&ephemerides, 3, 1.0);
