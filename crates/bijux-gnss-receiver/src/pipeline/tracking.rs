@@ -4214,6 +4214,7 @@ mod tests {
             &[bijux_gnss_core::api::AcqResult {
                 sat,
                 signal_band: bijux_gnss_core::api::SignalBand::L1,
+                glonass_frequency_channel: None,
                 source_time: bijux_gnss_core::api::ReceiverSampleTrace::default(),
                 candidate_rank: 1,
                 is_primary_candidate: true,
@@ -4339,6 +4340,7 @@ mod tests {
         let acquisition = bijux_gnss_core::api::AcqResult {
             sat,
             signal_band: bijux_gnss_core::api::SignalBand::L1,
+            glonass_frequency_channel: None,
             source_time: bijux_gnss_core::api::ReceiverSampleTrace::from_sample_time(frame.t0),
             candidate_rank: 1,
             is_primary_candidate: true,
@@ -4412,6 +4414,7 @@ mod tests {
             bijux_gnss_core::api::AcqResult {
                 sat: SatId { constellation: Constellation::Gps, prn: 3 },
                 signal_band: SignalBand::L1,
+                glonass_frequency_channel: None,
                 source_time: ReceiverSampleTrace::default(),
                 candidate_rank: 1,
                 is_primary_candidate: true,
@@ -4438,6 +4441,7 @@ mod tests {
             bijux_gnss_core::api::AcqResult {
                 sat: SatId { constellation: Constellation::Gps, prn: 7 },
                 signal_band: SignalBand::L1,
+                glonass_frequency_channel: None,
                 source_time: ReceiverSampleTrace::default(),
                 candidate_rank: 1,
                 is_primary_candidate: true,
@@ -4464,6 +4468,7 @@ mod tests {
             bijux_gnss_core::api::AcqResult {
                 sat: SatId { constellation: Constellation::Gps, prn: 23 },
                 signal_band: SignalBand::L1,
+                glonass_frequency_channel: None,
                 source_time: ReceiverSampleTrace::default(),
                 candidate_rank: 1,
                 is_primary_candidate: true,
