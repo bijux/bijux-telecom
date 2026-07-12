@@ -1096,6 +1096,24 @@ mod tests {
     }
 
     #[test]
+    fn position_filter_enables_visibility_transition_tuning_by_default() {
+        let config = PositionFilterConfig::default();
+
+        assert_eq!(
+            config.visibility_transition.covariance_inflation_per_satellite,
+            0.35
+        );
+        assert_eq!(config.visibility_transition.max_covariance_inflation, 3.0);
+        assert_eq!(config.visibility_transition.min_position_sigma_m, 10.0);
+        assert_eq!(config.visibility_transition.min_velocity_sigma_mps, 1.5);
+        assert_eq!(config.visibility_transition.min_clock_bias_sigma_s, 5.0e-8);
+        assert_eq!(
+            config.visibility_transition.min_clock_drift_sigma_s_per_s,
+            5.0e-9
+        );
+    }
+
+    #[test]
     fn position_filter_static_receiver_profile_enables_static_model() {
         let config = PositionFilterConfig::for_static_receiver();
         let PositionFilterMotionModel::StaticPosition(static_model) = config.motion_model else {
