@@ -226,6 +226,8 @@ fn synthetic_truth_track(
         sample_index: 0,
         source_time: ReceiverSampleTrace::from_sample_index(0, config.sampling_freq_hz),
         sat: signal.sat,
+        signal_band: bijux_gnss_core::api::SignalBand::L1,
+        glonass_frequency_channel: None,
         prompt_i: 1.0,
         prompt_q: 0.0,
         early_i: 0.0,
@@ -416,7 +418,10 @@ fn signal_delay_alignment(whole_code_periods: u64) -> Option<SignalDelayAlignmen
     Some(SignalDelayAlignment { whole_code_periods, source: "synthetic_truth".to_string() })
 }
 
-fn tracking_code_phase_samples(config: &ReceiverPipelineConfig, aligned_code_phase_chips: f64) -> f64 {
+fn tracking_code_phase_samples(
+    config: &ReceiverPipelineConfig,
+    aligned_code_phase_chips: f64,
+) -> f64 {
     let samples_per_chip = config.sampling_freq_hz / config.code_freq_basis_hz;
     let period_samples = samples_per_chip * config.code_length as f64;
     let aligned_code_phase_samples = aligned_code_phase_chips * samples_per_chip;

@@ -284,6 +284,8 @@ fn truth_seeded_time_tracking_results(
                             config.sampling_freq_hz,
                         ),
                         sat: ephemeris.sat,
+                        signal_band: bijux_gnss_core::api::SignalBand::L1,
+                        glonass_frequency_channel: None,
                         prompt_i: 1.0,
                         prompt_q: 0.0,
                         early_i: 0.0,
@@ -293,7 +295,10 @@ fn truth_seeded_time_tracking_results(
                         carrier_hz: Hertz(doppler_hz),
                         carrier_phase_cycles: Cycles(0.0),
                         code_rate_hz: Hertz(config.code_freq_basis_hz),
-                        code_phase_samples: Chips(tracking_code_phase_samples(config, code_phase_chips)),
+                        code_phase_samples: Chips(tracking_code_phase_samples(
+                            config,
+                            code_phase_chips,
+                        )),
                         lock: true,
                         cn0_dbhz: 52.0,
                         pll_lock: true,
@@ -438,7 +443,10 @@ fn validate_truth_epochs(truth_epochs: &[NavigationTimeTruthEpoch]) {
     }
 }
 
-fn tracking_code_phase_samples(config: &ReceiverPipelineConfig, aligned_code_phase_chips: f64) -> f64 {
+fn tracking_code_phase_samples(
+    config: &ReceiverPipelineConfig,
+    aligned_code_phase_chips: f64,
+) -> f64 {
     let samples_per_chip = config.sampling_freq_hz / config.code_freq_basis_hz;
     let period_samples = samples_per_chip * config.code_length as f64;
     let aligned_code_phase_samples = aligned_code_phase_chips * samples_per_chip;

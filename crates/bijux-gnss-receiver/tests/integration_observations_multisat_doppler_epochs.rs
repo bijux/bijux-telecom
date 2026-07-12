@@ -40,6 +40,8 @@ fn tracking_epoch(
         sample_index,
         source_time: ReceiverSampleTrace::from_sample_index(sample_index, config.sampling_freq_hz),
         sat,
+        signal_band: bijux_gnss_core::api::SignalBand::L1,
+        glonass_frequency_channel: None,
         prompt_i: 1.0,
         prompt_q: 0.0,
         early_i: 0.0,

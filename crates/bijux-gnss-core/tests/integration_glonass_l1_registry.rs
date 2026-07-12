@@ -67,8 +67,6 @@ fn default_glonass_acquisition_catalog_covers_all_slots() {
     );
     assert_eq!(
         sats.last().copied(),
-        Some(glonass_slot_sat(
-            GlonassSlot::new(GlonassSlot::MAX).expect("slot 24 must be valid")
-        ))
+        Some(glonass_slot_sat(GlonassSlot::new(GlonassSlot::MAX).expect("slot 24 must be valid")))
     );
 }

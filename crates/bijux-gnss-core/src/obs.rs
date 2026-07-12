@@ -595,6 +595,10 @@ pub struct TrackEpoch {
     #[serde(default)]
     pub source_time: ReceiverSampleTrace,
     pub sat: SatId,
+    #[serde(default = "default_signal_band")]
+    pub signal_band: SignalBand,
+    #[serde(default)]
+    pub glonass_frequency_channel: Option<GlonassFrequencyChannel>,
     pub prompt_i: f32,
     pub prompt_q: f32,
     #[serde(default)]
@@ -653,6 +657,8 @@ impl Default for TrackEpoch {
             sample_index: 0,
             source_time: ReceiverSampleTrace::default(),
             sat: SatId { constellation: Constellation::Unknown, prn: 0 },
+            signal_band: SignalBand::L1,
+            glonass_frequency_channel: None,
             prompt_i: 0.0,
             prompt_q: 0.0,
             early_i: 0.0,

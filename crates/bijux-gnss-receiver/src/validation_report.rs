@@ -2050,6 +2050,8 @@ mod tests {
                 epoch: Epoch { index: epoch_idx },
                 sample_index: idx,
                 sat,
+                signal_band: bijux_gnss_core::api::SignalBand::L1,
+                glonass_frequency_channel: None,
                 prompt_i: 1.0,
                 prompt_q: 0.0,
                 carrier_hz: Hertz(0.0),

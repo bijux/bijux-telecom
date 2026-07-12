@@ -41,6 +41,8 @@ fn aligned_tracking_epoch(
         sample_index,
         source_time: ReceiverSampleTrace::from_sample_index(sample_index, config.sampling_freq_hz),
         sat,
+        signal_band: bijux_gnss_core::api::SignalBand::L1,
+        glonass_frequency_channel: None,
         prompt_i: 1.0,
         prompt_q: 0.0,
         early_i: 0.0,
@@ -95,7 +97,10 @@ fn track_from_epoch(epoch: TrackEpoch) -> TrackingResult {
     }
 }
 
-fn tracking_code_phase_samples(config: &ReceiverPipelineConfig, aligned_code_phase_samples: f64) -> f64 {
+fn tracking_code_phase_samples(
+    config: &ReceiverPipelineConfig,
+    aligned_code_phase_samples: f64,
+) -> f64 {
     if !aligned_code_phase_samples.is_finite() || aligned_code_phase_samples < 0.0 {
         return aligned_code_phase_samples;
     }

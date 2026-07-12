@@ -11,6 +11,8 @@ fn make_track(prn: u8, config: &ReceiverPipelineConfig) -> TrackingResult {
         sample_index: 0,
         source_time: ReceiverSampleTrace::from_sample_index(0, config.sampling_freq_hz),
         sat,
+        signal_band: bijux_gnss_core::api::SignalBand::L1,
+        glonass_frequency_channel: None,
         prompt_i: 1.0,
         prompt_q: 0.0,
         carrier_hz: Hertz(0.0),

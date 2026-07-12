@@ -143,6 +143,8 @@ fn tracks_from_fixture_rows(
                 config.sampling_freq_hz,
             ),
             sat,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
+            glonass_frequency_channel: None,
             prompt_i: row.prompt_i,
             prompt_q: row.prompt_q,
             carrier_hz: Hertz(row.carrier_hz),

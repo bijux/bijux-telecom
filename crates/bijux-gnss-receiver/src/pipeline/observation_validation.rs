@@ -200,7 +200,7 @@ mod tests {
     use crate::pipeline::tracking::TrackingResult;
     use bijux_gnss_core::api::{
         Chips, Constellation, Cycles, Epoch, GpsTime, Hertz, ReceiverSampleTrace, SatId,
-        SignalDelayAlignment, TrackEpoch,
+        SignalBand, SignalDelayAlignment, TrackEpoch,
     };
     use std::f64::consts::PI;
 
@@ -246,6 +246,11 @@ mod tests {
                 config.sampling_freq_hz,
             ),
             sat,
+            signal_band: match sat.constellation {
+                Constellation::Galileo => SignalBand::E1,
+                _ => SignalBand::L1,
+            },
+            glonass_frequency_channel: None,
             prompt_i: 1.0,
             prompt_q: 0.0,
             early_i: 0.0,
