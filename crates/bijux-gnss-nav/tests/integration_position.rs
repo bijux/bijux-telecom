@@ -3,22 +3,21 @@ mod support;
 
 use bijux_gnss_core::api::{Constellation, GpsTime, SatId, Seconds};
 use bijux_gnss_nav::api::{
-    position_broadcast_navigation_from_beidou_navigations,
     ephemerides_from_decoded_gps_l1ca_lnav, geodetic_to_ecef, parse_rinex_nav,
+    position_broadcast_navigation_from_beidou_navigations,
     position_broadcast_navigation_from_glonass_frames,
-    position_broadcast_navigation_from_gps_ephemerides, sat_state_beidou_b1i,
-    sat_state_galileo_e1,
-    sat_state_glonass_l1, sat_state_gps_l1ca, write_rinex_nav, Ephemeris,
-    BeidouBroadcastNavigationData, BeidouClockCorrection, BeidouEphemeris,
-    BeidouIonosphericCorrection, BeidouSignalHealth, BeidouSystemTime,
-    GalileoBroadcastNavigationData, GalileoClockCorrection, GalileoEphemeris,
-    GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags, GalileoSignalHealth,
-    GalileoSystemTime, GlonassAlmanacTimeData, GlonassBroadcastNavigationFrame,
-    GlonassFrameTime, GlonassImmediateHealth, GlonassImmediateNavigationData,
-    GlonassSatelliteType, GlonassStateVector, GlonassSystemTime, GpsEphemeris, GpsL1CaHowWord,
-    GpsL1CaLnavDecodedSubframe, GpsL1CaLnavSubframe1Clock, GpsL1CaLnavSubframe2Orbit,
-    GpsL1CaLnavSubframe3Orbit, GpsL1CaLnavSubframeAlignment, GpsL1CaTlmWord,
-    GpsL1CaWordParitySummary, PositionBroadcastNavigation, PositionObservation, PositionSolver,
+    position_broadcast_navigation_from_gps_ephemerides, sat_state_beidou_b1i, sat_state_galileo_e1,
+    sat_state_glonass_l1, sat_state_gps_l1ca, write_rinex_nav, BeidouBroadcastNavigationData,
+    BeidouClockCorrection, BeidouEphemeris, BeidouIonosphericCorrection, BeidouSignalHealth,
+    BeidouSystemTime, Ephemeris, GalileoBroadcastNavigationData, GalileoClockCorrection,
+    GalileoEphemeris, GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags,
+    GalileoSignalHealth, GalileoSystemTime, GlonassAlmanacTimeData,
+    GlonassBroadcastNavigationFrame, GlonassFrameTime, GlonassImmediateHealth,
+    GlonassImmediateNavigationData, GlonassSatelliteType, GlonassStateVector, GlonassSystemTime,
+    GpsEphemeris, GpsL1CaHowWord, GpsL1CaLnavDecodedSubframe, GpsL1CaLnavSubframe1Clock,
+    GpsL1CaLnavSubframe2Orbit, GpsL1CaLnavSubframe3Orbit, GpsL1CaLnavSubframeAlignment,
+    GpsL1CaTlmWord, GpsL1CaWordParitySummary, PositionBroadcastNavigation, PositionObservation,
+    PositionSolver,
 };
 use support::position_truth::{
     add_klobuchar_delay_to_observations, add_saastamoinen_delay_to_observations,
@@ -659,6 +658,28 @@ fn mixed_gps_galileo_beidou_solver_recovers_position_and_clock_splits() {
     );
     assert!((solution.clock_bias_s - receiver_clock_bias_s).abs() < 1.0e-8);
     assert_eq!(solution.inter_system_biases.len(), 2);
+    assert_eq!(solution.constellation_residual_rms.len(), 3);
+    for (constellation, pre_fit_sat_count, post_fit_sat_count) in
+        [(Constellation::Gps, 4, 4), (Constellation::Galileo, 2, 2), (Constellation::Beidou, 2, 2)]
+    {
+        let summary = solution
+            .constellation_residual_rms
+            .iter()
+            .find(|summary| summary.constellation == constellation)
+            .unwrap_or_else(|| panic!("missing residual RMS summary for {constellation:?}"));
+        assert_eq!(summary.pre_fit_sat_count, pre_fit_sat_count);
+        assert_eq!(summary.post_fit_sat_count, post_fit_sat_count);
+        assert!(summary.pre_fit_rms_m.is_some_and(|value| value.0.is_finite() && value.0 >= 0.0));
+        assert!(summary.post_fit_rms_m.is_some_and(|value| value.0.is_finite() && value.0 >= 0.0));
+    }
+    assert_eq!(
+        solution
+            .constellation_residual_rms
+            .iter()
+            .map(|summary| summary.post_fit_sat_count)
+            .sum::<usize>(),
+        solution.used_sat_count
+    );
     let galileo_isb = solution
         .inter_system_biases
         .iter()
@@ -724,6 +745,28 @@ fn mixed_gps_glonass_solver_recovers_position_and_clock_split() {
     assert_eq!(solution.inter_system_biases.len(), 1);
     assert_eq!(solution.inter_system_biases[0].constellation, Constellation::Glonass);
     assert!((solution.inter_system_biases[0].bias_s.0 - glonass_bias_s).abs() < 1.0e-8);
+    assert_eq!(solution.constellation_residual_rms.len(), 2);
+    for (constellation, pre_fit_sat_count, post_fit_sat_count) in
+        [(Constellation::Gps, 4, 4), (Constellation::Glonass, 2, 2)]
+    {
+        let summary = solution
+            .constellation_residual_rms
+            .iter()
+            .find(|summary| summary.constellation == constellation)
+            .unwrap_or_else(|| panic!("missing residual RMS summary for {constellation:?}"));
+        assert_eq!(summary.pre_fit_sat_count, pre_fit_sat_count);
+        assert_eq!(summary.post_fit_sat_count, post_fit_sat_count);
+        assert!(summary.pre_fit_rms_m.is_some_and(|value| value.0.is_finite() && value.0 >= 0.0));
+        assert!(summary.post_fit_rms_m.is_some_and(|value| value.0.is_finite() && value.0 >= 0.0));
+    }
+    assert_eq!(
+        solution
+            .constellation_residual_rms
+            .iter()
+            .map(|summary| summary.post_fit_sat_count)
+            .sum::<usize>(),
+        solution.used_sat_count
+    );
 }
 
 #[test]
