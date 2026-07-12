@@ -179,9 +179,9 @@ impl PositionFilterMotionClass {
 
     pub fn default_motion_model(self) -> PositionFilterMotionModel {
         match self {
-            Self::Static => {
-                PositionFilterMotionModel::StaticPosition(PositionFilterStaticPositionModel::default())
-            }
+            Self::Static => PositionFilterMotionModel::StaticPosition(
+                PositionFilterStaticPositionModel::default(),
+            ),
             Self::Pedestrian | Self::Vehicle | Self::Airborne => {
                 PositionFilterMotionModel::ConstantVelocity
             }
@@ -751,10 +751,7 @@ mod tests {
 
         assert!(config.use_doppler);
         assert_eq!(config.motion_class, PositionFilterMotionClass::Vehicle);
-        assert!(matches!(
-            config.motion_model,
-            PositionFilterMotionModel::ConstantVelocity
-        ));
+        assert!(matches!(config.motion_model, PositionFilterMotionModel::ConstantVelocity));
         assert_eq!(config.base_doppler_sigma_hz, 1.0);
         assert_eq!(config.gating_chi2_doppler, Some(100.0));
     }
@@ -781,10 +778,7 @@ mod tests {
         let config = PositionFilterConfig::for_constant_velocity_receiver();
 
         assert_eq!(config.motion_class, PositionFilterMotionClass::Vehicle);
-        assert!(matches!(
-            config.motion_model,
-            PositionFilterMotionModel::ConstantVelocity
-        ));
+        assert!(matches!(config.motion_model, PositionFilterMotionModel::ConstantVelocity));
         assert_eq!(
             config.process_noise.vel_mps,
             PositionFilterConfig::default().process_noise.vel_mps
@@ -793,6 +787,70 @@ mod tests {
             config.initial_velocity_sigma_mps,
             PositionFilterConfig::default().initial_velocity_sigma_mps
         );
+    }
+
+    #[test]
+    fn position_filter_motion_class_profiles_define_distinct_process_noise() {
+        let static_config = PositionFilterConfig::for_static_receiver();
+        let pedestrian_config = PositionFilterConfig::for_pedestrian_receiver();
+        let vehicle_config = PositionFilterConfig::for_vehicle_receiver();
+        let airborne_config = PositionFilterConfig::for_airborne_receiver();
+
+        assert!(matches!(static_config.motion_model, PositionFilterMotionModel::StaticPosition(_)));
+        assert!(matches!(
+            pedestrian_config.motion_model,
+            PositionFilterMotionModel::ConstantVelocity
+        ));
+        assert!(matches!(vehicle_config.motion_model, PositionFilterMotionModel::ConstantVelocity));
+        assert!(matches!(
+            airborne_config.motion_model,
+            PositionFilterMotionModel::ConstantVelocity
+        ));
+
+        assert!(static_config.process_noise.pos_m < pedestrian_config.process_noise.pos_m);
+        assert!(pedestrian_config.process_noise.pos_m < vehicle_config.process_noise.pos_m);
+        assert!(vehicle_config.process_noise.pos_m < airborne_config.process_noise.pos_m);
+
+        assert!(static_config.process_noise.vel_mps < pedestrian_config.process_noise.vel_mps);
+        assert!(pedestrian_config.process_noise.vel_mps < vehicle_config.process_noise.vel_mps);
+        assert!(vehicle_config.process_noise.vel_mps < airborne_config.process_noise.vel_mps);
+
+        assert!(
+            static_config.initial_velocity_sigma_mps < pedestrian_config.initial_velocity_sigma_mps
+        );
+        assert!(
+            pedestrian_config.initial_velocity_sigma_mps
+                < vehicle_config.initial_velocity_sigma_mps
+        );
+        assert!(
+            vehicle_config.initial_velocity_sigma_mps < airborne_config.initial_velocity_sigma_mps
+        );
+    }
+
+    #[test]
+    fn position_filter_apply_motion_class_replaces_tuning_consistently() {
+        let mut config = PositionFilterConfig::for_vehicle_receiver();
+        config.base_pseudorange_sigma_m = 2.5;
+        config.base_doppler_sigma_hz = 0.25;
+
+        config.apply_motion_class(PositionFilterMotionClass::Pedestrian);
+
+        assert_eq!(config.motion_class, PositionFilterMotionClass::Pedestrian);
+        assert!(matches!(config.motion_model, PositionFilterMotionModel::ConstantVelocity));
+        assert_eq!(
+            config.process_noise.pos_m,
+            PositionFilterMotionClass::Pedestrian.process_noise().pos_m
+        );
+        assert_eq!(
+            config.process_noise.vel_mps,
+            PositionFilterMotionClass::Pedestrian.process_noise().vel_mps
+        );
+        assert_eq!(
+            config.initial_velocity_sigma_mps,
+            PositionFilterMotionClass::Pedestrian.initial_velocity_sigma_mps()
+        );
+        assert_eq!(config.base_pseudorange_sigma_m, 2.5);
+        assert_eq!(config.base_doppler_sigma_hz, 0.25);
     }
 
     #[test]
