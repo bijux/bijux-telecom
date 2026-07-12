@@ -458,6 +458,7 @@ pub struct PositionSolver {
     pub huber_k: f64,
     pub raim: bool,
     pub separation_gate_m: f64,
+    pub apply_broadcast_group_delay: bool,
     pub apply_troposphere: bool,
 }
 
@@ -478,6 +479,7 @@ impl PositionSolver {
             huber_k: 30.0,
             raim: true,
             separation_gate_m: 50.0,
+            apply_broadcast_group_delay: true,
             apply_troposphere: false,
         }
     }
@@ -1688,13 +1690,14 @@ fn resolve_satellite_geometry(
     inputs: &[PositionSolveInput],
     estimate: &PositionEstimate,
     klobuchar: Option<&KlobucharCoefficients>,
+    apply_broadcast_group_delay: bool,
     apply_troposphere: bool,
 ) -> Option<Vec<SatelliteGeometry>> {
     let mut geometry = Vec::with_capacity(inputs.len());
     for input in inputs {
         let obs = &input.observation;
         let corrected_pseudorange_m =
-            obs.pseudorange_m - broadcast_group_delay_code_bias_m(obs.signal_id, &input.navigation);
+            corrected_pseudorange_m(obs, &input.navigation, apply_broadcast_group_delay);
         let mut tau = obs
             .signal_timing
             .map(|timing| timing.signal_travel_time_s.0)
@@ -1969,6 +1972,17 @@ fn broadcast_group_delay_code_bias_m(
     }
 }
 
+fn corrected_pseudorange_m(
+    observation: &PositionObservation,
+    navigation: &PositionBroadcastNavigation,
+    apply_broadcast_group_delay: bool,
+) -> f64 {
+    if !apply_broadcast_group_delay {
+        return observation.pseudorange_m;
+    }
+    observation.pseudorange_m - broadcast_group_delay_code_bias_m(observation.signal_id, navigation)
+}
+
 fn satellite_state_at_time(
     navigation: &PositionBroadcastNavigation,
     transmit_tow_s: f64,
@@ -2086,8 +2100,13 @@ impl PositionSolver {
     ) -> Option<WorkingSetSolution> {
         let clock_model = ClockStateModel::from_inputs(inputs)?;
         let mut estimate = initial_estimate.reproject(clock_model);
-        let mut geometry =
-            resolve_satellite_geometry(inputs, &estimate, klobuchar, self.apply_troposphere)?;
+        let mut geometry = resolve_satellite_geometry(
+            inputs,
+            &estimate,
+            klobuchar,
+            self.apply_broadcast_group_delay,
+            self.apply_troposphere,
+        )?;
         let mut covariance = None;
         let mut covariance_symmetrized = false;
         let mut covariance_clamped = false;
@@ -2138,12 +2157,22 @@ impl PositionSolver {
                 break;
             }
 
-            geometry =
-                resolve_satellite_geometry(inputs, &estimate, klobuchar, self.apply_troposphere)?;
+            geometry = resolve_satellite_geometry(
+                inputs,
+                &estimate,
+                klobuchar,
+                self.apply_broadcast_group_delay,
+                self.apply_troposphere,
+            )?;
         }
 
-        geometry =
-            resolve_satellite_geometry(inputs, &estimate, klobuchar, self.apply_troposphere)?;
+        geometry = resolve_satellite_geometry(
+            inputs,
+            &estimate,
+            klobuchar,
+            self.apply_broadcast_group_delay,
+            self.apply_troposphere,
+        )?;
         if geometry.len() < 4 {
             return None;
         }
