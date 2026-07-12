@@ -36,7 +36,7 @@ pub use crate::corrections::narrow_lane::{narrow_lane_from_obs_epochs, NarrowLan
 pub use crate::corrections::{compute_corrections, CorrectionContext, Corrections};
 pub use crate::estimation::ekf::models::{
     AmbiguityManager, CarrierPhaseMeasurement, DopplerMeasurement, InterSystemBiasManager,
-    NavClockModel, ProcessNoiseConfig, PseudorangeMeasurement,
+    NavClockModel, ProcessNoiseConfig, PseudorangeMeasurement, StaticNavClockModel,
 };
 /// EKF interface and measurements.
 pub use crate::estimation::ekf::state::{Ekf, EkfConfig, MeasurementKind};

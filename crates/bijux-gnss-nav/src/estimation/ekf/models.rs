@@ -71,6 +71,61 @@ impl StateModel for NavClockModel {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct StaticNavClockModel {
+    pub noise: ProcessNoiseConfig,
+    pub velocity_decay_per_s: f64,
+}
+
+impl StaticNavClockModel {
+    pub fn new(noise: ProcessNoiseConfig, velocity_decay_per_s: f64) -> Self {
+        Self { noise, velocity_decay_per_s }
+    }
+}
+
+impl StateModel for StaticNavClockModel {
+    fn state_dim(&self) -> usize {
+        8
+    }
+
+    fn propagate(&self, x: &mut [f64], p: &mut Matrix, dt_s: f64) {
+        let n = x.len();
+        if n < 8 {
+            return;
+        }
+        let velocity_decay = (-self.velocity_decay_per_s.max(0.0) * dt_s).exp();
+        x[3] *= velocity_decay;
+        x[4] *= velocity_decay;
+        x[5] *= velocity_decay;
+        x[6] += x[7] * dt_s;
+
+        let mut f = Matrix::identity(n);
+        f[(3, 3)] = velocity_decay;
+        f[(4, 4)] = velocity_decay;
+        f[(5, 5)] = velocity_decay;
+        f[(6, 7)] = dt_s;
+
+        let mut q = Matrix::new(n, n, 0.0);
+        q[(0, 0)] = self.noise.pos_m * self.noise.pos_m;
+        q[(1, 1)] = self.noise.pos_m * self.noise.pos_m;
+        q[(2, 2)] = self.noise.pos_m * self.noise.pos_m;
+        q[(3, 3)] = self.noise.vel_mps * self.noise.vel_mps;
+        q[(4, 4)] = self.noise.vel_mps * self.noise.vel_mps;
+        q[(5, 5)] = self.noise.vel_mps * self.noise.vel_mps;
+        q[(6, 6)] = self.noise.clock_bias_s * self.noise.clock_bias_s;
+        q[(7, 7)] = self.noise.clock_drift_s * self.noise.clock_drift_s;
+
+        if n > 8 && self.noise.ztd_m > 0.0 {
+            let idx = 8;
+            q[(idx, idx)] = self.noise.ztd_m * self.noise.ztd_m;
+        }
+
+        let ft = f.transpose();
+        let p_new = f.mul(p).mul(&ft).add(&q);
+        *p = p_new;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
