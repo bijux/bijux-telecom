@@ -172,17 +172,21 @@ impl Navigation {
             .iter()
             .map(|row| row.signal_id.sat.constellation)
             .collect::<std::collections::BTreeSet<_>>();
-        let has_supported_gps = input_constellations.contains(&Constellation::Gps);
-        let has_supported_galileo = input_constellations.contains(&Constellation::Galileo);
-        let has_supported_beidou = input_constellations.contains(&Constellation::Beidou);
-        let has_supported_constellation =
-            has_supported_gps || has_supported_galileo || has_supported_beidou;
+        let has_supported_constellation = input_constellations
+            .iter()
+            .copied()
+            .any(navigation_supported_constellation);
         let has_unsupported_constellation = input_constellations.iter().any(|constellation| {
-            !matches!(
-                constellation,
-                Constellation::Gps | Constellation::Galileo | Constellation::Beidou
-            )
+            !navigation_supported_constellation(*constellation)
         });
+        let filtered_by_policy_count = obs
+            .sats
+            .iter()
+            .filter(|sat| {
+                navigation_supported_constellation(sat.signal_id.sat.constellation)
+                    && !self.config.allows_constellation(sat.signal_id.sat.constellation)
+            })
+            .count();
 
         if !has_supported_constellation {
             return Some(apply_atmosphere_explainability(
@@ -219,14 +223,7 @@ impl Navigation {
                             "supported_constellations={}",
                             input_constellations
                                 .iter()
-                                .filter(|constellation| {
-                                    matches!(
-                                        constellation,
-                                        Constellation::Gps
-                                            | Constellation::Galileo
-                                            | Constellation::Beidou
-                                    )
-                                })
+                                .filter(|constellation| navigation_supported_constellation(**constellation))
                                 .map(|value| format!("{value:?}"))
                                 .collect::<Vec<_>>()
                                 .join(",")
@@ -235,14 +232,7 @@ impl Navigation {
                             "unsupported_constellations={}",
                             input_constellations
                                 .iter()
-                                .filter(|constellation| {
-                                    !matches!(
-                                        constellation,
-                                        Constellation::Gps
-                                            | Constellation::Galileo
-                                            | Constellation::Beidou
-                                    )
-                                })
+                                .filter(|constellation| !navigation_supported_constellation(**constellation))
                                 .map(|value| format!("{value:?}"))
                                 .collect::<Vec<_>>()
                                 .join(",")
@@ -259,12 +249,8 @@ impl Navigation {
         let observations: Vec<PositionObservation> = obs
             .sats
             .iter()
-            .filter(|s| {
-                matches!(
-                    s.signal_id.sat.constellation,
-                    Constellation::Gps | Constellation::Galileo | Constellation::Beidou
-                )
-            })
+            .filter(|s| navigation_supported_constellation(s.signal_id.sat.constellation))
+            .filter(|s| self.config.allows_constellation(s.signal_id.sat.constellation))
             .filter_map(|s| {
                 let mut observation = PositionObservation {
                     sat: s.signal_id.sat,
@@ -352,6 +338,12 @@ impl Navigation {
                 explain_reasons.push(format!(
                     "invalid_satellite_time_count={}",
                     invalid_satellite_time_sats.len()
+                ));
+            }
+            if filtered_by_policy_count > 0 {
+                explain_reasons.push("constellation_policy_filtered_satellites".to_string());
+                explain_reasons.push(format!(
+                    "constellation_policy_filtered_count={filtered_by_policy_count}"
                 ));
             }
             return Some(apply_atmosphere_explainability(
@@ -839,6 +831,13 @@ impl Navigation {
             rejected,
         )
     }
+}
+
+fn navigation_supported_constellation(constellation: Constellation) -> bool {
+    matches!(
+        constellation,
+        Constellation::Gps | Constellation::Galileo | Constellation::Glonass | Constellation::Beidou
+    )
 }
 
 fn apply_atmosphere_explainability(
@@ -1869,12 +1868,12 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_constellation_input_is_refused_explicitly() {
+    fn unknown_constellation_input_is_refused_explicitly() {
         let config = ReceiverPipelineConfig::default();
         let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
         let mut obs = fake_obs_epoch_for_nav_tests(15);
         for sat in &mut obs.sats {
-            sat.signal_id.sat.constellation = Constellation::Glonass;
+            sat.signal_id.sat.constellation = Constellation::Unknown;
         }
         let solution = nav.solve_epoch(&obs, &[]).expect("unsupported constellation solution");
         assert_eq!(solution.status, SolutionStatus::Invalid);
@@ -1888,7 +1887,7 @@ mod tests {
         let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
         let mut obs = fake_obs_epoch_for_nav_tests(16);
         for sat in obs.sats.iter_mut().skip(1) {
-            sat.signal_id.sat.constellation = Constellation::Glonass;
+            sat.signal_id.sat.constellation = Constellation::Unknown;
         }
         let solution = nav.solve_epoch(&obs, &[]).expect("mixed constellation refusal");
         assert_eq!(solution.status, SolutionStatus::Invalid);
@@ -1898,6 +1897,21 @@ mod tests {
             .explain_reasons
             .iter()
             .any(|reason| reason == "unknown_inter_system_time_offset"));
+    }
+
+    #[test]
+    fn glonass_only_input_is_treated_as_supported_constellation() {
+        let config = ReceiverPipelineConfig::default();
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+        let mut obs = fake_obs_epoch_for_nav_tests(16);
+        for sat in &mut obs.sats {
+            sat.signal_id.sat.constellation = Constellation::Glonass;
+        }
+        let solution = nav.solve_epoch(&obs, &[]).expect("glonass-only solution");
+        assert_eq!(solution.status, SolutionStatus::Invalid);
+        assert_eq!(solution.refusal_class, Some(NavRefusalClass::InvalidEphemeris));
+        assert_eq!(solution.explain_decision, "refused");
+        assert!(!solution.valid);
     }
 
     #[test]
@@ -2320,9 +2334,6 @@ mod tests {
 
     #[test]
     fn scientific_policy_can_refuse_optimistic_solution_claims() {
-        let mut config = ReceiverPipelineConfig::default();
-        config.science_thresholds.max_pdop = 0.5;
-        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
         let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
         let t_rx_s = 100_100.0;
         let ephs = vec![
@@ -2332,6 +2343,15 @@ mod tests {
             make_eph(4, 2.4, 2.7, t_rx_s),
         ];
         let obs = make_obs_epoch_for_solution(17, t_rx_s, truth, &ephs);
+        let baseline_solution = Navigation::new(
+            ReceiverPipelineConfig::default(),
+            crate::engine::runtime::ReceiverRuntime::default(),
+        )
+        .solve_epoch(&obs, &ephs)
+        .expect("baseline solution");
+        let mut config = ReceiverPipelineConfig::default();
+        config.science_thresholds.max_pdop = baseline_solution.pdop - 0.1;
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
         let solution = nav.solve_epoch(&obs, &ephs).expect("solution");
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::InsufficientGeometry));
         assert_eq!(solution.explain_decision, "refused");
