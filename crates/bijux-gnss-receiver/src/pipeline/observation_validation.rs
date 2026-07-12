@@ -2,14 +2,13 @@
 
 use std::collections::HashMap;
 
-use bijux_gnss_core::api::{ObsEpoch, ObservationStatus, SigId};
+use bijux_gnss_core::api::{carrier_wavelength_m, ObsEpoch, ObservationStatus, SigId};
 use serde::{Deserialize, Serialize};
 
 use crate::pipeline::observations::{
     ObservationPipelineArtifacts, ObservationResidualEpochReport, ObservationResidualSatellite,
 };
 
-const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 const RAW_CORRECTED_MATCH_TOLERANCE_M: f64 = 1.0e-6;
 const STEADY_STATE_SMOOTHING_AGE: u32 = 5;
 
@@ -111,7 +110,7 @@ pub fn validate_carrier_smoothed_code(
                 continue;
             }
 
-            let lambda_m = SPEED_OF_LIGHT_MPS / sat.metadata.signal.carrier_hz.value();
+            let lambda_m = carrier_wavelength_m(sat.metadata.signal.carrier_hz).0;
             let carrier_reference_m = sat.carrier_phase_cycles.0 * lambda_m;
             let raw_divergence_m = residual.pseudorange_m.raw - carrier_reference_m;
 

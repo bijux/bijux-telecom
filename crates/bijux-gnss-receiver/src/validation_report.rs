@@ -2080,7 +2080,8 @@ mod tests {
         phase_m: f64,
     ) -> ObsSatellite {
         let mut satellite = dual_frequency_satellite(band, code, true, true);
-        let wavelength_m = 299_792_458.0 / satellite.metadata.signal.carrier_hz.value();
+        let wavelength_m =
+            bijux_gnss_core::api::carrier_wavelength_m(satellite.metadata.signal.carrier_hz).0;
         satellite.carrier_phase_cycles = Cycles(phase_m / wavelength_m);
         satellite
     }
