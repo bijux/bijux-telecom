@@ -1045,9 +1045,9 @@ pub enum NavHealthEvent {
     InnovationRejected { reason: String },
     SatelliteClockAnomaly {
         sat: SatId,
-        residual_delta_m: f64,
-        peer_median_delta_m: f64,
-        peer_rms_delta_m: f64,
+        persistent_suspect_epochs: usize,
+        max_solution_separation_m: f64,
+        separation_threshold_m: f64,
     },
     ZtdClamped { before_m: f64, after_m: f64 },
 }
