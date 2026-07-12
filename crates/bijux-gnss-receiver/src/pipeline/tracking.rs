@@ -19,8 +19,8 @@ use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::{
     adaptive_bandwidth, boc_subcarrier_value, carrier_frequency_error_hz_from_phase_delta,
     discriminators, estimate_cn0_dbhz, first_order_angular_loop_coefficients,
-    first_order_loop_coefficients, generate_galileo_e1b_code, generate_glonass_l1_st_code,
-    phase_lock_loop_coefficients,
+    first_order_loop_coefficients, generate_beidou_b1i_code, generate_galileo_e1b_code,
+    generate_glonass_l1_st_code, phase_lock_loop_coefficients,
 };
 use bijux_gnss_signal::api::{generate_ca_code, Prn};
 
@@ -282,6 +282,7 @@ struct TrackingSignalModel {
 enum TrackingLocalCode {
     GpsCa { code: Vec<i8> },
     GalileoE1B { primary_code: Vec<i8> },
+    BeidouB1I { code: Vec<i8> },
     GlonassL1 { code: Vec<i8> },
     Fallback { code: Vec<i8> },
 }
@@ -291,6 +292,7 @@ impl TrackingSignalModel {
         match sat.constellation {
             Constellation::Gps => Self::for_sat_signal_band(config, sat, SignalBand::L1, None),
             Constellation::Galileo => Self::for_sat_signal_band(config, sat, SignalBand::E1, None),
+            Constellation::Beidou => Self::for_sat_signal_band(config, sat, SignalBand::B1, None),
             Constellation::Glonass => Self::for_sat_signal_band(config, sat, SignalBand::L1, None),
             _ => Self::fallback(config, sat, SignalBand::L1),
         }
@@ -342,6 +344,27 @@ impl TrackingSignalModel {
                     },
                 }
             }
+            (Constellation::Beidou, SignalBand::B1) => {
+                let signal = signal_registry(Constellation::Beidou, SignalBand::B1, SignalCode::B1I);
+                let code_length = signal
+                    .as_ref()
+                    .and_then(|entry| entry.code_length)
+                    .map(|length| length as usize)
+                    .unwrap_or(2046);
+                Self {
+                    signal_band,
+                    glonass_frequency_channel: None,
+                    code_rate_hz: signal
+                        .as_ref()
+                        .map(|entry| entry.spec.code_rate_hz)
+                        .unwrap_or(2_046_000.0),
+                    code_length,
+                    local_code: TrackingLocalCode::BeidouB1I {
+                        code: generate_beidou_b1i_code(sat.prn)
+                            .unwrap_or_else(|_| vec![1; code_length.max(1)]),
+                    },
+                }
+            }
             (Constellation::Glonass, SignalBand::L1) => {
                 let signal =
                     signal_registry(Constellation::Glonass, SignalBand::L1, SignalCode::Unknown);
@@ -388,6 +411,7 @@ impl TrackingSignalModel {
             (sat.constellation, signal_band),
             (Constellation::Gps, SignalBand::L1)
                 | (Constellation::Galileo, SignalBand::E1)
+                | (Constellation::Beidou, SignalBand::B1)
                 | (Constellation::Glonass, SignalBand::L1)
         )
     }
@@ -412,6 +436,7 @@ impl TrackingSignalModel {
     fn value_at_phase(&self, chip_phase: f64) -> f32 {
         match &self.local_code {
             TrackingLocalCode::GpsCa { code }
+            | TrackingLocalCode::BeidouB1I { code }
             | TrackingLocalCode::GlonassL1 { code }
             | TrackingLocalCode::Fallback { code } => {
                 code_value_at_tracking_phase(code, chip_phase)

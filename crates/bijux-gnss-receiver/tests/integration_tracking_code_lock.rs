@@ -4,7 +4,7 @@ mod support;
 
 use bijux_gnss_core::api::{
     AcqHypothesis, AcqResult, Constellation, Hertz, ReceiverSampleTrace, SampleTime, SamplesFrame,
-    SatId, Seconds, SignalBand,
+    SatId, Seconds, SignalBand, BEIDOU_B1_CARRIER_HZ, GPS_L1_CA_CARRIER_HZ,
 };
 use bijux_gnss_receiver::api::{
     sim::{
@@ -17,7 +17,8 @@ use bijux_gnss_signal::api::{sample_ca_code, samples_per_code, Prn};
 use num_complex::Complex;
 
 use support::tracking_truth::{
-    post_lock_code_phase_errors_samples, post_lock_epochs, wrapped_code_phase_error_samples,
+    post_lock_code_phase_errors_samples, post_lock_epochs, stable_tracking_window,
+    wrapped_code_phase_error_samples,
 };
 
 const CLEAN_SIGNAL_LOCKED_CODE_ERROR_MAX_SAMPLES: f64 = 1.0;
@@ -102,6 +103,21 @@ fn galileo_tracking_config() -> ReceiverPipelineConfig {
         intermediate_freq_hz: 0.0,
         code_freq_basis_hz: 1_023_000.0,
         code_length: 4092,
+        channels: 4,
+        early_late_spacing_chips: 0.5,
+        dll_bw_hz: 2.0,
+        pll_bw_hz: 15.0,
+        fll_bw_hz: 10.0,
+        ..ReceiverPipelineConfig::default()
+    }
+}
+
+fn beidou_tracking_config() -> ReceiverPipelineConfig {
+    ReceiverPipelineConfig {
+        sampling_freq_hz: 4_092_000.0,
+        intermediate_freq_hz: GPS_L1_CA_CARRIER_HZ.value() - BEIDOU_B1_CARRIER_HZ.value(),
+        code_freq_basis_hz: 2_046_000.0,
+        code_length: 2046,
         channels: 4,
         early_late_spacing_chips: 0.5,
         dll_bw_hz: 2.0,
@@ -281,7 +297,7 @@ fn tracking_holds_galileo_e1_lock_on_clean_synthetic_signal() {
     let config = galileo_tracking_config();
     let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
     let code_phase_chips = 321.375;
-    let frame = synthetic_frame_with_code_phase(&config, sat, code_phase_chips, 0.064);
+    let frame = synthetic_frame_with_code_phase(&config, sat, code_phase_chips, 0.020);
     let expected_code_phase_samples =
         expected_acquisition_code_phase_samples_f64(&config, &frame, code_phase_chips);
     let seeded_code_phase_samples =
@@ -318,5 +334,58 @@ fn tracking_holds_galileo_e1_lock_on_clean_synthetic_signal() {
     assert!(
         epochs.iter().all(|epoch| epoch.tracking_provenance.contains("acq_signal_band=E1")),
         "tracking provenance did not preserve Galileo E1 handoff metadata: epochs={epochs:?}",
+    );
+}
+
+#[test]
+fn tracking_holds_beidou_b1i_lock_on_clean_synthetic_signal() {
+    let config = beidou_tracking_config();
+    let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
+    let code_phase_chips = 321.375;
+    let frame = synthetic_frame_with_code_phase(&config, sat, code_phase_chips, 0.020);
+    let expected_code_phase_samples =
+        expected_acquisition_code_phase_samples_f64(&config, &frame, code_phase_chips);
+    let seeded_code_phase_samples =
+        expected_acquisition_code_phase_samples(&config, &frame, code_phase_chips);
+    let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
+    let tracks = tracking.track_from_acquisition(
+        &frame,
+        &[accepted_acquisition_with_signal_band(
+            sat,
+            SignalBand::B1,
+            0.0,
+            seeded_code_phase_samples,
+        )],
+    );
+    let epochs = &tracks.first().expect("track").epochs;
+    let stable_epochs = stable_tracking_window(epochs, CLEAN_SIGNAL_MIN_LOCKED_CODE_EPOCHS);
+    let stable_errors_samples = stable_epochs
+        .iter()
+        .map(|epoch| {
+            wrapped_code_phase_error_samples(
+                &config,
+                epoch.code_phase_samples.0,
+                expected_code_phase_samples,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        stable_epochs.len() >= CLEAN_SIGNAL_MIN_LOCKED_CODE_EPOCHS,
+        "tracking did not sustain BeiDou B1I lock: epochs={epochs:?}",
+    );
+    assert!(
+        stable_epochs
+            .iter()
+            .all(|epoch| epoch.lock && epoch.dll_lock && epoch.pll_lock && epoch.fll_lock),
+        "BeiDou B1I post-lock epochs lost lock flags: epochs={epochs:?}",
+    );
+    assert!(
+        stable_errors_samples.iter().all(|error_samples| *error_samples <= 2.0),
+        "BeiDou B1I code tracking drifted after lock: stable_errors_samples={stable_errors_samples:?}, epochs={epochs:?}",
+    );
+    assert!(
+        epochs.iter().all(|epoch| epoch.tracking_provenance.contains("acq_signal_band=B1")),
+        "tracking provenance did not preserve BeiDou B1I handoff metadata: epochs={epochs:?}",
     );
 }
