@@ -1,6 +1,23 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{SatId, SigId, SignalBand};
+use std::collections::BTreeMap;
+
+use bijux_gnss_core::api::{
+    first_order_ionosphere_code_delay_m, signal_spec_gps_l1_ca, Llh, Meters, ObsEpoch,
+    ObsSatellite, SatId, SigId, SignalBand,
+};
+
+use crate::corrections::measured_ionosphere::{
+    measured_ionosphere_from_obs_epochs, MeasuredIonosphereObservation,
+};
+use crate::estimation::position::navigation::{
+    satellite_state_from_observation, select_valid_navigation,
+};
+use crate::estimation::position::solver::{
+    ecef_to_geodetic, elevation_azimuth_deg, position_broadcast_navigation_from_gps_ephemerides,
+    PositionBroadcastNavigation,
+};
+use crate::orbits::gps::GpsBroadcastNavigationData;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BroadcastIonosphereResidualObservation {
@@ -75,6 +92,42 @@ pub fn summarize_broadcast_ionosphere_residuals(
     }
 }
 
+pub fn gps_broadcast_ionosphere_residuals_from_obs_epochs(
+    epochs: &[ObsEpoch],
+    receiver_ecef_m: (f64, f64, f64),
+    navigation: &GpsBroadcastNavigationData,
+    band_1: SignalBand,
+    band_2: SignalBand,
+) -> Vec<BroadcastIonosphereResidualObservation> {
+    let measured = measured_ionosphere_from_obs_epochs(epochs, band_1, band_2);
+    let epochs_by_idx = epochs.iter().map(|epoch| (epoch.epoch_idx, epoch)).collect::<BTreeMap<_, _>>();
+    let receiver = receiver_llh_from_ecef(receiver_ecef_m);
+    let navigation_entries =
+        position_broadcast_navigation_from_gps_ephemerides(&navigation.ephemerides);
+
+    measured
+        .into_iter()
+        .map(|observation| {
+            let Some(epoch) = epochs_by_idx.get(&observation.epoch_idx).copied() else {
+                return with_broadcast_failure(
+                    observation,
+                    "gps_klobuchar",
+                    "invalid",
+                    "missing_epoch",
+                );
+            };
+            compare_gps_broadcast_against_measured(
+                observation,
+                epoch,
+                receiver_ecef_m,
+                receiver,
+                navigation,
+                &navigation_entries,
+            )
+        })
+        .collect()
+}
+
 fn summarize_residual_component(
     values: impl Iterator<Item = f64>,
 ) -> Option<BroadcastIonosphereResidualStats> {
@@ -99,6 +152,193 @@ fn summarize_residual_component(
         rms_residual_m,
         max_abs_residual_m,
     })
+}
+
+fn compare_gps_broadcast_against_measured(
+    observation: MeasuredIonosphereObservation,
+    epoch: &ObsEpoch,
+    receiver_ecef_m: (f64, f64, f64),
+    receiver: Option<Llh>,
+    navigation: &GpsBroadcastNavigationData,
+    navigation_entries: &[PositionBroadcastNavigation],
+) -> BroadcastIonosphereResidualObservation {
+    let mut residual = residual_observation_from_measured(observation, "gps_klobuchar");
+    let Some(receiver) = receiver else {
+        residual.broadcast_status = "invalid".to_string();
+        residual.broadcast_reason = "invalid_receiver_position".to_string();
+        return residual;
+    };
+
+    let (first, second) =
+        match dual_frequency_observation_pair(epoch, residual.sat, residual.band_1, residual.band_2)
+        {
+            Some(pair) => pair,
+            None => {
+                residual.broadcast_status = "invalid".to_string();
+                residual.broadcast_reason = "missing_frequency".to_string();
+                return residual;
+            }
+        };
+    residual.signal_1 = Some(first.signal_id);
+    residual.signal_2 = Some(second.signal_id);
+
+    let Some(gps_time) = epoch.gps_time() else {
+        residual.broadcast_status = "invalid".to_string();
+        residual.broadcast_reason = "invalid_receive_time".to_string();
+        return residual;
+    };
+    let Some(selected_navigation) =
+        select_valid_navigation(navigation_entries, residual.sat, gps_time.tow_s)
+    else {
+        residual.broadcast_status = "invalid".to_string();
+        residual.broadcast_reason = "invalid_ephemeris".to_string();
+        return residual;
+    };
+    let Some(state) = satellite_state_from_observation(
+        selected_navigation,
+        gps_time.tow_s,
+        first.pseudorange_m.0,
+        first.timing,
+    ) else {
+        residual.broadcast_status = "invalid".to_string();
+        residual.broadcast_reason = "invalid_geometry".to_string();
+        return residual;
+    };
+
+    let (azimuth_deg, elevation_deg) = elevation_azimuth_deg(
+        receiver_ecef_m.0,
+        receiver_ecef_m.1,
+        receiver_ecef_m.2,
+        state.x_m,
+        state.y_m,
+        state.z_m,
+    );
+    if !azimuth_deg.is_finite() || !elevation_deg.is_finite() || elevation_deg <= 0.0 {
+        residual.broadcast_status = "invalid".to_string();
+        residual.broadcast_reason = "invalid_geometry".to_string();
+        return residual;
+    }
+    residual.azimuth_deg = Some(azimuth_deg);
+    residual.elevation_deg = Some(elevation_deg);
+
+    let Some(l1_delay_m) =
+        navigation.klobuchar_delay_l1_m(receiver, azimuth_deg, elevation_deg, gps_time.tow_s)
+    else {
+        residual.broadcast_status = "invalid".to_string();
+        residual.broadcast_reason = "missing_klobuchar_coefficients".to_string();
+        return residual;
+    };
+    let l1_signal = signal_spec_gps_l1_ca();
+    let Some(broadcast_delay_band_1_m) =
+        first_order_ionosphere_code_delay_m(Meters(l1_delay_m), l1_signal, first.metadata.signal)
+            .map(|delay| delay.0)
+    else {
+        residual.broadcast_status = "invalid".to_string();
+        residual.broadcast_reason = "broadcast_scaling_invalid".to_string();
+        return residual;
+    };
+    let Some(broadcast_delay_band_2_m) =
+        first_order_ionosphere_code_delay_m(Meters(l1_delay_m), l1_signal, second.metadata.signal)
+            .map(|delay| delay.0)
+    else {
+        residual.broadcast_status = "invalid".to_string();
+        residual.broadcast_reason = "broadcast_scaling_invalid".to_string();
+        return residual;
+    };
+
+    residual.broadcast_delay_band_1_m = Some(broadcast_delay_band_1_m);
+    residual.broadcast_delay_band_2_m = Some(broadcast_delay_band_2_m);
+    residual.code_residual_band_1_m = residual
+        .measured_code_delay_band_1_m
+        .map(|delay_m| delay_m - broadcast_delay_band_1_m);
+    residual.code_residual_band_2_m = residual
+        .measured_code_delay_band_2_m
+        .map(|delay_m| delay_m - broadcast_delay_band_2_m);
+    residual.phase_residual_band_1_m = residual
+        .measured_phase_delay_band_1_m
+        .map(|delay_m| delay_m - broadcast_delay_band_1_m);
+    residual.phase_residual_band_2_m = residual
+        .measured_phase_delay_band_2_m
+        .map(|delay_m| delay_m - broadcast_delay_band_2_m);
+    residual.broadcast_status = "ok".to_string();
+    residual.broadcast_reason = "ok".to_string();
+    residual
+}
+
+fn residual_observation_from_measured(
+    observation: MeasuredIonosphereObservation,
+    broadcast_model: &str,
+) -> BroadcastIonosphereResidualObservation {
+    BroadcastIonosphereResidualObservation {
+        epoch_idx: observation.epoch_idx,
+        t_rx_s: observation.t_rx_s,
+        sat: observation.sat,
+        signal_1: observation.signal_1,
+        signal_2: observation.signal_2,
+        band_1: observation.band_1,
+        band_2: observation.band_2,
+        broadcast_model: broadcast_model.to_string(),
+        azimuth_deg: None,
+        elevation_deg: None,
+        measured_code_delay_band_1_m: observation.code_delay_band_1_m,
+        measured_code_delay_band_2_m: observation.code_delay_band_2_m,
+        measured_phase_delay_band_1_m: observation.phase_delay_band_1_m,
+        measured_phase_delay_band_2_m: observation.phase_delay_band_2_m,
+        broadcast_delay_band_1_m: None,
+        broadcast_delay_band_2_m: None,
+        code_residual_band_1_m: None,
+        code_residual_band_2_m: None,
+        phase_residual_band_1_m: None,
+        phase_residual_band_2_m: None,
+        measured_code_status: observation.code_status,
+        measured_code_reason: observation.code_reason,
+        measured_phase_status: observation.phase_status,
+        measured_phase_reason: observation.phase_reason,
+        broadcast_status: "invalid".to_string(),
+        broadcast_reason: "unresolved".to_string(),
+    }
+}
+
+fn with_broadcast_failure(
+    observation: MeasuredIonosphereObservation,
+    broadcast_model: &str,
+    broadcast_status: &str,
+    broadcast_reason: &str,
+) -> BroadcastIonosphereResidualObservation {
+    let mut residual = residual_observation_from_measured(observation, broadcast_model);
+    residual.broadcast_status = broadcast_status.to_string();
+    residual.broadcast_reason = broadcast_reason.to_string();
+    residual
+}
+
+fn receiver_llh_from_ecef(receiver_ecef_m: (f64, f64, f64)) -> Option<Llh> {
+    if !receiver_ecef_m.0.is_finite()
+        || !receiver_ecef_m.1.is_finite()
+        || !receiver_ecef_m.2.is_finite()
+    {
+        return None;
+    }
+    let (lat_deg, lon_deg, alt_m) =
+        ecef_to_geodetic(receiver_ecef_m.0, receiver_ecef_m.1, receiver_ecef_m.2);
+    if !lat_deg.is_finite() || !lon_deg.is_finite() || !alt_m.is_finite() {
+        return None;
+    }
+    Some(Llh { lat_deg, lon_deg, alt_m })
+}
+
+fn dual_frequency_observation_pair<'a>(
+    epoch: &'a ObsEpoch,
+    sat: SatId,
+    band_1: SignalBand,
+    band_2: SignalBand,
+) -> Option<(&'a ObsSatellite, &'a ObsSatellite)> {
+    let first = epoch.sats.iter().find(|observation| {
+        observation.signal_id.sat == sat && observation.signal_id.band == band_1
+    })?;
+    let second = epoch.sats.iter().find(|observation| {
+        observation.signal_id.sat == sat && observation.signal_id.band == band_2
+    })?;
+    Some((first, second))
 }
 
 #[cfg(test)]
