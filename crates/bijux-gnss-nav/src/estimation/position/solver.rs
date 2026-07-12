@@ -6,6 +6,10 @@ use super::raim::{RaimFaultDetection, RaimFaultExclusion};
 use crate::models::atmosphere::{
     IonosphereModel, KlobucharCoefficients, KlobucharModel, SaastamoinenModel, TroposphereModel,
 };
+use crate::orbits::beidou::{
+    beidou_navigation_age, is_beidou_navigation_valid, sat_state_beidou_b1i,
+    sat_state_beidou_b1i_from_observation, BeidouBroadcastNavigationData,
+};
 use crate::orbits::galileo::{
     galileo_navigation_age, is_galileo_navigation_valid, sat_state_galileo_e1,
     sat_state_galileo_e1_from_observation, GalileoBroadcastNavigationData,
@@ -109,6 +113,7 @@ pub struct PositionObservation {
 pub enum PositionBroadcastNavigation {
     Gps(GpsEphemeris),
     Galileo(GalileoBroadcastNavigationData),
+    Beidou(BeidouBroadcastNavigationData),
     Glonass(GlonassBroadcastNavigationFrame),
 }
 
@@ -117,6 +122,7 @@ impl PositionBroadcastNavigation {
         match self {
             Self::Gps(ephemeris) => ephemeris.sat,
             Self::Galileo(navigation) => navigation.sat,
+            Self::Beidou(navigation) => navigation.sat,
             Self::Glonass(navigation) => navigation.sat,
         }
     }
@@ -136,6 +142,12 @@ pub fn position_broadcast_navigation_from_glonass_frames(
     navigation_frames: &[GlonassBroadcastNavigationFrame],
 ) -> Vec<PositionBroadcastNavigation> {
     navigation_frames.iter().cloned().map(PositionBroadcastNavigation::Glonass).collect()
+}
+
+pub fn position_broadcast_navigation_from_beidou_navigations(
+    navigations: &[BeidouBroadcastNavigationData],
+) -> Vec<PositionBroadcastNavigation> {
+    navigations.iter().cloned().map(PositionBroadcastNavigation::Beidou).collect()
 }
 
 pub fn position_observations_from_epoch(epoch: &ObsEpoch) -> Vec<PositionObservation> {
@@ -894,6 +906,9 @@ fn navigation_is_valid(navigation: &PositionBroadcastNavigation, receive_tow_s: 
         PositionBroadcastNavigation::Galileo(navigation) => {
             is_galileo_navigation_valid(navigation, receive_tow_s)
         }
+        PositionBroadcastNavigation::Beidou(navigation) => {
+            is_beidou_navigation_valid(navigation, receive_tow_s)
+        }
         PositionBroadcastNavigation::Glonass(navigation) => {
             is_glonass_navigation_valid(navigation, receive_tow_s)
         }
@@ -911,6 +926,10 @@ fn navigation_age_score(
         }
         PositionBroadcastNavigation::Galileo(navigation) => {
             let age = galileo_navigation_age(navigation, receive_tow_s);
+            (age.toe_age_s.max(age.toc_age_s), age.toe_age_s + age.toc_age_s)
+        }
+        PositionBroadcastNavigation::Beidou(navigation) => {
+            let age = beidou_navigation_age(navigation, receive_tow_s);
             (age.toe_age_s.max(age.toc_age_s), age.toe_age_s + age.toc_age_s)
         }
         PositionBroadcastNavigation::Glonass(navigation) => {
@@ -945,9 +964,14 @@ fn select_valid_ephemeris(
 #[cfg(test)]
 mod tests {
     use super::{
+        position_broadcast_navigation_from_beidou_navigations,
+        position_broadcast_navigation_from_glonass_frames,
         position_broadcast_navigation_from_gps_ephemerides, position_observations_from_epoch,
-        position_broadcast_navigation_from_glonass_frames, resolve_position_inputs,
-        PositionBroadcastNavigation, PositionObservation,
+        resolve_position_inputs, PositionBroadcastNavigation, PositionObservation,
+    };
+    use crate::orbits::beidou::{
+        BeidouBroadcastNavigationData, BeidouClockCorrection, BeidouEphemeris,
+        BeidouIonosphericCorrection, BeidouSignalHealth, BeidouSystemTime,
     };
     use crate::orbits::galileo::{
         GalileoBroadcastNavigationData, GalileoClockCorrection, GalileoEphemeris,
@@ -1102,6 +1126,58 @@ mod tests {
         }
     }
 
+    fn sample_beidou_navigation(
+        sat: SatId,
+        toe_s: f64,
+        toc_s: f64,
+    ) -> BeidouBroadcastNavigationData {
+        BeidouBroadcastNavigationData {
+            sat,
+            bdt: BeidouSystemTime { week: 888, sow_s: toe_s as u32 },
+            urai: 0,
+            signal_health: BeidouSignalHealth { autonomous_satellite_good: true },
+            clock: BeidouClockCorrection {
+                toc_s,
+                aodc: 0,
+                af0: 0.0,
+                af1: 0.0,
+                af2: 0.0,
+                tgd1_s: 0.0,
+                tgd2_s: 0.0,
+            },
+            ephemeris: BeidouEphemeris {
+                sat,
+                aode: 0,
+                toe_s,
+                sqrt_a: 5_282.61,
+                e: 0.0021,
+                i0: 0.962,
+                idot: -1.4e-10,
+                omega0: 0.77,
+                omegadot: -7.9e-9,
+                w: -0.41,
+                m0: 0.53,
+                delta_n: 3.4e-9,
+                cuc: -1.2e-6,
+                cus: 3.1e-6,
+                crc: 146.0,
+                crs: -84.0,
+                cic: 1.1e-7,
+                cis: -1.7e-7,
+            },
+            ionosphere: BeidouIonosphericCorrection {
+                alpha0: 0.0,
+                alpha1: 0.0,
+                alpha2: 0.0,
+                alpha3: 0.0,
+                beta0: 0.0,
+                beta1: 0.0,
+                beta2: 0.0,
+                beta3: 0.0,
+            },
+        }
+    }
+
     #[test]
     fn resolve_position_inputs_uses_nearest_valid_ephemeris() {
         let sat = SatId { constellation: Constellation::Gps, prn: 13 };
@@ -1130,9 +1206,9 @@ mod tests {
                 assert_eq!(ephemeris.toe_s, 200_000.0);
                 assert_eq!(ephemeris.toc_s, 200_000.0);
             }
-            PositionBroadcastNavigation::Galileo(_) | PositionBroadcastNavigation::Glonass(_) => {
-                panic!("expected gps navigation")
-            }
+            PositionBroadcastNavigation::Galileo(_)
+            | PositionBroadcastNavigation::Beidou(_)
+            | PositionBroadcastNavigation::Glonass(_) => panic!("expected gps navigation"),
         }
     }
 
@@ -1140,6 +1216,7 @@ mod tests {
     fn position_broadcast_navigation_preserves_satellite_identity() {
         let gps_sat = SatId { constellation: Constellation::Gps, prn: 13 };
         let galileo_sat = SatId { constellation: Constellation::Galileo, prn: 19 };
+        let beidou_sat = SatId { constellation: Constellation::Beidou, prn: 11 };
         let glonass_sat = SatId { constellation: Constellation::Glonass, prn: 14 };
         let gps_navigation =
             PositionBroadcastNavigation::Gps(sample_ephemeris(gps_sat, 200_000.0, 200_000.0));
@@ -1148,6 +1225,11 @@ mod tests {
             64_800.0,
             66_000.0,
         ));
+        let beidou_navigation = PositionBroadcastNavigation::Beidou(sample_beidou_navigation(
+            beidou_sat,
+            345_600.0,
+            345_600.0,
+        ));
         let glonass_navigation =
             PositionBroadcastNavigation::Glonass(sample_glonass_navigation(glonass_sat, 83_700, -10_782.0));
 
@@ -1155,6 +1237,8 @@ mod tests {
         assert_eq!(gps_navigation.constellation(), Constellation::Gps);
         assert_eq!(galileo_navigation.sat(), galileo_sat);
         assert_eq!(galileo_navigation.constellation(), Constellation::Galileo);
+        assert_eq!(beidou_navigation.sat(), beidou_sat);
+        assert_eq!(beidou_navigation.constellation(), Constellation::Beidou);
         assert_eq!(glonass_navigation.sat(), glonass_sat);
         assert_eq!(glonass_navigation.constellation(), Constellation::Glonass);
     }
@@ -1204,6 +1288,28 @@ mod tests {
     }
 
     #[test]
+    fn beidou_navigation_convert_into_position_navigation_entries() {
+        let navigations = vec![
+            sample_beidou_navigation(
+                SatId { constellation: Constellation::Beidou, prn: 11 },
+                345_600.0,
+                345_600.0,
+            ),
+            sample_beidou_navigation(
+                SatId { constellation: Constellation::Beidou, prn: 12 },
+                346_200.0,
+                346_200.0,
+            ),
+        ];
+
+        let navigation = position_broadcast_navigation_from_beidou_navigations(&navigations);
+
+        assert_eq!(navigation.len(), 2);
+        assert_eq!(navigation[0].sat(), navigations[0].sat);
+        assert_eq!(navigation[1].sat(), navigations[1].sat);
+    }
+
+    #[test]
     fn resolve_position_inputs_accepts_valid_glonass_navigation() {
         let sat = SatId { constellation: Constellation::Glonass, prn: 14 };
         let observations = vec![PositionObservation {
@@ -1229,9 +1335,41 @@ mod tests {
                 assert_eq!(navigation.sat, sat);
                 assert_eq!(navigation.immediate.ephemeris_reference_time_s, 83_700);
             }
-            PositionBroadcastNavigation::Gps(_) | PositionBroadcastNavigation::Galileo(_) => {
-                panic!("expected glonass navigation")
+            PositionBroadcastNavigation::Gps(_)
+            | PositionBroadcastNavigation::Galileo(_)
+            | PositionBroadcastNavigation::Beidou(_) => panic!("expected glonass navigation"),
+        }
+    }
+
+    #[test]
+    fn resolve_position_inputs_accepts_valid_beidou_navigation() {
+        let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
+        let observations = vec![PositionObservation {
+            sat,
+            pseudorange_m: 24_000_000.0,
+            cn0_dbhz: 45.0,
+            elevation_deg: None,
+            weight: 1.0,
+            gps_receive_time: None,
+            signal_timing: None,
+        }];
+        let navigations = vec![sample_beidou_navigation(sat, 345_600.0, 345_600.0)];
+        let navigation = position_broadcast_navigation_from_beidou_navigations(&navigations);
+        let mut rejected = Vec::new();
+
+        let inputs = resolve_position_inputs(&observations, &navigation, 345_630.0, &mut rejected);
+
+        assert!(rejected.is_empty());
+        assert_eq!(inputs.len(), 1);
+        match &inputs[0].navigation {
+            PositionBroadcastNavigation::Beidou(navigation) => {
+                assert_eq!(navigation.sat, sat);
+                assert_eq!(navigation.ephemeris.toe_s, 345_600.0);
+                assert_eq!(navigation.clock.toc_s, 345_600.0);
             }
+            PositionBroadcastNavigation::Gps(_)
+            | PositionBroadcastNavigation::Galileo(_)
+            | PositionBroadcastNavigation::Glonass(_) => panic!("expected beidou navigation"),
         }
     }
 
@@ -1559,6 +1697,20 @@ fn satellite_state_from_observation(
                 clock_bias_s: state.clock_correction.bias_s,
             })
         }
+        PositionBroadcastNavigation::Beidou(navigation) => {
+            let state = sat_state_beidou_b1i_from_observation(
+                navigation,
+                receive_tow_s,
+                pseudorange_m,
+                signal_timing,
+            );
+            Some(SatelliteState {
+                x_m: state.x_m,
+                y_m: state.y_m,
+                z_m: state.z_m,
+                clock_bias_s: state.clock_correction.bias_s,
+            })
+        }
         PositionBroadcastNavigation::Glonass(navigation) => {
             let state = sat_state_glonass_l1_from_observation(
                 navigation,
@@ -1593,6 +1745,15 @@ fn satellite_state_at_time(
         }
         PositionBroadcastNavigation::Galileo(navigation) => {
             let state = sat_state_galileo_e1(navigation, transmit_tow_s, signal_travel_time_s);
+            Some(SatelliteState {
+                x_m: state.x_m,
+                y_m: state.y_m,
+                z_m: state.z_m,
+                clock_bias_s: state.clock_correction.bias_s,
+            })
+        }
+        PositionBroadcastNavigation::Beidou(navigation) => {
+            let state = sat_state_beidou_b1i(navigation, transmit_tow_s, signal_travel_time_s);
             Some(SatelliteState {
                 x_m: state.x_m,
                 y_m: state.y_m,

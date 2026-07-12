@@ -39,6 +39,7 @@ pub use crate::estimation::position::raim::{
 /// Position solver (least squares) and helpers.
 pub use crate::estimation::position::solver::{
     ecef_to_enu, ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef,
+    position_broadcast_navigation_from_beidou_navigations,
     position_broadcast_navigation_from_glonass_frames,
     position_broadcast_navigation_from_gps_ephemerides, position_dops_from_satellite_positions,
     position_measurement_weight, position_observation_has_valid_satellite_time,

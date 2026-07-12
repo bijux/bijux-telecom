@@ -10,7 +10,8 @@ use bijux_gnss_core::api::{
 use bijux_gnss_nav::api::{
     elevation_azimuth_deg, position_broadcast_navigation_from_gps_ephemerides,
     position_measurement_weight, position_observation_has_valid_satellite_time,
-    sat_state_galileo_e1_from_observation, sat_state_glonass_l1_from_observation,
+    sat_state_beidou_b1i_from_observation, sat_state_galileo_e1_from_observation,
+    sat_state_glonass_l1_from_observation,
     sat_state_gps_l1ca_from_observation, GpsEphemeris, KlobucharCoefficients,
     PositionBroadcastNavigation, PositionObservation, PositionSolveRefusalKind, PositionSolver,
     RaimFaultDetectionStatus, WeightingConfig,
@@ -174,9 +175,14 @@ impl Navigation {
             .collect::<std::collections::BTreeSet<_>>();
         let has_supported_gps = input_constellations.contains(&Constellation::Gps);
         let has_supported_galileo = input_constellations.contains(&Constellation::Galileo);
-        let has_supported_constellation = has_supported_gps || has_supported_galileo;
+        let has_supported_beidou = input_constellations.contains(&Constellation::Beidou);
+        let has_supported_constellation =
+            has_supported_gps || has_supported_galileo || has_supported_beidou;
         let has_unsupported_constellation = input_constellations.iter().any(|constellation| {
-            *constellation != Constellation::Gps && *constellation != Constellation::Galileo
+            !matches!(
+                constellation,
+                Constellation::Gps | Constellation::Galileo | Constellation::Beidou
+            )
         });
 
         if !has_supported_constellation {
@@ -213,7 +219,10 @@ impl Navigation {
             .sats
             .iter()
             .filter(|s| {
-                matches!(s.signal_id.sat.constellation, Constellation::Gps | Constellation::Galileo)
+                matches!(
+                    s.signal_id.sat.constellation,
+                    Constellation::Gps | Constellation::Galileo | Constellation::Beidou
+                )
             })
             .filter_map(|s| {
                 let mut observation = PositionObservation {
@@ -1268,6 +1277,15 @@ fn navigation_satellite_state(
         }
         PositionBroadcastNavigation::Galileo(navigation) => {
             let state = sat_state_galileo_e1_from_observation(
+                navigation,
+                receive_tow_s,
+                sat.pseudorange_m.0,
+                sat.timing,
+            );
+            Some((state.x_m, state.y_m, state.z_m))
+        }
+        PositionBroadcastNavigation::Beidou(navigation) => {
+            let state = sat_state_beidou_b1i_from_observation(
                 navigation,
                 receive_tow_s,
                 sat.pseudorange_m.0,
