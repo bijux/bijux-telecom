@@ -945,7 +945,8 @@ mod tests {
         position_broadcast_navigation_from_gps_ephemerides, position_observations_from_epoch,
         resolve_position_inputs, robust_weight, robust_weights,
         unknown_inter_system_time_offset_sats, PositionRobustWeighting,
-        PositionBroadcastNavigation, PositionObservation, SatelliteState, WorkingSetResidual,
+        PositionBroadcastNavigation, PositionObservation, SatelliteGeometry, SatelliteState,
+        WorkingSetResidual,
     };
     use crate::estimation::position::navigation::navigation_time_relationship_is_known;
     use crate::orbits::beidou::{
@@ -1551,6 +1552,138 @@ mod tests {
     }
 
     #[test]
+    fn first_iteration_measurement_weights_start_from_base_weights() {
+        let solver = super::PositionSolver::new()
+            .with_robust_weighting(PositionRobustWeighting::tukey_biweight(30.0));
+        let geometry = vec![
+            SatelliteGeometry {
+                observation: PositionObservation {
+                    sat: SatId { constellation: Constellation::Gps, prn: 1 },
+                    pseudorange_m: 24_000_000.0,
+                    doppler_hz: None,
+                    doppler_var_hz2: None,
+                    cn0_dbhz: 45.0,
+                    elevation_deg: Some(45.0),
+                    weight: 0.5,
+                    gps_receive_time: None,
+                    signal_timing: None,
+                    signal_id: None,
+                },
+                corrected_pseudorange_m: 24_000_000.0,
+                state: SatelliteState {
+                    x_m: 20_200_000.0,
+                    y_m: -1_500_000.0,
+                    z_m: 21_300_000.0,
+                    vx_mps: 0.0,
+                    vy_mps: 0.0,
+                    vz_mps: 0.0,
+                    clock_bias_s: 0.0,
+                    clock_drift_s_per_s: 0.0,
+                },
+                iono_delay_m: 0.0,
+                tropo_delay_m: 0.0,
+            },
+            SatelliteGeometry {
+                observation: PositionObservation {
+                    sat: SatId { constellation: Constellation::Gps, prn: 2 },
+                    pseudorange_m: 24_100_000.0,
+                    doppler_hz: None,
+                    doppler_var_hz2: None,
+                    cn0_dbhz: 45.0,
+                    elevation_deg: Some(50.0),
+                    weight: 2.0,
+                    gps_receive_time: None,
+                    signal_timing: None,
+                    signal_id: None,
+                },
+                corrected_pseudorange_m: 24_100_000.0,
+                state: SatelliteState {
+                    x_m: 20_300_000.0,
+                    y_m: -1_600_000.0,
+                    z_m: 21_200_000.0,
+                    vx_mps: 0.0,
+                    vy_mps: 0.0,
+                    vz_mps: 0.0,
+                    clock_bias_s: 0.0,
+                    clock_drift_s_per_s: 0.0,
+                },
+                iono_delay_m: 0.0,
+                tropo_delay_m: 0.0,
+            },
+        ];
+
+        let weights = solver.measurement_weights(0, &geometry, &[1.0e6, 1.0e6]);
+
+        assert_eq!(weights, vec![0.5, 2.0]);
+    }
+
+    #[test]
+    fn later_iteration_measurement_weights_fall_back_when_tukey_zeroes_everything() {
+        let solver = super::PositionSolver::new()
+            .with_robust_weighting(PositionRobustWeighting::tukey_biweight(30.0));
+        let geometry = vec![
+            SatelliteGeometry {
+                observation: PositionObservation {
+                    sat: SatId { constellation: Constellation::Gps, prn: 1 },
+                    pseudorange_m: 24_000_000.0,
+                    doppler_hz: None,
+                    doppler_var_hz2: None,
+                    cn0_dbhz: 45.0,
+                    elevation_deg: Some(45.0),
+                    weight: 0.5,
+                    gps_receive_time: None,
+                    signal_timing: None,
+                    signal_id: None,
+                },
+                corrected_pseudorange_m: 24_000_000.0,
+                state: SatelliteState {
+                    x_m: 20_200_000.0,
+                    y_m: -1_500_000.0,
+                    z_m: 21_300_000.0,
+                    vx_mps: 0.0,
+                    vy_mps: 0.0,
+                    vz_mps: 0.0,
+                    clock_bias_s: 0.0,
+                    clock_drift_s_per_s: 0.0,
+                },
+                iono_delay_m: 0.0,
+                tropo_delay_m: 0.0,
+            },
+            SatelliteGeometry {
+                observation: PositionObservation {
+                    sat: SatId { constellation: Constellation::Gps, prn: 2 },
+                    pseudorange_m: 24_100_000.0,
+                    doppler_hz: None,
+                    doppler_var_hz2: None,
+                    cn0_dbhz: 45.0,
+                    elevation_deg: Some(50.0),
+                    weight: 2.0,
+                    gps_receive_time: None,
+                    signal_timing: None,
+                    signal_id: None,
+                },
+                corrected_pseudorange_m: 24_100_000.0,
+                state: SatelliteState {
+                    x_m: 20_300_000.0,
+                    y_m: -1_600_000.0,
+                    z_m: 21_200_000.0,
+                    vx_mps: 0.0,
+                    vy_mps: 0.0,
+                    vz_mps: 0.0,
+                    clock_bias_s: 0.0,
+                    clock_drift_s_per_s: 0.0,
+                },
+                iono_delay_m: 0.0,
+                tropo_delay_m: 0.0,
+            },
+        ];
+
+        let weights = solver.measurement_weights(1, &geometry, &[1.0e6, 1.0e6]);
+
+        assert_eq!(weights, vec![0.5, 2.0]);
+    }
+
+    #[test]
     fn position_observation_without_signal_timing_is_valid_when_pseudorange_is_finite() {
         let observation = PositionObservation {
             sat: SatId { constellation: Constellation::Gps, prn: 13 },
@@ -2017,7 +2150,7 @@ impl PositionSolver {
         let mut covariance_clamped = false;
         let mut covariance_max_variance = None;
 
-        for _ in 0..self.max_iterations {
+        for iteration_index in 0..self.max_iterations {
             if geometry.len() < 4 {
                 return None;
             }
@@ -2031,7 +2164,7 @@ impl PositionSolver {
                 h.push(design_row);
             }
 
-            let weights = self.measurement_weights(&geometry, &residual_values);
+            let weights = self.measurement_weights(iteration_index, &geometry, &residual_values);
             let (delta, covariance_out) = solve_weighted_normal_eq(&h, &residual_values, &weights)?;
             let (covariance_out, symmetrized, clamped, max_variance) =
                 sanitize_covariance(covariance_out);
@@ -2107,7 +2240,7 @@ impl PositionSolver {
                     .expect("working-set geometry must linearize")
             })
             .collect::<Vec<_>>();
-        let weights = self.measurement_weights(geometry, &residual_values);
+        let weights = self.measurement_weights(1, geometry, &residual_values);
 
         geometry
             .iter()
@@ -2122,8 +2255,22 @@ impl PositionSolver {
             .collect()
     }
 
-    fn measurement_weights(&self, geometry: &[SatelliteGeometry], residuals: &[f64]) -> Vec<f64> {
-        let mut weights = robust_weights(residuals, self.robust_weighting);
+    fn measurement_weights(
+        &self,
+        iteration_index: usize,
+        geometry: &[SatelliteGeometry],
+        residuals: &[f64],
+    ) -> Vec<f64> {
+        // Start IRLS from the observation model's base weights so robust kernels
+        // do not collapse the first linearization before the state is near truth.
+        let mut weights = if iteration_index == 0 {
+            vec![1.0; residuals.len()]
+        } else {
+            robust_weights(residuals, self.robust_weighting)
+        };
+        if weights.iter().all(|weight| *weight <= 0.0) {
+            weights.fill(1.0);
+        }
         for (weight, satellite_geometry) in weights.iter_mut().zip(geometry) {
             *weight *= satellite_geometry.observation.weight;
         }
