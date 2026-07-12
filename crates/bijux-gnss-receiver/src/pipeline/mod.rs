@@ -10,6 +10,8 @@ pub mod doppler;
 pub mod hatch;
 #[cfg(feature = "nav")]
 pub mod navigation;
+#[cfg(feature = "nav")]
+pub(crate) mod satellite_clock_anomaly;
 pub mod observation_validation;
 pub mod observations;
 pub mod tracking;
