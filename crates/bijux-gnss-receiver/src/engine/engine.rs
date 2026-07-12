@@ -647,7 +647,7 @@ fn support_reason(constellation: Constellation, band: SignalBand, code: SignalCo
         && band == SignalBand::L1
         && code == SignalCode::Unknown
     {
-        return "receiver acquisition supports this signal path through explicit FDMA channel requests; tracking, observations, and navigation remain incomplete".to_string();
+        return "receiver acquisition, tracking, and observations support this signal path through explicit FDMA channel requests; navigation remains incomplete".to_string();
     }
     if signal_registry(constellation, band, code).is_some() {
         return "signal model registered; receiver pipeline support not yet complete".to_string();

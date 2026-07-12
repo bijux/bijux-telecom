@@ -49,7 +49,7 @@ fn glonass_boundary_scenario(
 }
 
 #[test]
-fn receiver_run_with_explicit_glonass_requests_reports_acquisition() {
+fn receiver_run_with_explicit_glonass_requests_produces_tracking_and_observations() {
     let slot = GlonassSlot::new(8).expect("slot 8 must be valid");
     let sat = glonass_slot_sat(slot);
     let channel = GlonassFrequencyChannel::new(-4).expect("channel -4 must be valid");
@@ -85,7 +85,21 @@ fn receiver_run_with_explicit_glonass_requests_reports_acquisition() {
         ),
         "{acquisition:?}"
     );
-    assert!(artifacts.tracking.is_empty(), "{artifacts:?}");
+    let tracking = artifacts.tracking.first().expect("GLONASS tracking result");
+    assert_eq!(tracking.sat, sat, "{tracking:?}");
+    assert!(!tracking.epochs.is_empty(), "{tracking:?}");
+    assert_eq!(tracking.epochs[0].signal_band, SignalBand::L1, "{tracking:?}");
+    assert_eq!(tracking.epochs[0].glonass_frequency_channel, Some(channel), "{tracking:?}");
+
+    let observation_epoch = artifacts.observations.first().expect("GLONASS observation epoch");
+    let observation = observation_epoch
+        .sats
+        .iter()
+        .find(|row| row.signal_id.sat == sat)
+        .expect("GLONASS observation row");
+    assert_eq!(observation.signal_id.band, SignalBand::L1, "{observation:?}");
+    assert_eq!(observation.signal_id.code, SignalCode::Unknown, "{observation:?}");
+    assert_eq!(observation.metadata.signal.code, SignalCode::Unknown, "{observation:?}");
 }
 
 #[test]
@@ -114,4 +128,6 @@ fn receiver_default_run_does_not_guess_glonass_frequency_channels() {
     assert!(artifacts.tracking.is_empty(), "{artifacts:?}");
     assert!(matches!(row.status, SupportStatus::Planned), "{row:?}");
     assert!(row.reason.contains("explicit FDMA channel requests"), "{row:?}");
+    assert!(row.reason.contains("tracking"), "{row:?}");
+    assert!(row.reason.contains("observations"), "{row:?}");
 }
