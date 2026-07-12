@@ -1193,6 +1193,18 @@ mod tests {
     }
 
     #[test]
+    fn position_filter_enables_observation_gap_tuning_by_default() {
+        let config = PositionFilterConfig::default();
+
+        assert_eq!(config.observation_gap.covariance_inflation_per_second, 0.75);
+        assert_eq!(config.observation_gap.max_covariance_inflation, 8.0);
+        assert_eq!(config.observation_gap.min_position_sigma_m, 25.0);
+        assert_eq!(config.observation_gap.min_velocity_sigma_mps, 3.0);
+        assert_eq!(config.observation_gap.min_clock_bias_sigma_s, 2.0e-7);
+        assert_eq!(config.observation_gap.min_clock_drift_sigma_s_per_s, 2.0e-8);
+    }
+
+    #[test]
     fn position_filter_static_receiver_profile_enables_static_model() {
         let config = PositionFilterConfig::for_static_receiver();
         let PositionFilterMotionModel::StaticPosition(static_model) = config.motion_model else {
