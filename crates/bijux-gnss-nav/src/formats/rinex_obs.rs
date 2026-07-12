@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 
 use bijux_gnss_core::api::{
-    signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l2c, utc_to_gps,
+    signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l2c, signal_spec_gps_l5,
+    utc_to_gps,
     Constellation, Cycles, GpsTime, Hertz, LeapSeconds, LockFlags, Meters, ObsEpoch, ObsMetadata,
     ObsSatellite, ObservationStatus, ParseError, ReceiverRole, SatId, Seconds, SigId, SignalBand,
     SignalCode, SignalSpec,
@@ -548,6 +549,29 @@ fn resolve_gps_observation_channels(
             vec!["L2W".to_string(), "L2P".to_string(), "L2".to_string()],
             vec!["S2W".to_string(), "S2P".to_string(), "S2".to_string()],
         ),
+        (
+            SignalBand::L5,
+            SignalCode::Unknown,
+            signal_spec_gps_l5(),
+            vec![
+                "C5Q".to_string(),
+                "C5X".to_string(),
+                "C5I".to_string(),
+                "C5".to_string(),
+            ],
+            vec![
+                "L5Q".to_string(),
+                "L5X".to_string(),
+                "L5I".to_string(),
+                "L5".to_string(),
+            ],
+            vec![
+                "S5Q".to_string(),
+                "S5X".to_string(),
+                "S5I".to_string(),
+                "S5".to_string(),
+            ],
+        ),
     ] {
         let Some(pseudorange_index) =
             find_observation_index(observation_types, &pseudorange_candidates)
@@ -1029,7 +1053,8 @@ mod tests {
     use std::path::PathBuf;
 
     use bijux_gnss_core::api::{
-        check_dual_frequency_observations, signal_spec_gps_l2c, validate_obs_epochs,
+        check_dual_frequency_observations, signal_spec_gps_l2c, signal_spec_gps_l5,
+        validate_obs_epochs,
         Constellation, SatId, SignalBand, SignalCode,
     };
 
@@ -1208,6 +1233,50 @@ mod tests {
             .expect("L2C observation");
         assert_eq!(l2.signal_id.code, SignalCode::L2C);
         assert_eq!(l2.metadata.signal, signal_spec_gps_l2c());
+    }
+
+    #[test]
+    fn parse_rinex_3_l5_observation_epoch() {
+        let data = [
+            format!(
+                "{:<60}{}",
+                "     3.04           OBSERVATION DATA    G (GPS)", "RINEX VERSION / TYPE"
+            ),
+            format!("{:<60}{}", "gps-station", "MARKER NAME"),
+            format!("{:<60}{}", "G    5 C1C L1C C5Q L5Q S5Q", "SYS / # / OBS TYPES"),
+            format!("{:<60}{}", "", "END OF HEADER"),
+            "> 2022 05 14 00 00 00.0000000  0  1".to_string(),
+            format!(
+                "{:<3}{:>14}  {:>14}  {:>14}  {:>14}  {:>14}",
+                "G01", 20345678.123, 123456.250, 20345680.750, 123450.500, 49.5
+            ),
+        ]
+        .join("\n");
+        let dataset =
+            parse_rinex_gps_observation_dataset(&data).expect("parse synthetic RINEX 3 L5 data");
+
+        assert_eq!(dataset.observation_channels.len(), 2);
+        assert_eq!(dataset.observation_channels[1].band, SignalBand::L5);
+        assert_eq!(dataset.observation_channels[1].code, SignalCode::Unknown);
+        assert_eq!(dataset.observation_channels[1].pseudorange_observation_type, "C5Q");
+        assert_eq!(
+            dataset.observation_channels[1].carrier_phase_observation_type.as_deref(),
+            Some("L5Q")
+        );
+        assert_eq!(
+            dataset.observation_channels[1].signal_strength_observation_type.as_deref(),
+            Some("S5Q")
+        );
+        assert_eq!(dataset.epochs.len(), 1);
+        assert_eq!(dataset.epochs[0].sats.len(), 2);
+        let l5 = dataset.epochs[0]
+            .sats
+            .iter()
+            .find(|sat| sat.signal_id.band == SignalBand::L5)
+            .expect("L5 observation");
+        assert_eq!(l5.signal_id.code, SignalCode::Unknown);
+        assert_eq!(l5.metadata.signal, signal_spec_gps_l5());
+        assert_eq!(l5.cn0_dbhz, 49.5);
     }
 
     #[test]
