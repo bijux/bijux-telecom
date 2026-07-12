@@ -7,9 +7,12 @@ use bijux_gnss_core::api::{
     ReceiverSampleTrace, SignalBand, SignalDelayAlignment, SignalSpec, TrackEpoch,
     TrackingUncertainty,
 };
+use bijux_gnss_nav::api::GpsEphemeris;
 use bijux_gnss_receiver::api::{
     carrier_hz_from_doppler_hz,
-    sim::{SyntheticObservationTruthReference, SyntheticSignalParams},
+    sim::{
+        SyntheticIonosphereDelayModel, SyntheticObservationTruthReference, SyntheticSignalParams,
+    },
     ReceiverPipelineConfig, TrackingResult,
 };
 
@@ -21,6 +24,7 @@ pub const SYNTHETIC_REFERENCE_RECEIVE_TIME_S: f64 = 100_000.0;
 pub const TRACKING_CARRIER_PHASE_SIGMA_CYCLES: f64 = 0.05;
 pub const TRACKING_DOPPLER_SIGMA_HZ: f64 = 0.25;
 pub const TRACKING_CN0_SIGMA_DBHZ: f64 = 0.75;
+const GPS_L1_REFERENCE_IONOSPHERE_DELAY_M: f64 = 5.0;
 
 #[derive(Debug, Clone)]
 pub struct ObservationTruthFixture {
@@ -91,6 +95,7 @@ pub fn build_observation_truth_fixture_with_cycle_slips(
                 profile.truth_ecef_m.1,
                 profile.truth_ecef_m.2,
             ],
+            ionosphere_delay_model: None,
         },
         config,
         profile,
@@ -125,15 +130,28 @@ fn build_observation_truth_fixture_with_parallel_signal(
     {
         signal.doppler_hz = doppler_hz;
     }
+    let ionosphere_delay_model = SyntheticIonosphereDelayModel {
+        reference_delay_m: GPS_L1_REFERENCE_IONOSPHERE_DELAY_M,
+        reference_signal: signal_spec_gps_l1_ca(),
+    };
 
     let mut track_seeds = profile
         .scenario
         .satellites
         .iter()
-        .map(|signal| ObservationTruthTrackSeed {
-            signal: *signal,
-            signal_spec: signal_spec_gps_l1_ca(),
-            whole_code_periods: profile.pseudorange_epoch_base,
+        .map(|signal| {
+            let ephemeris = profile
+                .ephemerides
+                .iter()
+                .find(|candidate| candidate.sat == signal.sat)
+                .expect("fixture ephemeris for L1 observation signal");
+            dispersive_track_seed(
+                *signal,
+                signal_spec_gps_l1_ca(),
+                ephemeris,
+                profile.truth_ecef_m,
+                ionosphere_delay_model,
+            )
         })
         .collect::<Vec<_>>();
 
@@ -143,24 +161,15 @@ fn build_observation_truth_fixture_with_parallel_signal(
         .iter()
         .find(|candidate| candidate.sat == l1_reference.signal.sat)
         .expect("fixture ephemeris for duplicated observation signal");
-    let pseudorange_m = synthetic_pseudorange_m(
-        ephemeris,
-        SYNTHETIC_REFERENCE_RECEIVE_TIME_S,
-        profile.truth_ecef_m,
-    );
-    let (whole_code_periods, code_phase_chips) =
-        signal_code_alignment_from_pseudorange_m(pseudorange_m, parallel_signal);
-    let parallel_signal_seed = SyntheticSignalParams {
-        code_phase_chips,
-        ..l1_reference.signal
-    };
     track_seeds.insert(
         1,
-        ObservationTruthTrackSeed {
-            signal: parallel_signal_seed,
-            signal_spec: parallel_signal,
-            whole_code_periods,
-        },
+        dispersive_track_seed(
+            l1_reference.signal,
+            parallel_signal,
+            ephemeris,
+            profile.truth_ecef_m,
+            ionosphere_delay_model,
+        ),
     );
     profile.scenario.satellites = track_seeds.iter().map(|seed| seed.signal).collect();
 
@@ -187,11 +196,31 @@ fn build_observation_truth_fixture_with_parallel_signal(
                 profile.truth_ecef_m.1,
                 profile.truth_ecef_m.2,
             ],
+            ionosphere_delay_model: Some(ionosphere_delay_model),
         },
         config,
         profile,
         tracks,
     }
+}
+
+fn dispersive_track_seed(
+    mut signal: SyntheticSignalParams,
+    signal_spec: SignalSpec,
+    ephemeris: &GpsEphemeris,
+    truth_ecef_m: (f64, f64, f64),
+    ionosphere_delay_model: SyntheticIonosphereDelayModel,
+) -> ObservationTruthTrackSeed {
+    let geometric_pseudorange_m =
+        synthetic_pseudorange_m(ephemeris, SYNTHETIC_REFERENCE_RECEIVE_TIME_S, truth_ecef_m);
+    let pseudorange_m = ionosphere_delay_model
+        .pseudorange_m(geometric_pseudorange_m, signal_spec)
+        .expect("finite synthetic ionosphere pseudorange");
+    let (whole_code_periods, code_phase_chips) =
+        signal_code_alignment_from_pseudorange_m(pseudorange_m, signal_spec);
+    signal.code_phase_chips = code_phase_chips;
+
+    ObservationTruthTrackSeed { signal, signal_spec, whole_code_periods }
 }
 
 fn synthetic_truth_track(
@@ -347,8 +376,7 @@ fn tracked_carrier_hz(
 ) -> f64 {
     carrier_hz_from_doppler_hz(
         config.intermediate_freq_hz
-            + (signal_spec.carrier_hz.value()
-                - bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value()),
+            + (signal_spec.carrier_hz.value() - bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value()),
         doppler_hz,
     )
 }
