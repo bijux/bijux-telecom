@@ -129,9 +129,10 @@ pub use crate::formats::rinex::{
     write_rinex_broadcast_navigation, write_rinex_nav, write_rinex_obs,
 };
 pub use crate::formats::rinex_obs::{
-    parse_rinex_galileo_observation_dataset, parse_rinex_gps_observation_dataset,
-    RinexGalileoObservationChannel, RinexGalileoObservationDataset, RinexGpsObservationChannel,
-    RinexGpsObservationDataset,
+    parse_rinex_beidou_observation_dataset, parse_rinex_galileo_observation_dataset,
+    parse_rinex_gps_observation_dataset, RinexBeidouObservationChannel,
+    RinexBeidouObservationDataset, RinexGalileoObservationChannel,
+    RinexGalileoObservationDataset, RinexGpsObservationChannel, RinexGpsObservationDataset,
 };
 /// Precise product parsing helpers.
 pub use crate::formats::{

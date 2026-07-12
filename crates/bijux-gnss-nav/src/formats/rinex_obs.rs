@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 
 use bijux_gnss_core::api::{
-    signal_spec_galileo_e1b, signal_spec_galileo_e5a,
+    signal_spec_beidou_b1i, signal_spec_beidou_b2i, signal_spec_galileo_e1b,
+    signal_spec_galileo_e5a,
     signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l2c, signal_spec_gps_l5,
     utc_to_gps,
     Constellation, Cycles, GpsTime, Hertz, LeapSeconds, LockFlags, Meters, ObsEpoch, ObsMetadata,
@@ -38,6 +39,10 @@ impl RinexObservationHeader {
 
     fn galileo_observation_types(&self) -> Option<&[String]> {
         self.observation_types('E')
+    }
+
+    fn beidou_observation_types(&self) -> Option<&[String]> {
+        self.observation_types('C')
     }
 
     fn observation_types(&self, system: char) -> Option<&[String]> {
@@ -98,6 +103,36 @@ pub struct RinexGalileoObservationDataset {
 
 #[derive(Debug, Clone)]
 pub struct RinexGalileoObservationChannel {
+    /// Signal band represented by this imported observation channel.
+    pub band: SignalBand,
+    /// Signal code represented by this imported observation channel.
+    pub code: SignalCode,
+    /// Pseudorange observation type used to populate this channel.
+    pub pseudorange_observation_type: String,
+    /// Carrier-phase observation type used when present.
+    pub carrier_phase_observation_type: Option<String>,
+    /// Signal-strength observation type used when present.
+    pub signal_strength_observation_type: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RinexBeidouObservationDataset {
+    /// RINEX format version read from the header.
+    pub version: f64,
+    /// Marker name if the file declares one.
+    pub marker_name: Option<String>,
+    /// Approximate station coordinates from `APPROX POSITION XYZ`.
+    pub approx_position_ecef_m: Option<(f64, f64, f64)>,
+    /// Observation interval in seconds if declared in the header.
+    pub interval_s: Option<f64>,
+    /// Per-band BeiDou observation types imported into `epochs`.
+    pub observation_channels: Vec<RinexBeidouObservationChannel>,
+    /// BeiDou observation epochs converted into the workspace observation model.
+    pub epochs: Vec<ObsEpoch>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RinexBeidouObservationChannel {
     /// Signal band represented by this imported observation channel.
     pub band: SignalBand,
     /// Signal code represented by this imported observation channel.
@@ -320,6 +355,56 @@ pub fn parse_rinex_galileo_observation_dataset(
         observation_channels: channels
             .iter()
             .map(|channel| RinexGalileoObservationChannel {
+                band: channel.band,
+                code: channel.code,
+                pseudorange_observation_type: channel.pseudorange_type.clone(),
+                carrier_phase_observation_type: channel.carrier_phase_type.clone(),
+                signal_strength_observation_type: channel.signal_strength_type.clone(),
+            })
+            .collect(),
+        epochs,
+    })
+}
+
+/// Parse BeiDou observations from a RINEX observation file.
+///
+/// The parser preserves only BeiDou observation epochs and maps them into `ObsEpoch`
+/// with B1I/B2I pseudorange and carrier-phase measurements ready for dual-frequency validation.
+pub fn parse_rinex_beidou_observation_dataset(
+    data: &str,
+) -> Result<RinexBeidouObservationDataset, ParseError> {
+    let lines = data.lines().collect::<Vec<_>>();
+    let (header, header_line_count) = parse_rinex_observation_header(data)?;
+    let beidou_observation_types = header.beidou_observation_types().ok_or_else(|| ParseError {
+        message: "RINEX OBS file does not declare BeiDou observation types".to_string(),
+    })?;
+    let channels = resolve_beidou_observation_channels(beidou_observation_types)?;
+    let epochs = if header.version >= 3.0 {
+        parse_rinex_3_constellation_epochs(
+            &lines[header_line_count..],
+            &header,
+            'C',
+            Constellation::Beidou,
+            &channels,
+        )?
+    } else {
+        parse_rinex_2_constellation_epochs(
+            &lines[header_line_count..],
+            beidou_observation_types,
+            header.time_system,
+            Constellation::Beidou,
+            &channels,
+        )?
+    };
+
+    Ok(RinexBeidouObservationDataset {
+        version: header.version,
+        marker_name: header.marker_name,
+        approx_position_ecef_m: header.approx_position_ecef_m,
+        interval_s: header.interval_s,
+        observation_channels: channels
+            .iter()
+            .map(|channel| RinexBeidouObservationChannel {
                 band: channel.band,
                 code: channel.code,
                 pseudorange_observation_type: channel.pseudorange_type.clone(),
@@ -779,6 +864,97 @@ fn resolve_galileo_observation_channels(
     Ok(channels)
 }
 
+fn resolve_beidou_observation_channels(
+    observation_types: &[String],
+) -> Result<Vec<ImportedObservationChannel>, ParseError> {
+    let mut channels = Vec::new();
+
+    for (
+        band,
+        code,
+        signal,
+        pseudorange_candidates,
+        carrier_phase_candidates,
+        signal_strength_candidates,
+    ) in [
+        (
+            SignalBand::B1,
+            SignalCode::B1I,
+            signal_spec_beidou_b1i(),
+            vec![
+                "C2I".to_string(),
+                "C2X".to_string(),
+                "C2Q".to_string(),
+                "C1I".to_string(),
+                "C1X".to_string(),
+                "C1Q".to_string(),
+            ],
+            vec![
+                "L2I".to_string(),
+                "L2X".to_string(),
+                "L2Q".to_string(),
+                "L1I".to_string(),
+                "L1X".to_string(),
+                "L1Q".to_string(),
+            ],
+            vec![
+                "S2I".to_string(),
+                "S2X".to_string(),
+                "S2Q".to_string(),
+                "S1I".to_string(),
+                "S1X".to_string(),
+                "S1Q".to_string(),
+            ],
+        ),
+        (
+            SignalBand::B2,
+            SignalCode::B2I,
+            signal_spec_beidou_b2i(),
+            vec!["C7I".to_string(), "C7X".to_string(), "C7Q".to_string()],
+            vec!["L7I".to_string(), "L7X".to_string(), "L7Q".to_string()],
+            vec!["S7I".to_string(), "S7X".to_string(), "S7Q".to_string()],
+        ),
+    ] {
+        let Some(pseudorange_index) =
+            find_observation_index(observation_types, &pseudorange_candidates)
+        else {
+            continue;
+        };
+        let pseudorange_type = observation_types[pseudorange_index].clone();
+        channels.push(ImportedObservationChannel {
+            band,
+            code,
+            signal,
+            pseudorange_index,
+            pseudorange_type,
+            carrier_phase_index: find_observation_index(
+                observation_types,
+                &carrier_phase_candidates,
+            ),
+            carrier_phase_type: find_observation_type(observation_types, &carrier_phase_candidates),
+            signal_strength_index: find_observation_index(
+                observation_types,
+                &signal_strength_candidates,
+            ),
+            signal_strength_type: find_observation_type(
+                observation_types,
+                &signal_strength_candidates,
+            ),
+        });
+    }
+
+    if channels.is_empty() {
+        return Err(ParseError {
+            message: format!(
+                "RINEX OBS file does not provide a supported BeiDou observation channel; found {}",
+                observation_types.join(", ")
+            ),
+        });
+    }
+
+    Ok(channels)
+}
+
 fn build_constellation_observations(
     satellite: SatId,
     observations: &[Option<f64>],
@@ -1219,14 +1395,15 @@ mod tests {
     use std::path::PathBuf;
 
     use bijux_gnss_core::api::{
-        check_dual_frequency_observations, signal_spec_galileo_e1b, signal_spec_galileo_e5a,
-        signal_spec_gps_l2c, signal_spec_gps_l5, validate_obs_epochs,
+        check_dual_frequency_observations, signal_spec_beidou_b1i, signal_spec_beidou_b2i,
+        signal_spec_galileo_e1b, signal_spec_galileo_e5a, signal_spec_gps_l2c,
+        signal_spec_gps_l5, validate_obs_epochs,
         Constellation, SatId, SignalBand, SignalCode,
     };
 
     use super::{
-        parse_rinex_galileo_observation_dataset, parse_rinex_gps_observation_dataset,
-        parse_rinex_observation_header,
+        parse_rinex_beidou_observation_dataset, parse_rinex_galileo_observation_dataset,
+        parse_rinex_gps_observation_dataset, parse_rinex_observation_header,
     };
 
     fn fixture(name: &str) -> String {
@@ -1488,6 +1665,48 @@ mod tests {
         assert_eq!(e1.metadata.signal, signal_spec_galileo_e1b());
         assert_eq!(e5.metadata.signal, signal_spec_galileo_e5a());
         assert_eq!(e5.cn0_dbhz, 47.0);
+    }
+
+    #[test]
+    fn parse_rinex_3_beidou_b1_b2_observation_epoch() {
+        let data = [
+            format!(
+                "{:<60}{}",
+                "     3.04           OBSERVATION DATA    M (MIXED)", "RINEX VERSION / TYPE"
+            ),
+            format!("{:<60}{}", "beidou-station", "MARKER NAME"),
+            format!("{:<60}{}", "C    5 C2I L2I C7I L7I S7I", "SYS / # / OBS TYPES"),
+            format!("{:<60}{}", "", "END OF HEADER"),
+            "> 2022 05 14 00 00 00.0000000  0  1".to_string(),
+            format!(
+                "{:<3}{:>14}  {:>14}  {:>14}  {:>14}  {:>14}",
+                "C11", 24_345_678.125, 123_456.250, 24_345_679.875, 123_450.500, 46.5
+            ),
+        ]
+        .join("\n");
+        let dataset = parse_rinex_beidou_observation_dataset(&data)
+            .expect("parse synthetic RINEX 3 BeiDou B1/B2 data");
+
+        assert_eq!(dataset.observation_channels.len(), 2);
+        assert_eq!(dataset.observation_channels[0].band, SignalBand::B1);
+        assert_eq!(dataset.observation_channels[0].code, SignalCode::B1I);
+        assert_eq!(dataset.observation_channels[1].band, SignalBand::B2);
+        assert_eq!(dataset.observation_channels[1].code, SignalCode::B2I);
+        assert_eq!(dataset.epochs.len(), 1);
+        assert_eq!(dataset.epochs[0].sats.len(), 2);
+        let b1 = dataset.epochs[0]
+            .sats
+            .iter()
+            .find(|sat| sat.signal_id.band == SignalBand::B1)
+            .expect("B1 observation");
+        let b2 = dataset.epochs[0]
+            .sats
+            .iter()
+            .find(|sat| sat.signal_id.band == SignalBand::B2)
+            .expect("B2 observation");
+        assert_eq!(b1.metadata.signal, signal_spec_beidou_b1i());
+        assert_eq!(b2.metadata.signal, signal_spec_beidou_b2i());
+        assert_eq!(b2.cn0_dbhz, 46.5);
     }
 
     #[test]
