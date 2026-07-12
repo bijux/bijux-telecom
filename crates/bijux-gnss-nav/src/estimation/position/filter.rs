@@ -1120,6 +1120,8 @@ fn resolved_signal_id(observation: &PositionObservation) -> SigId {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::{
         pseudorange_sigma_m, PositionFilter, PositionFilterCodeMetrics, PositionFilterConfig,
         PositionFilterMotionClass, PositionFilterMotionModel, PositionFilterStaticPositionModel,
@@ -1351,6 +1353,63 @@ mod tests {
             (filter.ekf.p[(filter.indices.clock_drift, filter.indices.clock_drift)] - 2.5e-17)
                 .abs()
                 < 1.0e-22
+        );
+    }
+
+    #[test]
+    fn position_filter_observation_gap_coasts_receiver_state_forward() {
+        let mut filter = PositionFilter::new(PositionFilterConfig::default());
+        filter.seed_receiver_state([10.0, 20.0, 30.0], 4.0e-4);
+        filter.ekf.x[3] = 3.0;
+        filter.ekf.x[4] = 4.0;
+        filter.ekf.x[5] = 5.0;
+        filter.last_t_rx_s = Some(10.0);
+
+        let visible_sats = [sample_sat(2), sample_sat(3), sample_sat(4)].into_iter().collect();
+        filter.coast_through_observation_gap(12.0, visible_sats);
+
+        assert_eq!(filter.ekf.x[0], 16.0);
+        assert_eq!(filter.ekf.x[1], 28.0);
+        assert_eq!(filter.ekf.x[2], 40.0);
+        assert_eq!(filter.ekf.x[6], 4.0e-4);
+        assert_eq!(filter.last_t_rx_s, Some(12.0));
+        assert_eq!(filter.last_visible_sats.len(), 3);
+    }
+
+    #[test]
+    fn position_filter_observation_gap_inflates_covariance_and_floors_sigmas() {
+        let mut filter = PositionFilter::new(PositionFilterConfig::default());
+        filter.seed_receiver_state([0.0, 0.0, 0.0], 0.0);
+        filter.last_t_rx_s = Some(10.0);
+        for index in 0..filter.ekf.p.rows() {
+            filter.ekf.p[(index, index)] = 1.0;
+        }
+        filter.ekf.p[(0, 1)] = 2.0;
+        filter.ekf.p[(1, 0)] = 2.0;
+        filter.ekf.p[(filter.indices.clock_bias, filter.indices.clock_bias)] = 1.0e-20;
+        filter.ekf.p[(filter.indices.clock_drift, filter.indices.clock_drift)] = 1.0e-20;
+
+        filter.coast_through_observation_gap(12.0, BTreeSet::new());
+
+        assert!((filter.ekf.p[(0, 1)] - 5.0).abs() < 1.0e-12);
+        assert!((filter.ekf.p[(1, 0)] - 5.0).abs() < 1.0e-12);
+        assert_eq!(filter.ekf.p[(0, 0)], 625.0);
+        assert_eq!(filter.ekf.p[(1, 1)], 625.0);
+        assert_eq!(filter.ekf.p[(2, 2)], 625.0);
+        assert_eq!(filter.ekf.p[(3, 3)], 9.0);
+        assert_eq!(filter.ekf.p[(4, 4)], 9.0);
+        assert_eq!(filter.ekf.p[(5, 5)], 9.0);
+        assert!(
+            filter.ekf.p[(filter.indices.clock_bias, filter.indices.clock_bias)].is_finite()
+        );
+        assert!(
+            filter.ekf.p[(filter.indices.clock_bias, filter.indices.clock_bias)] >= 4.0e-14
+        );
+        assert!(
+            filter.ekf.p[(filter.indices.clock_drift, filter.indices.clock_drift)].is_finite()
+        );
+        assert!(
+            filter.ekf.p[(filter.indices.clock_drift, filter.indices.clock_drift)] >= 4.0e-16
         );
     }
 
