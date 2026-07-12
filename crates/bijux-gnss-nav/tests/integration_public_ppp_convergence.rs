@@ -7,6 +7,7 @@ use std::path::Path;
 mod support;
 
 use bijux_gnss_nav::api::{BroadcastProductsProvider, PppConfig, PppFilter};
+use bijux_gnss_nav::PppTroposphereSource;
 use bijux_gnss_testkit::public_ppp::{
     build_public_ppp_convergence_report, PublicPppConvergenceReport,
 };
@@ -73,10 +74,12 @@ fn public_ab43_ppp_run_keeps_zenith_troposphere_state_physical() {
 
     let mut solved_ztd_m = Vec::new();
     let mut solved_ztd_sigma_m = Vec::new();
+    let mut troposphere_sources = Vec::new();
     for epoch in &case.observations.epochs {
         if let Some(solution) = filter.solve_epoch(epoch, &case.navigation.ephemerides, &products) {
             solved_ztd_m.push(solution.ztd_m);
             solved_ztd_sigma_m.push(solution.ztd_sigma_m.expect("AB43 PPP ZTD sigma"));
+            troposphere_sources.push(solution.troposphere_source);
         }
     }
 
@@ -106,6 +109,12 @@ fn public_ab43_ppp_run_keeps_zenith_troposphere_state_physical() {
     assert!(
         max_ztd_m - min_ztd_m < 3.0,
         "AB43 ZTD trajectory should stay bounded; min={min_ztd_m:.3} max={max_ztd_m:.3}"
+    );
+    assert!(
+        troposphere_sources
+            .iter()
+            .all(|source| *source == PppTroposphereSource::StandardAtmosphere),
+        "AB43 default PPP run should report standard atmosphere: {troposphere_sources:?}"
     );
 }
 
@@ -152,6 +161,8 @@ fn public_ab43_ppp_zenith_delay_tracks_local_meteorology() {
         dry_solution.ztd_m,
         humid_solution.ztd_m
     );
+    assert_eq!(dry_solution.troposphere_source, PppTroposphereSource::LocalMeteorology);
+    assert_eq!(humid_solution.troposphere_source, PppTroposphereSource::LocalMeteorology);
 }
 
 fn public_ab43_ppp_config() -> PppConfig {
