@@ -11,7 +11,7 @@ use crate::corrections::biases::{CodeBiasProvider, PhaseBiasProvider};
 use crate::corrections::CorrectionContext;
 use crate::estimation::ekf::state::Ekf;
 use crate::estimation::position::solver::WeightingConfig;
-use crate::models::antenna::SatelliteAntennaCalibrations;
+use crate::models::antenna::{ReceiverAntennaCalibrations, SatelliteAntennaCalibrations};
 use crate::models::atmosphere::TroposphereMeteorology;
 
 pub const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
@@ -51,6 +51,8 @@ pub struct PppConfig {
     pub tropo_pressure_hpa: Option<f64>,
     pub tropo_temperature_k: Option<f64>,
     pub tropo_relative_humidity: Option<f64>,
+    pub receiver_antenna_type: Option<String>,
+    pub receiver_antenna_calibrations: Option<ReceiverAntennaCalibrations>,
     pub satellite_antenna_calibrations: Option<SatelliteAntennaCalibrations>,
     pub process_noise: PppProcessNoise,
     pub weighting: WeightingConfig,
@@ -84,6 +86,8 @@ impl Default for PppConfig {
             tropo_pressure_hpa: None,
             tropo_temperature_k: None,
             tropo_relative_humidity: None,
+            receiver_antenna_type: None,
+            receiver_antenna_calibrations: None,
             satellite_antenna_calibrations: None,
             process_noise: PppProcessNoise {
                 clock_drift_s: 1e-5,

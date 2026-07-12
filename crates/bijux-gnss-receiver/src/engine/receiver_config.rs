@@ -501,6 +501,9 @@ pub struct PppConfig {
     pub drift_threshold_m: f64,
     /// Checkpoint interval, in epochs.
     pub checkpoint_interval_epochs: u64,
+    /// Receiver antenna type used to select ANTEX phase-center corrections.
+    #[serde(default)]
+    pub receiver_antenna_type: Option<String>,
     /// Process noise for clock drift.
     pub noise_clock_drift: f64,
     /// Process noise for ZTD.

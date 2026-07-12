@@ -1210,6 +1210,8 @@ fn build_ppp_config(profile: &ReceiverConfig) -> PppConfig {
         tropo_pressure_hpa: None,
         tropo_temperature_k: None,
         tropo_relative_humidity: None,
+        receiver_antenna_type: p.receiver_antenna_type.clone(),
+        receiver_antenna_calibrations: None,
         satellite_antenna_calibrations: None,
         process_noise: PppProcessNoise {
             clock_drift_s: p.noise_clock_drift,

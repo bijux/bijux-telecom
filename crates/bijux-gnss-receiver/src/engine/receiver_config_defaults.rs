@@ -109,6 +109,7 @@ impl Default for PppConfig {
             drift_window_epochs: 100,
             drift_threshold_m: 10.0,
             checkpoint_interval_epochs: 0,
+            receiver_antenna_type: None,
             noise_clock_drift: 1e-5,
             noise_ztd: 0.01,
             noise_iono: 0.1,
