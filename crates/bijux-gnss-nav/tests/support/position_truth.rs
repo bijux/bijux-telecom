@@ -264,6 +264,7 @@ pub fn timed_position_observation(
             signal_travel_time_s: Seconds(signal_travel_time_s),
             transmit_gps_time: GpsTime { week: 0, tow_s: t_rx_s - signal_travel_time_s },
         }),
+        signal_id: None,
     }
 }
 

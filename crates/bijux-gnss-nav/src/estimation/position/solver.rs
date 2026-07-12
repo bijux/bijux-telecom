@@ -3,6 +3,10 @@
 use std::collections::BTreeMap;
 
 use super::raim::{RaimFaultDetection, RaimFaultExclusion};
+use crate::corrections::broadcast_group_delay::{
+    beidou_broadcast_group_delay_code_bias_m, galileo_broadcast_group_delay_code_bias_m,
+    gps_broadcast_group_delay_code_bias_m,
+};
 use crate::models::atmosphere::{
     IonosphereModel, KlobucharCoefficients, KlobucharModel, SaastamoinenModel, TroposphereModel,
 };
@@ -25,7 +29,7 @@ use crate::orbits::gps::{
 use bijux_gnss_core::api::{
     Constellation, GpsTime, InterSystemBias, Llh, MeasurementRejectReason,
     NavConstellationResidualRms, ObsEpoch, ObsSatellite, ObsSignalTiming, ObservationStatus, SatId,
-    Seconds, SignalBand,
+    Seconds, SigId, SignalBand,
 };
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
@@ -110,6 +114,7 @@ pub struct PositionObservation {
     pub weight: f64,
     pub gps_receive_time: Option<GpsTime>,
     pub signal_timing: Option<ObsSignalTiming>,
+    pub signal_id: Option<SigId>,
 }
 
 #[derive(Debug, Clone)]
@@ -176,6 +181,7 @@ pub fn position_observations_from_epoch(epoch: &ObsEpoch) -> Vec<PositionObserva
             weight: 1.0,
             gps_receive_time,
             signal_timing: observation.timing,
+            signal_id: None,
         })
         .collect()
 }
@@ -409,6 +415,7 @@ struct SatelliteState {
 #[derive(Debug, Clone)]
 struct SatelliteGeometry {
     observation: PositionObservation,
+    corrected_pseudorange_m: f64,
     state: SatelliteState,
     iono_delay_m: f64,
     tropo_delay_m: f64,
@@ -1262,6 +1269,7 @@ mod tests {
             weight: 1.0,
             gps_receive_time: None,
             signal_timing: None,
+            signal_id: None,
         }];
         let ephemerides = vec![
             sample_ephemeris(sat, 100_000.0, 100_000.0),
@@ -1394,6 +1402,7 @@ mod tests {
             weight: 1.0,
             gps_receive_time: None,
             signal_timing: None,
+            signal_id: None,
         }];
         let navigation_frames = vec![sample_glonass_navigation(sat, 83_700, -10_782.0)];
         let navigation = position_broadcast_navigation_from_glonass_frames(&navigation_frames);
@@ -1425,6 +1434,7 @@ mod tests {
             weight: 1.0,
             gps_receive_time: None,
             signal_timing: None,
+            signal_id: None,
         }];
         let navigations = vec![sample_beidou_navigation(sat, 345_600.0, 345_600.0)];
         let navigation = position_broadcast_navigation_from_beidou_navigations(&navigations);
@@ -1476,6 +1486,7 @@ mod tests {
                 weight: 1.0,
                 gps_receive_time: None,
                 signal_timing: None,
+                signal_id: None,
             },
             PositionObservation {
                 sat: glonass_sat,
@@ -1485,6 +1496,7 @@ mod tests {
                 weight: 1.0,
                 gps_receive_time: None,
                 signal_timing: None,
+                signal_id: None,
             },
         ];
         let mut glonass_navigation = sample_glonass_navigation(glonass_sat, 83_700, -10_782.0);
@@ -1533,6 +1545,7 @@ mod tests {
                     weight: 1.0,
                     gps_receive_time: None,
                     signal_timing: None,
+                    signal_id: None,
                 },
                 SatelliteState { x_m: 0.0, y_m: 0.0, z_m: 0.0, clock_bias_s: 0.0 },
                 1.5,
@@ -1547,6 +1560,7 @@ mod tests {
                     weight: 1.0,
                     gps_receive_time: None,
                     signal_timing: None,
+                    signal_id: None,
                 },
                 SatelliteState { x_m: 0.0, y_m: 0.0, z_m: 0.0, clock_bias_s: 0.0 },
                 2.0,
@@ -1585,6 +1599,7 @@ mod tests {
             weight: 1.0,
             gps_receive_time: None,
             signal_timing: None,
+            signal_id: None,
         };
 
         assert!(super::position_observation_has_valid_satellite_time(&observation, 0.0));
@@ -1678,14 +1693,16 @@ fn resolve_satellite_geometry(
     let mut geometry = Vec::with_capacity(inputs.len());
     for input in inputs {
         let obs = &input.observation;
+        let corrected_pseudorange_m =
+            obs.pseudorange_m - broadcast_group_delay_code_bias_m(obs.signal_id, &input.navigation);
         let mut tau = obs
             .signal_timing
             .map(|timing| timing.signal_travel_time_s.0)
-            .unwrap_or(obs.pseudorange_m / 299_792_458.0);
+            .unwrap_or(corrected_pseudorange_m / 299_792_458.0);
         let mut state = satellite_state_from_observation(
             &input.navigation,
             input.receive_tow_s,
-            obs.pseudorange_m,
+            corrected_pseudorange_m,
             obs.signal_timing,
         )?;
         let mut converged = false;
@@ -1711,6 +1728,7 @@ fn resolve_satellite_geometry(
         let tropo_delay_m = estimate_saastamoinen_delay_m(&estimate, &state, apply_troposphere);
         geometry.push(SatelliteGeometry {
             observation: obs.clone(),
+            corrected_pseudorange_m,
             state,
             iono_delay_m,
             tropo_delay_m,
@@ -1729,7 +1747,7 @@ fn linearized_pseudorange_row(
         estimate.constellation_clock_bias_s(geometry.observation.sat.constellation)?;
     let predicted_pseudorange_m =
         predicted_pseudorange_m(range_m, receiver_clock_bias_s, geometry.state.clock_bias_s);
-    let residual_m = geometry.observation.pseudorange_m
+    let residual_m = geometry.corrected_pseudorange_m
         - geometry.iono_delay_m
         - geometry.tropo_delay_m
         - predicted_pseudorange_m;
@@ -1927,6 +1945,27 @@ fn satellite_state_from_observation(
                 clock_bias_s: state.clock_correction.bias_s,
             })
         }
+    }
+}
+
+fn broadcast_group_delay_code_bias_m(
+    signal_id: Option<SigId>,
+    navigation: &PositionBroadcastNavigation,
+) -> f64 {
+    let Some(signal_id) = signal_id else {
+        return 0.0;
+    };
+    match navigation {
+        PositionBroadcastNavigation::Gps(ephemeris) => {
+            gps_broadcast_group_delay_code_bias_m(signal_id, ephemeris).unwrap_or(0.0)
+        }
+        PositionBroadcastNavigation::Galileo(navigation) => {
+            galileo_broadcast_group_delay_code_bias_m(signal_id, navigation).unwrap_or(0.0)
+        }
+        PositionBroadcastNavigation::Beidou(navigation) => {
+            beidou_broadcast_group_delay_code_bias_m(signal_id, navigation).unwrap_or(0.0)
+        }
+        PositionBroadcastNavigation::Glonass(_) => 0.0,
     }
 }
 

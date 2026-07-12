@@ -172,13 +172,11 @@ impl Navigation {
             .iter()
             .map(|row| row.signal_id.sat.constellation)
             .collect::<std::collections::BTreeSet<_>>();
-        let has_supported_constellation = input_constellations
+        let has_supported_constellation =
+            input_constellations.iter().copied().any(navigation_supported_constellation);
+        let has_unsupported_constellation = input_constellations
             .iter()
-            .copied()
-            .any(navigation_supported_constellation);
-        let has_unsupported_constellation = input_constellations.iter().any(|constellation| {
-            !navigation_supported_constellation(*constellation)
-        });
+            .any(|constellation| !navigation_supported_constellation(*constellation));
         let filtered_by_policy_count = obs
             .sats
             .iter()
@@ -223,7 +221,9 @@ impl Navigation {
                             "supported_constellations={}",
                             input_constellations
                                 .iter()
-                                .filter(|constellation| navigation_supported_constellation(**constellation))
+                                .filter(|constellation| navigation_supported_constellation(
+                                    **constellation
+                                ))
                                 .map(|value| format!("{value:?}"))
                                 .collect::<Vec<_>>()
                                 .join(",")
@@ -232,7 +232,9 @@ impl Navigation {
                             "unsupported_constellations={}",
                             input_constellations
                                 .iter()
-                                .filter(|constellation| !navigation_supported_constellation(**constellation))
+                                .filter(|constellation| !navigation_supported_constellation(
+                                    **constellation
+                                ))
                                 .map(|value| format!("{value:?}"))
                                 .collect::<Vec<_>>()
                                 .join(",")
@@ -260,6 +262,7 @@ impl Navigation {
                     weight: 1.0,
                     gps_receive_time: obs.gps_time(),
                     signal_timing: s.timing,
+                    signal_id: Some(s.signal_id),
                 };
                 if !position_observation_has_valid_satellite_time(&observation, obs.t_rx_s.0) {
                     invalid_satellite_time_sats.push(observation.sat);
@@ -836,7 +839,10 @@ impl Navigation {
 fn navigation_supported_constellation(constellation: Constellation) -> bool {
     matches!(
         constellation,
-        Constellation::Gps | Constellation::Galileo | Constellation::Glonass | Constellation::Beidou
+        Constellation::Gps
+            | Constellation::Galileo
+            | Constellation::Glonass
+            | Constellation::Beidou
     )
 }
 

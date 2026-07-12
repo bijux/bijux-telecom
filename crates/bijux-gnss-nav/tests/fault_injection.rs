@@ -48,6 +48,7 @@ fn timed_position_observation(sat: SatId, pseudorange_m: f64, t_rx_s: f64) -> Po
             signal_travel_time_s: Seconds(signal_travel_time_s),
             transmit_gps_time: GpsTime { week: 0, tow_s: t_rx_s - signal_travel_time_s },
         }),
+        signal_id: None,
     }
 }
 
@@ -136,6 +137,7 @@ fn position_solver_uses_explicit_observation_timing_for_ephemeris_age() {
                 transmit_gps_time: receive_gps_time
                     .offset_seconds(-(pseudorange_m / 299_792_458.0)),
             }),
+            signal_id: None,
         });
     }
 
