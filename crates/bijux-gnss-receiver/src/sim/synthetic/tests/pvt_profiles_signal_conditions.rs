@@ -322,6 +322,275 @@
     }
 
     #[test]
+    fn pvt_constellation_geometry_profile_prioritizes_availability_then_dop() {
+        let gps_only_truth = SyntheticPvtTruthTableReport {
+            scenario_id: "pvt_constellation_geometry_profile_gps_only".to_string(),
+            solution_count: 1,
+            matched_epoch_count: 1,
+            unmatched_solution_epochs: Vec::new(),
+            unused_reference_epochs: vec![2],
+            epochs: vec![SyntheticPvtTruthTableEpoch {
+                artifact_id: "gps-only-artifact".to_string(),
+                source_observation_epoch_id: "gps-only-source".to_string(),
+                epoch_index: 1,
+                receive_time_s: 1.0,
+                truth_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.0, y_m: 0.0, z_m: 0.0 },
+                measured_ecef_m: SyntheticPvtTruthTableEcef { x_m: 1.0, y_m: 0.0, z_m: 0.0 },
+                ecef_error_m: SyntheticPvtTruthTableEcef { x_m: 1.0, y_m: 0.0, z_m: 0.0 },
+                truth_geodetic: SyntheticPvtTruthTableGeodetic {
+                    latitude_deg: 0.0,
+                    longitude_deg: 0.0,
+                    altitude_m: 0.0,
+                },
+                measured_geodetic: SyntheticPvtTruthTableGeodetic {
+                    latitude_deg: 0.0,
+                    longitude_deg: 0.0,
+                    altitude_m: 1.0,
+                },
+                enu_error_m: SyntheticPvtTruthTableEnuError {
+                    east_m: 1.0,
+                    north_m: 0.0,
+                    up_m: 0.0,
+                    horiz_m: 1.0,
+                    vert_m: 0.0,
+                    error_3d_m: 1.0,
+                },
+                clock_bias: SyntheticPvtTruthTableClockBias {
+                    truth_s: 0.0,
+                    measured_s: 0.0,
+                    error_s: 0.0,
+                    truth_m: 0.0,
+                    measured_m: 0.0,
+                    error_m: 0.0,
+                },
+                residual_rms_m: 0.75,
+                pre_fit_residual_rms_m: Some(0.75),
+                post_fit_residual_rms_m: Some(0.75),
+                dop: SyntheticPvtTruthTableDop {
+                    pdop: 4.0,
+                    hdop: Some(2.5),
+                    vdop: Some(3.0),
+                    gdop: Some(4.5),
+                    tdop: Some(1.0),
+                },
+                solution_status: SolutionStatus::Converged,
+                solution_quality: NavQualityFlag::Float,
+                solution_validity: SolutionValidity::Stable,
+                valid: true,
+                sat_count: 4,
+                used_sat_count: 4,
+                rejected_sat_count: 0,
+            }],
+        };
+        let mixed_truth = SyntheticPvtTruthTableReport {
+            scenario_id: "pvt_constellation_geometry_profile_mixed".to_string(),
+            solution_count: 2,
+            matched_epoch_count: 2,
+            unmatched_solution_epochs: Vec::new(),
+            unused_reference_epochs: Vec::new(),
+            epochs: vec![
+                SyntheticPvtTruthTableEpoch {
+                    artifact_id: "mixed-artifact-1".to_string(),
+                    source_observation_epoch_id: "mixed-source-1".to_string(),
+                    epoch_index: 1,
+                    receive_time_s: 1.0,
+                    truth_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.0, y_m: 0.0, z_m: 0.0 },
+                    measured_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.5, y_m: 0.0, z_m: 0.0 },
+                    ecef_error_m: SyntheticPvtTruthTableEcef { x_m: 0.5, y_m: 0.0, z_m: 0.0 },
+                    truth_geodetic: SyntheticPvtTruthTableGeodetic {
+                        latitude_deg: 0.0,
+                        longitude_deg: 0.0,
+                        altitude_m: 0.0,
+                    },
+                    measured_geodetic: SyntheticPvtTruthTableGeodetic {
+                        latitude_deg: 0.0,
+                        longitude_deg: 0.0,
+                        altitude_m: 0.5,
+                    },
+                    enu_error_m: SyntheticPvtTruthTableEnuError {
+                        east_m: 0.5,
+                        north_m: 0.0,
+                        up_m: 0.0,
+                        horiz_m: 0.5,
+                        vert_m: 0.0,
+                        error_3d_m: 0.5,
+                    },
+                    clock_bias: SyntheticPvtTruthTableClockBias {
+                        truth_s: 0.0,
+                        measured_s: 0.0,
+                        error_s: 0.0,
+                        truth_m: 0.0,
+                        measured_m: 0.0,
+                        error_m: 0.0,
+                    },
+                    residual_rms_m: 0.25,
+                    pre_fit_residual_rms_m: Some(0.25),
+                    post_fit_residual_rms_m: Some(0.25),
+                    dop: SyntheticPvtTruthTableDop {
+                        pdop: 1.4,
+                        hdop: Some(1.0),
+                        vdop: Some(1.0),
+                        gdop: Some(1.7),
+                        tdop: Some(0.4),
+                    },
+                    solution_status: SolutionStatus::Converged,
+                    solution_quality: NavQualityFlag::Float,
+                    solution_validity: SolutionValidity::Stable,
+                    valid: true,
+                    sat_count: 7,
+                    used_sat_count: 7,
+                    rejected_sat_count: 0,
+                },
+                SyntheticPvtTruthTableEpoch {
+                    artifact_id: "mixed-artifact-2".to_string(),
+                    source_observation_epoch_id: "mixed-source-2".to_string(),
+                    epoch_index: 2,
+                    receive_time_s: 2.0,
+                    truth_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.0, y_m: 0.0, z_m: 0.0 },
+                    measured_ecef_m: SyntheticPvtTruthTableEcef { x_m: 0.75, y_m: 0.0, z_m: 0.0 },
+                    ecef_error_m: SyntheticPvtTruthTableEcef { x_m: 0.75, y_m: 0.0, z_m: 0.0 },
+                    truth_geodetic: SyntheticPvtTruthTableGeodetic {
+                        latitude_deg: 0.0,
+                        longitude_deg: 0.0,
+                        altitude_m: 0.0,
+                    },
+                    measured_geodetic: SyntheticPvtTruthTableGeodetic {
+                        latitude_deg: 0.0,
+                        longitude_deg: 0.0,
+                        altitude_m: 0.75,
+                    },
+                    enu_error_m: SyntheticPvtTruthTableEnuError {
+                        east_m: 0.75,
+                        north_m: 0.0,
+                        up_m: 0.0,
+                        horiz_m: 0.75,
+                        vert_m: 0.0,
+                        error_3d_m: 0.75,
+                    },
+                    clock_bias: SyntheticPvtTruthTableClockBias {
+                        truth_s: 0.0,
+                        measured_s: 0.0,
+                        error_s: 0.0,
+                        truth_m: 0.0,
+                        measured_m: 0.0,
+                        error_m: 0.0,
+                    },
+                    residual_rms_m: 0.3,
+                    pre_fit_residual_rms_m: Some(0.3),
+                    post_fit_residual_rms_m: Some(0.3),
+                    dop: SyntheticPvtTruthTableDop {
+                        pdop: 1.8,
+                        hdop: Some(1.2),
+                        vdop: Some(1.1),
+                        gdop: Some(2.0),
+                        tdop: Some(0.45),
+                    },
+                    solution_status: SolutionStatus::Converged,
+                    solution_quality: NavQualityFlag::Float,
+                    solution_validity: SolutionValidity::Stable,
+                    valid: true,
+                    sat_count: 7,
+                    used_sat_count: 7,
+                    rejected_sat_count: 0,
+                },
+            ],
+        };
+        let gps_only_accuracy = SyntheticPvtAccuracyReport {
+            scenario_id: "pvt_constellation_geometry_profile_gps_only".to_string(),
+            max_position_error_3d_m: 5.0,
+            max_clock_bias_error_m: 10.0,
+            max_residual_rms_m: 4.0,
+            max_pdop: 6.0,
+            epoch_count: 1,
+            passing_epoch_count: 1,
+            truth_coverage_ready: true,
+            truth_coverage_issues: Vec::new(),
+            pass: true,
+            epochs: vec![SyntheticPvtAccuracyEpoch {
+                epoch_index: 1,
+                position_error_3d_m: 1.0,
+                clock_bias_error_m: 0.5,
+                residual_rms_m: 0.75,
+                pdop: 4.0,
+                pass: true,
+            }],
+        };
+        let mixed_accuracy = SyntheticPvtAccuracyReport {
+            scenario_id: "pvt_constellation_geometry_profile_mixed".to_string(),
+            max_position_error_3d_m: 5.0,
+            max_clock_bias_error_m: 10.0,
+            max_residual_rms_m: 4.0,
+            max_pdop: 6.0,
+            epoch_count: 2,
+            passing_epoch_count: 2,
+            truth_coverage_ready: true,
+            truth_coverage_issues: Vec::new(),
+            pass: true,
+            epochs: vec![
+                SyntheticPvtAccuracyEpoch {
+                    epoch_index: 1,
+                    position_error_3d_m: 0.5,
+                    clock_bias_error_m: 0.2,
+                    residual_rms_m: 0.25,
+                    pdop: 1.4,
+                    pass: true,
+                },
+                SyntheticPvtAccuracyEpoch {
+                    epoch_index: 2,
+                    position_error_3d_m: 0.75,
+                    clock_bias_error_m: 0.25,
+                    residual_rms_m: 0.3,
+                    pdop: 1.8,
+                    pass: true,
+                },
+            ],
+        };
+
+        let report: SyntheticPvtConstellationGeometryProfileReport =
+            summarize_truth_guided_pvt_constellation_geometry_profile(
+                &[
+                    SyntheticPvtConstellationGeometryProfileCase {
+                        scenario_id: "pvt_constellation_geometry_profile_gps_only",
+                        constellations: &[Constellation::Gps],
+                        visible_satellite_count: 4,
+                        truth_table: &gps_only_truth,
+                        accuracy: &gps_only_accuracy,
+                    },
+                    SyntheticPvtConstellationGeometryProfileCase {
+                        scenario_id: "pvt_constellation_geometry_profile_mixed",
+                        constellations: &[
+                            Constellation::Gps,
+                            Constellation::Galileo,
+                            Constellation::Beidou,
+                        ],
+                        visible_satellite_count: 7,
+                        truth_table: &mixed_truth,
+                        accuracy: &mixed_accuracy,
+                    },
+                ],
+                "pvt_constellation_geometry_profile",
+            );
+
+        assert_eq!(report.points.len(), 2);
+        assert_eq!(report.points[0].scenario_id, "pvt_constellation_geometry_profile_mixed");
+        assert_eq!(report.points[0].constellations.len(), 3);
+        assert_eq!(report.points[0].visible_satellite_count, 7);
+        assert_eq!(report.points[0].expected_epoch_count, 2);
+        assert_eq!(report.points[0].solved_epoch_count, 2);
+        assert_eq!(report.points[0].availability_rate, 1.0);
+        assert_eq!(report.points[0].mean_pdop, Some(1.6));
+        assert_eq!(report.points[0].mean_gdop, Some(1.85));
+        assert_eq!(report.points[1].scenario_id, "pvt_constellation_geometry_profile_gps_only");
+        assert_eq!(report.points[1].constellations, vec![Constellation::Gps]);
+        assert_eq!(report.points[1].expected_epoch_count, 2);
+        assert_eq!(report.points[1].solved_epoch_count, 1);
+        assert_eq!(report.points[1].availability_rate, 0.5);
+        assert_eq!(report.points[1].mean_pdop, Some(4.0));
+        assert_eq!(report.points[1].mean_gdop, Some(4.5));
+        assert!(report.points[1].ready);
+    }
+
+    #[test]
     fn pvt_multipath_profile_sorts_cases_by_injected_bias_and_validity() {
         let clean_truth = SyntheticPvtTruthTableReport {
             scenario_id: "pvt_multipath_profile_clean".to_string(),
@@ -517,4 +786,3 @@
         assert_eq!(report.points[1].max_residual_rms_m, Some(60.0));
         assert!(report.points[1].ready);
     }
-

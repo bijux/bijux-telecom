@@ -94,6 +94,66 @@ pub struct SyntheticPvtGeometryProfileReport {
     pub points: Vec<SyntheticPvtGeometryProfilePoint>,
 }
 
+/// One synthetic PVT accuracy measurement point indexed by enabled constellations.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPvtConstellationGeometryProfilePoint {
+    /// Stable scenario identifier for this validation run.
+    pub scenario_id: String,
+    /// Constellations intentionally enabled for this controlled scenario.
+    pub constellations: Vec<Constellation>,
+    /// Number of visible satellites in the controlled scenario.
+    pub visible_satellite_count: usize,
+    /// Number of expected truth epochs in the controlled scenario.
+    pub expected_epoch_count: usize,
+    /// Number of truth-matched solution epochs recovered by the solver.
+    pub solved_epoch_count: usize,
+    /// Fraction of expected truth epochs that produced truth-matched solutions.
+    pub availability_rate: f64,
+    /// Number of matched PVT epochs that satisfied the hard accuracy budget.
+    pub passing_epoch_count: usize,
+    /// Passing-epoch fraction across the matched PVT epochs.
+    pub pass_rate: f64,
+    /// Mean PDOP across matched PVT epochs.
+    pub mean_pdop: Option<f64>,
+    /// Minimum PDOP across matched PVT epochs.
+    pub min_pdop: Option<f64>,
+    /// Maximum PDOP across matched PVT epochs.
+    pub max_pdop: Option<f64>,
+    /// Mean GDOP across matched PVT epochs.
+    pub mean_gdop: Option<f64>,
+    /// Minimum GDOP across matched PVT epochs.
+    pub min_gdop: Option<f64>,
+    /// Maximum GDOP across matched PVT epochs.
+    pub max_gdop: Option<f64>,
+    /// RMS 3D position error across matched PVT epochs, in meters.
+    pub rms_position_error_3d_m: Option<f64>,
+    /// Maximum 3D position error across matched PVT epochs, in meters.
+    pub max_position_error_3d_m: Option<f64>,
+    /// RMS clock-bias error across matched PVT epochs, in meters.
+    pub rms_clock_bias_error_m: Option<f64>,
+    /// Maximum clock-bias error across matched PVT epochs, in meters.
+    pub max_clock_bias_error_m: Option<f64>,
+    /// RMS residual RMS across matched PVT epochs, in meters.
+    pub rms_residual_rms_m: Option<f64>,
+    /// Maximum residual RMS across matched PVT epochs, in meters.
+    pub max_residual_rms_m: Option<f64>,
+    /// Whether synthetic truth coverage remained sufficient for a hard claim.
+    pub truth_coverage_ready: bool,
+    /// Machine-checkable truth-coverage issues that forced or should force validation failure.
+    pub truth_coverage_issues: Vec<SyntheticTruthCoverageIssue>,
+    /// Whether the point had truth-ready comparisons and at least one expected epoch.
+    pub ready: bool,
+}
+
+/// Truth-guided PVT accuracy profile across multiple constellation-selection points.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticPvtConstellationGeometryProfileReport {
+    /// Scenario identifier prefix shared across the measurement points.
+    pub scenario_id_prefix: String,
+    /// Measurement points captured in the report.
+    pub points: Vec<SyntheticPvtConstellationGeometryProfilePoint>,
+}
+
 /// One synthetic PVT accuracy measurement point indexed by injected multipath severity.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticPvtMultipathProfilePoint {

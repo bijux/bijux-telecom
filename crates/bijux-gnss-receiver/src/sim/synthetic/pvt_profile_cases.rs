@@ -18,6 +18,21 @@ pub struct SyntheticPvtGeometryProfileCase<'a> {
     pub accuracy: &'a SyntheticPvtAccuracyReport,
 }
 
+/// Borrowed inputs for one synthetic mixed-constellation geometry profile point.
+#[derive(Debug, Clone, Copy)]
+pub struct SyntheticPvtConstellationGeometryProfileCase<'a> {
+    /// Stable scenario identifier for this validation run.
+    pub scenario_id: &'a str,
+    /// Constellations intentionally enabled for this validation point.
+    pub constellations: &'a [Constellation],
+    /// Number of visible satellites in the controlled scenario.
+    pub visible_satellite_count: usize,
+    /// Truth-guided PVT truth table for the same scenario.
+    pub truth_table: &'a SyntheticPvtTruthTableReport,
+    /// Truth-guided PVT accuracy report for the same scenario.
+    pub accuracy: &'a SyntheticPvtAccuracyReport,
+}
+
 /// Borrowed inputs for one synthetic PVT multipath profile point.
 #[derive(Debug, Clone, Copy)]
 pub struct SyntheticPvtMultipathProfileCase<'a> {
@@ -75,4 +90,3 @@ pub struct SyntheticPvtTimeProfileCase<'a> {
     /// Truth-guided PVT accuracy report for the same scenario.
     pub accuracy: &'a SyntheticPvtAccuracyReport,
 }
-
