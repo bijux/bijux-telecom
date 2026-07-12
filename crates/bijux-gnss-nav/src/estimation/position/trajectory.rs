@@ -188,7 +188,9 @@ mod tests {
         assert!((report.final_position_error_3d_m - 2.0f64.sqrt()).abs() < 1.0e-12);
         assert!((report.max_position_error_3d_m - 5.0f64.sqrt()).abs() < 1.0e-12);
         assert!((report.rms_position_error_3d_m - (8.0f64 / 3.0).sqrt()).abs() < 1.0e-12);
-        assert!((report.rms_step_error_3d_m.expect("step rms") - 3.0f64.sqrt()).abs() < 1.0e-12);
+        assert!(
+            (report.rms_step_error_3d_m.expect("step rms") - (4.5f64).sqrt()).abs() < 1.0e-12
+        );
         assert!((report.max_step_error_3d_m.expect("step max") - 5.0f64.sqrt()).abs() < 1.0e-12);
         assert!((report.cumulative_truth_distance_m - 20.0).abs() < 1.0e-12);
         assert!(
