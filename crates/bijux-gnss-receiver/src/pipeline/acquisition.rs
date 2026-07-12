@@ -566,6 +566,7 @@ impl Acquisition {
                 grid_candidates.push(AcqResult {
                     sat,
                     signal_band: signal_model.signal_band,
+                    glonass_frequency_channel: None,
                     source_time: ReceiverSampleTrace::from_sample_time(frame.t0),
                     candidate_rank: 1,
                     is_primary_candidate: true,
@@ -1105,6 +1106,7 @@ fn insufficient_frame_candidates(
     vec![AcqResult {
         sat,
         signal_band: signal_model.signal_band,
+        glonass_frequency_channel: None,
         source_time,
         candidate_rank: 1,
         is_primary_candidate: true,
@@ -1222,6 +1224,7 @@ fn zero_signal_candidate(
     AcqResult {
         sat,
         signal_band: signal_model.signal_band,
+        glonass_frequency_channel: None,
         source_time,
         candidate_rank: 1,
         is_primary_candidate: true,
@@ -1279,6 +1282,7 @@ fn unsupported_coherent_integration_candidate(
     AcqResult {
         sat,
         signal_band: signal_model.signal_band,
+        glonass_frequency_channel: None,
         source_time,
         candidate_rank: 1,
         is_primary_candidate: true,

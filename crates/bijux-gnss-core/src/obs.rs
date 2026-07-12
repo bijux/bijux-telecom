@@ -3,8 +3,8 @@
 
 use crate::api::SignalCode;
 use crate::api::{
-    Chips, Constellation, Cycles, Epoch, Hertz, Meters, ReceiverSampleTrace, SampleTime, SatId,
-    Seconds, SigId, SignalBand, SignalSpec,
+    Chips, Constellation, Cycles, Epoch, GlonassFrequencyChannel, Hertz, Meters,
+    ReceiverSampleTrace, SampleTime, SatId, Seconds, SigId, SignalBand, SignalSpec,
 };
 use num_complex::Complex;
 use serde::{Deserialize, Serialize};
@@ -313,6 +313,8 @@ impl SamplesFrame {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct AcqRequest {
     pub sat: SatId,
+    #[serde(default)]
+    pub glonass_frequency_channel: Option<GlonassFrequencyChannel>,
     pub doppler_search_hz: i32,
     pub doppler_step_hz: i32,
     pub coherent_ms: u32,
@@ -413,6 +415,8 @@ pub struct SignalDelayAlignment {
 pub struct AcqTrackingSeed {
     pub sat: SatId,
     pub signal_band: SignalBand,
+    #[serde(default)]
+    pub glonass_frequency_channel: Option<GlonassFrequencyChannel>,
     pub source_time: ReceiverSampleTrace,
     pub doppler_hz: Hertz,
     pub code_phase_samples: Chips,
@@ -426,6 +430,8 @@ pub struct AcqResult {
     pub sat: SatId,
     #[serde(default = "default_signal_band")]
     pub signal_band: SignalBand,
+    #[serde(default)]
+    pub glonass_frequency_channel: Option<GlonassFrequencyChannel>,
     #[serde(default)]
     pub source_time: ReceiverSampleTrace,
     #[serde(default = "default_candidate_rank")]
@@ -475,6 +481,7 @@ impl AcqResult {
         AcqTrackingSeed {
             sat: self.sat,
             signal_band: self.signal_band,
+            glonass_frequency_channel: self.glonass_frequency_channel,
             source_time: self.source_time,
             doppler_hz: self.doppler_hz,
             code_phase_samples: Chips(self.resolved_code_phase_samples()),
@@ -551,12 +558,17 @@ pub fn acq_result_stability_key(result: &AcqResult) -> String {
         .as_ref()
         .map(|alignment| format!("|{}|{}", alignment.whole_code_periods, alignment.source))
         .unwrap_or_default();
+    let glonass_frequency_channel_key = result
+        .glonass_frequency_channel
+        .map(|channel| format!("|{}", channel.value()))
+        .unwrap_or_default();
     format!(
-        "{:?}-{:02}|{}|{}|{:.3}|{}|{:.6}|{:.6}|{:.6}|{}{}{}{}{}",
+        "{:?}-{:02}|{}|{}{}|{:.3}|{}|{:.6}|{:.6}|{:.6}|{}{}{}{}{}",
         result.sat.constellation,
         result.sat.prn,
         result.candidate_rank,
         result.is_primary_candidate,
+        glonass_frequency_channel_key,
         result.carrier_hz.0,
         result.code_phase_samples,
         result.peak_mean_ratio,
@@ -1243,9 +1255,9 @@ mod tests {
     };
     use crate::api::{
         trackable_acq_tracking_seeds, AcqCodePhaseRefinement, AcqHypothesis, AcqResult,
-        AcqSearchSummary, AcqUncertainty, Constellation, Cycles, Hertz, LeapSeconds, LockFlags,
-        ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
-        SignalBand, UtcTime,
+        AcqSearchSummary, AcqUncertainty, Constellation, Cycles, GlonassFrequencyChannel, Hertz,
+        LeapSeconds, LockFlags, ObservationEpochDecision, ObservationStatus, ReceiverRole,
+        ReceiverSampleTrace, SatId, SignalBand, UtcTime,
     };
     use crate::time::utc_to_gps;
 
@@ -1313,6 +1325,7 @@ mod tests {
         let result = AcqResult {
             sat,
             signal_band: SignalBand::L1,
+            glonass_frequency_channel: None,
             source_time: ReceiverSampleTrace::from_sample_index(8_184, 4_092_000.0),
             candidate_rank: 1,
             is_primary_candidate: true,
@@ -1351,6 +1364,7 @@ mod tests {
 
         assert_eq!(seed.sat, sat);
         assert_eq!(seed.signal_band, SignalBand::L1);
+        assert_eq!(seed.glonass_frequency_channel, None);
         assert_eq!(seed.source_time, result.source_time);
         assert_eq!(seed.doppler_hz.0, 750.0);
         assert!((seed.code_phase_samples.0 - 100.125).abs() <= f64::EPSILON);
@@ -1377,6 +1391,33 @@ mod tests {
             whole_code_periods: 69,
             source: "synthetic_truth".to_string(),
         });
+
+        assert_ne!(acq_result_stability_key(&base), acq_result_stability_key(&changed));
+    }
+
+    #[test]
+    fn acq_tracking_seed_preserves_glonass_frequency_channel() {
+        let sat = SatId { constellation: Constellation::Glonass, prn: 8 };
+        let channel =
+            GlonassFrequencyChannel::new(-4).expect("channel -4 must be valid for GLONASS");
+        let mut result = acq_result_for_summary(sat, AcqHypothesis::Accepted);
+        result.glonass_frequency_channel = Some(channel);
+
+        let seed = result.tracking_seed();
+
+        assert_eq!(seed.sat, sat);
+        assert_eq!(seed.glonass_frequency_channel, Some(channel));
+    }
+
+    #[test]
+    fn acq_result_stability_key_includes_glonass_frequency_channel() {
+        let sat = SatId { constellation: Constellation::Glonass, prn: 8 };
+        let lower = GlonassFrequencyChannel::new(-4).expect("channel -4 must be valid");
+        let upper = GlonassFrequencyChannel::new(5).expect("channel 5 must be valid");
+        let mut base = acq_result_for_summary(sat, AcqHypothesis::Accepted);
+        base.glonass_frequency_channel = Some(lower);
+        let mut changed = base.clone();
+        changed.glonass_frequency_channel = Some(upper);
 
         assert_ne!(acq_result_stability_key(&base), acq_result_stability_key(&changed));
     }
@@ -1535,6 +1576,7 @@ mod tests {
         AcqResult {
             sat,
             signal_band: SignalBand::L1,
+            glonass_frequency_channel: None,
             source_time: ReceiverSampleTrace::default(),
             candidate_rank: 1,
             is_primary_candidate: true,
