@@ -1,6 +1,8 @@
 #![allow(missing_docs)]
 #![allow(dead_code)]
 
+use std::collections::BTreeMap;
+
 use bijux_gnss_core::api::SigId;
 
 #[derive(Debug, Clone)]
@@ -23,6 +25,32 @@ pub trait PhaseBiasProvider {
     fn phase_bias_cycles(&self, sig: SigId) -> Option<f64>;
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct SignalCodeBiases {
+    biases_m: BTreeMap<SigId, f64>,
+}
+
+impl SignalCodeBiases {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn from_biases<I>(biases: I) -> Self
+    where
+        I: IntoIterator<Item = CodeBias>,
+    {
+        let mut by_signal = BTreeMap::new();
+        for bias in biases {
+            by_signal.insert(bias.sig, bias.bias_m);
+        }
+        Self { biases_m: by_signal }
+    }
+
+    pub fn insert(&mut self, sig: SigId, bias_m: f64) -> Option<f64> {
+        self.biases_m.insert(sig, bias_m)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ZeroBiases;
 
@@ -35,5 +63,91 @@ impl CodeBiasProvider for ZeroBiases {
 impl PhaseBiasProvider for ZeroBiases {
     fn phase_bias_cycles(&self, _sig: SigId) -> Option<f64> {
         Some(0.0)
+    }
+}
+
+impl CodeBiasProvider for SignalCodeBiases {
+    fn code_bias_m(&self, sig: SigId) -> Option<f64> {
+        self.biases_m.get(&sig).copied()
+    }
+}
+
+pub fn iono_free_code_bias_m(
+    provider: &dyn CodeBiasProvider,
+    first: SigId,
+    second: SigId,
+    f1_hz: f64,
+    f2_hz: f64,
+) -> Option<f64> {
+    if !f1_hz.is_finite() || !f2_hz.is_finite() || f1_hz <= 0.0 || f2_hz <= 0.0 {
+        return None;
+    }
+    let f1_2 = f1_hz * f1_hz;
+    let f2_2 = f2_hz * f2_hz;
+    let denom = f1_2 - f2_2;
+    if !denom.is_finite() || denom.abs() <= f64::EPSILON {
+        return None;
+    }
+
+    let weight_1 = f1_2 / denom;
+    let weight_2 = -f2_2 / denom;
+    let bias_1_m = provider.code_bias_m(first)?;
+    let bias_2_m = provider.code_bias_m(second)?;
+    Some(weight_1 * bias_1_m + weight_2 * bias_2_m)
+}
+
+#[cfg(test)]
+mod tests {
+    use bijux_gnss_core::api::{
+        Constellation, SatId, SigId, SignalBand, SignalCode, GPS_L1_CA_CARRIER_HZ,
+        GPS_L2_PY_CARRIER_HZ,
+    };
+
+    use super::{iono_free_code_bias_m, CodeBias, CodeBiasProvider, SignalCodeBiases};
+
+    fn gps_signal(band: SignalBand, code: SignalCode) -> SigId {
+        SigId {
+            sat: SatId { constellation: Constellation::Gps, prn: 7 },
+            band,
+            code,
+        }
+    }
+
+    #[test]
+    fn signal_code_biases_lookup_by_signal_id() {
+        let l1 = gps_signal(SignalBand::L1, SignalCode::Ca);
+        let l2 = gps_signal(SignalBand::L2, SignalCode::Py);
+        let biases = SignalCodeBiases::from_biases([
+            CodeBias { sig: l1, bias_m: 1.25 },
+            CodeBias { sig: l2, bias_m: -0.75 },
+        ]);
+
+        assert_eq!(biases.code_bias_m(l1), Some(1.25));
+        assert_eq!(biases.code_bias_m(l2), Some(-0.75));
+    }
+
+    #[test]
+    fn iono_free_code_bias_uses_signal_specific_weights() {
+        let l1 = gps_signal(SignalBand::L1, SignalCode::Ca);
+        let l2 = gps_signal(SignalBand::L2, SignalCode::Py);
+        let biases = SignalCodeBiases::from_biases([
+            CodeBias { sig: l1, bias_m: 3.0 },
+            CodeBias { sig: l2, bias_m: -1.0 },
+        ]);
+
+        let combined_bias_m = iono_free_code_bias_m(
+            &biases,
+            l1,
+            l2,
+            GPS_L1_CA_CARRIER_HZ.value(),
+            GPS_L2_PY_CARRIER_HZ.value(),
+        )
+        .expect("iono-free code bias");
+
+        let f1_2 = GPS_L1_CA_CARRIER_HZ.value().powi(2);
+        let f2_2 = GPS_L2_PY_CARRIER_HZ.value().powi(2);
+        let expected_m = (f1_2 * 3.0 - f2_2 * -1.0) / (f1_2 - f2_2);
+        assert!((combined_bias_m - expected_m).abs() < 1.0e-12);
+        assert!((combined_bias_m - 3.0).abs() > 1.0e-3);
     }
 }

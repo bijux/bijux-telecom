@@ -12,7 +12,9 @@ use super::measurements::{
 use super::models::{PppCodeMeasurement, PppProcessModel};
 use super::state::estimate_sigma;
 use crate::api::compute_corrections;
-use crate::corrections::biases::{CodeBiasProvider, PhaseBiasProvider, ZeroBiases};
+use crate::corrections::biases::{
+    iono_free_code_bias_m, CodeBiasProvider, PhaseBiasProvider, ZeroBiases,
+};
 use crate::corrections::CorrectionContext;
 use crate::estimation::ekf::state::{Ekf, EkfConfig};
 use crate::estimation::position::solver::{elevation_azimuth_deg, weight_from_cn0_elev};
@@ -175,8 +177,16 @@ impl PppFilter {
                 if let Some(iono_free_code) =
                     iono_free_code_observation_from_obs(obs, sat.signal_id.sat)
                 {
+                    let iono_free_code_bias_m = iono_free_code_bias_m(
+                        self.code_bias.as_ref(),
+                        iono_free_code.signal_1,
+                        iono_free_code.signal_2,
+                        iono_free_code.f1_hz,
+                        iono_free_code.f2_hz,
+                    )
+                    .unwrap_or(0.0);
                     let code = PppIonoFreeCodeMeasurement {
-                        z_m: iono_free_code.code_m - code_bias_m,
+                        z_m: iono_free_code.code_m - iono_free_code_bias_m,
                         sat_pos_m: [state.x_m, state.y_m, state.z_m],
                         sat_clock_s: clock_bias_s,
                         sigma_m: iono_free_code.code_sigma_m.max(sigma_m),

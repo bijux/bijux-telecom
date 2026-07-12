@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{signal_cycles_to_meters, ObsEpoch, ObsSatellite, SatId, SignalBand};
+use bijux_gnss_core::api::{signal_cycles_to_meters, ObsEpoch, ObsSatellite, SatId, SigId, SignalBand};
 
 use crate::corrections::iono_free_code::iono_free_code_from_pair;
 use crate::corrections::iono_free_phase::iono_free_phase_from_pair;
@@ -14,8 +14,12 @@ use super::models::PppCodeMeasurement;
 
 #[derive(Debug, Clone, Copy)]
 pub struct IonoFreeCodeMeasurementObservation {
+    pub signal_1: SigId,
+    pub signal_2: SigId,
     pub code_m: f64,
     pub code_sigma_m: f64,
+    pub f1_hz: f64,
+    pub f2_hz: f64,
     pub band_1: SignalBand,
     pub band_2: SignalBand,
 }
@@ -31,11 +35,15 @@ pub struct IonoFreePhaseMeasurementObservation {
 
 #[derive(Debug, Clone, Copy)]
 pub struct IonoFreeObservation {
+    pub signal_1: SigId,
+    pub signal_2: SigId,
     pub code_m: f64,
     pub phase_cycles: f64,
     pub code_sigma_m: f64,
     pub phase_sigma_cycles: f64,
     pub phase_wavelength_m: f64,
+    pub f1_hz: f64,
+    pub f2_hz: f64,
     pub band_1: SignalBand,
     pub band_2: SignalBand,
 }
@@ -412,11 +420,15 @@ pub fn iono_free_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<IonoFreeObservat
     let code = iono_free_code_observation_from_obs(obs, sat)?;
     let phase = iono_free_phase_observation_from_obs(obs, sat)?;
     Some(IonoFreeObservation {
+        signal_1: code.signal_1,
+        signal_2: code.signal_2,
         code_m: code.code_m,
         phase_cycles: phase.phase_cycles,
         code_sigma_m: code.code_sigma_m,
         phase_sigma_cycles: phase.phase_sigma_cycles,
         phase_wavelength_m: phase.phase_wavelength_m,
+        f1_hz: code.f1_hz,
+        f2_hz: code.f2_hz,
         band_1: code.band_1,
         band_2: code.band_2,
     })
@@ -440,8 +452,12 @@ pub fn iono_free_code_observation_from_obs(
         return None;
     }
     Some(IonoFreeCodeMeasurementObservation {
+        signal_1: pair.first.signal_id,
+        signal_2: pair.second.signal_id,
         code_m: code.code_m?,
         code_sigma_m: code.variance_m2?.sqrt(),
+        f1_hz: pair.first.metadata.signal.carrier_hz.value(),
+        f2_hz: pair.second.metadata.signal.carrier_hz.value(),
         band_1: pair.first.signal_id.band,
         band_2: pair.second.signal_id.band,
     })
