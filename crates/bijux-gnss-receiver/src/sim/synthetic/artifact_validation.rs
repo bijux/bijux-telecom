@@ -652,6 +652,29 @@ pub fn validate_observation_accuracy_budget(
 }
 
 /// Evaluate whether a truth-guided PVT report satisfies a hard accuracy budget.
+pub fn validate_pvt_covariance_realism(
+    report: &SyntheticPvtTruthTableReport,
+) -> crate::covariance_realism::CovarianceRealismReport {
+    let samples = report
+        .epochs
+        .iter()
+        .map(|epoch| crate::covariance_realism::CovarianceRealismEpochSample {
+            receiver_ecef_m: [
+                epoch.measured_ecef_m.x_m,
+                epoch.measured_ecef_m.y_m,
+                epoch.measured_ecef_m.z_m,
+            ],
+            east_m: epoch.enu_error_m.east_m,
+            north_m: epoch.enu_error_m.north_m,
+            up_m: epoch.enu_error_m.up_m,
+            position_covariance_ecef_m2: epoch.position_covariance_ecef_m2,
+        })
+        .collect::<Vec<_>>();
+
+    crate::covariance_realism::evaluate_covariance_realism(&samples)
+}
+
+/// Evaluate whether a truth-guided PVT report satisfies a hard accuracy budget.
 pub fn validate_pvt_accuracy_budget(
     report: &SyntheticPvtTruthTableReport,
     budget: SyntheticPvtAccuracyBudget,

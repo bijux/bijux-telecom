@@ -380,3 +380,93 @@
         assert_eq!(accuracy.passing_epoch_count, 0);
         assert!(!epoch.pass);
     }
+
+    #[test]
+    fn pvt_covariance_realism_reports_empirical_coverage_from_truth_table_rows() {
+        let report = SyntheticPvtTruthTableReport {
+            scenario_id: "pvt_covariance_realism".to_string(),
+            solution_count: 20,
+            matched_epoch_count: 20,
+            unmatched_solution_epochs: Vec::new(),
+            unused_reference_epochs: Vec::new(),
+            epochs: (0..20)
+                .map(|epoch_index| SyntheticPvtTruthTableEpoch {
+                    artifact_id: format!("nav-epoch-{epoch_index:04}"),
+                    source_observation_epoch_id: format!("obs-epoch-{epoch_index:04}"),
+                    epoch_index,
+                    receive_time_s: epoch_index as f64,
+                    truth_ecef_m: SyntheticPvtTruthTableEcef {
+                        x_m: 6_378_137.0,
+                        y_m: 0.0,
+                        z_m: 0.0,
+                    },
+                    measured_ecef_m: SyntheticPvtTruthTableEcef {
+                        x_m: 6_378_137.0,
+                        y_m: if epoch_index < 19 { 0.5 } else { 3.5 },
+                        z_m: 0.0,
+                    },
+                    position_covariance_ecef_m2: Some([
+                        [9.0, 0.0, 0.0],
+                        [0.0, 1.0, 0.0],
+                        [0.0, 0.0, 1.0],
+                    ]),
+                    ecef_error_m: SyntheticPvtTruthTableEcef {
+                        x_m: 0.0,
+                        y_m: if epoch_index < 19 { 0.5 } else { 3.5 },
+                        z_m: 0.0,
+                    },
+                    truth_geodetic: SyntheticPvtTruthTableGeodetic {
+                        latitude_deg: 0.0,
+                        longitude_deg: 0.0,
+                        altitude_m: 0.0,
+                    },
+                    measured_geodetic: SyntheticPvtTruthTableGeodetic {
+                        latitude_deg: 0.0,
+                        longitude_deg: 0.0,
+                        altitude_m: 0.0,
+                    },
+                    enu_error_m: SyntheticPvtTruthTableEnuError {
+                        east_m: if epoch_index < 19 { 0.5 } else { 3.5 },
+                        north_m: 0.0,
+                        up_m: 0.0,
+                        horiz_m: if epoch_index < 19 { 0.5 } else { 3.5 },
+                        vert_m: 0.0,
+                        error_3d_m: if epoch_index < 19 { 0.5 } else { 3.5 },
+                    },
+                    clock_bias: SyntheticPvtTruthTableClockBias {
+                        truth_s: 0.0,
+                        measured_s: 0.0,
+                        error_s: 0.0,
+                        truth_m: 0.0,
+                        measured_m: 0.0,
+                        error_m: 0.0,
+                    },
+                    residual_rms_m: 0.1,
+                    pre_fit_residual_rms_m: Some(0.1),
+                    post_fit_residual_rms_m: Some(0.1),
+                    dop: SyntheticPvtTruthTableDop {
+                        pdop: 1.0,
+                        hdop: Some(1.0),
+                        vdop: Some(1.0),
+                        gdop: Some(1.0),
+                        tdop: Some(1.0),
+                    },
+                    solution_status: SolutionStatus::Converged,
+                    solution_quality: NavQualityFlag::Float,
+                    solution_validity: SolutionValidity::Stable,
+                    valid: true,
+                    sat_count: 6,
+                    used_sat_count: 6,
+                    rejected_sat_count: 0,
+                })
+                .collect(),
+        };
+
+        let realism = super::validate_pvt_covariance_realism(&report);
+
+        assert_eq!(realism.total_epoch_count, 20);
+        assert_eq!(realism.covariance_epoch_count, 20);
+        assert_eq!(realism.horizontal_95.inside_count, 19);
+        assert_eq!(realism.vertical_95.inside_count, 20);
+        assert_eq!(realism.position_3d_95.inside_count, 19);
+    }
