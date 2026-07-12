@@ -11,6 +11,10 @@ pub use crate::corrections::atmosphere::{clamp_ztd, AtmosphereConfig};
 pub use crate::corrections::biases::{
     iono_free_code_bias_m, CodeBiasProvider, PhaseBiasProvider, SignalCodeBiases, ZeroBiases,
 };
+pub use crate::corrections::broadcast_ionosphere_residuals::{
+    summarize_broadcast_ionosphere_residuals, BroadcastIonosphereResidualObservation,
+    BroadcastIonosphereResidualStats, BroadcastIonosphereResidualSummary,
+};
 pub use crate::corrections::broadcast_group_delay::{
     beidou_broadcast_group_delay_code_bias_m, galileo_broadcast_group_delay_code_bias_m,
     gps_broadcast_group_delay_code_bias_m, BroadcastGroupDelayBiases,

@@ -2,6 +2,7 @@
 
 pub mod atmosphere;
 pub mod biases;
+pub mod broadcast_ionosphere_residuals;
 pub mod broadcast_group_delay;
 pub mod combinations;
 pub(crate) mod dual_frequency;
