@@ -250,7 +250,6 @@ fn truth_seeded_time_tracking_results(
         .first()
         .expect("receiver time profile requires a truth epoch")
         .receive_time_s;
-    let samples_per_chip = config.sampling_freq_hz / config.code_freq_basis_hz;
 
     ephemerides
         .iter()
