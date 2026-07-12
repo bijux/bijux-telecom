@@ -763,6 +763,26 @@ mod tests {
     }
 
     #[test]
+    fn position_filter_constant_velocity_profile_predicts_position_from_velocity() {
+        let mut filter = PositionFilter::new(PositionFilterConfig::for_constant_velocity_receiver());
+        filter.seed_receiver_state([10.0, 20.0, 30.0], 0.0);
+        filter.ekf.x[3] = 3.0;
+        filter.ekf.x[4] = 4.0;
+        filter.ekf.x[5] = 5.0;
+        filter.ekf.x[7] = 2.0e-4;
+
+        filter.predict(2.0);
+
+        assert_eq!(filter.ekf.x[0], 16.0);
+        assert_eq!(filter.ekf.x[1], 28.0);
+        assert_eq!(filter.ekf.x[2], 40.0);
+        assert_eq!(filter.ekf.x[3], 3.0);
+        assert_eq!(filter.ekf.x[4], 4.0);
+        assert_eq!(filter.ekf.x[5], 5.0);
+        assert_eq!(filter.ekf.x[6], 4.0e-4);
+    }
+
+    #[test]
     fn position_filter_refuses_underconstrained_epoch() {
         let mut filter = PositionFilter::new(PositionFilterConfig::default());
         let observations = vec![PositionObservation {
