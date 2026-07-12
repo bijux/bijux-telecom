@@ -433,6 +433,18 @@ fn sequential_position_filter_tracks_static_receiver_across_epochs() {
         assert!(solution.sigma_e_m.expect("east sigma").is_finite());
         assert!(solution.sigma_n_m.expect("north sigma").is_finite());
         assert!(solution.sigma_u_m.expect("up sigma").is_finite());
+        assert!(solution
+            .horizontal_error_ellipse_major_axis_m
+            .expect("ellipse major axis")
+            .is_finite());
+        assert!(solution
+            .horizontal_error_ellipse_minor_axis_m
+            .expect("ellipse minor axis")
+            .is_finite());
+        assert!(solution
+            .horizontal_error_ellipse_azimuth_deg
+            .expect("ellipse azimuth")
+            .is_finite());
         last_velocity_norm_mps = Some(velocity_norm_mps);
     }
 

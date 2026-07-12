@@ -24,7 +24,7 @@ use crate::estimation::position::solver::{
     PositionSolveRefusalKind, PositionSolver, WeightingConfig,
 };
 use crate::estimation::uncertainty::{
-    covariance_enu_standard_deviations_m, covariance_horizontal_vertical,
+    covariance_enu_standard_deviations_m, covariance_horizontal_vertical, horizontal_error_ellipse,
     position_covariance_ecef_m2,
 };
 use crate::linalg::Matrix;
@@ -203,6 +203,9 @@ pub struct PositionFilterEpoch {
     pub sigma_e_m: Option<f64>,
     pub sigma_n_m: Option<f64>,
     pub sigma_u_m: Option<f64>,
+    pub horizontal_error_ellipse_major_axis_m: Option<f64>,
+    pub horizontal_error_ellipse_minor_axis_m: Option<f64>,
+    pub horizontal_error_ellipse_azimuth_deg: Option<f64>,
     pub velocity_x_mps: f64,
     pub velocity_y_mps: f64,
     pub velocity_z_mps: f64,
@@ -596,6 +599,9 @@ impl PositionFilter {
             sigma_e_m: solution.sigma_e_m,
             sigma_n_m: solution.sigma_n_m,
             sigma_u_m: solution.sigma_u_m,
+            horizontal_error_ellipse_major_axis_m: solution.horizontal_error_ellipse_major_axis_m,
+            horizontal_error_ellipse_minor_axis_m: solution.horizontal_error_ellipse_minor_axis_m,
+            horizontal_error_ellipse_azimuth_deg: solution.horizontal_error_ellipse_azimuth_deg,
             velocity_x_mps: self.ekf.x[self.indices.vel[0]],
             velocity_y_mps: self.ekf.x[self.indices.vel[1]],
             velocity_z_mps: self.ekf.x[self.indices.vel[2]],
@@ -642,6 +648,20 @@ impl PositionFilter {
                 (Some(sigma_e_m), Some(sigma_n_m), Some(sigma_u_m))
             })
             .unwrap_or((None, None, None));
+        let (
+            horizontal_error_ellipse_major_axis_m,
+            horizontal_error_ellipse_minor_axis_m,
+            horizontal_error_ellipse_azimuth_deg,
+        ) = position_covariance_ecef_m2
+            .and_then(|covariance| horizontal_error_ellipse(position_ecef_m, covariance))
+            .map(|ellipse| {
+                (
+                    Some(ellipse.major_axis_m),
+                    Some(ellipse.minor_axis_m),
+                    Some(ellipse.azimuth_deg),
+                )
+            })
+            .unwrap_or((None, None, None));
         let (sigma_h_m, sigma_v_m) = position_covariance_ecef_m2
             .and_then(|covariance| covariance_horizontal_vertical(position_ecef_m, covariance))
             .map(|(sigma_h_m, sigma_v_m)| (Some(sigma_h_m), Some(sigma_v_m)))
@@ -659,6 +679,9 @@ impl PositionFilter {
             sigma_e_m,
             sigma_n_m,
             sigma_u_m,
+            horizontal_error_ellipse_major_axis_m,
+            horizontal_error_ellipse_minor_axis_m,
+            horizontal_error_ellipse_azimuth_deg,
             velocity_x_mps: self.ekf.x[self.indices.vel[0]],
             velocity_y_mps: self.ekf.x[self.indices.vel[1]],
             velocity_z_mps: self.ekf.x[self.indices.vel[2]],
@@ -1097,6 +1120,27 @@ mod tests {
         assert!(epoch.sigma_e_m.expect("east sigma").is_finite());
         assert!(epoch.sigma_n_m.expect("north sigma").is_finite());
         assert!(epoch.sigma_u_m.expect("up sigma").is_finite());
+    }
+
+    #[test]
+    fn position_filter_epoch_exposes_horizontal_error_ellipse() {
+        let mut filter = PositionFilter::new(PositionFilterConfig::default());
+        filter.seed_receiver_state([6_378_137.0, 10.0, 10.0], 0.0);
+
+        let epoch = filter.epoch_from_state(0.0, Vec::new(), 0);
+
+        assert!(epoch
+            .horizontal_error_ellipse_major_axis_m
+            .expect("ellipse major axis")
+            .is_finite());
+        assert!(epoch
+            .horizontal_error_ellipse_minor_axis_m
+            .expect("ellipse minor axis")
+            .is_finite());
+        assert!(epoch
+            .horizontal_error_ellipse_azimuth_deg
+            .expect("ellipse azimuth")
+            .is_finite());
     }
 
     #[test]
