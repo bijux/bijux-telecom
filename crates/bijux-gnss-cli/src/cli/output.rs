@@ -653,6 +653,7 @@ fn write_obs_timeseries_for_command(
         validate_jsonl_schema(&schema_path("combinations.schema.json"), &combo_path, false)?;
     }
     write_iono_free_code_artifact(&out_dir, &observation_artifacts.epochs, None)?;
+    write_narrow_lane_artifact(&out_dir, &observation_artifacts.epochs)?;
     write_melbourne_wubbena_diagnostics(&out_dir, &observation_artifacts.epochs)?;
     write_carrier_smoothed_code_validation(&out_dir, &observation_artifacts)?;
     Ok(observation_artifacts)
@@ -707,6 +708,25 @@ pub(crate) fn write_iono_free_code_artifact(
     let path = out_dir.join("iono_free_code.jsonl");
     fs::write(&path, lines.join("\n"))?;
     validate_jsonl_schema(&schema_path("iono_free_code.schema.json"), &path, false)?;
+    Ok(())
+}
+
+pub(crate) fn write_narrow_lane_artifact(out_dir: &Path, obs: &[ObsEpoch]) -> Result<()> {
+    let mut lines = Vec::new();
+    for (band_1, band_2) in supported_observed_dual_frequency_pairs(obs) {
+        let observations = bijux_gnss_infra::api::nav::narrow_lane_from_obs_epochs(obs, band_1, band_2);
+        for observation in observations {
+            lines.push(serde_json::to_string(&observation)?);
+        }
+    }
+
+    if lines.is_empty() {
+        return Ok(());
+    }
+
+    let path = out_dir.join("narrow_lane.jsonl");
+    fs::write(&path, lines.join("\n"))?;
+    validate_jsonl_schema(&schema_path("narrow_lane.schema.json"), &path, false)?;
     Ok(())
 }
 
@@ -2127,6 +2147,49 @@ mod tests {
         assert!(rows.iter().any(|row| row["band_1"] == "E1" && row["band_2"] == "E5"));
         assert!(rows.iter().any(|row| row["band_1"] == "B1" && row["band_2"] == "B2"));
         assert!(rows.iter().all(|row| row["status"] == "ok"));
+
+        fs::remove_dir_all(&out_dir).expect("remove output directory");
+    }
+
+    #[test]
+    fn write_narrow_lane_artifact_emits_supported_constellation_rows() {
+        let out_dir = temp_output_dir("narrow_lane_output");
+        fs::create_dir_all(&out_dir).expect("create output directory");
+
+        let epochs = vec![
+            dual_frequency_epoch(0, 22_000_000.0, 22_000_002.0, 21_999_999.0, 22_000_000.5),
+            dual_frequency_epoch_for_pair(
+                1,
+                SatId { constellation: Constellation::Galileo, prn: 19 },
+                (SignalBand::E1, SignalCode::E1B, 24_345_678.125, 24_345_677.0),
+                (SignalBand::E5, SignalCode::E5a, 24_345_679.875, 24_345_674.5),
+            ),
+            dual_frequency_epoch_for_pair(
+                2,
+                SatId { constellation: Constellation::Beidou, prn: 7 },
+                (SignalBand::B1, SignalCode::B1I, 24_345_678.125, 24_345_677.5),
+                (SignalBand::B2, SignalCode::B2I, 24_345_679.875, 24_345_674.25),
+            ),
+        ];
+
+        super::write_narrow_lane_artifact(&out_dir, &epochs).expect("write narrow-lane artifact");
+
+        let path = out_dir.join("narrow_lane.jsonl");
+        let text = fs::read_to_string(&path).expect("read narrow-lane artifact");
+        let rows: Vec<serde_json::Value> = text
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("parse narrow-lane row"))
+            .collect();
+
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0]["band_1"], "L1");
+        assert_eq!(rows[0]["band_2"], "L2");
+        assert_eq!(rows[1]["band_1"], "E1");
+        assert_eq!(rows[1]["band_2"], "E5");
+        assert_eq!(rows[2]["band_1"], "B1");
+        assert_eq!(rows[2]["band_2"], "B2");
+        assert!(rows.iter().all(|row| row["narrow_lane_wavelength_m"].as_f64().is_some()));
+        assert!(rows.iter().all(|row| row["phase_cycles"].as_f64().is_some()));
 
         fs::remove_dir_all(&out_dir).expect("remove output directory");
     }
