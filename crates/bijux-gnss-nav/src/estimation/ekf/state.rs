@@ -36,12 +36,15 @@ pub struct EkfConfig {
 #[derive(Debug, Clone)]
 pub struct EkfHealth {
     pub innovation_rms: f64,
+    pub peak_innovation_rms: f64,
     pub rejected: usize,
     pub last_rejection: Option<String>,
     pub rejection_reasons: Vec<String>,
     pub last_rejection_code: Option<RejectionReason>,
     pub condition_number: Option<f64>,
+    pub peak_condition_number: Option<f64>,
     pub whiteness_ratio: Option<f64>,
+    pub peak_whiteness_ratio: Option<f64>,
     pub predicted_variance: Option<f64>,
     pub observed_variance: Option<f64>,
     pub events: Vec<NavHealthEvent>,

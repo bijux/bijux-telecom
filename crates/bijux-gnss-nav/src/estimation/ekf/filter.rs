@@ -13,12 +13,15 @@ impl Ekf {
             config,
             health: EkfHealth {
                 innovation_rms: 0.0,
+                peak_innovation_rms: 0.0,
                 rejected: 0,
                 last_rejection: None,
                 rejection_reasons: Vec::new(),
                 last_rejection_code: None,
                 condition_number: None,
+                peak_condition_number: None,
                 whiteness_ratio: None,
+                peak_whiteness_ratio: None,
                 predicted_variance: None,
                 observed_variance: None,
                 events: Vec::new(),
@@ -44,18 +47,33 @@ impl Ekf {
             config,
             health: EkfHealth {
                 innovation_rms: 0.0,
+                peak_innovation_rms: 0.0,
                 rejected: 0,
                 last_rejection: None,
                 rejection_reasons: Vec::new(),
                 last_rejection_code: None,
                 condition_number: None,
+                peak_condition_number: None,
                 whiteness_ratio: None,
+                peak_whiteness_ratio: None,
                 predicted_variance: None,
                 observed_variance: None,
                 events: Vec::new(),
             },
             labels: checkpoint.labels,
         }
+    }
+
+    pub fn reset_epoch_health(&mut self) {
+        self.health.innovation_rms = 0.0;
+        self.health.peak_innovation_rms = 0.0;
+        self.health.condition_number = None;
+        self.health.peak_condition_number = None;
+        self.health.whiteness_ratio = None;
+        self.health.peak_whiteness_ratio = None;
+        self.health.predicted_variance = None;
+        self.health.observed_variance = None;
+        self.health.events.clear();
     }
 
     pub fn add_state(&mut self, label: &str, value: f64, variance: f64) {
@@ -108,6 +126,8 @@ impl Ekf {
         }
         if min_diag > 0.0 {
             self.health.condition_number = Some(max_diag / min_diag);
+            self.health.peak_condition_number =
+                Some(self.health.peak_condition_number.unwrap_or(0.0).max(max_diag / min_diag));
         }
         let Some(s_inv) = s.invert() else {
             self.health.rejected += 1;
@@ -169,6 +189,7 @@ impl Ekf {
         let rms =
             if m > 0 { (y.iter().map(|v| v * v).sum::<f64>() / m as f64).sqrt() } else { 0.0 };
         self.health.innovation_rms = rms;
+        self.health.peak_innovation_rms = self.health.peak_innovation_rms.max(rms);
         let predicted = if m > 0 {
             let mut sum = 0.0;
             for i in 0..m {
@@ -182,7 +203,10 @@ impl Ekf {
         self.health.predicted_variance = Some(predicted);
         self.health.observed_variance = Some(observed);
         if predicted > 0.0 {
-            self.health.whiteness_ratio = Some(observed / predicted);
+            let whiteness_ratio = observed / predicted;
+            self.health.whiteness_ratio = Some(whiteness_ratio);
+            self.health.peak_whiteness_ratio =
+                Some(self.health.peak_whiteness_ratio.unwrap_or(0.0).max(whiteness_ratio));
         }
         true
     }

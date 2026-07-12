@@ -52,3 +52,41 @@ fn ekf_update_runs() {
     };
     assert!(ekf.update(&meas));
 }
+
+#[test]
+fn ekf_reset_epoch_health_clears_ephemeral_metrics() {
+    let mut ekf = Ekf::new(
+        vec![0.0; 8],
+        Matrix::identity(8),
+        EkfConfig {
+            gating_chi2_code: Some(100.0),
+            gating_chi2_phase: Some(100.0),
+            gating_chi2_doppler: Some(100.0),
+            huber_k: Some(10.0),
+            square_root: true,
+            covariance_epsilon: 1e-6,
+            divergence_max_variance: 1e12,
+        },
+    );
+    ekf.health.innovation_rms = 25.0;
+    ekf.health.peak_innovation_rms = 40.0;
+    ekf.health.condition_number = Some(3.0);
+    ekf.health.peak_condition_number = Some(12.0);
+    ekf.health.whiteness_ratio = Some(4.0);
+    ekf.health.peak_whiteness_ratio = Some(9.0);
+    ekf.health.predicted_variance = Some(16.0);
+    ekf.health.observed_variance = Some(64.0);
+    ekf.health.events.push(bijux_gnss_core::api::NavHealthEvent::CovarianceSymmetrized);
+
+    ekf.reset_epoch_health();
+
+    assert_eq!(ekf.health.innovation_rms, 0.0);
+    assert_eq!(ekf.health.peak_innovation_rms, 0.0);
+    assert_eq!(ekf.health.condition_number, None);
+    assert_eq!(ekf.health.peak_condition_number, None);
+    assert_eq!(ekf.health.whiteness_ratio, None);
+    assert_eq!(ekf.health.peak_whiteness_ratio, None);
+    assert_eq!(ekf.health.predicted_variance, None);
+    assert_eq!(ekf.health.observed_variance, None);
+    assert!(ekf.health.events.is_empty());
+}
