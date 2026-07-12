@@ -40,8 +40,11 @@ pub struct PositionFilterConfig {
     pub process_noise: PositionFilterProcessNoise,
     pub weighting: WeightingConfig,
     pub base_pseudorange_sigma_m: f64,
+    pub base_doppler_sigma_hz: f64,
     pub gating_chi2_code: Option<f64>,
+    pub gating_chi2_doppler: Option<f64>,
     pub huber_k: Option<f64>,
+    pub use_doppler: bool,
     pub apply_broadcast_group_delay: bool,
     pub initial_position_sigma_m: f64,
     pub initial_velocity_sigma_mps: f64,
@@ -56,8 +59,11 @@ impl Default for PositionFilterConfig {
             process_noise: PositionFilterProcessNoise::default(),
             weighting: WeightingConfig::default(),
             base_pseudorange_sigma_m: 5.0,
+            base_doppler_sigma_hz: 1.0,
             gating_chi2_code: Some(100.0),
+            gating_chi2_doppler: Some(100.0),
             huber_k: Some(30.0),
+            use_doppler: true,
             apply_broadcast_group_delay: true,
             initial_position_sigma_m: 100.0,
             initial_velocity_sigma_mps: 50.0,
@@ -124,7 +130,7 @@ impl PositionFilter {
             EkfConfig {
                 gating_chi2_code: config.gating_chi2_code,
                 gating_chi2_phase: None,
-                gating_chi2_doppler: None,
+                gating_chi2_doppler: config.gating_chi2_doppler,
                 huber_k: config.huber_k,
                 square_root: true,
                 covariance_epsilon: 1.0e-12,
@@ -533,7 +539,17 @@ mod tests {
         assert_eq!(filter.indices.vel, [3, 4, 5]);
         assert_eq!(filter.indices.clock_bias, 6);
         assert_eq!(filter.indices.clock_drift, 7);
+        assert_eq!(filter.ekf.config.gating_chi2_doppler, Some(100.0));
         assert!(!filter.initialized);
+    }
+
+    #[test]
+    fn position_filter_enables_doppler_updates_by_default() {
+        let config = PositionFilterConfig::default();
+
+        assert!(config.use_doppler);
+        assert_eq!(config.base_doppler_sigma_hz, 1.0);
+        assert_eq!(config.gating_chi2_doppler, Some(100.0));
     }
 
     #[test]
