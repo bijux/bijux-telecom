@@ -2,7 +2,7 @@
 
 use bijux_gnss_core::api::{
     signal_spec_galileo_e1b, signal_spec_galileo_e5a, Chips, Constellation, Cycles, Epoch, Hertz,
-    ReceiverSampleTrace, SatId, SignalBand, SignalDelayAlignment, TrackEpoch,
+    Meters, ReceiverSampleTrace, SatId, SignalBand, SignalDelayAlignment, SignalSpec, TrackEpoch,
 };
 use bijux_gnss_nav::api::{
     combinations_from_obs_epochs, iono_free_code_from_obs_epochs, iono_free_phase_from_obs_epochs,
@@ -108,6 +108,15 @@ fn galileo_tracking_result(
     }
 }
 
+fn dispersive_delay_at_band(
+    iono_e1_m: f64,
+    e1_signal: SignalSpec,
+    target_signal: SignalSpec,
+) -> f64 {
+    iono_e1_m * (e1_signal.carrier_hz.value() * e1_signal.carrier_hz.value())
+        / (target_signal.carrier_hz.value() * target_signal.carrier_hz.value())
+}
+
 #[test]
 fn generated_galileo_e1_e5_observations_support_dual_frequency_combinations() {
     let config = galileo_observation_config();
@@ -138,4 +147,34 @@ fn generated_galileo_e1_e5_observations_support_dual_frequency_combinations() {
     assert_eq!(combinations.len(), 1);
     assert_eq!(iono_free_code.len(), 1);
     assert_eq!(iono_free_phase.len(), 1);
+}
+
+#[test]
+fn generated_galileo_e1_e5_observations_reduce_synthetic_ionospheric_delay() {
+    let config = galileo_observation_config();
+    let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+    let e1_signal = signal_spec_galileo_e1b();
+    let e5_signal = signal_spec_galileo_e5a();
+    let e1 = galileo_tracking_result(&config, sat, e1_signal, 4092, 10, 512.0);
+    let e5 = galileo_tracking_result(&config, sat, e5_signal, 10230, 4, 2048.0);
+
+    let artifacts = observation_artifacts_from_tracking_results(&config, &[e1, e5], 10);
+    let mut delayed_epoch = artifacts.output.epochs[0].clone();
+    let base_range_m = 24_000_000.0;
+    let iono_e1_m = 4.5;
+    let iono_e5_m = dispersive_delay_at_band(iono_e1_m, e1_signal, e5_signal);
+
+    for satellite in &mut delayed_epoch.sats {
+        satellite.pseudorange_m = Meters(match satellite.signal_id.band {
+            SignalBand::E1 => base_range_m + iono_e1_m,
+            SignalBand::E5 => base_range_m + iono_e5_m,
+            band => panic!("unexpected band in Galileo observation epoch: {band:?}"),
+        });
+    }
+
+    let iono_free_code = iono_free_code_from_obs_epochs(&[delayed_epoch], SignalBand::E1, SignalBand::E5);
+
+    assert_eq!(iono_free_code.len(), 1);
+    assert_eq!(iono_free_code[0].status, "ok");
+    assert!((iono_free_code[0].code_m.expect("iono-free code") - base_range_m).abs() < 1.0e-6);
 }

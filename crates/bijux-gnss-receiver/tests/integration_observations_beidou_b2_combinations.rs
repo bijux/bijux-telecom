@@ -2,7 +2,7 @@
 
 use bijux_gnss_core::api::{
     signal_spec_beidou_b1i, signal_spec_beidou_b2i, Chips, Constellation, Cycles, Epoch, Hertz,
-    ReceiverSampleTrace, SatId, SignalBand, SignalDelayAlignment, TrackEpoch,
+    Meters, ReceiverSampleTrace, SatId, SignalBand, SignalDelayAlignment, SignalSpec, TrackEpoch,
 };
 use bijux_gnss_nav::api::{
     combinations_from_obs_epochs, iono_free_code_from_obs_epochs, iono_free_phase_from_obs_epochs,
@@ -108,6 +108,15 @@ fn beidou_tracking_result(
     }
 }
 
+fn dispersive_delay_at_band(
+    iono_b1_m: f64,
+    b1_signal: SignalSpec,
+    target_signal: SignalSpec,
+) -> f64 {
+    iono_b1_m * (b1_signal.carrier_hz.value() * b1_signal.carrier_hz.value())
+        / (target_signal.carrier_hz.value() * target_signal.carrier_hz.value())
+}
+
 #[test]
 fn generated_beidou_b1_b2_observations_support_dual_frequency_combinations() {
     let config = beidou_observation_config();
@@ -138,4 +147,34 @@ fn generated_beidou_b1_b2_observations_support_dual_frequency_combinations() {
     assert_eq!(combinations.len(), 1);
     assert_eq!(iono_free_code.len(), 1);
     assert_eq!(iono_free_phase.len(), 1);
+}
+
+#[test]
+fn generated_beidou_b1_b2_observations_reduce_synthetic_ionospheric_delay() {
+    let config = beidou_observation_config();
+    let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
+    let b1_signal = signal_spec_beidou_b1i();
+    let b2_signal = signal_spec_beidou_b2i();
+    let b1 = beidou_tracking_result(&config, sat, b1_signal, 2046, 10, 512.0);
+    let b2 = beidou_tracking_result(&config, sat, b2_signal, 2046, 7, 768.0);
+
+    let artifacts = observation_artifacts_from_tracking_results(&config, &[b1, b2], 10);
+    let mut delayed_epoch = artifacts.output.epochs[0].clone();
+    let base_range_m = 24_100_000.0;
+    let iono_b1_m = 3.75;
+    let iono_b2_m = dispersive_delay_at_band(iono_b1_m, b1_signal, b2_signal);
+
+    for satellite in &mut delayed_epoch.sats {
+        satellite.pseudorange_m = Meters(match satellite.signal_id.band {
+            SignalBand::B1 => base_range_m + iono_b1_m,
+            SignalBand::B2 => base_range_m + iono_b2_m,
+            band => panic!("unexpected band in BeiDou observation epoch: {band:?}"),
+        });
+    }
+
+    let iono_free_code = iono_free_code_from_obs_epochs(&[delayed_epoch], SignalBand::B1, SignalBand::B2);
+
+    assert_eq!(iono_free_code.len(), 1);
+    assert_eq!(iono_free_code[0].status, "ok");
+    assert!((iono_free_code[0].code_m.expect("iono-free code") - base_range_m).abs() < 1.0e-6);
 }
