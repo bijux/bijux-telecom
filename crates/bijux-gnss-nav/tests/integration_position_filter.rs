@@ -57,6 +57,18 @@ fn root_mean_square(values: &[f64]) -> f64 {
     (values.iter().map(|value| value * value).sum::<f64>() / values.len() as f64).sqrt()
 }
 
+fn displacement_error_3d_m(
+    previous_ecef_m: (f64, f64, f64),
+    current_ecef_m: (f64, f64, f64),
+    truth_velocity_mps: (f64, f64, f64),
+    dt_s: f64,
+) -> f64 {
+    let dx = current_ecef_m.0 - previous_ecef_m.0 - truth_velocity_mps.0 * dt_s;
+    let dy = current_ecef_m.1 - previous_ecef_m.1 - truth_velocity_mps.1 * dt_s;
+    let dz = current_ecef_m.2 - previous_ecef_m.2 - truth_velocity_mps.2 * dt_s;
+    (dx * dx + dy * dy + dz * dz).sqrt()
+}
+
 fn sample_filter_ephemerides() -> Vec<GpsEphemeris> {
     let mut ephemerides = vec![
         sample_ephemeris(1, 0.0, 0.0),
@@ -654,5 +666,88 @@ fn sequential_position_filter_static_profile_reduces_late_position_scatter() {
         final_static_velocity_norm_mps.expect("final static velocity norm") < 0.5,
         "final_static_velocity_norm_mps={:?}",
         final_static_velocity_norm_mps
+    );
+}
+
+#[test]
+fn sequential_position_filter_constant_velocity_profile_beats_independent_epochs_while_moving() {
+    let ephemerides = sample_filter_ephemerides();
+    let truth_velocity_enu_mps = (8.0, -2.5, 0.8);
+    let truth_velocity_mps = enu_velocity_to_ecef_mps(37.0, -122.0, truth_velocity_enu_mps);
+    let epochs =
+        moving_receiver_epochs_with_doppler(&ephemerides, 20, 1.0, truth_velocity_mps, 0.0);
+    let mut dynamic_config = PositionFilterConfig::for_constant_velocity_receiver();
+    dynamic_config.base_pseudorange_sigma_m = 1.5;
+    dynamic_config.base_doppler_sigma_hz = 0.05;
+    let mut dynamic_filter = PositionFilter::new(dynamic_config.clone());
+    let mut dynamic_positions_ecef_m = Vec::new();
+    let mut independent_positions_ecef_m = Vec::new();
+    let mut final_dynamic_velocity_error_mps = None;
+    let mut final_independent_velocity_error_mps = None;
+
+    for epoch in &epochs {
+        let dynamic_solution = dynamic_filter
+            .solve_epoch(&epoch.observations, &ephemerides, epoch.t_rx_s)
+            .expect("dynamic moving epoch should solve");
+        let mut independent_filter = PositionFilter::new(dynamic_config.clone());
+        let independent_solution = independent_filter
+            .solve_epoch(&epoch.observations, &ephemerides, epoch.t_rx_s)
+            .expect("independent moving epoch should solve");
+
+        dynamic_positions_ecef_m.push((
+            dynamic_solution.ecef_x_m,
+            dynamic_solution.ecef_y_m,
+            dynamic_solution.ecef_z_m,
+        ));
+        independent_positions_ecef_m.push((
+            independent_solution.ecef_x_m,
+            independent_solution.ecef_y_m,
+            independent_solution.ecef_z_m,
+        ));
+        final_dynamic_velocity_error_mps = Some(velocity_error_3d_mps(
+            dynamic_solution.velocity_x_mps,
+            dynamic_solution.velocity_y_mps,
+            dynamic_solution.velocity_z_mps,
+            truth_velocity_mps,
+        ));
+        final_independent_velocity_error_mps = Some(velocity_error_3d_mps(
+            independent_solution.velocity_x_mps,
+            independent_solution.velocity_y_mps,
+            independent_solution.velocity_z_mps,
+            truth_velocity_mps,
+        ));
+    }
+
+    let dynamic_step_errors_m = dynamic_positions_ecef_m
+        .windows(2)
+        .map(|window| displacement_error_3d_m(window[0], window[1], truth_velocity_mps, 1.0))
+        .collect::<Vec<_>>();
+    let independent_step_errors_m = independent_positions_ecef_m
+        .windows(2)
+        .map(|window| displacement_error_3d_m(window[0], window[1], truth_velocity_mps, 1.0))
+        .collect::<Vec<_>>();
+    let dynamic_late_step_rms_m = root_mean_square(&dynamic_step_errors_m[9..19]);
+    let independent_late_step_rms_m = root_mean_square(&independent_step_errors_m[9..19]);
+    let final_dynamic_velocity_error_mps =
+        final_dynamic_velocity_error_mps.expect("final dynamic velocity error");
+    let final_independent_velocity_error_mps =
+        final_independent_velocity_error_mps.expect("final independent velocity error");
+
+    assert!(dynamic_filter.initialized);
+    assert_eq!(
+        dynamic_filter.last_t_rx_s,
+        Some(epochs.last().expect("moving epochs").t_rx_s)
+    );
+    assert!(
+        dynamic_late_step_rms_m < independent_late_step_rms_m,
+        "dynamic_late_step_rms_m={dynamic_late_step_rms_m} independent_late_step_rms_m={independent_late_step_rms_m}"
+    );
+    assert!(
+        final_dynamic_velocity_error_mps < final_independent_velocity_error_mps,
+        "final_dynamic_velocity_error_mps={final_dynamic_velocity_error_mps} final_independent_velocity_error_mps={final_independent_velocity_error_mps}"
+    );
+    assert!(
+        final_dynamic_velocity_error_mps < 2.0,
+        "final_dynamic_velocity_error_mps={final_dynamic_velocity_error_mps}"
     );
 }
