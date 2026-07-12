@@ -1,10 +1,10 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    signal_spec_galileo_e1b, signal_spec_galileo_e5a, signal_spec_gps_l1_ca, signal_spec_gps_l2_py,
-    Constellation, Cycles, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
-    ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId, Seconds,
-    SigId, SignalBand, SignalCode, SignalSpec,
+    first_order_ionosphere_code_delay_m, signal_spec_galileo_e1b, signal_spec_galileo_e5a,
+    signal_spec_gps_l1_ca, signal_spec_gps_l2_py, Constellation, Cycles, Hertz, LockFlags, Meters,
+    ObsEpoch, ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus, ReceiverRole,
+    ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode, SignalSpec,
 };
 use bijux_gnss_nav::api::{iono_free_code_from_obs_epochs_with_biases, BiasSinexProvider};
 
@@ -172,8 +172,9 @@ fn dispersive_delay_at_band(
     l1_signal: SignalSpec,
     target_signal: SignalSpec,
 ) -> f64 {
-    iono_l1_m * (l1_signal.carrier_hz.value() * l1_signal.carrier_hz.value())
-        / (target_signal.carrier_hz.value() * target_signal.carrier_hz.value())
+    first_order_ionosphere_code_delay_m(Meters(iono_l1_m), l1_signal, target_signal)
+        .expect("finite first-order ionosphere delay")
+        .0
 }
 
 fn iono_free_weights(f1_hz: f64, f2_hz: f64) -> (f64, f64) {
