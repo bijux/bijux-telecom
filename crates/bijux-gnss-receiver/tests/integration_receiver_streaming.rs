@@ -244,9 +244,9 @@ fn receiver_tracks_galileo_e1_across_stream_frames() {
     let runtime = ReceiverRuntime::default();
     let receiver = Receiver::new(config.clone(), runtime);
     let expected_samples = (scenario.duration_s * config.sampling_freq_hz).round() as u64;
-    let galileo_samples_per_code =
-        (config.sampling_freq_hz * (config.code_length as f64 / config.code_freq_basis_hz)).round()
-            as usize;
+    let galileo_samples_per_code = (config.sampling_freq_hz
+        * (config.code_length as f64 / config.code_freq_basis_hz))
+        .round() as usize;
     let mut source =
         CountingSignalSource::new(SyntheticSignalSource::new_signal_only(&config, &scenario));
 
@@ -274,7 +274,10 @@ fn receiver_tracks_galileo_e1_across_stream_frames() {
         track.epochs.len()
     );
     assert!(
-        track.epochs.iter().any(|epoch| epoch.lock && epoch.dll_lock && epoch.pll_lock && epoch.fll_lock),
+        track
+            .epochs
+            .iter()
+            .any(|epoch| epoch.lock && epoch.dll_lock && epoch.pll_lock && epoch.fll_lock),
         "Galileo tracking never reached a fully locked epoch",
     );
 }
