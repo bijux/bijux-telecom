@@ -2,3 +2,4 @@
 #![allow(dead_code)]
 
 pub(crate) mod data;
+pub(crate) mod model;
