@@ -638,8 +638,10 @@ fn write_obs_timeseries_for_command(
     let quality_path = out_dir.join("observation_measurement_quality.jsonl");
     let mut quality_lines = Vec::new();
     for quality in &observation_artifacts.measurement_quality {
-        let wrapped =
-            ObservationMeasurementQualityEpochV1 { header: header.clone(), payload: quality.clone() };
+        let wrapped = ObservationMeasurementQualityEpochV1 {
+            header: header.clone(),
+            payload: quality.clone(),
+        };
         quality_lines.push(serde_json::to_string(&wrapped)?);
     }
     fs::write(&quality_path, quality_lines.join("\n"))?;
@@ -727,7 +729,8 @@ pub(crate) fn write_iono_free_code_artifact(
 pub(crate) fn write_narrow_lane_artifact(out_dir: &Path, obs: &[ObsEpoch]) -> Result<()> {
     let mut lines = Vec::new();
     for (band_1, band_2) in supported_observed_dual_frequency_pairs(obs) {
-        let observations = bijux_gnss_infra::api::nav::narrow_lane_from_obs_epochs(obs, band_1, band_2);
+        let observations =
+            bijux_gnss_infra::api::nav::narrow_lane_from_obs_epochs(obs, band_1, band_2);
         for observation in observations {
             lines.push(serde_json::to_string(&observation)?);
         }
@@ -1124,13 +1127,12 @@ mod tests {
     use crate::{CommonArgs, ReceiverConfig, ReceiverPipelineConfig, ReportFormat};
     use bijux_gnss_infra::api::core::{
         signal_registry, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, ArtifactHeaderV1,
-        ArtifactReadPolicy, Chips,
-        Constellation, Cycles, Epoch, Hertz, LockFlags, Meters, NavLifecycleState,
-        NavSolutionEpoch, NavUncertaintyClass, ObsEpoch, ObsMetadata, ObsSatellite,
-        ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
-        Seconds, SigId, SignalBand, SignalCode, SignalDelayAlignment, SolutionStatus,
-        SolutionValidity, TrackEpoch, TrackEpochV1, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
-        NAV_SOLUTION_MODEL_VERSION,
+        ArtifactReadPolicy, Chips, Constellation, Cycles, Epoch, Hertz, LockFlags, Meters,
+        NavLifecycleState, NavSolutionEpoch, NavUncertaintyClass, ObsEpoch, ObsMetadata,
+        ObsSatellite, ObservationEpochDecision, ObservationStatus, ReceiverRole,
+        ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode, SignalDelayAlignment,
+        SolutionStatus, SolutionValidity, TrackEpoch, TrackEpochV1, TrackingUncertainty,
+        GPS_L1_CA_CARRIER_HZ, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
     };
     use bijux_gnss_infra::api::nav::{
         write_rinex_broadcast_navigation, write_rinex_nav, BiasSinexProvider,
@@ -1381,9 +1383,7 @@ mod tests {
     }
 
     fn bias_sinex_fixture(name: &str) -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../bijux-gnss-nav/tests/data")
-            .join(name)
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../bijux-gnss-nav/tests/data").join(name)
     }
 
     fn sample_common_args(out_dir: PathBuf) -> CommonArgs {
@@ -2044,6 +2044,200 @@ mod tests {
         assert_eq!(carrier_smoothed_code_validation["accepted_observations"], 2);
         assert_eq!(carrier_smoothed_code_validation["cycle_slip_observations"], 0);
         assert!(carrier_smoothed_code_validation["improvement_verified"].is_null());
+
+        fs::remove_dir_all(&out_dir).expect("remove output directory");
+    }
+
+    #[test]
+    fn write_obs_timeseries_emits_observation_measurement_quality_artifact() {
+        fn quality_signal(
+            constellation: Constellation,
+            band: SignalBand,
+            code: SignalCode,
+        ) -> bijux_gnss_infra::api::core::SignalSpec {
+            signal_registry(constellation, band, code).expect("registered signal").spec
+        }
+
+        fn quality_alignment_periods(band: SignalBand) -> u64 {
+            match band {
+                SignalBand::L1 => 68,
+                SignalBand::L2 => 4,
+                SignalBand::L5 => 8,
+                SignalBand::E1 => 17,
+                SignalBand::E5 => 6,
+                SignalBand::B1 => 8,
+                SignalBand::B2 => 8,
+                _ => 68,
+            }
+        }
+
+        fn quality_track(
+            config: &ReceiverPipelineConfig,
+            sat: SatId,
+            signal: bijux_gnss_infra::api::core::SignalSpec,
+            cn0_dbhz: f64,
+        ) -> bijux_gnss_infra::api::receiver::TrackingResult {
+            let tracked_carrier_hz =
+                signal.carrier_hz.value() - GPS_L1_CA_CARRIER_HZ.value() + 125.0;
+            let epoch = TrackEpoch {
+                epoch: Epoch { index: 0 },
+                sample_index: 0,
+                source_time: ReceiverSampleTrace::from_sample_index(0, config.sampling_freq_hz),
+                sat,
+                signal_band: signal.band,
+                glonass_frequency_channel: None,
+                prompt_i: 1.0,
+                prompt_q: 0.0,
+                early_i: 0.1,
+                early_q: 0.0,
+                late_i: -0.1,
+                late_q: 0.0,
+                carrier_hz: Hertz(tracked_carrier_hz + sat.prn as f64),
+                carrier_phase_cycles: Cycles(2_400.0 + sat.prn as f64),
+                code_rate_hz: Hertz(signal.code_rate_hz),
+                code_phase_samples: Chips(0.0),
+                lock: true,
+                cn0_dbhz,
+                pll_lock: true,
+                dll_lock: true,
+                fll_lock: true,
+                cycle_slip: false,
+                nav_bit_lock: false,
+                navigation_bit_sign: None,
+                dll_err: 0.0,
+                pll_err: 0.0,
+                fll_err: 0.0,
+                anti_false_lock: false,
+                cycle_slip_reason: None,
+                lock_state: "tracking".to_string(),
+                lock_state_reason: Some("stable_tracking".to_string()),
+                channel_id: Some(sat.prn),
+                channel_uid: format!("{:?}-{:02}-{:?}", sat.constellation, sat.prn, signal.band),
+                tracking_provenance: "test".to_string(),
+                tracking_assumptions: None,
+                signal_delay_alignment: Some(SignalDelayAlignment {
+                    whole_code_periods: quality_alignment_periods(signal.band),
+                    source: "quality_fixture".to_string(),
+                }),
+                tracking_uncertainty: Some(TrackingUncertainty {
+                    code_phase_samples: 0.05,
+                    carrier_phase_cycles: 0.02,
+                    doppler_hz: 0.5,
+                    cn0_dbhz: 0.75,
+                }),
+                processing_ms: None,
+            };
+            bijux_gnss_infra::api::receiver::TrackingResult {
+                sat,
+                carrier_hz: epoch.carrier_hz.0,
+                code_phase_samples: epoch.code_phase_samples.0,
+                acquisition_hypothesis: "accepted".to_string(),
+                acquisition_score: 1.0,
+                acquisition_code_phase_samples: 0,
+                acquisition_carrier_hz: epoch.carrier_hz.0,
+                acq_to_track_state: "accepted".to_string(),
+                epochs: vec![epoch],
+                transitions: Vec::new(),
+            }
+        }
+
+        let out_dir = temp_output_dir("obs_quality_output");
+        let common = sample_common_args(out_dir.clone());
+        let profile = ReceiverConfig::default();
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 10_230_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            channels: 8,
+            tracking_integration_ms: 10,
+            ..ReceiverPipelineConfig::default()
+        };
+        let mut l5 = quality_track(
+            &config,
+            SatId { constellation: Constellation::Gps, prn: 5 },
+            quality_signal(Constellation::Gps, SignalBand::L5, SignalCode::Unknown),
+            43.0,
+        );
+        l5.epochs[0].cycle_slip = true;
+        l5.epochs[0].cycle_slip_reason = Some("simulated_phase_slip".to_string());
+        let mut b2 = quality_track(
+            &config,
+            SatId { constellation: Constellation::Beidou, prn: 8 },
+            quality_signal(Constellation::Beidou, SignalBand::B2, SignalCode::B2I),
+            39.0,
+        );
+        b2.epochs[0].pll_lock = false;
+        let tracks = vec![
+            quality_track(
+                &config,
+                SatId { constellation: Constellation::Gps, prn: 3 },
+                signal_spec_gps_l1_ca(),
+                46.0,
+            ),
+            quality_track(
+                &config,
+                SatId { constellation: Constellation::Gps, prn: 4 },
+                quality_signal(Constellation::Gps, SignalBand::L2, SignalCode::L2C),
+                44.0,
+            ),
+            l5,
+            quality_track(
+                &config,
+                SatId { constellation: Constellation::Galileo, prn: 11 },
+                quality_signal(Constellation::Galileo, SignalBand::E1, SignalCode::E1B),
+                42.0,
+            ),
+            quality_track(
+                &config,
+                SatId { constellation: Constellation::Galileo, prn: 12 },
+                quality_signal(Constellation::Galileo, SignalBand::E5, SignalCode::E5a),
+                41.0,
+            ),
+            quality_track(
+                &config,
+                SatId { constellation: Constellation::Beidou, prn: 7 },
+                quality_signal(Constellation::Beidou, SignalBand::B1, SignalCode::B1I),
+                40.0,
+            ),
+            b2,
+        ];
+
+        super::write_obs_timeseries(&common, &config, &tracks, 10, &profile, None)
+            .expect("write observation artifacts");
+
+        let artifacts_dir = super::artifacts_dir(&common, "track", None).expect("artifacts dir");
+        let quality_path = artifacts_dir.join("observation_measurement_quality.jsonl");
+        let quality_text = fs::read_to_string(&quality_path).expect("read quality artifact");
+        let first_line = quality_text.lines().next().expect("quality line");
+        let payload: serde_json::Value = serde_json::from_str(first_line).expect("parse quality");
+        let sats = payload["payload"]["sats"].as_array().expect("quality satellites");
+
+        assert_eq!(sats.len(), 7);
+        assert_eq!(
+            sats.iter()
+                .map(|sat| sat["signal_id"]["band"].as_str().expect("signal band"))
+                .collect::<Vec<_>>(),
+            vec!["L1", "L2", "L5", "E1", "E5", "B1", "B2"]
+        );
+        assert!(sats.iter().all(|sat| sat["cn0_dbhz"].as_f64().is_some()));
+        assert!(sats.iter().all(|sat| sat["pseudorange_sigma_m"].as_f64().is_some()));
+        assert!(sats.iter().all(|sat| sat["carrier_phase_sigma_cycles"].as_f64().is_some()));
+        assert!(sats.iter().all(|sat| sat["doppler_sigma_hz"].as_f64().is_some()));
+        assert!(sats.iter().all(|sat| sat["cn0_sigma_dbhz"].as_f64().is_some()));
+        assert!(sats.iter().all(|sat| sat["observation_lock_state"]
+            .as_str()
+            .is_some_and(|state| !state.is_empty())));
+
+        let l5_quality =
+            sats.iter().find(|sat| sat["signal_id"]["band"] == "L5").expect("L5 quality");
+        assert_eq!(l5_quality["cycle_slip"], true);
+        assert_eq!(l5_quality["cycle_slip_reason"], "simulated_phase_slip");
+
+        let b2_quality =
+            sats.iter().find(|sat| sat["signal_id"]["band"] == "B2").expect("B2 quality");
+        assert_eq!(b2_quality["lock_flags"]["code_lock"], true);
+        assert_eq!(b2_quality["lock_flags"]["carrier_lock"], false);
 
         fs::remove_dir_all(&out_dir).expect("remove output directory");
     }
