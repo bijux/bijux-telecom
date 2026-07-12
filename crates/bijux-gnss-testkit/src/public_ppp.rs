@@ -3,9 +3,9 @@
 use bijux_gnss_core::api::{GpsTime, ObsEpoch, SatId, SignalBand};
 use bijux_gnss_nav::api::{
     BroadcastProductsProvider, GpsBroadcastNavigationData, PppConfig, PppFilter,
+    PppTroposphereSource,
     RinexGpsObservationDataset,
 };
-use bijux_gnss_nav::PppTroposphereSource;
 use serde::{Deserialize, Serialize};
 
 use crate::public_station::{station_enu_error_m, PublicStationTruth};

@@ -2,12 +2,10 @@
 
 use bijux_gnss_nav::api::{
     choose_rtk_single_difference_reference_signal, rtk_double_difference_residual_metrics,
-    rtk_double_differences_from_single_differences, rtk_single_difference_residual_metrics,
-    rtk_single_differences_from_obs_epochs,
-};
-use bijux_gnss_nav::{
     rtk_double_difference_residual_metrics_with_antenna_corrections,
-    rtk_single_difference_residual_metrics_with_antenna_corrections, RtkAntennaCorrectionConfig,
+    rtk_double_differences_from_single_differences, rtk_single_difference_residual_metrics,
+    rtk_single_difference_residual_metrics_with_antenna_corrections,
+    rtk_single_differences_from_obs_epochs, RtkAntennaCorrectionConfig,
 };
 use bijux_gnss_testkit::antenna_validation::gps_l1_rtk_antenna_effect_case;
 

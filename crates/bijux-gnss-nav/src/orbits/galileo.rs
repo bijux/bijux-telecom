@@ -4,9 +4,11 @@ use std::cmp::Ordering;
 
 use serde::{Deserialize, Serialize};
 
-use bijux_gnss_core::api::{signal_registry, Constellation, GpsTime, Llh, ObsSignalTiming, SatId, SigId};
+use bijux_gnss_core::api::{
+    signal_registry, Constellation, GpsTime, Llh, ObsSignalTiming, SatId, SigId,
+};
 
-use crate::models::nequick::GalileoNequickModel;
+use crate::models::nequick::model::GalileoNequickModel;
 
 const OMEGA_E_DOT: f64 = 7.292_115_146_7e-5;
 const MU: f64 = 3.986_004_418e14;
@@ -194,10 +196,11 @@ impl GalileoBroadcastNavigationData {
         if signal.sat != self.sat || signal.sat.constellation != Constellation::Galileo {
             return None;
         }
-        let carrier_hz =
-            signal_registry(signal.sat.constellation, signal.band, signal.code)?.spec.carrier_hz.value();
-        self.nequick_model()
-            .delay_m_at_gps_time(gps_time, receiver, satellite, carrier_hz)
+        let carrier_hz = signal_registry(signal.sat.constellation, signal.band, signal.code)?
+            .spec
+            .carrier_hz
+            .value();
+        self.nequick_model().delay_m_at_gps_time(gps_time, receiver, satellite, carrier_hz)
     }
 }
 
@@ -526,8 +529,7 @@ mod tests {
     #[test]
     fn broadcast_navigation_nequick_delay_matches_model_delay() {
         let navigation = sample_navigation();
-        let signal =
-            SigId { sat: navigation.sat, band: SignalBand::E1, code: SignalCode::E1B };
+        let signal = SigId { sat: navigation.sat, band: SignalBand::E1, code: SignalCode::E1B };
         let receiver = Llh { lat_deg: -3.0, lon_deg: 40.19, alt_m: -23.32 };
         let satellite = Llh { lat_deg: -41.43, lon_deg: 76.65, alt_m: 20_157_673.93 };
         let gps_time = GpsTime { week: 2295, tow_s: 0.0 };

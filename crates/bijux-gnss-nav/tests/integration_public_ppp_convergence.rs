@@ -6,8 +6,9 @@ use std::path::Path;
 
 mod support;
 
-use bijux_gnss_nav::api::{BroadcastProductsProvider, PppConfig, PppFilter};
-use bijux_gnss_nav::PppTroposphereSource;
+use bijux_gnss_nav::api::{
+    BroadcastProductsProvider, PppConfig, PppFilter, PppTroposphereSource,
+};
 use bijux_gnss_testkit::public_ppp::{
     build_public_ppp_convergence_report, PublicPppConvergenceReport,
 };

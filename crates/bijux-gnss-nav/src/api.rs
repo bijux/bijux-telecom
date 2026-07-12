@@ -81,6 +81,7 @@ pub use crate::estimation::position::trajectory::{
 /// PPP configuration and filter.
 pub use crate::estimation::ppp::config::{
     PppArMode, PppConfig, PppConvergenceConfig, PppFilter, PppProcessNoise, PppSolutionEpoch,
+    PppTroposphereSource,
 };
 /// RTK float-baseline helpers.
 pub use crate::estimation::rtk::ambiguity::{
@@ -99,16 +100,22 @@ pub use crate::estimation::rtk::baseline::{
     RtkFloatBaselineSolution,
 };
 /// RTK double-difference helpers.
-pub use crate::estimation::rtk::double_difference::{
-    rtk_double_difference_residual_metrics, rtk_double_differences_by_constellation,
-    rtk_double_differences_from_single_differences, RtkDoubleDifferenceObservation,
-    RtkDoubleDifferenceResidualMetrics,
+pub use crate::estimation::rtk::{
+    antenna::RtkAntennaCorrectionConfig,
+    double_difference::{
+        rtk_double_difference_residual_metrics,
+        rtk_double_difference_residual_metrics_with_antenna_corrections,
+        rtk_double_differences_by_constellation, rtk_double_differences_from_single_differences,
+        RtkDoubleDifferenceObservation, RtkDoubleDifferenceResidualMetrics,
+    },
 };
 /// RTK single-difference helpers.
 pub use crate::estimation::rtk::single_difference::{
     choose_rtk_single_difference_reference_signal,
     choose_rtk_single_difference_reference_signals_by_constellation,
-    rtk_single_difference_residual_metrics, rtk_single_differences_from_obs_epochs,
+    rtk_single_difference_residual_metrics,
+    rtk_single_difference_residual_metrics_with_antenna_corrections,
+    rtk_single_differences_from_obs_epochs,
     RtkSingleDifferenceObservation, RtkSingleDifferenceResidualMetrics,
 };
 /// BeiDou B1I D1 navigation decoding.
@@ -190,7 +197,7 @@ pub use crate::models::antenna::{
 pub use crate::models::ocean_tide_loading::{
     OceanTideConstituent, OceanTideLoadingConstituent, OceanTideLoadingModel,
 };
-pub use crate::models::nequick::GalileoNequickModel;
+pub use crate::models::nequick::model::GalileoNequickModel;
 /// BeiDou broadcast navigation and satellite state helpers.
 pub use crate::orbits::beidou::{
     beidou_earth_rotation_correction, beidou_navigation_age, beidou_satellite_clock_correction_b1i,

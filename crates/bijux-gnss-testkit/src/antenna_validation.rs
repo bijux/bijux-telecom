@@ -7,12 +7,10 @@ use bijux_gnss_core::api::{
     ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand,
     SignalCode, SignalSpec, GPS_L1_CA_CARRIER_HZ,
 };
-use bijux_gnss_nav::{
-    ReceiverAntennaCalibration, ReceiverAntennaCalibrations, ReceiverPhaseCenterOffset,
-    SatelliteAntennaCalibration, SatelliteAntennaCalibrations, SatellitePhaseCenterOffset,
-};
 use bijux_gnss_nav::api::{
     ecef_to_enu, geodetic_to_ecef, sat_state_gps_l1ca_at_receive_time, GpsEphemeris,
+    ReceiverAntennaCalibration, ReceiverAntennaCalibrations, ReceiverPhaseCenterOffset,
+    SatelliteAntennaCalibration, SatelliteAntennaCalibrations, SatellitePhaseCenterOffset,
 };
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
