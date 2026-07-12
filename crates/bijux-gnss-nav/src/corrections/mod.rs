@@ -7,6 +7,7 @@ pub mod geometry_free;
 pub mod iono_free_code;
 pub mod iono_free_phase;
 pub mod melbourne_wubbena;
+pub mod narrow_lane;
 
 #[derive(Debug, Clone)]
 pub struct CorrectionContext;

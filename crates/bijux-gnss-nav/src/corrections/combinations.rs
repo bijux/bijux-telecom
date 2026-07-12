@@ -6,6 +6,7 @@ use bijux_gnss_core::api::{signal_cycles_to_meters, ObsEpoch, ObsSatellite, SatI
 
 use crate::corrections::iono_free_code::iono_free_code_from_pair;
 use crate::corrections::iono_free_phase::iono_free_phase_from_pair;
+use crate::corrections::narrow_lane::narrow_lane_from_pair;
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 
@@ -133,9 +134,18 @@ pub fn combinations_from_obs_epochs(
                 s1.copied(),
                 s2.copied(),
             );
+            let narrow_lane = narrow_lane_from_pair(
+                epoch.epoch_idx,
+                epoch.t_rx_s.0,
+                sat_id,
+                band_1,
+                band_2,
+                s1.copied(),
+                s2.copied(),
+            );
             let (mut if_phase_m, mut geometry_free_phase_m) = (None, None);
-            let (mut wide_lane_wavelength_m, mut wide_lane_cycles, mut narrow_lane_cycles, mut mw_m) =
-                (None, None, None, None);
+            let (mut wide_lane_wavelength_m, mut wide_lane_cycles, mut mw_m) =
+                (None, None, None);
             if let (Some(s1), Some(s2)) = (s1, s2) {
                 if !s1.lock_flags.code_lock
                     || !s1.lock_flags.carrier_lock
@@ -172,11 +182,8 @@ pub fn combinations_from_obs_epochs(
 
                         let lambda_wl = wide_lane_wavelength_m_from_frequencies(f1_hz, f2_hz)
                             .expect("wide-lane wavelength must exist for valid frequencies");
-                        let lambda_nl = narrow_lane_wavelength_m_from_frequencies(f1_hz, f2_hz)
-                            .expect("narrow-lane wavelength must exist for valid frequencies");
                         wide_lane_wavelength_m = Some(lambda_wl);
                         wide_lane_cycles = Some((phi1_m - phi2_m) / lambda_wl);
-                        narrow_lane_cycles = Some((phi1_m + phi2_m) / lambda_nl);
                         mw_m = Some((phi1_m - phi2_m) - (s1.pseudorange_m.0 - s2.pseudorange_m.0));
                     }
                 }
@@ -204,11 +211,11 @@ pub fn combinations_from_obs_epochs(
                 if_phase_var_cycles2: if_phase.variance_cycles2,
                 if_phase_status: if_phase.status,
                 if_phase_reason: if_phase.reason,
-                narrow_lane_wavelength_m: if_phase.narrow_lane_wavelength_m,
+                narrow_lane_wavelength_m: narrow_lane.narrow_lane_wavelength_m,
                 geometry_free_phase_m,
                 wide_lane_wavelength_m,
                 wide_lane_cycles,
-                narrow_lane_cycles,
+                narrow_lane_cycles: narrow_lane.phase_cycles,
                 melbourne_wubbena_m: mw_m,
                 status: status_str,
                 reason,
