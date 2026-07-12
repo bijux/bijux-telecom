@@ -41,10 +41,14 @@ pub use crate::estimation::ekf::models::{
 /// EKF interface and measurements.
 pub use crate::estimation::ekf::state::{Ekf, EkfConfig, MeasurementKind};
 pub use crate::estimation::ekf::traits::MeasurementModel;
+/// Position solver (least squares) and helpers.
+pub use crate::estimation::position::filter::{
+    PositionFilter, PositionFilterConfig, PositionFilterEpoch, PositionFilterIndices,
+    PositionFilterProcessNoise,
+};
 pub use crate::estimation::position::raim::{
     RaimFaultDetection, RaimFaultDetectionStatus, RaimFaultExclusion,
 };
-/// Position solver (least squares) and helpers.
 pub use crate::estimation::position::solver::{
     ecef_to_enu, ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef,
     position_broadcast_navigation_from_beidou_navigations,
