@@ -2,9 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use bijux_gnss_core::api::{
-    signal_cycles_to_meters, ObsEpoch, ObsSatellite, SatId, SigId, SignalBand,
-};
+use bijux_gnss_core::api::{signal_cycles_to_meters, ObsEpoch, ObsSatellite, SatId, SigId, SignalBand};
 
 use crate::corrections::iono_free_code::iono_free_code_from_pair;
 use crate::corrections::iono_free_phase::iono_free_phase_from_pair;
@@ -36,6 +34,7 @@ pub struct CombinationObservation {
     pub if_phase_reason: String,
     pub narrow_lane_wavelength_m: Option<f64>,
     pub geometry_free_phase_m: Option<f64>,
+    pub wide_lane_wavelength_m: Option<f64>,
     pub wide_lane_cycles: Option<f64>,
     pub narrow_lane_cycles: Option<f64>,
     pub melbourne_wubbena_m: Option<f64>,
@@ -66,6 +65,20 @@ fn status_reason(status: CombinationStatus) -> (String, String) {
             ("invalid".to_string(), "frequency_invalid".to_string())
         }
     }
+}
+
+pub fn wide_lane_wavelength_m_from_frequencies(f1_hz: f64, f2_hz: f64) -> Option<f64> {
+    let frequency_separation_hz = (f1_hz - f2_hz).abs();
+    if !f1_hz.is_finite()
+        || !f2_hz.is_finite()
+        || f1_hz <= 0.0
+        || f2_hz <= 0.0
+        || !frequency_separation_hz.is_finite()
+        || frequency_separation_hz <= f64::EPSILON
+    {
+        return None;
+    }
+    Some(SPEED_OF_LIGHT_MPS / frequency_separation_hz)
 }
 
 pub fn combinations_from_obs_epochs(
@@ -107,7 +120,8 @@ pub fn combinations_from_obs_epochs(
                 s2.copied(),
             );
             let (mut if_phase_m, mut geometry_free_phase_m) = (None, None);
-            let (mut wide_lane_cycles, mut narrow_lane_cycles, mut mw_m) = (None, None, None);
+            let (mut wide_lane_wavelength_m, mut wide_lane_cycles, mut narrow_lane_cycles, mut mw_m) =
+                (None, None, None, None);
             if let (Some(s1), Some(s2)) = (s1, s2) {
                 if !s1.lock_flags.code_lock
                     || !s1.lock_flags.carrier_lock
@@ -142,8 +156,10 @@ pub fn combinations_from_obs_epochs(
                         if_phase_m = if_phase.phase_m;
                         geometry_free_phase_m = Some(phi1_m - phi2_m);
 
-                        let lambda_wl = SPEED_OF_LIGHT_MPS / (f1_hz - f2_hz).abs().max(1.0);
+                        let lambda_wl = wide_lane_wavelength_m_from_frequencies(f1_hz, f2_hz)
+                            .expect("wide-lane wavelength must exist for valid frequencies");
                         let lambda_nl = SPEED_OF_LIGHT_MPS / (f1_hz + f2_hz).max(1.0);
+                        wide_lane_wavelength_m = Some(lambda_wl);
                         wide_lane_cycles = Some((phi1_m - phi2_m) / lambda_wl);
                         narrow_lane_cycles = Some((phi1_m + phi2_m) / lambda_nl);
                         mw_m = Some((phi1_m - phi2_m) - (s1.pseudorange_m.0 - s2.pseudorange_m.0));
@@ -175,6 +191,7 @@ pub fn combinations_from_obs_epochs(
                 if_phase_reason: if_phase.reason,
                 narrow_lane_wavelength_m: if_phase.narrow_lane_wavelength_m,
                 geometry_free_phase_m,
+                wide_lane_wavelength_m,
                 wide_lane_cycles,
                 narrow_lane_cycles,
                 melbourne_wubbena_m: mw_m,

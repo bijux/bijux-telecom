@@ -5,9 +5,9 @@ use std::collections::BTreeMap;
 use bijux_gnss_core::api::{ObsEpoch, SatId, SignalBand};
 use serde::{Deserialize, Serialize};
 
-use crate::corrections::combinations::combinations_from_obs_epochs;
-
-const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
+use crate::corrections::combinations::{
+    combinations_from_obs_epochs, wide_lane_wavelength_m_from_frequencies,
+};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct MelbourneWubbenaThresholds {
@@ -36,6 +36,7 @@ pub struct MelbourneWubbenaObservation {
     pub sat: SatId,
     pub band_1: SignalBand,
     pub band_2: SignalBand,
+    pub wide_lane_wavelength_m: Option<f64>,
     pub melbourne_wubbena_m: Option<f64>,
     pub delta_from_previous_m: Option<f64>,
     pub delta_from_previous_wide_lane_cycles: Option<f64>,
@@ -56,7 +57,10 @@ pub fn melbourne_wubbena_diagnostics_from_obs_epochs(
     for combination in combinations_from_obs_epochs(epochs, band_1, band_2) {
         let mut delta_from_previous_m = None;
         let mut delta_from_previous_wide_lane_cycles = None;
-        let wide_lane_wavelength_m = wide_lane_wavelength_m(combination.f1_hz, combination.f2_hz);
+        let wide_lane_wavelength_m =
+            combination.wide_lane_wavelength_m.or_else(|| {
+                wide_lane_wavelength_m_from_frequencies(combination.f1_hz, combination.f2_hz)
+            });
         let event = if combination.status != "ok" {
             previous_by_sat.remove(&combination.sat);
             MelbourneWubbenaEvent::Unavailable
@@ -64,7 +68,8 @@ pub fn melbourne_wubbena_diagnostics_from_obs_epochs(
             let event = if let Some(previous) = previous_by_sat.get(&combination.sat) {
                 let delta_m = melbourne_wubbena_m - previous;
                 delta_from_previous_m = Some(delta_m);
-                delta_from_previous_wide_lane_cycles = Some(delta_m / wide_lane_wavelength_m);
+                delta_from_previous_wide_lane_cycles =
+                    wide_lane_wavelength_m.map(|wavelength_m| delta_m / wavelength_m);
                 classify_melbourne_wubbena_event(
                     delta_from_previous_wide_lane_cycles.expect("wide-lane delta"),
                     thresholds,
@@ -85,6 +90,7 @@ pub fn melbourne_wubbena_diagnostics_from_obs_epochs(
             sat: combination.sat,
             band_1: combination.band_1,
             band_2: combination.band_2,
+            wide_lane_wavelength_m,
             melbourne_wubbena_m: combination.melbourne_wubbena_m,
             delta_from_previous_m,
             delta_from_previous_wide_lane_cycles,
@@ -106,10 +112,6 @@ fn classify_melbourne_wubbena_event(
     } else {
         MelbourneWubbenaEvent::Nominal
     }
-}
-
-fn wide_lane_wavelength_m(f1_hz: f64, f2_hz: f64) -> f64 {
-    SPEED_OF_LIGHT_MPS / (f1_hz - f2_hz).abs().max(1.0)
 }
 
 #[cfg(test)]

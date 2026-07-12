@@ -18,6 +18,7 @@
     "sat": { "$ref": "#/definitions/SatId" },
     "band_1": { "type": "string" },
     "band_2": { "type": "string" },
+    "wide_lane_wavelength_m": { "type": ["number", "null"] },
     "melbourne_wubbena_m": { "type": ["number", "null"] },
     "delta_from_previous_m": { "type": ["number", "null"] },
     "delta_from_previous_wide_lane_cycles": { "type": ["number", "null"] },
