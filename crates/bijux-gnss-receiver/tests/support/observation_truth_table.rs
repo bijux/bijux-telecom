@@ -3,7 +3,7 @@
 use std::f64::consts::TAU;
 
 use bijux_gnss_core::api::{
-    signal_spec_gps_l1_ca, signal_spec_gps_l2c, Chips, Cycles, Epoch, Hertz,
+    signal_spec_gps_l1_ca, signal_spec_gps_l2c, signal_spec_gps_l5, Chips, Cycles, Epoch, Hertz,
     ReceiverSampleTrace, SignalBand, SignalDelayAlignment, SignalSpec, TrackEpoch,
     TrackingUncertainty,
 };
@@ -103,6 +103,22 @@ pub fn build_mixed_band_observation_truth_fixture(
     config: ReceiverPipelineConfig,
     epoch_count: usize,
 ) -> ObservationTruthFixture {
+    build_observation_truth_fixture_with_parallel_signal(config, epoch_count, signal_spec_gps_l2c())
+}
+
+#[allow(dead_code)]
+pub fn build_l5_observation_truth_fixture(
+    config: ReceiverPipelineConfig,
+    epoch_count: usize,
+) -> ObservationTruthFixture {
+    build_observation_truth_fixture_with_parallel_signal(config, epoch_count, signal_spec_gps_l5())
+}
+
+fn build_observation_truth_fixture_with_parallel_signal(
+    config: ReceiverPipelineConfig,
+    epoch_count: usize,
+    parallel_signal: SignalSpec,
+) -> ObservationTruthFixture {
     let mut profile = four_satellite_pvt_scenario(&config);
     for (signal, doppler_hz) in
         profile.scenario.satellites.iter_mut().zip([-250.0, -125.0, 0.0, 125.0, 250.0])
@@ -133,16 +149,16 @@ pub fn build_mixed_band_observation_truth_fixture(
         profile.truth_ecef_m,
     );
     let (whole_code_periods, code_phase_chips) =
-        signal_code_alignment_from_pseudorange_m(pseudorange_m, signal_spec_gps_l2c());
-    let l2c_signal = SyntheticSignalParams {
+        signal_code_alignment_from_pseudorange_m(pseudorange_m, parallel_signal);
+    let parallel_signal_seed = SyntheticSignalParams {
         code_phase_chips,
         ..l1_reference.signal
     };
     track_seeds.insert(
         1,
         ObservationTruthTrackSeed {
-            signal: l2c_signal,
-            signal_spec: signal_spec_gps_l2c(),
+            signal: parallel_signal_seed,
+            signal_spec: parallel_signal,
             whole_code_periods,
         },
     );
@@ -310,6 +326,7 @@ fn signal_code_length(signal_spec: SignalSpec) -> usize {
     match signal_spec.band {
         SignalBand::L1 => 1023,
         SignalBand::L2 => 10230,
+        SignalBand::L5 => 10230,
         _ => panic!("unsupported observation truth signal {:?}", signal_spec),
     }
 }
@@ -318,6 +335,7 @@ fn signal_label(signal_spec: SignalSpec) -> &'static str {
     match signal_spec.band {
         SignalBand::L1 => "l1",
         SignalBand::L2 => "l2c",
+        SignalBand::L5 => "l5",
         _ => "signal",
     }
 }
