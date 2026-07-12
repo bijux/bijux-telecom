@@ -1,8 +1,9 @@
 #![allow(missing_docs)]
 use bijux_gnss_core::api::{
+    signal_meters_to_cycles, signal_spec_galileo_e1b, signal_spec_galileo_e5a,
     signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l5, Constellation, LockFlags,
-    ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, ReceiverSampleTrace, SatId, SigId,
-    SignalBand, SignalCode,
+    Meters, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole, ReceiverSampleTrace, SatId, SigId,
+    SignalBand, SignalCode, SignalSpec,
 };
 use bijux_gnss_nav::api::{
     combinations_from_obs_epochs, geometry_free_diagnostics_from_obs_epochs,
@@ -184,6 +185,105 @@ fn make_l1_l5_epoch(p1: f64, p5: f64, phi1: f64, phi5: f64) -> ObsEpoch {
                     smoothing_age: 0,
                     smoothing_resets: 0,
                     signal: s5,
+                    ..ObsMetadata::default()
+                },
+            },
+        ],
+        decision: bijux_gnss_core::api::ObservationEpochDecision::Accepted,
+        decision_reason: Some("accepted_observables_present".to_string()),
+        manifest: None,
+    }
+}
+
+fn make_dual_signal_epoch_from_phase_meters(
+    sat: SatId,
+    first_signal: SignalSpec,
+    first_band: SignalBand,
+    first_code: SignalCode,
+    second_signal: SignalSpec,
+    second_band: SignalBand,
+    second_code: SignalCode,
+    p1_m: f64,
+    p2_m: f64,
+    phi1_m: f64,
+    phi2_m: f64,
+) -> ObsEpoch {
+    ObsEpoch {
+        t_rx_s: bijux_gnss_core::api::Seconds(0.0),
+        source_time: ReceiverSampleTrace::from_sample_index(0, 1_000.0),
+        gps_week: None,
+        tow_s: None,
+        epoch_idx: 0,
+        discontinuity: false,
+        valid: true,
+        processing_ms: None,
+        role: ReceiverRole::Rover,
+        sats: vec![
+            ObsSatellite {
+                signal_id: SigId { sat, band: first_band, code: first_code },
+                pseudorange_m: Meters(p1_m),
+                pseudorange_var_m2: 1.0,
+                carrier_phase_cycles: signal_meters_to_cycles(Meters(phi1_m), first_signal),
+                carrier_phase_var_cycles2: 0.01,
+                doppler_hz: bijux_gnss_core::api::Hertz(0.0),
+                doppler_var_hz2: 1.0,
+                cn0_dbhz: 45.0,
+                lock_flags: LockFlags {
+                    code_lock: true,
+                    carrier_lock: true,
+                    bit_lock: false,
+                    cycle_slip: false,
+                },
+                multipath_suspect: false,
+                observation_status: bijux_gnss_core::api::ObservationStatus::Accepted,
+                observation_reject_reasons: Vec::new(),
+                elevation_deg: None,
+                azimuth_deg: None,
+                weight: None,
+                timing: None,
+                error_model: None,
+                metadata: ObsMetadata {
+                    tracking_mode: "test".to_string(),
+                    integration_ms: 1,
+                    lock_quality: 45.0,
+                    smoothing_window: 0,
+                    smoothing_age: 0,
+                    smoothing_resets: 0,
+                    signal: first_signal,
+                    ..ObsMetadata::default()
+                },
+            },
+            ObsSatellite {
+                signal_id: SigId { sat, band: second_band, code: second_code },
+                pseudorange_m: Meters(p2_m),
+                pseudorange_var_m2: 1.0,
+                carrier_phase_cycles: signal_meters_to_cycles(Meters(phi2_m), second_signal),
+                carrier_phase_var_cycles2: 0.01,
+                doppler_hz: bijux_gnss_core::api::Hertz(0.0),
+                doppler_var_hz2: 1.0,
+                cn0_dbhz: 45.0,
+                lock_flags: LockFlags {
+                    code_lock: true,
+                    carrier_lock: true,
+                    bit_lock: false,
+                    cycle_slip: false,
+                },
+                multipath_suspect: false,
+                observation_status: bijux_gnss_core::api::ObservationStatus::Accepted,
+                observation_reject_reasons: Vec::new(),
+                elevation_deg: None,
+                azimuth_deg: None,
+                weight: None,
+                timing: None,
+                error_model: None,
+                metadata: ObsMetadata {
+                    tracking_mode: "test".to_string(),
+                    integration_ms: 1,
+                    lock_quality: 45.0,
+                    smoothing_window: 0,
+                    smoothing_age: 0,
+                    smoothing_resets: 0,
+                    signal: second_signal,
                     ..ObsMetadata::default()
                 },
             },
@@ -413,4 +513,44 @@ fn iono_free_phase_api_keeps_phase_available_without_code_lock() {
     assert_eq!(combinations[0].if_phase_status, "ok");
     assert!(combinations[0].if_phase_m.is_some());
     assert!(combinations[0].if_code_m.is_none());
+}
+
+#[test]
+fn galileo_geometry_free_and_iono_free_phase_use_e1_e5_wavelengths() {
+    let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+    let e1 = signal_spec_galileo_e1b();
+    let e5 = signal_spec_galileo_e5a();
+    let epoch = make_dual_signal_epoch_from_phase_meters(
+        sat,
+        e1,
+        SignalBand::E1,
+        SignalCode::E1B,
+        e5,
+        SignalBand::E5,
+        SignalCode::E5a,
+        24_345_678.125,
+        24_345_679.875,
+        24_345_677.0,
+        24_345_674.5,
+    );
+
+    let combinations =
+        combinations_from_obs_epochs(&[epoch.clone()], SignalBand::E1, SignalBand::E5);
+    let iono_free_phase = iono_free_phase_from_obs_epochs(&[epoch], SignalBand::E1, SignalBand::E5);
+
+    let f1_2 = e1.carrier_hz.value().powi(2);
+    let f2_2 = e5.carrier_hz.value().powi(2);
+    let expected_if_phase_m = (f1_2 * 24_345_677.0 - f2_2 * 24_345_674.5) / (f1_2 - f2_2);
+
+    assert_eq!(combinations.len(), 1);
+    assert_eq!(iono_free_phase.len(), 1);
+    assert!(
+        (combinations[0].geometry_free_phase_m.expect("geometry-free phase") - 2.5).abs() < 1.0e-6
+    );
+    assert!(
+        (combinations[0].if_phase_m.expect("iono-free phase") - expected_if_phase_m).abs() < 1.0e-6
+    );
+    assert!(
+        (iono_free_phase[0].phase_m.expect("iono-free phase") - expected_if_phase_m).abs() < 1.0e-6
+    );
 }
