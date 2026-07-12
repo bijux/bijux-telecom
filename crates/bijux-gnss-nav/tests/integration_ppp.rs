@@ -3,7 +3,11 @@ use bijux_gnss_core::api::{
     signal_spec_gps_l1_ca, Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite,
     ReceiverRole, ReceiverSampleTrace, SatId, SigId, SignalBand, SignalCode,
 };
-use bijux_gnss_nav::api::{BroadcastProductsProvider, GpsEphemeris, PppConfig, PppFilter};
+use bijux_gnss_core::api::Llh;
+use bijux_gnss_nav::api::{
+    geodetic_to_ecef, BroadcastProductsProvider, GpsEphemeris, PppConfig, PppFilter,
+    SaastamoinenModel,
+};
 
 fn make_eph(prn: u8) -> GpsEphemeris {
     GpsEphemeris {
@@ -313,4 +317,17 @@ fn ppp_seed_receiver_state_sets_position_and_clock_bias() {
     assert_eq!(ppp.ekf.x[ppp.indices.pos[2]], 3.0);
     assert_eq!(ppp.ekf.x[ppp.indices.clock_bias], 4.0e-6);
     assert_eq!(ppp.last_pos, Some([1.0, 2.0, 3.0]));
+}
+
+#[test]
+fn ppp_seed_receiver_state_seeds_saastamoinen_zenith_delay() {
+    let mut ppp = PppFilter::new(PppConfig::default());
+    let receiver = Llh { lat_deg: 37.0, lon_deg: -122.0, alt_m: 10.0 };
+    let seeded_ecef = geodetic_to_ecef(receiver.lat_deg, receiver.lon_deg, receiver.alt_m);
+
+    ppp.seed_receiver_state([seeded_ecef.0, seeded_ecef.1, seeded_ecef.2], 4.0e-6);
+
+    let expected_ztd_m = SaastamoinenModel::zenith_delay_m(receiver);
+
+    assert!((ppp.ekf.x[ppp.indices.ztd] - expected_ztd_m).abs() < 1.0e-9);
 }
