@@ -55,6 +55,12 @@ fn make_gps_ephemeris(prn: u8, omega0: f64, m0: f64, t_ref_s: f64) -> GpsEphemer
     }
 }
 
+fn mismatched_gps_ephemeris_for_sat(target_sat: SatId, source: &GpsEphemeris) -> GpsEphemeris {
+    let mut mismatched = source.clone();
+    mismatched.sat = target_sat;
+    mismatched
+}
+
 fn make_galileo_navigation(
     prn: u8,
     omega0: f64,
@@ -191,6 +197,13 @@ fn gps_pseudorange_m(
         tau = next_tau;
     }
     pseudorange_m
+}
+
+fn position_error_3d_m(solution_ecef_m: (f64, f64, f64), truth_ecef_m: (f64, f64, f64)) -> f64 {
+    let dx = solution_ecef_m.0 - truth_ecef_m.0;
+    let dy = solution_ecef_m.1 - truth_ecef_m.1;
+    let dz = solution_ecef_m.2 - truth_ecef_m.2;
+    (dx * dx + dy * dy + dz * dz).sqrt()
 }
 
 fn galileo_pseudorange_m(
@@ -1029,4 +1042,63 @@ fn public_navigation_api_solves_gps_epoch_when_glonass_navigation_is_missing() {
             && residual.rejected
             && residual.reject_reason == Some(MeasurementRejectReason::InvalidEphemeris)
     }));
+}
+
+#[test]
+fn public_navigation_api_rejects_grossly_mismatched_gps_ephemeris() {
+    let config = ReceiverPipelineConfig::default();
+    let runtime = ReceiverRuntime::default();
+    let mut navigation_engine = Navigation::new(config, runtime);
+    let truth_ecef_m = geodetic_to_ecef(37.0, -122.0, 25.0);
+    let t_rx_s = 100_000.0;
+    let receiver_clock_bias_s = 2.75e-4;
+    let correct_ephemerides = vec![
+        make_gps_ephemeris(1, 0.0, 0.0, t_rx_s),
+        make_gps_ephemeris(2, 0.8, 0.9, t_rx_s),
+        make_gps_ephemeris(3, 1.6, 1.8, t_rx_s),
+        make_gps_ephemeris(4, 2.4, 2.7, t_rx_s),
+        make_gps_ephemeris(5, 3.2, 3.6, t_rx_s),
+    ];
+    let mut navigation_ephemerides = correct_ephemerides.clone();
+    navigation_ephemerides[4] =
+        mismatched_gps_ephemeris_for_sat(correct_ephemerides[4].sat, &correct_ephemerides[0]);
+
+    let sats = correct_ephemerides
+        .iter()
+        .map(|ephemeris| {
+            synthetic_satellite(
+                ephemeris.sat,
+                SignalBand::L1,
+                SignalCode::Ca,
+                gps_pseudorange_m(ephemeris, t_rx_s, truth_ecef_m, receiver_clock_bias_s),
+                t_rx_s,
+            )
+        })
+        .collect::<Vec<_>>();
+    let obs = synthetic_obs_epoch(t_rx_s, sats);
+    let navigation_data =
+        position_broadcast_navigation_from_gps_ephemerides(&navigation_ephemerides);
+
+    let solution = navigation_engine
+        .solve_epoch_with_navigation_data(&obs, &navigation_data)
+        .expect("solution with mismatched ephemeris");
+
+    assert!(solution.valid, "{solution:?}");
+    assert_eq!(solution.used_sat_count, 4, "{solution:?}");
+    assert_eq!(solution.rejected_sat_count, 1, "{solution:?}");
+    assert!(
+        solution.residuals.iter().any(|residual| {
+            residual.sat == SatId { constellation: Constellation::Gps, prn: 5 }
+                && residual.rejected
+                && residual.reject_reason == Some(MeasurementRejectReason::InvalidEphemeris)
+        }),
+        "{solution:?}"
+    );
+    assert!(
+        position_error_3d_m(
+            (solution.ecef_x_m.0, solution.ecef_y_m.0, solution.ecef_z_m.0),
+            truth_ecef_m,
+        ) < 500.0,
+        "{solution:?}"
+    );
 }
