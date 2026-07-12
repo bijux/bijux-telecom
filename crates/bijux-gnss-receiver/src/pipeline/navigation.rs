@@ -663,6 +663,29 @@ impl Navigation {
 
         let mut raim_explain_reasons = Vec::new();
         let mut resolved_by_raim_exclusion = false;
+        if let Some(solution_separation) = solution.raim_solution_separation.as_ref() {
+            raim_explain_reasons.push(format!(
+                "raim_solution_separation_reference_satellites={}",
+                solution_separation.reference_sat_count
+            ));
+            raim_explain_reasons.push(format!(
+                "raim_solution_separation_compared_subsets={}",
+                solution_separation.compared_subset_count()
+            ));
+            if let Some(max_subset) = solution_separation.max_separation() {
+                self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
+                    bijux_gnss_core::api::DiagnosticSeverity::Info,
+                    "NAV_RAIM_SEPARATION",
+                    format!(
+                        "raim compared {} of {} subset solutions; max separation {:.2} m at PRN {}",
+                        solution_separation.compared_subset_count(),
+                        solution_separation.reference_sat_count,
+                        max_subset.separation_m,
+                        max_subset.excluded_sat.prn
+                    ),
+                ));
+            }
+        }
         if let Some(raim_fault_exclusion) = solution.raim_fault_exclusion {
             raim_explain_reasons.push("raim_fault_excluded".to_string());
             raim_explain_reasons
@@ -699,15 +722,6 @@ impl Navigation {
                         ),
                     ));
                 }
-            }
-        } else if let Some(sep) = solution.separation_max_m {
-            if sep > self.solver.separation_gate_m {
-                nav_epoch.status = SolutionStatus::Degraded;
-                self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
-                    bijux_gnss_core::api::DiagnosticSeverity::Warning,
-                    "NAV_RAIM_SEPARATION",
-                    format!("solution separation exceeded: {:.2} m", sep),
-                ));
             }
         }
 
