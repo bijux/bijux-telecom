@@ -9,6 +9,7 @@ use bijux_gnss_core::api::{
 
 use crate::estimation::ekf::models::{
     DopplerMeasurement, NavClockModel, ProcessNoiseConfig, PseudorangeMeasurement,
+    StaticNavClockModel,
 };
 use crate::estimation::ekf::state::{Ekf, EkfConfig};
 use crate::estimation::position::navigation::{
@@ -408,7 +409,17 @@ impl PositionFilter {
     }
 
     fn predict(&mut self, dt_s: f64) {
-        self.ekf.predict(&NavClockModel::new(self.process_noise_config()), dt_s);
+        if let Some(static_position_model) = &self.config.static_position_model {
+            self.ekf.predict(
+                &StaticNavClockModel::new(
+                    self.process_noise_config(),
+                    static_position_model.velocity_decay_per_s,
+                ),
+                dt_s,
+            );
+        } else {
+            self.ekf.predict(&NavClockModel::new(self.process_noise_config()), dt_s);
+        }
     }
 
     fn pseudorange_measurement(
