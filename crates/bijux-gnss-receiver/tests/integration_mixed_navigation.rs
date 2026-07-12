@@ -7,10 +7,14 @@ use bijux_gnss_core::api::{
 };
 use bijux_gnss_receiver::api::{
     nav::{
-        geodetic_to_ecef, position_broadcast_navigation_from_gps_ephemerides, sat_state_galileo_e1,
-        sat_state_gps_l1ca, GalileoBroadcastNavigationData, GalileoClockCorrection,
-        GalileoEphemeris, GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags,
-        GalileoSignalHealth, GalileoSystemTime, GpsEphemeris, PositionBroadcastNavigation,
+        geodetic_to_ecef, position_broadcast_navigation_from_beidou_navigations,
+        position_broadcast_navigation_from_gps_ephemerides, sat_state_beidou_b1i,
+        sat_state_galileo_e1, sat_state_gps_l1ca, BeidouBroadcastNavigationData,
+        BeidouClockCorrection, BeidouEphemeris, BeidouIonosphericCorrection,
+        BeidouSignalHealth, BeidouSystemTime, GalileoBroadcastNavigationData,
+        GalileoClockCorrection, GalileoEphemeris, GalileoIonosphericCorrection,
+        GalileoIonosphericDisturbanceFlags, GalileoSignalHealth, GalileoSystemTime, GpsEphemeris,
+        PositionBroadcastNavigation,
     },
     Navigation, ReceiverPipelineConfig, ReceiverRuntime,
 };
@@ -106,6 +110,59 @@ fn make_galileo_navigation(
     }
 }
 
+fn make_beidou_navigation(
+    prn: u8,
+    omega0: f64,
+    m0: f64,
+    t_ref_s: f64,
+) -> BeidouBroadcastNavigationData {
+    BeidouBroadcastNavigationData {
+        sat: SatId { constellation: Constellation::Beidou, prn },
+        bdt: BeidouSystemTime { week: 888, sow_s: t_ref_s as u32 },
+        urai: 0,
+        signal_health: BeidouSignalHealth { autonomous_satellite_good: true },
+        clock: BeidouClockCorrection {
+            toc_s: t_ref_s,
+            aodc: prn,
+            af0: 0.0,
+            af1: 0.0,
+            af2: 0.0,
+            tgd1_s: 0.0,
+            tgd2_s: 0.0,
+        },
+        ephemeris: BeidouEphemeris {
+            sat: SatId { constellation: Constellation::Beidou, prn },
+            aode: prn,
+            toe_s: t_ref_s,
+            sqrt_a: 5_282.61,
+            e: 0.0021,
+            i0: 0.962,
+            idot: -1.4e-10,
+            omega0,
+            omegadot: -7.9e-9,
+            w: -0.41,
+            m0,
+            delta_n: 3.4e-9,
+            cuc: -1.2e-6,
+            cus: 3.1e-6,
+            crc: 146.0,
+            crs: -84.0,
+            cic: 1.1e-7,
+            cis: -1.7e-7,
+        },
+        ionosphere: BeidouIonosphericCorrection {
+            alpha0: 0.0,
+            alpha1: 0.0,
+            alpha2: 0.0,
+            alpha3: 0.0,
+            beta0: 0.0,
+            beta1: 0.0,
+            beta2: 0.0,
+            beta3: 0.0,
+        },
+    }
+}
+
 fn gps_pseudorange_m(
     ephemeris: &GpsEphemeris,
     t_rx_s: f64,
@@ -147,6 +204,32 @@ fn galileo_pseudorange_m(
         let dz = truth_ecef_m.2 - state.z_m;
         let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
         pseudorange_m = range_m + (receiver_clock_bias_s + galileo_bias_s) * 299_792_458.0
+            - state.clock_correction.bias_s * 299_792_458.0;
+        let next_tau = pseudorange_m / 299_792_458.0;
+        if (next_tau - tau).abs() < 1.0e-12 {
+            break;
+        }
+        tau = next_tau;
+    }
+    pseudorange_m
+}
+
+fn beidou_pseudorange_m(
+    navigation: &BeidouBroadcastNavigationData,
+    t_rx_s: f64,
+    truth_ecef_m: (f64, f64, f64),
+    receiver_clock_bias_s: f64,
+    beidou_bias_s: f64,
+) -> f64 {
+    let mut tau = 0.07;
+    let mut pseudorange_m = 0.0;
+    for _ in 0..10 {
+        let state = sat_state_beidou_b1i(navigation, t_rx_s - tau, tau);
+        let dx = truth_ecef_m.0 - state.x_m;
+        let dy = truth_ecef_m.1 - state.y_m;
+        let dz = truth_ecef_m.2 - state.z_m;
+        let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
+        pseudorange_m = range_m + (receiver_clock_bias_s + beidou_bias_s) * 299_792_458.0
             - state.clock_correction.bias_s * 299_792_458.0;
         let next_tau = pseudorange_m / 299_792_458.0;
         if (next_tau - tau).abs() < 1.0e-12 {
@@ -274,5 +357,88 @@ fn public_navigation_api_solves_mixed_gps_galileo_epoch() {
     assert_eq!(solution.isb[0].constellation, Constellation::Galileo);
     assert_eq!(solution.isb[0].bias_s.0.signum(), galileo_bias_s.signum());
     assert!((solution.isb[0].bias_s.0 - galileo_bias_s).abs() < 5.0e-8);
+    assert!((solution.clock_bias_s.0 - receiver_clock_bias_s).abs() < 5.0e-8);
+}
+
+#[test]
+fn public_navigation_api_solves_mixed_gps_beidou_epoch() {
+    let config = ReceiverPipelineConfig::default();
+    let runtime = ReceiverRuntime::default();
+    let mut navigation_engine = Navigation::new(config, runtime);
+    let truth_ecef_m = geodetic_to_ecef(37.0, -122.0, 25.0);
+    let t_rx_s = 100_000.0;
+    let receiver_clock_bias_s = 2.75e-4;
+    let beidou_bias_s = 9.25e-7;
+    let gps_ephemerides = vec![
+        make_gps_ephemeris(1, 0.0, 0.0, t_rx_s),
+        make_gps_ephemeris(2, 0.8, 0.9, t_rx_s),
+        make_gps_ephemeris(3, 1.6, 1.8, t_rx_s),
+        make_gps_ephemeris(4, 2.4, 2.7, t_rx_s),
+    ];
+    let beidou_navigation = vec![
+        make_beidou_navigation(11, 0.77, 0.53, t_rx_s),
+        make_beidou_navigation(12, -1.09, 1.31, t_rx_s),
+    ];
+
+    let mut sats = gps_ephemerides
+        .iter()
+        .map(|ephemeris| {
+            synthetic_satellite(
+                ephemeris.sat,
+                SignalBand::L1,
+                SignalCode::Ca,
+                gps_pseudorange_m(ephemeris, t_rx_s, truth_ecef_m, receiver_clock_bias_s),
+                t_rx_s,
+            )
+        })
+        .collect::<Vec<_>>();
+    sats.extend(beidou_navigation.iter().map(|navigation| {
+        synthetic_satellite(
+            navigation.sat,
+            SignalBand::B1,
+            SignalCode::B1I,
+            beidou_pseudorange_m(
+                navigation,
+                t_rx_s,
+                truth_ecef_m,
+                receiver_clock_bias_s,
+                beidou_bias_s,
+            ),
+            t_rx_s,
+        )
+    }));
+
+    let obs = ObsEpoch {
+        t_rx_s: Seconds(t_rx_s),
+        source_time: ReceiverSampleTrace::from_sample_index(0, 1_000.0),
+        gps_week: Some(0),
+        tow_s: Some(Seconds(t_rx_s)),
+        epoch_idx: 1,
+        discontinuity: false,
+        valid: true,
+        processing_ms: None,
+        role: ReceiverRole::Rover,
+        sats,
+        decision: ObservationEpochDecision::Accepted,
+        decision_reason: Some("accepted_observables_present".to_string()),
+        manifest: None,
+    };
+
+    let mut navigation_data = position_broadcast_navigation_from_gps_ephemerides(&gps_ephemerides);
+    navigation_data.extend(position_broadcast_navigation_from_beidou_navigations(
+        &beidou_navigation,
+    ));
+
+    let solution = navigation_engine
+        .solve_epoch_with_navigation_data(&obs, &navigation_data)
+        .expect("mixed solution");
+
+    assert!(solution.valid);
+    assert_eq!(solution.refusal_class, None);
+    assert_eq!(solution.used_sat_count, 6);
+    assert_eq!(solution.isb.len(), 1);
+    assert_eq!(solution.isb[0].constellation, Constellation::Beidou);
+    assert_eq!(solution.isb[0].bias_s.0.signum(), beidou_bias_s.signum());
+    assert!((solution.isb[0].bias_s.0 - beidou_bias_s).abs() < 5.0e-8);
     assert!((solution.clock_bias_s.0 - receiver_clock_bias_s).abs() < 5.0e-8);
 }
