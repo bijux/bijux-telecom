@@ -2,7 +2,9 @@
 
 use std::collections::BTreeMap;
 
-use bijux_gnss_core::api::{signal_cycles_to_meters, ObsEpoch, ObsSatellite, SatId, SignalBand};
+use bijux_gnss_core::api::{
+    signal_cycles_to_meters, ObsEpoch, ObsSatellite, SatId, SigId, SignalBand,
+};
 
 use crate::corrections::iono_free_code::iono_free_code_from_pair;
 use crate::corrections::iono_free_phase::iono_free_phase_from_pair;
@@ -14,11 +16,15 @@ pub struct CombinationObservation {
     pub epoch_idx: u64,
     pub t_rx_s: f64,
     pub sat: SatId,
+    pub signal_1: Option<SigId>,
+    pub signal_2: Option<SigId>,
     pub band_1: SignalBand,
     pub band_2: SignalBand,
     pub f1_hz: f64,
     pub f2_hz: f64,
     pub if_code_m: Option<f64>,
+    pub if_code_bias_m: Option<f64>,
+    pub if_code_corrected_m: Option<f64>,
     pub if_code_var_m2: Option<f64>,
     pub if_code_status: String,
     pub if_code_reason: String,
@@ -149,11 +155,15 @@ pub fn combinations_from_obs_epochs(
                 epoch_idx: epoch.epoch_idx,
                 t_rx_s: epoch.t_rx_s.0,
                 sat: sat_id,
+                signal_1: if_code.signal_1,
+                signal_2: if_code.signal_2,
                 band_1,
                 band_2,
                 f1_hz,
                 f2_hz,
                 if_code_m: if_code.code_m,
+                if_code_bias_m: if_code.code_bias_m,
+                if_code_corrected_m: if_code.corrected_code_m,
                 if_code_var_m2: if_code.variance_m2,
                 if_code_status: if_code.status,
                 if_code_reason: if_code.reason,
@@ -263,6 +273,14 @@ mod tests {
         assert_eq!(combinations[0].if_code_status, "ok");
         assert_eq!(combinations[0].if_code_reason, "ok");
         assert!(combinations[0].if_code_m.is_some());
+        assert_eq!(
+            combinations[0].signal_1,
+            Some(SigId { sat: combinations[0].sat, band: SignalBand::L1, code: SignalCode::Ca })
+        );
+        assert_eq!(
+            combinations[0].signal_2,
+            Some(SigId { sat: combinations[0].sat, band: SignalBand::L2, code: SignalCode::Py })
+        );
         assert!(combinations[0].if_code_var_m2.is_some());
         assert_eq!(combinations[0].if_phase_status, "invalid");
         assert_eq!(combinations[0].if_phase_reason, "carrier_lock_invalid");
