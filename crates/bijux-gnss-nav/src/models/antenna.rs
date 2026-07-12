@@ -5,7 +5,8 @@ use std::collections::BTreeMap;
 use bijux_gnss_core::api::{gps_to_utc, Constellation, GpsTime, LeapSeconds, SatId, SignalBand};
 use serde::{Deserialize, Serialize};
 
-const ASTRONOMICAL_UNIT_M: f64 = 149_597_870_700.0;
+use crate::models::celestial::approximate_sun_position_ecef_m;
+
 const WGS84_SEMI_MAJOR_AXIS_M: f64 = 6_378_137.0;
 const WGS84_FIRST_ECCENTRICITY_SQUARED: f64 = 6.694_379_990_14e-3;
 
@@ -350,38 +351,6 @@ fn receiver_lat_lon_rad(receiver_pos_m: [f64; 3]) -> (f64, f64) {
     (lat_rad, lon_rad)
 }
 
-fn approximate_sun_position_ecef_m(gps_time: GpsTime) -> [f64; 3] {
-    let utc = gps_to_utc(gps_time, &LeapSeconds::default_table());
-    let julian_day = utc.unix_s / 86_400.0 + 2_440_587.5;
-    let centuries = (julian_day - 2_451_545.0) / 36_525.0;
-    let mean_longitude_deg = wrap_degrees(280.460 + 36_000.770 * centuries);
-    let mean_anomaly_deg = wrap_degrees(357.528 + 35_999.050 * centuries);
-    let mean_anomaly_rad = mean_anomaly_deg.to_radians();
-    let ecliptic_longitude_deg = mean_longitude_deg
-        + 1.915 * mean_anomaly_rad.sin()
-        + 0.020 * (2.0 * mean_anomaly_rad).sin();
-    let ecliptic_longitude_rad = ecliptic_longitude_deg.to_radians();
-    let obliquity_rad = (23.4393 - 0.0130 * centuries).to_radians();
-
-    let sun_eci_m = [
-        ASTRONOMICAL_UNIT_M * ecliptic_longitude_rad.cos(),
-        ASTRONOMICAL_UNIT_M * obliquity_rad.cos() * ecliptic_longitude_rad.sin(),
-        ASTRONOMICAL_UNIT_M * obliquity_rad.sin() * ecliptic_longitude_rad.sin(),
-    ];
-
-    let gmst_deg =
-        wrap_degrees(280.460_618_37 + 360.985_647_366_29 * (julian_day - 2_451_545.0));
-    let gmst_rad = gmst_deg.to_radians();
-    let cos_theta = gmst_rad.cos();
-    let sin_theta = gmst_rad.sin();
-
-    [
-        cos_theta * sun_eci_m[0] + sin_theta * sun_eci_m[1],
-        -sin_theta * sun_eci_m[0] + cos_theta * sun_eci_m[1],
-        sun_eci_m[2],
-    ]
-}
-
 fn calibration_window_matches_time(
     valid_from_unix_s: Option<f64>,
     valid_until_unix_s: Option<f64>,
@@ -418,10 +387,6 @@ fn norm3(vector: [f64; 3]) -> f64 {
 fn normalize3(vector: [f64; 3]) -> [f64; 3] {
     let norm = norm3(vector).max(f64::EPSILON);
     [vector[0] / norm, vector[1] / norm, vector[2] / norm]
-}
-
-fn wrap_degrees(degrees: f64) -> f64 {
-    degrees.rem_euclid(360.0)
 }
 
 #[cfg(test)]

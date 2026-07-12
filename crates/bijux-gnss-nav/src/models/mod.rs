@@ -2,6 +2,7 @@
 
 pub mod antenna;
 pub mod atmosphere;
+pub mod celestial;
 pub mod ocean_tide_loading;
 pub mod nequick;
 
