@@ -2,6 +2,7 @@
 
 pub mod clk;
 pub mod galileo_inav_decode;
+pub mod glonass_navigation_decode;
 pub mod lnav_bits;
 pub mod lnav_decode;
 pub mod precise_products;

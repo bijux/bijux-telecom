@@ -88,6 +88,11 @@ pub use crate::formats::galileo_inav_decode::{
     GalileoInavClockWord, GalileoInavEphemeris1Word, GalileoInavEphemeris2Word,
     GalileoInavEphemeris3Word, GalileoInavStatusWord, GalileoInavWord,
 };
+/// GLONASS navigation string verification and decoding.
+pub use crate::formats::glonass_navigation_decode::{
+    decode_glonass_navigation_string, GlonassNavigationString, GlonassNavigationStringRejection,
+    GlonassNavigationStringRejectionReason, GlonassStringParitySummary,
+};
 /// Format parsing and output.
 pub use crate::formats::lnav_bits::{
     align_gps_l1ca_lnav_from_prompt, align_gps_l1ca_lnav_subframes, bit_sync_from_prompt,
