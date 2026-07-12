@@ -79,6 +79,13 @@ pub use crate::estimation::rtk::single_difference::{
     rtk_single_difference_residual_metrics, rtk_single_differences_from_obs_epochs,
     RtkSingleDifferenceObservation, RtkSingleDifferenceResidualMetrics,
 };
+/// BeiDou B1I D1 navigation decoding.
+pub use crate::formats::beidou_b1i_navigation_decode::{
+    decode_beidou_b1i_clock_subframe, decode_beidou_b1i_ephemeris_1_subframe,
+    decode_beidou_b1i_ephemeris_2_subframe, decode_beidou_b1i_subframe, BeidouD1ClockSubframe,
+    BeidouD1Ephemeris1Subframe, BeidouD1Ephemeris2Subframe, BeidouD1Subframe,
+    BeidouD1SubframeRejection, BeidouD1SubframeRejectionReason,
+};
 /// Format parsing and output.
 pub use crate::formats::galileo_inav_decode::{
     decode_galileo_broadcast_navigation_data, decode_galileo_broadcast_navigation_data_payloads,

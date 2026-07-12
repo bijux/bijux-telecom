@@ -1,5 +1,6 @@
 #![allow(missing_docs)]
 
+pub mod beidou_b1i_navigation_decode;
 pub mod clk;
 pub mod galileo_inav_decode;
 pub mod glonass_navigation_decode;
