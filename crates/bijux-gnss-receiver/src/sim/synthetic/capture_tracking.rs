@@ -305,6 +305,7 @@ pub fn validate_truth_guided_tracking_table(
             let expected_carrier_hz = synthetic_carrier_hz(
                 truth.intermediate_freq_hz,
                 sat_truth.sat,
+                sat_truth.glonass_frequency_channel,
                 expected_measured_doppler_hz,
             );
             let seeded_code_phase_samples = wrap_seeded_code_phase_samples(

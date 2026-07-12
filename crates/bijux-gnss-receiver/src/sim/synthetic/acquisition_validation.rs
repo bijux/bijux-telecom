@@ -102,6 +102,7 @@ pub fn validate_truth_guided_acquisition_code_phase(
             acquisition_config.intermediate_freq_hz = synthetic_carrier_hz(
                 truth.intermediate_freq_hz,
                 sat_truth.sat,
+                sat_truth.glonass_frequency_channel,
                 synthetic_truth_measured_doppler_hz(truth, sat_truth),
             );
             acquisition_config.acquisition_doppler_search_hz = 0;
@@ -172,6 +173,7 @@ pub fn validate_truth_guided_acquisition_code_phase_refinement(
             acquisition_config.intermediate_freq_hz = synthetic_carrier_hz(
                 truth.intermediate_freq_hz,
                 sat_truth.sat,
+                sat_truth.glonass_frequency_channel,
                 synthetic_truth_measured_doppler_hz(truth, sat_truth),
             );
             acquisition_config.acquisition_doppler_search_hz = 0;

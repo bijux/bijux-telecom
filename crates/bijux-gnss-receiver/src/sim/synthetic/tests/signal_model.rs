@@ -343,6 +343,51 @@
     }
 
     #[test]
+    fn glonass_frequency_channel_offsets_synthetic_intermediate_frequency() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_000_000.0,
+            intermediate_freq_hz: 2_500_000.0,
+            code_freq_basis_hz: 511_000.0,
+            code_length: 511,
+            ..ReceiverPipelineConfig::default()
+        };
+        let lower_channel =
+            bijux_gnss_core::api::GlonassFrequencyChannel::new(-7).expect("channel -7 must be valid");
+        let upper_channel =
+            bijux_gnss_core::api::GlonassFrequencyChannel::new(6).expect("channel 6 must be valid");
+        let lower = SatState::new_with_receiver_clock_frequency_bias_hz(
+            &config,
+            SyntheticSignalParams {
+                sat: SatId { constellation: Constellation::Glonass, prn: 5 },
+                glonass_frequency_channel: Some(lower_channel),
+                doppler_hz: 0.0,
+                code_phase_chips: 0.0,
+                carrier_phase_rad: 0.0,
+                cn0_db_hz: 48.0,
+                data_bit_flip: false,
+            },
+            0.0,
+        );
+        let upper = SatState::new_with_receiver_clock_frequency_bias_hz(
+            &config,
+            SyntheticSignalParams {
+                sat: SatId { constellation: Constellation::Glonass, prn: 12 },
+                glonass_frequency_channel: Some(upper_channel),
+                doppler_hz: 0.0,
+                code_phase_chips: 0.0,
+                carrier_phase_rad: 0.0,
+                cn0_db_hz: 48.0,
+                data_bit_flip: false,
+            },
+            0.0,
+        );
+
+        let expected_spacing_hz = 13.0 * bijux_gnss_core::api::GLONASS_L1_CHANNEL_SPACING_HZ.value();
+
+        assert!((upper.if_hz - lower.if_hz - expected_spacing_hz).abs() <= 1e-6);
+    }
+
+    #[test]
     fn receiver_clock_frequency_bias_shifts_synthetic_carrier_phase_increment() {
         let config = ReceiverPipelineConfig {
             sampling_freq_hz: 4_092_000.0,

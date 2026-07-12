@@ -426,7 +426,11 @@ impl SatState {
             cn0_db_hz: params.cn0_db_hz,
             data_bit_flip: params.data_bit_flip,
             signal_model: SyntheticSignalModel::for_satellite(params),
-            if_hz: synthetic_intermediate_frequency_hz(config.intermediate_freq_hz, params.sat),
+            if_hz: synthetic_intermediate_frequency_hz(
+                config.intermediate_freq_hz,
+                params.sat,
+                params.glonass_frequency_channel,
+            ),
             sample_rate_hz: config.sampling_freq_hz,
         }
     }
@@ -521,7 +525,7 @@ fn isolated_satellite_scenario(
         seed: truth.seed,
         satellites: vec![SyntheticSignalParams {
             sat: sat_truth.sat,
-            glonass_frequency_channel: None,
+            glonass_frequency_channel: sat_truth.glonass_frequency_channel,
             doppler_hz: sat_truth.doppler_hz,
             code_phase_chips: sat_truth.code_phase_chips,
             carrier_phase_rad: sat_truth.carrier_phase_rad,
@@ -546,15 +550,24 @@ fn code_phase_samples_at_epoch_start(
     )
 }
 
-fn synthetic_intermediate_frequency_hz(intermediate_freq_hz: f64, sat: SatId) -> f64 {
+fn synthetic_intermediate_frequency_hz(
+    intermediate_freq_hz: f64,
+    sat: SatId,
+    glonass_frequency_channel: Option<GlonassFrequencyChannel>,
+) -> f64 {
     intermediate_freq_hz
-        + (synthetic_constellation_carrier_hz(sat)
+        + (synthetic_constellation_carrier_hz(sat, glonass_frequency_channel)
             - bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value())
 }
 
-fn synthetic_carrier_hz(intermediate_freq_hz: f64, sat: SatId, doppler_hz: f64) -> f64 {
+fn synthetic_carrier_hz(
+    intermediate_freq_hz: f64,
+    sat: SatId,
+    glonass_frequency_channel: Option<GlonassFrequencyChannel>,
+    doppler_hz: f64,
+) -> f64 {
     carrier_hz_from_doppler_hz(
-        synthetic_intermediate_frequency_hz(intermediate_freq_hz, sat),
+        synthetic_intermediate_frequency_hz(intermediate_freq_hz, sat, glonass_frequency_channel),
         doppler_hz,
     )
 }
@@ -566,11 +579,22 @@ fn synthetic_truth_measured_doppler_hz(
     sat_truth.doppler_hz + truth.receiver_clock_frequency_bias_hz
 }
 
-fn synthetic_constellation_carrier_hz(sat: SatId) -> f64 {
+fn synthetic_constellation_carrier_hz(
+    sat: SatId,
+    glonass_frequency_channel: Option<GlonassFrequencyChannel>,
+) -> f64 {
     match sat.constellation {
         Constellation::Galileo => bijux_gnss_core::api::GALILEO_E1_CARRIER_HZ.value(),
         Constellation::Gps => bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value(),
-        Constellation::Glonass => bijux_gnss_core::api::GLONASS_L1_CARRIER_HZ.value(),
+        Constellation::Glonass => bijux_gnss_core::api::glonass_l1_carrier_hz(
+            glonass_frequency_channel.unwrap_or_else(|| {
+                panic!(
+                    "GLONASS synthetic signal for {} requires glonass_frequency_channel",
+                    bijux_gnss_core::api::format_sat(sat)
+                )
+            }),
+        )
+        .value(),
         _ => bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value(),
     }
 }
