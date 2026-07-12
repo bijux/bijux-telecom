@@ -208,10 +208,52 @@ impl Navigation {
             ));
         }
         if has_unsupported_constellation {
-            self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
-                bijux_gnss_core::api::DiagnosticSeverity::Warning,
-                "NAV_MIXED_CONSTELLATION_INPUT",
-                "mixed-constellation observations detected; unsupported signals are excluded",
+            return Some(apply_atmosphere_explainability(
+                invalid_solution_epoch(
+                    obs,
+                    source_observation_epoch_id,
+                    nav_artifact_id,
+                    Some(NavRefusalClass::MixedConstellationInput),
+                    "mixed_constellation_time_handling_refused".to_string(),
+                    vec![
+                        format!(
+                            "supported_constellations={}",
+                            input_constellations
+                                .iter()
+                                .filter(|constellation| {
+                                    matches!(
+                                        constellation,
+                                        Constellation::Gps
+                                            | Constellation::Galileo
+                                            | Constellation::Beidou
+                                    )
+                                })
+                                .map(|value| format!("{value:?}"))
+                                .collect::<Vec<_>>()
+                                .join(",")
+                        ),
+                        format!(
+                            "unsupported_constellations={}",
+                            input_constellations
+                                .iter()
+                                .filter(|constellation| {
+                                    !matches!(
+                                        constellation,
+                                        Constellation::Gps
+                                            | Constellation::Galileo
+                                            | Constellation::Beidou
+                                    )
+                                })
+                                .map(|value| format!("{value:?}"))
+                                .collect::<Vec<_>>()
+                                .join(",")
+                        ),
+                        "unknown_inter_system_time_offset".to_string(),
+                    ],
+                    assumptions,
+                ),
+                klobuchar,
+                self.config.tropo_enable,
             ));
         }
         let mut invalid_satellite_time_sats = Vec::new();
@@ -362,6 +404,9 @@ impl Navigation {
                     PositionSolveRefusalKind::InvalidSatelliteTime => {
                         NavRefusalClass::InvalidSatelliteTime
                     }
+                    PositionSolveRefusalKind::UnknownInterSystemTimeOffset => {
+                        NavRefusalClass::MixedConstellationInput
+                    }
                     PositionSolveRefusalKind::InvalidEphemeris => NavRefusalClass::InvalidEphemeris,
                     PositionSolveRefusalKind::SolverFailure => {
                         if eph_covered_count < 4 {
@@ -395,10 +440,27 @@ impl Navigation {
                     explain_reasons
                         .push(format!("raim_usable_satellites={}", refusal.used_sat_count));
                 }
+                if refusal.kind == PositionSolveRefusalKind::UnknownInterSystemTimeOffset {
+                    explain_reasons.push("unknown_inter_system_time_offset".to_string());
+                    let constellations = rejected
+                        .iter()
+                        .filter(|(_sat, reason)| *reason == MeasurementRejectReason::TimeInconsistency)
+                        .map(|(sat, _reason)| format!("{:?}", sat.constellation))
+                        .collect::<std::collections::BTreeSet<_>>()
+                        .into_iter()
+                        .collect::<Vec<_>>();
+                    if !constellations.is_empty() {
+                        explain_reasons.push(format!(
+                            "unknown_time_offset_constellations={}",
+                            constellations.join(",")
+                        ));
+                    }
+                }
                 let is_sparse_refusal = matches!(
                     refusal.kind,
                     PositionSolveRefusalKind::InsufficientObservations
                         | PositionSolveRefusalKind::InvalidSatelliteTime
+                        | PositionSolveRefusalKind::UnknownInterSystemTimeOffset
                         | PositionSolveRefusalKind::InvalidEphemeris
                         | PositionSolveRefusalKind::InsufficientUsableSatellites
                         | PositionSolveRefusalKind::UnderdeterminedRaimExclusion
@@ -1808,7 +1870,7 @@ mod tests {
         let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
         let mut obs = fake_obs_epoch_for_nav_tests(15);
         for sat in &mut obs.sats {
-            sat.signal_id.sat.constellation = Constellation::Beidou;
+            sat.signal_id.sat.constellation = Constellation::Glonass;
         }
         let solution = nav.solve_epoch(&obs, &[]).expect("unsupported constellation solution");
         assert_eq!(solution.status, SolutionStatus::Invalid);
@@ -1817,10 +1879,28 @@ mod tests {
     }
 
     #[test]
-    fn mixed_supported_constellation_without_navigation_refuses_invalid_ephemeris() {
+    fn mixed_supported_and_unsupported_constellations_are_refused_explicitly() {
         let config = ReceiverPipelineConfig::default();
         let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
         let mut obs = fake_obs_epoch_for_nav_tests(16);
+        for sat in obs.sats.iter_mut().skip(1) {
+            sat.signal_id.sat.constellation = Constellation::Glonass;
+        }
+        let solution = nav.solve_epoch(&obs, &[]).expect("mixed constellation refusal");
+        assert_eq!(solution.status, SolutionStatus::Invalid);
+        assert_eq!(solution.refusal_class, Some(NavRefusalClass::MixedConstellationInput));
+        assert_eq!(solution.explain_decision, "mixed_constellation_time_handling_refused");
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "unknown_inter_system_time_offset"));
+    }
+
+    #[test]
+    fn mixed_supported_constellation_without_navigation_refuses_invalid_ephemeris() {
+        let config = ReceiverPipelineConfig::default();
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+        let mut obs = fake_obs_epoch_for_nav_tests(17);
         for sat in obs.sats.iter_mut().skip(1) {
             sat.signal_id.sat.constellation = Constellation::Galileo;
         }
