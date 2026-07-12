@@ -43,6 +43,14 @@ fn resolved_iono_free_code_bias_m(
     .unwrap_or(0.0)
 }
 
+fn resolved_code_bias_m(
+    provider: &dyn CodeBiasProvider,
+    signal: SigId,
+    gps_time: Option<bijux_gnss_core::api::GpsTime>,
+) -> f64 {
+    provider.code_bias_m_at(signal, gps_time).unwrap_or(0.0)
+}
+
 impl PppFilter {
     pub fn new(config: PppConfig) -> Self {
         let x = vec![0.0_f64; 9];
@@ -187,7 +195,8 @@ impl PppFilter {
             let iono_index = self.indices.iono.get(&sat.signal_id.sat).copied();
             let amb_index = self.indices.ambiguity.get(&sat.signal_id).copied();
 
-            let code_bias_m = self.code_bias.code_bias_m(sat.signal_id).unwrap_or(0.0);
+            let code_bias_m =
+                resolved_code_bias_m(self.code_bias.as_ref(), sat.signal_id, obs.gps_time());
             let phase_bias_cycles = self.phase_bias.phase_bias_cycles(sat.signal_id).unwrap_or(0.0);
 
             if self.config.use_iono_free {
@@ -477,12 +486,15 @@ fn validate_broadcast_ephemeris(
 
 #[cfg(test)]
 mod tests {
-    use super::{iono_free_satellite_representatives, resolved_iono_free_code_bias_m, PppFilter};
+    use super::{
+        iono_free_satellite_representatives, resolved_code_bias_m, resolved_iono_free_code_bias_m,
+        PppFilter,
+    };
     use crate::api::{
         BroadcastProductsProvider, GpsEphemeris, GpsSatState, GpsSatelliteClockCorrection,
         PppConfig, ProductDiagnostics, ProductsProvider,
     };
-    use crate::corrections::biases::{CodeBias, SignalCodeBiases};
+    use crate::corrections::biases::{CodeBias, CodeBiasProvider, SignalCodeBiases};
     use crate::estimation::ppp::measurements::iono_free_code_observation_from_obs;
     use bijux_gnss_core::api::{
         signal_spec_gps_l1_ca, signal_spec_gps_l2_py, Constellation, Cycles, Hertz, LockFlags,
@@ -705,5 +717,38 @@ mod tests {
 
         assert!((resolved_bias_m - 2.0).abs() > 1.0e-3);
         assert!(resolved_bias_m.is_finite());
+    }
+
+    #[test]
+    fn ppp_filter_resolves_single_frequency_code_bias_at_epoch_time() {
+        struct TimeAwareBiasProvider;
+
+        impl CodeBiasProvider for TimeAwareBiasProvider {
+            fn code_bias_m(&self, _sig: SigId) -> Option<f64> {
+                None
+            }
+
+            fn code_bias_m_at(
+                &self,
+                _sig: SigId,
+                time: Option<bijux_gnss_core::api::GpsTime>,
+            ) -> Option<f64> {
+                Some(time?.tow_s)
+            }
+        }
+
+        let signal = SigId {
+            sat: SatId { constellation: Constellation::Gps, prn: 7 },
+            band: SignalBand::L1,
+            code: SignalCode::Ca,
+        };
+
+        let resolved_bias_m = resolved_code_bias_m(
+            &TimeAwareBiasProvider,
+            signal,
+            Some(bijux_gnss_core::api::GpsTime { week: 0, tow_s: 123.5 }),
+        );
+
+        assert!((resolved_bias_m - 123.5).abs() < f64::EPSILON);
     }
 }
