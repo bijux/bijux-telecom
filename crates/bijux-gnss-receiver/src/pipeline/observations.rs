@@ -9,11 +9,12 @@
 //! TODO(ref-grade): add literature citations for CN0 weighting and multipath heuristics.
 
 use bijux_gnss_core::api::{
-    ConventionsConfig, Cycles, DiagnosticEvent, DiagnosticSeverity, GpsTime, LockFlags, Meters,
-    ObsDecisionArtifact, ObsEpoch, ObsEpochManifest, ObsMetadata, ObsSatellite, ObsSignalTiming,
-    ObservationEpochDecision, ObservationStatus, ObservationSupportClass,
+    signal_registry, signal_spec_galileo_e1b, signal_spec_glonass_l1, signal_spec_gps_l1_ca,
+    Constellation, ConventionsConfig, Cycles, DiagnosticEvent, DiagnosticSeverity, GpsTime,
+    LockFlags, Meters, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest, ObsMetadata, ObsSatellite,
+    ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ObservationSupportClass,
     ObservationUncertaintyClass, ReceiverRole, ReceiverSampleTrace, SatObservationDecision,
-    Seconds, SigId, SignalBand, TrackEpoch,
+    Seconds, SigId, SignalBand, SignalCode, SignalSpec, TrackEpoch, GPS_L1_CA_CARRIER_HZ,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -25,7 +26,7 @@ use bijux_gnss_signal::api::samples_per_code;
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
-use bijux_gnss_core::api::{Constellation, Hertz, SatId, SignalCode, GPS_L1_CA_CARRIER_HZ};
+use bijux_gnss_core::api::{glonass_l1_carrier_hz, GlonassFrequencyChannel, Hertz, SatId};
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 const OBS_WEAK_CN0_DBHZ: f64 = 25.0;
@@ -135,6 +136,15 @@ struct RawObservationSnapshot {
     raw_cn0_dbhz: f64,
 }
 
+#[derive(Debug, Clone)]
+struct ObservationSignalModel {
+    signal_id: SigId,
+    signal: SignalSpec,
+    code_length: usize,
+    samples_per_chip: f64,
+    carrier_reference_hz: f64,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct CarrierPhaseReferenceState {
     corrected_cycles: f64,
@@ -181,10 +191,6 @@ fn observations_from_tracking_with_provenance(
         return (Vec::new(), Vec::new());
     }
 
-    let samples_per_code =
-        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
-    let samples_per_chip = samples_per_code as f64 / config.code_length as f64;
-    let code_rate_hz = config.code_freq_basis_hz;
     let meters_per_sample = SPEED_OF_LIGHT_MPS / config.sampling_freq_hz;
 
     let mut carrier_phase_state = CarrierPhaseArcState {
@@ -205,11 +211,13 @@ fn observations_from_tracking_with_provenance(
     let clock_bias_s = 0.0_f64;
 
     for epoch in epochs {
+        let signal_model = observation_signal_model(config, epoch);
         let (time_tag_source, time_tag_sample_index) =
             tracking_time_tag(epoch, &mut last_locked_sample);
         let t_rx_s = Seconds(epoch.sample_index as f64 / config.sampling_freq_hz + clock_bias_s);
 
-        let expected_step = (config.sampling_freq_hz * 0.001).round() as u64;
+        let expected_step =
+            observation_epoch_interval_samples(config, &signal_model, epoch.signal_band);
         let discontinuity = match last_sample_index {
             Some(prev) => epoch.sample_index.saturating_sub(prev) != expected_step,
             None => false,
@@ -243,17 +251,17 @@ fn observations_from_tracking_with_provenance(
         let receive_gps_time =
             capture_start_gps_time.map(|gps_time| gps_time.offset_seconds(t_rx_s.0));
         let pseudorange = pseudorange_from_tracking_epoch(
-            config,
             epoch,
-            samples_per_chip,
-            code_rate_hz,
+            signal_model.samples_per_chip,
+            signal_model.signal.code_rate_hz,
+            signal_model.code_length as f64,
             receive_gps_time,
             clock_bias_s,
         );
 
         let tracked_carrier_phase_cycles = epoch.carrier_phase_cycles.0;
         let doppler_hz = bijux_gnss_core::api::Hertz(doppler_hz_from_carrier_hz(
-            config.intermediate_freq_hz,
+            signal_model.carrier_reference_hz,
             epoch.carrier_hz.0,
         ));
         let carrier_phase = carrier_phase_observation(
@@ -271,7 +279,7 @@ fn observations_from_tracking_with_provenance(
         let pseudorange_uncertainty = pseudorange_uncertainty_model(
             config,
             epoch,
-            samples_per_chip,
+            signal_model.samples_per_chip,
             meters_per_sample,
             lock_quality,
         );
@@ -294,15 +302,10 @@ fn observations_from_tracking_with_provenance(
             carrier_phase.cycle_slip,
             carrier_phase.cycle_slip_reason.as_deref(),
         );
-        let mut signal = bijux_gnss_core::api::signal_spec_gps_l1_ca();
-        signal.code_rate_hz = config.code_freq_basis_hz;
+        let signal = signal_model.signal;
         let observation_epoch_id = observation_epoch_id(epoch.epoch.index, epoch.sample_index);
         let mut sat = ObsSatellite {
-            signal_id: SigId {
-                sat: epoch.sat,
-                band: SignalBand::L1,
-                code: bijux_gnss_core::api::SignalCode::Ca,
-            },
+            signal_id: signal_model.signal_id,
             pseudorange_m: pseudorange.pseudorange_m,
             pseudorange_var_m2: variance_m2,
             carrier_phase_cycles: carrier_phase.phase_cycles,
@@ -331,7 +334,7 @@ fn observations_from_tracking_with_provenance(
             }),
             metadata: ObsMetadata {
                 tracking_mode: "scalar".to_string(),
-                integration_ms: config.tracking_integration_ms,
+                integration_ms: config.tracking_params(epoch.signal_band).integration_ms,
                 lock_quality,
                 smoothing_window: 0,
                 smoothing_age: 0,
@@ -686,6 +689,17 @@ fn observation_interval_samples(config: &ReceiverPipelineConfig) -> u64 {
     samples_per_code as u64 * integration_ms
 }
 
+fn observation_epoch_interval_samples(
+    config: &ReceiverPipelineConfig,
+    signal_model: &ObservationSignalModel,
+    signal_band: SignalBand,
+) -> u64 {
+    let samples_per_code =
+        (signal_model.samples_per_chip * signal_model.code_length as f64).round() as u64;
+    let integration_ms = config.tracking_params(signal_band).integration_ms.max(1) as u64;
+    samples_per_code.saturating_mul(integration_ms)
+}
+
 fn reject_epoch_for_invalid_timing(epoch: &mut ObsEpoch) {
     epoch.valid = false;
     if epoch.decision == ObservationEpochDecision::Accepted {
@@ -926,20 +940,69 @@ fn doppler_model_label() -> &'static str {
     bijux_gnss_core::api::OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET
 }
 
-fn pseudorange_from_tracking_epoch(
+fn observation_signal_model(
     config: &ReceiverPipelineConfig,
+    epoch: &TrackEpoch,
+) -> ObservationSignalModel {
+    let signal_code = tracked_signal_code(epoch);
+    let registry_entry = signal_registry(epoch.sat.constellation, epoch.signal_band, signal_code);
+    let signal = match (epoch.sat.constellation, epoch.signal_band, epoch.glonass_frequency_channel)
+    {
+        (Constellation::Gps, SignalBand::L1, _) => signal_spec_gps_l1_ca(),
+        (Constellation::Galileo, SignalBand::E1, _) => signal_spec_galileo_e1b(),
+        (Constellation::Glonass, SignalBand::L1, Some(channel)) => signal_spec_glonass_l1(channel),
+        _ => registry_entry.as_ref().map(|entry| entry.spec).unwrap_or_else(signal_spec_gps_l1_ca),
+    };
+    let code_length = registry_entry
+        .as_ref()
+        .and_then(|entry| entry.code_length)
+        .map(|length| length as usize)
+        .unwrap_or_else(|| fallback_code_length(epoch));
+    let samples_per_code =
+        samples_per_code(config.sampling_freq_hz, signal.code_rate_hz, code_length);
+    ObservationSignalModel {
+        signal_id: SigId { sat: epoch.sat, band: signal.band, code: signal.code },
+        signal,
+        code_length,
+        samples_per_chip: samples_per_code as f64 / code_length as f64,
+        carrier_reference_hz: tracked_signal_center_hz(config.intermediate_freq_hz, signal),
+    }
+}
+
+fn tracked_signal_code(epoch: &TrackEpoch) -> SignalCode {
+    match (epoch.sat.constellation, epoch.signal_band) {
+        (Constellation::Gps, SignalBand::L1) => SignalCode::Ca,
+        (Constellation::Galileo, SignalBand::E1) => SignalCode::E1B,
+        (Constellation::Glonass, SignalBand::L1) => SignalCode::Unknown,
+        _ => SignalCode::Unknown,
+    }
+}
+
+fn fallback_code_length(epoch: &TrackEpoch) -> usize {
+    match (epoch.sat.constellation, epoch.signal_band) {
+        (Constellation::Gps, SignalBand::L1) => 1023,
+        (Constellation::Galileo, SignalBand::E1) => 4092,
+        (Constellation::Glonass, SignalBand::L1) => 511,
+        _ => 1023,
+    }
+}
+
+fn tracked_signal_center_hz(intermediate_freq_hz: f64, signal: SignalSpec) -> f64 {
+    intermediate_freq_hz + (signal.carrier_hz.value() - GPS_L1_CA_CARRIER_HZ.value())
+}
+
+fn pseudorange_from_tracking_epoch(
     epoch: &TrackEpoch,
     samples_per_chip: f64,
     code_rate_hz: f64,
+    code_length_chips: f64,
     receive_gps_time: Option<GpsTime>,
     clock_bias_s: f64,
 ) -> PseudorangeComputation {
-    let code_phase_chips = aligned_code_phase_chips(
-        config.code_length as f64,
-        epoch.code_phase_samples.0 / samples_per_chip,
-    );
+    let code_phase_chips =
+        aligned_code_phase_chips(code_length_chips, epoch.code_phase_samples.0 / samples_per_chip);
     if let Some(alignment) = &epoch.signal_delay_alignment {
-        let code_time_s = (alignment.whole_code_periods as f64 * config.code_length as f64
+        let code_time_s = (alignment.whole_code_periods as f64 * code_length_chips
             + code_phase_chips)
             / code_rate_hz;
         let pseudorange_m =
@@ -959,7 +1022,7 @@ fn pseudorange_from_tracking_epoch(
     }
 
     let code_epoch = epoch.epoch.index as f64;
-    let code_time_s = (code_epoch * config.code_length as f64 + code_phase_chips) / code_rate_hz;
+    let code_time_s = (code_epoch * code_length_chips + code_phase_chips) / code_rate_hz;
     PseudorangeComputation {
         pseudorange_m: Meters(code_time_s * SPEED_OF_LIGHT_MPS + clock_bias_s * SPEED_OF_LIGHT_MPS),
         timing: None,
@@ -2755,6 +2818,54 @@ mod tests {
             bijux_gnss_core::api::OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET
         );
         assert!((sat.doppler_hz.0 - expected_doppler_hz).abs() <= f64::EPSILON, "{sat:?}");
+    }
+
+    #[test]
+    fn observations_emit_glonass_l1_signal_identity_and_fdma_relative_doppler() {
+        let channel = GlonassFrequencyChannel::new(-4).expect("channel -4 must be valid");
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 2_044_000.0,
+            intermediate_freq_hz: GPS_L1_CA_CARRIER_HZ.value()
+                - glonass_l1_carrier_hz(channel).value(),
+            code_freq_basis_hz: 511_000.0,
+            code_length: 511,
+            ..ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Glonass, prn: 8 };
+        let expected_doppler_hz = 125.0;
+        let carrier_hz =
+            crate::pipeline::doppler::carrier_hz_from_doppler_hz(0.0, expected_doppler_hz);
+        let mut epoch = make_tracking_epoch(8, &config, 70, carrier_hz);
+        epoch.sat = sat;
+        epoch.signal_band = SignalBand::L1;
+        epoch.glonass_frequency_channel = Some(channel);
+        epoch.code_rate_hz = Hertz(511_000.0);
+        let track = TrackingResult {
+            sat,
+            carrier_hz,
+            code_phase_samples: 0.0,
+            acquisition_hypothesis: "accepted".to_string(),
+            acquisition_score: 1.0,
+            acquisition_code_phase_samples: 0,
+            acquisition_carrier_hz: carrier_hz,
+            acq_to_track_state: "accepted".to_string(),
+            epochs: vec![epoch],
+            transitions: Vec::new(),
+        };
+
+        let report = observations_from_tracking_results(&config, &[track], 10);
+        let epoch = report.output.first().expect("observation epoch");
+        let obs_sat = epoch.sats.first().expect("observation satellite");
+
+        assert_eq!(obs_sat.signal_id.sat, sat);
+        assert_eq!(obs_sat.signal_id.band, SignalBand::L1);
+        assert_eq!(obs_sat.signal_id.code, SignalCode::Unknown);
+        assert_eq!(obs_sat.metadata.signal.code, SignalCode::Unknown);
+        assert_eq!(
+            obs_sat.metadata.signal.carrier_hz.value(),
+            glonass_l1_carrier_hz(channel).value()
+        );
+        assert!((obs_sat.doppler_hz.0 - expected_doppler_hz).abs() <= f64::EPSILON, "{obs_sat:?}");
     }
 
     #[test]
