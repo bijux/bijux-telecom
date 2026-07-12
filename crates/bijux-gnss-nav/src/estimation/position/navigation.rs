@@ -18,7 +18,8 @@ use crate::orbits::gps::{
     gps_ephemeris_age, is_ephemeris_valid, sat_state_gps_l1ca,
 };
 use bijux_gnss_core::api::{
-    default_acquisition_signal, MeasurementRejectReason, ObsSignalTiming, SatId, SigId,
+    default_acquisition_signal, signal_id_wavelength_m, MeasurementRejectReason, ObsSignalTiming,
+    SatId, SigId,
 };
 
 use super::solver::{PositionBroadcastNavigation, PositionObservation};
@@ -43,6 +44,12 @@ pub(crate) struct SatelliteState {
     pub(crate) vz_mps: f64,
     pub(crate) clock_bias_s: f64,
     pub(crate) clock_drift_s_per_s: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct ObservationConsistencyMetrics {
+    pub(crate) code_residual_m: f64,
+    pub(crate) doppler_residual_hz: Option<f64>,
 }
 
 pub(crate) fn unknown_inter_system_time_offset_sats(
@@ -272,6 +279,10 @@ pub(crate) fn default_position_signal_id(sat: SatId) -> Option<SigId> {
     Some(SigId { sat, band: signal.spec.band, code: signal.spec.code })
 }
 
+pub(crate) fn position_signal_id(observation: &PositionObservation) -> Option<SigId> {
+    observation.signal_id.or_else(|| default_position_signal_id(observation.sat))
+}
+
 fn broadcast_group_delay_code_bias_m(
     signal_id: Option<SigId>,
     navigation: &PositionBroadcastNavigation,
@@ -302,6 +313,62 @@ pub(crate) fn corrected_pseudorange_m(
         return observation.pseudorange_m;
     }
     observation.pseudorange_m - broadcast_group_delay_code_bias_m(observation.signal_id, navigation)
+}
+
+pub(crate) fn observation_consistency_metrics(
+    observation: &PositionObservation,
+    navigation: &PositionBroadcastNavigation,
+    apply_broadcast_group_delay: bool,
+    receiver_position_ecef_m: [f64; 3],
+    receiver_clock_bias_s: f64,
+    receiver_velocity_ecef_mps: Option<[f64; 3]>,
+    receiver_clock_drift_s_per_s: Option<f64>,
+) -> Option<ObservationConsistencyMetrics> {
+    let corrected_pseudorange_m =
+        corrected_pseudorange_m(observation, navigation, apply_broadcast_group_delay);
+    let receive_tow_s =
+        observation.gps_receive_time.map(|gps_time| gps_time.tow_s).or_else(|| {
+            observation
+                .signal_timing
+                .map(|timing| timing.transmit_gps_time.tow_s + timing.signal_travel_time_s.0)
+        })?;
+    let state = satellite_state_from_observation(
+        navigation,
+        receive_tow_s,
+        corrected_pseudorange_m,
+        observation.signal_timing,
+    )?;
+    let dx = receiver_position_ecef_m[0] - state.x_m;
+    let dy = receiver_position_ecef_m[1] - state.y_m;
+    let dz = receiver_position_ecef_m[2] - state.z_m;
+    let range_m = (dx * dx + dy * dy + dz * dz).sqrt().max(1.0);
+    let code_prediction_m =
+        range_m + SPEED_OF_LIGHT_MPS * (receiver_clock_bias_s - state.clock_bias_s);
+    let code_residual_m = corrected_pseudorange_m - code_prediction_m;
+
+    let doppler_residual_hz = observation
+        .doppler_hz
+        .zip(receiver_velocity_ecef_mps)
+        .zip(receiver_clock_drift_s_per_s)
+        .and_then(|((observed_doppler_hz, receiver_velocity_ecef_mps), receiver_clock_drift_s)| {
+            let wavelength_m =
+                signal_id_wavelength_m(position_signal_id(observation)?).map(|v| v.0)?;
+            let los = [dx / range_m, dy / range_m, dz / range_m];
+            let relative_velocity_mps = [
+                receiver_velocity_ecef_mps[0] - state.vx_mps,
+                receiver_velocity_ecef_mps[1] - state.vy_mps,
+                receiver_velocity_ecef_mps[2] - state.vz_mps,
+            ];
+            let range_rate_mps = los[0] * relative_velocity_mps[0]
+                + los[1] * relative_velocity_mps[1]
+                + los[2] * relative_velocity_mps[2];
+            let predicted_doppler_hz = -range_rate_mps / wavelength_m
+                + SPEED_OF_LIGHT_MPS * (receiver_clock_drift_s - state.clock_drift_s_per_s)
+                    / wavelength_m;
+            Some(observed_doppler_hz - predicted_doppler_hz)
+        });
+
+    Some(ObservationConsistencyMetrics { code_residual_m, doppler_residual_hz })
 }
 
 #[cfg(test)]
