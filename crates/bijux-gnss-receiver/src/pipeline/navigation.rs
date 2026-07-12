@@ -23,6 +23,9 @@ use crate::engine::receiver_config::{
     NavigationMotionClass, NavigationWeightingMode, ReceiverPipelineConfig,
 };
 use crate::engine::runtime::ReceiverRuntime;
+use crate::pipeline::satellite_clock_anomaly::{
+    advance_satellite_clock_suspect_streak, detect_satellite_clock_anomaly,
+};
 
 /// Navigation solution derived from observation epochs.
 pub struct Navigation {
@@ -34,6 +37,8 @@ pub struct Navigation {
     clock: ClockModel,
     last_ecef: Option<(f64, f64, f64)>,
     last_solution: Option<NavSolutionEpoch>,
+    last_satellite_clock_suspect: Option<bijux_gnss_core::api::SatId>,
+    satellite_clock_suspect_streak: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -135,6 +140,8 @@ impl Navigation {
             clock: ClockModel::new(),
             last_ecef: None,
             last_solution: None,
+            last_satellite_clock_suspect: None,
+            satellite_clock_suspect_streak: 0,
         }
     }
 
@@ -437,6 +444,8 @@ impl Navigation {
                         | PositionSolveRefusalKind::InsufficientUsableSatellites
                         | PositionSolveRefusalKind::UnderdeterminedRaimExclusion
                 );
+                self.last_satellite_clock_suspect = None;
+                self.satellite_clock_suspect_streak = 0;
                 return Some(apply_atmosphere_explainability(
                     if is_sparse_refusal {
                         self.current_epoch_refusal(
@@ -663,6 +672,7 @@ impl Navigation {
 
         let mut raim_explain_reasons = Vec::new();
         let mut resolved_by_raim_exclusion = false;
+        let mut clock_anomaly_explain_reasons = Vec::new();
         if let Some(solution_separation) = solution.raim_solution_separation.as_ref() {
             raim_explain_reasons.push(format!(
                 "raim_solution_separation_reference_satellites={}",
@@ -723,6 +733,42 @@ impl Navigation {
                     ));
                 }
             }
+        }
+        let (next_satellite_clock_suspect, next_satellite_clock_suspect_streak) =
+            advance_satellite_clock_suspect_streak(
+                self.last_satellite_clock_suspect,
+                self.satellite_clock_suspect_streak,
+                solution.raim_fault_detection,
+                solution.raim_fault_exclusion,
+            );
+        if let Some(clock_anomaly) = detect_satellite_clock_anomaly(
+            solution.raim_fault_detection,
+            solution.raim_fault_exclusion,
+            next_satellite_clock_suspect_streak,
+        ) {
+            nav_epoch.status = SolutionStatus::Degraded;
+            nav_epoch
+                .health
+                .push(bijux_gnss_core::api::NavHealthEvent::SatelliteClockAnomaly {
+                    sat: clock_anomaly.sat,
+                    persistent_suspect_epochs: clock_anomaly.persistent_suspect_epochs,
+                    max_solution_separation_m: clock_anomaly.max_solution_separation_m,
+                    separation_threshold_m: clock_anomaly.separation_threshold_m,
+                });
+            clock_anomaly_explain_reasons.push("satellite_clock_anomaly".to_string());
+            clock_anomaly_explain_reasons
+                .push(format!("satellite_clock_anomaly_prn={}", clock_anomaly.sat.prn));
+            self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                "NAV_SAT_CLOCK_ANOMALY",
+                format!(
+                    "satellite clock anomaly for PRN {}: unresolved RAIM suspect for {} epochs with solution separation {:.2} m above {:.2} m",
+                    clock_anomaly.sat.prn,
+                    clock_anomaly.persistent_suspect_epochs,
+                    clock_anomaly.max_solution_separation_m,
+                    clock_anomaly.separation_threshold_m
+                ),
+            ));
         }
 
         let sanity_events = check_nav_solution_sanity(self.last_solution.as_ref(), &nav_epoch);
@@ -787,6 +833,11 @@ impl Navigation {
                 nav_epoch.explain_reasons.push(reason);
             }
         }
+        for reason in clock_anomaly_explain_reasons {
+            if !nav_epoch.explain_reasons.iter().any(|existing| existing == &reason) {
+                nav_epoch.explain_reasons.push(reason);
+            }
+        }
         nav_epoch.stability_signature = nav_output_stability_signature(&nav_epoch);
         let protection_levels = nav_epoch.position_covariance_ecef_m2.and_then(|covariance| {
             formal_protection_levels(
@@ -810,17 +861,21 @@ impl Navigation {
         }
 
         self.last_solution = Some(nav_epoch.clone());
+        self.last_satellite_clock_suspect = next_satellite_clock_suspect;
+        self.satellite_clock_suspect_streak = next_satellite_clock_suspect_streak;
         Some(nav_epoch)
     }
 
     fn degraded_from_last(
-        &self,
+        &mut self,
         obs: &ObsEpoch,
         source_observation_epoch_id: String,
         nav_artifact_id: String,
         decision: NavDecision,
         assumptions: NavAssumptions,
     ) -> NavSolutionEpoch {
+        self.last_satellite_clock_suspect = None;
+        self.satellite_clock_suspect_streak = 0;
         let mut degraded = self.last_solution.clone().unwrap_or_else(|| {
             invalid_solution_epoch(
                 obs,
@@ -2194,6 +2249,8 @@ mod tests {
             clock: ClockModel::new(),
             last_ecef: Some((1.0, 2.0, 3.0)),
             last_solution: Some(sample_last_solution()),
+            last_satellite_clock_suspect: None,
+            satellite_clock_suspect_streak: 0,
         };
         let obs = fake_obs_epoch_for_nav_tests(10);
         let solution = nav.solve_epoch(&obs, &[]).expect("degraded solution");
@@ -2406,6 +2463,8 @@ mod tests {
             clock: ClockModel::new(),
             last_ecef: Some((10.0, 20.0, 30.0)),
             last_solution: Some(sample_last_solution()),
+            last_satellite_clock_suspect: None,
+            satellite_clock_suspect_streak: 0,
         };
         let mut obs = fake_obs_epoch_for_nav_tests(18);
         obs.sats.truncate(3);
