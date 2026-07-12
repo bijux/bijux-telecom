@@ -22,6 +22,8 @@ mod io;
 mod pipeline;
 mod ports;
 #[cfg(feature = "nav")]
+mod covariance_realism;
+#[cfg(feature = "nav")]
 mod rtk;
 #[cfg(feature = "nav")]
 mod sim;
