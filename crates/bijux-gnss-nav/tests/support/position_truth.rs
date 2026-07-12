@@ -277,6 +277,14 @@ pub fn gps_l1ca_signal_id(sat: SatId) -> SigId {
     SigId { sat, band: SignalBand::L1, code: SignalCode::Ca }
 }
 
+pub fn receiver_clock_bias_with_drift_s(
+    initial_clock_bias_s: f64,
+    receiver_clock_drift_s_per_s: f64,
+    elapsed_s: f64,
+) -> f64 {
+    initial_clock_bias_s + receiver_clock_drift_s_per_s * elapsed_s
+}
+
 pub fn timed_position_observation_with_doppler(
     sat: SatId,
     pseudorange_m: f64,

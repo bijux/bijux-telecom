@@ -4,7 +4,8 @@ mod support;
 use bijux_gnss_nav::api::{geodetic_to_ecef, GpsEphemeris, PositionFilter, PositionFilterConfig};
 
 use support::position_truth::{
-    gps_l1ca_doppler_from_truth, pseudorange_from_truth, sample_ephemeris,
+    gps_l1ca_doppler_from_truth, pseudorange_from_truth, receiver_clock_bias_with_drift_s,
+    sample_ephemeris,
     timed_position_observation, timed_position_observation_with_doppler,
 };
 
@@ -193,13 +194,18 @@ fn moving_receiver_epochs_with_doppler(
     receiver_clock_drift_s_per_s: f64,
 ) -> Vec<SequentialPositionEpoch> {
     let truth_origin_ecef_m = geodetic_to_ecef(37.0, -122.0, 10.0);
-    let receiver_clock_bias_s = 2.75e-4;
-    let t0_rx_s = 504_018.07 + receiver_clock_bias_s;
+    let initial_receiver_clock_bias_s = 2.75e-4;
+    let t0_rx_s = 504_018.07 + initial_receiver_clock_bias_s;
 
     (0..epoch_count)
         .map(|epoch_index| {
             let motion_dt_s = epoch_index as f64 * dt_s;
-            let t_rx_s = t0_rx_s + motion_dt_s;
+            let receiver_clock_bias_s = receiver_clock_bias_with_drift_s(
+                initial_receiver_clock_bias_s,
+                receiver_clock_drift_s_per_s,
+                motion_dt_s,
+            );
+            let t_rx_s = t0_rx_s + motion_dt_s + receiver_clock_bias_s - initial_receiver_clock_bias_s;
             let truth_ecef_m =
                 translate_truth_ecef_m(truth_origin_ecef_m, truth_velocity_ecef_mps, motion_dt_s);
             let observations = ephemerides
