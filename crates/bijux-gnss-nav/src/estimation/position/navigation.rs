@@ -373,9 +373,17 @@ pub(crate) fn observation_consistency_metrics(
 
 #[cfg(test)]
 mod tests {
-    use super::{default_position_signal_id, satellite_state_at_time, PositionBroadcastNavigation};
+    use super::{
+        default_position_signal_id, observation_consistency_metrics, position_signal_id,
+        satellite_state_at_time, PositionBroadcastNavigation, PositionObservation,
+        SPEED_OF_LIGHT_MPS,
+    };
+    use crate::estimation::position::solver::geodetic_to_ecef;
     use crate::orbits::gps::GpsEphemeris;
-    use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand, SignalCode};
+    use bijux_gnss_core::api::{
+        signal_id_wavelength_m, Constellation, GpsTime, ObsSignalTiming, SatId, Seconds, SigId,
+        SignalBand, SignalCode,
+    };
 
     fn sample_gps_ephemeris() -> GpsEphemeris {
         GpsEphemeris {
@@ -434,5 +442,110 @@ mod tests {
         assert!(state.clock_bias_s.is_finite());
         assert!(state.clock_drift_s_per_s.is_finite());
         assert!(speed_mps > 100.0, "speed_mps={speed_mps}");
+    }
+
+    #[test]
+    fn observation_consistency_metrics_match_clean_gps_observation() {
+        let ephemeris = sample_gps_ephemeris();
+        let navigation = PositionBroadcastNavigation::Gps(ephemeris.clone());
+        let receiver_ecef_m = geodetic_to_ecef(37.0, -122.0, 10.0);
+        let receiver_clock_bias_s = 2.75e-4;
+        let receiver_velocity_ecef_mps = [15.0, -4.0, 2.0];
+        let receiver_clock_drift_s_per_s = 5.0e-8;
+        let receive_tow_s = 504_018.07;
+
+        let mut signal_travel_time_s = 0.07;
+        let pseudorange_m = loop {
+            let state = satellite_state_at_time(
+                &navigation,
+                receive_tow_s - signal_travel_time_s,
+                signal_travel_time_s,
+            )
+            .expect("satellite state");
+            let dx = receiver_ecef_m.0 - state.x_m;
+            let dy = receiver_ecef_m.1 - state.y_m;
+            let dz = receiver_ecef_m.2 - state.z_m;
+            let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
+            let pseudorange_m =
+                range_m + SPEED_OF_LIGHT_MPS * (receiver_clock_bias_s - state.clock_bias_s);
+            let next_signal_travel_time_s = pseudorange_m / SPEED_OF_LIGHT_MPS;
+            if (next_signal_travel_time_s - signal_travel_time_s).abs() < 1.0e-12 {
+                break pseudorange_m;
+            }
+            signal_travel_time_s = next_signal_travel_time_s;
+        };
+        let state = satellite_state_at_time(
+            &navigation,
+            receive_tow_s - signal_travel_time_s,
+            signal_travel_time_s,
+        )
+        .expect("satellite state");
+        let dx = receiver_ecef_m.0 - state.x_m;
+        let dy = receiver_ecef_m.1 - state.y_m;
+        let dz = receiver_ecef_m.2 - state.z_m;
+        let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
+        let los = [dx / range_m, dy / range_m, dz / range_m];
+        let relative_velocity_mps = [
+            receiver_velocity_ecef_mps[0] - state.vx_mps,
+            receiver_velocity_ecef_mps[1] - state.vy_mps,
+            receiver_velocity_ecef_mps[2] - state.vz_mps,
+        ];
+        let range_rate_mps = los[0] * relative_velocity_mps[0]
+            + los[1] * relative_velocity_mps[1]
+            + los[2] * relative_velocity_mps[2];
+        let signal_id = position_signal_id(&PositionObservation {
+            sat: ephemeris.sat,
+            pseudorange_m,
+            doppler_hz: None,
+            doppler_var_hz2: None,
+            cn0_dbhz: 45.0,
+            elevation_deg: None,
+            weight: 1.0,
+            gps_receive_time: None,
+            signal_timing: None,
+            signal_id: default_position_signal_id(ephemeris.sat),
+        })
+        .expect("signal id");
+        let wavelength_m = signal_id_wavelength_m(signal_id).expect("GPS L1 wavelength").0;
+        let doppler_hz = -range_rate_mps / wavelength_m
+            + SPEED_OF_LIGHT_MPS * (receiver_clock_drift_s_per_s - state.clock_drift_s_per_s)
+                / wavelength_m;
+        let observation = PositionObservation {
+            sat: ephemeris.sat,
+            pseudorange_m,
+            doppler_hz: Some(doppler_hz),
+            doppler_var_hz2: Some(1.0),
+            cn0_dbhz: 45.0,
+            elevation_deg: None,
+            weight: 1.0,
+            gps_receive_time: Some(GpsTime { week: ephemeris.week, tow_s: receive_tow_s }),
+            signal_timing: Some(ObsSignalTiming {
+                signal_travel_time_s: Seconds(signal_travel_time_s),
+                transmit_gps_time: GpsTime {
+                    week: ephemeris.week,
+                    tow_s: receive_tow_s - signal_travel_time_s,
+                },
+            }),
+            signal_id: Some(signal_id),
+        };
+
+        let metrics = observation_consistency_metrics(
+            &observation,
+            &navigation,
+            false,
+            [receiver_ecef_m.0, receiver_ecef_m.1, receiver_ecef_m.2],
+            receiver_clock_bias_s,
+            Some(receiver_velocity_ecef_mps),
+            Some(receiver_clock_drift_s_per_s),
+        )
+        .expect("consistency metrics");
+
+        assert!(metrics.code_residual_m.abs() < 1.0e-6, "{metrics:?}");
+        assert!(
+            metrics
+                .doppler_residual_hz
+                .is_some_and(|doppler_residual_hz| doppler_residual_hz.abs() < 1.0e-6),
+            "{metrics:?}"
+        );
     }
 }
