@@ -322,8 +322,17 @@ impl PppFilter {
             self.ekf.x[self.indices.pos[1]],
             self.ekf.x[self.indices.pos[2]],
         ];
-        let (position_covariance_ecef_m2, sigma_e_m, sigma_n_m, sigma_u_m, sigma_h, sigma_v) =
-            estimate_position_uncertainty(&self.ekf, &self.indices.pos, pos);
+        let (
+            position_covariance_ecef_m2,
+            sigma_e_m,
+            sigma_n_m,
+            sigma_u_m,
+            horizontal_error_ellipse_major_axis_m,
+            horizontal_error_ellipse_minor_axis_m,
+            horizontal_error_ellipse_azimuth_deg,
+            sigma_h,
+            sigma_v,
+        ) = estimate_position_uncertainty(&self.ekf, &self.indices.pos, pos);
         self.update_convergence(t_rx_s, pos, sigma_h, sigma_v);
         self.check_consistency();
         self.adapt_process_noise();
@@ -337,6 +346,9 @@ impl PppFilter {
             sigma_e_m,
             sigma_n_m,
             sigma_u_m,
+            horizontal_error_ellipse_major_axis_m,
+            horizontal_error_ellipse_minor_axis_m,
+            horizontal_error_ellipse_azimuth_deg,
             clock_bias_s: self.ekf.x[self.indices.clock_bias],
             rms_m: self.ekf.health.innovation_rms,
             sigma_h_m: sigma_h,
@@ -642,6 +654,18 @@ mod tests {
         assert!(solution.sigma_e_m.expect("east sigma").is_finite());
         assert!(solution.sigma_n_m.expect("north sigma").is_finite());
         assert!(solution.sigma_u_m.expect("up sigma").is_finite());
+        assert!(solution
+            .horizontal_error_ellipse_major_axis_m
+            .expect("ellipse major axis")
+            .is_finite());
+        assert!(solution
+            .horizontal_error_ellipse_minor_axis_m
+            .expect("ellipse minor axis")
+            .is_finite());
+        assert!(solution
+            .horizontal_error_ellipse_azimuth_deg
+            .expect("ellipse azimuth")
+            .is_finite());
     }
 
     #[test]

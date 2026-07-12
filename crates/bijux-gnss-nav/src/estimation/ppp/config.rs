@@ -96,6 +96,9 @@ pub struct PppSolutionEpoch {
     pub sigma_e_m: Option<f64>,
     pub sigma_n_m: Option<f64>,
     pub sigma_u_m: Option<f64>,
+    pub horizontal_error_ellipse_major_axis_m: Option<f64>,
+    pub horizontal_error_ellipse_minor_axis_m: Option<f64>,
+    pub horizontal_error_ellipse_azimuth_deg: Option<f64>,
     pub clock_bias_s: f64,
     pub rms_m: f64,
     pub sigma_h_m: Option<f64>,
@@ -166,6 +169,48 @@ impl ArtifactPayloadValidate for PppSolutionEpoch {
                 "PPP solution should carry east, north, and up position standard deviations",
             ));
         }
+        let horizontal_error_ellipse = [
+            self.horizontal_error_ellipse_major_axis_m,
+            self.horizontal_error_ellipse_minor_axis_m,
+        ];
+        if horizontal_error_ellipse.iter().flatten().any(|value| !value.is_finite())
+            || self
+                .horizontal_error_ellipse_azimuth_deg
+                .is_some_and(|value| !value.is_finite())
+        {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "PPP_HORIZONTAL_ERROR_ELLIPSE_INVALID",
+                "PPP horizontal error ellipse contains NaN/Inf",
+            ));
+        }
+        if horizontal_error_ellipse.iter().flatten().any(|value| *value < 0.0) {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "PPP_HORIZONTAL_ERROR_ELLIPSE_NEGATIVE_AXIS",
+                "PPP horizontal error ellipse axes must be non-negative",
+            ));
+        }
+        if self
+            .horizontal_error_ellipse_azimuth_deg
+            .is_some_and(|value| !(0.0..180.0).contains(&value))
+        {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "PPP_HORIZONTAL_ERROR_ELLIPSE_AZIMUTH_RANGE",
+                "PPP horizontal error ellipse azimuth must be in [0, 180)",
+            ));
+        }
+        if self.horizontal_error_ellipse_major_axis_m.is_none()
+            || self.horizontal_error_ellipse_minor_axis_m.is_none()
+            || self.horizontal_error_ellipse_azimuth_deg.is_none()
+        {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Warning,
+                "PPP_HORIZONTAL_ERROR_ELLIPSE_MISSING",
+                "PPP solution should carry horizontal error ellipse axes and azimuth",
+            ));
+        }
         events
     }
 }
@@ -190,6 +235,9 @@ mod tests {
             sigma_e_m: Some(0.8),
             sigma_n_m: Some(0.9),
             sigma_u_m: Some(1.2),
+            horizontal_error_ellipse_major_axis_m: Some(1.1),
+            horizontal_error_ellipse_minor_axis_m: Some(0.7),
+            horizontal_error_ellipse_azimuth_deg: Some(32.0),
             clock_bias_s: 1.0e-6,
             rms_m: 1.5,
             sigma_h_m: Some(2.0),
@@ -230,6 +278,16 @@ mod tests {
     }
 
     #[test]
+    fn ppp_solution_validation_warns_on_missing_horizontal_error_ellipse() {
+        let mut solution = sample_solution();
+        solution.horizontal_error_ellipse_major_axis_m = None;
+
+        let diagnostics = solution.validate_payload();
+
+        assert!(diagnostics.iter().any(|event| event.code == "PPP_HORIZONTAL_ERROR_ELLIPSE_MISSING"));
+    }
+
+    #[test]
     fn ppp_solution_validation_rejects_non_finite_position_covariance() {
         let mut solution = sample_solution();
         solution.position_covariance_ecef_m2 =
@@ -248,6 +306,16 @@ mod tests {
         let diagnostics = solution.validate_payload();
 
         assert!(diagnostics.iter().any(|event| event.code == "PPP_POSITION_SIGMA_ENU_INVALID"));
+    }
+
+    #[test]
+    fn ppp_solution_validation_rejects_non_finite_horizontal_error_ellipse() {
+        let mut solution = sample_solution();
+        solution.horizontal_error_ellipse_azimuth_deg = Some(f64::NAN);
+
+        let diagnostics = solution.validate_payload();
+
+        assert!(diagnostics.iter().any(|event| event.code == "PPP_HORIZONTAL_ERROR_ELLIPSE_INVALID"));
     }
 }
 
