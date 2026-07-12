@@ -31,6 +31,7 @@ pub struct PositionSolution {
     pub ecef_x_m: f64,
     pub ecef_y_m: f64,
     pub ecef_z_m: f64,
+    pub position_covariance_ecef_m2: Option<[[f64; 3]; 3]>,
     pub latitude_deg: f64,
     pub longitude_deg: f64,
     pub altitude_m: f64,
@@ -841,23 +842,20 @@ impl PositionSolver {
 
         let (lat, lon, alt) = ecef_to_geodetic(x, y, z);
 
-        let (sigma_h_m, sigma_v_m) = working_set
-            .covariance
-            .map(|cov| {
-                let sigma2 = if !v.is_empty() {
-                    let sum = v.iter().map(|r| r * r).sum::<f64>();
-                    let dof = (v.len() as i32 - final_estimate.clock_model.parameter_len() as i32)
-                        .max(1) as f64;
-                    sum / dof
-                } else {
-                    0.0
-                };
-                let covariance_xyz = [
-                    [cov[0][0] * sigma2, cov[0][1] * sigma2, cov[0][2] * sigma2],
-                    [cov[1][0] * sigma2, cov[1][1] * sigma2, cov[1][2] * sigma2],
-                    [cov[2][0] * sigma2, cov[2][1] * sigma2, cov[2][2] * sigma2],
-                ];
-                covariance_horizontal_vertical([x, y, z], covariance_xyz).unwrap_or((0.0, 0.0))
+        let position_covariance_ecef_m2 = working_set.covariance.as_ref().and_then(|covariance| {
+            let sigma2 = if !v.is_empty() {
+                let sum = v.iter().map(|r| r * r).sum::<f64>();
+                let dof = (v.len() as i32 - final_estimate.clock_model.parameter_len() as i32)
+                    .max(1) as f64;
+                sum / dof
+            } else {
+                0.0
+            };
+            scaled_position_covariance_ecef_m2(covariance, sigma2)
+        });
+        let (sigma_h_m, sigma_v_m) = position_covariance_ecef_m2
+            .and_then(|covariance_xyz| {
+                covariance_horizontal_vertical([x, y, z], covariance_xyz)
             })
             .unwrap_or((0.0, 0.0));
 
@@ -866,6 +864,7 @@ impl PositionSolver {
             ecef_x_m: x,
             ecef_y_m: y,
             ecef_z_m: z,
+            position_covariance_ecef_m2,
             latitude_deg: lat,
             longitude_deg: lon,
             altitude_m: alt,
@@ -2690,6 +2689,26 @@ fn normal_matrix_inverse(h: &[Vec<f64>]) -> Option<Vec<Vec<f64>>> {
 
 fn position_covariance_trace(inv: &[Vec<f64>]) -> f64 {
     (inv[0][0] + inv[1][1] + inv[2][2]).max(0.0)
+}
+
+fn scaled_position_covariance_ecef_m2(
+    covariance: &[Vec<f64>],
+    sigma2: f64,
+) -> Option<[[f64; 3]; 3]> {
+    if covariance.len() < 3 || covariance.iter().take(3).any(|row| row.len() < 3) {
+        return None;
+    }
+    let mut position_covariance = [[0.0_f64; 3]; 3];
+    for row in 0..3 {
+        for col in 0..3 {
+            let value = covariance[row][col] * sigma2;
+            if !value.is_finite() {
+                return None;
+            }
+            position_covariance[row][col] = value;
+        }
+    }
+    Some(position_covariance)
 }
 
 fn local_horizontal_vertical_dops(

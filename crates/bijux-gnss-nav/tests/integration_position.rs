@@ -19,7 +19,7 @@ use bijux_gnss_nav::api::{
     GpsEphemeris, GpsL1CaHowWord, GpsL1CaLnavDecodedSubframe, GpsL1CaLnavSubframe1Clock,
     GpsL1CaLnavSubframe2Orbit, GpsL1CaLnavSubframe3Orbit, GpsL1CaLnavSubframeAlignment,
     GpsL1CaTlmWord, GpsL1CaWordParitySummary, PositionBroadcastNavigation, PositionObservation,
-    PositionSolver,
+    PositionRobustWeighting, PositionSolver,
 };
 use support::position_truth::{
     add_klobuchar_delay_to_observations, add_saastamoinen_delay_to_observations,
@@ -700,6 +700,26 @@ fn single_point_solver_recovers_four_satellite_fix() {
 }
 
 #[test]
+fn single_point_solver_reports_ecef_position_covariance() {
+    let scenario = four_satellite_position_scenario(0.0);
+    let solution = PositionSolver::new()
+        .solve_wls(&scenario.observations, &scenario.ephemerides, scenario.t_rx_s)
+        .expect("timed four-satellite observations should solve");
+    let covariance = solution
+        .position_covariance_ecef_m2
+        .expect("solver should emit position covariance");
+
+    for row in covariance {
+        for value in row {
+            assert!(value.is_finite());
+        }
+    }
+    assert!(covariance[0][0] > 0.0);
+    assert!(covariance[1][1] > 0.0);
+    assert!(covariance[2][2] > 0.0);
+}
+
+#[test]
 fn single_point_solver_recovers_receiver_clock_bias() {
     let scenario = four_satellite_position_scenario(2.75e-4);
     let solution = PositionSolver::new()
@@ -1314,7 +1334,7 @@ fn single_point_solver_refreshes_unbiased_geometry_after_state_update() {
         max_iterations: 1,
         residual_gate_m: 1.0e9,
         chi_square_gate: 1.0e18,
-        robust: false,
+        robust_weighting: PositionRobustWeighting::Disabled,
         raim: false,
         ..PositionSolver::new()
     };
@@ -1352,7 +1372,7 @@ fn single_point_solver_refreshes_biased_geometry_after_state_update() {
         max_iterations: 1,
         residual_gate_m: 1.0e9,
         chi_square_gate: 1.0e18,
-        robust: false,
+        robust_weighting: PositionRobustWeighting::Disabled,
         raim: false,
         ..PositionSolver::new()
     };
