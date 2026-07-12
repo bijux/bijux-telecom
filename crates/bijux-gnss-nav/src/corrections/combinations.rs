@@ -81,6 +81,20 @@ pub fn wide_lane_wavelength_m_from_frequencies(f1_hz: f64, f2_hz: f64) -> Option
     Some(SPEED_OF_LIGHT_MPS / frequency_separation_hz)
 }
 
+pub fn narrow_lane_wavelength_m_from_frequencies(f1_hz: f64, f2_hz: f64) -> Option<f64> {
+    let frequency_sum_hz = f1_hz + f2_hz;
+    if !f1_hz.is_finite()
+        || !f2_hz.is_finite()
+        || f1_hz <= 0.0
+        || f2_hz <= 0.0
+        || !frequency_sum_hz.is_finite()
+        || frequency_sum_hz <= f64::EPSILON
+    {
+        return None;
+    }
+    Some(SPEED_OF_LIGHT_MPS / frequency_sum_hz)
+}
+
 pub fn combinations_from_obs_epochs(
     epochs: &[ObsEpoch],
     band_1: SignalBand,
@@ -158,7 +172,8 @@ pub fn combinations_from_obs_epochs(
 
                         let lambda_wl = wide_lane_wavelength_m_from_frequencies(f1_hz, f2_hz)
                             .expect("wide-lane wavelength must exist for valid frequencies");
-                        let lambda_nl = SPEED_OF_LIGHT_MPS / (f1_hz + f2_hz).max(1.0);
+                        let lambda_nl = narrow_lane_wavelength_m_from_frequencies(f1_hz, f2_hz)
+                            .expect("narrow-lane wavelength must exist for valid frequencies");
                         wide_lane_wavelength_m = Some(lambda_wl);
                         wide_lane_cycles = Some((phi1_m - phi2_m) / lambda_wl);
                         narrow_lane_cycles = Some((phi1_m + phi2_m) / lambda_nl);
@@ -205,7 +220,10 @@ pub fn combinations_from_obs_epochs(
 
 #[cfg(test)]
 mod tests {
-    use super::combinations_from_obs_epochs;
+    use super::{
+        combinations_from_obs_epochs, narrow_lane_wavelength_m_from_frequencies,
+        wide_lane_wavelength_m_from_frequencies,
+    };
     use bijux_gnss_core::api::{
         signal_spec_gps_l1_ca, signal_spec_gps_l2_py, Constellation, Cycles, Hertz, LockFlags,
         Meters, ObsEpoch, ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus,
@@ -321,5 +339,34 @@ mod tests {
         assert_eq!(combinations[0].if_phase_reason, "ok");
         assert!(combinations[0].if_phase_m.is_some());
         assert!(combinations[0].if_code_m.is_none());
+    }
+
+    #[test]
+    fn lane_wavelength_helpers_follow_frequency_sum_and_difference() {
+        let l1 = signal_spec_gps_l1_ca();
+        let l2 = signal_spec_gps_l2_py();
+
+        let wide_lane = wide_lane_wavelength_m_from_frequencies(
+            l1.carrier_hz.value(),
+            l2.carrier_hz.value(),
+        )
+        .expect("wide-lane wavelength");
+        let narrow_lane = narrow_lane_wavelength_m_from_frequencies(
+            l1.carrier_hz.value(),
+            l2.carrier_hz.value(),
+        )
+        .expect("narrow-lane wavelength");
+
+        assert!(
+            (wide_lane
+                - 299_792_458.0 / (l1.carrier_hz.value() - l2.carrier_hz.value()).abs())
+                .abs()
+                < 1.0e-12
+        );
+        assert!(
+            (narrow_lane - 299_792_458.0 / (l1.carrier_hz.value() + l2.carrier_hz.value()))
+                .abs()
+                < 1.0e-12
+        );
     }
 }

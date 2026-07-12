@@ -6,7 +6,7 @@ use bijux_gnss_core::api::{
     signal_cycles_to_meters, signal_wavelength_m, ObsEpoch, ObsSatellite, SatId, SignalBand,
 };
 
-const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
+use crate::corrections::combinations::narrow_lane_wavelength_m_from_frequencies;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct IonoFreePhaseObservation {
@@ -152,7 +152,8 @@ fn evaluate_iono_free_phase(
         + weight_2 * signal_cycles_to_meters(second.carrier_phase_cycles, second.metadata.signal).0;
     let variance_m2 = weight_1.powi(2) * lambda1.powi(2) * first.carrier_phase_var_cycles2
         + weight_2.powi(2) * lambda2.powi(2) * second.carrier_phase_var_cycles2;
-    let narrow_lane_wavelength_m = SPEED_OF_LIGHT_MPS / (f1_hz + f2_hz);
+    let narrow_lane_wavelength_m = narrow_lane_wavelength_m_from_frequencies(f1_hz, f2_hz)
+        .expect("narrow-lane wavelength must exist for valid frequencies");
 
     (Some(phase_m), Some(variance_m2), Some(narrow_lane_wavelength_m), IonoFreePhaseStatus::Ok)
 }
