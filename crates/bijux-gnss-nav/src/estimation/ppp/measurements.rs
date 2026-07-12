@@ -1,6 +1,8 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{signal_cycles_to_meters, ObsEpoch, ObsSatellite, SatId, SigId, SignalBand};
+use bijux_gnss_core::api::{
+    signal_cycles_to_meters, GpsTime, ObsEpoch, ObsSatellite, SatId, SigId, SignalBand,
+};
 
 use crate::corrections::iono_free_code::iono_free_code_from_pair;
 use crate::corrections::iono_free_phase::iono_free_phase_from_pair;
@@ -14,6 +16,7 @@ use super::models::PppCodeMeasurement;
 
 #[derive(Debug, Clone, Copy)]
 pub struct IonoFreeCodeMeasurementObservation {
+    pub gps_time: Option<GpsTime>,
     pub signal_1: SigId,
     pub signal_2: SigId,
     pub code_m: f64,
@@ -452,6 +455,7 @@ pub fn iono_free_code_observation_from_obs(
         return None;
     }
     Some(IonoFreeCodeMeasurementObservation {
+        gps_time: obs.gps_week.zip(obs.tow_s).map(|(week, tow_s)| GpsTime { week, tow_s: tow_s.0 }),
         signal_1: pair.first.signal_id,
         signal_2: pair.second.signal_id,
         code_m: code.code_m?,

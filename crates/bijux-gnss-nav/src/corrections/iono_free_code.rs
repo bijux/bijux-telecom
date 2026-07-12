@@ -2,9 +2,9 @@
 
 use std::collections::BTreeMap;
 
-use bijux_gnss_core::api::{ObsEpoch, ObsSatellite, SatId, SigId, SignalBand};
+use bijux_gnss_core::api::{GpsTime, ObsEpoch, ObsSatellite, SatId, SigId, SignalBand};
 
-use crate::corrections::biases::{iono_free_code_bias_m, CodeBiasProvider};
+use crate::corrections::biases::{iono_free_code_bias_m_at, CodeBiasProvider};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct IonoFreeCodeObservation {
@@ -62,9 +62,11 @@ pub fn iono_free_code_from_obs_epochs_with_biases(
             if first.is_none() && second.is_none() {
                 continue;
             }
+            let gps_time = epoch_gps_time(epoch);
             out.push(iono_free_code_from_pair_with_biases(
                 epoch.epoch_idx,
                 epoch.t_rx_s.0,
+                gps_time,
                 sat,
                 band_1,
                 band_2,
@@ -88,20 +90,14 @@ pub(crate) fn iono_free_code_from_pair(
     second: Option<&ObsSatellite>,
 ) -> IonoFreeCodeObservation {
     iono_free_code_from_pair_with_biases(
-        epoch_idx,
-        t_rx_s,
-        sat,
-        band_1,
-        band_2,
-        first,
-        second,
-        None,
+        epoch_idx, t_rx_s, None, sat, band_1, band_2, first, second, None,
     )
 }
 
 pub(crate) fn iono_free_code_from_pair_with_biases(
     epoch_idx: u64,
     t_rx_s: f64,
+    gps_time: Option<GpsTime>,
     sat: SatId,
     band_1: SignalBand,
     band_2: SignalBand,
@@ -122,7 +118,7 @@ pub(crate) fn iono_free_code_from_pair_with_biases(
     };
     let code_bias_m = match (biases, signal_1, signal_2, code_m) {
         (Some(provider), Some(signal_1), Some(signal_2), Some(_)) => {
-            iono_free_code_bias_m(provider, signal_1, signal_2, f1_hz, f2_hz)
+            iono_free_code_bias_m_at(provider, signal_1, signal_2, f1_hz, f2_hz, gps_time)
         }
         _ => None,
     };
@@ -146,6 +142,10 @@ pub(crate) fn iono_free_code_from_pair_with_biases(
         status: status_text,
         reason,
     }
+}
+
+fn epoch_gps_time(epoch: &ObsEpoch) -> Option<GpsTime> {
+    Some(GpsTime { week: epoch.gps_week?, tow_s: epoch.tow_s?.0 })
 }
 
 fn evaluate_iono_free_code(
@@ -205,13 +205,13 @@ fn status_reason(status: IonoFreeCodeStatus) -> (String, String) {
 #[cfg(test)]
 mod tests {
     use super::{iono_free_code_from_obs_epochs, iono_free_code_from_obs_epochs_with_biases};
+    use crate::corrections::biases::{CodeBias, SignalCodeBiases};
     use bijux_gnss_core::api::{
         signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l5, Constellation, Cycles,
         Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite, ObservationEpochDecision,
         ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand,
         SignalCode,
     };
-    use crate::corrections::biases::{CodeBias, SignalCodeBiases};
 
     fn dual_frequency_epoch(
         second_band: SignalBand,

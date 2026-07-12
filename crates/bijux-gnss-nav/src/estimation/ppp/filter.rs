@@ -2,7 +2,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use bijux_gnss_core::api::{signal_wavelength_m, Constellation, ObsEpoch, ObsSatellite, SatId, SigId};
+use bijux_gnss_core::api::{
+    signal_wavelength_m, Constellation, ObsEpoch, ObsSatellite, SatId, SigId,
+};
 
 use super::config::{PppConfig, PppFilter, PppIndices};
 use super::measurements::{
@@ -13,7 +15,7 @@ use super::models::{PppCodeMeasurement, PppProcessModel};
 use super::state::estimate_sigma;
 use crate::api::compute_corrections;
 use crate::corrections::biases::{
-    iono_free_code_bias_m, CodeBiasProvider, PhaseBiasProvider, ZeroBiases,
+    iono_free_code_bias_m_at, CodeBiasProvider, PhaseBiasProvider, ZeroBiases,
 };
 use crate::corrections::CorrectionContext;
 use crate::estimation::ekf::state::{Ekf, EkfConfig};
@@ -30,12 +32,13 @@ fn resolved_iono_free_code_bias_m(
     provider: &dyn CodeBiasProvider,
     observation: super::measurements::IonoFreeCodeMeasurementObservation,
 ) -> f64 {
-    iono_free_code_bias_m(
+    iono_free_code_bias_m_at(
         provider,
         observation.signal_1,
         observation.signal_2,
         observation.f1_hz,
         observation.f2_hz,
+        observation.gps_time,
     )
     .unwrap_or(0.0)
 }
