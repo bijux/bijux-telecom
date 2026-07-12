@@ -1074,6 +1074,51 @@ fn sequential_position_filter_stays_stable_when_satellite_set_changes() {
 }
 
 #[test]
+fn sequential_position_filter_coasts_through_partial_satellite_loss() {
+    let ephemerides = sample_filter_ephemerides();
+    let epochs = static_receiver_epochs(&ephemerides, 6, 1.0);
+    let mut config = PositionFilterConfig::for_static_receiver();
+    config.base_pseudorange_sigma_m = 1.5;
+    let mut filter = PositionFilter::new(config);
+
+    for epoch in &epochs[..3] {
+        let healthy_observations = observations_for_prns(&epoch.observations, &[1, 2, 3, 4, 5, 6]);
+        filter
+            .solve_epoch(&healthy_observations, &ephemerides, epoch.t_rx_s)
+            .expect("healthy epoch before partial loss should solve");
+    }
+
+    let pre_gap_position_variance_m2 = filter.ekf.p[(filter.indices.pos[0], filter.indices.pos[0])];
+    let gap_observations = observations_for_prns(&epochs[3].observations, &[1, 2, 3]);
+    let refusal = filter
+        .solve_epoch(&gap_observations, &ephemerides, epochs[3].t_rx_s)
+        .expect_err("partial satellite loss should refuse the epoch without resetting");
+
+    assert_eq!(refusal.kind, PositionSolveRefusalKind::InsufficientObservations);
+    assert!(filter.initialized);
+    assert_eq!(filter.last_t_rx_s, Some(epochs[3].t_rx_s));
+    assert_eq!(filter.last_visible_sats.len(), 3);
+    assert!(
+        filter.ekf.p[(filter.indices.pos[0], filter.indices.pos[0])] > pre_gap_position_variance_m2
+    );
+
+    let recovery_observations = observations_for_prns(&epochs[4].observations, &[1, 2, 3, 4, 5, 6]);
+    let recovery = filter
+        .solve_epoch(&recovery_observations, &ephemerides, epochs[4].t_rx_s)
+        .expect("healthy epoch after partial loss should recover");
+    let position_error_m = position_error_3d_m(
+        recovery.ecef_x_m,
+        recovery.ecef_y_m,
+        recovery.ecef_z_m,
+        epochs[4].truth_ecef_m,
+    );
+
+    assert!(position_error_m < 15.0, "position_error_m={position_error_m}");
+    assert_eq!(recovery.used_sat_count, 6);
+    assert_eq!(filter.last_visible_sats.len(), 6);
+}
+
+#[test]
 fn sequential_position_filter_refuses_innovation_growth_and_recovers() {
     let ephemerides = sample_filter_ephemerides();
     let epochs = static_receiver_epochs(&ephemerides, 3, 1.0);
