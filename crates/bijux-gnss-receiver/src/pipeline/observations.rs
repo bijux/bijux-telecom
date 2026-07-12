@@ -3094,6 +3094,7 @@ mod tests {
             whole_code_periods,
             aligned_code_phase_chips,
         );
+        let expected_phase_cycles = signal_meters_to_cycles(Meters(expected_pseudorange_m), signal).0;
         let epoch = TrackEpoch {
             sat: SatId { constellation: Constellation::Beidou, prn: 11 },
             signal_band: SignalBand::B2,
@@ -3114,7 +3115,7 @@ mod tests {
                 &config,
                 70,
                 tracked_signal_center_hz(config.intermediate_freq_hz, signal),
-                0.0,
+                expected_phase_cycles,
             )
         };
         let report = observations_from_tracking_results(&config, &[track_from_epoch(epoch)], 10);
@@ -3126,6 +3127,13 @@ mod tests {
         assert!((obs_sat.metadata.signal.code_rate_hz - 2_046_000.0).abs() <= f64::EPSILON);
         assert_eq!(obs_sat.metadata.pseudorange_model, "tracked_code_phase_alignment");
         assert!((obs_sat.pseudorange_m.0 - expected_pseudorange_m).abs() <= 1.0e-6, "{obs_sat:?}");
+        assert!(
+            (signal_cycles_to_meters(obs_sat.carrier_phase_cycles, obs_sat.metadata.signal).0
+                - expected_pseudorange_m)
+                .abs()
+                <= 1.0e-6,
+            "{obs_sat:?}"
+        );
     }
 
     #[test]
