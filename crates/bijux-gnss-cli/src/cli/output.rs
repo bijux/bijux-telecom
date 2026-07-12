@@ -635,6 +635,19 @@ fn write_obs_timeseries_for_command(
         &residual_path,
         false,
     )?;
+    let quality_path = out_dir.join("observation_measurement_quality.jsonl");
+    let mut quality_lines = Vec::new();
+    for quality in &observation_artifacts.measurement_quality {
+        let wrapped =
+            ObservationMeasurementQualityEpochV1 { header: header.clone(), payload: quality.clone() };
+        quality_lines.push(serde_json::to_string(&wrapped)?);
+    }
+    fs::write(&quality_path, quality_lines.join("\n"))?;
+    validate_jsonl_schema(
+        &schema_path("observation_measurement_quality_epoch_v1.schema.json"),
+        &quality_path,
+        false,
+    )?;
     let mut combos = Vec::new();
     for (band_1, band_2) in supported_observed_dual_frequency_pairs(&observation_artifacts.epochs) {
         combos.extend(bijux_gnss_infra::api::nav::combinations_from_obs_epochs(
@@ -822,6 +835,12 @@ fn write_tracking_timing_for_command(
 struct ObservationResidualEpochV1 {
     header: ArtifactHeaderV1,
     payload: bijux_gnss_infra::api::receiver::ObservationResidualEpochReport,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ObservationMeasurementQualityEpochV1 {
+    header: ArtifactHeaderV1,
+    payload: bijux_gnss_infra::api::receiver::ObservationMeasurementQualityEpochReport,
 }
 
 fn read_tracking_dump(path: &Path) -> Result<Vec<TrackingRow>> {
