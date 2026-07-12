@@ -943,7 +943,8 @@ mod tests {
         constellation_residual_rms, position_broadcast_navigation_from_beidou_navigations,
         position_broadcast_navigation_from_glonass_frames,
         position_broadcast_navigation_from_gps_ephemerides, position_observations_from_epoch,
-        resolve_position_inputs, unknown_inter_system_time_offset_sats,
+        resolve_position_inputs, robust_weight, robust_weights,
+        unknown_inter_system_time_offset_sats, PositionRobustWeighting,
         PositionBroadcastNavigation, PositionObservation, SatelliteState, WorkingSetResidual,
     };
     use crate::estimation::position::navigation::navigation_time_relationship_is_known;
@@ -1517,6 +1518,36 @@ mod tests {
         assert_eq!(galileo.post_fit_sat_count, 1);
         assert!((galileo.pre_fit_rms_m.expect("galileo pre-fit").0 - 12.0).abs() < 1.0e-12);
         assert!((galileo.post_fit_rms_m.expect("galileo post-fit").0 - 2.0).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn disabled_robust_weighting_preserves_unit_weights() {
+        let weights = robust_weights(&[0.0, 12.0, 80.0], PositionRobustWeighting::disabled());
+
+        assert_eq!(weights, vec![1.0, 1.0, 1.0]);
+    }
+
+    #[test]
+    fn huber_robust_weighting_caps_large_residuals_linearly() {
+        let inlier_weight = robust_weight(15.0, PositionRobustWeighting::huber(30.0));
+        let outlier_weight = robust_weight(120.0, PositionRobustWeighting::huber(30.0));
+
+        assert_eq!(inlier_weight, 1.0);
+        assert!((outlier_weight - 0.25).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn tukey_robust_weighting_zeroes_residuals_beyond_cutoff() {
+        let inlier_weight =
+            robust_weight(15.0, PositionRobustWeighting::tukey_biweight(30.0));
+        let boundary_weight =
+            robust_weight(30.0, PositionRobustWeighting::tukey_biweight(30.0));
+        let far_outlier_weight =
+            robust_weight(120.0, PositionRobustWeighting::tukey_biweight(30.0));
+
+        assert!(inlier_weight > 0.0 && inlier_weight < 1.0);
+        assert_eq!(boundary_weight, 0.0);
+        assert_eq!(far_outlier_weight, 0.0);
     }
 
     #[test]
