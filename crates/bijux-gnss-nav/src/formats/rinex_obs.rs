@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use bijux_gnss_core::api::{
+    signal_spec_galileo_e1b, signal_spec_galileo_e5a,
     signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l2c, signal_spec_gps_l5,
     utc_to_gps,
     Constellation, Cycles, GpsTime, Hertz, LeapSeconds, LockFlags, Meters, ObsEpoch, ObsMetadata,
@@ -32,8 +33,16 @@ struct RinexObservationHeader {
 
 impl RinexObservationHeader {
     fn gps_observation_types(&self) -> Option<&[String]> {
+        self.observation_types('G')
+    }
+
+    fn galileo_observation_types(&self) -> Option<&[String]> {
+        self.observation_types('E')
+    }
+
+    fn observation_types(&self, system: char) -> Option<&[String]> {
         if self.version >= 3.0 {
-            self.obs_types_by_system.get(&'G').map(Vec::as_slice)
+            self.obs_types_by_system.get(&system).map(Vec::as_slice)
         } else {
             self.obs_types_v2.as_deref()
         }
@@ -72,7 +81,37 @@ pub struct RinexGpsObservationChannel {
 }
 
 #[derive(Debug, Clone)]
-struct GpsObservationChannel {
+pub struct RinexGalileoObservationDataset {
+    /// RINEX format version read from the header.
+    pub version: f64,
+    /// Marker name if the file declares one.
+    pub marker_name: Option<String>,
+    /// Approximate station coordinates from `APPROX POSITION XYZ`.
+    pub approx_position_ecef_m: Option<(f64, f64, f64)>,
+    /// Observation interval in seconds if declared in the header.
+    pub interval_s: Option<f64>,
+    /// Per-band Galileo observation types imported into `epochs`.
+    pub observation_channels: Vec<RinexGalileoObservationChannel>,
+    /// Galileo observation epochs converted into the workspace observation model.
+    pub epochs: Vec<ObsEpoch>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RinexGalileoObservationChannel {
+    /// Signal band represented by this imported observation channel.
+    pub band: SignalBand,
+    /// Signal code represented by this imported observation channel.
+    pub code: SignalCode,
+    /// Pseudorange observation type used to populate this channel.
+    pub pseudorange_observation_type: String,
+    /// Carrier-phase observation type used when present.
+    pub carrier_phase_observation_type: Option<String>,
+    /// Signal-strength observation type used when present.
+    pub signal_strength_observation_type: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct ImportedObservationChannel {
     band: SignalBand,
     code: SignalCode,
     signal: SignalSpec,
@@ -206,12 +245,19 @@ pub fn parse_rinex_gps_observation_dataset(
     })?;
     let channels = resolve_gps_observation_channels(gps_observation_types)?;
     let epochs = if header.version >= 3.0 {
-        parse_rinex_3_gps_epochs(&lines[header_line_count..], &header, &channels)?
+        parse_rinex_3_constellation_epochs(
+            &lines[header_line_count..],
+            &header,
+            'G',
+            Constellation::Gps,
+            &channels,
+        )?
     } else {
-        parse_rinex_2_gps_epochs(
+        parse_rinex_2_constellation_epochs(
             &lines[header_line_count..],
             gps_observation_types,
             header.time_system,
+            Constellation::Gps,
             &channels,
         )?
     };
@@ -235,15 +281,66 @@ pub fn parse_rinex_gps_observation_dataset(
     })
 }
 
+/// Parse Galileo observations from a RINEX observation file.
+///
+/// The parser preserves only Galileo observation epochs and maps them into `ObsEpoch`
+/// with pseudorange and carrier-phase measurements ready for downstream validation.
+pub fn parse_rinex_galileo_observation_dataset(
+    data: &str,
+) -> Result<RinexGalileoObservationDataset, ParseError> {
+    let lines = data.lines().collect::<Vec<_>>();
+    let (header, header_line_count) = parse_rinex_observation_header(data)?;
+    let galileo_observation_types = header.galileo_observation_types().ok_or_else(|| ParseError {
+        message: "RINEX OBS file does not declare Galileo observation types".to_string(),
+    })?;
+    let channels = resolve_galileo_observation_channels(galileo_observation_types)?;
+    let epochs = if header.version >= 3.0 {
+        parse_rinex_3_constellation_epochs(
+            &lines[header_line_count..],
+            &header,
+            'E',
+            Constellation::Galileo,
+            &channels,
+        )?
+    } else {
+        parse_rinex_2_constellation_epochs(
+            &lines[header_line_count..],
+            galileo_observation_types,
+            header.time_system,
+            Constellation::Galileo,
+            &channels,
+        )?
+    };
+
+    Ok(RinexGalileoObservationDataset {
+        version: header.version,
+        marker_name: header.marker_name,
+        approx_position_ecef_m: header.approx_position_ecef_m,
+        interval_s: header.interval_s,
+        observation_channels: channels
+            .iter()
+            .map(|channel| RinexGalileoObservationChannel {
+                band: channel.band,
+                code: channel.code,
+                pseudorange_observation_type: channel.pseudorange_type.clone(),
+                carrier_phase_observation_type: channel.carrier_phase_type.clone(),
+                signal_strength_observation_type: channel.signal_strength_type.clone(),
+            })
+            .collect(),
+        epochs,
+    })
+}
+
 fn rinex_header_label(line: &str) -> &str {
     line.get(60..).unwrap_or_default().trim()
 }
 
-fn parse_rinex_2_gps_epochs(
+fn parse_rinex_2_constellation_epochs(
     lines: &[&str],
-    gps_observation_types: &[String],
+    observation_types: &[String],
     time_system: RinexObservationTimeSystem,
-    channels: &[GpsObservationChannel],
+    constellation: Constellation,
+    channels: &[ImportedObservationChannel],
 ) -> Result<Vec<ObsEpoch>, ParseError> {
     let mut epochs = Vec::new();
     let mut line_index = 0usize;
@@ -269,9 +366,8 @@ fn parse_rinex_2_gps_epochs(
                 header_line_count,
             } => {
                 line_index += header_line_count;
-                let observation_line_count =
-                    observation_record_line_count(gps_observation_types.len());
-                let mut gps_satellites = Vec::new();
+                let observation_line_count = observation_record_line_count(observation_types.len());
+                let mut imported_satellites = Vec::new();
 
                 for satellite in satellites {
                     let record_lines = lines
@@ -283,24 +379,24 @@ fn parse_rinex_2_gps_epochs(
                         ),
                     })?;
                     let observations =
-                        parse_observation_record(record_lines, gps_observation_types.len(), 0)?;
+                        parse_observation_record(record_lines, observation_types.len(), 0)?;
                     line_index += observation_line_count;
-                    if satellite.constellation != Constellation::Gps {
+                    if satellite.constellation != constellation {
                         continue;
                     }
-                    gps_satellites.extend(build_gps_observations(
+                    imported_satellites.extend(build_constellation_observations(
                         satellite,
                         &observations,
                         channels,
                     )?);
                 }
 
-                if !gps_satellites.is_empty() {
+                if !imported_satellites.is_empty() {
                     epochs.push(build_obs_epoch(
                         epoch_idx,
                         receive_gps_time,
                         discontinuity,
-                        gps_satellites,
+                        imported_satellites,
                     ));
                 }
                 epoch_idx += 1;
@@ -311,10 +407,12 @@ fn parse_rinex_2_gps_epochs(
     Ok(epochs)
 }
 
-fn parse_rinex_3_gps_epochs(
+fn parse_rinex_3_constellation_epochs(
     lines: &[&str],
     header: &RinexObservationHeader,
-    channels: &[GpsObservationChannel],
+    system: char,
+    constellation: Constellation,
+    channels: &[ImportedObservationChannel],
 ) -> Result<Vec<ObsEpoch>, ParseError> {
     let mut epochs = Vec::new();
     let mut line_index = 0usize;
@@ -335,7 +433,7 @@ fn parse_rinex_3_gps_epochs(
         let (receive_gps_time, discontinuity, satellite_count) =
             parse_rinex_3_epoch_header(line, header.time_system)?;
         line_index += 1;
-        let mut gps_satellites = Vec::new();
+        let mut imported_satellites = Vec::new();
 
         for _ in 0..satellite_count {
             let record_start = lines.get(line_index).ok_or_else(|| ParseError {
@@ -366,22 +464,23 @@ fn parse_rinex_3_gps_epochs(
                 })?;
             let observations = parse_observation_record(record_lines, observation_types.len(), 3)?;
             line_index += record_line_count;
-            if satellite_token.satellite.constellation != Constellation::Gps {
+            if satellite_token.system != system || satellite_token.satellite.constellation != constellation
+            {
                 continue;
             }
-            gps_satellites.extend(build_gps_observations(
+            imported_satellites.extend(build_constellation_observations(
                 satellite_token.satellite,
                 &observations,
                 channels,
             )?);
         }
 
-        if !gps_satellites.is_empty() {
+        if !imported_satellites.is_empty() {
             epochs.push(build_obs_epoch(
                 epoch_idx,
                 receive_gps_time,
                 discontinuity,
-                gps_satellites,
+                imported_satellites,
             ));
         }
         epoch_idx += 1;
@@ -508,7 +607,7 @@ fn parse_rinex_3_epoch_header(
 
 fn resolve_gps_observation_channels(
     observation_types: &[String],
-) -> Result<Vec<GpsObservationChannel>, ParseError> {
+) -> Result<Vec<ImportedObservationChannel>, ParseError> {
     let mut channels = Vec::new();
 
     for (
@@ -579,7 +678,7 @@ fn resolve_gps_observation_channels(
             continue;
         };
         let pseudorange_type = observation_types[pseudorange_index].clone();
-        channels.push(GpsObservationChannel {
+        channels.push(ImportedObservationChannel {
             band,
             code,
             signal,
@@ -613,10 +712,77 @@ fn resolve_gps_observation_channels(
     Ok(channels)
 }
 
-fn build_gps_observations(
+fn resolve_galileo_observation_channels(
+    observation_types: &[String],
+) -> Result<Vec<ImportedObservationChannel>, ParseError> {
+    let mut channels = Vec::new();
+
+    for (
+        band,
+        code,
+        signal,
+        pseudorange_candidates,
+        carrier_phase_candidates,
+        signal_strength_candidates,
+    ) in [(
+        SignalBand::E1,
+        SignalCode::E1B,
+        signal_spec_galileo_e1b(),
+        vec!["C1C".to_string(), "C1X".to_string(), "C1B".to_string()],
+        vec!["L1C".to_string(), "L1X".to_string(), "L1B".to_string()],
+        vec!["S1C".to_string(), "S1X".to_string(), "S1B".to_string()],
+    ), (
+        SignalBand::E5,
+        SignalCode::E5a,
+        signal_spec_galileo_e5a(),
+        vec!["C5Q".to_string(), "C5X".to_string(), "C5I".to_string()],
+        vec!["L5Q".to_string(), "L5X".to_string(), "L5I".to_string()],
+        vec!["S5Q".to_string(), "S5X".to_string(), "S5I".to_string()],
+    )] {
+        let Some(pseudorange_index) =
+            find_observation_index(observation_types, &pseudorange_candidates)
+        else {
+            continue;
+        };
+        let pseudorange_type = observation_types[pseudorange_index].clone();
+        channels.push(ImportedObservationChannel {
+            band,
+            code,
+            signal,
+            pseudorange_index,
+            pseudorange_type,
+            carrier_phase_index: find_observation_index(
+                observation_types,
+                &carrier_phase_candidates,
+            ),
+            carrier_phase_type: find_observation_type(observation_types, &carrier_phase_candidates),
+            signal_strength_index: find_observation_index(
+                observation_types,
+                &signal_strength_candidates,
+            ),
+            signal_strength_type: find_observation_type(
+                observation_types,
+                &signal_strength_candidates,
+            ),
+        });
+    }
+
+    if channels.is_empty() {
+        return Err(ParseError {
+            message: format!(
+                "RINEX OBS file does not provide a supported Galileo observation channel; found {}",
+                observation_types.join(", ")
+            ),
+        });
+    }
+
+    Ok(channels)
+}
+
+fn build_constellation_observations(
     satellite: SatId,
     observations: &[Option<f64>],
-    channels: &[GpsObservationChannel],
+    channels: &[ImportedObservationChannel],
 ) -> Result<Vec<ObsSatellite>, ParseError> {
     let mut satellites = Vec::new();
 
@@ -626,7 +792,7 @@ fn build_gps_observations(
             Some(value) => {
                 return Err(ParseError {
                     message: format!(
-                        "invalid GPS pseudorange for {:?}-{:02} {:?}: {value}",
+                        "invalid pseudorange for {:?}-{:02} {:?}: {value}",
                         satellite.constellation, satellite.prn, channel.band
                     ),
                 });
@@ -1053,12 +1219,15 @@ mod tests {
     use std::path::PathBuf;
 
     use bijux_gnss_core::api::{
-        check_dual_frequency_observations, signal_spec_gps_l2c, signal_spec_gps_l5,
-        validate_obs_epochs,
+        check_dual_frequency_observations, signal_spec_galileo_e1b, signal_spec_galileo_e5a,
+        signal_spec_gps_l2c, signal_spec_gps_l5, validate_obs_epochs,
         Constellation, SatId, SignalBand, SignalCode,
     };
 
-    use super::{parse_rinex_gps_observation_dataset, parse_rinex_observation_header};
+    use super::{
+        parse_rinex_galileo_observation_dataset, parse_rinex_gps_observation_dataset,
+        parse_rinex_observation_header,
+    };
 
     fn fixture(name: &str) -> String {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data").join(name);
@@ -1277,6 +1446,48 @@ mod tests {
         assert_eq!(l5.signal_id.code, SignalCode::Unknown);
         assert_eq!(l5.metadata.signal, signal_spec_gps_l5());
         assert_eq!(l5.cn0_dbhz, 49.5);
+    }
+
+    #[test]
+    fn parse_rinex_3_galileo_e1_e5_observation_epoch() {
+        let data = [
+            format!(
+                "{:<60}{}",
+                "     3.04           OBSERVATION DATA    M (MIXED)", "RINEX VERSION / TYPE"
+            ),
+            format!("{:<60}{}", "galileo-station", "MARKER NAME"),
+            format!("{:<60}{}", "E    5 C1C L1C C5Q L5Q S5Q", "SYS / # / OBS TYPES"),
+            format!("{:<60}{}", "", "END OF HEADER"),
+            "> 2022 05 14 00 00 00.0000000  0  1".to_string(),
+            format!(
+                "{:<3}{:>14}  {:>14}  {:>14}  {:>14}  {:>14}",
+                "E11", 24345678.123, 223456.250, 24345680.750, 223450.500, 47.0
+            ),
+        ]
+        .join("\n");
+        let dataset = parse_rinex_galileo_observation_dataset(&data)
+            .expect("parse synthetic RINEX 3 Galileo E1/E5 data");
+
+        assert_eq!(dataset.observation_channels.len(), 2);
+        assert_eq!(dataset.observation_channels[0].band, SignalBand::E1);
+        assert_eq!(dataset.observation_channels[0].code, SignalCode::E1B);
+        assert_eq!(dataset.observation_channels[1].band, SignalBand::E5);
+        assert_eq!(dataset.observation_channels[1].code, SignalCode::E5a);
+        assert_eq!(dataset.epochs.len(), 1);
+        assert_eq!(dataset.epochs[0].sats.len(), 2);
+        let e1 = dataset.epochs[0]
+            .sats
+            .iter()
+            .find(|sat| sat.signal_id.band == SignalBand::E1)
+            .expect("E1 observation");
+        let e5 = dataset.epochs[0]
+            .sats
+            .iter()
+            .find(|sat| sat.signal_id.band == SignalBand::E5)
+            .expect("E5 observation");
+        assert_eq!(e1.metadata.signal, signal_spec_galileo_e1b());
+        assert_eq!(e5.metadata.signal, signal_spec_galileo_e5a());
+        assert_eq!(e5.cn0_dbhz, 47.0);
     }
 
     #[test]
