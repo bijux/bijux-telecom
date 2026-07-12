@@ -1,12 +1,13 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    ArtifactPayloadValidate, Constellation, SatId, SigId, SignalBand, SignalCode,
+    signal_id_wavelength_m, ArtifactPayloadValidate, Constellation, SatId, SigId, SignalBand,
+    SignalCode,
 };
 use bijux_gnss_nav::api::{
     rtk_float_baseline_from_double_differences,
-    rtk_float_baseline_from_double_differences_with_rover_prior, RtkFloatAmbiguityEstimate,
-    RtkFloatBaselineSolution,
+    rtk_float_baseline_from_double_differences_with_rover_prior, RtkDoubleDifferenceObservation,
+    RtkFloatAmbiguityEstimate, RtkFloatBaselineSolution,
 };
 use bijux_gnss_testkit::rtk_baseline::clean_gps_l1_short_baseline_case;
 
@@ -22,6 +23,37 @@ fn enu_to_ecef(base_ecef_m: [f64; 3], enu_m: [f64; 3]) -> [f64; 3] {
     let dy = cos_lon * east_m - sin_lat * sin_lon * north_m + cos_lat * sin_lon * up_m;
     let dz = cos_lat * north_m + sin_lat * up_m;
     [base_ecef_m[0] + dx, base_ecef_m[1] + dy, base_ecef_m[2] + dz]
+}
+
+fn retarget_double_differences_signal(
+    observations: &[RtkDoubleDifferenceObservation],
+    band: SignalBand,
+    code: SignalCode,
+) -> Vec<RtkDoubleDifferenceObservation> {
+    observations
+        .iter()
+        .cloned()
+        .map(|mut observation| {
+            let source_wavelength_m =
+                signal_id_wavelength_m(observation.sig).expect("fixture signal wavelength").0;
+            observation.sig.band = band;
+            observation.sig.code = code;
+            observation.ref_sig.band = band;
+            observation.ref_sig.code = code;
+            let target_wavelength_m =
+                signal_id_wavelength_m(observation.sig).expect("target signal wavelength").0;
+            let phase_scale = source_wavelength_m / target_wavelength_m;
+            observation.phase_cycles *= phase_scale;
+            observation.phase_variance_cycles2 *= phase_scale * phase_scale;
+            observation
+        })
+        .collect()
+}
+
+fn assert_solution_matches_truth(solution: &RtkFloatBaselineSolution, truth_enu_m: [f64; 3]) {
+    assert!((solution.enu_m[0] - truth_enu_m[0]).abs() < 0.05, "east mismatch");
+    assert!((solution.enu_m[1] - truth_enu_m[1]).abs() < 0.05, "north mismatch");
+    assert!((solution.enu_m[2] - truth_enu_m[2]).abs() < 0.10, "up mismatch");
 }
 
 #[test]
@@ -89,6 +121,48 @@ fn rtk_float_baseline_solver_accepts_explicit_rover_prior() {
     assert!((solution.enu_m[0] - scenario.truth_enu_m[0]).abs() < 0.05);
     assert!((solution.enu_m[1] - scenario.truth_enu_m[1]).abs() < 0.05);
     assert!((solution.enu_m[2] - scenario.truth_enu_m[2]).abs() < 0.10);
+}
+
+#[test]
+fn rtk_float_baseline_solver_supports_gps_l2c_wavelengths() {
+    let scenario = clean_gps_l1_short_baseline_case();
+    let double_differences =
+        retarget_double_differences_signal(
+            &scenario.double_differences,
+            SignalBand::L2,
+            SignalCode::L2C,
+        );
+
+    let solution = rtk_float_baseline_from_double_differences(
+        &double_differences,
+        scenario.base_ecef_m,
+        &scenario.ephemerides,
+        scenario.receive_gps_time.tow_s,
+    )
+    .expect("float baseline");
+
+    assert_solution_matches_truth(&solution, scenario.truth_enu_m);
+}
+
+#[test]
+fn rtk_float_baseline_solver_supports_gps_l5_wavelengths() {
+    let scenario = clean_gps_l1_short_baseline_case();
+    let double_differences =
+        retarget_double_differences_signal(
+            &scenario.double_differences,
+            SignalBand::L5,
+            SignalCode::Unknown,
+        );
+
+    let solution = rtk_float_baseline_from_double_differences(
+        &double_differences,
+        scenario.base_ecef_m,
+        &scenario.ephemerides,
+        scenario.receive_gps_time.tow_s,
+    )
+    .expect("float baseline");
+
+    assert_solution_matches_truth(&solution, scenario.truth_enu_m);
 }
 
 #[test]
