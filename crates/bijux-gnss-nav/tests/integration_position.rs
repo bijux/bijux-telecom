@@ -91,6 +91,10 @@ fn position_error_3d_m(
     (dx * dx + dy * dy + dz * dz).sqrt()
 }
 
+fn max_abs_residual_m(residuals: &[(SatId, f64, f64)]) -> f64 {
+    residuals.iter().map(|(_, residual_m, _)| residual_m.abs()).fold(0.0, f64::max)
+}
+
 fn observation_with_signal_id(
     mut observation: PositionObservation,
     signal_id: SigId,
@@ -819,6 +823,81 @@ fn mixed_gps_galileo_beidou_solver_recovers_position_and_clock_splits() {
         .expect("beidou inter-system bias");
     assert!((galileo_isb.bias_s.0 - galileo_bias_s).abs() < 1.0e-8);
     assert!((beidou_isb.bias_s.0 - beidou_bias_s).abs() < 1.0e-8);
+}
+
+#[test]
+fn gps_l5_observations_show_tgd_residuals_when_corrections_are_disabled() {
+    let truth_ecef_m = geodetic_to_ecef(37.0, -122.0, 10.0);
+    let receiver_clock_bias_s = 2.75e-4;
+    let t_rx_s = 504_018.07 + receiver_clock_bias_s;
+    let mut gps_ephemerides =
+        sample_ephemerides_with_clock_parameters(&broadcast_clock_fixture_parameters());
+    let mut fifth_ephemeris = sample_ephemeris(5, 3.2, 3.4);
+    fifth_ephemeris.toe_s = 504_000.0;
+    fifth_ephemeris.toc_s = 504_018.0;
+    fifth_ephemeris.tgd = -12.0e-9;
+    gps_ephemerides.push(fifth_ephemeris);
+
+    let observations = gps_ephemerides
+        .iter()
+        .map(|ephemeris| {
+            let signal =
+                SigId { sat: ephemeris.sat, band: SignalBand::L5, code: SignalCode::Unknown };
+            let observation = timed_position_observation_from_truth(
+                ephemeris,
+                truth_ecef_m,
+                t_rx_s,
+                receiver_clock_bias_s,
+            );
+            observation_with_signal_id(
+                observation_with_pseudorange_bias(
+                    observation,
+                    gps_broadcast_group_delay_code_bias_m(signal, ephemeris)
+                        .expect("GPS L5 broadcast group delay bias"),
+                ),
+                signal,
+            )
+        })
+        .collect::<Vec<_>>();
+    let navigation = position_broadcast_navigation_from_gps_ephemerides(&gps_ephemerides);
+
+    let corrected_solver = PositionSolver::new();
+    let uncorrected_solver =
+        PositionSolver { apply_broadcast_group_delay: false, ..PositionSolver::new() };
+    let corrected_solution = corrected_solver
+        .solve_wls_with_navigation_data(&observations, &navigation, t_rx_s)
+        .expect("corrected GPS L5 observations should solve");
+    let uncorrected_solution = uncorrected_solver
+        .solve_wls_with_navigation_data(&observations, &navigation, t_rx_s)
+        .expect("uncorrected GPS L5 observations should still solve");
+
+    let corrected_error_m = position_error_3d_m(
+        corrected_solution.ecef_x_m,
+        corrected_solution.ecef_y_m,
+        corrected_solution.ecef_z_m,
+        truth_ecef_m,
+    );
+    let uncorrected_error_m = position_error_3d_m(
+        uncorrected_solution.ecef_x_m,
+        uncorrected_solution.ecef_y_m,
+        uncorrected_solution.ecef_z_m,
+        truth_ecef_m,
+    );
+
+    assert_eq!(corrected_solution.used_sat_count, 5);
+    assert!(corrected_solution.rejected.is_empty());
+    assert!(uncorrected_solution.rejected.is_empty());
+    assert!(corrected_error_m < 5.0);
+    assert!(uncorrected_error_m > corrected_error_m + 1.0);
+    assert!(corrected_solution.post_fit_residual_rms_m < 0.01);
+    assert!(
+        uncorrected_solution.post_fit_residual_rms_m
+            > corrected_solution.post_fit_residual_rms_m + 0.5
+    );
+    assert!(
+        max_abs_residual_m(&uncorrected_solution.residuals)
+            > max_abs_residual_m(&corrected_solution.residuals) + 0.5
+    );
 }
 
 #[test]
