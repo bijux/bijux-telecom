@@ -23,6 +23,7 @@ use crate::estimation::position::solver::{elevation_azimuth_deg, position_measur
 use crate::estimation::ppp::config::{PppConvergenceState, PppHealth, PppSolutionEpoch};
 use crate::formats::precise_products::{ProductDiagnostics, ProductsProvider};
 use crate::linalg::Matrix;
+use crate::models::atmosphere::SaastamoinenModel;
 use crate::orbits::gps::{
     gps_ephemeris_age, gps_satellite_clock_correction, sat_state_gps_l1ca, select_best_ephemeris,
     GpsEphemeris, GpsSatState,
@@ -185,9 +186,10 @@ impl PppFilter {
             let rx_z = self.ekf.x[self.indices.pos[2]];
             let (_az, el) =
                 elevation_azimuth_deg(rx_x, rx_y, rx_z, state.x_m, state.y_m, state.z_m);
-            if el < self.config.weighting.min_elev_deg {
+            if !el.is_finite() || el < self.config.weighting.min_elev_deg {
                 continue;
             }
+            let troposphere_mapping = SaastamoinenModel::mapping_factor(el);
             let weight = position_measurement_weight(
                 Some(sat.cn0_dbhz),
                 Some(el),
@@ -215,6 +217,7 @@ impl PppFilter {
                         sat_pos_m: [state.x_m, state.y_m, state.z_m],
                         sat_clock_s: clock_bias_s,
                         sigma_m: iono_free_code.code_sigma_m.max(sigma_m),
+                        troposphere_mapping,
                         ztd_index: Some(self.indices.ztd),
                         isb_index,
                         corr: corr.clone(),
@@ -233,6 +236,7 @@ impl PppFilter {
                         sat_pos_m: [state.x_m, state.y_m, state.z_m],
                         sat_clock_s: clock_bias_s,
                         sigma_cycles: iono_free_phase.phase_sigma_cycles.max(0.05),
+                        troposphere_mapping,
                         ztd_index: Some(self.indices.ztd),
                         isb_index,
                         ambiguity_index: amb_index,
@@ -247,6 +251,7 @@ impl PppFilter {
                     sat_pos_m: [state.x_m, state.y_m, state.z_m],
                     sat_clock_s: clock_bias_s,
                     sigma_m,
+                    troposphere_mapping,
                     iono_index,
                     ztd_index: Some(self.indices.ztd),
                     isb_index,
@@ -262,6 +267,7 @@ impl PppFilter {
                     sat_pos_m: [state.x_m, state.y_m, state.z_m],
                     sat_clock_s: clock_bias_s,
                     sigma_cycles: 0.05,
+                    troposphere_mapping,
                     iono_index,
                     ztd_index: Some(self.indices.ztd),
                     isb_index,

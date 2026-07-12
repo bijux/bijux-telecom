@@ -54,6 +54,7 @@ pub struct PppCodeMeasurement {
     pub sat_pos_m: [f64; 3],
     pub sat_clock_s: f64,
     pub sigma_m: f64,
+    pub troposphere_mapping: f64,
     pub iono_index: Option<usize>,
     pub ztd_index: Option<usize>,
     pub isb_index: Option<usize>,
