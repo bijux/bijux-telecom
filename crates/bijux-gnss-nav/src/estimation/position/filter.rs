@@ -724,11 +724,28 @@ fn resolved_signal_id(observation: &PositionObservation) -> SigId {
 #[cfg(test)]
 mod tests {
     use super::{
-        PositionFilter, PositionFilterConfig, PositionFilterMotionClass, PositionFilterMotionModel,
-        PositionFilterStaticPositionModel,
+        pseudorange_sigma_m, PositionFilter, PositionFilterConfig, PositionFilterMotionClass,
+        PositionFilterMotionModel, PositionFilterStaticPositionModel,
     };
-    use crate::estimation::position::solver::{PositionObservation, PositionSolveRefusalKind};
+    use crate::estimation::position::solver::{
+        PositionObservation, PositionSolveRefusalKind, WeightingConfig,
+    };
     use bijux_gnss_core::api::{Constellation, SatId};
+
+    fn sample_position_observation(elevation_deg: Option<f64>) -> PositionObservation {
+        PositionObservation {
+            sat: SatId { constellation: Constellation::Gps, prn: 7 },
+            pseudorange_m: 24_000_000.0,
+            doppler_hz: Some(0.0),
+            doppler_var_hz2: Some(1.0),
+            cn0_dbhz: 45.0,
+            elevation_deg,
+            weight: 1.0,
+            gps_receive_time: None,
+            signal_timing: None,
+            signal_id: None,
+        }
+    }
 
     #[test]
     fn position_filter_uses_eight_state_layout() {
@@ -910,6 +927,22 @@ mod tests {
         assert_eq!(filter.ekf.x[2], 3.0);
         assert_eq!(filter.ekf.x[6], 4.0e-4);
         assert!(filter.initialized);
+    }
+
+    #[test]
+    fn position_filter_assigns_larger_sigma_to_low_elevation_pseudorange() {
+        let mut config = PositionFilterConfig::default();
+        config.base_pseudorange_sigma_m = 3.0;
+        config.weighting = WeightingConfig::default();
+
+        let low_elevation_sigma =
+            pseudorange_sigma_m(&sample_position_observation(Some(10.0)), Some(10.0), &config);
+        let high_elevation_sigma =
+            pseudorange_sigma_m(&sample_position_observation(Some(75.0)), Some(75.0), &config);
+
+        assert!(low_elevation_sigma.is_finite());
+        assert!(high_elevation_sigma.is_finite());
+        assert!(low_elevation_sigma > high_elevation_sigma);
     }
 
     #[test]
