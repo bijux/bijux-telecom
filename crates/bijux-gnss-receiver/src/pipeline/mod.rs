@@ -8,6 +8,8 @@
 pub mod acquisition;
 #[cfg(feature = "nav")]
 pub(crate) mod common_code_doppler_anomaly;
+#[cfg(feature = "nav")]
+pub(crate) mod constellation_clock_inconsistency;
 pub mod doppler;
 pub mod hatch;
 #[cfg(feature = "nav")]
