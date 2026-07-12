@@ -23,7 +23,7 @@ use bijux_gnss_nav::api::{
     ecef_to_enu, geometry_free_diagnostics_from_obs_epochs, iono_free_code_from_obs_epochs,
     melbourne_wubbena_diagnostics_from_obs_epochs, GeometryFreeEvent, GeometryFreeThresholds,
     MelbourneWubbenaEvent, MelbourneWubbenaThresholds, PppConfig, PppConvergenceConfig,
-    PppProcessNoise, WeightingConfig,
+    PositionWeightingModel, PppProcessNoise, WeightingConfig,
 };
 use serde::{Deserialize, Serialize};
 
@@ -1198,9 +1198,18 @@ fn build_ppp_config(profile: &ReceiverConfig) -> PppConfig {
             ambiguity_cycles: p.noise_ambiguity,
         },
         weighting: WeightingConfig {
+            model: match profile.navigation.weighting.mode {
+                crate::engine::receiver_config::NavigationWeightingMode::Elevation => {
+                    PositionWeightingModel::Elevation
+                }
+                crate::engine::receiver_config::NavigationWeightingMode::Cn0 => {
+                    PositionWeightingModel::Cn0
+                }
+            },
             enabled: profile.navigation.weighting.enabled,
             min_elev_deg: profile.navigation.weighting.min_elev_deg,
             elev_exponent: profile.navigation.weighting.elev_exponent,
+            cn0_ref_dbhz: profile.navigation.weighting.cn0_ref_dbhz,
             min_weight: profile.navigation.weighting.min_weight,
         },
         convergence: PppConvergenceConfig {

@@ -254,6 +254,14 @@ impl ConstellationSelectionPolicy {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum NavigationWeightingMode {
+    #[default]
+    Elevation,
+    Cn0,
+}
+
 impl Default for ConstellationSelectionPolicy {
     fn default() -> Self {
         Self::Mixed
@@ -484,6 +492,9 @@ pub struct PppConfig {
 pub struct NavigationWeightingConfig {
     /// Enable weighting.
     pub enabled: bool,
+    /// Measurement weighting model.
+    #[serde(default)]
+    pub mode: NavigationWeightingMode,
     /// Minimum elevation, in degrees.
     pub min_elev_deg: f64,
     /// Elevation exponent for weighting.

@@ -56,9 +56,10 @@ pub use crate::estimation::position::solver::{
     position_broadcast_navigation_from_glonass_frames,
     position_broadcast_navigation_from_gps_ephemerides, position_dops_from_satellite_positions,
     position_measurement_weight, position_observation_has_valid_satellite_time,
-    position_observations_from_epoch, weight_from_elevation, weight_from_pseudorange_sigma,
-    PositionBroadcastNavigation, PositionDops, PositionObservation, PositionRobustWeighting,
-    PositionSolveRefusal, PositionSolveRefusalKind, PositionSolver, WeightingConfig,
+    position_observations_from_epoch, weight_from_cn0, weight_from_elevation,
+    weight_from_pseudorange_sigma, PositionBroadcastNavigation, PositionDops,
+    PositionObservation, PositionRobustWeighting, PositionSolveRefusal, PositionSolveRefusalKind,
+    PositionSolver, PositionWeightingModel, WeightingConfig,
 };
 /// PPP configuration and filter.
 pub use crate::estimation::ppp::config::{

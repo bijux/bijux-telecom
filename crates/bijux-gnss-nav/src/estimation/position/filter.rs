@@ -679,7 +679,8 @@ fn pseudorange_sigma_m(
     elevation_deg: Option<f64>,
     config: &PositionFilterConfig,
 ) -> f64 {
-    let geometry_weight = position_measurement_weight(elevation_deg, None, config.weighting);
+    let geometry_weight =
+        position_measurement_weight(Some(observation.cn0_dbhz), elevation_deg, None, config.weighting);
     let total_weight = (geometry_weight * observation.weight.max(1.0e-6)).max(1.0e-6);
     (config.base_pseudorange_sigma_m / total_weight.sqrt()).max(1.0e-3)
 }
@@ -689,7 +690,8 @@ fn doppler_sigma_hz(
     elevation_deg: Option<f64>,
     config: &PositionFilterConfig,
 ) -> f64 {
-    let geometry_weight = position_measurement_weight(elevation_deg, None, config.weighting);
+    let geometry_weight =
+        position_measurement_weight(Some(observation.cn0_dbhz), elevation_deg, None, config.weighting);
     let total_weight = (geometry_weight * observation.weight.max(1.0e-6)).max(1.0e-6);
     let modeled_sigma_hz = (config.base_doppler_sigma_hz / total_weight.sqrt()).max(1.0e-3);
     let observed_sigma_hz = observation

@@ -4,8 +4,8 @@ use bijux_gnss_core::api::SchemaVersion;
 
 use crate::engine::receiver_config::{
     default_tracking_integration_ms, AcquisitionConfig, ConstellationSelectionPolicy,
-    FrontEndConfig, NavigationConfig, NavigationWeightingConfig, PppConfig, ReceiverConfig,
-    ScienceThresholdsConfig, TrackingConfig,
+    FrontEndConfig, NavigationConfig, NavigationWeightingConfig, NavigationWeightingMode,
+    PppConfig, ReceiverConfig, ScienceThresholdsConfig, TrackingConfig,
 };
 
 impl Default for ReceiverConfig {
@@ -77,6 +77,7 @@ impl Default for NavigationWeightingConfig {
     fn default() -> Self {
         Self {
             enabled: true,
+            mode: NavigationWeightingMode::Elevation,
             min_elev_deg: 5.0,
             elev_exponent: 2.0,
             cn0_ref_dbhz: 50.0,

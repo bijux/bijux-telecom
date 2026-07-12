@@ -19,7 +19,7 @@ use crate::corrections::biases::{
 };
 use crate::corrections::CorrectionContext;
 use crate::estimation::ekf::state::{Ekf, EkfConfig};
-use crate::estimation::position::solver::{elevation_azimuth_deg, weight_from_elevation};
+use crate::estimation::position::solver::{elevation_azimuth_deg, position_measurement_weight};
 use crate::estimation::ppp::config::{PppConvergenceState, PppHealth, PppSolutionEpoch};
 use crate::formats::precise_products::{ProductDiagnostics, ProductsProvider};
 use crate::linalg::Matrix;
@@ -188,7 +188,8 @@ impl PppFilter {
             if el < self.config.weighting.min_elev_deg {
                 continue;
             }
-            let weight = weight_from_elevation(el, self.config.weighting);
+            let weight =
+                position_measurement_weight(Some(sat.cn0_dbhz), Some(el), None, self.config.weighting);
             let sigma_m = (5.0 / weight.max(0.1)).max(1.0);
 
             let isb_index = self.indices.isb.get(&sat.signal_id.sat.constellation).copied();

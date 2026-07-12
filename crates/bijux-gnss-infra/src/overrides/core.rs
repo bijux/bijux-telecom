@@ -1,7 +1,7 @@
 //! Configuration override helpers.
 
 use bijux_gnss_receiver::api::core::InputError;
-use bijux_gnss_receiver::api::ReceiverConfig;
+use bijux_gnss_receiver::api::{NavigationWeightingMode, ReceiverConfig};
 
 use crate::overrides::CommonOverrides;
 
@@ -70,6 +70,17 @@ pub(crate) fn apply_sweep_value(
         }
         "navigation.weighting.elev_mask_deg" => {
             profile.navigation.weighting.elev_mask_deg = value.parse().map_err(map)?
+        }
+        "navigation.weighting.mode" => {
+            profile.navigation.weighting.mode = match value {
+                "elevation" => NavigationWeightingMode::Elevation,
+                "cn0" => NavigationWeightingMode::Cn0,
+                _ => {
+                    return Err(InputError {
+                        message: format!("unsupported navigation.weighting.mode: {value}"),
+                    });
+                }
+            }
         }
         "navigation.weighting.elev_exponent" => {
             profile.navigation.weighting.elev_exponent = value.parse().map_err(map)?
