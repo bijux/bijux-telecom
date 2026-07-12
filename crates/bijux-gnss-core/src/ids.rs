@@ -396,6 +396,50 @@ pub fn signal_id_meters_to_cycles(distance_m: Meters, signal_id: SigId) -> Optio
     Some(Cycles(distance_m.0 / signal_id_wavelength_m(signal_id)?.0))
 }
 
+pub fn first_order_ionosphere_code_delay_m(
+    reference_delay_m: Meters,
+    reference_signal: SignalSpec,
+    target_signal: SignalSpec,
+) -> Option<Meters> {
+    scaled_inverse_square_delay_m(
+        reference_delay_m,
+        reference_signal.carrier_hz,
+        target_signal.carrier_hz,
+    )
+}
+
+pub fn first_order_ionosphere_phase_advance_m(
+    reference_delay_m: Meters,
+    reference_signal: SignalSpec,
+    target_signal: SignalSpec,
+) -> Option<Meters> {
+    Some(Meters(
+        -first_order_ionosphere_code_delay_m(reference_delay_m, reference_signal, target_signal)?.0,
+    ))
+}
+
+fn scaled_inverse_square_delay_m(
+    reference_delay_m: Meters,
+    reference_carrier_hz: FreqHz,
+    target_carrier_hz: FreqHz,
+) -> Option<Meters> {
+    let reference_delay_m = reference_delay_m.0;
+    let reference_carrier_hz = reference_carrier_hz.value();
+    let target_carrier_hz = target_carrier_hz.value();
+    if !reference_delay_m.is_finite()
+        || !reference_carrier_hz.is_finite()
+        || !target_carrier_hz.is_finite()
+        || reference_carrier_hz <= 0.0
+        || target_carrier_hz <= 0.0
+    {
+        return None;
+    }
+
+    let scaled_delay_m = reference_delay_m * (reference_carrier_hz * reference_carrier_hz)
+        / (target_carrier_hz * target_carrier_hz);
+    scaled_delay_m.is_finite().then_some(Meters(scaled_delay_m))
+}
+
 pub fn glonass_l1_carrier_hz(frequency_channel: GlonassFrequencyChannel) -> FreqHz {
     FreqHz::new(
         GLONASS_L1_CARRIER_HZ.value()
@@ -465,10 +509,12 @@ pub fn default_acquisition_signal(constellation: Constellation) -> Option<Signal
 #[cfg(test)]
 mod tests {
     use super::{
-        carrier_wavelength_m, signal_cycles_to_meters, signal_id_cycles_to_meters,
-        signal_id_meters_to_cycles, signal_id_wavelength_m, signal_meters_to_cycles,
-        signal_registry, signal_spec_beidou_b2i, signal_spec_gps_l2_py, signal_spec_gps_l2c,
-        signal_wavelength_m, Constellation, FreqHz, SatId, SigId, SignalBand, SignalCode,
+        carrier_wavelength_m, first_order_ionosphere_code_delay_m,
+        first_order_ionosphere_phase_advance_m, signal_cycles_to_meters,
+        signal_id_cycles_to_meters, signal_id_meters_to_cycles, signal_id_wavelength_m,
+        signal_meters_to_cycles, signal_registry, signal_spec_beidou_b2i, signal_spec_galileo_e1b,
+        signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l2c, signal_wavelength_m,
+        Constellation, FreqHz, SatId, SigId, SignalBand, SignalCode,
     };
     use crate::units::{Cycles, Meters};
 
@@ -557,5 +603,34 @@ mod tests {
         let phase_cycles = signal_meters_to_cycles(Meters(phase_m.0), signal);
 
         assert!((phase_cycles.0 - 512.5).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn first_order_ionosphere_delay_scales_with_inverse_frequency_square() {
+        let l1 = signal_spec_gps_l1_ca();
+        let l2 = signal_spec_gps_l2c();
+        let reference_delay_m = Meters(5.0);
+
+        let scaled_delay_m =
+            first_order_ionosphere_code_delay_m(reference_delay_m, l1, l2).expect("delay");
+        let expected_delay_m = reference_delay_m.0
+            * (l1.carrier_hz.value() * l1.carrier_hz.value())
+            / (l2.carrier_hz.value() * l2.carrier_hz.value());
+
+        assert!((scaled_delay_m.0 - expected_delay_m).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn first_order_ionosphere_phase_advance_is_negative_code_delay() {
+        let l1 = signal_spec_gps_l1_ca();
+        let e1 = signal_spec_galileo_e1b();
+        let reference_delay_m = Meters(4.0);
+
+        let code_delay_m =
+            first_order_ionosphere_code_delay_m(reference_delay_m, l1, e1).expect("code delay");
+        let phase_advance_m = first_order_ionosphere_phase_advance_m(reference_delay_m, l1, e1)
+            .expect("phase advance");
+
+        assert!((phase_advance_m.0 + code_delay_m.0).abs() < 1.0e-12);
     }
 }
