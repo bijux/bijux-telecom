@@ -7,6 +7,7 @@ use bijux_gnss_core::api::{
 };
 
 use crate::corrections::combinations::narrow_lane_wavelength_m_from_frequencies;
+use crate::corrections::dual_frequency::{dual_frequency_pair_issue, DualFrequencyPairIssue};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct IonoFreePhaseObservation {
@@ -30,6 +31,9 @@ pub struct IonoFreePhaseObservation {
 enum IonoFreePhaseStatus {
     Ok,
     MissingFrequency,
+    UnsupportedBandPair,
+    ConstellationMismatch,
+    TimeSystemMismatch,
     CarrierLockInvalid,
     VarianceInvalid,
     FrequencyInvalid,
@@ -51,9 +55,6 @@ pub fn iono_free_phase_from_obs_epochs(
         for (sat, sats) in by_sat {
             let first = sats.iter().find(|candidate| candidate.signal_id.band == band_1).copied();
             let second = sats.iter().find(|candidate| candidate.signal_id.band == band_2).copied();
-            if first.is_none() && second.is_none() {
-                continue;
-            }
             out.push(iono_free_phase_from_pair(
                 epoch.epoch_idx,
                 epoch.t_rx_s.0,
@@ -83,10 +84,16 @@ pub(crate) fn iono_free_phase_from_pair(
     let f2_hz =
         second.map(|observation| observation.metadata.signal.carrier_hz.value()).unwrap_or(0.0);
 
-    let (phase_m, variance_m2, narrow_lane_wavelength_m, status) = match (first, second) {
-        (Some(first), Some(second)) => evaluate_iono_free_phase(first, second),
-        _ => (None, None, None, IonoFreePhaseStatus::MissingFrequency),
-    };
+    let (phase_m, variance_m2, narrow_lane_wavelength_m, status) =
+        match dual_frequency_pair_issue(sat, band_1, band_2, first, second) {
+            Some(issue) => (None, None, None, iono_free_phase_status_from_pair_issue(issue)),
+            None => {
+                let (Some(first), Some(second)) = (first, second) else {
+                    unreachable!("compatible dual-frequency pairs must include both observations");
+                };
+                evaluate_iono_free_phase(first, second)
+            }
+        };
     let (phase_cycles, variance_cycles2) = match (phase_m, variance_m2, narrow_lane_wavelength_m) {
         (Some(phase_m), Some(variance_m2), Some(narrow_lane_wavelength_m)) => {
             let phase_cycles = phase_m / narrow_lane_wavelength_m;
@@ -164,6 +171,15 @@ fn status_reason(status: IonoFreePhaseStatus) -> (String, String) {
         IonoFreePhaseStatus::MissingFrequency => {
             ("invalid".to_string(), "missing_frequency".to_string())
         }
+        IonoFreePhaseStatus::UnsupportedBandPair => {
+            ("invalid".to_string(), "unsupported_band_pair".to_string())
+        }
+        IonoFreePhaseStatus::ConstellationMismatch => {
+            ("invalid".to_string(), "constellation_mismatch".to_string())
+        }
+        IonoFreePhaseStatus::TimeSystemMismatch => {
+            ("invalid".to_string(), "time_system_mismatch".to_string())
+        }
         IonoFreePhaseStatus::CarrierLockInvalid => {
             ("invalid".to_string(), "carrier_lock_invalid".to_string())
         }
@@ -176,14 +192,23 @@ fn status_reason(status: IonoFreePhaseStatus) -> (String, String) {
     }
 }
 
+fn iono_free_phase_status_from_pair_issue(issue: DualFrequencyPairIssue) -> IonoFreePhaseStatus {
+    match issue {
+        DualFrequencyPairIssue::MissingFrequency => IonoFreePhaseStatus::MissingFrequency,
+        DualFrequencyPairIssue::UnsupportedBandPair => IonoFreePhaseStatus::UnsupportedBandPair,
+        DualFrequencyPairIssue::ConstellationMismatch => IonoFreePhaseStatus::ConstellationMismatch,
+        DualFrequencyPairIssue::TimeSystemMismatch => IonoFreePhaseStatus::TimeSystemMismatch,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::iono_free_phase_from_obs_epochs;
     use bijux_gnss_core::api::{
-        signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l5, Constellation, Cycles,
-        Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite, ObservationEpochDecision,
-        ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand,
-        SignalCode,
+        signal_spec_galileo_e1b, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l5,
+        Constellation, Cycles, GpsTime, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata,
+        ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ReceiverRole,
+        ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
     };
 
     const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
@@ -445,5 +470,122 @@ mod tests {
         assert_eq!(observations[0].reason, "carrier_lock_invalid");
         assert!(observations[0].phase_m.is_none());
         assert!(observations[0].phase_cycles.is_none());
+    }
+
+    #[test]
+    fn iono_free_phase_rejects_unsupported_band_pairs() {
+        let observations = iono_free_phase_from_obs_epochs(
+            &[dual_frequency_epoch(
+                SignalBand::L2,
+                SignalCode::Py,
+                signal_spec_gps_l2_py(),
+                1000.0,
+                1001.0,
+                true,
+                true,
+                0.01,
+                0.01,
+            )],
+            SignalBand::L2,
+            SignalBand::L5,
+        );
+
+        assert_eq!(observations.len(), 1);
+        assert_eq!(observations[0].reason, "unsupported_band_pair");
+    }
+
+    #[test]
+    fn iono_free_phase_rejects_constellation_mismatches() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 11 };
+        let epoch = ObsEpoch {
+            t_rx_s: Seconds(0.0),
+            source_time: ReceiverSampleTrace::from_sample_index(0, 1_000.0),
+            gps_week: None,
+            tow_s: None,
+            epoch_idx: 0,
+            discontinuity: false,
+            valid: true,
+            processing_ms: None,
+            role: ReceiverRole::Rover,
+            sats: vec![
+                make_satellite(
+                    sat,
+                    SignalBand::L1,
+                    SignalCode::Ca,
+                    signal_spec_gps_l1_ca(),
+                    1000.0,
+                    true,
+                    0.01,
+                ),
+                make_satellite(
+                    sat,
+                    SignalBand::L2,
+                    SignalCode::Py,
+                    signal_spec_galileo_e1b(),
+                    1001.0,
+                    true,
+                    0.01,
+                ),
+            ],
+            decision: ObservationEpochDecision::Accepted,
+            decision_reason: Some("accepted_observables_present".to_string()),
+            manifest: None,
+        };
+
+        let observations =
+            iono_free_phase_from_obs_epochs(&[epoch], SignalBand::L1, SignalBand::L2);
+
+        assert_eq!(observations[0].reason, "constellation_mismatch");
+    }
+
+    #[test]
+    fn iono_free_phase_rejects_time_system_mismatches() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 11 };
+        let mut first = make_satellite(
+            sat,
+            SignalBand::L1,
+            SignalCode::Ca,
+            signal_spec_gps_l1_ca(),
+            1000.0,
+            true,
+            0.01,
+        );
+        let mut second = make_satellite(
+            sat,
+            SignalBand::L2,
+            SignalCode::Py,
+            signal_spec_gps_l2_py(),
+            1001.0,
+            true,
+            0.01,
+        );
+        first.timing = Some(ObsSignalTiming {
+            signal_travel_time_s: Seconds(0.075),
+            transmit_gps_time: GpsTime { week: 2200, tow_s: 345_600.0 },
+        });
+        second.timing = Some(ObsSignalTiming {
+            signal_travel_time_s: Seconds(0.075),
+            transmit_gps_time: GpsTime { week: 2201, tow_s: 0.0 },
+        });
+        let epoch = ObsEpoch {
+            t_rx_s: Seconds(0.0),
+            source_time: ReceiverSampleTrace::from_sample_index(0, 1_000.0),
+            gps_week: None,
+            tow_s: None,
+            epoch_idx: 0,
+            discontinuity: false,
+            valid: true,
+            processing_ms: None,
+            role: ReceiverRole::Rover,
+            sats: vec![first, second],
+            decision: ObservationEpochDecision::Accepted,
+            decision_reason: Some("accepted_observables_present".to_string()),
+            manifest: None,
+        };
+
+        let observations =
+            iono_free_phase_from_obs_epochs(&[epoch], SignalBand::L1, SignalBand::L2);
+
+        assert_eq!(observations[0].reason, "time_system_mismatch");
     }
 }
