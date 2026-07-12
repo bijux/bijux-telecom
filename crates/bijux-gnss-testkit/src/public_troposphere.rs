@@ -288,3 +288,64 @@ fn summarize_samples(samples: &[ResidualComparisonSample]) -> Option<ResidualAgg
     }
     Some(aggregate)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        bucket_reports, sample_in_bucket, summarize_samples, ResidualComparisonSample,
+        LOW_ELEVATION_CEILING_DEG, MID_ELEVATION_CEILING_DEG,
+    };
+
+    fn sample(
+        elevation_deg: f64,
+        corrected_abs_residual_m: f64,
+        uncorrected_abs_residual_m: f64,
+    ) -> ResidualComparisonSample {
+        ResidualComparisonSample {
+            elevation_deg,
+            corrected_abs_residual_m,
+            uncorrected_abs_residual_m,
+        }
+    }
+
+    #[test]
+    fn summarize_samples_computes_mean_and_rms_improvement() {
+        let aggregate = summarize_samples(&[sample(10.0, 1.0, 2.0), sample(15.0, 3.0, 5.0)])
+            .expect("aggregate");
+
+        assert_eq!(aggregate.sample_count, 2);
+        assert!((aggregate.mean_abs_corrected_m() - 2.0).abs() < 1.0e-12);
+        assert!((aggregate.mean_abs_uncorrected_m() - 3.5).abs() < 1.0e-12);
+        assert!((aggregate.corrected_rms_m() - 5.0_f64.sqrt()).abs() < 1.0e-12);
+        assert!((aggregate.uncorrected_rms_m() - 29.0_f64.sqrt() / 2.0_f64.sqrt()).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn bucket_reports_split_samples_by_elevation_band() {
+        let buckets = bucket_reports(&[
+            sample(10.0, 1.0, 2.5),
+            sample(30.0, 0.8, 1.2),
+            sample(55.0, 0.6, 0.7),
+        ]);
+
+        assert_eq!(buckets.len(), 3);
+        assert_eq!(buckets[0].bucket_name, "low");
+        assert_eq!(buckets[0].sample_count, 1);
+        assert_eq!(buckets[1].bucket_name, "mid");
+        assert_eq!(buckets[1].sample_count, 1);
+        assert_eq!(buckets[2].bucket_name, "high");
+        assert_eq!(buckets[2].sample_count, 1);
+        assert!(buckets[0].mean_abs_improvement_m > buckets[2].mean_abs_improvement_m);
+    }
+
+    #[test]
+    fn sample_in_bucket_uses_half_open_upper_bounds() {
+        let low_edge = sample(LOW_ELEVATION_CEILING_DEG, 1.0, 2.0);
+        let mid_edge = sample(MID_ELEVATION_CEILING_DEG, 1.0, 2.0);
+
+        assert!(!sample_in_bucket(low_edge, 0.0, Some(LOW_ELEVATION_CEILING_DEG)));
+        assert!(sample_in_bucket(low_edge, LOW_ELEVATION_CEILING_DEG, Some(MID_ELEVATION_CEILING_DEG)));
+        assert!(!sample_in_bucket(mid_edge, LOW_ELEVATION_CEILING_DEG, Some(MID_ELEVATION_CEILING_DEG)));
+        assert!(sample_in_bucket(mid_edge, MID_ELEVATION_CEILING_DEG, None));
+    }
+}
