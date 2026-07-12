@@ -3,13 +3,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use bijux_gnss_core::api::{
-    signal_wavelength_m, Constellation, ObsEpoch, ObsSatellite, SatId, SigId,
+    signal_wavelength_m, Constellation, ObsEpoch, ObsSatellite, SatId, SigId, SignalBand,
 };
 
 use super::config::{PppConfig, PppFilter, PppIndices};
 use super::measurements::{
-    iono_free_code_observation_from_obs, iono_free_phase_observation_from_obs,
-    PppIonoFreeCodeMeasurement, PppIonoFreePhaseMeasurement, PppPhaseMeasurement,
+    iono_free_from_obs, IonoFreeCodeMeasurementObservation, PppIonoFreeCodeMeasurement,
+    PppIonoFreePhaseMeasurement, PppPhaseMeasurement,
 };
 use super::models::{PppCodeMeasurement, PppProcessModel};
 use super::state::estimate_position_uncertainty;
@@ -25,6 +25,7 @@ use crate::estimation::position::solver::{
 use crate::estimation::ppp::config::{PppConvergenceState, PppHealth, PppSolutionEpoch};
 use crate::formats::precise_products::{ProductDiagnostics, ProductsProvider};
 use crate::linalg::Matrix;
+use crate::models::antenna::SatelliteAntennaCalibrations;
 use crate::models::atmosphere::SaastamoinenModel;
 use crate::orbits::gps::{
     gps_ephemeris_age, gps_satellite_clock_correction, sat_state_gps_l1ca, select_best_ephemeris,
@@ -209,18 +210,42 @@ impl PppFilter {
             let code_bias_m =
                 resolved_code_bias_m(self.code_bias.as_ref(), sat.signal_id, obs.gps_time());
             let phase_bias_cycles = self.phase_bias.phase_bias_cycles(sat.signal_id).unwrap_or(0.0);
+            let receiver_pos_m = [rx_x, rx_y, rx_z];
+            let sat_pos_m = [state.x_m, state.y_m, state.z_m];
 
             if self.config.use_iono_free {
-                if let Some(iono_free_code) =
-                    iono_free_code_observation_from_obs(obs, sat.signal_id.sat)
-                {
+                if let Some(iono_free) = iono_free_from_obs(obs, sat.signal_id.sat) {
                     let iono_free_code_bias_m =
-                        resolved_iono_free_code_bias_m(self.code_bias.as_ref(), iono_free_code);
+                        resolved_iono_free_code_bias_m(
+                            self.code_bias.as_ref(),
+                            IonoFreeCodeMeasurementObservation {
+                                gps_time: obs.gps_time(),
+                                signal_1: iono_free.signal_1,
+                                signal_2: iono_free.signal_2,
+                                code_m: iono_free.code_m,
+                                code_sigma_m: iono_free.code_sigma_m,
+                                f1_hz: iono_free.f1_hz,
+                                f2_hz: iono_free.f2_hz,
+                                band_1: iono_free.band_1,
+                                band_2: iono_free.band_2,
+                            },
+                        );
                     let code = PppIonoFreeCodeMeasurement {
-                        z_m: iono_free_code.code_m - iono_free_code_bias_m,
-                        sat_pos_m: [state.x_m, state.y_m, state.z_m],
+                        z_m: iono_free.code_m - iono_free_code_bias_m,
+                        sat_pos_m,
                         sat_clock_s: clock_bias_s,
-                        sigma_m: iono_free_code.code_sigma_m.max(sigma_m),
+                        antenna_range_correction_m: iono_free_antenna_range_correction_m(
+                            self.config.satellite_antenna_calibrations.as_ref(),
+                            sat.signal_id.sat,
+                            iono_free.band_1,
+                            iono_free.f1_hz,
+                            iono_free.band_2,
+                            iono_free.f2_hz,
+                            obs.gps_time(),
+                            sat_pos_m,
+                            receiver_pos_m,
+                        ),
+                        sigma_m: iono_free.code_sigma_m.max(sigma_m),
                         troposphere_mapping,
                         ztd_index: Some(self.indices.ztd),
                         isb_index,
@@ -231,20 +256,27 @@ impl PppFilter {
                     {
                         used += 1;
                     }
-                }
-                if let Some(iono_free_phase) =
-                    iono_free_phase_observation_from_obs(obs, sat.signal_id.sat)
-                {
                     let phase = PppIonoFreePhaseMeasurement {
-                        z_cycles: iono_free_phase.phase_cycles - phase_bias_cycles,
-                        sat_pos_m: [state.x_m, state.y_m, state.z_m],
+                        z_cycles: iono_free.phase_cycles - phase_bias_cycles,
+                        sat_pos_m,
                         sat_clock_s: clock_bias_s,
-                        sigma_cycles: iono_free_phase.phase_sigma_cycles.max(0.05),
+                        antenna_range_correction_m: iono_free_antenna_range_correction_m(
+                            self.config.satellite_antenna_calibrations.as_ref(),
+                            sat.signal_id.sat,
+                            iono_free.band_1,
+                            iono_free.f1_hz,
+                            iono_free.band_2,
+                            iono_free.f2_hz,
+                            obs.gps_time(),
+                            sat_pos_m,
+                            receiver_pos_m,
+                        ),
+                        sigma_cycles: iono_free.phase_sigma_cycles.max(0.05),
                         troposphere_mapping,
                         ztd_index: Some(self.indices.ztd),
                         isb_index,
                         ambiguity_index: amb_index,
-                        wavelength_m: iono_free_phase.phase_wavelength_m,
+                        wavelength_m: iono_free.phase_wavelength_m,
                         corr: corr.clone(),
                     };
                     let _ = self.ekf.update(&phase);
@@ -252,8 +284,16 @@ impl PppFilter {
             } else {
                 let code = PppCodeMeasurement {
                     z_m: sat.pseudorange_m.0 - code_bias_m,
-                    sat_pos_m: [state.x_m, state.y_m, state.z_m],
+                    sat_pos_m,
                     sat_clock_s: clock_bias_s,
+                    antenna_range_correction_m: single_frequency_antenna_range_correction_m(
+                        self.config.satellite_antenna_calibrations.as_ref(),
+                        sat.signal_id.sat,
+                        sat.signal_id.band,
+                        obs.gps_time(),
+                        sat_pos_m,
+                        receiver_pos_m,
+                    ),
                     sigma_m,
                     troposphere_mapping,
                     iono_index,
@@ -268,8 +308,16 @@ impl PppFilter {
                 }
                 let phase = PppPhaseMeasurement {
                     z_cycles: sat.carrier_phase_cycles.0 - phase_bias_cycles,
-                    sat_pos_m: [state.x_m, state.y_m, state.z_m],
+                    sat_pos_m,
                     sat_clock_s: clock_bias_s,
+                    antenna_range_correction_m: single_frequency_antenna_range_correction_m(
+                        self.config.satellite_antenna_calibrations.as_ref(),
+                        sat.signal_id.sat,
+                        sat.signal_id.band,
+                        obs.gps_time(),
+                        sat_pos_m,
+                        receiver_pos_m,
+                    ),
                     sigma_cycles: 0.05,
                     troposphere_mapping,
                     iono_index,
@@ -529,6 +577,48 @@ fn product_reference_time_s(obs: &ObsEpoch) -> f64 {
     obs.gps_time().map(|time| time.tow_s).unwrap_or(obs.t_rx_s.0)
 }
 
+fn single_frequency_antenna_range_correction_m(
+    calibrations: Option<&SatelliteAntennaCalibrations>,
+    sat: SatId,
+    band: SignalBand,
+    gps_time: Option<bijux_gnss_core::api::GpsTime>,
+    sat_pos_m: [f64; 3],
+    receiver_pos_m: [f64; 3],
+) -> f64 {
+    calibrations
+        .and_then(|calibrations| {
+            calibrations.range_correction_m(sat, band, gps_time, sat_pos_m, receiver_pos_m)
+        })
+        .unwrap_or(0.0)
+}
+
+fn iono_free_antenna_range_correction_m(
+    calibrations: Option<&SatelliteAntennaCalibrations>,
+    sat: SatId,
+    band_1: SignalBand,
+    f1_hz: f64,
+    band_2: SignalBand,
+    f2_hz: f64,
+    gps_time: Option<bijux_gnss_core::api::GpsTime>,
+    sat_pos_m: [f64; 3],
+    receiver_pos_m: [f64; 3],
+) -> f64 {
+    calibrations
+        .and_then(|calibrations| {
+            calibrations.iono_free_range_correction_m(
+                sat,
+                band_1,
+                f1_hz,
+                band_2,
+                f2_hz,
+                gps_time,
+                sat_pos_m,
+                receiver_pos_m,
+            )
+        })
+        .unwrap_or(0.0)
+}
+
 fn sat_state_gps_l1ca_if_current(
     eph: &GpsEphemeris,
     sat: SatId,
@@ -568,9 +658,12 @@ fn validate_broadcast_ephemeris(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::{
-        iono_free_satellite_representatives, resolved_code_bias_m, resolved_iono_free_code_bias_m,
-        PppFilter,
+        iono_free_antenna_range_correction_m, iono_free_satellite_representatives,
+        resolved_code_bias_m, resolved_iono_free_code_bias_m,
+        single_frequency_antenna_range_correction_m, PppFilter,
     };
     use crate::api::{
         BroadcastProductsProvider, GpsEphemeris, GpsSatState, GpsSatelliteClockCorrection,
@@ -578,6 +671,9 @@ mod tests {
     };
     use crate::corrections::biases::{CodeBias, CodeBiasProvider, SignalCodeBiases};
     use crate::estimation::ppp::measurements::iono_free_code_observation_from_obs;
+    use crate::models::antenna::{
+        SatelliteAntennaCalibration, SatelliteAntennaCalibrations, SatellitePhaseCenterOffset,
+    };
     use bijux_gnss_core::api::{
         signal_spec_gps_l1_ca, signal_spec_gps_l2_py, Constellation, Cycles, Hertz, LockFlags,
         Meters, ObsEpoch, ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus,
@@ -869,5 +965,89 @@ mod tests {
         );
 
         assert!((resolved_bias_m - 123.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn ppp_filter_uses_satellite_antenna_calibration_for_single_frequency_range() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+        let gps_time = Some(bijux_gnss_core::api::GpsTime { week: 2200, tow_s: 86_400.0 });
+        let sat_pos_m = [20_200_000.0, 14_000_000.0, 21_700_000.0];
+        let receiver_pos_m = [1_111_111.0, -4_222_222.0, 4_333_333.0];
+        let calibrations = SatelliteAntennaCalibrations {
+            entries: vec![SatelliteAntennaCalibration {
+                sat,
+                antenna_type: "GPS TEST".to_string(),
+                valid_from_unix_s: None,
+                valid_until_unix_s: None,
+                offsets_by_band: BTreeMap::from([(
+                    SignalBand::L1,
+                    SatellitePhaseCenterOffset::new(0.12, -0.04, 0.95),
+                )]),
+            }],
+        };
+
+        let expected = calibrations
+            .range_correction_m(sat, SignalBand::L1, gps_time, sat_pos_m, receiver_pos_m)
+            .expect("single-frequency antenna correction");
+        let actual = single_frequency_antenna_range_correction_m(
+            Some(&calibrations),
+            sat,
+            SignalBand::L1,
+            gps_time,
+            sat_pos_m,
+            receiver_pos_m,
+        );
+
+        assert!(actual.abs() > 1.0e-6);
+        assert!((actual - expected).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn ppp_filter_uses_satellite_antenna_calibration_for_iono_free_range() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+        let gps_time = Some(bijux_gnss_core::api::GpsTime { week: 2200, tow_s: 86_400.0 });
+        let sat_pos_m = [20_200_000.0, 14_000_000.0, 21_700_000.0];
+        let receiver_pos_m = [1_111_111.0, -4_222_222.0, 4_333_333.0];
+        let l1 = signal_spec_gps_l1_ca();
+        let l2 = signal_spec_gps_l2_py();
+        let calibrations = SatelliteAntennaCalibrations {
+            entries: vec![SatelliteAntennaCalibration {
+                sat,
+                antenna_type: "GPS TEST".to_string(),
+                valid_from_unix_s: None,
+                valid_until_unix_s: None,
+                offsets_by_band: BTreeMap::from([
+                    (SignalBand::L1, SatellitePhaseCenterOffset::new(0.08, 0.01, 0.91)),
+                    (SignalBand::L2, SatellitePhaseCenterOffset::new(0.14, -0.03, 1.12)),
+                ]),
+            }],
+        };
+
+        let expected = calibrations
+            .iono_free_range_correction_m(
+                sat,
+                SignalBand::L1,
+                l1.carrier_hz.value(),
+                SignalBand::L2,
+                l2.carrier_hz.value(),
+                gps_time,
+                sat_pos_m,
+                receiver_pos_m,
+            )
+            .expect("iono-free antenna correction");
+        let actual = iono_free_antenna_range_correction_m(
+            Some(&calibrations),
+            sat,
+            SignalBand::L1,
+            l1.carrier_hz.value(),
+            SignalBand::L2,
+            l2.carrier_hz.value(),
+            gps_time,
+            sat_pos_m,
+            receiver_pos_m,
+        );
+
+        assert!(actual.abs() > 1.0e-6);
+        assert!((actual - expected).abs() < 1.0e-12);
     }
 }
