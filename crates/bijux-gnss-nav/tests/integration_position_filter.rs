@@ -430,6 +430,9 @@ fn sequential_position_filter_tracks_static_receiver_across_epochs() {
                 assert!(value.is_finite());
             }
         }
+        assert!(solution.sigma_e_m.expect("east sigma").is_finite());
+        assert!(solution.sigma_n_m.expect("north sigma").is_finite());
+        assert!(solution.sigma_u_m.expect("up sigma").is_finite());
         last_velocity_norm_mps = Some(velocity_norm_mps);
     }
 

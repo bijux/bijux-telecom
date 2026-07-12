@@ -23,7 +23,10 @@ use crate::estimation::position::solver::{
     PositionBroadcastNavigation, PositionObservation, PositionSolveRefusal,
     PositionSolveRefusalKind, PositionSolver, WeightingConfig,
 };
-use crate::estimation::uncertainty::{covariance_horizontal_vertical, position_covariance_ecef_m2};
+use crate::estimation::uncertainty::{
+    covariance_enu_standard_deviations_m, covariance_horizontal_vertical,
+    position_covariance_ecef_m2,
+};
 use crate::linalg::Matrix;
 use crate::orbits::gps::GpsEphemeris;
 
@@ -197,6 +200,9 @@ pub struct PositionFilterEpoch {
     pub ecef_y_m: f64,
     pub ecef_z_m: f64,
     pub position_covariance_ecef_m2: Option<[[f64; 3]; 3]>,
+    pub sigma_e_m: Option<f64>,
+    pub sigma_n_m: Option<f64>,
+    pub sigma_u_m: Option<f64>,
     pub velocity_x_mps: f64,
     pub velocity_y_mps: f64,
     pub velocity_z_mps: f64,
@@ -587,6 +593,9 @@ impl PositionFilter {
             ecef_y_m: solution.ecef_y_m,
             ecef_z_m: solution.ecef_z_m,
             position_covariance_ecef_m2: solution.position_covariance_ecef_m2,
+            sigma_e_m: solution.sigma_e_m,
+            sigma_n_m: solution.sigma_n_m,
+            sigma_u_m: solution.sigma_u_m,
             velocity_x_mps: self.ekf.x[self.indices.vel[0]],
             velocity_y_mps: self.ekf.x[self.indices.vel[1]],
             velocity_z_mps: self.ekf.x[self.indices.vel[2]],
@@ -625,6 +634,14 @@ impl PositionFilter {
         ];
         let position_covariance_ecef_m2 =
             position_covariance_ecef_m2(&self.ekf.p, &self.indices.pos);
+        let (sigma_e_m, sigma_n_m, sigma_u_m) = position_covariance_ecef_m2
+            .and_then(|covariance| {
+                covariance_enu_standard_deviations_m(position_ecef_m, covariance)
+            })
+            .map(|(sigma_e_m, sigma_n_m, sigma_u_m)| {
+                (Some(sigma_e_m), Some(sigma_n_m), Some(sigma_u_m))
+            })
+            .unwrap_or((None, None, None));
         let (sigma_h_m, sigma_v_m) = position_covariance_ecef_m2
             .and_then(|covariance| covariance_horizontal_vertical(position_ecef_m, covariance))
             .map(|(sigma_h_m, sigma_v_m)| (Some(sigma_h_m), Some(sigma_v_m)))
@@ -639,6 +656,9 @@ impl PositionFilter {
             ecef_y_m: position_ecef_m[1],
             ecef_z_m: position_ecef_m[2],
             position_covariance_ecef_m2,
+            sigma_e_m,
+            sigma_n_m,
+            sigma_u_m,
             velocity_x_mps: self.ekf.x[self.indices.vel[0]],
             velocity_y_mps: self.ekf.x[self.indices.vel[1]],
             velocity_z_mps: self.ekf.x[self.indices.vel[2]],
@@ -1065,6 +1085,18 @@ mod tests {
             covariance[2][2],
             filter.config.initial_position_sigma_m * filter.config.initial_position_sigma_m
         );
+    }
+
+    #[test]
+    fn position_filter_epoch_exposes_enu_position_sigmas() {
+        let mut filter = PositionFilter::new(PositionFilterConfig::default());
+        filter.seed_receiver_state([6_378_137.0, 10.0, 10.0], 0.0);
+
+        let epoch = filter.epoch_from_state(0.0, Vec::new(), 0);
+
+        assert!(epoch.sigma_e_m.expect("east sigma").is_finite());
+        assert!(epoch.sigma_n_m.expect("north sigma").is_finite());
+        assert!(epoch.sigma_u_m.expect("up sigma").is_finite());
     }
 
     #[test]
