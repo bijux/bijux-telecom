@@ -2330,6 +2330,27 @@ mod tests {
     }
 
     #[test]
+    fn synthetic_solution_emits_enu_position_sigmas() {
+        let config = ReceiverPipelineConfig::default();
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+        let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
+        let t_rx_s = 100_000.0;
+        let ephs = vec![
+            make_eph(1, 0.0, 0.0, t_rx_s),
+            make_eph(2, 0.8, 0.9, t_rx_s),
+            make_eph(3, 1.6, 1.8, t_rx_s),
+            make_eph(4, 2.4, 2.7, t_rx_s),
+            make_eph(5, 3.2, 3.6, t_rx_s),
+        ];
+        let obs = make_obs_epoch_for_solution(21, t_rx_s, truth, &ephs);
+        let solution = nav.solve_epoch(&obs, &ephs).expect("synthetic solution");
+
+        assert!(solution.sigma_e_m.expect("east sigma").0.is_finite());
+        assert!(solution.sigma_n_m.expect("north sigma").0.is_finite());
+        assert!(solution.sigma_u_m.expect("up sigma").0.is_finite());
+    }
+
+    #[test]
     fn synthetic_solution_reports_combined_weighting_provenance() {
         let mut config = ReceiverPipelineConfig::default();
         config.weighting.mode = NavigationWeightingMode::ElevationCn0;
