@@ -1280,10 +1280,14 @@ fn solve_epoch_ekf(
             estimate_ekf_klobuchar_delay_m(klobuchar, [rx_x, rx_y, rx_z], receive_tow_s, &state);
         let tropo_m =
             estimate_ekf_saastamoinen_delay_m(ctx.tropo_enabled, [rx_x, rx_y, rx_z], &state);
-        let weight = bijux_gnss_infra::api::nav::weight_from_cn0_elev(
-            sat.cn0_dbhz,
-            el,
-            WeightingConfig::default(),
+        let weight = bijux_gnss_infra::api::nav::position_measurement_weight(
+            Some(sat.cn0_dbhz),
+            Some(el),
+            None,
+            WeightingConfig {
+                model: bijux_gnss_infra::api::nav::PositionWeightingModel::Cn0,
+                ..WeightingConfig::default()
+            },
         );
         let sigma_m = (5.0 / weight.max(0.1)).max(1.0);
         let isb_index = if sat.signal_id.sat.constellation != Constellation::Gps {
@@ -1649,11 +1653,14 @@ fn prime_ekf_state_from_wls(
         .map(|sat| bijux_gnss_infra::api::nav::PositionObservation {
             sat: sat.signal_id.sat,
             pseudorange_m: sat.pseudorange_m.0,
+            doppler_hz: Some(sat.doppler_hz.0),
+            doppler_var_hz2: Some(sat.doppler_var_hz2),
             cn0_dbhz: sat.cn0_dbhz,
             elevation_deg: sat.elevation_deg,
             weight: 1.0,
             gps_receive_time: obs.gps_time(),
             signal_timing: sat.timing,
+            signal_id: Some(sat.signal_id),
         })
         .filter(|observation| {
             bijux_gnss_infra::api::nav::position_observation_has_valid_satellite_time(
