@@ -5,8 +5,7 @@ use bijux_gnss_nav::api::{geodetic_to_ecef, GpsEphemeris, PositionFilter, Positi
 
 use support::position_truth::{
     gps_l1ca_doppler_from_truth, pseudorange_from_truth, receiver_clock_bias_with_drift_s,
-    sample_ephemeris,
-    timed_position_observation, timed_position_observation_with_doppler,
+    sample_ephemeris, timed_position_observation, timed_position_observation_with_doppler,
 };
 
 struct SequentialPositionEpoch {
@@ -42,14 +41,10 @@ fn position_error_3d_m(
 }
 
 fn clock_drift_spread_s_per_s(clock_drift_samples_s_per_s: &[f64]) -> f64 {
-    let min_clock_drift_s_per_s = clock_drift_samples_s_per_s
-        .iter()
-        .copied()
-        .fold(f64::INFINITY, f64::min);
-    let max_clock_drift_s_per_s = clock_drift_samples_s_per_s
-        .iter()
-        .copied()
-        .fold(f64::NEG_INFINITY, f64::max);
+    let min_clock_drift_s_per_s =
+        clock_drift_samples_s_per_s.iter().copied().fold(f64::INFINITY, f64::min);
+    let max_clock_drift_s_per_s =
+        clock_drift_samples_s_per_s.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     max_clock_drift_s_per_s - min_clock_drift_s_per_s
 }
 
@@ -167,13 +162,12 @@ fn static_receiver_epochs(
             let observations = ephemerides
                 .iter()
                 .map(|ephemeris| {
-                    let pseudorange_m =
-                        pseudorange_from_truth(
-                            ephemeris,
-                            truth_ecef_m,
-                            t_rx_s,
-                            receiver_clock_bias_s,
-                        );
+                    let pseudorange_m = pseudorange_from_truth(
+                        ephemeris,
+                        truth_ecef_m,
+                        t_rx_s,
+                        receiver_clock_bias_s,
+                    );
                     timed_position_observation(ephemeris.sat, pseudorange_m, t_rx_s)
                 })
                 .collect();
@@ -203,12 +197,13 @@ fn static_receiver_epochs_with_pseudorange_offsets(
             let observations = ephemerides
                 .iter()
                 .map(|ephemeris| {
-                    let pseudorange_m = pseudorange_from_truth(
-                        ephemeris,
-                        truth_ecef_m,
-                        t_rx_s,
-                        receiver_clock_bias_s,
-                    ) + deterministic_pseudorange_offset_m(epoch_index, ephemeris.sat.prn);
+                    let pseudorange_m =
+                        pseudorange_from_truth(
+                            ephemeris,
+                            truth_ecef_m,
+                            t_rx_s,
+                            receiver_clock_bias_s,
+                        ) + deterministic_pseudorange_offset_m(epoch_index, ephemeris.sat.prn);
                     timed_position_observation(ephemeris.sat, pseudorange_m, t_rx_s)
                 })
                 .collect();
@@ -282,9 +277,88 @@ fn moving_receiver_epochs_with_doppler(
                 receiver_clock_drift_s_per_s,
                 motion_dt_s,
             );
-            let t_rx_s = t0_rx_s + motion_dt_s + receiver_clock_bias_s - initial_receiver_clock_bias_s;
+            let t_rx_s =
+                t0_rx_s + motion_dt_s + receiver_clock_bias_s - initial_receiver_clock_bias_s;
             let truth_ecef_m =
                 translate_truth_ecef_m(truth_origin_ecef_m, truth_velocity_ecef_mps, motion_dt_s);
+            let observations = ephemerides
+                .iter()
+                .map(|ephemeris| {
+                    let pseudorange_m =
+                        pseudorange_from_truth(
+                            ephemeris,
+                            truth_ecef_m,
+                            t_rx_s,
+                            receiver_clock_bias_s,
+                        ) + deterministic_pseudorange_offset_m(epoch_index, ephemeris.sat.prn);
+                    let doppler_hz =
+                        gps_l1ca_doppler_from_truth(
+                            ephemeris,
+                            truth_ecef_m,
+                            truth_velocity_ecef_mps,
+                            t_rx_s,
+                            receiver_clock_bias_s,
+                            receiver_clock_drift_s_per_s,
+                        ) + deterministic_doppler_offset_hz(epoch_index, ephemeris.sat.prn);
+                    timed_position_observation_with_doppler(
+                        ephemeris.sat,
+                        pseudorange_m,
+                        doppler_hz,
+                        0.04,
+                        t_rx_s,
+                    )
+                })
+                .collect();
+            SequentialPositionEpoch {
+                t_rx_s,
+                truth_ecef_m,
+                truth_clock_bias_s: receiver_clock_bias_s,
+                truth_clock_drift_s_per_s: receiver_clock_drift_s_per_s,
+                observations,
+            }
+        })
+        .collect()
+}
+
+fn piecewise_moving_receiver_epochs_with_doppler(
+    ephemerides: &[GpsEphemeris],
+    epoch_count: usize,
+    dt_s: f64,
+    first_velocity_ecef_mps: (f64, f64, f64),
+    second_velocity_ecef_mps: (f64, f64, f64),
+    switch_epoch_index: usize,
+    receiver_clock_drift_s_per_s: f64,
+) -> Vec<SequentialPositionEpoch> {
+    let truth_origin_ecef_m = geodetic_to_ecef(37.0, -122.0, 10.0);
+    let initial_receiver_clock_bias_s = 2.75e-4;
+    let t0_rx_s = 504_018.07 + initial_receiver_clock_bias_s;
+    let mut truth_ecef_m = truth_origin_ecef_m;
+
+    (0..epoch_count)
+        .map(|epoch_index| {
+            if epoch_index > 0 {
+                let previous_velocity_ecef_mps = if epoch_index - 1 < switch_epoch_index {
+                    first_velocity_ecef_mps
+                } else {
+                    second_velocity_ecef_mps
+                };
+                truth_ecef_m =
+                    translate_truth_ecef_m(truth_ecef_m, previous_velocity_ecef_mps, dt_s);
+            }
+
+            let motion_dt_s = epoch_index as f64 * dt_s;
+            let receiver_clock_bias_s = receiver_clock_bias_with_drift_s(
+                initial_receiver_clock_bias_s,
+                receiver_clock_drift_s_per_s,
+                motion_dt_s,
+            );
+            let t_rx_s =
+                t0_rx_s + motion_dt_s + receiver_clock_bias_s - initial_receiver_clock_bias_s;
+            let truth_velocity_ecef_mps = if epoch_index < switch_epoch_index {
+                first_velocity_ecef_mps
+            } else {
+                second_velocity_ecef_mps
+            };
             let observations = ephemerides
                 .iter()
                 .map(|ephemeris| {
@@ -402,9 +476,9 @@ fn sequential_position_filter_tracks_moving_receiver_across_epochs() {
 fn sequential_position_filter_recovers_velocity_from_doppler_in_enu() {
     let ephemerides = sample_filter_ephemerides();
     let truth_velocity_enu_mps = (8.0, -2.5, 0.8);
-    let truth_velocity_ecef_mps =
-        enu_velocity_to_ecef_mps(37.0, -122.0, truth_velocity_enu_mps);
-    let epochs = moving_receiver_epochs_with_doppler(&ephemerides, 30, 1.0, truth_velocity_ecef_mps, 0.0);
+    let truth_velocity_ecef_mps = enu_velocity_to_ecef_mps(37.0, -122.0, truth_velocity_enu_mps);
+    let epochs =
+        moving_receiver_epochs_with_doppler(&ephemerides, 30, 1.0, truth_velocity_ecef_mps, 0.0);
     let mut config = PositionFilterConfig::for_vehicle_receiver();
     config.base_pseudorange_sigma_m = 1.5;
     config.base_doppler_sigma_hz = 0.05;
@@ -418,11 +492,7 @@ fn sequential_position_filter_recovers_velocity_from_doppler_in_enu() {
         final_velocity_enu_mps = Some(ecef_velocity_to_enu_mps(
             37.0,
             -122.0,
-            (
-                solution.velocity_x_mps,
-                solution.velocity_y_mps,
-                solution.velocity_z_mps,
-            ),
+            (solution.velocity_x_mps, solution.velocity_y_mps, solution.velocity_z_mps),
         ));
     }
 
@@ -430,9 +500,10 @@ fn sequential_position_filter_recovers_velocity_from_doppler_in_enu() {
     let east_error_mps = final_velocity_enu_mps.0 - truth_velocity_enu_mps.0;
     let north_error_mps = final_velocity_enu_mps.1 - truth_velocity_enu_mps.1;
     let up_error_mps = final_velocity_enu_mps.2 - truth_velocity_enu_mps.2;
-    let velocity_enu_error_mps =
-        (east_error_mps * east_error_mps + north_error_mps * north_error_mps + up_error_mps * up_error_mps)
-            .sqrt();
+    let velocity_enu_error_mps = (east_error_mps * east_error_mps
+        + north_error_mps * north_error_mps
+        + up_error_mps * up_error_mps)
+        .sqrt();
 
     assert!(filter.initialized);
     assert_eq!(filter.last_t_rx_s, Some(epochs.last().expect("Doppler epochs").t_rx_s));
@@ -485,20 +556,17 @@ fn sequential_position_filter_recovers_static_receiver_clock_drift_from_doppler(
     }
 
     let final_solution = final_solution.expect("final static Doppler clock-drift solution");
-    let final_clock_drift_error_s_per_s =
-        (final_solution.clock_drift_s_per_s
-            - epochs.last().expect("clock-drift epoch").truth_clock_drift_s_per_s)
-            .abs();
-    let final_clock_bias_error_s =
-        (final_solution.clock_bias_s - epochs.last().expect("clock-drift epoch").truth_clock_bias_s)
-            .abs();
-    let steady_clock_drift_spread_s_per_s = clock_drift_spread_s_per_s(&steady_clock_drifts_s_per_s);
+    let final_clock_drift_error_s_per_s = (final_solution.clock_drift_s_per_s
+        - epochs.last().expect("clock-drift epoch").truth_clock_drift_s_per_s)
+        .abs();
+    let final_clock_bias_error_s = (final_solution.clock_bias_s
+        - epochs.last().expect("clock-drift epoch").truth_clock_bias_s)
+        .abs();
+    let steady_clock_drift_spread_s_per_s =
+        clock_drift_spread_s_per_s(&steady_clock_drifts_s_per_s);
 
     assert!(filter.initialized);
-    assert_eq!(
-        filter.last_t_rx_s,
-        Some(epochs.last().expect("clock-drift epochs").t_rx_s)
-    );
+    assert_eq!(filter.last_t_rx_s, Some(epochs.last().expect("clock-drift epochs").t_rx_s));
     assert!(
         final_clock_drift_error_s_per_s < 1.0e-8,
         "final_clock_drift_error_s_per_s={final_clock_drift_error_s_per_s}"
@@ -522,8 +590,7 @@ fn sequential_position_filter_recovers_static_receiver_clock_drift_from_doppler(
 fn sequential_position_filter_maintains_clock_drift_consistency_while_moving() {
     let ephemerides = sample_filter_ephemerides();
     let truth_velocity_enu_mps = (8.0, -2.5, 0.8);
-    let truth_velocity_ecef_mps =
-        enu_velocity_to_ecef_mps(37.0, -122.0, truth_velocity_enu_mps);
+    let truth_velocity_ecef_mps = enu_velocity_to_ecef_mps(37.0, -122.0, truth_velocity_enu_mps);
     let truth_clock_drift_s_per_s = 5.0e-8;
     let epochs = moving_receiver_epochs_with_doppler(
         &ephemerides,
@@ -562,11 +629,7 @@ fn sequential_position_filter_maintains_clock_drift_consistency_while_moving() {
         final_velocity_enu_mps = Some(ecef_velocity_to_enu_mps(
             37.0,
             -122.0,
-            (
-                solution.velocity_x_mps,
-                solution.velocity_y_mps,
-                solution.velocity_z_mps,
-            ),
+            (solution.velocity_x_mps, solution.velocity_y_mps, solution.velocity_z_mps),
         ));
         final_solution = Some(solution);
     }
@@ -576,23 +639,21 @@ fn sequential_position_filter_maintains_clock_drift_consistency_while_moving() {
     let east_error_mps = final_velocity_enu_mps.0 - truth_velocity_enu_mps.0;
     let north_error_mps = final_velocity_enu_mps.1 - truth_velocity_enu_mps.1;
     let up_error_mps = final_velocity_enu_mps.2 - truth_velocity_enu_mps.2;
-    let velocity_enu_error_mps =
-        (east_error_mps * east_error_mps + north_error_mps * north_error_mps + up_error_mps * up_error_mps)
-            .sqrt();
-    let final_clock_drift_error_s_per_s =
-        (final_solution.clock_drift_s_per_s
-            - epochs.last().expect("clock-drift epoch").truth_clock_drift_s_per_s)
-            .abs();
-    let final_clock_bias_error_s =
-        (final_solution.clock_bias_s - epochs.last().expect("clock-drift epoch").truth_clock_bias_s)
-            .abs();
-    let steady_clock_drift_spread_s_per_s = clock_drift_spread_s_per_s(&steady_clock_drifts_s_per_s);
+    let velocity_enu_error_mps = (east_error_mps * east_error_mps
+        + north_error_mps * north_error_mps
+        + up_error_mps * up_error_mps)
+        .sqrt();
+    let final_clock_drift_error_s_per_s = (final_solution.clock_drift_s_per_s
+        - epochs.last().expect("clock-drift epoch").truth_clock_drift_s_per_s)
+        .abs();
+    let final_clock_bias_error_s = (final_solution.clock_bias_s
+        - epochs.last().expect("clock-drift epoch").truth_clock_bias_s)
+        .abs();
+    let steady_clock_drift_spread_s_per_s =
+        clock_drift_spread_s_per_s(&steady_clock_drifts_s_per_s);
 
     assert!(filter.initialized);
-    assert_eq!(
-        filter.last_t_rx_s,
-        Some(epochs.last().expect("clock-drift epochs").t_rx_s)
-    );
+    assert_eq!(filter.last_t_rx_s, Some(epochs.last().expect("clock-drift epochs").t_rx_s));
     assert!(east_error_mps.abs() < 1.0, "east_error_mps={east_error_mps}");
     assert!(north_error_mps.abs() < 1.0, "north_error_mps={north_error_mps}");
     assert!(up_error_mps.abs() < 1.0, "up_error_mps={up_error_mps}");
@@ -613,6 +674,125 @@ fn sequential_position_filter_maintains_clock_drift_consistency_while_moving() {
         final_solution.clock_drift_sigma_s_per_s < 5.0e-6,
         "clock_drift_sigma_s_per_s={}",
         final_solution.clock_drift_sigma_s_per_s
+    );
+}
+
+#[test]
+fn sequential_position_filter_motion_classes_change_velocity_adaptation() {
+    let ephemerides = sample_filter_ephemerides();
+    let first_velocity_enu_mps = (2.0, 0.5, 0.0);
+    let second_velocity_enu_mps = (28.0, -8.0, 2.5);
+    let first_velocity_ecef_mps = enu_velocity_to_ecef_mps(37.0, -122.0, first_velocity_enu_mps);
+    let second_velocity_ecef_mps = enu_velocity_to_ecef_mps(37.0, -122.0, second_velocity_enu_mps);
+    let switch_epoch_index = 8;
+    let epochs = piecewise_moving_receiver_epochs_with_doppler(
+        &ephemerides,
+        24,
+        1.0,
+        first_velocity_ecef_mps,
+        second_velocity_ecef_mps,
+        switch_epoch_index,
+        0.0,
+    );
+    let mut static_config = PositionFilterConfig::for_static_receiver();
+    let mut pedestrian_config = PositionFilterConfig::for_pedestrian_receiver();
+    let mut vehicle_config = PositionFilterConfig::for_vehicle_receiver();
+    let mut airborne_config = PositionFilterConfig::for_airborne_receiver();
+
+    for config in
+        [&mut static_config, &mut pedestrian_config, &mut vehicle_config, &mut airborne_config]
+    {
+        config.base_pseudorange_sigma_m = 2.0;
+        config.base_doppler_sigma_hz = 0.2;
+    }
+
+    let mut static_filter = PositionFilter::new(static_config);
+    let mut pedestrian_filter = PositionFilter::new(pedestrian_config);
+    let mut vehicle_filter = PositionFilter::new(vehicle_config);
+    let mut airborne_filter = PositionFilter::new(airborne_config);
+    let mut post_switch_velocity_errors_mps = None;
+
+    for (epoch_index, epoch) in epochs.iter().enumerate() {
+        let static_solution = static_filter
+            .solve_epoch(&epoch.observations, &ephemerides, epoch.t_rx_s)
+            .expect("static motion-class epoch should solve");
+        let pedestrian_solution = pedestrian_filter
+            .solve_epoch(&epoch.observations, &ephemerides, epoch.t_rx_s)
+            .expect("pedestrian motion-class epoch should solve");
+        let vehicle_solution = vehicle_filter
+            .solve_epoch(&epoch.observations, &ephemerides, epoch.t_rx_s)
+            .expect("vehicle motion-class epoch should solve");
+        let airborne_solution = airborne_filter
+            .solve_epoch(&epoch.observations, &ephemerides, epoch.t_rx_s)
+            .expect("airborne motion-class epoch should solve");
+
+        if epoch_index == switch_epoch_index + 2 {
+            post_switch_velocity_errors_mps = Some([
+                velocity_error_3d_mps(
+                    static_solution.velocity_x_mps,
+                    static_solution.velocity_y_mps,
+                    static_solution.velocity_z_mps,
+                    second_velocity_ecef_mps,
+                ),
+                velocity_error_3d_mps(
+                    pedestrian_solution.velocity_x_mps,
+                    pedestrian_solution.velocity_y_mps,
+                    pedestrian_solution.velocity_z_mps,
+                    second_velocity_ecef_mps,
+                ),
+                velocity_error_3d_mps(
+                    vehicle_solution.velocity_x_mps,
+                    vehicle_solution.velocity_y_mps,
+                    vehicle_solution.velocity_z_mps,
+                    second_velocity_ecef_mps,
+                ),
+                velocity_error_3d_mps(
+                    airborne_solution.velocity_x_mps,
+                    airborne_solution.velocity_y_mps,
+                    airborne_solution.velocity_z_mps,
+                    second_velocity_ecef_mps,
+                ),
+            ]);
+        }
+    }
+
+    let post_switch_velocity_errors_mps =
+        post_switch_velocity_errors_mps.expect("post-switch velocity errors");
+
+    assert!(static_filter.initialized);
+    assert!(pedestrian_filter.initialized);
+    assert!(vehicle_filter.initialized);
+    assert!(airborne_filter.initialized);
+    assert_eq!(static_filter.last_t_rx_s, Some(epochs.last().expect("motion-class epochs").t_rx_s));
+    assert_eq!(
+        pedestrian_filter.last_t_rx_s,
+        Some(epochs.last().expect("motion-class epochs").t_rx_s)
+    );
+    assert_eq!(
+        vehicle_filter.last_t_rx_s,
+        Some(epochs.last().expect("motion-class epochs").t_rx_s)
+    );
+    assert_eq!(
+        airborne_filter.last_t_rx_s,
+        Some(epochs.last().expect("motion-class epochs").t_rx_s)
+    );
+    assert!(
+        post_switch_velocity_errors_mps[0] > post_switch_velocity_errors_mps[1],
+        "static_error_mps={} pedestrian_error_mps={}",
+        post_switch_velocity_errors_mps[0],
+        post_switch_velocity_errors_mps[1]
+    );
+    assert!(
+        post_switch_velocity_errors_mps[1] > post_switch_velocity_errors_mps[2],
+        "pedestrian_error_mps={} vehicle_error_mps={}",
+        post_switch_velocity_errors_mps[1],
+        post_switch_velocity_errors_mps[2]
+    );
+    assert!(
+        post_switch_velocity_errors_mps[2] > post_switch_velocity_errors_mps[3],
+        "vehicle_error_mps={} airborne_error_mps={}",
+        post_switch_velocity_errors_mps[2],
+        post_switch_velocity_errors_mps[3]
     );
 }
 
@@ -658,10 +838,7 @@ fn sequential_position_filter_static_profile_reduces_late_position_scatter() {
         static_late_rms_m < static_early_rms_m,
         "static_early_rms_m={static_early_rms_m} static_late_rms_m={static_late_rms_m}"
     );
-    assert!(
-        static_late_rms_m < 0.35,
-        "static_late_rms_m={static_late_rms_m}"
-    );
+    assert!(static_late_rms_m < 0.35, "static_late_rms_m={static_late_rms_m}");
     assert!(
         final_static_velocity_norm_mps.expect("final static velocity norm") < 0.5,
         "final_static_velocity_norm_mps={:?}",
@@ -734,10 +911,7 @@ fn sequential_position_filter_constant_velocity_profile_beats_independent_epochs
         final_independent_velocity_error_mps.expect("final independent velocity error");
 
     assert!(dynamic_filter.initialized);
-    assert_eq!(
-        dynamic_filter.last_t_rx_s,
-        Some(epochs.last().expect("moving epochs").t_rx_s)
-    );
+    assert_eq!(dynamic_filter.last_t_rx_s, Some(epochs.last().expect("moving epochs").t_rx_s));
     assert!(
         dynamic_late_step_rms_m < independent_late_step_rms_m,
         "dynamic_late_step_rms_m={dynamic_late_step_rms_m} independent_late_step_rms_m={independent_late_step_rms_m}"
