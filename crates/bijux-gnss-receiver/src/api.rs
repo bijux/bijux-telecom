@@ -136,6 +136,11 @@ pub use crate::validation_report::{
     TimeConsistencyReport, ValidationAssumptionReport, ValidationBudgets, ValidationErrorStats,
     ValidationReport, ValidationSciencePolicy,
 };
+#[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
+pub use crate::covariance_realism::{
+    CovarianceCoverageClass, CovarianceCoverageRate, CovarianceRealismReport,
+};
 
 /// Artifacts produced by a receiver pipeline run.
 #[derive(Debug, Default, Clone)]

@@ -371,6 +371,8 @@ pub struct ValidationReport {
     pub nis_mean: Option<f64>,
     /// NEES mean value.
     pub nees_mean: Option<f64>,
+    /// Empirical covariance realism summary against trusted reference coordinates.
+    pub covariance_realism: crate::covariance_realism::CovarianceRealismReport,
     /// Consistency warnings.
     pub consistency_warnings: Vec<String>,
     /// Inter-frequency alignment report.
@@ -543,6 +545,7 @@ fn build_validation_report_with_observation_context(
     let mut unmatched_solution_epochs = Vec::new();
     let mut matched_reference_epochs = std::collections::BTreeSet::new();
     let mut residuals = Vec::new();
+    let mut covariance_realism_samples = Vec::new();
     let mut nees_values = Vec::new();
 
     for sol in solutions {
@@ -575,6 +578,13 @@ fn build_validation_report_with_observation_context(
                 horiz_m: horiz,
                 vert_m: vert,
                 error_3d_m: position_3d,
+            });
+            covariance_realism_samples.push(crate::covariance_realism::CovarianceRealismEpochSample {
+                receiver_ecef_m: [sol.ecef_x_m.0, sol.ecef_y_m.0, sol.ecef_z_m.0],
+                east_m: east,
+                north_m: north,
+                up_m: up,
+                position_covariance_ecef_m2: sol.position_covariance_ecef_m2,
             });
             if let (Some(sig_h), Some(sig_v)) = (sol.sigma_h_m, sol.sigma_v_m) {
                 if sig_h.0 > 0.0 && sig_v.0 > 0.0 {
@@ -704,7 +714,11 @@ fn build_validation_report_with_observation_context(
     } else {
         Some(nis_values.iter().sum::<f64>() / nis_values.len() as f64)
     };
-    let nees_mean = if nees_values.is_empty() {
+    let covariance_realism =
+        crate::covariance_realism::evaluate_covariance_realism(&covariance_realism_samples);
+    let nees_mean = if let Some(position_nees_mean) = covariance_realism.position_nees_mean {
+        Some(position_nees_mean)
+    } else if nees_values.is_empty() {
         None
     } else {
         Some(nees_values.iter().sum::<f64>() / nees_values.len() as f64)
@@ -720,6 +734,7 @@ fn build_validation_report_with_observation_context(
             consistency_warnings.push(format!("NEES out of expected range: {nees:.3}"));
         }
     }
+    consistency_warnings.extend(covariance_realism.warnings.iter().cloned());
     let lock_ratio_by_epoch = lock_ratio_by_epoch(tracks);
     let integrity = classify_integrity(solutions, &lock_ratio_by_epoch, &science_policy);
     let assumptions = summarize_assumptions(solutions);
@@ -746,6 +761,7 @@ fn build_validation_report_with_observation_context(
         budget_violations: violations,
         nis_mean,
         nees_mean,
+        covariance_realism,
         consistency_warnings,
         inter_frequency_alignment,
         dual_frequency_observations,
@@ -1397,7 +1413,7 @@ mod tests {
             ecef_x_m: bijux_gnss_core::api::Meters(x_ref + 3.0),
             ecef_y_m: bijux_gnss_core::api::Meters(y_ref + 1.0),
             ecef_z_m: bijux_gnss_core::api::Meters(z_ref + 2.0),
-            position_covariance_ecef_m2: None,
+            position_covariance_ecef_m2: Some([[9.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 4.0]]),
             sigma_e_m: Some(bijux_gnss_core::api::Meters(1.0)),
             sigma_n_m: Some(bijux_gnss_core::api::Meters(1.5)),
             sigma_u_m: Some(bijux_gnss_core::api::Meters(3.0)),
@@ -1449,6 +1465,20 @@ mod tests {
         assert!((report.vert_error_m.rms - 3.0).abs() < 1.0e-12);
         assert!((report.error_3d_m.rms - 14.0_f64.sqrt()).abs() < 1.0e-12);
         assert!(report.nees_mean.is_some());
+        assert_eq!(report.covariance_realism.total_epoch_count, 1);
+        assert_eq!(report.covariance_realism.covariance_epoch_count, 1);
+        assert_eq!(report.covariance_realism.horizontal_95.sample_count, 1);
+        assert_eq!(report.covariance_realism.vertical_95.sample_count, 1);
+        assert_eq!(report.covariance_realism.position_3d_95.sample_count, 1);
+        let horizontal_nees = report.covariance_realism.horizontal_nees_mean.expect("horizontal nees");
+        let vertical_normalized_error = report
+            .covariance_realism
+            .vertical_normalized_error_squared_mean
+            .expect("vertical normalized error");
+        let position_nees = report.covariance_realism.position_nees_mean.expect("position nees");
+        assert!((horizontal_nees - 2.0).abs() < 1.0e-5, "{horizontal_nees}");
+        assert!((vertical_normalized_error - 1.0).abs() < 1.0e-9, "{vertical_normalized_error}");
+        assert!((position_nees - 3.0).abs() < 1.0e-5, "{position_nees}");
     }
 
     #[test]
