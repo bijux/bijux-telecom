@@ -7,6 +7,8 @@ use bijux_gnss_core::api::NavHealthEvent;
 use support::navigation_common_code_doppler_anomaly::{
     common_anomaly_health_events, static_common_code_doppler_anomaly_run,
 };
+use support::navigation_clock_profile::build_navigation_clock_case;
+use support::navigation_satellite_clock_anomaly::static_satellite_clock_anomaly_run;
 
 #[test]
 fn navigation_pipeline_classifies_common_code_doppler_anomaly() {
@@ -60,5 +62,56 @@ fn navigation_pipeline_classifies_common_code_doppler_anomaly() {
         ))),
         "expected a health event with coherent common code/doppler evidence: {:?}",
         flagged_solutions.iter().map(|solution| &solution.health).collect::<Vec<_>>(),
+    );
+}
+
+#[test]
+fn navigation_pipeline_does_not_misclassify_single_satellite_clock_anomaly() {
+    let run = static_satellite_clock_anomaly_run();
+
+    assert!(
+        run.solutions
+            .iter()
+            .all(|solution| common_anomaly_health_events(solution).is_empty()),
+        "single-satellite anomaly must not be promoted to a common anomaly: {:?}",
+        run.solutions
+            .iter()
+            .map(|solution| {
+                (
+                    solution.epoch.index,
+                    solution.health.clone(),
+                    solution.explain_reasons.clone(),
+                )
+            })
+            .collect::<Vec<_>>(),
+    );
+}
+
+#[test]
+fn navigation_pipeline_does_not_flag_smooth_receiver_clock_drift() {
+    let drifting_case = build_navigation_clock_case(
+        support::navigation_clock_profile::synthetic_navigation_clock_profile(
+            "oscillator_drift_receiver_clock",
+        ),
+    );
+
+    assert!(
+        drifting_case
+            .solutions
+            .iter()
+            .all(|solution| common_anomaly_health_events(solution).is_empty()),
+        "smooth receiver clock drift must not be flagged as a spoofing-like common anomaly: {:?}",
+        drifting_case
+            .solutions
+            .iter()
+            .map(|solution| {
+                (
+                    solution.epoch.index,
+                    solution.clock_bias_s.0,
+                    solution.clock_drift_s_per_s,
+                    solution.health.clone(),
+                )
+            })
+            .collect::<Vec<_>>(),
     );
 }
