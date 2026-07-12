@@ -142,6 +142,12 @@ pub const DIAGNOSTIC_CODES: &[DiagnosticCode] = &[
         mitigation: "Inspect mixed-constellation timing alignment, broadcast time-system handling, and constellation-specific clock consistency.",
     },
     DiagnosticCode {
+        code: "NAV_RESIDUAL_WHITENESS",
+        severity: DiagnosticSeverity::Warning,
+        meaning: "Residuals remain temporally correlated across epochs instead of behaving like white innovation noise",
+        mitigation: "Inspect persistent measurement biases, multipath structure, weighting, and state-model mismatch.",
+    },
+    DiagnosticCode {
         code: "NAV_IMPOSSIBLE_GEOMETRY",
         severity: DiagnosticSeverity::Warning,
         meaning: "Solved navigation position lies outside the plausible terrestrial envelope",

@@ -1074,6 +1074,14 @@ pub enum NavHealthEvent {
         bias_step_threshold_m: f64,
         supporting_satellite_count: usize,
     },
+    ResidualTemporalCorrelation {
+        lag1_correlation: f64,
+        correlation_threshold: f64,
+        matched_satellite_count: usize,
+        previous_centered_rms_m: f64,
+        current_centered_rms_m: f64,
+        persistent_suspect_epochs: usize,
+    },
     ImpossibleGeometry {
         receiver_radius_m: f64,
         altitude_m: f64,
