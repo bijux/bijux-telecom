@@ -2,8 +2,8 @@
 
 use bijux_gnss_core::api::{Constellation, SatId};
 use bijux_gnss_nav::api::{
-    gps_satellite_clock_correction, BroadcastProductsProvider, GpsEphemeris, ProductDiagnostics,
-    Products, ProductsProvider,
+    gps_satellite_clock_correction, BiasSinexProvider, BroadcastProductsProvider, CodeBiasProvider,
+    GpsEphemeris, ProductDiagnostics, Products, ProductsProvider,
 };
 
 fn make_eph(prn: u8) -> GpsEphemeris {
@@ -125,4 +125,37 @@ fn stale_broadcast_ephemeris_is_rejected_for_clock_correction() {
     assert_eq!(diag.fallbacks.len(), 1);
     assert!(diag.fallbacks[0].contains("broadcast ephemeris stale"));
     assert!(diag.fallbacks[0].contains("toc_age_s=7201.000"));
+}
+
+#[test]
+fn products_expose_external_bias_sinex_code_biases() {
+    let eph = make_eph(1);
+    let dcb = "\
+%=BIA 1.00 COD 2016:327:06748 IGS 2016:323:00000 2016:324:00000 A 00000003
++BIAS/DESCRIPTION
+TIME_SYSTEM G
+-BIAS/DESCRIPTION
++BIAS/SOLUTION
+OSB G063 G01 C1C 2016:323:00000 2016:324:00000 ns 10.2669 0.0257
+OSB G063 G01 C1W 2016:323:00000 2016:324:00000 ns 11.7118 0.0174
+OSB G063 G01 C2W 2016:323:00000 2016:324:00000 ns 19.2886 0.0281
+-BIAS/SOLUTION
+%=ENDBIA
+"
+    .parse::<BiasSinexProvider>()
+    .expect("bias sinex parse");
+    let products = Products::new(BroadcastProductsProvider::new(vec![eph])).with_dcb(dcb);
+    let l1 = bijux_gnss_core::api::SigId {
+        sat: SatId { constellation: Constellation::Gps, prn: 1 },
+        band: bijux_gnss_core::api::SignalBand::L1,
+        code: bijux_gnss_core::api::SignalCode::Ca,
+    };
+    let l2 = bijux_gnss_core::api::SigId {
+        sat: SatId { constellation: Constellation::Gps, prn: 1 },
+        band: bijux_gnss_core::api::SignalBand::L2,
+        code: bijux_gnss_core::api::SignalCode::Py,
+    };
+
+    assert!(products.code_bias_m(l1).is_some());
+    assert!(products.differential_code_bias_m(l1, l2).is_some());
 }
