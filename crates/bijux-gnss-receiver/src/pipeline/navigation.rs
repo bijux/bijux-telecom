@@ -4,8 +4,8 @@ use bijux_gnss_core::api::{
     check_nav_solution_sanity, is_solution_valid, obs_epoch_stability_key, Constellation,
     MeasurementRejectReason, Meters, NavAssumptions, NavLifecycleState, NavProvenance,
     NavRefusalClass, NavResidual, NavSolutionEpoch, NavUncertaintyClass, ObsEpoch, ObsSatellite,
-    Seconds, SolutionStatus, SolutionValidity,
-    NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
+    Seconds, SolutionStatus, SolutionValidity, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
+    NAV_SOLUTION_MODEL_VERSION,
 };
 use bijux_gnss_nav::api::{
     elevation_azimuth_deg, position_broadcast_navigation_from_gps_ephemerides,
@@ -264,19 +264,16 @@ impl Navigation {
             .iter()
             .filter(|s| navigation_supported_constellation(s.signal_id.sat.constellation))
             .filter(|s| self.config.allows_constellation(s.signal_id.sat.constellation))
-            .filter_map(|s| match prepare_position_observation(
-                &self.config,
-                obs,
-                s,
-                navigation,
-                self.last_ecef,
-            ) {
-                PositionObservationPreparation::Included(observation) => Some(observation),
-                PositionObservationPreparation::InvalidSatelliteTime(sat) => {
-                    invalid_satellite_time_sats.push(sat);
-                    None
+            .filter_map(|s| {
+                match prepare_position_observation(&self.config, obs, s, navigation, self.last_ecef)
+                {
+                    PositionObservationPreparation::Included(observation) => Some(observation),
+                    PositionObservationPreparation::InvalidSatelliteTime(sat) => {
+                        invalid_satellite_time_sats.push(sat);
+                        None
+                    }
+                    PositionObservationPreparation::ExcludedByElevationMask => None,
                 }
-                PositionObservationPreparation::ExcludedByElevationMask => None,
             })
             .collect();
         if !invalid_satellite_time_sats.is_empty() {
@@ -1234,9 +1231,8 @@ fn prepare_position_observation(
     } else {
         config.weighting.tracking_mode_scalar_weight
     };
-    let pseudorange_sigma_m =
-        (sat.pseudorange_var_m2.is_finite() && sat.pseudorange_var_m2 > 0.0)
-            .then_some(sat.pseudorange_var_m2.sqrt());
+    let pseudorange_sigma_m = (sat.pseudorange_var_m2.is_finite() && sat.pseudorange_var_m2 > 0.0)
+        .then_some(sat.pseudorange_var_m2.sqrt());
     let weight = position_measurement_weight(
         Some(sat.cn0_dbhz),
         elevation,
@@ -1917,10 +1913,8 @@ mod tests {
         obs_epoch.gps_week = Some(0);
         obs_epoch.tow_s = Some(Seconds(2_000.0));
         let config = ReceiverPipelineConfig::default();
-        let high_elevation =
-            sample_pipeline_position_satellite(sat, 45.0, Some(75.0), "scalar");
-        let low_elevation =
-            sample_pipeline_position_satellite(sat, 45.0, Some(10.0), "scalar");
+        let high_elevation = sample_pipeline_position_satellite(sat, 45.0, Some(75.0), "scalar");
+        let low_elevation = sample_pipeline_position_satellite(sat, 45.0, Some(10.0), "scalar");
 
         let PositionObservationPreparation::Included(high_observation) =
             prepare_position_observation(&config, &obs_epoch, &high_elevation, &[], None)
@@ -1947,16 +1941,12 @@ mod tests {
         obs_epoch.tow_s = Some(Seconds(2_000.0));
         let mut config = ReceiverPipelineConfig::default();
         config.weighting.elev_mask_deg = 15.0;
-        let low_elevation =
-            sample_pipeline_position_satellite(sat, 45.0, Some(10.0), "scalar");
+        let low_elevation = sample_pipeline_position_satellite(sat, 45.0, Some(10.0), "scalar");
 
         let preparation =
             prepare_position_observation(&config, &obs_epoch, &low_elevation, &[], None);
 
-        assert!(matches!(
-            preparation,
-            PositionObservationPreparation::ExcludedByElevationMask
-        ));
+        assert!(matches!(preparation, PositionObservationPreparation::ExcludedByElevationMask));
     }
 
     #[test]
@@ -1968,10 +1958,8 @@ mod tests {
         obs_epoch.tow_s = Some(Seconds(2_000.0));
         let mut config = ReceiverPipelineConfig::default();
         config.weighting.mode = NavigationWeightingMode::Cn0;
-        let strong_signal =
-            sample_pipeline_position_satellite(sat, 48.0, Some(45.0), "scalar");
-        let weak_signal =
-            sample_pipeline_position_satellite(sat, 28.0, Some(45.0), "scalar");
+        let strong_signal = sample_pipeline_position_satellite(sat, 48.0, Some(45.0), "scalar");
+        let weak_signal = sample_pipeline_position_satellite(sat, 28.0, Some(45.0), "scalar");
 
         let PositionObservationPreparation::Included(strong_observation) =
             prepare_position_observation(&config, &obs_epoch, &strong_signal, &[], None)
@@ -1998,12 +1986,9 @@ mod tests {
         obs_epoch.tow_s = Some(Seconds(2_000.0));
         let mut config = ReceiverPipelineConfig::default();
         config.weighting.mode = NavigationWeightingMode::ElevationCn0;
-        let weak_low_signal =
-            sample_pipeline_position_satellite(sat, 28.0, Some(10.0), "scalar");
-        let strong_low_signal =
-            sample_pipeline_position_satellite(sat, 48.0, Some(10.0), "scalar");
-        let weak_high_signal =
-            sample_pipeline_position_satellite(sat, 28.0, Some(75.0), "scalar");
+        let weak_low_signal = sample_pipeline_position_satellite(sat, 28.0, Some(10.0), "scalar");
+        let strong_low_signal = sample_pipeline_position_satellite(sat, 48.0, Some(10.0), "scalar");
+        let weak_high_signal = sample_pipeline_position_satellite(sat, 28.0, Some(75.0), "scalar");
 
         let PositionObservationPreparation::Included(weak_low_observation) =
             prepare_position_observation(&config, &obs_epoch, &weak_low_signal, &[], None)
@@ -2304,6 +2289,35 @@ mod tests {
         assert!(solution.stability_signature.starts_with("navsig:v2:"));
         assert!(solution.stability_signature.contains(":tdop="));
         assert_eq!(solution.stability_signature_version, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION);
+    }
+
+    #[test]
+    fn synthetic_solution_emits_ecef_position_covariance() {
+        let config = ReceiverPipelineConfig::default();
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+        let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
+        let t_rx_s = 100_000.0;
+        let ephs = vec![
+            make_eph(1, 0.0, 0.0, t_rx_s),
+            make_eph(2, 0.8, 0.9, t_rx_s),
+            make_eph(3, 1.6, 1.8, t_rx_s),
+            make_eph(4, 2.4, 2.7, t_rx_s),
+            make_eph(5, 3.2, 3.6, t_rx_s),
+        ];
+        let obs = make_obs_epoch_for_solution(20, t_rx_s, truth, &ephs);
+        let solution = nav.solve_epoch(&obs, &ephs).expect("synthetic solution");
+        let covariance = solution
+            .position_covariance_ecef_m2
+            .expect("navigation solution should emit position covariance");
+
+        for row in covariance {
+            for value in row {
+                assert!(value.is_finite());
+            }
+        }
+        assert!(covariance[0][0] > 0.0);
+        assert!(covariance[1][1] > 0.0);
+        assert!(covariance[2][2] > 0.0);
     }
 
     #[test]
