@@ -25,7 +25,7 @@ use crate::estimation::position::solver::{
 use crate::estimation::ppp::config::{PppConvergenceState, PppHealth, PppSolutionEpoch};
 use crate::formats::precise_products::{ProductDiagnostics, ProductsProvider};
 use crate::linalg::Matrix;
-use crate::models::antenna::SatelliteAntennaCalibrations;
+use crate::models::antenna::{ReceiverAntennaCalibrations, SatelliteAntennaCalibrations};
 use crate::models::atmosphere::SaastamoinenModel;
 use crate::orbits::gps::{
     gps_ephemeris_age, gps_satellite_clock_correction, sat_state_gps_l1ca, select_best_ephemeris,
@@ -236,6 +236,8 @@ impl PppFilter {
                         sat_clock_s: clock_bias_s,
                         antenna_range_correction_m: iono_free_antenna_range_correction_m(
                             self.config.satellite_antenna_calibrations.as_ref(),
+                            self.config.receiver_antenna_type.as_deref(),
+                            self.config.receiver_antenna_calibrations.as_ref(),
                             sat.signal_id.sat,
                             iono_free.band_1,
                             iono_free.f1_hz,
@@ -262,6 +264,8 @@ impl PppFilter {
                         sat_clock_s: clock_bias_s,
                         antenna_range_correction_m: iono_free_antenna_range_correction_m(
                             self.config.satellite_antenna_calibrations.as_ref(),
+                            self.config.receiver_antenna_type.as_deref(),
+                            self.config.receiver_antenna_calibrations.as_ref(),
                             sat.signal_id.sat,
                             iono_free.band_1,
                             iono_free.f1_hz,
@@ -288,6 +292,8 @@ impl PppFilter {
                     sat_clock_s: clock_bias_s,
                     antenna_range_correction_m: single_frequency_antenna_range_correction_m(
                         self.config.satellite_antenna_calibrations.as_ref(),
+                        self.config.receiver_antenna_type.as_deref(),
+                        self.config.receiver_antenna_calibrations.as_ref(),
                         sat.signal_id.sat,
                         sat.signal_id.band,
                         obs.gps_time(),
@@ -312,6 +318,8 @@ impl PppFilter {
                     sat_clock_s: clock_bias_s,
                     antenna_range_correction_m: single_frequency_antenna_range_correction_m(
                         self.config.satellite_antenna_calibrations.as_ref(),
+                        self.config.receiver_antenna_type.as_deref(),
+                        self.config.receiver_antenna_calibrations.as_ref(),
                         sat.signal_id.sat,
                         sat.signal_id.band,
                         obs.gps_time(),
@@ -578,22 +586,34 @@ fn product_reference_time_s(obs: &ObsEpoch) -> f64 {
 }
 
 fn single_frequency_antenna_range_correction_m(
-    calibrations: Option<&SatelliteAntennaCalibrations>,
+    satellite_calibrations: Option<&SatelliteAntennaCalibrations>,
+    receiver_antenna_type: Option<&str>,
+    receiver_calibrations: Option<&ReceiverAntennaCalibrations>,
     sat: SatId,
     band: SignalBand,
     gps_time: Option<bijux_gnss_core::api::GpsTime>,
     sat_pos_m: [f64; 3],
     receiver_pos_m: [f64; 3],
 ) -> f64 {
-    calibrations
+    satellite_calibrations
         .and_then(|calibrations| {
             calibrations.range_correction_m(sat, band, gps_time, sat_pos_m, receiver_pos_m)
         })
         .unwrap_or(0.0)
+        + single_frequency_receiver_antenna_range_correction_m(
+            receiver_antenna_type,
+            receiver_calibrations,
+            band,
+            gps_time,
+            receiver_pos_m,
+            sat_pos_m,
+        )
 }
 
 fn iono_free_antenna_range_correction_m(
-    calibrations: Option<&SatelliteAntennaCalibrations>,
+    satellite_calibrations: Option<&SatelliteAntennaCalibrations>,
+    receiver_antenna_type: Option<&str>,
+    receiver_calibrations: Option<&ReceiverAntennaCalibrations>,
     sat: SatId,
     band_1: SignalBand,
     f1_hz: f64,
@@ -603,7 +623,7 @@ fn iono_free_antenna_range_correction_m(
     sat_pos_m: [f64; 3],
     receiver_pos_m: [f64; 3],
 ) -> f64 {
-    calibrations
+    satellite_calibrations
         .and_then(|calibrations| {
             calibrations.iono_free_range_correction_m(
                 sat,
@@ -614,6 +634,71 @@ fn iono_free_antenna_range_correction_m(
                 gps_time,
                 sat_pos_m,
                 receiver_pos_m,
+            )
+        })
+        .unwrap_or(0.0)
+        + iono_free_receiver_antenna_range_correction_m(
+            receiver_antenna_type,
+            receiver_calibrations,
+            band_1,
+            f1_hz,
+            band_2,
+            f2_hz,
+            gps_time,
+            receiver_pos_m,
+            sat_pos_m,
+        )
+}
+
+fn single_frequency_receiver_antenna_range_correction_m(
+    receiver_antenna_type: Option<&str>,
+    calibrations: Option<&ReceiverAntennaCalibrations>,
+    band: SignalBand,
+    gps_time: Option<bijux_gnss_core::api::GpsTime>,
+    receiver_pos_m: [f64; 3],
+    sat_pos_m: [f64; 3],
+) -> f64 {
+    let Some(receiver_antenna_type) = receiver_antenna_type else {
+        return 0.0;
+    };
+    calibrations
+        .and_then(|calibrations| {
+            calibrations.range_correction_m(
+                receiver_antenna_type,
+                band,
+                gps_time,
+                receiver_pos_m,
+                sat_pos_m,
+            )
+        })
+        .unwrap_or(0.0)
+}
+
+fn iono_free_receiver_antenna_range_correction_m(
+    receiver_antenna_type: Option<&str>,
+    calibrations: Option<&ReceiverAntennaCalibrations>,
+    band_1: SignalBand,
+    f1_hz: f64,
+    band_2: SignalBand,
+    f2_hz: f64,
+    gps_time: Option<bijux_gnss_core::api::GpsTime>,
+    receiver_pos_m: [f64; 3],
+    sat_pos_m: [f64; 3],
+) -> f64 {
+    let Some(receiver_antenna_type) = receiver_antenna_type else {
+        return 0.0;
+    };
+    calibrations
+        .and_then(|calibrations| {
+            calibrations.iono_free_range_correction_m(
+                receiver_antenna_type,
+                band_1,
+                f1_hz,
+                band_2,
+                f2_hz,
+                gps_time,
+                receiver_pos_m,
+                sat_pos_m,
             )
         })
         .unwrap_or(0.0)
@@ -672,6 +757,7 @@ mod tests {
     use crate::corrections::biases::{CodeBias, CodeBiasProvider, SignalCodeBiases};
     use crate::estimation::ppp::measurements::iono_free_code_observation_from_obs;
     use crate::models::antenna::{
+        ReceiverAntennaCalibration, ReceiverAntennaCalibrations, ReceiverPhaseCenterOffset,
         SatelliteAntennaCalibration, SatelliteAntennaCalibrations, SatellitePhaseCenterOffset,
     };
     use bijux_gnss_core::api::{
@@ -991,6 +1077,8 @@ mod tests {
             .expect("single-frequency antenna correction");
         let actual = single_frequency_antenna_range_correction_m(
             Some(&calibrations),
+            None,
+            None,
             sat,
             SignalBand::L1,
             gps_time,
@@ -1037,6 +1125,8 @@ mod tests {
             .expect("iono-free antenna correction");
         let actual = iono_free_antenna_range_correction_m(
             Some(&calibrations),
+            None,
+            None,
             sat,
             SignalBand::L1,
             l1.carrier_hz.value(),
@@ -1049,5 +1139,149 @@ mod tests {
 
         assert!(actual.abs() > 1.0e-6);
         assert!((actual - expected).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn ppp_filter_uses_receiver_antenna_calibration_for_single_frequency_range() {
+        let gps_time = Some(bijux_gnss_core::api::GpsTime { week: 2200, tow_s: 86_400.0 });
+        let sat_pos_m = [20_200_000.0, 14_000_000.0, 21_700_000.0];
+        let receiver_pos_m = [1_111_111.0, -4_222_222.0, 4_333_333.0];
+        let receiver_antenna_type = "AOAD/M_T NONE";
+        let calibrations = ReceiverAntennaCalibrations {
+            entries: vec![ReceiverAntennaCalibration {
+                antenna_type: receiver_antenna_type.to_string(),
+                valid_from_unix_s: None,
+                valid_until_unix_s: None,
+                offsets_by_band: BTreeMap::from([(
+                    SignalBand::L1,
+                    ReceiverPhaseCenterOffset::new(0.12, -0.04, 0.95),
+                )]),
+            }],
+        };
+
+        let expected = calibrations
+            .range_correction_m(
+                receiver_antenna_type,
+                SignalBand::L1,
+                gps_time,
+                receiver_pos_m,
+                sat_pos_m,
+            )
+            .expect("single-frequency receiver antenna correction");
+        let actual = single_frequency_antenna_range_correction_m(
+            None,
+            Some(receiver_antenna_type),
+            Some(&calibrations),
+            SatId { constellation: Constellation::Gps, prn: 7 },
+            SignalBand::L1,
+            gps_time,
+            sat_pos_m,
+            receiver_pos_m,
+        );
+
+        assert!(actual.abs() > 1.0e-6);
+        assert!((actual - expected).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn ppp_filter_uses_receiver_antenna_calibration_for_iono_free_range() {
+        let gps_time = Some(bijux_gnss_core::api::GpsTime { week: 2200, tow_s: 86_400.0 });
+        let sat_pos_m = [20_200_000.0, 14_000_000.0, 21_700_000.0];
+        let receiver_pos_m = [1_111_111.0, -4_222_222.0, 4_333_333.0];
+        let receiver_antenna_type = "AOAD/M_T NONE";
+        let l1 = signal_spec_gps_l1_ca();
+        let l2 = signal_spec_gps_l2_py();
+        let calibrations = ReceiverAntennaCalibrations {
+            entries: vec![ReceiverAntennaCalibration {
+                antenna_type: receiver_antenna_type.to_string(),
+                valid_from_unix_s: None,
+                valid_until_unix_s: None,
+                offsets_by_band: BTreeMap::from([
+                    (SignalBand::L1, ReceiverPhaseCenterOffset::new(0.08, 0.01, 0.91)),
+                    (SignalBand::L2, ReceiverPhaseCenterOffset::new(0.14, -0.03, 1.12)),
+                ]),
+            }],
+        };
+
+        let expected = calibrations
+            .iono_free_range_correction_m(
+                receiver_antenna_type,
+                SignalBand::L1,
+                l1.carrier_hz.value(),
+                SignalBand::L2,
+                l2.carrier_hz.value(),
+                gps_time,
+                receiver_pos_m,
+                sat_pos_m,
+            )
+            .expect("iono-free receiver antenna correction");
+        let actual = iono_free_antenna_range_correction_m(
+            None,
+            Some(receiver_antenna_type),
+            Some(&calibrations),
+            SatId { constellation: Constellation::Gps, prn: 7 },
+            SignalBand::L1,
+            l1.carrier_hz.value(),
+            SignalBand::L2,
+            l2.carrier_hz.value(),
+            gps_time,
+            sat_pos_m,
+            receiver_pos_m,
+        );
+
+        assert!(actual.abs() > 1.0e-6);
+        assert!((actual - expected).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn ppp_filter_receiver_antenna_type_selects_matching_calibration() {
+        let gps_time = Some(bijux_gnss_core::api::GpsTime { week: 2200, tow_s: 86_400.0 });
+        let sat_pos_m = [20_200_000.0, 14_000_000.0, 21_700_000.0];
+        let receiver_pos_m = [1_111_111.0, -4_222_222.0, 4_333_333.0];
+        let calibrations = ReceiverAntennaCalibrations {
+            entries: vec![
+                ReceiverAntennaCalibration {
+                    antenna_type: "AOAD/M_T NONE".to_string(),
+                    valid_from_unix_s: None,
+                    valid_until_unix_s: None,
+                    offsets_by_band: BTreeMap::from([(
+                        SignalBand::L1,
+                        ReceiverPhaseCenterOffset::new(0.05, 0.01, 0.70),
+                    )]),
+                },
+                ReceiverAntennaCalibration {
+                    antenna_type: "TRM57971.00 NONE".to_string(),
+                    valid_from_unix_s: None,
+                    valid_until_unix_s: None,
+                    offsets_by_band: BTreeMap::from([(
+                        SignalBand::L1,
+                        ReceiverPhaseCenterOffset::new(0.25, 0.08, 1.30),
+                    )]),
+                },
+            ],
+        };
+
+        let aoad = single_frequency_antenna_range_correction_m(
+            None,
+            Some("AOAD/M_T NONE"),
+            Some(&calibrations),
+            SatId { constellation: Constellation::Gps, prn: 7 },
+            SignalBand::L1,
+            gps_time,
+            sat_pos_m,
+            receiver_pos_m,
+        );
+        let trimble = single_frequency_antenna_range_correction_m(
+            None,
+            Some("TRM57971.00 NONE"),
+            Some(&calibrations),
+            SatId { constellation: Constellation::Gps, prn: 7 },
+            SignalBand::L1,
+            gps_time,
+            sat_pos_m,
+            receiver_pos_m,
+        );
+
+        assert!((trimble - aoad).abs() > 1.0e-6);
     }
 }
