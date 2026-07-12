@@ -32,14 +32,39 @@ pub struct SyntheticPositionScenario {
 }
 
 pub fn four_satellite_position_scenario(receiver_clock_bias_s: f64) -> SyntheticPositionScenario {
-    four_satellite_position_scenario_with_ephemerides(receiver_clock_bias_s, sample_ephemerides())
+    four_satellite_position_scenario_from_truth(
+        receiver_clock_bias_s,
+        geodetic_to_ecef(37.0, -122.0, 10.0),
+        sample_ephemerides(),
+    )
+}
+
+pub fn impossible_geometry_position_scenario(
+    receiver_clock_bias_s: f64,
+) -> SyntheticPositionScenario {
+    four_satellite_position_scenario_from_truth(
+        receiver_clock_bias_s,
+        geodetic_to_ecef(37.0, -122.0, -2_000_000.0),
+        sample_ephemerides(),
+    )
 }
 
 pub fn four_satellite_position_scenario_with_ephemerides(
     receiver_clock_bias_s: f64,
     ephemerides: Vec<GpsEphemeris>,
 ) -> SyntheticPositionScenario {
-    let truth_ecef_m = geodetic_to_ecef(37.0, -122.0, 10.0);
+    four_satellite_position_scenario_from_truth(
+        receiver_clock_bias_s,
+        geodetic_to_ecef(37.0, -122.0, 10.0),
+        ephemerides,
+    )
+}
+
+pub fn four_satellite_position_scenario_from_truth(
+    receiver_clock_bias_s: f64,
+    truth_ecef_m: (f64, f64, f64),
+    ephemerides: Vec<GpsEphemeris>,
+) -> SyntheticPositionScenario {
     let t_rx_s = 504_018.07 + receiver_clock_bias_s;
     let observations = ephemerides
         .iter()
