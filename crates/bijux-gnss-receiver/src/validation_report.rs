@@ -18,6 +18,7 @@ use bijux_gnss_core::api::{
     reference_ecef, stats, DualFrequencyObservationReport, DualFrequencyPairStatus,
     InterFrequencyAlignmentReport, NavSolutionEpoch, ObsEpoch, SatId, SignalBand,
     SolutionConsistencyReport, SolutionStatus, ValidationReferenceEpoch,
+    supported_dual_frequency_band_pairs,
 };
 use bijux_gnss_nav::api::{
     ecef_to_enu, geometry_free_diagnostics_from_obs_epochs, iono_free_code_from_obs_epochs,
@@ -775,7 +776,7 @@ fn build_validation_report_with_observation_context(
 fn dual_frequency_combinations_valid(obs: &[ObsEpoch]) -> bool {
     let mut saw_complete_pair = false;
 
-    for (band_1, band_2) in [(SignalBand::L1, SignalBand::L2), (SignalBand::L1, SignalBand::L5)] {
+    for &(band_1, band_2) in supported_dual_frequency_band_pairs() {
         let combinations = iono_free_code_from_obs_epochs(obs, band_1, band_2);
         let observed_pairs = combinations
             .iter()
@@ -847,7 +848,7 @@ fn geometry_free_report(
     let mut cycle_slip_suspects = 0usize;
     let mut max_abs_delta_m: Option<f64> = None;
 
-    for (band_1, band_2) in [(SignalBand::L1, SignalBand::L2), (SignalBand::L1, SignalBand::L5)] {
+    for &(band_1, band_2) in supported_dual_frequency_band_pairs() {
         let filtered_epochs =
             dual_frequency_pair_epochs(obs, dual_frequency_observations, band_1, band_2);
         if filtered_epochs.is_empty() {
@@ -907,7 +908,7 @@ fn melbourne_wubbena_report(
     let mut wide_lane_slip_suspects = 0usize;
     let mut max_abs_delta_wide_lane_cycles: Option<f64> = None;
 
-    for (band_1, band_2) in [(SignalBand::L1, SignalBand::L2), (SignalBand::L1, SignalBand::L5)] {
+    for &(band_1, band_2) in supported_dual_frequency_band_pairs() {
         let filtered_epochs =
             dual_frequency_pair_epochs(obs, dual_frequency_observations, band_1, band_2);
         if filtered_epochs.is_empty() {
@@ -1695,6 +1696,82 @@ mod tests {
     }
 
     #[test]
+    fn validation_report_marks_e1_e5_dual_frequency_pairs_ready_for_combinations() {
+        let report = build_validation_report(
+            &[],
+            &[dual_frequency_epoch(
+                44,
+                vec![
+                    dual_frequency_satellite_for_constellation(
+                        Constellation::Galileo,
+                        SignalBand::E1,
+                        SignalCode::E1B,
+                        true,
+                        true,
+                    ),
+                    dual_frequency_satellite_for_constellation(
+                        Constellation::Galileo,
+                        SignalBand::E5,
+                        SignalCode::E5a,
+                        true,
+                        true,
+                    ),
+                ],
+            )],
+            &[fixture_solution(44, 1.0, 0.5, 4)],
+            &[],
+            1.0,
+            true,
+            Vec::new(),
+            ValidationSciencePolicy::default(),
+        )
+        .expect("validation report");
+
+        assert_eq!(report.dual_frequency_observations.complete_pairs, 1);
+        assert_eq!(report.dual_frequency_observations.e1_e5_pairs, 1);
+        assert!(report.ppp_readiness.multi_freq_present);
+        assert!(report.ppp_readiness.combinations_valid);
+    }
+
+    #[test]
+    fn validation_report_marks_b1_b2_dual_frequency_pairs_ready_for_combinations() {
+        let report = build_validation_report(
+            &[],
+            &[dual_frequency_epoch(
+                45,
+                vec![
+                    dual_frequency_satellite_for_constellation(
+                        Constellation::Beidou,
+                        SignalBand::B1,
+                        SignalCode::B1I,
+                        true,
+                        true,
+                    ),
+                    dual_frequency_satellite_for_constellation(
+                        Constellation::Beidou,
+                        SignalBand::B2,
+                        SignalCode::B2I,
+                        true,
+                        true,
+                    ),
+                ],
+            )],
+            &[fixture_solution(45, 1.0, 0.5, 4)],
+            &[],
+            1.0,
+            true,
+            Vec::new(),
+            ValidationSciencePolicy::default(),
+        )
+        .expect("validation report");
+
+        assert_eq!(report.dual_frequency_observations.complete_pairs, 1);
+        assert_eq!(report.dual_frequency_observations.b1_b2_pairs, 1);
+        assert!(report.ppp_readiness.multi_freq_present);
+        assert!(report.ppp_readiness.combinations_valid);
+    }
+
+    #[test]
     fn validation_report_marks_incomplete_dual_frequency_pairs_not_ready_for_combinations() {
         let report = build_validation_report(
             &[],
@@ -2035,12 +2112,24 @@ mod tests {
         code_lock: bool,
         carrier_lock: bool,
     ) -> ObsSatellite {
+        dual_frequency_satellite_for_constellation(
+            Constellation::Gps,
+            band,
+            code,
+            code_lock,
+            carrier_lock,
+        )
+    }
+
+    fn dual_frequency_satellite_for_constellation(
+        constellation: Constellation,
+        band: SignalBand,
+        code: SignalCode,
+        code_lock: bool,
+        carrier_lock: bool,
+    ) -> ObsSatellite {
         ObsSatellite {
-            signal_id: SigId {
-                sat: SatId { constellation: Constellation::Gps, prn: 12 },
-                band,
-                code,
-            },
+            signal_id: SigId { sat: SatId { constellation, prn: 12 }, band, code },
             pseudorange_m: Meters(22_000_000.0),
             pseudorange_var_m2: 1.0,
             carrier_phase_cycles: Cycles(200.0),
@@ -2064,7 +2153,7 @@ mod tests {
                 smoothing_window: 0,
                 smoothing_age: 0,
                 smoothing_resets: 0,
-                signal: signal_registry(Constellation::Gps, band, code)
+                signal: signal_registry(constellation, band, code)
                     .expect("dual-frequency signal must exist")
                     .spec,
                 doppler_model: "tracked_carrier_hz_minus_intermediate_freq".to_string(),
