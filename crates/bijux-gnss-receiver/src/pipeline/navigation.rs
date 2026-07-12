@@ -1558,6 +1558,7 @@ mod tests {
 
     fn sample_pipeline_position_satellite(
         sat: SatId,
+        cn0_dbhz: f64,
         elevation_deg: Option<f64>,
         tracking_mode: &str,
     ) -> ObsSatellite {
@@ -1570,7 +1571,7 @@ mod tests {
             carrier_phase_var_cycles2: 1.0,
             doppler_hz: bijux_gnss_core::api::Hertz(0.0),
             doppler_var_hz2: 4.0,
-            cn0_dbhz: 45.0,
+            cn0_dbhz,
             lock_flags: LockFlags {
                 code_lock: true,
                 carrier_lock: true,
@@ -1911,8 +1912,10 @@ mod tests {
         obs_epoch.gps_week = Some(0);
         obs_epoch.tow_s = Some(Seconds(2_000.0));
         let config = ReceiverPipelineConfig::default();
-        let high_elevation = sample_pipeline_position_satellite(sat, Some(75.0), "scalar");
-        let low_elevation = sample_pipeline_position_satellite(sat, Some(10.0), "scalar");
+        let high_elevation =
+            sample_pipeline_position_satellite(sat, 45.0, Some(75.0), "scalar");
+        let low_elevation =
+            sample_pipeline_position_satellite(sat, 45.0, Some(10.0), "scalar");
 
         let PositionObservationPreparation::Included(high_observation) =
             prepare_position_observation(&config, &obs_epoch, &high_elevation, &[], None)
@@ -1939,7 +1942,8 @@ mod tests {
         obs_epoch.tow_s = Some(Seconds(2_000.0));
         let mut config = ReceiverPipelineConfig::default();
         config.weighting.elev_mask_deg = 15.0;
-        let low_elevation = sample_pipeline_position_satellite(sat, Some(10.0), "scalar");
+        let low_elevation =
+            sample_pipeline_position_satellite(sat, 45.0, Some(10.0), "scalar");
 
         let preparation =
             prepare_position_observation(&config, &obs_epoch, &low_elevation, &[], None);
@@ -1948,6 +1952,36 @@ mod tests {
             preparation,
             PositionObservationPreparation::ExcludedByElevationMask
         ));
+    }
+
+    #[test]
+    fn prepare_position_observation_downweights_low_cn0_signals_in_cn0_mode() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 10 };
+        let mut obs_epoch = fake_obs_epoch_for_nav_tests(0);
+        obs_epoch.t_rx_s = Seconds(2_000.0);
+        obs_epoch.gps_week = Some(0);
+        obs_epoch.tow_s = Some(Seconds(2_000.0));
+        let mut config = ReceiverPipelineConfig::default();
+        config.weighting.mode = NavigationWeightingMode::Cn0;
+        let strong_signal =
+            sample_pipeline_position_satellite(sat, 48.0, Some(45.0), "scalar");
+        let weak_signal =
+            sample_pipeline_position_satellite(sat, 28.0, Some(45.0), "scalar");
+
+        let PositionObservationPreparation::Included(strong_observation) =
+            prepare_position_observation(&config, &obs_epoch, &strong_signal, &[], None)
+        else {
+            panic!("strong-signal observation should be retained");
+        };
+        let PositionObservationPreparation::Included(weak_observation) =
+            prepare_position_observation(&config, &obs_epoch, &weak_signal, &[], None)
+        else {
+            panic!("weak-signal observation should be retained");
+        };
+
+        assert!(weak_observation.weight.is_finite());
+        assert!(strong_observation.weight.is_finite());
+        assert!(weak_observation.weight < strong_observation.weight);
     }
 
     #[test]
