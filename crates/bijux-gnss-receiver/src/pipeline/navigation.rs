@@ -23,6 +23,7 @@ use crate::engine::receiver_config::{
     NavigationMotionClass, NavigationWeightingMode, ReceiverPipelineConfig,
 };
 use crate::engine::runtime::ReceiverRuntime;
+use crate::pipeline::common_code_doppler_anomaly::detect_common_code_doppler_anomaly;
 use crate::pipeline::satellite_clock_anomaly::{
     advance_satellite_clock_suspect_streak, detect_satellite_clock_anomaly,
 };
@@ -37,6 +38,7 @@ pub struct Navigation {
     clock: ClockModel,
     last_ecef: Option<(f64, f64, f64)>,
     last_solution: Option<NavSolutionEpoch>,
+    last_position_observations: Option<Vec<PositionObservation>>,
     last_satellite_clock_suspect: Option<bijux_gnss_core::api::SatId>,
     satellite_clock_suspect_streak: usize,
 }
@@ -140,6 +142,7 @@ impl Navigation {
             clock: ClockModel::new(),
             last_ecef: None,
             last_solution: None,
+            last_position_observations: None,
             last_satellite_clock_suspect: None,
             satellite_clock_suspect_streak: 0,
         }
@@ -671,6 +674,7 @@ impl Navigation {
         );
 
         let mut raim_explain_reasons = Vec::new();
+        let mut common_anomaly_explain_reasons = Vec::new();
         let mut resolved_by_raim_exclusion = false;
         let mut clock_anomaly_explain_reasons = Vec::new();
         if let Some(solution_separation) = solution.raim_solution_separation.as_ref() {
@@ -770,6 +774,44 @@ impl Navigation {
                 ),
             ));
         }
+        if let Some(common_anomaly) = detect_common_code_doppler_anomaly(
+            self.last_solution.as_ref(),
+            self.last_position_observations.as_deref(),
+            &nav_epoch,
+            &observations,
+        ) {
+            nav_epoch.status = SolutionStatus::Degraded;
+            nav_epoch
+                .health
+                .push(bijux_gnss_core::api::NavHealthEvent::CommonCodeDopplerAnomaly {
+                    common_code_step_m: common_anomaly.common_code_step_m,
+                    common_doppler_step_hz: common_anomaly.common_doppler_step_hz,
+                    matched_satellite_count: common_anomaly.matched_satellite_count,
+                    aligned_satellite_count: common_anomaly.aligned_satellite_count,
+                    code_step_threshold_m: common_anomaly.code_step_threshold_m,
+                    doppler_step_threshold_hz: common_anomaly.doppler_step_threshold_hz,
+                });
+            common_anomaly_explain_reasons.push("common_code_doppler_anomaly".to_string());
+            common_anomaly_explain_reasons.push(format!(
+                "common_code_step_m={:.3}",
+                common_anomaly.common_code_step_m
+            ));
+            common_anomaly_explain_reasons.push(format!(
+                "common_doppler_step_hz={:.3}",
+                common_anomaly.common_doppler_step_hz
+            ));
+            self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                "NAV_COMMON_CODE_DOPPLER_ANOMALY",
+                format!(
+                    "common code step {:.2} m and common Doppler step {:.2} Hz across {}/{} matched satellites",
+                    common_anomaly.common_code_step_m,
+                    common_anomaly.common_doppler_step_hz,
+                    common_anomaly.aligned_satellite_count,
+                    common_anomaly.matched_satellite_count
+                ),
+            ));
+        }
 
         let sanity_events = check_nav_solution_sanity(self.last_solution.as_ref(), &nav_epoch);
         if sanity_events
@@ -838,6 +880,11 @@ impl Navigation {
                 nav_epoch.explain_reasons.push(reason);
             }
         }
+        for reason in common_anomaly_explain_reasons {
+            if !nav_epoch.explain_reasons.iter().any(|existing| existing == &reason) {
+                nav_epoch.explain_reasons.push(reason);
+            }
+        }
         nav_epoch.stability_signature = nav_output_stability_signature(&nav_epoch);
         let protection_levels = nav_epoch.position_covariance_ecef_m2.and_then(|covariance| {
             formal_protection_levels(
@@ -861,6 +908,7 @@ impl Navigation {
         }
 
         self.last_solution = Some(nav_epoch.clone());
+        self.last_position_observations = Some(observations.clone());
         self.last_satellite_clock_suspect = next_satellite_clock_suspect;
         self.satellite_clock_suspect_streak = next_satellite_clock_suspect_streak;
         Some(nav_epoch)
@@ -2040,10 +2088,7 @@ mod tests {
         )
     }
 
-    fn solution_error_3d_m(
-        solution: &NavSolutionEpoch,
-        truth_ecef_m: (f64, f64, f64),
-    ) -> f64 {
+    fn solution_error_3d_m(solution: &NavSolutionEpoch, truth_ecef_m: (f64, f64, f64)) -> f64 {
         let dx = solution.ecef_x_m.0 - truth_ecef_m.0;
         let dy = solution.ecef_y_m.0 - truth_ecef_m.1;
         let dz = solution.ecef_z_m.0 - truth_ecef_m.2;
@@ -2249,6 +2294,7 @@ mod tests {
             clock: ClockModel::new(),
             last_ecef: Some((1.0, 2.0, 3.0)),
             last_solution: Some(sample_last_solution()),
+            last_position_observations: None,
             last_satellite_clock_suspect: None,
             satellite_clock_suspect_streak: 0,
         };
@@ -2463,6 +2509,7 @@ mod tests {
             clock: ClockModel::new(),
             last_ecef: Some((10.0, 20.0, 30.0)),
             last_solution: Some(sample_last_solution()),
+            last_position_observations: None,
             last_satellite_clock_suspect: None,
             satellite_clock_suspect_streak: 0,
         };
@@ -2889,8 +2936,10 @@ mod tests {
         baseline_config.position_solution_smoothing = false;
         let mut baseline_nav =
             Navigation::new(baseline_config, crate::engine::runtime::ReceiverRuntime::default());
-        let mut smoothed_nav =
-            Navigation::new(ReceiverPipelineConfig::default(), crate::engine::runtime::ReceiverRuntime::default());
+        let mut smoothed_nav = Navigation::new(
+            ReceiverPipelineConfig::default(),
+            crate::engine::runtime::ReceiverRuntime::default(),
+        );
         let mut truth_solutions = Vec::new();
         let mut raw_errors_m = Vec::new();
         let mut smoothed_errors_m = Vec::new();
