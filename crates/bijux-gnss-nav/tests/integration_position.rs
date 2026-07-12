@@ -705,9 +705,8 @@ fn single_point_solver_reports_ecef_position_covariance() {
     let solution = PositionSolver::new()
         .solve_wls(&scenario.observations, &scenario.ephemerides, scenario.t_rx_s)
         .expect("timed four-satellite observations should solve");
-    let covariance = solution
-        .position_covariance_ecef_m2
-        .expect("solver should emit position covariance");
+    let covariance =
+        solution.position_covariance_ecef_m2.expect("solver should emit position covariance");
 
     for row in covariance {
         for value in row {
@@ -717,6 +716,9 @@ fn single_point_solver_reports_ecef_position_covariance() {
     assert!(covariance[0][0] > 0.0);
     assert!(covariance[1][1] > 0.0);
     assert!(covariance[2][2] > 0.0);
+    assert!(solution.sigma_e_m.expect("east sigma") > 0.0);
+    assert!(solution.sigma_n_m.expect("north sigma") > 0.0);
+    assert!(solution.sigma_u_m.expect("up sigma") > 0.0);
 }
 
 #[test]

@@ -25,13 +25,24 @@ pub(crate) fn covariance_horizontal_vertical(
     receiver_ecef_m: [f64; 3],
     covariance_ecef_m2: [[f64; 3]; 3],
 ) -> Option<(f64, f64)> {
-    let covariance_enu = ecef_covariance_to_enu(receiver_ecef_m, covariance_ecef_m2)?;
-    let horizontal = (covariance_enu[0][0] + covariance_enu[1][1]).max(0.0).sqrt();
-    let vertical = covariance_enu[2][2].max(0.0).sqrt();
-    Some((horizontal, vertical))
+    let (sigma_e_m, sigma_n_m, sigma_u_m) =
+        covariance_enu_standard_deviations_m(receiver_ecef_m, covariance_ecef_m2)?;
+    let horizontal = (sigma_e_m * sigma_e_m + sigma_n_m * sigma_n_m).sqrt();
+    Some((horizontal, sigma_u_m))
 }
 
-fn ecef_covariance_to_enu(
+pub(crate) fn covariance_enu_standard_deviations_m(
+    receiver_ecef_m: [f64; 3],
+    covariance_ecef_m2: [[f64; 3]; 3],
+) -> Option<(f64, f64, f64)> {
+    let covariance_enu = covariance_ecef_to_enu(receiver_ecef_m, covariance_ecef_m2)?;
+    let sigma_e_m = covariance_enu[0][0].max(0.0).sqrt();
+    let sigma_n_m = covariance_enu[1][1].max(0.0).sqrt();
+    let sigma_u_m = covariance_enu[2][2].max(0.0).sqrt();
+    Some((sigma_e_m, sigma_n_m, sigma_u_m))
+}
+
+pub(crate) fn covariance_ecef_to_enu(
     receiver_ecef_m: [f64; 3],
     covariance_ecef_m2: [[f64; 3]; 3],
 ) -> Option<[[f64; 3]; 3]> {
@@ -74,4 +85,28 @@ fn ecef_to_enu_rotation(lat_rad: f64, lon_rad: f64) -> [[f64; 3]; 3] {
         [-sin_lat * cos_lon, -sin_lat * sin_lon, cos_lat],
         [cos_lat * cos_lon, cos_lat * sin_lon, sin_lat],
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{covariance_ecef_to_enu, covariance_enu_standard_deviations_m};
+
+    #[test]
+    fn covariance_conversion_reports_enu_standard_deviations() {
+        let receiver_ecef_m = [6_378_137.0, 0.0, 0.0];
+        let covariance_ecef_m2 = [[9.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 4.0]];
+
+        let covariance_enu =
+            covariance_ecef_to_enu(receiver_ecef_m, covariance_ecef_m2).expect("ENU covariance");
+        let (sigma_e_m, sigma_n_m, sigma_u_m) =
+            covariance_enu_standard_deviations_m(receiver_ecef_m, covariance_ecef_m2)
+                .expect("ENU standard deviations");
+
+        assert_eq!(covariance_enu[0][0], 1.0);
+        assert_eq!(covariance_enu[1][1], 4.0);
+        assert_eq!(covariance_enu[2][2], 9.0);
+        assert_eq!(sigma_e_m, 1.0);
+        assert_eq!(sigma_n_m, 2.0);
+        assert_eq!(sigma_u_m, 3.0);
+    }
 }

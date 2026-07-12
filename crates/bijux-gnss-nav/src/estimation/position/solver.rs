@@ -4,6 +4,10 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::estimation::uncertainty::{
+    covariance_enu_standard_deviations_m, covariance_horizontal_vertical,
+};
+
 use super::navigation::{
     corrected_pseudorange_m, resolve_position_inputs, satellite_state_at_time,
     satellite_state_from_observation, unknown_inter_system_time_offset_sats, PositionSolveInput,
@@ -32,6 +36,9 @@ pub struct PositionSolution {
     pub ecef_y_m: f64,
     pub ecef_z_m: f64,
     pub position_covariance_ecef_m2: Option<[[f64; 3]; 3]>,
+    pub sigma_e_m: Option<f64>,
+    pub sigma_n_m: Option<f64>,
+    pub sigma_u_m: Option<f64>,
     pub latitude_deg: f64,
     pub longitude_deg: f64,
     pub altitude_m: f64,
@@ -853,11 +860,20 @@ impl PositionSolver {
             };
             scaled_position_covariance_ecef_m2(covariance, sigma2)
         });
-        let (sigma_h_m, sigma_v_m) = position_covariance_ecef_m2
+        let (sigma_e_m, sigma_n_m, sigma_u_m) = position_covariance_ecef_m2
             .and_then(|covariance_xyz| {
-                covariance_horizontal_vertical([x, y, z], covariance_xyz)
+                covariance_enu_standard_deviations_m([x, y, z], covariance_xyz)
             })
-            .unwrap_or((0.0, 0.0));
+            .map(|(sigma_e_m, sigma_n_m, sigma_u_m)| {
+                (Some(sigma_e_m), Some(sigma_n_m), Some(sigma_u_m))
+            })
+            .unwrap_or((None, None, None));
+        let (sigma_h_m, sigma_v_m) = match (sigma_e_m, sigma_n_m, sigma_u_m) {
+            (Some(sigma_e_m), Some(sigma_n_m), Some(sigma_u_m)) => {
+                (Some((sigma_e_m * sigma_e_m + sigma_n_m * sigma_n_m).sqrt()), Some(sigma_u_m))
+            }
+            _ => (None, None),
+        };
 
         let rejected_sat_count = rejected.len();
         Ok(PositionSolution {
@@ -865,6 +881,9 @@ impl PositionSolver {
             ecef_y_m: y,
             ecef_z_m: z,
             position_covariance_ecef_m2,
+            sigma_e_m,
+            sigma_n_m,
+            sigma_u_m,
             latitude_deg: lat,
             longitude_deg: lon,
             altitude_m: alt,
@@ -881,8 +900,8 @@ impl PositionSolver {
             pre_fit_residual_rms_m,
             post_fit_residual_rms_m,
             rms_m: post_fit_residual_rms_m,
-            sigma_h_m: Some(sigma_h_m),
-            sigma_v_m: Some(sigma_v_m),
+            sigma_h_m,
+            sigma_v_m,
             residuals: filtered
                 .iter()
                 .map(|(observation, _state, residual_m, effective_weight)| {
@@ -2721,61 +2740,6 @@ fn local_horizontal_vertical_dops(
         [inv[2][0], inv[2][1], inv[2][2]],
     ];
     covariance_horizontal_vertical(receiver_ecef_m, covariance_xyz)
-}
-
-fn covariance_horizontal_vertical(
-    receiver_ecef_m: [f64; 3],
-    covariance_xyz: [[f64; 3]; 3],
-) -> Option<(f64, f64)> {
-    let covariance_enu = ecef_covariance_to_enu(receiver_ecef_m, covariance_xyz)?;
-    let horizontal = (covariance_enu[0][0] + covariance_enu[1][1]).max(0.0).sqrt();
-    let vertical = covariance_enu[2][2].max(0.0).sqrt();
-    Some((horizontal, vertical))
-}
-
-fn ecef_covariance_to_enu(
-    receiver_ecef_m: [f64; 3],
-    covariance_xyz: [[f64; 3]; 3],
-) -> Option<[[f64; 3]; 3]> {
-    let receiver_radius_m =
-        receiver_ecef_m.iter().map(|component| component * component).sum::<f64>().sqrt();
-    if !receiver_radius_m.is_finite() || receiver_radius_m <= 0.0 {
-        return None;
-    }
-
-    let (lat_deg, lon_deg, _alt_m) =
-        ecef_to_geodetic(receiver_ecef_m[0], receiver_ecef_m[1], receiver_ecef_m[2]);
-    if !lat_deg.is_finite() || !lon_deg.is_finite() {
-        return None;
-    }
-    let rotation = ecef_to_enu_rotation(lat_deg.to_radians(), lon_deg.to_radians());
-
-    let mut covariance_enu = [[0.0_f64; 3]; 3];
-    for row in 0..3 {
-        for col in 0..3 {
-            for inner_row in 0..3 {
-                for inner_col in 0..3 {
-                    covariance_enu[row][col] += rotation[row][inner_row]
-                        * covariance_xyz[inner_row][inner_col]
-                        * rotation[col][inner_col];
-                }
-            }
-        }
-    }
-    Some(covariance_enu)
-}
-
-fn ecef_to_enu_rotation(lat_rad: f64, lon_rad: f64) -> [[f64; 3]; 3] {
-    let sin_lat = lat_rad.sin();
-    let cos_lat = lat_rad.cos();
-    let sin_lon = lon_rad.sin();
-    let cos_lon = lon_rad.cos();
-
-    [
-        [-sin_lon, cos_lon, 0.0],
-        [-sin_lat * cos_lon, -sin_lat * sin_lon, cos_lat],
-        [cos_lat * cos_lon, cos_lat * sin_lon, sin_lat],
-    ]
 }
 
 pub fn ecef_to_geodetic(x: f64, y: f64, z: f64) -> (f64, f64, f64) {
