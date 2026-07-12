@@ -19,6 +19,8 @@ pub mod observations;
 #[cfg(feature = "nav")]
 pub(crate) mod replay_timing_anomaly;
 #[cfg(feature = "nav")]
+pub(crate) mod residual_whiteness;
+#[cfg(feature = "nav")]
 pub(crate) mod satellite_clock_anomaly;
 pub mod tracking;
 

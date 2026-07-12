@@ -28,6 +28,10 @@ use crate::pipeline::constellation_clock_inconsistency::{
     detect_constellation_clock_inconsistencies, ConstellationClockInconsistency,
 };
 use crate::pipeline::replay_timing_anomaly::detect_replay_timing_anomaly;
+use crate::pipeline::residual_whiteness::{
+    advance_residual_whiteness_suspect_streak, classify_residual_temporal_correlation,
+    detect_residual_temporal_correlation, residual_temporal_correlation_is_persistent,
+};
 use crate::pipeline::satellite_clock_anomaly::{
     advance_satellite_clock_suspect_streak, detect_satellite_clock_anomaly,
 };
@@ -45,6 +49,7 @@ pub struct Navigation {
     last_position_observations: Option<Vec<PositionObservation>>,
     last_satellite_clock_suspect: Option<bijux_gnss_core::api::SatId>,
     satellite_clock_suspect_streak: usize,
+    residual_whiteness_suspect_streak: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -149,6 +154,7 @@ impl Navigation {
             last_position_observations: None,
             last_satellite_clock_suspect: None,
             satellite_clock_suspect_streak: 0,
+            residual_whiteness_suspect_streak: 0,
         }
     }
 
@@ -683,6 +689,7 @@ impl Navigation {
         let mut resolved_by_raim_exclusion = false;
         let mut clock_anomaly_explain_reasons = Vec::new();
         let mut constellation_clock_explain_reasons = Vec::new();
+        let mut residual_whiteness_explain_reasons = Vec::new();
         if let Some(solution_separation) = solution.raim_solution_separation.as_ref() {
             raim_explain_reasons.push(format!(
                 "raim_solution_separation_reference_satellites={}",
@@ -941,6 +948,54 @@ impl Navigation {
         nav_epoch.normalized_innovation_max = norm_max;
         nav_epoch.ekf_predicted_variance = predicted_var;
         nav_epoch.ekf_observed_variance = observed_var;
+        let residual_temporal_correlation_evidence =
+            detect_residual_temporal_correlation(self.last_solution.as_ref(), &nav_epoch);
+        let next_residual_whiteness_suspect_streak = advance_residual_whiteness_suspect_streak(
+            self.residual_whiteness_suspect_streak,
+            residual_temporal_correlation_evidence,
+        );
+        if let Some(evidence) = residual_temporal_correlation_evidence {
+            let correlation = classify_residual_temporal_correlation(
+                evidence,
+                next_residual_whiteness_suspect_streak,
+            );
+            nav_epoch.status = SolutionStatus::Degraded;
+            nav_epoch
+                .health
+                .push(bijux_gnss_core::api::NavHealthEvent::ResidualTemporalCorrelation {
+                    lag1_correlation: correlation.lag1_correlation,
+                    correlation_threshold: correlation.correlation_threshold,
+                    matched_satellite_count: correlation.matched_satellite_count,
+                    previous_centered_rms_m: correlation.previous_centered_rms_m,
+                    current_centered_rms_m: correlation.current_centered_rms_m,
+                    persistent_suspect_epochs: correlation.persistent_suspect_epochs,
+                });
+            residual_whiteness_explain_reasons = residual_temporal_correlation_explain_reasons(
+                correlation,
+            );
+            self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                "NAV_RESIDUAL_WHITENESS",
+                format!(
+                    "residual lag-1 correlation {:.3} across {} matched satellites (centered rms {:.2}/{:.2} m, streak {})",
+                    correlation.lag1_correlation,
+                    correlation.matched_satellite_count,
+                    correlation.previous_centered_rms_m,
+                    correlation.current_centered_rms_m,
+                    correlation.persistent_suspect_epochs
+                ),
+            ));
+            if residual_temporal_correlation_is_persistent(
+                correlation.persistent_suspect_epochs,
+            ) {
+                nav_epoch = policy_refusal_epoch(
+                    nav_epoch,
+                    self.last_solution.as_ref().map(|row| row.status),
+                    NavRefusalClass::InconsistentObservations,
+                    residual_whiteness_explain_reasons.clone(),
+                );
+            }
+        }
         nav_epoch.validity = classify_validity(&nav_epoch);
         nav_epoch.lifecycle_state = lifecycle_state_from_status(nav_epoch.status);
         nav_epoch.uncertainty_class = uncertainty_class_from_solution(&nav_epoch);
@@ -1000,6 +1055,11 @@ impl Navigation {
                 nav_epoch.explain_reasons.push(reason);
             }
         }
+        for reason in residual_whiteness_explain_reasons {
+            if !nav_epoch.explain_reasons.iter().any(|existing| existing == &reason) {
+                nav_epoch.explain_reasons.push(reason);
+            }
+        }
         nav_epoch.stability_signature = nav_output_stability_signature(&nav_epoch);
         let protection_levels = nav_epoch.position_covariance_ecef_m2.and_then(|covariance| {
             formal_protection_levels(
@@ -1022,6 +1082,7 @@ impl Navigation {
         self.last_position_observations = Some(observations.clone());
         self.last_satellite_clock_suspect = next_satellite_clock_suspect;
         self.satellite_clock_suspect_streak = next_satellite_clock_suspect_streak;
+        self.residual_whiteness_suspect_streak = next_residual_whiteness_suspect_streak;
         Some(nav_epoch)
     }
 
@@ -1667,6 +1728,23 @@ fn constellation_clock_inconsistency_explain_reasons(
         ));
     }
     reasons
+}
+
+fn residual_temporal_correlation_explain_reasons(
+    correlation: crate::pipeline::residual_whiteness::ResidualTemporalCorrelation,
+) -> Vec<String> {
+    vec![
+        "residual_whiteness".to_string(),
+        format!("residual_lag1_correlation={:.3}", correlation.lag1_correlation),
+        format!(
+            "residual_matched_satellites={}",
+            correlation.matched_satellite_count
+        ),
+        format!(
+            "residual_temporal_correlation_streak={}",
+            correlation.persistent_suspect_epochs
+        ),
+    ]
 }
 
 fn decision_for_solution(solution: &NavSolutionEpoch) -> NavDecision {
@@ -2468,6 +2546,7 @@ mod tests {
             last_position_observations: None,
             last_satellite_clock_suspect: None,
             satellite_clock_suspect_streak: 0,
+            residual_whiteness_suspect_streak: 0,
         };
         let obs = fake_obs_epoch_for_nav_tests(10);
         let solution = nav.solve_epoch(&obs, &[]).expect("degraded solution");
@@ -2683,6 +2762,7 @@ mod tests {
             last_position_observations: None,
             last_satellite_clock_suspect: None,
             satellite_clock_suspect_streak: 0,
+            residual_whiteness_suspect_streak: 0,
         };
         let mut obs = fake_obs_epoch_for_nav_tests(18);
         obs.sats.truncate(3);
