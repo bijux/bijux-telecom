@@ -6,7 +6,7 @@ use bijux_gnss_core::api::{NavResidual, NavSolutionEpoch, SatId};
 
 const MAX_OBSERVATION_INTERVAL_S: f64 = 0.1;
 const MIN_MATCHED_SATELLITES: usize = 4;
-const MIN_CENTERED_RESIDUAL_RMS_M: f64 = 1.0;
+const MIN_CENTERED_RESIDUAL_RMS_M: f64 = 2.3;
 const RESIDUAL_CORRELATION_THRESHOLD: f64 = 0.85;
 const MIN_PERSISTENT_SUSPECT_EPOCHS: usize = 2;
 
