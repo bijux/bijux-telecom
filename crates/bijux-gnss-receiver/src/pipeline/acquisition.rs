@@ -269,6 +269,10 @@ impl AcquisitionSignalModel {
             }
         }
     }
+
+    fn supports_secondary_peak_multipath_screening(self) -> bool {
+        !matches!(self.local_code_kind, LocalCodeKind::GlonassL1)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1763,6 +1767,9 @@ fn classify_delayed_secondary_peak(
     {
         return None;
     }
+    if !signal_model.supports_secondary_peak_multipath_screening() {
+        return None;
+    }
     let correlation_profile = measure_code_phase_profile(
         config,
         signal_model,
@@ -2204,6 +2211,33 @@ mod tests {
         assert_eq!(model.code_period_ms, 1);
         assert!((model.search_center_hz - expected_center_hz).abs() <= f64::EPSILON);
         assert_eq!(sampled_code, expected_code);
+    }
+
+    #[test]
+    fn glonass_request_skips_secondary_peak_multipath_screening() {
+        let sat = SatId { constellation: Constellation::Glonass, prn: 8 };
+        let channel = GlonassFrequencyChannel::new(-4).expect("channel -4 must be valid");
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 511_000.0,
+            intermediate_freq_hz: 125_000.0,
+            code_freq_basis_hz: 511_000.0,
+            code_length: 511,
+            ..ReceiverPipelineConfig::default()
+        };
+        let model = AcquisitionSignalModel::for_request(
+            &config,
+            AcqRequest {
+                sat,
+                glonass_frequency_channel: Some(channel),
+                doppler_search_hz: 2_000,
+                doppler_step_hz: 250,
+                coherent_ms: 1,
+                noncoherent: 1,
+            },
+        )
+        .expect("GLONASS request model");
+
+        assert!(!model.supports_secondary_peak_multipath_screening());
     }
 
     #[test]
