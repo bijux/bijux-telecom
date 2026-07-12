@@ -153,7 +153,8 @@ fn vector_norm(vector: [f64; 3]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        trajectory_reconstruction_report, TrajectoryReconstructionInput,
+        trajectory_reconstruction_report, TrajectoryReconstructionError,
+        TrajectoryReconstructionInput,
     };
 
     #[test]
@@ -193,6 +194,38 @@ mod tests {
         assert!(
             (report.cumulative_estimated_distance_m - (104.0f64.sqrt() + 65.0f64.sqrt())).abs()
                 < 1.0e-12
+        );
+    }
+
+    #[test]
+    fn trajectory_reconstruction_report_rejects_empty_input() {
+        let error = trajectory_reconstruction_report(&[]).expect_err("empty input should fail");
+
+        assert_eq!(error, TrajectoryReconstructionError::EmptyInput);
+    }
+
+    #[test]
+    fn trajectory_reconstruction_report_rejects_non_monotonic_time() {
+        let error = trajectory_reconstruction_report(&[
+            TrajectoryReconstructionInput {
+                t_rx_s: 5.0,
+                estimated_ecef_m: [0.0, 0.0, 0.0],
+                truth_ecef_m: [0.0, 0.0, 0.0],
+            },
+            TrajectoryReconstructionInput {
+                t_rx_s: 5.0,
+                estimated_ecef_m: [1.0, 0.0, 0.0],
+                truth_ecef_m: [1.0, 0.0, 0.0],
+            },
+        ])
+        .expect_err("non-monotonic time should fail");
+
+        assert_eq!(
+            error,
+            TrajectoryReconstructionError::NonMonotonicTime {
+                previous_t_rx_s: 5.0,
+                t_rx_s: 5.0,
+            }
         );
     }
 }
