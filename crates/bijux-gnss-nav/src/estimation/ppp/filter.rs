@@ -2,9 +2,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use bijux_gnss_core::api::{Constellation, ObsEpoch, ObsSatellite, SatId, SigId};
+use bijux_gnss_core::api::{signal_wavelength_m, Constellation, ObsEpoch, ObsSatellite, SatId, SigId};
 
-use super::config::{PppConfig, PppFilter, PppIndices, SPEED_OF_LIGHT_MPS};
+use super::config::{PppConfig, PppFilter, PppIndices};
 use super::measurements::{
     iono_free_code_observation_from_obs, iono_free_phase_observation_from_obs,
     PppIonoFreeCodeMeasurement, PppIonoFreePhaseMeasurement, PppPhaseMeasurement,
@@ -232,7 +232,7 @@ impl PppFilter {
                     isb_index,
                     ambiguity_index: amb_index,
                     corr: corr.clone(),
-                    wavelength_m: SPEED_OF_LIGHT_MPS / sat.metadata.signal.carrier_hz.value(),
+                    wavelength_m: signal_wavelength_m(sat.metadata.signal).0,
                 };
                 let _ = self.ekf.update(&phase);
             }
