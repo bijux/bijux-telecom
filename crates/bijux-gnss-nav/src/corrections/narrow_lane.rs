@@ -7,6 +7,7 @@ use bijux_gnss_core::api::{
 };
 
 use crate::corrections::combinations::narrow_lane_wavelength_m_from_frequencies;
+use crate::corrections::dual_frequency::{dual_frequency_pair_issue, DualFrequencyPairIssue};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NarrowLaneObservation {
@@ -30,6 +31,9 @@ pub struct NarrowLaneObservation {
 enum NarrowLaneStatus {
     Ok,
     MissingFrequency,
+    UnsupportedBandPair,
+    ConstellationMismatch,
+    TimeSystemMismatch,
     CarrierLockInvalid,
     VarianceInvalid,
     FrequencyInvalid,
@@ -51,9 +55,6 @@ pub fn narrow_lane_from_obs_epochs(
         for (sat, sats) in by_sat {
             let first = sats.iter().find(|candidate| candidate.signal_id.band == band_1).copied();
             let second = sats.iter().find(|candidate| candidate.signal_id.band == band_2).copied();
-            if first.is_none() && second.is_none() {
-                continue;
-            }
             out.push(narrow_lane_from_pair(
                 epoch.epoch_idx,
                 epoch.t_rx_s.0,
@@ -83,10 +84,16 @@ pub(crate) fn narrow_lane_from_pair(
     let f2_hz =
         second.map(|observation| observation.metadata.signal.carrier_hz.value()).unwrap_or(0.0);
 
-    let (phase_m, variance_m2, narrow_lane_wavelength_m, status) = match (first, second) {
-        (Some(first), Some(second)) => evaluate_narrow_lane(first, second),
-        _ => (None, None, None, NarrowLaneStatus::MissingFrequency),
-    };
+    let (phase_m, variance_m2, narrow_lane_wavelength_m, status) =
+        match dual_frequency_pair_issue(sat, band_1, band_2, first, second) {
+            Some(issue) => (None, None, None, narrow_lane_status_from_pair_issue(issue)),
+            None => {
+                let (Some(first), Some(second)) = (first, second) else {
+                    unreachable!("compatible dual-frequency pairs must include both observations");
+                };
+                evaluate_narrow_lane(first, second)
+            }
+        };
     let (phase_cycles, variance_cycles2) = match (phase_m, variance_m2, narrow_lane_wavelength_m) {
         (Some(phase_m), Some(variance_m2), Some(narrow_lane_wavelength_m)) => {
             let phase_cycles = phase_m / narrow_lane_wavelength_m;
@@ -132,8 +139,7 @@ fn evaluate_narrow_lane(
 
     let f1_hz = first.metadata.signal.carrier_hz.value();
     let f2_hz = second.metadata.signal.carrier_hz.value();
-    let Some(narrow_lane_wavelength_m) =
-        narrow_lane_wavelength_m_from_frequencies(f1_hz, f2_hz)
+    let Some(narrow_lane_wavelength_m) = narrow_lane_wavelength_m_from_frequencies(f1_hz, f2_hz)
     else {
         return (None, None, None, NarrowLaneStatus::FrequencyInvalid);
     };
@@ -145,23 +151,42 @@ fn evaluate_narrow_lane(
     let variance_m2 = lambda1.powi(2) * first.carrier_phase_var_cycles2
         + lambda2.powi(2) * second.carrier_phase_var_cycles2;
 
-    (
-        Some(phase_m),
-        Some(variance_m2),
-        Some(narrow_lane_wavelength_m),
-        NarrowLaneStatus::Ok,
-    )
+    (Some(phase_m), Some(variance_m2), Some(narrow_lane_wavelength_m), NarrowLaneStatus::Ok)
 }
 
 fn status_reason(status: NarrowLaneStatus) -> (String, String) {
     match status {
         NarrowLaneStatus::Ok => ("ok".to_string(), "ok".to_string()),
-        NarrowLaneStatus::MissingFrequency => ("invalid".to_string(), "missing_frequency".to_string()),
+        NarrowLaneStatus::MissingFrequency => {
+            ("invalid".to_string(), "missing_frequency".to_string())
+        }
+        NarrowLaneStatus::UnsupportedBandPair => {
+            ("invalid".to_string(), "unsupported_band_pair".to_string())
+        }
+        NarrowLaneStatus::ConstellationMismatch => {
+            ("invalid".to_string(), "constellation_mismatch".to_string())
+        }
+        NarrowLaneStatus::TimeSystemMismatch => {
+            ("invalid".to_string(), "time_system_mismatch".to_string())
+        }
         NarrowLaneStatus::CarrierLockInvalid => {
             ("invalid".to_string(), "carrier_lock_invalid".to_string())
         }
-        NarrowLaneStatus::VarianceInvalid => ("invalid".to_string(), "variance_invalid".to_string()),
-        NarrowLaneStatus::FrequencyInvalid => ("invalid".to_string(), "frequency_invalid".to_string()),
+        NarrowLaneStatus::VarianceInvalid => {
+            ("invalid".to_string(), "variance_invalid".to_string())
+        }
+        NarrowLaneStatus::FrequencyInvalid => {
+            ("invalid".to_string(), "frequency_invalid".to_string())
+        }
+    }
+}
+
+fn narrow_lane_status_from_pair_issue(issue: DualFrequencyPairIssue) -> NarrowLaneStatus {
+    match issue {
+        DualFrequencyPairIssue::MissingFrequency => NarrowLaneStatus::MissingFrequency,
+        DualFrequencyPairIssue::UnsupportedBandPair => NarrowLaneStatus::UnsupportedBandPair,
+        DualFrequencyPairIssue::ConstellationMismatch => NarrowLaneStatus::ConstellationMismatch,
+        DualFrequencyPairIssue::TimeSystemMismatch => NarrowLaneStatus::TimeSystemMismatch,
     }
 }
 
@@ -169,10 +194,10 @@ fn status_reason(status: NarrowLaneStatus) -> (String, String) {
 mod tests {
     use super::narrow_lane_from_obs_epochs;
     use bijux_gnss_core::api::{
-        signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l5, Constellation, Cycles,
-        Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite, ObservationEpochDecision,
-        ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand,
-        SignalCode, SignalSpec,
+        signal_spec_galileo_e1b, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l5,
+        Constellation, Cycles, GpsTime, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata,
+        ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ReceiverRole,
+        ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode, SignalSpec,
     };
 
     const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
@@ -338,5 +363,120 @@ mod tests {
         assert!(observations[0].phase_m.is_some());
         assert!(observations[0].variance_m2.is_some());
         assert!(observations[0].narrow_lane_wavelength_m.is_some());
+    }
+
+    #[test]
+    fn narrow_lane_rejects_unsupported_band_pairs() {
+        let observations = narrow_lane_from_obs_epochs(
+            &[dual_frequency_epoch(
+                SignalBand::L2,
+                SignalCode::Py,
+                signal_spec_gps_l2_py(),
+                1000.0,
+                1001.0,
+                true,
+                true,
+                0.01,
+                0.01,
+            )],
+            SignalBand::L2,
+            SignalBand::L5,
+        );
+
+        assert_eq!(observations.len(), 1);
+        assert_eq!(observations[0].reason, "unsupported_band_pair");
+    }
+
+    #[test]
+    fn narrow_lane_rejects_constellation_mismatches() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 11 };
+        let epoch = ObsEpoch {
+            t_rx_s: Seconds(0.0),
+            source_time: ReceiverSampleTrace::from_sample_index(0, 1_000.0),
+            gps_week: None,
+            tow_s: None,
+            epoch_idx: 0,
+            discontinuity: false,
+            valid: true,
+            processing_ms: None,
+            role: ReceiverRole::Rover,
+            sats: vec![
+                make_satellite(
+                    sat,
+                    SignalBand::L1,
+                    SignalCode::Ca,
+                    signal_spec_gps_l1_ca(),
+                    1000.0,
+                    true,
+                    0.01,
+                ),
+                make_satellite(
+                    sat,
+                    SignalBand::L2,
+                    SignalCode::Py,
+                    signal_spec_galileo_e1b(),
+                    1001.0,
+                    true,
+                    0.01,
+                ),
+            ],
+            decision: ObservationEpochDecision::Accepted,
+            decision_reason: Some("accepted_observables_present".to_string()),
+            manifest: None,
+        };
+
+        let observations = narrow_lane_from_obs_epochs(&[epoch], SignalBand::L1, SignalBand::L2);
+
+        assert_eq!(observations[0].reason, "constellation_mismatch");
+    }
+
+    #[test]
+    fn narrow_lane_rejects_time_system_mismatches() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 11 };
+        let mut first = make_satellite(
+            sat,
+            SignalBand::L1,
+            SignalCode::Ca,
+            signal_spec_gps_l1_ca(),
+            1000.0,
+            true,
+            0.01,
+        );
+        let mut second = make_satellite(
+            sat,
+            SignalBand::L2,
+            SignalCode::Py,
+            signal_spec_gps_l2_py(),
+            1001.0,
+            true,
+            0.01,
+        );
+        first.timing = Some(ObsSignalTiming {
+            signal_travel_time_s: Seconds(0.075),
+            transmit_gps_time: GpsTime { week: 2200, tow_s: 345_600.0 },
+        });
+        second.timing = Some(ObsSignalTiming {
+            signal_travel_time_s: Seconds(0.075),
+            transmit_gps_time: GpsTime { week: 2201, tow_s: 0.0 },
+        });
+        let epoch = ObsEpoch {
+            t_rx_s: Seconds(0.0),
+            source_time: ReceiverSampleTrace::from_sample_index(0, 1_000.0),
+            gps_week: None,
+            tow_s: None,
+            epoch_idx: 0,
+            discontinuity: false,
+            valid: true,
+            processing_ms: None,
+            role: ReceiverRole::Rover,
+            sats: vec![first, second],
+            decision: ObservationEpochDecision::Accepted,
+            decision_reason: Some("accepted_observables_present".to_string()),
+            manifest: None,
+        };
+
+        let observations = narrow_lane_from_obs_epochs(&[epoch], SignalBand::L1, SignalBand::L2);
+
+        assert_eq!(observations[0].reason, "time_system_mismatch");
     }
 }
