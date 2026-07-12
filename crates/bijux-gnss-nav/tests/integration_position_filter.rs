@@ -109,6 +109,17 @@ fn offset_observations_m(
         .collect()
 }
 
+fn observations_for_prns(
+    observations: &[bijux_gnss_nav::api::PositionObservation],
+    visible_prns: &[u8],
+) -> Vec<bijux_gnss_nav::api::PositionObservation> {
+    observations
+        .iter()
+        .filter(|observation| visible_prns.contains(&observation.sat.prn))
+        .cloned()
+        .collect()
+}
+
 fn translate_truth_ecef_m(
     truth_ecef_m: (f64, f64, f64),
     truth_velocity_mps: (f64, f64, f64),
@@ -964,6 +975,51 @@ fn sequential_position_filter_constant_velocity_profile_beats_independent_epochs
     assert!(
         final_dynamic_velocity_error_mps < 2.0,
         "final_dynamic_velocity_error_mps={final_dynamic_velocity_error_mps}"
+    );
+}
+
+#[test]
+fn sequential_position_filter_stays_stable_when_satellite_rises() {
+    let ephemerides = sample_filter_ephemerides();
+    let epochs = static_receiver_epochs(&ephemerides, 8, 1.0);
+    let mut config = PositionFilterConfig::for_static_receiver();
+    config.base_pseudorange_sigma_m = 1.5;
+    let mut filter = PositionFilter::new(config);
+    let mut post_rise_position_errors_m = Vec::new();
+
+    for (epoch_index, epoch) in epochs.iter().enumerate() {
+        let visible_prns = if epoch_index < 3 {
+            &[1, 2, 3, 4, 5][..]
+        } else {
+            &[1, 2, 3, 4, 5, 6][..]
+        };
+        let observations = observations_for_prns(&epoch.observations, visible_prns);
+        let solution = filter
+            .solve_epoch(&observations, &ephemerides, epoch.t_rx_s)
+            .expect("satellite rise should not destabilize the sequential filter");
+        let position_error_m = position_error_3d_m(
+            solution.ecef_x_m,
+            solution.ecef_y_m,
+            solution.ecef_z_m,
+            epoch.truth_ecef_m,
+        );
+
+        assert!(position_error_m < 15.0, "position_error_m={position_error_m}");
+        assert_eq!(solution.used_sat_count, visible_prns.len());
+        assert_eq!(filter.last_visible_sats.len(), visible_prns.len());
+
+        if epoch_index >= 3 {
+            post_rise_position_errors_m.push(position_error_m);
+        }
+    }
+
+    assert!(filter.initialized);
+    assert_eq!(filter.last_visible_sats.len(), 6);
+    assert_eq!(filter.last_t_rx_s, Some(epochs.last().expect("rise epochs").t_rx_s));
+    assert!(
+        root_mean_square(&post_rise_position_errors_m) < 6.0,
+        "post_rise_rms_m={}",
+        root_mean_square(&post_rise_position_errors_m)
     );
 }
 
