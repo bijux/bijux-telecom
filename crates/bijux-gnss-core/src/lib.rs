@@ -17,6 +17,7 @@ mod diagnostic;
 mod error;
 mod geo;
 mod ids;
+mod nav_solution;
 mod obs;
 mod obs_validation;
 mod reference_validation;

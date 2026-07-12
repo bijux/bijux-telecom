@@ -1,7 +1,7 @@
 use bijux_gnss_core::api::{
-    ArtifactPayloadValidate, Constellation, Epoch, Meters, NavLifecycleState, NavResidual,
-    NavSolutionEpoch, NavUncertaintyClass, ReceiverSampleTrace, SatId, Seconds, SolutionStatus,
-    SolutionValidity,
+    ArtifactPayloadValidate, Constellation, Epoch, Meters, NavConstellationResidualRms,
+    NavLifecycleState, NavResidual, NavSolutionEpoch, NavUncertaintyClass, ReceiverSampleTrace,
+    SatId, Seconds, SolutionStatus, SolutionValidity,
 };
 
 fn sample_solution() -> NavSolutionEpoch {
@@ -33,6 +33,13 @@ fn sample_solution() -> NavSolutionEpoch {
             rejected: false,
             weight: Some(1.0),
             reject_reason: None,
+        }],
+        constellation_residual_rms: vec![NavConstellationResidualRms {
+            constellation: Constellation::Gps,
+            pre_fit_rms_m: Some(Meters(2.0)),
+            post_fit_rms_m: Some(Meters(2.0)),
+            pre_fit_sat_count: 1,
+            post_fit_sat_count: 1,
         }],
         health: Vec::new(),
         isb: Vec::new(),
@@ -126,4 +133,14 @@ fn nav_artifact_validation_warns_on_post_fit_rms_mismatch() {
     solution.post_fit_residual_rms_m = Some(Meters(3.0));
     let diagnostics = solution.validate_payload();
     assert!(diagnostics.iter().any(|event| event.code == "GNSS_NAV_POST_FIT_RMS_MISMATCH"));
+}
+
+#[test]
+fn nav_artifact_validation_rejects_constellation_residual_count_mismatch() {
+    let mut solution = sample_solution();
+    solution.constellation_residual_rms[0].post_fit_sat_count = 2;
+    let diagnostics = solution.validate_payload();
+    assert!(diagnostics
+        .iter()
+        .any(|event| event.code == "GNSS_NAV_CONSTELLATION_POST_FIT_COUNT_MISMATCH"));
 }

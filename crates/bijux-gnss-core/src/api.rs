@@ -54,10 +54,10 @@ pub use crate::obs::{
     trackable_acq_tracking_seeds, AcqAssumptions, AcqCodePhaseRefinement, AcqDopplerRefinement,
     AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqRequest, AcqResult,
     AcqSearchSummary, AcqThresholdProvenance, AcqTrackingSeed, AcqUncertainty, AmbiguityId,
-    AmbiguityState, AmbiguityStatus, DoubleDifference, InterSystemBias, LockFlags,
-    MeasurementErrorModel, MeasurementRejectReason, NavAssumptions, NavHealthEvent,
-    NavLifecycleState, NavProvenance, NavQualityFlag, NavRefusalClass, NavResidual,
-    NavSolutionEpoch, NavUncertaintyClass, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest,
+    AmbiguityState, AmbiguityStatus, DoubleDifference, LockFlags, MeasurementErrorModel,
+    MeasurementRejectReason, NavAssumptions, NavHealthEvent, NavLifecycleState, NavProvenance,
+    NavQualityFlag, NavRefusalClass, NavUncertaintyClass, ObsDecisionArtifact, ObsEpoch,
+    ObsEpochManifest,
     ObsMetadata, ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationStatus,
     ObservationSupportClass, ObservationUncertaintyClass, ReceiverRole, Sample, SamplesFrame,
     SatObservationDecision, SignalDelayAlignment, SignalSupportRow, SingleDifference,
@@ -66,6 +66,9 @@ pub use crate::obs::{
     NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
     OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET, OBSERVATION_DOWNSTREAM_PROFILE_VERSION,
     OBSERVATION_MODEL_VERSION, TRACKING_STATE_MODEL_VERSION,
+};
+pub use crate::nav_solution::{
+    InterSystemBias, NavConstellationResidualRms, NavResidual, NavSolutionEpoch,
 };
 pub use crate::obs_validation::{
     check_dual_frequency_observations, check_inter_frequency_alignment, validate_obs_epochs,

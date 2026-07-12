@@ -598,6 +598,78 @@ pub mod v1 {
                         "nav solution with residuals should carry post-fit residual RMS",
                     ));
                 }
+                if !self.residuals.is_empty() && self.constellation_residual_rms.is_empty() {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Warning,
+                        "GNSS_NAV_CONSTELLATION_RMS_MISSING",
+                        "nav solution with residuals should carry per-constellation residual RMS",
+                    ));
+                }
+                let accepted_residual_counts = self
+                    .residuals
+                    .iter()
+                    .filter(|residual| !residual.rejected)
+                    .fold(std::collections::BTreeMap::new(), |mut counts, residual| {
+                        *counts.entry(residual.sat.constellation).or_insert(0usize) += 1;
+                        counts
+                    });
+                let mut summarized_post_fit_count = 0usize;
+                let mut seen_constellations = std::collections::BTreeSet::new();
+                for summary in &self.constellation_residual_rms {
+                    if !seen_constellations.insert(summary.constellation) {
+                        events.push(DiagnosticEvent::new(
+                            DiagnosticSeverity::Error,
+                            "GNSS_NAV_CONSTELLATION_RMS_DUPLICATE",
+                            "nav solution duplicates a constellation residual RMS entry",
+                        ));
+                    }
+                    if summary.pre_fit_rms_m.is_some_and(|value| !value.0.is_finite())
+                        || summary.post_fit_rms_m.is_some_and(|value| !value.0.is_finite())
+                    {
+                        events.push(DiagnosticEvent::new(
+                            DiagnosticSeverity::Error,
+                            "GNSS_NAV_CONSTELLATION_RMS_INVALID",
+                            "nav solution constellation residual RMS contains NaN/Inf",
+                        ));
+                    }
+                    if summary.pre_fit_rms_m.is_some() && summary.pre_fit_sat_count == 0 {
+                        events.push(DiagnosticEvent::new(
+                            DiagnosticSeverity::Error,
+                            "GNSS_NAV_CONSTELLATION_PRE_FIT_COUNT_INVALID",
+                            "nav solution constellation pre-fit RMS requires a non-zero satellite count",
+                        ));
+                    }
+                    if summary.post_fit_rms_m.is_some() && summary.post_fit_sat_count == 0 {
+                        events.push(DiagnosticEvent::new(
+                            DiagnosticSeverity::Error,
+                            "GNSS_NAV_CONSTELLATION_POST_FIT_COUNT_INVALID",
+                            "nav solution constellation post-fit RMS requires a non-zero satellite count",
+                        ));
+                    }
+                    if summary.post_fit_sat_count > 0
+                        && accepted_residual_counts
+                            .get(&summary.constellation)
+                            .copied()
+                            .unwrap_or(0)
+                            != summary.post_fit_sat_count
+                    {
+                        events.push(DiagnosticEvent::new(
+                            DiagnosticSeverity::Error,
+                            "GNSS_NAV_CONSTELLATION_POST_FIT_COUNT_MISMATCH",
+                            "nav solution constellation post-fit satellite counts do not match accepted residuals",
+                        ));
+                    }
+                    summarized_post_fit_count += summary.post_fit_sat_count;
+                }
+                if !self.constellation_residual_rms.is_empty()
+                    && summarized_post_fit_count != accepted_residual_counts.values().sum::<usize>()
+                {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Error,
+                        "GNSS_NAV_CONSTELLATION_POST_FIT_TOTAL_MISMATCH",
+                        "nav solution constellation residual RMS totals do not match accepted residuals",
+                    ));
+                }
                 events
             }
         }
