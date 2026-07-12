@@ -9,6 +9,69 @@ pub struct SatId {
     pub prn: u8,
 }
 
+/// One-based GLONASS orbital slot identifier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct GlonassSlot(u8);
+
+impl GlonassSlot {
+    pub const MIN: u8 = 1;
+    pub const MAX: u8 = 24;
+
+    pub const fn new(value: u8) -> Option<Self> {
+        if value >= Self::MIN && value <= Self::MAX {
+            Some(Self(value))
+        } else {
+            None
+        }
+    }
+
+    pub const fn value(self) -> u8 {
+        self.0
+    }
+}
+
+/// GLONASS FDMA carrier channel number.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct GlonassFrequencyChannel(i8);
+
+impl GlonassFrequencyChannel {
+    pub const MIN: i8 = -7;
+    pub const MAX: i8 = 13;
+
+    pub const fn new(value: i8) -> Option<Self> {
+        if value >= Self::MIN && value <= Self::MAX {
+            Some(Self(value))
+        } else {
+            None
+        }
+    }
+
+    pub const fn value(self) -> i8 {
+        self.0
+    }
+}
+
+/// Concrete GLONASS L1 FDMA signal identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct GlonassL1FdmaSignal {
+    pub slot: GlonassSlot,
+    pub frequency_channel: GlonassFrequencyChannel,
+}
+
+impl GlonassL1FdmaSignal {
+    pub fn sat_id(self) -> SatId {
+        glonass_slot_sat(self.slot)
+    }
+
+    pub fn signal_id(self) -> SigId {
+        SigId { sat: self.sat_id(), band: SignalBand::L1, code: SignalCode::Unknown }
+    }
+
+    pub fn carrier_hz(self) -> FreqHz {
+        glonass_l1_carrier_hz(self.frequency_channel)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct SigId {
     pub sat: SatId,
@@ -80,6 +143,16 @@ pub fn sort_obs_sats(epoch: &mut crate::api::ObsEpoch) {
 /// Format a satellite ID as `<Constellation>-<PRN>`.
 pub fn format_sat(sat: SatId) -> String {
     format!("{:?}-{}", sat.constellation, sat.prn)
+}
+
+/// Build a GLONASS satellite identifier from a validated orbital slot.
+pub fn glonass_slot_sat(slot: GlonassSlot) -> SatId {
+    SatId { constellation: Constellation::Glonass, prn: slot.value() }
+}
+
+/// Extract a validated GLONASS slot from one satellite ID.
+pub fn glonass_slot_from_sat(sat: SatId) -> Option<GlonassSlot> {
+    (sat.constellation == Constellation::Glonass).then(|| GlonassSlot::new(sat.prn)).flatten()
 }
 
 /// Return the default acquisition satellite catalog for one constellation.
@@ -158,6 +231,7 @@ pub const GPS_L2_PY_CARRIER_HZ: FreqHz = FreqHz::new(1_227_600_000.0);
 pub const GPS_L5_CARRIER_HZ: FreqHz = FreqHz::new(1_176_450_000.0);
 pub const GALILEO_E1_CARRIER_HZ: FreqHz = FreqHz::new(1_575_420_000.0);
 pub const GALILEO_E5_CARRIER_HZ: FreqHz = FreqHz::new(1_176_450_000.0);
+pub const GLONASS_L1_CHANNEL_SPACING_HZ: FreqHz = FreqHz::new(562_500.0);
 pub const GLONASS_L1_CARRIER_HZ: FreqHz = FreqHz::new(1_602_000_000.0);
 pub const BEIDOU_B1_CARRIER_HZ: FreqHz = FreqHz::new(1_561_098_000.0);
 pub const BEIDOU_B2_CARRIER_HZ: FreqHz = FreqHz::new(1_207_140_000.0);
@@ -227,6 +301,23 @@ pub fn signal_spec_galileo_e1c() -> SignalSpec {
     }
 }
 
+pub fn signal_spec_glonass_l1(frequency_channel: GlonassFrequencyChannel) -> SignalSpec {
+    SignalSpec {
+        constellation: Constellation::Glonass,
+        band: SignalBand::L1,
+        code: SignalCode::Unknown,
+        code_rate_hz: 511_000.0,
+        carrier_hz: glonass_l1_carrier_hz(frequency_channel),
+    }
+}
+
+pub fn glonass_l1_carrier_hz(frequency_channel: GlonassFrequencyChannel) -> FreqHz {
+    FreqHz::new(
+        GLONASS_L1_CARRIER_HZ.value()
+            + f64::from(frequency_channel.value()) * GLONASS_L1_CHANNEL_SPACING_HZ.value(),
+    )
+}
+
 pub fn signal_registry(
     constellation: Constellation,
     band: SignalBand,
@@ -254,7 +345,7 @@ pub fn signal_registry(
             (GALILEO_E5_CARRIER_HZ, 10_230_000.0, None)
         }
         (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown) => {
-            (GLONASS_L1_CARRIER_HZ, 511_000.0, None)
+            (GLONASS_L1_CARRIER_HZ, 511_000.0, Some(511))
         }
         (Constellation::Beidou, SignalBand::B1, SignalCode::Unknown) => {
             (BEIDOU_B1_CARRIER_HZ, 2_046_000.0, None)
