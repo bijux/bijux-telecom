@@ -12,11 +12,7 @@ fn sample_solution() -> NavSolutionEpoch {
         ecef_x_m: Meters(1_000_000.0),
         ecef_y_m: Meters(2_000_000.0),
         ecef_z_m: Meters(3_000_000.0),
-        position_covariance_ecef_m2: Some([
-            [4.0, 0.5, 0.25],
-            [0.5, 9.0, 0.75],
-            [0.25, 0.75, 16.0],
-        ]),
+        position_covariance_ecef_m2: Some([[4.0, 0.5, 0.25], [0.5, 9.0, 0.75], [0.25, 0.75, 16.0]]),
         latitude_deg: 37.0,
         longitude_deg: -122.0,
         altitude_m: Meters(20.0),
@@ -48,6 +44,9 @@ fn sample_solution() -> NavSolutionEpoch {
         }],
         health: Vec::new(),
         isb: Vec::new(),
+        sigma_e_m: Some(Meters(0.8)),
+        sigma_n_m: Some(Meters(0.9)),
+        sigma_u_m: Some(Meters(1.2)),
         sigma_h_m: Some(Meters(1.0)),
         sigma_v_m: Some(Meters(1.5)),
         innovation_rms_m: Some(0.5),
@@ -145,9 +144,15 @@ fn nav_artifact_validation_warns_on_missing_position_covariance() {
     let mut solution = sample_solution();
     solution.position_covariance_ecef_m2 = None;
     let diagnostics = solution.validate_payload();
-    assert!(diagnostics
-        .iter()
-        .any(|event| event.code == "GNSS_NAV_POSITION_COVARIANCE_MISSING"));
+    assert!(diagnostics.iter().any(|event| event.code == "GNSS_NAV_POSITION_COVARIANCE_MISSING"));
+}
+
+#[test]
+fn nav_artifact_validation_warns_on_missing_enu_position_sigmas() {
+    let mut solution = sample_solution();
+    solution.sigma_e_m = None;
+    let diagnostics = solution.validate_payload();
+    assert!(diagnostics.iter().any(|event| event.code == "GNSS_NAV_POSITION_SIGMA_ENU_MISSING"));
 }
 
 #[test]
@@ -163,13 +168,16 @@ fn nav_artifact_validation_rejects_constellation_residual_count_mismatch() {
 #[test]
 fn nav_artifact_validation_rejects_non_finite_position_covariance() {
     let mut solution = sample_solution();
-    solution.position_covariance_ecef_m2 = Some([
-        [1.0, 0.0, 0.0],
-        [0.0, f64::NAN, 0.0],
-        [0.0, 0.0, 1.0],
-    ]);
+    solution.position_covariance_ecef_m2 =
+        Some([[1.0, 0.0, 0.0], [0.0, f64::NAN, 0.0], [0.0, 0.0, 1.0]]);
     let diagnostics = solution.validate_payload();
-    assert!(diagnostics
-        .iter()
-        .any(|event| event.code == "GNSS_NAV_POSITION_COVARIANCE_INVALID"));
+    assert!(diagnostics.iter().any(|event| event.code == "GNSS_NAV_POSITION_COVARIANCE_INVALID"));
+}
+
+#[test]
+fn nav_artifact_validation_rejects_non_finite_enu_position_sigma() {
+    let mut solution = sample_solution();
+    solution.sigma_u_m = Some(Meters(f64::NAN));
+    let diagnostics = solution.validate_payload();
+    assert!(diagnostics.iter().any(|event| event.code == "GNSS_NAV_POSITION_SIGMA_ENU_INVALID"));
 }

@@ -2298,3 +2298,12 @@ mod tests {
         );
     }
 }
+            sigma_e_m: None,
+            sigma_n_m: None,
+            sigma_u_m: None,
+            sigma_e_m: Some(bijux_gnss_core::api::Meters(1.0)),
+            sigma_n_m: Some(bijux_gnss_core::api::Meters(1.5)),
+            sigma_u_m: Some(bijux_gnss_core::api::Meters(3.0)),
+            sigma_e_m: Some(bijux_gnss_core::api::Meters(1.0)),
+            sigma_n_m: Some(bijux_gnss_core::api::Meters(1.0)),
+            sigma_u_m: Some(bijux_gnss_core::api::Meters(1.0)),

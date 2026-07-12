@@ -80,6 +80,12 @@ pub struct NavSolutionEpoch {
     #[serde(default)]
     pub health: Vec<NavHealthEvent>,
     pub isb: Vec<InterSystemBias>,
+    #[serde(default)]
+    pub sigma_e_m: Option<Meters>,
+    #[serde(default)]
+    pub sigma_n_m: Option<Meters>,
+    #[serde(default)]
+    pub sigma_u_m: Option<Meters>,
     pub sigma_h_m: Option<Meters>,
     pub sigma_v_m: Option<Meters>,
     #[serde(default)]

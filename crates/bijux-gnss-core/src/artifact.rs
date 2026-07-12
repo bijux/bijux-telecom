@@ -470,7 +470,8 @@ pub mod v1 {
                     ));
                 }
                 if let Some(covariance) = self.position_covariance_ecef_m2 {
-                    if !covariance.iter().flat_map(|row| row.iter()).all(|value| value.is_finite()) {
+                    if !covariance.iter().flat_map(|row| row.iter()).all(|value| value.is_finite())
+                    {
                         events.push(DiagnosticEvent::new(
                             DiagnosticSeverity::Error,
                             "GNSS_NAV_POSITION_COVARIANCE_INVALID",
@@ -489,6 +490,28 @@ pub mod v1 {
                         DiagnosticSeverity::Warning,
                         "GNSS_NAV_POSITION_COVARIANCE_MISSING",
                         "valid nav solution should carry an ECEF position covariance matrix",
+                    ));
+                }
+                let enu_sigmas = [self.sigma_e_m, self.sigma_n_m, self.sigma_u_m];
+                if enu_sigmas.iter().flatten().any(|value| !value.0.is_finite()) {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Error,
+                        "GNSS_NAV_POSITION_SIGMA_ENU_INVALID",
+                        "nav solution ENU position standard deviations contain NaN/Inf",
+                    ));
+                }
+                if enu_sigmas.iter().flatten().any(|value| value.0 < 0.0) {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Error,
+                        "GNSS_NAV_POSITION_SIGMA_ENU_NEGATIVE",
+                        "nav solution ENU position standard deviations must be non-negative",
+                    ));
+                }
+                if self.valid && enu_sigmas.iter().any(|value| value.is_none()) {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Warning,
+                        "GNSS_NAV_POSITION_SIGMA_ENU_MISSING",
+                        "valid nav solution should carry east, north, and up position standard deviations",
                     ));
                 }
                 if !self.clock_bias_s.0.is_finite() || !self.clock_bias_m.0.is_finite() {
