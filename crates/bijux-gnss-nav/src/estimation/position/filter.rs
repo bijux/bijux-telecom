@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use bijux_gnss_core::api::{
     signal_id_wavelength_m, Constellation, InterSystemBias, MeasurementRejectReason, SatId, SigId,
@@ -91,6 +91,7 @@ pub struct PositionFilterConfig {
     pub initial_clock_drift_sigma_s_per_s: f64,
     pub min_dt_s: f64,
     pub divergence: PositionFilterDivergenceConfig,
+    pub visibility_transition: PositionFilterVisibilityTransitionConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -108,6 +109,29 @@ impl Default for PositionFilterDivergenceConfig {
             max_normalized_innovation_rms: 100.0,
             max_condition_number: 1.0e8,
             min_position_sigma_m: 1.0e-4,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PositionFilterVisibilityTransitionConfig {
+    pub covariance_inflation_per_satellite: f64,
+    pub max_covariance_inflation: f64,
+    pub min_position_sigma_m: f64,
+    pub min_velocity_sigma_mps: f64,
+    pub min_clock_bias_sigma_s: f64,
+    pub min_clock_drift_sigma_s_per_s: f64,
+}
+
+impl Default for PositionFilterVisibilityTransitionConfig {
+    fn default() -> Self {
+        Self {
+            covariance_inflation_per_satellite: 0.35,
+            max_covariance_inflation: 3.0,
+            min_position_sigma_m: 10.0,
+            min_velocity_sigma_mps: 1.5,
+            min_clock_bias_sigma_s: 5.0e-8,
+            min_clock_drift_sigma_s_per_s: 5.0e-9,
         }
     }
 }
@@ -132,6 +156,7 @@ impl Default for PositionFilterConfig {
             initial_clock_drift_sigma_s_per_s: 1.0e-4,
             min_dt_s: 1.0e-3,
             divergence: PositionFilterDivergenceConfig::default(),
+            visibility_transition: PositionFilterVisibilityTransitionConfig::default(),
         };
         config.apply_motion_class(config.motion_class);
         config
@@ -275,6 +300,7 @@ pub struct PositionFilter {
     pub indices: PositionFilterIndices,
     pub reference_constellation: Option<Constellation>,
     pub last_t_rx_s: Option<f64>,
+    pub last_visible_sats: BTreeSet<SatId>,
     pub initialized: bool,
 }
 
@@ -317,6 +343,7 @@ impl PositionFilter {
             },
             reference_constellation: None,
             last_t_rx_s: None,
+            last_visible_sats: BTreeSet::new(),
             initialized: false,
         }
     }
