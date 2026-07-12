@@ -1987,6 +1987,45 @@ mod tests {
     }
 
     #[test]
+    fn prepare_position_observation_downweights_low_elevation_and_low_cn0_signals() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 10 };
+        let mut obs_epoch = fake_obs_epoch_for_nav_tests(0);
+        obs_epoch.t_rx_s = Seconds(2_000.0);
+        obs_epoch.gps_week = Some(0);
+        obs_epoch.tow_s = Some(Seconds(2_000.0));
+        let mut config = ReceiverPipelineConfig::default();
+        config.weighting.mode = NavigationWeightingMode::ElevationCn0;
+        let weak_low_signal =
+            sample_pipeline_position_satellite(sat, 28.0, Some(10.0), "scalar");
+        let strong_low_signal =
+            sample_pipeline_position_satellite(sat, 48.0, Some(10.0), "scalar");
+        let weak_high_signal =
+            sample_pipeline_position_satellite(sat, 28.0, Some(75.0), "scalar");
+
+        let PositionObservationPreparation::Included(weak_low_observation) =
+            prepare_position_observation(&config, &obs_epoch, &weak_low_signal, &[], None)
+        else {
+            panic!("weak low-elevation observation should be retained");
+        };
+        let PositionObservationPreparation::Included(strong_low_observation) =
+            prepare_position_observation(&config, &obs_epoch, &strong_low_signal, &[], None)
+        else {
+            panic!("strong low-elevation observation should be retained");
+        };
+        let PositionObservationPreparation::Included(weak_high_observation) =
+            prepare_position_observation(&config, &obs_epoch, &weak_high_signal, &[], None)
+        else {
+            panic!("weak high-elevation observation should be retained");
+        };
+
+        assert!(weak_low_observation.weight.is_finite());
+        assert!(strong_low_observation.weight.is_finite());
+        assert!(weak_high_observation.weight.is_finite());
+        assert!(weak_low_observation.weight < strong_low_observation.weight);
+        assert!(weak_low_observation.weight < weak_high_observation.weight);
+    }
+
+    #[test]
     fn navigation_refuses_epochs_without_ephemeris_even_with_last_solution() {
         let config = ReceiverPipelineConfig::default();
         let mut nav = Navigation {
@@ -2262,6 +2301,27 @@ mod tests {
         assert!(solution.stability_signature.starts_with("navsig:v2:"));
         assert!(solution.stability_signature.contains(":tdop="));
         assert_eq!(solution.stability_signature_version, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION);
+    }
+
+    #[test]
+    fn synthetic_solution_reports_combined_weighting_provenance() {
+        let mut config = ReceiverPipelineConfig::default();
+        config.weighting.mode = NavigationWeightingMode::ElevationCn0;
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+        let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
+        let t_rx_s = 100_000.0;
+        let ephs = vec![
+            make_eph(1, 0.0, 0.0, t_rx_s),
+            make_eph(2, 0.8, 0.9, t_rx_s),
+            make_eph(3, 1.6, 1.8, t_rx_s),
+            make_eph(4, 2.4, 2.7, t_rx_s),
+            make_eph(5, 3.2, 3.6, t_rx_s),
+        ];
+        let obs = make_obs_epoch_for_solution(19, t_rx_s, truth, &ephs);
+        let solution = nav.solve_epoch(&obs, &ephs).expect("synthetic solution");
+        let provenance = solution.provenance.expect("navigation provenance");
+
+        assert_eq!(provenance.weighting_mode, "elevation_cn0_sigma_weighted");
     }
 
     #[test]
