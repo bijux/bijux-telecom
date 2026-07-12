@@ -40,6 +40,15 @@ impl Default for PositionFilterProcessNoise {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PositionFilterMotionClass {
+    Static,
+    Pedestrian,
+    #[default]
+    Vehicle,
+    Airborne,
+}
+
 #[derive(Debug, Clone)]
 pub struct PositionFilterStaticPositionModel {
     pub velocity_decay_per_s: f64,
@@ -60,6 +69,7 @@ pub enum PositionFilterMotionModel {
 
 #[derive(Debug, Clone)]
 pub struct PositionFilterConfig {
+    pub motion_class: PositionFilterMotionClass,
     pub process_noise: PositionFilterProcessNoise,
     pub motion_model: PositionFilterMotionModel,
     pub weighting: WeightingConfig,
@@ -79,7 +89,8 @@ pub struct PositionFilterConfig {
 
 impl Default for PositionFilterConfig {
     fn default() -> Self {
-        Self {
+        let mut config = Self {
+            motion_class: PositionFilterMotionClass::Vehicle,
             process_noise: PositionFilterProcessNoise::default(),
             motion_model: PositionFilterMotionModel::ConstantVelocity,
             weighting: WeightingConfig::default(),
@@ -95,25 +106,86 @@ impl Default for PositionFilterConfig {
             initial_clock_bias_sigma_s: 1.0e-3,
             initial_clock_drift_sigma_s_per_s: 1.0e-4,
             min_dt_s: 1.0e-3,
-        }
+        };
+        config.apply_motion_class(config.motion_class);
+        config
     }
 }
 
 impl PositionFilterConfig {
-    pub fn for_constant_velocity_receiver() -> Self {
+    pub fn for_motion_class(motion_class: PositionFilterMotionClass) -> Self {
         let mut config = Self::default();
-        config.motion_model = PositionFilterMotionModel::ConstantVelocity;
+        config.apply_motion_class(motion_class);
         config
     }
 
+    pub fn for_constant_velocity_receiver() -> Self {
+        Self::for_vehicle_receiver()
+    }
+
     pub fn for_static_receiver() -> Self {
-        let mut config = Self::default();
-        config.motion_model =
-            PositionFilterMotionModel::StaticPosition(PositionFilterStaticPositionModel::default());
-        config.process_noise.pos_m = 0.5;
-        config.process_noise.vel_mps = 0.05;
-        config.initial_velocity_sigma_mps = 5.0;
-        config
+        Self::for_motion_class(PositionFilterMotionClass::Static)
+    }
+
+    pub fn for_pedestrian_receiver() -> Self {
+        Self::for_motion_class(PositionFilterMotionClass::Pedestrian)
+    }
+
+    pub fn for_vehicle_receiver() -> Self {
+        Self::for_motion_class(PositionFilterMotionClass::Vehicle)
+    }
+
+    pub fn for_airborne_receiver() -> Self {
+        Self::for_motion_class(PositionFilterMotionClass::Airborne)
+    }
+
+    pub fn apply_motion_class(&mut self, motion_class: PositionFilterMotionClass) {
+        self.motion_class = motion_class;
+        self.motion_model = motion_class.default_motion_model();
+        self.process_noise = motion_class.process_noise();
+        self.initial_velocity_sigma_mps = motion_class.initial_velocity_sigma_mps();
+    }
+}
+
+impl PositionFilterMotionClass {
+    pub fn process_noise(self) -> PositionFilterProcessNoise {
+        let mut process_noise = PositionFilterProcessNoise::default();
+        match self {
+            Self::Static => {
+                process_noise.pos_m = 0.5;
+                process_noise.vel_mps = 0.05;
+            }
+            Self::Pedestrian => {
+                process_noise.pos_m = 1.5;
+                process_noise.vel_mps = 0.35;
+            }
+            Self::Vehicle => {}
+            Self::Airborne => {
+                process_noise.pos_m = 12.0;
+                process_noise.vel_mps = 3.0;
+            }
+        }
+        process_noise
+    }
+
+    pub fn initial_velocity_sigma_mps(self) -> f64 {
+        match self {
+            Self::Static => 5.0,
+            Self::Pedestrian => 12.0,
+            Self::Vehicle => 50.0,
+            Self::Airborne => 120.0,
+        }
+    }
+
+    pub fn default_motion_model(self) -> PositionFilterMotionModel {
+        match self {
+            Self::Static => {
+                PositionFilterMotionModel::StaticPosition(PositionFilterStaticPositionModel::default())
+            }
+            Self::Pedestrian | Self::Vehicle | Self::Airborne => {
+                PositionFilterMotionModel::ConstantVelocity
+            }
+        }
     }
 }
 
@@ -654,7 +726,7 @@ fn resolved_signal_id(observation: &PositionObservation) -> SigId {
 #[cfg(test)]
 mod tests {
     use super::{
-        PositionFilter, PositionFilterConfig, PositionFilterMotionModel,
+        PositionFilter, PositionFilterConfig, PositionFilterMotionClass, PositionFilterMotionModel,
         PositionFilterStaticPositionModel,
     };
     use crate::estimation::position::solver::{PositionObservation, PositionSolveRefusalKind};
@@ -678,6 +750,7 @@ mod tests {
         let config = PositionFilterConfig::default();
 
         assert!(config.use_doppler);
+        assert_eq!(config.motion_class, PositionFilterMotionClass::Vehicle);
         assert!(matches!(
             config.motion_model,
             PositionFilterMotionModel::ConstantVelocity
@@ -693,6 +766,7 @@ mod tests {
             panic!("static receiver profile should use the static position motion model");
         };
 
+        assert_eq!(config.motion_class, PositionFilterMotionClass::Static);
         assert_eq!(
             static_model.velocity_decay_per_s,
             PositionFilterStaticPositionModel::default().velocity_decay_per_s
@@ -706,6 +780,7 @@ mod tests {
     fn position_filter_constant_velocity_profile_enables_constant_velocity_model() {
         let config = PositionFilterConfig::for_constant_velocity_receiver();
 
+        assert_eq!(config.motion_class, PositionFilterMotionClass::Vehicle);
         assert!(matches!(
             config.motion_model,
             PositionFilterMotionModel::ConstantVelocity
