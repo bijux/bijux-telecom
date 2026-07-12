@@ -10,7 +10,7 @@
 
 use bijux_gnss_core::api::{
     signal_cycles_to_meters, signal_registry, signal_spec_beidou_b1i, signal_spec_beidou_b2i,
-    signal_spec_galileo_e1b, signal_spec_glonass_l1, signal_spec_galileo_e5a,
+    signal_spec_galileo_e1b, signal_spec_galileo_e5a, signal_spec_glonass_l1,
     signal_spec_gps_l1_ca, signal_spec_gps_l2c, signal_spec_gps_l5, signal_wavelength_m,
     Constellation, ConventionsConfig, Cycles, DiagnosticEvent, DiagnosticSeverity, GpsTime,
     LockFlags, Meters, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest, ObsMetadata, ObsSatellite,
@@ -125,9 +125,41 @@ pub struct ObservationResidualEpochReport {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ObservationMeasurementQualitySatellite {
+    pub signal_id: SigId,
+    pub accepted: bool,
+    pub observation_status: ObservationStatus,
+    pub observation_reject_reasons: Vec<String>,
+    pub cn0_dbhz: f64,
+    pub pseudorange_sigma_m: Option<f64>,
+    pub carrier_phase_sigma_cycles: Option<f64>,
+    pub doppler_sigma_hz: Option<f64>,
+    pub cn0_sigma_dbhz: Option<f64>,
+    pub lock_flags: LockFlags,
+    pub observation_lock_state: String,
+    pub observation_lock_reason: Option<String>,
+    pub tracking_lock_quality: f64,
+    pub cycle_slip: bool,
+    pub cycle_slip_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ObservationMeasurementQualityEpochReport {
+    pub artifact_id: String,
+    pub epoch_id: String,
+    pub epoch_idx: u64,
+    pub source_time: ReceiverSampleTrace,
+    pub accepted: bool,
+    pub decision: ObservationEpochDecision,
+    pub decision_reason: Option<String>,
+    pub sats: Vec<ObservationMeasurementQualitySatellite>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObservationPipelineArtifacts {
     pub epochs: Vec<ObsEpoch>,
     pub residuals: Vec<ObservationResidualEpochReport>,
+    pub measurement_quality: Vec<ObservationMeasurementQualityEpochReport>,
 }
 
 #[derive(Debug, Clone)]
@@ -174,6 +206,66 @@ impl ObservationResidualValue {
             reference_model: reference_model.map(str::to_string),
         }
     }
+}
+
+impl ObservationMeasurementQualitySatellite {
+    fn from_satellite(sat: &ObsSatellite) -> Self {
+        Self {
+            signal_id: sat.signal_id,
+            accepted: sat.observation_status == ObservationStatus::Accepted,
+            observation_status: sat.observation_status,
+            observation_reject_reasons: sat.observation_reject_reasons.clone(),
+            cn0_dbhz: sat.cn0_dbhz,
+            pseudorange_sigma_m: sigma_from_variance(sat.pseudorange_var_m2),
+            carrier_phase_sigma_cycles: sigma_from_variance(sat.carrier_phase_var_cycles2),
+            doppler_sigma_hz: sigma_from_variance(sat.doppler_var_hz2),
+            cn0_sigma_dbhz: sat
+                .metadata
+                .tracking_uncertainty
+                .as_ref()
+                .and_then(|uncertainty| finite_sigma(Some(uncertainty.cn0_dbhz))),
+            lock_flags: sat.lock_flags,
+            observation_lock_state: sat.metadata.observation_lock_state.clone(),
+            observation_lock_reason: sat.metadata.observation_lock_reason.clone(),
+            tracking_lock_quality: sat.metadata.tracking_lock_quality,
+            cycle_slip: sat.lock_flags.cycle_slip,
+            cycle_slip_reason: cycle_slip_reason(sat),
+        }
+    }
+}
+
+impl ObservationMeasurementQualityEpochReport {
+    fn from_epoch(epoch: &ObsEpoch) -> Self {
+        let observation_artifact_id = epoch
+            .manifest
+            .as_ref()
+            .map(|manifest| manifest.artifact_id.clone())
+            .unwrap_or_else(|| format!("obs-epoch-{:010}", epoch.epoch_idx));
+        let epoch_id =
+            epoch.manifest.as_ref().map(|manifest| manifest.epoch_id.clone()).unwrap_or_else(
+                || observation_epoch_id(epoch.epoch_idx, epoch.source_time.sample_index),
+            );
+        Self {
+            artifact_id: format!("observation-measurement-quality-{observation_artifact_id}"),
+            epoch_id,
+            epoch_idx: epoch.epoch_idx,
+            source_time: epoch.source_time,
+            accepted: epoch.decision == ObservationEpochDecision::Accepted,
+            decision: epoch.decision,
+            decision_reason: epoch.decision_reason.clone(),
+            sats: epoch
+                .sats
+                .iter()
+                .map(ObservationMeasurementQualitySatellite::from_satellite)
+                .collect(),
+        }
+    }
+}
+
+pub fn observation_measurement_quality_from_epochs(
+    epochs: &[ObsEpoch],
+) -> Vec<ObservationMeasurementQualityEpochReport> {
+    epochs.iter().map(ObservationMeasurementQualityEpochReport::from_epoch).collect()
 }
 
 pub fn observations_from_tracking(
@@ -470,6 +562,35 @@ pub fn observation_residuals_from_tracking_results_with_gps_anchor(
     StepReport { output: output.residuals, events, stats }
 }
 
+pub fn observation_measurement_quality_from_tracking_results(
+    config: &ReceiverPipelineConfig,
+    tracks: &[TrackingResult],
+    hatch_window: u32,
+) -> StepReport<Vec<ObservationMeasurementQualityEpochReport>> {
+    observation_measurement_quality_from_tracking_results_with_gps_anchor(
+        config,
+        None,
+        tracks,
+        hatch_window,
+    )
+}
+
+pub fn observation_measurement_quality_from_tracking_results_with_gps_anchor(
+    config: &ReceiverPipelineConfig,
+    capture_start_gps_time: Option<GpsTime>,
+    tracks: &[TrackingResult],
+    hatch_window: u32,
+) -> StepReport<Vec<ObservationMeasurementQualityEpochReport>> {
+    let report = observation_artifacts_from_tracking_results_with_gps_anchor(
+        config,
+        capture_start_gps_time,
+        tracks,
+        hatch_window,
+    );
+    let StepReport { output, events, stats } = report;
+    StepReport { output: output.measurement_quality, events, stats }
+}
+
 pub fn observation_artifacts_from_tracking_results(
     config: &ReceiverPipelineConfig,
     tracks: &[TrackingResult],
@@ -555,8 +676,8 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
                 let raw_pseudorange_m = sat.pseudorange_m.0;
                 raw_snapshots
                     .insert(snapshot_key, raw_observation_snapshot(&sat, raw_pseudorange_m));
-                let raw_divergence_m =
-                    raw_pseudorange_m - signal_cycles_to_meters(sat.carrier_phase_cycles, sat.metadata.signal).0;
+                let raw_divergence_m = raw_pseudorange_m
+                    - signal_cycles_to_meters(sat.carrier_phase_cycles, sat.metadata.signal).0;
                 let threshold_m = slip_threshold_m(sat.cn0_dbhz, sat.elevation_deg);
                 let divergence_jump = state.divergence_jump_m(raw_divergence_m).unwrap_or(0.0);
                 let mut smoothing_cycle_slip_reason = None;
@@ -645,8 +766,9 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
         }
     }
     let residuals = observation_residual_reports_from_epochs(&out, &raw_snapshots);
+    let measurement_quality = observation_measurement_quality_from_epochs(&out);
     StepReport {
-        output: ObservationPipelineArtifacts { epochs: out, residuals },
+        output: ObservationPipelineArtifacts { epochs: out, residuals, measurement_quality },
         events: diagnostics,
         stats: StepStats::default(),
     }
@@ -908,6 +1030,32 @@ fn finite_value(value: Option<f64>) -> Option<f64> {
 
 fn finite_sigma(value: Option<f64>) -> Option<f64> {
     value.filter(|candidate| candidate.is_finite() && *candidate >= 0.0)
+}
+
+fn sigma_from_variance(variance: f64) -> Option<f64> {
+    finite_sigma((variance.is_finite() && variance >= 0.0).then(|| variance.sqrt()))
+}
+
+fn cycle_slip_reason(sat: &ObsSatellite) -> Option<String> {
+    if !sat.lock_flags.cycle_slip {
+        return None;
+    }
+    sat.metadata
+        .observation_lock_reason
+        .clone()
+        .or_else(|| {
+            sat.observation_reject_reasons
+                .iter()
+                .find(|reason| *reason != "cycle_slip" && reason.contains("slip"))
+                .cloned()
+        })
+        .or_else(|| {
+            sat.observation_reject_reasons
+                .iter()
+                .find(|reason| *reason == "code_carrier_divergence")
+                .cloned()
+        })
+        .or_else(|| Some("cycle_slip".to_string()))
 }
 
 fn observation_epoch_id(epoch_idx: u64, sample_index: u64) -> String {
@@ -3034,7 +3182,8 @@ mod tests {
             whole_code_periods,
             aligned_code_phase_chips,
         );
-        let expected_phase_cycles = signal_meters_to_cycles(Meters(expected_pseudorange_m), signal).0;
+        let expected_phase_cycles =
+            signal_meters_to_cycles(Meters(expected_pseudorange_m), signal).0;
         let epoch = TrackEpoch {
             sat: SatId { constellation: Constellation::Galileo, prn: 11 },
             signal_band: SignalBand::E5,
@@ -3094,7 +3243,8 @@ mod tests {
             whole_code_periods,
             aligned_code_phase_chips,
         );
-        let expected_phase_cycles = signal_meters_to_cycles(Meters(expected_pseudorange_m), signal).0;
+        let expected_phase_cycles =
+            signal_meters_to_cycles(Meters(expected_pseudorange_m), signal).0;
         let epoch = TrackEpoch {
             sat: SatId { constellation: Constellation::Beidou, prn: 11 },
             signal_band: SignalBand::B2,

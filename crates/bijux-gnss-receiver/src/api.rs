@@ -48,9 +48,12 @@ pub use crate::pipeline::observation_validation::{
 pub use crate::pipeline::observations::{
     observation_artifacts_from_tracking_results,
     observation_artifacts_from_tracking_results_with_gps_anchor,
+    observation_measurement_quality_from_tracking_results,
+    observation_measurement_quality_from_tracking_results_with_gps_anchor,
     observation_residuals_from_tracking_results,
     observation_residuals_from_tracking_results_with_gps_anchor, observations_from_tracking,
     observations_from_tracking_results, observations_from_tracking_results_with_gps_anchor,
+    ObservationMeasurementQualityEpochReport, ObservationMeasurementQualitySatellite,
     ObservationPipelineArtifacts, ObservationResidualEpochReport, ObservationResidualSatellite,
     ObservationResidualValue,
 };
@@ -127,10 +130,10 @@ pub use crate::validation_report::{
     build_validation_report, build_validation_report_from_observation_artifacts,
     build_validation_report_from_observation_artifacts_with_budgets,
     build_validation_report_with_budgets, check_time_consistency, ConvergenceReport,
-    DiagnosticPartitionReport, FixTimelineEntry, NavIntegrityClass, NavIntegrityReport,
-    NavConstellationResidualReport, NavResidualReport, PppReadinessReport,
-    ReferencePositionErrorEpoch, TimeConsistencyReport, ValidationAssumptionReport,
-    ValidationBudgets, ValidationErrorStats, ValidationReport, ValidationSciencePolicy,
+    DiagnosticPartitionReport, FixTimelineEntry, NavConstellationResidualReport, NavIntegrityClass,
+    NavIntegrityReport, NavResidualReport, PppReadinessReport, ReferencePositionErrorEpoch,
+    TimeConsistencyReport, ValidationAssumptionReport, ValidationBudgets, ValidationErrorStats,
+    ValidationReport, ValidationSciencePolicy,
 };
 
 /// Artifacts produced by a receiver pipeline run.
@@ -156,6 +159,8 @@ pub struct RunArtifacts {
     pub observations: Vec<bijux_gnss_core::api::ObsEpoch>,
     /// Observation residual reports captured during the run.
     pub observation_residuals: Vec<ObservationResidualEpochReport>,
+    /// Per-signal observation measurement quality reports captured during the run.
+    pub observation_measurement_quality: Vec<ObservationMeasurementQualityEpochReport>,
     /// Signal support matrix artifact.
     pub support_matrix: Option<bijux_gnss_core::api::SupportMatrix>,
     /// Navigation solution epochs captured during the run.

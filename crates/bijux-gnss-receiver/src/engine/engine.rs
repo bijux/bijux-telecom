@@ -385,6 +385,7 @@ impl Receiver {
             observations: observation_output.epochs,
             observation_decisions,
             observation_residuals: observation_output.residuals,
+            observation_measurement_quality: observation_output.measurement_quality,
             support_matrix: Some(build_support_matrix()),
             navigation: Vec::new(),
         };
@@ -672,12 +673,10 @@ fn support_reason(constellation: Constellation, band: SignalBand, code: SignalCo
     {
         return "receiver observations and synthetic validation support explicit tracked E5 epochs; acquisition and live tracking remain incomplete".to_string();
     }
-    if constellation == Constellation::Beidou && band == SignalBand::B1 && code == SignalCode::B1I
-    {
+    if constellation == Constellation::Beidou && band == SignalBand::B1 && code == SignalCode::B1I {
         return "receiver acquisition, tracking, and observations support this signal path; navigation remains incomplete".to_string();
     }
-    if constellation == Constellation::Beidou && band == SignalBand::B2 && code == SignalCode::B2I
-    {
+    if constellation == Constellation::Beidou && band == SignalBand::B2 && code == SignalCode::B2I {
         return "receiver observations and synthetic validation support explicit tracked B2I epochs; acquisition and live tracking remain incomplete".to_string();
     }
     if constellation == Constellation::Glonass
@@ -706,9 +705,7 @@ impl ReceiverEngine for Receiver {
 #[cfg(test)]
 mod tests {
     use super::{default_acquisition_requests, filter_acquisition_requests};
-    use crate::engine::receiver_config::{
-        ConstellationSelectionPolicy, ReceiverPipelineConfig,
-    };
+    use crate::engine::receiver_config::{ConstellationSelectionPolicy, ReceiverPipelineConfig};
     use bijux_gnss_core::api::Constellation;
 
     #[test]
@@ -746,10 +743,7 @@ mod tests {
         let config = ReceiverPipelineConfig::default();
         let requests = vec![
             bijux_gnss_core::api::AcqRequest {
-                sat: bijux_gnss_core::api::SatId {
-                    constellation: Constellation::Glonass,
-                    prn: 8,
-                },
+                sat: bijux_gnss_core::api::SatId { constellation: Constellation::Glonass, prn: 8 },
                 glonass_frequency_channel: bijux_gnss_core::api::GlonassFrequencyChannel::new(-4),
                 doppler_search_hz: 0,
                 doppler_step_hz: 250,
@@ -757,10 +751,7 @@ mod tests {
                 noncoherent: 1,
             },
             bijux_gnss_core::api::AcqRequest {
-                sat: bijux_gnss_core::api::SatId {
-                    constellation: Constellation::Gps,
-                    prn: 3,
-                },
+                sat: bijux_gnss_core::api::SatId { constellation: Constellation::Gps, prn: 3 },
                 glonass_frequency_channel: None,
                 doppler_search_hz: 0,
                 doppler_step_hz: 250,
@@ -785,10 +776,7 @@ mod tests {
         };
         let requests = vec![
             bijux_gnss_core::api::AcqRequest {
-                sat: bijux_gnss_core::api::SatId {
-                    constellation: Constellation::Glonass,
-                    prn: 8,
-                },
+                sat: bijux_gnss_core::api::SatId { constellation: Constellation::Glonass, prn: 8 },
                 glonass_frequency_channel: bijux_gnss_core::api::GlonassFrequencyChannel::new(-4),
                 doppler_search_hz: 0,
                 doppler_step_hz: 250,
@@ -796,10 +784,7 @@ mod tests {
                 noncoherent: 1,
             },
             bijux_gnss_core::api::AcqRequest {
-                sat: bijux_gnss_core::api::SatId {
-                    constellation: Constellation::Gps,
-                    prn: 3,
-                },
+                sat: bijux_gnss_core::api::SatId { constellation: Constellation::Gps, prn: 3 },
                 glonass_frequency_channel: None,
                 doppler_search_hz: 0,
                 doppler_step_hz: 250,
