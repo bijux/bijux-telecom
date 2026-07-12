@@ -447,6 +447,10 @@ pub enum PositionRobustWeighting {
 }
 
 impl PositionRobustWeighting {
+    pub fn disabled() -> Self {
+        Self::Disabled
+    }
+
     pub fn huber(threshold_m: f64) -> Self {
         Self::Huber { threshold_m }
     }
@@ -480,6 +484,18 @@ impl PositionSolver {
     pub fn with_broadcast_group_delay(mut self, apply_broadcast_group_delay: bool) -> Self {
         self.apply_broadcast_group_delay = apply_broadcast_group_delay;
         self
+    }
+
+    pub fn with_robust_weighting(
+        mut self,
+        robust_weighting: PositionRobustWeighting,
+    ) -> Self {
+        self.robust_weighting = robust_weighting;
+        self
+    }
+
+    pub fn without_robust_weighting(self) -> Self {
+        self.with_robust_weighting(PositionRobustWeighting::disabled())
     }
 
     pub fn solve_wls(
