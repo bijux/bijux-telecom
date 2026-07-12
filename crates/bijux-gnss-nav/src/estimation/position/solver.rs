@@ -15,6 +15,7 @@ use super::navigation::{
 };
 use super::raim::{
     formal_protection_levels, PositionProtectionLevels, RaimFaultDetection, RaimFaultExclusion,
+    RaimSolutionSeparationCheck, RaimSolutionSeparationSubset,
 };
 use crate::models::atmosphere::{
     IonosphereModel, KlobucharCoefficients, KlobucharModel, SaastamoinenModel, TroposphereModel,
@@ -70,8 +71,7 @@ pub struct PositionSolution {
     pub rejected: Vec<(SatId, bijux_gnss_core::api::MeasurementRejectReason)>,
     pub raim_fault_detection: Option<RaimFaultDetection>,
     pub raim_fault_exclusion: Option<RaimFaultExclusion>,
-    pub separation_max_m: Option<f64>,
-    pub separation_suspect: Option<SatId>,
+    pub raim_solution_separation: Option<RaimSolutionSeparationCheck>,
     pub covariance_symmetrized: bool,
     pub covariance_clamped: bool,
     pub covariance_max_variance: Option<f64>,
@@ -437,12 +437,6 @@ struct WorkingSetSolution {
     covariance_symmetrized: bool,
     covariance_clamped: bool,
     covariance_max_variance: Option<f64>,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct RaimSolutionSeparation {
-    suspect_sat: SatId,
-    separation_m: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -857,10 +851,12 @@ impl PositionSolver {
         }
 
         let final_estimate = working_set.estimate;
-        let separation =
-            self.raim.then(|| max_solution_separation(&filtered, &final_estimate)).flatten();
+        let raim_solution_separation = self
+            .raim
+            .then(|| self.solution_separation_check(&working_inputs, &final_estimate, klobuchar))
+            .flatten();
         if raim_fault_detection.is_none() {
-            if let Some(separation) = separation {
+            if let Some(separation) = raim_solution_separation.as_ref() {
                 raim_fault_detection =
                     Some(raim_fault_detection_from_separation(separation, self.separation_gate_m));
             }
@@ -984,8 +980,7 @@ impl PositionSolver {
             rejected,
             raim_fault_detection,
             raim_fault_exclusion,
-            separation_max_m: separation.map(|separation| separation.separation_m),
-            separation_suspect: separation.map(|separation| separation.suspect_sat),
+            raim_solution_separation,
             covariance_symmetrized: working_set.covariance_symmetrized,
             covariance_clamped: working_set.covariance_clamped,
             covariance_max_variance: working_set.covariance_max_variance,
@@ -2489,6 +2484,45 @@ impl PositionSolver {
 
         best_candidate
     }
+
+    fn solution_separation_check(
+        &self,
+        inputs: &[PositionSolveInput],
+        reference_estimate: &PositionEstimate,
+        klobuchar: Option<&KlobucharCoefficients>,
+    ) -> Option<RaimSolutionSeparationCheck> {
+        if inputs.len() < 5 {
+            return None;
+        }
+
+        let mut compared_subsets = Vec::with_capacity(inputs.len());
+        for excluded_index in 0..inputs.len() {
+            let candidate_inputs = inputs
+                .iter()
+                .enumerate()
+                .filter_map(|(index, input)| (index != excluded_index).then_some(input.clone()))
+                .collect::<Vec<_>>();
+            let Some(candidate_solution) =
+                self.solve_working_set(&candidate_inputs, reference_estimate.clone(), klobuchar)
+            else {
+                continue;
+            };
+            let excluded_sat = inputs
+                .get(excluded_index)
+                .expect("subset exclusion must reference an input")
+                .observation
+                .sat;
+            compared_subsets.push(RaimSolutionSeparationSubset {
+                excluded_sat,
+                separation_m: solution_separation_m(reference_estimate, &candidate_solution.estimate),
+            });
+        }
+
+        (!compared_subsets.is_empty()).then_some(RaimSolutionSeparationCheck {
+            reference_sat_count: inputs.len(),
+            compared_subsets,
+        })
+    }
 }
 
 fn push_unique_rejection(
@@ -2563,62 +2597,22 @@ fn supports_reliable_raim_exclusion(usable_sat_count: usize) -> bool {
 }
 
 fn raim_fault_detection_from_separation(
-    separation: RaimSolutionSeparation,
+    separation: &RaimSolutionSeparationCheck,
     threshold_m: f64,
 ) -> RaimFaultDetection {
-    if separation.separation_m > threshold_m {
-        RaimFaultDetection::fault_detected(
-            separation.suspect_sat,
-            separation.separation_m,
-            threshold_m,
-        )
+    if let Some(max_subset) = separation.max_separation() {
+        if max_subset.separation_m > threshold_m {
+            RaimFaultDetection::fault_detected(
+                max_subset.excluded_sat,
+                max_subset.separation_m,
+                threshold_m,
+            )
+        } else {
+            RaimFaultDetection::consistent(max_subset.separation_m, threshold_m)
+        }
     } else {
-        RaimFaultDetection::consistent(separation.separation_m, threshold_m)
+        RaimFaultDetection::consistent(0.0, threshold_m)
     }
-}
-
-fn max_solution_separation(
-    filtered: &[(PositionObservation, SatelliteState, f64, f64)],
-    final_estimate: &PositionEstimate,
-) -> Option<RaimSolutionSeparation> {
-    if filtered.len() < 5 {
-        return None;
-    }
-
-    let mut max_separation = None;
-    for idx in 0..filtered.len() {
-        let mut subset = filtered.to_vec();
-        let removed = subset.remove(idx);
-        if subset.len() < 4 {
-            continue;
-        }
-        let mut h_sep = Vec::with_capacity(subset.len());
-        let mut v_sep = Vec::with_capacity(subset.len());
-        for (observation, state, residual_m, _effective_weight) in &subset {
-            let (_range_m, design_row) =
-                linearized_geometry_row(final_estimate, observation.sat.constellation, state)?;
-            h_sep.push(design_row);
-            v_sep.push(*residual_m);
-        }
-        if let Some((delta, _)) = solve_weighted_normal_eq(&h_sep, &v_sep, &vec![1.0; v_sep.len()])
-        {
-            let dx = delta.first().copied().unwrap_or(0.0);
-            let dy = delta.get(1).copied().unwrap_or(0.0);
-            let dz = delta.get(2).copied().unwrap_or(0.0);
-            let separation_m = (dx * dx + dy * dy + dz * dz).sqrt();
-            let candidate = RaimSolutionSeparation { suspect_sat: removed.0.sat, separation_m };
-            if max_separation
-                .map(|current: RaimSolutionSeparation| {
-                    candidate.separation_m > current.separation_m
-                })
-                .unwrap_or(true)
-            {
-                max_separation = Some(candidate);
-            }
-        }
-    }
-
-    max_separation
 }
 
 type NormalEqSolution = (Vec<f64>, Vec<Vec<f64>>);
