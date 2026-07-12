@@ -2,18 +2,24 @@
 
 use std::collections::BTreeMap;
 
-use bijux_gnss_core::api::{ObsEpoch, ObsSatellite, SatId, SignalBand};
+use bijux_gnss_core::api::{ObsEpoch, ObsSatellite, SatId, SigId, SignalBand};
+
+use crate::corrections::biases::{iono_free_code_bias_m, CodeBiasProvider};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct IonoFreeCodeObservation {
     pub epoch_idx: u64,
     pub t_rx_s: f64,
     pub sat: SatId,
+    pub signal_1: Option<SigId>,
+    pub signal_2: Option<SigId>,
     pub band_1: SignalBand,
     pub band_2: SignalBand,
     pub f1_hz: f64,
     pub f2_hz: f64,
     pub code_m: Option<f64>,
+    pub code_bias_m: Option<f64>,
+    pub corrected_code_m: Option<f64>,
     pub variance_m2: Option<f64>,
     pub status: String,
     pub reason: String,
@@ -33,6 +39,15 @@ pub fn iono_free_code_from_obs_epochs(
     band_1: SignalBand,
     band_2: SignalBand,
 ) -> Vec<IonoFreeCodeObservation> {
+    iono_free_code_from_obs_epochs_with_biases(epochs, band_1, band_2, None)
+}
+
+pub fn iono_free_code_from_obs_epochs_with_biases(
+    epochs: &[ObsEpoch],
+    band_1: SignalBand,
+    band_2: SignalBand,
+    biases: Option<&dyn CodeBiasProvider>,
+) -> Vec<IonoFreeCodeObservation> {
     let mut out = Vec::new();
 
     for epoch in epochs {
@@ -47,7 +62,7 @@ pub fn iono_free_code_from_obs_epochs(
             if first.is_none() && second.is_none() {
                 continue;
             }
-            out.push(iono_free_code_from_pair(
+            out.push(iono_free_code_from_pair_with_biases(
                 epoch.epoch_idx,
                 epoch.t_rx_s.0,
                 sat,
@@ -55,6 +70,7 @@ pub fn iono_free_code_from_obs_epochs(
                 band_2,
                 first,
                 second,
+                biases,
             ));
         }
     }
@@ -71,26 +87,61 @@ pub(crate) fn iono_free_code_from_pair(
     first: Option<&ObsSatellite>,
     second: Option<&ObsSatellite>,
 ) -> IonoFreeCodeObservation {
+    iono_free_code_from_pair_with_biases(
+        epoch_idx,
+        t_rx_s,
+        sat,
+        band_1,
+        band_2,
+        first,
+        second,
+        None,
+    )
+}
+
+pub(crate) fn iono_free_code_from_pair_with_biases(
+    epoch_idx: u64,
+    t_rx_s: f64,
+    sat: SatId,
+    band_1: SignalBand,
+    band_2: SignalBand,
+    first: Option<&ObsSatellite>,
+    second: Option<&ObsSatellite>,
+    biases: Option<&dyn CodeBiasProvider>,
+) -> IonoFreeCodeObservation {
     let f1_hz =
         first.map(|observation| observation.metadata.signal.carrier_hz.value()).unwrap_or(0.0);
     let f2_hz =
         second.map(|observation| observation.metadata.signal.carrier_hz.value()).unwrap_or(0.0);
+    let signal_1 = first.map(|observation| observation.signal_id);
+    let signal_2 = second.map(|observation| observation.signal_id);
 
     let (code_m, variance_m2, status) = match (first, second) {
         (Some(first), Some(second)) => evaluate_iono_free_code(first, second),
         _ => (None, None, IonoFreeCodeStatus::MissingFrequency),
     };
+    let code_bias_m = match (biases, signal_1, signal_2, code_m) {
+        (Some(provider), Some(signal_1), Some(signal_2), Some(_)) => {
+            iono_free_code_bias_m(provider, signal_1, signal_2, f1_hz, f2_hz)
+        }
+        _ => None,
+    };
+    let corrected_code_m = code_m.zip(code_bias_m).map(|(code_m, bias_m)| code_m - bias_m);
     let (status_text, reason) = status_reason(status);
 
     IonoFreeCodeObservation {
         epoch_idx,
         t_rx_s,
         sat,
+        signal_1,
+        signal_2,
         band_1,
         band_2,
         f1_hz,
         f2_hz,
         code_m,
+        code_bias_m,
+        corrected_code_m,
         variance_m2,
         status: status_text,
         reason,
@@ -153,13 +204,14 @@ fn status_reason(status: IonoFreeCodeStatus) -> (String, String) {
 
 #[cfg(test)]
 mod tests {
-    use super::iono_free_code_from_obs_epochs;
+    use super::{iono_free_code_from_obs_epochs, iono_free_code_from_obs_epochs_with_biases};
     use bijux_gnss_core::api::{
         signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l5, Constellation, Cycles,
         Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite, ObservationEpochDecision,
         ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand,
         SignalCode,
     };
+    use crate::corrections::biases::{CodeBias, SignalCodeBiases};
 
     fn dual_frequency_epoch(
         second_band: SignalBand,
@@ -358,5 +410,41 @@ mod tests {
         assert_eq!(observations[0].status, "invalid");
         assert_eq!(observations[0].reason, "code_lock_invalid");
         assert!(observations[0].code_m.is_none());
+    }
+
+    #[test]
+    fn iono_free_code_reports_signal_specific_bias_and_corrected_code() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 11 };
+        let l1_signal = SigId { sat, band: SignalBand::L1, code: SignalCode::Ca };
+        let l2_signal = SigId { sat, band: SignalBand::L2, code: SignalCode::Py };
+        let bias_table = SignalCodeBiases::from_biases([
+            CodeBias { sig: l1_signal, bias_m: 2.0 },
+            CodeBias { sig: l2_signal, bias_m: -0.5 },
+        ]);
+        let observations = iono_free_code_from_obs_epochs_with_biases(
+            &[dual_frequency_epoch(
+                SignalBand::L2,
+                SignalCode::Py,
+                signal_spec_gps_l2_py(),
+                20_200_010.0,
+                20_200_005.0,
+                true,
+                true,
+                1.0,
+                1.0,
+            )],
+            SignalBand::L1,
+            SignalBand::L2,
+            Some(&bias_table),
+        );
+
+        assert_eq!(observations[0].signal_1, Some(l1_signal));
+        assert_eq!(observations[0].signal_2, Some(l2_signal));
+        assert!(observations[0].code_bias_m.is_some());
+        assert!(observations[0].corrected_code_m.is_some());
+        assert_ne!(
+            observations[0].code_m.expect("raw iono-free code"),
+            observations[0].corrected_code_m.expect("bias-corrected iono-free code")
+        );
     }
 }

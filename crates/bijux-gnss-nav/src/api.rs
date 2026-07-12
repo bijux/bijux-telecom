@@ -18,7 +18,8 @@ pub use crate::corrections::geometry_free::{
     GeometryFreeThresholds,
 };
 pub use crate::corrections::iono_free_code::{
-    iono_free_code_from_obs_epochs, IonoFreeCodeObservation,
+    iono_free_code_from_obs_epochs, iono_free_code_from_obs_epochs_with_biases,
+    IonoFreeCodeObservation,
 };
 pub use crate::corrections::iono_free_phase::{
     iono_free_phase_from_obs_epochs, IonoFreePhaseObservation,
