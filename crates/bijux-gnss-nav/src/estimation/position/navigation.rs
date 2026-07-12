@@ -6,22 +6,25 @@ use crate::corrections::broadcast_group_delay::{
 };
 use crate::orbits::beidou::{
     beidou_navigation_age, is_beidou_navigation_valid, sat_state_beidou_b1i,
-    sat_state_beidou_b1i_from_observation,
 };
 use crate::orbits::galileo::{
     galileo_navigation_age, is_galileo_navigation_valid, sat_state_galileo_e1,
-    sat_state_galileo_e1_from_observation,
 };
 use crate::orbits::glonass::{
     glonass_gps_minus_glonass_s, glonass_navigation_age, is_glonass_navigation_valid,
-    sat_state_glonass_l1, sat_state_glonass_l1_from_observation,
+    sat_state_glonass_l1,
 };
 use crate::orbits::gps::{
-    gps_ephemeris_age, is_ephemeris_valid, sat_state_gps_l1ca, sat_state_gps_l1ca_from_observation,
+    gps_ephemeris_age, is_ephemeris_valid, sat_state_gps_l1ca,
 };
-use bijux_gnss_core::api::{MeasurementRejectReason, ObsSignalTiming, SatId, SigId};
+use bijux_gnss_core::api::{
+    default_acquisition_signal, MeasurementRejectReason, ObsSignalTiming, SatId, SigId,
+};
 
 use super::solver::{PositionBroadcastNavigation, PositionObservation};
+
+const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
+const SATELLITE_RATE_STEP_S: f64 = 1.0e-3;
 
 #[derive(Debug, Clone)]
 pub(crate) struct PositionSolveInput {
@@ -35,7 +38,11 @@ pub(crate) struct SatelliteState {
     pub(crate) x_m: f64,
     pub(crate) y_m: f64,
     pub(crate) z_m: f64,
+    pub(crate) vx_mps: f64,
+    pub(crate) vy_mps: f64,
+    pub(crate) vz_mps: f64,
     pub(crate) clock_bias_s: f64,
+    pub(crate) clock_drift_s_per_s: f64,
 }
 
 pub(crate) fn unknown_inter_system_time_offset_sats(
@@ -164,64 +171,12 @@ pub(crate) fn satellite_state_from_observation(
     pseudorange_m: f64,
     signal_timing: Option<ObsSignalTiming>,
 ) -> Option<SatelliteState> {
-    match navigation {
-        PositionBroadcastNavigation::Gps(ephemeris) => {
-            let state = sat_state_gps_l1ca_from_observation(
-                ephemeris,
-                receive_tow_s,
-                pseudorange_m,
-                signal_timing,
-            );
-            Some(SatelliteState {
-                x_m: state.x_m,
-                y_m: state.y_m,
-                z_m: state.z_m,
-                clock_bias_s: state.clock_correction.bias_s,
-            })
-        }
-        PositionBroadcastNavigation::Galileo(navigation) => {
-            let state = sat_state_galileo_e1_from_observation(
-                navigation,
-                receive_tow_s,
-                pseudorange_m,
-                signal_timing,
-            );
-            Some(SatelliteState {
-                x_m: state.x_m,
-                y_m: state.y_m,
-                z_m: state.z_m,
-                clock_bias_s: state.clock_correction.bias_s,
-            })
-        }
-        PositionBroadcastNavigation::Beidou(navigation) => {
-            let state = sat_state_beidou_b1i_from_observation(
-                navigation,
-                receive_tow_s,
-                pseudorange_m,
-                signal_timing,
-            );
-            Some(SatelliteState {
-                x_m: state.x_m,
-                y_m: state.y_m,
-                z_m: state.z_m,
-                clock_bias_s: state.clock_correction.bias_s,
-            })
-        }
-        PositionBroadcastNavigation::Glonass(navigation) => {
-            let state = sat_state_glonass_l1_from_observation(
-                navigation,
-                receive_tow_s,
-                pseudorange_m,
-                signal_timing,
-            )?;
-            Some(SatelliteState {
-                x_m: state.x_m,
-                y_m: state.y_m,
-                z_m: state.z_m,
-                clock_bias_s: state.clock_correction.bias_s,
-            })
-        }
-    }
+    let signal_travel_time_s =
+        signal_timing.map(|timing| timing.signal_travel_time_s.0).unwrap_or(pseudorange_m / SPEED_OF_LIGHT_MPS);
+    let transmit_tow_s = signal_timing
+        .map(|timing| timing.transmit_gps_time.tow_s)
+        .unwrap_or(receive_tow_s - signal_travel_time_s);
+    satellite_state_at_time(navigation, transmit_tow_s, signal_travel_time_s)
 }
 
 pub(crate) fn satellite_state_at_time(
@@ -229,44 +184,92 @@ pub(crate) fn satellite_state_at_time(
     transmit_tow_s: f64,
     signal_travel_time_s: f64,
 ) -> Option<SatelliteState> {
+    let center = satellite_state_sample_at_time(navigation, transmit_tow_s, signal_travel_time_s)?;
+    let previous = satellite_state_sample_at_time(
+        navigation,
+        transmit_tow_s - SATELLITE_RATE_STEP_S,
+        signal_travel_time_s,
+    )?;
+    let next = satellite_state_sample_at_time(
+        navigation,
+        transmit_tow_s + SATELLITE_RATE_STEP_S,
+        signal_travel_time_s,
+    )?;
+    let inverse_dt = 1.0 / (2.0 * SATELLITE_RATE_STEP_S);
+
+    Some(SatelliteState {
+        x_m: center.x_m,
+        y_m: center.y_m,
+        z_m: center.z_m,
+        vx_mps: (next.x_m - previous.x_m) * inverse_dt,
+        vy_mps: (next.y_m - previous.y_m) * inverse_dt,
+        vz_mps: (next.z_m - previous.z_m) * inverse_dt,
+        clock_bias_s: center.clock_bias_s,
+        clock_drift_s_per_s: center.clock_drift_s_per_s,
+    })
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SatelliteStateSample {
+    x_m: f64,
+    y_m: f64,
+    z_m: f64,
+    clock_bias_s: f64,
+    clock_drift_s_per_s: f64,
+}
+
+fn satellite_state_sample_at_time(
+    navigation: &PositionBroadcastNavigation,
+    transmit_tow_s: f64,
+    signal_travel_time_s: f64,
+) -> Option<SatelliteStateSample> {
     match navigation {
         PositionBroadcastNavigation::Gps(ephemeris) => {
             let state = sat_state_gps_l1ca(ephemeris, transmit_tow_s, signal_travel_time_s);
-            Some(SatelliteState {
+            Some(SatelliteStateSample {
                 x_m: state.x_m,
                 y_m: state.y_m,
                 z_m: state.z_m,
                 clock_bias_s: state.clock_correction.bias_s,
+                clock_drift_s_per_s: state.clock_correction.drift_s_per_s,
             })
         }
         PositionBroadcastNavigation::Galileo(navigation) => {
             let state = sat_state_galileo_e1(navigation, transmit_tow_s, signal_travel_time_s);
-            Some(SatelliteState {
+            Some(SatelliteStateSample {
                 x_m: state.x_m,
                 y_m: state.y_m,
                 z_m: state.z_m,
                 clock_bias_s: state.clock_correction.bias_s,
+                clock_drift_s_per_s: state.clock_correction.drift_s_per_s,
             })
         }
         PositionBroadcastNavigation::Beidou(navigation) => {
             let state = sat_state_beidou_b1i(navigation, transmit_tow_s, signal_travel_time_s);
-            Some(SatelliteState {
+            Some(SatelliteStateSample {
                 x_m: state.x_m,
                 y_m: state.y_m,
                 z_m: state.z_m,
                 clock_bias_s: state.clock_correction.bias_s,
+                clock_drift_s_per_s: state.clock_correction.drift_s_per_s,
             })
         }
         PositionBroadcastNavigation::Glonass(navigation) => {
             let state = sat_state_glonass_l1(navigation, transmit_tow_s, signal_travel_time_s)?;
-            Some(SatelliteState {
+            Some(SatelliteStateSample {
                 x_m: state.x_m,
                 y_m: state.y_m,
                 z_m: state.z_m,
                 clock_bias_s: state.clock_correction.bias_s,
+                clock_drift_s_per_s: state.clock_correction.drift_s_per_s,
             })
         }
     }
+}
+
+pub(crate) fn default_position_signal_id(sat: SatId) -> Option<SigId> {
+    let signal = default_acquisition_signal(sat.constellation)?;
+    Some(SigId { sat, band: signal.spec.band, code: signal.spec.code })
 }
 
 fn broadcast_group_delay_code_bias_m(
@@ -299,4 +302,70 @@ pub(crate) fn corrected_pseudorange_m(
         return observation.pseudorange_m;
     }
     observation.pseudorange_m - broadcast_group_delay_code_bias_m(observation.signal_id, navigation)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{default_position_signal_id, satellite_state_at_time, PositionBroadcastNavigation};
+    use crate::orbits::gps::GpsEphemeris;
+    use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand, SignalCode};
+
+    fn sample_gps_ephemeris() -> GpsEphemeris {
+        GpsEphemeris {
+            sat: SatId { constellation: Constellation::Gps, prn: 7 },
+            iodc: 1,
+            iode: 1,
+            week: 2209,
+            sv_health: 0,
+            toe_s: 504_000.0,
+            toc_s: 504_018.0,
+            sqrt_a: 5153.7954775,
+            e: 0.01,
+            i0: 0.94,
+            idot: 0.0,
+            omega0: 0.8,
+            omegadot: 0.0,
+            w: 0.0,
+            m0: 0.9,
+            delta_n: 0.0,
+            cuc: 0.0,
+            cus: 0.0,
+            crc: 0.0,
+            crs: 0.0,
+            cic: 0.0,
+            cis: 0.0,
+            af0: 1.0e-4,
+            af1: 2.0e-11,
+            af2: 0.0,
+            tgd: 0.0,
+        }
+    }
+
+    #[test]
+    fn default_position_signal_id_uses_registered_constellation_defaults() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+
+        assert_eq!(
+            default_position_signal_id(sat),
+            Some(SigId { sat, band: SignalBand::L1, code: SignalCode::Ca })
+        );
+    }
+
+    #[test]
+    fn satellite_state_at_time_reports_finite_rate_terms() {
+        let navigation = PositionBroadcastNavigation::Gps(sample_gps_ephemeris());
+
+        let state =
+            satellite_state_at_time(&navigation, 504_018.0, 0.078).expect("satellite state");
+        let speed_mps =
+            (state.vx_mps * state.vx_mps + state.vy_mps * state.vy_mps + state.vz_mps * state.vz_mps)
+                .sqrt();
+
+        assert!(state.x_m.is_finite());
+        assert!(state.y_m.is_finite());
+        assert!(state.z_m.is_finite());
+        assert!(state.clock_bias_s.is_finite());
+        assert!(state.clock_drift_s_per_s.is_finite());
+        assert!(speed_mps > 100.0, "speed_mps={speed_mps}");
+    }
 }
