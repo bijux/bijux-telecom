@@ -132,9 +132,9 @@ pub use crate::validation_report::{
     build_validation_report_from_observation_artifacts_with_budgets,
     build_validation_report_with_budgets, check_time_consistency, ConvergenceReport,
     DiagnosticPartitionReport, FixTimelineEntry, NavConstellationResidualReport, NavIntegrityClass,
-    NavIntegrityReport, NavResidualReport, PppReadinessReport, ReferencePositionErrorEpoch,
-    TimeConsistencyReport, ValidationAssumptionReport, ValidationBudgets, ValidationErrorStats,
-    ValidationReport, ValidationSciencePolicy,
+    NavIntegrityReport, NavResidualReport, PppReadinessReport, ProtectionLevelValidationReport,
+    ReferencePositionErrorEpoch, TimeConsistencyReport, ValidationAssumptionReport,
+    ValidationBudgets, ValidationErrorStats, ValidationReport, ValidationSciencePolicy,
 };
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
