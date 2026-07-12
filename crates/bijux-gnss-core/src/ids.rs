@@ -108,6 +108,7 @@ pub enum SignalCode {
     E1C,
     E5a,
     E5b,
+    B1I,
     Unknown,
 }
 
@@ -164,6 +165,9 @@ pub fn default_acquisition_sats(constellation: Constellation) -> Vec<SatId> {
         Constellation::Glonass => {
             sat_ids_for_prn_range(constellation, GlonassSlot::MIN..=GlonassSlot::MAX)
         }
+        // The BeiDou B1I code assignments currently span PRNs 1 through 37 in the ICD-backed
+        // signal catalog.
+        Constellation::Beidou => sat_ids_for_prn_range(constellation, 1..=37),
         _ => Vec::new(),
     }
 }
@@ -211,6 +215,7 @@ fn code_rank(code: SignalCode) -> u8 {
         SignalCode::E1C => 3,
         SignalCode::E5a => 4,
         SignalCode::E5b => 5,
+        SignalCode::B1I => 6,
         SignalCode::Unknown => 9,
     }
 }
@@ -314,6 +319,16 @@ pub fn signal_spec_glonass_l1(frequency_channel: GlonassFrequencyChannel) -> Sig
     }
 }
 
+pub fn signal_spec_beidou_b1i() -> SignalSpec {
+    SignalSpec {
+        constellation: Constellation::Beidou,
+        band: SignalBand::B1,
+        code: SignalCode::B1I,
+        code_rate_hz: 2_046_000.0,
+        carrier_hz: BEIDOU_B1_CARRIER_HZ,
+    }
+}
+
 pub fn glonass_l1_carrier_hz(frequency_channel: GlonassFrequencyChannel) -> FreqHz {
     FreqHz::new(
         GLONASS_L1_CARRIER_HZ.value()
@@ -350,8 +365,8 @@ pub fn signal_registry(
         (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown) => {
             (GLONASS_L1_CARRIER_HZ, 511_000.0, Some(511))
         }
-        (Constellation::Beidou, SignalBand::B1, SignalCode::Unknown) => {
-            (BEIDOU_B1_CARRIER_HZ, 2_046_000.0, None)
+        (Constellation::Beidou, SignalBand::B1, SignalCode::B1I) => {
+            (BEIDOU_B1_CARRIER_HZ, 2_046_000.0, Some(2046))
         }
         (Constellation::Beidou, SignalBand::B2, SignalCode::Unknown) => {
             (BEIDOU_B2_CARRIER_HZ, 2_046_000.0, None)
@@ -371,7 +386,7 @@ pub fn default_acquisition_signal(constellation: Constellation) -> Option<Signal
             signal_registry(Constellation::Glonass, SignalBand::L1, SignalCode::Unknown)
         }
         Constellation::Beidou => {
-            signal_registry(Constellation::Beidou, SignalBand::B1, SignalCode::Unknown)
+            signal_registry(Constellation::Beidou, SignalBand::B1, SignalCode::B1I)
         }
         Constellation::Unknown => None,
     }
