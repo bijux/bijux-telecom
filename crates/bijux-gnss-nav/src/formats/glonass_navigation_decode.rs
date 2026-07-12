@@ -2,6 +2,14 @@
 
 use serde::{Deserialize, Serialize};
 
+use bijux_gnss_core::api::{glonass_slot_sat, GlonassSlot};
+
+use crate::orbits::glonass::{
+    glonass_satellite_type_from_word, GlonassBroadcastNavigationFrame, GlonassFrameTime,
+    GlonassImmediateHealth, GlonassImmediateNavigationData, GlonassStateVector,
+    GlonassSystemTime,
+};
+
 const GLONASS_STRING_BITS: usize = 85;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,6 +65,21 @@ pub struct GlonassNavigationStringRejection {
     pub string_number: Option<u8>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GlonassNavigationFrameRejectionReason {
+    DuplicateString,
+    SlotMismatch,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GlonassNavigationFrameRejection {
+    pub reason: GlonassNavigationFrameRejectionReason,
+    pub string_number: Option<u8>,
+    pub expected_slot: Option<GlonassSlot>,
+    pub reported_slot: Option<GlonassSlot>,
+}
+
 pub fn decode_glonass_navigation_string(
     bits: &[u8],
 ) -> Result<GlonassNavigationString, GlonassNavigationStringRejection> {
@@ -104,6 +127,34 @@ pub fn decode_glonass_navigation_string(
         });
     }
     Ok(decoded)
+}
+
+pub fn decode_glonass_broadcast_navigation_frame(
+    slot: GlonassSlot,
+    strings: &[GlonassNavigationString],
+) -> Result<Option<GlonassBroadcastNavigationFrame>, GlonassNavigationFrameRejection> {
+    let mut by_number: [Option<&GlonassNavigationString>; 16] = [None; 16];
+    for string in strings {
+        let index = usize::from(string.string_number);
+        if by_number[index].is_some() {
+            return Err(GlonassNavigationFrameRejection {
+                reason: GlonassNavigationFrameRejectionReason::DuplicateString,
+                string_number: Some(string.string_number),
+                expected_slot: None,
+                reported_slot: None,
+            });
+        }
+        by_number[index] = Some(string);
+    }
+
+    let (Some(string_1), Some(string_2), Some(string_3), Some(string_4)) =
+        (by_number[1], by_number[2], by_number[3], by_number[4])
+    else {
+        return Ok(None);
+    };
+
+    let immediate = decode_immediate_navigation(slot, string_1, string_2, string_3, string_4)?;
+    Ok(Some(GlonassBroadcastNavigationFrame::new(slot, immediate)))
 }
 
 fn normalize_bits(
@@ -196,6 +247,84 @@ fn correction_index(syndrome: u8) -> usize {
     usize::from(syndrome) + 8 - highest_set
 }
 
+fn decode_immediate_navigation(
+    slot: GlonassSlot,
+    string_1: &GlonassNavigationString,
+    string_2: &GlonassNavigationString,
+    string_3: &GlonassNavigationString,
+    string_4: &GlonassNavigationString,
+) -> Result<GlonassImmediateNavigationData, GlonassNavigationFrameRejection> {
+    let reported_slot = string_4
+        .unsigned_bits(11, 15)
+        .try_into()
+        .ok()
+        .and_then(GlonassSlot::new);
+    if let Some(reported_slot) = reported_slot {
+        if reported_slot != slot {
+            return Err(GlonassNavigationFrameRejection {
+                reason: GlonassNavigationFrameRejectionReason::SlotMismatch,
+                string_number: Some(4),
+                expected_slot: Some(slot),
+                reported_slot: Some(reported_slot),
+            });
+        }
+    }
+
+    let p1_code = string_1.unsigned_bits(77, 78) as u8;
+    let tb_update_interval_min = p1_update_interval_minutes(p1_code);
+    let tb_is_odd = matches!(tb_update_interval_min, 30 | 60)
+        .then(|| string_2.unsigned_bits(77, 77) != 0);
+    let frame_time = GlonassFrameTime {
+        hour: string_1.unsigned_bits(72, 76) as u8,
+        minute: string_1.unsigned_bits(66, 71) as u8,
+        half_minute: string_1.unsigned_bits(65, 65) != 0,
+    };
+
+    Ok(GlonassImmediateNavigationData {
+        sat: glonass_slot_sat(slot),
+        frame_time,
+        ephemeris_reference_time_s: string_2.unsigned_bits(70, 76) as u32 * 15 * 60,
+        tb_update_interval_min,
+        tb_is_odd,
+        state_vector: GlonassStateVector {
+            x_m: string_1.sign_magnitude(9, 35, 2f64.powi(-11) * 1_000.0),
+            y_m: string_2.sign_magnitude(9, 35, 2f64.powi(-11) * 1_000.0),
+            z_m: string_3.sign_magnitude(9, 35, 2f64.powi(-11) * 1_000.0),
+            vx_mps: string_1.sign_magnitude(41, 64, 2f64.powi(-20) * 1_000.0),
+            vy_mps: string_2.sign_magnitude(41, 64, 2f64.powi(-20) * 1_000.0),
+            vz_mps: string_3.sign_magnitude(41, 64, 2f64.powi(-20) * 1_000.0),
+            ax_mps2: string_1.sign_magnitude(36, 40, 2f64.powi(-30) * 1_000.0),
+            ay_mps2: string_2.sign_magnitude(36, 40, 2f64.powi(-30) * 1_000.0),
+            az_mps2: string_3.sign_magnitude(36, 40, 2f64.powi(-30) * 1_000.0),
+        },
+        relative_frequency_bias: string_3.sign_magnitude(69, 79, 2f64.powi(-40)),
+        clock_bias_s: string_4.sign_magnitude(59, 80, 2f64.powi(-30)),
+        l2_l1_delay_s: Some(string_4.sign_magnitude(54, 58, 2f64.powi(-30))),
+        health: GlonassImmediateHealth {
+            line_unhealthy: string_3.unsigned_bits(65, 65) != 0,
+            status_code: string_2.unsigned_bits(78, 80) as u8,
+        },
+        immediate_data_age_days: string_4.unsigned_bits(49, 53) as u8,
+        satellite_type: glonass_satellite_type_from_word(string_4.unsigned_bits(9, 10) as u8),
+        reported_slot,
+        system_time: Some(GlonassSystemTime {
+            day_number: string_4.unsigned_bits(16, 26) as u16,
+            four_year_interval: None,
+        }),
+        accuracy_code: Some(string_4.unsigned_bits(30, 33) as u8),
+    })
+}
+
+fn p1_update_interval_minutes(code: u8) -> u8 {
+    match code {
+        0 => 0,
+        1 => 30,
+        2 => 45,
+        3 => 60,
+        _ => unreachable!("two-bit P1 code must stay within range"),
+    }
+}
+
 fn decode_string_number(bits: &[u8; GLONASS_STRING_BITS]) -> u8 {
     unsigned_bits(bits, 81, 84) as u8
 }
@@ -233,9 +362,12 @@ fn unsigned_bits(bits: &[u8; GLONASS_STRING_BITS], low: usize, high: usize) -> u
 mod tests {
     use super::{
         checksum_c1, checksum_c2, checksum_c3, checksum_c4, checksum_c5, checksum_c6,
-        checksum_c7, decode_glonass_navigation_string, flip_bit, GlonassNavigationStringRejectionReason,
+        checksum_c7, decode_glonass_broadcast_navigation_frame, decode_glonass_navigation_string,
+        flip_bit, GlonassNavigationFrameRejectionReason, GlonassNavigationStringRejectionReason,
         GLONASS_STRING_BITS,
     };
+    use bijux_gnss_core::api::GlonassSlot;
+    use crate::orbits::glonass::GlonassSatelliteType;
 
     #[test]
     fn navigation_string_decodes_string_number_and_payload_bits() {
@@ -283,6 +415,107 @@ mod tests {
         let rejection = decode_glonass_navigation_string(&bits).expect_err("multiple-bit rejection");
 
         assert_eq!(rejection.reason, GlonassNavigationStringRejectionReason::UnrecoverableParity);
+    }
+
+    #[test]
+    fn broadcast_frame_decodes_immediate_state_and_clock_terms() {
+        let slot = GlonassSlot::new(8).expect("slot");
+        let mut string_1 = encoded_string(1, &[]);
+        set_unsigned_bits(&mut string_1, 77, 78, 3);
+        set_unsigned_bits(&mut string_1, 72, 76, 12);
+        set_unsigned_bits(&mut string_1, 66, 71, 34);
+        set_unsigned_bits(&mut string_1, 65, 65, 1);
+        set_sign_magnitude_bits(&mut string_1, 9, 35, 12_345);
+        set_sign_magnitude_bits(&mut string_1, 41, 64, -543_210);
+        set_sign_magnitude_bits(&mut string_1, 36, 40, 9);
+        apply_check_bits(&mut string_1);
+
+        let mut string_2 = encoded_string(2, &[]);
+        set_unsigned_bits(&mut string_2, 70, 76, 66);
+        set_unsigned_bits(&mut string_2, 77, 77, 1);
+        set_unsigned_bits(&mut string_2, 78, 80, 5);
+        set_sign_magnitude_bits(&mut string_2, 9, 35, -14_000);
+        set_sign_magnitude_bits(&mut string_2, 41, 64, 321_000);
+        set_sign_magnitude_bits(&mut string_2, 36, 40, -6);
+        apply_check_bits(&mut string_2);
+
+        let mut string_3 = encoded_string(3, &[]);
+        set_unsigned_bits(&mut string_3, 66, 67, 2);
+        set_unsigned_bits(&mut string_3, 65, 65, 1);
+        set_unsigned_bits(&mut string_3, 80, 80, 1);
+        set_sign_magnitude_bits(&mut string_3, 69, 79, -50);
+        set_sign_magnitude_bits(&mut string_3, 9, 35, 8_765);
+        set_sign_magnitude_bits(&mut string_3, 41, 64, -123_456);
+        set_sign_magnitude_bits(&mut string_3, 36, 40, 4);
+        apply_check_bits(&mut string_3);
+
+        let mut string_4 = encoded_string(4, &[]);
+        set_unsigned_bits(&mut string_4, 9, 10, 1);
+        set_unsigned_bits(&mut string_4, 11, 15, u64::from(slot.value()));
+        set_unsigned_bits(&mut string_4, 16, 26, 1_200);
+        set_unsigned_bits(&mut string_4, 30, 33, 6);
+        set_unsigned_bits(&mut string_4, 34, 34, 1);
+        set_unsigned_bits(&mut string_4, 49, 53, 9);
+        set_sign_magnitude_bits(&mut string_4, 54, 58, 7);
+        set_sign_magnitude_bits(&mut string_4, 59, 80, -2_000);
+        apply_check_bits(&mut string_4);
+
+        let decoded_strings = [string_1, string_2, string_3, string_4]
+            .into_iter()
+            .map(|bits| decode_glonass_navigation_string(&bits).expect("decoded string"))
+            .collect::<Vec<_>>();
+
+        let frame =
+            decode_glonass_broadcast_navigation_frame(slot, &decoded_strings).expect("frame decode");
+        let frame = frame.expect("complete immediate frame");
+
+        assert_eq!(frame.sat.prn, slot.value());
+        assert_eq!(frame.immediate.frame_time.hour, 12);
+        assert_eq!(frame.immediate.frame_time.minute, 34);
+        assert!(frame.immediate.frame_time.half_minute);
+        assert_eq!(frame.immediate.frame_time.seconds_of_day(), 45_270);
+        assert_eq!(frame.immediate.ephemeris_reference_time_s, 59_400);
+        assert_eq!(frame.immediate.tb_update_interval_min, 60);
+        assert_eq!(frame.immediate.tb_is_odd, Some(true));
+        assert_eq!(frame.immediate.health.status_code, 5);
+        assert!(frame.immediate.health.line_unhealthy);
+        assert_eq!(frame.immediate.immediate_data_age_days, 9);
+        assert_eq!(frame.immediate.satellite_type, GlonassSatelliteType::GlonassM);
+        assert_eq!(frame.immediate.reported_slot, Some(slot));
+        assert_eq!(frame.immediate.system_time.expect("system time").day_number, 1_200);
+        assert_eq!(frame.immediate.accuracy_code, Some(6));
+        assert!((frame.immediate.relative_frequency_bias + 50.0 * 2f64.powi(-40)).abs() < 1.0e-18);
+        assert!((frame.immediate.clock_bias_s + 2_000.0 * 2f64.powi(-30)).abs() < 1.0e-15);
+        assert!((frame.immediate.l2_l1_delay_s.expect("delay") - 7.0 * 2f64.powi(-30)).abs() < 1.0e-15);
+        assert!((frame.immediate.state_vector.x_m - 12_345.0 * 2f64.powi(-11) * 1_000.0).abs() < 1.0e-9);
+        assert!((frame.immediate.state_vector.y_m + 14_000.0 * 2f64.powi(-11) * 1_000.0).abs() < 1.0e-9);
+        assert!((frame.immediate.state_vector.z_m - 8_765.0 * 2f64.powi(-11) * 1_000.0).abs() < 1.0e-9);
+        assert!((frame.immediate.state_vector.vx_mps + 543_210.0 * 2f64.powi(-20) * 1_000.0).abs() < 1.0e-9);
+        assert!((frame.immediate.state_vector.vy_mps - 321_000.0 * 2f64.powi(-20) * 1_000.0).abs() < 1.0e-9);
+        assert!((frame.immediate.state_vector.vz_mps + 123_456.0 * 2f64.powi(-20) * 1_000.0).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn broadcast_frame_rejects_reported_slot_mismatch() {
+        let expected_slot = GlonassSlot::new(8).expect("slot");
+        let wrong_slot = GlonassSlot::new(9).expect("slot");
+        let string_1 = decode_glonass_navigation_string(&encoded_string(1, &[])).expect("string 1");
+        let string_2 = decode_glonass_navigation_string(&encoded_string(2, &[])).expect("string 2");
+        let string_3 = decode_glonass_navigation_string(&encoded_string(3, &[])).expect("string 3");
+        let mut string_4_bits = encoded_string(4, &[]);
+        set_unsigned_bits(&mut string_4_bits, 11, 15, u64::from(wrong_slot.value()));
+        apply_check_bits(&mut string_4_bits);
+        let string_4 = decode_glonass_navigation_string(&string_4_bits).expect("string 4");
+
+        let rejection = decode_glonass_broadcast_navigation_frame(
+            expected_slot,
+            &[string_1, string_2, string_3, string_4],
+        )
+        .expect_err("slot mismatch rejection");
+
+        assert_eq!(rejection.reason, GlonassNavigationFrameRejectionReason::SlotMismatch);
+        assert_eq!(rejection.expected_slot, Some(expected_slot));
+        assert_eq!(rejection.reported_slot, Some(wrong_slot));
     }
 
     fn encoded_string(string_number: u8, ones: &[(usize, u8)]) -> [u8; GLONASS_STRING_BITS] {
