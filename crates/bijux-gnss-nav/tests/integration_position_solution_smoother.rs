@@ -98,6 +98,7 @@ fn sample_position_solution(
         raim_fault_detection: None,
         raim_fault_exclusion: None,
         raim_solution_separation: None,
+        replay_timing_anomaly: None,
         covariance_symmetrized: false,
         covariance_clamped: false,
         covariance_max_variance: None,

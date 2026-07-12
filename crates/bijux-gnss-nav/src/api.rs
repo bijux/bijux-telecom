@@ -74,7 +74,7 @@ pub use crate::estimation::position::solver::{
     weight_from_pseudorange_sigma, PositionBroadcastNavigation, PositionDops,
     PositionFilterDivergenceReason, PositionObservation, PositionRobustWeighting, PositionSolution,
     PositionSolveRefusal, PositionSolveRefusalKind, PositionSolver, PositionWeightingModel,
-    WeightingConfig,
+    ReplayTimingAnomalyEvidence, WeightingConfig,
 };
 pub use crate::estimation::position::trajectory::{
     trajectory_reconstruction_report, TrajectoryReconstructionError, TrajectoryReconstructionInput,

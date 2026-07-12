@@ -35,6 +35,19 @@ use bijux_gnss_core::api::{
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 const SIGNAL_TIMING_CONSISTENCY_TOLERANCE_S: f64 = 1.0e-6;
 const EPHEMERIS_MISMATCH_CODE_RESIDUAL_GATE_M: f64 = 1_500.0;
+const REPLAY_TIMING_ANOMALY_MIN_MATCHED_SATELLITES: usize = 4;
+const REPLAY_TIMING_ANOMALY_CENTERED_DELAY_RMS_THRESHOLD_M: f64 = 40.0;
+const REPLAY_TIMING_ANOMALY_MAX_CENTERED_DELAY_THRESHOLD_M: f64 = 60.0;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ReplayTimingAnomalyEvidence {
+    pub matched_satellite_count: usize,
+    pub median_excess_delay_m: f64,
+    pub centered_delay_rms_m: f64,
+    pub max_centered_delay_m: f64,
+    pub centered_delay_rms_threshold_m: f64,
+    pub max_centered_delay_threshold_m: f64,
+}
 
 #[derive(Debug, Clone)]
 pub struct PositionSolution {
@@ -73,6 +86,7 @@ pub struct PositionSolution {
     pub raim_fault_detection: Option<RaimFaultDetection>,
     pub raim_fault_exclusion: Option<RaimFaultExclusion>,
     pub raim_solution_separation: Option<RaimSolutionSeparationCheck>,
+    pub replay_timing_anomaly: Option<ReplayTimingAnomalyEvidence>,
     pub covariance_symmetrized: bool,
     pub covariance_clamped: bool,
     pub covariance_max_variance: Option<f64>,
@@ -946,8 +960,11 @@ impl PositionSolver {
         let protection_levels = position_covariance_ecef_m2
             .and_then(|covariance_xyz| formal_protection_levels([x, y, z], covariance_xyz));
         let (integrity_hpl_m, integrity_vpl_m) = protection_levels
-            .map(|levels: PositionProtectionLevels| (Some(levels.horizontal_m), Some(levels.vertical_m)))
+            .map(|levels: PositionProtectionLevels| {
+                (Some(levels.horizontal_m), Some(levels.vertical_m))
+            })
             .unwrap_or((None, None));
+        let replay_timing_anomaly = detect_replay_timing_anomaly(&filtered);
 
         let rejected_sat_count = rejected.len();
         let broadcast_ionosphere_applied =
@@ -995,6 +1012,7 @@ impl PositionSolver {
             raim_fault_detection,
             raim_fault_exclusion,
             raim_solution_separation,
+            replay_timing_anomaly,
             covariance_symmetrized: working_set.covariance_symmetrized,
             covariance_clamped: working_set.covariance_clamped,
             covariance_max_variance: working_set.covariance_max_variance,
@@ -2020,9 +2038,7 @@ fn estimate_broadcast_ionosphere_delay_m(
                 lon_deg: sat_longitude_deg,
                 alt_m: sat_altitude_m,
             };
-            navigation
-                .nequick_delay_m(signal, receiver, satellite, gps_time)
-                .unwrap_or(0.0)
+            navigation.nequick_delay_m(signal, receiver, satellite, gps_time).unwrap_or(0.0)
         }
         PositionBroadcastNavigation::Beidou(_) | PositionBroadcastNavigation::Glonass(_) => 0.0,
     }
@@ -2161,9 +2177,7 @@ mod broadcast_group_delay_tests {
 
     #[test]
     fn position_solver_can_disable_broadcast_ionosphere() {
-        assert!(
-            !PositionSolver::new().with_broadcast_ionosphere(false).apply_broadcast_ionosphere
-        );
+        assert!(!PositionSolver::new().with_broadcast_ionosphere(false).apply_broadcast_ionosphere);
     }
 
     #[test]
@@ -2544,7 +2558,10 @@ impl PositionSolver {
                 .sat;
             compared_subsets.push(RaimSolutionSeparationSubset {
                 excluded_sat,
-                separation_m: solution_separation_m(reference_estimate, &candidate_solution.estimate),
+                separation_m: solution_separation_m(
+                    reference_estimate,
+                    &candidate_solution.estimate,
+                ),
             });
         }
 
@@ -2617,6 +2634,169 @@ fn working_set_rms_m(residuals: &[WorkingSetResidual]) -> f64 {
     }
     let squared_sum = residuals.iter().map(|residual| residual.residual_m.powi(2)).sum::<f64>();
     (squared_sum / residuals.len() as f64).sqrt()
+}
+
+fn detect_replay_timing_anomaly(
+    filtered: &[(PositionObservation, SatelliteState, f64, f64)],
+) -> Option<ReplayTimingAnomalyEvidence> {
+    let mut excess_delays_m = filtered
+        .iter()
+        .filter_map(|(observation, _state, residual_m, _effective_weight)| {
+            observation.signal_timing.is_some().then_some(*residual_m)
+        })
+        .filter(|delay_m| delay_m.is_finite())
+        .collect::<Vec<_>>();
+    if excess_delays_m.len() < REPLAY_TIMING_ANOMALY_MIN_MATCHED_SATELLITES {
+        return None;
+    }
+
+    let median_excess_delay_m = median(&mut excess_delays_m);
+    let mut centered_delays_m = excess_delays_m
+        .into_iter()
+        .map(|delay_m| delay_m - median_excess_delay_m)
+        .collect::<Vec<_>>();
+    let centered_delay_rms_m =
+        (centered_delays_m.iter().map(|delay_m| delay_m * delay_m).sum::<f64>()
+            / centered_delays_m.len() as f64)
+            .sqrt();
+    let max_centered_delay_m =
+        centered_delays_m.iter().map(|delay_m| delay_m.abs()).fold(0.0, f64::max);
+    centered_delays_m.sort_by(|left, right| left.total_cmp(right));
+    let strongest_negative_m = centered_delays_m.first().copied().unwrap_or(0.0).abs();
+    let strongest_positive_m = centered_delays_m.last().copied().unwrap_or(0.0);
+
+    if centered_delay_rms_m < REPLAY_TIMING_ANOMALY_CENTERED_DELAY_RMS_THRESHOLD_M
+        || max_centered_delay_m < REPLAY_TIMING_ANOMALY_MAX_CENTERED_DELAY_THRESHOLD_M
+        || strongest_negative_m < REPLAY_TIMING_ANOMALY_MAX_CENTERED_DELAY_THRESHOLD_M * 0.5
+        || strongest_positive_m < REPLAY_TIMING_ANOMALY_MAX_CENTERED_DELAY_THRESHOLD_M * 0.5
+    {
+        return None;
+    }
+
+    Some(ReplayTimingAnomalyEvidence {
+        matched_satellite_count: centered_delays_m.len(),
+        median_excess_delay_m,
+        centered_delay_rms_m,
+        max_centered_delay_m,
+        centered_delay_rms_threshold_m: REPLAY_TIMING_ANOMALY_CENTERED_DELAY_RMS_THRESHOLD_M,
+        max_centered_delay_threshold_m: REPLAY_TIMING_ANOMALY_MAX_CENTERED_DELAY_THRESHOLD_M,
+    })
+}
+
+fn median(values: &mut [f64]) -> f64 {
+    values.sort_by(|left, right| left.total_cmp(right));
+    let middle = values.len() / 2;
+    if values.len() % 2 == 0 {
+        (values[middle - 1] + values[middle]) * 0.5
+    } else {
+        values[middle]
+    }
+}
+
+#[cfg(test)]
+mod replay_timing_tests {
+    use super::{
+        detect_replay_timing_anomaly, PositionObservation, SatelliteState, SPEED_OF_LIGHT_MPS,
+    };
+    use bijux_gnss_core::api::{Constellation, GpsTime, ObsSignalTiming, SatId, Seconds};
+
+    #[test]
+    fn detects_centered_excess_delay_pattern() {
+        let filtered = filtered_timing_residuals(&[
+            ("G03", 105.0, true),
+            ("G07", 48.0, true),
+            ("G11", -44.0, true),
+            ("G19", -109.0, true),
+            ("G23", 92.0, true),
+            ("G29", -95.0, true),
+        ]);
+
+        let anomaly = detect_replay_timing_anomaly(&filtered)
+            .expect("replay-like excess delays must surface");
+
+        assert_eq!(anomaly.matched_satellite_count, 6);
+        assert!(anomaly.centered_delay_rms_m >= anomaly.centered_delay_rms_threshold_m);
+        assert!(anomaly.max_centered_delay_m >= anomaly.max_centered_delay_threshold_m);
+        assert!(anomaly.median_excess_delay_m.abs() < 10.0);
+    }
+
+    #[test]
+    fn ignores_uniform_delay_shift() {
+        let filtered = filtered_timing_residuals(&[
+            ("G03", 85.0, true),
+            ("G07", 84.0, true),
+            ("G11", 86.0, true),
+            ("G19", 83.0, true),
+            ("G23", 87.0, true),
+            ("G29", 84.5, true),
+        ]);
+
+        assert!(detect_replay_timing_anomaly(&filtered).is_none());
+    }
+
+    #[test]
+    fn requires_timing_tagged_satellites() {
+        let filtered = filtered_timing_residuals(&[
+            ("G03", 102.0, true),
+            ("G07", 44.0, true),
+            ("G11", -46.0, true),
+            ("G19", -100.0, false),
+            ("G23", 96.0, false),
+            ("G29", -96.0, false),
+        ]);
+
+        assert!(detect_replay_timing_anomaly(&filtered).is_none());
+    }
+
+    fn filtered_timing_residuals(
+        entries: &[(&str, f64, bool)],
+    ) -> Vec<(PositionObservation, SatelliteState, f64, f64)> {
+        entries
+            .iter()
+            .enumerate()
+            .map(|(index, (satellite, residual_m, has_timing))| {
+                let sat = parse_satellite_id(satellite);
+                let observation = PositionObservation {
+                    sat,
+                    pseudorange_m: 24_000_000.0 + index as f64,
+                    doppler_hz: None,
+                    doppler_var_hz2: None,
+                    cn0_dbhz: 45.0,
+                    elevation_deg: Some(45.0),
+                    weight: 1.0,
+                    gps_receive_time: None,
+                    signal_timing: has_timing.then_some(ObsSignalTiming {
+                        signal_travel_time_s: Seconds(24_000_000.0 / SPEED_OF_LIGHT_MPS),
+                        transmit_gps_time: GpsTime { week: 0, tow_s: 100_000.0 },
+                    }),
+                    signal_id: None,
+                };
+                let state = SatelliteState {
+                    x_m: 20_000_000.0 + index as f64,
+                    y_m: 21_000_000.0 + index as f64,
+                    z_m: 22_000_000.0 + index as f64,
+                    vx_mps: 0.0,
+                    vy_mps: 0.0,
+                    vz_mps: 0.0,
+                    clock_bias_s: 0.0,
+                    clock_drift_s_per_s: 0.0,
+                };
+                (observation, state, *residual_m, 1.0)
+            })
+            .collect()
+    }
+
+    fn parse_satellite_id(spec: &str) -> SatId {
+        let prn = spec[1..].parse::<u8>().expect("two-digit PRN");
+        let constellation = match &spec[..1] {
+            "G" => Constellation::Gps,
+            "E" => Constellation::Galileo,
+            "C" => Constellation::Beidou,
+            "R" => Constellation::Glonass,
+            other => panic!("unexpected constellation designator: {other}"),
+        };
+        SatId { constellation, prn }
+    }
 }
 
 fn constellation_residual_rms(
