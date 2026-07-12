@@ -1,5 +1,7 @@
 #![allow(missing_docs)]
 
+use std::path::PathBuf;
+
 use bijux_gnss_core::api::{
     first_order_ionosphere_code_delay_m, geodetic_to_ecef, signal_meters_to_cycles,
     signal_spec_gps_l1_ca, signal_spec_gps_l2_py, Constellation, Cycles, GpsTime, Hertz,
@@ -10,8 +12,15 @@ use bijux_gnss_core::api::{
 use bijux_gnss_nav::api::{
     elevation_azimuth_deg, gps_broadcast_ionosphere_residuals_from_obs_epochs,
     KlobucharCoefficients,
+    parse_rinex_broadcast_navigation, parse_rinex_gps_observation_dataset,
+    summarize_broadcast_ionosphere_residuals,
     sat_state_gps_l1ca_at_receive_time, GpsBroadcastNavigationData, GpsEphemeris,
 };
+
+fn fixture(name: &str) -> String {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data").join(name);
+    std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("read fixture {}", path.display()))
+}
 
 fn sample_ephemeris() -> GpsEphemeris {
     GpsEphemeris {
@@ -208,4 +217,51 @@ fn gps_broadcast_ionosphere_residuals_match_synthetic_klobuchar_truth() {
     assert!(
         residuals[0].phase_residual_band_2_m.expect("phase L2 residual").abs() < 1.0e-6
     );
+}
+
+#[test]
+fn gps_broadcast_ionosphere_residuals_measure_real_public_dual_frequency_data() {
+    let observations = parse_rinex_gps_observation_dataset(&fixture("unavco_ab43_20180114.obs"))
+        .expect("parse public dual-frequency observations");
+    let navigation = parse_rinex_broadcast_navigation(&fixture("noaa_brdc0140_20180114.nav"))
+        .expect("parse public broadcast navigation");
+    let receiver_ecef = observations
+        .approx_position_ecef_m
+        .expect("public RINEX header should provide approximate receiver coordinates");
+
+    let residuals = gps_broadcast_ionosphere_residuals_from_obs_epochs(
+        &observations.epochs,
+        receiver_ecef,
+        &navigation,
+        SignalBand::L1,
+        SignalBand::L2,
+    );
+    let summary = summarize_broadcast_ionosphere_residuals(&residuals);
+
+    assert!(!residuals.is_empty(), "public dual-frequency dataset should emit residuals");
+    assert!(
+        summary.broadcast_valid_count > 50,
+        "expected many valid broadcast comparisons, got {}",
+        summary.broadcast_valid_count
+    );
+
+    let code_band_1 = summary.code_band_1.expect("L1 code residual statistics");
+    let code_band_2 = summary.code_band_2.expect("L2 code residual statistics");
+    let phase_band_1 = summary.phase_band_1.expect("L1 phase residual statistics");
+    let phase_band_2 = summary.phase_band_2.expect("L2 phase residual statistics");
+
+    assert!(code_band_1.sample_count > 50);
+    assert!(code_band_2.sample_count > 50);
+    assert!(phase_band_1.sample_count > 50);
+    assert!(phase_band_2.sample_count > 50);
+
+    assert!(code_band_1.mean_abs_residual_m.is_finite());
+    assert!(code_band_2.mean_abs_residual_m.is_finite());
+    assert!(phase_band_1.mean_abs_residual_m.is_finite());
+    assert!(phase_band_2.mean_abs_residual_m.is_finite());
+
+    assert!(code_band_1.mean_abs_residual_m > 0.1);
+    assert!(phase_band_1.mean_abs_residual_m > 0.1);
+    assert!(code_band_1.max_abs_residual_m > code_band_1.mean_abs_residual_m);
+    assert!(phase_band_1.max_abs_residual_m > phase_band_1.mean_abs_residual_m);
 }
