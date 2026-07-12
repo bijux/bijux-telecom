@@ -190,6 +190,19 @@ fn cn0_weight_respects_minimum_weight_floor() {
 }
 
 #[test]
+fn elevation_cn0_weight_multiplies_geometry_terms() {
+    let config = WeightingConfig {
+        model: PositionWeightingModel::ElevationCn0,
+        ..WeightingConfig::default()
+    };
+    let elevation_weight = weight_from_elevation(30.0, config);
+    let cn0_weight = weight_from_cn0(35.0, config);
+    let combined = position_measurement_weight(Some(35.0), Some(30.0), None, config);
+
+    assert!((combined - (elevation_weight * cn0_weight)).abs() < 1.0e-12);
+}
+
+#[test]
 fn composite_position_weight_multiplies_cn0_and_sigma_terms() {
     let config = WeightingConfig {
         model: PositionWeightingModel::Cn0,
@@ -200,6 +213,20 @@ fn composite_position_weight_multiplies_cn0_and_sigma_terms() {
     let composite = position_measurement_weight(Some(35.0), None, Some(4.0), config);
 
     assert!((composite - (geometry_weight * sigma_weight)).abs() < 1.0e-12);
+}
+
+#[test]
+fn composite_position_weight_multiplies_elevation_cn0_and_sigma_terms() {
+    let config = WeightingConfig {
+        model: PositionWeightingModel::ElevationCn0,
+        ..WeightingConfig::default()
+    };
+    let elevation_weight = weight_from_elevation(30.0, config);
+    let cn0_weight = weight_from_cn0(35.0, config);
+    let sigma_weight = weight_from_pseudorange_sigma(Some(4.0));
+    let composite = position_measurement_weight(Some(35.0), Some(30.0), Some(4.0), config);
+
+    assert!((composite - (elevation_weight * cn0_weight * sigma_weight)).abs() < 1.0e-12);
 }
 
 #[test]
