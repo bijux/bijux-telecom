@@ -92,6 +92,7 @@ pub struct PppSolutionEpoch {
     pub ecef_x_m: f64,
     pub ecef_y_m: f64,
     pub ecef_z_m: f64,
+    pub position_covariance_ecef_m2: Option<[[f64; 3]; 3]>,
     pub clock_bias_s: f64,
     pub rms_m: f64,
     pub sigma_h_m: Option<f64>,
@@ -118,7 +119,87 @@ impl ArtifactPayloadValidate for PppSolutionEpoch {
                 "PPP solution contains NaN/Inf",
             ));
         }
+        if let Some(covariance) = self.position_covariance_ecef_m2 {
+            if !covariance.iter().flat_map(|row| row.iter()).all(|value| value.is_finite()) {
+                events.push(DiagnosticEvent::new(
+                    DiagnosticSeverity::Error,
+                    "PPP_POSITION_COVARIANCE_INVALID",
+                    "PPP position covariance contains NaN/Inf",
+                ));
+            }
+            if covariance[0][0] < 0.0 || covariance[1][1] < 0.0 || covariance[2][2] < 0.0 {
+                events.push(DiagnosticEvent::new(
+                    DiagnosticSeverity::Error,
+                    "PPP_POSITION_COVARIANCE_NEGATIVE_VARIANCE",
+                    "PPP position covariance diagonal must be non-negative",
+                ));
+            }
+        } else {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Warning,
+                "PPP_POSITION_COVARIANCE_MISSING",
+                "PPP solution should carry an ECEF position covariance matrix",
+            ));
+        }
         events
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PppArMode, PppConvergenceState, PppSolutionEpoch};
+    use bijux_gnss_core::api::ArtifactPayloadValidate;
+
+    fn sample_solution() -> PppSolutionEpoch {
+        PppSolutionEpoch {
+            epoch_idx: 7,
+            t_rx_s: 7.0,
+            ecef_x_m: 1.0,
+            ecef_y_m: 2.0,
+            ecef_z_m: 3.0,
+            position_covariance_ecef_m2: Some([
+                [4.0, 0.5, 0.25],
+                [0.5, 9.0, 0.75],
+                [0.25, 0.75, 16.0],
+            ]),
+            clock_bias_s: 1.0e-6,
+            rms_m: 1.5,
+            sigma_h_m: Some(2.0),
+            sigma_v_m: Some(3.0),
+            innovation_rms: 1.5,
+            convergence: PppConvergenceState {
+                converged: false,
+                time_to_first_meter_s: None,
+                time_to_decimeter_s: None,
+                time_to_centimeter_s: None,
+                last_position_change_m: None,
+            },
+            residuals: Vec::new(),
+            nis_mean: None,
+            ar_mode: PppArMode::FloatPpp,
+            fixed_wl: 0,
+        }
+    }
+
+    #[test]
+    fn ppp_solution_validation_warns_on_missing_position_covariance() {
+        let mut solution = sample_solution();
+        solution.position_covariance_ecef_m2 = None;
+
+        let diagnostics = solution.validate_payload();
+
+        assert!(diagnostics.iter().any(|event| event.code == "PPP_POSITION_COVARIANCE_MISSING"));
+    }
+
+    #[test]
+    fn ppp_solution_validation_rejects_non_finite_position_covariance() {
+        let mut solution = sample_solution();
+        solution.position_covariance_ecef_m2 =
+            Some([[1.0, 0.0, 0.0], [0.0, f64::NAN, 0.0], [0.0, 0.0, 1.0]]);
+
+        let diagnostics = solution.validate_payload();
+
+        assert!(diagnostics.iter().any(|event| event.code == "PPP_POSITION_COVARIANCE_INVALID"));
     }
 }
 

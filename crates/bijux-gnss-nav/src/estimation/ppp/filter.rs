@@ -12,7 +12,7 @@ use super::measurements::{
     PppIonoFreeCodeMeasurement, PppIonoFreePhaseMeasurement, PppPhaseMeasurement,
 };
 use super::models::{PppCodeMeasurement, PppProcessModel};
-use super::state::estimate_sigma;
+use super::state::estimate_position_uncertainty;
 use crate::api::compute_corrections;
 use crate::corrections::biases::{
     iono_free_code_bias_m_at, CodeBiasProvider, PhaseBiasProvider, ZeroBiases,
@@ -188,8 +188,12 @@ impl PppFilter {
             if el < self.config.weighting.min_elev_deg {
                 continue;
             }
-            let weight =
-                position_measurement_weight(Some(sat.cn0_dbhz), Some(el), None, self.config.weighting);
+            let weight = position_measurement_weight(
+                Some(sat.cn0_dbhz),
+                Some(el),
+                None,
+                self.config.weighting,
+            );
             let sigma_m = (5.0 / weight.max(0.1)).max(1.0);
 
             let isb_index = self.indices.isb.get(&sat.signal_id.sat.constellation).copied();
@@ -303,21 +307,33 @@ impl PppFilter {
         }
         self.prune_states(obs.epoch_idx);
 
+        Some(self.solution_epoch(obs.epoch_idx, obs.t_rx_s.0, residuals, fixed_wl))
+    }
+
+    fn solution_epoch(
+        &mut self,
+        epoch_idx: u64,
+        t_rx_s: f64,
+        residuals: Vec<(SigId, f64)>,
+        fixed_wl: usize,
+    ) -> PppSolutionEpoch {
         let pos = [
             self.ekf.x[self.indices.pos[0]],
             self.ekf.x[self.indices.pos[1]],
             self.ekf.x[self.indices.pos[2]],
         ];
-        let (sigma_h, sigma_v) = estimate_sigma(&self.ekf, &self.indices.pos);
-        self.update_convergence(obs.t_rx_s.0, pos, sigma_h, sigma_v);
+        let (position_covariance_ecef_m2, sigma_h, sigma_v) =
+            estimate_position_uncertainty(&self.ekf, &self.indices.pos, pos);
+        self.update_convergence(t_rx_s, pos, sigma_h, sigma_v);
         self.check_consistency();
         self.adapt_process_noise();
-        Some(PppSolutionEpoch {
-            epoch_idx: obs.epoch_idx,
-            t_rx_s: obs.t_rx_s.0,
+        PppSolutionEpoch {
+            epoch_idx,
+            t_rx_s,
             ecef_x_m: pos[0],
             ecef_y_m: pos[1],
             ecef_z_m: pos[2],
+            position_covariance_ecef_m2,
             clock_bias_s: self.ekf.x[self.indices.clock_bias],
             rms_m: self.ekf.health.innovation_rms,
             sigma_h_m: sigma_h,
@@ -328,7 +344,7 @@ impl PppFilter {
             nis_mean: self.health.nis_mean,
             ar_mode: self.config.ar_mode,
             fixed_wl,
-        })
+        }
     }
 
     fn sat_state(
@@ -598,6 +614,28 @@ mod tests {
 
         assert!((clock_bias_s - expected.bias_s).abs() < 1e-18);
         assert!(fallback);
+    }
+
+    #[test]
+    fn ppp_solution_epoch_exposes_ecef_position_covariance() {
+        let mut filter = PppFilter::new(PppConfig::default());
+        filter.seed_receiver_state([6_378_137.0, 10.0, 10.0], 4.0e-6);
+        filter.ekf.p[(filter.indices.pos[0], filter.indices.pos[0])] = 4.0;
+        filter.ekf.p[(filter.indices.pos[1], filter.indices.pos[1])] = 9.0;
+        filter.ekf.p[(filter.indices.pos[2], filter.indices.pos[2])] = 16.0;
+        filter.ekf.p[(filter.indices.pos[0], filter.indices.pos[1])] = 0.5;
+        filter.ekf.p[(filter.indices.pos[1], filter.indices.pos[0])] = 0.5;
+
+        let solution = filter.solution_epoch(7, 7.0, Vec::new(), 0);
+        let covariance = solution
+            .position_covariance_ecef_m2
+            .expect("PPP solution should emit position covariance");
+
+        assert_eq!(covariance[0][0], 4.0);
+        assert_eq!(covariance[1][1], 9.0);
+        assert_eq!(covariance[2][2], 16.0);
+        assert_eq!(covariance[0][1], 0.5);
+        assert_eq!(covariance[1][0], 0.5);
     }
 
     #[test]
