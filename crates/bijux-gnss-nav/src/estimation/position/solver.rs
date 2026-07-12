@@ -35,9 +35,24 @@ use bijux_gnss_core::api::{
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 const SIGNAL_TIMING_CONSISTENCY_TOLERANCE_S: f64 = 1.0e-6;
 const EPHEMERIS_MISMATCH_CODE_RESIDUAL_GATE_M: f64 = 1_500.0;
+const TERRESTRIAL_GEOMETRY_MIN_RECEIVER_RADIUS_M: f64 = 6_000_000.0;
+const TERRESTRIAL_GEOMETRY_MAX_RECEIVER_RADIUS_M: f64 = 7_000_000.0;
+const TERRESTRIAL_GEOMETRY_MIN_ALTITUDE_M: f64 = -1_000.0;
+const TERRESTRIAL_GEOMETRY_MAX_ALTITUDE_M: f64 = 20_000.0;
 const REPLAY_TIMING_ANOMALY_MIN_MATCHED_SATELLITES: usize = 4;
 const REPLAY_TIMING_ANOMALY_CENTERED_DELAY_RMS_THRESHOLD_M: f64 = 40.0;
 const REPLAY_TIMING_ANOMALY_MAX_CENTERED_DELAY_THRESHOLD_M: f64 = 60.0;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ImpossibleGeometryEvidence {
+    pub receiver_radius_m: f64,
+    pub altitude_m: f64,
+    pub used_satellite_count: usize,
+    pub min_receiver_radius_m: f64,
+    pub max_receiver_radius_m: f64,
+    pub min_altitude_m: f64,
+    pub max_altitude_m: f64,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ReplayTimingAnomalyEvidence {
@@ -86,6 +101,7 @@ pub struct PositionSolution {
     pub raim_fault_detection: Option<RaimFaultDetection>,
     pub raim_fault_exclusion: Option<RaimFaultExclusion>,
     pub raim_solution_separation: Option<RaimSolutionSeparationCheck>,
+    pub impossible_geometry: Option<ImpossibleGeometryEvidence>,
     pub replay_timing_anomaly: Option<ReplayTimingAnomalyEvidence>,
     pub covariance_symmetrized: bool,
     pub covariance_clamped: bool,
@@ -964,6 +980,7 @@ impl PositionSolver {
                 (Some(levels.horizontal_m), Some(levels.vertical_m))
             })
             .unwrap_or((None, None));
+        let impossible_geometry = detect_impossible_geometry(&final_estimate, filtered.len());
         let replay_timing_anomaly = detect_replay_timing_anomaly(&filtered);
 
         let rejected_sat_count = rejected.len();
@@ -1012,6 +1029,7 @@ impl PositionSolver {
             raim_fault_detection,
             raim_fault_exclusion,
             raim_solution_separation,
+            impossible_geometry,
             replay_timing_anomaly,
             covariance_symmetrized: working_set.covariance_symmetrized,
             covariance_clamped: working_set.covariance_clamped,
@@ -2600,18 +2618,46 @@ fn rejection_reason_for_excluded_input(
     }
 }
 
-fn estimate_has_plausible_terrestrial_geometry(estimate: &PositionEstimate) -> bool {
-    let radius_m =
-        (estimate.ecef_x_m.powi(2) + estimate.ecef_y_m.powi(2) + estimate.ecef_z_m.powi(2)).sqrt();
-    if !radius_m.is_finite() || !(6_000_000.0..=7_000_000.0).contains(&radius_m) {
-        return false;
+fn detect_impossible_geometry(
+    estimate: &PositionEstimate,
+    used_satellite_count: usize,
+) -> Option<ImpossibleGeometryEvidence> {
+    let (receiver_radius_m, altitude_m) = terrestrial_geometry_metrics(estimate);
+    if terrestrial_geometry_is_plausible(receiver_radius_m, altitude_m) {
+        return None;
     }
-    let (latitude_deg, longitude_deg, altitude_m) =
+
+    Some(ImpossibleGeometryEvidence {
+        receiver_radius_m,
+        altitude_m,
+        used_satellite_count,
+        min_receiver_radius_m: TERRESTRIAL_GEOMETRY_MIN_RECEIVER_RADIUS_M,
+        max_receiver_radius_m: TERRESTRIAL_GEOMETRY_MAX_RECEIVER_RADIUS_M,
+        min_altitude_m: TERRESTRIAL_GEOMETRY_MIN_ALTITUDE_M,
+        max_altitude_m: TERRESTRIAL_GEOMETRY_MAX_ALTITUDE_M,
+    })
+}
+
+fn estimate_has_plausible_terrestrial_geometry(estimate: &PositionEstimate) -> bool {
+    let (receiver_radius_m, altitude_m) = terrestrial_geometry_metrics(estimate);
+    terrestrial_geometry_is_plausible(receiver_radius_m, altitude_m)
+}
+
+fn terrestrial_geometry_metrics(estimate: &PositionEstimate) -> (f64, f64) {
+    let receiver_radius_m =
+        (estimate.ecef_x_m.powi(2) + estimate.ecef_y_m.powi(2) + estimate.ecef_z_m.powi(2)).sqrt();
+    let (_latitude_deg, _longitude_deg, altitude_m) =
         ecef_to_geodetic(estimate.ecef_x_m, estimate.ecef_y_m, estimate.ecef_z_m);
-    latitude_deg.is_finite()
-        && longitude_deg.is_finite()
+    (receiver_radius_m, altitude_m)
+}
+
+fn terrestrial_geometry_is_plausible(receiver_radius_m: f64, altitude_m: f64) -> bool {
+    receiver_radius_m.is_finite()
         && altitude_m.is_finite()
-        && (-1_000.0..=20_000.0).contains(&altitude_m)
+        && (TERRESTRIAL_GEOMETRY_MIN_RECEIVER_RADIUS_M..=TERRESTRIAL_GEOMETRY_MAX_RECEIVER_RADIUS_M)
+            .contains(&receiver_radius_m)
+        && (TERRESTRIAL_GEOMETRY_MIN_ALTITUDE_M..=TERRESTRIAL_GEOMETRY_MAX_ALTITUDE_M)
+            .contains(&altitude_m)
 }
 
 fn push_unique_rejection(

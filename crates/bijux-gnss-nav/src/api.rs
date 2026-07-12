@@ -71,10 +71,10 @@ pub use crate::estimation::position::solver::{
     position_broadcast_navigation_from_gps_ephemerides, position_dops_from_satellite_positions,
     position_measurement_weight, position_observation_has_valid_satellite_time,
     position_observations_from_epoch, weight_from_cn0, weight_from_elevation,
-    weight_from_pseudorange_sigma, PositionBroadcastNavigation, PositionDops,
-    PositionFilterDivergenceReason, PositionObservation, PositionRobustWeighting, PositionSolution,
-    PositionSolveRefusal, PositionSolveRefusalKind, PositionSolver, PositionWeightingModel,
-    ReplayTimingAnomalyEvidence, WeightingConfig,
+    weight_from_pseudorange_sigma, ImpossibleGeometryEvidence, PositionBroadcastNavigation,
+    PositionDops, PositionFilterDivergenceReason, PositionObservation, PositionRobustWeighting,
+    PositionSolution, PositionSolveRefusal, PositionSolveRefusalKind, PositionSolver,
+    PositionWeightingModel, ReplayTimingAnomalyEvidence, WeightingConfig,
 };
 pub use crate::estimation::position::trajectory::{
     trajectory_reconstruction_report, TrajectoryReconstructionError, TrajectoryReconstructionInput,
@@ -117,8 +117,8 @@ pub use crate::estimation::rtk::single_difference::{
     choose_rtk_single_difference_reference_signals_by_constellation,
     rtk_single_difference_residual_metrics,
     rtk_single_difference_residual_metrics_with_antenna_corrections,
-    rtk_single_differences_from_obs_epochs,
-    RtkSingleDifferenceObservation, RtkSingleDifferenceResidualMetrics,
+    rtk_single_differences_from_obs_epochs, RtkSingleDifferenceObservation,
+    RtkSingleDifferenceResidualMetrics,
 };
 /// BeiDou B1I D1 navigation decoding.
 pub use crate::formats::beidou_b1i_navigation_decode::{
