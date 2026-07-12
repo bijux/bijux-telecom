@@ -843,7 +843,7 @@ mod tests {
 
     #[test]
     fn position_filter_constant_velocity_profile_predicts_position_from_velocity() {
-        let mut filter = PositionFilter::new(PositionFilterConfig::for_constant_velocity_receiver());
+        let mut filter = PositionFilter::new(PositionFilterConfig::for_vehicle_receiver());
         filter.seed_receiver_state([10.0, 20.0, 30.0], 0.0);
         filter.ekf.x[3] = 3.0;
         filter.ekf.x[4] = 4.0;

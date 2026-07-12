@@ -361,7 +361,7 @@ fn sequential_position_filter_tracks_moving_receiver_across_epochs() {
     let ephemerides = sample_filter_ephemerides();
     let truth_velocity_mps = (12.0, -4.0, 1.5);
     let epochs = moving_receiver_epochs(&ephemerides, 10, 1.0, truth_velocity_mps);
-    let mut filter = PositionFilter::new(PositionFilterConfig::for_constant_velocity_receiver());
+    let mut filter = PositionFilter::new(PositionFilterConfig::for_vehicle_receiver());
     let mut final_velocity_error_mps = None;
     let mut final_velocity_norm_mps = None;
 
@@ -405,7 +405,7 @@ fn sequential_position_filter_recovers_velocity_from_doppler_in_enu() {
     let truth_velocity_ecef_mps =
         enu_velocity_to_ecef_mps(37.0, -122.0, truth_velocity_enu_mps);
     let epochs = moving_receiver_epochs_with_doppler(&ephemerides, 30, 1.0, truth_velocity_ecef_mps, 0.0);
-    let mut config = PositionFilterConfig::for_constant_velocity_receiver();
+    let mut config = PositionFilterConfig::for_vehicle_receiver();
     config.base_pseudorange_sigma_m = 1.5;
     config.base_doppler_sigma_hz = 0.05;
     let mut filter = PositionFilter::new(config);
@@ -532,7 +532,7 @@ fn sequential_position_filter_maintains_clock_drift_consistency_while_moving() {
         truth_velocity_ecef_mps,
         truth_clock_drift_s_per_s,
     );
-    let mut config = PositionFilterConfig::for_constant_velocity_receiver();
+    let mut config = PositionFilterConfig::for_vehicle_receiver();
     config.base_pseudorange_sigma_m = 1.5;
     config.base_doppler_sigma_hz = 0.05;
     config.initial_clock_drift_sigma_s_per_s = 1.0e-4;
@@ -676,7 +676,7 @@ fn sequential_position_filter_constant_velocity_profile_beats_independent_epochs
     let truth_velocity_mps = enu_velocity_to_ecef_mps(37.0, -122.0, truth_velocity_enu_mps);
     let epochs =
         moving_receiver_epochs_with_doppler(&ephemerides, 20, 1.0, truth_velocity_mps, 0.0);
-    let mut dynamic_config = PositionFilterConfig::for_constant_velocity_receiver();
+    let mut dynamic_config = PositionFilterConfig::for_vehicle_receiver();
     dynamic_config.base_pseudorange_sigma_m = 1.5;
     dynamic_config.base_doppler_sigma_hz = 0.05;
     let mut dynamic_filter = PositionFilter::new(dynamic_config.clone());
