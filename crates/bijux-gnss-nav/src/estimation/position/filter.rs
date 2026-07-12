@@ -1067,6 +1067,10 @@ mod tests {
         }
     }
 
+    fn sample_sat(prn: u8) -> SatId {
+        SatId { constellation: Constellation::Gps, prn }
+    }
+
     #[test]
     fn position_filter_uses_eight_state_layout() {
         let filter = PositionFilter::new(PositionFilterConfig::default());
@@ -1208,6 +1212,62 @@ mod tests {
         );
         assert_eq!(config.base_pseudorange_sigma_m, 2.5);
         assert_eq!(config.base_doppler_sigma_hz, 0.25);
+    }
+
+    #[test]
+    fn position_filter_visibility_transition_ignores_unchanged_satellite_sets() {
+        let mut filter = PositionFilter::new(PositionFilterConfig::default());
+        let tracked_sats = [sample_sat(1), sample_sat(2), sample_sat(3), sample_sat(4)]
+            .into_iter()
+            .collect();
+        filter.last_visible_sats = tracked_sats;
+        filter.ekf.p[(0, 0)] = 7.0;
+        filter.ekf.p[(0, 1)] = 2.0;
+        filter.ekf.p[(1, 0)] = 2.0;
+
+        filter.apply_visibility_transition(&filter.last_visible_sats.clone());
+
+        assert_eq!(filter.ekf.p[(0, 0)], 7.0);
+        assert_eq!(filter.ekf.p[(0, 1)], 2.0);
+        assert_eq!(filter.ekf.p[(1, 0)], 2.0);
+    }
+
+    #[test]
+    fn position_filter_visibility_transition_inflates_covariance_and_floors_sigmas() {
+        let mut filter = PositionFilter::new(PositionFilterConfig::default());
+        filter.last_visible_sats = [sample_sat(1), sample_sat(2), sample_sat(3), sample_sat(4)]
+            .into_iter()
+            .collect();
+        for index in 0..filter.ekf.p.rows() {
+            filter.ekf.p[(index, index)] = 1.0;
+        }
+        filter.ekf.p[(0, 1)] = 2.0;
+        filter.ekf.p[(1, 0)] = 2.0;
+        filter.ekf.p[(filter.indices.clock_bias, filter.indices.clock_bias)] = 1.0e-20;
+        filter.ekf.p[(filter.indices.clock_drift, filter.indices.clock_drift)] = 1.0e-20;
+
+        let current_visible_sats = [sample_sat(2), sample_sat(3), sample_sat(4), sample_sat(5)]
+            .into_iter()
+            .collect();
+        filter.apply_visibility_transition(&current_visible_sats);
+
+        assert!((filter.ekf.p[(0, 1)] - 3.4).abs() < 1.0e-12);
+        assert!((filter.ekf.p[(1, 0)] - 3.4).abs() < 1.0e-12);
+        assert_eq!(filter.ekf.p[(0, 0)], 100.0);
+        assert_eq!(filter.ekf.p[(1, 1)], 100.0);
+        assert_eq!(filter.ekf.p[(2, 2)], 100.0);
+        assert_eq!(filter.ekf.p[(3, 3)], 2.25);
+        assert_eq!(filter.ekf.p[(4, 4)], 2.25);
+        assert_eq!(filter.ekf.p[(5, 5)], 2.25);
+        assert!(
+            (filter.ekf.p[(filter.indices.clock_bias, filter.indices.clock_bias)] - 2.5e-15).abs()
+                < 1.0e-20
+        );
+        assert!(
+            (filter.ekf.p[(filter.indices.clock_drift, filter.indices.clock_drift)] - 2.5e-17)
+                .abs()
+                < 1.0e-22
+        );
     }
 
     #[test]
