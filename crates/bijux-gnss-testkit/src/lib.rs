@@ -4,6 +4,7 @@
 pub mod front_end;
 pub mod public_ppp;
 pub mod public_station;
+pub mod public_troposphere;
 pub mod reference_coordinate;
 pub mod rtk_baseline;
 
