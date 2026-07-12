@@ -17,6 +17,7 @@ use crate::estimation::position::solver::{
     ecef_to_geodetic, elevation_azimuth_deg, position_broadcast_navigation_from_gps_ephemerides,
     PositionBroadcastNavigation,
 };
+use crate::orbits::galileo::GalileoBroadcastNavigationData;
 use crate::orbits::gps::GpsBroadcastNavigationData;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -122,6 +123,41 @@ pub fn gps_broadcast_ionosphere_residuals_from_obs_epochs(
                 receiver_ecef_m,
                 receiver,
                 navigation,
+                &navigation_entries,
+            )
+        })
+        .collect()
+}
+
+pub fn galileo_broadcast_ionosphere_residuals_from_obs_epochs(
+    epochs: &[ObsEpoch],
+    receiver_ecef_m: (f64, f64, f64),
+    navigations: &[GalileoBroadcastNavigationData],
+    band_1: SignalBand,
+    band_2: SignalBand,
+) -> Vec<BroadcastIonosphereResidualObservation> {
+    let measured = measured_ionosphere_from_obs_epochs(epochs, band_1, band_2);
+    let epochs_by_idx = epochs.iter().map(|epoch| (epoch.epoch_idx, epoch)).collect::<BTreeMap<_, _>>();
+    let receiver = receiver_llh_from_ecef(receiver_ecef_m);
+    let navigation_entries =
+        navigations.iter().cloned().map(PositionBroadcastNavigation::Galileo).collect::<Vec<_>>();
+
+    measured
+        .into_iter()
+        .map(|observation| {
+            let Some(epoch) = epochs_by_idx.get(&observation.epoch_idx).copied() else {
+                return with_broadcast_failure(
+                    observation,
+                    "galileo_nequick",
+                    "invalid",
+                    "missing_epoch",
+                );
+            };
+            compare_galileo_broadcast_against_measured(
+                observation,
+                epoch,
+                receiver_ecef_m,
+                receiver,
                 &navigation_entries,
             )
         })
@@ -243,6 +279,118 @@ fn compare_gps_broadcast_against_measured(
     else {
         residual.broadcast_status = "invalid".to_string();
         residual.broadcast_reason = "broadcast_scaling_invalid".to_string();
+        return residual;
+    };
+
+    residual.broadcast_delay_band_1_m = Some(broadcast_delay_band_1_m);
+    residual.broadcast_delay_band_2_m = Some(broadcast_delay_band_2_m);
+    residual.code_residual_band_1_m = residual
+        .measured_code_delay_band_1_m
+        .map(|delay_m| delay_m - broadcast_delay_band_1_m);
+    residual.code_residual_band_2_m = residual
+        .measured_code_delay_band_2_m
+        .map(|delay_m| delay_m - broadcast_delay_band_2_m);
+    residual.phase_residual_band_1_m = residual
+        .measured_phase_delay_band_1_m
+        .map(|delay_m| delay_m - broadcast_delay_band_1_m);
+    residual.phase_residual_band_2_m = residual
+        .measured_phase_delay_band_2_m
+        .map(|delay_m| delay_m - broadcast_delay_band_2_m);
+    residual.broadcast_status = "ok".to_string();
+    residual.broadcast_reason = "ok".to_string();
+    residual
+}
+
+fn compare_galileo_broadcast_against_measured(
+    observation: MeasuredIonosphereObservation,
+    epoch: &ObsEpoch,
+    receiver_ecef_m: (f64, f64, f64),
+    receiver: Option<Llh>,
+    navigation_entries: &[PositionBroadcastNavigation],
+) -> BroadcastIonosphereResidualObservation {
+    let mut residual = residual_observation_from_measured(observation, "galileo_nequick");
+    let Some(receiver) = receiver else {
+        residual.broadcast_status = "invalid".to_string();
+        residual.broadcast_reason = "invalid_receiver_position".to_string();
+        return residual;
+    };
+
+    let (first, second) =
+        match dual_frequency_observation_pair(epoch, residual.sat, residual.band_1, residual.band_2)
+        {
+            Some(pair) => pair,
+            None => {
+                residual.broadcast_status = "invalid".to_string();
+                residual.broadcast_reason = "missing_frequency".to_string();
+                return residual;
+            }
+        };
+    residual.signal_1 = Some(first.signal_id);
+    residual.signal_2 = Some(second.signal_id);
+
+    let Some(gps_time) = epoch.gps_time() else {
+        residual.broadcast_status = "invalid".to_string();
+        residual.broadcast_reason = "invalid_receive_time".to_string();
+        return residual;
+    };
+    let Some(selected_navigation) =
+        select_valid_navigation(navigation_entries, residual.sat, gps_time.tow_s)
+    else {
+        residual.broadcast_status = "invalid".to_string();
+        residual.broadcast_reason = "invalid_ephemeris".to_string();
+        return residual;
+    };
+    let PositionBroadcastNavigation::Galileo(navigation) = selected_navigation else {
+        residual.broadcast_status = "invalid".to_string();
+        residual.broadcast_reason = "invalid_navigation_type".to_string();
+        return residual;
+    };
+    let Some(state) = satellite_state_from_observation(
+        selected_navigation,
+        gps_time.tow_s,
+        first.pseudorange_m.0,
+        first.timing,
+    ) else {
+        residual.broadcast_status = "invalid".to_string();
+        residual.broadcast_reason = "invalid_geometry".to_string();
+        return residual;
+    };
+
+    let (azimuth_deg, elevation_deg) = elevation_azimuth_deg(
+        receiver_ecef_m.0,
+        receiver_ecef_m.1,
+        receiver_ecef_m.2,
+        state.x_m,
+        state.y_m,
+        state.z_m,
+    );
+    if !azimuth_deg.is_finite() || !elevation_deg.is_finite() || elevation_deg <= 0.0 {
+        residual.broadcast_status = "invalid".to_string();
+        residual.broadcast_reason = "invalid_geometry".to_string();
+        return residual;
+    }
+    let (sat_lat_deg, sat_lon_deg, sat_alt_m) = ecef_to_geodetic(state.x_m, state.y_m, state.z_m);
+    if !sat_lat_deg.is_finite() || !sat_lon_deg.is_finite() || !sat_alt_m.is_finite() {
+        residual.broadcast_status = "invalid".to_string();
+        residual.broadcast_reason = "invalid_geometry".to_string();
+        return residual;
+    }
+    residual.azimuth_deg = Some(azimuth_deg);
+    residual.elevation_deg = Some(elevation_deg);
+    let satellite = Llh { lat_deg: sat_lat_deg, lon_deg: sat_lon_deg, alt_m: sat_alt_m };
+
+    let Some(broadcast_delay_band_1_m) =
+        navigation.nequick_delay_m(first.signal_id, receiver, satellite, gps_time)
+    else {
+        residual.broadcast_status = "invalid".to_string();
+        residual.broadcast_reason = "broadcast_signal_invalid".to_string();
+        return residual;
+    };
+    let Some(broadcast_delay_band_2_m) =
+        navigation.nequick_delay_m(second.signal_id, receiver, satellite, gps_time)
+    else {
+        residual.broadcast_status = "invalid".to_string();
+        residual.broadcast_reason = "broadcast_signal_invalid".to_string();
         return residual;
     };
 
