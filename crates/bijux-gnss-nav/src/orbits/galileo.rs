@@ -4,7 +4,9 @@ use std::cmp::Ordering;
 
 use serde::{Deserialize, Serialize};
 
-use bijux_gnss_core::api::{Constellation, ObsSignalTiming, SatId};
+use bijux_gnss_core::api::{signal_registry, Constellation, GpsTime, Llh, ObsSignalTiming, SatId, SigId};
+
+use crate::models::nequick::GalileoNequickModel;
 
 const OMEGA_E_DOT: f64 = 7.292_115_146_7e-5;
 const MU: f64 = 3.986_004_418e14;
@@ -41,6 +43,12 @@ pub struct GalileoIonosphericCorrection {
     pub ai1: f64,
     pub ai2: f64,
     pub disturbance_flags: GalileoIonosphericDisturbanceFlags,
+}
+
+impl GalileoIonosphericCorrection {
+    pub fn nequick_model(&self) -> GalileoNequickModel {
+        GalileoNequickModel::new([self.ai0, self.ai1, self.ai2])
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -169,6 +177,28 @@ pub struct GalileoBroadcastNavigationData {
     pub clock: GalileoClockCorrection,
     pub ephemeris: GalileoEphemeris,
     pub ionosphere: GalileoIonosphericCorrection,
+}
+
+impl GalileoBroadcastNavigationData {
+    pub fn nequick_model(&self) -> GalileoNequickModel {
+        self.ionosphere.nequick_model()
+    }
+
+    pub fn nequick_delay_m(
+        &self,
+        signal: SigId,
+        receiver: Llh,
+        satellite: Llh,
+        gps_time: GpsTime,
+    ) -> Option<f64> {
+        if signal.sat != self.sat || signal.sat.constellation != Constellation::Galileo {
+            return None;
+        }
+        let carrier_hz =
+            signal_registry(signal.sat.constellation, signal.band, signal.code)?.spec.carrier_hz.value();
+        self.nequick_model()
+            .delay_m_at_gps_time(gps_time, receiver, satellite, carrier_hz)
+    }
 }
 
 pub fn galileo_satellite_clock_correction_e1(
@@ -362,7 +392,7 @@ fn wrap_time(mut t: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bijux_gnss_core::api::{GpsTime, Seconds};
+    use bijux_gnss_core::api::{GpsTime, Llh, Seconds, SigId, SignalBand, SignalCode};
 
     const TEST_OMEGA_E_DOT: f64 = 7.292_115_146_7e-5;
     const TEST_MU: f64 = 3.986_004_418e14;
@@ -409,9 +439,9 @@ mod tests {
                 cis: -2.4e-7,
             },
             ionosphere: GalileoIonosphericCorrection {
-                ai0: 0.0,
-                ai1: 0.0,
-                ai2: 0.0,
+                ai0: 121.129_893,
+                ai1: 0.351_254_133,
+                ai2: 0.013_463_534_8,
                 disturbance_flags: GalileoIonosphericDisturbanceFlags {
                     region_1: false,
                     region_2: false,
@@ -478,6 +508,49 @@ mod tests {
                 bgd_e1_e5b_s: navigation.clock.bgd_e1_e5b_s,
             },
         }
+    }
+
+    #[test]
+    fn ionospheric_correction_exposes_nequick_model() {
+        let navigation = sample_navigation();
+        let model = navigation.ionosphere.nequick_model();
+        let receiver = Llh { lat_deg: -3.0, lon_deg: 40.19, alt_m: -23.32 };
+        let satellite = Llh { lat_deg: -41.43, lon_deg: 76.65, alt_m: 20_157_673.93 };
+
+        let stec_tecu = model
+            .stec_tecu(4, 0.0, receiver, satellite)
+            .expect("official-like validation geometry should converge");
+        assert!((stec_tecu - 18.26).abs() <= 0.05);
+    }
+
+    #[test]
+    fn broadcast_navigation_nequick_delay_matches_model_delay() {
+        let navigation = sample_navigation();
+        let signal =
+            SigId { sat: navigation.sat, band: SignalBand::E1, code: SignalCode::E1B };
+        let receiver = Llh { lat_deg: -3.0, lon_deg: 40.19, alt_m: -23.32 };
+        let satellite = Llh { lat_deg: -41.43, lon_deg: 76.65, alt_m: 20_157_673.93 };
+        let gps_time = GpsTime { week: 2295, tow_s: 0.0 };
+        let carrier_hz = bijux_gnss_core::api::signal_registry(
+            Constellation::Galileo,
+            SignalBand::E1,
+            SignalCode::E1B,
+        )
+        .expect("Galileo E1 signal registry entry")
+        .spec
+        .carrier_hz
+        .value();
+
+        let expected_delay_m = navigation
+            .nequick_model()
+            .delay_m_at_gps_time(gps_time, receiver, satellite, carrier_hz)
+            .expect("direct model delay");
+        let navigation_delay_m = navigation
+            .nequick_delay_m(signal, receiver, satellite, gps_time)
+            .expect("broadcast navigation delay");
+
+        assert!((navigation_delay_m - expected_delay_m).abs() < 1.0e-9);
+        assert!(navigation_delay_m > 0.0);
     }
 
     fn reference_solve_kepler(m: f64, e: f64) -> f64 {

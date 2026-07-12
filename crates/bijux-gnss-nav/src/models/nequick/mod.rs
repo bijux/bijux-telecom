@@ -3,3 +3,5 @@
 
 pub(crate) mod data;
 pub(crate) mod model;
+
+pub use model::GalileoNequickModel;

@@ -169,6 +169,7 @@ pub use crate::linalg::Matrix;
 pub use crate::models::atmosphere::{
     IonosphereModel, KlobucharCoefficients, KlobucharModel, SaastamoinenModel, TroposphereModel,
 };
+pub use crate::models::nequick::GalileoNequickModel;
 /// BeiDou broadcast navigation and satellite state helpers.
 pub use crate::orbits::beidou::{
     beidou_earth_rotation_correction, beidou_navigation_age, beidou_satellite_clock_correction_b1i,
