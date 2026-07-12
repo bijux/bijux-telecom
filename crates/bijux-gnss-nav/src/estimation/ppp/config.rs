@@ -423,6 +423,7 @@ mod tests {
         assert_eq!(meteorology.pressure_hpa, 990.0);
         assert_eq!(meteorology.temperature_k, 299.15);
         assert_eq!(meteorology.relative_humidity, 0.65);
+        assert_eq!(config.troposphere_source(), PppTroposphereSource::LocalMeteorology);
     }
 
     #[test]
@@ -441,6 +442,11 @@ mod tests {
 
         assert!(partial.troposphere_meteorology().is_none());
         assert!(non_physical.troposphere_meteorology().is_none());
+        assert_eq!(partial.troposphere_source(), PppTroposphereSource::StandardAtmosphere);
+        assert_eq!(
+            non_physical.troposphere_source(),
+            PppTroposphereSource::StandardAtmosphere
+        );
     }
 }
 
