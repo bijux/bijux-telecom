@@ -1,6 +1,7 @@
 {
   "marker_name": "AB43",
   "fixture_name": "unavco_ab43_20180114.obs",
+  "troposphere_source": "standard_atmosphere",
   "observation_epoch_count": 9,
   "solved_epoch_count": 9,
   "all_epochs_solved": true,
