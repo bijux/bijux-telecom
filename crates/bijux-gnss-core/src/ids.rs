@@ -322,6 +322,16 @@ pub fn signal_spec_galileo_e1c() -> SignalSpec {
     }
 }
 
+pub fn signal_spec_galileo_e5a() -> SignalSpec {
+    SignalSpec {
+        constellation: Constellation::Galileo,
+        band: SignalBand::E5,
+        code: SignalCode::E5a,
+        code_rate_hz: 10_230_000.0,
+        carrier_hz: GALILEO_E5_CARRIER_HZ,
+    }
+}
+
 pub fn signal_spec_glonass_l1(frequency_channel: GlonassFrequencyChannel) -> SignalSpec {
     SignalSpec {
         constellation: Constellation::Glonass,
@@ -376,7 +386,7 @@ pub fn signal_registry(
             (GALILEO_E1_CARRIER_HZ, 1_023_000.0, Some(4092))
         }
         (Constellation::Galileo, SignalBand::E5, SignalCode::E5a) => {
-            (GALILEO_E5_CARRIER_HZ, 10_230_000.0, None)
+            (GALILEO_E5_CARRIER_HZ, 10_230_000.0, Some(10230))
         }
         (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown) => {
             (GLONASS_L1_CARRIER_HZ, 511_000.0, Some(511))
