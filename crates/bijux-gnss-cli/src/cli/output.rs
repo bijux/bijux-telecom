@@ -1093,12 +1093,14 @@ mod tests {
         NAV_SOLUTION_MODEL_VERSION,
     };
     use bijux_gnss_infra::api::nav::{
-        write_rinex_broadcast_navigation, write_rinex_nav, GpsBroadcastNavigationData,
-        GpsEphemeris, KlobucharCoefficients,
+        write_rinex_broadcast_navigation, write_rinex_nav, BiasSinexProvider,
+        GpsBroadcastNavigationData, GpsEphemeris, KlobucharCoefficients,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 
     #[test]
     fn locked_capture_value_rejects_drift() {
@@ -1336,6 +1338,12 @@ mod tests {
     fn temp_output_dir(name: &str) -> PathBuf {
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos();
         std::env::temp_dir().join(format!("bijux_{}_{}_{}", name, std::process::id(), nanos))
+    }
+
+    fn bias_sinex_fixture(name: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../bijux-gnss-nav/tests/data")
+            .join(name)
     }
 
     fn sample_common_args(out_dir: PathBuf) -> CommonArgs {
@@ -2039,6 +2047,56 @@ mod tests {
         assert!(
             rows[2]["delta_from_previous_wide_lane_cycles"].as_f64().expect("wide-lane delta")
                 >= 0.5
+        );
+
+        fs::remove_dir_all(&out_dir).expect("remove output directory");
+    }
+
+    #[test]
+    fn write_iono_free_code_artifact_emits_bias_corrected_rows() {
+        let out_dir = temp_output_dir("iono_free_code_output");
+        fs::create_dir_all(&out_dir).expect("create output directory");
+
+        let provider = fs::read_to_string(bias_sinex_fixture("gps_l1_l2_absolute_biases.bia"))
+            .expect("read bias sinex fixture")
+            .parse::<BiasSinexProvider>()
+            .expect("parse bias sinex fixture");
+        let l1 = signal_spec_gps_l1_ca();
+        let l2 = signal_spec_gps_l2_py();
+        let base_range_m = 20_200_000.0;
+        let iono_l1_m = 4.0;
+        let l1_bias_m = 3.0e-9 * SPEED_OF_LIGHT_MPS;
+        let l2_bias_m = 9.0e-9 * SPEED_OF_LIGHT_MPS;
+        let l1_hz = l1.carrier_hz.value();
+        let l2_hz = l2.carrier_hz.value();
+        let l2_iono_m = iono_l1_m * (l1_hz * l1_hz) / (l2_hz * l2_hz);
+        let mut epoch = dual_frequency_epoch(
+            0,
+            base_range_m + iono_l1_m + l1_bias_m,
+            base_range_m + l2_iono_m + l2_bias_m,
+            0.0,
+            0.0,
+        );
+        for satellite in &mut epoch.sats {
+            satellite.signal_id.sat.prn = 23;
+        }
+
+        super::write_iono_free_code_artifact(&out_dir, &[epoch], Some(&provider))
+            .expect("write iono-free code artifact");
+
+        let path = out_dir.join("iono_free_code.jsonl");
+        let text = fs::read_to_string(&path).expect("read iono-free code artifact");
+        let rows: Vec<serde_json::Value> = text
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("parse iono-free code row"))
+            .collect();
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["status"], "ok");
+        assert!(rows[0]["code_bias_m"].as_f64().expect("code bias").abs() > 0.1);
+        assert!(
+            (rows[0]["corrected_code_m"].as_f64().expect("corrected code") - base_range_m).abs()
+                < 1.0e-6
         );
 
         fs::remove_dir_all(&out_dir).expect("remove output directory");
