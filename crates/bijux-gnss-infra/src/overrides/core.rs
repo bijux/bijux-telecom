@@ -75,6 +75,7 @@ pub(crate) fn apply_sweep_value(
             profile.navigation.weighting.mode = match value {
                 "elevation" => NavigationWeightingMode::Elevation,
                 "cn0" => NavigationWeightingMode::Cn0,
+                "elevation_cn0" => NavigationWeightingMode::ElevationCn0,
                 _ => {
                     return Err(InputError {
                         message: format!("unsupported navigation.weighting.mode: {value}"),

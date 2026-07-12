@@ -319,7 +319,7 @@ impl ReceiverConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::receiver_config::ConstellationSelectionPolicy;
+    use crate::engine::receiver_config::{ConstellationSelectionPolicy, NavigationWeightingMode};
     use bijux_gnss_core::api::Constellation;
     use schemars::schema_for;
 
@@ -424,6 +424,31 @@ mod tests {
             assert!(
                 raw.contains(value),
                 "receiver config schema missing constellation policy value {value}: {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn navigation_weighting_mode_round_trips_through_toml() {
+        let mut config = ReceiverConfig::default();
+        config.navigation.weighting.mode = NavigationWeightingMode::ElevationCn0;
+
+        let raw = toml::to_string(&config).expect("serialize receiver config");
+        let reparsed: ReceiverConfig = toml::from_str(&raw).expect("parse receiver config");
+
+        assert_eq!(reparsed.navigation.weighting.mode, NavigationWeightingMode::ElevationCn0);
+        assert!(raw.contains("mode = \"elevation_cn0\""));
+    }
+
+    #[test]
+    fn receiver_config_schema_lists_navigation_weighting_modes() {
+        let schema = schema_for!(ReceiverConfig);
+        let raw = serde_json::to_string(&schema).expect("serialize receiver config schema");
+
+        for value in ["elevation", "cn0", "elevation_cn0"] {
+            assert!(
+                raw.contains(value),
+                "receiver config schema missing navigation weighting mode value {value}: {raw}"
             );
         }
     }

@@ -224,7 +224,8 @@
               "type": "string",
               "enum": [
                 "elevation",
-                "cn0"
+                "cn0",
+                "elevation_cn0"
               ]
             },
             "min_elev_deg": {
