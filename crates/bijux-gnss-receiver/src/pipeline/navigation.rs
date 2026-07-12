@@ -11,10 +11,9 @@ use bijux_gnss_nav::api::{
     elevation_azimuth_deg, position_broadcast_navigation_from_gps_ephemerides,
     position_measurement_weight, position_observation_has_valid_satellite_time,
     sat_state_beidou_b1i_from_observation, sat_state_galileo_e1_from_observation,
-    sat_state_glonass_l1_from_observation,
-    sat_state_gps_l1ca_from_observation, GpsEphemeris, KlobucharCoefficients,
-    PositionBroadcastNavigation, PositionObservation, PositionSolveRefusalKind, PositionSolver,
-    RaimFaultDetectionStatus, WeightingConfig,
+    sat_state_glonass_l1_from_observation, sat_state_gps_l1ca_from_observation, GpsEphemeris,
+    KlobucharCoefficients, PositionBroadcastNavigation, PositionObservation,
+    PositionSolveRefusalKind, PositionSolver, RaimFaultDetectionStatus, WeightingConfig,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -444,7 +443,9 @@ impl Navigation {
                     explain_reasons.push("unknown_inter_system_time_offset".to_string());
                     let constellations = rejected
                         .iter()
-                        .filter(|(_sat, reason)| *reason == MeasurementRejectReason::TimeInconsistency)
+                        .filter(|(_sat, reason)| {
+                            *reason == MeasurementRejectReason::TimeInconsistency
+                        })
                         .map(|(sat, _reason)| format!("{:?}", sat.constellation))
                         .collect::<std::collections::BTreeSet<_>>()
                         .into_iter()
@@ -550,6 +551,7 @@ impl Navigation {
                     reject_reason: Some(reason),
                 }))
                 .collect(),
+            constellation_residual_rms: solution.constellation_residual_rms.clone(),
             isb: inter_system_biases,
             health: Vec::new(),
             innovation_rms_m: None,
@@ -923,6 +925,7 @@ fn invalid_solution_epoch(
         valid: false,
         processing_ms: None,
         residuals: Vec::new(),
+        constellation_residual_rms: Vec::new(),
         health: Vec::new(),
         isb: Vec::new(),
         sigma_h_m: None,
@@ -1432,6 +1435,7 @@ mod tests {
             valid: true,
             processing_ms: None,
             residuals: Vec::new(),
+            constellation_residual_rms: Vec::new(),
             health: Vec::new(),
             isb: Vec::new(),
             sigma_h_m: None,

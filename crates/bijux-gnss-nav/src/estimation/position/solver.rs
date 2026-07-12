@@ -16,16 +16,16 @@ use crate::orbits::galileo::{
 };
 use crate::orbits::glonass::{
     glonass_gps_minus_glonass_s, glonass_navigation_age, is_glonass_navigation_valid,
-    sat_state_glonass_l1,
-    sat_state_glonass_l1_from_observation, GlonassBroadcastNavigationFrame,
+    sat_state_glonass_l1, sat_state_glonass_l1_from_observation, GlonassBroadcastNavigationFrame,
 };
 use crate::orbits::gps::{
     gps_ephemeris_age, is_ephemeris_valid, sat_state_gps_l1ca, sat_state_gps_l1ca_from_observation,
     GpsEphemeris,
 };
 use bijux_gnss_core::api::{
-    Constellation, GpsTime, InterSystemBias, Llh, MeasurementRejectReason, ObsEpoch, ObsSatellite,
-    ObsSignalTiming, ObservationStatus, SatId, Seconds, SignalBand,
+    Constellation, GpsTime, InterSystemBias, Llh, MeasurementRejectReason,
+    NavConstellationResidualRms, ObsEpoch, ObsSatellite, ObsSignalTiming, ObservationStatus, SatId,
+    Seconds, SignalBand,
 };
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
@@ -53,6 +53,7 @@ pub struct PositionSolution {
     pub sigma_h_m: Option<f64>,
     pub sigma_v_m: Option<f64>,
     pub residuals: Vec<(SatId, f64, f64)>,
+    pub constellation_residual_rms: Vec<NavConstellationResidualRms>,
     pub rejected: Vec<(SatId, bijux_gnss_core::api::MeasurementRejectReason)>,
     pub raim_fault_detection: Option<RaimFaultDetection>,
     pub raim_fault_exclusion: Option<RaimFaultExclusion>,
@@ -389,6 +390,14 @@ struct WorkingSetResidual {
     effective_weight: f64,
 }
 
+#[derive(Debug, Default)]
+struct ConstellationResidualAccumulator {
+    pre_fit_sum_sq_m2: f64,
+    pre_fit_sat_count: usize,
+    post_fit_sum_sq_m2: f64,
+    post_fit_sat_count: usize,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct SatelliteState {
     x_m: f64,
@@ -642,6 +651,7 @@ impl PositionSolver {
         let mut raim_fault_detection = None;
         let mut raim_fault_exclusion = None;
         let mut pre_fit_residual_rms_m = None;
+        let mut pre_fit_constellation_residuals = None;
         let working_set = loop {
             let solved =
                 self.solve_working_set(&working_inputs, estimate, klobuchar).ok_or_else(|| {
@@ -654,6 +664,7 @@ impl PositionSolver {
                 })?;
             if pre_fit_residual_rms_m.is_none() {
                 pre_fit_residual_rms_m = Some(working_set_rms_m(&solved.residuals));
+                pre_fit_constellation_residuals = Some(solved.residuals.clone());
             }
             let outlier_indices = self.outlier_indices(&solved.residuals);
             if outlier_indices.is_empty() {
@@ -801,6 +812,10 @@ impl PositionSolver {
             0.0
         };
         let pre_fit_residual_rms_m = pre_fit_residual_rms_m.unwrap_or(post_fit_residual_rms_m);
+        let constellation_residual_rms = constellation_residual_rms(
+            pre_fit_constellation_residuals.as_deref().unwrap_or(&working_set.residuals),
+            &filtered,
+        );
 
         let (lat, lon, alt) = ecef_to_geodetic(x, y, z);
 
@@ -853,6 +868,7 @@ impl PositionSolver {
                     (observation.sat, *residual_m, *effective_weight)
                 })
                 .collect(),
+            constellation_residual_rms,
             rejected,
             raim_fault_detection,
             raim_fault_exclusion,
@@ -881,8 +897,10 @@ fn unknown_inter_system_time_offset_sats(
     observations: &[PositionObservation],
     navigation: &[PositionBroadcastNavigation],
 ) -> Vec<SatId> {
-    let unique_constellations =
-        observations.iter().map(|observation| observation.sat.constellation).collect::<std::collections::BTreeSet<_>>();
+    let unique_constellations = observations
+        .iter()
+        .map(|observation| observation.sat.constellation)
+        .collect::<std::collections::BTreeSet<_>>();
     if unique_constellations.len() < 2 {
         return Vec::new();
     }
@@ -894,10 +912,7 @@ fn unknown_inter_system_time_offset_sats(
         if candidates.is_empty() {
             continue;
         }
-        if candidates
-            .iter()
-            .all(|entry| !navigation_time_relationship_is_known(entry))
-        {
+        if candidates.iter().all(|entry| !navigation_time_relationship_is_known(entry)) {
             unknown.push(observation.sat);
         }
     }
@@ -1020,11 +1035,12 @@ fn select_valid_ephemeris(
 #[cfg(test)]
 mod tests {
     use super::{
-        navigation_time_relationship_is_known, unknown_inter_system_time_offset_sats,
+        constellation_residual_rms, navigation_time_relationship_is_known,
         position_broadcast_navigation_from_beidou_navigations,
         position_broadcast_navigation_from_glonass_frames,
         position_broadcast_navigation_from_gps_ephemerides, position_observations_from_epoch,
-        resolve_position_inputs, PositionBroadcastNavigation, PositionObservation,
+        resolve_position_inputs, unknown_inter_system_time_offset_sats,
+        PositionBroadcastNavigation, PositionObservation, SatelliteState, WorkingSetResidual,
     };
     use crate::orbits::beidou::{
         BeidouBroadcastNavigationData, BeidouClockCorrection, BeidouEphemeris,
@@ -1283,12 +1299,13 @@ mod tests {
             66_000.0,
         ));
         let beidou_navigation = PositionBroadcastNavigation::Beidou(sample_beidou_navigation(
-            beidou_sat,
-            345_600.0,
-            345_600.0,
+            beidou_sat, 345_600.0, 345_600.0,
         ));
-        let glonass_navigation =
-            PositionBroadcastNavigation::Glonass(sample_glonass_navigation(glonass_sat, 83_700, -10_782.0));
+        let glonass_navigation = PositionBroadcastNavigation::Glonass(sample_glonass_navigation(
+            glonass_sat,
+            83_700,
+            -10_782.0,
+        ));
 
         assert_eq!(gps_navigation.sat(), gps_sat);
         assert_eq!(gps_navigation.constellation(), Constellation::Gps);
@@ -1378,8 +1395,7 @@ mod tests {
             gps_receive_time: None,
             signal_timing: None,
         }];
-        let navigation_frames =
-            vec![sample_glonass_navigation(sat, 83_700, -10_782.0)];
+        let navigation_frames = vec![sample_glonass_navigation(sat, 83_700, -10_782.0)];
         let navigation = position_broadcast_navigation_from_glonass_frames(&navigation_frames);
         let mut rejected = Vec::new();
 
@@ -1442,9 +1458,9 @@ mod tests {
         let mut navigation_without_system_time = navigation;
         navigation_without_system_time.system_time = None;
 
-        assert!(!navigation_time_relationship_is_known(
-            &PositionBroadcastNavigation::Glonass(navigation_without_system_time)
-        ));
+        assert!(!navigation_time_relationship_is_known(&PositionBroadcastNavigation::Glonass(
+            navigation_without_system_time
+        )));
     }
 
     #[test]
@@ -1471,8 +1487,7 @@ mod tests {
                 signal_timing: None,
             },
         ];
-        let mut glonass_navigation =
-            sample_glonass_navigation(glonass_sat, 83_700, -10_782.0);
+        let mut glonass_navigation = sample_glonass_navigation(glonass_sat, 83_700, -10_782.0);
         glonass_navigation.system_time = None;
         let navigation = vec![
             PositionBroadcastNavigation::Gps(sample_ephemeris(gps_sat, 200_000.0, 200_000.0)),
@@ -1482,6 +1497,82 @@ mod tests {
         let unknown = unknown_inter_system_time_offset_sats(&observations, &navigation);
 
         assert_eq!(unknown, vec![glonass_sat]);
+    }
+
+    #[test]
+    fn constellation_residual_rms_tracks_pre_fit_and_post_fit_groups() {
+        let gps_sat = SatId { constellation: Constellation::Gps, prn: 3 };
+        let galileo_sat = SatId { constellation: Constellation::Galileo, prn: 19 };
+        let pre_fit = vec![
+            WorkingSetResidual {
+                sat: gps_sat,
+                residual_m: 3.0,
+                base_weight: 1.0,
+                effective_weight: 1.0,
+            },
+            WorkingSetResidual {
+                sat: gps_sat,
+                residual_m: 4.0,
+                base_weight: 1.0,
+                effective_weight: 1.0,
+            },
+            WorkingSetResidual {
+                sat: galileo_sat,
+                residual_m: 12.0,
+                base_weight: 1.0,
+                effective_weight: 1.0,
+            },
+        ];
+        let post_fit = vec![
+            (
+                PositionObservation {
+                    sat: gps_sat,
+                    pseudorange_m: 24_000_000.0,
+                    cn0_dbhz: 45.0,
+                    elevation_deg: Some(45.0),
+                    weight: 1.0,
+                    gps_receive_time: None,
+                    signal_timing: None,
+                },
+                SatelliteState { x_m: 0.0, y_m: 0.0, z_m: 0.0, clock_bias_s: 0.0 },
+                1.5,
+                1.0,
+            ),
+            (
+                PositionObservation {
+                    sat: galileo_sat,
+                    pseudorange_m: 24_100_000.0,
+                    cn0_dbhz: 45.0,
+                    elevation_deg: Some(50.0),
+                    weight: 1.0,
+                    gps_receive_time: None,
+                    signal_timing: None,
+                },
+                SatelliteState { x_m: 0.0, y_m: 0.0, z_m: 0.0, clock_bias_s: 0.0 },
+                2.0,
+                1.0,
+            ),
+        ];
+
+        let summaries = constellation_residual_rms(&pre_fit, &post_fit);
+
+        assert_eq!(summaries.len(), 2);
+        let gps = summaries
+            .iter()
+            .find(|summary| summary.constellation == Constellation::Gps)
+            .expect("gps summary");
+        let galileo = summaries
+            .iter()
+            .find(|summary| summary.constellation == Constellation::Galileo)
+            .expect("galileo summary");
+        assert_eq!(gps.pre_fit_sat_count, 2);
+        assert_eq!(gps.post_fit_sat_count, 1);
+        assert!((gps.pre_fit_rms_m.expect("gps pre-fit").0 - 3.535_533_905_9).abs() < 1.0e-9);
+        assert!((gps.post_fit_rms_m.expect("gps post-fit").0 - 1.5).abs() < 1.0e-12);
+        assert_eq!(galileo.pre_fit_sat_count, 1);
+        assert_eq!(galileo.post_fit_sat_count, 1);
+        assert!((galileo.pre_fit_rms_m.expect("galileo pre-fit").0 - 12.0).abs() < 1.0e-12);
+        assert!((galileo.post_fit_rms_m.expect("galileo post-fit").0 - 2.0).abs() < 1.0e-12);
     }
 
     #[test]
@@ -2169,6 +2260,44 @@ fn working_set_rms_m(residuals: &[WorkingSetResidual]) -> f64 {
     }
     let squared_sum = residuals.iter().map(|residual| residual.residual_m.powi(2)).sum::<f64>();
     (squared_sum / residuals.len() as f64).sqrt()
+}
+
+fn constellation_residual_rms(
+    pre_fit: &[WorkingSetResidual],
+    post_fit: &[(PositionObservation, SatelliteState, f64, f64)],
+) -> Vec<NavConstellationResidualRms> {
+    let mut by_constellation = BTreeMap::<Constellation, ConstellationResidualAccumulator>::new();
+
+    for residual in pre_fit {
+        let entry = by_constellation.entry(residual.sat.constellation).or_default();
+        entry.pre_fit_sum_sq_m2 += residual.residual_m.powi(2);
+        entry.pre_fit_sat_count += 1;
+    }
+
+    for (observation, _state, residual_m, _effective_weight) in post_fit {
+        let entry = by_constellation.entry(observation.sat.constellation).or_default();
+        entry.post_fit_sum_sq_m2 += residual_m.powi(2);
+        entry.post_fit_sat_count += 1;
+    }
+
+    by_constellation
+        .into_iter()
+        .map(|(constellation, summary)| NavConstellationResidualRms {
+            constellation,
+            pre_fit_rms_m: (summary.pre_fit_sat_count > 0).then(|| {
+                bijux_gnss_core::api::Meters(
+                    (summary.pre_fit_sum_sq_m2 / summary.pre_fit_sat_count as f64).sqrt(),
+                )
+            }),
+            post_fit_rms_m: (summary.post_fit_sat_count > 0).then(|| {
+                bijux_gnss_core::api::Meters(
+                    (summary.post_fit_sum_sq_m2 / summary.post_fit_sat_count as f64).sqrt(),
+                )
+            }),
+            pre_fit_sat_count: summary.pre_fit_sat_count,
+            post_fit_sat_count: summary.post_fit_sat_count,
+        })
+        .collect()
 }
 
 fn solution_separation_m(left: &PositionEstimate, right: &PositionEstimate) -> f64 {
