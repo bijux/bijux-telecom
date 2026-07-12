@@ -538,7 +538,7 @@ mod tests {
             latitude_deg: 37.0,
             longitude_deg: -122.0,
             altitude_m: 10.0,
-            gps_broadcast_ionosphere_applied: false,
+            broadcast_ionosphere_applied: false,
             clock_reference_constellation: bijux_gnss_core::api::Constellation::Gps,
             clock_bias_s: 2.5e-4,
             inter_system_biases: Vec::new(),

@@ -47,7 +47,7 @@ pub struct PositionSolution {
     pub latitude_deg: f64,
     pub longitude_deg: f64,
     pub altitude_m: f64,
-    pub gps_broadcast_ionosphere_applied: bool,
+    pub broadcast_ionosphere_applied: bool,
     pub clock_reference_constellation: Constellation,
     pub clock_bias_s: f64,
     pub inter_system_biases: Vec<InterSystemBias>,
@@ -460,6 +460,7 @@ pub struct PositionSolver {
     pub robust_weighting: PositionRobustWeighting,
     pub raim: bool,
     pub separation_gate_m: f64,
+    pub apply_broadcast_ionosphere: bool,
     pub apply_broadcast_group_delay: bool,
     pub apply_troposphere: bool,
 }
@@ -501,9 +502,15 @@ impl PositionSolver {
             robust_weighting: PositionRobustWeighting::huber(30.0),
             raim: true,
             separation_gate_m: 50.0,
+            apply_broadcast_ionosphere: true,
             apply_broadcast_group_delay: true,
             apply_troposphere: false,
         }
+    }
+
+    pub fn with_broadcast_ionosphere(mut self, apply_broadcast_ionosphere: bool) -> Self {
+        self.apply_broadcast_ionosphere = apply_broadcast_ionosphere;
+        self
     }
 
     pub fn with_broadcast_group_delay(mut self, apply_broadcast_group_delay: bool) -> Self {
@@ -924,10 +931,8 @@ impl PositionSolver {
         };
 
         let rejected_sat_count = rejected.len();
-        let gps_broadcast_ionosphere_applied = klobuchar.is_some()
-            && filtered.iter().any(|(observation, _state, _residual_m, _effective_weight)| {
-                observation.sat.constellation == Constellation::Gps
-            });
+        let broadcast_ionosphere_applied =
+            working_set.geometry.iter().any(|geometry| geometry.iono_delay_m.abs() > 0.0);
         Ok(PositionSolution {
             ecef_x_m: x,
             ecef_y_m: y,
@@ -942,7 +947,7 @@ impl PositionSolver {
             latitude_deg: lat,
             longitude_deg: lon,
             altitude_m: alt,
-            gps_broadcast_ionosphere_applied,
+            broadcast_ionosphere_applied,
             clock_reference_constellation: final_estimate.clock_model.reference_constellation,
             clock_bias_s: cb,
             inter_system_biases: final_estimate
@@ -1860,6 +1865,7 @@ fn resolve_satellite_geometry(
     inputs: &[PositionSolveInput],
     estimate: &PositionEstimate,
     klobuchar: Option<&KlobucharCoefficients>,
+    apply_broadcast_ionosphere: bool,
     apply_broadcast_group_delay: bool,
     apply_troposphere: bool,
 ) -> Option<Vec<SatelliteGeometry>> {
@@ -1897,7 +1903,13 @@ fn resolve_satellite_geometry(
         if !converged {
             return None;
         }
-        let iono_delay_m = estimate_klobuchar_delay_m(&estimate, input, &state, klobuchar);
+        let iono_delay_m = estimate_broadcast_ionosphere_delay_m(
+            &estimate,
+            input,
+            &state,
+            klobuchar,
+            apply_broadcast_ionosphere,
+        );
         let tropo_delay_m = estimate_saastamoinen_delay_m(&estimate, &state, apply_troposphere);
         geometry.push(SatelliteGeometry {
             observation: obs.clone(),
@@ -1930,16 +1942,14 @@ fn linearized_pseudorange_row(
     Some((residual_m, design_row))
 }
 
-fn estimate_klobuchar_delay_m(
+fn estimate_broadcast_ionosphere_delay_m(
     estimate: &PositionEstimate,
     input: &PositionSolveInput,
     state: &SatelliteState,
     klobuchar: Option<&KlobucharCoefficients>,
+    apply_broadcast_ionosphere: bool,
 ) -> f64 {
-    let Some(coefficients) = klobuchar else {
-        return 0.0;
-    };
-    if input.observation.sat.constellation != Constellation::Gps {
+    if !apply_broadcast_ionosphere {
         return 0.0;
     }
     let receiver_radius_m =
@@ -1961,12 +1971,41 @@ fn estimate_klobuchar_delay_m(
     if !azimuth_deg.is_finite() || !elevation_deg.is_finite() || elevation_deg <= 0.0 {
         return 0.0;
     }
-    KlobucharModel::new(*coefficients).delay_m(
-        receiver,
-        azimuth_deg,
-        elevation_deg,
-        Seconds(input.receive_tow_s),
-    )
+    match &input.navigation {
+        PositionBroadcastNavigation::Gps(_) => {
+            let Some(coefficients) = klobuchar else {
+                return 0.0;
+            };
+            if input.observation.sat.constellation != Constellation::Gps {
+                return 0.0;
+            }
+            KlobucharModel::new(*coefficients).delay_m(
+                receiver,
+                azimuth_deg,
+                elevation_deg,
+                Seconds(input.receive_tow_s),
+            )
+        }
+        PositionBroadcastNavigation::Galileo(navigation) => {
+            let Some(signal) = input.observation.signal_id else {
+                return 0.0;
+            };
+            let Some(gps_time) = input.observation.gps_receive_time else {
+                return 0.0;
+            };
+            let (sat_latitude_deg, sat_longitude_deg, sat_altitude_m) =
+                ecef_to_geodetic(state.x_m, state.y_m, state.z_m);
+            let satellite = Llh {
+                lat_deg: sat_latitude_deg,
+                lon_deg: sat_longitude_deg,
+                alt_m: sat_altitude_m,
+            };
+            navigation
+                .nequick_delay_m(signal, receiver, satellite, gps_time)
+                .unwrap_or(0.0)
+        }
+        PositionBroadcastNavigation::Beidou(_) | PositionBroadcastNavigation::Glonass(_) => 0.0,
+    }
 }
 
 fn estimate_saastamoinen_delay_m(
@@ -2096,6 +2135,18 @@ mod broadcast_group_delay_tests {
     }
 
     #[test]
+    fn position_solver_applies_broadcast_ionosphere_by_default() {
+        assert!(PositionSolver::new().apply_broadcast_ionosphere);
+    }
+
+    #[test]
+    fn position_solver_can_disable_broadcast_ionosphere() {
+        assert!(
+            !PositionSolver::new().with_broadcast_ionosphere(false).apply_broadcast_ionosphere
+        );
+    }
+
+    #[test]
     fn position_solver_applies_broadcast_group_delay_by_default() {
         assert!(PositionSolver::new().apply_broadcast_group_delay);
     }
@@ -2212,6 +2263,7 @@ impl PositionSolver {
             inputs,
             &estimate,
             klobuchar,
+            self.apply_broadcast_ionosphere,
             self.apply_broadcast_group_delay,
             self.apply_troposphere,
         )?;
@@ -2269,6 +2321,7 @@ impl PositionSolver {
                 inputs,
                 &estimate,
                 klobuchar,
+                self.apply_broadcast_ionosphere,
                 self.apply_broadcast_group_delay,
                 self.apply_troposphere,
             )?;
@@ -2278,6 +2331,7 @@ impl PositionSolver {
             inputs,
             &estimate,
             klobuchar,
+            self.apply_broadcast_ionosphere,
             self.apply_broadcast_group_delay,
             self.apply_troposphere,
         )?;

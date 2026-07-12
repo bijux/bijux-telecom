@@ -1,10 +1,13 @@
 #![allow(missing_docs)]
 mod support;
 
-use bijux_gnss_core::api::{Constellation, GpsTime, SatId, Seconds, SigId, SignalBand, SignalCode};
+use bijux_gnss_core::api::{
+    Constellation, GpsTime, Llh, SatId, Seconds, SigId, SignalBand, SignalCode,
+};
 use bijux_gnss_nav::api::{
     beidou_broadcast_group_delay_code_bias_m, ephemerides_from_decoded_gps_l1ca_lnav,
-    galileo_broadcast_group_delay_code_bias_m, geodetic_to_ecef,
+    ecef_to_geodetic, elevation_azimuth_deg, galileo_broadcast_group_delay_code_bias_m,
+    geodetic_to_ecef,
     gps_broadcast_group_delay_code_bias_m, parse_rinex_nav,
     position_broadcast_navigation_from_beidou_navigations,
     position_broadcast_navigation_from_glonass_frames,
@@ -158,9 +161,9 @@ fn sample_galileo_navigation(prn: u8, omega0: f64, m0: f64) -> GalileoBroadcastN
             cis: -2.4e-7,
         },
         ionosphere: GalileoIonosphericCorrection {
-            ai0: 0.0,
-            ai1: 0.0,
-            ai2: 0.0,
+            ai0: 82.0,
+            ai1: 0.18,
+            ai2: -0.01,
             disturbance_flags: GalileoIonosphericDisturbanceFlags {
                 region_1: false,
                 region_2: false,
@@ -251,6 +254,13 @@ struct MixedSecondaryBandCase {
     receiver_clock_bias_s: f64,
     galileo_bias_s: f64,
     beidou_bias_s: f64,
+}
+
+struct GalileoPositionScenario {
+    observations: Vec<PositionObservation>,
+    navigation: Vec<PositionBroadcastNavigation>,
+    truth_ecef_m: (f64, f64, f64),
+    t_rx_s: f64,
 }
 
 fn mixed_secondary_band_case() -> MixedSecondaryBandCase {
@@ -359,6 +369,112 @@ fn galileo_pseudorange_from_truth(
         tau = next_tau;
     }
     pseudorange_m
+}
+
+fn galileo_four_satellite_position_scenario(receiver_clock_bias_s: f64) -> GalileoPositionScenario {
+    let truth_ecef_m = geodetic_to_ecef(37.0, -122.0, 10.0);
+    let t_rx_s = 504_018.07 + receiver_clock_bias_s;
+    let galileo_navigation = [
+        (11, 0.17, 0.24),
+        (12, 1.17, 0.84),
+        (19, -0.83, 1.52),
+        (24, 2.11, -0.41),
+        (27, -2.34, 0.61),
+        (30, 0.48, -1.14),
+        (31, 1.84, 2.27),
+        (33, -1.47, -2.02),
+        (36, 2.73, 1.06),
+        (37, -0.26, 2.88),
+        (39, 0.95, -2.41),
+        (40, -2.88, -0.73),
+    ]
+    .into_iter()
+    .map(|(prn, omega0, m0)| sample_galileo_navigation(prn, omega0, m0))
+    .filter(|navigation| {
+        let pseudorange_m =
+            galileo_pseudorange_from_truth(navigation, truth_ecef_m, t_rx_s, receiver_clock_bias_s, 0.0);
+        let signal_travel_time_s = pseudorange_m / 299_792_458.0;
+        let state = sat_state_galileo_e1(navigation, t_rx_s - signal_travel_time_s, signal_travel_time_s);
+        let (_azimuth_deg, elevation_deg) = elevation_azimuth_deg(
+            truth_ecef_m.0,
+            truth_ecef_m.1,
+            truth_ecef_m.2,
+            state.x_m,
+            state.y_m,
+            state.z_m,
+        );
+        elevation_deg > 10.0
+    })
+    .take(4)
+    .collect::<Vec<_>>();
+    assert_eq!(galileo_navigation.len(), 4, "expected four visible Galileo satellites");
+    let observations = galileo_navigation
+        .iter()
+        .map(|navigation| {
+            let signal = SigId { sat: navigation.sat, band: SignalBand::E1, code: SignalCode::E1B };
+            let pseudorange_m =
+                galileo_pseudorange_from_truth(navigation, truth_ecef_m, t_rx_s, receiver_clock_bias_s, 0.0);
+            observation_with_signal_id(
+                timed_position_observation(navigation.sat, pseudorange_m, t_rx_s),
+                signal,
+            )
+        })
+        .collect::<Vec<_>>();
+    let navigation =
+        galileo_navigation.into_iter().map(PositionBroadcastNavigation::Galileo).collect::<Vec<_>>();
+
+    GalileoPositionScenario { observations, navigation, truth_ecef_m, t_rx_s }
+}
+
+fn add_galileo_nequick_delay_to_observations(
+    observations: &[PositionObservation],
+    navigation: &[PositionBroadcastNavigation],
+    truth_ecef_m: (f64, f64, f64),
+) -> Vec<PositionObservation> {
+    let (receiver_latitude_deg, receiver_longitude_deg, receiver_altitude_m) =
+        ecef_to_geodetic(truth_ecef_m.0, truth_ecef_m.1, truth_ecef_m.2);
+    let receiver = Llh {
+        lat_deg: receiver_latitude_deg,
+        lon_deg: receiver_longitude_deg,
+        alt_m: receiver_altitude_m,
+    };
+
+    observations
+        .iter()
+        .map(|observation| {
+            let Some(signal) = observation.signal_id else {
+                return observation.clone();
+            };
+            let Some(gps_time) = observation.gps_receive_time else {
+                return observation.clone();
+            };
+            let Some(PositionBroadcastNavigation::Galileo(galileo_navigation)) =
+                navigation.iter().find(|entry| entry.sat() == observation.sat)
+            else {
+                return observation.clone();
+            };
+            let signal_travel_time_s = observation
+                .signal_timing
+                .map(|timing| timing.signal_travel_time_s.0)
+                .unwrap_or(observation.pseudorange_m / 299_792_458.0);
+            let state = sat_state_galileo_e1(
+                galileo_navigation,
+                observation.gps_receive_time.map(|time| time.tow_s).unwrap_or(0.0) - signal_travel_time_s,
+                signal_travel_time_s,
+            );
+            let (satellite_latitude_deg, satellite_longitude_deg, satellite_altitude_m) =
+                ecef_to_geodetic(state.x_m, state.y_m, state.z_m);
+            let satellite = Llh {
+                lat_deg: satellite_latitude_deg,
+                lon_deg: satellite_longitude_deg,
+                alt_m: satellite_altitude_m,
+            };
+            let delay_m = galileo_navigation
+                .nequick_delay_m(signal, receiver, satellite, gps_time)
+                .expect("Galileo NeQuick delay");
+            observation_with_pseudorange_bias(observation.clone(), delay_m)
+        })
+        .collect()
 }
 
 fn beidou_pseudorange_from_truth(
@@ -1294,8 +1410,8 @@ fn single_point_solver_applies_broadcast_ionosphere_correction() {
         scenario.truth_ecef_m,
     );
 
-    assert!(corrected_solution.gps_broadcast_ionosphere_applied);
-    assert!(!uncorrected_solution.gps_broadcast_ionosphere_applied);
+    assert!(corrected_solution.broadcast_ionosphere_applied);
+    assert!(!uncorrected_solution.broadcast_ionosphere_applied);
     assert!(corrected_error_m < 5.0);
     assert!(uncorrected_error_m > corrected_error_m + 3.0);
 }
@@ -1340,10 +1456,54 @@ fn single_point_solver_uses_gps_broadcast_navigation_klobuchar_payload() {
         scenario.truth_ecef_m,
     );
 
-    assert!(corrected_solution.gps_broadcast_ionosphere_applied);
-    assert!(!uncorrected_solution.gps_broadcast_ionosphere_applied);
+    assert!(corrected_solution.broadcast_ionosphere_applied);
+    assert!(!uncorrected_solution.broadcast_ionosphere_applied);
     assert!(corrected_error_m < 5.0);
     assert!(uncorrected_error_m > corrected_error_m + 3.0);
+}
+
+#[test]
+fn single_point_solver_applies_galileo_broadcast_ionosphere_correction() {
+    let scenario = galileo_four_satellite_position_scenario(0.0);
+    let ionosphere_biased_observations = add_galileo_nequick_delay_to_observations(
+        &scenario.observations,
+        &scenario.navigation,
+        scenario.truth_ecef_m,
+    );
+
+    let corrected_solution = PositionSolver::new()
+        .solve_wls_with_navigation_data(
+            &ionosphere_biased_observations,
+            &scenario.navigation,
+            scenario.t_rx_s,
+        )
+        .expect("Galileo broadcast-ionosphere observations should solve");
+    let uncorrected_solution = PositionSolver::new()
+        .with_broadcast_ionosphere(false)
+        .solve_wls_with_navigation_data(
+            &ionosphere_biased_observations,
+            &scenario.navigation,
+            scenario.t_rx_s,
+        )
+        .expect("uncorrected Galileo observations should still solve");
+
+    let corrected_error_m = position_error_3d_m(
+        corrected_solution.ecef_x_m,
+        corrected_solution.ecef_y_m,
+        corrected_solution.ecef_z_m,
+        scenario.truth_ecef_m,
+    );
+    let uncorrected_error_m = position_error_3d_m(
+        uncorrected_solution.ecef_x_m,
+        uncorrected_solution.ecef_y_m,
+        uncorrected_solution.ecef_z_m,
+        scenario.truth_ecef_m,
+    );
+
+    assert!(corrected_solution.broadcast_ionosphere_applied);
+    assert!(!uncorrected_solution.broadcast_ionosphere_applied);
+    assert!(corrected_error_m < 5.0);
+    assert!(uncorrected_error_m > corrected_error_m + 1.0);
 }
 
 #[test]

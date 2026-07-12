@@ -76,7 +76,7 @@ fn sample_position_solution(
         latitude_deg: 37.0,
         longitude_deg: -122.0,
         altitude_m: 10.0,
-        gps_broadcast_ionosphere_applied: false,
+        broadcast_ionosphere_applied: false,
         clock_reference_constellation: Constellation::Gps,
         clock_bias_s: 2.75e-4,
         inter_system_biases: Vec::new(),
