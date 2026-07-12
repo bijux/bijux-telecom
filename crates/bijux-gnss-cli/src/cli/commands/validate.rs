@@ -474,7 +474,7 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
     }
 
     #[cfg(feature = "precise-products")]
-    let (products_ok, product_fallbacks) = {
+    let (products_ok, product_fallbacks, code_biases) = {
         let mut products = bijux_gnss_infra::api::nav::Products::new(
             bijux_gnss_infra::api::nav::BroadcastProductsProvider::new(nav.clone()),
         );
@@ -501,17 +501,26 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
         }
         let ok = products.sp3.is_some() || products.clk.is_some() || products.dcb.is_some();
         let fallbacks = if ok { Vec::new() } else { vec!["broadcast_only".to_string()] };
-        (ok, fallbacks)
+        (ok, fallbacks, products.dcb.clone())
     };
     #[cfg(not(feature = "precise-products"))]
-    let (products_ok, product_fallbacks) = {
+    let (products_ok, product_fallbacks, code_biases) = {
         if sp3.is_some() || clk.is_some() || bias_sinex.is_some() {
             bail!(
                 "precise-products feature disabled; recompile with feature to use SP3/CLK/Bias-SINEX"
             );
         }
-        (false, vec!["precise_products_disabled".to_string()])
+        (false, vec!["precise_products_disabled".to_string()], None)
     };
+
+    let out_dir = artifacts_dir(&common, "validate", dataset.as_ref())?;
+    write_iono_free_code_artifact(
+        &out_dir,
+        &obs,
+        code_biases
+            .as_ref()
+            .map(|provider| provider as &dyn bijux_gnss_infra::api::nav::CodeBiasProvider),
+    )?;
 
     let report = build_validation_report(
         &[],
@@ -523,7 +532,6 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
         product_fallbacks,
         validation_science_policy(&profile),
     )?;
-    let out_dir = artifacts_dir(&common, "validate", dataset.as_ref())?;
     write_melbourne_wubbena_diagnostics(&out_dir, &obs)?;
     let out = out_dir.join("validation_report.json");
     fs::write(&out, serde_json::to_string_pretty(&report)?)?;
