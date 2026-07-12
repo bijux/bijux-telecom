@@ -9,12 +9,13 @@
 //! TODO(ref-grade): add literature citations for CN0 weighting and multipath heuristics.
 
 use bijux_gnss_core::api::{
-    signal_registry, signal_spec_galileo_e1b, signal_spec_glonass_l1, signal_spec_gps_l1_ca,
-    Constellation, ConventionsConfig, Cycles, DiagnosticEvent, DiagnosticSeverity, GpsTime,
-    LockFlags, Meters, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest, ObsMetadata, ObsSatellite,
-    ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ObservationSupportClass,
-    ObservationUncertaintyClass, ReceiverRole, ReceiverSampleTrace, SatObservationDecision,
-    Seconds, SigId, SignalBand, SignalCode, SignalSpec, TrackEpoch, GPS_L1_CA_CARRIER_HZ,
+    signal_registry, signal_spec_beidou_b1i, signal_spec_galileo_e1b, signal_spec_glonass_l1,
+    signal_spec_gps_l1_ca, Constellation, ConventionsConfig, Cycles, DiagnosticEvent,
+    DiagnosticSeverity, GpsTime, LockFlags, Meters, ObsDecisionArtifact, ObsEpoch,
+    ObsEpochManifest, ObsMetadata, ObsSatellite, ObsSignalTiming, ObservationEpochDecision,
+    ObservationStatus, ObservationSupportClass, ObservationUncertaintyClass, ReceiverRole,
+    ReceiverSampleTrace, SatObservationDecision, Seconds, SigId, SignalBand, SignalCode,
+    SignalSpec, TrackEpoch, GPS_L1_CA_CARRIER_HZ,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -950,6 +951,7 @@ fn observation_signal_model(
     {
         (Constellation::Gps, SignalBand::L1, _) => signal_spec_gps_l1_ca(),
         (Constellation::Galileo, SignalBand::E1, _) => signal_spec_galileo_e1b(),
+        (Constellation::Beidou, SignalBand::B1, _) => signal_spec_beidou_b1i(),
         (Constellation::Glonass, SignalBand::L1, Some(channel)) => signal_spec_glonass_l1(channel),
         _ => registry_entry.as_ref().map(|entry| entry.spec).unwrap_or_else(signal_spec_gps_l1_ca),
     };
@@ -973,6 +975,7 @@ fn tracked_signal_code(epoch: &TrackEpoch) -> SignalCode {
     match (epoch.sat.constellation, epoch.signal_band) {
         (Constellation::Gps, SignalBand::L1) => SignalCode::Ca,
         (Constellation::Galileo, SignalBand::E1) => SignalCode::E1B,
+        (Constellation::Beidou, SignalBand::B1) => SignalCode::B1I,
         (Constellation::Glonass, SignalBand::L1) => SignalCode::Unknown,
         _ => SignalCode::Unknown,
     }
@@ -982,6 +985,7 @@ fn fallback_code_length(epoch: &TrackEpoch) -> usize {
     match (epoch.sat.constellation, epoch.signal_band) {
         (Constellation::Gps, SignalBand::L1) => 1023,
         (Constellation::Galileo, SignalBand::E1) => 4092,
+        (Constellation::Beidou, SignalBand::B1) => 2046,
         (Constellation::Glonass, SignalBand::L1) => 511,
         _ => 1023,
     }

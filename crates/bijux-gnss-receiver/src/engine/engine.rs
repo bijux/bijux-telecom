@@ -588,6 +588,7 @@ fn build_support_matrix() -> SupportMatrix {
     let codes = [
         SignalCode::Ca,
         SignalCode::Py,
+        SignalCode::B1I,
         SignalCode::E1B,
         SignalCode::E1C,
         SignalCode::E5a,
@@ -642,6 +643,10 @@ fn support_reason(constellation: Constellation, band: SignalBand, code: SignalCo
     if constellation == Constellation::Galileo && band == SignalBand::E1 && code == SignalCode::E1B
     {
         return "receiver acquisition and tracking support this signal path; observations and navigation remain incomplete".to_string();
+    }
+    if constellation == Constellation::Beidou && band == SignalBand::B1 && code == SignalCode::B1I
+    {
+        return "receiver acquisition, tracking, and observations support this signal path; navigation remains incomplete".to_string();
     }
     if constellation == Constellation::Glonass
         && band == SignalBand::L1
