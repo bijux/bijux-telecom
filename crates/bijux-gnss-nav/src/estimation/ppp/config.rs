@@ -93,6 +93,9 @@ pub struct PppSolutionEpoch {
     pub ecef_y_m: f64,
     pub ecef_z_m: f64,
     pub position_covariance_ecef_m2: Option<[[f64; 3]; 3]>,
+    pub sigma_e_m: Option<f64>,
+    pub sigma_n_m: Option<f64>,
+    pub sigma_u_m: Option<f64>,
     pub clock_bias_s: f64,
     pub rms_m: f64,
     pub sigma_h_m: Option<f64>,
@@ -141,6 +144,28 @@ impl ArtifactPayloadValidate for PppSolutionEpoch {
                 "PPP solution should carry an ECEF position covariance matrix",
             ));
         }
+        let enu_sigmas = [self.sigma_e_m, self.sigma_n_m, self.sigma_u_m];
+        if enu_sigmas.iter().flatten().any(|value| !value.is_finite()) {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "PPP_POSITION_SIGMA_ENU_INVALID",
+                "PPP ENU position standard deviations contain NaN/Inf",
+            ));
+        }
+        if enu_sigmas.iter().flatten().any(|value| *value < 0.0) {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "PPP_POSITION_SIGMA_ENU_NEGATIVE",
+                "PPP ENU position standard deviations must be non-negative",
+            ));
+        }
+        if enu_sigmas.iter().any(|value| value.is_none()) {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Warning,
+                "PPP_POSITION_SIGMA_ENU_MISSING",
+                "PPP solution should carry east, north, and up position standard deviations",
+            ));
+        }
         events
     }
 }
@@ -162,6 +187,9 @@ mod tests {
                 [0.5, 9.0, 0.75],
                 [0.25, 0.75, 16.0],
             ]),
+            sigma_e_m: Some(0.8),
+            sigma_n_m: Some(0.9),
+            sigma_u_m: Some(1.2),
             clock_bias_s: 1.0e-6,
             rms_m: 1.5,
             sigma_h_m: Some(2.0),
@@ -192,6 +220,16 @@ mod tests {
     }
 
     #[test]
+    fn ppp_solution_validation_warns_on_missing_enu_position_sigmas() {
+        let mut solution = sample_solution();
+        solution.sigma_e_m = None;
+
+        let diagnostics = solution.validate_payload();
+
+        assert!(diagnostics.iter().any(|event| event.code == "PPP_POSITION_SIGMA_ENU_MISSING"));
+    }
+
+    #[test]
     fn ppp_solution_validation_rejects_non_finite_position_covariance() {
         let mut solution = sample_solution();
         solution.position_covariance_ecef_m2 =
@@ -200,6 +238,16 @@ mod tests {
         let diagnostics = solution.validate_payload();
 
         assert!(diagnostics.iter().any(|event| event.code == "PPP_POSITION_COVARIANCE_INVALID"));
+    }
+
+    #[test]
+    fn ppp_solution_validation_rejects_non_finite_enu_position_sigma() {
+        let mut solution = sample_solution();
+        solution.sigma_u_m = Some(f64::NAN);
+
+        let diagnostics = solution.validate_payload();
+
+        assert!(diagnostics.iter().any(|event| event.code == "PPP_POSITION_SIGMA_ENU_INVALID"));
     }
 }
 

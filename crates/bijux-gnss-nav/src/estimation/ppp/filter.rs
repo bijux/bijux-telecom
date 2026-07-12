@@ -322,7 +322,7 @@ impl PppFilter {
             self.ekf.x[self.indices.pos[1]],
             self.ekf.x[self.indices.pos[2]],
         ];
-        let (position_covariance_ecef_m2, sigma_h, sigma_v) =
+        let (position_covariance_ecef_m2, sigma_e_m, sigma_n_m, sigma_u_m, sigma_h, sigma_v) =
             estimate_position_uncertainty(&self.ekf, &self.indices.pos, pos);
         self.update_convergence(t_rx_s, pos, sigma_h, sigma_v);
         self.check_consistency();
@@ -334,6 +334,9 @@ impl PppFilter {
             ecef_y_m: pos[1],
             ecef_z_m: pos[2],
             position_covariance_ecef_m2,
+            sigma_e_m,
+            sigma_n_m,
+            sigma_u_m,
             clock_bias_s: self.ekf.x[self.indices.clock_bias],
             rms_m: self.ekf.health.innovation_rms,
             sigma_h_m: sigma_h,
@@ -636,6 +639,9 @@ mod tests {
         assert_eq!(covariance[2][2], 16.0);
         assert_eq!(covariance[0][1], 0.5);
         assert_eq!(covariance[1][0], 0.5);
+        assert!(solution.sigma_e_m.expect("east sigma").is_finite());
+        assert!(solution.sigma_n_m.expect("north sigma").is_finite());
+        assert!(solution.sigma_u_m.expect("up sigma").is_finite());
     }
 
     #[test]
