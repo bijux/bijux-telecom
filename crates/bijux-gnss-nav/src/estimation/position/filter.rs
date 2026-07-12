@@ -938,7 +938,7 @@ mod tests {
         PositionFilterDivergenceReason, PositionObservation, PositionSolveRefusalKind,
         PositionWeightingModel, WeightingConfig,
     };
-    use bijux_gnss_core::api::{Constellation, SatId};
+    use bijux_gnss_core::api::{Constellation, NavHealthEvent, SatId};
 
     fn sample_position_observation(
         cn0_dbhz: f64,
@@ -1364,6 +1364,19 @@ mod tests {
     }
 
     #[test]
+    fn position_filter_classifies_covariance_divergence_from_health_event() {
+        let mut filter = PositionFilter::new(PositionFilterConfig::default());
+        filter.ekf.health.events.push(NavHealthEvent::CovarianceDiverged {
+            max_variance: filter.ekf.config.divergence_max_variance * 2.0,
+        });
+
+        assert_eq!(
+            filter.divergence_reason(1, PositionFilterCodeMetrics::default()),
+            Some(PositionFilterDivergenceReason::CovarianceDivergence)
+        );
+    }
+
+    #[test]
     fn position_filter_classifies_innovation_growth_from_peak_rms() {
         let filter = PositionFilter::new(PositionFilterConfig::default());
         let code_metrics = PositionFilterCodeMetrics {
@@ -1375,6 +1388,32 @@ mod tests {
             filter.divergence_reason(1, code_metrics),
             Some(PositionFilterDivergenceReason::InnovationGrowth)
         );
+    }
+
+    #[test]
+    fn position_filter_tracks_peak_normalized_code_innovation() {
+        let mut code_metrics = PositionFilterCodeMetrics::default();
+        let health = crate::estimation::ekf::state::EkfHealth {
+            innovation_rms: 12.0,
+            peak_innovation_rms: 12.0,
+            rejected: 0,
+            last_rejection: None,
+            rejection_reasons: Vec::new(),
+            last_rejection_code: None,
+            condition_number: None,
+            peak_condition_number: None,
+            whiteness_ratio: None,
+            peak_whiteness_ratio: None,
+            predicted_variance: None,
+            observed_variance: None,
+            events: Vec::new(),
+        };
+
+        code_metrics.observe(&health, 3.0);
+        code_metrics.observe(&health, 6.0);
+
+        assert_eq!(code_metrics.peak_innovation_rms_m, 12.0);
+        assert_eq!(code_metrics.peak_normalized_innovation_rms, Some(4.0));
     }
 
     #[test]
