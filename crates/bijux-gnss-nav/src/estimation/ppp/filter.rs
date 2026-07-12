@@ -777,7 +777,7 @@ mod tests {
         ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef, BroadcastProductsProvider,
         GpsEphemeris, GpsSatState, GpsSatelliteClockCorrection, OceanTideConstituent,
         OceanTideLoadingConstituent, OceanTideLoadingModel, PppConfig, ProductDiagnostics,
-        ProductsProvider,
+        ProductsProvider, SolidEarthTideModel,
     };
     use crate::corrections::biases::{CodeBias, CodeBiasProvider, SignalCodeBiases};
     use crate::estimation::ppp::measurements::iono_free_code_observation_from_obs;
@@ -1102,6 +1102,137 @@ mod tests {
         let corrected = corrected.expect("PPP solution with ocean tide loading");
         let uncorrected = uncorrected.expect("PPP solution without ocean tide loading");
 
+        let corrected_pos_m = [corrected.ecef_x_m, corrected.ecef_y_m, corrected.ecef_z_m];
+        let uncorrected_pos_m = [uncorrected.ecef_x_m, uncorrected.ecef_y_m, uncorrected.ecef_z_m];
+        let corrected_monument_error_m = euclidean_distance_m(corrected_pos_m, base_receiver_ecef_m);
+        let uncorrected_monument_error_m =
+            euclidean_distance_m(uncorrected_pos_m, base_receiver_ecef_m);
+
+        assert!(
+            corrected_monument_error_m < uncorrected_monument_error_m,
+            "corrected monument error {:.6} vs uncorrected monument error {:.6}",
+            corrected_monument_error_m,
+            uncorrected_monument_error_m
+        );
+        assert!(
+            corrected.innovation_rms < uncorrected.innovation_rms,
+            "corrected innovation rms {:.6} vs uncorrected innovation rms {:.6}",
+            corrected.innovation_rms,
+            uncorrected.innovation_rms
+        );
+        assert!(
+            corrected.rms_m < uncorrected.rms_m,
+            "corrected rms {:.6} vs uncorrected rms {:.6}",
+            corrected.rms_m,
+            uncorrected.rms_m
+        );
+        assert!(
+            uncorrected_monument_error_m - corrected_monument_error_m > 0.005,
+            "corrected monument error {:.6} vs uncorrected monument error {:.6}",
+            corrected_monument_error_m,
+            uncorrected_monument_error_m
+        );
+    }
+
+    #[test]
+    fn ppp_filter_reduces_static_residuals_when_solid_earth_tide_is_configured() {
+        let base_receiver_ecef_m = {
+            let (x, y, z) = geodetic_to_ecef(47.0, 8.0, 450.0);
+            [x, y, z]
+        };
+        let start_time = GpsTime { week: 2200, tow_s: 43_200.0 };
+        let solid_earth_tide_model = SolidEarthTideModel;
+        let displacement_ecef_m = solid_earth_tide_model
+            .displacement_ecef_m(base_receiver_ecef_m, start_time)
+            .expect("solid Earth tide displacement");
+        let displaced_receiver_ecef_m = [
+            base_receiver_ecef_m[0] + displacement_ecef_m[0],
+            base_receiver_ecef_m[1] + displacement_ecef_m[1],
+            base_receiver_ecef_m[2] + displacement_ecef_m[2],
+        ];
+        let (lat_deg, lon_deg, alt_m) = ecef_to_geodetic(
+            base_receiver_ecef_m[0],
+            base_receiver_ecef_m[1],
+            base_receiver_ecef_m[2],
+        );
+        let ztd_m = SaastamoinenModel::zenith_delay_m(Llh { lat_deg, lon_deg, alt_m });
+
+        let satellite_positions_m = vec![
+            (
+                SatId { constellation: Constellation::Gps, prn: 11 },
+                enu_offset_to_ecef(base_receiver_ecef_m, [15_000_000.0, 1_000_000.0, 21_500_000.0]),
+            ),
+            (
+                SatId { constellation: Constellation::Gps, prn: 14 },
+                enu_offset_to_ecef(base_receiver_ecef_m, [-11_000_000.0, 9_000_000.0, 20_800_000.0]),
+            ),
+            (
+                SatId { constellation: Constellation::Gps, prn: 18 },
+                enu_offset_to_ecef(base_receiver_ecef_m, [8_000_000.0, 15_000_000.0, 19_700_000.0]),
+            ),
+            (
+                SatId { constellation: Constellation::Gps, prn: 22 },
+                enu_offset_to_ecef(base_receiver_ecef_m, [-9_000_000.0, -14_000_000.0, 20_400_000.0]),
+            ),
+            (
+                SatId { constellation: Constellation::Gps, prn: 25 },
+                enu_offset_to_ecef(base_receiver_ecef_m, [13_000_000.0, -7_000_000.0, 20_100_000.0]),
+            ),
+            (
+                SatId { constellation: Constellation::Gps, prn: 31 },
+                enu_offset_to_ecef(base_receiver_ecef_m, [-4_000_000.0, 16_000_000.0, 21_000_000.0]),
+            ),
+        ];
+        let provider = MappedProductsProvider {
+            states: satellite_positions_m
+                .iter()
+                .map(|(sat, sat_pos_m)| {
+                    (
+                        *sat,
+                        GpsSatState {
+                            x_m: sat_pos_m[0],
+                            y_m: sat_pos_m[1],
+                            z_m: sat_pos_m[2],
+                            clock_correction: GpsSatelliteClockCorrection::from_bias_s(0.0),
+                        },
+                    )
+                })
+                .collect(),
+        };
+        let ephs: Vec<_> = satellite_positions_m.iter().map(|(sat, _)| make_eph(sat.prn)).collect();
+        let mut corrected_filter = PppFilter::new(PppConfig {
+            use_iono_free: false,
+            use_doppler: false,
+            enable_iono_state: false,
+            solid_earth_tide_model: Some(solid_earth_tide_model),
+            ..PppConfig::default()
+        });
+        corrected_filter.seed_receiver_state(base_receiver_ecef_m, 0.0);
+
+        let mut uncorrected_filter = PppFilter::new(PppConfig {
+            use_iono_free: false,
+            use_doppler: false,
+            enable_iono_state: false,
+            ..PppConfig::default()
+        });
+        uncorrected_filter.seed_receiver_state(base_receiver_ecef_m, 0.0);
+
+        let mut corrected = None;
+        let mut uncorrected = None;
+        for epoch_idx in 0..8 {
+            let obs = make_static_ppp_epoch(
+                epoch_idx,
+                start_time,
+                displaced_receiver_ecef_m,
+                &satellite_positions_m,
+                ztd_m,
+            );
+            corrected = corrected_filter.solve_epoch(&obs, &ephs, &provider);
+            uncorrected = uncorrected_filter.solve_epoch(&obs, &ephs, &provider);
+        }
+
+        let corrected = corrected.expect("PPP solution with solid Earth tide");
+        let uncorrected = uncorrected.expect("PPP solution without solid Earth tide");
         let corrected_pos_m = [corrected.ecef_x_m, corrected.ecef_y_m, corrected.ecef_z_m];
         let uncorrected_pos_m = [uncorrected.ecef_x_m, uncorrected.ecef_y_m, uncorrected.ecef_z_m];
         let corrected_monument_error_m = euclidean_distance_m(corrected_pos_m, base_receiver_ecef_m);
