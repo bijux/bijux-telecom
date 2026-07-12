@@ -1066,6 +1066,15 @@ pub enum NavHealthEvent {
         common_delay_step_threshold_m: f64,
         centered_delay_rms_threshold_m: f64,
     },
+    ImpossibleGeometry {
+        receiver_radius_m: f64,
+        altitude_m: f64,
+        used_satellite_count: usize,
+        min_receiver_radius_m: f64,
+        max_receiver_radius_m: f64,
+        min_altitude_m: f64,
+        max_altitude_m: f64,
+    },
     SatelliteClockAnomaly {
         sat: SatId,
         persistent_suspect_epochs: usize,

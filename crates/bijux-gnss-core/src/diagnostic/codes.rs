@@ -136,6 +136,12 @@ pub const DIAGNOSTIC_CODES: &[DiagnosticCode] = &[
         mitigation: "Inspect matched-satellite code steps, receiver clock evolution, and rebroadcast or meaconing conditions.",
     },
     DiagnosticCode {
+        code: "NAV_IMPOSSIBLE_GEOMETRY",
+        severity: DiagnosticSeverity::Warning,
+        meaning: "Solved navigation position lies outside the plausible terrestrial envelope",
+        mitigation: "Inspect pseudorange consistency, timing, ephemeris selection, and spoofing or rebroadcast conditions.",
+    },
+    DiagnosticCode {
         code: "NAV_EPHEMERIS_GAP",
         severity: DiagnosticSeverity::Warning,
         meaning: "Ephemeris coverage gap detected",
