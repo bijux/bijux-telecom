@@ -1,14 +1,19 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l5, Constellation, Cycles, Hertz,
-    LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite, ObservationEpochDecision,
-    ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand,
-    SignalCode, SignalSpec,
+    signal_spec_beidou_b1i, signal_spec_beidou_b2i, signal_spec_galileo_e1b,
+    signal_spec_galileo_e5a, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l5,
+    Constellation, Cycles, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
+    ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
+    Seconds, SigId, SignalBand, SignalCode, SignalSpec,
 };
 use bijux_gnss_nav::api::{combinations_from_obs_epochs, iono_free_code_from_obs_epochs};
 
 fn dual_frequency_epoch(
+    sat: SatId,
+    first_band: SignalBand,
+    first_code: SignalCode,
+    first_signal: SignalSpec,
     second_band: SignalBand,
     second_code: SignalCode,
     second_signal: SignalSpec,
@@ -17,9 +22,6 @@ fn dual_frequency_epoch(
     code_lock: bool,
     carrier_lock: bool,
 ) -> ObsEpoch {
-    let sat = SatId { constellation: Constellation::Gps, prn: 11 };
-    let l1 = signal_spec_gps_l1_ca();
-
     ObsEpoch {
         t_rx_s: Seconds(0.0),
         source_time: ReceiverSampleTrace::from_sample_index(0, 1_000.0),
@@ -33,9 +35,9 @@ fn dual_frequency_epoch(
         sats: vec![
             satellite(
                 sat,
-                SignalBand::L1,
-                SignalCode::Ca,
-                l1,
+                first_band,
+                first_code,
+                first_signal,
                 pseudorange_1_m,
                 code_lock,
                 carrier_lock,
@@ -112,6 +114,10 @@ fn iono_free_code_recovers_geometric_range_for_l1_l2() {
     let l1 = signal_spec_gps_l1_ca();
     let l2 = signal_spec_gps_l2_py();
     let epoch = dual_frequency_epoch(
+        SatId { constellation: Constellation::Gps, prn: 11 },
+        SignalBand::L1,
+        SignalCode::Ca,
+        l1,
         SignalBand::L2,
         SignalCode::Py,
         l2,
@@ -135,6 +141,10 @@ fn iono_free_code_recovers_geometric_range_for_l1_l5() {
     let l1 = signal_spec_gps_l1_ca();
     let l5 = signal_spec_gps_l5();
     let epoch = dual_frequency_epoch(
+        SatId { constellation: Constellation::Gps, prn: 11 },
+        SignalBand::L1,
+        SignalCode::Ca,
+        l1,
         SignalBand::L5,
         SignalCode::Unknown,
         l5,
@@ -152,12 +162,70 @@ fn iono_free_code_recovers_geometric_range_for_l1_l5() {
 }
 
 #[test]
+fn iono_free_code_recovers_geometric_range_for_e1_e5() {
+    let base_range_m = 24_000_000.0;
+    let iono_e1_m = 4.5;
+    let e1 = signal_spec_galileo_e1b();
+    let e5 = signal_spec_galileo_e5a();
+    let epoch = dual_frequency_epoch(
+        SatId { constellation: Constellation::Galileo, prn: 19 },
+        SignalBand::E1,
+        SignalCode::E1B,
+        e1,
+        SignalBand::E5,
+        SignalCode::E5a,
+        e5,
+        base_range_m + iono_e1_m,
+        base_range_m + dispersive_delay_at_band(iono_e1_m, e1, e5),
+        true,
+        true,
+    );
+
+    let observations = iono_free_code_from_obs_epochs(&[epoch], SignalBand::E1, SignalBand::E5);
+
+    assert_eq!(observations.len(), 1);
+    assert_eq!(observations[0].status, "ok");
+    assert!((observations[0].code_m.expect("iono-free code") - base_range_m).abs() < 1.0e-6);
+}
+
+#[test]
+fn iono_free_code_recovers_geometric_range_for_b1_b2() {
+    let base_range_m = 24_100_000.0;
+    let iono_b1_m = 3.75;
+    let b1 = signal_spec_beidou_b1i();
+    let b2 = signal_spec_beidou_b2i();
+    let epoch = dual_frequency_epoch(
+        SatId { constellation: Constellation::Beidou, prn: 7 },
+        SignalBand::B1,
+        SignalCode::B1I,
+        b1,
+        SignalBand::B2,
+        SignalCode::B2I,
+        b2,
+        base_range_m + iono_b1_m,
+        base_range_m + dispersive_delay_at_band(iono_b1_m, b1, b2),
+        true,
+        true,
+    );
+
+    let observations = iono_free_code_from_obs_epochs(&[epoch], SignalBand::B1, SignalBand::B2);
+
+    assert_eq!(observations.len(), 1);
+    assert_eq!(observations[0].status, "ok");
+    assert!((observations[0].code_m.expect("iono-free code") - base_range_m).abs() < 1.0e-6);
+}
+
+#[test]
 fn iono_free_code_remains_available_when_phase_combinations_are_not() {
     let base_range_m = 20_200_000.0;
     let iono_l1_m = 5.0;
     let l1 = signal_spec_gps_l1_ca();
     let l2 = signal_spec_gps_l2_py();
     let epoch = dual_frequency_epoch(
+        SatId { constellation: Constellation::Gps, prn: 11 },
+        SignalBand::L1,
+        SignalCode::Ca,
+        l1,
         SignalBand::L2,
         SignalCode::Py,
         l2,
