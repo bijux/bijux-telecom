@@ -55,6 +55,13 @@ pub struct PppConfig {
     pub convergence: PppConvergenceConfig,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PppTroposphereSource {
+    StandardAtmosphere,
+    LocalMeteorology,
+}
+
 impl Default for PppConfig {
     fn default() -> Self {
         Self {
@@ -93,6 +100,14 @@ impl Default for PppConfig {
 }
 
 impl PppConfig {
+    pub fn troposphere_source(&self) -> PppTroposphereSource {
+        if self.troposphere_meteorology().is_some() {
+            PppTroposphereSource::LocalMeteorology
+        } else {
+            PppTroposphereSource::StandardAtmosphere
+        }
+    }
+
     pub(crate) fn troposphere_meteorology(&self) -> Option<TroposphereMeteorology> {
         match (
             self.tropo_pressure_hpa,
@@ -118,6 +133,7 @@ pub struct PppSolutionEpoch {
     pub ecef_z_m: f64,
     pub ztd_m: f64,
     pub ztd_sigma_m: Option<f64>,
+    pub troposphere_source: PppTroposphereSource,
     pub position_covariance_ecef_m2: Option<[[f64; 3]; 3]>,
     pub sigma_e_m: Option<f64>,
     pub sigma_n_m: Option<f64>,
@@ -263,7 +279,9 @@ impl ArtifactPayloadValidate for PppSolutionEpoch {
 
 #[cfg(test)]
 mod tests {
-    use super::{PppArMode, PppConfig, PppConvergenceState, PppSolutionEpoch};
+    use super::{
+        PppArMode, PppConfig, PppConvergenceState, PppSolutionEpoch, PppTroposphereSource,
+    };
     use bijux_gnss_core::api::ArtifactPayloadValidate;
 
     fn sample_solution() -> PppSolutionEpoch {
@@ -275,6 +293,7 @@ mod tests {
             ecef_z_m: 3.0,
             ztd_m: 2.35,
             ztd_sigma_m: Some(0.12),
+            troposphere_source: PppTroposphereSource::StandardAtmosphere,
             position_covariance_ecef_m2: Some([
                 [4.0, 0.5, 0.25],
                 [0.5, 9.0, 0.75],

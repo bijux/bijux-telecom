@@ -365,6 +365,7 @@ impl PppFilter {
             ecef_z_m: pos[2],
             ztd_m,
             ztd_sigma_m,
+            troposphere_source: self.config.troposphere_source(),
             position_covariance_ecef_m2,
             sigma_e_m,
             sigma_n_m,
