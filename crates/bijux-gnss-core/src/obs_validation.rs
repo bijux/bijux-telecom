@@ -6,8 +6,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::api::{
-    signal_registry, ConventionsConfig, ObsEpoch, ObsSatellite, SatId, Seconds, SignalBand,
-    OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET,
+    signal_registry, Constellation, ConventionsConfig, ObsEpoch, ObsSatellite, SatId, Seconds,
+    SignalBand, OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET,
 };
 
 /// Event describing missing band observations over time.
@@ -243,6 +243,17 @@ pub fn supported_dual_frequency_band_pairs() -> &'static [(SignalBand, SignalBan
     ]
 }
 
+pub fn supported_dual_frequency_band_pairs_for_constellation(
+    constellation: Constellation,
+) -> &'static [(SignalBand, SignalBand)] {
+    match constellation {
+        Constellation::Gps => &[(SignalBand::L1, SignalBand::L2), (SignalBand::L1, SignalBand::L5)],
+        Constellation::Galileo => &[(SignalBand::E1, SignalBand::E5)],
+        Constellation::Beidou => &[(SignalBand::B1, SignalBand::B2)],
+        _ => &[],
+    }
+}
+
 fn dual_frequency_pair_issue(
     band_1: Option<&ObsSatellite>,
     band_2: Option<&ObsSatellite>,
@@ -285,8 +296,8 @@ fn has_registered_signal_definition(observation: &ObsSatellite) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        check_dual_frequency_observations, validate_obs_epochs, DualFrequencyPairIssue,
-        DualFrequencyPairStatus,
+        check_dual_frequency_observations, supported_dual_frequency_band_pairs_for_constellation,
+        validate_obs_epochs, DualFrequencyPairIssue, DualFrequencyPairStatus,
     };
     use crate::api::{
         signal_registry, Constellation, Cycles, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata,
@@ -606,6 +617,23 @@ mod tests {
         assert_eq!(report.complete_pairs, 1);
         assert_eq!(report.e1_e5_pairs, 0);
         assert_eq!(report.b1_b2_pairs, 1);
+    }
+
+    #[test]
+    fn supported_dual_frequency_pairs_follow_constellation_preferences() {
+        assert_eq!(
+            supported_dual_frequency_band_pairs_for_constellation(Constellation::Gps),
+            &[(SignalBand::L1, SignalBand::L2), (SignalBand::L1, SignalBand::L5)]
+        );
+        assert_eq!(
+            supported_dual_frequency_band_pairs_for_constellation(Constellation::Galileo),
+            &[(SignalBand::E1, SignalBand::E5)]
+        );
+        assert_eq!(
+            supported_dual_frequency_band_pairs_for_constellation(Constellation::Beidou),
+            &[(SignalBand::B1, SignalBand::B2)]
+        );
+        assert!(supported_dual_frequency_band_pairs_for_constellation(Constellation::Glonass).is_empty());
     }
 
     #[test]

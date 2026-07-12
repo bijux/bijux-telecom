@@ -76,7 +76,8 @@ pub use crate::nav_solution::{
 };
 pub use crate::obs_validation::{
     check_dual_frequency_observations, check_inter_frequency_alignment,
-    supported_dual_frequency_band_pairs, validate_obs_epochs,
+    supported_dual_frequency_band_pairs, supported_dual_frequency_band_pairs_for_constellation,
+    validate_obs_epochs,
     BandLagEvent, DualFrequencyObservationPair, DualFrequencyObservationReport,
     DualFrequencyPairIssue, DualFrequencyPairStatus, InterFrequencyAlignmentReport,
 };
