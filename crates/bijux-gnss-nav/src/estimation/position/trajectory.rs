@@ -149,3 +149,50 @@ pub fn trajectory_reconstruction_report(
 fn vector_norm(vector: [f64; 3]) -> f64 {
     (vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2]).sqrt()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        trajectory_reconstruction_report, TrajectoryReconstructionInput,
+    };
+
+    #[test]
+    fn trajectory_reconstruction_report_aggregates_path_errors_over_time() {
+        let report = trajectory_reconstruction_report(&[
+            TrajectoryReconstructionInput {
+                t_rx_s: 0.0,
+                estimated_ecef_m: [1.0, 0.0, 0.0],
+                truth_ecef_m: [0.0, 0.0, 0.0],
+            },
+            TrajectoryReconstructionInput {
+                t_rx_s: 1.0,
+                estimated_ecef_m: [11.0, 2.0, 0.0],
+                truth_ecef_m: [10.0, 0.0, 0.0],
+            },
+            TrajectoryReconstructionInput {
+                t_rx_s: 2.0,
+                estimated_ecef_m: [19.0, 1.0, 0.0],
+                truth_ecef_m: [20.0, 0.0, 0.0],
+            },
+        ])
+        .expect("trajectory report should build");
+
+        assert_eq!(report.samples.len(), 3);
+        assert_eq!(report.samples[0].step_error_3d_m, None);
+        assert!((report.samples[1].step_error_3d_m.expect("step error") - 2.0).abs() < 1.0e-12);
+        assert!(
+            (report.samples[2].step_error_3d_m.expect("step error") - 5.0f64.sqrt()).abs()
+                < 1.0e-12
+        );
+        assert!((report.final_position_error_3d_m - 2.0f64.sqrt()).abs() < 1.0e-12);
+        assert!((report.max_position_error_3d_m - 5.0f64.sqrt()).abs() < 1.0e-12);
+        assert!((report.rms_position_error_3d_m - (8.0f64 / 3.0).sqrt()).abs() < 1.0e-12);
+        assert!((report.rms_step_error_3d_m.expect("step rms") - 3.0f64.sqrt()).abs() < 1.0e-12);
+        assert!((report.max_step_error_3d_m.expect("step max") - 5.0f64.sqrt()).abs() < 1.0e-12);
+        assert!((report.cumulative_truth_distance_m - 20.0).abs() < 1.0e-12);
+        assert!(
+            (report.cumulative_estimated_distance_m - (104.0f64.sqrt() + 65.0f64.sqrt())).abs()
+                < 1.0e-12
+        );
+    }
+}
