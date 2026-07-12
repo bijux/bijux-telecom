@@ -2,7 +2,9 @@
 
 use std::collections::BTreeMap;
 
-use bijux_gnss_core::api::{ObsEpoch, ObsSatellite, SatId, SignalBand};
+use bijux_gnss_core::api::{
+    signal_cycles_to_meters, signal_wavelength_m, ObsEpoch, ObsSatellite, SatId, SignalBand,
+};
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 
@@ -141,12 +143,13 @@ fn evaluate_iono_free_phase(
         return (None, None, None, IonoFreePhaseStatus::FrequencyInvalid);
     }
 
-    let lambda1 = SPEED_OF_LIGHT_MPS / f1_hz;
-    let lambda2 = SPEED_OF_LIGHT_MPS / f2_hz;
+    let lambda1 = signal_wavelength_m(first.metadata.signal).0;
+    let lambda2 = signal_wavelength_m(second.metadata.signal).0;
     let weight_1 = f1_2 / denom;
     let weight_2 = -f2_2 / denom;
-    let phase_m = weight_1 * first.carrier_phase_cycles.0 * lambda1
-        + weight_2 * second.carrier_phase_cycles.0 * lambda2;
+    let phase_m = weight_1
+        * signal_cycles_to_meters(first.carrier_phase_cycles, first.metadata.signal).0
+        + weight_2 * signal_cycles_to_meters(second.carrier_phase_cycles, second.metadata.signal).0;
     let variance_m2 = weight_1.powi(2) * lambda1.powi(2) * first.carrier_phase_var_cycles2
         + weight_2.powi(2) * lambda2.powi(2) * second.carrier_phase_var_cycles2;
     let narrow_lane_wavelength_m = SPEED_OF_LIGHT_MPS / (f1_hz + f2_hz);

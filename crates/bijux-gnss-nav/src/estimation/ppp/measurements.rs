@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{ObsEpoch, ObsSatellite, SatId, SignalBand};
+use bijux_gnss_core::api::{signal_cycles_to_meters, ObsEpoch, ObsSatellite, SatId, SignalBand};
 
 use crate::corrections::iono_free_code::iono_free_code_from_pair;
 use crate::corrections::iono_free_phase::iono_free_phase_from_pair;
@@ -477,10 +477,10 @@ pub fn wide_lane_from_obs(obs: &ObsEpoch, sat: SatId) -> Option<WideLaneObservat
     let pair = select_dual_frequency_pair(obs, sat)?;
     let f1 = pair.first.metadata.signal.carrier_hz.value();
     let f2 = pair.second.metadata.signal.carrier_hz.value();
-    let lambda1 = SPEED_OF_LIGHT_MPS / f1;
-    let lambda2 = SPEED_OF_LIGHT_MPS / f2;
-    let phi1_m = pair.first.carrier_phase_cycles.0 * lambda1;
-    let phi2_m = pair.second.carrier_phase_cycles.0 * lambda2;
+    let phi1_m =
+        signal_cycles_to_meters(pair.first.carrier_phase_cycles, pair.first.metadata.signal).0;
+    let phi2_m =
+        signal_cycles_to_meters(pair.second.carrier_phase_cycles, pair.second.metadata.signal).0;
     let lambda_wl = SPEED_OF_LIGHT_MPS / (f1 - f2).abs().max(1.0);
     let wl_cycles = (phi1_m - phi2_m) / lambda_wl;
     let variance = pair.first.carrier_phase_var_cycles2 + pair.second.carrier_phase_var_cycles2;
