@@ -635,11 +635,14 @@ fn write_obs_timeseries_for_command(
         &residual_path,
         false,
     )?;
-    let combos = bijux_gnss_infra::api::nav::combinations_from_obs_epochs(
-        &observation_artifacts.epochs,
-        bijux_gnss_infra::api::core::SignalBand::L1,
-        bijux_gnss_infra::api::core::SignalBand::L2,
-    );
+    let mut combos = Vec::new();
+    for (band_1, band_2) in supported_observed_dual_frequency_pairs(&observation_artifacts.epochs) {
+        combos.extend(bijux_gnss_infra::api::nav::combinations_from_obs_epochs(
+            &observation_artifacts.epochs,
+            band_1,
+            band_2,
+        ));
+    }
     if !combos.is_empty() {
         let combo_path = out_dir.join("combinations.jsonl");
         let mut combo_lines = Vec::new();
@@ -674,21 +677,21 @@ fn dual_frequency_pair_observed(obs: &[ObsEpoch], band_1: SignalBand, band_2: Si
     false
 }
 
+fn supported_observed_dual_frequency_pairs(obs: &[ObsEpoch]) -> Vec<(SignalBand, SignalBand)> {
+    bijux_gnss_infra::api::core::supported_dual_frequency_band_pairs()
+        .iter()
+        .copied()
+        .filter(|&(band_1, band_2)| dual_frequency_pair_observed(obs, band_1, band_2))
+        .collect()
+}
+
 pub(crate) fn write_iono_free_code_artifact(
     out_dir: &Path,
     obs: &[ObsEpoch],
     biases: Option<&dyn CodeBiasProvider>,
 ) -> Result<()> {
     let mut lines = Vec::new();
-    for (band_1, band_2) in [
-        (SignalBand::L1, SignalBand::L2),
-        (SignalBand::L1, SignalBand::L5),
-        (SignalBand::E1, SignalBand::E5),
-        (SignalBand::B1, SignalBand::B2),
-    ] {
-        if !dual_frequency_pair_observed(obs, band_1, band_2) {
-            continue;
-        }
+    for (band_1, band_2) in supported_observed_dual_frequency_pairs(obs) {
         let observations = bijux_gnss_infra::api::nav::iono_free_code_from_obs_epochs_with_biases(
             obs, band_1, band_2, biases,
         );
@@ -709,10 +712,7 @@ pub(crate) fn write_iono_free_code_artifact(
 
 pub(crate) fn write_melbourne_wubbena_diagnostics(out_dir: &Path, obs: &[ObsEpoch]) -> Result<()> {
     let mut diagnostics = Vec::new();
-    for (band_1, band_2) in [
-        (bijux_gnss_infra::api::core::SignalBand::L1, bijux_gnss_infra::api::core::SignalBand::L2),
-        (bijux_gnss_infra::api::core::SignalBand::L1, bijux_gnss_infra::api::core::SignalBand::L5),
-    ] {
+    for (band_1, band_2) in supported_observed_dual_frequency_pairs(obs) {
         let pair_diagnostics =
             bijux_gnss_infra::api::nav::melbourne_wubbena_diagnostics_from_obs_epochs(
                 obs,
@@ -1084,7 +1084,8 @@ mod tests {
     use crate::RawIqMetadata;
     use crate::{CommonArgs, ReceiverConfig, ReceiverPipelineConfig, ReportFormat};
     use bijux_gnss_infra::api::core::{
-        signal_spec_gps_l1_ca, signal_spec_gps_l2_py, ArtifactHeaderV1, ArtifactReadPolicy, Chips,
+        signal_registry, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, ArtifactHeaderV1,
+        ArtifactReadPolicy, Chips,
         Constellation, Cycles, Epoch, Hertz, LockFlags, Meters, NavLifecycleState,
         NavSolutionEpoch, NavUncertaintyClass, ObsEpoch, ObsMetadata, ObsSatellite,
         ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
@@ -1368,12 +1369,20 @@ mod tests {
         phi1_m: f64,
         phi2_m: f64,
     ) -> ObsEpoch {
-        let sat = SatId { constellation: Constellation::Gps, prn: 12 };
-        let l1 = signal_spec_gps_l1_ca();
-        let l2 = signal_spec_gps_l2_py();
-        let l1_wavelength_m = 299_792_458.0 / l1.carrier_hz.value();
-        let l2_wavelength_m = 299_792_458.0 / l2.carrier_hz.value();
+        dual_frequency_epoch_for_pair(
+            epoch_idx,
+            SatId { constellation: Constellation::Gps, prn: 12 },
+            (SignalBand::L1, SignalCode::Ca, p1_m, phi1_m),
+            (SignalBand::L2, SignalCode::Py, p2_m, phi2_m),
+        )
+    }
 
+    fn dual_frequency_epoch_for_pair(
+        epoch_idx: u64,
+        sat: SatId,
+        first: (SignalBand, SignalCode, f64, f64),
+        second: (SignalBand, SignalCode, f64, f64),
+    ) -> ObsEpoch {
         ObsEpoch {
             t_rx_s: Seconds(epoch_idx as f64),
             source_time: ReceiverSampleTrace::from_sample_index(epoch_idx, 1.0),
@@ -1385,78 +1394,60 @@ mod tests {
             processing_ms: None,
             role: ReceiverRole::Rover,
             sats: vec![
-                ObsSatellite {
-                    signal_id: SigId { sat, band: SignalBand::L1, code: SignalCode::Ca },
-                    pseudorange_m: Meters(p1_m),
-                    pseudorange_var_m2: 1.0,
-                    carrier_phase_cycles: Cycles(phi1_m / l1_wavelength_m),
-                    carrier_phase_var_cycles2: 0.01,
-                    doppler_hz: Hertz(0.0),
-                    doppler_var_hz2: 1.0,
-                    cn0_dbhz: 45.0,
-                    lock_flags: LockFlags {
-                        code_lock: true,
-                        carrier_lock: true,
-                        bit_lock: false,
-                        cycle_slip: false,
-                    },
-                    multipath_suspect: false,
-                    observation_status: ObservationStatus::Accepted,
-                    observation_reject_reasons: Vec::new(),
-                    elevation_deg: None,
-                    azimuth_deg: None,
-                    weight: None,
-                    timing: None,
-                    error_model: None,
-                    metadata: ObsMetadata {
-                        tracking_mode: "test".to_string(),
-                        integration_ms: 1,
-                        lock_quality: 1.0,
-                        smoothing_window: 0,
-                        smoothing_age: 0,
-                        smoothing_resets: 0,
-                        signal: l1,
-                        ..ObsMetadata::default()
-                    },
-                },
-                ObsSatellite {
-                    signal_id: SigId { sat, band: SignalBand::L2, code: SignalCode::Py },
-                    pseudorange_m: Meters(p2_m),
-                    pseudorange_var_m2: 1.0,
-                    carrier_phase_cycles: Cycles(phi2_m / l2_wavelength_m),
-                    carrier_phase_var_cycles2: 0.01,
-                    doppler_hz: Hertz(0.0),
-                    doppler_var_hz2: 1.0,
-                    cn0_dbhz: 45.0,
-                    lock_flags: LockFlags {
-                        code_lock: true,
-                        carrier_lock: true,
-                        bit_lock: false,
-                        cycle_slip: false,
-                    },
-                    multipath_suspect: false,
-                    observation_status: ObservationStatus::Accepted,
-                    observation_reject_reasons: Vec::new(),
-                    elevation_deg: None,
-                    azimuth_deg: None,
-                    weight: None,
-                    timing: None,
-                    error_model: None,
-                    metadata: ObsMetadata {
-                        tracking_mode: "test".to_string(),
-                        integration_ms: 1,
-                        lock_quality: 1.0,
-                        smoothing_window: 0,
-                        smoothing_age: 0,
-                        smoothing_resets: 0,
-                        signal: l2,
-                        ..ObsMetadata::default()
-                    },
-                },
+                dual_frequency_satellite(sat, first.0, first.1, first.2, first.3),
+                dual_frequency_satellite(sat, second.0, second.1, second.2, second.3),
             ],
             decision: ObservationEpochDecision::Accepted,
             decision_reason: Some("accepted_observables_present".to_string()),
             manifest: None,
+        }
+    }
+
+    fn dual_frequency_satellite(
+        sat: SatId,
+        band: SignalBand,
+        code: SignalCode,
+        pseudorange_m: f64,
+        phase_m: f64,
+    ) -> ObsSatellite {
+        let signal = signal_registry(sat.constellation, band, code)
+            .expect("dual-frequency signal must exist")
+            .spec;
+        let wavelength_m = SPEED_OF_LIGHT_MPS / signal.carrier_hz.value();
+
+        ObsSatellite {
+            signal_id: SigId { sat, band, code },
+            pseudorange_m: Meters(pseudorange_m),
+            pseudorange_var_m2: 1.0,
+            carrier_phase_cycles: Cycles(phase_m / wavelength_m),
+            carrier_phase_var_cycles2: 0.01,
+            doppler_hz: Hertz(0.0),
+            doppler_var_hz2: 1.0,
+            cn0_dbhz: 45.0,
+            lock_flags: LockFlags {
+                code_lock: true,
+                carrier_lock: true,
+                bit_lock: false,
+                cycle_slip: false,
+            },
+            multipath_suspect: false,
+            observation_status: ObservationStatus::Accepted,
+            observation_reject_reasons: Vec::new(),
+            elevation_deg: None,
+            azimuth_deg: None,
+            weight: None,
+            timing: None,
+            error_model: None,
+            metadata: ObsMetadata {
+                tracking_mode: "test".to_string(),
+                integration_ms: 1,
+                lock_quality: 1.0,
+                smoothing_window: 0,
+                smoothing_age: 0,
+                smoothing_resets: 0,
+                signal,
+                ..ObsMetadata::default()
+            },
         }
     }
 
@@ -2098,6 +2089,44 @@ mod tests {
             (rows[0]["corrected_code_m"].as_f64().expect("corrected code") - base_range_m).abs()
                 < 1.0e-6
         );
+
+        fs::remove_dir_all(&out_dir).expect("remove output directory");
+    }
+
+    #[test]
+    fn write_iono_free_code_artifact_emits_supported_constellation_rows() {
+        let out_dir = temp_output_dir("iono_free_code_constellations_output");
+        fs::create_dir_all(&out_dir).expect("create output directory");
+
+        let epochs = [
+            dual_frequency_epoch_for_pair(
+                0,
+                SatId { constellation: Constellation::Galileo, prn: 19 },
+                (SignalBand::E1, SignalCode::E1B, 24_000_004.0, 0.0),
+                (SignalBand::E5, SignalCode::E5a, 24_000_002.5, 0.0),
+            ),
+            dual_frequency_epoch_for_pair(
+                1,
+                SatId { constellation: Constellation::Beidou, prn: 7 },
+                (SignalBand::B1, SignalCode::B1I, 24_100_003.0, 0.0),
+                (SignalBand::B2, SignalCode::B2I, 24_100_002.0, 0.0),
+            ),
+        ];
+
+        super::write_iono_free_code_artifact(&out_dir, &epochs, None)
+            .expect("write iono-free code artifact");
+
+        let path = out_dir.join("iono_free_code.jsonl");
+        let text = fs::read_to_string(&path).expect("read iono-free code artifact");
+        let rows: Vec<serde_json::Value> = text
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("parse iono-free code row"))
+            .collect();
+
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().any(|row| row["band_1"] == "E1" && row["band_2"] == "E5"));
+        assert!(rows.iter().any(|row| row["band_1"] == "B1" && row["band_2"] == "B2"));
+        assert!(rows.iter().all(|row| row["status"] == "ok"));
 
         fs::remove_dir_all(&out_dir).expect("remove output directory");
     }
