@@ -150,9 +150,10 @@ fn carrier_phase_arc_bias_cycles_by_start_sample(
         .collect()
 }
 
-fn comparable_satellite_observations<'a>(
+fn comparable_signal_band_observations<'a>(
     observations: &'a [ObsEpoch],
     sat: SatId,
+    signal_band: Option<bijux_gnss_core::api::SignalBand>,
 ) -> Vec<ObservedSatelliteRow<'a>> {
     observations
         .iter()
@@ -170,6 +171,7 @@ fn comparable_satellite_observations<'a>(
                 .unwrap_or_else(|| bijux_gnss_core::api::obs_epoch_stability_key(epoch));
             epoch.sats.iter().filter_map(move |observation| {
                 (observation.signal_id.sat == sat
+                    && signal_band.is_none_or(|band| observation.signal_id.band == band)
                     && matches!(
                         observation.observation_status,
                         ObservationStatus::Accepted | ObservationStatus::Weak
@@ -208,4 +210,3 @@ fn synthetic_pseudorange_m(
     }
     pseudorange_m
 }
-

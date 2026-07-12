@@ -20,6 +20,8 @@ pub struct SyntheticObservationErrorStats {
 pub struct SyntheticObservationValidationSatellite {
     /// Satellite identifier.
     pub sat: SatId,
+    /// Full signal identifier for this validation row.
+    pub signal_id: SigId,
     /// Aggregated pseudorange error statistics in meters.
     pub pseudorange_error_m: Option<SyntheticObservationErrorStats>,
     /// Aggregated ambiguity-aligned carrier-phase residual statistics in cycles.
@@ -48,4 +50,3 @@ pub struct SyntheticObservationValidationReport {
     /// Per-satellite observation truth summaries.
     pub satellites: Vec<SyntheticObservationValidationSatellite>,
 }
-

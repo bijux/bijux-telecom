@@ -3,15 +3,19 @@
 use std::f64::consts::TAU;
 
 use bijux_gnss_core::api::{
-    Chips, Cycles, Epoch, Hertz, ReceiverSampleTrace, SignalDelayAlignment, TrackEpoch,
+    signal_spec_gps_l1_ca, signal_spec_gps_l2c, Chips, Cycles, Epoch, Hertz,
+    ReceiverSampleTrace, SignalBand, SignalDelayAlignment, SignalSpec, TrackEpoch,
     TrackingUncertainty,
 };
 use bijux_gnss_receiver::api::{
-    carrier_hz_from_doppler_hz, sim::SyntheticObservationTruthReference, ReceiverPipelineConfig,
-    TrackingResult,
+    carrier_hz_from_doppler_hz,
+    sim::{SyntheticObservationTruthReference, SyntheticSignalParams},
+    ReceiverPipelineConfig, TrackingResult,
 };
 
-use crate::support::navigation_truth::{four_satellite_pvt_scenario, SyntheticPvtScenario};
+use crate::support::navigation_truth::{
+    four_satellite_pvt_scenario, synthetic_pseudorange_m, SyntheticPvtScenario,
+};
 
 pub const SYNTHETIC_REFERENCE_RECEIVE_TIME_S: f64 = 100_000.0;
 pub const TRACKING_CARRIER_PHASE_SIGMA_CYCLES: f64 = 0.05;
@@ -26,6 +30,14 @@ pub struct ObservationTruthFixture {
     pub tracks: Vec<TrackingResult>,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct ObservationTruthTrackSeed {
+    signal: SyntheticSignalParams,
+    signal_spec: SignalSpec,
+    whole_code_periods: u64,
+}
+
+#[allow(dead_code)]
 pub fn build_observation_truth_fixture(
     config: ReceiverPipelineConfig,
     epoch_count: usize,
@@ -33,6 +45,7 @@ pub fn build_observation_truth_fixture(
     build_observation_truth_fixture_with_cycle_slips(config, epoch_count, &[])
 }
 
+#[allow(dead_code)]
 pub fn build_observation_truth_fixture_with_cycle_slips(
     config: ReceiverPipelineConfig,
     epoch_count: usize,
@@ -44,15 +57,25 @@ pub fn build_observation_truth_fixture_with_cycle_slips(
     {
         signal.doppler_hz = doppler_hz;
     }
-    let tracks = profile
+
+    let track_seeds = profile
         .scenario
         .satellites
         .iter()
-        .map(|signal| {
+        .map(|signal| ObservationTruthTrackSeed {
+            signal: *signal,
+            signal_spec: signal_spec_gps_l1_ca(),
+            whole_code_periods: profile.pseudorange_epoch_base,
+        })
+        .collect::<Vec<_>>();
+    let tracks = track_seeds
+        .iter()
+        .map(|seed| {
             synthetic_truth_track(
                 &config,
-                signal,
-                profile.pseudorange_epoch_base,
+                &seed.signal,
+                seed.signal_spec,
+                seed.whole_code_periods,
                 epoch_count,
                 cycle_slip_epoch_indices,
                 0.0,
@@ -75,15 +98,98 @@ pub fn build_observation_truth_fixture_with_cycle_slips(
     }
 }
 
+#[allow(dead_code)]
+pub fn build_mixed_band_observation_truth_fixture(
+    config: ReceiverPipelineConfig,
+    epoch_count: usize,
+) -> ObservationTruthFixture {
+    let mut profile = four_satellite_pvt_scenario(&config);
+    for (signal, doppler_hz) in
+        profile.scenario.satellites.iter_mut().zip([-250.0, -125.0, 0.0, 125.0, 250.0])
+    {
+        signal.doppler_hz = doppler_hz;
+    }
+
+    let mut track_seeds = profile
+        .scenario
+        .satellites
+        .iter()
+        .map(|signal| ObservationTruthTrackSeed {
+            signal: *signal,
+            signal_spec: signal_spec_gps_l1_ca(),
+            whole_code_periods: profile.pseudorange_epoch_base,
+        })
+        .collect::<Vec<_>>();
+
+    let l1_reference = track_seeds[0];
+    let ephemeris = profile
+        .ephemerides
+        .iter()
+        .find(|candidate| candidate.sat == l1_reference.signal.sat)
+        .expect("fixture ephemeris for duplicated observation signal");
+    let pseudorange_m = synthetic_pseudorange_m(
+        ephemeris,
+        SYNTHETIC_REFERENCE_RECEIVE_TIME_S,
+        profile.truth_ecef_m,
+    );
+    let (whole_code_periods, code_phase_chips) =
+        signal_code_alignment_from_pseudorange_m(pseudorange_m, signal_spec_gps_l2c());
+    let l2c_signal = SyntheticSignalParams {
+        code_phase_chips,
+        ..l1_reference.signal
+    };
+    track_seeds.insert(
+        1,
+        ObservationTruthTrackSeed {
+            signal: l2c_signal,
+            signal_spec: signal_spec_gps_l2c(),
+            whole_code_periods,
+        },
+    );
+    profile.scenario.satellites = track_seeds.iter().map(|seed| seed.signal).collect();
+
+    let tracks = track_seeds
+        .iter()
+        .map(|seed| {
+            synthetic_truth_track(
+                &config,
+                &seed.signal,
+                seed.signal_spec,
+                seed.whole_code_periods,
+                epoch_count,
+                &[],
+                0.0,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    ObservationTruthFixture {
+        reference: SyntheticObservationTruthReference {
+            receive_time_s: SYNTHETIC_REFERENCE_RECEIVE_TIME_S,
+            receiver_ecef_m: [
+                profile.truth_ecef_m.0,
+                profile.truth_ecef_m.1,
+                profile.truth_ecef_m.2,
+            ],
+        },
+        config,
+        profile,
+        tracks,
+    }
+}
+
 fn synthetic_truth_track(
     config: &ReceiverPipelineConfig,
-    signal: &bijux_gnss_receiver::api::sim::SyntheticSignalParams,
+    signal: &SyntheticSignalParams,
+    signal_spec: SignalSpec,
     whole_code_periods: u64,
     epoch_count: usize,
     cycle_slip_epoch_indices: &[usize],
     carrier_bias_cycles: f64,
 ) -> TrackingResult {
-    let code_phase_samples = tracking_code_phase_samples(config, signal.code_phase_chips);
+    let code_length = signal_code_length(signal_spec);
+    let code_phase_samples =
+        tracking_code_phase_samples(config, signal_spec, code_length, signal.code_phase_chips);
     let sample_step = (config.sampling_freq_hz * 0.001).round() as u64;
     let base_carrier_phase_cycles = signal.carrier_phase_rad / TAU;
 
@@ -107,7 +213,7 @@ fn synthetic_truth_track(
                     config.sampling_freq_hz,
                 ),
                 sat: signal.sat,
-                signal_band: bijux_gnss_core::api::SignalBand::L1,
+                signal_band: signal_spec.band,
                 glonass_frequency_channel: None,
                 prompt_i: 1.0,
                 prompt_q: 0.0,
@@ -115,12 +221,9 @@ fn synthetic_truth_track(
                 early_q: 0.0,
                 late_i: 0.0,
                 late_q: 0.0,
-                carrier_hz: Hertz(carrier_hz_from_doppler_hz(
-                    config.intermediate_freq_hz,
-                    signal.doppler_hz,
-                )),
+                carrier_hz: Hertz(tracked_carrier_hz(config, signal_spec, signal.doppler_hz)),
                 carrier_phase_cycles: Cycles(carrier_phase_cycles),
-                code_rate_hz: Hertz(config.code_freq_basis_hz),
+                code_rate_hz: Hertz(signal_spec.code_rate_hz),
                 code_phase_samples: Chips(code_phase_samples),
                 lock: true,
                 cn0_dbhz: signal.cn0_db_hz as f64,
@@ -140,7 +243,11 @@ fn synthetic_truth_track(
                 lock_state: "tracking".to_string(),
                 lock_state_reason: Some("stable_tracking".to_string()),
                 channel_id: Some(signal.sat.prn),
-                channel_uid: format!("Gps-{:02}-observation-truth", signal.sat.prn),
+                channel_uid: format!(
+                    "Gps-{:02}-{}-observation-truth",
+                    signal.sat.prn,
+                    signal_label(signal_spec)
+                ),
                 tracking_provenance: "integration_observations_truth_table".to_string(),
                 tracking_assumptions: None,
                 signal_delay_alignment: Some(SignalDelayAlignment {
@@ -174,13 +281,56 @@ fn synthetic_truth_track(
 
 fn tracking_code_phase_samples(
     config: &ReceiverPipelineConfig,
+    signal_spec: SignalSpec,
+    code_length: usize,
     aligned_code_phase_chips: f64,
 ) -> f64 {
-    let samples_per_chip = config.sampling_freq_hz / config.code_freq_basis_hz;
-    let period_samples = samples_per_chip * config.code_length as f64;
-    let aligned_code_phase_samples = aligned_code_phase_chips * samples_per_chip;
-    if !aligned_code_phase_samples.is_finite() || aligned_code_phase_samples < 0.0 {
-        return aligned_code_phase_samples;
+    if !aligned_code_phase_chips.is_finite() || aligned_code_phase_chips < 0.0 {
+        return aligned_code_phase_chips;
     }
+    let samples_per_chip = config.sampling_freq_hz / signal_spec.code_rate_hz;
+    let period_samples = samples_per_chip * code_length as f64;
+    let aligned_code_phase_samples = aligned_code_phase_chips * samples_per_chip;
     (period_samples - aligned_code_phase_samples).rem_euclid(period_samples)
+}
+
+#[allow(dead_code)]
+fn signal_code_alignment_from_pseudorange_m(
+    pseudorange_m: f64,
+    signal_spec: SignalSpec,
+) -> (u64, f64) {
+    let code_length = signal_code_length(signal_spec) as f64;
+    let pseudorange_chips = pseudorange_m * signal_spec.code_rate_hz / 299_792_458.0;
+    let whole_code_periods = (pseudorange_chips / code_length).floor() as u64;
+    let code_phase_chips = pseudorange_chips - whole_code_periods as f64 * code_length;
+    (whole_code_periods, code_phase_chips.rem_euclid(code_length))
+}
+
+fn signal_code_length(signal_spec: SignalSpec) -> usize {
+    match signal_spec.band {
+        SignalBand::L1 => 1023,
+        SignalBand::L2 => 10230,
+        _ => panic!("unsupported observation truth signal {:?}", signal_spec),
+    }
+}
+
+fn signal_label(signal_spec: SignalSpec) -> &'static str {
+    match signal_spec.band {
+        SignalBand::L1 => "l1",
+        SignalBand::L2 => "l2c",
+        _ => "signal",
+    }
+}
+
+fn tracked_carrier_hz(
+    config: &ReceiverPipelineConfig,
+    signal_spec: SignalSpec,
+    doppler_hz: f64,
+) -> f64 {
+    carrier_hz_from_doppler_hz(
+        config.intermediate_freq_hz
+            + (signal_spec.carrier_hz.value()
+                - bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value()),
+        doppler_hz,
+    )
 }

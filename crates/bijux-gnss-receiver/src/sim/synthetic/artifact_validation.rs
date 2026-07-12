@@ -98,6 +98,24 @@ fn truth_coverage_issue(
     SyntheticTruthCoverageIssue { sat, epoch_index, code: code.into() }
 }
 
+fn tracked_signal_band(
+    track: &crate::pipeline::tracking::TrackingResult,
+) -> Option<SignalBand> {
+    track.epochs.first().map(|epoch| epoch.signal_band)
+}
+
+fn expected_signal_id(sat: SatId, signal_band: Option<SignalBand>) -> SigId {
+    let code = match (sat.constellation, signal_band.unwrap_or(SignalBand::Unknown)) {
+        (Constellation::Gps, SignalBand::L1) => SignalCode::Ca,
+        (Constellation::Gps, SignalBand::L2) => SignalCode::L2C,
+        (Constellation::Galileo, SignalBand::E1) => SignalCode::E1B,
+        (Constellation::Beidou, SignalBand::B1) => SignalCode::B1I,
+        (Constellation::Glonass, SignalBand::L1) => SignalCode::Unknown,
+        _ => SignalCode::Unknown,
+    };
+    SigId { sat, band: signal_band.unwrap_or(SignalBand::Unknown), code }
+}
+
 fn acquisition_truth_coverage_issues(
     report: &SyntheticAcquisitionTruthTableReport,
 ) -> Vec<SyntheticTruthCoverageIssue> {
@@ -226,10 +244,25 @@ pub fn validate_truth_guided_observation_table(
     let satellites = truth
         .satellites
         .iter()
-        .map(|sat_truth| {
-            let observed_rows = comparable_satellite_observations(&observations, sat_truth.sat);
+        .enumerate()
+        .map(|(signal_index, sat_truth)| {
+            let expected_band = tracks.get(signal_index).and_then(tracked_signal_band);
+            let signal_id = expected_band
+                .map(|band| expected_signal_id(sat_truth.sat, Some(band)))
+                .unwrap_or_else(|| expected_signal_id(sat_truth.sat, None));
+            let observed_rows =
+                comparable_signal_band_observations(&observations, sat_truth.sat, expected_band);
             let expected_doppler_hz = sat_truth.doppler_hz + truth.receiver_clock_frequency_bias_hz;
             let mut notes = Vec::new();
+            if tracks.get(signal_index).is_none() {
+                notes.push("missing_tracking_result_for_truth_signal".to_string());
+            }
+            if tracks
+                .get(signal_index)
+                .is_some_and(|track| track.sat != sat_truth.sat)
+            {
+                notes.push("truth_signal_tracking_satellite_mismatch".to_string());
+            }
             if observed_rows.is_empty() {
                 notes.push("no_comparable_observation_rows".to_string());
             }
@@ -334,6 +367,10 @@ pub fn validate_truth_guided_observation_table(
 
             SyntheticObservationTruthTableSatellite {
                 sat: sat_truth.sat,
+                signal_id: observed_rows
+                    .first()
+                    .map(|row| row.observation.signal_id)
+                    .unwrap_or(signal_id),
                 injected_doppler_hz: sat_truth.doppler_hz,
                 expected_measured_doppler_hz: expected_doppler_hz,
                 injected_code_phase_chips: sat_truth.code_phase_chips,
@@ -370,6 +407,7 @@ pub fn validate_truth_guided_observations(
         .iter()
         .map(|satellite| SyntheticObservationValidationSatellite {
             sat: satellite.sat,
+            signal_id: satellite.signal_id,
             pseudorange_error_m: summarize_observation_errors(
                 &satellite
                     .epochs

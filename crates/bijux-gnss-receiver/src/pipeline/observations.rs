@@ -2921,6 +2921,7 @@ mod tests {
         let epoch = TrackEpoch {
             sat: SatId { constellation: Constellation::Gps, prn: 11 },
             signal_band: SignalBand::L2,
+            carrier_hz: Hertz(tracked_signal_center_hz(config.intermediate_freq_hz, signal)),
             code_rate_hz: Hertz(signal.code_rate_hz),
             code_phase_samples: Chips(test_tracking_code_phase_samples_for_signal(
                 &config,
@@ -2932,7 +2933,13 @@ mod tests {
                 whole_code_periods,
                 source: "synthetic_truth".to_string(),
             }),
-            ..make_tracking_epoch_with_phase(11, &config, 70, 0.0, 0.0)
+            ..make_tracking_epoch_with_phase(
+                11,
+                &config,
+                70,
+                tracked_signal_center_hz(config.intermediate_freq_hz, signal),
+                0.0,
+            )
         };
         let report = observations_from_tracking_results(&config, &[track_from_epoch(epoch)], 10);
         let obs_sat = report.output[0].sats.first().expect("observation satellite");

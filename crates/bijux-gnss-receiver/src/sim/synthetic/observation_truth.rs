@@ -54,6 +54,8 @@ pub struct SyntheticObservationTruthTableEpoch {
 pub struct SyntheticObservationTruthTableSatellite {
     /// Satellite identifier.
     pub sat: SatId,
+    /// Full signal identifier for this truth row.
+    pub signal_id: SigId,
     /// Injected Doppler shift in Hz.
     pub injected_doppler_hz: f64,
     /// Expected measured Doppler after the receiver clock bias is applied, in Hz.
@@ -232,4 +234,3 @@ pub struct SyntheticPvtTruthTableReport {
     /// Per-epoch PVT truth-table rows.
     pub epochs: Vec<SyntheticPvtTruthTableEpoch>,
 }
-

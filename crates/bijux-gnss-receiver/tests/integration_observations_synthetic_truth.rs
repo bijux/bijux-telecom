@@ -50,6 +50,7 @@ fn observation_truth_validation_matches_truth_table_residuals_per_satellite() {
     for (satellite, truth_rows) in report.satellites.iter().zip(truth_table.satellites.iter()) {
         assert!(satellite.notes.is_empty(), "{satellite:?}");
         assert_eq!(satellite.sat, truth_rows.sat);
+        assert_eq!(satellite.signal_id, truth_rows.signal_id);
         assert_eq!(truth_rows.epoch_count, OBSERVATION_EPOCH_COUNT, "{truth_rows:?}");
 
         let pseudorange_errors = truth_rows
