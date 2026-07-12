@@ -2,7 +2,7 @@
 
 use crate::estimation::position::solver::{
     ecef_to_enu, ecef_to_geodetic, geodetic_to_ecef, invert_4x4, position_measurement_weight,
-    weight_from_cn0_elev, weight_from_pseudorange_sigma, PositionObservation, PositionSolver,
+    weight_from_elevation, weight_from_pseudorange_sigma, PositionObservation, PositionSolver,
     WeightingConfig,
 };
 use crate::orbits::gps::GpsEphemeris;
@@ -139,9 +139,9 @@ fn pseudorange_sigma_weight_prefers_smaller_sigma() {
 #[test]
 fn composite_position_weight_multiplies_geometry_and_sigma_terms() {
     let config = WeightingConfig::default();
-    let geometry_weight = weight_from_cn0_elev(45.0, 30.0, config);
+    let geometry_weight = weight_from_elevation(30.0, config);
     let sigma_weight = weight_from_pseudorange_sigma(Some(4.0));
-    let composite = position_measurement_weight(45.0, Some(30.0), Some(4.0), config);
+    let composite = position_measurement_weight(Some(30.0), Some(4.0), config);
 
     assert!((composite - (geometry_weight * sigma_weight)).abs() < 1.0e-12);
 }
@@ -149,8 +149,8 @@ fn composite_position_weight_multiplies_geometry_and_sigma_terms() {
 #[test]
 fn composite_position_weight_falls_back_to_unit_sigma_weight() {
     let config = WeightingConfig::default();
-    let geometry_only = position_measurement_weight(45.0, Some(30.0), None, config);
-    let invalid_sigma = position_measurement_weight(45.0, Some(30.0), Some(f64::NAN), config);
+    let geometry_only = position_measurement_weight(Some(30.0), None, config);
+    let invalid_sigma = position_measurement_weight(Some(30.0), Some(f64::NAN), config);
 
     assert!((geometry_only - invalid_sigma).abs() < 1.0e-12);
 }

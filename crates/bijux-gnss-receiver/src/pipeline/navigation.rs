@@ -13,8 +13,8 @@ use bijux_gnss_nav::api::{
     sat_state_beidou_b1i_from_observation, sat_state_galileo_e1_from_observation,
     sat_state_glonass_l1_from_observation, sat_state_gps_l1ca_from_observation, GpsEphemeris,
     KlobucharCoefficients, PositionBroadcastNavigation, PositionObservation,
-    PositionRobustWeighting, PositionSolveRefusalKind, PositionSolver,
-    RaimFaultDetectionStatus, WeightingConfig,
+    PositionRobustWeighting, PositionSolveRefusalKind, PositionSolver, RaimFaultDetectionStatus,
+    WeightingConfig,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -288,7 +288,6 @@ impl Navigation {
                     enabled: self.config.weighting.enabled,
                     min_elev_deg: self.config.weighting.min_elev_deg,
                     elev_exponent: self.config.weighting.elev_exponent,
-                    cn0_ref_dbhz: self.config.weighting.cn0_ref_dbhz,
                     min_weight: self.config.weighting.min_weight,
                 };
                 if let Some(el) = elevation {
@@ -307,12 +306,8 @@ impl Navigation {
                     } else {
                         None
                     };
-                let weight = position_measurement_weight(
-                    s.cn0_dbhz,
-                    elevation,
-                    pseudorange_sigma_m,
-                    weight_config,
-                );
+                let weight =
+                    position_measurement_weight(elevation, pseudorange_sigma_m, weight_config);
                 observation.elevation_deg = elevation;
                 observation.weight = weight * tracking_mode_weight;
                 Some(observation)
@@ -1239,7 +1234,7 @@ fn build_provenance(
         .map(|residual| residual.sat)
         .collect::<Vec<_>>();
     let weighting_mode =
-        if config.weighting.enabled { "cn0_elevation_sigma_weighted" } else { "sigma_weighted" };
+        if config.weighting.enabled { "elevation_sigma_weighted" } else { "sigma_weighted" };
     let solver_family = if observations.iter().any(|row| (row.weight - 1.0).abs() > 1.0e-6) {
         "wls_weighted"
     } else {

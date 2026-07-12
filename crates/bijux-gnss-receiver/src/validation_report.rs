@@ -15,10 +15,9 @@ use crate::rtk::status::{
 use crate::validation_helpers::{check_budgets, to_validation_stats};
 use bijux_gnss_core::api::{
     check_dual_frequency_observations, check_inter_frequency_alignment, check_solution_consistency,
-    reference_ecef, stats, DualFrequencyObservationReport, DualFrequencyPairStatus,
-    InterFrequencyAlignmentReport, NavSolutionEpoch, ObsEpoch, SatId, SignalBand,
-    SolutionConsistencyReport, SolutionStatus, ValidationReferenceEpoch,
-    supported_dual_frequency_band_pairs,
+    reference_ecef, stats, supported_dual_frequency_band_pairs, DualFrequencyObservationReport,
+    DualFrequencyPairStatus, InterFrequencyAlignmentReport, NavSolutionEpoch, ObsEpoch, SatId,
+    SignalBand, SolutionConsistencyReport, SolutionStatus, ValidationReferenceEpoch,
 };
 use bijux_gnss_nav::api::{
     ecef_to_enu, geometry_free_diagnostics_from_obs_epochs, iono_free_code_from_obs_epochs,
@@ -1202,7 +1201,6 @@ fn build_ppp_config(profile: &ReceiverConfig) -> PppConfig {
             enabled: profile.navigation.weighting.enabled,
             min_elev_deg: profile.navigation.weighting.min_elev_deg,
             elev_exponent: profile.navigation.weighting.elev_exponent,
-            cn0_ref_dbhz: profile.navigation.weighting.cn0_ref_dbhz,
             min_weight: profile.navigation.weighting.min_weight,
         },
         convergence: PppConvergenceConfig {

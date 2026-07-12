@@ -679,8 +679,7 @@ fn pseudorange_sigma_m(
     elevation_deg: Option<f64>,
     config: &PositionFilterConfig,
 ) -> f64 {
-    let geometry_weight =
-        position_measurement_weight(observation.cn0_dbhz, elevation_deg, None, config.weighting);
+    let geometry_weight = position_measurement_weight(elevation_deg, None, config.weighting);
     let total_weight = (geometry_weight * observation.weight.max(1.0e-6)).max(1.0e-6);
     (config.base_pseudorange_sigma_m / total_weight.sqrt()).max(1.0e-3)
 }
@@ -690,8 +689,7 @@ fn doppler_sigma_hz(
     elevation_deg: Option<f64>,
     config: &PositionFilterConfig,
 ) -> f64 {
-    let geometry_weight =
-        position_measurement_weight(observation.cn0_dbhz, elevation_deg, None, config.weighting);
+    let geometry_weight = position_measurement_weight(elevation_deg, None, config.weighting);
     let total_weight = (geometry_weight * observation.weight.max(1.0e-6)).max(1.0e-6);
     let modeled_sigma_hz = (config.base_doppler_sigma_hz / total_weight.sqrt()).max(1.0e-3);
     let observed_sigma_hz = observation
@@ -859,14 +857,12 @@ mod tests {
         let mut pedestrian_filter =
             PositionFilter::new(PositionFilterConfig::for_pedestrian_receiver());
         let mut vehicle_filter = PositionFilter::new(PositionFilterConfig::for_vehicle_receiver());
-        let mut airborne_filter = PositionFilter::new(PositionFilterConfig::for_airborne_receiver());
+        let mut airborne_filter =
+            PositionFilter::new(PositionFilterConfig::for_airborne_receiver());
 
-        for filter in [
-            &mut static_filter,
-            &mut pedestrian_filter,
-            &mut vehicle_filter,
-            &mut airborne_filter,
-        ] {
+        for filter in
+            [&mut static_filter, &mut pedestrian_filter, &mut vehicle_filter, &mut airborne_filter]
+        {
             filter.seed_receiver_state([0.0, 0.0, 0.0], 0.0);
             filter.ekf.x[3] = 15.0;
             filter.ekf.x[4] = -4.0;

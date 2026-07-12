@@ -486,10 +486,7 @@ impl PositionSolver {
         self
     }
 
-    pub fn with_robust_weighting(
-        mut self,
-        robust_weighting: PositionRobustWeighting,
-    ) -> Self {
+    pub fn with_robust_weighting(mut self, robust_weighting: PositionRobustWeighting) -> Self {
         self.robust_weighting = robust_weighting;
         self
     }
@@ -944,9 +941,8 @@ mod tests {
         position_broadcast_navigation_from_glonass_frames,
         position_broadcast_navigation_from_gps_ephemerides, position_observations_from_epoch,
         resolve_position_inputs, robust_weight, robust_weights,
-        unknown_inter_system_time_offset_sats, PositionRobustWeighting,
-        PositionBroadcastNavigation, PositionObservation, SatelliteGeometry, SatelliteState,
-        WorkingSetResidual,
+        unknown_inter_system_time_offset_sats, PositionBroadcastNavigation, PositionObservation,
+        PositionRobustWeighting, SatelliteGeometry, SatelliteState, WorkingSetResidual,
     };
     use crate::estimation::position::navigation::navigation_time_relationship_is_known;
     use crate::orbits::beidou::{
@@ -1539,10 +1535,8 @@ mod tests {
 
     #[test]
     fn tukey_robust_weighting_zeroes_residuals_beyond_cutoff() {
-        let inlier_weight =
-            robust_weight(15.0, PositionRobustWeighting::tukey_biweight(30.0));
-        let boundary_weight =
-            robust_weight(30.0, PositionRobustWeighting::tukey_biweight(30.0));
+        let inlier_weight = robust_weight(15.0, PositionRobustWeighting::tukey_biweight(30.0));
+        let boundary_weight = robust_weight(30.0, PositionRobustWeighting::tukey_biweight(30.0));
         let far_outlier_weight =
             robust_weight(120.0, PositionRobustWeighting::tukey_biweight(30.0));
 
@@ -2514,14 +2508,8 @@ fn solve_weighted_normal_eq(h: &[Vec<f64>], v: &[f64], w: &[f64]) -> Option<Norm
     Some((delta, inv))
 }
 
-fn robust_weights(
-    residuals: &[f64],
-    robust_weighting: PositionRobustWeighting,
-) -> Vec<f64> {
-    residuals
-        .iter()
-        .map(|residual_m| robust_weight(residual_m.abs(), robust_weighting))
-        .collect()
+fn robust_weights(residuals: &[f64], robust_weighting: PositionRobustWeighting) -> Vec<f64> {
+    residuals.iter().map(|residual_m| robust_weight(residual_m.abs(), robust_weighting)).collect()
 }
 
 fn robust_weight(residual_abs_m: f64, robust_weighting: PositionRobustWeighting) -> f64 {
@@ -2845,31 +2833,22 @@ pub fn elevation_azimuth_deg(
 pub struct WeightingConfig {
     pub min_elev_deg: f64,
     pub elev_exponent: f64,
-    pub cn0_ref_dbhz: f64,
     pub min_weight: f64,
     pub enabled: bool,
 }
 
 impl Default for WeightingConfig {
     fn default() -> Self {
-        Self {
-            min_elev_deg: 5.0,
-            elev_exponent: 2.0,
-            cn0_ref_dbhz: 50.0,
-            min_weight: 0.1,
-            enabled: true,
-        }
+        Self { min_elev_deg: 5.0, elev_exponent: 2.0, min_weight: 0.1, enabled: true }
     }
 }
 
-pub fn weight_from_cn0_elev(cn0_dbhz: f64, elev_deg: f64, config: WeightingConfig) -> f64 {
+pub fn weight_from_elevation(elev_deg: f64, config: WeightingConfig) -> f64 {
     if !config.enabled {
         return 1.0;
     }
     let elev = elev_deg.clamp(0.0, 90.0).max(config.min_elev_deg);
-    let w_elev = (elev / 90.0).powf(config.elev_exponent).max(config.min_weight);
-    let w_cn0 = (cn0_dbhz / config.cn0_ref_dbhz).max(config.min_weight);
-    (w_elev * w_cn0).max(config.min_weight)
+    (elev / 90.0).powf(config.elev_exponent).max(config.min_weight)
 }
 
 /// Convert a pseudorange standard deviation in meters into a least-squares weight.
@@ -2888,15 +2867,13 @@ pub fn weight_from_pseudorange_sigma(pseudorange_sigma_m: Option<f64>) -> f64 {
 
 /// Build a composite code-pseudorange weight from geometry and measurement sigma.
 ///
-/// The geometry term is driven by C/N0 and elevation when available. The sigma
-/// term is always driven by inverse pseudorange variance when available.
+/// The geometry term is driven by elevation when available. The sigma term is
+/// always driven by inverse pseudorange variance when available.
 pub fn position_measurement_weight(
-    cn0_dbhz: f64,
     elev_deg: Option<f64>,
     pseudorange_sigma_m: Option<f64>,
     config: WeightingConfig,
 ) -> f64 {
-    let geometry_weight =
-        elev_deg.map(|elev| weight_from_cn0_elev(cn0_dbhz, elev, config)).unwrap_or(1.0);
+    let geometry_weight = elev_deg.map(|elev| weight_from_elevation(elev, config)).unwrap_or(1.0);
     geometry_weight * weight_from_pseudorange_sigma(pseudorange_sigma_m)
 }
