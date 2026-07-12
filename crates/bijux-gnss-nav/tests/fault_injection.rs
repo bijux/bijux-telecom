@@ -54,6 +54,19 @@ fn timed_position_observation(sat: SatId, pseudorange_m: f64, t_rx_s: f64) -> Po
     }
 }
 
+fn mismatched_ephemeris_for_sat(target_sat: SatId, source: &GpsEphemeris) -> GpsEphemeris {
+    let mut mismatched = source.clone();
+    mismatched.sat = target_sat;
+    mismatched
+}
+
+fn position_error_3d_m(solution_ecef_m: (f64, f64, f64), truth_ecef_m: (f64, f64, f64)) -> f64 {
+    let dx = solution_ecef_m.0 - truth_ecef_m.0;
+    let dy = solution_ecef_m.1 - truth_ecef_m.1;
+    let dz = solution_ecef_m.2 - truth_ecef_m.2;
+    (dx * dx + dy * dy + dz * dz).sqrt()
+}
+
 #[test]
 fn fault_injection_rejects_bad_pseudorange() {
     let (rx_x, rx_y, rx_z) = geodetic_to_ecef(37.0, -122.0, 10.0);
@@ -191,4 +204,59 @@ fn position_solver_rejects_stale_ephemeris_when_current_satellites_can_still_sol
         *sat == SatId { constellation: Constellation::Gps, prn: 5 }
             && *reason == bijux_gnss_core::api::MeasurementRejectReason::InvalidEphemeris
     }));
+}
+
+#[test]
+fn position_solver_excludes_grossly_mismatched_ephemeris_with_five_satellites() {
+    let truth_ecef_m = geodetic_to_ecef(37.0, -122.0, 10.0);
+    let t_rx_s = 100_000.0;
+
+    let mut correct_ephemerides = vec![
+        make_eph(1, 0.0, 0.0),
+        make_eph(2, 0.8, 0.9),
+        make_eph(3, 1.6, 1.8),
+        make_eph(4, 2.4, 2.7),
+        make_eph(5, 3.2, 3.6),
+    ];
+    for ephemeris in &mut correct_ephemerides {
+        ephemeris.toe_s = t_rx_s;
+        ephemeris.toc_s = t_rx_s;
+    }
+    let mut navigation_ephemerides = correct_ephemerides.clone();
+    navigation_ephemerides[4] =
+        mismatched_ephemeris_for_sat(correct_ephemerides[4].sat, &correct_ephemerides[0]);
+
+    let observations = correct_ephemerides
+        .iter()
+        .map(|ephemeris| {
+            let state = sat_state_gps_l1ca(ephemeris, t_rx_s, 0.07);
+            let dx = truth_ecef_m.0 - state.x_m;
+            let dy = truth_ecef_m.1 - state.y_m;
+            let dz = truth_ecef_m.2 - state.z_m;
+            let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
+            timed_position_observation(
+                ephemeris.sat,
+                range_m - state.clock_correction.bias_s * 299_792_458.0,
+                t_rx_s,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let solution = PositionSolver::new()
+        .solve_wls(&observations, &navigation_ephemerides, t_rx_s)
+        .expect("mismatched ephemeris should still solve after exclusion");
+
+    assert_eq!(solution.used_sat_count, 4, "{solution:?}");
+    assert_eq!(solution.rejected_sat_count, 1, "{solution:?}");
+    assert!(solution.rejected.iter().any(|(sat, reason)| {
+        *sat == SatId { constellation: Constellation::Gps, prn: 5 }
+            && *reason == bijux_gnss_core::api::MeasurementRejectReason::InvalidEphemeris
+    }));
+    assert!(
+        position_error_3d_m(
+            (solution.ecef_x_m, solution.ecef_y_m, solution.ecef_z_m),
+            truth_ecef_m,
+        ) < 500.0,
+        "{solution:?}"
+    );
 }
