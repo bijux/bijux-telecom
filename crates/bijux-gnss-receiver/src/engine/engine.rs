@@ -27,7 +27,10 @@ impl Receiver {
             Error = crate::io::data::SampleSourceError,
         >,
     ) -> Result<RunArtifacts, crate::engine::receiver_config::ReceiverError> {
-        let acquisition_requests = default_acquisition_requests(self.config());
+        let acquisition_requests = filter_acquisition_requests(
+            self.config(),
+            &default_acquisition_requests(self.config()),
+        );
         self.run_with_acquisition_requests_internal(input, &acquisition_requests, "run")
     }
 
@@ -39,9 +42,10 @@ impl Receiver {
         >,
         acquisition_requests: &[AcqRequest],
     ) -> Result<RunArtifacts, crate::engine::receiver_config::ReceiverError> {
+        let acquisition_requests = filter_acquisition_requests(self.config(), acquisition_requests);
         self.run_with_acquisition_requests_internal(
             input,
-            acquisition_requests,
+            &acquisition_requests,
             "run_with_acquisition_requests",
         )
     }
@@ -465,6 +469,17 @@ fn default_acquisition_requests(
         .collect()
 }
 
+fn filter_acquisition_requests(
+    config: &crate::engine::receiver_config::ReceiverPipelineConfig,
+    acquisition_requests: &[AcqRequest],
+) -> Vec<AcqRequest> {
+    acquisition_requests
+        .iter()
+        .filter(|request| config.allows_constellation(request.sat.constellation))
+        .cloned()
+        .collect()
+}
+
 fn acquisition_request_sats(requests: &[AcqRequest]) -> Vec<SatId> {
     requests.iter().map(|request| request.sat).collect()
 }
@@ -668,5 +683,117 @@ impl ReceiverEngine for Receiver {
         >,
     ) -> Result<RunArtifacts, crate::engine::receiver_config::ReceiverError> {
         Receiver::run(self, input)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{default_acquisition_requests, filter_acquisition_requests};
+    use crate::engine::receiver_config::{
+        ConstellationSelectionPolicy, ReceiverPipelineConfig,
+    };
+    use bijux_gnss_core::api::Constellation;
+
+    #[test]
+    fn default_acquisition_requests_honor_galileo_only_policy() {
+        let config = ReceiverPipelineConfig {
+            constellation_policy: ConstellationSelectionPolicy::GalileoOnly,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 4092,
+            ..ReceiverPipelineConfig::default()
+        };
+
+        let requests = filter_acquisition_requests(&config, &default_acquisition_requests(&config));
+
+        assert!(!requests.is_empty());
+        assert!(requests.iter().all(|request| request.sat.constellation == Constellation::Galileo));
+    }
+
+    #[test]
+    fn default_acquisition_requests_honor_beidou_only_policy() {
+        let config = ReceiverPipelineConfig {
+            constellation_policy: ConstellationSelectionPolicy::BeidouOnly,
+            code_freq_basis_hz: 2_046_000.0,
+            code_length: 2046,
+            ..ReceiverPipelineConfig::default()
+        };
+
+        let requests = filter_acquisition_requests(&config, &default_acquisition_requests(&config));
+
+        assert!(!requests.is_empty());
+        assert!(requests.iter().all(|request| request.sat.constellation == Constellation::Beidou));
+    }
+
+    #[test]
+    fn mixed_policy_keeps_explicit_glonass_requests() {
+        let config = ReceiverPipelineConfig::default();
+        let requests = vec![
+            bijux_gnss_core::api::AcqRequest {
+                sat: bijux_gnss_core::api::SatId {
+                    constellation: Constellation::Glonass,
+                    prn: 8,
+                },
+                glonass_frequency_channel: bijux_gnss_core::api::GlonassFrequencyChannel::new(-4),
+                doppler_search_hz: 0,
+                doppler_step_hz: 250,
+                coherent_ms: 1,
+                noncoherent: 1,
+            },
+            bijux_gnss_core::api::AcqRequest {
+                sat: bijux_gnss_core::api::SatId {
+                    constellation: Constellation::Gps,
+                    prn: 3,
+                },
+                glonass_frequency_channel: None,
+                doppler_search_hz: 0,
+                doppler_step_hz: 250,
+                coherent_ms: 1,
+                noncoherent: 1,
+            },
+        ];
+
+        let filtered = filter_acquisition_requests(&config, &requests);
+
+        assert_eq!(filtered.len(), 2);
+        assert_eq!(filtered[0].sat.constellation, Constellation::Glonass);
+        assert_eq!(filtered[0].glonass_frequency_channel, requests[0].glonass_frequency_channel);
+        assert_eq!(filtered[1].sat.constellation, Constellation::Gps);
+    }
+
+    #[test]
+    fn gps_only_policy_filters_out_explicit_glonass_requests() {
+        let config = ReceiverPipelineConfig {
+            constellation_policy: ConstellationSelectionPolicy::GpsOnly,
+            ..ReceiverPipelineConfig::default()
+        };
+        let requests = vec![
+            bijux_gnss_core::api::AcqRequest {
+                sat: bijux_gnss_core::api::SatId {
+                    constellation: Constellation::Glonass,
+                    prn: 8,
+                },
+                glonass_frequency_channel: bijux_gnss_core::api::GlonassFrequencyChannel::new(-4),
+                doppler_search_hz: 0,
+                doppler_step_hz: 250,
+                coherent_ms: 1,
+                noncoherent: 1,
+            },
+            bijux_gnss_core::api::AcqRequest {
+                sat: bijux_gnss_core::api::SatId {
+                    constellation: Constellation::Gps,
+                    prn: 3,
+                },
+                glonass_frequency_channel: None,
+                doppler_search_hz: 0,
+                doppler_step_hz: 250,
+                coherent_ms: 1,
+                noncoherent: 1,
+            },
+        ];
+
+        let filtered = filter_acquisition_requests(&config, &requests);
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].sat.constellation, Constellation::Gps);
     }
 }
