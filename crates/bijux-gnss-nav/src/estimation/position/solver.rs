@@ -15,7 +15,8 @@ use crate::orbits::galileo::{
     sat_state_galileo_e1_from_observation, GalileoBroadcastNavigationData,
 };
 use crate::orbits::glonass::{
-    glonass_navigation_age, is_glonass_navigation_valid, sat_state_glonass_l1,
+    glonass_gps_minus_glonass_s, glonass_navigation_age, is_glonass_navigation_valid,
+    sat_state_glonass_l1,
     sat_state_glonass_l1_from_observation, GlonassBroadcastNavigationFrame,
 };
 use crate::orbits::gps::{
@@ -79,6 +80,7 @@ pub enum PositionSolveRefusalKind {
     InsufficientObservations,
     InvalidSatelliteTime,
     InvalidEphemeris,
+    UnknownInterSystemTimeOffset,
     InsufficientUsableSatellites,
     UnderdeterminedRaimExclusion,
     SolverFailure,
@@ -601,6 +603,22 @@ impl PositionSolver {
             ));
         }
         let mut rejected = timing_rejected;
+        let unknown_time_offset_sats =
+            unknown_inter_system_time_offset_sats(&observations, navigation);
+        if !unknown_time_offset_sats.is_empty() {
+            rejected.extend(
+                unknown_time_offset_sats
+                    .iter()
+                    .copied()
+                    .map(|sat| (sat, MeasurementRejectReason::TimeInconsistency)),
+            );
+            return Err(position_solve_refusal(
+                PositionSolveRefusalKind::UnknownInterSystemTimeOffset,
+                sat_count,
+                observations.len().saturating_sub(unknown_time_offset_sats.len()),
+                rejected,
+            ));
+        }
         let inputs = resolve_position_inputs(&observations, navigation, t_rx_s, &mut rejected);
         if inputs.len() < 4 {
             return Err(position_solve_refusal(
@@ -859,6 +877,44 @@ fn position_solve_refusal(
     PositionSolveRefusal { kind, sat_count, used_sat_count, rejected }
 }
 
+fn unknown_inter_system_time_offset_sats(
+    observations: &[PositionObservation],
+    navigation: &[PositionBroadcastNavigation],
+) -> Vec<SatId> {
+    let unique_constellations =
+        observations.iter().map(|observation| observation.sat.constellation).collect::<std::collections::BTreeSet<_>>();
+    if unique_constellations.len() < 2 {
+        return Vec::new();
+    }
+
+    let mut unknown = Vec::new();
+    for observation in observations {
+        let candidates =
+            navigation.iter().filter(|entry| entry.sat() == observation.sat).collect::<Vec<_>>();
+        if candidates.is_empty() {
+            continue;
+        }
+        if candidates
+            .iter()
+            .all(|entry| !navigation_time_relationship_is_known(entry))
+        {
+            unknown.push(observation.sat);
+        }
+    }
+    unknown
+}
+
+fn navigation_time_relationship_is_known(navigation: &PositionBroadcastNavigation) -> bool {
+    match navigation {
+        PositionBroadcastNavigation::Gps(_) => true,
+        PositionBroadcastNavigation::Galileo(_) => true,
+        PositionBroadcastNavigation::Beidou(_) => true,
+        PositionBroadcastNavigation::Glonass(navigation) => {
+            glonass_gps_minus_glonass_s(navigation).is_some()
+        }
+    }
+}
+
 fn resolve_position_inputs(
     observations: &[PositionObservation],
     navigation: &[PositionBroadcastNavigation],
@@ -964,6 +1020,7 @@ fn select_valid_ephemeris(
 #[cfg(test)]
 mod tests {
     use super::{
+        navigation_time_relationship_is_known, unknown_inter_system_time_offset_sats,
         position_broadcast_navigation_from_beidou_navigations,
         position_broadcast_navigation_from_glonass_frames,
         position_broadcast_navigation_from_gps_ephemerides, position_observations_from_epoch,
@@ -1371,6 +1428,60 @@ mod tests {
             | PositionBroadcastNavigation::Galileo(_)
             | PositionBroadcastNavigation::Glonass(_) => panic!("expected beidou navigation"),
         }
+    }
+
+    #[test]
+    fn glonass_navigation_without_gps_time_offset_is_not_time_resolved() {
+        let sat = SatId { constellation: Constellation::Glonass, prn: 14 };
+        let navigation = sample_glonass_navigation(sat, 83_700, -10_782.0);
+
+        assert!(navigation_time_relationship_is_known(&PositionBroadcastNavigation::Glonass(
+            navigation.clone(),
+        )));
+
+        let mut navigation_without_system_time = navigation;
+        navigation_without_system_time.system_time = None;
+
+        assert!(!navigation_time_relationship_is_known(
+            &PositionBroadcastNavigation::Glonass(navigation_without_system_time)
+        ));
+    }
+
+    #[test]
+    fn mixed_observations_detect_unknown_glonass_time_offset() {
+        let gps_sat = SatId { constellation: Constellation::Gps, prn: 13 };
+        let glonass_sat = SatId { constellation: Constellation::Glonass, prn: 14 };
+        let observations = vec![
+            PositionObservation {
+                sat: gps_sat,
+                pseudorange_m: 24_000_000.0,
+                cn0_dbhz: 45.0,
+                elevation_deg: None,
+                weight: 1.0,
+                gps_receive_time: None,
+                signal_timing: None,
+            },
+            PositionObservation {
+                sat: glonass_sat,
+                pseudorange_m: 24_100_000.0,
+                cn0_dbhz: 45.0,
+                elevation_deg: None,
+                weight: 1.0,
+                gps_receive_time: None,
+                signal_timing: None,
+            },
+        ];
+        let mut glonass_navigation =
+            sample_glonass_navigation(glonass_sat, 83_700, -10_782.0);
+        glonass_navigation.system_time = None;
+        let navigation = vec![
+            PositionBroadcastNavigation::Gps(sample_ephemeris(gps_sat, 200_000.0, 200_000.0)),
+            PositionBroadcastNavigation::Glonass(glonass_navigation),
+        ];
+
+        let unknown = unknown_inter_system_time_offset_sats(&observations, &navigation);
+
+        assert_eq!(unknown, vec![glonass_sat]);
     }
 
     #[test]
