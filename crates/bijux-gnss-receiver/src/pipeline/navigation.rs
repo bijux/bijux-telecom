@@ -24,6 +24,9 @@ use crate::engine::receiver_config::{
 };
 use crate::engine::runtime::ReceiverRuntime;
 use crate::pipeline::common_code_doppler_anomaly::detect_common_code_doppler_anomaly;
+use crate::pipeline::constellation_clock_inconsistency::{
+    detect_constellation_clock_inconsistencies, ConstellationClockInconsistency,
+};
 use crate::pipeline::replay_timing_anomaly::detect_replay_timing_anomaly;
 use crate::pipeline::satellite_clock_anomaly::{
     advance_satellite_clock_suspect_streak, detect_satellite_clock_anomaly,
@@ -679,6 +682,7 @@ impl Navigation {
         let mut replay_timing_explain_reasons = Vec::new();
         let mut resolved_by_raim_exclusion = false;
         let mut clock_anomaly_explain_reasons = Vec::new();
+        let mut constellation_clock_explain_reasons = Vec::new();
         if let Some(solution_separation) = solution.raim_solution_separation.as_ref() {
             raim_explain_reasons.push(format!(
                 "raim_solution_separation_reference_satellites={}",
@@ -890,6 +894,44 @@ impl Navigation {
                 impossible_geometry_explain_reasons(impossible_geometry),
             );
         }
+        let constellation_clock_inconsistencies = detect_constellation_clock_inconsistencies(
+            self.last_solution.as_ref(),
+            &nav_epoch,
+        );
+        if !constellation_clock_inconsistencies.is_empty() {
+            for inconsistency in &constellation_clock_inconsistencies {
+                nav_epoch
+                    .health
+                    .push(bijux_gnss_core::api::NavHealthEvent::ConstellationClockInconsistency {
+                        constellation: inconsistency.constellation,
+                        previous_bias_s: inconsistency.previous_bias_s,
+                        current_bias_s: inconsistency.current_bias_s,
+                        bias_step_m: inconsistency.bias_step_m,
+                        bias_step_threshold_m: inconsistency.bias_step_threshold_m,
+                        supporting_satellite_count: inconsistency.supporting_satellite_count,
+                    });
+                self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
+                    bijux_gnss_core::api::DiagnosticSeverity::Warning,
+                    "NAV_CONSTELLATION_CLOCK_INCONSISTENCY",
+                    format!(
+                        "{:?} clock offset jumped by {:.2} m across {} satellites",
+                        inconsistency.constellation,
+                        inconsistency.bias_step_m,
+                        inconsistency.supporting_satellite_count
+                    ),
+                ));
+            }
+            constellation_clock_explain_reasons =
+                constellation_clock_inconsistency_explain_reasons(
+                    &constellation_clock_inconsistencies,
+                );
+            nav_epoch = policy_refusal_epoch(
+                nav_epoch,
+                self.last_solution.as_ref().map(|row| row.status),
+                NavRefusalClass::InconsistentObservations,
+                constellation_clock_explain_reasons.clone(),
+            );
+        }
         nav_epoch.quality = nav_epoch.status.quality_flag();
 
         let (innovation_rms, norm_rms, norm_max, predicted_var, observed_var) =
@@ -949,6 +991,11 @@ impl Navigation {
             }
         }
         for reason in replay_timing_explain_reasons {
+            if !nav_epoch.explain_reasons.iter().any(|existing| existing == &reason) {
+                nav_epoch.explain_reasons.push(reason);
+            }
+        }
+        for reason in constellation_clock_explain_reasons {
             if !nav_epoch.explain_reasons.iter().any(|existing| existing == &reason) {
                 nav_epoch.explain_reasons.push(reason);
             }
@@ -1591,6 +1638,35 @@ fn impossible_geometry_explain_reasons(
             impossible_geometry.max_altitude_m
         ),
     ]
+}
+
+fn constellation_clock_inconsistency_explain_reasons(
+    inconsistencies: &[ConstellationClockInconsistency],
+) -> Vec<String> {
+    let mut reasons = vec!["constellation_clock_inconsistency".to_string()];
+    for inconsistency in inconsistencies {
+        reasons.push(format!(
+            "constellation_clock_inconsistency_constellation={:?}",
+            inconsistency.constellation
+        ));
+        reasons.push(format!(
+            "constellation_clock_inconsistency_bias_step_m={:.3}",
+            inconsistency.bias_step_m
+        ));
+        reasons.push(format!(
+            "constellation_clock_inconsistency_previous_bias_s={:.12}",
+            inconsistency.previous_bias_s
+        ));
+        reasons.push(format!(
+            "constellation_clock_inconsistency_current_bias_s={:.12}",
+            inconsistency.current_bias_s
+        ));
+        reasons.push(format!(
+            "constellation_clock_inconsistency_supporting_satellites={}",
+            inconsistency.supporting_satellite_count
+        ));
+    }
+    reasons
 }
 
 fn decision_for_solution(solution: &NavSolutionEpoch) -> NavDecision {
