@@ -730,17 +730,17 @@ mod tests {
         PositionFilterMotionModel, PositionFilterStaticPositionModel,
     };
     use crate::estimation::position::solver::{
-        PositionObservation, PositionSolveRefusalKind, WeightingConfig,
+        PositionObservation, PositionSolveRefusalKind, PositionWeightingModel, WeightingConfig,
     };
     use bijux_gnss_core::api::{Constellation, SatId};
 
-    fn sample_position_observation(elevation_deg: Option<f64>) -> PositionObservation {
+    fn sample_position_observation(cn0_dbhz: f64, elevation_deg: Option<f64>) -> PositionObservation {
         PositionObservation {
             sat: SatId { constellation: Constellation::Gps, prn: 7 },
             pseudorange_m: 24_000_000.0,
             doppler_hz: Some(0.0),
             doppler_var_hz2: Some(1.0),
-            cn0_dbhz: 45.0,
+            cn0_dbhz,
             elevation_deg,
             weight: 1.0,
             gps_receive_time: None,
@@ -938,13 +938,32 @@ mod tests {
         config.weighting = WeightingConfig::default();
 
         let low_elevation_sigma =
-            pseudorange_sigma_m(&sample_position_observation(Some(10.0)), Some(10.0), &config);
+            pseudorange_sigma_m(&sample_position_observation(45.0, Some(10.0)), Some(10.0), &config);
         let high_elevation_sigma =
-            pseudorange_sigma_m(&sample_position_observation(Some(75.0)), Some(75.0), &config);
+            pseudorange_sigma_m(&sample_position_observation(45.0, Some(75.0)), Some(75.0), &config);
 
         assert!(low_elevation_sigma.is_finite());
         assert!(high_elevation_sigma.is_finite());
         assert!(low_elevation_sigma > high_elevation_sigma);
+    }
+
+    #[test]
+    fn position_filter_assigns_larger_sigma_to_low_cn0_pseudorange() {
+        let mut config = PositionFilterConfig::default();
+        config.base_pseudorange_sigma_m = 3.0;
+        config.weighting = WeightingConfig {
+            model: PositionWeightingModel::Cn0,
+            ..WeightingConfig::default()
+        };
+
+        let weak_signal_sigma =
+            pseudorange_sigma_m(&sample_position_observation(28.0, Some(45.0)), Some(45.0), &config);
+        let strong_signal_sigma =
+            pseudorange_sigma_m(&sample_position_observation(48.0, Some(45.0)), Some(45.0), &config);
+
+        assert!(weak_signal_sigma.is_finite());
+        assert!(strong_signal_sigma.is_finite());
+        assert!(weak_signal_sigma > strong_signal_sigma);
     }
 
     #[test]
