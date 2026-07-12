@@ -133,6 +133,15 @@ pub use crate::linalg::Matrix;
 pub use crate::models::atmosphere::{
     IonosphereModel, KlobucharCoefficients, KlobucharModel, SaastamoinenModel, TroposphereModel,
 };
+/// BeiDou broadcast navigation and satellite state helpers.
+pub use crate::orbits::beidou::{
+    beidou_earth_rotation_correction, beidou_navigation_age, beidou_satellite_clock_correction_b1i,
+    is_beidou_navigation_valid, sat_state_beidou_b1i, sat_state_beidou_b1i_at_receive_time,
+    sat_state_beidou_b1i_from_observation, select_best_beidou_navigation,
+    BeidouBroadcastNavigationData, BeidouClockCorrection, BeidouEarthRotationCorrection,
+    BeidouEphemeris, BeidouIonosphericCorrection, BeidouNavigationAge, BeidouSatState,
+    BeidouSatelliteClockCorrection, BeidouSignalHealth, BeidouSystemTime,
+};
 /// Ephemeris provider traits and helpers.
 pub use crate::orbits::ephemeris::{CsvEphemerisProvider, Ephemeris, EphemerisProvider};
 /// Broadcast ephemeris and satellite state.
