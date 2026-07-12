@@ -19,7 +19,7 @@ use bijux_gnss_nav::api::{
     GpsEphemeris, GpsL1CaHowWord, GpsL1CaLnavDecodedSubframe, GpsL1CaLnavSubframe1Clock,
     GpsL1CaLnavSubframe2Orbit, GpsL1CaLnavSubframe3Orbit, GpsL1CaLnavSubframeAlignment,
     GpsL1CaTlmWord, GpsL1CaWordParitySummary, PositionBroadcastNavigation, PositionObservation,
-    PositionRobustWeighting, PositionSolver,
+    PositionRobustWeighting, PositionSolver, GpsBroadcastNavigationData,
 };
 use support::position_truth::{
     add_klobuchar_delay_to_observations, add_saastamoinen_delay_to_observations,
@@ -1279,6 +1279,54 @@ fn single_point_solver_applies_broadcast_ionosphere_correction() {
         .expect("ionosphere-corrected observations should solve");
     let uncorrected_solution = PositionSolver::new()
         .solve_wls(&ionosphere_biased_observations, &scenario.ephemerides, scenario.t_rx_s)
+        .expect("uncorrected observations should still solve");
+
+    let corrected_error_m = position_error_3d_m(
+        corrected_solution.ecef_x_m,
+        corrected_solution.ecef_y_m,
+        corrected_solution.ecef_z_m,
+        scenario.truth_ecef_m,
+    );
+    let uncorrected_error_m = position_error_3d_m(
+        uncorrected_solution.ecef_x_m,
+        uncorrected_solution.ecef_y_m,
+        uncorrected_solution.ecef_z_m,
+        scenario.truth_ecef_m,
+    );
+
+    assert!(corrected_error_m < 5.0);
+    assert!(uncorrected_error_m > corrected_error_m + 3.0);
+}
+
+#[test]
+fn single_point_solver_uses_gps_broadcast_navigation_klobuchar_payload() {
+    let scenario = four_satellite_position_scenario(0.0);
+    let klobuchar = sample_klobuchar_coefficients();
+    let navigation = GpsBroadcastNavigationData {
+        ephemerides: scenario.ephemerides.clone(),
+        klobuchar: Some(klobuchar),
+    };
+    let ionosphere_biased_observations = add_klobuchar_delay_to_observations(
+        &scenario.observations,
+        &scenario.ephemerides,
+        scenario.truth_ecef_m,
+        scenario.t_rx_s,
+        klobuchar,
+    );
+
+    let corrected_solution = PositionSolver::new()
+        .solve_wls_with_gps_broadcast_navigation(
+            &ionosphere_biased_observations,
+            &navigation,
+            scenario.t_rx_s,
+        )
+        .expect("broadcast navigation payload should solve");
+    let uncorrected_solution = PositionSolver::new()
+        .solve_wls(
+            &ionosphere_biased_observations,
+            &navigation.ephemerides,
+            scenario.t_rx_s,
+        )
         .expect("uncorrected observations should still solve");
 
     let corrected_error_m = position_error_3d_m(
