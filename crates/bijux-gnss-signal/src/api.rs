@@ -1,6 +1,11 @@
 //! Public API for bijux-gnss-signal.
 
 /// Spreading code generators.
+pub use crate::codes::beidou_b1i::{
+    beidou_b1i_code_assignment, beidou_b1i_code_assignments, generate_beidou_b1i_code,
+    generate_beidou_b1i_code_chips, sample_beidou_b1i_code, BeidouB1iCodeAssignment,
+    BEIDOU_B1I_CODE_CHIPS, BEIDOU_B1I_CODE_RATE_HZ,
+};
 pub use crate::codes::ca_code::{
     ca_code_assignment, ca_code_assignments, ca_code_autocorrelation_summary,
     ca_code_cross_correlation_summary, ca_code_periodic_autocorrelation,
