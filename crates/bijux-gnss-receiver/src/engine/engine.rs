@@ -9,7 +9,7 @@ use crate::pipeline::observations::{
 };
 use bijux_gnss_core::api::{
     default_acquisition_sats, default_acquisition_signal, signal_registry, AcqHypothesis,
-    AcqResult, Constellation, InputError, SamplesFrame, SatId, SignalBand, SignalCode,
+    AcqRequest, AcqResult, Constellation, InputError, SamplesFrame, SatId, SignalBand, SignalCode,
     SignalSupportRow, SupportMatrix, SupportStatus, TrackEpoch,
 };
 use bijux_gnss_signal::api::{remove_dc_offset_in_place, samples_per_code};
@@ -27,10 +27,37 @@ impl Receiver {
             Error = crate::io::data::SampleSourceError,
         >,
     ) -> Result<RunArtifacts, crate::engine::receiver_config::ReceiverError> {
+        let acquisition_requests = default_acquisition_requests(self.config());
+        self.run_with_acquisition_requests_internal(input, &acquisition_requests, "run")
+    }
+
+    /// Run the receiver pipeline with explicit acquisition requests.
+    pub fn run_with_acquisition_requests(
+        &self,
+        input: &mut dyn bijux_gnss_signal::api::SignalSource<
+            Error = crate::io::data::SampleSourceError,
+        >,
+        acquisition_requests: &[AcqRequest],
+    ) -> Result<RunArtifacts, crate::engine::receiver_config::ReceiverError> {
+        self.run_with_acquisition_requests_internal(
+            input,
+            acquisition_requests,
+            "run_with_acquisition_requests",
+        )
+    }
+
+    fn run_with_acquisition_requests_internal(
+        &self,
+        input: &mut dyn bijux_gnss_signal::api::SignalSource<
+            Error = crate::io::data::SampleSourceError,
+        >,
+        acquisition_requests: &[AcqRequest],
+        entry: &str,
+    ) -> Result<RunArtifacts, crate::engine::receiver_config::ReceiverError> {
         let runtime = self.runtime().clone();
         runtime.trace.record(TraceRecord {
             name: "pipeline_start",
-            fields: vec![("entry", "run".to_string())],
+            fields: vec![("entry", entry.to_string())],
         });
         let pipeline_start = Instant::now();
 
@@ -39,8 +66,8 @@ impl Receiver {
             self.config().code_freq_basis_hz,
             self.config().code_length,
         );
-        let sats = acquisition_search_sats(self.config());
-        let acquisition_frame_len = acquisition_frame_len(self.config(), &sats);
+        let requested_sats = acquisition_request_sats(acquisition_requests);
+        let acquisition_frame_len = acquisition_frame_len(self.config(), &requested_sats);
         let mut frame = match input.next_frame(acquisition_frame_len) {
             Ok(Some(frame)) => frame,
             Ok(None) => return Ok(RunArtifacts::default()),
@@ -116,7 +143,7 @@ impl Receiver {
             name: "pipeline_stage",
             fields: vec![
                 ("stage", "acquisition".to_string()),
-                ("sat_count", sats.len().to_string()),
+                ("sat_count", acquisition_requests.len().to_string()),
             ],
         });
         let acquisition_start = Instant::now();
@@ -124,13 +151,8 @@ impl Receiver {
             self.config().clone(),
             self.runtime().clone(),
         );
-        let acquisition_run = acquisition.run_fft_topn_with_explain(
-            &frame,
-            &sats,
-            4,
-            self.config().acquisition_integration_ms,
-            self.config().acquisition_noncoherent,
-        );
+        let acquisition_run =
+            acquisition.run_fft_topn_for_requests_with_explain(&frame, acquisition_requests, 4);
         let acquisition_candidates = acquisition_run.results;
         let acquisitions: Vec<_> = acquisition_candidates
             .iter()
@@ -416,19 +438,42 @@ fn acquisition_frame_len(
         })
 }
 
-fn acquisition_search_sats(
+fn default_acquisition_requests(
     config: &crate::engine::receiver_config::ReceiverPipelineConfig,
-) -> Vec<SatId> {
+) -> Vec<AcqRequest> {
     [Constellation::Gps, Constellation::Galileo, Constellation::Glonass, Constellation::Beidou]
         .into_iter()
         .flat_map(|constellation| {
-            if acquisition_signal_matches_config(config, constellation) {
+            if acquisition_signal_matches_config(config, constellation)
+                && constellation_supports_slot_only_acquisition(constellation)
+            {
                 default_acquisition_sats(constellation)
+                    .into_iter()
+                    .map(|sat| AcqRequest {
+                        sat,
+                        glonass_frequency_channel: None,
+                        doppler_search_hz: config.acquisition_doppler_search_hz,
+                        doppler_step_hz: config.acquisition_doppler_step_hz.max(1),
+                        coherent_ms: config.acquisition_integration_ms,
+                        noncoherent: config.acquisition_noncoherent,
+                    })
+                    .collect::<Vec<_>>()
             } else {
                 Vec::new()
             }
         })
         .collect()
+}
+
+fn acquisition_request_sats(requests: &[AcqRequest]) -> Vec<SatId> {
+    requests.iter().map(|request| request.sat).collect()
+}
+
+fn constellation_supports_slot_only_acquisition(constellation: Constellation) -> bool {
+    match constellation {
+        Constellation::Glonass => false,
+        _ => true,
+    }
 }
 
 fn acquisition_signal_matches_config(
@@ -597,6 +642,12 @@ fn support_reason(constellation: Constellation, band: SignalBand, code: SignalCo
     if constellation == Constellation::Galileo && band == SignalBand::E1 && code == SignalCode::E1B
     {
         return "receiver acquisition and tracking support this signal path; observations and navigation remain incomplete".to_string();
+    }
+    if constellation == Constellation::Glonass
+        && band == SignalBand::L1
+        && code == SignalCode::Unknown
+    {
+        return "receiver acquisition supports this signal path through explicit FDMA channel requests; tracking, observations, and navigation remain incomplete".to_string();
     }
     if signal_registry(constellation, band, code).is_some() {
         return "signal model registered; receiver pipeline support not yet complete".to_string();
