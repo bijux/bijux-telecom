@@ -348,16 +348,9 @@ fn wrap_glonass_time_delta_s(delta_t_s: f64) -> f64 {
 }
 
 fn propagate_glonass_state_vector(state_vector: GlonassStateVector, delta_t_s: f64) -> [f64; 6] {
-    let mut state = [
-        state_vector.x_m,
-        state_vector.y_m,
-        state_vector.z_m,
-        state_vector.vx_mps,
-        state_vector.vy_mps,
-        state_vector.vz_mps,
-    ];
+    let mut state = glonass_inertial_initial_state(state_vector);
     if delta_t_s.abs() <= f64::EPSILON {
-        return state;
+        return glonass_ecef_state_from_inertial(state, delta_t_s);
     }
 
     let luni_solar_acceleration_mps2 =
@@ -365,28 +358,28 @@ fn propagate_glonass_state_vector(state_vector: GlonassStateVector, delta_t_s: f
     let mut remaining_s = delta_t_s;
     while remaining_s.abs() > f64::EPSILON {
         let step_s = remaining_s.signum() * remaining_s.abs().min(GLONASS_INTEGRATION_STEP_S);
-        state = rk4_step(state, step_s, luni_solar_acceleration_mps2);
+        state = rk4_step(state, step_s, luni_solar_acceleration_mps2, glonass_inertial_dynamics);
         remaining_s -= step_s;
     }
-    state
+    glonass_ecef_state_from_inertial(state, delta_t_s)
 }
 
 fn rk4_step(
     state: [f64; 6],
     step_s: f64,
     luni_solar_acceleration_mps2: [f64; 3],
+    dynamics: fn([f64; 6], [f64; 3]) -> [f64; 6],
 ) -> [f64; 6] {
-    let k1 = glonass_ecef_dynamics(state, luni_solar_acceleration_mps2);
-    let k2 = glonass_ecef_dynamics(
+    let k1 = dynamics(state, luni_solar_acceleration_mps2);
+    let k2 = dynamics(
         add_scaled_state(state, k1, step_s * 0.5),
         luni_solar_acceleration_mps2,
     );
-    let k3 = glonass_ecef_dynamics(
+    let k3 = dynamics(
         add_scaled_state(state, k2, step_s * 0.5),
         luni_solar_acceleration_mps2,
     );
-    let k4 =
-        glonass_ecef_dynamics(add_scaled_state(state, k3, step_s), luni_solar_acceleration_mps2);
+    let k4 = dynamics(add_scaled_state(state, k3, step_s), luni_solar_acceleration_mps2);
 
     let mut next_state = state;
     for index in 0..next_state.len() {
@@ -403,7 +396,32 @@ fn add_scaled_state(state: [f64; 6], derivative: [f64; 6], scale: f64) -> [f64; 
     next
 }
 
-fn glonass_ecef_dynamics(
+fn glonass_inertial_initial_state(state_vector: GlonassStateVector) -> [f64; 6] {
+    [
+        state_vector.x_m,
+        state_vector.y_m,
+        state_vector.z_m,
+        state_vector.vx_mps - GLONASS_OMEGA_E_DOT * state_vector.y_m,
+        state_vector.vy_mps + GLONASS_OMEGA_E_DOT * state_vector.x_m,
+        state_vector.vz_mps,
+    ]
+}
+
+fn glonass_ecef_state_from_inertial(inertial_state: [f64; 6], delta_t_s: f64) -> [f64; 6] {
+    let rotation_rad = GLONASS_OMEGA_E_DOT * delta_t_s;
+    let cos_rotation = rotation_rad.cos();
+    let sin_rotation = rotation_rad.sin();
+    [
+        inertial_state[0] * cos_rotation + inertial_state[1] * sin_rotation,
+        -inertial_state[0] * sin_rotation + inertial_state[1] * cos_rotation,
+        inertial_state[2],
+        0.0,
+        0.0,
+        0.0,
+    ]
+}
+
+fn glonass_inertial_dynamics(
     state: [f64; 6],
     luni_solar_acceleration_mps2: [f64; 3],
 ) -> [f64; 6] {
@@ -426,17 +444,12 @@ fn glonass_ecef_dynamics(
     let central_acceleration = -GLONASS_MU_M3PS2 / radius_cubed_m3;
     let j2_acceleration =
         1.5 * GLONASS_C20 * GLONASS_MU_M3PS2 * GLONASS_EARTH_RADIUS_M.powi(2) / radius_fifth_m5;
-    let earth_rotation_squared = GLONASS_OMEGA_E_DOT * GLONASS_OMEGA_E_DOT;
 
     let ax_mps2 = central_acceleration * x_m
         + j2_acceleration * x_m * (1.0 - 5.0 * z_ratio_squared)
-        + earth_rotation_squared * x_m
-        + 2.0 * GLONASS_OMEGA_E_DOT * vy_mps
         + luni_solar_acceleration_mps2[0];
     let ay_mps2 = central_acceleration * y_m
         + j2_acceleration * y_m * (1.0 - 5.0 * z_ratio_squared)
-        + earth_rotation_squared * y_m
-        - 2.0 * GLONASS_OMEGA_E_DOT * vx_mps
         + luni_solar_acceleration_mps2[1];
     let az_mps2 = central_acceleration * z_m
         + j2_acceleration * z_m * (3.0 - 5.0 * z_ratio_squared)
