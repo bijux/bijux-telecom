@@ -234,7 +234,8 @@ fn saturation_vapor_pressure_hpa(temperature_k: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        IonosphereModel, KlobucharCoefficients, KlobucharModel, SaastamoinenModel, TroposphereModel,
+        IonosphereModel, KlobucharCoefficients, KlobucharModel, SaastamoinenModel,
+        TroposphereMeteorology, TroposphereModel,
     };
     use bijux_gnss_core::api::{Llh, Seconds};
 
@@ -341,5 +342,52 @@ mod tests {
         assert!(high_elevation_delay_m > zenith_delay_m);
         assert!(high_elevation_delay_m < zenith_delay_m * 1.1);
         assert!(low_elevation_delay_m > high_elevation_delay_m * 2.0);
+    }
+
+    #[test]
+    fn troposphere_meteorology_rejects_non_physical_ranges() {
+        assert!(TroposphereMeteorology::new(1_013.25, 293.15, 0.5).is_physical());
+        assert!(!TroposphereMeteorology::new(50.0, 293.15, 0.5).is_physical());
+        assert!(!TroposphereMeteorology::new(1_013.25, 120.0, 0.5).is_physical());
+        assert!(!TroposphereMeteorology::new(1_013.25, 293.15, 1.5).is_physical());
+    }
+
+    #[test]
+    fn saastamoinen_hydrostatic_delay_tracks_pressure_changes() {
+        let receiver = sample_receiver();
+        let low_pressure = TroposphereMeteorology::new(850.0, 293.15, 0.4);
+        let high_pressure = TroposphereMeteorology::new(1_030.0, 293.15, 0.4);
+
+        let low_delay_m =
+            SaastamoinenModel::zenith_hydrostatic_delay_with_meteorology_m(receiver, low_pressure);
+        let high_delay_m =
+            SaastamoinenModel::zenith_hydrostatic_delay_with_meteorology_m(receiver, high_pressure);
+
+        assert!(high_delay_m > low_delay_m + 0.3);
+    }
+
+    #[test]
+    fn saastamoinen_wet_delay_tracks_temperature_and_humidity_changes() {
+        let hot_humid = TroposphereMeteorology::new(1_013.25, 303.15, 0.95);
+        let cool_dry = TroposphereMeteorology::new(1_013.25, 278.15, 0.2);
+
+        let hot_humid_delay_m =
+            SaastamoinenModel::zenith_wet_delay_with_meteorology_m(hot_humid);
+        let cool_dry_delay_m =
+            SaastamoinenModel::zenith_wet_delay_with_meteorology_m(cool_dry);
+
+        assert!(hot_humid_delay_m > cool_dry_delay_m + 0.15);
+    }
+
+    #[test]
+    fn saastamoinen_total_delay_uses_local_meteorology() {
+        let receiver = sample_receiver();
+        let standard_delay_m = SaastamoinenModel::zenith_delay_m(receiver);
+        let observed_meteorology = TroposphereMeteorology::new(980.0, 301.15, 0.9);
+        let observed_delay_m =
+            SaastamoinenModel::zenith_delay_with_meteorology_m(receiver, observed_meteorology);
+
+        assert!(observed_delay_m.is_finite());
+        assert!((observed_delay_m - standard_delay_m).abs() > 0.05);
     }
 }
