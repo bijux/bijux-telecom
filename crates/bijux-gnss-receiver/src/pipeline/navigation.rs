@@ -1544,6 +1544,60 @@ mod tests {
         )
     }
 
+    fn sample_pipeline_position_satellite(
+        sat: SatId,
+        elevation_deg: Option<f64>,
+        tracking_mode: &str,
+    ) -> ObsSatellite {
+        let signal_travel_time_s = 24_000_000.0 / 299_792_458.0;
+        ObsSatellite {
+            signal_id: SigId { sat, band: SignalBand::L1, code: SignalCode::Ca },
+            pseudorange_m: Meters(24_000_000.0),
+            pseudorange_var_m2: 4.0,
+            carrier_phase_cycles: bijux_gnss_core::api::Cycles(0.0),
+            carrier_phase_var_cycles2: 1.0,
+            doppler_hz: bijux_gnss_core::api::Hertz(0.0),
+            doppler_var_hz2: 4.0,
+            cn0_dbhz: 45.0,
+            lock_flags: LockFlags {
+                code_lock: true,
+                carrier_lock: true,
+                bit_lock: true,
+                cycle_slip: false,
+            },
+            multipath_suspect: false,
+            observation_status: ObservationStatus::Accepted,
+            observation_reject_reasons: Vec::new(),
+            elevation_deg,
+            azimuth_deg: Some(0.0),
+            weight: Some(1.0),
+            timing: Some(ObsSignalTiming {
+                signal_travel_time_s: Seconds(signal_travel_time_s),
+                transmit_gps_time: GpsTime { week: 0, tow_s: 2_000.0 - signal_travel_time_s },
+            }),
+            error_model: None,
+            metadata: ObsMetadata {
+                tracking_mode: tracking_mode.to_string(),
+                integration_ms: 1,
+                lock_quality: 1.0,
+                smoothing_window: 0,
+                smoothing_age: 0,
+                smoothing_resets: 0,
+                signal: SignalSpec {
+                    constellation: sat.constellation,
+                    band: SignalBand::L1,
+                    code: SignalCode::Ca,
+                    code_rate_hz: 1_023_000.0,
+                    carrier_hz: bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ,
+                },
+                observation_status: "accepted".to_string(),
+                observation_support_class: "supported".to_string(),
+                observation_uncertainty_class: "unknown".to_string(),
+                ..ObsMetadata::default()
+            },
+        }
+    }
+
     type NavFixtureEpoch = ObsEpoch;
 
     fn make_obs_epoch_for_solution(
@@ -1835,6 +1889,53 @@ mod tests {
         assert!((from_navigation.2 - from_timing.z_m).abs() < 1.0e-9);
         assert!((from_navigation.0 - uncorrected.x_m).abs() > 0.01);
         assert!((from_navigation.1 - uncorrected.y_m).abs() > 0.01);
+    }
+
+    #[test]
+    fn prepare_position_observation_downweights_low_elevation_satellites() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 8 };
+        let mut obs_epoch = fake_obs_epoch_for_nav_tests(0);
+        obs_epoch.t_rx_s = Seconds(2_000.0);
+        obs_epoch.gps_week = Some(0);
+        obs_epoch.tow_s = Some(Seconds(2_000.0));
+        let config = ReceiverPipelineConfig::default();
+        let high_elevation = sample_pipeline_position_satellite(sat, Some(75.0), "scalar");
+        let low_elevation = sample_pipeline_position_satellite(sat, Some(10.0), "scalar");
+
+        let PositionObservationPreparation::Included(high_observation) =
+            prepare_position_observation(&config, &obs_epoch, &high_elevation, &[], None)
+        else {
+            panic!("high-elevation observation should be retained");
+        };
+        let PositionObservationPreparation::Included(low_observation) =
+            prepare_position_observation(&config, &obs_epoch, &low_elevation, &[], None)
+        else {
+            panic!("low-elevation observation should be retained");
+        };
+
+        assert!(low_observation.weight.is_finite());
+        assert!(high_observation.weight.is_finite());
+        assert!(low_observation.weight < high_observation.weight);
+    }
+
+    #[test]
+    fn prepare_position_observation_excludes_satellite_below_elevation_mask() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 9 };
+        let mut obs_epoch = fake_obs_epoch_for_nav_tests(0);
+        obs_epoch.t_rx_s = Seconds(2_000.0);
+        obs_epoch.gps_week = Some(0);
+        obs_epoch.tow_s = Some(Seconds(2_000.0));
+        let mut config = ReceiverPipelineConfig::default();
+        config.weighting.elev_mask_deg = 15.0;
+        let low_elevation = sample_pipeline_position_satellite(sat, Some(10.0), "scalar");
+
+        let preparation =
+            prepare_position_observation(&config, &obs_epoch, &low_elevation, &[], None);
+
+        assert!(matches!(
+            preparation,
+            PositionObservationPreparation::ExcludedByElevationMask
+        ));
     }
 
     #[test]
