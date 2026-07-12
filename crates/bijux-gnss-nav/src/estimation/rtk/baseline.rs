@@ -1,6 +1,5 @@
 use bijux_gnss_core::api::{
-    ArtifactPayloadValidate, Constellation, DiagnosticEvent, DiagnosticSeverity, SigId, SignalBand,
-    SignalCode,
+    signal_id_wavelength_m, ArtifactPayloadValidate, DiagnosticEvent, DiagnosticSeverity, SigId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -13,7 +12,6 @@ use crate::{
 const MIN_OBSERVATION_VARIANCE_M2: f64 = 1.0e-6;
 const POSITION_CONVERGENCE_M: f64 = 1.0e-4;
 const SOLVER_ITERATIONS: usize = 8;
-const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 
 /// Float ambiguity estimate associated with one RTK double-difference observation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -487,11 +485,5 @@ fn geometric_range_m(receiver_ecef_m: [f64; 3], satellite_ecef_m: [f64; 3]) -> f
 }
 
 fn wavelength_m(signal: SigId) -> Option<f64> {
-    if signal.sat.constellation != Constellation::Gps
-        || signal.band != SignalBand::L1
-        || signal.code != SignalCode::Ca
-    {
-        return None;
-    }
-    Some(SPEED_OF_LIGHT_MPS / bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value())
+    Some(signal_id_wavelength_m(signal)?.0)
 }

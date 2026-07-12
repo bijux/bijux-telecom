@@ -1,6 +1,8 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{ArtifactPayloadValidate, Constellation, SatId, SigId, SignalBand};
+use bijux_gnss_core::api::{
+    ArtifactPayloadValidate, Constellation, SatId, SigId, SignalBand, SignalCode,
+};
 use bijux_gnss_nav::api::{
     rtk_float_baseline_from_double_differences,
     rtk_float_baseline_from_double_differences_with_rover_prior, RtkFloatAmbiguityEstimate,
@@ -144,12 +146,14 @@ fn rtk_float_baseline_solver_refuses_underdetermined_inputs() {
 }
 
 #[test]
-fn rtk_float_baseline_solver_refuses_unsupported_signal_codes() {
+fn rtk_float_baseline_solver_refuses_unregistered_signal_identities() {
     let scenario = clean_gps_l1_short_baseline_case();
     let mut double_differences = scenario.double_differences.clone();
     for observation in &mut double_differences {
-        observation.sig.code = bijux_gnss_core::api::SignalCode::Py;
-        observation.ref_sig.code = bijux_gnss_core::api::SignalCode::Py;
+        observation.sig.band = SignalBand::L2;
+        observation.sig.code = SignalCode::Unknown;
+        observation.ref_sig.band = SignalBand::L2;
+        observation.ref_sig.code = SignalCode::Unknown;
     }
 
     let solution = rtk_float_baseline_from_double_differences(
