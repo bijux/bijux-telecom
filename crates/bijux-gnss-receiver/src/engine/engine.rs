@@ -659,6 +659,10 @@ fn support_reason(constellation: Constellation, band: SignalBand, code: SignalCo
     if constellation == Constellation::Gps && band == SignalBand::L2 && code == SignalCode::L2C {
         return "receiver observations and synthetic validation support explicit tracked L2C epochs; acquisition and live tracking remain incomplete".to_string();
     }
+    if constellation == Constellation::Gps && band == SignalBand::L5 && code == SignalCode::Unknown
+    {
+        return "receiver observations and synthetic validation support explicit tracked L5 epochs; acquisition and live tracking remain incomplete".to_string();
+    }
     if constellation == Constellation::Galileo && band == SignalBand::E1 && code == SignalCode::E1B
     {
         return "receiver acquisition and tracking support this signal path; observations and navigation remain incomplete".to_string();
