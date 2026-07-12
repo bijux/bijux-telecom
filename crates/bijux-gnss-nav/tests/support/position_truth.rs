@@ -1,7 +1,10 @@
 #![allow(dead_code)]
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{Constellation, GpsTime, Llh, ObsSignalTiming, SatId, Seconds};
+use bijux_gnss_core::api::{
+    signal_id_wavelength_m, Constellation, GpsTime, Llh, ObsSignalTiming, SatId, Seconds, SigId,
+    SignalBand, SignalCode,
+};
 use bijux_gnss_nav::api::IonosphereModel;
 use bijux_gnss_nav::api::{
     ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef, sat_state_gps_l1ca,
@@ -270,6 +273,24 @@ pub fn timed_position_observation(
     }
 }
 
+pub fn gps_l1ca_signal_id(sat: SatId) -> SigId {
+    SigId { sat, band: SignalBand::L1, code: SignalCode::Ca }
+}
+
+pub fn timed_position_observation_with_doppler(
+    sat: SatId,
+    pseudorange_m: f64,
+    doppler_hz: f64,
+    doppler_var_hz2: f64,
+    t_rx_s: f64,
+) -> PositionObservation {
+    let mut observation = timed_position_observation(sat, pseudorange_m, t_rx_s);
+    observation.doppler_hz = Some(doppler_hz);
+    observation.doppler_var_hz2 = Some(doppler_var_hz2);
+    observation.signal_id = Some(gps_l1ca_signal_id(sat));
+    observation
+}
+
 pub fn timed_position_observation_from_truth(
     eph: &GpsEphemeris,
     truth_ecef_m: (f64, f64, f64),
@@ -303,6 +324,60 @@ pub fn pseudorange_from_truth(
         tau = next_tau;
     }
     pseudorange_m
+}
+
+pub fn gps_l1ca_doppler_from_truth(
+    eph: &GpsEphemeris,
+    truth_ecef_m: (f64, f64, f64),
+    truth_velocity_ecef_mps: (f64, f64, f64),
+    t_rx_s: f64,
+    receiver_clock_bias_s: f64,
+    receiver_clock_drift_s_per_s: f64,
+) -> f64 {
+    let pseudorange_m = pseudorange_from_truth(eph, truth_ecef_m, t_rx_s, receiver_clock_bias_s);
+    let signal_travel_time_s = pseudorange_m / SPEED_OF_LIGHT_MPS;
+    let transmit_tow_s = t_rx_s - signal_travel_time_s;
+    let state = sat_state_gps_l1ca(eph, transmit_tow_s, signal_travel_time_s);
+    let (sat_vx_mps, sat_vy_mps, sat_vz_mps) =
+        gps_satellite_velocity_mps(eph, transmit_tow_s, signal_travel_time_s);
+    let signal_id = gps_l1ca_signal_id(eph.sat);
+    let wavelength_m = signal_id_wavelength_m(signal_id).expect("GPS L1 C/A wavelength").0;
+
+    let dx = truth_ecef_m.0 - state.x_m;
+    let dy = truth_ecef_m.1 - state.y_m;
+    let dz = truth_ecef_m.2 - state.z_m;
+    let range_m = (dx * dx + dy * dy + dz * dz).sqrt().max(1.0);
+    let los = [dx / range_m, dy / range_m, dz / range_m];
+    let relative_velocity_mps = [
+        truth_velocity_ecef_mps.0 - sat_vx_mps,
+        truth_velocity_ecef_mps.1 - sat_vy_mps,
+        truth_velocity_ecef_mps.2 - sat_vz_mps,
+    ];
+    let range_rate_mps =
+        los[0] * relative_velocity_mps[0]
+            + los[1] * relative_velocity_mps[1]
+            + los[2] * relative_velocity_mps[2];
+
+    -range_rate_mps / wavelength_m
+        + SPEED_OF_LIGHT_MPS
+            * (receiver_clock_drift_s_per_s - state.clock_correction.drift_s_per_s)
+            / wavelength_m
+}
+
+fn gps_satellite_velocity_mps(
+    eph: &GpsEphemeris,
+    transmit_tow_s: f64,
+    signal_travel_time_s: f64,
+) -> (f64, f64, f64) {
+    let dt_s = 1.0e-3;
+    let previous = sat_state_gps_l1ca(eph, transmit_tow_s - dt_s, signal_travel_time_s);
+    let next = sat_state_gps_l1ca(eph, transmit_tow_s + dt_s, signal_travel_time_s);
+    let inverse_dt = 1.0 / (2.0 * dt_s);
+    (
+        (next.x_m - previous.x_m) * inverse_dt,
+        (next.y_m - previous.y_m) * inverse_dt,
+        (next.z_m - previous.z_m) * inverse_dt,
+    )
 }
 
 pub fn iterative_pseudorange_residual_m(
