@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use bijux_gnss_core::api::{carrier_wavelength_m, ObsEpoch, ObservationStatus, SigId};
+use bijux_gnss_core::api::{signal_cycles_to_meters, ObsEpoch, ObservationStatus, SigId};
 use serde::{Deserialize, Serialize};
 
 use crate::pipeline::observations::{
@@ -110,8 +110,8 @@ pub fn validate_carrier_smoothed_code(
                 continue;
             }
 
-            let lambda_m = carrier_wavelength_m(sat.metadata.signal.carrier_hz).0;
-            let carrier_reference_m = sat.carrier_phase_cycles.0 * lambda_m;
+            let carrier_reference_m =
+                signal_cycles_to_meters(sat.carrier_phase_cycles, sat.metadata.signal).0;
             let raw_divergence_m = residual.pseudorange_m.raw - carrier_reference_m;
 
             if sat.metadata.smoothing_age == 1 {
