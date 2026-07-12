@@ -3,6 +3,7 @@
 pub mod atmosphere;
 pub mod biases;
 pub mod combinations;
+pub(crate) mod dual_frequency;
 pub mod geometry_free;
 pub mod iono_free_code;
 pub mod iono_free_phase;
