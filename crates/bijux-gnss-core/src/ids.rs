@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use crate::units::Meters;
+use crate::units::{Cycles, Meters};
 use serde::{Deserialize, Serialize};
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
@@ -380,6 +380,22 @@ pub fn signal_id_wavelength_m(signal_id: SigId) -> Option<Meters> {
     Some(signal_wavelength_m(signal))
 }
 
+pub fn signal_cycles_to_meters(cycles: Cycles, signal: SignalSpec) -> Meters {
+    Meters(cycles.0 * signal_wavelength_m(signal).0)
+}
+
+pub fn signal_id_cycles_to_meters(cycles: Cycles, signal_id: SigId) -> Option<Meters> {
+    Some(Meters(cycles.0 * signal_id_wavelength_m(signal_id)?.0))
+}
+
+pub fn signal_meters_to_cycles(distance_m: Meters, signal: SignalSpec) -> Cycles {
+    Cycles(distance_m.0 / signal_wavelength_m(signal).0)
+}
+
+pub fn signal_id_meters_to_cycles(distance_m: Meters, signal_id: SigId) -> Option<Cycles> {
+    Some(Cycles(distance_m.0 / signal_id_wavelength_m(signal_id)?.0))
+}
+
 pub fn glonass_l1_carrier_hz(frequency_channel: GlonassFrequencyChannel) -> FreqHz {
     FreqHz::new(
         GLONASS_L1_CARRIER_HZ.value()
@@ -449,10 +465,12 @@ pub fn default_acquisition_signal(constellation: Constellation) -> Option<Signal
 #[cfg(test)]
 mod tests {
     use super::{
-        carrier_wavelength_m, signal_id_wavelength_m, signal_registry, signal_spec_beidou_b2i,
-        signal_spec_gps_l2_py, signal_spec_gps_l2c, signal_wavelength_m, Constellation, FreqHz,
-        SatId, SigId, SignalBand, SignalCode,
+        carrier_wavelength_m, signal_cycles_to_meters, signal_id_cycles_to_meters,
+        signal_id_meters_to_cycles, signal_id_wavelength_m, signal_meters_to_cycles,
+        signal_registry, signal_spec_beidou_b2i, signal_spec_gps_l2_py, signal_spec_gps_l2c,
+        signal_wavelength_m, Constellation, FreqHz, SatId, SigId, SignalBand, SignalCode,
     };
+    use crate::units::{Cycles, Meters};
 
     #[test]
     fn gps_l2c_signal_spec_matches_civil_code_timing() {
@@ -515,5 +533,29 @@ mod tests {
         .expect("BeiDou B2I wavelength");
 
         assert!((wavelength.0 - 0.248_349_369_584_306_9).abs() < 1.0e-15);
+    }
+
+    #[test]
+    fn signal_phase_conversion_helpers_round_trip_registered_signal() {
+        let signal_id = SigId {
+            sat: SatId { constellation: Constellation::Gps, prn: 9 },
+            band: SignalBand::L2,
+            code: SignalCode::Py,
+        };
+        let phase_m = signal_id_cycles_to_meters(Cycles(12_345.25), signal_id)
+            .expect("GPS L2 P(Y) phase meters");
+        let phase_cycles =
+            signal_id_meters_to_cycles(phase_m, signal_id).expect("GPS L2 P(Y) phase cycles");
+
+        assert!((phase_cycles.0 - 12_345.25).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn signal_phase_conversion_helpers_round_trip_signal_spec() {
+        let signal = signal_spec_beidou_b2i();
+        let phase_m = signal_cycles_to_meters(Cycles(512.5), signal);
+        let phase_cycles = signal_meters_to_cycles(Meters(phase_m.0), signal);
+
+        assert!((phase_cycles.0 - 512.5).abs() < 1.0e-12);
     }
 }
