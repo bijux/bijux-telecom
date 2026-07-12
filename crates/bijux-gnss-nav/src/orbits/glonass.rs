@@ -490,9 +490,9 @@ mod tests {
                     ay_mps2: 0.0,
                     az_mps2: 1.862_645_149_230_957e-6,
                 },
-                relative_frequency_bias: 5.587_935_448e-9,
+                relative_frequency_bias: 0.0,
                 clock_bias_s: -2.572_406_083_345_413_2e-5,
-                l2_l1_delay_s: Some(0.0),
+                l2_l1_delay_s: Some(5.587_935_448e-9),
                 health: GlonassImmediateHealth { line_unhealthy: false, status_code: 0 },
                 immediate_data_age_days: 28,
                 satellite_type: GlonassSatelliteType::GlonassM,
@@ -528,10 +528,10 @@ mod tests {
         let clock =
             glonass_satellite_clock_correction(&navigation, 505_818.0).expect("clock correction");
 
-        let expected_bias_s = 2.572_406_083_345_413_2e-5 + 5.587_935_448e-9 * 900.0;
+        let expected_bias_s = 2.572_406_083_345_413_2e-5;
         assert!((clock.base_bias_s - 2.572_406_083_345_413_2e-5).abs() < 1.0e-18);
         assert!((clock.bias_s - expected_bias_s).abs() < 1.0e-18);
-        assert_eq!(clock.drift_s_per_s, 5.587_935_448e-9);
+        assert_eq!(clock.drift_s_per_s, 0.0);
     }
 
     #[test]

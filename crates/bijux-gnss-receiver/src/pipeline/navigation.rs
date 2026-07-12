@@ -10,9 +10,10 @@ use bijux_gnss_core::api::{
 use bijux_gnss_nav::api::{
     elevation_azimuth_deg, position_broadcast_navigation_from_gps_ephemerides,
     position_measurement_weight, position_observation_has_valid_satellite_time,
-    sat_state_galileo_e1_from_observation, sat_state_gps_l1ca_from_observation, GpsEphemeris,
-    KlobucharCoefficients, PositionBroadcastNavigation, PositionObservation,
-    PositionSolveRefusalKind, PositionSolver, RaimFaultDetectionStatus, WeightingConfig,
+    sat_state_galileo_e1_from_observation, sat_state_glonass_l1_from_observation,
+    sat_state_gps_l1ca_from_observation, GpsEphemeris, KlobucharCoefficients,
+    PositionBroadcastNavigation, PositionObservation, PositionSolveRefusalKind, PositionSolver,
+    RaimFaultDetectionStatus, WeightingConfig,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -1272,6 +1273,15 @@ fn navigation_satellite_state(
                 sat.pseudorange_m.0,
                 sat.timing,
             );
+            Some((state.x_m, state.y_m, state.z_m))
+        }
+        PositionBroadcastNavigation::Glonass(navigation) => {
+            let state = sat_state_glonass_l1_from_observation(
+                navigation,
+                receive_tow_s,
+                sat.pseudorange_m.0,
+                sat.timing,
+            )?;
             Some((state.x_m, state.y_m, state.z_m))
         }
     }

@@ -10,6 +10,10 @@ use crate::orbits::galileo::{
     galileo_navigation_age, is_galileo_navigation_valid, sat_state_galileo_e1,
     sat_state_galileo_e1_from_observation, GalileoBroadcastNavigationData,
 };
+use crate::orbits::glonass::{
+    glonass_navigation_age, is_glonass_navigation_valid, sat_state_glonass_l1,
+    sat_state_glonass_l1_from_observation, GlonassBroadcastNavigationFrame,
+};
 use crate::orbits::gps::{
     gps_ephemeris_age, is_ephemeris_valid, sat_state_gps_l1ca, sat_state_gps_l1ca_from_observation,
     GpsEphemeris,
@@ -105,6 +109,7 @@ pub struct PositionObservation {
 pub enum PositionBroadcastNavigation {
     Gps(GpsEphemeris),
     Galileo(GalileoBroadcastNavigationData),
+    Glonass(GlonassBroadcastNavigationFrame),
 }
 
 impl PositionBroadcastNavigation {
@@ -112,6 +117,7 @@ impl PositionBroadcastNavigation {
         match self {
             Self::Gps(ephemeris) => ephemeris.sat,
             Self::Galileo(navigation) => navigation.sat,
+            Self::Glonass(navigation) => navigation.sat,
         }
     }
 
@@ -124,6 +130,12 @@ pub fn position_broadcast_navigation_from_gps_ephemerides(
     ephemerides: &[GpsEphemeris],
 ) -> Vec<PositionBroadcastNavigation> {
     ephemerides.iter().cloned().map(PositionBroadcastNavigation::Gps).collect()
+}
+
+pub fn position_broadcast_navigation_from_glonass_frames(
+    navigation_frames: &[GlonassBroadcastNavigationFrame],
+) -> Vec<PositionBroadcastNavigation> {
+    navigation_frames.iter().cloned().map(PositionBroadcastNavigation::Glonass).collect()
 }
 
 pub fn position_observations_from_epoch(epoch: &ObsEpoch) -> Vec<PositionObservation> {
@@ -882,6 +894,9 @@ fn navigation_is_valid(navigation: &PositionBroadcastNavigation, receive_tow_s: 
         PositionBroadcastNavigation::Galileo(navigation) => {
             is_galileo_navigation_valid(navigation, receive_tow_s)
         }
+        PositionBroadcastNavigation::Glonass(navigation) => {
+            is_glonass_navigation_valid(navigation, receive_tow_s)
+        }
     }
 }
 
@@ -897,6 +912,11 @@ fn navigation_age_score(
         PositionBroadcastNavigation::Galileo(navigation) => {
             let age = galileo_navigation_age(navigation, receive_tow_s);
             (age.toe_age_s.max(age.toc_age_s), age.toe_age_s + age.toc_age_s)
+        }
+        PositionBroadcastNavigation::Glonass(navigation) => {
+            let age = glonass_navigation_age(navigation, receive_tow_s)
+                .expect("valid GLONASS navigation age");
+            (age.age_s, age.age_s)
         }
     }
 }
@@ -926,12 +946,18 @@ fn select_valid_ephemeris(
 mod tests {
     use super::{
         position_broadcast_navigation_from_gps_ephemerides, position_observations_from_epoch,
-        resolve_position_inputs, PositionBroadcastNavigation, PositionObservation,
+        position_broadcast_navigation_from_glonass_frames, resolve_position_inputs,
+        PositionBroadcastNavigation, PositionObservation,
     };
     use crate::orbits::galileo::{
         GalileoBroadcastNavigationData, GalileoClockCorrection, GalileoEphemeris,
         GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags, GalileoSignalHealth,
         GalileoSystemTime,
+    };
+    use crate::orbits::glonass::{
+        GlonassAlmanacTimeData, GlonassBroadcastNavigationFrame, GlonassFrameTime,
+        GlonassImmediateHealth, GlonassImmediateNavigationData, GlonassSatelliteType,
+        GlonassStateVector, GlonassSystemTime,
     };
     use crate::orbits::gps::GpsEphemeris;
     use bijux_gnss_core::api::{
@@ -1030,6 +1056,52 @@ mod tests {
         }
     }
 
+    fn sample_glonass_navigation(
+        sat: SatId,
+        ephemeris_reference_time_s: u32,
+        gps_minus_glonass_s: f64,
+    ) -> GlonassBroadcastNavigationFrame {
+        GlonassBroadcastNavigationFrame {
+            sat,
+            immediate: GlonassImmediateNavigationData {
+                sat,
+                frame_time: GlonassFrameTime { hour: 23, minute: 18, half_minute: false },
+                ephemeris_reference_time_s,
+                tb_update_interval_min: 30,
+                tb_is_odd: Some(true),
+                state_vector: GlonassStateVector {
+                    x_m: -7_557_760.253_906_25,
+                    y_m: -23_962_225.585_937_5,
+                    z_m: -4_337_567.871_093_75,
+                    vx_mps: 101.318_359_375,
+                    vy_mps: 602.112_770_080_566_4,
+                    vz_mps: -3_495.733_261_108_398_4,
+                    ax_mps2: -3.725_290_298_461_914e-6,
+                    ay_mps2: 0.0,
+                    az_mps2: 1.862_645_149_230_957e-6,
+                },
+                relative_frequency_bias: 0.0,
+                clock_bias_s: -2.572_406_083_345_413_2e-5,
+                l2_l1_delay_s: Some(5.587_935_448e-9),
+                health: GlonassImmediateHealth { line_unhealthy: false, status_code: 0 },
+                immediate_data_age_days: 28,
+                satellite_type: GlonassSatelliteType::GlonassM,
+                reported_slot: None,
+                system_time: Some(GlonassSystemTime {
+                    day_number: 864,
+                    four_year_interval: Some(8),
+                }),
+                accuracy_code: Some(2),
+            },
+            system_time: Some(GlonassAlmanacTimeData {
+                system_time: GlonassSystemTime { day_number: 864, four_year_interval: Some(8) },
+                utc_offset_s: 0.0,
+                gps_minus_glonass_s,
+            }),
+            almanac_entries: Vec::new(),
+        }
+    }
+
     #[test]
     fn resolve_position_inputs_uses_nearest_valid_ephemeris() {
         let sat = SatId { constellation: Constellation::Gps, prn: 13 };
@@ -1058,7 +1130,9 @@ mod tests {
                 assert_eq!(ephemeris.toe_s, 200_000.0);
                 assert_eq!(ephemeris.toc_s, 200_000.0);
             }
-            PositionBroadcastNavigation::Galileo(_) => panic!("expected gps navigation"),
+            PositionBroadcastNavigation::Galileo(_) | PositionBroadcastNavigation::Glonass(_) => {
+                panic!("expected gps navigation")
+            }
         }
     }
 
@@ -1066,6 +1140,7 @@ mod tests {
     fn position_broadcast_navigation_preserves_satellite_identity() {
         let gps_sat = SatId { constellation: Constellation::Gps, prn: 13 };
         let galileo_sat = SatId { constellation: Constellation::Galileo, prn: 19 };
+        let glonass_sat = SatId { constellation: Constellation::Glonass, prn: 14 };
         let gps_navigation =
             PositionBroadcastNavigation::Gps(sample_ephemeris(gps_sat, 200_000.0, 200_000.0));
         let galileo_navigation = PositionBroadcastNavigation::Galileo(sample_galileo_navigation(
@@ -1073,11 +1148,15 @@ mod tests {
             64_800.0,
             66_000.0,
         ));
+        let glonass_navigation =
+            PositionBroadcastNavigation::Glonass(sample_glonass_navigation(glonass_sat, 83_700, -10_782.0));
 
         assert_eq!(gps_navigation.sat(), gps_sat);
         assert_eq!(gps_navigation.constellation(), Constellation::Gps);
         assert_eq!(galileo_navigation.sat(), galileo_sat);
         assert_eq!(galileo_navigation.constellation(), Constellation::Galileo);
+        assert_eq!(glonass_navigation.sat(), glonass_sat);
+        assert_eq!(glonass_navigation.constellation(), Constellation::Glonass);
     }
 
     #[test]
@@ -1100,6 +1179,60 @@ mod tests {
         assert_eq!(navigation.len(), 2);
         assert_eq!(navigation[0].sat(), ephemerides[0].sat);
         assert_eq!(navigation[1].sat(), ephemerides[1].sat);
+    }
+
+    #[test]
+    fn glonass_frames_convert_into_position_navigation_entries() {
+        let navigation_frames = vec![
+            sample_glonass_navigation(
+                SatId { constellation: Constellation::Glonass, prn: 14 },
+                83_700,
+                -10_782.0,
+            ),
+            sample_glonass_navigation(
+                SatId { constellation: Constellation::Glonass, prn: 21 },
+                84_600,
+                -10_782.0,
+            ),
+        ];
+
+        let navigation = position_broadcast_navigation_from_glonass_frames(&navigation_frames);
+
+        assert_eq!(navigation.len(), 2);
+        assert_eq!(navigation[0].sat(), navigation_frames[0].sat);
+        assert_eq!(navigation[1].sat(), navigation_frames[1].sat);
+    }
+
+    #[test]
+    fn resolve_position_inputs_accepts_valid_glonass_navigation() {
+        let sat = SatId { constellation: Constellation::Glonass, prn: 14 };
+        let observations = vec![PositionObservation {
+            sat,
+            pseudorange_m: 24_000_000.0,
+            cn0_dbhz: 45.0,
+            elevation_deg: None,
+            weight: 1.0,
+            gps_receive_time: None,
+            signal_timing: None,
+        }];
+        let navigation_frames =
+            vec![sample_glonass_navigation(sat, 83_700, -10_782.0)];
+        let navigation = position_broadcast_navigation_from_glonass_frames(&navigation_frames);
+        let mut rejected = Vec::new();
+
+        let inputs = resolve_position_inputs(&observations, &navigation, 504_918.0, &mut rejected);
+
+        assert!(rejected.is_empty());
+        assert_eq!(inputs.len(), 1);
+        match &inputs[0].navigation {
+            PositionBroadcastNavigation::Glonass(navigation) => {
+                assert_eq!(navigation.sat, sat);
+                assert_eq!(navigation.immediate.ephemeris_reference_time_s, 83_700);
+            }
+            PositionBroadcastNavigation::Gps(_) | PositionBroadcastNavigation::Galileo(_) => {
+                panic!("expected glonass navigation")
+            }
+        }
     }
 
     #[test]
@@ -1214,7 +1347,7 @@ fn resolve_satellite_geometry(
             input.receive_tow_s,
             obs.pseudorange_m,
             obs.signal_timing,
-        );
+        )?;
         let mut converged = false;
         for _ in 0..5 {
             let range_m = geometric_range_m(&estimate, &state);
@@ -1226,7 +1359,7 @@ fn resolve_satellite_geometry(
                 converged = true;
             }
             tau = next_tau;
-            state = satellite_state_at_time(&input.navigation, input.receive_tow_s - tau, tau);
+            state = satellite_state_at_time(&input.navigation, input.receive_tow_s - tau, tau)?;
             if converged {
                 break;
             }
@@ -1396,7 +1529,7 @@ fn satellite_state_from_observation(
     receive_tow_s: f64,
     pseudorange_m: f64,
     signal_timing: Option<ObsSignalTiming>,
-) -> SatelliteState {
+) -> Option<SatelliteState> {
     match navigation {
         PositionBroadcastNavigation::Gps(ephemeris) => {
             let state = sat_state_gps_l1ca_from_observation(
@@ -1405,12 +1538,12 @@ fn satellite_state_from_observation(
                 pseudorange_m,
                 signal_timing,
             );
-            SatelliteState {
+            Some(SatelliteState {
                 x_m: state.x_m,
                 y_m: state.y_m,
                 z_m: state.z_m,
                 clock_bias_s: state.clock_correction.bias_s,
-            }
+            })
         }
         PositionBroadcastNavigation::Galileo(navigation) => {
             let state = sat_state_galileo_e1_from_observation(
@@ -1419,12 +1552,26 @@ fn satellite_state_from_observation(
                 pseudorange_m,
                 signal_timing,
             );
-            SatelliteState {
+            Some(SatelliteState {
                 x_m: state.x_m,
                 y_m: state.y_m,
                 z_m: state.z_m,
                 clock_bias_s: state.clock_correction.bias_s,
-            }
+            })
+        }
+        PositionBroadcastNavigation::Glonass(navigation) => {
+            let state = sat_state_glonass_l1_from_observation(
+                navigation,
+                receive_tow_s,
+                pseudorange_m,
+                signal_timing,
+            )?;
+            Some(SatelliteState {
+                x_m: state.x_m,
+                y_m: state.y_m,
+                z_m: state.z_m,
+                clock_bias_s: state.clock_correction.bias_s,
+            })
         }
     }
 }
@@ -1433,25 +1580,34 @@ fn satellite_state_at_time(
     navigation: &PositionBroadcastNavigation,
     transmit_tow_s: f64,
     signal_travel_time_s: f64,
-) -> SatelliteState {
+) -> Option<SatelliteState> {
     match navigation {
         PositionBroadcastNavigation::Gps(ephemeris) => {
             let state = sat_state_gps_l1ca(ephemeris, transmit_tow_s, signal_travel_time_s);
-            SatelliteState {
+            Some(SatelliteState {
                 x_m: state.x_m,
                 y_m: state.y_m,
                 z_m: state.z_m,
                 clock_bias_s: state.clock_correction.bias_s,
-            }
+            })
         }
         PositionBroadcastNavigation::Galileo(navigation) => {
             let state = sat_state_galileo_e1(navigation, transmit_tow_s, signal_travel_time_s);
-            SatelliteState {
+            Some(SatelliteState {
                 x_m: state.x_m,
                 y_m: state.y_m,
                 z_m: state.z_m,
                 clock_bias_s: state.clock_correction.bias_s,
-            }
+            })
+        }
+        PositionBroadcastNavigation::Glonass(navigation) => {
+            let state = sat_state_glonass_l1(navigation, transmit_tow_s, signal_travel_time_s)?;
+            Some(SatelliteState {
+                x_m: state.x_m,
+                y_m: state.y_m,
+                z_m: state.z_m,
+                clock_bias_s: state.clock_correction.bias_s,
+            })
         }
     }
 }
