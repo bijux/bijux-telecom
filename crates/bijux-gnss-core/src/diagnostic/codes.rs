@@ -136,6 +136,12 @@ pub const DIAGNOSTIC_CODES: &[DiagnosticCode] = &[
         mitigation: "Inspect matched-satellite code steps, receiver clock evolution, and rebroadcast or meaconing conditions.",
     },
     DiagnosticCode {
+        code: "NAV_CONSTELLATION_CLOCK_INCONSISTENCY",
+        severity: DiagnosticSeverity::Warning,
+        meaning: "A non-reference constellation clock offset changed too abruptly to be explained by stable inter-system timing",
+        mitigation: "Inspect mixed-constellation timing alignment, broadcast time-system handling, and constellation-specific clock consistency.",
+    },
+    DiagnosticCode {
         code: "NAV_IMPOSSIBLE_GEOMETRY",
         severity: DiagnosticSeverity::Warning,
         meaning: "Solved navigation position lies outside the plausible terrestrial envelope",

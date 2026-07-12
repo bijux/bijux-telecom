@@ -1066,6 +1066,14 @@ pub enum NavHealthEvent {
         common_delay_step_threshold_m: f64,
         centered_delay_rms_threshold_m: f64,
     },
+    ConstellationClockInconsistency {
+        constellation: Constellation,
+        previous_bias_s: f64,
+        current_bias_s: f64,
+        bias_step_m: f64,
+        bias_step_threshold_m: f64,
+        supporting_satellite_count: usize,
+    },
     ImpossibleGeometry {
         receiver_radius_m: f64,
         altitude_m: f64,
