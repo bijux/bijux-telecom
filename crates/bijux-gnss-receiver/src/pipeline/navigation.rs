@@ -3,9 +3,9 @@
 use bijux_gnss_core::api::{
     check_nav_solution_sanity, is_solution_valid, obs_epoch_stability_key, Constellation,
     MeasurementRejectReason, Meters, NavAssumptions, NavLifecycleState, NavProvenance,
-    NavRefusalClass, NavResidual, NavSolutionEpoch, NavUncertaintyClass, ObsEpoch, Seconds,
-    SolutionStatus, SolutionValidity, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
-    NAV_SOLUTION_MODEL_VERSION,
+    NavRefusalClass, NavResidual, NavSolutionEpoch, NavUncertaintyClass, ObsEpoch, ObsSatellite,
+    Seconds, SolutionStatus, SolutionValidity,
+    NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
 };
 use bijux_gnss_nav::api::{
     elevation_azimuth_deg, position_broadcast_navigation_from_gps_ephemerides,
@@ -37,6 +37,13 @@ struct NavDecision {
     refusal_class: Option<NavRefusalClass>,
     explain_decision: String,
     explain_reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+enum PositionObservationPreparation {
+    Included(PositionObservation),
+    InvalidSatelliteTime(bijux_gnss_core::api::SatId),
+    ExcludedByElevationMask,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -257,60 +264,19 @@ impl Navigation {
             .iter()
             .filter(|s| navigation_supported_constellation(s.signal_id.sat.constellation))
             .filter(|s| self.config.allows_constellation(s.signal_id.sat.constellation))
-            .filter_map(|s| {
-                let mut observation = PositionObservation {
-                    sat: s.signal_id.sat,
-                    pseudorange_m: s.pseudorange_m.0,
-                    doppler_hz: Some(s.doppler_hz.0),
-                    doppler_var_hz2: Some(s.doppler_var_hz2),
-                    cn0_dbhz: s.cn0_dbhz,
-                    elevation_deg: s.elevation_deg,
-                    weight: s.weight.unwrap_or(1.0),
-                    gps_receive_time: obs.gps_time(),
-                    signal_timing: s.timing,
-                    signal_id: Some(s.signal_id),
-                };
-                if !position_observation_has_valid_satellite_time(&observation, obs.t_rx_s.0) {
-                    invalid_satellite_time_sats.push(observation.sat);
-                    return None;
+            .filter_map(|s| match prepare_position_observation(
+                &self.config,
+                obs,
+                s,
+                navigation,
+                self.last_ecef,
+            ) {
+                PositionObservationPreparation::Included(observation) => Some(observation),
+                PositionObservationPreparation::InvalidSatelliteTime(sat) => {
+                    invalid_satellite_time_sats.push(sat);
+                    None
                 }
-                let mut elevation = observation.elevation_deg;
-                if elevation.is_none() {
-                    if let Some((rx_x, rx_y, rx_z)) = self.last_ecef {
-                        if let Some(sat) = navigation_satellite_state(obs, s, navigation) {
-                            let (_az, el) =
-                                elevation_azimuth_deg(rx_x, rx_y, rx_z, sat.0, sat.1, sat.2);
-                            elevation = Some(el);
-                        }
-                    }
-                }
-                let weight_config = WeightingConfig {
-                    enabled: self.config.weighting.enabled,
-                    min_elev_deg: self.config.weighting.min_elev_deg,
-                    elev_exponent: self.config.weighting.elev_exponent,
-                    min_weight: self.config.weighting.min_weight,
-                };
-                if let Some(el) = elevation {
-                    if el < self.config.weighting.elev_mask_deg {
-                        return None;
-                    }
-                }
-                let tracking_mode_weight = if s.metadata.tracking_mode.contains("vector") {
-                    self.config.weighting.tracking_mode_vector_weight
-                } else {
-                    self.config.weighting.tracking_mode_scalar_weight
-                };
-                let pseudorange_sigma_m =
-                    if s.pseudorange_var_m2.is_finite() && s.pseudorange_var_m2 > 0.0 {
-                        Some(s.pseudorange_var_m2.sqrt())
-                    } else {
-                        None
-                    };
-                let weight =
-                    position_measurement_weight(elevation, pseudorange_sigma_m, weight_config);
-                observation.elevation_deg = elevation;
-                observation.weight = weight * tracking_mode_weight;
-                Some(observation)
+                PositionObservationPreparation::ExcludedByElevationMask => None,
             })
             .collect();
         if !invalid_satellite_time_sats.is_empty() {
@@ -1220,6 +1186,68 @@ fn geometry_violation_reason(reason: &str) -> bool {
 
 fn only_geometry_policy_violations(reasons: &[String]) -> bool {
     !reasons.is_empty() && reasons.iter().all(|reason| geometry_violation_reason(reason))
+}
+
+fn prepare_position_observation(
+    config: &ReceiverPipelineConfig,
+    obs: &ObsEpoch,
+    sat: &ObsSatellite,
+    navigation: &[PositionBroadcastNavigation],
+    last_ecef: Option<(f64, f64, f64)>,
+) -> PositionObservationPreparation {
+    let mut observation = PositionObservation {
+        sat: sat.signal_id.sat,
+        pseudorange_m: sat.pseudorange_m.0,
+        doppler_hz: Some(sat.doppler_hz.0),
+        doppler_var_hz2: Some(sat.doppler_var_hz2),
+        cn0_dbhz: sat.cn0_dbhz,
+        elevation_deg: sat.elevation_deg,
+        weight: sat.weight.unwrap_or(1.0),
+        gps_receive_time: obs.gps_time(),
+        signal_timing: sat.timing,
+        signal_id: Some(sat.signal_id),
+    };
+    if !position_observation_has_valid_satellite_time(&observation, obs.t_rx_s.0) {
+        return PositionObservationPreparation::InvalidSatelliteTime(observation.sat);
+    }
+
+    let mut elevation = observation.elevation_deg;
+    if elevation.is_none() {
+        if let Some((rx_x, rx_y, rx_z)) = last_ecef {
+            if let Some((sat_x, sat_y, sat_z)) = navigation_satellite_state(obs, sat, navigation) {
+                let (_azimuth_deg, elevation_deg) =
+                    elevation_azimuth_deg(rx_x, rx_y, rx_z, sat_x, sat_y, sat_z);
+                elevation = Some(elevation_deg);
+            }
+        }
+    }
+    if let Some(elevation_deg) = elevation {
+        if elevation_deg < config.weighting.elev_mask_deg {
+            return PositionObservationPreparation::ExcludedByElevationMask;
+        }
+    }
+
+    let tracking_mode_weight = if sat.metadata.tracking_mode.contains("vector") {
+        config.weighting.tracking_mode_vector_weight
+    } else {
+        config.weighting.tracking_mode_scalar_weight
+    };
+    let pseudorange_sigma_m =
+        (sat.pseudorange_var_m2.is_finite() && sat.pseudorange_var_m2 > 0.0)
+            .then_some(sat.pseudorange_var_m2.sqrt());
+    let weight = position_measurement_weight(
+        elevation,
+        pseudorange_sigma_m,
+        WeightingConfig {
+            enabled: config.weighting.enabled,
+            min_elev_deg: config.weighting.min_elev_deg,
+            elev_exponent: config.weighting.elev_exponent,
+            min_weight: config.weighting.min_weight,
+        },
+    );
+    observation.elevation_deg = elevation;
+    observation.weight = weight * tracking_mode_weight;
+    PositionObservationPreparation::Included(observation)
 }
 
 fn build_provenance(
