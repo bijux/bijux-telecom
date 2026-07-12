@@ -117,3 +117,20 @@ fn position_solver_refuses_mixed_glonass_without_known_time_offset() {
     assert_eq!(refusal.used_sat_count, 4);
     assert!(refusal.rejected.contains(&(glonass_sat, MeasurementRejectReason::TimeInconsistency)));
 }
+
+#[test]
+fn position_solver_keeps_gps_only_solution_when_unresolved_glonass_is_unobserved() {
+    let scenario = four_satellite_position_scenario(0.0);
+    let glonass_sat = SatId { constellation: Constellation::Glonass, prn: 14 };
+    let mut navigation = position_broadcast_navigation_from_gps_ephemerides(&scenario.ephemerides);
+    let mut glonass_navigation = sample_glonass_navigation(glonass_sat);
+    glonass_navigation.system_time = None;
+    navigation.push(PositionBroadcastNavigation::Glonass(glonass_navigation));
+
+    let solution = PositionSolver::new()
+        .try_solve_wls_with_navigation_data(&scenario.observations, &navigation, scenario.t_rx_s)
+        .expect("gps-only observations should ignore unresolved unobserved GLONASS navigation");
+
+    assert_eq!(solution.used_sat_count, 4);
+    assert!(solution.rejected.is_empty(), "unexpected rejections: {:?}", solution.rejected);
+}
