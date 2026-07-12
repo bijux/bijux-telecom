@@ -1,6 +1,9 @@
 #![allow(missing_docs)]
 
+use crate::units::Meters;
 use serde::{Deserialize, Serialize};
+
+const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 
 /// Strict satellite identity (constellation + PRN).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -364,6 +367,19 @@ pub fn signal_spec_beidou_b2i() -> SignalSpec {
     }
 }
 
+pub fn carrier_wavelength_m(carrier_hz: FreqHz) -> Meters {
+    Meters(SPEED_OF_LIGHT_MPS / carrier_hz.value())
+}
+
+pub fn signal_wavelength_m(signal: SignalSpec) -> Meters {
+    carrier_wavelength_m(signal.carrier_hz)
+}
+
+pub fn signal_id_wavelength_m(signal_id: SigId) -> Option<Meters> {
+    let signal = signal_registry(signal_id.sat.constellation, signal_id.band, signal_id.code)?.spec;
+    Some(signal_wavelength_m(signal))
+}
+
 pub fn glonass_l1_carrier_hz(frequency_channel: GlonassFrequencyChannel) -> FreqHz {
     FreqHz::new(
         GLONASS_L1_CARRIER_HZ.value()
@@ -433,8 +449,9 @@ pub fn default_acquisition_signal(constellation: Constellation) -> Option<Signal
 #[cfg(test)]
 mod tests {
     use super::{
-        signal_registry, signal_spec_beidou_b2i, signal_spec_gps_l2_py, signal_spec_gps_l2c,
-        Constellation, SignalBand, SignalCode,
+        carrier_wavelength_m, signal_id_wavelength_m, signal_registry, signal_spec_beidou_b2i,
+        signal_spec_gps_l2_py, signal_spec_gps_l2c, signal_wavelength_m, Constellation, FreqHz,
+        SatId, SigId, SignalBand, SignalCode,
     };
 
     #[test]
@@ -471,5 +488,32 @@ mod tests {
             .expect("BeiDou B2I registry entry");
         assert_eq!(registry.code_length, Some(2046));
         assert_eq!(registry.spec, signal);
+    }
+
+    #[test]
+    fn carrier_wavelength_matches_speed_of_light_ratio() {
+        let wavelength = carrier_wavelength_m(FreqHz::new(1_575_420_000.0));
+
+        assert!((wavelength.0 - 0.190_293_672_798_364_87).abs() < 1.0e-15);
+    }
+
+    #[test]
+    fn signal_wavelength_uses_signal_carrier_frequency() {
+        let signal = signal_spec_beidou_b2i();
+        let wavelength = signal_wavelength_m(signal);
+
+        assert!((wavelength.0 - 0.248_349_369_584_306_9).abs() < 1.0e-15);
+    }
+
+    #[test]
+    fn signal_id_wavelength_resolves_registered_signal_identity() {
+        let wavelength = signal_id_wavelength_m(SigId {
+            sat: SatId { constellation: Constellation::Beidou, prn: 11 },
+            band: SignalBand::B2,
+            code: SignalCode::B2I,
+        })
+        .expect("BeiDou B2I wavelength");
+
+        assert!((wavelength.0 - 0.248_349_369_584_306_9).abs() < 1.0e-15);
     }
 }
