@@ -246,7 +246,9 @@ pub const GPS_L2C_CARRIER_HZ: FreqHz = FreqHz::new(1_227_600_000.0);
 pub const GPS_L2_PY_CARRIER_HZ: FreqHz = FreqHz::new(1_227_600_000.0);
 pub const GPS_L5_CARRIER_HZ: FreqHz = FreqHz::new(1_176_450_000.0);
 pub const GALILEO_E1_CARRIER_HZ: FreqHz = FreqHz::new(1_575_420_000.0);
-pub const GALILEO_E5_CARRIER_HZ: FreqHz = FreqHz::new(1_176_450_000.0);
+pub const GALILEO_E5A_CARRIER_HZ: FreqHz = FreqHz::new(1_176_450_000.0);
+pub const GALILEO_E5B_CARRIER_HZ: FreqHz = FreqHz::new(1_207_140_000.0);
+pub const GALILEO_E5_CARRIER_HZ: FreqHz = GALILEO_E5A_CARRIER_HZ;
 pub const GLONASS_L1_CHANNEL_SPACING_HZ: FreqHz = FreqHz::new(562_500.0);
 pub const GLONASS_L1_CARRIER_HZ: FreqHz = FreqHz::new(1_602_000_000.0);
 pub const BEIDOU_B1_CARRIER_HZ: FreqHz = FreqHz::new(1_561_098_000.0);
@@ -333,7 +335,17 @@ pub fn signal_spec_galileo_e5a() -> SignalSpec {
         band: SignalBand::E5,
         code: SignalCode::E5a,
         code_rate_hz: 10_230_000.0,
-        carrier_hz: GALILEO_E5_CARRIER_HZ,
+        carrier_hz: GALILEO_E5A_CARRIER_HZ,
+    }
+}
+
+pub fn signal_spec_galileo_e5b() -> SignalSpec {
+    SignalSpec {
+        constellation: Constellation::Galileo,
+        band: SignalBand::E5,
+        code: SignalCode::E5b,
+        code_rate_hz: 10_230_000.0,
+        carrier_hz: GALILEO_E5B_CARRIER_HZ,
     }
 }
 
@@ -474,7 +486,10 @@ pub fn signal_registry(
             (GALILEO_E1_CARRIER_HZ, 1_023_000.0, Some(4092))
         }
         (Constellation::Galileo, SignalBand::E5, SignalCode::E5a) => {
-            (GALILEO_E5_CARRIER_HZ, 10_230_000.0, Some(10230))
+            (GALILEO_E5A_CARRIER_HZ, 10_230_000.0, Some(10230))
+        }
+        (Constellation::Galileo, SignalBand::E5, SignalCode::E5b) => {
+            (GALILEO_E5B_CARRIER_HZ, 10_230_000.0, Some(10230))
         }
         (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown) => {
             (GLONASS_L1_CARRIER_HZ, 511_000.0, Some(511))

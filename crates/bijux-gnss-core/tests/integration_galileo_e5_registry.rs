@@ -1,5 +1,6 @@
 use bijux_gnss_core::api::{
-    signal_registry, signal_spec_galileo_e5a, Constellation, SignalBand, SignalCode,
+    signal_registry, signal_spec_galileo_e5a, signal_spec_galileo_e5b, Constellation, SignalBand,
+    SignalCode,
 };
 
 #[test]
@@ -17,6 +18,20 @@ fn galileo_e5a_signal_spec_matches_registry_entry() {
         .expect("galileo e5-a signal must be registered");
     let spec = signal_spec_galileo_e5a();
 
+    assert_eq!(registry.spec.constellation, spec.constellation);
+    assert_eq!(registry.spec.band, spec.band);
+    assert_eq!(registry.spec.code, spec.code);
+    assert_eq!(registry.spec.code_rate_hz, spec.code_rate_hz);
+    assert_eq!(registry.spec.carrier_hz, spec.carrier_hz);
+}
+
+#[test]
+fn galileo_e5b_signal_spec_matches_registry_entry() {
+    let registry = signal_registry(Constellation::Galileo, SignalBand::E5, SignalCode::E5b)
+        .expect("galileo e5-b signal must be registered");
+    let spec = signal_spec_galileo_e5b();
+
+    assert_eq!(registry.code_length, Some(10230));
     assert_eq!(registry.spec.constellation, spec.constellation);
     assert_eq!(registry.spec.band, spec.band);
     assert_eq!(registry.spec.code, spec.code);
