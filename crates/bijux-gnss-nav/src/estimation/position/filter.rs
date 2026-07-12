@@ -92,6 +92,7 @@ pub struct PositionFilterConfig {
     pub min_dt_s: f64,
     pub divergence: PositionFilterDivergenceConfig,
     pub visibility_transition: PositionFilterVisibilityTransitionConfig,
+    pub observation_gap: PositionFilterObservationGapConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -136,6 +137,29 @@ impl Default for PositionFilterVisibilityTransitionConfig {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct PositionFilterObservationGapConfig {
+    pub covariance_inflation_per_second: f64,
+    pub max_covariance_inflation: f64,
+    pub min_position_sigma_m: f64,
+    pub min_velocity_sigma_mps: f64,
+    pub min_clock_bias_sigma_s: f64,
+    pub min_clock_drift_sigma_s_per_s: f64,
+}
+
+impl Default for PositionFilterObservationGapConfig {
+    fn default() -> Self {
+        Self {
+            covariance_inflation_per_second: 0.75,
+            max_covariance_inflation: 8.0,
+            min_position_sigma_m: 25.0,
+            min_velocity_sigma_mps: 3.0,
+            min_clock_bias_sigma_s: 2.0e-7,
+            min_clock_drift_sigma_s_per_s: 2.0e-8,
+        }
+    }
+}
+
 impl Default for PositionFilterConfig {
     fn default() -> Self {
         let mut config = Self {
@@ -157,6 +181,7 @@ impl Default for PositionFilterConfig {
             min_dt_s: 1.0e-3,
             divergence: PositionFilterDivergenceConfig::default(),
             visibility_transition: PositionFilterVisibilityTransitionConfig::default(),
+            observation_gap: PositionFilterObservationGapConfig::default(),
         };
         config.apply_motion_class(config.motion_class);
         config
@@ -374,6 +399,10 @@ impl PositionFilter {
     ) -> Result<PositionFilterEpoch, PositionSolveRefusal> {
         let sat_count = observations.len();
         if sat_count < 4 {
+            self.coast_through_observation_gap(
+                t_rx_s,
+                visible_sats_from_observations(observations),
+            );
             return Err(PositionSolveRefusal {
                 kind: PositionSolveRefusalKind::InsufficientObservations,
                 sat_count,
@@ -394,6 +423,10 @@ impl PositionFilter {
             }
         });
         if observations.len() < 4 {
+            self.coast_through_observation_gap(
+                t_rx_s,
+                visible_sats_from_observations(&observations),
+            );
             let kind = if rejected.is_empty() {
                 PositionSolveRefusalKind::InsufficientObservations
             } else {
@@ -426,6 +459,7 @@ impl PositionFilter {
 
         let inputs = resolve_position_inputs(&observations, navigation, t_rx_s, &mut rejected);
         if inputs.len() < 4 {
+            self.coast_through_observation_gap(t_rx_s, visible_sats(&inputs));
             return Err(PositionSolveRefusal {
                 kind: PositionSolveRefusalKind::InvalidEphemeris,
                 sat_count,
@@ -518,6 +552,8 @@ impl PositionFilter {
 
         self.last_t_rx_s = Some(t_rx_s);
         if used_sat_count < 4 {
+            self.apply_observation_gap_uncertainty(dt_s);
+            self.last_visible_sats = current_visible_sats;
             return Err(PositionSolveRefusal {
                 kind: PositionSolveRefusalKind::InsufficientUsableSatellites,
                 sat_count,
@@ -661,28 +697,69 @@ impl PositionFilter {
             }
         }
 
-        self.raise_transition_uncertainty_floors();
+        self.raise_uncertainty_floors(
+            self.config.visibility_transition.min_position_sigma_m,
+            self.config.visibility_transition.min_velocity_sigma_mps,
+            self.config.visibility_transition.min_clock_bias_sigma_s,
+            self.config.visibility_transition.min_clock_drift_sigma_s_per_s,
+        );
     }
 
-    fn raise_transition_uncertainty_floors(&mut self) {
-        let position_variance_m2 = self.config.visibility_transition.min_position_sigma_m.powi(2);
+    fn coast_through_observation_gap(&mut self, t_rx_s: f64, visible_sats: BTreeSet<SatId>) {
+        if !self.initialized {
+            return;
+        }
+
+        self.ekf.reset_epoch_health();
+        let dt_s = (t_rx_s - self.last_t_rx_s.unwrap_or(t_rx_s)).max(self.config.min_dt_s);
+        self.predict(dt_s);
+        self.apply_observation_gap_uncertainty(dt_s);
+        self.last_t_rx_s = Some(t_rx_s);
+        self.last_visible_sats = visible_sats;
+    }
+
+    fn apply_observation_gap_uncertainty(&mut self, dt_s: f64) {
+        let inflation = (1.0 + self.config.observation_gap.covariance_inflation_per_second * dt_s)
+            .min(self.config.observation_gap.max_covariance_inflation)
+            .max(1.0);
+
+        for row in 0..self.ekf.p.rows() {
+            for col in 0..self.ekf.p.cols() {
+                self.ekf.p[(row, col)] *= inflation;
+            }
+        }
+
+        self.raise_uncertainty_floors(
+            self.config.observation_gap.min_position_sigma_m,
+            self.config.observation_gap.min_velocity_sigma_mps,
+            self.config.observation_gap.min_clock_bias_sigma_s,
+            self.config.observation_gap.min_clock_drift_sigma_s_per_s,
+        );
+    }
+
+    fn raise_uncertainty_floors(
+        &mut self,
+        min_position_sigma_m: f64,
+        min_velocity_sigma_mps: f64,
+        min_clock_bias_sigma_s: f64,
+        min_clock_drift_sigma_s_per_s: f64,
+    ) {
+        let position_variance_m2 = min_position_sigma_m.powi(2);
         for index in self.indices.pos {
             self.ekf.p[(index, index)] = self.ekf.p[(index, index)].max(position_variance_m2);
         }
 
-        let velocity_variance_m2 = self.config.visibility_transition.min_velocity_sigma_mps.powi(2);
+        let velocity_variance_m2 = min_velocity_sigma_mps.powi(2);
         for index in self.indices.vel {
             self.ekf.p[(index, index)] = self.ekf.p[(index, index)].max(velocity_variance_m2);
         }
 
-        let clock_bias_variance_s2 =
-            self.config.visibility_transition.min_clock_bias_sigma_s.powi(2);
+        let clock_bias_variance_s2 = min_clock_bias_sigma_s.powi(2);
         self.ekf.p[(self.indices.clock_bias, self.indices.clock_bias)] = self.ekf.p
             [(self.indices.clock_bias, self.indices.clock_bias)]
             .max(clock_bias_variance_s2);
 
-        let clock_drift_variance_s2 =
-            self.config.visibility_transition.min_clock_drift_sigma_s_per_s.powi(2);
+        let clock_drift_variance_s2 = min_clock_drift_sigma_s_per_s.powi(2);
         self.ekf.p[(self.indices.clock_drift, self.indices.clock_drift)] = self.ekf.p
             [(self.indices.clock_drift, self.indices.clock_drift)]
             .max(clock_drift_variance_s2);
@@ -980,6 +1057,10 @@ fn visible_sats(inputs: &[PositionSolveInput]) -> BTreeSet<SatId> {
     inputs.iter().map(|input| input.observation.sat).collect()
 }
 
+fn visible_sats_from_observations(observations: &[PositionObservation]) -> BTreeSet<SatId> {
+    observations.iter().map(|observation| observation.sat).collect()
+}
+
 fn pseudorange_sigma_m(
     observation: &PositionObservation,
     elevation_deg: Option<f64>,
@@ -1103,18 +1184,12 @@ mod tests {
     fn position_filter_enables_visibility_transition_tuning_by_default() {
         let config = PositionFilterConfig::default();
 
-        assert_eq!(
-            config.visibility_transition.covariance_inflation_per_satellite,
-            0.35
-        );
+        assert_eq!(config.visibility_transition.covariance_inflation_per_satellite, 0.35);
         assert_eq!(config.visibility_transition.max_covariance_inflation, 3.0);
         assert_eq!(config.visibility_transition.min_position_sigma_m, 10.0);
         assert_eq!(config.visibility_transition.min_velocity_sigma_mps, 1.5);
         assert_eq!(config.visibility_transition.min_clock_bias_sigma_s, 5.0e-8);
-        assert_eq!(
-            config.visibility_transition.min_clock_drift_sigma_s_per_s,
-            5.0e-9
-        );
+        assert_eq!(config.visibility_transition.min_clock_drift_sigma_s_per_s, 5.0e-9);
     }
 
     #[test]
@@ -1217,9 +1292,8 @@ mod tests {
     #[test]
     fn position_filter_visibility_transition_ignores_unchanged_satellite_sets() {
         let mut filter = PositionFilter::new(PositionFilterConfig::default());
-        let tracked_sats = [sample_sat(1), sample_sat(2), sample_sat(3), sample_sat(4)]
-            .into_iter()
-            .collect();
+        let tracked_sats =
+            [sample_sat(1), sample_sat(2), sample_sat(3), sample_sat(4)].into_iter().collect();
         filter.last_visible_sats = tracked_sats;
         filter.ekf.p[(0, 0)] = 7.0;
         filter.ekf.p[(0, 1)] = 2.0;
@@ -1235,9 +1309,8 @@ mod tests {
     #[test]
     fn position_filter_visibility_transition_inflates_covariance_and_floors_sigmas() {
         let mut filter = PositionFilter::new(PositionFilterConfig::default());
-        filter.last_visible_sats = [sample_sat(1), sample_sat(2), sample_sat(3), sample_sat(4)]
-            .into_iter()
-            .collect();
+        filter.last_visible_sats =
+            [sample_sat(1), sample_sat(2), sample_sat(3), sample_sat(4)].into_iter().collect();
         for index in 0..filter.ekf.p.rows() {
             filter.ekf.p[(index, index)] = 1.0;
         }
@@ -1246,9 +1319,8 @@ mod tests {
         filter.ekf.p[(filter.indices.clock_bias, filter.indices.clock_bias)] = 1.0e-20;
         filter.ekf.p[(filter.indices.clock_drift, filter.indices.clock_drift)] = 1.0e-20;
 
-        let current_visible_sats = [sample_sat(2), sample_sat(3), sample_sat(4), sample_sat(5)]
-            .into_iter()
-            .collect();
+        let current_visible_sats =
+            [sample_sat(2), sample_sat(3), sample_sat(4), sample_sat(5)].into_iter().collect();
         filter.apply_visibility_transition(&current_visible_sats);
 
         assert!((filter.ekf.p[(0, 1)] - 3.4).abs() < 1.0e-12);
