@@ -385,6 +385,7 @@ impl Navigation {
                             NavRefusalClass::SolverFailure
                         }
                     }
+                    PositionSolveRefusalKind::FilterDivergence(_) => NavRefusalClass::SolverFailure,
                 };
                 let mut rejected = refusal.rejected;
                 rejected.extend(

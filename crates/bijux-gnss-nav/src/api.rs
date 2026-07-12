@@ -47,11 +47,11 @@ pub use crate::estimation::position::filter::{
     PositionFilterMotionClass, PositionFilterMotionModel, PositionFilterProcessNoise,
     PositionFilterStaticPositionModel,
 };
-pub use crate::estimation::position::solution_smoother::{
-    PositionSolutionSmoother, PositionSolutionSmootherConfig, PositionSolutionSmootherEpoch,
-};
 pub use crate::estimation::position::raim::{
     RaimFaultDetection, RaimFaultDetectionStatus, RaimFaultExclusion,
+};
+pub use crate::estimation::position::solution_smoother::{
+    PositionSolutionSmoother, PositionSolutionSmootherConfig, PositionSolutionSmootherEpoch,
 };
 pub use crate::estimation::position::solver::{
     ecef_to_enu, ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef,
@@ -60,9 +60,10 @@ pub use crate::estimation::position::solver::{
     position_broadcast_navigation_from_gps_ephemerides, position_dops_from_satellite_positions,
     position_measurement_weight, position_observation_has_valid_satellite_time,
     position_observations_from_epoch, weight_from_cn0, weight_from_elevation,
-    weight_from_pseudorange_sigma, PositionBroadcastNavigation, PositionDops, PositionObservation,
-    PositionRobustWeighting, PositionSolution, PositionSolveRefusal, PositionSolveRefusalKind,
-    PositionSolver, PositionWeightingModel, WeightingConfig,
+    weight_from_pseudorange_sigma, PositionBroadcastNavigation, PositionDops,
+    PositionFilterDivergenceReason, PositionObservation, PositionRobustWeighting, PositionSolution,
+    PositionSolveRefusal, PositionSolveRefusalKind, PositionSolver, PositionWeightingModel,
+    WeightingConfig,
 };
 /// PPP configuration and filter.
 pub use crate::estimation::ppp::config::{

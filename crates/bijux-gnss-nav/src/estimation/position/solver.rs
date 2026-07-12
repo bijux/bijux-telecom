@@ -91,6 +91,15 @@ pub enum PositionSolveRefusalKind {
     InsufficientUsableSatellites,
     UnderdeterminedRaimExclusion,
     SolverFailure,
+    FilterDivergence(PositionFilterDivergenceReason),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PositionFilterDivergenceReason {
+    InnovationGrowth,
+    CovarianceCollapse,
+    CovarianceDivergence,
+    ResidualExplosion,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
