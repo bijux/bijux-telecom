@@ -1731,6 +1731,9 @@ mod tests {
         assert_eq!(e1.metadata.signal, signal_spec_galileo_e1b());
         assert_eq!(e5.metadata.signal, signal_spec_galileo_e5a());
         assert_eq!(e5.cn0_dbhz, 47.0);
+        let dual_frequency = check_dual_frequency_observations(&dataset.epochs);
+        assert_eq!(dual_frequency.complete_pairs, 1);
+        assert_eq!(dual_frequency.e1_e5_pairs, 1);
     }
 
     #[test]
@@ -1773,6 +1776,9 @@ mod tests {
         assert_eq!(b1.metadata.signal, signal_spec_beidou_b1i());
         assert_eq!(b2.metadata.signal, signal_spec_beidou_b2i());
         assert_eq!(b2.cn0_dbhz, 46.5);
+        let dual_frequency = check_dual_frequency_observations(&dataset.epochs);
+        assert_eq!(dual_frequency.complete_pairs, 1);
+        assert_eq!(dual_frequency.b1_b2_pairs, 1);
     }
 
     #[test]

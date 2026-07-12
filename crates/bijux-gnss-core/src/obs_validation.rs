@@ -57,6 +57,8 @@ pub struct DualFrequencyObservationReport {
     pub incomplete_pairs: usize,
     pub l1_l2_pairs: usize,
     pub l1_l5_pairs: usize,
+    pub e1_e5_pairs: usize,
+    pub b1_b2_pairs: usize,
     pub pairs: Vec<DualFrequencyObservationPair>,
 }
 
@@ -97,6 +99,8 @@ pub fn check_dual_frequency_observations(epochs: &[ObsEpoch]) -> DualFrequencyOb
     let mut complete_pairs = 0usize;
     let mut l1_l2_pairs = 0usize;
     let mut l1_l5_pairs = 0usize;
+    let mut e1_e5_pairs = 0usize;
+    let mut b1_b2_pairs = 0usize;
 
     for epoch in epochs {
         let mut by_sat: BTreeMap<SatId, Vec<&ObsSatellite>> = BTreeMap::new();
@@ -106,8 +110,8 @@ pub fn check_dual_frequency_observations(epochs: &[ObsEpoch]) -> DualFrequencyOb
 
         for (sat, observations) in by_sat {
             for (band_1, band_2) in supported_dual_frequency_band_pairs() {
-                let obs_1 = observations.iter().find(|obs| obs.signal_id.band == band_1).copied();
-                let obs_2 = observations.iter().find(|obs| obs.signal_id.band == band_2).copied();
+                let obs_1 = observations.iter().find(|obs| obs.signal_id.band == *band_1).copied();
+                let obs_2 = observations.iter().find(|obs| obs.signal_id.band == *band_2).copied();
                 if obs_1.is_none() && obs_2.is_none() {
                     continue;
                 }
@@ -119,6 +123,8 @@ pub fn check_dual_frequency_observations(epochs: &[ObsEpoch]) -> DualFrequencyOb
                     match (band_1, band_2) {
                         (SignalBand::L1, SignalBand::L2) => l1_l2_pairs += 1,
                         (SignalBand::L1, SignalBand::L5) => l1_l5_pairs += 1,
+                        (SignalBand::E1, SignalBand::E5) => e1_e5_pairs += 1,
+                        (SignalBand::B1, SignalBand::B2) => b1_b2_pairs += 1,
                         _ => {}
                     }
                     DualFrequencyPairStatus::Complete
@@ -129,8 +135,8 @@ pub fn check_dual_frequency_observations(epochs: &[ObsEpoch]) -> DualFrequencyOb
                 pairs.push(DualFrequencyObservationPair {
                     epoch_idx: epoch.epoch_idx,
                     sat,
-                    band_1,
-                    band_2,
+                    band_1: *band_1,
+                    band_2: *band_2,
                     status,
                     issue,
                 });
@@ -144,6 +150,8 @@ pub fn check_dual_frequency_observations(epochs: &[ObsEpoch]) -> DualFrequencyOb
         incomplete_pairs: observed_pairs.saturating_sub(complete_pairs),
         l1_l2_pairs,
         l1_l5_pairs,
+        e1_e5_pairs,
+        b1_b2_pairs,
         pairs,
     }
 }
@@ -226,8 +234,13 @@ fn known_observation_lock_state(state: &str) -> bool {
     )
 }
 
-fn supported_dual_frequency_band_pairs() -> [(SignalBand, SignalBand); 2] {
-    [(SignalBand::L1, SignalBand::L2), (SignalBand::L1, SignalBand::L5)]
+pub fn supported_dual_frequency_band_pairs() -> &'static [(SignalBand, SignalBand)] {
+    &[
+        (SignalBand::L1, SignalBand::L2),
+        (SignalBand::L1, SignalBand::L5),
+        (SignalBand::E1, SignalBand::E5),
+        (SignalBand::B1, SignalBand::B2),
+    ]
 }
 
 fn dual_frequency_pair_issue(
@@ -485,6 +498,8 @@ mod tests {
         assert_eq!(report.incomplete_pairs, 1);
         assert_eq!(report.l1_l2_pairs, 1);
         assert_eq!(report.l1_l5_pairs, 0);
+        assert_eq!(report.e1_e5_pairs, 0);
+        assert_eq!(report.b1_b2_pairs, 0);
         assert_eq!(report.pairs[0].status, DualFrequencyPairStatus::Complete);
         assert_eq!(report.pairs[0].issue, None);
         assert_eq!(report.pairs[1].issue, Some(DualFrequencyPairIssue::MissingFrequency));
@@ -502,9 +517,95 @@ mod tests {
         assert_eq!(report.incomplete_pairs, 1);
         assert_eq!(report.l1_l2_pairs, 0);
         assert_eq!(report.l1_l5_pairs, 1);
+        assert_eq!(report.e1_e5_pairs, 0);
+        assert_eq!(report.b1_b2_pairs, 0);
         assert_eq!(report.pairs[0].issue, Some(DualFrequencyPairIssue::MissingFrequency));
         assert_eq!(report.pairs[1].status, DualFrequencyPairStatus::Complete);
         assert_eq!(report.pairs[1].issue, None);
+    }
+
+    #[test]
+    fn dual_frequency_report_marks_complete_e1_e5_pairs() {
+        let report = check_dual_frequency_observations(&[dual_frequency_epoch(vec![
+            ObsSatellite {
+                signal_id: SigId {
+                    sat: SatId { constellation: Constellation::Galileo, prn: 11 },
+                    band: SignalBand::E1,
+                    code: SignalCode::E1B,
+                },
+                metadata: ObsMetadata {
+                    doppler_model: "tracked_carrier_hz_minus_intermediate_freq".to_string(),
+                    observation_lock_state: "locked".to_string(),
+                    signal: signal_registry(Constellation::Galileo, SignalBand::E1, SignalCode::E1B)
+                        .expect("Galileo E1B signal must exist")
+                        .spec,
+                    ..ObsMetadata::default()
+                },
+                ..dual_frequency_satellite(SignalBand::L1, SignalCode::Ca, true, true)
+            },
+            ObsSatellite {
+                signal_id: SigId {
+                    sat: SatId { constellation: Constellation::Galileo, prn: 11 },
+                    band: SignalBand::E5,
+                    code: SignalCode::E5a,
+                },
+                metadata: ObsMetadata {
+                    doppler_model: "tracked_carrier_hz_minus_intermediate_freq".to_string(),
+                    observation_lock_state: "locked".to_string(),
+                    signal: signal_registry(Constellation::Galileo, SignalBand::E5, SignalCode::E5a)
+                        .expect("Galileo E5a signal must exist")
+                        .spec,
+                    ..ObsMetadata::default()
+                },
+                ..dual_frequency_satellite(SignalBand::L5, SignalCode::Unknown, true, true)
+            },
+        ])]);
+
+        assert_eq!(report.complete_pairs, 1);
+        assert_eq!(report.e1_e5_pairs, 1);
+        assert_eq!(report.b1_b2_pairs, 0);
+    }
+
+    #[test]
+    fn dual_frequency_report_marks_complete_b1_b2_pairs() {
+        let report = check_dual_frequency_observations(&[dual_frequency_epoch(vec![
+            ObsSatellite {
+                signal_id: SigId {
+                    sat: SatId { constellation: Constellation::Beidou, prn: 11 },
+                    band: SignalBand::B1,
+                    code: SignalCode::B1I,
+                },
+                metadata: ObsMetadata {
+                    doppler_model: "tracked_carrier_hz_minus_intermediate_freq".to_string(),
+                    observation_lock_state: "locked".to_string(),
+                    signal: signal_registry(Constellation::Beidou, SignalBand::B1, SignalCode::B1I)
+                        .expect("BeiDou B1I signal must exist")
+                        .spec,
+                    ..ObsMetadata::default()
+                },
+                ..dual_frequency_satellite(SignalBand::L1, SignalCode::Ca, true, true)
+            },
+            ObsSatellite {
+                signal_id: SigId {
+                    sat: SatId { constellation: Constellation::Beidou, prn: 11 },
+                    band: SignalBand::B2,
+                    code: SignalCode::B2I,
+                },
+                metadata: ObsMetadata {
+                    doppler_model: "tracked_carrier_hz_minus_intermediate_freq".to_string(),
+                    observation_lock_state: "locked".to_string(),
+                    signal: signal_registry(Constellation::Beidou, SignalBand::B2, SignalCode::B2I)
+                        .expect("BeiDou B2I signal must exist")
+                        .spec,
+                    ..ObsMetadata::default()
+                },
+                ..dual_frequency_satellite(SignalBand::L2, SignalCode::Py, true, true)
+            },
+        ])]);
+
+        assert_eq!(report.complete_pairs, 1);
+        assert_eq!(report.e1_e5_pairs, 0);
+        assert_eq!(report.b1_b2_pairs, 1);
     }
 
     #[test]
