@@ -20,7 +20,9 @@ use crate::models::atmosphere::{
 use crate::orbits::beidou::BeidouBroadcastNavigationData;
 use crate::orbits::galileo::GalileoBroadcastNavigationData;
 use crate::orbits::glonass::GlonassBroadcastNavigationFrame;
-use crate::orbits::gps::{gps_ephemeris_age, is_ephemeris_valid, GpsEphemeris};
+use crate::orbits::gps::{
+    gps_ephemeris_age, is_ephemeris_valid, GpsBroadcastNavigationData, GpsEphemeris,
+};
 use bijux_gnss_core::api::{
     Constellation, GpsTime, InterSystemBias, Llh, MeasurementRejectReason,
     NavConstellationResidualRms, ObsEpoch, ObsSatellite, ObsSignalTiming, ObservationStatus, SatId,
@@ -538,6 +540,30 @@ impl PositionSolver {
             &navigation,
             t_rx_s,
             None,
+        )
+    }
+
+    pub fn solve_wls_with_gps_broadcast_navigation(
+        &self,
+        observations: &[PositionObservation],
+        navigation: &GpsBroadcastNavigationData,
+        t_rx_s: f64,
+    ) -> Option<PositionSolution> {
+        self.try_solve_wls_with_gps_broadcast_navigation(observations, navigation, t_rx_s)
+            .ok()
+    }
+
+    pub fn try_solve_wls_with_gps_broadcast_navigation(
+        &self,
+        observations: &[PositionObservation],
+        navigation: &GpsBroadcastNavigationData,
+        t_rx_s: f64,
+    ) -> Result<PositionSolution, PositionSolveRefusal> {
+        self.try_solve_wls_with_broadcast_ionosphere(
+            observations,
+            &navigation.ephemerides,
+            t_rx_s,
+            navigation.klobuchar.as_ref(),
         )
     }
 
