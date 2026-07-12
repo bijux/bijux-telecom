@@ -240,6 +240,29 @@ pub struct NavIntegrityReport {
     pub reasons: Vec<String>,
 }
 
+/// Summary of emitted protection levels against measured reference-position error.
+#[derive(Debug, Serialize)]
+pub struct ProtectionLevelValidationReport {
+    /// Reference-matched epochs considered in validation.
+    pub matched_epoch_count: usize,
+    /// Matched epochs that reported horizontal protection levels.
+    pub horizontal_reported_epoch_count: usize,
+    /// Matched epochs that reported vertical protection levels.
+    pub vertical_reported_epoch_count: usize,
+    /// Matched epochs whose horizontal error stayed within the reported HPL.
+    pub horizontal_contained_epoch_count: usize,
+    /// Matched epochs whose vertical error stayed within the reported VPL.
+    pub vertical_contained_epoch_count: usize,
+    /// Epochs whose measured horizontal error exceeded the reported HPL.
+    pub horizontal_breach_epochs: Vec<u64>,
+    /// Epochs whose measured vertical error exceeded the reported VPL.
+    pub vertical_breach_epochs: Vec<u64>,
+    /// Smallest horizontal margin `HPL - horizontal_error`, when reported.
+    pub min_horizontal_margin_m: Option<f64>,
+    /// Smallest vertical margin `VPL - vertical_error`, when reported.
+    pub min_vertical_margin_m: Option<f64>,
+}
+
 /// Partition of advisory diagnostics versus enforced refusal outcomes.
 #[derive(Debug, Serialize)]
 pub struct DiagnosticPartitionReport {
@@ -313,6 +336,18 @@ pub struct ReferencePositionErrorEpoch {
     pub vert_m: f64,
     /// 3D position error magnitude (m).
     pub error_3d_m: f64,
+    /// Horizontal protection level reported for the epoch (m), when available.
+    pub hpl_m: Option<f64>,
+    /// Vertical protection level reported for the epoch (m), when available.
+    pub vpl_m: Option<f64>,
+    /// Whether the measured horizontal error stayed within the reported HPL.
+    pub horizontal_within_hpl: Option<bool>,
+    /// Whether the measured vertical error stayed within the reported VPL.
+    pub vertical_within_vpl: Option<bool>,
+    /// Horizontal protection margin `HPL - horizontal_error` (m), when HPL is available.
+    pub horizontal_margin_m: Option<f64>,
+    /// Vertical protection margin `VPL - vertical_error` (m), when VPL is available.
+    pub vertical_margin_m: Option<f64>,
 }
 
 /// Coverage summary for trusted reference coordinates used in position validation.
@@ -355,6 +390,8 @@ pub struct ValidationReport {
     pub fix_timeline: Vec<FixTimelineEntry>,
     /// Reference-position error components for matched epochs.
     pub reference_position_errors: Vec<ReferencePositionErrorEpoch>,
+    /// Protection-level validation summary against measured reference-position error.
+    pub protection_levels: ProtectionLevelValidationReport,
     /// Coverage status for trusted reference coordinates used by position validation.
     pub reference_coordinate_coverage: ReferenceCoordinateCoverageReport,
     /// Residuals per epoch.
@@ -578,6 +615,12 @@ fn build_validation_report_with_observation_context(
                 horiz_m: horiz,
                 vert_m: vert,
                 error_3d_m: position_3d,
+                hpl_m: None,
+                vpl_m: None,
+                horizontal_within_hpl: None,
+                vertical_within_vpl: None,
+                horizontal_margin_m: None,
+                vertical_margin_m: None,
             });
             covariance_realism_samples.push(crate::covariance_realism::CovarianceRealismEpochSample {
                 receiver_ecef_m: [sol.ecef_x_m.0, sol.ecef_y_m.0, sol.ecef_z_m.0],
@@ -638,6 +681,7 @@ fn build_validation_report_with_observation_context(
         .collect::<Vec<_>>();
     let reference_coordinate_required =
         budgets.reference_position_error_3d_m_max.is_some() && !solutions.is_empty();
+    let protection_levels = protection_level_validation_report(&reference_position_errors);
     let reference_coordinate_coverage = ReferenceCoordinateCoverageReport {
         required: reference_coordinate_required,
         ready: !reference_coordinate_required
@@ -753,6 +797,7 @@ fn build_validation_report_with_observation_context(
         convergence,
         fix_timeline,
         reference_position_errors,
+        protection_levels,
         reference_coordinate_coverage,
         residuals,
         time_consistency,
@@ -786,6 +831,59 @@ fn build_validation_report_with_observation_context(
         diagnostic_partition,
         assumptions,
     })
+}
+
+
+fn protection_level_validation_report(
+    reference_position_errors: &[ReferencePositionErrorEpoch],
+) -> ProtectionLevelValidationReport {
+    let mut horizontal_reported_epoch_count = 0usize;
+    let mut vertical_reported_epoch_count = 0usize;
+    let mut horizontal_contained_epoch_count = 0usize;
+    let mut vertical_contained_epoch_count = 0usize;
+    let mut horizontal_breach_epochs = Vec::new();
+    let mut vertical_breach_epochs = Vec::new();
+    let mut min_horizontal_margin_m: Option<f64> = None;
+    let mut min_vertical_margin_m: Option<f64> = None;
+
+    for error in reference_position_errors {
+        if let Some(margin_m) = error.horizontal_margin_m {
+            horizontal_reported_epoch_count += 1;
+            min_horizontal_margin_m = Some(match min_horizontal_margin_m {
+                Some(current_min_m) => current_min_m.min(margin_m),
+                None => margin_m,
+            });
+            if margin_m >= 0.0 {
+                horizontal_contained_epoch_count += 1;
+            } else {
+                horizontal_breach_epochs.push(error.epoch_idx);
+            }
+        }
+        if let Some(margin_m) = error.vertical_margin_m {
+            vertical_reported_epoch_count += 1;
+            min_vertical_margin_m = Some(match min_vertical_margin_m {
+                Some(current_min_m) => current_min_m.min(margin_m),
+                None => margin_m,
+            });
+            if margin_m >= 0.0 {
+                vertical_contained_epoch_count += 1;
+            } else {
+                vertical_breach_epochs.push(error.epoch_idx);
+            }
+        }
+    }
+
+    ProtectionLevelValidationReport {
+        matched_epoch_count: reference_position_errors.len(),
+        horizontal_reported_epoch_count,
+        vertical_reported_epoch_count,
+        horizontal_contained_epoch_count,
+        vertical_contained_epoch_count,
+        horizontal_breach_epochs,
+        vertical_breach_epochs,
+        min_horizontal_margin_m,
+        min_vertical_margin_m,
+    }
 }
 
 fn dual_frequency_combinations_valid(obs: &[ObsEpoch]) -> bool {
