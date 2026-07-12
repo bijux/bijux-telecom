@@ -20,8 +20,8 @@ use crate::estimation::position::navigation::{
 use crate::estimation::position::solver::{
     elevation_azimuth_deg, position_broadcast_navigation_from_gps_ephemerides,
     position_measurement_weight, position_observation_has_valid_satellite_time,
-    PositionBroadcastNavigation, PositionObservation, PositionSolveRefusal,
-    PositionSolveRefusalKind, PositionSolver, WeightingConfig,
+    PositionBroadcastNavigation, PositionFilterDivergenceReason, PositionObservation,
+    PositionSolveRefusal, PositionSolveRefusalKind, PositionSolver, WeightingConfig,
 };
 use crate::estimation::uncertainty::{
     covariance_enu_standard_deviations_m, covariance_horizontal_vertical, horizontal_error_ellipse,
@@ -29,6 +29,7 @@ use crate::estimation::uncertainty::{
 };
 use crate::linalg::Matrix;
 use crate::orbits::gps::GpsEphemeris;
+use bijux_gnss_core::api::NavHealthEvent;
 
 #[derive(Debug, Clone)]
 pub struct PositionFilterProcessNoise {
@@ -89,6 +90,26 @@ pub struct PositionFilterConfig {
     pub initial_clock_bias_sigma_s: f64,
     pub initial_clock_drift_sigma_s_per_s: f64,
     pub min_dt_s: f64,
+    pub divergence: PositionFilterDivergenceConfig,
+}
+
+#[derive(Debug, Clone)]
+pub struct PositionFilterDivergenceConfig {
+    pub max_innovation_rms_m: f64,
+    pub max_normalized_innovation_rms: f64,
+    pub max_condition_number: f64,
+    pub min_position_sigma_m: f64,
+}
+
+impl Default for PositionFilterDivergenceConfig {
+    fn default() -> Self {
+        Self {
+            max_innovation_rms_m: 150.0,
+            max_normalized_innovation_rms: 100.0,
+            max_condition_number: 1.0e8,
+            min_position_sigma_m: 1.0e-4,
+        }
+    }
 }
 
 impl Default for PositionFilterConfig {
@@ -110,6 +131,7 @@ impl Default for PositionFilterConfig {
             initial_clock_bias_sigma_s: 1.0e-3,
             initial_clock_drift_sigma_s_per_s: 1.0e-4,
             min_dt_s: 1.0e-3,
+            divergence: PositionFilterDivergenceConfig::default(),
         };
         config.apply_motion_class(config.motion_class);
         config
@@ -228,6 +250,23 @@ pub struct PositionFilterIndices {
     pub clock_bias: usize,
     pub clock_drift: usize,
     pub isb: BTreeMap<Constellation, usize>,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct PositionFilterCodeMetrics {
+    peak_innovation_rms_m: f64,
+    peak_normalized_innovation_rms: Option<f64>,
+}
+
+impl PositionFilterCodeMetrics {
+    fn observe(&mut self, health: &crate::estimation::ekf::state::EkfHealth, sigma_m: f64) {
+        self.peak_innovation_rms_m = self.peak_innovation_rms_m.max(health.innovation_rms);
+        if sigma_m.is_finite() && sigma_m > 0.0 {
+            let value = health.innovation_rms / sigma_m;
+            self.peak_normalized_innovation_rms =
+                Some(self.peak_normalized_innovation_rms.unwrap_or(0.0).max(value));
+        }
+    }
 }
 
 pub struct PositionFilter {
@@ -376,11 +415,34 @@ impl PositionFilter {
 
         self.ensure_reference_constellation(&inputs);
         self.ensure_isb_states(&inputs);
+        if self.position_covariance_collapsed() {
+            let refusal = PositionSolveRefusal {
+                kind: PositionSolveRefusalKind::FilterDivergence(
+                    PositionFilterDivergenceReason::CovarianceCollapse,
+                ),
+                sat_count,
+                used_sat_count: 0,
+                rejected,
+            };
+            self.reset_after_divergence();
+            return Err(refusal);
+        }
+        self.ekf.reset_epoch_health();
         let dt_s = (t_rx_s - self.last_t_rx_s.unwrap_or(t_rx_s)).max(self.config.min_dt_s);
         self.predict(dt_s);
+        if let Some(refusal) = self.divergence_refusal(
+            sat_count,
+            0,
+            rejected.clone(),
+            PositionFilterCodeMetrics::default(),
+        ) {
+            self.reset_after_divergence();
+            return Err(refusal);
+        }
 
         let mut residuals = Vec::new();
         let mut used_sat_count = 0;
+        let mut code_metrics = PositionFilterCodeMetrics::default();
         for input in &inputs {
             let corrected_pseudorange_m = corrected_pseudorange_m(
                 &input.observation,
@@ -403,6 +465,7 @@ impl PositionFilter {
                 rejected.push((input.observation.sat, MeasurementRejectReason::Outlier));
                 continue;
             }
+            code_metrics.observe(&self.ekf.health, code_measurement.sigma_m);
             used_sat_count += 1;
 
             if let Some(doppler_measurement) = self.doppler_measurement(input, &state) {
@@ -419,6 +482,13 @@ impl PositionFilter {
                 used_sat_count,
                 rejected,
             });
+        }
+
+        if let Some(refusal) =
+            self.divergence_refusal(sat_count, used_sat_count, rejected.clone(), code_metrics)
+        {
+            self.reset_after_divergence();
+            return Err(refusal);
         }
 
         Ok(self.epoch_from_state(t_rx_s, residuals, used_sat_count))
@@ -522,6 +592,82 @@ impl PositionFilter {
                 );
             }
         }
+    }
+
+    fn divergence_refusal(
+        &self,
+        sat_count: usize,
+        used_sat_count: usize,
+        rejected: Vec<(SatId, MeasurementRejectReason)>,
+        code_metrics: PositionFilterCodeMetrics,
+    ) -> Option<PositionSolveRefusal> {
+        let reason = self.divergence_reason(used_sat_count, code_metrics)?;
+        Some(PositionSolveRefusal {
+            kind: PositionSolveRefusalKind::FilterDivergence(reason),
+            sat_count,
+            used_sat_count,
+            rejected,
+        })
+    }
+
+    fn divergence_reason(
+        &self,
+        used_sat_count: usize,
+        code_metrics: PositionFilterCodeMetrics,
+    ) -> Option<PositionFilterDivergenceReason> {
+        if used_sat_count == 0
+            && self
+                .ekf
+                .health
+                .events
+                .iter()
+                .any(|event| matches!(event, NavHealthEvent::CovarianceClamped { .. }))
+        {
+            return Some(PositionFilterDivergenceReason::CovarianceCollapse);
+        }
+        if self
+            .ekf
+            .health
+            .events
+            .iter()
+            .any(|event| matches!(event, NavHealthEvent::CovarianceDiverged { .. }))
+        {
+            return Some(PositionFilterDivergenceReason::CovarianceDivergence);
+        }
+        if self
+            .ekf
+            .health
+            .peak_condition_number
+            .is_some_and(|value| value > self.config.divergence.max_condition_number)
+            || self.position_covariance_collapsed()
+        {
+            return Some(PositionFilterDivergenceReason::CovarianceCollapse);
+        }
+        if code_metrics.peak_innovation_rms_m > self.config.divergence.max_innovation_rms_m {
+            return Some(PositionFilterDivergenceReason::InnovationGrowth);
+        }
+
+        if code_metrics
+            .peak_normalized_innovation_rms
+            .is_some_and(|value| value > self.config.divergence.max_normalized_innovation_rms)
+        {
+            return Some(PositionFilterDivergenceReason::ResidualExplosion);
+        }
+
+        None
+    }
+
+    fn position_covariance_collapsed(&self) -> bool {
+        let min_variance_m2 = self.config.divergence.min_position_sigma_m.powi(2);
+        self.indices.pos.iter().any(|index| {
+            let variance_m2 = self.ekf.p[(*index, *index)];
+            !variance_m2.is_finite() || variance_m2 <= 0.0 || variance_m2 < min_variance_m2
+        })
+    }
+
+    fn reset_after_divergence(&mut self) {
+        let config = self.config.clone();
+        *self = Self::new(config);
     }
 
     fn pseudorange_measurement(
@@ -655,11 +801,7 @@ impl PositionFilter {
         ) = position_covariance_ecef_m2
             .and_then(|covariance| horizontal_error_ellipse(position_ecef_m, covariance))
             .map(|ellipse| {
-                (
-                    Some(ellipse.major_axis_m),
-                    Some(ellipse.minor_axis_m),
-                    Some(ellipse.azimuth_deg),
-                )
+                (Some(ellipse.major_axis_m), Some(ellipse.minor_axis_m), Some(ellipse.azimuth_deg))
             })
             .unwrap_or((None, None, None));
         let (sigma_h_m, sigma_v_m) = position_covariance_ecef_m2
@@ -789,11 +931,12 @@ fn resolved_signal_id(observation: &PositionObservation) -> SigId {
 #[cfg(test)]
 mod tests {
     use super::{
-        pseudorange_sigma_m, PositionFilter, PositionFilterConfig, PositionFilterMotionClass,
-        PositionFilterMotionModel, PositionFilterStaticPositionModel,
+        pseudorange_sigma_m, PositionFilter, PositionFilterCodeMetrics, PositionFilterConfig,
+        PositionFilterMotionClass, PositionFilterMotionModel, PositionFilterStaticPositionModel,
     };
     use crate::estimation::position::solver::{
-        PositionObservation, PositionSolveRefusalKind, PositionWeightingModel, WeightingConfig,
+        PositionFilterDivergenceReason, PositionObservation, PositionSolveRefusalKind,
+        PositionWeightingModel, WeightingConfig,
     };
     use bijux_gnss_core::api::{Constellation, SatId};
 
@@ -837,6 +980,10 @@ mod tests {
         assert!(matches!(config.motion_model, PositionFilterMotionModel::ConstantVelocity));
         assert_eq!(config.base_doppler_sigma_hz, 1.0);
         assert_eq!(config.gating_chi2_doppler, Some(100.0));
+        assert!(config.divergence.max_innovation_rms_m > 0.0);
+        assert!(config.divergence.max_normalized_innovation_rms > 0.0);
+        assert!(config.divergence.max_condition_number > 1.0);
+        assert!(config.divergence.min_position_sigma_m > 0.0);
     }
 
     #[test]
@@ -1137,10 +1284,7 @@ mod tests {
             .horizontal_error_ellipse_minor_axis_m
             .expect("ellipse minor axis")
             .is_finite());
-        assert!(epoch
-            .horizontal_error_ellipse_azimuth_deg
-            .expect("ellipse azimuth")
-            .is_finite());
+        assert!(epoch.horizontal_error_ellipse_azimuth_deg.expect("ellipse azimuth").is_finite());
     }
 
     #[test]
@@ -1205,5 +1349,47 @@ mod tests {
 
         assert_eq!(refusal.kind, PositionSolveRefusalKind::InsufficientObservations);
         assert_eq!(refusal.sat_count, 1);
+    }
+
+    #[test]
+    fn position_filter_classifies_covariance_collapse_from_collapsed_position_covariance() {
+        let mut filter = PositionFilter::new(PositionFilterConfig::default());
+        filter.ekf.p[(filter.indices.pos[0], filter.indices.pos[0])] =
+            filter.config.divergence.min_position_sigma_m.powi(2) * 0.5;
+
+        assert_eq!(
+            filter.divergence_reason(0, PositionFilterCodeMetrics::default()),
+            Some(PositionFilterDivergenceReason::CovarianceCollapse)
+        );
+    }
+
+    #[test]
+    fn position_filter_classifies_innovation_growth_from_peak_rms() {
+        let filter = PositionFilter::new(PositionFilterConfig::default());
+        let code_metrics = PositionFilterCodeMetrics {
+            peak_innovation_rms_m: filter.config.divergence.max_innovation_rms_m + 1.0,
+            peak_normalized_innovation_rms: None,
+        };
+
+        assert_eq!(
+            filter.divergence_reason(1, code_metrics),
+            Some(PositionFilterDivergenceReason::InnovationGrowth)
+        );
+    }
+
+    #[test]
+    fn position_filter_classifies_residual_explosion_from_normalized_innovation() {
+        let filter = PositionFilter::new(PositionFilterConfig::default());
+        let normalized_innovation_rms =
+            filter.config.divergence.max_normalized_innovation_rms + 1.0;
+        let code_metrics = PositionFilterCodeMetrics {
+            peak_innovation_rms_m: 0.0,
+            peak_normalized_innovation_rms: Some(normalized_innovation_rms),
+        };
+
+        assert_eq!(
+            filter.divergence_reason(1, code_metrics),
+            Some(PositionFilterDivergenceReason::ResidualExplosion)
+        );
     }
 }
