@@ -193,6 +193,34 @@ mod tests {
         assert!(jacobian[(0, 4)].abs() > 0.0);
         assert!(jacobian[(0, 5)].abs() > 0.0);
     }
+
+    #[test]
+    fn doppler_measurement_prediction_tracks_receiver_clock_drift() {
+        let measurement = DopplerMeasurement {
+            sig: sample_sig_id(),
+            z_hz: 0.0,
+            sat_pos_m: [20_200_000.0, -1_500_000.0, 21_300_000.0],
+            sat_vel_mps: [750.0, -1_200.0, 300.0],
+            wavelength_m: 0.190_293_672_798_364_87,
+            sigma_hz: 0.1,
+        };
+        let drifting_state =
+            [1_117_194.907, -4_842_953.615, 3_985_351.233, 32.0, -11.0, 4.0, 2.75e-4, 5.0e-8];
+        let mut stable_state = drifting_state;
+        stable_state[7] = 0.0;
+        let mut drifting_prediction = [0.0];
+        let mut stable_prediction = [0.0];
+
+        measurement.h(&drifting_state, &mut drifting_prediction);
+        measurement.h(&stable_state, &mut stable_prediction);
+
+        let expected_delta_hz =
+            299_792_458.0 * drifting_state[7] / measurement.wavelength_m;
+
+        assert!(
+            (drifting_prediction[0] - stable_prediction[0] - expected_delta_hz).abs() < 1.0e-9
+        );
+    }
 }
 
 #[derive(Debug, Clone)]
