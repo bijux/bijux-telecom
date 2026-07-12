@@ -4,10 +4,14 @@ mod support;
 use bijux_gnss_core::api::{Constellation, GpsTime, SatId, Seconds};
 use bijux_gnss_nav::api::{
     ephemerides_from_decoded_gps_l1ca_lnav, geodetic_to_ecef, parse_rinex_nav,
-    position_broadcast_navigation_from_gps_ephemerides, sat_state_galileo_e1, sat_state_gps_l1ca,
-    write_rinex_nav, Ephemeris, GalileoBroadcastNavigationData, GalileoClockCorrection,
-    GalileoEphemeris, GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags,
-    GalileoSignalHealth, GalileoSystemTime, GpsEphemeris, GpsL1CaHowWord,
+    position_broadcast_navigation_from_glonass_frames,
+    position_broadcast_navigation_from_gps_ephemerides, sat_state_galileo_e1,
+    sat_state_glonass_l1, sat_state_gps_l1ca, write_rinex_nav, Ephemeris,
+    GalileoBroadcastNavigationData, GalileoClockCorrection, GalileoEphemeris,
+    GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags, GalileoSignalHealth,
+    GalileoSystemTime, GlonassAlmanacTimeData, GlonassBroadcastNavigationFrame,
+    GlonassFrameTime, GlonassImmediateHealth, GlonassImmediateNavigationData,
+    GlonassSatelliteType, GlonassStateVector, GlonassSystemTime, GpsEphemeris, GpsL1CaHowWord,
     GpsL1CaLnavDecodedSubframe, GpsL1CaLnavSubframe1Clock, GpsL1CaLnavSubframe2Orbit,
     GpsL1CaLnavSubframe3Orbit, GpsL1CaLnavSubframeAlignment, GpsL1CaTlmWord,
     GpsL1CaWordParitySummary, PositionBroadcastNavigation, PositionObservation, PositionSolver,
@@ -153,6 +157,106 @@ fn galileo_pseudorange_from_truth(
         let dz = truth_ecef_m.2 - state.z_m;
         let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
         pseudorange_m = range_m + (receiver_clock_bias_s + galileo_bias_s) * 299_792_458.0
+            - state.clock_correction.bias_s * 299_792_458.0;
+        let next_tau = pseudorange_m / 299_792_458.0;
+        if (next_tau - tau).abs() < 1.0e-12 {
+            break;
+        }
+        tau = next_tau;
+    }
+    pseudorange_m
+}
+
+fn sample_glonass_navigation(
+    prn: u8,
+    state_vector: GlonassStateVector,
+    clock_bias_s: f64,
+    l2_l1_delay_s: f64,
+) -> GlonassBroadcastNavigationFrame {
+    let sat = SatId { constellation: Constellation::Glonass, prn };
+    GlonassBroadcastNavigationFrame {
+        sat,
+        immediate: GlonassImmediateNavigationData {
+            sat,
+            frame_time: GlonassFrameTime { hour: 23, minute: 18, half_minute: false },
+            ephemeris_reference_time_s: 83_700,
+            tb_update_interval_min: 30,
+            tb_is_odd: Some(true),
+            state_vector,
+            relative_frequency_bias: 0.0,
+            clock_bias_s,
+            l2_l1_delay_s: Some(l2_l1_delay_s),
+            health: GlonassImmediateHealth { line_unhealthy: false, status_code: 0 },
+            immediate_data_age_days: 28,
+            satellite_type: GlonassSatelliteType::GlonassM,
+            reported_slot: None,
+            system_time: Some(GlonassSystemTime { day_number: 864, four_year_interval: Some(8) }),
+            accuracy_code: Some(2),
+        },
+        system_time: Some(GlonassAlmanacTimeData {
+            system_time: GlonassSystemTime { day_number: 864, four_year_interval: Some(8) },
+            utc_offset_s: 0.0,
+            gps_minus_glonass_s: -10_782.0,
+        }),
+        almanac_entries: Vec::new(),
+    }
+}
+
+fn sample_glonass_navigation_slot14() -> GlonassBroadcastNavigationFrame {
+    sample_glonass_navigation(
+        14,
+        GlonassStateVector {
+            x_m: -7_557_760.253_906_25,
+            y_m: -23_962_225.585_937_5,
+            z_m: -4_337_567.871_093_75,
+            vx_mps: 101.318_359_375,
+            vy_mps: 602.112_770_080_566_4,
+            vz_mps: -3_495.733_261_108_398_4,
+            ax_mps2: -3.725_290_298_461_914e-6,
+            ay_mps2: 0.0,
+            az_mps2: 1.862_645_149_230_957e-6,
+        },
+        -2.572_406_083_345_413_2e-5,
+        5.587_935_448e-9,
+    )
+}
+
+fn sample_glonass_navigation_slot8() -> GlonassBroadcastNavigationFrame {
+    sample_glonass_navigation(
+        8,
+        GlonassStateVector {
+            x_m: 9_639_804.687_5,
+            y_m: 5_433_780.761_718_75,
+            z_m: 23_045_452.148_437_5,
+            vx_mps: -1_955.772_399_902_343_8,
+            vy_mps: 2_454.154_968_261_718_8,
+            vz_mps: 238.015_174_865_722_66,
+            ax_mps2: 9.313_225_746_154_785e-7,
+            ay_mps2: 0.0,
+            az_mps2: -2.793_967_723_846_435_5e-6,
+        },
+        6.508_920_341_730_117_7e-5,
+        -3.725_290_298e-9,
+    )
+}
+
+fn glonass_pseudorange_from_truth(
+    navigation: &GlonassBroadcastNavigationFrame,
+    truth_ecef_m: (f64, f64, f64),
+    t_rx_s: f64,
+    receiver_clock_bias_s: f64,
+    glonass_bias_s: f64,
+) -> f64 {
+    let mut tau = 0.07;
+    let mut pseudorange_m = 0.0;
+    for _ in 0..10 {
+        let state = sat_state_glonass_l1(navigation, t_rx_s - tau, tau)
+            .expect("GLONASS broadcast state for pseudorange generation");
+        let dx = truth_ecef_m.0 - state.x_m;
+        let dy = truth_ecef_m.1 - state.y_m;
+        let dz = truth_ecef_m.2 - state.z_m;
+        let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
+        pseudorange_m = range_m + (receiver_clock_bias_s + glonass_bias_s) * 299_792_458.0
             - state.clock_correction.bias_s * 299_792_458.0;
         let next_tau = pseudorange_m / 299_792_458.0;
         if (next_tau - tau).abs() < 1.0e-12 {
@@ -334,6 +438,59 @@ fn mixed_gps_galileo_solver_recovers_position_and_clock_split() {
     assert_eq!(solution.inter_system_biases.len(), 1);
     assert_eq!(solution.inter_system_biases[0].constellation, Constellation::Galileo);
     assert!((solution.inter_system_biases[0].bias_s.0 - galileo_bias_s).abs() < 1.0e-9);
+}
+
+#[test]
+fn mixed_gps_glonass_solver_recovers_position_and_clock_split() {
+    let gps_ephemerides = sample_ephemerides();
+    let glonass_navigation =
+        vec![sample_glonass_navigation_slot14(), sample_glonass_navigation_slot8()];
+    let truth_ecef_m = geodetic_to_ecef(37.0, -122.0, 10.0);
+    let receiver_clock_bias_s = 2.75e-4;
+    let glonass_bias_s = 8.5e-7;
+    let t_rx_s = 504_918.07 + receiver_clock_bias_s;
+
+    let mut observations = gps_ephemerides
+        .iter()
+        .map(|ephemeris| {
+            timed_position_observation_from_truth(
+                ephemeris,
+                truth_ecef_m,
+                t_rx_s,
+                receiver_clock_bias_s,
+            )
+        })
+        .collect::<Vec<_>>();
+    observations.extend(glonass_navigation.iter().map(|navigation| {
+        let pseudorange_m = glonass_pseudorange_from_truth(
+            navigation,
+            truth_ecef_m,
+            t_rx_s,
+            receiver_clock_bias_s,
+            glonass_bias_s,
+        );
+        timed_position_observation(navigation.sat, pseudorange_m, t_rx_s)
+    }));
+
+    let mut navigation = position_broadcast_navigation_from_gps_ephemerides(&gps_ephemerides);
+    navigation.extend(position_broadcast_navigation_from_glonass_frames(&glonass_navigation));
+
+    let solution = PositionSolver::new()
+        .solve_wls_with_navigation_data(&observations, &navigation, t_rx_s)
+        .expect("mixed gps+glonass observations should solve");
+
+    assert_eq!(solution.clock_reference_constellation, Constellation::Gps);
+    assert_eq!(solution.used_sat_count, 6);
+    assert_eq!(solution.rejected_sat_count, 0);
+    assert!(solution.rejected.is_empty(), "unexpected rejections: {:?}", solution.rejected);
+    assert!(
+        position_error_3d_m(solution.ecef_x_m, solution.ecef_y_m, solution.ecef_z_m, truth_ecef_m,)
+            < 5.0
+    );
+    assert!((solution.clock_bias_s - receiver_clock_bias_s).abs() < 1.0e-8);
+    assert_eq!(solution.inter_system_biases.len(), 1);
+    assert_eq!(solution.inter_system_biases[0].constellation, Constellation::Glonass);
+    assert!((solution.inter_system_biases[0].bias_s.0 - glonass_bias_s).abs() < 1.0e-8);
 }
 
 #[test]
