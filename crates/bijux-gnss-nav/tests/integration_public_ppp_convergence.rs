@@ -109,6 +109,51 @@ fn public_ab43_ppp_run_keeps_zenith_troposphere_state_physical() {
     );
 }
 
+#[test]
+fn public_ab43_ppp_zenith_delay_tracks_local_meteorology() {
+    let case = ab43_public_spp_case();
+    let initial_position = case
+        .observations
+        .approx_position_ecef_m
+        .expect("AB43 public PPP run needs APPROX POSITION XYZ");
+    let dry_config = PppConfig {
+        use_iono_free: true,
+        reset_gap_s: 30.0,
+        tropo_pressure_hpa: Some(940.0),
+        tropo_temperature_k: Some(288.15),
+        tropo_relative_humidity: Some(0.15),
+        ..PppConfig::default()
+    };
+    let humid_config = PppConfig {
+        use_iono_free: true,
+        reset_gap_s: 30.0,
+        tropo_pressure_hpa: Some(1_020.0),
+        tropo_temperature_k: Some(303.15),
+        tropo_relative_humidity: Some(0.95),
+        ..PppConfig::default()
+    };
+    let mut dry_filter = PppFilter::new(dry_config);
+    let mut humid_filter = PppFilter::new(humid_config);
+    dry_filter.seed_receiver_state([initial_position.0, initial_position.1, initial_position.2], 0.0);
+    humid_filter
+        .seed_receiver_state([initial_position.0, initial_position.1, initial_position.2], 0.0);
+    let products = BroadcastProductsProvider::new(case.navigation.ephemerides.clone());
+    let first_epoch = case.observations.epochs.first().expect("AB43 first PPP epoch");
+
+    let dry_solution =
+        dry_filter.solve_epoch(first_epoch, &case.navigation.ephemerides, &products).expect("dry PPP solution");
+    let humid_solution = humid_filter
+        .solve_epoch(first_epoch, &case.navigation.ephemerides, &products)
+        .expect("humid PPP solution");
+
+    assert!(
+        humid_solution.ztd_m > dry_solution.ztd_m + 0.05,
+        "humid AB43 meteorology should produce higher PPP ZTD; dry={:.3} humid={:.3}",
+        dry_solution.ztd_m,
+        humid_solution.ztd_m
+    );
+}
+
 fn public_ab43_ppp_config() -> PppConfig {
     PppConfig { use_iono_free: true, reset_gap_s: 30.0, ..PppConfig::default() }
 }

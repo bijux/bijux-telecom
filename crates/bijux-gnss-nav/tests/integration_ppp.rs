@@ -331,3 +331,20 @@ fn ppp_seed_receiver_state_seeds_saastamoinen_zenith_delay() {
 
     assert!((ppp.ekf.x[ppp.indices.ztd] - expected_ztd_m).abs() < 1.0e-9);
 }
+
+#[test]
+fn ppp_seed_receiver_state_uses_local_meteorology_when_configured() {
+    let receiver = Llh { lat_deg: 37.0, lon_deg: -122.0, alt_m: 10.0 };
+    let seeded_ecef = geodetic_to_ecef(receiver.lat_deg, receiver.lon_deg, receiver.alt_m);
+    let standard_ztd_m = SaastamoinenModel::zenith_delay_m(receiver);
+    let mut ppp = PppFilter::new(PppConfig {
+        tropo_pressure_hpa: Some(980.0),
+        tropo_temperature_k: Some(301.15),
+        tropo_relative_humidity: Some(0.9),
+        ..PppConfig::default()
+    });
+
+    ppp.seed_receiver_state([seeded_ecef.0, seeded_ecef.1, seeded_ecef.2], 4.0e-6);
+
+    assert!((ppp.ekf.x[ppp.indices.ztd] - standard_ztd_m).abs() > 0.05);
+}
