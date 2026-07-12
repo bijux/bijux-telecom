@@ -6,8 +6,10 @@ use std::path::Path;
 
 mod support;
 
-use bijux_gnss_nav::api::PppConfig;
-use bijux_gnss_testkit::public_ppp::{build_public_ppp_convergence_report, PublicPppConvergenceReport};
+use bijux_gnss_nav::api::{BroadcastProductsProvider, PppConfig, PppFilter};
+use bijux_gnss_testkit::public_ppp::{
+    build_public_ppp_convergence_report, PublicPppConvergenceReport,
+};
 use support::public_spp_case::ab43_public_spp_case;
 
 const REGENERATE_PUBLIC_PPP_CONVERGENCE_FIXTURE_ENV: &str =
@@ -55,6 +57,55 @@ fn public_ab43_ppp_run_reports_convergence_metrics() {
         "AB43 PPP final 3D error {:.3} m exceeds budget; diagnostics={}",
         report.final_3d_error_m,
         format_diagnostics(&report.epochs),
+    );
+}
+
+#[test]
+fn public_ab43_ppp_run_keeps_zenith_troposphere_state_physical() {
+    let case = ab43_public_spp_case();
+    let initial_position = case
+        .observations
+        .approx_position_ecef_m
+        .expect("AB43 public PPP run needs APPROX POSITION XYZ");
+    let mut filter = PppFilter::new(public_ab43_ppp_config());
+    filter.seed_receiver_state([initial_position.0, initial_position.1, initial_position.2], 0.0);
+    let products = BroadcastProductsProvider::new(case.navigation.ephemerides.clone());
+
+    let mut solved_ztd_m = Vec::new();
+    let mut solved_ztd_sigma_m = Vec::new();
+    for epoch in &case.observations.epochs {
+        if let Some(solution) = filter.solve_epoch(epoch, &case.navigation.ephemerides, &products) {
+            solved_ztd_m.push(solution.ztd_m);
+            solved_ztd_sigma_m.push(solution.ztd_sigma_m.expect("AB43 PPP ZTD sigma"));
+        }
+    }
+
+    assert!(!solved_ztd_m.is_empty(), "AB43 PPP should emit solved ZTD states");
+    assert!(
+        solved_ztd_m.iter().all(|ztd_m| ztd_m.is_finite() && (1.0..10.0).contains(ztd_m)),
+        "AB43 PPP ZTD estimates must remain physical: {:?}",
+        solved_ztd_m
+    );
+    assert!(
+        solved_ztd_sigma_m
+            .iter()
+            .all(|ztd_sigma_m| ztd_sigma_m.is_finite() && *ztd_sigma_m >= 0.0),
+        "AB43 PPP ZTD sigmas must remain finite and non-negative: {:?}",
+        solved_ztd_sigma_m
+    );
+
+    let final_ztd_sigma_m = *solved_ztd_sigma_m.last().expect("AB43 final ZTD sigma");
+    let min_ztd_m = solved_ztd_m.iter().copied().fold(f64::INFINITY, f64::min);
+    let max_ztd_m = solved_ztd_m.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+
+    assert!(
+        final_ztd_sigma_m < 1.0,
+        "AB43 final ZTD sigma {:.3} m should remain bounded",
+        final_ztd_sigma_m
+    );
+    assert!(
+        max_ztd_m - min_ztd_m < 3.0,
+        "AB43 ZTD trajectory should stay bounded; min={min_ztd_m:.3} max={max_ztd_m:.3}"
     );
 }
 
