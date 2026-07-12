@@ -55,6 +55,8 @@ fn pvt_sanity() {
         PositionObservation {
             sat: SatId { constellation: Constellation::Gps, prn: 1 },
             pseudorange_m: 20_000_000.0,
+            doppler_hz: None,
+            doppler_var_hz2: None,
             cn0_dbhz: 40.0,
             elevation_deg: None,
             weight: 1.0,
@@ -65,6 +67,8 @@ fn pvt_sanity() {
         PositionObservation {
             sat: SatId { constellation: Constellation::Gps, prn: 1 },
             pseudorange_m: 20_000_000.0,
+            doppler_hz: None,
+            doppler_var_hz2: None,
             cn0_dbhz: 40.0,
             elevation_deg: None,
             weight: 1.0,
@@ -75,6 +79,8 @@ fn pvt_sanity() {
         PositionObservation {
             sat: SatId { constellation: Constellation::Gps, prn: 1 },
             pseudorange_m: 20_000_000.0,
+            doppler_hz: None,
+            doppler_var_hz2: None,
             cn0_dbhz: 40.0,
             elevation_deg: None,
             weight: 1.0,
@@ -85,6 +91,8 @@ fn pvt_sanity() {
         PositionObservation {
             sat: SatId { constellation: Constellation::Gps, prn: 1 },
             pseudorange_m: 20_000_000.0,
+            doppler_hz: None,
+            doppler_var_hz2: None,
             cn0_dbhz: 40.0,
             elevation_deg: None,
             weight: 1.0,

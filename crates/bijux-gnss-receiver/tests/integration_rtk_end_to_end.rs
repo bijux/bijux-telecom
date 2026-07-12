@@ -144,11 +144,14 @@ fn float_baseline_close_to_truth() {
         obs.push(PositionObservation {
             sat: eph.sat,
             pseudorange_m: range + 299_792_458.0 * (0.0 - sat.clock_correction.bias_s),
+            doppler_hz: None,
+            doppler_var_hz2: None,
             cn0_dbhz: 45.0,
             elevation_deg: None,
             weight: 1.0,
             gps_receive_time: None,
             signal_timing: None,
+            signal_id: None,
         });
     }
     let solver = PositionSolver::new();

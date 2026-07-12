@@ -256,6 +256,8 @@ pub fn timed_position_observation(
     PositionObservation {
         sat,
         pseudorange_m,
+        doppler_hz: None,
+        doppler_var_hz2: None,
         cn0_dbhz: 45.0,
         elevation_deg: None,
         weight: 1.0,

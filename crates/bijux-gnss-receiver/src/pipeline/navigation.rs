@@ -257,9 +257,11 @@ impl Navigation {
                 let mut observation = PositionObservation {
                     sat: s.signal_id.sat,
                     pseudorange_m: s.pseudorange_m.0,
+                    doppler_hz: Some(s.doppler_hz.0),
+                    doppler_var_hz2: Some(s.doppler_var_hz2),
                     cn0_dbhz: s.cn0_dbhz,
                     elevation_deg: s.elevation_deg,
-                    weight: 1.0,
+                    weight: s.weight.unwrap_or(1.0),
                     gps_receive_time: obs.gps_time(),
                     signal_timing: s.timing,
                     signal_id: Some(s.signal_id),

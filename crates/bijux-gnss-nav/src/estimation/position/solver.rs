@@ -98,6 +98,8 @@ impl PositionSolveRefusal {
 pub struct PositionObservation {
     pub sat: SatId,
     pub pseudorange_m: f64,
+    pub doppler_hz: Option<f64>,
+    pub doppler_var_hz2: Option<f64>,
     pub cn0_dbhz: f64,
     pub elevation_deg: Option<f64>,
     pub weight: f64,
@@ -165,12 +167,14 @@ pub fn position_observations_from_epoch(epoch: &ObsEpoch) -> Vec<PositionObserva
         .map(|observation| PositionObservation {
             sat: observation.signal_id.sat,
             pseudorange_m: observation.pseudorange_m.0,
+            doppler_hz: Some(observation.doppler_hz.0),
+            doppler_var_hz2: Some(observation.doppler_var_hz2),
             cn0_dbhz: observation.cn0_dbhz,
             elevation_deg: observation.elevation_deg,
-            weight: 1.0,
+            weight: observation.weight.unwrap_or(1.0),
             gps_receive_time,
             signal_timing: observation.timing,
-            signal_id: None,
+            signal_id: Some(observation.signal_id),
         })
         .collect()
 }
@@ -1127,6 +1131,8 @@ mod tests {
         let observations = vec![PositionObservation {
             sat,
             pseudorange_m: 24_000_000.0,
+            doppler_hz: None,
+            doppler_var_hz2: None,
             cn0_dbhz: 45.0,
             elevation_deg: None,
             weight: 1.0,
@@ -1260,6 +1266,8 @@ mod tests {
         let observations = vec![PositionObservation {
             sat,
             pseudorange_m: 24_000_000.0,
+            doppler_hz: None,
+            doppler_var_hz2: None,
             cn0_dbhz: 45.0,
             elevation_deg: None,
             weight: 1.0,
@@ -1292,6 +1300,8 @@ mod tests {
         let observations = vec![PositionObservation {
             sat,
             pseudorange_m: 24_000_000.0,
+            doppler_hz: None,
+            doppler_var_hz2: None,
             cn0_dbhz: 45.0,
             elevation_deg: None,
             weight: 1.0,
@@ -1344,6 +1354,8 @@ mod tests {
             PositionObservation {
                 sat: gps_sat,
                 pseudorange_m: 24_000_000.0,
+                doppler_hz: None,
+                doppler_var_hz2: None,
                 cn0_dbhz: 45.0,
                 elevation_deg: None,
                 weight: 1.0,
@@ -1354,6 +1366,8 @@ mod tests {
             PositionObservation {
                 sat: glonass_sat,
                 pseudorange_m: 24_100_000.0,
+                doppler_hz: None,
+                doppler_var_hz2: None,
                 cn0_dbhz: 45.0,
                 elevation_deg: None,
                 weight: 1.0,
@@ -1403,6 +1417,8 @@ mod tests {
                 PositionObservation {
                     sat: gps_sat,
                     pseudorange_m: 24_000_000.0,
+                    doppler_hz: None,
+                    doppler_var_hz2: None,
                     cn0_dbhz: 45.0,
                     elevation_deg: Some(45.0),
                     weight: 1.0,
@@ -1418,6 +1434,8 @@ mod tests {
                 PositionObservation {
                     sat: galileo_sat,
                     pseudorange_m: 24_100_000.0,
+                    doppler_hz: None,
+                    doppler_var_hz2: None,
                     cn0_dbhz: 45.0,
                     elevation_deg: Some(50.0),
                     weight: 1.0,
@@ -1457,6 +1475,8 @@ mod tests {
         let observation = PositionObservation {
             sat: SatId { constellation: Constellation::Gps, prn: 13 },
             pseudorange_m: 24_000_000.0,
+            doppler_hz: None,
+            doppler_var_hz2: None,
             cn0_dbhz: 45.0,
             elevation_deg: None,
             weight: 1.0,
@@ -1543,7 +1563,13 @@ mod tests {
         assert_eq!(observations.len(), 1);
         assert_eq!(observations[0].sat, sat);
         assert_eq!(observations[0].pseudorange_m, 22_000_000.0);
+        assert_eq!(observations[0].doppler_hz, Some(0.0));
+        assert_eq!(observations[0].doppler_var_hz2, Some(1.0));
         assert_eq!(observations[0].cn0_dbhz, 45.0);
+        assert_eq!(
+            observations[0].signal_id,
+            Some(SigId { sat, band: SignalBand::L1, code: SignalCode::Ca })
+        );
     }
 }
 
@@ -1807,6 +1833,8 @@ mod broadcast_group_delay_tests {
         let observation = PositionObservation {
             sat,
             pseudorange_m: 24_000_000.0,
+            doppler_hz: None,
+            doppler_var_hz2: None,
             cn0_dbhz: 45.0,
             elevation_deg: None,
             weight: 1.0,

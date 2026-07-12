@@ -146,6 +146,8 @@ fn timed_position_observation(sat: SatId, pseudorange_m: f64, t_rx_s: f64) -> Po
     PositionObservation {
         sat,
         pseudorange_m,
+        doppler_hz: None,
+        doppler_var_hz2: None,
         cn0_dbhz: 45.0,
         elevation_deg: Some(45.0),
         weight: 1.0,
@@ -154,6 +156,7 @@ fn timed_position_observation(sat: SatId, pseudorange_m: f64, t_rx_s: f64) -> Po
             signal_travel_time_s: Seconds(signal_travel_time_s),
             transmit_gps_time: GpsTime { week: 0, tow_s: t_rx_s - signal_travel_time_s },
         }),
+        signal_id: None,
     }
 }
 

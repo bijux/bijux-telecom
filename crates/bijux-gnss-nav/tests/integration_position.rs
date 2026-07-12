@@ -606,6 +606,8 @@ fn position_observation_constructible() {
     let obs = PositionObservation {
         sat: SatId { constellation: Constellation::Gps, prn: 3 },
         pseudorange_m: 20_000_000.0,
+        doppler_hz: None,
+        doppler_var_hz2: None,
         cn0_dbhz: 40.0,
         elevation_deg: None,
         weight: 1.0,
@@ -625,6 +627,8 @@ fn position_solver_solves_observations_without_signal_timing_when_pseudoranges_a
         .map(|eph| PositionObservation {
             sat: eph.sat,
             pseudorange_m: 21_000_000.0,
+            doppler_hz: None,
+            doppler_var_hz2: None,
             cn0_dbhz: 45.0,
             elevation_deg: None,
             weight: 1.0,

@@ -555,6 +555,8 @@ mod tests {
         let observations = vec![PositionObservation {
             sat: SatId { constellation: Constellation::Gps, prn: 1 },
             pseudorange_m: 24_000_000.0,
+            doppler_hz: None,
+            doppler_var_hz2: None,
             cn0_dbhz: 45.0,
             elevation_deg: None,
             weight: 1.0,
