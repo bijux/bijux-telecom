@@ -22,10 +22,10 @@ use crate::pipeline::hatch::HatchFilterState;
 use crate::pipeline::tracking::TrackingResult;
 use crate::pipeline::{StepReport, StepStats};
 use bijux_gnss_signal::api::{
-    samples_per_code, signal_cycles_to_meters, signal_registry, signal_spec_beidou_b1i,
-    signal_spec_beidou_b2i, signal_spec_galileo_e1b, signal_spec_galileo_e5a,
-    signal_spec_glonass_l1, signal_spec_gps_l1_ca, signal_spec_gps_l2c, signal_spec_gps_l5,
-    signal_wavelength_m, validate_obs_epochs,
+    resolved_signal_registry_entry, samples_per_code, signal_cycles_to_meters, signal_registry,
+    signal_spec_beidou_b1i, signal_spec_beidou_b2i, signal_spec_galileo_e1b,
+    signal_spec_galileo_e5a, signal_spec_glonass_l1, signal_spec_gps_l1_ca, signal_spec_gps_l2c,
+    signal_spec_gps_l5, signal_wavelength_m, validate_obs_epochs,
 };
 use serde::{Deserialize, Serialize};
 
@@ -1111,30 +1111,43 @@ fn observation_signal_model(
     epoch: &TrackEpoch,
 ) -> ObservationSignalModel {
     let signal_code = tracked_signal_code(epoch);
-    let registry_entry = signal_registry(epoch.sat.constellation, epoch.signal_band, signal_code);
-    let signal = match (epoch.sat.constellation, epoch.signal_band, epoch.glonass_frequency_channel)
-    {
-        (Constellation::Glonass, SignalBand::L1, Some(channel)) => signal_spec_glonass_l1(channel),
-        _ => registry_entry.as_ref().map(|entry| entry.spec).unwrap_or_else(|| {
-            match (epoch.sat.constellation, epoch.signal_band, epoch.glonass_frequency_channel) {
-                (Constellation::Gps, SignalBand::L1, _) => signal_spec_gps_l1_ca(),
-                (Constellation::Gps, SignalBand::L2, _) => signal_spec_gps_l2c(),
-                (Constellation::Gps, SignalBand::L5, _) => signal_spec_gps_l5(),
-                (Constellation::Galileo, SignalBand::E1, _) => signal_spec_galileo_e1b(),
-                (Constellation::Galileo, SignalBand::E5, _) => signal_spec_galileo_e5a(),
-                (Constellation::Beidou, SignalBand::B1, _) => signal_spec_beidou_b1i(),
-                (Constellation::Beidou, SignalBand::B2, _) => signal_spec_beidou_b2i(),
-                _ => signal_spec_gps_l1_ca(),
+    let registry_entry = resolved_signal_registry_entry(
+        epoch.sat,
+        epoch.signal_band,
+        signal_code,
+        epoch.glonass_frequency_channel,
+    )
+    .ok()
+    .flatten()
+    .or_else(|| signal_registry(epoch.sat.constellation, epoch.signal_band, signal_code));
+    let signal = registry_entry.as_ref().map(|entry| entry.spec).unwrap_or_else(|| {
+        match (epoch.sat.constellation, epoch.signal_band, epoch.glonass_frequency_channel) {
+            (Constellation::Glonass, SignalBand::L1, Some(channel)) => {
+                signal_spec_glonass_l1(channel)
             }
-        }),
-    };
-    let code_length = registry_entry
-        .as_ref()
-        .and_then(|entry| entry.code_length)
-        .map(|length| length as usize)
+            (Constellation::Gps, SignalBand::L1, _) => signal_spec_gps_l1_ca(),
+            (Constellation::Gps, SignalBand::L2, _) => signal_spec_gps_l2c(),
+            (Constellation::Gps, SignalBand::L5, _) => signal_spec_gps_l5(),
+            (Constellation::Galileo, SignalBand::E1, _) => signal_spec_galileo_e1b(),
+            (Constellation::Galileo, SignalBand::E5, _) => signal_spec_galileo_e5a(),
+            (Constellation::Beidou, SignalBand::B1, _) => signal_spec_beidou_b1i(),
+            (Constellation::Beidou, SignalBand::B2, _) => signal_spec_beidou_b2i(),
+            _ => signal_spec_gps_l1_ca(),
+        }
+    });
+    let component = registry_entry.as_ref().and_then(|entry| entry.default_component().copied());
+    let code_length = component
+        .map(|component| component.primary_code_chips as usize)
+        .or_else(|| {
+            registry_entry
+                .as_ref()
+                .and_then(|entry| entry.code_length)
+                .map(|length| length as usize)
+        })
         .unwrap_or_else(|| fallback_code_length(epoch));
-    let samples_per_code =
-        samples_per_code(config.sampling_freq_hz, signal.code_rate_hz, code_length);
+    let code_rate_hz =
+        component.map(|component| component.primary_code_rate_hz).unwrap_or(signal.code_rate_hz);
+    let samples_per_code = samples_per_code(config.sampling_freq_hz, code_rate_hz, code_length);
     ObservationSignalModel {
         signal_id: SigId { sat: epoch.sat, band: signal.band, code: signal.code },
         signal,

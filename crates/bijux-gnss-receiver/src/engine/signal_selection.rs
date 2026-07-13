@@ -5,7 +5,7 @@ use crate::engine::receiver_config::ReceiverPipelineConfig;
 use bijux_gnss_core::api::{
     default_signal_band_for_constellation, Constellation, SatId, SignalBand, SignalCode,
 };
-use bijux_gnss_signal::api::default_local_code_model;
+use bijux_gnss_signal::api::signal_registry;
 
 pub(crate) fn resolved_acquisition_signal_band(
     config: &ReceiverPipelineConfig,
@@ -52,9 +52,12 @@ fn signal_band_matches_config(
     sat: SatId,
     signal_band: SignalBand,
 ) -> bool {
-    default_local_code_model(sat, signal_band).ok().flatten().is_some_and(|model| {
-        (model.code_rate_hz() - config.code_freq_basis_hz).abs() <= f64::EPSILON
-            && model.code_length() == config.code_length
+    let signal_code = default_signal_code_for_band(sat.constellation, signal_band);
+    signal_registry(sat.constellation, signal_band, signal_code).is_some_and(|entry| {
+        entry.default_component().is_some_and(|component| {
+            (component.primary_code_rate_hz - config.code_freq_basis_hz).abs() <= f64::EPSILON
+                && component.primary_code_chips as usize == config.code_length
+        })
     })
 }
 

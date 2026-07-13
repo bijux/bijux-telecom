@@ -33,6 +33,7 @@ use bijux_gnss_signal::api::{
     push_tracking_uncertainty_sample as signal_push_tracking_uncertainty_sample,
     refresh_lock_reference_cn0_dbhz as signal_refresh_lock_reference_cn0_dbhz,
     refresh_prompt_power_reference as signal_refresh_prompt_power_reference,
+    resolved_signal_registry_entry,
     update_windowed_tracking_cn0_estimate as signal_update_windowed_tracking_cn0_estimate,
     wrap_code_phase_samples, wrap_phase_cycles_signed, wrapped_code_phase_delta_samples,
     wrapped_phase_delta_cycles, LocalCodeModel, TrackingQualityClass,
@@ -307,19 +308,35 @@ impl TrackingSignalModel {
         } else {
             signal_code
         };
-        match default_local_code_model_for_signal(sat, signal_band, signal_code).ok().flatten() {
-            Some(local_code_model) => Self {
-                signal_band,
-                signal_code,
-                glonass_frequency_channel: ((sat.constellation == Constellation::Glonass)
-                    && (signal_band == SignalBand::L1))
-                    .then_some(glonass_frequency_channel)
-                    .flatten(),
-                code_rate_hz: local_code_model.code_rate_hz(),
-                code_length: local_code_model.code_length(),
-                local_code_model,
-            },
-            None => Self::fallback(config, sat, signal_band),
+        let registry_entry = resolved_signal_registry_entry(
+            sat,
+            signal_band,
+            signal_code,
+            glonass_frequency_channel,
+        )
+        .ok()
+        .flatten();
+        match (
+            default_local_code_model_for_signal(sat, signal_band, signal_code).ok().flatten(),
+            registry_entry,
+        ) {
+            (Some(local_code_model), Some(registry_entry)) => {
+                let component = registry_entry
+                    .default_component()
+                    .expect("tracking registry entry must expose a default component");
+                Self {
+                    signal_band,
+                    signal_code,
+                    glonass_frequency_channel: ((sat.constellation == Constellation::Glonass)
+                        && (signal_band == SignalBand::L1))
+                        .then_some(glonass_frequency_channel)
+                        .flatten(),
+                    code_rate_hz: component.primary_code_rate_hz,
+                    code_length: component.primary_code_chips as usize,
+                    local_code_model,
+                }
+            }
+            _ => Self::fallback(config, sat, signal_band),
         }
     }
 
@@ -341,6 +358,11 @@ impl TrackingSignalModel {
 
     fn supports_tracking(sat: SatId, signal_band: SignalBand, signal_code: SignalCode) -> bool {
         default_local_code_model_for_signal(sat, signal_band, signal_code).ok().flatten().is_some()
+            && resolved_signal_registry_entry(sat, signal_band, signal_code, None)
+                .ok()
+                .flatten()
+                .and_then(|entry| entry.default_component().copied())
+                .is_some()
     }
 
     fn samples_per_code(&self, sample_rate_hz: f64) -> usize {
