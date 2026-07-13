@@ -19,9 +19,8 @@ use crate::engine::receiver_config::{
 use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
 use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
 use bijux_gnss_signal::api::{
-    default_acquisition_signal, generate_ca_code, measure_iq_front_end_metrics,
-    sample_beidou_b1i_code, sample_code, sample_galileo_e1_boc11_code, sample_glonass_l1_st_code,
-    samples_per_code, signal_spec_glonass_l1, wipeoff_carrier, GalileoE1Channel, Prn,
+    default_acquisition_signal, measure_iq_front_end_metrics, samples_per_code,
+    signal_spec_glonass_l1, wipeoff_carrier, LocalCodeModel,
 };
 
 /// Acquisition engine (coarse search).
@@ -124,27 +123,19 @@ impl CacheMissReason {
 
 type CodeFftCache = HashMap<CodeFftCacheKey, Vec<Complex<f32>>>;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct AcquisitionSignalModel {
     signal_band: SignalBand,
     code_rate_hz: f64,
     code_length: usize,
     code_period_ms: u32,
     search_center_hz: f64,
-    local_code_kind: LocalCodeKind,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum LocalCodeKind {
-    GpsCa { prn: u8 },
-    GalileoE1B { prn: u8 },
-    BeidouB1I { prn: u8 },
-    GlonassL1,
-    FallbackCa { prn: u8 },
+    local_code_model: LocalCodeModel,
 }
 
 impl AcquisitionSignalModel {
     fn for_sat(config: &ReceiverPipelineConfig, sat: SatId) -> Self {
+        let local_code_model = LocalCodeModel::gps_l1_ca_or_ones(sat.prn);
         Self::for_request(
             config,
             AcqRequest {
@@ -158,13 +149,14 @@ impl AcquisitionSignalModel {
         )
         .unwrap_or_else(|_| Self {
             signal_band: SignalBand::L1,
-            code_rate_hz: config.code_freq_basis_hz,
-            code_length: config.code_length,
-            code_period_ms: ((config.code_length as f64 / config.code_freq_basis_hz) * 1_000.0)
-                .round()
-                .max(1.0) as u32,
+            code_rate_hz: local_code_model.code_rate_hz(),
+            code_length: local_code_model.code_length(),
+            code_period_ms: local_code_period_ms(
+                local_code_model.code_length(),
+                local_code_model.code_rate_hz(),
+            ),
             search_center_hz: config.intermediate_freq_hz,
-            local_code_kind: LocalCodeKind::FallbackCa { prn: sat.prn },
+            local_code_model,
         })
     }
 
@@ -176,46 +168,58 @@ impl AcquisitionSignalModel {
             Some(signal)
                 if signal.spec.code == SignalCode::Ca && signal.spec.band == SignalBand::L1 =>
             {
+                let local_code_model = LocalCodeModel::gps_l1_ca_or_ones(request.sat.prn);
                 Ok(Self {
                     signal_band: SignalBand::L1,
-                    code_rate_hz: signal.spec.code_rate_hz,
-                    code_length: signal.code_length.unwrap_or(config.code_length as u32) as usize,
-                    code_period_ms: 1,
+                    code_rate_hz: local_code_model.code_rate_hz(),
+                    code_length: local_code_model.code_length(),
+                    code_period_ms: local_code_period_ms(
+                        local_code_model.code_length(),
+                        local_code_model.code_rate_hz(),
+                    ),
                     search_center_hz: acquisition_signal_center_hz(
                         config,
                         signal.spec.carrier_hz.value(),
                     ),
-                    local_code_kind: LocalCodeKind::GpsCa { prn: request.sat.prn },
+                    local_code_model,
                 })
             }
             Some(signal)
                 if signal.spec.code == SignalCode::E1B && signal.spec.band == SignalBand::E1 =>
             {
+                let local_code_model = LocalCodeModel::galileo_e1_boc11_or_ones(request.sat.prn);
                 Ok(Self {
                     signal_band: SignalBand::E1,
-                    code_rate_hz: signal.spec.code_rate_hz,
-                    code_length: signal.code_length.unwrap_or(4092) as usize,
-                    code_period_ms: 4,
+                    code_rate_hz: local_code_model.code_rate_hz(),
+                    code_length: local_code_model.code_length(),
+                    code_period_ms: local_code_period_ms(
+                        local_code_model.code_length(),
+                        local_code_model.code_rate_hz(),
+                    ),
                     search_center_hz: acquisition_signal_center_hz(
                         config,
                         signal.spec.carrier_hz.value(),
                     ),
-                    local_code_kind: LocalCodeKind::GalileoE1B { prn: request.sat.prn },
+                    local_code_model,
                 })
             }
             Some(signal)
                 if signal.spec.code == SignalCode::B1I && signal.spec.band == SignalBand::B1 =>
             {
+                let local_code_model = LocalCodeModel::beidou_b1i_or_ones(request.sat.prn);
                 Ok(Self {
                     signal_band: SignalBand::B1,
-                    code_rate_hz: signal.spec.code_rate_hz,
-                    code_length: signal.code_length.unwrap_or(2046) as usize,
-                    code_period_ms: 1,
+                    code_rate_hz: local_code_model.code_rate_hz(),
+                    code_length: local_code_model.code_length(),
+                    code_period_ms: local_code_period_ms(
+                        local_code_model.code_length(),
+                        local_code_model.code_rate_hz(),
+                    ),
                     search_center_hz: acquisition_signal_center_hz(
                         config,
                         signal.spec.carrier_hz.value(),
                     ),
-                    local_code_kind: LocalCodeKind::BeidouB1I { prn: request.sat.prn },
+                    local_code_model,
                 })
             }
             Some(_signal)
@@ -227,70 +231,58 @@ impl AcquisitionSignalModel {
                     });
                 };
                 let signal = signal_spec_glonass_l1(channel);
+                let local_code_model = LocalCodeModel::glonass_l1_st();
                 Ok(Self {
                     signal_band: SignalBand::L1,
-                    code_rate_hz: signal.code_rate_hz,
-                    code_length: 511,
-                    code_period_ms: 1,
+                    code_rate_hz: local_code_model.code_rate_hz(),
+                    code_length: local_code_model.code_length(),
+                    code_period_ms: local_code_period_ms(
+                        local_code_model.code_length(),
+                        local_code_model.code_rate_hz(),
+                    ),
                     search_center_hz: acquisition_signal_center_hz(
                         config,
                         signal.carrier_hz.value(),
                     ),
-                    local_code_kind: LocalCodeKind::GlonassL1,
+                    local_code_model,
                 })
             }
-            _ => Ok(Self {
-                signal_band: SignalBand::L1,
-                code_rate_hz: config.code_freq_basis_hz,
-                code_length: config.code_length,
-                search_center_hz: config.intermediate_freq_hz,
-                code_period_ms: ((config.code_length as f64 / config.code_freq_basis_hz) * 1_000.0)
-                    .round()
-                    .max(1.0) as u32,
-                local_code_kind: LocalCodeKind::FallbackCa { prn: request.sat.prn },
-            }),
+            _ => {
+                let local_code_model = LocalCodeModel::gps_l1_ca_or_ones(request.sat.prn);
+                Ok(Self {
+                    signal_band: SignalBand::L1,
+                    code_rate_hz: local_code_model.code_rate_hz(),
+                    code_length: local_code_model.code_length(),
+                    search_center_hz: config.intermediate_freq_hz,
+                    code_period_ms: local_code_period_ms(
+                        local_code_model.code_length(),
+                        local_code_model.code_rate_hz(),
+                    ),
+                    local_code_model,
+                })
+            }
         }
     }
 
-    fn samples_per_code(self, sampling_freq_hz: f64) -> usize {
+    fn samples_per_code(&self, sampling_freq_hz: f64) -> usize {
         samples_per_code(sampling_freq_hz, self.code_rate_hz, self.code_length)
     }
 
-    fn coherent_periods(self, coherent_ms: u32) -> Option<u32> {
+    fn coherent_periods(&self, coherent_ms: u32) -> Option<u32> {
         if coherent_ms == 0 || coherent_ms % self.code_period_ms != 0 {
             return None;
         }
         Some(coherent_ms / self.code_period_ms)
     }
 
-    fn local_code_period(self, sampling_freq_hz: f64, samples_per_code: usize) -> Vec<f32> {
-        match self.local_code_kind {
-            LocalCodeKind::GpsCa { prn } | LocalCodeKind::FallbackCa { prn } => {
-                let code = ca_code_or_default(prn);
-                sample_code(&code, sampling_freq_hz, self.code_rate_hz, 0.0, samples_per_code)
-                    .unwrap_or_else(|_| vec![1.0; samples_per_code])
-            }
-            LocalCodeKind::GalileoE1B { prn } => sample_galileo_e1_boc11_code(
-                prn,
-                GalileoE1Channel::E1B,
-                sampling_freq_hz,
-                0.0,
-                samples_per_code,
-            )
-            .unwrap_or_else(|_| vec![1.0; samples_per_code]),
-            LocalCodeKind::BeidouB1I { prn } => {
-                sample_beidou_b1i_code(prn, sampling_freq_hz, 0.0, samples_per_code)
-                    .unwrap_or_else(|_| vec![1.0; samples_per_code])
-            }
-            LocalCodeKind::GlonassL1 => {
-                sample_glonass_l1_st_code(sampling_freq_hz, 0.0, samples_per_code)
-                    .unwrap_or_else(|_| vec![1.0; samples_per_code])
-            }
-        }
+    fn local_code_period(&self, sampling_freq_hz: f64, samples_per_code: usize) -> Vec<f32> {
+        self.local_code_model
+            .sample_period(sampling_freq_hz, 0.0, samples_per_code)
+            .unwrap_or_else(|_| vec![1.0; samples_per_code])
     }
 
-    fn supports_secondary_peak_multipath_screening(self) -> bool {
-        !matches!(self.local_code_kind, LocalCodeKind::GlonassL1)
+    fn supports_secondary_peak_multipath_screening(&self) -> bool {
+        self.local_code_model.supports_secondary_peak_multipath_screening()
     }
 }
 
@@ -301,6 +293,10 @@ enum AcquisitionRequestError {
 
 fn acquisition_signal_center_hz(config: &ReceiverPipelineConfig, signal_carrier_hz: f64) -> f64 {
     config.intermediate_freq_hz + (signal_carrier_hz - GPS_L1_CA_CARRIER_HZ.value())
+}
+
+fn local_code_period_ms(code_length: usize, code_rate_hz: f64) -> u32 {
+    ((code_length as f64 / code_rate_hz) * 1_000.0).round().max(1.0) as u32
 }
 
 fn threshold_provenance_for_request(
@@ -621,7 +617,7 @@ impl Acquisition {
                     sat,
                     candidates: unsupported_coherent_integration_candidates(
                         sat,
-                        signal_model,
+                        &signal_model,
                         request.glonass_frequency_channel,
                         &assumptions,
                         &threshold_provenance,
@@ -640,7 +636,7 @@ impl Acquisition {
                         sat,
                         candidates: unsupported_coherent_integration_candidates(
                             sat,
-                            signal_model,
+                            &signal_model,
                             request.glonass_frequency_channel,
                             &assumptions,
                             &threshold_provenance,
@@ -661,7 +657,7 @@ impl Acquisition {
                     sat,
                     candidates: insufficient_frame_candidates(
                         sat,
-                        signal_model,
+                        &signal_model,
                         request.glonass_frequency_channel,
                         &assumptions,
                         &threshold_provenance,
@@ -688,7 +684,7 @@ impl Acquisition {
             let fft = planner.plan_fft_forward(samples_per_code);
             let ifft = planner.plan_fft_inverse(samples_per_code);
             let code_fft = self.code_fft(
-                signal_model,
+                &signal_model,
                 sat,
                 samples_per_code,
                 request.coherent_ms,
@@ -801,7 +797,7 @@ impl Acquisition {
             refine_acquisition_candidates(
                 self,
                 frame,
-                signal_model,
+                &signal_model,
                 sat,
                 &mut candidates,
                 &grid_candidates,
@@ -848,7 +844,7 @@ impl Acquisition {
                         let multipath_diagnostic = classify_delayed_secondary_peak(
                             &self.config,
                             frame,
-                            signal_model,
+                            &signal_model,
                             sat,
                             candidate.carrier_hz.0,
                             candidate.code_phase_samples,
@@ -1077,7 +1073,7 @@ impl Acquisition {
 
     fn code_fft(
         &self,
-        signal_model: AcquisitionSignalModel,
+        signal_model: &AcquisitionSignalModel,
         sat: SatId,
         samples_per_code: usize,
         _coherent_ms: u32,
@@ -1154,7 +1150,7 @@ impl Acquisition {
     fn estimate_acquisition_code_phase_refinement(
         &self,
         frame: &SamplesFrame,
-        signal_model: AcquisitionSignalModel,
+        signal_model: &AcquisitionSignalModel,
         sat: SatId,
         carrier_hz: f64,
         coarse_code_phase_samples: usize,
@@ -1242,7 +1238,7 @@ fn zero_signal_run(
         };
         let result = zero_signal_candidate(
             sat,
-            signal_model,
+            &signal_model,
             request.glonass_frequency_channel,
             &assumptions,
             &threshold_provenance,
@@ -1280,7 +1276,7 @@ fn zero_signal_run(
 
 fn insufficient_frame_candidates(
     sat: SatId,
-    signal_model: AcquisitionSignalModel,
+    signal_model: &AcquisitionSignalModel,
     glonass_frequency_channel: Option<bijux_gnss_core::api::GlonassFrequencyChannel>,
     assumptions: &AcqAssumptions,
     threshold_provenance: &AcqThresholdProvenance,
@@ -1400,7 +1396,7 @@ fn insufficient_frame_candidate_reason(
 
 fn zero_signal_candidate(
     sat: SatId,
-    signal_model: AcquisitionSignalModel,
+    signal_model: &AcquisitionSignalModel,
     glonass_frequency_channel: Option<bijux_gnss_core::api::GlonassFrequencyChannel>,
     assumptions: &AcqAssumptions,
     threshold_provenance: &AcqThresholdProvenance,
@@ -1439,7 +1435,7 @@ fn zero_signal_candidate(
 
 fn unsupported_coherent_integration_candidates(
     sat: SatId,
-    signal_model: AcquisitionSignalModel,
+    signal_model: &AcquisitionSignalModel,
     glonass_frequency_channel: Option<bijux_gnss_core::api::GlonassFrequencyChannel>,
     assumptions: &AcqAssumptions,
     threshold_provenance: &AcqThresholdProvenance,
@@ -1461,7 +1457,7 @@ fn unsupported_coherent_integration_candidates(
 
 fn unsupported_coherent_integration_candidate(
     sat: SatId,
-    signal_model: AcquisitionSignalModel,
+    signal_model: &AcquisitionSignalModel,
     glonass_frequency_channel: Option<bijux_gnss_core::api::GlonassFrequencyChannel>,
     assumptions: &AcqAssumptions,
     threshold_provenance: &AcqThresholdProvenance,
@@ -1771,7 +1767,7 @@ fn selected_candidate_reason(
 fn classify_delayed_secondary_peak(
     config: &ReceiverPipelineConfig,
     frame: &SamplesFrame,
-    signal_model: AcquisitionSignalModel,
+    signal_model: &AcquisitionSignalModel,
     sat: SatId,
     carrier_hz: f64,
     code_phase_samples: usize,
@@ -1858,7 +1854,7 @@ fn competing_candidate_ratio(candidates: &[AcqResult]) -> f32 {
 fn refine_acquisition_candidates(
     acquisition: &Acquisition,
     frame: &SamplesFrame,
-    signal_model: AcquisitionSignalModel,
+    signal_model: &AcquisitionSignalModel,
     sat: SatId,
     candidates: &mut [AcqResult],
     grid_candidates: &[AcqResult],
@@ -2015,7 +2011,7 @@ fn estimate_acquisition_doppler_refinement(
 
 fn measure_code_phase_profile(
     config: &ReceiverPipelineConfig,
-    signal_model: AcquisitionSignalModel,
+    signal_model: &AcquisitionSignalModel,
     frame: &SamplesFrame,
     _sat: SatId,
     carrier_hz: f64,
@@ -2130,7 +2126,7 @@ mod tests {
         Constellation, GlonassFrequencyChannel, SampleTime, SamplesFrame, SatId, Seconds,
         GPS_L1_CA_CARRIER_HZ,
     };
-    use bijux_gnss_signal::api::glonass_l1_carrier_hz;
+    use bijux_gnss_signal::api::{glonass_l1_carrier_hz, sample_glonass_l1_st_code};
 
     #[test]
     fn acquisition_decision_rejects_weak_primary_peak() {
@@ -2586,12 +2582,12 @@ mod tests {
         let fft = planner.plan_fft_forward(samples_per_code);
         let signal_model = AcquisitionSignalModel::for_sat(&acquisition.config, sat);
 
-        acquisition.code_fft(signal_model, sat, samples_per_code, 1, 1, fft.as_ref());
+        acquisition.code_fft(&signal_model, sat, samples_per_code, 1, 1, fft.as_ref());
         let after_first_profile = acquisition.stats_snapshot();
         assert_eq!(after_first_profile.cache_misses, 1);
         assert_eq!(after_first_profile.cache_hits, 0);
 
-        acquisition.code_fft(signal_model, sat, samples_per_code, 1, 4, fft.as_ref());
+        acquisition.code_fft(&signal_model, sat, samples_per_code, 1, 4, fft.as_ref());
         let after_second_profile = acquisition.stats_snapshot();
         assert_eq!(after_second_profile.cache_misses, 1);
         assert_eq!(after_second_profile.cache_hits, 1);
@@ -2973,11 +2969,4 @@ fn wrapped_code_phase_offset_samples(
         return 0;
     }
     (secondary_code_phase_samples + period_samples - primary_code_phase_samples) % period_samples
-}
-
-fn ca_code_or_default(prn: u8) -> Vec<i8> {
-    match generate_ca_code(Prn(prn)) {
-        Ok(code) => code,
-        Err(_) => vec![1; 1023],
-    }
 }
