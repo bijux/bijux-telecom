@@ -95,11 +95,12 @@ pub use crate::rtk::metrics::{
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use crate::rtk::status::{
     apply_downgrade_policy, evaluate_prerequisites, evaluate_solution_evidence,
-    support_status_matrix, AdvancedMaturity, AdvancedMode, AdvancedPrereqDecision,
-    AdvancedPrerequisites, AdvancedRefusalClass, AdvancedSolutionArtifact, AdvancedSolutionClaim,
-    AdvancedSolutionEvidence, AdvancedSolutionMeasurements, AdvancedSolutionProvenance,
-    AdvancedSupportMatrix, AdvancedSupportRow, AmbiguityStateArtifact, CorrectionInputArtifact,
-    ExecutionArtifact, ExecutionStatus, ADVANCED_SUPPORT_MATRIX_VERSION,
+    support_status_matrix, AdvancedClaimDecision, AdvancedMaturity, AdvancedMode,
+    AdvancedPrereqDecision, AdvancedPrerequisites, AdvancedRefusalClass,
+    AdvancedSolutionArtifact, AdvancedSolutionClaim, AdvancedSolutionEvidence,
+    AdvancedSolutionMeasurements, AdvancedSolutionProvenance, AdvancedSupportMatrix,
+    AdvancedSupportRow, AmbiguityStateArtifact, CorrectionInputArtifact, ExecutionArtifact,
+    ExecutionStatus, ADVANCED_SUPPORT_MATRIX_VERSION,
 };
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]

@@ -58,8 +58,7 @@ fn advanced_status_fixtures_are_deterministic() {
             correction_supported: evidence.correction_supported,
             integrity_supported: evidence.integrity_supported,
         });
-        let (status, downgraded, _reason, final_claim) =
-            apply_downgrade_policy(mode, &first, claim, evidence.as_ref());
+        let claim_decision = apply_downgrade_policy(mode, &first, claim, evidence.as_ref());
         assert_eq!(first.ready, fixture.expect.ready, "fixture {} ready mismatch", fixture.id);
         assert_eq!(
             first.refusal_class.map(format_refusal),
@@ -68,19 +67,19 @@ fn advanced_status_fixtures_are_deterministic() {
             fixture.id
         );
         assert_eq!(
-            downgraded, fixture.expect.downgraded,
+            claim_decision.downgraded, fixture.expect.downgraded,
             "fixture {} downgraded mismatch",
             fixture.id
         );
         assert!(
-            status.starts_with(&fixture.expect.status_prefix),
+            claim_decision.status.starts_with(&fixture.expect.status_prefix),
             "fixture {} status {} does not start with {}",
             fixture.id,
-            status,
+            claim_decision.status,
             fixture.expect.status_prefix
         );
         assert_eq!(
-            format_claim(final_claim),
+            format_claim(claim_decision.claim),
             fixture.expect.final_claim,
             "fixture {} final claim mismatch",
             fixture.id

@@ -741,7 +741,7 @@ fn build_validation_report_with_observation_context(
         has_ambiguity_state: combinations_valid,
     };
     let ppp_prereq_decision = evaluate_prerequisites(AdvancedMode::Ppp, &ppp_prereq);
-    let (ppp_status, _downgraded, ppp_status_reason, claim) = apply_downgrade_policy(
+    let ppp_claim_decision = apply_downgrade_policy(
         AdvancedMode::Ppp,
         &ppp_prereq_decision,
         AdvancedSolutionClaim::NotReady,
@@ -829,9 +829,9 @@ fn build_validation_report_with_observation_context(
             maturity: ppp_support.maturity,
             prerequisites_met: ppp_prereq_decision.ready,
             refusal_class: ppp_prereq_decision.refusal_class,
-            status: ppp_status,
-            status_reason: ppp_status_reason,
-            claim,
+            status: ppp_claim_decision.status,
+            status_reason: ppp_claim_decision.downgrade_reason,
+            claim: ppp_claim_decision.claim,
             support: ppp_support,
         },
         science_policy,

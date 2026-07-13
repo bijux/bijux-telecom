@@ -598,13 +598,12 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
             &correction_source,
             &measurements,
         );
-        let (status, downgraded, downgrade_reason, claim) =
-            bijux_gnss_infra::api::receiver::apply_downgrade_policy(
-                bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
-                &prereq_decision,
-                raw_claim,
-                Some(&evidence),
-            );
+        let claim_decision = bijux_gnss_infra::api::receiver::apply_downgrade_policy(
+            bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
+            &prereq_decision,
+            raw_claim,
+            Some(&evidence),
+        );
         let source_obs_id = rover
             .manifest
             .as_ref()
@@ -613,16 +612,16 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
         let advanced_solution = bijux_gnss_infra::api::receiver::AdvancedSolutionArtifact {
             epoch_idx: rover.epoch_idx,
             mode: bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
-            status,
-            downgraded,
-            downgrade_reason: downgrade_reason.clone(),
+            status: claim_decision.status.clone(),
+            downgraded: claim_decision.downgraded,
+            downgrade_reason: claim_decision.downgrade_reason.clone(),
             prerequisites: prereq,
             refusal_class: prereq_decision.refusal_class,
             provenance: bijux_gnss_infra::api::receiver::AdvancedSolutionProvenance {
-                claim,
+                claim: claim_decision.claim,
                 ambiguity_state_count,
                 correction_source,
-                fallback_from: downgrade_reason,
+                fallback_from: claim_decision.downgrade_reason.clone(),
                 fixed_ratio: fix_result.ratio,
                 measurements,
                 evidence,
@@ -640,7 +639,7 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
             base.sats.iter().chain(rover.sats.iter()).filter(|s| s.lock_flags.cycle_slip).count();
         let precision = bijux_gnss_infra::api::receiver::RtkPrecision {
             epoch_idx: rover.epoch_idx,
-            fix_accepted: evidence_backed_rtk_fix_accepted(claim),
+            fix_accepted: evidence_backed_rtk_fix_accepted(claim_decision.claim),
             ratio: fix_result.ratio,
             fixed_count: audit.fixed_count,
             ref_changed,

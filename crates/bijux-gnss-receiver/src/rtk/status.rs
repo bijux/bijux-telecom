@@ -110,6 +110,14 @@ pub struct AdvancedPrereqDecision {
     pub reasons: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AdvancedClaimDecision {
+    pub status: String,
+    pub downgraded: bool,
+    pub downgrade_reason: Option<String>,
+    pub claim: AdvancedSolutionClaim,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdvancedSolutionProvenance {
     pub claim: AdvancedSolutionClaim,
@@ -363,17 +371,22 @@ pub fn apply_downgrade_policy(
     decision: &AdvancedPrereqDecision,
     claim: AdvancedSolutionClaim,
     evidence: Option<&AdvancedSolutionEvidence>,
-) -> (String, bool, Option<String>, AdvancedSolutionClaim) {
+) -> AdvancedClaimDecision {
     if mode == AdvancedMode::Ppp {
         return if decision.ready {
-            ("not_ready".to_string(), false, None, AdvancedSolutionClaim::NotReady)
+            AdvancedClaimDecision {
+                status: "not_ready".to_string(),
+                downgraded: false,
+                downgrade_reason: None,
+                claim: AdvancedSolutionClaim::NotReady,
+            }
         } else {
-            (
-                "not_ready".to_string(),
-                false,
-                Some(decision.reasons.join(",")),
-                AdvancedSolutionClaim::NotReady,
-            )
+            AdvancedClaimDecision {
+                status: "not_ready".to_string(),
+                downgraded: false,
+                downgrade_reason: Some(decision.reasons.join(",")),
+                claim: AdvancedSolutionClaim::NotReady,
+            }
         };
     }
 
@@ -382,12 +395,12 @@ pub fn apply_downgrade_policy(
             let evidence = evidence.cloned().unwrap_or_default();
             let missing_reasons = evidence.missing_reasons();
             if !missing_reasons.is_empty() {
-                return (
-                    "degraded".to_string(),
-                    true,
-                    Some(missing_reasons.join(",")),
-                    AdvancedSolutionClaim::FallbackNav,
-                );
+                return AdvancedClaimDecision {
+                    status: "degraded".to_string(),
+                    downgraded: true,
+                    downgrade_reason: Some(missing_reasons.join(",")),
+                    claim: AdvancedSolutionClaim::FallbackNav,
+                };
             }
         }
         let status = match claim {
@@ -396,14 +409,24 @@ pub fn apply_downgrade_policy(
             AdvancedSolutionClaim::NotReady => "not_ready",
             AdvancedSolutionClaim::FallbackNav => "accepted_fallback",
         };
-        return (status.to_string(), false, None, claim);
+        return AdvancedClaimDecision {
+            status: status.to_string(),
+            downgraded: false,
+            downgrade_reason: None,
+            claim,
+        };
     }
     let reason = decision.reasons.join(",");
     let downgraded_claim = match mode {
         AdvancedMode::Rtk => AdvancedSolutionClaim::FallbackNav,
         AdvancedMode::Ppp => AdvancedSolutionClaim::NotReady,
     };
-    ("degraded".to_string(), true, Some(reason), downgraded_claim)
+    AdvancedClaimDecision {
+        status: "degraded".to_string(),
+        downgraded: true,
+        downgrade_reason: Some(reason),
+        claim: downgraded_claim,
+    }
 }
 
 fn claim_requires_strong_evidence(claim: AdvancedSolutionClaim) -> bool {
@@ -594,16 +617,16 @@ mod tests {
             refusal_class: Some(AdvancedRefusalClass::InsufficientGeometry),
             reasons: vec!["insufficient_geometry".to_string()],
         };
-        let (status, downgraded, reason, claim) = apply_downgrade_policy(
+        let decision = apply_downgrade_policy(
             AdvancedMode::Rtk,
             &decision,
             AdvancedSolutionClaim::Fixed,
             None,
         );
-        assert_eq!(status, "degraded");
-        assert!(downgraded);
-        assert!(reason.is_some());
-        assert_eq!(claim, AdvancedSolutionClaim::FallbackNav);
+        assert_eq!(decision.status, "degraded");
+        assert!(decision.downgraded);
+        assert!(decision.downgrade_reason.is_some());
+        assert_eq!(decision.claim, AdvancedSolutionClaim::FallbackNav);
     }
 
     #[test]
@@ -613,16 +636,16 @@ mod tests {
             refusal_class: None,
             reasons: vec!["ppp_prerequisites_met".to_string()],
         };
-        let (status, downgraded, reason, claim) = apply_downgrade_policy(
+        let decision = apply_downgrade_policy(
             AdvancedMode::Ppp,
             &decision,
             AdvancedSolutionClaim::Float,
             None,
         );
-        assert_eq!(status, "not_ready");
-        assert!(!downgraded);
-        assert!(reason.is_none());
-        assert_eq!(claim, AdvancedSolutionClaim::NotReady);
+        assert_eq!(decision.status, "not_ready");
+        assert!(!decision.downgraded);
+        assert!(decision.downgrade_reason.is_none());
+        assert_eq!(decision.claim, AdvancedSolutionClaim::NotReady);
     }
 
     #[test]
@@ -632,16 +655,16 @@ mod tests {
             refusal_class: Some(AdvancedRefusalClass::IncompleteCorrections),
             reasons: vec!["incomplete_corrections".to_string()],
         };
-        let (status, downgraded, reason, claim) = apply_downgrade_policy(
+        let decision = apply_downgrade_policy(
             AdvancedMode::Ppp,
             &decision,
             AdvancedSolutionClaim::Float,
             None,
         );
-        assert_eq!(status, "not_ready");
-        assert!(!downgraded);
-        assert_eq!(reason.as_deref(), Some("incomplete_corrections"));
-        assert_eq!(claim, AdvancedSolutionClaim::NotReady);
+        assert_eq!(decision.status, "not_ready");
+        assert!(!decision.downgraded);
+        assert_eq!(decision.downgrade_reason.as_deref(), Some("incomplete_corrections"));
+        assert_eq!(decision.claim, AdvancedSolutionClaim::NotReady);
     }
 
     #[test]
@@ -658,17 +681,20 @@ mod tests {
             correction_supported: true,
             integrity_supported: false,
         };
-        let (status, downgraded, reason, claim) = apply_downgrade_policy(
+        let decision = apply_downgrade_policy(
             AdvancedMode::Rtk,
             &decision,
             AdvancedSolutionClaim::Fixed,
             Some(&evidence),
         );
 
-        assert_eq!(status, "degraded");
-        assert!(downgraded);
-        assert_eq!(reason.as_deref(), Some("missing_integrity_evidence"));
-        assert_eq!(claim, AdvancedSolutionClaim::FallbackNav);
+        assert_eq!(decision.status, "degraded");
+        assert!(decision.downgraded);
+        assert_eq!(
+            decision.downgrade_reason.as_deref(),
+            Some("missing_integrity_evidence")
+        );
+        assert_eq!(decision.claim, AdvancedSolutionClaim::FallbackNav);
     }
 
     #[test]
