@@ -12,35 +12,35 @@ sat = { constellation = "Gps", prn = 3 }
 doppler_hz = -1500.0
 carrier_phase_rad = 0.0
 cn0_db_hz = 52.0
-data_bit_flip = false
+navigation_data = "constant_positive"
 
 [[satellites]]
 sat = { constellation = "Gps", prn = 7 }
 doppler_hz = -700.0
 carrier_phase_rad = 0.0
 cn0_db_hz = 52.0
-data_bit_flip = false
+navigation_data = "constant_positive"
 
 [[satellites]]
 sat = { constellation = "Gps", prn = 11 }
 doppler_hz = 0.0
 carrier_phase_rad = 0.0
 cn0_db_hz = 52.0
-data_bit_flip = false
+navigation_data = "constant_positive"
 
 [[satellites]]
 sat = { constellation = "Gps", prn = 19 }
 doppler_hz = 700.0
 carrier_phase_rad = 0.0
 cn0_db_hz = 52.0
-data_bit_flip = false
+navigation_data = "constant_positive"
 
 [[satellites]]
 sat = { constellation = "Gps", prn = 23 }
 doppler_hz = 1500.0
 carrier_phase_rad = 0.0
 cn0_db_hz = 52.0
-data_bit_flip = false
+navigation_data = "constant_positive"
 
 [[ephemerides]]
 sat = { constellation = "Gps", prn = 3 }

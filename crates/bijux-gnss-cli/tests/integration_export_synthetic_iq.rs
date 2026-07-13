@@ -73,11 +73,13 @@ fn export_synthetic_iq_emits_truth_bundle_and_ingestable_capture() {
     assert_eq!(sats.len(), 2);
     assert!(sats.iter().any(|sat| {
         sat["sat"]["prn"] == 3
+            && sat["navigation_data"] == "alternating_start_positive"
             && sat["nav_bit_mode"] == "alternating_gps_lnav20ms"
             && sat["nav_bit_segments"].as_array().map(|segments| segments.len()) == Some(2)
     }));
     assert!(sats.iter().any(|sat| {
         sat["sat"]["prn"] == 7
+            && sat["navigation_data"] == "constant_positive"
             && sat["nav_bit_mode"] == "constant_positive"
             && sat["nav_bit_segments"].as_array().map(|segments| segments.len()) == Some(1)
     }));
@@ -192,7 +194,7 @@ doppler_hz = 0.0
 code_phase_chips = 300.0
 carrier_phase_rad = 0.0
 cn0_db_hz = 44.0
-data_bit_flip = false
+navigation_data = "constant_positive"
 
 [[satellites]]
 sat = { constellation = "Gps", prn = 7 }
@@ -200,7 +202,7 @@ doppler_hz = 250.0
 code_phase_chips = 300.0
 carrier_phase_rad = 0.0
 cn0_db_hz = 44.0
-data_bit_flip = false
+navigation_data = "constant_positive"
 "#,
     )
     .expect("write scenario");
@@ -319,7 +321,7 @@ doppler_hz = 875.0
 code_phase_chips = 200.25
 carrier_phase_rad = 0.0
 cn0_db_hz = 65.0
-data_bit_flip = false
+navigation_data = "constant_positive"
 "#,
     )
     .expect("write refinement scenario");
@@ -492,7 +494,7 @@ doppler_hz = 0.0
 code_phase_chips = 200.125
 carrier_phase_rad = 0.0
 cn0_db_hz = 65.0
-data_bit_flip = false
+navigation_data = "constant_positive"
 "#,
     )
     .expect("write refinement scenario");

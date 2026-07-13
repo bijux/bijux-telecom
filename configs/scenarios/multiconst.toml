@@ -9,7 +9,7 @@ doppler_hz = 800.0
 code_phase_chips = 120.0
 carrier_phase_rad = 0.1
 cn0_db_hz = 48.0
-data_bit_flip = true
+navigation_data = "alternating_start_positive"
 
 [[satellites]]
 sat = { constellation = "Galileo", prn = 11 }
@@ -17,4 +17,4 @@ doppler_hz = -600.0
 code_phase_chips = 220.0
 carrier_phase_rad = 0.3
 cn0_db_hz = 46.0
-data_bit_flip = true
+navigation_data = "alternating_start_positive"

@@ -349,7 +349,7 @@ doppler_hz = 500.0
 code_phase_chips = {code_phase_chips}
 carrier_phase_rad = 0.0
 cn0_db_hz = 58.0
-data_bit_flip = false
+navigation_data = "constant_positive"
 "#
             ),
         )
@@ -533,7 +533,7 @@ doppler_hz = 875.0
 code_phase_chips = 321.0
 carrier_phase_rad = 0.2
 cn0_db_hz = 58.0
-data_bit_flip = false
+navigation_data = "constant_positive"
 "#,
     )
     .expect("write scenario");
