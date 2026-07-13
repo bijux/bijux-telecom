@@ -219,6 +219,8 @@ impl Default for ValidationSciencePolicy {
 pub enum NavIntegrityClass {
     /// No integrity red flags were detected.
     Nominal,
+    /// The solution did not provide the protection-level evidence required for integrity claims.
+    IntegrityEvidenceMissing,
     /// Geometry-related checks were weak (PDOP or used satellites).
     WeakGeometry,
     /// Residual-related checks were suspicious.
@@ -1140,6 +1142,9 @@ fn classify_integrity(
     let mut out = Vec::with_capacity(solutions.len());
     for solution in solutions {
         let mut reasons = Vec::new();
+        if solution.integrity_hpl_m.is_none() || solution.integrity_vpl_m.is_none() {
+            reasons.push("missing_integrity_evidence".to_string());
+        }
         if solution.used_sat_count < science_policy.min_used_satellites
             || solution.pdop > science_policy.max_pdop
             || solution.gdop.unwrap_or(f64::INFINITY) > science_policy.max_gdop
@@ -1156,6 +1161,9 @@ fn classify_integrity(
         }
         let class = match reasons.as_slice() {
             [] => NavIntegrityClass::Nominal,
+            [single] if single == "missing_integrity_evidence" => {
+                NavIntegrityClass::IntegrityEvidenceMissing
+            }
             [single] if single == "weak_geometry" => NavIntegrityClass::WeakGeometry,
             [single] if single == "suspicious_residuals" => NavIntegrityClass::SuspiciousResiduals,
             [single] if single == "unstable_lock" => NavIntegrityClass::UnstableLock,
@@ -2424,6 +2432,12 @@ mod tests {
         }
     }
 
+    fn with_integrity_support(mut solution: NavSolutionEpoch) -> NavSolutionEpoch {
+        solution.integrity_hpl_m = Some(10.0);
+        solution.integrity_vpl_m = Some(12.0);
+        solution
+    }
+
     fn dual_frequency_epoch(epoch_idx: u64, sats: Vec<ObsSatellite>) -> ObsEpoch {
         ObsEpoch {
             t_rx_s: bijux_gnss_core::api::Seconds(epoch_idx as f64),
@@ -2576,7 +2590,12 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(fixture_path).expect("fixture"))
                 .expect("cases");
         for (idx, case) in cases.iter().enumerate() {
-            let solution = fixture_solution(idx as u64, case.pdop, case.rms_m, case.used_sat_count);
+            let solution = with_integrity_support(fixture_solution(
+                idx as u64,
+                case.pdop,
+                case.rms_m,
+                case.used_sat_count,
+            ));
             let track = fixture_track(idx as u64, case.lock_ratio);
             let report = build_validation_report(
                 &[track],
@@ -2591,6 +2610,7 @@ mod tests {
             .expect("report");
             let class = report.integrity.first().expect("integrity row");
             let expected = match case.expected_class.as_str() {
+                "missing_integrity_evidence" => NavIntegrityClass::IntegrityEvidenceMissing,
                 "weak_geometry" => NavIntegrityClass::WeakGeometry,
                 "suspicious_residuals" => NavIntegrityClass::SuspiciousResiduals,
                 "unstable_lock" => NavIntegrityClass::UnstableLock,
@@ -2602,7 +2622,7 @@ mod tests {
 
     #[test]
     fn validation_policy_marks_high_gdop_as_weak_geometry() {
-        let solution = fixture_solution(0, 2.0, 1.0, 4);
+        let solution = with_integrity_support(fixture_solution(0, 2.0, 1.0, 4));
         let report = build_validation_report(
             &[fixture_track(0, 1.0)],
             &[],
@@ -2619,5 +2639,45 @@ mod tests {
             report.integrity.first().expect("integrity row").class,
             NavIntegrityClass::WeakGeometry
         );
+    }
+
+    #[test]
+    fn validation_policy_requires_integrity_evidence_for_nominal_classification() {
+        let solution = fixture_solution(0, 2.0, 1.0, 4);
+        let report = build_validation_report(
+            &[fixture_track(0, 1.0)],
+            &[],
+            &[solution],
+            &[],
+            1.0,
+            false,
+            Vec::new(),
+            ValidationSciencePolicy::default(),
+        )
+        .expect("report");
+
+        let integrity = report.integrity.first().expect("integrity row");
+        assert_eq!(integrity.class, NavIntegrityClass::IntegrityEvidenceMissing);
+        assert_eq!(integrity.reasons, vec!["missing_integrity_evidence".to_string()]);
+    }
+
+    #[test]
+    fn validation_policy_allows_nominal_when_integrity_evidence_is_present() {
+        let solution = with_integrity_support(fixture_solution(0, 2.0, 1.0, 4));
+        let report = build_validation_report(
+            &[fixture_track(0, 1.0)],
+            &[],
+            &[solution],
+            &[],
+            1.0,
+            false,
+            Vec::new(),
+            ValidationSciencePolicy::default(),
+        )
+        .expect("report");
+
+        let integrity = report.integrity.first().expect("integrity row");
+        assert_eq!(integrity.class, NavIntegrityClass::Nominal);
+        assert!(integrity.reasons.is_empty());
     }
 }
