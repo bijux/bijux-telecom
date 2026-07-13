@@ -7,7 +7,10 @@ use bijux_gnss_core::api::{
 };
 use bijux_gnss_receiver::api::{
     observations_from_tracking_results,
-    sim::{generate_l1_ca_multi, SyntheticSignalDelayAlignment, SyntheticSignalSource},
+    sim::{
+        generate_l1_ca_multi, run_synthetic_scenario, SyntheticSignalDelayAlignment,
+        SyntheticSignalSource,
+    },
     Metric, MetricsSink, NullLogger, Receiver, ReceiverPipelineConfig, ReceiverRuntime,
     ReceiverRuntimeConfig, TraceRecord, TraceSink, TrackingEngine, TrackingResult,
 };
@@ -103,11 +106,7 @@ fn receiver_run_emits_navigation_epochs_for_multisatellite_synthetic_input() {
         .map(|epoch| {
             format!(
                 "epoch={} valid={} status={:?} sats={}/{}",
-                epoch.epoch.index,
-                epoch.valid,
-                epoch.status,
-                epoch.used_sat_count,
-                epoch.sat_count,
+                epoch.epoch.index, epoch.valid, epoch.status, epoch.used_sat_count, epoch.sat_count,
             )
         })
         .collect::<Vec<_>>();
@@ -121,7 +120,8 @@ fn receiver_run_emits_navigation_epochs_for_multisatellite_synthetic_input() {
                 epoch.valid,
                 epoch.decision_reason,
                 epoch.sats.len(),
-                epoch.sats
+                epoch
+                    .sats
                     .first()
                     .map(|sat| sat.metadata.pseudorange_model.clone())
                     .unwrap_or_else(|| "none".to_string()),
@@ -183,6 +183,45 @@ fn receiver_run_emits_navigation_epochs_for_multisatellite_synthetic_input() {
     );
 }
 
+#[test]
+fn synthetic_scenario_runner_emits_navigation_epochs_with_explicit_anchor() {
+    let config = multisat_receiver_config();
+    let profile = four_satellite_pvt_scenario(&config);
+    let scenario = navigation_ready_scenario(&profile);
+    let anchor_ephemeris = profile.ephemerides.first().expect("multisatellite ephemeris");
+    let artifacts = run_synthetic_scenario(
+        &config,
+        ReceiverRuntime::default(),
+        &scenario,
+        Some(GpsTime { week: anchor_ephemeris.week, tow_s: anchor_ephemeris.toe_s }),
+    )
+    .expect("synthetic scenario run");
+
+    assert!(
+        !artifacts.navigation.is_empty(),
+        "synthetic scenario runner must emit navigation epochs when a capture anchor is supplied",
+    );
+    assert!(
+        artifacts.observations.iter().any(|epoch| epoch.valid && epoch.sats.len() >= 4),
+        "synthetic scenario runner must preserve the receiver observation pipeline",
+    );
+}
+
+#[test]
+fn synthetic_scenario_runner_preserves_runtime_navigation_anchor() {
+    let config = multisat_receiver_config();
+    let profile = four_satellite_pvt_scenario(&config);
+    let scenario = navigation_ready_scenario(&profile);
+    let runtime = navigation_runtime_for_profile(&profile);
+    let artifacts =
+        run_synthetic_scenario(&config, runtime, &scenario, None).expect("synthetic scenario run");
+
+    assert!(
+        !artifacts.navigation.is_empty(),
+        "synthetic scenario runner must honor an existing runtime capture anchor",
+    );
+}
+
 #[derive(Default)]
 struct CapturedTrace {
     events: Mutex<Vec<TraceRecord>>,
@@ -234,10 +273,7 @@ fn receiver_run_reports_missing_navigation_anchor_instead_of_not_executed() {
     }));
     assert!(!events.iter().any(|event| {
         event.name == "pipeline_stage_complete"
-            && event
-                .fields
-                .iter()
-                .any(|(key, value)| *key == "status" && value == "not_executed")
+            && event.fields.iter().any(|(key, value)| *key == "status" && value == "not_executed")
     }));
 }
 
@@ -292,7 +328,9 @@ fn multisat_signal_delay_alignments(
         .collect()
 }
 
-fn navigation_ready_scenario(profile: &SyntheticPvtScenario) -> bijux_gnss_receiver::api::sim::SyntheticScenario {
+fn navigation_ready_scenario(
+    profile: &SyntheticPvtScenario,
+) -> bijux_gnss_receiver::api::sim::SyntheticScenario {
     let mut scenario = profile.scenario.clone();
     for signal in &mut scenario.satellites {
         signal.cn0_db_hz = 42.0;
