@@ -1948,6 +1948,39 @@ fn refusal_causes(solution: &NavSolutionEpoch, obs: Option<&ObsEpoch>) -> Vec<Re
         push_cause(&mut causes, RefusalCause::Lock);
     }
 
+    if has_reason_prefix("pdop_above_threshold:") || has_reason_prefix("gdop_above_threshold:") {
+        push_cause(&mut causes, RefusalCause::Dop);
+    }
+
+    if has_reason_prefix("residual_rms_above_threshold:")
+        || has_reason("residual_whiteness")
+        || has_reason_prefix("residual_lag1_correlation=")
+        || has_reason_prefix("residual_temporal_correlation_streak=")
+        || has_reason("filter_divergence=innovation_growth")
+        || has_reason("filter_divergence=residual_explosion")
+        || solution
+            .residuals
+            .iter()
+            .filter_map(|residual| residual.reject_reason)
+            .any(|reason| reason == MeasurementRejectReason::Outlier)
+    {
+        push_cause(&mut causes, RefusalCause::Residual);
+    }
+
+    if solution.status == SolutionStatus::IntegrityFailed
+        || solution.status == SolutionStatus::Diverged
+        || solution.explain_decision == "integrity_failed"
+        || has_reason("raim_exclusion_underdetermined")
+        || has_reason("impossible_geometry")
+        || has_reason("constellation_clock_inconsistency")
+        || has_reason("residual_whiteness")
+        || has_reason("navigation_solution_sanity_failed")
+        || has_reason("filter_divergence=covariance_collapse")
+        || has_reason("filter_divergence=covariance_divergence")
+    {
+        push_cause(&mut causes, RefusalCause::Integrity);
+    }
+
     if causes.is_empty() {
         match solution.refusal_class {
             Some(NavRefusalClass::InsufficientGeometry) => {
@@ -1958,6 +1991,17 @@ fn refusal_causes(solution: &NavSolutionEpoch, obs: Option<&ObsEpoch>) -> Vec<Re
             }
             Some(NavRefusalClass::InvalidSatelliteTime | NavRefusalClass::MixedConstellationInput) => {
                 push_cause(&mut causes, RefusalCause::Clock);
+            }
+            Some(NavRefusalClass::ScientificPrerequisitesTooWeak | NavRefusalClass::SolverFailure)
+                if solution.status == SolutionStatus::Diverged =>
+            {
+                push_cause(&mut causes, RefusalCause::Integrity);
+            }
+            Some(NavRefusalClass::InconsistentObservations | NavRefusalClass::ScientificPrerequisitesTooWeak)
+                | None
+                if !solution.valid =>
+            {
+                push_cause(&mut causes, RefusalCause::Integrity);
             }
             _ => {}
         }
@@ -2586,6 +2630,58 @@ mod tests {
             .explain_reasons
             .iter()
             .any(|reason| reason.starts_with("precision_floor=")));
+    }
+
+    #[test]
+    fn refusal_cause_explainability_marks_dop_policy_failures() {
+        let mut solution = policy_refusal_epoch(
+            sample_last_solution(),
+            Some(SolutionStatus::Converged),
+            NavRefusalClass::InsufficientGeometry,
+            vec!["pdop_above_threshold:4.200>3.000".to_string()],
+        );
+
+        apply_refusal_cause_explainability_in_place(&mut solution, None);
+
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "refusal_cause=dop"));
+    }
+
+    #[test]
+    fn refusal_cause_explainability_marks_residual_policy_failures() {
+        let mut solution = policy_refusal_epoch(
+            sample_last_solution(),
+            Some(SolutionStatus::Converged),
+            NavRefusalClass::ScientificPrerequisitesTooWeak,
+            vec!["residual_rms_above_threshold:6.500>3.000".to_string()],
+        );
+
+        apply_refusal_cause_explainability_in_place(&mut solution, None);
+
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "refusal_cause=residual"));
+    }
+
+    #[test]
+    fn refusal_cause_explainability_marks_integrity_failures() {
+        let mut solution = mark_integrity_failure(policy_refusal_epoch(
+            sample_last_solution(),
+            Some(SolutionStatus::Converged),
+            NavRefusalClass::InconsistentObservations,
+            vec!["raim_exclusion_underdetermined".to_string()],
+        ));
+
+        apply_refusal_cause_explainability_in_place(&mut solution, None);
+
+        assert_eq!(solution.status, SolutionStatus::IntegrityFailed);
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "refusal_cause=integrity"));
     }
 
     fn make_eph(prn: u8, omega0: f64, m0: f64, t_ref_s: f64) -> GpsEphemeris {
