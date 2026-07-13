@@ -34,6 +34,18 @@ pub use crate::codes::galileo_e1::{
     GALILEO_E1_CODE_RATE_HZ, GALILEO_E1_PRIMARY_CODE_CHIPS, GALILEO_E1_PRIMARY_PERIOD_MS,
     GALILEO_E1_SECONDARY_CODE_CHIPS,
 };
+pub use crate::codes::glonass_l1::{
+    generate_glonass_l1_st_code, generate_glonass_l1_st_code_chips, sample_glonass_l1_st_code,
+    GLONASS_L1_ST_CODE_CHIPS, GLONASS_L1_ST_CODE_RATE_HZ,
+};
+pub use crate::codes::gps_l2c::{
+    generate_gps_l2c_time_multiplexed_chips,
+    generate_gps_l2c_time_multiplexed_chips_from_components, gps_l2c_time_multiplexed_component,
+    gps_l2c_time_multiplexed_value, sample_gps_l2c_time_multiplexed,
+    sample_gps_l2c_time_multiplexed_from_components, GpsL2cTimeMultiplexedComponent,
+    GPS_L2C_TIME_MULTIPLEXED_CODE_CHIPS, GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ,
+    GPS_L2C_TIME_MULTIPLEXED_SYMBOL_CHIPS,
+};
 pub use crate::codes::gps_l2c_cl::{
     generate_gps_l2c_cl_code, generate_gps_l2c_cl_code_range, gps_l2c_cl_code_assignment,
     gps_l2c_cl_code_assignments, sample_gps_l2c_cl_code, GpsL2cClCodeAssignment,
@@ -43,10 +55,6 @@ pub use crate::codes::gps_l2c_cm::{
     generate_gps_l2c_cm_code, generate_gps_l2c_cm_code_chips, gps_l2c_cm_code_assignment,
     gps_l2c_cm_code_assignments, sample_gps_l2c_cm_code, GpsL2cCmCodeAssignment,
     GPS_L2C_CM_CODE_CHIPS, GPS_L2C_CM_CODE_RATE_HZ,
-};
-pub use crate::codes::glonass_l1::{
-    generate_glonass_l1_st_code, generate_glonass_l1_st_code_chips, sample_glonass_l1_st_code,
-    GLONASS_L1_ST_CODE_CHIPS, GLONASS_L1_ST_CODE_RATE_HZ,
 };
 /// Numerically controlled oscillator helper.
 pub use crate::dsp::nco::Nco;
