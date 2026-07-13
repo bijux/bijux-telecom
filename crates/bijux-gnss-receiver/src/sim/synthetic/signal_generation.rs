@@ -610,7 +610,11 @@ fn regenerate_isolated_scaled_satellite_signal_only_frame(
         .iter()
         .map(|sample| *sample * truth.output_scale_applied)
         .collect::<Vec<_>>();
-    SamplesFrame::new(measured_frame.t0, measured_frame.dt_s, iq)
+    SamplesFrame::new(
+        measured_frame.t0,
+        measured_frame.dt_s,
+        quantize_samples_for_storage(&iq, truth.quantization),
+    )
 }
 
 fn regenerate_isolated_scaled_satellite_frame_with_noise(
