@@ -16,10 +16,8 @@ pub struct GpsL2cClReferenceCatalog {
     pub spec_source: String,
     pub published_tables: String,
     pub chip_length: usize,
-    pub prefix_length: usize,
-    pub interior_window_start: usize,
-    pub interior_window_length: usize,
-    pub suffix_length: usize,
+    pub range_length: usize,
+    pub range_offsets: Vec<usize>,
     pub published_prn_count: usize,
     pub code: Vec<GpsL2cClCodeReference>,
 }
@@ -30,9 +28,7 @@ pub struct GpsL2cClCodeReference {
     pub initial_state_octal: String,
     pub end_state_octal: String,
     pub bit_sha256: String,
-    pub bit_prefix: String,
-    pub interior_window_bits: String,
-    pub bit_suffix: String,
+    pub range_bits: Vec<String>,
 }
 
 pub fn load_reference_catalog() -> GpsL2cClReferenceCatalog {
@@ -51,16 +47,15 @@ impl GpsL2cClReferenceCatalog {
             self.chip_length, GPS_L2C_CL_CODE_CHIPS,
             "unexpected GPS L2C CL code length in reference catalog"
         );
-        assert_eq!(self.prefix_length, 64, "unexpected GPS L2C CL prefix length");
         assert_eq!(
-            self.interior_window_start, 345_678,
-            "unexpected GPS L2C CL interior window start"
+            self.range_length, 64,
+            "unexpected GPS L2C CL range length"
         );
         assert_eq!(
-            self.interior_window_length, 64,
-            "unexpected GPS L2C CL interior window length"
+            self.range_offsets,
+            vec![0, 10_230, 255_731, 511_463, 767_218],
+            "unexpected GPS L2C CL range offsets"
         );
-        assert_eq!(self.suffix_length, 64, "unexpected GPS L2C CL suffix length");
         assert_eq!(
             self.code.len(),
             self.published_prn_count,
@@ -81,23 +76,19 @@ impl GpsL2cClReferenceCatalog {
 
         for reference in &self.code {
             assert_eq!(
-                reference.bit_prefix.len(),
-                self.prefix_length,
-                "unexpected GPS L2C CL prefix length for PRN {}",
+                reference.range_bits.len(),
+                self.range_offsets.len(),
+                "unexpected GPS L2C CL range count for PRN {}",
                 reference.prn
             );
-            assert_eq!(
-                reference.interior_window_bits.len(),
-                self.interior_window_length,
-                "unexpected GPS L2C CL interior window length for PRN {}",
-                reference.prn
-            );
-            assert_eq!(
-                reference.bit_suffix.len(),
-                self.suffix_length,
-                "unexpected GPS L2C CL suffix length for PRN {}",
-                reference.prn
-            );
+            for bits in &reference.range_bits {
+                assert_eq!(
+                    bits.len(),
+                    self.range_length,
+                    "unexpected GPS L2C CL range length for PRN {}",
+                    reference.prn
+                );
+            }
         }
     }
 
@@ -106,6 +97,16 @@ impl GpsL2cClReferenceCatalog {
             .iter()
             .find(|reference| reference.prn == prn)
             .unwrap_or_else(|| panic!("missing GPS L2C CL reference for PRN {prn}"))
+    }
+
+    pub fn range_bits(&self, prn: u8, start_chip: usize) -> &str {
+        let reference = self.code_reference(prn);
+        let index = self
+            .range_offsets
+            .iter()
+            .position(|offset| *offset == start_chip)
+            .unwrap_or_else(|| panic!("missing GPS L2C CL range offset {start_chip}"));
+        &reference.range_bits[index]
     }
 }
 
@@ -116,10 +117,6 @@ pub fn assert_code_matches_reference(
 ) {
     let reference = catalog.code_reference(prn);
     let logical_bits = logical_bits_from_code(code);
-    let prefix = &logical_bits[..catalog.prefix_length];
-    let interior_window = &logical_bits
-        [catalog.interior_window_start..catalog.interior_window_start + catalog.interior_window_length];
-    let suffix = &logical_bits[logical_bits.len() - catalog.suffix_length..];
 
     assert_eq!(
         logical_bits.len(),
@@ -133,18 +130,41 @@ pub fn assert_code_matches_reference(
         "GPS L2C CL PRN {} fingerprint mismatch",
         prn
     );
-    assert_eq!(prefix, reference.bit_prefix, "GPS L2C CL PRN {} prefix mismatch", prn);
+    for (offset, expected_bits) in catalog.range_offsets.iter().zip(reference.range_bits.iter()) {
+        assert_eq!(
+            extract_range_bits(&logical_bits, *offset, catalog.range_length),
+            *expected_bits,
+            "GPS L2C CL PRN {} range mismatch at chip {}",
+            prn,
+            offset
+        );
+    }
+}
+
+pub fn assert_range_matches_reference(
+    catalog: &GpsL2cClReferenceCatalog,
+    prn: u8,
+    start_chip: usize,
+    code: &[i8],
+) {
+    let logical_bits = logical_bits_from_code(code);
     assert_eq!(
-        interior_window,
-        reference.interior_window_bits,
-        "GPS L2C CL PRN {} interior-window mismatch",
-        prn
+        logical_bits.len(),
+        catalog.range_length,
+        "GPS L2C CL PRN {} range length mismatch at chip {}",
+        prn,
+        start_chip
     );
-    assert_eq!(suffix, reference.bit_suffix, "GPS L2C CL PRN {} suffix mismatch", prn);
+    assert_eq!(
+        logical_bits,
+        catalog.range_bits(prn, start_chip),
+        "GPS L2C CL PRN {} range bits mismatch at chip {}",
+        prn,
+        start_chip
+    );
 }
 
 pub fn logical_bits_from_code(code: &[i8]) -> String {
-    assert_eq!(code.len(), GPS_L2C_CL_CODE_CHIPS, "unexpected GPS L2C CL code length");
     code.iter()
         .map(|chip| match chip {
             1 => '0',
@@ -152,6 +172,15 @@ pub fn logical_bits_from_code(code: &[i8]) -> String {
             _ => panic!("GPS L2C CL code must be bipolar, found {chip}"),
         })
         .collect()
+}
+
+pub fn extract_range_bits(logical_bits: &str, start_chip: usize, length: usize) -> String {
+    if start_chip + length <= logical_bits.len() {
+        return logical_bits[start_chip..start_chip + length].to_owned();
+    }
+    let tail = &logical_bits[start_chip..];
+    let head = &logical_bits[..length - tail.len()];
+    format!("{tail}{head}")
 }
 
 pub fn sha256_hex(payload: &str) -> String {

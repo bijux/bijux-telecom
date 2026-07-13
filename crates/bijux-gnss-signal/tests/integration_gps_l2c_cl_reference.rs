@@ -2,11 +2,12 @@ mod support;
 
 use bijux_gnss_signal::api::{
     generate_gps_l2c_cl_code, generate_gps_l2c_cl_code_range, gps_l2c_cl_code_assignment,
-    gps_l2c_cl_code_assignments, sample_gps_l2c_cl_code, GPS_L2C_CL_CODE_CHIPS,
-    GPS_L2C_CL_CODE_RATE_HZ,
+    gps_l2c_cl_code_assignments, sample_gps_l2c_cl_code, GPS_L2C_CL_CODE_RATE_HZ,
 };
 
-use support::gps_l2c_cl_reference::{assert_code_matches_reference, load_reference_catalog};
+use support::gps_l2c_cl_reference::{
+    assert_code_matches_reference, assert_range_matches_reference, load_reference_catalog,
+};
 
 #[test]
 fn gps_l2c_cl_public_assignments_match_reference_catalog() {
@@ -44,59 +45,28 @@ fn gps_l2c_cl_public_codes_match_reference_catalog() {
 }
 
 #[test]
-fn gps_l2c_cl_public_ranges_match_reference_interior_windows() {
+fn gps_l2c_cl_public_ranges_match_reference_catalog() {
     let catalog = load_reference_catalog();
 
     for reference in &catalog.code {
-        let range = generate_gps_l2c_cl_code_range(
-            reference.prn,
-            catalog.interior_window_start,
-            catalog.interior_window_length,
-        )
-        .expect("published GPS L2C CL PRN");
-        let expected = reference
-            .interior_window_bits
-            .chars()
-            .map(|bit| if bit == '1' { -1 } else { 1 })
-            .collect::<Vec<i8>>();
-
-        assert_eq!(range, expected, "interior range mismatch for PRN {}", reference.prn);
+        for start_chip in &catalog.range_offsets {
+            let range = generate_gps_l2c_cl_code_range(reference.prn, *start_chip, catalog.range_length)
+                .expect("published GPS L2C CL PRN");
+            assert_range_matches_reference(&catalog, reference.prn, *start_chip, &range);
+        }
     }
 }
 
 #[test]
-fn gps_l2c_cl_public_ranges_wrap_against_reference_edges() {
-    let catalog = load_reference_catalog();
-    let wrap_tail = 32;
-    let wrap_head = 32;
-    let wrap_start = GPS_L2C_CL_CODE_CHIPS - wrap_tail;
-
-    for reference in &catalog.code {
-        let wrapped = generate_gps_l2c_cl_code_range(reference.prn, wrap_start, wrap_tail + wrap_head)
-            .expect("published GPS L2C CL PRN");
-        let expected = reference
-            .bit_suffix
-            .chars()
-            .skip(reference.bit_suffix.len() - wrap_tail)
-            .chain(reference.bit_prefix.chars().take(wrap_head))
-            .map(|bit| if bit == '1' { -1 } else { 1 })
-            .collect::<Vec<i8>>();
-
-        assert_eq!(wrapped, expected, "wrapped range mismatch for PRN {}", reference.prn);
-    }
-}
-
-#[test]
-fn gps_l2c_cl_public_samples_match_reference_prefixes() {
+fn gps_l2c_cl_public_samples_match_reference_ranges() {
     let catalog = load_reference_catalog();
 
     for prn in [1_u8, 38, 159, 210] {
-        let reference = catalog.code_reference(prn);
         let sample_count = 16;
         let samples = sample_gps_l2c_cl_code(prn, GPS_L2C_CL_CODE_RATE_HZ, 0.0, sample_count)
             .expect("published GPS L2C CL PRN");
-        let expected = reference
-            .bit_prefix
+        let expected = catalog
+            .range_bits(prn, 0)
             .chars()
             .take(sample_count)
             .map(|bit| if bit == '1' { -1.0 } else { 1.0 })
