@@ -371,6 +371,85 @@ fn receiver_run_finds_sustained_gps_l5q_lock_window_from_truth_capture() {
 }
 
 #[test]
+fn receiver_run_emits_gps_l5q_artifacts_from_truth_capture() {
+    let fixture = gps_l5q_truth_capture_fixture();
+    let sat = fixture.scenario.satellites[0].sat;
+    let expected_code_phase_samples = expected_acquisition_code_phase_samples(
+        &fixture.config,
+        &fixture.frame,
+        fixture.scenario.satellites[0].code_phase_chips,
+    ) as f64;
+    let mut source = SyntheticSignalSource::new_signal_only(&fixture.config, &fixture.scenario);
+    let receiver = Receiver::new(fixture.config.clone(), ReceiverRuntime::default());
+
+    let artifacts = receiver.run(&mut source).expect("receiver run");
+
+    let acquisition =
+        artifacts.acquisitions.iter().find(|result| result.sat == sat).expect("L5-Q acquisition");
+    assert_eq!(acquisition.signal_band, SignalBand::L5, "{acquisition:#?}");
+    assert_eq!(acquisition.signal_code, SignalCode::L5Q, "{acquisition:#?}");
+    assert!(
+        matches!(acquisition.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous),
+        "{acquisition:#?}"
+    );
+    assert!(
+        wrapped_code_phase_error_samples_f64(
+            acquisition.resolved_code_phase_samples(),
+            expected_code_phase_samples,
+            fixture.config.code_length,
+        ) <= GPS_L5_TRUTH_CODE_PHASE_TOLERANCE_SAMPLES as f64,
+        "{acquisition:#?}"
+    );
+
+    let tracking =
+        artifacts.tracking.iter().find(|track| track.sat == sat).expect("L5-Q tracking");
+    assert!(
+        tracking
+            .epochs
+            .iter()
+            .any(|epoch| epoch.signal_band == SignalBand::L5 && epoch.signal_code == SignalCode::L5Q),
+        "{tracking:#?}"
+    );
+    assert!(
+        tracking.epochs.iter().any(|epoch| {
+            epoch.signal_band == SignalBand::L5
+                && epoch.signal_code == SignalCode::L5Q
+                && epoch.lock_state == "tracking"
+        }),
+        "{tracking:#?}"
+    );
+    assert!(
+        tracking.epochs.iter().any(|epoch| {
+            epoch.signal_band == SignalBand::L5 && epoch.signal_code == SignalCode::L5Q && epoch.dll_lock
+        }),
+        "{tracking:#?}"
+    );
+
+    let observations = artifacts
+        .observations
+        .iter()
+        .flat_map(|epoch| epoch.sats.iter())
+        .filter(|observation| observation.signal_id.sat == sat)
+        .collect::<Vec<_>>();
+    assert!(!observations.is_empty(), "{:#?}", artifacts.observations);
+    assert!(
+        observations.iter().all(|observation| {
+            observation.signal_id.band == SignalBand::L5
+                && observation.signal_id.code == SignalCode::L5Q
+                && observation.metadata.signal.band == SignalBand::L5
+                && observation.metadata.signal.code == SignalCode::L5Q
+        }),
+        "{observations:#?}"
+    );
+    assert!(
+        observations
+            .iter()
+            .any(|observation| observation.observation_status == ObservationStatus::Accepted),
+        "{observations:#?}"
+    );
+}
+
+#[test]
 fn receiver_run_tracks_gps_l5q_across_secondary_code_boundaries() {
     let (config, scenario) = gps_l5q_continuity_scenario();
     let sat = scenario.satellites[0].sat;
