@@ -1,6 +1,8 @@
 //! Test helpers for bijux GNSS.
 #![forbid(unsafe_code)]
 
+mod reference_math;
+
 pub mod antenna_validation;
 pub mod front_end;
 pub mod public_ppp;
