@@ -89,21 +89,29 @@ impl PppFilter {
     }
 
     pub fn check_consistency(&mut self) {
-        let nis = if let Some(pred) = self.ekf.health.predicted_variance {
-            if pred > 0.0 {
-                Some(self.ekf.health.innovation_rms.powi(2) / pred)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+        let nis = self.ekf.health.normalized_innovation_squared.or_else(|| {
+            self.ekf.health.predicted_variance.and_then(|predicted_variance| {
+                if predicted_variance > 0.0 {
+                    Some(self.ekf.health.innovation_rms.powi(2) / predicted_variance)
+                } else {
+                    None
+                }
+            })
+        });
         self.health.nis_mean = nis;
         if let Some(nis) = nis {
-            if nis > 5.0 {
-                self.health.warnings.push("NIS high: possible under-confidence".to_string());
-            } else if nis < 0.2 {
-                self.health.warnings.push("NIS low: possible over-confidence".to_string());
+            let lower_bound = self.ekf.health.innovation_consistency_lower_bound.unwrap_or(0.2);
+            let upper_bound = self.ekf.health.innovation_consistency_upper_bound.unwrap_or(5.0);
+            if nis > upper_bound {
+                self.health.warnings.push(format!(
+                    "NIS high: {:.3} exceeds {:.3}, possible under-confidence",
+                    nis, upper_bound
+                ));
+            } else if nis < lower_bound {
+                self.health.warnings.push(format!(
+                    "NIS low: {:.3} below {:.3}, possible over-confidence",
+                    nis, lower_bound
+                ));
             }
         }
         if let Some(cond) = self.ekf.health.condition_number {
@@ -258,5 +266,41 @@ impl PppFilter {
             }
         }
         self.ekf.sanitize_covariance();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::estimation::ppp::config::PppConfig;
+
+    #[test]
+    fn ppp_consistency_uses_ekf_nis_bounds_for_high_warning() {
+        let mut filter = PppFilter::new(PppConfig::default());
+        filter.ekf.health.normalized_innovation_squared = Some(8.0);
+        filter.ekf.health.innovation_consistency_lower_bound = Some(0.1);
+        filter.ekf.health.innovation_consistency_upper_bound = Some(6.6);
+
+        filter.check_consistency();
+
+        assert_eq!(filter.health.nis_mean, Some(8.0));
+        assert!(filter.health.warnings.iter().any(|warning| {
+            warning.contains("NIS high") && warning.contains("8.000") && warning.contains("6.600")
+        }));
+    }
+
+    #[test]
+    fn ppp_consistency_uses_ekf_nis_bounds_for_low_warning() {
+        let mut filter = PppFilter::new(PppConfig::default());
+        filter.ekf.health.normalized_innovation_squared = Some(0.05);
+        filter.ekf.health.innovation_consistency_lower_bound = Some(0.1);
+        filter.ekf.health.innovation_consistency_upper_bound = Some(6.6);
+
+        filter.check_consistency();
+
+        assert_eq!(filter.health.nis_mean, Some(0.05));
+        assert!(filter.health.warnings.iter().any(|warning| {
+            warning.contains("NIS low") && warning.contains("0.050") && warning.contains("0.100")
+        }));
     }
 }
