@@ -233,6 +233,5 @@ def advance_register_state(state: list[int]) -> list[int]:
 
     return next_state
 
-
 if __name__ == "__main__":
     raise SystemExit(main())
