@@ -2122,8 +2122,8 @@ fn advanced_gate_report(run_dir: &Path, mode: AdvancedGateMode) -> Result<serde_
     if support_row.is_null() {
         reasons.push("support_matrix_row_missing".to_string());
     }
-    if maturity == "Scaffolding" {
-        reasons.push("mode_is_scaffolding".to_string());
+    if maturity == "NotReady" {
+        reasons.push("mode_not_ready".to_string());
     }
     if !real_solver {
         reasons.push("mode_not_real_solver".to_string());
@@ -2132,8 +2132,8 @@ fn advanced_gate_report(run_dir: &Path, mode: AdvancedGateMode) -> Result<serde_
         reasons.push("claim_evidence_guard_not_supported".to_string());
     }
     let gate_passed = reasons.is_empty();
-    let claim_level = if maturity == "Scaffolding" || !real_solver {
-        "scaffolding_only"
+    let claim_level = if maturity == "NotReady" || !real_solver {
+        "not_ready"
     } else if gate_passed {
         "evidence_bound_experimental"
     } else {
@@ -3367,6 +3367,53 @@ mod diagnostics_tests {
         let report = advanced_gate_report(PathBuf::as_path(&run_dir), AdvancedGateMode::Rtk)
             .expect("advanced gate");
         assert_eq!(report.get("gate_passed").and_then(|v| v.as_bool()), Some(true));
+
+        let _ = fs::remove_dir_all(run_dir);
+    }
+
+    #[test]
+    fn advanced_gate_report_marks_ppp_support_as_not_ready() {
+        let run_dir = create_base_run("advanced_gate_ppp", "cfg-gate-ppp");
+        fs::create_dir_all(run_dir.join("artifacts").join("rtk")).expect("rtk dir");
+        fs::create_dir_all(run_dir.join("artifacts").join("validate")).expect("validate dir");
+
+        let support = serde_json::json!({
+            "schema_version": 2,
+            "rows": [
+                {
+                    "mode": "Ppp",
+                    "maturity": "NotReady",
+                    "real_solver": false,
+                    "required_inputs": ["multi_frequency_obs", "products_or_broadcast", "time_consistent_epochs"],
+                    "notes": "not ready"
+                }
+            ]
+        });
+        fs::write(
+            run_dir.join("artifacts").join("rtk").join("rtk_support_matrix.json"),
+            serde_json::to_string_pretty(&support).expect("support json"),
+        )
+        .expect("support write");
+
+        let evidence = serde_json::json!({
+            "schema_version": 1,
+            "claim_evidence_guard": {
+                "supported": false,
+                "violations": []
+            }
+        });
+        fs::write(
+            run_dir.join("artifacts").join("validate").join("validation_evidence_bundle.json"),
+            serde_json::to_string_pretty(&evidence).expect("evidence json"),
+        )
+        .expect("evidence write");
+
+        let report = advanced_gate_report(PathBuf::as_path(&run_dir), AdvancedGateMode::Ppp)
+            .expect("advanced gate");
+        assert_eq!(report.get("gate_passed").and_then(|v| v.as_bool()), Some(false));
+        assert_eq!(report.get("claim_level").and_then(|v| v.as_str()), Some("not_ready"));
+        let reasons = report.get("reasons").and_then(|v| v.as_array()).expect("reasons");
+        assert!(reasons.iter().any(|value| value.as_str() == Some("mode_not_ready")));
 
         let _ = fs::remove_dir_all(run_dir);
     }
