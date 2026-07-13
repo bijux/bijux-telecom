@@ -276,6 +276,114 @@ pub fn validate_truth_guided_cn0(
     }
 }
 
+/// Measure acquisition correlation loss and tracking C/N0 loss against a float32 reference.
+pub fn measure_truth_guided_quantization_loss(
+    config: &ReceiverPipelineConfig,
+    scenario: &SyntheticScenario,
+    quantizations: &[IqQuantization],
+    capture_start_utc: &str,
+) -> SyntheticQuantizationLossReport {
+    let frame = generate_l1_ca_multi(config, scenario);
+    let reference_bundle = build_quantized_capture_bundle(
+        &scenario.id,
+        scenario,
+        &frame,
+        IqQuantization::Float32,
+        capture_start_utc,
+        Some("synthetic float32 quantization reference".to_string()),
+    );
+    let reference_frame = quantized_capture_frame(
+        &frame,
+        reference_bundle.truth.output_scale_applied,
+        IqQuantization::Float32,
+    );
+    let sat_ids = scenario.satellites.iter().map(|signal| signal.sat).collect::<Vec<_>>();
+    let runtime = crate::engine::runtime::ReceiverRuntime::default();
+    let acquisition = crate::pipeline::acquisition::Acquisition::new(config.clone(), runtime);
+    let reference_acquisition = acquisition.run_fft(&reference_frame, &sat_ids);
+    let reference_cn0 =
+        validate_truth_guided_cn0(config, &reference_frame, &reference_bundle.truth, f64::INFINITY);
+    let coherent_samples_per_epoch = reference_cn0.coherent_samples_per_epoch;
+    let coherent_integration_s = reference_cn0.coherent_integration_s;
+
+    let points = quantizations
+        .iter()
+        .copied()
+        .map(|quantization| {
+            let bundle = build_quantized_capture_bundle(
+                &scenario.id,
+                scenario,
+                &frame,
+                quantization,
+                capture_start_utc,
+                Some(format!(
+                    "synthetic {:?} quantization measurement",
+                    quantization
+                )),
+            );
+            let quantized_frame =
+                quantized_capture_frame(&frame, bundle.truth.output_scale_applied, quantization);
+            let quantized_acquisition = acquisition.run_fft(&quantized_frame, &sat_ids);
+            let quantized_cn0 =
+                validate_truth_guided_cn0(config, &quantized_frame, &bundle.truth, f64::INFINITY);
+            let satellites = scenario
+                .satellites
+                .iter()
+                .map(|signal| {
+                    let reference_acq = find_acquisition_result(&reference_acquisition, signal.sat);
+                    let quantized_acq = find_acquisition_result(&quantized_acquisition, signal.sat);
+                    let reference_cn0_row = find_cn0_validation_row(&reference_cn0, signal.sat);
+                    let quantized_cn0_row = find_cn0_validation_row(&quantized_cn0, signal.sat);
+                    let reference_peak = reference_acq.map(|result| result.peak).unwrap_or_default();
+                    let quantized_peak = quantized_acq.map(|result| result.peak).unwrap_or_default();
+                    let reference_mean_cn0_db_hz =
+                        reference_cn0_row.map(|row| row.measured_mean_cn0_dbhz).unwrap_or_default();
+                    let quantized_mean_cn0_db_hz =
+                        quantized_cn0_row.map(|row| row.measured_mean_cn0_dbhz).unwrap_or_default();
+
+                    SyntheticQuantizationLossSatellite {
+                        sat: signal.sat,
+                        reference_acquisition_peak: reference_peak,
+                        quantized_acquisition_peak: quantized_peak,
+                        acquisition_correlation_loss_db: positive_amplitude_loss_db(
+                            reference_peak as f64,
+                            quantized_peak as f64,
+                        ),
+                        reference_peak_mean_ratio: reference_acq
+                            .map(|result| result.peak_mean_ratio)
+                            .unwrap_or_default(),
+                        quantized_peak_mean_ratio: quantized_acq
+                            .map(|result| result.peak_mean_ratio)
+                            .unwrap_or_default(),
+                        reference_mean_cn0_db_hz,
+                        quantized_mean_cn0_db_hz,
+                        cn0_loss_db_hz: (reference_mean_cn0_db_hz - quantized_mean_cn0_db_hz)
+                            .max(0.0),
+                    }
+                })
+                .collect();
+
+            SyntheticQuantizationLossPoint {
+                quantization,
+                sample_format: bundle.metadata.format,
+                quantization_bits: bundle.truth.quantization_bits,
+                output_scale_applied: bundle.truth.output_scale_applied,
+                satellites,
+            }
+        })
+        .collect();
+
+    SyntheticQuantizationLossReport {
+        scenario_id: scenario.id.clone(),
+        reference_quantization: IqQuantization::Float32,
+        sample_rate_hz: config.sampling_freq_hz,
+        intermediate_freq_hz: config.intermediate_freq_hz,
+        coherent_samples_per_epoch,
+        coherent_integration_s,
+        points,
+    }
+}
+
 const TRACKING_CN0_MIN_STABLE_EPOCHS: usize = 5;
 
 fn stable_tracking_cn0_values(epochs: &[crate::api::core::TrackEpoch]) -> Vec<f64> {
@@ -288,6 +396,40 @@ fn stable_tracking_cn0_values(epochs: &[crate::api::core::TrackEpoch]) -> Vec<f6
         .iter()
         .filter_map(|epoch| epoch.cn0_dbhz.is_finite().then_some(epoch.cn0_dbhz))
         .collect()
+}
+
+fn quantized_capture_frame(
+    frame: &SamplesFrame,
+    output_scale_applied: f32,
+    quantization: IqQuantization,
+) -> SamplesFrame {
+    let scaled_iq = frame.iq.iter().map(|sample| *sample * output_scale_applied).collect::<Vec<_>>();
+    SamplesFrame::new(
+        frame.t0,
+        frame.dt_s,
+        quantize_samples_for_storage(&scaled_iq, quantization),
+    )
+}
+
+fn find_acquisition_result(
+    results: &[crate::api::core::AcqResult],
+    sat: SatId,
+) -> Option<&crate::api::core::AcqResult> {
+    results.iter().find(|result| result.sat == sat)
+}
+
+fn find_cn0_validation_row(
+    report: &SyntheticCn0ValidationReport,
+    sat: SatId,
+) -> Option<&SyntheticCn0ValidationSatellite> {
+    report.satellites.iter().find(|row| row.sat == sat)
+}
+
+fn positive_amplitude_loss_db(reference_amplitude: f64, measured_amplitude: f64) -> f64 {
+    if reference_amplitude <= f64::EPSILON || measured_amplitude <= f64::EPSILON {
+        return f64::INFINITY;
+    }
+    (20.0 * (reference_amplitude / measured_amplitude).log10()).max(0.0)
 }
 
 pub fn expected_acquisition_code_phase_samples(

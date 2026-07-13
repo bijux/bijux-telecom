@@ -464,6 +464,63 @@ pub struct SyntheticCn0ValidationReport {
     pub satellites: Vec<SyntheticCn0ValidationSatellite>,
 }
 
+/// Per-satellite quantization loss measurement against one float32 synthetic reference.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticQuantizationLossSatellite {
+    /// Satellite identifier.
+    pub sat: SatId,
+    /// Reference acquisition correlation peak from the unquantized float32 capture.
+    pub reference_acquisition_peak: f32,
+    /// Quantized acquisition correlation peak measured for this profile.
+    pub quantized_acquisition_peak: f32,
+    /// Positive acquisition correlation loss relative to the float32 reference, in dB.
+    pub acquisition_correlation_loss_db: f64,
+    /// Reference acquisition peak-to-mean ratio.
+    pub reference_peak_mean_ratio: f32,
+    /// Quantized acquisition peak-to-mean ratio.
+    pub quantized_peak_mean_ratio: f32,
+    /// Reference stable-window tracking C/N0 estimate, in dB-Hz.
+    pub reference_mean_cn0_db_hz: f64,
+    /// Quantized stable-window tracking C/N0 estimate, in dB-Hz.
+    pub quantized_mean_cn0_db_hz: f64,
+    /// Positive tracking C/N0 loss relative to the float32 reference, in dB-Hz.
+    pub cn0_loss_db_hz: f64,
+}
+
+/// Quantization-loss measurements for one synthetic capture profile.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticQuantizationLossPoint {
+    /// Quantization profile under test.
+    pub quantization: IqQuantization,
+    /// Raw IQ sample format used to store this profile.
+    pub sample_format: IqSampleFormat,
+    /// Effective quantization depth used for this profile.
+    pub quantization_bits: u8,
+    /// Common output scale applied before quantization.
+    pub output_scale_applied: f32,
+    /// Per-satellite acquisition and tracking loss measurements.
+    pub satellites: Vec<SyntheticQuantizationLossSatellite>,
+}
+
+/// Quantization-loss report for one synthetic scenario relative to one float32 reference capture.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticQuantizationLossReport {
+    /// Stable scenario identifier for this measurement set.
+    pub scenario_id: String,
+    /// Reference quantization profile used as the unquantized baseline.
+    pub reference_quantization: IqQuantization,
+    /// Capture sample rate in Hz.
+    pub sample_rate_hz: f64,
+    /// Capture intermediate frequency in Hz.
+    pub intermediate_freq_hz: f64,
+    /// Number of samples used per coherent tracking estimate.
+    pub coherent_samples_per_epoch: usize,
+    /// Coherent integration interval in seconds.
+    pub coherent_integration_s: f64,
+    /// Quantization points measured against the float32 reference.
+    pub points: Vec<SyntheticQuantizationLossPoint>,
+}
+
 fn shared_receiver_epoch_base(
     pseudorange_chips: &[f64],
 ) -> Result<u64, SyntheticNavigationValidationError> {
