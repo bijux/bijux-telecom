@@ -120,6 +120,10 @@ pub struct SyntheticNavigationValidationScenario {
 pub enum SyntheticNavBitMode {
     /// Keep the navigation-bit sign positive for the full capture.
     ConstantPositive,
+    /// Apply the GLONASS L1 string structure with constant positive raw data bits.
+    GlonassL1FixedDataString,
+    /// Apply the GLONASS L1 string structure with alternating raw data bits after the idle bit.
+    GlonassL1AlternatingDataString,
     /// Alternate the bit sign every 20 ms, starting positive at sample zero.
     AlternatingGpsLnav20ms,
     /// Alternate the bit sign every 4 ms, starting positive at sample zero.
