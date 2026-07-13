@@ -1,5 +1,6 @@
 #![allow(missing_docs)]
 
+pub mod front_end;
 pub mod local_code;
 pub mod math;
 pub mod nco;

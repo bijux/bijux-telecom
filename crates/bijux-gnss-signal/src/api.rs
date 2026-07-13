@@ -107,6 +107,10 @@ pub use crate::codes::gps_l5::{
     GPS_L5_I_PRIMARY_EPOCHS_PER_SYMBOL, GPS_L5_I_SYMBOL_CHIPS, GPS_L5_PRIMARY_CODE_CHIPS,
     GPS_L5_PRIMARY_CODE_RATE_HZ, GPS_L5_Q_PRIMARY_EPOCHS_PER_SYMBOL, GPS_L5_Q_SYMBOL_CHIPS,
 };
+/// Complex front-end FIR design and response helpers.
+pub use crate::dsp::front_end::{
+    measure_transfer_response_db, FrontEndFilterSpec, FrontEndFirFilter, MeasuredFrontEndResponse,
+};
 /// Tracking-oriented local-code models.
 pub use crate::dsp::local_code::{
     default_local_code_model, default_local_code_model_for_signal, LocalCodeModel,

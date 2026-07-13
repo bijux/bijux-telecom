@@ -53,4 +53,10 @@ pub enum SignalError {
         /// Right-hand sequence length.
         right: usize,
     },
+    /// Front-end filter configuration or measurement was invalid.
+    #[error("invalid front-end filter: {message}")]
+    InvalidFrontEndFilter {
+        /// Specific validation or measurement failure.
+        message: String,
+    },
 }

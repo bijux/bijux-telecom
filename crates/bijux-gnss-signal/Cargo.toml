@@ -9,6 +9,7 @@ bijux-gnss-core = { path = "../bijux-gnss-core", version = "0.1.0" }
 num-complex.workspace = true
 thiserror.workspace = true
 serde.workspace = true
+schemars.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
