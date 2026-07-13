@@ -32,6 +32,30 @@ pub fn adaptive_bandwidth(dll_bw: f64, pll_bw: f64, fll_bw: f64, cn0_dbhz: f64) 
     }
 }
 
+/// Wrap phase in cycles into a signed interval centered at zero.
+pub fn wrap_phase_cycles_signed(phase_cycles: f64) -> f64 {
+    let mut wrapped = phase_cycles.rem_euclid(1.0);
+    if wrapped > 0.5 {
+        wrapped -= 1.0;
+    }
+    wrapped
+}
+
+/// Wrap phase in radians into the positive `[0, 2π)` interval.
+pub fn wrap_phase_radians_positive(phase_radians: f64) -> f64 {
+    phase_radians.rem_euclid(std::f64::consts::TAU)
+}
+
+/// Convert carrier phase cycles into a wrapped carrier phase offset in radians.
+pub fn carrier_phase_offset_radians(carrier_phase_cycles: f64) -> f64 {
+    wrap_phase_radians_positive(carrier_phase_cycles * std::f64::consts::TAU)
+}
+
+/// Measure the shortest signed phase delta between two carrier phases in cycles.
+pub fn wrapped_phase_delta_cycles(next_phase_cycles: f64, previous_phase_cycles: f64) -> f64 {
+    wrap_phase_cycles_signed(next_phase_cycles - previous_phase_cycles)
+}
+
 /// Convert a carrier phase delta over one coherent interval into residual frequency error.
 pub fn carrier_frequency_error_hz_from_phase_delta(
     phase_delta_rad: f64,
@@ -178,9 +202,10 @@ pub fn code_at(code: &[i8], samples_per_chip: f64, sample_index: f64) -> Complex
 #[cfg(test)]
 mod tests {
     use super::{
-        carrier_frequency_error_hz_from_phase_delta, discriminators, estimate_cn0_dbhz,
-        first_order_angular_loop_coefficients, first_order_loop_coefficients,
-        phase_lock_loop_coefficients,
+        carrier_frequency_error_hz_from_phase_delta, carrier_phase_offset_radians, discriminators,
+        estimate_cn0_dbhz, first_order_angular_loop_coefficients, first_order_loop_coefficients,
+        phase_lock_loop_coefficients, wrap_phase_cycles_signed, wrap_phase_radians_positive,
+        wrapped_phase_delta_cycles,
     };
     use num_complex::Complex;
 
@@ -257,6 +282,30 @@ mod tests {
     fn carrier_frequency_error_hz_from_phase_delta_rejects_invalid_inputs() {
         assert_eq!(carrier_frequency_error_hz_from_phase_delta(f64::NAN, 0.001), 0.0);
         assert_eq!(carrier_frequency_error_hz_from_phase_delta(0.5, 0.0), 0.0);
+    }
+
+    #[test]
+    fn wrap_phase_cycles_signed_centers_large_offsets_around_zero() {
+        assert!((wrap_phase_cycles_signed(0.75) + 0.25).abs() < 1.0e-9);
+        assert!((wrap_phase_cycles_signed(-0.75) - 0.25).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn wrap_phase_radians_positive_keeps_results_in_positive_turn() {
+        let wrapped = wrap_phase_radians_positive(-std::f64::consts::FRAC_PI_2);
+        assert!((wrapped - (std::f64::consts::TAU - std::f64::consts::FRAC_PI_2)).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn carrier_phase_offset_radians_wraps_whole_cycle_offsets() {
+        let wrapped = carrier_phase_offset_radians(1.25);
+        assert!((wrapped - std::f64::consts::FRAC_PI_2).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn wrapped_phase_delta_cycles_chooses_shortest_signed_delta() {
+        assert!((wrapped_phase_delta_cycles(0.05, 0.95) - 0.10).abs() < 1.0e-9);
+        assert!((wrapped_phase_delta_cycles(0.95, 0.05) + 0.10).abs() < 1.0e-9);
     }
 
     #[test]

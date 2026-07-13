@@ -6,21 +6,12 @@ use std::any::Any;
 pub use crate::catalog::{
     carrier_wavelength_m, default_acquisition_sats, default_acquisition_signal,
     first_order_ionosphere_code_delay_m, first_order_ionosphere_phase_advance_m,
-    glonass_l1_carrier_hz,
-    registered_signal_registry_entries, signal_cycles_to_meters, signal_id_cycles_to_meters,
-    signal_id_meters_to_cycles, signal_id_wavelength_m, signal_meters_to_cycles,
-    signal_registry, signal_spec_beidou_b1i, signal_spec_beidou_b2i, signal_spec_galileo_e1b,
-    signal_spec_galileo_e1c, signal_spec_galileo_e5a, signal_spec_galileo_e5b,
-    signal_spec_glonass_l1, signal_spec_gps_l1_ca, signal_spec_gps_l2_py,
+    glonass_l1_carrier_hz, registered_signal_registry_entries, signal_cycles_to_meters,
+    signal_id_cycles_to_meters, signal_id_meters_to_cycles, signal_id_wavelength_m,
+    signal_meters_to_cycles, signal_registry, signal_spec_beidou_b1i, signal_spec_beidou_b2i,
+    signal_spec_galileo_e1b, signal_spec_galileo_e1c, signal_spec_galileo_e5a,
+    signal_spec_galileo_e5b, signal_spec_glonass_l1, signal_spec_gps_l1_ca, signal_spec_gps_l2_py,
     signal_spec_gps_l2c, signal_spec_gps_l5, signal_wavelength_m,
-};
-/// Observation validation and dual-frequency compatibility helpers.
-pub use crate::obs_validation::{
-    check_dual_frequency_observations, check_inter_frequency_alignment,
-    supported_dual_frequency_band_pairs, supported_dual_frequency_band_pairs_for_constellation,
-    validate_obs_epochs, BandLagEvent, DualFrequencyObservationPair,
-    DualFrequencyObservationReport, DualFrequencyPairIssue, DualFrequencyPairStatus,
-    InterFrequencyAlignmentReport,
 };
 /// Spreading code generators.
 pub use crate::codes::beidou_b1i::{
@@ -66,12 +57,22 @@ pub use crate::dsp::signal::{
 };
 /// Tracking helpers.
 pub use crate::dsp::tracking::{
-    adaptive_bandwidth, carrier_frequency_error_hz_from_phase_delta, code_at, discriminators,
-    estimate_cn0_dbhz, first_order_angular_loop_coefficients, first_order_loop_coefficients,
-    phase_lock_loop_coefficients, FirstOrderLoopCoefficients, PhaseLockLoopCoefficients,
+    adaptive_bandwidth, carrier_frequency_error_hz_from_phase_delta, carrier_phase_offset_radians,
+    code_at, discriminators, estimate_cn0_dbhz, first_order_angular_loop_coefficients,
+    first_order_loop_coefficients, phase_lock_loop_coefficients, wrap_phase_cycles_signed,
+    wrap_phase_radians_positive, wrapped_phase_delta_cycles, FirstOrderLoopCoefficients,
+    PhaseLockLoopCoefficients,
 };
 /// Error types.
 pub use crate::error::SignalError;
+/// Observation validation and dual-frequency compatibility helpers.
+pub use crate::obs_validation::{
+    check_dual_frequency_observations, check_inter_frequency_alignment,
+    supported_dual_frequency_band_pairs, supported_dual_frequency_band_pairs_for_constellation,
+    validate_obs_epochs, BandLagEvent, DualFrequencyObservationPair,
+    DualFrequencyObservationReport, DualFrequencyPairIssue, DualFrequencyPairStatus,
+    InterFrequencyAlignmentReport,
+};
 /// Raw IQ metadata contracts.
 pub use crate::raw_iq::{IqSampleFormat, RawIqMetadata};
 /// Sample conversion helpers.
