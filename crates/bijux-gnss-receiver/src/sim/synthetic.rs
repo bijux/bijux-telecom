@@ -21,8 +21,8 @@ use crate::io::data::SampleSourceError;
 use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
 use bijux_gnss_nav::api::{sat_state_gps_l1ca, GpsEphemeris};
 use bijux_gnss_signal::api::{
-    advance_code_phase_seconds, code_value_at_phase, first_order_ionosphere_code_delay_m,
-    generate_ca_code, samples_per_code, IqSampleFormat, Prn, RawIqMetadata,
+    code_value_at_phase, first_order_ionosphere_code_delay_m, generate_ca_code,
+    receiver_search_code_phase_samples, samples_per_code, IqSampleFormat, Prn, RawIqMetadata,
 };
 use serde::{Deserialize, Serialize};
 

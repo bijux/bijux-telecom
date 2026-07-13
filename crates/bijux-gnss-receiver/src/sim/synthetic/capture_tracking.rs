@@ -190,12 +190,7 @@ pub fn expected_acquisition_code_phase_samples(
     frame: &SamplesFrame,
     code_phase_chips: f64,
 ) -> usize {
-    let period_samples =
-        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length)
-            .max(1);
-    let phase_samples = code_phase_samples_at_epoch_start(config, frame, code_phase_chips);
-    let injected_sample = (phase_samples.round() as usize) % period_samples;
-    (period_samples - injected_sample) % period_samples
+    expected_acquisition_code_phase_samples_f64(config, frame, code_phase_chips).round() as usize
 }
 
 /// Convert a truth-model code phase into the receiver's continuous acquisition sample convention.
@@ -204,11 +199,14 @@ pub fn expected_acquisition_code_phase_samples_f64(
     frame: &SamplesFrame,
     code_phase_chips: f64,
 ) -> f64 {
-    let period_samples =
-        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length)
-            .max(1) as f64;
-    let phase_samples = code_phase_samples_at_epoch_start(config, frame, code_phase_chips);
-    (period_samples - phase_samples.rem_euclid(period_samples)).rem_euclid(period_samples)
+    receiver_search_code_phase_samples(
+        frame.t0.sample_rate_hz,
+        config.code_freq_basis_hz,
+        config.code_length,
+        frame.t0.sample_index,
+        code_phase_chips,
+    )
+    .expect("synthetic acquisition code phase requires a valid code phase model")
 }
 
 /// Measure wrapped code-phase error in samples over one code period.
@@ -217,10 +215,7 @@ pub fn wrapped_code_phase_error_samples(
     expected: usize,
     period_samples: usize,
 ) -> usize {
-    let period_samples = period_samples.max(1);
-    let forward = actual.abs_diff(expected);
-    let wrapped = period_samples.saturating_sub(forward);
-    forward.min(wrapped)
+    bijux_gnss_signal::api::wrapped_code_phase_error_samples(actual, expected, period_samples)
 }
 
 /// Measure wrapped code-phase error in samples over one code period for fractional estimates.
@@ -229,10 +224,7 @@ pub fn wrapped_code_phase_error_samples_f64(
     expected: f64,
     period_samples: usize,
 ) -> f64 {
-    let period_samples = period_samples.max(1) as f64;
-    let forward = (actual - expected).abs().rem_euclid(period_samples);
-    let wrapped = (period_samples - forward).rem_euclid(period_samples);
-    forward.min(wrapped)
+    bijux_gnss_signal::api::wrapped_code_phase_error_samples_f64(actual, expected, period_samples)
 }
 
 fn code_phase_error_samples_to_pseudorange_m(error_samples: f64, sample_rate_hz: f64) -> f64 {
@@ -248,36 +240,20 @@ fn tracking_epoch_is_stable(epoch: &crate::api::core::TrackEpoch) -> bool {
         && epoch.lock_state_reason.as_deref() != Some("lock_lost")
 }
 
-fn code_phase_samples_at_sample_index(
-    config: &ReceiverPipelineConfig,
-    sample_rate_hz: f64,
-    sample_index: u64,
-    code_phase_chips: f64,
-) -> f64 {
-    let start_s = sample_index as f64 / sample_rate_hz;
-    let chip_phase = advance_code_phase_seconds(
-        code_phase_chips,
-        config.code_freq_basis_hz,
-        start_s,
-        config.code_length,
-    )
-    .expect("synthetic epoch alignment requires a valid code phase model");
-    let samples_per_chip = sample_rate_hz / config.code_freq_basis_hz;
-    chip_phase * samples_per_chip
-}
-
 fn expected_tracking_code_phase_samples(
     config: &ReceiverPipelineConfig,
     sample_rate_hz: f64,
     sample_index: u64,
     code_phase_chips: f64,
 ) -> f64 {
-    let period_samples =
-        samples_per_code(sample_rate_hz, config.code_freq_basis_hz, config.code_length).max(1)
-            as f64;
-    let phase_samples =
-        code_phase_samples_at_sample_index(config, sample_rate_hz, sample_index, code_phase_chips);
-    (period_samples - phase_samples.rem_euclid(period_samples)).rem_euclid(period_samples)
+    receiver_search_code_phase_samples(
+        sample_rate_hz,
+        config.code_freq_basis_hz,
+        config.code_length,
+        sample_index,
+        code_phase_chips,
+    )
+    .expect("synthetic tracking code phase requires a valid code phase model")
 }
 
 /// Build a truth-guided tracking table from a synthetic capture.

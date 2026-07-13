@@ -621,17 +621,20 @@ fn isolated_satellite_scenario(
     }
 }
 
+#[cfg(test)]
 fn code_phase_samples_at_epoch_start(
     config: &ReceiverPipelineConfig,
     frame: &SamplesFrame,
     code_phase_chips: f64,
 ) -> f64 {
-    code_phase_samples_at_sample_index(
-        config,
+    bijux_gnss_signal::api::code_phase_samples_at_sample_index(
         frame.t0.sample_rate_hz,
+        config.code_freq_basis_hz,
+        config.code_length,
         frame.t0.sample_index,
         code_phase_chips,
     )
+    .expect("synthetic epoch alignment requires a valid code phase model")
 }
 
 fn synthetic_intermediate_frequency_hz(

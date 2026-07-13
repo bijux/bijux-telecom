@@ -15,14 +15,15 @@ use bijux_gnss_core::api::{
 use crate::engine::receiver_config::{ReceiverPipelineConfig, TrackingParams};
 use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
 use bijux_gnss_core::api::Sample;
-use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::{
     adaptive_bandwidth, boc_subcarrier_value, carrier_frequency_error_hz_from_phase_delta,
-    discriminators, estimate_cn0_dbhz, first_order_angular_loop_coefficients,
-    first_order_loop_coefficients, generate_beidou_b1i_code, generate_galileo_e1b_code,
-    generate_glonass_l1_st_code, phase_lock_loop_coefficients, signal_registry,
+    code_value_at_phase, discriminators, epoch_start_code_phase_samples_from_receiver_phase,
+    estimate_cn0_dbhz, first_order_angular_loop_coefficients, first_order_loop_coefficients,
+    generate_beidou_b1i_code, generate_galileo_e1b_code, generate_glonass_l1_st_code,
+    phase_lock_loop_coefficients, receiver_code_phase_samples_from_epoch_start_phase,
+    signal_registry, wrap_code_phase_samples, wrapped_code_phase_delta_samples,
 };
-use bijux_gnss_signal::api::{generate_ca_code, Prn};
+use bijux_gnss_signal::api::{generate_ca_code, samples_per_code, Prn};
 
 const DLL_CODE_PHASE_CORRECTION_GAIN: f64 = 0.5;
 const SAMPLE_RATE_MISMATCH_MIN_CN0_DBHZ: f64 = 18.0;
@@ -439,10 +440,10 @@ impl TrackingSignalModel {
             | TrackingLocalCode::BeidouB1I { code }
             | TrackingLocalCode::GlonassL1 { code }
             | TrackingLocalCode::Fallback { code } => {
-                code_value_at_tracking_phase(code, chip_phase)
+                code_value_at_phase(code, chip_phase).unwrap_or(0.0)
             }
             TrackingLocalCode::GalileoE1B { primary_code } => {
-                code_value_at_tracking_phase(primary_code, chip_phase)
+                code_value_at_phase(primary_code, chip_phase).unwrap_or(0.0)
                     * boc_subcarrier_value(chip_phase, 1).unwrap_or(1.0)
             }
         }
@@ -1775,29 +1776,6 @@ fn ca_code_or_default(prn: u8) -> Vec<i8> {
     }
 }
 
-fn code_value_at_tracking_phase(code: &[i8], chip_phase: f64) -> f32 {
-    let wrapped_chip_phase = chip_phase.rem_euclid(code.len() as f64);
-    code[wrapped_chip_phase.floor() as usize] as f32
-}
-
-fn epoch_start_code_phase_samples_from_receiver_phase(
-    receiver_code_phase_samples: f64,
-    samples_per_code: usize,
-) -> f64 {
-    let code_period_samples = samples_per_code.max(1) as f64;
-    (code_period_samples - receiver_code_phase_samples.rem_euclid(code_period_samples))
-        .rem_euclid(code_period_samples)
-}
-
-fn receiver_code_phase_samples_from_epoch_start_phase(
-    epoch_start_code_phase_samples: f64,
-    samples_per_code: usize,
-) -> f64 {
-    let code_period_samples = samples_per_code.max(1) as f64;
-    (code_period_samples - epoch_start_code_phase_samples.rem_euclid(code_period_samples))
-        .rem_euclid(code_period_samples)
-}
-
 fn epoch_lock_quality(
     lock: bool,
     pll_lock: bool,
@@ -2382,11 +2360,6 @@ fn apply_dll_code_loop(input: CodeLoopInput) -> CodeLoopUpdate {
     CodeLoopUpdate { code_rate_hz, code_phase_samples }
 }
 
-fn wrap_code_phase_samples(code_phase_samples: f64, samples_per_code: usize) -> f64 {
-    let code_period_samples = samples_per_code.max(1) as f64;
-    code_phase_samples.rem_euclid(code_period_samples)
-}
-
 fn tracking_stability_signature(epochs: &[TrackEpoch]) -> String {
     let mut rows = epochs
         .iter()
@@ -2425,7 +2398,7 @@ fn detect_sample_rate_mismatch(
         .map(|(index, pair)| {
             let previous = &pair[0];
             let current = &pair[1];
-            let phase_step_samples = wrapped_code_phase_delta(
+            let phase_step_samples = wrapped_code_phase_delta_samples(
                 current.code_phase_samples.0,
                 previous.code_phase_samples.0,
                 samples_per_code,
@@ -2494,20 +2467,6 @@ fn sample_rate_mismatch_supported_epoch(epoch: &TrackEpoch) -> bool {
         return false;
     }
     epoch.lock || epoch.fll_lock || epoch.pll_lock
-}
-
-fn wrapped_code_phase_delta(
-    next_code_phase_samples: f64,
-    previous_code_phase_samples: f64,
-    samples_per_code: usize,
-) -> f64 {
-    let code_period_samples = samples_per_code.max(1) as f64;
-    let mut delta =
-        (next_code_phase_samples - previous_code_phase_samples).rem_euclid(code_period_samples);
-    if delta > code_period_samples / 2.0 {
-        delta -= code_period_samples;
-    }
-    delta
 }
 
 fn wrap_phase_cycles(phase_cycles: f64) -> f64 {
@@ -3243,13 +3202,13 @@ mod tests {
     }
 
     #[test]
-    fn code_value_at_tracking_phase_wraps_fractional_chip_phases() {
+    fn code_value_at_phase_wraps_fractional_chip_phases() {
         let code = vec![1_i8, -1, 1, -1];
 
-        assert_eq!(super::code_value_at_tracking_phase(&code, 0.25), 1.0);
-        assert_eq!(super::code_value_at_tracking_phase(&code, 1.75), -1.0);
-        assert_eq!(super::code_value_at_tracking_phase(&code, 4.10), 1.0);
-        assert_eq!(super::code_value_at_tracking_phase(&code, -0.10), -1.0);
+        assert_eq!(bijux_gnss_signal::api::code_value_at_phase(&code, 0.25).unwrap(), 1.0);
+        assert_eq!(bijux_gnss_signal::api::code_value_at_phase(&code, 1.75).unwrap(), -1.0);
+        assert_eq!(bijux_gnss_signal::api::code_value_at_phase(&code, 4.10).unwrap(), 1.0);
+        assert_eq!(bijux_gnss_signal::api::code_value_at_phase(&code, -0.10).unwrap(), -1.0);
     }
 
     #[test]
