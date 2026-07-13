@@ -223,10 +223,10 @@ fn support_matrix_artifact_reports_registered_signal_stage_boundaries() {
             SignalBand::E5,
             SignalCode::E5b,
             SignalStageSupport {
-                acquisition: SupportStatus::Planned,
-                tracking: SupportStatus::Planned,
+                acquisition: SupportStatus::Supported,
+                tracking: SupportStatus::Supported,
                 data_decoding: SupportStatus::Planned,
-                observations: SupportStatus::Planned,
+                observations: SupportStatus::Supported,
                 positioning: SupportStatus::Planned,
             },
             Vec::<&str>::new(),

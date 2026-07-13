@@ -122,6 +122,8 @@ pub enum SyntheticNavBitMode {
     ConstantPositive,
     /// Alternate the bit sign every 20 ms, starting positive at sample zero.
     AlternatingGpsLnav20ms,
+    /// Alternate the bit sign every 4 ms, starting positive at sample zero.
+    AlternatingGalileoInav4ms,
     /// Alternate the bit sign every 10 ms, starting positive at sample zero.
     AlternatingGpsL5I10ms,
     /// Apply the published 20-chip L5-Q NH pilot sequence at 1 ms epochs.

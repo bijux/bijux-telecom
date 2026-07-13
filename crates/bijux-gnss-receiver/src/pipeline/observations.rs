@@ -1157,6 +1157,7 @@ pub(crate) fn supports_observation_signal(
             | (Constellation::Gps, SignalBand::L5, SignalCode::L5Q)
             | (Constellation::Galileo, SignalBand::E1, SignalCode::E1B)
             | (Constellation::Galileo, SignalBand::E5, SignalCode::E5a)
+            | (Constellation::Galileo, SignalBand::E5, SignalCode::E5b)
             | (Constellation::Beidou, SignalBand::B1, SignalCode::B1I)
             | (Constellation::Beidou, SignalBand::B2, SignalCode::B2I)
             | (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown)

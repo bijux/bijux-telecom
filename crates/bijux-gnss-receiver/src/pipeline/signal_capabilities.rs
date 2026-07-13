@@ -286,6 +286,19 @@ mod tests {
                 positioning: false,
             }
         );
+
+        let galileo_e5b =
+            signal_execution_support(Constellation::Galileo, SignalBand::E5, SignalCode::E5b);
+        assert_eq!(
+            galileo_e5b,
+            SignalExecutionSupport {
+                acquisition: true,
+                tracking: true,
+                data_decoding: false,
+                observations: true,
+                positioning: false,
+            }
+        );
     }
 
     #[test]
@@ -389,6 +402,18 @@ mod tests {
                 Constellation::Galileo,
                 SignalBand::E5,
                 SignalCode::E5a,
+                SignalExecutionSupport {
+                    acquisition: true,
+                    tracking: true,
+                    data_decoding: false,
+                    observations: true,
+                    positioning: false,
+                },
+            ),
+            (
+                Constellation::Galileo,
+                SignalBand::E5,
+                SignalCode::E5b,
                 SignalExecutionSupport {
                     acquisition: true,
                     tracking: true,

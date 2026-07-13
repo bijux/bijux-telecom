@@ -658,6 +658,12 @@ fn nav_bit_mode(params: &SyntheticSignalParams) -> SyntheticNavBitMode {
             SyntheticNavBitMode::GpsL5QNh20
         }
         (_, false, _, _) => SyntheticNavBitMode::ConstantPositive,
+        (
+            bijux_gnss_core::api::SignalCode::E5b,
+            true,
+            bijux_gnss_core::api::Constellation::Galileo,
+            SignalBand::E5,
+        ) => SyntheticNavBitMode::AlternatingGalileoInav4ms,
         (bijux_gnss_core::api::SignalCode::L5I, true, bijux_gnss_core::api::Constellation::Gps, SignalBand::L5) => {
             SyntheticNavBitMode::AlternatingGpsL5I10ms
         }
@@ -764,6 +770,7 @@ fn nav_symbol_period_s(nav_bit_mode: SyntheticNavBitMode) -> Option<f64> {
     match nav_bit_mode {
         SyntheticNavBitMode::ConstantPositive => None,
         SyntheticNavBitMode::AlternatingGpsLnav20ms => Some(GPS_L1_CA_NAV_BIT_PERIOD_S),
+        SyntheticNavBitMode::AlternatingGalileoInav4ms => Some(0.004),
         SyntheticNavBitMode::AlternatingGpsL5I10ms => Some(0.010),
         SyntheticNavBitMode::GpsL5QNh20 => Some(0.001),
     }
