@@ -9,111 +9,99 @@ fn validate_config_ingest(profile: &ReceiverConfig) -> Result<()> {
 
 fn handle_track(command: GnssCommand) -> Result<()> {
     let GnssCommand::Track {
-                common,
-                file,
-                sampling_hz,
-                if_hz,
-                code_hz,
-                code_length,
-                doppler_search_hz,
-                doppler_step_hz,
-                offset_bytes: _offset_bytes,
-                prn,
-            } = command else {
+        common,
+        file,
+        sampling_hz,
+        if_hz,
+        code_hz,
+        code_length,
+        doppler_search_hz,
+        doppler_step_hz,
+        offset_bytes: _offset_bytes,
+        prn,
+    } = command
+    else {
         bail!("invalid command for handler");
     };
 
     let runtime = runtime_config_from_env(&common, None);
-                    let dataset = load_dataset(&common)?;
-                    let mut profile = load_config(&common)?;
-                    apply_common_overrides(
-                        &mut profile,
-                        CommonOverrides {
-                            seed: common.seed,
-                            deterministic: common.deterministic,
-                        },
-                    );
-                    apply_acquisition_doppler_overrides(
-                        &mut profile,
-                        doppler_search_hz,
-                        doppler_step_hz,
-                    );
-                    let raw_iq_metadata = resolve_raw_iq_metadata(&common, dataset.as_ref())?;
-                    apply_raw_iq_metadata(&mut profile, &raw_iq_metadata, sampling_hz, if_hz)?;
-                    apply_overrides(&mut profile, None, None, code_hz, code_length);
-                    validate_config_ingest(&profile)?;
-                    let config = profile.to_pipeline_config();
-    
-                    let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
-                    let frame = load_tracking_frame(&input_file, &config, &raw_iq_metadata)?;
-                    let signal_quality =
-                        measure_signal_quality_from_samples(&raw_iq_metadata, &frame.iq);
-    
-                    let acquisition = AcquisitionEngine::new(config.clone(), runtime.clone());
-                    let sats = bijux_gnss_infra::api::core::prns_to_sats(&prn);
-                    let acquisitions = acquisition.run_fft(&frame, &sats);
-    
-                    let tracking = bijux_gnss_infra::api::receiver::TrackingEngine::new(
-                        config.clone(),
-                        runtime.clone(),
-                    );
-                    let tracks = tracking.track_from_acquisition(&frame, &acquisitions);
-    
-                    let report = TrackingReport {
-                        sats: sats.clone(),
-                        doppler_search: doppler_search_settings(&profile),
-                        front_end_metrics: signal_quality.front_end_metrics.clone(),
-                        signal_quality,
-                        epochs: tracks
-                            .iter()
-                            .flat_map(|t| {
-                                t.epochs.iter().map(move |e| TrackingRow {
-                                    epoch_idx: e.epoch.index,
-                                    sample_index: e.sample_index,
-                                    sat: t.sat,
-                                    carrier_hz: e.carrier_hz.0,
-                                    carrier_phase_cycles: e.carrier_phase_cycles.0,
-                                    code_rate_hz: e.code_rate_hz.0,
-                                    code_phase_samples: e.code_phase_samples.0,
-                                    prompt_i: e.prompt_i,
-                                    prompt_q: e.prompt_q,
-                                    early_i: e.early_i,
-                                    early_q: e.early_q,
-                                    late_i: e.late_i,
-                                    late_q: e.late_q,
-                                    lock: e.lock,
-                                    cn0_dbhz: e.cn0_dbhz,
-                                    pll_lock: e.pll_lock,
-                                    dll_lock: e.dll_lock,
-                                    fll_lock: e.fll_lock,
-                                    cycle_slip: e.cycle_slip,
-                                    anti_false_lock: e.anti_false_lock,
-                                    nav_bit_lock: e.nav_bit_lock,
-                                    navigation_bit_sign: e.navigation_bit_sign,
-                                    cycle_slip_reason: e.cycle_slip_reason.clone(),
-                                    lock_state: e.lock_state.clone(),
-                                    lock_state_reason: e.lock_state_reason.clone(),
-                                    dll_err: e.dll_err,
-                                    pll_err: e.pll_err,
-                                    fll_err: e.fll_err,
-                                })
-                            })
-                            .collect(),
-                    };
-    
-                    emit_report(&common, "track", &report)?;
-                    write_signal_quality_report(&common, "track", &report.signal_quality)?;
-                    write_track_timeseries(&common, &report, &profile, dataset.as_ref())?;
-                    write_obs_timeseries(
-                        &common,
-                        &config,
-                        &tracks,
-                        profile.navigation.hatch_window,
-                        &profile,
-                        dataset.as_ref(),
-                    )?;
-                    write_tracking_timing_for_command(&common, "track", &tracks, dataset.as_ref())?;
-                    write_manifest(&common, "track", &profile, dataset.as_ref(), &report)?;
+    let dataset = load_dataset(&common)?;
+    let mut profile = load_config(&common)?;
+    apply_common_overrides(
+        &mut profile,
+        CommonOverrides { seed: common.seed, deterministic: common.deterministic },
+    );
+    apply_acquisition_doppler_overrides(&mut profile, doppler_search_hz, doppler_step_hz);
+    let raw_iq_metadata = resolve_raw_iq_metadata(&common, dataset.as_ref())?;
+    apply_raw_iq_metadata(&mut profile, &raw_iq_metadata, sampling_hz, if_hz)?;
+    apply_overrides(&mut profile, None, None, code_hz, code_length);
+    validate_config_ingest(&profile)?;
+    let config = profile.to_pipeline_config();
+
+    let input_file = resolve_input_file(file.as_ref(), dataset.as_ref())?;
+    let frame = load_tracking_frame(&input_file, &config, &raw_iq_metadata)?;
+    let signal_quality = measure_signal_quality_from_samples(&raw_iq_metadata, &frame.iq);
+
+    let sats = bijux_gnss_infra::api::core::prns_to_sats(&prn);
+    let receiver = Receiver::new(config.clone(), runtime.clone());
+    let mut source = open_tracking_window_source(&input_file, &config, &raw_iq_metadata)?;
+    let artifacts = receiver.run_with_satellites(&mut source, &sats)?;
+    let tracks = artifacts.tracking.clone();
+
+    let report = TrackingReport {
+        sats: sats.clone(),
+        doppler_search: doppler_search_settings(&profile),
+        front_end_metrics: signal_quality.front_end_metrics.clone(),
+        signal_quality,
+        epochs: tracks
+            .iter()
+            .flat_map(|t| {
+                t.epochs.iter().map(move |e| TrackingRow {
+                    epoch_idx: e.epoch.index,
+                    sample_index: e.sample_index,
+                    sat: t.sat,
+                    carrier_hz: e.carrier_hz.0,
+                    carrier_phase_cycles: e.carrier_phase_cycles.0,
+                    code_rate_hz: e.code_rate_hz.0,
+                    code_phase_samples: e.code_phase_samples.0,
+                    prompt_i: e.prompt_i,
+                    prompt_q: e.prompt_q,
+                    early_i: e.early_i,
+                    early_q: e.early_q,
+                    late_i: e.late_i,
+                    late_q: e.late_q,
+                    lock: e.lock,
+                    cn0_dbhz: e.cn0_dbhz,
+                    pll_lock: e.pll_lock,
+                    dll_lock: e.dll_lock,
+                    fll_lock: e.fll_lock,
+                    cycle_slip: e.cycle_slip,
+                    anti_false_lock: e.anti_false_lock,
+                    nav_bit_lock: e.nav_bit_lock,
+                    navigation_bit_sign: e.navigation_bit_sign,
+                    cycle_slip_reason: e.cycle_slip_reason.clone(),
+                    lock_state: e.lock_state.clone(),
+                    lock_state_reason: e.lock_state_reason.clone(),
+                    dll_err: e.dll_err,
+                    pll_err: e.pll_err,
+                    fll_err: e.fll_err,
+                })
+            })
+            .collect(),
+    };
+
+    emit_report(&common, "track", &report)?;
+    write_signal_quality_report(&common, "track", &report.signal_quality)?;
+    write_track_timeseries(&common, &report, &profile, dataset.as_ref())?;
+    write_observation_artifacts_for_command(
+        &common,
+        "track",
+        &artifacts.observation_artifacts(),
+        &profile,
+        dataset.as_ref(),
+    )?;
+    write_tracking_timing_for_command(&common, "track", &tracks, dataset.as_ref())?;
+    write_manifest(&common, "track", &profile, dataset.as_ref(), &report)?;
 
     Ok(())
 }
