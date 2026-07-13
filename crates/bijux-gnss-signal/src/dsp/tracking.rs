@@ -618,7 +618,8 @@ pub fn code_at(code: &[i8], samples_per_chip: f64, sample_index: f64) -> Complex
     Complex::new(chip, 0.0)
 }
 
-fn advance_code_phase_samples(
+/// Advance receiver-aligned code phase across one coherent interval.
+pub fn advance_code_phase_samples(
     current_code_phase_samples: f64,
     epoch_len_samples: usize,
     tracked_code_rate_hz: f64,
@@ -646,7 +647,8 @@ fn advance_code_phase_samples(
     )
 }
 
-fn bounded_fll_pull_in_correction_hz(fll_err_hz: f64, fll_bw_hz: f64) -> f64 {
+/// Limit FLL pull-in correction to a bounded multiple of loop bandwidth.
+pub fn bounded_fll_pull_in_correction_hz(fll_err_hz: f64, fll_bw_hz: f64) -> f64 {
     let max_correction_hz = fll_bw_hz.abs().max(1.0) * FLL_PULL_IN_MAX_CORRECTION_BW_MULTIPLIER;
     fll_err_hz.clamp(-max_correction_hz, max_correction_hz)
 }

@@ -46,6 +46,11 @@ pub use crate::dsp::quality::{
     measure_iq_front_end_metrics, measure_raw_iq_front_end_metrics, remove_dc_offset_in_place,
     IqFrontEndAnalyzer, IqFrontEndMetrics,
 };
+/// Replica-generation and synthetic modulation helpers.
+pub use crate::dsp::replica::{
+    carrier_hz_at_time, carrier_phase_radians_at_time, sample_modulated_replica_at_time,
+    signal_amplitude_from_cn0_db_hz, ReplicaCodeModel, UNIT_VARIANCE_COMPLEX_NOISE_POWER,
+};
 /// Signal processing utilities.
 pub use crate::dsp::signal::{
     advance_code_phase_chips, advance_code_phase_seconds, code_phase_samples_at_sample_index,
