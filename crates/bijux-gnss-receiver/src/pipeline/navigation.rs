@@ -44,8 +44,6 @@ const FIXED_SIGMA_H_FLOOR_M: f64 = 0.10;
 const FIXED_SIGMA_V_FLOOR_M: f64 = 0.15;
 const FLOAT_SIGMA_H_FLOOR_M: f64 = 0.25;
 const FLOAT_SIGMA_V_FLOOR_M: f64 = 0.40;
-const CONVERGED_SIGMA_H_FLOOR_M: f64 = 1.0;
-const CONVERGED_SIGMA_V_FLOOR_M: f64 = 2.0;
 const CODE_ONLY_SIGMA_H_FLOOR_M: f64 = 3.0;
 const CODE_ONLY_SIGMA_V_FLOOR_M: f64 = 5.0;
 const DEGRADED_SIGMA_H_FLOOR_M: f64 = 5.0;
@@ -1629,17 +1627,10 @@ fn deterministic_solution_transition(
         return SolutionStatus::Degraded;
     }
     match (previous, proposed) {
-        (_, SolutionStatus::Invalid) => SolutionStatus::Refused,
         (_, SolutionStatus::Unavailable)
         | (_, SolutionStatus::Refused)
         | (_, SolutionStatus::IntegrityFailed)
         | (_, SolutionStatus::Diverged) => proposed,
-        (Some(SolutionStatus::Converged), SolutionStatus::CodeOnly)
-        | (Some(SolutionStatus::CodeOnly), SolutionStatus::CodeOnly)
-        | (Some(SolutionStatus::Fixed), SolutionStatus::CodeOnly)
-        | (Some(SolutionStatus::Float), SolutionStatus::CodeOnly)
-        | (Some(SolutionStatus::Converged), SolutionStatus::Coarse)
-        | (Some(SolutionStatus::Fixed), SolutionStatus::Coarse) => SolutionStatus::Degraded,
         (_, other) => other,
     }
 }
@@ -1711,16 +1702,12 @@ fn mark_integrity_failure(mut solution: NavSolutionEpoch) -> NavSolutionEpoch {
 
 fn lifecycle_state_from_status(status: SolutionStatus) -> NavLifecycleState {
     match status {
-        SolutionStatus::Invalid => NavLifecycleState::Invalid,
         SolutionStatus::Unavailable => NavLifecycleState::Unavailable,
         SolutionStatus::Refused => NavLifecycleState::Refused,
-        SolutionStatus::Held => NavLifecycleState::Held,
         SolutionStatus::Degraded => NavLifecycleState::Degraded,
         SolutionStatus::IntegrityFailed => NavLifecycleState::IntegrityFailed,
         SolutionStatus::Diverged => NavLifecycleState::Diverged,
         SolutionStatus::CodeOnly => NavLifecycleState::CodeOnly,
-        SolutionStatus::Coarse => NavLifecycleState::Coarse,
-        SolutionStatus::Converged => NavLifecycleState::Converged,
         SolutionStatus::Float => NavLifecycleState::Float,
         SolutionStatus::Fixed => NavLifecycleState::Fixed,
     }
@@ -1759,26 +1746,19 @@ fn precision_reporting_policy(solution: &NavSolutionEpoch) -> PrecisionReporting
             low_uncertainty_allowed: true,
             explain_reason: "precision_floor=float_solution_without_integer_fix",
         },
-        SolutionStatus::Converged => PrecisionReportingPolicy {
-            horizontal_sigma_floor_m: CONVERGED_SIGMA_H_FLOOR_M,
-            vertical_sigma_floor_m: CONVERGED_SIGMA_V_FLOOR_M,
-            low_uncertainty_allowed: true,
-            explain_reason: "precision_floor=code_navigation_without_carrier_ambiguity",
-        },
-        SolutionStatus::CodeOnly | SolutionStatus::Coarse => PrecisionReportingPolicy {
+        SolutionStatus::CodeOnly => PrecisionReportingPolicy {
             horizontal_sigma_floor_m: CODE_ONLY_SIGMA_H_FLOOR_M,
             vertical_sigma_floor_m: CODE_ONLY_SIGMA_V_FLOOR_M,
             low_uncertainty_allowed: false,
             explain_reason: "precision_floor=code_navigation_without_carrier_ambiguity",
         },
-        SolutionStatus::Held | SolutionStatus::Degraded => PrecisionReportingPolicy {
+        SolutionStatus::Degraded => PrecisionReportingPolicy {
             horizontal_sigma_floor_m: DEGRADED_SIGMA_H_FLOOR_M,
             vertical_sigma_floor_m: DEGRADED_SIGMA_V_FLOOR_M,
             low_uncertainty_allowed: false,
             explain_reason: "precision_floor=degraded_navigation_precision",
         },
-        SolutionStatus::Invalid
-        | SolutionStatus::Unavailable
+        SolutionStatus::Unavailable
         | SolutionStatus::Refused
         | SolutionStatus::IntegrityFailed
         | SolutionStatus::Diverged => PrecisionReportingPolicy {
@@ -2313,7 +2293,7 @@ fn decision_for_solution(solution: &NavSolutionEpoch) -> NavDecision {
             },
         };
     }
-    if matches!(solution.status, SolutionStatus::Held | SolutionStatus::Degraded) {
+    if solution.status == SolutionStatus::Degraded {
         return NavDecision {
             status: solution.status,
             refusal_class: None,
@@ -2491,8 +2471,8 @@ mod tests {
             pre_fit_residual_rms_m: Some(Meters(1.0)),
             post_fit_residual_rms_m: Some(Meters(1.0)),
             rms_m: Meters(1.0),
-            status: SolutionStatus::Converged,
-            quality: SolutionStatus::Converged.quality_flag(),
+            status: SolutionStatus::CodeOnly,
+            quality: SolutionStatus::CodeOnly.quality_flag(),
             validity: bijux_gnss_core::api::SolutionValidity::Stable,
             valid: true,
             processing_ms: None,
@@ -2519,7 +2499,7 @@ mod tests {
             integrity_hpl_m: None,
             integrity_vpl_m: None,
             model_version: NAV_SOLUTION_MODEL_VERSION,
-            lifecycle_state: NavLifecycleState::Converged,
+            lifecycle_state: NavLifecycleState::CodeOnly,
             uncertainty_class: NavUncertaintyClass::Medium,
             assumptions: Some(nav_assumptions(0)),
             refusal_class: None,
@@ -2638,7 +2618,7 @@ mod tests {
     fn refusal_cause_explainability_marks_dop_policy_failures() {
         let mut solution = policy_refusal_epoch(
             sample_last_solution(),
-            Some(SolutionStatus::Converged),
+            Some(SolutionStatus::CodeOnly),
             NavRefusalClass::InsufficientGeometry,
             vec!["pdop_above_threshold:4.200>3.000".to_string()],
         );
@@ -2655,7 +2635,7 @@ mod tests {
     fn refusal_cause_explainability_marks_residual_policy_failures() {
         let mut solution = policy_refusal_epoch(
             sample_last_solution(),
-            Some(SolutionStatus::Converged),
+            Some(SolutionStatus::CodeOnly),
             NavRefusalClass::ScientificPrerequisitesTooWeak,
             vec!["residual_rms_above_threshold:6.500>3.000".to_string()],
         );
@@ -2672,7 +2652,7 @@ mod tests {
     fn refusal_cause_explainability_marks_integrity_failures() {
         let mut solution = mark_integrity_failure(policy_refusal_epoch(
             sample_last_solution(),
-            Some(SolutionStatus::Converged),
+            Some(SolutionStatus::CodeOnly),
             NavRefusalClass::InconsistentObservations,
             vec!["raim_exclusion_underdetermined".to_string()],
         ));
@@ -4128,7 +4108,13 @@ mod tests {
 
         let solution = nav.solve_epoch(&obs, &ephs).expect("raim-detected solution");
 
-        assert_ne!(solution.status, SolutionStatus::Invalid);
+        assert!(matches!(
+            solution.status,
+            SolutionStatus::CodeOnly
+                | SolutionStatus::Float
+                | SolutionStatus::Fixed
+                | SolutionStatus::Degraded
+        ));
         assert!(solution.valid);
         assert!(solution.explain_reasons.iter().any(|reason| reason == "raim_fault_detected"));
         assert!(solution.explain_reasons.iter().any(|reason| reason == "raim_fault_excluded"));
@@ -4307,16 +4293,16 @@ mod tests {
     fn deterministic_solution_transition_handles_refusal_and_regression() {
         assert_eq!(
             deterministic_solution_transition(
-                Some(SolutionStatus::Converged),
-                SolutionStatus::Coarse,
+                Some(SolutionStatus::CodeOnly),
+                SolutionStatus::CodeOnly,
                 None,
                 false,
             ),
-            SolutionStatus::Degraded
+            SolutionStatus::CodeOnly
         );
         assert_eq!(
             deterministic_solution_transition(
-                Some(SolutionStatus::Converged),
+                Some(SolutionStatus::CodeOnly),
                 SolutionStatus::Degraded,
                 Some(NavRefusalClass::InsufficientGeometry),
                 true,
@@ -4325,8 +4311,8 @@ mod tests {
         );
         assert_eq!(
             deterministic_solution_transition(
-                Some(SolutionStatus::Converged),
-                SolutionStatus::Coarse,
+                Some(SolutionStatus::CodeOnly),
+                SolutionStatus::CodeOnly,
                 Some(NavRefusalClass::SolverFailure),
                 false,
             ),

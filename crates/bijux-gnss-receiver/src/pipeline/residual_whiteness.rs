@@ -52,7 +52,9 @@ pub fn detect_residual_temporal_correlation(
                 .then_some((residual.sat, residual.residual_m.0))
         })
         .filter_map(|(sat, current_residual_m)| {
-            previous_by_sat.get(&sat).map(|previous_residual_m| (*previous_residual_m, current_residual_m))
+            previous_by_sat
+                .get(&sat)
+                .map(|previous_residual_m| (*previous_residual_m, current_residual_m))
         })
         .collect::<Vec<_>>();
     if matched_pairs.len() < MIN_MATCHED_SATELLITES {
@@ -63,14 +65,10 @@ pub fn detect_residual_temporal_correlation(
     let current = matched_pairs.iter().map(|(_, current)| *current).collect::<Vec<_>>();
     let previous_mean_m = mean(&previous);
     let current_mean_m = mean(&current);
-    let previous_centered = previous
-        .iter()
-        .map(|residual_m| residual_m - previous_mean_m)
-        .collect::<Vec<_>>();
-    let current_centered = current
-        .iter()
-        .map(|residual_m| residual_m - current_mean_m)
-        .collect::<Vec<_>>();
+    let previous_centered =
+        previous.iter().map(|residual_m| residual_m - previous_mean_m).collect::<Vec<_>>();
+    let current_centered =
+        current.iter().map(|residual_m| residual_m - current_mean_m).collect::<Vec<_>>();
     let previous_centered_rms_m = rms(&previous_centered);
     let current_centered_rms_m = rms(&current_centered);
     if previous_centered_rms_m < MIN_CENTERED_RESIDUAL_RMS_M
@@ -151,7 +149,7 @@ fn pearson_correlation(left: &[f64], right: &[f64]) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use bijux_gnss_core::api::{
-        Constellation, Epoch, Meters, NavLifecycleState, NavQualityFlag, NavResidual,
+        Constellation, Epoch, Meters, NavLifecycleState, NavResidual,
         NavSolutionEpoch, NavUncertaintyClass, SatId, Seconds, SolutionStatus, SolutionValidity,
     };
 
@@ -183,10 +181,8 @@ mod tests {
         let current_solution =
             solution_epoch(100_000.001, &[0.09, -0.07, 0.05, -0.05, 0.03, -0.02], &sat_ids);
 
-        assert!(
-            detect_residual_temporal_correlation(Some(&previous_solution), &current_solution)
-                .is_none()
-        );
+        assert!(detect_residual_temporal_correlation(Some(&previous_solution), &current_solution)
+            .is_none());
     }
 
     #[test]
@@ -197,10 +193,8 @@ mod tests {
         let current_solution =
             solution_epoch(100_000.001, &[-2.0, 3.0, -6.0, 1.0, 4.0, 0.0], &sat_ids);
 
-        assert!(
-            detect_residual_temporal_correlation(Some(&previous_solution), &current_solution)
-                .is_none()
-        );
+        assert!(detect_residual_temporal_correlation(Some(&previous_solution), &current_solution)
+            .is_none());
     }
 
     #[test]
@@ -219,20 +213,14 @@ mod tests {
 
         let correlation = classify_residual_temporal_correlation(evidence, 2);
         assert_eq!(correlation.persistent_suspect_epochs, 2);
-        assert!(residual_temporal_correlation_is_persistent(
-            correlation.persistent_suspect_epochs
-        ));
+        assert!(residual_temporal_correlation_is_persistent(correlation.persistent_suspect_epochs));
     }
 
     fn gps_satellites(prns: &[u8]) -> Vec<SatId> {
         prns.iter().copied().map(|prn| SatId { constellation: Constellation::Gps, prn }).collect()
     }
 
-    fn solution_epoch(
-        t_rx_s: f64,
-        residuals_m: &[f64],
-        sat_ids: &[SatId],
-    ) -> NavSolutionEpoch {
+    fn solution_epoch(t_rx_s: f64, residuals_m: &[f64], sat_ids: &[SatId]) -> NavSolutionEpoch {
         NavSolutionEpoch {
             epoch: Epoch { index: (t_rx_s * 1000.0).round() as u64 },
             t_rx_s: Seconds(t_rx_s),
@@ -251,8 +239,8 @@ mod tests {
             pre_fit_residual_rms_m: None,
             post_fit_residual_rms_m: None,
             rms_m: Meters(1.0),
-            status: SolutionStatus::Converged,
-            quality: NavQualityFlag::Fix,
+            status: SolutionStatus::CodeOnly,
+            quality: SolutionStatus::CodeOnly.quality_flag(),
             validity: SolutionValidity::Stable,
             valid: true,
             processing_ms: None,
@@ -289,7 +277,7 @@ mod tests {
             integrity_hpl_m: None,
             integrity_vpl_m: None,
             model_version: 4,
-            lifecycle_state: NavLifecycleState::Converged,
+            lifecycle_state: NavLifecycleState::CodeOnly,
             uncertainty_class: NavUncertaintyClass::Low,
             assumptions: None,
             refusal_class: None,

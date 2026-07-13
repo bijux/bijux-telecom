@@ -48,7 +48,8 @@ pub fn detect_constellation_clock_inconsistencies(
         .isb
         .iter()
         .filter_map(|bias| {
-            let previous_bias_s = previous_bias_by_constellation.get(&bias.constellation).copied()?;
+            let previous_bias_s =
+                previous_bias_by_constellation.get(&bias.constellation).copied()?;
             let supporting_satellite_count =
                 supporting_satellite_count_by_constellation.get(&bias.constellation).copied()?;
             if supporting_satellite_count < MIN_SUPPORTING_SATELLITES {
@@ -73,7 +74,7 @@ pub fn detect_constellation_clock_inconsistencies(
 mod tests {
     use bijux_gnss_core::api::{
         Constellation, Epoch, InterSystemBias, Meters, NavConstellationResidualRms,
-        NavLifecycleState, NavQualityFlag, NavSolutionEpoch, NavUncertaintyClass, Seconds,
+        NavLifecycleState, NavSolutionEpoch, NavUncertaintyClass, Seconds,
         SignalBand, SolutionStatus, SolutionValidity,
     };
 
@@ -82,14 +83,12 @@ mod tests {
     #[test]
     fn detects_abrupt_galileo_inter_system_bias_jump() {
         let previous_solution =
-            mixed_solution_epoch(100_000.0, -1.15e-6, 2, true, SolutionStatus::Converged);
+            mixed_solution_epoch(100_000.0, -1.15e-6, 2, true, SolutionStatus::CodeOnly);
         let current_solution =
-            mixed_solution_epoch(100_000.001, -8.5e-7, 2, true, SolutionStatus::Converged);
+            mixed_solution_epoch(100_000.001, -8.5e-7, 2, true, SolutionStatus::CodeOnly);
 
-        let inconsistencies = detect_constellation_clock_inconsistencies(
-            Some(&previous_solution),
-            &current_solution,
-        );
+        let inconsistencies =
+            detect_constellation_clock_inconsistencies(Some(&previous_solution), &current_solution);
 
         assert_eq!(inconsistencies.len(), 1);
         let inconsistency = inconsistencies[0];
@@ -101,40 +100,43 @@ mod tests {
     #[test]
     fn ignores_stable_inter_system_bias_evolution() {
         let previous_solution =
-            mixed_solution_epoch(100_000.0, -1.15e-6, 2, true, SolutionStatus::Converged);
+            mixed_solution_epoch(100_000.0, -1.15e-6, 2, true, SolutionStatus::CodeOnly);
         let current_solution =
-            mixed_solution_epoch(100_000.001, -1.1499e-6, 2, true, SolutionStatus::Converged);
+            mixed_solution_epoch(100_000.001, -1.1499e-6, 2, true, SolutionStatus::CodeOnly);
 
-        assert!(
-            detect_constellation_clock_inconsistencies(Some(&previous_solution), &current_solution)
-                .is_empty()
-        );
+        assert!(detect_constellation_clock_inconsistencies(
+            Some(&previous_solution),
+            &current_solution
+        )
+        .is_empty());
     }
 
     #[test]
     fn ignores_gps_only_solution() {
         let previous_solution =
-            mixed_solution_epoch(100_000.0, 0.0, 0, true, SolutionStatus::Converged);
+            mixed_solution_epoch(100_000.0, 0.0, 0, true, SolutionStatus::CodeOnly);
         let current_solution =
-            mixed_solution_epoch(100_000.001, 0.0, 0, true, SolutionStatus::Converged);
+            mixed_solution_epoch(100_000.001, 0.0, 0, true, SolutionStatus::CodeOnly);
 
-        assert!(
-            detect_constellation_clock_inconsistencies(Some(&previous_solution), &current_solution)
-                .is_empty()
-        );
+        assert!(detect_constellation_clock_inconsistencies(
+            Some(&previous_solution),
+            &current_solution
+        )
+        .is_empty());
     }
 
     #[test]
     fn ignores_invalid_previous_solution() {
         let previous_solution =
-            mixed_solution_epoch(100_000.0, -1.15e-6, 2, false, SolutionStatus::Invalid);
+            mixed_solution_epoch(100_000.0, -1.15e-6, 2, false, SolutionStatus::Unavailable);
         let current_solution =
-            mixed_solution_epoch(100_000.001, -8.5e-7, 2, true, SolutionStatus::Converged);
+            mixed_solution_epoch(100_000.001, -8.5e-7, 2, true, SolutionStatus::CodeOnly);
 
-        assert!(
-            detect_constellation_clock_inconsistencies(Some(&previous_solution), &current_solution)
-                .is_empty()
-        );
+        assert!(detect_constellation_clock_inconsistencies(
+            Some(&previous_solution),
+            &current_solution
+        )
+        .is_empty());
     }
 
     fn mixed_solution_epoch(
@@ -188,16 +190,8 @@ mod tests {
             post_fit_residual_rms_m: Some(Meters(1.0)),
             rms_m: Meters(1.0),
             status,
-            quality: if valid {
-                NavQualityFlag::Fix
-            } else {
-                NavQualityFlag::NoFix
-            },
-            validity: if valid {
-                SolutionValidity::Stable
-            } else {
-                SolutionValidity::Invalid
-            },
+            quality: status.quality_flag(),
+            validity: if valid { SolutionValidity::Stable } else { SolutionValidity::Invalid },
             valid,
             processing_ms: None,
             residuals: Vec::new(),
@@ -224,9 +218,9 @@ mod tests {
             integrity_vpl_m: None,
             model_version: 4,
             lifecycle_state: if valid {
-                NavLifecycleState::Converged
+                NavLifecycleState::CodeOnly
             } else {
-                NavLifecycleState::Invalid
+                NavLifecycleState::Unavailable
             },
             uncertainty_class: NavUncertaintyClass::Low,
             assumptions: None,

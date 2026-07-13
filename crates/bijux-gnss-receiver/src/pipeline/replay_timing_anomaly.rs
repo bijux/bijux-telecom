@@ -116,7 +116,7 @@ fn median(values: &mut [f64]) -> f64 {
 #[cfg(test)]
 mod tests {
     use bijux_gnss_core::api::{
-        Constellation, Epoch, GpsTime, Meters, NavLifecycleState, NavQualityFlag, NavRefusalClass,
+        Constellation, Epoch, GpsTime, Meters, NavLifecycleState, NavRefusalClass,
         NavResidual, NavSolutionEpoch, NavUncertaintyClass, ObsSignalTiming, SatId, Seconds,
         SolutionStatus, SolutionValidity,
     };
@@ -257,8 +257,8 @@ mod tests {
             pre_fit_residual_rms_m: None,
             post_fit_residual_rms_m: None,
             rms_m: Meters(1.0),
-            status: SolutionStatus::Converged,
-            quality: NavQualityFlag::Fix,
+            status: SolutionStatus::CodeOnly,
+            quality: SolutionStatus::CodeOnly.quality_flag(),
             validity: SolutionValidity::Stable,
             valid: true,
             processing_ms: None,
@@ -285,7 +285,7 @@ mod tests {
             integrity_hpl_m: None,
             integrity_vpl_m: None,
             model_version: 4,
-            lifecycle_state: NavLifecycleState::Converged,
+            lifecycle_state: NavLifecycleState::CodeOnly,
             uncertainty_class: NavUncertaintyClass::Low,
             assumptions: None,
             refusal_class: Some(NavRefusalClass::InconsistentObservations),

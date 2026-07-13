@@ -127,7 +127,7 @@
             pre_fit_residual_rms_m: Some(Meters(3.5)),
             post_fit_residual_rms_m: Some(Meters(1.25)),
             rms_m: Meters(1.25),
-            status: SolutionStatus::Converged,
+            status: SolutionStatus::CodeOnly,
             quality: NavQualityFlag::Float,
             validity: SolutionValidity::Stable,
             valid: true,
@@ -155,7 +155,7 @@
             integrity_hpl_m: None,
             integrity_vpl_m: None,
             model_version: NAV_SOLUTION_MODEL_VERSION,
-            lifecycle_state: NavLifecycleState::Converged,
+            lifecycle_state: NavLifecycleState::CodeOnly,
             uncertainty_class: NavUncertaintyClass::Low,
             assumptions: None,
             refusal_class: None,
@@ -220,7 +220,7 @@
         assert_eq!(row.pre_fit_residual_rms_m, Some(3.5));
         assert_eq!(row.post_fit_residual_rms_m, Some(1.25));
         assert_eq!(row.dop.pdop, 1.2);
-        assert_eq!(row.solution_status, SolutionStatus::Converged);
+        assert_eq!(row.solution_status, SolutionStatus::CodeOnly);
         assert_eq!(row.solution_quality, NavQualityFlag::Float);
         assert_eq!(row.solution_validity, SolutionValidity::Stable);
         assert!(row.valid);
@@ -427,7 +427,7 @@
                     gdop: Some(4.5),
                     tdop: Some(1.0),
                 },
-                solution_status: SolutionStatus::Invalid,
+                solution_status: SolutionStatus::Unavailable,
                 solution_quality: NavQualityFlag::NoFix,
                 solution_validity: SolutionValidity::Invalid,
                 valid: false,
@@ -516,7 +516,7 @@
                         gdop: Some(1.0),
                         tdop: Some(1.0),
                     },
-                    solution_status: SolutionStatus::Converged,
+                    solution_status: SolutionStatus::CodeOnly,
                     solution_quality: NavQualityFlag::Float,
                     solution_validity: SolutionValidity::Stable,
                     valid: true,

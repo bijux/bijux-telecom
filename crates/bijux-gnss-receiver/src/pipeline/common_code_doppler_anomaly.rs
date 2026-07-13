@@ -46,7 +46,9 @@ pub fn detect_common_code_doppler_anomaly(
 
     let previous_doppler_by_sat = previous_observations
         .iter()
-        .filter_map(|observation| observation.doppler_hz.map(|doppler_hz| (observation.sat, doppler_hz)))
+        .filter_map(|observation| {
+            observation.doppler_hz.map(|doppler_hz| (observation.sat, doppler_hz))
+        })
         .collect::<BTreeMap<_, _>>();
     let mut common_doppler_steps_hz = current_observations
         .iter()
@@ -107,7 +109,7 @@ fn same_direction(left: f64, right: f64) -> bool {
 #[cfg(test)]
 mod tests {
     use bijux_gnss_core::api::{
-        Constellation, Epoch, Meters, NavLifecycleState, NavQualityFlag, NavRefusalClass,
+        Constellation, Epoch, Meters, NavLifecycleState, NavRefusalClass,
         NavResidual, NavSolutionEpoch, NavUncertaintyClass, SatId, Seconds, SolutionStatus,
         SolutionValidity,
     };
@@ -120,10 +122,14 @@ mod tests {
         let sat_ids = gps_satellites(&[3, 7, 11, 19, 23, 29]);
         let previous_solution = solution_epoch(100_000.0, 0.0, 0.0);
         let current_solution = solution_epoch(100_000.001, 80.0 / SPEED_OF_LIGHT_MPS, 0.0);
-        let previous_observations =
-            observations_with_doppler(&sat_ids, &[-1_800.0, -1_000.0, -250.0, 500.0, 1_250.0, 2_000.0]);
-        let current_observations =
-            observations_with_doppler(&sat_ids, &[-1_320.0, -520.0, 230.0, 980.0, 1_730.0, 2_480.0]);
+        let previous_observations = observations_with_doppler(
+            &sat_ids,
+            &[-1_800.0, -1_000.0, -250.0, 500.0, 1_250.0, 2_000.0],
+        );
+        let current_observations = observations_with_doppler(
+            &sat_ids,
+            &[-1_320.0, -520.0, 230.0, 980.0, 1_730.0, 2_480.0],
+        );
 
         let anomaly = detect_common_code_doppler_anomaly(
             Some(&previous_solution),
@@ -144,10 +150,14 @@ mod tests {
         let sat_ids = gps_satellites(&[3, 7, 11, 19, 23, 29]);
         let previous_solution = solution_epoch(100_000.0, 0.0, 0.0);
         let current_solution = solution_epoch(100_000.001, 80.0 / SPEED_OF_LIGHT_MPS, 0.0);
-        let previous_observations =
-            observations_with_doppler(&sat_ids, &[-1_800.0, -1_000.0, -250.0, 500.0, 1_250.0, 2_000.0]);
-        let current_observations =
-            observations_with_doppler(&sat_ids, &[-1_800.0, -1_000.0, 250.0, 500.0, 1_250.0, 2_000.0]);
+        let previous_observations = observations_with_doppler(
+            &sat_ids,
+            &[-1_800.0, -1_000.0, -250.0, 500.0, 1_250.0, 2_000.0],
+        );
+        let current_observations = observations_with_doppler(
+            &sat_ids,
+            &[-1_800.0, -1_000.0, 250.0, 500.0, 1_250.0, 2_000.0],
+        );
 
         assert!(detect_common_code_doppler_anomaly(
             Some(&previous_solution),
@@ -164,9 +174,12 @@ mod tests {
         let previous_solution = solution_epoch(100_000.0, 0.0, 0.0);
         let dt_s = 0.001;
         let drift_s_per_s = 5.0e-6;
-        let current_solution = solution_epoch(100_000.0 + dt_s, drift_s_per_s * dt_s, drift_s_per_s);
-        let previous_observations =
-            observations_with_doppler(&sat_ids, &[-1_800.0, -1_000.0, -250.0, 500.0, 1_250.0, 2_000.0]);
+        let current_solution =
+            solution_epoch(100_000.0 + dt_s, drift_s_per_s * dt_s, drift_s_per_s);
+        let previous_observations = observations_with_doppler(
+            &sat_ids,
+            &[-1_800.0, -1_000.0, -250.0, 500.0, 1_250.0, 2_000.0],
+        );
 
         assert!(detect_common_code_doppler_anomaly(
             Some(&previous_solution),
@@ -178,13 +191,13 @@ mod tests {
     }
 
     fn gps_satellites(prns: &[u8]) -> Vec<SatId> {
-        prns.iter()
-            .copied()
-            .map(|prn| SatId { constellation: Constellation::Gps, prn })
-            .collect()
+        prns.iter().copied().map(|prn| SatId { constellation: Constellation::Gps, prn }).collect()
     }
 
-    fn observations_with_doppler(sat_ids: &[SatId], doppler_hz: &[f64]) -> Vec<PositionObservation> {
+    fn observations_with_doppler(
+        sat_ids: &[SatId],
+        doppler_hz: &[f64],
+    ) -> Vec<PositionObservation> {
         sat_ids
             .iter()
             .zip(doppler_hz.iter().copied())
@@ -203,7 +216,11 @@ mod tests {
             .collect()
     }
 
-    fn solution_epoch(t_rx_s: f64, clock_bias_s: f64, clock_drift_s_per_s: f64) -> NavSolutionEpoch {
+    fn solution_epoch(
+        t_rx_s: f64,
+        clock_bias_s: f64,
+        clock_drift_s_per_s: f64,
+    ) -> NavSolutionEpoch {
         NavSolutionEpoch {
             epoch: Epoch { index: (t_rx_s * 1000.0).round() as u64 },
             t_rx_s: Seconds(t_rx_s),
@@ -222,8 +239,8 @@ mod tests {
             pre_fit_residual_rms_m: None,
             post_fit_residual_rms_m: None,
             rms_m: Meters(0.0),
-            status: SolutionStatus::Converged,
-            quality: NavQualityFlag::Fix,
+            status: SolutionStatus::CodeOnly,
+            quality: SolutionStatus::CodeOnly.quality_flag(),
             validity: SolutionValidity::Stable,
             valid: true,
             processing_ms: None,
@@ -250,7 +267,7 @@ mod tests {
             integrity_hpl_m: None,
             integrity_vpl_m: None,
             model_version: 0,
-            lifecycle_state: NavLifecycleState::Converged,
+            lifecycle_state: NavLifecycleState::CodeOnly,
             uncertainty_class: NavUncertaintyClass::Low,
             assumptions: None,
             refusal_class: None::<NavRefusalClass>,
