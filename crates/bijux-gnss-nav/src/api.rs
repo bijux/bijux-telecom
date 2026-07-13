@@ -57,6 +57,9 @@ pub use crate::estimation::position::filter::{
     PositionFilterMotionClass, PositionFilterMotionModel, PositionFilterProcessNoise,
     PositionFilterStaticPositionModel,
 };
+pub use crate::estimation::position::navigation_filter::{
+    NavigationFilter, NavigationFilterConfig, NavigationFilterThresholds,
+};
 pub use crate::estimation::position::raim::{
     formal_protection_levels, PositionProtectionLevels, RaimFaultDetection,
     RaimFaultDetectionStatus, RaimFaultExclusion, RaimSolutionSeparationCheck,
