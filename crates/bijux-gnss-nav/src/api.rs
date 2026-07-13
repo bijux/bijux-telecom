@@ -81,6 +81,9 @@ pub use crate::estimation::position::solver::{
     PositionSolution, PositionSolveRefusal, PositionSolveRefusalKind, PositionSolver,
     PositionWeightingModel, ReplayTimingAnomalyEvidence, WeightingConfig,
 };
+pub use crate::estimation::position::navigation::{
+    position_satellite_state_from_observation, PositionSatelliteState,
+};
 pub use crate::estimation::position::trajectory::{
     trajectory_reconstruction_report, TrajectoryReconstructionError, TrajectoryReconstructionInput,
     TrajectoryReconstructionReport, TrajectoryReconstructionSample,

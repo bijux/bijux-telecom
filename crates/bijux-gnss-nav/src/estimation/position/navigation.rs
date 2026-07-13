@@ -31,16 +31,18 @@ pub(crate) struct PositionSolveInput {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SatelliteState {
-    pub(crate) x_m: f64,
-    pub(crate) y_m: f64,
-    pub(crate) z_m: f64,
-    pub(crate) vx_mps: f64,
-    pub(crate) vy_mps: f64,
-    pub(crate) vz_mps: f64,
-    pub(crate) clock_bias_s: f64,
-    pub(crate) clock_drift_s_per_s: f64,
+pub struct SatelliteState {
+    pub x_m: f64,
+    pub y_m: f64,
+    pub z_m: f64,
+    pub vx_mps: f64,
+    pub vy_mps: f64,
+    pub vz_mps: f64,
+    pub clock_bias_s: f64,
+    pub clock_drift_s_per_s: f64,
 }
+
+pub type PositionSatelliteState = SatelliteState;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct ObservationConsistencyMetrics {
@@ -181,6 +183,15 @@ pub(crate) fn satellite_state_from_observation(
         .map(|timing| timing.transmit_gps_time.tow_s)
         .unwrap_or(receive_tow_s - signal_travel_time_s);
     satellite_state_at_time(navigation, transmit_tow_s, signal_travel_time_s)
+}
+
+pub fn position_satellite_state_from_observation(
+    navigation: &PositionBroadcastNavigation,
+    receive_tow_s: f64,
+    pseudorange_m: f64,
+    signal_timing: Option<ObsSignalTiming>,
+) -> Option<PositionSatelliteState> {
+    satellite_state_from_observation(navigation, receive_tow_s, pseudorange_m, signal_timing)
 }
 
 pub(crate) fn satellite_state_at_time(
