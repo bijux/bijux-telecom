@@ -8,6 +8,7 @@ use crate::codes::galileo_e1::{
     generate_galileo_e1c_code, sample_boc_code, GALILEO_E1_CODE_RATE_HZ,
 };
 use crate::codes::glonass_l1::{generate_glonass_l1_st_code, GLONASS_L1_ST_CODE_RATE_HZ};
+use crate::codes::gps_l2c_cm::{generate_gps_l2c_cm_code, GPS_L2C_CM_CODE_RATE_HZ};
 use crate::dsp::signal::{code_value_at_phase, sample_code, samples_per_code};
 use crate::error::SignalError;
 use bijux_gnss_core::api::{
@@ -26,6 +27,8 @@ pub enum LocalCodeModel {
     Bpsk { code: Vec<i8>, code_rate_hz: f64 },
     /// GPS L1 C/A primary code.
     GpsL1Ca { code: Vec<i8> },
+    /// GPS L2C CM primary code.
+    GpsL2cCm { code: Vec<i8> },
     /// Galileo E1 BOC(1,1) primary code.
     GalileoE1Boc11 { primary_code: Vec<i8> },
     /// BeiDou B1I primary code.
@@ -48,6 +51,16 @@ impl LocalCodeModel {
     /// Build a GPS L1 C/A local code model, falling back to an all-ones code when invalid.
     pub fn gps_l1_ca_or_ones(prn: u8) -> Self {
         Self::gps_l1_ca(prn).unwrap_or_else(|_| Self::GpsL1Ca { code: vec![1; 1023] })
+    }
+
+    /// Build a GPS L2C CM local code model from a PRN.
+    pub fn gps_l2c_cm(prn: u8) -> Result<Self, SignalError> {
+        Ok(Self::GpsL2cCm { code: generate_gps_l2c_cm_code(prn)? })
+    }
+
+    /// Build a GPS L2C CM local code model, falling back to an all-ones code when invalid.
+    pub fn gps_l2c_cm_or_ones(prn: u8) -> Self {
+        Self::gps_l2c_cm(prn).unwrap_or_else(|_| Self::GpsL2cCm { code: vec![1; 10_230] })
     }
 
     /// Build a Galileo E1 BOC(1,1) local code model from a PRN.
@@ -81,6 +94,7 @@ impl LocalCodeModel {
         match self {
             Self::Bpsk { code_rate_hz, .. } => *code_rate_hz,
             Self::GpsL1Ca { .. } => 1_023_000.0,
+            Self::GpsL2cCm { .. } => GPS_L2C_CM_CODE_RATE_HZ,
             Self::GalileoE1Boc11 { .. } => GALILEO_E1_CODE_RATE_HZ,
             Self::BeidouB1I { .. } => BEIDOU_B1I_CODE_RATE_HZ,
             Self::GlonassL1St { .. } => GLONASS_L1_ST_CODE_RATE_HZ,
@@ -92,6 +106,7 @@ impl LocalCodeModel {
         match self {
             Self::Bpsk { code, .. } => code.len(),
             Self::GpsL1Ca { code } => code.len(),
+            Self::GpsL2cCm { code } => code.len(),
             Self::GalileoE1Boc11 { primary_code } => primary_code.len(),
             Self::BeidouB1I { code } => code.len(),
             Self::GlonassL1St { code } => code.len(),
@@ -108,6 +123,7 @@ impl LocalCodeModel {
         match self {
             Self::Bpsk { code, .. }
             | Self::GpsL1Ca { code }
+            | Self::GpsL2cCm { code }
             | Self::BeidouB1I { code }
             | Self::GlonassL1St { code } => code_value_at_phase(code, chip_phase),
             Self::GalileoE1Boc11 { primary_code } => {
@@ -127,6 +143,7 @@ impl LocalCodeModel {
         match self {
             Self::Bpsk { code, .. }
             | Self::GpsL1Ca { code }
+            | Self::GpsL2cCm { code }
             | Self::BeidouB1I { code }
             | Self::GlonassL1St { code } => sample_code(
                 code,
@@ -154,6 +171,7 @@ pub fn default_local_code_model(
 ) -> Result<Option<LocalCodeModel>, SignalError> {
     match (sat.constellation, signal_band) {
         (Constellation::Gps, SignalBand::L1) => LocalCodeModel::gps_l1_ca(sat.prn).map(Some),
+        (Constellation::Gps, SignalBand::L2) => LocalCodeModel::gps_l2c_cm(sat.prn).map(Some),
         (Constellation::Galileo, SignalBand::E1) => {
             LocalCodeModel::galileo_e1_boc11(sat.prn).map(Some)
         }
@@ -560,6 +578,7 @@ mod tests {
         sample_galileo_e1_boc11_code, GalileoE1Channel, GALILEO_E1_CODE_RATE_HZ,
     };
     use crate::codes::glonass_l1::sample_glonass_l1_st_code;
+    use crate::codes::gps_l2c_cm::{sample_gps_l2c_cm_code, GPS_L2C_CM_CODE_RATE_HZ};
     use crate::error::SignalError;
     use bijux_gnss_core::api::{
         Constellation, GlonassFrequencyChannel, SatId, SignalBand, GPS_L1_CA_CARRIER_HZ,
@@ -612,6 +631,19 @@ mod tests {
         let expected = sample_glonass_l1_st_code(511_000.0, 0.0, 511).expect("GLONASS reference");
         assert_eq!(samples, expected);
         assert!(!model.supports_secondary_peak_multipath_screening());
+    }
+
+    #[test]
+    fn local_code_model_samples_gps_l2c_cm_period_consistently() {
+        let model = LocalCodeModel::gps_l2c_cm(38).expect("valid GPS L2C CM PRN");
+        let samples = model
+            .sample_period(GPS_L2C_CM_CODE_RATE_HZ, 0.0, 32)
+            .expect("GPS L2C CM local code period");
+        let expected =
+            sample_gps_l2c_cm_code(38, GPS_L2C_CM_CODE_RATE_HZ, 0.0, 32).expect("GPS L2C CM reference");
+
+        assert_eq!(samples, expected);
+        assert!(model.supports_secondary_peak_multipath_screening());
     }
 
     #[test]
@@ -709,6 +741,18 @@ mod tests {
             .expect("Galileo local code");
 
         assert_eq!(model.code_length(), 4092);
+        assert!(model.supports_secondary_peak_multipath_screening());
+    }
+
+    #[test]
+    fn default_local_code_model_builds_gps_l2c_tracking_code() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 38 };
+        let model = default_local_code_model(sat, SignalBand::L2)
+            .expect("local code result")
+            .expect("GPS L2C local code");
+
+        assert_eq!(model.code_length(), 10_230);
+        assert!((model.code_rate_hz() - GPS_L2C_CM_CODE_RATE_HZ).abs() < f64::EPSILON);
         assert!(model.supports_secondary_peak_multipath_screening());
     }
 }
