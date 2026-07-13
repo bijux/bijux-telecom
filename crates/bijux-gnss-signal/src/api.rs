@@ -58,9 +58,10 @@ pub use crate::dsp::signal::{
 /// Tracking helpers.
 pub use crate::dsp::tracking::{
     adaptive_bandwidth, carrier_frequency_error_hz_from_phase_delta, carrier_phase_offset_radians,
-    code_at, discriminators, estimate_cn0_dbhz, first_order_angular_loop_coefficients,
-    first_order_loop_coefficients, phase_lock_loop_coefficients, wrap_phase_cycles_signed,
-    wrap_phase_radians_positive, wrapped_phase_delta_cycles, FirstOrderLoopCoefficients,
+    code_at, correlate_early_prompt_late, discriminators, estimate_cn0_dbhz,
+    first_order_angular_loop_coefficients, first_order_loop_coefficients,
+    phase_lock_loop_coefficients, wrap_phase_cycles_signed, wrap_phase_radians_positive,
+    wrapped_phase_delta_cycles, EarlyPromptLateCorrelation, FirstOrderLoopCoefficients,
     PhaseLockLoopCoefficients,
 };
 /// Error types.

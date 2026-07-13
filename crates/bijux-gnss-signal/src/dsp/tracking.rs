@@ -21,6 +21,19 @@ pub struct PhaseLockLoopCoefficients {
     pub frequency_gain_hz_per_rad: f64,
 }
 
+/// Early/prompt/late correlator outputs over one coherent interval.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EarlyPromptLateCorrelation {
+    /// Early correlator accumulation.
+    pub early: Complex<f32>,
+    /// Prompt correlator accumulation.
+    pub prompt: Complex<f32>,
+    /// Late correlator accumulation.
+    pub late: Complex<f32>,
+    /// Energy of the early-minus-late noise weighting across the interval.
+    pub early_late_noise_weight_energy: f64,
+}
+
 /// Adaptive loop bandwidth scaling based on CN0.
 pub fn adaptive_bandwidth(dll_bw: f64, pll_bw: f64, fll_bw: f64, cn0_dbhz: f64) -> (f64, f64, f64) {
     if cn0_dbhz < 25.0 {
@@ -54,6 +67,70 @@ pub fn carrier_phase_offset_radians(carrier_phase_cycles: f64) -> f64 {
 /// Measure the shortest signed phase delta between two carrier phases in cycles.
 pub fn wrapped_phase_delta_cycles(next_phase_cycles: f64, previous_phase_cycles: f64) -> f64 {
     wrap_phase_cycles_signed(next_phase_cycles - previous_phase_cycles)
+}
+
+/// Correlate one coherent interval against early, prompt, and late replicas.
+pub fn correlate_early_prompt_late<F>(
+    samples: &[Complex<f32>],
+    sample_rate_hz: f64,
+    carrier_hz: f64,
+    carrier_phase_offset_radians: f64,
+    base_chip_phase: f64,
+    chips_per_sample: f64,
+    early_late_spacing_chips: f64,
+    code_value_at_phase: F,
+) -> EarlyPromptLateCorrelation
+where
+    F: Fn(f64) -> f32,
+{
+    if !sample_rate_hz.is_finite()
+        || sample_rate_hz <= 0.0
+        || !carrier_hz.is_finite()
+        || !carrier_phase_offset_radians.is_finite()
+        || !base_chip_phase.is_finite()
+        || !chips_per_sample.is_finite()
+        || !early_late_spacing_chips.is_finite()
+    {
+        return EarlyPromptLateCorrelation {
+            early: Complex::new(0.0, 0.0),
+            prompt: Complex::new(0.0, 0.0),
+            late: Complex::new(0.0, 0.0),
+            early_late_noise_weight_energy: 0.0,
+        };
+    }
+
+    let carrier_radians_per_sample = std::f64::consts::TAU * carrier_hz / sample_rate_hz;
+    let carrier_rotation_step = Complex::new(
+        carrier_radians_per_sample.cos() as f32,
+        -carrier_radians_per_sample.sin() as f32,
+    );
+    let mut carrier_rotation = Complex::new(
+        carrier_phase_offset_radians.cos() as f32,
+        -carrier_phase_offset_radians.sin() as f32,
+    );
+    let mut early = Complex::new(0.0f32, 0.0f32);
+    let mut prompt = Complex::new(0.0f32, 0.0f32);
+    let mut late = Complex::new(0.0f32, 0.0f32);
+    let mut early_late_noise_weight_energy = 0.0f64;
+
+    for (sample_index, sample) in samples.iter().enumerate() {
+        let mixed_sample = *sample * carrier_rotation;
+        let chip_phase = base_chip_phase + sample_index as f64 * chips_per_sample;
+        let early_code =
+            Complex::new(code_value_at_phase(chip_phase - early_late_spacing_chips), 0.0);
+        let prompt_code = Complex::new(code_value_at_phase(chip_phase), 0.0);
+        let late_code =
+            Complex::new(code_value_at_phase(chip_phase + early_late_spacing_chips), 0.0);
+        let noise_weight = early_code - late_code;
+        early_late_noise_weight_energy += noise_weight.norm_sqr() as f64;
+
+        early += mixed_sample * early_code;
+        prompt += mixed_sample * prompt_code;
+        late += mixed_sample * late_code;
+        carrier_rotation *= carrier_rotation_step;
+    }
+
+    EarlyPromptLateCorrelation { early, prompt, late, early_late_noise_weight_energy }
 }
 
 /// Convert a carrier phase delta over one coherent interval into residual frequency error.
@@ -202,8 +279,9 @@ pub fn code_at(code: &[i8], samples_per_chip: f64, sample_index: f64) -> Complex
 #[cfg(test)]
 mod tests {
     use super::{
-        carrier_frequency_error_hz_from_phase_delta, carrier_phase_offset_radians, discriminators,
-        estimate_cn0_dbhz, first_order_angular_loop_coefficients, first_order_loop_coefficients,
+        carrier_frequency_error_hz_from_phase_delta, carrier_phase_offset_radians,
+        correlate_early_prompt_late, discriminators, estimate_cn0_dbhz,
+        first_order_angular_loop_coefficients, first_order_loop_coefficients,
         phase_lock_loop_coefficients, wrap_phase_cycles_signed, wrap_phase_radians_positive,
         wrapped_phase_delta_cycles,
     };
@@ -306,6 +384,46 @@ mod tests {
     fn wrapped_phase_delta_cycles_chooses_shortest_signed_delta() {
         assert!((wrapped_phase_delta_cycles(0.05, 0.95) - 0.10).abs() < 1.0e-9);
         assert!((wrapped_phase_delta_cycles(0.95, 0.05) + 0.10).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn correlate_early_prompt_late_accumulates_constant_prompt_signal() {
+        let samples = vec![Complex::new(1.0, 0.0); 8];
+
+        let correlation =
+            correlate_early_prompt_late(&samples, 4_000.0, 0.0, 0.0, 0.0, 0.25, 0.5, |_| 1.0);
+
+        assert_eq!(correlation.early, Complex::new(8.0, 0.0));
+        assert_eq!(correlation.prompt, Complex::new(8.0, 0.0));
+        assert_eq!(correlation.late, Complex::new(8.0, 0.0));
+        assert_eq!(correlation.early_late_noise_weight_energy, 0.0);
+    }
+
+    #[test]
+    fn correlate_early_prompt_late_wipes_off_known_carrier_rotation() {
+        let sample_rate_hz = 4_000.0;
+        let carrier_hz = 250.0;
+        let samples = (0..8)
+            .map(|sample_index| {
+                let phase =
+                    std::f64::consts::TAU * carrier_hz * sample_index as f64 / sample_rate_hz;
+                Complex::new(phase.cos() as f32, phase.sin() as f32)
+            })
+            .collect::<Vec<_>>();
+
+        let correlation = correlate_early_prompt_late(
+            &samples,
+            sample_rate_hz,
+            carrier_hz,
+            0.0,
+            0.0,
+            0.25,
+            0.5,
+            |_| 1.0,
+        );
+
+        assert!((correlation.prompt.re - 8.0).abs() < 1.0e-5, "{correlation:?}");
+        assert!(correlation.prompt.im.abs() < 1.0e-5, "{correlation:?}");
     }
 
     #[test]
