@@ -57,8 +57,12 @@ pub use crate::dsp::quality::{
 };
 /// Signal processing utilities.
 pub use crate::dsp::signal::{
-    advance_code_phase_chips, advance_code_phase_seconds, code_value_at_phase, sample_ca_code,
-    sample_code, samples_per_code, wipeoff_carrier,
+    advance_code_phase_chips, advance_code_phase_seconds, code_phase_samples_at_sample_index,
+    code_value_at_phase, epoch_start_code_phase_samples_from_receiver_phase,
+    receiver_code_phase_samples_from_epoch_start_phase, receiver_search_code_phase_samples,
+    sample_ca_code, sample_code, samples_per_code, wipeoff_carrier, wrap_code_phase_samples,
+    wrapped_code_phase_delta_samples, wrapped_code_phase_error_samples,
+    wrapped_code_phase_error_samples_f64,
 };
 /// Tracking helpers.
 pub use crate::dsp::tracking::{
