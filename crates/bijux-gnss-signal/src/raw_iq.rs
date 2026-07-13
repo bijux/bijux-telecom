@@ -72,11 +72,11 @@ impl IqQuantization {
     pub const fn identifier(self) -> &'static str {
         match self {
             Self::Float32 => "float32",
-            Self::Bipolar1Bit => "bipolar_1bit",
-            Self::Signed2Bit => "signed_2bit",
-            Self::Signed4Bit => "signed_4bit",
-            Self::Signed8Bit => "signed_8bit",
-            Self::Signed16Bit => "signed_16bit",
+            Self::Bipolar1Bit => "bipolar1_bit",
+            Self::Signed2Bit => "signed2_bit",
+            Self::Signed4Bit => "signed4_bit",
+            Self::Signed8Bit => "signed8_bit",
+            Self::Signed16Bit => "signed16_bit",
         }
     }
 }
