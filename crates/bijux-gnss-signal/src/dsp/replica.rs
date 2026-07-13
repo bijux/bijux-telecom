@@ -27,6 +27,7 @@ use crate::codes::gps_l5::{
     GPS_L5_PRIMARY_CODE_CHIPS, GPS_L5_PRIMARY_CODE_RATE_HZ,
 };
 use crate::dsp::local_code::LocalCodeModel;
+use crate::dsp::sample_timing::code_sample_position_at_index;
 use crate::dsp::signal::{code_value_at_phase, samples_per_code};
 use crate::error::SignalError;
 use bijux_gnss_core::api::{
@@ -725,6 +726,37 @@ pub fn signal_amplitude_from_cn0_db_hz(
     ((cn0_linear * complex_noise_power.max(1e-12)) / sample_rate_hz.max(1e-12)).sqrt() as f32
 }
 
+/// Sample a modulated replica at one absolute sample index.
+pub fn sample_modulated_replica_at_sample_index(
+    model: &ReplicaCodeModel,
+    sample_rate_hz: f64,
+    initial_code_phase_chips: f64,
+    initial_carrier_phase_radians: f64,
+    initial_carrier_hz: f64,
+    carrier_rate_hz_per_s: f64,
+    sample_index: u64,
+    data_bit: i8,
+    amplitude: f32,
+) -> Result<Complex<f32>, SignalError> {
+    let position = code_sample_position_at_index(
+        initial_code_phase_chips,
+        sample_rate_hz,
+        model.code_rate_hz(),
+        model.code_length(),
+        sample_index,
+    )?;
+    let signal_value =
+        model.sample_value(position.chip_phase, position.primary_code_period_index, data_bit)?;
+    let phase = carrier_phase_radians_at_time(
+        initial_carrier_phase_radians,
+        initial_carrier_hz,
+        carrier_rate_hz_per_s,
+        position.elapsed_s,
+    ) as f32;
+    let carrier = Complex::new(phase.cos(), phase.sin());
+    Ok(carrier * signal_value * amplitude)
+}
+
 /// Sample a modulated replica at one elapsed time.
 pub fn sample_modulated_replica_at_time(
     model: &ReplicaCodeModel,
@@ -756,7 +788,8 @@ pub fn sample_modulated_replica_at_time(
 mod tests {
     use super::{
         carrier_hz_at_time, carrier_phase_radians_at_time, default_signal_carrier_hz,
-        default_signal_carrier_hz_for_band, sample_modulated_replica_at_time,
+        default_signal_carrier_hz_for_band, sample_modulated_replica_at_sample_index,
+        sample_modulated_replica_at_time,
         signal_amplitude_from_cn0_db_hz, AcquisitionSignalModel, ReplicaCodeModel,
         GPS_L2C_TIME_MULTIPLEXED_CODE_CHIPS, GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ,
         UNIT_VARIANCE_COMPLEX_NOISE_POWER,
@@ -811,6 +844,40 @@ mod tests {
         let sample = sample_modulated_replica_at_time(&model, 0.0, 0.0, 0.0, 0.0, 0.0, 1, 2.0)
             .expect("valid replica");
         assert!((sample.norm() - 2.0).abs() < 1.0e-6, "sample={sample:?}");
+    }
+
+    #[test]
+    fn sample_modulated_replica_at_sample_index_matches_elapsed_time_model() {
+        let model = ReplicaCodeModel::galileo_e1_cboc(11).expect("valid Galileo PRN");
+        let sample_rate_hz = 4_000_000.0;
+        let sample_index = 1_733;
+        let elapsed_s = sample_index as f64 / sample_rate_hz;
+
+        let by_time = sample_modulated_replica_at_time(
+            &model,
+            137.625,
+            0.125,
+            4_100.0,
+            2.5,
+            elapsed_s,
+            -1,
+            0.75,
+        )
+        .expect("elapsed-time replica");
+        let by_index = sample_modulated_replica_at_sample_index(
+            &model,
+            sample_rate_hz,
+            137.625,
+            0.125,
+            4_100.0,
+            2.5,
+            sample_index,
+            -1,
+            0.75,
+        )
+        .expect("sample-index replica");
+
+        assert_eq!(by_index, by_time);
     }
 
     #[test]
