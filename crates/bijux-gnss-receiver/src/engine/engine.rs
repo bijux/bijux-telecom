@@ -50,6 +50,23 @@ impl Receiver {
         )
     }
 
+    /// Run the receiver pipeline for an explicit satellite set using config-derived acquisition
+    /// search parameters.
+    pub fn run_with_satellites(
+        &self,
+        input: &mut dyn bijux_gnss_signal::api::SignalSource<
+            Error = crate::io::data::SampleSourceError,
+        >,
+        satellites: &[SatId],
+    ) -> Result<RunArtifacts, crate::engine::receiver_config::ReceiverError> {
+        let acquisition_requests = acquisition_requests_for_satellites(self.config(), satellites);
+        self.run_with_acquisition_requests_internal(
+            input,
+            &acquisition_requests,
+            "run_with_satellites",
+        )
+    }
+
     fn run_with_acquisition_requests_internal(
         &self,
         input: &mut dyn bijux_gnss_signal::api::SignalSource<
@@ -354,82 +371,86 @@ impl Receiver {
             ],
         });
         #[cfg(feature = "nav")]
-        let navigation = if let Some(capture_start_gps_time) = self.runtime().config.capture_start_gps_time
-        {
-            if let Some(gps_ephemerides) = receiver_navigation_ephemerides(input) {
-                runtime.trace.record(TraceRecord {
-                    name: "pipeline_stage",
-                    fields: vec![
-                        ("stage", "navigation".to_string()),
-                        ("status", "executing".to_string()),
-                        ("capture_week", capture_start_gps_time.week.to_string()),
-                        ("ephemeris_count", gps_ephemerides.len().to_string()),
-                    ],
-                });
-                let navigation_start = Instant::now();
-                let mut navigation =
-                    crate::pipeline::navigation::Navigation::new(self.config().clone(), self.runtime().clone());
-                let navigation_epochs = observation_output
-                    .epochs
-                    .iter()
-                    .filter_map(|epoch| navigation.solve_epoch(epoch, gps_ephemerides))
-                    .collect::<Vec<_>>();
-                let navigation_ms = navigation_start.elapsed().as_secs_f64() * 1000.0;
-                runtime.metrics.metric(Metric { name: "stage_navigation_ms", value: navigation_ms });
-                runtime.metrics.metric(Metric {
-                    name: "navigation_epoch_count",
-                    value: navigation_epochs.len() as f64,
-                });
-                runtime.trace.record(TraceRecord {
-                    name: "pipeline_stage_complete",
-                    fields: vec![
-                        ("stage", "navigation".to_string()),
-                        (
-                            "status",
-                            if navigation_epochs.is_empty() {
-                                "completed_empty".to_string()
-                            } else {
-                                "completed".to_string()
-                            },
-                        ),
-                        ("epochs", navigation_epochs.len().to_string()),
-                    ],
-                });
-                navigation_epochs
+        let navigation =
+            if let Some(capture_start_gps_time) = self.runtime().config.capture_start_gps_time {
+                if let Some(gps_ephemerides) = receiver_navigation_ephemerides(input) {
+                    runtime.trace.record(TraceRecord {
+                        name: "pipeline_stage",
+                        fields: vec![
+                            ("stage", "navigation".to_string()),
+                            ("status", "executing".to_string()),
+                            ("capture_week", capture_start_gps_time.week.to_string()),
+                            ("ephemeris_count", gps_ephemerides.len().to_string()),
+                        ],
+                    });
+                    let navigation_start = Instant::now();
+                    let mut navigation = crate::pipeline::navigation::Navigation::new(
+                        self.config().clone(),
+                        self.runtime().clone(),
+                    );
+                    let navigation_epochs = observation_output
+                        .epochs
+                        .iter()
+                        .filter_map(|epoch| navigation.solve_epoch(epoch, gps_ephemerides))
+                        .collect::<Vec<_>>();
+                    let navigation_ms = navigation_start.elapsed().as_secs_f64() * 1000.0;
+                    runtime
+                        .metrics
+                        .metric(Metric { name: "stage_navigation_ms", value: navigation_ms });
+                    runtime.metrics.metric(Metric {
+                        name: "navigation_epoch_count",
+                        value: navigation_epochs.len() as f64,
+                    });
+                    runtime.trace.record(TraceRecord {
+                        name: "pipeline_stage_complete",
+                        fields: vec![
+                            ("stage", "navigation".to_string()),
+                            (
+                                "status",
+                                if navigation_epochs.is_empty() {
+                                    "completed_empty".to_string()
+                                } else {
+                                    "completed".to_string()
+                                },
+                            ),
+                            ("epochs", navigation_epochs.len().to_string()),
+                        ],
+                    });
+                    navigation_epochs
+                } else {
+                    runtime.trace.record(TraceRecord {
+                        name: "pipeline_stage",
+                        fields: vec![
+                            ("stage", "navigation".to_string()),
+                            ("status", "missing_navigation_data".to_string()),
+                        ],
+                    });
+                    runtime.trace.record(TraceRecord {
+                        name: "pipeline_stage_complete",
+                        fields: vec![
+                            ("stage", "navigation".to_string()),
+                            ("status", "missing_navigation_data".to_string()),
+                        ],
+                    });
+                    Vec::new()
+                }
             } else {
                 runtime.trace.record(TraceRecord {
                     name: "pipeline_stage",
                     fields: vec![
                         ("stage", "navigation".to_string()),
-                        ("status", "missing_navigation_data".to_string()),
+                        ("status", "missing_capture_start_gps_time".to_string()),
                     ],
                 });
                 runtime.trace.record(TraceRecord {
                     name: "pipeline_stage_complete",
                     fields: vec![
                         ("stage", "navigation".to_string()),
-                        ("status", "missing_navigation_data".to_string()),
+                        ("status", "missing_capture_start_gps_time".to_string()),
                     ],
                 });
                 Vec::new()
-            }
-        } else {
-            runtime.trace.record(TraceRecord {
-                name: "pipeline_stage",
-                fields: vec![
-                    ("stage", "navigation".to_string()),
-                    ("status", "missing_capture_start_gps_time".to_string()),
-                ],
-            });
-            runtime.trace.record(TraceRecord {
-                name: "pipeline_stage_complete",
-                fields: vec![
-                    ("stage", "navigation".to_string()),
-                    ("status", "missing_capture_start_gps_time".to_string()),
-                ],
-            });
-            Vec::new()
-        };
+            };
         #[cfg(not(feature = "nav"))]
         let navigation = {
             runtime.trace.record(TraceRecord {
@@ -500,27 +521,20 @@ impl Receiver {
 
 #[cfg(feature = "nav")]
 fn receiver_navigation_ephemerides(
-    input: &dyn bijux_gnss_signal::api::SignalSource<
-        Error = crate::io::data::SampleSourceError,
-    >,
+    input: &dyn bijux_gnss_signal::api::SignalSource<Error = crate::io::data::SampleSourceError>,
 ) -> Option<&[bijux_gnss_nav::api::GpsEphemeris]> {
-    let source = input
-        .as_any()
-        .downcast_ref::<crate::sim::synthetic::SyntheticSignalSource>()?;
+    let source = input.as_any().downcast_ref::<crate::sim::synthetic::SyntheticSignalSource>()?;
     let gps_ephemerides = source.gps_ephemerides();
     (!gps_ephemerides.is_empty()).then_some(gps_ephemerides)
 }
 
 #[cfg(feature = "nav")]
 fn apply_source_signal_delay_alignments(
-    input: &dyn bijux_gnss_signal::api::SignalSource<
-        Error = crate::io::data::SampleSourceError,
-    >,
+    input: &dyn bijux_gnss_signal::api::SignalSource<Error = crate::io::data::SampleSourceError>,
     acquisitions: Vec<AcqResult>,
 ) -> Vec<AcqResult> {
-    let Some(source) = input
-        .as_any()
-        .downcast_ref::<crate::sim::synthetic::SyntheticSignalSource>()
+    let Some(source) =
+        input.as_any().downcast_ref::<crate::sim::synthetic::SyntheticSignalSource>()
     else {
         return acquisitions;
     };
@@ -539,9 +553,7 @@ fn apply_source_signal_delay_alignments(
 
 #[cfg(not(feature = "nav"))]
 fn apply_source_signal_delay_alignments(
-    _input: &dyn bijux_gnss_signal::api::SignalSource<
-        Error = crate::io::data::SampleSourceError,
-    >,
+    _input: &dyn bijux_gnss_signal::api::SignalSource<Error = crate::io::data::SampleSourceError>,
     acquisitions: Vec<AcqResult>,
 ) -> Vec<AcqResult> {
     acquisitions
@@ -610,14 +622,11 @@ fn default_acquisition_requests(
 
 fn default_acquisition_requests_for_source(
     config: &crate::engine::receiver_config::ReceiverPipelineConfig,
-    input: &dyn bijux_gnss_signal::api::SignalSource<
-        Error = crate::io::data::SampleSourceError,
-    >,
+    input: &dyn bijux_gnss_signal::api::SignalSource<Error = crate::io::data::SampleSourceError>,
 ) -> Vec<AcqRequest> {
     #[cfg(feature = "nav")]
-    if let Some(source) = input
-        .as_any()
-        .downcast_ref::<crate::sim::synthetic::SyntheticSignalSource>()
+    if let Some(source) =
+        input.as_any().downcast_ref::<crate::sim::synthetic::SyntheticSignalSource>()
     {
         let requests = source
             .synthetic_signals()
@@ -637,6 +646,24 @@ fn default_acquisition_requests_for_source(
     }
 
     default_acquisition_requests(config)
+}
+
+fn acquisition_requests_for_satellites(
+    config: &crate::engine::receiver_config::ReceiverPipelineConfig,
+    satellites: &[SatId],
+) -> Vec<AcqRequest> {
+    satellites
+        .iter()
+        .copied()
+        .map(|sat| AcqRequest {
+            sat,
+            glonass_frequency_channel: None,
+            doppler_search_hz: config.acquisition_doppler_search_hz,
+            doppler_step_hz: config.acquisition_doppler_step_hz.max(1),
+            coherent_ms: config.acquisition_integration_ms,
+            noncoherent: config.acquisition_noncoherent,
+        })
+        .collect()
 }
 
 fn filter_acquisition_requests(
@@ -873,9 +900,12 @@ impl ReceiverEngine for Receiver {
 
 #[cfg(test)]
 mod tests {
-    use super::{default_acquisition_requests, filter_acquisition_requests};
+    use super::{
+        acquisition_requests_for_satellites, default_acquisition_requests,
+        filter_acquisition_requests,
+    };
     use crate::engine::receiver_config::{ConstellationSelectionPolicy, ReceiverPipelineConfig};
-    use bijux_gnss_core::api::Constellation;
+    use bijux_gnss_core::api::{Constellation, SatId};
 
     #[test]
     fn default_acquisition_requests_honor_galileo_only_policy() {
@@ -966,5 +996,32 @@ mod tests {
 
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].sat.constellation, Constellation::Gps);
+    }
+
+    #[test]
+    fn explicit_satellite_requests_inherit_acquisition_search_settings() {
+        let config = ReceiverPipelineConfig {
+            acquisition_doppler_search_hz: 4_500,
+            acquisition_doppler_step_hz: 375,
+            acquisition_integration_ms: 4,
+            acquisition_noncoherent: 3,
+            ..ReceiverPipelineConfig::default()
+        };
+        let satellites = vec![
+            SatId { constellation: Constellation::Gps, prn: 3 },
+            SatId { constellation: Constellation::Galileo, prn: 11 },
+        ];
+
+        let requests = acquisition_requests_for_satellites(&config, &satellites);
+
+        assert_eq!(requests.len(), satellites.len());
+        for (request, sat) in requests.iter().zip(satellites) {
+            assert_eq!(request.sat, sat);
+            assert_eq!(request.glonass_frequency_channel, None);
+            assert_eq!(request.doppler_search_hz, 4_500);
+            assert_eq!(request.doppler_step_hz, 375);
+            assert_eq!(request.coherent_ms, 4);
+            assert_eq!(request.noncoherent, 3);
+        }
     }
 }

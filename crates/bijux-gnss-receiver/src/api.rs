@@ -124,6 +124,11 @@ pub use bijux_gnss_nav::api::{RtkFloatAmbiguityEstimate, RtkFloatBaselineSolutio
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use crate::sim::synthetic as sim;
 
+#[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
+pub use crate::covariance_realism::{
+    CovarianceCoverageClass, CovarianceCoverageRate, CovarianceRealismReport,
+};
 /// Validation report helpers.
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
@@ -135,11 +140,6 @@ pub use crate::validation_report::{
     NavIntegrityReport, NavResidualReport, PppReadinessReport, ProtectionLevelValidationReport,
     ReferencePositionErrorEpoch, TimeConsistencyReport, ValidationAssumptionReport,
     ValidationBudgets, ValidationErrorStats, ValidationReport, ValidationSciencePolicy,
-};
-#[cfg(feature = "nav")]
-#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
-pub use crate::covariance_realism::{
-    CovarianceCoverageClass, CovarianceCoverageRate, CovarianceRealismReport,
 };
 
 /// Artifacts produced by a receiver pipeline run.
@@ -171,6 +171,17 @@ pub struct RunArtifacts {
     pub support_matrix: Option<bijux_gnss_core::api::SupportMatrix>,
     /// Navigation solution epochs captured during the run.
     pub navigation: Vec<bijux_gnss_core::api::NavEpoch>,
+}
+
+impl RunArtifacts {
+    /// Reconstruct the observation-stage artifacts emitted during this run.
+    pub fn observation_artifacts(&self) -> ObservationPipelineArtifacts {
+        ObservationPipelineArtifacts {
+            epochs: self.observations.clone(),
+            residuals: self.observation_residuals.clone(),
+            measurement_quality: self.observation_measurement_quality.clone(),
+        }
+    }
 }
 
 /// Receiver engine boundary trait.
