@@ -2417,6 +2417,32 @@ mod tests {
             .any(|reason| reason == "precision_floor=fixed_solution_without_validated_support"));
     }
 
+    #[test]
+    fn validated_fixed_precision_keeps_supported_centimeter_reporting() {
+        let mut solution = sample_last_solution();
+        solution.status = SolutionStatus::Fixed;
+        solution.quality = SolutionStatus::Fixed.quality_flag();
+        solution.lifecycle_state = NavLifecycleState::Fixed;
+        solution.sigma_h_m = Some(Meters(0.025));
+        solution.sigma_v_m = Some(Meters(0.035));
+        solution.integrity_hpl_m = Some(0.20);
+        solution.integrity_vpl_m = Some(0.30);
+        solution.explain_reasons = vec![
+            "navigation_solution_usable".to_string(),
+            "ionosphere_correction=klobuchar_broadcast".to_string(),
+            "troposphere_correction=saastamoinen".to_string(),
+        ];
+
+        apply_precision_reporting_policy(&mut solution);
+
+        assert!((solution.sigma_h_m.as_ref().expect("horizontal sigma").0 - 0.025).abs() < 1.0e-12);
+        assert!((solution.sigma_v_m.as_ref().expect("vertical sigma").0 - 0.035).abs() < 1.0e-12);
+        assert!(!solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason.starts_with("precision_floor=")));
+    }
+
     fn make_eph(prn: u8, omega0: f64, m0: f64, t_ref_s: f64) -> GpsEphemeris {
         GpsEphemeris {
             sat: SatId { constellation: Constellation::Gps, prn },
