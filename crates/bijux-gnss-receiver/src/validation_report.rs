@@ -10,7 +10,7 @@ use crate::pipeline::observations::ObservationPipelineArtifacts;
 use crate::reference_validation::{
     check_solution_consistency, reference_ecef, SolutionConsistencyReport, ValidationReferenceEpoch,
 };
-use crate::rtk::status::{
+use bijux_gnss_nav::api::{
     apply_downgrade_policy, evaluate_prerequisites, support_status_matrix, AdvancedMaturity,
     AdvancedMode, AdvancedPrerequisites, AdvancedRefusalClass, AdvancedSolutionClaim,
     AdvancedSupportRow,

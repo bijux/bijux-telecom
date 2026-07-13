@@ -79,7 +79,7 @@ pub use crate::pipeline::{StepReport, StepStats};
 
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
-pub use crate::rtk::core::{
+pub use bijux_gnss_nav::api::{
     build_dd, build_dd_per_constellation, build_sd, choose_ref_sat,
     choose_ref_sat_per_constellation, dd_covariance, innovation_diagnostics, los_unit,
     solve_baseline_dd, solve_float_baseline_dd, AlignmentDiagnostic, AlignmentReport,
@@ -88,10 +88,8 @@ pub use crate::rtk::core::{
 };
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
-pub use crate::rtk::differencing::{double_difference, single_difference};
-#[cfg(feature = "nav")]
-#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
-pub use crate::rtk::metrics::{
+pub use bijux_gnss_nav::api::{
+    double_difference, single_difference,
     apply_fix_hold, baseline_from_ecef, dd_residual_metrics, enu_to_ecef,
     evaluate_rtk_fixed_baseline_guard, jitter_summary, sd_residual_metrics, solution_separation,
     BaselineSolution, JitterSummary, RtkBaselineQuality, RtkFixedBaselineGuardDecision,
@@ -99,7 +97,7 @@ pub use crate::rtk::metrics::{
 };
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
-pub use crate::rtk::status::{
+pub use bijux_gnss_nav::api::{
     apply_downgrade_policy, evaluate_prerequisites, evaluate_solution_evidence,
     support_status_matrix, AdvancedClaimDecision, AdvancedMaturity, AdvancedMode,
     AdvancedPrereqDecision, AdvancedPrerequisites, AdvancedRefusalClass,
