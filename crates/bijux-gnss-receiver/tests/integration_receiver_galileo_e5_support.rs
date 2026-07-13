@@ -6,7 +6,7 @@ use bijux_gnss_receiver::api::{
     Receiver, ReceiverPipelineConfig, ReceiverRuntime,
 };
 
-fn galileo_e5a_config() -> ReceiverPipelineConfig {
+fn galileo_e5_config() -> ReceiverPipelineConfig {
     ReceiverPipelineConfig {
         sampling_freq_hz: 10_230_000.0,
         intermediate_freq_hz: 0.0,
@@ -23,7 +23,7 @@ fn galileo_e5a_config() -> ReceiverPipelineConfig {
     }
 }
 
-fn galileo_e5a_scenario(sat: SatId) -> SyntheticScenario {
+fn galileo_e5_scenario(sat: SatId, signal_code: SignalCode, data_bit_flip: bool) -> SyntheticScenario {
     SyntheticScenario {
         sample_rate_hz: 10_230_000.0,
         intermediate_freq_hz: 0.0,
@@ -34,12 +34,12 @@ fn galileo_e5a_scenario(sat: SatId) -> SyntheticScenario {
             sat,
             glonass_frequency_channel: None,
             signal_band: bijux_gnss_core::api::SignalBand::E5,
-            signal_code: bijux_gnss_core::api::SignalCode::E5a,
+            signal_code,
             doppler_hz: 0.0,
             code_phase_chips: 2_048.375,
             carrier_phase_rad: 0.25,
             cn0_db_hz: 60.0,
-            data_bit_flip: false,
+            data_bit_flip,
         }],
         ephemerides: Vec::new(),
         id: "receiver-galileo-e5-support".to_string(),
@@ -48,9 +48,9 @@ fn galileo_e5a_scenario(sat: SatId) -> SyntheticScenario {
 
 #[test]
 fn support_matrix_lists_galileo_e5_with_explicit_tracking_scope() {
-    let config = galileo_e5a_config();
+    let config = galileo_e5_config();
     let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
-    let scenario = galileo_e5a_scenario(sat);
+    let scenario = galileo_e5_scenario(sat, SignalCode::E5a, false);
     let mut source = SyntheticSignalSource::new_signal_only(&config, &scenario);
     let receiver = Receiver::new(config, ReceiverRuntime::default());
 
@@ -103,6 +103,73 @@ fn support_matrix_lists_galileo_e5_with_explicit_tracking_scope() {
                 && row.code == SignalCode::E5a
         })
         .expect("Galileo E5 support row");
+
+    assert!(matches!(row.status, SupportStatus::Planned), "{row:?}");
+    assert!(matches!(row.stage_support.acquisition, SupportStatus::Supported), "{row:?}");
+    assert!(matches!(row.stage_support.tracking, SupportStatus::Supported), "{row:?}");
+    assert!(matches!(row.stage_support.data_decoding, SupportStatus::Planned), "{row:?}");
+    assert!(matches!(row.stage_support.observations, SupportStatus::Supported), "{row:?}");
+    assert!(matches!(row.stage_support.positioning, SupportStatus::Planned), "{row:?}");
+    assert!(row.requirements.is_empty(), "{row:?}");
+}
+
+#[test]
+fn receiver_runs_explicit_galileo_e5b_signal_through_observations() {
+    let config = galileo_e5_config();
+    let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+    let scenario = galileo_e5_scenario(sat, SignalCode::E5b, true);
+    let mut source = SyntheticSignalSource::new_signal_only(&config, &scenario);
+    let receiver = Receiver::new(config, ReceiverRuntime::default());
+
+    let artifacts = receiver.run(&mut source).expect("receiver run");
+    let acquisition = artifacts
+        .acquisitions
+        .iter()
+        .find(|result| result.sat == sat)
+        .expect("Galileo E5b acquisition result");
+    assert_eq!(acquisition.signal_band, SignalBand::E5, "{acquisition:?}");
+    assert_eq!(acquisition.signal_code, SignalCode::E5b, "{acquisition:?}");
+    assert!(
+        matches!(
+            acquisition.hypothesis,
+            bijux_gnss_core::api::AcqHypothesis::Accepted
+                | bijux_gnss_core::api::AcqHypothesis::Ambiguous
+        ),
+        "{acquisition:?}"
+    );
+
+    let tracking = artifacts
+        .tracking
+        .iter()
+        .find(|result| result.sat == sat)
+        .expect("Galileo E5b tracking result");
+    assert!(!tracking.epochs.is_empty(), "{tracking:?}");
+    assert!(
+        tracking.epochs.iter().all(|epoch| epoch.signal_code == SignalCode::E5b),
+        "{tracking:?}"
+    );
+    assert!(tracking.epochs.iter().any(|epoch| epoch.lock_state == "tracking"), "{tracking:?}");
+
+    let observation_epoch = artifacts.observations.first().expect("Galileo E5b observation epoch");
+    let observation = observation_epoch
+        .sats
+        .iter()
+        .find(|row| row.signal_id.sat == sat)
+        .expect("Galileo E5b observation row");
+    assert_eq!(observation.signal_id.band, SignalBand::E5, "{observation:?}");
+    assert_eq!(observation.signal_id.code, SignalCode::E5b, "{observation:?}");
+    assert_eq!(observation.metadata.signal.code, SignalCode::E5b, "{observation:?}");
+
+    let support_matrix = artifacts.support_matrix.expect("support matrix");
+    let row = support_matrix
+        .rows
+        .iter()
+        .find(|row| {
+            row.constellation == Constellation::Galileo
+                && row.band == SignalBand::E5
+                && row.code == SignalCode::E5b
+        })
+        .expect("Galileo E5b support row");
 
     assert!(matches!(row.status, SupportStatus::Planned), "{row:?}");
     assert!(matches!(row.stage_support.acquisition, SupportStatus::Supported), "{row:?}");
