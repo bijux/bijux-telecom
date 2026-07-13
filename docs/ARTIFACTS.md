@@ -230,6 +230,20 @@ The report includes:
 - `parity_pass_rate`
 - `ephemerides`
 
+### support matrix (SupportMatrixV1)
+Purpose: signal-stage capability reporting derived from the receiver pipeline owners.
+Files: surfaced through the receiver run artifacts bundle.
+Invariants:
+- each row is keyed by `constellation`, `band`, and `code`
+- `stage_support` reports `acquisition`, `tracking`, `data_decoding`, `observations`, and
+  `positioning` separately instead of collapsing every signal into one flat claim
+- `status` is an aggregate summary; it is only `Supported` when every stage is supported and the
+  row has no additional runtime requirements
+- `requirements` lists explicit prerequisites for otherwise executable paths, such as
+  `tracked_epoch_input` or `glonass_frequency_channel_available`
+- `reason` summarizes the supported, planned, and deprecated stages plus any listed requirements;
+  consumers should treat `stage_support` as the authoritative stage-by-stage contract
+
 ### pvt (NavSolutionEpochV1)
 Purpose: position/clock solutions.
 Files: `pvt.jsonl`
