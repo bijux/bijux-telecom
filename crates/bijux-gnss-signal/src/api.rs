@@ -11,7 +11,8 @@ pub use crate::catalog::{
     signal_meters_to_cycles, signal_registry, signal_spec_beidou_b1i, signal_spec_beidou_b2i,
     signal_spec_galileo_e1b, signal_spec_galileo_e1c, signal_spec_galileo_e5a,
     signal_spec_galileo_e5b, signal_spec_glonass_l1, signal_spec_gps_l1_ca, signal_spec_gps_l2_py,
-    signal_spec_gps_l2c, signal_spec_gps_l5, signal_wavelength_m,
+    signal_spec_gps_l2c, signal_spec_gps_l5, signal_spec_gps_l5_i, signal_spec_gps_l5_q,
+    signal_wavelength_m,
 };
 /// Spreading code generators.
 pub use crate::codes::beidou_b1i::{

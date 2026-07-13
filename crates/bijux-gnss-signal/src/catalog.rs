@@ -41,10 +41,24 @@ pub fn signal_spec_gps_l2_py() -> SignalSpec {
 }
 
 pub fn signal_spec_gps_l5() -> SignalSpec {
+    signal_spec_gps_l5_i()
+}
+
+pub fn signal_spec_gps_l5_i() -> SignalSpec {
     SignalSpec {
         constellation: Constellation::Gps,
         band: SignalBand::L5,
         code: SignalCode::L5I,
+        code_rate_hz: 10_230_000.0,
+        carrier_hz: GPS_L5_CARRIER_HZ,
+    }
+}
+
+pub fn signal_spec_gps_l5_q() -> SignalSpec {
+    SignalSpec {
+        constellation: Constellation::Gps,
+        band: SignalBand::L5,
+        code: SignalCode::L5Q,
         code_rate_hz: 10_230_000.0,
         carrier_hz: GPS_L5_CARRIER_HZ,
     }
@@ -217,7 +231,8 @@ pub fn signal_registry(
         (Constellation::Gps, SignalBand::L2, SignalCode::Py) => {
             (GPS_L2_PY_CARRIER_HZ, 10_230_000.0, None)
         }
-        (Constellation::Gps, SignalBand::L5, SignalCode::L5I) => {
+        (Constellation::Gps, SignalBand::L5, SignalCode::L5I)
+        | (Constellation::Gps, SignalBand::L5, SignalCode::L5Q) => {
             (GPS_L5_CARRIER_HZ, 10_230_000.0, Some(10_230))
         }
         (Constellation::Galileo, SignalBand::E1, SignalCode::E1B) => {
@@ -252,6 +267,7 @@ pub fn registered_signal_registry_entries() -> Vec<SignalRegistryEntry> {
         (Constellation::Gps, SignalBand::L2, SignalCode::L2C),
         (Constellation::Gps, SignalBand::L2, SignalCode::Py),
         (Constellation::Gps, SignalBand::L5, SignalCode::L5I),
+        (Constellation::Gps, SignalBand::L5, SignalCode::L5Q),
         (Constellation::Galileo, SignalBand::E1, SignalCode::E1B),
         (Constellation::Galileo, SignalBand::E1, SignalCode::E1C),
         (Constellation::Galileo, SignalBand::E5, SignalCode::E5a),
@@ -308,7 +324,8 @@ mod tests {
         registered_signal_registry_entries, signal_cycles_to_meters, signal_id_cycles_to_meters,
         signal_id_meters_to_cycles, signal_id_wavelength_m, signal_meters_to_cycles,
         signal_registry, signal_spec_beidou_b2i, signal_spec_galileo_e1b, signal_spec_glonass_l1,
-        signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l2c, signal_wavelength_m,
+        signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l2c, signal_spec_gps_l5_i,
+        signal_spec_gps_l5_q, signal_wavelength_m,
     };
     use bijux_gnss_core::api::{
         Constellation, Cycles, FreqHz, GlonassFrequencyChannel, GlonassL1FdmaSignal, GlonassSlot,
@@ -331,7 +348,7 @@ mod tests {
     #[test]
     fn registered_signal_registry_entries_match_lookup_inventory() {
         let entries = registered_signal_registry_entries();
-        assert_eq!(entries.len(), 11);
+        assert_eq!(entries.len(), 12);
 
         for entry in entries {
             let lookup =
@@ -352,6 +369,18 @@ mod tests {
             .expect("GPS L2 P(Y) registry entry");
         assert_eq!(registry.code_length, None);
         assert_eq!(registry.spec, signal);
+    }
+
+    #[test]
+    fn gps_l5_signal_specs_share_carrier_but_not_code_identity() {
+        let l5i = signal_spec_gps_l5_i();
+        let l5q = signal_spec_gps_l5_q();
+
+        assert_eq!(l5i.band, SignalBand::L5);
+        assert_eq!(l5q.band, SignalBand::L5);
+        assert_eq!(l5i.code, SignalCode::L5I);
+        assert_eq!(l5q.code, SignalCode::L5Q);
+        assert_eq!(l5i.carrier_hz, l5q.carrier_hz);
     }
 
     #[test]
