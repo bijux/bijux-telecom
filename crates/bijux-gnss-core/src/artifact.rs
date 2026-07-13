@@ -518,10 +518,7 @@ pub mod v1 {
                     self.horizontal_error_ellipse_major_axis_m,
                     self.horizontal_error_ellipse_minor_axis_m,
                 ];
-                if horizontal_error_ellipse
-                    .iter()
-                    .flatten()
-                    .any(|value| !value.0.is_finite())
+                if horizontal_error_ellipse.iter().flatten().any(|value| !value.0.is_finite())
                     || self
                         .horizontal_error_ellipse_azimuth_deg
                         .is_some_and(|value| !value.is_finite())
@@ -675,11 +672,28 @@ pub mod v1 {
                         "nav solution stability signature version is zero",
                     ));
                 }
-                if matches!(self.status, SolutionStatus::Invalid) && self.refusal_class.is_none() {
+                if matches!(
+                    self.status,
+                    SolutionStatus::Invalid
+                        | SolutionStatus::Unavailable
+                        | SolutionStatus::Refused
+                        | SolutionStatus::IntegrityFailed
+                        | SolutionStatus::Diverged
+                ) && self.refusal_class.is_none()
+                {
                     events.push(DiagnosticEvent::new(
                         DiagnosticSeverity::Warning,
                         "GNSS_NAV_REFUSAL_CLASS_MISSING",
-                        "invalid nav solution should carry a refusal_class",
+                        "non-usable nav solution should carry a refusal_class",
+                    ));
+                }
+                if !self.status.is_valid()
+                    && (self.integrity_hpl_m.is_some() || self.integrity_vpl_m.is_some())
+                {
+                    events.push(DiagnosticEvent::new(
+                        DiagnosticSeverity::Warning,
+                        "GNSS_NAV_INTEGRITY_CLAIMS_INVALID",
+                        "non-usable nav solution should not carry integrity protection levels",
                     ));
                 }
                 if !self.residuals.is_empty() && self.post_fit_residual_rms_m.is_none() {

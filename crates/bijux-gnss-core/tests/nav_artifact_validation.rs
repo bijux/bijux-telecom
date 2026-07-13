@@ -105,16 +105,29 @@ fn nav_artifact_validation_rejects_invalid_model_version_and_sat_counts() {
 }
 
 #[test]
-fn nav_artifact_validation_warns_on_missing_refusal_metadata() {
+fn nav_artifact_validation_warns_when_non_usable_status_lacks_refusal_metadata() {
     let mut solution = sample_solution();
-    solution.status = SolutionStatus::Invalid;
+    solution.status = SolutionStatus::Refused;
     solution.valid = false;
-    solution.quality = SolutionStatus::Invalid.quality_flag();
-    solution.lifecycle_state = NavLifecycleState::Invalid;
+    solution.quality = SolutionStatus::Refused.quality_flag();
+    solution.lifecycle_state = NavLifecycleState::Refused;
     solution.refusal_class = None;
     solution.explain_decision.clear();
     let diagnostics = solution.validate_payload();
     assert!(diagnostics.iter().any(|event| event.code == "GNSS_NAV_REFUSAL_CLASS_MISSING"));
+}
+
+#[test]
+fn nav_artifact_validation_warns_when_non_usable_status_claims_integrity_bounds() {
+    let mut solution = sample_solution();
+    solution.status = SolutionStatus::IntegrityFailed;
+    solution.valid = false;
+    solution.quality = SolutionStatus::IntegrityFailed.quality_flag();
+    solution.lifecycle_state = NavLifecycleState::IntegrityFailed;
+    solution.integrity_hpl_m = Some(6.0);
+    solution.integrity_vpl_m = Some(9.0);
+    let diagnostics = solution.validate_payload();
+    assert!(diagnostics.iter().any(|event| event.code == "GNSS_NAV_INTEGRITY_CLAIMS_INVALID"));
 }
 
 #[test]
@@ -163,9 +176,9 @@ fn nav_artifact_validation_warns_on_missing_horizontal_error_ellipse() {
     let mut solution = sample_solution();
     solution.horizontal_error_ellipse_major_axis_m = None;
     let diagnostics = solution.validate_payload();
-    assert!(
-        diagnostics.iter().any(|event| event.code == "GNSS_NAV_HORIZONTAL_ERROR_ELLIPSE_MISSING")
-    );
+    assert!(diagnostics
+        .iter()
+        .any(|event| event.code == "GNSS_NAV_HORIZONTAL_ERROR_ELLIPSE_MISSING"));
 }
 
 #[test]
@@ -200,7 +213,7 @@ fn nav_artifact_validation_rejects_non_finite_horizontal_error_ellipse() {
     let mut solution = sample_solution();
     solution.horizontal_error_ellipse_azimuth_deg = Some(f64::NAN);
     let diagnostics = solution.validate_payload();
-    assert!(
-        diagnostics.iter().any(|event| event.code == "GNSS_NAV_HORIZONTAL_ERROR_ELLIPSE_INVALID")
-    );
+    assert!(diagnostics
+        .iter()
+        .any(|event| event.code == "GNSS_NAV_HORIZONTAL_ERROR_ELLIPSE_INVALID"));
 }
