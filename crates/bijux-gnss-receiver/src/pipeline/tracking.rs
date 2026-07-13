@@ -2153,6 +2153,28 @@ fn classify_prompt_phase(
     }
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
+fn advance_code_phase_samples(
+    current_code_phase_samples: f64,
+    epoch_len_samples: usize,
+    tracked_code_rate_hz: f64,
+    nominal_code_rate_hz: f64,
+    dll_err: f32,
+    samples_per_chip: f64,
+    samples_per_code: usize,
+) -> f64 {
+    bijux_gnss_signal::api::advance_code_phase_samples(
+        current_code_phase_samples,
+        epoch_len_samples,
+        tracked_code_rate_hz,
+        nominal_code_rate_hz,
+        dll_err,
+        samples_per_chip,
+        samples_per_code,
+    )
+}
+
 fn apply_dll_code_loop(input: CodeLoopInput) -> CodeLoopUpdate {
     let update = signal_apply_code_loop(bijux_gnss_signal::api::CodeLoopInput {
         current_code_rate_hz: input.current_code_rate_hz,
@@ -2351,6 +2373,12 @@ fn update_prelock_cn0_refusal(
 
     let next_weak_cn0_epochs = weak_cn0_epochs.saturating_add(1);
     (next_weak_cn0_epochs, false, next_weak_cn0_epochs >= TRACKING_LOCK_REFUSAL_EPOCHS)
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+fn bounded_fll_pull_in_correction_hz(fll_err_hz: f64, fll_bw_hz: f64) -> f64 {
+    bijux_gnss_signal::api::bounded_fll_pull_in_correction_hz(fll_err_hz, fll_bw_hz)
 }
 
 fn reacquisition_min_cn0_dbhz(lock_reference_cn0_dbhz: f64) -> f64 {
