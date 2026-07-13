@@ -1,13 +1,17 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{Constellation, SamplesFrame, SatId, SignalBand};
+use bijux_gnss_core::api::{
+    AcqHypothesis, Constellation, ObservationStatus, SamplesFrame, SatId, SignalBand, SignalCode,
+};
 use bijux_gnss_receiver::api::{
     sim::{
-        build_iq16_capture_bundle, generate_l1_ca_multi, truth_guided_receiver_accuracy_budgets,
-        validate_truth_guided_acquisition_table, validate_truth_guided_tracking_table,
+        build_iq16_capture_bundle, expected_acquisition_code_phase_samples, generate_l1_ca_multi,
+        SyntheticSignalSource,
+        truth_guided_receiver_accuracy_budgets, validate_truth_guided_acquisition_table,
+        validate_truth_guided_tracking_table, wrapped_code_phase_error_samples_f64,
         SyntheticIqTruthBundle, SyntheticScenario, SyntheticSignalParams,
     },
-    ReceiverPipelineConfig,
+    Receiver, ReceiverPipelineConfig, ReceiverRuntime,
 };
 
 const GPS_L5_TRUTH_CODE_PHASE_TOLERANCE_SAMPLES: usize = 3;
@@ -137,5 +141,72 @@ fn gps_l5i_tracking_truth_table_matches_capture_truth() {
             .filter(|epoch| epoch.stable_tracking_epoch)
             .all(|epoch| epoch.pass),
         "{satellite:#?}"
+    );
+}
+
+#[test]
+fn receiver_run_emits_gps_l5i_artifacts_from_truth_capture() {
+    let fixture = gps_l5_truth_capture_fixture();
+    let sat = fixture.scenario.satellites[0].sat;
+    let expected_code_phase_samples = expected_acquisition_code_phase_samples(
+        &fixture.config,
+        &fixture.frame,
+        fixture.scenario.satellites[0].code_phase_chips,
+    ) as f64;
+    let mut source = SyntheticSignalSource::new_signal_only(&fixture.config, &fixture.scenario);
+    let receiver = Receiver::new(fixture.config.clone(), ReceiverRuntime::default());
+
+    let artifacts = receiver.run(&mut source).expect("receiver run");
+
+    let acquisition =
+        artifacts.acquisitions.iter().find(|result| result.sat == sat).expect("L5 acquisition");
+    assert_eq!(acquisition.signal_band, SignalBand::L5, "{acquisition:#?}");
+    assert!(
+        matches!(acquisition.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous),
+        "{acquisition:#?}"
+    );
+    assert!(
+        wrapped_code_phase_error_samples_f64(
+            acquisition.resolved_code_phase_samples(),
+            expected_code_phase_samples,
+            fixture.config.code_length,
+        ) <= GPS_L5_TRUTH_CODE_PHASE_TOLERANCE_SAMPLES as f64,
+        "{acquisition:#?}"
+    );
+
+    let tracking = artifacts.tracking.iter().find(|track| track.sat == sat).expect("L5 tracking");
+    assert!(
+        tracking
+            .epochs
+            .iter()
+            .any(|epoch| epoch.signal_band == SignalBand::L5 && epoch.lock_state == "tracking"),
+        "{tracking:#?}"
+    );
+    assert!(
+        tracking.epochs.iter().any(|epoch| epoch.signal_band == SignalBand::L5 && epoch.dll_lock),
+        "{tracking:#?}"
+    );
+
+    let observations = artifacts
+        .observations
+        .iter()
+        .flat_map(|epoch| epoch.sats.iter())
+        .filter(|observation| observation.signal_id.sat == sat)
+        .collect::<Vec<_>>();
+    assert!(!observations.is_empty(), "{:#?}", artifacts.observations);
+    assert!(
+        observations.iter().all(|observation| {
+            observation.signal_id.band == SignalBand::L5
+                && observation.signal_id.code == SignalCode::L5I
+                && observation.metadata.signal.band == SignalBand::L5
+                && observation.metadata.signal.code == SignalCode::L5I
+        }),
+        "{observations:#?}"
+    );
+    assert!(
+        observations
+            .iter()
+            .any(|observation| observation.observation_status == ObservationStatus::Accepted),
+        "{observations:#?}"
     );
 }
