@@ -274,11 +274,27 @@ mod tests {
             })
         );
         assert_eq!(
+            gps_l2c_cm_code_assignment(20),
+            Ok(&GpsL2cCmCodeAssignment {
+                prn: 20,
+                initial_state_octal: 0o120161274,
+                end_state_octal: 0o365636111,
+            })
+        );
+        assert_eq!(
             gps_l2c_cm_code_assignment(63),
             Ok(&GpsL2cCmCodeAssignment {
                 prn: 63,
                 initial_state_octal: 0o111460621,
                 end_state_octal: 0o602375063,
+            })
+        );
+        assert_eq!(
+            gps_l2c_cm_code_assignment(37),
+            Ok(&GpsL2cCmCodeAssignment {
+                prn: 37,
+                initial_state_octal: 0o435506112,
+                end_state_octal: 0o133501670,
             })
         );
         assert_eq!(
@@ -309,7 +325,7 @@ mod tests {
 
     #[test]
     fn gps_l2c_cm_generator_reaches_published_final_register_states() {
-        for prn in [1_u8, 38, 63, 159, 210] {
+        for prn in [1_u8, 20, 37, 38, 63, 159, 210] {
             let assignment = gps_l2c_cm_code_assignment(prn).expect("published PRN");
             let mut state = register_state_from_octal(assignment.initial_state_octal);
             for _ in 0..(GPS_L2C_CM_CODE_CHIPS - 1) {
