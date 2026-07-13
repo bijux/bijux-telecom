@@ -21,7 +21,8 @@ use bijux_gnss_signal::api::{
     apply_code_loop as signal_apply_code_loop, carrier_frequency_error_hz_from_phase_delta,
     carrier_phase_offset_radians,
     coherent_integration_seconds as signal_coherent_integration_seconds,
-    correlate_early_prompt_late, discriminators, dll_hold_threshold as signal_dll_hold_threshold,
+    correlate_early_prompt_late, default_local_code_model, discriminators,
+    dll_hold_threshold as signal_dll_hold_threshold,
     dll_lock_threshold as signal_dll_lock_threshold,
     epoch_start_code_phase_samples_from_receiver_phase, estimate_cn0_dbhz,
     estimate_tracking_uncertainty as signal_estimate_tracking_uncertainty,
@@ -288,48 +289,18 @@ impl TrackingSignalModel {
         signal_band: SignalBand,
         glonass_frequency_channel: Option<bijux_gnss_core::api::GlonassFrequencyChannel>,
     ) -> Self {
-        match (sat.constellation, signal_band) {
-            (Constellation::Gps, SignalBand::L1) => {
-                let local_code_model = LocalCodeModel::gps_l1_ca_or_ones(sat.prn);
-                Self {
-                    signal_band,
-                    glonass_frequency_channel: None,
-                    code_rate_hz: local_code_model.code_rate_hz(),
-                    code_length: local_code_model.code_length(),
-                    local_code_model,
-                }
-            }
-            (Constellation::Galileo, SignalBand::E1) => {
-                let local_code_model = LocalCodeModel::galileo_e1_boc11_or_ones(sat.prn);
-                Self {
-                    signal_band,
-                    glonass_frequency_channel: None,
-                    code_rate_hz: local_code_model.code_rate_hz(),
-                    code_length: local_code_model.code_length(),
-                    local_code_model,
-                }
-            }
-            (Constellation::Beidou, SignalBand::B1) => {
-                let local_code_model = LocalCodeModel::beidou_b1i_or_ones(sat.prn);
-                Self {
-                    signal_band,
-                    glonass_frequency_channel: None,
-                    code_rate_hz: local_code_model.code_rate_hz(),
-                    code_length: local_code_model.code_length(),
-                    local_code_model,
-                }
-            }
-            (Constellation::Glonass, SignalBand::L1) => {
-                let local_code_model = LocalCodeModel::glonass_l1_st();
-                Self {
-                    signal_band,
-                    glonass_frequency_channel,
-                    code_rate_hz: local_code_model.code_rate_hz(),
-                    code_length: local_code_model.code_length(),
-                    local_code_model,
-                }
-            }
-            _ => Self::fallback(config, sat, signal_band),
+        match default_local_code_model(sat, signal_band).ok().flatten() {
+            Some(local_code_model) => Self {
+                signal_band,
+                glonass_frequency_channel: ((sat.constellation == Constellation::Glonass)
+                    && (signal_band == SignalBand::L1))
+                    .then_some(glonass_frequency_channel)
+                    .flatten(),
+                code_rate_hz: local_code_model.code_rate_hz(),
+                code_length: local_code_model.code_length(),
+                local_code_model,
+            },
+            None => Self::fallback(config, sat, signal_band),
         }
     }
 
@@ -349,13 +320,7 @@ impl TrackingSignalModel {
     }
 
     fn supports_tracking(sat: SatId, signal_band: SignalBand) -> bool {
-        matches!(
-            (sat.constellation, signal_band),
-            (Constellation::Gps, SignalBand::L1)
-                | (Constellation::Galileo, SignalBand::E1)
-                | (Constellation::Beidou, SignalBand::B1)
-                | (Constellation::Glonass, SignalBand::L1)
-        )
+        default_local_code_model(sat, signal_band).ok().flatten().is_some()
     }
 
     fn samples_per_code(&self, sample_rate_hz: f64) -> usize {

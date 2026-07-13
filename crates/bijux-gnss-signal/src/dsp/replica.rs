@@ -147,6 +147,22 @@ impl LocalCodeModel {
     }
 }
 
+/// Build the default local code model for a supported satellite and signal band.
+pub fn default_local_code_model(
+    sat: SatId,
+    signal_band: SignalBand,
+) -> Result<Option<LocalCodeModel>, SignalError> {
+    match (sat.constellation, signal_band) {
+        (Constellation::Gps, SignalBand::L1) => LocalCodeModel::gps_l1_ca(sat.prn).map(Some),
+        (Constellation::Galileo, SignalBand::E1) => {
+            LocalCodeModel::galileo_e1_boc11(sat.prn).map(Some)
+        }
+        (Constellation::Beidou, SignalBand::B1) => LocalCodeModel::beidou_b1i(sat.prn).map(Some),
+        (Constellation::Glonass, SignalBand::L1) => Ok(Some(LocalCodeModel::glonass_l1_st())),
+        _ => Ok(None),
+    }
+}
+
 /// Signal-owned metadata and local-code sampling for supported acquisition search signals.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AcquisitionSignalModel {
@@ -535,9 +551,10 @@ pub fn sample_modulated_replica_at_time(
 #[cfg(test)]
 mod tests {
     use super::{
-        carrier_hz_at_time, carrier_phase_radians_at_time, default_signal_carrier_hz,
-        sample_modulated_replica_at_time, signal_amplitude_from_cn0_db_hz,
-        AcquisitionSignalModel, LocalCodeModel, ReplicaCodeModel, UNIT_VARIANCE_COMPLEX_NOISE_POWER,
+        carrier_hz_at_time, carrier_phase_radians_at_time, default_local_code_model,
+        default_signal_carrier_hz, sample_modulated_replica_at_time,
+        signal_amplitude_from_cn0_db_hz, AcquisitionSignalModel, LocalCodeModel, ReplicaCodeModel,
+        UNIT_VARIANCE_COMPLEX_NOISE_POWER,
     };
     use crate::codes::galileo_e1::{
         sample_galileo_e1_boc11_code, GalileoE1Channel, GALILEO_E1_CODE_RATE_HZ,
@@ -682,5 +699,16 @@ mod tests {
             .expect_err("GLONASS carrier lookup must reject missing channel");
 
         assert_eq!(error, SignalError::MissingGlonassFrequencyChannel(sat));
+    }
+
+    #[test]
+    fn default_local_code_model_builds_galileo_tracking_code() {
+        let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+        let model = default_local_code_model(sat, SignalBand::E1)
+            .expect("local code result")
+            .expect("Galileo local code");
+
+        assert_eq!(model.code_length(), 4092);
+        assert!(model.supports_secondary_peak_multipath_screening());
     }
 }
