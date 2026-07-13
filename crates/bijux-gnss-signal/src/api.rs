@@ -49,7 +49,8 @@ pub use crate::dsp::quality::{
 /// Replica-generation and synthetic modulation helpers.
 pub use crate::dsp::replica::{
     carrier_hz_at_time, carrier_phase_radians_at_time, sample_modulated_replica_at_time,
-    signal_amplitude_from_cn0_db_hz, ReplicaCodeModel, UNIT_VARIANCE_COMPLEX_NOISE_POWER,
+    signal_amplitude_from_cn0_db_hz, LocalCodeModel, ReplicaCodeModel,
+    UNIT_VARIANCE_COMPLEX_NOISE_POWER,
 };
 /// Signal processing utilities.
 pub use crate::dsp::signal::{

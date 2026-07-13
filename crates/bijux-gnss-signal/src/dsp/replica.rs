@@ -3,16 +3,133 @@
 use crate::codes::beidou_b1i::{generate_beidou_b1i_code, BEIDOU_B1I_CODE_RATE_HZ};
 use crate::codes::ca_code::{generate_ca_code, Prn};
 use crate::codes::galileo_e1::{
-    galileo_e1_cboc_value, generate_galileo_e1b_code, generate_galileo_e1c_code,
-    GALILEO_E1_CODE_RATE_HZ,
+    boc_subcarrier_value, galileo_e1_cboc_value, generate_galileo_e1b_code,
+    generate_galileo_e1c_code, sample_boc_code, GALILEO_E1_CODE_RATE_HZ,
 };
 use crate::codes::glonass_l1::{generate_glonass_l1_st_code, GLONASS_L1_ST_CODE_RATE_HZ};
-use crate::dsp::signal::code_value_at_phase;
+use crate::dsp::signal::{code_value_at_phase, sample_code};
 use crate::error::SignalError;
 use num_complex::Complex;
 
 /// Complex noise power implied by unit-variance I and Q components.
 pub const UNIT_VARIANCE_COMPLEX_NOISE_POWER: f64 = 2.0;
+
+/// Reusable local code models for acquisition and tracking replicas.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LocalCodeModel {
+    /// GPS L1 C/A primary code.
+    GpsL1Ca { code: Vec<i8> },
+    /// Galileo E1 BOC(1,1) primary code.
+    GalileoE1Boc11 { primary_code: Vec<i8> },
+    /// BeiDou B1I primary code.
+    BeidouB1I { code: Vec<i8> },
+    /// GLONASS L1 ST primary code.
+    GlonassL1St { code: Vec<i8> },
+}
+
+impl LocalCodeModel {
+    /// Build a GPS L1 C/A local code model from a PRN.
+    pub fn gps_l1_ca(prn: u8) -> Result<Self, SignalError> {
+        Ok(Self::GpsL1Ca { code: generate_ca_code(Prn(prn))? })
+    }
+
+    /// Build a GPS L1 C/A local code model, falling back to an all-ones code when invalid.
+    pub fn gps_l1_ca_or_ones(prn: u8) -> Self {
+        Self::gps_l1_ca(prn).unwrap_or_else(|_| Self::GpsL1Ca { code: vec![1; 1023] })
+    }
+
+    /// Build a Galileo E1 BOC(1,1) local code model from a PRN.
+    pub fn galileo_e1_boc11(prn: u8) -> Result<Self, SignalError> {
+        Ok(Self::GalileoE1Boc11 { primary_code: generate_galileo_e1b_code(prn)? })
+    }
+
+    /// Build a Galileo E1 BOC(1,1) local code model, falling back to an all-ones code when invalid.
+    pub fn galileo_e1_boc11_or_ones(prn: u8) -> Self {
+        Self::galileo_e1_boc11(prn)
+            .unwrap_or_else(|_| Self::GalileoE1Boc11 { primary_code: vec![1; 4092] })
+    }
+
+    /// Build a BeiDou B1I local code model from a PRN.
+    pub fn beidou_b1i(prn: u8) -> Result<Self, SignalError> {
+        Ok(Self::BeidouB1I { code: generate_beidou_b1i_code(prn)? })
+    }
+
+    /// Build a BeiDou B1I local code model, falling back to an all-ones code when invalid.
+    pub fn beidou_b1i_or_ones(prn: u8) -> Self {
+        Self::beidou_b1i(prn).unwrap_or_else(|_| Self::BeidouB1I { code: vec![1; 2046] })
+    }
+
+    /// Build a GLONASS L1 ST local code model.
+    pub fn glonass_l1_st() -> Self {
+        Self::GlonassL1St { code: generate_glonass_l1_st_code() }
+    }
+
+    /// Return the code rate in chips per second.
+    pub fn code_rate_hz(&self) -> f64 {
+        match self {
+            Self::GpsL1Ca { .. } => 1_023_000.0,
+            Self::GalileoE1Boc11 { .. } => GALILEO_E1_CODE_RATE_HZ,
+            Self::BeidouB1I { .. } => BEIDOU_B1I_CODE_RATE_HZ,
+            Self::GlonassL1St { .. } => GLONASS_L1_ST_CODE_RATE_HZ,
+        }
+    }
+
+    /// Return the primary code period length in chips.
+    pub fn code_length(&self) -> usize {
+        match self {
+            Self::GpsL1Ca { code } => code.len(),
+            Self::GalileoE1Boc11 { primary_code } => primary_code.len(),
+            Self::BeidouB1I { code } => code.len(),
+            Self::GlonassL1St { code } => code.len(),
+        }
+    }
+
+    /// Whether secondary-peak multipath screening is meaningful for this code family.
+    pub fn supports_secondary_peak_multipath_screening(&self) -> bool {
+        !matches!(self, Self::GlonassL1St { .. })
+    }
+
+    /// Sample the local code value at a chip phase.
+    pub fn sample_value(&self, chip_phase: f64) -> Result<f32, SignalError> {
+        match self {
+            Self::GpsL1Ca { code } | Self::BeidouB1I { code } | Self::GlonassL1St { code } => {
+                code_value_at_phase(code, chip_phase)
+            }
+            Self::GalileoE1Boc11 { primary_code } => {
+                Ok(code_value_at_phase(primary_code, chip_phase)?
+                    * boc_subcarrier_value(chip_phase, 1)?)
+            }
+        }
+    }
+
+    /// Sample one local code period at an arbitrary sample rate and chip phase.
+    pub fn sample_period(
+        &self,
+        sample_rate_hz: f64,
+        start_chip_phase: f64,
+        sample_count: usize,
+    ) -> Result<Vec<f32>, SignalError> {
+        match self {
+            Self::GpsL1Ca { code } | Self::BeidouB1I { code } | Self::GlonassL1St { code } => {
+                sample_code(
+                    code,
+                    sample_rate_hz,
+                    self.code_rate_hz(),
+                    start_chip_phase,
+                    sample_count,
+                )
+            }
+            Self::GalileoE1Boc11 { primary_code } => sample_boc_code(
+                primary_code,
+                sample_rate_hz,
+                self.code_rate_hz(),
+                start_chip_phase,
+                sample_count,
+                1,
+            ),
+        }
+    }
+}
 
 /// Reusable spreading-code models for synthesized signal replicas.
 #[derive(Debug, Clone, PartialEq)]
@@ -156,8 +273,13 @@ pub fn sample_modulated_replica_at_time(
 mod tests {
     use super::{
         carrier_hz_at_time, carrier_phase_radians_at_time, sample_modulated_replica_at_time,
-        signal_amplitude_from_cn0_db_hz, ReplicaCodeModel, UNIT_VARIANCE_COMPLEX_NOISE_POWER,
+        signal_amplitude_from_cn0_db_hz, LocalCodeModel, ReplicaCodeModel,
+        UNIT_VARIANCE_COMPLEX_NOISE_POWER,
     };
+    use crate::codes::galileo_e1::{
+        sample_galileo_e1_boc11_code, GalileoE1Channel, GALILEO_E1_CODE_RATE_HZ,
+    };
+    use crate::codes::glonass_l1::sample_glonass_l1_st_code;
 
     #[test]
     fn carrier_hz_at_time_applies_linear_rate() {
@@ -186,5 +308,38 @@ mod tests {
         let sample = sample_modulated_replica_at_time(&model, 0.0, 0.0, 0.0, 0.0, 0.0, 1, 2.0)
             .expect("valid replica");
         assert!((sample.norm() - 2.0).abs() < 1.0e-6, "sample={sample:?}");
+    }
+
+    #[test]
+    fn local_code_model_samples_glonass_period_consistently() {
+        let model = LocalCodeModel::glonass_l1_st();
+        let samples = model.sample_period(511_000.0, 0.0, 511).expect("GLONASS local code period");
+        let expected = sample_glonass_l1_st_code(511_000.0, 0.0, 511).expect("GLONASS reference");
+        assert_eq!(samples, expected);
+        assert!(!model.supports_secondary_peak_multipath_screening());
+    }
+
+    #[test]
+    fn local_code_model_samples_galileo_boc11_value() {
+        let model = LocalCodeModel::galileo_e1_boc11(11).expect("valid Galileo PRN");
+        let chip_phase = 12.25;
+        let sample = model.sample_value(chip_phase).expect("sample value");
+        let expected =
+            model.sample_period(GALILEO_E1_CODE_RATE_HZ, chip_phase, 1).expect("single sample")[0];
+        assert!(
+            (sample.abs() - expected.abs()).abs() < 1.0e-6,
+            "sample={sample} expected={expected}"
+        );
+    }
+
+    #[test]
+    fn local_code_model_samples_galileo_period_consistently() {
+        let model = LocalCodeModel::galileo_e1_boc11(11).expect("valid Galileo PRN");
+        let samples = model.sample_period(4_092_000.0, 0.0, 16).expect("Galileo local code period");
+        let expected =
+            sample_galileo_e1_boc11_code(11, GalileoE1Channel::E1B, 4_092_000.0, 0.0, 16)
+                .expect("Galileo reference");
+        assert_eq!(samples, expected);
+        assert!(model.supports_secondary_peak_multipath_screening());
     }
 }
