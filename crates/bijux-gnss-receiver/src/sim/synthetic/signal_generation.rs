@@ -413,71 +413,20 @@ struct SatState {
     sample_rate_hz: f64,
 }
 
-#[derive(Debug, Clone)]
-enum SyntheticSignalModel {
-    GpsL1Ca { code: Vec<i8> },
-    GalileoE1 { e1b_code: Vec<i8>, e1c_code: Vec<i8> },
-    BeidouB1I { code: Vec<i8> },
-    GlonassL1 { code: Vec<i8> },
-}
+type SyntheticSignalModel = bijux_gnss_signal::api::ReplicaCodeModel;
 
-impl SyntheticSignalModel {
-    fn for_satellite(params: SyntheticSignalParams) -> Self {
-        match params.sat.constellation {
-            Constellation::Galileo => Self::GalileoE1 {
-                e1b_code: bijux_gnss_signal::api::generate_galileo_e1b_code(params.sat.prn)
-                    .unwrap_or_else(|_| vec![1; 4092]),
-                e1c_code: bijux_gnss_signal::api::generate_galileo_e1c_code(params.sat.prn)
-                    .unwrap_or_else(|_| vec![1; 4092]),
-            },
-            Constellation::Beidou => Self::BeidouB1I {
-                code: bijux_gnss_signal::api::generate_beidou_b1i_code(params.sat.prn)
-                    .unwrap_or_else(|_| vec![1; 2046]),
-            },
-            Constellation::Glonass => Self::GlonassL1 {
-                code: bijux_gnss_signal::api::generate_glonass_l1_st_code(),
-            },
-            _ => Self::GpsL1Ca {
-                code: generate_ca_code(Prn(params.sat.prn)).unwrap_or_else(|_| vec![1; 1023]),
-            },
-        }
-    }
-
-    fn code_rate_hz(&self) -> f64 {
-        match self {
-            Self::GpsL1Ca { .. } => 1_023_000.0,
-            Self::GalileoE1 { .. } => bijux_gnss_signal::api::GALILEO_E1_CODE_RATE_HZ,
-            Self::BeidouB1I { .. } => bijux_gnss_signal::api::BEIDOU_B1I_CODE_RATE_HZ,
-            Self::GlonassL1 { .. } => bijux_gnss_signal::api::GLONASS_L1_ST_CODE_RATE_HZ,
-        }
-    }
-
-    fn code_length(&self) -> usize {
-        match self {
-            Self::GpsL1Ca { code } => code.len(),
-            Self::GalileoE1 { e1b_code, .. } => e1b_code.len(),
-            Self::BeidouB1I { code } => code.len(),
-            Self::GlonassL1 { code } => code.len(),
-        }
-    }
-
-    fn sample_value(&self, chip_phase: f64, primary_code_period_index: usize, data_bit: i8) -> f32 {
-        match self {
-            Self::GpsL1Ca { code } => code_value_at_phase(code, chip_phase).unwrap_or(1.0) * data_bit as f32,
-            Self::GalileoE1 { e1b_code, e1c_code } => {
-                bijux_gnss_signal::api::galileo_e1_cboc_value(
-                    e1b_code,
-                    e1c_code,
-                    chip_phase,
-                    primary_code_period_index,
-                    data_bit,
-                )
-                .unwrap_or(1.0)
-            }
-            Self::BeidouB1I { code } | Self::GlonassL1 { code } => {
-                code_value_at_phase(code, chip_phase).unwrap_or(1.0) * data_bit as f32
-            }
-        }
+fn synthetic_replica_model(params: SyntheticSignalParams) -> SyntheticSignalModel {
+    match params.sat.constellation {
+        Constellation::Galileo => SyntheticSignalModel::galileo_e1_cboc(params.sat.prn)
+            .unwrap_or_else(|_| SyntheticSignalModel::GalileoE1Cboc {
+                e1b_code: vec![1; 4092],
+                e1c_code: vec![1; 4092],
+            }),
+        Constellation::Beidou => SyntheticSignalModel::beidou_b1i(params.sat.prn)
+            .unwrap_or_else(|_| SyntheticSignalModel::BeidouB1I { code: vec![1; 2046] }),
+        Constellation::Glonass => SyntheticSignalModel::glonass_l1_st(),
+        _ => SyntheticSignalModel::gps_l1_ca(params.sat.prn)
+            .unwrap_or_else(|_| SyntheticSignalModel::GpsL1Ca { code: vec![1; 1023] }),
     }
 }
 
@@ -501,6 +450,7 @@ impl SatState {
         receiver_clock_frequency_bias_hz: f64,
         doppler_rate_hz_per_s: f64,
     ) -> Self {
+        let signal_model = synthetic_replica_model(params);
         Self {
             doppler_hz: params.doppler_hz,
             doppler_rate_hz_per_s,
@@ -509,7 +459,7 @@ impl SatState {
             carrier_phase_rad: params.carrier_phase_rad,
             cn0_db_hz: params.cn0_db_hz,
             data_bit_flip: params.data_bit_flip,
-            signal_model: SyntheticSignalModel::for_satellite(params),
+            signal_model,
             if_hz: synthetic_intermediate_frequency_hz(
                 config.intermediate_freq_hz,
                 params.sat,
@@ -519,45 +469,51 @@ impl SatState {
         }
     }
 
+    fn initial_carrier_hz(&self) -> f64 {
+        self.if_hz + self.doppler_hz + self.receiver_clock_frequency_bias_hz
+    }
+
+    #[cfg(test)]
     fn carrier_hz_at(&self, t: f64) -> f64 {
-        self.if_hz
-            + self.doppler_hz
-            + self.receiver_clock_frequency_bias_hz
-            + self.doppler_rate_hz_per_s * t
+        bijux_gnss_signal::api::carrier_hz_at_time(
+            self.initial_carrier_hz(),
+            self.doppler_rate_hz_per_s,
+            t,
+        )
     }
 
     fn carrier_phase_rad_at(&self, t: f64) -> f64 {
-        let initial_carrier_hz = self.carrier_hz_at(0.0);
-        self.carrier_phase_rad
-            + std::f64::consts::TAU
-                * (initial_carrier_hz * t + 0.5 * self.doppler_rate_hz_per_s * t * t)
+        bijux_gnss_signal::api::carrier_phase_radians_at_time(
+            self.carrier_phase_rad,
+            self.initial_carrier_hz(),
+            self.doppler_rate_hz_per_s,
+            t,
+        )
     }
 
     fn sample_at(&self, t: f64) -> Complex<f32> {
-        let total_chip_phase = self.code_phase_chips + (self.signal_model.code_rate_hz() * t);
-        let code_length = self.signal_model.code_length() as f64;
-        let primary_code_period_index = if total_chip_phase <= 0.0 {
-            0
-        } else {
-            (total_chip_phase / code_length).floor() as usize
-        };
-        let code_phase = total_chip_phase.rem_euclid(code_length);
         let data_bit = nav_bit_sign_at_time_s(self.data_bit_flip, t);
-        let signal_value =
-            self.signal_model.sample_value(code_phase, primary_code_period_index, data_bit);
-
-        let phase = self.carrier_phase_rad_at(t) as f32;
-        let carrier = Complex::new(phase.cos(), phase.sin());
-
         let amplitude = signal_amplitude_from_cn0(self.cn0_db_hz, self.sample_rate_hz);
-
-        carrier * (signal_value * amplitude)
+        bijux_gnss_signal::api::sample_modulated_replica_at_time(
+            &self.signal_model,
+            self.code_phase_chips,
+            self.carrier_phase_rad,
+            self.initial_carrier_hz(),
+            self.doppler_rate_hz_per_s,
+            t,
+            data_bit,
+            amplitude,
+        )
+        .unwrap_or_else(|_| Complex::new(0.0, 0.0))
     }
 }
 
 fn signal_amplitude_from_cn0(cn0_db_hz: f32, sample_rate_hz: f64) -> f32 {
-    let cn0_linear = 10.0_f64.powf(cn0_db_hz as f64 / 10.0).max(1e-12);
-    ((cn0_linear * SYNTHETIC_COMPLEX_NOISE_POWER) / sample_rate_hz).sqrt() as f32
+    bijux_gnss_signal::api::signal_amplitude_from_cn0_db_hz(
+        cn0_db_hz,
+        sample_rate_hz,
+        SYNTHETIC_COMPLEX_NOISE_POWER,
+    )
 }
 
 fn regenerate_isolated_scaled_satellite_signal_only_frame(
