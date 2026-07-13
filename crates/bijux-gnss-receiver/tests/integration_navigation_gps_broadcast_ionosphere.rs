@@ -4,9 +4,9 @@ mod support;
 use bijux_gnss_core::api::{ecef_to_geodetic, Llh, ObsEpoch, Seconds};
 use bijux_gnss_nav::api::{
     elevation_azimuth_deg, sat_state_gps_l1ca_from_observation, GpsBroadcastNavigationData,
-    KlobucharCoefficients, KlobucharModel, IonosphereModel,
+    IonosphereModel, KlobucharCoefficients, KlobucharModel,
 };
-use bijux_gnss_receiver::api::{Navigation, ReceiverRuntime};
+use bijux_gnss_receiver::api::{Navigation, Receiver, ReceiverRuntime};
 
 use support::navigation_pipeline::{clean_synthetic_navigation_run, position_error_3d_m};
 
@@ -66,19 +66,14 @@ fn bias_epoch_with_klobuchar(
 #[test]
 fn receiver_navigation_uses_gps_broadcast_ionosphere_payload_to_recover_position() {
     let run = clean_synthetic_navigation_run();
-    let observation = run
-        .observations
-        .first()
-        .cloned()
-        .expect("clean synthetic observation epoch");
+    let observation = run.observations.first().cloned().expect("clean synthetic observation epoch");
     let navigation = GpsBroadcastNavigationData {
         ephemerides: run.profile.ephemerides.clone(),
         klobuchar: Some(sample_klobuchar_coefficients()),
     };
     let ionosphere_biased_observation =
         bias_epoch_with_klobuchar(&observation, run.profile.truth_ecef_m, &navigation);
-    let mut corrected_navigation =
-        Navigation::new(run.config.clone(), ReceiverRuntime::default());
+    let mut corrected_navigation = Navigation::new(run.config.clone(), ReceiverRuntime::default());
     let mut uncorrected_navigation =
         Navigation::new(run.config.clone(), ReceiverRuntime::default());
 
@@ -107,4 +102,42 @@ fn receiver_navigation_uses_gps_broadcast_ionosphere_payload_to_recover_position
         uncorrected_error_m > corrected_error_m,
         "expected payload correction to reduce position error: corrected={corrected_error_m} uncorrected={uncorrected_error_m}"
     );
+}
+
+#[test]
+fn receiver_navigation_batch_runner_matches_per_epoch_gps_broadcast_navigation() {
+    let run = clean_synthetic_navigation_run();
+    let navigation = GpsBroadcastNavigationData {
+        ephemerides: run.profile.ephemerides.clone(),
+        klobuchar: Some(sample_klobuchar_coefficients()),
+    };
+    let ionosphere_biased_observations = run
+        .observations
+        .iter()
+        .map(|observation| bias_epoch_with_klobuchar(observation, run.profile.truth_ecef_m, &navigation))
+        .collect::<Vec<_>>();
+    let receiver = Receiver::new(run.config.clone(), ReceiverRuntime::default());
+    let batch_solutions = receiver.solve_observation_epochs_with_gps_broadcast_navigation(
+        &ionosphere_biased_observations,
+        &navigation,
+    );
+    let mut per_epoch_navigation = Navigation::new(run.config.clone(), ReceiverRuntime::default());
+    let per_epoch_solutions = ionosphere_biased_observations
+        .iter()
+        .filter_map(|observation| {
+            per_epoch_navigation.solve_epoch_with_gps_broadcast_navigation(observation, &navigation)
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(batch_solutions.len(), per_epoch_solutions.len());
+    for (batch, per_epoch) in batch_solutions.iter().zip(per_epoch_solutions.iter()) {
+        assert_eq!(batch.epoch.index, per_epoch.epoch.index);
+        assert_eq!(batch.status, per_epoch.status);
+        assert_eq!(batch.explain_decision, per_epoch.explain_decision);
+        assert_eq!(batch.explain_reasons, per_epoch.explain_reasons);
+        assert_eq!(batch.used_sat_count, per_epoch.used_sat_count);
+        assert!((batch.ecef_x_m.0 - per_epoch.ecef_x_m.0).abs() < 1.0e-9);
+        assert!((batch.ecef_y_m.0 - per_epoch.ecef_y_m.0).abs() < 1.0e-9);
+        assert!((batch.ecef_z_m.0 - per_epoch.ecef_z_m.0).abs() < 1.0e-9);
+    }
 }
