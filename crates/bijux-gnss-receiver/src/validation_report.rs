@@ -782,6 +782,9 @@ fn build_validation_report_with_observation_context(
             consistency_warnings.push(format!("NEES out of expected range: {nees:.3}"));
         }
     }
+    if let Some(summary) = innovation_consistency_anomaly_summary(solutions) {
+        consistency_warnings.push(summary);
+    }
     consistency_warnings.extend(covariance_realism.warnings.iter().cloned());
     let lock_ratio_by_epoch = lock_ratio_by_epoch(tracks);
     let integrity = classify_integrity(solutions, &lock_ratio_by_epoch, &science_policy);
@@ -835,6 +838,46 @@ fn build_validation_report_with_observation_context(
         diagnostic_partition,
         assumptions,
     })
+}
+
+fn innovation_consistency_anomaly_summary(solutions: &[NavSolutionEpoch]) -> Option<String> {
+    let mut anomaly_count = 0usize;
+    let mut peak_anomaly: Option<(f64, f64, f64, usize)> = None;
+
+    for event in solutions.iter().flat_map(|solution| solution.health.iter()) {
+        let bijux_gnss_core::api::NavHealthEvent::InnovationConsistencyAnomaly {
+            normalized_innovation_squared,
+            lower_bound,
+            upper_bound,
+            measurement_dimension,
+        } = event
+        else {
+            continue;
+        };
+        anomaly_count += 1;
+        let candidate = (
+            *normalized_innovation_squared,
+            *lower_bound,
+            *upper_bound,
+            *measurement_dimension,
+        );
+        peak_anomaly = Some(match peak_anomaly {
+            Some(current) if current.0 >= candidate.0 => current,
+            _ => candidate,
+        });
+    }
+
+    peak_anomaly.map(
+        |(normalized_innovation_squared, lower_bound, upper_bound, measurement_dimension)| {
+            format!(
+                "innovation consistency anomalies: {anomaly_count} event(s), peak NIS {:.3} outside [{:.3}, {:.3}] for measurement dimension {}",
+                normalized_innovation_squared,
+                lower_bound,
+                upper_bound,
+                measurement_dimension
+            )
+        },
+    )
 }
 
 fn protection_level_validation_report(
@@ -1607,6 +1650,47 @@ mod tests {
         assert_eq!(report.protection_levels.vertical_contained_epoch_count, 1);
         assert!(report.protection_levels.horizontal_breach_epochs.is_empty());
         assert!(report.protection_levels.vertical_breach_epochs.is_empty());
+    }
+
+    #[test]
+    fn validation_report_surfaces_innovation_consistency_anomalies() {
+        let mut solution = fixture_solution(9, 1.0, 0.5, 4);
+        solution.health.push(bijux_gnss_core::api::NavHealthEvent::InnovationConsistencyAnomaly {
+            normalized_innovation_squared: 8.0,
+            lower_bound: 0.1,
+            upper_bound: 6.6,
+            measurement_dimension: 1,
+        });
+        let reference = ValidationReferenceEpoch {
+            epoch_idx: 9,
+            t_rx_s: Some(9.0),
+            latitude_deg: 0.0,
+            longitude_deg: 0.0,
+            altitude_m: 0.0,
+            ecef_x_m: Some(0.0),
+            ecef_y_m: Some(0.0),
+            ecef_z_m: Some(0.0),
+            vel_x_mps: None,
+            vel_y_mps: None,
+            vel_z_mps: None,
+        };
+
+        let report = build_validation_report(
+            &[],
+            &[],
+            &[solution],
+            &[reference],
+            1.0,
+            false,
+            Vec::new(),
+            ValidationSciencePolicy::default(),
+        )
+        .expect("validation report");
+
+        assert!(report.consistency_warnings.iter().any(|warning| {
+            warning.contains("innovation consistency anomalies")
+                && warning.contains("peak NIS 8.000")
+        }));
     }
 
     #[test]

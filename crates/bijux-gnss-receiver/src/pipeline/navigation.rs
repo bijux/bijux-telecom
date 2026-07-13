@@ -4369,6 +4369,17 @@ mod tests {
     }
 
     #[test]
+    fn innovation_inconsistency_divergence_counts_as_residual_cause() {
+        let mut solution = sample_last_solution();
+        solution.status = SolutionStatus::Diverged;
+        solution.explain_reasons.push("filter_divergence=innovation_inconsistency".to_string());
+
+        let causes = refusal_causes(&solution, None);
+
+        assert!(causes.contains(&RefusalCause::Residual));
+    }
+
+    #[test]
     fn scientific_policy_can_refuse_optimistic_solution_claims() {
         let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
         let t_rx_s = 100_100.0;
