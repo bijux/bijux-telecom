@@ -36,6 +36,22 @@ pub enum AdvancedSolutionClaim {
     FallbackNav,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionStatus {
+    Executed,
+    NotReady,
+    Unsupported,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionArtifact<T> {
+    pub epoch_idx: u64,
+    pub status: ExecutionStatus,
+    pub reason: Option<String>,
+    pub value: Option<T>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdvancedSupportRow {
     pub mode: AdvancedMode,
@@ -262,9 +278,55 @@ impl ArtifactPayloadValidate for AdvancedSolutionArtifact {
     }
 }
 
+impl<T> ArtifactPayloadValidate for ExecutionArtifact<T>
+where
+    T: ArtifactPayloadValidate,
+{
+    fn validate_payload(&self) -> Vec<DiagnosticEvent> {
+        let mut events = Vec::new();
+        match (self.status, self.value.as_ref()) {
+            (ExecutionStatus::Executed, None) => events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "EXECUTION_ARTIFACT_VALUE_MISSING",
+                "executed artifact is missing its payload value",
+            )),
+            (ExecutionStatus::NotReady | ExecutionStatus::Unsupported, Some(_)) => {
+                events.push(DiagnosticEvent::new(
+                    DiagnosticSeverity::Error,
+                    "EXECUTION_ARTIFACT_VALUE_UNEXPECTED",
+                    "non-executed artifact must not include a payload value",
+                ));
+            }
+            _ => {}
+        }
+        if matches!(self.status, ExecutionStatus::NotReady | ExecutionStatus::Unsupported)
+            && self.reason.as_deref().unwrap_or("").is_empty()
+        {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Warning,
+                "EXECUTION_ARTIFACT_REASON_MISSING",
+                "non-executed artifact is missing its refusal reason",
+            ));
+        }
+        if let Some(value) = self.value.as_ref() {
+            events.extend(value.validate_payload());
+        }
+        events
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Debug, Clone)]
+    struct DummyPayload;
+
+    impl ArtifactPayloadValidate for DummyPayload {
+        fn validate_payload(&self) -> Vec<DiagnosticEvent> {
+            Vec::new()
+        }
+    }
 
     fn ready_prereq() -> AdvancedPrerequisites {
         AdvancedPrerequisites {
@@ -339,5 +401,31 @@ mod tests {
         assert!(!downgraded);
         assert_eq!(reason.as_deref(), Some("incomplete_corrections"));
         assert_eq!(claim, AdvancedSolutionClaim::NotReady);
+    }
+
+    #[test]
+    fn execution_artifact_requires_value_for_executed_status() {
+        let artifact = ExecutionArtifact::<DummyPayload> {
+            epoch_idx: 3,
+            status: ExecutionStatus::Executed,
+            reason: None,
+            value: None,
+        };
+
+        let events = artifact.validate_payload();
+        assert!(events.iter().any(|event| event.code == "EXECUTION_ARTIFACT_VALUE_MISSING"));
+    }
+
+    #[test]
+    fn execution_artifact_rejects_payload_for_not_ready_status() {
+        let artifact = ExecutionArtifact {
+            epoch_idx: 5,
+            status: ExecutionStatus::NotReady,
+            reason: Some("missing_baseline".to_string()),
+            value: Some(DummyPayload),
+        };
+
+        let events = artifact.validate_payload();
+        assert!(events.iter().any(|event| event.code == "EXECUTION_ARTIFACT_VALUE_UNEXPECTED"));
     }
 }

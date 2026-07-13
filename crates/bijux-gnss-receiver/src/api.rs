@@ -98,7 +98,7 @@ pub use crate::rtk::status::{
     AdvancedMode, AdvancedPrereqDecision, AdvancedPrerequisites, AdvancedRefusalClass,
     AdvancedSolutionArtifact, AdvancedSolutionClaim, AdvancedSolutionProvenance,
     AdvancedSupportMatrix, AdvancedSupportRow, AmbiguityStateArtifact, CorrectionInputArtifact,
-    ADVANCED_SUPPORT_MATRIX_VERSION,
+    ExecutionArtifact, ExecutionStatus, ADVANCED_SUPPORT_MATRIX_VERSION,
 };
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
