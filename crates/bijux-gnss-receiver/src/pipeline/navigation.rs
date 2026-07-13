@@ -1244,7 +1244,8 @@ impl Navigation {
         solution.assumptions = Some(assumptions);
         solution.source_observation_epoch_id = source_observation_epoch_id;
         solution.artifact_id = nav_artifact_id;
-        solution.explain_decision = decision.explain_decision;
+        solution.explain_decision =
+            normalized_status_decision_label(solution.status, decision.explain_decision);
         solution.explain_reasons = decision.explain_reasons;
         solution.refusal_class = decision.refusal_class;
         if matches!(decision.status, SolutionStatus::Diverged | SolutionStatus::IntegrityFailed) {
@@ -1397,6 +1398,7 @@ fn invalid_solution_epoch(
     assumptions: NavAssumptions,
 ) -> NavSolutionEpoch {
     let status = refusal_class.map(refusal_status).unwrap_or(SolutionStatus::Unavailable);
+    let explain_decision = normalized_status_decision_label(status, explain_decision);
     let mut solution = NavSolutionEpoch {
         epoch: bijux_gnss_core::api::Epoch { index: obs.epoch_idx },
         t_rx_s: obs.t_rx_s,
@@ -1540,7 +1542,8 @@ fn policy_refusal_epoch(
     solution.validity = SolutionValidity::Invalid;
     solution.quality = solution.status.quality_flag();
     solution.refusal_class = Some(refusal_class);
-    solution.explain_decision = "refused".to_string();
+    solution.explain_decision =
+        normalized_status_decision_label(solution.status, "refused".to_string());
     solution.explain_reasons = explain_reasons;
     solution
 }
@@ -1721,6 +1724,17 @@ fn status_needs_default_decision_reason(
         || (status.decision_label() != "accepted"
             && explain_reasons.len() == 1
             && explain_reasons[0] == "navigation_solution_usable")
+}
+
+fn normalized_status_decision_label(
+    status: SolutionStatus,
+    explain_decision: String,
+) -> String {
+    if matches!(explain_decision.as_str(), "accepted" | "refused") {
+        status.decision_label().to_string()
+    } else {
+        explain_decision
+    }
 }
 
 fn apply_precision_reporting_policy(solution: &mut NavSolutionEpoch) {
@@ -2533,6 +2547,17 @@ mod tests {
         assert_has_reason(solution, expected_cause);
     }
 
+    fn assert_has_reason_prefix(solution: &NavSolutionEpoch, expected_prefix: &str) {
+        assert!(
+            solution
+                .explain_reasons
+                .iter()
+                .any(|reason| reason.starts_with(expected_prefix)),
+            "missing explain reason prefix `{expected_prefix}` in {:?}",
+            solution.explain_reasons
+        );
+    }
+
     #[test]
     fn code_only_precision_reporting_scales_covariance_and_sigmas() {
         let mut solution = sample_last_solution();
@@ -2729,6 +2754,76 @@ mod tests {
             degraded_decision.explain_reasons,
             vec!["quality_or_geometry_degraded".to_string()]
         );
+    }
+
+    #[test]
+    fn generic_refusal_decisions_are_normalized_to_precise_status_words() {
+        assert_eq!(
+            normalized_status_decision_label(SolutionStatus::Unavailable, "refused".to_string()),
+            "unavailable"
+        );
+        assert_eq!(
+            normalized_status_decision_label(SolutionStatus::Degraded, "refused".to_string()),
+            "degraded"
+        );
+        assert_eq!(
+            normalized_status_decision_label(
+                SolutionStatus::IntegrityFailed,
+                "refused".to_string()
+            ),
+            "integrity_failed"
+        );
+        assert_eq!(
+            normalized_status_decision_label(
+                SolutionStatus::CodeOnly,
+                "specific_navigation_decision".to_string()
+            ),
+            "specific_navigation_decision"
+        );
+    }
+
+    #[test]
+    fn refusal_constructors_emit_precise_status_labels() {
+        let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
+        let t_rx_s = 101_000.0;
+        let ephs = vec![
+            make_eph(1, 0.0, 0.0, t_rx_s),
+            make_eph(2, 0.8, 0.9, t_rx_s),
+            make_eph(3, 1.6, 1.8, t_rx_s),
+            make_eph(4, 2.4, 2.7, t_rx_s),
+        ];
+        let obs = make_obs_epoch_for_solution(91, t_rx_s, truth, &ephs);
+        let unavailable = invalid_solution_epoch(
+            &obs,
+            "obs-epoch-0000000091-seed".to_string(),
+            "nav-epoch-0000000091-seed".to_string(),
+            Some(NavRefusalClass::InvalidEphemeris),
+            "refused".to_string(),
+            vec!["ephemeris_covered_count=0".to_string()],
+            nav_assumptions(0),
+        );
+        assert_eq!(unavailable.status, SolutionStatus::Unavailable);
+        assert_eq!(unavailable.explain_decision, "unavailable");
+
+        let mut nav = Navigation::new(
+            ReceiverPipelineConfig::default(),
+            crate::engine::runtime::ReceiverRuntime::default(),
+        );
+        nav.last_solution = Some(sample_last_solution());
+        let degraded = nav.reuse_previous_solution(
+            &obs,
+            "obs-epoch-0000000091-seed".to_string(),
+            "nav-epoch-0000000091-seed".to_string(),
+            NavDecision {
+                status: SolutionStatus::Refused,
+                refusal_class: Some(NavRefusalClass::InsufficientGeometry),
+                explain_decision: "refused".to_string(),
+                explain_reasons: vec!["pdop_above_threshold:4.200>3.000".to_string()],
+            },
+            nav_assumptions(4),
+        );
+        assert_eq!(degraded.status, SolutionStatus::Degraded);
+        assert_eq!(degraded.explain_decision, "degraded");
     }
 
     fn make_eph(prn: u8, omega0: f64, m0: f64, t_ref_s: f64) -> GpsEphemeris {
@@ -4464,10 +4559,8 @@ mod tests {
         assert_eq!(solution.horizontal_error_ellipse_azimuth_deg, None);
         assert_eq!(solution.sigma_h_m, None);
         assert_eq!(solution.sigma_v_m, None);
-        assert!(solution
-            .explain_reasons
-            .iter()
-            .any(|reason| reason.starts_with("pdop_above_threshold:")));
+        assert_has_reason_prefix(&solution, "pdop_above_threshold:");
+        assert_has_refusal_cause(&solution, "refusal_cause=dop");
     }
 
     #[test]
@@ -4497,9 +4590,7 @@ mod tests {
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::InsufficientGeometry));
         assert_eq!(solution.status, SolutionStatus::Refused);
         assert_eq!(solution.ecef_x_m.0, 0.0);
-        assert!(solution
-            .explain_reasons
-            .iter()
-            .any(|reason| reason.starts_with("gdop_above_threshold:")));
+        assert_has_reason_prefix(&solution, "gdop_above_threshold:");
+        assert_has_refusal_cause(&solution, "refusal_cause=dop");
     }
 }
