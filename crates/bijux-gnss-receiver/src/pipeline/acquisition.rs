@@ -4,11 +4,10 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use bijux_gnss_core::api::{
-    acq_result_stability_key, default_acquisition_signal, signal_spec_glonass_l1,
-    stable_acq_result_keys, AcqAssumptions, AcqCodePhaseRefinement, AcqDopplerRefinement,
-    AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqRequest, AcqResult,
-    AcqThresholdProvenance, AcqUncertainty, Hertz, ReceiverSampleTrace, SamplesFrame, SatId,
-    SignalBand, SignalCode, GPS_L1_CA_CARRIER_HZ,
+    acq_result_stability_key, stable_acq_result_keys, AcqAssumptions, AcqCodePhaseRefinement,
+    AcqDopplerRefinement, AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis,
+    AcqRequest, AcqResult, AcqThresholdProvenance, AcqUncertainty, Hertz, ReceiverSampleTrace,
+    SamplesFrame, SatId, SignalBand, SignalCode, GPS_L1_CA_CARRIER_HZ,
 };
 use num_complex::Complex;
 use rustfft::{num_traits::Zero, FftPlanner};
@@ -19,11 +18,10 @@ use crate::engine::receiver_config::{
 };
 use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
 use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
-use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::{
-    generate_ca_code, measure_iq_front_end_metrics, sample_beidou_b1i_code, sample_code,
-    sample_galileo_e1_boc11_code, sample_glonass_l1_st_code, wipeoff_carrier,
-    GalileoE1Channel, Prn,
+    default_acquisition_signal, generate_ca_code, measure_iq_front_end_metrics, samples_per_code,
+    sample_beidou_b1i_code, sample_code, sample_galileo_e1_boc11_code,
+    sample_glonass_l1_st_code, signal_spec_glonass_l1, wipeoff_carrier, GalileoE1Channel, Prn,
 };
 
 /// Acquisition engine (coarse search).

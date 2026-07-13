@@ -2,7 +2,8 @@
 
 use std::collections::HashMap;
 
-use bijux_gnss_core::api::{signal_cycles_to_meters, ObsEpoch, ObservationStatus, SigId};
+use bijux_gnss_core::api::{ObsEpoch, ObservationStatus, SigId};
+use bijux_gnss_signal::api::signal_cycles_to_meters;
 use serde::{Deserialize, Serialize};
 
 use crate::pipeline::observations::{

@@ -1457,10 +1457,11 @@ mod tests {
     use super::*;
     use crate::api::TrackingResult;
     use bijux_gnss_core::api::{
-        signal_registry, Chips, Constellation, Cycles, Epoch, Hertz, LockFlags, Meters,
-        NavAssumptions, ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus,
-        ReceiverRole, ReceiverSampleTrace, SatId, SigId, SignalCode, TrackEpoch,
+        Chips, Constellation, Cycles, Epoch, Hertz, LockFlags, Meters, NavAssumptions,
+        ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus, ReceiverRole,
+        ReceiverSampleTrace, SatId, SigId, SignalCode, TrackEpoch,
     };
+    use bijux_gnss_signal::api::{carrier_wavelength_m, signal_registry};
     use serde::Deserialize;
 
     #[test]
@@ -2519,8 +2520,7 @@ mod tests {
         phase_m: f64,
     ) -> ObsSatellite {
         let mut satellite = dual_frequency_satellite(band, code, true, true);
-        let wavelength_m =
-            bijux_gnss_core::api::carrier_wavelength_m(satellite.metadata.signal.carrier_hz).0;
+        let wavelength_m = carrier_wavelength_m(satellite.metadata.signal.carrier_hz).0;
         satellite.carrier_phase_cycles = Cycles(phase_m / wavelength_m);
         satellite
     }

@@ -671,7 +671,7 @@ fn synthetic_constellation_carrier_hz(
         Constellation::Galileo => bijux_gnss_core::api::GALILEO_E1_CARRIER_HZ.value(),
         Constellation::Gps => bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value(),
         Constellation::Beidou => bijux_gnss_core::api::BEIDOU_B1_CARRIER_HZ.value(),
-        Constellation::Glonass => bijux_gnss_core::api::glonass_l1_carrier_hz(
+        Constellation::Glonass => bijux_gnss_signal::api::glonass_l1_carrier_hz(
             glonass_frequency_channel.unwrap_or_else(|| {
                 panic!(
                     "GLONASS synthetic signal for {} requires glonass_frequency_channel",

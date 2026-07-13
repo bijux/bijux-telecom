@@ -1,9 +1,9 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    elevation_azimuth_deg, obs_epoch_stability_key, signal_wavelength_m, Constellation, Epoch, Llh,
-    Meters, NavHealthEvent, NavLifecycleState, NavRefusalClass, NavSolutionEpoch,
-    NavUncertaintyClass, ObsEpoch, ObsSatellite, Seconds, SolutionStatus, SolutionValidity,
+    elevation_azimuth_deg, obs_epoch_stability_key, Constellation, Epoch, Llh, Meters,
+    NavHealthEvent, NavLifecycleState, NavRefusalClass, NavSolutionEpoch, NavUncertaintyClass,
+    ObsEpoch, ObsSatellite, Seconds, SolutionStatus, SolutionValidity,
     NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
 };
 use bijux_gnss_nav::api::{
@@ -15,6 +15,7 @@ use bijux_gnss_nav::api::{
     Matrix, NavClockModel, PhaseBiasProvider, PositionDops, PositionObservation, PositionSolver,
     PositionWeightingModel, ProcessNoiseConfig, PseudorangeMeasurement, WeightingConfig, ZeroBiases,
 };
+use bijux_gnss_signal::api::signal_wavelength_m;
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
 

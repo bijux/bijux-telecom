@@ -1,9 +1,12 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    default_acquisition_signal, Constellation, SatId, SignalBand, SignalCode, SignalRegistryEntry,
-    SignalStageSupport, SignalSupportRow, SupportStatus,
+    Constellation, SatId, SignalBand, SignalCode, SignalRegistryEntry, SignalStageSupport,
+    SignalSupportRow, SupportStatus,
 };
+use bijux_gnss_signal::api::default_acquisition_signal;
+#[cfg(test)]
+use bijux_gnss_signal::api::signal_registry;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SignalExecutionSupport {
@@ -283,7 +286,7 @@ mod tests {
     #[test]
     fn signal_support_row_marks_glonass_channel_dependency_as_requirement() {
         let row = signal_support_row(
-            &bijux_gnss_core::api::signal_registry(
+            &signal_registry(
                 Constellation::Glonass,
                 SignalBand::L1,
                 SignalCode::Unknown,

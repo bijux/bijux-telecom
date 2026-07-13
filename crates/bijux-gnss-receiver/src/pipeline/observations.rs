@@ -9,9 +9,6 @@
 //! TODO(ref-grade): add literature citations for CN0 weighting and multipath heuristics.
 
 use bijux_gnss_core::api::{
-    signal_cycles_to_meters, signal_registry, signal_spec_beidou_b1i, signal_spec_beidou_b2i,
-    signal_spec_galileo_e1b, signal_spec_galileo_e5a, signal_spec_glonass_l1,
-    signal_spec_gps_l1_ca, signal_spec_gps_l2c, signal_spec_gps_l5, signal_wavelength_m,
     Constellation, ConventionsConfig, Cycles, DiagnosticEvent, DiagnosticSeverity, GpsTime,
     LockFlags, Meters, ObsDecisionArtifact, ObsEpoch, ObsEpochManifest, ObsMetadata, ObsSatellite,
     ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ObservationSupportClass,
@@ -24,11 +21,18 @@ use crate::pipeline::doppler::doppler_hz_from_carrier_hz;
 use crate::pipeline::hatch::HatchFilterState;
 use crate::pipeline::tracking::TrackingResult;
 use crate::pipeline::{StepReport, StepStats};
-use bijux_gnss_signal::api::samples_per_code;
+use bijux_gnss_signal::api::{
+    samples_per_code, signal_cycles_to_meters, signal_registry, signal_spec_beidou_b1i,
+    signal_spec_beidou_b2i, signal_spec_galileo_e1b, signal_spec_galileo_e5a,
+    signal_spec_glonass_l1, signal_spec_gps_l1_ca, signal_spec_gps_l2c, signal_spec_gps_l5,
+    signal_wavelength_m,
+};
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
-use bijux_gnss_core::api::{glonass_l1_carrier_hz, GlonassFrequencyChannel, Hertz, SatId};
+use bijux_gnss_core::api::{GlonassFrequencyChannel, Hertz, SatId};
+#[cfg(test)]
+use bijux_gnss_signal::api::glonass_l1_carrier_hz;
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 const OBS_WEAK_CN0_DBHZ: f64 = 25.0;

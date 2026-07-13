@@ -6,8 +6,8 @@ use num_complex::Complex;
 use serde::{Deserialize, Serialize};
 
 use bijux_gnss_core::api::{
-    signal_registry, AcqHypothesis, AcqTrackingSeed, AcqUncertainty, Chips, Constellation, Cycles,
-    Hertz, ReceiverSampleTrace, SampleClock, SampleTime, SamplesFrame, SatId, Seconds, SignalBand,
+    AcqHypothesis, AcqTrackingSeed, AcqUncertainty, Chips, Constellation, Cycles, Hertz,
+    ReceiverSampleTrace, SampleClock, SampleTime, SamplesFrame, SatId, Seconds, SignalBand,
     SignalCode, SignalDelayAlignment, TrackEpoch, TrackTransition, TrackingAssumptions,
     TrackingUncertainty,
 };
@@ -20,7 +20,7 @@ use bijux_gnss_signal::api::{
     adaptive_bandwidth, boc_subcarrier_value, carrier_frequency_error_hz_from_phase_delta,
     discriminators, estimate_cn0_dbhz, first_order_angular_loop_coefficients,
     first_order_loop_coefficients, generate_beidou_b1i_code, generate_galileo_e1b_code,
-    generate_glonass_l1_st_code, phase_lock_loop_coefficients,
+    generate_glonass_l1_st_code, phase_lock_loop_coefficients, signal_registry,
 };
 use bijux_gnss_signal::api::{generate_ca_code, Prn};
 
