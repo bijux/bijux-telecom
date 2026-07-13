@@ -8,35 +8,33 @@ use serde::{Deserialize, Serialize};
 use bijux_gnss_core::api::{
     AcqHypothesis, AcqTrackingSeed, AcqUncertainty, Chips, Constellation, Cycles, Hertz,
     ReceiverSampleTrace, SampleClock, SampleTime, SamplesFrame, SatId, Seconds, SignalBand,
-    SignalCode, SignalDelayAlignment, TrackEpoch, TrackTransition, TrackingAssumptions,
-    TrackingUncertainty,
+    SignalDelayAlignment, TrackEpoch, TrackTransition, TrackingAssumptions, TrackingUncertainty,
 };
 
 use crate::engine::receiver_config::{ReceiverPipelineConfig, TrackingParams};
 use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
 use bijux_gnss_core::api::Sample;
+use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::{
     adaptive_bandwidth, anti_false_lock_detected as signal_anti_false_lock_detected,
     apply_carrier_tracking_loop as signal_apply_carrier_tracking_loop,
-    apply_code_loop as signal_apply_code_loop, boc_subcarrier_value,
-    carrier_frequency_error_hz_from_phase_delta, carrier_phase_offset_radians, code_value_at_phase,
+    apply_code_loop as signal_apply_code_loop, carrier_frequency_error_hz_from_phase_delta,
+    carrier_phase_offset_radians,
     coherent_integration_seconds as signal_coherent_integration_seconds,
     correlate_early_prompt_late, discriminators, dll_hold_threshold as signal_dll_hold_threshold,
     dll_lock_threshold as signal_dll_lock_threshold,
     epoch_start_code_phase_samples_from_receiver_phase, estimate_cn0_dbhz,
     estimate_tracking_uncertainty as signal_estimate_tracking_uncertainty,
-    fll_lock_threshold_hz as signal_fll_lock_threshold_hz, generate_beidou_b1i_code,
-    generate_galileo_e1b_code, generate_glonass_l1_st_code,
+    fll_lock_threshold_hz as signal_fll_lock_threshold_hz,
     prompt_power_ratio as signal_prompt_power_ratio,
     push_tracking_uncertainty_sample as signal_push_tracking_uncertainty_sample,
     refresh_lock_reference_cn0_dbhz as signal_refresh_lock_reference_cn0_dbhz,
-    refresh_prompt_power_reference as signal_refresh_prompt_power_reference, signal_registry,
+    refresh_prompt_power_reference as signal_refresh_prompt_power_reference,
     update_windowed_tracking_cn0_estimate as signal_update_windowed_tracking_cn0_estimate,
     wrap_code_phase_samples, wrap_phase_cycles_signed, wrapped_code_phase_delta_samples,
-    wrapped_phase_delta_cycles, TrackingQualityClass,
+    wrapped_phase_delta_cycles, LocalCodeModel, TrackingQualityClass,
     TrackingUncertaintyInputs as SignalTrackingUncertaintyInputs,
 };
-use bijux_gnss_signal::api::{generate_ca_code, samples_per_code, Prn};
 
 const SAMPLE_RATE_MISMATCH_MIN_CN0_DBHZ: f64 = 18.0;
 const TRACKING_LOCK_MIN_CN0_DBHZ: f64 = 28.0;
@@ -270,16 +268,7 @@ struct TrackingSignalModel {
     glonass_frequency_channel: Option<bijux_gnss_core::api::GlonassFrequencyChannel>,
     code_rate_hz: f64,
     code_length: usize,
-    local_code: TrackingLocalCode,
-}
-
-#[derive(Debug, Clone)]
-enum TrackingLocalCode {
-    GpsCa { code: Vec<i8> },
-    GalileoE1B { primary_code: Vec<i8> },
-    BeidouB1I { code: Vec<i8> },
-    GlonassL1 { code: Vec<i8> },
-    Fallback { code: Vec<i8> },
+    local_code_model: LocalCodeModel,
 }
 
 impl TrackingSignalModel {
@@ -301,85 +290,43 @@ impl TrackingSignalModel {
     ) -> Self {
         match (sat.constellation, signal_band) {
             (Constellation::Gps, SignalBand::L1) => {
-                let signal = signal_registry(Constellation::Gps, SignalBand::L1, SignalCode::Ca);
+                let local_code_model = LocalCodeModel::gps_l1_ca_or_ones(sat.prn);
                 Self {
                     signal_band,
                     glonass_frequency_channel: None,
-                    code_rate_hz: signal
-                        .as_ref()
-                        .map(|entry| entry.spec.code_rate_hz)
-                        .unwrap_or(config.code_freq_basis_hz),
-                    code_length: signal
-                        .as_ref()
-                        .and_then(|entry| entry.code_length)
-                        .map(|length| length as usize)
-                        .unwrap_or(1023),
-                    local_code: TrackingLocalCode::GpsCa { code: ca_code_or_default(sat.prn) },
+                    code_rate_hz: local_code_model.code_rate_hz(),
+                    code_length: local_code_model.code_length(),
+                    local_code_model,
                 }
             }
             (Constellation::Galileo, SignalBand::E1) => {
-                let signal =
-                    signal_registry(Constellation::Galileo, SignalBand::E1, SignalCode::E1B);
-                let code_length = signal
-                    .as_ref()
-                    .and_then(|entry| entry.code_length)
-                    .map(|length| length as usize)
-                    .unwrap_or(4092);
+                let local_code_model = LocalCodeModel::galileo_e1_boc11_or_ones(sat.prn);
                 Self {
                     signal_band,
                     glonass_frequency_channel: None,
-                    code_rate_hz: signal
-                        .as_ref()
-                        .map(|entry| entry.spec.code_rate_hz)
-                        .unwrap_or(config.code_freq_basis_hz),
-                    code_length,
-                    local_code: TrackingLocalCode::GalileoE1B {
-                        primary_code: generate_galileo_e1b_code(sat.prn)
-                            .unwrap_or_else(|_| vec![1; code_length.max(1)]),
-                    },
+                    code_rate_hz: local_code_model.code_rate_hz(),
+                    code_length: local_code_model.code_length(),
+                    local_code_model,
                 }
             }
             (Constellation::Beidou, SignalBand::B1) => {
-                let signal =
-                    signal_registry(Constellation::Beidou, SignalBand::B1, SignalCode::B1I);
-                let code_length = signal
-                    .as_ref()
-                    .and_then(|entry| entry.code_length)
-                    .map(|length| length as usize)
-                    .unwrap_or(2046);
+                let local_code_model = LocalCodeModel::beidou_b1i_or_ones(sat.prn);
                 Self {
                     signal_band,
                     glonass_frequency_channel: None,
-                    code_rate_hz: signal
-                        .as_ref()
-                        .map(|entry| entry.spec.code_rate_hz)
-                        .unwrap_or(2_046_000.0),
-                    code_length,
-                    local_code: TrackingLocalCode::BeidouB1I {
-                        code: generate_beidou_b1i_code(sat.prn)
-                            .unwrap_or_else(|_| vec![1; code_length.max(1)]),
-                    },
+                    code_rate_hz: local_code_model.code_rate_hz(),
+                    code_length: local_code_model.code_length(),
+                    local_code_model,
                 }
             }
             (Constellation::Glonass, SignalBand::L1) => {
-                let signal =
-                    signal_registry(Constellation::Glonass, SignalBand::L1, SignalCode::Unknown);
-                let code_length = signal
-                    .as_ref()
-                    .and_then(|entry| entry.code_length)
-                    .map(|length| length as usize)
-                    .unwrap_or(511);
+                let local_code_model = LocalCodeModel::glonass_l1_st();
                 Self {
                     signal_band,
                     glonass_frequency_channel,
-                    code_rate_hz: signal
-                        .as_ref()
-                        .map(|entry| entry.spec.code_rate_hz)
-                        .unwrap_or(511_000.0),
-                    code_length,
-                    local_code: TrackingLocalCode::GlonassL1 {
-                        code: generate_glonass_l1_st_code(),
-                    },
+                    code_rate_hz: local_code_model.code_rate_hz(),
+                    code_length: local_code_model.code_length(),
+                    local_code_model,
                 }
             }
             _ => Self::fallback(config, sat, signal_band),
@@ -387,18 +334,17 @@ impl TrackingSignalModel {
     }
 
     fn fallback(config: &ReceiverPipelineConfig, sat: SatId, signal_band: SignalBand) -> Self {
-        let code_length = config.code_length.max(1);
-        let code = if sat.constellation == Constellation::Gps {
-            ca_code_or_default(sat.prn)
+        let local_code_model = if sat.constellation == Constellation::Gps {
+            LocalCodeModel::gps_l1_ca_or_ones(sat.prn)
         } else {
-            vec![1; code_length]
+            LocalCodeModel::ones(config.code_length.max(1), config.code_freq_basis_hz)
         };
         Self {
             signal_band,
             glonass_frequency_channel: None,
             code_rate_hz: config.code_freq_basis_hz,
-            code_length,
-            local_code: TrackingLocalCode::Fallback { code },
+            code_length: config.code_length.max(1),
+            local_code_model,
         }
     }
 
@@ -430,18 +376,7 @@ impl TrackingSignalModel {
     }
 
     fn value_at_phase(&self, chip_phase: f64) -> f32 {
-        match &self.local_code {
-            TrackingLocalCode::GpsCa { code }
-            | TrackingLocalCode::BeidouB1I { code }
-            | TrackingLocalCode::GlonassL1 { code }
-            | TrackingLocalCode::Fallback { code } => {
-                code_value_at_phase(code, chip_phase).unwrap_or(0.0)
-            }
-            TrackingLocalCode::GalileoE1B { primary_code } => {
-                code_value_at_phase(primary_code, chip_phase).unwrap_or(0.0)
-                    * boc_subcarrier_value(chip_phase, 1).unwrap_or(1.0)
-            }
-        }
+        self.local_code_model.sample_value(chip_phase).unwrap_or(0.0)
     }
 }
 
@@ -1707,13 +1642,6 @@ fn compare_tracking_start_contexts(
         .then_with(|| left.seed.sat.prn.cmp(&right.seed.sat.prn))
 }
 
-fn ca_code_or_default(prn: u8) -> Vec<i8> {
-    match generate_ca_code(Prn(prn)) {
-        Ok(code) => code,
-        Err(_) => vec![1; 1023],
-    }
-}
-
 fn epoch_lock_quality(
     lock: bool,
     pll_lock: bool,
@@ -2362,8 +2290,8 @@ fn reacquisition_min_cn0_dbhz(lock_reference_cn0_dbhz: f64) -> f64 {
 }
 
 fn apply_carrier_loop(input: CarrierLoopInput) -> CarrierLoopUpdate {
-    let update = signal_apply_carrier_tracking_loop(
-        bijux_gnss_signal::api::CarrierTrackingLoopInput {
+    let update =
+        signal_apply_carrier_tracking_loop(bijux_gnss_signal::api::CarrierTrackingLoopInput {
             current_carrier_hz: input.current_carrier_hz,
             current_carrier_phase_cycles: input.current_carrier_phase_cycles,
             epoch_len_samples: input.epoch_len_samples,
@@ -2375,8 +2303,7 @@ fn apply_carrier_loop(input: CarrierLoopInput) -> CarrierLoopUpdate {
             fll_err_hz: input.fll_err_hz,
             apply_fll: input.apply_fll,
             apply_pll_frequency: input.apply_pll_frequency,
-        },
-    );
+        });
     CarrierLoopUpdate {
         carrier_hz: update.carrier_hz,
         carrier_phase_cycles: update.carrier_phase_cycles,
@@ -3727,8 +3654,7 @@ mod tests {
         });
 
         let fll_coefficients = first_order_angular_loop_coefficients(10.0, 0.001);
-        let expected_carrier_hz = 80.0
-            + (30.0 * fll_coefficients.error_blend).clamp(-40.0, 40.0);
+        let expected_carrier_hz = 80.0 + (30.0 * fll_coefficients.error_blend).clamp(-40.0, 40.0);
         assert!((update.carrier_hz - expected_carrier_hz).abs() < 1.0e-9, "{update:?}");
     }
 
