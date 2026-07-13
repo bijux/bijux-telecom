@@ -80,6 +80,7 @@ const TRACKING_CN0_WINDOW_EPOCHS: usize = 8;
 const TRACKING_CN0_MIN_WINDOW_EPOCHS: usize = 4;
 const TRACKING_UNCERTAINTY_WINDOW_EPOCHS: usize = 8;
 const SAMPLE_RATE_MISMATCH_CATASTROPHIC_PHASE_STEP_MULTIPLIER: f64 = 8.0;
+const LOW_RESOLUTION_DLL_MIN_SAMPLE_SEPARATION: f64 = 1.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelState {
@@ -359,8 +360,15 @@ impl TrackingSignalModel {
         self.code_rate_hz / sample_rate_hz
     }
 
-    fn value_at_phase(&self, chip_phase: f64) -> f32 {
-        self.local_code_model.sample_value(chip_phase).unwrap_or(0.0)
+    fn value_at_phase(&self, chip_phase: f64, epoch_primary_code_period_index: usize) -> f32 {
+        let code_length = self.code_length.max(1) as f64;
+        let period_offset = (chip_phase / code_length).floor() as i64;
+        let primary_code_period_index =
+            (epoch_primary_code_period_index as i64 + period_offset).max(0) as usize;
+        let wrapped_chip_phase = chip_phase.rem_euclid(code_length);
+        self.local_code_model
+            .sample_tracking_value(wrapped_chip_phase, primary_code_period_index)
+            .unwrap_or(0.0)
     }
 }
 
@@ -520,6 +528,7 @@ impl Tracking {
             frame,
             0,
             frame.len(),
+            frame.t0.sample_index,
             &signal_model,
             carrier_freq_hz,
             carrier_phase_cycles,
@@ -534,6 +543,7 @@ impl Tracking {
         frame: &SamplesFrame,
         start: usize,
         end: usize,
+        sample_index: u64,
         signal_model: &TrackingSignalModel,
         carrier_freq_hz: f64,
         carrier_phase_cycles: f64,
@@ -546,6 +556,7 @@ impl Tracking {
         let code_period_samples = signal_model.samples_per_code(sample_rate_hz);
         let nominal_chips_per_sample = signal_model.nominal_chips_per_sample(sample_rate_hz);
         let tracked_chips_per_sample = code_rate_hz / sample_rate_hz;
+        let epoch_primary_code_period_index = sample_index as usize / code_period_samples.max(1);
         let epoch_start_code_phase_samples = epoch_start_code_phase_samples_from_receiver_phase(
             code_phase_samples,
             code_period_samples,
@@ -559,7 +570,7 @@ impl Tracking {
             base_chip_phase,
             tracked_chips_per_sample,
             early_late_spacing_chips,
-            |chip_phase| signal_model.value_at_phase(chip_phase),
+            |chip_phase| signal_model.value_at_phase(chip_phase, epoch_primary_code_period_index),
         );
         CorrelatorOutput {
             early: correlation.early,
@@ -618,6 +629,7 @@ impl Tracking {
             frame,
             start,
             end,
+            sample_index,
             signal_model,
             carrier_freq_hz,
             carrier_phase_cycles,
@@ -1244,6 +1256,16 @@ impl Tracking {
                 .is_some_and(|ratio| ratio >= DISCRIMINATOR_INSTABILITY_MIN_PROMPT_POWER_RATIO)
                 && !cycle_slip
                 && !anti_false_lock);
+        let sustained_code_lock = sustained_dll_lock
+            || low_resolution_code_lock(
+                samples_per_chip,
+                tracking_params.early_late_spacing_chips,
+                sustained_prompt_lock,
+                sustained_pll_lock,
+                raw_fll_lock,
+                cycle_slip,
+                anti_false_lock,
+            );
         state.unstable_discriminator_epochs = update_discriminator_instability_epochs(
             state.unstable_discriminator_epochs,
             state.state,
@@ -1262,7 +1284,7 @@ impl Tracking {
         state.pull_in_stable_epochs = update_pull_in_stable_epochs(
             state.pull_in_stable_epochs,
             sustained_prompt_lock,
-            sustained_dll_lock,
+            sustained_code_lock,
             sustained_pll_lock,
             raw_fll_lock,
             cycle_slip,
@@ -1276,7 +1298,7 @@ impl Tracking {
         let steady_state_tracking_ready = if from_state == ChannelState::Degraded {
             cn0_supports_lock
                 && lock
-                && sustained_dll_lock
+                && sustained_code_lock
                 && raw_pll_lock
                 && raw_fll_lock
                 && !cycle_slip
@@ -1284,7 +1306,7 @@ impl Tracking {
         } else {
             cn0_supports_lock
                 && sustained_prompt_lock
-                && sustained_dll_lock
+                && sustained_code_lock
                 && sustained_pll_lock
                 && !cycle_slip
                 && !anti_false_lock
@@ -1356,7 +1378,7 @@ impl Tracking {
                 cn0_reference_dbhz: state.lock_reference_cn0_dbhz,
                 integration_ms: tracking_params.integration_ms,
                 channel_locked: state.state != ChannelState::Lost && sustained_prompt_lock,
-                dll_locked: state.state != ChannelState::Lost && sustained_dll_lock,
+                dll_locked: state.state != ChannelState::Lost && sustained_code_lock,
                 anti_false_lock,
                 cycle_slip,
                 channel_state: state.state,
@@ -1399,7 +1421,7 @@ impl Tracking {
         let channel_locked = state.state != ChannelState::Lost && sustained_prompt_lock;
         let tracking_state_locked =
             matches!(state.state, ChannelState::Tracking | ChannelState::Degraded);
-        let dll_lock = tracking_state_locked && sustained_dll_lock;
+        let dll_lock = tracking_state_locked && sustained_code_lock;
         let pll_lock = tracking_state_locked
             && cn0_supports_lock
             && sustained_prompt_lock
@@ -2234,6 +2256,23 @@ fn dll_hold_threshold(samples_per_chip: f64, early_late_spacing_chips: f64) -> f
     signal_dll_hold_threshold(samples_per_chip, early_late_spacing_chips)
 }
 
+fn low_resolution_code_lock(
+    samples_per_chip: f64,
+    early_late_spacing_chips: f64,
+    prompt_lock: bool,
+    pll_lock: bool,
+    fll_lock: bool,
+    cycle_slip: bool,
+    anti_false_lock: bool,
+) -> bool {
+    let effective_sample_separation = samples_per_chip * early_late_spacing_chips.abs();
+    effective_sample_separation + f64::EPSILON < LOW_RESOLUTION_DLL_MIN_SAMPLE_SEPARATION
+        && prompt_lock
+        && (pll_lock || fll_lock)
+        && !cycle_slip
+        && !anti_false_lock
+}
+
 fn short_fade_epoch_budget(tracking_params: TrackingParams) -> u16 {
     let integration_ms = tracking_params.integration_ms.max(1) as f64;
     ((SHORT_FADE_MAX_DURATION_S * 1000.0) / integration_ms).ceil() as u16
@@ -2243,12 +2282,12 @@ fn short_fade_epoch_budget(tracking_params: TrackingParams) -> u16 {
 fn update_pull_in_stable_epochs(
     current_stable_epochs: u8,
     prompt_lock: bool,
-    _dll_lock: bool,
+    dll_lock: bool,
     pll_lock: bool,
     fll_lock: bool,
     cycle_slip: bool,
 ) -> u8 {
-    if cycle_slip || !prompt_lock || (!pll_lock && !fll_lock) {
+    if cycle_slip || !prompt_lock || !dll_lock || (!pll_lock && !fll_lock) {
         return 0;
     }
     current_stable_epochs.saturating_add(1)
@@ -3898,6 +3937,21 @@ mod tests {
     fn dll_lock_threshold_relaxes_for_subsample_early_late_spacing() {
         assert_eq!(super::dll_lock_threshold(1.0, 0.5), 0.6);
         assert_eq!(super::dll_lock_threshold(4.0, 0.5), 0.2);
+    }
+
+    #[test]
+    fn low_resolution_code_lock_retains_supported_tracking_when_carrier_is_stable() {
+        assert!(super::low_resolution_code_lock(1.0, 0.5, true, true, true, false, false));
+        assert!(super::low_resolution_code_lock(1.0, 0.5, true, false, true, false, false));
+    }
+
+    #[test]
+    fn low_resolution_code_lock_requires_prompt_and_lock_safety_guards() {
+        assert!(!super::low_resolution_code_lock(1.0, 0.5, false, true, true, false, false));
+        assert!(!super::low_resolution_code_lock(1.0, 0.5, true, false, false, false, false));
+        assert!(!super::low_resolution_code_lock(1.0, 0.5, true, true, true, true, false));
+        assert!(!super::low_resolution_code_lock(1.0, 0.5, true, true, true, false, true));
+        assert!(!super::low_resolution_code_lock(4.0, 0.5, true, true, true, false, false));
     }
 
     #[test]

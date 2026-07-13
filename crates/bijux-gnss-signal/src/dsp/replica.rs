@@ -4,21 +4,22 @@ use crate::catalog::{default_acquisition_signal, signal_spec_glonass_l1};
 use crate::codes::beidou_b1i::{generate_beidou_b1i_code, BEIDOU_B1I_CODE_RATE_HZ};
 use crate::codes::ca_code::{generate_ca_code, Prn};
 use crate::codes::galileo_e1::{
-    boc_subcarrier_value, galileo_e1_cboc_value, generate_galileo_e1b_code,
-    generate_galileo_e1c_code, sample_boc_code, GALILEO_E1_CODE_RATE_HZ,
+    galileo_e1_cboc_value, generate_galileo_e1b_code, generate_galileo_e1c_code,
+    GALILEO_E1_CODE_RATE_HZ,
 };
 use crate::codes::glonass_l1::{generate_glonass_l1_st_code, GLONASS_L1_ST_CODE_RATE_HZ};
 use crate::codes::gps_l2c::{
     gps_l2c_time_multiplexed_value, GPS_L2C_TIME_MULTIPLEXED_CODE_CHIPS,
     GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ,
 };
-use crate::codes::gps_l2c_cl::{generate_gps_l2c_cl_code, GPS_L2C_CL_CODE_RATE_HZ};
-use crate::codes::gps_l2c_cm::{generate_gps_l2c_cm_code, GPS_L2C_CM_CODE_RATE_HZ};
+use crate::codes::gps_l2c_cl::generate_gps_l2c_cl_code;
+use crate::codes::gps_l2c_cm::generate_gps_l2c_cm_code;
 use crate::codes::gps_l5::{
     generate_gps_l5_i_code, generate_gps_l5_q_code, gps_l5_i_epoch_symbol, gps_l5_q_epoch_symbol,
     GPS_L5_PRIMARY_CODE_CHIPS, GPS_L5_PRIMARY_CODE_RATE_HZ,
 };
-use crate::dsp::signal::{code_value_at_phase, sample_code, samples_per_code};
+use crate::dsp::local_code::LocalCodeModel;
+use crate::dsp::signal::{code_value_at_phase, samples_per_code};
 use crate::error::SignalError;
 use bijux_gnss_core::api::{
     Constellation, FreqHz, GlonassFrequencyChannel, SatId, SignalBand, SignalCode,
@@ -28,242 +29,6 @@ use num_complex::Complex;
 
 /// Complex noise power implied by unit-variance I and Q components.
 pub const UNIT_VARIANCE_COMPLEX_NOISE_POWER: f64 = 2.0;
-/// Reusable local code models for acquisition and tracking replicas.
-#[derive(Debug, Clone, PartialEq)]
-pub enum LocalCodeModel {
-    /// Generic BPSK local code with an explicit chip rate.
-    Bpsk { code: Vec<i8>, code_rate_hz: f64 },
-    /// GPS L1 C/A primary code.
-    GpsL1Ca { code: Vec<i8> },
-    /// GPS L2C CM primary code.
-    GpsL2cCm { code: Vec<i8> },
-    /// GPS L2C CL pilot code.
-    GpsL2cCl { code: Vec<i8> },
-    /// GPS L5-I primary code.
-    GpsL5I { code: Vec<i8> },
-    /// GPS L5-Q primary code.
-    GpsL5Q { code: Vec<i8> },
-    /// Galileo E1 BOC(1,1) primary code.
-    GalileoE1Boc11 { primary_code: Vec<i8> },
-    /// BeiDou B1I primary code.
-    BeidouB1I { code: Vec<i8> },
-    /// GLONASS L1 ST primary code.
-    GlonassL1St { code: Vec<i8> },
-}
-
-impl LocalCodeModel {
-    /// Build an all-ones BPSK local code model.
-    pub fn ones(code_length: usize, code_rate_hz: f64) -> Self {
-        Self::Bpsk { code: vec![1; code_length.max(1)], code_rate_hz }
-    }
-
-    /// Build a GPS L1 C/A local code model from a PRN.
-    pub fn gps_l1_ca(prn: u8) -> Result<Self, SignalError> {
-        Ok(Self::GpsL1Ca { code: generate_ca_code(Prn(prn))? })
-    }
-
-    /// Build a GPS L1 C/A local code model, falling back to an all-ones code when invalid.
-    pub fn gps_l1_ca_or_ones(prn: u8) -> Self {
-        Self::gps_l1_ca(prn).unwrap_or_else(|_| Self::GpsL1Ca { code: vec![1; 1023] })
-    }
-
-    /// Build a GPS L2C CM local code model from a PRN.
-    pub fn gps_l2c_cm(prn: u8) -> Result<Self, SignalError> {
-        Ok(Self::GpsL2cCm { code: generate_gps_l2c_cm_code(prn)? })
-    }
-
-    /// Build a GPS L2C CM local code model, falling back to an all-ones code when invalid.
-    pub fn gps_l2c_cm_or_ones(prn: u8) -> Self {
-        Self::gps_l2c_cm(prn).unwrap_or_else(|_| Self::GpsL2cCm { code: vec![1; 10_230] })
-    }
-
-    /// Build a GPS L2C CL local code model from a PRN.
-    pub fn gps_l2c_cl(prn: u8) -> Result<Self, SignalError> {
-        Ok(Self::GpsL2cCl { code: generate_gps_l2c_cl_code(prn)? })
-    }
-
-    /// Build a GPS L2C CL local code model, falling back to an all-ones code when invalid.
-    pub fn gps_l2c_cl_or_ones(prn: u8) -> Self {
-        Self::gps_l2c_cl(prn).unwrap_or_else(|_| Self::GpsL2cCl { code: vec![1; 767_250] })
-    }
-
-    /// Build a GPS L5-I local code model from a PRN.
-    pub fn gps_l5_i(prn: u8) -> Result<Self, SignalError> {
-        Ok(Self::GpsL5I { code: generate_gps_l5_i_code(prn)? })
-    }
-
-    /// Build a GPS L5-I local code model, falling back to an all-ones code when invalid.
-    pub fn gps_l5_i_or_ones(prn: u8) -> Self {
-        Self::gps_l5_i(prn)
-            .unwrap_or_else(|_| Self::GpsL5I { code: vec![1; GPS_L5_PRIMARY_CODE_CHIPS] })
-    }
-
-    /// Build a GPS L5-Q local code model from a PRN.
-    pub fn gps_l5_q(prn: u8) -> Result<Self, SignalError> {
-        Ok(Self::GpsL5Q { code: generate_gps_l5_q_code(prn)? })
-    }
-
-    /// Build a GPS L5-Q local code model, falling back to an all-ones code when invalid.
-    pub fn gps_l5_q_or_ones(prn: u8) -> Self {
-        Self::gps_l5_q(prn)
-            .unwrap_or_else(|_| Self::GpsL5Q { code: vec![1; GPS_L5_PRIMARY_CODE_CHIPS] })
-    }
-
-    /// Build a Galileo E1 BOC(1,1) local code model from a PRN.
-    pub fn galileo_e1_boc11(prn: u8) -> Result<Self, SignalError> {
-        Ok(Self::GalileoE1Boc11 { primary_code: generate_galileo_e1b_code(prn)? })
-    }
-
-    /// Build a Galileo E1 BOC(1,1) local code model, falling back to an all-ones code when invalid.
-    pub fn galileo_e1_boc11_or_ones(prn: u8) -> Self {
-        Self::galileo_e1_boc11(prn)
-            .unwrap_or_else(|_| Self::GalileoE1Boc11 { primary_code: vec![1; 4092] })
-    }
-
-    /// Build a BeiDou B1I local code model from a PRN.
-    pub fn beidou_b1i(prn: u8) -> Result<Self, SignalError> {
-        Ok(Self::BeidouB1I { code: generate_beidou_b1i_code(prn)? })
-    }
-
-    /// Build a BeiDou B1I local code model, falling back to an all-ones code when invalid.
-    pub fn beidou_b1i_or_ones(prn: u8) -> Self {
-        Self::beidou_b1i(prn).unwrap_or_else(|_| Self::BeidouB1I { code: vec![1; 2046] })
-    }
-
-    /// Build a GLONASS L1 ST local code model.
-    pub fn glonass_l1_st() -> Self {
-        Self::GlonassL1St { code: generate_glonass_l1_st_code() }
-    }
-
-    /// Return the code rate in chips per second.
-    pub fn code_rate_hz(&self) -> f64 {
-        match self {
-            Self::Bpsk { code_rate_hz, .. } => *code_rate_hz,
-            Self::GpsL1Ca { .. } => 1_023_000.0,
-            Self::GpsL2cCm { .. } => GPS_L2C_CM_CODE_RATE_HZ,
-            Self::GpsL2cCl { .. } => GPS_L2C_CL_CODE_RATE_HZ,
-            Self::GpsL5I { .. } => GPS_L5_PRIMARY_CODE_RATE_HZ,
-            Self::GpsL5Q { .. } => GPS_L5_PRIMARY_CODE_RATE_HZ,
-            Self::GalileoE1Boc11 { .. } => GALILEO_E1_CODE_RATE_HZ,
-            Self::BeidouB1I { .. } => BEIDOU_B1I_CODE_RATE_HZ,
-            Self::GlonassL1St { .. } => GLONASS_L1_ST_CODE_RATE_HZ,
-        }
-    }
-
-    /// Return the primary code period length in chips.
-    pub fn code_length(&self) -> usize {
-        match self {
-            Self::Bpsk { code, .. } => code.len(),
-            Self::GpsL1Ca { code } => code.len(),
-            Self::GpsL2cCm { code } => code.len(),
-            Self::GpsL2cCl { code } => code.len(),
-            Self::GpsL5I { code } => code.len(),
-            Self::GpsL5Q { code } => code.len(),
-            Self::GalileoE1Boc11 { primary_code } => primary_code.len(),
-            Self::BeidouB1I { code } => code.len(),
-            Self::GlonassL1St { code } => code.len(),
-        }
-    }
-
-    /// Whether secondary-peak multipath screening is meaningful for this code family.
-    pub fn supports_secondary_peak_multipath_screening(&self) -> bool {
-        !matches!(self, Self::GlonassL1St { .. })
-    }
-
-    /// Sample the local code value at a chip phase.
-    pub fn sample_value(&self, chip_phase: f64) -> Result<f32, SignalError> {
-        match self {
-            Self::Bpsk { code, .. }
-            | Self::GpsL1Ca { code }
-            | Self::GpsL2cCm { code }
-            | Self::GpsL2cCl { code }
-            | Self::GpsL5I { code }
-            | Self::GpsL5Q { code }
-            | Self::BeidouB1I { code }
-            | Self::GlonassL1St { code } => code_value_at_phase(code, chip_phase),
-            Self::GalileoE1Boc11 { primary_code } => {
-                Ok(code_value_at_phase(primary_code, chip_phase)?
-                    * boc_subcarrier_value(chip_phase, 1)?)
-            }
-        }
-    }
-
-    /// Sample one local code period at an arbitrary sample rate and chip phase.
-    pub fn sample_period(
-        &self,
-        sample_rate_hz: f64,
-        start_chip_phase: f64,
-        sample_count: usize,
-    ) -> Result<Vec<f32>, SignalError> {
-        match self {
-            Self::Bpsk { code, .. }
-            | Self::GpsL1Ca { code }
-            | Self::GpsL2cCm { code }
-            | Self::GpsL2cCl { code }
-            | Self::GpsL5I { code }
-            | Self::GpsL5Q { code }
-            | Self::BeidouB1I { code }
-            | Self::GlonassL1St { code } => sample_code(
-                code,
-                sample_rate_hz,
-                self.code_rate_hz(),
-                start_chip_phase,
-                sample_count,
-            ),
-            Self::GalileoE1Boc11 { primary_code } => sample_boc_code(
-                primary_code,
-                sample_rate_hz,
-                self.code_rate_hz(),
-                start_chip_phase,
-                sample_count,
-                1,
-            ),
-        }
-    }
-}
-
-/// Build the default local code model for a supported satellite and signal band.
-pub fn default_local_code_model(
-    sat: SatId,
-    signal_band: SignalBand,
-) -> Result<Option<LocalCodeModel>, SignalError> {
-    default_local_code_model_for_signal(
-        sat,
-        signal_band,
-        default_signal_code_for_band(sat.constellation, signal_band),
-    )
-}
-
-/// Build the local code model for one explicit signal identity.
-pub fn default_local_code_model_for_signal(
-    sat: SatId,
-    signal_band: SignalBand,
-    signal_code: SignalCode,
-) -> Result<Option<LocalCodeModel>, SignalError> {
-    match (sat.constellation, signal_band, signal_code) {
-        (Constellation::Gps, SignalBand::L1, SignalCode::Ca) => {
-            LocalCodeModel::gps_l1_ca(sat.prn).map(Some)
-        }
-        (Constellation::Gps, SignalBand::L2, SignalCode::L2C) => {
-            LocalCodeModel::gps_l2c_cm(sat.prn).map(Some)
-        }
-        (Constellation::Gps, SignalBand::L5, _) => match signal_code {
-            SignalCode::L5I => LocalCodeModel::gps_l5_i(sat.prn).map(Some),
-            SignalCode::L5Q => LocalCodeModel::gps_l5_q(sat.prn).map(Some),
-            _ => Ok(None),
-        },
-        (Constellation::Galileo, SignalBand::E1, SignalCode::E1B) => {
-            LocalCodeModel::galileo_e1_boc11(sat.prn).map(Some)
-        }
-        (Constellation::Beidou, SignalBand::B1, SignalCode::B1I) => {
-            LocalCodeModel::beidou_b1i(sat.prn).map(Some)
-        }
-        (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown) => {
-            Ok(Some(LocalCodeModel::glonass_l1_st()))
-        }
-        _ => Ok(None),
-    }
-}
 
 /// Signal-owned metadata and local-code sampling for supported acquisition search signals.
 #[derive(Debug, Clone, PartialEq)]
@@ -841,10 +606,10 @@ pub fn sample_modulated_replica_at_time(
 #[cfg(test)]
 mod tests {
     use super::{
-        carrier_hz_at_time, carrier_phase_radians_at_time, default_local_code_model,
-        default_signal_carrier_hz, default_signal_carrier_hz_for_band,
-        sample_modulated_replica_at_time, signal_amplitude_from_cn0_db_hz, AcquisitionSignalModel,
-        LocalCodeModel, ReplicaCodeModel, GPS_L2C_TIME_MULTIPLEXED_CODE_CHIPS,
+        carrier_hz_at_time, carrier_phase_radians_at_time, default_signal_carrier_hz,
+        default_signal_carrier_hz_for_band, sample_modulated_replica_at_time,
+        signal_amplitude_from_cn0_db_hz, AcquisitionSignalModel, ReplicaCodeModel,
+        GPS_L2C_TIME_MULTIPLEXED_CODE_CHIPS,
         GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ, UNIT_VARIANCE_COMPLEX_NOISE_POWER,
     };
     use crate::codes::galileo_e1::{
@@ -855,6 +620,9 @@ mod tests {
     use crate::codes::gps_l2c_cm::{sample_gps_l2c_cm_code, GPS_L2C_CM_CODE_RATE_HZ};
     use crate::codes::gps_l5::{
         sample_gps_l5_i_primary_code, sample_gps_l5_q_primary_code, GPS_L5_PRIMARY_CODE_RATE_HZ,
+    };
+    use crate::dsp::local_code::{
+        default_local_code_model, default_local_code_model_for_signal, LocalCodeModel,
     };
     use crate::error::SignalError;
     use bijux_gnss_core::api::{
@@ -1131,6 +899,15 @@ mod tests {
     }
 
     #[test]
+    fn gps_l5_q_tracking_replica_interpolates_subchip_boundaries() {
+        let model = LocalCodeModel::GpsL5Q { code: vec![1, -1] };
+
+        let sample = model.sample_tracking_value(0.5, 0).expect("tracking sample");
+
+        assert!(sample.abs() < 1.0e-6, "{sample}");
+    }
+
+    #[test]
     fn default_signal_carrier_hz_requires_glonass_channel() {
         let sat = SatId { constellation: Constellation::Glonass, prn: 8 };
         let error = default_signal_carrier_hz(sat, None)
@@ -1188,7 +965,7 @@ mod tests {
     fn default_local_code_model_for_signal_builds_gps_l5_q_tracking_code() {
         let sat = SatId { constellation: Constellation::Gps, prn: 7 };
         let model =
-            super::default_local_code_model_for_signal(sat, SignalBand::L5, SignalCode::L5Q)
+            default_local_code_model_for_signal(sat, SignalBand::L5, SignalCode::L5Q)
                 .expect("local code result")
                 .expect("GPS L5-Q local code");
 

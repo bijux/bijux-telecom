@@ -79,12 +79,15 @@ pub use crate::dsp::quality::{
     measure_iq_front_end_metrics, measure_raw_iq_front_end_metrics, remove_dc_offset_in_place,
     IqFrontEndAnalyzer, IqFrontEndMetrics,
 };
+/// Tracking-oriented local-code models.
+pub use crate::dsp::local_code::{
+    default_local_code_model, default_local_code_model_for_signal, LocalCodeModel,
+};
 /// Replica-generation and synthetic modulation helpers.
 pub use crate::dsp::replica::{
-    carrier_hz_at_time, carrier_phase_radians_at_time, default_local_code_model,
-    default_local_code_model_for_signal, default_signal_carrier_hz,
+    carrier_hz_at_time, carrier_phase_radians_at_time, default_signal_carrier_hz,
     default_signal_carrier_hz_for_band, sample_modulated_replica_at_time,
-    signal_amplitude_from_cn0_db_hz, AcquisitionSignalModel, LocalCodeModel, ReplicaCodeModel,
+    signal_amplitude_from_cn0_db_hz, AcquisitionSignalModel, ReplicaCodeModel,
     UNIT_VARIANCE_COMPLEX_NOISE_POWER,
 };
 /// Signal processing utilities.
