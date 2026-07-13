@@ -74,7 +74,10 @@ fn supported_signal_bands(constellation: Constellation) -> &'static [SignalBand]
 
 #[cfg(test)]
 mod tests {
-    use super::{acquisition_constellation_matches_config, resolved_acquisition_signal_band};
+    use super::{
+        acquisition_constellation_matches_config, resolved_acquisition_signal_band,
+        signal_band_matches_config,
+    };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
     use bijux_gnss_core::api::{Constellation, SatId, SignalBand};
 
@@ -118,5 +121,107 @@ mod tests {
 
         assert_eq!(resolved_acquisition_signal_band(&config, sat), SignalBand::L1);
         assert!(!acquisition_constellation_matches_config(&config, Constellation::Gps));
+    }
+
+    #[test]
+    fn acquisition_band_matching_follows_executable_search_inventory() {
+        let cases = [
+            (
+                ReceiverPipelineConfig {
+                    sampling_freq_hz: 1_023_000.0,
+                    code_freq_basis_hz: 1_023_000.0,
+                    code_length: 1023,
+                    ..ReceiverPipelineConfig::default()
+                },
+                SatId { constellation: Constellation::Gps, prn: 7 },
+                SignalBand::L1,
+                true,
+            ),
+            (
+                ReceiverPipelineConfig {
+                    sampling_freq_hz: 511_500.0,
+                    code_freq_basis_hz: 511_500.0,
+                    code_length: 10_230,
+                    ..ReceiverPipelineConfig::default()
+                },
+                SatId { constellation: Constellation::Gps, prn: 7 },
+                SignalBand::L2,
+                false,
+            ),
+            (
+                ReceiverPipelineConfig {
+                    sampling_freq_hz: 10_230_000.0,
+                    code_freq_basis_hz: 10_230_000.0,
+                    code_length: 10_230,
+                    ..ReceiverPipelineConfig::default()
+                },
+                SatId { constellation: Constellation::Gps, prn: 7 },
+                SignalBand::L5,
+                true,
+            ),
+            (
+                ReceiverPipelineConfig {
+                    sampling_freq_hz: 1_023_000.0,
+                    code_freq_basis_hz: 1_023_000.0,
+                    code_length: 4092,
+                    ..ReceiverPipelineConfig::default()
+                },
+                SatId { constellation: Constellation::Galileo, prn: 11 },
+                SignalBand::E1,
+                true,
+            ),
+            (
+                ReceiverPipelineConfig {
+                    sampling_freq_hz: 10_230_000.0,
+                    code_freq_basis_hz: 10_230_000.0,
+                    code_length: 10_230,
+                    ..ReceiverPipelineConfig::default()
+                },
+                SatId { constellation: Constellation::Galileo, prn: 11 },
+                SignalBand::E5,
+                true,
+            ),
+            (
+                ReceiverPipelineConfig {
+                    sampling_freq_hz: 511_000.0,
+                    code_freq_basis_hz: 511_000.0,
+                    code_length: 511,
+                    ..ReceiverPipelineConfig::default()
+                },
+                SatId { constellation: Constellation::Glonass, prn: 8 },
+                SignalBand::L1,
+                false,
+            ),
+            (
+                ReceiverPipelineConfig {
+                    sampling_freq_hz: 2_046_000.0,
+                    code_freq_basis_hz: 2_046_000.0,
+                    code_length: 2046,
+                    ..ReceiverPipelineConfig::default()
+                },
+                SatId { constellation: Constellation::Beidou, prn: 11 },
+                SignalBand::B1,
+                true,
+            ),
+            (
+                ReceiverPipelineConfig {
+                    sampling_freq_hz: 2_046_000.0,
+                    code_freq_basis_hz: 2_046_000.0,
+                    code_length: 2046,
+                    ..ReceiverPipelineConfig::default()
+                },
+                SatId { constellation: Constellation::Beidou, prn: 11 },
+                SignalBand::B2,
+                true,
+            ),
+        ];
+
+        for (config, sat, band, expected) in cases {
+            assert_eq!(
+                signal_band_matches_config(&config, sat, band),
+                expected,
+                "{sat:?} {band:?}"
+            );
+        }
     }
 }
