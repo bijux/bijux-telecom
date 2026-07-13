@@ -8,7 +8,10 @@ use crate::codes::galileo_e1::{
     generate_galileo_e1c_code, sample_boc_code, GALILEO_E1_CODE_RATE_HZ,
 };
 use crate::codes::glonass_l1::{generate_glonass_l1_st_code, GLONASS_L1_ST_CODE_RATE_HZ};
-use crate::codes::gps_l2c::gps_l2c_time_multiplexed_value;
+use crate::codes::gps_l2c::{
+    gps_l2c_time_multiplexed_value, GPS_L2C_TIME_MULTIPLEXED_CODE_CHIPS,
+    GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ,
+};
 use crate::codes::gps_l2c_cl::{generate_gps_l2c_cl_code, GPS_L2C_CL_CODE_RATE_HZ};
 use crate::codes::gps_l2c_cm::{generate_gps_l2c_cm_code, GPS_L2C_CM_CODE_RATE_HZ};
 use crate::dsp::signal::{code_value_at_phase, sample_code, samples_per_code};
@@ -21,10 +24,6 @@ use num_complex::Complex;
 
 /// Complex noise power implied by unit-variance I and Q components.
 pub const UNIT_VARIANCE_COMPLEX_NOISE_POWER: f64 = 2.0;
-pub use crate::codes::gps_l2c::{
-    GPS_L2C_TIME_MULTIPLEXED_CODE_CHIPS, GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ,
-};
-
 /// Reusable local code models for acquisition and tracking replicas.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LocalCodeModel {

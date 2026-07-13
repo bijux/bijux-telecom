@@ -125,12 +125,7 @@ pub fn sample_gps_l2c_time_multiplexed_from_components(
     let mut samples = Vec::with_capacity(sample_count);
     for sample_index in 0..sample_count {
         let chip_phase = start_chip_phase + sample_index as f64 * chips_per_sample;
-        samples.push(gps_l2c_time_multiplexed_value(
-            cm_code,
-            cl_code,
-            chip_phase,
-            data_symbols,
-        )?);
+        samples.push(gps_l2c_time_multiplexed_value(cm_code, cl_code, chip_phase, data_symbols)?);
     }
     Ok(samples)
 }
@@ -222,23 +217,20 @@ mod tests {
     fn chip_generation_interleaves_cm_and_cl_streams() {
         let cm = generate_gps_l2c_cm_code(38).expect("valid CM code");
         let cl = generate_gps_l2c_cl_code(38).expect("valid CL code");
-        let chips =
-            generate_gps_l2c_time_multiplexed_chips(38, 0, 8, &[1]).expect("valid multiplexed chips");
+        let chips = generate_gps_l2c_time_multiplexed_chips(38, 0, 8, &[1])
+            .expect("valid multiplexed chips");
 
-        assert_eq!(
-            chips,
-            vec![cm[0], cl[0], cm[1], cl[1], cm[2], cl[2], cm[3], cl[3]]
-        );
+        assert_eq!(chips, vec![cm[0], cl[0], cm[1], cl[1], cm[2], cl[2], cm[3], cl[3]]);
     }
 
     #[test]
     fn multiplexed_value_applies_navigation_symbols_only_to_cm_slots() {
         let cm = generate_gps_l2c_cm_code(38).expect("valid CM code");
         let cl = generate_gps_l2c_cl_code(38).expect("valid CL code");
-        let first_symbol_cm = gps_l2c_time_multiplexed_value(&cm, &cl, 0.0, &[1, -1])
-            .expect("first CM slot");
-        let first_symbol_cl = gps_l2c_time_multiplexed_value(&cm, &cl, 1.0, &[1, -1])
-            .expect("first CL slot");
+        let first_symbol_cm =
+            gps_l2c_time_multiplexed_value(&cm, &cl, 0.0, &[1, -1]).expect("first CM slot");
+        let first_symbol_cl =
+            gps_l2c_time_multiplexed_value(&cm, &cl, 1.0, &[1, -1]).expect("first CL slot");
         let next_symbol_cm = gps_l2c_time_multiplexed_value(
             &cm,
             &cl,
@@ -273,10 +265,7 @@ mod tests {
         )
         .expect("multiplexed samples");
 
-        assert_eq!(
-            samples,
-            expected.into_iter().map(f32::from).collect::<Vec<f32>>()
-        );
+        assert_eq!(samples, expected.into_iter().map(f32::from).collect::<Vec<f32>>());
     }
 
     #[test]
@@ -290,7 +279,13 @@ mod tests {
     #[test]
     fn sampling_rejects_invalid_navigation_symbols() {
         assert_eq!(
-            sample_gps_l2c_time_multiplexed(38, GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ, 0.0, 1, &[0]),
+            sample_gps_l2c_time_multiplexed(
+                38,
+                GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ,
+                0.0,
+                1,
+                &[0]
+            ),
             Err(SignalError::InvalidNavigationSymbol(0))
         );
     }
