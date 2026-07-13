@@ -14,6 +14,8 @@ pub mod doppler;
 pub mod hatch;
 #[cfg(feature = "nav")]
 pub mod navigation;
+#[cfg(feature = "nav")]
+pub mod navigation_filter;
 pub mod observation_validation;
 pub mod observations;
 #[cfg(feature = "nav")]

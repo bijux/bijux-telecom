@@ -6,7 +6,7 @@ use bijux_gnss_nav::api::{
     elevation_azimuth_deg, sat_state_gps_l1ca_from_observation, GpsBroadcastNavigationData,
     IonosphereModel, KlobucharCoefficients, KlobucharModel,
 };
-use bijux_gnss_receiver::api::{Navigation, Receiver, ReceiverRuntime};
+use bijux_gnss_receiver::api::{Navigation, NavigationFilter, Receiver, ReceiverRuntime};
 
 use support::navigation_pipeline::{clean_synthetic_navigation_run, position_error_3d_m};
 
@@ -152,6 +152,49 @@ fn receiver_navigation_batch_runner_matches_per_epoch_ephemeris_navigation() {
         .observations
         .iter()
         .filter_map(|observation| per_epoch_navigation.solve_epoch(observation, &run.profile.ephemerides))
+        .collect::<Vec<_>>();
+
+    assert_eq!(batch_solutions.len(), per_epoch_solutions.len());
+    for (batch, per_epoch) in batch_solutions.iter().zip(per_epoch_solutions.iter()) {
+        assert_eq!(batch.epoch.index, per_epoch.epoch.index);
+        assert_eq!(batch.status, per_epoch.status);
+        assert_eq!(batch.explain_decision, per_epoch.explain_decision);
+        assert_eq!(batch.explain_reasons, per_epoch.explain_reasons);
+        assert_eq!(batch.used_sat_count, per_epoch.used_sat_count);
+        assert!((batch.ecef_x_m.0 - per_epoch.ecef_x_m.0).abs() < 1.0e-9);
+        assert!((batch.ecef_y_m.0 - per_epoch.ecef_y_m.0).abs() < 1.0e-9);
+        assert!((batch.ecef_z_m.0 - per_epoch.ecef_z_m.0).abs() < 1.0e-9);
+    }
+}
+
+#[test]
+fn receiver_navigation_filter_batch_runner_matches_per_epoch_filter_execution() {
+    let run = clean_synthetic_navigation_run();
+    let navigation = GpsBroadcastNavigationData {
+        ephemerides: run.profile.ephemerides.clone(),
+        klobuchar: Some(sample_klobuchar_coefficients()),
+    };
+    let ionosphere_biased_observations = run
+        .observations
+        .iter()
+        .map(|observation| bias_epoch_with_klobuchar(observation, run.profile.truth_ecef_m, &navigation))
+        .collect::<Vec<_>>();
+    let receiver = Receiver::new(run.config.clone(), ReceiverRuntime::default());
+    let batch_solutions =
+        receiver.solve_observation_epochs_with_gps_broadcast_navigation_filter(
+            &ionosphere_biased_observations,
+            &navigation,
+        );
+    let mut per_epoch_filter = NavigationFilter::from_pipeline_config(&run.config);
+    let per_epoch_solutions = ionosphere_biased_observations
+        .iter()
+        .filter_map(|observation| {
+            per_epoch_filter.solve_epoch(
+                observation,
+                &navigation.ephemerides,
+                navigation.klobuchar.as_ref(),
+            )
+        })
         .collect::<Vec<_>>();
 
     assert_eq!(batch_solutions.len(), per_epoch_solutions.len());

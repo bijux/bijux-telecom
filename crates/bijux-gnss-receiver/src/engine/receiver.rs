@@ -5,6 +5,8 @@ use crate::api::{Receiver, ReceiverPipelineConfig, ReceiverRuntime};
 #[cfg(feature = "nav")]
 use crate::pipeline::navigation::Navigation;
 #[cfg(feature = "nav")]
+use crate::pipeline::navigation_filter::NavigationFilter;
+#[cfg(feature = "nav")]
 use bijux_gnss_core::api::{NavEpoch, ObsEpoch};
 #[cfg(feature = "nav")]
 use bijux_gnss_nav::api::{GpsBroadcastNavigationData, GpsEphemeris, KlobucharCoefficients};
@@ -57,6 +59,25 @@ impl Receiver {
         self.solve_observation_epochs_with_runner(observations, |navigation, observation| {
             navigation.solve_epoch_with_gps_broadcast_navigation(observation, navigation_data)
         })
+    }
+
+    #[cfg(feature = "nav")]
+    pub fn solve_observation_epochs_with_gps_broadcast_navigation_filter(
+        &self,
+        observations: &[ObsEpoch],
+        navigation_data: &GpsBroadcastNavigationData,
+    ) -> Vec<NavEpoch> {
+        let mut navigation_filter = NavigationFilter::from_pipeline_config(&self.config);
+        observations
+            .iter()
+            .filter_map(|observation| {
+                navigation_filter.solve_epoch(
+                    observation,
+                    &navigation_data.ephemerides,
+                    navigation_data.klobuchar.as_ref(),
+                )
+            })
+            .collect()
     }
 
     #[cfg(feature = "nav")]

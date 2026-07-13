@@ -40,6 +40,10 @@ pub use crate::pipeline::doppler::{carrier_hz_from_doppler_hz, doppler_hz_from_c
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use crate::pipeline::navigation::{EkfState, Navigation, NavigationEngine};
+/// Filtered navigation execution helpers.
+#[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
+pub use crate::pipeline::navigation_filter::{NavigationFilter, NavigationFilterThresholds};
 /// Carrier-smoothed code validation helpers.
 pub use crate::pipeline::observation_validation::{
     summarize_carrier_smoothed_code, validate_carrier_smoothed_code,
