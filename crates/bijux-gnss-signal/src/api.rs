@@ -167,9 +167,12 @@ pub use crate::obs_validation::{
     InterFrequencyAlignmentReport,
 };
 /// Raw IQ metadata contracts.
-pub use crate::raw_iq::{IqSampleFormat, RawIqMetadata};
+pub use crate::raw_iq::{IqQuantization, IqSampleFormat, RawIqMetadata};
 /// Sample conversion helpers.
-pub use crate::samples::{iq_f32_to_samples, iq_i16_to_samples, iq_i8_to_samples};
+pub use crate::samples::{
+    encode_quantized_samples, iq_f32_to_samples, iq_i16_to_samples, iq_i8_to_samples,
+    quantize_samples_for_storage,
+};
 
 /// Streaming signal source interface.
 pub trait SignalSource {

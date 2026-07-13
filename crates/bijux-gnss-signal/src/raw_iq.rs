@@ -25,6 +25,49 @@ impl IqSampleFormat {
     }
 }
 
+/// Controlled quantization profile applied before raw-IQ storage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IqQuantization {
+    /// Preserve scaled complex samples in float32 without additional quantization.
+    Float32,
+    /// Apply a bipolar sign quantizer and store the result in signed 8-bit IQ.
+    Bipolar1Bit,
+    /// Apply a uniform 2-bit quantizer and store the result in signed 8-bit IQ.
+    Signed2Bit,
+    /// Apply a uniform 4-bit quantizer and store the result in signed 8-bit IQ.
+    Signed4Bit,
+    /// Apply a uniform 8-bit quantizer and store the result in signed 8-bit IQ.
+    Signed8Bit,
+    /// Apply a uniform 16-bit quantizer and store the result in signed 16-bit IQ.
+    Signed16Bit,
+}
+
+impl IqQuantization {
+    /// Raw IQ container format used to store this quantization profile.
+    pub const fn sample_format(self) -> IqSampleFormat {
+        match self {
+            Self::Float32 => IqSampleFormat::Cf32Le,
+            Self::Bipolar1Bit | Self::Signed2Bit | Self::Signed4Bit | Self::Signed8Bit => {
+                IqSampleFormat::Iq8
+            }
+            Self::Signed16Bit => IqSampleFormat::Iq16Le,
+        }
+    }
+
+    /// Effective quantization depth used to model this profile.
+    pub const fn quantization_bits(self) -> u8 {
+        match self {
+            Self::Float32 => 32,
+            Self::Bipolar1Bit => 1,
+            Self::Signed2Bit => 2,
+            Self::Signed4Bit => 4,
+            Self::Signed8Bit => 8,
+            Self::Signed16Bit => 16,
+        }
+    }
+}
+
 /// Explicit metadata required to ingest a raw IQ capture.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RawIqMetadata {
