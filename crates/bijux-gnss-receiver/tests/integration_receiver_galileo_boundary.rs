@@ -104,12 +104,12 @@ fn support_matrix_describes_galileo_e1_as_tracking_ready() {
         .expect("Galileo E1-B support row");
 
     assert!(matches!(row.status, SupportStatus::Planned), "{row:?}");
-    assert!(
-        row.reason.contains("receiver acquisition and tracking support this signal path"),
-        "{row:?}"
-    );
-    assert!(row.reason.contains("observations"), "{row:?}");
-    assert!(row.reason.contains("navigation"), "{row:?}");
+    assert!(matches!(row.stage_support.acquisition, SupportStatus::Supported), "{row:?}");
+    assert!(matches!(row.stage_support.tracking, SupportStatus::Supported), "{row:?}");
+    assert!(matches!(row.stage_support.data_decoding, SupportStatus::Planned), "{row:?}");
+    assert!(matches!(row.stage_support.observations, SupportStatus::Supported), "{row:?}");
+    assert!(matches!(row.stage_support.positioning, SupportStatus::Supported), "{row:?}");
+    assert!(row.requirements.is_empty(), "{row:?}");
 }
 
 #[test]
