@@ -3,7 +3,7 @@ use std::path::Path;
 
 use bijux_gnss_receiver::api::{
     apply_downgrade_policy, evaluate_prerequisites, AdvancedMode, AdvancedPrerequisites,
-    AdvancedRefusalClass, AdvancedSolutionClaim,
+    AdvancedRefusalClass, AdvancedSolutionClaim, AdvancedSolutionEvidence,
 };
 use serde::Deserialize;
 
@@ -13,7 +13,17 @@ struct AdvancedFixture {
     mode: String,
     prerequisites: AdvancedPrerequisites,
     claim: String,
+    evidence: Option<AdvancedEvidenceFixture>,
     expect: AdvancedExpect,
+}
+
+#[derive(Debug, Deserialize)]
+struct AdvancedEvidenceFixture {
+    covariance_supported: bool,
+    residual_supported: bool,
+    ambiguity_supported: bool,
+    correction_supported: bool,
+    integrity_supported: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -41,8 +51,15 @@ fn advanced_status_fixtures_are_deterministic() {
             fixture.id
         );
 
+        let evidence = fixture.evidence.as_ref().map(|evidence| AdvancedSolutionEvidence {
+            covariance_supported: evidence.covariance_supported,
+            residual_supported: evidence.residual_supported,
+            ambiguity_supported: evidence.ambiguity_supported,
+            correction_supported: evidence.correction_supported,
+            integrity_supported: evidence.integrity_supported,
+        });
         let (status, downgraded, _reason, final_claim) =
-            apply_downgrade_policy(mode, &first, claim);
+            apply_downgrade_policy(mode, &first, claim, evidence.as_ref());
         assert_eq!(first.ready, fixture.expect.ready, "fixture {} ready mismatch", fixture.id);
         assert_eq!(
             first.refusal_class.map(format_refusal),

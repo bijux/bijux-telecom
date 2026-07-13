@@ -745,6 +745,7 @@ fn build_validation_report_with_observation_context(
         AdvancedMode::Ppp,
         &ppp_prereq_decision,
         AdvancedSolutionClaim::NotReady,
+        None,
     );
     let nis_values: Vec<f64> = solutions
         .iter()
@@ -855,12 +856,8 @@ fn innovation_consistency_anomaly_summary(solutions: &[NavSolutionEpoch]) -> Opt
             continue;
         };
         anomaly_count += 1;
-        let candidate = (
-            *normalized_innovation_squared,
-            *lower_bound,
-            *upper_bound,
-            *measurement_dimension,
-        );
+        let candidate =
+            (*normalized_innovation_squared, *lower_bound, *upper_bound, *measurement_dimension);
         peak_anomaly = Some(match peak_anomaly {
             Some(current) if current.0 >= candidate.0 => current,
             _ => candidate,

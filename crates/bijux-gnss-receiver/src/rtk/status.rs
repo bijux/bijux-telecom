@@ -67,6 +67,31 @@ pub struct AdvancedSupportMatrix {
     pub rows: Vec<AdvancedSupportRow>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct AdvancedSolutionMeasurements {
+    #[serde(default)]
+    pub sigma_h_m: Option<f64>,
+    #[serde(default)]
+    pub sigma_v_m: Option<f64>,
+    #[serde(default)]
+    pub residual_rms_m: Option<f64>,
+    #[serde(default)]
+    pub predicted_rms_m: Option<f64>,
+    #[serde(default)]
+    pub hpl_m: Option<f64>,
+    #[serde(default)]
+    pub vpl_m: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct AdvancedSolutionEvidence {
+    pub covariance_supported: bool,
+    pub residual_supported: bool,
+    pub ambiguity_supported: bool,
+    pub correction_supported: bool,
+    pub integrity_supported: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdvancedPrerequisites {
     pub has_base_observations: bool,
@@ -92,6 +117,10 @@ pub struct AdvancedSolutionProvenance {
     pub correction_source: String,
     pub fallback_from: Option<String>,
     pub fixed_ratio: Option<f64>,
+    #[serde(default)]
+    pub measurements: AdvancedSolutionMeasurements,
+    #[serde(default)]
+    pub evidence: AdvancedSolutionEvidence,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -125,6 +154,9 @@ pub struct AdvancedSolutionArtifact {
     pub source_observation_epoch_id: String,
 }
 
+const RTK_FIXED_RATIO_THRESHOLD: f64 = 3.0;
+const RTK_MAX_RESIDUAL_SCALE: f64 = 3.0;
+
 pub fn support_status_matrix() -> AdvancedSupportMatrix {
     AdvancedSupportMatrix {
         schema_version: ADVANCED_SUPPORT_MATRIX_VERSION,
@@ -157,6 +189,110 @@ pub fn support_status_matrix() -> AdvancedSupportMatrix {
             },
         ],
     }
+}
+
+pub fn evaluate_solution_evidence(
+    mode: AdvancedMode,
+    claim: AdvancedSolutionClaim,
+    ambiguity_state_count: usize,
+    fixed_ratio: Option<f64>,
+    correction_source: &str,
+    measurements: &AdvancedSolutionMeasurements,
+) -> AdvancedSolutionEvidence {
+    match mode {
+        AdvancedMode::Ppp => AdvancedSolutionEvidence {
+            covariance_supported: has_positive_finite(measurements.sigma_h_m)
+                && has_positive_finite(measurements.sigma_v_m),
+            residual_supported: has_bounded_residual_scale(
+                measurements.residual_rms_m,
+                measurements.predicted_rms_m,
+            ),
+            ambiguity_supported: ambiguity_state_count > 0,
+            correction_supported: has_correction_source(correction_source),
+            integrity_supported: has_positive_finite(measurements.hpl_m)
+                && has_positive_finite(measurements.vpl_m),
+        },
+        AdvancedMode::Rtk => {
+            let ambiguity_supported = ambiguity_state_count > 0
+                && match claim {
+                    AdvancedSolutionClaim::Fixed => fixed_ratio.is_some_and(|ratio| {
+                        ratio.is_finite() && ratio >= RTK_FIXED_RATIO_THRESHOLD
+                    }),
+                    AdvancedSolutionClaim::Float => true,
+                    AdvancedSolutionClaim::NotReady | AdvancedSolutionClaim::FallbackNav => true,
+                };
+            AdvancedSolutionEvidence {
+                covariance_supported: has_positive_finite(measurements.sigma_h_m)
+                    && has_positive_finite(measurements.sigma_v_m),
+                residual_supported: has_bounded_residual_scale(
+                    measurements.residual_rms_m,
+                    measurements.predicted_rms_m,
+                ),
+                ambiguity_supported,
+                correction_supported: has_correction_source(correction_source),
+                integrity_supported: has_positive_finite(measurements.hpl_m)
+                    && has_positive_finite(measurements.vpl_m),
+            }
+        }
+    }
+}
+
+impl AdvancedSolutionEvidence {
+    pub fn supports_strong_claim(&self) -> bool {
+        self.covariance_supported
+            && self.residual_supported
+            && self.ambiguity_supported
+            && self.correction_supported
+            && self.integrity_supported
+    }
+
+    pub fn missing_reasons(&self) -> Vec<String> {
+        let mut reasons = Vec::new();
+        if !self.covariance_supported {
+            reasons.push("missing_covariance_evidence".to_string());
+        }
+        if !self.residual_supported {
+            reasons.push("missing_residual_evidence".to_string());
+        }
+        if !self.ambiguity_supported {
+            reasons.push("missing_ambiguity_evidence".to_string());
+        }
+        if !self.correction_supported {
+            reasons.push("missing_correction_evidence".to_string());
+        }
+        if !self.integrity_supported {
+            reasons.push("missing_integrity_evidence".to_string());
+        }
+        reasons
+    }
+}
+
+fn has_positive_finite(value: Option<f64>) -> bool {
+    value.is_some_and(|value| value.is_finite() && value > 0.0)
+}
+
+fn has_correction_source(correction_source: &str) -> bool {
+    !correction_source.is_empty() && correction_source != "uncorrected"
+}
+
+fn has_bounded_residual_scale(residual_rms_m: Option<f64>, predicted_rms_m: Option<f64>) -> bool {
+    let Some(residual_rms_m) = residual_rms_m else {
+        return false;
+    };
+    let Some(predicted_rms_m) = predicted_rms_m else {
+        return false;
+    };
+    if !residual_rms_m.is_finite()
+        || !predicted_rms_m.is_finite()
+        || residual_rms_m < 0.0
+        || predicted_rms_m < 0.0
+    {
+        return false;
+    }
+    if predicted_rms_m <= f64::EPSILON {
+        return residual_rms_m <= f64::EPSILON;
+    }
+    residual_rms_m / predicted_rms_m <= RTK_MAX_RESIDUAL_SCALE
 }
 
 pub fn evaluate_prerequisites(
@@ -226,6 +362,7 @@ pub fn apply_downgrade_policy(
     mode: AdvancedMode,
     decision: &AdvancedPrereqDecision,
     claim: AdvancedSolutionClaim,
+    evidence: Option<&AdvancedSolutionEvidence>,
 ) -> (String, bool, Option<String>, AdvancedSolutionClaim) {
     if mode == AdvancedMode::Ppp {
         return if decision.ready {
@@ -241,6 +378,18 @@ pub fn apply_downgrade_policy(
     }
 
     if decision.ready {
+        if claim_requires_strong_evidence(claim) {
+            let evidence = evidence.cloned().unwrap_or_default();
+            let missing_reasons = evidence.missing_reasons();
+            if !missing_reasons.is_empty() {
+                return (
+                    "degraded".to_string(),
+                    true,
+                    Some(missing_reasons.join(",")),
+                    AdvancedSolutionClaim::FallbackNav,
+                );
+            }
+        }
         let status = match claim {
             AdvancedSolutionClaim::Fixed => "accepted_fixed",
             AdvancedSolutionClaim::Float => "accepted_float",
@@ -255,6 +404,10 @@ pub fn apply_downgrade_policy(
         AdvancedMode::Ppp => AdvancedSolutionClaim::NotReady,
     };
     ("degraded".to_string(), true, Some(reason), downgraded_claim)
+}
+
+fn claim_requires_strong_evidence(claim: AdvancedSolutionClaim) -> bool {
+    matches!(claim, AdvancedSolutionClaim::Fixed | AdvancedSolutionClaim::Float)
 }
 
 impl ArtifactPayloadValidate for AdvancedSolutionArtifact {
@@ -272,6 +425,15 @@ impl ArtifactPayloadValidate for AdvancedSolutionArtifact {
                 DiagnosticSeverity::Warning,
                 "ADVANCED_SOLUTION_DOWNGRADE_REASON_MISSING",
                 "downgraded advanced solution missing downgrade reason",
+            ));
+        }
+        if claim_requires_strong_evidence(self.provenance.claim)
+            && !self.provenance.evidence.supports_strong_claim()
+        {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "ADVANCED_SOLUTION_EVIDENCE_MISSING",
+                "strong advanced solution claim is missing required numerical evidence",
             ));
         }
         events
@@ -340,6 +502,17 @@ mod tests {
         }
     }
 
+    fn strong_measurements() -> AdvancedSolutionMeasurements {
+        AdvancedSolutionMeasurements {
+            sigma_h_m: Some(0.04),
+            sigma_v_m: Some(0.06),
+            residual_rms_m: Some(0.02),
+            predicted_rms_m: Some(0.01),
+            hpl_m: Some(0.24),
+            vpl_m: Some(0.36),
+        }
+    }
+
     #[test]
     fn rtk_prerequisite_decision_refuses_missing_baseline() {
         let mut prereq = ready_prereq();
@@ -359,14 +532,74 @@ mod tests {
     }
 
     #[test]
+    fn rtk_fixed_evidence_requires_all_strong_claim_inputs() {
+        let evidence = evaluate_solution_evidence(
+            AdvancedMode::Rtk,
+            AdvancedSolutionClaim::Fixed,
+            5,
+            Some(3.4),
+            "broadcast_ephemeris",
+            &strong_measurements(),
+        );
+
+        assert!(evidence.supports_strong_claim(), "expected all strong-claim evidence to pass");
+        assert!(evidence.missing_reasons().is_empty(), "unexpected missing evidence reasons");
+    }
+
+    #[test]
+    fn rtk_float_evidence_rejects_missing_integrity_support() {
+        let mut measurements = strong_measurements();
+        measurements.hpl_m = None;
+
+        let evidence = evaluate_solution_evidence(
+            AdvancedMode::Rtk,
+            AdvancedSolutionClaim::Float,
+            5,
+            None,
+            "broadcast_ephemeris",
+            &measurements,
+        );
+
+        assert!(!evidence.supports_strong_claim());
+        assert!(evidence
+            .missing_reasons()
+            .iter()
+            .any(|reason| reason == "missing_integrity_evidence"));
+    }
+
+    #[test]
+    fn rtk_fixed_evidence_rejects_low_ratio_and_residual_overrun() {
+        let mut measurements = strong_measurements();
+        measurements.predicted_rms_m = Some(0.005);
+        measurements.residual_rms_m = Some(0.05);
+
+        let evidence = evaluate_solution_evidence(
+            AdvancedMode::Rtk,
+            AdvancedSolutionClaim::Fixed,
+            5,
+            Some(2.4),
+            "broadcast_ephemeris",
+            &measurements,
+        );
+
+        assert!(!evidence.ambiguity_supported);
+        assert!(!evidence.residual_supported);
+        assert!(!evidence.supports_strong_claim());
+    }
+
+    #[test]
     fn downgrade_policy_falls_back_when_not_ready() {
         let decision = AdvancedPrereqDecision {
             ready: false,
             refusal_class: Some(AdvancedRefusalClass::InsufficientGeometry),
             reasons: vec!["insufficient_geometry".to_string()],
         };
-        let (status, downgraded, reason, claim) =
-            apply_downgrade_policy(AdvancedMode::Rtk, &decision, AdvancedSolutionClaim::Fixed);
+        let (status, downgraded, reason, claim) = apply_downgrade_policy(
+            AdvancedMode::Rtk,
+            &decision,
+            AdvancedSolutionClaim::Fixed,
+            None,
+        );
         assert_eq!(status, "degraded");
         assert!(downgraded);
         assert!(reason.is_some());
@@ -380,8 +613,12 @@ mod tests {
             refusal_class: None,
             reasons: vec!["ppp_prerequisites_met".to_string()],
         };
-        let (status, downgraded, reason, claim) =
-            apply_downgrade_policy(AdvancedMode::Ppp, &decision, AdvancedSolutionClaim::Float);
+        let (status, downgraded, reason, claim) = apply_downgrade_policy(
+            AdvancedMode::Ppp,
+            &decision,
+            AdvancedSolutionClaim::Float,
+            None,
+        );
         assert_eq!(status, "not_ready");
         assert!(!downgraded);
         assert!(reason.is_none());
@@ -395,12 +632,43 @@ mod tests {
             refusal_class: Some(AdvancedRefusalClass::IncompleteCorrections),
             reasons: vec!["incomplete_corrections".to_string()],
         };
-        let (status, downgraded, reason, claim) =
-            apply_downgrade_policy(AdvancedMode::Ppp, &decision, AdvancedSolutionClaim::Float);
+        let (status, downgraded, reason, claim) = apply_downgrade_policy(
+            AdvancedMode::Ppp,
+            &decision,
+            AdvancedSolutionClaim::Float,
+            None,
+        );
         assert_eq!(status, "not_ready");
         assert!(!downgraded);
         assert_eq!(reason.as_deref(), Some("incomplete_corrections"));
         assert_eq!(claim, AdvancedSolutionClaim::NotReady);
+    }
+
+    #[test]
+    fn downgrade_policy_rejects_ready_fixed_claim_without_supporting_evidence() {
+        let decision = AdvancedPrereqDecision {
+            ready: true,
+            refusal_class: None,
+            reasons: vec!["rtk_prerequisites_met".to_string()],
+        };
+        let evidence = AdvancedSolutionEvidence {
+            covariance_supported: true,
+            residual_supported: true,
+            ambiguity_supported: true,
+            correction_supported: true,
+            integrity_supported: false,
+        };
+        let (status, downgraded, reason, claim) = apply_downgrade_policy(
+            AdvancedMode::Rtk,
+            &decision,
+            AdvancedSolutionClaim::Fixed,
+            Some(&evidence),
+        );
+
+        assert_eq!(status, "degraded");
+        assert!(downgraded);
+        assert_eq!(reason.as_deref(), Some("missing_integrity_evidence"));
+        assert_eq!(claim, AdvancedSolutionClaim::FallbackNav);
     }
 
     #[test]
@@ -427,5 +695,38 @@ mod tests {
 
         let events = artifact.validate_payload();
         assert!(events.iter().any(|event| event.code == "EXECUTION_ARTIFACT_VALUE_UNEXPECTED"));
+    }
+
+    #[test]
+    fn advanced_solution_artifact_rejects_strong_claim_without_evidence() {
+        let artifact = AdvancedSolutionArtifact {
+            epoch_idx: 7,
+            mode: AdvancedMode::Rtk,
+            status: "accepted_fixed".to_string(),
+            downgraded: false,
+            downgrade_reason: None,
+            prerequisites: ready_prereq(),
+            refusal_class: None,
+            provenance: AdvancedSolutionProvenance {
+                claim: AdvancedSolutionClaim::Fixed,
+                ambiguity_state_count: 4,
+                correction_source: "broadcast_ephemeris".to_string(),
+                fallback_from: None,
+                fixed_ratio: Some(3.4),
+                measurements: strong_measurements(),
+                evidence: AdvancedSolutionEvidence {
+                    covariance_supported: true,
+                    residual_supported: true,
+                    ambiguity_supported: true,
+                    correction_supported: true,
+                    integrity_supported: false,
+                },
+            },
+            artifact_id: "rtk-advanced-epoch-0000000007".to_string(),
+            source_observation_epoch_id: "obs-epoch-0000000007".to_string(),
+        };
+
+        let events = artifact.validate_payload();
+        assert!(events.iter().any(|event| event.code == "ADVANCED_SOLUTION_EVIDENCE_MISSING"));
     }
 }

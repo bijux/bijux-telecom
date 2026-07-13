@@ -1,5 +1,5 @@
 {
-  "id": "rtk_ready_fixed",
+  "id": "rtk_ready_fixed_missing_integrity",
   "mode": "rtk",
   "prerequisites": {
     "has_base_observations": true,
@@ -16,13 +16,13 @@
     "residual_supported": true,
     "ambiguity_supported": true,
     "correction_supported": true,
-    "integrity_supported": true
+    "integrity_supported": false
   },
   "expect": {
     "ready": true,
     "refusal_class": null,
-    "downgraded": false,
-    "status_prefix": "accepted",
-    "final_claim": "fixed"
+    "downgraded": true,
+    "status_prefix": "degraded",
+    "final_claim": "fallback_nav"
   }
 }

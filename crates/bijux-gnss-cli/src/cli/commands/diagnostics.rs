@@ -561,11 +561,37 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
         } else {
             bijux_gnss_infra::api::receiver::AdvancedSolutionClaim::Float
         };
+        let ambiguity_state_count =
+            float_ambiguity_state.as_ref().map_or(0usize, |state| state.float_cycles.len());
+        let correction_source = "broadcast_ephemeris".to_string();
+        let measurements = if let Some(quality) = baseline_quality_payload.as_ref() {
+            let sigma_h_m = (quality.sigma_e * quality.sigma_e + quality.sigma_n * quality.sigma_n)
+                .sqrt();
+            bijux_gnss_infra::api::receiver::AdvancedSolutionMeasurements {
+                sigma_h_m: Some(sigma_h_m),
+                sigma_v_m: Some(quality.sigma_u),
+                residual_rms_m: Some(quality.residual_rms_m),
+                predicted_rms_m: Some(quality.predicted_rms_m),
+                hpl_m: Some(quality.hpl_m),
+                vpl_m: Some(quality.vpl_m),
+            }
+        } else {
+            bijux_gnss_infra::api::receiver::AdvancedSolutionMeasurements::default()
+        };
+        let evidence = bijux_gnss_infra::api::receiver::evaluate_solution_evidence(
+            bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
+            raw_claim,
+            ambiguity_state_count,
+            fix_result.ratio,
+            &correction_source,
+            &measurements,
+        );
         let (status, downgraded, downgrade_reason, claim) =
             bijux_gnss_infra::api::receiver::apply_downgrade_policy(
                 bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
                 &prereq_decision,
                 raw_claim,
+                Some(&evidence),
             );
         let source_obs_id = rover
             .manifest
@@ -582,12 +608,12 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
             refusal_class: prereq_decision.refusal_class,
             provenance: bijux_gnss_infra::api::receiver::AdvancedSolutionProvenance {
                 claim,
-                ambiguity_state_count: float_ambiguity_state
-                    .as_ref()
-                    .map_or(0usize, |state| state.float_cycles.len()),
-                correction_source: "broadcast_ephemeris".to_string(),
+                ambiguity_state_count,
+                correction_source,
                 fallback_from: downgrade_reason,
                 fixed_ratio: fix_result.ratio,
+                measurements,
+                evidence,
             },
             artifact_id: format!("rtk-advanced-epoch-{:010}", rover.epoch_idx),
             source_observation_epoch_id: source_obs_id,

@@ -1,5 +1,5 @@
 {
-  "id": "rtk_ready_fixed",
+  "id": "rtk_ready_float_missing_residual",
   "mode": "rtk",
   "prerequisites": {
     "has_base_observations": true,
@@ -10,10 +10,10 @@
     "has_min_satellites": true,
     "has_ambiguity_state": true
   },
-  "claim": "fixed",
+  "claim": "float",
   "evidence": {
     "covariance_supported": true,
-    "residual_supported": true,
+    "residual_supported": false,
     "ambiguity_supported": true,
     "correction_supported": true,
     "integrity_supported": true
@@ -21,8 +21,8 @@
   "expect": {
     "ready": true,
     "refusal_class": null,
-    "downgraded": false,
-    "status_prefix": "accepted",
-    "final_claim": "fixed"
+    "downgraded": true,
+    "status_prefix": "degraded",
+    "final_claim": "fallback_nav"
   }
 }
