@@ -4,6 +4,7 @@
 //!
 //! Clean-room implementation derived from the public IS-GPS-200L signal definition.
 
+use crate::dsp::signal::sample_code;
 use crate::error::SignalError;
 
 /// Number of chips in one published GPS L2C CL code period.
@@ -153,10 +154,103 @@ pub fn gps_l2c_cl_code_assignments() -> &'static [GpsL2cClCodeAssignment; 115] {
     &GPS_L2C_CL_CODE_ASSIGNMENTS
 }
 
+/// Generate one full-period GPS L2C CL ranging code for a given PRN.
+///
+/// Returns chips in `{-1, +1}`.
+pub fn generate_gps_l2c_cl_code(prn: u8) -> Result<Vec<i8>, SignalError> {
+    generate_gps_l2c_cl_code_range(prn, 0, GPS_L2C_CL_CODE_CHIPS)
+}
+
+/// Generate a contiguous range of GPS L2C CL ranging-code chips.
+///
+/// The start offset wraps within the published 767,250-chip code period.
+pub fn generate_gps_l2c_cl_code_range(
+    prn: u8,
+    start_chip: usize,
+    chip_count: usize,
+) -> Result<Vec<i8>, SignalError> {
+    let assignment = gps_l2c_cl_code_assignment(prn)?;
+    let mut state = register_state_from_octal(assignment.initial_state_octal);
+    let range_start = start_chip % GPS_L2C_CL_CODE_CHIPS;
+
+    for _ in 0..range_start {
+        advance_register_state(&mut state);
+    }
+
+    let mut code = Vec::with_capacity(chip_count);
+    let mut generated = 0_usize;
+    let mut period_position = range_start;
+
+    while generated < chip_count {
+        code.push(if state[26] == 0 { 1 } else { -1 });
+        advance_register_state(&mut state);
+        generated += 1;
+        period_position += 1;
+
+        if period_position == GPS_L2C_CL_CODE_CHIPS {
+            state = register_state_from_octal(assignment.initial_state_octal);
+            period_position = 0;
+        }
+    }
+
+    Ok(code)
+}
+
+/// Sample the GPS L2C CL ranging code at an arbitrary sample rate from a chip-phase origin.
+pub fn sample_gps_l2c_cl_code(
+    prn: u8,
+    sample_rate_hz: f64,
+    start_chip_phase: f64,
+    sample_count: usize,
+) -> Result<Vec<f32>, SignalError> {
+    let code = generate_gps_l2c_cl_code(prn)?;
+    sample_code(&code, sample_rate_hz, GPS_L2C_CL_CODE_RATE_HZ, start_chip_phase, sample_count)
+}
+
+fn register_state_from_octal(state_octal: u32) -> [u8; 27] {
+    let mut state = [0_u8; 27];
+    for (index, bit) in format!("{state_octal:027b}").bytes().enumerate() {
+        state[index] = match bit {
+            b'0' => 0,
+            b'1' => 1,
+            _ => unreachable!("binary formatting must only emit 0 or 1"),
+        };
+    }
+    state
+}
+
+#[cfg(test)]
+fn register_state_to_octal(state: &[u8; 27]) -> u32 {
+    let mut value = 0_u32;
+    for bit in state {
+        value = (value << 1) | u32::from(*bit);
+    }
+    value
+}
+
+fn advance_register_state(state: &mut [u8; 27]) {
+    let output_bit = state[26];
+    for destination_index in (1..state.len()).rev() {
+        let source_position = destination_index;
+        let mut next_value = state[destination_index - 1];
+        if gps_l2c_feedback_applies(source_position) {
+            next_value ^= output_bit;
+        }
+        state[destination_index] = next_value;
+    }
+    state[0] = output_bit;
+}
+
+fn gps_l2c_feedback_applies(source_position: usize) -> bool {
+    matches!(source_position, 3 | 6 | 8 | 11 | 14 | 16 | 18 | 21 | 22 | 23 | 24)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        gps_l2c_cl_code_assignment, gps_l2c_cl_code_assignments, GpsL2cClCodeAssignment,
+        advance_register_state, generate_gps_l2c_cl_code, generate_gps_l2c_cl_code_range,
+        gps_l2c_cl_code_assignment, gps_l2c_cl_code_assignments, register_state_from_octal,
+        register_state_to_octal, sample_gps_l2c_cl_code, GpsL2cClCodeAssignment,
         GPS_L2C_CL_CODE_CHIPS, GPS_L2C_CL_CODE_RATE_HZ,
     };
     use crate::error::SignalError;
@@ -232,5 +326,53 @@ mod tests {
         assert_eq!(gps_l2c_cl_code_assignment(64), Err(SignalError::UnsupportedPrn(64)));
         assert_eq!(gps_l2c_cl_code_assignment(158), Err(SignalError::UnsupportedPrn(158)));
         assert_eq!(gps_l2c_cl_code_assignment(211), Err(SignalError::UnsupportedPrn(211)));
+    }
+
+    #[test]
+    fn gps_l2c_cl_generator_reaches_published_final_register_states() {
+        for prn in [1_u8, 37, 38, 63, 159, 210] {
+            let assignment = gps_l2c_cl_code_assignment(prn).expect("published PRN");
+            let mut state = register_state_from_octal(assignment.initial_state_octal);
+            for _ in 0..(GPS_L2C_CL_CODE_CHIPS - 1) {
+                advance_register_state(&mut state);
+            }
+            assert_eq!(register_state_to_octal(&state), assignment.end_state_octal, "prn={prn}");
+        }
+    }
+
+    #[test]
+    fn gps_l2c_cl_generator_emits_full_published_period() {
+        let code = generate_gps_l2c_cl_code(38).expect("valid L2C CL PRN");
+
+        assert_eq!(code.len(), GPS_L2C_CL_CODE_CHIPS);
+        assert!(code.iter().all(|chip| *chip == -1 || *chip == 1));
+    }
+
+    #[test]
+    fn gps_l2c_cl_arbitrary_ranges_wrap_the_published_period() {
+        let period = generate_gps_l2c_cl_code(159).expect("valid L2C CL PRN");
+        let wrapped = generate_gps_l2c_cl_code_range(
+            159,
+            GPS_L2C_CL_CODE_CHIPS - 7,
+            16,
+        )
+        .expect("valid L2C CL PRN");
+
+        let mut expected = period[GPS_L2C_CL_CODE_CHIPS - 7..].to_vec();
+        expected.extend_from_slice(&period[..9]);
+
+        assert_eq!(wrapped, expected);
+    }
+
+    #[test]
+    fn gps_l2c_cl_sample_helper_tracks_chip_boundaries() {
+        let samples = sample_gps_l2c_cl_code(1, GPS_L2C_CL_CODE_RATE_HZ, 0.0, 8)
+            .expect("valid L2C CL PRN");
+        let code = generate_gps_l2c_cl_code_range(1, 0, 8).expect("valid L2C CL PRN");
+
+        assert_eq!(
+            samples,
+            code.iter().map(|chip| f32::from(*chip)).collect::<Vec<_>>()
+        );
     }
 }
