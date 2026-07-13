@@ -20,12 +20,13 @@ use crate::io::data::SampleSourceError;
 use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
 use bijux_gnss_nav::api::{sat_state_gps_l1ca, GpsEphemeris};
 use bijux_gnss_signal::api::{
+    encode_quantized_samples,
     first_order_ionosphere_code_delay_m, receiver_search_code_phase_samples, samples_per_code,
-    IqSampleFormat, RawIqMetadata,
+    IqQuantization, IqSampleFormat, RawIqMetadata,
 };
 use serde::{Deserialize, Serialize};
 
-const SYNTHETIC_IQ_TRUTH_SCHEMA_VERSION: u32 = 5;
+const SYNTHETIC_IQ_TRUTH_SCHEMA_VERSION: u32 = 6;
 const SYNTHETIC_GNSS_ACCURACY_ARTIFACT_SCHEMA_VERSION: u32 = 1;
 #[cfg(test)]
 const GPS_L1_CA_NAV_BIT_PERIOD_S: f64 = 0.02;
@@ -58,11 +59,12 @@ include!("synthetic/signal_generation.rs");
 #[cfg(test)]
 mod tests {
     use super::{
-        build_iq16_capture_bundle, build_truth_bundle, expected_acquisition_code_phase_samples,
+        build_iq16_capture_bundle, build_quantized_capture_bundle, build_truth_bundle,
+        expected_acquisition_code_phase_samples,
         expected_acquisition_code_phase_samples_f64, generate_l1_ca, generate_l1_ca_multi,
         generate_l1_ca_multi_signal_only, generate_l1_ca_with_doppler_ramp,
-        generate_l1_ca_with_fades,
-        generate_l1_ca_with_phase_windows, measure_noise_only_acquisition_false_alarm_rate,
+        generate_l1_ca_with_fades, generate_l1_ca_with_phase_windows,
+        measure_noise_only_acquisition_false_alarm_rate,
         measure_noise_only_acquisition_false_alarm_rates,
         measure_truth_guided_acquisition_detection_probability,
         measure_truth_guided_acquisition_detection_rate, measure_truth_guided_tracking_lock_rate,
@@ -74,20 +76,20 @@ mod tests {
         summarize_truth_guided_pvt_multipath_profile, summarize_truth_guided_pvt_time_profile,
         synthetic_tracking_sensitivity_report, truth_guided_receiver_accuracy_budgets,
         validate_acquisition_accuracy_budget, validate_pvt_accuracy_budget,
-        validate_truth_guided_composite_component_recovery,
         validate_truth_guided_acquisition_code_phase,
         validate_truth_guided_acquisition_code_phase_refinement,
         validate_truth_guided_acquisition_coherent_integration,
         validate_truth_guided_acquisition_doppler,
         validate_truth_guided_acquisition_receiver_clock_offset,
         validate_truth_guided_acquisition_sample_rates, validate_truth_guided_cn0,
-        validate_truth_guided_pvt_table, wrapped_code_phase_error_samples,
-        wrapped_code_phase_error_samples_f64, SatState, SyntheticAccuracyCn0ProfileReport,
-        SyntheticAcquisitionDetectionRateCase, SyntheticAcquisitionDetectionRatePoint,
-        SyntheticAcquisitionDetectionRateReport, SyntheticAcquisitionFalseAlarmRateCase,
-        SyntheticAcquisitionSampleRateValidationCase, SyntheticAcquisitionTruthTableReport,
-        SyntheticAcquisitionTruthTableSatellite, SyntheticDopplerRampParams, SyntheticFadeWindow,
-        SyntheticNavBitMode, SyntheticPhaseWindow, SyntheticPvtAccuracyEpoch,
+        validate_truth_guided_composite_component_recovery, validate_truth_guided_pvt_table,
+        wrapped_code_phase_error_samples, wrapped_code_phase_error_samples_f64, SatState,
+        SyntheticAccuracyCn0ProfileReport, SyntheticAcquisitionDetectionRateCase,
+        SyntheticAcquisitionDetectionRatePoint, SyntheticAcquisitionDetectionRateReport,
+        SyntheticAcquisitionFalseAlarmRateCase, SyntheticAcquisitionSampleRateValidationCase,
+        SyntheticAcquisitionTruthTableReport, SyntheticAcquisitionTruthTableSatellite,
+        SyntheticDopplerRampParams, SyntheticFadeWindow, SyntheticNavBitMode,
+        SyntheticNavigationData, SyntheticPhaseWindow, SyntheticPvtAccuracyEpoch,
         SyntheticPvtAccuracyReport, SyntheticPvtClockProfileCase, SyntheticPvtCn0ProfileCase,
         SyntheticPvtCn0ProfilePoint, SyntheticPvtCn0ProfileReport,
         SyntheticPvtConstellationGeometryProfileCase,
@@ -97,7 +99,7 @@ mod tests {
         SyntheticPvtMultipathProfileReport, SyntheticPvtTimeProfileCase,
         SyntheticPvtTimeProfileReport, SyntheticPvtTimeTrend, SyntheticPvtTruthReferenceEpoch,
         SyntheticPvtTruthTableClockBias, SyntheticPvtTruthTableDop, SyntheticPvtTruthTableEcef,
-        SyntheticPvtTruthTableEnuError, SyntheticPvtTruthTableEpoch, SyntheticNavigationData,
+        SyntheticPvtTruthTableEnuError, SyntheticPvtTruthTableEpoch,
         SyntheticPvtTruthTableGeodetic, SyntheticPvtTruthTableReport, SyntheticScenario,
         SyntheticSignalParams, SyntheticSignalSource, SyntheticTrackingLockRateCase,
         SyntheticTrackingLockRatePoint, SyntheticTrackingLockRateReport,
@@ -117,8 +119,8 @@ mod tests {
     };
     use bijux_gnss_nav::api::GpsEphemeris;
     use bijux_gnss_signal::api::{
-        advance_code_phase_seconds, sample_ca_code, samples_per_code, IqSampleFormat, Prn,
-        RawIqMetadata, SignalSource,
+        advance_code_phase_seconds, sample_ca_code, samples_per_code, IqQuantization,
+        IqSampleFormat, Prn, RawIqMetadata, SignalSource,
     };
     use num_complex::Complex;
 

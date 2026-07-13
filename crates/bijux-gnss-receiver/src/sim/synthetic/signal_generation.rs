@@ -907,20 +907,6 @@ fn peak_component(samples: &[Complex<f32>]) -> f32 {
     samples.iter().flat_map(|sample| [sample.re.abs(), sample.im.abs()]).fold(0.0f32, f32::max)
 }
 
-fn encode_iq16_le_bytes(samples: &[Complex<f32>], scale: f32) -> Vec<u8> {
-    let mut encoded = Vec::with_capacity(samples.len() * 4);
-    for sample in samples {
-        encoded.extend_from_slice(&quantize_i16_component(sample.re * scale).to_le_bytes());
-        encoded.extend_from_slice(&quantize_i16_component(sample.im * scale).to_le_bytes());
-    }
-    encoded
-}
-
-fn quantize_i16_component(value: f32) -> i16 {
-    let scaled = (value * 32768.0).round();
-    scaled.clamp(-32768.0, 32767.0) as i16
-}
-
 fn nav_bit_segments(
     sample_rate_hz: f64,
     sample_count: u64,

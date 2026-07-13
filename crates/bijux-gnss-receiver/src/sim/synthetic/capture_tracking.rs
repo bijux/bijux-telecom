@@ -4,6 +4,7 @@ pub fn build_truth_bundle(
     scenario: &SyntheticScenario,
     frame: &SamplesFrame,
     metadata: &RawIqMetadata,
+    quantization: IqQuantization,
     peak_component_before_scaling: f32,
     output_scale_applied: f32,
 ) -> SyntheticIqTruthBundle {
@@ -12,6 +13,7 @@ pub fn build_truth_bundle(
         scenario,
         frame,
         metadata,
+        quantization,
         peak_component_before_scaling,
         output_scale_applied,
         None,
@@ -23,6 +25,7 @@ pub fn build_truth_bundle_with_source_front_end(
     scenario: &SyntheticScenario,
     frame: &SamplesFrame,
     metadata: &RawIqMetadata,
+    quantization: IqQuantization,
     peak_component_before_scaling: f32,
     output_scale_applied: f32,
     source_front_end_filter: Option<&bijux_gnss_signal::api::FrontEndFilterSpec>,
@@ -35,6 +38,7 @@ pub fn build_truth_bundle_with_source_front_end(
         scenario_id: scenario_id.to_string(),
         seed: scenario.seed,
         sample_format: metadata.format,
+        quantization,
         sample_rate_hz: frame.t0.sample_rate_hz,
         intermediate_freq_hz: metadata.intermediate_freq_hz,
         receiver_clock_frequency_bias_hz: scenario.receiver_clock_frequency_bias_hz,
@@ -82,6 +86,65 @@ pub fn build_truth_bundle_with_source_front_end(
     }
 }
 
+/// Encode a generated synthetic frame with one explicit quantization profile and truth metadata.
+pub fn build_quantized_capture_bundle(
+    scenario_id: &str,
+    scenario: &SyntheticScenario,
+    frame: &SamplesFrame,
+    quantization: IqQuantization,
+    capture_start_utc: &str,
+    notes: Option<String>,
+) -> SyntheticIqCaptureBundle {
+    build_quantized_capture_bundle_with_source_front_end(
+        scenario_id,
+        scenario,
+        frame,
+        quantization,
+        capture_start_utc,
+        notes,
+        None,
+    )
+}
+
+pub fn build_quantized_capture_bundle_with_source_front_end(
+    scenario_id: &str,
+    scenario: &SyntheticScenario,
+    frame: &SamplesFrame,
+    quantization: IqQuantization,
+    capture_start_utc: &str,
+    notes: Option<String>,
+    source_front_end_filter: Option<&bijux_gnss_signal::api::FrontEndFilterSpec>,
+) -> SyntheticIqCaptureBundle {
+    let peak_component_before_scaling = peak_component(&frame.iq);
+    let output_scale_applied = if peak_component_before_scaling <= 0.999 {
+        1.0
+    } else {
+        0.999 / peak_component_before_scaling
+    };
+    let scaled_iq = frame.iq.iter().map(|sample| *sample * output_scale_applied).collect::<Vec<_>>();
+    let raw_iq_bytes = encode_quantized_samples(&scaled_iq, quantization);
+    let metadata = RawIqMetadata {
+        format: quantization.sample_format(),
+        sample_rate_hz: frame.t0.sample_rate_hz,
+        intermediate_freq_hz: scenario.intermediate_freq_hz,
+        capture_start_utc: capture_start_utc.to_string(),
+        offset_bytes: 0,
+        quantization_bits: Some(quantization.quantization_bits()),
+        notes,
+    };
+    let truth = build_truth_bundle_with_source_front_end(
+        scenario_id,
+        scenario,
+        frame,
+        &metadata,
+        quantization,
+        peak_component_before_scaling,
+        output_scale_applied,
+        source_front_end_filter,
+    );
+    SyntheticIqCaptureBundle { raw_iq_bytes, metadata, truth }
+}
+
 /// Encode a generated synthetic frame as an IQ16 little-endian capture with truth metadata.
 pub fn build_iq16_capture_bundle(
     scenario_id: &str,
@@ -90,13 +153,13 @@ pub fn build_iq16_capture_bundle(
     capture_start_utc: &str,
     notes: Option<String>,
 ) -> SyntheticIqCaptureBundle {
-    build_iq16_capture_bundle_with_source_front_end(
+    build_quantized_capture_bundle(
         scenario_id,
         scenario,
         frame,
+        IqQuantization::Signed16Bit,
         capture_start_utc,
         notes,
-        None,
     )
 }
 
@@ -108,32 +171,15 @@ pub fn build_iq16_capture_bundle_with_source_front_end(
     notes: Option<String>,
     source_front_end_filter: Option<&bijux_gnss_signal::api::FrontEndFilterSpec>,
 ) -> SyntheticIqCaptureBundle {
-    let peak_component_before_scaling = peak_component(&frame.iq);
-    let output_scale_applied = if peak_component_before_scaling <= 0.999 {
-        1.0
-    } else {
-        0.999 / peak_component_before_scaling
-    };
-    let raw_iq_bytes = encode_iq16_le_bytes(&frame.iq, output_scale_applied);
-    let metadata = RawIqMetadata {
-        format: IqSampleFormat::Iq16Le,
-        sample_rate_hz: frame.t0.sample_rate_hz,
-        intermediate_freq_hz: scenario.intermediate_freq_hz,
-        capture_start_utc: capture_start_utc.to_string(),
-        offset_bytes: 0,
-        quantization_bits: Some(16),
-        notes,
-    };
-    let truth = build_truth_bundle_with_source_front_end(
+    build_quantized_capture_bundle_with_source_front_end(
         scenario_id,
         scenario,
         frame,
-        &metadata,
-        peak_component_before_scaling,
-        output_scale_applied,
+        IqQuantization::Signed16Bit,
+        capture_start_utc,
+        notes,
         source_front_end_filter,
-    );
-    SyntheticIqCaptureBundle { raw_iq_bytes, metadata, truth }
+    )
 }
 
 /// Measure truth-guided C/N0 directly from a synthetic capture using receiver correlators.

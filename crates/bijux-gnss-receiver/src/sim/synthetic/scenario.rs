@@ -305,6 +305,8 @@ pub struct SyntheticIqTruthBundle {
     pub seed: u64,
     /// Output sample format.
     pub sample_format: IqSampleFormat,
+    /// Explicit quantization model used before storage.
+    pub quantization: IqQuantization,
     /// Output sample rate in Hz.
     pub sample_rate_hz: f64,
     /// Output intermediate frequency in Hz.
