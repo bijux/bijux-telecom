@@ -163,32 +163,11 @@ fn handle_pvt(command: GnssCommand) -> Result<()> {
     let pipeline_config = profile.to_pipeline_config();
     let receiver =
         bijux_gnss_infra::api::receiver::Receiver::new(pipeline_config.clone(), runtime.clone());
-    let mut ekf_ctx = if ekf {
-        Some(EkfContext::new_with_troposphere(
-            pipeline_config.tropo_enable,
-            pipeline_config.tropo_ztd_m,
-            EkfScienceThresholds {
-                max_pdop: pipeline_config.science_thresholds.max_pdop,
-                max_gdop: pipeline_config.science_thresholds.max_gdop,
-                min_used_satellites: pipeline_config.science_thresholds.min_used_satellites,
-            },
-        ))
-    } else {
-        None
-    };
     let solutions = if ekf {
-        let mut solutions = Vec::new();
-        for obs_epoch in &obs_epochs {
-            if let Some(solution) = solve_epoch_ekf(
-                &mut ekf_ctx,
-                obs_epoch,
-                &broadcast_navigation.ephemerides,
-                broadcast_navigation.klobuchar.as_ref(),
-            )? {
-                solutions.push(solution);
-            }
-        }
-        solutions
+        receiver.solve_observation_epochs_with_gps_broadcast_navigation_filter(
+            &obs_epochs,
+            &broadcast_navigation,
+        )
     } else {
         receiver.solve_observation_epochs_with_gps_broadcast_navigation(
             &obs_epochs,
