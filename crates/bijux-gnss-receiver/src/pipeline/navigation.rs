@@ -16,9 +16,9 @@ use bijux_gnss_nav::api::{
     sat_state_gps_l1ca_from_observation, GalileoBroadcastNavigationData,
     GpsBroadcastNavigationData, GpsEphemeris, KlobucharCoefficients,
     ImpossibleGeometryEvidence, PositionBroadcastNavigation, PositionFilterMotionClass,
-    PositionObservation, PositionRobustWeighting, PositionSolutionSmoother,
-    PositionSolutionSmootherConfig, PositionSolveRefusalKind, PositionSolver,
-    PositionWeightingModel, RaimFaultDetectionStatus, WeightingConfig,
+    PositionFilterDivergenceReason, PositionObservation, PositionRobustWeighting,
+    PositionSolutionSmoother, PositionSolutionSmootherConfig, PositionSolveRefusalKind,
+    PositionSolver, PositionWeightingModel, RaimFaultDetectionStatus, WeightingConfig,
 };
 
 use crate::engine::receiver_config::{
@@ -440,6 +440,7 @@ impl Navigation {
                     }
                     PositionSolveRefusalKind::FilterDivergence(_) => NavRefusalClass::SolverFailure,
                 };
+                let solution_status = solver_refusal_status(refusal.kind, refusal_class);
                 let mut rejected = refusal.rejected;
                 rejected.extend(
                     invalid_satellite_time_sats
@@ -451,6 +452,9 @@ impl Navigation {
                     "position_solver_failed".to_string(),
                     format!("ephemeris_covered_count={eph_covered_count}"),
                 ];
+                if let PositionSolveRefusalKind::FilterDivergence(reason) = refusal.kind {
+                    explain_reasons.push(filter_divergence_explain_reason(reason));
+                }
                 if refusal.kind == PositionSolveRefusalKind::UnderdeterminedRaimExclusion {
                     explain_reasons.push("raim_exclusion_underdetermined".to_string());
                     if let Some((suspect_sat, _reason)) = rejected
@@ -506,12 +510,12 @@ impl Navigation {
                             rejected,
                         )
                     } else {
-                        self.degraded_from_last(
+                        self.reuse_previous_solution(
                             obs,
                             source_observation_epoch_id,
                             nav_artifact_id,
                             NavDecision {
-                                status: SolutionStatus::Degraded,
+                                status: solution_status,
                                 refusal_class: Some(refusal_class),
                                 explain_decision: "refused".to_string(),
                                 explain_reasons,
@@ -699,6 +703,16 @@ impl Navigation {
                 nav_epoch.health.push(bijux_gnss_core::api::NavHealthEvent::CovarianceDiverged {
                     max_variance: max_var,
                 });
+                nav_epoch = override_solution_status(nav_epoch, SolutionStatus::Diverged);
+                nav_epoch.refusal_class = Some(NavRefusalClass::SolverFailure);
+                nav_epoch.explain_decision = "diverged".to_string();
+                if !nav_epoch
+                    .explain_reasons
+                    .iter()
+                    .any(|reason| reason == "covariance_divergence")
+                {
+                    nav_epoch.explain_reasons.push("covariance_divergence".to_string());
+                }
             }
         }
 
@@ -897,9 +911,18 @@ impl Navigation {
             .iter()
             .any(|e| matches!(e.severity, bijux_gnss_core::api::DiagnosticSeverity::Error))
         {
-            nav_epoch.status = SolutionStatus::Degraded;
-            nav_epoch.valid = false;
+            nav_epoch = override_solution_status(nav_epoch, SolutionStatus::Diverged);
             nav_epoch.refusal_class = Some(NavRefusalClass::InconsistentObservations);
+            nav_epoch.explain_decision = "diverged".to_string();
+            if !nav_epoch
+                .explain_reasons
+                .iter()
+                .any(|reason| reason == "navigation_solution_sanity_failed")
+            {
+                nav_epoch
+                    .explain_reasons
+                    .push("navigation_solution_sanity_failed".to_string());
+            }
             for event in sanity_events {
                 self.runtime.logger.event(&event);
             }
@@ -1103,6 +1126,10 @@ impl Navigation {
         });
         nav_epoch.integrity_hpl_m = protection_levels.map(|levels| levels.horizontal_m);
         nav_epoch.integrity_vpl_m = protection_levels.map(|levels| levels.vertical_m);
+        if !is_solution_valid(nav_epoch.status) {
+            nav_epoch.integrity_hpl_m = None;
+            nav_epoch.integrity_vpl_m = None;
+        }
 
         if let Some(rms) = nav_epoch.innovation_rms_m {
             self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
@@ -1120,7 +1147,7 @@ impl Navigation {
         Some(nav_epoch)
     }
 
-    fn degraded_from_last(
+    fn reuse_previous_solution(
         &mut self,
         obs: &ObsEpoch,
         source_observation_epoch_id: String,
@@ -1130,7 +1157,7 @@ impl Navigation {
     ) -> NavSolutionEpoch {
         self.last_satellite_clock_suspect = None;
         self.satellite_clock_suspect_streak = 0;
-        let mut degraded = self.last_solution.clone().unwrap_or_else(|| {
+        let mut solution = self.last_solution.clone().unwrap_or_else(|| {
             invalid_solution_epoch(
                 obs,
                 source_observation_epoch_id.clone(),
@@ -1141,29 +1168,32 @@ impl Navigation {
                 assumptions.clone(),
             )
         });
-        degraded.epoch = bijux_gnss_core::api::Epoch { index: obs.epoch_idx };
-        degraded.t_rx_s = obs.t_rx_s;
-        degraded.source_time = obs.source_time;
-        degraded.status = deterministic_solution_transition(
+        solution.epoch = bijux_gnss_core::api::Epoch { index: obs.epoch_idx };
+        solution.t_rx_s = obs.t_rx_s;
+        solution.source_time = obs.source_time;
+        solution.status = deterministic_solution_transition(
             self.last_solution.as_ref().map(|row| row.status),
             decision.status,
             decision.refusal_class,
             true,
         );
-        degraded.lifecycle_state = lifecycle_state_from_status(degraded.status);
-        degraded.quality = degraded.status.quality_flag();
-        degraded.valid = is_solution_valid(degraded.status);
-        degraded.validity = SolutionValidity::Coarse;
-        degraded.processing_ms = None;
-        degraded.residuals.clear();
-        degraded.assumptions = Some(assumptions);
-        degraded.source_observation_epoch_id = source_observation_epoch_id;
-        degraded.artifact_id = nav_artifact_id;
-        degraded.explain_decision = decision.explain_decision;
-        degraded.explain_reasons = decision.explain_reasons;
-        degraded.refusal_class = decision.refusal_class;
-        degraded.stability_signature = nav_output_stability_signature(&degraded);
-        degraded
+        solution.lifecycle_state = lifecycle_state_from_status(solution.status);
+        solution.quality = solution.status.quality_flag();
+        solution.valid = is_solution_valid(solution.status);
+        solution.validity = SolutionValidity::Coarse;
+        solution.processing_ms = None;
+        solution.residuals.clear();
+        solution.assumptions = Some(assumptions);
+        solution.source_observation_epoch_id = source_observation_epoch_id;
+        solution.artifact_id = nav_artifact_id;
+        solution.explain_decision = decision.explain_decision;
+        solution.explain_reasons = decision.explain_reasons;
+        solution.refusal_class = decision.refusal_class;
+        if matches!(decision.status, SolutionStatus::Diverged | SolutionStatus::IntegrityFailed) {
+            solution = override_solution_status(solution, decision.status);
+        }
+        solution.stability_signature = nav_output_stability_signature(&solution);
+        solution
     }
 
     fn current_epoch_refusal(
@@ -1564,6 +1594,47 @@ fn refusal_status(refusal_class: NavRefusalClass) -> SolutionStatus {
         | NavRefusalClass::ScientificPrerequisitesTooWeak
         | NavRefusalClass::SolverFailure => SolutionStatus::Refused,
     }
+}
+
+fn solver_refusal_status(
+    refusal_kind: PositionSolveRefusalKind,
+    refusal_class: NavRefusalClass,
+) -> SolutionStatus {
+    match refusal_kind {
+        PositionSolveRefusalKind::FilterDivergence(_) => SolutionStatus::Diverged,
+        PositionSolveRefusalKind::SolverFailure
+            if refusal_class == NavRefusalClass::SolverFailure =>
+        {
+            SolutionStatus::Diverged
+        }
+        _ => refusal_status(refusal_class),
+    }
+}
+
+fn filter_divergence_explain_reason(reason: PositionFilterDivergenceReason) -> String {
+    let label = match reason {
+        PositionFilterDivergenceReason::InnovationGrowth => "innovation_growth",
+        PositionFilterDivergenceReason::CovarianceCollapse => "covariance_collapse",
+        PositionFilterDivergenceReason::CovarianceDivergence => "covariance_divergence",
+        PositionFilterDivergenceReason::ResidualExplosion => "residual_explosion",
+    };
+    format!("filter_divergence={label}")
+}
+
+fn override_solution_status(
+    mut solution: NavSolutionEpoch,
+    status: SolutionStatus,
+) -> NavSolutionEpoch {
+    solution.status = status;
+    solution.lifecycle_state = lifecycle_state_from_status(status);
+    solution.quality = status.quality_flag();
+    solution.valid = is_solution_valid(status);
+    solution.validity = if solution.valid {
+        solution.validity
+    } else {
+        SolutionValidity::Invalid
+    };
+    solution
 }
 
 fn lifecycle_state_from_status(status: SolutionStatus) -> NavLifecycleState {
@@ -3670,6 +3741,33 @@ mod tests {
                 false,
             ),
             SolutionStatus::Refused
+        );
+    }
+
+    #[test]
+    fn solver_refusal_status_distinguishes_divergence_from_missing_inputs() {
+        assert_eq!(
+            solver_refusal_status(
+                PositionSolveRefusalKind::FilterDivergence(
+                    PositionFilterDivergenceReason::CovarianceDivergence,
+                ),
+                NavRefusalClass::SolverFailure,
+            ),
+            SolutionStatus::Diverged
+        );
+        assert_eq!(
+            solver_refusal_status(
+                PositionSolveRefusalKind::SolverFailure,
+                NavRefusalClass::SolverFailure,
+            ),
+            SolutionStatus::Diverged
+        );
+        assert_eq!(
+            solver_refusal_status(
+                PositionSolveRefusalKind::SolverFailure,
+                NavRefusalClass::InvalidEphemeris,
+            ),
+            SolutionStatus::Unavailable
         );
     }
 
