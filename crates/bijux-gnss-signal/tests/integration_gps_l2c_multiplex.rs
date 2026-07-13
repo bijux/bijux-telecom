@@ -2,7 +2,7 @@
 
 use bijux_gnss_signal::api::{
     generate_gps_l2c_cl_code, generate_gps_l2c_cm_code, generate_gps_l2c_time_multiplexed_chips,
-    gps_l2c_time_multiplexed_component, sample_gps_l2c_time_multiplexed,
+    gps_l2c_time_multiplexed_component, periodic_correlation, sample_gps_l2c_time_multiplexed,
     GpsL2cTimeMultiplexedComponent, GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ,
     GPS_L2C_TIME_MULTIPLEXED_SYMBOL_CHIPS,
 };
@@ -58,4 +58,27 @@ fn public_api_applies_navigation_symbols_only_to_cm_slots() {
     assert_eq!(samples[1], cl[10_230] as f32);
     assert_eq!(samples[2], -(cm[1] as f32));
     assert_eq!(samples[3], cl[10_231] as f32);
+}
+
+#[test]
+fn public_api_multiplexed_replica_has_full_zero_shift_correlation_peak() {
+    let chips = generate_gps_l2c_time_multiplexed_chips(38, 0, 20_460, &[1])
+        .expect("valid GPS L2C multiplexed chips");
+    let correlation = periodic_correlation(&chips, &chips).expect("correlation trace");
+
+    assert_eq!(correlation[0], 20_460);
+}
+
+#[test]
+fn public_api_shifted_multiplex_replica_loses_the_main_peak() {
+    let reference = generate_gps_l2c_time_multiplexed_chips(38, 0, 20_460, &[1])
+        .expect("reference GPS L2C multiplexed chips");
+    let shifted = generate_gps_l2c_time_multiplexed_chips(38, 1, 20_460, &[1])
+        .expect("shifted GPS L2C multiplexed chips");
+    let exact = periodic_correlation(&reference, &reference).expect("exact correlation");
+    let shifted_correlation =
+        periodic_correlation(&reference, &shifted).expect("shifted correlation");
+
+    assert_eq!(exact[0], 20_460);
+    assert!(shifted_correlation[0].abs() < exact[0]);
 }
