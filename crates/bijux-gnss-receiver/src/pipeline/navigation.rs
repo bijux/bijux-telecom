@@ -38,6 +38,19 @@ use crate::pipeline::satellite_clock_anomaly::{
     advance_satellite_clock_suspect_streak, detect_satellite_clock_anomaly,
 };
 
+const FIXED_VALIDATED_SIGMA_H_FLOOR_M: f64 = 0.02;
+const FIXED_VALIDATED_SIGMA_V_FLOOR_M: f64 = 0.03;
+const FIXED_SIGMA_H_FLOOR_M: f64 = 0.10;
+const FIXED_SIGMA_V_FLOOR_M: f64 = 0.15;
+const FLOAT_SIGMA_H_FLOOR_M: f64 = 0.25;
+const FLOAT_SIGMA_V_FLOOR_M: f64 = 0.40;
+const CONVERGED_SIGMA_H_FLOOR_M: f64 = 1.0;
+const CONVERGED_SIGMA_V_FLOOR_M: f64 = 2.0;
+const CODE_ONLY_SIGMA_H_FLOOR_M: f64 = 3.0;
+const CODE_ONLY_SIGMA_V_FLOOR_M: f64 = 5.0;
+const DEGRADED_SIGMA_H_FLOOR_M: f64 = 5.0;
+const DEGRADED_SIGMA_V_FLOOR_M: f64 = 8.0;
+
 /// Navigation solution derived from observation epochs.
 pub struct Navigation {
     #[allow(dead_code)]
@@ -60,6 +73,14 @@ struct NavDecision {
     refusal_class: Option<NavRefusalClass>,
     explain_decision: String,
     explain_reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PrecisionReportingPolicy {
+    horizontal_sigma_floor_m: f64,
+    vertical_sigma_floor_m: f64,
+    low_uncertainty_allowed: bool,
+    explain_reason: &'static str,
 }
 
 #[derive(Debug, Clone)]
@@ -1677,6 +1698,73 @@ fn lifecycle_state_from_status(status: SolutionStatus) -> NavLifecycleState {
 }
 
 fn uncertainty_class_from_solution(solution: &NavSolutionEpoch) -> NavUncertaintyClass {
+fn precision_reporting_policy(solution: &NavSolutionEpoch) -> PrecisionReportingPolicy {
+    match solution.status {
+        SolutionStatus::Fixed if has_validated_centimeter_precision_support(solution) => {
+            PrecisionReportingPolicy {
+                horizontal_sigma_floor_m: FIXED_VALIDATED_SIGMA_H_FLOOR_M,
+                vertical_sigma_floor_m: FIXED_VALIDATED_SIGMA_V_FLOOR_M,
+                low_uncertainty_allowed: true,
+                explain_reason: "precision_floor=validated_fixed_solution_minimum",
+            }
+        }
+        SolutionStatus::Fixed => PrecisionReportingPolicy {
+            horizontal_sigma_floor_m: FIXED_SIGMA_H_FLOOR_M,
+            vertical_sigma_floor_m: FIXED_SIGMA_V_FLOOR_M,
+            low_uncertainty_allowed: true,
+            explain_reason: "precision_floor=fixed_solution_without_validated_support",
+        },
+        SolutionStatus::Float => PrecisionReportingPolicy {
+            horizontal_sigma_floor_m: FLOAT_SIGMA_H_FLOOR_M,
+            vertical_sigma_floor_m: FLOAT_SIGMA_V_FLOOR_M,
+            low_uncertainty_allowed: true,
+            explain_reason: "precision_floor=float_solution_without_integer_fix",
+        },
+        SolutionStatus::Converged => PrecisionReportingPolicy {
+            horizontal_sigma_floor_m: CONVERGED_SIGMA_H_FLOOR_M,
+            vertical_sigma_floor_m: CONVERGED_SIGMA_V_FLOOR_M,
+            low_uncertainty_allowed: true,
+            explain_reason: "precision_floor=code_navigation_without_carrier_ambiguity",
+        },
+        SolutionStatus::CodeOnly | SolutionStatus::Coarse => PrecisionReportingPolicy {
+            horizontal_sigma_floor_m: CODE_ONLY_SIGMA_H_FLOOR_M,
+            vertical_sigma_floor_m: CODE_ONLY_SIGMA_V_FLOOR_M,
+            low_uncertainty_allowed: false,
+            explain_reason: "precision_floor=code_navigation_without_carrier_ambiguity",
+        },
+        SolutionStatus::Held | SolutionStatus::Degraded => PrecisionReportingPolicy {
+            horizontal_sigma_floor_m: DEGRADED_SIGMA_H_FLOOR_M,
+            vertical_sigma_floor_m: DEGRADED_SIGMA_V_FLOOR_M,
+            low_uncertainty_allowed: false,
+            explain_reason: "precision_floor=degraded_navigation_precision",
+        },
+        SolutionStatus::Invalid
+        | SolutionStatus::Unavailable
+        | SolutionStatus::Refused
+        | SolutionStatus::IntegrityFailed
+        | SolutionStatus::Diverged => PrecisionReportingPolicy {
+            horizontal_sigma_floor_m: DEGRADED_SIGMA_H_FLOOR_M,
+            vertical_sigma_floor_m: DEGRADED_SIGMA_V_FLOOR_M,
+            low_uncertainty_allowed: false,
+            explain_reason: "precision_floor=invalid_navigation_solution",
+        },
+    }
+}
+
+fn has_validated_centimeter_precision_support(solution: &NavSolutionEpoch) -> bool {
+    let corrections_supported = solution.explain_reasons.iter().any(|reason| {
+        reason.starts_with("ionosphere_correction=") && reason != "ionosphere_uncorrected"
+    }) && solution
+        .explain_reasons
+        .iter()
+        .any(|reason| reason == "troposphere_correction=saastamoinen");
+    let validation_supported = solution.valid
+        && solution.refusal_class.is_none()
+        && solution.integrity_hpl_m.is_some()
+        && solution.integrity_vpl_m.is_some()
+        && !solution.health.iter().any(|event| matches!(event, bijux_gnss_core::api::NavHealthEvent::CovarianceDiverged { .. } | bijux_gnss_core::api::NavHealthEvent::CommonCodeDopplerAnomaly { .. } | bijux_gnss_core::api::NavHealthEvent::ReplayTimingAnomaly { .. } | bijux_gnss_core::api::NavHealthEvent::ConstellationClockInconsistency { .. } | bijux_gnss_core::api::NavHealthEvent::ResidualTemporalCorrelation { .. } | bijux_gnss_core::api::NavHealthEvent::ImpossibleGeometry { .. } | bijux_gnss_core::api::NavHealthEvent::SatelliteClockAnomaly { .. }));
+    corrections_supported && validation_supported
+}
     let sigma = solution
         .sigma_h_m
         .map(|value| value.0)
