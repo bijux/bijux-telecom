@@ -534,3 +534,118 @@ fn prn_index(prn: u8) -> Result<usize, SignalError> {
         _ => Err(SignalError::UnsupportedPrn(prn)),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        generate_gps_l5_i_chips, generate_gps_l5_i_code, gps_l5_i_code_assignment,
+        gps_l5_i_code_assignments, gps_l5_i_data_symbol_index, gps_l5_i_epoch_symbol,
+        gps_l5_i_neumann_hoffman_code, gps_l5_i_nh_chip, gps_l5_i_symbol_epoch, sample_gps_l5_i,
+        sample_gps_l5_i_primary_code, GpsL5ICodeAssignment, GPS_L5I_SYMBOL_CHIPS,
+        GPS_L5_CODE_RATE_HZ,
+    };
+    use crate::error::SignalError;
+
+    #[test]
+    fn assignments_cover_supported_prns() {
+        assert_eq!(gps_l5_i_code_assignments().len(), 63);
+        assert_eq!(gps_l5_i_code_assignments()[0].prn, 1);
+        assert_eq!(gps_l5_i_code_assignments()[62].prn, 63);
+    }
+
+    #[test]
+    fn selected_assignment_rows_match_expected_values() {
+        for expected in [
+            GpsL5ICodeAssignment {
+                prn: 1,
+                xb_advance_chips: 266,
+                xb_initial_state_bits: "0101011100100",
+            },
+            GpsL5ICodeAssignment {
+                prn: 38,
+                xb_advance_chips: 5358,
+                xb_initial_state_bits: "0101100000110",
+            },
+            GpsL5ICodeAssignment {
+                prn: 63,
+                xb_advance_chips: 6437,
+                xb_initial_state_bits: "0101111001011",
+            },
+        ] {
+            assert_eq!(
+                *gps_l5_i_code_assignment(expected.prn).expect("published assignment"),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn primary_code_rejects_out_of_range_prns() {
+        assert_eq!(generate_gps_l5_i_code(0), Err(SignalError::UnsupportedPrn(0)));
+        assert_eq!(generate_gps_l5_i_code(64), Err(SignalError::UnsupportedPrn(64)));
+    }
+
+    #[test]
+    fn first_thirteen_primary_chips_match_assignment_state_signs() {
+        for prn in [1, 20, 37, 63] {
+            let assignment = gps_l5_i_code_assignment(prn).expect("published assignment");
+            let code = generate_gps_l5_i_code(prn).expect("valid GPS L5-I PRN");
+            for (chip_index, xb_bit) in assignment.xb_initial_state_bits.bytes().enumerate() {
+                let expected_chip = if xb_bit == b'0' { -1 } else { 1 };
+                assert_eq!(code[chip_index], expected_chip, "prn={prn} chip={chip_index}");
+            }
+        }
+    }
+
+    #[test]
+    fn nh_and_symbol_helpers_follow_ten_millisecond_boundaries() {
+        assert_eq!(gps_l5_i_neumann_hoffman_code(), &[1, 1, 1, 1, -1, -1, 1, -1, 1, -1]);
+        assert_eq!(gps_l5_i_nh_chip(0), 1);
+        assert_eq!(gps_l5_i_nh_chip(4), -1);
+        assert_eq!(gps_l5_i_symbol_epoch(0), 0);
+        assert_eq!(gps_l5_i_symbol_epoch(9), 9);
+        assert_eq!(gps_l5_i_symbol_epoch(10), 0);
+        assert_eq!(gps_l5_i_data_symbol_index(0), 0);
+        assert_eq!(gps_l5_i_data_symbol_index(9), 0);
+        assert_eq!(gps_l5_i_data_symbol_index(10), 1);
+        assert_eq!(gps_l5_i_epoch_symbol(&[1, -1], 0), Ok(1));
+        assert_eq!(gps_l5_i_epoch_symbol(&[1, -1], 4), Ok(-1));
+        assert_eq!(gps_l5_i_epoch_symbol(&[1, -1], 10), Ok(-1));
+    }
+
+    #[test]
+    fn chip_rate_sampling_matches_generated_chip_stream() {
+        let chips = generate_gps_l5_i_chips(12, 0, 32, &[1]).expect("generated chips");
+        let samples =
+            sample_gps_l5_i(12, GPS_L5_CODE_RATE_HZ, 0.0, 32, &[1]).expect("chip-rate samples");
+        let primary = sample_gps_l5_i_primary_code(12, GPS_L5_CODE_RATE_HZ, 0.0, 32)
+            .expect("primary-code samples");
+        let expected = chips
+            .into_iter()
+            .map(|chip| chip as f32 * std::f32::consts::FRAC_1_SQRT_2)
+            .collect::<Vec<f32>>();
+
+        assert_eq!(samples, expected);
+        assert_eq!(primary.len(), 32);
+    }
+
+    #[test]
+    fn modulation_rejects_empty_or_non_bipolar_symbols() {
+        assert_eq!(
+            generate_gps_l5_i_chips(12, 0, 1, &[]),
+            Err(SignalError::EmptyNavigationSymbolStream)
+        );
+        assert_eq!(
+            sample_gps_l5_i(12, GPS_L5_CODE_RATE_HZ, 0.0, 1, &[0]),
+            Err(SignalError::InvalidNavigationSymbol(0))
+        );
+    }
+
+    #[test]
+    fn l5_i_symbol_boundaries_repeat_cyclic_data() {
+        let chips = generate_gps_l5_i_chips(7, 0, GPS_L5I_SYMBOL_CHIPS * 2, &[1, -1])
+            .expect("generated L5-I chips");
+        assert_eq!(chips[0], 1);
+        assert_eq!(chips[GPS_L5I_SYMBOL_CHIPS], -1);
+    }
+}

@@ -59,8 +59,10 @@ pub use crate::codes::gps_l2c_cm::{
 pub use crate::codes::gps_l5::{
     generate_gps_l5_i_chips, generate_gps_l5_i_chips_from_code, generate_gps_l5_i_code,
     gps_l5_i_code_assignment, gps_l5_i_code_assignments, gps_l5_i_data_symbol_index,
-    gps_l5_i_epoch_symbol, gps_l5_i_neumann_hoffman_code, gps_l5_i_symbol_epoch, gps_l5_i_value,
-    sample_gps_l5_i, sample_gps_l5_i_from_code, sample_gps_l5_i_primary_code, GpsL5ICodeAssignment,
+    gps_l5_i_epoch_symbol, gps_l5_i_neumann_hoffman_code, gps_l5_i_nh_chip, gps_l5_i_symbol_epoch,
+    gps_l5_i_value, sample_gps_l5_i, sample_gps_l5_i_code, sample_gps_l5_i_from_code,
+    sample_gps_l5_i_primary_code, GpsL5ICodeAssignment, GPS_L5I_SYMBOL_CHIPS,
+    GPS_L5I_SYMBOL_CODE_EPOCHS, GPS_L5_CODE_CHIPS, GPS_L5_CODE_RATE_HZ,
     GPS_L5_I_PRIMARY_EPOCHS_PER_SYMBOL, GPS_L5_I_SYMBOL_CHIPS, GPS_L5_PRIMARY_CODE_CHIPS,
     GPS_L5_PRIMARY_CODE_RATE_HZ,
 };
@@ -75,8 +77,9 @@ pub use crate::dsp::quality::{
 /// Replica-generation and synthetic modulation helpers.
 pub use crate::dsp::replica::{
     carrier_hz_at_time, carrier_phase_radians_at_time, default_local_code_model,
-    default_signal_carrier_hz, sample_modulated_replica_at_time, signal_amplitude_from_cn0_db_hz,
-    AcquisitionSignalModel, LocalCodeModel, ReplicaCodeModel, UNIT_VARIANCE_COMPLEX_NOISE_POWER,
+    default_signal_carrier_hz, default_signal_carrier_hz_for_band,
+    sample_modulated_replica_at_time, signal_amplitude_from_cn0_db_hz, AcquisitionSignalModel,
+    LocalCodeModel, ReplicaCodeModel, UNIT_VARIANCE_COMPLEX_NOISE_POWER,
 };
 /// Signal processing utilities.
 pub use crate::dsp::signal::{
