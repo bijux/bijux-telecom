@@ -66,11 +66,11 @@ fn support_matrix_lists_gps_l2c_with_explicit_tracking_scope() {
 
     assert!(matches!(row.status, SupportStatus::Planned), "{row:?}");
     assert!(matches!(row.stage_support.acquisition, SupportStatus::Planned), "{row:?}");
-    assert!(matches!(row.stage_support.tracking, SupportStatus::Planned), "{row:?}");
+    assert!(matches!(row.stage_support.tracking, SupportStatus::Supported), "{row:?}");
     assert!(matches!(row.stage_support.data_decoding, SupportStatus::Planned), "{row:?}");
     assert!(matches!(row.stage_support.observations, SupportStatus::Supported), "{row:?}");
     assert!(matches!(row.stage_support.positioning, SupportStatus::Planned), "{row:?}");
-    assert!(row.requirements.iter().any(|value| value == "tracked_epoch_input"), "{row:?}");
+    assert!(row.requirements.is_empty(), "{row:?}");
 }
 
 #[test]

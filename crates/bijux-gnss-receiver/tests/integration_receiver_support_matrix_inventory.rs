@@ -124,12 +124,12 @@ fn support_matrix_artifact_reports_registered_signal_stage_boundaries() {
             SignalCode::L2C,
             SignalStageSupport {
                 acquisition: SupportStatus::Planned,
-                tracking: SupportStatus::Planned,
+                tracking: SupportStatus::Supported,
                 data_decoding: SupportStatus::Planned,
                 observations: SupportStatus::Supported,
                 positioning: SupportStatus::Planned,
             },
-            vec!["tracked_epoch_input"],
+            Vec::<&str>::new(),
             SupportStatus::Planned,
         ),
         (

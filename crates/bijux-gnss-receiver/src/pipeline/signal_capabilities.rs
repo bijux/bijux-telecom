@@ -255,7 +255,7 @@ mod tests {
             gps_l2c,
             SignalExecutionSupport {
                 acquisition: false,
-                tracking: false,
+                tracking: true,
                 data_decoding: false,
                 observations: true,
                 positioning: false,
@@ -279,6 +279,7 @@ mod tests {
     #[test]
     fn tracking_requires_supported_band_and_supported_signal_identity() {
         assert!(supports_tracking_signal(Constellation::Galileo, SignalBand::E1, SignalCode::E1B));
+        assert!(supports_tracking_signal(Constellation::Gps, SignalBand::L2, SignalCode::L2C));
         assert!(!supports_tracking_signal(Constellation::Galileo, SignalBand::E1, SignalCode::E1C));
         assert!(!supports_tracking_signal(Constellation::Gps, SignalBand::L5, SignalCode::Unknown));
     }
@@ -321,7 +322,7 @@ mod tests {
                 SignalCode::L2C,
                 SignalExecutionSupport {
                     acquisition: false,
-                    tracking: false,
+                    tracking: true,
                     data_decoding: false,
                     observations: true,
                     positioning: false,
