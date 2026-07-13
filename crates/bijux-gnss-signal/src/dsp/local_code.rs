@@ -1,6 +1,7 @@
 //! Local-code models used by acquisition and tracking workflows.
 
 use crate::codes::beidou_b1i::{generate_beidou_b1i_code, BEIDOU_B1I_CODE_RATE_HZ};
+use crate::codes::beidou_b2i::{generate_beidou_b2i_code, BEIDOU_B2I_CODE_RATE_HZ};
 use crate::codes::ca_code::{generate_ca_code, Prn};
 use crate::codes::galileo_e1::{
     boc_subcarrier_value, generate_galileo_e1b_code, sample_boc_code, GALILEO_E1_CODE_RATE_HZ,
@@ -44,6 +45,8 @@ pub enum LocalCodeModel {
     GalileoE5bI { primary_code: Vec<i8> },
     /// BeiDou B1I primary code.
     BeidouB1I { code: Vec<i8> },
+    /// BeiDou B2I primary code.
+    BeidouB2I { code: Vec<i8> },
     /// GLONASS L1 ST primary code.
     GlonassL1St { code: Vec<i8> },
 }
@@ -151,6 +154,16 @@ impl LocalCodeModel {
         Self::beidou_b1i(prn).unwrap_or_else(|_| Self::BeidouB1I { code: vec![1; 2046] })
     }
 
+    /// Build a BeiDou B2I local code model from a PRN.
+    pub fn beidou_b2i(prn: u8) -> Result<Self, SignalError> {
+        Ok(Self::BeidouB2I { code: generate_beidou_b2i_code(prn)? })
+    }
+
+    /// Build a BeiDou B2I local code model, falling back to an all-ones code when invalid.
+    pub fn beidou_b2i_or_ones(prn: u8) -> Self {
+        Self::beidou_b2i(prn).unwrap_or_else(|_| Self::BeidouB2I { code: vec![1; 2046] })
+    }
+
     /// Build a GLONASS L1 ST local code model.
     pub fn glonass_l1_st() -> Self {
         Self::GlonassL1St { code: generate_glonass_l1_st_code() }
@@ -169,6 +182,7 @@ impl LocalCodeModel {
             Self::GalileoE5aI { .. } => GALILEO_E5A_CODE_RATE_HZ,
             Self::GalileoE5bI { .. } => GALILEO_E5B_CODE_RATE_HZ,
             Self::BeidouB1I { .. } => BEIDOU_B1I_CODE_RATE_HZ,
+            Self::BeidouB2I { .. } => BEIDOU_B2I_CODE_RATE_HZ,
             Self::GlonassL1St { .. } => GLONASS_L1_ST_CODE_RATE_HZ,
         }
     }
@@ -186,6 +200,7 @@ impl LocalCodeModel {
             Self::GalileoE5aI { primary_code } => primary_code.len(),
             Self::GalileoE5bI { primary_code } => primary_code.len(),
             Self::BeidouB1I { code } => code.len(),
+            Self::BeidouB2I { code } => code.len(),
             Self::GlonassL1St { code } => code.len(),
         }
     }
@@ -207,6 +222,7 @@ impl LocalCodeModel {
             | Self::GalileoE5aI { primary_code: code }
             | Self::GalileoE5bI { primary_code: code }
             | Self::BeidouB1I { code }
+            | Self::BeidouB2I { code }
             | Self::GlonassL1St { code } => code_value_at_phase(code, chip_phase),
             Self::GalileoE1Boc11 { primary_code } => {
                 Ok(code_value_at_phase(primary_code, chip_phase)?
@@ -259,6 +275,7 @@ impl LocalCodeModel {
             | Self::GalileoE5aI { primary_code: code }
             | Self::GalileoE5bI { primary_code: code }
             | Self::BeidouB1I { code }
+            | Self::BeidouB2I { code }
             | Self::GlonassL1St { code } => sample_code(
                 code,
                 sample_rate_hz,
@@ -337,6 +354,9 @@ pub fn default_local_code_model_for_signal(
         (Constellation::Beidou, SignalBand::B1, SignalCode::B1I) => {
             LocalCodeModel::beidou_b1i(sat.prn).map(Some)
         }
+        (Constellation::Beidou, SignalBand::B2, SignalCode::B2I) => {
+            LocalCodeModel::beidou_b2i(sat.prn).map(Some)
+        }
         (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown) => {
             Ok(Some(LocalCodeModel::glonass_l1_st()))
         }
@@ -355,6 +375,7 @@ fn default_signal_code_for_band(
         (Constellation::Galileo, SignalBand::E1) => SignalCode::E1B,
         (Constellation::Galileo, SignalBand::E5) => SignalCode::E5a,
         (Constellation::Beidou, SignalBand::B1) => SignalCode::B1I,
+        (Constellation::Beidou, SignalBand::B2) => SignalCode::B2I,
         (Constellation::Glonass, SignalBand::L1) => SignalCode::Unknown,
         _ => SignalCode::Unknown,
     }

@@ -2,6 +2,7 @@
 
 use crate::catalog::{default_acquisition_signal, signal_spec_glonass_l1};
 use crate::codes::beidou_b1i::{generate_beidou_b1i_code, BEIDOU_B1I_CODE_RATE_HZ};
+use crate::codes::beidou_b2i::{generate_beidou_b2i_code, BEIDOU_B2I_CODE_RATE_HZ};
 use crate::codes::ca_code::{generate_ca_code, Prn};
 use crate::codes::galileo_e1::{
     galileo_e1_cboc_value, generate_galileo_e1b_code, generate_galileo_e1c_code,
@@ -151,6 +152,14 @@ impl AcquisitionSignalModel {
                 2046,
                 bijux_gnss_core::api::BEIDOU_B1_CARRIER_HZ,
                 LocalCodeModel::beidou_b1i(sat.prn)?,
+            )
+            .map(Some),
+            (Constellation::Beidou, SignalBand::B2, SignalCode::B2I) => Self::new(
+                SignalBand::B2,
+                BEIDOU_B2I_CODE_RATE_HZ,
+                2046,
+                bijux_gnss_core::api::BEIDOU_B2_CARRIER_HZ,
+                LocalCodeModel::beidou_b2i(sat.prn)?,
             )
             .map(Some),
             (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown) => {
@@ -306,6 +315,8 @@ pub enum ReplicaCodeModel {
     },
     /// BeiDou B1I primary code.
     BeidouB1I { code: Vec<i8> },
+    /// BeiDou B2I primary code.
+    BeidouB2I { code: Vec<i8> },
     /// GLONASS L1 ST primary code.
     GlonassL1St { code: Vec<i8> },
 }
@@ -364,6 +375,9 @@ impl ReplicaCodeModel {
             }
             (Constellation::Beidou, SignalBand::B1, SignalCode::B1I) => {
                 Self::beidou_b1i(sat.prn).map(Some)
+            }
+            (Constellation::Beidou, SignalBand::B2, SignalCode::B2I) => {
+                Self::beidou_b2i(sat.prn).map(Some)
             }
             (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown) => {
                 Ok(Some(Self::glonass_l1_st()))
@@ -512,6 +526,16 @@ impl ReplicaCodeModel {
         Self::beidou_b1i(prn).unwrap_or_else(|_| Self::BeidouB1I { code: vec![1; 2046] })
     }
 
+    /// Build a BeiDou B2I replica from a PRN.
+    pub fn beidou_b2i(prn: u8) -> Result<Self, SignalError> {
+        Ok(Self::BeidouB2I { code: generate_beidou_b2i_code(prn)? })
+    }
+
+    /// Build a BeiDou B2I replica, falling back to an all-ones code when invalid.
+    pub fn beidou_b2i_or_ones(prn: u8) -> Self {
+        Self::beidou_b2i(prn).unwrap_or_else(|_| Self::BeidouB2I { code: vec![1; 2046] })
+    }
+
     /// Build a GLONASS L1 ST replica.
     pub fn glonass_l1_st() -> Self {
         Self::GlonassL1St { code: generate_glonass_l1_st_code() }
@@ -530,6 +554,7 @@ impl ReplicaCodeModel {
             Self::GalileoE5bI { .. } => GALILEO_E5B_CODE_RATE_HZ,
             Self::GalileoE5bQpsk { .. } => GALILEO_E5B_CODE_RATE_HZ,
             Self::BeidouB1I { .. } => BEIDOU_B1I_CODE_RATE_HZ,
+            Self::BeidouB2I { .. } => BEIDOU_B2I_CODE_RATE_HZ,
             Self::GlonassL1St { .. } => GLONASS_L1_ST_CODE_RATE_HZ,
         }
     }
@@ -547,6 +572,7 @@ impl ReplicaCodeModel {
             Self::GalileoE5bI { code } => code.len(),
             Self::GalileoE5bQpsk { e5bi_code, .. } => e5bi_code.len(),
             Self::BeidouB1I { code } => code.len(),
+            Self::BeidouB2I { code } => code.len(),
             Self::GlonassL1St { code } => code.len(),
         }
     }
@@ -616,7 +642,7 @@ impl ReplicaCodeModel {
                     &[data_bit],
                 )
             }
-            Self::BeidouB1I { code } | Self::GlonassL1St { code } => {
+            Self::BeidouB1I { code } | Self::BeidouB2I { code } | Self::GlonassL1St { code } => {
                 Ok(Complex::new(code_value_at_phase(code, chip_phase)? * data_bit as f32, 0.0))
             }
         }
@@ -673,6 +699,9 @@ pub fn default_signal_carrier_hz_for_signal(
         (Constellation::Galileo, SignalBand::E5, SignalCode::E5b) => {
             Ok(Some(bijux_gnss_core::api::GALILEO_E5B_CARRIER_HZ))
         }
+        (Constellation::Beidou, SignalBand::B2, SignalCode::B2I) => {
+            Ok(Some(bijux_gnss_core::api::BEIDOU_B2_CARRIER_HZ))
+        }
         (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown) => {
             let channel = glonass_frequency_channel
                 .ok_or(SignalError::MissingGlonassFrequencyChannel(sat))?;
@@ -698,6 +727,7 @@ fn default_signal_code_for_band(
         (Constellation::Galileo, SignalBand::E1) => SignalCode::E1B,
         (Constellation::Galileo, SignalBand::E5) => SignalCode::E5a,
         (Constellation::Beidou, SignalBand::B1) => SignalCode::B1I,
+        (Constellation::Beidou, SignalBand::B2) => SignalCode::B2I,
         (Constellation::Glonass, SignalBand::L1) => SignalCode::Unknown,
         _ => SignalCode::Unknown,
     }
