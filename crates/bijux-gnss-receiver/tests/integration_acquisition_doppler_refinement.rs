@@ -35,6 +35,7 @@ fn acquisition_refinement_recovers_fractional_doppler_more_closely_than_the_raw_
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 3 },
                     glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
                     doppler_hz: 875.0,
                     code_phase_chips: 200.25,
                     carrier_phase_rad: 0.0,
@@ -44,6 +45,7 @@ fn acquisition_refinement_recovers_fractional_doppler_more_closely_than_the_raw_
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 7 },
                     glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
                     doppler_hz: -1_125.0,
                     code_phase_chips: 321.5,
                     carrier_phase_rad: 0.2,

@@ -33,6 +33,7 @@ fn acquisition_selects_expected_high_if_doppler_bins() {
             SyntheticSignalParams {
                 sat,
                 glonass_frequency_channel: None,
+                signal_band: bijux_gnss_core::api::SignalBand::L1,
                 doppler_hz,
                 code_phase_chips: 200.375,
                 carrier_phase_rad: 0.2,

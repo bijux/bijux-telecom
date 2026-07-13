@@ -114,6 +114,7 @@ fn assert_tracking_recovers_after_short_fade(
         SyntheticSignalParams {
             sat,
             glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
             doppler_hz,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
@@ -207,6 +208,7 @@ fn tracking_keeps_carrier_phase_continuous_after_short_fade_recovery() {
         SyntheticSignalParams {
             sat,
             glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
             doppler_hz,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,

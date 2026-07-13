@@ -199,6 +199,7 @@ fn competing_signal(
     SyntheticSignalParams {
         sat,
         glonass_frequency_channel: None,
+        signal_band: bijux_gnss_core::api::SignalBand::L1,
         doppler_hz,
         code_phase_chips,
         carrier_phase_rad: 0.0,

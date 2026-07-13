@@ -32,6 +32,7 @@ fn synthetic_correlator_peak_ratio() {
         SyntheticSignalParams {
             sat,
             glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
             doppler_hz: 0.0,
             code_phase_chips,
             carrier_phase_rad: 0.0,
@@ -70,6 +71,7 @@ fn synthetic_correlator_peak_ratio_with_non_integer_samples_per_chip() {
         SyntheticSignalParams {
             sat,
             glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
             doppler_hz: 0.0,
             code_phase_chips,
             carrier_phase_rad: 0.0,
@@ -107,6 +109,7 @@ fn golden_acquisition_run_is_stable() {
         SyntheticSignalParams {
             sat,
             glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
             doppler_hz: 500.0,
             code_phase_chips: 321.0,
             carrier_phase_rad: 0.5,
@@ -148,6 +151,7 @@ fn galileo_e1_acquisition_detects_synthetic_signal() {
         SyntheticSignalParams {
             sat,
             glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
             doppler_hz: 500.0,
             code_phase_chips: 321.0,
             carrier_phase_rad: 0.25,

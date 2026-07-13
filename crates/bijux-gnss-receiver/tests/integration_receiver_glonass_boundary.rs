@@ -38,6 +38,7 @@ fn glonass_boundary_scenario(
         satellites: vec![SyntheticSignalParams {
             sat,
             glonass_frequency_channel: Some(channel),
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
             doppler_hz: 0.0,
             code_phase_chips: 147.25,
             carrier_phase_rad: 0.5,
@@ -59,6 +60,7 @@ fn receiver_run_with_explicit_glonass_requests_produces_tracking_and_observation
     let request = AcqRequest {
         sat,
         glonass_frequency_channel: Some(channel),
+        signal_band: bijux_gnss_core::api::SignalBand::L1,
         doppler_search_hz: 0,
         doppler_step_hz: 250,
         coherent_ms: 1,
@@ -150,6 +152,7 @@ fn receiver_gps_only_policy_filters_explicit_glonass_requests() {
     let request = AcqRequest {
         sat,
         glonass_frequency_channel: Some(channel),
+        signal_band: bijux_gnss_core::api::SignalBand::L1,
         doppler_search_hz: 0,
         doppler_step_hz: 250,
         coherent_ms: 1,

@@ -157,6 +157,7 @@ fn frame_from_fixture(config: &ReceiverPipelineConfig, fixture: &AcqFixture) -> 
                 SyntheticSignalParams {
                     sat: signal_sat(&fixture),
                     glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
                     doppler_hz: fixture.doppler_hz,
                     code_phase_chips: fixture.code_phase_chips,
                     carrier_phase_rad: 0.0,
@@ -208,6 +209,7 @@ fn frame_from_fixture(config: &ReceiverPipelineConfig, fixture: &AcqFixture) -> 
                     .map(|signal| SyntheticSignalParams {
                         sat: signal.sat,
                         glonass_frequency_channel: None,
+                        signal_band: bijux_gnss_core::api::SignalBand::L1,
                         doppler_hz: signal.doppler_hz,
                         code_phase_chips: signal.code_phase_chips,
                         carrier_phase_rad: 0.0,

@@ -75,6 +75,7 @@ fn receiver_dc_removal_preserves_or_improves_biased_acquisition_margin() {
         SyntheticSignalParams {
             sat,
             glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
             doppler_hz: 500.0,
             code_phase_chips: 200.0,
             carrier_phase_rad: 0.0,
@@ -150,6 +151,7 @@ fn receiver_dc_removal_reports_power_imbalance_diagnostics() {
         SyntheticSignalParams {
             sat,
             glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
             doppler_hz: 500.0,
             code_phase_chips: 200.0,
             carrier_phase_rad: 0.0,

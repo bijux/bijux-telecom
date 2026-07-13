@@ -71,6 +71,7 @@ fn acquisition_case(sat: SatId, cn0_db_hz: f32) -> SyntheticAcquisitionDetection
         signal: SyntheticSignalParams {
             sat,
             glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
             doppler_hz: 250.0,
             code_phase_chips: 300.0,
             carrier_phase_rad: 0.0,
@@ -87,6 +88,7 @@ fn tracking_case(sat: SatId, cn0_db_hz: f32) -> SyntheticTrackingLockRateCase {
         signal: SyntheticSignalParams {
             sat,
             glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
             doppler_hz: 180.0,
             code_phase_chips: 211.25,
             carrier_phase_rad: 0.0,

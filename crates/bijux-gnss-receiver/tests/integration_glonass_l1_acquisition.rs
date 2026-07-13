@@ -35,6 +35,7 @@ fn glonass_channel_signal(
     SyntheticSignalParams {
         sat,
         glonass_frequency_channel: Some(channel),
+        signal_band: bijux_gnss_core::api::SignalBand::L1,
         doppler_hz: 0.0,
         code_phase_chips: 147.25,
         carrier_phase_rad: 0.5,
@@ -71,6 +72,7 @@ fn acquisition_engine_detects_glonass_l1_requests_across_frequency_channels() {
         let request = AcqRequest {
             sat,
             glonass_frequency_channel: Some(channel),
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
             doppler_search_hz: 0,
             doppler_step_hz: 250,
             coherent_ms: 1,

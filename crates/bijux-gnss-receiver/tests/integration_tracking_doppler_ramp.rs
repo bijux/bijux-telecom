@@ -84,6 +84,7 @@ fn track_clean_doppler_ramp_case(
             signal: SyntheticSignalParams {
                 sat,
                 glonass_frequency_channel: None,
+                signal_band: bijux_gnss_core::api::SignalBand::L1,
                 doppler_hz: initial_doppler_hz,
                 code_phase_chips,
                 carrier_phase_rad,
@@ -195,6 +196,7 @@ fn tracking_preserves_lock_and_code_phase_under_negative_doppler_ramp() {
             signal: SyntheticSignalParams {
                 sat,
                 glonass_frequency_channel: None,
+                signal_band: bijux_gnss_core::api::SignalBand::L1,
                 doppler_hz: initial_doppler_hz,
                 code_phase_chips,
                 carrier_phase_rad: 0.15,

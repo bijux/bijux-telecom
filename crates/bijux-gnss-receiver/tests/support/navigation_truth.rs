@@ -63,6 +63,7 @@ pub fn multisatellite_pvt_scenario(
         .map(|((ephemeris, doppler_hz), pseudorange_chips)| SyntheticSignalParams {
             sat: ephemeris.sat,
             glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
             doppler_hz,
             code_phase_chips: encode_code_phase_chips(pseudorange_chips, pseudorange_epoch_base),
             carrier_phase_rad: 0.0,
@@ -244,6 +245,7 @@ mod tests {
             satellites: vec![SyntheticSignalParams {
                 sat: SatId { constellation: Constellation::Gps, prn: 3 },
                 glonass_frequency_channel: None,
+                signal_band: bijux_gnss_core::api::SignalBand::L1,
                 doppler_hz: 0.0,
                 code_phase_chips: 123.5,
                 carrier_phase_rad: 0.0,

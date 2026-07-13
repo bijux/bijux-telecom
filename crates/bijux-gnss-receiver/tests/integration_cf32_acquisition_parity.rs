@@ -34,6 +34,7 @@ fn complex_float32_iq_matches_float_fixture_acquisition() {
         SyntheticSignalParams {
             sat,
             glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
             doppler_hz: 500.0,
             code_phase_chips: 321.0,
             carrier_phase_rad: 0.5,

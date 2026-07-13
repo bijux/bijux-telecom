@@ -116,6 +116,7 @@ fn track_uncertainty_case_with_duration(
         satellites: vec![SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Gps, prn: 7 },
             glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
             doppler_hz: -750.0,
             code_phase_chips: 211.25,
             carrier_phase_rad: 0.2,

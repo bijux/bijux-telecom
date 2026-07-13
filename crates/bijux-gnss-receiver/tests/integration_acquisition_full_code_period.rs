@@ -35,6 +35,7 @@ fn acquisition_searches_first_and_last_code_phase_bins_at_configured_sample_rate
                 SyntheticSignalParams {
                     sat,
                     glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
                     doppler_hz: 0.0,
                     code_phase_chips: code_phase_chips_for_sample(
                         &config,

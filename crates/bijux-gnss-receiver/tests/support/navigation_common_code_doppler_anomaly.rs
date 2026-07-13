@@ -122,6 +122,7 @@ fn motion_satellite_signals(ephemerides: &[GpsEphemeris]) -> Vec<SyntheticSignal
         .map(|(ephemeris, doppler_hz)| SyntheticSignalParams {
             sat: ephemeris.sat,
             glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
             doppler_hz,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,

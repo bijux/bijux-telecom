@@ -314,6 +314,7 @@ fn clean_synthetic_pvt_scenario_with_clock_bias(
                 signal: SyntheticSignalParams {
                     sat: ephemeris.sat,
                     glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
                     doppler_hz,
                     code_phase_chips,
                     carrier_phase_rad: 0.0,

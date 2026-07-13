@@ -71,6 +71,7 @@ fn tracking_reports_phase_jump_on_carrier_discontinuity() {
         SyntheticSignalParams {
             sat,
             glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
             doppler_hz,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
@@ -133,6 +134,7 @@ fn tracking_limits_carrier_phase_discontinuities_to_phase_jump_boundaries() {
         SyntheticSignalParams {
             sat,
             glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
             doppler_hz,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,

@@ -117,6 +117,7 @@ fn receiver_run_consumes_multiple_stream_frames_after_acquisition() {
                 prn: 1,
             },
             glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
             doppler_hz: 500.0,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
@@ -178,6 +179,7 @@ fn receiver_tracks_sixty_seconds_with_bounded_stream_reads() {
                 prn: 1,
             },
             glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
             doppler_hz: 350.0,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
@@ -240,6 +242,7 @@ fn receiver_tracks_galileo_e1_across_stream_frames() {
         satellites: vec![SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Galileo, prn: 11 },
             glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
             doppler_hz: 0.0,
             code_phase_chips: 321.0,
             carrier_phase_rad: 0.25,
