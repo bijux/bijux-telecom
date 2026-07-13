@@ -5,6 +5,7 @@ mod reference_math;
 
 pub mod antenna_validation;
 pub mod front_end;
+pub mod position_truth;
 pub mod public_ppp;
 pub mod public_station;
 pub mod public_troposphere;
