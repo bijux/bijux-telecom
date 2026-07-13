@@ -356,9 +356,19 @@ impl TrackingSignalModel {
         }
     }
 
-    fn supports_tracking(sat: SatId, signal_band: SignalBand, signal_code: SignalCode) -> bool {
+    fn supports_tracking(
+        sat: SatId,
+        signal_band: SignalBand,
+        signal_code: SignalCode,
+        glonass_frequency_channel: Option<bijux_gnss_core::api::GlonassFrequencyChannel>,
+    ) -> bool {
         default_local_code_model_for_signal(sat, signal_band, signal_code).ok().flatten().is_some()
-            && resolved_signal_registry_entry(sat, signal_band, signal_code, None)
+            && resolved_signal_registry_entry(
+                sat,
+                signal_band,
+                signal_code,
+                glonass_frequency_channel,
+            )
                 .ok()
                 .flatten()
                 .and_then(|entry| entry.default_component().copied())
@@ -399,7 +409,16 @@ pub(crate) fn supports_tracking_signal(
     signal_band: SignalBand,
     signal_code: SignalCode,
 ) -> bool {
-    TrackingSignalModel::supports_tracking(sat, signal_band, signal_code)
+    supports_tracking_signal_with_channel(sat, signal_band, signal_code, None)
+}
+
+pub(crate) fn supports_tracking_signal_with_channel(
+    sat: SatId,
+    signal_band: SignalBand,
+    signal_code: SignalCode,
+    glonass_frequency_channel: Option<bijux_gnss_core::api::GlonassFrequencyChannel>,
+) -> bool {
+    TrackingSignalModel::supports_tracking(sat, signal_band, signal_code, glonass_frequency_channel)
 }
 
 #[derive(Debug, Clone)]

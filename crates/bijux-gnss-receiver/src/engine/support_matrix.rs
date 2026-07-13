@@ -74,6 +74,31 @@ mod tests {
     }
 
     #[test]
+    fn glonass_l1_support_row_reports_channel_gated_tracking_capability() {
+        let matrix = build_support_matrix();
+        let row = matrix
+            .rows
+            .iter()
+            .find(|row| {
+                row.constellation == Constellation::Glonass
+                    && row.band == SignalBand::L1
+                    && row.code == SignalCode::Unknown
+            })
+            .expect("GLONASS L1 support row");
+
+        assert_eq!(row.status, SupportStatus::Planned);
+        assert_eq!(row.stage_support.acquisition, SupportStatus::Supported);
+        assert_eq!(row.stage_support.tracking, SupportStatus::Supported);
+        assert_eq!(row.stage_support.data_decoding, SupportStatus::Planned);
+        assert_eq!(row.stage_support.observations, SupportStatus::Supported);
+        assert_eq!(row.stage_support.positioning, SupportStatus::Supported);
+        assert_eq!(
+            row.requirements,
+            vec!["glonass_frequency_channel_available".to_string()]
+        );
+    }
+
+    #[test]
     fn support_matrix_rows_follow_signal_execution_support() {
         let matrix = build_support_matrix();
 

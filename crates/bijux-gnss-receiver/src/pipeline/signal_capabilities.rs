@@ -70,7 +70,12 @@ pub(crate) fn supports_tracking_signal(
     band: SignalBand,
     code: SignalCode,
 ) -> bool {
-    crate::pipeline::tracking::supports_tracking_signal(sample_sat(constellation), band, code)
+    crate::pipeline::tracking::supports_tracking_signal_with_channel(
+        sample_sat(constellation),
+        band,
+        code,
+        sample_glonass_frequency_channel(constellation),
+    )
 }
 
 pub(crate) fn supports_data_decoding_signal(
