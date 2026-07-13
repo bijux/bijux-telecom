@@ -4,6 +4,7 @@
 //!
 //! Clean-room implementation derived from the public IS-GPS-200L signal definition.
 
+use crate::dsp::signal::sample_code;
 use crate::error::SignalError;
 
 /// Number of chips in one published GPS L2C CM code period.
@@ -153,10 +154,92 @@ pub fn gps_l2c_cm_code_assignments() -> &'static [GpsL2cCmCodeAssignment; 115] {
     &GPS_L2C_CM_CODE_ASSIGNMENTS
 }
 
+/// Generate one full-period GPS L2C CM ranging code for a given PRN.
+///
+/// Returns chips in `{-1, +1}`.
+pub fn generate_gps_l2c_cm_code(prn: u8) -> Result<Vec<i8>, SignalError> {
+    let mut state =
+        register_state_from_octal(gps_l2c_cm_code_assignment(prn)?.initial_state_octal);
+    let mut code = Vec::with_capacity(GPS_L2C_CM_CODE_CHIPS);
+
+    for _ in 0..GPS_L2C_CM_CODE_CHIPS {
+        let output_bit = state[26];
+        code.push(if output_bit == 0 { 1 } else { -1 });
+        advance_register_state(&mut state);
+    }
+
+    Ok(code)
+}
+
+/// Generate a GPS L2C CM ranging-code sequence of arbitrary length by repeating the
+/// published 10,230-chip period.
+pub fn generate_gps_l2c_cm_code_chips(prn: u8, chip_count: usize) -> Result<Vec<i8>, SignalError> {
+    let period = generate_gps_l2c_cm_code(prn)?;
+    let mut code = Vec::with_capacity(chip_count);
+    while code.len() < chip_count {
+        let remaining = chip_count - code.len();
+        code.extend(period.iter().copied().take(remaining));
+    }
+    Ok(code)
+}
+
+/// Sample the GPS L2C CM ranging code at an arbitrary sample rate from a chip-phase origin.
+pub fn sample_gps_l2c_cm_code(
+    prn: u8,
+    sample_rate_hz: f64,
+    start_chip_phase: f64,
+    sample_count: usize,
+) -> Result<Vec<f32>, SignalError> {
+    let code = generate_gps_l2c_cm_code(prn)?;
+    sample_code(&code, sample_rate_hz, GPS_L2C_CM_CODE_RATE_HZ, start_chip_phase, sample_count)
+}
+
+fn register_state_from_octal(state_octal: u32) -> [u8; 27] {
+    let mut state = [0_u8; 27];
+    for (index, bit) in format!("{state_octal:027b}").bytes().enumerate() {
+        state[index] = match bit {
+            b'0' => 0,
+            b'1' => 1,
+            _ => unreachable!("binary formatting must only emit 0 or 1"),
+        };
+    }
+    state
+}
+
+fn register_state_to_octal(state: &[u8; 27]) -> u32 {
+    let mut value = 0_u32;
+    for bit in state {
+        value = (value << 1) | u32::from(*bit);
+    }
+    value
+}
+
+fn advance_register_state(state: &mut [u8; 27]) {
+    let output_bit = state[26];
+    for destination_index in (1..state.len()).rev() {
+        let source_position = destination_index;
+        let mut next_value = state[destination_index - 1];
+        if gps_l2c_cm_feedback_applies(source_position) {
+            next_value ^= output_bit;
+        }
+        state[destination_index] = next_value;
+    }
+    state[0] = output_bit;
+}
+
+fn gps_l2c_cm_feedback_applies(source_position: usize) -> bool {
+    matches!(source_position, 3 | 6 | 8 | 11 | 14 | 16 | 18 | 21 | 22 | 23 | 24)
+}
+
 #[cfg(test)]
 mod tests {
+    use sha2::{Digest, Sha256};
+
     use super::{
-        gps_l2c_cm_code_assignment, gps_l2c_cm_code_assignments, GpsL2cCmCodeAssignment,
+        advance_register_state, generate_gps_l2c_cm_code, generate_gps_l2c_cm_code_chips,
+        gps_l2c_cm_code_assignment, gps_l2c_cm_code_assignments, register_state_from_octal,
+        register_state_to_octal, sample_gps_l2c_cm_code, GpsL2cCmCodeAssignment,
+        GPS_L2C_CM_CODE_CHIPS, GPS_L2C_CM_CODE_RATE_HZ,
     };
     use crate::error::SignalError;
 
@@ -221,5 +304,108 @@ mod tests {
         assert_eq!(gps_l2c_cm_code_assignment(64), Err(SignalError::UnsupportedPrn(64)));
         assert_eq!(gps_l2c_cm_code_assignment(158), Err(SignalError::UnsupportedPrn(158)));
         assert_eq!(gps_l2c_cm_code_assignment(211), Err(SignalError::UnsupportedPrn(211)));
+    }
+
+    #[test]
+    fn gps_l2c_cm_generator_reaches_published_final_register_states() {
+        for prn in [1_u8, 38, 63, 159, 210] {
+            let assignment = gps_l2c_cm_code_assignment(prn).expect("published PRN");
+            let mut state = register_state_from_octal(assignment.initial_state_octal);
+            for _ in 0..(GPS_L2C_CM_CODE_CHIPS - 1) {
+                advance_register_state(&mut state);
+            }
+            assert_eq!(register_state_to_octal(&state), assignment.end_state_octal, "prn={prn}");
+        }
+    }
+
+    #[test]
+    fn gps_l2c_cm_primary_code_is_bipolar_and_balanced() {
+        let code = generate_gps_l2c_cm_code(38).expect("valid L2C CM PRN");
+        let positive = code.iter().filter(|chip| **chip == 1).count();
+        let negative = code.iter().filter(|chip| **chip == -1).count();
+
+        assert_eq!(code.len(), GPS_L2C_CM_CODE_CHIPS);
+        assert_eq!(positive, negative);
+        assert!(code.iter().all(|chip| *chip == -1 || *chip == 1));
+    }
+
+    #[test]
+    fn gps_l2c_cm_arbitrary_length_repeats_the_full_period() {
+        let repeated =
+            generate_gps_l2c_cm_code_chips(159, GPS_L2C_CM_CODE_CHIPS * 2).expect("valid L2C CM PRN");
+        let (first_period, second_period) = repeated.split_at(GPS_L2C_CM_CODE_CHIPS);
+
+        assert_eq!(first_period, second_period);
+    }
+
+    #[test]
+    fn gps_l2c_cm_matches_reference_period_digests() {
+        let references = [
+            (1_u8, "7f7dcda35092a9ea6b3bccbe760c6df5dc3bd6e4298076958bf9ba4684d9fada"),
+            (38_u8, "c9a746b27fd6ea8f5400bc5c697197e33e349d08292bfb18a6ffa633a7c46459"),
+            (159_u8, "de2cbc17009d235043b1bac3183d25076a6f835cb0d6c7edb0f67f4dc15f3650"),
+            (210_u8, "58ed7844ec12b7ef88b9e1801cd10fe9a29c3bf9b6e71334b4e174eb98f4442d"),
+        ];
+
+        for (prn, expected_digest) in references {
+            let code = generate_gps_l2c_cm_code(prn).expect("valid L2C CM PRN");
+            let digest = sha256_hex(&code.iter().map(|chip| *chip as u8).collect::<Vec<_>>());
+            assert_eq!(digest, expected_digest, "prn={prn}");
+        }
+    }
+
+    #[test]
+    fn gps_l2c_cm_matches_reference_prefix_vectors() {
+        let references = [
+            (
+                1_u8,
+                "0010101111011110000111101011101000101001100001111100101100010010",
+            ),
+            (
+                38_u8,
+                "1100011000011100010111110000001100110000011000001000110011101101",
+            ),
+            (
+                159_u8,
+                "0010010100000001000111101101011010000101001010111100000100001001",
+            ),
+            (
+                210_u8,
+                "0000110011101100110000010011110010110100110000111101010101010001",
+            ),
+        ];
+
+        for (prn, expected_prefix) in references {
+            let code = generate_gps_l2c_cm_code(prn).expect("valid L2C CM PRN");
+            let prefix: String = code
+                .iter()
+                .take(expected_prefix.len())
+                .map(|chip| if *chip == -1 { '1' } else { '0' })
+                .collect();
+            assert_eq!(prefix, expected_prefix, "prn={prn}");
+        }
+    }
+
+    #[test]
+    fn gps_l2c_cm_sample_helper_tracks_chip_boundaries() {
+        let samples = sample_gps_l2c_cm_code(1, GPS_L2C_CM_CODE_RATE_HZ, 0.0, 8)
+            .expect("valid L2C CM PRN");
+        let code = generate_gps_l2c_cm_code(1).expect("valid L2C CM PRN");
+
+        assert_eq!(
+            samples,
+            code.iter().take(8).map(|chip| f32::from(*chip)).collect::<Vec<_>>()
+        );
+    }
+
+    fn sha256_hex(bytes: &[u8]) -> String {
+        let digest = Sha256::digest(bytes);
+        let mut output = String::with_capacity(digest.len() * 2);
+        for byte in digest {
+            use std::fmt::Write as _;
+
+            write!(&mut output, "{byte:02x}").expect("sha256 digest hex");
+        }
+        output
     }
 }
