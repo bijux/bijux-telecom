@@ -119,7 +119,7 @@ pub use bijux_gnss_nav::api::{
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use bijux_gnss_nav::api::{RtkFloatAmbiguityEstimate, RtkFloatBaselineSolution};
 
-/// Synthetic signal generation for tests and demos.
+/// Synthetic signal generation and canonical scenario execution for tests, validation, and demos.
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use crate::sim::synthetic as sim;
