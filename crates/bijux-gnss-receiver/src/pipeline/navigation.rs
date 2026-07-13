@@ -1885,7 +1885,7 @@ fn apply_refusal_cause_explainability_in_place(
     }
 }
 
-fn refusal_causes(solution: &NavSolutionEpoch, _obs: Option<&ObsEpoch>) -> Vec<RefusalCause> {
+fn refusal_causes(solution: &NavSolutionEpoch, obs: Option<&ObsEpoch>) -> Vec<RefusalCause> {
     let mut causes = Vec::new();
     let has_reason = |expected: &str| solution.explain_reasons.iter().any(|reason| reason == expected);
     let has_reason_prefix = |prefix: &str| {
@@ -1920,6 +1920,34 @@ fn refusal_causes(solution: &NavSolutionEpoch, _obs: Option<&ObsEpoch>) -> Vec<R
         push_cause(&mut causes, RefusalCause::Ephemeris);
     }
 
+    if matches!(
+        solution.refusal_class,
+        Some(NavRefusalClass::InvalidSatelliteTime | NavRefusalClass::MixedConstellationInput)
+    ) || has_reason("invalid_satellite_time")
+        || has_reason_prefix("invalid_satellite_time_count=")
+        || has_reason("unknown_inter_system_time_offset")
+        || has_reason_prefix("unknown_time_offset_constellations=")
+        || has_reason("constellation_clock_inconsistency")
+        || has_reason("satellite_clock_anomaly")
+        || solution
+            .residuals
+            .iter()
+            .filter_map(|residual| residual.reject_reason)
+            .any(|reason| reason == MeasurementRejectReason::TimeInconsistency)
+    {
+        push_cause(&mut causes, RefusalCause::Clock);
+    }
+
+    if solution
+        .residuals
+        .iter()
+        .filter_map(|residual| residual.reject_reason)
+        .any(|reason| reason == MeasurementRejectReason::CycleSlip)
+        || obs.is_some_and(observation_epoch_has_lock_failure_evidence)
+    {
+        push_cause(&mut causes, RefusalCause::Lock);
+    }
+
     if causes.is_empty() {
         match solution.refusal_class {
             Some(NavRefusalClass::InsufficientGeometry) => {
@@ -1928,11 +1956,39 @@ fn refusal_causes(solution: &NavSolutionEpoch, _obs: Option<&ObsEpoch>) -> Vec<R
             Some(NavRefusalClass::InvalidEphemeris | NavRefusalClass::PartialDecodedNavigationState) => {
                 push_cause(&mut causes, RefusalCause::Ephemeris);
             }
+            Some(NavRefusalClass::InvalidSatelliteTime | NavRefusalClass::MixedConstellationInput) => {
+                push_cause(&mut causes, RefusalCause::Clock);
+            }
             _ => {}
         }
     }
 
     causes
+}
+
+fn observation_epoch_has_lock_failure_evidence(obs: &ObsEpoch) -> bool {
+    obs.sats.iter().any(observation_has_lock_failure_evidence)
+}
+
+fn observation_has_lock_failure_evidence(sat: &ObsSatellite) -> bool {
+    sat.lock_flags.cycle_slip
+        || !sat.lock_flags.code_lock
+        || !sat.lock_flags.carrier_lock
+        || sat.metadata.observation_lock_state == "cycle_slip"
+        || sat.metadata.observation_lock_state == "lost"
+        || sat.metadata.observation_lock_state == "inactive"
+        || sat
+            .observation_reject_reasons
+            .iter()
+            .any(|reason| observation_reject_reason_is_lock_failure(reason))
+}
+
+fn observation_reject_reason_is_lock_failure(reason: &str) -> bool {
+    matches!(
+        reason,
+        "cycle_slip" | "loss_of_lock" | "tracking_unlock" | "code_lock_invalid"
+            | "carrier_lock_invalid"
+    )
 }
 
 fn uncertainty_class_from_solution(solution: &NavSolutionEpoch) -> NavUncertaintyClass {
@@ -3379,6 +3435,10 @@ mod tests {
         assert!(!solution.valid);
         assert_eq!(solution.used_sat_count, 0);
         assert!(solution.explain_reasons.iter().any(|reason| reason == "invalid_satellite_time"));
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "refusal_cause=clock"));
     }
 
     #[test]
@@ -3567,6 +3627,41 @@ mod tests {
             .explain_reasons
             .iter()
             .any(|reason| reason == "refusal_cause=satellite_count"));
+    }
+
+    #[test]
+    fn sparse_refusal_reports_lock_cause_when_observations_lost_lock() {
+        let config = ReceiverPipelineConfig::default();
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+        let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
+        let t_rx_s = 100_010.0;
+        let ephs = vec![
+            make_eph(1, 0.0, 0.0, t_rx_s),
+            make_eph(2, 0.8, 0.9, t_rx_s),
+            make_eph(3, 1.6, 1.8, t_rx_s),
+        ];
+        let mut obs = make_obs_epoch_for_solution(19, t_rx_s, truth, &ephs);
+        for sat in &mut obs.sats {
+            sat.lock_flags.carrier_lock = false;
+            sat.lock_flags.cycle_slip = true;
+            sat.metadata.observation_lock_state = "cycle_slip".to_string();
+            sat.metadata.observation_lock_reason = Some("loss_of_lock".to_string());
+            sat.observation_reject_reasons.push("loss_of_lock".to_string());
+            sat.observation_reject_reasons.push("cycle_slip".to_string());
+        }
+
+        let solution = nav.solve_epoch(&obs, &ephs).expect("lock-driven sparse refusal");
+
+        assert_eq!(solution.status, SolutionStatus::Refused);
+        assert_eq!(solution.refusal_class, Some(NavRefusalClass::InsufficientGeometry));
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "refusal_cause=satellite_count"));
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "refusal_cause=lock"));
     }
 
     #[test]
