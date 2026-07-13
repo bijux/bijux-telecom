@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 pub fn deterministic_chunk_lengths(total_samples: usize) -> Vec<usize> {
     let mut remaining = total_samples;
     let mut state = 0x9E37_79B9_7F4A_7C15_u64;
