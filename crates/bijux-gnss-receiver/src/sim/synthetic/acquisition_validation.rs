@@ -25,8 +25,11 @@ pub fn validate_truth_guided_acquisition_table(
             let result = acquisition.run_fft(&isolated_frame, &[sat_truth.sat]).remove(0);
             let expected_measured_doppler_hz =
                 synthetic_truth_measured_doppler_hz(truth, sat_truth);
-            let measured_doppler_hz = crate::pipeline::doppler::doppler_hz_from_carrier_hz(
+            let measured_doppler_hz = synthetic_measured_doppler_hz_from_carrier_hz(
                 config.intermediate_freq_hz,
+                sat_truth.sat,
+                sat_truth.signal_band,
+                sat_truth.glonass_frequency_channel,
                 result.carrier_hz.0,
             );
             let doppler_error_hz = (measured_doppler_hz - expected_measured_doppler_hz).abs();
@@ -269,8 +272,11 @@ pub fn validate_truth_guided_acquisition_doppler(
                 crate::engine::runtime::ReceiverRuntime::default(),
             );
             let result = acquisition.run_fft(&isolated_frame, &[sat_truth.sat]).remove(0);
-            let measured_doppler_hz = crate::pipeline::doppler::doppler_hz_from_carrier_hz(
+            let measured_doppler_hz = synthetic_measured_doppler_hz_from_carrier_hz(
                 config.intermediate_freq_hz,
+                sat_truth.sat,
+                sat_truth.signal_band,
+                sat_truth.glonass_frequency_channel,
                 result.carrier_hz.0,
             );
             let expected_measured_doppler_hz =
@@ -329,8 +335,11 @@ pub fn validate_truth_guided_acquisition_receiver_clock_offset(
                 crate::engine::runtime::ReceiverRuntime::default(),
             );
             let result = acquisition.run_fft(&isolated_frame, &[sat_truth.sat]).remove(0);
-            let measured_doppler_hz = crate::pipeline::doppler::doppler_hz_from_carrier_hz(
+            let measured_doppler_hz = synthetic_measured_doppler_hz_from_carrier_hz(
                 config.intermediate_freq_hz,
+                sat_truth.sat,
+                sat_truth.signal_band,
+                sat_truth.glonass_frequency_channel,
                 result.carrier_hz.0,
             );
             let expected_measured_doppler_hz =

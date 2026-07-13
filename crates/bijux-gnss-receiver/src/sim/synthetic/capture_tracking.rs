@@ -121,7 +121,9 @@ pub fn validate_truth_guided_cn0(
                 &isolated_frame,
                 &[seeded_tracking_acquisition(
                     sat_truth.sat,
+                    sat_truth.signal_band,
                     doppler_hz,
+                    config.intermediate_freq_hz,
                     seeded_code_phase_samples,
                     sat_truth.cn0_db_hz,
                     format!("truth_guided_cn0_tracking_seed_{}", sat_truth.sat.prn),
@@ -257,6 +259,24 @@ fn expected_tracking_code_phase_samples(
     .expect("synthetic tracking code phase requires a valid code phase model")
 }
 
+fn synthetic_measured_doppler_hz_from_carrier_hz(
+    intermediate_freq_hz: f64,
+    sat: SatId,
+    signal_band: SignalBand,
+    glonass_frequency_channel: Option<GlonassFrequencyChannel>,
+    carrier_hz: f64,
+) -> f64 {
+    crate::pipeline::doppler::doppler_hz_from_carrier_hz(
+        synthetic_intermediate_frequency_hz(
+            intermediate_freq_hz,
+            sat,
+            signal_band,
+            glonass_frequency_channel,
+        ),
+        carrier_hz,
+    )
+}
+
 /// Build a truth-guided tracking table from a synthetic capture.
 pub fn validate_truth_guided_tracking_table(
     config: &ReceiverPipelineConfig,
@@ -279,13 +299,8 @@ pub fn validate_truth_guided_tracking_table(
             );
             let expected_measured_doppler_hz =
                 synthetic_truth_measured_doppler_hz(truth, sat_truth);
-            let expected_carrier_hz = synthetic_carrier_hz(
-                truth.intermediate_freq_hz,
-                sat_truth.sat,
-                sat_truth.signal_band,
-                sat_truth.glonass_frequency_channel,
-                expected_measured_doppler_hz,
-            );
+            let expected_carrier_hz =
+                carrier_hz_from_doppler_hz(config.intermediate_freq_hz, expected_measured_doppler_hz);
             let seeded_code_phase_samples = wrap_seeded_code_phase_samples(
                 expected_acquisition_code_phase_samples(
                     config,
@@ -307,7 +322,9 @@ pub fn validate_truth_guided_tracking_table(
                 &isolated_frame,
                 &[seeded_tracking_acquisition_with_refined_code_phase(
                     sat_truth.sat,
+                    sat_truth.signal_band,
                     expected_measured_doppler_hz,
+                    config.intermediate_freq_hz,
                     seeded_code_phase_samples,
                     refined_code_phase_samples,
                     sat_truth.cn0_db_hz,

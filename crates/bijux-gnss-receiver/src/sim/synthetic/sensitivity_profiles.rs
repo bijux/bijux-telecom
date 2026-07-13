@@ -42,7 +42,9 @@ pub fn measure_truth_guided_tracking_lock_probability(
                 &frame,
                 &[seeded_tracking_acquisition(
                     signal.sat,
+                    signal.signal_band,
                     signal.doppler_hz + seeded_doppler_error_hz,
+                    config.intermediate_freq_hz,
                     seeded_code_phase_samples,
                     signal.cn0_db_hz,
                     format!(
@@ -368,20 +370,22 @@ fn false_alarm_rate_case_id(
 
 fn seeded_tracking_acquisition(
     sat: SatId,
+    signal_band: SignalBand,
     doppler_hz: f64,
+    intermediate_freq_hz: f64,
     code_phase_samples: usize,
     cn0_db_hz: f32,
     explain_selection_reason: String,
 ) -> AcqResult {
     AcqResult {
         sat,
-        signal_band: SignalBand::L1,
+        signal_band,
         glonass_frequency_channel: None,
         source_time: ReceiverSampleTrace::default(),
         candidate_rank: 1,
         is_primary_candidate: true,
         doppler_hz: Hertz(doppler_hz),
-        carrier_hz: Hertz(doppler_hz),
+        carrier_hz: Hertz(carrier_hz_from_doppler_hz(intermediate_freq_hz, doppler_hz)),
         code_phase_samples,
         peak: 1.0,
         second_peak: 0.1,
@@ -404,7 +408,9 @@ fn seeded_tracking_acquisition(
 
 fn seeded_tracking_acquisition_with_refined_code_phase(
     sat: SatId,
+    signal_band: SignalBand,
     doppler_hz: f64,
+    intermediate_freq_hz: f64,
     code_phase_samples: usize,
     refined_code_phase_samples: f64,
     cn0_db_hz: f32,
@@ -412,7 +418,9 @@ fn seeded_tracking_acquisition_with_refined_code_phase(
 ) -> AcqResult {
     let mut result = seeded_tracking_acquisition(
         sat,
+        signal_band,
         doppler_hz,
+        intermediate_freq_hz,
         code_phase_samples,
         cn0_db_hz,
         explain_selection_reason,
