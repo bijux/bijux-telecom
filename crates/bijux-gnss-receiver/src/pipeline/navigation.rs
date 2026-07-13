@@ -83,6 +83,31 @@ struct PrecisionReportingPolicy {
     explain_reason: &'static str,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RefusalCause {
+    SatelliteCount,
+    Dop,
+    Residual,
+    Clock,
+    Ephemeris,
+    Lock,
+    Integrity,
+}
+
+impl RefusalCause {
+    fn explain_reason(self) -> &'static str {
+        match self {
+            Self::SatelliteCount => "refusal_cause=satellite_count",
+            Self::Dop => "refusal_cause=dop",
+            Self::Residual => "refusal_cause=residual",
+            Self::Clock => "refusal_cause=clock",
+            Self::Ephemeris => "refusal_cause=ephemeris",
+            Self::Lock => "refusal_cause=lock",
+            Self::Integrity => "refusal_cause=integrity",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 enum PositionObservationPreparation {
     Included(PositionObservation),
@@ -1287,6 +1312,7 @@ fn apply_atmosphere_explainability_in_place(
     klobuchar: Option<&KlobucharCoefficients>,
     tropo_enabled: bool,
 ) {
+    apply_refusal_cause_explainability_in_place(solution, Some(obs));
     for ionosphere_reason in ionosphere_explain_reasons(obs, navigation, klobuchar) {
         if !solution.explain_reasons.iter().any(|existing| existing == ionosphere_reason) {
             solution.explain_reasons.push(ionosphere_reason.to_string());
@@ -1438,6 +1464,7 @@ fn invalid_solution_epoch(
         stability_signature: String::new(),
         stability_signature_version: NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
     };
+    apply_refusal_cause_explainability_in_place(&mut solution, None);
     solution.stability_signature = nav_output_stability_signature(&solution);
     solution
 }
@@ -1844,6 +1871,68 @@ fn push_unique_reason(solution: &mut NavSolutionEpoch, reason: &'static str) {
     if !solution.explain_reasons.iter().any(|existing| existing == reason) {
         solution.explain_reasons.push(reason.to_string());
     }
+}
+
+fn apply_refusal_cause_explainability_in_place(
+    solution: &mut NavSolutionEpoch,
+    obs: Option<&ObsEpoch>,
+) {
+    if solution.refusal_class.is_none() && solution.valid {
+        return;
+    }
+    for cause in refusal_causes(solution, obs) {
+        push_unique_reason(solution, cause.explain_reason());
+    }
+}
+
+fn refusal_causes(solution: &NavSolutionEpoch, _obs: Option<&ObsEpoch>) -> Vec<RefusalCause> {
+    let mut causes = Vec::new();
+    let has_reason = |expected: &str| solution.explain_reasons.iter().any(|reason| reason == expected);
+    let has_reason_prefix = |prefix: &str| {
+        solution.explain_reasons.iter().any(|reason| reason.starts_with(prefix))
+    };
+    let push_cause = |causes: &mut Vec<RefusalCause>, cause| {
+        if !causes.contains(&cause) {
+            causes.push(cause);
+        }
+    };
+
+    if solution.sat_count < 4
+        || solution.used_sat_count < 4
+        || has_reason("insufficient_geometry")
+        || has_reason_prefix("supported_satellites=")
+        || has_reason_prefix("used_satellites_below_threshold:")
+        || has_reason_prefix("raim_usable_satellites=")
+    {
+        push_cause(&mut causes, RefusalCause::SatelliteCount);
+    }
+
+    if matches!(
+        solution.refusal_class,
+        Some(NavRefusalClass::InvalidEphemeris | NavRefusalClass::PartialDecodedNavigationState)
+    ) || has_reason_prefix("ephemeris_covered_count=")
+        || solution
+            .residuals
+            .iter()
+            .filter_map(|residual| residual.reject_reason)
+            .any(|reason| reason == MeasurementRejectReason::InvalidEphemeris)
+    {
+        push_cause(&mut causes, RefusalCause::Ephemeris);
+    }
+
+    if causes.is_empty() {
+        match solution.refusal_class {
+            Some(NavRefusalClass::InsufficientGeometry) => {
+                push_cause(&mut causes, RefusalCause::SatelliteCount);
+            }
+            Some(NavRefusalClass::InvalidEphemeris | NavRefusalClass::PartialDecodedNavigationState) => {
+                push_cause(&mut causes, RefusalCause::Ephemeris);
+            }
+            _ => {}
+        }
+    }
+
+    causes
 }
 
 fn uncertainty_class_from_solution(solution: &NavSolutionEpoch) -> NavUncertaintyClass {
@@ -3240,6 +3329,10 @@ mod tests {
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::InvalidEphemeris));
         assert_eq!(solution.explain_decision, "refused");
         assert_eq!(solution.epoch.index, 10);
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "refusal_cause=ephemeris"));
     }
 
     #[test]
@@ -3470,6 +3563,10 @@ mod tests {
         assert_eq!(solution.ecef_y_m.0, 0.0);
         assert_eq!(solution.ecef_z_m.0, 0.0);
         assert!(!solution.valid);
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "refusal_cause=satellite_count"));
     }
 
     #[test]
