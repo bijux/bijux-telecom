@@ -1109,7 +1109,7 @@ impl Navigation {
             }
         }
         nav_epoch.validity = classify_validity(&nav_epoch);
-        nav_epoch.lifecycle_state = lifecycle_state_from_status(nav_epoch.status);
+        nav_epoch.lifecycle_state = nav_epoch.status.lifecycle_state();
         nav_epoch.uncertainty_class = uncertainty_class_from_solution(&nav_epoch);
         nav_epoch.provenance = Some(build_provenance(&self.config, &observations, &nav_epoch));
         let mut decision = decision_for_solution(&nav_epoch);
@@ -1235,7 +1235,7 @@ impl Navigation {
             decision.refusal_class,
             true,
         );
-        solution.lifecycle_state = lifecycle_state_from_status(solution.status);
+        solution.lifecycle_state = solution.status.lifecycle_state();
         solution.quality = solution.status.quality_flag();
         solution.valid = is_solution_valid(solution.status);
         solution.validity = SolutionValidity::Coarse;
@@ -1443,7 +1443,7 @@ fn invalid_solution_epoch(
         integrity_hpl_m: None,
         integrity_vpl_m: None,
         model_version: NAV_SOLUTION_MODEL_VERSION,
-        lifecycle_state: lifecycle_state_from_status(status),
+        lifecycle_state: status.lifecycle_state(),
         uncertainty_class: NavUncertaintyClass::Unknown,
         assumptions: Some(assumptions),
         refusal_class,
@@ -1535,7 +1535,7 @@ fn policy_refusal_epoch(
         Some(refusal_class),
         false,
     );
-    solution.lifecycle_state = lifecycle_state_from_status(solution.status);
+    solution.lifecycle_state = solution.status.lifecycle_state();
     solution.valid = false;
     solution.validity = SolutionValidity::Invalid;
     solution.quality = solution.status.quality_flag();
@@ -1683,7 +1683,7 @@ fn override_solution_status(
     status: SolutionStatus,
 ) -> NavSolutionEpoch {
     solution.status = status;
-    solution.lifecycle_state = lifecycle_state_from_status(status);
+    solution.lifecycle_state = status.lifecycle_state();
     solution.quality = status.quality_flag();
     solution.valid = is_solution_valid(status);
     solution.validity = if solution.valid {
@@ -1700,17 +1700,27 @@ fn mark_integrity_failure(mut solution: NavSolutionEpoch) -> NavSolutionEpoch {
     solution
 }
 
-fn lifecycle_state_from_status(status: SolutionStatus) -> NavLifecycleState {
+fn default_decision_reason(status: SolutionStatus) -> &'static str {
     match status {
-        SolutionStatus::Unavailable => NavLifecycleState::Unavailable,
-        SolutionStatus::Refused => NavLifecycleState::Refused,
-        SolutionStatus::Degraded => NavLifecycleState::Degraded,
-        SolutionStatus::IntegrityFailed => NavLifecycleState::IntegrityFailed,
-        SolutionStatus::Diverged => NavLifecycleState::Diverged,
-        SolutionStatus::CodeOnly => NavLifecycleState::CodeOnly,
-        SolutionStatus::Float => NavLifecycleState::Float,
-        SolutionStatus::Fixed => NavLifecycleState::Fixed,
+        SolutionStatus::Unavailable => "navigation_solution_unavailable",
+        SolutionStatus::Refused => "navigation_solution_refused",
+        SolutionStatus::Degraded => "quality_or_geometry_degraded",
+        SolutionStatus::IntegrityFailed => "navigation_solution_integrity_failed",
+        SolutionStatus::Diverged => "navigation_solution_diverged",
+        SolutionStatus::CodeOnly | SolutionStatus::Float | SolutionStatus::Fixed => {
+            "navigation_solution_usable"
+        }
     }
+}
+
+fn status_needs_default_decision_reason(
+    status: SolutionStatus,
+    explain_reasons: &[String],
+) -> bool {
+    explain_reasons.is_empty()
+        || (status.decision_label() != "accepted"
+            && explain_reasons.len() == 1
+            && explain_reasons[0] == "navigation_solution_usable")
 }
 
 fn apply_precision_reporting_policy(solution: &mut NavSolutionEpoch) {
@@ -2281,31 +2291,22 @@ fn residual_temporal_correlation_explain_reasons(
 }
 
 fn decision_for_solution(solution: &NavSolutionEpoch) -> NavDecision {
-    if solution.refusal_class.is_some() || !solution.valid {
-        return NavDecision {
-            status: solution.status,
-            refusal_class: solution.refusal_class,
-            explain_decision: "refused".to_string(),
-            explain_reasons: if solution.explain_reasons.is_empty() {
-                vec!["solution_marked_invalid".to_string()]
-            } else {
-                solution.explain_reasons.clone()
-            },
-        };
-    }
-    if solution.status == SolutionStatus::Degraded {
-        return NavDecision {
-            status: solution.status,
-            refusal_class: None,
-            explain_decision: "degraded".to_string(),
-            explain_reasons: vec!["quality_or_geometry_degraded".to_string()],
-        };
-    }
     NavDecision {
         status: solution.status,
-        refusal_class: None,
-        explain_decision: "accepted".to_string(),
-        explain_reasons: vec!["navigation_solution_usable".to_string()],
+        refusal_class: if solution.status.is_valid() {
+            None
+        } else {
+            solution.refusal_class
+        },
+        explain_decision: solution.status.decision_label().to_string(),
+        explain_reasons: if status_needs_default_decision_reason(
+            solution.status,
+            &solution.explain_reasons,
+        ) {
+            vec![default_decision_reason(solution.status).to_string()]
+        } else {
+            solution.explain_reasons.clone()
+        },
     }
 }
 
@@ -2520,6 +2521,18 @@ mod tests {
         }
     }
 
+    fn assert_has_reason(solution: &NavSolutionEpoch, expected: &str) {
+        assert!(
+            solution.explain_reasons.iter().any(|reason| reason == expected),
+            "missing explain reason `{expected}` in {:?}",
+            solution.explain_reasons
+        );
+    }
+
+    fn assert_has_refusal_cause(solution: &NavSolutionEpoch, expected_cause: &str) {
+        assert_has_reason(solution, expected_cause);
+    }
+
     #[test]
     fn code_only_precision_reporting_scales_covariance_and_sigmas() {
         let mut solution = sample_last_solution();
@@ -2625,10 +2638,7 @@ mod tests {
 
         apply_refusal_cause_explainability_in_place(&mut solution, None);
 
-        assert!(solution
-            .explain_reasons
-            .iter()
-            .any(|reason| reason == "refusal_cause=dop"));
+        assert_has_refusal_cause(&solution, "refusal_cause=dop");
     }
 
     #[test]
@@ -2642,10 +2652,7 @@ mod tests {
 
         apply_refusal_cause_explainability_in_place(&mut solution, None);
 
-        assert!(solution
-            .explain_reasons
-            .iter()
-            .any(|reason| reason == "refusal_cause=residual"));
+        assert_has_refusal_cause(&solution, "refusal_cause=residual");
     }
 
     #[test]
@@ -2660,10 +2667,68 @@ mod tests {
         apply_refusal_cause_explainability_in_place(&mut solution, None);
 
         assert_eq!(solution.status, SolutionStatus::IntegrityFailed);
-        assert!(solution
-            .explain_reasons
-            .iter()
-            .any(|reason| reason == "refusal_cause=integrity"));
+        assert_has_refusal_cause(&solution, "refusal_cause=integrity");
+    }
+
+    #[test]
+    fn decision_for_solution_uses_precise_status_labels_for_non_usable_epochs() {
+        let mut unavailable = sample_last_solution();
+        unavailable = override_solution_status(unavailable, SolutionStatus::Unavailable);
+        unavailable.refusal_class = Some(NavRefusalClass::InvalidEphemeris);
+        unavailable.explain_reasons.clear();
+        let unavailable_decision = decision_for_solution(&unavailable);
+        assert_eq!(unavailable_decision.explain_decision, "unavailable");
+        assert_eq!(
+            unavailable_decision.explain_reasons,
+            vec!["navigation_solution_unavailable".to_string()]
+        );
+
+        let mut integrity_failed = sample_last_solution();
+        integrity_failed = mark_integrity_failure(policy_refusal_epoch(
+            integrity_failed,
+            Some(SolutionStatus::CodeOnly),
+            NavRefusalClass::InconsistentObservations,
+            vec!["raim_exclusion_underdetermined".to_string()],
+        ));
+        let integrity_decision = decision_for_solution(&integrity_failed);
+        assert_eq!(integrity_decision.explain_decision, "integrity_failed");
+        assert_eq!(
+            integrity_decision.refusal_class,
+            Some(NavRefusalClass::InconsistentObservations)
+        );
+
+        let mut diverged = sample_last_solution();
+        diverged = override_solution_status(diverged, SolutionStatus::Diverged);
+        diverged.refusal_class = Some(NavRefusalClass::SolverFailure);
+        diverged.explain_reasons.clear();
+        let diverged_decision = decision_for_solution(&diverged);
+        assert_eq!(diverged_decision.explain_decision, "diverged");
+        assert_eq!(
+            diverged_decision.explain_reasons,
+            vec!["navigation_solution_diverged".to_string()]
+        );
+    }
+
+    #[test]
+    fn decision_for_solution_keeps_accepted_and_degraded_labels_distinct() {
+        let accepted_decision = decision_for_solution(&sample_last_solution());
+        assert_eq!(accepted_decision.explain_decision, "accepted");
+        assert_eq!(
+            accepted_decision.explain_reasons,
+            vec!["navigation_solution_usable".to_string()]
+        );
+
+        let mut degraded = sample_last_solution();
+        degraded.status = SolutionStatus::Degraded;
+        degraded.quality = SolutionStatus::Degraded.quality_flag();
+        degraded.lifecycle_state = SolutionStatus::Degraded.lifecycle_state();
+        let degraded_decision = decision_for_solution(&degraded);
+        assert_eq!(degraded_decision.explain_decision, "degraded");
+        assert_eq!(degraded_decision.refusal_class, None);
+        assert_eq!(
+            degraded_decision.explain_reasons,
+            vec!["quality_or_geometry_degraded".to_string()]
+        );
     }
 
     fn make_eph(prn: u8, omega0: f64, m0: f64, t_ref_s: f64) -> GpsEphemeris {
