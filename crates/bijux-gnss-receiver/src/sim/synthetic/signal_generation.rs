@@ -108,11 +108,7 @@ pub fn generate_l1_ca_multi_with_source_front_end(
     scenario: &SyntheticScenario,
     source_front_end_filter: Option<&bijux_gnss_signal::api::FrontEndFilterSpec>,
 ) -> SamplesFrame {
-    let signal_only = generate_l1_ca_multi_signal_only_with_source_front_end(
-        config,
-        scenario,
-        source_front_end_filter,
-    );
+    let signal_only = generate_l1_ca_multi_signal_only(config, scenario);
     let clock = SampleClock::new(config.sampling_freq_hz);
     let dt_s = clock.dt_s();
     let noise_std = SYNTHETIC_NOISE_STD_PER_COMPONENT;
