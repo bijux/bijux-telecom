@@ -8,6 +8,7 @@ use crate::codes::galileo_e1::{
     generate_galileo_e1c_code, sample_boc_code, GALILEO_E1_CODE_RATE_HZ,
 };
 use crate::codes::glonass_l1::{generate_glonass_l1_st_code, GLONASS_L1_ST_CODE_RATE_HZ};
+use crate::codes::gps_l2c::gps_l2c_time_multiplexed_value;
 use crate::codes::gps_l2c_cl::{generate_gps_l2c_cl_code, GPS_L2C_CL_CODE_RATE_HZ};
 use crate::codes::gps_l2c_cm::{generate_gps_l2c_cm_code, GPS_L2C_CM_CODE_RATE_HZ};
 use crate::dsp::signal::{code_value_at_phase, sample_code, samples_per_code};
@@ -20,6 +21,9 @@ use num_complex::Complex;
 
 /// Complex noise power implied by unit-variance I and Q components.
 pub const UNIT_VARIANCE_COMPLEX_NOISE_POWER: f64 = 2.0;
+pub use crate::codes::gps_l2c::{
+    GPS_L2C_TIME_MULTIPLEXED_CODE_CHIPS, GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ,
+};
 
 /// Reusable local code models for acquisition and tracking replicas.
 #[derive(Debug, Clone, PartialEq)]
@@ -383,6 +387,8 @@ fn primary_code_period_ms(code_length: usize, code_rate_hz: f64) -> Result<u32, 
 pub enum ReplicaCodeModel {
     /// GPS L1 C/A primary code.
     GpsL1Ca { code: Vec<i8> },
+    /// GPS L2C time-multiplexed CM/CL composite code.
+    GpsL2cTimeMultiplexed { cm_code: Vec<i8>, cl_code: Vec<i8> },
     /// Galileo E1 CBOC composite code.
     GalileoE1Cboc { e1b_code: Vec<i8>, e1c_code: Vec<i8> },
     /// BeiDou B1I primary code.
@@ -435,6 +441,22 @@ impl ReplicaCodeModel {
         Self::gps_l1_ca(prn).unwrap_or_else(|_| Self::GpsL1Ca { code: vec![1; 1023] })
     }
 
+    /// Build a GPS L2C time-multiplexed replica from one PRN.
+    pub fn gps_l2c_time_multiplexed(prn: u8) -> Result<Self, SignalError> {
+        Ok(Self::GpsL2cTimeMultiplexed {
+            cm_code: generate_gps_l2c_cm_code(prn)?,
+            cl_code: generate_gps_l2c_cl_code(prn)?,
+        })
+    }
+
+    /// Build a GPS L2C time-multiplexed replica, falling back to all-ones codes when invalid.
+    pub fn gps_l2c_time_multiplexed_or_ones(prn: u8) -> Self {
+        Self::gps_l2c_time_multiplexed(prn).unwrap_or_else(|_| Self::GpsL2cTimeMultiplexed {
+            cm_code: vec![1; 10_230],
+            cl_code: vec![1; 767_250],
+        })
+    }
+
     /// Build a Galileo E1 CBOC replica from a PRN.
     pub fn galileo_e1_cboc(prn: u8) -> Result<Self, SignalError> {
         Ok(Self::GalileoE1Cboc {
@@ -470,6 +492,7 @@ impl ReplicaCodeModel {
     pub fn code_rate_hz(&self) -> f64 {
         match self {
             Self::GpsL1Ca { .. } => 1_023_000.0,
+            Self::GpsL2cTimeMultiplexed { .. } => GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ,
             Self::GalileoE1Cboc { .. } => GALILEO_E1_CODE_RATE_HZ,
             Self::BeidouB1I { .. } => BEIDOU_B1I_CODE_RATE_HZ,
             Self::GlonassL1St { .. } => GLONASS_L1_ST_CODE_RATE_HZ,
@@ -480,6 +503,7 @@ impl ReplicaCodeModel {
     pub fn code_length(&self) -> usize {
         match self {
             Self::GpsL1Ca { code } => code.len(),
+            Self::GpsL2cTimeMultiplexed { .. } => GPS_L2C_TIME_MULTIPLEXED_CODE_CHIPS,
             Self::GalileoE1Cboc { e1b_code, .. } => e1b_code.len(),
             Self::BeidouB1I { code } => code.len(),
             Self::GlonassL1St { code } => code.len(),
@@ -495,6 +519,9 @@ impl ReplicaCodeModel {
     ) -> Result<f32, SignalError> {
         match self {
             Self::GpsL1Ca { code } => Ok(code_value_at_phase(code, chip_phase)? * data_bit as f32),
+            Self::GpsL2cTimeMultiplexed { cm_code, cl_code } => {
+                gps_l2c_time_multiplexed_value(cm_code, cl_code, chip_phase, &[data_bit])
+            }
             Self::GalileoE1Cboc { e1b_code, e1c_code } => galileo_e1_cboc_value(
                 e1b_code,
                 e1c_code,
@@ -589,6 +616,7 @@ mod tests {
         carrier_hz_at_time, carrier_phase_radians_at_time, default_local_code_model,
         default_signal_carrier_hz, sample_modulated_replica_at_time,
         signal_amplitude_from_cn0_db_hz, AcquisitionSignalModel, LocalCodeModel, ReplicaCodeModel,
+        GPS_L2C_TIME_MULTIPLEXED_CODE_CHIPS, GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ,
         UNIT_VARIANCE_COMPLEX_NOISE_POWER,
     };
     use crate::codes::galileo_e1::{
@@ -634,10 +662,12 @@ mod tests {
     #[test]
     fn replica_code_model_fallback_constructors_preserve_code_lengths() {
         let gps = ReplicaCodeModel::gps_l1_ca_or_ones(0);
+        let gps_l2c = ReplicaCodeModel::gps_l2c_time_multiplexed_or_ones(0);
         let galileo = ReplicaCodeModel::galileo_e1_cboc_or_ones(0);
         let beidou = ReplicaCodeModel::beidou_b1i_or_ones(0);
 
         assert_eq!(gps.code_length(), 1023);
+        assert_eq!(gps_l2c.code_length(), GPS_L2C_TIME_MULTIPLEXED_CODE_CHIPS);
         assert_eq!(galileo.code_length(), 4092);
         assert_eq!(beidou.code_length(), 2046);
     }
@@ -657,8 +687,8 @@ mod tests {
         let samples = model
             .sample_period(GPS_L2C_CM_CODE_RATE_HZ, 0.0, 32)
             .expect("GPS L2C CM local code period");
-        let expected =
-            sample_gps_l2c_cm_code(38, GPS_L2C_CM_CODE_RATE_HZ, 0.0, 32).expect("GPS L2C CM reference");
+        let expected = sample_gps_l2c_cm_code(38, GPS_L2C_CM_CODE_RATE_HZ, 0.0, 32)
+            .expect("GPS L2C CM reference");
 
         assert_eq!(samples, expected);
         assert!(model.supports_secondary_peak_multipath_screening());
@@ -670,8 +700,8 @@ mod tests {
         let samples = model
             .sample_period(GPS_L2C_CL_CODE_RATE_HZ, 0.0, 32)
             .expect("GPS L2C CL local code period");
-        let expected =
-            sample_gps_l2c_cl_code(38, GPS_L2C_CL_CODE_RATE_HZ, 0.0, 32).expect("GPS L2C CL reference");
+        let expected = sample_gps_l2c_cl_code(38, GPS_L2C_CL_CODE_RATE_HZ, 0.0, 32)
+            .expect("GPS L2C CL reference");
 
         assert_eq!(samples, expected);
         assert!(model.supports_secondary_peak_multipath_screening());
@@ -753,6 +783,16 @@ mod tests {
 
         assert_eq!(model.code_length(), 4092);
         assert!((model.code_rate_hz() - GALILEO_E1_CODE_RATE_HZ).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn replica_code_model_builds_gps_l2c_time_multiplexed_signal() {
+        let model = ReplicaCodeModel::gps_l2c_time_multiplexed(38).expect("valid GPS L2C PRN");
+
+        assert_eq!(model.code_length(), GPS_L2C_TIME_MULTIPLEXED_CODE_CHIPS);
+        assert!(
+            (model.code_rate_hz() - GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ).abs() < f64::EPSILON
+        );
     }
 
     #[test]
