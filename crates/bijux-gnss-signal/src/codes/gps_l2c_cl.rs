@@ -4,6 +4,7 @@
 //!
 //! Clean-room implementation derived from the public IS-GPS-200L signal definition.
 
+use super::gps_l2c_register::{generate_bipolar_code_period, generate_bipolar_code_range};
 use crate::dsp::signal::sample_code;
 use crate::error::SignalError;
 
@@ -158,7 +159,10 @@ pub fn gps_l2c_cl_code_assignments() -> &'static [GpsL2cClCodeAssignment; 115] {
 ///
 /// Returns chips in `{-1, +1}`.
 pub fn generate_gps_l2c_cl_code(prn: u8) -> Result<Vec<i8>, SignalError> {
-    generate_gps_l2c_cl_code_range(prn, 0, GPS_L2C_CL_CODE_CHIPS)
+    Ok(generate_bipolar_code_period(
+        gps_l2c_cl_code_assignment(prn)?.initial_state_octal,
+        GPS_L2C_CL_CODE_CHIPS,
+    ))
 }
 
 /// Generate a contiguous range of GPS L2C CL ranging-code chips.
@@ -169,31 +173,12 @@ pub fn generate_gps_l2c_cl_code_range(
     start_chip: usize,
     chip_count: usize,
 ) -> Result<Vec<i8>, SignalError> {
-    let assignment = gps_l2c_cl_code_assignment(prn)?;
-    let mut state = register_state_from_octal(assignment.initial_state_octal);
-    let range_start = start_chip % GPS_L2C_CL_CODE_CHIPS;
-
-    for _ in 0..range_start {
-        advance_register_state(&mut state);
-    }
-
-    let mut code = Vec::with_capacity(chip_count);
-    let mut generated = 0_usize;
-    let mut period_position = range_start;
-
-    while generated < chip_count {
-        code.push(if state[26] == 0 { 1 } else { -1 });
-        advance_register_state(&mut state);
-        generated += 1;
-        period_position += 1;
-
-        if period_position == GPS_L2C_CL_CODE_CHIPS {
-            state = register_state_from_octal(assignment.initial_state_octal);
-            period_position = 0;
-        }
-    }
-
-    Ok(code)
+    Ok(generate_bipolar_code_range(
+        gps_l2c_cl_code_assignment(prn)?.initial_state_octal,
+        GPS_L2C_CL_CODE_CHIPS,
+        start_chip,
+        chip_count,
+    ))
 }
 
 /// Sample the GPS L2C CL ranging code at an arbitrary sample rate from a chip-phase origin.
@@ -207,51 +192,15 @@ pub fn sample_gps_l2c_cl_code(
     sample_code(&code, sample_rate_hz, GPS_L2C_CL_CODE_RATE_HZ, start_chip_phase, sample_count)
 }
 
-fn register_state_from_octal(state_octal: u32) -> [u8; 27] {
-    let mut state = [0_u8; 27];
-    for (index, bit) in format!("{state_octal:027b}").bytes().enumerate() {
-        state[index] = match bit {
-            b'0' => 0,
-            b'1' => 1,
-            _ => unreachable!("binary formatting must only emit 0 or 1"),
-        };
-    }
-    state
-}
-
-#[cfg(test)]
-fn register_state_to_octal(state: &[u8; 27]) -> u32 {
-    let mut value = 0_u32;
-    for bit in state {
-        value = (value << 1) | u32::from(*bit);
-    }
-    value
-}
-
-fn advance_register_state(state: &mut [u8; 27]) {
-    let output_bit = state[26];
-    for destination_index in (1..state.len()).rev() {
-        let source_position = destination_index;
-        let mut next_value = state[destination_index - 1];
-        if gps_l2c_feedback_applies(source_position) {
-            next_value ^= output_bit;
-        }
-        state[destination_index] = next_value;
-    }
-    state[0] = output_bit;
-}
-
-fn gps_l2c_feedback_applies(source_position: usize) -> bool {
-    matches!(source_position, 3 | 6 | 8 | 11 | 14 | 16 | 18 | 21 | 22 | 23 | 24)
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
-        advance_register_state, generate_gps_l2c_cl_code, generate_gps_l2c_cl_code_range,
-        gps_l2c_cl_code_assignment, gps_l2c_cl_code_assignments, register_state_from_octal,
-        register_state_to_octal, sample_gps_l2c_cl_code, GpsL2cClCodeAssignment,
+        generate_gps_l2c_cl_code, generate_gps_l2c_cl_code_range, gps_l2c_cl_code_assignment,
+        gps_l2c_cl_code_assignments, sample_gps_l2c_cl_code, GpsL2cClCodeAssignment,
         GPS_L2C_CL_CODE_CHIPS, GPS_L2C_CL_CODE_RATE_HZ,
+    };
+    use crate::codes::gps_l2c_register::{
+        advance_register_state, register_state_from_octal, register_state_to_octal,
     };
     use crate::error::SignalError;
 
