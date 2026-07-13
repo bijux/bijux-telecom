@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_infra::api::core::{Constellation, SatId};
+use bijux_gnss_infra::api::core::{Constellation, SatId, SignalBand, SignalCode};
 use bijux_gnss_infra::api::receiver::{
     sim::{generate_l1_ca, SyntheticSignalParams},
     ReceiverConfig,
@@ -227,11 +227,13 @@ fn write_biased_synthetic_iq8_capture(path: &Path, i_bias: f32, q_bias: f32) {
         SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Gps, prn: 1 },
             glonass_frequency_channel: None,
+            signal_band: SignalBand::L1,
+            signal_code: SignalCode::Ca,
             doppler_hz: 500.0,
             code_phase_chips: 200.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz: 25.0,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         },
         0xC0FF_EE11,
         1_023.0 / profile.code_freq_basis_hz,
@@ -271,11 +273,13 @@ fn write_synthetic_iq8_capture_with_signal_if_and_duration_s(
         SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Gps, prn: 11 },
             glonass_frequency_channel: None,
+            signal_band: SignalBand::L1,
+            signal_code: SignalCode::Ca,
             doppler_hz: 0.0,
             code_phase_chips: 210.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz: 48.0,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         },
         4_277_009_102,
         duration_s,
@@ -312,11 +316,13 @@ fn write_synthetic_cf32_capture_with_signal_if(
         SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Gps, prn: 11 },
             glonass_frequency_channel: None,
+            signal_band: SignalBand::L1,
+            signal_code: SignalCode::Ca,
             doppler_hz: 0.0,
             code_phase_chips: 210.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz: 48.0,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         },
         4_277_009_102,
         1_023.0 / 1_023_000.0,

@@ -2,7 +2,7 @@
 
 use bijux_gnss_infra::api::core::{
     ArtifactHeaderV1, Chips, Constellation, Cycles, Epoch, Hertz, ReceiverSampleTrace, SatId,
-    SignalBand, TrackEpoch, TrackEpochV1,
+    SignalBand, SignalCode, TrackEpoch, TrackEpochV1,
 };
 use serde_json::Value;
 use std::fs;
@@ -419,6 +419,7 @@ fn write_track_artifact_from_bits(path: &Path, sat: SatId, prompt_offset_ms: usi
                     ),
                     sat,
                     signal_band: SignalBand::L1,
+                    signal_code: SignalCode::Ca,
                     glonass_frequency_channel: None,
                     prompt_i: 0.25,
                     prompt_q: 0.0,
@@ -474,6 +475,7 @@ fn write_track_artifact_from_bits(path: &Path, sat: SatId, prompt_offset_ms: usi
                         ),
                         sat,
                         signal_band: SignalBand::L1,
+                        signal_code: SignalCode::Ca,
                         glonass_frequency_channel: None,
                         prompt_i: *bit as f32,
                         prompt_q: 0.0,
@@ -537,7 +539,7 @@ doppler_hz = 120.0
 code_phase_chips = 144.375
 carrier_phase_rad = 0.3
 cn0_db_hz = 52.0
-data_bit_flip = true
+navigation_data = "alternating_start_positive"
 "#,
     )
     .expect("write scenario");
