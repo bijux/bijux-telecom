@@ -2465,9 +2465,8 @@ mod tests {
     use crate::pipeline::observations::fake_obs_epoch_for_nav_tests;
     use bijux_gnss_core::api::{
         Constellation, GpsTime, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
-        ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ObservationSupportClass,
-        ObservationUncertaintyClass, ReceiverRole, SatId, Seconds, SigId, SignalBand, SignalCode,
-        SignalSpec,
+        ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ReceiverRole, SatId,
+        Seconds, SigId, SignalBand, SignalCode, SignalSpec,
     };
     use bijux_gnss_nav::api::{
         ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef, sat_state_galileo_e1,
@@ -3041,25 +3040,36 @@ mod tests {
                 transmit_gps_time: GpsTime { week: 0, tow_s: 2_000.0 - signal_travel_time_s },
             }),
             error_model: None,
-            metadata: ObsMetadata {
-                tracking_mode: tracking_mode.to_string(),
-                integration_ms: 1,
-                lock_quality: 1.0,
-                smoothing_window: 0,
-                smoothing_age: 0,
-                smoothing_resets: 0,
-                signal: SignalSpec {
+            metadata: accepted_synthetic_obs_metadata(
+                SignalSpec {
                     constellation: sat.constellation,
                     band: SignalBand::L1,
                     code: SignalCode::Ca,
                     code_rate_hz: 1_023_000.0,
                     carrier_hz: bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ,
                 },
-                observation_status: "accepted".to_string(),
-                observation_support_class: "supported".to_string(),
-                observation_uncertainty_class: "unknown".to_string(),
-                ..ObsMetadata::default()
-            },
+                tracking_mode,
+            ),
+        }
+    }
+
+    fn accepted_synthetic_obs_metadata(signal: SignalSpec, tracking_mode: &str) -> ObsMetadata {
+        ObsMetadata {
+            tracking_mode: tracking_mode.to_string(),
+            integration_ms: 1,
+            lock_quality: 1.0,
+            smoothing_window: 0,
+            smoothing_age: 0,
+            smoothing_resets: 0,
+            signal,
+            tracking_lock_state: "locked".to_string(),
+            observation_lock_state: "locked".to_string(),
+            observation_lock_reason: Some("stable_tracking".to_string()),
+            tracking_lock_quality: 1.0,
+            observation_status: "accepted".to_string(),
+            observation_support_class: "supported".to_string(),
+            observation_uncertainty_class: "unknown".to_string(),
+            ..ObsMetadata::default()
         }
     }
 
@@ -3115,36 +3125,16 @@ mod tests {
                         },
                     }),
                     error_model: None,
-                    metadata: ObsMetadata {
-                        tracking_mode: "synthetic".to_string(),
-                        integration_ms: 1,
-                        lock_quality: 1.0,
-                        smoothing_window: 0,
-                        smoothing_age: 0,
-                        smoothing_resets: 0,
-                        signal: SignalSpec {
+                    metadata: accepted_synthetic_obs_metadata(
+                        SignalSpec {
                             constellation: Constellation::Gps,
                             band: SignalBand::L1,
                             code: SignalCode::Ca,
                             code_rate_hz: 1_023_000.0,
                             carrier_hz: bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ,
                         },
-                        observation_status: "accepted".to_string(),
-                        observation_support_class: match ObservationSupportClass::Supported {
-                            ObservationSupportClass::Supported => "supported",
-                            ObservationSupportClass::Degraded => "degraded",
-                            ObservationSupportClass::Unsupported => "unsupported",
-                        }
-                        .to_string(),
-                        observation_uncertainty_class: match ObservationUncertaintyClass::Unknown {
-                            ObservationUncertaintyClass::Low => "low",
-                            ObservationUncertaintyClass::Medium => "medium",
-                            ObservationUncertaintyClass::High => "high",
-                            ObservationUncertaintyClass::Unknown => "unknown",
-                        }
-                        .to_string(),
-                        ..ObsMetadata::default()
-                    },
+                        "synthetic",
+                    ),
                 }
             })
             .collect();
@@ -3457,7 +3447,16 @@ mod tests {
                         transmit_gps_time: GpsTime { week: 0, tow_s: t_rx_s - signal_travel_time_s },
                     }),
                     error_model: None,
-                    metadata: ObsMetadata::default(),
+                    metadata: accepted_synthetic_obs_metadata(
+                        SignalSpec {
+                            constellation: navigation.sat.constellation,
+                            band: SignalBand::E1,
+                            code: SignalCode::E1B,
+                            code_rate_hz: 1_023_000.0,
+                            carrier_hz: bijux_gnss_core::api::GALILEO_E1_CARRIER_HZ,
+                        },
+                        "synthetic",
+                    ),
                 }
             })
             .collect();
@@ -3605,7 +3604,16 @@ mod tests {
                 transmit_gps_time: receive_gps_time.offset_seconds(-tau_s),
             }),
             error_model: None,
-            metadata: ObsMetadata::default(),
+            metadata: accepted_synthetic_obs_metadata(
+                SignalSpec {
+                    constellation: eph.sat.constellation,
+                    band: SignalBand::L1,
+                    code: SignalCode::Ca,
+                    code_rate_hz: 1_023_000.0,
+                    carrier_hz: bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ,
+                },
+                "synthetic",
+            ),
         };
         let obs = ObsEpoch {
             t_rx_s: Seconds(1.0),
@@ -3951,7 +3959,16 @@ mod tests {
                     transmit_gps_time: GpsTime { week: 0, tow_s: t_rx_s - signal_travel_time_s },
                 }),
                 error_model: None,
-                metadata: ObsMetadata::default(),
+                metadata: accepted_synthetic_obs_metadata(
+                    SignalSpec {
+                        constellation: navigation.sat.constellation,
+                        band: SignalBand::E1,
+                        code: SignalCode::E1B,
+                        code_rate_hz: 1_023_000.0,
+                        carrier_hz: bijux_gnss_core::api::GALILEO_E1_CARRIER_HZ,
+                    },
+                    "synthetic",
+                ),
             }
         }));
 
@@ -4042,6 +4059,24 @@ mod tests {
         assert_has_refusal_cause(&solution, "refusal_cause=satellite_count");
         assert_has_refusal_cause(&solution, "refusal_cause=lock");
         assert_lacks_refusal_cause(&solution, "refusal_cause=clock");
+    }
+
+    #[test]
+    fn accepted_synthetic_solution_observations_do_not_report_lock_failures() {
+        let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
+        let t_rx_s = 100_012.0;
+        let ephs = vec![
+            make_eph(1, 0.0, 0.0, t_rx_s),
+            make_eph(2, 0.8, 0.9, t_rx_s),
+            make_eph(3, 1.6, 1.8, t_rx_s),
+            make_eph(4, 2.4, 2.7, t_rx_s),
+        ];
+        let obs = make_obs_epoch_for_solution(20, t_rx_s, truth, &ephs);
+
+        assert!(
+            !observation_epoch_has_lock_failure_evidence(&obs),
+            "accepted synthetic observations should not fabricate lock-failure evidence"
+        );
     }
 
     #[test]
