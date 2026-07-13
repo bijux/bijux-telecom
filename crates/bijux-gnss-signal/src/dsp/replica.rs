@@ -8,9 +8,11 @@ use crate::codes::galileo_e1::{
     GALILEO_E1_CODE_RATE_HZ,
 };
 use crate::codes::galileo_e5::{
-    galileo_e5a_i_value, galileo_e5a_q_secondary_code, galileo_e5a_qpsk_value,
-    generate_galileo_e5a_i_code, generate_galileo_e5a_q_code, GALILEO_E5A_CODE_RATE_HZ,
-    GALILEO_E5A_PRIMARY_CODE_CHIPS, GALILEO_E5A_Q_SECONDARY_CODE_CHIPS,
+    galileo_e5a_i_value, galileo_e5a_q_secondary_code, galileo_e5a_qpsk_value, galileo_e5b_i_value,
+    galileo_e5b_q_secondary_code, galileo_e5b_qpsk_value, generate_galileo_e5a_i_code,
+    generate_galileo_e5a_q_code, generate_galileo_e5b_i_code, generate_galileo_e5b_q_code,
+    GALILEO_E5A_CODE_RATE_HZ, GALILEO_E5A_PRIMARY_CODE_CHIPS, GALILEO_E5A_Q_SECONDARY_CODE_CHIPS,
+    GALILEO_E5B_CODE_RATE_HZ, GALILEO_E5B_PRIMARY_CODE_CHIPS, GALILEO_E5B_Q_SECONDARY_CODE_CHIPS,
 };
 use crate::codes::glonass_l1::{generate_glonass_l1_st_code, GLONASS_L1_ST_CODE_RATE_HZ};
 use crate::codes::gps_l2c::{
@@ -133,6 +135,14 @@ impl AcquisitionSignalModel {
                 GALILEO_E5A_PRIMARY_CODE_CHIPS,
                 bijux_gnss_core::api::GALILEO_E5A_CARRIER_HZ,
                 LocalCodeModel::galileo_e5a_i(sat.prn)?,
+            )
+            .map(Some),
+            (Constellation::Galileo, SignalBand::E5, SignalCode::E5b) => Self::new(
+                SignalBand::E5,
+                GALILEO_E5B_CODE_RATE_HZ,
+                GALILEO_E5B_PRIMARY_CODE_CHIPS,
+                bijux_gnss_core::api::GALILEO_E5B_CARRIER_HZ,
+                LocalCodeModel::galileo_e5b_i(sat.prn)?,
             )
             .map(Some),
             (Constellation::Beidou, SignalBand::B1, SignalCode::B1I) => Self::new(
@@ -286,6 +296,14 @@ pub enum ReplicaCodeModel {
         e5aq_code: Vec<i8>,
         e5aq_secondary_code: [i8; GALILEO_E5A_Q_SECONDARY_CODE_CHIPS],
     },
+    /// Galileo E5b-I primary code with I/NAV tiered secondary modulation.
+    GalileoE5bI { code: Vec<i8> },
+    /// Galileo E5b narrowband QPSK composite code.
+    GalileoE5bQpsk {
+        e5bi_code: Vec<i8>,
+        e5bq_code: Vec<i8>,
+        e5bq_secondary_code: [i8; GALILEO_E5B_Q_SECONDARY_CODE_CHIPS],
+    },
     /// BeiDou B1I primary code.
     BeidouB1I { code: Vec<i8> },
     /// GLONASS L1 ST primary code.
@@ -340,6 +358,9 @@ impl ReplicaCodeModel {
             }
             (Constellation::Galileo, SignalBand::E5, SignalCode::E5a) => {
                 Self::galileo_e5a(sat.prn).map(Some)
+            }
+            (Constellation::Galileo, SignalBand::E5, SignalCode::E5b) => {
+                Self::galileo_e5b(sat.prn).map(Some)
             }
             (Constellation::Beidou, SignalBand::B1, SignalCode::B1I) => {
                 Self::beidou_b1i(sat.prn).map(Some)
@@ -452,6 +473,35 @@ impl ReplicaCodeModel {
         })
     }
 
+    /// Build a Galileo E5b-I replica from a PRN.
+    pub fn galileo_e5b(prn: u8) -> Result<Self, SignalError> {
+        Ok(Self::GalileoE5bI { code: generate_galileo_e5b_i_code(prn)? })
+    }
+
+    /// Build a Galileo E5b-I replica, falling back to an all-ones code when invalid.
+    pub fn galileo_e5b_or_ones(prn: u8) -> Self {
+        Self::galileo_e5b(prn)
+            .unwrap_or_else(|_| Self::GalileoE5bI { code: vec![1; GALILEO_E5B_PRIMARY_CODE_CHIPS] })
+    }
+
+    /// Build a Galileo E5b QPSK composite replica from a PRN.
+    pub fn galileo_e5b_qpsk(prn: u8) -> Result<Self, SignalError> {
+        Ok(Self::GalileoE5bQpsk {
+            e5bi_code: generate_galileo_e5b_i_code(prn)?,
+            e5bq_code: generate_galileo_e5b_q_code(prn)?,
+            e5bq_secondary_code: galileo_e5b_q_secondary_code(prn)?,
+        })
+    }
+
+    /// Build a Galileo E5b QPSK replica, falling back to all-ones component codes when invalid.
+    pub fn galileo_e5b_qpsk_or_ones(prn: u8) -> Self {
+        Self::galileo_e5b_qpsk(prn).unwrap_or_else(|_| Self::GalileoE5bQpsk {
+            e5bi_code: vec![1; GALILEO_E5B_PRIMARY_CODE_CHIPS],
+            e5bq_code: vec![1; GALILEO_E5B_PRIMARY_CODE_CHIPS],
+            e5bq_secondary_code: [1; GALILEO_E5B_Q_SECONDARY_CODE_CHIPS],
+        })
+    }
+
     /// Build a BeiDou B1I replica from a PRN.
     pub fn beidou_b1i(prn: u8) -> Result<Self, SignalError> {
         Ok(Self::BeidouB1I { code: generate_beidou_b1i_code(prn)? })
@@ -477,6 +527,8 @@ impl ReplicaCodeModel {
             Self::GalileoE1Cboc { .. } => GALILEO_E1_CODE_RATE_HZ,
             Self::GalileoE5aI { .. } => GALILEO_E5A_CODE_RATE_HZ,
             Self::GalileoE5aQpsk { .. } => GALILEO_E5A_CODE_RATE_HZ,
+            Self::GalileoE5bI { .. } => GALILEO_E5B_CODE_RATE_HZ,
+            Self::GalileoE5bQpsk { .. } => GALILEO_E5B_CODE_RATE_HZ,
             Self::BeidouB1I { .. } => BEIDOU_B1I_CODE_RATE_HZ,
             Self::GlonassL1St { .. } => GLONASS_L1_ST_CODE_RATE_HZ,
         }
@@ -492,6 +544,8 @@ impl ReplicaCodeModel {
             Self::GalileoE1Cboc { e1b_code, .. } => e1b_code.len(),
             Self::GalileoE5aI { code } => code.len(),
             Self::GalileoE5aQpsk { e5ai_code, .. } => e5ai_code.len(),
+            Self::GalileoE5bI { code } => code.len(),
+            Self::GalileoE5bQpsk { e5bi_code, .. } => e5bi_code.len(),
             Self::BeidouB1I { code } => code.len(),
             Self::GlonassL1St { code } => code.len(),
         }
@@ -543,6 +597,20 @@ impl ReplicaCodeModel {
                     e5ai_code,
                     e5aq_code,
                     e5aq_secondary_code,
+                    chip_phase,
+                    primary_code_period_index,
+                    &[data_bit],
+                )
+            }
+            Self::GalileoE5bI { code } => Ok(Complex::new(
+                galileo_e5b_i_value(code, chip_phase, primary_code_period_index, &[data_bit])?,
+                0.0,
+            )),
+            Self::GalileoE5bQpsk { e5bi_code, e5bq_code, e5bq_secondary_code } => {
+                galileo_e5b_qpsk_value(
+                    e5bi_code,
+                    e5bq_code,
+                    e5bq_secondary_code,
                     chip_phase,
                     primary_code_period_index,
                     &[data_bit],
@@ -601,6 +669,9 @@ pub fn default_signal_carrier_hz_for_signal(
         }
         (Constellation::Galileo, SignalBand::E5, SignalCode::E5a) => {
             Ok(Some(bijux_gnss_core::api::GALILEO_E5A_CARRIER_HZ))
+        }
+        (Constellation::Galileo, SignalBand::E5, SignalCode::E5b) => {
+            Ok(Some(bijux_gnss_core::api::GALILEO_E5B_CARRIER_HZ))
         }
         (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown) => {
             let channel = glonass_frequency_channel
@@ -702,7 +773,10 @@ mod tests {
     use crate::codes::galileo_e1::{
         sample_galileo_e1_boc11_code, GalileoE1Channel, GALILEO_E1_CODE_RATE_HZ,
     };
-    use crate::codes::galileo_e5::{sample_galileo_e5a_i_primary_code, GALILEO_E5A_CODE_RATE_HZ};
+    use crate::codes::galileo_e5::{
+        sample_galileo_e5a_i_primary_code, sample_galileo_e5b_i_primary_code,
+        GALILEO_E5A_CODE_RATE_HZ, GALILEO_E5B_CODE_RATE_HZ,
+    };
     use crate::codes::glonass_l1::sample_glonass_l1_st_code;
     use crate::codes::gps_l2c_cl::{sample_gps_l2c_cl_code, GPS_L2C_CL_CODE_RATE_HZ};
     use crate::codes::gps_l2c_cm::{sample_gps_l2c_cm_code, GPS_L2C_CM_CODE_RATE_HZ};
@@ -715,7 +789,7 @@ mod tests {
     use crate::error::SignalError;
     use bijux_gnss_core::api::{
         Constellation, GlonassFrequencyChannel, SatId, SignalBand, SignalCode,
-        GALILEO_E5A_CARRIER_HZ, GPS_L1_CA_CARRIER_HZ, GPS_L5_CARRIER_HZ,
+        GALILEO_E5A_CARRIER_HZ, GALILEO_E5B_CARRIER_HZ, GPS_L1_CA_CARRIER_HZ, GPS_L5_CARRIER_HZ,
     };
 
     #[test]
@@ -756,6 +830,8 @@ mod tests {
         let galileo = ReplicaCodeModel::galileo_e1_cboc_or_ones(0);
         let galileo_e5a = ReplicaCodeModel::galileo_e5a_or_ones(0);
         let galileo_e5a_qpsk = ReplicaCodeModel::galileo_e5a_qpsk_or_ones(0);
+        let galileo_e5b = ReplicaCodeModel::galileo_e5b_or_ones(0);
+        let galileo_e5b_qpsk = ReplicaCodeModel::galileo_e5b_qpsk_or_ones(0);
         let beidou = ReplicaCodeModel::beidou_b1i_or_ones(0);
 
         assert_eq!(gps.code_length(), 1023);
@@ -765,6 +841,8 @@ mod tests {
         assert_eq!(galileo.code_length(), 4092);
         assert_eq!(galileo_e5a.code_length(), 10_230);
         assert_eq!(galileo_e5a_qpsk.code_length(), 10_230);
+        assert_eq!(galileo_e5b.code_length(), 10_230);
+        assert_eq!(galileo_e5b_qpsk.code_length(), 10_230);
         assert_eq!(beidou.code_length(), 2046);
     }
 
@@ -875,6 +953,19 @@ mod tests {
     }
 
     #[test]
+    fn local_code_model_samples_galileo_e5b_period_consistently() {
+        let model = LocalCodeModel::galileo_e5b_i(11).expect("valid Galileo E5b PRN");
+        let samples = model
+            .sample_period(GALILEO_E5B_CODE_RATE_HZ, 0.0, 32)
+            .expect("Galileo E5b local code period");
+        let expected = sample_galileo_e5b_i_primary_code(11, GALILEO_E5B_CODE_RATE_HZ, 0.0, 32)
+            .expect("Galileo E5b reference");
+
+        assert_eq!(samples, expected);
+        assert!(model.supports_secondary_peak_multipath_screening());
+    }
+
+    #[test]
     fn acquisition_signal_model_samples_glonass_period_consistently() {
         let sat = SatId { constellation: Constellation::Glonass, prn: 8 };
         let channel = GlonassFrequencyChannel::new(-4).expect("valid GLONASS channel");
@@ -962,6 +1053,25 @@ mod tests {
     }
 
     #[test]
+    fn acquisition_signal_model_builds_galileo_e5b_search_metadata() {
+        let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+        let model = AcquisitionSignalModel::for_sat_signal(
+            sat,
+            Some(SignalBand::E5),
+            SignalCode::E5b,
+            None,
+        )
+        .expect("signal model result")
+        .expect("Galileo E5b acquisition model");
+
+        assert_eq!(model.signal_band, SignalBand::E5);
+        assert_eq!(model.code_rate_hz, GALILEO_E5B_CODE_RATE_HZ);
+        assert_eq!(model.code_length, 10_230);
+        assert_eq!(model.code_period_ms, 1);
+        assert_eq!(model.carrier_hz, GALILEO_E5B_CARRIER_HZ);
+    }
+
+    #[test]
     fn replica_code_model_builds_default_galileo_signal() {
         let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
         let model = ReplicaCodeModel::from_default_signal(sat)
@@ -981,6 +1091,17 @@ mod tests {
 
         assert_eq!(model.code_length(), 10_230);
         assert_eq!(model.code_rate_hz(), GALILEO_E5A_CODE_RATE_HZ);
+    }
+
+    #[test]
+    fn replica_code_model_builds_galileo_e5b_signal() {
+        let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+        let model = ReplicaCodeModel::for_sat_signal(sat, Some(SignalBand::E5), SignalCode::E5b)
+            .expect("signal model result")
+            .expect("Galileo E5b signal");
+
+        assert_eq!(model.code_length(), 10_230);
+        assert_eq!(model.code_rate_hz(), GALILEO_E5B_CODE_RATE_HZ);
     }
 
     #[test]
@@ -1045,6 +1166,24 @@ mod tests {
     #[test]
     fn galileo_e5a_qpsk_replica_uses_full_signal_power_scaling() {
         let model = ReplicaCodeModel::galileo_e5a_qpsk(11).expect("valid Galileo E5a PRN");
+        let sample = sample_modulated_replica_at_time(&model, 0.0, 0.0, 0.0, 0.0, 0.0, 1, 1.0)
+            .expect("valid replica");
+
+        assert!((sample.norm() - 1.0).abs() < 1.0e-6, "{sample:?}");
+    }
+
+    #[test]
+    fn galileo_e5b_replica_uses_half_power_component_scaling() {
+        let model = ReplicaCodeModel::galileo_e5b(11).expect("valid Galileo E5b PRN");
+        let sample = sample_modulated_replica_at_time(&model, 0.0, 0.0, 0.0, 0.0, 0.0, 1, 1.0)
+            .expect("valid replica");
+
+        assert!((sample.norm() - std::f32::consts::FRAC_1_SQRT_2).abs() < 1.0e-6, "{sample:?}");
+    }
+
+    #[test]
+    fn galileo_e5b_qpsk_replica_uses_full_signal_power_scaling() {
+        let model = ReplicaCodeModel::galileo_e5b_qpsk(11).expect("valid Galileo E5b PRN");
         let sample = sample_modulated_replica_at_time(&model, 0.0, 0.0, 0.0, 0.0, 0.0, 1, 1.0)
             .expect("valid replica");
 
@@ -1134,6 +1273,21 @@ mod tests {
             .expect("Galileo E5a carrier");
 
         assert_eq!(carrier, GALILEO_E5A_CARRIER_HZ);
+    }
+
+    #[test]
+    fn default_signal_carrier_hz_for_signal_returns_galileo_e5b_carrier() {
+        let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+        let carrier = super::default_signal_carrier_hz_for_signal(
+            sat,
+            Some(SignalBand::E5),
+            SignalCode::E5b,
+            None,
+        )
+        .expect("carrier lookup")
+        .expect("Galileo E5b carrier");
+
+        assert_eq!(carrier, GALILEO_E5B_CARRIER_HZ);
     }
 
     #[test]
