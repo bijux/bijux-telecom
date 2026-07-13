@@ -5,6 +5,10 @@ use crate::codes::ca_code::{generate_ca_code, Prn};
 use crate::codes::galileo_e1::{
     boc_subcarrier_value, generate_galileo_e1b_code, sample_boc_code, GALILEO_E1_CODE_RATE_HZ,
 };
+use crate::codes::galileo_e5::{
+    galileo_e5a_i_epoch_symbol, generate_galileo_e5a_i_code, GALILEO_E5A_CODE_RATE_HZ,
+    GALILEO_E5A_PRIMARY_CODE_CHIPS,
+};
 use crate::codes::glonass_l1::{generate_glonass_l1_st_code, GLONASS_L1_ST_CODE_RATE_HZ};
 use crate::codes::gps_l2c_cl::{generate_gps_l2c_cl_code, GPS_L2C_CL_CODE_RATE_HZ};
 use crate::codes::gps_l2c_cm::{generate_gps_l2c_cm_code, GPS_L2C_CM_CODE_RATE_HZ};
@@ -33,6 +37,8 @@ pub enum LocalCodeModel {
     GpsL5Q { code: Vec<i8> },
     /// Galileo E1 BOC(1,1) primary code.
     GalileoE1Boc11 { primary_code: Vec<i8> },
+    /// Galileo E5a-I primary code.
+    GalileoE5aI { primary_code: Vec<i8> },
     /// BeiDou B1I primary code.
     BeidouB1I { code: Vec<i8> },
     /// GLONASS L1 ST primary code.
@@ -108,6 +114,18 @@ impl LocalCodeModel {
             .unwrap_or_else(|_| Self::GalileoE1Boc11 { primary_code: vec![1; 4092] })
     }
 
+    /// Build a Galileo E5a-I local code model from a PRN.
+    pub fn galileo_e5a_i(prn: u8) -> Result<Self, SignalError> {
+        Ok(Self::GalileoE5aI { primary_code: generate_galileo_e5a_i_code(prn)? })
+    }
+
+    /// Build a Galileo E5a-I local code model, falling back to an all-ones code when invalid.
+    pub fn galileo_e5a_i_or_ones(prn: u8) -> Self {
+        Self::galileo_e5a_i(prn).unwrap_or_else(|_| Self::GalileoE5aI {
+            primary_code: vec![1; GALILEO_E5A_PRIMARY_CODE_CHIPS],
+        })
+    }
+
     /// Build a BeiDou B1I local code model from a PRN.
     pub fn beidou_b1i(prn: u8) -> Result<Self, SignalError> {
         Ok(Self::BeidouB1I { code: generate_beidou_b1i_code(prn)? })
@@ -133,6 +151,7 @@ impl LocalCodeModel {
             Self::GpsL5I { .. } => GPS_L5_PRIMARY_CODE_RATE_HZ,
             Self::GpsL5Q { .. } => GPS_L5_PRIMARY_CODE_RATE_HZ,
             Self::GalileoE1Boc11 { .. } => GALILEO_E1_CODE_RATE_HZ,
+            Self::GalileoE5aI { .. } => GALILEO_E5A_CODE_RATE_HZ,
             Self::BeidouB1I { .. } => BEIDOU_B1I_CODE_RATE_HZ,
             Self::GlonassL1St { .. } => GLONASS_L1_ST_CODE_RATE_HZ,
         }
@@ -148,6 +167,7 @@ impl LocalCodeModel {
             Self::GpsL5I { code } => code.len(),
             Self::GpsL5Q { code } => code.len(),
             Self::GalileoE1Boc11 { primary_code } => primary_code.len(),
+            Self::GalileoE5aI { primary_code } => primary_code.len(),
             Self::BeidouB1I { code } => code.len(),
             Self::GlonassL1St { code } => code.len(),
         }
@@ -167,6 +187,7 @@ impl LocalCodeModel {
             | Self::GpsL2cCl { code }
             | Self::GpsL5I { code }
             | Self::GpsL5Q { code }
+            | Self::GalileoE5aI { primary_code: code }
             | Self::BeidouB1I { code }
             | Self::GlonassL1St { code } => code_value_at_phase(code, chip_phase),
             Self::GalileoE1Boc11 { primary_code } => {
@@ -189,6 +210,11 @@ impl LocalCodeModel {
             Self::GpsL5Q { code } => Ok(interpolated_bpsk_code_value_at_phase(code, chip_phase)?
                 * gps_l5_q_epoch_symbol(primary_code_period_index) as f32
                 * std::f32::consts::FRAC_1_SQRT_2),
+            Self::GalileoE5aI { primary_code } => {
+                Ok(interpolated_bpsk_code_value_at_phase(primary_code, chip_phase)?
+                    * galileo_e5a_i_epoch_symbol(&[1], primary_code_period_index)? as f32
+                    * std::f32::consts::FRAC_1_SQRT_2)
+            }
             _ => self.sample_value(chip_phase),
         }
     }
@@ -207,6 +233,7 @@ impl LocalCodeModel {
             | Self::GpsL2cCl { code }
             | Self::GpsL5I { code }
             | Self::GpsL5Q { code }
+            | Self::GalileoE5aI { primary_code: code }
             | Self::BeidouB1I { code }
             | Self::GlonassL1St { code } => sample_code(
                 code,
@@ -277,6 +304,9 @@ pub fn default_local_code_model_for_signal(
         (Constellation::Galileo, SignalBand::E1, SignalCode::E1B) => {
             LocalCodeModel::galileo_e1_boc11(sat.prn).map(Some)
         }
+        (Constellation::Galileo, SignalBand::E5, SignalCode::E5a) => {
+            LocalCodeModel::galileo_e5a_i(sat.prn).map(Some)
+        }
         (Constellation::Beidou, SignalBand::B1, SignalCode::B1I) => {
             LocalCodeModel::beidou_b1i(sat.prn).map(Some)
         }
@@ -287,12 +317,16 @@ pub fn default_local_code_model_for_signal(
     }
 }
 
-fn default_signal_code_for_band(constellation: Constellation, signal_band: SignalBand) -> SignalCode {
+fn default_signal_code_for_band(
+    constellation: Constellation,
+    signal_band: SignalBand,
+) -> SignalCode {
     match (constellation, signal_band) {
         (Constellation::Gps, SignalBand::L1) => SignalCode::Ca,
         (Constellation::Gps, SignalBand::L2) => SignalCode::L2C,
         (Constellation::Gps, SignalBand::L5) => SignalCode::L5I,
         (Constellation::Galileo, SignalBand::E1) => SignalCode::E1B,
+        (Constellation::Galileo, SignalBand::E5) => SignalCode::E5a,
         (Constellation::Beidou, SignalBand::B1) => SignalCode::B1I,
         (Constellation::Glonass, SignalBand::L1) => SignalCode::Unknown,
         _ => SignalCode::Unknown,
