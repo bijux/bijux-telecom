@@ -267,48 +267,36 @@ fn handle_experiment(command: GnssCommand) -> Result<()> {
 
         let config = run_profile.to_pipeline_config();
         let start = std::time::Instant::now();
-        let frame =
-            bijux_gnss_infra::api::receiver::sim::generate_l1_ca_multi(&config, &scenario_def);
-        let sats: Vec<SatId> = scenario_def.satellites.iter().map(|s| s.sat).collect();
-        let acquisition = AcquisitionEngine::new(config.clone(), runtime.clone());
-        let acquisitions = acquisition.run_fft(&frame, &sats);
-        let tracking =
-            bijux_gnss_infra::api::receiver::TrackingEngine::new(config.clone(), runtime.clone());
-        let tracks = tracking.track_from_acquisition(&frame, &acquisitions);
-        let obs_report = bijux_gnss_infra::api::receiver::observations_from_tracking_results(
+        let artifacts = bijux_gnss_infra::api::receiver::sim::run_synthetic_scenario(
             &config,
-            &tracks,
-            run_profile.navigation.hatch_window,
-        );
-        let obs = obs_report.output;
-        for event in obs_report.events {
-            runtime.logger.event(&event);
-        }
-        let mut nav =
-            bijux_gnss_infra::api::receiver::Navigation::new(config.clone(), runtime.clone());
-        let mut solutions = Vec::new();
-        for epoch in &obs {
-            if let Some(solution) = nav.solve_epoch(epoch, &scenario_def.ephemerides) {
-                solutions.push(solution);
-            }
-        }
+            runtime.clone(),
+            &scenario_def,
+            None,
+        )?;
         let elapsed = start.elapsed().as_secs_f64();
-        let epochs = obs.len().max(1) as f64;
+        let epochs = artifacts.observations.len().max(1) as f64;
         let ms_per_epoch = (elapsed * 1000.0) / epochs;
 
-        let lock_total: usize = tracks.iter().map(|t| t.epochs.len()).sum();
-        let lock_good: usize =
-            tracks.iter().map(|t| t.epochs.iter().filter(|e| e.lock).count()).sum();
+        let lock_total: usize = artifacts.tracking.iter().map(|track| track.epochs.len()).sum();
+        let lock_good: usize = artifacts
+            .tracking
+            .iter()
+            .map(|track| track.epochs.iter().filter(|epoch| epoch.lock).count())
+            .sum();
         let lock_pct = if lock_total > 0 { lock_good as f64 / lock_total as f64 } else { 0.0 };
 
-        let mean_pvt_rms = if solutions.is_empty() {
+        let mean_pvt_rms = if artifacts.navigation.is_empty() {
             0.0
         } else {
-            solutions.iter().map(|s| s.rms_m.0).sum::<f64>() / solutions.len() as f64
+            artifacts.navigation.iter().map(|solution| solution.rms_m.0).sum::<f64>()
+                / artifacts.navigation.len() as f64
         };
         let mean_residual_rms = mean_pvt_rms;
-        let rejected_count =
-            solutions.iter().flat_map(|s| s.residuals.iter().filter(|r| r.rejected)).count();
+        let rejected_count = artifacts
+            .navigation
+            .iter()
+            .flat_map(|solution| solution.residuals.iter().filter(|residual| residual.rejected))
+            .count();
 
         let config_hash = hash_config(common.config.as_ref(), &run_profile)?;
         let result = ExperimentRunResult {
@@ -322,7 +310,13 @@ fn handle_experiment(command: GnssCommand) -> Result<()> {
             rejected_count,
             ms_per_epoch,
         };
-        write_experiment_run(&out_dir, idx, &result, &obs, &solutions)?;
+        write_experiment_run(
+            &out_dir,
+            idx,
+            &result,
+            &artifacts.observations,
+            &artifacts.navigation,
+        )?;
         results.push(result);
     }
 
