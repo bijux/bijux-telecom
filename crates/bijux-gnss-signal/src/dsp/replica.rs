@@ -3,6 +3,7 @@
 use crate::catalog::{default_acquisition_signal, resolved_signal_registry_entry};
 use crate::codes::beidou_b1i::{generate_beidou_b1i_code, BEIDOU_B1I_CODE_RATE_HZ};
 use crate::codes::beidou_b2i::{generate_beidou_b2i_code, BEIDOU_B2I_CODE_RATE_HZ};
+use crate::codes::beidou_d1::beidou_d1_epoch_symbol;
 use crate::codes::ca_code::{generate_ca_code, Prn};
 use crate::codes::galileo_e1::{
     galileo_e1_cboc_value, generate_galileo_e1b_code, generate_galileo_e1c_code,
@@ -627,7 +628,12 @@ impl ReplicaCodeModel {
                     &[data_bit],
                 )
             }
-            Self::BeidouB1I { code } | Self::BeidouB2I { code } | Self::GlonassL1St { code } => {
+            Self::BeidouB1I { code } | Self::BeidouB2I { code } => Ok(Complex::new(
+                code_value_at_phase(code, chip_phase)?
+                    * beidou_d1_epoch_symbol(&[data_bit], primary_code_period_index)? as f32,
+                0.0,
+            )),
+            Self::GlonassL1St { code } => {
                 Ok(Complex::new(code_value_at_phase(code, chip_phase)? * data_bit as f32, 0.0))
             }
         }
@@ -825,6 +831,9 @@ mod tests {
         UNIT_VARIANCE_COMPLEX_NOISE_POWER,
     };
     use crate::catalog::resolved_signal_registry_entry;
+    use crate::codes::beidou_d1::{
+        beidou_d1_epoch_symbol, BEIDOU_D1_PRIMARY_EPOCHS_PER_SYMBOL,
+    };
     use crate::codes::galileo_e1::{
         sample_galileo_e1_boc11_code, GalileoE1Channel, GALILEO_E1_CODE_RATE_HZ,
     };
@@ -1268,6 +1277,61 @@ mod tests {
             .expect("valid replica");
 
         assert!((sample.norm() - std::f32::consts::FRAC_1_SQRT_2).abs() < 1.0e-6, "{sample:?}");
+    }
+
+    #[test]
+    fn beidou_b1i_replica_applies_d1_epoch_modulation() {
+        let model = ReplicaCodeModel::beidou_b1i(11).expect("valid BeiDou B1I PRN");
+        let first_epoch = sample_modulated_replica_at_sample_index(
+            &model,
+            2_046_000.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0,
+            1,
+            1.0,
+        )
+        .expect("first D1 epoch");
+        let nh_flipped_epoch = sample_modulated_replica_at_sample_index(
+            &model,
+            2_046_000.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            5 * 2046,
+            1,
+            1.0,
+        )
+        .expect("NH-flipped epoch");
+        let next_data_symbol_epoch = sample_modulated_replica_at_sample_index(
+            &model,
+            2_046_000.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            (BEIDOU_D1_PRIMARY_EPOCHS_PER_SYMBOL * 2046) as u64,
+            -1,
+            1.0,
+        )
+        .expect("next data-symbol epoch");
+
+        assert!((first_epoch.re - beidou_d1_epoch_symbol(&[1], 0).expect("first symbol") as f32).abs() <= 1.0e-6);
+        assert!(
+            (nh_flipped_epoch.re - beidou_d1_epoch_symbol(&[1], 5).expect("nh symbol") as f32)
+                .abs()
+                <= 1.0e-6
+        );
+        assert!(
+            (next_data_symbol_epoch.re
+                - beidou_d1_epoch_symbol(&[-1], BEIDOU_D1_PRIMARY_EPOCHS_PER_SYMBOL)
+                    .expect("next data symbol") as f32)
+                .abs()
+                <= 1.0e-6
+        );
     }
 
     #[test]

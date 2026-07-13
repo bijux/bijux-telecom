@@ -25,6 +25,12 @@ pub use crate::codes::beidou_b2i::{
     generate_beidou_b2i_code_chips, sample_beidou_b2i_code, BeidouB2iCodeAssignment,
     BEIDOU_B2I_CODE_CHIPS, BEIDOU_B2I_CODE_RATE_HZ,
 };
+pub use crate::codes::beidou_d1::{
+    beidou_d1_data_symbol_index, beidou_d1_epoch_symbol, beidou_d1_neumann_hoffman_code,
+    beidou_d1_nh_chip, beidou_d1_symbol_epoch, BEIDOU_D1_NAV_SYMBOL_PERIOD_S,
+    BEIDOU_D1_PRIMARY_EPOCHS_PER_SYMBOL, BEIDOU_D1_SECONDARY_CHIP_PERIOD_S,
+    BEIDOU_D1_SECONDARY_CODE_CHIPS,
+};
 pub use crate::codes::ca_code::{
     ca_code_assignment, ca_code_assignments, ca_code_autocorrelation_summary,
     ca_code_cross_correlation_summary, ca_code_periodic_autocorrelation,

@@ -3,6 +3,7 @@
 
 pub mod beidou_b1i;
 pub mod beidou_b2i;
+pub mod beidou_d1;
 pub mod ca_code;
 pub mod galileo_e1;
 mod galileo_e1_tables;

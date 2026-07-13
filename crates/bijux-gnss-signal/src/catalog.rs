@@ -1,5 +1,9 @@
 #![allow(missing_docs)]
 
+use crate::codes::beidou_d1::{
+    BEIDOU_D1_NAV_SYMBOL_PERIOD_S, BEIDOU_D1_PRIMARY_EPOCHS_PER_SYMBOL,
+    BEIDOU_D1_SECONDARY_CHIP_PERIOD_S,
+};
 use crate::codes::ca_code::CA_CODE_PERIOD_CHIPS;
 use crate::codes::galileo_e1::{
     GALILEO_E1_CBOC_ALPHA, GALILEO_E1_CBOC_BETA, GALILEO_E1_CODE_RATE_HZ,
@@ -518,9 +522,12 @@ pub fn signal_registry(
                 SignalComponentRole::Data,
                 2_046_000.0,
                 2046,
-                None,
+                Some(secondary_code(
+                    BEIDOU_D1_PRIMARY_EPOCHS_PER_SYMBOL as u32,
+                    BEIDOU_D1_SECONDARY_CHIP_PERIOD_S,
+                )),
                 SignalSubcarrierSpec::None,
-                None,
+                Some(BEIDOU_D1_NAV_SYMBOL_PERIOD_S),
                 1.0,
             )],
         )),
@@ -532,9 +539,12 @@ pub fn signal_registry(
                 SignalComponentRole::Data,
                 2_046_000.0,
                 2046,
-                None,
+                Some(secondary_code(
+                    BEIDOU_D1_PRIMARY_EPOCHS_PER_SYMBOL as u32,
+                    BEIDOU_D1_SECONDARY_CHIP_PERIOD_S,
+                )),
                 SignalSubcarrierSpec::None,
-                None,
+                Some(BEIDOU_D1_NAV_SYMBOL_PERIOD_S),
                 1.0,
             )],
         )),
@@ -693,6 +703,22 @@ mod tests {
             .expect("BeiDou B2I registry entry");
         assert_eq!(registry.code_length, Some(2046));
         assert_eq!(registry.spec, signal);
+    }
+
+    #[test]
+    fn beidou_open_service_registry_exposes_d1_symbol_and_nh_timing() {
+        let b1 = signal_registry(Constellation::Beidou, SignalBand::B1, SignalCode::B1I)
+            .expect("BeiDou B1I registry entry");
+        let b2 = signal_registry(Constellation::Beidou, SignalBand::B2, SignalCode::B2I)
+            .expect("BeiDou B2I registry entry");
+
+        for entry in [b1, b2] {
+            let component = entry.default_component().expect("BeiDou data component");
+            let secondary = component.secondary_code.expect("BeiDou D1 NH overlay");
+            assert_eq!(secondary.chip_count, 20);
+            assert!((secondary.chip_period_s - 0.001).abs() <= f64::EPSILON);
+            assert_eq!(component.symbol_period_s, Some(0.020));
+        }
     }
 
     #[test]
