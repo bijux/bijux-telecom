@@ -1447,13 +1447,11 @@ fn parse_three_floats(field: &str, label: &str) -> Result<(f64, f64, f64), Parse
 mod tests {
     use std::path::PathBuf;
 
-    use bijux_gnss_core::api::{
-        check_dual_frequency_observations, validate_obs_epochs, Constellation, SatId, SignalBand,
-        SignalCode,
-    };
+    use bijux_gnss_core::api::{Constellation, SatId, SignalBand, SignalCode};
     use bijux_gnss_signal::api::{
-        signal_spec_beidou_b1i, signal_spec_beidou_b2i, signal_spec_galileo_e1b,
-        signal_spec_galileo_e5a, signal_spec_gps_l2c, signal_spec_gps_l5,
+        check_dual_frequency_observations, signal_spec_beidou_b1i, signal_spec_beidou_b2i,
+        signal_spec_galileo_e1b, signal_spec_galileo_e5a, signal_spec_gps_l2c, signal_spec_gps_l5,
+        validate_obs_epochs,
     };
 
     use super::{

@@ -1,6 +1,5 @@
-use bijux_gnss_core::api::{
-    supported_dual_frequency_band_pairs_for_constellation, ObsSatellite, SatId, SignalBand,
-};
+use bijux_gnss_core::api::{ObsSatellite, SatId, SignalBand};
+use bijux_gnss_signal::api::supported_dual_frequency_band_pairs_for_constellation;
 
 const TRANSMIT_TIME_COMPATIBILITY_TOLERANCE_S: f64 = 1.0e-3;
 

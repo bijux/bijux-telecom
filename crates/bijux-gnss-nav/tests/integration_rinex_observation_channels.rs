@@ -2,10 +2,9 @@
 
 use std::path::PathBuf;
 
-use bijux_gnss_core::api::{
-    check_dual_frequency_observations, validate_obs_epochs, SignalBand, SignalCode,
-};
+use bijux_gnss_core::api::{SignalBand, SignalCode};
 use bijux_gnss_nav::api::parse_rinex_gps_observation_dataset;
+use bijux_gnss_signal::api::{check_dual_frequency_observations, validate_obs_epochs};
 
 fn fixture(name: &str) -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data").join(name);

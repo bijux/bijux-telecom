@@ -1,10 +1,10 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{
-    supported_dual_frequency_band_pairs_for_constellation, GpsTime, ObsEpoch, ObsSatellite, SatId,
-    SigId, SignalBand,
+use bijux_gnss_core::api::{GpsTime, ObsEpoch, ObsSatellite, SatId, SigId, SignalBand};
+use bijux_gnss_signal::api::{
+    signal_cycles_to_meters, signal_wavelength_m,
+    supported_dual_frequency_band_pairs_for_constellation,
 };
-use bijux_gnss_signal::api::{signal_cycles_to_meters, signal_wavelength_m};
 
 use crate::corrections::combinations::wide_lane_wavelength_m_from_frequencies;
 use crate::corrections::iono_free_code::iono_free_code_from_pair;
