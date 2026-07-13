@@ -972,8 +972,13 @@ pub(crate) struct ObsStreamTag {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SolutionStatus {
     Invalid,
+    Unavailable,
+    Refused,
     Held,
     Degraded,
+    IntegrityFailed,
+    Diverged,
+    CodeOnly,
     Coarse,
     Converged,
     Float,
@@ -982,14 +987,29 @@ pub enum SolutionStatus {
 
 impl SolutionStatus {
     pub fn is_valid(self) -> bool {
-        !matches!(self, SolutionStatus::Invalid)
+        !matches!(
+            self,
+            SolutionStatus::Invalid
+                | SolutionStatus::Unavailable
+                | SolutionStatus::Refused
+                | SolutionStatus::IntegrityFailed
+                | SolutionStatus::Diverged
+        )
     }
 
     pub fn quality_flag(self) -> NavQualityFlag {
         match self {
-            SolutionStatus::Invalid => NavQualityFlag::NoFix,
-            SolutionStatus::Held | SolutionStatus::Degraded => NavQualityFlag::Degraded,
-            SolutionStatus::Coarse | SolutionStatus::Converged | SolutionStatus::Float => {
+            SolutionStatus::Invalid | SolutionStatus::Unavailable | SolutionStatus::Refused => {
+                NavQualityFlag::NoFix
+            }
+            SolutionStatus::Held
+            | SolutionStatus::Degraded
+            | SolutionStatus::IntegrityFailed
+            | SolutionStatus::Diverged => NavQualityFlag::Degraded,
+            SolutionStatus::CodeOnly
+            | SolutionStatus::Coarse
+            | SolutionStatus::Converged
+            | SolutionStatus::Float => {
                 NavQualityFlag::Float
             }
             SolutionStatus::Fixed => NavQualityFlag::Fix,
@@ -1001,8 +1021,13 @@ impl SolutionStatus {
 pub enum NavLifecycleState {
     #[default]
     Invalid,
+    Unavailable,
+    Refused,
     Held,
     Degraded,
+    IntegrityFailed,
+    Diverged,
+    CodeOnly,
     Coarse,
     Converged,
     Float,
@@ -1197,8 +1222,8 @@ mod tests {
     use crate::api::{
         trackable_acq_tracking_seeds, AcqCodePhaseRefinement, AcqHypothesis, AcqResult,
         AcqSearchSummary, AcqUncertainty, Constellation, Cycles, GlonassFrequencyChannel, Hertz,
-        LeapSeconds, LockFlags, ObservationEpochDecision, ObservationStatus, ReceiverRole,
-        ReceiverSampleTrace, SatId, SignalBand, UtcTime,
+        LeapSeconds, LockFlags, NavQualityFlag, ObservationEpochDecision, ObservationStatus,
+        ReceiverRole, ReceiverSampleTrace, SatId, SignalBand, SolutionStatus, UtcTime,
     };
     use crate::time::utc_to_gps;
 
@@ -1234,6 +1259,27 @@ mod tests {
 
         assert_eq!(gps.week, 0);
         assert_eq!(gps.tow_s, 0.0);
+    }
+
+    #[test]
+    fn precise_solution_status_validity_matches_runtime_semantics() {
+        assert!(!SolutionStatus::Unavailable.is_valid());
+        assert!(!SolutionStatus::Refused.is_valid());
+        assert!(!SolutionStatus::IntegrityFailed.is_valid());
+        assert!(!SolutionStatus::Diverged.is_valid());
+        assert!(SolutionStatus::CodeOnly.is_valid());
+        assert!(SolutionStatus::Float.is_valid());
+        assert!(SolutionStatus::Fixed.is_valid());
+    }
+
+    #[test]
+    fn precise_solution_status_quality_flags_distinguish_no_fix_and_degraded_cases() {
+        assert_eq!(SolutionStatus::Unavailable.quality_flag(), NavQualityFlag::NoFix);
+        assert_eq!(SolutionStatus::Refused.quality_flag(), NavQualityFlag::NoFix);
+        assert_eq!(SolutionStatus::IntegrityFailed.quality_flag(), NavQualityFlag::Degraded);
+        assert_eq!(SolutionStatus::Diverged.quality_flag(), NavQualityFlag::Degraded);
+        assert_eq!(SolutionStatus::CodeOnly.quality_flag(), NavQualityFlag::Float);
+        assert_eq!(SolutionStatus::Fixed.quality_flag(), NavQualityFlag::Fix);
     }
 
     #[test]
