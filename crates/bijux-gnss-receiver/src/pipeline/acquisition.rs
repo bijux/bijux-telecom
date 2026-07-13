@@ -2339,6 +2339,84 @@ mod tests {
     }
 
     #[test]
+    fn zero_signal_run_preserves_explicit_gps_l5q_signal_code() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 10_230_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..ReceiverPipelineConfig::default()
+        };
+        let request = AcqRequest {
+            sat: SatId { constellation: Constellation::Gps, prn: 7 },
+            glonass_frequency_channel: None,
+            signal_band: SignalBand::L5,
+            signal_code: SignalCode::L5Q,
+            doppler_search_hz: 2_000,
+            doppler_step_hz: 250,
+            coherent_ms: 1,
+            noncoherent: 1,
+        };
+
+        let run = zero_signal_run(
+            &config,
+            &[request],
+            ReceiverSampleTrace::from_sample_time(SampleTime {
+                sample_index: 0,
+                sample_rate_hz: config.sampling_freq_hz,
+            }),
+            10_230,
+            Some("zeroed_fixture"),
+            true,
+        );
+
+        let candidate = &run.results[0][0];
+        assert_eq!(candidate.signal_band, SignalBand::L5);
+        assert_eq!(candidate.signal_code, SignalCode::L5Q);
+        assert_eq!(candidate.hypothesis.to_string(), AcqHypothesis::Rejected.to_string());
+        assert_eq!(run.explains[0].selected_reason, "zero_signal_input");
+    }
+
+    #[test]
+    fn zero_signal_run_preserves_explicit_galileo_e5b_signal_code() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 10_230_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..ReceiverPipelineConfig::default()
+        };
+        let request = AcqRequest {
+            sat: SatId { constellation: Constellation::Galileo, prn: 11 },
+            glonass_frequency_channel: None,
+            signal_band: SignalBand::E5,
+            signal_code: SignalCode::E5b,
+            doppler_search_hz: 2_000,
+            doppler_step_hz: 250,
+            coherent_ms: 1,
+            noncoherent: 1,
+        };
+
+        let run = zero_signal_run(
+            &config,
+            &[request],
+            ReceiverSampleTrace::from_sample_time(SampleTime {
+                sample_index: 0,
+                sample_rate_hz: config.sampling_freq_hz,
+            }),
+            10_230,
+            Some("zeroed_fixture"),
+            true,
+        );
+
+        let candidate = &run.results[0][0];
+        assert_eq!(candidate.signal_band, SignalBand::E5);
+        assert_eq!(candidate.signal_code, SignalCode::E5b);
+        assert_eq!(candidate.hypothesis.to_string(), AcqHypothesis::Rejected.to_string());
+        assert_eq!(run.explains[0].selected_reason, "zero_signal_input");
+    }
+
+    #[test]
     fn competing_candidate_ratio_uses_top_two_peak_mean_ratios() {
         let sat = SatId { constellation: Constellation::Gps, prn: 1 };
         let ratio = competing_candidate_ratio(&[
