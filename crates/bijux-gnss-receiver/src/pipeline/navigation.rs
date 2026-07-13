@@ -2042,6 +2042,9 @@ fn observation_reject_reason_is_lock_failure(reason: &str) -> bool {
 }
 
 fn uncertainty_class_from_solution(solution: &NavSolutionEpoch) -> NavUncertaintyClass {
+    if !solution.status.is_valid() {
+        return NavUncertaintyClass::Unknown;
+    }
     let sigma = solution
         .sigma_h_m
         .map(|value| value.0)
@@ -2601,6 +2604,39 @@ mod tests {
         solution.sigma_h_m = Some(Meters(0.5));
 
         assert_eq!(uncertainty_class_from_solution(&solution), NavUncertaintyClass::Medium);
+    }
+
+    #[test]
+    fn uncertainty_class_from_solution_marks_invalid_statuses_unknown() {
+        let mut unavailable = sample_last_solution();
+        unavailable = override_solution_status(unavailable, SolutionStatus::Unavailable);
+        unavailable.sigma_h_m = Some(Meters(2.0));
+        assert_eq!(
+            uncertainty_class_from_solution(&unavailable),
+            NavUncertaintyClass::Unknown
+        );
+
+        let mut diverged = sample_last_solution();
+        diverged = override_solution_status(diverged, SolutionStatus::Diverged);
+        diverged.sigma_h_m = Some(Meters(8.0));
+        assert_eq!(
+            uncertainty_class_from_solution(&diverged),
+            NavUncertaintyClass::Unknown
+        );
+    }
+
+    #[test]
+    fn uncertainty_class_from_solution_keeps_degraded_epochs_measurable() {
+        let mut degraded = sample_last_solution();
+        degraded.status = SolutionStatus::Degraded;
+        degraded.quality = SolutionStatus::Degraded.quality_flag();
+        degraded.lifecycle_state = SolutionStatus::Degraded.lifecycle_state();
+        degraded.sigma_h_m = Some(Meters(4.0));
+
+        assert_eq!(
+            uncertainty_class_from_solution(&degraded),
+            NavUncertaintyClass::Medium
+        );
     }
 
     #[test]
