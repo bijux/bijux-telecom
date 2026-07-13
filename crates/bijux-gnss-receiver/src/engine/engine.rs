@@ -709,20 +709,7 @@ fn default_acquisition_requests(
             {
                 crate::engine::acquisition_catalog::default_acquisition_satellites(constellation)
                     .into_iter()
-                    .flat_map(|sat| {
-                        resolved_acquisition_signals(config, sat).into_iter().map(move |signal| {
-                            AcqRequest {
-                                sat,
-                                glonass_frequency_channel: None,
-                                signal_band: signal.signal_band,
-                                signal_code: signal.signal_code,
-                                doppler_search_hz: config.acquisition_doppler_search_hz,
-                                doppler_step_hz: config.acquisition_doppler_step_hz.max(1),
-                                coherent_ms: config.acquisition_integration_ms,
-                                noncoherent: config.acquisition_noncoherent,
-                            }
-                        })
-                    })
+                    .flat_map(|sat| acquisition_requests_for_satellite(config, sat))
                     .collect::<Vec<_>>()
             } else {
                 Vec::new()
@@ -768,17 +755,25 @@ fn acquisition_requests_for_satellites(
     satellites
         .iter()
         .copied()
-        .flat_map(|sat| {
-            resolved_acquisition_signals(config, sat).into_iter().map(move |signal| AcqRequest {
-                sat,
-                glonass_frequency_channel: None,
-                signal_band: signal.signal_band,
-                signal_code: signal.signal_code,
-                doppler_search_hz: config.acquisition_doppler_search_hz,
-                doppler_step_hz: config.acquisition_doppler_step_hz.max(1),
-                coherent_ms: config.acquisition_integration_ms,
-                noncoherent: config.acquisition_noncoherent,
-            })
+        .flat_map(|sat| acquisition_requests_for_satellite(config, sat))
+        .collect()
+}
+
+fn acquisition_requests_for_satellite(
+    config: &crate::engine::receiver_config::ReceiverPipelineConfig,
+    sat: SatId,
+) -> Vec<AcqRequest> {
+    resolved_acquisition_signals(config, sat)
+        .into_iter()
+        .map(|signal| AcqRequest {
+            sat,
+            glonass_frequency_channel: None,
+            signal_band: signal.signal_band,
+            signal_code: signal.signal_code,
+            doppler_search_hz: config.acquisition_doppler_search_hz,
+            doppler_step_hz: config.acquisition_doppler_step_hz.max(1),
+            coherent_ms: config.acquisition_integration_ms,
+            noncoherent: config.acquisition_noncoherent,
         })
         .collect()
 }
