@@ -14,11 +14,11 @@ use bijux_gnss_nav::api::{
     position_observation_has_valid_satellite_time, sat_state_beidou_b1i_from_observation,
     sat_state_galileo_e1_from_observation, sat_state_glonass_l1_from_observation,
     sat_state_gps_l1ca_from_observation, GalileoBroadcastNavigationData,
-    GpsBroadcastNavigationData, GpsEphemeris, KlobucharCoefficients,
-    ImpossibleGeometryEvidence, PositionBroadcastNavigation, PositionFilterMotionClass,
-    PositionFilterDivergenceReason, PositionObservation, PositionRobustWeighting,
-    PositionSolutionSmoother, PositionSolutionSmootherConfig, PositionSolveRefusalKind,
-    PositionSolver, PositionWeightingModel, RaimFaultDetectionStatus, WeightingConfig,
+    GpsBroadcastNavigationData, GpsEphemeris, ImpossibleGeometryEvidence, KlobucharCoefficients,
+    PositionBroadcastNavigation, PositionFilterDivergenceReason, PositionFilterMotionClass,
+    PositionObservation, PositionRobustWeighting, PositionSolutionSmoother,
+    PositionSolutionSmootherConfig, PositionSolveRefusalKind, PositionSolver,
+    PositionWeightingModel, RaimFaultDetectionStatus, WeightingConfig,
 };
 
 use crate::engine::receiver_config::{
@@ -760,10 +760,7 @@ impl Navigation {
                 nav_epoch = override_solution_status(nav_epoch, SolutionStatus::Diverged);
                 nav_epoch.refusal_class = Some(NavRefusalClass::SolverFailure);
                 nav_epoch.explain_decision = "diverged".to_string();
-                if !nav_epoch
-                    .explain_reasons
-                    .iter()
-                    .any(|reason| reason == "covariance_divergence")
+                if !nav_epoch.explain_reasons.iter().any(|reason| reason == "covariance_divergence")
                 {
                     nav_epoch.explain_reasons.push("covariance_divergence".to_string());
                 }
@@ -771,11 +768,8 @@ impl Navigation {
         }
 
         let sat_count = observations.len();
-        let provisional_status = if sat_count < 4 {
-            SolutionStatus::Degraded
-        } else {
-            SolutionStatus::CodeOnly
-        };
+        let provisional_status =
+            if sat_count < 4 { SolutionStatus::Degraded } else { SolutionStatus::CodeOnly };
         nav_epoch.status = deterministic_solution_transition(
             self.last_solution.as_ref().map(|row| row.status),
             provisional_status,
@@ -973,9 +967,7 @@ impl Navigation {
                 .iter()
                 .any(|reason| reason == "navigation_solution_sanity_failed")
             {
-                nav_epoch
-                    .explain_reasons
-                    .push("navigation_solution_sanity_failed".to_string());
+                nav_epoch.explain_reasons.push("navigation_solution_sanity_failed".to_string());
             }
             for event in sanity_events {
                 self.runtime.logger.event(&event);
@@ -1011,22 +1003,20 @@ impl Navigation {
             );
             nav_epoch = mark_integrity_failure(nav_epoch);
         }
-        let constellation_clock_inconsistencies = detect_constellation_clock_inconsistencies(
-            self.last_solution.as_ref(),
-            &nav_epoch,
-        );
+        let constellation_clock_inconsistencies =
+            detect_constellation_clock_inconsistencies(self.last_solution.as_ref(), &nav_epoch);
         if !constellation_clock_inconsistencies.is_empty() {
             for inconsistency in &constellation_clock_inconsistencies {
-                nav_epoch
-                    .health
-                    .push(bijux_gnss_core::api::NavHealthEvent::ConstellationClockInconsistency {
+                nav_epoch.health.push(
+                    bijux_gnss_core::api::NavHealthEvent::ConstellationClockInconsistency {
                         constellation: inconsistency.constellation,
                         previous_bias_s: inconsistency.previous_bias_s,
                         current_bias_s: inconsistency.current_bias_s,
                         bias_step_m: inconsistency.bias_step_m,
                         bias_step_threshold_m: inconsistency.bias_step_threshold_m,
                         supporting_satellite_count: inconsistency.supporting_satellite_count,
-                    });
+                    },
+                );
                 self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
                     bijux_gnss_core::api::DiagnosticSeverity::Warning,
                     "NAV_CONSTELLATION_CLOCK_INCONSISTENCY",
@@ -1038,10 +1028,9 @@ impl Navigation {
                     ),
                 ));
             }
-            constellation_clock_explain_reasons =
-                constellation_clock_inconsistency_explain_reasons(
-                    &constellation_clock_inconsistencies,
-                );
+            constellation_clock_explain_reasons = constellation_clock_inconsistency_explain_reasons(
+                &constellation_clock_inconsistencies,
+            );
             nav_epoch = policy_refusal_epoch(
                 nav_epoch,
                 self.last_solution.as_ref().map(|row| row.status),
@@ -1071,19 +1060,18 @@ impl Navigation {
                 next_residual_whiteness_suspect_streak,
             );
             nav_epoch.status = SolutionStatus::Degraded;
-            nav_epoch
-                .health
-                .push(bijux_gnss_core::api::NavHealthEvent::ResidualTemporalCorrelation {
+            nav_epoch.health.push(
+                bijux_gnss_core::api::NavHealthEvent::ResidualTemporalCorrelation {
                     lag1_correlation: correlation.lag1_correlation,
                     correlation_threshold: correlation.correlation_threshold,
                     matched_satellite_count: correlation.matched_satellite_count,
                     previous_centered_rms_m: correlation.previous_centered_rms_m,
                     current_centered_rms_m: correlation.current_centered_rms_m,
                     persistent_suspect_epochs: correlation.persistent_suspect_epochs,
-                });
-            residual_whiteness_explain_reasons = residual_temporal_correlation_explain_reasons(
-                correlation,
+                },
             );
+            residual_whiteness_explain_reasons =
+                residual_temporal_correlation_explain_reasons(correlation);
             self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
                 bijux_gnss_core::api::DiagnosticSeverity::Warning,
                 "NAV_RESIDUAL_WHITENESS",
@@ -1096,9 +1084,7 @@ impl Navigation {
                     correlation.persistent_suspect_epochs
                 ),
             ));
-            if residual_temporal_correlation_is_persistent(
-                correlation.persistent_suspect_epochs,
-            ) {
+            if residual_temporal_correlation_is_persistent(correlation.persistent_suspect_epochs) {
                 nav_epoch = policy_refusal_epoch(
                     nav_epoch,
                     self.last_solution.as_ref().map(|row| row.status),
@@ -1316,7 +1302,13 @@ fn apply_atmosphere_explainability(
     klobuchar: Option<&KlobucharCoefficients>,
     tropo_enabled: bool,
 ) -> NavSolutionEpoch {
-    apply_atmosphere_explainability_in_place(&mut solution, obs, navigation, klobuchar, tropo_enabled);
+    apply_atmosphere_explainability_in_place(
+        &mut solution,
+        obs,
+        navigation,
+        klobuchar,
+        tropo_enabled,
+    );
     solution
 }
 
@@ -1356,9 +1348,8 @@ fn ionosphere_explain_reasons(
         .sats
         .iter()
         .any(|satellite| satellite.signal_id.sat.constellation == Constellation::Galileo);
-    let has_galileo_navigation = navigation
-        .iter()
-        .any(|entry| matches!(entry, PositionBroadcastNavigation::Galileo(_)));
+    let has_galileo_navigation =
+        navigation.iter().any(|entry| matches!(entry, PositionBroadcastNavigation::Galileo(_)));
 
     let mut reasons = Vec::new();
     if klobuchar.is_some() && has_gps_observations {
@@ -1673,9 +1664,7 @@ fn solver_refusal_status(
     refusal_class: NavRefusalClass,
 ) -> SolutionStatus {
     match refusal_kind {
-        PositionSolveRefusalKind::UnderdeterminedRaimExclusion => {
-            SolutionStatus::IntegrityFailed
-        }
+        PositionSolveRefusalKind::UnderdeterminedRaimExclusion => SolutionStatus::IntegrityFailed,
         PositionSolveRefusalKind::FilterDivergence(_) => SolutionStatus::Diverged,
         PositionSolveRefusalKind::SolverFailure
             if refusal_class == NavRefusalClass::SolverFailure =>
@@ -1705,11 +1694,7 @@ fn override_solution_status(
     solution.lifecycle_state = status.lifecycle_state();
     solution.quality = status.quality_flag();
     solution.valid = is_solution_valid(status);
-    solution.validity = if solution.valid {
-        solution.validity
-    } else {
-        SolutionValidity::Invalid
-    };
+    solution.validity = if solution.valid { solution.validity } else { SolutionValidity::Invalid };
     solution
 }
 
@@ -1742,10 +1727,7 @@ fn status_needs_default_decision_reason(
             && explain_reasons[0] == "navigation_solution_usable")
 }
 
-fn normalized_status_decision_label(
-    status: SolutionStatus,
-    explain_decision: String,
-) -> String {
+fn normalized_status_decision_label(status: SolutionStatus, explain_decision: String) -> String {
     if matches!(explain_decision.as_str(), "accepted" | "refused") {
         status.decision_label().to_string()
     } else {
@@ -1908,10 +1890,10 @@ fn apply_refusal_cause_explainability_in_place(
 
 fn refusal_causes(solution: &NavSolutionEpoch, obs: Option<&ObsEpoch>) -> Vec<RefusalCause> {
     let mut causes = Vec::new();
-    let has_reason = |expected: &str| solution.explain_reasons.iter().any(|reason| reason == expected);
-    let has_reason_prefix = |prefix: &str| {
-        solution.explain_reasons.iter().any(|reason| reason.starts_with(prefix))
-    };
+    let has_reason =
+        |expected: &str| solution.explain_reasons.iter().any(|reason| reason == expected);
+    let has_reason_prefix =
+        |prefix: &str| solution.explain_reasons.iter().any(|reason| reason.starts_with(prefix));
     let push_cause = |causes: &mut Vec<RefusalCause>, cause| {
         if !causes.contains(&cause) {
             causes.push(cause);
@@ -2009,10 +1991,14 @@ fn refusal_causes(solution: &NavSolutionEpoch, obs: Option<&ObsEpoch>) -> Vec<Re
             Some(NavRefusalClass::InsufficientGeometry) => {
                 push_cause(&mut causes, RefusalCause::SatelliteCount);
             }
-            Some(NavRefusalClass::InvalidEphemeris | NavRefusalClass::PartialDecodedNavigationState) => {
+            Some(
+                NavRefusalClass::InvalidEphemeris | NavRefusalClass::PartialDecodedNavigationState,
+            ) => {
                 push_cause(&mut causes, RefusalCause::Ephemeris);
             }
-            Some(NavRefusalClass::InvalidSatelliteTime | NavRefusalClass::MixedConstellationInput) => {
+            Some(
+                NavRefusalClass::InvalidSatelliteTime | NavRefusalClass::MixedConstellationInput,
+            ) => {
                 push_cause(&mut causes, RefusalCause::Clock);
             }
             Some(NavRefusalClass::ScientificPrerequisitesTooWeak)
@@ -2020,13 +2006,16 @@ fn refusal_causes(solution: &NavSolutionEpoch, obs: Option<&ObsEpoch>) -> Vec<Re
             {
                 push_cause(&mut causes, RefusalCause::Lock);
             }
-            Some(NavRefusalClass::ScientificPrerequisitesTooWeak | NavRefusalClass::SolverFailure)
-                if solution.status == SolutionStatus::Diverged =>
-            {
+            Some(
+                NavRefusalClass::ScientificPrerequisitesTooWeak | NavRefusalClass::SolverFailure,
+            ) if solution.status == SolutionStatus::Diverged => {
                 push_cause(&mut causes, RefusalCause::Integrity);
             }
-            Some(NavRefusalClass::InconsistentObservations | NavRefusalClass::ScientificPrerequisitesTooWeak)
-                | None
+            Some(
+                NavRefusalClass::InconsistentObservations
+                | NavRefusalClass::ScientificPrerequisitesTooWeak,
+            )
+            | None
                 if !solution.valid =>
             {
                 push_cause(&mut causes, RefusalCause::Integrity);
@@ -2058,7 +2047,10 @@ fn observation_has_lock_failure_evidence(sat: &ObsSatellite) -> bool {
 fn observation_reject_reason_is_lock_failure(reason: &str) -> bool {
     matches!(
         reason,
-        "cycle_slip" | "loss_of_lock" | "tracking_unlock" | "code_lock_invalid"
+        "cycle_slip"
+            | "loss_of_lock"
+            | "tracking_unlock"
+            | "code_lock_invalid"
             | "carrier_lock_invalid"
     )
 }
@@ -2261,24 +2253,16 @@ fn impossible_geometry_explain_reasons(
 ) -> Vec<String> {
     vec![
         "impossible_geometry".to_string(),
-        format!(
-            "receiver_radius_m={:.3}",
-            impossible_geometry.receiver_radius_m
-        ),
+        format!("receiver_radius_m={:.3}", impossible_geometry.receiver_radius_m),
         format!("altitude_m={:.3}", impossible_geometry.altitude_m),
-        format!(
-            "used_satellites={}",
-            impossible_geometry.used_satellite_count
-        ),
+        format!("used_satellites={}", impossible_geometry.used_satellite_count),
         format!(
             "receiver_radius_bounds_m={:.3}..{:.3}",
-            impossible_geometry.min_receiver_radius_m,
-            impossible_geometry.max_receiver_radius_m
+            impossible_geometry.min_receiver_radius_m, impossible_geometry.max_receiver_radius_m
         ),
         format!(
             "altitude_bounds_m={:.3}..{:.3}",
-            impossible_geometry.min_altitude_m,
-            impossible_geometry.max_altitude_m
+            impossible_geometry.min_altitude_m, impossible_geometry.max_altitude_m
         ),
     ]
 }
@@ -2318,25 +2302,15 @@ fn residual_temporal_correlation_explain_reasons(
     vec![
         "residual_whiteness".to_string(),
         format!("residual_lag1_correlation={:.3}", correlation.lag1_correlation),
-        format!(
-            "residual_matched_satellites={}",
-            correlation.matched_satellite_count
-        ),
-        format!(
-            "residual_temporal_correlation_streak={}",
-            correlation.persistent_suspect_epochs
-        ),
+        format!("residual_matched_satellites={}", correlation.matched_satellite_count),
+        format!("residual_temporal_correlation_streak={}", correlation.persistent_suspect_epochs),
     ]
 }
 
 fn decision_for_solution(solution: &NavSolutionEpoch) -> NavDecision {
     NavDecision {
         status: solution.status,
-        refusal_class: if solution.status.is_valid() {
-            None
-        } else {
-            solution.refusal_class
-        },
+        refusal_class: if solution.status.is_valid() { None } else { solution.refusal_class },
         explain_decision: solution.status.decision_label().to_string(),
         explain_reasons: if status_needs_default_decision_reason(
             solution.status,
@@ -2480,9 +2454,9 @@ mod tests {
     use super::*;
     use crate::pipeline::observations::fake_obs_epoch_for_nav_tests;
     use bijux_gnss_core::api::{
-        Constellation, GpsTime, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
-        ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ReceiverRole, SatId,
-        Seconds, SigId, SignalBand, SignalCode, SignalSpec,
+        registered_signal_registry_entries, Constellation, GpsTime, LockFlags, Meters, ObsEpoch,
+        ObsMetadata, ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationStatus,
+        ReceiverRole, SatId, Seconds, SigId, SignalBand, SignalCode, SignalSpec,
     };
     use bijux_gnss_nav::api::{
         ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef, sat_state_galileo_e1,
@@ -2493,11 +2467,7 @@ mod tests {
 
     #[test]
     fn positioning_signal_support_follows_navigation_signal_surface() {
-        assert!(supports_positioning_signal(
-            Constellation::Gps,
-            SignalBand::L1,
-            SignalCode::Ca
-        ));
+        assert!(supports_positioning_signal(Constellation::Gps, SignalBand::L1, SignalCode::Ca));
         assert!(supports_positioning_signal(
             Constellation::Galileo,
             SignalBand::E1,
@@ -2513,12 +2483,43 @@ mod tests {
             SignalBand::L1,
             SignalCode::Unknown
         ));
-        assert!(!supports_positioning_signal(
-            Constellation::Gps,
-            SignalBand::L2,
-            SignalCode::L2C
-        ));
+        assert!(!supports_positioning_signal(Constellation::Gps, SignalBand::L2, SignalCode::L2C));
         assert_eq!(supported_positioning_signal(Constellation::Unknown), None);
+    }
+
+    #[test]
+    fn positioning_signal_support_matches_registered_signal_inventory() {
+        let registered = registered_signal_registry_entries();
+
+        for entry in &registered {
+            let signal = entry.spec;
+            let expected = supported_positioning_signal(signal.constellation)
+                == Some((signal.band, signal.code));
+            assert_eq!(
+                supports_positioning_signal(signal.constellation, signal.band, signal.code),
+                expected,
+                "{signal:?}"
+            );
+        }
+
+        let supported_rows = registered
+            .iter()
+            .filter(|entry| {
+                supported_positioning_signal(entry.spec.constellation)
+                    == Some((entry.spec.band, entry.spec.code))
+            })
+            .count();
+        let positioning_rows = registered
+            .iter()
+            .filter(|entry| {
+                supports_positioning_signal(
+                    entry.spec.constellation,
+                    entry.spec.band,
+                    entry.spec.code,
+                )
+            })
+            .count();
+        assert_eq!(positioning_rows, supported_rows);
     }
 
     fn sample_last_solution() -> NavSolutionEpoch {
@@ -2603,10 +2604,7 @@ mod tests {
 
     fn assert_has_reason_prefix(solution: &NavSolutionEpoch, expected_prefix: &str) {
         assert!(
-            solution
-                .explain_reasons
-                .iter()
-                .any(|reason| reason.starts_with(expected_prefix)),
+            solution.explain_reasons.iter().any(|reason| reason.starts_with(expected_prefix)),
             "missing explain reason prefix `{expected_prefix}` in {:?}",
             solution.explain_reasons
         );
@@ -2674,18 +2672,12 @@ mod tests {
         let mut unavailable = sample_last_solution();
         unavailable = override_solution_status(unavailable, SolutionStatus::Unavailable);
         unavailable.sigma_h_m = Some(Meters(2.0));
-        assert_eq!(
-            uncertainty_class_from_solution(&unavailable),
-            NavUncertaintyClass::Unknown
-        );
+        assert_eq!(uncertainty_class_from_solution(&unavailable), NavUncertaintyClass::Unknown);
 
         let mut diverged = sample_last_solution();
         diverged = override_solution_status(diverged, SolutionStatus::Diverged);
         diverged.sigma_h_m = Some(Meters(8.0));
-        assert_eq!(
-            uncertainty_class_from_solution(&diverged),
-            NavUncertaintyClass::Unknown
-        );
+        assert_eq!(uncertainty_class_from_solution(&diverged), NavUncertaintyClass::Unknown);
     }
 
     #[test]
@@ -2696,10 +2688,7 @@ mod tests {
         degraded.lifecycle_state = SolutionStatus::Degraded.lifecycle_state();
         degraded.sigma_h_m = Some(Meters(4.0));
 
-        assert_eq!(
-            uncertainty_class_from_solution(&degraded),
-            NavUncertaintyClass::Medium
-        );
+        assert_eq!(uncertainty_class_from_solution(&degraded), NavUncertaintyClass::Medium);
     }
 
     #[test]
@@ -2997,10 +2986,7 @@ mod tests {
         float_solution.explain_reasons.clear();
         let float_decision = decision_for_solution(&float_solution);
         assert_eq!(float_decision.explain_decision, "accepted");
-        assert_eq!(
-            float_decision.explain_reasons,
-            vec!["navigation_solution_usable".to_string()]
-        );
+        assert_eq!(float_decision.explain_reasons, vec!["navigation_solution_usable".to_string()]);
 
         let mut fixed_solution = sample_last_solution();
         fixed_solution.status = SolutionStatus::Fixed;
@@ -3010,10 +2996,7 @@ mod tests {
         let fixed_decision = decision_for_solution(&fixed_solution);
         assert_eq!(fixed_decision.explain_decision, "accepted");
         assert_eq!(fixed_decision.refusal_class, None);
-        assert_eq!(
-            fixed_decision.explain_reasons,
-            vec!["navigation_solution_usable".to_string()]
-        );
+        assert_eq!(fixed_decision.explain_reasons, vec!["navigation_solution_usable".to_string()]);
     }
 
     fn make_eph(prn: u8, omega0: f64, m0: f64, t_ref_s: f64) -> GpsEphemeris {
@@ -3435,15 +3418,9 @@ mod tests {
         })
         .collect::<Vec<_>>();
         candidates.sort_by(|(left_elevation_deg, _), (right_elevation_deg, _)| {
-            right_elevation_deg
-                .partial_cmp(left_elevation_deg)
-                .unwrap_or(std::cmp::Ordering::Equal)
+            right_elevation_deg.partial_cmp(left_elevation_deg).unwrap_or(std::cmp::Ordering::Equal)
         });
-        candidates
-            .into_iter()
-            .take(6)
-            .map(|(_, navigation)| navigation)
-            .collect()
+        candidates.into_iter().take(6).map(|(_, navigation)| navigation).collect()
     }
 
     fn make_galileo_obs_epoch_for_solution(
@@ -3491,7 +3468,10 @@ mod tests {
                     weight: Some(1.0),
                     timing: Some(ObsSignalTiming {
                         signal_travel_time_s: Seconds(signal_travel_time_s),
-                        transmit_gps_time: GpsTime { week: 0, tow_s: t_rx_s - signal_travel_time_s },
+                        transmit_gps_time: GpsTime {
+                            week: 0,
+                            tow_s: t_rx_s - signal_travel_time_s,
+                        },
                     }),
                     error_model: None,
                     metadata: accepted_synthetic_obs_metadata(
@@ -3553,8 +3533,11 @@ mod tests {
             );
             let (sat_lat_deg, sat_lon_deg, sat_alt_m) =
                 ecef_to_geodetic(state.x_m, state.y_m, state.z_m);
-            let satellite_llh =
-                bijux_gnss_core::api::Llh { lat_deg: sat_lat_deg, lon_deg: sat_lon_deg, alt_m: sat_alt_m };
+            let satellite_llh = bijux_gnss_core::api::Llh {
+                lat_deg: sat_lat_deg,
+                lon_deg: sat_lon_deg,
+                alt_m: sat_alt_m,
+            };
             let gps_time = GpsTime { week: 0, tow_s: epoch.t_rx_s.0 };
             let delay_m = navigation
                 .nequick_delay_m(satellite.signal_id, receiver, satellite_llh, gps_time)
@@ -4030,9 +4013,7 @@ mod tests {
         assert!(
             solution.valid,
             "unexpected navigation solution status={:?} refusal={:?} reasons={:?}",
-            solution.status,
-            solution.refusal_class,
-            solution.explain_reasons
+            solution.status, solution.refusal_class, solution.explain_reasons
         );
         assert_eq!(solution.status, SolutionStatus::CodeOnly);
         assert_eq!(solution.refusal_class, None);
@@ -4158,9 +4139,7 @@ mod tests {
         assert!(
             solution.valid,
             "unexpected navigation solution status={:?} refusal={:?} reasons={:?}",
-            solution.status,
-            solution.refusal_class,
-            solution.explain_reasons
+            solution.status, solution.refusal_class, solution.explain_reasons
         );
         assert!(solution.explain_reasons.iter().any(|reason| reason == "ionosphere_uncorrected"));
         assert!(solution
@@ -4332,10 +4311,7 @@ mod tests {
         let receiver_clock_bias_s = 0.0;
         let t_rx_s = 504_018.07;
         let navigations = visible_galileo_navigations(t_rx_s, truth, receiver_clock_bias_s);
-        assert!(
-            navigations.len() >= 4,
-            "expected at least four visible galileo satellites"
-        );
+        assert!(navigations.len() >= 4, "expected at least four visible galileo satellites");
         let mut obs = make_galileo_obs_epoch_for_solution(
             24,
             t_rx_s,
@@ -4352,18 +4328,13 @@ mod tests {
         assert!(
             solution.valid,
             "unexpected navigation solution status={:?} refusal={:?} reasons={:?}",
-            solution.status,
-            solution.refusal_class,
-            solution.explain_reasons
+            solution.status, solution.refusal_class, solution.explain_reasons
         );
         assert!(solution
             .explain_reasons
             .iter()
             .any(|reason| reason == "ionosphere_correction=galileo_nequick"));
-        assert!(!solution
-            .explain_reasons
-            .iter()
-            .any(|reason| reason == "ionosphere_uncorrected"));
+        assert!(!solution.explain_reasons.iter().any(|reason| reason == "ionosphere_uncorrected"));
         assert!(solution
             .explain_reasons
             .iter()
@@ -4831,7 +4802,8 @@ mod tests {
             .expect("biased synthetic observation");
         biased_observation.pseudorange_m.0 += 25.0;
         if let Some(timing) = biased_observation.timing.as_mut() {
-            timing.signal_travel_time_s = Seconds(biased_observation.pseudorange_m.0 / 299_792_458.0);
+            timing.signal_travel_time_s =
+                Seconds(biased_observation.pseudorange_m.0 / 299_792_458.0);
             timing.transmit_gps_time.tow_s = obs.t_rx_s.0 - timing.signal_travel_time_s.0;
         }
         let baseline_solution = Navigation::new(
@@ -4849,10 +4821,7 @@ mod tests {
 
         let solution = nav.solve_epoch(&obs, &ephs).expect("residual refusal");
 
-        assert_eq!(
-            solution.refusal_class,
-            Some(NavRefusalClass::ScientificPrerequisitesTooWeak)
-        );
+        assert_eq!(solution.refusal_class, Some(NavRefusalClass::ScientificPrerequisitesTooWeak));
         assert_eq!(solution.status, SolutionStatus::Refused);
         assert_eq!(solution.explain_decision, "refused");
         assert_has_reason_prefix(&solution, "residual_rms_above_threshold:");
@@ -4879,10 +4848,7 @@ mod tests {
 
         let solution = nav.solve_epoch(&obs, &ephs).expect("weak-cn0 refusal");
 
-        assert_eq!(
-            solution.refusal_class,
-            Some(NavRefusalClass::ScientificPrerequisitesTooWeak)
-        );
+        assert_eq!(solution.refusal_class, Some(NavRefusalClass::ScientificPrerequisitesTooWeak));
         assert_eq!(solution.status, SolutionStatus::Refused);
         assert_eq!(solution.explain_decision, "refused");
         assert_has_reason_prefix(&solution, "mean_cn0_below_threshold:");
