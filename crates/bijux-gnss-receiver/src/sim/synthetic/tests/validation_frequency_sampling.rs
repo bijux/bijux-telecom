@@ -446,3 +446,108 @@
         assert_eq!(streamed.iq, expected.iq);
         assert!(source.is_done());
     }
+
+    #[test]
+    fn signal_only_streaming_source_preserves_gps_l5q_secondary_phase_across_irregular_frames() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 1_500_001.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..ReceiverPipelineConfig::default()
+        };
+        let scenario = SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 0.0,
+            duration_s: 0.045,
+            seed: 71,
+            satellites: vec![SyntheticSignalParams {
+                sat: SatId { constellation: Constellation::Gps, prn: 24 },
+                glonass_frequency_channel: None,
+                signal_band: bijux_gnss_core::api::SignalBand::L5,
+                signal_code: bijux_gnss_core::api::SignalCode::L5Q,
+                doppler_hz: 180.0,
+                code_phase_chips: 1_024.75,
+                carrier_phase_rad: 0.25,
+                cn0_db_hz: 55.0,
+                data_bit_flip: false,
+            }],
+            ephemerides: Vec::new(),
+            id: "signal-only-gps-l5q-streaming".to_string(),
+        };
+        let expected = super::generate_l1_ca_multi_signal_only(&config, &scenario);
+        let mut source = super::SyntheticSignalSource::new_signal_only(&config, &scenario);
+        let streamed = collect_streamed_signal_only_frames(&mut source, &[257, 4093, 8191, 173]);
+
+        assert_eq!(streamed.t0, expected.t0);
+        assert_eq!(streamed.dt_s, expected.dt_s);
+        assert_eq!(streamed.iq, expected.iq);
+        assert!(source.is_done());
+    }
+
+    #[test]
+    fn signal_only_streaming_source_preserves_galileo_e1_secondary_phase_across_irregular_frames() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 2_700_001.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 4_092,
+            ..ReceiverPipelineConfig::default()
+        };
+        let scenario = SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 0.0,
+            duration_s: 0.108,
+            seed: 73,
+            satellites: vec![SyntheticSignalParams {
+                sat: SatId { constellation: Constellation::Galileo, prn: 11 },
+                glonass_frequency_channel: None,
+                signal_band: bijux_gnss_core::api::SignalBand::E1,
+                signal_code: bijux_gnss_core::api::SignalCode::E1B,
+                doppler_hz: -120.0,
+                code_phase_chips: 137.625,
+                carrier_phase_rad: 0.75,
+                cn0_db_hz: 55.0,
+                data_bit_flip: false,
+            }],
+            ephemerides: Vec::new(),
+            id: "signal-only-galileo-e1-streaming".to_string(),
+        };
+        let expected = super::generate_l1_ca_multi_signal_only(&config, &scenario);
+        let mut source = super::SyntheticSignalSource::new_signal_only(&config, &scenario);
+        let streamed =
+            collect_streamed_signal_only_frames(&mut source, &[509, 4097, 12_289, 641, 97]);
+
+        assert_eq!(streamed.t0, expected.t0);
+        assert_eq!(streamed.dt_s, expected.dt_s);
+        assert_eq!(streamed.iq, expected.iq);
+        assert!(source.is_done());
+    }
+
+    fn collect_streamed_signal_only_frames(
+        source: &mut super::SyntheticSignalSource,
+        frame_lengths: &[usize],
+    ) -> SamplesFrame {
+        let mut combined = Vec::new();
+        let mut t0 = None;
+        let mut dt_s = None;
+        let mut frame_index = 0usize;
+
+        while let Some(frame) = source
+            .next_frame(frame_lengths[frame_index % frame_lengths.len()])
+            .expect("streaming signal-only frame")
+        {
+            t0.get_or_insert(frame.t0);
+            dt_s.get_or_insert(frame.dt_s);
+            combined.extend(frame.iq);
+            frame_index += 1;
+        }
+
+        SamplesFrame::new(
+            t0.expect("streaming source emitted at least one frame"),
+            dt_s.expect("streaming source emitted frame spacing"),
+            combined,
+        )
+    }
