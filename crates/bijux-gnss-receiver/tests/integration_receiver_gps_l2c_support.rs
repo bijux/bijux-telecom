@@ -1,8 +1,6 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{
-    Constellation, SatId, SignalBand, SignalCode, SupportStatus,
-};
+use bijux_gnss_core::api::{Constellation, SatId, SignalBand, SignalCode, SupportStatus};
 use bijux_gnss_receiver::api::{
     sim::{SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource},
     Receiver, ReceiverPipelineConfig, ReceiverRuntime,
@@ -67,6 +65,39 @@ fn support_matrix_lists_gps_l2c_with_explicit_tracking_scope() {
         .expect("GPS L2C support row");
 
     assert!(matches!(row.status, SupportStatus::Planned), "{row:?}");
-    assert!(row.reason.contains("explicit tracked L2C epochs"), "{row:?}");
-    assert!(row.reason.contains("live tracking remain incomplete"), "{row:?}");
+    assert!(matches!(row.stage_support.acquisition, SupportStatus::Planned), "{row:?}");
+    assert!(matches!(row.stage_support.tracking, SupportStatus::Planned), "{row:?}");
+    assert!(matches!(row.stage_support.data_decoding, SupportStatus::Planned), "{row:?}");
+    assert!(matches!(row.stage_support.observations, SupportStatus::Supported), "{row:?}");
+    assert!(matches!(row.stage_support.positioning, SupportStatus::Planned), "{row:?}");
+    assert!(row.requirements.iter().any(|value| value == "tracked_epoch_input"), "{row:?}");
+}
+
+#[test]
+fn support_matrix_lists_gps_l1_ca_as_full_execution_path() {
+    let config = gps_l1_config();
+    let sat = SatId { constellation: Constellation::Gps, prn: 11 };
+    let scenario = gps_l1_scenario(sat);
+    let mut source = SyntheticSignalSource::new_signal_only(&config, &scenario);
+    let receiver = Receiver::new(config, ReceiverRuntime::default());
+
+    let artifacts = receiver.run(&mut source).expect("receiver run");
+    let support_matrix = artifacts.support_matrix.expect("support matrix");
+    let row = support_matrix
+        .rows
+        .iter()
+        .find(|row| {
+            row.constellation == Constellation::Gps
+                && row.band == SignalBand::L1
+                && row.code == SignalCode::Ca
+        })
+        .expect("GPS L1 C/A support row");
+
+    assert!(matches!(row.status, SupportStatus::Supported), "{row:?}");
+    assert!(matches!(row.stage_support.acquisition, SupportStatus::Supported), "{row:?}");
+    assert!(matches!(row.stage_support.tracking, SupportStatus::Supported), "{row:?}");
+    assert!(matches!(row.stage_support.data_decoding, SupportStatus::Supported), "{row:?}");
+    assert!(matches!(row.stage_support.observations, SupportStatus::Supported), "{row:?}");
+    assert!(matches!(row.stage_support.positioning, SupportStatus::Supported), "{row:?}");
+    assert!(row.requirements.is_empty(), "{row:?}");
 }

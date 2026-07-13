@@ -65,6 +65,10 @@ fn support_matrix_lists_gps_l5_with_explicit_tracking_scope() {
         .expect("GPS L5 support row");
 
     assert!(matches!(row.status, SupportStatus::Planned), "{row:?}");
-    assert!(row.reason.contains("explicit tracked L5 epochs"), "{row:?}");
-    assert!(row.reason.contains("live tracking remain incomplete"), "{row:?}");
+    assert!(matches!(row.stage_support.acquisition, SupportStatus::Planned), "{row:?}");
+    assert!(matches!(row.stage_support.tracking, SupportStatus::Planned), "{row:?}");
+    assert!(matches!(row.stage_support.data_decoding, SupportStatus::Planned), "{row:?}");
+    assert!(matches!(row.stage_support.observations, SupportStatus::Supported), "{row:?}");
+    assert!(matches!(row.stage_support.positioning, SupportStatus::Planned), "{row:?}");
+    assert!(row.requirements.iter().any(|value| value == "tracked_epoch_input"), "{row:?}");
 }
