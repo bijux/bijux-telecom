@@ -3,8 +3,11 @@
 use std::fs;
 use std::path::Path;
 
-use bijux_gnss_nav::api::{ecef_to_enu, geodetic_to_ecef};
 use serde::{Deserialize, Serialize};
+
+use crate::reference_math::coordinates::{
+    ecef_to_enu_m, geodetic_to_ecef_m, GeodeticPoint,
+};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PublicStationTruth {
@@ -18,7 +21,12 @@ pub struct PublicStationTruth {
 
 impl PublicStationTruth {
     pub fn truth_ecef_m(&self) -> (f64, f64, f64) {
-        geodetic_to_ecef(self.lat_deg, self.lon_deg, self.alt_m)
+        let ecef_m = geodetic_to_ecef_m(GeodeticPoint {
+            lat_deg: self.lat_deg,
+            lon_deg: self.lon_deg,
+            alt_m: self.alt_m,
+        });
+        (ecef_m[0], ecef_m[1], ecef_m[2])
     }
 }
 
@@ -51,20 +59,23 @@ pub fn station_enu_error_m(
     solution_ecef_m: (f64, f64, f64),
     truth: &PublicStationTruth,
 ) -> EnuError {
-    let (east_m, north_m, up_m) = ecef_to_enu(
-        solution_ecef_m.0,
-        solution_ecef_m.1,
-        solution_ecef_m.2,
-        truth.lat_deg,
-        truth.lon_deg,
-        truth.alt_m,
+    let enu = ecef_to_enu_m(
+        [solution_ecef_m.0, solution_ecef_m.1, solution_ecef_m.2],
+        GeodeticPoint {
+            lat_deg: truth.lat_deg,
+            lon_deg: truth.lon_deg,
+            alt_m: truth.alt_m,
+        },
     );
     EnuError {
-        east_m,
-        north_m,
-        up_m,
-        horizontal_m: (east_m * east_m + north_m * north_m).sqrt(),
-        three_dimensional_m: (east_m * east_m + north_m * north_m + up_m * up_m).sqrt(),
+        east_m: enu.east_m,
+        north_m: enu.north_m,
+        up_m: enu.up_m,
+        horizontal_m: (enu.east_m * enu.east_m + enu.north_m * enu.north_m).sqrt(),
+        three_dimensional_m: (enu.east_m * enu.east_m
+            + enu.north_m * enu.north_m
+            + enu.up_m * enu.up_m)
+            .sqrt(),
     }
 }
 

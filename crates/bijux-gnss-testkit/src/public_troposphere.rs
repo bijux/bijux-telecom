@@ -4,12 +4,14 @@ use std::collections::BTreeMap;
 
 use bijux_gnss_core::api::{Constellation, GpsTime, ObsEpoch, SatId};
 use bijux_gnss_nav::api::{
-    elevation_azimuth_deg, position_observations_from_epoch, sat_state_gps_l1ca_from_observation,
-    GpsBroadcastNavigationData, PositionSolver, RinexGpsObservationDataset,
+    position_observations_from_epoch, GpsBroadcastNavigationData, PositionSolver,
+    RinexGpsObservationDataset,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::public_station::PublicStationTruth;
+use crate::reference_math::coordinates::elevation_azimuth_deg;
+use crate::reference_math::gps_broadcast::satellite_state_from_observation;
 
 pub const LOW_ELEVATION_CEILING_DEG: f64 = 20.0;
 pub const MID_ELEVATION_CEILING_DEG: f64 = 45.0;
@@ -222,19 +224,15 @@ fn residual_comparison_samples(
             .iter()
             .find(|candidate| candidate.sat == *sat)
             .ok_or_else(|| format!("missing ephemeris for satellite {:?}", sat))?;
-        let state = sat_state_gps_l1ca_from_observation(
+        let state = satellite_state_from_observation(
             ephemeris,
             receive_tow_s,
             observation.pseudorange_m.0,
             observation.timing,
         );
         let (_azimuth_deg, elevation_deg) = elevation_azimuth_deg(
-            receiver_ecef_m.0,
-            receiver_ecef_m.1,
-            receiver_ecef_m.2,
-            state.x_m,
-            state.y_m,
-            state.z_m,
+            [receiver_ecef_m.0, receiver_ecef_m.1, receiver_ecef_m.2],
+            [state.x_m, state.y_m, state.z_m],
         );
         if !elevation_deg.is_finite() || elevation_deg <= 0.0 {
             continue;
