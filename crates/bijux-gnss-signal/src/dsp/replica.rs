@@ -22,6 +22,8 @@ pub const UNIT_VARIANCE_COMPLEX_NOISE_POWER: f64 = 2.0;
 /// Reusable local code models for acquisition and tracking replicas.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LocalCodeModel {
+    /// Generic BPSK local code with an explicit chip rate.
+    Bpsk { code: Vec<i8>, code_rate_hz: f64 },
     /// GPS L1 C/A primary code.
     GpsL1Ca { code: Vec<i8> },
     /// Galileo E1 BOC(1,1) primary code.
@@ -33,6 +35,11 @@ pub enum LocalCodeModel {
 }
 
 impl LocalCodeModel {
+    /// Build an all-ones BPSK local code model.
+    pub fn ones(code_length: usize, code_rate_hz: f64) -> Self {
+        Self::Bpsk { code: vec![1; code_length.max(1)], code_rate_hz }
+    }
+
     /// Build a GPS L1 C/A local code model from a PRN.
     pub fn gps_l1_ca(prn: u8) -> Result<Self, SignalError> {
         Ok(Self::GpsL1Ca { code: generate_ca_code(Prn(prn))? })
@@ -72,6 +79,7 @@ impl LocalCodeModel {
     /// Return the code rate in chips per second.
     pub fn code_rate_hz(&self) -> f64 {
         match self {
+            Self::Bpsk { code_rate_hz, .. } => *code_rate_hz,
             Self::GpsL1Ca { .. } => 1_023_000.0,
             Self::GalileoE1Boc11 { .. } => GALILEO_E1_CODE_RATE_HZ,
             Self::BeidouB1I { .. } => BEIDOU_B1I_CODE_RATE_HZ,
@@ -82,6 +90,7 @@ impl LocalCodeModel {
     /// Return the primary code period length in chips.
     pub fn code_length(&self) -> usize {
         match self {
+            Self::Bpsk { code, .. } => code.len(),
             Self::GpsL1Ca { code } => code.len(),
             Self::GalileoE1Boc11 { primary_code } => primary_code.len(),
             Self::BeidouB1I { code } => code.len(),
@@ -97,9 +106,10 @@ impl LocalCodeModel {
     /// Sample the local code value at a chip phase.
     pub fn sample_value(&self, chip_phase: f64) -> Result<f32, SignalError> {
         match self {
-            Self::GpsL1Ca { code } | Self::BeidouB1I { code } | Self::GlonassL1St { code } => {
-                code_value_at_phase(code, chip_phase)
-            }
+            Self::Bpsk { code, .. }
+            | Self::GpsL1Ca { code }
+            | Self::BeidouB1I { code }
+            | Self::GlonassL1St { code } => code_value_at_phase(code, chip_phase),
             Self::GalileoE1Boc11 { primary_code } => {
                 Ok(code_value_at_phase(primary_code, chip_phase)?
                     * boc_subcarrier_value(chip_phase, 1)?)
@@ -115,15 +125,16 @@ impl LocalCodeModel {
         sample_count: usize,
     ) -> Result<Vec<f32>, SignalError> {
         match self {
-            Self::GpsL1Ca { code } | Self::BeidouB1I { code } | Self::GlonassL1St { code } => {
-                sample_code(
-                    code,
-                    sample_rate_hz,
-                    self.code_rate_hz(),
-                    start_chip_phase,
-                    sample_count,
-                )
-            }
+            Self::Bpsk { code, .. }
+            | Self::GpsL1Ca { code }
+            | Self::BeidouB1I { code }
+            | Self::GlonassL1St { code } => sample_code(
+                code,
+                sample_rate_hz,
+                self.code_rate_hz(),
+                start_chip_phase,
+                sample_count,
+            ),
             Self::GalileoE1Boc11 { primary_code } => sample_boc_code(
                 primary_code,
                 sample_rate_hz,
@@ -227,6 +238,22 @@ impl AcquisitionSignalModel {
         )
     }
 
+    /// Build a GPS L1 C/A acquisition model, falling back to an all-ones code when invalid.
+    pub fn gps_l1_ca_or_ones(
+        prn: u8,
+        code_rate_hz: f64,
+        code_length: usize,
+        carrier_hz: FreqHz,
+    ) -> Result<Self, SignalError> {
+        Self::new(
+            SignalBand::L1,
+            code_rate_hz,
+            code_length,
+            carrier_hz,
+            LocalCodeModel::gps_l1_ca_or_ones(prn),
+        )
+    }
+
     fn new(
         signal_band: SignalBand,
         code_rate_hz: f64,
@@ -247,6 +274,14 @@ impl AcquisitionSignalModel {
     /// Return the sampled-code period length for a sample rate.
     pub fn samples_per_code(&self, sample_rate_hz: f64) -> usize {
         samples_per_code(sample_rate_hz, self.code_rate_hz, self.code_length)
+    }
+
+    /// Return the number of whole primary-code periods in a coherent integration interval.
+    pub fn coherent_periods(&self, coherent_ms: u32) -> Option<u32> {
+        if coherent_ms == 0 || coherent_ms % self.code_period_ms != 0 {
+            return None;
+        }
+        Some(coherent_ms / self.code_period_ms)
     }
 
     /// Return the centered IF used by a receiver whose reference carrier is GPS L1 C/A.
@@ -511,6 +546,14 @@ mod tests {
         let expected = sample_glonass_l1_st_code(511_000.0, 0.0, 511).expect("GLONASS reference");
         assert_eq!(samples, expected);
         assert!(!model.supports_secondary_peak_multipath_screening());
+    }
+
+    #[test]
+    fn local_code_model_ones_uses_requested_rate_and_length() {
+        let model = LocalCodeModel::ones(7, 2_500.0);
+        assert_eq!(model.code_length(), 7);
+        assert_eq!(model.code_rate_hz(), 2_500.0);
+        assert_eq!(model.sample_value(3.25).expect("ones code"), 1.0);
     }
 
     #[test]
