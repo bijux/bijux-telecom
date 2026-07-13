@@ -752,6 +752,7 @@ impl Acquisition {
                     peak_mean_ratio: candidate.peak_mean_ratio,
                     peak_second_ratio: candidate.peak_second_ratio,
                     mean: candidate.mean,
+                    component_provenance: None,
                 });
                 let local_peak_separation_ratio = candidate.peak_second_ratio;
                 if rank == 0 {

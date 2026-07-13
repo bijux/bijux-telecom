@@ -6,6 +6,7 @@
 //! a single namespace without deep paths.
 
 pub mod acquisition;
+pub(crate) mod acquisition_components;
 pub mod doppler;
 pub mod hatch;
 #[cfg(feature = "nav")]
