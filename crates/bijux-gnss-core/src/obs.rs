@@ -1003,6 +1003,30 @@ impl SolutionStatus {
         )
     }
 
+    pub fn lifecycle_state(self) -> NavLifecycleState {
+        match self {
+            SolutionStatus::Unavailable => NavLifecycleState::Unavailable,
+            SolutionStatus::Refused => NavLifecycleState::Refused,
+            SolutionStatus::Degraded => NavLifecycleState::Degraded,
+            SolutionStatus::IntegrityFailed => NavLifecycleState::IntegrityFailed,
+            SolutionStatus::Diverged => NavLifecycleState::Diverged,
+            SolutionStatus::CodeOnly => NavLifecycleState::CodeOnly,
+            SolutionStatus::Float => NavLifecycleState::Float,
+            SolutionStatus::Fixed => NavLifecycleState::Fixed,
+        }
+    }
+
+    pub fn decision_label(self) -> &'static str {
+        match self {
+            SolutionStatus::Unavailable => "unavailable",
+            SolutionStatus::Refused => "refused",
+            SolutionStatus::Degraded => "degraded",
+            SolutionStatus::IntegrityFailed => "integrity_failed",
+            SolutionStatus::Diverged => "diverged",
+            SolutionStatus::CodeOnly | SolutionStatus::Float | SolutionStatus::Fixed => "accepted",
+        }
+    }
+
     pub fn quality_flag(self) -> NavQualityFlag {
         match self {
             SolutionStatus::Unavailable | SolutionStatus::Refused => {
@@ -1226,8 +1250,9 @@ mod tests {
     use crate::api::{
         trackable_acq_tracking_seeds, AcqCodePhaseRefinement, AcqHypothesis, AcqResult,
         AcqSearchSummary, AcqUncertainty, Constellation, Cycles, GlonassFrequencyChannel, Hertz,
-        LeapSeconds, LockFlags, NavQualityFlag, ObservationEpochDecision, ObservationStatus,
-        ReceiverRole, ReceiverSampleTrace, SatId, SignalBand, SolutionStatus, UtcTime,
+        LeapSeconds, LockFlags, NavLifecycleState, NavQualityFlag, ObservationEpochDecision,
+        ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId, SignalBand, SolutionStatus,
+        UtcTime,
     };
     use crate::time::utc_to_gps;
 
@@ -1269,6 +1294,7 @@ mod tests {
     fn precise_solution_status_validity_matches_runtime_semantics() {
         assert!(!SolutionStatus::Unavailable.is_valid());
         assert!(!SolutionStatus::Refused.is_valid());
+        assert!(SolutionStatus::Degraded.is_valid());
         assert!(!SolutionStatus::IntegrityFailed.is_valid());
         assert!(!SolutionStatus::Diverged.is_valid());
         assert!(SolutionStatus::CodeOnly.is_valid());
@@ -1280,10 +1306,45 @@ mod tests {
     fn precise_solution_status_quality_flags_distinguish_no_fix_and_degraded_cases() {
         assert_eq!(SolutionStatus::Unavailable.quality_flag(), NavQualityFlag::NoFix);
         assert_eq!(SolutionStatus::Refused.quality_flag(), NavQualityFlag::NoFix);
+        assert_eq!(SolutionStatus::Degraded.quality_flag(), NavQualityFlag::Degraded);
         assert_eq!(SolutionStatus::IntegrityFailed.quality_flag(), NavQualityFlag::Degraded);
         assert_eq!(SolutionStatus::Diverged.quality_flag(), NavQualityFlag::Degraded);
         assert_eq!(SolutionStatus::CodeOnly.quality_flag(), NavQualityFlag::Float);
+        assert_eq!(SolutionStatus::Float.quality_flag(), NavQualityFlag::Float);
         assert_eq!(SolutionStatus::Fixed.quality_flag(), NavQualityFlag::Fix);
+    }
+
+    #[test]
+    fn precise_solution_status_lifecycle_state_tracks_status_exactly() {
+        assert_eq!(
+            SolutionStatus::Unavailable.lifecycle_state(),
+            NavLifecycleState::Unavailable
+        );
+        assert_eq!(SolutionStatus::Refused.lifecycle_state(), NavLifecycleState::Refused);
+        assert_eq!(SolutionStatus::Degraded.lifecycle_state(), NavLifecycleState::Degraded);
+        assert_eq!(
+            SolutionStatus::IntegrityFailed.lifecycle_state(),
+            NavLifecycleState::IntegrityFailed
+        );
+        assert_eq!(SolutionStatus::Diverged.lifecycle_state(), NavLifecycleState::Diverged);
+        assert_eq!(SolutionStatus::CodeOnly.lifecycle_state(), NavLifecycleState::CodeOnly);
+        assert_eq!(SolutionStatus::Float.lifecycle_state(), NavLifecycleState::Float);
+        assert_eq!(SolutionStatus::Fixed.lifecycle_state(), NavLifecycleState::Fixed);
+    }
+
+    #[test]
+    fn precise_solution_status_decision_labels_match_public_status_words() {
+        assert_eq!(SolutionStatus::Unavailable.decision_label(), "unavailable");
+        assert_eq!(SolutionStatus::Refused.decision_label(), "refused");
+        assert_eq!(SolutionStatus::Degraded.decision_label(), "degraded");
+        assert_eq!(
+            SolutionStatus::IntegrityFailed.decision_label(),
+            "integrity_failed"
+        );
+        assert_eq!(SolutionStatus::Diverged.decision_label(), "diverged");
+        assert_eq!(SolutionStatus::CodeOnly.decision_label(), "accepted");
+        assert_eq!(SolutionStatus::Float.decision_label(), "accepted");
+        assert_eq!(SolutionStatus::Fixed.decision_label(), "accepted");
     }
 
     #[test]
