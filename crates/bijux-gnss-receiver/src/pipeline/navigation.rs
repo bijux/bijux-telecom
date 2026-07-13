@@ -2862,6 +2862,82 @@ mod tests {
         assert_eq!(degraded.explain_decision, "degraded");
     }
 
+    #[test]
+    fn nav_output_stability_signature_tracks_precise_decision_labels() {
+        let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
+        let t_rx_s = 101_100.0;
+        let ephs = vec![
+            make_eph(1, 0.0, 0.0, t_rx_s),
+            make_eph(2, 0.8, 0.9, t_rx_s),
+            make_eph(3, 1.6, 1.8, t_rx_s),
+            make_eph(4, 2.4, 2.7, t_rx_s),
+        ];
+        let obs = make_obs_epoch_for_solution(92, t_rx_s, truth, &ephs);
+        let unavailable = invalid_solution_epoch(
+            &obs,
+            "obs-epoch-0000000092-seed".to_string(),
+            "nav-epoch-0000000092-seed".to_string(),
+            Some(NavRefusalClass::InvalidEphemeris),
+            "refused".to_string(),
+            vec!["ephemeris_covered_count=0".to_string()],
+            nav_assumptions(0),
+        );
+        assert!(unavailable
+            .stability_signature
+            .contains("status=Unavailable:lifecycle=Unavailable:valid=false"));
+        assert!(unavailable.stability_signature.contains("decision=unavailable"));
+
+        let mut nav = Navigation::new(
+            ReceiverPipelineConfig::default(),
+            crate::engine::runtime::ReceiverRuntime::default(),
+        );
+        nav.last_solution = Some(sample_last_solution());
+        let degraded = nav.reuse_previous_solution(
+            &obs,
+            "obs-epoch-0000000092-seed".to_string(),
+            "nav-epoch-0000000092-seed".to_string(),
+            NavDecision {
+                status: SolutionStatus::Refused,
+                refusal_class: Some(NavRefusalClass::InsufficientGeometry),
+                explain_decision: "refused".to_string(),
+                explain_reasons: vec!["pdop_above_threshold:4.200>3.000".to_string()],
+            },
+            nav_assumptions(4),
+        );
+        assert!(degraded
+            .stability_signature
+            .contains("status=Degraded:lifecycle=Degraded:valid=true"));
+        assert!(degraded.stability_signature.contains("decision=degraded"));
+    }
+
+    #[test]
+    fn decision_for_solution_treats_float_and_fixed_as_accepted() {
+        let mut float_solution = sample_last_solution();
+        float_solution.status = SolutionStatus::Float;
+        float_solution.quality = SolutionStatus::Float.quality_flag();
+        float_solution.lifecycle_state = SolutionStatus::Float.lifecycle_state();
+        float_solution.explain_reasons.clear();
+        let float_decision = decision_for_solution(&float_solution);
+        assert_eq!(float_decision.explain_decision, "accepted");
+        assert_eq!(
+            float_decision.explain_reasons,
+            vec!["navigation_solution_usable".to_string()]
+        );
+
+        let mut fixed_solution = sample_last_solution();
+        fixed_solution.status = SolutionStatus::Fixed;
+        fixed_solution.quality = SolutionStatus::Fixed.quality_flag();
+        fixed_solution.lifecycle_state = SolutionStatus::Fixed.lifecycle_state();
+        fixed_solution.explain_reasons.clear();
+        let fixed_decision = decision_for_solution(&fixed_solution);
+        assert_eq!(fixed_decision.explain_decision, "accepted");
+        assert_eq!(fixed_decision.refusal_class, None);
+        assert_eq!(
+            fixed_decision.explain_reasons,
+            vec!["navigation_solution_usable".to_string()]
+        );
+    }
+
     fn make_eph(prn: u8, omega0: f64, m0: f64, t_ref_s: f64) -> GpsEphemeris {
         GpsEphemeris {
             sat: SatId { constellation: Constellation::Gps, prn },
@@ -3659,10 +3735,7 @@ mod tests {
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::InvalidEphemeris));
         assert_eq!(solution.explain_decision, "refused");
         assert_eq!(solution.epoch.index, 10);
-        assert!(solution
-            .explain_reasons
-            .iter()
-            .any(|reason| reason == "refusal_cause=ephemeris"));
+        assert_has_refusal_cause(&solution, "refusal_cause=ephemeris");
     }
 
     #[test]
@@ -3681,10 +3754,7 @@ mod tests {
             .explain_reasons
             .iter()
             .any(|reason| reason == "input_observation_marked_invalid"));
-        assert!(solution
-            .explain_reasons
-            .iter()
-            .any(|reason| reason == "refusal_cause=integrity"));
+        assert_has_refusal_cause(&solution, "refusal_cause=integrity");
         assert_eq!(solution.lifecycle_state, NavLifecycleState::Refused);
         assert_eq!(solution.model_version, NAV_SOLUTION_MODEL_VERSION);
     }
@@ -3713,10 +3783,7 @@ mod tests {
         assert!(!solution.valid);
         assert_eq!(solution.used_sat_count, 0);
         assert!(solution.explain_reasons.iter().any(|reason| reason == "invalid_satellite_time"));
-        assert!(solution
-            .explain_reasons
-            .iter()
-            .any(|reason| reason == "refusal_cause=clock"));
+        assert_has_refusal_cause(&solution, "refusal_cause=clock");
     }
 
     #[test]
@@ -3901,10 +3968,7 @@ mod tests {
         assert_eq!(solution.ecef_y_m.0, 0.0);
         assert_eq!(solution.ecef_z_m.0, 0.0);
         assert!(!solution.valid);
-        assert!(solution
-            .explain_reasons
-            .iter()
-            .any(|reason| reason == "refusal_cause=satellite_count"));
+        assert_has_refusal_cause(&solution, "refusal_cause=satellite_count");
     }
 
     #[test]
@@ -3932,14 +3996,8 @@ mod tests {
 
         assert_eq!(solution.status, SolutionStatus::Refused);
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::InsufficientGeometry));
-        assert!(solution
-            .explain_reasons
-            .iter()
-            .any(|reason| reason == "refusal_cause=satellite_count"));
-        assert!(solution
-            .explain_reasons
-            .iter()
-            .any(|reason| reason == "refusal_cause=lock"));
+        assert_has_refusal_cause(&solution, "refusal_cause=satellite_count");
+        assert_has_refusal_cause(&solution, "refusal_cause=lock");
     }
 
     #[test]
@@ -4376,10 +4434,7 @@ mod tests {
             .explain_reasons
             .iter()
             .any(|reason| reason.starts_with("raim_suspect_prn=")));
-        assert!(solution
-            .explain_reasons
-            .iter()
-            .any(|reason| reason == "refusal_cause=integrity"));
+        assert_has_refusal_cause(&solution, "refusal_cause=integrity");
         assert_eq!(solution.pre_fit_residual_rms_m, None);
         assert_eq!(solution.post_fit_residual_rms_m, None);
     }
