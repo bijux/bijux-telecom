@@ -113,6 +113,21 @@ pub use crate::estimation::rtk::baseline::{
     rtk_float_baseline_from_double_differences_with_rover_prior, RtkFloatAmbiguityEstimate,
     RtkFloatBaselineSolution,
 };
+/// RTK execution, epoch alignment, and contract-adapter helpers.
+pub use crate::estimation::rtk::execution::{
+    build_dd, build_dd_per_constellation, build_sd, choose_ref_sat,
+    choose_ref_sat_per_constellation, dd_covariance, double_difference, innovation_diagnostics,
+    los_unit, single_difference, solve_baseline_dd, solve_float_baseline_dd,
+    AlignmentDiagnostic, AlignmentReport, BaselineConfig, DdCovarianceModel, DdObservation,
+    EpochAligner, RefSatPolicy, RefSatSelector, SdObservation, SolutionSeparation,
+};
+/// RTK baseline-quality, residual, and fix-guard helpers.
+pub use crate::estimation::rtk::quality::{
+    apply_fix_hold, baseline_from_ecef, dd_residual_metrics, enu_to_ecef,
+    evaluate_rtk_fixed_baseline_guard, jitter_summary, sd_residual_metrics, solution_separation,
+    BaselineSolution, JitterSummary, RtkBaselineQuality, RtkFixedBaselineGuardDecision,
+    RtkFixedBaselineGuardPolicy, RtkPrecision,
+};
 /// RTK single-difference helpers.
 pub use crate::estimation::rtk::single_difference::{
     choose_rtk_single_difference_reference_signal,
