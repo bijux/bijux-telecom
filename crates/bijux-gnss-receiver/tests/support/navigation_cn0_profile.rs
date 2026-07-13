@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{GpsTime, ObsEpoch, ReceiverSampleTrace, ValidationReferenceEpoch};
+use bijux_gnss_core::api::{GpsTime, ObsEpoch, ReceiverSampleTrace};
+use bijux_gnss_receiver::api::ValidationReferenceEpoch;
 use bijux_gnss_receiver::api::{
     observations_from_tracking_results_with_gps_anchor,
     sim::{

@@ -3,10 +3,10 @@
 use bijux_gnss_core::api::{
     ecef_to_geodetic, Chips, Constellation, Cycles, Epoch, GpsTime, Hertz, NavSolutionEpoch,
     ObsEpoch, ReceiverSampleTrace, SatId, SignalDelayAlignment, TrackEpoch,
-    ValidationReferenceEpoch,
 };
 use bijux_gnss_nav::api::{geodetic_to_ecef, sat_state_gps_l1ca, GpsEphemeris};
 use bijux_gnss_receiver::api::sim::{SyntheticPvtTruthReferenceEpoch, SyntheticSignalParams};
+use bijux_gnss_receiver::api::ValidationReferenceEpoch;
 use bijux_gnss_receiver::api::{
     observations_from_tracking_results_with_gps_anchor, Navigation, ReceiverPipelineConfig,
     ReceiverRuntime, TrackingResult, ValidationBudgets,

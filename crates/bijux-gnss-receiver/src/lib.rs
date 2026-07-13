@@ -24,6 +24,8 @@ mod io;
 mod pipeline;
 mod ports;
 #[cfg(feature = "nav")]
+mod reference_validation;
+#[cfg(feature = "nav")]
 mod rtk;
 #[cfg(feature = "nav")]
 mod sim;

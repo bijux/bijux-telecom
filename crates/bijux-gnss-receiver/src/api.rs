@@ -25,6 +25,12 @@ pub use bijux_gnss_signal::api as signal;
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use bijux_gnss_nav::api as nav;
+#[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
+pub use crate::reference_validation::{
+    align_reference_by_time, check_solution_consistency, reference_compare, reference_ecef,
+    ReferenceAlign, ReferenceCompareStats, SolutionConsistencyReport, ValidationReferenceEpoch,
+};
 
 /// Runtime logging helpers.
 pub use crate::engine::logging;

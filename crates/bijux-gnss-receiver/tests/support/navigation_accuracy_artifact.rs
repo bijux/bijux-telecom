@@ -3,8 +3,8 @@
 use bijux_gnss_core::api::{
     ecef_to_geodetic, Chips, Cycles, Epoch, GpsTime, Hertz, NavSolutionEpoch, ObsEpoch,
     ReceiverSampleTrace, SamplesFrame, SignalDelayAlignment, TrackEpoch, TrackingUncertainty,
-    ValidationReferenceEpoch,
 };
+use bijux_gnss_receiver::api::ValidationReferenceEpoch;
 use bijux_gnss_receiver::api::{
     carrier_hz_from_doppler_hz, observations_from_tracking_results_with_gps_anchor,
     sim::{

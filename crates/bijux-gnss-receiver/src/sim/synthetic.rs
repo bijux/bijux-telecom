@@ -5,14 +5,16 @@ use std::f32::consts::TAU;
 
 use num_complex::Complex;
 
+use crate::reference_validation::{reference_ecef, ValidationReferenceEpoch};
 use bijux_gnss_core::api::{
-    ecef_to_enu, ecef_to_geodetic, reference_ecef, stats, AcqHypothesis, AcqResult,
-    Constellation, GlonassFrequencyChannel, GpsTime, Hertz, Meters, NavQualityFlag,
-    NavSolutionEpoch, ObsEpoch, ObservationStatus, ReceiverSampleTrace, SampleClock, SampleTime,
-    SamplesFrame, SatId, Seconds, SigId, SignalBand, SignalCode, SignalDelayAlignment, SignalSpec,
-    SolutionStatus, SolutionValidity, ValidationReferenceEpoch,
+    ecef_to_enu, ecef_to_geodetic, stats, AcqHypothesis, AcqResult, Constellation,
+    GlonassFrequencyChannel, GpsTime, Hertz, Meters, NavQualityFlag, NavSolutionEpoch, ObsEpoch,
+    ObservationStatus, ReceiverSampleTrace, SampleClock, SampleTime, SamplesFrame, SatId,
+    Seconds, SigId, SignalBand, SignalCode, SignalDelayAlignment, SignalSpec, SolutionStatus,
+    SolutionValidity,
 };
 use bijux_gnss_signal::api::SignalSource;
+
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::io::data::SampleSourceError;
@@ -101,12 +103,13 @@ mod tests {
         SPEED_OF_LIGHT_MPS, SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
+    use crate::reference_validation::ValidationReferenceEpoch;
     use bijux_gnss_core::api::{
         ecef_to_geodetic, lla_to_ecef, Constellation, Cycles, Epoch, FreqHz, Hertz, LockFlags,
         Meters, NavLifecycleState, NavQualityFlag, NavSolutionEpoch, NavUncertaintyClass, ObsEpoch,
         ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus, ReceiverRole,
         ReceiverSampleTrace, SampleTime, SamplesFrame, SatId, Seconds, SigId, SignalBand,
-        SignalCode, SignalSpec, SolutionStatus, SolutionValidity, ValidationReferenceEpoch,
+        SignalCode, SignalSpec, SolutionStatus, SolutionValidity,
         NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
     };
     use bijux_gnss_nav::api::GpsEphemeris;

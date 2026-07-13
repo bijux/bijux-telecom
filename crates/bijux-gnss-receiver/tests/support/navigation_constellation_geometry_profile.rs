@@ -4,8 +4,8 @@ use bijux_gnss_core::api::{
     ecef_to_geodetic, Constellation, Cycles, GpsTime, Hertz, LockFlags, Meters, ObsEpoch,
     ObsMetadata, ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationStatus,
     ReceiverRole, ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
-    ValidationReferenceEpoch,
 };
+use bijux_gnss_receiver::api::ValidationReferenceEpoch;
 use bijux_gnss_receiver::api::{
     nav::{
         geodetic_to_ecef, position_broadcast_navigation_from_beidou_navigations,

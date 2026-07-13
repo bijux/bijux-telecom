@@ -3,9 +3,9 @@
 use bijux_gnss_core::api::{
     ecef_to_geodetic, geodetic_to_ecef, Chips, Constellation, Cycles, Epoch, GpsTime, Hertz,
     NavSolutionEpoch, ReceiverSampleTrace, SatId, SignalDelayAlignment, TrackEpoch,
-    ValidationReferenceEpoch,
 };
 use bijux_gnss_nav::api::{sat_state_gps_l1ca, GpsEphemeris};
+use bijux_gnss_receiver::api::ValidationReferenceEpoch;
 use bijux_gnss_receiver::api::{
     observations_from_tracking_results_with_gps_anchor,
     sim::{
