@@ -2978,6 +2978,59 @@ mod tests {
     }
 
     #[test]
+    fn run_fft_for_requests_keeps_galileo_e5_cache_entries_separate() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 10_230_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..ReceiverPipelineConfig::default()
+        };
+        let frame =
+            SamplesFrame::new(
+                SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
+                Seconds(1.0 / config.sampling_freq_hz),
+                (0..10_230)
+                    .map(|idx| {
+                        if idx % 2 == 0 {
+                            Complex::new(1.0, 0.0)
+                        } else {
+                            Complex::new(-1.0, 0.0)
+                        }
+                    })
+                    .collect(),
+            );
+        let acquisition = Acquisition::new(config, ReceiverRuntime::default());
+        let e5a_request = AcqRequest {
+            sat: SatId { constellation: Constellation::Galileo, prn: 11 },
+            glonass_frequency_channel: None,
+            signal_band: SignalBand::E5,
+            signal_code: SignalCode::E5a,
+            doppler_search_hz: 0,
+            doppler_step_hz: 1,
+            coherent_ms: 1,
+            noncoherent: 1,
+        };
+        let e5b_request = AcqRequest {
+            signal_code: SignalCode::E5b,
+            ..e5a_request
+        };
+
+        let e5a_run = acquisition.run_fft_topn_for_requests_with_explain(&frame, &[e5a_request], 1);
+        let after_e5a = acquisition.stats_snapshot();
+        assert_eq!(e5a_run.results[0][0].signal_code, SignalCode::E5a);
+        assert_eq!(after_e5a.cache_misses, 1);
+        assert_eq!(after_e5a.cache_hits, 0);
+
+        let e5b_run = acquisition.run_fft_topn_for_requests_with_explain(&frame, &[e5b_request], 1);
+        let after_e5b = acquisition.stats_snapshot();
+        assert_eq!(e5b_run.results[0][0].signal_code, SignalCode::E5b);
+        assert_eq!(after_e5b.cache_misses, 2);
+        assert_eq!(after_e5b.cache_hits, 0);
+        assert_eq!(after_e5b.cache_miss_incompatible, 1);
+    }
+
+    #[test]
     fn acquisition_stability_keys_are_sorted() {
         let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 1 };
         let mut rows = vec![
