@@ -80,7 +80,13 @@ fn quantization_loss_report_measures_lower_precision_against_float_reference() {
 
     assert_eq!(float32.quantization, IqQuantization::Float32);
     assert_eq!(float32.satellites.len(), 1);
-    assert!(float32.satellites[0].acquisition_correlation_loss_db.abs() < 1e-6);
+    assert!(
+        float32.satellites[0]
+            .acquisition_correlation_loss_db
+            .expect("float32 acquisition loss")
+            .abs()
+            < 1e-6
+    );
     assert!(float32.satellites[0].cn0_loss_db_hz.abs() < 1e-6);
 
     let finite_acquisition_losses = [
@@ -101,11 +107,23 @@ fn quantization_loss_report_measures_lower_precision_against_float_reference() {
     assert!(bipolar1.satellites[0].reference_mean_cn0_db_hz.is_finite(), "{bipolar1:?}");
     assert!(bipolar1.satellites[0].quantized_mean_cn0_db_hz.is_finite(), "{bipolar1:?}");
 
-    assert!(signed16.satellites[0].acquisition_correlation_loss_db < 0.1, "{signed16:?}");
+    assert!(
+        signed16.satellites[0].acquisition_correlation_loss_db.expect("signed16 acquisition loss")
+            < 0.1,
+        "{signed16:?}"
+    );
     assert!(signed16.satellites[0].cn0_loss_db_hz < 0.1, "{signed16:?}");
-    assert!(signed8.satellites[0].acquisition_correlation_loss_db > 0.0, "{signed8:?}");
-    assert!(signed2.satellites[0].acquisition_correlation_loss_db > 1.0, "{signed2:?}");
-    assert!(bipolar1.satellites[0].acquisition_correlation_loss_db.is_infinite(), "{bipolar1:?}");
+    assert!(
+        signed8.satellites[0].acquisition_correlation_loss_db.expect("signed8 acquisition loss")
+            > 0.0,
+        "{signed8:?}"
+    );
+    assert!(
+        signed2.satellites[0].acquisition_correlation_loss_db.expect("signed2 acquisition loss")
+            > 1.0,
+        "{signed2:?}"
+    );
+    assert_eq!(bipolar1.satellites[0].acquisition_correlation_loss_db, None, "{bipolar1:?}");
     assert_eq!(signed8.satellites[0].cn0_loss_db_hz, 0.0, "{signed8:?}");
     assert_eq!(signed4.satellites[0].cn0_loss_db_hz, 0.0, "{signed4:?}");
     assert_eq!(signed2.satellites[0].cn0_loss_db_hz, 0.0, "{signed2:?}");

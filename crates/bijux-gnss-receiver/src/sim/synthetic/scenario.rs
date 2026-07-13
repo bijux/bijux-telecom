@@ -584,7 +584,9 @@ pub struct SyntheticQuantizationLossSatellite {
     /// Quantized acquisition correlation peak measured for this profile.
     pub quantized_acquisition_peak: f32,
     /// Positive acquisition correlation loss relative to the float32 reference, in dB.
-    pub acquisition_correlation_loss_db: f64,
+    ///
+    /// `None` means the quantized profile did not produce a measurable acquisition peak.
+    pub acquisition_correlation_loss_db: Option<f64>,
     /// Reference acquisition peak-to-mean ratio.
     pub reference_peak_mean_ratio: f32,
     /// Quantized acquisition peak-to-mean ratio.

@@ -550,11 +550,11 @@ fn find_cn0_validation_row(
     report.satellites.iter().find(|row| row.sat == sat)
 }
 
-fn positive_amplitude_loss_db(reference_amplitude: f64, measured_amplitude: f64) -> f64 {
+fn positive_amplitude_loss_db(reference_amplitude: f64, measured_amplitude: f64) -> Option<f64> {
     if reference_amplitude <= f64::EPSILON || measured_amplitude <= f64::EPSILON {
-        return f64::INFINITY;
+        return None;
     }
-    (20.0 * (reference_amplitude / measured_amplitude).log10()).max(0.0)
+    Some((20.0 * (reference_amplitude / measured_amplitude).log10()).max(0.0))
 }
 
 pub fn expected_acquisition_code_phase_samples(
