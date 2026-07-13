@@ -352,20 +352,101 @@ impl Receiver {
                 ("decision_artifacts", observation_decisions_count.to_string()),
             ],
         });
-        runtime.trace.record(TraceRecord {
-            name: "pipeline_stage",
-            fields: vec![
-                ("stage", "navigation".to_string()),
-                ("status", "not_executed".to_string()),
-            ],
-        });
-        runtime.trace.record(TraceRecord {
-            name: "pipeline_stage_complete",
-            fields: vec![
-                ("stage", "navigation".to_string()),
-                ("status", "not_executed".to_string()),
-            ],
-        });
+        #[cfg(feature = "nav")]
+        let navigation = if let Some(capture_start_gps_time) = self.runtime().config.capture_start_gps_time
+        {
+            if let Some(gps_ephemerides) = receiver_navigation_ephemerides(input) {
+                runtime.trace.record(TraceRecord {
+                    name: "pipeline_stage",
+                    fields: vec![
+                        ("stage", "navigation".to_string()),
+                        ("status", "executing".to_string()),
+                        ("capture_week", capture_start_gps_time.week.to_string()),
+                        ("ephemeris_count", gps_ephemerides.len().to_string()),
+                    ],
+                });
+                let navigation_start = Instant::now();
+                let mut navigation =
+                    crate::pipeline::navigation::Navigation::new(self.config().clone(), self.runtime().clone());
+                let navigation_epochs = observation_output
+                    .epochs
+                    .iter()
+                    .filter_map(|epoch| navigation.solve_epoch(epoch, gps_ephemerides))
+                    .collect::<Vec<_>>();
+                let navigation_ms = navigation_start.elapsed().as_secs_f64() * 1000.0;
+                runtime.metrics.metric(Metric { name: "stage_navigation_ms", value: navigation_ms });
+                runtime.metrics.metric(Metric {
+                    name: "navigation_epoch_count",
+                    value: navigation_epochs.len() as f64,
+                });
+                runtime.trace.record(TraceRecord {
+                    name: "pipeline_stage_complete",
+                    fields: vec![
+                        ("stage", "navigation".to_string()),
+                        (
+                            "status",
+                            if navigation_epochs.is_empty() {
+                                "completed_empty".to_string()
+                            } else {
+                                "completed".to_string()
+                            },
+                        ),
+                        ("epochs", navigation_epochs.len().to_string()),
+                    ],
+                });
+                navigation_epochs
+            } else {
+                runtime.trace.record(TraceRecord {
+                    name: "pipeline_stage",
+                    fields: vec![
+                        ("stage", "navigation".to_string()),
+                        ("status", "missing_navigation_data".to_string()),
+                    ],
+                });
+                runtime.trace.record(TraceRecord {
+                    name: "pipeline_stage_complete",
+                    fields: vec![
+                        ("stage", "navigation".to_string()),
+                        ("status", "missing_navigation_data".to_string()),
+                    ],
+                });
+                Vec::new()
+            }
+        } else {
+            runtime.trace.record(TraceRecord {
+                name: "pipeline_stage",
+                fields: vec![
+                    ("stage", "navigation".to_string()),
+                    ("status", "missing_capture_start_gps_time".to_string()),
+                ],
+            });
+            runtime.trace.record(TraceRecord {
+                name: "pipeline_stage_complete",
+                fields: vec![
+                    ("stage", "navigation".to_string()),
+                    ("status", "missing_capture_start_gps_time".to_string()),
+                ],
+            });
+            Vec::new()
+        };
+        #[cfg(not(feature = "nav"))]
+        let navigation = {
+            runtime.trace.record(TraceRecord {
+                name: "pipeline_stage",
+                fields: vec![
+                    ("stage", "navigation".to_string()),
+                    ("status", "disabled".to_string()),
+                ],
+            });
+            runtime.trace.record(TraceRecord {
+                name: "pipeline_stage_complete",
+                fields: vec![
+                    ("stage", "navigation".to_string()),
+                    ("status", "disabled".to_string()),
+                ],
+            });
+            Vec::new()
+        };
         runtime.trace.record(TraceRecord {
             name: "pipeline_stage",
             fields: vec![
@@ -387,7 +468,7 @@ impl Receiver {
             observation_residuals: observation_output.residuals,
             observation_measurement_quality: observation_output.measurement_quality,
             support_matrix: Some(build_support_matrix()),
-            navigation: Vec::new(),
+            navigation,
         };
         runtime.trace.record(TraceRecord {
             name: "pipeline_stage_complete",
@@ -402,11 +483,31 @@ impl Receiver {
         });
         runtime.trace.record(TraceRecord {
             name: "pipeline_complete",
-            fields: vec![("stages", "acquisition,tracking,observations".to_string())],
+            fields: vec![(
+                "stages",
+                if cfg!(feature = "nav") {
+                    "acquisition,tracking,observations,navigation".to_string()
+                } else {
+                    "acquisition,tracking,observations".to_string()
+                },
+            )],
         });
         write_metrics_summary(self.runtime(), &artifacts, acquisition_stats);
         Ok(artifacts)
     }
+}
+
+#[cfg(feature = "nav")]
+fn receiver_navigation_ephemerides(
+    input: &dyn bijux_gnss_signal::api::SignalSource<
+        Error = crate::io::data::SampleSourceError,
+    >,
+) -> Option<&[bijux_gnss_nav::api::GpsEphemeris]> {
+    let source = input
+        .as_any()
+        .downcast_ref::<crate::sim::synthetic::SyntheticSignalSource>()?;
+    let gps_ephemerides = source.gps_ephemerides();
+    (!gps_ephemerides.is_empty()).then_some(gps_ephemerides)
 }
 
 fn streaming_tracking_frame_len(samples_per_code: usize) -> usize {
