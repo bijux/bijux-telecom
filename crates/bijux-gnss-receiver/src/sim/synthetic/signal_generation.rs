@@ -367,18 +367,45 @@ fn apply_source_front_end_filter_in_place(
 impl SyntheticSignalSource {
     /// Build a streaming synthetic source from a scenario without materializing the full capture.
     pub fn new(config: &ReceiverPipelineConfig, scenario: &SyntheticScenario) -> Self {
-        Self::with_noise_std_and_source_front_end(
+        Self::new_with_receiver_oscillator(
             config,
             scenario,
+            &receiver_oscillator_model_from_legacy_bias(scenario.receiver_clock_frequency_bias_hz),
+        )
+    }
+
+    /// Build a streaming synthetic source that emits only the deterministic signal component.
+    pub fn new_signal_only(config: &ReceiverPipelineConfig, scenario: &SyntheticScenario) -> Self {
+        Self::new_signal_only_with_receiver_oscillator(
+            config,
+            scenario,
+            &receiver_oscillator_model_from_legacy_bias(scenario.receiver_clock_frequency_bias_hz),
+        )
+    }
+
+    /// Build a streaming synthetic source from a scenario with explicit receiver oscillator effects.
+    pub fn new_with_receiver_oscillator(
+        config: &ReceiverPipelineConfig,
+        scenario: &SyntheticScenario,
+        receiver_oscillator: &SyntheticReceiverOscillatorModel,
+    ) -> Self {
+        Self::with_capture_effects(
+            config,
+            scenario,
+            receiver_oscillator,
             SYNTHETIC_NOISE_STD_PER_COMPONENT,
             Vec::new(),
             None,
         )
     }
 
-    /// Build a streaming synthetic source that emits only the deterministic signal component.
-    pub fn new_signal_only(config: &ReceiverPipelineConfig, scenario: &SyntheticScenario) -> Self {
-        Self::with_noise_std_and_source_front_end(config, scenario, 0.0, Vec::new(), None)
+    /// Build a signal-only streaming source with explicit receiver oscillator effects.
+    pub fn new_signal_only_with_receiver_oscillator(
+        config: &ReceiverPipelineConfig,
+        scenario: &SyntheticScenario,
+        receiver_oscillator: &SyntheticReceiverOscillatorModel,
+    ) -> Self {
+        Self::with_capture_effects(config, scenario, receiver_oscillator, 0.0, Vec::new(), None)
     }
 
     /// Build a streaming synthetic source with explicit whole-code signal-delay alignments.
@@ -387,9 +414,10 @@ impl SyntheticSignalSource {
         scenario: &SyntheticScenario,
         signal_delay_alignments: Vec<SyntheticSignalDelayAlignment>,
     ) -> Self {
-        Self::with_noise_std_and_source_front_end(
+        Self::with_capture_effects(
             config,
             scenario,
+            &receiver_oscillator_model_from_legacy_bias(scenario.receiver_clock_frequency_bias_hz),
             SYNTHETIC_NOISE_STD_PER_COMPONENT,
             signal_delay_alignments,
             None,
@@ -403,18 +431,20 @@ impl SyntheticSignalSource {
         signal_delay_alignments: Vec<SyntheticSignalDelayAlignment>,
         source_front_end_filter: Option<&bijux_gnss_signal::api::FrontEndFilterSpec>,
     ) -> Self {
-        Self::with_noise_std_and_source_front_end(
+        Self::with_capture_effects(
             config,
             scenario,
+            &receiver_oscillator_model_from_legacy_bias(scenario.receiver_clock_frequency_bias_hz),
             SYNTHETIC_NOISE_STD_PER_COMPONENT,
             signal_delay_alignments,
             source_front_end_filter,
         )
     }
 
-    fn with_noise_std_and_source_front_end(
+    fn with_capture_effects(
         config: &ReceiverPipelineConfig,
         scenario: &SyntheticScenario,
+        receiver_oscillator: &SyntheticReceiverOscillatorModel,
         noise_std: f32,
         signal_delay_alignments: Vec<SyntheticSignalDelayAlignment>,
         source_front_end_filter: Option<&bijux_gnss_signal::api::FrontEndFilterSpec>,
@@ -432,10 +462,11 @@ impl SyntheticSignalSource {
                 .satellites
                 .iter()
                 .map(|sat| {
-                    SatState::new_with_receiver_clock_frequency_bias_hz(
+                    SatState::new_with_receiver_oscillator(
                         config,
                         sat.clone(),
-                        scenario.receiver_clock_frequency_bias_hz,
+                        receiver_oscillator.clone(),
+                        sample_count as u64,
                     )
                 })
                 .collect(),
