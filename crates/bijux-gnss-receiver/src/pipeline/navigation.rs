@@ -3,16 +3,12 @@
 use bijux_gnss_core::api::{NavSolutionEpoch, ObsEpoch};
 use bijux_gnss_nav::api::{
     GalileoBroadcastNavigationData, GpsBroadcastNavigationData, GpsEphemeris,
-    KlobucharCoefficients, NavEngine, PositionBroadcastNavigation, PositionConstellationPolicy,
-    PositionFilterMotionClass, PositionRuntime, PositionRuntimeConfig,
-    PositionRuntimeThresholds, PositionRuntimeWeightingConfig, PositionWeightingModel,
+    KlobucharCoefficients, NavEngine, PositionBroadcastNavigation, PositionRuntime,
 };
 
-use crate::engine::receiver_config::{
-    ConstellationSelectionPolicy, NavigationMotionClass, NavigationWeightingMode,
-    ReceiverPipelineConfig,
-};
+use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::engine::runtime::ReceiverRuntime;
+use crate::pipeline::nav_config::position_runtime_config;
 
 pub use bijux_gnss_nav::api::{EkfState, NavigationEngine};
 
@@ -105,51 +101,5 @@ impl NavEngine for Navigation {
         let solution = self.inner.update(obs);
         self.flush_diagnostic_events();
         solution
-    }
-}
-
-fn position_runtime_config(config: &ReceiverPipelineConfig) -> PositionRuntimeConfig {
-    PositionRuntimeConfig {
-        robust_solver: config.robust_solver,
-        huber_k: config.huber_k,
-        raim: config.raim,
-        position_solution_smoothing: config.position_solution_smoothing,
-        position_solution_motion_class: match config.position_solution_motion_class {
-            NavigationMotionClass::Static => PositionFilterMotionClass::Static,
-            NavigationMotionClass::Pedestrian => PositionFilterMotionClass::Pedestrian,
-            NavigationMotionClass::Vehicle => PositionFilterMotionClass::Vehicle,
-            NavigationMotionClass::Airborne => PositionFilterMotionClass::Airborne,
-        },
-        weighting: PositionRuntimeWeightingConfig {
-            enabled: config.weighting.enabled,
-            mode: match config.weighting.mode {
-                NavigationWeightingMode::Elevation => PositionWeightingModel::Elevation,
-                NavigationWeightingMode::Cn0 => PositionWeightingModel::Cn0,
-                NavigationWeightingMode::ElevationCn0 => PositionWeightingModel::ElevationCn0,
-            },
-            min_elev_deg: config.weighting.min_elev_deg,
-            elev_exponent: config.weighting.elev_exponent,
-            cn0_ref_dbhz: config.weighting.cn0_ref_dbhz,
-            min_weight: config.weighting.min_weight,
-            elev_mask_deg: config.weighting.elev_mask_deg,
-            tracking_mode_scalar_weight: config.weighting.tracking_mode_scalar_weight,
-            tracking_mode_vector_weight: config.weighting.tracking_mode_vector_weight,
-        },
-        tropo_enable: config.tropo_enable,
-        science_thresholds: PositionRuntimeThresholds {
-            min_mean_cn0_dbhz: config.science_thresholds.min_mean_cn0_dbhz,
-            max_pdop: config.science_thresholds.max_pdop,
-            max_gdop: config.science_thresholds.max_gdop,
-            max_residual_rms_m: config.science_thresholds.max_residual_rms_m,
-            min_used_satellites: config.science_thresholds.min_used_satellites,
-            min_lock_ratio: config.science_thresholds.min_lock_ratio,
-        },
-        constellation_policy: match config.constellation_policy {
-            ConstellationSelectionPolicy::GpsOnly => PositionConstellationPolicy::GpsOnly,
-            ConstellationSelectionPolicy::GalileoOnly => PositionConstellationPolicy::GalileoOnly,
-            ConstellationSelectionPolicy::GlonassOnly => PositionConstellationPolicy::GlonassOnly,
-            ConstellationSelectionPolicy::BeidouOnly => PositionConstellationPolicy::BeidouOnly,
-            ConstellationSelectionPolicy::Mixed => PositionConstellationPolicy::Mixed,
-        },
     }
 }

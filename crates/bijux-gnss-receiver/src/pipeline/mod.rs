@@ -9,6 +9,8 @@ pub mod acquisition;
 pub mod doppler;
 pub mod hatch;
 #[cfg(feature = "nav")]
+pub(crate) mod nav_config;
+#[cfg(feature = "nav")]
 pub mod navigation;
 #[cfg(feature = "nav")]
 pub mod navigation_filter;

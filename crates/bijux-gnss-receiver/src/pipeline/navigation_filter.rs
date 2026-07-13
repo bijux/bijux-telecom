@@ -3,10 +3,10 @@
 use bijux_gnss_core::api::{NavSolutionEpoch, ObsEpoch};
 use bijux_gnss_nav::api::{
     GpsEphemeris, KlobucharCoefficients, NavigationFilter as NavNavigationFilter,
-    NavigationFilterConfig,
 };
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
+use crate::pipeline::nav_config::navigation_filter_config;
 
 pub use bijux_gnss_nav::api::NavigationFilterThresholds;
 
@@ -21,17 +21,7 @@ impl NavigationFilter {
     }
 
     pub fn from_pipeline_config(config: &ReceiverPipelineConfig) -> Self {
-        Self {
-            inner: NavNavigationFilter::new_with_config(NavigationFilterConfig {
-                tropo_enabled: config.tropo_enable,
-                tropo_ztd_m: config.tropo_ztd_m,
-                thresholds: NavigationFilterThresholds {
-                    max_pdop: config.science_thresholds.max_pdop,
-                    max_gdop: config.science_thresholds.max_gdop,
-                    min_used_satellites: config.science_thresholds.min_used_satellites,
-                },
-            }),
-        }
+        Self { inner: NavNavigationFilter::new_with_config(navigation_filter_config(config)) }
     }
 
     pub fn solve_epoch(
