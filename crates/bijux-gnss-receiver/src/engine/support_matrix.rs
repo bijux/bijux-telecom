@@ -192,6 +192,7 @@ fn derive_signal_requirements(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pipeline::signal_capabilities::signal_execution_support;
 
     #[test]
     fn gps_l1_support_row_reports_full_execution_path() {
@@ -240,5 +241,40 @@ mod tests {
         assert_eq!(row.stage_support.observations, SupportStatus::Supported);
         assert_eq!(row.stage_support.positioning, SupportStatus::Planned);
         assert!(row.requirements.iter().any(|value| value == "tracked_epoch_input"));
+    }
+
+    #[test]
+    fn support_matrix_rows_follow_signal_execution_support() {
+        let matrix = build_support_matrix();
+
+        for row in &matrix.rows {
+            let execution =
+                signal_execution_support(row.constellation, row.band, row.code);
+            assert_eq!(
+                row.stage_support.acquisition,
+                stage_status(execution.acquisition, true),
+                "{row:?}"
+            );
+            assert_eq!(
+                row.stage_support.tracking,
+                stage_status(execution.tracking, true),
+                "{row:?}"
+            );
+            assert_eq!(
+                row.stage_support.data_decoding,
+                stage_status(execution.data_decoding, true),
+                "{row:?}"
+            );
+            assert_eq!(
+                row.stage_support.observations,
+                stage_status(execution.observations, true),
+                "{row:?}"
+            );
+            assert_eq!(
+                row.stage_support.positioning,
+                stage_status(execution.positioning, true),
+                "{row:?}"
+            );
+        }
     }
 }
