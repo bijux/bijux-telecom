@@ -80,7 +80,7 @@ fn observation_truth_table_separates_same_satellite_l1_and_l5_rows() {
     }));
     assert!(duplicate_truth_rows.iter().any(|satellite| {
         satellite.signal_id.band == SignalBand::L5
-            && satellite.signal_id.code == SignalCode::Unknown
+            && satellite.signal_id.code == SignalCode::L5I
     }));
     assert!(duplicate_truth_rows
         .iter()
@@ -90,7 +90,7 @@ fn observation_truth_table_separates_same_satellite_l1_and_l5_rows() {
     }));
     assert!(duplicate_report_rows.iter().any(|satellite| {
         satellite.signal_id.band == SignalBand::L5
-            && satellite.signal_id.code == SignalCode::Unknown
+            && satellite.signal_id.code == SignalCode::L5I
     }));
 }
 
@@ -153,7 +153,7 @@ fn l5_observation_truth_applies_dispersive_ionosphere_delay() {
         .find(|satellite| {
             satellite.sat == duplicated_sat
                 && satellite.signal_id.band == SignalBand::L5
-                && satellite.signal_id.code == SignalCode::Unknown
+                && satellite.signal_id.code == SignalCode::L5I
         })
         .expect("L5 truth row");
 

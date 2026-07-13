@@ -2020,7 +2020,7 @@ mod tests {
                 41,
                 vec![
                     dual_frequency_satellite(SignalBand::L1, SignalCode::Ca, true, true),
-                    dual_frequency_satellite(SignalBand::L5, SignalCode::Unknown, true, true),
+                    dual_frequency_satellite(SignalBand::L5, SignalCode::L5I, true, true),
                 ],
             )],
             &[fixture_solution(41, 1.0, 0.5, 4)],

@@ -150,15 +150,15 @@ fn support_matrix_artifact_reports_registered_signal_stage_boundaries() {
         (
             Constellation::Gps,
             SignalBand::L5,
-            SignalCode::Unknown,
+            SignalCode::L5I,
             SignalStageSupport {
-                acquisition: SupportStatus::Planned,
-                tracking: SupportStatus::Planned,
+                acquisition: SupportStatus::Supported,
+                tracking: SupportStatus::Supported,
                 data_decoding: SupportStatus::Planned,
                 observations: SupportStatus::Supported,
                 positioning: SupportStatus::Planned,
             },
-            vec!["tracked_epoch_input"],
+            Vec::<&str>::new(),
             SupportStatus::Planned,
         ),
         (

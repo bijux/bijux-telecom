@@ -158,7 +158,7 @@ fn make_l1_l5_epoch(p1: f64, p5: f64, phi1: f64, phi5: f64) -> ObsEpoch {
                 },
             },
             ObsSatellite {
-                signal_id: SigId { sat, band: SignalBand::L5, code: SignalCode::Unknown },
+                signal_id: SigId { sat, band: SignalBand::L5, code: SignalCode::L5I },
                 pseudorange_m: bijux_gnss_core::api::Meters(p5),
                 pseudorange_var_m2: 1.0,
                 carrier_phase_cycles: bijux_gnss_core::api::Cycles(phi5),

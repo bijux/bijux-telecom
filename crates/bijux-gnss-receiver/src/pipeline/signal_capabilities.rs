@@ -1,10 +1,10 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    Constellation, SatId, SignalBand, SignalCode, SignalRegistryEntry, SignalStageSupport,
-    SignalSupportRow, SupportStatus,
+    Constellation, GlonassFrequencyChannel, SatId, SignalBand, SignalCode, SignalRegistryEntry,
+    SignalStageSupport, SignalSupportRow, SupportStatus,
 };
-use bijux_gnss_signal::api::default_acquisition_signal;
+use bijux_gnss_signal::api::AcquisitionSignalModel;
 #[cfg(test)]
 use bijux_gnss_signal::api::signal_registry;
 
@@ -54,9 +54,15 @@ pub(crate) fn supports_acquisition_signal(
     band: SignalBand,
     code: SignalCode,
 ) -> bool {
-    default_acquisition_signal(constellation)
-        .map(|signal| signal.spec.band == band && signal.spec.code == code)
-        .unwrap_or(false)
+    crate::pipeline::observations::tracked_signal_code_for_band(constellation, band) == Some(code)
+        && AcquisitionSignalModel::for_sat_signal_band(
+            sample_sat(constellation),
+            Some(band),
+            sample_glonass_frequency_channel(constellation),
+        )
+        .ok()
+        .flatten()
+        .is_some()
 }
 
 pub(crate) fn supports_tracking_signal(
@@ -104,6 +110,13 @@ pub(crate) fn supports_positioning_signal(
 
 fn sample_sat(constellation: Constellation) -> SatId {
     SatId { constellation, prn: representative_prn(constellation) }
+}
+
+fn sample_glonass_frequency_channel(
+    constellation: Constellation,
+) -> Option<GlonassFrequencyChannel> {
+    (constellation == Constellation::Glonass)
+        .then(|| GlonassFrequencyChannel::new(0).expect("GLONASS channel 0 must be valid"))
 }
 
 fn derive_signal_stage_support(execution: SignalExecutionSupport) -> SignalStageSupport {
@@ -281,6 +294,7 @@ mod tests {
         assert!(supports_tracking_signal(Constellation::Galileo, SignalBand::E1, SignalCode::E1B));
         assert!(supports_tracking_signal(Constellation::Gps, SignalBand::L2, SignalCode::L2C));
         assert!(!supports_tracking_signal(Constellation::Galileo, SignalBand::E1, SignalCode::E1C));
+        assert!(supports_tracking_signal(Constellation::Gps, SignalBand::L5, SignalCode::L5I));
         assert!(!supports_tracking_signal(Constellation::Gps, SignalBand::L5, SignalCode::Unknown));
     }
 
@@ -343,10 +357,10 @@ mod tests {
             (
                 Constellation::Gps,
                 SignalBand::L5,
-                SignalCode::Unknown,
+                SignalCode::L5I,
                 SignalExecutionSupport {
-                    acquisition: false,
-                    tracking: false,
+                    acquisition: true,
+                    tracking: true,
                     data_decoding: false,
                     observations: true,
                     positioning: false,

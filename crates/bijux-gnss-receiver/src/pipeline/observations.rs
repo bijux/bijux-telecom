@@ -1153,7 +1153,7 @@ pub(crate) fn tracked_signal_code_for_band(
     match (constellation, signal_band) {
         (Constellation::Gps, SignalBand::L1) => Some(SignalCode::Ca),
         (Constellation::Gps, SignalBand::L2) => Some(SignalCode::L2C),
-        (Constellation::Gps, SignalBand::L5) => Some(SignalCode::Unknown),
+        (Constellation::Gps, SignalBand::L5) => Some(SignalCode::L5I),
         (Constellation::Galileo, SignalBand::E1) => Some(SignalCode::E1B),
         (Constellation::Galileo, SignalBand::E5) => Some(SignalCode::E5a),
         (Constellation::Beidou, SignalBand::B1) => Some(SignalCode::B1I),
@@ -1930,6 +1930,7 @@ mod tests {
     fn observation_signal_support_follows_tracked_signal_mapping() {
         assert!(supports_observation_signal(Constellation::Gps, SignalBand::L1, SignalCode::Ca));
         assert!(supports_observation_signal(Constellation::Gps, SignalBand::L2, SignalCode::L2C));
+        assert!(supports_observation_signal(Constellation::Gps, SignalBand::L5, SignalCode::L5I));
         assert!(supports_observation_signal(
             Constellation::Galileo,
             SignalBand::E5,
@@ -3250,7 +3251,7 @@ mod tests {
         let obs_sat = report.output[0].sats.first().expect("observation satellite");
 
         assert_eq!(obs_sat.signal_id.band, SignalBand::L5);
-        assert_eq!(obs_sat.signal_id.code, SignalCode::Unknown);
+        assert_eq!(obs_sat.signal_id.code, SignalCode::L5I);
         assert_eq!(obs_sat.metadata.signal, signal);
         assert!((obs_sat.metadata.signal.code_rate_hz - 10_230_000.0).abs() <= f64::EPSILON);
         assert_eq!(obs_sat.metadata.pseudorange_model, "tracked_code_phase_alignment");

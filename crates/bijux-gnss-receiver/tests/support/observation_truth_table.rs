@@ -218,6 +218,7 @@ fn dispersive_track_seed(
         .expect("finite synthetic ionosphere pseudorange");
     let (whole_code_periods, code_phase_chips) =
         signal_code_alignment_from_pseudorange_m(pseudorange_m, signal_spec);
+    signal.signal_band = signal_spec.band;
     signal.code_phase_chips = code_phase_chips;
 
     ObservationTruthTrackSeed { signal, signal_spec, whole_code_periods }

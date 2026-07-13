@@ -106,7 +106,7 @@ fn expected_signal_id(sat: SatId, signal_band: Option<SignalBand>) -> SigId {
     let code = match (sat.constellation, signal_band.unwrap_or(SignalBand::Unknown)) {
         (Constellation::Gps, SignalBand::L1) => SignalCode::Ca,
         (Constellation::Gps, SignalBand::L2) => SignalCode::L2C,
-        (Constellation::Gps, SignalBand::L5) => SignalCode::Unknown,
+        (Constellation::Gps, SignalBand::L5) => SignalCode::L5I,
         (Constellation::Galileo, SignalBand::E1) => SignalCode::E1B,
         (Constellation::Beidou, SignalBand::B1) => SignalCode::B1I,
         (Constellation::Glonass, SignalBand::L1) => SignalCode::Unknown,
