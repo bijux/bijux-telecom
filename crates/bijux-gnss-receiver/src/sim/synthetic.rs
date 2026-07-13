@@ -59,11 +59,13 @@ include!("synthetic/signal_generation.rs");
 #[cfg(test)]
 mod tests {
     use super::{
-        build_iq16_capture_bundle, build_quantized_capture_bundle, build_truth_bundle,
+        build_iq16_capture_bundle, build_quantized_capture_bundle,
+        build_quantized_capture_bundle_with_receiver_oscillator, build_truth_bundle,
         expected_acquisition_code_phase_samples, expected_acquisition_code_phase_samples_f64,
         generate_l1_ca, generate_l1_ca_multi, generate_l1_ca_multi_signal_only,
-        generate_l1_ca_with_doppler_ramp, generate_l1_ca_with_fades,
-        generate_l1_ca_with_phase_windows, measure_noise_only_acquisition_false_alarm_rate,
+        generate_l1_ca_multi_with_receiver_oscillator, generate_l1_ca_with_doppler_ramp,
+        generate_l1_ca_with_fades, generate_l1_ca_with_phase_windows,
+        measure_noise_only_acquisition_false_alarm_rate,
         measure_noise_only_acquisition_false_alarm_rates,
         measure_truth_guided_acquisition_detection_probability,
         measure_truth_guided_acquisition_detection_rate, measure_truth_guided_tracking_lock_rate,
@@ -100,12 +102,12 @@ mod tests {
         SyntheticPvtTruthTableClockBias, SyntheticPvtTruthTableDop, SyntheticPvtTruthTableEcef,
         SyntheticPvtTruthTableEnuError, SyntheticPvtTruthTableEpoch,
         SyntheticPvtTruthTableGeodetic, SyntheticPvtTruthTableReport,
-        SyntheticReceiverOscillatorModel, SyntheticScenario, SyntheticSignalParams,
-        SyntheticSignalSource, SyntheticTrackingLockRateCase, SyntheticTrackingLockRatePoint,
-        SyntheticTrackingLockRateReport, SyntheticTrackingSensitivityTrial,
-        SyntheticTrackingTruthTableEpoch, SyntheticTrackingTruthTableReport,
-        SyntheticTrackingTruthTableSatellite, SPEED_OF_LIGHT_MPS, SYNTHETIC_COMPLEX_NOISE_POWER,
-        SYNTHETIC_NOISE_STD_PER_COMPONENT,
+        SyntheticReceiverOscillatorModel, SyntheticReceiverPhaseNoiseModel, SyntheticScenario,
+        SyntheticSignalParams, SyntheticSignalSource, SyntheticTrackingLockRateCase,
+        SyntheticTrackingLockRatePoint, SyntheticTrackingLockRateReport,
+        SyntheticTrackingSensitivityTrial, SyntheticTrackingTruthTableEpoch,
+        SyntheticTrackingTruthTableReport, SyntheticTrackingTruthTableSatellite,
+        SPEED_OF_LIGHT_MPS, SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
     use crate::reference_validation::ValidationReferenceEpoch;

@@ -700,6 +700,11 @@ impl SatState {
         carrier_hz * (1.0 + self.receiver_oscillator_model.sampling_clock_fractional_error)
     }
 
+    #[cfg(test)]
+    fn total_chip_phase_at(&self, t: f64) -> f64 {
+        self.code_phase_chips + self.signal_model.code_rate_hz() * self.effective_elapsed_s(t)
+    }
+
     fn carrier_phase_rad_at(&self, t: f64) -> f64 {
         let effective_elapsed_s = self.effective_elapsed_s(t);
         bijux_gnss_signal::api::carrier_phase_radians_at_time(

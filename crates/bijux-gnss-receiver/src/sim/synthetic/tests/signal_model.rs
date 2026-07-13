@@ -631,6 +631,90 @@ fn truth_bundle_preserves_glonass_frequency_channel_metadata() {
 }
 
 #[test]
+fn truth_bundle_records_separate_receiver_oscillator_effect_series() {
+    let config = ReceiverPipelineConfig {
+        sampling_freq_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 1_023_000.0,
+        code_length: 1023,
+        ..ReceiverPipelineConfig::default()
+    };
+    let scenario = SyntheticScenario {
+        sample_rate_hz: config.sampling_freq_hz,
+        intermediate_freq_hz: config.intermediate_freq_hz,
+        receiver_clock_frequency_bias_hz: 0.0,
+        duration_s: 0.004,
+        seed: 17,
+        satellites: vec![SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Gps, prn: 9 },
+            glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+            doppler_hz: 600.0,
+            code_phase_chips: 80.5,
+            carrier_phase_rad: 0.1,
+            cn0_db_hz: 50.0,
+            navigation_data: false.into(),
+        }],
+        ephemerides: Vec::new(),
+        id: "receiver-oscillator-truth".to_string(),
+    };
+    let receiver_oscillator = SyntheticReceiverOscillatorModel {
+        carrier_frequency_bias_hz: 125.0,
+        carrier_frequency_drift_hz_per_s: 18.0,
+        sampling_clock_fractional_error: 75.0e-6,
+        phase_noise: SyntheticReceiverPhaseNoiseModel {
+            seed: 77,
+            knot_interval_samples: 2_046,
+            step_std_rad: 0.05,
+        },
+    };
+    let frame =
+        generate_l1_ca_multi_with_receiver_oscillator(&config, &scenario, &receiver_oscillator);
+    let bundle = build_quantized_capture_bundle_with_receiver_oscillator(
+        &scenario.id,
+        &scenario,
+        &frame,
+        IqQuantization::Float32,
+        "2026-07-13T00:00:00Z",
+        Some("receiver oscillator truth bundle".to_string()),
+        &receiver_oscillator,
+    );
+
+    assert_eq!(bundle.truth.receiver_oscillator_model, receiver_oscillator);
+    assert!(bundle
+        .truth
+        .receiver_oscillator_truth
+        .carrier_frequency_bias_hz
+        .iter()
+        .all(|point| (point.value - 125.0).abs() <= f64::EPSILON));
+    assert!(bundle
+        .truth
+        .receiver_oscillator_truth
+        .carrier_frequency_drift_hz_per_s
+        .iter()
+        .all(|point| (point.value - 18.0).abs() <= f64::EPSILON));
+    assert!(bundle
+        .truth
+        .receiver_oscillator_truth
+        .phase_noise_rad
+        .iter()
+        .any(|point| point.value.abs() > 1.0e-6));
+    let last_sampling_clock_point = bundle
+        .truth
+        .receiver_oscillator_truth
+        .sampling_clock_time_error_s
+        .last()
+        .expect("sampling clock truth point");
+    let expected_time_error_s =
+        last_sampling_clock_point.time_s * receiver_oscillator.sampling_clock_fractional_error;
+    assert!(
+        (last_sampling_clock_point.value - expected_time_error_s).abs() <= 1.0e-12,
+        "{last_sampling_clock_point:?}"
+    );
+}
+
+#[test]
 fn truth_bundle_records_gps_l5q_nh20_segments() {
     let config = ReceiverPipelineConfig {
         sampling_freq_hz: 10_230_000.0,
@@ -1452,6 +1536,43 @@ fn doppler_ramp_updates_instantaneous_carrier_frequency_linearly() {
 }
 
 #[test]
+fn receiver_oscillator_drift_accumulates_separately_from_signal_doppler_rate() {
+    let config = ReceiverPipelineConfig {
+        sampling_freq_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 1_023_000.0,
+        code_length: 1023,
+        ..ReceiverPipelineConfig::default()
+    };
+    let params = SyntheticSignalParams {
+        sat: SatId { constellation: Constellation::Gps, prn: 18 },
+        glonass_frequency_channel: None,
+        signal_band: bijux_gnss_core::api::SignalBand::L1,
+        signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+        doppler_hz: 1_200.0,
+        code_phase_chips: 0.0,
+        carrier_phase_rad: 0.0,
+        cn0_db_hz: 60.0,
+        navigation_data: false.into(),
+    };
+    let sat_state = SatState::new_with_doppler_rate_and_receiver_oscillator(
+        &config,
+        params,
+        SyntheticReceiverOscillatorModel {
+            carrier_frequency_bias_hz: 150.0,
+            carrier_frequency_drift_hz_per_s: 25.0,
+            sampling_clock_fractional_error: 0.0,
+            phase_noise: SyntheticReceiverPhaseNoiseModel::default(),
+        },
+        40.0,
+        4_092,
+    );
+
+    assert!((sat_state.carrier_hz_at(0.0) - 1_350.0).abs() <= 1.0e-12);
+    assert!((sat_state.carrier_hz_at(0.50) - 1_382.5).abs() <= 1.0e-12);
+}
+
+#[test]
 fn doppler_ramp_integrates_into_carrier_phase_quadratically() {
     let config = ReceiverPipelineConfig {
         sampling_freq_hz: 4_092_000.0,
@@ -1483,6 +1604,100 @@ fn doppler_ramp_integrates_into_carrier_phase_quadratically() {
         "carrier phase ramp mismatch: actual={}, expected={expected_phase_rad}",
         sat_state.carrier_phase_rad_at(t_s)
     );
+}
+
+#[test]
+fn receiver_oscillator_phase_noise_is_deterministic_and_distinct_from_nominal_carrier() {
+    let config = ReceiverPipelineConfig {
+        sampling_freq_hz: 1_023_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 1_023_000.0,
+        code_length: 1023,
+        ..ReceiverPipelineConfig::default()
+    };
+    let scenario = SyntheticScenario {
+        sample_rate_hz: config.sampling_freq_hz,
+        intermediate_freq_hz: config.intermediate_freq_hz,
+        receiver_clock_frequency_bias_hz: 0.0,
+        duration_s: 0.004,
+        seed: 11,
+        satellites: vec![SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Gps, prn: 6 },
+            glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+            doppler_hz: 0.0,
+            code_phase_chips: 0.0,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 55.0,
+            navigation_data: false.into(),
+        }],
+        ephemerides: Vec::new(),
+        id: "receiver-phase-noise".to_string(),
+    };
+    let receiver_oscillator = SyntheticReceiverOscillatorModel {
+        carrier_frequency_bias_hz: 0.0,
+        carrier_frequency_drift_hz_per_s: 0.0,
+        sampling_clock_fractional_error: 0.0,
+        phase_noise: SyntheticReceiverPhaseNoiseModel {
+            seed: 91,
+            knot_interval_samples: 1_023,
+            step_std_rad: 0.08,
+        },
+    };
+
+    let phase_noisy_a =
+        generate_l1_ca_multi_with_receiver_oscillator(&config, &scenario, &receiver_oscillator);
+    let phase_noisy_b =
+        generate_l1_ca_multi_with_receiver_oscillator(&config, &scenario, &receiver_oscillator);
+    let nominal = generate_l1_ca_multi(&config, &scenario);
+
+    assert_eq!(phase_noisy_a.iq, phase_noisy_b.iq);
+    assert_ne!(phase_noisy_a.iq[1_023], nominal.iq[1_023]);
+}
+
+#[test]
+fn receiver_oscillator_sampling_clock_error_advances_code_phase_at_expected_rate() {
+    let config = ReceiverPipelineConfig {
+        sampling_freq_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 1_023_000.0,
+        code_length: 1023,
+        ..ReceiverPipelineConfig::default()
+    };
+    let params = SyntheticSignalParams {
+        sat: SatId { constellation: Constellation::Gps, prn: 4 },
+        glonass_frequency_channel: None,
+        signal_band: bijux_gnss_core::api::SignalBand::L1,
+        signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+        doppler_hz: 0.0,
+        code_phase_chips: 100.0,
+        carrier_phase_rad: 0.0,
+        cn0_db_hz: 60.0,
+        navigation_data: false.into(),
+    };
+    let nominal = SatState::new_with_receiver_oscillator(
+        &config,
+        params.clone(),
+        SyntheticReceiverOscillatorModel::default(),
+        4_092,
+    );
+    let skewed = SatState::new_with_receiver_oscillator(
+        &config,
+        params,
+        SyntheticReceiverOscillatorModel {
+            carrier_frequency_bias_hz: 0.0,
+            carrier_frequency_drift_hz_per_s: 0.0,
+            sampling_clock_fractional_error: 100.0e-6,
+            phase_noise: SyntheticReceiverPhaseNoiseModel::default(),
+        },
+        4_092,
+    );
+    let t_s = 0.001;
+    let actual_extra_chips = skewed.total_chip_phase_at(t_s) - nominal.total_chip_phase_at(t_s);
+    let expected_extra_chips = config.code_freq_basis_hz * t_s * 100.0e-6;
+
+    assert!((actual_extra_chips - expected_extra_chips).abs() <= 1.0e-9);
 }
 
 #[test]
