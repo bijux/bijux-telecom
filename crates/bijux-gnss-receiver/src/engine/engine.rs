@@ -9,8 +9,8 @@ use crate::pipeline::observations::{
     observation_artifacts_from_tracking_results_with_gps_anchor, observation_decisions_from_epochs,
 };
 use bijux_gnss_core::api::{
-    default_acquisition_sats, default_acquisition_signal, AcqHypothesis, AcqRequest, AcqResult,
-    Constellation, InputError, SamplesFrame, SatId, TrackEpoch,
+    default_acquisition_signal, AcqHypothesis, AcqRequest, AcqResult, Constellation, InputError,
+    SamplesFrame, SatId, TrackEpoch,
 };
 use bijux_gnss_signal::api::{remove_dc_offset_in_place, samples_per_code};
 use std::time::Instant;
@@ -593,7 +593,7 @@ fn default_acquisition_requests(
             if acquisition_signal_matches_config(config, constellation)
                 && constellation_supports_slot_only_acquisition(constellation)
             {
-                default_acquisition_sats(constellation)
+                crate::engine::acquisition_catalog::default_acquisition_satellites(constellation)
                     .into_iter()
                     .map(|sat| AcqRequest {
                         sat,
