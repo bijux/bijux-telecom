@@ -4177,7 +4177,7 @@ mod tests {
 
         let solution = nav.solve_epoch(&obs, &ephs).expect("underdetermined refusal");
 
-        assert_eq!(solution.status, SolutionStatus::Refused);
+        assert_eq!(solution.status, SolutionStatus::IntegrityFailed);
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::InsufficientGeometry));
         assert!(!solution.valid);
         assert!(solution
@@ -4188,6 +4188,10 @@ mod tests {
             .explain_reasons
             .iter()
             .any(|reason| reason.starts_with("raim_suspect_prn=")));
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "refusal_cause=integrity"));
         assert_eq!(solution.pre_fit_residual_rms_m, None);
         assert_eq!(solution.post_fit_residual_rms_m, None);
     }
