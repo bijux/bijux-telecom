@@ -5,15 +5,17 @@ use bijux_gnss_core::api::{
     SampleTime, SamplesFrame, Seconds, SignalBand,
 };
 use bijux_gnss_core::api::{Constellation, SatId};
-use bijux_gnss_nav::api::{sat_state_gps_l1ca, GpsEphemeris};
+use bijux_gnss_nav::api::GpsEphemeris;
 use bijux_gnss_receiver::api::{
     carrier_hz_from_doppler_hz,
-    sim::{
-        expected_acquisition_code_phase_samples, expected_acquisition_code_phase_samples_f64,
-        SyntheticScenario, SyntheticSignalParams,
-    },
+    sim::{SyntheticScenario, SyntheticSignalParams},
     ReceiverPipelineConfig,
 };
+use bijux_gnss_testkit::acquisition_truth::{
+    gps_l1ca_expected_acquisition_code_phase_samples,
+    gps_l1ca_expected_acquisition_code_phase_samples_f64,
+};
+use bijux_gnss_testkit::position_truth::pseudorange_from_truth;
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 const GPS_L1_CA_CODE_RATE_HZ: f64 = 1_023_000.0;
 const GPS_L1_CA_CODE_PERIOD_CHIPS: f64 = 1023.0;
@@ -92,22 +94,7 @@ pub fn synthetic_pseudorange_m(
     t_rx_s: f64,
     truth_ecef_m: (f64, f64, f64),
 ) -> f64 {
-    let mut tau = 0.07;
-    let mut pseudorange_m = 0.0;
-    for _ in 0..10 {
-        let sat = sat_state_gps_l1ca(ephemeris, t_rx_s - tau, tau);
-        let dx = truth_ecef_m.0 - sat.x_m;
-        let dy = truth_ecef_m.1 - sat.y_m;
-        let dz = truth_ecef_m.2 - sat.z_m;
-        let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
-        pseudorange_m = range_m - sat.clock_correction.bias_s * SPEED_OF_LIGHT_MPS;
-        let next_tau = pseudorange_m / SPEED_OF_LIGHT_MPS;
-        if (next_tau - tau).abs() < 1e-12 {
-            break;
-        }
-        tau = next_tau;
-    }
-    pseudorange_m
+    pseudorange_from_truth(ephemeris, truth_ecef_m, t_rx_s, 0.0)
 }
 
 pub fn truth_seeded_acquisition_results(
@@ -127,14 +114,14 @@ pub fn truth_seeded_acquisition_results(
         .satellites
         .iter()
         .map(|signal| {
-            let code_phase_samples = expected_acquisition_code_phase_samples(
-                config,
-                &acquisition_frame,
+            let code_phase_samples = gps_l1ca_expected_acquisition_code_phase_samples(
+                config.sampling_freq_hz,
+                acquisition_frame.t0.sample_index,
                 signal.code_phase_chips,
             );
-            let refined_code_phase_samples = expected_acquisition_code_phase_samples_f64(
-                config,
-                &acquisition_frame,
+            let refined_code_phase_samples = gps_l1ca_expected_acquisition_code_phase_samples_f64(
+                config.sampling_freq_hz,
+                acquisition_frame.t0.sample_index,
                 signal.code_phase_chips,
             );
             AcqResult {

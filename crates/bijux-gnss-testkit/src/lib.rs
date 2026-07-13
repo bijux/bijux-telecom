@@ -4,6 +4,7 @@
 mod reference_math;
 
 pub mod antenna_validation;
+pub mod acquisition_truth;
 pub mod front_end;
 pub mod position_truth;
 pub mod public_ppp;

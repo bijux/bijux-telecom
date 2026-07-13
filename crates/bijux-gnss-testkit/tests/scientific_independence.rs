@@ -19,9 +19,12 @@ fn truth_fixtures_do_not_call_nav_geometry_or_differencing_helpers() {
         "rtk_single_differences_from_obs_epochs",
         "rtk_double_differences_from_single_differences",
         ".range_correction_m(",
+        "sim::expected_acquisition_code_phase_samples",
+        "sim::expected_acquisition_code_phase_samples_f64",
     ];
 
     for relative_path in [
+        "src/acquisition_truth.rs",
         "src/position_truth.rs",
         "src/public_station.rs",
         "src/public_troposphere.rs",
