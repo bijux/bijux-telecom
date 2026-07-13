@@ -8,7 +8,7 @@ pub fn build_truth_bundle(
     peak_component_before_scaling: f32,
     output_scale_applied: f32,
 ) -> SyntheticIqTruthBundle {
-    build_truth_bundle_with_source_front_end(
+    build_truth_bundle_with_capture_effects(
         scenario_id,
         scenario,
         frame,
@@ -16,6 +16,30 @@ pub fn build_truth_bundle(
         quantization,
         peak_component_before_scaling,
         output_scale_applied,
+        &receiver_oscillator_model_from_legacy_bias(scenario.receiver_clock_frequency_bias_hz),
+        None,
+    )
+}
+
+pub fn build_truth_bundle_with_receiver_oscillator(
+    scenario_id: &str,
+    scenario: &SyntheticScenario,
+    frame: &SamplesFrame,
+    metadata: &RawIqMetadata,
+    quantization: IqQuantization,
+    peak_component_before_scaling: f32,
+    output_scale_applied: f32,
+    receiver_oscillator: &SyntheticReceiverOscillatorModel,
+) -> SyntheticIqTruthBundle {
+    build_truth_bundle_with_capture_effects(
+        scenario_id,
+        scenario,
+        frame,
+        metadata,
+        quantization,
+        peak_component_before_scaling,
+        output_scale_applied,
+        receiver_oscillator,
         None,
     )
 }
@@ -30,13 +54,35 @@ pub fn build_truth_bundle_with_source_front_end(
     output_scale_applied: f32,
     source_front_end_filter: Option<&bijux_gnss_signal::api::FrontEndFilterSpec>,
 ) -> SyntheticIqTruthBundle {
+    build_truth_bundle_with_capture_effects(
+        scenario_id,
+        scenario,
+        frame,
+        metadata,
+        quantization,
+        peak_component_before_scaling,
+        output_scale_applied,
+        &receiver_oscillator_model_from_legacy_bias(scenario.receiver_clock_frequency_bias_hz),
+        source_front_end_filter,
+    )
+}
+
+fn build_truth_bundle_with_capture_effects(
+    scenario_id: &str,
+    scenario: &SyntheticScenario,
+    frame: &SamplesFrame,
+    metadata: &RawIqMetadata,
+    quantization: IqQuantization,
+    peak_component_before_scaling: f32,
+    output_scale_applied: f32,
+    receiver_oscillator_model: &SyntheticReceiverOscillatorModel,
+    source_front_end_filter: Option<&bijux_gnss_signal::api::FrontEndFilterSpec>,
+) -> SyntheticIqTruthBundle {
     let noise_std_per_component =
         source_front_end_noise_std_per_component(source_front_end_filter, frame.t0.sample_rate_hz);
     let noise_power_per_complex_sample = 2.0 * noise_std_per_component * noise_std_per_component;
-    let receiver_oscillator_model =
-        receiver_oscillator_model_from_legacy_bias(scenario.receiver_clock_frequency_bias_hz);
     let receiver_oscillator_truth = receiver_oscillator_truth_for_capture(
-        &receiver_oscillator_model,
+        receiver_oscillator_model,
         frame.t0.sample_rate_hz,
         frame.len() as u64,
     );
@@ -49,7 +95,7 @@ pub fn build_truth_bundle_with_source_front_end(
         sample_rate_hz: frame.t0.sample_rate_hz,
         intermediate_freq_hz: metadata.intermediate_freq_hz,
         receiver_clock_frequency_bias_hz: scenario.receiver_clock_frequency_bias_hz,
-        receiver_oscillator_model,
+        receiver_oscillator_model: receiver_oscillator_model.clone(),
         capture_start_utc: metadata.capture_start_utc.clone(),
         quantization_bits: metadata.quantization_bits.unwrap_or_default(),
         duration_s: frame.len() as f64 * frame.dt_s.0,
@@ -104,13 +150,35 @@ pub fn build_quantized_capture_bundle(
     capture_start_utc: &str,
     notes: Option<String>,
 ) -> SyntheticIqCaptureBundle {
-    build_quantized_capture_bundle_with_source_front_end(
+    build_quantized_capture_bundle_with_capture_effects(
         scenario_id,
         scenario,
         frame,
         quantization,
         capture_start_utc,
         notes,
+        &receiver_oscillator_model_from_legacy_bias(scenario.receiver_clock_frequency_bias_hz),
+        None,
+    )
+}
+
+pub fn build_quantized_capture_bundle_with_receiver_oscillator(
+    scenario_id: &str,
+    scenario: &SyntheticScenario,
+    frame: &SamplesFrame,
+    quantization: IqQuantization,
+    capture_start_utc: &str,
+    notes: Option<String>,
+    receiver_oscillator: &SyntheticReceiverOscillatorModel,
+) -> SyntheticIqCaptureBundle {
+    build_quantized_capture_bundle_with_capture_effects(
+        scenario_id,
+        scenario,
+        frame,
+        quantization,
+        capture_start_utc,
+        notes,
+        receiver_oscillator,
         None,
     )
 }
@@ -122,6 +190,28 @@ pub fn build_quantized_capture_bundle_with_source_front_end(
     quantization: IqQuantization,
     capture_start_utc: &str,
     notes: Option<String>,
+    source_front_end_filter: Option<&bijux_gnss_signal::api::FrontEndFilterSpec>,
+) -> SyntheticIqCaptureBundle {
+    build_quantized_capture_bundle_with_capture_effects(
+        scenario_id,
+        scenario,
+        frame,
+        quantization,
+        capture_start_utc,
+        notes,
+        &receiver_oscillator_model_from_legacy_bias(scenario.receiver_clock_frequency_bias_hz),
+        source_front_end_filter,
+    )
+}
+
+fn build_quantized_capture_bundle_with_capture_effects(
+    scenario_id: &str,
+    scenario: &SyntheticScenario,
+    frame: &SamplesFrame,
+    quantization: IqQuantization,
+    capture_start_utc: &str,
+    notes: Option<String>,
+    receiver_oscillator: &SyntheticReceiverOscillatorModel,
     source_front_end_filter: Option<&bijux_gnss_signal::api::FrontEndFilterSpec>,
 ) -> SyntheticIqCaptureBundle {
     let peak_component_before_scaling = peak_component(&frame.iq);
@@ -142,7 +232,7 @@ pub fn build_quantized_capture_bundle_with_source_front_end(
         quantization_bits: Some(quantization.quantization_bits()),
         notes,
     };
-    let truth = build_truth_bundle_with_source_front_end(
+    let truth = build_truth_bundle_with_capture_effects(
         scenario_id,
         scenario,
         frame,
@@ -150,6 +240,7 @@ pub fn build_quantized_capture_bundle_with_source_front_end(
         quantization,
         peak_component_before_scaling,
         output_scale_applied,
+        receiver_oscillator,
         source_front_end_filter,
     );
     SyntheticIqCaptureBundle { raw_iq_bytes, metadata, truth }

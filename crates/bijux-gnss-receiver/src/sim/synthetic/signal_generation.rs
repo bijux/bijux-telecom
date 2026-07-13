@@ -722,9 +722,10 @@ fn regenerate_isolated_scaled_satellite_signal_only_frame(
     truth: &SyntheticIqTruthBundle,
     sat_truth: &SyntheticSatelliteTruth,
 ) -> SamplesFrame {
-    let isolated_frame = generate_l1_ca_multi_signal_only_with_source_front_end(
+    let isolated_frame = generate_l1_ca_multi_signal_only_with_capture_effects(
         config,
         &isolated_satellite_scenario(measured_frame, truth, sat_truth),
+        &truth.receiver_oscillator_model,
         truth.source_front_end_filter.as_ref(),
     );
     let iq = isolated_frame
@@ -745,9 +746,10 @@ fn regenerate_isolated_scaled_satellite_frame_with_noise(
     truth: &SyntheticIqTruthBundle,
     sat_truth: &SyntheticSatelliteTruth,
 ) -> SamplesFrame {
-    let isolated_frame = generate_l1_ca_multi_with_source_front_end(
+    let isolated_frame = generate_l1_ca_multi_with_capture_effects(
         config,
         &isolated_satellite_scenario(measured_frame, truth, sat_truth),
+        &truth.receiver_oscillator_model,
         truth.source_front_end_filter.as_ref(),
     );
     let iq = isolated_frame
