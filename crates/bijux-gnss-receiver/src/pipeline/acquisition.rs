@@ -73,6 +73,7 @@ const WRONG_PRN_PEAK_SECOND_RATIO_MAX: f32 = 1.1;
 struct CodeFftCacheKey {
     sat: SatId,
     signal_band: SignalBand,
+    signal_code: SignalCode,
     samples_per_code: usize,
     sampling_hz_bits: u64,
     if_hz_bits: u64,
@@ -89,6 +90,7 @@ impl CodeFftCacheKey {
         config: &ReceiverPipelineConfig,
         model: &AcquisitionSignalModel,
         sat: SatId,
+        signal_code: SignalCode,
         samples_per_code: usize,
         doppler_search_hz: i32,
         doppler_step_hz: i32,
@@ -96,6 +98,7 @@ impl CodeFftCacheKey {
         Self {
             sat,
             signal_band: model.signal_band,
+            signal_code,
             samples_per_code,
             sampling_hz_bits: config.sampling_freq_hz.to_bits(),
             if_hz_bits: config.intermediate_freq_hz.to_bits(),
@@ -609,6 +612,7 @@ impl Acquisition {
             let code_fft = self.code_fft(
                 &signal_model,
                 sat,
+                signal_code,
                 samples_per_code,
                 request.coherent_ms,
                 request.noncoherent,
@@ -998,6 +1002,7 @@ impl Acquisition {
         &self,
         signal_model: &AcquisitionSignalModel,
         sat: SatId,
+        signal_code: SignalCode,
         samples_per_code: usize,
         _coherent_ms: u32,
         _noncoherent: u32,
@@ -1007,6 +1012,7 @@ impl Acquisition {
             &self.config,
             &signal_model,
             sat,
+            signal_code,
             samples_per_code,
             self.doppler_search_hz,
             self.doppler_step_hz,
@@ -1020,6 +1026,8 @@ impl Acquisition {
                 fields: vec![
                     ("constellation", format!("{:?}", sat.constellation)),
                     ("prn", sat.prn.to_string()),
+                    ("signal_band", format!("{:?}", signal_model.signal_band)),
+                    ("signal_code", format!("{:?}", signal_code)),
                     ("samples_per_code", samples_per_code.to_string()),
                 ],
             });
@@ -1053,6 +1061,8 @@ impl Acquisition {
             fields: vec![
                 ("constellation", format!("{:?}", sat.constellation)),
                 ("prn", sat.prn.to_string()),
+                ("signal_band", format!("{:?}", signal_model.signal_band)),
+                ("signal_code", format!("{:?}", signal_code)),
                 ("samples_per_code", samples_per_code.to_string()),
                 ("reason", miss_reason.as_str().to_string()),
                 ("model_version", ACQUISITION_CACHE_MODEL_VERSION.to_string()),
@@ -2785,16 +2795,102 @@ mod tests {
             None,
         );
 
-        acquisition.code_fft(&signal_model, sat, samples_per_code, 1, 1, fft.as_ref());
+        acquisition.code_fft(
+            &signal_model,
+            sat,
+            SignalCode::Ca,
+            samples_per_code,
+            1,
+            1,
+            fft.as_ref(),
+        );
         let after_first_profile = acquisition.stats_snapshot();
         assert_eq!(after_first_profile.cache_misses, 1);
         assert_eq!(after_first_profile.cache_hits, 0);
 
-        acquisition.code_fft(&signal_model, sat, samples_per_code, 1, 4, fft.as_ref());
+        acquisition.code_fft(
+            &signal_model,
+            sat,
+            SignalCode::Ca,
+            samples_per_code,
+            1,
+            4,
+            fft.as_ref(),
+        );
         let after_second_profile = acquisition.stats_snapshot();
         assert_eq!(after_second_profile.cache_misses, 1);
         assert_eq!(after_second_profile.cache_hits, 1);
         assert_eq!(after_second_profile.cache_miss_incompatible, 0);
+    }
+
+    #[test]
+    fn code_fft_cache_separates_gps_l5_signal_codes() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 10_230_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+        let acquisition = Acquisition::new(config, ReceiverRuntime::default());
+        let samples_per_code = 10_230;
+        let mut planner = FftPlanner::<f32>::new();
+        let fft = planner.plan_fft_forward(samples_per_code);
+        let gps_l5_i = acquisition_signal_model_for_sat(
+            &acquisition.config,
+            sat,
+            SignalBand::L5,
+            SignalCode::L5I,
+            None,
+        );
+        let gps_l5_q = acquisition_signal_model_for_sat(
+            &acquisition.config,
+            sat,
+            SignalBand::L5,
+            SignalCode::L5Q,
+            None,
+        );
+
+        acquisition.code_fft(
+            &gps_l5_i,
+            sat,
+            SignalCode::L5I,
+            samples_per_code,
+            1,
+            1,
+            fft.as_ref(),
+        );
+        let after_l5_i = acquisition.stats_snapshot();
+        assert_eq!(after_l5_i.cache_misses, 1);
+        assert_eq!(after_l5_i.cache_hits, 0);
+
+        acquisition.code_fft(
+            &gps_l5_q,
+            sat,
+            SignalCode::L5Q,
+            samples_per_code,
+            1,
+            1,
+            fft.as_ref(),
+        );
+        let after_l5_q = acquisition.stats_snapshot();
+        assert_eq!(after_l5_q.cache_misses, 2);
+        assert_eq!(after_l5_q.cache_hits, 0);
+        assert_eq!(after_l5_q.cache_miss_incompatible, 1);
+
+        acquisition.code_fft(
+            &gps_l5_q,
+            sat,
+            SignalCode::L5Q,
+            samples_per_code,
+            1,
+            1,
+            fft.as_ref(),
+        );
+        let after_l5_q_reuse = acquisition.stats_snapshot();
+        assert_eq!(after_l5_q_reuse.cache_misses, 2);
+        assert_eq!(after_l5_q_reuse.cache_hits, 1);
     }
 
     #[test]
