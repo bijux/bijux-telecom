@@ -62,11 +62,8 @@ fn receiver_promotes_beidou_b1i_into_tracking_and_observations() {
         .iter()
         .find(|result| result.sat == sat)
         .expect("BeiDou acquisition result");
-    let track = artifacts
-        .tracking
-        .iter()
-        .find(|result| result.sat == sat)
-        .expect("BeiDou tracking result");
+    let track =
+        artifacts.tracking.iter().find(|result| result.sat == sat).expect("BeiDou tracking result");
     let report = artifacts
         .channel_state_reports
         .iter()
@@ -123,11 +120,12 @@ fn support_matrix_describes_beidou_b1i_as_observation_ready() {
         .expect("BeiDou B1I support row");
 
     assert!(matches!(row.status, SupportStatus::Planned), "{row:?}");
-    assert!(
-        row.reason.contains("receiver acquisition, tracking, and observations support this signal path"),
-        "{row:?}"
-    );
-    assert!(row.reason.contains("navigation"), "{row:?}");
+    assert!(matches!(row.stage_support.acquisition, SupportStatus::Supported), "{row:?}");
+    assert!(matches!(row.stage_support.tracking, SupportStatus::Supported), "{row:?}");
+    assert!(matches!(row.stage_support.data_decoding, SupportStatus::Planned), "{row:?}");
+    assert!(matches!(row.stage_support.observations, SupportStatus::Supported), "{row:?}");
+    assert!(matches!(row.stage_support.positioning, SupportStatus::Supported), "{row:?}");
+    assert!(row.requirements.is_empty(), "{row:?}");
 }
 
 #[test]

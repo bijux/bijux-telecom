@@ -103,7 +103,7 @@ fn receiver_run_with_explicit_glonass_requests_produces_tracking_and_observation
 }
 
 #[test]
-fn receiver_default_run_does_not_guess_glonass_frequency_channels() {
+fn receiver_default_run_uses_glonass_channel_metadata_when_available() {
     let slot = GlonassSlot::new(8).expect("slot 8 must be valid");
     let sat = glonass_slot_sat(slot);
     let channel = GlonassFrequencyChannel::new(-4).expect("channel -4 must be valid");
@@ -124,12 +124,18 @@ fn receiver_default_run_does_not_guess_glonass_frequency_channels() {
         })
         .expect("GLONASS L1 support row");
 
-    assert!(artifacts.acquisitions.is_empty(), "{artifacts:?}");
-    assert!(artifacts.tracking.is_empty(), "{artifacts:?}");
+    assert!(!artifacts.acquisitions.is_empty(), "{artifacts:?}");
+    assert!(!artifacts.tracking.is_empty(), "{artifacts:?}");
     assert!(matches!(row.status, SupportStatus::Planned), "{row:?}");
-    assert!(row.reason.contains("explicit FDMA channel requests"), "{row:?}");
-    assert!(row.reason.contains("tracking"), "{row:?}");
-    assert!(row.reason.contains("observations"), "{row:?}");
+    assert!(matches!(row.stage_support.acquisition, SupportStatus::Supported), "{row:?}");
+    assert!(matches!(row.stage_support.tracking, SupportStatus::Supported), "{row:?}");
+    assert!(matches!(row.stage_support.data_decoding, SupportStatus::Planned), "{row:?}");
+    assert!(matches!(row.stage_support.observations, SupportStatus::Supported), "{row:?}");
+    assert!(matches!(row.stage_support.positioning, SupportStatus::Supported), "{row:?}");
+    assert!(
+        row.requirements.iter().any(|value| value == "glonass_frequency_channel_available"),
+        "{row:?}"
+    );
 }
 
 #[test]
