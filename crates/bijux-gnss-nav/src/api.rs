@@ -87,6 +87,16 @@ pub use crate::estimation::ppp::config::{
     PppArMode, PppConfig, PppConvergenceConfig, PppFilter, PppProcessNoise, PppSolutionEpoch,
     PppTroposphereSource,
 };
+/// Advanced PPP/RTK solution claim and refusal surfaces.
+pub use crate::estimation::solution_claims::{
+    apply_downgrade_policy, evaluate_prerequisites, evaluate_solution_evidence,
+    support_status_matrix, AdvancedClaimDecision, AdvancedMaturity, AdvancedMode,
+    AdvancedPrereqDecision, AdvancedPrerequisites, AdvancedRefusalClass,
+    AdvancedSolutionArtifact, AdvancedSolutionClaim, AdvancedSolutionEvidence,
+    AdvancedSolutionMeasurements, AdvancedSolutionProvenance, AdvancedSupportMatrix,
+    AdvancedSupportRow, AmbiguityStateArtifact, CorrectionInputArtifact, ExecutionArtifact,
+    ExecutionStatus, ADVANCED_SUPPORT_MATRIX_VERSION,
+};
 /// RTK float-baseline helpers.
 pub use crate::estimation::rtk::ambiguity::{
     rtk_ambiguity_state_from_fixed_solution, rtk_candidate_ratio,

@@ -10,6 +10,7 @@ pub mod ekf;
 pub mod position;
 pub mod ppp;
 pub mod rtk;
+pub mod solution_claims;
 pub(crate) mod uncertainty;
 
 /// Ensure a deterministic ordering for measurements keyed by signal identity.
