@@ -2454,9 +2454,9 @@ mod tests {
     use super::*;
     use crate::pipeline::observations::fake_obs_epoch_for_nav_tests;
     use bijux_gnss_core::api::{
-        registered_signal_registry_entries, Constellation, GpsTime, LockFlags, Meters, ObsEpoch,
-        ObsMetadata, ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationStatus,
-        ReceiverRole, SatId, Seconds, SigId, SignalBand, SignalCode, SignalSpec,
+        Constellation, GpsTime, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
+        ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ReceiverRole, SatId,
+        Seconds, SigId, SignalBand, SignalCode, SignalSpec,
     };
     use bijux_gnss_nav::api::{
         ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef, sat_state_galileo_e1,
@@ -2464,6 +2464,7 @@ mod tests {
         GalileoEphemeris, GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags,
         GalileoSignalHealth, GalileoSystemTime, GpsEphemeris, SaastamoinenModel, TroposphereModel,
     };
+    use bijux_gnss_signal::api::registered_signal_registry_entries;
 
     #[test]
     fn positioning_signal_support_follows_navigation_signal_surface() {

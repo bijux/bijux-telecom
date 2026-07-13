@@ -1911,8 +1911,10 @@ pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
 mod tests {
     use super::*;
     use bijux_gnss_core::api::{
-        registered_signal_registry_entries, signal_cycles_to_meters, signal_meters_to_cycles,
         Chips, Epoch, Hertz, Meters, SatId, SignalDelayAlignment, TrackingUncertainty,
+    };
+    use bijux_gnss_signal::api::{
+        registered_signal_registry_entries, signal_cycles_to_meters, signal_meters_to_cycles,
     };
 
     fn make_tracking_epoch(
