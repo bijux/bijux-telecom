@@ -23,6 +23,12 @@ pub enum SignalError {
     /// Code phase must be finite.
     #[error("invalid code phase")]
     InvalidCodePhase,
+    /// Navigation symbol streams must contain at least one symbol.
+    #[error("empty navigation symbol stream")]
+    EmptyNavigationSymbolStream,
+    /// Navigation symbols must use bipolar levels.
+    #[error("invalid navigation symbol {0}")]
+    InvalidNavigationSymbol(i8),
     /// Elapsed duration must be finite and non-negative.
     #[error("invalid elapsed duration")]
     InvalidElapsedDuration,
