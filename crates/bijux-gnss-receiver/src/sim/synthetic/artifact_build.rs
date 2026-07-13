@@ -182,6 +182,39 @@ fn scaled_truth_frame(frame: &SamplesFrame, truth: &SyntheticIqTruthBundle) -> S
     )
 }
 
+fn signal_delay_alignments_from_navigation_validation_scenario(
+    scenario: &SyntheticNavigationValidationScenario,
+) -> Result<Vec<SyntheticSignalDelayAlignment>, SyntheticNavigationValidationError> {
+    let pseudorange_chips = scenario
+        .satellites
+        .iter()
+        .map(|signal| {
+            let ephemeris =
+                scenario.ephemerides.iter().find(|candidate| candidate.sat == signal.sat).ok_or(
+                    SyntheticNavigationValidationError::MissingEphemeris { sat: signal.sat },
+                )?;
+            Ok(synthetic_pseudorange_m(
+                ephemeris,
+                scenario.reference_receive_time_s,
+                scenario.receiver_ecef_m,
+            ) * (1_023_000.0 / SPEED_OF_LIGHT_MPS))
+        })
+        .collect::<Result<Vec<_>, SyntheticNavigationValidationError>>()?;
+    let receiver_epoch_base = shared_receiver_epoch_base(&pseudorange_chips)?;
+
+    Ok(scenario
+        .satellites
+        .iter()
+        .map(|signal| SyntheticSignalDelayAlignment {
+            sat: signal.sat,
+            signal_delay_alignment: SignalDelayAlignment {
+                whole_code_periods: receiver_epoch_base,
+                source: "synthetic_truth".to_string(),
+            },
+        })
+        .collect())
+}
+
 fn synthetic_navigation_pvt_reference_epochs(
     scenario: &SyntheticNavigationValidationScenario,
     solutions: &[NavSolutionEpoch],
@@ -220,6 +253,8 @@ pub fn validate_synthetic_navigation_run(
     hatch_window: u32,
 ) -> Result<SyntheticNavigationValidationRun, SyntheticNavigationValidationError> {
     let signal_scenario = build_signal_scenario_from_navigation_validation_scenario(scenario)?;
+    let signal_delay_alignments =
+        signal_delay_alignments_from_navigation_validation_scenario(scenario)?;
     let frame = generate_l1_ca_multi(config, &signal_scenario);
     let truth_bundle = build_iq16_capture_bundle(
         &signal_scenario.id,
@@ -252,18 +287,27 @@ pub fn validate_synthetic_navigation_run(
         budgets.tracking.max_cn0_error_db_hz,
     );
     let tracking_accuracy = validate_tracking_accuracy_budget(&tracking_truth, budgets.tracking);
-
-    let acquisition = crate::pipeline::acquisition::Acquisition::new(
+    let capture_start_gps_time = Some(GpsTime {
+        week: scenario.ephemerides.first().expect("validated ephemerides are non-empty").week,
+        tow_s: scenario.reference_receive_time_s,
+    });
+    let receiver = crate::api::Receiver::new(
         config.clone(),
-        crate::engine::runtime::ReceiverRuntime::default(),
+        crate::engine::runtime::ReceiverRuntime::new(
+            crate::engine::runtime::ReceiverRuntimeConfig {
+                capture_start_gps_time,
+                ..crate::engine::runtime::ReceiverRuntimeConfig::default()
+            },
+        ),
     );
-    let sats = signal_scenario.satellites.iter().map(|satellite| satellite.sat).collect::<Vec<_>>();
-    let acquisition_results = acquisition.run_fft(&scaled_frame, &sats);
-    let tracking = crate::pipeline::tracking::Tracking::new(
-        config.clone(),
-        crate::engine::runtime::ReceiverRuntime::default(),
+    let mut source = SyntheticSignalSource::new_with_signal_delay_alignments(
+        config,
+        &signal_scenario,
+        signal_delay_alignments,
     );
-    let tracking_results = tracking.track_from_acquisition(&scaled_frame, &acquisition_results);
+    let run = receiver.run(&mut source).map_err(|error| {
+        SyntheticNavigationValidationError::ReceiverPipeline { message: error.to_string() }
+    })?;
 
     let observation_reference = SyntheticObservationTruthReference {
         receive_time_s: scenario.reference_receive_time_s,
@@ -272,34 +316,14 @@ pub fn validate_synthetic_navigation_run(
     };
     let observation_validation = validate_truth_guided_observations(
         config,
-        &tracking_results,
+        &run.tracking,
         &signal_scenario,
         &observation_reference,
         hatch_window,
     );
     let observation_accuracy =
         validate_observation_accuracy_budget(&observation_validation, budgets.observation);
-
-    let gps_time = Some(GpsTime {
-        week: scenario.ephemerides.first().expect("validated ephemerides are non-empty").week,
-        tow_s: scenario.reference_receive_time_s,
-    });
-    let observation_epochs =
-        crate::pipeline::observations::observations_from_tracking_results_with_gps_anchor(
-            config,
-            gps_time,
-            &tracking_results,
-            hatch_window,
-        )
-        .output;
-    let mut navigation = crate::pipeline::navigation::Navigation::new(
-        config.clone(),
-        crate::engine::runtime::ReceiverRuntime::default(),
-    );
-    let solutions = observation_epochs
-        .iter()
-        .filter_map(|epoch| navigation.solve_epoch(epoch, &scenario.ephemerides))
-        .collect::<Vec<_>>();
+    let solutions = run.navigation.clone();
     let pvt_reference = synthetic_navigation_pvt_reference_epochs(scenario, &solutions);
     let pvt_truth =
         validate_truth_guided_pvt_table(&signal_scenario.id, &solutions, &pvt_reference);
@@ -332,6 +356,7 @@ pub fn validate_synthetic_navigation_run(
     Ok(SyntheticNavigationValidationRun {
         signal_scenario,
         truth_bundle,
+        pipeline_artifacts: run,
         acquisition_accuracy,
         tracking_accuracy,
         observation_accuracy,

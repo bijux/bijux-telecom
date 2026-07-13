@@ -200,6 +200,9 @@ pub struct SyntheticNavigationValidationRun {
     pub signal_scenario: SyntheticScenario,
     /// Machine-readable truth for the scaled synthetic capture.
     pub truth_bundle: SyntheticIqTruthBundle,
+    /// Canonical receiver pipeline artifacts emitted by the validation run.
+    #[serde(skip)]
+    pub pipeline_artifacts: crate::api::RunArtifacts,
     /// Truth-guided acquisition accuracy report.
     pub acquisition_accuracy: SyntheticAcquisitionAccuracyReport,
     /// Truth-guided tracking accuracy report.
@@ -223,6 +226,8 @@ pub enum SyntheticNavigationValidationError {
     InconsistentReceiverEpochBase,
     /// The scenario did not declare any ephemerides.
     EmptyEphemerides,
+    /// The canonical receiver pipeline could not complete for this synthetic scenario.
+    ReceiverPipeline { message: String },
 }
 
 impl std::fmt::Display for SyntheticNavigationValidationError {
@@ -240,6 +245,9 @@ impl std::fmt::Display for SyntheticNavigationValidationError {
             ),
             Self::EmptyEphemerides => {
                 write!(f, "synthetic navigation validation scenario must declare ephemerides")
+            }
+            Self::ReceiverPipeline { message } => {
+                write!(f, "synthetic navigation receiver pipeline failed: {message}")
             }
         }
     }
