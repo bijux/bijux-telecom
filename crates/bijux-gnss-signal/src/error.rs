@@ -1,5 +1,7 @@
 //! Error types for bijux-gnss-signal.
 
+use bijux_gnss_core::api::SatId;
+
 /// Errors emitted by signal utilities.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 pub enum SignalError {
@@ -15,6 +17,9 @@ pub enum SignalError {
     /// Carrier frequency must be finite.
     #[error("invalid carrier frequency")]
     InvalidCarrierFrequency,
+    /// GLONASS acquisition and synthesis require a frequency channel.
+    #[error("missing GLONASS frequency channel for {0:?}")]
+    MissingGlonassFrequencyChannel(SatId),
     /// Code phase must be finite.
     #[error("invalid code phase")]
     InvalidCodePhase,
