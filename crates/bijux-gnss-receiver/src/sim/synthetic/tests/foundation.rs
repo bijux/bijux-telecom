@@ -92,6 +92,62 @@ fn synthetic_signal_source_matches_materialized_generator_with_source_front_end_
 }
 
 #[test]
+fn synthetic_signal_source_matches_materialized_generator_with_receiver_oscillator() {
+    let config = ReceiverPipelineConfig {
+        sampling_freq_hz: 1_023_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 1_023_000.0,
+        code_length: 1023,
+        ..ReceiverPipelineConfig::default()
+    };
+    let scenario = SyntheticScenario {
+        sample_rate_hz: config.sampling_freq_hz,
+        intermediate_freq_hz: config.intermediate_freq_hz,
+        receiver_clock_frequency_bias_hz: 0.0,
+        duration_s: 0.004,
+        seed: 37,
+        satellites: vec![SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Gps, prn: 13 },
+            glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Ca,
+            doppler_hz: 450.0,
+            code_phase_chips: 27.0,
+            carrier_phase_rad: 0.25,
+            cn0_db_hz: 49.0,
+            navigation_data: false.into(),
+        }],
+        ephemerides: Vec::new(),
+        id: "synthetic-oscillator-stream".to_string(),
+    };
+    let receiver_oscillator = SyntheticReceiverOscillatorModel {
+        carrier_frequency_bias_hz: 120.0,
+        carrier_frequency_drift_hz_per_s: 30.0,
+        sampling_clock_fractional_error: 80.0e-6,
+        phase_noise: SyntheticReceiverPhaseNoiseModel {
+            seed: 53,
+            knot_interval_samples: 1_023,
+            step_std_rad: 0.03,
+        },
+    };
+
+    let expected =
+        generate_l1_ca_multi_with_receiver_oscillator(&config, &scenario, &receiver_oscillator);
+    let mut source = SyntheticSignalSource::new_with_receiver_oscillator(
+        &config,
+        &scenario,
+        &receiver_oscillator,
+    );
+    let streamed = collect_frames(&mut source, 2 * 1_023);
+
+    assert_eq!(expected.len(), streamed.len());
+    assert_eq!(expected.t0, streamed.t0);
+    assert_eq!(expected.dt_s, streamed.dt_s);
+    assert_eq!(expected.iq, streamed.iq);
+    assert!(source.is_done());
+}
+
+#[test]
 fn iq_truth_bundle_records_source_front_end_filter_metadata() {
     let config = ReceiverPipelineConfig {
         sampling_freq_hz: 4_092_000.0,
