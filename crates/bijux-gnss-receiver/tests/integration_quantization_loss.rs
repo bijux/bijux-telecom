@@ -2,8 +2,11 @@
 
 use bijux_gnss_core::api::{Constellation, SatId, SignalBand, SignalCode};
 use bijux_gnss_receiver::api::{
-    sim::{generate_l1_ca_multi, measure_truth_guided_quantization_loss, SyntheticScenario, SyntheticSignalParams},
     signal::IqQuantization,
+    sim::{
+        generate_l1_ca_multi, measure_truth_guided_quantization_loss,
+        truth_guided_quantization_reference_sweep, SyntheticScenario, SyntheticSignalParams,
+    },
     ReceiverPipelineConfig,
 };
 
@@ -49,14 +52,7 @@ fn quantization_loss_report_measures_lower_precision_against_float_reference() {
     let report = measure_truth_guided_quantization_loss(
         &config,
         &scenario,
-        &[
-            IqQuantization::Float32,
-            IqQuantization::Signed16Bit,
-            IqQuantization::Signed8Bit,
-            IqQuantization::Signed4Bit,
-            IqQuantization::Signed2Bit,
-            IqQuantization::Bipolar1Bit,
-        ],
+        truth_guided_quantization_reference_sweep(),
         "2026-07-13T00:00:00Z",
     );
 
@@ -100,10 +96,7 @@ fn quantization_loss_report_measures_lower_precision_against_float_reference() {
     assert!(signed16.satellites[0].cn0_loss_db_hz < 0.1, "{signed16:?}");
     assert!(signed8.satellites[0].acquisition_correlation_loss_db > 0.0, "{signed8:?}");
     assert!(signed2.satellites[0].acquisition_correlation_loss_db > 1.0, "{signed2:?}");
-    assert!(
-        bipolar1.satellites[0].acquisition_correlation_loss_db.is_infinite(),
-        "{bipolar1:?}"
-    );
+    assert!(bipolar1.satellites[0].acquisition_correlation_loss_db.is_infinite(), "{bipolar1:?}");
     assert_eq!(signed8.satellites[0].cn0_loss_db_hz, 0.0, "{signed8:?}");
     assert_eq!(signed4.satellites[0].cn0_loss_db_hz, 0.0, "{signed4:?}");
     assert_eq!(signed2.satellites[0].cn0_loss_db_hz, 0.0, "{signed2:?}");

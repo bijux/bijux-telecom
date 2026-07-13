@@ -283,6 +283,20 @@ pub fn build_iq16_capture_bundle_with_source_front_end(
     )
 }
 
+const SYNTHETIC_QUANTIZATION_REFERENCE_SWEEP: [IqQuantization; 6] = [
+    IqQuantization::Float32,
+    IqQuantization::Signed16Bit,
+    IqQuantization::Signed8Bit,
+    IqQuantization::Signed4Bit,
+    IqQuantization::Signed2Bit,
+    IqQuantization::Bipolar1Bit,
+];
+
+/// Canonical synthetic quantization profiles measured against one float32 reference.
+pub fn truth_guided_quantization_reference_sweep() -> &'static [IqQuantization] {
+    &SYNTHETIC_QUANTIZATION_REFERENCE_SWEEP
+}
+
 /// Measure truth-guided C/N0 directly from a synthetic capture using receiver correlators.
 pub fn validate_truth_guided_cn0(
     config: &ReceiverPipelineConfig,
@@ -411,13 +425,14 @@ pub fn measure_truth_guided_quantization_loss(
         .iter()
         .copied()
         .map(|quantization| {
+            let quantization_id = quantization.identifier();
             let bundle = build_quantized_capture_bundle(
                 &scenario.id,
                 scenario,
                 &frame,
                 quantization,
                 capture_start_utc,
-                Some(format!("synthetic {:?} quantization measurement", quantization)),
+                Some(format!("synthetic {quantization_id} quantization measurement")),
             );
             let quantized_frame =
                 quantized_capture_frame(&frame, bundle.truth.output_scale_applied, quantization);
