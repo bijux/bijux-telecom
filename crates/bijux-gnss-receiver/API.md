@@ -29,6 +29,10 @@ Engines + helpers
 
 Navigation (feature-gated: `nav`)
 - `NavigationEngine`, `Navigation`, `EkfState`.
+- `Navigation` is a receiver-runtime adapter over the nav-owned `PositionRuntime`.
+- Direct typed navigation science APIs remain in `bijux_gnss_receiver::nav`, including
+  `PositionRuntime`, `PositionRuntimeConfig`, `PositionBroadcastNavigation`, and related solver
+  and correction types.
 - `NavigationFilter`: receiver-configured compatibility surface over the nav-owned broadcast filter.
 - RTK helpers and artifact types are re-exported from `bijux-gnss-nav`.
 - Validation report helpers: `build_validation_report`, `ValidationReport`, `ConvergenceReport`, etc.

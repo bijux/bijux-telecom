@@ -8,6 +8,8 @@ Navigation models
 - LNAV ephemeris decoders require explicit reference-week context to expand the 10-bit broadcast week.
 - Measurement models: `PseudorangeMeasurement` and related helpers.
 - `NavigationFilter`, `NavigationFilterConfig`, `NavigationFilterThresholds`.
+- `PositionRuntime`, `PositionRuntimeConfig`, `PositionRuntimeThresholds`.
+- `PositionBroadcastNavigation`, `supports_positioning_signal`, `supported_positioning_signal`.
 - `PositionSatelliteState`, `position_satellite_state_from_observation`.
 
 State + math
