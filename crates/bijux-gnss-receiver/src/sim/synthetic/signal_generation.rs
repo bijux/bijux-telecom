@@ -416,12 +416,7 @@ struct SatState {
 type SyntheticSignalModel = bijux_gnss_signal::api::ReplicaCodeModel;
 
 fn synthetic_replica_model(params: SyntheticSignalParams) -> SyntheticSignalModel {
-    match params.sat.constellation {
-        Constellation::Galileo => SyntheticSignalModel::galileo_e1_cboc_or_ones(params.sat.prn),
-        Constellation::Beidou => SyntheticSignalModel::beidou_b1i_or_ones(params.sat.prn),
-        Constellation::Glonass => SyntheticSignalModel::glonass_l1_st(),
-        _ => SyntheticSignalModel::gps_l1_ca_or_ones(params.sat.prn),
-    }
+    SyntheticSignalModel::from_default_signal_or_ones(params.sat)
 }
 
 impl SatState {
@@ -620,20 +615,16 @@ fn synthetic_constellation_carrier_hz(
     sat: SatId,
     glonass_frequency_channel: Option<GlonassFrequencyChannel>,
 ) -> f64 {
-    match sat.constellation {
-        Constellation::Galileo => bijux_gnss_core::api::GALILEO_E1_CARRIER_HZ.value(),
-        Constellation::Gps => bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value(),
-        Constellation::Beidou => bijux_gnss_core::api::BEIDOU_B1_CARRIER_HZ.value(),
-        Constellation::Glonass => bijux_gnss_signal::api::glonass_l1_carrier_hz(
-            glonass_frequency_channel.unwrap_or_else(|| {
-                panic!(
-                    "GLONASS synthetic signal for {} requires glonass_frequency_channel",
-                    bijux_gnss_core::api::format_sat(sat)
-                )
-            }),
-        )
-        .value(),
-        _ => bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value(),
+    match bijux_gnss_signal::api::default_signal_carrier_hz(sat, glonass_frequency_channel) {
+        Ok(Some(carrier_hz)) => carrier_hz.value(),
+        Ok(None) => bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value(),
+        Err(bijux_gnss_signal::api::SignalError::MissingGlonassFrequencyChannel(_)) => {
+            panic!(
+                "GLONASS synthetic signal for {} requires glonass_frequency_channel",
+                bijux_gnss_core::api::format_sat(sat)
+            )
+        }
+        Err(_) => bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value(),
     }
 }
 

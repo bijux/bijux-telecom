@@ -341,6 +341,39 @@ pub enum ReplicaCodeModel {
 }
 
 impl ReplicaCodeModel {
+    /// Build the default synthesized replica for a supported satellite signal.
+    pub fn from_default_signal(sat: SatId) -> Result<Option<Self>, SignalError> {
+        match default_acquisition_signal(sat.constellation) {
+            Some(signal)
+                if signal.spec.code == SignalCode::Ca && signal.spec.band == SignalBand::L1 =>
+            {
+                Self::gps_l1_ca(sat.prn).map(Some)
+            }
+            Some(signal)
+                if signal.spec.code == SignalCode::E1B && signal.spec.band == SignalBand::E1 =>
+            {
+                Self::galileo_e1_cboc(sat.prn).map(Some)
+            }
+            Some(signal)
+                if signal.spec.code == SignalCode::B1I && signal.spec.band == SignalBand::B1 =>
+            {
+                Self::beidou_b1i(sat.prn).map(Some)
+            }
+            Some(_signal) if sat.constellation == Constellation::Glonass => {
+                Ok(Some(Self::glonass_l1_st()))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// Build the default synthesized replica, falling back to an all-ones GPS C/A code.
+    pub fn from_default_signal_or_ones(sat: SatId) -> Self {
+        Self::from_default_signal(sat)
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| Self::gps_l1_ca_or_ones(sat.prn))
+    }
+
     /// Build a GPS L1 C/A replica from a PRN.
     pub fn gps_l1_ca(prn: u8) -> Result<Self, SignalError> {
         Ok(Self::GpsL1Ca { code: generate_ca_code(Prn(prn))? })
@@ -425,6 +458,22 @@ impl ReplicaCodeModel {
     }
 }
 
+/// Carrier frequency for the default synthesized signal of a satellite.
+pub fn default_signal_carrier_hz(
+    sat: SatId,
+    glonass_frequency_channel: Option<GlonassFrequencyChannel>,
+) -> Result<Option<FreqHz>, SignalError> {
+    match default_acquisition_signal(sat.constellation) {
+        Some(_signal) if sat.constellation == Constellation::Glonass => {
+            let channel = glonass_frequency_channel
+                .ok_or(SignalError::MissingGlonassFrequencyChannel(sat))?;
+            Ok(Some(signal_spec_glonass_l1(channel).carrier_hz))
+        }
+        Some(signal) => Ok(Some(signal.spec.carrier_hz)),
+        None => Ok(None),
+    }
+}
+
 /// Carrier frequency at elapsed time for a linear Doppler-rate model.
 pub fn carrier_hz_at_time(
     initial_carrier_hz: f64,
@@ -486,9 +535,9 @@ pub fn sample_modulated_replica_at_time(
 #[cfg(test)]
 mod tests {
     use super::{
-        carrier_hz_at_time, carrier_phase_radians_at_time, sample_modulated_replica_at_time,
-        signal_amplitude_from_cn0_db_hz, AcquisitionSignalModel, LocalCodeModel, ReplicaCodeModel,
-        UNIT_VARIANCE_COMPLEX_NOISE_POWER,
+        carrier_hz_at_time, carrier_phase_radians_at_time, default_signal_carrier_hz,
+        sample_modulated_replica_at_time, signal_amplitude_from_cn0_db_hz,
+        AcquisitionSignalModel, LocalCodeModel, ReplicaCodeModel, UNIT_VARIANCE_COMPLEX_NOISE_POWER,
     };
     use crate::codes::galileo_e1::{
         sample_galileo_e1_boc11_code, GalileoE1Channel, GALILEO_E1_CODE_RATE_HZ,
@@ -613,5 +662,25 @@ mod tests {
             .expect("GPS acquisition model");
 
         assert!((model.search_center_hz(125_000.0) - 125_000.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn replica_code_model_builds_default_galileo_signal() {
+        let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+        let model = ReplicaCodeModel::from_default_signal(sat)
+            .expect("signal model result")
+            .expect("Galileo default signal");
+
+        assert_eq!(model.code_length(), 4092);
+        assert!((model.code_rate_hz() - GALILEO_E1_CODE_RATE_HZ).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn default_signal_carrier_hz_requires_glonass_channel() {
+        let sat = SatId { constellation: Constellation::Glonass, prn: 8 };
+        let error = default_signal_carrier_hz(sat, None)
+            .expect_err("GLONASS carrier lookup must reject missing channel");
+
+        assert_eq!(error, SignalError::MissingGlonassFrequencyChannel(sat));
     }
 }
