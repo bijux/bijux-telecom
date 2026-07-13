@@ -1,5 +1,6 @@
+use crate::dsp::front_end::FrontEndFirFilter;
 use crate::error::SignalError;
-use bijux_gnss_core::api::{SignalComponentSpec, SignalRegistryEntry, SignalSubcarrierSpec};
+use bijux_gnss_core::api::{Sample, SignalComponentSpec, SignalRegistryEntry, SignalSubcarrierSpec};
 use num_complex::Complex;
 use rustfft::FftPlanner;
 
@@ -103,6 +104,16 @@ pub fn expected_component_power_spectral_density(
         .collect())
 }
 
+/// Compute the expected two-sided baseband PSD for one signal component after front-end filtering.
+pub fn expected_filtered_component_power_spectral_density(
+    component: SignalComponentSpec,
+    filter: &FrontEndFirFilter,
+    frequencies_hz: &[f64],
+) -> Result<Vec<PowerSpectralDensityPoint>, SignalError> {
+    let unfiltered = expected_component_power_spectral_density(component, frequencies_hz)?;
+    apply_front_end_transfer_power_spectral_density(&unfiltered, filter)
+}
+
 /// Compute the expected two-sided baseband PSD for a full registered signal.
 pub fn expected_signal_power_spectral_density(
     entry: &SignalRegistryEntry,
@@ -131,9 +142,30 @@ pub fn expected_signal_power_spectral_density(
     Ok(total)
 }
 
+/// Compute the expected two-sided baseband PSD for a full signal after front-end filtering.
+pub fn expected_filtered_signal_power_spectral_density(
+    entry: &SignalRegistryEntry,
+    filter: &FrontEndFirFilter,
+    frequencies_hz: &[f64],
+) -> Result<Vec<PowerSpectralDensityPoint>, SignalError> {
+    let unfiltered = expected_signal_power_spectral_density(entry, frequencies_hz)?;
+    apply_front_end_transfer_power_spectral_density(&unfiltered, filter)
+}
+
 /// Estimate a two-sided baseband PSD from generated samples using Welch averaging.
 pub fn estimate_power_spectral_density(
     samples: &[f32],
+    sample_rate_hz: f64,
+    config: SpectrumEstimatorConfig,
+) -> Result<Vec<PowerSpectralDensityPoint>, SignalError> {
+    let complex_samples =
+        samples.iter().map(|sample| Sample::new(*sample, 0.0)).collect::<Vec<_>>();
+    estimate_complex_power_spectral_density(&complex_samples, sample_rate_hz, config)
+}
+
+/// Estimate a two-sided baseband PSD from complex samples using Welch averaging.
+pub fn estimate_complex_power_spectral_density(
+    samples: &[Sample],
     sample_rate_hz: f64,
     config: SpectrumEstimatorConfig,
 ) -> Result<Vec<PowerSpectralDensityPoint>, SignalError> {
@@ -161,7 +193,9 @@ pub fn estimate_power_spectral_density(
         let mut spectrum = samples[start..start + config.segment_len]
             .iter()
             .zip(window.iter())
-            .map(|(sample, weight)| Complex::new(f64::from(*sample) * *weight, 0.0))
+            .map(|(sample, weight)| {
+                Complex::new(f64::from(sample.re) * *weight, f64::from(sample.im) * *weight)
+            })
             .collect::<Vec<_>>();
         fft.process(&mut spectrum);
         for (bin, value) in averaged.iter_mut().zip(spectrum.iter()) {
@@ -192,6 +226,24 @@ pub fn estimate_power_spectral_density(
         });
     }
     Ok(points)
+}
+
+/// Apply a front-end transfer response to an expected or measured PSD.
+pub fn apply_front_end_transfer_power_spectral_density(
+    points: &[PowerSpectralDensityPoint],
+    filter: &FrontEndFirFilter,
+) -> Result<Vec<PowerSpectralDensityPoint>, SignalError> {
+    validate_power_density_points(points)?;
+    points
+        .iter()
+        .map(|point| {
+            let response = filter.response_at(point.frequency_hz)?;
+            Ok(PowerSpectralDensityPoint {
+                frequency_hz: point.frequency_hz,
+                power_density: point.power_density * response.norm_sqr(),
+            })
+        })
+        .collect()
 }
 
 /// Summarize a PSD with centroid, occupied bandwidth, integrated power, and symmetry error.
@@ -594,12 +646,19 @@ fn hann_window(segment_len: usize) -> Vec<f64> {
 #[cfg(test)]
 mod tests {
     use super::{
+        apply_front_end_transfer_power_spectral_density, estimate_complex_power_spectral_density,
         estimate_power_spectral_density, expected_component_power_spectral_density,
-        find_deep_spectrum_nulls, summarize_power_spectral_density, PowerSpectralDensityPoint,
-        SpectrumEstimatorConfig,
+        expected_filtered_component_power_spectral_density, find_deep_spectrum_nulls,
+        summarize_power_spectral_density, PowerSpectralDensityPoint, SpectrumEstimatorConfig,
     };
+    use crate::catalog::signal_registry;
+    use crate::dsp::front_end::FrontEndFilterSpec;
     use crate::error::SignalError;
-    use bijux_gnss_core::api::{SignalComponentRole, SignalComponentSpec, SignalSubcarrierSpec};
+    use bijux_gnss_core::api::{
+        Constellation, SignalBand, SignalCode, SignalComponentRole, SignalComponentSpec,
+        SignalSubcarrierSpec,
+    };
+    use num_complex::Complex;
 
     fn bpsk_component(chip_rate_hz: f64) -> SignalComponentSpec {
         SignalComponentSpec {
@@ -695,6 +754,79 @@ mod tests {
             SignalError::InvalidSpectrumAnalysis {
                 message: "PSD frequency grid must be uniformly spaced".to_string(),
             }
+        );
+    }
+
+    #[test]
+    fn complex_welch_estimator_tracks_shifted_tone_centroid() {
+        let sample_rate_hz = 8_192.0;
+        let tone_hz = 1_536.0;
+        let samples = (0..16_384)
+            .map(|index| {
+                let phase = 2.0 * std::f64::consts::PI * tone_hz * index as f64 / sample_rate_hz;
+                Complex::new(phase.cos() as f32, phase.sin() as f32)
+            })
+            .collect::<Vec<_>>();
+        let spectrum = estimate_complex_power_spectral_density(
+            &samples,
+            sample_rate_hz,
+            SpectrumEstimatorConfig { segment_len: 1024, overlap_len: 512 },
+        )
+        .expect("complex Welch PSD");
+        let summary = summarize_power_spectral_density(&spectrum, 0.95).expect("PSD summary");
+
+        assert!((summary.center_frequency_hz - tone_hz).abs() <= 8.0, "{summary:?}");
+        assert!((summary.integrated_power - 1.0).abs() <= 0.08, "{summary:?}");
+    }
+
+    #[test]
+    fn filtered_expected_component_spectrum_matches_manual_response_shaping() {
+        let entry = signal_registry(Constellation::Gps, SignalBand::L1, SignalCode::Ca)
+            .expect("GPS L1 C/A registry entry");
+        let component = entry.default_component().copied().expect("GPS L1 C/A component");
+        let sample_rate_hz = component.primary_code_rate_hz * 16.0;
+        let frequencies_hz = symmetric_frequency_grid(sample_rate_hz * 0.5, 4_097);
+        let filter = FrontEndFilterSpec::LowPass { cutoff_hz: 550_000.0, taps: 81 }
+            .design(sample_rate_hz)
+            .expect("front-end filter");
+        let unfiltered =
+            expected_component_power_spectral_density(component, &frequencies_hz).expect("PSD");
+        let manual =
+            apply_front_end_transfer_power_spectral_density(&unfiltered, &filter).expect("manual");
+        let filtered = expected_filtered_component_power_spectral_density(
+            component,
+            &filter,
+            &frequencies_hz,
+        )
+        .expect("filtered PSD");
+
+        assert_eq!(filtered, manual);
+    }
+
+    #[test]
+    fn filter_shaping_reduces_expected_bpsk_occupied_bandwidth() {
+        let component = bpsk_component(1_023_000.0);
+        let sample_rate_hz = component.primary_code_rate_hz * 16.0;
+        let frequencies_hz = symmetric_frequency_grid(sample_rate_hz * 0.5, 4_097);
+        let unfiltered =
+            expected_component_power_spectral_density(component, &frequencies_hz).expect("PSD");
+        let unfiltered_summary =
+            summarize_power_spectral_density(&unfiltered, 0.99).expect("unfiltered summary");
+        let filter = FrontEndFilterSpec::LowPass { cutoff_hz: 450_000.0, taps: 81 }
+            .design(sample_rate_hz)
+            .expect("front-end filter");
+        let filtered = expected_filtered_component_power_spectral_density(
+            component,
+            &filter,
+            &frequencies_hz,
+        )
+        .expect("filtered PSD");
+        let filtered_summary =
+            summarize_power_spectral_density(&filtered, 0.99).expect("filtered summary");
+
+        assert!(
+            filtered_summary.occupied_bandwidth_hz < unfiltered_summary.occupied_bandwidth_hz,
+            "filtered={filtered_summary:?} unfiltered={unfiltered_summary:?}"
         );
     }
 }

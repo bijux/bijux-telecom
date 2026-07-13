@@ -144,10 +144,12 @@ pub use crate::dsp::signal::{
 };
 /// Signal-spectrum analysis helpers.
 pub use crate::dsp::spectrum::{
+    apply_front_end_transfer_power_spectral_density, estimate_complex_power_spectral_density,
     estimate_power_spectral_density, expected_component_power_spectral_density,
-    expected_signal_power_spectral_density, find_deep_spectrum_nulls,
-    summarize_power_spectral_density, PowerSpectralDensityPoint, PowerSpectralDensitySummary,
-    SpectrumEstimatorConfig, SpectrumNull,
+    expected_filtered_component_power_spectral_density,
+    expected_filtered_signal_power_spectral_density, expected_signal_power_spectral_density,
+    find_deep_spectrum_nulls, summarize_power_spectral_density, PowerSpectralDensityPoint,
+    PowerSpectralDensitySummary, SpectrumEstimatorConfig, SpectrumNull,
 };
 /// Tracking helpers.
 pub use crate::dsp::tracking::{
