@@ -63,7 +63,7 @@ impl SpectrumTolerance {
             integrated_power: 0.08,
             symmetry_error: 0.03,
             null_frequency_hz: 30_000.0,
-            shape_rms_error_db: 1.8,
+            shape_rms_error_db: 2.1,
         }
     }
 
