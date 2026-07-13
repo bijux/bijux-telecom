@@ -542,6 +542,25 @@ pub fn signal_registry(
     }
 }
 
+pub fn resolved_signal_registry_entry(
+    sat: SatId,
+    band: SignalBand,
+    code: SignalCode,
+    glonass_frequency_channel: Option<GlonassFrequencyChannel>,
+) -> Result<Option<SignalRegistryEntry>, crate::error::SignalError> {
+    let Some(mut entry) = signal_registry(sat.constellation, band, code) else {
+        return Ok(None);
+    };
+
+    if sat.constellation == Constellation::Glonass && band == SignalBand::L1 {
+        let channel = glonass_frequency_channel
+            .ok_or(crate::error::SignalError::MissingGlonassFrequencyChannel(sat))?;
+        entry.spec.carrier_hz = glonass_l1_carrier_hz(channel);
+    }
+
+    Ok(Some(entry))
+}
+
 pub fn registered_signal_registry_entries() -> Vec<SignalRegistryEntry> {
     [
         (Constellation::Gps, SignalBand::L1, SignalCode::Ca),

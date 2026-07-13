@@ -1,6 +1,6 @@
 //! Replica-generation and modulation helpers for synthetic and tracking workflows.
 
-use crate::catalog::{default_acquisition_signal, signal_spec_glonass_l1};
+use crate::catalog::{default_acquisition_signal, resolved_signal_registry_entry};
 use crate::codes::beidou_b1i::{generate_beidou_b1i_code, BEIDOU_B1I_CODE_RATE_HZ};
 use crate::codes::beidou_b2i::{generate_beidou_b2i_code, BEIDOU_B2I_CODE_RATE_HZ};
 use crate::codes::ca_code::{generate_ca_code, Prn};
@@ -99,81 +99,46 @@ impl AcquisitionSignalModel {
             return Ok(None);
         };
 
-        match (sat.constellation, signal_band, signal_code) {
+        let registry_entry = resolved_signal_registry_entry(
+            sat,
+            signal_band,
+            signal_code,
+            glonass_frequency_channel,
+        )?;
+        let local_code_model = match (sat.constellation, signal_band, signal_code) {
             (Constellation::Gps, SignalBand::L1, SignalCode::Ca) => {
-                Self::gps_l1_ca(sat.prn, 1_023_000.0, 1023, GPS_L1_CA_CARRIER_HZ).map(Some)
+                Some(LocalCodeModel::gps_l1_ca(sat.prn)?)
             }
-            (Constellation::Gps, SignalBand::L5, _) => match signal_code {
-                SignalCode::L5I => Self::new(
-                    SignalBand::L5,
-                    GPS_L5_PRIMARY_CODE_RATE_HZ,
-                    GPS_L5_PRIMARY_CODE_CHIPS,
-                    bijux_gnss_core::api::GPS_L5_CARRIER_HZ,
-                    LocalCodeModel::gps_l5_i(sat.prn)?,
-                )
-                .map(Some),
-                SignalCode::L5Q => Self::new(
-                    SignalBand::L5,
-                    GPS_L5_PRIMARY_CODE_RATE_HZ,
-                    GPS_L5_PRIMARY_CODE_CHIPS,
-                    bijux_gnss_core::api::GPS_L5_CARRIER_HZ,
-                    LocalCodeModel::gps_l5_q(sat.prn)?,
-                )
-                .map(Some),
-                _ => Ok(None),
-            },
-            (Constellation::Galileo, SignalBand::E1, SignalCode::E1B) => Self::new(
-                SignalBand::E1,
-                GALILEO_E1_CODE_RATE_HZ,
-                4092,
-                bijux_gnss_core::api::GALILEO_E1_CARRIER_HZ,
-                LocalCodeModel::galileo_e1_boc11(sat.prn)?,
-            )
-            .map(Some),
-            (Constellation::Galileo, SignalBand::E5, SignalCode::E5a) => Self::new(
-                SignalBand::E5,
-                GALILEO_E5A_CODE_RATE_HZ,
-                GALILEO_E5A_PRIMARY_CODE_CHIPS,
-                bijux_gnss_core::api::GALILEO_E5A_CARRIER_HZ,
-                LocalCodeModel::galileo_e5a_i(sat.prn)?,
-            )
-            .map(Some),
-            (Constellation::Galileo, SignalBand::E5, SignalCode::E5b) => Self::new(
-                SignalBand::E5,
-                GALILEO_E5B_CODE_RATE_HZ,
-                GALILEO_E5B_PRIMARY_CODE_CHIPS,
-                bijux_gnss_core::api::GALILEO_E5B_CARRIER_HZ,
-                LocalCodeModel::galileo_e5b_i(sat.prn)?,
-            )
-            .map(Some),
-            (Constellation::Beidou, SignalBand::B1, SignalCode::B1I) => Self::new(
-                SignalBand::B1,
-                BEIDOU_B1I_CODE_RATE_HZ,
-                2046,
-                bijux_gnss_core::api::BEIDOU_B1_CARRIER_HZ,
-                LocalCodeModel::beidou_b1i(sat.prn)?,
-            )
-            .map(Some),
-            (Constellation::Beidou, SignalBand::B2, SignalCode::B2I) => Self::new(
-                SignalBand::B2,
-                BEIDOU_B2I_CODE_RATE_HZ,
-                2046,
-                bijux_gnss_core::api::BEIDOU_B2_CARRIER_HZ,
-                LocalCodeModel::beidou_b2i(sat.prn)?,
-            )
-            .map(Some),
+            (Constellation::Gps, SignalBand::L5, SignalCode::L5I) => {
+                Some(LocalCodeModel::gps_l5_i(sat.prn)?)
+            }
+            (Constellation::Gps, SignalBand::L5, SignalCode::L5Q) => {
+                Some(LocalCodeModel::gps_l5_q(sat.prn)?)
+            }
+            (Constellation::Galileo, SignalBand::E1, SignalCode::E1B) => {
+                Some(LocalCodeModel::galileo_e1_boc11(sat.prn)?)
+            }
+            (Constellation::Galileo, SignalBand::E5, SignalCode::E5a) => {
+                Some(LocalCodeModel::galileo_e5a_i(sat.prn)?)
+            }
+            (Constellation::Galileo, SignalBand::E5, SignalCode::E5b) => {
+                Some(LocalCodeModel::galileo_e5b_i(sat.prn)?)
+            }
+            (Constellation::Beidou, SignalBand::B1, SignalCode::B1I) => {
+                Some(LocalCodeModel::beidou_b1i(sat.prn)?)
+            }
+            (Constellation::Beidou, SignalBand::B2, SignalCode::B2I) => {
+                Some(LocalCodeModel::beidou_b2i(sat.prn)?)
+            }
             (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown) => {
-                let channel = glonass_frequency_channel
-                    .ok_or(SignalError::MissingGlonassFrequencyChannel(sat))?;
-                let signal = signal_spec_glonass_l1(channel);
-                Self::new(
-                    signal.band,
-                    signal.code_rate_hz,
-                    511,
-                    signal.carrier_hz,
-                    LocalCodeModel::glonass_l1_st(),
-                )
-                .map(Some)
+                Some(LocalCodeModel::glonass_l1_st())
+            }
+            _ => None,
+        };
+
+        match (registry_entry, local_code_model) {
+            (Some(registry_entry), Some(local_code_model)) => {
+                Self::from_registry_entry(&registry_entry, local_code_model).map(Some)
             }
             _ => Ok(None),
         }
@@ -226,6 +191,25 @@ impl AcquisitionSignalModel {
             carrier_hz,
             local_code_model,
         })
+    }
+
+    fn from_registry_entry(
+        registry_entry: &bijux_gnss_core::api::SignalRegistryEntry,
+        local_code_model: LocalCodeModel,
+    ) -> Result<Self, SignalError> {
+        let component =
+            registry_entry.default_component().ok_or(SignalError::UnsupportedSignalDefinition {
+                constellation: registry_entry.spec.constellation,
+                signal_band: registry_entry.spec.band,
+                signal_code: registry_entry.spec.code,
+            })?;
+        Self::new(
+            registry_entry.spec.band,
+            component.primary_code_rate_hz,
+            component.primary_code_chips as usize,
+            registry_entry.spec.carrier_hz,
+            local_code_model,
+        )
     }
 
     /// Return the sampled-code period length for a sample rate.
@@ -689,31 +673,8 @@ pub fn default_signal_carrier_hz_for_signal(
         return Ok(None);
     };
 
-    match (sat.constellation, signal_band, signal_code) {
-        (Constellation::Gps, SignalBand::L5, SignalCode::L5I | SignalCode::L5Q) => {
-            Ok(Some(bijux_gnss_core::api::GPS_L5_CARRIER_HZ))
-        }
-        (Constellation::Galileo, SignalBand::E5, SignalCode::E5a) => {
-            Ok(Some(bijux_gnss_core::api::GALILEO_E5A_CARRIER_HZ))
-        }
-        (Constellation::Galileo, SignalBand::E5, SignalCode::E5b) => {
-            Ok(Some(bijux_gnss_core::api::GALILEO_E5B_CARRIER_HZ))
-        }
-        (Constellation::Beidou, SignalBand::B2, SignalCode::B2I) => {
-            Ok(Some(bijux_gnss_core::api::BEIDOU_B2_CARRIER_HZ))
-        }
-        (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown) => {
-            let channel = glonass_frequency_channel
-                .ok_or(SignalError::MissingGlonassFrequencyChannel(sat))?;
-            Ok(Some(signal_spec_glonass_l1(channel).carrier_hz))
-        }
-        _ => match default_acquisition_signal(sat.constellation) {
-            Some(signal) if signal.spec.band == signal_band && signal.spec.code == signal_code => {
-                Ok(Some(signal.spec.carrier_hz))
-            }
-            _ => Ok(None),
-        },
-    }
+    Ok(resolved_signal_registry_entry(sat, signal_band, signal_code, glonass_frequency_channel)?
+        .map(|entry| entry.spec.carrier_hz))
 }
 
 fn default_signal_code_for_band(
@@ -800,6 +761,7 @@ mod tests {
         GPS_L2C_TIME_MULTIPLEXED_CODE_CHIPS, GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ,
         UNIT_VARIANCE_COMPLEX_NOISE_POWER,
     };
+    use crate::catalog::resolved_signal_registry_entry;
     use crate::codes::galileo_e1::{
         sample_galileo_e1_boc11_code, GalileoE1Channel, GALILEO_E1_CODE_RATE_HZ,
     };
@@ -1318,6 +1280,41 @@ mod tests {
         .expect("Galileo E5b carrier");
 
         assert_eq!(carrier, GALILEO_E5B_CARRIER_HZ);
+    }
+
+    #[test]
+    fn resolved_signal_registry_entry_applies_glonass_frequency_channel() {
+        let sat = SatId { constellation: Constellation::Glonass, prn: 8 };
+        let channel = GlonassFrequencyChannel::new(-4).expect("valid GLONASS channel");
+        let entry =
+            resolved_signal_registry_entry(sat, SignalBand::L1, SignalCode::Unknown, Some(channel))
+                .expect("resolved registry lookup")
+                .expect("glonass l1 registry entry");
+
+        assert_eq!(entry.spec.carrier_hz.value(), 1_599_750_000.0);
+        assert_eq!(
+            entry.default_component().expect("glonass default component").primary_code_chips,
+            511
+        );
+    }
+
+    #[test]
+    fn acquisition_signal_model_uses_default_component_metadata() {
+        let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+        let model = AcquisitionSignalModel::for_sat_signal(
+            sat,
+            Some(SignalBand::E5),
+            SignalCode::E5b,
+            None,
+        )
+        .expect("acquisition model lookup")
+        .expect("galileo e5b acquisition model");
+
+        assert_eq!(model.signal_band, SignalBand::E5);
+        assert_eq!(model.code_length, 10_230);
+        assert_eq!(model.code_period_ms, 1);
+        assert!((model.code_rate_hz - GALILEO_E5B_CODE_RATE_HZ).abs() < f64::EPSILON);
+        assert_eq!(model.carrier_hz, GALILEO_E5B_CARRIER_HZ);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 //! Error types for bijux-gnss-signal.
 
-use bijux_gnss_core::api::SatId;
+use bijux_gnss_core::api::{Constellation, SatId, SignalBand, SignalCode};
 
 /// Errors emitted by signal utilities.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
@@ -20,6 +20,16 @@ pub enum SignalError {
     /// GLONASS acquisition and synthesis require a frequency channel.
     #[error("missing GLONASS frequency channel for {0:?}")]
     MissingGlonassFrequencyChannel(SatId),
+    /// Signal metadata exists but does not expose a usable default component.
+    #[error("unsupported signal definition for {constellation:?} {signal_band:?} {signal_code:?}")]
+    UnsupportedSignalDefinition {
+        /// Constellation carried by the incomplete signal definition.
+        constellation: Constellation,
+        /// Signal band carried by the incomplete signal definition.
+        signal_band: SignalBand,
+        /// Signal code carried by the incomplete signal definition.
+        signal_code: SignalCode,
+    },
     /// Code phase must be finite.
     #[error("invalid code phase")]
     InvalidCodePhase,
