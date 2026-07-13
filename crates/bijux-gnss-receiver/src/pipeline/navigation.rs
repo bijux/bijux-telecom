@@ -2394,6 +2394,29 @@ mod tests {
         assert_eq!(uncertainty_class_from_solution(&solution), NavUncertaintyClass::Medium);
     }
 
+    #[test]
+    fn fixed_precision_without_correction_support_stays_out_of_centimeter_band() {
+        let mut solution = sample_last_solution();
+        solution.status = SolutionStatus::Fixed;
+        solution.quality = SolutionStatus::Fixed.quality_flag();
+        solution.lifecycle_state = NavLifecycleState::Fixed;
+        solution.sigma_h_m = Some(Meters(0.01));
+        solution.sigma_v_m = Some(Meters(0.02));
+        solution.position_covariance_ecef_m2 =
+            Some([[0.0001, 0.0, 0.0], [0.0, 0.0001, 0.0], [0.0, 0.0, 0.0004]]);
+        solution.integrity_hpl_m = Some(0.08);
+        solution.integrity_vpl_m = Some(0.12);
+
+        apply_precision_reporting_policy(&mut solution);
+
+        assert!(solution.sigma_h_m.as_ref().expect("horizontal sigma").0 >= 0.10);
+        assert!(solution.sigma_v_m.as_ref().expect("vertical sigma").0 >= 0.15);
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "precision_floor=fixed_solution_without_validated_support"));
+    }
+
     fn make_eph(prn: u8, omega0: f64, m0: f64, t_ref_s: f64) -> GpsEphemeris {
         GpsEphemeris {
             sat: SatId { constellation: Constellation::Gps, prn },
