@@ -294,6 +294,15 @@ struct SyntheticNavigationValidationReport {
     pvt: bijux_gnss_infra::api::receiver::sim::SyntheticGnssPvtStageSummary,
 }
 
+#[derive(Debug, Serialize)]
+struct SyntheticQuantizationMeasurementReport {
+    scenario_id: String,
+    scenario_path: String,
+    output_artifact: String,
+    measured_quantizations: Vec<bijux_gnss_infra::api::signal::IqQuantization>,
+    measurement: bijux_gnss_infra::api::receiver::sim::SyntheticQuantizationLossReport,
+}
+
 #[cfg(test)]
 mod report_tests {
     use super::*;
@@ -353,6 +362,7 @@ mod report_tests {
                     ),
                     sat: SatId { constellation: Constellation::Gps, prn },
                     signal_band: bijux_gnss_infra::api::core::SignalBand::L1,
+                    signal_code: bijux_gnss_infra::api::core::SignalCode::Unknown,
                     glonass_frequency_channel: None,
                     prompt_i: 0.0,
                     prompt_q: 0.0,

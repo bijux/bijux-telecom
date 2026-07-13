@@ -97,6 +97,47 @@ fn emit_synthetic_navigation_validation_report(
     Ok(())
 }
 
+fn emit_synthetic_quantization_measurement_report(
+    common: &CommonArgs,
+    report: &SyntheticQuantizationMeasurementReport,
+) -> Result<()> {
+    let run_dir = bijux_gnss_infra::api::run_dir(
+        &synthetic_navigation_args(common),
+        "measure_synthetic_quantization",
+        None,
+    )
+    .map_err(|err| eyre!(err.message))?;
+    fs::write(run_dir.join("summary.json"), serde_json::to_string_pretty(report)?)?;
+
+    match common.report {
+        ReportFormat::Json => {
+            let report_path = run_dir.join("measure_synthetic_quantization_report.json");
+            fs::write(&report_path, serde_json::to_string_pretty(report)?)?;
+            println!("wrote {}", report_path.display());
+        }
+        ReportFormat::Table => print_synthetic_quantization_measurement_table(report),
+    }
+    Ok(())
+}
+
+fn resolved_quantization_profiles(
+    quantization: &[SyntheticQuantizationArg],
+) -> Vec<bijux_gnss_infra::api::signal::IqQuantization> {
+    let requested = if quantization.is_empty() {
+        bijux_gnss_infra::api::receiver::sim::truth_guided_quantization_reference_sweep()
+            .to_vec()
+    } else {
+        quantization.iter().map(|entry| entry.into_quantization()).collect::<Vec<_>>()
+    };
+    let mut resolved = vec![bijux_gnss_infra::api::signal::IqQuantization::Float32];
+    for entry in requested {
+        if !resolved.contains(&entry) {
+            resolved.push(entry);
+        }
+    }
+    resolved
+}
+
 fn handle_export_synthetic_iq(command: GnssCommand) -> Result<()> {
     let GnssCommand::ExportSyntheticIq { scenario, out, report, capture_start_utc } = command
     else {
@@ -469,6 +510,82 @@ fn handle_validate_synthetic_navigation(command: GnssCommand) -> Result<()> {
     let _ = bijux_gnss_infra::api::write_manifest(
         &synthetic_navigation_args(&common),
         "validate_synthetic_navigation",
+        &profile,
+        None,
+        &serde_json::to_value(&report)?,
+    )?;
+
+    Ok(())
+}
+
+fn handle_measure_synthetic_quantization(command: GnssCommand) -> Result<()> {
+    let GnssCommand::MeasureSyntheticQuantization {
+        common,
+        scenario,
+        quantization,
+        capture_start_utc,
+    } = command
+    else {
+        bail!("invalid command for handler");
+    };
+
+    let scenario_contents = fs::read_to_string(&scenario)
+        .with_context(|| format!("failed to read scenario {}", scenario.display()))?;
+    let scenario_def: bijux_gnss_infra::api::receiver::sim::SyntheticScenario =
+        toml::from_str(&scenario_contents)
+            .with_context(|| format!("failed to parse scenario {}", scenario.display()))?;
+    let scenario_id = resolved_scenario_id(&scenario_def, &scenario);
+    let measured_quantizations = resolved_quantization_profiles(&quantization);
+
+    let mut profile = load_config(&common)?;
+    apply_common_overrides(
+        &mut profile,
+        CommonOverrides { seed: common.seed, deterministic: common.deterministic },
+    );
+    profile.sample_rate_hz = scenario_def.sample_rate_hz;
+    profile.intermediate_freq_hz = scenario_def.intermediate_freq_hz;
+    profile.quantization_bits = 32;
+    profile.seed = scenario_def.seed;
+    validate_config(&profile)?;
+
+    let measurement = bijux_gnss_infra::api::receiver::sim::measure_truth_guided_quantization_loss(
+        &profile.to_pipeline_config(),
+        &scenario_def,
+        &measured_quantizations,
+        &capture_start_utc,
+    );
+    let artifact_dir = bijux_gnss_infra::api::artifacts_dir(
+        &synthetic_navigation_args(&common),
+        "measure_synthetic_quantization",
+        None,
+    )
+    .map_err(|err| eyre!(err.message))?;
+    let artifact_path = artifact_dir.join("synthetic_quantization_loss_artifact.json");
+    bijux_gnss_infra::api::receiver::sim::write_truth_guided_quantization_loss_artifact(
+        &artifact_path,
+        &measurement,
+    )?;
+    let parsed_artifact: bijux_gnss_infra::api::receiver::sim::SyntheticQuantizationLossReport =
+        serde_json::from_str(
+            &fs::read_to_string(&artifact_path)
+                .with_context(|| format!("failed to read {}", artifact_path.display()))?,
+        )
+        .with_context(|| format!("failed to parse {}", artifact_path.display()))?;
+    if parsed_artifact != measurement {
+        bail!("synthetic quantization artifact did not round-trip cleanly");
+    }
+
+    let report = SyntheticQuantizationMeasurementReport {
+        scenario_id,
+        scenario_path: scenario.display().to_string(),
+        output_artifact: artifact_path.display().to_string(),
+        measured_quantizations,
+        measurement,
+    };
+    emit_synthetic_quantization_measurement_report(&common, &report)?;
+    let _ = bijux_gnss_infra::api::write_manifest(
+        &synthetic_navigation_args(&common),
+        "measure_synthetic_quantization",
         &profile,
         None,
         &serde_json::to_value(&report)?,

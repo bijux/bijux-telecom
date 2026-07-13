@@ -72,3 +72,26 @@ enum RefPolicy {
     Global,
     PerConstellation,
 }
+
+#[derive(Copy, Clone, ValueEnum)]
+enum SyntheticQuantizationArg {
+    Float32,
+    Bipolar1Bit,
+    Signed2Bit,
+    Signed4Bit,
+    Signed8Bit,
+    Signed16Bit,
+}
+
+impl SyntheticQuantizationArg {
+    fn into_quantization(self) -> bijux_gnss_infra::api::signal::IqQuantization {
+        match self {
+            Self::Float32 => bijux_gnss_infra::api::signal::IqQuantization::Float32,
+            Self::Bipolar1Bit => bijux_gnss_infra::api::signal::IqQuantization::Bipolar1Bit,
+            Self::Signed2Bit => bijux_gnss_infra::api::signal::IqQuantization::Signed2Bit,
+            Self::Signed4Bit => bijux_gnss_infra::api::signal::IqQuantization::Signed4Bit,
+            Self::Signed8Bit => bijux_gnss_infra::api::signal::IqQuantization::Signed8Bit,
+            Self::Signed16Bit => bijux_gnss_infra::api::signal::IqQuantization::Signed16Bit,
+        }
+    }
+}

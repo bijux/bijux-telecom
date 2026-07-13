@@ -246,6 +246,24 @@ pub(crate) enum GnssCommand {
         scenario: PathBuf,
     },
 
+    /// Measure synthetic quantization loss against a float32 reference capture
+    MeasureSyntheticQuantization {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Synthetic scenario TOML file
+        #[arg(long, value_name = "FILE")]
+        scenario: PathBuf,
+
+        /// Quantization profiles to measure; defaults to the canonical float32-to-1-bit sweep
+        #[arg(long, value_enum, value_delimiter = ',')]
+        quantization: Vec<SyntheticQuantizationArg>,
+
+        /// Synthetic capture start timestamp used in generated metadata
+        #[arg(long, default_value = "2026-07-14T00:00:00Z")]
+        capture_start_utc: String,
+    },
+
     /// Artifact validation and conversion
     Artifact {
         #[command(subcommand)]

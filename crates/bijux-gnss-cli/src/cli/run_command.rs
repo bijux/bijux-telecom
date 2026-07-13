@@ -13,6 +13,9 @@ fn run_command(command: GnssCommand) -> Result<()> {
         cmd @ GnssCommand::ValidateSyntheticNavigation { .. } => {
             handle_validate_synthetic_navigation(cmd)
         }
+        cmd @ GnssCommand::MeasureSyntheticQuantization { .. } => {
+            handle_measure_synthetic_quantization(cmd)
+        }
         cmd @ GnssCommand::ValidateConfig { .. } => handle_validateconfig(cmd),
         cmd @ GnssCommand::Config { .. } => handle_config(cmd),
         cmd @ GnssCommand::ValidateArtifacts { .. } => handle_validateartifacts(cmd),
@@ -446,6 +449,49 @@ fn print_synthetic_navigation_validation_table(report: &SyntheticNavigationValid
         report.pvt.threshold_max_residual_rms_m,
         report.pvt.threshold_max_pdop
     );
+}
+
+fn print_synthetic_quantization_measurement_table(report: &SyntheticQuantizationMeasurementReport) {
+    println!("Scenario: {}", report.scenario_id);
+    println!("Scenario path: {}", report.scenario_path);
+    println!("Artifact: {}", report.output_artifact);
+    println!("Reference quantization: {}", report.measurement.reference_quantization);
+    println!(
+        "Measured quantizations: {}",
+        report
+            .measured_quantizations
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    println!(
+        "Coherent integration: {} samples ({:.6} s)",
+        report.measurement.coherent_samples_per_epoch, report.measurement.coherent_integration_s
+    );
+    println!(
+        "Quantization\tBits\tFormat\tSatellite\tPeakLoss(dB)\tCn0Loss(dB-Hz)\tRefPeak\tQuantPeak\tRefCn0\tQuantCn0"
+    );
+    for point in &report.measurement.points {
+        for satellite in &point.satellites {
+            println!(
+                "{}\t{}\t{:?}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{:.6}\t{:.6}",
+                point.quantization,
+                point.quantization_bits,
+                point.sample_format,
+                format_sat(satellite.sat),
+                satellite
+                    .acquisition_correlation_loss_db
+                    .map(|value| format!("{value:.6}"))
+                    .unwrap_or_else(|| "unbounded".to_string()),
+                satellite.cn0_loss_db_hz,
+                satellite.reference_acquisition_peak,
+                satellite.quantized_acquisition_peak,
+                satellite.reference_mean_cn0_db_hz,
+                satellite.quantized_mean_cn0_db_hz,
+            );
+        }
+    }
 }
 
 fn print_inspect_table(report: &InspectReport) {
