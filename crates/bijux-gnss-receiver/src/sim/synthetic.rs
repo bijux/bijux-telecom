@@ -20,13 +20,13 @@ use crate::io::data::SampleSourceError;
 use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
 use bijux_gnss_nav::api::{sat_state_gps_l1ca, GpsEphemeris};
 use bijux_gnss_signal::api::{
-    encode_quantized_samples, quantize_samples_for_storage,
-    first_order_ionosphere_code_delay_m, receiver_search_code_phase_samples, samples_per_code,
-    IqQuantization, IqSampleFormat, RawIqMetadata,
+    encode_quantized_samples, first_order_ionosphere_code_delay_m, quantize_samples_for_storage,
+    receiver_search_code_phase_samples, samples_per_code, IqQuantization, IqSampleFormat,
+    RawIqMetadata,
 };
 use serde::{Deserialize, Serialize};
 
-const SYNTHETIC_IQ_TRUTH_SCHEMA_VERSION: u32 = 6;
+const SYNTHETIC_IQ_TRUTH_SCHEMA_VERSION: u32 = 7;
 const SYNTHETIC_GNSS_ACCURACY_ARTIFACT_SCHEMA_VERSION: u32 = 1;
 #[cfg(test)]
 const GPS_L1_CA_NAV_BIT_PERIOD_S: f64 = 0.02;
@@ -60,11 +60,10 @@ include!("synthetic/signal_generation.rs");
 mod tests {
     use super::{
         build_iq16_capture_bundle, build_quantized_capture_bundle, build_truth_bundle,
-        expected_acquisition_code_phase_samples,
-        expected_acquisition_code_phase_samples_f64, generate_l1_ca, generate_l1_ca_multi,
-        generate_l1_ca_multi_signal_only, generate_l1_ca_with_doppler_ramp,
-        generate_l1_ca_with_fades, generate_l1_ca_with_phase_windows,
-        measure_noise_only_acquisition_false_alarm_rate,
+        expected_acquisition_code_phase_samples, expected_acquisition_code_phase_samples_f64,
+        generate_l1_ca, generate_l1_ca_multi, generate_l1_ca_multi_signal_only,
+        generate_l1_ca_with_doppler_ramp, generate_l1_ca_with_fades,
+        generate_l1_ca_with_phase_windows, measure_noise_only_acquisition_false_alarm_rate,
         measure_noise_only_acquisition_false_alarm_rates,
         measure_truth_guided_acquisition_detection_probability,
         measure_truth_guided_acquisition_detection_rate, measure_truth_guided_tracking_lock_rate,
@@ -100,12 +99,13 @@ mod tests {
         SyntheticPvtTimeProfileReport, SyntheticPvtTimeTrend, SyntheticPvtTruthReferenceEpoch,
         SyntheticPvtTruthTableClockBias, SyntheticPvtTruthTableDop, SyntheticPvtTruthTableEcef,
         SyntheticPvtTruthTableEnuError, SyntheticPvtTruthTableEpoch,
-        SyntheticPvtTruthTableGeodetic, SyntheticPvtTruthTableReport, SyntheticScenario,
-        SyntheticSignalParams, SyntheticSignalSource, SyntheticTrackingLockRateCase,
-        SyntheticTrackingLockRatePoint, SyntheticTrackingLockRateReport,
-        SyntheticTrackingSensitivityTrial, SyntheticTrackingTruthTableEpoch,
-        SyntheticTrackingTruthTableReport, SyntheticTrackingTruthTableSatellite,
-        SPEED_OF_LIGHT_MPS, SYNTHETIC_COMPLEX_NOISE_POWER, SYNTHETIC_NOISE_STD_PER_COMPONENT,
+        SyntheticPvtTruthTableGeodetic, SyntheticPvtTruthTableReport,
+        SyntheticReceiverOscillatorModel, SyntheticScenario, SyntheticSignalParams,
+        SyntheticSignalSource, SyntheticTrackingLockRateCase, SyntheticTrackingLockRatePoint,
+        SyntheticTrackingLockRateReport, SyntheticTrackingSensitivityTrial,
+        SyntheticTrackingTruthTableEpoch, SyntheticTrackingTruthTableReport,
+        SyntheticTrackingTruthTableSatellite, SPEED_OF_LIGHT_MPS, SYNTHETIC_COMPLEX_NOISE_POWER,
+        SYNTHETIC_NOISE_STD_PER_COMPONENT,
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
     use crate::reference_validation::ValidationReferenceEpoch;

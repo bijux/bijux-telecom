@@ -18,7 +18,8 @@ fn synthetic_epoch_start_phase_matches_theoretical_phase_after_sixty_seconds() {
         cn0_db_hz: 58.0,
         navigation_data: false.into(),
     };
-    let sat_state = SatState::new_with_receiver_clock_frequency_bias_hz(&config, params.clone(), 0.0);
+    let sat_state =
+        SatState::new_with_receiver_clock_frequency_bias_hz(&config, params.clone(), 0.0);
     let code_period_samples =
         samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
     let sixty_second_sample_index = (60.0 * config.sampling_freq_hz) as u64;
@@ -84,7 +85,8 @@ fn galileo_e1_signal_only_matches_cboc_reference_samples() {
         cn0_db_hz: 58.0,
         navigation_data: false.into(),
     };
-    let frame = super::generate_l1_ca_signal_only(&config, params.clone(), 20.0 / config.sampling_freq_hz);
+    let frame =
+        super::generate_l1_ca_signal_only(&config, params.clone(), 20.0 / config.sampling_freq_hz);
     let expected = bijux_gnss_signal::api::sample_galileo_e1_cboc(
         params.sat.prn,
         config.sampling_freq_hz,
@@ -182,7 +184,8 @@ fn beidou_b1i_signal_only_matches_reference_samples() {
         cn0_db_hz: 58.0,
         navigation_data: false.into(),
     };
-    let frame = super::generate_l1_ca_signal_only(&config, params.clone(), 20.0 / config.sampling_freq_hz);
+    let frame =
+        super::generate_l1_ca_signal_only(&config, params.clone(), 20.0 / config.sampling_freq_hz);
     let expected = bijux_gnss_signal::api::sample_beidou_b1i_code(
         params.sat.prn,
         config.sampling_freq_hz,
@@ -320,7 +323,8 @@ fn glonass_l1_signal_only_matches_reference_samples() {
         cn0_db_hz: 58.0,
         navigation_data: false.into(),
     };
-    let frame = super::generate_l1_ca_signal_only(&config, params.clone(), 20.0 / config.sampling_freq_hz);
+    let frame =
+        super::generate_l1_ca_signal_only(&config, params.clone(), 20.0 / config.sampling_freq_hz);
     let expected =
         bijux_gnss_signal::api::sample_glonass_l1_st_code(config.sampling_freq_hz, 0.0, 20)
             .expect("valid GLONASS L1 reference samples");
@@ -496,13 +500,16 @@ fn truth_bundle_records_constant_and_alternating_nav_bit_truth() {
         0.8,
     );
 
-    assert_eq!(truth.schema_version, 6);
+    assert_eq!(truth.schema_version, 7);
     assert_eq!(truth.scenario_id, "truth-bundle");
     assert_eq!(truth.seed, 44);
     assert_eq!(truth.sample_format, IqSampleFormat::Iq16Le);
     assert_eq!(truth.quantization, IqQuantization::Signed16Bit);
     assert_eq!(truth.sample_rate_hz, 4_000_000.0);
     assert_eq!(truth.receiver_clock_frequency_bias_hz, 250.0);
+    assert_eq!(truth.receiver_oscillator_model.carrier_frequency_bias_hz, 250.0);
+    assert_eq!(truth.receiver_oscillator_model.carrier_frequency_drift_hz_per_s, 0.0);
+    assert_eq!(truth.receiver_oscillator_model.sampling_clock_fractional_error, 0.0);
     assert_eq!(truth.quantization_bits, 16);
     assert_eq!(truth.noise_std_per_component, SYNTHETIC_NOISE_STD_PER_COMPONENT);
     assert!(
@@ -510,6 +517,21 @@ fn truth_bundle_records_constant_and_alternating_nav_bit_truth() {
     );
     assert_eq!(truth.peak_component_before_scaling, 1.25);
     assert_eq!(truth.output_scale_applied, 0.8);
+    assert!(
+        truth.receiver_oscillator_truth.carrier_frequency_bias_hz.len() >= 2,
+        "{:?}",
+        truth.receiver_oscillator_truth.carrier_frequency_bias_hz
+    );
+    assert!(truth.receiver_oscillator_truth.carrier_frequency_bias_hz.iter().all(|point| (point
+        .value
+        - 250.0)
+        .abs()
+        <= f64::EPSILON));
+    assert!(truth
+        .receiver_oscillator_truth
+        .phase_noise_rad
+        .iter()
+        .all(|point| point.value.abs() <= f64::EPSILON));
     assert_eq!(truth.satellites.len(), 2);
 
     let constant = &truth.satellites[0];
@@ -518,10 +540,7 @@ fn truth_bundle_records_constant_and_alternating_nav_bit_truth() {
         signal_amplitude_from_cn0(constant.cn0_db_hz, truth.sample_rate_hz)
     );
     assert_eq!(constant.glonass_frequency_channel, None);
-    assert_eq!(
-        constant.navigation_data,
-        super::SyntheticNavigationData::ConstantPositive
-    );
+    assert_eq!(constant.navigation_data, super::SyntheticNavigationData::ConstantPositive);
     assert_eq!(constant.nav_bit_mode, SyntheticNavBitMode::ConstantPositive);
     assert_eq!(constant.nav_bit_segments.len(), 1);
     assert_eq!(constant.nav_bit_segments[0].start_sample, 0);
@@ -604,10 +623,11 @@ fn truth_bundle_preserves_glonass_frequency_channel_metadata() {
         0.75,
     );
 
-    assert_eq!(truth.schema_version, 6);
+    assert_eq!(truth.schema_version, 7);
     assert_eq!(truth.satellites.len(), 1);
     assert_eq!(truth.satellites[0].sat, scenario.satellites[0].sat);
     assert_eq!(truth.satellites[0].glonass_frequency_channel, Some(channel));
+    assert_eq!(truth.receiver_oscillator_model, SyntheticReceiverOscillatorModel::default());
 }
 
 #[test]
@@ -1184,8 +1204,10 @@ fn receiver_clock_frequency_bias_shifts_synthetic_carrier_phase_increment() {
         cn0_db_hz: 60.0,
         navigation_data: false.into(),
     };
-    let unbiased = SatState::new_with_receiver_clock_frequency_bias_hz(&config, params.clone(), 0.0);
-    let biased = SatState::new_with_receiver_clock_frequency_bias_hz(&config, params.clone(), 500.0);
+    let unbiased =
+        SatState::new_with_receiver_clock_frequency_bias_hz(&config, params.clone(), 0.0);
+    let biased =
+        SatState::new_with_receiver_clock_frequency_bias_hz(&config, params.clone(), 500.0);
     let sample_dt_s = 1.0 / config.sampling_freq_hz;
     let unbiased_phase_step =
         phase_step_rad(unbiased.sample_at(0.0), unbiased.sample_at(sample_dt_s));

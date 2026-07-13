@@ -118,6 +118,82 @@ pub struct SyntheticPhaseWindow {
     pub phase_offset_rad: f64,
 }
 
+/// Receiver-local oscillator model applied during synthetic signal generation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticReceiverOscillatorModel {
+    /// Constant carrier-frequency offset added to every generated signal, in hertz.
+    #[serde(default)]
+    pub carrier_frequency_bias_hz: f64,
+    /// Linear carrier-frequency drift added to every generated signal, in hertz per second.
+    #[serde(default)]
+    pub carrier_frequency_drift_hz_per_s: f64,
+    /// Fractional sampling-clock error applied to elapsed sample time.
+    #[serde(default)]
+    pub sampling_clock_fractional_error: f64,
+    /// Deterministic phase-noise profile applied as an additive carrier phase offset.
+    #[serde(default)]
+    pub phase_noise: SyntheticReceiverPhaseNoiseModel,
+}
+
+impl Default for SyntheticReceiverOscillatorModel {
+    fn default() -> Self {
+        Self {
+            carrier_frequency_bias_hz: 0.0,
+            carrier_frequency_drift_hz_per_s: 0.0,
+            sampling_clock_fractional_error: 0.0,
+            phase_noise: SyntheticReceiverPhaseNoiseModel::default(),
+        }
+    }
+}
+
+impl SyntheticReceiverOscillatorModel {
+    pub const fn with_carrier_frequency_bias_hz(carrier_frequency_bias_hz: f64) -> Self {
+        Self {
+            carrier_frequency_bias_hz,
+            carrier_frequency_drift_hz_per_s: 0.0,
+            sampling_clock_fractional_error: 0.0,
+            phase_noise: SyntheticReceiverPhaseNoiseModel {
+                seed: 0,
+                knot_interval_samples: 0,
+                step_std_rad: 0.0,
+            },
+        }
+    }
+
+    pub fn is_nominal(&self) -> bool {
+        self.carrier_frequency_bias_hz.abs() <= f64::EPSILON
+            && self.carrier_frequency_drift_hz_per_s.abs() <= f64::EPSILON
+            && self.sampling_clock_fractional_error.abs() <= f64::EPSILON
+            && !self.phase_noise.is_enabled()
+    }
+}
+
+/// Deterministic random-walk carrier phase-noise profile.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticReceiverPhaseNoiseModel {
+    /// Seed for the random-walk phase-noise sequence.
+    #[serde(default)]
+    pub seed: u64,
+    /// Sample spacing between consecutive phase-noise truth knots.
+    #[serde(default)]
+    pub knot_interval_samples: u64,
+    /// One-sigma random-walk phase increment at each knot, in radians.
+    #[serde(default)]
+    pub step_std_rad: f64,
+}
+
+impl Default for SyntheticReceiverPhaseNoiseModel {
+    fn default() -> Self {
+        Self { seed: 0, knot_interval_samples: 0, step_std_rad: 0.0 }
+    }
+}
+
+impl SyntheticReceiverPhaseNoiseModel {
+    pub fn is_enabled(&self) -> bool {
+        self.knot_interval_samples > 0 && self.step_std_rad.abs() > f64::EPSILON
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyntheticScenario {
     pub sample_rate_hz: f64,
@@ -262,6 +338,34 @@ pub struct SyntheticNavBitSegment {
     pub bit: i8,
 }
 
+/// One sampled receiver-oscillator truth point.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticReceiverOscillatorTruthPoint {
+    /// Absolute sample index covered by this truth point.
+    pub sample_index: u64,
+    /// Elapsed nominal capture time in seconds at this truth point.
+    pub time_s: f64,
+    /// Effect value at this truth point.
+    pub value: f64,
+}
+
+/// Per-effect receiver-oscillator truth series for one synthetic capture.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct SyntheticReceiverOscillatorTruth {
+    /// Carrier-frequency bias series, in hertz.
+    #[serde(default)]
+    pub carrier_frequency_bias_hz: Vec<SyntheticReceiverOscillatorTruthPoint>,
+    /// Carrier-frequency drift series, in hertz per second.
+    #[serde(default)]
+    pub carrier_frequency_drift_hz_per_s: Vec<SyntheticReceiverOscillatorTruthPoint>,
+    /// Additive carrier phase-noise series, in radians.
+    #[serde(default)]
+    pub phase_noise_rad: Vec<SyntheticReceiverOscillatorTruthPoint>,
+    /// Sampling-clock time-error series, in seconds.
+    #[serde(default)]
+    pub sampling_clock_time_error_s: Vec<SyntheticReceiverOscillatorTruthPoint>,
+}
+
 /// Per-satellite truth carried alongside a synthetic IQ export.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticSatelliteTruth {
@@ -313,6 +417,9 @@ pub struct SyntheticIqTruthBundle {
     pub intermediate_freq_hz: f64,
     /// Common receiver clock frequency bias added to every synthetic carrier, in Hz.
     pub receiver_clock_frequency_bias_hz: f64,
+    /// Full receiver oscillator model applied during generation.
+    #[serde(default)]
+    pub receiver_oscillator_model: SyntheticReceiverOscillatorModel,
     /// Synthetic capture start timestamp in UTC.
     pub capture_start_utc: String,
     /// Output quantization depth in bits.
@@ -335,6 +442,9 @@ pub struct SyntheticIqTruthBundle {
     pub peak_component_before_scaling: f32,
     /// Scale factor applied before quantization.
     pub output_scale_applied: f32,
+    /// Per-effect receiver-oscillator truth series for the emitted capture.
+    #[serde(default)]
+    pub receiver_oscillator_truth: SyntheticReceiverOscillatorTruth,
     /// Per-satellite truth rows.
     pub satellites: Vec<SyntheticSatelliteTruth>,
 }

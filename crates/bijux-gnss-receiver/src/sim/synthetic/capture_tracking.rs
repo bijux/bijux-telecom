@@ -33,6 +33,13 @@ pub fn build_truth_bundle_with_source_front_end(
     let noise_std_per_component =
         source_front_end_noise_std_per_component(source_front_end_filter, frame.t0.sample_rate_hz);
     let noise_power_per_complex_sample = 2.0 * noise_std_per_component * noise_std_per_component;
+    let receiver_oscillator_model =
+        receiver_oscillator_model_from_legacy_bias(scenario.receiver_clock_frequency_bias_hz);
+    let receiver_oscillator_truth = receiver_oscillator_truth_for_capture(
+        &receiver_oscillator_model,
+        frame.t0.sample_rate_hz,
+        frame.len() as u64,
+    );
     SyntheticIqTruthBundle {
         schema_version: SYNTHETIC_IQ_TRUTH_SCHEMA_VERSION,
         scenario_id: scenario_id.to_string(),
@@ -42,6 +49,7 @@ pub fn build_truth_bundle_with_source_front_end(
         sample_rate_hz: frame.t0.sample_rate_hz,
         intermediate_freq_hz: metadata.intermediate_freq_hz,
         receiver_clock_frequency_bias_hz: scenario.receiver_clock_frequency_bias_hz,
+        receiver_oscillator_model,
         capture_start_utc: metadata.capture_start_utc.clone(),
         quantization_bits: metadata.quantization_bits.unwrap_or_default(),
         duration_s: frame.len() as f64 * frame.dt_s.0,
@@ -54,6 +62,7 @@ pub fn build_truth_bundle_with_source_front_end(
         ),
         peak_component_before_scaling,
         output_scale_applied,
+        receiver_oscillator_truth,
         satellites: scenario
             .satellites
             .iter()
@@ -121,7 +130,8 @@ pub fn build_quantized_capture_bundle_with_source_front_end(
     } else {
         0.999 / peak_component_before_scaling
     };
-    let scaled_iq = frame.iq.iter().map(|sample| *sample * output_scale_applied).collect::<Vec<_>>();
+    let scaled_iq =
+        frame.iq.iter().map(|sample| *sample * output_scale_applied).collect::<Vec<_>>();
     let raw_iq_bytes = encode_quantized_samples(&scaled_iq, quantization);
     let metadata = RawIqMetadata {
         format: quantization.sample_format(),
@@ -316,10 +326,7 @@ pub fn measure_truth_guided_quantization_loss(
                 &frame,
                 quantization,
                 capture_start_utc,
-                Some(format!(
-                    "synthetic {:?} quantization measurement",
-                    quantization
-                )),
+                Some(format!("synthetic {:?} quantization measurement", quantization)),
             );
             let quantized_frame =
                 quantized_capture_frame(&frame, bundle.truth.output_scale_applied, quantization);
@@ -334,8 +341,10 @@ pub fn measure_truth_guided_quantization_loss(
                     let quantized_acq = find_acquisition_result(&quantized_acquisition, signal.sat);
                     let reference_cn0_row = find_cn0_validation_row(&reference_cn0, signal.sat);
                     let quantized_cn0_row = find_cn0_validation_row(&quantized_cn0, signal.sat);
-                    let reference_peak = reference_acq.map(|result| result.peak).unwrap_or_default();
-                    let quantized_peak = quantized_acq.map(|result| result.peak).unwrap_or_default();
+                    let reference_peak =
+                        reference_acq.map(|result| result.peak).unwrap_or_default();
+                    let quantized_peak =
+                        quantized_acq.map(|result| result.peak).unwrap_or_default();
                     let reference_mean_cn0_db_hz =
                         reference_cn0_row.map(|row| row.measured_mean_cn0_dbhz).unwrap_or_default();
                     let quantized_mean_cn0_db_hz =
@@ -403,12 +412,9 @@ fn quantized_capture_frame(
     output_scale_applied: f32,
     quantization: IqQuantization,
 ) -> SamplesFrame {
-    let scaled_iq = frame.iq.iter().map(|sample| *sample * output_scale_applied).collect::<Vec<_>>();
-    SamplesFrame::new(
-        frame.t0,
-        frame.dt_s,
-        quantize_samples_for_storage(&scaled_iq, quantization),
-    )
+    let scaled_iq =
+        frame.iq.iter().map(|sample| *sample * output_scale_applied).collect::<Vec<_>>();
+    SamplesFrame::new(frame.t0, frame.dt_s, quantize_samples_for_storage(&scaled_iq, quantization))
 }
 
 fn find_acquisition_result(
