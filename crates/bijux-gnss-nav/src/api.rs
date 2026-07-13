@@ -48,6 +48,7 @@ pub use crate::estimation::ekf::models::{
     NavClockModel, ProcessNoiseConfig, PseudorangeMeasurement, StaticNavClockModel,
 };
 /// EKF interface and measurements.
+pub use crate::estimation::ekf::statistics::InnovationConsistencyConfig;
 pub use crate::estimation::ekf::state::{Ekf, EkfConfig, MeasurementKind};
 pub use crate::estimation::ekf::traits::MeasurementModel;
 /// Position solver (least squares) and helpers.
@@ -102,6 +103,15 @@ pub use crate::estimation::rtk::baseline::{
     rtk_float_baseline_from_double_differences_with_rover_prior, RtkFloatAmbiguityEstimate,
     RtkFloatBaselineSolution,
 };
+/// RTK single-difference helpers.
+pub use crate::estimation::rtk::single_difference::{
+    choose_rtk_single_difference_reference_signal,
+    choose_rtk_single_difference_reference_signals_by_constellation,
+    rtk_single_difference_residual_metrics,
+    rtk_single_difference_residual_metrics_with_antenna_corrections,
+    rtk_single_differences_from_obs_epochs, RtkSingleDifferenceObservation,
+    RtkSingleDifferenceResidualMetrics,
+};
 /// RTK double-difference helpers.
 pub use crate::estimation::rtk::{
     antenna::RtkAntennaCorrectionConfig,
@@ -112,14 +122,8 @@ pub use crate::estimation::rtk::{
         RtkDoubleDifferenceObservation, RtkDoubleDifferenceResidualMetrics,
     },
 };
-/// RTK single-difference helpers.
-pub use crate::estimation::rtk::single_difference::{
-    choose_rtk_single_difference_reference_signal,
-    choose_rtk_single_difference_reference_signals_by_constellation,
-    rtk_single_difference_residual_metrics,
-    rtk_single_difference_residual_metrics_with_antenna_corrections,
-    rtk_single_differences_from_obs_epochs, RtkSingleDifferenceObservation,
-    RtkSingleDifferenceResidualMetrics,
+pub use crate::formats::antex::{
+    parse_antex_receiver_calibrations, parse_antex_satellite_calibrations,
 };
 /// BeiDou B1I D1 navigation decoding.
 pub use crate::formats::beidou_b1i_navigation_decode::{
@@ -170,9 +174,6 @@ pub use crate::formats::rinex::{
     parse_rinex_broadcast_navigation, parse_rinex_nav, parse_rinex_obs_header,
     write_rinex_broadcast_navigation, write_rinex_nav, write_rinex_obs,
 };
-pub use crate::formats::antex::{
-    parse_antex_receiver_calibrations, parse_antex_satellite_calibrations,
-};
 pub use crate::formats::rinex_obs::{
     parse_rinex_beidou_observation_dataset, parse_rinex_galileo_observation_dataset,
     parse_rinex_gps_observation_dataset, RinexBeidouObservationChannel,
@@ -187,21 +188,21 @@ pub use crate::formats::{
 };
 /// Linear algebra helper.
 pub use crate::linalg::Matrix;
-/// Atmospheric model scaffolding.
-pub use crate::models::atmosphere::{
-    IonosphereModel, KlobucharCoefficients, KlobucharModel, SaastamoinenModel, TroposphereModel,
-};
 pub use crate::models::antenna::{
     canonical_receiver_antenna_type, receiver_antenna_range_correction_m,
     satellite_antenna_range_correction_m, satellite_band_from_antex_frequency,
     ReceiverAntennaCalibration, ReceiverAntennaCalibrations, ReceiverPhaseCenterOffset,
     SatelliteAntennaCalibration, SatelliteAntennaCalibrations, SatellitePhaseCenterOffset,
 };
+/// Atmospheric model scaffolding.
+pub use crate::models::atmosphere::{
+    IonosphereModel, KlobucharCoefficients, KlobucharModel, SaastamoinenModel, TroposphereModel,
+};
+pub use crate::models::nequick::model::GalileoNequickModel;
 pub use crate::models::ocean_tide_loading::{
     OceanTideConstituent, OceanTideLoadingConstituent, OceanTideLoadingModel,
 };
 pub use crate::models::solid_earth_tide::SolidEarthTideModel;
-pub use crate::models::nequick::model::GalileoNequickModel;
 /// BeiDou broadcast navigation and satellite state helpers.
 pub use crate::orbits::beidou::{
     beidou_earth_rotation_correction, beidou_navigation_age, beidou_satellite_clock_correction_b1i,
