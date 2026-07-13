@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{Constellation, NavSolutionEpoch, ObsEpoch};
+use bijux_gnss_core::api::{NavSolutionEpoch, ObsEpoch};
 use bijux_gnss_nav::api::{
     GalileoBroadcastNavigationData, GpsBroadcastNavigationData, GpsEphemeris,
     KlobucharCoefficients, NavEngine, PositionBroadcastNavigation, PositionConstellationPolicy,
@@ -106,14 +106,6 @@ impl NavEngine for Navigation {
         self.flush_diagnostic_events();
         solution
     }
-}
-
-pub(crate) fn supports_positioning_signal(
-    constellation: Constellation,
-    band: bijux_gnss_core::api::SignalBand,
-    code: bijux_gnss_core::api::SignalCode,
-) -> bool {
-    bijux_gnss_nav::api::supports_positioning_signal(constellation, band, code)
 }
 
 fn position_runtime_config(config: &ReceiverPipelineConfig) -> PositionRuntimeConfig {

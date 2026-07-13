@@ -90,7 +90,7 @@ pub(crate) fn supports_positioning_signal(
     band: SignalBand,
     code: SignalCode,
 ) -> bool {
-    crate::pipeline::navigation::supports_positioning_signal(constellation, band, code)
+    bijux_gnss_nav::api::supports_positioning_signal(constellation, band, code)
 }
 
 #[cfg(not(feature = "nav"))]
