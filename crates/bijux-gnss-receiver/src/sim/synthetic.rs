@@ -50,6 +50,7 @@ include!("synthetic/pvt_truth.rs");
 include!("synthetic/acquisition_validation_types.rs");
 include!("synthetic/tracking_validation_types.rs");
 include!("synthetic/capture_tracking.rs");
+include!("synthetic/composite_component_recovery.rs");
 include!("synthetic/acquisition_validation.rs");
 include!("synthetic/sensitivity_profiles.rs");
 include!("synthetic/signal_generation.rs");
@@ -59,7 +60,8 @@ mod tests {
     use super::{
         build_iq16_capture_bundle, build_truth_bundle, expected_acquisition_code_phase_samples,
         expected_acquisition_code_phase_samples_f64, generate_l1_ca, generate_l1_ca_multi,
-        generate_l1_ca_with_doppler_ramp, generate_l1_ca_with_fades,
+        generate_l1_ca_multi_signal_only, generate_l1_ca_with_doppler_ramp,
+        generate_l1_ca_with_fades,
         generate_l1_ca_with_phase_windows, measure_noise_only_acquisition_false_alarm_rate,
         measure_noise_only_acquisition_false_alarm_rates,
         measure_truth_guided_acquisition_detection_probability,
@@ -72,6 +74,7 @@ mod tests {
         summarize_truth_guided_pvt_multipath_profile, summarize_truth_guided_pvt_time_profile,
         synthetic_tracking_sensitivity_report, truth_guided_receiver_accuracy_budgets,
         validate_acquisition_accuracy_budget, validate_pvt_accuracy_budget,
+        validate_truth_guided_composite_component_recovery,
         validate_truth_guided_acquisition_code_phase,
         validate_truth_guided_acquisition_code_phase_refinement,
         validate_truth_guided_acquisition_coherent_integration,
@@ -94,7 +97,7 @@ mod tests {
         SyntheticPvtMultipathProfileReport, SyntheticPvtTimeProfileCase,
         SyntheticPvtTimeProfileReport, SyntheticPvtTimeTrend, SyntheticPvtTruthReferenceEpoch,
         SyntheticPvtTruthTableClockBias, SyntheticPvtTruthTableDop, SyntheticPvtTruthTableEcef,
-        SyntheticPvtTruthTableEnuError, SyntheticPvtTruthTableEpoch,
+        SyntheticPvtTruthTableEnuError, SyntheticPvtTruthTableEpoch, SyntheticNavigationData,
         SyntheticPvtTruthTableGeodetic, SyntheticPvtTruthTableReport, SyntheticScenario,
         SyntheticSignalParams, SyntheticSignalSource, SyntheticTrackingLockRateCase,
         SyntheticTrackingLockRatePoint, SyntheticTrackingLockRateReport,
@@ -126,6 +129,7 @@ mod tests {
     include!("synthetic/tests/pvt_profiles_motion_timing.rs");
     include!("synthetic/tests/profile_fixtures.rs");
     include!("synthetic/tests/signal_model.rs");
+    include!("synthetic/tests/validation_composite_recovery.rs");
     include!("synthetic/tests/validation_detection_reports.rs");
     include!("synthetic/tests/validation_frequency_sampling.rs");
 }
