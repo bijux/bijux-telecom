@@ -57,6 +57,24 @@ pub use crate::estimation::position::filter::{
     PositionFilterMotionClass, PositionFilterMotionModel, PositionFilterProcessNoise,
     PositionFilterStaticPositionModel,
 };
+pub use crate::estimation::position::integrity::{
+    clock_anomaly::{
+        advance_satellite_clock_suspect_streak, detect_satellite_clock_anomaly,
+        SatelliteClockAnomaly,
+    },
+    clock_consistency::{
+        detect_constellation_clock_inconsistencies, ConstellationClockInconsistency,
+    },
+    code_doppler_anomaly::{
+        detect_common_code_doppler_anomaly, CommonCodeDopplerAnomaly,
+    },
+    replay_timing::{detect_replay_timing_anomaly, ReplayTimingAnomaly},
+    residual_temporal_correlation::{
+        advance_residual_whiteness_suspect_streak, classify_residual_temporal_correlation,
+        detect_residual_temporal_correlation, residual_temporal_correlation_is_persistent,
+        ResidualTemporalCorrelation, ResidualTemporalCorrelationEvidence,
+    },
+};
 pub use crate::estimation::position::navigation_filter::{
     NavigationFilter, NavigationFilterConfig, NavigationFilterThresholds,
 };

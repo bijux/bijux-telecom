@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 
 pub mod filter;
+pub mod integrity;
 pub mod navigation;
 pub mod navigation_filter;
 pub mod raim;
