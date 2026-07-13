@@ -11,6 +11,7 @@ use crate::estimation::ekf::models::{
     DopplerMeasurement, NavClockModel, ProcessNoiseConfig, PseudorangeMeasurement,
     StaticNavClockModel,
 };
+use crate::estimation::ekf::statistics::InnovationConsistencyConfig;
 use crate::estimation::ekf::state::{Ekf, EkfConfig};
 use crate::estimation::position::navigation::{
     corrected_pseudorange_m, default_position_signal_id, resolve_position_inputs,
@@ -349,6 +350,7 @@ impl PositionFilter {
                 gating_chi2_code: config.gating_chi2_code,
                 gating_chi2_phase: None,
                 gating_chi2_doppler: config.gating_chi2_doppler,
+                innovation_consistency: Some(InnovationConsistencyConfig::default()),
                 huber_k: config.huber_k,
                 square_root: true,
                 covariance_epsilon: 1.0e-12,
@@ -1726,6 +1728,8 @@ mod tests {
         let health = crate::estimation::ekf::state::EkfHealth {
             innovation_rms: 12.0,
             peak_innovation_rms: 12.0,
+            normalized_innovation_squared: None,
+            peak_normalized_innovation_squared: None,
             rejected: 0,
             last_rejection: None,
             rejection_reasons: Vec::new(),
@@ -1736,6 +1740,8 @@ mod tests {
             peak_whiteness_ratio: None,
             predicted_variance: None,
             observed_variance: None,
+            innovation_consistency_lower_bound: None,
+            innovation_consistency_upper_bound: None,
             events: Vec::new(),
         };
 

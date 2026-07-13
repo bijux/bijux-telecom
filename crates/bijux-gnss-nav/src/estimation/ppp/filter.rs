@@ -19,6 +19,7 @@ use crate::corrections::biases::{
 };
 use crate::corrections::CorrectionContext;
 use crate::estimation::ekf::state::{Ekf, EkfConfig};
+use crate::estimation::ekf::statistics::InnovationConsistencyConfig;
 use crate::estimation::position::solver::{
     ecef_to_geodetic, elevation_azimuth_deg, position_measurement_weight,
 };
@@ -66,6 +67,7 @@ impl PppFilter {
                 gating_chi2_code: Some(200.0),
                 gating_chi2_phase: Some(200.0),
                 gating_chi2_doppler: Some(200.0),
+                innovation_consistency: Some(InnovationConsistencyConfig::default()),
                 huber_k: Some(10.0),
                 square_root: true,
                 covariance_epsilon: 1e-6,

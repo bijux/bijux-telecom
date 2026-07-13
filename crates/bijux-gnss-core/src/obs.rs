@@ -1085,6 +1085,12 @@ pub enum NavHealthEvent {
     InnovationRejected {
         reason: String,
     },
+    InnovationConsistencyAnomaly {
+        normalized_innovation_squared: f64,
+        lower_bound: f64,
+        upper_bound: f64,
+        measurement_dimension: usize,
+    },
     CommonCodeDopplerAnomaly {
         common_code_step_m: f64,
         common_doppler_step_hz: f64,

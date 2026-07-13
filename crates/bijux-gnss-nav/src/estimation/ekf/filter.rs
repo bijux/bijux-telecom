@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 
 use super::state::{Ekf, EkfCheckpoint, EkfConfig, EkfHealth, MeasurementKind, RejectionReason};
+use super::statistics::innovation_consistency_bounds;
 use super::traits::{MeasurementModel, StateModel};
 use crate::linalg::Matrix;
 use bijux_gnss_core::api::NavHealthEvent;
@@ -14,6 +15,8 @@ impl Ekf {
             health: EkfHealth {
                 innovation_rms: 0.0,
                 peak_innovation_rms: 0.0,
+                normalized_innovation_squared: None,
+                peak_normalized_innovation_squared: None,
                 rejected: 0,
                 last_rejection: None,
                 rejection_reasons: Vec::new(),
@@ -24,6 +27,8 @@ impl Ekf {
                 peak_whiteness_ratio: None,
                 predicted_variance: None,
                 observed_variance: None,
+                innovation_consistency_lower_bound: None,
+                innovation_consistency_upper_bound: None,
                 events: Vec::new(),
             },
             labels: Vec::new(),
@@ -48,6 +53,8 @@ impl Ekf {
             health: EkfHealth {
                 innovation_rms: 0.0,
                 peak_innovation_rms: 0.0,
+                normalized_innovation_squared: None,
+                peak_normalized_innovation_squared: None,
                 rejected: 0,
                 last_rejection: None,
                 rejection_reasons: Vec::new(),
@@ -58,6 +65,8 @@ impl Ekf {
                 peak_whiteness_ratio: None,
                 predicted_variance: None,
                 observed_variance: None,
+                innovation_consistency_lower_bound: None,
+                innovation_consistency_upper_bound: None,
                 events: Vec::new(),
             },
             labels: checkpoint.labels,
@@ -67,12 +76,16 @@ impl Ekf {
     pub fn reset_epoch_health(&mut self) {
         self.health.innovation_rms = 0.0;
         self.health.peak_innovation_rms = 0.0;
+        self.health.normalized_innovation_squared = None;
+        self.health.peak_normalized_innovation_squared = None;
         self.health.condition_number = None;
         self.health.peak_condition_number = None;
         self.health.whiteness_ratio = None;
         self.health.peak_whiteness_ratio = None;
         self.health.predicted_variance = None;
         self.health.observed_variance = None;
+        self.health.innovation_consistency_lower_bound = None;
+        self.health.innovation_consistency_upper_bound = None;
         self.health.events.clear();
     }
 
@@ -139,18 +152,19 @@ impl Ekf {
             return false;
         };
 
+        let mut chi = 0.0;
+        for i in 0..m {
+            for j in 0..m {
+                chi += y[i] * s_inv[(i, j)] * y[j];
+            }
+        }
+
         let chi2_gate = match model.kind() {
             MeasurementKind::Code => self.config.gating_chi2_code,
             MeasurementKind::Doppler => self.config.gating_chi2_doppler,
             MeasurementKind::Phase => self.config.gating_chi2_phase,
         };
         if let Some(chi2) = chi2_gate {
-            let mut chi = 0.0;
-            for i in 0..m {
-                for j in 0..m {
-                    chi += y[i] * s_inv[(i, j)] * y[j];
-                }
-            }
             if chi > chi2 {
                 self.health.rejected += 1;
                 let reason = format!("{}: chi2 gate", model.name());
@@ -159,6 +173,25 @@ impl Ekf {
                 self.health.last_rejection_code = Some(RejectionReason::Chi2Gate);
                 self.health.events.push(NavHealthEvent::InnovationRejected { reason });
                 return false;
+            }
+        }
+
+        self.health.normalized_innovation_squared = Some(chi);
+        self.health.peak_normalized_innovation_squared = Some(
+            self.health.peak_normalized_innovation_squared.unwrap_or(0.0).max(chi),
+        );
+        if let Some(config) = self.config.innovation_consistency {
+            if let Some(bounds) = innovation_consistency_bounds(m, config) {
+                self.health.innovation_consistency_lower_bound = Some(bounds.lower_bound);
+                self.health.innovation_consistency_upper_bound = Some(bounds.upper_bound);
+                if chi < bounds.lower_bound || chi > bounds.upper_bound {
+                    self.health.events.push(NavHealthEvent::InnovationConsistencyAnomaly {
+                        normalized_innovation_squared: chi,
+                        lower_bound: bounds.lower_bound,
+                        upper_bound: bounds.upper_bound,
+                        measurement_dimension: m,
+                    });
+                }
             }
         }
 

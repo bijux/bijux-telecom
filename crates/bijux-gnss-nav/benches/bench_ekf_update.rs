@@ -1,4 +1,5 @@
 use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand, SignalCode};
+use bijux_gnss_nav::estimation::ekf::statistics::InnovationConsistencyConfig;
 use bijux_gnss_nav::api::{Ekf, EkfConfig, Matrix, PseudorangeMeasurement};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 
@@ -7,6 +8,7 @@ fn bench_ekf_update(c: &mut Criterion) {
         gating_chi2_code: Some(1e9),
         gating_chi2_phase: Some(1e9),
         gating_chi2_doppler: Some(1e9),
+        innovation_consistency: Some(InnovationConsistencyConfig::default()),
         huber_k: None,
         square_root: true,
         covariance_epsilon: 1e-9,
