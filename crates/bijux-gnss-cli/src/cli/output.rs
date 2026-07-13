@@ -268,6 +268,57 @@ fn emit_report<T: Serialize>(common: &CommonArgs, command: &str, report: &T) -> 
 
 const TRACKING_HISTORY_CODE_PERIODS: usize = 80;
 
+struct SampleWindowSource<S> {
+    inner: S,
+    remaining_samples: usize,
+}
+
+impl<S> SampleWindowSource<S> {
+    fn new(inner: S, sample_limit: usize) -> Self {
+        Self { inner, remaining_samples: sample_limit }
+    }
+}
+
+impl<S> SignalSource for SampleWindowSource<S>
+where
+    S: SignalSource + 'static,
+{
+    type Error = S::Error;
+
+    fn sample_rate_hz(&self) -> f64 {
+        self.inner.sample_rate_hz()
+    }
+
+    fn next_frame(&mut self, frame_len: usize) -> Result<Option<SamplesFrame>, Self::Error> {
+        if self.remaining_samples == 0 {
+            return Ok(None);
+        }
+        let requested_samples = self.remaining_samples.min(frame_len.max(1));
+        let Some(frame) = self.inner.next_frame(requested_samples)? else {
+            self.remaining_samples = 0;
+            return Ok(None);
+        };
+        self.remaining_samples = self.remaining_samples.saturating_sub(frame.len());
+        Ok(Some(frame))
+    }
+
+    fn is_done(&self) -> bool {
+        self.remaining_samples == 0 || self.inner.is_done()
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+fn tracking_window_sample_count(
+    config: &ReceiverPipelineConfig,
+    metadata: &RawIqMetadata,
+) -> usize {
+    samples_per_code(metadata.sample_rate_hz, config.code_freq_basis_hz, config.code_length)
+        .saturating_mul(TRACKING_HISTORY_CODE_PERIODS)
+}
+
 fn load_acquisition_frame(
     path: &Path,
     config: &ReceiverPipelineConfig,
@@ -285,7 +336,7 @@ fn load_tracking_frame(
 ) -> Result<SamplesFrame> {
     let samples_per_code =
         samples_per_code(metadata.sample_rate_hz, config.code_freq_basis_hz, config.code_length);
-    let desired_samples = samples_per_code.saturating_mul(TRACKING_HISTORY_CODE_PERIODS);
+    let desired_samples = tracking_window_sample_count(config, metadata);
     let mut source = FileSamples::open_raw_iq(path, metadata.clone())
         .with_context(|| format!("failed to open {}", path.display()))?;
 
@@ -300,6 +351,16 @@ fn load_tracking_frame(
         bijux_gnss_infra::api::signal::remove_dc_offset_in_place(&mut frame.iq);
     }
     Ok(frame)
+}
+
+fn open_tracking_window_source(
+    path: &Path,
+    config: &ReceiverPipelineConfig,
+    metadata: &RawIqMetadata,
+) -> Result<SampleWindowSource<FileSamples>> {
+    let source = FileSamples::open_raw_iq(path, metadata.clone())
+        .with_context(|| format!("failed to open {}", path.display()))?;
+    Ok(SampleWindowSource::new(source, tracking_window_sample_count(config, metadata)))
 }
 
 fn acquisition_code_periods(coherent_ms: u32, noncoherent: u32) -> usize {
@@ -574,6 +635,7 @@ fn write_track_timeseries(
     write_track_timeseries_for_command(common, "track", report, profile, dataset)
 }
 
+#[cfg(test)]
 fn write_obs_timeseries_for_command(
     common: &CommonArgs,
     command: &str,
@@ -583,8 +645,6 @@ fn write_obs_timeseries_for_command(
     profile: &ReceiverConfig,
     dataset: Option<&DatasetEntry>,
 ) -> Result<bijux_gnss_infra::api::receiver::ObservationPipelineArtifacts> {
-    let out_dir = artifacts_dir(common, command, dataset)?;
-    let header = artifact_header(common, profile, dataset)?;
     let runtime = runtime_config_from_env(common, None);
     let obs_report = bijux_gnss_infra::api::receiver::observation_artifacts_from_tracking_results_with_gps_anchor(
         config,
@@ -594,10 +654,22 @@ fn write_obs_timeseries_for_command(
         tracks,
         hatch_window,
     );
-    let mut observation_artifacts = obs_report.output;
     for event in obs_report.events {
         runtime.logger.event(&event);
     }
+    write_observation_artifacts_for_command(common, command, &obs_report.output, profile, dataset)
+}
+
+fn write_observation_artifacts_for_command(
+    common: &CommonArgs,
+    command: &str,
+    observation_artifacts: &bijux_gnss_infra::api::receiver::ObservationPipelineArtifacts,
+    profile: &ReceiverConfig,
+    dataset: Option<&DatasetEntry>,
+) -> Result<bijux_gnss_infra::api::receiver::ObservationPipelineArtifacts> {
+    let out_dir = artifacts_dir(common, command, dataset)?;
+    let header = artifact_header(common, profile, dataset)?;
+    let mut observation_artifacts = observation_artifacts.clone();
     let path = out_dir.join("obs.jsonl");
     let mut lines = Vec::new();
     let mut timing_lines = Vec::new();
@@ -606,8 +678,7 @@ fn write_obs_timeseries_for_command(
             sort_obs_sats(epoch);
         }
         let wrapped = ObsEpochV1 { header: header.clone(), payload: epoch.clone() };
-        let line = serde_json::to_string(&wrapped)?;
-        lines.push(line);
+        lines.push(serde_json::to_string(&wrapped)?);
         if let Some(ms) = epoch.processing_ms {
             timing_lines.push(serde_json::to_string(&serde_json::json!({
                 "epoch_idx": epoch.epoch_idx,
@@ -792,6 +863,7 @@ fn write_carrier_smoothed_code_validation(
     Ok(())
 }
 
+#[cfg(test)]
 fn write_obs_timeseries(
     common: &CommonArgs,
     config: &ReceiverPipelineConfig,
