@@ -4,13 +4,14 @@
 mod observation_truth_table;
 mod support;
 
-use bijux_gnss_core::api::{signal_spec_gps_l1_ca, signal_spec_gps_l5, SignalBand, SignalCode};
+use bijux_gnss_core::api::{SignalBand, SignalCode};
 use bijux_gnss_nav::api::iono_free_code_from_obs_epochs;
 use bijux_gnss_receiver::api::{
     observation_artifacts_from_tracking_results,
     sim::{validate_truth_guided_observation_table, validate_truth_guided_observations},
     ReceiverPipelineConfig,
 };
+use bijux_gnss_signal::api::{signal_spec_gps_l1_ca, signal_spec_gps_l5};
 
 use observation_truth_table::build_l5_observation_truth_fixture;
 use support::navigation_truth::synthetic_pseudorange_m;

@@ -1,7 +1,8 @@
 #![allow(missing_docs)]
 
 use crate::pipeline::signal_capabilities::signal_support_row;
-use bijux_gnss_core::api::{registered_signal_registry_entries, SupportMatrix};
+use bijux_gnss_core::api::SupportMatrix;
+use bijux_gnss_signal::api::registered_signal_registry_entries;
 
 const SIGNAL_SUPPORT_MATRIX_SCHEMA_VERSION: u32 = 2;
 

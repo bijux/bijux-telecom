@@ -212,7 +212,7 @@
         let config = ReceiverPipelineConfig {
             sampling_freq_hz: 2_044_000.0,
             intermediate_freq_hz: bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value()
-                - bijux_gnss_core::api::glonass_l1_carrier_hz(channel).value(),
+                - bijux_gnss_signal::api::glonass_l1_carrier_hz(channel).value(),
             code_freq_basis_hz: 511_000.0,
             code_length: 511,
             ..ReceiverPipelineConfig::default()

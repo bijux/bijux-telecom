@@ -25,7 +25,7 @@ use bijux_gnss_signal::api::{
     samples_per_code, signal_cycles_to_meters, signal_registry, signal_spec_beidou_b1i,
     signal_spec_beidou_b2i, signal_spec_galileo_e1b, signal_spec_galileo_e5a,
     signal_spec_glonass_l1, signal_spec_gps_l1_ca, signal_spec_gps_l2c, signal_spec_gps_l5,
-    signal_wavelength_m,
+    signal_wavelength_m, validate_obs_epochs,
 };
 use serde::{Deserialize, Serialize};
 
@@ -762,7 +762,7 @@ pub fn observation_artifacts_from_tracking_results_with_gps_anchor(
     }
     #[cfg(feature = "reference-checks")]
     {
-        if let Err(err) = bijux_gnss_core::api::validate_obs_epochs(&out) {
+        if let Err(err) = validate_obs_epochs(&out) {
             diagnostics.push(
                 DiagnosticEvent::new(DiagnosticSeverity::Error, "OBS_EPOCH_SEQUENCE_INVALID", err)
                     .with_context("stage", "observations"),
@@ -1543,7 +1543,7 @@ fn apply_epoch_decision(epoch: &mut ObsEpoch) {
         epoch.valid = false;
         return;
     }
-    if let Err(reason) = bijux_gnss_core::api::validate_obs_epochs(std::slice::from_ref(epoch)) {
+    if let Err(reason) = validate_obs_epochs(std::slice::from_ref(epoch)) {
         epoch.decision = ObservationEpochDecision::Rejected;
         epoch.decision_reason = Some(format!("malformed_observation_set:{reason}"));
         epoch.valid = false;
@@ -1871,7 +1871,7 @@ pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
                 smoothing_window: 0,
                 smoothing_age: 0,
                 smoothing_resets: 0,
-                signal: bijux_gnss_core::api::signal_spec_gps_l1_ca(),
+                signal: signal_spec_gps_l1_ca(),
                 tracking_lock_state: "locked".to_string(),
                 observation_lock_state: "locked".to_string(),
                 observation_lock_reason: Some("stable_tracking".to_string()),
