@@ -4688,4 +4688,52 @@ mod tests {
         assert_has_reason_prefix(&solution, "gdop_above_threshold:");
         assert_has_refusal_cause(&solution, "refusal_cause=dop");
     }
+
+    #[test]
+    fn scientific_policy_can_refuse_high_residual_rms() {
+        let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
+        let t_rx_s = 100_300.0;
+        let ephs = vec![
+            make_eph(1, 0.0, 0.0, t_rx_s),
+            make_eph(2, 0.8, 0.9, t_rx_s),
+            make_eph(3, 1.6, 1.8, t_rx_s),
+            make_eph(4, 2.4, 2.7, t_rx_s),
+            make_eph(5, 3.2, 3.6, t_rx_s),
+        ];
+        let mut obs = make_obs_epoch_for_solution(19, t_rx_s, truth, &ephs);
+        let biased_sat = SatId { constellation: Constellation::Gps, prn: 5 };
+        let biased_observation = obs
+            .sats
+            .iter_mut()
+            .find(|sat| sat.signal_id.sat == biased_sat)
+            .expect("biased synthetic observation");
+        biased_observation.pseudorange_m.0 += 25.0;
+        if let Some(timing) = biased_observation.timing.as_mut() {
+            timing.signal_travel_time_s = Seconds(biased_observation.pseudorange_m.0 / 299_792_458.0);
+            timing.transmit_gps_time.tow_s = obs.t_rx_s.0 - timing.signal_travel_time_s.0;
+        }
+        let baseline_solution = Navigation::new(
+            ReceiverPipelineConfig::default(),
+            crate::engine::runtime::ReceiverRuntime::default(),
+        )
+        .solve_epoch(&obs, &ephs)
+        .expect("baseline solution");
+        assert!(baseline_solution.valid, "baseline residual scenario should still solve");
+        assert!(baseline_solution.rms_m.0 > 0.05, "baseline residual RMS should be measurable");
+
+        let mut config = ReceiverPipelineConfig::default();
+        config.science_thresholds.max_residual_rms_m = baseline_solution.rms_m.0 - 0.01;
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+
+        let solution = nav.solve_epoch(&obs, &ephs).expect("residual refusal");
+
+        assert_eq!(
+            solution.refusal_class,
+            Some(NavRefusalClass::ScientificPrerequisitesTooWeak)
+        );
+        assert_eq!(solution.status, SolutionStatus::Refused);
+        assert_eq!(solution.explain_decision, "refused");
+        assert_has_reason_prefix(&solution, "residual_rms_above_threshold:");
+        assert_has_refusal_cause(&solution, "refusal_cause=residual");
+    }
 }
