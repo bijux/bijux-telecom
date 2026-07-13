@@ -517,6 +517,7 @@ impl Acquisition {
                     continue;
                 }
             };
+            let signal_code = resolved_request_signal_code(request);
             let search_center_hz = signal_model.search_center_hz(self.config.intermediate_freq_hz);
             self.with_stats(|stats| {
                 stats.doppler_bins +=
@@ -532,7 +533,6 @@ impl Acquisition {
                 samples_per_code,
             );
             if !acquisition_integration_ms_is_supported(request.coherent_ms) {
-                let signal_code = resolved_request_signal_code(request);
                 sat_evaluations.push(AcquisitionSatEvaluation {
                     sat,
                     candidates: unsupported_coherent_integration_candidates(
@@ -553,7 +553,6 @@ impl Acquisition {
             let coherent_periods = match signal_model.coherent_periods(request.coherent_ms) {
                 Some(periods) => periods,
                 None => {
-                    let signal_code = resolved_request_signal_code(request);
                     sat_evaluations.push(AcquisitionSatEvaluation {
                         sat,
                         candidates: unsupported_coherent_integration_candidates(
@@ -576,7 +575,6 @@ impl Acquisition {
                 * coherent_periods.max(1) as usize
                 * request.noncoherent.max(1) as usize;
             if frame.len() < required {
-                let signal_code = resolved_request_signal_code(request);
                 sat_evaluations.push(AcquisitionSatEvaluation {
                     sat,
                     candidates: insufficient_frame_candidates(
@@ -668,11 +666,7 @@ impl Acquisition {
                 grid_candidates.push(AcqResult {
                     sat,
                     signal_band: signal_model.signal_band,
-                    signal_code: resolved_signal_code(
-                        sat,
-                        signal_model.signal_band,
-                        request.signal_code,
-                    ),
+                    signal_code,
                     glonass_frequency_channel: request.glonass_frequency_channel,
                     source_time: ReceiverSampleTrace::from_sample_time(frame.t0),
                     candidate_rank: 1,
@@ -2801,6 +2795,90 @@ mod tests {
         assert_eq!(after_second_profile.cache_misses, 1);
         assert_eq!(after_second_profile.cache_hits, 1);
         assert_eq!(after_second_profile.cache_miss_incompatible, 0);
+    }
+
+    #[test]
+    fn run_fft_for_requests_preserves_explicit_gps_l5q_signal_code() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 10_230_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..ReceiverPipelineConfig::default()
+        };
+        let frame =
+            SamplesFrame::new(
+                SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
+                Seconds(1.0 / config.sampling_freq_hz),
+                (0..10_230)
+                    .map(|idx| {
+                        if idx % 2 == 0 {
+                            Complex::new(1.0, 0.0)
+                        } else {
+                            Complex::new(-1.0, 0.0)
+                        }
+                    })
+                    .collect(),
+            );
+        let acquisition = Acquisition::new(config, ReceiverRuntime::default());
+        let request = AcqRequest {
+            sat: SatId { constellation: Constellation::Gps, prn: 7 },
+            glonass_frequency_channel: None,
+            signal_band: SignalBand::L5,
+            signal_code: SignalCode::L5Q,
+            doppler_search_hz: 0,
+            doppler_step_hz: 1,
+            coherent_ms: 1,
+            noncoherent: 1,
+        };
+
+        let run = acquisition.run_fft_topn_for_requests_with_explain(&frame, &[request], 1);
+
+        let result = run.results[0].first().expect("acquisition result");
+        assert_eq!(result.signal_band, SignalBand::L5);
+        assert_eq!(result.signal_code, SignalCode::L5Q);
+    }
+
+    #[test]
+    fn run_fft_for_requests_preserves_explicit_galileo_e5b_signal_code() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 10_230_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..ReceiverPipelineConfig::default()
+        };
+        let frame =
+            SamplesFrame::new(
+                SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
+                Seconds(1.0 / config.sampling_freq_hz),
+                (0..10_230)
+                    .map(|idx| {
+                        if idx % 2 == 0 {
+                            Complex::new(1.0, 0.0)
+                        } else {
+                            Complex::new(-1.0, 0.0)
+                        }
+                    })
+                    .collect(),
+            );
+        let acquisition = Acquisition::new(config, ReceiverRuntime::default());
+        let request = AcqRequest {
+            sat: SatId { constellation: Constellation::Galileo, prn: 11 },
+            glonass_frequency_channel: None,
+            signal_band: SignalBand::E5,
+            signal_code: SignalCode::E5b,
+            doppler_search_hz: 0,
+            doppler_step_hz: 1,
+            coherent_ms: 1,
+            noncoherent: 1,
+        };
+
+        let run = acquisition.run_fft_topn_for_requests_with_explain(&frame, &[request], 1);
+
+        let result = run.results[0].first().expect("acquisition result");
+        assert_eq!(result.signal_band, SignalBand::E5);
+        assert_eq!(result.signal_code, SignalCode::E5b);
     }
 
     #[test]
