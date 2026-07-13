@@ -322,6 +322,7 @@ fn multisat_signal_delay_alignments(
             sat: signal.sat,
             signal_delay_alignment: SignalDelayAlignment {
                 whole_code_periods: profile.pseudorange_epoch_base,
+                sample_delay_samples: 0,
                 source: "synthetic_navigation_truth".to_string(),
             },
         })

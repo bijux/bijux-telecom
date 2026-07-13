@@ -1228,9 +1228,13 @@ fn pseudorange_from_tracking_epoch(
     receive_gps_time: Option<GpsTime>,
     clock_bias_s: f64,
 ) -> PseudorangeComputation {
-    let code_phase_chips =
-        aligned_code_phase_chips(code_length_chips, epoch.code_phase_samples.0 / samples_per_chip);
     if let Some(alignment) = &epoch.signal_delay_alignment {
+        let corrected_code_phase_samples =
+            epoch.code_phase_samples.0 + alignment.sample_delay_samples as f64;
+        let code_phase_chips = aligned_code_phase_chips(
+            code_length_chips,
+            corrected_code_phase_samples / samples_per_chip,
+        );
         let code_time_s = (alignment.whole_code_periods as f64 * code_length_chips
             + code_phase_chips)
             / code_rate_hz;
@@ -1250,6 +1254,8 @@ fn pseudorange_from_tracking_epoch(
         };
     }
 
+    let code_phase_chips =
+        aligned_code_phase_chips(code_length_chips, epoch.code_phase_samples.0 / samples_per_chip);
     let code_epoch = epoch.epoch.index as f64;
     let code_time_s = (code_epoch * code_length_chips + code_phase_chips) / code_rate_hz;
     PseudorangeComputation {
@@ -2081,6 +2087,7 @@ mod tests {
             code_phase_samples: Chips(test_tracking_code_phase_samples(config, code_phase_samples)),
             signal_delay_alignment: Some(SignalDelayAlignment {
                 whole_code_periods,
+                sample_delay_samples: 0,
                 source: "synthetic_truth".to_string(),
             }),
             ..make_tracking_epoch_with_phase(
@@ -2772,6 +2779,7 @@ mod tests {
         let mut track = make_track(4, &config);
         track.epochs[0].signal_delay_alignment = Some(SignalDelayAlignment {
             whole_code_periods: 70,
+            sample_delay_samples: 0,
             source: "synthetic_truth".to_string(),
         });
         let capture_start_gps_time = GpsTime { week: 2200, tow_s: 345_600.0 };
@@ -3222,6 +3230,7 @@ mod tests {
             )),
             signal_delay_alignment: Some(SignalDelayAlignment {
                 whole_code_periods,
+                sample_delay_samples: 0,
                 source: "synthetic_truth".to_string(),
             }),
             ..make_tracking_epoch_with_phase(
@@ -3239,6 +3248,60 @@ mod tests {
         assert_eq!(obs_sat.signal_id.code, SignalCode::L2C);
         assert_eq!(obs_sat.metadata.signal, signal);
         assert!((obs_sat.metadata.signal.code_rate_hz - 511_500.0).abs() <= f64::EPSILON);
+        assert_eq!(obs_sat.metadata.pseudorange_model, "tracked_code_phase_alignment");
+        assert!((obs_sat.pseudorange_m.0 - expected_pseudorange_m).abs() <= 1.0e-6, "{obs_sat:?}");
+    }
+
+    #[test]
+    fn observations_subtract_known_sample_delay_from_aligned_pseudorange() {
+        let signal = signal_spec_gps_l1_ca();
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: signal.code_rate_hz,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let whole_code_periods = 12;
+        let aligned_code_phase_chips = 512.0;
+        let sample_delay_samples = 20;
+        let samples_per_chip = config.sampling_freq_hz / signal.code_rate_hz;
+        let delayed_code_phase_chips =
+            aligned_code_phase_chips + sample_delay_samples as f64 / samples_per_chip;
+        let expected_pseudorange_m = aligned_pseudorange_m_for_signal(
+            signal,
+            1023,
+            whole_code_periods,
+            aligned_code_phase_chips,
+        );
+        let epoch = TrackEpoch {
+            sat: SatId { constellation: Constellation::Gps, prn: 7 },
+            signal_band: SignalBand::L1,
+            carrier_hz: Hertz(tracked_signal_center_hz(config.intermediate_freq_hz, signal)),
+            code_rate_hz: Hertz(signal.code_rate_hz),
+            code_phase_samples: Chips(test_tracking_code_phase_samples_for_signal(
+                &config,
+                signal,
+                1023,
+                delayed_code_phase_chips,
+            )),
+            signal_delay_alignment: Some(SignalDelayAlignment {
+                whole_code_periods,
+                sample_delay_samples,
+                source: "synthetic_truth".to_string(),
+            }),
+            ..make_tracking_epoch_with_phase(
+                7,
+                &config,
+                70,
+                tracked_signal_center_hz(config.intermediate_freq_hz, signal),
+                0.0,
+            )
+        };
+
+        let report = observations_from_tracking_results(&config, &[track_from_epoch(epoch)], 10);
+        let obs_sat = report.output[0].sats.first().expect("observation satellite");
+
         assert_eq!(obs_sat.metadata.pseudorange_model, "tracked_code_phase_alignment");
         assert!((obs_sat.pseudorange_m.0 - expected_pseudorange_m).abs() <= 1.0e-6, "{obs_sat:?}");
     }
@@ -3274,6 +3337,7 @@ mod tests {
             )),
             signal_delay_alignment: Some(SignalDelayAlignment {
                 whole_code_periods,
+                sample_delay_samples: 0,
                 source: "synthetic_truth".to_string(),
             }),
             ..make_tracking_epoch_with_phase(
@@ -3327,6 +3391,7 @@ mod tests {
             )),
             signal_delay_alignment: Some(SignalDelayAlignment {
                 whole_code_periods,
+                sample_delay_samples: 0,
                 source: "synthetic_truth".to_string(),
             }),
             ..make_tracking_epoch_with_phase(
@@ -3381,6 +3446,7 @@ mod tests {
             )),
             signal_delay_alignment: Some(SignalDelayAlignment {
                 whole_code_periods,
+                sample_delay_samples: 0,
                 source: "synthetic_truth".to_string(),
             }),
             ..make_tracking_epoch_with_phase(
@@ -3442,6 +3508,7 @@ mod tests {
             )),
             signal_delay_alignment: Some(SignalDelayAlignment {
                 whole_code_periods,
+                sample_delay_samples: 0,
                 source: "synthetic_truth".to_string(),
             }),
             ..make_tracking_epoch_with_phase(

@@ -1,6 +1,6 @@
 use bijux_gnss_core::api::{
     ArtifactPayloadValidate, Chips, Constellation, Cycles, Epoch, Hertz, ReceiverSampleTrace,
-    SatId, SignalBand, TrackEpoch, TrackingUncertainty,
+    SatId, SignalBand, SignalCode, TrackEpoch, TrackingUncertainty,
 };
 
 fn sample_track_epoch() -> TrackEpoch {
@@ -10,6 +10,7 @@ fn sample_track_epoch() -> TrackEpoch {
         source_time: ReceiverSampleTrace::from_sample_index(4_092, 4_092_000.0),
         sat: SatId { constellation: Constellation::Gps, prn: 7 },
         signal_band: SignalBand::L1,
+        signal_code: SignalCode::Unknown,
         glonass_frequency_channel: None,
         prompt_i: 1.0,
         prompt_q: 0.0,

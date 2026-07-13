@@ -427,6 +427,8 @@ pub struct AcqUncertainty {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SignalDelayAlignment {
     pub whole_code_periods: u64,
+    #[serde(default)]
+    pub sample_delay_samples: u64,
     pub source: String,
 }
 
@@ -580,7 +582,12 @@ pub fn acq_result_stability_key(result: &AcqResult) -> String {
     let signal_delay_alignment_key = result
         .signal_delay_alignment
         .as_ref()
-        .map(|alignment| format!("|{}|{}", alignment.whole_code_periods, alignment.source))
+        .map(|alignment| {
+            format!(
+                "|{}|{}|{}",
+                alignment.whole_code_periods, alignment.sample_delay_samples, alignment.source
+            )
+        })
         .unwrap_or_default();
     let glonass_frequency_channel_key = result
         .glonass_frequency_channel
@@ -1264,8 +1271,8 @@ mod tests {
         trackable_acq_tracking_seeds, AcqCodePhaseRefinement, AcqHypothesis, AcqResult,
         AcqSearchSummary, AcqUncertainty, Constellation, Cycles, GlonassFrequencyChannel, Hertz,
         LeapSeconds, LockFlags, NavLifecycleState, NavQualityFlag, ObservationEpochDecision,
-        ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId, SignalBand, SolutionStatus,
-        UtcTime,
+        ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId, SignalBand, SignalCode,
+        SolutionStatus, UtcTime,
     };
     use crate::time::utc_to_gps;
 
@@ -1384,6 +1391,7 @@ mod tests {
         let result = AcqResult {
             sat,
             signal_band: SignalBand::L1,
+            signal_code: SignalCode::Unknown,
             glonass_frequency_channel: None,
             source_time: ReceiverSampleTrace::from_sample_index(8_184, 4_092_000.0),
             candidate_rank: 1,
@@ -1414,6 +1422,7 @@ mod tests {
             }),
             signal_delay_alignment: Some(SignalDelayAlignment {
                 whole_code_periods: 68,
+                sample_delay_samples: 0,
                 source: "synthetic_truth".to_string(),
             }),
             uncertainty: Some(AcqUncertainty { doppler_hz: 125.0, code_phase_samples: 0.25 }),
@@ -1431,6 +1440,7 @@ mod tests {
             seed.signal_delay_alignment,
             Some(SignalDelayAlignment {
                 whole_code_periods: 68,
+                sample_delay_samples: 0,
                 source: "synthetic_truth".to_string(),
             })
         );
@@ -1443,11 +1453,13 @@ mod tests {
         let mut base = acq_result_for_summary(sat, AcqHypothesis::Accepted);
         base.signal_delay_alignment = Some(SignalDelayAlignment {
             whole_code_periods: 68,
+            sample_delay_samples: 0,
             source: "synthetic_truth".to_string(),
         });
         let mut changed = base.clone();
         changed.signal_delay_alignment = Some(SignalDelayAlignment {
-            whole_code_periods: 69,
+            whole_code_periods: 68,
+            sample_delay_samples: 4,
             source: "synthetic_truth".to_string(),
         });
 
@@ -1635,6 +1647,7 @@ mod tests {
         AcqResult {
             sat,
             signal_band: SignalBand::L1,
+            signal_code: SignalCode::Unknown,
             glonass_frequency_channel: None,
             source_time: ReceiverSampleTrace::default(),
             candidate_rank: 1,

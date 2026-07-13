@@ -76,6 +76,7 @@ fn tracking_epoch(
         tracking_assumptions: None,
         signal_delay_alignment: Some(SignalDelayAlignment {
             whole_code_periods: quality_alignment_periods(signal.band),
+            sample_delay_samples: 0,
             source: "quality_fixture".to_string(),
         }),
         tracking_uncertainty: Some(TrackingUncertainty {

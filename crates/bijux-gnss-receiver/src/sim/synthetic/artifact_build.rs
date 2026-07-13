@@ -209,6 +209,7 @@ fn signal_delay_alignments_from_navigation_validation_scenario(
             sat: signal.sat,
             signal_delay_alignment: SignalDelayAlignment {
                 whole_code_periods: receiver_epoch_base,
+                sample_delay_samples: 0,
                 source: "synthetic_truth".to_string(),
             },
         })

@@ -250,6 +250,7 @@ fn truth_seeded_tracking_results_with_common_anomaly(
                         tracking_assumptions: None,
                         signal_delay_alignment: Some(SignalDelayAlignment {
                             whole_code_periods,
+                            sample_delay_samples: 0,
                             source: "synthetic_truth".to_string(),
                         }),
                         tracking_uncertainty: None,

@@ -34,6 +34,7 @@ fn observations_use_resolved_signal_delay_alignment_for_pseudorange() {
     for acquisition in &mut acquisitions {
         acquisition.signal_delay_alignment = Some(SignalDelayAlignment {
             whole_code_periods: profile.pseudorange_epoch_base,
+            sample_delay_samples: 0,
             source: "synthetic_truth".to_string(),
         });
     }

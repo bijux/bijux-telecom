@@ -171,8 +171,7 @@ fn build_observation_truth_fixture_with_parallel_signal(
             ionosphere_delay_model,
         ),
     );
-    profile.scenario.satellites =
-        track_seeds.iter().map(|seed| seed.signal.clone()).collect();
+    profile.scenario.satellites = track_seeds.iter().map(|seed| seed.signal.clone()).collect();
 
     let tracks = track_seeds
         .iter()
@@ -300,6 +299,7 @@ fn synthetic_truth_track(
                 tracking_assumptions: None,
                 signal_delay_alignment: Some(SignalDelayAlignment {
                     whole_code_periods,
+                    sample_delay_samples: 0,
                     source: "synthetic_truth".to_string(),
                 }),
                 tracking_uncertainty: Some(TrackingUncertainty {

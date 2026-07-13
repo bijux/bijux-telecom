@@ -420,7 +420,11 @@ fn pseudorange_noise_for_satellite(satellites: &[SatellitePseudorangeNoise], sat
 }
 
 fn signal_delay_alignment(whole_code_periods: u64) -> Option<SignalDelayAlignment> {
-    Some(SignalDelayAlignment { whole_code_periods, source: "synthetic_truth".to_string() })
+    Some(SignalDelayAlignment {
+        whole_code_periods,
+        sample_delay_samples: 0,
+        source: "synthetic_truth".to_string(),
+    })
 }
 
 fn tracking_code_phase_samples(

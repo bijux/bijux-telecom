@@ -82,6 +82,7 @@ fn aligned_tracking_epoch(
         tracking_assumptions: None,
         signal_delay_alignment: Some(SignalDelayAlignment {
             whole_code_periods,
+            sample_delay_samples: 0,
             source: "synthetic_truth".to_string(),
         }),
         tracking_uncertainty: None,
