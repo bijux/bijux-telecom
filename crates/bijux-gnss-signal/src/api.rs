@@ -35,6 +35,18 @@ pub use crate::codes::galileo_e1::{
     GALILEO_E1_CODE_RATE_HZ, GALILEO_E1_PRIMARY_CODE_CHIPS, GALILEO_E1_PRIMARY_PERIOD_MS,
     GALILEO_E1_SECONDARY_CODE_CHIPS,
 };
+pub use crate::codes::galileo_e5::{
+    galileo_e5a_i_code_assignment, galileo_e5a_i_code_assignments, galileo_e5a_i_data_symbol_index,
+    galileo_e5a_i_epoch_symbol, galileo_e5a_i_secondary_chip, galileo_e5a_i_secondary_code,
+    galileo_e5a_i_value, galileo_e5a_primary_autocorrelation, galileo_e5a_q_code_assignment,
+    galileo_e5a_q_code_assignments, galileo_e5a_q_epoch_symbol, galileo_e5a_q_secondary_chip,
+    galileo_e5a_q_secondary_code, galileo_e5a_q_value, galileo_e5a_qpsk_value,
+    generate_galileo_e5a_i_code, generate_galileo_e5a_q_code, sample_galileo_e5a_i_primary_code,
+    sample_galileo_e5a_q_primary_code, GalileoE5aICodeAssignment, GalileoE5aQCodeAssignment,
+    GALILEO_E5A_CODE_RATE_HZ, GALILEO_E5A_I_PRIMARY_EPOCHS_PER_SYMBOL,
+    GALILEO_E5A_I_SECONDARY_CODE_CHIPS, GALILEO_E5A_PRIMARY_CODE_CHIPS,
+    GALILEO_E5A_Q_SECONDARY_CODE_CHIPS,
+};
 pub use crate::codes::glonass_l1::{
     generate_glonass_l1_st_code, generate_glonass_l1_st_code_chips, sample_glonass_l1_st_code,
     GLONASS_L1_ST_CODE_CHIPS, GLONASS_L1_ST_CODE_RATE_HZ,
@@ -71,6 +83,10 @@ pub use crate::codes::gps_l5::{
     GPS_L5_I_PRIMARY_EPOCHS_PER_SYMBOL, GPS_L5_I_SYMBOL_CHIPS, GPS_L5_PRIMARY_CODE_CHIPS,
     GPS_L5_PRIMARY_CODE_RATE_HZ, GPS_L5_Q_PRIMARY_EPOCHS_PER_SYMBOL, GPS_L5_Q_SYMBOL_CHIPS,
 };
+/// Tracking-oriented local-code models.
+pub use crate::dsp::local_code::{
+    default_local_code_model, default_local_code_model_for_signal, LocalCodeModel,
+};
 /// Numerically controlled oscillator helper.
 pub use crate::dsp::nco::Nco;
 /// Front-end quality metrics derived from complex I/Q samples.
@@ -78,10 +94,6 @@ pub use crate::dsp::quality::{
     estimate_iq_noise_floor_db, estimate_iq_noise_floor_db_from_metrics,
     measure_iq_front_end_metrics, measure_raw_iq_front_end_metrics, remove_dc_offset_in_place,
     IqFrontEndAnalyzer, IqFrontEndMetrics,
-};
-/// Tracking-oriented local-code models.
-pub use crate::dsp::local_code::{
-    default_local_code_model, default_local_code_model_for_signal, LocalCodeModel,
 };
 /// Replica-generation and synthetic modulation helpers.
 pub use crate::dsp::replica::{
