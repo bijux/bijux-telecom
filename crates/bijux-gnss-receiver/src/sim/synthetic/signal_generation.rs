@@ -329,6 +329,10 @@ impl SignalSource for SyntheticSignalSource {
     fn is_done(&self) -> bool {
         self.remaining_samples == 0
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 #[derive(Debug, Clone)]

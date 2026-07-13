@@ -67,6 +67,10 @@ impl SignalSource for MemorySamples {
     fn is_done(&self) -> bool {
         self.cursor_samples >= self.data.len() / 2
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 /// File-backed sample source for raw IQ captures.
@@ -133,6 +137,10 @@ impl SignalSource for FileSamples {
 
     fn is_done(&self) -> bool {
         self.done
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 

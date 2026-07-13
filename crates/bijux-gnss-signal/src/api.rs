@@ -1,5 +1,7 @@
 //! Public API for bijux-gnss-signal.
 
+use std::any::Any;
+
 /// Spreading code generators.
 pub use crate::codes::beidou_b1i::{
     beidou_b1i_code_assignment, beidou_b1i_code_assignments, generate_beidou_b1i_code,
@@ -67,6 +69,9 @@ pub trait SignalSource {
 
     /// Whether the source has reached end-of-stream.
     fn is_done(&self) -> bool;
+
+    /// Borrow the concrete source for optional source-specific integrations.
+    fn as_any(&self) -> &dyn Any;
 }
 
 /// Minimal sample source interface.

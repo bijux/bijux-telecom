@@ -47,6 +47,10 @@ impl SignalSource for SingleFrameSource {
     fn is_done(&self) -> bool {
         self.frame.is_none()
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 fn zero_signal_frame(profile: &ReceiverConfig) -> SamplesFrame {

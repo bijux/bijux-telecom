@@ -51,6 +51,10 @@ impl SignalSource for SegmentedSignalSource {
     fn is_done(&self) -> bool {
         self.next_index >= self.frames.len()
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 struct CountingSignalSource<S> {
@@ -83,6 +87,10 @@ where
 
     fn is_done(&self) -> bool {
         self.inner.is_done()
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self.inner.as_any()
     }
 }
 
