@@ -3768,6 +3768,7 @@ mod tests {
         assert_eq!(solution.explain_decision, "unavailable");
         assert_eq!(solution.epoch.index, 10);
         assert_has_refusal_cause(&solution, "refusal_cause=ephemeris");
+        assert_lacks_refusal_cause(&solution, "refusal_cause=clock");
     }
 
     #[test]
@@ -3817,6 +3818,7 @@ mod tests {
         assert!(solution.explain_reasons.iter().any(|reason| reason == "invalid_satellite_time"));
         assert_has_reason_prefix(&solution, "invalid_satellite_time_count=");
         assert_has_refusal_cause(&solution, "refusal_cause=clock");
+        assert_lacks_refusal_cause(&solution, "refusal_cause=ephemeris");
     }
 
     #[test]
@@ -3850,6 +3852,7 @@ mod tests {
             .iter()
             .any(|reason| reason == "unknown_inter_system_time_offset"));
         assert_has_refusal_cause(&solution, "refusal_cause=clock");
+        assert_lacks_refusal_cause(&solution, "refusal_cause=ephemeris");
     }
 
     #[test]
@@ -3866,6 +3869,7 @@ mod tests {
         assert_eq!(solution.explain_decision, "unavailable");
         assert!(!solution.valid);
         assert_has_refusal_cause(&solution, "refusal_cause=ephemeris");
+        assert_lacks_refusal_cause(&solution, "refusal_cause=clock");
     }
 
     #[test]
@@ -3882,6 +3886,7 @@ mod tests {
         assert_eq!(solution.explain_decision, "unavailable");
         assert!(!solution.valid);
         assert_has_refusal_cause(&solution, "refusal_cause=ephemeris");
+        assert_lacks_refusal_cause(&solution, "refusal_cause=clock");
     }
 
     #[test]
@@ -4770,5 +4775,34 @@ mod tests {
         assert_eq!(solution.explain_decision, "refused");
         assert_has_reason_prefix(&solution, "residual_rms_above_threshold:");
         assert_has_refusal_cause(&solution, "refusal_cause=residual");
+    }
+
+    #[test]
+    fn scientific_policy_can_refuse_weak_mean_cn0_with_lock_cause() {
+        let truth = geodetic_to_ecef(37.0, -122.0, 25.0);
+        let t_rx_s = 100_400.0;
+        let ephs = vec![
+            make_eph(1, 0.0, 0.0, t_rx_s),
+            make_eph(2, 0.8, 0.9, t_rx_s),
+            make_eph(3, 1.6, 1.8, t_rx_s),
+            make_eph(4, 2.4, 2.7, t_rx_s),
+        ];
+        let obs = make_obs_epoch_for_solution(20, t_rx_s, truth, &ephs);
+
+        let mut config = ReceiverPipelineConfig::default();
+        config.science_thresholds.min_mean_cn0_dbhz = 60.0;
+        let mut nav = Navigation::new(config, crate::engine::runtime::ReceiverRuntime::default());
+
+        let solution = nav.solve_epoch(&obs, &ephs).expect("weak-cn0 refusal");
+
+        assert_eq!(
+            solution.refusal_class,
+            Some(NavRefusalClass::ScientificPrerequisitesTooWeak)
+        );
+        assert_eq!(solution.status, SolutionStatus::Refused);
+        assert_eq!(solution.explain_decision, "refused");
+        assert_has_reason_prefix(&solution, "mean_cn0_below_threshold:");
+        assert_has_refusal_cause(&solution, "refusal_cause=lock");
+        assert_lacks_refusal_cause(&solution, "refusal_cause=integrity");
     }
 }
