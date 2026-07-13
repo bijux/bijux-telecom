@@ -37,6 +37,7 @@ Commands:
   export-synthetic-iq  Export a deterministic synthetic raw IQ bundle and matching truth artifact
   validate-synthetic-iq  Validate a synthetic IQ bundle against truth-guided C/N0 expectations
   validate-synthetic-navigation  Validate a full synthetic navigation scenario from acquisition through PVT
+  measure-synthetic-quantization  Measure synthetic quantization loss against a float32 reference capture
   artifact             Artifact validation and conversion
   validate-config      Validate a receiver profile configuration file
   config               Configuration utilities
@@ -140,6 +141,17 @@ bijux gnss validate-synthetic-navigation --scenario configs/scenarios/synthetic_
 This workflow emits `artifacts/gnss_accuracy_artifact.json`, one machine-readable file per run
 that carries acquisition, tracking, observation, and PVT summaries alongside detailed stage
 reports, thresholds, pass/fail, data source, and reference truth.
+
+### Measure Synthetic Quantization Loss
+```bash
+bijux gnss measure-synthetic-quantization --scenario configs/scenarios/synthetic_iq_reference.toml --config configs/receiver_low_rate.toml --report json --out artifacts/synthetic_quantization_reference
+```
+
+This workflow emits `artifacts/synthetic_quantization_loss_artifact.json` with one float32
+reference row plus measured 16-bit, 8-bit, 4-bit, 2-bit, and 1-bit quantization rows. Each row
+records acquisition-correlation loss and truth-guided tracking C/N0 loss per satellite. If a
+profile fails to produce a measurable acquisition peak, the artifact records the loss as
+`null` and the table output renders it as `unbounded`.
 
 ### Sweep a Synthetic Experiment Through the Receiver Pipeline
 ```bash

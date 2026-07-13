@@ -70,6 +70,18 @@ This workflow verifies that measured prompt-power C/N0 stays within a configured
 injected synthetic truth. The calibration scenario is intentionally single-satellite so the check
 stays isolated from later multi-satellite and fractional-sampling validation work.
 
+For a deterministic quantization-loss sweep against a float32 reference, measure the same
+synthetic scenario across 16-bit, 8-bit, 4-bit, 2-bit, and 1-bit storage profiles:
+
+```bash
+bijux gnss measure-synthetic-quantization --scenario configs/scenarios/synthetic_iq_reference.toml --config configs/receiver_low_rate.toml --report json --out artifacts/synthetic_quantization_reference
+```
+
+This command emits `artifacts/synthetic_quantization_reference/artifacts/synthetic_quantization_loss_artifact.json`
+with per-quantization acquisition-correlation loss and truth-guided tracking C/N0 loss against
+the float32 baseline. When a profile does not yield a measurable acquisition peak, the artifact
+records that loss as unbounded instead of fabricating a finite number.
+
 For one final run-level GNSS accuracy artifact spanning acquisition through PVT, validate the
 bundled synthetic navigation case:
 

@@ -381,6 +381,31 @@ IF-relative Doppler estimate against the injected truth. The report preserves bo
 `doppler_error_hz` and normalized `doppler_error_bins` so downstream tools can reason about the
 effective bin accuracy directly.
 
+## Synthetic Quantization Loss Artifact
+
+The synthetic quantization workflow measures finite-precision capture loss against one float32
+reference:
+- command: `bijux gnss measure-synthetic-quantization --scenario <SCENARIO>`
+- files:
+  - `measure_synthetic_quantization_report.json`
+  - `artifacts/synthetic_quantization_loss_artifact.json`
+  - `manifest.json`
+- purpose: compare acquisition correlation peaks and truth-guided tracking C/N0 across float32,
+  16-bit, 8-bit, 4-bit, 2-bit, and 1-bit quantization profiles
+
+`artifacts/synthetic_quantization_loss_artifact.json` includes:
+- `reference_quantization`: the float32 baseline used for every comparison
+- `points[*].quantization`, `sample_format`, `quantization_bits`: the measured storage profile
+- `points[*].satellites[*].reference_acquisition_peak` and `quantized_acquisition_peak`
+- `points[*].satellites[*].acquisition_correlation_loss_db`: positive dB loss relative to the
+  float32 reference, or `null` when the quantized profile does not produce a measurable peak
+- `points[*].satellites[*].reference_mean_cn0_db_hz`, `quantized_mean_cn0_db_hz`, and
+  `cn0_loss_db_hz`: truth-guided tracking C/N0 comparison against the float32 baseline
+
+The emitted artifact stays machine-readable even when one profile collapses acquisition. In that
+case the workflow records the missing acquisition-loss number as `null` instead of writing an
+invalid JSON infinity.
+
 ## Synthetic Navigation Accuracy Artifact
 
 The synthetic navigation validation workflow emits one final run-level GNSS accuracy artifact:
