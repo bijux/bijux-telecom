@@ -178,6 +178,21 @@ fn reference_week_from_capture_start_utc(capture_start_utc: &str) -> Result<u32>
     Ok(bijux_gnss_infra::api::nav::gps_time_from_utc(utc).week)
 }
 
+fn refused_execution_status(
+    decision: &bijux_gnss_infra::api::receiver::AdvancedPrereqDecision,
+) -> (bijux_gnss_infra::api::receiver::ExecutionStatus, Option<String>) {
+    let status = if matches!(
+        decision.refusal_class,
+        Some(bijux_gnss_infra::api::receiver::AdvancedRefusalClass::UnsupportedModel)
+    ) {
+        bijux_gnss_infra::api::receiver::ExecutionStatus::Unsupported
+    } else {
+        bijux_gnss_infra::api::receiver::ExecutionStatus::NotReady
+    };
+    let reason = (!decision.reasons.is_empty()).then(|| decision.reasons.join(","));
+    (status, reason)
+}
+
 fn handle_rtk(command: GnssCommand) -> Result<()> {
     let GnssCommand::Rtk { common, base_obs, rover_obs, eph, base_ecef, tolerance_s, ref_policy } =
         command
@@ -208,6 +223,13 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
     let mut correction_input_lines = Vec::new();
     let mut ambiguity_state_lines = Vec::new();
     let mut advanced_solution_lines = Vec::new();
+    let mut baseline_executed_count = 0usize;
+    let mut baseline_not_ready_count = 0usize;
+    let mut baseline_unsupported_count = 0usize;
+    let mut baseline_quality_executed_count = 0usize;
+    let mut ambiguity_state_executed_count = 0usize;
+    let mut ambiguity_state_not_ready_count = 0usize;
+    let mut ambiguity_state_unsupported_count = 0usize;
     let mut fix_state = bijux_gnss_infra::api::receiver::RtkAmbiguityFixState::default();
     let fixer = bijux_gnss_infra::api::receiver::RtkRatioTestFixer::new(
         bijux_gnss_infra::api::receiver::RtkAmbiguityFixPolicy::default(),
@@ -277,20 +299,50 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
             &ephs,
             rover.t_rx_s.0,
         );
-        let float_ambiguity_state = float_baseline
-            .as_ref()
-            .and_then(
-                bijux_gnss_infra::api::receiver::rtk_float_ambiguity_state_from_baseline_solution,
-            )
-            .unwrap_or_else(|| bijux_gnss_infra::api::receiver::RtkFloatAmbiguityState {
+
+        let prereq = bijux_gnss_infra::api::receiver::AdvancedPrerequisites {
+            has_base_observations: !base.sats.is_empty(),
+            has_rover_observations: !rover.sats.is_empty(),
+            has_ephemeris: !ephs.is_empty(),
+            has_reference_frame: true,
+            has_corrections: true,
+            has_min_satellites: dd.len() >= 3,
+            has_ambiguity_state: float_baseline.is_some(),
+        };
+        let prereq_decision = bijux_gnss_infra::api::receiver::evaluate_prerequisites(
+            bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
+            &prereq,
+        );
+        let (refused_status, refused_reason) = refused_execution_status(&prereq_decision);
+        let float_ambiguity_state = match float_baseline.as_ref() {
+            Some(float_baseline_solution) => {
+                Some(
+                    bijux_gnss_infra::api::receiver::rtk_float_ambiguity_state_from_baseline_solution(
+                        float_baseline_solution,
+                    )
+                    .ok_or_else(|| {
+                        eyre!(
+                            "rtk ambiguity state extraction failed for epoch {} despite baseline execution",
+                            rover.epoch_idx
+                        )
+                    })?,
+                )
+            }
+            None => None,
+        };
+        let fix_input = float_ambiguity_state.clone().unwrap_or_else(|| {
+            bijux_gnss_infra::api::receiver::RtkFloatAmbiguityState {
                 ids: Vec::new(),
                 float_cycles: Vec::new(),
                 covariance_cycles2: Vec::new(),
-            });
+            }
+        });
         let (fix_result, mut audit) =
-            fixer.fix_with_state(rover.epoch_idx, &float_ambiguity_state, &mut fix_state);
+            fixer.fix_with_state(rover.epoch_idx, &fix_input, &mut fix_state);
 
         let mut baseline_fixed = false;
+        let mut baseline_payload = None;
+        let mut baseline_quality_payload = None;
         if let Some(float_baseline_solution) = float_baseline.as_ref() {
             let mut adjusted = bijux_gnss_infra::api::receiver::BaselineSolution {
                 enu_m: float_baseline_solution.enu_m,
@@ -389,15 +441,65 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
                 };
                 let wrapped = bijux_gnss_infra::api::receiver::RtkBaselineQualityV1 {
                     header: header.clone(),
-                    payload: quality,
+                    payload: bijux_gnss_infra::api::receiver::ExecutionArtifact {
+                        epoch_idx: rover.epoch_idx,
+                        status: bijux_gnss_infra::api::receiver::ExecutionStatus::Executed,
+                        reason: None,
+                        value: Some(quality.clone()),
+                    },
                 };
                 baseline_quality_lines.push(serde_json::to_string(&wrapped)?);
+                baseline_quality_payload = Some(quality);
+                baseline_quality_executed_count = baseline_quality_executed_count.saturating_add(1);
+            } else {
+                return Err(eyre!(
+                    "rtk baseline quality missing covariance for epoch {} after baseline execution",
+                    rover.epoch_idx
+                ));
             }
-            let wrapped = bijux_gnss_infra::api::receiver::RtkBaselineEpochV1 {
+            baseline_payload = Some(adjusted);
+        } else if prereq_decision.ready {
+            return Err(eyre!(
+                "rtk baseline solver produced no solution for epoch {} despite ready prerequisites",
+                rover.epoch_idx
+            ));
+        }
+        let baseline_wrapped = bijux_gnss_infra::api::receiver::RtkBaselineEpochV1 {
+            header: header.clone(),
+            payload: bijux_gnss_infra::api::receiver::ExecutionArtifact {
+                epoch_idx: rover.epoch_idx,
+                status: if baseline_payload.is_some() {
+                    bijux_gnss_infra::api::receiver::ExecutionStatus::Executed
+                } else {
+                    refused_status
+                },
+                reason: if baseline_payload.is_some() { None } else { refused_reason.clone() },
+                value: baseline_payload,
+            },
+        };
+        baseline_lines.push(serde_json::to_string(&baseline_wrapped)?);
+        match baseline_wrapped.payload.status {
+            bijux_gnss_infra::api::receiver::ExecutionStatus::Executed => {
+                baseline_executed_count = baseline_executed_count.saturating_add(1);
+            }
+            bijux_gnss_infra::api::receiver::ExecutionStatus::NotReady => {
+                baseline_not_ready_count = baseline_not_ready_count.saturating_add(1);
+            }
+            bijux_gnss_infra::api::receiver::ExecutionStatus::Unsupported => {
+                baseline_unsupported_count = baseline_unsupported_count.saturating_add(1);
+            }
+        }
+        if baseline_quality_payload.is_none() {
+            let baseline_quality_wrapped = bijux_gnss_infra::api::receiver::RtkBaselineQualityV1 {
                 header: header.clone(),
-                payload: adjusted,
+                payload: bijux_gnss_infra::api::receiver::ExecutionArtifact {
+                    epoch_idx: rover.epoch_idx,
+                    status: refused_status,
+                    reason: refused_reason.clone(),
+                    value: None::<bijux_gnss_infra::api::receiver::RtkBaselineQuality>,
+                },
             };
-            baseline_lines.push(serde_json::to_string(&wrapped)?);
+            baseline_quality_lines.push(serde_json::to_string(&baseline_quality_wrapped)?);
         }
         let fix_audit = bijux_gnss_infra::api::receiver::RtkFixAuditV1 {
             header: header.clone(),
@@ -418,31 +520,42 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
         };
         correction_input_lines.push(serde_json::to_string(&correction_wrapped)?);
 
-        let ambiguity_state = bijux_gnss_infra::api::receiver::AmbiguityStateArtifact {
-            epoch_idx: rover.epoch_idx,
-            mode: bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
-            float_count: float_ambiguity_state.float_cycles.len(),
-            fixed_count: audit.fixed_count,
-        };
         let ambiguity_wrapped = bijux_gnss_infra::api::core::ArtifactV1 {
             header: header.clone(),
-            payload: ambiguity_state,
+            payload: if let Some(float_ambiguity_state) = float_ambiguity_state.as_ref() {
+                ambiguity_state_executed_count = ambiguity_state_executed_count.saturating_add(1);
+                bijux_gnss_infra::api::receiver::ExecutionArtifact {
+                    epoch_idx: rover.epoch_idx,
+                    status: bijux_gnss_infra::api::receiver::ExecutionStatus::Executed,
+                    reason: None,
+                    value: Some(bijux_gnss_infra::api::receiver::AmbiguityStateArtifact {
+                        epoch_idx: rover.epoch_idx,
+                        mode: bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
+                        float_count: float_ambiguity_state.float_cycles.len(),
+                        fixed_count: audit.fixed_count,
+                    }),
+                }
+            } else {
+                match refused_status {
+                    bijux_gnss_infra::api::receiver::ExecutionStatus::NotReady => {
+                        ambiguity_state_not_ready_count =
+                            ambiguity_state_not_ready_count.saturating_add(1);
+                    }
+                    bijux_gnss_infra::api::receiver::ExecutionStatus::Unsupported => {
+                        ambiguity_state_unsupported_count =
+                            ambiguity_state_unsupported_count.saturating_add(1);
+                    }
+                    bijux_gnss_infra::api::receiver::ExecutionStatus::Executed => {}
+                }
+                bijux_gnss_infra::api::receiver::ExecutionArtifact {
+                    epoch_idx: rover.epoch_idx,
+                    status: refused_status,
+                    reason: refused_reason.clone(),
+                    value: None::<bijux_gnss_infra::api::receiver::AmbiguityStateArtifact>,
+                }
+            },
         };
         ambiguity_state_lines.push(serde_json::to_string(&ambiguity_wrapped)?);
-
-        let prereq = bijux_gnss_infra::api::receiver::AdvancedPrerequisites {
-            has_base_observations: !base.sats.is_empty(),
-            has_rover_observations: !rover.sats.is_empty(),
-            has_ephemeris: !ephs.is_empty(),
-            has_reference_frame: true,
-            has_corrections: true,
-            has_min_satellites: dd.len() >= 3,
-            has_ambiguity_state: !float_ambiguity_state.float_cycles.is_empty(),
-        };
-        let prereq_decision = bijux_gnss_infra::api::receiver::evaluate_prerequisites(
-            bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
-            &prereq,
-        );
         let raw_claim = if baseline_fixed {
             bijux_gnss_infra::api::receiver::AdvancedSolutionClaim::Fixed
         } else {
@@ -469,7 +582,9 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
             refusal_class: prereq_decision.refusal_class,
             provenance: bijux_gnss_infra::api::receiver::AdvancedSolutionProvenance {
                 claim,
-                ambiguity_state_count: float_ambiguity_state.float_cycles.len(),
+                ambiguity_state_count: float_ambiguity_state
+                    .as_ref()
+                    .map_or(0usize, |state| state.float_cycles.len()),
                 correction_source: "broadcast_ephemeris".to_string(),
                 fallback_from: downgrade_reason,
                 fixed_ratio: fix_result.ratio,
@@ -538,6 +653,13 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
         "aligned_epochs": aligned.len(),
         "sd_count": sd_lines.len(),
         "dd_count": dd_lines.len(),
+        "baseline_executed_count": baseline_executed_count,
+        "baseline_not_ready_count": baseline_not_ready_count,
+        "baseline_unsupported_count": baseline_unsupported_count,
+        "baseline_quality_executed_count": baseline_quality_executed_count,
+        "ambiguity_state_executed_count": ambiguity_state_executed_count,
+        "ambiguity_state_not_ready_count": ambiguity_state_not_ready_count,
+        "ambiguity_state_unsupported_count": ambiguity_state_unsupported_count,
         "advanced_solution_count": advanced_solution_lines.len(),
         "support_matrix_path": support_matrix_path.display().to_string()
     });
