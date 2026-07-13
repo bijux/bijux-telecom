@@ -1566,7 +1566,7 @@ mod pvt_tests {
 
         assert_eq!(solutions.len(), 2);
         assert!(solutions[0].valid);
-        assert_eq!(solutions[1].status, bijux_gnss_infra::api::core::SolutionStatus::Invalid);
+        assert_eq!(solutions[1].status, bijux_gnss_infra::api::core::SolutionStatus::Refused);
         assert_eq!(
             solutions[1].refusal_class,
             Some(bijux_gnss_infra::api::core::NavRefusalClass::InsufficientGeometry)
@@ -1598,7 +1598,7 @@ mod pvt_tests {
 
         assert_eq!(solutions.len(), 2);
         assert!(solutions[0].valid);
-        assert_eq!(solutions[1].status, bijux_gnss_infra::api::core::SolutionStatus::Invalid);
+        assert_eq!(solutions[1].status, bijux_gnss_infra::api::core::SolutionStatus::Refused);
         assert_eq!(
             solutions[1].refusal_class,
             Some(bijux_gnss_infra::api::core::NavRefusalClass::InsufficientGeometry)
@@ -1640,7 +1640,7 @@ mod pvt_tests {
         );
 
         assert!(baseline_solution.valid);
-        assert_eq!(refused_solution.status, bijux_gnss_infra::api::core::SolutionStatus::Invalid);
+        assert_eq!(refused_solution.status, bijux_gnss_infra::api::core::SolutionStatus::Refused);
         assert_eq!(
             refused_solution.refusal_class,
             Some(bijux_gnss_infra::api::core::NavRefusalClass::InsufficientGeometry)
@@ -1680,7 +1680,7 @@ mod pvt_tests {
         );
 
         assert!(baseline_solution.valid);
-        assert_eq!(refused_solution.status, bijux_gnss_infra::api::core::SolutionStatus::Invalid);
+        assert_eq!(refused_solution.status, bijux_gnss_infra::api::core::SolutionStatus::Refused);
         assert_eq!(
             refused_solution.refusal_class,
             Some(bijux_gnss_infra::api::core::NavRefusalClass::InsufficientGeometry)

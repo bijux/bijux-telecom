@@ -567,8 +567,8 @@ impl Navigation {
             pre_fit_residual_rms_m: Some(Meters(solution.pre_fit_residual_rms_m)),
             post_fit_residual_rms_m: Some(Meters(solution.post_fit_residual_rms_m)),
             rms_m: Meters(solution.rms_m),
-            status: SolutionStatus::Coarse,
-            quality: SolutionStatus::Coarse.quality_flag(),
+            status: SolutionStatus::CodeOnly,
+            quality: SolutionStatus::CodeOnly.quality_flag(),
             validity: SolutionValidity::Invalid,
             valid: true,
             processing_ms: None,
@@ -635,7 +635,7 @@ impl Navigation {
             integrity_hpl_m: None,
             integrity_vpl_m: None,
             model_version: NAV_SOLUTION_MODEL_VERSION,
-            lifecycle_state: NavLifecycleState::Coarse,
+            lifecycle_state: NavLifecycleState::CodeOnly,
             uncertainty_class: NavUncertaintyClass::Unknown,
             assumptions: Some(assumptions.clone()),
             refusal_class: None,
@@ -705,10 +705,8 @@ impl Navigation {
         let sat_count = observations.len();
         let provisional_status = if sat_count < 4 {
             SolutionStatus::Degraded
-        } else if nav_epoch.rms_m.0 < 10.0 {
-            SolutionStatus::Converged
         } else {
-            SolutionStatus::Coarse
+            SolutionStatus::CodeOnly
         };
         nav_epoch.status = deterministic_solution_transition(
             self.last_solution.as_ref().map(|row| row.status),
@@ -1309,6 +1307,7 @@ fn invalid_solution_epoch(
     explain_reasons: Vec<String>,
     assumptions: NavAssumptions,
 ) -> NavSolutionEpoch {
+    let status = refusal_class.map(refusal_status).unwrap_or(SolutionStatus::Unavailable);
     let mut solution = NavSolutionEpoch {
         epoch: bijux_gnss_core::api::Epoch { index: obs.epoch_idx },
         t_rx_s: obs.t_rx_s,
@@ -1327,8 +1326,8 @@ fn invalid_solution_epoch(
         pre_fit_residual_rms_m: None,
         post_fit_residual_rms_m: None,
         rms_m: Meters(0.0),
-        status: SolutionStatus::Invalid,
-        quality: SolutionStatus::Invalid.quality_flag(),
+        status,
+        quality: status.quality_flag(),
         validity: SolutionValidity::Invalid,
         valid: false,
         processing_ms: None,
@@ -1355,7 +1354,7 @@ fn invalid_solution_epoch(
         integrity_hpl_m: None,
         integrity_vpl_m: None,
         model_version: NAV_SOLUTION_MODEL_VERSION,
-        lifecycle_state: NavLifecycleState::Invalid,
+        lifecycle_state: lifecycle_state_from_status(status),
         uncertainty_class: NavUncertaintyClass::Unknown,
         assumptions: Some(assumptions),
         refusal_class,
@@ -1532,24 +1531,51 @@ fn deterministic_solution_transition(
     reused_previous: bool,
 ) -> SolutionStatus {
     if refusal_class.is_some() && !reused_previous {
-        return SolutionStatus::Invalid;
+        return refusal_status(refusal_class.expect("guarded refusal class"));
     }
     if refusal_class.is_some() && reused_previous {
-        return SolutionStatus::Held;
+        return SolutionStatus::Degraded;
     }
     match (previous, proposed) {
-        (_, SolutionStatus::Invalid) => SolutionStatus::Invalid,
-        (Some(SolutionStatus::Converged), SolutionStatus::Coarse) => SolutionStatus::Degraded,
-        (Some(SolutionStatus::Fixed), SolutionStatus::Coarse) => SolutionStatus::Degraded,
+        (_, SolutionStatus::Invalid) => SolutionStatus::Refused,
+        (_, SolutionStatus::Unavailable)
+        | (_, SolutionStatus::Refused)
+        | (_, SolutionStatus::IntegrityFailed)
+        | (_, SolutionStatus::Diverged) => proposed,
+        (Some(SolutionStatus::Converged), SolutionStatus::CodeOnly)
+        | (Some(SolutionStatus::CodeOnly), SolutionStatus::CodeOnly)
+        | (Some(SolutionStatus::Fixed), SolutionStatus::CodeOnly)
+        | (Some(SolutionStatus::Float), SolutionStatus::CodeOnly)
+        | (Some(SolutionStatus::Converged), SolutionStatus::Coarse)
+        | (Some(SolutionStatus::Fixed), SolutionStatus::Coarse) => SolutionStatus::Degraded,
         (_, other) => other,
+    }
+}
+
+fn refusal_status(refusal_class: NavRefusalClass) -> SolutionStatus {
+    match refusal_class {
+        NavRefusalClass::UnsupportedConstellation
+        | NavRefusalClass::MixedConstellationInput
+        | NavRefusalClass::InvalidEphemeris
+        | NavRefusalClass::PartialDecodedNavigationState => SolutionStatus::Unavailable,
+        NavRefusalClass::InsufficientGeometry
+        | NavRefusalClass::InvalidSatelliteTime
+        | NavRefusalClass::InconsistentObservations
+        | NavRefusalClass::ScientificPrerequisitesTooWeak
+        | NavRefusalClass::SolverFailure => SolutionStatus::Refused,
     }
 }
 
 fn lifecycle_state_from_status(status: SolutionStatus) -> NavLifecycleState {
     match status {
         SolutionStatus::Invalid => NavLifecycleState::Invalid,
+        SolutionStatus::Unavailable => NavLifecycleState::Unavailable,
+        SolutionStatus::Refused => NavLifecycleState::Refused,
         SolutionStatus::Held => NavLifecycleState::Held,
         SolutionStatus::Degraded => NavLifecycleState::Degraded,
+        SolutionStatus::IntegrityFailed => NavLifecycleState::IntegrityFailed,
+        SolutionStatus::Diverged => NavLifecycleState::Diverged,
+        SolutionStatus::CodeOnly => NavLifecycleState::CodeOnly,
         SolutionStatus::Coarse => NavLifecycleState::Coarse,
         SolutionStatus::Converged => NavLifecycleState::Converged,
         SolutionStatus::Float => NavLifecycleState::Float,
@@ -2847,7 +2873,7 @@ mod tests {
         };
         let obs = fake_obs_epoch_for_nav_tests(10);
         let solution = nav.solve_epoch(&obs, &[]).expect("degraded solution");
-        assert_eq!(solution.status, SolutionStatus::Invalid);
+        assert_eq!(solution.status, SolutionStatus::Unavailable);
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::InvalidEphemeris));
         assert_eq!(solution.explain_decision, "refused");
         assert_eq!(solution.epoch.index, 10);
@@ -2862,14 +2888,14 @@ mod tests {
         obs.decision = ObservationEpochDecision::Rejected;
         obs.decision_reason = Some("malformed_observation_set".to_string());
         let solution = nav.solve_epoch(&obs, &[]).expect("invalid solution");
-        assert_eq!(solution.status, SolutionStatus::Invalid);
+        assert_eq!(solution.status, SolutionStatus::Refused);
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::InconsistentObservations));
         assert_eq!(solution.explain_decision, "invalid_observation_epoch");
         assert!(solution
             .explain_reasons
             .iter()
             .any(|reason| reason == "input_observation_marked_invalid"));
-        assert_eq!(solution.lifecycle_state, NavLifecycleState::Invalid);
+        assert_eq!(solution.lifecycle_state, NavLifecycleState::Refused);
         assert_eq!(solution.model_version, NAV_SOLUTION_MODEL_VERSION);
     }
 
@@ -2892,7 +2918,7 @@ mod tests {
                 Some(ObsSignalTiming { signal_travel_time_s: Seconds(0.0), transmit_gps_time });
         }
         let solution = nav.solve_epoch(&obs, &ephs).expect("timing refusal");
-        assert_eq!(solution.status, SolutionStatus::Invalid);
+        assert_eq!(solution.status, SolutionStatus::Refused);
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::InvalidSatelliteTime));
         assert!(!solution.valid);
         assert_eq!(solution.used_sat_count, 0);
@@ -2908,7 +2934,7 @@ mod tests {
             sat.signal_id.sat.constellation = Constellation::Unknown;
         }
         let solution = nav.solve_epoch(&obs, &[]).expect("unsupported constellation solution");
-        assert_eq!(solution.status, SolutionStatus::Invalid);
+        assert_eq!(solution.status, SolutionStatus::Unavailable);
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::UnsupportedConstellation));
         assert_eq!(solution.explain_decision, "unsupported_constellation_input");
     }
@@ -2922,7 +2948,7 @@ mod tests {
             sat.signal_id.sat.constellation = Constellation::Unknown;
         }
         let solution = nav.solve_epoch(&obs, &[]).expect("mixed constellation refusal");
-        assert_eq!(solution.status, SolutionStatus::Invalid);
+        assert_eq!(solution.status, SolutionStatus::Unavailable);
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::MixedConstellationInput));
         assert_eq!(solution.explain_decision, "mixed_constellation_time_handling_refused");
         assert!(solution
@@ -2940,7 +2966,7 @@ mod tests {
             sat.signal_id.sat.constellation = Constellation::Glonass;
         }
         let solution = nav.solve_epoch(&obs, &[]).expect("glonass-only solution");
-        assert_eq!(solution.status, SolutionStatus::Invalid);
+        assert_eq!(solution.status, SolutionStatus::Unavailable);
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::InvalidEphemeris));
         assert_eq!(solution.explain_decision, "refused");
         assert!(!solution.valid);
@@ -2955,7 +2981,7 @@ mod tests {
             sat.signal_id.sat.constellation = Constellation::Galileo;
         }
         let solution = nav.solve_epoch(&obs, &[]).expect("mixed constellation solution");
-        assert_eq!(solution.status, SolutionStatus::Invalid);
+        assert_eq!(solution.status, SolutionStatus::Unavailable);
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::InvalidEphemeris));
         assert_eq!(solution.explain_decision, "refused");
         assert!(!solution.valid);
@@ -3042,7 +3068,7 @@ mod tests {
             solution.refusal_class,
             solution.explain_reasons
         );
-        assert!(matches!(solution.status, SolutionStatus::Coarse | SolutionStatus::Converged));
+        assert_eq!(solution.status, SolutionStatus::CodeOnly);
         assert_eq!(solution.refusal_class, None);
         assert_eq!(solution.isb.len(), 1);
         assert_eq!(solution.isb[0].constellation, Constellation::Galileo);
@@ -3072,7 +3098,7 @@ mod tests {
 
         let solution = nav.solve_epoch(&obs, &[]).expect("sparse refusal");
 
-        assert_eq!(solution.status, SolutionStatus::Invalid);
+        assert_eq!(solution.status, SolutionStatus::Refused);
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::InsufficientGeometry));
         assert_eq!(solution.epoch.index, 18);
         assert_eq!(solution.used_sat_count, 3);
@@ -3500,7 +3526,7 @@ mod tests {
 
         let solution = nav.solve_epoch(&obs, &ephs).expect("underdetermined refusal");
 
-        assert_eq!(solution.status, SolutionStatus::Invalid);
+        assert_eq!(solution.status, SolutionStatus::Refused);
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::InsufficientGeometry));
         assert!(!solution.valid);
         assert!(solution
@@ -3634,7 +3660,7 @@ mod tests {
                 Some(NavRefusalClass::InsufficientGeometry),
                 true,
             ),
-            SolutionStatus::Held
+            SolutionStatus::Degraded
         );
         assert_eq!(
             deterministic_solution_transition(
@@ -3643,7 +3669,7 @@ mod tests {
                 Some(NavRefusalClass::SolverFailure),
                 false,
             ),
-            SolutionStatus::Invalid
+            SolutionStatus::Refused
         );
     }
 
@@ -3670,7 +3696,7 @@ mod tests {
         let solution = nav.solve_epoch(&obs, &ephs).expect("solution");
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::InsufficientGeometry));
         assert_eq!(solution.explain_decision, "refused");
-        assert_eq!(solution.status, SolutionStatus::Invalid);
+        assert_eq!(solution.status, SolutionStatus::Refused);
         assert_eq!(solution.ecef_x_m.0, 0.0);
         assert_eq!(solution.position_covariance_ecef_m2, None);
         assert_eq!(solution.sigma_e_m, None);
@@ -3712,7 +3738,7 @@ mod tests {
         let solution = nav.solve_epoch(&obs, &ephs).expect("gdop refusal");
 
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::InsufficientGeometry));
-        assert_eq!(solution.status, SolutionStatus::Invalid);
+        assert_eq!(solution.status, SolutionStatus::Refused);
         assert_eq!(solution.ecef_x_m.0, 0.0);
         assert!(solution
             .explain_reasons

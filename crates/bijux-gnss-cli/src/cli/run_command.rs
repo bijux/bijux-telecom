@@ -1066,7 +1066,7 @@ mod nav_trace_tests {
             .expect("cli ekf solve")
             .expect("solution");
 
-        assert_eq!(solution.status, SolutionStatus::Invalid);
+        assert_eq!(solution.status, SolutionStatus::Unavailable);
         assert_eq!(
             solution.refusal_class,
             Some(bijux_gnss_infra::api::core::NavRefusalClass::InvalidEphemeris)
@@ -1094,7 +1094,7 @@ mod nav_trace_tests {
             .expect("cli ekf solve")
             .expect("solution");
 
-        assert_eq!(solution.status, SolutionStatus::Invalid);
+        assert_eq!(solution.status, SolutionStatus::Refused);
         assert_eq!(
             solution.refusal_class,
             Some(bijux_gnss_infra::api::core::NavRefusalClass::InsufficientGeometry)
@@ -1130,7 +1130,7 @@ mod nav_trace_tests {
             .expect("refusal cli ekf solve")
             .expect("refusal solution");
 
-        assert_eq!(refusal_solution.status, SolutionStatus::Invalid);
+        assert_eq!(refusal_solution.status, SolutionStatus::Refused);
         assert_eq!(
             refusal_solution.refusal_class,
             Some(bijux_gnss_infra::api::core::NavRefusalClass::InsufficientGeometry)
@@ -1447,11 +1447,7 @@ fn solve_epoch_ekf(
         rms_m: bijux_gnss_infra::api::core::Meters(ctx.ekf.health.innovation_rms),
         status,
         quality: status.quality_flag(),
-        validity: if status == bijux_gnss_infra::api::core::SolutionStatus::Invalid {
-            bijux_gnss_infra::api::core::SolutionValidity::Invalid
-        } else {
-            bijux_gnss_infra::api::core::SolutionValidity::Converging
-        },
+        validity: cli_solution_validity(status),
         valid: bijux_gnss_infra::api::core::is_solution_valid(status),
         processing_ms: None,
         residuals: Vec::new(),
@@ -1477,36 +1473,8 @@ fn solve_epoch_ekf(
         integrity_hpl_m: None,
         integrity_vpl_m: None,
         model_version: bijux_gnss_infra::api::core::NAV_SOLUTION_MODEL_VERSION,
-        lifecycle_state: match status {
-            bijux_gnss_infra::api::core::SolutionStatus::Invalid => {
-                bijux_gnss_infra::api::core::NavLifecycleState::Invalid
-            }
-            bijux_gnss_infra::api::core::SolutionStatus::Held => {
-                bijux_gnss_infra::api::core::NavLifecycleState::Held
-            }
-            bijux_gnss_infra::api::core::SolutionStatus::Degraded => {
-                bijux_gnss_infra::api::core::NavLifecycleState::Degraded
-            }
-            bijux_gnss_infra::api::core::SolutionStatus::Coarse => {
-                bijux_gnss_infra::api::core::NavLifecycleState::Coarse
-            }
-            bijux_gnss_infra::api::core::SolutionStatus::Converged => {
-                bijux_gnss_infra::api::core::NavLifecycleState::Converged
-            }
-            bijux_gnss_infra::api::core::SolutionStatus::Float => {
-                bijux_gnss_infra::api::core::NavLifecycleState::Float
-            }
-            bijux_gnss_infra::api::core::SolutionStatus::Fixed => {
-                bijux_gnss_infra::api::core::NavLifecycleState::Fixed
-            }
-        },
-        uncertainty_class: if status == bijux_gnss_infra::api::core::SolutionStatus::Invalid {
-            bijux_gnss_infra::api::core::NavUncertaintyClass::Unknown
-        } else if status == bijux_gnss_infra::api::core::SolutionStatus::Degraded {
-            bijux_gnss_infra::api::core::NavUncertaintyClass::High
-        } else {
-            bijux_gnss_infra::api::core::NavUncertaintyClass::Medium
-        },
+        lifecycle_state: cli_solution_lifecycle_state(status),
+        uncertainty_class: cli_solution_uncertainty_class(status),
         assumptions: None,
         refusal_class: None,
         artifact_id: String::new(),
@@ -1587,6 +1555,7 @@ fn cli_nav_refusal_epoch(
     refusal_class: Option<bijux_gnss_infra::api::core::NavRefusalClass>,
     explain_reasons: Vec<String>,
 ) -> bijux_gnss_infra::api::core::NavSolutionEpoch {
+    let status = cli_refusal_status(refusal_class);
     bijux_gnss_infra::api::core::NavSolutionEpoch {
         epoch: bijux_gnss_infra::api::core::Epoch { index: obs.epoch_idx },
         t_rx_s: obs.t_rx_s,
@@ -1605,8 +1574,8 @@ fn cli_nav_refusal_epoch(
         pre_fit_residual_rms_m: None,
         post_fit_residual_rms_m: None,
         rms_m: bijux_gnss_infra::api::core::Meters(0.0),
-        status: bijux_gnss_infra::api::core::SolutionStatus::Invalid,
-        quality: bijux_gnss_infra::api::core::SolutionStatus::Invalid.quality_flag(),
+        status,
+        quality: status.quality_flag(),
         validity: bijux_gnss_infra::api::core::SolutionValidity::Invalid,
         valid: false,
         processing_ms: None,
@@ -1633,8 +1602,8 @@ fn cli_nav_refusal_epoch(
         integrity_hpl_m: None,
         integrity_vpl_m: None,
         model_version: bijux_gnss_infra::api::core::NAV_SOLUTION_MODEL_VERSION,
-        lifecycle_state: bijux_gnss_infra::api::core::NavLifecycleState::Invalid,
-        uncertainty_class: bijux_gnss_infra::api::core::NavUncertaintyClass::Unknown,
+        lifecycle_state: cli_solution_lifecycle_state(status),
+        uncertainty_class: cli_solution_uncertainty_class(status),
         assumptions: None,
         refusal_class,
         artifact_id: String::new(),
@@ -1652,6 +1621,90 @@ fn cli_nav_refusal_epoch(
         stability_signature: String::new(),
         stability_signature_version:
             bijux_gnss_infra::api::core::NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
+    }
+}
+
+fn cli_solution_validity(
+    status: bijux_gnss_infra::api::core::SolutionStatus,
+) -> bijux_gnss_infra::api::core::SolutionValidity {
+    if bijux_gnss_infra::api::core::is_solution_valid(status) {
+        bijux_gnss_infra::api::core::SolutionValidity::Converging
+    } else {
+        bijux_gnss_infra::api::core::SolutionValidity::Invalid
+    }
+}
+
+fn cli_solution_lifecycle_state(
+    status: bijux_gnss_infra::api::core::SolutionStatus,
+) -> bijux_gnss_infra::api::core::NavLifecycleState {
+    match status {
+        bijux_gnss_infra::api::core::SolutionStatus::Invalid => {
+            bijux_gnss_infra::api::core::NavLifecycleState::Invalid
+        }
+        bijux_gnss_infra::api::core::SolutionStatus::Unavailable => {
+            bijux_gnss_infra::api::core::NavLifecycleState::Unavailable
+        }
+        bijux_gnss_infra::api::core::SolutionStatus::Refused => {
+            bijux_gnss_infra::api::core::NavLifecycleState::Refused
+        }
+        bijux_gnss_infra::api::core::SolutionStatus::Held => {
+            bijux_gnss_infra::api::core::NavLifecycleState::Held
+        }
+        bijux_gnss_infra::api::core::SolutionStatus::Degraded => {
+            bijux_gnss_infra::api::core::NavLifecycleState::Degraded
+        }
+        bijux_gnss_infra::api::core::SolutionStatus::IntegrityFailed => {
+            bijux_gnss_infra::api::core::NavLifecycleState::IntegrityFailed
+        }
+        bijux_gnss_infra::api::core::SolutionStatus::Diverged => {
+            bijux_gnss_infra::api::core::NavLifecycleState::Diverged
+        }
+        bijux_gnss_infra::api::core::SolutionStatus::CodeOnly => {
+            bijux_gnss_infra::api::core::NavLifecycleState::CodeOnly
+        }
+        bijux_gnss_infra::api::core::SolutionStatus::Coarse => {
+            bijux_gnss_infra::api::core::NavLifecycleState::Coarse
+        }
+        bijux_gnss_infra::api::core::SolutionStatus::Converged => {
+            bijux_gnss_infra::api::core::NavLifecycleState::Converged
+        }
+        bijux_gnss_infra::api::core::SolutionStatus::Float => {
+            bijux_gnss_infra::api::core::NavLifecycleState::Float
+        }
+        bijux_gnss_infra::api::core::SolutionStatus::Fixed => {
+            bijux_gnss_infra::api::core::NavLifecycleState::Fixed
+        }
+    }
+}
+
+fn cli_solution_uncertainty_class(
+    status: bijux_gnss_infra::api::core::SolutionStatus,
+) -> bijux_gnss_infra::api::core::NavUncertaintyClass {
+    if !bijux_gnss_infra::api::core::is_solution_valid(status) {
+        bijux_gnss_infra::api::core::NavUncertaintyClass::Unknown
+    } else if matches!(
+        status,
+        bijux_gnss_infra::api::core::SolutionStatus::Held
+            | bijux_gnss_infra::api::core::SolutionStatus::Degraded
+    ) {
+        bijux_gnss_infra::api::core::NavUncertaintyClass::High
+    } else {
+        bijux_gnss_infra::api::core::NavUncertaintyClass::Medium
+    }
+}
+
+fn cli_refusal_status(
+    refusal_class: Option<bijux_gnss_infra::api::core::NavRefusalClass>,
+) -> bijux_gnss_infra::api::core::SolutionStatus {
+    match refusal_class {
+        Some(
+            bijux_gnss_infra::api::core::NavRefusalClass::UnsupportedConstellation
+            | bijux_gnss_infra::api::core::NavRefusalClass::MixedConstellationInput
+            | bijux_gnss_infra::api::core::NavRefusalClass::InvalidEphemeris
+            | bijux_gnss_infra::api::core::NavRefusalClass::PartialDecodedNavigationState,
+        ) => bijux_gnss_infra::api::core::SolutionStatus::Unavailable,
+        Some(_) => bijux_gnss_infra::api::core::SolutionStatus::Refused,
+        None => bijux_gnss_infra::api::core::SolutionStatus::Invalid,
     }
 }
 
