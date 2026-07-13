@@ -228,6 +228,32 @@ pub mod v1 {
                         "non-primary acquisition candidates must use rank 2 or greater",
                     ));
                 }
+                if let Some(provenance) =
+                    self.evidence.iter().find_map(|evidence| evidence.component_provenance.as_ref())
+                {
+                    if provenance.components.is_empty() {
+                        events.push(DiagnosticEvent::new(
+                            DiagnosticSeverity::Error,
+                            "GNSS_ACQ_COMPONENT_PROVENANCE_EMPTY",
+                            "acquisition component provenance must include at least one component",
+                        ));
+                    }
+                    for component in &provenance.components {
+                        if !component.peak.is_finite()
+                            || !component.second_peak.is_finite()
+                            || !component.mean.is_finite()
+                            || !component.peak_mean_ratio.is_finite()
+                            || !component.peak_second_ratio.is_finite()
+                        {
+                            events.push(DiagnosticEvent::new(
+                                DiagnosticSeverity::Error,
+                                "GNSS_NUMERIC_ACQ_COMPONENT_INVALID",
+                                "acquisition component provenance contains NaN/Inf",
+                            ));
+                            break;
+                        }
+                    }
+                }
                 events.extend(validate_receiver_sample_trace(
                     self.source_time,
                     "acquisition",

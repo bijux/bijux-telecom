@@ -386,6 +386,30 @@ pub struct AcqAssumptions {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcqComponentStatistic {
+    pub role: crate::api::SignalComponentRole,
+    pub peak: f32,
+    pub second_peak: f32,
+    pub mean: f32,
+    pub peak_mean_ratio: f32,
+    pub peak_second_ratio: f32,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AcqComponentCombinationMode {
+    SingleComponent,
+    NoncoherentComponentSum,
+    CoherentComponentSum,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcqComponentProvenance {
+    pub combination_mode: AcqComponentCombinationMode,
+    pub components: Vec<AcqComponentStatistic>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcqEvidence {
     pub rank: u8,
     pub code_phase_samples: usize,
@@ -395,6 +419,8 @@ pub struct AcqEvidence {
     pub peak_mean_ratio: f32,
     pub peak_second_ratio: f32,
     pub mean: f32,
+    #[serde(default)]
+    pub component_provenance: Option<AcqComponentProvenance>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -495,6 +521,10 @@ pub struct AcqResult {
 }
 
 impl AcqResult {
+    pub fn component_provenance(&self) -> Option<&AcqComponentProvenance> {
+        self.evidence.iter().find_map(|evidence| evidence.component_provenance.as_ref())
+    }
+
     pub fn resolved_code_phase_samples(&self) -> f64 {
         self.code_phase_refinement
             .as_ref()
@@ -593,8 +623,30 @@ pub fn acq_result_stability_key(result: &AcqResult) -> String {
         .glonass_frequency_channel
         .map(|channel| format!("|{}", channel.value()))
         .unwrap_or_default();
+    let component_provenance_key = result
+        .component_provenance()
+        .map(|provenance| {
+            let components = provenance
+                .components
+                .iter()
+                .map(|component| {
+                    format!(
+                        "{:?}:{:.6}:{:.6}:{:.6}:{:.6}:{:.6}",
+                        component.role,
+                        component.peak,
+                        component.second_peak,
+                        component.mean,
+                        component.peak_mean_ratio,
+                        component.peak_second_ratio
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(",");
+            format!("|{:?}|{}", provenance.combination_mode, components)
+        })
+        .unwrap_or_default();
     format!(
-        "{:?}-{:02}|{}|{}{}|{:?}|{:.3}|{}|{:.6}|{:.6}|{:.6}|{}{}{}{}{}",
+        "{:?}-{:02}|{}|{}{}|{:?}|{:.3}|{}|{:.6}|{:.6}|{:.6}|{}{}{}{}{}{}",
         result.sat.constellation,
         result.sat.prn,
         result.candidate_rank,
@@ -611,6 +663,7 @@ pub fn acq_result_stability_key(result: &AcqResult) -> String {
         code_phase_refinement_key,
         uncertainty_key,
         signal_delay_alignment_key,
+        component_provenance_key,
     )
 }
 
@@ -1268,11 +1321,12 @@ mod tests {
         SignalDelayAlignment, OBSERVATION_DOPPLER_MODEL_TRACKED_CARRIER_IF_OFFSET,
     };
     use crate::api::{
-        trackable_acq_tracking_seeds, AcqCodePhaseRefinement, AcqHypothesis, AcqResult,
+        trackable_acq_tracking_seeds, AcqCodePhaseRefinement, AcqComponentCombinationMode,
+        AcqComponentProvenance, AcqComponentStatistic, AcqEvidence, AcqHypothesis, AcqResult,
         AcqSearchSummary, AcqUncertainty, Constellation, Cycles, GlonassFrequencyChannel, Hertz,
         LeapSeconds, LockFlags, NavLifecycleState, NavQualityFlag, ObservationEpochDecision,
         ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId, SignalBand, SignalCode,
-        SolutionStatus, UtcTime,
+        SignalComponentRole, SolutionStatus, UtcTime,
     };
     use crate::time::utc_to_gps;
 
@@ -1489,6 +1543,92 @@ mod tests {
         base.glonass_frequency_channel = Some(lower);
         let mut changed = base.clone();
         changed.glonass_frequency_channel = Some(upper);
+
+        assert_ne!(acq_result_stability_key(&base), acq_result_stability_key(&changed));
+    }
+
+    #[test]
+    fn acq_result_component_provenance_reads_primary_evidence() {
+        let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+        let mut result = acq_result_for_summary(sat, AcqHypothesis::Accepted);
+        result.evidence = vec![AcqEvidence {
+            rank: 1,
+            code_phase_samples: result.code_phase_samples,
+            doppler_hz: result.carrier_hz.0,
+            peak: result.peak,
+            second_peak: result.second_peak,
+            peak_mean_ratio: result.peak_mean_ratio,
+            peak_second_ratio: result.peak_second_ratio,
+            mean: result.mean,
+            component_provenance: Some(AcqComponentProvenance {
+                combination_mode: AcqComponentCombinationMode::CoherentComponentSum,
+                components: vec![
+                    AcqComponentStatistic {
+                        role: SignalComponentRole::Data,
+                        peak: 12.0,
+                        second_peak: 3.0,
+                        mean: 1.5,
+                        peak_mean_ratio: 8.0,
+                        peak_second_ratio: 4.0,
+                    },
+                    AcqComponentStatistic {
+                        role: SignalComponentRole::Pilot,
+                        peak: 11.0,
+                        second_peak: 2.5,
+                        mean: 1.4,
+                        peak_mean_ratio: 7.857143,
+                        peak_second_ratio: 4.4,
+                    },
+                ],
+            }),
+        }];
+
+        let provenance =
+            result.component_provenance().expect("component provenance must be discoverable");
+
+        assert_eq!(provenance.combination_mode, AcqComponentCombinationMode::CoherentComponentSum);
+        assert_eq!(provenance.components.len(), 2);
+        assert_eq!(provenance.components[0].role, SignalComponentRole::Data);
+        assert_eq!(provenance.components[1].role, SignalComponentRole::Pilot);
+    }
+
+    #[test]
+    fn acq_result_stability_key_includes_component_provenance() {
+        let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+        let mut base = acq_result_for_summary(sat, AcqHypothesis::Accepted);
+        base.evidence = vec![AcqEvidence {
+            rank: 1,
+            code_phase_samples: base.code_phase_samples,
+            doppler_hz: base.carrier_hz.0,
+            peak: base.peak,
+            second_peak: base.second_peak,
+            peak_mean_ratio: base.peak_mean_ratio,
+            peak_second_ratio: base.peak_second_ratio,
+            mean: base.mean,
+            component_provenance: Some(AcqComponentProvenance {
+                combination_mode: AcqComponentCombinationMode::NoncoherentComponentSum,
+                components: vec![AcqComponentStatistic {
+                    role: SignalComponentRole::Data,
+                    peak: 12.0,
+                    second_peak: 3.0,
+                    mean: 1.5,
+                    peak_mean_ratio: 8.0,
+                    peak_second_ratio: 4.0,
+                }],
+            }),
+        }];
+        let mut changed = base.clone();
+        changed.evidence[0].component_provenance = Some(AcqComponentProvenance {
+            combination_mode: AcqComponentCombinationMode::CoherentComponentSum,
+            components: vec![AcqComponentStatistic {
+                role: SignalComponentRole::Data,
+                peak: 12.0,
+                second_peak: 3.0,
+                mean: 1.5,
+                peak_mean_ratio: 8.0,
+                peak_second_ratio: 4.0,
+            }],
+        });
 
         assert_ne!(acq_result_stability_key(&base), acq_result_stability_key(&changed));
     }
