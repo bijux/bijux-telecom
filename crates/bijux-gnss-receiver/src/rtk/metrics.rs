@@ -117,6 +117,20 @@ impl bijux_gnss_core::api::ArtifactPayloadValidate for RtkPrecision {
                 ));
             }
         }
+        if self.fix_accepted && self.ratio.is_none() {
+            events.push(bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Error,
+                "RTK_PRECISION_FIX_RATIO_MISSING",
+                "evidence-backed RTK fix acceptance requires a ratio value",
+            ));
+        }
+        if self.fix_accepted && self.fixed_count == 0 {
+            events.push(bijux_gnss_core::api::DiagnosticEvent::new(
+                bijux_gnss_core::api::DiagnosticSeverity::Error,
+                "RTK_PRECISION_FIXED_COUNT_MISSING",
+                "evidence-backed RTK fix acceptance requires fixed ambiguities",
+            ));
+        }
         events
     }
 }
@@ -312,4 +326,40 @@ pub fn apply_fix_hold(mut baseline: BaselineSolution, fixed: bool) -> BaselineSo
         baseline.covariance_m2 = Some(scaled);
     }
     baseline
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bijux_gnss_core::api::ArtifactPayloadValidate;
+
+    #[test]
+    fn rtk_precision_rejects_accepted_fix_without_ratio() {
+        let precision = RtkPrecision {
+            epoch_idx: 4,
+            fix_accepted: true,
+            ratio: None,
+            fixed_count: 2,
+            ref_changed: false,
+            slip_count: 0,
+        };
+
+        let events = precision.validate_payload();
+        assert!(events.iter().any(|event| event.code == "RTK_PRECISION_FIX_RATIO_MISSING"));
+    }
+
+    #[test]
+    fn rtk_precision_rejects_accepted_fix_without_fixed_ambiguities() {
+        let precision = RtkPrecision {
+            epoch_idx: 4,
+            fix_accepted: true,
+            ratio: Some(3.5),
+            fixed_count: 0,
+            ref_changed: false,
+            slip_count: 0,
+        };
+
+        let events = precision.validate_payload();
+        assert!(events.iter().any(|event| event.code == "RTK_PRECISION_FIXED_COUNT_MISSING"));
+    }
 }

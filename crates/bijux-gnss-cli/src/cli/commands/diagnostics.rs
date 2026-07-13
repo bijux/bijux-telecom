@@ -193,6 +193,31 @@ fn refused_execution_status(
     (status, reason)
 }
 
+fn rtk_advanced_solution_measurements(
+    quality: Option<&bijux_gnss_infra::api::receiver::RtkBaselineQuality>,
+) -> bijux_gnss_infra::api::receiver::AdvancedSolutionMeasurements {
+    if let Some(quality) = quality {
+        let sigma_h_m = (quality.sigma_e * quality.sigma_e + quality.sigma_n * quality.sigma_n)
+            .sqrt();
+        bijux_gnss_infra::api::receiver::AdvancedSolutionMeasurements {
+            sigma_h_m: Some(sigma_h_m),
+            sigma_v_m: Some(quality.sigma_u),
+            residual_rms_m: Some(quality.residual_rms_m),
+            predicted_rms_m: Some(quality.predicted_rms_m),
+            hpl_m: Some(quality.hpl_m),
+            vpl_m: Some(quality.vpl_m),
+        }
+    } else {
+        bijux_gnss_infra::api::receiver::AdvancedSolutionMeasurements::default()
+    }
+}
+
+fn evidence_backed_rtk_fix_accepted(
+    claim: bijux_gnss_infra::api::receiver::AdvancedSolutionClaim,
+) -> bool {
+    matches!(claim, bijux_gnss_infra::api::receiver::AdvancedSolutionClaim::Fixed)
+}
+
 fn handle_rtk(command: GnssCommand) -> Result<()> {
     let GnssCommand::Rtk { common, base_obs, rover_obs, eph, base_ecef, tolerance_s, ref_policy } =
         command
@@ -564,20 +589,7 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
         let ambiguity_state_count =
             float_ambiguity_state.as_ref().map_or(0usize, |state| state.float_cycles.len());
         let correction_source = "broadcast_ephemeris".to_string();
-        let measurements = if let Some(quality) = baseline_quality_payload.as_ref() {
-            let sigma_h_m = (quality.sigma_e * quality.sigma_e + quality.sigma_n * quality.sigma_n)
-                .sqrt();
-            bijux_gnss_infra::api::receiver::AdvancedSolutionMeasurements {
-                sigma_h_m: Some(sigma_h_m),
-                sigma_v_m: Some(quality.sigma_u),
-                residual_rms_m: Some(quality.residual_rms_m),
-                predicted_rms_m: Some(quality.predicted_rms_m),
-                hpl_m: Some(quality.hpl_m),
-                vpl_m: Some(quality.vpl_m),
-            }
-        } else {
-            bijux_gnss_infra::api::receiver::AdvancedSolutionMeasurements::default()
-        };
+        let measurements = rtk_advanced_solution_measurements(baseline_quality_payload.as_ref());
         let evidence = bijux_gnss_infra::api::receiver::evaluate_solution_evidence(
             bijux_gnss_infra::api::receiver::AdvancedMode::Rtk,
             raw_claim,
@@ -628,7 +640,7 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
             base.sats.iter().chain(rover.sats.iter()).filter(|s| s.lock_flags.cycle_slip).count();
         let precision = bijux_gnss_infra::api::receiver::RtkPrecision {
             epoch_idx: rover.epoch_idx,
-            fix_accepted: baseline_fixed,
+            fix_accepted: evidence_backed_rtk_fix_accepted(claim),
             ratio: fix_result.ratio,
             fixed_count: audit.fixed_count,
             ref_changed,
@@ -3267,8 +3279,9 @@ fn handle_doctor(command: GnssCommand) -> Result<()> {
 mod diagnostics_tests {
     use super::{
         advanced_gate_report, artifact_inventory_report, compare_run_evidence, explain_run_scope,
-        export_bundle_report, machine_catalog_report, medium_gate_report, nav_reference_week,
-        operator_status_report, refused_execution_status, replay_audit_report, verify_repro_bundle,
+        evidence_backed_rtk_fix_accepted, export_bundle_report, machine_catalog_report,
+        medium_gate_report, nav_reference_week, operator_status_report, refused_execution_status,
+        replay_audit_report, rtk_advanced_solution_measurements, verify_repro_bundle,
         AdvancedGateMode,
     };
     use crate::schema_path;
@@ -3682,6 +3695,45 @@ mod diagnostics_tests {
         let (status, reason) = refused_execution_status(&decision);
         assert_eq!(status, bijux_gnss_infra::api::receiver::ExecutionStatus::Unsupported);
         assert_eq!(reason.as_deref(), Some("unsupported_model"));
+    }
+
+    #[test]
+    fn rtk_advanced_solution_measurements_track_quality_payload() {
+        let quality = bijux_gnss_infra::api::receiver::RtkBaselineQuality {
+            epoch_idx: 9,
+            fixed: true,
+            sigma_e: 0.03,
+            sigma_n: 0.04,
+            sigma_u: 0.05,
+            used_sats: 7,
+            residual_rms_m: 0.02,
+            predicted_rms_m: 0.01,
+            hpl_m: 0.30,
+            vpl_m: 0.45,
+            separation_sig: None,
+            separation_max_m: None,
+        };
+
+        let measurements = rtk_advanced_solution_measurements(Some(&quality));
+        assert_eq!(measurements.sigma_h_m, Some(0.05));
+        assert_eq!(measurements.sigma_v_m, Some(0.05));
+        assert_eq!(measurements.residual_rms_m, Some(0.02));
+        assert_eq!(measurements.predicted_rms_m, Some(0.01));
+        assert_eq!(measurements.hpl_m, Some(0.30));
+        assert_eq!(measurements.vpl_m, Some(0.45));
+    }
+
+    #[test]
+    fn evidence_backed_rtk_fix_accepted_only_reports_final_fixed_claims() {
+        assert!(evidence_backed_rtk_fix_accepted(
+            bijux_gnss_infra::api::receiver::AdvancedSolutionClaim::Fixed
+        ));
+        assert!(!evidence_backed_rtk_fix_accepted(
+            bijux_gnss_infra::api::receiver::AdvancedSolutionClaim::Float
+        ));
+        assert!(!evidence_backed_rtk_fix_accepted(
+            bijux_gnss_infra::api::receiver::AdvancedSolutionClaim::FallbackNav
+        ));
     }
 
     #[test]
