@@ -499,6 +499,19 @@ pub fn measure_truth_guided_quantization_loss(
     }
 }
 
+/// Persist a truth-guided quantization-loss report as one JSON artifact.
+pub fn write_truth_guided_quantization_loss_artifact(
+    path: &std::path::Path,
+    report: &SyntheticQuantizationLossReport,
+) -> Result<(), std::io::Error> {
+    let payload = serde_json::to_vec_pretty(report).map_err(|error| {
+        std::io::Error::other(format!(
+            "failed to serialize synthetic quantization loss artifact: {error}"
+        ))
+    })?;
+    std::fs::write(path, payload)
+}
+
 const TRACKING_CN0_MIN_STABLE_EPOCHS: usize = 5;
 
 fn stable_tracking_cn0_values(epochs: &[crate::api::core::TrackEpoch]) -> Vec<f64> {
