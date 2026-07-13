@@ -21,6 +21,7 @@ fn accepted_acquisition(sat: SatId, code_phase_samples: usize) -> AcqResult {
     AcqResult {
         sat,
         signal_band: SignalBand::L1,
+        signal_code: bijux_gnss_core::api::SignalCode::Unknown,
         glonass_frequency_channel: None,
         source_time: ReceiverSampleTrace::default(),
         candidate_rank: 1,
@@ -74,6 +75,7 @@ fn tracking_reacquires_after_bounded_signal_interruption() {
             sat,
             glonass_frequency_channel: None,
             signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
             doppler_hz: 0.0,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
@@ -144,6 +146,7 @@ fn tracking_reports_failed_reacquisition_when_signal_does_not_return() {
             sat,
             glonass_frequency_channel: None,
             signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
             doppler_hz: 0.0,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,

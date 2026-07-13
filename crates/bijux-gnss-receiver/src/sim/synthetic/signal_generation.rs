@@ -416,7 +416,8 @@ struct SatState {
 type SyntheticSignalModel = bijux_gnss_signal::api::ReplicaCodeModel;
 
 fn synthetic_replica_model(params: SyntheticSignalParams) -> SyntheticSignalModel {
-    SyntheticSignalModel::for_sat_signal_band(params.sat, Some(params.signal_band))
+    let signal_code = resolved_signal_code(params.sat, params.signal_band, params.signal_code);
+    SyntheticSignalModel::for_sat_signal(params.sat, Some(params.signal_band), signal_code)
         .ok()
         .flatten()
         .unwrap_or_else(|| SyntheticSignalModel::gps_l1_ca_or_ones(params.sat.prn))
@@ -560,6 +561,7 @@ fn isolated_satellite_scenario(
             sat: sat_truth.sat,
             glonass_frequency_channel: sat_truth.glonass_frequency_channel,
             signal_band: sat_truth.signal_band,
+            signal_code: sat_truth.signal_code,
             doppler_hz: sat_truth.doppler_hz,
             code_phase_chips: sat_truth.code_phase_chips,
             carrier_phase_rad: sat_truth.carrier_phase_rad,
@@ -646,17 +648,30 @@ fn synthetic_constellation_carrier_hz(
 }
 
 fn nav_bit_mode(params: &SyntheticSignalParams) -> SyntheticNavBitMode {
-    match (params.data_bit_flip, params.sat.constellation, params.signal_band) {
-        (false, _, _) => SyntheticNavBitMode::ConstantPositive,
-        (true, bijux_gnss_core::api::Constellation::Gps, SignalBand::L5) => {
+    match (
+        resolved_signal_code(params.sat, params.signal_band, params.signal_code),
+        params.data_bit_flip,
+        params.sat.constellation,
+        params.signal_band,
+    ) {
+        (bijux_gnss_core::api::SignalCode::L5Q, _, bijux_gnss_core::api::Constellation::Gps, SignalBand::L5) => {
+            SyntheticNavBitMode::GpsL5QNh20
+        }
+        (_, false, _, _) => SyntheticNavBitMode::ConstantPositive,
+        (bijux_gnss_core::api::SignalCode::L5I, true, bijux_gnss_core::api::Constellation::Gps, SignalBand::L5) => {
             SyntheticNavBitMode::AlternatingGpsL5I10ms
         }
-        (true, _, _) => SyntheticNavBitMode::AlternatingGpsLnav20ms,
+        (_, true, _, _) => SyntheticNavBitMode::AlternatingGpsLnav20ms,
     }
 }
 
 fn nav_bit_sign_for_mode_at_time_s(nav_bit_mode: SyntheticNavBitMode, time_s: f64) -> i8 {
-    nav_bit_sign_for_index(nav_bit_index_for_mode_at_time_s(nav_bit_mode, time_s))
+    match nav_bit_mode {
+        SyntheticNavBitMode::GpsL5QNh20 => bijux_gnss_signal::api::gps_l5_q_epoch_symbol(
+            nav_bit_index_for_mode_at_time_s(nav_bit_mode, time_s) as usize,
+        ),
+        _ => nav_bit_sign_for_index(nav_bit_index_for_mode_at_time_s(nav_bit_mode, time_s)),
+    }
 }
 
 fn nav_bit_index_for_mode_at_time_s(nav_bit_mode: SyntheticNavBitMode, time_s: f64) -> u64 {
@@ -738,7 +753,7 @@ fn nav_bit_segments(
             end_sample: clamped_end,
             start_s: start_sample as f64 / sample_rate_hz,
             end_s: clamped_end as f64 / sample_rate_hz,
-            bit: nav_bit_sign_for_index(bit_index),
+            bit: nav_bit_sign_for_mode_at_time_s(nav_bit_mode, start_sample as f64 / sample_rate_hz),
         });
         bit_index += 1;
     }
@@ -750,6 +765,41 @@ fn nav_symbol_period_s(nav_bit_mode: SyntheticNavBitMode) -> Option<f64> {
         SyntheticNavBitMode::ConstantPositive => None,
         SyntheticNavBitMode::AlternatingGpsLnav20ms => Some(GPS_L1_CA_NAV_BIT_PERIOD_S),
         SyntheticNavBitMode::AlternatingGpsL5I10ms => Some(0.010),
+        SyntheticNavBitMode::GpsL5QNh20 => Some(0.001),
+    }
+}
+
+fn resolved_signal_code(
+    sat: SatId,
+    signal_band: SignalBand,
+    signal_code: bijux_gnss_core::api::SignalCode,
+) -> bijux_gnss_core::api::SignalCode {
+    if signal_code != bijux_gnss_core::api::SignalCode::Unknown {
+        return signal_code;
+    }
+    match (sat.constellation, signal_band) {
+        (bijux_gnss_core::api::Constellation::Gps, SignalBand::L1) => {
+            bijux_gnss_core::api::SignalCode::Ca
+        }
+        (bijux_gnss_core::api::Constellation::Gps, SignalBand::L2) => {
+            bijux_gnss_core::api::SignalCode::L2C
+        }
+        (bijux_gnss_core::api::Constellation::Gps, SignalBand::L5) => {
+            bijux_gnss_core::api::SignalCode::L5I
+        }
+        (bijux_gnss_core::api::Constellation::Galileo, SignalBand::E1) => {
+            bijux_gnss_core::api::SignalCode::E1B
+        }
+        (bijux_gnss_core::api::Constellation::Galileo, SignalBand::E5) => {
+            bijux_gnss_core::api::SignalCode::E5a
+        }
+        (bijux_gnss_core::api::Constellation::Beidou, SignalBand::B1) => {
+            bijux_gnss_core::api::SignalCode::B1I
+        }
+        (bijux_gnss_core::api::Constellation::Beidou, SignalBand::B2) => {
+            bijux_gnss_core::api::SignalCode::B2I
+        }
+        _ => bijux_gnss_core::api::SignalCode::Unknown,
     }
 }
 

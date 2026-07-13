@@ -21,16 +21,16 @@ pub use bijux_gnss_core::api as core;
 /// Re-export signal API for downstream crates.
 pub use bijux_gnss_signal::api as signal;
 
-/// Re-export nav API for downstream crates.
-#[cfg(feature = "nav")]
-#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
-pub use bijux_gnss_nav::api as nav;
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use crate::reference_validation::{
     align_reference_by_time, check_solution_consistency, reference_compare, reference_ecef,
     ReferenceAlign, ReferenceCompareStats, SolutionConsistencyReport, ValidationReferenceEpoch,
 };
+/// Re-export nav API for downstream crates.
+#[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
+pub use bijux_gnss_nav::api as nav;
 
 /// Runtime logging helpers.
 pub use crate::engine::logging;
@@ -45,11 +45,18 @@ pub use crate::pipeline::doppler::{carrier_hz_from_doppler_hz, doppler_hz_from_c
 /// Navigation engine and helpers.
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
-pub use crate::pipeline::navigation::{EkfState, Navigation, NavigationEngine};
+pub use crate::pipeline::navigation::Navigation;
+/// Navigation engine and helpers.
+#[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
+pub use bijux_gnss_nav::api::{EkfState, NavigationEngine};
 /// Filtered navigation execution helpers.
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
-pub use crate::pipeline::navigation_filter::{NavigationFilter, NavigationFilterThresholds};
+pub use crate::pipeline::navigation_filter::NavigationFilter;
+#[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
+pub use bijux_gnss_nav::api::NavigationFilterThresholds;
 /// Carrier-smoothed code validation helpers.
 pub use crate::pipeline::observation_validation::{
     summarize_carrier_smoothed_code, validate_carrier_smoothed_code,
@@ -79,38 +86,36 @@ pub use crate::pipeline::{StepReport, StepStats};
 
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
-pub use bijux_gnss_nav::api::{
-    build_dd, build_dd_per_constellation, build_sd, choose_ref_sat,
-    choose_ref_sat_per_constellation, dd_covariance, innovation_diagnostics, los_unit,
-    solve_baseline_dd, solve_float_baseline_dd, AlignmentDiagnostic, AlignmentReport,
-    BaselineConfig, DdCovarianceModel, DdObservation, EpochAligner, RefSatPolicy, RefSatSelector,
-    SdObservation, SolutionSeparation,
-};
-#[cfg(feature = "nav")]
-#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
-pub use bijux_gnss_nav::api::{
-    double_difference, single_difference,
-    apply_fix_hold, baseline_from_ecef, dd_residual_metrics, enu_to_ecef,
-    evaluate_rtk_fixed_baseline_guard, jitter_summary, sd_residual_metrics, solution_separation,
-    BaselineSolution, JitterSummary, RtkBaselineQuality, RtkFixedBaselineGuardDecision,
-    RtkFixedBaselineGuardPolicy, RtkPrecision,
+pub use bijux_gnss_core::api::rtk::{
+    RtkBaselineEpochV1, RtkBaselineQualityV1, RtkDdEpochV1, RtkFixAuditV1, RtkPrecisionV1,
+    RtkSdEpochV1,
 };
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use bijux_gnss_nav::api::{
     apply_downgrade_policy, evaluate_prerequisites, evaluate_solution_evidence,
     support_status_matrix, AdvancedClaimDecision, AdvancedMaturity, AdvancedMode,
-    AdvancedPrereqDecision, AdvancedPrerequisites, AdvancedRefusalClass,
-    AdvancedSolutionArtifact, AdvancedSolutionClaim, AdvancedSolutionEvidence,
-    AdvancedSolutionMeasurements, AdvancedSolutionProvenance, AdvancedSupportMatrix,
-    AdvancedSupportRow, AmbiguityStateArtifact, CorrectionInputArtifact, ExecutionArtifact,
-    ExecutionStatus, ADVANCED_SUPPORT_MATRIX_VERSION,
+    AdvancedPrereqDecision, AdvancedPrerequisites, AdvancedRefusalClass, AdvancedSolutionArtifact,
+    AdvancedSolutionClaim, AdvancedSolutionEvidence, AdvancedSolutionMeasurements,
+    AdvancedSolutionProvenance, AdvancedSupportMatrix, AdvancedSupportRow, AmbiguityStateArtifact,
+    CorrectionInputArtifact, ExecutionArtifact, ExecutionStatus, ADVANCED_SUPPORT_MATRIX_VERSION,
 };
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
-pub use bijux_gnss_core::api::rtk::{
-    RtkBaselineEpochV1, RtkBaselineQualityV1, RtkDdEpochV1, RtkFixAuditV1, RtkPrecisionV1,
-    RtkSdEpochV1,
+pub use bijux_gnss_nav::api::{
+    apply_fix_hold, baseline_from_ecef, dd_residual_metrics, double_difference, enu_to_ecef,
+    evaluate_rtk_fixed_baseline_guard, jitter_summary, sd_residual_metrics, single_difference,
+    solution_separation, BaselineSolution, JitterSummary, RtkBaselineQuality,
+    RtkFixedBaselineGuardDecision, RtkFixedBaselineGuardPolicy, RtkPrecision,
+};
+#[cfg(feature = "nav")]
+#[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
+pub use bijux_gnss_nav::api::{
+    build_dd, build_dd_per_constellation, build_sd, choose_ref_sat,
+    choose_ref_sat_per_constellation, dd_covariance, innovation_diagnostics, los_unit,
+    solve_baseline_dd, solve_float_baseline_dd, AlignmentDiagnostic, AlignmentReport,
+    BaselineConfig, DdCovarianceModel, DdObservation, EpochAligner, RefSatPolicy, RefSatSelector,
+    SdObservation, SolutionSeparation,
 };
 /// RTK differencing and baseline helpers.
 #[cfg(feature = "nav")]
@@ -181,17 +186,6 @@ pub struct RunArtifacts {
     pub support_matrix: Option<bijux_gnss_core::api::SupportMatrix>,
     /// Navigation solution epochs captured during the run.
     pub navigation: Vec<bijux_gnss_core::api::NavEpoch>,
-}
-
-impl RunArtifacts {
-    /// Reconstruct the observation-stage artifacts emitted during this run.
-    pub fn observation_artifacts(&self) -> ObservationPipelineArtifacts {
-        ObservationPipelineArtifacts {
-            epochs: self.observations.clone(),
-            residuals: self.observation_residuals.clone(),
-            measurement_quality: self.observation_measurement_quality.clone(),
-        }
-    }
 }
 
 /// Receiver engine boundary trait.

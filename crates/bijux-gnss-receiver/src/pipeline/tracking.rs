@@ -8,11 +8,13 @@ use serde::{Deserialize, Serialize};
 use bijux_gnss_core::api::{
     AcqHypothesis, AcqTrackingSeed, AcqUncertainty, Chips, Constellation, Cycles, Hertz,
     ReceiverSampleTrace, SampleClock, SampleTime, SamplesFrame, SatId, Seconds, SignalBand,
-    SignalDelayAlignment, TrackEpoch, TrackTransition, TrackingAssumptions, TrackingUncertainty,
+    SignalCode, SignalDelayAlignment, TrackEpoch, TrackTransition, TrackingAssumptions,
+    TrackingUncertainty,
 };
 
 use crate::engine::receiver_config::{ReceiverPipelineConfig, TrackingParams};
 use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
+use crate::engine::signal_selection::default_signal_code_for_band;
 use bijux_gnss_core::api::Sample;
 use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::{
@@ -21,7 +23,7 @@ use bijux_gnss_signal::api::{
     apply_code_loop as signal_apply_code_loop, carrier_frequency_error_hz_from_phase_delta,
     carrier_phase_offset_radians,
     coherent_integration_seconds as signal_coherent_integration_seconds,
-    correlate_early_prompt_late, default_local_code_model, discriminators,
+    correlate_early_prompt_late, default_local_code_model_for_signal, discriminators,
     dll_hold_threshold as signal_dll_hold_threshold,
     dll_lock_threshold as signal_dll_lock_threshold,
     epoch_start_code_phase_samples_from_receiver_phase, estimate_cn0_dbhz,
@@ -266,6 +268,7 @@ struct TrackingStartContext {
 #[derive(Debug, Clone)]
 struct TrackingSignalModel {
     signal_band: SignalBand,
+    signal_code: SignalCode,
     glonass_frequency_channel: Option<bijux_gnss_core::api::GlonassFrequencyChannel>,
     code_rate_hz: f64,
     code_length: usize,
@@ -275,10 +278,18 @@ struct TrackingSignalModel {
 impl TrackingSignalModel {
     fn for_sat(config: &ReceiverPipelineConfig, sat: SatId) -> Self {
         match sat.constellation {
-            Constellation::Gps => Self::for_sat_signal_band(config, sat, SignalBand::L1, None),
-            Constellation::Galileo => Self::for_sat_signal_band(config, sat, SignalBand::E1, None),
-            Constellation::Beidou => Self::for_sat_signal_band(config, sat, SignalBand::B1, None),
-            Constellation::Glonass => Self::for_sat_signal_band(config, sat, SignalBand::L1, None),
+            Constellation::Gps => {
+                Self::for_sat_signal_band(config, sat, SignalBand::L1, SignalCode::Ca, None)
+            }
+            Constellation::Galileo => {
+                Self::for_sat_signal_band(config, sat, SignalBand::E1, SignalCode::E1B, None)
+            }
+            Constellation::Beidou => {
+                Self::for_sat_signal_band(config, sat, SignalBand::B1, SignalCode::B1I, None)
+            }
+            Constellation::Glonass => {
+                Self::for_sat_signal_band(config, sat, SignalBand::L1, SignalCode::Unknown, None)
+            }
             _ => Self::fallback(config, sat, SignalBand::L1),
         }
     }
@@ -287,11 +298,18 @@ impl TrackingSignalModel {
         config: &ReceiverPipelineConfig,
         sat: SatId,
         signal_band: SignalBand,
+        signal_code: SignalCode,
         glonass_frequency_channel: Option<bijux_gnss_core::api::GlonassFrequencyChannel>,
     ) -> Self {
-        match default_local_code_model(sat, signal_band).ok().flatten() {
+        let signal_code = if signal_code == SignalCode::Unknown {
+            default_signal_code_for_band(sat.constellation, signal_band)
+        } else {
+            signal_code
+        };
+        match default_local_code_model_for_signal(sat, signal_band, signal_code).ok().flatten() {
             Some(local_code_model) => Self {
                 signal_band,
+                signal_code,
                 glonass_frequency_channel: ((sat.constellation == Constellation::Glonass)
                     && (signal_band == SignalBand::L1))
                     .then_some(glonass_frequency_channel)
@@ -312,6 +330,7 @@ impl TrackingSignalModel {
         };
         Self {
             signal_band,
+            signal_code: default_signal_code_for_band(sat.constellation, signal_band),
             glonass_frequency_channel: None,
             code_rate_hz: config.code_freq_basis_hz,
             code_length: config.code_length.max(1),
@@ -319,8 +338,8 @@ impl TrackingSignalModel {
         }
     }
 
-    fn supports_tracking(sat: SatId, signal_band: SignalBand) -> bool {
-        default_local_code_model(sat, signal_band).ok().flatten().is_some()
+    fn supports_tracking(sat: SatId, signal_band: SignalBand, signal_code: SignalCode) -> bool {
+        default_local_code_model_for_signal(sat, signal_band, signal_code).ok().flatten().is_some()
     }
 
     fn samples_per_code(&self, sample_rate_hz: f64) -> usize {
@@ -345,8 +364,12 @@ impl TrackingSignalModel {
     }
 }
 
-pub(crate) fn supports_tracking_signal(sat: SatId, signal_band: SignalBand) -> bool {
-    TrackingSignalModel::supports_tracking(sat, signal_band)
+pub(crate) fn supports_tracking_signal(
+    sat: SatId,
+    signal_band: SignalBand,
+    signal_code: SignalCode,
+) -> bool {
+    TrackingSignalModel::supports_tracking(sat, signal_band, signal_code)
 }
 
 #[derive(Debug, Clone)]
@@ -623,6 +646,7 @@ impl Tracking {
             source_time: ReceiverSampleTrace::from_sample_time(source_time),
             sat,
             signal_band: signal_model.signal_band,
+            signal_code: signal_model.signal_code,
             glonass_frequency_channel: signal_model.glonass_frequency_channel,
             prompt_i: correlator.prompt.re,
             prompt_q: correlator.prompt.im,
@@ -883,6 +907,7 @@ impl Tracking {
                     &self.config,
                     context.seed.sat,
                     context.seed.signal_band,
+                    context.seed.signal_code,
                     context.seed.glonass_frequency_channel,
                 );
                 self.runtime.trace.record(TraceRecord {
@@ -2996,6 +3021,7 @@ mod tests {
                 sat,
                 glonass_frequency_channel: None,
                 signal_band: bijux_gnss_core::api::SignalBand::L1,
+                signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                 doppler_hz: 0.0,
                 code_phase_chips,
                 carrier_phase_rad: 0.0,
@@ -3484,6 +3510,7 @@ mod tests {
                 sat,
                 glonass_frequency_channel: None,
                 signal_band: bijux_gnss_core::api::SignalBand::L1,
+                signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                 doppler_hz: 0.0,
                 code_phase_chips: 0.0,
                 carrier_phase_rad,
@@ -3548,6 +3575,7 @@ mod tests {
                 sat,
                 glonass_frequency_channel: None,
                 signal_band: bijux_gnss_core::api::SignalBand::L1,
+                signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                 doppler_hz: carrier_hz,
                 code_phase_chips: 0.0,
                 carrier_phase_rad: initial_phase_cycles * std::f64::consts::TAU,
@@ -3893,6 +3921,7 @@ mod tests {
                 sat,
                 glonass_frequency_channel: None,
                 signal_band: bijux_gnss_core::api::SignalBand::L1,
+                signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                 doppler_hz: -750.0,
                 code_phase_chips: 211.25,
                 carrier_phase_rad: 0.2,
@@ -3910,6 +3939,7 @@ mod tests {
             &[bijux_gnss_core::api::AcqResult {
                 sat,
                 signal_band: bijux_gnss_core::api::SignalBand::L1,
+                signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                 glonass_frequency_channel: None,
                 source_time: bijux_gnss_core::api::ReceiverSampleTrace::default(),
                 candidate_rank: 1,
@@ -3968,6 +3998,7 @@ mod tests {
                 sat,
                 glonass_frequency_channel: None,
                 signal_band: bijux_gnss_core::api::SignalBand::L1,
+                signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                 doppler_hz: 750.0,
                 code_phase_chips: 200.25,
                 carrier_phase_rad: 0.0,
@@ -4024,6 +4055,7 @@ mod tests {
                 sat,
                 glonass_frequency_channel: None,
                 signal_band: bijux_gnss_core::api::SignalBand::L1,
+                signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                 doppler_hz: 1_000.0,
                 code_phase_chips: 10.0,
                 carrier_phase_rad: 0.0,
@@ -4036,6 +4068,7 @@ mod tests {
         let acquisition = bijux_gnss_core::api::AcqResult {
             sat,
             signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
             glonass_frequency_channel: None,
             source_time: bijux_gnss_core::api::ReceiverSampleTrace::from_sample_time(frame.t0),
             candidate_rank: 1,
@@ -4110,6 +4143,7 @@ mod tests {
             bijux_gnss_core::api::AcqResult {
                 sat: SatId { constellation: Constellation::Gps, prn: 3 },
                 signal_band: SignalBand::L1,
+                signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                 glonass_frequency_channel: None,
                 source_time: ReceiverSampleTrace::default(),
                 candidate_rank: 1,
@@ -4137,6 +4171,7 @@ mod tests {
             bijux_gnss_core::api::AcqResult {
                 sat: SatId { constellation: Constellation::Gps, prn: 7 },
                 signal_band: SignalBand::L1,
+                signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                 glonass_frequency_channel: None,
                 source_time: ReceiverSampleTrace::default(),
                 candidate_rank: 1,
@@ -4164,6 +4199,7 @@ mod tests {
             bijux_gnss_core::api::AcqResult {
                 sat: SatId { constellation: Constellation::Gps, prn: 23 },
                 signal_band: SignalBand::L1,
+                signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                 glonass_frequency_channel: None,
                 source_time: ReceiverSampleTrace::default(),
                 candidate_rank: 1,
@@ -4211,6 +4247,7 @@ mod tests {
         let acquisition = bijux_gnss_core::api::AcqResult {
             sat: SatId { constellation: Constellation::Glonass, prn: 8 },
             signal_band: SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
             glonass_frequency_channel: Some(channel),
             source_time: ReceiverSampleTrace::default(),
             candidate_rank: 1,

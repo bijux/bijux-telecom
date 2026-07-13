@@ -18,6 +18,7 @@ fn receiver_pipeline_preserves_sample_trace_across_stage_outputs() {
             sat,
             glonass_frequency_channel: None,
             signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Ca,
             doppler_hz: 750.0,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,

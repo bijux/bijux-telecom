@@ -79,8 +79,7 @@ fn observation_truth_table_separates_same_satellite_l1_and_l5_rows() {
         satellite.signal_id.band == SignalBand::L1 && satellite.signal_id.code == SignalCode::Ca
     }));
     assert!(duplicate_truth_rows.iter().any(|satellite| {
-        satellite.signal_id.band == SignalBand::L5
-            && satellite.signal_id.code == SignalCode::L5I
+        satellite.signal_id.band == SignalBand::L5 && satellite.signal_id.code == SignalCode::L5I
     }));
     assert!(duplicate_truth_rows
         .iter()
@@ -89,8 +88,7 @@ fn observation_truth_table_separates_same_satellite_l1_and_l5_rows() {
         satellite.signal_id.band == SignalBand::L1 && satellite.signal_id.code == SignalCode::Ca
     }));
     assert!(duplicate_report_rows.iter().any(|satellite| {
-        satellite.signal_id.band == SignalBand::L5
-            && satellite.signal_id.code == SignalCode::L5I
+        satellite.signal_id.band == SignalBand::L5 && satellite.signal_id.code == SignalCode::L5I
     }));
 }
 

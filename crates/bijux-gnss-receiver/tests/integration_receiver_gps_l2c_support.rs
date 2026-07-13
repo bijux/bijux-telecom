@@ -34,6 +34,7 @@ fn gps_l1_scenario(sat: SatId) -> SyntheticScenario {
             sat,
             glonass_frequency_channel: None,
             signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
             doppler_hz: 0.0,
             code_phase_chips: 321.375,
             carrier_phase_rad: 0.25,

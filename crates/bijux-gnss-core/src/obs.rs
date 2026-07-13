@@ -33,6 +33,10 @@ fn default_signal_band() -> SignalBand {
     SignalBand::L1
 }
 
+fn default_signal_code() -> SignalCode {
+    SignalCode::Unknown
+}
+
 fn default_cycles_zero() -> Cycles {
     Cycles(0.0)
 }
@@ -328,6 +332,8 @@ pub struct AcqRequest {
     pub glonass_frequency_channel: Option<GlonassFrequencyChannel>,
     #[serde(default = "default_signal_band")]
     pub signal_band: SignalBand,
+    #[serde(default = "default_signal_code")]
+    pub signal_code: SignalCode,
     pub doppler_search_hz: i32,
     pub doppler_step_hz: i32,
     pub coherent_ms: u32,
@@ -428,6 +434,8 @@ pub struct SignalDelayAlignment {
 pub struct AcqTrackingSeed {
     pub sat: SatId,
     pub signal_band: SignalBand,
+    #[serde(default = "default_signal_code")]
+    pub signal_code: SignalCode,
     #[serde(default)]
     pub glonass_frequency_channel: Option<GlonassFrequencyChannel>,
     pub source_time: ReceiverSampleTrace,
@@ -443,6 +451,8 @@ pub struct AcqResult {
     pub sat: SatId,
     #[serde(default = "default_signal_band")]
     pub signal_band: SignalBand,
+    #[serde(default = "default_signal_code")]
+    pub signal_code: SignalCode,
     #[serde(default)]
     pub glonass_frequency_channel: Option<GlonassFrequencyChannel>,
     #[serde(default)]
@@ -494,6 +504,7 @@ impl AcqResult {
         AcqTrackingSeed {
             sat: self.sat,
             signal_band: self.signal_band,
+            signal_code: self.signal_code,
             glonass_frequency_channel: self.glonass_frequency_channel,
             source_time: self.source_time,
             doppler_hz: self.doppler_hz,
@@ -576,12 +587,13 @@ pub fn acq_result_stability_key(result: &AcqResult) -> String {
         .map(|channel| format!("|{}", channel.value()))
         .unwrap_or_default();
     format!(
-        "{:?}-{:02}|{}|{}{}|{:.3}|{}|{:.6}|{:.6}|{:.6}|{}{}{}{}{}",
+        "{:?}-{:02}|{}|{}{}|{:?}|{:.3}|{}|{:.6}|{:.6}|{:.6}|{}{}{}{}{}",
         result.sat.constellation,
         result.sat.prn,
         result.candidate_rank,
         result.is_primary_candidate,
         glonass_frequency_channel_key,
+        result.signal_code,
         result.carrier_hz.0,
         result.code_phase_samples,
         result.peak_mean_ratio,
@@ -610,6 +622,8 @@ pub struct TrackEpoch {
     pub sat: SatId,
     #[serde(default = "default_signal_band")]
     pub signal_band: SignalBand,
+    #[serde(default = "default_signal_code")]
+    pub signal_code: SignalCode,
     #[serde(default)]
     pub glonass_frequency_channel: Option<GlonassFrequencyChannel>,
     pub prompt_i: f32,
@@ -671,6 +685,7 @@ impl Default for TrackEpoch {
             source_time: ReceiverSampleTrace::default(),
             sat: SatId { constellation: Constellation::Unknown, prn: 0 },
             signal_band: SignalBand::L1,
+            signal_code: SignalCode::Unknown,
             glonass_frequency_channel: None,
             prompt_i: 0.0,
             prompt_q: 0.0,
@@ -1031,15 +1046,11 @@ impl SolutionStatus {
 
     pub fn quality_flag(self) -> NavQualityFlag {
         match self {
-            SolutionStatus::Unavailable | SolutionStatus::Refused => {
-                NavQualityFlag::NoFix
-            }
+            SolutionStatus::Unavailable | SolutionStatus::Refused => NavQualityFlag::NoFix,
             SolutionStatus::Degraded
             | SolutionStatus::IntegrityFailed
             | SolutionStatus::Diverged => NavQualityFlag::Degraded,
-            SolutionStatus::CodeOnly | SolutionStatus::Float => {
-                NavQualityFlag::Float
-            }
+            SolutionStatus::CodeOnly | SolutionStatus::Float => NavQualityFlag::Float,
             SolutionStatus::Fixed => NavQualityFlag::Fix,
         }
     }
@@ -1318,10 +1329,7 @@ mod tests {
 
     #[test]
     fn precise_solution_status_lifecycle_state_tracks_status_exactly() {
-        assert_eq!(
-            SolutionStatus::Unavailable.lifecycle_state(),
-            NavLifecycleState::Unavailable
-        );
+        assert_eq!(SolutionStatus::Unavailable.lifecycle_state(), NavLifecycleState::Unavailable);
         assert_eq!(SolutionStatus::Refused.lifecycle_state(), NavLifecycleState::Refused);
         assert_eq!(SolutionStatus::Degraded.lifecycle_state(), NavLifecycleState::Degraded);
         assert_eq!(
@@ -1339,10 +1347,7 @@ mod tests {
         assert_eq!(SolutionStatus::Unavailable.decision_label(), "unavailable");
         assert_eq!(SolutionStatus::Refused.decision_label(), "refused");
         assert_eq!(SolutionStatus::Degraded.decision_label(), "degraded");
-        assert_eq!(
-            SolutionStatus::IntegrityFailed.decision_label(),
-            "integrity_failed"
-        );
+        assert_eq!(SolutionStatus::IntegrityFailed.decision_label(), "integrity_failed");
         assert_eq!(SolutionStatus::Diverged.decision_label(), "diverged");
         assert_eq!(SolutionStatus::CodeOnly.decision_label(), "accepted");
         assert_eq!(SolutionStatus::Float.decision_label(), "accepted");

@@ -16,6 +16,7 @@
 #![deny(missing_docs)]
 #![forbid(unsafe_code)]
 
+mod artifacts;
 #[cfg(feature = "nav")]
 mod covariance_realism;
 mod engine;

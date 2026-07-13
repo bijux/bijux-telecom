@@ -111,6 +111,7 @@ fn tracking_lock_rate_case(cn0_db_hz: f32) -> SyntheticTrackingLockRateCase {
             sat: SatId { constellation: Constellation::Gps, prn: 16 },
             glonass_frequency_channel: None,
             signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
             doppler_hz: 180.0,
             code_phase_chips: 211.25,
             carrier_phase_rad: 0.40,
@@ -143,6 +144,7 @@ fn accepted_acquisition(
     AcqResult {
         sat: signal.sat,
         signal_band: SignalBand::L1,
+        signal_code: bijux_gnss_core::api::SignalCode::Unknown,
         glonass_frequency_channel: None,
         source_time: ReceiverSampleTrace::default(),
         candidate_rank: 1,

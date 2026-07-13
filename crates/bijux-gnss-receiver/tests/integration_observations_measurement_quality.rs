@@ -43,6 +43,7 @@ fn tracking_epoch(
         source_time: ReceiverSampleTrace::from_sample_index(0, config.sampling_freq_hz),
         sat,
         signal_band: signal.band,
+        signal_code: signal.code,
         glonass_frequency_channel: None,
         prompt_i: 1.0,
         prompt_q: 0.0,

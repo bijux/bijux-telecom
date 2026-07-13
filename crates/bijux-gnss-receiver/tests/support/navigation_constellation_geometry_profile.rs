@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    Constellation, Cycles, GpsTime, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata,
-    ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ReceiverRole,
+    Constellation, Cycles, GpsTime, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
+    ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ReceiverRole,
     ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
 };
 use bijux_gnss_receiver::api::ValidationReferenceEpoch;
@@ -10,9 +10,9 @@ use bijux_gnss_receiver::api::{
     nav::{
         position_broadcast_navigation_from_beidou_navigations,
         position_broadcast_navigation_from_gps_ephemerides, sat_state_beidou_b1i,
-        sat_state_galileo_e1, BeidouBroadcastNavigationData,
-        BeidouClockCorrection, BeidouEphemeris, BeidouIonosphericCorrection, BeidouSignalHealth,
-        BeidouSystemTime, GalileoBroadcastNavigationData, GalileoClockCorrection, GalileoEphemeris,
+        sat_state_galileo_e1, BeidouBroadcastNavigationData, BeidouClockCorrection,
+        BeidouEphemeris, BeidouIonosphericCorrection, BeidouSignalHealth, BeidouSystemTime,
+        GalileoBroadcastNavigationData, GalileoClockCorrection, GalileoEphemeris,
         GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags, GalileoSignalHealth,
         GalileoSystemTime, GpsEphemeris, PositionBroadcastNavigation,
     },

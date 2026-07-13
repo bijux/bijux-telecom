@@ -286,6 +286,7 @@ fn truth_seeded_time_tracking_results(
                         ),
                         sat: ephemeris.sat,
                         signal_band: bijux_gnss_core::api::SignalBand::L1,
+                        signal_code: bijux_gnss_core::api::SignalCode::Ca,
                         glonass_frequency_channel: None,
                         prompt_i: 1.0,
                         prompt_q: 0.0,

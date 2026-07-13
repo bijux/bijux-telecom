@@ -52,6 +52,7 @@ fn galileo_tracking_result(
         source_time: ReceiverSampleTrace::from_sample_index(0, config.sampling_freq_hz),
         sat,
         signal_band: signal.band,
+        signal_code: bijux_gnss_core::api::SignalCode::Unknown,
         glonass_frequency_channel: None,
         prompt_i: 1.0,
         prompt_q: 0.0,

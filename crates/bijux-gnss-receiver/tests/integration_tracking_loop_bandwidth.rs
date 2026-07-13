@@ -12,6 +12,7 @@ fn accepted_acquisition(sat: SatId, doppler_hz: f64, code_phase_samples: usize) 
     AcqResult {
         sat,
         signal_band: SignalBand::L1,
+        signal_code: bijux_gnss_core::api::SignalCode::Unknown,
         glonass_frequency_channel: None,
         source_time: ReceiverSampleTrace::default(),
         candidate_rank: 1,
@@ -64,6 +65,7 @@ fn wider_pll_bandwidth_produces_stronger_first_epoch_carrier_correction() {
             sat,
             glonass_frequency_channel: None,
             signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
             doppler_hz: true_doppler_hz,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.30,
@@ -116,6 +118,7 @@ fn wider_fll_bandwidth_produces_stronger_pull_in_frequency_step() {
             sat,
             glonass_frequency_channel: None,
             signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
             doppler_hz: true_doppler_hz,
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.25,

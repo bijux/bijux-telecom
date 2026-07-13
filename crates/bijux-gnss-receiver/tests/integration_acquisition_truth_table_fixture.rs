@@ -1,5 +1,6 @@
 #![allow(missing_docs)]
 
+use std::env;
 use std::fs;
 use std::path::Path;
 
@@ -12,6 +13,8 @@ use bijux_gnss_receiver::api::{
     ReceiverPipelineConfig,
 };
 
+const REGENERATE_ACQUISITION_TRUTH_FIXTURE_ENV: &str = "BIJUX_REGENERATE_ACQUISITION_TRUTH_FIXTURE";
+
 #[test]
 fn acquisition_truth_table_matches_low_rate_reference_fixture() {
     let fixture = build_truth_table_fixture("synthetic_iq_acquisition_reference_low_rate.toml");
@@ -22,6 +25,9 @@ fn acquisition_truth_table_matches_low_rate_reference_fixture() {
         1,
         2,
     );
+    if env::var_os(REGENERATE_ACQUISITION_TRUTH_FIXTURE_ENV).is_some() {
+        write_truth_table_fixture("truth_table_reference_low_rate.json", &report);
+    }
     let expected = load_truth_table_fixture("truth_table_reference_low_rate.json");
 
     assert_eq!(report.scenario_id, expected.scenario_id);
@@ -150,6 +156,13 @@ fn load_truth_table_fixture(fixture_file: &str) -> SyntheticAcquisitionTruthTabl
         .join(format!("tests/data/acquisition/{fixture_file}"));
     let contents = fs::read_to_string(path).expect("truth table fixture");
     serde_json::from_str(&contents).expect("valid truth table fixture")
+}
+
+fn write_truth_table_fixture(fixture_file: &str, report: &SyntheticAcquisitionTruthTableReport) {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(format!("tests/data/acquisition/{fixture_file}"));
+    let serialized = serde_json::to_string_pretty(report).expect("serialize truth table fixture");
+    fs::write(path, serialized).expect("write truth table fixture");
 }
 
 fn assert_close(label: &str, actual: f64, expected: f64, tolerance: f64) {

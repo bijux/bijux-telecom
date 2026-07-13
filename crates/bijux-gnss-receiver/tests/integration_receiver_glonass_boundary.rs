@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    glonass_slot_sat, AcqRequest, Constellation, GlonassFrequencyChannel, GlonassSlot,
-    SignalBand, SignalCode, SupportStatus, GPS_L1_CA_CARRIER_HZ,
+    glonass_slot_sat, AcqRequest, Constellation, GlonassFrequencyChannel, GlonassSlot, SignalBand,
+    SignalCode, SupportStatus, GPS_L1_CA_CARRIER_HZ,
 };
 use bijux_gnss_receiver::api::{
     sim::{SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource},
@@ -39,6 +39,7 @@ fn glonass_boundary_scenario(
             sat,
             glonass_frequency_channel: Some(channel),
             signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
             doppler_hz: 0.0,
             code_phase_chips: 147.25,
             carrier_phase_rad: 0.5,
@@ -61,6 +62,7 @@ fn receiver_run_with_explicit_glonass_requests_produces_tracking_and_observation
         sat,
         glonass_frequency_channel: Some(channel),
         signal_band: bijux_gnss_core::api::SignalBand::L1,
+        signal_code: bijux_gnss_core::api::SignalCode::Unknown,
         doppler_search_hz: 0,
         doppler_step_hz: 250,
         coherent_ms: 1,
@@ -153,6 +155,7 @@ fn receiver_gps_only_policy_filters_explicit_glonass_requests() {
         sat,
         glonass_frequency_channel: Some(channel),
         signal_band: bijux_gnss_core::api::SignalBand::L1,
+        signal_code: bijux_gnss_core::api::SignalCode::Unknown,
         doppler_search_hz: 0,
         doppler_step_hz: 250,
         coherent_ms: 1,

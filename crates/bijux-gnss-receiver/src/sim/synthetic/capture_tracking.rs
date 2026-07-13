@@ -30,6 +30,7 @@ pub fn build_truth_bundle(
                 sat: params.sat,
                 glonass_frequency_channel: params.glonass_frequency_channel,
                 signal_band: params.signal_band,
+                signal_code: params.signal_code,
                 doppler_hz: params.doppler_hz,
                 code_phase_chips: params.code_phase_chips,
                 carrier_phase_rad: params.carrier_phase_rad,

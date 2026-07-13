@@ -380,6 +380,10 @@ fn seeded_tracking_acquisition(
     AcqResult {
         sat,
         signal_band,
+        signal_code: crate::engine::signal_selection::default_signal_code_for_band(
+            sat.constellation,
+            signal_band,
+        ),
         glonass_frequency_channel: None,
         source_time: ReceiverSampleTrace::default(),
         candidate_rank: 1,

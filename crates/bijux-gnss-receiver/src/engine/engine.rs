@@ -5,7 +5,8 @@ use crate::api::{Receiver, ReceiverEngine, RunArtifacts};
 use crate::engine::metrics::write_metrics_summary;
 use crate::engine::runtime::{Metric, TraceRecord};
 use crate::engine::signal_selection::{
-    acquisition_constellation_matches_config, resolved_acquisition_signal_band,
+    acquisition_constellation_matches_config, default_signal_code_for_band,
+    resolved_acquisition_signal_band,
 };
 use crate::engine::support_matrix::build_support_matrix;
 use crate::pipeline::observations::{
@@ -607,6 +608,10 @@ fn default_acquisition_requests(
                         sat,
                         glonass_frequency_channel: None,
                         signal_band: resolved_acquisition_signal_band(config, sat),
+                        signal_code: default_signal_code_for_band(
+                            sat.constellation,
+                            resolved_acquisition_signal_band(config, sat),
+                        ),
                         doppler_search_hz: config.acquisition_doppler_search_hz,
                         doppler_step_hz: config.acquisition_doppler_step_hz.max(1),
                         coherent_ms: config.acquisition_integration_ms,
@@ -635,6 +640,7 @@ fn default_acquisition_requests_for_source(
                 sat: signal.sat,
                 glonass_frequency_channel: signal.glonass_frequency_channel,
                 signal_band: signal.signal_band,
+                signal_code: signal.signal_code,
                 doppler_search_hz: config.acquisition_doppler_search_hz,
                 doppler_step_hz: config.acquisition_doppler_step_hz.max(1),
                 coherent_ms: config.acquisition_integration_ms,
@@ -660,6 +666,10 @@ fn acquisition_requests_for_satellites(
             sat,
             glonass_frequency_channel: None,
             signal_band: resolved_acquisition_signal_band(config, sat),
+            signal_code: default_signal_code_for_band(
+                sat.constellation,
+                resolved_acquisition_signal_band(config, sat),
+            ),
             doppler_search_hz: config.acquisition_doppler_search_hz,
             doppler_step_hz: config.acquisition_doppler_step_hz.max(1),
             coherent_ms: config.acquisition_integration_ms,
@@ -692,7 +702,11 @@ fn constellation_supports_slot_only_acquisition(constellation: Constellation) ->
 
 fn tracking_signal_supported(acq: &AcqResult) -> bool {
     matches!(acq.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous)
-        && crate::pipeline::tracking::supports_tracking_signal(acq.sat, acq.signal_band)
+        && crate::pipeline::tracking::supports_tracking_signal(
+            acq.sat,
+            acq.signal_band,
+            acq.signal_code,
+        )
 }
 
 fn build_tracking_preview_frame(
@@ -849,6 +863,7 @@ mod tests {
                 signal_band: bijux_gnss_core::api::default_signal_band_for_constellation(
                     Constellation::Glonass,
                 ),
+                signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                 doppler_search_hz: 0,
                 doppler_step_hz: 250,
                 coherent_ms: 1,
@@ -860,6 +875,7 @@ mod tests {
                 signal_band: bijux_gnss_core::api::default_signal_band_for_constellation(
                     Constellation::Gps,
                 ),
+                signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                 doppler_search_hz: 0,
                 doppler_step_hz: 250,
                 coherent_ms: 1,
@@ -888,6 +904,7 @@ mod tests {
                 signal_band: bijux_gnss_core::api::default_signal_band_for_constellation(
                     Constellation::Glonass,
                 ),
+                signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                 doppler_search_hz: 0,
                 doppler_step_hz: 250,
                 coherent_ms: 1,
@@ -899,6 +916,7 @@ mod tests {
                 signal_band: bijux_gnss_core::api::default_signal_band_for_constellation(
                     Constellation::Gps,
                 ),
+                signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                 doppler_search_hz: 0,
                 doppler_step_hz: 250,
                 coherent_ms: 1,

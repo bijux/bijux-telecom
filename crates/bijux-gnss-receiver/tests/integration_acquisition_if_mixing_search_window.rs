@@ -36,6 +36,7 @@ fn acquisition_reports_upper_edge_when_high_if_signal_sits_outside_search_window
             sat,
             glonass_frequency_channel: None,
             signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
             doppler_hz: 0.0,
             code_phase_chips: 210.0,
             carrier_phase_rad: 0.0,

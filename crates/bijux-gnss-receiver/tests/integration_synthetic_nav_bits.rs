@@ -29,6 +29,7 @@ fn synthetic_nav_bits_flip_prompt_polarity_every_twenty_milliseconds() {
             sat,
             glonass_frequency_channel: None,
             signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Ca,
             doppler_hz: 0.0,
             code_phase_chips,
             carrier_phase_rad: 0.0,

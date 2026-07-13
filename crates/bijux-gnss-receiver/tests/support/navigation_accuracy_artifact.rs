@@ -26,8 +26,8 @@ use bijux_gnss_receiver::api::{
 #[path = "navigation_truth.rs"]
 mod navigation_truth;
 
-use navigation_truth::SyntheticPvtScenario;
 use bijux_gnss_testkit::coordinates::ecef_to_geodetic;
+use navigation_truth::SyntheticPvtScenario;
 
 const SYNTHETIC_REFERENCE_RECEIVE_TIME_S: f64 = 100_000.0;
 const SYNTHETIC_HATCH_WINDOW: u32 = 10;
@@ -276,6 +276,7 @@ fn synthetic_truth_track(
                 ),
                 sat: signal.sat,
                 signal_band: bijux_gnss_core::api::SignalBand::L1,
+                signal_code: bijux_gnss_core::api::SignalCode::Unknown,
                 glonass_frequency_channel: None,
                 prompt_i: 1.0,
                 prompt_q: 0.0,

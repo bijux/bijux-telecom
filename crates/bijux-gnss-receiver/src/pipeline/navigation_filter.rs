@@ -8,8 +8,6 @@ use bijux_gnss_nav::api::{
 use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::pipeline::nav_config::navigation_filter_config;
 
-pub use bijux_gnss_nav::api::NavigationFilterThresholds;
-
 pub struct NavigationFilter {
     inner: NavNavigationFilter,
 }

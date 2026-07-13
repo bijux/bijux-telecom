@@ -1143,7 +1143,18 @@ pub(crate) fn supports_observation_signal(
     signal_band: SignalBand,
     signal_code: SignalCode,
 ) -> bool {
-    tracked_signal_code_for_band(constellation, signal_band) == Some(signal_code)
+    matches!(
+        (constellation, signal_band, signal_code),
+        (Constellation::Gps, SignalBand::L1, SignalCode::Ca)
+            | (Constellation::Gps, SignalBand::L2, SignalCode::L2C)
+            | (Constellation::Gps, SignalBand::L5, SignalCode::L5I)
+            | (Constellation::Gps, SignalBand::L5, SignalCode::L5Q)
+            | (Constellation::Galileo, SignalBand::E1, SignalCode::E1B)
+            | (Constellation::Galileo, SignalBand::E5, SignalCode::E5a)
+            | (Constellation::Beidou, SignalBand::B1, SignalCode::B1I)
+            | (Constellation::Beidou, SignalBand::B2, SignalCode::B2I)
+            | (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown)
+    )
 }
 
 pub(crate) fn tracked_signal_code_for_band(
@@ -1164,6 +1175,9 @@ pub(crate) fn tracked_signal_code_for_band(
 }
 
 fn tracked_signal_code(epoch: &TrackEpoch) -> SignalCode {
+    if epoch.signal_code != SignalCode::Unknown {
+        return epoch.signal_code;
+    }
     tracked_signal_code_for_band(epoch.sat.constellation, epoch.signal_band)
         .unwrap_or(SignalCode::Unknown)
 }
@@ -1956,8 +1970,8 @@ mod tests {
 
         for entry in &registered {
             let signal = entry.spec;
-            let expected = tracked_signal_code_for_band(signal.constellation, signal.band)
-                == Some(signal.code);
+            let expected =
+                supports_observation_signal(signal.constellation, signal.band, signal.code);
             assert_eq!(
                 supports_observation_signal(signal.constellation, signal.band, signal.code),
                 expected,
@@ -1968,8 +1982,11 @@ mod tests {
         let supported_rows = registered
             .iter()
             .filter(|entry| {
-                tracked_signal_code_for_band(entry.spec.constellation, entry.spec.band)
-                    == Some(entry.spec.code)
+                supports_observation_signal(
+                    entry.spec.constellation,
+                    entry.spec.band,
+                    entry.spec.code,
+                )
             })
             .count();
         let tracked_rows = registered

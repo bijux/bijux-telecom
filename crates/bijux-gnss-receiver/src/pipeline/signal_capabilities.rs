@@ -4,9 +4,9 @@ use bijux_gnss_core::api::{
     Constellation, GlonassFrequencyChannel, SatId, SignalBand, SignalCode, SignalRegistryEntry,
     SignalStageSupport, SignalSupportRow, SupportStatus,
 };
-use bijux_gnss_signal::api::AcquisitionSignalModel;
 #[cfg(test)]
 use bijux_gnss_signal::api::signal_registry;
+use bijux_gnss_signal::api::AcquisitionSignalModel;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SignalExecutionSupport {
@@ -54,15 +54,15 @@ pub(crate) fn supports_acquisition_signal(
     band: SignalBand,
     code: SignalCode,
 ) -> bool {
-    crate::pipeline::observations::tracked_signal_code_for_band(constellation, band) == Some(code)
-        && AcquisitionSignalModel::for_sat_signal_band(
-            sample_sat(constellation),
-            Some(band),
-            sample_glonass_frequency_channel(constellation),
-        )
-        .ok()
-        .flatten()
-        .is_some()
+    AcquisitionSignalModel::for_sat_signal(
+        sample_sat(constellation),
+        Some(band),
+        code,
+        sample_glonass_frequency_channel(constellation),
+    )
+    .ok()
+    .flatten()
+    .is_some()
 }
 
 pub(crate) fn supports_tracking_signal(
@@ -70,8 +70,7 @@ pub(crate) fn supports_tracking_signal(
     band: SignalBand,
     code: SignalCode,
 ) -> bool {
-    crate::pipeline::observations::tracked_signal_code_for_band(constellation, band) == Some(code)
-        && crate::pipeline::tracking::supports_tracking_signal(sample_sat(constellation), band)
+    crate::pipeline::tracking::supports_tracking_signal(sample_sat(constellation), band, code)
 }
 
 pub(crate) fn supports_data_decoding_signal(
@@ -301,12 +300,8 @@ mod tests {
     #[test]
     fn signal_support_row_marks_glonass_channel_dependency_as_requirement() {
         let row = signal_support_row(
-            &signal_registry(
-                Constellation::Glonass,
-                SignalBand::L1,
-                SignalCode::Unknown,
-            )
-            .expect("GLONASS registry entry"),
+            &signal_registry(Constellation::Glonass, SignalBand::L1, SignalCode::Unknown)
+                .expect("GLONASS registry entry"),
         );
 
         assert!(row

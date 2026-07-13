@@ -144,6 +144,7 @@ fn tracks_from_fixture_rows(
             ),
             sat,
             signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
             glonass_frequency_channel: None,
             prompt_i: row.prompt_i,
             prompt_q: row.prompt_q,

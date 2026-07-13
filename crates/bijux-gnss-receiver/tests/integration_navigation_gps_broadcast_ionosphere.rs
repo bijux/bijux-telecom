@@ -114,7 +114,9 @@ fn receiver_navigation_batch_runner_matches_per_epoch_gps_broadcast_navigation()
     let ionosphere_biased_observations = run
         .observations
         .iter()
-        .map(|observation| bias_epoch_with_klobuchar(observation, run.profile.truth_ecef_m, &navigation))
+        .map(|observation| {
+            bias_epoch_with_klobuchar(observation, run.profile.truth_ecef_m, &navigation)
+        })
         .collect::<Vec<_>>();
     let receiver = Receiver::new(run.config.clone(), ReceiverRuntime::default());
     let batch_solutions = receiver.solve_observation_epochs_with_gps_broadcast_navigation(
@@ -146,12 +148,15 @@ fn receiver_navigation_batch_runner_matches_per_epoch_gps_broadcast_navigation()
 fn receiver_navigation_batch_runner_matches_per_epoch_ephemeris_navigation() {
     let run = clean_synthetic_navigation_run();
     let receiver = Receiver::new(run.config.clone(), ReceiverRuntime::default());
-    let batch_solutions = receiver.solve_observation_epochs(&run.observations, &run.profile.ephemerides);
+    let batch_solutions =
+        receiver.solve_observation_epochs(&run.observations, &run.profile.ephemerides);
     let mut per_epoch_navigation = Navigation::new(run.config.clone(), ReceiverRuntime::default());
     let per_epoch_solutions = run
         .observations
         .iter()
-        .filter_map(|observation| per_epoch_navigation.solve_epoch(observation, &run.profile.ephemerides))
+        .filter_map(|observation| {
+            per_epoch_navigation.solve_epoch(observation, &run.profile.ephemerides)
+        })
         .collect::<Vec<_>>();
 
     assert_eq!(batch_solutions.len(), per_epoch_solutions.len());
@@ -177,14 +182,15 @@ fn receiver_navigation_filter_batch_runner_matches_per_epoch_filter_execution() 
     let ionosphere_biased_observations = run
         .observations
         .iter()
-        .map(|observation| bias_epoch_with_klobuchar(observation, run.profile.truth_ecef_m, &navigation))
+        .map(|observation| {
+            bias_epoch_with_klobuchar(observation, run.profile.truth_ecef_m, &navigation)
+        })
         .collect::<Vec<_>>();
     let receiver = Receiver::new(run.config.clone(), ReceiverRuntime::default());
-    let batch_solutions =
-        receiver.solve_observation_epochs_with_gps_broadcast_navigation_filter(
-            &ionosphere_biased_observations,
-            &navigation,
-        );
+    let batch_solutions = receiver.solve_observation_epochs_with_gps_broadcast_navigation_filter(
+        &ionosphere_biased_observations,
+        &navigation,
+    );
     let mut per_epoch_filter = NavigationFilter::from_pipeline_config(&run.config);
     let per_epoch_solutions = ionosphere_biased_observations
         .iter()

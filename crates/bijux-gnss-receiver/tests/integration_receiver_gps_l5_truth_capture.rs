@@ -6,10 +6,9 @@ use bijux_gnss_core::api::{
 use bijux_gnss_receiver::api::{
     sim::{
         build_iq16_capture_bundle, expected_acquisition_code_phase_samples, generate_l1_ca_multi,
-        SyntheticSignalSource,
         truth_guided_receiver_accuracy_budgets, validate_truth_guided_acquisition_table,
         validate_truth_guided_tracking_table, wrapped_code_phase_error_samples_f64,
-        SyntheticIqTruthBundle, SyntheticScenario, SyntheticSignalParams,
+        SyntheticIqTruthBundle, SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource,
     },
     Receiver, ReceiverPipelineConfig, ReceiverRuntime,
 };
@@ -35,6 +34,7 @@ fn gps_l5_truth_capture_fixture() -> GpsL5TruthCaptureFixture {
             sat: SatId { constellation: Constellation::Gps, prn: 18 },
             glonass_frequency_channel: None,
             signal_band: SignalBand::L5,
+            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
             doppler_hz: 750.0,
             code_phase_chips: 2_048.25,
             carrier_phase_rad: 0.4,
@@ -72,12 +72,7 @@ fn gps_l5_truth_capture_fixture() -> GpsL5TruthCaptureFixture {
         frame.iq.iter().map(|sample| *sample * bundle.truth.output_scale_applied).collect(),
     );
 
-    GpsL5TruthCaptureFixture {
-        config,
-        scenario,
-        frame: scaled_frame,
-        truth: bundle.truth,
-    }
+    GpsL5TruthCaptureFixture { config, scenario, frame: scaled_frame, truth: bundle.truth }
 }
 
 #[test]
@@ -135,11 +130,7 @@ fn gps_l5i_tracking_truth_table_matches_capture_truth() {
     assert!(satellite.first_stable_epoch_index.is_some(), "{satellite:#?}");
     assert!(satellite.epochs.iter().any(|epoch| epoch.lock_state == "tracking"), "{satellite:#?}");
     assert!(
-        satellite
-            .epochs
-            .iter()
-            .filter(|epoch| epoch.stable_tracking_epoch)
-            .all(|epoch| epoch.pass),
+        satellite.epochs.iter().filter(|epoch| epoch.stable_tracking_epoch).all(|epoch| epoch.pass),
         "{satellite:#?}"
     );
 }

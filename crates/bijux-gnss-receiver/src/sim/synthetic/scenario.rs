@@ -2,6 +2,10 @@ fn default_signal_band() -> SignalBand {
     SignalBand::L1
 }
 
+fn default_signal_code() -> SignalCode {
+    SignalCode::Unknown
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticSignalParams {
     pub sat: SatId,
@@ -9,6 +13,8 @@ pub struct SyntheticSignalParams {
     pub glonass_frequency_channel: Option<GlonassFrequencyChannel>,
     #[serde(default = "default_signal_band")]
     pub signal_band: SignalBand,
+    #[serde(default = "default_signal_code")]
+    pub signal_code: SignalCode,
     pub doppler_hz: f64,
     pub code_phase_chips: f64,
     pub carrier_phase_rad: f64,
@@ -68,6 +74,9 @@ pub struct SyntheticNavigationSignalSpec {
     /// Explicit signal band carried by the synthetic signal.
     #[serde(default = "default_signal_band")]
     pub signal_band: SignalBand,
+    /// Explicit signal code carried by the synthetic signal.
+    #[serde(default = "default_signal_code")]
+    pub signal_code: SignalCode,
     /// Injected Doppler shift in Hz.
     pub doppler_hz: f64,
     /// Injected carrier phase at sample zero, in radians.
@@ -115,6 +124,8 @@ pub enum SyntheticNavBitMode {
     AlternatingGpsLnav20ms,
     /// Alternate the bit sign every 10 ms, starting positive at sample zero.
     AlternatingGpsL5I10ms,
+    /// Apply the published 20-chip L5-Q NH pilot sequence at 1 ms epochs.
+    GpsL5QNh20,
 }
 
 /// Sample-aligned navigation-bit truth interval.
@@ -143,6 +154,9 @@ pub struct SyntheticSatelliteTruth {
     /// Explicit signal band carried by this synthetic signal.
     #[serde(default = "default_signal_band")]
     pub signal_band: SignalBand,
+    /// Explicit signal code carried by this synthetic signal.
+    #[serde(default = "default_signal_code")]
+    pub signal_code: SignalCode,
     /// Injected Doppler shift in Hz.
     pub doppler_hz: f64,
     /// Injected code phase at sample zero, in chips.
@@ -379,8 +393,9 @@ pub fn build_signal_scenario_from_navigation_validation_scenario(
             .zip(pseudorange_chips.iter().copied())
             .map(|(signal, pseudorange_phase_chips)| SyntheticSignalParams {
                 sat: signal.sat,
-                glonass_frequency_channel: None,
+                glonass_frequency_channel: signal.glonass_frequency_channel,
                 signal_band: signal.signal_band,
+                signal_code: signal.signal_code,
                 doppler_hz: signal.doppler_hz,
                 code_phase_chips: encode_receiver_code_phase_chips(
                     pseudorange_phase_chips,

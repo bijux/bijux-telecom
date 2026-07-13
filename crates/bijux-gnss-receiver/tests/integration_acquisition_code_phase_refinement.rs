@@ -32,6 +32,7 @@ fn acquisition_refinement_improves_fractional_code_phase_initialization() {
                 sat: SatId { constellation: Constellation::Gps, prn: 3 },
                 glonass_frequency_channel: None,
                 signal_band: bijux_gnss_core::api::SignalBand::L1,
+                signal_code: bijux_gnss_core::api::SignalCode::Ca,
                 doppler_hz: 0.0,
                 code_phase_chips,
                 carrier_phase_rad: 0.0,

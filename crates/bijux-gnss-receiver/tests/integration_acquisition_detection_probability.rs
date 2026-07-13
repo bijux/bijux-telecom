@@ -141,6 +141,7 @@ fn detection_rate_case(
             sat: SatId { constellation: Constellation::Gps, prn: 7 },
             glonass_frequency_channel: None,
             signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_code: bijux_gnss_core::api::SignalCode::Ca,
             doppler_hz,
             code_phase_chips: 300.0,
             carrier_phase_rad: 0.0,

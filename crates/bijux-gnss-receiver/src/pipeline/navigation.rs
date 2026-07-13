@@ -10,8 +10,6 @@ use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::engine::runtime::ReceiverRuntime;
 use crate::pipeline::nav_config::position_runtime_config;
 
-pub use bijux_gnss_nav::api::{EkfState, NavigationEngine};
-
 pub struct Navigation {
     inner: PositionRuntime,
     runtime: ReceiverRuntime,

@@ -240,19 +240,27 @@ pub fn default_local_code_model_for_signal(
     signal_band: SignalBand,
     signal_code: SignalCode,
 ) -> Result<Option<LocalCodeModel>, SignalError> {
-    match (sat.constellation, signal_band) {
-        (Constellation::Gps, SignalBand::L1) => LocalCodeModel::gps_l1_ca(sat.prn).map(Some),
-        (Constellation::Gps, SignalBand::L2) => LocalCodeModel::gps_l2c_cm(sat.prn).map(Some),
-        (Constellation::Gps, SignalBand::L5) => match signal_code {
+    match (sat.constellation, signal_band, signal_code) {
+        (Constellation::Gps, SignalBand::L1, SignalCode::Ca) => {
+            LocalCodeModel::gps_l1_ca(sat.prn).map(Some)
+        }
+        (Constellation::Gps, SignalBand::L2, SignalCode::L2C) => {
+            LocalCodeModel::gps_l2c_cm(sat.prn).map(Some)
+        }
+        (Constellation::Gps, SignalBand::L5, _) => match signal_code {
             SignalCode::L5I => LocalCodeModel::gps_l5_i(sat.prn).map(Some),
             SignalCode::L5Q => LocalCodeModel::gps_l5_q(sat.prn).map(Some),
             _ => Ok(None),
         },
-        (Constellation::Galileo, SignalBand::E1) => {
+        (Constellation::Galileo, SignalBand::E1, SignalCode::E1B) => {
             LocalCodeModel::galileo_e1_boc11(sat.prn).map(Some)
         }
-        (Constellation::Beidou, SignalBand::B1) => LocalCodeModel::beidou_b1i(sat.prn).map(Some),
-        (Constellation::Glonass, SignalBand::L1) => Ok(Some(LocalCodeModel::glonass_l1_st())),
+        (Constellation::Beidou, SignalBand::B1, SignalCode::B1I) => {
+            LocalCodeModel::beidou_b1i(sat.prn).map(Some)
+        }
+        (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown) => {
+            Ok(Some(LocalCodeModel::glonass_l1_st()))
+        }
         _ => Ok(None),
     }
 }
@@ -318,11 +326,11 @@ impl AcquisitionSignalModel {
             return Ok(None);
         };
 
-        match (sat.constellation, signal_band) {
-            (Constellation::Gps, SignalBand::L1) => {
+        match (sat.constellation, signal_band, signal_code) {
+            (Constellation::Gps, SignalBand::L1, SignalCode::Ca) => {
                 Self::gps_l1_ca(sat.prn, 1_023_000.0, 1023, GPS_L1_CA_CARRIER_HZ).map(Some)
             }
-            (Constellation::Gps, SignalBand::L5) => match signal_code {
+            (Constellation::Gps, SignalBand::L5, _) => match signal_code {
                 SignalCode::L5I => Self::new(
                     SignalBand::L5,
                     GPS_L5_PRIMARY_CODE_RATE_HZ,
@@ -341,7 +349,7 @@ impl AcquisitionSignalModel {
                 .map(Some),
                 _ => Ok(None),
             },
-            (Constellation::Galileo, SignalBand::E1) => Self::new(
+            (Constellation::Galileo, SignalBand::E1, SignalCode::E1B) => Self::new(
                 SignalBand::E1,
                 GALILEO_E1_CODE_RATE_HZ,
                 4092,
@@ -349,7 +357,7 @@ impl AcquisitionSignalModel {
                 LocalCodeModel::galileo_e1_boc11(sat.prn)?,
             )
             .map(Some),
-            (Constellation::Beidou, SignalBand::B1) => Self::new(
+            (Constellation::Beidou, SignalBand::B1, SignalCode::B1I) => Self::new(
                 SignalBand::B1,
                 BEIDOU_B1I_CODE_RATE_HZ,
                 2046,
@@ -357,7 +365,7 @@ impl AcquisitionSignalModel {
                 LocalCodeModel::beidou_b1i(sat.prn)?,
             )
             .map(Some),
-            (Constellation::Glonass, SignalBand::L1) => {
+            (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown) => {
                 let channel = glonass_frequency_channel
                     .ok_or(SignalError::MissingGlonassFrequencyChannel(sat))?;
                 let signal = signal_spec_glonass_l1(channel);
@@ -502,9 +510,7 @@ impl ReplicaCodeModel {
     /// Build the default synthesized replica for a supported satellite signal.
     pub fn from_default_signal(sat: SatId) -> Result<Option<Self>, SignalError> {
         match default_acquisition_signal(sat.constellation) {
-            Some(signal) => {
-                Self::for_sat_signal(sat, Some(signal.spec.band), signal.spec.code)
-            }
+            Some(signal) => Self::for_sat_signal(sat, Some(signal.spec.band), signal.spec.code),
             None => Ok(None),
         }
     }
@@ -534,16 +540,24 @@ impl ReplicaCodeModel {
             return Ok(None);
         };
 
-        match (sat.constellation, signal_band) {
-            (Constellation::Gps, SignalBand::L1) => Self::gps_l1_ca(sat.prn).map(Some),
-            (Constellation::Gps, SignalBand::L5) => match signal_code {
+        match (sat.constellation, signal_band, signal_code) {
+            (Constellation::Gps, SignalBand::L1, SignalCode::Ca) => {
+                Self::gps_l1_ca(sat.prn).map(Some)
+            }
+            (Constellation::Gps, SignalBand::L5, _) => match signal_code {
                 SignalCode::L5I => Self::gps_l5_i(sat.prn).map(Some),
                 SignalCode::L5Q => Self::gps_l5_q(sat.prn).map(Some),
                 _ => Ok(None),
             },
-            (Constellation::Galileo, SignalBand::E1) => Self::galileo_e1_cboc(sat.prn).map(Some),
-            (Constellation::Beidou, SignalBand::B1) => Self::beidou_b1i(sat.prn).map(Some),
-            (Constellation::Glonass, SignalBand::L1) => Ok(Some(Self::glonass_l1_st())),
+            (Constellation::Galileo, SignalBand::E1, SignalCode::E1B) => {
+                Self::galileo_e1_cboc(sat.prn).map(Some)
+            }
+            (Constellation::Beidou, SignalBand::B1, SignalCode::B1I) => {
+                Self::beidou_b1i(sat.prn).map(Some)
+            }
+            (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown) => {
+                Ok(Some(Self::glonass_l1_st()))
+            }
             _ => Ok(None),
         }
     }
@@ -751,7 +765,10 @@ pub fn default_signal_carrier_hz_for_signal(
     }
 }
 
-fn default_signal_code_for_band(constellation: Constellation, signal_band: SignalBand) -> SignalCode {
+fn default_signal_code_for_band(
+    constellation: Constellation,
+    signal_band: SignalBand,
+) -> SignalCode {
     match (constellation, signal_band) {
         (Constellation::Gps, SignalBand::L1) => SignalCode::Ca,
         (Constellation::Gps, SignalBand::L2) => SignalCode::L2C,
@@ -1170,9 +1187,10 @@ mod tests {
     #[test]
     fn default_local_code_model_for_signal_builds_gps_l5_q_tracking_code() {
         let sat = SatId { constellation: Constellation::Gps, prn: 7 };
-        let model = super::default_local_code_model_for_signal(sat, SignalBand::L5, SignalCode::L5Q)
-            .expect("local code result")
-            .expect("GPS L5-Q local code");
+        let model =
+            super::default_local_code_model_for_signal(sat, SignalBand::L5, SignalCode::L5Q)
+                .expect("local code result")
+                .expect("GPS L5-Q local code");
 
         assert_eq!(model.code_length(), 10_230);
         assert!((model.code_rate_hz() - 10_230_000.0).abs() < f64::EPSILON);

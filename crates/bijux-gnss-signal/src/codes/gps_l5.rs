@@ -357,58 +357,242 @@ const GPS_L5_Q_CODE_ASSIGNMENTS: [GpsL5QCodeAssignment; 63] = [
     GpsL5QCodeAssignment { prn: 9, xb_advance_chips: 4315, xb_initial_state_bits: "1011101000011" },
     GpsL5QCodeAssignment { prn: 10, xb_advance_chips: 148, xb_initial_state_bits: "0010010000110" },
     GpsL5QCodeAssignment { prn: 11, xb_advance_chips: 535, xb_initial_state_bits: "0001000000101" },
-    GpsL5QCodeAssignment { prn: 12, xb_advance_chips: 1939, xb_initial_state_bits: "0101011000101" },
-    GpsL5QCodeAssignment { prn: 13, xb_advance_chips: 5206, xb_initial_state_bits: "0100110100101" },
-    GpsL5QCodeAssignment { prn: 14, xb_advance_chips: 5910, xb_initial_state_bits: "1010000111111" },
-    GpsL5QCodeAssignment { prn: 15, xb_advance_chips: 3595, xb_initial_state_bits: "1011110001111" },
-    GpsL5QCodeAssignment { prn: 16, xb_advance_chips: 5135, xb_initial_state_bits: "1101001011111" },
-    GpsL5QCodeAssignment { prn: 17, xb_advance_chips: 6082, xb_initial_state_bits: "1110011001000" },
-    GpsL5QCodeAssignment { prn: 18, xb_advance_chips: 6990, xb_initial_state_bits: "1011011100100" },
-    GpsL5QCodeAssignment { prn: 19, xb_advance_chips: 3546, xb_initial_state_bits: "0011001011011" },
-    GpsL5QCodeAssignment { prn: 20, xb_advance_chips: 1523, xb_initial_state_bits: "1100001110001" },
-    GpsL5QCodeAssignment { prn: 21, xb_advance_chips: 4548, xb_initial_state_bits: "0110110010000" },
-    GpsL5QCodeAssignment { prn: 22, xb_advance_chips: 4484, xb_initial_state_bits: "0010110001110" },
-    GpsL5QCodeAssignment { prn: 23, xb_advance_chips: 1893, xb_initial_state_bits: "1000101111101" },
-    GpsL5QCodeAssignment { prn: 24, xb_advance_chips: 3961, xb_initial_state_bits: "0110111110011" },
-    GpsL5QCodeAssignment { prn: 25, xb_advance_chips: 7106, xb_initial_state_bits: "0100010011011" },
-    GpsL5QCodeAssignment { prn: 26, xb_advance_chips: 5299, xb_initial_state_bits: "0101010111100" },
-    GpsL5QCodeAssignment { prn: 27, xb_advance_chips: 4660, xb_initial_state_bits: "1000011111010" },
+    GpsL5QCodeAssignment {
+        prn: 12,
+        xb_advance_chips: 1939,
+        xb_initial_state_bits: "0101011000101",
+    },
+    GpsL5QCodeAssignment {
+        prn: 13,
+        xb_advance_chips: 5206,
+        xb_initial_state_bits: "0100110100101",
+    },
+    GpsL5QCodeAssignment {
+        prn: 14,
+        xb_advance_chips: 5910,
+        xb_initial_state_bits: "1010000111111",
+    },
+    GpsL5QCodeAssignment {
+        prn: 15,
+        xb_advance_chips: 3595,
+        xb_initial_state_bits: "1011110001111",
+    },
+    GpsL5QCodeAssignment {
+        prn: 16,
+        xb_advance_chips: 5135,
+        xb_initial_state_bits: "1101001011111",
+    },
+    GpsL5QCodeAssignment {
+        prn: 17,
+        xb_advance_chips: 6082,
+        xb_initial_state_bits: "1110011001000",
+    },
+    GpsL5QCodeAssignment {
+        prn: 18,
+        xb_advance_chips: 6990,
+        xb_initial_state_bits: "1011011100100",
+    },
+    GpsL5QCodeAssignment {
+        prn: 19,
+        xb_advance_chips: 3546,
+        xb_initial_state_bits: "0011001011011",
+    },
+    GpsL5QCodeAssignment {
+        prn: 20,
+        xb_advance_chips: 1523,
+        xb_initial_state_bits: "1100001110001",
+    },
+    GpsL5QCodeAssignment {
+        prn: 21,
+        xb_advance_chips: 4548,
+        xb_initial_state_bits: "0110110010000",
+    },
+    GpsL5QCodeAssignment {
+        prn: 22,
+        xb_advance_chips: 4484,
+        xb_initial_state_bits: "0010110001110",
+    },
+    GpsL5QCodeAssignment {
+        prn: 23,
+        xb_advance_chips: 1893,
+        xb_initial_state_bits: "1000101111101",
+    },
+    GpsL5QCodeAssignment {
+        prn: 24,
+        xb_advance_chips: 3961,
+        xb_initial_state_bits: "0110111110011",
+    },
+    GpsL5QCodeAssignment {
+        prn: 25,
+        xb_advance_chips: 7106,
+        xb_initial_state_bits: "0100010011011",
+    },
+    GpsL5QCodeAssignment {
+        prn: 26,
+        xb_advance_chips: 5299,
+        xb_initial_state_bits: "0101010111100",
+    },
+    GpsL5QCodeAssignment {
+        prn: 27,
+        xb_advance_chips: 4660,
+        xb_initial_state_bits: "1000011111010",
+    },
     GpsL5QCodeAssignment { prn: 28, xb_advance_chips: 276, xb_initial_state_bits: "1111101000010" },
-    GpsL5QCodeAssignment { prn: 29, xb_advance_chips: 4389, xb_initial_state_bits: "0101000100100" },
-    GpsL5QCodeAssignment { prn: 30, xb_advance_chips: 3783, xb_initial_state_bits: "1000001111001" },
-    GpsL5QCodeAssignment { prn: 31, xb_advance_chips: 1591, xb_initial_state_bits: "0101111100101" },
-    GpsL5QCodeAssignment { prn: 32, xb_advance_chips: 1601, xb_initial_state_bits: "1001000101010" },
+    GpsL5QCodeAssignment {
+        prn: 29,
+        xb_advance_chips: 4389,
+        xb_initial_state_bits: "0101000100100",
+    },
+    GpsL5QCodeAssignment {
+        prn: 30,
+        xb_advance_chips: 3783,
+        xb_initial_state_bits: "1000001111001",
+    },
+    GpsL5QCodeAssignment {
+        prn: 31,
+        xb_advance_chips: 1591,
+        xb_initial_state_bits: "0101111100101",
+    },
+    GpsL5QCodeAssignment {
+        prn: 32,
+        xb_advance_chips: 1601,
+        xb_initial_state_bits: "1001000101010",
+    },
     GpsL5QCodeAssignment { prn: 33, xb_advance_chips: 749, xb_initial_state_bits: "1011001000100" },
-    GpsL5QCodeAssignment { prn: 34, xb_advance_chips: 1387, xb_initial_state_bits: "1111001000100" },
-    GpsL5QCodeAssignment { prn: 35, xb_advance_chips: 1661, xb_initial_state_bits: "0110010110011" },
-    GpsL5QCodeAssignment { prn: 36, xb_advance_chips: 3210, xb_initial_state_bits: "0011110101111" },
+    GpsL5QCodeAssignment {
+        prn: 34,
+        xb_advance_chips: 1387,
+        xb_initial_state_bits: "1111001000100",
+    },
+    GpsL5QCodeAssignment {
+        prn: 35,
+        xb_advance_chips: 1661,
+        xb_initial_state_bits: "0110010110011",
+    },
+    GpsL5QCodeAssignment {
+        prn: 36,
+        xb_advance_chips: 3210,
+        xb_initial_state_bits: "0011110101111",
+    },
     GpsL5QCodeAssignment { prn: 37, xb_advance_chips: 708, xb_initial_state_bits: "0010011010001" },
-    GpsL5QCodeAssignment { prn: 38, xb_advance_chips: 4226, xb_initial_state_bits: "1111110011101" },
-    GpsL5QCodeAssignment { prn: 39, xb_advance_chips: 5604, xb_initial_state_bits: "0101010011111" },
-    GpsL5QCodeAssignment { prn: 40, xb_advance_chips: 6375, xb_initial_state_bits: "1000110101010" },
-    GpsL5QCodeAssignment { prn: 41, xb_advance_chips: 3056, xb_initial_state_bits: "0010111100100" },
-    GpsL5QCodeAssignment { prn: 42, xb_advance_chips: 1772, xb_initial_state_bits: "1011000100000" },
-    GpsL5QCodeAssignment { prn: 43, xb_advance_chips: 3662, xb_initial_state_bits: "0011001011001" },
-    GpsL5QCodeAssignment { prn: 44, xb_advance_chips: 4401, xb_initial_state_bits: "1000100101000" },
-    GpsL5QCodeAssignment { prn: 45, xb_advance_chips: 5218, xb_initial_state_bits: "0000001111110" },
-    GpsL5QCodeAssignment { prn: 46, xb_advance_chips: 2838, xb_initial_state_bits: "0000000010011" },
-    GpsL5QCodeAssignment { prn: 47, xb_advance_chips: 6913, xb_initial_state_bits: "0101110011110" },
-    GpsL5QCodeAssignment { prn: 48, xb_advance_chips: 1685, xb_initial_state_bits: "0001001000111" },
-    GpsL5QCodeAssignment { prn: 49, xb_advance_chips: 1194, xb_initial_state_bits: "0011110000100" },
-    GpsL5QCodeAssignment { prn: 50, xb_advance_chips: 6963, xb_initial_state_bits: "0100101011100" },
-    GpsL5QCodeAssignment { prn: 51, xb_advance_chips: 5001, xb_initial_state_bits: "0010100011111" },
-    GpsL5QCodeAssignment { prn: 52, xb_advance_chips: 6694, xb_initial_state_bits: "1101110011001" },
+    GpsL5QCodeAssignment {
+        prn: 38,
+        xb_advance_chips: 4226,
+        xb_initial_state_bits: "1111110011101",
+    },
+    GpsL5QCodeAssignment {
+        prn: 39,
+        xb_advance_chips: 5604,
+        xb_initial_state_bits: "0101010011111",
+    },
+    GpsL5QCodeAssignment {
+        prn: 40,
+        xb_advance_chips: 6375,
+        xb_initial_state_bits: "1000110101010",
+    },
+    GpsL5QCodeAssignment {
+        prn: 41,
+        xb_advance_chips: 3056,
+        xb_initial_state_bits: "0010111100100",
+    },
+    GpsL5QCodeAssignment {
+        prn: 42,
+        xb_advance_chips: 1772,
+        xb_initial_state_bits: "1011000100000",
+    },
+    GpsL5QCodeAssignment {
+        prn: 43,
+        xb_advance_chips: 3662,
+        xb_initial_state_bits: "0011001011001",
+    },
+    GpsL5QCodeAssignment {
+        prn: 44,
+        xb_advance_chips: 4401,
+        xb_initial_state_bits: "1000100101000",
+    },
+    GpsL5QCodeAssignment {
+        prn: 45,
+        xb_advance_chips: 5218,
+        xb_initial_state_bits: "0000001111110",
+    },
+    GpsL5QCodeAssignment {
+        prn: 46,
+        xb_advance_chips: 2838,
+        xb_initial_state_bits: "0000000010011",
+    },
+    GpsL5QCodeAssignment {
+        prn: 47,
+        xb_advance_chips: 6913,
+        xb_initial_state_bits: "0101110011110",
+    },
+    GpsL5QCodeAssignment {
+        prn: 48,
+        xb_advance_chips: 1685,
+        xb_initial_state_bits: "0001001000111",
+    },
+    GpsL5QCodeAssignment {
+        prn: 49,
+        xb_advance_chips: 1194,
+        xb_initial_state_bits: "0011110000100",
+    },
+    GpsL5QCodeAssignment {
+        prn: 50,
+        xb_advance_chips: 6963,
+        xb_initial_state_bits: "0100101011100",
+    },
+    GpsL5QCodeAssignment {
+        prn: 51,
+        xb_advance_chips: 5001,
+        xb_initial_state_bits: "0010100011111",
+    },
+    GpsL5QCodeAssignment {
+        prn: 52,
+        xb_advance_chips: 6694,
+        xb_initial_state_bits: "1101110011001",
+    },
     GpsL5QCodeAssignment { prn: 53, xb_advance_chips: 991, xb_initial_state_bits: "0011111101111" },
-    GpsL5QCodeAssignment { prn: 54, xb_advance_chips: 7489, xb_initial_state_bits: "1100100110111" },
-    GpsL5QCodeAssignment { prn: 55, xb_advance_chips: 2441, xb_initial_state_bits: "1001001100110" },
+    GpsL5QCodeAssignment {
+        prn: 54,
+        xb_advance_chips: 7489,
+        xb_initial_state_bits: "1100100110111",
+    },
+    GpsL5QCodeAssignment {
+        prn: 55,
+        xb_advance_chips: 2441,
+        xb_initial_state_bits: "1001001100110",
+    },
     GpsL5QCodeAssignment { prn: 56, xb_advance_chips: 639, xb_initial_state_bits: "0100010011001" },
-    GpsL5QCodeAssignment { prn: 57, xb_advance_chips: 2097, xb_initial_state_bits: "0000000001011" },
-    GpsL5QCodeAssignment { prn: 58, xb_advance_chips: 2498, xb_initial_state_bits: "0000001101111" },
-    GpsL5QCodeAssignment { prn: 59, xb_advance_chips: 6470, xb_initial_state_bits: "0101101101111" },
-    GpsL5QCodeAssignment { prn: 60, xb_advance_chips: 2399, xb_initial_state_bits: "0100100001101" },
+    GpsL5QCodeAssignment {
+        prn: 57,
+        xb_advance_chips: 2097,
+        xb_initial_state_bits: "0000000001011",
+    },
+    GpsL5QCodeAssignment {
+        prn: 58,
+        xb_advance_chips: 2498,
+        xb_initial_state_bits: "0000001101111",
+    },
+    GpsL5QCodeAssignment {
+        prn: 59,
+        xb_advance_chips: 6470,
+        xb_initial_state_bits: "0101101101111",
+    },
+    GpsL5QCodeAssignment {
+        prn: 60,
+        xb_advance_chips: 2399,
+        xb_initial_state_bits: "0100100001101",
+    },
     GpsL5QCodeAssignment { prn: 61, xb_advance_chips: 242, xb_initial_state_bits: "1101100101011" },
-    GpsL5QCodeAssignment { prn: 62, xb_advance_chips: 3768, xb_initial_state_bits: "1010111000100" },
-    GpsL5QCodeAssignment { prn: 63, xb_advance_chips: 1186, xb_initial_state_bits: "0010001101001" },
+    GpsL5QCodeAssignment {
+        prn: 62,
+        xb_advance_chips: 3768,
+        xb_initial_state_bits: "1010111000100",
+    },
+    GpsL5QCodeAssignment {
+        prn: 63,
+        xb_advance_chips: 1186,
+        xb_initial_state_bits: "0010001101001",
+    },
 ];
 
 pub fn gps_l5_i_code_assignment(prn: u8) -> Result<&'static GpsL5ICodeAssignment, SignalError> {
@@ -569,9 +753,7 @@ pub fn generate_gps_l5_q_chips_from_code(
     for offset in 0..chip_count {
         let chip_phase = (start_chip + offset) as f64;
         let primary_code_period_index = (start_chip + offset) / GPS_L5_CODE_CHIPS;
-        chips.push(
-            gps_l5_q_value(code, chip_phase, primary_code_period_index)?.signum() as i8,
-        );
+        chips.push(gps_l5_q_value(code, chip_phase, primary_code_period_index)?.signum() as i8);
     }
     Ok(chips)
 }
@@ -759,13 +941,13 @@ fn prn_index(prn: u8) -> Result<usize, SignalError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        generate_gps_l5_i_chips, generate_gps_l5_i_code, gps_l5_i_code_assignment,
-        gps_l5_i_code_assignments, gps_l5_i_data_symbol_index, gps_l5_i_epoch_symbol,
-        gps_l5_i_neumann_hoffman_code, gps_l5_i_nh_chip, gps_l5_i_symbol_epoch, sample_gps_l5_i,
-        sample_gps_l5_i_primary_code, generate_gps_l5_q_chips, generate_gps_l5_q_code,
-        gps_l5_q_code_assignment, gps_l5_q_code_assignments, gps_l5_q_epoch_symbol,
-        gps_l5_q_neumann_hoffman_code, gps_l5_q_nh_chip, gps_l5_q_symbol_epoch, sample_gps_l5_q,
-        sample_gps_l5_q_primary_code, GpsL5ICodeAssignment, GpsL5QCodeAssignment,
+        generate_gps_l5_i_chips, generate_gps_l5_i_code, generate_gps_l5_q_chips,
+        generate_gps_l5_q_code, gps_l5_i_code_assignment, gps_l5_i_code_assignments,
+        gps_l5_i_data_symbol_index, gps_l5_i_epoch_symbol, gps_l5_i_neumann_hoffman_code,
+        gps_l5_i_nh_chip, gps_l5_i_symbol_epoch, gps_l5_q_code_assignment,
+        gps_l5_q_code_assignments, gps_l5_q_epoch_symbol, gps_l5_q_neumann_hoffman_code,
+        gps_l5_q_nh_chip, gps_l5_q_symbol_epoch, sample_gps_l5_i, sample_gps_l5_i_primary_code,
+        sample_gps_l5_q, sample_gps_l5_q_primary_code, GpsL5ICodeAssignment, GpsL5QCodeAssignment,
         GPS_L5I_SYMBOL_CHIPS, GPS_L5Q_SYMBOL_CHIPS, GPS_L5_CODE_RATE_HZ,
     };
     use crate::error::SignalError;
@@ -850,9 +1032,7 @@ mod tests {
             let assignment = gps_l5_i_code_assignment(prn).expect("published assignment");
             let code = generate_gps_l5_i_code(prn).expect("valid GPS L5-I PRN");
             let xa = super::generate_gps_l5_xa_sequence();
-            for (chip_index, xb_bit) in
-                assignment.xb_initial_state_bits.bytes().rev().enumerate()
-            {
+            for (chip_index, xb_bit) in assignment.xb_initial_state_bits.bytes().rev().enumerate() {
                 let xb_chip = if xb_bit == b'0' { 0 } else { 1 };
                 let expected_chip = if xa[chip_index] == xb_chip { 1 } else { -1 };
                 assert_eq!(code[chip_index], expected_chip, "prn={prn} chip={chip_index}");
@@ -866,9 +1046,7 @@ mod tests {
             let assignment = gps_l5_q_code_assignment(prn).expect("published assignment");
             let code = generate_gps_l5_q_code(prn).expect("valid GPS L5-Q PRN");
             let xa = super::generate_gps_l5_xa_sequence();
-            for (chip_index, xb_bit) in
-                assignment.xb_initial_state_bits.bytes().rev().enumerate()
-            {
+            for (chip_index, xb_bit) in assignment.xb_initial_state_bits.bytes().rev().enumerate() {
                 let xb_chip = if xb_bit == b'0' { 0 } else { 1 };
                 let expected_chip = if xa[chip_index] == xb_chip { 1 } else { -1 };
                 assert_eq!(code[chip_index], expected_chip, "prn={prn} chip={chip_index}");
@@ -961,8 +1139,8 @@ mod tests {
 
     #[test]
     fn l5_q_symbol_boundaries_repeat_every_twenty_milliseconds() {
-        let chips = generate_gps_l5_q_chips(7, 0, GPS_L5Q_SYMBOL_CHIPS * 2)
-            .expect("generated L5-Q chips");
+        let chips =
+            generate_gps_l5_q_chips(7, 0, GPS_L5Q_SYMBOL_CHIPS * 2).expect("generated L5-Q chips");
         assert_eq!(chips[0], 1);
         assert_eq!(chips[GPS_L5Q_SYMBOL_CHIPS], 1);
     }

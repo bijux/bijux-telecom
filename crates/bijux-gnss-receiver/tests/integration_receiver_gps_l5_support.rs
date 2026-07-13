@@ -34,6 +34,7 @@ fn gps_l5_scenario(sat: SatId) -> SyntheticScenario {
             sat,
             glonass_frequency_channel: None,
             signal_band: bijux_gnss_core::api::SignalBand::L5,
+            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
             doppler_hz: 0.0,
             code_phase_chips: 2_048.375,
             carrier_phase_rad: 0.25,
@@ -69,11 +70,8 @@ fn receiver_runs_gps_l5_i_with_supported_acquisition_and_tracking() {
         "{acquisition:?}"
     );
 
-    let tracking = artifacts
-        .tracking
-        .iter()
-        .find(|result| result.sat == sat)
-        .expect("GPS L5 tracking result");
+    let tracking =
+        artifacts.tracking.iter().find(|result| result.sat == sat).expect("GPS L5 tracking result");
     assert!(!tracking.epochs.is_empty(), "{tracking:?}");
     assert_eq!(tracking.epochs[0].signal_band, SignalBand::L5, "{tracking:?}");
 

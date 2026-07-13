@@ -19,11 +19,11 @@
       "doppler_error_hz": 0.00006538168338465766,
       "doppler_error_bins": 1.3076336676931531e-7,
       "injected_code_phase_chips": 200.25,
-      "expected_code_phase_samples": 1645,
+      "expected_code_phase_samples": 1646,
       "measured_code_phase_samples": 1646,
-      "code_phase_error_samples": 1,
+      "code_phase_error_samples": 0,
       "peak_mean_ratio": 41.3523,
-      "hypothesis": "rejected",
+      "hypothesis": "ambiguous",
       "doppler_pass": true,
       "code_phase_pass": true,
       "pass": true
@@ -43,7 +43,7 @@
       "measured_code_phase_samples": 1403,
       "code_phase_error_samples": 0,
       "peak_mean_ratio": 64.065544,
-      "hypothesis": "rejected",
+      "hypothesis": "accepted",
       "doppler_pass": true,
       "code_phase_pass": true,
       "pass": true

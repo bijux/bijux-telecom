@@ -250,6 +250,7 @@ mod tests {
                 Constellation::Galileo => SignalBand::E1,
                 _ => SignalBand::L1,
             },
+            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
             glonass_frequency_channel: None,
             prompt_i: 1.0,
             prompt_q: 0.0,

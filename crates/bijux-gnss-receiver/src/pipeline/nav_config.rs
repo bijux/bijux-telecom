@@ -117,15 +117,9 @@ mod tests {
 
         let runtime = position_runtime_config(&config);
 
-        assert_eq!(
-            runtime.position_solution_motion_class,
-            PositionFilterMotionClass::Pedestrian
-        );
+        assert_eq!(runtime.position_solution_motion_class, PositionFilterMotionClass::Pedestrian);
         assert_eq!(runtime.weighting.mode, PositionWeightingModel::ElevationCn0);
-        assert_eq!(
-            runtime.constellation_policy,
-            PositionConstellationPolicy::GalileoOnly
-        );
+        assert_eq!(runtime.constellation_policy, PositionConstellationPolicy::GalileoOnly);
         assert_eq!(runtime.science_thresholds.min_lock_ratio, 0.85);
     }
 }

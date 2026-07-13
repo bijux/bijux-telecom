@@ -3,8 +3,8 @@
 use std::f64::consts::TAU;
 
 use bijux_gnss_core::api::{
-    Chips, Cycles, Epoch, Hertz, ReceiverSampleTrace, SignalBand, SignalDelayAlignment,
-    SignalSpec, TrackEpoch, TrackingUncertainty,
+    Chips, Cycles, Epoch, Hertz, ReceiverSampleTrace, SignalBand, SignalDelayAlignment, SignalSpec,
+    TrackEpoch, TrackingUncertainty,
 };
 use bijux_gnss_nav::api::GpsEphemeris;
 use bijux_gnss_receiver::api::{
@@ -260,6 +260,7 @@ fn synthetic_truth_track(
                 ),
                 sat: signal.sat,
                 signal_band: signal_spec.band,
+                signal_code: signal_spec.code,
                 glonass_frequency_channel: None,
                 prompt_i: 1.0,
                 prompt_q: 0.0,
