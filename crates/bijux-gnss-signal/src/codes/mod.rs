@@ -10,3 +10,4 @@ pub mod gps_l2c;
 pub mod gps_l2c_cl;
 pub mod gps_l2c_cm;
 mod gps_l2c_register;
+pub mod gps_l5;

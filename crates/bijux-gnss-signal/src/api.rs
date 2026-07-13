@@ -56,6 +56,14 @@ pub use crate::codes::gps_l2c_cm::{
     gps_l2c_cm_code_assignments, sample_gps_l2c_cm_code, GpsL2cCmCodeAssignment,
     GPS_L2C_CM_CODE_CHIPS, GPS_L2C_CM_CODE_RATE_HZ,
 };
+pub use crate::codes::gps_l5::{
+    generate_gps_l5_i_chips, generate_gps_l5_i_chips_from_code, generate_gps_l5_i_code,
+    gps_l5_i_code_assignment, gps_l5_i_code_assignments, gps_l5_i_data_symbol_index,
+    gps_l5_i_epoch_symbol, gps_l5_i_neumann_hoffman_code, gps_l5_i_symbol_epoch, gps_l5_i_value,
+    sample_gps_l5_i, sample_gps_l5_i_from_code, sample_gps_l5_i_primary_code, GpsL5ICodeAssignment,
+    GPS_L5_I_PRIMARY_EPOCHS_PER_SYMBOL, GPS_L5_I_SYMBOL_CHIPS, GPS_L5_PRIMARY_CODE_CHIPS,
+    GPS_L5_PRIMARY_CODE_RATE_HZ,
+};
 /// Numerically controlled oscillator helper.
 pub use crate::dsp::nco::Nco;
 /// Front-end quality metrics derived from complex I/Q samples.
