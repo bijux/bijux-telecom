@@ -8,10 +8,16 @@ use bijux_gnss_core::api::{
     SignalSpec,
 };
 use bijux_gnss_nav::api::{
-    choose_rtk_single_difference_reference_signal, ecef_to_geodetic,
-    rtk_double_differences_from_single_differences, rtk_single_differences_from_obs_epochs,
-    sat_state_gps_l1ca_at_receive_time, GpsEphemeris, RtkDoubleDifferenceObservation,
-    RtkSingleDifferenceObservation,
+    GpsEphemeris, RtkDoubleDifferenceObservation, RtkSingleDifferenceObservation,
+};
+
+use crate::reference_math::coordinates::{
+    enu_to_ecef_m, geodetic_to_ecef_m, EnuVector, GeodeticPoint,
+};
+use crate::reference_math::gps_broadcast::solve_transmit_state_for_receiver;
+use crate::reference_math::rtk::{
+    choose_reference_signal, double_differences_from_single_differences,
+    single_differences_from_epochs,
 };
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
@@ -102,10 +108,18 @@ pub fn multipath_gps_l1_short_baseline_case() -> GpsL1RtkBaselineCase {
 }
 
 fn gps_l1_short_baseline_case(environment: RtkObservationEnvironment) -> GpsL1RtkBaselineCase {
-    let base = bijux_gnss_nav::api::geodetic_to_ecef(37.0, -122.0, 10.0);
-    let base_ecef_m = [base.0, base.1, base.2];
+    let base_geodetic = GeodeticPoint { lat_deg: 37.0, lon_deg: -122.0, alt_m: 10.0 };
+    let base_ecef_m = geodetic_to_ecef_m(base_geodetic);
     let truth_enu_m = [8.5, -4.25, 1.75];
-    let rover_ecef_m = enu_to_ecef(base_ecef_m, truth_enu_m);
+    let rover_ecef_m = enu_to_ecef_m(
+        base_ecef_m,
+        base_geodetic,
+        EnuVector {
+            east_m: truth_enu_m[0],
+            north_m: truth_enu_m[1],
+            up_m: truth_enu_m[2],
+        },
+    );
     let receive_gps_time = GpsTime { week: 2200, tow_s: 345_600.25 };
     let ephemerides = vec![
         make_eph(3, 0.0, 0.0, receive_gps_time.tow_s - 900.0),
@@ -138,11 +152,10 @@ fn gps_l1_short_baseline_case(environment: RtkObservationEnvironment) -> GpsL1Rt
         &rover_ambiguities_cycles,
         environment.rover_profile(),
     );
-    let single_differences = rtk_single_differences_from_obs_epochs(&base_epoch, &rover_epoch);
-    let reference_sig =
-        choose_rtk_single_difference_reference_signal(&single_differences).expect("reference");
+    let single_differences = single_differences_from_epochs(&base_epoch, &rover_epoch);
+    let reference_sig = choose_reference_signal(&single_differences).expect("reference");
     let double_differences =
-        rtk_double_differences_from_single_differences(&single_differences, reference_sig);
+        double_differences_from_single_differences(&single_differences, reference_sig);
 
     GpsL1RtkBaselineCase {
         base_ecef_m,
@@ -296,27 +309,16 @@ fn make_obs_epoch(
         .iter()
         .enumerate()
         .map(|(index, ephemeris)| {
-            let mut travel_time_s = 0.07;
-            let sat = loop {
-                let state = sat_state_gps_l1ca_at_receive_time(
-                    ephemeris,
-                    receive_gps_time.tow_s,
-                    travel_time_s,
-                );
-                let range_m = geometric_range_m(receiver_ecef_m, [state.x_m, state.y_m, state.z_m]);
-                let next_travel_time_s = range_m / SPEED_OF_LIGHT_MPS;
-                if (next_travel_time_s - travel_time_s).abs() < 1.0e-12 {
-                    break state;
-                }
-                travel_time_s = next_travel_time_s;
-            };
+            let solved =
+                solve_transmit_state_for_receiver(ephemeris, receive_gps_time.tow_s, receiver_ecef_m);
+            let sat = solved.transmit_state;
             let range_m = geometric_range_m(receiver_ecef_m, [sat.x_m, sat.y_m, sat.z_m]);
             let pseudorange_m = range_m - sat.clock_correction.bias_s * SPEED_OF_LIGHT_MPS
                 + profile.pseudorange_biases_m[index];
             let ambiguity_cycles = ambiguities_cycles.get(&ephemeris.sat).copied().unwrap_or(0.0);
             let timing = ObsSignalTiming {
-                signal_travel_time_s: Seconds(travel_time_s),
-                transmit_gps_time: receive_gps_time.offset_seconds(-travel_time_s),
+                signal_travel_time_s: Seconds(solved.signal_travel_time_s),
+                transmit_gps_time: receive_gps_time.offset_seconds(-solved.signal_travel_time_s),
             };
             ObsSatellite {
                 signal_id: SigId {
@@ -386,20 +388,6 @@ fn make_obs_epoch(
         decision_reason: Some("accepted_observables_present".to_string()),
         manifest: None,
     }
-}
-
-fn enu_to_ecef(base_ecef_m: [f64; 3], enu_m: [f64; 3]) -> [f64; 3] {
-    let (lat_deg, lon_deg, _alt_m) =
-        ecef_to_geodetic(base_ecef_m[0], base_ecef_m[1], base_ecef_m[2]);
-    let (sin_lat, cos_lat) = lat_deg.to_radians().sin_cos();
-    let (sin_lon, cos_lon) = lon_deg.to_radians().sin_cos();
-    let east_m = enu_m[0];
-    let north_m = enu_m[1];
-    let up_m = enu_m[2];
-    let dx = -sin_lon * east_m - sin_lat * cos_lon * north_m + cos_lat * cos_lon * up_m;
-    let dy = cos_lon * east_m - sin_lat * sin_lon * north_m + cos_lat * sin_lon * up_m;
-    let dz = cos_lat * north_m + sin_lat * up_m;
-    [base_ecef_m[0] + dx, base_ecef_m[1] + dy, base_ecef_m[2] + dz]
 }
 
 fn geometric_range_m(receiver_ecef_m: [f64; 3], sat_ecef_m: [f64; 3]) -> f64 {
