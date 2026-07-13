@@ -1,16 +1,16 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    ecef_to_geodetic, Constellation, Cycles, GpsTime, Hertz, LockFlags, Meters, ObsEpoch,
-    ObsMetadata, ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationStatus,
-    ReceiverRole, ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
+    Constellation, Cycles, GpsTime, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata,
+    ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ReceiverRole,
+    ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
 };
 use bijux_gnss_receiver::api::ValidationReferenceEpoch;
 use bijux_gnss_receiver::api::{
     nav::{
-        geodetic_to_ecef, position_broadcast_navigation_from_beidou_navigations,
+        position_broadcast_navigation_from_beidou_navigations,
         position_broadcast_navigation_from_gps_ephemerides, sat_state_beidou_b1i,
-        sat_state_galileo_e1, sat_state_gps_l1ca, BeidouBroadcastNavigationData,
+        sat_state_galileo_e1, BeidouBroadcastNavigationData,
         BeidouClockCorrection, BeidouEphemeris, BeidouIonosphericCorrection, BeidouSignalHealth,
         BeidouSystemTime, GalileoBroadcastNavigationData, GalileoClockCorrection, GalileoEphemeris,
         GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags, GalileoSignalHealth,
@@ -24,6 +24,8 @@ use bijux_gnss_receiver::api::{
     },
     Navigation, ReceiverPipelineConfig, ReceiverRuntime,
 };
+use bijux_gnss_testkit::coordinates::{ecef_to_geodetic, geodetic_to_ecef};
+use bijux_gnss_testkit::position_truth::pseudorange_from_truth;
 
 pub struct ReceiverConstellationGeometryCase {
     pub scenario_id: String,
@@ -361,23 +363,7 @@ fn gps_pseudorange_m(
     truth_ecef_m: (f64, f64, f64),
     receiver_clock_bias_s: f64,
 ) -> f64 {
-    let mut tau = 0.07;
-    let mut pseudorange_m = 0.0;
-    for _ in 0..10 {
-        let state = sat_state_gps_l1ca(ephemeris, t_rx_s - tau, tau);
-        let dx = truth_ecef_m.0 - state.x_m;
-        let dy = truth_ecef_m.1 - state.y_m;
-        let dz = truth_ecef_m.2 - state.z_m;
-        let range_m = (dx * dx + dy * dy + dz * dz).sqrt();
-        pseudorange_m = range_m + receiver_clock_bias_s * 299_792_458.0
-            - state.clock_correction.bias_s * 299_792_458.0;
-        let next_tau = pseudorange_m / 299_792_458.0;
-        if (next_tau - tau).abs() < 1.0e-12 {
-            break;
-        }
-        tau = next_tau;
-    }
-    pseudorange_m
+    pseudorange_from_truth(ephemeris, truth_ecef_m, t_rx_s, receiver_clock_bias_s)
 }
 
 fn galileo_pseudorange_m(

@@ -1,8 +1,8 @@
 #![allow(dead_code, missing_docs)]
 
 use bijux_gnss_core::api::{
-    ecef_to_geodetic, Chips, Cycles, Epoch, GpsTime, Hertz, NavSolutionEpoch, ObsEpoch,
-    ReceiverSampleTrace, SamplesFrame, SignalDelayAlignment, TrackEpoch, TrackingUncertainty,
+    Chips, Cycles, Epoch, GpsTime, Hertz, NavSolutionEpoch, ObsEpoch, ReceiverSampleTrace,
+    SamplesFrame, SignalDelayAlignment, TrackEpoch, TrackingUncertainty,
 };
 use bijux_gnss_receiver::api::ValidationReferenceEpoch;
 use bijux_gnss_receiver::api::{
@@ -27,6 +27,7 @@ use bijux_gnss_receiver::api::{
 mod navigation_truth;
 
 use navigation_truth::SyntheticPvtScenario;
+use bijux_gnss_testkit::coordinates::ecef_to_geodetic;
 
 const SYNTHETIC_REFERENCE_RECEIVE_TIME_S: f64 = 100_000.0;
 const SYNTHETIC_HATCH_WINDOW: u32 = 10;

@@ -6,12 +6,14 @@ use bijux_gnss_core::api::{
     Chips, Constellation, Cycles, Epoch, GpsTime, Hertz, NavHealthEvent, NavSolutionEpoch,
     ObsEpoch, ReceiverSampleTrace, SatId, SignalDelayAlignment, TrackEpoch,
 };
-use bijux_gnss_nav::api::{geodetic_to_ecef, sat_state_gps_l1ca, GpsEphemeris};
+use bijux_gnss_nav::api::GpsEphemeris;
 use bijux_gnss_receiver::api::sim::SyntheticSignalParams;
 use bijux_gnss_receiver::api::{
     observations_from_tracking_results_with_gps_anchor, Navigation, ReceiverPipelineConfig,
     ReceiverRuntime, TrackingResult,
 };
+use bijux_gnss_testkit::coordinates::geodetic_to_ecef;
+use bijux_gnss_testkit::position_truth::pseudorange_from_truth;
 
 #[path = "navigation_motion_profile.rs"]
 mod navigation_motion_profile;
@@ -300,26 +302,7 @@ fn synthetic_pseudorange_m(
     receive_time_s: f64,
     receiver_ecef_m: (f64, f64, f64),
 ) -> f64 {
-    let mut signal_travel_time_s = 0.072;
-    let mut pseudorange_m = 0.0;
-    for _ in 0..12 {
-        let state = sat_state_gps_l1ca(
-            ephemeris,
-            receive_time_s - signal_travel_time_s,
-            signal_travel_time_s,
-        );
-        let dx = receiver_ecef_m.0 - state.x_m;
-        let dy = receiver_ecef_m.1 - state.y_m;
-        let dz = receiver_ecef_m.2 - state.z_m;
-        let geometric_range_m = (dx * dx + dy * dy + dz * dz).sqrt();
-        pseudorange_m = geometric_range_m - state.clock_correction.bias_s * SPEED_OF_LIGHT_MPS;
-        let next_signal_travel_time_s = pseudorange_m / SPEED_OF_LIGHT_MPS;
-        if (next_signal_travel_time_s - signal_travel_time_s).abs() < 1.0e-12 {
-            break;
-        }
-        signal_travel_time_s = next_signal_travel_time_s;
-    }
-    pseudorange_m
+    pseudorange_from_truth(ephemeris, receiver_ecef_m, receive_time_s, 0.0)
 }
 
 fn tracking_code_phase_samples(config: &ReceiverPipelineConfig, code_phase_chips: f64) -> f64 {
