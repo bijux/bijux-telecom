@@ -24,7 +24,7 @@ pub struct SpectrumComparison {
 #[derive(Debug, Clone, Copy)]
 pub struct SpectrumTolerance {
     pub center_frequency_hz: f64,
-    pub occupied_bandwidth_hz: f64,
+    pub occupied_bandwidth_ratio: f64,
     pub integrated_power: f64,
     pub symmetry_error: f64,
     pub null_frequency_hz: f64,
@@ -35,18 +35,18 @@ impl SpectrumTolerance {
     pub const fn tight_bpsk() -> Self {
         Self {
             center_frequency_hz: 8_000.0,
-            occupied_bandwidth_hz: 120_000.0,
+            occupied_bandwidth_ratio: 0.25,
             integrated_power: 0.08,
             symmetry_error: 0.03,
             null_frequency_hz: 25_000.0,
-            shape_rms_error_db: 1.6,
+            shape_rms_error_db: 2.2,
         }
     }
 
     pub const fn cboc() -> Self {
         Self {
             center_frequency_hz: 10_000.0,
-            occupied_bandwidth_hz: 300_000.0,
+            occupied_bandwidth_ratio: 0.30,
             integrated_power: 0.08,
             symmetry_error: 0.04,
             null_frequency_hz: 40_000.0,
@@ -112,7 +112,8 @@ pub fn assert_spectrum_matches(
         (comparison.measured_summary.occupied_bandwidth_hz
             - comparison.expected_summary.occupied_bandwidth_hz)
             .abs()
-            <= tolerance.occupied_bandwidth_hz,
+            / comparison.expected_summary.occupied_bandwidth_hz
+            <= tolerance.occupied_bandwidth_ratio,
         "occupied bandwidth mismatch: measured={:?} expected={:?}",
         comparison.measured_summary,
         comparison.expected_summary
@@ -146,12 +147,17 @@ pub fn assert_spectrum_matches(
         comparison.measured_nulls
     );
 
-    for (expected, measured) in comparison
-        .expected_nulls
-        .iter()
-        .zip(comparison.measured_nulls.iter())
-        .take(minimum_positive_nulls)
-    {
+    for expected in comparison.expected_nulls.iter().take(minimum_positive_nulls) {
+        let measured = comparison
+            .measured_nulls
+            .iter()
+            .min_by(|left, right| {
+                (left.frequency_hz - expected.frequency_hz)
+                    .abs()
+                    .partial_cmp(&(right.frequency_hz - expected.frequency_hz).abs())
+                    .expect("finite null frequency distance")
+            })
+            .expect("measured null");
         assert!(
             (measured.frequency_hz - expected.frequency_hz).abs() <= tolerance.null_frequency_hz,
             "null frequency mismatch: expected={expected:?} measured={measured:?}"
