@@ -7,7 +7,7 @@ use bijux_gnss_core::api::{
     acq_result_stability_key, stable_acq_result_keys, AcqAssumptions, AcqCodePhaseRefinement,
     AcqDopplerRefinement, AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqRequest,
     AcqResult, AcqThresholdProvenance, AcqUncertainty, Hertz, ReceiverSampleTrace, SamplesFrame,
-    SatId, SignalBand, SignalCode, GPS_L1_CA_CARRIER_HZ,
+    SatId, SignalBand, GPS_L1_CA_CARRIER_HZ,
 };
 use num_complex::Complex;
 use rustfft::{num_traits::Zero, FftPlanner};
@@ -19,8 +19,8 @@ use crate::engine::receiver_config::{
 use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
 use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
 use bijux_gnss_signal::api::{
-    default_acquisition_signal, measure_iq_front_end_metrics, samples_per_code,
-    signal_spec_glonass_l1, wipeoff_carrier, LocalCodeModel,
+    default_acquisition_signal, measure_iq_front_end_metrics, wipeoff_carrier,
+    AcquisitionSignalModel, SignalError,
 };
 
 /// Acquisition engine (coarse search).
@@ -123,180 +123,50 @@ impl CacheMissReason {
 
 type CodeFftCache = HashMap<CodeFftCacheKey, Vec<Complex<f32>>>;
 
-#[derive(Debug, Clone)]
-struct AcquisitionSignalModel {
-    signal_band: SignalBand,
-    code_rate_hz: f64,
-    code_length: usize,
-    code_period_ms: u32,
-    search_center_hz: f64,
-    local_code_model: LocalCodeModel,
+fn fallback_acquisition_signal_model(
+    config: &ReceiverPipelineConfig,
+    sat: SatId,
+) -> Result<AcquisitionSignalModel, SignalError> {
+    AcquisitionSignalModel::gps_l1_ca_or_ones(
+        sat.prn,
+        config.code_freq_basis_hz,
+        config.code_length,
+        GPS_L1_CA_CARRIER_HZ,
+    )
 }
 
-impl AcquisitionSignalModel {
-    fn for_sat(config: &ReceiverPipelineConfig, sat: SatId) -> Self {
-        let local_code_model = LocalCodeModel::gps_l1_ca_or_ones(sat.prn);
-        Self::for_request(
-            config,
-            AcqRequest {
-                sat,
-                glonass_frequency_channel: None,
-                doppler_search_hz: 0,
-                doppler_step_hz: 1,
-                coherent_ms: 1,
-                noncoherent: 1,
-            },
-        )
-        .unwrap_or_else(|_| Self {
-            signal_band: SignalBand::L1,
-            code_rate_hz: local_code_model.code_rate_hz(),
-            code_length: local_code_model.code_length(),
-            code_period_ms: local_code_period_ms(
-                local_code_model.code_length(),
-                local_code_model.code_rate_hz(),
-            ),
-            search_center_hz: config.intermediate_freq_hz,
-            local_code_model,
-        })
-    }
-
-    fn for_request(
-        config: &ReceiverPipelineConfig,
-        request: AcqRequest,
-    ) -> Result<Self, AcquisitionRequestError> {
-        match default_acquisition_signal(request.sat.constellation) {
-            Some(signal)
-                if signal.spec.code == SignalCode::Ca && signal.spec.band == SignalBand::L1 =>
-            {
-                let local_code_model = LocalCodeModel::gps_l1_ca_or_ones(request.sat.prn);
-                Ok(Self {
-                    signal_band: SignalBand::L1,
-                    code_rate_hz: local_code_model.code_rate_hz(),
-                    code_length: local_code_model.code_length(),
-                    code_period_ms: local_code_period_ms(
-                        local_code_model.code_length(),
-                        local_code_model.code_rate_hz(),
-                    ),
-                    search_center_hz: acquisition_signal_center_hz(
-                        config,
-                        signal.spec.carrier_hz.value(),
-                    ),
-                    local_code_model,
-                })
-            }
-            Some(signal)
-                if signal.spec.code == SignalCode::E1B && signal.spec.band == SignalBand::E1 =>
-            {
-                let local_code_model = LocalCodeModel::galileo_e1_boc11_or_ones(request.sat.prn);
-                Ok(Self {
-                    signal_band: SignalBand::E1,
-                    code_rate_hz: local_code_model.code_rate_hz(),
-                    code_length: local_code_model.code_length(),
-                    code_period_ms: local_code_period_ms(
-                        local_code_model.code_length(),
-                        local_code_model.code_rate_hz(),
-                    ),
-                    search_center_hz: acquisition_signal_center_hz(
-                        config,
-                        signal.spec.carrier_hz.value(),
-                    ),
-                    local_code_model,
-                })
-            }
-            Some(signal)
-                if signal.spec.code == SignalCode::B1I && signal.spec.band == SignalBand::B1 =>
-            {
-                let local_code_model = LocalCodeModel::beidou_b1i_or_ones(request.sat.prn);
-                Ok(Self {
-                    signal_band: SignalBand::B1,
-                    code_rate_hz: local_code_model.code_rate_hz(),
-                    code_length: local_code_model.code_length(),
-                    code_period_ms: local_code_period_ms(
-                        local_code_model.code_length(),
-                        local_code_model.code_rate_hz(),
-                    ),
-                    search_center_hz: acquisition_signal_center_hz(
-                        config,
-                        signal.spec.carrier_hz.value(),
-                    ),
-                    local_code_model,
-                })
-            }
-            Some(_signal)
-                if request.sat.constellation == bijux_gnss_core::api::Constellation::Glonass =>
-            {
-                let Some(channel) = request.glonass_frequency_channel else {
-                    return Err(AcquisitionRequestError::MissingGlonassFrequencyChannel {
-                        sat: request.sat,
-                    });
-                };
-                let signal = signal_spec_glonass_l1(channel);
-                let local_code_model = LocalCodeModel::glonass_l1_st();
-                Ok(Self {
-                    signal_band: SignalBand::L1,
-                    code_rate_hz: local_code_model.code_rate_hz(),
-                    code_length: local_code_model.code_length(),
-                    code_period_ms: local_code_period_ms(
-                        local_code_model.code_length(),
-                        local_code_model.code_rate_hz(),
-                    ),
-                    search_center_hz: acquisition_signal_center_hz(
-                        config,
-                        signal.carrier_hz.value(),
-                    ),
-                    local_code_model,
-                })
-            }
-            _ => {
-                let local_code_model = LocalCodeModel::gps_l1_ca_or_ones(request.sat.prn);
-                Ok(Self {
-                    signal_band: SignalBand::L1,
-                    code_rate_hz: local_code_model.code_rate_hz(),
-                    code_length: local_code_model.code_length(),
-                    search_center_hz: config.intermediate_freq_hz,
-                    code_period_ms: local_code_period_ms(
-                        local_code_model.code_length(),
-                        local_code_model.code_rate_hz(),
-                    ),
-                    local_code_model,
-                })
-            }
-        }
-    }
-
-    fn samples_per_code(&self, sampling_freq_hz: f64) -> usize {
-        samples_per_code(sampling_freq_hz, self.code_rate_hz, self.code_length)
-    }
-
-    fn coherent_periods(&self, coherent_ms: u32) -> Option<u32> {
-        if coherent_ms == 0 || coherent_ms % self.code_period_ms != 0 {
-            return None;
-        }
-        Some(coherent_ms / self.code_period_ms)
-    }
-
-    fn local_code_period(&self, sampling_freq_hz: f64, samples_per_code: usize) -> Vec<f32> {
-        self.local_code_model
-            .sample_period(sampling_freq_hz, 0.0, samples_per_code)
-            .unwrap_or_else(|_| vec![1.0; samples_per_code])
-    }
-
-    fn supports_secondary_peak_multipath_screening(&self) -> bool {
-        self.local_code_model.supports_secondary_peak_multipath_screening()
-    }
+fn acquisition_signal_model_for_sat(
+    config: &ReceiverPipelineConfig,
+    sat: SatId,
+) -> AcquisitionSignalModel {
+    acquisition_signal_model_for_request(
+        config,
+        AcqRequest {
+            sat,
+            glonass_frequency_channel: None,
+            doppler_search_hz: 0,
+            doppler_step_hz: 1,
+            coherent_ms: 1,
+            noncoherent: 1,
+        },
+    )
+    .unwrap_or_else(|_| {
+        fallback_acquisition_signal_model(config, sat)
+            .expect("fallback acquisition signal model must be constructible")
+    })
 }
 
-#[derive(Debug, Clone, Copy)]
-enum AcquisitionRequestError {
-    MissingGlonassFrequencyChannel { sat: SatId },
-}
-
-fn acquisition_signal_center_hz(config: &ReceiverPipelineConfig, signal_carrier_hz: f64) -> f64 {
-    config.intermediate_freq_hz + (signal_carrier_hz - GPS_L1_CA_CARRIER_HZ.value())
-}
-
-fn local_code_period_ms(code_length: usize, code_rate_hz: f64) -> u32 {
-    ((code_length as f64 / code_rate_hz) * 1_000.0).round().max(1.0) as u32
+fn acquisition_signal_model_for_request(
+    config: &ReceiverPipelineConfig,
+    request: AcqRequest,
+) -> Result<AcquisitionSignalModel, SignalError> {
+    match AcquisitionSignalModel::from_default_signal(
+        request.sat,
+        request.glonass_frequency_channel,
+    )? {
+        Some(model) => Ok(model),
+        None => fallback_acquisition_signal_model(config, request.sat),
+    }
 }
 
 fn threshold_provenance_for_request(
@@ -581,7 +451,7 @@ impl Acquisition {
         for &request in requests {
             let sat = request.sat;
             let threshold_provenance = threshold_provenance_for_request(&self.config, request);
-            let signal_model = match AcquisitionSignalModel::for_request(&self.config, request) {
+            let signal_model = match acquisition_signal_model_for_request(&self.config, request) {
                 Ok(signal_model) => signal_model,
                 Err(error) => {
                     sat_evaluations.push(AcquisitionSatEvaluation {
@@ -599,6 +469,7 @@ impl Acquisition {
                     continue;
                 }
             };
+            let search_center_hz = signal_model.search_center_hz(self.config.intermediate_freq_hz);
             self.with_stats(|stats| {
                 stats.doppler_bins +=
                     doppler_bin_count(request.doppler_search_hz, request.doppler_step_hz.max(1));
@@ -621,7 +492,7 @@ impl Acquisition {
                         request.glonass_frequency_channel,
                         &assumptions,
                         &threshold_provenance,
-                        signal_model.search_center_hz,
+                        search_center_hz,
                         ReceiverSampleTrace::from_sample_time(frame.t0),
                         request.coherent_ms,
                     ),
@@ -640,7 +511,7 @@ impl Acquisition {
                             request.glonass_frequency_channel,
                             &assumptions,
                             &threshold_provenance,
-                            signal_model.search_center_hz,
+                            search_center_hz,
                             ReceiverSampleTrace::from_sample_time(frame.t0),
                             request.coherent_ms,
                         ),
@@ -661,7 +532,7 @@ impl Acquisition {
                         request.glonass_frequency_channel,
                         &assumptions,
                         &threshold_provenance,
-                        signal_model.search_center_hz,
+                        search_center_hz,
                         ReceiverSampleTrace::from_sample_time(frame.t0),
                         frame.len(),
                         required,
@@ -695,8 +566,7 @@ impl Acquisition {
 
             let mut doppler = -request.doppler_search_hz;
             while doppler <= request.doppler_search_hz {
-                let carrier =
-                    carrier_hz_from_doppler_hz(signal_model.search_center_hz, doppler as f64);
+                let carrier = carrier_hz_from_doppler_hz(search_center_hz, doppler as f64);
                 let mut noncoherent_acc = vec![0.0f32; samples_per_code];
 
                 for nc in 0..request.noncoherent {
@@ -774,7 +644,7 @@ impl Acquisition {
 
             let search_window_diagnostic = signal_outside_search_range(
                 &grid_candidates,
-                signal_model.search_center_hz,
+                search_center_hz,
                 request.doppler_search_hz,
                 request.doppler_step_hz.max(1),
                 self.config.acquisition_peak_mean_threshold,
@@ -1136,8 +1006,9 @@ impl Acquisition {
                 ("policy_version", ACQUISITION_CACHE_POLICY_VERSION.to_string()),
             ],
         });
-        let local_code =
-            signal_model.local_code_period(self.config.sampling_freq_hz, samples_per_code);
+        let local_code = signal_model
+            .sampled_local_code_period(self.config.sampling_freq_hz, samples_per_code)
+            .unwrap_or_else(|_| vec![1.0; samples_per_code]);
         let mut code_fft: Vec<Complex<f32>> =
             local_code.iter().map(|&x| Complex::new(x, 0.0)).collect();
         fft.process(&mut code_fft);
@@ -1222,8 +1093,9 @@ fn zero_signal_run(
     for &request in requests {
         let sat = request.sat;
         let threshold_provenance = threshold_provenance_for_request(config, request);
-        let signal_model = AcquisitionSignalModel::for_request(config, request)
-            .unwrap_or_else(|_| AcquisitionSignalModel::for_sat(config, sat));
+        let signal_model = acquisition_signal_model_for_request(config, request)
+            .unwrap_or_else(|_| acquisition_signal_model_for_sat(config, sat));
+        let search_center_hz = signal_model.search_center_hz(config.intermediate_freq_hz);
         let assumptions = AcqAssumptions {
             doppler_search_hz: threshold_provenance.doppler_search_hz,
             doppler_step_hz: threshold_provenance.doppler_step_hz,
@@ -1242,7 +1114,7 @@ fn zero_signal_run(
             request.glonass_frequency_channel,
             &assumptions,
             &threshold_provenance,
-            signal_model.search_center_hz,
+            search_center_hz,
             source_time,
             zero_signal_reason,
         );
@@ -1255,7 +1127,7 @@ fn zero_signal_run(
                 candidates: vec![AcqExplainCandidate {
                     rank: 1,
                     code_phase_samples: 0,
-                    carrier_hz: signal_model.search_center_hz,
+                    carrier_hz: search_center_hz,
                     peak: 0.0,
                     peak_mean_ratio: 0.0,
                     peak_second_ratio: 0.0,
@@ -1321,12 +1193,13 @@ fn acquisition_request_error_candidates(
     threshold_provenance: &AcqThresholdProvenance,
     source_time: ReceiverSampleTrace,
     frame_samples: usize,
-    error: AcquisitionRequestError,
+    error: SignalError,
 ) -> Vec<AcqResult> {
     let signal_band = default_acquisition_signal(request.sat.constellation)
         .map(|signal| signal.spec.band)
         .unwrap_or(SignalBand::L1);
-    let signal_model = AcquisitionSignalModel::for_sat(config, request.sat);
+    let signal_model = acquisition_signal_model_for_sat(config, request.sat);
+    let search_center_hz = signal_model.search_center_hz(config.intermediate_freq_hz);
     let samples_per_code = signal_model.samples_per_code(config.sampling_freq_hz);
     let assumptions = AcqAssumptions {
         doppler_search_hz: threshold_provenance.doppler_search_hz,
@@ -1341,12 +1214,11 @@ fn acquisition_request_error_candidates(
         code_phase_search_mode: "full_code".to_string(),
     };
     let reason = match error {
-        AcquisitionRequestError::MissingGlonassFrequencyChannel { sat } => {
-            format!(
-                "missing_glonass_frequency_channel: acquisition request for {} must declare glonass_frequency_channel",
-                bijux_gnss_core::api::format_sat(sat)
-            )
-        }
+        SignalError::MissingGlonassFrequencyChannel(sat) => format!(
+            "missing_glonass_frequency_channel: acquisition request for {} must declare glonass_frequency_channel",
+            bijux_gnss_core::api::format_sat(sat)
+        ),
+        other => format!("invalid_acquisition_signal_model: {other}"),
     };
 
     vec![AcqResult {
@@ -1357,7 +1229,7 @@ fn acquisition_request_error_candidates(
         candidate_rank: 1,
         is_primary_candidate: true,
         doppler_hz: Hertz(0.0),
-        carrier_hz: Hertz(signal_model.search_center_hz),
+        carrier_hz: Hertz(search_center_hz),
         code_phase_samples: 0,
         peak: 0.0,
         second_peak: 0.0,
@@ -2026,7 +1898,9 @@ fn measure_code_phase_profile(
     let mut planner = FftPlanner::<f32>::new();
     let fft = planner.plan_fft_forward(samples_per_code);
     let ifft = planner.plan_fft_inverse(samples_per_code);
-    let local_code = signal_model.local_code_period(config.sampling_freq_hz, samples_per_code);
+    let local_code = signal_model
+        .sampled_local_code_period(config.sampling_freq_hz, samples_per_code)
+        .unwrap_or_else(|_| vec![1.0; samples_per_code]);
     let mut code_fft: Vec<Complex<f32>> =
         local_code.iter().map(|&x| Complex::new(x, 0.0)).collect();
     fft.process(&mut code_fft);
@@ -2126,7 +2000,9 @@ mod tests {
         Constellation, GlonassFrequencyChannel, SampleTime, SamplesFrame, SatId, Seconds,
         GPS_L1_CA_CARRIER_HZ,
     };
-    use bijux_gnss_signal::api::{glonass_l1_carrier_hz, sample_glonass_l1_st_code};
+    use bijux_gnss_signal::api::{
+        glonass_l1_carrier_hz, sample_glonass_l1_st_code, samples_per_code,
+    };
 
     #[test]
     fn acquisition_decision_rejects_weak_primary_peak() {
@@ -2174,7 +2050,7 @@ mod tests {
             code_length: 511,
             ..ReceiverPipelineConfig::default()
         };
-        let error = AcquisitionSignalModel::for_request(
+        let error = acquisition_signal_model_for_request(
             &config,
             AcqRequest {
                 sat,
@@ -2187,11 +2063,9 @@ mod tests {
         )
         .expect_err("GLONASS requests must declare one FDMA channel");
 
-        assert!(matches!(
-            error,
-            AcquisitionRequestError::MissingGlonassFrequencyChannel { sat: error_sat }
-                if error_sat == sat
-        ));
+        assert!(
+            matches!(error, SignalError::MissingGlonassFrequencyChannel(error_sat) if error_sat == sat)
+        );
     }
 
     #[test]
@@ -2205,7 +2079,7 @@ mod tests {
             code_length: 511,
             ..ReceiverPipelineConfig::default()
         };
-        let model = AcquisitionSignalModel::for_request(
+        let model = acquisition_signal_model_for_request(
             &config,
             AcqRequest {
                 sat,
@@ -2219,7 +2093,9 @@ mod tests {
         .expect("GLONASS request model");
         let expected_center_hz = config.intermediate_freq_hz
             + (glonass_l1_carrier_hz(channel).value() - GPS_L1_CA_CARRIER_HZ.value());
-        let sampled_code = model.local_code_period(config.sampling_freq_hz, 511);
+        let sampled_code = model
+            .sampled_local_code_period(config.sampling_freq_hz, 511)
+            .expect("GLONASS local code");
         let expected_code =
             sample_glonass_l1_st_code(config.sampling_freq_hz, 0.0, 511).expect("GLONASS code");
 
@@ -2227,7 +2103,10 @@ mod tests {
         assert_eq!(model.code_rate_hz, 511_000.0);
         assert_eq!(model.code_length, 511);
         assert_eq!(model.code_period_ms, 1);
-        assert!((model.search_center_hz - expected_center_hz).abs() <= f64::EPSILON);
+        assert!(
+            (model.search_center_hz(config.intermediate_freq_hz) - expected_center_hz).abs()
+                <= f64::EPSILON
+        );
         assert_eq!(sampled_code, expected_code);
     }
 
@@ -2242,7 +2121,7 @@ mod tests {
             code_length: 511,
             ..ReceiverPipelineConfig::default()
         };
-        let model = AcquisitionSignalModel::for_request(
+        let model = acquisition_signal_model_for_request(
             &config,
             AcqRequest {
                 sat,
@@ -2580,7 +2459,7 @@ mod tests {
         let acquisition = Acquisition::new(config, ReceiverRuntime::default());
         let mut planner = FftPlanner::<f32>::new();
         let fft = planner.plan_fft_forward(samples_per_code);
-        let signal_model = AcquisitionSignalModel::for_sat(&acquisition.config, sat);
+        let signal_model = acquisition_signal_model_for_sat(&acquisition.config, sat);
 
         acquisition.code_fft(&signal_model, sat, samples_per_code, 1, 1, fft.as_ref());
         let after_first_profile = acquisition.stats_snapshot();
