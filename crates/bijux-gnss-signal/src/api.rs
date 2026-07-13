@@ -20,6 +20,11 @@ pub use crate::codes::beidou_b1i::{
     generate_beidou_b1i_code_chips, sample_beidou_b1i_code, BeidouB1iCodeAssignment,
     BEIDOU_B1I_CODE_CHIPS, BEIDOU_B1I_CODE_RATE_HZ,
 };
+pub use crate::codes::beidou_b2i::{
+    beidou_b2i_code_assignment, beidou_b2i_code_assignments, generate_beidou_b2i_code,
+    generate_beidou_b2i_code_chips, sample_beidou_b2i_code, BeidouB2iCodeAssignment,
+    BEIDOU_B2I_CODE_CHIPS, BEIDOU_B2I_CODE_RATE_HZ,
+};
 pub use crate::codes::ca_code::{
     ca_code_assignment, ca_code_assignments, ca_code_autocorrelation_summary,
     ca_code_cross_correlation_summary, ca_code_periodic_autocorrelation,
