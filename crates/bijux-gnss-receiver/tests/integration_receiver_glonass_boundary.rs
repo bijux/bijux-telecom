@@ -44,7 +44,7 @@ fn glonass_boundary_scenario(
             code_phase_chips: 147.25,
             carrier_phase_rad: 0.5,
             cn0_db_hz: 60.0,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         }],
         ephemerides: Vec::new(),
         id: "receiver-glonass-l1-boundary".to_string(),

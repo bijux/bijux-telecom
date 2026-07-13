@@ -75,7 +75,7 @@ fn observations_keep_clean_carrier_phase_arc_continuous() {
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz: PRELOCK_CN0_DBHZ,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         },
         0x0B51_0A71,
         0.020,
@@ -119,7 +119,7 @@ fn observations_mark_phase_jump_carrier_phase_as_unusable() {
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz: PRELOCK_CN0_DBHZ,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         },
         &[SyntheticPhaseWindow {
             start_s: jump_start_s,

@@ -163,7 +163,7 @@ fn frame_from_fixture(config: &ReceiverPipelineConfig, fixture: &AcqFixture) -> 
                     code_phase_chips: fixture.code_phase_chips,
                     carrier_phase_rad: 0.0,
                     cn0_db_hz: fixture.cn0_db_hz,
-                    data_bit_flip: false,
+                    navigation_data: false.into(),
                 },
                 fixture.seed,
                 duration_s,
@@ -216,7 +216,7 @@ fn frame_from_fixture(config: &ReceiverPipelineConfig, fixture: &AcqFixture) -> 
                         code_phase_chips: signal.code_phase_chips,
                         carrier_phase_rad: 0.0,
                         cn0_db_hz: signal.cn0_db_hz,
-                        data_bit_flip: false,
+                        navigation_data: false.into(),
                     })
                     .collect(),
                 ephemerides: Vec::new(),

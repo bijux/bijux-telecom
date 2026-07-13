@@ -39,7 +39,7 @@ fn beidou_b2_scenario(sat: SatId) -> SyntheticScenario {
             code_phase_chips: 321.375,
             carrier_phase_rad: 0.25,
             cn0_db_hz: 60.0,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         }],
         ephemerides: Vec::new(),
         id: "receiver-beidou-b2-support".to_string(),

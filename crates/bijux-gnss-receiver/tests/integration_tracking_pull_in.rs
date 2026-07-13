@@ -67,7 +67,7 @@ fn tracking_converges_carrier_pull_in_before_declaring_pll_lock() {
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.25,
             cn0_db_hz: 60.0,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         },
         0xA531_1D0F,
         0.030,

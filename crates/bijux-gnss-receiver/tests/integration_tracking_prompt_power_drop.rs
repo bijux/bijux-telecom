@@ -80,7 +80,7 @@ fn tracking_reports_prompt_power_drop_after_sustained_signal_loss() {
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz: PRELOCK_CN0_DBHZ,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         },
         &[SyntheticFadeWindow { start_s: fade_start_s, end_s: fade_end_s, signal_scale: 0.0 }],
         0x600D_600D,

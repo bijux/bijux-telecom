@@ -34,7 +34,7 @@ fn synthetic_nav_bits_flip_prompt_polarity_every_twenty_milliseconds() {
             code_phase_chips,
             carrier_phase_rad: 0.0,
             cn0_db_hz: 70.0,
-            data_bit_flip: true,
+            navigation_data: true.into(),
         },
         0x91B17,
         0.05,

@@ -39,7 +39,7 @@ fn acquisition_selects_expected_high_if_doppler_bins() {
                 code_phase_chips: 200.375,
                 carrier_phase_rad: 0.2,
                 cn0_db_hz: 60.0,
-                data_bit_flip: false,
+                navigation_data: false.into(),
             },
             0x1F000000 + doppler_hz.abs() as u64,
             COHERENT_MS as f64 * samples_per_code as f64 / config.sampling_freq_hz,

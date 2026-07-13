@@ -25,12 +25,12 @@ fn noncoherent_integration_improves_low_cn0_detection_probability() {
         code_phase_chips: 300.0,
         carrier_phase_rad: 0.0,
         cn0_db_hz: 30.0,
-        data_bit_flip: false,
+        navigation_data: false.into(),
     };
 
     let coherent_only = measure_truth_guided_acquisition_detection_probability(
         &config,
-        signal,
+        signal.clone(),
         1,
         1,
         &seeds,

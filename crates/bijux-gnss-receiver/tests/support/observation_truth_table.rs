@@ -34,7 +34,7 @@ pub struct ObservationTruthFixture {
     pub tracks: Vec<TrackingResult>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct ObservationTruthTrackSeed {
     signal: SyntheticSignalParams,
     signal_spec: SignalSpec,
@@ -67,7 +67,7 @@ pub fn build_observation_truth_fixture_with_cycle_slips(
         .satellites
         .iter()
         .map(|signal| ObservationTruthTrackSeed {
-            signal: *signal,
+            signal: signal.clone(),
             signal_spec: signal_spec_gps_l1_ca(),
             whole_code_periods: profile.pseudorange_epoch_base,
         })
@@ -146,7 +146,7 @@ fn build_observation_truth_fixture_with_parallel_signal(
                 .find(|candidate| candidate.sat == signal.sat)
                 .expect("fixture ephemeris for L1 observation signal");
             dispersive_track_seed(
-                *signal,
+                signal.clone(),
                 signal_spec_gps_l1_ca(),
                 ephemeris,
                 profile.truth_ecef_m,
@@ -155,7 +155,7 @@ fn build_observation_truth_fixture_with_parallel_signal(
         })
         .collect::<Vec<_>>();
 
-    let l1_reference = track_seeds[0];
+    let l1_reference = track_seeds[0].clone();
     let ephemeris = profile
         .ephemerides
         .iter()
@@ -164,14 +164,15 @@ fn build_observation_truth_fixture_with_parallel_signal(
     track_seeds.insert(
         1,
         dispersive_track_seed(
-            l1_reference.signal,
+            l1_reference.signal.clone(),
             parallel_signal,
             ephemeris,
             profile.truth_ecef_m,
             ionosphere_delay_model,
         ),
     );
-    profile.scenario.satellites = track_seeds.iter().map(|seed| seed.signal).collect();
+    profile.scenario.satellites =
+        track_seeds.iter().map(|seed| seed.signal.clone()).collect();
 
     let tracks = track_seeds
         .iter()

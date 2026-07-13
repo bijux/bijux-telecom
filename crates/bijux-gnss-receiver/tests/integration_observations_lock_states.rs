@@ -78,7 +78,7 @@ fn observation_epochs_preserve_degraded_lock_state_during_short_fade() {
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz: PRELOCK_CN0_DBHZ,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         },
         &[SyntheticFadeWindow { start_s: fade_start_s, end_s: fade_end_s, signal_scale: 0.0 }],
         0x51AC_2001,
@@ -129,7 +129,7 @@ fn observation_epochs_preserve_cycle_slip_lock_state() {
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz: PRELOCK_CN0_DBHZ,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         },
         &[SyntheticPhaseWindow {
             start_s: jump_start_s,

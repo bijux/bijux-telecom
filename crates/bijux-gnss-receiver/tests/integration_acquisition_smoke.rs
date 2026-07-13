@@ -36,7 +36,7 @@ fn bench_fft_acquisition_smoke() {
             code_phase_chips: 100.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz: 55.0,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         },
         0x1234_5678,
         samples_per_code as f64 / config.sampling_freq_hz,

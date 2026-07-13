@@ -84,7 +84,7 @@ fn weak_signal_frame(
             code_phase_chips: 300.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         },
         seed,
         0.001,

@@ -38,7 +38,7 @@ fn deterministic_synthetic_runs_match() {
             code_phase_chips: 100.0,
             carrier_phase_rad: 0.1,
             cn0_db_hz: 45.0,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         }],
         ephemerides: Vec::new(),
         id: "determinism".to_string(),

@@ -64,7 +64,7 @@ fn synthetic_frame(
             code_phase_chips,
             carrier_phase_rad: 0.0,
             cn0_db_hz: 48.0,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         },
         0x5A17_2026,
         0.012,

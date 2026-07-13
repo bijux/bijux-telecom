@@ -321,7 +321,7 @@ fn clean_synthetic_pvt_scenario_with_clock_bias(
                     code_phase_chips,
                     carrier_phase_rad: 0.0,
                     cn0_db_hz: 52.0,
-                    data_bit_flip: false,
+                    navigation_data: false.into(),
                 },
                 whole_code_periods,
             }

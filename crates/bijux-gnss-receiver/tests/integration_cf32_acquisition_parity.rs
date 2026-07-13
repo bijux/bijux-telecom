@@ -40,7 +40,7 @@ fn complex_float32_iq_matches_float_fixture_acquisition() {
             code_phase_chips: 321.0,
             carrier_phase_rad: 0.5,
             cn0_db_hz: 60.0,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         },
         0xCF32BEEF,
         samples_per_code as f64 / config.sampling_freq_hz,

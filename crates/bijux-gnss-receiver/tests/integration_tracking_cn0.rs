@@ -100,7 +100,7 @@ fn cn0_scenario(
             code_phase_chips: 321.0,
             carrier_phase_rad: 0.2,
             cn0_db_hz,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         }],
         ephemerides: Vec::new(),
         id: format!("{scenario_id}_{:.0}_{:.0}", config.sampling_freq_hz, cn0_db_hz),

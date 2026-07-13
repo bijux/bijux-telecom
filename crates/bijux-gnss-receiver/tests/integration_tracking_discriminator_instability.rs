@@ -93,7 +93,7 @@ fn tracking_reports_discriminator_instability_before_phase_slip() {
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz: PRELOCK_CN0_DBHZ,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         },
         &phase_windows,
         0xD15C_A110,

@@ -37,7 +37,7 @@ fn acquisition_refinement_improves_fractional_code_phase_initialization() {
                 code_phase_chips,
                 carrier_phase_rad: 0.0,
                 cn0_db_hz: 65.0,
-                data_bit_flip: false,
+                navigation_data: false.into(),
             }],
             ephemerides: Vec::new(),
             id: "acquisition_code_phase_refinement_fractional_rate".to_string(),

@@ -75,7 +75,7 @@ fn track_clean_signal(
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.30,
             cn0_db_hz: CLEAN_TRACKING_CN0_DBHZ,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         },
         0x6D6F_4450,
         0.020,

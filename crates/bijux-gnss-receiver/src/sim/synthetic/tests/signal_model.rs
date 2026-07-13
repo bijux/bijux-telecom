@@ -16,9 +16,9 @@ fn synthetic_epoch_start_phase_matches_theoretical_phase_after_sixty_seconds() {
         code_phase_chips: 200.375,
         carrier_phase_rad: 0.0,
         cn0_db_hz: 58.0,
-        data_bit_flip: false,
+        navigation_data: false.into(),
     };
-    let sat_state = SatState::new_with_receiver_clock_frequency_bias_hz(&config, params, 0.0);
+    let sat_state = SatState::new_with_receiver_clock_frequency_bias_hz(&config, params.clone(), 0.0);
     let code_period_samples =
         samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
     let sixty_second_sample_index = (60.0 * config.sampling_freq_hz) as u64;
@@ -82,9 +82,9 @@ fn galileo_e1_signal_only_matches_cboc_reference_samples() {
         code_phase_chips: 0.0,
         carrier_phase_rad: 0.0,
         cn0_db_hz: 58.0,
-        data_bit_flip: false,
+        navigation_data: false.into(),
     };
-    let frame = super::generate_l1_ca_signal_only(&config, params, 20.0 / config.sampling_freq_hz);
+    let frame = super::generate_l1_ca_signal_only(&config, params.clone(), 20.0 / config.sampling_freq_hz);
     let expected = bijux_gnss_signal::api::sample_galileo_e1_cboc(
         params.sat.prn,
         config.sampling_freq_hz,
@@ -129,12 +129,12 @@ fn galileo_e1_secondary_code_advances_each_primary_period() {
         code_phase_chips: 0.0,
         carrier_phase_rad: 0.0,
         cn0_db_hz: 58.0,
-        data_bit_flip: false,
+        navigation_data: false.into(),
     };
     let period_samples = (config.sampling_freq_hz * 0.004).round() as usize;
     let frame = super::generate_l1_ca_signal_only(
         &config,
-        params,
+        params.clone(),
         2.0 * period_samples as f64 / config.sampling_freq_hz,
     );
     let amplitude = signal_amplitude_from_cn0(params.cn0_db_hz, config.sampling_freq_hz);
@@ -180,9 +180,9 @@ fn beidou_b1i_signal_only_matches_reference_samples() {
         code_phase_chips: 0.25,
         carrier_phase_rad: 0.0,
         cn0_db_hz: 58.0,
-        data_bit_flip: false,
+        navigation_data: false.into(),
     };
-    let frame = super::generate_l1_ca_signal_only(&config, params, 20.0 / config.sampling_freq_hz);
+    let frame = super::generate_l1_ca_signal_only(&config, params.clone(), 20.0 / config.sampling_freq_hz);
     let expected = bijux_gnss_signal::api::sample_beidou_b1i_code(
         params.sat.prn,
         config.sampling_freq_hz,
@@ -226,9 +226,9 @@ fn beidou_b1i_signal_only_applies_d1_epoch_modulation() {
         code_phase_chips: 0.0,
         carrier_phase_rad: 0.0,
         cn0_db_hz: 58.0,
-        data_bit_flip: false,
+        navigation_data: false.into(),
     };
-    let frame = super::generate_l1_ca_signal_only(&config, params, 0.021);
+    let frame = super::generate_l1_ca_signal_only(&config, params.clone(), 0.021);
     let first_chip = bijux_gnss_signal::api::sample_beidou_b1i_code(
         params.sat.prn,
         config.sampling_freq_hz,
@@ -271,9 +271,9 @@ fn beidou_b2i_signal_only_applies_d1_epoch_modulation() {
         code_phase_chips: 0.0,
         carrier_phase_rad: 0.0,
         cn0_db_hz: 58.0,
-        data_bit_flip: false,
+        navigation_data: false.into(),
     };
-    let frame = super::generate_l1_ca_signal_only(&config, params, 0.021);
+    let frame = super::generate_l1_ca_signal_only(&config, params.clone(), 0.021);
     let first_chip = bijux_gnss_signal::api::sample_beidou_b2i_code(
         params.sat.prn,
         config.sampling_freq_hz,
@@ -318,9 +318,9 @@ fn glonass_l1_signal_only_matches_reference_samples() {
         code_phase_chips: 0.0,
         carrier_phase_rad: 0.0,
         cn0_db_hz: 58.0,
-        data_bit_flip: false,
+        navigation_data: false.into(),
     };
-    let frame = super::generate_l1_ca_signal_only(&config, params, 20.0 / config.sampling_freq_hz);
+    let frame = super::generate_l1_ca_signal_only(&config, params.clone(), 20.0 / config.sampling_freq_hz);
     let expected =
         bijux_gnss_signal::api::sample_glonass_l1_st_code(config.sampling_freq_hz, 0.0, 20)
             .expect("valid GLONASS L1 reference samples");
@@ -458,7 +458,7 @@ fn truth_bundle_records_constant_and_alternating_nav_bit_truth() {
                 code_phase_chips: 200.0,
                 carrier_phase_rad: 0.0,
                 cn0_db_hz: 50.0,
-                data_bit_flip: false,
+                navigation_data: false.into(),
             },
             SyntheticSignalParams {
                 sat: SatId { constellation: Constellation::Gps, prn: 7 },
@@ -469,7 +469,7 @@ fn truth_bundle_records_constant_and_alternating_nav_bit_truth() {
                 code_phase_chips: 321.0,
                 carrier_phase_rad: 0.2,
                 cn0_db_hz: 45.0,
-                data_bit_flip: true,
+                navigation_data: true.into(),
             },
         ],
         ephemerides: Vec::new(),
@@ -488,7 +488,7 @@ fn truth_bundle_records_constant_and_alternating_nav_bit_truth() {
 
     let truth = build_truth_bundle(&scenario.id, &scenario, &frame, &metadata, 1.25, 0.8);
 
-    assert_eq!(truth.schema_version, 4);
+    assert_eq!(truth.schema_version, 5);
     assert_eq!(truth.scenario_id, "truth-bundle");
     assert_eq!(truth.seed, 44);
     assert_eq!(truth.sample_format, IqSampleFormat::Iq16Le);
@@ -507,6 +507,10 @@ fn truth_bundle_records_constant_and_alternating_nav_bit_truth() {
         signal_amplitude_from_cn0(constant.cn0_db_hz, truth.sample_rate_hz)
     );
     assert_eq!(constant.glonass_frequency_channel, None);
+    assert_eq!(
+        constant.navigation_data,
+        super::SyntheticNavigationData::ConstantPositive
+    );
     assert_eq!(constant.nav_bit_mode, SyntheticNavBitMode::ConstantPositive);
     assert_eq!(constant.nav_bit_segments.len(), 1);
     assert_eq!(constant.nav_bit_segments[0].start_sample, 0);
@@ -520,6 +524,10 @@ fn truth_bundle_records_constant_and_alternating_nav_bit_truth() {
     );
     assert!(constant.signal_amplitude > alternating.signal_amplitude);
     assert_eq!(alternating.glonass_frequency_channel, None);
+    assert_eq!(
+        alternating.navigation_data,
+        super::SyntheticNavigationData::AlternatingStartPositive
+    );
     assert_eq!(alternating.nav_bit_mode, SyntheticNavBitMode::AlternatingGpsLnav20ms);
     assert_eq!(alternating.nav_bit_segments.len(), 3);
     assert_eq!(alternating.nav_bit_segments[0].start_sample, 0);
@@ -559,7 +567,7 @@ fn truth_bundle_preserves_glonass_frequency_channel_metadata() {
             code_phase_chips: 10.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz: 48.0,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         }],
         ephemerides: Vec::new(),
         id: "glonass-truth".to_string(),
@@ -577,7 +585,7 @@ fn truth_bundle_preserves_glonass_frequency_channel_metadata() {
 
     let truth = build_truth_bundle(&scenario.id, &scenario, &frame, &metadata, 1.0, 0.75);
 
-    assert_eq!(truth.schema_version, 4);
+    assert_eq!(truth.schema_version, 5);
     assert_eq!(truth.satellites.len(), 1);
     assert_eq!(truth.satellites[0].sat, scenario.satellites[0].sat);
     assert_eq!(truth.satellites[0].glonass_frequency_channel, Some(channel));
@@ -607,7 +615,7 @@ fn truth_bundle_records_gps_l5q_nh20_segments() {
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz: 60.0,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         }],
         ephemerides: Vec::new(),
         id: "gps-l5q-truth-bundle".to_string(),
@@ -669,7 +677,7 @@ fn truth_bundle_records_gps_l5i_native_epoch_segments_with_fixed_data() {
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz: 60.0,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         }],
         ephemerides: Vec::new(),
         id: "gps-l5i-truth-bundle".to_string(),
@@ -728,7 +736,7 @@ fn truth_bundle_records_galileo_e5a_native_epoch_segments_with_fixed_data() {
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz: 60.0,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         }],
         ephemerides: Vec::new(),
         id: "galileo-e5a-truth-bundle".to_string(),
@@ -788,7 +796,7 @@ fn truth_bundle_records_beidou_b1i_d1_epoch_segments() {
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz: 58.0,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         }],
         ephemerides: Vec::new(),
         id: "beidou-b1i-truth-bundle".to_string(),
@@ -848,7 +856,7 @@ fn truth_bundle_records_beidou_b2i_d1_epoch_segments() {
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz: 58.0,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         }],
         ephemerides: Vec::new(),
         id: "beidou-b2i-truth-bundle".to_string(),
@@ -884,6 +892,150 @@ fn truth_bundle_records_beidou_b2i_d1_epoch_segments() {
 }
 
 #[test]
+fn synthetic_scenario_parses_legacy_data_bit_flip_field() {
+    let scenario: SyntheticScenario = toml::from_str(
+        r#"
+id = "legacy-data-bit-flip"
+sample_rate_hz = 4092000.0
+intermediate_freq_hz = 0.0
+duration_s = 0.02
+seed = 17
+
+[[satellites]]
+sat = { constellation = "Gps", prn = 3 }
+doppler_hz = 0.0
+code_phase_chips = 0.0
+carrier_phase_rad = 0.0
+cn0_db_hz = 45.0
+data_bit_flip = true
+"#,
+    )
+    .expect("legacy scenario must deserialize");
+
+    assert_eq!(scenario.satellites.len(), 1);
+    assert_eq!(
+        scenario.satellites[0].navigation_data,
+        super::SyntheticNavigationData::AlternatingStartPositive
+    );
+}
+
+#[test]
+fn truth_bundle_records_gps_l2c_symbol_sequence_boundaries() {
+    let config = ReceiverPipelineConfig {
+        sampling_freq_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 1_023_000.0,
+        code_length: 1023,
+        ..ReceiverPipelineConfig::default()
+    };
+    let navigation_data = super::SyntheticNavigationData::SymbolSequence(vec![-1, 1, 1]);
+    let scenario = SyntheticScenario {
+        sample_rate_hz: config.sampling_freq_hz,
+        intermediate_freq_hz: config.intermediate_freq_hz,
+        receiver_clock_frequency_bias_hz: 0.0,
+        duration_s: 0.050,
+        seed: 912,
+        satellites: vec![SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Gps, prn: 5 },
+            glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::L2,
+            signal_code: bijux_gnss_core::api::SignalCode::L2C,
+            doppler_hz: 0.0,
+            code_phase_chips: 0.0,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 52.0,
+            navigation_data: navigation_data.clone(),
+        }],
+        ephemerides: Vec::new(),
+        id: "gps-l2c-symbol-sequence".to_string(),
+    };
+    let frame = generate_l1_ca_multi(&config, &scenario);
+    let metadata = RawIqMetadata {
+        format: IqSampleFormat::Iq16Le,
+        sample_rate_hz: config.sampling_freq_hz,
+        intermediate_freq_hz: config.intermediate_freq_hz,
+        capture_start_utc: "2026-07-13T00:00:00Z".to_string(),
+        offset_bytes: 0,
+        quantization_bits: Some(16),
+        notes: Some("gps l2c symbol sequence".to_string()),
+    };
+
+    let truth = build_truth_bundle(&scenario.id, &scenario, &frame, &metadata, 1.0, 1.0);
+    let satellite = &truth.satellites[0];
+
+    assert_eq!(satellite.navigation_data, navigation_data);
+    assert_eq!(satellite.nav_bit_mode, SyntheticNavBitMode::NativeSymbolSequence);
+    assert_eq!(satellite.nav_bit_segments.len(), 3);
+    assert_eq!(satellite.nav_bit_segments[0].start_sample, 0);
+    assert_eq!(satellite.nav_bit_segments[0].end_sample, 81_840);
+    assert_eq!(satellite.nav_bit_segments[0].bit, -1);
+    assert_eq!(satellite.nav_bit_segments[1].start_sample, 81_840);
+    assert_eq!(satellite.nav_bit_segments[1].end_sample, 163_680);
+    assert_eq!(satellite.nav_bit_segments[1].bit, 1);
+    assert_eq!(satellite.nav_bit_segments[2].start_sample, 163_680);
+    assert_eq!(satellite.nav_bit_segments[2].end_sample, frame.len() as u64);
+    assert_eq!(satellite.nav_bit_segments[2].bit, 1);
+}
+
+#[test]
+fn truth_bundle_records_galileo_e1_symbol_sequence_boundaries() {
+    let config = ReceiverPipelineConfig {
+        sampling_freq_hz: 4_092_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 1_023_000.0,
+        code_length: 4092,
+        ..ReceiverPipelineConfig::default()
+    };
+    let navigation_data = super::SyntheticNavigationData::SymbolSequence(vec![-1, 1, 1]);
+    let scenario = SyntheticScenario {
+        sample_rate_hz: config.sampling_freq_hz,
+        intermediate_freq_hz: config.intermediate_freq_hz,
+        receiver_clock_frequency_bias_hz: 0.0,
+        duration_s: 0.010,
+        seed: 913,
+        satellites: vec![SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Galileo, prn: 11 },
+            glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::E1,
+            signal_code: bijux_gnss_core::api::SignalCode::E1B,
+            doppler_hz: 0.0,
+            code_phase_chips: 0.0,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: 52.0,
+            navigation_data: navigation_data.clone(),
+        }],
+        ephemerides: Vec::new(),
+        id: "galileo-e1-symbol-sequence".to_string(),
+    };
+    let frame = generate_l1_ca_multi(&config, &scenario);
+    let metadata = RawIqMetadata {
+        format: IqSampleFormat::Iq16Le,
+        sample_rate_hz: config.sampling_freq_hz,
+        intermediate_freq_hz: config.intermediate_freq_hz,
+        capture_start_utc: "2026-07-13T00:00:00Z".to_string(),
+        offset_bytes: 0,
+        quantization_bits: Some(16),
+        notes: Some("galileo e1 symbol sequence".to_string()),
+    };
+
+    let truth = build_truth_bundle(&scenario.id, &scenario, &frame, &metadata, 1.0, 1.0);
+    let satellite = &truth.satellites[0];
+
+    assert_eq!(satellite.navigation_data, navigation_data);
+    assert_eq!(satellite.nav_bit_mode, SyntheticNavBitMode::NativeSymbolSequence);
+    assert_eq!(satellite.nav_bit_segments.len(), 3);
+    assert_eq!(satellite.nav_bit_segments[0].start_sample, 0);
+    assert_eq!(satellite.nav_bit_segments[0].end_sample, 16_368);
+    assert_eq!(satellite.nav_bit_segments[0].bit, -1);
+    assert_eq!(satellite.nav_bit_segments[1].start_sample, 16_368);
+    assert_eq!(satellite.nav_bit_segments[1].end_sample, 32_736);
+    assert_eq!(satellite.nav_bit_segments[1].bit, 1);
+    assert_eq!(satellite.nav_bit_segments[2].start_sample, 32_736);
+    assert_eq!(satellite.nav_bit_segments[2].end_sample, frame.len() as u64);
+    assert_eq!(satellite.nav_bit_segments[2].bit, 1);
+}
+
+#[test]
 fn glonass_frequency_channel_offsets_synthetic_intermediate_frequency() {
     let config = ReceiverPipelineConfig {
         sampling_freq_hz: 4_000_000.0,
@@ -907,7 +1059,7 @@ fn glonass_frequency_channel_offsets_synthetic_intermediate_frequency() {
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz: 48.0,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         },
         0.0,
     );
@@ -922,7 +1074,7 @@ fn glonass_frequency_channel_offsets_synthetic_intermediate_frequency() {
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz: 48.0,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         },
         0.0,
     );
@@ -955,10 +1107,10 @@ fn receiver_clock_frequency_bias_shifts_synthetic_carrier_phase_increment() {
         code_phase_chips: 0.0,
         carrier_phase_rad: 0.0,
         cn0_db_hz: 60.0,
-        data_bit_flip: false,
+        navigation_data: false.into(),
     };
-    let unbiased = SatState::new_with_receiver_clock_frequency_bias_hz(&config, params, 0.0);
-    let biased = SatState::new_with_receiver_clock_frequency_bias_hz(&config, params, 500.0);
+    let unbiased = SatState::new_with_receiver_clock_frequency_bias_hz(&config, params.clone(), 0.0);
+    let biased = SatState::new_with_receiver_clock_frequency_bias_hz(&config, params.clone(), 500.0);
     let sample_dt_s = 1.0 / config.sampling_freq_hz;
     let unbiased_phase_step =
         phase_step_rad(unbiased.sample_at(0.0), unbiased.sample_at(sample_dt_s));
@@ -990,9 +1142,9 @@ fn synthetic_fade_windows_zero_signal_inside_the_requested_interval() {
         code_phase_chips: 0.0,
         carrier_phase_rad: 0.0,
         cn0_db_hz: 60.0,
-        data_bit_flip: false,
+        navigation_data: false.into(),
     };
-    let mut signal_only = super::generate_l1_ca_signal_only(&config, params, 0.010);
+    let mut signal_only = super::generate_l1_ca_signal_only(&config, params.clone(), 0.010);
     super::apply_synthetic_fade_windows(
         &mut signal_only,
         &[SyntheticFadeWindow { start_s: 0.002, end_s: 0.004, signal_scale: 0.0 }],
@@ -1032,9 +1184,9 @@ fn synthetic_fade_generator_preserves_noise_outside_the_attenuated_signal_window
         code_phase_chips: 0.0,
         carrier_phase_rad: 0.0,
         cn0_db_hz: 60.0,
-        data_bit_flip: false,
+        navigation_data: false.into(),
     };
-    let baseline = generate_l1_ca(&config, params, 0xFADE_0001, 0.010);
+    let baseline = generate_l1_ca(&config, params.clone(), 0xFADE_0001, 0.010);
     let faded = generate_l1_ca_with_fades(
         &config,
         params,
@@ -1071,9 +1223,9 @@ fn synthetic_phase_window_rotates_signal_only_inside_configured_window() {
         code_phase_chips: 0.0,
         carrier_phase_rad: 0.0,
         cn0_db_hz: 60.0,
-        data_bit_flip: false,
+        navigation_data: false.into(),
     };
-    let mut signal_only = super::generate_l1_ca_signal_only(&config, params, 0.010);
+    let mut signal_only = super::generate_l1_ca_signal_only(&config, params.clone(), 0.010);
     super::apply_synthetic_phase_windows(
         &mut signal_only,
         &[SyntheticPhaseWindow {
@@ -1111,9 +1263,9 @@ fn synthetic_phase_generator_preserves_noise_outside_the_rotated_window() {
         code_phase_chips: 0.0,
         carrier_phase_rad: 0.0,
         cn0_db_hz: 60.0,
-        data_bit_flip: false,
+        navigation_data: false.into(),
     };
-    let baseline = generate_l1_ca(&config, params, 0xFACE_0001, 0.010);
+    let baseline = generate_l1_ca(&config, params.clone(), 0xFACE_0001, 0.010);
     let rotated = generate_l1_ca_with_phase_windows(
         &config,
         params,
@@ -1152,12 +1304,12 @@ fn zero_doppler_rate_matches_constant_synthetic_generator() {
         code_phase_chips: 144.375,
         carrier_phase_rad: 0.15,
         cn0_db_hz: 58.0,
-        data_bit_flip: false,
+        navigation_data: false.into(),
     };
-    let baseline = generate_l1_ca(&config, params, 0xD0A0_0001, 0.020);
+    let baseline = generate_l1_ca(&config, params.clone(), 0xD0A0_0001, 0.020);
     let ramped = generate_l1_ca_with_doppler_ramp(
         &config,
-        SyntheticDopplerRampParams { signal: params, doppler_rate_hz_per_s: 0.0 },
+        SyntheticDopplerRampParams { signal: params.clone(), doppler_rate_hz_per_s: 0.0 },
         0xD0A0_0001,
         0.020,
     );
@@ -1191,7 +1343,7 @@ fn doppler_ramp_updates_instantaneous_carrier_frequency_linearly() {
         code_phase_chips: 0.0,
         carrier_phase_rad: 0.0,
         cn0_db_hz: 60.0,
-        data_bit_flip: false,
+        navigation_data: false.into(),
     };
     let sat_state = SatState::new_with_doppler_rate_and_receiver_clock_frequency_bias_hz(
         &config, params, 150.0, 40.0,
@@ -1220,7 +1372,7 @@ fn doppler_ramp_integrates_into_carrier_phase_quadratically() {
         code_phase_chips: 0.0,
         carrier_phase_rad: 0.35,
         cn0_db_hz: 60.0,
-        data_bit_flip: false,
+        navigation_data: false.into(),
     };
     let sat_state = SatState::new_with_doppler_rate_and_receiver_clock_frequency_bias_hz(
         &config, params, 100.0, -25.0,
@@ -1278,7 +1430,7 @@ fn iq16_capture_bundle_scales_without_clipping_and_preserves_truth() {
                 code_phase_chips: 200.0,
                 carrier_phase_rad: 0.0,
                 cn0_db_hz: 58.0,
-                data_bit_flip: true,
+                navigation_data: true.into(),
             },
             SyntheticSignalParams {
                 sat: SatId { constellation: Constellation::Gps, prn: 7 },
@@ -1289,7 +1441,7 @@ fn iq16_capture_bundle_scales_without_clipping_and_preserves_truth() {
                 code_phase_chips: 321.0,
                 carrier_phase_rad: 0.2,
                 cn0_db_hz: 56.0,
-                data_bit_flip: false,
+                navigation_data: false.into(),
             },
         ],
         ephemerides: Vec::new(),

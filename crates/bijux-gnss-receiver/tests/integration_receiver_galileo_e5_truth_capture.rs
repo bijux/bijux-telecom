@@ -43,7 +43,7 @@ fn galileo_e5_truth_capture_fixture(
             code_phase_chips: 2_048.25,
             carrier_phase_rad: 0.4,
             cn0_db_hz: 60.0,
-            data_bit_flip,
+            navigation_data: data_bit_flip.into(),
         }],
         ephemerides: Vec::new(),
         id: scenario_id.to_string(),

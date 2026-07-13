@@ -40,7 +40,7 @@ fn acquisition_recovers_positive_and_negative_doppler_sign_at_zero_if() {
                 code_phase_chips: 321.0,
                 carrier_phase_rad: 0.5,
                 cn0_db_hz: 60.0,
-                data_bit_flip: false,
+                navigation_data: false.into(),
             },
             0xD077E200 + doppler_hz.abs() as u64,
             COHERENT_MS as f64 * samples_per_code as f64 / config.sampling_freq_hz,

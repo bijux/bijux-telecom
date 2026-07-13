@@ -69,7 +69,7 @@ pub fn multisatellite_pvt_scenario(
             code_phase_chips: encode_code_phase_chips(pseudorange_chips, pseudorange_epoch_base),
             carrier_phase_rad: 0.0,
             cn0_db_hz: 52.0,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         })
         .collect();
 
@@ -253,7 +253,7 @@ mod tests {
                 code_phase_chips: 123.5,
                 carrier_phase_rad: 0.0,
                 cn0_db_hz: 45.0,
-                data_bit_flip: false,
+                navigation_data: false.into(),
             }],
             ephemerides: Vec::new(),
             id: "truth-seed-scaling".to_string(),

@@ -39,7 +39,7 @@ fn galileo_e5_scenario(sat: SatId, signal_code: SignalCode, data_bit_flip: bool)
             code_phase_chips: 2_048.375,
             carrier_phase_rad: 0.25,
             cn0_db_hz: 60.0,
-            data_bit_flip,
+            navigation_data: data_bit_flip.into(),
         }],
         ephemerides: Vec::new(),
         id: "receiver-galileo-e5-support".to_string(),

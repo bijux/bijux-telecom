@@ -116,7 +116,7 @@ fn tracking_lock_rate_case(cn0_db_hz: f32) -> SyntheticTrackingLockRateCase {
             code_phase_chips: 211.25,
             carrier_phase_rad: 0.40,
             cn0_db_hz,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         },
         duration_s: LOW_CN0_TRACKING_DURATION_S,
         seeded_doppler_error_hz: LOW_CN0_SEEDED_DOPPLER_ERROR_HZ,
@@ -175,7 +175,7 @@ fn accepted_acquisition(
 fn tracking_session_reports_refused_channel_state_below_cn0_floor() {
     let config = low_cn0_tracking_profile();
     let case = tracking_lock_rate_case(24.0);
-    let frame = generate_l1_ca(&config, case.signal, 0x2407_19A3, case.duration_s);
+    let frame = generate_l1_ca(&config, case.signal.clone(), 0x2407_19A3, case.duration_s);
     let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
     let mut session = tracking.begin_tracking_session(&[accepted_acquisition(
         &config,

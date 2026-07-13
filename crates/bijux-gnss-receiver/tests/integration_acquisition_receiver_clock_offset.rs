@@ -37,7 +37,7 @@ fn acquisition_reports_consistent_receiver_clock_offset_across_satellites() {
                 code_phase_chips: 200.25,
                 carrier_phase_rad: 0.0,
                 cn0_db_hz: 58.0,
-                data_bit_flip: true,
+                navigation_data: true.into(),
             },
             SyntheticSignalParams {
                 sat: SatId { constellation: Constellation::Gps, prn: 7 },
@@ -48,7 +48,7 @@ fn acquisition_reports_consistent_receiver_clock_offset_across_satellites() {
                 code_phase_chips: 321.5,
                 carrier_phase_rad: 0.2,
                 cn0_db_hz: 52.0,
-                data_bit_flip: false,
+                navigation_data: false.into(),
             },
         ],
         ephemerides: Vec::new(),

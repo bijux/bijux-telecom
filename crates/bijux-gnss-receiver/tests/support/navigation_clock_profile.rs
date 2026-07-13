@@ -462,7 +462,7 @@ fn satellite_signal_seed(sat: SatId) -> SyntheticSignalParams {
         code_phase_chips: 0.0,
         carrier_phase_rad: 0.0,
         cn0_db_hz: 52.0,
-        data_bit_flip: false,
+        navigation_data: false.into(),
     }
 }
 

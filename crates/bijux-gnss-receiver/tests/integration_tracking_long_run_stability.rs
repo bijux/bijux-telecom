@@ -69,7 +69,7 @@ fn long_run_tracking_scenario(config: &ReceiverPipelineConfig) -> SyntheticScena
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz: 60.0,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         }],
         ephemerides: Vec::new(),
         id: "tracking-long-run-stability".to_string(),

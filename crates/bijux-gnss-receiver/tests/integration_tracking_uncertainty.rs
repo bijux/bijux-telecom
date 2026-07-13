@@ -122,7 +122,7 @@ fn track_uncertainty_case_with_duration(
             code_phase_chips: 211.25,
             carrier_phase_rad: 0.2,
             cn0_db_hz,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         }],
         ephemerides: Vec::new(),
         id: format!("tracking_uncertainty_{cn0_db_hz:.0}"),

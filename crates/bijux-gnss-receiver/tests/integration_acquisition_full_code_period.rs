@@ -44,7 +44,7 @@ fn acquisition_searches_first_and_last_code_phase_bins_at_configured_sample_rate
                     ),
                     carrier_phase_rad: 0.0,
                     cn0_db_hz: 60.0,
-                    data_bit_flip: false,
+                    navigation_data: false.into(),
                 },
                 0xC0DE_7000 + expected_code_phase_sample as u64,
                 samples_per_code as f64 / config.sampling_freq_hz,

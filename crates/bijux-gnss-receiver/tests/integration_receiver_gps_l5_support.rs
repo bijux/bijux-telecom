@@ -39,7 +39,7 @@ fn gps_l5_scenario(sat: SatId, signal_code: SignalCode, scenario_id: &str) -> Sy
             code_phase_chips: 2_048.375,
             carrier_phase_rad: 0.25,
             cn0_db_hz: 60.0,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         }],
         ephemerides: Vec::new(),
         id: scenario_id.to_string(),

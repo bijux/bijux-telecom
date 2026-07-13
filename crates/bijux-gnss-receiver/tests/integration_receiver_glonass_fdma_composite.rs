@@ -52,7 +52,7 @@ fn glonass_composite_scenario(
                 code_phase_chips: 147.25,
                 carrier_phase_rad: 0.1,
                 cn0_db_hz: 60.0,
-                data_bit_flip: true,
+                navigation_data: true.into(),
             },
             SyntheticSignalParams {
                 sat: upper_sat,
@@ -63,7 +63,7 @@ fn glonass_composite_scenario(
                 code_phase_chips: 311.5,
                 carrier_phase_rad: -0.2,
                 cn0_db_hz: 59.0,
-                data_bit_flip: false,
+                navigation_data: false.into(),
             },
         ],
         ephemerides: Vec::new(),

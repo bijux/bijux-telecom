@@ -80,7 +80,7 @@ fn tracking_reacquires_after_bounded_signal_interruption() {
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz: REACQUISITION_PRELOCK_CN0_DBHZ,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         },
         &[SyntheticFadeWindow {
             start_s: interruption_start_s,
@@ -151,7 +151,7 @@ fn tracking_reports_failed_reacquisition_when_signal_does_not_return() {
             code_phase_chips: 0.0,
             carrier_phase_rad: 0.0,
             cn0_db_hz: REACQUISITION_PRELOCK_CN0_DBHZ,
-            data_bit_flip: false,
+            navigation_data: false.into(),
         },
         &[SyntheticFadeWindow { start_s: interruption_start_s, end_s: 0.300, signal_scale: 0.0 }],
         0x51AC_0002,

@@ -205,7 +205,7 @@ fn competing_signal(
         code_phase_chips,
         carrier_phase_rad: 0.0,
         cn0_db_hz,
-        data_bit_flip: false,
+        navigation_data: false.into(),
     }
 }
 
