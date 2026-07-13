@@ -122,6 +122,7 @@ pub struct SyntheticSignalSource {
     next_sample_index: u64,
     noise_std: f32,
     sat_states: Vec<SatState>,
+    gps_ephemerides: Vec<GpsEphemeris>,
     rng: XorShift64,
 }
 
@@ -285,8 +286,14 @@ impl SyntheticSignalSource {
                     )
                 })
                 .collect(),
+            gps_ephemerides: scenario.ephemerides.clone(),
             rng: XorShift64::new(scenario.seed),
         }
+    }
+
+    /// Broadcast ephemerides carried alongside this synthetic source.
+    pub fn gps_ephemerides(&self) -> &[GpsEphemeris] {
+        &self.gps_ephemerides
     }
 }
 
