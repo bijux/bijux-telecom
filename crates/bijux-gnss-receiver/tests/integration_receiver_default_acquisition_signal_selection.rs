@@ -114,3 +114,46 @@ fn receiver_default_acquisition_planning_finds_gps_l5q_on_raw_source() {
         "{tracking:?}"
     );
 }
+
+#[test]
+fn receiver_default_acquisition_planning_finds_galileo_e5b_on_raw_source() {
+    let config = wideband_config();
+    let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+    let scenario = wideband_signal_scenario(
+        sat,
+        SignalBand::E5,
+        SignalCode::E5b,
+        "receiver-default-galileo-e5b-raw-source",
+    );
+    let mut source = render_memory_samples(&config, &scenario);
+    let receiver = Receiver::new(config, ReceiverRuntime::default());
+
+    let artifacts = receiver.run(&mut source).expect("receiver run");
+    let sat_acquisitions = artifacts
+        .acquisitions
+        .iter()
+        .filter(|result| result.sat == sat && result.signal_band == SignalBand::E5)
+        .collect::<Vec<_>>();
+    assert!(
+        sat_acquisitions.iter().any(|result| result.signal_code == SignalCode::E5a),
+        "{sat_acquisitions:#?}"
+    );
+    let e5b = sat_acquisitions
+        .iter()
+        .find(|result| result.signal_code == SignalCode::E5b)
+        .expect("Galileo E5b acquisition result");
+    assert!(
+        matches!(e5b.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous),
+        "{e5b:?}"
+    );
+
+    let tracking = artifacts
+        .tracking
+        .iter()
+        .find(|result| result.sat == sat)
+        .expect("Galileo E5b tracking result");
+    assert!(
+        tracking.epochs.iter().all(|epoch| epoch.signal_code == SignalCode::E5b),
+        "{tracking:?}"
+    );
+}
