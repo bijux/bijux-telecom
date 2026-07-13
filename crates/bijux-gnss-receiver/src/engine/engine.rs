@@ -5,8 +5,8 @@ use crate::api::{Receiver, ReceiverEngine, RunArtifacts};
 use crate::engine::metrics::write_metrics_summary;
 use crate::engine::runtime::{Metric, TraceRecord};
 use crate::engine::signal_selection::{
-    acquisition_constellation_matches_config, default_signal_code_for_band,
-    resolved_acquisition_signal_band,
+    acquisition_constellation_matches_config, resolved_acquisition_signal_band,
+    resolved_acquisition_signals,
 };
 use crate::engine::support_matrix::build_support_matrix;
 use crate::pipeline::observations::{
@@ -709,18 +709,19 @@ fn default_acquisition_requests(
             {
                 crate::engine::acquisition_catalog::default_acquisition_satellites(constellation)
                     .into_iter()
-                    .map(|sat| AcqRequest {
-                        sat,
-                        glonass_frequency_channel: None,
-                        signal_band: resolved_acquisition_signal_band(config, sat),
-                        signal_code: default_signal_code_for_band(
-                            sat.constellation,
-                            resolved_acquisition_signal_band(config, sat),
-                        ),
-                        doppler_search_hz: config.acquisition_doppler_search_hz,
-                        doppler_step_hz: config.acquisition_doppler_step_hz.max(1),
-                        coherent_ms: config.acquisition_integration_ms,
-                        noncoherent: config.acquisition_noncoherent,
+                    .flat_map(|sat| {
+                        resolved_acquisition_signals(config, sat).into_iter().map(move |signal| {
+                            AcqRequest {
+                                sat,
+                                glonass_frequency_channel: None,
+                                signal_band: signal.signal_band,
+                                signal_code: signal.signal_code,
+                                doppler_search_hz: config.acquisition_doppler_search_hz,
+                                doppler_step_hz: config.acquisition_doppler_step_hz.max(1),
+                                coherent_ms: config.acquisition_integration_ms,
+                                noncoherent: config.acquisition_noncoherent,
+                            }
+                        })
                     })
                     .collect::<Vec<_>>()
             } else {
@@ -767,18 +768,17 @@ fn acquisition_requests_for_satellites(
     satellites
         .iter()
         .copied()
-        .map(|sat| AcqRequest {
-            sat,
-            glonass_frequency_channel: None,
-            signal_band: resolved_acquisition_signal_band(config, sat),
-            signal_code: default_signal_code_for_band(
-                sat.constellation,
-                resolved_acquisition_signal_band(config, sat),
-            ),
-            doppler_search_hz: config.acquisition_doppler_search_hz,
-            doppler_step_hz: config.acquisition_doppler_step_hz.max(1),
-            coherent_ms: config.acquisition_integration_ms,
-            noncoherent: config.acquisition_noncoherent,
+        .flat_map(|sat| {
+            resolved_acquisition_signals(config, sat).into_iter().map(move |signal| AcqRequest {
+                sat,
+                glonass_frequency_channel: None,
+                signal_band: signal.signal_band,
+                signal_code: signal.signal_code,
+                doppler_search_hz: config.acquisition_doppler_search_hz,
+                doppler_step_hz: config.acquisition_doppler_step_hz.max(1),
+                coherent_ms: config.acquisition_integration_ms,
+                noncoherent: config.acquisition_noncoherent,
+            })
         })
         .collect()
 }
@@ -911,7 +911,7 @@ mod tests {
         filter_acquisition_requests,
     };
     use crate::engine::receiver_config::{ConstellationSelectionPolicy, ReceiverPipelineConfig};
-    use bijux_gnss_core::api::{Constellation, SatId, SignalBand};
+    use bijux_gnss_core::api::{Constellation, SatId, SignalBand, SignalCode};
 
     #[test]
     fn default_acquisition_requests_honor_galileo_only_policy() {
@@ -956,10 +956,22 @@ mod tests {
         assert!(!requests.is_empty());
         assert!(requests.iter().all(|request| {
             matches!(
-                (request.sat.constellation, request.signal_band),
-                (Constellation::Gps, SignalBand::L5)
-                    | (Constellation::Galileo, SignalBand::E5)
+                (request.sat.constellation, request.signal_band, request.signal_code),
+                (Constellation::Gps, SignalBand::L5, SignalCode::L5I)
+                    | (Constellation::Gps, SignalBand::L5, SignalCode::L5Q)
+                    | (Constellation::Galileo, SignalBand::E5, SignalCode::E5a)
+                    | (Constellation::Galileo, SignalBand::E5, SignalCode::E5b)
             )
+        }));
+        assert!(requests.iter().any(|request| {
+            request.sat.constellation == Constellation::Gps
+                && request.signal_band == SignalBand::L5
+                && request.signal_code == SignalCode::L5Q
+        }));
+        assert!(requests.iter().any(|request| {
+            request.sat.constellation == Constellation::Galileo
+                && request.signal_band == SignalBand::E5
+                && request.signal_code == SignalCode::E5b
         }));
     }
 
@@ -1058,12 +1070,47 @@ mod tests {
 
         assert_eq!(requests.len(), satellites.len());
         for (request, sat) in requests.iter().zip(satellites) {
-            assert_eq!(request.sat, sat);
             assert_eq!(request.glonass_frequency_channel, None);
+            assert_eq!(request.sat, sat);
             assert_eq!(request.doppler_search_hz, 4_500);
             assert_eq!(request.doppler_step_hz, 375);
             assert_eq!(request.coherent_ms, 4);
             assert_eq!(request.noncoherent, 3);
         }
+    }
+
+    #[test]
+    fn explicit_satellite_requests_expand_matching_wideband_signal_codes() {
+        let config = ReceiverPipelineConfig {
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            acquisition_doppler_search_hz: 4_500,
+            acquisition_doppler_step_hz: 375,
+            acquisition_integration_ms: 1,
+            acquisition_noncoherent: 1,
+            ..ReceiverPipelineConfig::default()
+        };
+        let satellites = vec![
+            SatId { constellation: Constellation::Gps, prn: 7 },
+            SatId { constellation: Constellation::Galileo, prn: 11 },
+        ];
+
+        let requests = acquisition_requests_for_satellites(&config, &satellites);
+
+        assert_eq!(requests.len(), 4);
+        assert_eq!(
+            requests
+                .iter()
+                .map(|request| (request.sat.constellation, request.signal_band, request.signal_code))
+                .collect::<Vec<_>>(),
+            vec![
+                (Constellation::Gps, SignalBand::L5, SignalCode::L5I),
+                (Constellation::Gps, SignalBand::L5, SignalCode::L5Q),
+                (Constellation::Galileo, SignalBand::E5, SignalCode::E5a),
+                (Constellation::Galileo, SignalBand::E5, SignalCode::E5b),
+            ]
+        );
+        assert!(requests.iter().all(|request| request.doppler_search_hz == 4_500));
+        assert!(requests.iter().all(|request| request.doppler_step_hz == 375));
     }
 }
