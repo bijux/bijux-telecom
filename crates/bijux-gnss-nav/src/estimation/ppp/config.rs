@@ -305,7 +305,8 @@ impl ArtifactPayloadValidate for PppSolutionEpoch {
 #[cfg(test)]
 mod tests {
     use super::{
-        PppArMode, PppConfig, PppConvergenceState, PppSolutionEpoch, PppTroposphereSource,
+        PppArMode, PppConfig, PppConvergenceEvidence, PppConvergenceState, PppSolutionEpoch,
+        PppTroposphereSource,
     };
     use crate::models::ocean_tide_loading::{
         OceanTideConstituent, OceanTideLoadingConstituent, OceanTideLoadingModel,
@@ -345,6 +346,8 @@ mod tests {
                 time_to_decimeter_s: None,
                 time_to_centimeter_s: None,
                 last_position_change_m: None,
+                evidence: PppConvergenceEvidence::default(),
+                missing_reasons: Vec::new(),
             },
             residuals: Vec::new(),
             nis_mean: None,
@@ -528,12 +531,67 @@ mod tests {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PppConvergenceEvidence {
+    pub covariance_supported: bool,
+    pub residual_supported: bool,
+    pub ambiguity_supported: bool,
+    pub correction_supported: bool,
+    pub integrity_supported: bool,
+}
+
+impl Default for PppConvergenceEvidence {
+    fn default() -> Self {
+        Self {
+            covariance_supported: false,
+            residual_supported: false,
+            ambiguity_supported: false,
+            correction_supported: false,
+            integrity_supported: false,
+        }
+    }
+}
+
+impl PppConvergenceEvidence {
+    pub fn missing_reasons(&self) -> Vec<String> {
+        let mut reasons = Vec::new();
+        if !self.covariance_supported {
+            reasons.push("missing_covariance_evidence".to_string());
+        }
+        if !self.residual_supported {
+            reasons.push("missing_residual_evidence".to_string());
+        }
+        if !self.ambiguity_supported {
+            reasons.push("missing_ambiguity_evidence".to_string());
+        }
+        if !self.correction_supported {
+            reasons.push("missing_correction_evidence".to_string());
+        }
+        if !self.integrity_supported {
+            reasons.push("missing_integrity_evidence".to_string());
+        }
+        reasons
+    }
+
+    pub fn supports_convergence_claim(&self) -> bool {
+        self.covariance_supported
+            && self.residual_supported
+            && self.ambiguity_supported
+            && self.correction_supported
+            && self.integrity_supported
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PppConvergenceState {
     pub converged: bool,
     pub time_to_first_meter_s: Option<f64>,
     pub time_to_decimeter_s: Option<f64>,
     pub time_to_centimeter_s: Option<f64>,
     pub last_position_change_m: Option<f64>,
+    #[serde(default)]
+    pub evidence: PppConvergenceEvidence,
+    #[serde(default)]
+    pub missing_reasons: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

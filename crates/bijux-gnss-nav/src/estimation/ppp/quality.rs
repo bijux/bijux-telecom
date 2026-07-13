@@ -16,6 +16,7 @@ impl PppFilter {
         pos: [f64; 3],
         sigma_h: Option<f64>,
         sigma_v: Option<f64>,
+        evidence: super::config::PppConvergenceEvidence,
     ) {
         let mut change = None;
         if let Some(prev) = self.last_pos {
@@ -31,8 +32,10 @@ impl PppFilter {
         let change_ok = change
             .map(|c| c / 1.0_f64.max(1e-6) < self.config.convergence.pos_rate_mps)
             .unwrap_or(false);
-        let ready =
+        let heuristic_ready =
             elapsed >= self.config.convergence.min_time_s && sigma_h_ok && sigma_v_ok && change_ok;
+        let missing_reasons = evidence.missing_reasons();
+        let ready = heuristic_ready && missing_reasons.is_empty();
 
         if ready && self.health.convergence.time_to_first_meter_s.is_none() {
             self.health.convergence.time_to_first_meter_s = Some(elapsed);
@@ -51,6 +54,8 @@ impl PppFilter {
         }
         self.health.convergence.converged = ready;
         self.health.convergence.last_position_change_m = change;
+        self.health.convergence.evidence = evidence;
+        self.health.convergence.missing_reasons = missing_reasons;
 
         self.drift_history.push(pos);
         if self.drift_history.len() > self.config.drift_window_epochs.max(1) {
@@ -266,6 +271,71 @@ impl PppFilter {
             }
         }
         self.ekf.sanitize_covariance();
+    }
+}
+
+#[cfg(test)]
+mod convergence_tests {
+    use super::*;
+    use crate::estimation::ppp::config::{PppConfig, PppConvergenceEvidence};
+
+    #[test]
+    fn convergence_stays_blocked_without_strong_evidence() {
+        let mut filter = PppFilter::new(PppConfig::default());
+        filter.epoch0_t_s = Some(0.0);
+        filter.last_pos = Some([1.0, 2.0, 3.0]);
+
+        filter.update_convergence(
+            1_200.0,
+            [1.0, 2.0, 3.0],
+            Some(0.05),
+            Some(0.08),
+            PppConvergenceEvidence {
+                covariance_supported: true,
+                residual_supported: true,
+                ambiguity_supported: false,
+                correction_supported: false,
+                integrity_supported: false,
+            },
+        );
+
+        assert!(!filter.health.convergence.converged);
+        assert!(filter.health.convergence.time_to_first_meter_s.is_none());
+        assert_eq!(
+            filter.health.convergence.missing_reasons,
+            vec![
+                "missing_ambiguity_evidence".to_string(),
+                "missing_correction_evidence".to_string(),
+                "missing_integrity_evidence".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn convergence_records_first_supported_epoch_once_evidence_is_complete() {
+        let mut filter = PppFilter::new(PppConfig::default());
+        filter.epoch0_t_s = Some(0.0);
+        filter.last_pos = Some([1.0, 2.0, 3.0]);
+
+        filter.update_convergence(
+            1_200.0,
+            [1.0, 2.0, 3.0],
+            Some(0.05),
+            Some(0.08),
+            PppConvergenceEvidence {
+                covariance_supported: true,
+                residual_supported: true,
+                ambiguity_supported: true,
+                correction_supported: true,
+                integrity_supported: true,
+            },
+        );
+
+        assert!(filter.health.convergence.converged);
+        assert_eq!(filter.health.convergence.time_to_first_meter_s, Some(1_200.0));
+        assert_eq!(filter.health.convergence.time_to_decimeter_s, Some(1_200.0));
+        assert!(filter.health.convergence.time_to_centimeter_s.is_none());
+        assert!(filter.health.convergence.missing_reasons.is_empty());
     }
 }
 

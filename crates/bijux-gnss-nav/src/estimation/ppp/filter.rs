@@ -23,7 +23,9 @@ use crate::estimation::ekf::statistics::InnovationConsistencyConfig;
 use crate::estimation::position::solver::{
     ecef_to_geodetic, elevation_azimuth_deg, position_measurement_weight,
 };
-use crate::estimation::ppp::config::{PppConvergenceState, PppHealth, PppSolutionEpoch};
+use crate::estimation::ppp::config::{
+    PppConvergenceEvidence, PppConvergenceState, PppHealth, PppSolutionEpoch,
+};
 use crate::formats::precise_products::{ProductDiagnostics, ProductsProvider};
 use crate::linalg::Matrix;
 use crate::models::antenna::{ReceiverAntennaCalibrations, SatelliteAntennaCalibrations};
@@ -101,6 +103,8 @@ impl PppFilter {
                     time_to_decimeter_s: None,
                     time_to_centimeter_s: None,
                     last_position_change_m: None,
+                    evidence: PppConvergenceEvidence::default(),
+                    missing_reasons: Vec::new(),
                 },
                 warnings: Vec::new(),
                 nis_mean: None,
@@ -437,8 +441,20 @@ impl PppFilter {
         } else {
             None
         };
-        self.update_convergence(t_rx_s, pos, sigma_h, sigma_v);
         self.check_consistency();
+        self.update_convergence(
+            t_rx_s,
+            pos,
+            sigma_h,
+            sigma_v,
+            ppp_convergence_evidence(
+                position_covariance_ecef_m2,
+                sigma_h,
+                sigma_v,
+                self.ekf.health.innovation_rms,
+                self.health.nis_mean,
+            ),
+        );
         self.adapt_process_noise();
         PppSolutionEpoch {
             epoch_idx,
@@ -596,6 +612,31 @@ impl PppFilter {
             keep
         });
         self.health.pruned_states += pruned;
+    }
+}
+
+fn ppp_convergence_evidence(
+    position_covariance_ecef_m2: Option<[[f64; 3]; 3]>,
+    sigma_h_m: Option<f64>,
+    sigma_v_m: Option<f64>,
+    innovation_rms_m: f64,
+    nis_mean: Option<f64>,
+) -> PppConvergenceEvidence {
+    let covariance_supported = position_covariance_ecef_m2.is_some_and(|covariance| {
+        covariance.iter().flat_map(|row| row.iter()).all(|value| value.is_finite())
+    }) && sigma_h_m
+        .is_some_and(|value| value.is_finite() && value > 0.0)
+        && sigma_v_m.is_some_and(|value| value.is_finite() && value > 0.0);
+    let residual_supported = innovation_rms_m.is_finite()
+        && innovation_rms_m >= 0.0
+        && nis_mean.is_some_and(|value| value.is_finite() && (0.2..=5.0).contains(&value));
+
+    PppConvergenceEvidence {
+        covariance_supported,
+        residual_supported,
+        ambiguity_supported: false,
+        correction_supported: false,
+        integrity_supported: false,
     }
 }
 
