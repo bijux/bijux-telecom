@@ -277,4 +277,34 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn registered_nonexecuted_signals_remain_planned_without_supported_stages() {
+        let matrix = build_support_matrix();
+
+        for (constellation, band, code) in [
+            (Constellation::Gps, SignalBand::L2, SignalCode::Py),
+            (Constellation::Galileo, SignalBand::E1, SignalCode::E1C),
+        ] {
+            let row = matrix
+                .rows
+                .iter()
+                .find(|row| {
+                    row.constellation == constellation && row.band == band && row.code == code
+                })
+                .expect("registered support row");
+            assert_eq!(row.status, SupportStatus::Planned, "{row:?}");
+            assert_eq!(
+                row.stage_support,
+                SignalStageSupport {
+                    acquisition: SupportStatus::Planned,
+                    tracking: SupportStatus::Planned,
+                    data_decoding: SupportStatus::Planned,
+                    observations: SupportStatus::Planned,
+                    positioning: SupportStatus::Planned,
+                },
+                "{row:?}"
+            );
+        }
+    }
 }
