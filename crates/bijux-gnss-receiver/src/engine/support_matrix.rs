@@ -52,7 +52,7 @@ mod tests {
     }
 
     #[test]
-    fn galileo_e5_support_row_reports_observation_only_capability() {
+    fn galileo_e5_support_row_reports_executable_tracking_capability() {
         let matrix = build_support_matrix();
         let row = matrix
             .rows
@@ -65,12 +65,12 @@ mod tests {
             .expect("Galileo E5a support row");
 
         assert_eq!(row.status, SupportStatus::Planned);
-        assert_eq!(row.stage_support.acquisition, SupportStatus::Planned);
-        assert_eq!(row.stage_support.tracking, SupportStatus::Planned);
+        assert_eq!(row.stage_support.acquisition, SupportStatus::Supported);
+        assert_eq!(row.stage_support.tracking, SupportStatus::Supported);
         assert_eq!(row.stage_support.data_decoding, SupportStatus::Planned);
         assert_eq!(row.stage_support.observations, SupportStatus::Supported);
         assert_eq!(row.stage_support.positioning, SupportStatus::Planned);
-        assert!(row.requirements.iter().any(|value| value == "tracked_epoch_input"));
+        assert!(row.requirements.is_empty());
     }
 
     #[test]

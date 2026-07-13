@@ -261,7 +261,7 @@ mod tests {
     }
 
     #[test]
-    fn observation_only_registered_signals_remain_non_tracking_capabilities() {
+    fn executable_registered_signals_reflect_receiver_stage_capabilities() {
         let gps_l2c = signal_execution_support(Constellation::Gps, SignalBand::L2, SignalCode::L2C);
         assert_eq!(
             gps_l2c,
@@ -279,8 +279,8 @@ mod tests {
         assert_eq!(
             galileo_e5,
             SignalExecutionSupport {
-                acquisition: false,
-                tracking: false,
+                acquisition: true,
+                tracking: true,
                 data_decoding: false,
                 observations: true,
                 positioning: false,
@@ -390,8 +390,8 @@ mod tests {
                 SignalBand::E5,
                 SignalCode::E5a,
                 SignalExecutionSupport {
-                    acquisition: false,
-                    tracking: false,
+                    acquisition: true,
+                    tracking: true,
                     data_decoding: false,
                     observations: true,
                     positioning: false,
