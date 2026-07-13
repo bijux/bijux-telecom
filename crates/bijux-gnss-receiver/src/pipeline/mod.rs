@@ -6,10 +6,6 @@
 //! a single namespace without deep paths.
 
 pub mod acquisition;
-#[cfg(feature = "nav")]
-pub(crate) mod common_code_doppler_anomaly;
-#[cfg(feature = "nav")]
-pub(crate) mod constellation_clock_inconsistency;
 pub mod doppler;
 pub mod hatch;
 #[cfg(feature = "nav")]
@@ -18,12 +14,6 @@ pub mod navigation;
 pub mod navigation_filter;
 pub mod observation_validation;
 pub mod observations;
-#[cfg(feature = "nav")]
-pub(crate) mod replay_timing_anomaly;
-#[cfg(feature = "nav")]
-pub(crate) mod residual_whiteness;
-#[cfg(feature = "nav")]
-pub(crate) mod satellite_clock_anomaly;
 pub(crate) mod signal_capabilities;
 pub mod tracking;
 

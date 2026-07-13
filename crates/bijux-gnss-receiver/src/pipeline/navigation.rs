@@ -8,6 +8,10 @@ use bijux_gnss_core::api::{
     NAV_SOLUTION_MODEL_VERSION,
 };
 use bijux_gnss_nav::api::{
+    advance_residual_whiteness_suspect_streak, advance_satellite_clock_suspect_streak,
+    classify_residual_temporal_correlation, detect_common_code_doppler_anomaly,
+    detect_constellation_clock_inconsistencies, detect_replay_timing_anomaly,
+    detect_residual_temporal_correlation, detect_satellite_clock_anomaly,
     ecef_to_geodetic, elevation_azimuth_deg, formal_protection_levels,
     position_satellite_state_from_observation,
     position_broadcast_navigation_from_galileo_navigations,
@@ -17,25 +21,15 @@ use bijux_gnss_nav::api::{
     PositionBroadcastNavigation, PositionFilterDivergenceReason, PositionFilterMotionClass,
     PositionObservation, PositionRobustWeighting, PositionSolutionSmoother,
     PositionSolutionSmootherConfig, PositionSolveRefusalKind, PositionSolver,
-    PositionWeightingModel, RaimFaultDetectionStatus, WeightingConfig,
+    PositionWeightingModel, RaimFaultDetectionStatus, ResidualTemporalCorrelation,
+    WeightingConfig, residual_temporal_correlation_is_persistent,
+    ConstellationClockInconsistency,
 };
 
 use crate::engine::receiver_config::{
     NavigationMotionClass, NavigationWeightingMode, ReceiverPipelineConfig,
 };
 use crate::engine::runtime::ReceiverRuntime;
-use crate::pipeline::common_code_doppler_anomaly::detect_common_code_doppler_anomaly;
-use crate::pipeline::constellation_clock_inconsistency::{
-    detect_constellation_clock_inconsistencies, ConstellationClockInconsistency,
-};
-use crate::pipeline::replay_timing_anomaly::detect_replay_timing_anomaly;
-use crate::pipeline::residual_whiteness::{
-    advance_residual_whiteness_suspect_streak, classify_residual_temporal_correlation,
-    detect_residual_temporal_correlation, residual_temporal_correlation_is_persistent,
-};
-use crate::pipeline::satellite_clock_anomaly::{
-    advance_satellite_clock_suspect_streak, detect_satellite_clock_anomaly,
-};
 
 const FIXED_VALIDATED_SIGMA_H_FLOOR_M: f64 = 0.02;
 const FIXED_VALIDATED_SIGMA_V_FLOOR_M: f64 = 0.03;
@@ -2267,7 +2261,7 @@ fn impossible_geometry_explain_reasons(
 }
 
 fn constellation_clock_inconsistency_explain_reasons(
-    inconsistencies: &[ConstellationClockInconsistency],
+    inconsistencies: &[bijux_gnss_nav::api::ConstellationClockInconsistency],
 ) -> Vec<String> {
     let mut reasons = vec!["constellation_clock_inconsistency".to_string()];
     for inconsistency in inconsistencies {
@@ -2296,7 +2290,7 @@ fn constellation_clock_inconsistency_explain_reasons(
 }
 
 fn residual_temporal_correlation_explain_reasons(
-    correlation: crate::pipeline::residual_whiteness::ResidualTemporalCorrelation,
+    correlation: ResidualTemporalCorrelation,
 ) -> Vec<String> {
     vec![
         "residual_whiteness".to_string(),
