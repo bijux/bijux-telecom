@@ -1877,12 +1877,12 @@ mod pvt_tests {
 
         assert!(high_variance_solution.valid);
         assert_eq!(provenance.solver_family, "wls_weighted");
-        assert_eq!(provenance.weighting_mode, "cn0_elevation_sigma_weighted");
+        assert_eq!(provenance.weighting_mode, "elevation_sigma_weighted");
         assert!(high_variance_error_m < low_variance_error_m);
     }
 
     #[test]
-    fn pvt_command_downweights_low_cn0_low_elevation_satellite() {
+    fn pvt_command_downweights_low_elevation_satellite() {
         let ephs = sample_ephemerides();
         let strong_signal_case = sample_pvt_case_with_adjustments(
             &ephs,
@@ -1892,8 +1892,8 @@ mod pvt_tests {
                 SyntheticSatelliteAdjustment {
                     pseudorange_bias_m: 40.0,
                     pseudorange_sigma_m: Some(2.0),
-                    cn0_dbhz: Some(55.0),
                     elevation_deg: Some(70.0),
+                    ..SyntheticSatelliteAdjustment::default()
                 },
             )],
         );
@@ -1905,8 +1905,8 @@ mod pvt_tests {
                 SyntheticSatelliteAdjustment {
                     pseudorange_bias_m: 40.0,
                     pseudorange_sigma_m: Some(2.0),
-                    cn0_dbhz: Some(30.0),
                     elevation_deg: Some(15.0),
+                    ..SyntheticSatelliteAdjustment::default()
                 },
             )],
         );
@@ -1924,7 +1924,7 @@ mod pvt_tests {
 
         assert!(weak_signal_solution.valid);
         assert_eq!(provenance.solver_family, "wls_weighted");
-        assert_eq!(provenance.weighting_mode, "cn0_elevation_sigma_weighted");
+        assert_eq!(provenance.weighting_mode, "elevation_sigma_weighted");
         assert!(weak_signal_error_m < strong_signal_error_m);
     }
 
