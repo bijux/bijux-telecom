@@ -84,6 +84,10 @@ fn gps_l5i_truth_capture_fixture() -> GpsL5TruthCaptureFixture {
     gps_l5_truth_capture_fixture(SignalCode::L5I, "receiver-gps-l5i-truth-capture")
 }
 
+fn gps_l5q_truth_capture_fixture() -> GpsL5TruthCaptureFixture {
+    gps_l5_truth_capture_fixture(SignalCode::L5Q, "receiver-gps-l5q-truth-capture")
+}
+
 fn gps_l5q_continuity_scenario() -> (ReceiverPipelineConfig, SyntheticScenario) {
     let config = ReceiverPipelineConfig {
         sampling_freq_hz: 10_230_000.0,
@@ -214,6 +218,35 @@ fn gps_l5i_tracking_truth_table_matches_capture_truth() {
         satellite.epochs.iter().filter(|epoch| epoch.stable_tracking_epoch).all(|epoch| epoch.pass),
         "{satellite:#?}"
     );
+}
+
+#[test]
+fn gps_l5q_acquisition_truth_table_matches_capture_truth() {
+    let fixture = gps_l5q_truth_capture_fixture();
+    let report = validate_truth_guided_acquisition_table(
+        &fixture.config,
+        &fixture.frame,
+        &fixture.truth,
+        GPS_L5_TRUTH_DOPPLER_TOLERANCE_BINS,
+        GPS_L5_TRUTH_CODE_PHASE_TOLERANCE_SAMPLES,
+    );
+
+    assert!(report.pass, "{report:#?}");
+    assert_eq!(report.scenario_id, fixture.scenario.id);
+    assert_eq!(report.sample_rate_hz, fixture.config.sampling_freq_hz);
+    assert_eq!(report.satellites.len(), 1);
+
+    let satellite = &report.satellites[0];
+    assert_eq!(satellite.sat, fixture.scenario.satellites[0].sat);
+    assert!(satellite.pass, "{satellite:#?}");
+    assert!(satellite.doppler_pass, "{satellite:#?}");
+    assert!(satellite.code_phase_pass, "{satellite:#?}");
+    assert_eq!(satellite.injected_doppler_hz, fixture.scenario.satellites[0].doppler_hz);
+    assert_eq!(
+        satellite.injected_code_phase_chips,
+        fixture.scenario.satellites[0].code_phase_chips
+    );
+    assert!(matches!(satellite.hypothesis.as_str(), "accepted" | "ambiguous"));
 }
 
 #[test]
