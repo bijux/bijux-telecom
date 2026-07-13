@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RtkCorrectionInput",
+  "type": "object",
+  "required": [
+    "epoch_idx",
+    "mode",
+    "ephemeris_count",
+    "products_ok",
+    "correction_tags"
+  ],
+  "properties": {
+    "epoch_idx": { "type": "integer", "minimum": 0 },
+    "mode": { "type": "string", "enum": ["Rtk", "Ppp"] },
+    "ephemeris_count": { "type": "integer", "minimum": 0 },
+    "products_ok": { "type": "boolean" },
+    "correction_tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

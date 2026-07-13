@@ -5,7 +5,7 @@
   "required": ["header", "payload"],
   "properties": {
     "header": { "$ref": "#/definitions/ArtifactHeader" },
-    "payload": { "type": "object" }
+    "payload": { "$ref": "#/definitions/RtkBaseline" }
   },
   "definitions": {
     "ArtifactHeader": {
@@ -34,6 +34,42 @@
         "features": { "type": "array", "items": { "type": "string" } },
         "deterministic": { "type": "boolean" },
         "git_dirty": { "type": "boolean" }
+      }
+    },
+    "RtkBaseline": {
+      "type": "object",
+      "required": ["epoch_idx", "status", "value"],
+      "properties": {
+        "epoch_idx": { "type": "integer", "minimum": 0 },
+        "status": {
+          "type": "string",
+          "enum": ["executed", "not_ready", "unsupported"]
+        },
+        "reason": { "type": ["string", "null"] },
+        "value": {
+          "anyOf": [
+            { "$ref": "#/definitions/BaselineSolution" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "BaselineSolution": {
+      "type": "object",
+      "required": ["enu_m", "fixed"],
+      "properties": {
+        "enu_m": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": { "type": "number" }
+        },
+        "covariance_m2": {
+          "type": ["array", "null"],
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "fixed": { "type": "boolean" }
       }
     }
   }

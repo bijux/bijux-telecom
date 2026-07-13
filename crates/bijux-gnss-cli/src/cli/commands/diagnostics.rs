@@ -639,7 +639,7 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
     let align_report = aligner.report(base_epochs.len(), rover_epochs.len());
     fs::write(out_dir.join("rtk_align.json"), serde_json::to_string_pretty(&align_report)?)?;
 
-    validate_json_schema(&schema_path("rtk_baseline_v1.schema.json"), &baseline_path, false)?;
+    validate_jsonl_schema(&schema_path("rtk_baseline_v1.schema.json"), &baseline_path, false)?;
     validate_jsonl_schema(&schema_path("rtk_sd_v1.schema.json"), &sd_path, false)?;
     validate_jsonl_schema(
         &schema_path("rtk_baseline_quality_v1.schema.json"),
@@ -648,6 +648,21 @@ fn handle_rtk(command: GnssCommand) -> Result<()> {
     )?;
     validate_jsonl_schema(&schema_path("rtk_fix_audit_v1.schema.json"), &fix_audit_path, false)?;
     validate_jsonl_schema(&schema_path("rtk_precision_v1.schema.json"), &precision_path, false)?;
+    validate_jsonl_schema(
+        &schema_path("rtk_correction_input_v1.schema.json"),
+        &correction_input_path,
+        false,
+    )?;
+    validate_jsonl_schema(
+        &schema_path("rtk_ambiguity_state_v1.schema.json"),
+        &ambiguity_state_path,
+        false,
+    )?;
+    validate_jsonl_schema(
+        &schema_path("rtk_advanced_solution_v1.schema.json"),
+        &advanced_solution_path,
+        false,
+    )?;
 
     let report = serde_json::json!({
         "aligned_epochs": aligned.len(),

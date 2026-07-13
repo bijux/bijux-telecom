@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "RtkBaseline",
+  "title": "RtkAmbiguityState",
   "type": "object",
   "required": ["epoch_idx", "status", "value"],
   "properties": {
@@ -12,28 +12,20 @@
     "reason": { "type": ["string", "null"] },
     "value": {
       "anyOf": [
-        { "$ref": "#/definitions/BaselineSolution" },
+        { "$ref": "#/definitions/AmbiguityState" },
         { "type": "null" }
       ]
     }
   },
   "definitions": {
-    "BaselineSolution": {
+    "AmbiguityState": {
       "type": "object",
-      "required": ["enu_m", "fixed"],
+      "required": ["epoch_idx", "mode", "float_count", "fixed_count"],
       "properties": {
-        "enu_m": {
-          "type": "array",
-          "minItems": 3,
-          "maxItems": 3,
-          "items": { "type": "number" }
-        },
-        "covariance_m2": {
-          "type": ["array", "null"],
-          "minItems": 3,
-          "maxItems": 3
-        },
-        "fixed": { "type": "boolean" }
+        "epoch_idx": { "type": "integer", "minimum": 0 },
+        "mode": { "type": "string", "enum": ["Rtk", "Ppp"] },
+        "float_count": { "type": "integer", "minimum": 0 },
+        "fixed_count": { "type": "integer", "minimum": 0 }
       }
     }
   }

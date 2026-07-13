@@ -1,11 +1,11 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "RtkFixAuditV1",
+  "title": "RtkAdvancedSolutionV1",
   "type": "object",
   "required": ["header", "payload"],
   "properties": {
     "header": { "$ref": "#/definitions/ArtifactHeader" },
-    "payload": { "$ref": "#/definitions/RtkFixAudit" }
+    "payload": { "$ref": "#/definitions/RtkAdvancedSolution" }
   },
   "definitions": {
     "ArtifactHeader": {
@@ -36,15 +36,39 @@
         "git_dirty": { "type": "boolean" }
       }
     },
-    "RtkFixAudit": {
+    "RtkAdvancedSolution": {
       "type": "object",
-      "required": ["epoch_idx", "ratio", "status", "reason", "fixed_count"],
+      "required": [
+        "epoch_idx",
+        "mode",
+        "status",
+        "downgraded",
+        "prerequisites",
+        "provenance",
+        "artifact_id",
+        "source_observation_epoch_id"
+      ],
       "properties": {
         "epoch_idx": { "type": "integer", "minimum": 0 },
-        "ratio": { "type": ["number", "null"] },
-        "status": { "type": "string", "enum": ["float", "fixed", "failed"] },
-        "reason": { "type": "string" },
-        "fixed_count": { "type": "integer", "minimum": 0 }
+        "mode": { "type": "string", "enum": ["Rtk", "Ppp"] },
+        "status": { "type": "string" },
+        "downgraded": { "type": "boolean" },
+        "downgrade_reason": { "type": ["string", "null"] },
+        "prerequisites": { "type": "object" },
+        "refusal_class": {
+          "type": ["string", "null"],
+          "enum": [
+            "IncompleteCorrections",
+            "MissingBaseline",
+            "UnsupportedModel",
+            "InsufficientGeometry",
+            "IncompleteAmbiguityState",
+            null
+          ]
+        },
+        "provenance": { "type": "object" },
+        "artifact_id": { "type": "string" },
+        "source_observation_epoch_id": { "type": "string" }
       }
     }
   }
