@@ -38,6 +38,71 @@
     }
 
     #[test]
+    fn synthetic_signal_source_preserves_broadcast_ephemerides() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 1_023_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            ..ReceiverPipelineConfig::default()
+        };
+        let ephemerides = vec![GpsEphemeris {
+            sat: SatId { constellation: Constellation::Gps, prn: 7 },
+            iodc: 0,
+            iode: 0,
+            week: 0,
+            sv_health: 0,
+            toe_s: 100_000.0,
+            toc_s: 100_000.0,
+            sqrt_a: 5153.7954775,
+            e: 0.0,
+            i0: 0.94,
+            idot: 0.0,
+            omega0: 0.0,
+            omegadot: 0.0,
+            w: 0.0,
+            m0: 0.0,
+            delta_n: 0.0,
+            cuc: 0.0,
+            cus: 0.0,
+            crc: 0.0,
+            crs: 0.0,
+            cic: 0.0,
+            cis: 0.0,
+            af0: 0.0,
+            af1: 0.0,
+            af2: 0.0,
+            tgd: 0.0,
+        }];
+        let scenario = SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 0.0,
+            duration_s: 0.004,
+            seed: 17,
+            satellites: vec![SyntheticSignalParams {
+                sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                glonass_frequency_channel: None,
+                doppler_hz: 500.0,
+                code_phase_chips: 0.0,
+                carrier_phase_rad: 0.0,
+                cn0_db_hz: 47.0,
+                data_bit_flip: false,
+            }],
+            ephemerides: ephemerides.clone(),
+            id: "synthetic-navigation".to_string(),
+        };
+
+        let source = SyntheticSignalSource::new(&config, &scenario);
+
+        assert_eq!(source.gps_ephemerides().len(), ephemerides.len());
+        assert_eq!(source.gps_ephemerides()[0].sat, ephemerides[0].sat);
+        assert_eq!(source.gps_ephemerides()[0].week, ephemerides[0].week);
+        assert_eq!(source.gps_ephemerides()[0].toe_s, ephemerides[0].toe_s);
+        assert!(source.as_any().downcast_ref::<SyntheticSignalSource>().is_some());
+    }
+
+    #[test]
     fn pvt_truth_table_records_truth_measured_values_and_errors() {
         let truth_ecef = lla_to_ecef(37.0, -122.0, 10.0);
         let measured_ecef = (truth_ecef.0 + 1.5, truth_ecef.1 - 2.0, truth_ecef.2 + 0.75);
