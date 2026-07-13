@@ -8,6 +8,7 @@ use crate::codes::galileo_e1::{
     generate_galileo_e1c_code, sample_boc_code, GALILEO_E1_CODE_RATE_HZ,
 };
 use crate::codes::glonass_l1::{generate_glonass_l1_st_code, GLONASS_L1_ST_CODE_RATE_HZ};
+use crate::codes::gps_l2c_cl::{generate_gps_l2c_cl_code, GPS_L2C_CL_CODE_RATE_HZ};
 use crate::codes::gps_l2c_cm::{generate_gps_l2c_cm_code, GPS_L2C_CM_CODE_RATE_HZ};
 use crate::dsp::signal::{code_value_at_phase, sample_code, samples_per_code};
 use crate::error::SignalError;
@@ -29,6 +30,8 @@ pub enum LocalCodeModel {
     GpsL1Ca { code: Vec<i8> },
     /// GPS L2C CM primary code.
     GpsL2cCm { code: Vec<i8> },
+    /// GPS L2C CL pilot code.
+    GpsL2cCl { code: Vec<i8> },
     /// Galileo E1 BOC(1,1) primary code.
     GalileoE1Boc11 { primary_code: Vec<i8> },
     /// BeiDou B1I primary code.
@@ -63,6 +66,16 @@ impl LocalCodeModel {
         Self::gps_l2c_cm(prn).unwrap_or_else(|_| Self::GpsL2cCm { code: vec![1; 10_230] })
     }
 
+    /// Build a GPS L2C CL local code model from a PRN.
+    pub fn gps_l2c_cl(prn: u8) -> Result<Self, SignalError> {
+        Ok(Self::GpsL2cCl { code: generate_gps_l2c_cl_code(prn)? })
+    }
+
+    /// Build a GPS L2C CL local code model, falling back to an all-ones code when invalid.
+    pub fn gps_l2c_cl_or_ones(prn: u8) -> Self {
+        Self::gps_l2c_cl(prn).unwrap_or_else(|_| Self::GpsL2cCl { code: vec![1; 767_250] })
+    }
+
     /// Build a Galileo E1 BOC(1,1) local code model from a PRN.
     pub fn galileo_e1_boc11(prn: u8) -> Result<Self, SignalError> {
         Ok(Self::GalileoE1Boc11 { primary_code: generate_galileo_e1b_code(prn)? })
@@ -95,6 +108,7 @@ impl LocalCodeModel {
             Self::Bpsk { code_rate_hz, .. } => *code_rate_hz,
             Self::GpsL1Ca { .. } => 1_023_000.0,
             Self::GpsL2cCm { .. } => GPS_L2C_CM_CODE_RATE_HZ,
+            Self::GpsL2cCl { .. } => GPS_L2C_CL_CODE_RATE_HZ,
             Self::GalileoE1Boc11 { .. } => GALILEO_E1_CODE_RATE_HZ,
             Self::BeidouB1I { .. } => BEIDOU_B1I_CODE_RATE_HZ,
             Self::GlonassL1St { .. } => GLONASS_L1_ST_CODE_RATE_HZ,
@@ -107,6 +121,7 @@ impl LocalCodeModel {
             Self::Bpsk { code, .. } => code.len(),
             Self::GpsL1Ca { code } => code.len(),
             Self::GpsL2cCm { code } => code.len(),
+            Self::GpsL2cCl { code } => code.len(),
             Self::GalileoE1Boc11 { primary_code } => primary_code.len(),
             Self::BeidouB1I { code } => code.len(),
             Self::GlonassL1St { code } => code.len(),
@@ -124,6 +139,7 @@ impl LocalCodeModel {
             Self::Bpsk { code, .. }
             | Self::GpsL1Ca { code }
             | Self::GpsL2cCm { code }
+            | Self::GpsL2cCl { code }
             | Self::BeidouB1I { code }
             | Self::GlonassL1St { code } => code_value_at_phase(code, chip_phase),
             Self::GalileoE1Boc11 { primary_code } => {
@@ -144,6 +160,7 @@ impl LocalCodeModel {
             Self::Bpsk { code, .. }
             | Self::GpsL1Ca { code }
             | Self::GpsL2cCm { code }
+            | Self::GpsL2cCl { code }
             | Self::BeidouB1I { code }
             | Self::GlonassL1St { code } => sample_code(
                 code,
@@ -578,6 +595,7 @@ mod tests {
         sample_galileo_e1_boc11_code, GalileoE1Channel, GALILEO_E1_CODE_RATE_HZ,
     };
     use crate::codes::glonass_l1::sample_glonass_l1_st_code;
+    use crate::codes::gps_l2c_cl::{sample_gps_l2c_cl_code, GPS_L2C_CL_CODE_RATE_HZ};
     use crate::codes::gps_l2c_cm::{sample_gps_l2c_cm_code, GPS_L2C_CM_CODE_RATE_HZ};
     use crate::error::SignalError;
     use bijux_gnss_core::api::{
@@ -641,6 +659,19 @@ mod tests {
             .expect("GPS L2C CM local code period");
         let expected =
             sample_gps_l2c_cm_code(38, GPS_L2C_CM_CODE_RATE_HZ, 0.0, 32).expect("GPS L2C CM reference");
+
+        assert_eq!(samples, expected);
+        assert!(model.supports_secondary_peak_multipath_screening());
+    }
+
+    #[test]
+    fn local_code_model_samples_gps_l2c_cl_period_consistently() {
+        let model = LocalCodeModel::gps_l2c_cl(38).expect("valid GPS L2C CL PRN");
+        let samples = model
+            .sample_period(GPS_L2C_CL_CODE_RATE_HZ, 0.0, 32)
+            .expect("GPS L2C CL local code period");
+        let expected =
+            sample_gps_l2c_cl_code(38, GPS_L2C_CL_CODE_RATE_HZ, 0.0, 32).expect("GPS L2C CL reference");
 
         assert_eq!(samples, expected);
         assert!(model.supports_secondary_peak_multipath_screening());
