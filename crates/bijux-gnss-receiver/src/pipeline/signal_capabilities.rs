@@ -1,7 +1,8 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    default_acquisition_signal, Constellation, SatId, SignalBand, SignalCode,
+    default_acquisition_signal, Constellation, SatId, SignalBand, SignalCode, SignalRegistryEntry,
+    SignalStageSupport, SignalSupportRow, SupportStatus,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,6 +25,24 @@ pub(crate) fn signal_execution_support(
         data_decoding: supports_data_decoding_signal(constellation, band, code),
         observations: supports_observation_signal(constellation, band, code),
         positioning: supports_positioning_signal(constellation, band, code),
+    }
+}
+
+pub(crate) fn signal_support_row(entry: &SignalRegistryEntry) -> SignalSupportRow {
+    let signal = entry.spec;
+    let execution = signal_execution_support(signal.constellation, signal.band, signal.code);
+    let stage_support = derive_signal_stage_support(execution);
+    let requirements = signal_capability_requirements(signal.constellation, stage_support);
+    let status = aggregate_signal_status(stage_support, !requirements.is_empty());
+
+    SignalSupportRow {
+        constellation: signal.constellation,
+        band: signal.band,
+        code: signal.code,
+        stage_support,
+        requirements: requirements.clone(),
+        status,
+        reason: summarize_signal_support(stage_support, &requirements),
     }
 }
 
@@ -84,9 +103,124 @@ fn sample_sat(constellation: Constellation) -> SatId {
     SatId { constellation, prn: representative_prn(constellation) }
 }
 
+fn derive_signal_stage_support(execution: SignalExecutionSupport) -> SignalStageSupport {
+    SignalStageSupport {
+        acquisition: stage_status(execution.acquisition),
+        tracking: stage_status(execution.tracking),
+        data_decoding: stage_status(execution.data_decoding),
+        observations: stage_status(execution.observations),
+        positioning: stage_status(execution.positioning),
+    }
+}
+
+fn stage_status(executable: bool) -> SupportStatus {
+    if executable {
+        SupportStatus::Supported
+    } else {
+        SupportStatus::Planned
+    }
+}
+
+fn signal_capability_requirements(
+    constellation: Constellation,
+    stage_support: SignalStageSupport,
+) -> Vec<String> {
+    let mut requirements = Vec::new();
+    if stage_support.observations == SupportStatus::Supported
+        && stage_support.tracking != SupportStatus::Supported
+    {
+        requirements.push("tracked_epoch_input".to_string());
+    }
+    if constellation == Constellation::Glonass
+        && [
+            stage_support.acquisition,
+            stage_support.tracking,
+            stage_support.observations,
+            stage_support.positioning,
+        ]
+        .into_iter()
+        .any(|status| status == SupportStatus::Supported)
+    {
+        requirements.push("glonass_frequency_channel_available".to_string());
+    }
+    requirements
+}
+
+fn aggregate_signal_status(
+    stage_support: SignalStageSupport,
+    has_requirements: bool,
+) -> SupportStatus {
+    let stages = [
+        stage_support.acquisition,
+        stage_support.tracking,
+        stage_support.data_decoding,
+        stage_support.observations,
+        stage_support.positioning,
+    ];
+    let supported_count =
+        stages.iter().filter(|status| **status == SupportStatus::Supported).count();
+
+    if supported_count == stages.len() && !has_requirements {
+        SupportStatus::Supported
+    } else {
+        SupportStatus::Planned
+    }
+}
+
+fn summarize_signal_support(stage_support: SignalStageSupport, requirements: &[String]) -> String {
+    let supported = stage_names_with_status(stage_support, SupportStatus::Supported);
+    let planned = stage_names_with_status(stage_support, SupportStatus::Planned);
+    let deprecated = stage_names_with_status(stage_support, SupportStatus::Deprecated);
+
+    let mut parts = Vec::new();
+    if !supported.is_empty() {
+        parts.push(format!("supported stages={}", supported.join(",")));
+    }
+    if !planned.is_empty() {
+        parts.push(format!("planned stages={}", planned.join(",")));
+    }
+    if !deprecated.is_empty() {
+        parts.push(format!("deprecated stages={}", deprecated.join(",")));
+    }
+    if !requirements.is_empty() {
+        parts.push(format!("requirements={}", requirements.join(",")));
+    }
+    if parts.is_empty() {
+        "no executable stages are registered".to_string()
+    } else {
+        parts.join("; ")
+    }
+}
+
+fn stage_names_with_status(
+    stage_support: SignalStageSupport,
+    target: SupportStatus,
+) -> Vec<&'static str> {
+    let mut names = Vec::new();
+    if stage_support.acquisition == target {
+        names.push("acquisition");
+    }
+    if stage_support.tracking == target {
+        names.push("tracking");
+    }
+    if stage_support.data_decoding == target {
+        names.push("data_decoding");
+    }
+    if stage_support.observations == target {
+        names.push("observations");
+    }
+    if stage_support.positioning == target {
+        names.push("positioning");
+    }
+    names
+}
+
 fn representative_prn(constellation: Constellation) -> u8 {
     match constellation {
-        Constellation::Gps | Constellation::Galileo | Constellation::Glonass | Constellation::Beidou => 1,
+        Constellation::Gps
+        | Constellation::Galileo
+        | Constellation::Glonass
+        | Constellation::Beidou => 1,
         Constellation::Unknown => 0,
     }
 }
@@ -113,8 +247,7 @@ mod tests {
 
     #[test]
     fn observation_only_registered_signals_remain_non_tracking_capabilities() {
-        let gps_l2c =
-            signal_execution_support(Constellation::Gps, SignalBand::L2, SignalCode::L2C);
+        let gps_l2c = signal_execution_support(Constellation::Gps, SignalBand::L2, SignalCode::L2C);
         assert_eq!(
             gps_l2c,
             SignalExecutionSupport {
@@ -142,21 +275,26 @@ mod tests {
 
     #[test]
     fn tracking_requires_supported_band_and_supported_signal_identity() {
-        assert!(supports_tracking_signal(
-            Constellation::Galileo,
-            SignalBand::E1,
-            SignalCode::E1B
-        ));
-        assert!(!supports_tracking_signal(
-            Constellation::Galileo,
-            SignalBand::E1,
-            SignalCode::E1C
-        ));
-        assert!(!supports_tracking_signal(
-            Constellation::Gps,
-            SignalBand::L5,
-            SignalCode::Unknown
-        ));
+        assert!(supports_tracking_signal(Constellation::Galileo, SignalBand::E1, SignalCode::E1B));
+        assert!(!supports_tracking_signal(Constellation::Galileo, SignalBand::E1, SignalCode::E1C));
+        assert!(!supports_tracking_signal(Constellation::Gps, SignalBand::L5, SignalCode::Unknown));
+    }
+
+    #[test]
+    fn signal_support_row_marks_glonass_channel_dependency_as_requirement() {
+        let row = signal_support_row(
+            &bijux_gnss_core::api::signal_registry(
+                Constellation::Glonass,
+                SignalBand::L1,
+                SignalCode::Unknown,
+            )
+            .expect("GLONASS registry entry"),
+        );
+
+        assert!(row
+            .requirements
+            .iter()
+            .any(|value| value == "glonass_frequency_channel_available"));
     }
 
     #[test]
