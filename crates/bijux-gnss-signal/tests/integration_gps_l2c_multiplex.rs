@@ -3,6 +3,7 @@
 use bijux_gnss_signal::api::{
     generate_gps_l2c_cl_code, generate_gps_l2c_cm_code, generate_gps_l2c_time_multiplexed_chips,
     gps_l2c_time_multiplexed_component, periodic_correlation, sample_gps_l2c_time_multiplexed,
+    SignalError,
     GpsL2cTimeMultiplexedComponent, GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ,
     GPS_L2C_TIME_MULTIPLEXED_SYMBOL_CHIPS,
 };
@@ -81,4 +82,16 @@ fn public_api_shifted_multiplex_replica_loses_the_main_peak() {
 
     assert_eq!(exact[0], 20_460);
     assert!(shifted_correlation[0].abs() < exact[0]);
+}
+
+#[test]
+fn public_api_rejects_empty_or_non_bipolar_navigation_symbols() {
+    assert_eq!(
+        sample_gps_l2c_time_multiplexed(38, GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ, 0.0, 1, &[]),
+        Err(SignalError::EmptyNavigationSymbolStream)
+    );
+    assert_eq!(
+        sample_gps_l2c_time_multiplexed(38, GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ, 0.0, 1, &[0]),
+        Err(SignalError::InvalidNavigationSymbol(0))
+    );
 }
