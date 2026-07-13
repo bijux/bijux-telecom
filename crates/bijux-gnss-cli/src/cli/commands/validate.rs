@@ -662,6 +662,16 @@ fn validation_evidence_bundle(
             !matches!(entry.class, bijux_gnss_infra::api::receiver::NavIntegrityClass::Nominal)
         })
         .count();
+    let integrity_evidence_missing_stable_count = report
+        .integrity
+        .iter()
+        .filter(|entry| {
+            matches!(
+                entry.class,
+                bijux_gnss_infra::api::receiver::NavIntegrityClass::IntegrityEvidenceMissing
+            )
+        })
+        .count();
     let reference_position_budget_pass =
         report.budgets.reference_position_error_3d_m_max.and_then(|budget_m| {
             (!report.reference_position_errors.is_empty()).then_some(
@@ -725,6 +735,11 @@ fn validation_evidence_bundle(
             "stable_solutions_with_non_nominal_integrity:{weak_integrity_stable_count}/{stable_solution_count}"
         ));
     }
+    if stable_solution_count > 0 && integrity_evidence_missing_stable_count > 0 {
+        claim_evidence_violations.push(format!(
+            "stable_solutions_missing_integrity_evidence:{integrity_evidence_missing_stable_count}/{stable_solution_count}"
+        ));
+    }
 
     serde_json::json!({
         "schema_version": 1,
@@ -755,7 +770,8 @@ fn validation_evidence_bundle(
             "gdop_mean": gdop_mean,
             "gdop_max": gdop_max,
             "residual_rms_mean_m": residual_rms_mean,
-            "refusal_counts": refusal_counts
+            "refusal_counts": refusal_counts,
+            "stable_integrity_evidence_missing_epochs": integrity_evidence_missing_stable_count
         },
         "diagnostics": {
             "advisory": report.diagnostic_partition.advisory_diagnostics,
@@ -846,6 +862,12 @@ mod validate_tests {
         }
     }
 
+    fn with_integrity_support(mut solution: NavSolutionEpoch) -> NavSolutionEpoch {
+        solution.integrity_hpl_m = Some(4.0);
+        solution.integrity_vpl_m = Some(6.0);
+        solution
+    }
+
     #[test]
     fn validation_evidence_bundle_includes_enu_reference_metrics() {
         let (x_ref, y_ref, z_ref) = bijux_gnss_infra::api::core::lla_to_ecef(0.0, 0.0, 0.0);
@@ -925,5 +947,59 @@ mod validate_tests {
 
         assert_eq!(evidence["numerical"]["reference_error_3d_budget_m_max"], 3.0);
         assert_eq!(evidence["numerical"]["reference_error_3d_budget_pass"], false);
+    }
+
+    #[test]
+    fn validation_evidence_bundle_surfaces_missing_integrity_claim_support() {
+        let solution = sample_solution(1.0, 2.0, 3.0);
+        let report = bijux_gnss_infra::api::receiver::build_validation_report(
+            &[],
+            &[],
+            std::slice::from_ref(&solution),
+            &[],
+            1.0,
+            false,
+            Vec::new(),
+            bijux_gnss_infra::api::receiver::ValidationSciencePolicy::default(),
+        )
+        .expect("validation report");
+
+        let evidence = validation_evidence_bundle(&[], &[solution], &report);
+
+        assert_eq!(evidence["numerical"]["stable_integrity_evidence_missing_epochs"], 1);
+        assert!(
+            evidence["claim_evidence_guard"]["violations"]
+                .as_array()
+                .expect("violations array")
+                .iter()
+                .any(|value| value == "stable_solutions_missing_integrity_evidence:1/1")
+        );
+    }
+
+    #[test]
+    fn validation_evidence_bundle_clears_integrity_gap_once_protection_levels_exist() {
+        let solution = with_integrity_support(sample_solution(1.0, 2.0, 3.0));
+        let report = bijux_gnss_infra::api::receiver::build_validation_report(
+            &[],
+            &[],
+            std::slice::from_ref(&solution),
+            &[],
+            1.0,
+            false,
+            Vec::new(),
+            bijux_gnss_infra::api::receiver::ValidationSciencePolicy::default(),
+        )
+        .expect("validation report");
+
+        let evidence = validation_evidence_bundle(&[], &[solution], &report);
+
+        assert_eq!(evidence["numerical"]["stable_integrity_evidence_missing_epochs"], 0);
+        assert!(
+            !evidence["claim_evidence_guard"]["violations"]
+                .as_array()
+                .expect("violations array")
+                .iter()
+                .any(|value| value == "stable_solutions_missing_integrity_evidence:1/1")
+        );
     }
 }
