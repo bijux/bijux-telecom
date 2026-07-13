@@ -1897,8 +1897,8 @@ fn refusal_causes(solution: &NavSolutionEpoch, obs: Option<&ObsEpoch>) -> Vec<Re
         }
     };
 
-    if solution.sat_count < 4
-        || solution.used_sat_count < 4
+    if (solution.refusal_class == Some(NavRefusalClass::InsufficientGeometry)
+        && (solution.sat_count < 4 || solution.used_sat_count < 4))
         || has_reason("insufficient_geometry")
         || has_reason_prefix("supported_satellites=")
         || has_reason_prefix("used_satellites_below_threshold:")
@@ -3503,6 +3503,10 @@ mod tests {
             .explain_reasons
             .iter()
             .any(|reason| reason == "input_observation_marked_invalid"));
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "refusal_cause=integrity"));
         assert_eq!(solution.lifecycle_state, NavLifecycleState::Refused);
         assert_eq!(solution.model_version, NAV_SOLUTION_MODEL_VERSION);
     }
