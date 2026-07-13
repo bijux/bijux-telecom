@@ -1948,6 +1948,7 @@ fn refusal_causes(solution: &NavSolutionEpoch, obs: Option<&ObsEpoch>) -> Vec<Re
         .iter()
         .filter_map(|residual| residual.reject_reason)
         .any(|reason| reason == MeasurementRejectReason::CycleSlip)
+        || has_reason_prefix("mean_cn0_below_threshold:")
         || obs.is_some_and(observation_epoch_has_lock_failure_evidence)
     {
         push_cause(&mut causes, RefusalCause::Lock);
@@ -1997,6 +1998,11 @@ fn refusal_causes(solution: &NavSolutionEpoch, obs: Option<&ObsEpoch>) -> Vec<Re
             }
             Some(NavRefusalClass::InvalidSatelliteTime | NavRefusalClass::MixedConstellationInput) => {
                 push_cause(&mut causes, RefusalCause::Clock);
+            }
+            Some(NavRefusalClass::ScientificPrerequisitesTooWeak)
+                if has_reason_prefix("mean_cn0_below_threshold:") =>
+            {
+                push_cause(&mut causes, RefusalCause::Lock);
             }
             Some(NavRefusalClass::ScientificPrerequisitesTooWeak | NavRefusalClass::SolverFailure)
                 if solution.status == SolutionStatus::Diverged =>
@@ -2561,6 +2567,18 @@ mod tests {
         );
     }
 
+    fn assert_lacks_reason(solution: &NavSolutionEpoch, unexpected: &str) {
+        assert!(
+            solution.explain_reasons.iter().all(|reason| reason != unexpected),
+            "unexpected explain reason `{unexpected}` in {:?}",
+            solution.explain_reasons
+        );
+    }
+
+    fn assert_lacks_refusal_cause(solution: &NavSolutionEpoch, unexpected_cause: &str) {
+        assert_lacks_reason(solution, unexpected_cause);
+    }
+
     #[test]
     fn code_only_precision_reporting_scales_covariance_and_sigmas() {
         let mut solution = sample_last_solution();
@@ -2714,6 +2732,20 @@ mod tests {
         apply_refusal_cause_explainability_in_place(&mut solution, None);
 
         assert_has_refusal_cause(&solution, "refusal_cause=residual");
+    }
+
+    #[test]
+    fn refusal_cause_explainability_marks_low_cn0_policy_failures_as_lock() {
+        let mut solution = policy_refusal_epoch(
+            sample_last_solution(),
+            Some(SolutionStatus::CodeOnly),
+            NavRefusalClass::ScientificPrerequisitesTooWeak,
+            vec!["mean_cn0_below_threshold:24.00<35.00".to_string()],
+        );
+
+        apply_refusal_cause_explainability_in_place(&mut solution, None);
+
+        assert_has_refusal_cause(&solution, "refusal_cause=lock");
     }
 
     #[test]
@@ -3973,6 +4005,8 @@ mod tests {
         assert_eq!(solution.ecef_z_m.0, 0.0);
         assert!(!solution.valid);
         assert_has_refusal_cause(&solution, "refusal_cause=satellite_count");
+        assert_lacks_refusal_cause(&solution, "refusal_cause=lock");
+        assert_lacks_refusal_cause(&solution, "refusal_cause=clock");
     }
 
     #[test]
@@ -4002,6 +4036,7 @@ mod tests {
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::InsufficientGeometry));
         assert_has_refusal_cause(&solution, "refusal_cause=satellite_count");
         assert_has_refusal_cause(&solution, "refusal_cause=lock");
+        assert_lacks_refusal_cause(&solution, "refusal_cause=clock");
     }
 
     #[test]

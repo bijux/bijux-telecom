@@ -1852,6 +1852,10 @@ pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
                 smoothing_age: 0,
                 smoothing_resets: 0,
                 signal: bijux_gnss_core::api::signal_spec_gps_l1_ca(),
+                tracking_lock_state: "locked".to_string(),
+                observation_lock_state: "locked".to_string(),
+                observation_lock_reason: Some("stable_tracking".to_string()),
+                tracking_lock_quality: 1.0,
                 ..ObsMetadata::default()
             },
         })
