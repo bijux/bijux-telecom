@@ -7,7 +7,9 @@ use bijux_gnss_core::api::{
     SignalBand, SignalCode, SignalSpec, SolutionStatus,
 };
 use bijux_gnss_nav::api::{geodetic_to_ecef, sat_state_gps_l1ca, GpsEphemeris};
-use bijux_gnss_receiver::api::{Navigation, NavigationMotionClass, ReceiverPipelineConfig, ReceiverRuntime};
+use bijux_gnss_receiver::api::{
+    Navigation, NavigationMotionClass, ReceiverPipelineConfig, ReceiverRuntime,
+};
 
 fn make_eph(prn: u8, omega0: f64, m0: f64, t_ref_s: f64) -> GpsEphemeris {
     GpsEphemeris {
@@ -40,11 +42,7 @@ fn make_eph(prn: u8, omega0: f64, m0: f64, t_ref_s: f64) -> GpsEphemeris {
     }
 }
 
-fn synthetic_pseudorange_m(
-    eph: &GpsEphemeris,
-    t_rx_s: f64,
-    position_ecef: (f64, f64, f64),
-) -> f64 {
+fn synthetic_pseudorange_m(eph: &GpsEphemeris, t_rx_s: f64, position_ecef: (f64, f64, f64)) -> f64 {
     let c = 299_792_458.0;
     let mut tau = 0.07;
     let mut pseudorange_m = 0.0;
@@ -275,14 +273,15 @@ fn public_navigation_api_smooths_static_and_moving_solution_sequences() {
         apply_deterministic_pseudorange_offsets(&mut static_obs);
         let raw_static = baseline_nav.solve_epoch(&static_obs, &ephs).expect("raw static");
         let smoothed_static = static_nav.solve_epoch(&static_obs, &ephs).expect("smoothed static");
-        assert_ne!(raw_static.status, SolutionStatus::Invalid);
-        assert_ne!(smoothed_static.status, SolutionStatus::Invalid);
+        assert_ne!(raw_static.status, SolutionStatus::Unavailable);
+        assert_ne!(smoothed_static.status, SolutionStatus::Unavailable);
         raw_static_errors_m.push(position_error_3d_m(&raw_static, static_truth));
         smoothed_static_errors_m.push(position_error_3d_m(&smoothed_static, static_truth));
         raw_static_solutions.push(raw_static);
         smoothed_static_solutions.push(smoothed_static);
 
-        let moving_truth = translate_truth_ecef_m(static_truth, moving_velocity_mps, epoch_idx as f64);
+        let moving_truth =
+            translate_truth_ecef_m(static_truth, moving_velocity_mps, epoch_idx as f64);
         let moving_t_rx_s = t0_rx_s + 200.0 + epoch_idx as f64;
         let mut moving_obs = make_obs_epoch(epoch_idx, moving_t_rx_s, moving_truth, &ephs);
         apply_deterministic_pseudorange_offsets(&mut moving_obs);
@@ -303,9 +302,7 @@ fn public_navigation_api_smooths_static_and_moving_solution_sequences() {
         root_mean_square(&smoothed_static_errors_m) < root_mean_square(&raw_static_errors_m) * 0.75
     );
     assert!(path_length_m(&smoothed_static_solutions) < path_length_m(&raw_static_solutions) * 0.4);
-    assert!(
-        root_mean_square(&smoothed_moving_errors_m) <= root_mean_square(&raw_moving_errors_m)
-    );
+    assert!(root_mean_square(&smoothed_moving_errors_m) <= root_mean_square(&raw_moving_errors_m));
     assert!(
         path_length_m(&smoothed_moving_solutions)
             > path_length_from_positions_m(&moving_truth_trace) * 0.9
