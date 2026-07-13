@@ -5,5 +5,6 @@ pub mod math;
 pub mod nco;
 pub mod quality;
 pub mod replica;
+pub mod sample_timing;
 pub mod signal;
 pub mod tracking;

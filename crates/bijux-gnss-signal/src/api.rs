@@ -120,6 +120,8 @@ pub use crate::dsp::replica::{
     sample_modulated_replica_at_time, signal_amplitude_from_cn0_db_hz, AcquisitionSignalModel,
     ReplicaCodeModel, UNIT_VARIANCE_COMPLEX_NOISE_POWER,
 };
+/// Absolute sample-index timing helpers for chunk-stable generation.
+pub use crate::dsp::sample_timing::{code_sample_position_at_index, CodeSamplePosition};
 /// Signal processing utilities.
 pub use crate::dsp::signal::{
     advance_code_phase_chips, advance_code_phase_seconds, code_phase_samples_at_sample_index,
