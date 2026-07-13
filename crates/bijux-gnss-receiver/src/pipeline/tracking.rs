@@ -17,11 +17,13 @@ use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
 use bijux_gnss_core::api::Sample;
 use bijux_gnss_signal::api::{
     adaptive_bandwidth, boc_subcarrier_value, carrier_frequency_error_hz_from_phase_delta,
-    code_value_at_phase, discriminators, epoch_start_code_phase_samples_from_receiver_phase,
-    estimate_cn0_dbhz, first_order_angular_loop_coefficients, first_order_loop_coefficients,
+    carrier_phase_offset_radians, code_value_at_phase, correlate_early_prompt_late,
+    discriminators, epoch_start_code_phase_samples_from_receiver_phase, estimate_cn0_dbhz,
+    first_order_angular_loop_coefficients, first_order_loop_coefficients,
     generate_beidou_b1i_code, generate_galileo_e1b_code, generate_glonass_l1_st_code,
     phase_lock_loop_coefficients, receiver_code_phase_samples_from_epoch_start_phase,
-    signal_registry, wrap_code_phase_samples, wrapped_code_phase_delta_samples,
+    signal_registry, wrap_code_phase_samples, wrap_phase_cycles_signed,
+    wrapped_code_phase_delta_samples, wrapped_phase_delta_cycles,
 };
 use bijux_gnss_signal::api::{generate_ca_code, samples_per_code, Prn};
 
@@ -182,13 +184,7 @@ impl Channel {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct CorrelatorOutput {
-    pub early: Complex<f32>,
-    pub prompt: Complex<f32>,
-    pub late: Complex<f32>,
-    pub early_late_noise_weight_energy: f64,
-}
+pub type CorrelatorOutput = bijux_gnss_signal::api::EarlyPromptLateCorrelation;
 
 #[derive(Debug, Clone)]
 pub struct TrackingResult {
@@ -660,7 +656,6 @@ impl Tracking {
     ) -> CorrelatorOutput {
         let sample_rate_hz = self.config.sampling_freq_hz;
         let samples = &frame.iq[start..end];
-        let n = samples.len();
         let code_period_samples = signal_model.samples_per_code(sample_rate_hz);
         let nominal_chips_per_sample = signal_model.nominal_chips_per_sample(sample_rate_hz);
         let tracked_chips_per_sample = code_rate_hz / sample_rate_hz;
@@ -669,43 +664,16 @@ impl Tracking {
             code_period_samples,
         );
         let base_chip_phase = epoch_start_code_phase_samples * nominal_chips_per_sample;
-        let carrier_phase_offset_rad = carrier_phase_offset_rad(carrier_phase_cycles);
-        let carrier_radians_per_sample = std::f64::consts::TAU * carrier_freq_hz / sample_rate_hz;
-        let carrier_rotation_step = Complex::new(
-            carrier_radians_per_sample.cos() as f32,
-            -carrier_radians_per_sample.sin() as f32,
-        );
-        let mut carrier_rotation = Complex::new(
-            carrier_phase_offset_rad.cos() as f32,
-            -carrier_phase_offset_rad.sin() as f32,
-        );
-        let mut early = Complex::new(0.0f32, 0.0f32);
-        let mut prompt = Complex::new(0.0f32, 0.0f32);
-        let mut late = Complex::new(0.0f32, 0.0f32);
-        let mut early_late_noise_weight_energy = 0.0f64;
-
-        for (i, sample) in samples.iter().take(n).enumerate() {
-            let mixed_sample = *sample * carrier_rotation;
-            let chip_phase = base_chip_phase + i as f64 * tracked_chips_per_sample;
-            let early_code = Complex::new(
-                signal_model.value_at_phase(chip_phase - early_late_spacing_chips),
-                0.0,
-            );
-            let prompt_code = Complex::new(signal_model.value_at_phase(chip_phase), 0.0);
-            let late_code = Complex::new(
-                signal_model.value_at_phase(chip_phase + early_late_spacing_chips),
-                0.0,
-            );
-            let noise_weight = early_code - late_code;
-            early_late_noise_weight_energy += noise_weight.norm_sqr() as f64;
-
-            early += mixed_sample * early_code;
-            prompt += mixed_sample * prompt_code;
-            late += mixed_sample * late_code;
-            carrier_rotation *= carrier_rotation_step;
-        }
-
-        CorrelatorOutput { early, prompt, late, early_late_noise_weight_energy }
+        correlate_early_prompt_late(
+            samples,
+            sample_rate_hz,
+            carrier_freq_hz,
+            carrier_phase_offset_radians(carrier_phase_cycles),
+            base_chip_phase,
+            tracked_chips_per_sample,
+            early_late_spacing_chips,
+            |chip_phase| signal_model.value_at_phase(chip_phase),
+        )
     }
 
     pub fn track_epoch(
@@ -2278,7 +2246,7 @@ fn classify_prompt_phase(
     previous_aligned_phase_cycles: Option<f64>,
     nav_bit_phase_offset_cycles: f64,
 ) -> PromptPhaseDecision {
-    let same_offset_phase = wrap_phase_cycles(raw_phase_cycles - nav_bit_phase_offset_cycles);
+    let same_offset_phase = wrap_phase_cycles_signed(raw_phase_cycles - nav_bit_phase_offset_cycles);
     let Some(previous_aligned_phase_cycles) = previous_aligned_phase_cycles else {
         return PromptPhaseDecision {
             aligned_phase_cycles: same_offset_phase,
@@ -2290,8 +2258,9 @@ fn classify_prompt_phase(
     };
 
     let same_delta = wrapped_phase_delta_cycles(same_offset_phase, previous_aligned_phase_cycles);
-    let flipped_offset = wrap_phase_cycles(nav_bit_phase_offset_cycles + NAV_BIT_PHASE_STEP_CYCLES);
-    let flipped_phase = wrap_phase_cycles(raw_phase_cycles - flipped_offset);
+    let flipped_offset =
+        wrap_phase_cycles_signed(nav_bit_phase_offset_cycles + NAV_BIT_PHASE_STEP_CYCLES);
+    let flipped_phase = wrap_phase_cycles_signed(raw_phase_cycles - flipped_offset);
     let flipped_delta = wrapped_phase_delta_cycles(flipped_phase, previous_aligned_phase_cycles);
 
     let nav_bit_transition = same_delta.abs() > CYCLE_SLIP_PHASE_DELTA_CYCLES
@@ -2467,26 +2436,6 @@ fn sample_rate_mismatch_supported_epoch(epoch: &TrackEpoch) -> bool {
         return false;
     }
     epoch.lock || epoch.fll_lock || epoch.pll_lock
-}
-
-fn wrap_phase_cycles(phase_cycles: f64) -> f64 {
-    let mut wrapped = phase_cycles.rem_euclid(1.0);
-    if wrapped > 0.5 {
-        wrapped -= 1.0;
-    }
-    wrapped
-}
-
-fn wrap_phase_rad(phase_rad: f64) -> f64 {
-    phase_rad.rem_euclid(std::f64::consts::TAU)
-}
-
-fn carrier_phase_offset_rad(carrier_phase_cycles: f64) -> f64 {
-    wrap_phase_rad(carrier_phase_cycles * std::f64::consts::TAU)
-}
-
-fn wrapped_phase_delta_cycles(next_phase_cycles: f64, previous_phase_cycles: f64) -> f64 {
-    wrap_phase_cycles(next_phase_cycles - previous_phase_cycles)
 }
 
 #[cfg(test)]
