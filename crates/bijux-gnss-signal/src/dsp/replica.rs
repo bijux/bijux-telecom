@@ -150,6 +150,11 @@ impl ReplicaCodeModel {
         Ok(Self::GpsL1Ca { code: generate_ca_code(Prn(prn))? })
     }
 
+    /// Build a GPS L1 C/A replica, falling back to an all-ones code when invalid.
+    pub fn gps_l1_ca_or_ones(prn: u8) -> Self {
+        Self::gps_l1_ca(prn).unwrap_or_else(|_| Self::GpsL1Ca { code: vec![1; 1023] })
+    }
+
     /// Build a Galileo E1 CBOC replica from a PRN.
     pub fn galileo_e1_cboc(prn: u8) -> Result<Self, SignalError> {
         Ok(Self::GalileoE1Cboc {
@@ -158,9 +163,22 @@ impl ReplicaCodeModel {
         })
     }
 
+    /// Build a Galileo E1 CBOC replica, falling back to all-ones codes when invalid.
+    pub fn galileo_e1_cboc_or_ones(prn: u8) -> Self {
+        Self::galileo_e1_cboc(prn).unwrap_or_else(|_| Self::GalileoE1Cboc {
+            e1b_code: vec![1; 4092],
+            e1c_code: vec![1; 4092],
+        })
+    }
+
     /// Build a BeiDou B1I replica from a PRN.
     pub fn beidou_b1i(prn: u8) -> Result<Self, SignalError> {
         Ok(Self::BeidouB1I { code: generate_beidou_b1i_code(prn)? })
+    }
+
+    /// Build a BeiDou B1I replica, falling back to an all-ones code when invalid.
+    pub fn beidou_b1i_or_ones(prn: u8) -> Self {
+        Self::beidou_b1i(prn).unwrap_or_else(|_| Self::BeidouB1I { code: vec![1; 2046] })
     }
 
     /// Build a GLONASS L1 ST replica.
@@ -308,6 +326,17 @@ mod tests {
         let sample = sample_modulated_replica_at_time(&model, 0.0, 0.0, 0.0, 0.0, 0.0, 1, 2.0)
             .expect("valid replica");
         assert!((sample.norm() - 2.0).abs() < 1.0e-6, "sample={sample:?}");
+    }
+
+    #[test]
+    fn replica_code_model_fallback_constructors_preserve_code_lengths() {
+        let gps = ReplicaCodeModel::gps_l1_ca_or_ones(0);
+        let galileo = ReplicaCodeModel::galileo_e1_cboc_or_ones(0);
+        let beidou = ReplicaCodeModel::beidou_b1i_or_ones(0);
+
+        assert_eq!(gps.code_length(), 1023);
+        assert_eq!(galileo.code_length(), 4092);
+        assert_eq!(beidou.code_length(), 2046);
     }
 
     #[test]
