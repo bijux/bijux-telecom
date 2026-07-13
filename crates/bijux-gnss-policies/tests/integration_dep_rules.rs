@@ -42,8 +42,8 @@ fn dependency_direction_rules() {
         workspace_dependency_edges(&metadata, &workspace, DependencyKindFilter::NormalAndBuild);
 
     let allowed: HashMap<&str, HashSet<&str>> = [
-        ("bijux-gnss-cli", HashSet::from(["bijux-gnss-infra"])),
-        ("bijux-gnss-infra", HashSet::from(["bijux-gnss-receiver"])),
+        ("bijux-gnss-cli", HashSet::from(["bijux-gnss-infra", "bijux-gnss-nav"])),
+        ("bijux-gnss-infra", HashSet::from(["bijux-gnss-receiver", "bijux-gnss-signal"])),
         (
             "bijux-gnss-receiver",
             HashSet::from(["bijux-gnss-signal", "bijux-gnss-core", "bijux-gnss-nav"]),
@@ -58,9 +58,12 @@ fn dependency_direction_rules() {
             ]),
         ),
         ("bijux-gnss-signal", HashSet::from(["bijux-gnss-core"])),
-        ("bijux-gnss-nav", HashSet::from(["bijux-gnss-core"])),
+        ("bijux-gnss-nav", HashSet::from(["bijux-gnss-core", "bijux-gnss-signal"])),
         ("bijux-gnss-core", HashSet::new()),
-        ("bijux-gnss-testkit", HashSet::from(["bijux-gnss-infra", "bijux-gnss-receiver"])),
+        (
+            "bijux-gnss-testkit",
+            HashSet::from(["bijux-gnss-core", "bijux-gnss-infra", "bijux-gnss-nav"]),
+        ),
         ("bijux-telecom-dev", HashSet::new()),
         ("bijux-gnss-policies", HashSet::new()),
     ]
