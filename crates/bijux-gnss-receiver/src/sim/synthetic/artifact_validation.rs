@@ -273,7 +273,7 @@ pub fn validate_truth_guided_observation_table(
             }
             let sat_state = SatState::new_with_receiver_clock_frequency_bias_hz(
                 config,
-                *sat_truth,
+                sat_truth.clone(),
                 truth.receiver_clock_frequency_bias_hz,
             );
             let carrier_phase_arc_bias_cycles =

@@ -41,6 +41,7 @@ pub fn build_truth_bundle(
                         params.cn0_db_hz,
                         frame.t0.sample_rate_hz,
                     ),
+                    navigation_data: params.navigation_data.clone(),
                     nav_bit_mode,
                     nav_bit_segments: nav_bit_segments(
                         frame.t0.sample_rate_hz,

@@ -539,7 +539,7 @@ pub fn measure_truth_guided_acquisition_detection_probability(
                 receiver_clock_frequency_bias_hz: 0.0,
                 duration_s,
                 seed: *seed,
-                satellites: vec![signal],
+                satellites: vec![signal.clone()],
                 ephemerides: Vec::new(),
                 id: scenario_id.clone(),
             };
@@ -629,7 +629,7 @@ pub fn measure_truth_guided_acquisition_detection_rate(
         .map(|case| {
             let sensitivity = measure_truth_guided_acquisition_detection_probability(
                 config,
-                case.signal,
+                case.signal.clone(),
                 case.coherent_ms,
                 case.noncoherent,
                 trial_seeds,

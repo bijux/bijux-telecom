@@ -25,7 +25,7 @@ use bijux_gnss_signal::api::{
 };
 use serde::{Deserialize, Serialize};
 
-const SYNTHETIC_IQ_TRUTH_SCHEMA_VERSION: u32 = 4;
+const SYNTHETIC_IQ_TRUTH_SCHEMA_VERSION: u32 = 5;
 const SYNTHETIC_GNSS_ACCURACY_ARTIFACT_SCHEMA_VERSION: u32 = 1;
 #[cfg(test)]
 const GPS_L1_CA_NAV_BIT_PERIOD_S: f64 = 0.02;

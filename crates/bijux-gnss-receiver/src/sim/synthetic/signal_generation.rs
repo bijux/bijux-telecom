@@ -242,7 +242,7 @@ fn generate_l1_ca_multi_signal_only(
         .map(|sat| {
             SatState::new_with_receiver_clock_frequency_bias_hz(
                 config,
-                *sat,
+                sat.clone(),
                 scenario.receiver_clock_frequency_bias_hz,
             )
         })
@@ -306,7 +306,7 @@ impl SyntheticSignalSource {
                 .map(|sat| {
                     SatState::new_with_receiver_clock_frequency_bias_hz(
                         config,
-                        *sat,
+                        sat.clone(),
                         scenario.receiver_clock_frequency_bias_hz,
                     )
                 })
@@ -407,6 +407,7 @@ struct SatState {
     code_phase_chips: f64,
     carrier_phase_rad: f64,
     cn0_db_hz: f32,
+    navigation_data: SyntheticNavigationData,
     nav_bit_mode: SyntheticNavBitMode,
     nav_symbol_period_s: Option<f64>,
     signal_model: SyntheticSignalModel,
@@ -416,7 +417,7 @@ struct SatState {
 
 type SyntheticSignalModel = bijux_gnss_signal::api::ReplicaCodeModel;
 
-fn synthetic_replica_model(params: SyntheticSignalParams) -> SyntheticSignalModel {
+fn synthetic_replica_model(params: &SyntheticSignalParams) -> SyntheticSignalModel {
     let signal_code = resolved_signal_code(params.sat, params.signal_band, params.signal_code);
     SyntheticSignalModel::for_sat_signal(params.sat, Some(params.signal_band), signal_code)
         .ok()
@@ -444,7 +445,7 @@ impl SatState {
         receiver_clock_frequency_bias_hz: f64,
         doppler_rate_hz_per_s: f64,
     ) -> Self {
-        let signal_model = synthetic_replica_model(params);
+        let signal_model = synthetic_replica_model(&params);
         let nav_bit_mode = nav_bit_mode(&params);
         Self {
             doppler_hz: params.doppler_hz,
@@ -453,6 +454,7 @@ impl SatState {
             code_phase_chips: params.code_phase_chips,
             carrier_phase_rad: params.carrier_phase_rad,
             cn0_db_hz: params.cn0_db_hz,
+            navigation_data: params.navigation_data.clone(),
             nav_bit_mode,
             nav_symbol_period_s: nav_symbol_period_for_signal(&params, nav_bit_mode),
             signal_model,
@@ -491,6 +493,7 @@ impl SatState {
 
     fn sample_at(&self, t: f64) -> Complex<f32> {
         let data_bit = nav_bit_sign_with_symbol_period_at_time_s(
+            &self.navigation_data,
             self.nav_bit_mode,
             self.nav_symbol_period_s,
             t,
@@ -574,7 +577,7 @@ fn isolated_satellite_scenario(
             code_phase_chips: sat_truth.code_phase_chips,
             carrier_phase_rad: sat_truth.carrier_phase_rad,
             cn0_db_hz: sat_truth.cn0_db_hz,
-            data_bit_flip: data_bit_flip_for_nav_mode(sat_truth.nav_bit_mode),
+            navigation_data: sat_truth.navigation_data.clone(),
         }],
         ephemerides: Vec::new(),
         id: sat_truth.sat.prn.to_string(),
@@ -665,50 +668,68 @@ fn synthetic_constellation_carrier_hz(
 }
 
 fn nav_bit_mode(params: &SyntheticSignalParams) -> SyntheticNavBitMode {
-    match (
-        resolved_signal_code(params.sat, params.signal_band, params.signal_code),
-        params.data_bit_flip,
-        params.sat.constellation,
-        params.signal_band,
-    ) {
-        (
-            bijux_gnss_core::api::SignalCode::Unknown,
-            false,
-            bijux_gnss_core::api::Constellation::Glonass,
-            SignalBand::L1,
-        ) => SyntheticNavBitMode::GlonassL1FixedDataString,
-        (
-            bijux_gnss_core::api::SignalCode::Unknown,
-            true,
-            bijux_gnss_core::api::Constellation::Glonass,
-            SignalBand::L1,
-        ) => SyntheticNavBitMode::GlonassL1AlternatingDataString,
-        (
-            bijux_gnss_core::api::SignalCode::L5Q,
-            _,
-            bijux_gnss_core::api::Constellation::Gps,
-            SignalBand::L5,
-        ) => SyntheticNavBitMode::GpsL5QNh20,
-        (_, false, _, _) => SyntheticNavBitMode::ConstantPositive,
-        (
-            bijux_gnss_core::api::SignalCode::E5b,
-            true,
-            bijux_gnss_core::api::Constellation::Galileo,
-            SignalBand::E5,
-        ) => SyntheticNavBitMode::AlternatingGalileoInav4ms,
-        (
-            bijux_gnss_core::api::SignalCode::L5I,
-            true,
-            bijux_gnss_core::api::Constellation::Gps,
-            SignalBand::L5,
-        ) => SyntheticNavBitMode::AlternatingGpsL5I10ms,
-        (_, true, _, _) => SyntheticNavBitMode::AlternatingGpsLnav20ms,
+    let signal_code = resolved_signal_code(params.sat, params.signal_band, params.signal_code);
+    match (params.sat.constellation, params.signal_band, signal_code) {
+        (bijux_gnss_core::api::Constellation::Gps, SignalBand::L5, SignalCode::L5Q) => {
+            SyntheticNavBitMode::GpsL5QNh20
+        }
+        (bijux_gnss_core::api::Constellation::Glonass, SignalBand::L1, _) => {
+            match &params.navigation_data {
+                SyntheticNavigationData::ConstantPositive => {
+                    SyntheticNavBitMode::GlonassL1FixedDataString
+                }
+                SyntheticNavigationData::AlternatingStartPositive => {
+                    SyntheticNavBitMode::GlonassL1AlternatingDataString
+                }
+                SyntheticNavigationData::GlonassL1String { raw_data_bits } => {
+                    if raw_data_bits.iter().all(|&bit| bit == 1) {
+                        SyntheticNavBitMode::GlonassL1FixedDataString
+                    } else {
+                        SyntheticNavBitMode::GlonassL1CustomDataString
+                    }
+                }
+                _ => SyntheticNavBitMode::GlonassL1CustomDataString,
+            }
+        }
+        _ => match &params.navigation_data {
+            SyntheticNavigationData::ConstantPositive => SyntheticNavBitMode::ConstantPositive,
+            SyntheticNavigationData::ConstantNegative => SyntheticNavBitMode::ConstantNegative,
+            SyntheticNavigationData::AlternatingStartPositive => match (
+                params.sat.constellation,
+                params.signal_band,
+                signal_code,
+            ) {
+                (bijux_gnss_core::api::Constellation::Galileo, SignalBand::E5, SignalCode::E5b) => {
+                    SyntheticNavBitMode::AlternatingGalileoInav4ms
+                }
+                (bijux_gnss_core::api::Constellation::Gps, SignalBand::L5, SignalCode::L5I) => {
+                    SyntheticNavBitMode::AlternatingGpsL5I10ms
+                }
+                _ => SyntheticNavBitMode::AlternatingGpsLnav20ms,
+            },
+            SyntheticNavigationData::AlternatingStartNegative
+            | SyntheticNavigationData::SymbolSequence(_)
+            | SyntheticNavigationData::GlonassL1String { .. } => {
+                SyntheticNavBitMode::NativeSymbolSequence
+            }
+        },
     }
 }
 
 #[cfg(test)]
 fn nav_bit_sign_for_mode_at_time_s(nav_bit_mode: SyntheticNavBitMode, time_s: f64) -> i8 {
+    let navigation_data = navigation_data_for_nav_mode(nav_bit_mode);
+    nav_bit_sign_with_navigation_data_for_mode_at_time_s(&navigation_data, nav_bit_mode, time_s)
+}
+
+#[cfg(test)]
+fn nav_bit_sign_with_navigation_data_for_mode_at_time_s(
+    navigation_data: &SyntheticNavigationData,
+    nav_bit_mode: SyntheticNavBitMode,
+    time_s: f64,
+) -> i8 {
     nav_bit_sign_with_symbol_period_at_time_s(
+        navigation_data,
         nav_bit_mode,
         legacy_nav_symbol_period_s(nav_bit_mode),
         time_s,
@@ -716,63 +737,86 @@ fn nav_bit_sign_for_mode_at_time_s(nav_bit_mode: SyntheticNavBitMode, time_s: f6
 }
 
 fn nav_bit_sign_with_symbol_period_at_time_s(
+    navigation_data: &SyntheticNavigationData,
     nav_bit_mode: SyntheticNavBitMode,
     symbol_period_s: Option<f64>,
     time_s: f64,
 ) -> i8 {
     match nav_bit_mode {
         SyntheticNavBitMode::GlonassL1FixedDataString
-        | SyntheticNavBitMode::GlonassL1AlternatingDataString => {
+        | SyntheticNavBitMode::GlonassL1AlternatingDataString
+        | SyntheticNavBitMode::GlonassL1CustomDataString => {
             bijux_gnss_signal::api::glonass_l1_string_symbol_at_time_s(
-                &glonass_l1_raw_data_bits(nav_bit_mode),
+                &glonass_l1_raw_data_bits(navigation_data),
                 time_s.max(0.0),
             )
             .expect("synthetic GLONASS L1 string schedule must be valid")
         }
         SyntheticNavBitMode::GpsL5QNh20 => bijux_gnss_signal::api::gps_l5_q_epoch_symbol(
-            nav_bit_index_for_mode_at_time_s(nav_bit_mode, symbol_period_s, time_s) as usize,
+            navigation_symbol_index_at_time_s(symbol_period_s, time_s),
         ),
-        _ => nav_bit_sign_for_index(nav_bit_index_for_mode_at_time_s(
-            nav_bit_mode,
-            symbol_period_s,
-            time_s,
-        )),
+        _ => navigation_symbol_at_index(
+            navigation_data,
+            navigation_symbol_index_at_time_s(symbol_period_s, time_s),
+        ),
     }
 }
 
-fn nav_bit_index_for_mode_at_time_s(
-    _nav_bit_mode: SyntheticNavBitMode,
-    symbol_period_s: Option<f64>,
-    time_s: f64,
-) -> u64 {
+fn navigation_symbol_index_at_time_s(symbol_period_s: Option<f64>, time_s: f64) -> usize {
     let Some(symbol_period_s) = symbol_period_s else {
         return 0;
     };
     if !time_s.is_finite() || time_s <= 0.0 {
         return 0;
     }
-    (time_s / symbol_period_s).floor() as u64
+    (time_s / symbol_period_s).floor() as usize
 }
 
 #[cfg(test)]
 fn nav_bit_sign_at_time_s(data_bit_flip: bool, time_s: f64) -> i8 {
-    nav_bit_sign_for_mode_at_time_s(nav_bit_mode_from_flip(data_bit_flip), time_s)
-}
-
-#[cfg(test)]
-fn nav_bit_index_at_time_s(time_s: f64) -> u64 {
-    nav_bit_index_for_mode_at_time_s(
-        SyntheticNavBitMode::AlternatingGpsLnav20ms,
-        Some(GPS_L1_CA_NAV_BIT_PERIOD_S),
+    let navigation_data = SyntheticNavigationData::from(data_bit_flip);
+    nav_bit_sign_with_navigation_data_for_mode_at_time_s(
+        &navigation_data,
+        nav_bit_mode_from_flip(data_bit_flip),
         time_s,
     )
 }
 
-fn nav_bit_sign_for_index(bit_index: u64) -> i8 {
-    if bit_index % 2 == 0 {
-        1
-    } else {
-        -1
+#[cfg(test)]
+fn nav_bit_index_at_time_s(time_s: f64) -> u64 {
+    navigation_symbol_index_at_time_s(Some(GPS_L1_CA_NAV_BIT_PERIOD_S), time_s) as u64
+}
+
+fn navigation_symbol_at_index(navigation_data: &SyntheticNavigationData, symbol_index: usize) -> i8 {
+    match navigation_data {
+        SyntheticNavigationData::ConstantPositive => 1,
+        SyntheticNavigationData::ConstantNegative => -1,
+        SyntheticNavigationData::AlternatingStartPositive => {
+            if symbol_index % 2 == 0 { 1 } else { -1 }
+        }
+        SyntheticNavigationData::AlternatingStartNegative => {
+            if symbol_index % 2 == 0 { -1 } else { 1 }
+        }
+        SyntheticNavigationData::SymbolSequence(symbols) => {
+            assert!(
+                !symbols.is_empty(),
+                "synthetic navigation symbol sequence must not be empty"
+            );
+            let symbol = symbols.get(symbol_index % symbols.len()).copied().unwrap_or_else(|| {
+                panic!("synthetic navigation symbol sequence must not be empty")
+            });
+            validate_navigation_symbol(symbol)
+        }
+        SyntheticNavigationData::GlonassL1String { .. } => {
+            panic!("glonass l1 raw data strings are only valid on glonass l1 signals")
+        }
+    }
+}
+
+fn validate_navigation_symbol(symbol: i8) -> i8 {
+    match symbol {
+        -1 | 1 => symbol,
+        other => panic!("synthetic navigation symbol must be -1 or 1, found {other}"),
     }
 }
 
@@ -808,12 +852,20 @@ fn nav_bit_segments(
         nav_bit_mode,
         SyntheticNavBitMode::GlonassL1FixedDataString
             | SyntheticNavBitMode::GlonassL1AlternatingDataString
+            | SyntheticNavBitMode::GlonassL1CustomDataString
     ) {
         return symbol_period_segments(
             sample_rate_hz,
             sample_count,
             Some(bijux_gnss_signal::api::GLONASS_L1_SYMBOL_PERIOD_S),
-            |start_s| nav_bit_sign_with_symbol_period_at_time_s(nav_bit_mode, None, start_s),
+            |start_s| {
+                nav_bit_sign_with_symbol_period_at_time_s(
+                    &params.navigation_data,
+                    nav_bit_mode,
+                    None,
+                    start_s,
+                )
+            },
         );
     }
 
@@ -824,7 +876,7 @@ fn nav_bit_segments(
             Some(primary_epoch_period_s),
             |start_s| {
                 let primary_code_period_index = (start_s / primary_epoch_period_s).floor() as usize;
-                emitted_epoch_symbol(params, nav_bit_mode, primary_code_period_index)
+                emitted_epoch_symbol(params, primary_code_period_index)
             },
         );
     }
@@ -835,6 +887,7 @@ fn nav_bit_segments(
         nav_symbol_period_for_signal(params, nav_bit_mode),
         |start_s| {
             nav_bit_sign_with_symbol_period_at_time_s(
+                &params.navigation_data,
                 nav_bit_mode,
                 nav_symbol_period_for_signal(params, nav_bit_mode),
                 start_s,
@@ -912,14 +965,16 @@ fn native_epoch_period_for_signal(params: &SyntheticSignalParams) -> Option<f64>
 
 fn emitted_epoch_symbol(
     params: &SyntheticSignalParams,
-    nav_bit_mode: SyntheticNavBitMode,
     primary_code_period_index: usize,
 ) -> i8 {
     let signal_code = resolved_signal_code(params.sat, params.signal_band, params.signal_code);
     match (params.sat.constellation, params.signal_band, signal_code) {
         (bijux_gnss_core::api::Constellation::Gps, SignalBand::L5, SignalCode::L5I) => {
             bijux_gnss_signal::api::gps_l5_i_epoch_symbol(
-                synthetic_data_symbol_stream(nav_bit_mode),
+                &[navigation_symbol_at_index(
+                    &params.navigation_data,
+                    bijux_gnss_signal::api::gps_l5_i_data_symbol_index(primary_code_period_index),
+                )],
                 primary_code_period_index,
             )
             .expect("synthetic GPS L5I epoch symbols must be valid")
@@ -929,14 +984,24 @@ fn emitted_epoch_symbol(
         }
         (bijux_gnss_core::api::Constellation::Galileo, SignalBand::E5, SignalCode::E5a) => {
             bijux_gnss_signal::api::galileo_e5a_i_epoch_symbol(
-                synthetic_data_symbol_stream(nav_bit_mode),
+                &[navigation_symbol_at_index(
+                    &params.navigation_data,
+                    bijux_gnss_signal::api::galileo_e5a_i_data_symbol_index(
+                        primary_code_period_index,
+                    ),
+                )],
                 primary_code_period_index,
             )
             .expect("synthetic Galileo E5a epoch symbols must be valid")
         }
         (bijux_gnss_core::api::Constellation::Galileo, SignalBand::E5, SignalCode::E5b) => {
             bijux_gnss_signal::api::galileo_e5b_i_epoch_symbol(
-                synthetic_data_symbol_stream(nav_bit_mode),
+                &[navigation_symbol_at_index(
+                    &params.navigation_data,
+                    bijux_gnss_signal::api::galileo_e5b_i_data_symbol_index(
+                        primary_code_period_index,
+                    ),
+                )],
                 primary_code_period_index,
             )
             .expect("synthetic Galileo E5b epoch symbols must be valid")
@@ -944,27 +1009,25 @@ fn emitted_epoch_symbol(
         (bijux_gnss_core::api::Constellation::Beidou, SignalBand::B1, SignalCode::B1I)
         | (bijux_gnss_core::api::Constellation::Beidou, SignalBand::B2, SignalCode::B2I) => {
             bijux_gnss_signal::api::beidou_d1_epoch_symbol(
-                synthetic_data_symbol_stream(nav_bit_mode),
+                &[navigation_symbol_at_index(
+                    &params.navigation_data,
+                    bijux_gnss_signal::api::beidou_d1_data_symbol_index(
+                        primary_code_period_index,
+                    ),
+                )],
                 primary_code_period_index,
             )
             .expect("synthetic BeiDou D1 epoch symbols must be valid")
         }
-        _ => nav_bit_sign_with_symbol_period_at_time_s(
-            nav_bit_mode,
-            nav_symbol_period_for_signal(params, nav_bit_mode),
-            0.0,
-        ),
-    }
-}
-
-fn synthetic_data_symbol_stream(nav_bit_mode: SyntheticNavBitMode) -> &'static [i8] {
-    match nav_bit_mode {
-        SyntheticNavBitMode::ConstantPositive | SyntheticNavBitMode::GpsL5QNh20 => &[1],
-        SyntheticNavBitMode::AlternatingGpsLnav20ms
-        | SyntheticNavBitMode::AlternatingGalileoInav4ms
-        | SyntheticNavBitMode::AlternatingGpsL5I10ms => &[1, -1],
-        SyntheticNavBitMode::GlonassL1FixedDataString
-        | SyntheticNavBitMode::GlonassL1AlternatingDataString => &[1],
+        _ => {
+            let nav_bit_mode = nav_bit_mode(params);
+            nav_bit_sign_with_symbol_period_at_time_s(
+                &params.navigation_data,
+                nav_bit_mode,
+                nav_symbol_period_for_signal(params, nav_bit_mode),
+                0.0,
+            )
+        }
     }
 }
 
@@ -972,7 +1035,10 @@ fn nav_symbol_period_for_signal(
     params: &SyntheticSignalParams,
     nav_bit_mode: SyntheticNavBitMode,
 ) -> Option<f64> {
-    if nav_bit_mode == SyntheticNavBitMode::ConstantPositive {
+    if matches!(
+        nav_bit_mode,
+        SyntheticNavBitMode::ConstantPositive | SyntheticNavBitMode::ConstantNegative
+    ) {
         return None;
     }
 
@@ -998,14 +1064,16 @@ fn nav_symbol_period_for_signal(
 #[cfg(test)]
 fn legacy_nav_symbol_period_s(nav_bit_mode: SyntheticNavBitMode) -> Option<f64> {
     match nav_bit_mode {
-        SyntheticNavBitMode::ConstantPositive => None,
+        SyntheticNavBitMode::ConstantPositive | SyntheticNavBitMode::ConstantNegative => None,
         SyntheticNavBitMode::GlonassL1FixedDataString
-        | SyntheticNavBitMode::GlonassL1AlternatingDataString => {
+        | SyntheticNavBitMode::GlonassL1AlternatingDataString
+        | SyntheticNavBitMode::GlonassL1CustomDataString => {
             Some(bijux_gnss_signal::api::GLONASS_L1_SYMBOL_PERIOD_S)
         }
         SyntheticNavBitMode::AlternatingGpsLnav20ms => Some(GPS_L1_CA_NAV_BIT_PERIOD_S),
         SyntheticNavBitMode::AlternatingGalileoInav4ms => Some(0.004),
         SyntheticNavBitMode::AlternatingGpsL5I10ms => Some(0.010),
+        SyntheticNavBitMode::NativeSymbolSequence => Some(GPS_L1_CA_NAV_BIT_PERIOD_S),
         SyntheticNavBitMode::GpsL5QNh20 => Some(0.001),
     }
 }
@@ -1053,25 +1121,63 @@ fn nav_bit_mode_from_flip(data_bit_flip: bool) -> SyntheticNavBitMode {
     }
 }
 
-fn data_bit_flip_for_nav_mode(nav_bit_mode: SyntheticNavBitMode) -> bool {
-    !matches!(
-        nav_bit_mode,
-        SyntheticNavBitMode::ConstantPositive | SyntheticNavBitMode::GlonassL1FixedDataString
-    )
+#[cfg(test)]
+fn navigation_data_for_nav_mode(nav_bit_mode: SyntheticNavBitMode) -> SyntheticNavigationData {
+    match nav_bit_mode {
+        SyntheticNavBitMode::ConstantPositive => SyntheticNavigationData::ConstantPositive,
+        SyntheticNavBitMode::ConstantNegative => SyntheticNavigationData::ConstantNegative,
+        SyntheticNavBitMode::GlonassL1FixedDataString => SyntheticNavigationData::ConstantPositive,
+        SyntheticNavBitMode::GlonassL1AlternatingDataString => {
+            SyntheticNavigationData::AlternatingStartPositive
+        }
+        SyntheticNavBitMode::GlonassL1CustomDataString => {
+            SyntheticNavigationData::GlonassL1String {
+                raw_data_bits: glonass_l1_raw_data_bits(
+                    &SyntheticNavigationData::AlternatingStartPositive,
+                )
+                .to_vec(),
+            }
+        }
+        SyntheticNavBitMode::AlternatingGpsLnav20ms
+        | SyntheticNavBitMode::AlternatingGalileoInav4ms
+        | SyntheticNavBitMode::AlternatingGpsL5I10ms => {
+            SyntheticNavigationData::AlternatingStartPositive
+        }
+        SyntheticNavBitMode::NativeSymbolSequence => {
+            SyntheticNavigationData::SymbolSequence(vec![1, -1])
+        }
+        SyntheticNavBitMode::GpsL5QNh20 => SyntheticNavigationData::ConstantPositive,
+    }
 }
 
 fn glonass_l1_raw_data_bits(
-    nav_bit_mode: SyntheticNavBitMode,
+    navigation_data: &SyntheticNavigationData,
 ) -> [i8; bijux_gnss_signal::api::GLONASS_L1_STRING_DATA_BITS] {
-    let mut raw_data_bits = [1; bijux_gnss_signal::api::GLONASS_L1_STRING_DATA_BITS];
-
-    if nav_bit_mode == SyntheticNavBitMode::GlonassL1AlternatingDataString {
-        for (index, bit) in raw_data_bits.iter_mut().enumerate().skip(1) {
-            *bit = if index % 2 == 0 { 1 } else { -1 };
+    let len = bijux_gnss_signal::api::GLONASS_L1_STRING_DATA_BITS;
+    match navigation_data {
+        SyntheticNavigationData::ConstantPositive => [1; bijux_gnss_signal::api::GLONASS_L1_STRING_DATA_BITS],
+        SyntheticNavigationData::AlternatingStartPositive => {
+            let mut raw_data_bits = [1; bijux_gnss_signal::api::GLONASS_L1_STRING_DATA_BITS];
+            for (index, bit) in raw_data_bits.iter_mut().enumerate().skip(1) {
+                *bit = if index % 2 == 0 { 1 } else { -1 };
+            }
+            raw_data_bits
+        }
+        SyntheticNavigationData::GlonassL1String { raw_data_bits } => {
+            assert!(
+                raw_data_bits.len() == len,
+                "synthetic glonass l1 raw data string must contain {len} bits"
+            );
+            let mut validated = [1; bijux_gnss_signal::api::GLONASS_L1_STRING_DATA_BITS];
+            for (slot, bit) in validated.iter_mut().zip(raw_data_bits.iter().copied()) {
+                *slot = validate_navigation_symbol(bit);
+            }
+            validated
+        }
+        _ => {
+            panic!("glonass l1 string modulation requires constant positive, alternating start positive, or an explicit raw data string")
         }
     }
-
-    raw_data_bits
 }
 
 #[derive(Debug, Clone)]

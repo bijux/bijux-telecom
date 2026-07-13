@@ -6,23 +6,91 @@ fn default_signal_code() -> SignalCode {
     SignalCode::Unknown
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SyntheticNavigationData {
+    #[default]
+    ConstantPositive,
+    ConstantNegative,
+    AlternatingStartPositive,
+    AlternatingStartNegative,
+    SymbolSequence(Vec<i8>),
+    GlonassL1String { raw_data_bits: Vec<i8> },
+}
+
+impl SyntheticNavigationData {
+    pub const fn constant_positive() -> Self {
+        Self::ConstantPositive
+    }
+
+    pub const fn alternating_positive() -> Self {
+        Self::AlternatingStartPositive
+    }
+}
+
+impl From<bool> for SyntheticNavigationData {
+    fn from(alternating: bool) -> Self {
+        if alternating {
+            Self::AlternatingStartPositive
+        } else {
+            Self::ConstantPositive
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct SyntheticSignalParams {
     pub sat: SatId,
-    #[serde(default)]
     pub glonass_frequency_channel: Option<GlonassFrequencyChannel>,
-    #[serde(default = "default_signal_band")]
     pub signal_band: SignalBand,
-    #[serde(default = "default_signal_code")]
     pub signal_code: SignalCode,
     pub doppler_hz: f64,
     pub code_phase_chips: f64,
     pub carrier_phase_rad: f64,
     pub cn0_db_hz: f32,
-    pub data_bit_flip: bool,
+    pub navigation_data: SyntheticNavigationData,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize)]
+struct SyntheticSignalParamsWire {
+    sat: SatId,
+    #[serde(default)]
+    glonass_frequency_channel: Option<GlonassFrequencyChannel>,
+    #[serde(default = "default_signal_band")]
+    signal_band: SignalBand,
+    #[serde(default = "default_signal_code")]
+    signal_code: SignalCode,
+    doppler_hz: f64,
+    code_phase_chips: f64,
+    carrier_phase_rad: f64,
+    cn0_db_hz: f32,
+    #[serde(default)]
+    navigation_data: Option<SyntheticNavigationData>,
+    #[serde(default)]
+    data_bit_flip: Option<bool>,
+}
+
+impl<'de> Deserialize<'de> for SyntheticSignalParams {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let wire = SyntheticSignalParamsWire::deserialize(deserializer)?;
+        Ok(Self {
+            sat: wire.sat,
+            glonass_frequency_channel: wire.glonass_frequency_channel,
+            signal_band: wire.signal_band,
+            signal_code: wire.signal_code,
+            doppler_hz: wire.doppler_hz,
+            code_phase_chips: wire.code_phase_chips,
+            carrier_phase_rad: wire.carrier_phase_rad,
+            cn0_db_hz: wire.cn0_db_hz,
+            navigation_data: resolved_navigation_data(wire.navigation_data, wire.data_bit_flip),
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticDopplerRampParams {
     pub signal: SyntheticSignalParams,
     pub doppler_rate_hz_per_s: f64,
@@ -64,18 +132,15 @@ pub struct SyntheticScenario {
 }
 
 /// Per-satellite signal specification for a synthetic navigation validation case.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct SyntheticNavigationSignalSpec {
     /// Satellite identifier.
     pub sat: SatId,
     /// GLONASS FDMA channel when the satellite uses the GLONASS L1 signal plan.
-    #[serde(default)]
     pub glonass_frequency_channel: Option<GlonassFrequencyChannel>,
     /// Explicit signal band carried by the synthetic signal.
-    #[serde(default = "default_signal_band")]
     pub signal_band: SignalBand,
     /// Explicit signal code carried by the synthetic signal.
-    #[serde(default = "default_signal_code")]
     pub signal_code: SignalCode,
     /// Injected Doppler shift in Hz.
     pub doppler_hz: f64,
@@ -83,8 +148,45 @@ pub struct SyntheticNavigationSignalSpec {
     pub carrier_phase_rad: f64,
     /// Injected carrier-to-noise density ratio in dB-Hz.
     pub cn0_db_hz: f32,
-    /// Whether the synthetic signal should alternate navigation symbols at the signal-native rate.
-    pub data_bit_flip: bool,
+    /// Navigation symbols applied at the signal-native symbol cadence.
+    pub navigation_data: SyntheticNavigationData,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SyntheticNavigationSignalSpecWire {
+    sat: SatId,
+    #[serde(default)]
+    glonass_frequency_channel: Option<GlonassFrequencyChannel>,
+    #[serde(default = "default_signal_band")]
+    signal_band: SignalBand,
+    #[serde(default = "default_signal_code")]
+    signal_code: SignalCode,
+    doppler_hz: f64,
+    carrier_phase_rad: f64,
+    cn0_db_hz: f32,
+    #[serde(default)]
+    navigation_data: Option<SyntheticNavigationData>,
+    #[serde(default)]
+    data_bit_flip: Option<bool>,
+}
+
+impl<'de> Deserialize<'de> for SyntheticNavigationSignalSpec {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let wire = SyntheticNavigationSignalSpecWire::deserialize(deserializer)?;
+        Ok(Self {
+            sat: wire.sat,
+            glonass_frequency_channel: wire.glonass_frequency_channel,
+            signal_band: wire.signal_band,
+            signal_code: wire.signal_code,
+            doppler_hz: wire.doppler_hz,
+            carrier_phase_rad: wire.carrier_phase_rad,
+            cn0_db_hz: wire.cn0_db_hz,
+            navigation_data: resolved_navigation_data(wire.navigation_data, wire.data_bit_flip),
+        })
+    }
 }
 
 /// Truth-complete synthetic navigation validation case.
@@ -120,16 +222,22 @@ pub struct SyntheticNavigationValidationScenario {
 pub enum SyntheticNavBitMode {
     /// Keep the navigation-bit sign positive for the full capture.
     ConstantPositive,
+    /// Keep the navigation-bit sign negative for the full capture.
+    ConstantNegative,
     /// Apply the GLONASS L1 string structure with constant positive raw data bits.
     GlonassL1FixedDataString,
     /// Apply the GLONASS L1 string structure with alternating raw data bits after the idle bit.
     GlonassL1AlternatingDataString,
+    /// Apply the GLONASS L1 string structure using an explicit raw data-bit sequence.
+    GlonassL1CustomDataString,
     /// Alternate the bit sign every 20 ms, starting positive at sample zero.
     AlternatingGpsLnav20ms,
     /// Alternate the bit sign every 4 ms, starting positive at sample zero.
     AlternatingGalileoInav4ms,
     /// Alternate the bit sign every 10 ms, starting positive at sample zero.
     AlternatingGpsL5I10ms,
+    /// Apply an explicit symbol stream at the signal-native data boundary.
+    NativeSymbolSequence,
     /// Apply the published 20-chip L5-Q NH pilot sequence at 1 ms epochs.
     GpsL5QNh20,
 }
@@ -173,6 +281,8 @@ pub struct SyntheticSatelliteTruth {
     pub cn0_db_hz: f32,
     /// Complex sample amplitude before additive noise and output scaling.
     pub signal_amplitude: f32,
+    /// Synthetic navigation-data stream applied to this signal.
+    pub navigation_data: SyntheticNavigationData,
     /// Deterministic navigation-bit model used for this signal.
     pub nav_bit_mode: SyntheticNavBitMode,
     /// Sample-aligned navigation-bit truth intervals.
@@ -359,6 +469,15 @@ fn encode_receiver_code_phase_chips(pseudorange_chips: f64, receiver_epoch_base:
     code_phase_chips.rem_euclid(1023.0)
 }
 
+fn resolved_navigation_data(
+    navigation_data: Option<SyntheticNavigationData>,
+    data_bit_flip: Option<bool>,
+) -> SyntheticNavigationData {
+    navigation_data
+        .or_else(|| data_bit_flip.map(SyntheticNavigationData::from))
+        .unwrap_or_default()
+}
+
 /// Build a signal-complete synthetic scenario from a truth-complete navigation validation case.
 pub fn build_signal_scenario_from_navigation_validation_scenario(
     scenario: &SyntheticNavigationValidationScenario,
@@ -409,7 +528,7 @@ pub fn build_signal_scenario_from_navigation_validation_scenario(
                 ),
                 carrier_phase_rad: signal.carrier_phase_rad,
                 cn0_db_hz: signal.cn0_db_hz,
-                data_bit_flip: signal.data_bit_flip,
+                navigation_data: signal.navigation_data.clone(),
             })
             .collect(),
         ephemerides: scenario.ephemerides.clone(),

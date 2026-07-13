@@ -23,7 +23,7 @@ pub fn measure_truth_guided_tracking_lock_probability(
                 receiver_clock_frequency_bias_hz: 0.0,
                 duration_s,
                 seed: *seed,
-                satellites: vec![signal],
+                satellites: vec![signal.clone()],
                 ephemerides: Vec::new(),
                 id: scenario_id.clone(),
             };
@@ -103,7 +103,7 @@ pub fn measure_truth_guided_tracking_lock_rate(
         .map(|case| {
             let sensitivity = measure_truth_guided_tracking_lock_probability(
                 config,
-                case.signal,
+                case.signal.clone(),
                 case.duration_s,
                 trial_seeds,
                 &tracking_lock_rate_case_id(scenario_id_prefix, case),
