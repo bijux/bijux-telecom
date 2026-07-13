@@ -54,12 +54,17 @@ fn iq_f32_to_samples_preserves_complex_pairs() {
 fn storage_quantization_profiles_report_expected_metadata() {
     assert_eq!(IqQuantization::Float32.sample_format(), IqSampleFormat::Cf32Le);
     assert_eq!(IqQuantization::Float32.quantization_bits(), 32);
+    assert_eq!(IqQuantization::Float32.identifier(), "float32");
+    assert_eq!(IqQuantization::Float32.to_string(), "float32");
     assert_eq!(IqQuantization::Bipolar1Bit.sample_format(), IqSampleFormat::Iq8);
     assert_eq!(IqQuantization::Bipolar1Bit.quantization_bits(), 1);
+    assert_eq!(IqQuantization::Bipolar1Bit.identifier(), "bipolar_1bit");
     assert_eq!(IqQuantization::Signed4Bit.sample_format(), IqSampleFormat::Iq8);
     assert_eq!(IqQuantization::Signed4Bit.quantization_bits(), 4);
+    assert_eq!(IqQuantization::Signed4Bit.identifier(), "signed_4bit");
     assert_eq!(IqQuantization::Signed16Bit.sample_format(), IqSampleFormat::Iq16Le);
     assert_eq!(IqQuantization::Signed16Bit.quantization_bits(), 16);
+    assert_eq!(IqQuantization::Signed16Bit.identifier(), "signed_16bit");
 }
 
 #[test]

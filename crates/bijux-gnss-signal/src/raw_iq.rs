@@ -1,6 +1,7 @@
 //! Raw IQ metadata contracts shared by ingest surfaces.
 
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 /// Supported raw IQ sample encodings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -65,6 +66,24 @@ impl IqQuantization {
             Self::Signed8Bit => 8,
             Self::Signed16Bit => 16,
         }
+    }
+
+    /// Stable identifier used in reports, CLI arguments, and generated artifacts.
+    pub const fn identifier(self) -> &'static str {
+        match self {
+            Self::Float32 => "float32",
+            Self::Bipolar1Bit => "bipolar_1bit",
+            Self::Signed2Bit => "signed_2bit",
+            Self::Signed4Bit => "signed_4bit",
+            Self::Signed8Bit => "signed_8bit",
+            Self::Signed16Bit => "signed_16bit",
+        }
+    }
+}
+
+impl fmt::Display for IqQuantization {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.identifier())
     }
 }
 
