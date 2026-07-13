@@ -8,9 +8,15 @@ use bijux_gnss_core::api::{
     SignalCode, SignalSpec, GPS_L1_CA_CARRIER_HZ,
 };
 use bijux_gnss_nav::api::{
-    ecef_to_enu, geodetic_to_ecef, sat_state_gps_l1ca_at_receive_time, GpsEphemeris,
-    ReceiverAntennaCalibration, ReceiverAntennaCalibrations, ReceiverPhaseCenterOffset,
-    SatelliteAntennaCalibration, SatelliteAntennaCalibrations, SatellitePhaseCenterOffset,
+    GpsEphemeris, ReceiverAntennaCalibration, ReceiverAntennaCalibrations,
+    ReceiverPhaseCenterOffset, SatelliteAntennaCalibration, SatelliteAntennaCalibrations,
+    SatellitePhaseCenterOffset,
+};
+
+use crate::reference_math::antenna::{receiver_range_correction_m, satellite_range_correction_m};
+use crate::reference_math::coordinates::{ecef_to_enu_m, geodetic_to_ecef_m, GeodeticPoint};
+use crate::reference_math::gps_broadcast::{
+    pseudorange_from_truth, solve_transmit_state_for_receiver,
 };
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
@@ -63,8 +69,11 @@ pub struct GpsL1RtkAntennaEffectCase {
 
 /// Build a deterministic GPS L1 PPP antenna-effect scenario.
 pub fn gps_l1_ppp_antenna_effect_case() -> GpsL1PppAntennaEffectCase {
-    let receiver = geodetic_to_ecef(37.0, -122.0, 15.0);
-    let receiver_ecef_m = [receiver.0, receiver.1, receiver.2];
+    let receiver_ecef_m = geodetic_to_ecef_m(GeodeticPoint {
+        lat_deg: 37.0,
+        lon_deg: -122.0,
+        alt_m: 15.0,
+    });
     let receive_gps_time = GpsTime { week: 2200, tow_s: 345_600.25 };
     let ephemerides = test_ephemerides(receive_gps_time);
     let (receiver_calibrations, satellite_calibrations) = test_calibrations(&ephemerides);
@@ -92,14 +101,16 @@ pub fn gps_l1_ppp_antenna_effect_case() -> GpsL1PppAntennaEffectCase {
 
 /// Build a deterministic GPS L1 RTK antenna-effect scenario.
 pub fn gps_l1_rtk_antenna_effect_case() -> GpsL1RtkAntennaEffectCase {
-    let base = geodetic_to_ecef(37.0, -122.0, 10.0);
-    let base_ecef_m = [base.0, base.1, base.2];
-    let rover = geodetic_to_ecef(37.0001, -121.9999, 12.0);
-    let rover_ecef_m = [rover.0, rover.1, rover.2];
+    let base_geodetic = GeodeticPoint { lat_deg: 37.0, lon_deg: -122.0, alt_m: 10.0 };
+    let base_ecef_m = geodetic_to_ecef_m(base_geodetic);
+    let rover_ecef_m = geodetic_to_ecef_m(GeodeticPoint {
+        lat_deg: 37.0001,
+        lon_deg: -121.9999,
+        alt_m: 12.0,
+    });
     let rover_enu_m = {
-        let (east_m, north_m, up_m) =
-            ecef_to_enu(rover_ecef_m[0], rover_ecef_m[1], rover_ecef_m[2], 37.0, -122.0, 10.0);
-        [east_m, north_m, up_m]
+        let enu = ecef_to_enu_m(rover_ecef_m, base_geodetic);
+        [enu.east_m, enu.north_m, enu.up_m]
     };
     let receive_gps_time = GpsTime { week: 2200, tow_s: 345_600.25 };
     let ephemerides = test_ephemerides(receive_gps_time);
@@ -242,35 +253,26 @@ fn make_obs_epoch(
     let sats = ephemerides
         .iter()
         .map(|ephemeris| {
-            let mut travel_time_s = 0.07;
-            let sat = loop {
-                let state = sat_state_gps_l1ca_at_receive_time(
-                    ephemeris,
-                    receive_gps_time.tow_s,
-                    travel_time_s,
-                );
-                let range_m = geometric_range_m(receiver_ecef_m, [state.x_m, state.y_m, state.z_m]);
-                let next_travel_time_s = range_m / SPEED_OF_LIGHT_MPS;
-                if (next_travel_time_s - travel_time_s).abs() < 1.0e-12 {
-                    break state;
-                }
-                travel_time_s = next_travel_time_s;
-            };
+            let solved =
+                solve_transmit_state_for_receiver(ephemeris, receive_gps_time.tow_s, receiver_ecef_m);
+            let sat = solved.transmit_state;
             let sat_ecef_m = [sat.x_m, sat.y_m, sat.z_m];
-            let range_m = geometric_range_m(receiver_ecef_m, sat_ecef_m);
+            let unbiased_pseudorange_m =
+                pseudorange_from_truth(ephemeris, receiver_ecef_m, receive_gps_time.tow_s, 0.0);
             let gps_time = Some(receive_gps_time);
-            let satellite_correction_m = satellite_calibrations
-                .range_correction_m(
-                    ephemeris.sat,
-                    SignalBand::L1,
-                    gps_time,
-                    sat_ecef_m,
-                    receiver_ecef_m,
-                )
+            let satellite_correction_m = satellite_range_correction_m(
+                satellite_calibrations,
+                ephemeris.sat,
+                SignalBand::L1,
+                gps_time,
+                sat_ecef_m,
+                receiver_ecef_m,
+            )
                 .expect("satellite antenna correction");
             let receiver_correction_m = receiver_antenna_type
                 .and_then(|antenna_type| {
-                    receiver_calibrations.range_correction_m(
+                    receiver_range_correction_m(
+                        receiver_calibrations,
                         antenna_type,
                         SignalBand::L1,
                         gps_time,
@@ -281,20 +283,17 @@ fn make_obs_epoch(
                 .unwrap_or(0.0);
             let antenna_correction_m = satellite_correction_m + receiver_correction_m;
             let timing = ObsSignalTiming {
-                signal_travel_time_s: Seconds(travel_time_s),
-                transmit_gps_time: receive_gps_time.offset_seconds(-travel_time_s),
+                signal_travel_time_s: Seconds(solved.signal_travel_time_s),
+                transmit_gps_time: receive_gps_time.offset_seconds(-solved.signal_travel_time_s),
             };
             ObsSatellite {
                 signal_id: SigId { sat: ephemeris.sat, band: SignalBand::L1, code: SignalCode::Ca },
                 pseudorange_m: bijux_gnss_core::api::Meters(
-                    range_m - sat.clock_correction.bias_s * SPEED_OF_LIGHT_MPS
-                        + antenna_correction_m,
+                    unbiased_pseudorange_m + antenna_correction_m,
                 ),
                 pseudorange_var_m2: 4.0e-4,
                 carrier_phase_cycles: bijux_gnss_core::api::Cycles(
-                    (range_m - sat.clock_correction.bias_s * SPEED_OF_LIGHT_MPS
-                        + antenna_correction_m)
-                        / wavelength_m,
+                    (unbiased_pseudorange_m + antenna_correction_m) / wavelength_m,
                 ),
                 carrier_phase_var_cycles2: 1.0e-4,
                 doppler_hz: bijux_gnss_core::api::Hertz(0.0),
@@ -352,13 +351,6 @@ fn make_obs_epoch(
         decision_reason: Some("accepted_observables_present".to_string()),
         manifest: None,
     }
-}
-
-fn geometric_range_m(receiver_ecef_m: [f64; 3], sat_ecef_m: [f64; 3]) -> f64 {
-    let dx = receiver_ecef_m[0] - sat_ecef_m[0];
-    let dy = receiver_ecef_m[1] - sat_ecef_m[1];
-    let dz = receiver_ecef_m[2] - sat_ecef_m[2];
-    (dx * dx + dy * dy + dz * dz).sqrt()
 }
 
 #[cfg(test)]
