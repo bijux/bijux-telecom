@@ -298,6 +298,20 @@ impl ArtifactPayloadValidate for PppSolutionEpoch {
                 "PPP solution should carry horizontal error ellipse axes and azimuth",
             ));
         }
+        if self.convergence.converged && !self.convergence.evidence.supports_convergence_claim() {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "PPP_CONVERGENCE_EVIDENCE_MISSING",
+                "PPP convergence claim is missing required numerical evidence",
+            ));
+        }
+        if self.convergence.converged && !self.convergence.missing_reasons.is_empty() {
+            events.push(DiagnosticEvent::new(
+                DiagnosticSeverity::Error,
+                "PPP_CONVERGENCE_REASON_INCONSISTENT",
+                "PPP convergence claim must not carry unresolved evidence blockers",
+            ));
+        }
         events
     }
 }
@@ -386,6 +400,31 @@ mod tests {
         assert!(diagnostics
             .iter()
             .any(|event| event.code == "PPP_HORIZONTAL_ERROR_ELLIPSE_MISSING"));
+    }
+
+    #[test]
+    fn ppp_solution_validation_rejects_converged_state_without_full_evidence() {
+        let mut solution = sample_solution();
+        solution.convergence.converged = true;
+        solution.convergence.evidence = PppConvergenceEvidence {
+            covariance_supported: true,
+            residual_supported: true,
+            ambiguity_supported: false,
+            correction_supported: false,
+            integrity_supported: false,
+        };
+        solution.convergence.missing_reasons = vec![
+            "missing_ambiguity_evidence".to_string(),
+            "missing_correction_evidence".to_string(),
+            "missing_integrity_evidence".to_string(),
+        ];
+
+        let diagnostics = solution.validate_payload();
+
+        assert!(diagnostics.iter().any(|event| event.code == "PPP_CONVERGENCE_EVIDENCE_MISSING"));
+        assert!(diagnostics
+            .iter()
+            .any(|event| event.code == "PPP_CONVERGENCE_REASON_INCONSISTENT"));
     }
 
     #[test]
