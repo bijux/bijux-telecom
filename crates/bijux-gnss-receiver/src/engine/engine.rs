@@ -384,15 +384,8 @@ impl Receiver {
                         ],
                     });
                     let navigation_start = Instant::now();
-                    let mut navigation = crate::pipeline::navigation::Navigation::new(
-                        self.config().clone(),
-                        self.runtime().clone(),
-                    );
-                    let navigation_epochs = observation_output
-                        .epochs
-                        .iter()
-                        .filter_map(|epoch| navigation.solve_epoch(epoch, gps_ephemerides))
-                        .collect::<Vec<_>>();
+                    let navigation_epochs =
+                        self.solve_observation_epochs(&observation_output.epochs, gps_ephemerides);
                     let navigation_ms = navigation_start.elapsed().as_secs_f64() * 1000.0;
                     runtime
                         .metrics
