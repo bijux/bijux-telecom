@@ -172,7 +172,7 @@ fn write_residual_rms_csv(
 fn write_position_error_csv(
     out_dir: &Path,
     solutions: &[bijux_gnss_infra::api::core::NavSolutionEpoch],
-    reference: &[bijux_gnss_infra::api::core::ValidationReferenceEpoch],
+    reference: &[bijux_gnss_infra::api::ValidationReferenceEpoch],
 ) -> Result<()> {
     let mut lines = Vec::new();
     lines.push("epoch_idx,position_error_m".to_string());

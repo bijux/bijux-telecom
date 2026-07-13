@@ -765,7 +765,7 @@ fn dual_frequency_pair_observed(obs: &[ObsEpoch], band_1: SignalBand, band_2: Si
 }
 
 fn supported_observed_dual_frequency_pairs(obs: &[ObsEpoch]) -> Vec<(SignalBand, SignalBand)> {
-    bijux_gnss_infra::api::core::supported_dual_frequency_band_pairs()
+    bijux_gnss_infra::api::signal::supported_dual_frequency_band_pairs()
         .iter()
         .copied()
         .filter(|&(band_1, band_2)| dual_frequency_pair_observed(obs, band_1, band_2))

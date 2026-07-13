@@ -6,11 +6,11 @@ pub use crate::artifact_tools::{
 };
 pub use crate::commands::prepare_run;
 pub use crate::validate_reference::validate_reference;
-pub use bijux_gnss_receiver::api::core::{
+pub use bijux_gnss_receiver::api::core::{lla_to_ecef, stats, StatsSummary};
+pub use bijux_gnss_receiver::api::{
     align_reference_by_time, check_solution_consistency, reference_compare, reference_ecef,
     ReferenceAlign, ReferenceCompareStats, SolutionConsistencyReport, ValidationReferenceEpoch,
 };
-pub use bijux_gnss_receiver::api::core::{lla_to_ecef, stats, StatsSummary};
 #[cfg(feature = "nav")]
 #[cfg_attr(docsrs, doc(cfg(feature = "nav")))]
 pub use bijux_gnss_receiver::api::{

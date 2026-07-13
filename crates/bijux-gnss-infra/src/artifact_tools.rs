@@ -140,7 +140,7 @@ fn validate_obs_artifact(data: &str) -> Result<Vec<DiagnosticEvent>, InputError>
         events.extend(wrapped.validate());
         epochs.push(wrapped.payload);
     }
-    if let Err(err) = bijux_gnss_receiver::api::core::validate_obs_epochs(&epochs) {
+    if let Err(err) = bijux_gnss_receiver::api::signal::validate_obs_epochs(&epochs) {
         events.push(DiagnosticEvent::new(
             DiagnosticSeverity::Error,
             "GNSS_OBS_VALIDATE_FAILED",
@@ -376,6 +376,8 @@ mod tests {
                     sample_index,
                     source_time: ReceiverSampleTrace::from_sample_index(sample_index, 16_000.0),
                     sat,
+                    signal_band: bijux_gnss_receiver::api::core::SignalBand::L1,
+                    glonass_frequency_channel: None,
                     prompt_i: 1.0,
                     prompt_q: 0.0,
                     early_i: 0.0,
