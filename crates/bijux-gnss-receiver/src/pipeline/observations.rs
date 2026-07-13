@@ -1907,8 +1907,8 @@ pub(crate) fn fake_obs_epoch_for_nav_tests(epoch_idx: u64) -> ObsEpoch {
 mod tests {
     use super::*;
     use bijux_gnss_core::api::{
-        signal_cycles_to_meters, signal_meters_to_cycles, Chips, Epoch, Hertz, Meters, SatId,
-        SignalDelayAlignment, TrackingUncertainty,
+        registered_signal_registry_entries, signal_cycles_to_meters, signal_meters_to_cycles,
+        Chips, Epoch, Hertz, Meters, SatId, SignalDelayAlignment, TrackingUncertainty,
     };
 
     fn make_tracking_epoch(
@@ -1939,15 +1939,43 @@ mod tests {
             SignalBand::L1,
             SignalCode::Unknown
         ));
-        assert!(!supports_observation_signal(
-            Constellation::Gps,
-            SignalBand::L2,
-            SignalCode::Ca
-        ));
-        assert_eq!(
-            tracked_signal_code_for_band(Constellation::Unknown, SignalBand::Unknown),
-            None
-        );
+        assert!(!supports_observation_signal(Constellation::Gps, SignalBand::L2, SignalCode::Ca));
+        assert_eq!(tracked_signal_code_for_band(Constellation::Unknown, SignalBand::Unknown), None);
+    }
+
+    #[test]
+    fn observation_signal_support_matches_registered_signal_inventory() {
+        let registered = registered_signal_registry_entries();
+
+        for entry in &registered {
+            let signal = entry.spec;
+            let expected = tracked_signal_code_for_band(signal.constellation, signal.band)
+                == Some(signal.code);
+            assert_eq!(
+                supports_observation_signal(signal.constellation, signal.band, signal.code),
+                expected,
+                "{signal:?}"
+            );
+        }
+
+        let supported_rows = registered
+            .iter()
+            .filter(|entry| {
+                tracked_signal_code_for_band(entry.spec.constellation, entry.spec.band)
+                    == Some(entry.spec.code)
+            })
+            .count();
+        let tracked_rows = registered
+            .iter()
+            .filter(|entry| {
+                supports_observation_signal(
+                    entry.spec.constellation,
+                    entry.spec.band,
+                    entry.spec.code,
+                )
+            })
+            .count();
+        assert_eq!(tracked_rows, supported_rows);
     }
 
     fn make_tracking_epoch_with_phase(
