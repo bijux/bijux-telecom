@@ -2,6 +2,17 @@
 
 use std::any::Any;
 
+/// Signal catalog, wavelength, and multi-band scaling helpers.
+pub use crate::catalog::{
+    carrier_wavelength_m, default_acquisition_signal, first_order_ionosphere_code_delay_m,
+    first_order_ionosphere_phase_advance_m, glonass_l1_carrier_hz,
+    registered_signal_registry_entries, signal_cycles_to_meters, signal_id_cycles_to_meters,
+    signal_id_meters_to_cycles, signal_id_wavelength_m, signal_meters_to_cycles,
+    signal_registry, signal_spec_beidou_b1i, signal_spec_beidou_b2i, signal_spec_galileo_e1b,
+    signal_spec_galileo_e1c, signal_spec_galileo_e5a, signal_spec_galileo_e5b,
+    signal_spec_glonass_l1, signal_spec_gps_l1_ca, signal_spec_gps_l2_py,
+    signal_spec_gps_l2c, signal_spec_gps_l5, signal_wavelength_m,
+};
 /// Spreading code generators.
 pub use crate::codes::beidou_b1i::{
     beidou_b1i_code_assignment, beidou_b1i_code_assignments, generate_beidou_b1i_code,

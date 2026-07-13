@@ -15,6 +15,7 @@
 #![forbid(unsafe_code)]
 
 mod codes;
+mod catalog;
 mod dsp;
 mod error;
 mod raw_iq;
