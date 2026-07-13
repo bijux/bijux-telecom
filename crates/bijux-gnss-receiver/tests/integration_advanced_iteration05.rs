@@ -83,7 +83,7 @@ fn parse_claim(value: &str) -> AdvancedSolutionClaim {
     match value {
         "fixed" => AdvancedSolutionClaim::Fixed,
         "float" => AdvancedSolutionClaim::Float,
-        "scaffolding" => AdvancedSolutionClaim::Scaffolding,
+        "not_ready" => AdvancedSolutionClaim::NotReady,
         "fallback_nav" => AdvancedSolutionClaim::FallbackNav,
         _ => panic!("unsupported claim {value}"),
     }
@@ -93,7 +93,7 @@ fn format_claim(value: AdvancedSolutionClaim) -> String {
     match value {
         AdvancedSolutionClaim::Fixed => "fixed",
         AdvancedSolutionClaim::Float => "float",
-        AdvancedSolutionClaim::Scaffolding => "scaffolding",
+        AdvancedSolutionClaim::NotReady => "not_ready",
         AdvancedSolutionClaim::FallbackNav => "fallback_nav",
     }
     .to_string()

@@ -1,19 +1,19 @@
 {
-  "id": "ppp_missing_corrections",
+  "id": "ppp_prerequisites_met",
   "mode": "ppp",
   "prerequisites": {
     "has_base_observations": true,
     "has_rover_observations": true,
     "has_ephemeris": true,
     "has_reference_frame": true,
-    "has_corrections": false,
+    "has_corrections": true,
     "has_min_satellites": true,
     "has_ambiguity_state": true
   },
-  "claim": "not_ready",
+  "claim": "float",
   "expect": {
-    "ready": false,
-    "refusal_class": "incomplete_corrections",
+    "ready": true,
+    "refusal_class": null,
     "downgraded": false,
     "status_prefix": "not_ready",
     "final_claim": "not_ready"
