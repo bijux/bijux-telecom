@@ -1,7 +1,5 @@
-use bijux_gnss_core::api::{
-    signal_id_wavelength_m, signal_registry, signal_wavelength_m, Constellation, SatId, SigId,
-    SignalBand, SignalCode,
-};
+use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand, SignalCode};
+use bijux_gnss_signal::api::{signal_id_wavelength_m, signal_registry, signal_wavelength_m};
 
 fn assert_signal_wavelength_matches_registry(
     constellation: Constellation,

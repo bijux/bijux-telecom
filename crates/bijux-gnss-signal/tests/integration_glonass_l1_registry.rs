@@ -1,8 +1,10 @@
 use bijux_gnss_core::api::{
-    default_acquisition_sats, glonass_l1_carrier_hz, glonass_slot_from_sat, glonass_slot_sat,
-    signal_registry, signal_spec_glonass_l1, Constellation, GlonassFrequencyChannel,
-    GlonassL1FdmaSignal, GlonassSlot, SignalBand, SignalCode, GLONASS_L1_CARRIER_HZ,
+    glonass_slot_from_sat, glonass_slot_sat, Constellation, GlonassFrequencyChannel,
+    GlonassL1FdmaSignal, GlonassSlot, SatId, SignalBand, SignalCode, GLONASS_L1_CARRIER_HZ,
     GLONASS_L1_CHANNEL_SPACING_HZ,
+};
+use bijux_gnss_signal::api::{
+    default_acquisition_sats, glonass_l1_carrier_hz, signal_registry, signal_spec_glonass_l1,
 };
 
 #[test]
@@ -23,13 +25,7 @@ fn glonass_slot_round_trips_through_satellite_identity() {
     assert_eq!(sat.constellation, Constellation::Glonass);
     assert_eq!(sat.prn, 12);
     assert_eq!(glonass_slot_from_sat(sat), Some(slot));
-    assert_eq!(
-        glonass_slot_from_sat(bijux_gnss_core::api::SatId {
-            constellation: Constellation::Gps,
-            prn: 12
-        }),
-        None
-    );
+    assert_eq!(glonass_slot_from_sat(SatId { constellation: Constellation::Gps, prn: 12 }), None);
 }
 
 #[test]

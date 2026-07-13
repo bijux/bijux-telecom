@@ -1,6 +1,6 @@
-use bijux_gnss_core::api::{
+use bijux_gnss_core::api::{Constellation, SatId, SignalBand, SignalCode, BEIDOU_B1_CARRIER_HZ};
+use bijux_gnss_signal::api::{
     default_acquisition_sats, default_acquisition_signal, signal_registry, signal_spec_beidou_b1i,
-    Constellation, SignalBand, SignalCode, BEIDOU_B1_CARRIER_HZ,
 };
 
 #[test]
@@ -33,13 +33,7 @@ fn default_acquisition_catalog_covers_registered_beidou_prns() {
     let sats = default_acquisition_sats(Constellation::Beidou);
 
     assert_eq!(sats.len(), 37);
-    assert_eq!(
-        sats.first().copied(),
-        Some(bijux_gnss_core::api::SatId { constellation: Constellation::Beidou, prn: 1 })
-    );
-    assert_eq!(
-        sats.last().copied(),
-        Some(bijux_gnss_core::api::SatId { constellation: Constellation::Beidou, prn: 37 })
-    );
+    assert_eq!(sats.first().copied(), Some(SatId { constellation: Constellation::Beidou, prn: 1 }));
+    assert_eq!(sats.last().copied(), Some(SatId { constellation: Constellation::Beidou, prn: 37 }));
     assert!(sats.iter().all(|sat| sat.constellation == Constellation::Beidou));
 }

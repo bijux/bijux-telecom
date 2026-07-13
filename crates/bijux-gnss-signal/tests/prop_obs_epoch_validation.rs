@@ -1,9 +1,10 @@
 #![allow(missing_docs)]
+
 use bijux_gnss_core::api::{
-    signal_registry, validate_obs_epochs, Constellation, Cycles, Hertz, Meters, ObsEpoch,
-    ObsMetadata, ObsSatellite, ReceiverRole, ReceiverSampleTrace, SatId, Seconds, SigId,
-    SignalBand, SignalCode,
+    Constellation, Cycles, Hertz, Meters, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole,
+    ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
 };
+use bijux_gnss_signal::api::{signal_registry, validate_obs_epochs};
 use proptest::prelude::*;
 
 fn make_epoch(t_rx_s: f64) -> ObsEpoch {
@@ -71,12 +72,16 @@ proptest! {
     #[test]
     fn validate_obs_epochs_accepts_monotonic(times in prop::collection::vec(0f64..10f64, 2..20)) {
         let mut times = times;
-        times.sort_by(|a,b| a.total_cmp(b));
-        let epochs: Vec<_> = times.into_iter().enumerate().map(|(idx, t)| {
-            let mut epoch = make_epoch(t + idx as f64 * 1e-6);
-            epoch.epoch_idx = idx as u64;
-            epoch
-        }).collect();
+        times.sort_by(|a, b| a.total_cmp(b));
+        let epochs: Vec<_> = times
+            .into_iter()
+            .enumerate()
+            .map(|(idx, t)| {
+                let mut epoch = make_epoch(t + idx as f64 * 1e-6);
+                epoch.epoch_idx = idx as u64;
+                epoch
+            })
+            .collect();
         prop_assert!(validate_obs_epochs(&epochs).is_ok());
     }
 

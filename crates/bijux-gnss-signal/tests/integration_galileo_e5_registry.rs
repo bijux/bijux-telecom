@@ -1,7 +1,5 @@
-use bijux_gnss_core::api::{
-    signal_registry, signal_spec_galileo_e5a, signal_spec_galileo_e5b, Constellation, SignalBand,
-    SignalCode,
-};
+use bijux_gnss_core::api::{Constellation, SignalBand, SignalCode};
+use bijux_gnss_signal::api::{signal_registry, signal_spec_galileo_e5a, signal_spec_galileo_e5b};
 
 #[test]
 fn galileo_e5a_registry_declares_primary_code_length() {

@@ -1,7 +1,5 @@
-use bijux_gnss_core::api::{
-    signal_registry, signal_spec_beidou_b1i, signal_spec_beidou_b2i, Constellation, SignalBand,
-    SignalCode,
-};
+use bijux_gnss_core::api::{Constellation, SignalBand, SignalCode};
+use bijux_gnss_signal::api::{signal_registry, signal_spec_beidou_b1i, signal_spec_beidou_b2i};
 
 #[test]
 fn beidou_b2i_registry_exposes_dual_frequency_ready_signal_contract() {

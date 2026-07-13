@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    Constellation, Cycles, FreqHz, GlonassFrequencyChannel, Meters, SigId, SignalBand,
+    Constellation, Cycles, FreqHz, GlonassFrequencyChannel, Meters, SatId, SigId, SignalBand,
     SignalCode, SignalRegistryEntry, SignalSpec, BEIDOU_B1_CARRIER_HZ, BEIDOU_B2_CARRIER_HZ,
     GALILEO_E1_CARRIER_HZ, GALILEO_E5A_CARRIER_HZ, GALILEO_E5B_CARRIER_HZ,
     GLONASS_L1_CARRIER_HZ, GLONASS_L1_CHANNEL_SPACING_HZ, GPS_L1_CA_CARRIER_HZ,
@@ -267,6 +267,16 @@ pub fn registered_signal_registry_entries() -> Vec<SignalRegistryEntry> {
     .collect()
 }
 
+pub fn default_acquisition_sats(constellation: Constellation) -> Vec<SatId> {
+    match constellation {
+        Constellation::Gps => sat_ids_for_prn_range(constellation, 1..=32),
+        Constellation::Galileo => sat_ids_for_prn_range(constellation, 1..=50),
+        Constellation::Glonass => sat_ids_for_prn_range(constellation, 1..=24),
+        Constellation::Beidou => sat_ids_for_prn_range(constellation, 1..=37),
+        Constellation::Unknown => Vec::new(),
+    }
+}
+
 pub fn default_acquisition_signal(constellation: Constellation) -> Option<SignalRegistryEntry> {
     match constellation {
         Constellation::Gps => signal_registry(Constellation::Gps, SignalBand::L1, SignalCode::Ca),
@@ -281,6 +291,13 @@ pub fn default_acquisition_signal(constellation: Constellation) -> Option<Signal
         }
         Constellation::Unknown => None,
     }
+}
+
+fn sat_ids_for_prn_range(
+    constellation: Constellation,
+    prns: std::ops::RangeInclusive<u8>,
+) -> Vec<SatId> {
+    prns.map(|prn| SatId { constellation, prn }).collect()
 }
 
 #[cfg(test)]
