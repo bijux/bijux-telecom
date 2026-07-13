@@ -1,6 +1,11 @@
 #![allow(missing_docs)]
 
+mod support;
+
 use bijux_gnss_signal::api::{ca_code_assignment, generate_ca_code, Prn, SignalError};
+
+use support::ca_reference::{assert_code_matches_reference, load_reference_catalog};
+use support::period_reference::{assert_period_repetition, logical_bits_from_bipolar};
 
 #[derive(Clone, Copy)]
 struct ExpectedCaCodeReference {
@@ -238,6 +243,19 @@ fn generated_codes_match_official_first_ten_chip_references() {
             "first ten chips mismatch for PRN {}",
             expected.prn
         );
+    }
+}
+
+#[test]
+fn generated_codes_match_immutable_reference_catalog() {
+    let catalog = load_reference_catalog();
+
+    for reference in &catalog.code {
+        let code = generate_ca_code(Prn(reference.prn)).expect("valid PRN");
+        let logical_bits = logical_bits_from_bipolar(&code, "GPS C/A code");
+
+        assert_code_matches_reference(&catalog, reference.prn, &logical_bits);
+        assert_period_repetition(&code, catalog.code_length, &format!("GPS C/A PRN {}", reference.prn));
     }
 }
 
