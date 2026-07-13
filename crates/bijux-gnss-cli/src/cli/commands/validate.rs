@@ -379,14 +379,11 @@ fn handle_validate_capture(command: GnssCommand) -> Result<()> {
     )?;
     write_tracking_timing_for_command(&common, "validate_capture", &tracks, dataset.as_ref())?;
 
-    let nav = read_ephemeris(&eph)?;
-    let mut nav_solver = bijux_gnss_infra::api::receiver::Navigation::new(config, runtime.clone());
-    let mut solutions = Vec::new();
-    for obs_epoch in &observation_artifacts.epochs {
-        if let Some(solution) = nav_solver.solve_epoch(obs_epoch, &nav) {
-            solutions.push(solution);
-        }
-    }
+    let broadcast_navigation = read_broadcast_navigation_data(&eph)?;
+    let solutions = receiver.solve_observation_epochs_with_gps_broadcast_navigation(
+        &observation_artifacts.epochs,
+        &broadcast_navigation,
+    );
 
     let out_dir = artifacts_dir(&common, "validate_capture", dataset.as_ref())?;
     write_nav_solution_outputs(&out_dir, &solutions)?;
@@ -431,7 +428,7 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
         bail!("invalid command for handler");
     };
 
-    let _ = runtime_config_from_env(&common, None);
+    let runtime = runtime_config_from_env(&common, None);
     let file = file.context("--file is required for validation")?;
     let profile = load_config(&common)?;
     let dataset = load_dataset(&common)?;
@@ -454,7 +451,7 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
     }
 
     let mut obs = read_obs_epochs(&file)?;
-    let nav = read_ephemeris(&eph)?;
+    let broadcast_navigation = read_broadcast_navigation_data(&eph)?;
     let reference_epochs = read_reference_epochs(&reference)?;
 
     if !prn.is_empty() {
@@ -463,21 +460,17 @@ fn handle_validate(command: GnssCommand) -> Result<()> {
         });
     }
 
-    let mut solutions = Vec::new();
-    let mut nav_solver = bijux_gnss_infra::api::receiver::Navigation::new(
-        profile.to_pipeline_config(),
-        runtime_config_from_env(&common, None),
-    );
-    for obs_epoch in &obs {
-        if let Some(sol) = nav_solver.solve_epoch(obs_epoch, &nav) {
-            solutions.push(sol);
-        }
-    }
+    let receiver =
+        bijux_gnss_infra::api::receiver::Receiver::new(profile.to_pipeline_config(), runtime);
+    let solutions =
+        receiver.solve_observation_epochs_with_gps_broadcast_navigation(&obs, &broadcast_navigation);
 
     #[cfg(feature = "precise-products")]
     let (products_ok, product_fallbacks, code_biases) = {
         let mut products = bijux_gnss_infra::api::nav::Products::new(
-            bijux_gnss_infra::api::nav::BroadcastProductsProvider::new(nav.clone()),
+            bijux_gnss_infra::api::nav::BroadcastProductsProvider::new(
+                broadcast_navigation.ephemerides.clone(),
+            ),
         );
         if let Some(path) = sp3 {
             let data = fs::read_to_string(path)?;
