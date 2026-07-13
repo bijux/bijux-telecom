@@ -206,6 +206,7 @@ fn register_state_from_octal(state_octal: u32) -> [u8; 27] {
     state
 }
 
+#[cfg(test)]
 fn register_state_to_octal(state: &[u8; 27]) -> u32 {
     let mut value = 0_u32;
     for bit in state {
