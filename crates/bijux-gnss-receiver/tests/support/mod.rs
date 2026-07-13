@@ -1,3 +1,4 @@
+pub mod composite_component_recovery;
 pub mod navigation_clock_profile;
 pub mod navigation_common_code_doppler_anomaly;
 pub mod navigation_constellation_clock_inconsistency;
