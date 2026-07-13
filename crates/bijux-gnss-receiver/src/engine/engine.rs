@@ -4,13 +4,13 @@
 use crate::api::{Receiver, ReceiverEngine, RunArtifacts};
 use crate::engine::metrics::write_metrics_summary;
 use crate::engine::runtime::{Metric, TraceRecord};
+use crate::engine::support_matrix::build_support_matrix;
 use crate::pipeline::observations::{
     observation_artifacts_from_tracking_results_with_gps_anchor, observation_decisions_from_epochs,
 };
 use bijux_gnss_core::api::{
-    default_acquisition_sats, default_acquisition_signal, signal_registry, AcqHypothesis,
-    AcqRequest, AcqResult, Constellation, InputError, SamplesFrame, SatId, SignalBand, SignalCode,
-    SignalSupportRow, SupportMatrix, SupportStatus, TrackEpoch,
+    default_acquisition_sats, default_acquisition_signal, AcqHypothesis, AcqRequest, AcqResult,
+    Constellation, InputError, SamplesFrame, SatId, TrackEpoch,
 };
 use bijux_gnss_signal::api::{remove_dc_offset_in_place, samples_per_code};
 use std::time::Instant;
@@ -783,108 +783,6 @@ fn acquisition_hypothesis_rank(hypothesis: AcqHypothesis) -> u8 {
         AcqHypothesis::Rejected => 2,
         AcqHypothesis::Deferred => 3,
     }
-}
-
-fn build_support_matrix() -> SupportMatrix {
-    let constellations =
-        [Constellation::Gps, Constellation::Galileo, Constellation::Glonass, Constellation::Beidou];
-    let bands = [
-        SignalBand::L1,
-        SignalBand::L2,
-        SignalBand::L5,
-        SignalBand::E1,
-        SignalBand::E5,
-        SignalBand::B1,
-        SignalBand::B2,
-    ];
-    let codes = [
-        SignalCode::Ca,
-        SignalCode::L2C,
-        SignalCode::Py,
-        SignalCode::B1I,
-        SignalCode::B2I,
-        SignalCode::E1B,
-        SignalCode::E1C,
-        SignalCode::E5a,
-        SignalCode::E5b,
-        SignalCode::Unknown,
-    ];
-
-    let mut rows = Vec::new();
-    for constellation in constellations {
-        for band in bands {
-            for code in codes {
-                let status = signal_support_status(constellation, band, code);
-                if matches!(status, SupportStatus::Unsupported)
-                    && signal_registry(constellation, band, code).is_none()
-                {
-                    continue;
-                }
-                rows.push(SignalSupportRow {
-                    constellation,
-                    band,
-                    code,
-                    status,
-                    reason: support_reason(constellation, band, code),
-                });
-            }
-        }
-    }
-    rows.sort_by_key(|row| {
-        (format!("{:?}", row.constellation), format!("{:?}", row.band), format!("{:?}", row.code))
-    });
-    SupportMatrix { schema_version: 1, rows }
-}
-
-fn signal_support_status(
-    constellation: Constellation,
-    band: SignalBand,
-    code: SignalCode,
-) -> SupportStatus {
-    if constellation == Constellation::Gps && band == SignalBand::L1 && code == SignalCode::Ca {
-        return SupportStatus::Supported;
-    }
-    if signal_registry(constellation, band, code).is_some() {
-        return SupportStatus::Planned;
-    }
-    SupportStatus::Unsupported
-}
-
-fn support_reason(constellation: Constellation, band: SignalBand, code: SignalCode) -> String {
-    if constellation == Constellation::Gps && band == SignalBand::L1 && code == SignalCode::Ca {
-        return "receiver pipeline supports this signal path".to_string();
-    }
-    if constellation == Constellation::Gps && band == SignalBand::L2 && code == SignalCode::L2C {
-        return "receiver observations and synthetic validation support explicit tracked L2C epochs; acquisition and live tracking remain incomplete".to_string();
-    }
-    if constellation == Constellation::Gps && band == SignalBand::L5 && code == SignalCode::Unknown
-    {
-        return "receiver observations and synthetic validation support explicit tracked L5 epochs; acquisition and live tracking remain incomplete".to_string();
-    }
-    if constellation == Constellation::Galileo && band == SignalBand::E1 && code == SignalCode::E1B
-    {
-        return "receiver acquisition and tracking support this signal path; observations and navigation remain incomplete".to_string();
-    }
-    if constellation == Constellation::Galileo && band == SignalBand::E5 && code == SignalCode::E5a
-    {
-        return "receiver observations and synthetic validation support explicit tracked E5 epochs; acquisition and live tracking remain incomplete".to_string();
-    }
-    if constellation == Constellation::Beidou && band == SignalBand::B1 && code == SignalCode::B1I {
-        return "receiver acquisition, tracking, and observations support this signal path; navigation remains incomplete".to_string();
-    }
-    if constellation == Constellation::Beidou && band == SignalBand::B2 && code == SignalCode::B2I {
-        return "receiver observations and synthetic validation support explicit tracked B2I epochs; acquisition and live tracking remain incomplete".to_string();
-    }
-    if constellation == Constellation::Glonass
-        && band == SignalBand::L1
-        && code == SignalCode::Unknown
-    {
-        return "receiver acquisition, tracking, and observations support this signal path through explicit FDMA channel requests; navigation remains incomplete".to_string();
-    }
-    if signal_registry(constellation, band, code).is_some() {
-        return "signal model registered; receiver pipeline support not yet complete".to_string();
-    }
-    "unsupported constellation-band-code combination".to_string()
 }
 
 impl ReceiverEngine for Receiver {
