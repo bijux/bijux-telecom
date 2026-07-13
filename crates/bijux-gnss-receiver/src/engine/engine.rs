@@ -944,7 +944,7 @@ mod tests {
     }
 
     #[test]
-    fn default_acquisition_requests_select_gps_l5_for_l5_config() {
+    fn default_acquisition_requests_select_executable_wideband_signals() {
         let config = ReceiverPipelineConfig {
             code_freq_basis_hz: 10_230_000.0,
             code_length: 10_230,
@@ -954,8 +954,13 @@ mod tests {
         let requests = default_acquisition_requests(&config);
 
         assert!(!requests.is_empty());
-        assert!(requests.iter().all(|request| request.sat.constellation == Constellation::Gps));
-        assert!(requests.iter().all(|request| request.signal_band == SignalBand::L5));
+        assert!(requests.iter().all(|request| {
+            matches!(
+                (request.sat.constellation, request.signal_band),
+                (Constellation::Gps, SignalBand::L5)
+                    | (Constellation::Galileo, SignalBand::E5)
+            )
+        }));
     }
 
     #[test]
