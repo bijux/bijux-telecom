@@ -1,11 +1,10 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{ConfigError, SchemaVersion, ValidateConfig, ValidationReport};
-
 use crate::engine::receiver_config::{
     acquisition_integration_ms_is_supported, parse_band, supported_acquisition_integration_ms_csv,
     BandTrackingSpec, ReceiverConfig, ReceiverPipelineConfig,
 };
+use bijux_gnss_core::api::{ConfigError, SchemaVersion, ValidateConfig, ValidationReport};
 
 impl ValidateConfig for ReceiverConfig {
     fn validate(&self) -> ValidationReport {
@@ -21,6 +20,11 @@ impl ValidateConfig for ReceiverConfig {
         }
         if self.sample_rate_hz <= 0.0 {
             report.errors.push(ConfigError { message: "sample_rate_hz must be > 0".to_string() });
+        }
+        if let Some(filter) = &self.front_end.filter {
+            if let Err(error) = filter.validate(self.sample_rate_hz) {
+                report.errors.push(ConfigError { message: format!("front_end.filter {error}") });
+            }
         }
         if self.code_length == 0 {
             report.errors.push(ConfigError { message: "code_length must be > 0".to_string() });
@@ -270,6 +274,7 @@ impl ReceiverConfig {
             sampling_freq_hz: self.sample_rate_hz,
             intermediate_freq_hz: self.intermediate_freq_hz,
             remove_dc_offset: self.front_end.remove_dc_offset,
+            front_end_filter: self.front_end.filter.clone(),
             code_freq_basis_hz: self.code_freq_basis_hz,
             code_length: self.code_length,
             channels: self.tracking.max_channels,

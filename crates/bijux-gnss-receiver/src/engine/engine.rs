@@ -13,11 +13,11 @@ use crate::pipeline::observations::{
     observation_artifacts_from_tracking_results_with_gps_anchor, observation_decisions_from_epochs,
 };
 use bijux_gnss_core::api::{
-    AcqHypothesis, AcqRequest, AcqResult, Constellation, InputError, SamplesFrame, SatId,
-    TrackEpoch,
+    AcqHypothesis, AcqRequest, AcqResult, ConfigError, Constellation, InputError, SamplesFrame,
+    SatId, TrackEpoch,
 };
 use bijux_gnss_signal::api::{
-    default_local_code_model, remove_dc_offset_in_place, samples_per_code,
+    default_local_code_model, remove_dc_offset_in_place, samples_per_code, FrontEndFirFilter,
 };
 use std::time::Instant;
 
@@ -91,6 +91,7 @@ impl Receiver {
             self.config().code_freq_basis_hz,
             self.config().code_length,
         );
+        let mut front_end_filter = build_front_end_filter(self)?;
         let requested_sats = acquisition_request_sats(acquisition_requests);
         let acquisition_frame_len = acquisition_frame_len(self.config(), &requested_sats);
         let mut frame = match input.next_frame(acquisition_frame_len) {
@@ -108,61 +109,13 @@ impl Receiver {
                 }));
             }
         };
-        if self.config().remove_dc_offset {
-            let removed = remove_dc_offset_in_place(&mut frame.iq);
-            runtime.metrics.metric(Metric {
-                name: "front_end_dc_imbalance_before_removal",
-                value: removed.dc_imbalance,
-            });
-            runtime.metrics.metric(Metric {
-                name: "front_end_i_power_before_removal",
-                value: removed.i_power,
-            });
-            runtime.metrics.metric(Metric {
-                name: "front_end_q_power_before_removal",
-                value: removed.q_power,
-            });
-            runtime.metrics.metric(Metric {
-                name: "front_end_iq_power_ratio_before_removal",
-                value: removed.iq_power_ratio,
-            });
-            runtime.metrics.metric(Metric {
-                name: "front_end_power_imbalance_warning_before_removal",
-                value: if removed.power_imbalance_warning { 1.0 } else { 0.0 },
-            });
-            if let Some(quadrature_error_deg) = removed.quadrature_error_deg {
-                runtime.metrics.metric(Metric {
-                    name: "front_end_quadrature_error_deg_before_removal",
-                    value: quadrature_error_deg,
-                });
-            }
-            runtime.metrics.metric(Metric {
-                name: "front_end_quadrature_error_warning_before_removal",
-                value: if removed.quadrature_error_warning { 1.0 } else { 0.0 },
-            });
-            runtime.trace.record(TraceRecord {
-                name: "front_end_dc_removal",
-                fields: vec![
-                    ("sample_count", removed.sample_count.to_string()),
-                    ("i_mean", format!("{:.9}", removed.i_mean)),
-                    ("q_mean", format!("{:.9}", removed.q_mean)),
-                    ("i_power", format!("{:.9}", removed.i_power)),
-                    ("q_power", format!("{:.9}", removed.q_power)),
-                    ("iq_power_ratio", format!("{:.9}", removed.iq_power_ratio)),
-                    ("power_imbalance_warning", removed.power_imbalance_warning.to_string()),
-                    (
-                        "quadrature_error_deg",
-                        removed
-                            .quadrature_error_deg
-                            .map(|value| format!("{value:.9}"))
-                            .unwrap_or_else(|| "n/a".to_string()),
-                    ),
-                    ("quadrature_error_warning", removed.quadrature_error_warning.to_string()),
-                    ("rms", format!("{:.9}", removed.rms)),
-                    ("dc_imbalance", format!("{:.9}", removed.dc_imbalance)),
-                ],
-            });
-        }
+        apply_front_end_conditioning(
+            self,
+            &runtime,
+            &mut front_end_filter,
+            &mut frame,
+            "acquisition",
+        );
 
         runtime.trace.record(TraceRecord {
             name: "pipeline_stage",
@@ -184,6 +137,13 @@ impl Receiver {
             .filter_map(|candidates| candidates.first().cloned())
             .collect();
         let acquisitions = apply_source_signal_delay_alignments(input, acquisitions);
+        let acquisitions = apply_receiver_front_end_delay_alignment(
+            acquisitions,
+            front_end_filter
+                .as_ref()
+                .map(|filter| filter.group_delay_samples() as u64)
+                .unwrap_or(0),
+        );
         let acquisition_stats = acquisition.stats_snapshot();
         let acquisition_explain = acquisition_run.explains;
         let acquisition_ms = acquisition_start.elapsed().as_secs_f64() * 1000.0;
@@ -321,9 +281,13 @@ impl Receiver {
                 let Some(mut tracking_frame) = next_frame else {
                     break;
                 };
-                if self.config().remove_dc_offset {
-                    remove_dc_offset_in_place(&mut tracking_frame.iq);
-                }
+                apply_front_end_conditioning(
+                    self,
+                    &runtime,
+                    &mut front_end_filter,
+                    &mut tracking_frame,
+                    "tracking",
+                );
                 tracking.track_session_frame(&mut tracking_session, &tracking_frame);
             }
         }
@@ -514,6 +478,147 @@ impl Receiver {
         write_metrics_summary(self.runtime(), &artifacts, acquisition_stats);
         Ok(artifacts)
     }
+}
+
+fn build_front_end_filter(
+    receiver: &Receiver,
+) -> Result<Option<FrontEndFirFilter>, crate::engine::receiver_config::ReceiverError> {
+    let Some(spec) = receiver.config().front_end_filter.clone() else {
+        return Ok(None);
+    };
+    let filter = spec.design(receiver.config().sampling_freq_hz).map_err(|error| {
+        crate::engine::receiver_config::ReceiverError::Config(ConfigError {
+            message: format!("front_end.filter {error}"),
+        })
+    })?;
+    receiver.runtime().metrics.metric(Metric {
+        name: "front_end_filter_group_delay_samples",
+        value: filter.group_delay_samples() as f64,
+    });
+    receiver.runtime().metrics.metric(Metric {
+        name: "front_end_filter_bandwidth_hz",
+        value: filter.spec().bandwidth_hz(),
+    });
+    receiver.runtime().trace.record(TraceRecord {
+        name: "front_end_filter",
+        fields: front_end_filter_trace_fields(filter.spec()),
+    });
+    Ok(Some(filter))
+}
+
+fn front_end_filter_trace_fields(
+    spec: &bijux_gnss_signal::api::FrontEndFilterSpec,
+) -> Vec<(&'static str, String)> {
+    match spec {
+        bijux_gnss_signal::api::FrontEndFilterSpec::LowPass { cutoff_hz, taps } => vec![
+            ("kind", "low_pass".to_string()),
+            ("cutoff_hz", format!("{cutoff_hz:.9}")),
+            ("bandwidth_hz", format!("{:.9}", spec.bandwidth_hz())),
+            ("taps", taps.to_string()),
+            ("group_delay_samples", spec.group_delay_samples().to_string()),
+        ],
+        bijux_gnss_signal::api::FrontEndFilterSpec::BandPass { center_hz, bandwidth_hz, taps } => {
+            vec![
+                ("kind", "band_pass".to_string()),
+                ("center_hz", format!("{center_hz:.9}")),
+                ("bandwidth_hz", format!("{bandwidth_hz:.9}")),
+                ("taps", taps.to_string()),
+                ("group_delay_samples", spec.group_delay_samples().to_string()),
+            ]
+        }
+    }
+}
+
+fn apply_front_end_conditioning(
+    receiver: &Receiver,
+    runtime: &crate::engine::runtime::ReceiverRuntime,
+    front_end_filter: &mut Option<FrontEndFirFilter>,
+    frame: &mut SamplesFrame,
+    stage: &'static str,
+) {
+    if let Some(filter) = front_end_filter.as_mut() {
+        filter.apply_in_place(&mut frame.iq);
+        runtime.trace.record(TraceRecord {
+            name: "front_end_filter_applied",
+            fields: vec![
+                ("stage", stage.to_string()),
+                ("sample_count", frame.len().to_string()),
+                ("group_delay_samples", filter.group_delay_samples().to_string()),
+            ],
+        });
+    }
+    if receiver.config().remove_dc_offset {
+        let removed = remove_dc_offset_in_place(&mut frame.iq);
+        runtime.metrics.metric(Metric {
+            name: "front_end_dc_imbalance_before_removal",
+            value: removed.dc_imbalance,
+        });
+        runtime
+            .metrics
+            .metric(Metric { name: "front_end_i_power_before_removal", value: removed.i_power });
+        runtime
+            .metrics
+            .metric(Metric { name: "front_end_q_power_before_removal", value: removed.q_power });
+        runtime.metrics.metric(Metric {
+            name: "front_end_iq_power_ratio_before_removal",
+            value: removed.iq_power_ratio,
+        });
+        runtime.metrics.metric(Metric {
+            name: "front_end_power_imbalance_warning_before_removal",
+            value: if removed.power_imbalance_warning { 1.0 } else { 0.0 },
+        });
+        if let Some(quadrature_error_deg) = removed.quadrature_error_deg {
+            runtime.metrics.metric(Metric {
+                name: "front_end_quadrature_error_deg_before_removal",
+                value: quadrature_error_deg,
+            });
+        }
+        runtime.metrics.metric(Metric {
+            name: "front_end_quadrature_error_warning_before_removal",
+            value: if removed.quadrature_error_warning { 1.0 } else { 0.0 },
+        });
+        runtime.trace.record(TraceRecord {
+            name: "front_end_dc_removal",
+            fields: vec![
+                ("stage", stage.to_string()),
+                ("sample_count", removed.sample_count.to_string()),
+                ("i_mean", format!("{:.9}", removed.i_mean)),
+                ("q_mean", format!("{:.9}", removed.q_mean)),
+                ("i_power", format!("{:.9}", removed.i_power)),
+                ("q_power", format!("{:.9}", removed.q_power)),
+                ("iq_power_ratio", format!("{:.9}", removed.iq_power_ratio)),
+                ("power_imbalance_warning", removed.power_imbalance_warning.to_string()),
+                (
+                    "quadrature_error_deg",
+                    removed
+                        .quadrature_error_deg
+                        .map(|value| format!("{value:.9}"))
+                        .unwrap_or_else(|| "n/a".to_string()),
+                ),
+                ("quadrature_error_warning", removed.quadrature_error_warning.to_string()),
+                ("rms", format!("{:.9}", removed.rms)),
+                ("dc_imbalance", format!("{:.9}", removed.dc_imbalance)),
+            ],
+        });
+    }
+}
+
+fn apply_receiver_front_end_delay_alignment(
+    acquisitions: Vec<AcqResult>,
+    sample_delay_samples: u64,
+) -> Vec<AcqResult> {
+    if sample_delay_samples == 0 {
+        return acquisitions;
+    }
+    acquisitions
+        .into_iter()
+        .map(|mut acquisition| {
+            if let Some(alignment) = acquisition.signal_delay_alignment.as_mut() {
+                alignment.sample_delay_samples += sample_delay_samples;
+            }
+            acquisition
+        })
+        .collect()
 }
 
 #[cfg(feature = "nav")]

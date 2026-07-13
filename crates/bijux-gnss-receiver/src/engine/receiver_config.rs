@@ -5,6 +5,7 @@ use bijux_gnss_core::api::{
     AcqError, ConfigError, Constellation, InputError, NavError, SchemaVersion, SignalBand,
     SignalError, TrackError,
 };
+use bijux_gnss_signal::api::FrontEndFilterSpec;
 use thiserror::Error;
 
 /// On-disk receiver configuration.
@@ -47,6 +48,8 @@ pub struct ReceiverPipelineConfig {
     pub intermediate_freq_hz: f64,
     /// Whether mean I/Q offset should be removed before acquisition consumes a frame.
     pub remove_dc_offset: bool,
+    /// Optional complex front-end FIR filter applied before acquisition and tracking consume input.
+    pub front_end_filter: Option<FrontEndFilterSpec>,
     /// Code frequency basis, in Hz.
     pub code_freq_basis_hz: f64,
     /// Code length in chips.
@@ -115,6 +118,7 @@ impl Default for ReceiverPipelineConfig {
             sampling_freq_hz: 5_000_000.0,
             intermediate_freq_hz: 0.0,
             remove_dc_offset: false,
+            front_end_filter: None,
             code_freq_basis_hz: 1_023_000.0,
             code_length: 1023,
             channels: 12,
@@ -155,6 +159,9 @@ pub struct FrontEndConfig {
     /// Remove the mean I/Q offset from the acquisition frame before processing.
     #[serde(default)]
     pub remove_dc_offset: bool,
+    /// Optional complex front-end FIR filter applied before acquisition and tracking.
+    #[serde(default)]
+    pub filter: Option<FrontEndFilterSpec>,
 }
 
 /// Tracking parameters for a specific band.
