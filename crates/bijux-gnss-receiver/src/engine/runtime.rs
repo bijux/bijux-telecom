@@ -53,6 +53,12 @@ impl ReceiverRuntime {
     ) -> Self {
         Self { config, logger, trace, metrics }
     }
+
+    pub fn with_capture_start_gps_time(&self, capture_start_gps_time: GpsTime) -> Self {
+        let mut config = self.config.clone();
+        config.capture_start_gps_time = Some(capture_start_gps_time);
+        Self::with_sinks(config, self.logger.clone(), self.trace.clone(), self.metrics.clone())
+    }
 }
 
 impl Default for ReceiverRuntime {

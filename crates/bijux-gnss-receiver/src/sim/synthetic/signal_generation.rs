@@ -336,6 +336,24 @@ impl SyntheticSignalSource {
     }
 }
 
+/// Run a synthetic scenario through the canonical receiver pipeline.
+pub fn run_synthetic_scenario(
+    config: &ReceiverPipelineConfig,
+    runtime: crate::engine::runtime::ReceiverRuntime,
+    scenario: &SyntheticScenario,
+    capture_start_gps_time: Option<GpsTime>,
+) -> Result<crate::api::RunArtifacts, crate::engine::receiver_config::ReceiverError> {
+    let runtime = match (runtime.config.capture_start_gps_time, capture_start_gps_time) {
+        (Some(_), _) | (None, None) => runtime,
+        (None, Some(capture_start_gps_time)) => {
+            runtime.with_capture_start_gps_time(capture_start_gps_time)
+        }
+    };
+    let receiver = crate::api::Receiver::new(config.clone(), runtime);
+    let mut source = SyntheticSignalSource::new(config, scenario);
+    receiver.run(&mut source)
+}
+
 impl SignalSource for SyntheticSignalSource {
     type Error = SampleSourceError;
 
