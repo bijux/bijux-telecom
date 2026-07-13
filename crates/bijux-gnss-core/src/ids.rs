@@ -505,6 +505,27 @@ pub fn signal_registry(
     Some(SignalRegistryEntry { spec: SignalSpec { carrier_hz, code_rate_hz, ..spec }, code_length })
 }
 
+pub fn registered_signal_registry_entries() -> Vec<SignalRegistryEntry> {
+    [
+        (Constellation::Gps, SignalBand::L1, SignalCode::Ca),
+        (Constellation::Gps, SignalBand::L2, SignalCode::L2C),
+        (Constellation::Gps, SignalBand::L2, SignalCode::Py),
+        (Constellation::Gps, SignalBand::L5, SignalCode::Unknown),
+        (Constellation::Galileo, SignalBand::E1, SignalCode::E1B),
+        (Constellation::Galileo, SignalBand::E1, SignalCode::E1C),
+        (Constellation::Galileo, SignalBand::E5, SignalCode::E5a),
+        (Constellation::Galileo, SignalBand::E5, SignalCode::E5b),
+        (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown),
+        (Constellation::Beidou, SignalBand::B1, SignalCode::B1I),
+        (Constellation::Beidou, SignalBand::B2, SignalCode::B2I),
+    ]
+    .into_iter()
+    .map(|(constellation, band, code)| {
+        signal_registry(constellation, band, code).expect("registered signal registry entry")
+    })
+    .collect()
+}
+
 pub fn default_acquisition_signal(constellation: Constellation) -> Option<SignalRegistryEntry> {
     match constellation {
         Constellation::Gps => signal_registry(Constellation::Gps, SignalBand::L1, SignalCode::Ca),
@@ -525,11 +546,11 @@ pub fn default_acquisition_signal(constellation: Constellation) -> Option<Signal
 mod tests {
     use super::{
         carrier_wavelength_m, first_order_ionosphere_code_delay_m,
-        first_order_ionosphere_phase_advance_m, signal_cycles_to_meters,
-        signal_id_cycles_to_meters, signal_id_meters_to_cycles, signal_id_wavelength_m,
-        signal_meters_to_cycles, signal_registry, signal_spec_beidou_b2i, signal_spec_galileo_e1b,
-        signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l2c, signal_wavelength_m,
-        Constellation, FreqHz, SatId, SigId, SignalBand, SignalCode,
+        first_order_ionosphere_phase_advance_m, registered_signal_registry_entries,
+        signal_cycles_to_meters, signal_id_cycles_to_meters, signal_id_meters_to_cycles,
+        signal_id_wavelength_m, signal_meters_to_cycles, signal_registry, signal_spec_beidou_b2i,
+        signal_spec_galileo_e1b, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l2c,
+        signal_wavelength_m, Constellation, FreqHz, SatId, SigId, SignalBand, SignalCode,
     };
     use crate::units::{Cycles, Meters};
 
@@ -543,6 +564,20 @@ mod tests {
             .expect("GPS L2C registry entry");
         assert_eq!(registry.code_length, Some(10230));
         assert_eq!(registry.spec, signal);
+    }
+
+    #[test]
+    fn registered_signal_registry_entries_match_lookup_inventory() {
+        let entries = registered_signal_registry_entries();
+        assert_eq!(entries.len(), 11);
+
+        for entry in entries {
+            let lookup =
+                signal_registry(entry.spec.constellation, entry.spec.band, entry.spec.code)
+                    .expect("registered signal lookup");
+            assert_eq!(lookup.spec, entry.spec);
+            assert_eq!(lookup.code_length, entry.code_length);
+        }
     }
 
     #[test]
