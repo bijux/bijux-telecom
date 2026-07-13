@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use bijux_gnss_core::api::{ArtifactPayloadValidate, DiagnosticEvent, DiagnosticSeverity};
 
-pub const ADVANCED_SUPPORT_MATRIX_VERSION: u32 = 1;
+pub const ADVANCED_SUPPORT_MATRIX_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AdvancedMode {
@@ -14,7 +14,7 @@ pub enum AdvancedMode {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AdvancedMaturity {
-    Scaffolding,
+    NotReady,
     Experimental,
     Enforced,
 }
@@ -30,7 +30,7 @@ pub enum AdvancedRefusalClass {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AdvancedSolutionClaim {
-    Scaffolding,
+    NotReady,
     Float,
     Fixed,
     FallbackNav,
@@ -129,14 +129,15 @@ pub fn support_status_matrix() -> AdvancedSupportMatrix {
             },
             AdvancedSupportRow {
                 mode: AdvancedMode::Ppp,
-                maturity: AdvancedMaturity::Scaffolding,
+                maturity: AdvancedMaturity::NotReady,
                 real_solver: false,
                 required_inputs: vec![
                     "multi_frequency_obs".to_string(),
                     "products_or_broadcast".to_string(),
                     "time_consistent_epochs".to_string(),
                 ],
-                notes: "ppp readiness is reported; runtime claims remain conservative".to_string(),
+                notes: "ppp readiness is reported separately; runtime execution remains not_ready"
+                    .to_string(),
             },
         ],
     }
@@ -210,11 +211,24 @@ pub fn apply_downgrade_policy(
     decision: &AdvancedPrereqDecision,
     claim: AdvancedSolutionClaim,
 ) -> (String, bool, Option<String>, AdvancedSolutionClaim) {
+    if mode == AdvancedMode::Ppp {
+        return if decision.ready {
+            ("not_ready".to_string(), false, None, AdvancedSolutionClaim::NotReady)
+        } else {
+            (
+                "not_ready".to_string(),
+                false,
+                Some(decision.reasons.join(",")),
+                AdvancedSolutionClaim::NotReady,
+            )
+        };
+    }
+
     if decision.ready {
         let status = match claim {
             AdvancedSolutionClaim::Fixed => "accepted_fixed",
             AdvancedSolutionClaim::Float => "accepted_float",
-            AdvancedSolutionClaim::Scaffolding => "accepted_scaffolding",
+            AdvancedSolutionClaim::NotReady => "not_ready",
             AdvancedSolutionClaim::FallbackNav => "accepted_fallback",
         };
         return (status.to_string(), false, None, claim);
@@ -222,7 +236,7 @@ pub fn apply_downgrade_policy(
     let reason = decision.reasons.join(",");
     let downgraded_claim = match mode {
         AdvancedMode::Rtk => AdvancedSolutionClaim::FallbackNav,
-        AdvancedMode::Ppp => AdvancedSolutionClaim::Scaffolding,
+        AdvancedMode::Ppp => AdvancedSolutionClaim::NotReady,
     };
     ("degraded".to_string(), true, Some(reason), downgraded_claim)
 }
@@ -295,5 +309,35 @@ mod tests {
         assert!(downgraded);
         assert!(reason.is_some());
         assert_eq!(claim, AdvancedSolutionClaim::FallbackNav);
+    }
+
+    #[test]
+    fn ppp_policy_reports_not_ready_even_when_prerequisites_are_met() {
+        let decision = AdvancedPrereqDecision {
+            ready: true,
+            refusal_class: None,
+            reasons: vec!["ppp_prerequisites_met".to_string()],
+        };
+        let (status, downgraded, reason, claim) =
+            apply_downgrade_policy(AdvancedMode::Ppp, &decision, AdvancedSolutionClaim::Float);
+        assert_eq!(status, "not_ready");
+        assert!(!downgraded);
+        assert!(reason.is_none());
+        assert_eq!(claim, AdvancedSolutionClaim::NotReady);
+    }
+
+    #[test]
+    fn ppp_policy_reports_not_ready_with_prerequisite_reasons() {
+        let decision = AdvancedPrereqDecision {
+            ready: false,
+            refusal_class: Some(AdvancedRefusalClass::IncompleteCorrections),
+            reasons: vec!["incomplete_corrections".to_string()],
+        };
+        let (status, downgraded, reason, claim) =
+            apply_downgrade_policy(AdvancedMode::Ppp, &decision, AdvancedSolutionClaim::Float);
+        assert_eq!(status, "not_ready");
+        assert!(!downgraded);
+        assert_eq!(reason.as_deref(), Some("incomplete_corrections"));
+        assert_eq!(claim, AdvancedSolutionClaim::NotReady);
     }
 }
