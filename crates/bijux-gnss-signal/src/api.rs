@@ -62,8 +62,12 @@ pub use crate::codes::galileo_e5::{
     GALILEO_E5B_PRIMARY_CODE_CHIPS, GALILEO_E5B_Q_SECONDARY_CODE_CHIPS,
 };
 pub use crate::codes::glonass_l1::{
-    generate_glonass_l1_st_code, generate_glonass_l1_st_code_chips, sample_glonass_l1_st_code,
-    GLONASS_L1_ST_CODE_CHIPS, GLONASS_L1_ST_CODE_RATE_HZ,
+    generate_glonass_l1_st_code, generate_glonass_l1_st_code_chips, glonass_l1_meander_symbol,
+    glonass_l1_relative_data_symbol, glonass_l1_string_symbol, glonass_l1_string_symbol_at_time_s,
+    sample_glonass_l1_st_code, GLONASS_L1_DATA_BIT_PERIOD_S, GLONASS_L1_STRING_DATA_BITS,
+    GLONASS_L1_STRING_DATA_SYMBOLS, GLONASS_L1_STRING_DURATION_S, GLONASS_L1_STRING_SYMBOLS,
+    GLONASS_L1_ST_CODE_CHIPS, GLONASS_L1_ST_CODE_RATE_HZ, GLONASS_L1_SYMBOL_PERIOD_S,
+    GLONASS_L1_TIME_MARK, GLONASS_L1_TIME_MARK_SYMBOLS,
 };
 pub use crate::codes::gps_l2c::{
     generate_gps_l2c_time_multiplexed_chips,
@@ -113,9 +117,8 @@ pub use crate::dsp::quality::{
 pub use crate::dsp::replica::{
     carrier_hz_at_time, carrier_phase_radians_at_time, default_signal_carrier_hz,
     default_signal_carrier_hz_for_band, default_signal_carrier_hz_for_signal,
-    sample_modulated_replica_at_time,
-    signal_amplitude_from_cn0_db_hz, AcquisitionSignalModel, ReplicaCodeModel,
-    UNIT_VARIANCE_COMPLEX_NOISE_POWER,
+    sample_modulated_replica_at_time, signal_amplitude_from_cn0_db_hz, AcquisitionSignalModel,
+    ReplicaCodeModel, UNIT_VARIANCE_COMPLEX_NOISE_POWER,
 };
 /// Signal processing utilities.
 pub use crate::dsp::signal::{
