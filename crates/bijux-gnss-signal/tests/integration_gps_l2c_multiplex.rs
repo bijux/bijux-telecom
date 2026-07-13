@@ -4,6 +4,7 @@ use bijux_gnss_signal::api::{
     generate_gps_l2c_cl_code, generate_gps_l2c_cm_code, generate_gps_l2c_time_multiplexed_chips,
     gps_l2c_time_multiplexed_component, sample_gps_l2c_time_multiplexed,
     GpsL2cTimeMultiplexedComponent, GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ,
+    GPS_L2C_TIME_MULTIPLEXED_SYMBOL_CHIPS,
 };
 
 #[test]
@@ -38,4 +39,23 @@ fn public_api_interleaves_cm_and_cl_chips_at_transmitted_rate() {
         samples,
         expected.into_iter().map(f32::from).collect::<Vec<f32>>()
     );
+}
+
+#[test]
+fn public_api_applies_navigation_symbols_only_to_cm_slots() {
+    let cm = generate_gps_l2c_cm_code(38).expect("valid GPS L2C CM PRN");
+    let cl = generate_gps_l2c_cl_code(38).expect("valid GPS L2C CL PRN");
+    let samples = sample_gps_l2c_time_multiplexed(
+        38,
+        GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ,
+        GPS_L2C_TIME_MULTIPLEXED_SYMBOL_CHIPS as f64,
+        4,
+        &[1, -1],
+    )
+    .expect("valid GPS L2C multiplexed samples");
+
+    assert_eq!(samples[0], -(cm[0] as f32));
+    assert_eq!(samples[1], cl[10_230] as f32);
+    assert_eq!(samples[2], -(cm[1] as f32));
+    assert_eq!(samples[3], cl[10_231] as f32);
 }
