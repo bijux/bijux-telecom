@@ -24,6 +24,7 @@ pub(crate) mod replay_timing_anomaly;
 pub(crate) mod residual_whiteness;
 #[cfg(feature = "nav")]
 pub(crate) mod satellite_clock_anomaly;
+pub(crate) mod signal_capabilities;
 pub mod tracking;
 
 #[derive(Debug, Clone, Default)]

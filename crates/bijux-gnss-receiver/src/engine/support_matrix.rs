@@ -4,6 +4,7 @@ use bijux_gnss_core::api::{
     signal_registry, Constellation, SignalBand, SignalCode, SignalStageSupport, SignalSupportRow,
     SupportMatrix, SupportStatus,
 };
+use crate::pipeline::signal_capabilities::signal_execution_support;
 
 const SIGNAL_SUPPORT_MATRIX_SCHEMA_VERSION: u32 = 2;
 
@@ -70,24 +71,14 @@ fn derive_signal_stage_support(
     code: SignalCode,
     registered: bool,
 ) -> SignalStageSupport {
+    let execution = signal_execution_support(constellation, band, code);
+
     SignalStageSupport {
-        acquisition: stage_status(
-            acquisition_supports_signal(constellation, band, code),
-            registered,
-        ),
-        tracking: stage_status(tracking_supports_signal(constellation, band, code), registered),
-        data_decoding: stage_status(
-            data_decoding_supports_signal(constellation, band, code),
-            registered,
-        ),
-        observations: stage_status(
-            observation_supports_signal(constellation, band, code),
-            registered,
-        ),
-        positioning: stage_status(
-            positioning_supports_signal(constellation, band, code),
-            registered,
-        ),
+        acquisition: stage_status(execution.acquisition, registered),
+        tracking: stage_status(execution.tracking, registered),
+        data_decoding: stage_status(execution.data_decoding, registered),
+        observations: stage_status(execution.observations, registered),
+        positioning: stage_status(execution.positioning, registered),
     }
 }
 
@@ -172,68 +163,6 @@ fn stage_names_with_status(
         names.push("positioning");
     }
     names
-}
-
-fn acquisition_supports_signal(
-    constellation: Constellation,
-    band: SignalBand,
-    code: SignalCode,
-) -> bool {
-    matches!(
-        (constellation, band, code),
-        (Constellation::Gps, SignalBand::L1, SignalCode::Ca)
-            | (Constellation::Galileo, SignalBand::E1, SignalCode::E1B)
-            | (Constellation::Beidou, SignalBand::B1, SignalCode::B1I)
-            | (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown)
-    )
-}
-
-fn tracking_supports_signal(
-    constellation: Constellation,
-    band: SignalBand,
-    code: SignalCode,
-) -> bool {
-    acquisition_supports_signal(constellation, band, code)
-}
-
-fn data_decoding_supports_signal(
-    constellation: Constellation,
-    band: SignalBand,
-    code: SignalCode,
-) -> bool {
-    matches!((constellation, band, code), (Constellation::Gps, SignalBand::L1, SignalCode::Ca))
-}
-
-fn observation_supports_signal(
-    constellation: Constellation,
-    band: SignalBand,
-    code: SignalCode,
-) -> bool {
-    matches!(
-        (constellation, band, code),
-        (Constellation::Gps, SignalBand::L1, SignalCode::Ca)
-            | (Constellation::Gps, SignalBand::L2, SignalCode::L2C)
-            | (Constellation::Gps, SignalBand::L5, SignalCode::Unknown)
-            | (Constellation::Galileo, SignalBand::E1, SignalCode::E1B)
-            | (Constellation::Galileo, SignalBand::E5, SignalCode::E5a)
-            | (Constellation::Beidou, SignalBand::B1, SignalCode::B1I)
-            | (Constellation::Beidou, SignalBand::B2, SignalCode::B2I)
-            | (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown)
-    )
-}
-
-fn positioning_supports_signal(
-    constellation: Constellation,
-    band: SignalBand,
-    code: SignalCode,
-) -> bool {
-    matches!(
-        (constellation, band, code),
-        (Constellation::Gps, SignalBand::L1, SignalCode::Ca)
-            | (Constellation::Galileo, SignalBand::E1, SignalCode::E1B)
-            | (Constellation::Beidou, SignalBand::B1, SignalCode::B1I)
-            | (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown)
-    )
 }
 
 fn derive_signal_requirements(
