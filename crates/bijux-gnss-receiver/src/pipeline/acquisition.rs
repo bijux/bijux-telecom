@@ -8,9 +8,10 @@ use crate::engine::signal_selection::{
 };
 use bijux_gnss_core::api::{
     acq_result_stability_key, stable_acq_result_keys, AcqAssumptions, AcqCodePhaseRefinement,
+    AcqComponentCombinationMode, AcqComponentProvenance, AcqComponentStatistic,
     AcqDopplerRefinement, AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqRequest,
     AcqResult, AcqThresholdProvenance, AcqUncertainty, Hertz, ReceiverSampleTrace, SamplesFrame,
-    SatId, SignalBand, SignalCode,
+    SatId, SignalBand, SignalCode, SignalComponentRole,
 };
 use num_complex::Complex;
 use rustfft::{num_traits::Zero, FftPlanner};
@@ -20,6 +21,9 @@ use crate::engine::receiver_config::{
     acquisition_integration_ms_is_supported, supported_acquisition_integration_ms_csv,
 };
 use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
+use crate::pipeline::acquisition_components::{
+    acquisition_strategies_for_signal, AcquisitionComponentPlan, AcquisitionStrategyPlan,
+};
 use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
 use bijux_gnss_signal::api::{
     measure_iq_front_end_metrics, samples_per_code, wipeoff_carrier, AcquisitionSignalModel,
@@ -74,6 +78,7 @@ struct CodeFftCacheKey {
     sat: SatId,
     signal_band: SignalBand,
     signal_code: SignalCode,
+    component_role_key: u8,
     samples_per_code: usize,
     sampling_hz_bits: u64,
     if_hz_bits: u64,
@@ -89,6 +94,7 @@ impl CodeFftCacheKey {
     fn from_runtime(
         config: &ReceiverPipelineConfig,
         model: &AcquisitionSignalModel,
+        component_role: SignalComponentRole,
         sat: SatId,
         signal_code: SignalCode,
         samples_per_code: usize,
@@ -99,6 +105,7 @@ impl CodeFftCacheKey {
             sat,
             signal_band: model.signal_band,
             signal_code,
+            component_role_key: signal_component_role_key(component_role),
             samples_per_code,
             sampling_hz_bits: config.sampling_freq_hz.to_bits(),
             if_hz_bits: config.intermediate_freq_hz.to_bits(),
@@ -109,6 +116,13 @@ impl CodeFftCacheKey {
             model_version: ACQUISITION_CACHE_MODEL_VERSION,
             policy_version: ACQUISITION_CACHE_POLICY_VERSION,
         }
+    }
+}
+
+fn signal_component_role_key(role: SignalComponentRole) -> u8 {
+    match role {
+        SignalComponentRole::Data => 0,
+        SignalComponentRole::Pilot => 1,
     }
 }
 
@@ -258,6 +272,70 @@ struct CorrelationMetrics {
     second_idx: usize,
     second: f32,
     mean: f32,
+}
+
+fn unique_strategy_components(
+    strategies: &[AcquisitionStrategyPlan],
+) -> Vec<AcquisitionComponentPlan> {
+    let mut unique = Vec::new();
+    for strategy in strategies {
+        for component in &strategy.components {
+            if unique
+                .iter()
+                .all(|existing: &AcquisitionComponentPlan| !existing.matches_component(component))
+            {
+                unique.push(component.clone());
+            }
+        }
+    }
+    unique
+}
+
+fn strategy_component_indexes(
+    strategy: &AcquisitionStrategyPlan,
+    components: &[AcquisitionComponentPlan],
+) -> Vec<usize> {
+    strategy
+        .components
+        .iter()
+        .map(|component| {
+            components
+                .iter()
+                .position(|existing| existing.matches_component(component))
+                .expect("strategy components must exist in the deduplicated strategy inventory")
+        })
+        .collect()
+}
+
+fn strategy_component_provenance(
+    strategy: &AcquisitionStrategyPlan,
+    component_indexes: &[usize],
+    component_metrics: &[CorrelationMetrics],
+) -> AcqComponentProvenance {
+    AcqComponentProvenance {
+        combination_mode: strategy.combination_mode,
+        components: strategy
+            .components
+            .iter()
+            .zip(component_indexes.iter().copied())
+            .map(|(component, component_index)| {
+                let metrics = component_metrics[component_index];
+                AcqComponentStatistic {
+                    role: component.role,
+                    peak: metrics.peak,
+                    second_peak: metrics.second,
+                    mean: metrics.mean,
+                    peak_mean_ratio: metrics.peak / (metrics.mean + 1e-6),
+                    peak_second_ratio: metrics.peak / (metrics.second + 1e-6),
+                }
+            })
+            .collect(),
+    }
+}
+
+fn strategy_supports_search_model_refinement(strategy: &AcquisitionStrategyPlan) -> bool {
+    strategy.combination_mode == AcqComponentCombinationMode::SingleComponent
+        && strategy.components.len() == 1
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -502,8 +580,15 @@ impl Acquisition {
         for &request in requests {
             let sat = request.sat;
             let threshold_provenance = threshold_provenance_for_request(&self.config, request);
-            let signal_model = match acquisition_signal_model_for_request(&self.config, request) {
-                Ok(signal_model) => signal_model,
+            let signal_code = resolved_request_signal_code(request);
+            let strategies = match acquisition_strategies_for_signal(
+                sat,
+                request.signal_band,
+                signal_code,
+                request.glonass_frequency_channel,
+                request.coherent_ms,
+            ) {
+                Ok(strategies) => strategies,
                 Err(error) => {
                     sat_evaluations.push(AcquisitionSatEvaluation {
                         sat,
@@ -520,7 +605,33 @@ impl Acquisition {
                     continue;
                 }
             };
-            let signal_code = resolved_request_signal_code(request);
+            let signal_model = match strategies.first() {
+                Some(strategy) => strategy.search_model.clone(),
+                None => {
+                    sat_evaluations.push(AcquisitionSatEvaluation {
+                        sat,
+                        candidates: acquisition_request_error_candidates(
+                            &self.config,
+                            request,
+                            &threshold_provenance,
+                            ReceiverSampleTrace::from_sample_time(frame.t0),
+                            frame.len(),
+                            unsupported_acquisition_signal_error(
+                                request.sat,
+                                request.signal_band,
+                                request.signal_code,
+                            ),
+                        ),
+                        search_window_diagnostic: None,
+                    });
+                    continue;
+                }
+            };
+            let strategy_components = unique_strategy_components(&strategies);
+            let strategy_component_indexes = strategies
+                .iter()
+                .map(|strategy| strategy_component_indexes(strategy, &strategy_components))
+                .collect::<Vec<_>>();
             let search_center_hz = signal_model.search_center_hz(self.config.intermediate_freq_hz);
             self.with_stats(|stats| {
                 stats.doppler_bins +=
@@ -609,92 +720,166 @@ impl Acquisition {
             });
             let fft = planner.plan_fft_forward(samples_per_code);
             let ifft = planner.plan_fft_inverse(samples_per_code);
-            let code_fft = self.code_fft(
-                &signal_model,
-                sat,
-                signal_code,
-                samples_per_code,
-                request.coherent_ms,
-                request.noncoherent,
-                fft.as_ref(),
-            );
+            let component_ffts = strategy_components
+                .iter()
+                .map(|component| {
+                    self.code_fft(
+                        &signal_model,
+                        component,
+                        sat,
+                        signal_code,
+                        samples_per_code,
+                        request.coherent_ms,
+                        request.noncoherent,
+                        fft.as_ref(),
+                    )
+                })
+                .collect::<Vec<_>>();
             let mut grid_candidates = Vec::new();
 
             let mut doppler = -request.doppler_search_hz;
             while doppler <= request.doppler_search_hz {
                 let carrier = carrier_hz_from_doppler_hz(search_center_hz, doppler as f64);
-                let mut noncoherent_acc = vec![0.0f32; samples_per_code];
+                let mut component_correlations = Vec::with_capacity(strategy_components.len());
+                let mut component_noncoherent_accumulators =
+                    Vec::with_capacity(strategy_components.len());
 
-                for nc in 0..request.noncoherent {
-                    let mut coherent_corr: Vec<Complex<f32>> =
-                        vec![Complex::zero(); samples_per_code];
-                    for c in 0..coherent_periods {
-                        let offset_period = (nc * coherent_periods + c) as usize;
-                        let start = offset_period * samples_per_code;
-                        let end = start + samples_per_code;
-                        let block = &frame.iq[start..end];
+                for code_fft in &component_ffts {
+                    let mut noncoherent_acc = vec![0.0f32; samples_per_code];
+                    let mut per_noncoherent = Vec::with_capacity(request.noncoherent as usize);
 
-                        let mixed = wipeoff_carrier(
-                            block,
-                            carrier,
-                            self.config.sampling_freq_hz,
-                            frame.t0.sample_index + start as u64,
-                            0.0,
-                        )
-                        .expect("acquisition carrier wipeoff requires finite carrier inputs");
+                    for nc in 0..request.noncoherent {
+                        let mut coherent_corr: Vec<Complex<f32>> =
+                            vec![Complex::zero(); samples_per_code];
+                        for c in 0..coherent_periods {
+                            let offset_period = (nc * coherent_periods + c) as usize;
+                            let start = offset_period * samples_per_code;
+                            let end = start + samples_per_code;
+                            let block = &frame.iq[start..end];
 
-                        let mut input_fft = mixed;
-                        fft.process(&mut input_fft);
+                            let mixed = wipeoff_carrier(
+                                block,
+                                carrier,
+                                self.config.sampling_freq_hz,
+                                frame.t0.sample_index + start as u64,
+                                0.0,
+                            )
+                            .expect("acquisition carrier wipeoff requires finite carrier inputs");
 
-                        let mut prod = vec![Complex::zero(); samples_per_code];
-                        for i in 0..samples_per_code {
-                            prod[i] = input_fft[i] * code_fft[i].conj();
+                            let mut input_fft = mixed;
+                            fft.process(&mut input_fft);
+
+                            let mut prod = vec![Complex::zero(); samples_per_code];
+                            for i in 0..samples_per_code {
+                                prod[i] = input_fft[i] * code_fft[i].conj();
+                            }
+
+                            ifft.process(&mut prod);
+                            for i in 0..samples_per_code {
+                                coherent_corr[i] += prod[i];
+                            }
                         }
 
-                        ifft.process(&mut prod);
                         for i in 0..samples_per_code {
-                            coherent_corr[i] += prod[i];
+                            noncoherent_acc[i] += coherent_corr[i].norm();
                         }
+                        per_noncoherent.push(coherent_corr);
                     }
 
-                    for i in 0..samples_per_code {
-                        noncoherent_acc[i] += coherent_corr[i].norm();
-                    }
+                    component_correlations.push(per_noncoherent);
+                    component_noncoherent_accumulators.push(noncoherent_acc);
                 }
 
-                let correlation_metrics = correlation_metrics(&noncoherent_acc);
-                let peak_mean_ratio = correlation_metrics.peak / (correlation_metrics.mean + 1e-6);
-                let peak_second_ratio =
-                    correlation_metrics.peak / (correlation_metrics.second + 1e-6);
-                let cn0_proxy = peak_mean_ratio * 10.0;
-                grid_candidates.push(AcqResult {
-                    sat,
-                    signal_band: signal_model.signal_band,
-                    signal_code,
-                    glonass_frequency_channel: request.glonass_frequency_channel,
-                    source_time: ReceiverSampleTrace::from_sample_time(frame.t0),
-                    candidate_rank: 1,
-                    is_primary_candidate: true,
-                    doppler_hz: Hertz(doppler as f64),
-                    carrier_hz: Hertz(carrier),
-                    code_phase_samples: correlation_metrics.peak_idx,
-                    peak: correlation_metrics.peak,
-                    second_peak: correlation_metrics.second,
-                    mean: correlation_metrics.mean,
-                    peak_mean_ratio,
-                    peak_second_ratio,
-                    cn0_proxy,
-                    score: 0.0,
-                    hypothesis: AcqHypothesis::Deferred,
-                    assumptions: Some(assumptions.clone()),
-                    evidence: Vec::new(),
-                    threshold_provenance: Some(threshold_provenance.clone()),
-                    explain_selection_reason: None,
-                    doppler_refinement: None,
-                    code_phase_refinement: None,
-                    signal_delay_alignment: None,
-                    uncertainty: None,
-                });
+                let component_metrics = component_noncoherent_accumulators
+                    .iter()
+                    .map(|accumulator| correlation_metrics(accumulator))
+                    .collect::<Vec<_>>();
+
+                for (strategy, component_indexes) in
+                    strategies.iter().zip(strategy_component_indexes.iter())
+                {
+                    let combined_accumulator = match strategy.combination_mode {
+                        AcqComponentCombinationMode::SingleComponent => {
+                            component_noncoherent_accumulators[component_indexes[0]].clone()
+                        }
+                        AcqComponentCombinationMode::NoncoherentComponentSum => {
+                            let mut combined = vec![0.0f32; samples_per_code];
+                            for &component_index in component_indexes {
+                                for (combined_value, component_value) in combined
+                                    .iter_mut()
+                                    .zip(component_noncoherent_accumulators[component_index].iter())
+                                {
+                                    *combined_value += *component_value;
+                                }
+                            }
+                            combined
+                        }
+                        AcqComponentCombinationMode::CoherentComponentSum => {
+                            let mut combined = vec![0.0f32; samples_per_code];
+                            for nc in 0..request.noncoherent as usize {
+                                for sample_index in 0..samples_per_code {
+                                    let mut coherent_sum: Complex<f32> = Complex::zero();
+                                    for &component_index in component_indexes {
+                                        coherent_sum += component_correlations[component_index][nc]
+                                            [sample_index];
+                                    }
+                                    combined[sample_index] += coherent_sum.norm();
+                                }
+                            }
+                            combined
+                        }
+                    };
+
+                    let correlation_metrics = correlation_metrics(&combined_accumulator);
+                    let peak_mean_ratio =
+                        correlation_metrics.peak / (correlation_metrics.mean + 1e-6);
+                    let peak_second_ratio =
+                        correlation_metrics.peak / (correlation_metrics.second + 1e-6);
+                    let cn0_proxy = peak_mean_ratio * 10.0;
+                    let component_provenance = strategy_component_provenance(
+                        strategy,
+                        component_indexes,
+                        &component_metrics,
+                    );
+                    grid_candidates.push(AcqResult {
+                        sat,
+                        signal_band: signal_model.signal_band,
+                        signal_code,
+                        glonass_frequency_channel: request.glonass_frequency_channel,
+                        source_time: ReceiverSampleTrace::from_sample_time(frame.t0),
+                        candidate_rank: 1,
+                        is_primary_candidate: true,
+                        doppler_hz: Hertz(doppler as f64),
+                        carrier_hz: Hertz(carrier),
+                        code_phase_samples: correlation_metrics.peak_idx,
+                        peak: correlation_metrics.peak,
+                        second_peak: correlation_metrics.second,
+                        mean: correlation_metrics.mean,
+                        peak_mean_ratio,
+                        peak_second_ratio,
+                        cn0_proxy,
+                        score: 0.0,
+                        hypothesis: AcqHypothesis::Deferred,
+                        assumptions: Some(assumptions.clone()),
+                        evidence: vec![AcqEvidence {
+                            rank: 1,
+                            code_phase_samples: correlation_metrics.peak_idx,
+                            doppler_hz: carrier,
+                            peak: correlation_metrics.peak,
+                            second_peak: correlation_metrics.second,
+                            peak_mean_ratio,
+                            peak_second_ratio,
+                            mean: correlation_metrics.mean,
+                            component_provenance: Some(component_provenance),
+                        }],
+                        threshold_provenance: Some(threshold_provenance.clone()),
+                        explain_selection_reason: None,
+                        doppler_refinement: None,
+                        code_phase_refinement: None,
+                        signal_delay_alignment: None,
+                        uncertainty: None,
+                    });
+                }
 
                 doppler += request.doppler_step_hz.max(1);
             }
@@ -721,17 +906,19 @@ impl Acquisition {
             let competing_peak_ratio = competing_candidate_ratio(&ranked_candidates);
             let mut candidates = ranked_candidates;
             candidates.truncate(top_n.max(1));
-            refine_acquisition_candidates(
-                self,
-                frame,
-                &signal_model,
-                sat,
-                &mut candidates,
-                &grid_candidates,
-                request.doppler_step_hz.max(1),
-                request.coherent_ms,
-                request.noncoherent,
-            );
+            if strategies.len() == 1 && strategy_supports_search_model_refinement(&strategies[0]) {
+                refine_acquisition_candidates(
+                    self,
+                    frame,
+                    &signal_model,
+                    sat,
+                    &mut candidates,
+                    &grid_candidates,
+                    request.doppler_step_hz.max(1),
+                    request.coherent_ms,
+                    request.noncoherent,
+                );
+            }
             if candidates.is_empty() {
                 sat_evaluations.push(AcquisitionSatEvaluation {
                     sat,
@@ -743,17 +930,16 @@ impl Acquisition {
             for (rank, candidate) in candidates.iter_mut().enumerate() {
                 candidate.candidate_rank = rank as u8 + 1;
                 candidate.is_primary_candidate = rank == 0;
-                candidate.evidence.push(AcqEvidence {
-                    rank: candidate.candidate_rank,
-                    code_phase_samples: candidate.code_phase_samples,
-                    doppler_hz: candidate.carrier_hz.0,
-                    peak: candidate.peak,
-                    second_peak: candidate.second_peak,
-                    peak_mean_ratio: candidate.peak_mean_ratio,
-                    peak_second_ratio: candidate.peak_second_ratio,
-                    mean: candidate.mean,
-                    component_provenance: None,
-                });
+                if let Some(evidence) = candidate.evidence.first_mut() {
+                    evidence.rank = candidate.candidate_rank;
+                    evidence.code_phase_samples = candidate.code_phase_samples;
+                    evidence.doppler_hz = candidate.carrier_hz.0;
+                    evidence.peak = candidate.peak;
+                    evidence.second_peak = candidate.second_peak;
+                    evidence.peak_mean_ratio = candidate.peak_mean_ratio;
+                    evidence.peak_second_ratio = candidate.peak_second_ratio;
+                    evidence.mean = candidate.mean;
+                }
                 let local_peak_separation_ratio = candidate.peak_second_ratio;
                 if rank == 0 {
                     if let Some(diagnostic) = search_window_diagnostic.as_ref() {
@@ -1002,6 +1188,7 @@ impl Acquisition {
     fn code_fft(
         &self,
         signal_model: &AcquisitionSignalModel,
+        component: &AcquisitionComponentPlan,
         sat: SatId,
         signal_code: SignalCode,
         samples_per_code: usize,
@@ -1012,6 +1199,7 @@ impl Acquisition {
         let key = CodeFftCacheKey::from_runtime(
             &self.config,
             &signal_model,
+            component.role,
             sat,
             signal_code,
             samples_per_code,
@@ -1029,6 +1217,7 @@ impl Acquisition {
                     ("prn", sat.prn.to_string()),
                     ("signal_band", format!("{:?}", signal_model.signal_band)),
                     ("signal_code", format!("{:?}", signal_code)),
+                    ("component_role", format!("{:?}", component.role)),
                     ("samples_per_code", samples_per_code.to_string()),
                 ],
             });
@@ -1064,14 +1253,15 @@ impl Acquisition {
                 ("prn", sat.prn.to_string()),
                 ("signal_band", format!("{:?}", signal_model.signal_band)),
                 ("signal_code", format!("{:?}", signal_code)),
+                ("component_role", format!("{:?}", component.role)),
                 ("samples_per_code", samples_per_code.to_string()),
                 ("reason", miss_reason.as_str().to_string()),
                 ("model_version", ACQUISITION_CACHE_MODEL_VERSION.to_string()),
                 ("policy_version", ACQUISITION_CACHE_POLICY_VERSION.to_string()),
             ],
         });
-        let local_code = signal_model
-            .sampled_local_code_period(self.config.sampling_freq_hz, samples_per_code)
+        let local_code = component
+            .sample_local_code_period(self.config.sampling_freq_hz, samples_per_code)
             .unwrap_or_else(|_| vec![1.0; samples_per_code]);
         let mut code_fft: Vec<Complex<f32>> =
             local_code.iter().map(|&x| Complex::new(x, 0.0)).collect();
@@ -2114,12 +2304,44 @@ fn find_candidate_by_carrier_hz(candidates: &[AcqResult], carrier_hz: f64) -> Op
 mod tests {
     use super::*;
     use bijux_gnss_core::api::{
-        Constellation, GlonassFrequencyChannel, ReceiverSampleTrace, SampleTime, SamplesFrame,
-        SatId, Seconds, GPS_L1_CA_CARRIER_HZ,
+        AcqComponentCombinationMode, Constellation, GlonassFrequencyChannel, ReceiverSampleTrace,
+        SampleTime, SamplesFrame, SatId, Seconds, SignalComponentRole, GPS_L1_CA_CARRIER_HZ,
     };
     use bijux_gnss_signal::api::{
         glonass_l1_carrier_hz, sample_glonass_l1_st_code, samples_per_code,
     };
+
+    fn acquisition_component_plan_for_signal(
+        sat: SatId,
+        signal_band: SignalBand,
+        signal_code: SignalCode,
+        coherent_ms: u32,
+    ) -> AcquisitionComponentPlan {
+        acquisition_strategies_for_signal(sat, signal_band, signal_code, None, coherent_ms)
+            .expect("acquisition strategies")
+            .into_iter()
+            .next()
+            .and_then(|strategy| strategy.components.into_iter().next())
+            .expect("primary acquisition component")
+    }
+
+    fn alternating_frame(sample_rate_hz: f64, sample_count: usize) -> SamplesFrame {
+        SamplesFrame::new(
+            SampleTime { sample_index: 0, sample_rate_hz },
+            Seconds(1.0 / sample_rate_hz),
+            (0..sample_count)
+                .map(
+                    |idx| {
+                        if idx % 2 == 0 {
+                            Complex::new(1.0, 0.0)
+                        } else {
+                            Complex::new(-1.0, 0.0)
+                        }
+                    },
+                )
+                .collect(),
+        )
+    }
 
     #[test]
     fn acquisition_decision_rejects_weak_primary_peak() {
@@ -2334,9 +2556,7 @@ mod tests {
         assert_eq!(candidate.hypothesis.to_string(), AcqHypothesis::Deferred.to_string());
         assert_eq!(
             candidate.explain_selection_reason.as_deref(),
-            Some(
-                "invalid_acquisition_signal_model: unsupported signal definition for Gps L2 L2C"
-            )
+            Some("invalid_acquisition_signal_model: unsupported signal definition for Gps L2 L2C")
         );
         assert_eq!(candidate.carrier_hz.0, config.intermediate_freq_hz);
         assert_eq!(run.explains.len(), 1);
@@ -2795,9 +3015,12 @@ mod tests {
             SignalCode::Unknown,
             None,
         );
+        let component =
+            acquisition_component_plan_for_signal(sat, SignalBand::L1, SignalCode::Ca, 1);
 
         acquisition.code_fft(
             &signal_model,
+            &component,
             sat,
             SignalCode::Ca,
             samples_per_code,
@@ -2811,6 +3034,7 @@ mod tests {
 
         acquisition.code_fft(
             &signal_model,
+            &component,
             sat,
             SignalCode::Ca,
             samples_per_code,
@@ -2852,9 +3076,14 @@ mod tests {
             SignalCode::L5Q,
             None,
         );
+        let gps_l5_i_component =
+            acquisition_component_plan_for_signal(sat, SignalBand::L5, SignalCode::L5I, 1);
+        let gps_l5_q_component =
+            acquisition_component_plan_for_signal(sat, SignalBand::L5, SignalCode::L5Q, 1);
 
         acquisition.code_fft(
             &gps_l5_i,
+            &gps_l5_i_component,
             sat,
             SignalCode::L5I,
             samples_per_code,
@@ -2868,6 +3097,7 @@ mod tests {
 
         acquisition.code_fft(
             &gps_l5_q,
+            &gps_l5_q_component,
             sat,
             SignalCode::L5Q,
             samples_per_code,
@@ -2882,6 +3112,7 @@ mod tests {
 
         acquisition.code_fft(
             &gps_l5_q,
+            &gps_l5_q_component,
             sat,
             SignalCode::L5Q,
             samples_per_code,
@@ -3012,23 +3243,159 @@ mod tests {
             coherent_ms: 1,
             noncoherent: 1,
         };
-        let e5b_request = AcqRequest {
-            signal_code: SignalCode::E5b,
-            ..e5a_request
-        };
+        let e5b_request = AcqRequest { signal_code: SignalCode::E5b, ..e5a_request };
 
         let e5a_run = acquisition.run_fft_topn_for_requests_with_explain(&frame, &[e5a_request], 1);
         let after_e5a = acquisition.stats_snapshot();
         assert_eq!(e5a_run.results[0][0].signal_code, SignalCode::E5a);
-        assert_eq!(after_e5a.cache_misses, 1);
+        assert_eq!(after_e5a.cache_misses, 2);
         assert_eq!(after_e5a.cache_hits, 0);
+        assert_eq!(after_e5a.cache_miss_incompatible, 1);
 
         let e5b_run = acquisition.run_fft_topn_for_requests_with_explain(&frame, &[e5b_request], 1);
         let after_e5b = acquisition.stats_snapshot();
         assert_eq!(e5b_run.results[0][0].signal_code, SignalCode::E5b);
-        assert_eq!(after_e5b.cache_misses, 2);
+        assert_eq!(after_e5b.cache_misses, 4);
         assert_eq!(after_e5b.cache_hits, 0);
-        assert_eq!(after_e5b.cache_miss_incompatible, 1);
+        assert_eq!(after_e5b.cache_miss_incompatible, 3);
+    }
+
+    #[test]
+    fn run_fft_for_galileo_e5a_records_component_combination_provenance() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 10_230_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..ReceiverPipelineConfig::default()
+        };
+        let frame = alternating_frame(config.sampling_freq_hz, 10_230);
+        let acquisition = Acquisition::new(config, ReceiverRuntime::default());
+        let request = AcqRequest {
+            sat: SatId { constellation: Constellation::Galileo, prn: 11 },
+            glonass_frequency_channel: None,
+            signal_band: SignalBand::E5,
+            signal_code: SignalCode::E5a,
+            doppler_search_hz: 0,
+            doppler_step_hz: 1,
+            coherent_ms: 1,
+            noncoherent: 1,
+        };
+
+        let run = acquisition.run_fft_topn_for_requests_with_explain(&frame, &[request], 4);
+        let candidates = &run.results[0];
+
+        assert_eq!(candidates.len(), 4);
+        assert!(candidates.iter().all(|candidate| candidate.signal_code == SignalCode::E5a));
+        assert!(candidates.iter().any(|candidate| {
+            candidate.component_provenance().is_some_and(|provenance| {
+                provenance.combination_mode == AcqComponentCombinationMode::SingleComponent
+                    && provenance
+                        .components
+                        .iter()
+                        .map(|component| component.role)
+                        .collect::<Vec<_>>()
+                        == vec![SignalComponentRole::Data]
+            })
+        }));
+        assert!(candidates.iter().any(|candidate| {
+            candidate.component_provenance().is_some_and(|provenance| {
+                provenance.combination_mode == AcqComponentCombinationMode::SingleComponent
+                    && provenance
+                        .components
+                        .iter()
+                        .map(|component| component.role)
+                        .collect::<Vec<_>>()
+                        == vec![SignalComponentRole::Pilot]
+            })
+        }));
+        assert!(candidates.iter().any(|candidate| {
+            candidate.component_provenance().is_some_and(|provenance| {
+                provenance.combination_mode == AcqComponentCombinationMode::NoncoherentComponentSum
+                    && provenance
+                        .components
+                        .iter()
+                        .map(|component| component.role)
+                        .collect::<Vec<_>>()
+                        == vec![SignalComponentRole::Data, SignalComponentRole::Pilot]
+            })
+        }));
+        assert!(candidates.iter().any(|candidate| {
+            candidate.component_provenance().is_some_and(|provenance| {
+                provenance.combination_mode == AcqComponentCombinationMode::CoherentComponentSum
+                    && provenance
+                        .components
+                        .iter()
+                        .map(|component| component.role)
+                        .collect::<Vec<_>>()
+                        == vec![SignalComponentRole::Data, SignalComponentRole::Pilot]
+            })
+        }));
+    }
+
+    #[test]
+    fn run_fft_for_galileo_e5a_skips_coherent_component_sum_beyond_one_millisecond() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 10_230_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..ReceiverPipelineConfig::default()
+        };
+        let frame = alternating_frame(config.sampling_freq_hz, 20_460);
+        let acquisition = Acquisition::new(config, ReceiverRuntime::default());
+        let request = AcqRequest {
+            sat: SatId { constellation: Constellation::Galileo, prn: 11 },
+            glonass_frequency_channel: None,
+            signal_band: SignalBand::E5,
+            signal_code: SignalCode::E5a,
+            doppler_search_hz: 0,
+            doppler_step_hz: 1,
+            coherent_ms: 2,
+            noncoherent: 1,
+        };
+
+        let run = acquisition.run_fft_topn_for_requests_with_explain(&frame, &[request], 4);
+        let candidates = &run.results[0];
+
+        assert_eq!(candidates.len(), 3);
+        assert!(candidates.iter().all(|candidate| {
+            candidate.component_provenance().is_some_and(|provenance| {
+                provenance.combination_mode != AcqComponentCombinationMode::CoherentComponentSum
+            })
+        }));
+    }
+
+    #[test]
+    fn run_fft_for_gps_l5q_records_single_pilot_component_provenance() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 10_230_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..ReceiverPipelineConfig::default()
+        };
+        let frame = alternating_frame(config.sampling_freq_hz, 10_230);
+        let acquisition = Acquisition::new(config, ReceiverRuntime::default());
+        let request = AcqRequest {
+            sat: SatId { constellation: Constellation::Gps, prn: 7 },
+            glonass_frequency_channel: None,
+            signal_band: SignalBand::L5,
+            signal_code: SignalCode::L5Q,
+            doppler_search_hz: 0,
+            doppler_step_hz: 1,
+            coherent_ms: 1,
+            noncoherent: 1,
+        };
+
+        let run = acquisition.run_fft_topn_for_requests_with_explain(&frame, &[request], 1);
+        let provenance = run.results[0][0].component_provenance().expect("component provenance");
+
+        assert_eq!(provenance.combination_mode, AcqComponentCombinationMode::SingleComponent);
+        assert_eq!(
+            provenance.components.iter().map(|component| component.role).collect::<Vec<_>>(),
+            vec![SignalComponentRole::Pilot]
+        );
     }
 
     #[test]

@@ -45,6 +45,25 @@ impl AcquisitionComponentPlan {
             }
         }
     }
+
+    pub fn matches_component(&self, other: &Self) -> bool {
+        self.role == other.role && self.local_code.matches_identity(&other.local_code)
+    }
+}
+
+impl AcquisitionComponentLocalCode {
+    fn matches_identity(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::SearchModel(_), Self::SearchModel(_)) => true,
+            (Self::GalileoE5aPilot { sat: left }, Self::GalileoE5aPilot { sat: right }) => {
+                left == right
+            }
+            (Self::GalileoE5bPilot { sat: left }, Self::GalileoE5bPilot { sat: right }) => {
+                left == right
+            }
+            _ => false,
+        }
+    }
 }
 
 pub(crate) fn acquisition_strategies_for_signal(
