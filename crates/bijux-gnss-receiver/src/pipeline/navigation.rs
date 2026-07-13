@@ -1151,7 +1151,6 @@ impl Navigation {
                 nav_epoch.explain_reasons.push(reason);
             }
         }
-        nav_epoch.stability_signature = nav_output_stability_signature(&nav_epoch);
         let protection_levels = nav_epoch.position_covariance_ecef_m2.and_then(|covariance| {
             formal_protection_levels(
                 [nav_epoch.ecef_x_m.0, nav_epoch.ecef_y_m.0, nav_epoch.ecef_z_m.0],
@@ -1164,6 +1163,8 @@ impl Navigation {
             nav_epoch.integrity_hpl_m = None;
             nav_epoch.integrity_vpl_m = None;
         }
+        apply_precision_reporting_policy(&mut nav_epoch);
+        nav_epoch.stability_signature = nav_output_stability_signature(&nav_epoch);
 
         if let Some(rms) = nav_epoch.innovation_rms_m {
             self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
@@ -1697,7 +1698,17 @@ fn lifecycle_state_from_status(status: SolutionStatus) -> NavLifecycleState {
     }
 }
 
-fn uncertainty_class_from_solution(solution: &NavSolutionEpoch) -> NavUncertaintyClass {
+fn apply_precision_reporting_policy(solution: &mut NavSolutionEpoch) {
+    let policy = precision_reporting_policy(solution);
+    let scale = precision_reporting_scale(solution, policy);
+    if scale <= 1.0 + f64::EPSILON {
+        return;
+    }
+
+    scale_nav_precision_outputs(solution, scale);
+    push_unique_reason(solution, policy.explain_reason);
+}
+
 fn precision_reporting_policy(solution: &NavSolutionEpoch) -> PrecisionReportingPolicy {
     match solution.status {
         SolutionStatus::Fixed if has_validated_centimeter_precision_support(solution) => {
@@ -1762,9 +1773,80 @@ fn has_validated_centimeter_precision_support(solution: &NavSolutionEpoch) -> bo
         && solution.refusal_class.is_none()
         && solution.integrity_hpl_m.is_some()
         && solution.integrity_vpl_m.is_some()
-        && !solution.health.iter().any(|event| matches!(event, bijux_gnss_core::api::NavHealthEvent::CovarianceDiverged { .. } | bijux_gnss_core::api::NavHealthEvent::CommonCodeDopplerAnomaly { .. } | bijux_gnss_core::api::NavHealthEvent::ReplayTimingAnomaly { .. } | bijux_gnss_core::api::NavHealthEvent::ConstellationClockInconsistency { .. } | bijux_gnss_core::api::NavHealthEvent::ResidualTemporalCorrelation { .. } | bijux_gnss_core::api::NavHealthEvent::ImpossibleGeometry { .. } | bijux_gnss_core::api::NavHealthEvent::SatelliteClockAnomaly { .. }));
+        && !solution.health.iter().any(|event| {
+            matches!(
+                event,
+                bijux_gnss_core::api::NavHealthEvent::CovarianceDiverged { .. }
+                    | bijux_gnss_core::api::NavHealthEvent::CommonCodeDopplerAnomaly { .. }
+                    | bijux_gnss_core::api::NavHealthEvent::ReplayTimingAnomaly { .. }
+                    | bijux_gnss_core::api::NavHealthEvent::ConstellationClockInconsistency { .. }
+                    | bijux_gnss_core::api::NavHealthEvent::ResidualTemporalCorrelation { .. }
+                    | bijux_gnss_core::api::NavHealthEvent::ImpossibleGeometry { .. }
+                    | bijux_gnss_core::api::NavHealthEvent::SatelliteClockAnomaly { .. }
+            )
+        });
     corrections_supported && validation_supported
 }
+
+fn precision_reporting_scale(solution: &NavSolutionEpoch, policy: PrecisionReportingPolicy) -> f64 {
+    let mut scale = 1.0_f64;
+    if let Some(sigma_h_m) = solution.sigma_h_m.map(|value| value.0) {
+        if sigma_h_m.is_finite() && sigma_h_m > 0.0 && sigma_h_m < policy.horizontal_sigma_floor_m {
+            scale = scale.max((policy.horizontal_sigma_floor_m / sigma_h_m).powi(2));
+        }
+    }
+    if let Some(sigma_v_m) = solution.sigma_v_m.map(|value| value.0) {
+        if sigma_v_m.is_finite() && sigma_v_m > 0.0 && sigma_v_m < policy.vertical_sigma_floor_m {
+            scale = scale.max((policy.vertical_sigma_floor_m / sigma_v_m).powi(2));
+        }
+    }
+    scale
+}
+
+fn scale_nav_precision_outputs(solution: &mut NavSolutionEpoch, covariance_scale: f64) {
+    let sigma_scale = covariance_scale.sqrt();
+    scale_covariance_in_place(&mut solution.position_covariance_ecef_m2, covariance_scale);
+    scale_optional_meters(&mut solution.sigma_e_m, sigma_scale);
+    scale_optional_meters(&mut solution.sigma_n_m, sigma_scale);
+    scale_optional_meters(&mut solution.sigma_u_m, sigma_scale);
+    scale_optional_meters(&mut solution.sigma_h_m, sigma_scale);
+    scale_optional_meters(&mut solution.sigma_v_m, sigma_scale);
+    scale_optional_meters(&mut solution.horizontal_error_ellipse_major_axis_m, sigma_scale);
+    scale_optional_meters(&mut solution.horizontal_error_ellipse_minor_axis_m, sigma_scale);
+    scale_optional_f64(&mut solution.integrity_hpl_m, sigma_scale);
+    scale_optional_f64(&mut solution.integrity_vpl_m, sigma_scale);
+}
+
+fn scale_covariance_in_place(covariance: &mut Option<[[f64; 3]; 3]>, covariance_scale: f64) {
+    let Some(covariance) = covariance.as_mut() else {
+        return;
+    };
+    for row in covariance.iter_mut() {
+        for element in row.iter_mut() {
+            *element *= covariance_scale;
+        }
+    }
+}
+
+fn scale_optional_meters(value: &mut Option<Meters>, scale: f64) {
+    if let Some(value) = value.as_mut() {
+        value.0 *= scale;
+    }
+}
+
+fn scale_optional_f64(value: &mut Option<f64>, scale: f64) {
+    if let Some(value) = value.as_mut() {
+        *value *= scale;
+    }
+}
+
+fn push_unique_reason(solution: &mut NavSolutionEpoch, reason: &'static str) {
+    if !solution.explain_reasons.iter().any(|existing| existing == reason) {
+        solution.explain_reasons.push(reason.to_string());
+    }
+}
+
+fn uncertainty_class_from_solution(solution: &NavSolutionEpoch) -> NavUncertaintyClass {
     let sigma = solution
         .sigma_h_m
         .map(|value| value.0)
@@ -1772,6 +1854,12 @@ fn has_validated_centimeter_precision_support(solution: &NavSolutionEpoch) -> bo
         .unwrap_or(f64::INFINITY);
     if !sigma.is_finite() {
         NavUncertaintyClass::Unknown
+    } else if !precision_reporting_policy(solution).low_uncertainty_allowed {
+        if sigma <= 10.0 {
+            NavUncertaintyClass::Medium
+        } else {
+            NavUncertaintyClass::High
+        }
     } else if sigma <= 3.0 {
         NavUncertaintyClass::Low
     } else if sigma <= 10.0 {
