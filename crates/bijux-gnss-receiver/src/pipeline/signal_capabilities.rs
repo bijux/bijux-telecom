@@ -439,8 +439,8 @@ mod tests {
                 SignalBand::B2,
                 SignalCode::B2I,
                 SignalExecutionSupport {
-                    acquisition: false,
-                    tracking: false,
+                    acquisition: true,
+                    tracking: true,
                     data_decoding: false,
                     observations: true,
                     positioning: false,
