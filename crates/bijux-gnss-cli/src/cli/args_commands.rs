@@ -129,7 +129,7 @@ pub(crate) enum GnssCommand {
         #[arg(long, value_name = "FILE")]
         eph: PathBuf,
 
-        /// Use EKF-based solver (scaffold)
+        /// Use the receiver-owned navigation filter solver
         #[arg(long)]
         ekf: bool,
     },
@@ -502,7 +502,7 @@ pub(crate) enum ArtifactCommand {
         fail_on: DiagnosticFailOn,
     },
 
-    /// Convert an artifact to a target version (scaffold)
+    /// Convert an artifact to a target version
     Convert {
         #[command(flatten)]
         common: CommonArgs,

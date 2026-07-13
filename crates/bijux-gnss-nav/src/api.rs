@@ -194,7 +194,7 @@ pub use crate::models::antenna::{
     ReceiverAntennaCalibration, ReceiverAntennaCalibrations, ReceiverPhaseCenterOffset,
     SatelliteAntennaCalibration, SatelliteAntennaCalibrations, SatellitePhaseCenterOffset,
 };
-/// Atmospheric model scaffolding.
+/// Atmospheric delay models and coefficients.
 pub use crate::models::atmosphere::{
     IonosphereModel, KlobucharCoefficients, KlobucharModel, SaastamoinenModel, TroposphereModel,
 };

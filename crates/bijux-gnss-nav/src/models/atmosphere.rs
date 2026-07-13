@@ -1,4 +1,4 @@
-//! Atmospheric delay model scaffolding.
+//! Atmospheric delay models and supporting meteorology utilities.
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{Llh, Seconds};
@@ -134,7 +134,8 @@ impl SaastamoinenModel {
     }
 
     fn zenith_hydrostatic_delay_from_pressure_m(receiver: Llh, pressure_hpa: f64) -> f64 {
-        if !receiver.lat_deg.is_finite() || !receiver.alt_m.is_finite() || !pressure_hpa.is_finite() {
+        if !receiver.lat_deg.is_finite() || !receiver.alt_m.is_finite() || !pressure_hpa.is_finite()
+        {
             return 0.0;
         }
         let latitude_rad = receiver.lat_deg.to_radians();
@@ -154,9 +155,7 @@ impl SaastamoinenModel {
         Self::zenith_wet_delay_from_conditions_m(temperature_k, water_vapor_pressure_hpa)
     }
 
-    pub fn zenith_wet_delay_with_meteorology_m(
-        meteorology: TroposphereMeteorology,
-    ) -> f64 {
+    pub fn zenith_wet_delay_with_meteorology_m(meteorology: TroposphereMeteorology) -> f64 {
         if !meteorology.is_physical() {
             return 0.0;
         }
@@ -371,10 +370,8 @@ mod tests {
         let hot_humid = TroposphereMeteorology::new(1_013.25, 303.15, 0.95);
         let cool_dry = TroposphereMeteorology::new(1_013.25, 278.15, 0.2);
 
-        let hot_humid_delay_m =
-            SaastamoinenModel::zenith_wet_delay_with_meteorology_m(hot_humid);
-        let cool_dry_delay_m =
-            SaastamoinenModel::zenith_wet_delay_with_meteorology_m(cool_dry);
+        let hot_humid_delay_m = SaastamoinenModel::zenith_wet_delay_with_meteorology_m(hot_humid);
+        let cool_dry_delay_m = SaastamoinenModel::zenith_wet_delay_with_meteorology_m(cool_dry);
 
         assert!(hot_humid_delay_m > cool_dry_delay_m + 0.15);
     }

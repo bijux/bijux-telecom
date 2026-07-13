@@ -18,9 +18,7 @@ use std::time::Instant;
 const STREAMING_TRACKING_CODE_PERIODS: usize = 100;
 
 impl Receiver {
-    /// Run a full pipeline: acquisition -> tracking.
-    ///
-    /// This is a scaffold and will be fully implemented incrementally.
+    /// Run the configured acquisition, tracking, observation, and navigation pipeline.
     pub fn run(
         &self,
         input: &mut dyn bijux_gnss_signal::api::SignalSource<

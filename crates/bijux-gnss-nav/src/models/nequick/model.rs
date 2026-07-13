@@ -14,16 +14,19 @@ const STEC_MAX_REFINEMENTS: usize = 20;
 const FOF2_SERIES_LENGTH: usize = 76;
 const M3000_SERIES_LENGTH: usize = 49;
 
+/// Galileo NeQuick G ionosphere model driven by broadcast `ai0`, `ai1`, and `ai2` coefficients.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GalileoNequickModel {
     alpha: [f64; 3],
 }
 
 impl GalileoNequickModel {
+    /// Builds a NeQuick model from broadcast effective-ionization coefficients.
     pub fn new(alpha: [f64; 3]) -> Self {
         Self { alpha }
     }
 
+    /// Computes slant total electron content for a receiver-satellite path in TECU.
     pub fn stec_tecu(
         &self,
         month: u8,
@@ -34,8 +37,10 @@ impl GalileoNequickModel {
         let time = NequickTime::new(month, utc_hours)?;
         let receiver = GeoPoint::from_llh(receiver)?;
         let satellite = GeoPoint::from_llh(satellite)?;
-        let effective_ionization_level =
-            self.effective_ionization_level(compute_modip(receiver.latitude_rad, receiver.longitude_rad));
+        let effective_ionization_level = self.effective_ionization_level(compute_modip(
+            receiver.latitude_rad,
+            receiver.longitude_rad,
+        ));
         let tolerance = if receiver.altitude_m < 1_000_000.0 { 0.001 } else { 0.01 };
 
         let mut intervals = STEC_START_INTERVALS;
@@ -50,8 +55,13 @@ impl GalileoNequickModel {
         {
             previous = current;
             intervals *= 2;
-            current =
-                self.integrate_stec(&time, receiver, satellite, effective_ionization_level, intervals)?;
+            current = self.integrate_stec(
+                &time,
+                receiver,
+                satellite,
+                effective_ionization_level,
+                intervals,
+            )?;
             refinements += 1;
         }
         if refinements == STEC_MAX_REFINEMENTS {
@@ -61,6 +71,7 @@ impl GalileoNequickModel {
         Some((current + (current - previous) / 15.0) * 1.0e-16)
     }
 
+    /// Computes single-frequency ionospheric code delay for a receiver-satellite path in meters.
     pub fn delay_m(
         &self,
         month: u8,
@@ -76,6 +87,7 @@ impl GalileoNequickModel {
             .map(|stec_tecu| DELAY_FACTOR * stec_tecu / (carrier_hz * carrier_hz))
     }
 
+    /// Computes single-frequency ionospheric code delay in meters at a GPS receive epoch.
     pub fn delay_m_at_gps_time(
         &self,
         gps_time: GpsTime,
@@ -84,9 +96,10 @@ impl GalileoNequickModel {
         carrier_hz: f64,
     ) -> Option<f64> {
         let utc = gps_to_utc(gps_time, &LeapSeconds::default_table());
-        let datetime =
-            OffsetDateTime::from_unix_timestamp_nanos((utc.unix_s * 1_000_000_000.0).round() as i128)
-                .ok()?;
+        let datetime = OffsetDateTime::from_unix_timestamp_nanos(
+            (utc.unix_s * 1_000_000_000.0).round() as i128,
+        )
+        .ok()?;
         let month = u8::from(datetime.month());
         let utc_hours = datetime.hour() as f64
             + datetime.minute() as f64 / 60.0
@@ -110,8 +123,10 @@ impl GalileoNequickModel {
             satellite_xyz[1] - receiver_xyz[1],
             satellite_xyz[2] - receiver_xyz[2],
         ];
-        let segment_length_m =
-            (direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2]).sqrt();
+        let segment_length_m = (direction[0] * direction[0]
+            + direction[1] * direction[1]
+            + direction[2] * direction[2])
+            .sqrt();
         if !segment_length_m.is_finite() || segment_length_m <= 0.0 {
             return None;
         }
@@ -143,7 +158,13 @@ impl GalileoNequickModel {
     ) -> f64 {
         let modip_deg = compute_modip(point.latitude_rad, point.longitude_rad);
         let fourier = FourierSeries::new(time, effective_ionization_level);
-        let parameters = NequickParameters::new(time, &fourier, point.latitude_rad, point.longitude_rad, modip_deg);
+        let parameters = NequickParameters::new(
+            time,
+            &fourier,
+            point.latitude_rad,
+            point.longitude_rad,
+            modip_deg,
+        );
         let height_km = point.altitude_m * 0.001;
         if height_km <= parameters.hm_f2_km {
             self.bottomside_density(height_km, &parameters)
@@ -156,7 +177,8 @@ impl GalileoNequickModel {
         if self.alpha == [0.0; 3] {
             63.7
         } else {
-            (self.alpha[0] + modip_deg * (self.alpha[1] + modip_deg * self.alpha[2])).clamp(0.0, 400.0)
+            (self.alpha[0] + modip_deg * (self.alpha[1] + modip_deg * self.alpha[2]))
+                .clamp(0.0, 400.0)
         }
     }
 
@@ -190,10 +212,7 @@ impl GalileoNequickModel {
             return 0.0;
         }
         if height_km < 100.0 {
-            let bc = 1.0
-                - 10.0
-                    * (s[0] * ds[0] + s[1] * ds[1] + s[2] * ds[2])
-                    / a_no;
+            let bc = 1.0 - 10.0 * (s[0] * ds[0] + s[1] * ds[1] + s[2] * ds[2]) / a_no;
             let z = 0.1 * (height_km - 100.0);
             a_no * clip_exp(1.0 - bc * z - clip_exp(-z)) * DENSITY_FACTOR
         } else {
@@ -311,7 +330,8 @@ impl GeoPoint {
             return None;
         }
         Some(Self {
-            latitude_rad: cartesian_m[2].atan2((cartesian_m[0] * cartesian_m[0] + cartesian_m[1] * cartesian_m[1]).sqrt()),
+            latitude_rad: cartesian_m[2]
+                .atan2((cartesian_m[0] * cartesian_m[0] + cartesian_m[1] * cartesian_m[1]).sqrt()),
             longitude_rad: cartesian_m[1].atan2(cartesian_m[0]),
             altitude_m: radius_m - MEAN_EARTH_RADIUS_M,
         })
@@ -362,7 +382,8 @@ impl NequickParameters {
         longitude_rad: f64,
         modip_deg: f64,
     ) -> Self {
-        let xeff = effective_solar_angle_rad(time.month, time.utc_hours, latitude_rad, longitude_rad);
+        let xeff =
+            effective_solar_angle_rad(time.month, time.utc_hours, latitude_rad, longitude_rad);
         let hm_e_km = 120.0;
         let fo_e = fo_e_mhz(time.month, fourier.az, xeff, latitude_rad);
         let nm_e = 0.124 * fo_e * fo_e;
@@ -440,12 +461,28 @@ fn compute_modip(latitude_rad: f64, longitude_rad: f64) -> f64 {
     let delta_y = y - j as f64;
 
     let grid = &support_data().modip_grid;
-    let z1 = interpolate_modip(grid[i - 1][j - 1], grid[i][j - 1], grid[i + 1][j - 1], grid[i + 2][j - 1], delta_x);
+    let z1 = interpolate_modip(
+        grid[i - 1][j - 1],
+        grid[i][j - 1],
+        grid[i + 1][j - 1],
+        grid[i + 2][j - 1],
+        delta_x,
+    );
     let z2 = interpolate_modip(grid[i - 1][j], grid[i][j], grid[i + 1][j], grid[i + 2][j], delta_x);
-    let z3 =
-        interpolate_modip(grid[i - 1][j + 1], grid[i][j + 1], grid[i + 1][j + 1], grid[i + 2][j + 1], delta_x);
-    let z4 =
-        interpolate_modip(grid[i - 1][j + 2], grid[i][j + 2], grid[i + 1][j + 2], grid[i + 2][j + 2], delta_x);
+    let z3 = interpolate_modip(
+        grid[i - 1][j + 1],
+        grid[i][j + 1],
+        grid[i + 1][j + 1],
+        grid[i + 2][j + 1],
+        delta_x,
+    );
+    let z4 = interpolate_modip(
+        grid[i - 1][j + 2],
+        grid[i][j + 2],
+        grid[i + 1][j + 2],
+        grid[i + 2][j + 2],
+        delta_x,
+    );
     interpolate_modip(z1, z2, z3, z4, delta_y)
 }
 
@@ -471,19 +508,32 @@ fn compute_cf2(azr: f64, coefficients: &[f64], sc_t: &[f64]) -> [f64; FOF2_SERIE
     let mut array = [0.0; FOF2_SERIES_LENGTH];
     let mut index = 0usize;
     for value in &mut array {
-        *value = inverse_scale * coefficients[index] + azr_scale * coefficients[index + 1]
-            + (inverse_scale * coefficients[index + 2] + azr_scale * coefficients[index + 3]) * sc_t[0]
-            + (inverse_scale * coefficients[index + 4] + azr_scale * coefficients[index + 5]) * sc_t[1]
-            + (inverse_scale * coefficients[index + 6] + azr_scale * coefficients[index + 7]) * sc_t[2]
-            + (inverse_scale * coefficients[index + 8] + azr_scale * coefficients[index + 9]) * sc_t[3]
-            + (inverse_scale * coefficients[index + 10] + azr_scale * coefficients[index + 11]) * sc_t[4]
-            + (inverse_scale * coefficients[index + 12] + azr_scale * coefficients[index + 13]) * sc_t[5]
-            + (inverse_scale * coefficients[index + 14] + azr_scale * coefficients[index + 15]) * sc_t[6]
-            + (inverse_scale * coefficients[index + 16] + azr_scale * coefficients[index + 17]) * sc_t[7]
-            + (inverse_scale * coefficients[index + 18] + azr_scale * coefficients[index + 19]) * sc_t[8]
-            + (inverse_scale * coefficients[index + 20] + azr_scale * coefficients[index + 21]) * sc_t[9]
-            + (inverse_scale * coefficients[index + 22] + azr_scale * coefficients[index + 23]) * sc_t[10]
-            + (inverse_scale * coefficients[index + 24] + azr_scale * coefficients[index + 25]) * sc_t[11];
+        *value = inverse_scale * coefficients[index]
+            + azr_scale * coefficients[index + 1]
+            + (inverse_scale * coefficients[index + 2] + azr_scale * coefficients[index + 3])
+                * sc_t[0]
+            + (inverse_scale * coefficients[index + 4] + azr_scale * coefficients[index + 5])
+                * sc_t[1]
+            + (inverse_scale * coefficients[index + 6] + azr_scale * coefficients[index + 7])
+                * sc_t[2]
+            + (inverse_scale * coefficients[index + 8] + azr_scale * coefficients[index + 9])
+                * sc_t[3]
+            + (inverse_scale * coefficients[index + 10] + azr_scale * coefficients[index + 11])
+                * sc_t[4]
+            + (inverse_scale * coefficients[index + 12] + azr_scale * coefficients[index + 13])
+                * sc_t[5]
+            + (inverse_scale * coefficients[index + 14] + azr_scale * coefficients[index + 15])
+                * sc_t[6]
+            + (inverse_scale * coefficients[index + 16] + azr_scale * coefficients[index + 17])
+                * sc_t[7]
+            + (inverse_scale * coefficients[index + 18] + azr_scale * coefficients[index + 19])
+                * sc_t[8]
+            + (inverse_scale * coefficients[index + 20] + azr_scale * coefficients[index + 21])
+                * sc_t[9]
+            + (inverse_scale * coefficients[index + 22] + azr_scale * coefficients[index + 23])
+                * sc_t[10]
+            + (inverse_scale * coefficients[index + 24] + azr_scale * coefficients[index + 25])
+                * sc_t[11];
         index += 26;
     }
     array
@@ -495,21 +545,35 @@ fn compute_cm3(azr: f64, coefficients: &[f64], sc_t: &[f64]) -> [f64; M3000_SERI
     let mut array = [0.0; M3000_SERIES_LENGTH];
     let mut index = 0usize;
     for value in &mut array {
-        *value = inverse_scale * coefficients[index] + azr_scale * coefficients[index + 1]
-            + (inverse_scale * coefficients[index + 2] + azr_scale * coefficients[index + 3]) * sc_t[0]
-            + (inverse_scale * coefficients[index + 4] + azr_scale * coefficients[index + 5]) * sc_t[1]
-            + (inverse_scale * coefficients[index + 6] + azr_scale * coefficients[index + 7]) * sc_t[2]
-            + (inverse_scale * coefficients[index + 8] + azr_scale * coefficients[index + 9]) * sc_t[3]
-            + (inverse_scale * coefficients[index + 10] + azr_scale * coefficients[index + 11]) * sc_t[4]
-            + (inverse_scale * coefficients[index + 12] + azr_scale * coefficients[index + 13]) * sc_t[5]
-            + (inverse_scale * coefficients[index + 14] + azr_scale * coefficients[index + 15]) * sc_t[6]
-            + (inverse_scale * coefficients[index + 16] + azr_scale * coefficients[index + 17]) * sc_t[7];
+        *value = inverse_scale * coefficients[index]
+            + azr_scale * coefficients[index + 1]
+            + (inverse_scale * coefficients[index + 2] + azr_scale * coefficients[index + 3])
+                * sc_t[0]
+            + (inverse_scale * coefficients[index + 4] + azr_scale * coefficients[index + 5])
+                * sc_t[1]
+            + (inverse_scale * coefficients[index + 6] + azr_scale * coefficients[index + 7])
+                * sc_t[2]
+            + (inverse_scale * coefficients[index + 8] + azr_scale * coefficients[index + 9])
+                * sc_t[3]
+            + (inverse_scale * coefficients[index + 10] + azr_scale * coefficients[index + 11])
+                * sc_t[4]
+            + (inverse_scale * coefficients[index + 12] + azr_scale * coefficients[index + 13])
+                * sc_t[5]
+            + (inverse_scale * coefficients[index + 14] + azr_scale * coefficients[index + 15])
+                * sc_t[6]
+            + (inverse_scale * coefficients[index + 16] + azr_scale * coefficients[index + 17])
+                * sc_t[7];
         index += 18;
     }
     array
 }
 
-fn effective_solar_angle_rad(month: u8, utc_hours: f64, latitude_rad: f64, longitude_rad: f64) -> f64 {
+fn effective_solar_angle_rad(
+    month: u8,
+    utc_hours: f64,
+    latitude_rad: f64,
+    longitude_rad: f64,
+) -> f64 {
     let local_time = utc_hours + longitude_rad / 15.0_f64.to_radians();
     let day_of_year = 30.5 * month as f64 - 15.0;
     let time = day_of_year + (18.0 - utc_hours) / 24.0;
@@ -518,7 +582,9 @@ fn effective_solar_angle_rad(month: u8, utc_hours: f64, latitude_rad: f64, longi
     let sin_declination = 0.39782 * al.sin();
     let cos_declination = (1.0 - sin_declination * sin_declination).sqrt();
     let c_zenith = latitude_rad.sin() * sin_declination
-        + latitude_rad.cos() * cos_declination * ((std::f64::consts::PI / 12.0) * (12.0 - local_time)).cos();
+        + latitude_rad.cos()
+            * cos_declination
+            * ((std::f64::consts::PI / 12.0) * (12.0 - local_time)).cos();
     let angle_deg = ((1.0 - c_zenith * c_zenith).sqrt()).atan2(c_zenith).to_degrees();
     let effective_angle_deg = join(
         90.0 - 0.24 * clip_exp(20.0 - 0.2 * angle_deg),
@@ -543,7 +609,12 @@ fn fo_e_mhz(month: u8, az: f64, effective_solar_angle_rad: f64, latitude_rad: f6
     (coefficient * coefficient * sq_az * effective_solar_angle_rad.cos().powf(0.6) + 0.49).sqrt()
 }
 
-fn fo_f2_mhz(modip_deg: f64, cf2: &[f64; FOF2_SERIES_LENGTH], latitude_rad: f64, sc_l: &[f64]) -> f64 {
+fn fo_f2_mhz(
+    modip_deg: f64,
+    cf2: &[f64; FOF2_SERIES_LENGTH],
+    latitude_rad: f64,
+    sc_l: &[f64],
+) -> f64 {
     const LEGENDRE_GRADES: [usize; 9] = [12, 12, 9, 5, 2, 1, 1, 1, 1];
 
     let mut frequency = cf2[0];
@@ -573,7 +644,12 @@ fn fo_f2_mhz(modip_deg: f64, cf2: &[f64; FOF2_SERIES_LENGTH], latitude_rad: f64,
     frequency
 }
 
-fn m_f2_factor(modip_deg: f64, cm3: &[f64; M3000_SERIES_LENGTH], latitude_rad: f64, sc_l: &[f64]) -> f64 {
+fn m_f2_factor(
+    modip_deg: f64,
+    cm3: &[f64; M3000_SERIES_LENGTH],
+    latitude_rad: f64,
+    sc_l: &[f64],
+) -> f64 {
     const LEGENDRE_GRADES: [usize; 7] = [7, 8, 6, 3, 2, 1, 1];
 
     let mut factor = cm3[0];
@@ -620,7 +696,11 @@ fn fo_f1_mhz(fo_e_mhz: f64, fo_f2_mhz: f64) -> f64 {
     let temp = join(1.4 * fo_e_mhz, 0.0, 1000.0, fo_e_mhz - 2.0);
     let temp2 = join(0.0, temp, 1000.0, fo_e_mhz - temp);
     let value = join(temp2, 0.85 * temp2, 60.0, 0.85 * fo_f2_mhz - temp2);
-    if value < 1.0e-6 { 0.0 } else { value }
+    if value < 1.0e-6 {
+        0.0
+    } else {
+        value
+    }
 }
 
 fn layer_amplitudes(
@@ -643,10 +723,14 @@ fn layer_amplitudes(
         let mut a3 = 4.0 * nm_e;
         for _ in 0..5 {
             a2 = 4.0
-                * (nm_f1 - epstein(a1, hm_f2_km, b2_bottom_km, hm_f1_km) - epstein(a3, hm_e_km, be_top_km, hm_f1_km));
+                * (nm_f1
+                    - epstein(a1, hm_f2_km, b2_bottom_km, hm_f1_km)
+                    - epstein(a3, hm_e_km, be_top_km, hm_f1_km));
             a2 = join(a2, 0.8 * nm_f1, 1.0, a2 - 0.8 * nm_f1);
             a3 = 4.0
-                * (nm_e - epstein(a2, hm_f1_km, b1_bottom_km, hm_e_km) - epstein(a1, hm_f2_km, b2_bottom_km, hm_e_km));
+                * (nm_e
+                    - epstein(a2, hm_f1_km, b1_bottom_km, hm_e_km)
+                    - epstein(a1, hm_f2_km, b2_bottom_km, hm_e_km));
         }
         [a1, a2, join(a3, 0.05, 60.0, a3 - 0.005)]
     }
@@ -709,7 +793,11 @@ mod tests {
         ValidationCase {
             month,
             utc_hours,
-            receiver: Llh { lat_deg: receiver_lat_deg, lon_deg: receiver_lon_deg, alt_m: receiver_alt_m },
+            receiver: Llh {
+                lat_deg: receiver_lat_deg,
+                lon_deg: receiver_lon_deg,
+                alt_m: receiver_alt_m,
+            },
             satellite: Llh {
                 lat_deg: satellite_lat_deg,
                 lon_deg: satellite_lon_deg,
@@ -725,25 +813,115 @@ mod tests {
             (
                 GalileoNequickModel::new([236.831_641, -0.393_628_78, 0.004_028_266_13]),
                 [
-                    validation_case(4, 0.0, 297.66, 82.49, 78.11, 8.23, 54.29, 20_281_546.18, 20.40),
-                    validation_case(4, 0.0, 297.66, 82.49, 78.11, -158.03, 24.05, 20_275_295.43, 53.45),
-                    validation_case(4, 4.0, 297.66, 82.49, 78.11, -85.72, 53.69, 20_544_786.65, 18.78),
+                    validation_case(
+                        4,
+                        0.0,
+                        297.66,
+                        82.49,
+                        78.11,
+                        8.23,
+                        54.29,
+                        20_281_546.18,
+                        20.40,
+                    ),
+                    validation_case(
+                        4,
+                        0.0,
+                        297.66,
+                        82.49,
+                        78.11,
+                        -158.03,
+                        24.05,
+                        20_275_295.43,
+                        53.45,
+                    ),
+                    validation_case(
+                        4,
+                        4.0,
+                        297.66,
+                        82.49,
+                        78.11,
+                        -85.72,
+                        53.69,
+                        20_544_786.65,
+                        18.78,
+                    ),
                 ],
             ),
             (
                 GalileoNequickModel::new([121.129_893, 0.351_254_133, 0.013_463_534_8]),
                 [
-                    validation_case(4, 0.0, 40.19, -3.00, -23.32, 76.65, -41.43, 20_157_673.93, 18.26),
-                    validation_case(4, 0.0, 40.19, -3.00, -23.32, -13.11, -4.67, 20_194_168.22, 35.84),
-                    validation_case(4, 4.0, 40.19, -3.00, -23.32, 107.19, -10.65, 19_943_686.06, 76.77),
+                    validation_case(
+                        4,
+                        0.0,
+                        40.19,
+                        -3.00,
+                        -23.32,
+                        76.65,
+                        -41.43,
+                        20_157_673.93,
+                        18.26,
+                    ),
+                    validation_case(
+                        4,
+                        0.0,
+                        40.19,
+                        -3.00,
+                        -23.32,
+                        -13.11,
+                        -4.67,
+                        20_194_168.22,
+                        35.84,
+                    ),
+                    validation_case(
+                        4,
+                        4.0,
+                        40.19,
+                        -3.00,
+                        -23.32,
+                        107.19,
+                        -10.65,
+                        19_943_686.06,
+                        76.77,
+                    ),
                 ],
             ),
             (
                 GalileoNequickModel::new([2.580_271, 0.127_628_236, 0.025_274_838_4]),
                 [
-                    validation_case(4, 0.0, 141.13, 39.14, 117.00, 165.14, -13.93, 20_181_976.50, 36.44),
-                    validation_case(4, 0.0, 141.13, 39.14, 117.00, 85.59, 36.64, 20_015_444.79, 14.24),
-                    validation_case(4, 8.0, 141.13, 39.14, 117.00, 84.26, 54.68, 20_305_726.98, 15.90),
+                    validation_case(
+                        4,
+                        0.0,
+                        141.13,
+                        39.14,
+                        117.00,
+                        165.14,
+                        -13.93,
+                        20_181_976.50,
+                        36.44,
+                    ),
+                    validation_case(
+                        4,
+                        0.0,
+                        141.13,
+                        39.14,
+                        117.00,
+                        85.59,
+                        36.64,
+                        20_015_444.79,
+                        14.24,
+                    ),
+                    validation_case(
+                        4,
+                        8.0,
+                        141.13,
+                        39.14,
+                        117.00,
+                        84.26,
+                        54.68,
+                        20_305_726.98,
+                        15.90,
+                    ),
                 ],
             ),
         ];
