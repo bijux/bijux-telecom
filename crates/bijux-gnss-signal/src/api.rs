@@ -13,6 +13,14 @@ pub use crate::catalog::{
     signal_spec_glonass_l1, signal_spec_gps_l1_ca, signal_spec_gps_l2_py,
     signal_spec_gps_l2c, signal_spec_gps_l5, signal_wavelength_m,
 };
+/// Observation validation and dual-frequency compatibility helpers.
+pub use crate::obs_validation::{
+    check_dual_frequency_observations, check_inter_frequency_alignment,
+    supported_dual_frequency_band_pairs, supported_dual_frequency_band_pairs_for_constellation,
+    validate_obs_epochs, BandLagEvent, DualFrequencyObservationPair,
+    DualFrequencyObservationReport, DualFrequencyPairIssue, DualFrequencyPairStatus,
+    InterFrequencyAlignmentReport,
+};
 /// Spreading code generators.
 pub use crate::codes::beidou_b1i::{
     beidou_b1i_code_assignment, beidou_b1i_code_assignments, generate_beidou_b1i_code,

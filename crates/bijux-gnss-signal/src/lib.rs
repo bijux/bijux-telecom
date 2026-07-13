@@ -18,6 +18,7 @@ mod codes;
 mod catalog;
 mod dsp;
 mod error;
+mod obs_validation;
 mod raw_iq;
 mod samples;
 
