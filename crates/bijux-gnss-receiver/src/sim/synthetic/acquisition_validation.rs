@@ -1,3 +1,19 @@
+fn truth_guided_acquisition_request(
+    config: &ReceiverPipelineConfig,
+    sat_truth: &SyntheticSatelliteTruth,
+) -> crate::api::core::AcqRequest {
+    crate::api::core::AcqRequest {
+        sat: sat_truth.sat,
+        glonass_frequency_channel: sat_truth.glonass_frequency_channel,
+        signal_band: sat_truth.signal_band,
+        signal_code: sat_truth.signal_code,
+        doppler_search_hz: config.acquisition_doppler_search_hz,
+        doppler_step_hz: config.acquisition_doppler_step_hz,
+        coherent_ms: config.acquisition_integration_ms,
+        noncoherent: config.acquisition_noncoherent,
+    }
+}
+
 /// Build a truth-guided acquisition table from a synthetic capture.
 pub fn validate_truth_guided_acquisition_table(
     config: &ReceiverPipelineConfig,
@@ -22,13 +38,19 @@ pub fn validate_truth_guided_acquisition_table(
                 config.clone(),
                 crate::engine::runtime::ReceiverRuntime::default(),
             );
-            let result = acquisition.run_fft(&isolated_frame, &[sat_truth.sat]).remove(0);
+            let result = acquisition
+                .run_fft_for_requests(
+                    &isolated_frame,
+                    &[truth_guided_acquisition_request(config, sat_truth)],
+                )
+                .remove(0);
             let expected_measured_doppler_hz =
                 synthetic_truth_measured_doppler_hz(truth, sat_truth);
             let measured_doppler_hz = synthetic_measured_doppler_hz_from_carrier_hz(
                 config.intermediate_freq_hz,
                 sat_truth.sat,
                 sat_truth.signal_band,
+                sat_truth.signal_code,
                 sat_truth.glonass_frequency_channel,
                 result.carrier_hz.0,
             );
@@ -106,17 +128,22 @@ pub fn validate_truth_guided_acquisition_code_phase(
                 truth.intermediate_freq_hz,
                 sat_truth.sat,
                 sat_truth.signal_band,
+                sat_truth.signal_code,
                 sat_truth.glonass_frequency_channel,
                 synthetic_truth_measured_doppler_hz(truth, sat_truth),
             );
             acquisition_config.acquisition_doppler_search_hz = 0;
             acquisition_config.acquisition_doppler_step_hz = 1;
+            let acquisition_request =
+                truth_guided_acquisition_request(&acquisition_config, sat_truth);
             let acquisition = crate::pipeline::acquisition::Acquisition::new(
                 acquisition_config,
                 crate::engine::runtime::ReceiverRuntime::default(),
             )
             .with_doppler(0, 1);
-            let result = acquisition.run_fft(&isolated_frame, &[sat_truth.sat]).remove(0);
+            let result = acquisition
+                .run_fft_for_requests(&isolated_frame, &[acquisition_request])
+                .remove(0);
             let expected_code_phase_samples = expected_acquisition_code_phase_samples(
                 config,
                 &isolated_frame,
@@ -178,17 +205,22 @@ pub fn validate_truth_guided_acquisition_code_phase_refinement(
                 truth.intermediate_freq_hz,
                 sat_truth.sat,
                 sat_truth.signal_band,
+                sat_truth.signal_code,
                 sat_truth.glonass_frequency_channel,
                 synthetic_truth_measured_doppler_hz(truth, sat_truth),
             );
             acquisition_config.acquisition_doppler_search_hz = 0;
             acquisition_config.acquisition_doppler_step_hz = 1;
+            let acquisition_request =
+                truth_guided_acquisition_request(&acquisition_config, sat_truth);
             let acquisition = crate::pipeline::acquisition::Acquisition::new(
                 acquisition_config,
                 crate::engine::runtime::ReceiverRuntime::default(),
             )
             .with_doppler(0, 1);
-            let result = acquisition.run_fft(&isolated_frame, &[sat_truth.sat]).remove(0);
+            let result = acquisition
+                .run_fft_for_requests(&isolated_frame, &[acquisition_request])
+                .remove(0);
             let expected_code_phase_samples = expected_acquisition_code_phase_samples_f64(
                 config,
                 &isolated_frame,
@@ -271,11 +303,17 @@ pub fn validate_truth_guided_acquisition_doppler(
                 config.clone(),
                 crate::engine::runtime::ReceiverRuntime::default(),
             );
-            let result = acquisition.run_fft(&isolated_frame, &[sat_truth.sat]).remove(0);
+            let result = acquisition
+                .run_fft_for_requests(
+                    &isolated_frame,
+                    &[truth_guided_acquisition_request(config, sat_truth)],
+                )
+                .remove(0);
             let measured_doppler_hz = synthetic_measured_doppler_hz_from_carrier_hz(
                 config.intermediate_freq_hz,
                 sat_truth.sat,
                 sat_truth.signal_band,
+                sat_truth.signal_code,
                 sat_truth.glonass_frequency_channel,
                 result.carrier_hz.0,
             );
@@ -334,11 +372,17 @@ pub fn validate_truth_guided_acquisition_receiver_clock_offset(
                 config.clone(),
                 crate::engine::runtime::ReceiverRuntime::default(),
             );
-            let result = acquisition.run_fft(&isolated_frame, &[sat_truth.sat]).remove(0);
+            let result = acquisition
+                .run_fft_for_requests(
+                    &isolated_frame,
+                    &[truth_guided_acquisition_request(config, sat_truth)],
+                )
+                .remove(0);
             let measured_doppler_hz = synthetic_measured_doppler_hz_from_carrier_hz(
                 config.intermediate_freq_hz,
                 sat_truth.sat,
                 sat_truth.signal_band,
+                sat_truth.signal_code,
                 sat_truth.glonass_frequency_channel,
                 result.carrier_hz.0,
             );

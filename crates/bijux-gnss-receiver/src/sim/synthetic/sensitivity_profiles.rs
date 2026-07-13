@@ -43,6 +43,8 @@ pub fn measure_truth_guided_tracking_lock_probability(
                 &[seeded_tracking_acquisition(
                     signal.sat,
                     signal.signal_band,
+                    signal.signal_code,
+                    signal.glonass_frequency_channel,
                     signal.doppler_hz + seeded_doppler_error_hz,
                     config.intermediate_freq_hz,
                     seeded_code_phase_samples,
@@ -371,6 +373,8 @@ fn false_alarm_rate_case_id(
 fn seeded_tracking_acquisition(
     sat: SatId,
     signal_band: SignalBand,
+    signal_code: SignalCode,
+    glonass_frequency_channel: Option<GlonassFrequencyChannel>,
     doppler_hz: f64,
     intermediate_freq_hz: f64,
     code_phase_samples: usize,
@@ -380,16 +384,27 @@ fn seeded_tracking_acquisition(
     AcqResult {
         sat,
         signal_band,
-        signal_code: crate::engine::signal_selection::default_signal_code_for_band(
-            sat.constellation,
-            signal_band,
-        ),
-        glonass_frequency_channel: None,
+        signal_code: if signal_code != SignalCode::Unknown {
+            signal_code
+        } else {
+            crate::engine::signal_selection::default_signal_code_for_band(
+                sat.constellation,
+                signal_band,
+            )
+        },
+        glonass_frequency_channel,
         source_time: ReceiverSampleTrace::default(),
         candidate_rank: 1,
         is_primary_candidate: true,
         doppler_hz: Hertz(doppler_hz),
-        carrier_hz: Hertz(carrier_hz_from_doppler_hz(intermediate_freq_hz, doppler_hz)),
+        carrier_hz: Hertz(synthetic_carrier_hz(
+            intermediate_freq_hz,
+            sat,
+            signal_band,
+            signal_code,
+            glonass_frequency_channel,
+            doppler_hz,
+        )),
         code_phase_samples,
         peak: 1.0,
         second_peak: 0.1,
@@ -413,6 +428,8 @@ fn seeded_tracking_acquisition(
 fn seeded_tracking_acquisition_with_refined_code_phase(
     sat: SatId,
     signal_band: SignalBand,
+    signal_code: SignalCode,
+    glonass_frequency_channel: Option<GlonassFrequencyChannel>,
     doppler_hz: f64,
     intermediate_freq_hz: f64,
     code_phase_samples: usize,
@@ -423,6 +440,8 @@ fn seeded_tracking_acquisition_with_refined_code_phase(
     let mut result = seeded_tracking_acquisition(
         sat,
         signal_band,
+        signal_code,
+        glonass_frequency_channel,
         doppler_hz,
         intermediate_freq_hz,
         code_phase_samples,

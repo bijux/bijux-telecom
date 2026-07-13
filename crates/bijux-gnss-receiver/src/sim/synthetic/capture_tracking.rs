@@ -123,6 +123,8 @@ pub fn validate_truth_guided_cn0(
                 &[seeded_tracking_acquisition(
                     sat_truth.sat,
                     sat_truth.signal_band,
+                    sat_truth.signal_code,
+                    sat_truth.glonass_frequency_channel,
                     doppler_hz,
                     config.intermediate_freq_hz,
                     seeded_code_phase_samples,
@@ -264,6 +266,7 @@ fn synthetic_measured_doppler_hz_from_carrier_hz(
     intermediate_freq_hz: f64,
     sat: SatId,
     signal_band: SignalBand,
+    signal_code: SignalCode,
     glonass_frequency_channel: Option<GlonassFrequencyChannel>,
     carrier_hz: f64,
 ) -> f64 {
@@ -272,6 +275,7 @@ fn synthetic_measured_doppler_hz_from_carrier_hz(
             intermediate_freq_hz,
             sat,
             signal_band,
+            signal_code,
             glonass_frequency_channel,
         ),
         carrier_hz,
@@ -300,8 +304,14 @@ pub fn validate_truth_guided_tracking_table(
             );
             let expected_measured_doppler_hz =
                 synthetic_truth_measured_doppler_hz(truth, sat_truth);
-            let expected_carrier_hz =
-                carrier_hz_from_doppler_hz(config.intermediate_freq_hz, expected_measured_doppler_hz);
+            let expected_carrier_hz = synthetic_carrier_hz(
+                config.intermediate_freq_hz,
+                sat_truth.sat,
+                sat_truth.signal_band,
+                sat_truth.signal_code,
+                sat_truth.glonass_frequency_channel,
+                expected_measured_doppler_hz,
+            );
             let seeded_code_phase_samples = wrap_seeded_code_phase_samples(
                 expected_acquisition_code_phase_samples(
                     config,
@@ -324,6 +334,8 @@ pub fn validate_truth_guided_tracking_table(
                 &[seeded_tracking_acquisition_with_refined_code_phase(
                     sat_truth.sat,
                     sat_truth.signal_band,
+                    sat_truth.signal_code,
+                    sat_truth.glonass_frequency_channel,
                     expected_measured_doppler_hz,
                     config.intermediate_freq_hz,
                     seeded_code_phase_samples,
@@ -351,8 +363,12 @@ pub fn validate_truth_guided_tracking_table(
                     );
                     let measured_carrier_hz = epoch.carrier_hz.0;
                     let carrier_error_hz = (measured_carrier_hz - expected_carrier_hz).abs();
-                    let measured_doppler_hz = crate::pipeline::doppler::doppler_hz_from_carrier_hz(
+                    let measured_doppler_hz = synthetic_measured_doppler_hz_from_carrier_hz(
                         config.intermediate_freq_hz,
+                        sat_truth.sat,
+                        sat_truth.signal_band,
+                        sat_truth.signal_code,
+                        sat_truth.glonass_frequency_channel,
                         measured_carrier_hz,
                     );
                     let doppler_error_hz =

@@ -494,13 +494,14 @@ fn epoch_symbol(
     data_symbol_index: usize,
     secondary_chip: i8,
 ) -> Result<i8, SignalError> {
-    let Some(symbol) = data_symbols.get(data_symbol_index) else {
+    if data_symbols.is_empty() {
         return Err(SignalError::EmptyNavigationSymbolStream);
-    };
-    if !matches!(symbol, -1 | 1) {
-        return Err(SignalError::InvalidNavigationSymbol(*symbol));
     }
-    Ok(*symbol * secondary_chip)
+    let symbol = data_symbols[data_symbol_index % data_symbols.len()];
+    if !matches!(symbol, -1 | 1) {
+        return Err(SignalError::InvalidNavigationSymbol(symbol));
+    }
+    Ok(symbol * secondary_chip)
 }
 
 fn register_start_from_octal(octal: &str) -> [u8; GALILEO_E5A_REGISTER_STAGES] {
@@ -644,6 +645,14 @@ mod tests {
     }
 
     #[test]
+    fn e5a_i_epoch_symbol_wraps_single_symbol_stream() {
+        assert_eq!(
+            galileo_e5a_i_epoch_symbol(&[1], 20).expect("wrapped data symbol"),
+            galileo_e5a_i_secondary_chip(20)
+        );
+    }
+
+    #[test]
     fn e5b_i_epoch_symbol_combines_data_and_secondary_code() {
         let data_symbols = [1_i8, -1];
         assert_eq!(galileo_e5b_i_data_symbol_index(0), 0);
@@ -656,6 +665,14 @@ mod tests {
         assert_eq!(
             galileo_e5b_i_epoch_symbol(&data_symbols, 4).expect("valid second data symbol"),
             -galileo_e5b_i_secondary_chip(0)
+        );
+    }
+
+    #[test]
+    fn e5b_i_epoch_symbol_wraps_single_symbol_stream() {
+        assert_eq!(
+            galileo_e5b_i_epoch_symbol(&[1], 4).expect("wrapped data symbol"),
+            galileo_e5b_i_secondary_chip(4)
         );
     }
 

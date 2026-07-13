@@ -457,6 +457,7 @@ impl SatState {
                 config.intermediate_freq_hz,
                 params.sat,
                 params.signal_band,
+                params.signal_code,
                 params.glonass_frequency_channel,
             ),
             sample_rate_hz: config.sampling_freq_hz,
@@ -593,10 +594,16 @@ fn synthetic_intermediate_frequency_hz(
     intermediate_freq_hz: f64,
     sat: SatId,
     signal_band: SignalBand,
+    signal_code: bijux_gnss_core::api::SignalCode,
     glonass_frequency_channel: Option<GlonassFrequencyChannel>,
 ) -> f64 {
     intermediate_freq_hz
-        + (synthetic_constellation_carrier_hz(sat, signal_band, glonass_frequency_channel)
+        + (synthetic_constellation_carrier_hz(
+            sat,
+            signal_band,
+            signal_code,
+            glonass_frequency_channel,
+        )
             - bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value())
 }
 
@@ -604,6 +611,7 @@ fn synthetic_carrier_hz(
     intermediate_freq_hz: f64,
     sat: SatId,
     signal_band: SignalBand,
+    signal_code: bijux_gnss_core::api::SignalCode,
     glonass_frequency_channel: Option<GlonassFrequencyChannel>,
     doppler_hz: f64,
 ) -> f64 {
@@ -612,6 +620,7 @@ fn synthetic_carrier_hz(
             intermediate_freq_hz,
             sat,
             signal_band,
+            signal_code,
             glonass_frequency_channel,
         ),
         doppler_hz,
@@ -628,11 +637,13 @@ fn synthetic_truth_measured_doppler_hz(
 fn synthetic_constellation_carrier_hz(
     sat: SatId,
     signal_band: SignalBand,
+    signal_code: bijux_gnss_core::api::SignalCode,
     glonass_frequency_channel: Option<GlonassFrequencyChannel>,
 ) -> f64 {
-    match bijux_gnss_signal::api::default_signal_carrier_hz_for_band(
+    match bijux_gnss_signal::api::default_signal_carrier_hz_for_signal(
         sat,
         Some(signal_band),
+        resolved_signal_code(sat, signal_band, signal_code),
         glonass_frequency_channel,
     ) {
         Ok(Some(carrier_hz)) => carrier_hz.value(),

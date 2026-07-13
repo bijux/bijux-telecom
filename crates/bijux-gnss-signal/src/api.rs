@@ -107,7 +107,8 @@ pub use crate::dsp::quality::{
 /// Replica-generation and synthetic modulation helpers.
 pub use crate::dsp::replica::{
     carrier_hz_at_time, carrier_phase_radians_at_time, default_signal_carrier_hz,
-    default_signal_carrier_hz_for_band, sample_modulated_replica_at_time,
+    default_signal_carrier_hz_for_band, default_signal_carrier_hz_for_signal,
+    sample_modulated_replica_at_time,
     signal_amplitude_from_cn0_db_hz, AcquisitionSignalModel, ReplicaCodeModel,
     UNIT_VARIANCE_COMPLEX_NOISE_POWER,
 };
