@@ -316,6 +316,31 @@ impl LocalCodeModel {
         }
         Ok(samples)
     }
+
+    /// Sample a tracking-local code block from an absolute sample origin while preserving
+    /// secondary-code and epoch-symbol continuity.
+    pub fn sample_tracking_block(
+        &self,
+        sample_rate_hz: f64,
+        initial_code_phase_chips: f64,
+        start_sample_index: u64,
+        sample_count: usize,
+    ) -> Result<Vec<f32>, SignalError> {
+        let mut samples = Vec::with_capacity(sample_count);
+        for sample_offset in 0..sample_count {
+            let position = code_sample_position_at_index(
+                initial_code_phase_chips,
+                sample_rate_hz,
+                self.code_rate_hz(),
+                self.code_length(),
+                start_sample_index + sample_offset as u64,
+            )?;
+            samples.push(
+                self.sample_tracking_value(position.chip_phase, position.primary_code_period_index)?,
+            );
+        }
+        Ok(samples)
+    }
 }
 
 fn interpolated_bpsk_code_value_at_phase(code: &[i8], chip_phase: f64) -> Result<f32, SignalError> {
@@ -407,6 +432,7 @@ fn default_signal_code_for_band(
 #[cfg(test)]
 mod tests {
     use super::LocalCodeModel;
+    use crate::dsp::sample_timing::code_sample_position_at_index;
 
     #[test]
     fn sample_block_matches_phase_anchored_sampling_at_origin() {
@@ -422,5 +448,41 @@ mod tests {
             .expect("absolute-index local code block");
 
         assert_eq!(block_samples, period_samples);
+    }
+
+    #[test]
+    fn sample_tracking_block_matches_sample_tracking_value_iteration() {
+        let model = LocalCodeModel::gps_l5_q(24).expect("valid GPS L5-Q PRN");
+        let sample_rate_hz = 1_500_001.0;
+        let initial_code_phase_chips = 137.625;
+        let start_sample_index = 90_000_123_u64;
+        let block_samples = model
+            .sample_tracking_block(
+                sample_rate_hz,
+                initial_code_phase_chips,
+                start_sample_index,
+                64,
+            )
+            .expect("tracking-local block");
+        let iterated = (0..64_u64)
+            .map(|sample_offset| {
+                let position = code_sample_position_at_index(
+                    initial_code_phase_chips,
+                    sample_rate_hz,
+                    model.code_rate_hz(),
+                    model.code_length(),
+                    start_sample_index + sample_offset,
+                )
+                .expect("valid absolute sample position");
+                model
+                    .sample_tracking_value(
+                        position.chip_phase,
+                        position.primary_code_period_index,
+                    )
+                    .expect("tracking-local sample")
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(block_samples, iterated);
     }
 }
