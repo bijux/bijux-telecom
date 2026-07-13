@@ -238,6 +238,10 @@ bijux gnss diagnostics machine-catalog --report json
 bijux gnss diagnostics advanced-gate --run-dir runs/rtk_eval --mode rtk --strict --report json
 ```
 
+When the support matrix marks a mode as not ready or records that no real solver executed,
+the advanced gate reports `claim_level: "not_ready"` instead of emitting a provisional
+runtime claim.
+
 ### Validation Evidence Bundle
 ```bash
 bijux gnss validate --file runs/basic_demo/artifacts/obs.jsonl --eph runs/basic_demo/artifacts/ephemeris.json --reference refs/reference.jsonl
