@@ -10,7 +10,7 @@ use bijux_gnss_core::api::{
     acq_result_stability_key, stable_acq_result_keys, AcqAssumptions, AcqCodePhaseRefinement,
     AcqDopplerRefinement, AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqRequest,
     AcqResult, AcqThresholdProvenance, AcqUncertainty, Hertz, ReceiverSampleTrace, SamplesFrame,
-    SatId, SignalBand, SignalCode, GPS_L1_CA_CARRIER_HZ,
+    SatId, SignalBand, SignalCode,
 };
 use num_complex::Complex;
 use rustfft::{num_traits::Zero, FftPlanner};
@@ -22,7 +22,8 @@ use crate::engine::receiver_config::{
 use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
 use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
 use bijux_gnss_signal::api::{
-    measure_iq_front_end_metrics, wipeoff_carrier, AcquisitionSignalModel, SignalError,
+    measure_iq_front_end_metrics, samples_per_code, wipeoff_carrier, AcquisitionSignalModel,
+    SignalError,
 };
 
 /// Acquisition engine (coarse search).
@@ -125,6 +126,7 @@ impl CacheMissReason {
 
 type CodeFftCache = HashMap<CodeFftCacheKey, Vec<Complex<f32>>>;
 
+#[cfg(test)]
 fn fallback_acquisition_signal_model(
     config: &ReceiverPipelineConfig,
     sat: SatId,
@@ -133,7 +135,7 @@ fn fallback_acquisition_signal_model(
         sat.prn,
         config.code_freq_basis_hz,
         config.code_length,
-        GPS_L1_CA_CARRIER_HZ,
+        bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ,
     )
 }
 
@@ -148,6 +150,19 @@ fn resolved_signal_code(
     default_signal_code_for_band(sat.constellation, signal_band)
 }
 
+fn unsupported_acquisition_signal_error(
+    sat: SatId,
+    signal_band: SignalBand,
+    signal_code: SignalCode,
+) -> SignalError {
+    SignalError::UnsupportedSignalDefinition {
+        constellation: sat.constellation,
+        signal_band,
+        signal_code: resolved_signal_code(sat, signal_band, signal_code),
+    }
+}
+
+#[cfg(test)]
 fn acquisition_signal_model_for_sat(
     config: &ReceiverPipelineConfig,
     sat: SatId,
@@ -175,7 +190,7 @@ fn acquisition_signal_model_for_sat(
 }
 
 fn acquisition_signal_model_for_request(
-    config: &ReceiverPipelineConfig,
+    _config: &ReceiverPipelineConfig,
     request: AcqRequest,
 ) -> Result<AcquisitionSignalModel, SignalError> {
     match AcquisitionSignalModel::for_sat_signal(
@@ -185,7 +200,11 @@ fn acquisition_signal_model_for_request(
         request.glonass_frequency_channel,
     )? {
         Some(model) => Ok(model),
-        None => fallback_acquisition_signal_model(config, request.sat),
+        None => Err(unsupported_acquisition_signal_error(
+            request.sat,
+            request.signal_band,
+            request.signal_code,
+        )),
     }
 }
 
@@ -1123,16 +1142,54 @@ fn zero_signal_run(
     for &request in requests {
         let sat = request.sat;
         let threshold_provenance = threshold_provenance_for_request(config, request);
-        let signal_model =
-            acquisition_signal_model_for_request(config, request).unwrap_or_else(|_| {
-                acquisition_signal_model_for_sat(
+        let signal_model = match acquisition_signal_model_for_request(config, request) {
+            Ok(signal_model) => signal_model,
+            Err(error) => {
+                let candidates = acquisition_request_error_candidates(
                     config,
-                    sat,
-                    request.signal_band,
-                    request.signal_code,
-                    request.glonass_frequency_channel,
-                )
-            });
+                    request,
+                    &threshold_provenance,
+                    source_time,
+                    frame_samples,
+                    error,
+                );
+                if emit_explanations {
+                    explains.push(AcqExplain {
+                        sat,
+                        selected_rank: Some(1),
+                        selected_reason: "invalid_acquisition_signal_model".to_string(),
+                        candidate_count: candidates.len(),
+                        candidates: candidates
+                            .iter()
+                            .enumerate()
+                            .map(|(index, candidate)| AcqExplainCandidate {
+                                rank: (index + 1) as u8,
+                                code_phase_samples: candidate.code_phase_samples,
+                                carrier_hz: candidate.carrier_hz.0,
+                                peak: candidate.peak,
+                                peak_mean_ratio: candidate.peak_mean_ratio,
+                                peak_second_ratio: candidate.peak_second_ratio,
+                                second_peak_ratio: if candidate.peak == 0.0 {
+                                    0.0
+                                } else {
+                                    candidate.second_peak / candidate.peak
+                                },
+                                mean: candidate.mean,
+                                hypothesis: candidate.hypothesis,
+                                score: candidate.score,
+                                threshold_hit: false,
+                                reason: candidate
+                                    .explain_selection_reason
+                                    .clone()
+                                    .unwrap_or_default(),
+                            })
+                            .collect(),
+                    });
+                }
+                results.push(candidates);
+                continue;
+            }
+        };
         let search_center_hz = signal_model.search_center_hz(config.intermediate_freq_hz);
         let assumptions = AcqAssumptions {
             doppler_search_hz: threshold_provenance.doppler_search_hz,
@@ -1234,15 +1291,8 @@ fn acquisition_request_error_candidates(
     frame_samples: usize,
     error: SignalError,
 ) -> Vec<AcqResult> {
-    let signal_model = acquisition_signal_model_for_sat(
-        config,
-        request.sat,
-        request.signal_band,
-        request.signal_code,
-        request.glonass_frequency_channel,
-    );
-    let search_center_hz = signal_model.search_center_hz(config.intermediate_freq_hz);
-    let samples_per_code = signal_model.samples_per_code(config.sampling_freq_hz);
+    let samples_per_code =
+        samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
     let assumptions = AcqAssumptions {
         doppler_search_hz: threshold_provenance.doppler_search_hz,
         doppler_step_hz: threshold_provenance.doppler_step_hz,
@@ -1272,7 +1322,7 @@ fn acquisition_request_error_candidates(
         candidate_rank: 1,
         is_primary_candidate: true,
         doppler_hz: Hertz(0.0),
-        carrier_hz: Hertz(search_center_hz),
+        carrier_hz: Hertz(config.intermediate_freq_hz),
         code_phase_samples: 0,
         peak: 0.0,
         second_peak: 0.0,
@@ -2042,8 +2092,8 @@ fn find_candidate_by_carrier_hz(candidates: &[AcqResult], carrier_hz: f64) -> Op
 mod tests {
     use super::*;
     use bijux_gnss_core::api::{
-        Constellation, GlonassFrequencyChannel, SampleTime, SamplesFrame, SatId, Seconds,
-        GPS_L1_CA_CARRIER_HZ,
+        Constellation, GlonassFrequencyChannel, ReceiverSampleTrace, SampleTime, SamplesFrame,
+        SatId, Seconds, GPS_L1_CA_CARRIER_HZ,
     };
     use bijux_gnss_signal::api::{
         glonass_l1_carrier_hz, sample_glonass_l1_st_code, samples_per_code,
@@ -2112,6 +2162,41 @@ mod tests {
 
         assert!(
             matches!(error, SignalError::MissingGlonassFrequencyChannel(error_sat) if error_sat == sat)
+        );
+    }
+
+    #[test]
+    fn unsupported_registry_signal_request_returns_explicit_error() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 11 };
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 511_500.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 511_500.0,
+            code_length: 10_230,
+            ..ReceiverPipelineConfig::default()
+        };
+        let error = acquisition_signal_model_for_request(
+            &config,
+            AcqRequest {
+                sat,
+                glonass_frequency_channel: None,
+                signal_band: SignalBand::L2,
+                signal_code: SignalCode::L2C,
+                doppler_search_hz: 2_000,
+                doppler_step_hz: 250,
+                coherent_ms: 1,
+                noncoherent: 1,
+            },
+        )
+        .expect_err("GPS L2C acquisition must report unsupported search implementation");
+
+        assert_eq!(
+            error,
+            SignalError::UnsupportedSignalDefinition {
+                constellation: Constellation::Gps,
+                signal_band: SignalBand::L2,
+                signal_code: SignalCode::L2C,
+            }
         );
     }
 
@@ -2186,6 +2271,54 @@ mod tests {
         .expect("GLONASS request model");
 
         assert!(!model.supports_secondary_peak_multipath_screening());
+    }
+
+    #[test]
+    fn zero_signal_run_preserves_unsupported_request_error() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 11 };
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 511_500.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 511_500.0,
+            code_length: 10_230,
+            ..ReceiverPipelineConfig::default()
+        };
+        let request = AcqRequest {
+            sat,
+            glonass_frequency_channel: None,
+            signal_band: SignalBand::L2,
+            signal_code: SignalCode::L2C,
+            doppler_search_hz: 2_000,
+            doppler_step_hz: 250,
+            coherent_ms: 1,
+            noncoherent: 1,
+        };
+
+        let run = zero_signal_run(
+            &config,
+            &[request],
+            ReceiverSampleTrace::from_sample_time(SampleTime {
+                sample_index: 0,
+                sample_rate_hz: config.sampling_freq_hz,
+            }),
+            4092,
+            Some("zeroed_fixture"),
+            true,
+        );
+
+        assert_eq!(run.results.len(), 1);
+        assert_eq!(run.results[0].len(), 1);
+        let candidate = &run.results[0][0];
+        assert_eq!(candidate.hypothesis.to_string(), AcqHypothesis::Deferred.to_string());
+        assert_eq!(
+            candidate.explain_selection_reason.as_deref(),
+            Some(
+                "invalid_acquisition_signal_model: unsupported signal definition for Gps L2 L2C"
+            )
+        );
+        assert_eq!(candidate.carrier_hz.0, config.intermediate_freq_hz);
+        assert_eq!(run.explains.len(), 1);
+        assert_eq!(run.explains[0].selected_reason, "invalid_acquisition_signal_model");
     }
 
     #[test]
