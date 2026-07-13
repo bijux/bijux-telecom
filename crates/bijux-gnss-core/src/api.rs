@@ -38,10 +38,10 @@ pub use crate::geo::{
 };
 /// Identity types and signal definitions.
 pub use crate::ids::{
-    format_sat, glonass_slot_from_sat, glonass_slot_sat, prns_to_sats, sort_obs_sats,
-    sort_sat_ids, sort_sig_ids, Constellation, FreqHz, GlonassFrequencyChannel,
-    GlonassL1FdmaSignal, GlonassSlot, SatId, SigId, SignalBand, SignalCode,
-    SignalRegistryEntry, SignalSpec, BEIDOU_B1_CARRIER_HZ, BEIDOU_B2_CARRIER_HZ,
+    default_signal_band_for_constellation, format_sat, glonass_slot_from_sat, glonass_slot_sat,
+    prns_to_sats, sort_obs_sats, sort_sat_ids, sort_sig_ids, Constellation, FreqHz,
+    GlonassFrequencyChannel, GlonassL1FdmaSignal, GlonassSlot, SatId, SigId, SignalBand,
+    SignalCode, SignalRegistryEntry, SignalSpec, BEIDOU_B1_CARRIER_HZ, BEIDOU_B2_CARRIER_HZ,
     GALILEO_E1_CARRIER_HZ, GALILEO_E5A_CARRIER_HZ, GALILEO_E5B_CARRIER_HZ,
     GALILEO_E5_CARRIER_HZ, GLONASS_L1_CARRIER_HZ, GLONASS_L1_CHANNEL_SPACING_HZ,
     GPS_L1_CA_CARRIER_HZ, GPS_L2C_CARRIER_HZ, GPS_L2_PY_CARRIER_HZ, GPS_L5_CARRIER_HZ,

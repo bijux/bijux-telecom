@@ -23,7 +23,7 @@ fn signal_wavelength_helpers_cover_all_registered_phase_signals() {
         (Constellation::Gps, SignalBand::L1, SignalCode::Ca),
         (Constellation::Gps, SignalBand::L2, SignalCode::L2C),
         (Constellation::Gps, SignalBand::L2, SignalCode::Py),
-        (Constellation::Gps, SignalBand::L5, SignalCode::Unknown),
+        (Constellation::Gps, SignalBand::L5, SignalCode::L5I),
         (Constellation::Galileo, SignalBand::E1, SignalCode::E1B),
         (Constellation::Galileo, SignalBand::E1, SignalCode::E1C),
         (Constellation::Galileo, SignalBand::E5, SignalCode::E5a),

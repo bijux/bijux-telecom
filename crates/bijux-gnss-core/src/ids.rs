@@ -107,6 +107,7 @@ pub enum SignalBand {
 pub enum SignalCode {
     Ca,
     L2C,
+    L5I,
     Py,
     E1B,
     E1C,
@@ -166,6 +167,17 @@ pub fn prns_to_sats(prns: &[u8]) -> Vec<SatId> {
     prns.iter().map(|&prn| SatId { constellation: Constellation::Gps, prn }).collect()
 }
 
+/// Return the default civil tracking band used for a constellation when no explicit signal is given.
+pub fn default_signal_band_for_constellation(constellation: Constellation) -> SignalBand {
+    match constellation {
+        Constellation::Gps => SignalBand::L1,
+        Constellation::Galileo => SignalBand::E1,
+        Constellation::Glonass => SignalBand::L1,
+        Constellation::Beidou => SignalBand::B1,
+        Constellation::Unknown => SignalBand::Unknown,
+    }
+}
+
 fn constellation_rank(constellation: Constellation) -> u8 {
     match constellation {
         Constellation::Gps => 0,
@@ -193,14 +205,15 @@ fn code_rank(code: SignalCode) -> u8 {
     match code {
         SignalCode::Ca => 0,
         SignalCode::L2C => 1,
-        SignalCode::Py => 2,
-        SignalCode::E1B => 3,
-        SignalCode::E1C => 4,
-        SignalCode::E5a => 5,
-        SignalCode::E5b => 6,
-        SignalCode::B1I => 7,
-        SignalCode::B2I => 8,
-        SignalCode::Unknown => 9,
+        SignalCode::L5I => 2,
+        SignalCode::Py => 3,
+        SignalCode::E1B => 4,
+        SignalCode::E1C => 5,
+        SignalCode::E5a => 6,
+        SignalCode::E5b => 7,
+        SignalCode::B1I => 8,
+        SignalCode::B2I => 9,
+        SignalCode::Unknown => 10,
     }
 }
 

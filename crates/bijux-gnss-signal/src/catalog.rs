@@ -44,7 +44,7 @@ pub fn signal_spec_gps_l5() -> SignalSpec {
     SignalSpec {
         constellation: Constellation::Gps,
         band: SignalBand::L5,
-        code: SignalCode::Unknown,
+        code: SignalCode::L5I,
         code_rate_hz: 10_230_000.0,
         carrier_hz: GPS_L5_CARRIER_HZ,
     }
@@ -217,8 +217,8 @@ pub fn signal_registry(
         (Constellation::Gps, SignalBand::L2, SignalCode::Py) => {
             (GPS_L2_PY_CARRIER_HZ, 10_230_000.0, None)
         }
-        (Constellation::Gps, SignalBand::L5, SignalCode::Unknown) => {
-            (GPS_L5_CARRIER_HZ, 10_230_000.0, None)
+        (Constellation::Gps, SignalBand::L5, SignalCode::L5I) => {
+            (GPS_L5_CARRIER_HZ, 10_230_000.0, Some(10_230))
         }
         (Constellation::Galileo, SignalBand::E1, SignalCode::E1B) => {
             (GALILEO_E1_CARRIER_HZ, 1_023_000.0, Some(4092))
@@ -251,7 +251,7 @@ pub fn registered_signal_registry_entries() -> Vec<SignalRegistryEntry> {
         (Constellation::Gps, SignalBand::L1, SignalCode::Ca),
         (Constellation::Gps, SignalBand::L2, SignalCode::L2C),
         (Constellation::Gps, SignalBand::L2, SignalCode::Py),
-        (Constellation::Gps, SignalBand::L5, SignalCode::Unknown),
+        (Constellation::Gps, SignalBand::L5, SignalCode::L5I),
         (Constellation::Galileo, SignalBand::E1, SignalCode::E1B),
         (Constellation::Galileo, SignalBand::E1, SignalCode::E1C),
         (Constellation::Galileo, SignalBand::E5, SignalCode::E5a),
