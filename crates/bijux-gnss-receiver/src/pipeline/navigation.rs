@@ -2745,6 +2745,7 @@ mod tests {
         apply_refusal_cause_explainability_in_place(&mut solution, None);
 
         assert_has_refusal_cause(&solution, "refusal_cause=lock");
+        assert_lacks_refusal_cause(&solution, "refusal_cause=integrity");
     }
 
     #[test]
@@ -4810,6 +4811,8 @@ mod tests {
         assert_eq!(solution.explain_decision, "refused");
         assert_has_reason_prefix(&solution, "residual_rms_above_threshold:");
         assert_has_refusal_cause(&solution, "refusal_cause=residual");
+        assert_lacks_refusal_cause(&solution, "refusal_cause=integrity");
+        assert_lacks_refusal_cause(&solution, "refusal_cause=lock");
     }
 
     #[test]
