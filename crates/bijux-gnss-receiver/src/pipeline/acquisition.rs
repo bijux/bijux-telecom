@@ -5,9 +5,9 @@ use std::sync::Mutex;
 
 use bijux_gnss_core::api::{
     acq_result_stability_key, stable_acq_result_keys, AcqAssumptions, AcqCodePhaseRefinement,
-    AcqDopplerRefinement, AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis,
-    AcqRequest, AcqResult, AcqThresholdProvenance, AcqUncertainty, Hertz, ReceiverSampleTrace,
-    SamplesFrame, SatId, SignalBand, SignalCode, GPS_L1_CA_CARRIER_HZ,
+    AcqDopplerRefinement, AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqRequest,
+    AcqResult, AcqThresholdProvenance, AcqUncertainty, Hertz, ReceiverSampleTrace, SamplesFrame,
+    SatId, SignalBand, SignalCode, GPS_L1_CA_CARRIER_HZ,
 };
 use num_complex::Complex;
 use rustfft::{num_traits::Zero, FftPlanner};
@@ -19,9 +19,9 @@ use crate::engine::receiver_config::{
 use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
 use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
 use bijux_gnss_signal::api::{
-    default_acquisition_signal, generate_ca_code, measure_iq_front_end_metrics, samples_per_code,
-    sample_beidou_b1i_code, sample_code, sample_galileo_e1_boc11_code,
-    sample_glonass_l1_st_code, signal_spec_glonass_l1, wipeoff_carrier, GalileoE1Channel, Prn,
+    default_acquisition_signal, generate_ca_code, measure_iq_front_end_metrics,
+    sample_beidou_b1i_code, sample_code, sample_galileo_e1_boc11_code, sample_glonass_l1_st_code,
+    samples_per_code, signal_spec_glonass_l1, wipeoff_carrier, GalileoE1Channel, Prn,
 };
 
 /// Acquisition engine (coarse search).
@@ -1650,6 +1650,8 @@ fn known_selection_reason_prefix(reason: &str) -> Option<&'static str> {
         "ranked_alternative" => Some("ranked_alternative"),
         "wrong_prn_correlation" => Some("wrong_prn_correlation"),
         "missing_glonass_frequency_channel" => Some("missing_glonass_frequency_channel"),
+        "insufficient_frame" => Some("insufficient_frame"),
+        "unsupported_coherent_integration_ms" => Some("unsupported_coherent_integration_ms"),
         _ => None,
     }
 }
@@ -2125,9 +2127,10 @@ fn find_candidate_by_carrier_hz(candidates: &[AcqResult], carrier_hz: f64) -> Op
 mod tests {
     use super::*;
     use bijux_gnss_core::api::{
-        glonass_l1_carrier_hz, Constellation, GlonassFrequencyChannel, SampleTime, SamplesFrame,
-        SatId, Seconds, GPS_L1_CA_CARRIER_HZ,
+        Constellation, GlonassFrequencyChannel, SampleTime, SamplesFrame, SatId, Seconds,
+        GPS_L1_CA_CARRIER_HZ,
     };
+    use bijux_gnss_signal::api::glonass_l1_carrier_hz;
 
     #[test]
     fn acquisition_decision_rejects_weak_primary_peak() {
@@ -2533,11 +2536,20 @@ mod tests {
     fn acquisition_rejects_unsupported_coherent_integration_lengths() {
         let config = ReceiverPipelineConfig::default();
         let sat = SatId { constellation: Constellation::Gps, prn: 1 };
-        let frame = SamplesFrame::new(
-            SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
-            Seconds(1.0 / config.sampling_freq_hz),
-            Vec::new(),
-        );
+        let frame =
+            SamplesFrame::new(
+                SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
+                Seconds(1.0 / config.sampling_freq_hz),
+                (0..16)
+                    .map(|idx| {
+                        if idx % 2 == 0 {
+                            Complex::new(1.0, 0.0)
+                        } else {
+                            Complex::new(-1.0, 0.0)
+                        }
+                    })
+                    .collect(),
+            );
         let acquisition = Acquisition::new(config, ReceiverRuntime::default());
 
         let run = acquisition.run_fft_topn_with_explain(&frame, &[sat], 1, 3, 1);
@@ -2705,7 +2717,7 @@ mod tests {
         let sat = SatId { constellation: bijux_gnss_core::api::Constellation::Gps, prn: 1 };
         let diagnostic = signal_outside_search_range(
             &[
-                candidate_for_search_window_test(sat, -1_500.0, 2.3),
+                candidate_for_search_window_test(sat, -1_500.0, 3.5),
                 candidate_for_search_window_test(sat, -1_250.0, 1.6),
                 candidate_for_search_window_test(sat, 0.0, 3.6),
                 candidate_for_search_window_test(sat, 1_500.0, 1.9),
@@ -2802,11 +2814,20 @@ mod tests {
             config.code_freq_basis_hz,
             config.code_length,
         );
-        let frame = SamplesFrame::new(
-            SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
-            Seconds(1.0 / config.sampling_freq_hz),
-            vec![Complex::zero(); samples_per_code],
-        );
+        let frame =
+            SamplesFrame::new(
+                SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
+                Seconds(1.0 / config.sampling_freq_hz),
+                (0..samples_per_code)
+                    .map(|idx| {
+                        if idx % 2 == 0 {
+                            Complex::new(1.0, 0.0)
+                        } else {
+                            Complex::new(-1.0, 0.0)
+                        }
+                    })
+                    .collect(),
+            );
         let sats = vec![
             SatId { constellation: Constellation::Gps, prn: 3 },
             SatId { constellation: Constellation::Gps, prn: 7 },
