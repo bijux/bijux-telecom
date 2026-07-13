@@ -250,6 +250,37 @@ fn gps_l5q_acquisition_truth_table_matches_capture_truth() {
 }
 
 #[test]
+fn gps_l5q_tracking_truth_table_matches_capture_truth() {
+    let fixture = gps_l5q_truth_capture_fixture();
+    let budget = truth_guided_receiver_accuracy_budgets().tracking;
+    let report = validate_truth_guided_tracking_table(
+        &fixture.config,
+        &fixture.frame,
+        &fixture.truth,
+        budget.max_carrier_error_hz,
+        budget.max_doppler_error_hz,
+        budget.max_code_phase_error_samples,
+        budget.max_cn0_error_db_hz,
+    );
+
+    assert!(report.pass, "{report:#?}");
+    assert_eq!(report.scenario_id, fixture.scenario.id);
+    assert_eq!(report.sample_rate_hz, fixture.config.sampling_freq_hz);
+    assert_eq!(report.satellites.len(), 1);
+
+    let satellite = &report.satellites[0];
+    assert_eq!(satellite.sat, fixture.scenario.satellites[0].sat);
+    assert!(satellite.pass, "{satellite:#?}");
+    assert!(satellite.stable_epoch_count > 0, "{satellite:#?}");
+    assert!(satellite.first_stable_epoch_index.is_some(), "{satellite:#?}");
+    assert!(satellite.epochs.iter().any(|epoch| epoch.lock_state == "tracking"), "{satellite:#?}");
+    assert!(
+        satellite.epochs.iter().filter(|epoch| epoch.stable_tracking_epoch).all(|epoch| epoch.pass),
+        "{satellite:#?}"
+    );
+}
+
+#[test]
 fn receiver_run_emits_gps_l5i_artifacts_from_truth_capture() {
     let fixture = gps_l5i_truth_capture_fixture();
     let sat = fixture.scenario.satellites[0].sat;
