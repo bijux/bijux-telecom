@@ -9,11 +9,10 @@ use bijux_gnss_core::api::{
 };
 use bijux_gnss_nav::api::{
     ecef_to_geodetic, elevation_azimuth_deg, formal_protection_levels,
+    position_satellite_state_from_observation,
     position_broadcast_navigation_from_galileo_navigations,
     position_broadcast_navigation_from_gps_ephemerides, position_measurement_weight,
-    position_observation_has_valid_satellite_time, sat_state_beidou_b1i_from_observation,
-    sat_state_galileo_e1_from_observation, sat_state_glonass_l1_from_observation,
-    sat_state_gps_l1ca_from_observation, GalileoBroadcastNavigationData,
+    position_observation_has_valid_satellite_time, GalileoBroadcastNavigationData,
     GpsBroadcastNavigationData, GpsEphemeris, ImpossibleGeometryEvidence, KlobucharCoefficients,
     PositionBroadcastNavigation, PositionFilterDivergenceReason, PositionFilterMotionClass,
     PositionObservation, PositionRobustWeighting, PositionSolutionSmoother,
@@ -2385,44 +2384,13 @@ fn navigation_satellite_state(
 ) -> Option<(f64, f64, f64)> {
     let receive_tow_s = obs.gps_time().map(|gps_time| gps_time.tow_s).unwrap_or(obs.t_rx_s.0);
     let navigation = navigation.iter().find(|entry| entry.sat() == sat.signal_id.sat)?;
-    match navigation {
-        PositionBroadcastNavigation::Gps(ephemeris) => {
-            let state = sat_state_gps_l1ca_from_observation(
-                ephemeris,
-                receive_tow_s,
-                sat.pseudorange_m.0,
-                sat.timing,
-            );
-            Some((state.x_m, state.y_m, state.z_m))
-        }
-        PositionBroadcastNavigation::Galileo(navigation) => {
-            let state = sat_state_galileo_e1_from_observation(
-                navigation,
-                receive_tow_s,
-                sat.pseudorange_m.0,
-                sat.timing,
-            );
-            Some((state.x_m, state.y_m, state.z_m))
-        }
-        PositionBroadcastNavigation::Beidou(navigation) => {
-            let state = sat_state_beidou_b1i_from_observation(
-                navigation,
-                receive_tow_s,
-                sat.pseudorange_m.0,
-                sat.timing,
-            );
-            Some((state.x_m, state.y_m, state.z_m))
-        }
-        PositionBroadcastNavigation::Glonass(navigation) => {
-            let state = sat_state_glonass_l1_from_observation(
-                navigation,
-                receive_tow_s,
-                sat.pseudorange_m.0,
-                sat.timing,
-            )?;
-            Some((state.x_m, state.y_m, state.z_m))
-        }
-    }
+    let state = position_satellite_state_from_observation(
+        navigation,
+        receive_tow_s,
+        sat.pseudorange_m.0,
+        sat.timing,
+    )?;
+    Some((state.x_m, state.y_m, state.z_m))
 }
 
 #[derive(Debug, Clone)]
