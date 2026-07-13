@@ -59,4 +59,10 @@ pub enum SignalError {
         /// Specific validation or measurement failure.
         message: String,
     },
+    /// Signal-spectrum analysis input or measurement was invalid.
+    #[error("invalid spectrum analysis: {message}")]
+    InvalidSpectrumAnalysis {
+        /// Specific validation or measurement failure.
+        message: String,
+    },
 }

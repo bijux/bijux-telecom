@@ -8,4 +8,5 @@ pub mod quality;
 pub mod replica;
 pub mod sample_timing;
 pub mod signal;
+pub mod spectrum;
 pub mod tracking;

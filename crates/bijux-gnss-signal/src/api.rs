@@ -142,6 +142,13 @@ pub use crate::dsp::signal::{
     wrapped_code_phase_delta_samples, wrapped_code_phase_error_samples,
     wrapped_code_phase_error_samples_f64,
 };
+/// Signal-spectrum analysis helpers.
+pub use crate::dsp::spectrum::{
+    estimate_power_spectral_density, expected_component_power_spectral_density,
+    expected_signal_power_spectral_density, find_deep_spectrum_nulls,
+    summarize_power_spectral_density, PowerSpectralDensityPoint, PowerSpectralDensitySummary,
+    SpectrumEstimatorConfig, SpectrumNull,
+};
 /// Tracking helpers.
 pub use crate::dsp::tracking::{
     adaptive_bandwidth, anti_false_lock_detected, apply_carrier_tracking_loop, apply_code_loop,
