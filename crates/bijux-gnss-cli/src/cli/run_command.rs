@@ -1638,17 +1638,11 @@ fn cli_solution_lifecycle_state(
     status: bijux_gnss_infra::api::core::SolutionStatus,
 ) -> bijux_gnss_infra::api::core::NavLifecycleState {
     match status {
-        bijux_gnss_infra::api::core::SolutionStatus::Invalid => {
-            bijux_gnss_infra::api::core::NavLifecycleState::Invalid
-        }
         bijux_gnss_infra::api::core::SolutionStatus::Unavailable => {
             bijux_gnss_infra::api::core::NavLifecycleState::Unavailable
         }
         bijux_gnss_infra::api::core::SolutionStatus::Refused => {
             bijux_gnss_infra::api::core::NavLifecycleState::Refused
-        }
-        bijux_gnss_infra::api::core::SolutionStatus::Held => {
-            bijux_gnss_infra::api::core::NavLifecycleState::Held
         }
         bijux_gnss_infra::api::core::SolutionStatus::Degraded => {
             bijux_gnss_infra::api::core::NavLifecycleState::Degraded
@@ -1661,12 +1655,6 @@ fn cli_solution_lifecycle_state(
         }
         bijux_gnss_infra::api::core::SolutionStatus::CodeOnly => {
             bijux_gnss_infra::api::core::NavLifecycleState::CodeOnly
-        }
-        bijux_gnss_infra::api::core::SolutionStatus::Coarse => {
-            bijux_gnss_infra::api::core::NavLifecycleState::Coarse
-        }
-        bijux_gnss_infra::api::core::SolutionStatus::Converged => {
-            bijux_gnss_infra::api::core::NavLifecycleState::Converged
         }
         bijux_gnss_infra::api::core::SolutionStatus::Float => {
             bijux_gnss_infra::api::core::NavLifecycleState::Float
@@ -1682,11 +1670,7 @@ fn cli_solution_uncertainty_class(
 ) -> bijux_gnss_infra::api::core::NavUncertaintyClass {
     if !bijux_gnss_infra::api::core::is_solution_valid(status) {
         bijux_gnss_infra::api::core::NavUncertaintyClass::Unknown
-    } else if matches!(
-        status,
-        bijux_gnss_infra::api::core::SolutionStatus::Held
-            | bijux_gnss_infra::api::core::SolutionStatus::Degraded
-    ) {
+    } else if status == bijux_gnss_infra::api::core::SolutionStatus::Degraded {
         bijux_gnss_infra::api::core::NavUncertaintyClass::High
     } else {
         bijux_gnss_infra::api::core::NavUncertaintyClass::Medium
@@ -1704,7 +1688,7 @@ fn cli_refusal_status(
             | bijux_gnss_infra::api::core::NavRefusalClass::PartialDecodedNavigationState,
         ) => bijux_gnss_infra::api::core::SolutionStatus::Unavailable,
         Some(_) => bijux_gnss_infra::api::core::SolutionStatus::Refused,
-        None => bijux_gnss_infra::api::core::SolutionStatus::Invalid,
+        None => bijux_gnss_infra::api::core::SolutionStatus::Unavailable,
     }
 }
 
