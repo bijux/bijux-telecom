@@ -8,10 +8,7 @@ use support::position_truth::{
     sample_klobuchar_coefficients,
 };
 
-fn position_error_3d_m(
-    actual_ecef_m: (f64, f64, f64),
-    truth_ecef_m: (f64, f64, f64),
-) -> f64 {
+fn position_error_3d_m(actual_ecef_m: (f64, f64, f64), truth_ecef_m: (f64, f64, f64)) -> f64 {
     let dx = actual_ecef_m.0 - truth_ecef_m.0;
     let dy = actual_ecef_m.1 - truth_ecef_m.1;
     let dz = actual_ecef_m.2 - truth_ecef_m.2;
@@ -46,11 +43,7 @@ fn gps_broadcast_navigation_payload_recovers_single_point_position() {
         .expect("uncorrected observations should still solve");
 
     let corrected_error_m = position_error_3d_m(
-        (
-            corrected_solution.ecef_x_m,
-            corrected_solution.ecef_y_m,
-            corrected_solution.ecef_z_m,
-        ),
+        (corrected_solution.ecef_x_m, corrected_solution.ecef_y_m, corrected_solution.ecef_z_m),
         scenario.truth_ecef_m,
     );
     let uncorrected_error_m = position_error_3d_m(

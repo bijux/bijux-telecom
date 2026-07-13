@@ -23,10 +23,7 @@ impl OceanTideLoadingModel {
     /// Returns whether the model contains only finite parameters.
     pub fn is_physical(&self) -> bool {
         self.reference_time.tow_s.is_finite()
-            && self
-                .constituents
-                .iter()
-                .all(OceanTideLoadingConstituent::is_physical)
+            && self.constituents.iter().all(OceanTideLoadingConstituent::is_physical)
     }
 
     /// Computes the total ENU displacement at a GPS epoch.
@@ -62,12 +59,7 @@ impl OceanTideLoadingModel {
             return None;
         }
 
-        Some(enu_delta_to_ecef_m(
-            receiver_ecef_m,
-            self.displacement_enu_m(time),
-            lat_deg,
-            lon_deg,
-        ))
+        Some(enu_delta_to_ecef_m(receiver_ecef_m, self.displacement_enu_m(time), lat_deg, lon_deg))
     }
 }
 
@@ -129,15 +121,10 @@ impl OceanTideLoadingConstituent {
     /// Computes ENU displacement for the constituent at a GPS epoch.
     pub fn displacement_enu_m(&self, reference_time: GpsTime, time: GpsTime) -> [f64; 3] {
         let delta_s = time.to_seconds() - reference_time.to_seconds();
-        let angular_phase_rad =
-            TAU * self.constituent.cycles_per_day() * delta_s / 86_400.0;
+        let angular_phase_rad = TAU * self.constituent.cycles_per_day() * delta_s / 86_400.0;
         [
             harmonic_component_m(self.east_amplitude_m, self.east_phase_deg, angular_phase_rad),
-            harmonic_component_m(
-                self.north_amplitude_m,
-                self.north_phase_deg,
-                angular_phase_rad,
-            ),
+            harmonic_component_m(self.north_amplitude_m, self.north_phase_deg, angular_phase_rad),
             harmonic_component_m(self.up_amplitude_m, self.up_phase_deg, angular_phase_rad),
         ]
     }
@@ -216,9 +203,7 @@ fn enu_delta_to_ecef_m(
 mod tests {
     use bijux_gnss_core::api::GpsTime;
 
-    use super::{
-        OceanTideConstituent, OceanTideLoadingConstituent, OceanTideLoadingModel,
-    };
+    use super::{OceanTideConstituent, OceanTideLoadingConstituent, OceanTideLoadingModel};
     use crate::estimation::position::solver::geodetic_to_ecef;
 
     #[test]

@@ -14,9 +14,7 @@ use crate::orbits::glonass::{
     glonass_gps_minus_glonass_s, glonass_navigation_age, is_glonass_navigation_valid,
     sat_state_glonass_l1,
 };
-use crate::orbits::gps::{
-    gps_ephemeris_age, is_ephemeris_valid, sat_state_gps_l1ca,
-};
+use crate::orbits::gps::{gps_ephemeris_age, is_ephemeris_valid, sat_state_gps_l1ca};
 use bijux_gnss_core::api::{
     default_acquisition_signal, signal_id_wavelength_m, MeasurementRejectReason, ObsSignalTiming,
     SatId, SigId,
@@ -178,8 +176,9 @@ pub(crate) fn satellite_state_from_observation(
     pseudorange_m: f64,
     signal_timing: Option<ObsSignalTiming>,
 ) -> Option<SatelliteState> {
-    let signal_travel_time_s =
-        signal_timing.map(|timing| timing.signal_travel_time_s.0).unwrap_or(pseudorange_m / SPEED_OF_LIGHT_MPS);
+    let signal_travel_time_s = signal_timing
+        .map(|timing| timing.signal_travel_time_s.0)
+        .unwrap_or(pseudorange_m / SPEED_OF_LIGHT_MPS);
     let transmit_tow_s = signal_timing
         .map(|timing| timing.transmit_gps_time.tow_s)
         .unwrap_or(receive_tow_s - signal_travel_time_s);
@@ -432,9 +431,10 @@ mod tests {
 
         let state =
             satellite_state_at_time(&navigation, 504_018.0, 0.078).expect("satellite state");
-        let speed_mps =
-            (state.vx_mps * state.vx_mps + state.vy_mps * state.vy_mps + state.vz_mps * state.vz_mps)
-                .sqrt();
+        let speed_mps = (state.vx_mps * state.vx_mps
+            + state.vy_mps * state.vy_mps
+            + state.vz_mps * state.vz_mps)
+            .sqrt();
 
         assert!(state.x_m.is_finite());
         assert!(state.y_m.is_finite());

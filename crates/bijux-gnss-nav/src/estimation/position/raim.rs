@@ -32,9 +32,7 @@ impl RaimSolutionSeparationCheck {
 
     pub fn max_separation(&self) -> Option<RaimSolutionSeparationSubset> {
         self.compared_subsets.iter().copied().max_by(|left, right| {
-            left.separation_m
-                .partial_cmp(&right.separation_m)
-                .unwrap_or(std::cmp::Ordering::Equal)
+            left.separation_m.partial_cmp(&right.separation_m).unwrap_or(std::cmp::Ordering::Equal)
         })
     }
 }
@@ -114,8 +112,8 @@ mod tests {
         let receiver_ecef_m = [6_378_137.0, 0.0, 0.0];
         let covariance_ecef_m2 = [[9.0, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 1.0]];
 
-        let protection_levels =
-            formal_protection_levels(receiver_ecef_m, covariance_ecef_m2).expect("protection levels");
+        let protection_levels = formal_protection_levels(receiver_ecef_m, covariance_ecef_m2)
+            .expect("protection levels");
 
         assert_eq!(
             protection_levels,
@@ -140,7 +138,10 @@ mod tests {
 
     #[test]
     fn formal_protection_levels_reject_invalid_receiver_position() {
-        assert!(formal_protection_levels([0.0, 0.0, 0.0], [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
-            .is_none());
+        assert!(formal_protection_levels(
+            [0.0, 0.0, 0.0],
+            [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+        )
+        .is_none());
     }
 }

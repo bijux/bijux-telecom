@@ -122,11 +122,7 @@ impl PppConfig {
     }
 
     pub(crate) fn troposphere_meteorology(&self) -> Option<TroposphereMeteorology> {
-        match (
-            self.tropo_pressure_hpa,
-            self.tropo_temperature_k,
-            self.tropo_relative_humidity,
-        ) {
+        match (self.tropo_pressure_hpa, self.tropo_temperature_k, self.tropo_relative_humidity) {
             (Some(pressure_hpa), Some(temperature_k), Some(relative_humidity)) => {
                 let meteorology =
                     TroposphereMeteorology::new(pressure_hpa, temperature_k, relative_humidity);
@@ -141,9 +137,7 @@ impl PppConfig {
         receiver_ecef_m: [f64; 3],
         gps_time: Option<bijux_gnss_core::api::GpsTime>,
     ) -> Option<[f64; 3]> {
-        self.ocean_tide_loading_model
-            .as_ref()?
-            .displacement_ecef_m(receiver_ecef_m, gps_time?)
+        self.ocean_tide_loading_model.as_ref()?.displacement_ecef_m(receiver_ecef_m, gps_time?)
     }
 
     pub(crate) fn solid_earth_tide_displacement_m(
@@ -151,9 +145,7 @@ impl PppConfig {
         receiver_ecef_m: [f64; 3],
         gps_time: Option<bijux_gnss_core::api::GpsTime>,
     ) -> Option<[f64; 3]> {
-        self.solid_earth_tide_model
-            .as_ref()?
-            .displacement_ecef_m(receiver_ecef_m, gps_time?)
+        self.solid_earth_tide_model.as_ref()?.displacement_ecef_m(receiver_ecef_m, gps_time?)
     }
 }
 
@@ -315,11 +307,11 @@ mod tests {
     use super::{
         PppArMode, PppConfig, PppConvergenceState, PppSolutionEpoch, PppTroposphereSource,
     };
-    use bijux_gnss_core::api::ArtifactPayloadValidate;
     use crate::models::ocean_tide_loading::{
         OceanTideConstituent, OceanTideLoadingConstituent, OceanTideLoadingModel,
     };
     use crate::models::solid_earth_tide::SolidEarthTideModel;
+    use bijux_gnss_core::api::ArtifactPayloadValidate;
 
     fn sample_solution() -> PppSolutionEpoch {
         PppSolutionEpoch {
@@ -480,10 +472,7 @@ mod tests {
         assert!(partial.troposphere_meteorology().is_none());
         assert!(non_physical.troposphere_meteorology().is_none());
         assert_eq!(partial.troposphere_source(), PppTroposphereSource::StandardAtmosphere);
-        assert_eq!(
-            non_physical.troposphere_source(),
-            PppTroposphereSource::StandardAtmosphere
-        );
+        assert_eq!(non_physical.troposphere_source(), PppTroposphereSource::StandardAtmosphere);
     }
 
     #[test]
@@ -518,10 +507,8 @@ mod tests {
 
     #[test]
     fn ppp_config_resolves_solid_earth_tide_displacement() {
-        let config = PppConfig {
-            solid_earth_tide_model: Some(SolidEarthTideModel),
-            ..PppConfig::default()
-        };
+        let config =
+            PppConfig { solid_earth_tide_model: Some(SolidEarthTideModel), ..PppConfig::default() };
 
         let displacement = config
             .solid_earth_tide_displacement_m(
@@ -531,11 +518,10 @@ mod tests {
             .expect("solid Earth tide displacement");
 
         assert!(displacement.into_iter().all(f64::is_finite));
-        let displacement_norm_m =
-            (displacement[0] * displacement[0]
-                + displacement[1] * displacement[1]
-                + displacement[2] * displacement[2])
-                .sqrt();
+        let displacement_norm_m = (displacement[0] * displacement[0]
+            + displacement[1] * displacement[1]
+            + displacement[2] * displacement[2])
+            .sqrt();
         assert!(displacement_norm_m > 0.05);
         assert!(displacement_norm_m < 0.6);
     }

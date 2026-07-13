@@ -95,8 +95,8 @@ fn position_solver_reports_positive_effective_weights_for_retained_satellites() 
 #[test]
 fn position_solver_huber_weighting_reduces_moderate_outlier_impact_without_rejection() {
     let scenario = single_bad_pseudorange_scenario(MODERATE_BAD_PSEUDORANGE_BIAS_M);
-    let huber_solver = PositionSolver::new()
-        .with_robust_weighting(PositionRobustWeighting::huber(30.0));
+    let huber_solver =
+        PositionSolver::new().with_robust_weighting(PositionRobustWeighting::huber(30.0));
     let unweighted_solver = PositionSolver::new().without_robust_weighting();
     let huber_solver = PositionSolver {
         raim: false,

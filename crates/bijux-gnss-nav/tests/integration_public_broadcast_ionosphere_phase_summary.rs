@@ -53,9 +53,5 @@ fn public_gps_broadcast_ionosphere_phase_summary_preserves_l1_l2_scaling() {
         1.0e-12,
     );
     approx_eq(phase_band_2.rms_residual_m, phase_band_1.rms_residual_m * scaling, 1.0e-12);
-    approx_eq(
-        phase_band_2.max_abs_residual_m,
-        phase_band_1.max_abs_residual_m * scaling,
-        1.0e-12,
-    );
+    approx_eq(phase_band_2.max_abs_residual_m, phase_band_1.max_abs_residual_m * scaling, 1.0e-12);
 }

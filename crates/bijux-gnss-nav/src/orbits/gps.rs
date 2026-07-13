@@ -676,10 +676,8 @@ mod tests {
             [0.1212e-7, 0.1490e-7, -0.5960e-7, 0.1192e-6],
             [0.1167e6, -0.2294e6, -0.1311e6, 0.1049e7],
         );
-        let navigation = GpsBroadcastNavigationData {
-            ephemerides: Vec::new(),
-            klobuchar: Some(coefficients),
-        };
+        let navigation =
+            GpsBroadcastNavigationData { ephemerides: Vec::new(), klobuchar: Some(coefficients) };
         let receiver = Llh { lat_deg: 37.0, lon_deg: -122.0, alt_m: 10.0 };
         let model_delay_m =
             KlobucharModel::new(coefficients).delay_m(receiver, 120.0, 30.0, Seconds(50_400.0));

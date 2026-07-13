@@ -164,14 +164,9 @@ pub(crate) fn measured_ionosphere_from_pair(
         phase_level_bias_m,
         phase_status,
     ) = match dual_frequency_pair_issue(sat, band_1, band_2, first, second) {
-        Some(issue) => (
-            None,
-            None,
-            None,
-            None,
-            None,
-            measured_ionosphere_phase_status_from_pair_issue(issue),
-        ),
+        Some(issue) => {
+            (None, None, None, None, None, measured_ionosphere_phase_status_from_pair_issue(issue))
+        }
         None => {
             let (Some(first), Some(second)) = (first, second) else {
                 unreachable!("compatible dual-frequency pairs must include both observations");
@@ -227,12 +222,9 @@ fn should_reset_phase_arc(
 ) -> bool {
     epoch_discontinuity
         || dual_frequency_pair_issue(sat, band_1, band_2, first, second).is_some()
-        || [first, second]
-            .into_iter()
-            .flatten()
-            .any(|observation| {
-                observation.lock_flags.cycle_slip || !observation.lock_flags.carrier_lock
-            })
+        || [first, second].into_iter().flatten().any(|observation| {
+            observation.lock_flags.cycle_slip || !observation.lock_flags.carrier_lock
+        })
 }
 
 fn evaluate_measured_ionosphere_code(
@@ -261,14 +253,30 @@ fn evaluate_measured_ionosphere_code(
     let f1_hz = first.metadata.signal.carrier_hz.value();
     let f2_hz = second.metadata.signal.carrier_hz.value();
     if !f1_hz.is_finite() || !f2_hz.is_finite() || f1_hz <= 0.0 || f2_hz <= 0.0 {
-        return (None, None, None, None, None, None, MeasuredIonosphereCodeStatus::FrequencyInvalid);
+        return (
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            MeasuredIonosphereCodeStatus::FrequencyInvalid,
+        );
     }
 
     let f1_2 = f1_hz * f1_hz;
     let f2_2 = f2_hz * f2_hz;
     let denom = f1_2 - f2_2;
     if !denom.is_finite() || denom.abs() <= f64::EPSILON {
-        return (None, None, None, None, None, None, MeasuredIonosphereCodeStatus::FrequencyInvalid);
+        return (
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            MeasuredIonosphereCodeStatus::FrequencyInvalid,
+        );
     }
 
     let geometry_free_m = second.pseudorange_m.0 - first.pseudorange_m.0;
@@ -296,68 +304,35 @@ fn evaluate_measured_ionosphere_phase(
     second: &ObsSatellite,
     code_geometry_free_m: Option<f64>,
     prior_phase_level_bias_m: Option<f64>,
-) -> (
-    Option<f64>,
-    Option<f64>,
-    Option<f64>,
-    Option<f64>,
-    Option<f64>,
-    MeasuredIonospherePhaseStatus,
-) {
+) -> (Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<f64>, MeasuredIonospherePhaseStatus)
+{
     if !first.lock_flags.carrier_lock || !second.lock_flags.carrier_lock {
-        return (
-            None,
-            None,
-            None,
-            None,
-            None,
-            MeasuredIonospherePhaseStatus::CarrierLockInvalid,
-        );
+        return (None, None, None, None, None, MeasuredIonospherePhaseStatus::CarrierLockInvalid);
     }
     if !first.carrier_phase_var_cycles2.is_finite()
         || !second.carrier_phase_var_cycles2.is_finite()
         || first.carrier_phase_var_cycles2 < 0.0
         || second.carrier_phase_var_cycles2 < 0.0
     {
-        return (
-            None,
-            None,
-            None,
-            None,
-            None,
-            MeasuredIonospherePhaseStatus::VarianceInvalid,
-        );
+        return (None, None, None, None, None, MeasuredIonospherePhaseStatus::VarianceInvalid);
     }
 
     let f1_hz = first.metadata.signal.carrier_hz.value();
     let f2_hz = second.metadata.signal.carrier_hz.value();
     if !f1_hz.is_finite() || !f2_hz.is_finite() || f1_hz <= 0.0 || f2_hz <= 0.0 {
-        return (
-            None,
-            None,
-            None,
-            None,
-            None,
-            MeasuredIonospherePhaseStatus::FrequencyInvalid,
-        );
+        return (None, None, None, None, None, MeasuredIonospherePhaseStatus::FrequencyInvalid);
     }
 
     let f1_2 = f1_hz * f1_hz;
     let f2_2 = f2_hz * f2_hz;
     let denom = f1_2 - f2_2;
     if !denom.is_finite() || denom.abs() <= f64::EPSILON {
-        return (
-            None,
-            None,
-            None,
-            None,
-            None,
-            MeasuredIonospherePhaseStatus::FrequencyInvalid,
-        );
+        return (None, None, None, None, None, MeasuredIonospherePhaseStatus::FrequencyInvalid);
     }
 
-    let geometry_free_m = signal_cycles_to_meters(first.carrier_phase_cycles, first.metadata.signal).0
-        - signal_cycles_to_meters(second.carrier_phase_cycles, second.metadata.signal).0;
+    let geometry_free_m =
+        signal_cycles_to_meters(first.carrier_phase_cycles, first.metadata.signal).0
+            - signal_cycles_to_meters(second.carrier_phase_cycles, second.metadata.signal).0;
     let phase_level_bias_m = prior_phase_level_bias_m.or_else(|| {
         code_geometry_free_m.map(|code_geometry_free_m| geometry_free_m - code_geometry_free_m)
     });
@@ -524,7 +499,11 @@ mod tests {
                     SignalCode::Ca,
                     l1_signal,
                     terms.l1_code_m,
-                    signal_meters_to_cycles(Meters(reference_phase_m + geometry_free_phase_m), l1_signal).0,
+                    signal_meters_to_cycles(
+                        Meters(reference_phase_m + geometry_free_phase_m),
+                        l1_signal,
+                    )
+                    .0,
                     terms.code_lock,
                     terms.carrier_lock,
                     terms.cycle_slip,
@@ -567,12 +546,7 @@ mod tests {
             doppler_hz: Hertz(0.0),
             doppler_var_hz2: 0.0,
             cn0_dbhz: 45.0,
-            lock_flags: LockFlags {
-                code_lock,
-                carrier_lock,
-                bit_lock: false,
-                cycle_slip,
-            },
+            lock_flags: LockFlags { code_lock, carrier_lock, bit_lock: false, cycle_slip },
             multipath_suspect: false,
             observation_status: ObservationStatus::Accepted,
             observation_reject_reasons: Vec::new(),
@@ -621,7 +595,8 @@ mod tests {
 
         assert_eq!(observations.len(), 1);
         let observation = &observations[0];
-        let measured_geometry_free_m = observation.code_geometry_free_m.expect("geometry-free code");
+        let measured_geometry_free_m =
+            observation.code_geometry_free_m.expect("geometry-free code");
         assert!(
             (measured_geometry_free_m - (l2_delay_m - l1_delay_m)).abs() < 1.0e-6,
             "measured={measured_geometry_free_m} expected={}",
@@ -630,7 +605,9 @@ mod tests {
         assert!((observation.code_delay_band_1_m.expect("L1 delay") - l1_delay_m).abs() < 1.0e-6);
         assert!((observation.code_delay_band_2_m.expect("L2 delay") - l2_delay_m).abs() < 1.0e-6);
         assert_eq!(observation.phase_status, "ok");
-        assert!((observation.phase_delay_band_1_m.expect("phase L1 delay") - l1_delay_m).abs() < 1.0e-6);
+        assert!(
+            (observation.phase_delay_band_1_m.expect("phase L1 delay") - l1_delay_m).abs() < 1.0e-6
+        );
     }
 
     #[test]
@@ -694,7 +671,8 @@ mod tests {
             assert_eq!(observation.phase_status, "ok");
             assert!(!observation.phase_arc_reset || observation.epoch_idx == 0);
             assert!(
-                (observation.phase_delay_band_1_m.expect("phase L1 delay") - expected_l1_delay_m).abs()
+                (observation.phase_delay_band_1_m.expect("phase L1 delay") - expected_l1_delay_m)
+                    .abs()
                     < 1.0e-6
             );
         }
@@ -760,7 +738,7 @@ mod tests {
         assert!(
             (observations[1].phase_level_bias_m.expect("new bias")
                 - observations[0].phase_level_bias_m.expect("old bias"))
-                .abs()
+            .abs()
                 > 1.0
         );
     }

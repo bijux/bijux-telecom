@@ -109,8 +109,8 @@ fn reorder_ccir_terms(values: &[f64], columns: usize, depth: usize) -> Vec<f64> 
 #[cfg(test)]
 mod tests {
     use super::{
-        reorder_ccir_terms, support_data, FOF2_COLUMNS, FOF2_DEPTH, FOF2_TERM_COUNT,
-        M3000_COLUMNS, M3000_DEPTH, M3000_TERM_COUNT, MODIP_COLS, MODIP_ROWS,
+        reorder_ccir_terms, support_data, FOF2_COLUMNS, FOF2_DEPTH, FOF2_TERM_COUNT, M3000_COLUMNS,
+        M3000_DEPTH, M3000_TERM_COUNT, MODIP_COLS, MODIP_ROWS,
     };
 
     #[test]
@@ -121,18 +121,8 @@ mod tests {
         assert!(data.modip_grid.iter().all(|row| row.len() == MODIP_COLS));
         assert!(data.modip_grid[1].iter().all(|value| (*value + 90.0).abs() < 1.0e-12));
         assert!(data.modip_grid[37].iter().all(|value| (*value - 90.0).abs() < 1.0e-12));
-        let min_value = data
-            .modip_grid
-            .iter()
-            .flatten()
-            .copied()
-            .fold(f64::INFINITY, f64::min);
-        let max_value = data
-            .modip_grid
-            .iter()
-            .flatten()
-            .copied()
-            .fold(f64::NEG_INFINITY, f64::max);
+        let min_value = data.modip_grid.iter().flatten().copied().fold(f64::INFINITY, f64::min);
+        let max_value = data.modip_grid.iter().flatten().copied().fold(f64::NEG_INFINITY, f64::max);
         assert_eq!(min_value, -90.0);
         assert_eq!(max_value, 90.0);
     }

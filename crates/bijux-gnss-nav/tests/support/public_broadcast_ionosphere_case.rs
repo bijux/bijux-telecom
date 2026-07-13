@@ -3,13 +3,13 @@
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
+use bijux_gnss_core::api::SignalBand;
 use bijux_gnss_nav::api::{
     gps_broadcast_ionosphere_residuals_from_obs_epochs, parse_rinex_broadcast_navigation,
     parse_rinex_gps_observation_dataset, summarize_broadcast_ionosphere_residuals,
     BroadcastIonosphereResidualObservation, BroadcastIonosphereResidualSummary,
     GpsBroadcastNavigationData, RinexGpsObservationDataset,
 };
-use bijux_gnss_core::api::SignalBand;
 
 pub struct PublicGpsBroadcastIonosphereCase {
     pub observations: RinexGpsObservationDataset,
@@ -22,8 +22,9 @@ pub struct PublicGpsBroadcastIonosphereCase {
 pub fn ab43_public_gps_broadcast_ionosphere_case() -> &'static PublicGpsBroadcastIonosphereCase {
     static CASE: OnceLock<PublicGpsBroadcastIonosphereCase> = OnceLock::new();
     CASE.get_or_init(|| {
-        let observations = parse_rinex_gps_observation_dataset(&fixture("unavco_ab43_20180114.obs"))
-            .expect("parse AB43 public RINEX observations");
+        let observations =
+            parse_rinex_gps_observation_dataset(&fixture("unavco_ab43_20180114.obs"))
+                .expect("parse AB43 public RINEX observations");
         let navigation = parse_rinex_broadcast_navigation(&fixture("noaa_brdc0140_20180114.nav"))
             .expect("parse AB43 public RINEX navigation");
         let receiver_ecef_m = observations

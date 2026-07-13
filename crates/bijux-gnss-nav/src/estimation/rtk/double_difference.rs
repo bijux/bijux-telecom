@@ -6,9 +6,7 @@ use bijux_gnss_core::api::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::antenna::{
-    modeled_pseudorange_with_antenna_corrections_m, RtkAntennaCorrectionConfig,
-};
+use super::antenna::{modeled_pseudorange_with_antenna_corrections_m, RtkAntennaCorrectionConfig};
 use super::single_difference::RtkSingleDifferenceObservation;
 use crate::orbits::gps::{sat_state_gps_l1ca_from_observation, GpsEphemeris};
 
@@ -342,7 +340,9 @@ fn geometric_range_m(receiver_ecef_m: [f64; 3], sat_ecef_m: [f64; 3]) -> f64 {
 mod tests {
     use std::collections::BTreeMap;
 
-    use bijux_gnss_core::api::{Constellation, GpsTime, ObsSignalTiming, Seconds, SignalBand, SignalCode};
+    use bijux_gnss_core::api::{
+        Constellation, GpsTime, ObsSignalTiming, Seconds, SignalBand, SignalCode,
+    };
 
     use super::{
         geometric_range_m, rtk_double_difference_residual_metrics,
@@ -367,13 +367,20 @@ mod tests {
         let (lat_deg, lon_deg, alt_m) =
             ecef_to_geodetic(base_ecef_m[0], base_ecef_m[1], base_ecef_m[2]);
         let rover_enu_m = {
-            let (east_m, north_m, up_m) =
-                ecef_to_enu(rover_ecef_m[0], rover_ecef_m[1], rover_ecef_m[2], lat_deg, lon_deg, alt_m);
+            let (east_m, north_m, up_m) = ecef_to_enu(
+                rover_ecef_m[0],
+                rover_ecef_m[1],
+                rover_ecef_m[2],
+                lat_deg,
+                lon_deg,
+                alt_m,
+            );
             [east_m, north_m, up_m]
         };
         let signal_ephemeris = make_test_ephemeris(receive_gps_time, 7, 0.8, 0.9);
         let reference_ephemeris = make_test_ephemeris(receive_gps_time, 11, 1.6, 1.8);
-        let signal_sat = sat_state_gps_l1ca_at_receive_time(&signal_ephemeris, receive_gps_time.tow_s, 0.07);
+        let signal_sat =
+            sat_state_gps_l1ca_at_receive_time(&signal_ephemeris, receive_gps_time.tow_s, 0.07);
         let reference_sat =
             sat_state_gps_l1ca_at_receive_time(&reference_ephemeris, receive_gps_time.tow_s, 0.07);
         let signal_sat_ecef_m = [signal_sat.x_m, signal_sat.y_m, signal_sat.z_m];
@@ -444,16 +451,18 @@ mod tests {
                 &config,
             )
             .0,
-            rover_signal_timing: Some(modeled_with_timing(
-                rover_ecef_m,
-                signal_sat_ecef_m,
-                signal_sat.clock_correction.bias_s,
-                signal_ephemeris.sat,
-                receive_gps_time,
-                config.rover_antenna_type.as_deref(),
-                &config,
-            )
-            .1),
+            rover_signal_timing: Some(
+                modeled_with_timing(
+                    rover_ecef_m,
+                    signal_sat_ecef_m,
+                    signal_sat.clock_correction.bias_s,
+                    signal_ephemeris.sat,
+                    receive_gps_time,
+                    config.rover_antenna_type.as_deref(),
+                    &config,
+                )
+                .1,
+            ),
             base_signal_pseudorange_m: modeled_with_timing(
                 base_ecef_m,
                 signal_sat_ecef_m,
@@ -464,16 +473,18 @@ mod tests {
                 &config,
             )
             .0,
-            base_signal_timing: Some(modeled_with_timing(
-                base_ecef_m,
-                signal_sat_ecef_m,
-                signal_sat.clock_correction.bias_s,
-                signal_ephemeris.sat,
-                receive_gps_time,
-                config.base_antenna_type.as_deref(),
-                &config,
-            )
-            .1),
+            base_signal_timing: Some(
+                modeled_with_timing(
+                    base_ecef_m,
+                    signal_sat_ecef_m,
+                    signal_sat.clock_correction.bias_s,
+                    signal_ephemeris.sat,
+                    receive_gps_time,
+                    config.base_antenna_type.as_deref(),
+                    &config,
+                )
+                .1,
+            ),
             rover_ref_pseudorange_m: modeled_with_timing(
                 rover_ecef_m,
                 reference_sat_ecef_m,
@@ -484,16 +495,18 @@ mod tests {
                 &config,
             )
             .0,
-            rover_ref_signal_timing: Some(modeled_with_timing(
-                rover_ecef_m,
-                reference_sat_ecef_m,
-                reference_sat.clock_correction.bias_s,
-                reference_ephemeris.sat,
-                receive_gps_time,
-                config.rover_antenna_type.as_deref(),
-                &config,
-            )
-            .1),
+            rover_ref_signal_timing: Some(
+                modeled_with_timing(
+                    rover_ecef_m,
+                    reference_sat_ecef_m,
+                    reference_sat.clock_correction.bias_s,
+                    reference_ephemeris.sat,
+                    receive_gps_time,
+                    config.rover_antenna_type.as_deref(),
+                    &config,
+                )
+                .1,
+            ),
             base_ref_pseudorange_m: modeled_with_timing(
                 base_ecef_m,
                 reference_sat_ecef_m,
@@ -504,16 +517,18 @@ mod tests {
                 &config,
             )
             .0,
-            base_ref_signal_timing: Some(modeled_with_timing(
-                base_ecef_m,
-                reference_sat_ecef_m,
-                reference_sat.clock_correction.bias_s,
-                reference_ephemeris.sat,
-                receive_gps_time,
-                config.base_antenna_type.as_deref(),
-                &config,
-            )
-            .1),
+            base_ref_signal_timing: Some(
+                modeled_with_timing(
+                    base_ecef_m,
+                    reference_sat_ecef_m,
+                    reference_sat.clock_correction.bias_s,
+                    reference_ephemeris.sat,
+                    receive_gps_time,
+                    config.base_antenna_type.as_deref(),
+                    &config,
+                )
+                .1,
+            ),
             code_m: 0.0,
             phase_cycles: 0.0,
             doppler_hz: 0.0,
@@ -548,7 +563,12 @@ mod tests {
         assert!(uncorrected.residual_rms_m > corrected.residual_rms_m * 100.0);
     }
 
-    fn make_test_ephemeris(receive_gps_time: GpsTime, prn: u8, omega0: f64, m0: f64) -> GpsEphemeris {
+    fn make_test_ephemeris(
+        receive_gps_time: GpsTime,
+        prn: u8,
+        omega0: f64,
+        m0: f64,
+    ) -> GpsEphemeris {
         GpsEphemeris {
             sat: bijux_gnss_core::api::SatId { constellation: Constellation::Gps, prn },
             iodc: 0,

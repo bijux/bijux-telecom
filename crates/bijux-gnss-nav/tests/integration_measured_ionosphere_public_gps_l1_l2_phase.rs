@@ -3,7 +3,9 @@
 use std::path::PathBuf;
 
 use bijux_gnss_core::api::SignalBand;
-use bijux_gnss_nav::api::{measured_ionosphere_from_obs_epochs, parse_rinex_gps_observation_dataset};
+use bijux_gnss_nav::api::{
+    measured_ionosphere_from_obs_epochs, parse_rinex_gps_observation_dataset,
+};
 
 fn fixture(name: &str) -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data").join(name);
@@ -26,10 +28,8 @@ fn public_gps_l1_l2_measured_ionosphere_emits_many_valid_phase_observations() {
 
     let measured =
         measured_ionosphere_from_obs_epochs(&observations.epochs, SignalBand::L1, SignalBand::L2);
-    let valid_phase = measured
-        .iter()
-        .filter(|observation| observation.phase_status == "ok")
-        .collect::<Vec<_>>();
+    let valid_phase =
+        measured.iter().filter(|observation| observation.phase_status == "ok").collect::<Vec<_>>();
 
     assert!(
         valid_phase.len() > 50,
@@ -68,10 +68,8 @@ fn public_gps_l1_l2_measured_ionosphere_preserves_phase_dual_frequency_relations
 
     let measured =
         measured_ionosphere_from_obs_epochs(&observations.epochs, SignalBand::L1, SignalBand::L2);
-    let valid_phase = measured
-        .iter()
-        .filter(|observation| observation.phase_status == "ok")
-        .collect::<Vec<_>>();
+    let valid_phase =
+        measured.iter().filter(|observation| observation.phase_status == "ok").collect::<Vec<_>>();
 
     assert!(
         valid_phase.len() > 50,
@@ -80,9 +78,8 @@ fn public_gps_l1_l2_measured_ionosphere_preserves_phase_dual_frequency_relations
     );
 
     for observation in valid_phase {
-        let leveled_phase_geometry_free_m = observation
-            .leveled_phase_geometry_free_m
-            .expect("leveled geometry-free phase");
+        let leveled_phase_geometry_free_m =
+            observation.leveled_phase_geometry_free_m.expect("leveled geometry-free phase");
         let phase_delay_band_1_m = observation.phase_delay_band_1_m.expect("band 1 phase delay");
         let phase_delay_band_2_m = observation.phase_delay_band_2_m.expect("band 2 phase delay");
         let f1_2 = observation.f1_hz * observation.f1_hz;
@@ -94,15 +91,7 @@ fn public_gps_l1_l2_measured_ionosphere_preserves_phase_dual_frequency_relations
             leveled_phase_geometry_free_m,
             1.0e-12,
         );
-        approx_eq(
-            phase_delay_band_1_m,
-            leveled_phase_geometry_free_m * (f2_2 / denom),
-            1.0e-12,
-        );
-        approx_eq(
-            phase_delay_band_2_m,
-            leveled_phase_geometry_free_m * (f1_2 / denom),
-            1.0e-12,
-        );
+        approx_eq(phase_delay_band_1_m, leveled_phase_geometry_free_m * (f2_2 / denom), 1.0e-12);
+        approx_eq(phase_delay_band_2_m, leveled_phase_geometry_free_m * (f1_2 / denom), 1.0e-12);
     }
 }

@@ -1,12 +1,12 @@
 mod support;
 
-use bijux_gnss_nav::api::{
-    formal_protection_levels, PositionObservation, PositionSolver,
-};
+use bijux_gnss_nav::api::{formal_protection_levels, PositionObservation, PositionSolver};
 
 use support::public_spp_case::{ab43_public_spp_case, position_observations};
 
-fn solve_public_epoch(observations: &[PositionObservation]) -> bijux_gnss_nav::api::PositionSolution {
+fn solve_public_epoch(
+    observations: &[PositionObservation],
+) -> bijux_gnss_nav::api::PositionSolution {
     let case = ab43_public_spp_case();
     let epoch = case
         .observations
@@ -44,7 +44,10 @@ fn public_solver_reports_formal_protection_levels_from_covariance() {
 
     assert_eq!(solution.integrity_hpl_m, Some(expected.horizontal_m));
     assert_eq!(solution.integrity_vpl_m, Some(expected.vertical_m));
-    assert!(expected.horizontal_m >= solution.horizontal_error_ellipse_major_axis_m.expect("ellipse") * 6.0);
+    assert!(
+        expected.horizontal_m
+            >= solution.horizontal_error_ellipse_major_axis_m.expect("ellipse") * 6.0
+    );
     assert!(expected.vertical_m >= solution.sigma_v_m.expect("vertical sigma") * 6.0 - 1.0e-12);
 }
 

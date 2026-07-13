@@ -2,12 +2,10 @@ use std::collections::BTreeMap;
 
 use bijux_gnss_core::api::{
     signal_spec_beidou_b1i, signal_spec_beidou_b2i, signal_spec_galileo_e1b,
-    signal_spec_galileo_e5a,
-    signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l2c, signal_spec_gps_l5,
-    utc_to_gps,
-    Constellation, Cycles, GpsTime, Hertz, LeapSeconds, LockFlags, Meters, ObsEpoch, ObsMetadata,
-    ObsSatellite, ObservationStatus, ParseError, ReceiverRole, SatId, Seconds, SigId, SignalBand,
-    SignalCode, SignalSpec,
+    signal_spec_galileo_e5a, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l2c,
+    signal_spec_gps_l5, utc_to_gps, Constellation, Cycles, GpsTime, Hertz, LeapSeconds, LockFlags,
+    Meters, ObsEpoch, ObsMetadata, ObsSatellite, ObservationStatus, ParseError, ReceiverRole,
+    SatId, Seconds, SigId, SignalBand, SignalCode, SignalSpec,
 };
 use time::{Date, Month, PrimitiveDateTime, Time};
 
@@ -371,9 +369,10 @@ pub fn parse_rinex_galileo_observation_dataset(
 ) -> Result<RinexGalileoObservationDataset, ParseError> {
     let lines = data.lines().collect::<Vec<_>>();
     let (header, header_line_count) = parse_rinex_observation_header(data)?;
-    let galileo_observation_types = header.galileo_observation_types().ok_or_else(|| ParseError {
-        message: "RINEX OBS file does not declare Galileo observation types".to_string(),
-    })?;
+    let galileo_observation_types =
+        header.galileo_observation_types().ok_or_else(|| ParseError {
+            message: "RINEX OBS file does not declare Galileo observation types".to_string(),
+        })?;
     let channels = resolve_galileo_observation_channels(galileo_observation_types)?;
     let code_bias_status = header.code_bias_status('E');
     let epochs = if header.version >= 3.0 {
@@ -611,7 +610,8 @@ fn parse_rinex_3_constellation_epochs(
                 })?;
             let observations = parse_observation_record(record_lines, observation_types.len(), 3)?;
             line_index += record_line_count;
-            if satellite_token.system != system || satellite_token.satellite.constellation != constellation
+            if satellite_token.system != system
+                || satellite_token.satellite.constellation != constellation
             {
                 continue;
             }
@@ -799,24 +799,9 @@ fn resolve_gps_observation_channels(
             SignalBand::L5,
             SignalCode::Unknown,
             signal_spec_gps_l5(),
-            vec![
-                "C5Q".to_string(),
-                "C5X".to_string(),
-                "C5I".to_string(),
-                "C5".to_string(),
-            ],
-            vec![
-                "L5Q".to_string(),
-                "L5X".to_string(),
-                "L5I".to_string(),
-                "L5".to_string(),
-            ],
-            vec![
-                "S5Q".to_string(),
-                "S5X".to_string(),
-                "S5I".to_string(),
-                "S5".to_string(),
-            ],
+            vec!["C5Q".to_string(), "C5X".to_string(), "C5I".to_string(), "C5".to_string()],
+            vec!["L5Q".to_string(), "L5X".to_string(), "L5I".to_string(), "L5".to_string()],
+            vec!["S5Q".to_string(), "S5X".to_string(), "S5I".to_string(), "S5".to_string()],
         ),
     ] {
         let Some(pseudorange_index) =
@@ -871,21 +856,24 @@ fn resolve_galileo_observation_channels(
         pseudorange_candidates,
         carrier_phase_candidates,
         signal_strength_candidates,
-    ) in [(
-        SignalBand::E1,
-        SignalCode::E1B,
-        signal_spec_galileo_e1b(),
-        vec!["C1C".to_string(), "C1X".to_string(), "C1B".to_string()],
-        vec!["L1C".to_string(), "L1X".to_string(), "L1B".to_string()],
-        vec!["S1C".to_string(), "S1X".to_string(), "S1B".to_string()],
-    ), (
-        SignalBand::E5,
-        SignalCode::E5a,
-        signal_spec_galileo_e5a(),
-        vec!["C5Q".to_string(), "C5X".to_string(), "C5I".to_string()],
-        vec!["L5Q".to_string(), "L5X".to_string(), "L5I".to_string()],
-        vec!["S5Q".to_string(), "S5X".to_string(), "S5I".to_string()],
-    )] {
+    ) in [
+        (
+            SignalBand::E1,
+            SignalCode::E1B,
+            signal_spec_galileo_e1b(),
+            vec!["C1C".to_string(), "C1X".to_string(), "C1B".to_string()],
+            vec!["L1C".to_string(), "L1X".to_string(), "L1B".to_string()],
+            vec!["S1C".to_string(), "S1X".to_string(), "S1B".to_string()],
+        ),
+        (
+            SignalBand::E5,
+            SignalCode::E5a,
+            signal_spec_galileo_e5a(),
+            vec!["C5Q".to_string(), "C5X".to_string(), "C5I".to_string()],
+            vec!["L5Q".to_string(), "L5X".to_string(), "L5I".to_string()],
+            vec!["S5Q".to_string(), "S5X".to_string(), "S5I".to_string()],
+        ),
+    ] {
         let Some(pseudorange_index) =
             find_observation_index(observation_types, &pseudorange_candidates)
         else {
@@ -1458,15 +1446,13 @@ mod tests {
 
     use bijux_gnss_core::api::{
         check_dual_frequency_observations, signal_spec_beidou_b1i, signal_spec_beidou_b2i,
-        signal_spec_galileo_e1b, signal_spec_galileo_e5a, signal_spec_gps_l2c,
-        signal_spec_gps_l5, validate_obs_epochs,
-        Constellation, SatId, SignalBand, SignalCode,
+        signal_spec_galileo_e1b, signal_spec_galileo_e5a, signal_spec_gps_l2c, signal_spec_gps_l5,
+        validate_obs_epochs, Constellation, SatId, SignalBand, SignalCode,
     };
 
     use super::{
         parse_rinex_beidou_observation_dataset, parse_rinex_galileo_observation_dataset,
-        parse_rinex_gps_observation_dataset, parse_rinex_observation_header,
-        RinexCodeBiasState,
+        parse_rinex_gps_observation_dataset, parse_rinex_observation_header, RinexCodeBiasState,
     };
 
     fn fixture(name: &str) -> String {

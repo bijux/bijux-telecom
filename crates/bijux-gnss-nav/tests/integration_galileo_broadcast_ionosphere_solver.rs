@@ -1,6 +1,8 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{Constellation, GpsTime, Llh, SatId, Seconds, SigId, SignalBand, SignalCode};
+use bijux_gnss_core::api::{
+    Constellation, GpsTime, Llh, SatId, Seconds, SigId, SignalBand, SignalCode,
+};
 use bijux_gnss_nav::api::{
     ecef_to_geodetic, elevation_azimuth_deg, geodetic_to_ecef,
     position_broadcast_navigation_from_galileo_navigations, sat_state_galileo_e1,
@@ -9,10 +11,7 @@ use bijux_gnss_nav::api::{
     GalileoSystemTime, PositionBroadcastNavigation, PositionObservation, PositionSolver,
 };
 
-fn position_error_3d_m(
-    actual_ecef_m: (f64, f64, f64),
-    truth_ecef_m: (f64, f64, f64),
-) -> f64 {
+fn position_error_3d_m(actual_ecef_m: (f64, f64, f64), truth_ecef_m: (f64, f64, f64)) -> f64 {
     let dx = actual_ecef_m.0 - truth_ecef_m.0;
     let dy = actual_ecef_m.1 - truth_ecef_m.1;
     let dz = actual_ecef_m.2 - truth_ecef_m.2;
@@ -149,9 +148,7 @@ struct GalileoPositionScenario {
     t_rx_s: f64,
 }
 
-fn galileo_four_satellite_position_scenario(
-    receiver_clock_bias_s: f64,
-) -> GalileoPositionScenario {
+fn galileo_four_satellite_position_scenario(receiver_clock_bias_s: f64) -> GalileoPositionScenario {
     let truth_ecef_m = geodetic_to_ecef(37.0, -122.0, 10.0);
     let t_rx_s = 504_018.07 + receiver_clock_bias_s;
     let navigations = [
@@ -197,11 +194,8 @@ fn galileo_four_satellite_position_scenario(
     let observations = navigations
         .iter()
         .map(|navigation| {
-            let signal_id = SigId {
-                sat: navigation.sat,
-                band: SignalBand::E1,
-                code: SignalCode::E1B,
-            };
+            let signal_id =
+                SigId { sat: navigation.sat, band: SignalBand::E1, code: SignalCode::E1B };
             let pseudorange_m = galileo_pseudorange_from_truth(
                 navigation,
                 truth_ecef_m,
@@ -226,7 +220,8 @@ fn add_galileo_nequick_delay_to_observations(
 ) -> Vec<PositionObservation> {
     let (receiver_lat_deg, receiver_lon_deg, receiver_alt_m) =
         ecef_to_geodetic(truth_ecef_m.0, truth_ecef_m.1, truth_ecef_m.2);
-    let receiver = Llh { lat_deg: receiver_lat_deg, lon_deg: receiver_lon_deg, alt_m: receiver_alt_m };
+    let receiver =
+        Llh { lat_deg: receiver_lat_deg, lon_deg: receiver_lon_deg, alt_m: receiver_alt_m };
 
     observations
         .iter()
@@ -265,8 +260,7 @@ fn add_galileo_nequick_delay_to_observations(
 #[test]
 fn galileo_broadcast_navigation_payload_recovers_single_point_position() {
     let scenario = galileo_four_satellite_position_scenario(0.0);
-    let navigation =
-        position_broadcast_navigation_from_galileo_navigations(&scenario.navigations);
+    let navigation = position_broadcast_navigation_from_galileo_navigations(&scenario.navigations);
     let ionosphere_biased_observations = add_galileo_nequick_delay_to_observations(
         &scenario.observations,
         &navigation,
@@ -290,11 +284,7 @@ fn galileo_broadcast_navigation_payload_recovers_single_point_position() {
         .expect("uncorrected galileo solution");
 
     let corrected_error_m = position_error_3d_m(
-        (
-            corrected_solution.ecef_x_m,
-            corrected_solution.ecef_y_m,
-            corrected_solution.ecef_z_m,
-        ),
+        (corrected_solution.ecef_x_m, corrected_solution.ecef_y_m, corrected_solution.ecef_z_m),
         scenario.truth_ecef_m,
     );
     let uncorrected_error_m = position_error_3d_m(

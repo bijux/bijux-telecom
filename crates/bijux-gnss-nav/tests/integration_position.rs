@@ -5,10 +5,9 @@ use bijux_gnss_core::api::{
     Constellation, GpsTime, Llh, SatId, Seconds, SigId, SignalBand, SignalCode,
 };
 use bijux_gnss_nav::api::{
-    beidou_broadcast_group_delay_code_bias_m, ephemerides_from_decoded_gps_l1ca_lnav,
-    ecef_to_geodetic, elevation_azimuth_deg, galileo_broadcast_group_delay_code_bias_m,
-    geodetic_to_ecef,
-    gps_broadcast_group_delay_code_bias_m, parse_rinex_nav,
+    beidou_broadcast_group_delay_code_bias_m, ecef_to_geodetic, elevation_azimuth_deg,
+    ephemerides_from_decoded_gps_l1ca_lnav, galileo_broadcast_group_delay_code_bias_m,
+    geodetic_to_ecef, gps_broadcast_group_delay_code_bias_m, parse_rinex_nav,
     position_broadcast_navigation_from_beidou_navigations,
     position_broadcast_navigation_from_glonass_frames,
     position_broadcast_navigation_from_gps_ephemerides, sat_state_beidou_b1i, sat_state_galileo_e1,
@@ -391,10 +390,16 @@ fn galileo_four_satellite_position_scenario(receiver_clock_bias_s: f64) -> Galil
     .into_iter()
     .map(|(prn, omega0, m0)| sample_galileo_navigation(prn, omega0, m0))
     .filter(|navigation| {
-        let pseudorange_m =
-            galileo_pseudorange_from_truth(navigation, truth_ecef_m, t_rx_s, receiver_clock_bias_s, 0.0);
+        let pseudorange_m = galileo_pseudorange_from_truth(
+            navigation,
+            truth_ecef_m,
+            t_rx_s,
+            receiver_clock_bias_s,
+            0.0,
+        );
         let signal_travel_time_s = pseudorange_m / 299_792_458.0;
-        let state = sat_state_galileo_e1(navigation, t_rx_s - signal_travel_time_s, signal_travel_time_s);
+        let state =
+            sat_state_galileo_e1(navigation, t_rx_s - signal_travel_time_s, signal_travel_time_s);
         let (_azimuth_deg, elevation_deg) = elevation_azimuth_deg(
             truth_ecef_m.0,
             truth_ecef_m.1,
@@ -412,16 +417,23 @@ fn galileo_four_satellite_position_scenario(receiver_clock_bias_s: f64) -> Galil
         .iter()
         .map(|navigation| {
             let signal = SigId { sat: navigation.sat, band: SignalBand::E1, code: SignalCode::E1B };
-            let pseudorange_m =
-                galileo_pseudorange_from_truth(navigation, truth_ecef_m, t_rx_s, receiver_clock_bias_s, 0.0);
+            let pseudorange_m = galileo_pseudorange_from_truth(
+                navigation,
+                truth_ecef_m,
+                t_rx_s,
+                receiver_clock_bias_s,
+                0.0,
+            );
             observation_with_signal_id(
                 timed_position_observation(navigation.sat, pseudorange_m, t_rx_s),
                 signal,
             )
         })
         .collect::<Vec<_>>();
-    let navigation =
-        galileo_navigation.into_iter().map(PositionBroadcastNavigation::Galileo).collect::<Vec<_>>();
+    let navigation = galileo_navigation
+        .into_iter()
+        .map(PositionBroadcastNavigation::Galileo)
+        .collect::<Vec<_>>();
 
     GalileoPositionScenario { observations, navigation, truth_ecef_m, t_rx_s }
 }
@@ -459,7 +471,8 @@ fn add_galileo_nequick_delay_to_observations(
                 .unwrap_or(observation.pseudorange_m / 299_792_458.0);
             let state = sat_state_galileo_e1(
                 galileo_navigation,
-                observation.gps_receive_time.map(|time| time.tow_s).unwrap_or(0.0) - signal_travel_time_s,
+                observation.gps_receive_time.map(|time| time.tow_s).unwrap_or(0.0)
+                    - signal_travel_time_s,
                 signal_travel_time_s,
             );
             let (satellite_latitude_deg, satellite_longitude_deg, satellite_altitude_m) =

@@ -3,11 +3,11 @@
 use std::path::PathBuf;
 
 use bijux_gnss_core::api::SignalBand;
+use bijux_gnss_nav::api::BroadcastIonosphereResidualObservation;
 use bijux_gnss_nav::api::{
     gps_broadcast_ionosphere_residuals_from_obs_epochs, parse_rinex_broadcast_navigation,
     parse_rinex_gps_observation_dataset,
 };
-use bijux_gnss_nav::api::BroadcastIonosphereResidualObservation;
 
 fn fixture(name: &str) -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data").join(name);
@@ -21,10 +21,7 @@ fn valid_broadcast_delays(
         .iter()
         .filter(|observation| observation.broadcast_status == "ok")
         .filter_map(|observation| {
-            Some((
-                observation.broadcast_delay_band_1_m?,
-                observation.broadcast_delay_band_2_m?,
-            ))
+            Some((observation.broadcast_delay_band_1_m?, observation.broadcast_delay_band_2_m?))
         })
         .collect()
 }
@@ -83,8 +80,8 @@ fn public_gps_nav_payload_keeps_broadcast_delays_in_a_realistic_range() {
         SignalBand::L2,
     );
     let valid_delays = valid_broadcast_delays(&residuals);
-    let mean_l1_delay_m =
-        valid_delays.iter().map(|(l1_delay_m, _)| *l1_delay_m).sum::<f64>() / valid_delays.len() as f64;
+    let mean_l1_delay_m = valid_delays.iter().map(|(l1_delay_m, _)| *l1_delay_m).sum::<f64>()
+        / valid_delays.len() as f64;
     let max_l1_delay_m =
         valid_delays.iter().map(|(l1_delay_m, _)| *l1_delay_m).fold(0.0_f64, f64::max);
 

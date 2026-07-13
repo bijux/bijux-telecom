@@ -207,8 +207,11 @@ impl PppFilter {
             let rx_x = self.ekf.x[self.indices.pos[0]];
             let rx_y = self.ekf.x[self.indices.pos[1]];
             let rx_z = self.ekf.x[self.indices.pos[2]];
-            let receiver_pos_m =
-                [rx_x + corr.earth_tide_m[0], rx_y + corr.earth_tide_m[1], rx_z + corr.earth_tide_m[2]];
+            let receiver_pos_m = [
+                rx_x + corr.earth_tide_m[0],
+                rx_y + corr.earth_tide_m[1],
+                rx_z + corr.earth_tide_m[2],
+            ];
             let (_az, el) = elevation_azimuth_deg(
                 receiver_pos_m[0],
                 receiver_pos_m[1],
@@ -240,21 +243,20 @@ impl PppFilter {
 
             if self.config.use_iono_free {
                 if let Some(iono_free) = iono_free_from_obs(obs, sat.signal_id.sat) {
-                    let iono_free_code_bias_m =
-                        resolved_iono_free_code_bias_m(
-                            self.code_bias.as_ref(),
-                            IonoFreeCodeMeasurementObservation {
-                                gps_time: obs.gps_time(),
-                                signal_1: iono_free.signal_1,
-                                signal_2: iono_free.signal_2,
-                                code_m: iono_free.code_m,
-                                code_sigma_m: iono_free.code_sigma_m,
-                                f1_hz: iono_free.f1_hz,
-                                f2_hz: iono_free.f2_hz,
-                                band_1: iono_free.band_1,
-                                band_2: iono_free.band_2,
-                            },
-                        );
+                    let iono_free_code_bias_m = resolved_iono_free_code_bias_m(
+                        self.code_bias.as_ref(),
+                        IonoFreeCodeMeasurementObservation {
+                            gps_time: obs.gps_time(),
+                            signal_1: iono_free.signal_1,
+                            signal_2: iono_free.signal_2,
+                            code_m: iono_free.code_m,
+                            code_sigma_m: iono_free.code_sigma_m,
+                            f1_hz: iono_free.f1_hz,
+                            f2_hz: iono_free.f2_hz,
+                            band_1: iono_free.band_1,
+                            band_2: iono_free.band_2,
+                        },
+                    );
                     let code = PppIonoFreeCodeMeasurement {
                         z_m: iono_free.code_m - iono_free_code_bias_m,
                         sat_pos_m,
@@ -560,7 +562,9 @@ impl PppFilter {
         self.ekf.x[self.indices.ztd] = self
             .config
             .troposphere_meteorology()
-            .map(|meteorology| SaastamoinenModel::zenith_delay_with_meteorology_m(receiver, meteorology))
+            .map(|meteorology| {
+                SaastamoinenModel::zenith_delay_with_meteorology_m(receiver, meteorology)
+            })
             .unwrap_or_else(|| SaastamoinenModel::zenith_delay_m(receiver));
     }
 
@@ -1040,7 +1044,10 @@ mod tests {
             ),
             (
                 SatId { constellation: Constellation::Gps, prn: 2 },
-                enu_offset_to_ecef(base_receiver_ecef_m, [-14_000_000.0, 8_000_000.0, 21_000_000.0]),
+                enu_offset_to_ecef(
+                    base_receiver_ecef_m,
+                    [-14_000_000.0, 8_000_000.0, 21_000_000.0],
+                ),
             ),
             (
                 SatId { constellation: Constellation::Gps, prn: 3 },
@@ -1048,11 +1055,17 @@ mod tests {
             ),
             (
                 SatId { constellation: Constellation::Gps, prn: 4 },
-                enu_offset_to_ecef(base_receiver_ecef_m, [-8_000_000.0, -15_000_000.0, 20_800_000.0]),
+                enu_offset_to_ecef(
+                    base_receiver_ecef_m,
+                    [-8_000_000.0, -15_000_000.0, 20_800_000.0],
+                ),
             ),
             (
                 SatId { constellation: Constellation::Gps, prn: 5 },
-                enu_offset_to_ecef(base_receiver_ecef_m, [12_000_000.0, -9_000_000.0, 19_800_000.0]),
+                enu_offset_to_ecef(
+                    base_receiver_ecef_m,
+                    [12_000_000.0, -9_000_000.0, 19_800_000.0],
+                ),
             ),
         ];
         let provider = MappedProductsProvider {
@@ -1106,7 +1119,8 @@ mod tests {
 
         let corrected_pos_m = [corrected.ecef_x_m, corrected.ecef_y_m, corrected.ecef_z_m];
         let uncorrected_pos_m = [uncorrected.ecef_x_m, uncorrected.ecef_y_m, uncorrected.ecef_z_m];
-        let corrected_monument_error_m = euclidean_distance_m(corrected_pos_m, base_receiver_ecef_m);
+        let corrected_monument_error_m =
+            euclidean_distance_m(corrected_pos_m, base_receiver_ecef_m);
         let uncorrected_monument_error_m =
             euclidean_distance_m(uncorrected_pos_m, base_receiver_ecef_m);
 
@@ -1166,7 +1180,10 @@ mod tests {
             ),
             (
                 SatId { constellation: Constellation::Gps, prn: 14 },
-                enu_offset_to_ecef(base_receiver_ecef_m, [-11_000_000.0, 9_000_000.0, 20_800_000.0]),
+                enu_offset_to_ecef(
+                    base_receiver_ecef_m,
+                    [-11_000_000.0, 9_000_000.0, 20_800_000.0],
+                ),
             ),
             (
                 SatId { constellation: Constellation::Gps, prn: 18 },
@@ -1174,15 +1191,24 @@ mod tests {
             ),
             (
                 SatId { constellation: Constellation::Gps, prn: 22 },
-                enu_offset_to_ecef(base_receiver_ecef_m, [-9_000_000.0, -14_000_000.0, 20_400_000.0]),
+                enu_offset_to_ecef(
+                    base_receiver_ecef_m,
+                    [-9_000_000.0, -14_000_000.0, 20_400_000.0],
+                ),
             ),
             (
                 SatId { constellation: Constellation::Gps, prn: 25 },
-                enu_offset_to_ecef(base_receiver_ecef_m, [13_000_000.0, -7_000_000.0, 20_100_000.0]),
+                enu_offset_to_ecef(
+                    base_receiver_ecef_m,
+                    [13_000_000.0, -7_000_000.0, 20_100_000.0],
+                ),
             ),
             (
                 SatId { constellation: Constellation::Gps, prn: 31 },
-                enu_offset_to_ecef(base_receiver_ecef_m, [-4_000_000.0, 16_000_000.0, 21_000_000.0]),
+                enu_offset_to_ecef(
+                    base_receiver_ecef_m,
+                    [-4_000_000.0, 16_000_000.0, 21_000_000.0],
+                ),
             ),
         ];
         let provider = MappedProductsProvider {
@@ -1237,7 +1263,8 @@ mod tests {
         let uncorrected = uncorrected.expect("PPP solution without solid Earth tide");
         let corrected_pos_m = [corrected.ecef_x_m, corrected.ecef_y_m, corrected.ecef_z_m];
         let uncorrected_pos_m = [uncorrected.ecef_x_m, uncorrected.ecef_y_m, uncorrected.ecef_z_m];
-        let corrected_monument_error_m = euclidean_distance_m(corrected_pos_m, base_receiver_ecef_m);
+        let corrected_monument_error_m =
+            euclidean_distance_m(corrected_pos_m, base_receiver_ecef_m);
         let uncorrected_monument_error_m =
             euclidean_distance_m(uncorrected_pos_m, base_receiver_ecef_m);
 

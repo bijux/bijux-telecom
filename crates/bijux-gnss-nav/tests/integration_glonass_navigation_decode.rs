@@ -46,7 +46,10 @@ fn corrected_glonass_string_still_assembles_frame() {
         .expect("complete frame");
 
     assert_eq!(frame.almanac_entries[0].frequency_channel.value(), -4);
-    assert!((frame.almanac_entries[0].draconian_period_correction_s - 200.0 * 2f64.powi(-9)).abs() < 1.0e-12);
+    assert!(
+        (frame.almanac_entries[0].draconian_period_correction_s - 200.0 * 2f64.powi(-9)).abs()
+            < 1.0e-12
+    );
 }
 
 fn sample_navigation_strings(slot: GlonassSlot) -> Vec<[u8; GLONASS_STRING_BITS]> {
@@ -178,9 +181,8 @@ fn checksum_c1(bits: &[u8; GLONASS_STRING_BITS]) -> u8 {
         ^ xor_positions(
             bits,
             &[
-                9, 10, 12, 13, 15, 17, 19, 20, 22, 24, 26, 28, 30, 32, 34, 35, 37, 39, 41, 43,
-                45, 47, 49, 51, 53, 55, 57, 59, 61, 63, 65, 66, 68, 70, 72, 74, 76, 78, 80, 82,
-                84,
+                9, 10, 12, 13, 15, 17, 19, 20, 22, 24, 26, 28, 30, 32, 34, 35, 37, 39, 41, 43, 45,
+                47, 49, 51, 53, 55, 57, 59, 61, 63, 65, 66, 68, 70, 72, 74, 76, 78, 80, 82, 84,
             ],
         )
 }
@@ -190,9 +192,8 @@ fn checksum_c2(bits: &[u8; GLONASS_STRING_BITS]) -> u8 {
         ^ xor_positions(
             bits,
             &[
-                9, 11, 12, 14, 15, 18, 19, 21, 22, 25, 26, 29, 30, 33, 34, 36, 37, 40, 41, 44,
-                45, 48, 49, 52, 53, 56, 57, 60, 61, 64, 65, 67, 68, 71, 72, 75, 76, 79, 80, 83,
-                84,
+                9, 11, 12, 14, 15, 18, 19, 21, 22, 25, 26, 29, 30, 33, 34, 36, 37, 40, 41, 44, 45,
+                48, 49, 52, 53, 56, 57, 60, 61, 64, 65, 67, 68, 71, 72, 75, 76, 79, 80, 83, 84,
             ],
         )
 }
@@ -246,7 +247,5 @@ fn xor_range(bits: &[u8; GLONASS_STRING_BITS], low: usize, high: usize) -> u8 {
 }
 
 fn xor_ranges(bits: &[u8; GLONASS_STRING_BITS], ranges: &[(usize, usize)]) -> u8 {
-    ranges
-        .iter()
-        .fold(0_u8, |acc, (low, high)| acc ^ xor_range(bits, *low, *high))
+    ranges.iter().fold(0_u8, |acc, (low, high)| acc ^ xor_range(bits, *low, *high))
 }

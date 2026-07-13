@@ -6,9 +6,7 @@ use bijux_gnss_core::api::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::antenna::{
-    modeled_pseudorange_with_antenna_corrections_m, RtkAntennaCorrectionConfig,
-};
+use super::antenna::{modeled_pseudorange_with_antenna_corrections_m, RtkAntennaCorrectionConfig};
 use crate::orbits::gps::{sat_state_gps_l1ca_from_observation, GpsEphemeris};
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
@@ -310,8 +308,8 @@ mod tests {
         rtk_single_difference_residual_metrics_with_antenna_corrections,
         RtkSingleDifferenceObservation, SPEED_OF_LIGHT_MPS,
     };
-    use crate::estimation::rtk::antenna::RtkAntennaCorrectionConfig;
     use crate::estimation::rtk::antenna::modeled_pseudorange_with_antenna_corrections_m;
+    use crate::estimation::rtk::antenna::RtkAntennaCorrectionConfig;
     use crate::models::antenna::{
         ReceiverAntennaCalibration, ReceiverAntennaCalibrations, ReceiverPhaseCenterOffset,
         SatelliteAntennaCalibration, SatelliteAntennaCalibrations, SatellitePhaseCenterOffset,
@@ -351,7 +349,8 @@ mod tests {
             af2: 0.0,
             tgd: 0.0,
         };
-        let sat_state = sat_state_gps_l1ca_at_receive_time(&ephemeris, receive_gps_time.tow_s, 0.07);
+        let sat_state =
+            sat_state_gps_l1ca_at_receive_time(&ephemeris, receive_gps_time.tow_s, 0.07);
         let sat_ecef_m = [sat_state.x_m, sat_state.y_m, sat_state.z_m];
         let rover_range_m = geometric_range_m(rover_ecef_m, sat_ecef_m);
         let base_range_m = geometric_range_m(base_ecef_m, sat_ecef_m);

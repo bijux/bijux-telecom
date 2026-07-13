@@ -4,8 +4,8 @@ use bijux_gnss_core::api::{
     signal_spec_beidou_b1i, signal_spec_beidou_b2i, signal_spec_galileo_e1b,
     signal_spec_galileo_e5a, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l5,
     Constellation, Cycles, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
-    ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
-    Seconds, SigId, SignalBand, SignalCode, SignalSpec,
+    ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId, Seconds,
+    SigId, SignalBand, SignalCode, SignalSpec,
 };
 use bijux_gnss_nav::api::combinations_from_obs_epochs;
 
@@ -99,9 +99,7 @@ fn assert_wide_lane_formula(
         (lambda_1 * first.3 - lambda_2 * second.3) / expected_wide_lane_wavelength_m;
 
     assert!(
-        (combinations[0]
-            .wide_lane_wavelength_m
-            .expect("wide-lane wavelength")
+        (combinations[0].wide_lane_wavelength_m.expect("wide-lane wavelength")
             - expected_wide_lane_wavelength_m)
             .abs()
             < 1.0e-12

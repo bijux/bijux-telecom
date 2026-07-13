@@ -30,7 +30,9 @@ pub struct GlonassFrameTime {
 
 impl GlonassFrameTime {
     pub fn seconds_of_day(self) -> u32 {
-        u32::from(self.hour) * 3_600 + u32::from(self.minute) * 60 + if self.half_minute { 30 } else { 0 }
+        u32::from(self.hour) * 3_600
+            + u32::from(self.minute) * 60
+            + if self.half_minute { 30 } else { 0 }
     }
 }
 
@@ -189,14 +191,17 @@ pub fn glonass_navigation_age(
     navigation: &GlonassBroadcastNavigationFrame,
     transmit_gps_tow_s: f64,
 ) -> Option<GlonassNavigationAge> {
-    let transmit_glonass_time_s =
-        glonass_time_of_day_from_gps_tow_s(transmit_gps_tow_s, glonass_gps_minus_glonass_s(navigation)?);
+    let transmit_glonass_time_s = glonass_time_of_day_from_gps_tow_s(
+        transmit_gps_tow_s,
+        glonass_gps_minus_glonass_s(navigation)?,
+    );
     let ephemeris_reference_time_s = f64::from(navigation.immediate.ephemeris_reference_time_s);
     Some(GlonassNavigationAge {
         transmit_gps_tow_s,
         transmit_glonass_time_s,
         ephemeris_reference_time_s,
-        age_s: wrap_glonass_time_delta_s(transmit_glonass_time_s - ephemeris_reference_time_s).abs(),
+        age_s: wrap_glonass_time_delta_s(transmit_glonass_time_s - ephemeris_reference_time_s)
+            .abs(),
         max_age_s: GLONASS_MAX_NAVIGATION_AGE_S,
     })
 }
@@ -218,20 +223,18 @@ pub fn select_best_glonass_navigation<'a>(
         .filter(|navigation| navigation.sat == sat)
         .filter(|navigation| is_glonass_navigation_valid(navigation, transmit_gps_tow_s))
         .min_by(|left, right| {
-            let left_age =
-                glonass_navigation_age(left, transmit_gps_tow_s).expect("filtered valid GLONASS age");
-            let right_age =
-                glonass_navigation_age(right, transmit_gps_tow_s).expect("filtered valid GLONASS age");
-            left_age
-                .age_s
-                .partial_cmp(&right_age.age_s)
-                .unwrap_or(Ordering::Equal)
-                .then_with(|| {
+            let left_age = glonass_navigation_age(left, transmit_gps_tow_s)
+                .expect("filtered valid GLONASS age");
+            let right_age = glonass_navigation_age(right, transmit_gps_tow_s)
+                .expect("filtered valid GLONASS age");
+            left_age.age_s.partial_cmp(&right_age.age_s).unwrap_or(Ordering::Equal).then_with(
+                || {
                     left_age
                         .transmit_glonass_time_s
                         .partial_cmp(&right_age.transmit_glonass_time_s)
                         .unwrap_or(Ordering::Equal)
-                })
+                },
+            )
         })
 }
 
@@ -275,11 +278,7 @@ pub fn sat_state_glonass_l1_at_receive_time(
     receive_gps_tow_s: f64,
     signal_travel_time_s: f64,
 ) -> Option<GlonassSatState> {
-    sat_state_glonass_l1(
-        navigation,
-        receive_gps_tow_s - signal_travel_time_s,
-        signal_travel_time_s,
-    )
+    sat_state_glonass_l1(navigation, receive_gps_tow_s - signal_travel_time_s, signal_travel_time_s)
 }
 
 pub fn sat_state_glonass_l1_from_observation(
@@ -326,9 +325,7 @@ fn glonass_broadcast_delta_time_s(
     if age.is_stale() {
         return None;
     }
-    Some(wrap_glonass_time_delta_s(
-        age.transmit_glonass_time_s - age.ephemeris_reference_time_s,
-    ))
+    Some(wrap_glonass_time_delta_s(age.transmit_glonass_time_s - age.ephemeris_reference_time_s))
 }
 
 fn glonass_time_of_day_from_gps_tow_s(transmit_gps_tow_s: f64, gps_minus_glonass_s: f64) -> f64 {
@@ -371,19 +368,14 @@ fn rk4_step(
     dynamics: fn([f64; 6], [f64; 3]) -> [f64; 6],
 ) -> [f64; 6] {
     let k1 = dynamics(state, luni_solar_acceleration_mps2);
-    let k2 = dynamics(
-        add_scaled_state(state, k1, step_s * 0.5),
-        luni_solar_acceleration_mps2,
-    );
-    let k3 = dynamics(
-        add_scaled_state(state, k2, step_s * 0.5),
-        luni_solar_acceleration_mps2,
-    );
+    let k2 = dynamics(add_scaled_state(state, k1, step_s * 0.5), luni_solar_acceleration_mps2);
+    let k3 = dynamics(add_scaled_state(state, k2, step_s * 0.5), luni_solar_acceleration_mps2);
     let k4 = dynamics(add_scaled_state(state, k3, step_s), luni_solar_acceleration_mps2);
 
     let mut next_state = state;
     for index in 0..next_state.len() {
-        next_state[index] += step_s / 6.0 * (k1[index] + 2.0 * k2[index] + 2.0 * k3[index] + k4[index]);
+        next_state[index] +=
+            step_s / 6.0 * (k1[index] + 2.0 * k2[index] + 2.0 * k3[index] + k4[index]);
     }
     next_state
 }
@@ -421,10 +413,7 @@ fn glonass_ecef_state_from_inertial(inertial_state: [f64; 6], delta_t_s: f64) ->
     ]
 }
 
-fn glonass_inertial_dynamics(
-    state: [f64; 6],
-    luni_solar_acceleration_mps2: [f64; 3],
-) -> [f64; 6] {
+fn glonass_inertial_dynamics(state: [f64; 6], luni_solar_acceleration_mps2: [f64; 3]) -> [f64; 6] {
     let x_m = state[0];
     let y_m = state[1];
     let z_m = state[2];
@@ -436,11 +425,7 @@ fn glonass_inertial_dynamics(
     let radius_m = radius_squared_m2.sqrt();
     let radius_cubed_m3 = radius_squared_m2 * radius_m;
     let radius_fifth_m5 = radius_cubed_m3 * radius_squared_m2;
-    let z_ratio_squared = if radius_squared_m2 > 0.0 {
-        z_m * z_m / radius_squared_m2
-    } else {
-        0.0
-    };
+    let z_ratio_squared = if radius_squared_m2 > 0.0 { z_m * z_m / radius_squared_m2 } else { 0.0 };
     let central_acceleration = -GLONASS_MU_M3PS2 / radius_cubed_m3;
     let j2_acceleration =
         1.5 * GLONASS_C20 * GLONASS_MU_M3PS2 * GLONASS_EARTH_RADIUS_M.powi(2) / radius_fifth_m5;
@@ -497,7 +482,10 @@ mod tests {
                 immediate_data_age_days: 28,
                 satellite_type: GlonassSatelliteType::GlonassM,
                 reported_slot: None,
-                system_time: Some(GlonassSystemTime { day_number: 864, four_year_interval: Some(8) }),
+                system_time: Some(GlonassSystemTime {
+                    day_number: 864,
+                    four_year_interval: Some(8),
+                }),
                 accuracy_code: Some(2),
             },
             system_time: Some(GlonassAlmanacTimeData {
@@ -540,9 +528,18 @@ mod tests {
 
         let state = sat_state_glonass_l1(&navigation, 504_918.0, 0.0).expect("satellite state");
 
-        assert!((state.x_m - (navigation.immediate.state_vector.x_m + PZ90_02_TO_ITRF2000_X_M)).abs() < 1.0e-9);
-        assert!((state.y_m - (navigation.immediate.state_vector.y_m + PZ90_02_TO_ITRF2000_Y_M)).abs() < 1.0e-9);
-        assert!((state.z_m - (navigation.immediate.state_vector.z_m + PZ90_02_TO_ITRF2000_Z_M)).abs() < 1.0e-9);
+        assert!(
+            (state.x_m - (navigation.immediate.state_vector.x_m + PZ90_02_TO_ITRF2000_X_M)).abs()
+                < 1.0e-9
+        );
+        assert!(
+            (state.y_m - (navigation.immediate.state_vector.y_m + PZ90_02_TO_ITRF2000_Y_M)).abs()
+                < 1.0e-9
+        );
+        assert!(
+            (state.z_m - (navigation.immediate.state_vector.z_m + PZ90_02_TO_ITRF2000_Z_M)).abs()
+                < 1.0e-9
+        );
         assert!((state.clock_correction.bias_s - 2.572_406_083_345_413_2e-5).abs() < 1.0e-18);
     }
 

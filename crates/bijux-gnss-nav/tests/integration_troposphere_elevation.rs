@@ -43,16 +43,18 @@ fn synthetic_low_elevation_residuals_improve_with_troposphere_correction() {
     let low_samples = samples
         .iter()
         .copied()
-        .filter(|sample| sample.elevation_deg > 0.0 && sample.elevation_deg < LOW_ELEVATION_CEILING_DEG)
+        .filter(|sample| {
+            sample.elevation_deg > 0.0 && sample.elevation_deg < LOW_ELEVATION_CEILING_DEG
+        })
         .collect::<Vec<_>>();
-    let high_samples = samples
-        .iter()
-        .copied()
-        .filter(|sample| sample.elevation_deg >= 45.0)
-        .collect::<Vec<_>>();
+    let high_samples =
+        samples.iter().copied().filter(|sample| sample.elevation_deg >= 45.0).collect::<Vec<_>>();
 
     assert!(!low_samples.is_empty(), "synthetic scenario should include low-elevation satellites");
-    assert!(!high_samples.is_empty(), "synthetic scenario should include high-elevation satellites");
+    assert!(
+        !high_samples.is_empty(),
+        "synthetic scenario should include high-elevation satellites"
+    );
     assert!(
         mean_abs_improvement_m(&samples) > 0.5,
         "synthetic troposphere correction should reduce residuals overall: {samples:?}"
@@ -80,8 +82,10 @@ fn public_ab43_troposphere_correction_improves_low_elevation_residuals() {
         write_public_troposphere_fixture("public_troposphere_elevation/ab43.json", &report);
     }
     let expected = load_public_troposphere_fixture_text("public_troposphere_elevation/ab43.json");
-    let actual =
-        format!("{}\n", serde_json::to_string_pretty(&report).expect("serialize troposphere report"));
+    let actual = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&report).expect("serialize troposphere report")
+    );
 
     assert_eq!(
         actual,
@@ -129,8 +133,9 @@ fn synthetic_residual_samples(
         .observations
         .iter()
         .filter_map(|reference_observation| {
-            let biased_observation =
-                observations.iter().find(|observation| observation.sat == reference_observation.sat)?;
+            let biased_observation = observations
+                .iter()
+                .find(|observation| observation.sat == reference_observation.sat)?;
             let ephemeris = scenario
                 .ephemerides
                 .iter()
@@ -150,7 +155,8 @@ fn synthetic_residual_samples(
                 state.z_m,
             );
             let modeled_delay_m = model.delay_m(receiver, elevation_deg, Seconds(scenario.t_rx_s));
-            let injected_delay_m = biased_observation.pseudorange_m - reference_observation.pseudorange_m;
+            let injected_delay_m =
+                biased_observation.pseudorange_m - reference_observation.pseudorange_m;
 
             Some(ResidualSample {
                 elevation_deg,
@@ -174,10 +180,7 @@ fn load_public_troposphere_fixture_text(fixture_file: &str) -> String {
         .expect("public troposphere elevation fixture")
 }
 
-fn write_public_troposphere_fixture(
-    fixture_file: &str,
-    report: &PublicTroposphereElevationReport,
-) {
+fn write_public_troposphere_fixture(fixture_file: &str, report: &PublicTroposphereElevationReport) {
     let path = public_troposphere_fixture_path(fixture_file);
     let parent = path.parent().expect("fixture parent directory");
     fs::create_dir_all(parent).expect("create troposphere fixture directory");

@@ -19,7 +19,8 @@ fn rtk_antenna_corrections_reduce_synthetic_sd_and_dd_residuals() {
         satellite_calibrations: Some(case.satellite_calibrations.clone()),
     };
 
-    let single_differences = rtk_single_differences_from_obs_epochs(&case.base_epoch, &case.rover_epoch);
+    let single_differences =
+        rtk_single_differences_from_obs_epochs(&case.base_epoch, &case.rover_epoch);
     let uncorrected_sd = rtk_single_difference_residual_metrics(
         &single_differences,
         case.base_ecef_m,

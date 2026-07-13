@@ -47,15 +47,7 @@ fn public_gps_broadcast_ionosphere_code_summary_preserves_l1_l2_scaling() {
     let scaling = (l1_hz * l1_hz) / (l2_hz * l2_hz);
 
     approx_eq(code_band_2.mean_residual_m, code_band_1.mean_residual_m * scaling, 1.0e-12);
-    approx_eq(
-        code_band_2.mean_abs_residual_m,
-        code_band_1.mean_abs_residual_m * scaling,
-        1.0e-12,
-    );
+    approx_eq(code_band_2.mean_abs_residual_m, code_band_1.mean_abs_residual_m * scaling, 1.0e-12);
     approx_eq(code_band_2.rms_residual_m, code_band_1.rms_residual_m * scaling, 1.0e-12);
-    approx_eq(
-        code_band_2.max_abs_residual_m,
-        code_band_1.max_abs_residual_m * scaling,
-        1.0e-12,
-    );
+    approx_eq(code_band_2.max_abs_residual_m, code_band_1.max_abs_residual_m * scaling, 1.0e-12);
 }

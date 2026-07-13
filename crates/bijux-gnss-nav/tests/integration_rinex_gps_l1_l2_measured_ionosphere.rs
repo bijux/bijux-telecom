@@ -91,8 +91,7 @@ fn rinex_gps_l1_l2_measured_ionosphere_uses_signal_specific_wavelengths() {
             < 1.0e-9
     );
     assert!(
-        (combinations[0].if_phase_m.expect("iono-free phase") - expected_if_phase_m).abs()
-            < 1.0e-9
+        (combinations[0].if_phase_m.expect("iono-free phase") - expected_if_phase_m).abs() < 1.0e-9
     );
     assert!(
         (measured_ionosphere[0].code_geometry_free_m.expect("geometry-free code")
@@ -106,5 +105,7 @@ fn rinex_gps_l1_l2_measured_ionosphere_uses_signal_specific_wavelengths() {
             .abs()
             < 1.0e-9
     );
-    assert!((iono_free_phase[0].phase_m.expect("iono-free phase") - expected_if_phase_m).abs() < 1.0e-9);
+    assert!(
+        (iono_free_phase[0].phase_m.expect("iono-free phase") - expected_if_phase_m).abs() < 1.0e-9
+    );
 }

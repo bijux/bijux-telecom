@@ -9,7 +9,8 @@ use support::public_broadcast_ionosphere_case::valid_broadcast_residuals;
 #[test]
 fn public_gps_broadcast_ionosphere_residuals_span_multiple_epochs_and_satellites() {
     let valid = valid_broadcast_residuals();
-    let epoch_indices = valid.iter().map(|observation| observation.epoch_idx).collect::<BTreeSet<_>>();
+    let epoch_indices =
+        valid.iter().map(|observation| observation.epoch_idx).collect::<BTreeSet<_>>();
     let satellites = valid.iter().map(|observation| observation.sat).collect::<BTreeSet<_>>();
 
     assert!(epoch_indices.len() > 5, "expected residuals across multiple AB43 epochs");

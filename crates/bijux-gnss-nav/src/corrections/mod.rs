@@ -76,9 +76,8 @@ mod tests {
 
     #[test]
     fn compute_corrections_preserves_earth_tide_displacement() {
-        let corrections = compute_corrections(&CorrectionContext::with_earth_tide_m([
-            0.012, -0.004, 0.031,
-        ]));
+        let corrections =
+            compute_corrections(&CorrectionContext::with_earth_tide_m([0.012, -0.004, 0.031]));
 
         assert_eq!(corrections.earth_tide_m, [0.012, -0.004, 0.031]);
     }

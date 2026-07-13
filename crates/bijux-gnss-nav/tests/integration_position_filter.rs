@@ -2,9 +2,9 @@
 mod support;
 
 use bijux_gnss_nav::api::{
-    geodetic_to_ecef, GpsEphemeris, PositionFilter, PositionFilterConfig,
-    PositionFilterDivergenceReason, PositionSolveRefusalKind, TrajectoryReconstructionInput,
-    trajectory_reconstruction_report,
+    geodetic_to_ecef, trajectory_reconstruction_report, GpsEphemeris, PositionFilter,
+    PositionFilterConfig, PositionFilterDivergenceReason, PositionSolveRefusalKind,
+    TrajectoryReconstructionInput,
 };
 
 use support::position_truth::{
@@ -551,17 +551,40 @@ fn sequential_position_filter_reports_moving_trajectory_error_over_time() {
         trajectory_inputs.push(trajectory_input(&solution, epoch.truth_ecef_m));
     }
 
-    let report =
-        trajectory_reconstruction_report(&trajectory_inputs).expect("trajectory report should build");
+    let report = trajectory_reconstruction_report(&trajectory_inputs)
+        .expect("trajectory report should build");
 
     assert_eq!(report.samples.len(), epochs.len());
     assert_eq!(report.samples[0].t_rx_s, epochs[0].t_rx_s);
-    assert_eq!(report.samples.last().expect("last sample").t_rx_s, epochs.last().expect("last epoch").t_rx_s);
-    assert!(report.rms_position_error_3d_m < 20.0, "rms_position_error_3d_m={}", report.rms_position_error_3d_m);
-    assert!(report.max_position_error_3d_m < 25.0, "max_position_error_3d_m={}", report.max_position_error_3d_m);
-    assert!(report.final_position_error_3d_m < 20.0, "final_position_error_3d_m={}", report.final_position_error_3d_m);
-    assert!(report.rms_step_error_3d_m.expect("step rms") < 6.0, "rms_step_error_3d_m={:?}", report.rms_step_error_3d_m);
-    assert!(report.max_step_error_3d_m.expect("step max") < 8.5, "max_step_error_3d_m={:?}", report.max_step_error_3d_m);
+    assert_eq!(
+        report.samples.last().expect("last sample").t_rx_s,
+        epochs.last().expect("last epoch").t_rx_s
+    );
+    assert!(
+        report.rms_position_error_3d_m < 20.0,
+        "rms_position_error_3d_m={}",
+        report.rms_position_error_3d_m
+    );
+    assert!(
+        report.max_position_error_3d_m < 25.0,
+        "max_position_error_3d_m={}",
+        report.max_position_error_3d_m
+    );
+    assert!(
+        report.final_position_error_3d_m < 20.0,
+        "final_position_error_3d_m={}",
+        report.final_position_error_3d_m
+    );
+    assert!(
+        report.rms_step_error_3d_m.expect("step rms") < 6.0,
+        "rms_step_error_3d_m={:?}",
+        report.rms_step_error_3d_m
+    );
+    assert!(
+        report.max_step_error_3d_m.expect("step max") < 8.5,
+        "max_step_error_3d_m={:?}",
+        report.max_step_error_3d_m
+    );
 }
 
 #[test]
@@ -591,12 +614,13 @@ fn sequential_position_filter_trajectory_report_beats_independent_epochs() {
         independent_inputs.push(trajectory_input(&independent_solution, epoch.truth_ecef_m));
     }
 
-    let dynamic_report =
-        trajectory_reconstruction_report(&dynamic_inputs).expect("dynamic trajectory report should build");
+    let dynamic_report = trajectory_reconstruction_report(&dynamic_inputs)
+        .expect("dynamic trajectory report should build");
     let independent_report = trajectory_reconstruction_report(&independent_inputs)
         .expect("independent trajectory report should build");
     let truth_distance_m = dynamic_report.cumulative_truth_distance_m;
-    let dynamic_distance_error_m = (dynamic_report.cumulative_estimated_distance_m - truth_distance_m).abs();
+    let dynamic_distance_error_m =
+        (dynamic_report.cumulative_estimated_distance_m - truth_distance_m).abs();
     let independent_distance_error_m =
         (independent_report.cumulative_estimated_distance_m - truth_distance_m).abs();
 
@@ -1077,11 +1101,8 @@ fn sequential_position_filter_stays_stable_when_satellite_rises() {
     let mut post_rise_position_errors_m = Vec::new();
 
     for (epoch_index, epoch) in epochs.iter().enumerate() {
-        let visible_prns = if epoch_index < 3 {
-            &[1, 2, 3, 4, 5][..]
-        } else {
-            &[1, 2, 3, 4, 5, 6][..]
-        };
+        let visible_prns =
+            if epoch_index < 3 { &[1, 2, 3, 4, 5][..] } else { &[1, 2, 3, 4, 5, 6][..] };
         let observations = observations_for_prns(&epoch.observations, visible_prns);
         let solution = filter
             .solve_epoch(&observations, &ephemerides, epoch.t_rx_s)
@@ -1122,11 +1143,8 @@ fn sequential_position_filter_stays_stable_when_satellite_set_changes() {
     let mut post_transition_position_errors_m = Vec::new();
 
     for (epoch_index, epoch) in epochs.iter().enumerate() {
-        let visible_prns = if epoch_index < 3 {
-            &[1, 2, 3, 4, 5, 6][..]
-        } else {
-            &[2, 3, 4, 5, 6, 7][..]
-        };
+        let visible_prns =
+            if epoch_index < 3 { &[1, 2, 3, 4, 5, 6][..] } else { &[2, 3, 4, 5, 6, 7][..] };
         let observations = observations_for_prns(&epoch.observations, visible_prns);
         let solution = filter
             .solve_epoch(&observations, &ephemerides, epoch.t_rx_s)
@@ -1151,10 +1169,7 @@ fn sequential_position_filter_stays_stable_when_satellite_set_changes() {
     assert_eq!(filter.last_visible_sats.len(), 6);
     assert!(filter.last_visible_sats.iter().any(|sat| sat.prn == 7));
     assert!(!filter.last_visible_sats.iter().any(|sat| sat.prn == 1));
-    assert_eq!(
-        filter.last_t_rx_s,
-        Some(epochs.last().expect("set-change epochs").t_rx_s)
-    );
+    assert_eq!(filter.last_t_rx_s, Some(epochs.last().expect("set-change epochs").t_rx_s));
     assert!(
         root_mean_square(&post_transition_position_errors_m) < 6.0,
         "post_transition_rms_m={}",

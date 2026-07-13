@@ -265,8 +265,7 @@ mod tests {
             wavelength_m: 0.190_293_672_798_364_87,
             sigma_hz: 0.1,
         };
-        let state =
-            [1_117_194.907, -4_842_953.615, 3_985_351.233, 32.0, -11.0, 4.0, 2.75e-4, 0.0];
+        let state = [1_117_194.907, -4_842_953.615, 3_985_351.233, 32.0, -11.0, 4.0, 2.75e-4, 0.0];
         let mut jacobian = Matrix::new(1, 8, 0.0);
 
         measurement.jacobian(&state, &mut jacobian);
@@ -299,12 +298,9 @@ mod tests {
         measurement.h(&drifting_state, &mut drifting_prediction);
         measurement.h(&stable_state, &mut stable_prediction);
 
-        let expected_delta_hz =
-            299_792_458.0 * drifting_state[7] / measurement.wavelength_m;
+        let expected_delta_hz = 299_792_458.0 * drifting_state[7] / measurement.wavelength_m;
 
-        assert!(
-            (drifting_prediction[0] - stable_prediction[0] - expected_delta_hz).abs() < 1.0e-9
-        );
+        assert!((drifting_prediction[0] - stable_prediction[0] - expected_delta_hz).abs() < 1.0e-9);
     }
 }
 

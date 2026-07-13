@@ -85,12 +85,7 @@ fn satellite(
         doppler_hz: Hertz(0.0),
         doppler_var_hz2: 1.0,
         cn0_dbhz: 45.0,
-        lock_flags: LockFlags {
-            code_lock: true,
-            carrier_lock: true,
-            bit_lock: false,
-            cycle_slip,
-        },
+        lock_flags: LockFlags { code_lock: true, carrier_lock: true, bit_lock: false, cycle_slip },
         multipath_suspect: false,
         observation_status: ObservationStatus::Accepted,
         observation_reject_reasons: Vec::new(),
@@ -149,8 +144,12 @@ fn measured_ionosphere_recovers_gps_l1_l5_slant_delay() {
     assert_eq!(observation.phase_arc_reset, true);
     assert!((observation.code_delay_band_1_m.expect("L1 delay") - l1_delay_m).abs() < 1.0e-6);
     assert!((observation.code_delay_band_2_m.expect("L5 delay") - l5_delay_m).abs() < 1.0e-6);
-    assert!((observation.phase_delay_band_1_m.expect("phase L1 delay") - l1_delay_m).abs() < 1.0e-6);
-    assert!((observation.phase_delay_band_2_m.expect("phase L5 delay") - l5_delay_m).abs() < 1.0e-6);
+    assert!(
+        (observation.phase_delay_band_1_m.expect("phase L1 delay") - l1_delay_m).abs() < 1.0e-6
+    );
+    assert!(
+        (observation.phase_delay_band_2_m.expect("phase L5 delay") - l5_delay_m).abs() < 1.0e-6
+    );
 }
 
 #[test]
@@ -191,8 +190,7 @@ fn measured_ionosphere_relevels_gps_l1_l5_phase_arc_after_cycle_slip() {
         ),
     ];
 
-    let observations =
-        measured_ionosphere_from_obs_epochs(&epochs, SignalBand::L1, SignalBand::L5);
+    let observations = measured_ionosphere_from_obs_epochs(&epochs, SignalBand::L1, SignalBand::L5);
 
     assert_eq!(observations.len(), 2);
     assert_eq!(observations[0].phase_status, "ok");
@@ -202,13 +200,13 @@ fn measured_ionosphere_relevels_gps_l1_l5_phase_arc_after_cycle_slip() {
     assert!(
         (observations[1].phase_level_bias_m.expect("new bias")
             - observations[0].phase_level_bias_m.expect("old bias"))
-            .abs()
+        .abs()
             > 1.0
     );
     assert!(
         (observations[0].phase_delay_band_1_m.expect("first epoch L1 delay")
             - observations[1].phase_delay_band_1_m.expect("second epoch L1 delay"))
-            .abs()
+        .abs()
             < 1.0e-6
     );
 }

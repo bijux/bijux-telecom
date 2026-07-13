@@ -3,9 +3,7 @@
 use bijux_gnss_core::api::GpsTime;
 use serde::{Deserialize, Serialize};
 
-use crate::models::celestial::{
-    approximate_moon_position_ecef_m, approximate_sun_position_ecef_m,
-};
+use crate::models::celestial::{approximate_moon_position_ecef_m, approximate_sun_position_ecef_m};
 
 const EARTH_GRAVITATIONAL_PARAMETER_M3PS2: f64 = 3.986_004_418e14;
 const IERS_EARTH_EQUATORIAL_RADIUS_M: f64 = 6_378_136.6;
@@ -55,10 +53,7 @@ impl SolidEarthTideModel {
         add_assign3(&mut displacement_ecef_m, degree_three_moon_m(station, moon));
         add_assign3(
             &mut displacement_ecef_m,
-            add3(
-                diurnal_l1_transverse_m(station, moon),
-                diurnal_l1_transverse_m(station, sun),
-            ),
+            add3(diurnal_l1_transverse_m(station, moon), diurnal_l1_transverse_m(station, sun)),
         );
         add_assign3(
             &mut displacement_ecef_m,
@@ -69,10 +64,7 @@ impl SolidEarthTideModel {
         );
         add_assign3(
             &mut displacement_ecef_m,
-            add3(
-                diurnal_out_of_phase_m(station, moon),
-                diurnal_out_of_phase_m(station, sun),
-            ),
+            add3(diurnal_out_of_phase_m(station, moon), diurnal_out_of_phase_m(station, sun)),
         );
         add_assign3(
             &mut displacement_ecef_m,
@@ -166,7 +158,8 @@ impl BodyState {
 }
 
 fn degree_two_in_phase_m(station: StationFrame, body: BodyState) -> [f64; 3] {
-    let love_number = DEGREE_TWO_LOVE_NUMBER + DEGREE_TWO_LATITUDE_LOVE_OFFSET * station.latitude_adjustment();
+    let love_number =
+        DEGREE_TWO_LOVE_NUMBER + DEGREE_TWO_LATITUDE_LOVE_OFFSET * station.latitude_adjustment();
     let shida_number =
         DEGREE_TWO_SHIDA_NUMBER + DEGREE_TWO_LATITUDE_SHIDA_OFFSET * station.latitude_adjustment();
     let dot = dot3(body.unit_ecef, station.radial_hat);
@@ -317,8 +310,9 @@ mod tests {
 
     #[test]
     fn degree_two_in_phase_matches_aligned_radial_closed_form() {
-        let station = StationFrame::from_receiver_ecef_m([IERS_EARTH_EQUATORIAL_RADIUS_M, 0.0, 0.0])
-            .expect("station frame");
+        let station =
+            StationFrame::from_receiver_ecef_m([IERS_EARTH_EQUATORIAL_RADIUS_M, 0.0, 0.0])
+                .expect("station frame");
         let body_distance_m = 384_400_000.0;
         let body =
             BodyState::from_ecef_m([body_distance_m, 0.0, 0.0], MOON_GRAVITATIONAL_PARAMETER_M3PS2)
@@ -345,7 +339,10 @@ mod tests {
 
         assert!(displacement.into_iter().all(f64::is_finite));
         let displacement_norm_m = norm3(displacement);
-        assert!(displacement_norm_m > 0.05, "unexpectedly small displacement {displacement_norm_m}");
+        assert!(
+            displacement_norm_m > 0.05,
+            "unexpectedly small displacement {displacement_norm_m}"
+        );
         assert!(displacement_norm_m < 0.6, "unexpectedly large displacement {displacement_norm_m}");
     }
 

@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use bijux_gnss_core::api::{Constellation, SatId};
 use bijux_gnss_nav::api::{
     sat_state_glonass_l1, GlonassAlmanacTimeData, GlonassBroadcastNavigationFrame,
-    GlonassFrameTime, GlonassImmediateHealth, GlonassImmediateNavigationData,
-    GlonassSatelliteType, GlonassStateVector, GlonassSystemTime, Sp3Provider,
+    GlonassFrameTime, GlonassImmediateHealth, GlonassImmediateNavigationData, GlonassSatelliteType,
+    GlonassStateVector, GlonassSystemTime, Sp3Provider,
 };
 
 const GLONASS_BROADCAST_POSITION_TOLERANCE_M: f64 = 300.0;
@@ -30,7 +30,6 @@ fn glonass_broadcast_position_matches_precise_reference_within_tolerance() {
         let dz_m = broadcast.z_m - precise.z_m;
         let position_error_m = (dx_m * dx_m + dy_m * dy_m + dz_m * dz_m).sqrt();
         max_position_error_m = max_position_error_m.max(position_error_m);
-
     }
 
     assert!(

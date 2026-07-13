@@ -57,10 +57,9 @@ pub fn melbourne_wubbena_diagnostics_from_obs_epochs(
     for combination in combinations_from_obs_epochs(epochs, band_1, band_2) {
         let mut delta_from_previous_m = None;
         let mut delta_from_previous_wide_lane_cycles = None;
-        let wide_lane_wavelength_m =
-            combination.wide_lane_wavelength_m.or_else(|| {
-                wide_lane_wavelength_m_from_frequencies(combination.f1_hz, combination.f2_hz)
-            });
+        let wide_lane_wavelength_m = combination.wide_lane_wavelength_m.or_else(|| {
+            wide_lane_wavelength_m_from_frequencies(combination.f1_hz, combination.f2_hz)
+        });
         let event = if combination.status != "ok" {
             previous_by_sat.remove(&combination.sat);
             MelbourneWubbenaEvent::Unavailable

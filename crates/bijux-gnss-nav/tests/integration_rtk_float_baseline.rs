@@ -126,12 +126,11 @@ fn rtk_float_baseline_solver_accepts_explicit_rover_prior() {
 #[test]
 fn rtk_float_baseline_solver_supports_gps_l2c_wavelengths() {
     let scenario = clean_gps_l1_short_baseline_case();
-    let double_differences =
-        retarget_double_differences_signal(
-            &scenario.double_differences,
-            SignalBand::L2,
-            SignalCode::L2C,
-        );
+    let double_differences = retarget_double_differences_signal(
+        &scenario.double_differences,
+        SignalBand::L2,
+        SignalCode::L2C,
+    );
 
     let solution = rtk_float_baseline_from_double_differences(
         &double_differences,
@@ -147,12 +146,11 @@ fn rtk_float_baseline_solver_supports_gps_l2c_wavelengths() {
 #[test]
 fn rtk_float_baseline_solver_supports_gps_l5_wavelengths() {
     let scenario = clean_gps_l1_short_baseline_case();
-    let double_differences =
-        retarget_double_differences_signal(
-            &scenario.double_differences,
-            SignalBand::L5,
-            SignalCode::Unknown,
-        );
+    let double_differences = retarget_double_differences_signal(
+        &scenario.double_differences,
+        SignalBand::L5,
+        SignalCode::Unknown,
+    );
 
     let solution = rtk_float_baseline_from_double_differences(
         &double_differences,

@@ -164,10 +164,8 @@ fn elevation_weight_respects_minimum_weight_floor() {
 
 #[test]
 fn cn0_weight_prefers_stronger_signals() {
-    let config = WeightingConfig {
-        model: PositionWeightingModel::Cn0,
-        ..WeightingConfig::default()
-    };
+    let config =
+        WeightingConfig { model: PositionWeightingModel::Cn0, ..WeightingConfig::default() };
     let weak_signal_weight = weight_from_cn0(28.0, config);
     let strong_signal_weight = weight_from_cn0(48.0, config);
 
@@ -204,10 +202,8 @@ fn elevation_cn0_weight_multiplies_geometry_terms() {
 
 #[test]
 fn composite_position_weight_multiplies_cn0_and_sigma_terms() {
-    let config = WeightingConfig {
-        model: PositionWeightingModel::Cn0,
-        ..WeightingConfig::default()
-    };
+    let config =
+        WeightingConfig { model: PositionWeightingModel::Cn0, ..WeightingConfig::default() };
     let geometry_weight = weight_from_cn0(35.0, config);
     let sigma_weight = weight_from_pseudorange_sigma(Some(4.0));
     let composite = position_measurement_weight(Some(35.0), None, Some(4.0), config);

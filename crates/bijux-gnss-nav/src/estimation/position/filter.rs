@@ -1462,18 +1462,10 @@ mod tests {
         assert_eq!(filter.ekf.p[(3, 3)], 9.0);
         assert_eq!(filter.ekf.p[(4, 4)], 9.0);
         assert_eq!(filter.ekf.p[(5, 5)], 9.0);
-        assert!(
-            filter.ekf.p[(filter.indices.clock_bias, filter.indices.clock_bias)].is_finite()
-        );
-        assert!(
-            filter.ekf.p[(filter.indices.clock_bias, filter.indices.clock_bias)] >= 4.0e-14
-        );
-        assert!(
-            filter.ekf.p[(filter.indices.clock_drift, filter.indices.clock_drift)].is_finite()
-        );
-        assert!(
-            filter.ekf.p[(filter.indices.clock_drift, filter.indices.clock_drift)] >= 4.0e-16
-        );
+        assert!(filter.ekf.p[(filter.indices.clock_bias, filter.indices.clock_bias)].is_finite());
+        assert!(filter.ekf.p[(filter.indices.clock_bias, filter.indices.clock_bias)] >= 4.0e-14);
+        assert!(filter.ekf.p[(filter.indices.clock_drift, filter.indices.clock_drift)].is_finite());
+        assert!(filter.ekf.p[(filter.indices.clock_drift, filter.indices.clock_drift)] >= 4.0e-16);
     }
 
     #[test]

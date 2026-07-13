@@ -66,7 +66,8 @@ fn raim_solution_separation_identifies_bad_satellite_from_subset_solves() {
     let detection = solution
         .raim_fault_detection
         .expect("bad-pseudorange scenario should evaluate RAIM detection");
-    let max_subset = separation.max_separation().expect("subset comparison should produce a maximum");
+    let max_subset =
+        separation.max_separation().expect("subset comparison should produce a maximum");
 
     assert_eq!(separation.reference_sat_count, solution.used_sat_count);
     assert_eq!(separation.compared_subset_count(), solution.used_sat_count);

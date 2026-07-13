@@ -56,10 +56,8 @@ fn parse_antex_calibrations(
                 if let Some(pending) = current.as_mut() {
                     pending.antenna_type = field(line, 0, 20).trim().to_string();
                     pending.sat = parse_antex_satellite_id(&field(line, 0, 40))?;
-                    pending.receiver_antenna_type = pending
-                        .sat
-                        .is_none()
-                        .then(|| parse_antex_receiver_antenna_type(line));
+                    pending.receiver_antenna_type =
+                        pending.sat.is_none().then(|| parse_antex_receiver_antenna_type(line));
                 }
             }
             "VALID FROM" => {
@@ -180,15 +178,12 @@ fn parse_antex_datetime_unix_s(line: &str) -> Result<f64, ParseError> {
     if fields.len() != 6 {
         return Err(ParseError { message: "ANTEX datetime must contain six fields".to_string() });
     }
-    let month = Month::try_from(fields[1] as u8).map_err(|_| ParseError {
-        message: format!("invalid ANTEX month: {}", fields[1]),
-    })?;
-    let date = Date::from_calendar_date(fields[0], month, fields[2] as u8).map_err(|_| {
-        ParseError { message: "invalid ANTEX calendar date".to_string() }
-    })?;
-    let time = Time::from_hms(fields[3] as u8, fields[4] as u8, fields[5] as u8).map_err(|_| {
-        ParseError { message: "invalid ANTEX clock time".to_string() }
-    })?;
+    let month = Month::try_from(fields[1] as u8)
+        .map_err(|_| ParseError { message: format!("invalid ANTEX month: {}", fields[1]) })?;
+    let date = Date::from_calendar_date(fields[0], month, fields[2] as u8)
+        .map_err(|_| ParseError { message: "invalid ANTEX calendar date".to_string() })?;
+    let time = Time::from_hms(fields[3] as u8, fields[4] as u8, fields[5] as u8)
+        .map_err(|_| ParseError { message: "invalid ANTEX clock time".to_string() })?;
     Ok(PrimitiveDateTime::new(date, time).assume_utc().unix_timestamp() as f64)
 }
 
@@ -203,9 +198,9 @@ fn parse_antex_offsets_m(line: &str) -> Result<SatellitePhaseCenterOffset, Parse
         .split_whitespace()
         .take(3)
         .map(|value| {
-            value.parse::<f64>().map_err(|_| ParseError {
-                message: format!("invalid ANTEX offset: {value}"),
-            })
+            value
+                .parse::<f64>()
+                .map_err(|_| ParseError { message: format!("invalid ANTEX offset: {value}") })
         })
         .collect::<Result<Vec<_>, _>>()?;
     if values.len() != 3 {
@@ -287,14 +282,8 @@ mod tests {
         assert_eq!(calibrations.entries.len(), 1);
         let entry = &calibrations.entries[0];
         assert_eq!(entry.sat, SatId { constellation: Constellation::Gps, prn: 1 });
-        assert_eq!(
-            entry.offsets_by_band.get(&SignalBand::L1).expect("L1 offset").body_z_m,
-            1.0
-        );
-        assert_eq!(
-            entry.offsets_by_band.get(&SignalBand::L2).expect("L2 offset").body_x_m,
-            0.2
-        );
+        assert_eq!(entry.offsets_by_band.get(&SignalBand::L1).expect("L1 offset").body_z_m, 1.0);
+        assert_eq!(entry.offsets_by_band.get(&SignalBand::L2).expect("L2 offset").body_x_m, 0.2);
         assert_eq!(
             calibrations
                 .phase_center_offset(
@@ -312,10 +301,7 @@ mod tests {
     fn parse_antex_receiver_calibrations_reads_type_and_band_offsets() {
         let antex = [
             line("", "START OF ANTENNA"),
-            line(
-                &format!("{:<20}{:<20}{:<20}", "AOAD/M_T", "NONE", "12345"),
-                "TYPE / SERIAL NO",
-            ),
+            line(&format!("{:<20}{:<20}{:<20}", "AOAD/M_T", "NONE", "12345"), "TYPE / SERIAL NO"),
             line("  2020  01  01  00  00  00", "VALID FROM"),
             line("G01", "START OF FREQUENCY"),
             line("   100.0   200.0  1200.0", "NORTH / EAST / UP"),

@@ -43,7 +43,9 @@ fn public_gps_broadcast_ionosphere_residuals_preserve_model_and_signal_metadata(
         "expected AB43 valid residuals to preserve L2 as the second signal band",
     );
     assert!(
-        valid.iter().all(|observation| observation.signal_1.is_some() && observation.signal_2.is_some()),
+        valid
+            .iter()
+            .all(|observation| observation.signal_1.is_some() && observation.signal_2.is_some()),
         "expected AB43 valid residuals to preserve concrete signal identifiers",
     );
     assert!(

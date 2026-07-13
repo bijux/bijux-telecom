@@ -101,7 +101,8 @@ pub fn gps_broadcast_ionosphere_residuals_from_obs_epochs(
     band_2: SignalBand,
 ) -> Vec<BroadcastIonosphereResidualObservation> {
     let measured = measured_ionosphere_from_obs_epochs(epochs, band_1, band_2);
-    let epochs_by_idx = epochs.iter().map(|epoch| (epoch.epoch_idx, epoch)).collect::<BTreeMap<_, _>>();
+    let epochs_by_idx =
+        epochs.iter().map(|epoch| (epoch.epoch_idx, epoch)).collect::<BTreeMap<_, _>>();
     let receiver = receiver_llh_from_ecef(receiver_ecef_m);
     let navigation_entries =
         position_broadcast_navigation_from_gps_ephemerides(&navigation.ephemerides);
@@ -137,7 +138,8 @@ pub fn galileo_broadcast_ionosphere_residuals_from_obs_epochs(
     band_2: SignalBand,
 ) -> Vec<BroadcastIonosphereResidualObservation> {
     let measured = measured_ionosphere_from_obs_epochs(epochs, band_1, band_2);
-    let epochs_by_idx = epochs.iter().map(|epoch| (epoch.epoch_idx, epoch)).collect::<BTreeMap<_, _>>();
+    let epochs_by_idx =
+        epochs.iter().map(|epoch| (epoch.epoch_idx, epoch)).collect::<BTreeMap<_, _>>();
     let receiver = receiver_llh_from_ecef(receiver_ecef_m);
     let navigation_entries =
         navigations.iter().cloned().map(PositionBroadcastNavigation::Galileo).collect::<Vec<_>>();
@@ -175,11 +177,11 @@ fn summarize_residual_component(
     let sample_count = values.len();
     let sum = values.iter().sum::<f64>();
     let mean_residual_m = sum / sample_count as f64;
-    let mean_abs_residual_m = values.iter().map(|value| value.abs()).sum::<f64>() / sample_count as f64;
+    let mean_abs_residual_m =
+        values.iter().map(|value| value.abs()).sum::<f64>() / sample_count as f64;
     let rms_residual_m =
         (values.iter().map(|value| value * value).sum::<f64>() / sample_count as f64).sqrt();
-    let max_abs_residual_m =
-        values.iter().map(|value| value.abs()).fold(0.0_f64, f64::max);
+    let max_abs_residual_m = values.iter().map(|value| value.abs()).fold(0.0_f64, f64::max);
 
     Some(BroadcastIonosphereResidualStats {
         sample_count,
@@ -205,16 +207,19 @@ fn compare_gps_broadcast_against_measured(
         return residual;
     };
 
-    let (first, second) =
-        match dual_frequency_observation_pair(epoch, residual.sat, residual.band_1, residual.band_2)
-        {
-            Some(pair) => pair,
-            None => {
-                residual.broadcast_status = "invalid".to_string();
-                residual.broadcast_reason = "missing_frequency".to_string();
-                return residual;
-            }
-        };
+    let (first, second) = match dual_frequency_observation_pair(
+        epoch,
+        residual.sat,
+        residual.band_1,
+        residual.band_2,
+    ) {
+        Some(pair) => pair,
+        None => {
+            residual.broadcast_status = "invalid".to_string();
+            residual.broadcast_reason = "missing_frequency".to_string();
+            return residual;
+        }
+    };
     residual.signal_1 = Some(first.signal_id);
     residual.signal_2 = Some(second.signal_id);
 
@@ -284,18 +289,14 @@ fn compare_gps_broadcast_against_measured(
 
     residual.broadcast_delay_band_1_m = Some(broadcast_delay_band_1_m);
     residual.broadcast_delay_band_2_m = Some(broadcast_delay_band_2_m);
-    residual.code_residual_band_1_m = residual
-        .measured_code_delay_band_1_m
-        .map(|delay_m| delay_m - broadcast_delay_band_1_m);
-    residual.code_residual_band_2_m = residual
-        .measured_code_delay_band_2_m
-        .map(|delay_m| delay_m - broadcast_delay_band_2_m);
-    residual.phase_residual_band_1_m = residual
-        .measured_phase_delay_band_1_m
-        .map(|delay_m| delay_m - broadcast_delay_band_1_m);
-    residual.phase_residual_band_2_m = residual
-        .measured_phase_delay_band_2_m
-        .map(|delay_m| delay_m - broadcast_delay_band_2_m);
+    residual.code_residual_band_1_m =
+        residual.measured_code_delay_band_1_m.map(|delay_m| delay_m - broadcast_delay_band_1_m);
+    residual.code_residual_band_2_m =
+        residual.measured_code_delay_band_2_m.map(|delay_m| delay_m - broadcast_delay_band_2_m);
+    residual.phase_residual_band_1_m =
+        residual.measured_phase_delay_band_1_m.map(|delay_m| delay_m - broadcast_delay_band_1_m);
+    residual.phase_residual_band_2_m =
+        residual.measured_phase_delay_band_2_m.map(|delay_m| delay_m - broadcast_delay_band_2_m);
     residual.broadcast_status = "ok".to_string();
     residual.broadcast_reason = "ok".to_string();
     residual
@@ -315,16 +316,19 @@ fn compare_galileo_broadcast_against_measured(
         return residual;
     };
 
-    let (first, second) =
-        match dual_frequency_observation_pair(epoch, residual.sat, residual.band_1, residual.band_2)
-        {
-            Some(pair) => pair,
-            None => {
-                residual.broadcast_status = "invalid".to_string();
-                residual.broadcast_reason = "missing_frequency".to_string();
-                return residual;
-            }
-        };
+    let (first, second) = match dual_frequency_observation_pair(
+        epoch,
+        residual.sat,
+        residual.band_1,
+        residual.band_2,
+    ) {
+        Some(pair) => pair,
+        None => {
+            residual.broadcast_status = "invalid".to_string();
+            residual.broadcast_reason = "missing_frequency".to_string();
+            return residual;
+        }
+    };
     residual.signal_1 = Some(first.signal_id);
     residual.signal_2 = Some(second.signal_id);
 
@@ -396,18 +400,14 @@ fn compare_galileo_broadcast_against_measured(
 
     residual.broadcast_delay_band_1_m = Some(broadcast_delay_band_1_m);
     residual.broadcast_delay_band_2_m = Some(broadcast_delay_band_2_m);
-    residual.code_residual_band_1_m = residual
-        .measured_code_delay_band_1_m
-        .map(|delay_m| delay_m - broadcast_delay_band_1_m);
-    residual.code_residual_band_2_m = residual
-        .measured_code_delay_band_2_m
-        .map(|delay_m| delay_m - broadcast_delay_band_2_m);
-    residual.phase_residual_band_1_m = residual
-        .measured_phase_delay_band_1_m
-        .map(|delay_m| delay_m - broadcast_delay_band_1_m);
-    residual.phase_residual_band_2_m = residual
-        .measured_phase_delay_band_2_m
-        .map(|delay_m| delay_m - broadcast_delay_band_2_m);
+    residual.code_residual_band_1_m =
+        residual.measured_code_delay_band_1_m.map(|delay_m| delay_m - broadcast_delay_band_1_m);
+    residual.code_residual_band_2_m =
+        residual.measured_code_delay_band_2_m.map(|delay_m| delay_m - broadcast_delay_band_2_m);
+    residual.phase_residual_band_1_m =
+        residual.measured_phase_delay_band_1_m.map(|delay_m| delay_m - broadcast_delay_band_1_m);
+    residual.phase_residual_band_2_m =
+        residual.measured_phase_delay_band_2_m.map(|delay_m| delay_m - broadcast_delay_band_2_m);
     residual.broadcast_status = "ok".to_string();
     residual.broadcast_reason = "ok".to_string();
     residual
@@ -596,11 +596,7 @@ mod tests {
     #[test]
     fn broadcast_ionosphere_residual_summary_ignores_missing_components() {
         let summary = summarize_broadcast_ionosphere_residuals(&[sample_observation(
-            None,
-            None,
-            None,
-            None,
-            "invalid",
+            None, None, None, None, "invalid",
         )]);
 
         assert_eq!(summary.observation_count, 1);

@@ -2,8 +2,10 @@
 
 use std::path::PathBuf;
 
-use bijux_gnss_nav::api::{measured_ionosphere_from_obs_epochs, parse_rinex_gps_observation_dataset};
 use bijux_gnss_core::api::SignalBand;
+use bijux_gnss_nav::api::{
+    measured_ionosphere_from_obs_epochs, parse_rinex_gps_observation_dataset,
+};
 
 fn fixture(name: &str) -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data").join(name);
@@ -26,10 +28,8 @@ fn public_gps_l1_l2_measured_ionosphere_emits_many_valid_code_observations() {
 
     let measured =
         measured_ionosphere_from_obs_epochs(&observations.epochs, SignalBand::L1, SignalBand::L2);
-    let valid_code = measured
-        .iter()
-        .filter(|observation| observation.code_status == "ok")
-        .collect::<Vec<_>>();
+    let valid_code =
+        measured.iter().filter(|observation| observation.code_status == "ok").collect::<Vec<_>>();
 
     assert!(
         valid_code.len() > 50,
@@ -65,10 +65,8 @@ fn public_gps_l1_l2_measured_ionosphere_preserves_code_dual_frequency_relations(
 
     let measured =
         measured_ionosphere_from_obs_epochs(&observations.epochs, SignalBand::L1, SignalBand::L2);
-    let valid_code = measured
-        .iter()
-        .filter(|observation| observation.code_status == "ok")
-        .collect::<Vec<_>>();
+    let valid_code =
+        measured.iter().filter(|observation| observation.code_status == "ok").collect::<Vec<_>>();
 
     assert!(
         valid_code.len() > 50,

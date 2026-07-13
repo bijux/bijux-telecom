@@ -35,11 +35,7 @@ pub fn estimate_position_uncertainty(
     ) = covariance
         .and_then(|covariance| horizontal_error_ellipse(receiver_ecef_m, covariance))
         .map(|ellipse| {
-            (
-                Some(ellipse.major_axis_m),
-                Some(ellipse.minor_axis_m),
-                Some(ellipse.azimuth_deg),
-            )
+            (Some(ellipse.major_axis_m), Some(ellipse.minor_axis_m), Some(ellipse.azimuth_deg))
         })
         .unwrap_or((None, None, None));
     let (sigma_h, sigma_v) = covariance

@@ -127,7 +127,8 @@ fn apply_lunar_perturbations(
     let mean_elongation_rad = mean_elongation_deg.to_radians();
     let argument_of_latitude_rad = argument_of_latitude_deg.to_radians();
 
-    let longitude_correction_deg = -1.274 * (lunar_mean_anomaly_rad - 2.0 * mean_elongation_rad).sin()
+    let longitude_correction_deg = -1.274
+        * (lunar_mean_anomaly_rad - 2.0 * mean_elongation_rad).sin()
         + 0.658 * (2.0 * mean_elongation_rad).sin()
         - 0.186 * solar_mean_anomaly_rad.sin()
         - 0.059 * (2.0 * lunar_mean_anomaly_rad - 2.0 * mean_elongation_rad).sin()
@@ -140,25 +141,26 @@ fn apply_lunar_perturbations(
         - 0.031 * (lunar_mean_anomaly_rad + solar_mean_anomaly_rad).sin()
         - 0.015 * (2.0 * argument_of_latitude_rad - 2.0 * mean_elongation_rad).sin()
         + 0.011 * (lunar_mean_anomaly_rad - 4.0 * mean_elongation_rad).sin();
-    let latitude_correction_deg = -0.173 * (argument_of_latitude_rad - 2.0 * mean_elongation_rad).sin()
+    let latitude_correction_deg = -0.173
+        * (argument_of_latitude_rad - 2.0 * mean_elongation_rad).sin()
         - 0.055
             * (lunar_mean_anomaly_rad - argument_of_latitude_rad - 2.0 * mean_elongation_rad).sin()
         - 0.046
             * (lunar_mean_anomaly_rad + argument_of_latitude_rad - 2.0 * mean_elongation_rad).sin()
         + 0.033 * (argument_of_latitude_rad + 2.0 * mean_elongation_rad).sin()
         + 0.017 * (2.0 * lunar_mean_anomaly_rad + argument_of_latitude_rad).sin();
-    let radius_correction_earth_radii = -0.58 * (lunar_mean_anomaly_rad - 2.0 * mean_elongation_rad).cos()
+    let radius_correction_earth_radii = -0.58
+        * (lunar_mean_anomaly_rad - 2.0 * mean_elongation_rad).cos()
         - 0.46 * (2.0 * mean_elongation_rad).cos();
 
-    *ecliptic_longitude_rad =
-        (*ecliptic_longitude_rad + longitude_correction_deg.to_radians()).rem_euclid(std::f64::consts::TAU);
+    *ecliptic_longitude_rad = (*ecliptic_longitude_rad + longitude_correction_deg.to_radians())
+        .rem_euclid(std::f64::consts::TAU);
     *ecliptic_latitude_rad += latitude_correction_deg.to_radians();
     *radius_earth_radii += radius_correction_earth_radii;
 }
 
 fn rotate_eci_to_ecef_m(eci_m: [f64; 3], julian_day: f64) -> [f64; 3] {
-    let gmst_deg =
-        wrap_degrees(280.460_618_37 + 360.985_647_366_29 * (julian_day - 2_451_545.0));
+    let gmst_deg = wrap_degrees(280.460_618_37 + 360.985_647_366_29 * (julian_day - 2_451_545.0));
     let gmst_rad = gmst_deg.to_radians();
     let cos_theta = gmst_rad.cos();
     let sin_theta = gmst_rad.sin();

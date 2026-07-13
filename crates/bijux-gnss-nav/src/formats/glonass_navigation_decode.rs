@@ -7,8 +7,7 @@ use bijux_gnss_core::api::{glonass_slot_sat, GlonassFrequencyChannel, GlonassSlo
 use crate::orbits::glonass::{
     glonass_satellite_type_from_word, semicircles_to_radians, GlonassAlmanacEntry,
     GlonassAlmanacTimeData, GlonassBroadcastNavigationFrame, GlonassFrameTime,
-    GlonassImmediateHealth, GlonassImmediateNavigationData, GlonassStateVector,
-    GlonassSystemTime,
+    GlonassImmediateHealth, GlonassImmediateNavigationData, GlonassStateVector, GlonassSystemTime,
 };
 
 const GLONASS_STRING_BITS: usize = 85;
@@ -46,7 +45,11 @@ impl GlonassNavigationString {
         let sign_mask = 1_u64 << (width - 1);
         let magnitude_mask = sign_mask - 1;
         let magnitude = (raw & magnitude_mask) as f64 * lsb;
-        if raw & sign_mask == 0 { magnitude } else { -magnitude }
+        if raw & sign_mask == 0 {
+            magnitude
+        } else {
+            -magnitude
+        }
     }
 }
 
@@ -200,35 +203,51 @@ fn parity_state(bits: &[u8; GLONASS_STRING_BITS]) -> (u8, bool) {
         checksum_c6(bits),
         checksum_c7(bits),
     ];
-    let syndrome = checksums
-        .iter()
-        .enumerate()
-        .fold(0_u8, |acc, (idx, value)| acc | (*value << idx));
+    let syndrome =
+        checksums.iter().enumerate().fold(0_u8, |acc, (idx, value)| acc | (*value << idx));
     (syndrome, checksum_overall(bits) == 1)
 }
 
 fn checksum_c1(bits: &[u8; GLONASS_STRING_BITS]) -> u8 {
-    bit(bits, 1) ^ xor_positions(
-        bits,
-        &[
-            9, 10, 12, 13, 15, 17, 19, 20, 22, 24, 26, 28, 30, 32, 34, 35, 37, 39, 41, 43, 45,
-            47, 49, 51, 53, 55, 57, 59, 61, 63, 65, 66, 68, 70, 72, 74, 76, 78, 80, 82, 84,
-        ],
-    )
+    bit(bits, 1)
+        ^ xor_positions(
+            bits,
+            &[
+                9, 10, 12, 13, 15, 17, 19, 20, 22, 24, 26, 28, 30, 32, 34, 35, 37, 39, 41, 43, 45,
+                47, 49, 51, 53, 55, 57, 59, 61, 63, 65, 66, 68, 70, 72, 74, 76, 78, 80, 82, 84,
+            ],
+        )
 }
 
 fn checksum_c2(bits: &[u8; GLONASS_STRING_BITS]) -> u8 {
-    bit(bits, 2) ^ xor_positions(
-        bits,
-        &[
-            9, 11, 12, 14, 15, 18, 19, 21, 22, 25, 26, 29, 30, 33, 34, 36, 37, 40, 41, 44, 45,
-            48, 49, 52, 53, 56, 57, 60, 61, 64, 65, 67, 68, 71, 72, 75, 76, 79, 80, 83, 84,
-        ],
-    )
+    bit(bits, 2)
+        ^ xor_positions(
+            bits,
+            &[
+                9, 11, 12, 14, 15, 18, 19, 21, 22, 25, 26, 29, 30, 33, 34, 36, 37, 40, 41, 44, 45,
+                48, 49, 52, 53, 56, 57, 60, 61, 64, 65, 67, 68, 71, 72, 75, 76, 79, 80, 83, 84,
+            ],
+        )
 }
 
 fn checksum_c3(bits: &[u8; GLONASS_STRING_BITS]) -> u8 {
-    bit(bits, 3) ^ xor_ranges(bits, &[(10, 12), (16, 19), (23, 26), (31, 34), (38, 41), (46, 49), (54, 57), (62, 65), (69, 72), (77, 80), (85, 85)])
+    bit(bits, 3)
+        ^ xor_ranges(
+            bits,
+            &[
+                (10, 12),
+                (16, 19),
+                (23, 26),
+                (31, 34),
+                (38, 41),
+                (46, 49),
+                (54, 57),
+                (62, 65),
+                (69, 72),
+                (77, 80),
+                (85, 85),
+            ],
+        )
 }
 
 fn checksum_c4(bits: &[u8; GLONASS_STRING_BITS]) -> u8 {
@@ -263,11 +282,7 @@ fn decode_immediate_navigation(
     string_3: &GlonassNavigationString,
     string_4: &GlonassNavigationString,
 ) -> Result<GlonassImmediateNavigationData, GlonassNavigationFrameRejection> {
-    let reported_slot = string_4
-        .unsigned_bits(11, 15)
-        .try_into()
-        .ok()
-        .and_then(GlonassSlot::new);
+    let reported_slot = string_4.unsigned_bits(11, 15).try_into().ok().and_then(GlonassSlot::new);
     if let Some(reported_slot) = reported_slot {
         if reported_slot != slot {
             return Err(GlonassNavigationFrameRejection {
@@ -281,8 +296,8 @@ fn decode_immediate_navigation(
 
     let p1_code = string_1.unsigned_bits(77, 78) as u8;
     let tb_update_interval_min = p1_update_interval_minutes(p1_code);
-    let tb_is_odd = matches!(tb_update_interval_min, 30 | 60)
-        .then(|| string_2.unsigned_bits(77, 77) != 0);
+    let tb_is_odd =
+        matches!(tb_update_interval_min, 30 | 60).then(|| string_2.unsigned_bits(77, 77) != 0);
     let frame_time = GlonassFrameTime {
         hour: string_1.unsigned_bits(72, 76) as u8,
         minute: string_1.unsigned_bits(66, 71) as u8,
@@ -372,19 +387,17 @@ fn decode_almanac_entry(
         sat: glonass_slot_sat(slot),
         frequency_channel,
         health_operational: even.unsigned_bits(80, 80) == 0,
-        longitude_of_ascending_node_rad: semicircles_to_radians(
-            even.sign_magnitude(42, 62, 2f64.powi(-20)),
-        ),
+        longitude_of_ascending_node_rad: semicircles_to_radians(even.sign_magnitude(
+            42,
+            62,
+            2f64.powi(-20),
+        )),
         ascending_node_time_s: odd.unsigned_bits(44, 64) as f64 * 2f64.powi(-5),
-        inclination_delta_rad: semicircles_to_radians(
-            even.sign_magnitude(24, 41, 2f64.powi(-20)),
-        ),
+        inclination_delta_rad: semicircles_to_radians(even.sign_magnitude(24, 41, 2f64.powi(-20))),
         draconian_period_correction_s: odd.sign_magnitude(22, 43, 2f64.powi(-9)),
         draconian_period_rate_s_per_orbit: odd.sign_magnitude(15, 21, 2f64.powi(-14)),
         eccentricity: even.unsigned_bits(9, 23) as f64 * 2f64.powi(-20),
-        argument_of_perigee_rad: semicircles_to_radians(
-            odd.sign_magnitude(65, 80, 2f64.powi(-15)),
-        ),
+        argument_of_perigee_rad: semicircles_to_radians(odd.sign_magnitude(65, 80, 2f64.powi(-15))),
         clock_bias_s: even.sign_magnitude(63, 72, 2f64.powi(-18)),
         satellite_type: glonass_satellite_type_from_word(even.unsigned_bits(78, 79) as u8),
     })
@@ -439,13 +452,13 @@ fn unsigned_bits(bits: &[u8; GLONASS_STRING_BITS], low: usize, high: usize) -> u
 #[cfg(test)]
 mod tests {
     use super::{
-        checksum_c1, checksum_c2, checksum_c3, checksum_c4, checksum_c5, checksum_c6,
-        checksum_c7, decode_glonass_broadcast_navigation_frame, decode_glonass_navigation_string,
-        flip_bit, GlonassNavigationFrameRejectionReason, GlonassNavigationStringRejectionReason,
+        checksum_c1, checksum_c2, checksum_c3, checksum_c4, checksum_c5, checksum_c6, checksum_c7,
+        decode_glonass_broadcast_navigation_frame, decode_glonass_navigation_string, flip_bit,
+        GlonassNavigationFrameRejectionReason, GlonassNavigationStringRejectionReason,
         GLONASS_STRING_BITS,
     };
-    use bijux_gnss_core::api::GlonassSlot;
     use crate::orbits::glonass::GlonassSatelliteType;
+    use bijux_gnss_core::api::GlonassSlot;
 
     #[test]
     fn navigation_string_decodes_string_number_and_payload_bits() {
@@ -490,7 +503,8 @@ mod tests {
         flip_bit(&mut bits, 30);
         flip_bit(&mut bits, 31);
 
-        let rejection = decode_glonass_navigation_string(&bits).expect_err("multiple-bit rejection");
+        let rejection =
+            decode_glonass_navigation_string(&bits).expect_err("multiple-bit rejection");
 
         assert_eq!(rejection.reason, GlonassNavigationStringRejectionReason::UnrecoverableParity);
     }
@@ -543,8 +557,8 @@ mod tests {
             .map(|bits| decode_glonass_navigation_string(&bits).expect("decoded string"))
             .collect::<Vec<_>>();
 
-        let frame =
-            decode_glonass_broadcast_navigation_frame(slot, &decoded_strings).expect("frame decode");
+        let frame = decode_glonass_broadcast_navigation_frame(slot, &decoded_strings)
+            .expect("frame decode");
         let frame = frame.expect("complete immediate frame");
 
         assert_eq!(frame.sat.prn, slot.value());
@@ -564,13 +578,30 @@ mod tests {
         assert_eq!(frame.immediate.accuracy_code, Some(6));
         assert!((frame.immediate.relative_frequency_bias + 50.0 * 2f64.powi(-40)).abs() < 1.0e-18);
         assert!((frame.immediate.clock_bias_s + 2_000.0 * 2f64.powi(-30)).abs() < 1.0e-15);
-        assert!((frame.immediate.l2_l1_delay_s.expect("delay") - 7.0 * 2f64.powi(-30)).abs() < 1.0e-15);
-        assert!((frame.immediate.state_vector.x_m - 12_345.0 * 2f64.powi(-11) * 1_000.0).abs() < 1.0e-9);
-        assert!((frame.immediate.state_vector.y_m + 14_000.0 * 2f64.powi(-11) * 1_000.0).abs() < 1.0e-9);
-        assert!((frame.immediate.state_vector.z_m - 8_765.0 * 2f64.powi(-11) * 1_000.0).abs() < 1.0e-9);
-        assert!((frame.immediate.state_vector.vx_mps + 543_210.0 * 2f64.powi(-20) * 1_000.0).abs() < 1.0e-9);
-        assert!((frame.immediate.state_vector.vy_mps - 321_000.0 * 2f64.powi(-20) * 1_000.0).abs() < 1.0e-9);
-        assert!((frame.immediate.state_vector.vz_mps + 123_456.0 * 2f64.powi(-20) * 1_000.0).abs() < 1.0e-9);
+        assert!(
+            (frame.immediate.l2_l1_delay_s.expect("delay") - 7.0 * 2f64.powi(-30)).abs() < 1.0e-15
+        );
+        assert!(
+            (frame.immediate.state_vector.x_m - 12_345.0 * 2f64.powi(-11) * 1_000.0).abs() < 1.0e-9
+        );
+        assert!(
+            (frame.immediate.state_vector.y_m + 14_000.0 * 2f64.powi(-11) * 1_000.0).abs() < 1.0e-9
+        );
+        assert!(
+            (frame.immediate.state_vector.z_m - 8_765.0 * 2f64.powi(-11) * 1_000.0).abs() < 1.0e-9
+        );
+        assert!(
+            (frame.immediate.state_vector.vx_mps + 543_210.0 * 2f64.powi(-20) * 1_000.0).abs()
+                < 1.0e-9
+        );
+        assert!(
+            (frame.immediate.state_vector.vy_mps - 321_000.0 * 2f64.powi(-20) * 1_000.0).abs()
+                < 1.0e-9
+        );
+        assert!(
+            (frame.immediate.state_vector.vz_mps + 123_456.0 * 2f64.powi(-20) * 1_000.0).abs()
+                < 1.0e-9
+        );
     }
 
     #[test]
@@ -637,8 +668,8 @@ mod tests {
         .map(|bits| decode_glonass_navigation_string(&bits).expect("decoded string"))
         .collect::<Vec<_>>();
 
-        let frame =
-            decode_glonass_broadcast_navigation_frame(slot, &decoded_strings).expect("frame decode");
+        let frame = decode_glonass_broadcast_navigation_frame(slot, &decoded_strings)
+            .expect("frame decode");
         let frame = frame.expect("frame");
         let system_time = frame.system_time.expect("system time");
         let entry = frame.almanac_entries.first().expect("almanac entry");
@@ -646,18 +677,31 @@ mod tests {
         assert_eq!(system_time.system_time.day_number, 777);
         assert_eq!(system_time.system_time.four_year_interval, Some(9));
         assert!((system_time.utc_offset_s + 1_024.0 * 2f64.powi(-31)).abs() < 1.0e-15);
-        assert!((system_time.gps_minus_glonass_s - 512.0 * 2f64.powi(-30) * 86_400.0).abs() < 1.0e-12);
+        assert!(
+            (system_time.gps_minus_glonass_s - 512.0 * 2f64.powi(-30) * 86_400.0).abs() < 1.0e-12
+        );
         assert_eq!(entry.sat.prn, 11);
         assert_eq!(entry.frequency_channel.value(), -4);
         assert!(entry.health_operational);
         assert_eq!(entry.satellite_type, GlonassSatelliteType::GlonassM);
-        assert!((entry.longitude_of_ascending_node_rad - std::f64::consts::PI * 1_000.0 * 2f64.powi(-20)).abs() < 1.0e-12);
-        assert!((entry.inclination_delta_rad + std::f64::consts::PI * 50.0 * 2f64.powi(-20)).abs() < 1.0e-12);
+        assert!(
+            (entry.longitude_of_ascending_node_rad
+                - std::f64::consts::PI * 1_000.0 * 2f64.powi(-20))
+            .abs()
+                < 1.0e-12
+        );
+        assert!(
+            (entry.inclination_delta_rad + std::f64::consts::PI * 50.0 * 2f64.powi(-20)).abs()
+                < 1.0e-12
+        );
         assert!((entry.ascending_node_time_s - 10_000.0 * 2f64.powi(-5)).abs() < 1.0e-12);
         assert!((entry.draconian_period_correction_s - 200.0 * 2f64.powi(-9)).abs() < 1.0e-12);
         assert!((entry.draconian_period_rate_s_per_orbit + 3.0 * 2f64.powi(-14)).abs() < 1.0e-12);
         assert!((entry.eccentricity - 1_200.0 * 2f64.powi(-20)).abs() < 1.0e-12);
-        assert!((entry.argument_of_perigee_rad + std::f64::consts::PI * 200.0 * 2f64.powi(-15)).abs() < 1.0e-12);
+        assert!(
+            (entry.argument_of_perigee_rad + std::f64::consts::PI * 200.0 * 2f64.powi(-15)).abs()
+                < 1.0e-12
+        );
         assert!((entry.clock_bias_s + 20.0 * 2f64.powi(-18)).abs() < 1.0e-15);
     }
 
@@ -687,7 +731,10 @@ mod tests {
         let rejection = decode_glonass_broadcast_navigation_frame(slot, &decoded_strings)
             .expect_err("invalid frequency word rejection");
 
-        assert_eq!(rejection.reason, GlonassNavigationFrameRejectionReason::InvalidFrequencyChannel);
+        assert_eq!(
+            rejection.reason,
+            GlonassNavigationFrameRejectionReason::InvalidFrequencyChannel
+        );
         assert_eq!(rejection.string_number, Some(7));
     }
 
@@ -715,7 +762,12 @@ mod tests {
         set_bit(bits, 8, xor_range(bits, 1, 85));
     }
 
-    fn set_unsigned_bits(bits: &mut [u8; GLONASS_STRING_BITS], low: usize, high: usize, value: u64) {
+    fn set_unsigned_bits(
+        bits: &mut [u8; GLONASS_STRING_BITS],
+        low: usize,
+        high: usize,
+        value: u64,
+    ) {
         for (offset, position) in (low..=high).enumerate() {
             let bit_value = ((value >> offset) & 1) as u8;
             set_bit(bits, position, bit_value);

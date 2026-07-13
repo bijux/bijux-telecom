@@ -4,8 +4,8 @@ use bijux_gnss_core::api::{
     signal_spec_beidou_b1i, signal_spec_beidou_b2i, signal_spec_galileo_e1b,
     signal_spec_galileo_e5a, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l5,
     Constellation, Cycles, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
-    ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
-    Seconds, SigId, SignalBand, SignalCode, SignalSpec,
+    ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId, Seconds,
+    SigId, SignalBand, SignalCode, SignalSpec,
 };
 use bijux_gnss_nav::api::narrow_lane_from_obs_epochs;
 
@@ -99,15 +99,12 @@ fn assert_narrow_lane_formula(
         SPEED_OF_LIGHT_MPS / (first.2.carrier_hz.value() + second.2.carrier_hz.value());
     let expected_phase_m = 2.0 * base_range_m + lambda_1 * first.3 + lambda_2 * second.3;
     let expected_phase_cycles = expected_phase_m / expected_narrow_lane_wavelength_m;
-    let expected_variance_m2 =
-        lambda_1.powi(2) * first.4 + lambda_2.powi(2) * second.4;
+    let expected_variance_m2 = lambda_1.powi(2) * first.4 + lambda_2.powi(2) * second.4;
     let expected_variance_cycles2 =
         expected_variance_m2 / expected_narrow_lane_wavelength_m.powi(2);
 
     assert!(
-        (observations[0]
-            .narrow_lane_wavelength_m
-            .expect("narrow-lane wavelength")
+        (observations[0].narrow_lane_wavelength_m.expect("narrow-lane wavelength")
             - expected_narrow_lane_wavelength_m)
             .abs()
             < 1.0e-12
@@ -122,10 +119,7 @@ fn assert_narrow_lane_formula(
             < 1.0e-12
     );
     assert!(
-        (observations[0]
-            .variance_cycles2
-            .expect("variance cycles")
-            - expected_variance_cycles2)
+        (observations[0].variance_cycles2.expect("variance cycles") - expected_variance_cycles2)
             .abs()
             < 1.0e-12
     );

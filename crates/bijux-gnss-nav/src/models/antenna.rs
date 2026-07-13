@@ -103,12 +103,7 @@ impl SatelliteAntennaCalibrations {
         let offset = self.phase_center_offset(sat, band, gps_time)?;
         let gps_time = gps_time?;
         let sun_pos_m = approximate_sun_position_ecef_m(gps_time);
-        Some(satellite_antenna_range_correction_m(
-            sat_pos_m,
-            receiver_pos_m,
-            sun_pos_m,
-            offset,
-        ))
+        Some(satellite_antenna_range_correction_m(sat_pos_m, receiver_pos_m, sun_pos_m, offset))
     }
 
     pub fn iono_free_range_correction_m(
@@ -149,7 +144,9 @@ impl ReceiverAntennaCalibrations {
         let canonical_antenna_type = canonical_receiver_antenna_type(antenna_type);
         self.entries
             .iter()
-            .filter(|entry| canonical_receiver_antenna_type(&entry.antenna_type) == canonical_antenna_type)
+            .filter(|entry| {
+                canonical_receiver_antenna_type(&entry.antenna_type) == canonical_antenna_type
+            })
             .filter(|entry| {
                 calibration_window_matches_time(
                     entry.valid_from_unix_s,
@@ -287,9 +284,9 @@ pub fn satellite_band_from_antex_frequency(
         (Constellation::Gps, "G02") => Some(SignalBand::L2),
         (Constellation::Gps, "G05") => Some(SignalBand::L5),
         (Constellation::Galileo, "E01") => Some(SignalBand::E1),
-        (Constellation::Galileo, "E05") | (Constellation::Galileo, "E07") | (Constellation::Galileo, "E08") => {
-            Some(SignalBand::E5)
-        }
+        (Constellation::Galileo, "E05")
+        | (Constellation::Galileo, "E07")
+        | (Constellation::Galileo, "E08") => Some(SignalBand::E5),
         (Constellation::Beidou, "C02") => Some(SignalBand::B1),
         (Constellation::Beidou, "C07") => Some(SignalBand::B2),
         _ => None,
@@ -452,8 +449,7 @@ mod tests {
             offsets_by_band: offsets_by_band.clone(),
         };
         let mut offsets_by_band_new = BTreeMap::new();
-        offsets_by_band_new
-            .insert(SignalBand::L1, SatellitePhaseCenterOffset::new(0.0, 0.0, 0.3));
+        offsets_by_band_new.insert(SignalBand::L1, SatellitePhaseCenterOffset::new(0.0, 0.0, 0.3));
         let new = SatelliteAntennaCalibration {
             sat,
             antenna_type: "GPS-B".to_string(),
@@ -502,8 +498,7 @@ mod tests {
             offsets_by_band: offsets_by_band.clone(),
         };
         let mut offsets_by_band_new = BTreeMap::new();
-        offsets_by_band_new
-            .insert(SignalBand::L1, ReceiverPhaseCenterOffset::new(0.4, 0.5, 0.6));
+        offsets_by_band_new.insert(SignalBand::L1, ReceiverPhaseCenterOffset::new(0.4, 0.5, 0.6));
         let new = ReceiverAntennaCalibration {
             antenna_type: "AOAD/M_T NONE".to_string(),
             valid_from_unix_s: Some(1_609_459_200.0),

@@ -6,8 +6,8 @@ use bijux_gnss_core::api::{Constellation, MeasurementRejectReason, SatId};
 use bijux_gnss_nav::api::{
     position_broadcast_navigation_from_gps_ephemerides, GlonassAlmanacTimeData,
     GlonassBroadcastNavigationFrame, GlonassFrameTime, GlonassImmediateHealth,
-    GlonassImmediateNavigationData, GlonassSatelliteType, GlonassStateVector,
-    GlonassSystemTime, PositionBroadcastNavigation, PositionSolveRefusalKind, PositionSolver,
+    GlonassImmediateNavigationData, GlonassSatelliteType, GlonassStateVector, GlonassSystemTime,
+    PositionBroadcastNavigation, PositionSolveRefusalKind, PositionSolver,
 };
 use support::position_truth::{
     four_satellite_position_scenario, sample_ephemeris, timed_position_observation,

@@ -306,8 +306,10 @@ impl MeasurementModel for PppIonoFreeCodeMeasurement {
                 tropo = *ztd * self.troposphere_mapping;
             }
         }
-        let mut pred =
-            range + self.antenna_range_correction_m + SPEED_OF_LIGHT_MPS * (x[6] - self.sat_clock_s) + tropo;
+        let mut pred = range
+            + self.antenna_range_correction_m
+            + SPEED_OF_LIGHT_MPS * (x[6] - self.sat_clock_s)
+            + tropo;
         if let Some(idx) = self.isb_index {
             if let Some(isb) = x.get(idx) {
                 pred += SPEED_OF_LIGHT_MPS * isb;
@@ -1088,10 +1090,7 @@ mod tests {
             iono_index: None,
             ztd_index: None,
             isb_index: None,
-            corr: Corrections {
-                earth_tide_m: [0.02, -0.03, 0.04],
-                ..Corrections::default()
-            },
+            corr: Corrections { earth_tide_m: [0.02, -0.03, 0.04], ..Corrections::default() },
         };
         let mut state = vec![0.0; 9];
         state[0] = 1_111_111.0;
@@ -1139,8 +1138,7 @@ mod tests {
         let dy = state[1] - measurement.sat_pos_m[1];
         let dz = state[2] - measurement.sat_pos_m[2];
         let geometric_range_m = (dx * dx + dy * dy + dz * dz).sqrt();
-        let expected =
-            (geometric_range_m - 0.25 + 3.1 * 2.1) / measurement.wavelength_m + state[9];
+        let expected = (geometric_range_m - 0.25 + 3.1 * 2.1) / measurement.wavelength_m + state[9];
 
         assert!((predicted[0] - expected).abs() < 1.0e-9);
 
@@ -1163,10 +1161,7 @@ mod tests {
             ztd_index: None,
             isb_index: None,
             ambiguity_index: Some(9),
-            corr: Corrections {
-                earth_tide_m: [0.02, -0.03, 0.04],
-                ..Corrections::default()
-            },
+            corr: Corrections { earth_tide_m: [0.02, -0.03, 0.04], ..Corrections::default() },
             wavelength_m: 0.190_293_672_798,
         };
         let mut state = vec![0.0; 10];
@@ -1215,8 +1210,7 @@ mod tests {
         let dy = state[1] - measurement.sat_pos_m[1];
         let dz = state[2] - measurement.sat_pos_m[2];
         let geometric_range_m = (dx * dx + dy * dy + dz * dz).sqrt();
-        let expected =
-            (geometric_range_m + 0.15 + 2.2 * 2.8) / measurement.wavelength_m + state[9];
+        let expected = (geometric_range_m + 0.15 + 2.2 * 2.8) / measurement.wavelength_m + state[9];
 
         assert!((predicted[0] - expected).abs() < 1.0e-9);
 
@@ -1239,10 +1233,7 @@ mod tests {
             isb_index: None,
             ambiguity_index: Some(9),
             wavelength_m: 0.107,
-            corr: Corrections {
-                earth_tide_m: [0.02, -0.03, 0.04],
-                ..Corrections::default()
-            },
+            corr: Corrections { earth_tide_m: [0.02, -0.03, 0.04], ..Corrections::default() },
         };
         let mut state = vec![0.0; 10];
         state[0] = 1_111_111.0;
@@ -1303,10 +1294,7 @@ mod tests {
             troposphere_mapping: 1.0,
             ztd_index: None,
             isb_index: None,
-            corr: Corrections {
-                earth_tide_m: [0.02, -0.03, 0.04],
-                ..Corrections::default()
-            },
+            corr: Corrections { earth_tide_m: [0.02, -0.03, 0.04], ..Corrections::default() },
         };
         let mut state = vec![0.0; 9];
         state[0] = 1_111_111.0;

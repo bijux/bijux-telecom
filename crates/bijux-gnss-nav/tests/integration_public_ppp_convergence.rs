@@ -6,9 +6,7 @@ use std::path::Path;
 
 mod support;
 
-use bijux_gnss_nav::api::{
-    BroadcastProductsProvider, PppConfig, PppFilter, PppTroposphereSource,
-};
+use bijux_gnss_nav::api::{BroadcastProductsProvider, PppConfig, PppFilter, PppTroposphereSource};
 use bijux_gnss_testkit::public_ppp::{
     build_public_ppp_convergence_report, PublicPppConvergenceReport,
 };
@@ -91,9 +89,7 @@ fn public_ab43_ppp_run_keeps_zenith_troposphere_state_physical() {
         solved_ztd_m
     );
     assert!(
-        solved_ztd_sigma_m
-            .iter()
-            .all(|ztd_sigma_m| ztd_sigma_m.is_finite() && *ztd_sigma_m >= 0.0),
+        solved_ztd_sigma_m.iter().all(|ztd_sigma_m| ztd_sigma_m.is_finite() && *ztd_sigma_m >= 0.0),
         "AB43 PPP ZTD sigmas must remain finite and non-negative: {:?}",
         solved_ztd_sigma_m
     );
@@ -144,14 +140,16 @@ fn public_ab43_ppp_zenith_delay_tracks_local_meteorology() {
     };
     let mut dry_filter = PppFilter::new(dry_config);
     let mut humid_filter = PppFilter::new(humid_config);
-    dry_filter.seed_receiver_state([initial_position.0, initial_position.1, initial_position.2], 0.0);
+    dry_filter
+        .seed_receiver_state([initial_position.0, initial_position.1, initial_position.2], 0.0);
     humid_filter
         .seed_receiver_state([initial_position.0, initial_position.1, initial_position.2], 0.0);
     let products = BroadcastProductsProvider::new(case.navigation.ephemerides.clone());
     let first_epoch = case.observations.epochs.first().expect("AB43 first PPP epoch");
 
-    let dry_solution =
-        dry_filter.solve_epoch(first_epoch, &case.navigation.ephemerides, &products).expect("dry PPP solution");
+    let dry_solution = dry_filter
+        .solve_epoch(first_epoch, &case.navigation.ephemerides, &products)
+        .expect("dry PPP solution");
     let humid_solution = humid_filter
         .solve_epoch(first_epoch, &case.navigation.ephemerides, &products)
         .expect("humid PPP solution");

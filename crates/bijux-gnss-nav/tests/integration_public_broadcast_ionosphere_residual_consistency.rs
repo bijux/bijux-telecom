@@ -52,7 +52,8 @@ fn public_gps_broadcast_ionosphere_phase_residuals_preserve_l1_l2_scaling() {
     let valid_phase = valid_broadcast_residuals()
         .into_iter()
         .filter(|observation| {
-            observation.phase_residual_band_1_m.is_some() && observation.phase_residual_band_2_m.is_some()
+            observation.phase_residual_band_1_m.is_some()
+                && observation.phase_residual_band_2_m.is_some()
         })
         .collect::<Vec<_>>();
     let l1_hz = signal_spec_gps_l1_ca().carrier_hz.value();
