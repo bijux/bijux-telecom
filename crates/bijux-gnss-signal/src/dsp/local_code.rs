@@ -18,6 +18,7 @@ use crate::codes::gps_l5::{
     generate_gps_l5_i_code, generate_gps_l5_q_code, gps_l5_i_epoch_symbol, gps_l5_q_epoch_symbol,
     GPS_L5_PRIMARY_CODE_CHIPS, GPS_L5_PRIMARY_CODE_RATE_HZ,
 };
+use crate::dsp::sample_timing::code_sample_position_at_index;
 use crate::dsp::signal::{code_value_at_phase, sample_code};
 use crate::error::SignalError;
 use bijux_gnss_core::api::{Constellation, SatId, SignalBand, SignalCode};
@@ -293,6 +294,28 @@ impl LocalCodeModel {
             ),
         }
     }
+
+    /// Sample a local-code block from an absolute sample origin without chunk-boundary drift.
+    pub fn sample_block(
+        &self,
+        sample_rate_hz: f64,
+        initial_code_phase_chips: f64,
+        start_sample_index: u64,
+        sample_count: usize,
+    ) -> Result<Vec<f32>, SignalError> {
+        let mut samples = Vec::with_capacity(sample_count);
+        for sample_offset in 0..sample_count {
+            let position = code_sample_position_at_index(
+                initial_code_phase_chips,
+                sample_rate_hz,
+                self.code_rate_hz(),
+                self.code_length(),
+                start_sample_index + sample_offset as u64,
+            )?;
+            samples.push(self.sample_value(position.chip_phase)?);
+        }
+        Ok(samples)
+    }
 }
 
 fn interpolated_bpsk_code_value_at_phase(code: &[i8], chip_phase: f64) -> Result<f32, SignalError> {
@@ -378,5 +401,26 @@ fn default_signal_code_for_band(
         (Constellation::Beidou, SignalBand::B2) => SignalCode::B2I,
         (Constellation::Glonass, SignalBand::L1) => SignalCode::Unknown,
         _ => SignalCode::Unknown,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LocalCodeModel;
+
+    #[test]
+    fn sample_block_matches_phase_anchored_sampling_at_origin() {
+        let model = LocalCodeModel::galileo_e1_boc11(11).expect("valid Galileo E1 PRN");
+        let sample_rate_hz = 4_000_000.0;
+        let initial_code_phase_chips = 137.625;
+
+        let period_samples = model
+            .sample_period(sample_rate_hz, initial_code_phase_chips, 64)
+            .expect("phase-anchored local code period");
+        let block_samples = model
+            .sample_block(sample_rate_hz, initial_code_phase_chips, 0, 64)
+            .expect("absolute-index local code block");
+
+        assert_eq!(block_samples, period_samples);
     }
 }
