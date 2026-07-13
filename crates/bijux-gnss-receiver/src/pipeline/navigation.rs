@@ -2349,6 +2349,51 @@ mod tests {
         }
     }
 
+    #[test]
+    fn code_only_precision_reporting_scales_covariance_and_sigmas() {
+        let mut solution = sample_last_solution();
+        solution.status = SolutionStatus::CodeOnly;
+        solution.quality = SolutionStatus::CodeOnly.quality_flag();
+        solution.lifecycle_state = NavLifecycleState::CodeOnly;
+        solution.sigma_e_m = Some(Meters(0.03));
+        solution.sigma_n_m = Some(Meters(0.04));
+        solution.sigma_u_m = Some(Meters(0.08));
+        solution.sigma_h_m = Some(Meters(0.05));
+        solution.sigma_v_m = Some(Meters(0.08));
+        solution.horizontal_error_ellipse_major_axis_m = Some(Meters(0.06));
+        solution.horizontal_error_ellipse_minor_axis_m = Some(Meters(0.04));
+        solution.integrity_hpl_m = Some(0.30);
+        solution.integrity_vpl_m = Some(0.50);
+        solution.position_covariance_ecef_m2 =
+            Some([[0.0025, 0.0, 0.0], [0.0, 0.0025, 0.0], [0.0, 0.0, 0.0064]]);
+
+        apply_precision_reporting_policy(&mut solution);
+
+        assert!(solution.sigma_h_m.as_ref().expect("horizontal sigma").0 >= 3.0);
+        assert!(solution.sigma_v_m.as_ref().expect("vertical sigma").0 >= 5.0);
+        assert!(solution.integrity_hpl_m.expect("horizontal protection level") >= 18.0);
+        assert!(solution.integrity_vpl_m.expect("vertical protection level") >= 31.0);
+        assert!(
+            solution.position_covariance_ecef_m2.expect("covariance")[0][0] >= 9.0,
+            "scaled covariance should no longer imply centimeter-class code-only precision",
+        );
+        assert!(solution
+            .explain_reasons
+            .iter()
+            .any(|reason| reason == "precision_floor=code_navigation_without_carrier_ambiguity"));
+    }
+
+    #[test]
+    fn uncertainty_class_from_solution_never_marks_code_only_precision_low() {
+        let mut solution = sample_last_solution();
+        solution.status = SolutionStatus::CodeOnly;
+        solution.quality = SolutionStatus::CodeOnly.quality_flag();
+        solution.lifecycle_state = NavLifecycleState::CodeOnly;
+        solution.sigma_h_m = Some(Meters(0.5));
+
+        assert_eq!(uncertainty_class_from_solution(&solution), NavUncertaintyClass::Medium);
+    }
+
     fn make_eph(prn: u8, omega0: f64, m0: f64, t_ref_s: f64) -> GpsEphemeris {
         GpsEphemeris {
             sat: SatId { constellation: Constellation::Gps, prn },
