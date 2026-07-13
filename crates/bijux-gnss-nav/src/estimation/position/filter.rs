@@ -98,6 +98,8 @@ pub struct PositionFilterConfig {
 
 #[derive(Debug, Clone)]
 pub struct PositionFilterDivergenceConfig {
+    pub innovation_consistency_lower_tail_probability: f64,
+    pub innovation_consistency_upper_tail_probability: f64,
     pub max_innovation_rms_m: f64,
     pub max_normalized_innovation_rms: f64,
     pub max_condition_number: f64,
@@ -107,6 +109,8 @@ pub struct PositionFilterDivergenceConfig {
 impl Default for PositionFilterDivergenceConfig {
     fn default() -> Self {
         Self {
+            innovation_consistency_lower_tail_probability: 0.001,
+            innovation_consistency_upper_tail_probability: 0.999,
             max_innovation_rms_m: 150.0,
             max_normalized_innovation_rms: 100.0,
             max_condition_number: 1.0e8,
@@ -307,6 +311,9 @@ pub struct PositionFilterIndices {
 struct PositionFilterCodeMetrics {
     peak_innovation_rms_m: f64,
     peak_normalized_innovation_rms: Option<f64>,
+    peak_normalized_innovation_squared: Option<f64>,
+    peak_innovation_consistency_upper_bound: Option<f64>,
+    upper_innovation_consistency_violation: bool,
 }
 
 impl PositionFilterCodeMetrics {
@@ -316,6 +323,21 @@ impl PositionFilterCodeMetrics {
             let value = health.innovation_rms / sigma_m;
             self.peak_normalized_innovation_rms =
                 Some(self.peak_normalized_innovation_rms.unwrap_or(0.0).max(value));
+        }
+        if let Some(value) = health.normalized_innovation_squared {
+            self.peak_normalized_innovation_squared =
+                Some(self.peak_normalized_innovation_squared.unwrap_or(0.0).max(value));
+        }
+        if let Some(value) = health.innovation_consistency_upper_bound {
+            self.peak_innovation_consistency_upper_bound = Some(
+                self.peak_innovation_consistency_upper_bound.unwrap_or(0.0).max(value),
+            );
+        }
+        if let (Some(value), Some(upper_bound)) = (
+            health.normalized_innovation_squared,
+            health.innovation_consistency_upper_bound,
+        ) {
+            self.upper_innovation_consistency_violation |= value > upper_bound;
         }
     }
 }
@@ -350,7 +372,14 @@ impl PositionFilter {
                 gating_chi2_code: config.gating_chi2_code,
                 gating_chi2_phase: None,
                 gating_chi2_doppler: config.gating_chi2_doppler,
-                innovation_consistency: Some(InnovationConsistencyConfig::default()),
+                innovation_consistency: Some(InnovationConsistencyConfig {
+                    lower_tail_probability: config
+                        .divergence
+                        .innovation_consistency_lower_tail_probability,
+                    upper_tail_probability: config
+                        .divergence
+                        .innovation_consistency_upper_tail_probability,
+                }),
                 huber_k: config.huber_k,
                 square_root: true,
                 covariance_epsilon: 1.0e-12,
@@ -820,6 +849,9 @@ impl PositionFilter {
         {
             return Some(PositionFilterDivergenceReason::CovarianceCollapse);
         }
+        if code_metrics.upper_innovation_consistency_violation {
+            return Some(PositionFilterDivergenceReason::InnovationInconsistency);
+        }
         if code_metrics.peak_innovation_rms_m > self.config.divergence.max_innovation_rms_m {
             return Some(PositionFilterDivergenceReason::InnovationGrowth);
         }
@@ -1182,6 +1214,35 @@ mod tests {
         assert!(config.divergence.max_normalized_innovation_rms > 0.0);
         assert!(config.divergence.max_condition_number > 1.0);
         assert!(config.divergence.min_position_sigma_m > 0.0);
+        assert!(
+            config.divergence.innovation_consistency_lower_tail_probability > 0.0
+                && config.divergence.innovation_consistency_lower_tail_probability < 1.0
+        );
+        assert!(
+            config.divergence.innovation_consistency_upper_tail_probability > 0.0
+                && config.divergence.innovation_consistency_upper_tail_probability < 1.0
+        );
+    }
+
+    #[test]
+    fn position_filter_propagates_innovation_consistency_probabilities_to_ekf() {
+        let mut config = PositionFilterConfig::default();
+        config.divergence.innovation_consistency_lower_tail_probability = 0.2;
+        config.divergence.innovation_consistency_upper_tail_probability = 0.8;
+
+        let filter = PositionFilter::new(config.clone());
+        let innovation_consistency = filter.ekf.config.innovation_consistency.expect(
+            "position filter should configure EKF innovation consistency bounds",
+        );
+
+        assert_eq!(
+            innovation_consistency.lower_tail_probability,
+            config.divergence.innovation_consistency_lower_tail_probability
+        );
+        assert_eq!(
+            innovation_consistency.upper_tail_probability,
+            config.divergence.innovation_consistency_upper_tail_probability
+        );
     }
 
     #[test]
@@ -1714,6 +1775,9 @@ mod tests {
         let code_metrics = PositionFilterCodeMetrics {
             peak_innovation_rms_m: filter.config.divergence.max_innovation_rms_m + 1.0,
             peak_normalized_innovation_rms: None,
+            peak_normalized_innovation_squared: None,
+            peak_innovation_consistency_upper_bound: None,
+            upper_innovation_consistency_violation: false,
         };
 
         assert_eq!(
@@ -1728,8 +1792,8 @@ mod tests {
         let health = crate::estimation::ekf::state::EkfHealth {
             innovation_rms: 12.0,
             peak_innovation_rms: 12.0,
-            normalized_innovation_squared: None,
-            peak_normalized_innovation_squared: None,
+            normalized_innovation_squared: Some(7.5),
+            peak_normalized_innovation_squared: Some(7.5),
             rejected: 0,
             last_rejection: None,
             rejection_reasons: Vec::new(),
@@ -1740,8 +1804,8 @@ mod tests {
             peak_whiteness_ratio: None,
             predicted_variance: None,
             observed_variance: None,
-            innovation_consistency_lower_bound: None,
-            innovation_consistency_upper_bound: None,
+            innovation_consistency_lower_bound: Some(0.1),
+            innovation_consistency_upper_bound: Some(6.6),
             events: Vec::new(),
         };
 
@@ -1750,6 +1814,26 @@ mod tests {
 
         assert_eq!(code_metrics.peak_innovation_rms_m, 12.0);
         assert_eq!(code_metrics.peak_normalized_innovation_rms, Some(4.0));
+        assert_eq!(code_metrics.peak_normalized_innovation_squared, Some(7.5));
+        assert_eq!(code_metrics.peak_innovation_consistency_upper_bound, Some(6.6));
+        assert!(code_metrics.upper_innovation_consistency_violation);
+    }
+
+    #[test]
+    fn position_filter_classifies_innovation_inconsistency_from_nis_bounds() {
+        let filter = PositionFilter::new(PositionFilterConfig::default());
+        let code_metrics = PositionFilterCodeMetrics {
+            peak_innovation_rms_m: 0.0,
+            peak_normalized_innovation_rms: None,
+            peak_normalized_innovation_squared: Some(8.0),
+            peak_innovation_consistency_upper_bound: Some(6.6),
+            upper_innovation_consistency_violation: true,
+        };
+
+        assert_eq!(
+            filter.divergence_reason(1, code_metrics),
+            Some(PositionFilterDivergenceReason::InnovationInconsistency)
+        );
     }
 
     #[test]
@@ -1760,6 +1844,9 @@ mod tests {
         let code_metrics = PositionFilterCodeMetrics {
             peak_innovation_rms_m: 0.0,
             peak_normalized_innovation_rms: Some(normalized_innovation_rms),
+            peak_normalized_innovation_squared: None,
+            peak_innovation_consistency_upper_bound: None,
+            upper_innovation_consistency_violation: false,
         };
 
         assert_eq!(

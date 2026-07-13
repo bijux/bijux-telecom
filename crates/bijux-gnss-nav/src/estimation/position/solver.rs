@@ -134,6 +134,7 @@ pub enum PositionSolveRefusalKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PositionFilterDivergenceReason {
+    InnovationInconsistency,
     InnovationGrowth,
     CovarianceCollapse,
     CovarianceDivergence,

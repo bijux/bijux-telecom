@@ -1678,6 +1678,7 @@ fn solver_refusal_status(
 
 fn filter_divergence_explain_reason(reason: PositionFilterDivergenceReason) -> String {
     let label = match reason {
+        PositionFilterDivergenceReason::InnovationInconsistency => "innovation_inconsistency",
         PositionFilterDivergenceReason::InnovationGrowth => "innovation_growth",
         PositionFilterDivergenceReason::CovarianceCollapse => "covariance_collapse",
         PositionFilterDivergenceReason::CovarianceDivergence => "covariance_divergence",
@@ -1956,6 +1957,7 @@ fn refusal_causes(solution: &NavSolutionEpoch, obs: Option<&ObsEpoch>) -> Vec<Re
         || has_reason("residual_whiteness")
         || has_reason_prefix("residual_lag1_correlation=")
         || has_reason_prefix("residual_temporal_correlation_streak=")
+        || has_reason("filter_divergence=innovation_inconsistency")
         || has_reason("filter_divergence=innovation_growth")
         || has_reason("filter_divergence=residual_explosion")
         || solution
