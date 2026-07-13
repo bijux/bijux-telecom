@@ -121,6 +121,7 @@ pub struct SyntheticSignalSource {
     remaining_samples: usize,
     next_sample_index: u64,
     noise_std: f32,
+    synthetic_signals: Vec<SyntheticSignalParams>,
     sat_states: Vec<SatState>,
     gps_ephemerides: Vec<GpsEphemeris>,
     signal_delay_alignments: Vec<SyntheticSignalDelayAlignment>,
@@ -298,6 +299,7 @@ impl SyntheticSignalSource {
             remaining_samples: sample_count,
             next_sample_index: 0,
             noise_std,
+            synthetic_signals: scenario.satellites.clone(),
             sat_states: scenario
                 .satellites
                 .iter()
@@ -318,6 +320,11 @@ impl SyntheticSignalSource {
     /// Broadcast ephemerides carried alongside this synthetic source.
     pub fn gps_ephemerides(&self) -> &[GpsEphemeris] {
         &self.gps_ephemerides
+    }
+
+    /// Declared synthetic signal specifications carried by this source.
+    pub fn synthetic_signals(&self) -> &[SyntheticSignalParams] {
+        &self.synthetic_signals
     }
 
     /// Whole-code signal-delay alignment for one tracked satellite, when available.

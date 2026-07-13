@@ -367,7 +367,7 @@ fn observations_from_tracking_with_provenance(
             &mut carrier_phase_state,
         );
 
-        let cn0_dbhz = epoch.cn0_dbhz;
+        let cn0_dbhz = normalize_observation_cn0_dbhz(epoch.cn0_dbhz);
         let lock_quality = tracking_lock_quality(epoch, carrier_phase.cycle_slip);
         let tracking_uncertainty = epoch.tracking_uncertainty.clone();
         let pseudorange_uncertainty = pseudorange_uncertainty_model(
@@ -805,6 +805,15 @@ fn observation_timing_interval_diagnostic(
         .with_context("previous_epoch", previous.epoch_idx.to_string())
         .with_context("stage", "observations"),
     )
+}
+
+fn normalize_observation_cn0_dbhz(cn0_dbhz: f64) -> f64 {
+    if !cn0_dbhz.is_finite() {
+        return cn0_dbhz;
+    }
+
+    let conventions = bijux_gnss_core::api::ConventionsConfig::default();
+    cn0_dbhz.clamp(conventions.min_cn0_dbhz, conventions.max_cn0_dbhz)
 }
 
 fn observation_interval_samples(config: &ReceiverPipelineConfig) -> u64 {

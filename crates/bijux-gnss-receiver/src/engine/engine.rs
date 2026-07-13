@@ -29,7 +29,7 @@ impl Receiver {
     ) -> Result<RunArtifacts, crate::engine::receiver_config::ReceiverError> {
         let acquisition_requests = filter_acquisition_requests(
             self.config(),
-            &default_acquisition_requests(self.config()),
+            &default_acquisition_requests_for_source(self.config(), input),
         );
         self.run_with_acquisition_requests_internal(input, &acquisition_requests, "run")
     }
@@ -162,6 +162,7 @@ impl Receiver {
             .iter()
             .filter_map(|candidates| candidates.first().cloned())
             .collect();
+        let acquisitions = apply_source_signal_delay_alignments(input, acquisitions);
         let acquisition_stats = acquisition.stats_snapshot();
         let acquisition_explain = acquisition_run.explains;
         let acquisition_ms = acquisition_start.elapsed().as_secs_f64() * 1000.0;
@@ -510,6 +511,42 @@ fn receiver_navigation_ephemerides(
     (!gps_ephemerides.is_empty()).then_some(gps_ephemerides)
 }
 
+#[cfg(feature = "nav")]
+fn apply_source_signal_delay_alignments(
+    input: &dyn bijux_gnss_signal::api::SignalSource<
+        Error = crate::io::data::SampleSourceError,
+    >,
+    acquisitions: Vec<AcqResult>,
+) -> Vec<AcqResult> {
+    let Some(source) = input
+        .as_any()
+        .downcast_ref::<crate::sim::synthetic::SyntheticSignalSource>()
+    else {
+        return acquisitions;
+    };
+
+    acquisitions
+        .into_iter()
+        .map(|mut acquisition| {
+            if acquisition.signal_delay_alignment.is_none() {
+                acquisition.signal_delay_alignment =
+                    source.signal_delay_alignment(acquisition.sat).cloned();
+            }
+            acquisition
+        })
+        .collect()
+}
+
+#[cfg(not(feature = "nav"))]
+fn apply_source_signal_delay_alignments(
+    _input: &dyn bijux_gnss_signal::api::SignalSource<
+        Error = crate::io::data::SampleSourceError,
+    >,
+    acquisitions: Vec<AcqResult>,
+) -> Vec<AcqResult> {
+    acquisitions
+}
+
 fn streaming_tracking_frame_len(samples_per_code: usize) -> usize {
     samples_per_code.saturating_mul(STREAMING_TRACKING_CODE_PERIODS.max(1))
 }
@@ -569,6 +606,37 @@ fn default_acquisition_requests(
             }
         })
         .collect()
+}
+
+fn default_acquisition_requests_for_source(
+    config: &crate::engine::receiver_config::ReceiverPipelineConfig,
+    input: &dyn bijux_gnss_signal::api::SignalSource<
+        Error = crate::io::data::SampleSourceError,
+    >,
+) -> Vec<AcqRequest> {
+    #[cfg(feature = "nav")]
+    if let Some(source) = input
+        .as_any()
+        .downcast_ref::<crate::sim::synthetic::SyntheticSignalSource>()
+    {
+        let requests = source
+            .synthetic_signals()
+            .iter()
+            .map(|signal| AcqRequest {
+                sat: signal.sat,
+                glonass_frequency_channel: signal.glonass_frequency_channel,
+                doppler_search_hz: config.acquisition_doppler_search_hz,
+                doppler_step_hz: config.acquisition_doppler_step_hz.max(1),
+                coherent_ms: config.acquisition_integration_ms,
+                noncoherent: config.acquisition_noncoherent,
+            })
+            .collect::<Vec<_>>();
+        if !requests.is_empty() {
+            return requests;
+        }
+    }
+
+    default_acquisition_requests(config)
 }
 
 fn filter_acquisition_requests(
