@@ -150,6 +150,10 @@ fn resolved_signal_code(
     default_signal_code_for_band(sat.constellation, signal_band)
 }
 
+fn resolved_request_signal_code(request: AcqRequest) -> SignalCode {
+    resolved_signal_code(request.sat, request.signal_band, request.signal_code)
+}
+
 fn unsupported_acquisition_signal_error(
     sat: SatId,
     signal_band: SignalBand,
@@ -196,7 +200,7 @@ fn acquisition_signal_model_for_request(
     match AcquisitionSignalModel::for_sat_signal(
         request.sat,
         Some(request.signal_band),
-        resolved_signal_code(request.sat, request.signal_band, request.signal_code),
+        resolved_request_signal_code(request),
         request.glonass_frequency_channel,
     )? {
         Some(model) => Ok(model),
@@ -528,11 +532,13 @@ impl Acquisition {
                 samples_per_code,
             );
             if !acquisition_integration_ms_is_supported(request.coherent_ms) {
+                let signal_code = resolved_request_signal_code(request);
                 sat_evaluations.push(AcquisitionSatEvaluation {
                     sat,
                     candidates: unsupported_coherent_integration_candidates(
                         sat,
                         &signal_model,
+                        signal_code,
                         request.glonass_frequency_channel,
                         &assumptions,
                         &threshold_provenance,
@@ -547,11 +553,13 @@ impl Acquisition {
             let coherent_periods = match signal_model.coherent_periods(request.coherent_ms) {
                 Some(periods) => periods,
                 None => {
+                    let signal_code = resolved_request_signal_code(request);
                     sat_evaluations.push(AcquisitionSatEvaluation {
                         sat,
                         candidates: unsupported_coherent_integration_candidates(
                             sat,
                             &signal_model,
+                            signal_code,
                             request.glonass_frequency_channel,
                             &assumptions,
                             &threshold_provenance,
@@ -568,11 +576,13 @@ impl Acquisition {
                 * coherent_periods.max(1) as usize
                 * request.noncoherent.max(1) as usize;
             if frame.len() < required {
+                let signal_code = resolved_request_signal_code(request);
                 sat_evaluations.push(AcquisitionSatEvaluation {
                     sat,
                     candidates: insufficient_frame_candidates(
                         sat,
                         &signal_model,
+                        signal_code,
                         request.glonass_frequency_channel,
                         &assumptions,
                         &threshold_provenance,
@@ -1191,6 +1201,7 @@ fn zero_signal_run(
             }
         };
         let search_center_hz = signal_model.search_center_hz(config.intermediate_freq_hz);
+        let signal_code = resolved_request_signal_code(request);
         let assumptions = AcqAssumptions {
             doppler_search_hz: threshold_provenance.doppler_search_hz,
             doppler_step_hz: threshold_provenance.doppler_step_hz,
@@ -1206,6 +1217,7 @@ fn zero_signal_run(
         let result = zero_signal_candidate(
             sat,
             &signal_model,
+            signal_code,
             request.glonass_frequency_channel,
             &assumptions,
             &threshold_provenance,
@@ -1244,6 +1256,7 @@ fn zero_signal_run(
 fn insufficient_frame_candidates(
     sat: SatId,
     signal_model: &AcquisitionSignalModel,
+    signal_code: SignalCode,
     glonass_frequency_channel: Option<bijux_gnss_core::api::GlonassFrequencyChannel>,
     assumptions: &AcqAssumptions,
     threshold_provenance: &AcqThresholdProvenance,
@@ -1256,7 +1269,7 @@ fn insufficient_frame_candidates(
     vec![AcqResult {
         sat,
         signal_band: signal_model.signal_band,
-        signal_code: resolved_signal_code(sat, signal_model.signal_band, SignalCode::Unknown),
+        signal_code,
         glonass_frequency_channel,
         source_time,
         candidate_rank: 1,
@@ -1362,6 +1375,7 @@ fn insufficient_frame_candidate_reason(
 fn zero_signal_candidate(
     sat: SatId,
     signal_model: &AcquisitionSignalModel,
+    signal_code: SignalCode,
     glonass_frequency_channel: Option<bijux_gnss_core::api::GlonassFrequencyChannel>,
     assumptions: &AcqAssumptions,
     threshold_provenance: &AcqThresholdProvenance,
@@ -1372,7 +1386,7 @@ fn zero_signal_candidate(
     AcqResult {
         sat,
         signal_band: signal_model.signal_band,
-        signal_code: resolved_signal_code(sat, signal_model.signal_band, SignalCode::Unknown),
+        signal_code,
         glonass_frequency_channel,
         source_time,
         candidate_rank: 1,
@@ -1402,6 +1416,7 @@ fn zero_signal_candidate(
 fn unsupported_coherent_integration_candidates(
     sat: SatId,
     signal_model: &AcquisitionSignalModel,
+    signal_code: SignalCode,
     glonass_frequency_channel: Option<bijux_gnss_core::api::GlonassFrequencyChannel>,
     assumptions: &AcqAssumptions,
     threshold_provenance: &AcqThresholdProvenance,
@@ -1412,6 +1427,7 @@ fn unsupported_coherent_integration_candidates(
     vec![unsupported_coherent_integration_candidate(
         sat,
         signal_model,
+        signal_code,
         glonass_frequency_channel,
         assumptions,
         threshold_provenance,
@@ -1424,6 +1440,7 @@ fn unsupported_coherent_integration_candidates(
 fn unsupported_coherent_integration_candidate(
     sat: SatId,
     signal_model: &AcquisitionSignalModel,
+    signal_code: SignalCode,
     glonass_frequency_channel: Option<bijux_gnss_core::api::GlonassFrequencyChannel>,
     assumptions: &AcqAssumptions,
     threshold_provenance: &AcqThresholdProvenance,
@@ -1434,7 +1451,7 @@ fn unsupported_coherent_integration_candidate(
     AcqResult {
         sat,
         signal_band: signal_model.signal_band,
-        signal_code: resolved_signal_code(sat, signal_model.signal_band, SignalCode::Unknown),
+        signal_code,
         glonass_frequency_channel,
         source_time,
         candidate_rank: 1,
@@ -2626,6 +2643,51 @@ mod tests {
     }
 
     #[test]
+    fn unsupported_coherent_integration_preserves_explicit_signal_code() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 10_230_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+        let frame =
+            SamplesFrame::new(
+                SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
+                Seconds(1.0 / config.sampling_freq_hz),
+                (0..32)
+                    .map(|idx| {
+                        if idx % 2 == 0 {
+                            Complex::new(1.0, 0.0)
+                        } else {
+                            Complex::new(-1.0, 0.0)
+                        }
+                    })
+                    .collect(),
+            );
+        let acquisition = Acquisition::new(config, ReceiverRuntime::default());
+        let request = AcqRequest {
+            sat,
+            glonass_frequency_channel: None,
+            signal_band: SignalBand::L5,
+            signal_code: SignalCode::L5Q,
+            doppler_search_hz: 2_000,
+            doppler_step_hz: 250,
+            coherent_ms: 3,
+            noncoherent: 1,
+        };
+
+        let run = acquisition.run_fft_topn_for_requests_with_explain(&frame, &[request], 1);
+
+        let result = run.results[0].first().expect("deferred result");
+        assert_eq!(result.signal_band, SignalBand::L5);
+        assert_eq!(result.signal_code, SignalCode::L5Q);
+        assert_eq!(result.hypothesis.to_string(), AcqHypothesis::Deferred.to_string());
+        assert_eq!(run.explains[0].selected_reason, "unsupported_coherent_integration_ms");
+    }
+
+    #[test]
     fn code_fft_cache_reuses_local_code_across_integration_profiles() {
         let config = ReceiverPipelineConfig {
             sampling_freq_hz: 4_092_000.0,
@@ -2921,6 +2983,50 @@ mod tests {
             assert_eq!(explain.selected_reason, "insufficient_frame");
             assert_eq!(explain.candidate_count, 1);
         }
+    }
+
+    #[test]
+    fn insufficient_frame_preserves_explicit_signal_code() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 10_230_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..ReceiverPipelineConfig::default()
+        };
+        let frame =
+            SamplesFrame::new(
+                SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
+                Seconds(1.0 / config.sampling_freq_hz),
+                (0..1023)
+                    .map(|idx| {
+                        if idx % 2 == 0 {
+                            Complex::new(1.0, 0.0)
+                        } else {
+                            Complex::new(-1.0, 0.0)
+                        }
+                    })
+                    .collect(),
+            );
+        let acquisition = Acquisition::new(config, ReceiverRuntime::default());
+        let request = AcqRequest {
+            sat: SatId { constellation: Constellation::Galileo, prn: 11 },
+            glonass_frequency_channel: None,
+            signal_band: SignalBand::E5,
+            signal_code: SignalCode::E5b,
+            doppler_search_hz: 2_000,
+            doppler_step_hz: 250,
+            coherent_ms: 1,
+            noncoherent: 1,
+        };
+
+        let run = acquisition.run_fft_topn_for_requests_with_explain(&frame, &[request], 1);
+
+        let result = run.results[0].first().expect("deferred result");
+        assert_eq!(result.signal_band, SignalBand::E5);
+        assert_eq!(result.signal_code, SignalCode::E5b);
+        assert_eq!(result.hypothesis.to_string(), AcqHypothesis::Deferred.to_string());
+        assert_eq!(run.explains[0].selected_reason, "insufficient_frame");
     }
 
     fn candidate_for_search_window_test(
