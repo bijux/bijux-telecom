@@ -2,9 +2,8 @@
 
 use std::collections::BTreeMap;
 
-use bijux_gnss_core::api::{
-    signal_cycles_to_meters, ObsEpoch, ObsSatellite, SatId, SigId, SignalBand,
-};
+use bijux_gnss_core::api::{ObsEpoch, ObsSatellite, SatId, SigId, SignalBand};
+use bijux_gnss_signal::api::signal_cycles_to_meters;
 
 use crate::corrections::dual_frequency::{dual_frequency_pair_issue, DualFrequencyPairIssue};
 use crate::corrections::iono_free_code::iono_free_code_from_pair;
@@ -260,10 +259,12 @@ mod tests {
         wide_lane_wavelength_m_from_frequencies,
     };
     use bijux_gnss_core::api::{
-        signal_spec_galileo_e1b, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, Constellation,
-        Cycles, GpsTime, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
-        ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ReceiverRole,
+        Constellation, Cycles, GpsTime, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata,
+        ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ReceiverRole,
         ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
+    };
+    use bijux_gnss_signal::api::{
+        signal_spec_galileo_e1b, signal_spec_gps_l1_ca, signal_spec_gps_l2_py,
     };
 
     fn dual_frequency_epoch(code_lock: bool, carrier_lock: bool) -> ObsEpoch {

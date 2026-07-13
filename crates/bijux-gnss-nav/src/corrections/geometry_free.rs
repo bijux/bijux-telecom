@@ -109,10 +109,11 @@ mod tests {
         geometry_free_diagnostics_from_obs_epochs, GeometryFreeEvent, GeometryFreeThresholds,
     };
     use bijux_gnss_core::api::{
-        signal_spec_gps_l1_ca, signal_spec_gps_l2_py, Constellation, Cycles, Hertz, LockFlags,
-        Meters, ObsEpoch, ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus,
-        ReceiverRole, ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
+        Constellation, Cycles, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
+        ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
+        Seconds, SigId, SignalBand, SignalCode,
     };
+    use bijux_gnss_signal::api::{signal_spec_gps_l1_ca, signal_spec_gps_l2_py};
 
     const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 

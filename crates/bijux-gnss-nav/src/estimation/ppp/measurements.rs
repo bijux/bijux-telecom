@@ -1,10 +1,10 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    signal_cycles_to_meters, signal_wavelength_m,
     supported_dual_frequency_band_pairs_for_constellation, GpsTime, ObsEpoch, ObsSatellite, SatId,
     SigId, SignalBand,
 };
+use bijux_gnss_signal::api::{signal_cycles_to_meters, signal_wavelength_m};
 
 use crate::corrections::combinations::wide_lane_wavelength_m_from_frequencies;
 use crate::corrections::iono_free_code::iono_free_code_from_pair;
@@ -578,11 +578,13 @@ mod tests {
     use crate::estimation::ppp::models::PppCodeMeasurement;
     use crate::linalg::Matrix;
     use bijux_gnss_core::api::{
-        signal_spec_beidou_b1i, signal_spec_beidou_b2i, signal_spec_galileo_e1b,
-        signal_spec_galileo_e5a, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l5,
         Constellation, Cycles, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
         ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
         SigId, SignalCode, SignalSpec,
+    };
+    use bijux_gnss_signal::api::{
+        signal_spec_beidou_b1i, signal_spec_beidou_b2i, signal_spec_galileo_e1b,
+        signal_spec_galileo_e5a, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l5,
     };
 
     fn make_dual_frequency_epoch(

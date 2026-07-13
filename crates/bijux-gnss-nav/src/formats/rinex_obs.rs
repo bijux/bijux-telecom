@@ -1,11 +1,14 @@
 use std::collections::BTreeMap;
 
 use bijux_gnss_core::api::{
+    utc_to_gps, Constellation, Cycles, GpsTime, Hertz, LeapSeconds, LockFlags, Meters, ObsEpoch,
+    ObsMetadata, ObsSatellite, ObservationStatus, ParseError, ReceiverRole, SatId, Seconds, SigId,
+    SignalBand, SignalCode, SignalSpec,
+};
+use bijux_gnss_signal::api::{
     signal_spec_beidou_b1i, signal_spec_beidou_b2i, signal_spec_galileo_e1b,
     signal_spec_galileo_e5a, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l2c,
-    signal_spec_gps_l5, utc_to_gps, Constellation, Cycles, GpsTime, Hertz, LeapSeconds, LockFlags,
-    Meters, ObsEpoch, ObsMetadata, ObsSatellite, ObservationStatus, ParseError, ReceiverRole,
-    SatId, Seconds, SigId, SignalBand, SignalCode, SignalSpec,
+    signal_spec_gps_l5,
 };
 use time::{Date, Month, PrimitiveDateTime, Time};
 
@@ -1445,9 +1448,12 @@ mod tests {
     use std::path::PathBuf;
 
     use bijux_gnss_core::api::{
-        check_dual_frequency_observations, signal_spec_beidou_b1i, signal_spec_beidou_b2i,
-        signal_spec_galileo_e1b, signal_spec_galileo_e5a, signal_spec_gps_l2c, signal_spec_gps_l5,
-        validate_obs_epochs, Constellation, SatId, SignalBand, SignalCode,
+        check_dual_frequency_observations, validate_obs_epochs, Constellation, SatId, SignalBand,
+        SignalCode,
+    };
+    use bijux_gnss_signal::api::{
+        signal_spec_beidou_b1i, signal_spec_beidou_b2i, signal_spec_galileo_e1b,
+        signal_spec_galileo_e5a, signal_spec_gps_l2c, signal_spec_gps_l5,
     };
 
     use super::{

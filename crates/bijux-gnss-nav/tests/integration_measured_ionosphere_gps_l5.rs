@@ -1,12 +1,15 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    first_order_ionosphere_code_delay_m, signal_meters_to_cycles, signal_spec_gps_l1_ca,
-    signal_spec_gps_l5, Constellation, Cycles, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata,
-    ObsSatellite, ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace,
-    SatId, Seconds, SigId, SignalBand, SignalCode, SignalSpec,
+    Constellation, Cycles, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
+    ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId, Seconds,
+    SigId, SignalBand, SignalCode, SignalSpec,
 };
 use bijux_gnss_nav::api::measured_ionosphere_from_obs_epochs;
+use bijux_gnss_signal::api::{
+    first_order_ionosphere_code_delay_m, signal_meters_to_cycles, signal_spec_gps_l1_ca,
+    signal_spec_gps_l5,
+};
 
 fn dual_frequency_epoch(
     sat: SatId,

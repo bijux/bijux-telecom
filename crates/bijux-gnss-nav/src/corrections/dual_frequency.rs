@@ -72,9 +72,12 @@ fn has_time_system_mismatch(first: &ObsSatellite, second: &ObsSatellite) -> bool
 mod tests {
     use super::{dual_frequency_pair_issue, DualFrequencyPairIssue};
     use bijux_gnss_core::api::{
-        signal_spec_galileo_e1b, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, Constellation,
-        Cycles, GpsTime, Hertz, LockFlags, Meters, ObsMetadata, ObsSatellite, ObsSignalTiming,
-        ObservationStatus, SatId, Seconds, SigId, SignalBand, SignalCode, SignalSpec,
+        Constellation, Cycles, GpsTime, Hertz, LockFlags, Meters, ObsMetadata, ObsSatellite,
+        ObsSignalTiming, ObservationStatus, SatId, Seconds, SigId, SignalBand, SignalCode,
+        SignalSpec,
+    };
+    use bijux_gnss_signal::api::{
+        signal_spec_galileo_e1b, signal_spec_gps_l1_ca, signal_spec_gps_l2_py,
     };
 
     fn satellite(

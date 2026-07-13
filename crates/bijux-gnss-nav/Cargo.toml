@@ -11,6 +11,7 @@ hex.workspace = true
 regex.workspace = true
 time.workspace = true
 bijux-gnss-core = { path = "../bijux-gnss-core", version = "0.1.0" }
+bijux-gnss-signal = { path = "../bijux-gnss-signal", version = "0.1.0" }
 
 [features]
 default = ["precise-products"]

@@ -1,13 +1,14 @@
 #![allow(missing_docs)]
 use bijux_gnss_core::api::Llh;
 use bijux_gnss_core::api::{
-    signal_spec_gps_l1_ca, Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite,
-    ReceiverRole, ReceiverSampleTrace, SatId, SigId, SignalBand, SignalCode,
+    Constellation, LockFlags, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole,
+    ReceiverSampleTrace, SatId, SigId, SignalBand, SignalCode,
 };
 use bijux_gnss_nav::api::{
     geodetic_to_ecef, BroadcastProductsProvider, GpsEphemeris, PppConfig, PppFilter,
     SaastamoinenModel,
 };
+use bijux_gnss_signal::api::signal_spec_gps_l1_ca;
 
 fn make_eph(prn: u8) -> GpsEphemeris {
     GpsEphemeris {

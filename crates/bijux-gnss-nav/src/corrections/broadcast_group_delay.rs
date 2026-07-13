@@ -1,8 +1,9 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    signal_registry, Constellation, GpsTime, SigId, SignalBand, SignalCode, GPS_L1_CA_CARRIER_HZ,
+    Constellation, GpsTime, SigId, SignalBand, SignalCode, GPS_L1_CA_CARRIER_HZ,
 };
+use bijux_gnss_signal::api::signal_registry;
 
 use crate::corrections::biases::CodeBiasProvider;
 use crate::orbits::beidou::{

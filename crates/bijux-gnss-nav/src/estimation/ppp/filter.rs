@@ -2,9 +2,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use bijux_gnss_core::api::{
-    signal_wavelength_m, Constellation, ObsEpoch, ObsSatellite, SatId, SigId, SignalBand,
-};
+use bijux_gnss_core::api::{Constellation, ObsEpoch, ObsSatellite, SatId, SigId, SignalBand};
+use bijux_gnss_signal::api::signal_wavelength_m;
 
 use super::config::{PppConfig, PppFilter, PppIndices};
 use super::measurements::{
@@ -834,10 +833,12 @@ mod tests {
     };
     use crate::models::atmosphere::SaastamoinenModel;
     use bijux_gnss_core::api::{
-        signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_wavelength_m, Constellation, Cycles,
-        GpsTime, Hertz, Llh, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
-        ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
-        Seconds, SigId, SignalBand, SignalCode,
+        Constellation, Cycles, GpsTime, Hertz, Llh, LockFlags, Meters, ObsEpoch, ObsMetadata,
+        ObsSatellite, ObservationEpochDecision, ObservationStatus, ReceiverRole,
+        ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
+    };
+    use bijux_gnss_signal::api::{
+        signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_wavelength_m,
     };
 
     #[derive(Debug, Clone)]

@@ -1,7 +1,6 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    signal_spec_galileo_e1b, signal_spec_galileo_e5a, signal_spec_gps_l1_ca, signal_spec_gps_l2_py,
     Constellation, Cycles, GpsTime, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
     ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ReceiverRole,
     ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode, SignalSpec,
@@ -9,6 +8,9 @@ use bijux_gnss_core::api::{
 use bijux_gnss_nav::api::{
     combinations_from_obs_epochs, iono_free_code_from_obs_epochs, iono_free_phase_from_obs_epochs,
     measured_ionosphere_from_obs_epochs, narrow_lane_from_obs_epochs,
+};
+use bijux_gnss_signal::api::{
+    signal_spec_galileo_e1b, signal_spec_galileo_e5a, signal_spec_gps_l1_ca, signal_spec_gps_l2_py,
 };
 
 fn satellite(sat: SatId, band: SignalBand, code: SignalCode, signal: SignalSpec) -> ObsSatellite {

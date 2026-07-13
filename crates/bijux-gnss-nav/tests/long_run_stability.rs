@@ -1,7 +1,9 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand, SignalCode};
-use bijux_gnss_nav::api::{Ekf, EkfConfig, InnovationConsistencyConfig, Matrix, PseudorangeMeasurement};
+use bijux_gnss_nav::api::{
+    Ekf, EkfConfig, InnovationConsistencyConfig, Matrix, PseudorangeMeasurement,
+};
 
 #[test]
 fn ekf_long_run_stability() {

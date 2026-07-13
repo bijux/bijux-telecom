@@ -1,10 +1,11 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{signal_cycles_to_meters, validate_obs_epochs, SignalBand, SignalCode};
+use bijux_gnss_core::api::{validate_obs_epochs, SignalBand, SignalCode};
 use bijux_gnss_nav::api::{
     combinations_from_obs_epochs, iono_free_code_from_obs_epochs, iono_free_phase_from_obs_epochs,
     measured_ionosphere_from_obs_epochs, parse_rinex_galileo_observation_dataset,
 };
+use bijux_gnss_signal::api::signal_cycles_to_meters;
 
 fn synthetic_galileo_rinex() -> String {
     [

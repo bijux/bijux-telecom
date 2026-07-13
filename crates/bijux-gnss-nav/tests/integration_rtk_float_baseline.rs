@@ -1,14 +1,14 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    signal_id_wavelength_m, ArtifactPayloadValidate, Constellation, SatId, SigId, SignalBand,
-    SignalCode,
+    ArtifactPayloadValidate, Constellation, SatId, SigId, SignalBand, SignalCode,
 };
 use bijux_gnss_nav::api::{
     rtk_float_baseline_from_double_differences,
     rtk_float_baseline_from_double_differences_with_rover_prior, RtkDoubleDifferenceObservation,
     RtkFloatAmbiguityEstimate, RtkFloatBaselineSolution,
 };
+use bijux_gnss_signal::api::signal_id_wavelength_m;
 use bijux_gnss_testkit::rtk_baseline::clean_gps_l1_short_baseline_case;
 
 fn enu_to_ecef(base_ecef_m: [f64; 3], enu_m: [f64; 3]) -> [f64; 3] {

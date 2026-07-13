@@ -15,10 +15,8 @@ use crate::orbits::glonass::{
     sat_state_glonass_l1,
 };
 use crate::orbits::gps::{gps_ephemeris_age, is_ephemeris_valid, sat_state_gps_l1ca};
-use bijux_gnss_core::api::{
-    default_acquisition_signal, signal_id_wavelength_m, MeasurementRejectReason, ObsSignalTiming,
-    SatId, SigId,
-};
+use bijux_gnss_core::api::{MeasurementRejectReason, ObsSignalTiming, SatId, SigId};
+use bijux_gnss_signal::api::{default_acquisition_signal, signal_id_wavelength_m};
 
 use super::solver::{PositionBroadcastNavigation, PositionObservation};
 
@@ -380,9 +378,9 @@ mod tests {
     use crate::estimation::position::solver::geodetic_to_ecef;
     use crate::orbits::gps::GpsEphemeris;
     use bijux_gnss_core::api::{
-        signal_id_wavelength_m, Constellation, GpsTime, ObsSignalTiming, SatId, Seconds, SigId,
-        SignalBand, SignalCode,
+        Constellation, GpsTime, ObsSignalTiming, SatId, Seconds, SigId, SignalBand, SignalCode,
     };
+    use bijux_gnss_signal::api::signal_id_wavelength_m;
 
     fn sample_gps_ephemeris() -> GpsEphemeris {
         GpsEphemeris {

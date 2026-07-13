@@ -2,9 +2,8 @@
 
 use std::collections::BTreeMap;
 
-use bijux_gnss_core::api::{
-    signal_cycles_to_meters, signal_wavelength_m, ObsEpoch, ObsSatellite, SatId, SignalBand,
-};
+use bijux_gnss_core::api::{ObsEpoch, ObsSatellite, SatId, SignalBand};
+use bijux_gnss_signal::api::{signal_cycles_to_meters, signal_wavelength_m};
 
 use crate::corrections::combinations::narrow_lane_wavelength_m_from_frequencies;
 use crate::corrections::dual_frequency::{dual_frequency_pair_issue, DualFrequencyPairIssue};
@@ -205,10 +204,12 @@ fn iono_free_phase_status_from_pair_issue(issue: DualFrequencyPairIssue) -> Iono
 mod tests {
     use super::iono_free_phase_from_obs_epochs;
     use bijux_gnss_core::api::{
-        signal_spec_galileo_e1b, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l5,
         Constellation, Cycles, GpsTime, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata,
         ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ReceiverRole,
         ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
+    };
+    use bijux_gnss_signal::api::{
+        signal_spec_galileo_e1b, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l5,
     };
 
     const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;

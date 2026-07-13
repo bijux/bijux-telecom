@@ -4,9 +4,9 @@ use std::collections::BTreeMap;
 use std::str::FromStr;
 
 use bijux_gnss_core::api::{
-    signal_registry, utc_to_gps, Constellation, GpsTime, LeapSeconds, SatId, SigId, SignalBand,
-    SignalCode, UtcTime,
+    utc_to_gps, Constellation, GpsTime, LeapSeconds, SatId, SigId, SignalBand, SignalCode, UtcTime,
 };
+use bijux_gnss_signal::api::signal_registry;
 use time::{Date, Month, PrimitiveDateTime, Time};
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;

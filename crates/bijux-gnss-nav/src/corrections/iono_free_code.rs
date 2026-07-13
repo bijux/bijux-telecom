@@ -232,10 +232,12 @@ mod tests {
     use super::{iono_free_code_from_obs_epochs, iono_free_code_from_obs_epochs_with_biases};
     use crate::corrections::biases::{CodeBias, SignalCodeBiases};
     use bijux_gnss_core::api::{
-        signal_spec_galileo_e1b, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l5,
         Constellation, Cycles, GpsTime, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata,
         ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationStatus, ReceiverRole,
         ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
+    };
+    use bijux_gnss_signal::api::{
+        signal_spec_galileo_e1b, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l5,
     };
 
     fn dual_frequency_epoch(

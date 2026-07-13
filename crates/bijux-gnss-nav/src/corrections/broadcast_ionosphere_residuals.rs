@@ -2,10 +2,8 @@
 
 use std::collections::BTreeMap;
 
-use bijux_gnss_core::api::{
-    first_order_ionosphere_code_delay_m, signal_spec_gps_l1_ca, Llh, Meters, ObsEpoch,
-    ObsSatellite, SatId, SigId, SignalBand,
-};
+use bijux_gnss_core::api::{Llh, Meters, ObsEpoch, ObsSatellite, SatId, SigId, SignalBand};
+use bijux_gnss_signal::api::{first_order_ionosphere_code_delay_m, signal_spec_gps_l1_ca};
 
 use crate::corrections::measured_ionosphere::{
     measured_ionosphere_from_obs_epochs, MeasuredIonosphereObservation,

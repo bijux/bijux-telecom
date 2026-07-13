@@ -3,16 +3,16 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use bijux_gnss_core::api::{
-    signal_id_wavelength_m, Constellation, InterSystemBias, MeasurementRejectReason, SatId, SigId,
-    SignalBand, SignalCode,
+    Constellation, InterSystemBias, MeasurementRejectReason, SatId, SigId, SignalBand, SignalCode,
 };
+use bijux_gnss_signal::api::signal_id_wavelength_m;
 
 use crate::estimation::ekf::models::{
     DopplerMeasurement, NavClockModel, ProcessNoiseConfig, PseudorangeMeasurement,
     StaticNavClockModel,
 };
-use crate::estimation::ekf::statistics::InnovationConsistencyConfig;
 use crate::estimation::ekf::state::{Ekf, EkfConfig};
+use crate::estimation::ekf::statistics::InnovationConsistencyConfig;
 use crate::estimation::position::navigation::{
     corrected_pseudorange_m, default_position_signal_id, resolve_position_inputs,
     satellite_state_from_observation, unknown_inter_system_time_offset_sats, PositionSolveInput,
@@ -329,14 +329,12 @@ impl PositionFilterCodeMetrics {
                 Some(self.peak_normalized_innovation_squared.unwrap_or(0.0).max(value));
         }
         if let Some(value) = health.innovation_consistency_upper_bound {
-            self.peak_innovation_consistency_upper_bound = Some(
-                self.peak_innovation_consistency_upper_bound.unwrap_or(0.0).max(value),
-            );
+            self.peak_innovation_consistency_upper_bound =
+                Some(self.peak_innovation_consistency_upper_bound.unwrap_or(0.0).max(value));
         }
-        if let (Some(value), Some(upper_bound)) = (
-            health.normalized_innovation_squared,
-            health.innovation_consistency_upper_bound,
-        ) {
+        if let (Some(value), Some(upper_bound)) =
+            (health.normalized_innovation_squared, health.innovation_consistency_upper_bound)
+        {
             self.upper_innovation_consistency_violation |= value > upper_bound;
         }
     }
@@ -1231,9 +1229,11 @@ mod tests {
         config.divergence.innovation_consistency_upper_tail_probability = 0.8;
 
         let filter = PositionFilter::new(config.clone());
-        let innovation_consistency = filter.ekf.config.innovation_consistency.expect(
-            "position filter should configure EKF innovation consistency bounds",
-        );
+        let innovation_consistency = filter
+            .ekf
+            .config
+            .innovation_consistency
+            .expect("position filter should configure EKF innovation consistency bounds");
 
         assert_eq!(
             innovation_consistency.lower_tail_probability,

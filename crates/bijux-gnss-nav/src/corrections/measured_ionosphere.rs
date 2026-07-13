@@ -2,9 +2,8 @@
 
 use std::collections::BTreeMap;
 
-use bijux_gnss_core::api::{
-    signal_cycles_to_meters, ObsEpoch, ObsSatellite, SatId, SigId, SignalBand,
-};
+use bijux_gnss_core::api::{ObsEpoch, ObsSatellite, SatId, SigId, SignalBand};
+use bijux_gnss_signal::api::signal_cycles_to_meters;
 
 use crate::corrections::dual_frequency::{dual_frequency_pair_issue, DualFrequencyPairIssue};
 
@@ -458,10 +457,13 @@ fn measured_ionosphere_phase_status_from_pair_issue(
 mod tests {
     use super::measured_ionosphere_from_obs_epochs;
     use bijux_gnss_core::api::{
+        Constellation, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
+        ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
+        Seconds, SigId, SignalBand, SignalCode,
+    };
+    use bijux_gnss_signal::api::{
         first_order_ionosphere_code_delay_m, signal_meters_to_cycles, signal_spec_gps_l1_ca,
-        signal_spec_gps_l2_py, Constellation, Hertz, LockFlags, Meters, ObsEpoch, ObsMetadata,
-        ObsSatellite, ObservationEpochDecision, ObservationStatus, ReceiverRole,
-        ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
+        signal_spec_gps_l2_py,
     };
 
     struct EpochTerms {

@@ -1,6 +1,5 @@
-use bijux_gnss_core::api::{
-    signal_id_wavelength_m, ArtifactPayloadValidate, DiagnosticEvent, DiagnosticSeverity, SigId,
-};
+use bijux_gnss_core::api::{ArtifactPayloadValidate, DiagnosticEvent, DiagnosticSeverity, SigId};
+use bijux_gnss_signal::api::signal_id_wavelength_m;
 use serde::{Deserialize, Serialize};
 
 use super::double_difference::RtkDoubleDifferenceObservation;

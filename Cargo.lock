@@ -225,6 +225,7 @@ version = "0.1.0"
 dependencies = [
  "bijux-gnss-core",
  "bijux-gnss-policies",
+ "bijux-gnss-signal",
  "bijux-gnss-testkit",
  "criterion",
  "hex",

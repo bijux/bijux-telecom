@@ -2,7 +2,7 @@
 
 mod support;
 
-use bijux_gnss_core::api::{signal_spec_gps_l1_ca, signal_spec_gps_l2_py};
+use bijux_gnss_signal::api::{signal_spec_gps_l1_ca, signal_spec_gps_l2_py};
 
 use support::public_broadcast_ionosphere_case::ab43_public_gps_broadcast_ionosphere_case;
 

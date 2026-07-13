@@ -4,9 +4,8 @@ use std::cmp::Ordering;
 
 use serde::{Deserialize, Serialize};
 
-use bijux_gnss_core::api::{
-    signal_registry, Constellation, GpsTime, Llh, ObsSignalTiming, SatId, SigId,
-};
+use bijux_gnss_core::api::{Constellation, GpsTime, Llh, ObsSignalTiming, SatId, SigId};
+use bijux_gnss_signal::api::signal_registry;
 
 use crate::models::nequick::model::GalileoNequickModel;
 
@@ -533,7 +532,7 @@ mod tests {
         let receiver = Llh { lat_deg: -3.0, lon_deg: 40.19, alt_m: -23.32 };
         let satellite = Llh { lat_deg: -41.43, lon_deg: 76.65, alt_m: 20_157_673.93 };
         let gps_time = GpsTime { week: 2295, tow_s: 0.0 };
-        let carrier_hz = bijux_gnss_core::api::signal_registry(
+        let carrier_hz = bijux_gnss_signal::api::signal_registry(
             Constellation::Galileo,
             SignalBand::E1,
             SignalCode::E1B,

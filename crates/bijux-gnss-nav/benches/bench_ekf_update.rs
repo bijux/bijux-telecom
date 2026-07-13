@@ -1,5 +1,7 @@
 use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand, SignalCode};
-use bijux_gnss_nav::api::{Ekf, EkfConfig, InnovationConsistencyConfig, Matrix, PseudorangeMeasurement};
+use bijux_gnss_nav::api::{
+    Ekf, EkfConfig, InnovationConsistencyConfig, Matrix, PseudorangeMeasurement,
+};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 
 fn bench_ekf_update(c: &mut Criterion) {

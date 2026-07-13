@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use crate::estimation::ekf::models::PseudorangeMeasurement;
-use crate::estimation::ekf::statistics::InnovationConsistencyConfig;
 use crate::estimation::ekf::state::{Ekf, EkfConfig};
+use crate::estimation::ekf::statistics::InnovationConsistencyConfig;
 use crate::linalg::Matrix;
 use bijux_gnss_core::api::{Constellation, SatId, SigId, SignalBand, SignalCode};
 
