@@ -163,6 +163,20 @@ fn support_matrix_artifact_reports_registered_signal_stage_boundaries() {
             SupportStatus::Planned,
         ),
         (
+            Constellation::Gps,
+            SignalBand::L5,
+            SignalCode::L5Q,
+            SignalStageSupport {
+                acquisition: SupportStatus::Supported,
+                tracking: SupportStatus::Supported,
+                data_decoding: SupportStatus::Planned,
+                observations: SupportStatus::Supported,
+                positioning: SupportStatus::Planned,
+            },
+            Vec::<&str>::new(),
+            SupportStatus::Planned,
+        ),
+        (
             Constellation::Galileo,
             SignalBand::E1,
             SignalCode::E1B,
