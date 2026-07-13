@@ -9,9 +9,8 @@ use bijux_gnss_receiver::api::{
     nav::{
         geodetic_to_ecef, position_broadcast_navigation_from_gps_ephemerides, sat_state_galileo_e1,
         sat_state_gps_l1ca, GalileoBroadcastNavigationData, GalileoClockCorrection,
-        GalileoEphemeris, GalileoIonosphericCorrection,
-        GalileoIonosphericDisturbanceFlags, GalileoSignalHealth, GalileoSystemTime, GpsEphemeris,
-        PositionBroadcastNavigation,
+        GalileoEphemeris, GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags,
+        GalileoSignalHealth, GalileoSystemTime, GpsEphemeris, PositionBroadcastNavigation,
     },
     Navigation, ReceiverPipelineConfig, ReceiverRuntime,
 };
@@ -59,9 +58,8 @@ fn mixed_constellation_run(inject_clock_step: bool) -> ConstellationClockInconsi
     let gps_ephemerides = gps_ephemerides();
     let galileo_navigation = galileo_navigation();
     let mut navigation_data = position_broadcast_navigation_from_gps_ephemerides(&gps_ephemerides);
-    navigation_data.extend(
-        galileo_navigation.iter().cloned().map(PositionBroadcastNavigation::Galileo),
-    );
+    navigation_data
+        .extend(galileo_navigation.iter().cloned().map(PositionBroadcastNavigation::Galileo));
 
     let solutions = (0..EPOCH_COUNT)
         .filter_map(|epoch_index| {
@@ -74,7 +72,14 @@ fn mixed_constellation_run(inject_clock_step: bool) -> ConstellationClockInconsi
                 } else {
                     0.0
                 };
-            let obs = make_obs_epoch(t_rx_s, epoch_idx, truth_ecef_m, &gps_ephemerides, &galileo_navigation, galileo_bias_s);
+            let obs = make_obs_epoch(
+                t_rx_s,
+                epoch_idx,
+                truth_ecef_m,
+                &gps_ephemerides,
+                &galileo_navigation,
+                galileo_bias_s,
+            );
             navigation.solve_epoch_with_navigation_data(&obs, &navigation_data)
         })
         .collect::<Vec<_>>();
@@ -260,10 +265,7 @@ fn gps_ephemerides() -> Vec<GpsEphemeris> {
 }
 
 fn galileo_navigation() -> Vec<GalileoBroadcastNavigationData> {
-    vec![
-        make_galileo_navigation(19, 1.17, 0.84),
-        make_galileo_navigation(24, -0.83, 1.52),
-    ]
+    vec![make_galileo_navigation(19, 1.17, 0.84), make_galileo_navigation(24, -0.83, 1.52)]
 }
 
 fn make_gps_ephemeris(prn: u8, omega0: f64, m0: f64) -> GpsEphemeris {

@@ -3,8 +3,8 @@
 use bijux_gnss_core::api::{
     Constellation, GpsTime, LockFlags, Meters, NavHealthEvent, NavSolutionEpoch, ObsEpoch,
     ObsMetadata, ObsSatellite, ObsSignalTiming, ObservationEpochDecision, ObservationStatus,
-    ObservationSupportClass, ObservationUncertaintyClass, ReceiverRole, ReceiverSampleTrace,
-    SatId, Seconds, SigId, SignalBand, SignalCode, SignalSpec,
+    ObservationSupportClass, ObservationUncertaintyClass, ReceiverRole, ReceiverSampleTrace, SatId,
+    Seconds, SigId, SignalBand, SignalCode, SignalSpec,
 };
 use bijux_gnss_nav::api::{geodetic_to_ecef, sat_state_gps_l1ca, GpsEphemeris};
 use bijux_gnss_receiver::api::{Navigation, ReceiverPipelineConfig, ReceiverRuntime};
@@ -39,9 +39,7 @@ fn solve_navigation_case(truth_altitude_m: f64) -> ImpossibleGeometryRun {
     let ephemerides = navigation_ephemerides();
     let observation = make_obs_epoch(RECEIVE_TIME_S, truth_ecef_m, &ephemerides);
     let mut navigation = Navigation::new(navigation_test_config(), ReceiverRuntime::default());
-    let solution = navigation
-        .solve_epoch(&observation, &ephemerides)
-        .expect("navigation solution");
+    let solution = navigation.solve_epoch(&observation, &ephemerides).expect("navigation solution");
 
     ImpossibleGeometryRun { solution }
 }
@@ -133,11 +131,7 @@ fn make_obs_satellite(
 ) -> ObsSatellite {
     let pseudorange_m = synthetic_pseudorange_m(ephemeris, t_rx_s, truth_ecef_m);
     ObsSatellite {
-        signal_id: SigId {
-            sat: ephemeris.sat,
-            band: SignalBand::L1,
-            code: SignalCode::Ca,
-        },
+        signal_id: SigId { sat: ephemeris.sat, band: SignalBand::L1, code: SignalCode::Ca },
         pseudorange_m: Meters(pseudorange_m),
         pseudorange_var_m2: 4.0,
         carrier_phase_cycles: bijux_gnss_core::api::Cycles(0.0),

@@ -56,24 +56,25 @@ pub fn static_common_code_doppler_anomaly_run() -> CommonCodeDopplerAnomalyRun {
     );
     let gps_time = Some(GpsTime {
         week: ephemerides.first().expect("common anomaly ephemeris").week,
-        tow_s: profile
-            .truth_epochs
-            .first()
-            .expect("common anomaly truth epoch")
-            .receive_time_s,
+        tow_s: profile.truth_epochs.first().expect("common anomaly truth epoch").receive_time_s,
     });
-    let observations = observations_from_tracking_results_with_gps_anchor(&config, gps_time, &tracking, 1)
-        .output
-        .into_iter()
-        .filter(|epoch| epoch.valid && epoch.sats.len() >= 4)
-        .collect::<Vec<_>>();
+    let observations =
+        observations_from_tracking_results_with_gps_anchor(&config, gps_time, &tracking, 1)
+            .output
+            .into_iter()
+            .filter(|epoch| epoch.valid && epoch.sats.len() >= 4)
+            .collect::<Vec<_>>();
     let mut navigation = Navigation::new(config, ReceiverRuntime::default());
     let solutions = observations
         .iter()
         .filter_map(|epoch| navigation.solve_epoch(epoch, &ephemerides))
         .collect::<Vec<_>>();
 
-    CommonCodeDopplerAnomalyRun { observations, solutions, anomaly_onset_epoch_index: ANOMALY_ONSET_EPOCH_INDEX }
+    CommonCodeDopplerAnomalyRun {
+        observations,
+        solutions,
+        anomaly_onset_epoch_index: ANOMALY_ONSET_EPOCH_INDEX,
+    }
 }
 
 pub fn common_anomaly_health_events(solution: &NavSolutionEpoch) -> Vec<&NavHealthEvent> {
@@ -181,8 +182,10 @@ fn truth_seeded_tracking_results_with_common_anomaly(
                 .iter()
                 .map(|truth_epoch| {
                     let anomaly_active = truth_epoch.epoch_idx >= ANOMALY_ONSET_EPOCH_INDEX;
-                    let pseudorange_step_m = anomaly_active.then_some(COMMON_CODE_STEP_M).unwrap_or(0.0);
-                    let doppler_step_hz = anomaly_active.then_some(COMMON_DOPPLER_STEP_HZ).unwrap_or(0.0);
+                    let pseudorange_step_m =
+                        anomaly_active.then_some(COMMON_CODE_STEP_M).unwrap_or(0.0);
+                    let doppler_step_hz =
+                        anomaly_active.then_some(COMMON_DOPPLER_STEP_HZ).unwrap_or(0.0);
                     let pseudorange_m = synthetic_pseudorange_m(
                         ephemeris,
                         truth_epoch.receive_time_s,
@@ -217,7 +220,10 @@ fn truth_seeded_tracking_results_with_common_anomaly(
                         carrier_hz: Hertz(signal.doppler_hz + doppler_step_hz),
                         carrier_phase_cycles: Cycles(0.0),
                         code_rate_hz: Hertz(config.code_freq_basis_hz),
-                        code_phase_samples: Chips(tracking_code_phase_samples(config, code_phase_chips)),
+                        code_phase_samples: Chips(tracking_code_phase_samples(
+                            config,
+                            code_phase_chips,
+                        )),
                         lock: true,
                         cn0_dbhz: signal.cn0_db_hz as f64,
                         pll_lock: true,

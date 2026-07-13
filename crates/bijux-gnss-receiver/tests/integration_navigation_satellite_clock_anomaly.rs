@@ -22,7 +22,11 @@ fn navigation_pipeline_classifies_single_satellite_clock_anomaly() {
         "expected a clock anomaly to be classified: {:?}",
         run.solutions
             .iter()
-            .map(|solution| (solution.epoch.index, solution.status, solution.explain_reasons.clone()))
+            .map(|solution| (
+                solution.epoch.index,
+                solution.status,
+                solution.explain_reasons.clone()
+            ))
             .collect::<Vec<_>>(),
     );
     assert!(

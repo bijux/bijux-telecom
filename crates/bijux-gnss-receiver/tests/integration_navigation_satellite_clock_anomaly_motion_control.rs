@@ -3,7 +3,9 @@
 #[path = "support/navigation_motion_profile.rs"]
 mod navigation_motion_profile;
 
-use navigation_motion_profile::{build_navigation_motion_case, synthetic_navigation_motion_profiles};
+use navigation_motion_profile::{
+    build_navigation_motion_case, synthetic_navigation_motion_profiles,
+};
 
 #[test]
 fn navigation_pipeline_does_not_misclassify_receiver_motion_as_clock_anomaly() {

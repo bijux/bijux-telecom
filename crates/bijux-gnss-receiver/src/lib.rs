@@ -17,12 +17,12 @@
 #![deny(missing_docs)]
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "nav")]
+mod covariance_realism;
 mod engine;
 mod io;
 mod pipeline;
 mod ports;
-#[cfg(feature = "nav")]
-mod covariance_realism;
 #[cfg(feature = "nav")]
 mod rtk;
 #[cfg(feature = "nav")]

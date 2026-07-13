@@ -520,8 +520,7 @@ fn galileo_geometry_free_and_iono_free_phase_use_e1_e5_wavelengths() {
     let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
     let e1 = signal_spec_galileo_e1b();
     let e5 = signal_spec_galileo_e5a();
-    let narrow_lane_wavelength_m =
-        299_792_458.0 / (e1.carrier_hz.value() + e5.carrier_hz.value());
+    let narrow_lane_wavelength_m = 299_792_458.0 / (e1.carrier_hz.value() + e5.carrier_hz.value());
     let wide_lane_wavelength_m =
         299_792_458.0 / (e1.carrier_hz.value() - e5.carrier_hz.value()).abs();
     let epoch = make_dual_signal_epoch_from_phase_meters(
@@ -557,9 +556,7 @@ fn galileo_geometry_free_and_iono_free_phase_use_e1_e5_wavelengths() {
         (combinations[0].if_phase_m.expect("iono-free phase") - expected_if_phase_m).abs() < 1.0e-6
     );
     assert!(
-        (combinations[0]
-            .narrow_lane_wavelength_m
-            .expect("narrow-lane wavelength")
+        (combinations[0].narrow_lane_wavelength_m.expect("narrow-lane wavelength")
             - narrow_lane_wavelength_m)
             .abs()
             < 1.0e-12
@@ -591,8 +588,7 @@ fn beidou_geometry_free_and_iono_free_phase_use_b1_b2_wavelengths() {
     let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
     let b1 = signal_spec_beidou_b1i();
     let b2 = signal_spec_beidou_b2i();
-    let narrow_lane_wavelength_m =
-        299_792_458.0 / (b1.carrier_hz.value() + b2.carrier_hz.value());
+    let narrow_lane_wavelength_m = 299_792_458.0 / (b1.carrier_hz.value() + b2.carrier_hz.value());
     let wide_lane_wavelength_m =
         299_792_458.0 / (b1.carrier_hz.value() - b2.carrier_hz.value()).abs();
     let epoch = make_dual_signal_epoch_from_phase_meters(
@@ -628,9 +624,7 @@ fn beidou_geometry_free_and_iono_free_phase_use_b1_b2_wavelengths() {
         (combinations[0].if_phase_m.expect("iono-free phase") - expected_if_phase_m).abs() < 1.0e-6
     );
     assert!(
-        (combinations[0]
-            .narrow_lane_wavelength_m
-            .expect("narrow-lane wavelength")
+        (combinations[0].narrow_lane_wavelength_m.expect("narrow-lane wavelength")
             - narrow_lane_wavelength_m)
             .abs()
             < 1.0e-12
@@ -686,9 +680,7 @@ fn galileo_melbourne_wubbena_diagnostics_publish_wide_lane_wavelength() {
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(diagnostics[0].event, MelbourneWubbenaEvent::InsufficientHistory);
     assert!(
-        (diagnostics[0]
-            .wide_lane_wavelength_m
-            .expect("wide-lane wavelength")
+        (diagnostics[0].wide_lane_wavelength_m.expect("wide-lane wavelength")
             - expected_wide_lane_wavelength_m)
             .abs()
             < 1.0e-12
@@ -724,9 +716,7 @@ fn beidou_melbourne_wubbena_diagnostics_publish_wide_lane_wavelength() {
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(diagnostics[0].event, MelbourneWubbenaEvent::InsufficientHistory);
     assert!(
-        (diagnostics[0]
-            .wide_lane_wavelength_m
-            .expect("wide-lane wavelength")
+        (diagnostics[0].wide_lane_wavelength_m.expect("wide-lane wavelength")
             - expected_wide_lane_wavelength_m)
             .abs()
             < 1.0e-12

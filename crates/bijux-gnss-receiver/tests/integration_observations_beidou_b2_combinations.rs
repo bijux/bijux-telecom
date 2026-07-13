@@ -172,7 +172,8 @@ fn generated_beidou_b1_b2_observations_reduce_synthetic_ionospheric_delay() {
         });
     }
 
-    let iono_free_code = iono_free_code_from_obs_epochs(&[delayed_epoch], SignalBand::B1, SignalBand::B2);
+    let iono_free_code =
+        iono_free_code_from_obs_epochs(&[delayed_epoch], SignalBand::B1, SignalBand::B2);
 
     assert_eq!(iono_free_code.len(), 1);
     assert_eq!(iono_free_code[0].status, "ok");

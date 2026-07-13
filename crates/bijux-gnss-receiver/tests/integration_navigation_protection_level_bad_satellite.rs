@@ -2,10 +2,10 @@
 
 mod support;
 
-use support::navigation_outlier::{
-    bad_satellite_prn, single_bad_satellite_navigation_run,
+use support::navigation_outlier::{bad_satellite_prn, single_bad_satellite_navigation_run};
+use support::navigation_protection_faults::{
+    max_reported_hpl_m, max_reported_vpl_m, noisy_run_validation,
 };
-use support::navigation_protection_faults::{noisy_run_validation, max_reported_hpl_m, max_reported_vpl_m};
 
 #[test]
 fn bad_satellite_fault_preserves_contained_protection_levels_after_exclusion() {

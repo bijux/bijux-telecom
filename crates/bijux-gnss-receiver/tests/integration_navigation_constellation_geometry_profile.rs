@@ -13,10 +13,18 @@ use navigation_constellation_geometry_profile::build_receiver_constellation_geom
 
 #[test]
 fn public_constellation_geometry_profile_reports_lower_dop_for_mixed_case() {
-    let gps_only_case =
-        build_receiver_constellation_geometry_case("receiver_constellation_geometry_gps_only", 4, 0, 0);
-    let mixed_case =
-        build_receiver_constellation_geometry_case("receiver_constellation_geometry_mixed", 4, 2, 2);
+    let gps_only_case = build_receiver_constellation_geometry_case(
+        "receiver_constellation_geometry_gps_only",
+        4,
+        0,
+        0,
+    );
+    let mixed_case = build_receiver_constellation_geometry_case(
+        "receiver_constellation_geometry_mixed",
+        4,
+        2,
+        2,
+    );
 
     let report: SyntheticPvtConstellationGeometryProfileReport =
         summarize_truth_guided_pvt_constellation_geometry_profile(
@@ -83,5 +91,8 @@ fn public_constellation_geometry_profile_reports_higher_availability_for_mixed_c
     assert_eq!(gps_only.availability_rate, 0.0);
     assert!(!gps_only.ready, "{report:?}");
     assert!(!gps_only.truth_coverage_ready, "{report:?}");
-    assert!(gps_only.truth_coverage_issues.iter().any(|issue| issue.code == "no_navigation_solutions"));
+    assert!(gps_only
+        .truth_coverage_issues
+        .iter()
+        .any(|issue| issue.code == "no_navigation_solutions"));
 }

@@ -3,8 +3,8 @@
 use bijux_gnss_core::api::{
     Constellation, Cycles, GpsTime, Hertz, LockFlags, MeasurementRejectReason, Meters,
     NavSolutionEpoch, ObsEpoch, ObsMetadata, ObsSatellite, ObsSignalTiming,
-    ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId,
-    Seconds, SigId, SignalBand, SignalCode,
+    ObservationEpochDecision, ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId, Seconds,
+    SigId, SignalBand, SignalCode,
 };
 use bijux_gnss_receiver::api::{
     nav::{
@@ -458,12 +458,8 @@ fn assert_constellation_residual_rms(
         .unwrap_or_else(|| panic!("missing residual RMS summary for {constellation:?}"));
     assert_eq!(summary.pre_fit_sat_count, pre_fit_sat_count);
     assert_eq!(summary.post_fit_sat_count, post_fit_sat_count);
-    assert!(summary
-        .pre_fit_rms_m
-        .is_some_and(|value| value.0.is_finite() && value.0 >= 0.0));
-    assert!(summary
-        .post_fit_rms_m
-        .is_some_and(|value| value.0.is_finite() && value.0 >= 0.0));
+    assert!(summary.pre_fit_rms_m.is_some_and(|value| value.0.is_finite() && value.0 >= 0.0));
+    assert!(summary.post_fit_rms_m.is_some_and(|value| value.0.is_finite() && value.0 >= 0.0));
 }
 
 #[test]
@@ -588,9 +584,8 @@ fn public_navigation_api_solves_mixed_gps_beidou_epoch() {
     let obs = synthetic_obs_epoch(t_rx_s, sats);
 
     let mut navigation_data = position_broadcast_navigation_from_gps_ephemerides(&gps_ephemerides);
-    navigation_data.extend(position_broadcast_navigation_from_beidou_navigations(
-        &beidou_navigation,
-    ));
+    navigation_data
+        .extend(position_broadcast_navigation_from_beidou_navigations(&beidou_navigation));
 
     let solution = navigation_engine
         .solve_epoch_with_navigation_data(&obs, &navigation_data)
@@ -682,9 +677,8 @@ fn public_navigation_api_solves_mixed_gps_galileo_beidou_epoch() {
     let mut navigation_data = position_broadcast_navigation_from_gps_ephemerides(&gps_ephemerides);
     navigation_data
         .extend(galileo_navigation.iter().cloned().map(PositionBroadcastNavigation::Galileo));
-    navigation_data.extend(position_broadcast_navigation_from_beidou_navigations(
-        &beidou_navigation,
-    ));
+    navigation_data
+        .extend(position_broadcast_navigation_from_beidou_navigations(&beidou_navigation));
 
     let solution = navigation_engine
         .solve_epoch_with_navigation_data(&obs, &navigation_data)
@@ -967,9 +961,8 @@ fn public_navigation_api_solves_mixed_gps_glonass_epoch_when_policy_is_mixed() {
 
     let obs = synthetic_obs_epoch(t_rx_s, sats);
     let mut navigation_data = position_broadcast_navigation_from_gps_ephemerides(&gps_ephemerides);
-    navigation_data.extend(position_broadcast_navigation_from_glonass_frames(
-        &glonass_navigation[..2],
-    ));
+    navigation_data
+        .extend(position_broadcast_navigation_from_glonass_frames(&glonass_navigation[..2]));
 
     let solution = navigation_engine
         .solve_epoch_with_navigation_data(&obs, &navigation_data)

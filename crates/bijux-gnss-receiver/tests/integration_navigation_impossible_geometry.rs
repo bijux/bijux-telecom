@@ -19,10 +19,7 @@ fn navigation_pipeline_refuses_impossible_geometry() {
         run.solution.health,
     );
     assert_eq!(run.solution.status, SolutionStatus::IntegrityFailed);
-    assert_eq!(
-        run.solution.refusal_class,
-        Some(NavRefusalClass::InconsistentObservations)
-    );
+    assert_eq!(run.solution.refusal_class, Some(NavRefusalClass::InconsistentObservations));
     assert!(!run.solution.valid, "impossible geometry must be refused");
     assert_eq!(
         (run.solution.ecef_x_m.0, run.solution.ecef_y_m.0, run.solution.ecef_z_m.0),
@@ -35,10 +32,7 @@ fn navigation_pipeline_refuses_impossible_geometry() {
         run.solution.explain_reasons,
     );
     assert!(
-        run.solution
-            .explain_reasons
-            .iter()
-            .any(|reason| reason.starts_with("receiver_radius_m=")),
+        run.solution.explain_reasons.iter().any(|reason| reason.starts_with("receiver_radius_m=")),
         "expected receiver radius evidence: {:?}",
         run.solution.explain_reasons,
     );
@@ -78,10 +72,7 @@ fn navigation_pipeline_accepts_terrestrial_geometry() {
     assert_eq!(run.solution.refusal_class, None);
     assert_ne!(run.solution.status, SolutionStatus::IntegrityFailed);
     assert!(
-        !run.solution
-            .explain_reasons
-            .iter()
-            .any(|reason| reason == "impossible_geometry"),
+        !run.solution.explain_reasons.iter().any(|reason| reason == "impossible_geometry"),
         "terrestrial truth must not carry impossible geometry explainability: {:?}",
         run.solution.explain_reasons,
     );

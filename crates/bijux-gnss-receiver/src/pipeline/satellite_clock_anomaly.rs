@@ -35,7 +35,9 @@ pub fn detect_satellite_clock_anomaly(
     current_fault_exclusion: Option<RaimFaultExclusion>,
     persistent_suspect_epochs: usize,
 ) -> Option<SatelliteClockAnomaly> {
-    if current_fault_exclusion.is_some() || persistent_suspect_epochs < MIN_PERSISTENT_SUSPECT_EPOCHS {
+    if current_fault_exclusion.is_some()
+        || persistent_suspect_epochs < MIN_PERSISTENT_SUSPECT_EPOCHS
+    {
         return None;
     }
     let fault_detection = current_fault_detection?;

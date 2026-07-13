@@ -14,8 +14,7 @@ use bijux_gnss_receiver::api::{
     ReceiverPipelineConfig,
 };
 
-const REGENERATE_TRACKING_TRUTH_FIXTURE_ENV: &str =
-    "BIJUX_REGENERATE_TRACKING_TRUTH_FIXTURE";
+const REGENERATE_TRACKING_TRUTH_FIXTURE_ENV: &str = "BIJUX_REGENERATE_TRACKING_TRUTH_FIXTURE";
 
 #[test]
 fn tracking_truth_table_matches_low_rate_reference_fixture() {

@@ -5,11 +5,10 @@ mod support;
 use support::navigation_outlier::single_bad_satellite_navigation_run;
 
 fn explain_value(solution: &bijux_gnss_core::api::NavSolutionEpoch, key: &str) -> Option<usize> {
-    solution.explain_reasons.iter().find_map(|reason| {
-        reason
-            .strip_prefix(key)
-            .and_then(|value| value.parse::<usize>().ok())
-    })
+    solution
+        .explain_reasons
+        .iter()
+        .find_map(|reason| reason.strip_prefix(key).and_then(|value| value.parse::<usize>().ok()))
 }
 
 #[test]
@@ -34,7 +33,11 @@ fn navigation_pipeline_reports_subset_solution_comparisons_for_raim() {
         run.run
             .solutions
             .iter()
-            .map(|solution| (solution.epoch.index, solution.status, solution.explain_reasons.clone()))
+            .map(|solution| (
+                solution.epoch.index,
+                solution.status,
+                solution.explain_reasons.clone()
+            ))
             .collect::<Vec<_>>(),
     );
     for (solution, reference_satellites, compared_subsets) in compared_solutions {

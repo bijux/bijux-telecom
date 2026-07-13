@@ -118,10 +118,7 @@ fn navigation_pipeline_requires_persistent_streak_before_refusal() {
     assert_eq!(first_flagged.status, SolutionStatus::Degraded);
     assert_eq!(first_flagged.refusal_class, None);
     assert!(
-        first_flagged
-            .explain_reasons
-            .iter()
-            .any(|reason| reason == "residual_whiteness"),
+        first_flagged.explain_reasons.iter().any(|reason| reason == "residual_whiteness"),
         "expected residual whiteness explainability on first flagged epoch: {:?}",
         first_flagged.explain_reasons,
     );

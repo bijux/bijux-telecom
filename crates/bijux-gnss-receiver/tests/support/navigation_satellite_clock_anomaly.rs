@@ -53,21 +53,22 @@ pub fn static_satellite_clock_anomaly_run() -> SatelliteClockAnomalyRun {
     let config = navigation_motion_config();
     let ephemerides = motion_ephemerides();
     let signals = motion_satellite_signals(&ephemerides);
-    let tracking =
-        truth_seeded_tracking_results_with_clock_step(&config, &ephemerides, &signals, &profile.truth_epochs);
+    let tracking = truth_seeded_tracking_results_with_clock_step(
+        &config,
+        &ephemerides,
+        &signals,
+        &profile.truth_epochs,
+    );
     let gps_time = Some(GpsTime {
         week: ephemerides.first().expect("clock anomaly ephemeris").week,
-        tow_s: profile
-            .truth_epochs
-            .first()
-            .expect("clock anomaly truth epoch")
-            .receive_time_s,
+        tow_s: profile.truth_epochs.first().expect("clock anomaly truth epoch").receive_time_s,
     });
-    let observations = observations_from_tracking_results_with_gps_anchor(&config, gps_time, &tracking, 1)
-        .output
-        .into_iter()
-        .filter(|epoch| epoch.valid && epoch.sats.len() >= 4)
-        .collect::<Vec<_>>();
+    let observations =
+        observations_from_tracking_results_with_gps_anchor(&config, gps_time, &tracking, 1)
+            .output
+            .into_iter()
+            .filter(|epoch| epoch.valid && epoch.sats.len() >= 4)
+            .collect::<Vec<_>>();
     let mut navigation = Navigation::new(config, ReceiverRuntime::default());
     let solutions = observations
         .iter()
@@ -171,10 +172,8 @@ fn truth_seeded_tracking_results_with_clock_step(
     signals: &[SyntheticSignalParams],
     truth_epochs: &[NavigationMotionTruthEpoch],
 ) -> Vec<TrackingResult> {
-    let initial_receive_time_s = truth_epochs
-        .first()
-        .expect("clock anomaly tracking requires a truth epoch")
-        .receive_time_s;
+    let initial_receive_time_s =
+        truth_epochs.first().expect("clock anomaly tracking requires a truth epoch").receive_time_s;
 
     signals
         .iter()
@@ -227,7 +226,10 @@ fn truth_seeded_tracking_results_with_clock_step(
                         carrier_hz: Hertz(signal.doppler_hz),
                         carrier_phase_cycles: Cycles(0.0),
                         code_rate_hz: Hertz(config.code_freq_basis_hz),
-                        code_phase_samples: Chips(tracking_code_phase_samples(config, code_phase_chips)),
+                        code_phase_samples: Chips(tracking_code_phase_samples(
+                            config,
+                            code_phase_chips,
+                        )),
                         lock: true,
                         cn0_dbhz: signal.cn0_db_hz as f64,
                         pll_lock: true,

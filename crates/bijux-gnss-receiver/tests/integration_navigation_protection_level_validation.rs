@@ -4,9 +4,7 @@ mod support;
 
 use bijux_gnss_receiver::api::{build_validation_report_with_budgets, ValidationSciencePolicy};
 
-use support::navigation_pipeline::{
-    clean_synthetic_navigation_run, clean_synthetic_pvt_budgets,
-};
+use support::navigation_pipeline::{clean_synthetic_navigation_run, clean_synthetic_pvt_budgets};
 
 #[test]
 fn clean_synthetic_validation_compares_protection_levels_with_truth() {

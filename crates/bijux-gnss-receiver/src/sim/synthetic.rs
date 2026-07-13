@@ -109,11 +109,11 @@ mod tests {
         SignalCode, SignalSpec, SolutionStatus, SolutionValidity, ValidationReferenceEpoch,
         NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
     };
+    use bijux_gnss_nav::api::GpsEphemeris;
     use bijux_gnss_signal::api::{
         advance_code_phase_seconds, sample_ca_code, samples_per_code, IqSampleFormat, Prn,
         RawIqMetadata, SignalSource,
     };
-    use bijux_gnss_nav::api::GpsEphemeris;
     use num_complex::Complex;
 
     const RECEIVER_PHASE_TOLERANCE_SAMPLES: f64 = 1e-6;

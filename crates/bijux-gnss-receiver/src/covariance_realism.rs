@@ -102,11 +102,9 @@ pub(crate) fn evaluate_covariance_realism(
         };
 
         let mut full_covariance_usable = false;
-        if let Some(horizontal_mahalanobis2) = horizontal_mahalanobis2(
-            sample.east_m,
-            sample.north_m,
-            covariance_enu_m2,
-        ) {
+        if let Some(horizontal_mahalanobis2) =
+            horizontal_mahalanobis2(sample.east_m, sample.north_m, covariance_enu_m2)
+        {
             horizontal_sample_count += 1;
             if horizontal_mahalanobis2 <= HORIZONTAL_95_MAHALANOBIS2_THRESHOLD + f64::EPSILON {
                 horizontal_inside_count += 1;
@@ -198,13 +196,8 @@ fn warning_for_coverage(
     }
 }
 
-fn coverage_rate(
-    sample_count: usize,
-    inside_count: usize,
-    _label: &str,
-) -> CovarianceCoverageRate {
-    let observed_rate =
-        (sample_count > 0).then_some(inside_count as f64 / sample_count as f64);
+fn coverage_rate(sample_count: usize, inside_count: usize, _label: &str) -> CovarianceCoverageRate {
+    let observed_rate = (sample_count > 0).then_some(inside_count as f64 / sample_count as f64);
     let tolerance_rate = (sample_count >= MIN_CLASSIFIED_SAMPLE_COUNT).then_some(
         COVERAGE_CLASSIFICATION_Z_SCORE
             * (EXPECTED_95_COVERAGE_RATE * (1.0 - EXPECTED_95_COVERAGE_RATE) / sample_count as f64)
@@ -272,8 +265,7 @@ fn position_mahalanobis2(
     let inverse = invert_3x3(covariance_enu_m2)?;
     Some(
         east_m * (inverse[0][0] * east_m + inverse[0][1] * north_m + inverse[0][2] * up_m)
-            + north_m
-                * (inverse[1][0] * east_m + inverse[1][1] * north_m + inverse[1][2] * up_m)
+            + north_m * (inverse[1][0] * east_m + inverse[1][1] * north_m + inverse[1][2] * up_m)
             + up_m * (inverse[2][0] * east_m + inverse[2][1] * north_m + inverse[2][2] * up_m),
     )
 }
@@ -397,10 +389,20 @@ mod tests {
     fn covariance_realism_classifies_nominal_coverage() {
         let mut samples = Vec::new();
         for _ in 0..38 {
-            samples.push(sample(0.5, 0.25, 0.5, [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]));
+            samples.push(sample(
+                0.5,
+                0.25,
+                0.5,
+                [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            ));
         }
         for _ in 0..2 {
-            samples.push(sample(3.5, 0.0, 3.0, [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]));
+            samples.push(sample(
+                3.5,
+                0.0,
+                3.0,
+                [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            ));
         }
 
         let report = evaluate_covariance_realism(&samples);
@@ -415,10 +417,20 @@ mod tests {
     fn covariance_realism_classifies_optimistic_coverage() {
         let mut samples = Vec::new();
         for _ in 0..30 {
-            samples.push(sample(0.5, 0.25, 0.5, [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]));
+            samples.push(sample(
+                0.5,
+                0.25,
+                0.5,
+                [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            ));
         }
         for _ in 0..10 {
-            samples.push(sample(3.5, 0.0, 3.0, [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]));
+            samples.push(sample(
+                3.5,
+                0.0,
+                3.0,
+                [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            ));
         }
 
         let report = evaluate_covariance_realism(&samples);

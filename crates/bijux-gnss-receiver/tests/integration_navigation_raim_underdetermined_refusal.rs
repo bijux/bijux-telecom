@@ -18,10 +18,7 @@ fn navigation_pipeline_refuses_underdetermined_raim_exclusion() {
         "expected navigation solutions from the underdetermined RAIM synthetic run",
     );
     assert!(
-        run.run
-            .solutions
-            .iter()
-            .all(|solution| solution.status == SolutionStatus::IntegrityFailed),
+        run.run.solutions.iter().all(|solution| solution.status == SolutionStatus::IntegrityFailed),
         "expected every navigation epoch to refuse the underdetermined RAIM case: {:?}",
         run.run
             .solutions

@@ -172,7 +172,8 @@ fn generated_galileo_e1_e5_observations_reduce_synthetic_ionospheric_delay() {
         });
     }
 
-    let iono_free_code = iono_free_code_from_obs_epochs(&[delayed_epoch], SignalBand::E1, SignalBand::E5);
+    let iono_free_code =
+        iono_free_code_from_obs_epochs(&[delayed_epoch], SignalBand::E1, SignalBand::E5);
 
     assert_eq!(iono_free_code.len(), 1);
     assert_eq!(iono_free_code[0].status, "ok");

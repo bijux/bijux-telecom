@@ -7,19 +7,17 @@ use bijux_gnss_core::api::{
     SignalCode, NAV_SOLUTION_MODEL_VERSION, OBSERVATION_DOWNSTREAM_PROFILE_VERSION,
 };
 use bijux_gnss_nav::api::{
-    elevation_azimuth_deg, geodetic_to_ecef, position_broadcast_navigation_from_galileo_navigations,
-    sat_state_galileo_e1, GalileoBroadcastNavigationData, GalileoClockCorrection,
-    GalileoEphemeris, GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags,
-    GalileoSignalHealth, GalileoSystemTime,
+    elevation_azimuth_deg, geodetic_to_ecef,
+    position_broadcast_navigation_from_galileo_navigations, sat_state_galileo_e1,
+    GalileoBroadcastNavigationData, GalileoClockCorrection, GalileoEphemeris,
+    GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags, GalileoSignalHealth,
+    GalileoSystemTime,
 };
 use bijux_gnss_receiver::api::{Navigation, ReceiverPipelineConfig, ReceiverRuntime};
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
 
-fn position_error_3d_m(
-    actual_ecef_m: (f64, f64, f64),
-    truth_ecef_m: (f64, f64, f64),
-) -> f64 {
+fn position_error_3d_m(actual_ecef_m: (f64, f64, f64), truth_ecef_m: (f64, f64, f64)) -> f64 {
     let dx = actual_ecef_m.0 - truth_ecef_m.0;
     let dy = actual_ecef_m.1 - truth_ecef_m.1;
     let dz = actual_ecef_m.2 - truth_ecef_m.2;
@@ -238,9 +236,13 @@ fn apply_galileo_nequick_bias(
             .expect("matching galileo navigation");
         let signal_travel_time_s =
             satellite.timing.expect("satellite timing").signal_travel_time_s.0;
-        let state =
-            sat_state_galileo_e1(navigation, observation.t_rx_s.0 - signal_travel_time_s, signal_travel_time_s);
-        let (sat_lat_deg, sat_lon_deg, sat_alt_m) = ecef_to_geodetic(state.x_m, state.y_m, state.z_m);
+        let state = sat_state_galileo_e1(
+            navigation,
+            observation.t_rx_s.0 - signal_travel_time_s,
+            signal_travel_time_s,
+        );
+        let (sat_lat_deg, sat_lon_deg, sat_alt_m) =
+            ecef_to_geodetic(state.x_m, state.y_m, state.z_m);
         let satellite_llh = Llh { lat_deg: sat_lat_deg, lon_deg: sat_lon_deg, alt_m: sat_alt_m };
         let gps_time = GpsTime { week: 2222, tow_s: observation.t_rx_s.0 };
         let delay_m = navigation
@@ -285,11 +287,7 @@ fn receiver_navigation_uses_galileo_broadcast_payload_to_recover_position() {
         .expect("galileo broadcast navigation solution");
 
     let error_m = position_error_3d_m(
-        (
-            solution.ecef_x_m.0,
-            solution.ecef_y_m.0,
-            solution.ecef_z_m.0,
-        ),
+        (solution.ecef_x_m.0, solution.ecef_y_m.0, solution.ecef_z_m.0),
         truth_ecef_m,
     );
 
@@ -299,10 +297,7 @@ fn receiver_navigation_uses_galileo_broadcast_payload_to_recover_position() {
         .explain_reasons
         .iter()
         .any(|reason| reason == "ionosphere_correction=galileo_nequick"));
-    assert!(!solution
-        .explain_reasons
-        .iter()
-        .any(|reason| reason == "ionosphere_uncorrected"));
+    assert!(!solution.explain_reasons.iter().any(|reason| reason == "ionosphere_uncorrected"));
     assert!(error_m < 5.0, "galileo payload error_m={error_m}");
 }
 
@@ -313,8 +308,7 @@ fn receiver_navigation_galileo_payload_matches_manual_navigation_entries() {
     let t_rx_s = 504_018.07;
     let receiver_clock_bias_s = 0.0;
     let navigations = visible_galileo_navigations(t_rx_s, truth_ecef_m, receiver_clock_bias_s);
-    let manual_navigation =
-        position_broadcast_navigation_from_galileo_navigations(&navigations);
+    let manual_navigation = position_broadcast_navigation_from_galileo_navigations(&navigations);
     let observation = make_galileo_observation_epoch(
         25,
         t_rx_s,

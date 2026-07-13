@@ -37,17 +37,11 @@ pub fn protection_validation_report(run: &CleanSyntheticNavigationRun) -> Valida
 }
 
 pub fn max_reported_hpl_m(run: &CleanSyntheticNavigationRun) -> Option<f64> {
-    run.solutions
-        .iter()
-        .filter_map(|solution| solution.integrity_hpl_m)
-        .reduce(f64::max)
+    run.solutions.iter().filter_map(|solution| solution.integrity_hpl_m).reduce(f64::max)
 }
 
 pub fn max_reported_vpl_m(run: &CleanSyntheticNavigationRun) -> Option<f64> {
-    run.solutions
-        .iter()
-        .filter_map(|solution| solution.integrity_vpl_m)
-        .reduce(f64::max)
+    run.solutions.iter().filter_map(|solution| solution.integrity_vpl_m).reduce(f64::max)
 }
 
 pub fn invalid_epoch_count(run: &CleanSyntheticNavigationRun) -> usize {
@@ -72,7 +66,10 @@ pub fn synthetic_protection_fault_sweep() -> Vec<SyntheticProtectionFaultPoint> 
                 max_hpl_m: max_reported_hpl_m(&run.run).unwrap_or(0.0),
                 max_vpl_m: max_reported_vpl_m(&run.run).unwrap_or(0.0),
                 invalid_epoch_count: invalid_epoch_count(&run.run),
-                horizontal_breach_epoch_count: report.protection_levels.horizontal_breach_epochs.len(),
+                horizontal_breach_epoch_count: report
+                    .protection_levels
+                    .horizontal_breach_epochs
+                    .len(),
                 vertical_breach_epoch_count: report.protection_levels.vertical_breach_epochs.len(),
             }
         })
@@ -98,8 +95,6 @@ pub fn synthetic_protection_fault_evidence(points: &[SyntheticProtectionFaultPoi
         .join(", ")
 }
 
-pub fn noisy_run_validation(
-    run: &NoisySyntheticNavigationRun,
-) -> ValidationReport {
+pub fn noisy_run_validation(run: &NoisySyntheticNavigationRun) -> ValidationReport {
     protection_validation_report(&run.run)
 }
