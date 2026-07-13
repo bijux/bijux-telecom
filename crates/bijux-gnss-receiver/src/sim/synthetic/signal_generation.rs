@@ -408,6 +408,7 @@ struct SatState {
     carrier_phase_rad: f64,
     cn0_db_hz: f32,
     nav_bit_mode: SyntheticNavBitMode,
+    nav_symbol_period_s: Option<f64>,
     signal_model: SyntheticSignalModel,
     if_hz: f64,
     sample_rate_hz: f64,
@@ -444,6 +445,7 @@ impl SatState {
         doppler_rate_hz_per_s: f64,
     ) -> Self {
         let signal_model = synthetic_replica_model(params);
+        let nav_bit_mode = nav_bit_mode(&params);
         Self {
             doppler_hz: params.doppler_hz,
             doppler_rate_hz_per_s,
@@ -451,7 +453,8 @@ impl SatState {
             code_phase_chips: params.code_phase_chips,
             carrier_phase_rad: params.carrier_phase_rad,
             cn0_db_hz: params.cn0_db_hz,
-            nav_bit_mode: nav_bit_mode(&params),
+            nav_bit_mode,
+            nav_symbol_period_s: nav_symbol_period_for_signal(&params, nav_bit_mode),
             signal_model,
             if_hz: synthetic_intermediate_frequency_hz(
                 config.intermediate_freq_hz,
@@ -487,7 +490,11 @@ impl SatState {
     }
 
     fn sample_at(&self, t: f64) -> Complex<f32> {
-        let data_bit = nav_bit_sign_for_mode_at_time_s(self.nav_bit_mode, t);
+        let data_bit = nav_bit_sign_with_symbol_period_at_time_s(
+            self.nav_bit_mode,
+            self.nav_symbol_period_s,
+            t,
+        );
         let amplitude = signal_amplitude_from_cn0(self.cn0_db_hz, self.sample_rate_hz);
         bijux_gnss_signal::api::sample_modulated_replica_at_time(
             &self.signal_model,
@@ -699,7 +706,20 @@ fn nav_bit_mode(params: &SyntheticSignalParams) -> SyntheticNavBitMode {
     }
 }
 
+#[cfg(test)]
 fn nav_bit_sign_for_mode_at_time_s(nav_bit_mode: SyntheticNavBitMode, time_s: f64) -> i8 {
+    nav_bit_sign_with_symbol_period_at_time_s(
+        nav_bit_mode,
+        legacy_nav_symbol_period_s(nav_bit_mode),
+        time_s,
+    )
+}
+
+fn nav_bit_sign_with_symbol_period_at_time_s(
+    nav_bit_mode: SyntheticNavBitMode,
+    symbol_period_s: Option<f64>,
+    time_s: f64,
+) -> i8 {
     match nav_bit_mode {
         SyntheticNavBitMode::GlonassL1FixedDataString
         | SyntheticNavBitMode::GlonassL1AlternatingDataString => {
@@ -710,14 +730,22 @@ fn nav_bit_sign_for_mode_at_time_s(nav_bit_mode: SyntheticNavBitMode, time_s: f6
             .expect("synthetic GLONASS L1 string schedule must be valid")
         }
         SyntheticNavBitMode::GpsL5QNh20 => bijux_gnss_signal::api::gps_l5_q_epoch_symbol(
-            nav_bit_index_for_mode_at_time_s(nav_bit_mode, time_s) as usize,
+            nav_bit_index_for_mode_at_time_s(nav_bit_mode, symbol_period_s, time_s) as usize,
         ),
-        _ => nav_bit_sign_for_index(nav_bit_index_for_mode_at_time_s(nav_bit_mode, time_s)),
+        _ => nav_bit_sign_for_index(nav_bit_index_for_mode_at_time_s(
+            nav_bit_mode,
+            symbol_period_s,
+            time_s,
+        )),
     }
 }
 
-fn nav_bit_index_for_mode_at_time_s(nav_bit_mode: SyntheticNavBitMode, time_s: f64) -> u64 {
-    let Some(symbol_period_s) = nav_symbol_period_s(nav_bit_mode) else {
+fn nav_bit_index_for_mode_at_time_s(
+    _nav_bit_mode: SyntheticNavBitMode,
+    symbol_period_s: Option<f64>,
+    time_s: f64,
+) -> u64 {
+    let Some(symbol_period_s) = symbol_period_s else {
         return 0;
     };
     if !time_s.is_finite() || time_s <= 0.0 {
@@ -733,7 +761,11 @@ fn nav_bit_sign_at_time_s(data_bit_flip: bool, time_s: f64) -> i8 {
 
 #[cfg(test)]
 fn nav_bit_index_at_time_s(time_s: f64) -> u64 {
-    nav_bit_index_for_mode_at_time_s(SyntheticNavBitMode::AlternatingGpsLnav20ms, time_s)
+    nav_bit_index_for_mode_at_time_s(
+        SyntheticNavBitMode::AlternatingGpsLnav20ms,
+        Some(GPS_L1_CA_NAV_BIT_PERIOD_S),
+        time_s,
+    )
 }
 
 fn nav_bit_sign_for_index(bit_index: u64) -> i8 {
@@ -766,11 +798,12 @@ fn nav_bit_segments(
     sample_rate_hz: f64,
     sample_count: u64,
     nav_bit_mode: SyntheticNavBitMode,
+    symbol_period_s: Option<f64>,
 ) -> Vec<SyntheticNavBitSegment> {
     if sample_count == 0 {
         return Vec::new();
     }
-    let Some(symbol_period_s) = nav_symbol_period_s(nav_bit_mode) else {
+    let Some(symbol_period_s) = symbol_period_s else {
         return vec![SyntheticNavBitSegment {
             start_sample: 0,
             end_sample: sample_count,
@@ -795,8 +828,9 @@ fn nav_bit_segments(
             end_sample: clamped_end,
             start_s: start_sample as f64 / sample_rate_hz,
             end_s: clamped_end as f64 / sample_rate_hz,
-            bit: nav_bit_sign_for_mode_at_time_s(
+            bit: nav_bit_sign_with_symbol_period_at_time_s(
                 nav_bit_mode,
+                Some(symbol_period_s),
                 start_sample as f64 / sample_rate_hz,
             ),
         });
@@ -805,7 +839,35 @@ fn nav_bit_segments(
     segments
 }
 
-fn nav_symbol_period_s(nav_bit_mode: SyntheticNavBitMode) -> Option<f64> {
+fn nav_symbol_period_for_signal(
+    params: &SyntheticSignalParams,
+    nav_bit_mode: SyntheticNavBitMode,
+) -> Option<f64> {
+    if nav_bit_mode == SyntheticNavBitMode::ConstantPositive {
+        return None;
+    }
+
+    let signal_code = resolved_signal_code(params.sat, params.signal_band, params.signal_code);
+    let registry_entry = bijux_gnss_signal::api::resolved_signal_registry_entry(
+        params.sat,
+        params.signal_band,
+        signal_code,
+        params.glonass_frequency_channel,
+    )
+    .ok()
+    .flatten()?;
+    let component = registry_entry.default_component()?;
+
+    match nav_bit_mode {
+        SyntheticNavBitMode::GpsL5QNh20 => {
+            component.secondary_code.map(|secondary| secondary.chip_period_s)
+        }
+        _ => component.symbol_period_s,
+    }
+}
+
+#[cfg(test)]
+fn legacy_nav_symbol_period_s(nav_bit_mode: SyntheticNavBitMode) -> Option<f64> {
     match nav_bit_mode {
         SyntheticNavBitMode::ConstantPositive => None,
         SyntheticNavBitMode::GlonassL1FixedDataString

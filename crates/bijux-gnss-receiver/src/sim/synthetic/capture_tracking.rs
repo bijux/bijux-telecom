@@ -44,6 +44,7 @@ pub fn build_truth_bundle(
                     frame.t0.sample_rate_hz,
                     frame.len() as u64,
                     nav_bit_mode(params),
+                    nav_symbol_period_for_signal(params, nav_bit_mode(params)),
                 ),
             })
             .collect(),

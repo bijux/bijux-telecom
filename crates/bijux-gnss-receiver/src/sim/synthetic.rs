@@ -9,12 +9,11 @@ use crate::reference_validation::{reference_ecef, ValidationReferenceEpoch};
 use bijux_gnss_core::api::{
     ecef_to_enu, ecef_to_geodetic, stats, AcqHypothesis, AcqResult, Constellation,
     GlonassFrequencyChannel, GpsTime, Hertz, Meters, NavQualityFlag, NavSolutionEpoch, ObsEpoch,
-    ObservationStatus, ReceiverSampleTrace, SampleClock, SampleTime, SamplesFrame, SatId,
-    Seconds, SigId, SignalBand, SignalCode, SignalDelayAlignment, SignalSpec, SolutionStatus,
+    ObservationStatus, ReceiverSampleTrace, SampleClock, SampleTime, SamplesFrame, SatId, Seconds,
+    SigId, SignalBand, SignalCode, SignalDelayAlignment, SignalSpec, SolutionStatus,
     SolutionValidity,
 };
 use bijux_gnss_signal::api::SignalSource;
-
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
 use crate::io::data::SampleSourceError;
@@ -28,6 +27,7 @@ use serde::{Deserialize, Serialize};
 
 const SYNTHETIC_IQ_TRUTH_SCHEMA_VERSION: u32 = 4;
 const SYNTHETIC_GNSS_ACCURACY_ARTIFACT_SCHEMA_VERSION: u32 = 1;
+#[cfg(test)]
 const GPS_L1_CA_NAV_BIT_PERIOD_S: f64 = 0.02;
 const SYNTHETIC_COMPLEX_NOISE_POWER: f64 = 1.0;
 const SYNTHETIC_NOISE_STD_PER_COMPONENT: f32 = std::f32::consts::FRAC_1_SQRT_2;
