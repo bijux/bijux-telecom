@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+use crate::engine::signal_selection::resolved_acquisition_signal_band;
 use bijux_gnss_core::api::{
     acq_result_stability_key, stable_acq_result_keys, AcqAssumptions, AcqCodePhaseRefinement,
     AcqDopplerRefinement, AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqRequest,
@@ -19,8 +20,7 @@ use crate::engine::receiver_config::{
 use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
 use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
 use bijux_gnss_signal::api::{
-    default_acquisition_signal, measure_iq_front_end_metrics, wipeoff_carrier,
-    AcquisitionSignalModel, SignalError,
+    measure_iq_front_end_metrics, wipeoff_carrier, AcquisitionSignalModel, SignalError,
 };
 
 /// Acquisition engine (coarse search).
@@ -138,12 +138,15 @@ fn fallback_acquisition_signal_model(
 fn acquisition_signal_model_for_sat(
     config: &ReceiverPipelineConfig,
     sat: SatId,
+    signal_band: SignalBand,
+    glonass_frequency_channel: Option<bijux_gnss_core::api::GlonassFrequencyChannel>,
 ) -> AcquisitionSignalModel {
     acquisition_signal_model_for_request(
         config,
         AcqRequest {
             sat,
-            glonass_frequency_channel: None,
+            glonass_frequency_channel,
+            signal_band,
             doppler_search_hz: 0,
             doppler_step_hz: 1,
             coherent_ms: 1,
@@ -160,8 +163,9 @@ fn acquisition_signal_model_for_request(
     config: &ReceiverPipelineConfig,
     request: AcqRequest,
 ) -> Result<AcquisitionSignalModel, SignalError> {
-    match AcquisitionSignalModel::from_default_signal(
+    match AcquisitionSignalModel::for_sat_signal_band(
         request.sat,
+        Some(request.signal_band),
         request.glonass_frequency_channel,
     )? {
         Some(model) => Ok(model),
@@ -315,6 +319,7 @@ impl Acquisition {
         AcqRequest {
             sat,
             glonass_frequency_channel: None,
+            signal_band: resolved_acquisition_signal_band(&self.config, sat),
             doppler_search_hz: self.doppler_search_hz,
             doppler_step_hz: self.doppler_step_hz,
             coherent_ms,
@@ -1093,8 +1098,15 @@ fn zero_signal_run(
     for &request in requests {
         let sat = request.sat;
         let threshold_provenance = threshold_provenance_for_request(config, request);
-        let signal_model = acquisition_signal_model_for_request(config, request)
-            .unwrap_or_else(|_| acquisition_signal_model_for_sat(config, sat));
+        let signal_model =
+            acquisition_signal_model_for_request(config, request).unwrap_or_else(|_| {
+                acquisition_signal_model_for_sat(
+                    config,
+                    sat,
+                    request.signal_band,
+                    request.glonass_frequency_channel,
+                )
+            });
         let search_center_hz = signal_model.search_center_hz(config.intermediate_freq_hz);
         let assumptions = AcqAssumptions {
             doppler_search_hz: threshold_provenance.doppler_search_hz,
@@ -1195,10 +1207,12 @@ fn acquisition_request_error_candidates(
     frame_samples: usize,
     error: SignalError,
 ) -> Vec<AcqResult> {
-    let signal_band = default_acquisition_signal(request.sat.constellation)
-        .map(|signal| signal.spec.band)
-        .unwrap_or(SignalBand::L1);
-    let signal_model = acquisition_signal_model_for_sat(config, request.sat);
+    let signal_model = acquisition_signal_model_for_sat(
+        config,
+        request.sat,
+        request.signal_band,
+        request.glonass_frequency_channel,
+    );
     let search_center_hz = signal_model.search_center_hz(config.intermediate_freq_hz);
     let samples_per_code = signal_model.samples_per_code(config.sampling_freq_hz);
     let assumptions = AcqAssumptions {
@@ -1223,7 +1237,7 @@ fn acquisition_request_error_candidates(
 
     vec![AcqResult {
         sat: request.sat,
-        signal_band,
+        signal_band: request.signal_band,
         glonass_frequency_channel: request.glonass_frequency_channel,
         source_time,
         candidate_rank: 1,
@@ -2055,6 +2069,7 @@ mod tests {
             AcqRequest {
                 sat,
                 glonass_frequency_channel: None,
+                signal_band: SignalBand::L1,
                 doppler_search_hz: 2_000,
                 doppler_step_hz: 250,
                 coherent_ms: 1,
@@ -2084,6 +2099,7 @@ mod tests {
             AcqRequest {
                 sat,
                 glonass_frequency_channel: Some(channel),
+                signal_band: SignalBand::L1,
                 doppler_search_hz: 2_000,
                 doppler_step_hz: 250,
                 coherent_ms: 1,
@@ -2126,6 +2142,7 @@ mod tests {
             AcqRequest {
                 sat,
                 glonass_frequency_channel: Some(channel),
+                signal_band: SignalBand::L1,
                 doppler_search_hz: 2_000,
                 doppler_step_hz: 250,
                 coherent_ms: 1,
@@ -2459,7 +2476,8 @@ mod tests {
         let acquisition = Acquisition::new(config, ReceiverRuntime::default());
         let mut planner = FftPlanner::<f32>::new();
         let fft = planner.plan_fft_forward(samples_per_code);
-        let signal_model = acquisition_signal_model_for_sat(&acquisition.config, sat);
+        let signal_model =
+            acquisition_signal_model_for_sat(&acquisition.config, sat, SignalBand::L1, None);
 
         acquisition.code_fft(&signal_model, sat, samples_per_code, 1, 1, fft.as_ref());
         let after_first_profile = acquisition.stats_snapshot();

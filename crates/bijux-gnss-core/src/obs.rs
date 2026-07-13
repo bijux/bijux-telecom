@@ -326,6 +326,8 @@ pub struct AcqRequest {
     pub sat: SatId,
     #[serde(default)]
     pub glonass_frequency_channel: Option<GlonassFrequencyChannel>,
+    #[serde(default = "default_signal_band")]
+    pub signal_band: SignalBand,
     pub doppler_search_hz: i32,
     pub doppler_step_hz: i32,
     pub coherent_ms: u32,

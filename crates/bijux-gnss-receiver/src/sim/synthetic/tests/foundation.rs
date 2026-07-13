@@ -16,6 +16,7 @@
             satellites: vec![SyntheticSignalParams {
                 sat: SatId { constellation: Constellation::Gps, prn: 7 },
                 glonass_frequency_channel: None,
+                signal_band: bijux_gnss_core::api::SignalBand::L1,
                 doppler_hz: 750.0,
                 code_phase_chips: 15.0,
                 carrier_phase_rad: 0.0,
@@ -83,6 +84,7 @@
             satellites: vec![SyntheticSignalParams {
                 sat: SatId { constellation: Constellation::Gps, prn: 7 },
                 glonass_frequency_channel: None,
+                signal_band: bijux_gnss_core::api::SignalBand::L1,
                 doppler_hz: 500.0,
                 code_phase_chips: 0.0,
                 carrier_phase_rad: 0.0,
@@ -191,8 +193,7 @@
             clock_bias_s: truth_clock_bias_s,
         };
 
-        let report =
-            validate_truth_guided_pvt_table("unit_test_pvt_truth", &[solution], &[reference]);
+        let report = validate_truth_guided_pvt_table("unit_test_pvt_truth", &[solution], &[reference]);
         let row = report.epochs.first().expect("pvt truth row");
 
         assert_eq!(report.solution_count, 1);
@@ -460,11 +461,7 @@
                     source_observation_epoch_id: format!("obs-epoch-{epoch_index:04}"),
                     epoch_index,
                     receive_time_s: epoch_index as f64,
-                    truth_ecef_m: SyntheticPvtTruthTableEcef {
-                        x_m: 6_378_137.0,
-                        y_m: 0.0,
-                        z_m: 0.0,
-                    },
+                    truth_ecef_m: SyntheticPvtTruthTableEcef { x_m: 6_378_137.0, y_m: 0.0, z_m: 0.0 },
                     measured_ecef_m: SyntheticPvtTruthTableEcef {
                         x_m: 6_378_137.0,
                         y_m: if epoch_index < 19 { 0.5 } else { 3.5 },

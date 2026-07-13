@@ -4,6 +4,9 @@
 use crate::api::{Receiver, ReceiverEngine, RunArtifacts};
 use crate::engine::metrics::write_metrics_summary;
 use crate::engine::runtime::{Metric, TraceRecord};
+use crate::engine::signal_selection::{
+    acquisition_constellation_matches_config, resolved_acquisition_signal_band,
+};
 use crate::engine::support_matrix::build_support_matrix;
 use crate::pipeline::observations::{
     observation_artifacts_from_tracking_results_with_gps_anchor, observation_decisions_from_epochs,
@@ -13,7 +16,7 @@ use bijux_gnss_core::api::{
     TrackEpoch,
 };
 use bijux_gnss_signal::api::{
-    default_acquisition_signal, remove_dc_offset_in_place, samples_per_code,
+    default_local_code_model, remove_dc_offset_in_place, samples_per_code,
 };
 use std::time::Instant;
 
@@ -561,14 +564,17 @@ fn acquisition_frame_len(
     sats: &[SatId],
 ) -> usize {
     sats.iter()
-        .filter_map(|sat| default_acquisition_signal(sat.constellation))
-        .map(|signal| {
-            let code_length =
-                signal.code_length.map(|length| length as usize).unwrap_or(config.code_length);
+        .filter_map(|sat| {
+            let signal_band = resolved_acquisition_signal_band(config, *sat);
+            default_local_code_model(*sat, signal_band).ok().flatten()
+        })
+        .map(|signal_model| {
+            let code_length = signal_model.code_length();
             let samples_per_period =
-                samples_per_code(config.sampling_freq_hz, signal.spec.code_rate_hz, code_length);
-            let code_period_ms =
-                ((code_length as f64 / signal.spec.code_rate_hz) * 1_000.0).round().max(1.0) as u32;
+                samples_per_code(config.sampling_freq_hz, signal_model.code_rate_hz(), code_length);
+            let code_period_ms = ((code_length as f64 / signal_model.code_rate_hz()) * 1_000.0)
+                .round()
+                .max(1.0) as u32;
             let coherent_periods = if config.acquisition_integration_ms == 0
                 || config.acquisition_integration_ms % code_period_ms != 0
             {
@@ -592,7 +598,7 @@ fn default_acquisition_requests(
     [Constellation::Gps, Constellation::Galileo, Constellation::Glonass, Constellation::Beidou]
         .into_iter()
         .flat_map(|constellation| {
-            if acquisition_signal_matches_config(config, constellation)
+            if acquisition_constellation_matches_config(config, constellation)
                 && constellation_supports_slot_only_acquisition(constellation)
             {
                 crate::engine::acquisition_catalog::default_acquisition_satellites(constellation)
@@ -600,6 +606,7 @@ fn default_acquisition_requests(
                     .map(|sat| AcqRequest {
                         sat,
                         glonass_frequency_channel: None,
+                        signal_band: resolved_acquisition_signal_band(config, sat),
                         doppler_search_hz: config.acquisition_doppler_search_hz,
                         doppler_step_hz: config.acquisition_doppler_step_hz.max(1),
                         coherent_ms: config.acquisition_integration_ms,
@@ -627,6 +634,7 @@ fn default_acquisition_requests_for_source(
             .map(|signal| AcqRequest {
                 sat: signal.sat,
                 glonass_frequency_channel: signal.glonass_frequency_channel,
+                signal_band: signal.signal_band,
                 doppler_search_hz: config.acquisition_doppler_search_hz,
                 doppler_step_hz: config.acquisition_doppler_step_hz.max(1),
                 coherent_ms: config.acquisition_integration_ms,
@@ -651,6 +659,7 @@ fn acquisition_requests_for_satellites(
         .map(|sat| AcqRequest {
             sat,
             glonass_frequency_channel: None,
+            signal_band: resolved_acquisition_signal_band(config, sat),
             doppler_search_hz: config.acquisition_doppler_search_hz,
             doppler_step_hz: config.acquisition_doppler_step_hz.max(1),
             coherent_ms: config.acquisition_integration_ms,
@@ -679,19 +688,6 @@ fn constellation_supports_slot_only_acquisition(constellation: Constellation) ->
         Constellation::Glonass => false,
         _ => true,
     }
-}
-
-fn acquisition_signal_matches_config(
-    config: &crate::engine::receiver_config::ReceiverPipelineConfig,
-    constellation: Constellation,
-) -> bool {
-    let Some(signal) = default_acquisition_signal(constellation) else {
-        return false;
-    };
-    let code_length =
-        signal.code_length.map(|length| length as usize).unwrap_or(config.code_length);
-    (signal.spec.code_rate_hz - config.code_freq_basis_hz).abs() <= f64::EPSILON
-        && code_length == config.code_length
 }
 
 fn tracking_signal_supported(acq: &AcqResult) -> bool {
@@ -796,7 +792,7 @@ mod tests {
         filter_acquisition_requests,
     };
     use crate::engine::receiver_config::{ConstellationSelectionPolicy, ReceiverPipelineConfig};
-    use bijux_gnss_core::api::{Constellation, SatId};
+    use bijux_gnss_core::api::{Constellation, SatId, SignalBand};
 
     #[test]
     fn default_acquisition_requests_honor_galileo_only_policy() {
@@ -829,12 +825,30 @@ mod tests {
     }
 
     #[test]
+    fn default_acquisition_requests_select_gps_l5_for_l5_config() {
+        let config = ReceiverPipelineConfig {
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..ReceiverPipelineConfig::default()
+        };
+
+        let requests = default_acquisition_requests(&config);
+
+        assert!(!requests.is_empty());
+        assert!(requests.iter().all(|request| request.sat.constellation == Constellation::Gps));
+        assert!(requests.iter().all(|request| request.signal_band == SignalBand::L5));
+    }
+
+    #[test]
     fn mixed_policy_keeps_explicit_glonass_requests() {
         let config = ReceiverPipelineConfig::default();
         let requests = vec![
             bijux_gnss_core::api::AcqRequest {
                 sat: bijux_gnss_core::api::SatId { constellation: Constellation::Glonass, prn: 8 },
                 glonass_frequency_channel: bijux_gnss_core::api::GlonassFrequencyChannel::new(-4),
+                signal_band: bijux_gnss_core::api::default_signal_band_for_constellation(
+                    Constellation::Glonass,
+                ),
                 doppler_search_hz: 0,
                 doppler_step_hz: 250,
                 coherent_ms: 1,
@@ -843,6 +857,9 @@ mod tests {
             bijux_gnss_core::api::AcqRequest {
                 sat: bijux_gnss_core::api::SatId { constellation: Constellation::Gps, prn: 3 },
                 glonass_frequency_channel: None,
+                signal_band: bijux_gnss_core::api::default_signal_band_for_constellation(
+                    Constellation::Gps,
+                ),
                 doppler_search_hz: 0,
                 doppler_step_hz: 250,
                 coherent_ms: 1,
@@ -868,6 +885,9 @@ mod tests {
             bijux_gnss_core::api::AcqRequest {
                 sat: bijux_gnss_core::api::SatId { constellation: Constellation::Glonass, prn: 8 },
                 glonass_frequency_channel: bijux_gnss_core::api::GlonassFrequencyChannel::new(-4),
+                signal_band: bijux_gnss_core::api::default_signal_band_for_constellation(
+                    Constellation::Glonass,
+                ),
                 doppler_search_hz: 0,
                 doppler_step_hz: 250,
                 coherent_ms: 1,
@@ -876,6 +896,9 @@ mod tests {
             bijux_gnss_core::api::AcqRequest {
                 sat: bijux_gnss_core::api::SatId { constellation: Constellation::Gps, prn: 3 },
                 glonass_frequency_channel: None,
+                signal_band: bijux_gnss_core::api::default_signal_band_for_constellation(
+                    Constellation::Gps,
+                ),
                 doppler_search_hz: 0,
                 doppler_step_hz: 250,
                 coherent_ms: 1,

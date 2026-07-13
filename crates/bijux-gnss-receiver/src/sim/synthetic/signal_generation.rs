@@ -407,7 +407,7 @@ struct SatState {
     code_phase_chips: f64,
     carrier_phase_rad: f64,
     cn0_db_hz: f32,
-    data_bit_flip: bool,
+    nav_bit_mode: SyntheticNavBitMode,
     signal_model: SyntheticSignalModel,
     if_hz: f64,
     sample_rate_hz: f64,
@@ -416,7 +416,10 @@ struct SatState {
 type SyntheticSignalModel = bijux_gnss_signal::api::ReplicaCodeModel;
 
 fn synthetic_replica_model(params: SyntheticSignalParams) -> SyntheticSignalModel {
-    SyntheticSignalModel::from_default_signal_or_ones(params.sat)
+    SyntheticSignalModel::for_sat_signal_band(params.sat, Some(params.signal_band))
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| SyntheticSignalModel::gps_l1_ca_or_ones(params.sat.prn))
 }
 
 impl SatState {
@@ -447,11 +450,12 @@ impl SatState {
             code_phase_chips: params.code_phase_chips,
             carrier_phase_rad: params.carrier_phase_rad,
             cn0_db_hz: params.cn0_db_hz,
-            data_bit_flip: params.data_bit_flip,
+            nav_bit_mode: nav_bit_mode(&params),
             signal_model,
             if_hz: synthetic_intermediate_frequency_hz(
                 config.intermediate_freq_hz,
                 params.sat,
+                params.signal_band,
                 params.glonass_frequency_channel,
             ),
             sample_rate_hz: config.sampling_freq_hz,
@@ -481,7 +485,7 @@ impl SatState {
     }
 
     fn sample_at(&self, t: f64) -> Complex<f32> {
-        let data_bit = nav_bit_sign_at_time_s(self.data_bit_flip, t);
+        let data_bit = nav_bit_sign_for_mode_at_time_s(self.nav_bit_mode, t);
         let amplitude = signal_amplitude_from_cn0(self.cn0_db_hz, self.sample_rate_hz);
         bijux_gnss_signal::api::sample_modulated_replica_at_time(
             &self.signal_model,
@@ -555,11 +559,12 @@ fn isolated_satellite_scenario(
         satellites: vec![SyntheticSignalParams {
             sat: sat_truth.sat,
             glonass_frequency_channel: sat_truth.glonass_frequency_channel,
+            signal_band: sat_truth.signal_band,
             doppler_hz: sat_truth.doppler_hz,
             code_phase_chips: sat_truth.code_phase_chips,
             carrier_phase_rad: sat_truth.carrier_phase_rad,
             cn0_db_hz: sat_truth.cn0_db_hz,
-            data_bit_flip: sat_truth.nav_bit_mode == SyntheticNavBitMode::AlternatingGpsLnav20ms,
+            data_bit_flip: sat_truth.nav_bit_mode != SyntheticNavBitMode::ConstantPositive,
         }],
         ephemerides: Vec::new(),
         id: sat_truth.sat.prn.to_string(),
@@ -585,21 +590,28 @@ fn code_phase_samples_at_epoch_start(
 fn synthetic_intermediate_frequency_hz(
     intermediate_freq_hz: f64,
     sat: SatId,
+    signal_band: SignalBand,
     glonass_frequency_channel: Option<GlonassFrequencyChannel>,
 ) -> f64 {
     intermediate_freq_hz
-        + (synthetic_constellation_carrier_hz(sat, glonass_frequency_channel)
+        + (synthetic_constellation_carrier_hz(sat, signal_band, glonass_frequency_channel)
             - bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value())
 }
 
 fn synthetic_carrier_hz(
     intermediate_freq_hz: f64,
     sat: SatId,
+    signal_band: SignalBand,
     glonass_frequency_channel: Option<GlonassFrequencyChannel>,
     doppler_hz: f64,
 ) -> f64 {
     carrier_hz_from_doppler_hz(
-        synthetic_intermediate_frequency_hz(intermediate_freq_hz, sat, glonass_frequency_channel),
+        synthetic_intermediate_frequency_hz(
+            intermediate_freq_hz,
+            sat,
+            signal_band,
+            glonass_frequency_channel,
+        ),
         doppler_hz,
     )
 }
@@ -613,9 +625,14 @@ fn synthetic_truth_measured_doppler_hz(
 
 fn synthetic_constellation_carrier_hz(
     sat: SatId,
+    signal_band: SignalBand,
     glonass_frequency_channel: Option<GlonassFrequencyChannel>,
 ) -> f64 {
-    match bijux_gnss_signal::api::default_signal_carrier_hz(sat, glonass_frequency_channel) {
+    match bijux_gnss_signal::api::default_signal_carrier_hz_for_band(
+        sat,
+        Some(signal_band),
+        glonass_frequency_channel,
+    ) {
         Ok(Some(carrier_hz)) => carrier_hz.value(),
         Ok(None) => bijux_gnss_core::api::GPS_L1_CA_CARRIER_HZ.value(),
         Err(bijux_gnss_signal::api::SignalError::MissingGlonassFrequencyChannel(_)) => {
@@ -629,25 +646,37 @@ fn synthetic_constellation_carrier_hz(
 }
 
 fn nav_bit_mode(params: &SyntheticSignalParams) -> SyntheticNavBitMode {
-    if params.data_bit_flip {
-        SyntheticNavBitMode::AlternatingGpsLnav20ms
-    } else {
-        SyntheticNavBitMode::ConstantPositive
+    match (params.data_bit_flip, params.sat.constellation, params.signal_band) {
+        (false, _, _) => SyntheticNavBitMode::ConstantPositive,
+        (true, bijux_gnss_core::api::Constellation::Gps, SignalBand::L5) => {
+            SyntheticNavBitMode::AlternatingGpsL5I10ms
+        }
+        (true, _, _) => SyntheticNavBitMode::AlternatingGpsLnav20ms,
     }
 }
 
-fn nav_bit_sign_at_time_s(data_bit_flip: bool, time_s: f64) -> i8 {
-    if !data_bit_flip {
-        return 1;
-    }
-    nav_bit_sign_for_index(nav_bit_index_at_time_s(time_s))
+fn nav_bit_sign_for_mode_at_time_s(nav_bit_mode: SyntheticNavBitMode, time_s: f64) -> i8 {
+    nav_bit_sign_for_index(nav_bit_index_for_mode_at_time_s(nav_bit_mode, time_s))
 }
 
-fn nav_bit_index_at_time_s(time_s: f64) -> u64 {
+fn nav_bit_index_for_mode_at_time_s(nav_bit_mode: SyntheticNavBitMode, time_s: f64) -> u64 {
+    let Some(symbol_period_s) = nav_symbol_period_s(nav_bit_mode) else {
+        return 0;
+    };
     if !time_s.is_finite() || time_s <= 0.0 {
         return 0;
     }
-    (time_s / GPS_L1_CA_NAV_BIT_PERIOD_S).floor() as u64
+    (time_s / symbol_period_s).floor() as u64
+}
+
+#[cfg(test)]
+fn nav_bit_sign_at_time_s(data_bit_flip: bool, time_s: f64) -> i8 {
+    nav_bit_sign_for_mode_at_time_s(nav_bit_mode_from_flip(data_bit_flip), time_s)
+}
+
+#[cfg(test)]
+fn nav_bit_index_at_time_s(time_s: f64) -> u64 {
+    nav_bit_index_for_mode_at_time_s(SyntheticNavBitMode::AlternatingGpsLnav20ms, time_s)
 }
 
 fn nav_bit_sign_for_index(bit_index: u64) -> i8 {
@@ -679,12 +708,12 @@ fn quantize_i16_component(value: f32) -> i16 {
 fn nav_bit_segments(
     sample_rate_hz: f64,
     sample_count: u64,
-    data_bit_flip: bool,
+    nav_bit_mode: SyntheticNavBitMode,
 ) -> Vec<SyntheticNavBitSegment> {
     if sample_count == 0 {
         return Vec::new();
     }
-    if !data_bit_flip {
+    let Some(symbol_period_s) = nav_symbol_period_s(nav_bit_mode) else {
         return vec![SyntheticNavBitSegment {
             start_sample: 0,
             end_sample: sample_count,
@@ -692,18 +721,17 @@ fn nav_bit_segments(
             end_s: sample_count as f64 / sample_rate_hz,
             bit: 1,
         }];
-    }
+    };
 
     let mut segments = Vec::new();
     let mut bit_index = 0u64;
     loop {
-        let start_sample =
-            ((bit_index as f64 * GPS_L1_CA_NAV_BIT_PERIOD_S * sample_rate_hz).ceil()) as u64;
+        let start_sample = ((bit_index as f64 * symbol_period_s * sample_rate_hz).ceil()) as u64;
         if start_sample >= sample_count {
             break;
         }
-        let end_sample = ((((bit_index + 1) as f64) * GPS_L1_CA_NAV_BIT_PERIOD_S * sample_rate_hz)
-            .ceil()) as u64;
+        let end_sample =
+            ((((bit_index + 1) as f64) * symbol_period_s * sample_rate_hz).ceil()) as u64;
         let clamped_end = end_sample.min(sample_count);
         segments.push(SyntheticNavBitSegment {
             start_sample,
@@ -715,6 +743,23 @@ fn nav_bit_segments(
         bit_index += 1;
     }
     segments
+}
+
+fn nav_symbol_period_s(nav_bit_mode: SyntheticNavBitMode) -> Option<f64> {
+    match nav_bit_mode {
+        SyntheticNavBitMode::ConstantPositive => None,
+        SyntheticNavBitMode::AlternatingGpsLnav20ms => Some(GPS_L1_CA_NAV_BIT_PERIOD_S),
+        SyntheticNavBitMode::AlternatingGpsL5I10ms => Some(0.010),
+    }
+}
+
+#[cfg(test)]
+fn nav_bit_mode_from_flip(data_bit_flip: bool) -> SyntheticNavBitMode {
+    if data_bit_flip {
+        SyntheticNavBitMode::AlternatingGpsLnav20ms
+    } else {
+        SyntheticNavBitMode::ConstantPositive
+    }
 }
 
 #[derive(Debug, Clone)]

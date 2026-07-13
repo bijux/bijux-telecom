@@ -19,6 +19,7 @@
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 3 },
                     glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
                     doppler_hz: 750.0,
                     code_phase_chips: 200.25,
                     carrier_phase_rad: 0.0,
@@ -28,6 +29,7 @@
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 7 },
                     glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
                     doppler_hz: -1_000.0,
                     code_phase_chips: 321.5,
                     carrier_phase_rad: 0.2,
@@ -87,6 +89,7 @@
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 3 },
                     glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
                     doppler_hz: 750.0,
                     code_phase_chips: 200.25,
                     carrier_phase_rad: 0.0,
@@ -96,6 +99,7 @@
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 7 },
                     glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
                     doppler_hz: -1_000.0,
                     code_phase_chips: 321.5,
                     carrier_phase_rad: 0.2,
@@ -137,10 +141,7 @@
         );
         for row in &report.satellites {
             assert!(row.pass, "{row:?}");
-            assert!(
-                (row.measured_receiver_clock_frequency_bias_hz - 500.0).abs() <= 250.0,
-                "{row:?}"
-            );
+            assert!((row.measured_receiver_clock_frequency_bias_hz - 500.0).abs() <= 250.0, "{row:?}");
             assert!(
                 (row.expected_measured_doppler_hz - row.measured_doppler_hz).abs() <= 250.0,
                 "{row:?}"
@@ -169,6 +170,7 @@
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 11 },
                     glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
                     doppler_hz: 1_250.0,
                     code_phase_chips: 150.25,
                     carrier_phase_rad: 0.0,
@@ -178,6 +180,7 @@
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 19 },
                     glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
                     doppler_hz: -750.0,
                     code_phase_chips: 420.5,
                     carrier_phase_rad: 0.3,
@@ -292,11 +295,8 @@
             0x2_046_002,
         );
 
-        let report = validate_truth_guided_acquisition_sample_rates(
-            &[zeta.case, beta.case, alpha.case],
-            2,
-            1,
-        );
+        let report =
+            validate_truth_guided_acquisition_sample_rates(&[zeta.case, beta.case, alpha.case], 2, 1);
         let ordered_points = report
             .points
             .iter()
@@ -342,6 +342,7 @@
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 3 },
                     glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
                     doppler_hz: 750.0,
                     code_phase_chips: 200.25,
                     carrier_phase_rad: 0.0,
@@ -351,6 +352,7 @@
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 7 },
                     glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
                     doppler_hz: -1_000.0,
                     code_phase_chips: 321.5,
                     carrier_phase_rad: 0.2,
@@ -377,11 +379,7 @@
         let truth = Box::leak(Box::new(bundle.truth));
 
         SyntheticAcquisitionSampleRateCaseFixture {
-            case: SyntheticAcquisitionSampleRateValidationCase {
-                config,
-                frame: scaled_frame,
-                truth,
-            },
+            case: SyntheticAcquisitionSampleRateValidationCase { config, frame: scaled_frame, truth },
             truth,
         }
     }
@@ -405,6 +403,7 @@
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 3 },
                     glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
                     doppler_hz: -120.0,
                     code_phase_chips: 64.0,
                     carrier_phase_rad: 0.25,
@@ -414,6 +413,7 @@
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 11 },
                     glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
                     doppler_hz: 180.0,
                     code_phase_chips: 288.5,
                     carrier_phase_rad: 0.75,

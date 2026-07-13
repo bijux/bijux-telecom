@@ -1,8 +1,14 @@
+fn default_signal_band() -> SignalBand {
+    SignalBand::L1
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticSignalParams {
     pub sat: SatId,
     #[serde(default)]
     pub glonass_frequency_channel: Option<GlonassFrequencyChannel>,
+    #[serde(default = "default_signal_band")]
+    pub signal_band: SignalBand,
     pub doppler_hz: f64,
     pub code_phase_chips: f64,
     pub carrier_phase_rad: f64,
@@ -59,13 +65,16 @@ pub struct SyntheticNavigationSignalSpec {
     /// GLONASS FDMA channel when the satellite uses the GLONASS L1 signal plan.
     #[serde(default)]
     pub glonass_frequency_channel: Option<GlonassFrequencyChannel>,
+    /// Explicit signal band carried by the synthetic signal.
+    #[serde(default = "default_signal_band")]
+    pub signal_band: SignalBand,
     /// Injected Doppler shift in Hz.
     pub doppler_hz: f64,
     /// Injected carrier phase at sample zero, in radians.
     pub carrier_phase_rad: f64,
     /// Injected carrier-to-noise density ratio in dB-Hz.
     pub cn0_db_hz: f32,
-    /// Whether the synthetic signal should alternate LNAV bits every 20 ms.
+    /// Whether the synthetic signal should alternate navigation symbols at the signal-native rate.
     pub data_bit_flip: bool,
 }
 
@@ -104,6 +113,8 @@ pub enum SyntheticNavBitMode {
     ConstantPositive,
     /// Alternate the bit sign every 20 ms, starting positive at sample zero.
     AlternatingGpsLnav20ms,
+    /// Alternate the bit sign every 10 ms, starting positive at sample zero.
+    AlternatingGpsL5I10ms,
 }
 
 /// Sample-aligned navigation-bit truth interval.
@@ -129,6 +140,9 @@ pub struct SyntheticSatelliteTruth {
     /// GLONASS FDMA carrier channel when this truth row models a GLONASS L1 signal.
     #[serde(default)]
     pub glonass_frequency_channel: Option<GlonassFrequencyChannel>,
+    /// Explicit signal band carried by this synthetic signal.
+    #[serde(default = "default_signal_band")]
+    pub signal_band: SignalBand,
     /// Injected Doppler shift in Hz.
     pub doppler_hz: f64,
     /// Injected code phase at sample zero, in chips.
@@ -366,6 +380,7 @@ pub fn build_signal_scenario_from_navigation_validation_scenario(
             .map(|(signal, pseudorange_phase_chips)| SyntheticSignalParams {
                 sat: signal.sat,
                 glonass_frequency_channel: None,
+                signal_band: signal.signal_band,
                 doppler_hz: signal.doppler_hz,
                 code_phase_chips: encode_receiver_code_phase_chips(
                     pseudorange_phase_chips,

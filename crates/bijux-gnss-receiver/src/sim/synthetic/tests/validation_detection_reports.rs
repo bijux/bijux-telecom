@@ -21,6 +21,7 @@
             satellites: vec![SyntheticSignalParams {
                 sat: SatId { constellation: Constellation::Gps, prn: 7 },
                 glonass_frequency_channel: None,
+                signal_band: bijux_gnss_core::api::SignalBand::L1,
                 doppler_hz: -1000.0,
                 code_phase_chips: 321.0,
                 carrier_phase_rad: 0.2,
@@ -66,11 +67,8 @@
             code_length: 1023,
             ..ReceiverPipelineConfig::default()
         };
-        let period_samples = samples_per_code(
-            config.sampling_freq_hz,
-            config.code_freq_basis_hz,
-            config.code_length,
-        );
+        let period_samples =
+            samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
         let frame = SamplesFrame::new(
             SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz },
             Seconds(1.0 / config.sampling_freq_hz),
@@ -119,6 +117,7 @@
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 3 },
                     glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
                     doppler_hz: 750.0,
                     code_phase_chips: 200.25,
                     carrier_phase_rad: 0.0,
@@ -128,6 +127,7 @@
                 SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 7 },
                     glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
                     doppler_hz: -1000.0,
                     code_phase_chips: 321.5,
                     carrier_phase_rad: 0.2,
@@ -185,6 +185,7 @@
                 satellites: vec![SyntheticSignalParams {
                     sat: SatId { constellation: Constellation::Gps, prn: 3 },
                     glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
                     doppler_hz: 0.0,
                     code_phase_chips,
                     carrier_phase_rad: 0.0,
@@ -247,6 +248,7 @@
             satellites: vec![SyntheticSignalParams {
                 sat: SatId { constellation: Constellation::Gps, prn: 3 },
                 glonass_frequency_channel: None,
+                signal_band: bijux_gnss_core::api::SignalBand::L1,
                 doppler_hz: 750.0,
                 code_phase_chips: 200.25,
                 carrier_phase_rad: 0.0,
@@ -303,6 +305,7 @@
             SyntheticSignalParams {
                 sat: SatId { constellation: Constellation::Gps, prn: 3 },
                 glonass_frequency_channel: None,
+                signal_band: bijux_gnss_core::api::SignalBand::L1,
                 doppler_hz: 750.0,
                 code_phase_chips: 200.25,
                 carrier_phase_rad: 0.0,
@@ -318,31 +321,26 @@
         );
 
         assert_eq!(report.trial_count, 2);
-        assert_eq!(
-            report.accepted_count,
-            report.trials.iter().filter(|trial| trial.accepted).count()
-        );
-        assert_eq!(
-            report.detected_count,
-            report.trials.iter().filter(|trial| trial.detected).count()
-        );
+        assert_eq!(report.accepted_count, report.trials.iter().filter(|trial| trial.accepted).count());
+        assert_eq!(report.detected_count, report.trials.iter().filter(|trial| trial.detected).count());
         assert!(report.accepted_count <= report.trial_count);
         assert!(report.detected_count <= report.accepted_count);
         assert!(
-            (report.acceptance_probability
-                - report.accepted_count as f64 / report.trial_count as f64)
+            (report.acceptance_probability - report.accepted_count as f64 / report.trial_count as f64)
                 .abs()
                 <= f64::EPSILON
         );
         assert!(
-            (report.detection_probability
-                - report.detected_count as f64 / report.trial_count as f64)
+            (report.detection_probability - report.detected_count as f64 / report.trial_count as f64)
                 .abs()
                 <= f64::EPSILON
         );
         assert!(
-            report.trials.iter().all(|trial| trial.code_phase_error_samples.is_some()
-                && trial.doppler_error_bins.is_some()),
+            report
+                .trials
+                .iter()
+                .all(|trial| trial.code_phase_error_samples.is_some()
+                    && trial.doppler_error_bins.is_some()),
             "{report:?}"
         );
     }
@@ -413,6 +411,7 @@
                     signal: SyntheticSignalParams {
                         sat,
                         glonass_frequency_channel: None,
+                        signal_band: bijux_gnss_core::api::SignalBand::L1,
                         doppler_hz: 180.0,
                         code_phase_chips: 211.25,
                         carrier_phase_rad: 0.0,
@@ -428,6 +427,7 @@
                     signal: SyntheticSignalParams {
                         sat,
                         glonass_frequency_channel: None,
+                        signal_band: bijux_gnss_core::api::SignalBand::L1,
                         doppler_hz: 180.0,
                         code_phase_chips: 211.25,
                         carrier_phase_rad: 0.0,
@@ -535,6 +535,7 @@
                     signal: SyntheticSignalParams {
                         sat: SatId { constellation: Constellation::Gps, prn: 7 },
                         glonass_frequency_channel: None,
+                        signal_band: bijux_gnss_core::api::SignalBand::L1,
                         doppler_hz: 250.0,
                         code_phase_chips: 300.0,
                         carrier_phase_rad: 0.0,
@@ -548,6 +549,7 @@
                     signal: SyntheticSignalParams {
                         sat: SatId { constellation: Constellation::Gps, prn: 7 },
                         glonass_frequency_channel: None,
+                        signal_band: bijux_gnss_core::api::SignalBand::L1,
                         doppler_hz: 750.0,
                         code_phase_chips: 300.0,
                         carrier_phase_rad: 0.0,
@@ -588,4 +590,3 @@
         assert!((summary.p95_abs_error - 3.0).abs() <= 1.0e-12, "{summary:?}");
         assert!((summary.max_abs_error - 3.0).abs() <= 1.0e-12, "{summary:?}");
     }
-

@@ -29,6 +29,7 @@ pub fn build_truth_bundle(
             .map(|params| SyntheticSatelliteTruth {
                 sat: params.sat,
                 glonass_frequency_channel: params.glonass_frequency_channel,
+                signal_band: params.signal_band,
                 doppler_hz: params.doppler_hz,
                 code_phase_chips: params.code_phase_chips,
                 carrier_phase_rad: params.carrier_phase_rad,
@@ -41,7 +42,7 @@ pub fn build_truth_bundle(
                 nav_bit_segments: nav_bit_segments(
                     frame.t0.sample_rate_hz,
                     frame.len() as u64,
-                    params.data_bit_flip,
+                    nav_bit_mode(params),
                 ),
             })
             .collect(),
@@ -281,6 +282,7 @@ pub fn validate_truth_guided_tracking_table(
             let expected_carrier_hz = synthetic_carrier_hz(
                 truth.intermediate_freq_hz,
                 sat_truth.sat,
+                sat_truth.signal_band,
                 sat_truth.glonass_frequency_channel,
                 expected_measured_doppler_hz,
             );
