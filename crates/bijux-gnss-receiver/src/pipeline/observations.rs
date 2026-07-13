@@ -1134,18 +1134,34 @@ fn observation_signal_model(
     }
 }
 
-fn tracked_signal_code(epoch: &TrackEpoch) -> SignalCode {
-    match (epoch.sat.constellation, epoch.signal_band) {
-        (Constellation::Gps, SignalBand::L1) => SignalCode::Ca,
-        (Constellation::Gps, SignalBand::L2) => SignalCode::L2C,
-        (Constellation::Gps, SignalBand::L5) => SignalCode::Unknown,
-        (Constellation::Galileo, SignalBand::E1) => SignalCode::E1B,
-        (Constellation::Galileo, SignalBand::E5) => SignalCode::E5a,
-        (Constellation::Beidou, SignalBand::B1) => SignalCode::B1I,
-        (Constellation::Beidou, SignalBand::B2) => SignalCode::B2I,
-        (Constellation::Glonass, SignalBand::L1) => SignalCode::Unknown,
-        _ => SignalCode::Unknown,
+pub(crate) fn supports_observation_signal(
+    constellation: Constellation,
+    signal_band: SignalBand,
+    signal_code: SignalCode,
+) -> bool {
+    tracked_signal_code_for_band(constellation, signal_band) == Some(signal_code)
+}
+
+pub(crate) fn tracked_signal_code_for_band(
+    constellation: Constellation,
+    signal_band: SignalBand,
+) -> Option<SignalCode> {
+    match (constellation, signal_band) {
+        (Constellation::Gps, SignalBand::L1) => Some(SignalCode::Ca),
+        (Constellation::Gps, SignalBand::L2) => Some(SignalCode::L2C),
+        (Constellation::Gps, SignalBand::L5) => Some(SignalCode::Unknown),
+        (Constellation::Galileo, SignalBand::E1) => Some(SignalCode::E1B),
+        (Constellation::Galileo, SignalBand::E5) => Some(SignalCode::E5a),
+        (Constellation::Beidou, SignalBand::B1) => Some(SignalCode::B1I),
+        (Constellation::Beidou, SignalBand::B2) => Some(SignalCode::B2I),
+        (Constellation::Glonass, SignalBand::L1) => Some(SignalCode::Unknown),
+        _ => None,
     }
+}
+
+fn tracked_signal_code(epoch: &TrackEpoch) -> SignalCode {
+    tracked_signal_code_for_band(epoch.sat.constellation, epoch.signal_band)
+        .unwrap_or(SignalCode::Unknown)
 }
 
 fn fallback_code_length(epoch: &TrackEpoch) -> usize {
@@ -1902,6 +1918,36 @@ mod tests {
         carrier_hz: f64,
     ) -> TrackEpoch {
         make_tracking_epoch_with_phase(prn, config, epoch_idx, carrier_hz, 0.0)
+    }
+
+    #[test]
+    fn observation_signal_support_follows_tracked_signal_mapping() {
+        assert!(supports_observation_signal(Constellation::Gps, SignalBand::L1, SignalCode::Ca));
+        assert!(supports_observation_signal(Constellation::Gps, SignalBand::L2, SignalCode::L2C));
+        assert!(supports_observation_signal(
+            Constellation::Galileo,
+            SignalBand::E5,
+            SignalCode::E5a
+        ));
+        assert!(supports_observation_signal(
+            Constellation::Beidou,
+            SignalBand::B2,
+            SignalCode::B2I
+        ));
+        assert!(supports_observation_signal(
+            Constellation::Glonass,
+            SignalBand::L1,
+            SignalCode::Unknown
+        ));
+        assert!(!supports_observation_signal(
+            Constellation::Gps,
+            SignalBand::L2,
+            SignalCode::Ca
+        ));
+        assert_eq!(
+            tracked_signal_code_for_band(Constellation::Unknown, SignalBand::Unknown),
+            None
+        );
     }
 
     fn make_tracking_epoch_with_phase(
