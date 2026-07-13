@@ -26,26 +26,29 @@ pub fn build_truth_bundle(
         satellites: scenario
             .satellites
             .iter()
-            .map(|params| SyntheticSatelliteTruth {
-                sat: params.sat,
-                glonass_frequency_channel: params.glonass_frequency_channel,
-                signal_band: params.signal_band,
-                signal_code: params.signal_code,
-                doppler_hz: params.doppler_hz,
-                code_phase_chips: params.code_phase_chips,
-                carrier_phase_rad: params.carrier_phase_rad,
-                cn0_db_hz: params.cn0_db_hz,
-                signal_amplitude: signal_amplitude_from_cn0(
-                    params.cn0_db_hz,
-                    frame.t0.sample_rate_hz,
-                ),
-                nav_bit_mode: nav_bit_mode(params),
-                nav_bit_segments: nav_bit_segments(
-                    frame.t0.sample_rate_hz,
-                    frame.len() as u64,
-                    nav_bit_mode(params),
-                    nav_symbol_period_for_signal(params, nav_bit_mode(params)),
-                ),
+            .map(|params| {
+                let nav_bit_mode = nav_bit_mode(params);
+                SyntheticSatelliteTruth {
+                    sat: params.sat,
+                    glonass_frequency_channel: params.glonass_frequency_channel,
+                    signal_band: params.signal_band,
+                    signal_code: params.signal_code,
+                    doppler_hz: params.doppler_hz,
+                    code_phase_chips: params.code_phase_chips,
+                    carrier_phase_rad: params.carrier_phase_rad,
+                    cn0_db_hz: params.cn0_db_hz,
+                    signal_amplitude: signal_amplitude_from_cn0(
+                        params.cn0_db_hz,
+                        frame.t0.sample_rate_hz,
+                    ),
+                    nav_bit_mode,
+                    nav_bit_segments: nav_bit_segments(
+                        frame.t0.sample_rate_hz,
+                        frame.len() as u64,
+                        params,
+                        nav_bit_mode,
+                    ),
+                }
             })
             .collect(),
     }
