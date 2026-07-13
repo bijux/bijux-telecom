@@ -1,7 +1,25 @@
 //! Tracking math utilities.
 
-use crate::dsp::signal::code_value_at_phase;
+use std::collections::VecDeque;
+
+use crate::dsp::nco::Nco;
+use crate::dsp::signal::{
+    code_value_at_phase, epoch_start_code_phase_samples_from_receiver_phase,
+    receiver_code_phase_samples_from_epoch_start_phase, wrap_code_phase_samples,
+};
+use bijux_gnss_core::api::TrackingUncertainty;
 use num_complex::Complex;
+
+const DLL_CODE_PHASE_CORRECTION_GAIN: f64 = 0.5;
+const DLL_LOCK_MAX_CODE_ERROR: f32 = 0.2;
+const DLL_HOLD_MAX_CODE_ERROR: f32 = 0.4;
+const DLL_LOW_RESOLUTION_LOCK_MAX_CODE_ERROR: f32 = 0.6;
+const ANTI_FALSE_LOCK_MAX_EARLY_LATE_TO_PROMPT_RATIO: f32 = 0.9;
+const FLL_PULL_IN_MAX_CORRECTION_BW_MULTIPLIER: f64 = 4.0;
+const TRACKING_UNCERTAINTY_MIN_CODE_PHASE_SAMPLES: f64 = 0.01;
+const TRACKING_UNCERTAINTY_MIN_CARRIER_PHASE_CYCLES: f64 = 0.001;
+const TRACKING_UNCERTAINTY_MIN_DOPPLER_HZ: f64 = 0.01;
+const TRACKING_UNCERTAINTY_MIN_CN0_DBHZ: f64 = 0.05;
 
 /// First-order loop coefficients derived from noise bandwidth and coherent integration time.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -21,17 +39,127 @@ pub struct PhaseLockLoopCoefficients {
     pub frequency_gain_hz_per_rad: f64,
 }
 
-/// Early/prompt/late correlator outputs over one coherent interval.
+/// Early/prompt/late correlation accumulators for one coherent interval.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EarlyPromptLateCorrelation {
-    /// Early correlator accumulation.
+    /// Early replica accumulation.
     pub early: Complex<f32>,
-    /// Prompt correlator accumulation.
+    /// Prompt replica accumulation.
     pub prompt: Complex<f32>,
-    /// Late correlator accumulation.
+    /// Late replica accumulation.
     pub late: Complex<f32>,
-    /// Energy of the early-minus-late noise weighting across the interval.
+    /// Energy of the early-minus-late weighting used by CN0 estimation.
     pub early_late_noise_weight_energy: f64,
+}
+
+/// Pure DLL update inputs for one coherent tracking interval.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CodeLoopInput {
+    /// Current code rate estimate in Hz.
+    pub current_code_rate_hz: f64,
+    /// Current receiver code phase in samples.
+    pub current_code_phase_samples: f64,
+    /// Coherent interval length in samples.
+    pub epoch_len_samples: usize,
+    /// Coherent interval length in seconds.
+    pub coherent_integration_s: f64,
+    /// Nominal code rate for the tracked signal in Hz.
+    pub nominal_code_rate_hz: f64,
+    /// Effective DLL bandwidth in Hz.
+    pub dll_bw_hz: f64,
+    /// DLL discriminator output.
+    pub dll_err: f32,
+    /// Samples per code chip at the receiver rate.
+    pub samples_per_chip: f64,
+    /// Samples per code period at the receiver rate.
+    pub samples_per_code: usize,
+}
+
+/// DLL update outputs for one coherent interval.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CodeLoopUpdate {
+    /// Updated code rate estimate in Hz.
+    pub code_rate_hz: f64,
+    /// Updated receiver code phase in samples.
+    pub code_phase_samples: f64,
+}
+
+/// Combined carrier PLL/FLL update inputs for one coherent interval.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CarrierTrackingLoopInput {
+    /// Current carrier frequency estimate in Hz.
+    pub current_carrier_hz: f64,
+    /// Current unwrapped carrier phase estimate in cycles.
+    pub current_carrier_phase_cycles: f64,
+    /// Coherent interval length in samples.
+    pub epoch_len_samples: usize,
+    /// Receiver sample rate in Hz.
+    pub sample_rate_hz: f64,
+    /// Coherent interval length in seconds.
+    pub coherent_integration_s: f64,
+    /// Effective PLL bandwidth in Hz.
+    pub pll_bw_hz: f64,
+    /// PLL discriminator output in radians.
+    pub pll_err_rad: f64,
+    /// Effective FLL bandwidth in Hz.
+    pub fll_bw_hz: f64,
+    /// FLL discriminator output in Hz.
+    pub fll_err_hz: f64,
+    /// Whether to apply the FLL contribution this interval.
+    pub apply_fll: bool,
+    /// Whether to apply PLL frequency feedback this interval.
+    pub apply_pll_frequency: bool,
+}
+
+/// Combined carrier PLL/FLL update outputs for one coherent interval.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CarrierTrackingLoopUpdate {
+    /// Updated carrier frequency estimate in Hz.
+    pub carrier_hz: f64,
+    /// Updated unwrapped carrier phase estimate in cycles.
+    pub carrier_phase_cycles: f64,
+}
+
+/// Coarse tracking quality class used to scale uncertainty estimates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrackingQualityClass {
+    /// Stable steady-state tracking.
+    Tracking,
+    /// Tracking is retained but degraded.
+    Degraded,
+    /// Pull-in or acquisition-adjacent tracking.
+    PullIn,
+    /// Tracking has been lost.
+    Lost,
+}
+
+/// Inputs for tracking uncertainty estimation.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TrackingUncertaintyInputs {
+    /// Samples per chip at the receiver rate.
+    pub samples_per_chip: f64,
+    /// DLL discriminator output.
+    pub dll_err: f32,
+    /// PLL discriminator output in radians.
+    pub pll_err_rad: f64,
+    /// FLL discriminator output in Hz.
+    pub fll_err_hz: f64,
+    /// Current CN0 estimate.
+    pub cn0_dbhz: f64,
+    /// Reference CN0 estimate.
+    pub cn0_reference_dbhz: f64,
+    /// Coherent integration in milliseconds.
+    pub integration_ms: u32,
+    /// Whether the channel remains logically locked.
+    pub channel_locked: bool,
+    /// Whether the DLL remains locked.
+    pub dll_locked: bool,
+    /// Whether anti-false-lock diagnostics are active.
+    pub anti_false_lock: bool,
+    /// Whether a cycle slip was detected this interval.
+    pub cycle_slip: bool,
+    /// Current coarse tracking quality class.
+    pub quality_class: TrackingQualityClass,
 }
 
 /// Adaptive loop bandwidth scaling based on CN0.
@@ -99,22 +227,15 @@ where
         };
     }
 
-    let carrier_radians_per_sample = std::f64::consts::TAU * carrier_hz / sample_rate_hz;
-    let carrier_rotation_step = Complex::new(
-        carrier_radians_per_sample.cos() as f32,
-        -carrier_radians_per_sample.sin() as f32,
-    );
-    let mut carrier_rotation = Complex::new(
-        carrier_phase_offset_radians.cos() as f32,
-        -carrier_phase_offset_radians.sin() as f32,
-    );
+    let mut carrier_nco = Nco::with_phase(carrier_hz, sample_rate_hz, carrier_phase_offset_radians);
     let mut early = Complex::new(0.0f32, 0.0f32);
     let mut prompt = Complex::new(0.0f32, 0.0f32);
     let mut late = Complex::new(0.0f32, 0.0f32);
     let mut early_late_noise_weight_energy = 0.0f64;
 
     for (sample_index, sample) in samples.iter().enumerate() {
-        let mixed_sample = *sample * carrier_rotation;
+        let (sin, cos) = carrier_nco.next_sin_cos();
+        let mixed_sample = *sample * Complex::new(cos as f32, -sin as f32);
         let chip_phase = base_chip_phase + sample_index as f64 * chips_per_sample;
         let early_code =
             Complex::new(code_value_at_phase(chip_phase - early_late_spacing_chips), 0.0);
@@ -127,7 +248,6 @@ where
         early += mixed_sample * early_code;
         prompt += mixed_sample * prompt_code;
         late += mixed_sample * late_code;
-        carrier_rotation *= carrier_rotation_step;
     }
 
     EarlyPromptLateCorrelation { early, prompt, late, early_late_noise_weight_energy }
@@ -265,6 +385,228 @@ pub fn estimate_cn0_dbhz(
     10.0 * cn0_linear.log10()
 }
 
+/// Convert a coherent interval length from samples into seconds.
+pub fn coherent_integration_seconds(epoch_len_samples: usize, sample_rate_hz: f64) -> f64 {
+    if !sample_rate_hz.is_finite() || sample_rate_hz <= 0.0 {
+        return 0.0;
+    }
+    epoch_len_samples as f64 / sample_rate_hz
+}
+
+/// Threshold for treating FLL error as locked.
+pub fn fll_lock_threshold_hz(fll_bw_hz: f64) -> f64 {
+    fll_bw_hz.max(5.0)
+}
+
+/// Threshold for treating DLL error as locked.
+pub fn dll_lock_threshold(samples_per_chip: f64, early_late_spacing_chips: f64) -> f32 {
+    let effective_sample_separation = samples_per_chip * early_late_spacing_chips.abs();
+    if effective_sample_separation + f64::EPSILON < 1.0 {
+        DLL_LOW_RESOLUTION_LOCK_MAX_CODE_ERROR
+    } else {
+        DLL_LOCK_MAX_CODE_ERROR
+    }
+}
+
+/// Relaxed threshold for retaining DLL lock during tracking.
+pub fn dll_hold_threshold(samples_per_chip: f64, early_late_spacing_chips: f64) -> f32 {
+    dll_lock_threshold(samples_per_chip, early_late_spacing_chips).max(DLL_HOLD_MAX_CODE_ERROR)
+}
+
+/// Ratio between prompt power and a stored reference.
+pub fn prompt_power_ratio(prompt_power: f32, prompt_power_reference: f32) -> Option<f32> {
+    if !prompt_power.is_finite()
+        || !prompt_power_reference.is_finite()
+        || prompt_power_reference <= 0.0
+    {
+        return None;
+    }
+    Some(prompt_power / prompt_power_reference)
+}
+
+/// Detect false lock from the relative early/late and prompt energies.
+pub fn anti_false_lock_detected(
+    early: Complex<f32>,
+    prompt: Complex<f32>,
+    late: Complex<f32>,
+) -> bool {
+    let prompt_norm = prompt.norm();
+    if !prompt_norm.is_finite() || prompt_norm <= 0.0 {
+        return true;
+    }
+
+    let early_late_mean = (early.norm() + late.norm()) * 0.5;
+    !early_late_mean.is_finite()
+        || early_late_mean >= prompt_norm * ANTI_FALSE_LOCK_MAX_EARLY_LATE_TO_PROMPT_RATIO
+}
+
+/// Update the prompt power reference with exponential decay.
+pub fn update_prompt_power_reference(current_reference: f32, prompt_power: f32) -> f32 {
+    if !prompt_power.is_finite() || prompt_power <= 0.0 {
+        return current_reference;
+    }
+    if !current_reference.is_finite() || current_reference <= 0.0 {
+        return prompt_power;
+    }
+    (current_reference * 0.98).max(prompt_power)
+}
+
+/// Refresh prompt power reference only while the channel is in clean steady tracking.
+pub fn refresh_prompt_power_reference(
+    current_reference: f32,
+    prompt_power: f32,
+    quality_class: TrackingQualityClass,
+    anti_false_lock: bool,
+) -> f32 {
+    if !current_reference.is_finite() || current_reference <= 0.0 {
+        return update_prompt_power_reference(current_reference, prompt_power);
+    }
+    if matches!(quality_class, TrackingQualityClass::Tracking) && !anti_false_lock {
+        return update_prompt_power_reference(current_reference, prompt_power);
+    }
+    current_reference
+}
+
+/// Refresh the lock-reference CN0 only when current tracking evidence is reliable.
+pub fn refresh_lock_reference_cn0_dbhz(
+    current_reference: f64,
+    cn0_dbhz: f64,
+    reliable_tracking_lock: bool,
+) -> f64 {
+    if reliable_tracking_lock && cn0_dbhz.is_finite() && cn0_dbhz > 0.0 {
+        return cn0_dbhz;
+    }
+    current_reference
+}
+
+/// Update a sliding-window CN0 estimate using linear-power averaging.
+pub fn update_windowed_tracking_cn0_estimate(
+    prompt_cn0_window: &mut VecDeque<f64>,
+    epoch_cn0_dbhz: f64,
+    max_epochs: usize,
+    min_epochs: usize,
+) -> Option<f64> {
+    if !epoch_cn0_dbhz.is_finite() || epoch_cn0_dbhz <= 0.0 {
+        return None;
+    }
+    prompt_cn0_window.push_back(epoch_cn0_dbhz);
+    while prompt_cn0_window.len() > max_epochs {
+        prompt_cn0_window.pop_front();
+    }
+    if prompt_cn0_window.len() < min_epochs {
+        return None;
+    }
+
+    let mean_cn0_linear =
+        prompt_cn0_window.iter().map(|value| 10.0_f64.powf(*value / 10.0)).sum::<f64>()
+            / prompt_cn0_window.len() as f64;
+    if !mean_cn0_linear.is_finite() || mean_cn0_linear <= 0.0 {
+        return None;
+    }
+    Some(10.0 * mean_cn0_linear.log10())
+}
+
+/// Push a finite non-negative value into a bounded uncertainty window.
+pub fn push_tracking_uncertainty_sample(window: &mut VecDeque<f64>, value: f64, max_epochs: usize) {
+    if !value.is_finite() || value < 0.0 {
+        return;
+    }
+    window.push_back(value);
+    while window.len() > max_epochs {
+        window.pop_front();
+    }
+}
+
+/// Estimate tracking uncertainty from recent discriminator history.
+pub fn estimate_tracking_uncertainty(
+    code_error_window_samples: &VecDeque<f64>,
+    carrier_phase_error_window_cycles: &VecDeque<f64>,
+    doppler_error_window_hz: &VecDeque<f64>,
+    cn0_estimate_window_dbhz: &VecDeque<f64>,
+    input: TrackingUncertaintyInputs,
+) -> TrackingUncertainty {
+    let state_scale = tracking_uncertainty_state_scale(
+        input.quality_class,
+        input.channel_locked,
+        input.dll_locked,
+        input.anti_false_lock,
+        input.cycle_slip,
+    );
+    let coherent_integration_scale = 1.0 / (input.integration_ms.max(1) as f64).sqrt();
+    let cn0_scale = if input.cn0_dbhz.is_finite() {
+        10.0_f64.powf(((45.0 - input.cn0_dbhz).clamp(-15.0, 20.0)) / 20.0)
+    } else {
+        4.0
+    };
+    let code_fallback = ((input.dll_err.abs() as f64) * input.samples_per_chip)
+        .max(TRACKING_UNCERTAINTY_MIN_CODE_PHASE_SAMPLES * cn0_scale * coherent_integration_scale);
+    let carrier_fallback = ((input.pll_err_rad.abs()) / std::f64::consts::TAU)
+        .max(TRACKING_UNCERTAINTY_MIN_CARRIER_PHASE_CYCLES);
+    let doppler_fallback = input.fll_err_hz.abs().max(TRACKING_UNCERTAINTY_MIN_DOPPLER_HZ);
+    let cn0_fallback =
+        (input.cn0_dbhz - input.cn0_reference_dbhz).abs().max(TRACKING_UNCERTAINTY_MIN_CN0_DBHZ);
+
+    TrackingUncertainty {
+        code_phase_samples: rms_window(code_error_window_samples)
+            .unwrap_or(code_fallback)
+            .max(code_fallback)
+            * state_scale,
+        carrier_phase_cycles: rms_window(carrier_phase_error_window_cycles)
+            .unwrap_or(carrier_fallback)
+            .max(carrier_fallback)
+            * state_scale,
+        doppler_hz: rms_window(doppler_error_window_hz)
+            .unwrap_or(doppler_fallback)
+            .max(doppler_fallback)
+            * state_scale,
+        cn0_dbhz: stddev_window(cn0_estimate_window_dbhz)
+            .unwrap_or(cn0_fallback)
+            .max(TRACKING_UNCERTAINTY_MIN_CN0_DBHZ)
+            * state_scale,
+    }
+}
+
+/// Apply the code loop update for one coherent interval.
+pub fn apply_code_loop(input: CodeLoopInput) -> CodeLoopUpdate {
+    let coefficients = first_order_loop_coefficients(input.dll_bw_hz, input.coherent_integration_s);
+    let code_rate_hz =
+        input.current_code_rate_hz - coefficients.rate_gain_hz * input.dll_err as f64;
+    let code_phase_samples = advance_code_phase_samples(
+        input.current_code_phase_samples,
+        input.epoch_len_samples,
+        code_rate_hz,
+        input.nominal_code_rate_hz,
+        input.dll_err,
+        input.samples_per_chip,
+        input.samples_per_code,
+    );
+    CodeLoopUpdate { code_rate_hz, code_phase_samples }
+}
+
+/// Apply the carrier PLL/FLL update for one coherent interval.
+pub fn apply_carrier_tracking_loop(input: CarrierTrackingLoopInput) -> CarrierTrackingLoopUpdate {
+    let pll_coefficients =
+        phase_lock_loop_coefficients(input.pll_bw_hz, input.coherent_integration_s);
+    let fll_coefficients =
+        first_order_angular_loop_coefficients(input.fll_bw_hz, input.coherent_integration_s);
+    let mut carrier_hz = input.current_carrier_hz;
+    if input.apply_fll {
+        carrier_hz += bounded_fll_pull_in_correction_hz(
+            input.fll_err_hz * fll_coefficients.error_blend,
+            input.fll_bw_hz,
+        );
+    }
+    if input.apply_pll_frequency {
+        carrier_hz += pll_coefficients.frequency_gain_hz_per_rad * input.pll_err_rad;
+    }
+
+    let carrier_phase_cycles = input.current_carrier_phase_cycles
+        + carrier_hz * input.epoch_len_samples as f64 / input.sample_rate_hz
+        + pll_coefficients.phase_blend * input.pll_err_rad / std::f64::consts::TAU;
+
+    CarrierTrackingLoopUpdate { carrier_hz, carrier_phase_cycles }
+}
+
 /// Return code chip at a fractional sample index.
 pub fn code_at(code: &[i8], samples_per_chip: f64, sample_index: f64) -> Complex<f32> {
     if !samples_per_chip.is_finite() || samples_per_chip <= 0.0 || !sample_index.is_finite() {
@@ -276,15 +618,101 @@ pub fn code_at(code: &[i8], samples_per_chip: f64, sample_index: f64) -> Complex
     Complex::new(chip, 0.0)
 }
 
+fn advance_code_phase_samples(
+    current_code_phase_samples: f64,
+    epoch_len_samples: usize,
+    tracked_code_rate_hz: f64,
+    nominal_code_rate_hz: f64,
+    dll_err: f32,
+    samples_per_chip: f64,
+    samples_per_code: usize,
+) -> f64 {
+    let nominal_code_rate_hz = nominal_code_rate_hz.max(1.0);
+    let epoch_start_code_phase_samples = epoch_start_code_phase_samples_from_receiver_phase(
+        current_code_phase_samples,
+        samples_per_code,
+    );
+    let code_period_advance_samples =
+        epoch_len_samples as f64 * (tracked_code_rate_hz / nominal_code_rate_hz);
+    let dll_correction_samples =
+        -(dll_err as f64) * samples_per_chip * DLL_CODE_PHASE_CORRECTION_GAIN;
+    let next_epoch_start_code_phase_samples = wrap_code_phase_samples(
+        epoch_start_code_phase_samples + code_period_advance_samples + dll_correction_samples,
+        samples_per_code,
+    );
+    receiver_code_phase_samples_from_epoch_start_phase(
+        next_epoch_start_code_phase_samples,
+        samples_per_code,
+    )
+}
+
+fn bounded_fll_pull_in_correction_hz(fll_err_hz: f64, fll_bw_hz: f64) -> f64 {
+    let max_correction_hz = fll_bw_hz.abs().max(1.0) * FLL_PULL_IN_MAX_CORRECTION_BW_MULTIPLIER;
+    fll_err_hz.clamp(-max_correction_hz, max_correction_hz)
+}
+
+fn rms_window(window: &VecDeque<f64>) -> Option<f64> {
+    let count = window.len();
+    if count == 0 {
+        return None;
+    }
+    Some((window.iter().map(|value| value * value).sum::<f64>() / count as f64).sqrt())
+}
+
+fn stddev_window(window: &VecDeque<f64>) -> Option<f64> {
+    let count = window.len();
+    if count < 2 {
+        return None;
+    }
+    let mean = window.iter().sum::<f64>() / count as f64;
+    Some(
+        (window.iter().map(|value| (value - mean).powi(2)).sum::<f64>() / (count - 1) as f64)
+            .sqrt(),
+    )
+}
+
+fn tracking_uncertainty_state_scale(
+    quality_class: TrackingQualityClass,
+    channel_locked: bool,
+    dll_locked: bool,
+    anti_false_lock: bool,
+    cycle_slip: bool,
+) -> f64 {
+    let mut scale = match quality_class {
+        TrackingQualityClass::Tracking => 1.0,
+        TrackingQualityClass::Degraded => 2.0,
+        TrackingQualityClass::PullIn => 4.0,
+        TrackingQualityClass::Lost => 8.0,
+    };
+    if !channel_locked {
+        scale *= 2.0;
+    }
+    if !dll_locked {
+        scale *= 1.5;
+    }
+    if anti_false_lock {
+        scale *= 2.0;
+    }
+    if cycle_slip {
+        scale *= 4.0;
+    }
+    scale
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
+        anti_false_lock_detected, apply_carrier_tracking_loop, apply_code_loop,
         carrier_frequency_error_hz_from_phase_delta, carrier_phase_offset_radians,
-        correlate_early_prompt_late, discriminators, estimate_cn0_dbhz,
+        coherent_integration_seconds, correlate_early_prompt_late, discriminators,
+        dll_lock_threshold, estimate_cn0_dbhz, estimate_tracking_uncertainty,
         first_order_angular_loop_coefficients, first_order_loop_coefficients,
         phase_lock_loop_coefficients, wrap_phase_cycles_signed, wrap_phase_radians_positive,
-        wrapped_phase_delta_cycles,
+        wrapped_phase_delta_cycles, CarrierTrackingLoopInput, CodeLoopInput, TrackingQualityClass,
+        TrackingUncertaintyInputs,
     };
+    use std::collections::VecDeque;
+
     use num_complex::Complex;
 
     #[test]
@@ -459,5 +887,127 @@ mod tests {
 
         assert!(angular.error_blend > linear.error_blend, "{angular:?} {linear:?}");
         assert!(angular.rate_gain_hz > linear.rate_gain_hz, "{angular:?} {linear:?}");
+    }
+
+    #[test]
+    fn dll_lock_threshold_relaxes_for_subsample_early_late_spacing() {
+        assert_eq!(dll_lock_threshold(1.0, 0.5), 0.6);
+        assert_eq!(dll_lock_threshold(4.0, 0.5), 0.2);
+    }
+
+    #[test]
+    fn apply_code_loop_updates_code_rate_from_discriminator() {
+        let coherent_integration_s = coherent_integration_seconds(5_000, 1_023_000.0);
+        let update = apply_code_loop(CodeLoopInput {
+            current_code_rate_hz: 1_023_000.0,
+            current_code_phase_samples: 250.0,
+            epoch_len_samples: 5_000,
+            coherent_integration_s,
+            nominal_code_rate_hz: 1_023_000.0,
+            dll_bw_hz: 2.0,
+            dll_err: 0.25,
+            samples_per_chip: 4.887585532746823,
+            samples_per_code: 5_000,
+        });
+
+        let expected = 1_023_000.0
+            - first_order_loop_coefficients(2.0, coherent_integration_s).rate_gain_hz * 0.25;
+        assert!((update.code_rate_hz - expected).abs() < 1.0e-9, "{update:?}");
+    }
+
+    #[test]
+    fn apply_carrier_tracking_loop_advances_phase_and_frequency_from_pll_error() {
+        let update = apply_carrier_tracking_loop(CarrierTrackingLoopInput {
+            current_carrier_hz: 1_000.0,
+            current_carrier_phase_cycles: 12.0,
+            epoch_len_samples: 4_092,
+            sample_rate_hz: 4_092_000.0,
+            coherent_integration_s: 0.001,
+            pll_bw_hz: 8.0,
+            pll_err_rad: 0.25,
+            fll_bw_hz: 0.0,
+            fll_err_hz: 0.0,
+            apply_fll: false,
+            apply_pll_frequency: true,
+        });
+
+        let pll_coefficients = phase_lock_loop_coefficients(8.0, 0.001);
+        assert!(
+            (update.carrier_hz - (1_000.0 + pll_coefficients.frequency_gain_hz_per_rad * 0.25))
+                .abs()
+                < 1.0e-9,
+            "{update:?}"
+        );
+        let expected_phase_cycles = 12.0
+            + (1_000.0 + pll_coefficients.frequency_gain_hz_per_rad * 0.25) * 0.001
+            + pll_coefficients.phase_blend * 0.25 / std::f64::consts::TAU;
+        assert!((update.carrier_phase_cycles - expected_phase_cycles).abs() < 1.0e-9, "{update:?}");
+    }
+
+    #[test]
+    fn anti_false_lock_detected_rejects_early_late_energy_near_prompt() {
+        assert!(anti_false_lock_detected(
+            Complex::new(8.0, 0.0),
+            Complex::new(8.0, 0.0),
+            Complex::new(8.0, 0.0),
+        ));
+        assert!(!anti_false_lock_detected(
+            Complex::new(1.0, 0.0),
+            Complex::new(8.0, 0.0),
+            Complex::new(1.0, 0.0),
+        ));
+    }
+
+    #[test]
+    fn estimate_tracking_uncertainty_rewards_longer_coherent_integration() {
+        let empty = VecDeque::<f64>::new();
+        let short = estimate_tracking_uncertainty(
+            &empty,
+            &empty,
+            &empty,
+            &empty,
+            TrackingUncertaintyInputs {
+                samples_per_chip: 4.0,
+                dll_err: 0.0,
+                pll_err_rad: 0.0,
+                fll_err_hz: 0.0,
+                cn0_dbhz: 45.0,
+                cn0_reference_dbhz: 45.0,
+                integration_ms: 1,
+                channel_locked: true,
+                dll_locked: true,
+                anti_false_lock: false,
+                cycle_slip: false,
+                quality_class: TrackingQualityClass::Tracking,
+            },
+        );
+        let long = estimate_tracking_uncertainty(
+            &empty,
+            &empty,
+            &empty,
+            &empty,
+            TrackingUncertaintyInputs {
+                integration_ms: 10,
+                ..TrackingUncertaintyInputs {
+                    samples_per_chip: 4.0,
+                    dll_err: 0.0,
+                    pll_err_rad: 0.0,
+                    fll_err_hz: 0.0,
+                    cn0_dbhz: 45.0,
+                    cn0_reference_dbhz: 45.0,
+                    integration_ms: 1,
+                    channel_locked: true,
+                    dll_locked: true,
+                    anti_false_lock: false,
+                    cycle_slip: false,
+                    quality_class: TrackingQualityClass::Tracking,
+                }
+            },
+        );
+
+        assert!(
+            long.code_phase_samples < short.code_phase_samples,
+            "short={short:?} long={long:?}"
+        );
     }
 }

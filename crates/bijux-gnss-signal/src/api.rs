@@ -57,12 +57,17 @@ pub use crate::dsp::signal::{
 };
 /// Tracking helpers.
 pub use crate::dsp::tracking::{
-    adaptive_bandwidth, carrier_frequency_error_hz_from_phase_delta, carrier_phase_offset_radians,
-    code_at, correlate_early_prompt_late, discriminators, estimate_cn0_dbhz,
-    first_order_angular_loop_coefficients, first_order_loop_coefficients,
-    phase_lock_loop_coefficients, wrap_phase_cycles_signed, wrap_phase_radians_positive,
-    wrapped_phase_delta_cycles, EarlyPromptLateCorrelation, FirstOrderLoopCoefficients,
-    PhaseLockLoopCoefficients,
+    adaptive_bandwidth, anti_false_lock_detected, apply_carrier_tracking_loop, apply_code_loop,
+    carrier_frequency_error_hz_from_phase_delta, carrier_phase_offset_radians, code_at,
+    coherent_integration_seconds, correlate_early_prompt_late, discriminators, dll_hold_threshold,
+    dll_lock_threshold, estimate_cn0_dbhz, estimate_tracking_uncertainty,
+    first_order_angular_loop_coefficients, first_order_loop_coefficients, fll_lock_threshold_hz,
+    phase_lock_loop_coefficients, prompt_power_ratio, push_tracking_uncertainty_sample,
+    refresh_lock_reference_cn0_dbhz, refresh_prompt_power_reference, update_prompt_power_reference,
+    update_windowed_tracking_cn0_estimate, wrap_phase_cycles_signed, wrap_phase_radians_positive,
+    wrapped_phase_delta_cycles, CarrierTrackingLoopInput, CarrierTrackingLoopUpdate, CodeLoopInput,
+    CodeLoopUpdate, EarlyPromptLateCorrelation, FirstOrderLoopCoefficients,
+    PhaseLockLoopCoefficients, TrackingQualityClass, TrackingUncertaintyInputs,
 };
 /// Error types.
 pub use crate::error::SignalError;
