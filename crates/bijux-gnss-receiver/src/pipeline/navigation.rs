@@ -3783,6 +3783,7 @@ mod tests {
         assert!(!solution.valid);
         assert_eq!(solution.used_sat_count, 0);
         assert!(solution.explain_reasons.iter().any(|reason| reason == "invalid_satellite_time"));
+        assert_has_reason_prefix(&solution, "invalid_satellite_time_count=");
         assert_has_refusal_cause(&solution, "refusal_cause=clock");
     }
 
@@ -3816,6 +3817,7 @@ mod tests {
             .explain_reasons
             .iter()
             .any(|reason| reason == "unknown_inter_system_time_offset"));
+        assert_has_refusal_cause(&solution, "refusal_cause=clock");
     }
 
     #[test]
