@@ -1,14 +1,74 @@
 #![allow(missing_docs)]
 
+use crate::codes::ca_code::CA_CODE_PERIOD_CHIPS;
+use crate::codes::galileo_e1::{
+    GALILEO_E1_CBOC_ALPHA, GALILEO_E1_CBOC_BETA, GALILEO_E1_CODE_RATE_HZ,
+    GALILEO_E1_PRIMARY_CODE_CHIPS, GALILEO_E1_PRIMARY_PERIOD_MS, GALILEO_E1_SECONDARY_CODE_CHIPS,
+};
+use crate::codes::galileo_e5::{
+    GALILEO_E5A_CODE_RATE_HZ, GALILEO_E5A_I_PRIMARY_EPOCHS_PER_SYMBOL,
+    GALILEO_E5A_I_SECONDARY_CODE_CHIPS, GALILEO_E5A_PRIMARY_CODE_CHIPS,
+    GALILEO_E5A_Q_SECONDARY_CODE_CHIPS, GALILEO_E5B_CODE_RATE_HZ,
+    GALILEO_E5B_I_PRIMARY_EPOCHS_PER_SYMBOL, GALILEO_E5B_I_SECONDARY_CODE_CHIPS,
+    GALILEO_E5B_PRIMARY_CODE_CHIPS, GALILEO_E5B_Q_SECONDARY_CODE_CHIPS,
+};
+use crate::codes::glonass_l1::{
+    GLONASS_L1_ST_CODE_CHIPS, GLONASS_L1_ST_CODE_RATE_HZ, GLONASS_L1_SYMBOL_PERIOD_S,
+};
+use crate::codes::gps_l2c_cl::{GPS_L2C_CL_CODE_CHIPS, GPS_L2C_CL_CODE_RATE_HZ};
+use crate::codes::gps_l2c_cm::{GPS_L2C_CM_CODE_CHIPS, GPS_L2C_CM_CODE_RATE_HZ};
+use crate::codes::gps_l5::{
+    GPS_L5_I_PRIMARY_EPOCHS_PER_SYMBOL, GPS_L5_PRIMARY_CODE_CHIPS, GPS_L5_PRIMARY_CODE_RATE_HZ,
+    GPS_L5_Q_PRIMARY_EPOCHS_PER_SYMBOL,
+};
 use bijux_gnss_core::api::{
     Constellation, Cycles, FreqHz, GlonassFrequencyChannel, Meters, SatId, SigId, SignalBand,
-    SignalCode, SignalRegistryEntry, SignalSpec, BEIDOU_B1_CARRIER_HZ, BEIDOU_B2_CARRIER_HZ,
-    GALILEO_E1_CARRIER_HZ, GALILEO_E5A_CARRIER_HZ, GALILEO_E5B_CARRIER_HZ,
-    GLONASS_L1_CARRIER_HZ, GLONASS_L1_CHANNEL_SPACING_HZ, GPS_L1_CA_CARRIER_HZ,
-    GPS_L2_PY_CARRIER_HZ, GPS_L2C_CARRIER_HZ, GPS_L5_CARRIER_HZ,
+    SignalCode, SignalComponentRole, SignalComponentSpec, SignalRegistryEntry,
+    SignalSecondaryCodeSpec, SignalSpec, SignalSubcarrierSpec, BEIDOU_B1_CARRIER_HZ,
+    BEIDOU_B2_CARRIER_HZ, GALILEO_E1_CARRIER_HZ, GALILEO_E5A_CARRIER_HZ, GALILEO_E5B_CARRIER_HZ,
+    GLONASS_L1_CARRIER_HZ, GLONASS_L1_CHANNEL_SPACING_HZ, GPS_L1_CA_CARRIER_HZ, GPS_L2C_CARRIER_HZ,
+    GPS_L2_PY_CARRIER_HZ, GPS_L5_CARRIER_HZ,
 };
 
 const SPEED_OF_LIGHT_MPS: f64 = 299_792_458.0;
+const GPS_NAV_SYMBOL_PERIOD_S: f64 = 0.020;
+const GPS_L5_SECONDARY_CHIP_PERIOD_S: f64 = 0.001;
+const GALILEO_E5_SECONDARY_CHIP_PERIOD_S: f64 = 0.001;
+const GALILEO_E1_SECONDARY_CHIP_PERIOD_S: f64 = 0.004;
+
+fn signal_component(
+    role: SignalComponentRole,
+    primary_code_rate_hz: f64,
+    primary_code_chips: u32,
+    secondary_code: Option<SignalSecondaryCodeSpec>,
+    subcarrier: SignalSubcarrierSpec,
+    symbol_period_s: Option<f64>,
+    power_fraction: f32,
+) -> SignalComponentSpec {
+    SignalComponentSpec {
+        role,
+        primary_code_rate_hz,
+        primary_code_chips,
+        primary_code_period_s: primary_code_chips as f64 / primary_code_rate_hz,
+        secondary_code,
+        subcarrier,
+        symbol_period_s,
+        power_fraction,
+    }
+}
+
+fn secondary_code(chip_count: u32, chip_period_s: f64) -> SignalSecondaryCodeSpec {
+    SignalSecondaryCodeSpec { chip_count, chip_period_s }
+}
+
+fn signal_registry_entry(
+    spec: SignalSpec,
+    code_length: Option<u32>,
+    default_component_role: SignalComponentRole,
+    components: Vec<SignalComponentSpec>,
+) -> SignalRegistryEntry {
+    SignalRegistryEntry { spec, code_length, default_component_role, components }
+}
 
 pub fn signal_spec_gps_l1_ca() -> SignalSpec {
     SignalSpec {
@@ -221,44 +281,265 @@ pub fn signal_registry(
 ) -> Option<SignalRegistryEntry> {
     let spec =
         SignalSpec { constellation, band, code, code_rate_hz: 0.0, carrier_hz: FreqHz::new(0.0) };
-    let (carrier_hz, code_rate_hz, code_length) = match (constellation, band, code) {
-        (Constellation::Gps, SignalBand::L1, SignalCode::Ca) => {
-            (GPS_L1_CA_CARRIER_HZ, 1_023_000.0, Some(1023))
-        }
-        (Constellation::Gps, SignalBand::L2, SignalCode::L2C) => {
-            (GPS_L2C_CARRIER_HZ, 511_500.0, Some(10_230))
-        }
-        (Constellation::Gps, SignalBand::L2, SignalCode::Py) => {
-            (GPS_L2_PY_CARRIER_HZ, 10_230_000.0, None)
-        }
-        (Constellation::Gps, SignalBand::L5, SignalCode::L5I)
-        | (Constellation::Gps, SignalBand::L5, SignalCode::L5Q) => {
-            (GPS_L5_CARRIER_HZ, 10_230_000.0, Some(10_230))
-        }
-        (Constellation::Galileo, SignalBand::E1, SignalCode::E1B) => {
-            (GALILEO_E1_CARRIER_HZ, 1_023_000.0, Some(4092))
-        }
-        (Constellation::Galileo, SignalBand::E1, SignalCode::E1C) => {
-            (GALILEO_E1_CARRIER_HZ, 1_023_000.0, Some(4092))
-        }
-        (Constellation::Galileo, SignalBand::E5, SignalCode::E5a) => {
-            (GALILEO_E5A_CARRIER_HZ, 10_230_000.0, Some(10_230))
-        }
-        (Constellation::Galileo, SignalBand::E5, SignalCode::E5b) => {
-            (GALILEO_E5B_CARRIER_HZ, 10_230_000.0, Some(10_230))
-        }
+    match (constellation, band, code) {
+        (Constellation::Gps, SignalBand::L1, SignalCode::Ca) => Some(signal_registry_entry(
+            SignalSpec { carrier_hz: GPS_L1_CA_CARRIER_HZ, code_rate_hz: 1_023_000.0, ..spec },
+            Some(CA_CODE_PERIOD_CHIPS as u32),
+            SignalComponentRole::Data,
+            vec![signal_component(
+                SignalComponentRole::Data,
+                1_023_000.0,
+                CA_CODE_PERIOD_CHIPS as u32,
+                None,
+                SignalSubcarrierSpec::None,
+                Some(GPS_NAV_SYMBOL_PERIOD_S),
+                1.0,
+            )],
+        )),
+        (Constellation::Gps, SignalBand::L2, SignalCode::L2C) => Some(signal_registry_entry(
+            SignalSpec { carrier_hz: GPS_L2C_CARRIER_HZ, code_rate_hz: 511_500.0, ..spec },
+            Some(GPS_L2C_CM_CODE_CHIPS as u32),
+            SignalComponentRole::Data,
+            vec![
+                signal_component(
+                    SignalComponentRole::Data,
+                    GPS_L2C_CM_CODE_RATE_HZ,
+                    GPS_L2C_CM_CODE_CHIPS as u32,
+                    None,
+                    SignalSubcarrierSpec::None,
+                    Some(GPS_NAV_SYMBOL_PERIOD_S),
+                    0.5,
+                ),
+                signal_component(
+                    SignalComponentRole::Pilot,
+                    GPS_L2C_CL_CODE_RATE_HZ,
+                    GPS_L2C_CL_CODE_CHIPS as u32,
+                    None,
+                    SignalSubcarrierSpec::None,
+                    None,
+                    0.5,
+                ),
+            ],
+        )),
+        (Constellation::Gps, SignalBand::L2, SignalCode::Py) => Some(signal_registry_entry(
+            SignalSpec { carrier_hz: GPS_L2_PY_CARRIER_HZ, code_rate_hz: 10_230_000.0, ..spec },
+            None,
+            SignalComponentRole::Data,
+            vec![signal_component(
+                SignalComponentRole::Data,
+                10_230_000.0,
+                0,
+                None,
+                SignalSubcarrierSpec::None,
+                Some(GPS_NAV_SYMBOL_PERIOD_S),
+                1.0,
+            )],
+        )),
+        (Constellation::Gps, SignalBand::L5, SignalCode::L5I) => Some(signal_registry_entry(
+            SignalSpec {
+                carrier_hz: GPS_L5_CARRIER_HZ,
+                code_rate_hz: GPS_L5_PRIMARY_CODE_RATE_HZ,
+                ..spec
+            },
+            Some(GPS_L5_PRIMARY_CODE_CHIPS as u32),
+            SignalComponentRole::Data,
+            vec![signal_component(
+                SignalComponentRole::Data,
+                GPS_L5_PRIMARY_CODE_RATE_HZ,
+                GPS_L5_PRIMARY_CODE_CHIPS as u32,
+                Some(secondary_code(
+                    GPS_L5_I_PRIMARY_EPOCHS_PER_SYMBOL as u32,
+                    GPS_L5_SECONDARY_CHIP_PERIOD_S,
+                )),
+                SignalSubcarrierSpec::None,
+                Some(GPS_L5_I_PRIMARY_EPOCHS_PER_SYMBOL as f64 * GPS_L5_SECONDARY_CHIP_PERIOD_S),
+                1.0,
+            )],
+        )),
+        (Constellation::Gps, SignalBand::L5, SignalCode::L5Q) => Some(signal_registry_entry(
+            SignalSpec {
+                carrier_hz: GPS_L5_CARRIER_HZ,
+                code_rate_hz: GPS_L5_PRIMARY_CODE_RATE_HZ,
+                ..spec
+            },
+            Some(GPS_L5_PRIMARY_CODE_CHIPS as u32),
+            SignalComponentRole::Pilot,
+            vec![signal_component(
+                SignalComponentRole::Pilot,
+                GPS_L5_PRIMARY_CODE_RATE_HZ,
+                GPS_L5_PRIMARY_CODE_CHIPS as u32,
+                Some(secondary_code(
+                    GPS_L5_Q_PRIMARY_EPOCHS_PER_SYMBOL as u32,
+                    GPS_L5_SECONDARY_CHIP_PERIOD_S,
+                )),
+                SignalSubcarrierSpec::None,
+                None,
+                1.0,
+            )],
+        )),
+        (Constellation::Galileo, SignalBand::E1, SignalCode::E1B) => Some(signal_registry_entry(
+            SignalSpec { carrier_hz: GALILEO_E1_CARRIER_HZ, code_rate_hz: 1_023_000.0, ..spec },
+            Some(GALILEO_E1_PRIMARY_CODE_CHIPS as u32),
+            SignalComponentRole::Data,
+            vec![signal_component(
+                SignalComponentRole::Data,
+                GALILEO_E1_CODE_RATE_HZ,
+                GALILEO_E1_PRIMARY_CODE_CHIPS as u32,
+                None,
+                SignalSubcarrierSpec::Cboc {
+                    boc11_weight: GALILEO_E1_CBOC_ALPHA,
+                    boc61_weight: GALILEO_E1_CBOC_BETA,
+                },
+                Some(f64::from(GALILEO_E1_PRIMARY_PERIOD_MS) / 1_000.0),
+                1.0,
+            )],
+        )),
+        (Constellation::Galileo, SignalBand::E1, SignalCode::E1C) => Some(signal_registry_entry(
+            SignalSpec { carrier_hz: GALILEO_E1_CARRIER_HZ, code_rate_hz: 1_023_000.0, ..spec },
+            Some(GALILEO_E1_PRIMARY_CODE_CHIPS as u32),
+            SignalComponentRole::Pilot,
+            vec![signal_component(
+                SignalComponentRole::Pilot,
+                GALILEO_E1_CODE_RATE_HZ,
+                GALILEO_E1_PRIMARY_CODE_CHIPS as u32,
+                Some(secondary_code(
+                    GALILEO_E1_SECONDARY_CODE_CHIPS as u32,
+                    GALILEO_E1_SECONDARY_CHIP_PERIOD_S,
+                )),
+                SignalSubcarrierSpec::Cboc {
+                    boc11_weight: GALILEO_E1_CBOC_ALPHA,
+                    boc61_weight: GALILEO_E1_CBOC_BETA,
+                },
+                None,
+                1.0,
+            )],
+        )),
+        (Constellation::Galileo, SignalBand::E5, SignalCode::E5a) => Some(signal_registry_entry(
+            SignalSpec {
+                carrier_hz: GALILEO_E5A_CARRIER_HZ,
+                code_rate_hz: GALILEO_E5A_CODE_RATE_HZ,
+                ..spec
+            },
+            Some(GALILEO_E5A_PRIMARY_CODE_CHIPS as u32),
+            SignalComponentRole::Data,
+            vec![
+                signal_component(
+                    SignalComponentRole::Data,
+                    GALILEO_E5A_CODE_RATE_HZ,
+                    GALILEO_E5A_PRIMARY_CODE_CHIPS as u32,
+                    Some(secondary_code(
+                        GALILEO_E5A_I_SECONDARY_CODE_CHIPS as u32,
+                        GALILEO_E5_SECONDARY_CHIP_PERIOD_S,
+                    )),
+                    SignalSubcarrierSpec::None,
+                    Some(
+                        GALILEO_E5A_I_PRIMARY_EPOCHS_PER_SYMBOL as f64
+                            * GALILEO_E5_SECONDARY_CHIP_PERIOD_S,
+                    ),
+                    0.5,
+                ),
+                signal_component(
+                    SignalComponentRole::Pilot,
+                    GALILEO_E5A_CODE_RATE_HZ,
+                    GALILEO_E5A_PRIMARY_CODE_CHIPS as u32,
+                    Some(secondary_code(
+                        GALILEO_E5A_Q_SECONDARY_CODE_CHIPS as u32,
+                        GALILEO_E5_SECONDARY_CHIP_PERIOD_S,
+                    )),
+                    SignalSubcarrierSpec::None,
+                    None,
+                    0.5,
+                ),
+            ],
+        )),
+        (Constellation::Galileo, SignalBand::E5, SignalCode::E5b) => Some(signal_registry_entry(
+            SignalSpec {
+                carrier_hz: GALILEO_E5B_CARRIER_HZ,
+                code_rate_hz: GALILEO_E5B_CODE_RATE_HZ,
+                ..spec
+            },
+            Some(GALILEO_E5B_PRIMARY_CODE_CHIPS as u32),
+            SignalComponentRole::Data,
+            vec![
+                signal_component(
+                    SignalComponentRole::Data,
+                    GALILEO_E5B_CODE_RATE_HZ,
+                    GALILEO_E5B_PRIMARY_CODE_CHIPS as u32,
+                    Some(secondary_code(
+                        GALILEO_E5B_I_SECONDARY_CODE_CHIPS as u32,
+                        GALILEO_E5_SECONDARY_CHIP_PERIOD_S,
+                    )),
+                    SignalSubcarrierSpec::None,
+                    Some(
+                        GALILEO_E5B_I_PRIMARY_EPOCHS_PER_SYMBOL as f64
+                            * GALILEO_E5_SECONDARY_CHIP_PERIOD_S,
+                    ),
+                    0.5,
+                ),
+                signal_component(
+                    SignalComponentRole::Pilot,
+                    GALILEO_E5B_CODE_RATE_HZ,
+                    GALILEO_E5B_PRIMARY_CODE_CHIPS as u32,
+                    Some(secondary_code(
+                        GALILEO_E5B_Q_SECONDARY_CODE_CHIPS as u32,
+                        GALILEO_E5_SECONDARY_CHIP_PERIOD_S,
+                    )),
+                    SignalSubcarrierSpec::None,
+                    None,
+                    0.5,
+                ),
+            ],
+        )),
         (Constellation::Glonass, SignalBand::L1, SignalCode::Unknown) => {
-            (GLONASS_L1_CARRIER_HZ, 511_000.0, Some(511))
+            Some(signal_registry_entry(
+                SignalSpec {
+                    carrier_hz: GLONASS_L1_CARRIER_HZ,
+                    code_rate_hz: GLONASS_L1_ST_CODE_RATE_HZ,
+                    ..spec
+                },
+                Some(GLONASS_L1_ST_CODE_CHIPS as u32),
+                SignalComponentRole::Data,
+                vec![signal_component(
+                    SignalComponentRole::Data,
+                    GLONASS_L1_ST_CODE_RATE_HZ,
+                    GLONASS_L1_ST_CODE_CHIPS as u32,
+                    None,
+                    SignalSubcarrierSpec::None,
+                    Some(GLONASS_L1_SYMBOL_PERIOD_S),
+                    1.0,
+                )],
+            ))
         }
-        (Constellation::Beidou, SignalBand::B1, SignalCode::B1I) => {
-            (BEIDOU_B1_CARRIER_HZ, 2_046_000.0, Some(2046))
-        }
-        (Constellation::Beidou, SignalBand::B2, SignalCode::B2I) => {
-            (BEIDOU_B2_CARRIER_HZ, 2_046_000.0, Some(2046))
-        }
-        _ => return None,
-    };
-    Some(SignalRegistryEntry { spec: SignalSpec { carrier_hz, code_rate_hz, ..spec }, code_length })
+        (Constellation::Beidou, SignalBand::B1, SignalCode::B1I) => Some(signal_registry_entry(
+            SignalSpec { carrier_hz: BEIDOU_B1_CARRIER_HZ, code_rate_hz: 2_046_000.0, ..spec },
+            Some(2046),
+            SignalComponentRole::Data,
+            vec![signal_component(
+                SignalComponentRole::Data,
+                2_046_000.0,
+                2046,
+                None,
+                SignalSubcarrierSpec::None,
+                None,
+                1.0,
+            )],
+        )),
+        (Constellation::Beidou, SignalBand::B2, SignalCode::B2I) => Some(signal_registry_entry(
+            SignalSpec { carrier_hz: BEIDOU_B2_CARRIER_HZ, code_rate_hz: 2_046_000.0, ..spec },
+            Some(2046),
+            SignalComponentRole::Data,
+            vec![signal_component(
+                SignalComponentRole::Data,
+                2_046_000.0,
+                2046,
+                None,
+                SignalSubcarrierSpec::None,
+                None,
+                1.0,
+            )],
+        )),
+        _ => None,
+    }
 }
 
 pub fn registered_signal_registry_entries() -> Vec<SignalRegistryEntry> {

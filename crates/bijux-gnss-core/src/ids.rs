@@ -250,6 +250,8 @@ pub const BEIDOU_B2_CARRIER_HZ: FreqHz = FreqHz::new(1_207_140_000.0);
 pub struct SignalRegistryEntry {
     pub spec: SignalSpec,
     pub code_length: Option<u32>,
+    pub default_component_role: SignalComponentRole,
+    pub components: Vec<SignalComponentSpec>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -259,4 +261,45 @@ pub struct SignalSpec {
     pub code: SignalCode,
     pub code_rate_hz: f64,
     pub carrier_hz: FreqHz,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SignalComponentRole {
+    Data,
+    Pilot,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum SignalSubcarrierSpec {
+    None,
+    Boc { cycles_per_chip: u32 },
+    Cboc { boc11_weight: f32, boc61_weight: f32 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct SignalSecondaryCodeSpec {
+    pub chip_count: u32,
+    pub chip_period_s: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct SignalComponentSpec {
+    pub role: SignalComponentRole,
+    pub primary_code_rate_hz: f64,
+    pub primary_code_chips: u32,
+    pub primary_code_period_s: f64,
+    pub secondary_code: Option<SignalSecondaryCodeSpec>,
+    pub subcarrier: SignalSubcarrierSpec,
+    pub symbol_period_s: Option<f64>,
+    pub power_fraction: f32,
+}
+
+impl SignalRegistryEntry {
+    pub fn default_component(&self) -> Option<&SignalComponentSpec> {
+        self.component(self.default_component_role)
+    }
+
+    pub fn component(&self, role: SignalComponentRole) -> Option<&SignalComponentSpec> {
+        self.components.iter().find(|component| component.role == role)
+    }
 }
