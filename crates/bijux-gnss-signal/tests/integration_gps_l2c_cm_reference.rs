@@ -6,6 +6,7 @@ use bijux_gnss_signal::api::{
 };
 
 use support::gps_l2c_cm_reference::{assert_code_matches_reference, load_reference_catalog};
+use support::period_reference::assert_period_repetition;
 
 #[test]
 fn gps_l2c_cm_public_assignments_match_reference_catalog() {
@@ -39,6 +40,7 @@ fn gps_l2c_cm_public_codes_match_reference_catalog() {
     for reference in &catalog.code {
         let code = generate_gps_l2c_cm_code(reference.prn).expect("published GPS L2C CM PRN");
         assert_code_matches_reference(&catalog, reference.prn, &code);
+        assert_period_repetition(&code, catalog.chip_length, &format!("GPS L2C CM PRN {}", reference.prn));
     }
 }
 

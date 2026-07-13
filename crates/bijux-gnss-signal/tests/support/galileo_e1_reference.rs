@@ -8,6 +8,8 @@ use bijux_gnss_signal::api::{
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
+use crate::support::period_reference::wrapped_window_bits;
+
 const CATALOG_SCHEMA: &str = "galileo_e1_reference_catalog.v1";
 
 #[derive(Debug, Deserialize)]
@@ -17,6 +19,8 @@ pub struct GalileoE1ReferenceCatalog {
     pub harshadms_source: String,
     pub mx4_source: String,
     pub primary_code_length_bits: usize,
+    pub window_length: usize,
+    pub middle_start: usize,
     pub secondary_code_name: String,
     pub secondary_code_bits: String,
     pub secondary_code_sha256: String,
@@ -29,6 +33,7 @@ pub struct GalileoE1PrimaryCodeReference {
     pub prn: u8,
     pub bit_sha256: String,
     pub bit_prefix: String,
+    pub bit_middle: String,
     pub bit_suffix: String,
 }
 
@@ -48,6 +53,8 @@ impl GalileoE1ReferenceCatalog {
             self.primary_code_length_bits, GALILEO_E1_PRIMARY_CODE_CHIPS,
             "unexpected Galileo E1 primary-code length in reference catalog"
         );
+        assert_eq!(self.window_length, 32, "unexpected Galileo E1 window length");
+        assert_eq!(self.middle_start, 2030, "unexpected Galileo E1 middle window start");
         assert_eq!(
             self.secondary_code_name, "CS25",
             "unexpected Galileo E1 secondary-code name in reference catalog"
@@ -101,7 +108,18 @@ pub fn assert_primary_code_matches_reference(
     let reference = catalog.primary_code_reference(channel, prn);
     let logical_bits = logical_bits_from_code(code);
     let prefix = &logical_bits[..reference.bit_prefix.len()];
+    let middle = &logical_bits[catalog.middle_start..catalog.middle_start + catalog.window_length];
     let suffix = &logical_bits[logical_bits.len() - reference.bit_suffix.len()..];
+    let boundary = wrapped_window_bits(
+        &logical_bits,
+        logical_bits.len() - (catalog.window_length / 2),
+        catalog.window_length,
+    );
+    let expected_boundary = format!(
+        "{}{}",
+        &reference.bit_suffix[reference.bit_suffix.len() - (catalog.window_length / 2)..],
+        &reference.bit_prefix[..catalog.window_length / 2]
+    );
 
     assert_eq!(
         logical_bits.len(),
@@ -125,9 +143,23 @@ pub fn assert_primary_code_matches_reference(
         prn
     );
     assert_eq!(
+        middle,
+        reference.bit_middle,
+        "{} PRN {} middle mismatch",
+        channel_name(channel),
+        prn
+    );
+    assert_eq!(
         suffix,
         reference.bit_suffix,
         "{} PRN {} suffix mismatch",
+        channel_name(channel),
+        prn
+    );
+    assert_eq!(
+        boundary,
+        expected_boundary,
+        "{} PRN {} boundary mismatch",
         channel_name(channel),
         prn
     );
@@ -149,6 +181,22 @@ pub fn assert_secondary_code_matches_reference(catalog: &GalileoE1ReferenceCatal
         sha256_hex(&logical_bits),
         catalog.secondary_code_sha256,
         "Galileo E1 secondary-code fingerprint mismatch"
+    );
+    assert_eq!(&logical_bits[..16], &catalog.secondary_code_bits[..16], "Galileo E1 secondary-code prefix mismatch");
+    assert_eq!(
+        &logical_bits[4..20],
+        &catalog.secondary_code_bits[4..20],
+        "Galileo E1 secondary-code middle mismatch"
+    );
+    assert_eq!(
+        &logical_bits[logical_bits.len() - 16..],
+        &catalog.secondary_code_bits[catalog.secondary_code_bits.len() - 16..],
+        "Galileo E1 secondary-code suffix mismatch"
+    );
+    assert_eq!(
+        wrapped_window_bits(&logical_bits, logical_bits.len() - 8, 16),
+        wrapped_window_bits(&catalog.secondary_code_bits, catalog.secondary_code_bits.len() - 8, 16),
+        "Galileo E1 secondary-code boundary mismatch"
     );
 }
 

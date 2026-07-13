@@ -176,6 +176,8 @@ def render_catalog(
         f'harshadms_source = "{harshadms_path.as_posix()}"',
         f'mx4_source = "{mx4_path.as_posix()}"',
         f"primary_code_length_bits = {PRIMARY_CODE_LENGTH_BITS}",
+        "window_length = 32",
+        "middle_start = 2030",
         'secondary_code_name = "CS25"',
         f'secondary_code_bits = "{secondary_bits}"',
         f'secondary_code_sha256 = "{sha256_hex(secondary_bits)}"',
@@ -192,6 +194,7 @@ def render_catalog(
                     f"prn = {prn}",
                     f'bit_sha256 = "{sha256_hex(bits)}"',
                     f'bit_prefix = "{bits[:32]}"',
+                    f'bit_middle = "{bits[2030:2062]}"',
                     f'bit_suffix = "{bits[-32:]}"',
                     "",
                 ]

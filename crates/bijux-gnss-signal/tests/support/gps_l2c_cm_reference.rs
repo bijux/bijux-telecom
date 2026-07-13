@@ -7,6 +7,8 @@ use bijux_gnss_signal::api::GPS_L2C_CM_CODE_CHIPS;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
+use crate::support::period_reference::wrapped_window_bits;
+
 const CATALOG_SCHEMA: &str = "gps_l2c_cm_reference_catalog.v1";
 
 #[derive(Debug, Deserialize)]
@@ -18,6 +20,7 @@ pub struct GpsL2cCmReferenceCatalog {
     pub chip_length: usize,
     pub prefix_length: usize,
     pub suffix_length: usize,
+    pub middle_start: usize,
     pub published_prn_count: usize,
     pub code: Vec<GpsL2cCmCodeReference>,
 }
@@ -29,6 +32,7 @@ pub struct GpsL2cCmCodeReference {
     pub end_state_octal: String,
     pub bit_sha256: String,
     pub bit_prefix: String,
+    pub bit_middle: String,
     pub bit_suffix: String,
 }
 
@@ -50,6 +54,7 @@ impl GpsL2cCmReferenceCatalog {
         );
         assert_eq!(self.prefix_length, 64, "unexpected GPS L2C CM prefix length");
         assert_eq!(self.suffix_length, 64, "unexpected GPS L2C CM suffix length");
+        assert_eq!(self.middle_start, 5_099, "unexpected GPS L2C CM middle start");
         assert_eq!(
             self.code.len(),
             self.published_prn_count,
@@ -81,6 +86,12 @@ impl GpsL2cCmReferenceCatalog {
                 "unexpected GPS L2C CM suffix length for PRN {}",
                 reference.prn
             );
+            assert_eq!(
+                reference.bit_middle.len(),
+                self.prefix_length,
+                "unexpected GPS L2C CM middle length for PRN {}",
+                reference.prn
+            );
         }
     }
 
@@ -100,7 +111,18 @@ pub fn assert_code_matches_reference(
     let reference = catalog.code_reference(prn);
     let logical_bits = logical_bits_from_code(code);
     let prefix = &logical_bits[..catalog.prefix_length];
+    let middle = &logical_bits[catalog.middle_start..catalog.middle_start + catalog.prefix_length];
     let suffix = &logical_bits[logical_bits.len() - catalog.suffix_length..];
+    let boundary = wrapped_window_bits(
+        &logical_bits,
+        logical_bits.len() - (catalog.prefix_length / 2),
+        catalog.prefix_length,
+    );
+    let expected_boundary = format!(
+        "{}{}",
+        &reference.bit_suffix[reference.bit_suffix.len() - (catalog.prefix_length / 2)..],
+        &reference.bit_prefix[..catalog.prefix_length / 2]
+    );
 
     assert_eq!(
         logical_bits.len(),
@@ -115,7 +137,9 @@ pub fn assert_code_matches_reference(
         prn
     );
     assert_eq!(prefix, reference.bit_prefix, "GPS L2C CM PRN {} prefix mismatch", prn);
+    assert_eq!(middle, reference.bit_middle, "GPS L2C CM PRN {} middle mismatch", prn);
     assert_eq!(suffix, reference.bit_suffix, "GPS L2C CM PRN {} suffix mismatch", prn);
+    assert_eq!(boundary, expected_boundary, "GPS L2C CM PRN {} boundary mismatch", prn);
 }
 
 pub fn logical_bits_from_code(code: &[i8]) -> String {

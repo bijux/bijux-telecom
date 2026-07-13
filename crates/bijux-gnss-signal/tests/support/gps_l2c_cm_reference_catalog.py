@@ -147,6 +147,7 @@ def render_catalog(assignments: list[tuple[int, str, str]]) -> str:
         f"chip_length = {L2C_CM_CODE_CHIPS}",
         f"prefix_length = {PREFIX_BITS}",
         f"suffix_length = {SUFFIX_BITS}",
+        "middle_start = 5099",
         f"published_prn_count = {len(assignments)}",
         "",
     ]
@@ -168,6 +169,7 @@ def render_catalog(assignments: list[tuple[int, str, str]]) -> str:
                 f'end_state_octal = "{end_state_octal}"',
                 f'bit_sha256 = "{sha256_hex(logical_bits)}"',
                 f'bit_prefix = "{logical_bits[:PREFIX_BITS]}"',
+                f'bit_middle = "{logical_bits[5099:5099 + PREFIX_BITS]}"',
                 f'bit_suffix = "{logical_bits[-SUFFIX_BITS:]}"',
                 "",
             ]

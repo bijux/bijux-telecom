@@ -53,7 +53,7 @@ impl GpsL2cClReferenceCatalog {
         );
         assert_eq!(
             self.range_offsets,
-            vec![0, 10_230, 255_731, 511_463, 767_218],
+            vec![0, 10_230, 255_731, 511_463, 767_186, 767_218],
             "unexpected GPS L2C CL range offsets"
         );
         assert_eq!(
