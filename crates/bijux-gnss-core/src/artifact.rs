@@ -674,8 +674,7 @@ pub mod v1 {
                 }
                 if matches!(
                     self.status,
-                    SolutionStatus::Invalid
-                        | SolutionStatus::Unavailable
+                    SolutionStatus::Unavailable
                         | SolutionStatus::Refused
                         | SolutionStatus::IntegrityFailed
                         | SolutionStatus::Diverged

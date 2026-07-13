@@ -982,16 +982,12 @@ pub(crate) struct ObsStreamTag {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SolutionStatus {
-    Invalid,
     Unavailable,
     Refused,
-    Held,
     Degraded,
     IntegrityFailed,
     Diverged,
     CodeOnly,
-    Coarse,
-    Converged,
     Float,
     Fixed,
 }
@@ -1000,8 +996,7 @@ impl SolutionStatus {
     pub fn is_valid(self) -> bool {
         !matches!(
             self,
-            SolutionStatus::Invalid
-                | SolutionStatus::Unavailable
+            SolutionStatus::Unavailable
                 | SolutionStatus::Refused
                 | SolutionStatus::IntegrityFailed
                 | SolutionStatus::Diverged
@@ -1010,17 +1005,13 @@ impl SolutionStatus {
 
     pub fn quality_flag(self) -> NavQualityFlag {
         match self {
-            SolutionStatus::Invalid | SolutionStatus::Unavailable | SolutionStatus::Refused => {
+            SolutionStatus::Unavailable | SolutionStatus::Refused => {
                 NavQualityFlag::NoFix
             }
-            SolutionStatus::Held
-            | SolutionStatus::Degraded
+            SolutionStatus::Degraded
             | SolutionStatus::IntegrityFailed
             | SolutionStatus::Diverged => NavQualityFlag::Degraded,
-            SolutionStatus::CodeOnly
-            | SolutionStatus::Coarse
-            | SolutionStatus::Converged
-            | SolutionStatus::Float => {
+            SolutionStatus::CodeOnly | SolutionStatus::Float => {
                 NavQualityFlag::Float
             }
             SolutionStatus::Fixed => NavQualityFlag::Fix,
@@ -1031,16 +1022,12 @@ impl SolutionStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum NavLifecycleState {
     #[default]
-    Invalid,
     Unavailable,
     Refused,
-    Held,
     Degraded,
     IntegrityFailed,
     Diverged,
     CodeOnly,
-    Coarse,
-    Converged,
     Float,
     Fixed,
 }
