@@ -99,7 +99,20 @@ pub fn generate_l1_ca_multi(
     config: &ReceiverPipelineConfig,
     scenario: &SyntheticScenario,
 ) -> SamplesFrame {
-    generate_l1_ca_multi_with_source_front_end(config, scenario, None)
+    generate_l1_ca_multi_with_receiver_oscillator(
+        config,
+        scenario,
+        &receiver_oscillator_model_from_legacy_bias(scenario.receiver_clock_frequency_bias_hz),
+    )
+}
+
+/// Generate a synthetic multi-satellite capture with explicit receiver oscillator effects.
+pub fn generate_l1_ca_multi_with_receiver_oscillator(
+    config: &ReceiverPipelineConfig,
+    scenario: &SyntheticScenario,
+    receiver_oscillator: &SyntheticReceiverOscillatorModel,
+) -> SamplesFrame {
+    generate_l1_ca_multi_with_capture_effects(config, scenario, receiver_oscillator, None)
 }
 
 /// Generate a synthetic multi-satellite capture with an optional source-side front-end filter.
@@ -108,7 +121,25 @@ pub fn generate_l1_ca_multi_with_source_front_end(
     scenario: &SyntheticScenario,
     source_front_end_filter: Option<&bijux_gnss_signal::api::FrontEndFilterSpec>,
 ) -> SamplesFrame {
-    let signal_only = generate_l1_ca_multi_signal_only(config, scenario);
+    generate_l1_ca_multi_with_capture_effects(
+        config,
+        scenario,
+        &receiver_oscillator_model_from_legacy_bias(scenario.receiver_clock_frequency_bias_hz),
+        source_front_end_filter,
+    )
+}
+
+fn generate_l1_ca_multi_with_capture_effects(
+    config: &ReceiverPipelineConfig,
+    scenario: &SyntheticScenario,
+    receiver_oscillator: &SyntheticReceiverOscillatorModel,
+    source_front_end_filter: Option<&bijux_gnss_signal::api::FrontEndFilterSpec>,
+) -> SamplesFrame {
+    let signal_only = generate_l1_ca_multi_signal_only_with_receiver_oscillator(
+        config,
+        scenario,
+        receiver_oscillator,
+    );
     let clock = SampleClock::new(config.sampling_freq_hz);
     let dt_s = clock.dt_s();
     let noise_std = SYNTHETIC_NOISE_STD_PER_COMPONENT;
@@ -256,6 +287,36 @@ pub fn generate_l1_ca_multi_signal_only_with_source_front_end(
     scenario: &SyntheticScenario,
     source_front_end_filter: Option<&bijux_gnss_signal::api::FrontEndFilterSpec>,
 ) -> SamplesFrame {
+    let receiver_oscillator_model =
+        receiver_oscillator_model_from_legacy_bias(scenario.receiver_clock_frequency_bias_hz);
+    generate_l1_ca_multi_signal_only_with_capture_effects(
+        config,
+        scenario,
+        &receiver_oscillator_model,
+        source_front_end_filter,
+    )
+}
+
+/// Generate a synthetic multi-satellite signal component with explicit receiver oscillator effects.
+pub fn generate_l1_ca_multi_signal_only_with_receiver_oscillator(
+    config: &ReceiverPipelineConfig,
+    scenario: &SyntheticScenario,
+    receiver_oscillator: &SyntheticReceiverOscillatorModel,
+) -> SamplesFrame {
+    generate_l1_ca_multi_signal_only_with_capture_effects(
+        config,
+        scenario,
+        receiver_oscillator,
+        None,
+    )
+}
+
+fn generate_l1_ca_multi_signal_only_with_capture_effects(
+    config: &ReceiverPipelineConfig,
+    scenario: &SyntheticScenario,
+    receiver_oscillator: &SyntheticReceiverOscillatorModel,
+    source_front_end_filter: Option<&bijux_gnss_signal::api::FrontEndFilterSpec>,
+) -> SamplesFrame {
     let clock = SampleClock::new(config.sampling_freq_hz);
     let dt_s = clock.dt_s();
     let sample_count = (scenario.duration_s * config.sampling_freq_hz).round() as usize;
@@ -263,10 +324,11 @@ pub fn generate_l1_ca_multi_signal_only_with_source_front_end(
         .satellites
         .iter()
         .map(|sat| {
-            SatState::new_with_receiver_clock_frequency_bias_hz(
+            SatState::new_with_receiver_oscillator(
                 config,
                 sat.clone(),
-                scenario.receiver_clock_frequency_bias_hz,
+                receiver_oscillator.clone(),
+                sample_count as u64,
             )
         })
         .collect();
@@ -476,7 +538,8 @@ impl SignalSource for SyntheticSignalSource {
 struct SatState {
     doppler_hz: f64,
     doppler_rate_hz_per_s: f64,
-    receiver_clock_frequency_bias_hz: f64,
+    receiver_oscillator_model: SyntheticReceiverOscillatorModel,
+    receiver_oscillator_phase_noise_knots: Vec<(u64, f64)>,
     code_phase_chips: f64,
     carrier_phase_rad: f64,
     cn0_db_hz: f32,
@@ -504,26 +567,45 @@ impl SatState {
         params: SyntheticSignalParams,
         receiver_clock_frequency_bias_hz: f64,
     ) -> Self {
-        Self::new_with_doppler_rate_and_receiver_clock_frequency_bias_hz(
+        Self::new_with_receiver_oscillator(
             config,
             params,
-            receiver_clock_frequency_bias_hz,
-            0.0,
+            receiver_oscillator_model_from_legacy_bias(receiver_clock_frequency_bias_hz),
+            0,
         )
     }
 
-    fn new_with_doppler_rate_and_receiver_clock_frequency_bias_hz(
+    fn new_with_receiver_oscillator(
         config: &ReceiverPipelineConfig,
         params: SyntheticSignalParams,
-        receiver_clock_frequency_bias_hz: f64,
-        doppler_rate_hz_per_s: f64,
+        receiver_oscillator_model: SyntheticReceiverOscillatorModel,
+        sample_count: u64,
     ) -> Self {
+        Self::new_with_doppler_rate_and_receiver_oscillator(
+            config,
+            params,
+            receiver_oscillator_model,
+            0.0,
+            sample_count,
+        )
+    }
+
+    fn new_with_doppler_rate_and_receiver_oscillator(
+        config: &ReceiverPipelineConfig,
+        params: SyntheticSignalParams,
+        receiver_oscillator_model: SyntheticReceiverOscillatorModel,
+        doppler_rate_hz_per_s: f64,
+        sample_count: u64,
+    ) -> Self {
+        let receiver_oscillator_phase_noise_knots =
+            receiver_oscillator_phase_noise_knots(&receiver_oscillator_model, sample_count);
         let signal_model = synthetic_replica_model(&params);
         let nav_bit_mode = nav_bit_mode(&params);
         Self {
             doppler_hz: params.doppler_hz,
             doppler_rate_hz_per_s,
-            receiver_clock_frequency_bias_hz,
+            receiver_oscillator_model,
+            receiver_oscillator_phase_noise_knots,
             code_phase_chips: params.code_phase_chips,
             carrier_phase_rad: params.carrier_phase_rad,
             cn0_db_hz: params.cn0_db_hz,
@@ -542,47 +624,87 @@ impl SatState {
         }
     }
 
+    fn new_with_doppler_rate_and_receiver_clock_frequency_bias_hz(
+        config: &ReceiverPipelineConfig,
+        params: SyntheticSignalParams,
+        receiver_clock_frequency_bias_hz: f64,
+        doppler_rate_hz_per_s: f64,
+    ) -> Self {
+        Self::new_with_doppler_rate_and_receiver_oscillator(
+            config,
+            params,
+            receiver_oscillator_model_from_legacy_bias(receiver_clock_frequency_bias_hz),
+            doppler_rate_hz_per_s,
+            0,
+        )
+    }
+
     fn initial_carrier_hz(&self) -> f64 {
-        self.if_hz + self.doppler_hz + self.receiver_clock_frequency_bias_hz
+        self.if_hz + self.doppler_hz + self.receiver_oscillator_model.carrier_frequency_bias_hz
+    }
+
+    fn effective_elapsed_s(&self, nominal_elapsed_s: f64) -> f64 {
+        nominal_elapsed_s * (1.0 + self.receiver_oscillator_model.sampling_clock_fractional_error)
+    }
+
+    fn receiver_oscillator_phase_noise_rad_at_nominal_time_s(&self, nominal_elapsed_s: f64) -> f64 {
+        let sample_index = ((nominal_elapsed_s * self.sample_rate_hz).round() as u64).min(
+            self.receiver_oscillator_phase_noise_knots.last().map(|(index, _)| *index).unwrap_or(0),
+        );
+        receiver_oscillator_phase_noise_rad_from_knots(
+            &self.receiver_oscillator_phase_noise_knots,
+            sample_index,
+        )
     }
 
     #[cfg(test)]
     fn carrier_hz_at(&self, t: f64) -> f64 {
-        bijux_gnss_signal::api::carrier_hz_at_time(
+        let effective_elapsed_s = self.effective_elapsed_s(t);
+        let carrier_hz = bijux_gnss_signal::api::carrier_hz_at_time(
             self.initial_carrier_hz(),
-            self.doppler_rate_hz_per_s,
-            t,
-        )
+            self.doppler_rate_hz_per_s
+                + self.receiver_oscillator_model.carrier_frequency_drift_hz_per_s,
+            effective_elapsed_s,
+        );
+        carrier_hz * (1.0 + self.receiver_oscillator_model.sampling_clock_fractional_error)
     }
 
     fn carrier_phase_rad_at(&self, t: f64) -> f64 {
+        let effective_elapsed_s = self.effective_elapsed_s(t);
         bijux_gnss_signal::api::carrier_phase_radians_at_time(
             self.carrier_phase_rad,
             self.initial_carrier_hz(),
-            self.doppler_rate_hz_per_s,
-            t,
-        )
+            self.doppler_rate_hz_per_s
+                + self.receiver_oscillator_model.carrier_frequency_drift_hz_per_s,
+            effective_elapsed_s,
+        ) + self.receiver_oscillator_phase_noise_rad_at_nominal_time_s(t)
     }
 
     fn sample_at(&self, t: f64) -> Complex<f32> {
+        let effective_elapsed_s = self.effective_elapsed_s(t);
         let data_bit = nav_bit_sign_with_symbol_period_at_time_s(
             &self.navigation_data,
             self.nav_bit_mode,
             self.nav_symbol_period_s,
-            t,
+            effective_elapsed_s,
         );
         let amplitude = signal_amplitude_from_cn0(self.cn0_db_hz, self.sample_rate_hz);
-        bijux_gnss_signal::api::sample_modulated_replica_at_time(
-            &self.signal_model,
-            self.code_phase_chips,
-            self.carrier_phase_rad,
-            self.initial_carrier_hz(),
-            self.doppler_rate_hz_per_s,
-            t,
-            data_bit,
-            amplitude,
-        )
-        .unwrap_or_else(|_| Complex::new(0.0, 0.0))
+        let total_chip_phase =
+            self.code_phase_chips + self.signal_model.code_rate_hz() * effective_elapsed_s;
+        let code_length = self.signal_model.code_length().max(1) as f64;
+        let primary_code_period_index = if total_chip_phase <= 0.0 {
+            0
+        } else {
+            (total_chip_phase / code_length).floor() as usize
+        };
+        let code_phase = total_chip_phase.rem_euclid(code_length);
+        let signal_value = self
+            .signal_model
+            .sample_value(code_phase, primary_code_period_index, data_bit)
+            .unwrap_or(Complex::new(0.0, 0.0));
+        let phase = self.carrier_phase_rad_at(t) as f32;
+        let carrier = Complex::new(phase.cos(), phase.sin());
+        carrier * signal_value * amplitude
     }
 }
 
@@ -1006,23 +1128,7 @@ fn receiver_oscillator_phase_noise_rad_at_sample(
     }
 
     let knots = receiver_oscillator_phase_noise_knots(model, sample_count);
-    if let Some((_, value)) =
-        knots.iter().find(|(knot_sample_index, _)| *knot_sample_index == sample_index)
-    {
-        return *value;
-    }
-
-    for window in knots.windows(2) {
-        let (start_sample_index, start_value) = window[0];
-        let (end_sample_index, end_value) = window[1];
-        if sample_index >= start_sample_index && sample_index <= end_sample_index {
-            let span = (end_sample_index - start_sample_index).max(1) as f64;
-            let alpha = (sample_index - start_sample_index) as f64 / span;
-            return start_value + alpha * (end_value - start_value);
-        }
-    }
-
-    knots.last().map(|(_, value)| *value).unwrap_or(0.0)
+    receiver_oscillator_phase_noise_rad_from_knots(&knots, sample_index)
 }
 
 fn receiver_oscillator_phase_noise_knots(
@@ -1049,6 +1155,26 @@ fn receiver_oscillator_phase_noise_knots(
         knots.push((last_sample_index, phase_noise_rad));
     }
     knots
+}
+
+fn receiver_oscillator_phase_noise_rad_from_knots(knots: &[(u64, f64)], sample_index: u64) -> f64 {
+    if let Some((_, value)) =
+        knots.iter().find(|(knot_sample_index, _)| *knot_sample_index == sample_index)
+    {
+        return *value;
+    }
+
+    for window in knots.windows(2) {
+        let (start_sample_index, start_value) = window[0];
+        let (end_sample_index, end_value) = window[1];
+        if sample_index >= start_sample_index && sample_index <= end_sample_index {
+            let span = (end_sample_index - start_sample_index).max(1) as f64;
+            let alpha = (sample_index - start_sample_index) as f64 / span;
+            return start_value + alpha * (end_value - start_value);
+        }
+    }
+
+    knots.last().map(|(_, value)| *value).unwrap_or(0.0)
 }
 
 fn peak_component(samples: &[Complex<f32>]) -> f32 {
