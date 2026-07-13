@@ -3,7 +3,7 @@
 use bijux_gnss_infra::api::core::{
     signal_spec_gps_l1_ca, signal_spec_gps_l2_py, Constellation, Cycles, Hertz, LockFlags, Meters,
     ObsEpoch, ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus, ReceiverRole,
-    ReceiverSampleTrace, SatId, SigId, SignalBand, SignalCode, Seconds,
+    ReceiverSampleTrace, SatId, Seconds, SigId, SignalBand, SignalCode,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -141,7 +141,10 @@ fn validate_emits_bias_corrected_iono_free_code_artifact() {
     let reference_path = out_dir.join("reference.jsonl");
     fs::write(
         &obs_path,
-        format!("{}\n", serde_json::to_string(&dual_frequency_epoch()).expect("serialize obs epoch")),
+        format!(
+            "{}\n",
+            serde_json::to_string(&dual_frequency_epoch()).expect("serialize obs epoch")
+        ),
     )
     .expect("write obs fixture");
     fs::write(&reference_path, "").expect("write empty reference file");

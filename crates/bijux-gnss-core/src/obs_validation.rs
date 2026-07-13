@@ -547,9 +547,13 @@ mod tests {
                 metadata: ObsMetadata {
                     doppler_model: "tracked_carrier_hz_minus_intermediate_freq".to_string(),
                     observation_lock_state: "locked".to_string(),
-                    signal: signal_registry(Constellation::Galileo, SignalBand::E1, SignalCode::E1B)
-                        .expect("Galileo E1B signal must exist")
-                        .spec,
+                    signal: signal_registry(
+                        Constellation::Galileo,
+                        SignalBand::E1,
+                        SignalCode::E1B,
+                    )
+                    .expect("Galileo E1B signal must exist")
+                    .spec,
                     ..ObsMetadata::default()
                 },
                 ..dual_frequency_satellite(SignalBand::L1, SignalCode::Ca, true, true)
@@ -563,9 +567,13 @@ mod tests {
                 metadata: ObsMetadata {
                     doppler_model: "tracked_carrier_hz_minus_intermediate_freq".to_string(),
                     observation_lock_state: "locked".to_string(),
-                    signal: signal_registry(Constellation::Galileo, SignalBand::E5, SignalCode::E5a)
-                        .expect("Galileo E5a signal must exist")
-                        .spec,
+                    signal: signal_registry(
+                        Constellation::Galileo,
+                        SignalBand::E5,
+                        SignalCode::E5a,
+                    )
+                    .expect("Galileo E5a signal must exist")
+                    .spec,
                     ..ObsMetadata::default()
                 },
                 ..dual_frequency_satellite(SignalBand::L5, SignalCode::Unknown, true, true)
@@ -633,7 +641,8 @@ mod tests {
             supported_dual_frequency_band_pairs_for_constellation(Constellation::Beidou),
             &[(SignalBand::B1, SignalBand::B2)]
         );
-        assert!(supported_dual_frequency_band_pairs_for_constellation(Constellation::Glonass).is_empty());
+        assert!(supported_dual_frequency_band_pairs_for_constellation(Constellation::Glonass)
+            .is_empty());
     }
 
     #[test]

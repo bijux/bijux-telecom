@@ -1,6 +1,6 @@
 use bijux_gnss_signal::api::{
-    generate_beidou_b1i_code, periodic_correlation, sample_beidou_b1i_code,
-    BEIDOU_B1I_CODE_CHIPS, BEIDOU_B1I_CODE_RATE_HZ,
+    generate_beidou_b1i_code, periodic_correlation, sample_beidou_b1i_code, BEIDOU_B1I_CODE_CHIPS,
+    BEIDOU_B1I_CODE_RATE_HZ,
 };
 
 #[test]

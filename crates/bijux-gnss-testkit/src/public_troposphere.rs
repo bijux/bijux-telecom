@@ -98,7 +98,8 @@ pub fn build_public_troposphere_elevation_report(
     navigation: &GpsBroadcastNavigationData,
     station_truth: &PublicStationTruth,
 ) -> Result<PublicTroposphereElevationReport, String> {
-    let corrected_solver = PositionSolver { raim: false, apply_troposphere: true, ..PositionSolver::new() };
+    let corrected_solver =
+        PositionSolver { raim: false, apply_troposphere: true, ..PositionSolver::new() };
     let uncorrected_solver =
         PositionSolver { raim: false, apply_troposphere: false, ..PositionSolver::new() };
     let receiver_ecef_m = station_truth.truth_ecef_m();
@@ -115,10 +116,16 @@ pub fn build_public_troposphere_elevation_report(
         })?;
         let receive_tow_s = gps_time.tow_s;
         let position_observations = position_observations_from_epoch(epoch);
-        let corrected = corrected_solver
-            .try_solve_wls_with_gps_broadcast_navigation(&position_observations, navigation, receive_tow_s);
-        let uncorrected = uncorrected_solver
-            .try_solve_wls_with_gps_broadcast_navigation(&position_observations, navigation, receive_tow_s);
+        let corrected = corrected_solver.try_solve_wls_with_gps_broadcast_navigation(
+            &position_observations,
+            navigation,
+            receive_tow_s,
+        );
+        let uncorrected = uncorrected_solver.try_solve_wls_with_gps_broadcast_navigation(
+            &position_observations,
+            navigation,
+            receive_tow_s,
+        );
         let (Ok(corrected), Ok(uncorrected)) = (corrected, uncorrected) else {
             continue;
         };
@@ -154,8 +161,9 @@ pub fn build_public_troposphere_elevation_report(
             gps_time,
             compared_satellite_count: epoch_samples.len(),
             low_elevation_satellite_count: low_samples.len(),
-            low_elevation_mean_abs_improvement_m: summarize_samples(&low_samples)
-                .map(|aggregate| aggregate.mean_abs_uncorrected_m() - aggregate.mean_abs_corrected_m()),
+            low_elevation_mean_abs_improvement_m: summarize_samples(&low_samples).map(
+                |aggregate| aggregate.mean_abs_uncorrected_m() - aggregate.mean_abs_corrected_m(),
+            ),
         });
         all_samples.extend(epoch_samples);
     }
@@ -180,7 +188,8 @@ pub fn build_public_troposphere_elevation_report(
         compared_epoch_count: epochs.len(),
         compared_sample_count: all_samples.len(),
         low_elevation_sample_count,
-        overall_mean_abs_improvement_m: overall.mean_abs_uncorrected_m() - overall.mean_abs_corrected_m(),
+        overall_mean_abs_improvement_m: overall.mean_abs_uncorrected_m()
+            - overall.mean_abs_corrected_m(),
         overall_rms_improvement_m: overall.uncorrected_rms_m() - overall.corrected_rms_m(),
         buckets,
         epochs,
@@ -262,7 +271,8 @@ fn bucket_reports(samples: &[ResidualComparisonSample]) -> Vec<TroposphereElevat
             uncorrected_mean_abs_residual_m: aggregate.mean_abs_uncorrected_m(),
             corrected_rms_residual_m: aggregate.corrected_rms_m(),
             uncorrected_rms_residual_m: aggregate.uncorrected_rms_m(),
-            mean_abs_improvement_m: aggregate.mean_abs_uncorrected_m() - aggregate.mean_abs_corrected_m(),
+            mean_abs_improvement_m: aggregate.mean_abs_uncorrected_m()
+                - aggregate.mean_abs_corrected_m(),
             rms_improvement_m: aggregate.uncorrected_rms_m() - aggregate.corrected_rms_m(),
         })
     })
@@ -344,8 +354,16 @@ mod tests {
         let mid_edge = sample(MID_ELEVATION_CEILING_DEG, 1.0, 2.0);
 
         assert!(!sample_in_bucket(low_edge, 0.0, Some(LOW_ELEVATION_CEILING_DEG)));
-        assert!(sample_in_bucket(low_edge, LOW_ELEVATION_CEILING_DEG, Some(MID_ELEVATION_CEILING_DEG)));
-        assert!(!sample_in_bucket(mid_edge, LOW_ELEVATION_CEILING_DEG, Some(MID_ELEVATION_CEILING_DEG)));
+        assert!(sample_in_bucket(
+            low_edge,
+            LOW_ELEVATION_CEILING_DEG,
+            Some(MID_ELEVATION_CEILING_DEG)
+        ));
+        assert!(!sample_in_bucket(
+            mid_edge,
+            LOW_ELEVATION_CEILING_DEG,
+            Some(MID_ELEVATION_CEILING_DEG)
+        ));
         assert!(sample_in_bucket(mid_edge, MID_ELEVATION_CEILING_DEG, None));
     }
 }

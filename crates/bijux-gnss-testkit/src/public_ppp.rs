@@ -3,8 +3,7 @@
 use bijux_gnss_core::api::{GpsTime, ObsEpoch, SatId, SignalBand};
 use bijux_gnss_nav::api::{
     BroadcastProductsProvider, GpsBroadcastNavigationData, PppConfig, PppFilter,
-    PppTroposphereSource,
-    RinexGpsObservationDataset,
+    PppTroposphereSource, RinexGpsObservationDataset,
 };
 use serde::{Deserialize, Serialize};
 

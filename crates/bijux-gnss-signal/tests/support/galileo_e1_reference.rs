@@ -142,16 +142,9 @@ pub fn logical_bits_from_code(code: &[i8]) -> String {
     logical_bits_from_bipolar(code)
 }
 
-pub fn assert_secondary_code_matches_reference(
-    catalog: &GalileoE1ReferenceCatalog,
-    code: &[i8],
-) {
+pub fn assert_secondary_code_matches_reference(catalog: &GalileoE1ReferenceCatalog, code: &[i8]) {
     let logical_bits = logical_bits_from_bipolar(code);
-    assert_eq!(
-        logical_bits,
-        catalog.secondary_code_bits,
-        "Galileo E1 secondary-code bit mismatch"
-    );
+    assert_eq!(logical_bits, catalog.secondary_code_bits, "Galileo E1 secondary-code bit mismatch");
     assert_eq!(
         sha256_hex(&logical_bits),
         catalog.secondary_code_sha256,

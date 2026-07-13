@@ -121,13 +121,7 @@ pub fn sample_beidou_b1i_code(
     sample_count: usize,
 ) -> Result<Vec<f32>, SignalError> {
     let code = generate_beidou_b1i_code(prn)?;
-    sample_code(
-        &code,
-        sample_rate_hz,
-        BEIDOU_B1I_CODE_RATE_HZ,
-        start_chip_phase,
-        sample_count,
-    )
+    sample_code(&code, sample_rate_hz, BEIDOU_B1I_CODE_RATE_HZ, start_chip_phase, sample_count)
 }
 
 fn shift_register(register: &mut [i8; 11], feedback: i8) {
@@ -163,14 +157,8 @@ mod tests {
 
     #[test]
     fn beidou_b1i_generator_rejects_out_of_range_prns() {
-        assert_eq!(
-            beidou_b1i_code_assignment(0),
-            Err(SignalError::UnsupportedPrn(0))
-        );
-        assert_eq!(
-            generate_beidou_b1i_code(38),
-            Err(SignalError::UnsupportedPrn(38))
-        );
+        assert_eq!(beidou_b1i_code_assignment(0), Err(SignalError::UnsupportedPrn(0)));
+        assert_eq!(generate_beidou_b1i_code(38), Err(SignalError::UnsupportedPrn(38)));
     }
 
     #[test]
