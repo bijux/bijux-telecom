@@ -6,12 +6,12 @@ use bijux_gnss_receiver::api::{
     Receiver, ReceiverPipelineConfig, ReceiverRuntime,
 };
 
-fn gps_l1_config() -> ReceiverPipelineConfig {
+fn gps_l5_config() -> ReceiverPipelineConfig {
     ReceiverPipelineConfig {
-        sampling_freq_hz: 4_092_000.0,
+        sampling_freq_hz: 10_230_000.0,
         intermediate_freq_hz: 0.0,
-        code_freq_basis_hz: 1_023_000.0,
-        code_length: 1023,
+        code_freq_basis_hz: 10_230_000.0,
+        code_length: 10_230,
         acquisition_doppler_search_hz: 0,
         acquisition_doppler_step_hz: 250,
         acquisition_integration_ms: 1,
@@ -23,19 +23,19 @@ fn gps_l1_config() -> ReceiverPipelineConfig {
     }
 }
 
-fn gps_l1_scenario(sat: SatId) -> SyntheticScenario {
+fn gps_l5_scenario(sat: SatId) -> SyntheticScenario {
     SyntheticScenario {
-        sample_rate_hz: 4_092_000.0,
+        sample_rate_hz: 10_230_000.0,
         intermediate_freq_hz: 0.0,
         receiver_clock_frequency_bias_hz: 0.0,
-        duration_s: 0.020,
+        duration_s: 0.030,
         seed: 0x15A0_1000,
         satellites: vec![SyntheticSignalParams {
             sat,
             glonass_frequency_channel: None,
-            signal_band: bijux_gnss_core::api::SignalBand::L1,
+            signal_band: bijux_gnss_core::api::SignalBand::L5,
             doppler_hz: 0.0,
-            code_phase_chips: 321.375,
+            code_phase_chips: 2_048.375,
             carrier_phase_rad: 0.25,
             cn0_db_hz: 60.0,
             data_bit_flip: false,
@@ -46,14 +46,47 @@ fn gps_l1_scenario(sat: SatId) -> SyntheticScenario {
 }
 
 #[test]
-fn support_matrix_lists_gps_l5_with_explicit_tracking_scope() {
-    let config = gps_l1_config();
+fn receiver_runs_gps_l5_i_with_supported_acquisition_and_tracking() {
+    let config = gps_l5_config();
     let sat = SatId { constellation: Constellation::Gps, prn: 12 };
-    let scenario = gps_l1_scenario(sat);
+    let scenario = gps_l5_scenario(sat);
     let mut source = SyntheticSignalSource::new_signal_only(&config, &scenario);
     let receiver = Receiver::new(config, ReceiverRuntime::default());
 
     let artifacts = receiver.run(&mut source).expect("receiver run");
+    let acquisition = artifacts
+        .acquisitions
+        .iter()
+        .find(|result| result.sat == sat)
+        .expect("GPS L5 acquisition result");
+    assert_eq!(acquisition.signal_band, SignalBand::L5, "{acquisition:?}");
+    assert!(
+        matches!(
+            acquisition.hypothesis,
+            bijux_gnss_core::api::AcqHypothesis::Accepted
+                | bijux_gnss_core::api::AcqHypothesis::Ambiguous
+        ),
+        "{acquisition:?}"
+    );
+
+    let tracking = artifacts
+        .tracking
+        .iter()
+        .find(|result| result.sat == sat)
+        .expect("GPS L5 tracking result");
+    assert!(!tracking.epochs.is_empty(), "{tracking:?}");
+    assert_eq!(tracking.epochs[0].signal_band, SignalBand::L5, "{tracking:?}");
+
+    let observation_epoch = artifacts.observations.first().expect("GPS L5 observation epoch");
+    let observation = observation_epoch
+        .sats
+        .iter()
+        .find(|row| row.signal_id.sat == sat)
+        .expect("GPS L5 observation row");
+    assert_eq!(observation.signal_id.band, SignalBand::L5, "{observation:?}");
+    assert_eq!(observation.signal_id.code, SignalCode::L5I, "{observation:?}");
+    assert_eq!(observation.metadata.signal.code, SignalCode::L5I, "{observation:?}");
+
     let support_matrix = artifacts.support_matrix.expect("support matrix");
     let row = support_matrix
         .rows
