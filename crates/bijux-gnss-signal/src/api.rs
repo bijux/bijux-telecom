@@ -59,13 +59,17 @@ pub use crate::codes::gps_l2c_cm::{
 };
 pub use crate::codes::gps_l5::{
     generate_gps_l5_i_chips, generate_gps_l5_i_chips_from_code, generate_gps_l5_i_code,
+    generate_gps_l5_q_chips, generate_gps_l5_q_chips_from_code, generate_gps_l5_q_code,
     gps_l5_i_code_assignment, gps_l5_i_code_assignments, gps_l5_i_data_symbol_index,
     gps_l5_i_epoch_symbol, gps_l5_i_neumann_hoffman_code, gps_l5_i_nh_chip, gps_l5_i_symbol_epoch,
-    gps_l5_i_value, sample_gps_l5_i, sample_gps_l5_i_code, sample_gps_l5_i_from_code,
-    sample_gps_l5_i_primary_code, GpsL5ICodeAssignment, GPS_L5I_SYMBOL_CHIPS,
-    GPS_L5I_SYMBOL_CODE_EPOCHS, GPS_L5_CODE_CHIPS, GPS_L5_CODE_RATE_HZ,
+    gps_l5_i_value, gps_l5_q_code_assignment, gps_l5_q_code_assignments, gps_l5_q_epoch_symbol,
+    gps_l5_q_neumann_hoffman_code, gps_l5_q_nh_chip, gps_l5_q_symbol_epoch, gps_l5_q_value,
+    sample_gps_l5_i, sample_gps_l5_i_code, sample_gps_l5_i_from_code, sample_gps_l5_i_primary_code,
+    sample_gps_l5_q, sample_gps_l5_q_code, sample_gps_l5_q_from_code, sample_gps_l5_q_primary_code,
+    GpsL5ICodeAssignment, GpsL5QCodeAssignment, GPS_L5I_SYMBOL_CHIPS, GPS_L5I_SYMBOL_CODE_EPOCHS,
+    GPS_L5Q_SYMBOL_CHIPS, GPS_L5Q_SYMBOL_CODE_EPOCHS, GPS_L5_CODE_CHIPS, GPS_L5_CODE_RATE_HZ,
     GPS_L5_I_PRIMARY_EPOCHS_PER_SYMBOL, GPS_L5_I_SYMBOL_CHIPS, GPS_L5_PRIMARY_CODE_CHIPS,
-    GPS_L5_PRIMARY_CODE_RATE_HZ,
+    GPS_L5_PRIMARY_CODE_RATE_HZ, GPS_L5_Q_PRIMARY_EPOCHS_PER_SYMBOL, GPS_L5_Q_SYMBOL_CHIPS,
 };
 /// Numerically controlled oscillator helper.
 pub use crate::dsp::nco::Nco;
