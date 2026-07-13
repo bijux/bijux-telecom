@@ -3733,7 +3733,7 @@ mod tests {
         let solution = nav.solve_epoch(&obs, &[]).expect("degraded solution");
         assert_eq!(solution.status, SolutionStatus::Unavailable);
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::InvalidEphemeris));
-        assert_eq!(solution.explain_decision, "refused");
+        assert_eq!(solution.explain_decision, "unavailable");
         assert_eq!(solution.epoch.index, 10);
         assert_has_refusal_cause(&solution, "refusal_cause=ephemeris");
     }
@@ -3829,8 +3829,9 @@ mod tests {
         let solution = nav.solve_epoch(&obs, &[]).expect("glonass-only solution");
         assert_eq!(solution.status, SolutionStatus::Unavailable);
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::InvalidEphemeris));
-        assert_eq!(solution.explain_decision, "refused");
+        assert_eq!(solution.explain_decision, "unavailable");
         assert!(!solution.valid);
+        assert_has_refusal_cause(&solution, "refusal_cause=ephemeris");
     }
 
     #[test]
@@ -3844,8 +3845,9 @@ mod tests {
         let solution = nav.solve_epoch(&obs, &[]).expect("mixed constellation solution");
         assert_eq!(solution.status, SolutionStatus::Unavailable);
         assert_eq!(solution.refusal_class, Some(NavRefusalClass::InvalidEphemeris));
-        assert_eq!(solution.explain_decision, "refused");
+        assert_eq!(solution.explain_decision, "unavailable");
         assert!(!solution.valid);
+        assert_has_refusal_cause(&solution, "refusal_cause=ephemeris");
     }
 
     #[test]
