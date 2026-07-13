@@ -7,29 +7,26 @@ use crate::pipeline::observation_validation::{
     CarrierSmoothedCodeValidationReport,
 };
 use crate::pipeline::observations::ObservationPipelineArtifacts;
+use crate::reference_validation::{
+    check_solution_consistency, reference_ecef, SolutionConsistencyReport, ValidationReferenceEpoch,
+};
 use crate::rtk::status::{
     apply_downgrade_policy, evaluate_prerequisites, support_status_matrix, AdvancedMaturity,
     AdvancedMode, AdvancedPrerequisites, AdvancedRefusalClass, AdvancedSolutionClaim,
     AdvancedSupportRow,
 };
-use crate::reference_validation::{
-    check_solution_consistency, reference_ecef, SolutionConsistencyReport,
-    ValidationReferenceEpoch,
-};
 use crate::validation_helpers::{check_budgets, to_validation_stats};
-use bijux_gnss_core::api::{
-    stats, NavSolutionEpoch, ObsEpoch, SatId, SignalBand, SolutionStatus,
-};
-use bijux_gnss_signal::api::{
-    check_dual_frequency_observations, check_inter_frequency_alignment,
-    supported_dual_frequency_band_pairs, DualFrequencyObservationReport, DualFrequencyPairStatus,
-    InterFrequencyAlignmentReport,
-};
+use bijux_gnss_core::api::{stats, NavSolutionEpoch, ObsEpoch, SatId, SignalBand, SolutionStatus};
 use bijux_gnss_nav::api::{
     ecef_to_enu, geometry_free_diagnostics_from_obs_epochs, iono_free_code_from_obs_epochs,
     melbourne_wubbena_diagnostics_from_obs_epochs, GeometryFreeEvent, GeometryFreeThresholds,
     MelbourneWubbenaEvent, MelbourneWubbenaThresholds, PositionWeightingModel, PppConfig,
     PppConvergenceConfig, PppProcessNoise, WeightingConfig,
+};
+use bijux_gnss_signal::api::{
+    check_dual_frequency_observations, check_inter_frequency_alignment,
+    supported_dual_frequency_band_pairs, supported_dual_frequency_band_pairs_for_constellation,
+    DualFrequencyObservationReport, DualFrequencyPairStatus, InterFrequencyAlignmentReport,
 };
 use serde::{Deserialize, Serialize};
 
@@ -940,21 +937,33 @@ fn protection_level_validation_report(
 fn dual_frequency_combinations_valid(obs: &[ObsEpoch]) -> bool {
     let mut saw_complete_pair = false;
 
-    for &(band_1, band_2) in supported_dual_frequency_band_pairs() {
-        let combinations = iono_free_code_from_obs_epochs(obs, band_1, band_2);
-        let observed_pairs = combinations
-            .iter()
-            .filter(|combination| combination.reason != "missing_frequency")
-            .collect::<Vec<_>>();
-        if observed_pairs.is_empty() {
-            continue;
+    let mut constellations = std::collections::BTreeSet::new();
+    for epoch in obs {
+        for satellite in &epoch.sats {
+            constellations.insert(satellite.signal_id.sat.constellation);
         }
+    }
 
-        if observed_pairs.iter().any(|combination| combination.status != "ok") {
-            return false;
+    for constellation in constellations {
+        for &(band_1, band_2) in
+            supported_dual_frequency_band_pairs_for_constellation(constellation)
+        {
+            let combinations = iono_free_code_from_obs_epochs(obs, band_1, band_2);
+            let observed_pairs = combinations
+                .iter()
+                .filter(|combination| combination.sat.constellation == constellation)
+                .filter(|combination| combination.reason != "missing_frequency")
+                .collect::<Vec<_>>();
+            if observed_pairs.is_empty() {
+                continue;
+            }
+
+            if observed_pairs.iter().any(|combination| combination.status != "ok") {
+                return false;
+            }
+
+            saw_complete_pair = true;
         }
-
-        saw_complete_pair = true;
     }
 
     saw_complete_pair
@@ -1463,8 +1472,8 @@ mod tests {
     use super::*;
     use crate::api::TrackingResult;
     use bijux_gnss_core::api::{
-        Chips, Constellation, Cycles, Epoch, Hertz, LockFlags, Meters, NavAssumptions,
-        ObsMetadata, ObsSatellite, ObservationEpochDecision, ObservationStatus, ReceiverRole,
+        Chips, Constellation, Cycles, Epoch, Hertz, LockFlags, Meters, NavAssumptions, ObsMetadata,
+        ObsSatellite, ObservationEpochDecision, ObservationStatus, ReceiverRole,
         ReceiverSampleTrace, SatId, SigId, SignalCode, TrackEpoch,
     };
     use bijux_gnss_signal::api::{carrier_wavelength_m, signal_registry};
@@ -1999,7 +2008,7 @@ mod tests {
         assert!(report.ppp_readiness.combinations_valid);
         assert_eq!(report.ppp_readiness.maturity, AdvancedMaturity::NotReady);
         assert_eq!(report.ppp_readiness.status, "not_ready");
-        assert!(report.ppp_readiness.status_reason.is_none());
+        assert_eq!(report.ppp_readiness.status_reason.as_deref(), Some("missing_reference_frame"));
         assert_eq!(report.ppp_readiness.claim, AdvancedSolutionClaim::NotReady);
     }
 
@@ -2164,7 +2173,7 @@ mod tests {
         assert!(report.ppp_readiness.multi_freq_present);
         assert!(report.ppp_readiness.combinations_valid);
         assert_eq!(report.ppp_readiness.status, "not_ready");
-        assert!(report.ppp_readiness.status_reason.is_none());
+        assert_eq!(report.ppp_readiness.status_reason.as_deref(), Some("missing_reference_frame"));
         assert_eq!(report.ppp_readiness.claim, AdvancedSolutionClaim::NotReady);
     }
 
