@@ -49,7 +49,7 @@ fn navigation_pipeline_refuses_persistent_residual_temporal_correlation() {
     let refused_solutions = flagged_solutions
         .iter()
         .copied()
-        .filter(|solution| solution.status == SolutionStatus::Invalid)
+        .filter(|solution| solution.status == SolutionStatus::IntegrityFailed)
         .collect::<Vec<_>>();
     assert!(
         !refused_solutions.is_empty(),

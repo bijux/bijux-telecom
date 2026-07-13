@@ -17,7 +17,10 @@ fn underdetermined_fault_triggers_integrity_failure_without_protection_claims() 
         "expected underdetermined synthetic fault run to produce solved epochs",
     );
     assert!(
-        run.run.solutions.iter().all(|solution| solution.status == SolutionStatus::Invalid),
+        run.run
+            .solutions
+            .iter()
+            .all(|solution| solution.status == SolutionStatus::IntegrityFailed),
         "expected every underdetermined fault epoch to refuse integrity",
     );
     assert!(

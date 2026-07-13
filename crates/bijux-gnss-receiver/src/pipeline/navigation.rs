@@ -497,7 +497,7 @@ impl Navigation {
                 self.satellite_clock_suspect_streak = 0;
                 return Some(apply_atmosphere_explainability(
                     if is_sparse_refusal {
-                        self.current_epoch_refusal(
+                        let solution = self.current_epoch_refusal(
                             obs,
                             source_observation_epoch_id,
                             nav_artifact_id,
@@ -508,9 +508,14 @@ impl Navigation {
                             refusal.sat_count + invalid_satellite_time_sats.len(),
                             refusal.used_sat_count,
                             rejected,
-                        )
+                        );
+                        if solution_status == SolutionStatus::IntegrityFailed {
+                            mark_integrity_failure(solution)
+                        } else {
+                            solution
+                        }
                     } else {
-                        self.reuse_previous_solution(
+                        let solution = self.reuse_previous_solution(
                             obs,
                             source_observation_epoch_id,
                             nav_artifact_id,
@@ -521,7 +526,12 @@ impl Navigation {
                                 explain_reasons,
                             },
                             assumptions,
-                        )
+                        );
+                        if solution_status == SolutionStatus::IntegrityFailed {
+                            mark_integrity_failure(solution)
+                        } else {
+                            solution
+                        }
                     },
                     obs,
                     navigation,
@@ -955,6 +965,7 @@ impl Navigation {
                 NavRefusalClass::InconsistentObservations,
                 impossible_geometry_explain_reasons(impossible_geometry),
             );
+            nav_epoch = mark_integrity_failure(nav_epoch);
         }
         let constellation_clock_inconsistencies = detect_constellation_clock_inconsistencies(
             self.last_solution.as_ref(),
@@ -993,6 +1004,7 @@ impl Navigation {
                 NavRefusalClass::InconsistentObservations,
                 constellation_clock_explain_reasons.clone(),
             );
+            nav_epoch = mark_integrity_failure(nav_epoch);
         }
         nav_epoch.quality = nav_epoch.status.quality_flag();
 
@@ -1049,6 +1061,7 @@ impl Navigation {
                     NavRefusalClass::InconsistentObservations,
                     residual_whiteness_explain_reasons.clone(),
                 );
+                nav_epoch = mark_integrity_failure(nav_epoch);
             }
         }
         nav_epoch.validity = classify_validity(&nav_epoch);
@@ -1601,6 +1614,9 @@ fn solver_refusal_status(
     refusal_class: NavRefusalClass,
 ) -> SolutionStatus {
     match refusal_kind {
+        PositionSolveRefusalKind::UnderdeterminedRaimExclusion => {
+            SolutionStatus::IntegrityFailed
+        }
         PositionSolveRefusalKind::FilterDivergence(_) => SolutionStatus::Diverged,
         PositionSolveRefusalKind::SolverFailure
             if refusal_class == NavRefusalClass::SolverFailure =>
@@ -1634,6 +1650,12 @@ fn override_solution_status(
     } else {
         SolutionValidity::Invalid
     };
+    solution
+}
+
+fn mark_integrity_failure(mut solution: NavSolutionEpoch) -> NavSolutionEpoch {
+    solution = override_solution_status(solution, SolutionStatus::IntegrityFailed);
+    solution.explain_decision = "integrity_failed".to_string();
     solution
 }
 
@@ -3746,6 +3768,13 @@ mod tests {
 
     #[test]
     fn solver_refusal_status_distinguishes_divergence_from_missing_inputs() {
+        assert_eq!(
+            solver_refusal_status(
+                PositionSolveRefusalKind::UnderdeterminedRaimExclusion,
+                NavRefusalClass::InsufficientGeometry,
+            ),
+            SolutionStatus::IntegrityFailed
+        );
         assert_eq!(
             solver_refusal_status(
                 PositionSolveRefusalKind::FilterDivergence(

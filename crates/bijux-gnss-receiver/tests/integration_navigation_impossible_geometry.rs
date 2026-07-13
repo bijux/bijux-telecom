@@ -18,7 +18,7 @@ fn navigation_pipeline_refuses_impossible_geometry() {
         "expected impossible geometry evidence in health events: {:?}",
         run.solution.health,
     );
-    assert_eq!(run.solution.status, SolutionStatus::Invalid);
+    assert_eq!(run.solution.status, SolutionStatus::IntegrityFailed);
     assert_eq!(
         run.solution.refusal_class,
         Some(NavRefusalClass::InconsistentObservations)
@@ -76,7 +76,7 @@ fn navigation_pipeline_accepts_terrestrial_geometry() {
         run.solution.health,
     );
     assert_eq!(run.solution.refusal_class, None);
-    assert_ne!(run.solution.status, SolutionStatus::Invalid);
+    assert_ne!(run.solution.status, SolutionStatus::IntegrityFailed);
     assert!(
         !run.solution
             .explain_reasons

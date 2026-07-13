@@ -40,7 +40,9 @@ fn navigation_pipeline_refuses_constellation_clock_inconsistency_after_bias_jump
         flagged_solutions.iter().map(|solution| solution.epoch.index).collect::<Vec<_>>(),
     );
     assert!(
-        flagged_solutions.iter().all(|solution| solution.status == SolutionStatus::Invalid),
+        flagged_solutions
+            .iter()
+            .all(|solution| solution.status == SolutionStatus::IntegrityFailed),
         "clock inconsistency should refuse the mixed solution: {:?}",
         flagged_solutions
             .iter()
