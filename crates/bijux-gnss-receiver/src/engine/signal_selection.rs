@@ -5,17 +5,57 @@ use crate::engine::receiver_config::ReceiverPipelineConfig;
 use bijux_gnss_core::api::{
     default_signal_band_for_constellation, Constellation, SatId, SignalBand, SignalCode,
 };
-use bijux_gnss_signal::api::AcquisitionSignalModel;
+use bijux_gnss_signal::api::{registered_signal_registry_entries, AcquisitionSignalModel};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct AcquisitionSignalIdentity {
+    pub signal_band: SignalBand,
+    pub signal_code: SignalCode,
+}
 
 pub(crate) fn resolved_acquisition_signal_band(
     config: &ReceiverPipelineConfig,
     sat: SatId,
 ) -> SignalBand {
-    supported_signal_bands(sat.constellation)
+    resolved_primary_acquisition_signal(config, sat).signal_band
+}
+
+pub(crate) fn resolved_primary_acquisition_signal(
+    config: &ReceiverPipelineConfig,
+    sat: SatId,
+) -> AcquisitionSignalIdentity {
+    resolved_acquisition_signals(config, sat).into_iter().next().unwrap_or(
+        AcquisitionSignalIdentity {
+            signal_band: default_signal_band_for_constellation(sat.constellation),
+            signal_code: default_signal_code_for_band(
+                sat.constellation,
+                default_signal_band_for_constellation(sat.constellation),
+            ),
+        },
+    )
+}
+
+pub(crate) fn resolved_acquisition_signals(
+    config: &ReceiverPipelineConfig,
+    sat: SatId,
+) -> Vec<AcquisitionSignalIdentity> {
+    let mut matches = registered_signal_registry_entries()
         .iter()
-        .copied()
-        .find(|signal_band| signal_band_matches_config(config, sat, *signal_band))
-        .unwrap_or_else(|| default_signal_band_for_constellation(sat.constellation))
+        .filter(|entry| entry.spec.constellation == sat.constellation)
+        .filter(|entry| {
+            acquisition_signal_matches_config(config, sat, entry.spec.band, entry.spec.code)
+        })
+        .map(|entry| AcquisitionSignalIdentity {
+            signal_band: entry.spec.band,
+            signal_code: entry.spec.code,
+        })
+        .collect::<Vec<_>>();
+
+    if matches.is_empty() {
+        matches.push(resolved_primary_fallback_signal(sat));
+    }
+
+    matches
 }
 
 pub(crate) fn acquisition_constellation_matches_config(
@@ -52,7 +92,19 @@ fn signal_band_matches_config(
     sat: SatId,
     signal_band: SignalBand,
 ) -> bool {
-    let signal_code = default_signal_code_for_band(sat.constellation, signal_band);
+    registered_signal_registry_entries()
+        .iter()
+        .filter(|entry| entry.spec.constellation == sat.constellation)
+        .filter(|entry| entry.spec.band == signal_band)
+        .any(|entry| acquisition_signal_matches_config(config, sat, signal_band, entry.spec.code))
+}
+
+fn acquisition_signal_matches_config(
+    config: &ReceiverPipelineConfig,
+    sat: SatId,
+    signal_band: SignalBand,
+    signal_code: SignalCode,
+) -> bool {
     AcquisitionSignalModel::for_sat_signal(sat, Some(signal_band), signal_code, None)
         .ok()
         .flatten()
@@ -60,6 +112,14 @@ fn signal_band_matches_config(
             (model.code_rate_hz - config.code_freq_basis_hz).abs() <= f64::EPSILON
                 && model.code_length == config.code_length
         })
+}
+
+fn resolved_primary_fallback_signal(sat: SatId) -> AcquisitionSignalIdentity {
+    let signal_band = default_signal_band_for_constellation(sat.constellation);
+    AcquisitionSignalIdentity {
+        signal_band,
+        signal_code: default_signal_code_for_band(sat.constellation, signal_band),
+    }
 }
 
 fn supported_signal_bands(constellation: Constellation) -> &'static [SignalBand] {
@@ -76,10 +136,10 @@ fn supported_signal_bands(constellation: Constellation) -> &'static [SignalBand]
 mod tests {
     use super::{
         acquisition_constellation_matches_config, resolved_acquisition_signal_band,
-        signal_band_matches_config,
+        resolved_acquisition_signals, resolved_primary_acquisition_signal, signal_band_matches_config,
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
-    use bijux_gnss_core::api::{Constellation, SatId, SignalBand};
+    use bijux_gnss_core::api::{Constellation, SatId, SignalBand, SignalCode};
 
     #[test]
     fn resolved_acquisition_signal_band_matches_gps_l5_config() {
@@ -93,6 +153,70 @@ mod tests {
 
         assert_eq!(resolved_acquisition_signal_band(&config, sat), SignalBand::L5);
         assert!(acquisition_constellation_matches_config(&config, Constellation::Gps));
+    }
+
+    #[test]
+    fn resolved_acquisition_signals_include_both_gps_l5_components() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 10_230_000.0,
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+
+        assert_eq!(
+            resolved_acquisition_signals(&config, sat),
+            vec![
+                super::AcquisitionSignalIdentity {
+                    signal_band: SignalBand::L5,
+                    signal_code: SignalCode::L5I,
+                },
+                super::AcquisitionSignalIdentity {
+                    signal_band: SignalBand::L5,
+                    signal_code: SignalCode::L5Q,
+                },
+            ]
+        );
+        assert_eq!(
+            resolved_primary_acquisition_signal(&config, sat),
+            super::AcquisitionSignalIdentity {
+                signal_band: SignalBand::L5,
+                signal_code: SignalCode::L5I,
+            }
+        );
+    }
+
+    #[test]
+    fn resolved_acquisition_signals_include_both_galileo_e5_components() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 10_230_000.0,
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+
+        assert_eq!(
+            resolved_acquisition_signals(&config, sat),
+            vec![
+                super::AcquisitionSignalIdentity {
+                    signal_band: SignalBand::E5,
+                    signal_code: SignalCode::E5a,
+                },
+                super::AcquisitionSignalIdentity {
+                    signal_band: SignalBand::E5,
+                    signal_code: SignalCode::E5b,
+                },
+            ]
+        );
+        assert_eq!(
+            resolved_primary_acquisition_signal(&config, sat),
+            super::AcquisitionSignalIdentity {
+                signal_band: SignalBand::E5,
+                signal_code: SignalCode::E5a,
+            }
+        );
     }
 
     #[test]
