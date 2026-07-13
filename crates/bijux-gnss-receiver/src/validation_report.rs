@@ -22,8 +22,8 @@ use bijux_gnss_core::api::{
 use bijux_gnss_nav::api::{
     ecef_to_enu, geometry_free_diagnostics_from_obs_epochs, iono_free_code_from_obs_epochs,
     melbourne_wubbena_diagnostics_from_obs_epochs, GeometryFreeEvent, GeometryFreeThresholds,
-    MelbourneWubbenaEvent, MelbourneWubbenaThresholds, PppConfig, PppConvergenceConfig,
-    PositionWeightingModel, PppProcessNoise, WeightingConfig,
+    MelbourneWubbenaEvent, MelbourneWubbenaThresholds, PositionWeightingModel, PppConfig,
+    PppConvergenceConfig, PppProcessNoise, WeightingConfig,
 };
 use serde::{Deserialize, Serialize};
 
@@ -85,10 +85,10 @@ pub struct PppReadinessReport {
     pub prerequisites_met: bool,
     /// Refusal class when prerequisites were not met.
     pub refusal_class: Option<AdvancedRefusalClass>,
-    /// Whether the reported PPP path was downgraded.
-    pub downgraded: bool,
-    /// Downgrade reason when present.
-    pub downgrade_reason: Option<String>,
+    /// Runtime status for PPP execution in this surface.
+    pub status: String,
+    /// Runtime status reason when present.
+    pub status_reason: Option<String>,
     /// Reported claim class for PPP output.
     pub claim: AdvancedSolutionClaim,
     /// Support matrix row for PPP.
@@ -624,13 +624,15 @@ fn build_validation_report_with_observation_context(
                 horizontal_margin_m,
                 vertical_margin_m,
             });
-            covariance_realism_samples.push(crate::covariance_realism::CovarianceRealismEpochSample {
-                receiver_ecef_m: [sol.ecef_x_m.0, sol.ecef_y_m.0, sol.ecef_z_m.0],
-                east_m: east,
-                north_m: north,
-                up_m: up,
-                position_covariance_ecef_m2: sol.position_covariance_ecef_m2,
-            });
+            covariance_realism_samples.push(
+                crate::covariance_realism::CovarianceRealismEpochSample {
+                    receiver_ecef_m: [sol.ecef_x_m.0, sol.ecef_y_m.0, sol.ecef_z_m.0],
+                    east_m: east,
+                    north_m: north,
+                    up_m: up,
+                    position_covariance_ecef_m2: sol.position_covariance_ecef_m2,
+                },
+            );
             if let (Some(sig_h), Some(sig_v)) = (sol.sigma_h_m, sol.sigma_v_m) {
                 if sig_h.0 > 0.0 && sig_v.0 > 0.0 {
                     let nees = (east * east + north * north) / (sig_h.0 * sig_h.0)
@@ -723,7 +725,7 @@ fn build_validation_report_with_observation_context(
         support_matrix.rows.iter().find(|row| row.mode == AdvancedMode::Ppp).cloned().unwrap_or(
             AdvancedSupportRow {
                 mode: AdvancedMode::Ppp,
-                maturity: AdvancedMaturity::Scaffolding,
+                maturity: AdvancedMaturity::NotReady,
                 real_solver: false,
                 required_inputs: Vec::new(),
                 notes: "ppp support row missing".to_string(),
@@ -739,10 +741,10 @@ fn build_validation_report_with_observation_context(
         has_ambiguity_state: combinations_valid,
     };
     let ppp_prereq_decision = evaluate_prerequisites(AdvancedMode::Ppp, &ppp_prereq);
-    let (_ppp_status, downgraded, downgrade_reason, claim) = apply_downgrade_policy(
+    let (ppp_status, _downgraded, ppp_status_reason, claim) = apply_downgrade_policy(
         AdvancedMode::Ppp,
         &ppp_prereq_decision,
-        AdvancedSolutionClaim::Scaffolding,
+        AdvancedSolutionClaim::NotReady,
     );
     let nis_values: Vec<f64> = solutions
         .iter()
@@ -823,8 +825,8 @@ fn build_validation_report_with_observation_context(
             maturity: ppp_support.maturity,
             prerequisites_met: ppp_prereq_decision.ready,
             refusal_class: ppp_prereq_decision.refusal_class,
-            downgraded,
-            downgrade_reason,
+            status: ppp_status,
+            status_reason: ppp_status_reason,
             claim,
             support: ppp_support,
         },
@@ -834,7 +836,6 @@ fn build_validation_report_with_observation_context(
         assumptions,
     })
 }
-
 
 fn protection_level_validation_report(
     reference_position_errors: &[ReferencePositionErrorEpoch],
@@ -1572,7 +1573,10 @@ mod tests {
         assert_eq!(error.vpl_m, Some(4.0));
         assert_eq!(error.horizontal_within_hpl, Some(true));
         assert_eq!(error.vertical_within_vpl, Some(true));
-        assert!((error.horizontal_margin_m.expect("horizontal margin") - (3.0 - 5.0_f64.sqrt())).abs() < 1.0e-12);
+        assert!(
+            (error.horizontal_margin_m.expect("horizontal margin") - (3.0 - 5.0_f64.sqrt())).abs()
+                < 1.0e-12
+        );
         assert!((error.vertical_margin_m.expect("vertical margin") - 1.0).abs() < 1.0e-12);
         assert!((report.east_error_m.rms - 1.0).abs() < 1.0e-12);
         assert!((report.north_error_m.rms - 2.0).abs() < 1.0e-12);
@@ -1586,7 +1590,8 @@ mod tests {
         assert_eq!(report.covariance_realism.horizontal_95.sample_count, 1);
         assert_eq!(report.covariance_realism.vertical_95.sample_count, 1);
         assert_eq!(report.covariance_realism.position_3d_95.sample_count, 1);
-        let horizontal_nees = report.covariance_realism.horizontal_nees_mean.expect("horizontal nees");
+        let horizontal_nees =
+            report.covariance_realism.horizontal_nees_mean.expect("horizontal nees");
         let vertical_normalized_error = report
             .covariance_realism
             .vertical_normalized_error_squared_mean
@@ -1650,7 +1655,9 @@ mod tests {
         assert_eq!(report.protection_levels.vertical_breach_epochs, vec![8]);
         assert_eq!(report.protection_levels.horizontal_contained_epoch_count, 0);
         assert_eq!(report.protection_levels.vertical_contained_epoch_count, 0);
-        assert!(report.protection_levels.min_horizontal_margin_m.expect("horizontal min margin") < 0.0);
+        assert!(
+            report.protection_levels.min_horizontal_margin_m.expect("horizontal min margin") < 0.0
+        );
         assert!(report.protection_levels.min_vertical_margin_m.expect("vertical min margin") < 0.0);
     }
 
@@ -1894,6 +1901,10 @@ mod tests {
         assert_eq!(report.dual_frequency_observations.l1_l2_pairs, 1);
         assert!(report.ppp_readiness.multi_freq_present);
         assert!(report.ppp_readiness.combinations_valid);
+        assert_eq!(report.ppp_readiness.maturity, AdvancedMaturity::NotReady);
+        assert_eq!(report.ppp_readiness.status, "not_ready");
+        assert!(report.ppp_readiness.status_reason.is_none());
+        assert_eq!(report.ppp_readiness.claim, AdvancedSolutionClaim::NotReady);
     }
 
     #[test]
@@ -2023,6 +2034,13 @@ mod tests {
         assert!(report.ppp_readiness.multi_freq_present);
         assert!(!report.ppp_readiness.combinations_valid);
         assert!(!report.ppp_readiness.prerequisites_met);
+        assert_eq!(report.ppp_readiness.status, "not_ready");
+        assert_eq!(report.ppp_readiness.status_reason.as_deref(), Some("missing_reference_frame"));
+        assert_eq!(
+            report.ppp_readiness.refusal_class,
+            Some(AdvancedRefusalClass::UnsupportedModel)
+        );
+        assert_eq!(report.ppp_readiness.claim, AdvancedSolutionClaim::NotReady);
     }
 
     #[test]
@@ -2049,6 +2067,9 @@ mod tests {
         assert_eq!(report.dual_frequency_observations.incomplete_pairs, 2);
         assert!(report.ppp_readiness.multi_freq_present);
         assert!(report.ppp_readiness.combinations_valid);
+        assert_eq!(report.ppp_readiness.status, "not_ready");
+        assert!(report.ppp_readiness.status_reason.is_none());
+        assert_eq!(report.ppp_readiness.claim, AdvancedSolutionClaim::NotReady);
     }
 
     #[test]
