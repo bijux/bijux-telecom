@@ -157,20 +157,12 @@ fn handle_pvt(command: GnssCommand) -> Result<()> {
     let dataset = load_dataset(&common)?;
     let obs_epochs = read_obs_epochs(&obs)?;
     let broadcast_navigation = read_broadcast_navigation_data(&eph)?;
-    let ephs = broadcast_navigation.ephemerides;
     let mut lines = Vec::new();
-    let mut solutions = Vec::new();
     let mut timing_lines = Vec::new();
     let header = artifact_header(&common, &profile, dataset.as_ref())?;
     let pipeline_config = profile.to_pipeline_config();
-    let mut nav = if !ekf {
-        Some(bijux_gnss_infra::api::receiver::Navigation::new(
-            pipeline_config.clone(),
-            runtime.clone(),
-        ))
-    } else {
-        None
-    };
+    let receiver =
+        bijux_gnss_infra::api::receiver::Receiver::new(pipeline_config.clone(), runtime.clone());
     let mut ekf_ctx = if ekf {
         Some(EkfContext::new_with_troposphere(
             pipeline_config.tropo_enable,
@@ -184,36 +176,36 @@ fn handle_pvt(command: GnssCommand) -> Result<()> {
     } else {
         None
     };
-    for obs_epoch in obs_epochs {
-        let solution = if ekf {
-            solve_epoch_ekf(
+    let solutions = if ekf {
+        let mut solutions = Vec::new();
+        for obs_epoch in &obs_epochs {
+            if let Some(solution) = solve_epoch_ekf(
                 &mut ekf_ctx,
-                &obs_epoch,
-                &ephs,
+                obs_epoch,
+                &broadcast_navigation.ephemerides,
                 broadcast_navigation.klobuchar.as_ref(),
-            )?
-        } else {
-            nav.as_mut().and_then(|nav| {
-                nav.solve_epoch_with_broadcast_ionosphere(
-                    &obs_epoch,
-                    &ephs,
-                    broadcast_navigation.klobuchar.as_ref(),
-                )
-            })
-        };
-        if let Some(solution) = solution {
-            solutions.push(solution.clone());
-            if let Some(ms) = solution.processing_ms {
-                timing_lines.push(serde_json::to_string(&serde_json::json!({
-                    "epoch_idx": solution.epoch.index,
-                    "stage": "nav",
-                    "processing_ms": ms
-                }))?);
+            )? {
+                solutions.push(solution);
             }
-            let wrapped = NavSolutionEpochV1 { header: header.clone(), payload: solution };
-            let line = serde_json::to_string(&wrapped)?;
-            lines.push(line);
         }
+        solutions
+    } else {
+        receiver.solve_observation_epochs_with_gps_broadcast_navigation(
+            &obs_epochs,
+            &broadcast_navigation,
+        )
+    };
+    for solution in &solutions {
+        if let Some(ms) = solution.processing_ms {
+            timing_lines.push(serde_json::to_string(&serde_json::json!({
+                "epoch_idx": solution.epoch.index,
+                "stage": "nav",
+                "processing_ms": ms
+            }))?);
+        }
+        let wrapped = NavSolutionEpochV1 { header: header.clone(), payload: solution.clone() };
+        let line = serde_json::to_string(&wrapped)?;
+        lines.push(line);
     }
     let out_dir = artifacts_dir(&common, "pvt", dataset.as_ref())?;
     let path = out_dir.join("pvt.jsonl");
