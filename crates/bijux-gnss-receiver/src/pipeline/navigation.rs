@@ -1283,14 +1283,30 @@ impl Navigation {
     }
 }
 
+pub(crate) fn supports_positioning_signal(
+    constellation: Constellation,
+    band: bijux_gnss_core::api::SignalBand,
+    code: bijux_gnss_core::api::SignalCode,
+) -> bool {
+    supported_positioning_signal(constellation) == Some((band, code))
+}
+
+pub(crate) fn supported_positioning_signal(
+    constellation: Constellation,
+) -> Option<(bijux_gnss_core::api::SignalBand, bijux_gnss_core::api::SignalCode)> {
+    use bijux_gnss_core::api::{SignalBand, SignalCode};
+
+    match constellation {
+        Constellation::Gps => Some((SignalBand::L1, SignalCode::Ca)),
+        Constellation::Galileo => Some((SignalBand::E1, SignalCode::E1B)),
+        Constellation::Glonass => Some((SignalBand::L1, SignalCode::Unknown)),
+        Constellation::Beidou => Some((SignalBand::B1, SignalCode::B1I)),
+        Constellation::Unknown => None,
+    }
+}
+
 fn navigation_supported_constellation(constellation: Constellation) -> bool {
-    matches!(
-        constellation,
-        Constellation::Gps
-            | Constellation::Galileo
-            | Constellation::Glonass
-            | Constellation::Beidou
-    )
+    supported_positioning_signal(constellation).is_some()
 }
 
 fn apply_atmosphere_explainability(
@@ -2474,6 +2490,36 @@ mod tests {
         GalileoEphemeris, GalileoIonosphericCorrection, GalileoIonosphericDisturbanceFlags,
         GalileoSignalHealth, GalileoSystemTime, GpsEphemeris, SaastamoinenModel, TroposphereModel,
     };
+
+    #[test]
+    fn positioning_signal_support_follows_navigation_signal_surface() {
+        assert!(supports_positioning_signal(
+            Constellation::Gps,
+            SignalBand::L1,
+            SignalCode::Ca
+        ));
+        assert!(supports_positioning_signal(
+            Constellation::Galileo,
+            SignalBand::E1,
+            SignalCode::E1B
+        ));
+        assert!(supports_positioning_signal(
+            Constellation::Beidou,
+            SignalBand::B1,
+            SignalCode::B1I
+        ));
+        assert!(supports_positioning_signal(
+            Constellation::Glonass,
+            SignalBand::L1,
+            SignalCode::Unknown
+        ));
+        assert!(!supports_positioning_signal(
+            Constellation::Gps,
+            SignalBand::L2,
+            SignalCode::L2C
+        ));
+        assert_eq!(supported_positioning_signal(Constellation::Unknown), None);
+    }
 
     fn sample_last_solution() -> NavSolutionEpoch {
         NavSolutionEpoch {
