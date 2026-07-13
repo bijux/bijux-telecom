@@ -46,6 +46,45 @@ pub struct NavigationFilter {
     corrections: CorrectionContext,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct NavigationSolutionEvidence {
+    covariance_supported: bool,
+    residual_supported: bool,
+    ambiguity_supported: bool,
+    correction_supported: bool,
+    integrity_supported: bool,
+}
+
+impl NavigationSolutionEvidence {
+    fn missing_reasons(self) -> Vec<&'static str> {
+        let mut reasons = Vec::new();
+        if !self.covariance_supported {
+            reasons.push("missing_covariance_evidence");
+        }
+        if !self.residual_supported {
+            reasons.push("missing_residual_evidence");
+        }
+        if !self.ambiguity_supported {
+            reasons.push("missing_ambiguity_evidence");
+        }
+        if !self.correction_supported {
+            reasons.push("missing_correction_evidence");
+        }
+        if !self.integrity_supported {
+            reasons.push("missing_integrity_evidence");
+        }
+        reasons
+    }
+
+    fn supports_float_claim(self) -> bool {
+        self.covariance_supported
+            && self.residual_supported
+            && self.ambiguity_supported
+            && self.correction_supported
+            && self.integrity_supported
+    }
+}
+
 impl NavigationFilter {
     #[cfg(test)]
     pub fn new() -> Self {
@@ -288,9 +327,16 @@ impl NavigationFilter {
             return Some(solution);
         }
 
+        let evidence = navigation_filter_solution_evidence(
+            self,
+            used,
+            self.ekf.health.innovation_rms,
+            klobuchar.is_some(),
+        );
+        let (status, status_reasons) = navigation_filter_status_floor(evidence);
+        explain_reasons.extend(status_reasons);
         let (latitude_deg, longitude_deg, altitude_m) =
             ecef_to_geodetic(self.ekf.x[0], self.ekf.x[1], self.ekf.x[2]);
-        let status = SolutionStatus::Float;
         let mut solution = NavSolutionEpoch {
             epoch: Epoch { index: obs.epoch_idx },
             t_rx_s: obs.t_rx_s,
@@ -360,6 +406,45 @@ impl NavigationFilter {
         populate_solution_trace_identity(obs, &mut solution);
         Some(solution)
     }
+}
+
+fn navigation_filter_solution_evidence(
+    filter: &NavigationFilter,
+    used_satellite_count: usize,
+    innovation_rms_m: f64,
+    ionosphere_supported: bool,
+) -> NavigationSolutionEvidence {
+    let covariance_supported = false;
+    let residual_supported =
+        used_satellite_count > 0 && innovation_rms_m.is_finite() && innovation_rms_m >= 0.0;
+    let ambiguity_supported = !filter.ambiguity.indices.is_empty();
+    let correction_supported = ionosphere_supported && filter.tropo_enabled;
+    let integrity_supported = false;
+
+    NavigationSolutionEvidence {
+        covariance_supported,
+        residual_supported,
+        ambiguity_supported,
+        correction_supported,
+        integrity_supported,
+    }
+}
+
+fn navigation_filter_status_floor(
+    evidence: NavigationSolutionEvidence,
+) -> (SolutionStatus, Vec<String>) {
+    if evidence.supports_float_claim() {
+        return (SolutionStatus::Float, Vec::new());
+    }
+
+    (
+        SolutionStatus::CodeOnly,
+        evidence
+            .missing_reasons()
+            .into_iter()
+            .map(|reason| format!("status_floor={reason}"))
+            .collect(),
+    )
 }
 
 fn navigation_geometry_threshold_violations(
@@ -721,4 +806,61 @@ fn format_optional_dop(value: Option<f64>) -> String {
 
 fn trace_short_id(value: &str) -> String {
     value.chars().take(16).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        navigation_filter_solution_evidence, navigation_filter_status_floor, NavigationFilter,
+        NavigationSolutionEvidence,
+    };
+    use bijux_gnss_core::api::SolutionStatus;
+
+    #[test]
+    fn navigation_filter_status_floor_blocks_float_without_full_evidence() {
+        let evidence = NavigationSolutionEvidence {
+            covariance_supported: true,
+            residual_supported: true,
+            ambiguity_supported: true,
+            correction_supported: true,
+            integrity_supported: false,
+        };
+
+        let (status, reasons) = navigation_filter_status_floor(evidence);
+        assert_eq!(status, SolutionStatus::CodeOnly);
+        assert!(reasons.iter().any(|reason| reason == "status_floor=missing_integrity_evidence"));
+    }
+
+    #[test]
+    fn navigation_filter_status_floor_allows_float_with_full_evidence() {
+        let evidence = NavigationSolutionEvidence {
+            covariance_supported: true,
+            residual_supported: true,
+            ambiguity_supported: true,
+            correction_supported: true,
+            integrity_supported: true,
+        };
+
+        let (status, reasons) = navigation_filter_status_floor(evidence);
+        assert_eq!(status, SolutionStatus::Float);
+        assert!(reasons.is_empty());
+    }
+
+    #[test]
+    fn navigation_filter_solution_evidence_tracks_available_support_surfaces() {
+        let mut filter = NavigationFilter::new();
+        filter.ambiguity.indices.insert("gps:L1".to_string(), 8);
+
+        let evidence = navigation_filter_solution_evidence(&filter, 4, 0.5, true);
+        assert_eq!(
+            evidence,
+            NavigationSolutionEvidence {
+                covariance_supported: false,
+                residual_supported: true,
+                ambiguity_supported: true,
+                correction_supported: true,
+                integrity_supported: false,
+            }
+        );
+    }
 }
