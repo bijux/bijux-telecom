@@ -2,7 +2,7 @@ id = "composite_component_recovery"
 sample_rate_hz = 4092000.0
 intermediate_freq_hz = 0.0
 receiver_clock_frequency_bias_hz = 125.0
-duration_s = 0.04
+duration_s = 0.08
 seed = 641728515
 
 [[satellites]]
@@ -12,7 +12,7 @@ signal_code = "Ca"
 doppler_hz = 750.0
 code_phase_chips = 200.25
 carrier_phase_rad = 0.15
-cn0_db_hz = 56.0
+cn0_db_hz = 58.0
 navigation_data = "alternating_start_positive"
 
 [[satellites]]
@@ -22,7 +22,7 @@ signal_code = "E1B"
 doppler_hz = -425.0
 code_phase_chips = 418.75
 carrier_phase_rad = -0.55
-cn0_db_hz = 52.0
+cn0_db_hz = 56.0
 navigation_data = "constant_negative"
 
 [[satellites]]
@@ -32,5 +32,5 @@ signal_code = "B2I"
 doppler_hz = 980.0
 code_phase_chips = 87.5
 carrier_phase_rad = 1.2
-cn0_db_hz = 49.0
+cn0_db_hz = 54.0
 navigation_data = "alternating_start_negative"
