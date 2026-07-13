@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    signal_spec_beidou_b1i, signal_spec_beidou_b2i, Chips, Constellation, Cycles, Epoch, Hertz,
-    Meters, ReceiverSampleTrace, SatId, SignalBand, SignalDelayAlignment, SignalSpec, TrackEpoch,
+    Chips, Constellation, Cycles, Epoch, Hertz, Meters, ReceiverSampleTrace, SatId, SignalBand,
+    SignalDelayAlignment, SignalSpec, TrackEpoch,
 };
 use bijux_gnss_nav::api::{
     combinations_from_obs_epochs, iono_free_code_from_obs_epochs, iono_free_phase_from_obs_epochs,
@@ -11,6 +11,7 @@ use bijux_gnss_receiver::api::{
     carrier_hz_from_doppler_hz, observation_artifacts_from_tracking_results,
     ReceiverPipelineConfig, TrackingResult,
 };
+use bijux_gnss_signal::api::{signal_spec_beidou_b1i, signal_spec_beidou_b2i};
 
 fn beidou_observation_config() -> ReceiverPipelineConfig {
     ReceiverPipelineConfig {

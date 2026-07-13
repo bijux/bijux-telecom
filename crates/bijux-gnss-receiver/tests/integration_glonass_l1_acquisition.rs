@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    glonass_l1_carrier_hz, glonass_slot_sat, AcqRequest, Constellation, GlonassFrequencyChannel,
-    GlonassSlot, SignalBand, GPS_L1_CA_CARRIER_HZ,
+    glonass_slot_sat, AcqRequest, Constellation, GlonassFrequencyChannel, GlonassSlot,
+    SignalBand, GPS_L1_CA_CARRIER_HZ,
 };
 use bijux_gnss_receiver::api::{
     sim::{
@@ -11,7 +11,7 @@ use bijux_gnss_receiver::api::{
     },
     AcquisitionEngine, ReceiverPipelineConfig, ReceiverRuntime,
 };
-use bijux_gnss_signal::api::samples_per_code;
+use bijux_gnss_signal::api::{glonass_l1_carrier_hz, samples_per_code};
 
 fn glonass_channel_config(channel: GlonassFrequencyChannel) -> ReceiverPipelineConfig {
     ReceiverPipelineConfig {

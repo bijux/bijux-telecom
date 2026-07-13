@@ -3,9 +3,8 @@
 use std::f64::consts::TAU;
 
 use bijux_gnss_core::api::{
-    signal_spec_gps_l1_ca, signal_spec_gps_l2c, signal_spec_gps_l5, Chips, Cycles, Epoch, Hertz,
-    ReceiverSampleTrace, SignalBand, SignalDelayAlignment, SignalSpec, TrackEpoch,
-    TrackingUncertainty,
+    Chips, Cycles, Epoch, Hertz, ReceiverSampleTrace, SignalBand, SignalDelayAlignment,
+    SignalSpec, TrackEpoch, TrackingUncertainty,
 };
 use bijux_gnss_nav::api::GpsEphemeris;
 use bijux_gnss_receiver::api::{
@@ -15,6 +14,7 @@ use bijux_gnss_receiver::api::{
     },
     ReceiverPipelineConfig, TrackingResult,
 };
+use bijux_gnss_signal::api::{signal_spec_gps_l1_ca, signal_spec_gps_l2c, signal_spec_gps_l5};
 
 use crate::support::navigation_truth::{
     four_satellite_pvt_scenario, synthetic_pseudorange_m, SyntheticPvtScenario,

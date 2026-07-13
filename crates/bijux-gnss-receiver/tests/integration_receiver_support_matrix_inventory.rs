@@ -1,13 +1,13 @@
 #![allow(missing_docs)]
 
 use bijux_gnss_core::api::{
-    registered_signal_registry_entries, Constellation, SatId, SignalBand, SignalCode,
-    SignalStageSupport, SupportStatus,
+    Constellation, SatId, SignalBand, SignalCode, SignalStageSupport, SupportStatus,
 };
 use bijux_gnss_receiver::api::{
     sim::{SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource},
     Receiver, ReceiverPipelineConfig, ReceiverRuntime,
 };
+use bijux_gnss_signal::api::registered_signal_registry_entries;
 
 fn gps_l1_config() -> ReceiverPipelineConfig {
     ReceiverPipelineConfig {

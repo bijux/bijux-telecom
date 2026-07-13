@@ -1,15 +1,18 @@
 #![allow(missing_docs)]
 use bijux_gnss_core::api::{
-    signal_meters_to_cycles, signal_spec_beidou_b1i, signal_spec_beidou_b2i,
-    signal_spec_galileo_e1b, signal_spec_galileo_e5a, signal_spec_gps_l1_ca, signal_spec_gps_l2_py,
-    signal_spec_gps_l5, Constellation, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite,
-    ReceiverRole, ReceiverSampleTrace, SatId, SigId, SignalBand, SignalCode, SignalSpec,
+    Constellation, LockFlags, Meters, ObsEpoch, ObsMetadata, ObsSatellite, ReceiverRole,
+    ReceiverSampleTrace, SatId, SigId, SignalBand, SignalCode, SignalSpec,
 };
 use bijux_gnss_nav::api::{
     combinations_from_obs_epochs, geometry_free_diagnostics_from_obs_epochs,
     iono_free_code_from_obs_epochs, iono_free_phase_from_obs_epochs,
     melbourne_wubbena_diagnostics_from_obs_epochs, GeometryFreeEvent, GeometryFreeThresholds,
     MelbourneWubbenaEvent, MelbourneWubbenaThresholds,
+};
+use bijux_gnss_signal::api::{
+    signal_meters_to_cycles, signal_spec_beidou_b1i, signal_spec_beidou_b2i,
+    signal_spec_galileo_e1b, signal_spec_galileo_e5a, signal_spec_gps_l1_ca, signal_spec_gps_l2_py,
+    signal_spec_gps_l5,
 };
 
 fn make_dual_freq_epoch(p1: f64, p2: f64, phi1: f64, phi2: f64) -> ObsEpoch {
