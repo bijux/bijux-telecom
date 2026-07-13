@@ -99,7 +99,20 @@ pub fn generate_l1_ca_multi(
     config: &ReceiverPipelineConfig,
     scenario: &SyntheticScenario,
 ) -> SamplesFrame {
-    let signal_only = generate_l1_ca_multi_signal_only(config, scenario);
+    generate_l1_ca_multi_with_source_front_end(config, scenario, None)
+}
+
+/// Generate a synthetic multi-satellite capture with an optional source-side front-end filter.
+pub fn generate_l1_ca_multi_with_source_front_end(
+    config: &ReceiverPipelineConfig,
+    scenario: &SyntheticScenario,
+    source_front_end_filter: Option<&bijux_gnss_signal::api::FrontEndFilterSpec>,
+) -> SamplesFrame {
+    let signal_only = generate_l1_ca_multi_signal_only_with_source_front_end(
+        config,
+        scenario,
+        source_front_end_filter,
+    );
     let clock = SampleClock::new(config.sampling_freq_hz);
     let dt_s = clock.dt_s();
     let noise_std = SYNTHETIC_NOISE_STD_PER_COMPONENT;
@@ -111,6 +124,11 @@ pub fn generate_l1_ca_multi(
         let noise = Complex::new(noise_i, noise_q);
         iq.push(sample + noise);
     }
+    apply_source_front_end_filter_in_place(
+        source_front_end_filter,
+        config.sampling_freq_hz,
+        &mut iq,
+    );
     SamplesFrame::new(signal_only.t0, Seconds(dt_s), iq)
 }
 
@@ -125,6 +143,7 @@ pub struct SyntheticSignalSource {
     sat_states: Vec<SatState>,
     gps_ephemerides: Vec<GpsEphemeris>,
     signal_delay_alignments: Vec<SyntheticSignalDelayAlignment>,
+    source_front_end_filter: Option<bijux_gnss_signal::api::FrontEndFirFilter>,
     rng: XorShift64,
 }
 
@@ -233,6 +252,14 @@ fn generate_l1_ca_multi_signal_only(
     config: &ReceiverPipelineConfig,
     scenario: &SyntheticScenario,
 ) -> SamplesFrame {
+    generate_l1_ca_multi_signal_only_with_source_front_end(config, scenario, None)
+}
+
+pub fn generate_l1_ca_multi_signal_only_with_source_front_end(
+    config: &ReceiverPipelineConfig,
+    scenario: &SyntheticScenario,
+    source_front_end_filter: Option<&bijux_gnss_signal::api::FrontEndFilterSpec>,
+) -> SamplesFrame {
     let clock = SampleClock::new(config.sampling_freq_hz);
     let dt_s = clock.dt_s();
     let sample_count = (scenario.duration_s * config.sampling_freq_hz).round() as usize;
@@ -256,19 +283,44 @@ fn generate_l1_ca_multi_signal_only(
         }
         iq.push(sample);
     }
+    apply_source_front_end_filter_in_place(
+        source_front_end_filter,
+        config.sampling_freq_hz,
+        &mut iq,
+    );
     let t0 = SampleTime { sample_index: 0, sample_rate_hz: config.sampling_freq_hz };
     SamplesFrame::new(t0, Seconds(dt_s), iq)
+}
+
+fn apply_source_front_end_filter_in_place(
+    source_front_end_filter: Option<&bijux_gnss_signal::api::FrontEndFilterSpec>,
+    sample_rate_hz: f64,
+    iq: &mut [Complex<f32>],
+) {
+    let Some(spec) = source_front_end_filter else {
+        return;
+    };
+    let mut filter = spec
+        .design(sample_rate_hz)
+        .expect("validated synthetic source front-end filter must design");
+    filter.apply_in_place(iq);
 }
 
 impl SyntheticSignalSource {
     /// Build a streaming synthetic source from a scenario without materializing the full capture.
     pub fn new(config: &ReceiverPipelineConfig, scenario: &SyntheticScenario) -> Self {
-        Self::with_noise_std(config, scenario, SYNTHETIC_NOISE_STD_PER_COMPONENT, Vec::new())
+        Self::with_noise_std_and_source_front_end(
+            config,
+            scenario,
+            SYNTHETIC_NOISE_STD_PER_COMPONENT,
+            Vec::new(),
+            None,
+        )
     }
 
     /// Build a streaming synthetic source that emits only the deterministic signal component.
     pub fn new_signal_only(config: &ReceiverPipelineConfig, scenario: &SyntheticScenario) -> Self {
-        Self::with_noise_std(config, scenario, 0.0, Vec::new())
+        Self::with_noise_std_and_source_front_end(config, scenario, 0.0, Vec::new(), None)
     }
 
     /// Build a streaming synthetic source with explicit whole-code signal-delay alignments.
@@ -277,19 +329,37 @@ impl SyntheticSignalSource {
         scenario: &SyntheticScenario,
         signal_delay_alignments: Vec<SyntheticSignalDelayAlignment>,
     ) -> Self {
-        Self::with_noise_std(
+        Self::with_noise_std_and_source_front_end(
             config,
             scenario,
             SYNTHETIC_NOISE_STD_PER_COMPONENT,
             signal_delay_alignments,
+            None,
         )
     }
 
-    fn with_noise_std(
+    /// Build a streaming synthetic source with explicit whole-code alignments and a source filter.
+    pub fn new_with_signal_delay_alignments_and_source_front_end(
+        config: &ReceiverPipelineConfig,
+        scenario: &SyntheticScenario,
+        signal_delay_alignments: Vec<SyntheticSignalDelayAlignment>,
+        source_front_end_filter: Option<&bijux_gnss_signal::api::FrontEndFilterSpec>,
+    ) -> Self {
+        Self::with_noise_std_and_source_front_end(
+            config,
+            scenario,
+            SYNTHETIC_NOISE_STD_PER_COMPONENT,
+            signal_delay_alignments,
+            source_front_end_filter,
+        )
+    }
+
+    fn with_noise_std_and_source_front_end(
         config: &ReceiverPipelineConfig,
         scenario: &SyntheticScenario,
         noise_std: f32,
         signal_delay_alignments: Vec<SyntheticSignalDelayAlignment>,
+        source_front_end_filter: Option<&bijux_gnss_signal::api::FrontEndFilterSpec>,
     ) -> Self {
         let sample_count = (scenario.duration_s * config.sampling_freq_hz).round() as usize;
 
@@ -313,6 +383,10 @@ impl SyntheticSignalSource {
                 .collect(),
             gps_ephemerides: scenario.ephemerides.clone(),
             signal_delay_alignments,
+            source_front_end_filter: source_front_end_filter.cloned().map(|spec| {
+                spec.design(config.sampling_freq_hz)
+                    .expect("validated synthetic source front-end filter must design")
+            }),
             rng: XorShift64::new(scenario.seed),
         }
     }
@@ -384,6 +458,9 @@ impl SignalSource for SyntheticSignalSource {
                 let noise_q = self.rng.next_gaussian() * self.noise_std;
                 iq.push(sample + Complex::new(noise_i, noise_q));
             }
+        }
+        if let Some(filter) = self.source_front_end_filter.as_mut() {
+            filter.apply_in_place(&mut iq);
         }
         self.next_sample_index += count as u64;
         self.remaining_samples -= count;
@@ -527,9 +604,10 @@ fn regenerate_isolated_scaled_satellite_signal_only_frame(
     truth: &SyntheticIqTruthBundle,
     sat_truth: &SyntheticSatelliteTruth,
 ) -> SamplesFrame {
-    let isolated_frame = generate_l1_ca_multi_signal_only(
+    let isolated_frame = generate_l1_ca_multi_signal_only_with_source_front_end(
         config,
         &isolated_satellite_scenario(measured_frame, truth, sat_truth),
+        truth.source_front_end_filter.as_ref(),
     );
     let iq = isolated_frame
         .iq
@@ -545,9 +623,10 @@ fn regenerate_isolated_scaled_satellite_frame_with_noise(
     truth: &SyntheticIqTruthBundle,
     sat_truth: &SyntheticSatelliteTruth,
 ) -> SamplesFrame {
-    let isolated_frame = generate_l1_ca_multi(
+    let isolated_frame = generate_l1_ca_multi_with_source_front_end(
         config,
         &isolated_satellite_scenario(measured_frame, truth, sat_truth),
+        truth.source_front_end_filter.as_ref(),
     );
     let iq = isolated_frame
         .iq
@@ -694,19 +773,19 @@ fn nav_bit_mode(params: &SyntheticSignalParams) -> SyntheticNavBitMode {
         _ => match &params.navigation_data {
             SyntheticNavigationData::ConstantPositive => SyntheticNavBitMode::ConstantPositive,
             SyntheticNavigationData::ConstantNegative => SyntheticNavBitMode::ConstantNegative,
-            SyntheticNavigationData::AlternatingStartPositive => match (
-                params.sat.constellation,
-                params.signal_band,
-                signal_code,
-            ) {
-                (bijux_gnss_core::api::Constellation::Galileo, SignalBand::E5, SignalCode::E5b) => {
-                    SyntheticNavBitMode::AlternatingGalileoInav4ms
+            SyntheticNavigationData::AlternatingStartPositive => {
+                match (params.sat.constellation, params.signal_band, signal_code) {
+                    (
+                        bijux_gnss_core::api::Constellation::Galileo,
+                        SignalBand::E5,
+                        SignalCode::E5b,
+                    ) => SyntheticNavBitMode::AlternatingGalileoInav4ms,
+                    (bijux_gnss_core::api::Constellation::Gps, SignalBand::L5, SignalCode::L5I) => {
+                        SyntheticNavBitMode::AlternatingGpsL5I10ms
+                    }
+                    _ => SyntheticNavBitMode::AlternatingGpsLnav20ms,
                 }
-                (bijux_gnss_core::api::Constellation::Gps, SignalBand::L5, SignalCode::L5I) => {
-                    SyntheticNavBitMode::AlternatingGpsL5I10ms
-                }
-                _ => SyntheticNavBitMode::AlternatingGpsLnav20ms,
-            },
+            }
             SyntheticNavigationData::AlternatingStartNegative
             | SyntheticNavigationData::SymbolSequence(_)
             | SyntheticNavigationData::GlonassL1String { .. } => {
@@ -787,21 +866,29 @@ fn nav_bit_index_at_time_s(time_s: f64) -> u64 {
     navigation_symbol_index_at_time_s(Some(GPS_L1_CA_NAV_BIT_PERIOD_S), time_s) as u64
 }
 
-fn navigation_symbol_at_index(navigation_data: &SyntheticNavigationData, symbol_index: usize) -> i8 {
+fn navigation_symbol_at_index(
+    navigation_data: &SyntheticNavigationData,
+    symbol_index: usize,
+) -> i8 {
     match navigation_data {
         SyntheticNavigationData::ConstantPositive => 1,
         SyntheticNavigationData::ConstantNegative => -1,
         SyntheticNavigationData::AlternatingStartPositive => {
-            if symbol_index % 2 == 0 { 1 } else { -1 }
+            if symbol_index % 2 == 0 {
+                1
+            } else {
+                -1
+            }
         }
         SyntheticNavigationData::AlternatingStartNegative => {
-            if symbol_index % 2 == 0 { -1 } else { 1 }
+            if symbol_index % 2 == 0 {
+                -1
+            } else {
+                1
+            }
         }
         SyntheticNavigationData::SymbolSequence(symbols) => {
-            assert!(
-                !symbols.is_empty(),
-                "synthetic navigation symbol sequence must not be empty"
-            );
+            assert!(!symbols.is_empty(), "synthetic navigation symbol sequence must not be empty");
             let symbol = symbols.get(symbol_index % symbols.len()).copied().unwrap_or_else(|| {
                 panic!("synthetic navigation symbol sequence must not be empty")
             });
@@ -963,10 +1050,7 @@ fn native_epoch_period_for_signal(params: &SyntheticSignalParams) -> Option<f64>
     }
 }
 
-fn emitted_epoch_symbol(
-    params: &SyntheticSignalParams,
-    primary_code_period_index: usize,
-) -> i8 {
+fn emitted_epoch_symbol(params: &SyntheticSignalParams, primary_code_period_index: usize) -> i8 {
     let signal_code = resolved_signal_code(params.sat, params.signal_band, params.signal_code);
     match (params.sat.constellation, params.signal_band, signal_code) {
         (bijux_gnss_core::api::Constellation::Gps, SignalBand::L5, SignalCode::L5I) => {
@@ -1011,9 +1095,7 @@ fn emitted_epoch_symbol(
             bijux_gnss_signal::api::beidou_d1_epoch_symbol(
                 &[navigation_symbol_at_index(
                     &params.navigation_data,
-                    bijux_gnss_signal::api::beidou_d1_data_symbol_index(
-                        primary_code_period_index,
-                    ),
+                    bijux_gnss_signal::api::beidou_d1_data_symbol_index(primary_code_period_index),
                 )],
                 primary_code_period_index,
             )
@@ -1155,7 +1237,9 @@ fn glonass_l1_raw_data_bits(
 ) -> [i8; bijux_gnss_signal::api::GLONASS_L1_STRING_DATA_BITS] {
     let len = bijux_gnss_signal::api::GLONASS_L1_STRING_DATA_BITS;
     match navigation_data {
-        SyntheticNavigationData::ConstantPositive => [1; bijux_gnss_signal::api::GLONASS_L1_STRING_DATA_BITS],
+        SyntheticNavigationData::ConstantPositive => {
+            [1; bijux_gnss_signal::api::GLONASS_L1_STRING_DATA_BITS]
+        }
         SyntheticNavigationData::AlternatingStartPositive => {
             let mut raw_data_bits = [1; bijux_gnss_signal::api::GLONASS_L1_STRING_DATA_BITS];
             for (index, bit) in raw_data_bits.iter_mut().enumerate().skip(1) {

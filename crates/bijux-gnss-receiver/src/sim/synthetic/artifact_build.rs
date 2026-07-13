@@ -201,6 +201,11 @@ fn signal_delay_alignments_from_navigation_validation_scenario(
         })
         .collect::<Result<Vec<_>, SyntheticNavigationValidationError>>()?;
     let receiver_epoch_base = shared_receiver_epoch_base(&pseudorange_chips)?;
+    let source_front_end_sample_delay_samples = scenario
+        .source_front_end_filter
+        .as_ref()
+        .map(|spec| spec.group_delay_samples() as u64)
+        .unwrap_or(0);
 
     Ok(scenario
         .satellites
@@ -209,7 +214,7 @@ fn signal_delay_alignments_from_navigation_validation_scenario(
             sat: signal.sat,
             signal_delay_alignment: SignalDelayAlignment {
                 whole_code_periods: receiver_epoch_base,
-                sample_delay_samples: 0,
+                sample_delay_samples: source_front_end_sample_delay_samples,
                 source: "synthetic_truth".to_string(),
             },
         })
@@ -256,13 +261,18 @@ pub fn validate_synthetic_navigation_run(
     let signal_scenario = build_signal_scenario_from_navigation_validation_scenario(scenario)?;
     let signal_delay_alignments =
         signal_delay_alignments_from_navigation_validation_scenario(scenario)?;
-    let frame = generate_l1_ca_multi(config, &signal_scenario);
-    let truth_bundle = build_iq16_capture_bundle(
+    let frame = generate_l1_ca_multi_with_source_front_end(
+        config,
+        &signal_scenario,
+        scenario.source_front_end_filter.as_ref(),
+    );
+    let truth_bundle = build_iq16_capture_bundle_with_source_front_end(
         &signal_scenario.id,
         &signal_scenario,
         &frame,
         "2026-07-11T00:00:00Z",
         Some("synthetic navigation validation".to_string()),
+        scenario.source_front_end_filter.as_ref(),
     )
     .truth;
     let scaled_frame = scaled_truth_frame(&frame, &truth_bundle);
@@ -301,11 +311,20 @@ pub fn validate_synthetic_navigation_run(
             },
         ),
     );
-    let mut source = SyntheticSignalSource::new_with_signal_delay_alignments(
-        config,
-        &signal_scenario,
-        signal_delay_alignments,
-    );
+    let mut source = if scenario.source_front_end_filter.is_some() {
+        SyntheticSignalSource::new_with_signal_delay_alignments_and_source_front_end(
+            config,
+            &signal_scenario,
+            signal_delay_alignments,
+            scenario.source_front_end_filter.as_ref(),
+        )
+    } else {
+        SyntheticSignalSource::new_with_signal_delay_alignments(
+            config,
+            &signal_scenario,
+            signal_delay_alignments,
+        )
+    };
     let run = receiver.run(&mut source).map_err(|error| {
         SyntheticNavigationValidationError::ReceiverPipeline { message: error.to_string() }
     })?;

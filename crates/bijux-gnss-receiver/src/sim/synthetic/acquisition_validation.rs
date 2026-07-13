@@ -59,11 +59,14 @@ pub fn validate_truth_guided_acquisition_table(
             let doppler_pass = measured_doppler_hz.is_finite()
                 && doppler_error_hz <= doppler_tolerance_hz + f64::EPSILON;
 
-            let expected_code_phase_samples = expected_acquisition_code_phase_samples(
-                config,
-                &isolated_frame,
-                sat_truth.code_phase_chips,
-            );
+            let expected_code_phase_samples =
+                expected_truth_guided_acquisition_code_phase_samples_f64(
+                    config,
+                    &isolated_frame,
+                    truth,
+                    sat_truth.code_phase_chips,
+                )
+                .round() as usize;
             let measured_code_phase_samples = result.code_phase_samples;
             let code_phase_error_samples = wrapped_code_phase_error_samples(
                 measured_code_phase_samples,
@@ -141,14 +144,16 @@ pub fn validate_truth_guided_acquisition_code_phase(
                 crate::engine::runtime::ReceiverRuntime::default(),
             )
             .with_doppler(0, 1);
-            let result = acquisition
-                .run_fft_for_requests(&isolated_frame, &[acquisition_request])
-                .remove(0);
-            let expected_code_phase_samples = expected_acquisition_code_phase_samples(
-                config,
-                &isolated_frame,
-                sat_truth.code_phase_chips,
-            );
+            let result =
+                acquisition.run_fft_for_requests(&isolated_frame, &[acquisition_request]).remove(0);
+            let expected_code_phase_samples =
+                expected_truth_guided_acquisition_code_phase_samples_f64(
+                    config,
+                    &isolated_frame,
+                    truth,
+                    sat_truth.code_phase_chips,
+                )
+                .round() as usize;
             let code_phase_error_samples = wrapped_code_phase_error_samples(
                 result.code_phase_samples,
                 expected_code_phase_samples,
@@ -218,14 +223,15 @@ pub fn validate_truth_guided_acquisition_code_phase_refinement(
                 crate::engine::runtime::ReceiverRuntime::default(),
             )
             .with_doppler(0, 1);
-            let result = acquisition
-                .run_fft_for_requests(&isolated_frame, &[acquisition_request])
-                .remove(0);
-            let expected_code_phase_samples = expected_acquisition_code_phase_samples_f64(
-                config,
-                &isolated_frame,
-                sat_truth.code_phase_chips,
-            );
+            let result =
+                acquisition.run_fft_for_requests(&isolated_frame, &[acquisition_request]).remove(0);
+            let expected_code_phase_samples =
+                expected_truth_guided_acquisition_code_phase_samples_f64(
+                    config,
+                    &isolated_frame,
+                    truth,
+                    sat_truth.code_phase_chips,
+                );
             let coarse_code_phase_samples = result.code_phase_samples;
             let refined_code_phase_samples = result.resolved_code_phase_samples();
             let coarse_error_samples = wrapped_code_phase_error_samples_f64(

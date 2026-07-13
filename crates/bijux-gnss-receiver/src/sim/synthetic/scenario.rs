@@ -15,7 +15,9 @@ pub enum SyntheticNavigationData {
     AlternatingStartPositive,
     AlternatingStartNegative,
     SymbolSequence(Vec<i8>),
-    GlonassL1String { raw_data_bits: Vec<i8> },
+    GlonassL1String {
+        raw_data_bits: Vec<i8>,
+    },
 }
 
 impl SyntheticNavigationData {
@@ -206,6 +208,9 @@ pub struct SyntheticNavigationValidationScenario {
     pub duration_s: f64,
     /// Deterministic seed used for noise generation.
     pub seed: u64,
+    /// Optional source-side front-end filter applied before the receiver ingests the capture.
+    #[serde(default)]
+    pub source_front_end_filter: Option<bijux_gnss_signal::api::FrontEndFilterSpec>,
     /// Truth receiver coordinates in ECEF meters.
     pub receiver_ecef_m: [f64; 3],
     /// Absolute receiver receive-time anchor used for observation and PVT truth, in seconds.
@@ -318,6 +323,12 @@ pub struct SyntheticIqTruthBundle {
     pub noise_std_per_component: f32,
     /// Total noise power per complex sample before quantization.
     pub noise_power_per_complex_sample: f32,
+    /// Optional source-side front-end filter applied before capture export.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_front_end_filter: Option<bijux_gnss_signal::api::FrontEndFilterSpec>,
+    /// Sample delay contributed by the source-side front-end filter.
+    #[serde(default)]
+    pub source_front_end_sample_delay_samples: u64,
     /// Peak absolute I/Q component before output scaling.
     pub peak_component_before_scaling: f32,
     /// Scale factor applied before quantization.
@@ -473,9 +484,7 @@ fn resolved_navigation_data(
     navigation_data: Option<SyntheticNavigationData>,
     data_bit_flip: Option<bool>,
 ) -> SyntheticNavigationData {
-    navigation_data
-        .or_else(|| data_bit_flip.map(SyntheticNavigationData::from))
-        .unwrap_or_default()
+    navigation_data.or_else(|| data_bit_flip.map(SyntheticNavigationData::from)).unwrap_or_default()
 }
 
 /// Build a signal-complete synthetic scenario from a truth-complete navigation validation case.

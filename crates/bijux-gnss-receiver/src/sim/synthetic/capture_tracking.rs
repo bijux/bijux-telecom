@@ -7,6 +7,29 @@ pub fn build_truth_bundle(
     peak_component_before_scaling: f32,
     output_scale_applied: f32,
 ) -> SyntheticIqTruthBundle {
+    build_truth_bundle_with_source_front_end(
+        scenario_id,
+        scenario,
+        frame,
+        metadata,
+        peak_component_before_scaling,
+        output_scale_applied,
+        None,
+    )
+}
+
+pub fn build_truth_bundle_with_source_front_end(
+    scenario_id: &str,
+    scenario: &SyntheticScenario,
+    frame: &SamplesFrame,
+    metadata: &RawIqMetadata,
+    peak_component_before_scaling: f32,
+    output_scale_applied: f32,
+    source_front_end_filter: Option<&bijux_gnss_signal::api::FrontEndFilterSpec>,
+) -> SyntheticIqTruthBundle {
+    let noise_std_per_component =
+        source_front_end_noise_std_per_component(source_front_end_filter, frame.t0.sample_rate_hz);
+    let noise_power_per_complex_sample = 2.0 * noise_std_per_component * noise_std_per_component;
     SyntheticIqTruthBundle {
         schema_version: SYNTHETIC_IQ_TRUTH_SCHEMA_VERSION,
         scenario_id: scenario_id.to_string(),
@@ -19,8 +42,12 @@ pub fn build_truth_bundle(
         quantization_bits: metadata.quantization_bits.unwrap_or_default(),
         duration_s: frame.len() as f64 * frame.dt_s.0,
         sample_count: frame.len(),
-        noise_std_per_component: SYNTHETIC_NOISE_STD_PER_COMPONENT,
-        noise_power_per_complex_sample: SYNTHETIC_COMPLEX_NOISE_POWER as f32,
+        noise_std_per_component,
+        noise_power_per_complex_sample,
+        source_front_end_filter: source_front_end_filter.cloned(),
+        source_front_end_sample_delay_samples: source_front_end_sample_delay_samples(
+            source_front_end_filter,
+        ),
         peak_component_before_scaling,
         output_scale_applied,
         satellites: scenario
@@ -63,6 +90,24 @@ pub fn build_iq16_capture_bundle(
     capture_start_utc: &str,
     notes: Option<String>,
 ) -> SyntheticIqCaptureBundle {
+    build_iq16_capture_bundle_with_source_front_end(
+        scenario_id,
+        scenario,
+        frame,
+        capture_start_utc,
+        notes,
+        None,
+    )
+}
+
+pub fn build_iq16_capture_bundle_with_source_front_end(
+    scenario_id: &str,
+    scenario: &SyntheticScenario,
+    frame: &SamplesFrame,
+    capture_start_utc: &str,
+    notes: Option<String>,
+    source_front_end_filter: Option<&bijux_gnss_signal::api::FrontEndFilterSpec>,
+) -> SyntheticIqCaptureBundle {
     let peak_component_before_scaling = peak_component(&frame.iq);
     let output_scale_applied = if peak_component_before_scaling <= 0.999 {
         1.0
@@ -79,13 +124,14 @@ pub fn build_iq16_capture_bundle(
         quantization_bits: Some(16),
         notes,
     };
-    let truth = build_truth_bundle(
+    let truth = build_truth_bundle_with_source_front_end(
         scenario_id,
         scenario,
         frame,
         &metadata,
         peak_component_before_scaling,
         output_scale_applied,
+        source_front_end_filter,
     );
     SyntheticIqCaptureBundle { raw_iq_bytes, metadata, truth }
 }
@@ -115,11 +161,13 @@ pub fn validate_truth_guided_cn0(
                 crate::engine::runtime::ReceiverRuntime::default(),
             );
             let seeded_code_phase_samples = wrap_seeded_code_phase_samples(
-                expected_acquisition_code_phase_samples(
+                expected_truth_guided_acquisition_code_phase_samples_f64(
                     config,
                     &isolated_frame,
+                    truth,
                     sat_truth.code_phase_chips,
-                ) as isize,
+                )
+                .round() as isize,
                 period_samples,
             );
             let doppler_hz = synthetic_truth_measured_doppler_hz(truth, sat_truth);
@@ -220,6 +268,16 @@ pub fn expected_acquisition_code_phase_samples_f64(
     .expect("synthetic acquisition code phase requires a valid code phase model")
 }
 
+fn expected_truth_guided_acquisition_code_phase_samples_f64(
+    config: &ReceiverPipelineConfig,
+    frame: &SamplesFrame,
+    truth: &SyntheticIqTruthBundle,
+    code_phase_chips: f64,
+) -> f64 {
+    expected_acquisition_code_phase_samples_f64(config, frame, code_phase_chips)
+        + truth.source_front_end_sample_delay_samples as f64
+}
+
 /// Measure wrapped code-phase error in samples over one code period.
 pub fn wrapped_code_phase_error_samples(
     actual: usize,
@@ -255,6 +313,7 @@ fn expected_tracking_code_phase_samples(
     config: &ReceiverPipelineConfig,
     sample_rate_hz: f64,
     sample_index: u64,
+    source_front_end_sample_delay_samples: u64,
     code_phase_chips: f64,
 ) -> f64 {
     receiver_search_code_phase_samples(
@@ -265,6 +324,27 @@ fn expected_tracking_code_phase_samples(
         code_phase_chips,
     )
     .expect("synthetic tracking code phase requires a valid code phase model")
+        + source_front_end_sample_delay_samples as f64
+}
+
+fn source_front_end_sample_delay_samples(
+    source_front_end_filter: Option<&bijux_gnss_signal::api::FrontEndFilterSpec>,
+) -> u64 {
+    source_front_end_filter.map(|spec| spec.group_delay_samples() as u64).unwrap_or(0)
+}
+
+fn source_front_end_noise_std_per_component(
+    source_front_end_filter: Option<&bijux_gnss_signal::api::FrontEndFilterSpec>,
+    sample_rate_hz: f64,
+) -> f32 {
+    let Some(spec) = source_front_end_filter else {
+        return SYNTHETIC_NOISE_STD_PER_COMPONENT;
+    };
+    let filter = spec
+        .design(sample_rate_hz)
+        .expect("validated synthetic source front-end filter must design");
+    let tap_energy = filter.taps().iter().map(|tap| tap.norm_sqr()).sum::<f32>();
+    SYNTHETIC_NOISE_STD_PER_COMPONENT * tap_energy.sqrt()
 }
 
 fn synthetic_measured_doppler_hz_from_carrier_hz(
@@ -318,18 +398,22 @@ pub fn validate_truth_guided_tracking_table(
                 expected_measured_doppler_hz,
             );
             let seeded_code_phase_samples = wrap_seeded_code_phase_samples(
-                expected_acquisition_code_phase_samples(
+                expected_truth_guided_acquisition_code_phase_samples_f64(
                     config,
                     &isolated_frame,
+                    truth,
                     sat_truth.code_phase_chips,
-                ) as isize,
+                )
+                .round() as isize,
                 period_samples,
             );
-            let refined_code_phase_samples = expected_acquisition_code_phase_samples_f64(
-                config,
-                &isolated_frame,
-                sat_truth.code_phase_chips,
-            );
+            let refined_code_phase_samples =
+                expected_truth_guided_acquisition_code_phase_samples_f64(
+                    config,
+                    &isolated_frame,
+                    truth,
+                    sat_truth.code_phase_chips,
+                );
             let tracking = crate::pipeline::tracking::Tracking::new(
                 config.clone(),
                 crate::engine::runtime::ReceiverRuntime::default(),
@@ -358,6 +442,7 @@ pub fn validate_truth_guided_tracking_table(
                         config,
                         truth.sample_rate_hz,
                         epoch.sample_index,
+                        truth.source_front_end_sample_delay_samples,
                         sat_truth.code_phase_chips,
                     );
                     let measured_code_phase_samples = epoch.code_phase_samples.0;
