@@ -10,7 +10,7 @@ use bijux_gnss_core::api::{
     AcqHypothesis, AcqResult, Constellation, GlonassFrequencyChannel, GpsTime, Hertz, Meters,
     NavQualityFlag, NavSolutionEpoch, ObsEpoch, ObservationStatus, ReceiverSampleTrace,
     SampleClock, SampleTime, SamplesFrame, SatId, Seconds, SigId, SignalBand, SignalCode,
-    SignalSpec, SolutionStatus, SolutionValidity, ValidationReferenceEpoch,
+    SignalDelayAlignment, SignalSpec, SolutionStatus, SolutionValidity, ValidationReferenceEpoch,
 };
 use bijux_gnss_signal::api::SignalSource;
 

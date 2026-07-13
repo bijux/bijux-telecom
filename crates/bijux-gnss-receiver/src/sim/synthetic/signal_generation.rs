@@ -123,7 +123,15 @@ pub struct SyntheticSignalSource {
     noise_std: f32,
     sat_states: Vec<SatState>,
     gps_ephemerides: Vec<GpsEphemeris>,
+    signal_delay_alignments: Vec<SyntheticSignalDelayAlignment>,
     rng: XorShift64,
+}
+
+/// Source-provided whole-code alignment for one synthetic signal.
+#[derive(Debug, Clone)]
+pub struct SyntheticSignalDelayAlignment {
+    pub sat: SatId,
+    pub signal_delay_alignment: SignalDelayAlignment,
 }
 
 fn generate_l1_ca_with_doppler_ramp_signal_only(
@@ -254,18 +262,33 @@ fn generate_l1_ca_multi_signal_only(
 impl SyntheticSignalSource {
     /// Build a streaming synthetic source from a scenario without materializing the full capture.
     pub fn new(config: &ReceiverPipelineConfig, scenario: &SyntheticScenario) -> Self {
-        Self::with_noise_std(config, scenario, SYNTHETIC_NOISE_STD_PER_COMPONENT)
+        Self::with_noise_std(config, scenario, SYNTHETIC_NOISE_STD_PER_COMPONENT, Vec::new())
     }
 
     /// Build a streaming synthetic source that emits only the deterministic signal component.
     pub fn new_signal_only(config: &ReceiverPipelineConfig, scenario: &SyntheticScenario) -> Self {
-        Self::with_noise_std(config, scenario, 0.0)
+        Self::with_noise_std(config, scenario, 0.0, Vec::new())
+    }
+
+    /// Build a streaming synthetic source with explicit whole-code signal-delay alignments.
+    pub fn new_with_signal_delay_alignments(
+        config: &ReceiverPipelineConfig,
+        scenario: &SyntheticScenario,
+        signal_delay_alignments: Vec<SyntheticSignalDelayAlignment>,
+    ) -> Self {
+        Self::with_noise_std(
+            config,
+            scenario,
+            SYNTHETIC_NOISE_STD_PER_COMPONENT,
+            signal_delay_alignments,
+        )
     }
 
     fn with_noise_std(
         config: &ReceiverPipelineConfig,
         scenario: &SyntheticScenario,
         noise_std: f32,
+        signal_delay_alignments: Vec<SyntheticSignalDelayAlignment>,
     ) -> Self {
         let sample_count = (scenario.duration_s * config.sampling_freq_hz).round() as usize;
 
@@ -287,6 +310,7 @@ impl SyntheticSignalSource {
                 })
                 .collect(),
             gps_ephemerides: scenario.ephemerides.clone(),
+            signal_delay_alignments,
             rng: XorShift64::new(scenario.seed),
         }
     }
@@ -294,6 +318,14 @@ impl SyntheticSignalSource {
     /// Broadcast ephemerides carried alongside this synthetic source.
     pub fn gps_ephemerides(&self) -> &[GpsEphemeris] {
         &self.gps_ephemerides
+    }
+
+    /// Whole-code signal-delay alignment for one tracked satellite, when available.
+    pub fn signal_delay_alignment(&self, sat: SatId) -> Option<&SignalDelayAlignment> {
+        self.signal_delay_alignments
+            .iter()
+            .find(|alignment| alignment.sat == sat)
+            .map(|alignment| &alignment.signal_delay_alignment)
     }
 }
 
