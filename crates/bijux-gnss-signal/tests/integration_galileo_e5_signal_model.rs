@@ -48,7 +48,7 @@ fn galileo_e5a_default_local_code_model_is_available_for_tracking() {
 }
 
 #[test]
-fn galileo_e5a_public_replica_samples_qpsk_signal_power() {
+fn galileo_e5a_public_replica_samples_supported_data_component_power() {
     let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
     let model = ReplicaCodeModel::for_sat_signal(sat, Some(SignalBand::E5), SignalCode::E5a)
         .expect("replica result")
@@ -57,5 +57,5 @@ fn galileo_e5a_public_replica_samples_qpsk_signal_power() {
     let sample = sample_modulated_replica_at_time(&model, 0.0, 0.0, 0.0, 0.0, 0.0, 1, 1.0)
         .expect("Galileo E5a sample");
 
-    assert!((sample.norm() - 1.0).abs() < 1.0e-6, "{sample:?}");
+    assert!((sample.norm() - std::f32::consts::FRAC_1_SQRT_2).abs() < 1.0e-6, "{sample:?}");
 }
