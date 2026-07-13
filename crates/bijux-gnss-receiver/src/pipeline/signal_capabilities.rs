@@ -158,4 +158,138 @@ mod tests {
             SignalCode::Unknown
         ));
     }
+
+    #[test]
+    fn registered_signal_capabilities_match_receiver_stage_boundaries() {
+        let cases = [
+            (
+                Constellation::Gps,
+                SignalBand::L1,
+                SignalCode::Ca,
+                SignalExecutionSupport {
+                    acquisition: true,
+                    tracking: true,
+                    data_decoding: true,
+                    observations: true,
+                    positioning: cfg!(feature = "nav"),
+                },
+            ),
+            (
+                Constellation::Gps,
+                SignalBand::L2,
+                SignalCode::L2C,
+                SignalExecutionSupport {
+                    acquisition: false,
+                    tracking: false,
+                    data_decoding: false,
+                    observations: true,
+                    positioning: false,
+                },
+            ),
+            (
+                Constellation::Gps,
+                SignalBand::L2,
+                SignalCode::Py,
+                SignalExecutionSupport {
+                    acquisition: false,
+                    tracking: false,
+                    data_decoding: false,
+                    observations: false,
+                    positioning: false,
+                },
+            ),
+            (
+                Constellation::Gps,
+                SignalBand::L5,
+                SignalCode::Unknown,
+                SignalExecutionSupport {
+                    acquisition: false,
+                    tracking: false,
+                    data_decoding: false,
+                    observations: true,
+                    positioning: false,
+                },
+            ),
+            (
+                Constellation::Galileo,
+                SignalBand::E1,
+                SignalCode::E1B,
+                SignalExecutionSupport {
+                    acquisition: true,
+                    tracking: true,
+                    data_decoding: false,
+                    observations: true,
+                    positioning: cfg!(feature = "nav"),
+                },
+            ),
+            (
+                Constellation::Galileo,
+                SignalBand::E1,
+                SignalCode::E1C,
+                SignalExecutionSupport {
+                    acquisition: false,
+                    tracking: false,
+                    data_decoding: false,
+                    observations: false,
+                    positioning: false,
+                },
+            ),
+            (
+                Constellation::Galileo,
+                SignalBand::E5,
+                SignalCode::E5a,
+                SignalExecutionSupport {
+                    acquisition: false,
+                    tracking: false,
+                    data_decoding: false,
+                    observations: true,
+                    positioning: false,
+                },
+            ),
+            (
+                Constellation::Beidou,
+                SignalBand::B1,
+                SignalCode::B1I,
+                SignalExecutionSupport {
+                    acquisition: true,
+                    tracking: true,
+                    data_decoding: false,
+                    observations: true,
+                    positioning: cfg!(feature = "nav"),
+                },
+            ),
+            (
+                Constellation::Beidou,
+                SignalBand::B2,
+                SignalCode::B2I,
+                SignalExecutionSupport {
+                    acquisition: false,
+                    tracking: false,
+                    data_decoding: false,
+                    observations: true,
+                    positioning: false,
+                },
+            ),
+            (
+                Constellation::Glonass,
+                SignalBand::L1,
+                SignalCode::Unknown,
+                SignalExecutionSupport {
+                    acquisition: true,
+                    tracking: true,
+                    data_decoding: false,
+                    observations: true,
+                    positioning: cfg!(feature = "nav"),
+                },
+            ),
+        ];
+
+        for (constellation, band, code, expected) in cases {
+            assert_eq!(
+                signal_execution_support(constellation, band, code),
+                expected,
+                "{constellation:?} {band:?} {code:?}"
+            );
+        }
+    }
 }

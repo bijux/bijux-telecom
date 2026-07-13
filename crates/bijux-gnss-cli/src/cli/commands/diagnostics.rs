@@ -3242,7 +3242,8 @@ mod diagnostics_tests {
     use super::{
         advanced_gate_report, artifact_inventory_report, compare_run_evidence, explain_run_scope,
         export_bundle_report, machine_catalog_report, medium_gate_report, nav_reference_week,
-        operator_status_report, replay_audit_report, verify_repro_bundle, AdvancedGateMode,
+        operator_status_report, refused_execution_status, replay_audit_report, verify_repro_bundle,
+        AdvancedGateMode,
     };
     use crate::schema_path;
     use std::fs;
@@ -3640,5 +3641,80 @@ mod diagnostics_tests {
         assert!(required_fields.contains(&"rover_signal_timing"));
         assert!(required_fields.contains(&"base_pseudorange_m"));
         assert!(required_fields.contains(&"base_signal_timing"));
+    }
+
+    #[test]
+    fn refused_execution_status_maps_unsupported_model_explicitly() {
+        let decision = bijux_gnss_infra::api::receiver::AdvancedPrereqDecision {
+            ready: false,
+            refusal_class: Some(
+                bijux_gnss_infra::api::receiver::AdvancedRefusalClass::UnsupportedModel,
+            ),
+            reasons: vec!["unsupported_model".to_string()],
+        };
+
+        let (status, reason) = refused_execution_status(&decision);
+        assert_eq!(status, bijux_gnss_infra::api::receiver::ExecutionStatus::Unsupported);
+        assert_eq!(reason.as_deref(), Some("unsupported_model"));
+    }
+
+    #[test]
+    fn rtk_baseline_schema_requires_execution_envelope() {
+        let schema =
+            fs::read_to_string(schema_path("rtk_baseline_v1.schema.json")).expect("schema");
+        let schema: serde_json::Value = serde_json::from_str(&schema).expect("schema json");
+        let required = schema
+            .get("definitions")
+            .and_then(|defs| defs.get("RtkBaseline"))
+            .and_then(|payload| payload.get("required"))
+            .and_then(|required| required.as_array())
+            .expect("required fields");
+        let required_fields: Vec<&str> =
+            required.iter().filter_map(|field| field.as_str()).collect();
+
+        assert!(required_fields.contains(&"epoch_idx"));
+        assert!(required_fields.contains(&"status"));
+        assert!(required_fields.contains(&"value"));
+
+        let baseline_solution_required = schema
+            .get("definitions")
+            .and_then(|defs| defs.get("BaselineSolution"))
+            .and_then(|payload| payload.get("required"))
+            .and_then(|required| required.as_array())
+            .expect("baseline solution required");
+        let baseline_solution_fields: Vec<&str> =
+            baseline_solution_required.iter().filter_map(|field| field.as_str()).collect();
+        assert!(baseline_solution_fields.contains(&"enu_m"));
+        assert!(baseline_solution_fields.contains(&"fixed"));
+    }
+
+    #[test]
+    fn rtk_ambiguity_state_schema_requires_execution_envelope() {
+        let schema =
+            fs::read_to_string(schema_path("rtk_ambiguity_state_v1.schema.json")).expect("schema");
+        let schema: serde_json::Value = serde_json::from_str(&schema).expect("schema json");
+        let required = schema
+            .get("definitions")
+            .and_then(|defs| defs.get("RtkAmbiguityState"))
+            .and_then(|payload| payload.get("required"))
+            .and_then(|required| required.as_array())
+            .expect("required fields");
+        let required_fields: Vec<&str> =
+            required.iter().filter_map(|field| field.as_str()).collect();
+
+        assert!(required_fields.contains(&"epoch_idx"));
+        assert!(required_fields.contains(&"status"));
+        assert!(required_fields.contains(&"value"));
+
+        let ambiguity_payload_required = schema
+            .get("definitions")
+            .and_then(|defs| defs.get("AmbiguityState"))
+            .and_then(|payload| payload.get("required"))
+            .and_then(|required| required.as_array())
+            .expect("ambiguity payload required");
+        let ambiguity_payload_fields: Vec<&str> =
+            ambiguity_payload_required.iter().filter_map(|field| field.as_str()).collect();
+        assert!(ambiguity_payload_fields.contains(&"float_count"));
+        assert!(ambiguity_payload_fields.contains(&"fixed_count"));
     }
 }
