@@ -417,16 +417,10 @@ type SyntheticSignalModel = bijux_gnss_signal::api::ReplicaCodeModel;
 
 fn synthetic_replica_model(params: SyntheticSignalParams) -> SyntheticSignalModel {
     match params.sat.constellation {
-        Constellation::Galileo => SyntheticSignalModel::galileo_e1_cboc(params.sat.prn)
-            .unwrap_or_else(|_| SyntheticSignalModel::GalileoE1Cboc {
-                e1b_code: vec![1; 4092],
-                e1c_code: vec![1; 4092],
-            }),
-        Constellation::Beidou => SyntheticSignalModel::beidou_b1i(params.sat.prn)
-            .unwrap_or_else(|_| SyntheticSignalModel::BeidouB1I { code: vec![1; 2046] }),
+        Constellation::Galileo => SyntheticSignalModel::galileo_e1_cboc_or_ones(params.sat.prn),
+        Constellation::Beidou => SyntheticSignalModel::beidou_b1i_or_ones(params.sat.prn),
         Constellation::Glonass => SyntheticSignalModel::glonass_l1_st(),
-        _ => SyntheticSignalModel::gps_l1_ca(params.sat.prn)
-            .unwrap_or_else(|_| SyntheticSignalModel::GpsL1Ca { code: vec![1; 1023] }),
+        _ => SyntheticSignalModel::gps_l1_ca_or_ones(params.sat.prn),
     }
 }
 
