@@ -651,7 +651,7 @@ impl EkfContext {
             },
             code_bias: bijux_gnss_infra::api::nav::ZeroBiases,
             phase_bias: bijux_gnss_infra::api::nav::ZeroBiases,
-            corrections: bijux_gnss_infra::api::nav::CorrectionContext,
+            corrections: bijux_gnss_infra::api::nav::CorrectionContext::default(),
         }
     }
 }

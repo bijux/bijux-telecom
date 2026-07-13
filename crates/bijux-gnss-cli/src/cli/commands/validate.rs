@@ -295,14 +295,21 @@ fn handle_validate_capture(command: GnssCommand) -> Result<()> {
         runtime_config_from_capture_start(&common, None, Some(&raw_iq_metadata.capture_start_utc));
     let sats = bijux_gnss_infra::api::core::prns_to_sats(&prn);
 
-    let acquisition = AcquisitionEngine::new(config.clone(), runtime.clone());
-    let acquisitions = acquisition.run_fft(&frame, &sats);
-    let acquisition_rows = acquisitions.iter().map(acquisition_row_from_result).collect::<Vec<_>>();
+    let receiver = Receiver::new(config.clone(), runtime.clone());
+    let mut source = open_tracking_window_source(&input_file, &config, &raw_iq_metadata)?;
+    let artifacts = receiver.run_with_satellites(&mut source, &sats)?;
+    let tracks = artifacts.tracking.clone();
+    let observation_artifacts = artifacts.observation_artifacts();
+    let acquisition_rows =
+        artifacts.acquisitions.iter().map(acquisition_row_from_result).collect::<Vec<_>>();
     let acquisition_report = AcquisitionReport {
         sats: sats.clone(),
-        search_summary: bijux_gnss_infra::api::core::AcqSearchSummary::from_results(&acquisitions),
+        search_summary: bijux_gnss_infra::api::core::AcqSearchSummary::from_results(
+            &artifacts.acquisitions,
+        ),
         doppler_search: doppler_search_settings(&profile),
-        code_phase_search: acquisitions
+        code_phase_search: artifacts
+            .acquisitions
             .iter()
             .find_map(|result| result.assumptions.as_ref())
             .map(code_phase_search_settings_from_assumptions)
@@ -313,10 +320,6 @@ fn handle_validate_capture(command: GnssCommand) -> Result<()> {
         primary_results: acquisition_rows.clone(),
         results: acquisition_rows,
     };
-
-    let tracking =
-        bijux_gnss_infra::api::receiver::TrackingEngine::new(config.clone(), runtime.clone());
-    let tracks = tracking.track_from_acquisition(&frame, &acquisitions);
     let tracking_report = TrackingReport {
         sats,
         doppler_search: doppler_search_settings(&profile),
@@ -367,12 +370,10 @@ fn handle_validate_capture(command: GnssCommand) -> Result<()> {
         &profile,
         dataset.as_ref(),
     )?;
-    let observation_artifacts = write_obs_timeseries_for_command(
+    let observation_artifacts = write_observation_artifacts_for_command(
         &common,
         "validate_capture",
-        &config,
-        &tracks,
-        profile.navigation.hatch_window,
+        &observation_artifacts,
         &profile,
         dataset.as_ref(),
     )?;
