@@ -141,6 +141,17 @@ This workflow emits `artifacts/gnss_accuracy_artifact.json`, one machine-readabl
 that carries acquisition, tracking, observation, and PVT summaries alongside detailed stage
 reports, thresholds, pass/fail, data source, and reference truth.
 
+### Sweep a Synthetic Experiment Through the Receiver Pipeline
+```bash
+bijux gnss experiment --scenario configs/scenarios/basic.toml --config configs/receiver_low_rate.toml --sweep acquisition.integration_ms=1,2 --out artifacts/experiment_basic
+```
+
+This workflow runs each sweep point through the same receiver acquisition, tracking, observation,
+and navigation pipeline used by `bijux gnss run`, then writes per-run artifacts such as
+`result.json`, `cn0.csv`, and `residuals.csv` under `artifacts/experiment_basic/artifacts/`.
+Synthetic experiment scenarios that do not carry navigation inputs naturally report empty PVT
+metrics instead of falling back to a separate CLI-only solver path.
+
 ### Validate Artifacts
 ```bash
 bijux gnss artifact validate --file runs/basic_demo/artifacts/obs.jsonl

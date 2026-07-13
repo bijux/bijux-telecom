@@ -104,3 +104,14 @@ bijux gnss validate-synthetic-navigation --scenario configs/scenarios/synthetic_
 This workflow emits `artifacts/synthetic_navigation_accuracy/artifacts/gnss_accuracy_artifact.json`.
 That file records acquisition, tracking, observation, and PVT stage summaries together with the
 underlying per-stage reports, thresholds, pass/fail, data source, and reference truth.
+
+## 10) Sweep Synthetic Receiver Experiments
+
+```bash
+bijux gnss experiment --scenario configs/scenarios/basic.toml --config configs/receiver_low_rate.toml --sweep acquisition.integration_ms=1,2 --out artifacts/experiment_basic
+```
+
+Each sweep point now executes through the same receiver acquisition, tracking, observation, and
+navigation path used by streaming runs. Expect the per-run outputs under
+`artifacts/experiment_basic/artifacts/run_000/` to match the receiver pipeline contract rather
+than a separate experiment-only implementation.
