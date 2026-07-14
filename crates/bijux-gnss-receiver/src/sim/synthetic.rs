@@ -83,6 +83,7 @@ mod tests {
         validate_truth_guided_acquisition_doppler,
         validate_truth_guided_acquisition_receiver_clock_offset,
         validate_truth_guided_acquisition_sample_rates, validate_truth_guided_cn0,
+        validate_truth_guided_common_oscillator_bias_follow_up,
         validate_truth_guided_composite_component_recovery, validate_truth_guided_pvt_table,
         wrapped_code_phase_error_samples, wrapped_code_phase_error_samples_f64, SatState,
         SyntheticAccuracyCn0ProfileReport, SyntheticAcquisitionDetectionRateCase,
