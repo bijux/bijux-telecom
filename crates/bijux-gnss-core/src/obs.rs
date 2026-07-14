@@ -41,6 +41,10 @@ fn default_doppler_center_hz() -> f64 {
     0.0
 }
 
+fn default_doppler_rate_center_hz_per_s() -> f64 {
+    0.0
+}
+
 fn default_cycles_zero() -> Cycles {
     Cycles(0.0)
 }
@@ -125,6 +129,10 @@ pub struct AcqThresholdProvenance {
     pub noncoherent: u32,
     pub doppler_search_hz: i32,
     pub doppler_step_hz: i32,
+    #[serde(default)]
+    pub doppler_rate_search_hz_per_s: i32,
+    #[serde(default)]
+    pub doppler_rate_step_hz_per_s: i32,
     pub peak_mean_threshold: f32,
     pub peak_second_threshold: f32,
     #[serde(default)]
@@ -367,12 +375,18 @@ pub struct AcqRequest {
     pub signal_code: SignalCode,
     #[serde(default = "default_doppler_center_hz")]
     pub doppler_center_hz: f64,
+    #[serde(default = "default_doppler_rate_center_hz_per_s")]
+    pub doppler_rate_center_hz_per_s: f64,
     #[serde(default)]
     pub expected_line_of_sight_doppler_hz: Option<f64>,
     #[serde(default)]
     pub assistance_bounds: Option<AcqAssistanceBounds>,
     pub doppler_search_hz: i32,
     pub doppler_step_hz: i32,
+    #[serde(default)]
+    pub doppler_rate_search_hz_per_s: i32,
+    #[serde(default)]
+    pub doppler_rate_step_hz_per_s: i32,
     pub coherent_ms: u32,
     pub noncoherent: u32,
 }
@@ -408,12 +422,18 @@ impl std::fmt::Display for AcqHypothesis {
 pub struct AcqAssumptions {
     #[serde(default = "default_doppler_center_hz")]
     pub doppler_center_hz: f64,
+    #[serde(default = "default_doppler_rate_center_hz_per_s")]
+    pub doppler_rate_center_hz_per_s: f64,
     #[serde(default)]
     pub expected_line_of_sight_doppler_hz: Option<f64>,
     #[serde(default)]
     pub assistance_bounds: Option<AcqAssistanceBounds>,
     pub doppler_search_hz: i32,
     pub doppler_step_hz: i32,
+    #[serde(default)]
+    pub doppler_rate_search_hz_per_s: i32,
+    #[serde(default)]
+    pub doppler_rate_step_hz_per_s: i32,
     pub coherent_ms: u32,
     pub noncoherent: u32,
     pub samples_per_code: usize,
@@ -459,6 +479,8 @@ pub struct AcqEvidence {
     pub rank: u8,
     pub code_phase_samples: usize,
     pub doppler_hz: f64,
+    #[serde(default = "default_doppler_rate_center_hz_per_s")]
+    pub doppler_rate_hz_per_s: f64,
     pub peak: f32,
     pub second_peak: f32,
     pub peak_mean_ratio: f32,
@@ -535,6 +557,8 @@ pub struct AcqResult {
     #[serde(default = "default_is_primary_candidate")]
     pub is_primary_candidate: bool,
     pub doppler_hz: Hertz,
+    #[serde(default = "default_doppler_rate_center_hz_per_s")]
+    pub doppler_rate_hz_per_s: f64,
     pub carrier_hz: Hertz,
     pub code_phase_samples: usize,
     pub peak: f32,
@@ -1501,6 +1525,7 @@ mod tests {
             candidate_rank: 1,
             is_primary_candidate: true,
             doppler_hz: Hertz(750.0),
+            doppler_rate_hz_per_s: 0.0,
             carrier_hz: Hertz(750.0),
             code_phase_samples: 100,
             peak: 0.0,
@@ -1605,6 +1630,7 @@ mod tests {
             rank: 1,
             code_phase_samples: result.code_phase_samples,
             doppler_hz: result.carrier_hz.0,
+            doppler_rate_hz_per_s: 0.0,
             peak: result.peak,
             second_peak: result.second_peak,
             peak_mean_ratio: result.peak_mean_ratio,
@@ -1652,6 +1678,7 @@ mod tests {
             rank: 1,
             code_phase_samples: base.code_phase_samples,
             doppler_hz: base.carrier_hz.0,
+            doppler_rate_hz_per_s: 0.0,
             peak: base.peak,
             second_peak: base.second_peak,
             peak_mean_ratio: base.peak_mean_ratio,
@@ -1695,6 +1722,7 @@ mod tests {
             rank: 1,
             code_phase_samples: base.code_phase_samples,
             doppler_hz: base.carrier_hz.0,
+            doppler_rate_hz_per_s: 0.0,
             peak: base.peak,
             second_peak: base.second_peak,
             peak_mean_ratio: base.peak_mean_ratio,
@@ -1884,6 +1912,7 @@ mod tests {
             candidate_rank: 1,
             is_primary_candidate: true,
             doppler_hz: Hertz(0.0),
+            doppler_rate_hz_per_s: 0.0,
             carrier_hz: Hertz(0.0),
             code_phase_samples: 0,
             peak: 0.0,
