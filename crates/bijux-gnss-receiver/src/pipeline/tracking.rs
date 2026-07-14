@@ -19,7 +19,7 @@ use crate::engine::signal_selection::default_signal_code_for_band;
 use bijux_gnss_core::api::Sample;
 use bijux_gnss_signal::api::samples_per_code;
 use bijux_gnss_signal::api::{
-    adaptive_bandwidth, anti_false_lock_detected as signal_anti_false_lock_detected,
+    advance_tracking_adaptation, anti_false_lock_detected as signal_anti_false_lock_detected,
     apply_carrier_tracking_loop as signal_apply_carrier_tracking_loop,
     apply_code_loop as signal_apply_code_loop, carrier_frequency_error_hz_from_phase_delta,
     carrier_phase_offset_radians, code_value_at_phase,
@@ -39,7 +39,10 @@ use bijux_gnss_signal::api::{
     resolved_signal_registry_entry, shared_path_code_rate_hz,
     update_windowed_tracking_cn0_estimate as signal_update_windowed_tracking_cn0_estimate,
     wrap_code_phase_samples, wrap_phase_cycles_signed, wrapped_code_phase_delta_samples,
-    wrapped_phase_delta_cycles, LocalCodeModel, TrackingQualityClass,
+    wrapped_phase_delta_cycles, LocalCodeModel,
+    TrackingAdaptationInput as SignalTrackingAdaptationInput,
+    TrackingAdaptationState as SignalTrackingAdaptationState,
+    TrackingLoopProfile as SignalTrackingLoopProfile, TrackingQualityClass,
     TrackingUncertaintyInputs as SignalTrackingUncertaintyInputs,
 };
 
@@ -229,6 +232,8 @@ struct LoopState {
     code_rate_hz: f64,
     code_rate_reference_hz: f64,
     code_phase_samples: f64,
+    tracking_adaptation_state: SignalTrackingAdaptationState,
+    tracking_loop_profile: SignalTrackingLoopProfile,
     signal_delay_alignment: Option<SignalDelayAlignment>,
     acquisition_cn0_proxy_dbhz: f64,
     lock_reference_cn0_dbhz: f64,
@@ -936,6 +941,81 @@ impl Tracking {
         to
     }
 
+    fn tracking_loop_profile(tracking_params: TrackingParams) -> SignalTrackingLoopProfile {
+        SignalTrackingLoopProfile {
+            dll_bw_hz: tracking_params.dll_bw_hz,
+            pll_bw_hz: tracking_params.pll_bw_hz,
+            fll_bw_hz: tracking_params.fll_bw_hz,
+            integration_ms: tracking_params.integration_ms.max(1),
+        }
+    }
+
+    fn tracking_params_for_state(
+        &self,
+        base_tracking_params: TrackingParams,
+        state: &LoopState,
+    ) -> TrackingParams {
+        if !self.config.adaptive_tracking_enabled {
+            return base_tracking_params;
+        }
+        TrackingParams {
+            early_late_spacing_chips: base_tracking_params.early_late_spacing_chips,
+            dll_bw_hz: state.tracking_loop_profile.dll_bw_hz,
+            pll_bw_hz: state.tracking_loop_profile.pll_bw_hz,
+            fll_bw_hz: state.tracking_loop_profile.fll_bw_hz,
+            integration_ms: state.tracking_loop_profile.integration_ms.max(1),
+        }
+    }
+
+    fn initial_loop_state(
+        &self,
+        signal_model: &TrackingSignalModel,
+        carrier_hz: f64,
+        code_phase_samples: f64,
+        acquisition_cn0_proxy_dbhz: f64,
+        signal_delay_alignment: Option<SignalDelayAlignment>,
+        tracking_params: TrackingParams,
+        reacquisition_pending: bool,
+    ) -> LoopState {
+        let code_rate_reference_hz =
+            carrier_aided_code_rate_hz(&self.config, signal_model, carrier_hz);
+        LoopState {
+            carrier_hz,
+            carrier_phase_cycles: 0.0,
+            carrier_rate_hz_per_s: 0.0,
+            code_rate_hz: code_rate_reference_hz,
+            code_rate_reference_hz,
+            code_phase_samples,
+            tracking_adaptation_state: SignalTrackingAdaptationState::default(),
+            tracking_loop_profile: Self::tracking_loop_profile(tracking_params),
+            signal_delay_alignment,
+            acquisition_cn0_proxy_dbhz,
+            lock_reference_cn0_dbhz: acquisition_cn0_proxy_dbhz,
+            prev_prompt: None,
+            prev_prompt_phase_cycles: None,
+            nav_bit_phase_offset_cycles: 0.0,
+            nav_bit_transition_count: 0,
+            pull_in_stable_epochs: 0,
+            weak_cn0_epochs: 0,
+            degraded_epochs: 0,
+            prompt_power_reference: 0.0,
+            prompt_cn0_window: VecDeque::new(),
+            code_error_window_samples: VecDeque::new(),
+            carrier_phase_error_window_cycles: VecDeque::new(),
+            doppler_error_window_hz: VecDeque::new(),
+            cn0_estimate_window_dbhz: VecDeque::new(),
+            unstable_discriminator_epochs: 0,
+            state: ChannelState::Acquired,
+            unlocked_count: 0,
+            lost_reason: None,
+            reacquisition_candidate: None,
+            reacquisition_candidate_streak: 0,
+            reacquisition_pending,
+            reacquisition_attempt_epochs: 0,
+            reacquisition_stable_tracking_epochs: 0,
+        }
+    }
+
     fn tracking_start_context(
         &self,
         acquisition: &bijux_gnss_core::api::AcqResult,
@@ -1359,41 +1439,15 @@ impl Tracking {
         tracking_params: TrackingParams,
         epochs: usize,
     ) -> (Vec<TrackEpoch>, Vec<TrackTransition>) {
-        let code_rate_reference_hz =
-            carrier_aided_code_rate_hz(&self.config, signal_model, carrier_hz);
-        let mut state = LoopState {
+        let mut state = self.initial_loop_state(
+            signal_model,
             carrier_hz,
-            carrier_phase_cycles: 0.0,
-            carrier_rate_hz_per_s: 0.0,
-            code_rate_hz: code_rate_reference_hz,
-            code_rate_reference_hz,
             code_phase_samples,
             acquisition_cn0_proxy_dbhz,
-            signal_delay_alignment: None,
-            lock_reference_cn0_dbhz: acquisition_cn0_proxy_dbhz,
-            prev_prompt: None,
-            prev_prompt_phase_cycles: None,
-            nav_bit_phase_offset_cycles: 0.0,
-            nav_bit_transition_count: 0,
-            pull_in_stable_epochs: 0,
-            weak_cn0_epochs: 0,
-            degraded_epochs: 0,
-            prompt_power_reference: 0.0,
-            prompt_cn0_window: VecDeque::new(),
-            code_error_window_samples: VecDeque::new(),
-            carrier_phase_error_window_cycles: VecDeque::new(),
-            doppler_error_window_hz: VecDeque::new(),
-            cn0_estimate_window_dbhz: VecDeque::new(),
-            unstable_discriminator_epochs: 0,
-            state: ChannelState::Acquired,
-            unlocked_count: 0,
-            lost_reason: None,
-            reacquisition_candidate: None,
-            reacquisition_candidate_streak: 0,
-            reacquisition_pending: false,
-            reacquisition_attempt_epochs: 0,
-            reacquisition_stable_tracking_epochs: 0,
-        };
+            None,
+            tracking_params,
+            false,
+        );
 
         let mut out = Vec::new();
         let mut transitions = Vec::new();
@@ -1446,46 +1500,15 @@ impl Tracking {
                     ],
                 });
                 IncrementalTrackingChannel {
-                    state: {
-                        let code_rate_reference_hz = carrier_aided_code_rate_hz(
-                            &self.config,
-                            &signal_model,
-                            context.acquisition_carrier_hz,
-                        );
-                        LoopState {
-                            carrier_hz: context.acquisition_carrier_hz,
-                            carrier_phase_cycles: 0.0,
-                            carrier_rate_hz_per_s: 0.0,
-                            code_rate_hz: code_rate_reference_hz,
-                            code_rate_reference_hz,
-                            code_phase_samples: context.seed.code_phase_samples.0,
-                            signal_delay_alignment: context.seed.signal_delay_alignment.clone(),
-                            acquisition_cn0_proxy_dbhz: context.acquisition_cn0_proxy_dbhz,
-                            lock_reference_cn0_dbhz: context.acquisition_cn0_proxy_dbhz,
-                            prev_prompt: None,
-                            prev_prompt_phase_cycles: None,
-                            nav_bit_phase_offset_cycles: 0.0,
-                            nav_bit_transition_count: 0,
-                            pull_in_stable_epochs: 0,
-                            weak_cn0_epochs: 0,
-                            degraded_epochs: 0,
-                            prompt_power_reference: 0.0,
-                            prompt_cn0_window: VecDeque::new(),
-                            code_error_window_samples: VecDeque::new(),
-                            carrier_phase_error_window_cycles: VecDeque::new(),
-                            doppler_error_window_hz: VecDeque::new(),
-                            cn0_estimate_window_dbhz: VecDeque::new(),
-                            unstable_discriminator_epochs: 0,
-                            state: ChannelState::Acquired,
-                            unlocked_count: 0,
-                            lost_reason: None,
-                            reacquisition_candidate: None,
-                            reacquisition_candidate_streak: 0,
-                            reacquisition_pending: false,
-                            reacquisition_attempt_epochs: 0,
-                            reacquisition_stable_tracking_epochs: 0,
-                        }
-                    },
+                    state: self.initial_loop_state(
+                        &signal_model,
+                        context.acquisition_carrier_hz,
+                        context.seed.code_phase_samples.0,
+                        context.acquisition_cn0_proxy_dbhz,
+                        context.seed.signal_delay_alignment.clone(),
+                        tracking_params,
+                        false,
+                    ),
                     sat: context.seed.sat,
                     channel_id,
                     start_source_time: context.seed.source_time,
@@ -1524,11 +1547,13 @@ impl Tracking {
             ) else {
                 continue;
             };
-            let samples_per_epoch = channel
-                .signal_model
-                .tracking_epoch_samples(self.config.sampling_freq_hz, channel.tracking_params);
             let mut epoch_start = channel_frame_start;
             while epoch_start < frame.len() {
+                let tracking_params =
+                    self.tracking_params_for_state(channel.tracking_params, &channel.state);
+                let samples_per_epoch = channel
+                    .signal_model
+                    .tracking_epoch_samples(self.config.sampling_freq_hz, tracking_params);
                 let epoch_end = (epoch_start + samples_per_epoch).min(frame.len());
                 let reacquisition_outcome = if channel.state.state == ChannelState::Lost {
                     let epoch_frame = frame_slice(frame, epoch_start, epoch_end);
@@ -1546,6 +1571,7 @@ impl Tracking {
                     channel.sat,
                     &channel.signal_model,
                     channel.tracking_params,
+                    tracking_params,
                     &mut channel.state,
                     &mut channel.epochs,
                     &mut channel.transitions,
@@ -1632,16 +1658,17 @@ impl Tracking {
         channel_id: u8,
         sat: SatId,
         signal_model: &TrackingSignalModel,
-        tracking_params: TrackingParams,
+        base_tracking_params: TrackingParams,
         epochs: usize,
         state: &mut LoopState,
         out: &mut Vec<TrackEpoch>,
         transitions: &mut Vec<TrackTransition>,
     ) {
-        let samples_per_epoch =
-            signal_model.tracking_epoch_samples(self.config.sampling_freq_hz, tracking_params);
-        for epoch_idx in 0..epochs {
-            let start = epoch_idx * samples_per_epoch;
+        let mut start = 0usize;
+        for _ in 0..epochs {
+            let tracking_params = self.tracking_params_for_state(base_tracking_params, state);
+            let samples_per_epoch =
+                signal_model.tracking_epoch_samples(self.config.sampling_freq_hz, tracking_params);
             let end = (start + samples_per_epoch).min(frame.len());
             if start >= end {
                 break;
@@ -1653,11 +1680,13 @@ impl Tracking {
                 channel_id,
                 sat,
                 signal_model,
+                base_tracking_params,
                 tracking_params,
                 state,
                 out,
                 transitions,
             );
+            start = end;
         }
     }
 
@@ -1670,6 +1699,7 @@ impl Tracking {
         channel_id: u8,
         sat: SatId,
         signal_model: &TrackingSignalModel,
+        base_tracking_params: TrackingParams,
         tracking_params: TrackingParams,
         state: &mut LoopState,
         out: &mut Vec<TrackEpoch>,
@@ -1741,12 +1771,9 @@ impl Tracking {
             cn0_dbhz = windowed_cn0_dbhz;
         }
         track_epoch.cn0_dbhz = cn0_dbhz;
-        let (dll_bw, pll_bw, fll_bw) = adaptive_bandwidth(
-            tracking_params.dll_bw_hz,
-            tracking_params.pll_bw_hz,
-            tracking_params.fll_bw_hz,
-            cn0_dbhz,
-        );
+        let dll_bw = tracking_params.dll_bw_hz;
+        let pll_bw = tracking_params.pll_bw_hz;
+        let fll_bw = tracking_params.fll_bw_hz;
         let coherent_integration_s =
             coherent_integration_seconds(epoch_len_samples, self.config.sampling_freq_hz);
         let raw_fll_err_hz =
@@ -2029,6 +2056,28 @@ impl Tracking {
         state.code_rate_hz = code_loop.code_rate_hz;
         state.code_rate_reference_hz = code_rate_reference_hz;
         state.code_phase_samples = code_loop.code_phase_samples;
+        if self.config.adaptive_tracking_enabled {
+            let adaptation = advance_tracking_adaptation(
+                Self::tracking_loop_profile(base_tracking_params),
+                state.tracking_adaptation_state,
+                SignalTrackingAdaptationInput {
+                    cn0_dbhz,
+                    fll_error_hz: fll_err_hz as f64,
+                    carrier_rate_hz_per_s: carrier_loop.carrier_rate_hz_per_s,
+                    carrier_lock_ready: raw_fll_lock || sustained_pll_lock,
+                    steady_state_lock: matches!(
+                        state.state,
+                        ChannelState::Tracking | ChannelState::Degraded
+                    ) && sustained_prompt_lock
+                        && sustained_code_lock,
+                    discriminator_stable: state.unstable_discriminator_epochs == 0
+                        && !cycle_slip
+                        && !anti_false_lock,
+                },
+            );
+            state.tracking_adaptation_state = adaptation.state;
+            state.tracking_loop_profile = adaptation.profile;
+        }
 
         if state.state != from_state {
             transitions.push(TrackTransition {
@@ -3123,41 +3172,15 @@ impl Tracking {
             return ReacquisitionOutcome::Failed;
         }
 
-        let code_rate_reference_hz =
-            carrier_aided_code_rate_hz(&self.config, &channel.signal_model, seed.carrier_hz);
-        channel.state = LoopState {
-            carrier_hz: seed.carrier_hz,
-            carrier_phase_cycles: 0.0,
-            carrier_rate_hz_per_s: 0.0,
-            code_rate_hz: code_rate_reference_hz,
-            code_rate_reference_hz,
-            code_phase_samples: seed.code_phase_samples,
-            signal_delay_alignment: channel.state.signal_delay_alignment.clone(),
-            acquisition_cn0_proxy_dbhz: seed.cn0_dbhz,
-            lock_reference_cn0_dbhz: seed.cn0_dbhz,
-            prev_prompt: None,
-            prev_prompt_phase_cycles: None,
-            nav_bit_phase_offset_cycles: 0.0,
-            nav_bit_transition_count: 0,
-            pull_in_stable_epochs: 0,
-            weak_cn0_epochs: 0,
-            degraded_epochs: 0,
-            prompt_power_reference: 0.0,
-            prompt_cn0_window: VecDeque::new(),
-            code_error_window_samples: VecDeque::new(),
-            carrier_phase_error_window_cycles: VecDeque::new(),
-            doppler_error_window_hz: VecDeque::new(),
-            cn0_estimate_window_dbhz: VecDeque::new(),
-            unstable_discriminator_epochs: 0,
-            state: ChannelState::Acquired,
-            unlocked_count: 0,
-            lost_reason: None,
-            reacquisition_candidate: None,
-            reacquisition_candidate_streak: 0,
-            reacquisition_pending: true,
-            reacquisition_attempt_epochs: 0,
-            reacquisition_stable_tracking_epochs: 0,
-        };
+        channel.state = self.initial_loop_state(
+            &channel.signal_model,
+            seed.carrier_hz,
+            seed.code_phase_samples,
+            seed.cn0_dbhz,
+            channel.state.signal_delay_alignment.clone(),
+            channel.tracking_params,
+            true,
+        );
         ReacquisitionOutcome::Started
     }
 
@@ -3235,7 +3258,7 @@ impl Tracking {
 #[cfg(test)]
 mod tests {
     use super::{ChannelState, Tracking};
-    use crate::engine::receiver_config::ReceiverPipelineConfig;
+    use crate::engine::receiver_config::{ReceiverPipelineConfig, TrackingParams};
     use crate::engine::runtime::ReceiverRuntime;
     use crate::sim::synthetic::{generate_l1_ca, SyntheticSignalParams};
     use bijux_gnss_core::api::{
@@ -3243,6 +3266,7 @@ mod tests {
         SampleTime, SamplesFrame, SatId, Seconds, SignalBand, SignalCode, SignalComponentRole,
         TrackEpoch, GPS_L1_CA_CARRIER_HZ,
     };
+    use bijux_gnss_signal::api::TrackingLoopProfile as SignalTrackingLoopProfile;
     use bijux_gnss_signal::api::{
         advance_code_phase_seconds, delay_lock_loop_coefficients, discriminators,
         first_order_angular_loop_coefficients, phase_lock_loop_coefficients, sample_ca_code,
@@ -3867,6 +3891,74 @@ mod tests {
         assert_eq!(epoch_samples, 35_000);
     }
 
+    #[test]
+    fn tracking_params_for_state_uses_adapted_profile_when_enabled() {
+        let tracking = Tracking::new(
+            ReceiverPipelineConfig {
+                adaptive_tracking_enabled: true,
+                ..ReceiverPipelineConfig::default()
+            },
+            ReceiverRuntime::default(),
+        );
+        let base_tracking_params = TrackingParams {
+            early_late_spacing_chips: 0.5,
+            dll_bw_hz: 2.0,
+            pll_bw_hz: 15.0,
+            fll_bw_hz: 10.0,
+            integration_ms: 1,
+        };
+        let mut state = empty_loop_state();
+        state.tracking_loop_profile = SignalTrackingLoopProfile {
+            dll_bw_hz: 1.2,
+            pll_bw_hz: 8.25,
+            fll_bw_hz: 5.0,
+            integration_ms: 5,
+        };
+
+        let effective = tracking.tracking_params_for_state(base_tracking_params, &state);
+
+        assert_eq!(
+            effective.early_late_spacing_chips,
+            base_tracking_params.early_late_spacing_chips
+        );
+        assert_eq!(effective.dll_bw_hz, 1.2);
+        assert_eq!(effective.pll_bw_hz, 8.25);
+        assert_eq!(effective.fll_bw_hz, 5.0);
+        assert_eq!(effective.integration_ms, 5);
+    }
+
+    #[test]
+    fn tracking_params_for_state_ignores_adapted_profile_when_disabled() {
+        let tracking = Tracking::new(
+            ReceiverPipelineConfig {
+                adaptive_tracking_enabled: false,
+                ..ReceiverPipelineConfig::default()
+            },
+            ReceiverRuntime::default(),
+        );
+        let base_tracking_params = TrackingParams {
+            early_late_spacing_chips: 0.5,
+            dll_bw_hz: 2.0,
+            pll_bw_hz: 15.0,
+            fll_bw_hz: 10.0,
+            integration_ms: 1,
+        };
+        let mut state = empty_loop_state();
+        state.tracking_loop_profile = SignalTrackingLoopProfile {
+            dll_bw_hz: 1.2,
+            pll_bw_hz: 8.25,
+            fll_bw_hz: 5.0,
+            integration_ms: 5,
+        };
+
+        let effective = tracking.tracking_params_for_state(base_tracking_params, &state);
+
+        assert_eq!(effective.dll_bw_hz, base_tracking_params.dll_bw_hz);
+        assert_eq!(effective.pll_bw_hz, base_tracking_params.pll_bw_hz);
+        assert_eq!(effective.fll_bw_hz, base_tracking_params.fll_bw_hz);
+        assert_eq!(effective.integration_ms, base_tracking_params.integration_ms);
+    }
+
     fn empty_loop_state() -> super::LoopState {
         super::LoopState {
             carrier_hz: 0.0,
@@ -3875,6 +3967,13 @@ mod tests {
             code_rate_hz: 0.0,
             code_rate_reference_hz: 0.0,
             code_phase_samples: 0.0,
+            tracking_adaptation_state: Default::default(),
+            tracking_loop_profile: SignalTrackingLoopProfile {
+                dll_bw_hz: 2.0,
+                pll_bw_hz: 15.0,
+                fll_bw_hz: 10.0,
+                integration_ms: 1,
+            },
             signal_delay_alignment: None,
             acquisition_cn0_proxy_dbhz: 45.0,
             lock_reference_cn0_dbhz: 45.0,
@@ -5085,7 +5184,8 @@ mod tests {
     #[test]
     fn begin_incremental_tracking_seeds_code_rate_from_carrier_aid() {
         let config = crate::engine::receiver_config::ReceiverPipelineConfig {
-            intermediate_freq_hz: GPS_L1_CA_CARRIER_HZ.value() - signal_spec_gps_l5_i().carrier_hz.value(),
+            intermediate_freq_hz: GPS_L1_CA_CARRIER_HZ.value()
+                - signal_spec_gps_l5_i().carrier_hz.value(),
             code_freq_basis_hz: 10_230_000.0,
             code_length: 10_230,
             ..crate::engine::receiver_config::ReceiverPipelineConfig::default()
@@ -5123,12 +5223,9 @@ mod tests {
 
         let incremental = tracking.begin_incremental_tracking(&[acquisition]);
         let channel_state = incremental.channels.first().expect("GPS L5 tracking channel");
-        let expected_code_rate_hz = shared_path_code_rate_hz(
-            1_500.0,
-            signal_spec_gps_l5_i(),
-            signal_spec_gps_l5_i(),
-        )
-        .expect("carrier-aided code rate");
+        let expected_code_rate_hz =
+            shared_path_code_rate_hz(1_500.0, signal_spec_gps_l5_i(), signal_spec_gps_l5_i())
+                .expect("carrier-aided code rate");
 
         assert!((channel_state.state.code_rate_hz - expected_code_rate_hz).abs() <= 1.0e-9);
         assert!(
