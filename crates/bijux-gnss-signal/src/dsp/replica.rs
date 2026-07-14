@@ -752,6 +752,39 @@ pub fn carrier_phase_radians_at_time(
             * (initial_carrier_hz * elapsed_s + 0.5 * carrier_rate_hz_per_s * elapsed_s * elapsed_s)
 }
 
+/// Mix a linear-rate carrier down to baseband from a frame-relative sample origin.
+pub fn wipeoff_carrier_with_linear_rate(
+    samples: &[Complex<f32>],
+    initial_carrier_hz: f64,
+    carrier_rate_hz_per_s: f64,
+    sample_rate_hz: f64,
+    start_sample_index: u64,
+    initial_phase_radians: f64,
+) -> Result<Vec<Complex<f32>>, SignalError> {
+    if !sample_rate_hz.is_finite() || sample_rate_hz <= 0.0 {
+        return Err(SignalError::InvalidSampleRate);
+    }
+    if !initial_carrier_hz.is_finite() || !carrier_rate_hz_per_s.is_finite() {
+        return Err(SignalError::InvalidCarrierFrequency);
+    }
+    if !initial_phase_radians.is_finite() {
+        return Err(SignalError::InvalidCodePhase);
+    }
+
+    let mut mixed = Vec::with_capacity(samples.len());
+    for (offset, sample) in samples.iter().enumerate() {
+        let elapsed_s = (start_sample_index + offset as u64) as f64 / sample_rate_hz;
+        let phase = carrier_phase_radians_at_time(
+            initial_phase_radians,
+            initial_carrier_hz,
+            carrier_rate_hz_per_s,
+            elapsed_s,
+        );
+        mixed.push(*sample * Complex::from_polar(1.0_f32, -(phase as f32)));
+    }
+    Ok(mixed)
+}
+
 /// Convert C/N0 into the synthesized signal amplitude for a known complex noise power.
 pub fn signal_amplitude_from_cn0_db_hz(
     cn0_db_hz: f32,
@@ -825,15 +858,13 @@ mod tests {
     use super::{
         carrier_hz_at_time, carrier_phase_radians_at_time, default_signal_carrier_hz,
         default_signal_carrier_hz_for_band, sample_modulated_replica_at_sample_index,
-        sample_modulated_replica_at_time,
-        signal_amplitude_from_cn0_db_hz, AcquisitionSignalModel, ReplicaCodeModel,
-        GPS_L2C_TIME_MULTIPLEXED_CODE_CHIPS, GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ,
-        UNIT_VARIANCE_COMPLEX_NOISE_POWER,
+        sample_modulated_replica_at_time, signal_amplitude_from_cn0_db_hz,
+        wipeoff_carrier_with_linear_rate, AcquisitionSignalModel, ReplicaCodeModel,
+        GPS_L2C_TIME_MULTIPLEXED_CODE_CHIPS,
+        GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ, UNIT_VARIANCE_COMPLEX_NOISE_POWER,
     };
     use crate::catalog::resolved_signal_registry_entry;
-    use crate::codes::beidou_d1::{
-        beidou_d1_epoch_symbol, BEIDOU_D1_PRIMARY_EPOCHS_PER_SYMBOL,
-    };
+    use crate::codes::beidou_d1::{beidou_d1_epoch_symbol, BEIDOU_D1_PRIMARY_EPOCHS_PER_SYMBOL};
     use crate::codes::galileo_e1::{
         sample_galileo_e1_boc11_code, GalileoE1Channel, GALILEO_E1_CODE_RATE_HZ,
     };
@@ -855,6 +886,7 @@ mod tests {
         Constellation, GlonassFrequencyChannel, SatId, SignalBand, SignalCode,
         GALILEO_E5A_CARRIER_HZ, GALILEO_E5B_CARRIER_HZ, GPS_L1_CA_CARRIER_HZ, GPS_L5_CARRIER_HZ,
     };
+    use num_complex::Complex;
 
     #[test]
     fn carrier_hz_at_time_applies_linear_rate() {
@@ -866,6 +898,52 @@ mod tests {
         let phase = carrier_phase_radians_at_time(0.25, 1_000.0, 20.0, 0.5);
         let expected = 0.25 + std::f64::consts::TAU * (1_000.0 * 0.5 + 0.5 * 20.0 * 0.25);
         assert!((phase - expected).abs() < 1.0e-12, "phase={phase}");
+    }
+
+    #[test]
+    fn wipeoff_carrier_with_linear_rate_removes_ramped_phase() {
+        let samples = (0..8)
+            .map(|sample_index| {
+                let phase =
+                    carrier_phase_radians_at_time(0.3, 1_200.0, 40.0, sample_index as f64 / 4_000.0);
+                Complex::from_polar(1.0_f32, phase as f32)
+            })
+            .collect::<Vec<_>>();
+
+        let wiped = wipeoff_carrier_with_linear_rate(&samples, 1_200.0, 40.0, 4_000.0, 0, 0.3)
+            .expect("valid linear carrier wipeoff");
+
+        for sample in wiped {
+            assert!((sample.re - 1.0).abs() <= 1.0e-5, "sample={sample:?}");
+            assert!(sample.im.abs() <= 1.0e-5, "sample={sample:?}");
+        }
+    }
+
+    #[test]
+    fn wipeoff_carrier_with_linear_rate_honors_frame_relative_start_index() {
+        let start_sample_index = 16_u64;
+        let samples = (0..8)
+            .map(|offset| {
+                let elapsed_s = (start_sample_index + offset) as f64 / 4_000.0;
+                let phase = carrier_phase_radians_at_time(0.1, 750.0, 25.0, elapsed_s);
+                Complex::from_polar(1.0_f32, phase as f32)
+            })
+            .collect::<Vec<_>>();
+
+        let wiped = wipeoff_carrier_with_linear_rate(
+            &samples,
+            750.0,
+            25.0,
+            4_000.0,
+            start_sample_index,
+            0.1,
+        )
+        .expect("valid linear carrier wipeoff");
+
+        for sample in wiped {
+            assert!((sample.re - 1.0).abs() <= 1.0e-5, "sample={sample:?}");
+            assert!(sample.im.abs() <= 1.0e-5, "sample={sample:?}");
+        }
     }
 
     #[test]
@@ -893,14 +971,7 @@ mod tests {
         let elapsed_s = sample_index as f64 / sample_rate_hz;
 
         let by_time = sample_modulated_replica_at_time(
-            &model,
-            137.625,
-            0.125,
-            4_100.0,
-            2.5,
-            elapsed_s,
-            -1,
-            0.75,
+            &model, 137.625, 0.125, 4_100.0, 2.5, elapsed_s, -1, 0.75,
         )
         .expect("elapsed-time replica");
         let by_index = sample_modulated_replica_at_sample_index(
@@ -1319,7 +1390,10 @@ mod tests {
         )
         .expect("next data-symbol epoch");
 
-        assert!((first_epoch.re - beidou_d1_epoch_symbol(&[1], 0).expect("first symbol") as f32).abs() <= 1.0e-6);
+        assert!(
+            (first_epoch.re - beidou_d1_epoch_symbol(&[1], 0).expect("first symbol") as f32).abs()
+                <= 1.0e-6
+        );
         assert!(
             (nh_flipped_epoch.re - beidou_d1_epoch_symbol(&[1], 5).expect("nh symbol") as f32)
                 .abs()

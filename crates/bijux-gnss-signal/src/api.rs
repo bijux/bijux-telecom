@@ -128,7 +128,8 @@ pub use crate::dsp::replica::{
     carrier_hz_at_time, carrier_phase_radians_at_time, default_signal_carrier_hz,
     default_signal_carrier_hz_for_band, default_signal_carrier_hz_for_signal,
     sample_modulated_replica_at_sample_index, sample_modulated_replica_at_time,
-    signal_amplitude_from_cn0_db_hz, AcquisitionSignalModel, ReplicaCodeModel,
+    signal_amplitude_from_cn0_db_hz, wipeoff_carrier_with_linear_rate, AcquisitionSignalModel,
+    ReplicaCodeModel,
     UNIT_VARIANCE_COMPLEX_NOISE_POWER,
 };
 /// Absolute sample-index timing helpers for chunk-stable generation.
