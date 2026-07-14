@@ -194,6 +194,59 @@ pub struct TrackingUncertaintyInputs {
     pub quality_class: TrackingQualityClass,
 }
 
+/// Inputs used to derive tracking lock-detector thresholds from discriminator statistics.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LockDetectorCalibrationInput {
+    /// Estimated carrier-to-noise density for the coherent interval.
+    pub cn0_dbhz: f64,
+    /// Coherent integration duration in seconds.
+    pub coherent_integration_s: f64,
+    /// Samples per code chip at the receiver rate.
+    pub samples_per_chip: f64,
+    /// Early/late correlator spacing in chips.
+    pub early_late_spacing_chips: f64,
+    /// Target probability that a truly locked DLL epoch is rejected by discriminator noise.
+    pub dll_false_unlock_probability: f64,
+    /// Target probability that a truly locked PLL epoch is rejected by discriminator noise.
+    pub pll_false_unlock_probability: f64,
+    /// Target probability that a truly locked FLL epoch is rejected by discriminator noise.
+    pub fll_false_unlock_probability: f64,
+    /// Extra carrier-frequency stress in Hz from known dynamics or oscillator motion.
+    pub dynamic_stress_hz: f64,
+}
+
+/// Estimated one-sigma discriminator spreads used by the lock detectors.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LockDetectorDistributions {
+    /// Coherent carrier-to-noise ratio for one integration interval.
+    pub coherent_snr_linear: f64,
+    /// One-sigma normalized DLL discriminator spread.
+    pub dll_sigma: f64,
+    /// One-sigma PLL phase spread in radians.
+    pub pll_sigma_rad: f64,
+    /// One-sigma FLL frequency spread in Hz.
+    pub fll_sigma_hz: f64,
+    /// Dynamic frequency stress carried into the FLL threshold, in Hz.
+    pub dynamic_stress_hz: f64,
+}
+
+/// Lock-detector thresholds derived from the estimated discriminator distributions.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LockDetectorThresholds {
+    /// Normalized DLL discriminator threshold for entering lock.
+    pub dll_lock: f32,
+    /// Normalized DLL discriminator threshold for retaining lock.
+    pub dll_hold: f32,
+    /// PLL phase threshold in radians for entering lock.
+    pub pll_lock_rad: f32,
+    /// PLL phase threshold in radians for retaining lock.
+    pub pll_hold_rad: f32,
+    /// FLL frequency threshold in Hz for entering lock.
+    pub fll_lock_hz: f64,
+    /// Discriminator distribution estimates used to produce the thresholds.
+    pub distributions: LockDetectorDistributions,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LoopFilterOrder {
     First,
@@ -990,6 +1043,62 @@ pub fn fll_lock_threshold_hz(fll_bw_hz: f64) -> f64 {
     fll_bw_hz.max(5.0)
 }
 
+/// Estimate discriminator distributions from C/N0, integration time, spacing, and dynamics.
+pub fn lock_detector_distributions(
+    input: LockDetectorCalibrationInput,
+) -> LockDetectorDistributions {
+    let coherent_snr_linear =
+        coherent_snr_linear(input.cn0_dbhz, input.coherent_integration_s).max(1.0e-6);
+    let discriminator_noise_scale = (2.0 * coherent_snr_linear).sqrt().max(1.0e-6);
+    let spacing_chips = input.early_late_spacing_chips.clamp(0.05, 0.95);
+    let effective_sample_separation = (input.samples_per_chip * spacing_chips).max(1.0e-6);
+    let slope_gain =
+        ((2.0 - spacing_chips) / (2.0 - DLL_REFERENCE_EARLY_LATE_SPACING_CHIPS)).max(0.1);
+    let sample_resolution_sigma = if effective_sample_separation < 1.0 {
+        (1.0 - effective_sample_separation) * 0.35
+    } else {
+        0.0
+    };
+    let dll_sigma = ((1.0 / (discriminator_noise_scale * slope_gain)).powi(2)
+        + sample_resolution_sigma.powi(2))
+    .sqrt();
+    let pll_sigma_rad = 1.0 / discriminator_noise_scale;
+    let fll_sigma_hz = 1.0
+        / (std::f64::consts::TAU * input.coherent_integration_s.max(1.0e-6))
+        / discriminator_noise_scale;
+    LockDetectorDistributions {
+        coherent_snr_linear,
+        dll_sigma,
+        pll_sigma_rad,
+        fll_sigma_hz,
+        dynamic_stress_hz: input.dynamic_stress_hz.max(0.0),
+    }
+}
+
+/// Derive lock and hold thresholds from estimated discriminator distributions.
+pub fn calibrated_lock_detector_thresholds(
+    input: LockDetectorCalibrationInput,
+) -> LockDetectorThresholds {
+    let distributions = lock_detector_distributions(input);
+    let dll_quantile = two_sided_normal_quantile(input.dll_false_unlock_probability);
+    let pll_quantile = two_sided_normal_quantile(input.pll_false_unlock_probability);
+    let fll_quantile = two_sided_normal_quantile(input.fll_false_unlock_probability);
+    let dll_lock = (dll_quantile * distributions.dll_sigma).clamp(0.05, 0.95) as f32;
+    let pll_lock_rad =
+        (pll_quantile * distributions.pll_sigma_rad).clamp(0.05, std::f64::consts::PI) as f32;
+    let fll_lock_hz =
+        (fll_quantile * distributions.fll_sigma_hz + distributions.dynamic_stress_hz).max(1.0);
+    LockDetectorThresholds {
+        dll_lock,
+        dll_hold: (dll_lock as f64 * 1.5).clamp(dll_lock as f64, 0.98) as f32,
+        pll_lock_rad,
+        pll_hold_rad: (pll_lock_rad as f64 * 1.35).clamp(pll_lock_rad as f64, std::f64::consts::PI)
+            as f32,
+        fll_lock_hz,
+        distributions,
+    }
+}
+
 /// Threshold for treating DLL error as locked.
 pub fn dll_lock_threshold(samples_per_chip: f64, early_late_spacing_chips: f64) -> f32 {
     let effective_sample_separation = samples_per_chip * early_late_spacing_chips.abs();
@@ -1003,6 +1112,69 @@ pub fn dll_lock_threshold(samples_per_chip: f64, early_late_spacing_chips: f64) 
 /// Relaxed threshold for retaining DLL lock during tracking.
 pub fn dll_hold_threshold(samples_per_chip: f64, early_late_spacing_chips: f64) -> f32 {
     dll_lock_threshold(samples_per_chip, early_late_spacing_chips).max(DLL_HOLD_MAX_CODE_ERROR)
+}
+
+fn coherent_snr_linear(cn0_dbhz: f64, coherent_integration_s: f64) -> f64 {
+    if !cn0_dbhz.is_finite() || !coherent_integration_s.is_finite() || coherent_integration_s <= 0.0
+    {
+        return 1.0e-6;
+    }
+    10.0_f64.powf(cn0_dbhz / 10.0) * coherent_integration_s
+}
+
+fn two_sided_normal_quantile(tail_probability: f64) -> f64 {
+    let bounded_tail =
+        if tail_probability.is_finite() { tail_probability.clamp(1.0e-12, 0.5) } else { 1.0e-6 };
+    inverse_standard_normal_cdf(1.0 - bounded_tail / 2.0)
+}
+
+fn inverse_standard_normal_cdf(probability: f64) -> f64 {
+    const A: [f64; 6] = [
+        -3.969_683_028_665_376e1,
+        2.209_460_984_245_205e2,
+        -2.759_285_104_469_687e2,
+        1.383_577_518_672_69e2,
+        -3.066_479_806_614_716e1,
+        2.506_628_277_459_239,
+    ];
+    const B: [f64; 5] = [
+        -5.447_609_879_822_406e1,
+        1.615_858_368_580_409e2,
+        -1.556_989_798_598_866e2,
+        6.680_131_188_771_972e1,
+        -1.328_068_155_288_572e1,
+    ];
+    const C: [f64; 6] = [
+        -7.784_894_002_430_293e-3,
+        -3.223_964_580_411_365e-1,
+        -2.400_758_277_161_838,
+        -2.549_732_539_343_734,
+        4.374_664_141_464_968,
+        2.938_163_982_698_783,
+    ];
+    const D: [f64; 4] = [
+        7.784_695_709_041_462e-3,
+        3.224_671_290_700_398e-1,
+        2.445_134_137_142_996,
+        3.754_408_661_907_416,
+    ];
+    let p = probability.clamp(1.0e-12, 1.0 - 1.0e-12);
+    let lower = 0.024_25;
+    let upper = 1.0 - lower;
+    if p < lower {
+        let q = (-2.0 * p.ln()).sqrt();
+        return (((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q + C[5])
+            / ((((D[0] * q + D[1]) * q + D[2]) * q + D[3]) * q + 1.0);
+    }
+    if p > upper {
+        let q = (-2.0 * (1.0 - p).ln()).sqrt();
+        return -(((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q + C[5])
+            / ((((D[0] * q + D[1]) * q + D[2]) * q + D[3]) * q + 1.0);
+    }
+    let q = p - 0.5;
+    let r = q * q;
+    (((((A[0] * r + A[1]) * r + A[2]) * r + A[3]) * r + A[4]) * r + A[5]) * q
+        / (((((B[0] * r + B[1]) * r + B[2]) * r + B[3]) * r + B[4]) * r + 1.0)
 }
 
 /// Ratio between prompt power and a stored reference.
@@ -1305,13 +1477,15 @@ fn tracking_uncertainty_state_scale(
 mod tests {
     use super::{
         advance_tracking_adaptation, anti_false_lock_detected, apply_carrier_tracking_loop,
-        apply_code_loop, carrier_frequency_error_hz_from_phase_delta, carrier_phase_offset_radians,
+        apply_code_loop, calibrated_lock_detector_thresholds,
+        carrier_frequency_error_hz_from_phase_delta, carrier_phase_offset_radians,
         coherent_integration_seconds, correlate_early_prompt_late, delay_lock_loop_coefficients,
         discriminators, dll_lock_threshold, estimate_cn0_dbhz, estimate_tracking_uncertainty,
         first_order_angular_loop_coefficients, first_order_loop_coefficients,
-        phase_lock_loop_coefficients, predict_code_phase_samples, wrap_phase_cycles_signed,
-        wrap_phase_radians_positive, wrapped_phase_delta_cycles, CarrierTrackingLoopInput,
-        CodeLoopInput, TrackingAdaptationInput, TrackingAdaptationState, TrackingLoopProfile,
+        lock_detector_distributions, phase_lock_loop_coefficients, predict_code_phase_samples,
+        wrap_phase_cycles_signed, wrap_phase_radians_positive, wrapped_phase_delta_cycles,
+        CarrierTrackingLoopInput, CodeLoopInput, LockDetectorCalibrationInput,
+        TrackingAdaptationInput, TrackingAdaptationState, TrackingLoopProfile,
         TrackingLoopProfileKind, TrackingQualityClass, TrackingUncertaintyInputs,
         DYNAMIC_STRESS_INTEGRATION_MS, MAX_TRACKING_ADAPTATION_PENDING_EPOCHS,
         WEAK_SIGNAL_INTEGRATION_MS,
@@ -1767,6 +1941,96 @@ mod tests {
     fn dll_lock_threshold_relaxes_for_subsample_early_late_spacing() {
         assert_eq!(dll_lock_threshold(1.0, 0.5), 0.6);
         assert_eq!(dll_lock_threshold(4.0, 0.5), 0.2);
+    }
+
+    #[test]
+    fn lock_detector_distributions_tighten_with_stronger_cn0() {
+        let weak = lock_detector_distributions(LockDetectorCalibrationInput {
+            cn0_dbhz: 32.0,
+            coherent_integration_s: 0.001,
+            samples_per_chip: 4.0,
+            early_late_spacing_chips: 0.5,
+            dll_false_unlock_probability: 1.0e-6,
+            pll_false_unlock_probability: 1.0e-6,
+            fll_false_unlock_probability: 1.0e-6,
+            dynamic_stress_hz: 0.0,
+        });
+        let strong = lock_detector_distributions(LockDetectorCalibrationInput {
+            cn0_dbhz: 52.0,
+            coherent_integration_s: 0.001,
+            samples_per_chip: 4.0,
+            early_late_spacing_chips: 0.5,
+            dll_false_unlock_probability: 1.0e-6,
+            pll_false_unlock_probability: 1.0e-6,
+            fll_false_unlock_probability: 1.0e-6,
+            dynamic_stress_hz: 0.0,
+        });
+
+        assert!(strong.coherent_snr_linear > weak.coherent_snr_linear);
+        assert!(strong.dll_sigma < weak.dll_sigma, "weak={weak:?} strong={strong:?}");
+        assert!(strong.pll_sigma_rad < weak.pll_sigma_rad, "weak={weak:?} strong={strong:?}");
+        assert!(strong.fll_sigma_hz < weak.fll_sigma_hz, "weak={weak:?} strong={strong:?}");
+    }
+
+    #[test]
+    fn calibrated_lock_detector_thresholds_expand_for_weaker_signals() {
+        let strong = calibrated_lock_detector_thresholds(LockDetectorCalibrationInput {
+            cn0_dbhz: 52.0,
+            coherent_integration_s: 0.001,
+            samples_per_chip: 4.0,
+            early_late_spacing_chips: 0.5,
+            dll_false_unlock_probability: 1.0e-6,
+            pll_false_unlock_probability: 1.0e-6,
+            fll_false_unlock_probability: 1.0e-6,
+            dynamic_stress_hz: 0.0,
+        });
+        let weak = calibrated_lock_detector_thresholds(LockDetectorCalibrationInput {
+            cn0_dbhz: 32.0,
+            coherent_integration_s: 0.001,
+            samples_per_chip: 4.0,
+            early_late_spacing_chips: 0.5,
+            dll_false_unlock_probability: 1.0e-6,
+            pll_false_unlock_probability: 1.0e-6,
+            fll_false_unlock_probability: 1.0e-6,
+            dynamic_stress_hz: 0.0,
+        });
+
+        assert!(weak.dll_lock > strong.dll_lock, "weak={weak:?} strong={strong:?}");
+        assert!(weak.pll_lock_rad > strong.pll_lock_rad, "weak={weak:?} strong={strong:?}");
+        assert!(weak.fll_lock_hz > strong.fll_lock_hz, "weak={weak:?} strong={strong:?}");
+        assert!(strong.dll_hold > strong.dll_lock);
+        assert!(strong.pll_hold_rad > strong.pll_lock_rad);
+    }
+
+    #[test]
+    fn calibrated_lock_detector_thresholds_include_dynamic_frequency_stress() {
+        let calm = calibrated_lock_detector_thresholds(LockDetectorCalibrationInput {
+            cn0_dbhz: 45.0,
+            coherent_integration_s: 0.001,
+            samples_per_chip: 4.0,
+            early_late_spacing_chips: 0.5,
+            dll_false_unlock_probability: 1.0e-6,
+            pll_false_unlock_probability: 1.0e-6,
+            fll_false_unlock_probability: 1.0e-6,
+            dynamic_stress_hz: 0.0,
+        });
+        let dynamic = calibrated_lock_detector_thresholds(LockDetectorCalibrationInput {
+            dynamic_stress_hz: 35.0,
+            ..LockDetectorCalibrationInput {
+                cn0_dbhz: 45.0,
+                coherent_integration_s: 0.001,
+                samples_per_chip: 4.0,
+                early_late_spacing_chips: 0.5,
+                dll_false_unlock_probability: 1.0e-6,
+                pll_false_unlock_probability: 1.0e-6,
+                fll_false_unlock_probability: 1.0e-6,
+                dynamic_stress_hz: 0.0,
+            }
+        });
+
+        assert!((dynamic.fll_lock_hz - calm.fll_lock_hz - 35.0).abs() <= 1.0e-9);
+        assert_eq!(dynamic.dll_lock, calm.dll_lock);
+        assert_eq!(dynamic.pll_lock_rad, calm.pll_lock_rad);
     }
 
     #[test]
