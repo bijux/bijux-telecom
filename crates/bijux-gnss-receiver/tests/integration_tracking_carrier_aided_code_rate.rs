@@ -281,6 +281,55 @@ fn tracking_holds_gps_l5_code_lock_with_carrier_aided_code_rate() {
 }
 
 #[test]
+fn tracking_rejects_cross_band_carrier_seed_for_gps_l5_code_loop() {
+    let config = gps_l5_tracking_config();
+    let sat = SatId { constellation: Constellation::Gps, prn: 18 };
+    let signal = signal_spec_gps_l5_i();
+    let carrier_doppler_hz = 1_500.0;
+    let code_phase_chips = 1_537.25;
+    let receiver_oscillator = SyntheticReceiverOscillatorModel {
+        carrier_frequency_bias_hz: carrier_doppler_hz,
+        carrier_frequency_drift_hz_per_s: 0.0,
+        sampling_clock_fractional_error: carrier_doppler_hz / signal.carrier_hz.value(),
+        ..SyntheticReceiverOscillatorModel::default()
+    };
+    let frame = synthetic_signal_with_carrier_aided_code_rate(
+        &config,
+        SyntheticSignalParams {
+            sat,
+            glonass_frequency_channel: None,
+            signal_band: SignalBand::L5,
+            signal_code: SignalCode::L5I,
+            doppler_hz: 0.0,
+            code_phase_chips,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: CARRIER_AID_CN0_DB_HZ,
+            navigation_data: SyntheticNavigationData::from(false),
+        },
+        &receiver_oscillator,
+    );
+    let seeded_code_phase_samples =
+        expected_acquisition_code_phase_samples(&config, &frame, code_phase_chips);
+    let tracking = TrackingEngine::new(config, ReceiverRuntime::default());
+    let tracks = tracking.track_from_acquisition(
+        &frame,
+        &[accepted_acquisition(
+            sat,
+            SignalBand::L5,
+            SignalCode::L5I,
+            carrier_doppler_hz,
+            GPS_L1_CA_CARRIER_HZ.value() + carrier_doppler_hz,
+            seeded_code_phase_samples,
+        )],
+    );
+
+    assert!(
+        tracks.is_empty(),
+        "GPS L1 carrier metadata must not aid GPS L5 code tracking: tracks={tracks:?}",
+    );
+}
+
+#[test]
 fn tracking_holds_beidou_b1i_code_lock_with_carrier_aided_code_rate() {
     let config = beidou_b1_tracking_config();
     let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
