@@ -24,10 +24,10 @@ const LOOP_FILTER_IMPULSE_RESPONSE_EPOCHS: usize = 16_384;
 const LOOP_FILTER_IMPULSE_RESPONSE_EPSILON: f64 = 1.0e-15;
 const WEAK_SIGNAL_ENTRY_CN0_DBHZ: f64 = 31.0;
 const WEAK_SIGNAL_EXIT_CN0_DBHZ: f64 = 34.0;
-const DYNAMIC_STRESS_ENTRY_FLL_ERROR_HZ: f64 = 18.0;
-const DYNAMIC_STRESS_EXIT_FLL_ERROR_HZ: f64 = 8.0;
-const DYNAMIC_STRESS_ENTRY_CARRIER_RATE_HZ_PER_S: f64 = 25.0;
-const DYNAMIC_STRESS_EXIT_CARRIER_RATE_HZ_PER_S: f64 = 10.0;
+const DYNAMIC_STRESS_ENTRY_FLL_ERROR_HZ: f64 = 2.5;
+const DYNAMIC_STRESS_EXIT_FLL_ERROR_HZ: f64 = 1.0;
+const DYNAMIC_STRESS_ENTRY_CARRIER_RATE_HZ_PER_S: f64 = 5.0;
+const DYNAMIC_STRESS_EXIT_CARRIER_RATE_HZ_PER_S: f64 = 2.0;
 const WEAK_SIGNAL_INTEGRATION_MS: u32 = 5;
 const DYNAMIC_STRESS_INTEGRATION_MS: u32 = 1;
 
@@ -348,9 +348,9 @@ fn tracking_loop_profile(
             integration_ms: weak_signal_integration_ms(base_profile.integration_ms),
         },
         TrackingLoopProfileKind::DynamicStress => TrackingLoopProfile {
-            dll_bw_hz: base_profile.dll_bw_hz * 1.5,
-            pll_bw_hz: base_profile.pll_bw_hz * 1.8,
-            fll_bw_hz: base_profile.fll_bw_hz * 1.8,
+            dll_bw_hz: base_profile.dll_bw_hz * 2.0,
+            pll_bw_hz: base_profile.pll_bw_hz * 3.5,
+            fll_bw_hz: base_profile.fll_bw_hz * 4.0,
             integration_ms: DYNAMIC_STRESS_INTEGRATION_MS,
         },
     }
@@ -388,16 +388,16 @@ fn dynamic_stress_requested(
 
     fll_error_hz >= fll_threshold_hz
         || carrier_rate_hz_per_s >= carrier_rate_threshold_hz_per_s
-        || (!input.discriminator_stable && !input.steady_state_lock)
+        || (!input.discriminator_stable
+            && !input.steady_state_lock
+            && input.cn0_dbhz.is_finite()
+            && input.cn0_dbhz >= WEAK_SIGNAL_EXIT_CN0_DBHZ)
 }
 
 fn weak_signal_requested(
     active_profile: TrackingLoopProfileKind,
     input: TrackingAdaptationInput,
 ) -> bool {
-    if !(input.carrier_lock_ready || input.steady_state_lock) || !input.discriminator_stable {
-        return false;
-    }
     let cn0_threshold_dbhz = if active_profile == TrackingLoopProfileKind::WeakSignal {
         WEAK_SIGNAL_EXIT_CN0_DBHZ
     } else {
@@ -409,7 +409,7 @@ fn weak_signal_requested(
 fn required_confirmation_epochs(profile_kind: TrackingLoopProfileKind) -> u8 {
     match profile_kind {
         TrackingLoopProfileKind::Nominal => 4,
-        TrackingLoopProfileKind::WeakSignal => 3,
+        TrackingLoopProfileKind::WeakSignal => 2,
         TrackingLoopProfileKind::DynamicStress => 1,
     }
 }
@@ -1897,13 +1897,11 @@ mod tests {
         let first =
             advance_tracking_adaptation(base_profile, TrackingAdaptationState::default(), input);
         let second = advance_tracking_adaptation(base_profile, first.state, input);
-        let third = advance_tracking_adaptation(base_profile, second.state, input);
 
         assert_eq!(first.profile_kind, TrackingLoopProfileKind::Nominal);
-        assert_eq!(second.profile_kind, TrackingLoopProfileKind::Nominal);
-        assert_eq!(third.profile_kind, TrackingLoopProfileKind::WeakSignal);
-        assert_eq!(third.profile.integration_ms, WEAK_SIGNAL_INTEGRATION_MS);
-        assert!(third.profile.pll_bw_hz < base_profile.pll_bw_hz, "{third:?}");
+        assert_eq!(second.profile_kind, TrackingLoopProfileKind::WeakSignal);
+        assert_eq!(second.profile.integration_ms, WEAK_SIGNAL_INTEGRATION_MS);
+        assert!(second.profile.pll_bw_hz < base_profile.pll_bw_hz, "{second:?}");
     }
 
     #[test]
@@ -1925,17 +1923,8 @@ mod tests {
         let recovered_cn0 = TrackingAdaptationInput { cn0_dbhz: 36.0, ..low_cn0 };
         let weak = advance_tracking_adaptation(
             base_profile,
-            advance_tracking_adaptation(
-                base_profile,
-                advance_tracking_adaptation(
-                    base_profile,
-                    TrackingAdaptationState::default(),
-                    low_cn0,
-                )
+            advance_tracking_adaptation(base_profile, TrackingAdaptationState::default(), low_cn0)
                 .state,
-                low_cn0,
-            )
-            .state,
             low_cn0,
         );
         let first_recovery = advance_tracking_adaptation(base_profile, weak.state, recovered_cn0);

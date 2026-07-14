@@ -91,6 +91,12 @@ fn tracking_refuses_stable_lock_below_cn0_floor() {
 }
 
 fn low_cn0_tracking_profile() -> ReceiverPipelineConfig {
+    low_cn0_tracking_profile_with_adaptation(true)
+}
+
+fn low_cn0_tracking_profile_with_adaptation(
+    adaptive_tracking_enabled: bool,
+) -> ReceiverPipelineConfig {
     ReceiverPipelineConfig {
         sampling_freq_hz: 4_092_000.0,
         intermediate_freq_hz: 0.0,
@@ -101,6 +107,7 @@ fn low_cn0_tracking_profile() -> ReceiverPipelineConfig {
         dll_bw_hz: 2.0,
         pll_bw_hz: 18.0,
         fll_bw_hz: 12.0,
+        adaptive_tracking_enabled,
         ..ReceiverPipelineConfig::default()
     }
 }

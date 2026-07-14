@@ -7,12 +7,11 @@ use bijux_gnss_core::api::{
     SignalBand,
 };
 use bijux_gnss_receiver::api::{
-    AcquisitionEngine,
     sim::{
         expected_acquisition_code_phase_samples, expected_acquisition_code_phase_samples_f64,
         generate_l1_ca_with_doppler_ramp, SyntheticDopplerRampParams, SyntheticSignalParams,
     },
-    ReceiverPipelineConfig, ReceiverRuntime, TrackingEngine,
+    AcquisitionEngine, ReceiverPipelineConfig, ReceiverRuntime, TrackingEngine,
 };
 
 use support::tracking_truth::{
@@ -65,6 +64,13 @@ fn accepted_acquisition(sat: SatId, doppler_hz: f64, code_phase_samples: usize) 
 }
 
 fn doppler_ramp_tracking_config() -> ReceiverPipelineConfig {
+    doppler_ramp_tracking_config_with_profile(true, 1)
+}
+
+fn doppler_ramp_tracking_config_with_profile(
+    adaptive_tracking_enabled: bool,
+    tracking_integration_ms: u32,
+) -> ReceiverPipelineConfig {
     ReceiverPipelineConfig {
         sampling_freq_hz: 4_092_000.0,
         intermediate_freq_hz: 0.0,
@@ -75,13 +81,13 @@ fn doppler_ramp_tracking_config() -> ReceiverPipelineConfig {
         dll_bw_hz: 2.0,
         pll_bw_hz: 18.0,
         fll_bw_hz: 12.0,
+        adaptive_tracking_enabled,
+        tracking_integration_ms,
         ..ReceiverPipelineConfig::default()
     }
 }
 
-fn doppler_ramp_acquisition_config(
-    doppler_rate_search_hz_per_s: i32,
-) -> ReceiverPipelineConfig {
+fn doppler_ramp_acquisition_config(doppler_rate_search_hz_per_s: i32) -> ReceiverPipelineConfig {
     ReceiverPipelineConfig {
         sampling_freq_hz: 4_092_000.0,
         intermediate_freq_hz: 0.0,
@@ -250,10 +256,7 @@ fn acquisition_requires_declared_doppler_rate_support_for_strong_ramp() {
         "{without_rate_support:?}"
     );
     assert!(
-        matches!(
-            with_rate_support.hypothesis,
-            AcqHypothesis::Accepted | AcqHypothesis::Ambiguous
-        ),
+        matches!(with_rate_support.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous),
         "{with_rate_support:?}"
     );
     assert!(
@@ -404,5 +407,75 @@ fn tracking_preserves_lock_and_code_phase_under_negative_doppler_ramp() {
             .iter()
             .all(|error_samples| *error_samples <= CLEAN_DOPPLER_RAMP_LOCKED_CODE_ERROR_MAX_SAMPLES),
         "code error exceeded negative-ramp threshold {CLEAN_DOPPLER_RAMP_LOCKED_CODE_ERROR_MAX_SAMPLES} samples: code_errors_samples={code_errors_samples:?}, epochs={epochs:?}"
+    );
+}
+
+#[test]
+fn adaptive_tracking_shortens_coherent_integration_under_strong_doppler_ramp() {
+    let sat = SatId { constellation: Constellation::Gps, prn: 23 };
+    let initial_doppler_hz = 250.0;
+    let doppler_rate_hz_per_s = 400.0;
+    let code_phase_chips = 211.25;
+    let carrier_phase_rad = 0.40;
+    let adaptive_config = doppler_ramp_tracking_config_with_profile(true, 5);
+    let fixed_config = doppler_ramp_tracking_config_with_profile(false, 5);
+
+    let adaptive_epochs = track_clean_doppler_ramp_case(
+        &adaptive_config,
+        sat,
+        initial_doppler_hz,
+        doppler_rate_hz_per_s,
+        code_phase_chips,
+        carrier_phase_rad,
+    );
+    let fixed_epochs = track_clean_doppler_ramp_case(
+        &fixed_config,
+        sat,
+        initial_doppler_hz,
+        doppler_rate_hz_per_s,
+        code_phase_chips,
+        carrier_phase_rad,
+    );
+    let shared_end_sample_index =
+        fixed_epochs.last().expect("fixed strong-ramp tracking epoch").sample_index;
+    let adaptive_epochs_within_shared_window = adaptive_epochs
+        .iter()
+        .filter(|epoch| epoch.sample_index <= shared_end_sample_index)
+        .cloned()
+        .collect::<Vec<_>>();
+    let adaptive_integration_ms_values = adaptive_epochs
+        .iter()
+        .map(|epoch| {
+            epoch
+                .tracking_assumptions
+                .as_ref()
+                .map(|assumptions| assumptions.integration_ms.max(1))
+                .unwrap_or(1)
+        })
+        .collect::<Vec<_>>();
+    let fixed_integration_ms_values = fixed_epochs
+        .iter()
+        .map(|epoch| {
+            epoch
+                .tracking_assumptions
+                .as_ref()
+                .map(|assumptions| assumptions.integration_ms.max(1))
+                .unwrap_or(1)
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        adaptive_integration_ms_values.iter().any(|integration_ms| *integration_ms == 1),
+        "adaptive_integration_ms_values={adaptive_integration_ms_values:?} adaptive_epochs={adaptive_epochs:?}"
+    );
+    assert!(
+        fixed_integration_ms_values.iter().all(|integration_ms| *integration_ms == 5),
+        "fixed_integration_ms_values={fixed_integration_ms_values:?} fixed_epochs={fixed_epochs:?}"
+    );
+    assert!(
+        adaptive_epochs_within_shared_window.len() > fixed_epochs.len(),
+        "shared_end_sample_index={shared_end_sample_index} adaptive_epoch_count={} fixed_epoch_count={} adaptive_epochs={adaptive_epochs:?} fixed_epochs={fixed_epochs:?}",
+        adaptive_epochs_within_shared_window.len(),
+        fixed_epochs.len()
     );
 }
