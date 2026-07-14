@@ -241,6 +241,29 @@ fn tracking_starts_from_explicit_acquisition_sample_index() {
 }
 
 #[test]
+fn tracking_reports_signal_default_l1_spacing() {
+    let config = ReceiverPipelineConfig::default();
+    let sat = SatId { constellation: Constellation::Gps, prn: 15 };
+    let frame = synthetic_frame(&config, sat);
+    let acquisition = accepted_acquisition(
+        sat,
+        SignalBand::L1,
+        ReceiverSampleTrace::from_sample_time(frame.t0),
+        0.0,
+        0,
+        tight_uncertainty(),
+    );
+
+    let tracking = TrackingEngine::new(config, ReceiverRuntime::default());
+    let tracks = tracking.track_from_acquisition(&frame, &[acquisition]);
+    let first_epoch = tracks.first().and_then(|track| track.epochs.first()).expect("tracked epoch");
+    let assumptions = first_epoch.tracking_assumptions.as_ref().expect("tracking assumptions");
+
+    assert_eq!(assumptions.early_late_spacing_chips, 0.25);
+    assert_eq!(assumptions.discriminator_family, "early_prompt_late");
+}
+
+#[test]
 fn tracking_uses_explicit_signal_band_parameters() {
     let config = l2_tracking_override_config();
     let sat = SatId { constellation: Constellation::Gps, prn: 15 };
@@ -265,9 +288,8 @@ fn tracking_uses_explicit_signal_band_parameters() {
     assert_eq!(assumptions.dll_bw_hz, 4.5);
     assert_eq!(assumptions.pll_bw_hz, 18.0);
     assert_eq!(assumptions.fll_bw_hz, 6.5);
-    assert_eq!(epochs.len(), 2, "epochs={epochs:?}");
+    assert_eq!(epochs.len(), 1, "epochs={epochs:?}");
     assert_eq!(epochs[0].sample_index, 0);
-    assert_eq!(epochs[1].sample_index, 35_000);
     assert!(
         first_epoch.tracking_provenance.contains("acq_signal_band=L2"),
         "tracking provenance must preserve the explicit acquisition band: {first_epoch:?}"
