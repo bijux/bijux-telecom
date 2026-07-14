@@ -1,6 +1,6 @@
 use bijux_gnss_core::api::{
     AcqComponentCombinationMode, GlonassFrequencyChannel, SatId, SignalBand, SignalCode,
-    SignalComponentRole,
+    SignalComponentRole, SignalComponentSpec,
 };
 use bijux_gnss_signal::api::{
     resolved_signal_registry_entry, sample_galileo_e5a_q_primary_code,
@@ -17,6 +17,7 @@ pub(crate) struct AcquisitionStrategyPlan {
 #[derive(Debug, Clone)]
 pub(crate) struct AcquisitionComponentPlan {
     pub role: SignalComponentRole,
+    data_symbol_code_periods: Option<usize>,
     local_code: AcquisitionComponentLocalCode,
 }
 
@@ -48,6 +49,10 @@ impl AcquisitionComponentPlan {
 
     pub fn matches_component(&self, other: &Self) -> bool {
         self.role == other.role && self.local_code.matches_identity(&other.local_code)
+    }
+
+    pub fn data_symbol_code_periods(&self) -> Option<usize> {
+        self.data_symbol_code_periods
     }
 }
 
@@ -92,8 +97,15 @@ pub(crate) fn acquisition_strategies_for_signal(
         signal_code,
     })?;
     let default_role = registry_entry.default_component_role;
+    let default_component_spec =
+        registry_entry.component(default_role).ok_or(SignalError::UnsupportedSignalDefinition {
+            constellation: sat.constellation,
+            signal_band,
+            signal_code,
+        })?;
     let default_component = AcquisitionComponentPlan {
         role: default_role,
+        data_symbol_code_periods: component_data_symbol_code_periods(default_component_spec),
         local_code: AcquisitionComponentLocalCode::SearchModel(search_model.clone()),
     };
 
@@ -107,6 +119,7 @@ pub(crate) fn acquisition_strategies_for_signal(
         (bijux_gnss_core::api::Constellation::Galileo, SignalBand::E5, SignalCode::E5a) => {
             let pilot_component = AcquisitionComponentPlan {
                 role: SignalComponentRole::Pilot,
+                data_symbol_code_periods: None,
                 local_code: AcquisitionComponentLocalCode::GalileoE5aPilot { sat },
             };
             strategies.push(AcquisitionStrategyPlan {
@@ -130,6 +143,7 @@ pub(crate) fn acquisition_strategies_for_signal(
         (bijux_gnss_core::api::Constellation::Galileo, SignalBand::E5, SignalCode::E5b) => {
             let pilot_component = AcquisitionComponentPlan {
                 role: SignalComponentRole::Pilot,
+                data_symbol_code_periods: None,
                 local_code: AcquisitionComponentLocalCode::GalileoE5bPilot { sat },
             };
             strategies.push(AcquisitionStrategyPlan {
@@ -154,6 +168,26 @@ pub(crate) fn acquisition_strategies_for_signal(
     }
 
     Ok(strategies)
+}
+
+fn component_data_symbol_code_periods(component: &SignalComponentSpec) -> Option<usize> {
+    if component.role != SignalComponentRole::Data {
+        return None;
+    }
+    let symbol_period_s = component.symbol_period_s?;
+    if !symbol_period_s.is_finite() || symbol_period_s <= 0.0 {
+        return None;
+    }
+    let code_period_s = component.primary_code_period_s;
+    if !code_period_s.is_finite() || code_period_s <= 0.0 {
+        return None;
+    }
+    let ratio = symbol_period_s / code_period_s;
+    let rounded = ratio.round();
+    if !rounded.is_finite() || rounded < 1.0 || (ratio - rounded).abs() > 1.0e-9 {
+        return None;
+    }
+    Some(rounded as usize)
 }
 
 #[cfg(test)]
@@ -186,14 +220,18 @@ mod tests {
             strategies[0].components.iter().map(|component| component.role).collect::<Vec<_>>(),
             vec![SignalComponentRole::Data]
         );
+        assert_eq!(strategies[0].components[0].data_symbol_code_periods(), Some(20));
         assert_eq!(
             strategies[1].components.iter().map(|component| component.role).collect::<Vec<_>>(),
             vec![SignalComponentRole::Pilot]
         );
+        assert_eq!(strategies[1].components[0].data_symbol_code_periods(), None);
         assert_eq!(
             strategies[2].components.iter().map(|component| component.role).collect::<Vec<_>>(),
             vec![SignalComponentRole::Data, SignalComponentRole::Pilot]
         );
+        assert_eq!(strategies[2].components[0].data_symbol_code_periods(), Some(20));
+        assert_eq!(strategies[2].components[1].data_symbol_code_periods(), None);
         assert_eq!(
             strategies[3].components.iter().map(|component| component.role).collect::<Vec<_>>(),
             vec![SignalComponentRole::Data, SignalComponentRole::Pilot]
@@ -225,5 +263,29 @@ mod tests {
         assert_eq!(strategies[0].combination_mode, AcqComponentCombinationMode::SingleComponent);
         assert_eq!(strategies[0].components.len(), 1);
         assert_eq!(strategies[0].components[0].role, SignalComponentRole::Pilot);
+        assert_eq!(strategies[0].components[0].data_symbol_code_periods(), None);
+    }
+
+    #[test]
+    fn gps_l1_data_component_records_twenty_primary_periods_per_symbol() {
+        let sat = SatId { constellation: Constellation::Gps, prn: 3 };
+
+        let strategies =
+            acquisition_strategies_for_signal(sat, SignalBand::L1, SignalCode::Ca, None, 20)
+                .expect("GPS L1 acquisition strategies");
+
+        assert_eq!(strategies.len(), 1);
+        assert_eq!(strategies[0].components[0].data_symbol_code_periods(), Some(20));
+    }
+
+    #[test]
+    fn galileo_e5b_data_component_records_four_primary_periods_per_symbol() {
+        let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+
+        let strategies =
+            acquisition_strategies_for_signal(sat, SignalBand::E5, SignalCode::E5b, None, 20)
+                .expect("Galileo E5b acquisition strategies");
+
+        assert_eq!(strategies[0].components[0].data_symbol_code_periods(), Some(4));
     }
 }

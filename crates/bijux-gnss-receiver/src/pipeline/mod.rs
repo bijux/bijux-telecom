@@ -7,6 +7,7 @@
 
 pub mod acquisition;
 pub(crate) mod acquisition_components;
+pub(crate) mod acquisition_symbol_hypotheses;
 pub mod doppler;
 pub mod hatch;
 #[cfg(feature = "nav")]
