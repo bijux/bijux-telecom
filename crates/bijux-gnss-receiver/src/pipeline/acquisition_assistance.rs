@@ -4,7 +4,9 @@ use bijux_gnss_core::api::{
     AcqAssistanceBounds, AcqHypothesis, AcqRequest, AcqResult, GlonassFrequencyChannel, SatId,
     SignalBand, SignalCode,
 };
-use bijux_gnss_signal::api::AcquisitionSignalModel;
+use bijux_gnss_signal::api::{
+    resolved_signal_registry_entry, shared_path_doppler_hz, AcquisitionSignalModel,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::engine::receiver_config::ReceiverPipelineConfig;
@@ -53,6 +55,17 @@ pub struct CommonOscillatorBiasEstimate {
 pub struct CommonOscillatorBiasFollowUpRequest {
     pub request_index: usize,
     pub estimated_signal_doppler_hz: f64,
+    pub request: AcqRequest,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RelatedSignalFollowUpRequest {
+    pub request_index: usize,
+    pub source_request_index: usize,
+    pub source_signal_band: SignalBand,
+    pub source_signal_code: SignalCode,
+    pub estimated_signal_doppler_hz: f64,
+    pub transferred_code_phase_samples: f64,
     pub request: AcqRequest,
 }
 
@@ -308,18 +321,163 @@ pub fn build_common_oscillator_bias_follow_up_requests(
     follow_up_requests
 }
 
+pub fn build_related_signal_follow_up_requests(
+    config: &ReceiverPipelineConfig,
+    requests: &[AcqRequest],
+    acquisition_rows: &[Vec<AcqResult>],
+) -> Vec<RelatedSignalFollowUpRequest> {
+    let mut follow_up_requests = Vec::new();
+    for (request_index, (request, row)) in
+        requests.iter().copied().zip(acquisition_rows.iter()).enumerate()
+    {
+        let primary = row.first();
+        if primary.is_some_and(|candidate| matches!(candidate.hypothesis, AcqHypothesis::Accepted))
+        {
+            continue;
+        }
+        let Some(follow_up_request) = requests
+            .iter()
+            .copied()
+            .zip(acquisition_rows.iter())
+            .enumerate()
+            .filter_map(|(source_request_index, (source_request, source_row))| {
+                build_related_signal_follow_up_request(
+                    config,
+                    request_index,
+                    request,
+                    source_request_index,
+                    source_request,
+                    source_row.first(),
+                )
+            })
+            .max_by(|left, right| {
+                let left_score = acquisition_rows[left.source_request_index]
+                    .first()
+                    .map(|candidate| candidate.score)
+                    .unwrap_or(f32::NEG_INFINITY);
+                let right_score = acquisition_rows[right.source_request_index]
+                    .first()
+                    .map(|candidate| candidate.score)
+                    .unwrap_or(f32::NEG_INFINITY);
+                left_score
+                    .total_cmp(&right_score)
+                    .then_with(|| left.source_request_index.cmp(&right.source_request_index))
+            })
+        else {
+            continue;
+        };
+        follow_up_requests.push(follow_up_request);
+    }
+    follow_up_requests
+}
+
+fn build_related_signal_follow_up_request(
+    config: &ReceiverPipelineConfig,
+    request_index: usize,
+    request: AcqRequest,
+    source_request_index: usize,
+    source_request: AcqRequest,
+    source_primary: Option<&AcqResult>,
+) -> Option<RelatedSignalFollowUpRequest> {
+    if source_request_index == request_index
+        || source_request.sat != request.sat
+        || source_request.signal_band == request.signal_band
+        || request.assistance_bounds.is_some()
+        || request.expected_line_of_sight_doppler_hz.is_some()
+        || request.doppler_center_hz.abs() > f64::EPSILON
+    {
+        return None;
+    }
+    let source_primary = source_primary?;
+    if !matches!(source_primary.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous) {
+        return None;
+    }
+
+    let source_signal = resolved_signal_registry_entry(
+        source_request.sat,
+        source_request.signal_band,
+        source_request.signal_code,
+        source_request.glonass_frequency_channel,
+    )
+    .ok()
+    .flatten()?;
+    let target_signal = resolved_signal_registry_entry(
+        request.sat,
+        request.signal_band,
+        request.signal_code,
+        request.glonass_frequency_channel,
+    )
+    .ok()
+    .flatten()?;
+    let estimated_signal_doppler_hz = shared_path_doppler_hz(
+        source_primary.doppler_hz.0,
+        source_signal.spec,
+        target_signal.spec,
+    )?;
+    let scaled_doppler_uncertainty_hz = source_primary
+        .uncertainty
+        .as_ref()
+        .and_then(|uncertainty| {
+            shared_path_doppler_hz(
+                uncertainty.doppler_hz.abs(),
+                source_signal.spec,
+                target_signal.spec,
+            )
+        })
+        .unwrap_or(request.doppler_step_hz.max(1) as f64);
+    if !config.sampling_freq_hz.is_finite() || config.sampling_freq_hz <= 0.0 {
+        return None;
+    }
+    let transferred_code_phase_samples = source_primary.resolved_code_phase_samples();
+    let code_phase_uncertainty_samples = source_primary
+        .uncertainty
+        .as_ref()
+        .map(|uncertainty| uncertainty.code_phase_samples.abs())
+        .unwrap_or(1.0);
+    if !transferred_code_phase_samples.is_finite()
+        || !code_phase_uncertainty_samples.is_finite()
+        || code_phase_uncertainty_samples <= 0.0
+        || !scaled_doppler_uncertainty_hz.is_finite()
+        || scaled_doppler_uncertainty_hz <= 0.0
+    {
+        return None;
+    }
+
+    let follow_up_request = AcqRequest {
+        doppler_center_hz: estimated_signal_doppler_hz,
+        assistance_bounds: Some(AcqAssistanceBounds {
+            expected_code_phase_samples: transferred_code_phase_samples,
+            time_uncertainty_s: code_phase_uncertainty_samples / config.sampling_freq_hz,
+            position_uncertainty_m: 0.0,
+            oscillator_uncertainty_hz: scaled_doppler_uncertainty_hz,
+            approximate_velocity_uncertainty_mps: 0.0,
+        }),
+        ..request
+    };
+    Some(RelatedSignalFollowUpRequest {
+        request_index,
+        source_request_index,
+        source_signal_band: source_request.signal_band,
+        source_signal_code: source_request.signal_code,
+        estimated_signal_doppler_hz,
+        transferred_code_phase_samples,
+        request: follow_up_request,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        build_common_oscillator_bias_follow_up_requests, estimate_common_oscillator_bias,
-        resolve_acquisition_search_bounds,
+        build_common_oscillator_bias_follow_up_requests, build_related_signal_follow_up_requests,
+        estimate_common_oscillator_bias, resolve_acquisition_search_bounds,
     };
     use crate::engine::receiver_config::ReceiverPipelineConfig;
     use bijux_gnss_core::api::{
-        AcqAssistanceBounds, AcqHypothesis, AcqRequest, AcqResult, Constellation,
+        AcqAssistanceBounds, AcqHypothesis, AcqRequest, AcqResult, AcqUncertainty,
+        Constellation,
         GPS_L1_CA_CARRIER_HZ, Hertz, ReceiverSampleTrace, SatId, SignalBand, SignalCode,
     };
-    use bijux_gnss_signal::api::AcquisitionSignalModel;
+    use bijux_gnss_signal::api::{shared_path_doppler_hz, signal_spec_gps_l1_ca, signal_spec_gps_l5_i, AcquisitionSignalModel};
 
     #[test]
     fn resolves_assisted_search_bounds_from_uncertainty_contract() {
@@ -474,6 +632,226 @@ mod tests {
         assert!(follow_up.request.doppler_search_hz <= requests[2].doppler_search_hz);
     }
 
+    #[test]
+    fn builds_related_signal_follow_up_for_same_satellite_cross_band_pair() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 10_230_000.0,
+            ..ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Gps, prn: 9 };
+        let requests = vec![
+            AcqRequest {
+                sat,
+                glonass_frequency_channel: None,
+                signal_band: SignalBand::L1,
+                signal_code: SignalCode::Ca,
+                doppler_center_hz: 0.0,
+                doppler_rate_center_hz_per_s: 0.0,
+                expected_line_of_sight_doppler_hz: None,
+                assistance_bounds: None,
+                doppler_search_hz: 4_000,
+                doppler_step_hz: 250,
+                doppler_rate_search_hz_per_s: 0,
+                doppler_rate_step_hz_per_s: 250,
+                coherent_ms: 1,
+                noncoherent: 1,
+            },
+            AcqRequest {
+                sat,
+                glonass_frequency_channel: None,
+                signal_band: SignalBand::L5,
+                signal_code: SignalCode::L5I,
+                doppler_center_hz: 0.0,
+                doppler_rate_center_hz_per_s: 0.0,
+                expected_line_of_sight_doppler_hz: None,
+                assistance_bounds: None,
+                doppler_search_hz: 4_000,
+                doppler_step_hz: 250,
+                doppler_rate_search_hz_per_s: 0,
+                doppler_rate_step_hz_per_s: 250,
+                coherent_ms: 1,
+                noncoherent: 1,
+            },
+        ];
+        let acquisition_rows = vec![
+            vec![AcqResult {
+                sat,
+                signal_band: SignalBand::L1,
+                signal_code: SignalCode::Ca,
+                glonass_frequency_channel: None,
+                source_time: ReceiverSampleTrace::default(),
+                candidate_rank: 1,
+                is_primary_candidate: true,
+                doppler_hz: Hertz(-1_250.0),
+                doppler_rate_hz_per_s: 0.0,
+                carrier_hz: Hertz(-1_250.0),
+                code_phase_samples: 321,
+                peak: 8.0,
+                second_peak: 4.0,
+                mean: 1.0,
+                peak_mean_ratio: 8.0,
+                peak_second_ratio: 2.0,
+                cn0_proxy: 0.0,
+                score: 0.75,
+                hypothesis: AcqHypothesis::Accepted,
+                assumptions: None,
+                evidence: Vec::new(),
+                threshold_provenance: None,
+                explain_selection_reason: None,
+                doppler_refinement: None,
+                code_phase_refinement: None,
+                signal_delay_alignment: None,
+                uncertainty: Some(AcqUncertainty {
+                    doppler_hz: 125.0,
+                    code_phase_samples: 0.5,
+                }),
+            }],
+            vec![result_for_bias_test(9, AcqHypothesis::Rejected, 0.0)],
+        ];
+
+        let follow_up_requests =
+            build_related_signal_follow_up_requests(&config, &requests, &acquisition_rows);
+
+        assert_eq!(follow_up_requests.len(), 1);
+        let follow_up = &follow_up_requests[0];
+        let expected_doppler_hz = shared_path_doppler_hz(
+            -1_250.0,
+            signal_spec_gps_l1_ca(),
+            signal_spec_gps_l5_i(),
+        )
+        .expect("scaled same-satellite Doppler");
+
+        assert_eq!(follow_up.request_index, 1);
+        assert_eq!(follow_up.source_request_index, 0);
+        assert_eq!(follow_up.source_signal_band, SignalBand::L1);
+        assert_eq!(follow_up.source_signal_code, SignalCode::Ca);
+        assert!((follow_up.estimated_signal_doppler_hz - expected_doppler_hz).abs() <= 1.0e-12);
+        assert!((follow_up.transferred_code_phase_samples - 321.0).abs() <= 1.0e-12);
+        assert!(
+            (follow_up.request.doppler_center_hz - expected_doppler_hz).abs() <= 1.0e-12
+        );
+        let bounds = follow_up.request.assistance_bounds.expect("cross-band assistance bounds");
+        assert!((bounds.expected_code_phase_samples - 321.0).abs() <= 1.0e-12);
+        assert!((bounds.time_uncertainty_s - (0.5 / config.sampling_freq_hz)).abs() <= 1.0e-12);
+        assert!(bounds.oscillator_uncertainty_hz > 0.0);
+    }
+
+    #[test]
+    fn rejects_related_signal_follow_up_for_different_satellite_or_same_band_rows() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 10_230_000.0,
+            ..ReceiverPipelineConfig::default()
+        };
+        let requests = vec![
+            AcqRequest {
+                sat: SatId { constellation: Constellation::Gps, prn: 9 },
+                glonass_frequency_channel: None,
+                signal_band: SignalBand::L1,
+                signal_code: SignalCode::Ca,
+                doppler_center_hz: 0.0,
+                doppler_rate_center_hz_per_s: 0.0,
+                expected_line_of_sight_doppler_hz: None,
+                assistance_bounds: None,
+                doppler_search_hz: 4_000,
+                doppler_step_hz: 250,
+                doppler_rate_search_hz_per_s: 0,
+                doppler_rate_step_hz_per_s: 250,
+                coherent_ms: 1,
+                noncoherent: 1,
+            },
+            AcqRequest {
+                sat: SatId { constellation: Constellation::Gps, prn: 10 },
+                glonass_frequency_channel: None,
+                signal_band: SignalBand::L5,
+                signal_code: SignalCode::L5I,
+                doppler_center_hz: 0.0,
+                doppler_rate_center_hz_per_s: 0.0,
+                expected_line_of_sight_doppler_hz: None,
+                assistance_bounds: None,
+                doppler_search_hz: 4_000,
+                doppler_step_hz: 250,
+                doppler_rate_search_hz_per_s: 0,
+                doppler_rate_step_hz_per_s: 250,
+                coherent_ms: 1,
+                noncoherent: 1,
+            },
+            AcqRequest {
+                sat: SatId { constellation: Constellation::Galileo, prn: 12 },
+                glonass_frequency_channel: None,
+                signal_band: SignalBand::E1,
+                signal_code: SignalCode::E1C,
+                doppler_center_hz: 0.0,
+                doppler_rate_center_hz_per_s: 0.0,
+                expected_line_of_sight_doppler_hz: None,
+                assistance_bounds: None,
+                doppler_search_hz: 4_000,
+                doppler_step_hz: 250,
+                doppler_rate_search_hz_per_s: 0,
+                doppler_rate_step_hz_per_s: 250,
+                coherent_ms: 1,
+                noncoherent: 1,
+            },
+            AcqRequest {
+                sat: SatId { constellation: Constellation::Galileo, prn: 12 },
+                glonass_frequency_channel: None,
+                signal_band: SignalBand::E1,
+                signal_code: SignalCode::E1B,
+                doppler_center_hz: 0.0,
+                doppler_rate_center_hz_per_s: 0.0,
+                expected_line_of_sight_doppler_hz: None,
+                assistance_bounds: None,
+                doppler_search_hz: 4_000,
+                doppler_step_hz: 250,
+                doppler_rate_search_hz_per_s: 0,
+                doppler_rate_step_hz_per_s: 250,
+                coherent_ms: 1,
+                noncoherent: 1,
+            },
+        ];
+        let acquisition_rows = vec![
+            vec![result_for_bias_test(9, AcqHypothesis::Accepted, -750.0)],
+            vec![result_for_bias_test(10, AcqHypothesis::Rejected, 0.0)],
+            vec![result_for_bias_test(12, AcqHypothesis::Rejected, 0.0)],
+            vec![AcqResult {
+                sat: SatId { constellation: Constellation::Galileo, prn: 12 },
+                signal_band: SignalBand::E1,
+                signal_code: SignalCode::E1B,
+                glonass_frequency_channel: None,
+                source_time: ReceiverSampleTrace::default(),
+                candidate_rank: 1,
+                is_primary_candidate: true,
+                doppler_hz: Hertz(300.0),
+                doppler_rate_hz_per_s: 0.0,
+                carrier_hz: Hertz(300.0),
+                code_phase_samples: 200,
+                peak: 7.0,
+                second_peak: 3.0,
+                mean: 1.0,
+                peak_mean_ratio: 7.0,
+                peak_second_ratio: 2.0,
+                cn0_proxy: 0.0,
+                score: 0.65,
+                hypothesis: AcqHypothesis::Accepted,
+                assumptions: None,
+                evidence: Vec::new(),
+                threshold_provenance: None,
+                explain_selection_reason: None,
+                doppler_refinement: None,
+                code_phase_refinement: None,
+                signal_delay_alignment: None,
+                uncertainty: Some(AcqUncertainty {
+                    doppler_hz: 50.0,
+                    code_phase_samples: 0.5,
+                }),
+            }],
+        ];
+
+        let follow_up_requests =
+            build_related_signal_follow_up_requests(&config, &requests, &acquisition_rows);
+
+        assert!(follow_up_requests.is_empty(), "{follow_up_requests:#?}");
+    }
+
     fn request_for_bias_test(
         prn: u8,
         expected_line_of_sight_doppler_hz: Option<f64>,
@@ -549,7 +927,10 @@ mod tests {
             doppler_refinement: None,
             code_phase_refinement: None,
             signal_delay_alignment: None,
-            uncertainty: None,
+            uncertainty: Some(AcqUncertainty {
+                doppler_hz: 50.0,
+                code_phase_samples: 0.5,
+            }),
         }
     }
 }
