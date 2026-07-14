@@ -4,6 +4,7 @@ mod support;
 
 use bijux_gnss_core::api::{
     AcqHypothesis, AcqResult, Constellation, Hertz, ReceiverSampleTrace, SatId, SignalBand,
+    TrackEpoch,
 };
 use bijux_gnss_receiver::api::{
     sim::{
@@ -19,6 +20,8 @@ const LOW_CN0_TRACKING_DURATION_S: f64 = 0.060;
 const LOW_CN0_SEEDED_DOPPLER_ERROR_HZ: f64 = 60.0;
 const LOW_CN0_SEEDED_CODE_PHASE_ERROR_SAMPLES: isize = 1;
 const LOW_CN0_MIN_LOCKED_EPOCHS: usize = 5;
+const WEAK_SIGNAL_ADAPTATION_CN0_DB_HZ: f32 = 31.0;
+const WEAK_SIGNAL_ADAPTATION_DURATION_S: f64 = 0.120;
 
 #[test]
 fn tracking_lock_rate_report_runs_multiple_measurement_points() {
@@ -201,4 +204,58 @@ fn tracking_session_reports_refused_channel_state_below_cn0_floor() {
     );
     assert_eq!(report.final_state, TrackingChannelState::Refused);
     assert_eq!(report.final_reason.as_deref(), Some("cn0_below_tracking_lock_floor"));
+}
+
+#[test]
+fn adaptive_tracking_lengthens_integration_after_weak_signal_lock() {
+    let adaptive_epochs = track_weak_signal_case(true);
+    let fixed_epochs = track_weak_signal_case(false);
+    let adaptive_integration_ms = tracking_integration_ms_values(&adaptive_epochs);
+    let fixed_integration_ms = tracking_integration_ms_values(&fixed_epochs);
+
+    assert!(
+        adaptive_epochs
+            .iter()
+            .any(|epoch| epoch.lock_state == "tracking" || epoch.lock_state == "degraded"),
+        "adaptive_epochs={adaptive_epochs:?}"
+    );
+    assert!(
+        adaptive_integration_ms.iter().any(|integration_ms| *integration_ms == 5),
+        "adaptive_integration_ms={adaptive_integration_ms:?} adaptive_epochs={adaptive_epochs:?}"
+    );
+    assert!(
+        fixed_integration_ms.iter().all(|integration_ms| *integration_ms == 1),
+        "fixed_integration_ms={fixed_integration_ms:?} fixed_epochs={fixed_epochs:?}"
+    );
+}
+
+fn track_weak_signal_case(adaptive_tracking_enabled: bool) -> Vec<TrackEpoch> {
+    let config = low_cn0_tracking_profile_with_adaptation(adaptive_tracking_enabled);
+    let signal = SyntheticSignalParams {
+        sat: SatId { constellation: Constellation::Gps, prn: 16 },
+        glonass_frequency_channel: None,
+        signal_band: bijux_gnss_core::api::SignalBand::L1,
+        signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+        doppler_hz: 40.0,
+        code_phase_chips: 211.25,
+        carrier_phase_rad: 0.10,
+        cn0_db_hz: WEAK_SIGNAL_ADAPTATION_CN0_DB_HZ,
+        navigation_data: false.into(),
+    };
+    let frame =
+        generate_l1_ca(&config, signal.clone(), 0x2407_19A4, WEAK_SIGNAL_ADAPTATION_DURATION_S);
+    let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
+    let tracks =
+        tracking.track_from_acquisition(&frame, &[accepted_acquisition(&config, signal, 0.0, 0)]);
+
+    tracks.first().expect("weak signal track").epochs.clone()
+}
+
+fn tracking_integration_ms_values(epochs: &[TrackEpoch]) -> Vec<u32> {
+    epochs
+        .iter()
+        .filter_map(|epoch| {
+            epoch.tracking_assumptions.as_ref().map(|assumptions| assumptions.integration_ms.max(1))
+        })
+        .collect()
 }
