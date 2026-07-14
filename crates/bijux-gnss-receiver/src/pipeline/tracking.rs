@@ -22,6 +22,7 @@ use bijux_gnss_signal::api::{
     apply_carrier_tracking_loop as signal_apply_carrier_tracking_loop,
     apply_code_loop as signal_apply_code_loop, carrier_frequency_error_hz_from_phase_delta,
     carrier_phase_offset_radians,
+    code_value_at_phase,
     coherent_integration_seconds as signal_coherent_integration_seconds,
     correlate_early_prompt_late, default_local_code_model_for_signal, discriminators,
     dll_hold_threshold as signal_dll_hold_threshold,
@@ -29,6 +30,9 @@ use bijux_gnss_signal::api::{
     epoch_start_code_phase_samples_from_receiver_phase, estimate_cn0_dbhz,
     estimate_tracking_uncertainty as signal_estimate_tracking_uncertainty,
     fll_lock_threshold_hz as signal_fll_lock_threshold_hz,
+    galileo_e5a_q_epoch_symbol, galileo_e5a_q_secondary_code, galileo_e5b_q_epoch_symbol,
+    galileo_e5b_q_secondary_code,
+    generate_galileo_e5a_q_code, generate_galileo_e5b_q_code, generate_gps_l2c_cl_code,
     prompt_power_ratio as signal_prompt_power_ratio,
     push_tracking_uncertainty_sample as signal_push_tracking_uncertainty_sample,
     refresh_lock_reference_cn0_dbhz as signal_refresh_lock_reference_cn0_dbhz,
@@ -82,6 +86,7 @@ const TRACKING_CN0_MIN_WINDOW_EPOCHS: usize = 4;
 const TRACKING_UNCERTAINTY_WINDOW_EPOCHS: usize = 8;
 const SAMPLE_RATE_MISMATCH_CATASTROPHIC_PHASE_STEP_MULTIPLIER: f64 = 8.0;
 const LOW_RESOLUTION_DLL_MIN_SAMPLE_SEPARATION: f64 = 1.0;
+const JOINT_COMPONENT_MIN_PROMPT_RATIO: f32 = 0.35;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelState {
@@ -280,6 +285,100 @@ struct TrackingSignalModel {
     local_code_model: LocalCodeModel,
     discriminator_family: TrackingDiscriminatorFamily,
     phase_transition_source: TrackingPhaseTransitionSource,
+    aiding_mode: TrackingAidingMode,
+    pilot_component: Option<TrackingComponentModel>,
+    data_symbol_component: Option<TrackingComponentModel>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TrackingAidingMode {
+    None,
+    PilotCarrier,
+}
+
+impl TrackingAidingMode {
+    fn label(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::PilotCarrier => "pilot_carrier",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct TrackingComponentModel {
+    role: SignalComponentRole,
+    code_length: usize,
+    phase_transition_source: TrackingPhaseTransitionSource,
+    local_code_model: TrackingComponentLocalCodeModel,
+}
+
+impl TrackingComponentModel {
+    fn sample_value_from_primary_phase(
+        &self,
+        primary_chip_phase: f64,
+        primary_code_period_index: usize,
+        primary_code_length: usize,
+    ) -> f32 {
+        let total_chip_phase =
+            primary_code_period_index as f64 * primary_code_length as f64 + primary_chip_phase;
+        let component_code_length = self.code_length.max(1) as f64;
+        let component_chip_phase = total_chip_phase.rem_euclid(component_code_length);
+        let component_primary_code_period_index = if total_chip_phase <= 0.0 {
+            0
+        } else {
+            (total_chip_phase / component_code_length).floor() as usize
+        };
+        self.local_code_model
+            .sample_tracking_value(component_chip_phase, component_primary_code_period_index)
+            .unwrap_or(0.0)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum TrackingComponentLocalCodeModel {
+    Local(LocalCodeModel),
+    GpsL2cCl { code: Vec<i8> },
+    GalileoE5aQ {
+        code: Vec<i8>,
+        secondary_code: [i8; 100],
+    },
+    GalileoE5bQ {
+        code: Vec<i8>,
+        secondary_code: [i8; 100],
+    },
+}
+
+impl TrackingComponentLocalCodeModel {
+    fn sample_tracking_value(
+        &self,
+        chip_phase: f64,
+        primary_code_period_index: usize,
+    ) -> Result<f32, bijux_gnss_signal::api::SignalError> {
+        match self {
+            Self::Local(local_code_model) => {
+                local_code_model.sample_tracking_value(chip_phase, primary_code_period_index)
+            }
+            Self::GpsL2cCl { code } => code_value_at_phase(code, chip_phase),
+            Self::GalileoE5aQ { code, secondary_code } => Ok(
+                code_value_at_phase(code, chip_phase)?
+                    * galileo_e5a_q_epoch_symbol(secondary_code, primary_code_period_index) as f32
+                    * std::f32::consts::FRAC_1_SQRT_2,
+            ),
+            Self::GalileoE5bQ { code, secondary_code } => Ok(
+                code_value_at_phase(code, chip_phase)?
+                    * galileo_e5b_q_epoch_symbol(secondary_code, primary_code_period_index) as f32
+                    * std::f32::consts::FRAC_1_SQRT_2,
+            ),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TrackingEpochCorrelation {
+    primary: CorrelatorOutput,
+    carrier_prompt: Complex<f32>,
+    data_prompt: Option<Complex<f32>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -371,6 +470,15 @@ impl TrackingSignalModel {
                 let component = registry_entry
                     .default_component()
                     .expect("tracking registry entry must expose a default component");
+                let (aiding_mode, pilot_component, data_symbol_component) =
+                    joint_tracking_components(
+                        sat,
+                        signal_band,
+                        signal_code,
+                        glonass_frequency_channel,
+                        &registry_entry,
+                        component,
+                    );
                 Self {
                     signal_band,
                     signal_code,
@@ -386,6 +494,9 @@ impl TrackingSignalModel {
                     local_code_model,
                     discriminator_family: tracking_discriminator_family(component.subcarrier),
                     phase_transition_source: tracking_phase_transition_source(component),
+                    aiding_mode,
+                    pilot_component,
+                    data_symbol_component,
                 }
             }
             _ => Self::fallback(config, sat, signal_band),
@@ -416,6 +527,9 @@ impl TrackingSignalModel {
             local_code_model,
             discriminator_family: TrackingDiscriminatorFamily::EarlyPromptLate,
             phase_transition_source: TrackingPhaseTransitionSource::None,
+            aiding_mode: TrackingAidingMode::None,
+            pilot_component: None,
+            data_symbol_component: None,
         }
     }
 
@@ -470,11 +584,186 @@ impl TrackingSignalModel {
         self.signal_spec.carrier_hz.0
     }
 
+    fn carrier_phase_transition_source(&self) -> TrackingPhaseTransitionSource {
+        self.carrier_component().phase_transition_source
+    }
+
+    fn carrier_component(&self) -> TrackingComponentModel {
+        self.pilot_component.clone().unwrap_or_else(|| TrackingComponentModel {
+            role: self.component_role,
+            code_length: self.code_length,
+            phase_transition_source: self.phase_transition_source,
+            local_code_model: TrackingComponentLocalCodeModel::Local(self.local_code_model.clone()),
+        })
+    }
+
+    fn data_symbol_component(&self) -> Option<&TrackingComponentModel> {
+        self.data_symbol_component.as_ref()
+    }
+
+    fn supports_epoch_data_symbol_sign_recovery(&self) -> bool {
+        self.data_symbol_component.is_some() && !self.supports_navigation_bit_sign_recovery()
+    }
+
     fn supports_navigation_bit_sign_recovery(&self) -> bool {
         self.signal_spec.constellation == Constellation::Gps
             && self.signal_band == SignalBand::L1
             && self.signal_code == SignalCode::Ca
             && self.phase_transition_source.reports_navigation_bit_lock()
+    }
+}
+
+fn joint_tracking_components(
+    sat: SatId,
+    signal_band: SignalBand,
+    signal_code: SignalCode,
+    glonass_frequency_channel: Option<bijux_gnss_core::api::GlonassFrequencyChannel>,
+    registry_entry: &bijux_gnss_core::api::SignalRegistryEntry,
+    primary_component: &bijux_gnss_core::api::SignalComponentSpec,
+) -> (
+    TrackingAidingMode,
+    Option<TrackingComponentModel>,
+    Option<TrackingComponentModel>,
+) {
+    let data_component = registry_entry.component(SignalComponentRole::Data);
+    let pilot_component = registry_entry.component(SignalComponentRole::Pilot);
+
+    if data_component.is_some() && pilot_component.is_some() {
+        let built_pilot = (primary_component.role != SignalComponentRole::Pilot).then(|| {
+            tracking_component_model_for_signal_role(
+                sat,
+                signal_band,
+                signal_code,
+                SignalComponentRole::Pilot,
+                glonass_frequency_channel,
+            )
+        }).flatten();
+        let built_data = (primary_component.role == SignalComponentRole::Pilot).then(|| {
+            tracking_component_model_for_signal_role(
+                sat,
+                signal_band,
+                signal_code,
+                SignalComponentRole::Data,
+                glonass_frequency_channel,
+            )
+        }).flatten().or_else(|| {
+            (primary_component.role == SignalComponentRole::Data).then(|| TrackingComponentModel {
+                role: SignalComponentRole::Data,
+                code_length: primary_component.primary_code_chips as usize,
+                phase_transition_source: tracking_phase_transition_source(primary_component),
+                local_code_model: TrackingComponentLocalCodeModel::Local(
+                    default_local_code_model_for_signal(sat, signal_band, signal_code)
+                        .ok()
+                        .flatten()
+                        .expect("primary data component local code model"),
+                ),
+            })
+        });
+        return (TrackingAidingMode::PilotCarrier, built_pilot, built_data);
+    }
+
+    let companion_signal_code = complementary_joint_tracking_signal_code(signal_band, signal_code);
+    let Some(companion_signal_code) = companion_signal_code else {
+        return (TrackingAidingMode::None, None, None);
+    };
+    let companion_role = if primary_component.role == SignalComponentRole::Data {
+        SignalComponentRole::Pilot
+    } else {
+        SignalComponentRole::Data
+    };
+    let companion_component = tracking_component_model_for_signal_role(
+        sat,
+        signal_band,
+        companion_signal_code,
+        companion_role,
+        glonass_frequency_channel,
+    );
+    match (primary_component.role, companion_component) {
+        (SignalComponentRole::Data, Some(pilot_component)) => (
+            TrackingAidingMode::PilotCarrier,
+            Some(pilot_component),
+            default_local_code_model_for_signal(sat, signal_band, signal_code)
+                .ok()
+                .flatten()
+                .map(|local_code_model| TrackingComponentModel {
+                    role: SignalComponentRole::Data,
+                    code_length: primary_component.primary_code_chips as usize,
+                    phase_transition_source: tracking_phase_transition_source(primary_component),
+                    local_code_model: TrackingComponentLocalCodeModel::Local(local_code_model),
+                }),
+        ),
+        (SignalComponentRole::Pilot, Some(data_component)) => {
+            (TrackingAidingMode::PilotCarrier, None, Some(data_component))
+        }
+        _ => (TrackingAidingMode::None, None, None),
+    }
+}
+
+fn complementary_joint_tracking_signal_code(
+    signal_band: SignalBand,
+    signal_code: SignalCode,
+) -> Option<SignalCode> {
+    match (signal_band, signal_code) {
+        (SignalBand::L5, SignalCode::L5I) => Some(SignalCode::L5Q),
+        (SignalBand::L5, SignalCode::L5Q) => Some(SignalCode::L5I),
+        _ => None,
+    }
+}
+
+fn tracking_component_model_for_signal_role(
+    sat: SatId,
+    signal_band: SignalBand,
+    signal_code: SignalCode,
+    role: SignalComponentRole,
+    glonass_frequency_channel: Option<bijux_gnss_core::api::GlonassFrequencyChannel>,
+) -> Option<TrackingComponentModel> {
+    let registry_entry =
+        resolved_signal_registry_entry(sat, signal_band, signal_code, glonass_frequency_channel)
+            .ok()
+            .flatten()?;
+    let component = registry_entry.component(role)?;
+    let local_code_model = tracking_component_local_code_model_for_signal_role(
+        sat,
+        signal_band,
+        signal_code,
+        role,
+    )?;
+    Some(TrackingComponentModel {
+        role,
+        code_length: component.primary_code_chips as usize,
+        phase_transition_source: tracking_phase_transition_source(component),
+        local_code_model,
+    })
+}
+
+fn tracking_component_local_code_model_for_signal_role(
+    sat: SatId,
+    signal_band: SignalBand,
+    signal_code: SignalCode,
+    role: SignalComponentRole,
+) -> Option<TrackingComponentLocalCodeModel> {
+    match (sat.constellation, signal_band, signal_code, role) {
+        (Constellation::Gps, SignalBand::L2, SignalCode::L2C, SignalComponentRole::Pilot) => {
+            Some(TrackingComponentLocalCodeModel::GpsL2cCl {
+                code: generate_gps_l2c_cl_code(sat.prn).ok()?,
+            })
+        }
+        (Constellation::Galileo, SignalBand::E5, SignalCode::E5a, SignalComponentRole::Pilot) => {
+            Some(TrackingComponentLocalCodeModel::GalileoE5aQ {
+                code: generate_galileo_e5a_q_code(sat.prn).ok()?,
+                secondary_code: galileo_e5a_q_secondary_code(sat.prn).ok()?,
+            })
+        }
+        (Constellation::Galileo, SignalBand::E5, SignalCode::E5b, SignalComponentRole::Pilot) => {
+            Some(TrackingComponentLocalCodeModel::GalileoE5bQ {
+                code: generate_galileo_e5b_q_code(sat.prn).ok()?,
+                secondary_code: galileo_e5b_q_secondary_code(sat.prn).ok()?,
+            })
+        }
+        _ => default_local_code_model_for_signal(sat, signal_band, signal_code)
+            .ok()
+            .flatten()
+            .map(TrackingComponentLocalCodeModel::Local),
     }
 }
 
@@ -497,6 +786,29 @@ fn tracking_phase_transition_source(
         TrackingPhaseTransitionSource::DataSymbol
     } else {
         TrackingPhaseTransitionSource::None
+    }
+}
+
+fn select_carrier_prompt(
+    primary_prompt: Complex<f32>,
+    pilot_prompt: Option<Complex<f32>>,
+    aiding_mode: TrackingAidingMode,
+) -> Complex<f32> {
+    if aiding_mode != TrackingAidingMode::PilotCarrier {
+        return primary_prompt;
+    }
+    let Some(pilot_prompt) = pilot_prompt else {
+        return primary_prompt;
+    };
+    let primary_norm = primary_prompt.norm();
+    let pilot_norm = pilot_prompt.norm();
+    if primary_norm <= f32::EPSILON {
+        return pilot_prompt;
+    }
+    if pilot_norm >= primary_norm * JOINT_COMPONENT_MIN_PROMPT_RATIO {
+        pilot_prompt
+    } else {
+        primary_prompt
     }
 }
 
@@ -688,18 +1000,47 @@ impl Tracking {
         code_phase_samples: f64,
         early_late_spacing_chips: f64,
     ) -> CorrelatorOutput {
+        self.tracking_epoch_correlation(
+            frame,
+            start,
+            end,
+            sample_index,
+            signal_model,
+            carrier_freq_hz,
+            carrier_phase_cycles,
+            code_rate_hz,
+            code_phase_samples,
+            early_late_spacing_chips,
+        )
+        .primary
+    }
+
+    fn tracking_epoch_correlation(
+        &self,
+        frame: &SamplesFrame,
+        start: usize,
+        end: usize,
+        sample_index: u64,
+        signal_model: &TrackingSignalModel,
+        carrier_freq_hz: f64,
+        carrier_phase_cycles: f64,
+        code_rate_hz: f64,
+        code_phase_samples: f64,
+        early_late_spacing_chips: f64,
+    ) -> TrackingEpochCorrelation {
         let sample_rate_hz = self.config.sampling_freq_hz;
         let samples = &frame.iq[start..end];
-        let code_period_samples = signal_model.samples_per_code(sample_rate_hz);
+        let primary_code_period_samples = signal_model.samples_per_code(sample_rate_hz);
         let nominal_chips_per_sample = signal_model.nominal_chips_per_sample(sample_rate_hz);
         let tracked_chips_per_sample = code_rate_hz / sample_rate_hz;
-        let epoch_primary_code_period_index = sample_index as usize / code_period_samples.max(1);
+        let epoch_primary_code_period_index =
+            sample_index as usize / primary_code_period_samples.max(1);
         let epoch_start_code_phase_samples = epoch_start_code_phase_samples_from_receiver_phase(
             code_phase_samples,
-            code_period_samples,
+            primary_code_period_samples,
         );
         let base_chip_phase = epoch_start_code_phase_samples * nominal_chips_per_sample;
-        let correlation = correlate_early_prompt_late(
+        let primary = correlate_early_prompt_late(
             samples,
             sample_rate_hz,
             carrier_freq_hz,
@@ -709,12 +1050,54 @@ impl Tracking {
             early_late_spacing_chips,
             |chip_phase| signal_model.value_at_phase(chip_phase, epoch_primary_code_period_index),
         );
-        CorrelatorOutput {
-            early: correlation.early,
-            prompt: correlation.prompt,
-            late: correlation.late,
-            early_late_noise_weight_energy: correlation.early_late_noise_weight_energy,
-        }
+        let pilot_prompt = signal_model.pilot_component.as_ref().map(|component| {
+            correlate_early_prompt_late(
+                samples,
+                sample_rate_hz,
+                carrier_freq_hz,
+                carrier_phase_offset_radians(carrier_phase_cycles),
+                base_chip_phase,
+                tracked_chips_per_sample,
+                0.0,
+                |chip_phase| {
+                    component.sample_value_from_primary_phase(
+                        chip_phase,
+                        epoch_primary_code_period_index,
+                        signal_model.code_length,
+                    )
+                },
+            )
+            .prompt
+        });
+        let data_prompt = signal_model.data_symbol_component().map(|component| {
+            if component.role == signal_model.component_role {
+                primary.prompt
+            } else {
+                correlate_early_prompt_late(
+                    samples,
+                    sample_rate_hz,
+                    carrier_freq_hz,
+                    carrier_phase_offset_radians(carrier_phase_cycles),
+                    base_chip_phase,
+                    tracked_chips_per_sample,
+                    0.0,
+                    |chip_phase| {
+                        component.sample_value_from_primary_phase(
+                            chip_phase,
+                            epoch_primary_code_period_index,
+                            signal_model.code_length,
+                        )
+                    },
+                )
+                .prompt
+            }
+        });
+        let carrier_prompt = select_carrier_prompt(
+            primary.prompt,
+            pilot_prompt,
+            signal_model.aiding_mode,
+        );
+        TrackingEpochCorrelation { primary, carrier_prompt, data_prompt }
     }
 
     pub fn track_epoch(
@@ -729,7 +1112,7 @@ impl Tracking {
         early_late_spacing_chips: f64,
     ) -> (TrackEpoch, CorrelatorOutput) {
         let signal_model = TrackingSignalModel::for_sat(&self.config, sat);
-        self.track_epoch_range_with_signal_model(
+        let (epoch, correlation) = self.track_epoch_range_with_signal_model(
             frame,
             0,
             frame.len(),
@@ -741,7 +1124,8 @@ impl Tracking {
             code_rate_hz,
             code_phase_samples,
             early_late_spacing_chips,
-        )
+        );
+        (epoch, correlation.primary)
     }
 
     fn track_epoch_range_with_signal_model(
@@ -757,12 +1141,12 @@ impl Tracking {
         code_rate_hz: f64,
         code_phase_samples: f64,
         early_late_spacing_chips: f64,
-    ) -> (TrackEpoch, CorrelatorOutput) {
+    ) -> (TrackEpoch, TrackingEpochCorrelation) {
         let sample_index = frame.t0.sample_index + start as u64;
         let source_time = SampleTime { sample_index, sample_rate_hz: frame.t0.sample_rate_hz };
         let clock = SampleClock::new(self.config.sampling_freq_hz);
         let epoch = clock.epoch_from_samples(sample_index);
-        let correlator = self.correlate_epoch_range_with_signal_model(
+        let correlation = self.tracking_epoch_correlation(
             frame,
             start,
             end,
@@ -776,13 +1160,13 @@ impl Tracking {
         );
         let coherent_samples = end.saturating_sub(start);
         let cn0_dbhz = estimate_cn0_dbhz(
-            correlator.prompt,
-            correlator.early - correlator.late,
+            correlation.primary.prompt,
+            correlation.primary.early - correlation.primary.late,
             self.config.sampling_freq_hz,
             coherent_samples as f64,
-            correlator.early_late_noise_weight_energy,
+            correlation.primary.early_late_noise_weight_energy,
         );
-        if !correlator.prompt.re.is_finite() || !correlator.prompt.im.is_finite() {
+        if !correlation.primary.prompt.re.is_finite() || !correlation.primary.prompt.im.is_finite() {
             self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
                 bijux_gnss_core::api::DiagnosticSeverity::Error,
                 "TRACK_NUMERIC_INVALID",
@@ -797,17 +1181,17 @@ impl Tracking {
             signal_band: signal_model.signal_band,
             signal_code: signal_model.signal_code,
             glonass_frequency_channel: signal_model.glonass_frequency_channel,
-            prompt_i: correlator.prompt.re,
-            prompt_q: correlator.prompt.im,
-            early_i: correlator.early.re,
-            early_q: correlator.early.im,
-            late_i: correlator.late.re,
-            late_q: correlator.late.im,
+            prompt_i: correlation.primary.prompt.re,
+            prompt_q: correlation.primary.prompt.im,
+            early_i: correlation.primary.early.re,
+            early_q: correlation.primary.early.im,
+            late_i: correlation.primary.late.re,
+            late_q: correlation.primary.late.im,
             carrier_hz: Hertz(carrier_freq_hz),
             carrier_phase_cycles: Cycles(carrier_phase_cycles),
             code_rate_hz: Hertz(code_rate_hz),
             code_phase_samples: Chips(code_phase_samples),
-            lock: correlator.prompt.norm() > 0.0,
+            lock: correlation.primary.prompt.norm() > 0.0,
             cn0_dbhz,
             pll_lock: false,
             dll_lock: false,
@@ -836,7 +1220,7 @@ impl Tracking {
             signal_delay_alignment: None,
             processing_ms: None,
         };
-        (track_epoch, correlator)
+        (track_epoch, correlation)
     }
 
     pub fn run(&self, samples: &[Sample]) -> Vec<TrackingResult> {
@@ -1186,7 +1570,7 @@ impl Tracking {
             .map(|mut channel| {
                 for epoch in &mut channel.epochs {
                     epoch.tracking_provenance = format!(
-                        "acq_hypothesis={} acq_score={:.6} acq_signal_band={:?} acq_doppler_hz={:.3} acq_carrier_hz={:.3} acq_code_phase_samples={} acq_resolved_code_phase_samples={:.6} acq_start_sample_index={} track_component_role={:?} nominal_carrier_hz={:.3} secondary_code={} discriminator_family={} phase_transition_source={}",
+                        "acq_hypothesis={} acq_score={:.6} acq_signal_band={:?} acq_doppler_hz={:.3} acq_carrier_hz={:.3} acq_code_phase_samples={} acq_resolved_code_phase_samples={:.6} acq_start_sample_index={} track_component_role={:?} nominal_carrier_hz={:.3} secondary_code={} discriminator_family={} phase_transition_source={} aiding_mode={} pilot_component={} data_symbol_component={}",
                         channel.acquisition_hypothesis,
                         channel.acquisition_score,
                         channel.signal_band,
@@ -1200,6 +1584,9 @@ impl Tracking {
                         channel.signal_model.secondary_code.is_some(),
                         channel.signal_model.discriminator_family.label(),
                         channel.signal_model.phase_transition_source.label(),
+                        channel.signal_model.aiding_mode.label(),
+                        channel.signal_model.pilot_component.is_some(),
+                        channel.signal_model.data_symbol_component.is_some(),
                     );
                 }
                 self.apply_sample_rate_mismatch_diagnostic(
@@ -1290,7 +1677,7 @@ impl Tracking {
         let samples_per_code = signal_model.samples_per_code(self.config.sampling_freq_hz);
         let samples_per_chip = samples_per_code as f64 / signal_model.code_length as f64;
         let alloc_before = crate::engine::alloc::allocation_count();
-        let (mut track_epoch, corr) = self.track_epoch_range_with_signal_model(
+        let (mut track_epoch, correlation) = self.track_epoch_range_with_signal_model(
             frame,
             start,
             end,
@@ -1313,15 +1700,23 @@ impl Tracking {
             ));
         }
 
-        let (dll_err, _raw_pll_err, raw_fll_err, lock) =
-            discriminators(corr.early, corr.prompt, corr.late, state.prev_prompt);
-        state.prev_prompt = Some(corr.prompt);
-        let phase_cycles = corr.prompt.arg() as f64 / (2.0 * std::f64::consts::PI);
+        let primary_correlator = correlation.primary;
+        let carrier_prompt = correlation.carrier_prompt;
+        let (dll_err, _unused_pll_err, _unused_fll_err, _unused_lock) = discriminators(
+            primary_correlator.early,
+            primary_correlator.prompt,
+            primary_correlator.late,
+            None,
+        );
+        let (_raw_pll_err, raw_fll_err, lock) =
+            carrier_prompt_discriminators(carrier_prompt, state.prev_prompt);
+        state.prev_prompt = Some(carrier_prompt);
+        let phase_cycles = carrier_prompt.arg() as f64 / (2.0 * std::f64::consts::PI);
         let phase_decision = classify_prompt_phase(
             phase_cycles,
             state.prev_prompt_phase_cycles,
             state.nav_bit_phase_offset_cycles,
-            signal_model.phase_transition_source,
+            signal_model.carrier_phase_transition_source(),
         );
         state.prev_prompt_phase_cycles = Some(phase_decision.aligned_phase_cycles);
         state.nav_bit_phase_offset_cycles = phase_decision.nav_bit_phase_offset_cycles;
@@ -1332,7 +1727,7 @@ impl Tracking {
 
         let cycle_slip = phase_decision.cycle_slip;
         let cycle_slip_reason = cycle_slip.then(|| LossOfLockCause::PhaseJump.reason().to_string());
-        let prompt_power = corr.prompt.norm();
+        let prompt_power = carrier_prompt.norm();
 
         let mut cn0_dbhz = state.acquisition_cn0_proxy_dbhz;
         if !cn0_dbhz.is_finite() || cn0_dbhz <= 0.0 {
@@ -1382,8 +1777,11 @@ impl Tracking {
                 from_state,
                 ChannelState::PullIn | ChannelState::Tracking | ChannelState::Degraded
             ) && pll_err.abs() < PLL_HOLD_MAX_PHASE_ERROR_RAD);
-        let anti_false_lock =
-            anti_false_lock_detected(corr.early, corr.prompt, corr.late) && !sustained_pll_lock;
+        let anti_false_lock = anti_false_lock_detected(
+            primary_correlator.early,
+            primary_correlator.prompt,
+            primary_correlator.late,
+        ) && !sustained_pll_lock;
         state.prompt_power_reference = refresh_prompt_power_reference(
             state.prompt_power_reference,
             prompt_power,
@@ -1572,6 +1970,14 @@ impl Tracking {
             && !cycle_slip;
         let fll_lock = state.state != ChannelState::Lost
             && (raw_fll_lock || (tracking_state_locked && pll_lock));
+        let navigation_bit_sign = recover_epoch_navigation_bit_sign(
+            signal_model,
+            correlation.data_prompt,
+            tracking_state_locked && pll_lock,
+        );
+        let nav_bit_lock = navigation_bit_sign.is_some()
+            || (signal_model.phase_transition_source.reports_navigation_bit_lock()
+                && state.nav_bit_transition_count > 0);
         if track_epoch.early_i.is_infinite() || track_epoch.late_i.is_infinite() {
             self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
                 bijux_gnss_core::api::DiagnosticSeverity::Warning,
@@ -1620,7 +2026,13 @@ impl Tracking {
                 from_state: from_state.to_string(),
                 to_state: state.state.to_string(),
                 reason: lock_state_reason.clone().unwrap_or_else(|| "state_transition".to_string()),
-                lock_quality: epoch_lock_quality(lock, pll_lock, dll_lock, fll_lock, cn0_dbhz),
+                lock_quality: epoch_lock_quality(
+                    sustained_prompt_lock,
+                    pll_lock,
+                    dll_lock,
+                    fll_lock,
+                    cn0_dbhz,
+                ),
             });
         }
 
@@ -1634,9 +2046,8 @@ impl Tracking {
             dll_lock,
             fll_lock,
             cycle_slip,
-            nav_bit_lock: signal_model.phase_transition_source.reports_navigation_bit_lock()
-                && state.nav_bit_transition_count > 0,
-            navigation_bit_sign: None,
+            nav_bit_lock,
+            navigation_bit_sign,
             dll_err,
             pll_err,
             fll_err: fll_err_hz,
@@ -2155,7 +2566,7 @@ fn tracking_assumptions(
         pll_bw_hz: params.pll_bw_hz,
         fll_bw_hz: params.fll_bw_hz,
         discriminator_family: signal_model.discriminator_family.label().to_string(),
-        aiding_mode: "none".to_string(),
+        aiding_mode: signal_model.aiding_mode.label().to_string(),
     }
 }
 
@@ -2240,6 +2651,38 @@ fn classify_prompt_phase(
         nav_bit_transition,
         cycle_slip: chosen_delta.abs() > CYCLE_SLIP_PHASE_DELTA_CYCLES,
     }
+}
+
+fn carrier_prompt_discriminators(
+    prompt: Complex<f32>,
+    prev_prompt: Option<Complex<f32>>,
+) -> (f32, f32, bool) {
+    let pll = prompt.im.atan2(prompt.re);
+    let fll = if let Some(prev) = prev_prompt {
+        let dot = prompt.re * prev.re + prompt.im * prev.im;
+        let det = prompt.im * prev.re - prompt.re * prev.im;
+        det.atan2(dot)
+    } else {
+        0.0
+    };
+    let lock = prompt.norm() > 0.1;
+    (pll, fll, lock)
+}
+
+fn recover_epoch_navigation_bit_sign(
+    signal_model: &TrackingSignalModel,
+    data_prompt: Option<Complex<f32>>,
+    allow_decision: bool,
+) -> Option<i8> {
+    if !allow_decision || !signal_model.supports_epoch_data_symbol_sign_recovery() {
+        return None;
+    }
+    let prompt = data_prompt?;
+    let prompt_norm = prompt.norm();
+    if !prompt_norm.is_finite() || prompt_norm <= f32::EPSILON {
+        return None;
+    }
+    (prompt.re.abs() >= prompt.im.abs()).then_some(if prompt.re >= 0.0 { 1 } else { -1 })
 }
 
 fn apply_dll_code_loop(input: CodeLoopInput) -> CodeLoopUpdate {
@@ -4552,6 +4995,135 @@ mod tests {
         );
         assert!((signal_model.nominal_carrier_hz() - 1_176_450_000.0).abs() <= f64::EPSILON);
         assert!(!signal_model.supports_navigation_bit_sign_recovery());
+    }
+
+    #[test]
+    fn tracking_signal_model_resolves_joint_components_for_gps_l2c() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig {
+            code_freq_basis_hz: 511_500.0,
+            code_length: 10_230,
+            ..crate::engine::receiver_config::ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Gps, prn: 12 };
+
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            sat,
+            SignalBand::L2,
+            SignalCode::L2C,
+            None,
+        );
+
+        assert_eq!(signal_model.aiding_mode, super::TrackingAidingMode::PilotCarrier);
+        assert_eq!(signal_model.component_role, SignalComponentRole::Data);
+        assert!(signal_model.pilot_component.is_some());
+        assert!(signal_model.data_symbol_component.is_some());
+        assert_eq!(
+            signal_model.carrier_phase_transition_source(),
+            super::TrackingPhaseTransitionSource::None
+        );
+        assert!(signal_model.supports_epoch_data_symbol_sign_recovery());
+    }
+
+    #[test]
+    fn tracking_signal_model_resolves_joint_components_for_gps_l5i() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig {
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..crate::engine::receiver_config::ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Gps, prn: 18 };
+
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            sat,
+            SignalBand::L5,
+            SignalCode::L5I,
+            None,
+        );
+
+        assert_eq!(signal_model.aiding_mode, super::TrackingAidingMode::PilotCarrier);
+        assert_eq!(signal_model.component_role, SignalComponentRole::Data);
+        assert!(signal_model.pilot_component.is_some());
+        assert!(signal_model.data_symbol_component.is_some());
+        assert_eq!(
+            signal_model.carrier_phase_transition_source(),
+            super::TrackingPhaseTransitionSource::SecondaryCode
+        );
+        assert!(signal_model.supports_epoch_data_symbol_sign_recovery());
+    }
+
+    #[test]
+    fn tracking_signal_model_resolves_joint_components_for_galileo_e5b() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig {
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..crate::engine::receiver_config::ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            sat,
+            SignalBand::E5,
+            SignalCode::E5b,
+            None,
+        );
+
+        assert_eq!(signal_model.aiding_mode, super::TrackingAidingMode::PilotCarrier);
+        assert_eq!(signal_model.component_role, SignalComponentRole::Data);
+        assert!(signal_model.pilot_component.is_some());
+        assert!(signal_model.data_symbol_component.is_some());
+        assert_eq!(
+            signal_model.carrier_phase_transition_source(),
+            super::TrackingPhaseTransitionSource::SecondaryCode
+        );
+        assert!(signal_model.supports_epoch_data_symbol_sign_recovery());
+    }
+
+    #[test]
+    fn select_carrier_prompt_prefers_pilot_when_it_is_strong_enough() {
+        let selected = super::select_carrier_prompt(
+            Complex::new(0.25, 0.05),
+            Some(Complex::new(0.60, -0.10)),
+            super::TrackingAidingMode::PilotCarrier,
+        );
+
+        assert_eq!(selected, Complex::new(0.60, -0.10));
+    }
+
+    #[test]
+    fn recover_epoch_navigation_bit_sign_reads_data_prompt_polarity_for_joint_tracking() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig {
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..crate::engine::receiver_config::ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Gps, prn: 18 };
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            sat,
+            SignalBand::L5,
+            SignalCode::L5I,
+            None,
+        );
+
+        assert_eq!(
+            super::recover_epoch_navigation_bit_sign(
+                &signal_model,
+                Some(Complex::new(0.75, 0.05)),
+                true,
+            ),
+            Some(1)
+        );
+        assert_eq!(
+            super::recover_epoch_navigation_bit_sign(
+                &signal_model,
+                Some(Complex::new(-0.75, 0.05)),
+                true,
+            ),
+            Some(-1)
+        );
     }
 
     #[test]
