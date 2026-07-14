@@ -355,11 +355,11 @@ fn requested_tracking_loop_profile(
     active_profile: TrackingLoopProfileKind,
     input: TrackingAdaptationInput,
 ) -> TrackingLoopProfileKind {
-    if dynamic_stress_requested(active_profile, input) {
-        return TrackingLoopProfileKind::DynamicStress;
-    }
     if weak_signal_requested(active_profile, input) {
         return TrackingLoopProfileKind::WeakSignal;
+    }
+    if dynamic_stress_requested(active_profile, input) {
+        return TrackingLoopProfileKind::DynamicStress;
     }
     TrackingLoopProfileKind::Nominal
 }
@@ -370,8 +370,8 @@ fn dynamic_stress_requested(
 ) -> bool {
     let fll_error_hz = input.fll_error_hz.abs();
     let carrier_rate_hz_per_s = input.carrier_rate_hz_per_s.abs();
-    let reliable_dynamic_evidence =
-        input.cn0_dbhz.is_finite() && input.cn0_dbhz >= WEAK_SIGNAL_EXIT_CN0_DBHZ;
+    let reliable_dynamic_evidence = input.cn0_dbhz.is_finite()
+        && (input.cn0_dbhz >= WEAK_SIGNAL_ENTRY_CN0_DBHZ || !input.steady_state_lock);
     let (fll_threshold_hz, carrier_rate_threshold_hz_per_s) =
         if active_profile == TrackingLoopProfileKind::DynamicStress {
             (DYNAMIC_STRESS_EXIT_FLL_ERROR_HZ, DYNAMIC_STRESS_EXIT_CARRIER_RATE_HZ_PER_S)
