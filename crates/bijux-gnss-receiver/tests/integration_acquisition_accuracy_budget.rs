@@ -1,6 +1,8 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{Constellation, SamplesFrame, SatId, SignalBand, SignalCode};
+use bijux_gnss_core::api::{
+    Constellation, GlonassFrequencyChannel, SamplesFrame, SatId, SignalBand, SignalCode,
+};
 use bijux_gnss_receiver::api::{
     sim::{
         build_iq16_capture_bundle, generate_l1_ca_multi, truth_guided_receiver_accuracy_budgets,
@@ -162,6 +164,84 @@ fn acquisition_accuracy_budget_resolves_thresholds_by_signal_family() {
                     }],
                     ephemerides: Vec::new(),
                     id: "acquisition-budget-beidou-b2i".to_string(),
+                },
+            ),
+            250.0,
+            2usize,
+            1.0,
+        ),
+        (
+            "glonass-l1",
+            signal_truth_fixture(
+                "acquisition-budget-glonass-l1",
+                ReceiverPipelineConfig {
+                    sampling_freq_hz: 2_044_000.0,
+                    intermediate_freq_hz: 0.0,
+                    code_freq_basis_hz: 511_000.0,
+                    code_length: 511,
+                    acquisition_doppler_search_hz: 2_000,
+                    acquisition_doppler_step_hz: 500,
+                    ..ReceiverPipelineConfig::default()
+                },
+                SyntheticScenario {
+                    sample_rate_hz: 2_044_000.0,
+                    intermediate_freq_hz: 0.0,
+                    receiver_clock_frequency_bias_hz: 0.0,
+                    duration_s: 0.060,
+                    seed: 0xA511_0005,
+                    satellites: vec![SyntheticSignalParams {
+                        sat: SatId { constellation: Constellation::Glonass, prn: 8 },
+                        glonass_frequency_channel: Some(
+                            GlonassFrequencyChannel::new(-4).expect("channel -4 must be valid"),
+                        ),
+                        signal_band: SignalBand::L1,
+                        signal_code: SignalCode::Unknown,
+                        doppler_hz: 500.0,
+                        code_phase_chips: 128.5,
+                        carrier_phase_rad: 0.15,
+                        cn0_db_hz: 60.0,
+                        navigation_data: false.into(),
+                    }],
+                    ephemerides: Vec::new(),
+                    id: "acquisition-budget-glonass-l1".to_string(),
+                },
+            ),
+            500.0,
+            4usize,
+            1.0,
+        ),
+        (
+            "beidou-b1i",
+            signal_truth_fixture(
+                "acquisition-budget-beidou-b1i",
+                ReceiverPipelineConfig {
+                    sampling_freq_hz: 4_092_000.0,
+                    intermediate_freq_hz: 0.0,
+                    code_freq_basis_hz: 2_046_000.0,
+                    code_length: 2046,
+                    acquisition_doppler_search_hz: 2_000,
+                    acquisition_doppler_step_hz: 250,
+                    ..ReceiverPipelineConfig::default()
+                },
+                SyntheticScenario {
+                    sample_rate_hz: 4_092_000.0,
+                    intermediate_freq_hz: 0.0,
+                    receiver_clock_frequency_bias_hz: 0.0,
+                    duration_s: 0.060,
+                    seed: 0xA511_0006,
+                    satellites: vec![SyntheticSignalParams {
+                        sat: SatId { constellation: Constellation::Beidou, prn: 19 },
+                        glonass_frequency_channel: None,
+                        signal_band: SignalBand::B1,
+                        signal_code: SignalCode::B1I,
+                        doppler_hz: -250.0,
+                        code_phase_chips: 512.25,
+                        carrier_phase_rad: 0.35,
+                        cn0_db_hz: 60.0,
+                        navigation_data: false.into(),
+                    }],
+                    ephemerides: Vec::new(),
+                    id: "acquisition-budget-beidou-b1i".to_string(),
                 },
             ),
             250.0,
