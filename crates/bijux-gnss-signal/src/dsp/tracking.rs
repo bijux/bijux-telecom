@@ -30,6 +30,7 @@ const DYNAMIC_STRESS_ENTRY_CARRIER_RATE_HZ_PER_S: f64 = 5.0;
 const DYNAMIC_STRESS_EXIT_CARRIER_RATE_HZ_PER_S: f64 = 2.0;
 const WEAK_SIGNAL_INTEGRATION_MS: u32 = 5;
 const DYNAMIC_STRESS_INTEGRATION_MS: u32 = 1;
+const MAX_TRACKING_ADAPTATION_PENDING_EPOCHS: u8 = 4;
 
 /// First-order loop coefficients derived from noise bandwidth and coherent integration time.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -299,7 +300,8 @@ pub fn advance_tracking_adaptation(
         next_state.pending_profile = None;
         next_state.pending_epochs = 0;
     } else if next_state.pending_profile == Some(requested_profile) {
-        next_state.pending_epochs = next_state.pending_epochs.saturating_add(1);
+        next_state.pending_epochs =
+            next_state.pending_epochs.saturating_add(1).min(MAX_TRACKING_ADAPTATION_PENDING_EPOCHS);
     } else {
         next_state.pending_profile = Some(requested_profile);
         next_state.pending_epochs = 1;
@@ -387,6 +389,9 @@ fn weak_signal_requested(
     active_profile: TrackingLoopProfileKind,
     input: TrackingAdaptationInput,
 ) -> bool {
+    if !input.carrier_lock_ready || !input.steady_state_lock || !input.discriminator_stable {
+        return false;
+    }
     let cn0_threshold_dbhz = if active_profile == TrackingLoopProfileKind::WeakSignal {
         WEAK_SIGNAL_EXIT_CN0_DBHZ
     } else {
@@ -1261,7 +1266,8 @@ mod tests {
         wrap_phase_radians_positive, wrapped_phase_delta_cycles, CarrierTrackingLoopInput,
         CodeLoopInput, TrackingAdaptationInput, TrackingAdaptationState, TrackingLoopProfile,
         TrackingLoopProfileKind, TrackingQualityClass, TrackingUncertaintyInputs,
-        DYNAMIC_STRESS_INTEGRATION_MS, WEAK_SIGNAL_INTEGRATION_MS,
+        DYNAMIC_STRESS_INTEGRATION_MS, MAX_TRACKING_ADAPTATION_PENDING_EPOCHS,
+        WEAK_SIGNAL_INTEGRATION_MS,
     };
     use std::collections::VecDeque;
 
@@ -2043,6 +2049,83 @@ mod tests {
         assert_eq!(first_recovery.profile_kind, TrackingLoopProfileKind::WeakSignal);
         assert_eq!(third_recovery.profile_kind, TrackingLoopProfileKind::WeakSignal);
         assert_eq!(fourth_recovery.profile_kind, TrackingLoopProfileKind::Nominal);
+    }
+
+    #[test]
+    fn tracking_adaptation_requires_carrier_confidence_for_weak_signal_integration() {
+        let base_profile = TrackingLoopProfile {
+            dll_bw_hz: 2.0,
+            pll_bw_hz: 15.0,
+            fll_bw_hz: 10.0,
+            integration_ms: 1,
+        };
+        let low_cn0_without_lock = TrackingAdaptationInput {
+            cn0_dbhz: 29.0,
+            fll_error_hz: 0.0,
+            carrier_rate_hz_per_s: 0.0,
+            carrier_lock_ready: false,
+            steady_state_lock: true,
+            discriminator_stable: true,
+        };
+        let low_cn0_without_steady_state = TrackingAdaptationInput {
+            carrier_lock_ready: true,
+            steady_state_lock: false,
+            ..low_cn0_without_lock
+        };
+        let low_cn0_with_unstable_discriminator = TrackingAdaptationInput {
+            carrier_lock_ready: true,
+            steady_state_lock: true,
+            discriminator_stable: false,
+            ..low_cn0_without_lock
+        };
+
+        for input in [
+            low_cn0_without_lock,
+            low_cn0_without_steady_state,
+            low_cn0_with_unstable_discriminator,
+        ] {
+            let decision = advance_tracking_adaptation(
+                base_profile,
+                TrackingAdaptationState::default(),
+                input,
+            );
+
+            assert_eq!(decision.profile_kind, TrackingLoopProfileKind::Nominal);
+            assert_eq!(decision.profile.integration_ms, base_profile.integration_ms);
+        }
+    }
+
+    #[test]
+    fn tracking_adaptation_caps_pending_hysteresis_memory() {
+        let base_profile = TrackingLoopProfile {
+            dll_bw_hz: 2.0,
+            pll_bw_hz: 15.0,
+            fll_bw_hz: 10.0,
+            integration_ms: 1,
+        };
+        let mut state = TrackingAdaptationState {
+            active_profile: TrackingLoopProfileKind::WeakSignal,
+            pending_profile: Some(TrackingLoopProfileKind::Nominal),
+            pending_epochs: MAX_TRACKING_ADAPTATION_PENDING_EPOCHS,
+        };
+        let recovery_input = TrackingAdaptationInput {
+            cn0_dbhz: 33.5,
+            fll_error_hz: 0.0,
+            carrier_rate_hz_per_s: 0.0,
+            carrier_lock_ready: true,
+            steady_state_lock: true,
+            discriminator_stable: true,
+        };
+
+        for _ in 0..3 {
+            let decision = advance_tracking_adaptation(base_profile, state, recovery_input);
+            state = decision.state;
+
+            assert!(
+                state.pending_epochs <= MAX_TRACKING_ADAPTATION_PENDING_EPOCHS,
+                "decision={decision:?}"
+            );
+        }
     }
 
     #[test]
