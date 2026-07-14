@@ -21,17 +21,15 @@ use bijux_gnss_signal::api::{
     adaptive_bandwidth, anti_false_lock_detected as signal_anti_false_lock_detected,
     apply_carrier_tracking_loop as signal_apply_carrier_tracking_loop,
     apply_code_loop as signal_apply_code_loop, carrier_frequency_error_hz_from_phase_delta,
-    carrier_phase_offset_radians,
-    code_value_at_phase,
+    carrier_phase_offset_radians, code_value_at_phase,
     coherent_integration_seconds as signal_coherent_integration_seconds,
     correlate_early_prompt_late, default_local_code_model_for_signal, discriminators,
     dll_hold_threshold as signal_dll_hold_threshold,
     dll_lock_threshold as signal_dll_lock_threshold,
     epoch_start_code_phase_samples_from_receiver_phase, estimate_cn0_dbhz,
     estimate_tracking_uncertainty as signal_estimate_tracking_uncertainty,
-    fll_lock_threshold_hz as signal_fll_lock_threshold_hz,
-    galileo_e5a_q_epoch_symbol, galileo_e5a_q_secondary_code, galileo_e5b_q_epoch_symbol,
-    galileo_e5b_q_secondary_code,
+    fll_lock_threshold_hz as signal_fll_lock_threshold_hz, galileo_e5a_q_epoch_symbol,
+    galileo_e5a_q_secondary_code, galileo_e5b_q_epoch_symbol, galileo_e5b_q_secondary_code,
     generate_galileo_e5a_q_code, generate_galileo_e5b_q_code, generate_gps_l2c_cl_code,
     prompt_power_ratio as signal_prompt_power_ratio,
     push_tracking_uncertainty_sample as signal_push_tracking_uncertainty_sample,
@@ -226,6 +224,7 @@ pub struct TrackingSession {
 struct LoopState {
     carrier_hz: f64,
     carrier_phase_cycles: f64,
+    carrier_rate_hz_per_s: f64,
     code_rate_hz: f64,
     code_phase_samples: f64,
     signal_delay_alignment: Option<SignalDelayAlignment>,
@@ -339,14 +338,8 @@ impl TrackingComponentModel {
 enum TrackingComponentLocalCodeModel {
     Local(LocalCodeModel),
     GpsL2cCl { code: Vec<i8> },
-    GalileoE5aQ {
-        code: Vec<i8>,
-        secondary_code: [i8; 100],
-    },
-    GalileoE5bQ {
-        code: Vec<i8>,
-        secondary_code: [i8; 100],
-    },
+    GalileoE5aQ { code: Vec<i8>, secondary_code: [i8; 100] },
+    GalileoE5bQ { code: Vec<i8>, secondary_code: [i8; 100] },
 }
 
 impl TrackingComponentLocalCodeModel {
@@ -360,16 +353,16 @@ impl TrackingComponentLocalCodeModel {
                 local_code_model.sample_tracking_value(chip_phase, primary_code_period_index)
             }
             Self::GpsL2cCl { code } => code_value_at_phase(code, chip_phase),
-            Self::GalileoE5aQ { code, secondary_code } => Ok(
-                code_value_at_phase(code, chip_phase)?
+            Self::GalileoE5aQ { code, secondary_code } => {
+                Ok(code_value_at_phase(code, chip_phase)?
                     * galileo_e5a_q_epoch_symbol(secondary_code, primary_code_period_index) as f32
-                    * std::f32::consts::FRAC_1_SQRT_2,
-            ),
-            Self::GalileoE5bQ { code, secondary_code } => Ok(
-                code_value_at_phase(code, chip_phase)?
+                    * std::f32::consts::FRAC_1_SQRT_2)
+            }
+            Self::GalileoE5bQ { code, secondary_code } => {
+                Ok(code_value_at_phase(code, chip_phase)?
                     * galileo_e5b_q_epoch_symbol(secondary_code, primary_code_period_index) as f32
-                    * std::f32::consts::FRAC_1_SQRT_2,
-            ),
+                    * std::f32::consts::FRAC_1_SQRT_2)
+            }
         }
     }
 }
@@ -620,45 +613,50 @@ fn joint_tracking_components(
     glonass_frequency_channel: Option<bijux_gnss_core::api::GlonassFrequencyChannel>,
     registry_entry: &bijux_gnss_core::api::SignalRegistryEntry,
     primary_component: &bijux_gnss_core::api::SignalComponentSpec,
-) -> (
-    TrackingAidingMode,
-    Option<TrackingComponentModel>,
-    Option<TrackingComponentModel>,
-) {
+) -> (TrackingAidingMode, Option<TrackingComponentModel>, Option<TrackingComponentModel>) {
     let data_component = registry_entry.component(SignalComponentRole::Data);
     let pilot_component = registry_entry.component(SignalComponentRole::Pilot);
 
     if data_component.is_some() && pilot_component.is_some() {
-        let built_pilot = (primary_component.role != SignalComponentRole::Pilot).then(|| {
-            tracking_component_model_for_signal_role(
-                sat,
-                signal_band,
-                signal_code,
-                SignalComponentRole::Pilot,
-                glonass_frequency_channel,
-            )
-        }).flatten();
-        let built_data = (primary_component.role == SignalComponentRole::Pilot).then(|| {
-            tracking_component_model_for_signal_role(
-                sat,
-                signal_band,
-                signal_code,
-                SignalComponentRole::Data,
-                glonass_frequency_channel,
-            )
-        }).flatten().or_else(|| {
-            (primary_component.role == SignalComponentRole::Data).then(|| TrackingComponentModel {
-                role: SignalComponentRole::Data,
-                code_length: primary_component.primary_code_chips as usize,
-                phase_transition_source: tracking_phase_transition_source(primary_component),
-                local_code_model: TrackingComponentLocalCodeModel::Local(
-                    default_local_code_model_for_signal(sat, signal_band, signal_code)
-                        .ok()
-                        .flatten()
-                        .expect("primary data component local code model"),
-                ),
+        let built_pilot = (primary_component.role != SignalComponentRole::Pilot)
+            .then(|| {
+                tracking_component_model_for_signal_role(
+                    sat,
+                    signal_band,
+                    signal_code,
+                    SignalComponentRole::Pilot,
+                    glonass_frequency_channel,
+                )
             })
-        });
+            .flatten();
+        let built_data = (primary_component.role == SignalComponentRole::Pilot)
+            .then(|| {
+                tracking_component_model_for_signal_role(
+                    sat,
+                    signal_band,
+                    signal_code,
+                    SignalComponentRole::Data,
+                    glonass_frequency_channel,
+                )
+            })
+            .flatten()
+            .or_else(|| {
+                (primary_component.role == SignalComponentRole::Data).then(|| {
+                    TrackingComponentModel {
+                        role: SignalComponentRole::Data,
+                        code_length: primary_component.primary_code_chips as usize,
+                        phase_transition_source: tracking_phase_transition_source(
+                            primary_component,
+                        ),
+                        local_code_model: TrackingComponentLocalCodeModel::Local(
+                            default_local_code_model_for_signal(sat, signal_band, signal_code)
+                                .ok()
+                                .flatten()
+                                .expect("primary data component local code model"),
+                        ),
+                    }
+                })
+            });
         return (TrackingAidingMode::PilotCarrier, built_pilot, built_data);
     }
 
@@ -682,15 +680,14 @@ fn joint_tracking_components(
         (SignalComponentRole::Data, Some(pilot_component)) => (
             TrackingAidingMode::PilotCarrier,
             Some(pilot_component),
-            default_local_code_model_for_signal(sat, signal_band, signal_code)
-                .ok()
-                .flatten()
-                .map(|local_code_model| TrackingComponentModel {
+            default_local_code_model_for_signal(sat, signal_band, signal_code).ok().flatten().map(
+                |local_code_model| TrackingComponentModel {
                     role: SignalComponentRole::Data,
                     code_length: primary_component.primary_code_chips as usize,
                     phase_transition_source: tracking_phase_transition_source(primary_component),
                     local_code_model: TrackingComponentLocalCodeModel::Local(local_code_model),
-                }),
+                },
+            ),
         ),
         (SignalComponentRole::Pilot, Some(data_component)) => {
             (TrackingAidingMode::PilotCarrier, None, Some(data_component))
@@ -722,12 +719,8 @@ fn tracking_component_model_for_signal_role(
             .ok()
             .flatten()?;
     let component = registry_entry.component(role)?;
-    let local_code_model = tracking_component_local_code_model_for_signal_role(
-        sat,
-        signal_band,
-        signal_code,
-        role,
-    )?;
+    let local_code_model =
+        tracking_component_local_code_model_for_signal_role(sat, signal_band, signal_code, role)?;
     Some(TrackingComponentModel {
         role,
         code_length: component.primary_code_chips as usize,
@@ -767,9 +760,7 @@ fn tracking_component_local_code_model_for_signal_role(
     }
 }
 
-fn tracking_discriminator_family(
-    subcarrier: SignalSubcarrierSpec,
-) -> TrackingDiscriminatorFamily {
+fn tracking_discriminator_family(subcarrier: SignalSubcarrierSpec) -> TrackingDiscriminatorFamily {
     match subcarrier {
         SignalSubcarrierSpec::None => TrackingDiscriminatorFamily::EarlyPromptLate,
         SignalSubcarrierSpec::Boc { .. } => TrackingDiscriminatorFamily::BocEarlyPromptLate,
@@ -1092,11 +1083,8 @@ impl Tracking {
                 .prompt
             }
         });
-        let carrier_prompt = select_carrier_prompt(
-            primary.prompt,
-            pilot_prompt,
-            signal_model.aiding_mode,
-        );
+        let carrier_prompt =
+            select_carrier_prompt(primary.prompt, pilot_prompt, signal_model.aiding_mode);
         TrackingEpochCorrelation { primary, carrier_prompt, data_prompt }
     }
 
@@ -1166,7 +1154,8 @@ impl Tracking {
             coherent_samples as f64,
             correlation.primary.early_late_noise_weight_energy,
         );
-        if !correlation.primary.prompt.re.is_finite() || !correlation.primary.prompt.im.is_finite() {
+        if !correlation.primary.prompt.re.is_finite() || !correlation.primary.prompt.im.is_finite()
+        {
             self.runtime.logger.event(&bijux_gnss_core::api::DiagnosticEvent::new(
                 bijux_gnss_core::api::DiagnosticSeverity::Error,
                 "TRACK_NUMERIC_INVALID",
@@ -1212,10 +1201,7 @@ impl Tracking {
                 "channel={} sat={:?}-{}",
                 channel_id, sat.constellation, sat.prn
             ),
-            tracking_assumptions: Some(default_tracking_assumptions(
-                &self.config,
-                signal_model,
-            )),
+            tracking_assumptions: Some(default_tracking_assumptions(&self.config, signal_model)),
             tracking_uncertainty: None,
             signal_delay_alignment: None,
             processing_ms: None,
@@ -1374,6 +1360,7 @@ impl Tracking {
         let mut state = LoopState {
             carrier_hz,
             carrier_phase_cycles: 0.0,
+            carrier_rate_hz_per_s: 0.0,
             code_rate_hz: signal_model.code_rate_hz,
             code_phase_samples,
             acquisition_cn0_proxy_dbhz,
@@ -1471,6 +1458,7 @@ impl Tracking {
                     state: LoopState {
                         carrier_hz: context.acquisition_carrier_hz,
                         carrier_phase_cycles: 0.0,
+                        carrier_rate_hz_per_s: 0.0,
                         code_rate_hz: signal_model.code_rate_hz,
                         code_phase_samples: context.seed.code_phase_samples.0,
                         signal_delay_alignment: context.seed.signal_delay_alignment.clone(),
@@ -2002,6 +1990,7 @@ impl Tracking {
         let carrier_loop = apply_carrier_loop(CarrierLoopInput {
             current_carrier_hz: state.carrier_hz,
             current_carrier_phase_cycles: state.carrier_phase_cycles,
+            current_carrier_rate_hz_per_s: state.carrier_rate_hz_per_s,
             epoch_len_samples,
             sample_rate_hz: self.config.sampling_freq_hz,
             coherent_integration_s,
@@ -2015,6 +2004,7 @@ impl Tracking {
         });
         state.carrier_hz = carrier_loop.carrier_hz;
         state.carrier_phase_cycles = carrier_loop.carrier_phase_cycles;
+        state.carrier_rate_hz_per_s = carrier_loop.carrier_rate_hz_per_s;
         state.code_phase_samples = code_loop.code_phase_samples;
 
         if state.state != from_state {
@@ -2915,6 +2905,7 @@ fn apply_carrier_loop(input: CarrierLoopInput) -> CarrierLoopUpdate {
         signal_apply_carrier_tracking_loop(bijux_gnss_signal::api::CarrierTrackingLoopInput {
             current_carrier_hz: input.current_carrier_hz,
             current_carrier_phase_cycles: input.current_carrier_phase_cycles,
+            current_carrier_rate_hz_per_s: input.current_carrier_rate_hz_per_s,
             epoch_len_samples: input.epoch_len_samples,
             sample_rate_hz: input.sample_rate_hz,
             coherent_integration_s: input.coherent_integration_s,
@@ -2928,6 +2919,7 @@ fn apply_carrier_loop(input: CarrierLoopInput) -> CarrierLoopUpdate {
     CarrierLoopUpdate {
         carrier_hz: update.carrier_hz,
         carrier_phase_cycles: update.carrier_phase_cycles,
+        carrier_rate_hz_per_s: update.carrier_rate_hz_per_s,
     }
 }
 
@@ -3066,6 +3058,7 @@ impl Tracking {
         channel.state = LoopState {
             carrier_hz: seed.carrier_hz,
             carrier_phase_cycles: 0.0,
+            carrier_rate_hz_per_s: 0.0,
             code_rate_hz: self.config.code_freq_basis_hz,
             code_phase_samples: seed.code_phase_samples,
             signal_delay_alignment: channel.state.signal_delay_alignment.clone(),
@@ -3176,12 +3169,12 @@ mod tests {
     use crate::sim::synthetic::{generate_l1_ca, SyntheticSignalParams};
     use bijux_gnss_core::api::{
         AcqHypothesis, AcqUncertainty, Chips, Constellation, Epoch, Hertz, ReceiverSampleTrace,
-        SampleTime, SamplesFrame, SatId, Seconds, SignalBand, SignalCode,
-        SignalComponentRole, TrackEpoch,
+        SampleTime, SamplesFrame, SatId, Seconds, SignalBand, SignalCode, SignalComponentRole,
+        TrackEpoch,
     };
     use bijux_gnss_signal::api::{
-        advance_code_phase_seconds, discriminators, first_order_angular_loop_coefficients,
-        first_order_loop_coefficients, phase_lock_loop_coefficients, sample_ca_code,
+        advance_code_phase_seconds, delay_lock_loop_coefficients, discriminators,
+        first_order_angular_loop_coefficients, phase_lock_loop_coefficients, sample_ca_code,
         samples_per_code, Prn,
     };
     use num_complex::Complex;
@@ -3803,6 +3796,7 @@ mod tests {
         super::LoopState {
             carrier_hz: 0.0,
             carrier_phase_cycles: 0.0,
+            carrier_rate_hz_per_s: 0.0,
             code_rate_hz: 0.0,
             code_phase_samples: 0.0,
             signal_delay_alignment: None,
@@ -3963,7 +3957,8 @@ mod tests {
         });
 
         let expected = 1_023_000.0
-            - first_order_loop_coefficients(2.0, coherent_integration_s).rate_gain_hz * 0.25;
+            + delay_lock_loop_coefficients(2.0, coherent_integration_s).rate_gain_hz_per_chip
+                * 0.25;
         assert!((update.code_rate_hz - expected).abs() < 1.0e-9, "{update:?}");
     }
 
@@ -3993,7 +3988,7 @@ mod tests {
         });
 
         assert!(
-            (short.code_rate_hz - 1_023_000.0).abs() > (long.code_rate_hz - 1_023_000.0).abs(),
+            (long.code_rate_hz - 1_023_000.0).abs() > (short.code_rate_hz - 1_023_000.0).abs(),
             "short={short:?} long={long:?}"
         );
     }
@@ -4271,6 +4266,7 @@ mod tests {
         let update = super::apply_carrier_loop(super::CarrierLoopInput {
             current_carrier_hz: 1_000.0,
             current_carrier_phase_cycles: 12.0,
+            current_carrier_rate_hz_per_s: 0.0,
             epoch_len_samples: 4_092,
             sample_rate_hz: 4_092_000.0,
             coherent_integration_s: 0.001,
@@ -4289,8 +4285,15 @@ mod tests {
                 < 1.0e-9,
             "{update:?}"
         );
+        assert!(
+            (update.carrier_rate_hz_per_s
+                - pll_coefficients.frequency_rate_gain_hz_per_s_per_rad * 0.25)
+                .abs()
+                < 1.0e-9,
+            "{update:?}"
+        );
         let expected_phase_cycles = 12.0
-            + (1_000.0 + pll_coefficients.frequency_gain_hz_per_rad * 0.25) * 0.001
+            + (1_000.0 + (1_000.0 + pll_coefficients.frequency_gain_hz_per_rad * 0.25)) * 0.0005
             + pll_coefficients.phase_blend * 0.25 / std::f64::consts::TAU;
         assert!((update.carrier_phase_cycles - expected_phase_cycles).abs() < 1.0e-9, "{update:?}",);
     }
@@ -4300,6 +4303,7 @@ mod tests {
         let update = super::apply_carrier_loop(super::CarrierLoopInput {
             current_carrier_hz: 80.0,
             current_carrier_phase_cycles: 12.0,
+            current_carrier_rate_hz_per_s: 0.0,
             epoch_len_samples: 4_092,
             sample_rate_hz: 4_092_000.0,
             coherent_integration_s: 0.001,
@@ -4321,6 +4325,7 @@ mod tests {
         let first = super::apply_carrier_loop(super::CarrierLoopInput {
             current_carrier_hz: 1_500.0,
             current_carrier_phase_cycles: 128.25,
+            current_carrier_rate_hz_per_s: 0.0,
             epoch_len_samples: 4_092,
             sample_rate_hz: 4_092_000.0,
             coherent_integration_s: 0.001,
@@ -4334,6 +4339,7 @@ mod tests {
         let second = super::apply_carrier_loop(super::CarrierLoopInput {
             current_carrier_hz: first.carrier_hz,
             current_carrier_phase_cycles: first.carrier_phase_cycles,
+            current_carrier_rate_hz_per_s: first.carrier_rate_hz_per_s,
             epoch_len_samples: 4_092,
             sample_rate_hz: 4_092_000.0,
             coherent_integration_s: 0.001,
@@ -4358,6 +4364,7 @@ mod tests {
         let update = super::apply_carrier_loop(super::CarrierLoopInput {
             current_carrier_hz: -850.0,
             current_carrier_phase_cycles: 512.875,
+            current_carrier_rate_hz_per_s: 0.0,
             epoch_len_samples: 8_184,
             sample_rate_hz: 4_092_000.0,
             coherent_integration_s: 0.002,
@@ -4378,6 +4385,7 @@ mod tests {
         let short = super::apply_carrier_loop(super::CarrierLoopInput {
             current_carrier_hz: 1_000.0,
             current_carrier_phase_cycles: 12.0,
+            current_carrier_rate_hz_per_s: 0.0,
             epoch_len_samples: 4_092,
             sample_rate_hz: 4_092_000.0,
             coherent_integration_s: 0.001,
@@ -4391,6 +4399,7 @@ mod tests {
         let long = super::apply_carrier_loop(super::CarrierLoopInput {
             current_carrier_hz: 1_000.0,
             current_carrier_phase_cycles: 12.0,
+            current_carrier_rate_hz_per_s: 0.0,
             epoch_len_samples: 40_920,
             sample_rate_hz: 4_092_000.0,
             coherent_integration_s: 0.010,
