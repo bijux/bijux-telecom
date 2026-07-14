@@ -361,12 +361,17 @@ fn vector_tracking_history_samples(sample_rate_hz: f64) -> u64 {
 }
 
 fn vector_tracking_measurement_is_usable(measurement: VectorTrackingMeasurement) -> bool {
-    matches!(measurement.channel_state, ChannelState::Tracking | ChannelState::Degraded)
-        && measurement.prompt_locked
-        && measurement.dll_locked
-        && measurement.pll_locked
+    let carrier_reliable = measurement.prompt_locked
         && measurement.fll_locked
-        && measurement.cn0_dbhz >= VECTOR_TRACKING_MIN_CN0_DBHZ
+        && measurement.cn0_dbhz >= VECTOR_TRACKING_MIN_CN0_DBHZ;
+    let state_reliable = match measurement.channel_state {
+        ChannelState::PullIn => carrier_reliable,
+        ChannelState::Tracking | ChannelState::Degraded => {
+            carrier_reliable && measurement.dll_locked && measurement.pll_locked
+        }
+        ChannelState::Idle | ChannelState::Acquired | ChannelState::Lost => false,
+    };
+    state_reliable
         && measurement.cn0_dbhz.is_finite()
         && measurement.dll_error_samples.is_finite()
         && measurement.pll_error_rad.is_finite()
@@ -386,11 +391,15 @@ fn vector_tracking_prediction(
     let mut weighted_motion_rate_hz_per_s = 0.0;
     let mut weighted_cn0_dbhz = 0.0;
     let mut weight_sum = 0.0;
+    let mut code_weight_sum = 0.0;
     let mut sample_index = 0;
     for measurement in measurements {
         let weight = vector_tracking_cn0_weight(measurement.cn0_dbhz);
         weighted_clock_error_hz += measurement.fll_error_hz * weight;
-        weighted_code_error_hz += measurement.code_rate_error_hz * weight;
+        if measurement.dll_locked {
+            weighted_code_error_hz += measurement.code_rate_error_hz * weight;
+            code_weight_sum += weight;
+        }
         weighted_motion_rate_hz_per_s += measurement.carrier_rate_hz_per_s * weight;
         weighted_cn0_dbhz += measurement.cn0_dbhz * weight;
         weight_sum += weight;
@@ -404,7 +413,11 @@ fn vector_tracking_prediction(
         contributor_count: measurements.len(),
         mean_cn0_dbhz: weighted_cn0_dbhz / weight_sum,
         receiver_clock_frequency_error_hz: weighted_clock_error_hz / weight_sum,
-        receiver_code_rate_error_hz: weighted_code_error_hz / weight_sum,
+        receiver_code_rate_error_hz: if code_weight_sum > f64::EPSILON {
+            weighted_code_error_hz / code_weight_sum
+        } else {
+            0.0
+        },
         receiver_motion_frequency_rate_hz_per_s: weighted_motion_rate_hz_per_s / weight_sum,
     })
 }
