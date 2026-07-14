@@ -14,8 +14,8 @@
 #![deny(missing_docs)]
 #![forbid(unsafe_code)]
 
-mod codes;
 mod catalog;
+mod codes;
 mod dsp;
 mod error;
 mod obs_validation;

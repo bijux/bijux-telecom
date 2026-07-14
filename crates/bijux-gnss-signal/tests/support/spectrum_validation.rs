@@ -114,12 +114,9 @@ pub fn compare_filtered_component_spectrum(
         estimate_complex_power_spectral_density(samples, sample_rate_hz, estimator_config)
             .expect("measured filtered power spectral density");
     let frequencies_hz = measured_points.iter().map(|point| point.frequency_hz).collect::<Vec<_>>();
-    let expected_points = expected_filtered_component_power_spectral_density(
-        component,
-        filter,
-        &frequencies_hz,
-    )
-    .expect("expected filtered power spectral density");
+    let expected_points =
+        expected_filtered_component_power_spectral_density(component, filter, &frequencies_hz)
+            .expect("expected filtered power spectral density");
     compare_expected_spectrum(
         measured_points,
         expected_points,

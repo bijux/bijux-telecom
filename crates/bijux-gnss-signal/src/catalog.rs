@@ -702,12 +702,11 @@ mod tests {
     use super::{
         carrier_wavelength_m, default_acquisition_signal, first_order_ionosphere_code_delay_m,
         first_order_ionosphere_phase_advance_m, glonass_l1_carrier_hz,
-        registered_signal_registry_entries, shared_path_code_doppler_hz,
-        shared_path_code_rate_hz, shared_path_doppler_hz, signal_cycles_to_meters,
-        signal_id_cycles_to_meters, signal_id_meters_to_cycles, signal_id_wavelength_m,
-        signal_meters_to_cycles, signal_registry, signal_spec_beidou_b2i,
-        signal_spec_galileo_e1b, signal_spec_glonass_l1, signal_spec_gps_l1_ca,
-        signal_spec_gps_l2_py, signal_spec_gps_l2c, signal_spec_gps_l5_i,
+        registered_signal_registry_entries, shared_path_code_doppler_hz, shared_path_code_rate_hz,
+        shared_path_doppler_hz, signal_cycles_to_meters, signal_id_cycles_to_meters,
+        signal_id_meters_to_cycles, signal_id_wavelength_m, signal_meters_to_cycles,
+        signal_registry, signal_spec_beidou_b2i, signal_spec_galileo_e1b, signal_spec_glonass_l1,
+        signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l2c, signal_spec_gps_l5_i,
         signal_spec_gps_l5_q, signal_wavelength_m, SignalSpec,
     };
     use bijux_gnss_core::api::{
@@ -938,7 +937,9 @@ mod tests {
         assert!(
             shared_path_code_doppler_hz(500.0, invalid_reference, signal_spec_gps_l5_i()).is_none()
         );
-        assert!(shared_path_code_doppler_hz(500.0, signal_spec_gps_l1_ca(), invalid_target).is_none());
+        assert!(
+            shared_path_code_doppler_hz(500.0, signal_spec_gps_l1_ca(), invalid_target).is_none()
+        );
         assert!(shared_path_code_rate_hz(500.0, signal_spec_gps_l1_ca(), invalid_target).is_none());
     }
 

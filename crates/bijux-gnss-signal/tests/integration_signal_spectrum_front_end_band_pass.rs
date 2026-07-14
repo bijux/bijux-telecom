@@ -45,11 +45,7 @@ fn gps_l1_ca_band_pass_spectrum_matches_filter_shaped_expectation() {
             .expect("GPS L1 C/A samples");
     let (filtered_samples, filter) = apply_filter(
         &samples,
-        FrontEndFilterSpec::BandPass {
-            center_hz: 700_000.0,
-            bandwidth_hz: 900_000.0,
-            taps: 81,
-        },
+        FrontEndFilterSpec::BandPass { center_hz: 700_000.0, bandwidth_hz: 900_000.0, taps: 81 },
         sample_rate_hz,
     );
     let comparison = compare_filtered_component_spectrum(

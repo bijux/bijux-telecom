@@ -182,7 +182,11 @@ pub fn assert_secondary_code_matches_reference(catalog: &GalileoE1ReferenceCatal
         catalog.secondary_code_sha256,
         "Galileo E1 secondary-code fingerprint mismatch"
     );
-    assert_eq!(&logical_bits[..16], &catalog.secondary_code_bits[..16], "Galileo E1 secondary-code prefix mismatch");
+    assert_eq!(
+        &logical_bits[..16],
+        &catalog.secondary_code_bits[..16],
+        "Galileo E1 secondary-code prefix mismatch"
+    );
     assert_eq!(
         &logical_bits[4..20],
         &catalog.secondary_code_bits[4..20],
@@ -195,7 +199,11 @@ pub fn assert_secondary_code_matches_reference(catalog: &GalileoE1ReferenceCatal
     );
     assert_eq!(
         wrapped_window_bits(&logical_bits, logical_bits.len() - 8, 16),
-        wrapped_window_bits(&catalog.secondary_code_bits, catalog.secondary_code_bits.len() - 8, 16),
+        wrapped_window_bits(
+            &catalog.secondary_code_bits,
+            catalog.secondary_code_bits.len() - 8,
+            16
+        ),
         "Galileo E1 secondary-code boundary mismatch"
     );
 }

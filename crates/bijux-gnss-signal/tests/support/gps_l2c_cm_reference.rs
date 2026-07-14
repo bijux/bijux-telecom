@@ -103,11 +103,7 @@ impl GpsL2cCmReferenceCatalog {
     }
 }
 
-pub fn assert_code_matches_reference(
-    catalog: &GpsL2cCmReferenceCatalog,
-    prn: u8,
-    code: &[i8],
-) {
+pub fn assert_code_matches_reference(catalog: &GpsL2cCmReferenceCatalog, prn: u8, code: &[i8]) {
     let reference = catalog.code_reference(prn);
     let logical_bits = logical_bits_from_code(code);
     let prefix = &logical_bits[..catalog.prefix_length];
@@ -124,12 +120,7 @@ pub fn assert_code_matches_reference(
         &reference.bit_prefix[..catalog.prefix_length / 2]
     );
 
-    assert_eq!(
-        logical_bits.len(),
-        catalog.chip_length,
-        "GPS L2C CM PRN {} length mismatch",
-        prn
-    );
+    assert_eq!(logical_bits.len(), catalog.chip_length, "GPS L2C CM PRN {} length mismatch", prn);
     assert_eq!(
         sha256_hex(&logical_bits),
         reference.bit_sha256,

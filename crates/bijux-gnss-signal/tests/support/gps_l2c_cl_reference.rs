@@ -47,10 +47,7 @@ impl GpsL2cClReferenceCatalog {
             self.chip_length, GPS_L2C_CL_CODE_CHIPS,
             "unexpected GPS L2C CL code length in reference catalog"
         );
-        assert_eq!(
-            self.range_length, 64,
-            "unexpected GPS L2C CL range length"
-        );
+        assert_eq!(self.range_length, 64, "unexpected GPS L2C CL range length");
         assert_eq!(
             self.range_offsets,
             vec![0, 10_230, 255_731, 511_463, 767_186, 767_218],
@@ -110,20 +107,11 @@ impl GpsL2cClReferenceCatalog {
     }
 }
 
-pub fn assert_code_matches_reference(
-    catalog: &GpsL2cClReferenceCatalog,
-    prn: u8,
-    code: &[i8],
-) {
+pub fn assert_code_matches_reference(catalog: &GpsL2cClReferenceCatalog, prn: u8, code: &[i8]) {
     let reference = catalog.code_reference(prn);
     let logical_bits = logical_bits_from_code(code);
 
-    assert_eq!(
-        logical_bits.len(),
-        catalog.chip_length,
-        "GPS L2C CL PRN {} length mismatch",
-        prn
-    );
+    assert_eq!(logical_bits.len(), catalog.chip_length, "GPS L2C CL PRN {} length mismatch", prn);
     assert_eq!(
         sha256_hex(&logical_bits),
         reference.bit_sha256,

@@ -1,6 +1,8 @@
 use crate::dsp::front_end::FrontEndFirFilter;
 use crate::error::SignalError;
-use bijux_gnss_core::api::{Sample, SignalComponentSpec, SignalRegistryEntry, SignalSubcarrierSpec};
+use bijux_gnss_core::api::{
+    Sample, SignalComponentSpec, SignalRegistryEntry, SignalSubcarrierSpec,
+};
 use num_complex::Complex;
 use rustfft::FftPlanner;
 
@@ -793,12 +795,9 @@ mod tests {
             expected_component_power_spectral_density(component, &frequencies_hz).expect("PSD");
         let manual =
             apply_front_end_transfer_power_spectral_density(&unfiltered, &filter).expect("manual");
-        let filtered = expected_filtered_component_power_spectral_density(
-            component,
-            &filter,
-            &frequencies_hz,
-        )
-        .expect("filtered PSD");
+        let filtered =
+            expected_filtered_component_power_spectral_density(component, &filter, &frequencies_hz)
+                .expect("filtered PSD");
 
         assert_eq!(filtered, manual);
     }
@@ -815,12 +814,9 @@ mod tests {
         let filter = FrontEndFilterSpec::LowPass { cutoff_hz: 450_000.0, taps: 81 }
             .design(sample_rate_hz)
             .expect("front-end filter");
-        let filtered = expected_filtered_component_power_spectral_density(
-            component,
-            &filter,
-            &frequencies_hz,
-        )
-        .expect("filtered PSD");
+        let filtered =
+            expected_filtered_component_power_spectral_density(component, &filter, &frequencies_hz)
+                .expect("filtered PSD");
         let filtered_summary =
             summarize_power_spectral_density(&filtered, 0.99).expect("filtered summary");
 

@@ -48,7 +48,13 @@ fn default_acquisition_catalog_covers_registered_galileo_prns() {
     let sats = default_acquisition_sats(Constellation::Galileo);
 
     assert_eq!(sats.len(), 50);
-    assert_eq!(sats.first().copied(), Some(SatId { constellation: Constellation::Galileo, prn: 1 }));
-    assert_eq!(sats.last().copied(), Some(SatId { constellation: Constellation::Galileo, prn: 50 }));
+    assert_eq!(
+        sats.first().copied(),
+        Some(SatId { constellation: Constellation::Galileo, prn: 1 })
+    );
+    assert_eq!(
+        sats.last().copied(),
+        Some(SatId { constellation: Constellation::Galileo, prn: 50 })
+    );
     assert!(sats.iter().all(|sat| sat.constellation == Constellation::Galileo));
 }

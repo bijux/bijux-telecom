@@ -278,6 +278,7 @@ dependencies = [
  "bijux-gnss-policies",
  "num-complex",
  "proptest",
+ "rustfft",
  "schemars",
  "serde",
  "sha2",

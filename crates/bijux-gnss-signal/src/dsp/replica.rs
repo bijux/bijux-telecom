@@ -860,8 +860,8 @@ mod tests {
         default_signal_carrier_hz_for_band, sample_modulated_replica_at_sample_index,
         sample_modulated_replica_at_time, signal_amplitude_from_cn0_db_hz,
         wipeoff_carrier_with_linear_rate, AcquisitionSignalModel, ReplicaCodeModel,
-        GPS_L2C_TIME_MULTIPLEXED_CODE_CHIPS,
-        GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ, UNIT_VARIANCE_COMPLEX_NOISE_POWER,
+        GPS_L2C_TIME_MULTIPLEXED_CODE_CHIPS, GPS_L2C_TIME_MULTIPLEXED_CODE_RATE_HZ,
+        UNIT_VARIANCE_COMPLEX_NOISE_POWER,
     };
     use crate::catalog::resolved_signal_registry_entry;
     use crate::codes::beidou_d1::{beidou_d1_epoch_symbol, BEIDOU_D1_PRIMARY_EPOCHS_PER_SYMBOL};
@@ -904,8 +904,12 @@ mod tests {
     fn wipeoff_carrier_with_linear_rate_removes_ramped_phase() {
         let samples = (0..8)
             .map(|sample_index| {
-                let phase =
-                    carrier_phase_radians_at_time(0.3, 1_200.0, 40.0, sample_index as f64 / 4_000.0);
+                let phase = carrier_phase_radians_at_time(
+                    0.3,
+                    1_200.0,
+                    40.0,
+                    sample_index as f64 / 4_000.0,
+                );
                 Complex::from_polar(1.0_f32, phase as f32)
             })
             .collect::<Vec<_>>();

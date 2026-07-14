@@ -553,9 +553,8 @@ mod tests {
             supported_dual_frequency_band_pairs_for_constellation(Constellation::Beidou),
             &[(SignalBand::B1, SignalBand::B2)]
         );
-        assert!(
-            supported_dual_frequency_band_pairs_for_constellation(Constellation::Glonass).is_empty()
-        );
+        assert!(supported_dual_frequency_band_pairs_for_constellation(Constellation::Glonass)
+            .is_empty());
     }
 
     #[test]
@@ -573,10 +572,7 @@ mod tests {
 
         assert_eq!(report.observed_pairs, 2);
         assert_eq!(report.complete_pairs, 0);
-        assert_eq!(
-            report.pairs[0].issue,
-            Some(DualFrequencyPairIssue::SignalDefinitionInvalid)
-        );
+        assert_eq!(report.pairs[0].issue, Some(DualFrequencyPairIssue::SignalDefinitionInvalid));
     }
 
     #[test]

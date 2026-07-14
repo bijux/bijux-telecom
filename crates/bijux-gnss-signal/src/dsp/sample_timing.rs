@@ -88,9 +88,8 @@ mod tests {
 
     #[test]
     fn negative_initial_phase_wraps_without_negative_period_index() {
-        let position =
-            code_sample_position_at_index(-0.25, 4_092_000.0, 1_023_000.0, 4092, 0)
-                .expect("valid wrapped position");
+        let position = code_sample_position_at_index(-0.25, 4_092_000.0, 1_023_000.0, 4092, 0)
+            .expect("valid wrapped position");
 
         assert!((position.chip_phase - 4091.75).abs() < 1.0e-12);
         assert_eq!(position.primary_code_period_index, 0);

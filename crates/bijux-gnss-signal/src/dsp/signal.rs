@@ -285,10 +285,8 @@ mod tests {
     #[test]
     fn receiver_phase_conversions_round_trip_one_code_period() {
         let receiver_phase = 4091.5;
-        let epoch_start =
-            epoch_start_code_phase_samples_from_receiver_phase(receiver_phase, 4_092);
-        let recovered =
-            receiver_code_phase_samples_from_epoch_start_phase(epoch_start, 4_092);
+        let epoch_start = epoch_start_code_phase_samples_from_receiver_phase(receiver_phase, 4_092);
+        let recovered = receiver_code_phase_samples_from_epoch_start_phase(epoch_start, 4_092);
 
         assert!((epoch_start - 0.5).abs() < 1.0e-9, "epoch_start={epoch_start}");
         assert!((recovered - receiver_phase).abs() < 1.0e-9, "recovered={recovered}");
@@ -315,9 +313,8 @@ mod tests {
 
     #[test]
     fn code_phase_samples_at_sample_index_advances_by_elapsed_code_phase() {
-        let phase =
-            code_phase_samples_at_sample_index(4_092_000.0, 1_023_000.0, 1023, 2_046, 0.5)
-                .expect("valid code phase");
+        let phase = code_phase_samples_at_sample_index(4_092_000.0, 1_023_000.0, 1023, 2_046, 0.5)
+            .expect("valid code phase");
         assert!((phase - 2_048.0).abs() < 1.0e-9, "phase={phase}");
     }
 

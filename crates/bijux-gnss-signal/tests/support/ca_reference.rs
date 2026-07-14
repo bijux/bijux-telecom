@@ -90,22 +90,13 @@ impl CaReferenceCatalog {
 pub fn assert_code_matches_reference(catalog: &CaReferenceCatalog, prn: u8, logical_bits: &str) {
     let reference = catalog.code_reference(prn);
     let windows = vec![
-        ReferenceWindow {
-            start: 0,
-            bits: reference.bit_prefix.clone(),
-        },
-        ReferenceWindow {
-            start: catalog.middle_start,
-            bits: reference.bit_middle.clone(),
-        },
+        ReferenceWindow { start: 0, bits: reference.bit_prefix.clone() },
+        ReferenceWindow { start: catalog.middle_start, bits: reference.bit_middle.clone() },
         ReferenceWindow {
             start: catalog.code_length - catalog.window_length,
             bits: reference.bit_suffix.clone(),
         },
-        ReferenceWindow {
-            start: catalog.boundary_start,
-            bits: reference.bit_boundary.clone(),
-        },
+        ReferenceWindow { start: catalog.boundary_start, bits: reference.bit_boundary.clone() },
     ];
     assert_code_period_reference(
         logical_bits,
@@ -117,7 +108,5 @@ pub fn assert_code_matches_reference(catalog: &CaReferenceCatalog, prn: u8, logi
 }
 
 fn reference_catalog_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/data")
-        .join("ca_reference_catalog.toml")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data").join("ca_reference_catalog.toml")
 }

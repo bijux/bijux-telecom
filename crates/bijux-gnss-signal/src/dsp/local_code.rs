@@ -336,7 +336,10 @@ impl LocalCodeModel {
                 start_sample_index + sample_offset as u64,
             )?;
             samples.push(
-                self.sample_tracking_value(position.chip_phase, position.primary_code_period_index)?,
+                self.sample_tracking_value(
+                    position.chip_phase,
+                    position.primary_code_period_index,
+                )?,
             );
         }
         Ok(samples)
@@ -457,12 +460,7 @@ mod tests {
         let initial_code_phase_chips = 137.625;
         let start_sample_index = 90_000_123_u64;
         let block_samples = model
-            .sample_tracking_block(
-                sample_rate_hz,
-                initial_code_phase_chips,
-                start_sample_index,
-                64,
-            )
+            .sample_tracking_block(sample_rate_hz, initial_code_phase_chips, start_sample_index, 64)
             .expect("tracking-local block");
         let iterated = (0..64_u64)
             .map(|sample_offset| {
@@ -475,10 +473,7 @@ mod tests {
                 )
                 .expect("valid absolute sample position");
                 model
-                    .sample_tracking_value(
-                        position.chip_phase,
-                        position.primary_code_period_index,
-                    )
+                    .sample_tracking_value(position.chip_phase, position.primary_code_period_index)
                     .expect("tracking-local sample")
             })
             .collect::<Vec<_>>();

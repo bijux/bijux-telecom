@@ -255,7 +255,11 @@ fn generated_codes_match_immutable_reference_catalog() {
         let logical_bits = logical_bits_from_bipolar(&code, "GPS C/A code");
 
         assert_code_matches_reference(&catalog, reference.prn, &logical_bits);
-        assert_period_repetition(&code, catalog.code_length, &format!("GPS C/A PRN {}", reference.prn));
+        assert_period_repetition(
+            &code,
+            catalog.code_length,
+            &format!("GPS C/A PRN {}", reference.prn),
+        );
     }
 }
 
