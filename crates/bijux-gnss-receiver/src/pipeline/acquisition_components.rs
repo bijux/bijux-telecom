@@ -3,6 +3,7 @@ use bijux_gnss_core::api::{
     SignalComponentRole, SignalComponentSpec,
 };
 use bijux_gnss_signal::api::{
+    galileo_e5a_q_secondary_code, galileo_e5b_q_secondary_code, gps_l5_q_neumann_hoffman_code,
     resolved_signal_registry_entry, sample_galileo_e5a_q_primary_code,
     sample_galileo_e5b_q_primary_code, AcquisitionSignalModel, SignalError,
 };
@@ -18,6 +19,7 @@ pub(crate) struct AcquisitionStrategyPlan {
 pub(crate) struct AcquisitionComponentPlan {
     pub role: SignalComponentRole,
     data_symbol_code_periods: Option<usize>,
+    secondary_code_period_signs: Option<Vec<i8>>,
     local_code: AcquisitionComponentLocalCode,
 }
 
@@ -53,6 +55,10 @@ impl AcquisitionComponentPlan {
 
     pub fn data_symbol_code_periods(&self) -> Option<usize> {
         self.data_symbol_code_periods
+    }
+
+    pub fn secondary_code_period_signs(&self) -> Option<&[i8]> {
+        self.secondary_code_period_signs.as_deref()
     }
 }
 
@@ -106,6 +112,7 @@ pub(crate) fn acquisition_strategies_for_signal(
     let default_component = AcquisitionComponentPlan {
         role: default_role,
         data_symbol_code_periods: component_data_symbol_code_periods(default_component_spec),
+        secondary_code_period_signs: None,
         local_code: AcquisitionComponentLocalCode::SearchModel(search_model.clone()),
     };
 
@@ -120,6 +127,9 @@ pub(crate) fn acquisition_strategies_for_signal(
             let pilot_component = AcquisitionComponentPlan {
                 role: SignalComponentRole::Pilot,
                 data_symbol_code_periods: None,
+                secondary_code_period_signs: Some(
+                    galileo_e5a_q_secondary_code(sat.prn)?.into_iter().collect(),
+                ),
                 local_code: AcquisitionComponentLocalCode::GalileoE5aPilot { sat },
             };
             strategies.push(AcquisitionStrategyPlan {
@@ -144,6 +154,9 @@ pub(crate) fn acquisition_strategies_for_signal(
             let pilot_component = AcquisitionComponentPlan {
                 role: SignalComponentRole::Pilot,
                 data_symbol_code_periods: None,
+                secondary_code_period_signs: Some(
+                    galileo_e5b_q_secondary_code(sat.prn)?.into_iter().collect(),
+                ),
                 local_code: AcquisitionComponentLocalCode::GalileoE5bPilot { sat },
             };
             strategies.push(AcquisitionStrategyPlan {
@@ -165,6 +178,14 @@ pub(crate) fn acquisition_strategies_for_signal(
             }
         }
         _ => {}
+    }
+
+    if sat.constellation == bijux_gnss_core::api::Constellation::Gps
+        && signal_band == SignalBand::L5
+        && signal_code == SignalCode::L5Q
+    {
+        strategies[0].components[0].secondary_code_period_signs =
+            Some(gps_l5_q_neumann_hoffman_code().as_slice().to_vec());
     }
 
     Ok(strategies)
@@ -227,11 +248,25 @@ mod tests {
         );
         assert_eq!(strategies[1].components[0].data_symbol_code_periods(), None);
         assert_eq!(
+            strategies[1].components[0]
+                .secondary_code_period_signs()
+                .expect("Galileo E5a pilot secondary code")
+                .len(),
+            100
+        );
+        assert_eq!(
             strategies[2].components.iter().map(|component| component.role).collect::<Vec<_>>(),
             vec![SignalComponentRole::Data, SignalComponentRole::Pilot]
         );
         assert_eq!(strategies[2].components[0].data_symbol_code_periods(), Some(20));
         assert_eq!(strategies[2].components[1].data_symbol_code_periods(), None);
+        assert_eq!(
+            strategies[2].components[1]
+                .secondary_code_period_signs()
+                .expect("Galileo E5a pilot secondary code")
+                .len(),
+            100
+        );
         assert_eq!(
             strategies[3].components.iter().map(|component| component.role).collect::<Vec<_>>(),
             vec![SignalComponentRole::Data, SignalComponentRole::Pilot]
@@ -264,6 +299,13 @@ mod tests {
         assert_eq!(strategies[0].components.len(), 1);
         assert_eq!(strategies[0].components[0].role, SignalComponentRole::Pilot);
         assert_eq!(strategies[0].components[0].data_symbol_code_periods(), None);
+        assert_eq!(
+            strategies[0].components[0]
+                .secondary_code_period_signs()
+                .expect("GPS L5Q pilot secondary code")
+                .len(),
+            20
+        );
     }
 
     #[test]

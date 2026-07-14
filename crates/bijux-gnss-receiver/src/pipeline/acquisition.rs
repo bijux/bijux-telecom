@@ -24,7 +24,9 @@ use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
 use crate::pipeline::acquisition_components::{
     acquisition_strategies_for_signal, AcquisitionComponentPlan, AcquisitionStrategyPlan,
 };
-use crate::pipeline::acquisition_symbol_hypotheses::coherent_data_sign_hypotheses;
+use crate::pipeline::acquisition_symbol_hypotheses::{
+    coherent_data_sign_hypotheses, coherent_secondary_code_phase_hypotheses,
+};
 use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
 use bijux_gnss_signal::api::{
     measure_iq_front_end_metrics, samples_per_code, wipeoff_carrier, AcquisitionSignalModel,
@@ -311,7 +313,7 @@ fn strategy_component_indexes(
 fn strategy_component_provenance(
     strategy: &AcquisitionStrategyPlan,
     component_indexes: &[usize],
-    component_metrics: &[CorrelationMetrics],
+    component_accumulations: &[ComponentCorrelationAccumulation],
 ) -> AcqComponentProvenance {
     AcqComponentProvenance {
         combination_mode: strategy.combination_mode,
@@ -320,7 +322,9 @@ fn strategy_component_provenance(
             .iter()
             .zip(component_indexes.iter().copied())
             .map(|(component, component_index)| {
-                let metrics = component_metrics[component_index];
+                let metrics = correlation_metrics(
+                    &component_accumulations[component_index].noncoherent_accumulator,
+                );
                 AcqComponentStatistic {
                     role: component.role,
                     peak: metrics.peak,
@@ -328,7 +332,8 @@ fn strategy_component_provenance(
                     mean: metrics.mean,
                     peak_mean_ratio: metrics.peak / (metrics.mean + 1e-6),
                     peak_second_ratio: metrics.peak / (metrics.second + 1e-6),
-                    secondary_code_phase_periods: None,
+                    secondary_code_phase_periods: component_accumulations[component_index]
+                        .secondary_code_phase_periods,
                 }
             })
             .collect(),
@@ -413,6 +418,7 @@ struct AcquisitionDecision {
 struct ComponentCorrelationAccumulation {
     per_noncoherent: Vec<Vec<Complex<f32>>>,
     noncoherent_accumulator: Vec<f32>,
+    secondary_code_phase_periods: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -785,9 +791,7 @@ impl Acquisition {
             let mut doppler = -request.doppler_search_hz;
             while doppler <= request.doppler_search_hz {
                 let carrier = carrier_hz_from_doppler_hz(search_center_hz, doppler as f64);
-                let mut component_correlations = Vec::with_capacity(strategy_components.len());
-                let mut component_noncoherent_accumulators =
-                    Vec::with_capacity(strategy_components.len());
+                let mut component_accumulations = Vec::with_capacity(strategy_components.len());
 
                 for (component, code_fft) in strategy_components.iter().zip(component_ffts.iter()) {
                     let accumulation = accumulate_component_correlations(
@@ -802,29 +806,25 @@ impl Acquisition {
                         fft.as_ref(),
                         ifft.as_ref(),
                     );
-                    component_correlations.push(accumulation.per_noncoherent);
-                    component_noncoherent_accumulators.push(accumulation.noncoherent_accumulator);
+                    component_accumulations.push(accumulation);
                 }
-
-                let component_metrics = component_noncoherent_accumulators
-                    .iter()
-                    .map(|accumulator| correlation_metrics(accumulator))
-                    .collect::<Vec<_>>();
 
                 for (strategy, component_indexes) in
                     strategies.iter().zip(strategy_component_indexes.iter())
                 {
                     let combined_accumulator = match strategy.combination_mode {
-                        AcqComponentCombinationMode::SingleComponent => {
-                            component_noncoherent_accumulators[component_indexes[0]].clone()
-                        }
+                        AcqComponentCombinationMode::SingleComponent => component_accumulations
+                            [component_indexes[0]]
+                            .noncoherent_accumulator
+                            .clone(),
                         AcqComponentCombinationMode::NoncoherentComponentSum => {
                             let mut combined = vec![0.0f32; samples_per_code];
                             for &component_index in component_indexes {
-                                for (combined_value, component_value) in combined
-                                    .iter_mut()
-                                    .zip(component_noncoherent_accumulators[component_index].iter())
-                                {
+                                for (combined_value, component_value) in combined.iter_mut().zip(
+                                    component_accumulations[component_index]
+                                        .noncoherent_accumulator
+                                        .iter(),
+                                ) {
                                     *combined_value += *component_value;
                                 }
                             }
@@ -836,8 +836,8 @@ impl Acquisition {
                                 for sample_index in 0..samples_per_code {
                                     let mut coherent_sum: Complex<f32> = Complex::zero();
                                     for &component_index in component_indexes {
-                                        coherent_sum += component_correlations[component_index][nc]
-                                            [sample_index];
+                                        coherent_sum += component_accumulations[component_index]
+                                            .per_noncoherent[nc][sample_index];
                                     }
                                     combined[sample_index] += coherent_sum.norm();
                                 }
@@ -855,7 +855,7 @@ impl Acquisition {
                     let component_provenance = strategy_component_provenance(
                         strategy,
                         component_indexes,
-                        &component_metrics,
+                        &component_accumulations,
                     );
                     grid_candidates.push(AcqResult {
                         sat,
@@ -2022,44 +2022,54 @@ fn accumulate_component_correlations(
     fft: &dyn rustfft::Fft<f32>,
     ifft: &dyn rustfft::Fft<f32>,
 ) -> ComponentCorrelationAccumulation {
+    let total_periods = coherent_periods as usize * noncoherent as usize;
+    let mut per_period = Vec::with_capacity(total_periods);
+    for offset_period in 0..total_periods {
+        let start = offset_period * samples_per_code;
+        let end = start + samples_per_code;
+        let block = &frame.iq[start..end];
+
+        let mixed = wipeoff_carrier(
+            block,
+            carrier_hz,
+            sample_rate_hz,
+            frame.t0.sample_index + start as u64,
+            0.0,
+        )
+        .expect("acquisition carrier wipeoff requires finite carrier inputs");
+
+        let mut input_fft = mixed;
+        fft.process(&mut input_fft);
+
+        let mut prod = vec![Complex::zero(); samples_per_code];
+        for i in 0..samples_per_code {
+            prod[i] = input_fft[i] * code_fft[i].conj();
+        }
+
+        ifft.process(&mut prod);
+        per_period.push(prod);
+    }
+
+    if let Some(secondary_code_period_signs) = component.secondary_code_period_signs() {
+        return best_coherent_secondary_code_phase_correlation(
+            &per_period,
+            coherent_periods as usize,
+            secondary_code_period_signs,
+        );
+    }
+
     let mut noncoherent_accumulator = vec![0.0f32; samples_per_code];
     let mut per_noncoherent = Vec::with_capacity(noncoherent as usize);
     let coherent_sign_hypotheses =
         component_data_sign_hypotheses(component, coherent_periods).unwrap_or_default();
 
-    for nc in 0..noncoherent {
-        let mut per_period = Vec::with_capacity(coherent_periods as usize);
-        for c in 0..coherent_periods {
-            let offset_period = (nc * coherent_periods + c) as usize;
-            let start = offset_period * samples_per_code;
-            let end = start + samples_per_code;
-            let block = &frame.iq[start..end];
-
-            let mixed = wipeoff_carrier(
-                block,
-                carrier_hz,
-                sample_rate_hz,
-                frame.t0.sample_index + start as u64,
-                0.0,
-            )
-            .expect("acquisition carrier wipeoff requires finite carrier inputs");
-
-            let mut input_fft = mixed;
-            fft.process(&mut input_fft);
-
-            let mut prod = vec![Complex::zero(); samples_per_code];
-            for i in 0..samples_per_code {
-                prod[i] = input_fft[i] * code_fft[i].conj();
-            }
-
-            ifft.process(&mut prod);
-            per_period.push(prod);
-        }
-
+    for nc in 0..noncoherent as usize {
+        let start = nc * coherent_periods as usize;
+        let end = start + coherent_periods as usize;
         let coherent_correlation = if coherent_sign_hypotheses.is_empty() {
-            coherent_correlation_with_signs(&per_period, &vec![1; per_period.len()])
+            coherent_correlation_with_signs(&per_period[start..end], &vec![1; end - start])
         } else {
-            best_coherent_data_correlation(&per_period, &coherent_sign_hypotheses)
+            best_coherent_data_correlation(&per_period[start..end], &coherent_sign_hypotheses)
         };
         for (accumulator, sample) in
             noncoherent_accumulator.iter_mut().zip(coherent_correlation.iter())
@@ -2069,7 +2079,11 @@ fn accumulate_component_correlations(
         per_noncoherent.push(coherent_correlation);
     }
 
-    ComponentCorrelationAccumulation { per_noncoherent, noncoherent_accumulator }
+    ComponentCorrelationAccumulation {
+        per_noncoherent,
+        noncoherent_accumulator,
+        secondary_code_phase_periods: None,
+    }
 }
 
 fn component_data_sign_hypotheses(
@@ -2105,6 +2119,63 @@ fn best_coherent_data_correlation(
     }
 
     best
+}
+
+fn best_coherent_secondary_code_phase_correlation(
+    per_period: &[Vec<Complex<f32>>],
+    coherent_periods: usize,
+    secondary_code_period_signs: &[i8],
+) -> ComponentCorrelationAccumulation {
+    let samples_per_code = per_period.first().map_or(0, Vec::len);
+    let noncoherent_periods = per_period.len() / coherent_periods.max(1);
+    let hypotheses =
+        coherent_secondary_code_phase_hypotheses(per_period.len(), secondary_code_period_signs);
+    let mut best_accumulation = None;
+    let mut best_metrics: Option<(CorrelationMetrics, u32)> = None;
+
+    for hypothesis in hypotheses {
+        let mut per_noncoherent = Vec::with_capacity(noncoherent_periods);
+        let mut noncoherent_accumulator = vec![0.0f32; samples_per_code];
+
+        for nc in 0..noncoherent_periods {
+            let start = nc * coherent_periods;
+            let end = start + coherent_periods;
+            let coherent_correlation = coherent_correlation_with_signs(
+                &per_period[start..end],
+                &hypothesis.period_signs[start..end],
+            );
+            for (accumulator, sample) in
+                noncoherent_accumulator.iter_mut().zip(coherent_correlation.iter())
+            {
+                *accumulator += sample.norm();
+            }
+            per_noncoherent.push(coherent_correlation);
+        }
+
+        let metrics = correlation_metrics(&noncoherent_accumulator);
+        let candidate_peak_mean_ratio = metrics.peak / (metrics.mean + 1e-6);
+        let candidate_peak_second_ratio = metrics.peak / (metrics.second + 1e-6);
+        let replace = best_metrics.is_none_or(|(best, best_phase)| {
+            let best_peak_mean_ratio = best.peak / (best.mean + 1e-6);
+            let best_peak_second_ratio = best.peak / (best.second + 1e-6);
+            candidate_peak_mean_ratio > best_peak_mean_ratio + f32::EPSILON
+                || ((candidate_peak_mean_ratio - best_peak_mean_ratio).abs() <= f32::EPSILON
+                    && (candidate_peak_second_ratio > best_peak_second_ratio + f32::EPSILON
+                        || ((candidate_peak_second_ratio - best_peak_second_ratio).abs()
+                            <= f32::EPSILON
+                            && hypothesis.secondary_code_phase_periods < best_phase)))
+        });
+        if replace {
+            best_metrics = Some((metrics, hypothesis.secondary_code_phase_periods));
+            best_accumulation = Some(ComponentCorrelationAccumulation {
+                per_noncoherent,
+                noncoherent_accumulator,
+                secondary_code_phase_periods: Some(hypothesis.secondary_code_phase_periods),
+            });
+        }
+    }
+
+    best_accumulation.expect("secondary-code phase search must yield at least one hypothesis")
 }
 
 fn coherent_correlation_with_signs(
@@ -2497,6 +2568,23 @@ mod tests {
 
         assert!((coherent[0].norm() - 2.0).abs() <= f32::EPSILON);
         assert!((coherent[1].norm() - 1.0).abs() <= f32::EPSILON);
+    }
+
+    #[test]
+    fn best_coherent_secondary_code_phase_correlation_selects_global_phase() {
+        let per_period = vec![
+            vec![Complex::new(-3.0, 0.0)],
+            vec![Complex::new(-2.0, 0.0)],
+            vec![Complex::new(5.0, 0.0)],
+            vec![Complex::new(-4.0, 0.0)],
+        ];
+
+        let accumulation =
+            best_coherent_secondary_code_phase_correlation(&per_period, 2, &[1, -1, -1]);
+
+        assert_eq!(accumulation.secondary_code_phase_periods, Some(1));
+        assert_eq!(accumulation.per_noncoherent.len(), 2);
+        assert!((accumulation.noncoherent_accumulator[0] - 14.0).abs() <= f32::EPSILON);
     }
 
     #[test]
