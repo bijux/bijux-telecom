@@ -34,8 +34,8 @@ fn galileo_e1_scenario(sat: SatId) -> SyntheticScenario {
         satellites: vec![SyntheticSignalParams {
             sat,
             glonass_frequency_channel: None,
-            signal_band: bijux_gnss_core::api::SignalBand::L1,
-            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+            signal_band: SignalBand::E1,
+            signal_code: SignalCode::E1B,
             doppler_hz: 0.0,
             code_phase_chips: 321.0,
             carrier_phase_rad: 0.25,
@@ -52,7 +52,7 @@ fn receiver_promotes_galileo_e1_acquisitions_into_tracking() {
     let config = galileo_e1_config();
     let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
     let scenario = galileo_e1_scenario(sat);
-    let mut source = SyntheticSignalSource::new_signal_only(&config, &scenario);
+    let mut source = SyntheticSignalSource::new(&config, &scenario);
     let receiver = Receiver::new(config, ReceiverRuntime::default());
 
     let artifacts = receiver.run(&mut source).expect("receiver run");
