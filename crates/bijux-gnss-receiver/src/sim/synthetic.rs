@@ -20,11 +20,11 @@ use crate::io::data::SampleSourceError;
 use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
 use bijux_gnss_nav::api::{sat_state_gps_l1ca, GpsEphemeris};
 use bijux_gnss_signal::api::{
-    calibrated_lock_detector_thresholds, encode_quantized_samples,
-    first_order_ionosphere_code_delay_m, lock_detector_probability_summary,
-    quantize_samples_for_storage, receiver_search_code_phase_samples, samples_per_code,
-    IqQuantization, IqSampleFormat, LockDetectorCalibrationInput, LockDetectorProbabilityInput,
-    RawIqMetadata,
+    calibrated_lock_detector_thresholds, carrier_phase_radians_at_time_with_jerk,
+    encode_quantized_samples, first_order_ionosphere_code_delay_m,
+    lock_detector_probability_summary, quantize_samples_for_storage,
+    receiver_search_code_phase_samples, samples_per_code, IqQuantization, IqSampleFormat,
+    LockDetectorCalibrationInput, LockDetectorProbabilityInput, RawIqMetadata,
 };
 use serde::{Deserialize, Serialize};
 
@@ -65,9 +65,9 @@ mod tests {
         build_quantized_capture_bundle_with_receiver_oscillator, build_truth_bundle,
         expected_acquisition_code_phase_samples, expected_acquisition_code_phase_samples_f64,
         generate_l1_ca, generate_l1_ca_multi, generate_l1_ca_multi_signal_only,
-        generate_l1_ca_multi_with_receiver_oscillator, generate_l1_ca_with_doppler_ramp,
-        generate_l1_ca_with_fades, generate_l1_ca_with_phase_windows,
-        measure_noise_only_acquisition_false_alarm_rate,
+        generate_l1_ca_multi_with_receiver_oscillator, generate_l1_ca_with_carrier_dynamics,
+        generate_l1_ca_with_doppler_ramp, generate_l1_ca_with_fades,
+        generate_l1_ca_with_phase_windows, measure_noise_only_acquisition_false_alarm_rate,
         measure_noise_only_acquisition_false_alarm_rates,
         measure_synthetic_acquisition_uncertainty_coverage,
         measure_truth_guided_acquisition_detection_probability,
@@ -97,10 +97,10 @@ mod tests {
         SyntheticAcquisitionInterferenceCase, SyntheticAcquisitionInterferenceFailureClass,
         SyntheticAcquisitionSampleRateValidationCase, SyntheticAcquisitionTruthTableReport,
         SyntheticAcquisitionTruthTableSatellite, SyntheticAcquisitionUncertaintyCoverageCase,
-        SyntheticDopplerRampParams, SyntheticFadeWindow, SyntheticNavBitMode,
-        SyntheticNavigationData, SyntheticPhaseWindow, SyntheticPvtAccuracyEpoch,
-        SyntheticPvtAccuracyReport, SyntheticPvtClockProfileCase, SyntheticPvtCn0ProfileCase,
-        SyntheticPvtCn0ProfilePoint, SyntheticPvtCn0ProfileReport,
+        SyntheticCarrierDynamicsParams, SyntheticDopplerRampParams, SyntheticFadeWindow,
+        SyntheticNavBitMode, SyntheticNavigationData, SyntheticPhaseWindow,
+        SyntheticPvtAccuracyEpoch, SyntheticPvtAccuracyReport, SyntheticPvtClockProfileCase,
+        SyntheticPvtCn0ProfileCase, SyntheticPvtCn0ProfilePoint, SyntheticPvtCn0ProfileReport,
         SyntheticPvtConstellationGeometryProfileCase,
         SyntheticPvtConstellationGeometryProfileReport, SyntheticPvtGeometryProfileCase,
         SyntheticPvtGeometryProfileReport, SyntheticPvtMotionProfileCase,

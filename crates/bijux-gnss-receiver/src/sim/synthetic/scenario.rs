@@ -98,6 +98,13 @@ pub struct SyntheticDopplerRampParams {
     pub doppler_rate_hz_per_s: f64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticCarrierDynamicsParams {
+    pub signal: SyntheticSignalParams,
+    pub doppler_rate_hz_per_s: f64,
+    pub doppler_jerk_hz_per_s2: f64,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticFadeWindow {
     /// Fade start time in seconds, inclusive.

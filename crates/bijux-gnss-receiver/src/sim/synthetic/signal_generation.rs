@@ -32,7 +32,34 @@ pub fn generate_l1_ca_with_doppler_ramp(
     seed: u64,
     duration_s: f64,
 ) -> SamplesFrame {
-    let signal_only = generate_l1_ca_with_doppler_ramp_signal_only(config, params, duration_s);
+    let signal_only = generate_l1_ca_with_carrier_dynamics_signal_only(
+        config,
+        SyntheticCarrierDynamicsParams {
+            signal: params.signal,
+            doppler_rate_hz_per_s: params.doppler_rate_hz_per_s,
+            doppler_jerk_hz_per_s2: 0.0,
+        },
+        duration_s,
+    );
+    add_synthetic_noise(config, signal_only, seed)
+}
+
+/// Generate a synthetic GPS L1 C/A signal with acceleration and jerk in carrier Doppler.
+pub fn generate_l1_ca_with_carrier_dynamics(
+    config: &ReceiverPipelineConfig,
+    params: SyntheticCarrierDynamicsParams,
+    seed: u64,
+    duration_s: f64,
+) -> SamplesFrame {
+    let signal_only = generate_l1_ca_with_carrier_dynamics_signal_only(config, params, duration_s);
+    add_synthetic_noise(config, signal_only, seed)
+}
+
+fn add_synthetic_noise(
+    config: &ReceiverPipelineConfig,
+    signal_only: SamplesFrame,
+    seed: u64,
+) -> SamplesFrame {
     let clock = SampleClock::new(config.sampling_freq_hz);
     let dt_s = clock.dt_s();
     let noise_std = SYNTHETIC_NOISE_STD_PER_COMPONENT;
@@ -181,19 +208,21 @@ pub struct SyntheticSignalDelayAlignment {
     pub signal_delay_alignment: SignalDelayAlignment,
 }
 
-fn generate_l1_ca_with_doppler_ramp_signal_only(
+fn generate_l1_ca_with_carrier_dynamics_signal_only(
     config: &ReceiverPipelineConfig,
-    params: SyntheticDopplerRampParams,
+    params: SyntheticCarrierDynamicsParams,
     duration_s: f64,
 ) -> SamplesFrame {
     let clock = SampleClock::new(config.sampling_freq_hz);
     let dt_s = clock.dt_s();
     let sample_count = (duration_s * config.sampling_freq_hz).round() as usize;
-    let sat_state = SatState::new_with_doppler_rate_and_receiver_clock_frequency_bias_hz(
+    let sat_state = SatState::new_with_carrier_dynamics_and_receiver_oscillator(
         config,
         params.signal,
-        0.0,
+        receiver_oscillator_model_from_legacy_bias(0.0),
         params.doppler_rate_hz_per_s,
+        params.doppler_jerk_hz_per_s2,
+        0,
     );
     let mut iq = Vec::with_capacity(sample_count);
     for n in 0..sample_count {
@@ -569,6 +598,7 @@ impl SignalSource for SyntheticSignalSource {
 struct SatState {
     doppler_hz: f64,
     doppler_rate_hz_per_s: f64,
+    doppler_jerk_hz_per_s2: f64,
     receiver_oscillator_model: SyntheticReceiverOscillatorModel,
     receiver_oscillator_phase_noise_knots: Vec<(u64, f64)>,
     code_phase_chips: f64,
@@ -639,6 +669,24 @@ impl SatState {
         doppler_rate_hz_per_s: f64,
         sample_count: u64,
     ) -> Self {
+        Self::new_with_carrier_dynamics_and_receiver_oscillator(
+            config,
+            params,
+            receiver_oscillator_model,
+            doppler_rate_hz_per_s,
+            0.0,
+            sample_count,
+        )
+    }
+
+    fn new_with_carrier_dynamics_and_receiver_oscillator(
+        config: &ReceiverPipelineConfig,
+        params: SyntheticSignalParams,
+        receiver_oscillator_model: SyntheticReceiverOscillatorModel,
+        doppler_rate_hz_per_s: f64,
+        doppler_jerk_hz_per_s2: f64,
+        sample_count: u64,
+    ) -> Self {
         let receiver_oscillator_phase_noise_knots =
             receiver_oscillator_phase_noise_knots(&receiver_oscillator_model, sample_count);
         let signal_model = synthetic_replica_model(&params);
@@ -646,6 +694,7 @@ impl SatState {
         Self {
             doppler_hz: params.doppler_hz,
             doppler_rate_hz_per_s,
+            doppler_jerk_hz_per_s2,
             receiver_oscillator_model,
             receiver_oscillator_phase_noise_knots,
             code_phase_chips: params.code_phase_chips,
@@ -666,6 +715,7 @@ impl SatState {
         }
     }
 
+    #[cfg(test)]
     fn new_with_doppler_rate_and_receiver_clock_frequency_bias_hz(
         config: &ReceiverPipelineConfig,
         params: SyntheticSignalParams,
@@ -706,10 +756,11 @@ impl SatState {
     #[cfg(test)]
     fn carrier_hz_at(&self, t: f64) -> f64 {
         let effective_elapsed_s = self.effective_elapsed_s(t);
-        let carrier_hz = bijux_gnss_signal::api::carrier_hz_at_time(
+        let carrier_hz = bijux_gnss_signal::api::carrier_hz_at_time_with_jerk(
             self.initial_carrier_hz(),
             self.doppler_rate_hz_per_s
                 + self.receiver_oscillator_model.carrier_frequency_drift_hz_per_s,
+            self.doppler_jerk_hz_per_s2,
             effective_elapsed_s,
         );
         carrier_hz * (1.0 + self.receiver_oscillator_model.sampling_clock_fractional_error)
@@ -722,11 +773,12 @@ impl SatState {
 
     fn carrier_phase_rad_at(&self, t: f64) -> f64 {
         let effective_elapsed_s = self.effective_elapsed_s(t);
-        bijux_gnss_signal::api::carrier_phase_radians_at_time(
+        carrier_phase_radians_at_time_with_jerk(
             self.carrier_phase_rad,
             self.initial_carrier_hz(),
             self.doppler_rate_hz_per_s
                 + self.receiver_oscillator_model.carrier_frequency_drift_hz_per_s,
+            self.doppler_jerk_hz_per_s2,
             effective_elapsed_s,
         ) + self.receiver_oscillator_phase_noise_rad_at_nominal_time_s(t)
     }
