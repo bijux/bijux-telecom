@@ -1022,13 +1022,24 @@ impl Tracking {
         if !matches!(acquisition.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous) {
             return None;
         }
+        let signal_model = TrackingSignalModel::for_sat_signal_band(
+            &self.config,
+            acquisition.sat,
+            acquisition.signal_band,
+            acquisition.signal_code,
+            acquisition.glonass_frequency_channel,
+        );
         Some(TrackingStartContext {
             seed: acquisition.tracking_seed(),
             acquisition_hypothesis: acquisition.hypothesis.to_string(),
             acquisition_hypothesis_rank: acquisition_hypothesis_rank(acquisition.hypothesis),
             acquisition_score: acquisition.score,
             acquisition_code_phase_samples: acquisition.code_phase_samples,
-            acquisition_carrier_hz: acquisition.carrier_hz.0,
+            acquisition_carrier_hz: normalize_acquisition_carrier_hz(
+                &self.config,
+                &signal_model,
+                acquisition,
+            ),
             acquisition_cn0_proxy_dbhz: acquisition.cn0_proxy as f64,
             acq_to_track_state: acq_to_track_state(&acquisition.hypothesis).to_string(),
         })
@@ -2663,6 +2674,23 @@ fn tracked_signal_doppler_hz(
     signal: SignalSpec,
 ) -> f64 {
     tracked_carrier_hz - tracked_signal_center_hz(intermediate_freq_hz, signal)
+}
+
+fn normalize_acquisition_carrier_hz(
+    config: &ReceiverPipelineConfig,
+    signal_model: &TrackingSignalModel,
+    acquisition: &bijux_gnss_core::api::AcqResult,
+) -> f64 {
+    let acquisition_carrier_hz = acquisition.carrier_hz.0;
+    let tracked_center_hz =
+        tracked_signal_center_hz(config.intermediate_freq_hz, signal_model.signal_spec);
+    let looks_like_doppler_only_seed =
+        tracked_center_hz.abs() > 1.0 && (acquisition_carrier_hz - acquisition.doppler_hz.0).abs() <= 1.0e-9;
+    if looks_like_doppler_only_seed {
+        tracked_center_hz + acquisition.doppler_hz.0
+    } else {
+        acquisition_carrier_hz
+    }
 }
 
 fn carrier_aided_code_rate_hz(
@@ -5305,6 +5333,117 @@ mod tests {
         assert!(
             (super::tracked_signal_doppler_hz(0.0, tracked_carrier_hz, signal) - 875.0).abs()
                 <= f64::EPSILON
+        );
+    }
+
+    #[test]
+    fn normalize_acquisition_carrier_hz_rebases_doppler_only_l5_seed() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig {
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..crate::engine::receiver_config::ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Gps, prn: 18 };
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            sat,
+            SignalBand::L5,
+            SignalCode::L5I,
+            None,
+        );
+        let acquisition = bijux_gnss_core::api::AcqResult {
+            sat,
+            signal_band: SignalBand::L5,
+            signal_code: SignalCode::L5I,
+            glonass_frequency_channel: None,
+            source_time: ReceiverSampleTrace::default(),
+            candidate_rank: 1,
+            is_primary_candidate: true,
+            doppler_hz: Hertz(180.0),
+            doppler_rate_hz_per_s: 0.0,
+            carrier_hz: Hertz(180.0),
+            code_phase_samples: 0,
+            peak: 1.0,
+            second_peak: 0.1,
+            mean: 0.01,
+            peak_mean_ratio: 20.0,
+            peak_second_ratio: 10.0,
+            cn0_proxy: 60.0,
+            score: 1.0,
+            hypothesis: AcqHypothesis::Accepted,
+            assumptions: None,
+            evidence: Vec::new(),
+            threshold_provenance: None,
+            explain_selection_reason: Some("seeded_joint_component_tracking".to_string()),
+            doppler_refinement: None,
+            code_phase_refinement: None,
+            signal_delay_alignment: None,
+            uncertainty: None,
+        };
+
+        let normalized =
+            super::normalize_acquisition_carrier_hz(&config, &signal_model, &acquisition);
+
+        assert!(
+            (normalized
+                - (super::tracked_signal_center_hz(config.intermediate_freq_hz, signal_model.signal_spec)
+                    + acquisition.doppler_hz.0))
+                .abs()
+                <= f64::EPSILON
+        );
+    }
+
+    #[test]
+    fn normalize_acquisition_carrier_hz_keeps_absolute_wideband_carrier() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig {
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..crate::engine::receiver_config::ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            sat,
+            SignalBand::E5,
+            SignalCode::E5b,
+            None,
+        );
+        let absolute_carrier_hz =
+            super::tracked_signal_center_hz(config.intermediate_freq_hz, signal_model.signal_spec)
+                + 250.0;
+        let acquisition = bijux_gnss_core::api::AcqResult {
+            sat,
+            signal_band: SignalBand::E5,
+            signal_code: SignalCode::E5b,
+            glonass_frequency_channel: None,
+            source_time: ReceiverSampleTrace::default(),
+            candidate_rank: 1,
+            is_primary_candidate: true,
+            doppler_hz: Hertz(250.0),
+            doppler_rate_hz_per_s: 0.0,
+            carrier_hz: Hertz(absolute_carrier_hz),
+            code_phase_samples: 0,
+            peak: 1.0,
+            second_peak: 0.1,
+            mean: 0.01,
+            peak_mean_ratio: 20.0,
+            peak_second_ratio: 10.0,
+            cn0_proxy: 60.0,
+            score: 1.0,
+            hypothesis: AcqHypothesis::Accepted,
+            assumptions: None,
+            evidence: Vec::new(),
+            threshold_provenance: None,
+            explain_selection_reason: None,
+            doppler_refinement: None,
+            code_phase_refinement: None,
+            signal_delay_alignment: None,
+            uncertainty: None,
+        };
+
+        assert_eq!(
+            super::normalize_acquisition_carrier_hz(&config, &signal_model, &acquisition),
+            absolute_carrier_hz
         );
     }
 
