@@ -189,8 +189,8 @@ fn wider_dll_bandwidth_produces_stronger_first_epoch_code_correction() {
 
     let narrow_first_epoch = &narrow_tracks.first().expect("narrow track").epochs[0];
     let wide_first_epoch = &wide_tracks.first().expect("wide track").epochs[0];
-    let narrow_correction = (narrow_first_epoch.code_phase_samples.0 - seeded_code_phase_samples as f64)
-        .abs();
+    let narrow_correction =
+        (narrow_first_epoch.code_phase_samples.0 - seeded_code_phase_samples as f64).abs();
     let wide_correction =
         (wide_first_epoch.code_phase_samples.0 - seeded_code_phase_samples as f64).abs();
 

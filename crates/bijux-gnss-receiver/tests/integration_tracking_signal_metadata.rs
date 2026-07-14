@@ -115,28 +115,22 @@ fn gps_l5q_tracking_reports_joint_component_metadata() {
         artifacts.tracking.iter().find(|result| result.sat == sat).expect("GPS L5-Q tracking");
 
     assert!(
-        tracking
-            .epochs
-            .iter()
-            .any(|epoch| epoch.signal_band == SignalBand::L5 && epoch.signal_code == SignalCode::L5Q),
+        tracking.epochs.iter().any(
+            |epoch| epoch.signal_band == SignalBand::L5 && epoch.signal_code == SignalCode::L5Q
+        ),
         "{tracking:#?}"
     );
-    assert!(
-        tracking.epochs.iter().any(|epoch| epoch.nav_bit_lock),
-        "{tracking:#?}"
-    );
+    assert!(tracking.epochs.iter().any(|epoch| epoch.nav_bit_lock), "{tracking:#?}");
     assert!(
         tracking.epochs.iter().any(|epoch| epoch.navigation_bit_sign.is_some()),
         "{tracking:#?}"
     );
     assert!(
         tracking.epochs.iter().all(|epoch| {
-            epoch.tracking_assumptions
-                .as_ref()
-                .is_some_and(|assumptions| {
-                    assumptions.discriminator_family == "early_prompt_late"
-                        && assumptions.aiding_mode == "pilot_carrier"
-                })
+            epoch.tracking_assumptions.as_ref().is_some_and(|assumptions| {
+                assumptions.discriminator_family == "early_prompt_late"
+                    && assumptions.aiding_mode == "pilot_carrier"
+            })
         }),
         "{tracking:#?}"
     );
@@ -225,7 +219,8 @@ fn galileo_e5b_tracking_reports_joint_component_metadata() {
     );
     assert!(
         tracking.epochs.iter().all(|epoch| {
-            epoch.tracking_assumptions
+            epoch
+                .tracking_assumptions
                 .as_ref()
                 .is_some_and(|assumptions| assumptions.aiding_mode == "pilot_carrier")
         }),
@@ -272,13 +267,11 @@ fn beidou_b1i_tracking_reports_secondary_code_metadata_without_navigation_bit_lo
     let tracking =
         artifacts.tracking.iter().find(|result| result.sat == sat).expect("BeiDou B1I tracking");
 
-    assert!(
-        tracking.epochs.iter().all(|epoch| !epoch.nav_bit_lock),
-        "{tracking:#?}"
-    );
+    assert!(tracking.epochs.iter().all(|epoch| !epoch.nav_bit_lock), "{tracking:#?}");
     assert!(
         tracking.epochs.iter().all(|epoch| {
-            epoch.tracking_assumptions
+            epoch
+                .tracking_assumptions
                 .as_ref()
                 .is_some_and(|assumptions| assumptions.discriminator_family == "early_prompt_late")
         }),
@@ -328,9 +321,9 @@ fn galileo_e1b_tracking_reports_cboc_discriminator_metadata() {
 
     assert!(
         tracking.epochs.iter().all(|epoch| {
-            epoch.tracking_assumptions
-                .as_ref()
-                .is_some_and(|assumptions| assumptions.discriminator_family == "cboc_early_prompt_late")
+            epoch.tracking_assumptions.as_ref().is_some_and(|assumptions| {
+                assumptions.discriminator_family == "cboc_early_prompt_late"
+            })
         }),
         "{tracking:#?}"
     );

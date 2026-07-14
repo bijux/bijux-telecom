@@ -149,7 +149,8 @@ fn stable_joint_tracking_window(epochs: &[TrackEpoch]) -> &[TrackEpoch] {
 fn assert_joint_tracking_metadata(epochs: &[TrackEpoch]) {
     assert!(
         epochs.iter().all(|epoch| {
-            epoch.tracking_assumptions
+            epoch
+                .tracking_assumptions
                 .as_ref()
                 .is_some_and(|assumptions| assumptions.aiding_mode == "pilot_carrier")
         }),

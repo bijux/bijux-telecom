@@ -2182,7 +2182,10 @@ fn annotate_navigation_bit_signs(signal_model: &TrackingSignalModel, epochs: &mu
 #[cfg(not(feature = "nav"))]
 fn annotate_navigation_bit_signs(_signal_model: &TrackingSignalModel, _epochs: &mut [TrackEpoch]) {}
 
-fn stabilize_joint_navigation_bit_signs(signal_model: &TrackingSignalModel, epochs: &mut [TrackEpoch]) {
+fn stabilize_joint_navigation_bit_signs(
+    signal_model: &TrackingSignalModel,
+    epochs: &mut [TrackEpoch],
+) {
     if signal_model.aiding_mode != TrackingAidingMode::PilotCarrier
         || !signal_model.supports_epoch_data_symbol_sign_recovery()
         || epochs.len() < 3
@@ -2755,8 +2758,8 @@ fn normalize_acquisition_carrier_hz(
     let acquisition_carrier_hz = acquisition.carrier_hz.0;
     let tracked_center_hz =
         tracked_signal_center_hz(config.intermediate_freq_hz, signal_model.signal_spec);
-    let looks_like_doppler_only_seed =
-        tracked_center_hz.abs() > 1.0 && (acquisition_carrier_hz - acquisition.doppler_hz.0).abs() <= 1.0e-9;
+    let looks_like_doppler_only_seed = tracked_center_hz.abs() > 1.0
+        && (acquisition_carrier_hz - acquisition.doppler_hz.0).abs() <= 1.0e-9;
     if looks_like_doppler_only_seed {
         tracked_center_hz + acquisition.doppler_hz.0
     } else {
@@ -5486,8 +5489,10 @@ mod tests {
 
         assert!(
             (normalized
-                - (super::tracked_signal_center_hz(config.intermediate_freq_hz, signal_model.signal_spec)
-                    + acquisition.doppler_hz.0))
+                - (super::tracked_signal_center_hz(
+                    config.intermediate_freq_hz,
+                    signal_model.signal_spec
+                ) + acquisition.doppler_hz.0))
                 .abs()
                 <= f64::EPSILON
         );

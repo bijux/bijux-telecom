@@ -3,14 +3,13 @@
 use bijux_gnss_core::api::SchemaVersion;
 
 use crate::engine::receiver_config::{
-    default_adaptive_tracking_enabled,
     default_acquisition_false_alarm_probability,
     default_acquisition_threshold_calibration_trial_count,
-    default_acquisition_threshold_confidence_level, default_tracking_integration_ms,
-    AcquisitionConfig, AcquisitionThresholdMode, AcquisitionThresholdPolicyConfig,
-    ConstellationSelectionPolicy, FrontEndConfig, NavigationConfig, NavigationMotionClass,
-    NavigationWeightingConfig, NavigationWeightingMode, PppConfig, ReceiverConfig,
-    ScienceThresholdsConfig, TrackingConfig,
+    default_acquisition_threshold_confidence_level, default_adaptive_tracking_enabled,
+    default_tracking_integration_ms, AcquisitionConfig, AcquisitionThresholdMode,
+    AcquisitionThresholdPolicyConfig, ConstellationSelectionPolicy, FrontEndConfig,
+    NavigationConfig, NavigationMotionClass, NavigationWeightingConfig, NavigationWeightingMode,
+    PppConfig, ReceiverConfig, ScienceThresholdsConfig, TrackingConfig,
 };
 
 impl Default for ReceiverConfig {

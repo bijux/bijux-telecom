@@ -385,16 +385,14 @@ fn tracking_follows_dynamic_gps_l5_code_rate_from_common_oscillator_drift() {
     let stable_code_phase_errors_samples = stable_epochs
         .iter()
         .map(|epoch| {
-            (
-                epoch.code_phase_samples.0
-                    - dynamic_expected_code_phase_samples(
-                        &config,
-                        epoch.sample_index,
-                        code_phase_chips,
-                        signal,
-                        &receiver_oscillator,
-                    )
-            )
+            (epoch.code_phase_samples.0
+                - dynamic_expected_code_phase_samples(
+                    &config,
+                    epoch.sample_index,
+                    code_phase_chips,
+                    signal,
+                    &receiver_oscillator,
+                ))
             .abs()
         })
         .collect::<Vec<_>>();
@@ -485,16 +483,14 @@ fn tracking_follows_dynamic_beidou_b1i_code_rate_from_common_oscillator_drift() 
     let stable_code_phase_errors_samples = stable_epochs
         .iter()
         .map(|epoch| {
-            (
-                epoch.code_phase_samples.0
-                    - dynamic_expected_code_phase_samples(
-                        &config,
-                        epoch.sample_index,
-                        code_phase_chips,
-                        signal,
-                        &receiver_oscillator,
-                    )
-            )
+            (epoch.code_phase_samples.0
+                - dynamic_expected_code_phase_samples(
+                    &config,
+                    epoch.sample_index,
+                    code_phase_chips,
+                    signal,
+                    &receiver_oscillator,
+                ))
             .abs()
         })
         .collect::<Vec<_>>();
