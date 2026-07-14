@@ -2494,6 +2494,13 @@ impl Tracking {
 }
 
 #[cfg(feature = "nav")]
+const NAV_SYMBOL_SYNC_MIN_CONFIDENCE: f64 = 0.05;
+#[cfg(feature = "nav")]
+const NAV_SYMBOL_SYNC_MIN_COMPLETE_WINDOWS: usize = 2;
+#[cfg(feature = "nav")]
+const NAV_SYMBOL_BIT_MIN_CONFIDENCE: f64 = 0.75;
+
+#[cfg(feature = "nav")]
 fn annotate_navigation_bit_signs(signal_model: &TrackingSignalModel, epochs: &mut [TrackEpoch]) {
     if !signal_model.supports_navigation_bit_sign_recovery() || epochs.is_empty() {
         return;
@@ -2501,11 +2508,26 @@ fn annotate_navigation_bit_signs(signal_model: &TrackingSignalModel, epochs: &mu
 
     let prompt_history = epochs.iter().map(|epoch| epoch.prompt_i).collect::<Vec<_>>();
     let demodulation = bijux_gnss_nav::api::demodulate_gps_l1ca_navigation_bits(&prompt_history);
+    if !navigation_symbol_sync_is_confident(&demodulation) {
+        return;
+    }
+
     for bit in demodulation.bits {
+        if bit.confidence < NAV_SYMBOL_BIT_MIN_CONFIDENCE {
+            continue;
+        }
         for epoch in epochs[bit.start_prompt_index..bit.end_prompt_index_exclusive].iter_mut() {
             epoch.navigation_bit_sign = Some(bit.sign);
         }
     }
+}
+
+#[cfg(feature = "nav")]
+fn navigation_symbol_sync_is_confident(
+    demodulation: &bijux_gnss_nav::api::GpsL1CaNavigationBits,
+) -> bool {
+    demodulation.complete_window_count >= NAV_SYMBOL_SYNC_MIN_COMPLETE_WINDOWS
+        && demodulation.sync_confidence >= NAV_SYMBOL_SYNC_MIN_CONFIDENCE
 }
 
 #[cfg(not(feature = "nav"))]
