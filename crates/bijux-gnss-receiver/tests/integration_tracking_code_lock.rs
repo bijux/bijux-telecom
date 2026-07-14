@@ -18,8 +18,7 @@ use bijux_gnss_signal::api::{sample_ca_code, samples_per_code, Prn};
 use num_complex::Complex;
 
 use support::tracking_truth::{
-    post_lock_code_phase_errors_samples, post_lock_epochs, stable_tracking_window,
-    wrapped_code_phase_error_samples,
+    post_lock_code_phase_errors_samples, stable_tracking_window, wrapped_code_phase_error_samples,
 };
 
 const CLEAN_SIGNAL_LOCKED_CODE_ERROR_MAX_SAMPLES: f64 = 1.0;
@@ -45,7 +44,7 @@ fn assert_clean_signal_code_lock(
     );
 }
 
-fn galileo_e1_code_locked_epochs(
+fn code_locked_epochs(
     epochs: &[bijux_gnss_core::api::TrackEpoch],
 ) -> Vec<&bijux_gnss_core::api::TrackEpoch> {
     epochs
@@ -237,14 +236,14 @@ fn tracking_reduces_seeded_code_phase_error_from_acquisition_scale_offsets() {
             "tracking ended with worse code phase error for seeded code phase sample {seeded_code_phase_samples}: errors={errors:?}, epochs={epochs:?}"
         );
         assert!(
-            !post_lock_epochs(epochs).is_empty(),
+            !code_locked_epochs(epochs).is_empty(),
             "tracking never reached a post-pull-in tracking epoch for seeded code phase sample {seeded_code_phase_samples}: epochs={epochs:?}"
         );
         let assumptions = epochs
             .iter()
             .find_map(|epoch| epoch.tracking_assumptions.as_ref())
             .expect("tracking assumptions");
-        assert_eq!(assumptions.early_late_spacing_chips, 0.5);
+        assert_eq!(assumptions.early_late_spacing_chips, 0.25);
     }
 }
 
@@ -360,7 +359,7 @@ fn tracking_holds_galileo_e1_lock_on_clean_synthetic_signal() {
         )],
     );
     let epochs = &tracks.first().expect("track").epochs;
-    let locked_epochs = galileo_e1_code_locked_epochs(epochs);
+    let locked_epochs = code_locked_epochs(epochs);
     let locked_errors_samples = locked_epochs
         .iter()
         .map(|epoch| {

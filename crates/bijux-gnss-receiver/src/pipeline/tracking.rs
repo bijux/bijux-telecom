@@ -78,6 +78,7 @@ const SHORT_FADE_RECOVERY_GRACE_EPOCHS: u16 = 5;
 const NARROW_BPSK_EARLY_LATE_SPACING_CHIPS: f64 = 0.25;
 const NARROW_HIGH_RATE_EARLY_LATE_SPACING_CHIPS: f64 = 0.10;
 const NARROW_SUBCARRIER_EARLY_LATE_SPACING_CHIPS: f64 = 0.25;
+const SECONDARY_CODE_EARLY_LATE_SPACING_CHIPS: f64 = 0.5;
 // If prompt energy returns near the short-fade boundary, the loops may need a
 // few extra epochs to re-enter tracking without opening a long interruption gap.
 const SHORT_FADE_RELOCK_EVIDENCE_GRACE_EPOCHS: u16 = 3;
@@ -1157,6 +1158,12 @@ fn signal_default_early_late_spacing_chips(signal_model: &TrackingSignalModel) -
             NARROW_SUBCARRIER_EARLY_LATE_SPACING_CHIPS
         }
         TrackingDiscriminatorFamily::EarlyPromptLate
+            if signal_model.phase_transition_source
+                == TrackingPhaseTransitionSource::SecondaryCode =>
+        {
+            SECONDARY_CODE_EARLY_LATE_SPACING_CHIPS
+        }
+        TrackingDiscriminatorFamily::EarlyPromptLate
             if signal_model.code_rate_hz >= 10_000_000.0 - f64::EPSILON =>
         {
             NARROW_HIGH_RATE_EARLY_LATE_SPACING_CHIPS
@@ -1180,9 +1187,13 @@ fn resolve_signal_tracking_params(
 
 fn code_discriminator_mode(signal_model: &TrackingSignalModel) -> CodeDiscriminatorMode {
     match signal_model.discriminator_family {
-        TrackingDiscriminatorFamily::EarlyPromptLate => {
+        TrackingDiscriminatorFamily::EarlyPromptLate
+            if signal_model.phase_transition_source
+                != TrackingPhaseTransitionSource::SecondaryCode =>
+        {
             CodeDiscriminatorMode::DoubleDeltaEarlyPromptLate
         }
+        TrackingDiscriminatorFamily::EarlyPromptLate => CodeDiscriminatorMode::EarlyPromptLate,
         TrackingDiscriminatorFamily::BocEarlyPromptLate
         | TrackingDiscriminatorFamily::CbocEarlyPromptLate => {
             CodeDiscriminatorMode::EarlyPromptLate
@@ -8086,6 +8097,41 @@ mod tests {
             super::code_discriminator_mode(&signal_model),
             super::CodeDiscriminatorMode::EarlyPromptLate
         );
+    }
+
+    #[test]
+    fn code_discriminator_mode_keeps_secondary_code_tracking_unambiguous() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig::default();
+        let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            sat,
+            SignalBand::B1,
+            SignalCode::B1I,
+            None,
+        );
+
+        assert_eq!(
+            super::code_discriminator_mode(&signal_model),
+            super::CodeDiscriminatorMode::EarlyPromptLate
+        );
+    }
+
+    #[test]
+    fn signal_tracking_params_keep_configured_spacing_for_secondary_code_tracking() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig::default();
+        let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            sat,
+            SignalBand::B1,
+            SignalCode::B1I,
+            None,
+        );
+
+        let tracking_params = super::resolve_signal_tracking_params(&config, &signal_model);
+
+        assert_eq!(tracking_params.early_late_spacing_chips, 0.5);
     }
 
     #[test]
