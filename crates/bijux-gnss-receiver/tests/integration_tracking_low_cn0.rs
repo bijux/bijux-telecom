@@ -288,10 +288,7 @@ fn mean_adapted_code_phase_uncertainty_samples(epochs: &[TrackEpoch]) -> f64 {
 
 fn mean_code_phase_uncertainty_samples(epochs: &[TrackEpoch]) -> f64 {
     mean_uncertainty(epochs.iter().filter_map(|epoch| {
-        epoch
-            .tracking_uncertainty
-            .as_ref()
-            .map(|uncertainty| uncertainty.code_phase_samples)
+        epoch.tracking_uncertainty.as_ref().map(|uncertainty| uncertainty.code_phase_samples)
     }))
 }
 
