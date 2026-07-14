@@ -56,6 +56,19 @@ pub fn expected_linear_doppler_hz(
     initial_doppler_hz + ((sample_index as f64) / sample_rate_hz) * doppler_rate_hz_per_s
 }
 
+pub fn expected_quadratic_doppler_hz(
+    sample_index: u64,
+    sample_rate_hz: f64,
+    initial_doppler_hz: f64,
+    doppler_rate_hz_per_s: f64,
+    doppler_jerk_hz_per_s2: f64,
+) -> f64 {
+    let elapsed_s = (sample_index as f64) / sample_rate_hz;
+    initial_doppler_hz
+        + doppler_rate_hz_per_s * elapsed_s
+        + 0.5 * doppler_jerk_hz_per_s2 * elapsed_s * elapsed_s
+}
+
 pub fn carrier_frequency_error_under_linear_doppler_hz(
     epoch: &TrackEpoch,
     sample_rate_hz: f64,
@@ -69,6 +82,25 @@ pub fn carrier_frequency_error_under_linear_doppler_hz(
             sample_rate_hz,
             initial_doppler_hz,
             doppler_rate_hz_per_s,
+        ),
+    )
+}
+
+pub fn carrier_frequency_error_under_quadratic_doppler_hz(
+    epoch: &TrackEpoch,
+    sample_rate_hz: f64,
+    initial_doppler_hz: f64,
+    doppler_rate_hz_per_s: f64,
+    doppler_jerk_hz_per_s2: f64,
+) -> f64 {
+    carrier_frequency_error_hz(
+        epoch,
+        expected_quadratic_doppler_hz(
+            epoch.sample_index,
+            sample_rate_hz,
+            initial_doppler_hz,
+            doppler_rate_hz_per_s,
+            doppler_jerk_hz_per_s2,
         ),
     )
 }
@@ -183,6 +215,27 @@ pub fn post_lock_carrier_frequency_errors_under_linear_doppler_hz(
         .collect()
 }
 
+pub fn post_lock_carrier_frequency_errors_under_quadratic_doppler_hz(
+    epochs: &[TrackEpoch],
+    sample_rate_hz: f64,
+    initial_doppler_hz: f64,
+    doppler_rate_hz_per_s: f64,
+    doppler_jerk_hz_per_s2: f64,
+) -> Vec<f64> {
+    post_lock_epochs(epochs)
+        .iter()
+        .map(|epoch| {
+            carrier_frequency_error_under_quadratic_doppler_hz(
+                epoch,
+                sample_rate_hz,
+                initial_doppler_hz,
+                doppler_rate_hz_per_s,
+                doppler_jerk_hz_per_s2,
+            )
+        })
+        .collect()
+}
+
 pub fn post_lock_code_phase_errors_samples(
     config: &ReceiverPipelineConfig,
     epochs: &[TrackEpoch],
@@ -214,11 +267,13 @@ fn gps_lnav_nav_bit_period_samples(sample_rate_hz: f64) -> u64 {
 mod tests {
     use super::{
         carrier_frequency_error_hz, carrier_frequency_error_under_linear_doppler_hz,
-        carrier_phase_step_cycles, carrier_phase_steps_cycles, code_phase_error_samples,
-        epoch_indices_with_lock_state, epoch_indices_with_lock_state_reason,
-        expected_linear_doppler_hz, first_tracking_lock_epoch_index, mean_tracking_cn0_dbhz,
+        carrier_frequency_error_under_quadratic_doppler_hz, carrier_phase_step_cycles,
+        carrier_phase_steps_cycles, code_phase_error_samples, epoch_indices_with_lock_state,
+        epoch_indices_with_lock_state_reason, expected_linear_doppler_hz,
+        expected_quadratic_doppler_hz, first_tracking_lock_epoch_index, mean_tracking_cn0_dbhz,
         nav_bit_transition_epoch_indices, post_lock_carrier_frequency_errors_hz,
         post_lock_carrier_frequency_errors_under_linear_doppler_hz,
+        post_lock_carrier_frequency_errors_under_quadratic_doppler_hz,
         post_lock_code_phase_errors_samples, post_lock_epochs, stable_tracking_cn0_estimates,
         stable_tracking_window, wrapped_code_phase_error_samples,
     };
@@ -272,6 +327,11 @@ mod tests {
     }
 
     #[test]
+    fn expected_quadratic_doppler_hz_applies_jerk_from_sample_time() {
+        assert_eq!(expected_quadratic_doppler_hz(2_000, 4_000.0, 100.0, 20.0, 120.0), 125.0);
+    }
+
+    #[test]
     fn carrier_frequency_error_under_linear_doppler_hz_uses_epoch_sample_index() {
         let epoch =
             TrackEpoch { sample_index: 8_000, carrier_hz: Hertz(116.5), ..TrackEpoch::default() };
@@ -279,6 +339,17 @@ mod tests {
         assert_eq!(
             carrier_frequency_error_under_linear_doppler_hz(&epoch, 4_000.0, 100.0, 8.0),
             0.5
+        );
+    }
+
+    #[test]
+    fn carrier_frequency_error_under_quadratic_doppler_hz_uses_epoch_sample_index() {
+        let epoch =
+            TrackEpoch { sample_index: 2_000, carrier_hz: Hertz(123.5), ..TrackEpoch::default() };
+
+        assert_eq!(
+            carrier_frequency_error_under_quadratic_doppler_hz(&epoch, 4_000.0, 100.0, 20.0, 120.0),
+            1.5
         );
     }
 
@@ -591,6 +662,43 @@ mod tests {
         assert_eq!(
             post_lock_carrier_frequency_errors_under_linear_doppler_hz(
                 &epochs, 4_000.0, 100.0, 10.0
+            ),
+            vec![0.5, 0.75]
+        );
+    }
+
+    #[test]
+    fn post_lock_quadratic_carrier_frequency_errors_starts_at_first_tracking_lock_epoch() {
+        let epochs = vec![
+            TrackEpoch {
+                sample_index: 0,
+                carrier_hz: Hertz(90.0),
+                pll_lock: false,
+                fll_lock: true,
+                lock_state: "pull_in".to_string(),
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                sample_index: 2_000,
+                carrier_hz: Hertz(125.5),
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                ..TrackEpoch::default()
+            },
+            TrackEpoch {
+                sample_index: 4_000,
+                carrier_hz: Hertz(180.75),
+                pll_lock: true,
+                fll_lock: true,
+                lock_state: "tracking".to_string(),
+                ..TrackEpoch::default()
+            },
+        ];
+
+        assert_eq!(
+            post_lock_carrier_frequency_errors_under_quadratic_doppler_hz(
+                &epochs, 4_000.0, 100.0, 20.0, 120.0
             ),
             vec![0.5, 0.75]
         );
