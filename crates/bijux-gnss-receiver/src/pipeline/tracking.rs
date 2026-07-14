@@ -77,7 +77,7 @@ const DEGRADED_FADE_INSTABILITY_GRACE_EPOCHS: u16 = 2;
 const SHORT_FADE_RECOVERY_GRACE_EPOCHS: u16 = 5;
 const NARROW_BPSK_EARLY_LATE_SPACING_CHIPS: f64 = 0.25;
 const NARROW_HIGH_RATE_EARLY_LATE_SPACING_CHIPS: f64 = 0.10;
-const NARROW_SUBCARRIER_EARLY_LATE_SPACING_CHIPS: f64 = 0.15;
+const NARROW_SUBCARRIER_EARLY_LATE_SPACING_CHIPS: f64 = 0.25;
 // If prompt energy returns near the short-fade boundary, the loops may need a
 // few extra epochs to re-enter tracking without opening a long interruption gap.
 const SHORT_FADE_RELOCK_EVIDENCE_GRACE_EPOCHS: u16 = 3;
@@ -7719,7 +7719,7 @@ mod tests {
         let assumptions = super::tracking_assumptions(&signal_model, tracking_params);
 
         assert_eq!(assumptions.discriminator_family, "unambiguous_cboc_early_prompt_late");
-        assert_eq!(assumptions.early_late_spacing_chips, 0.15);
+        assert_eq!(assumptions.early_late_spacing_chips, 0.25);
     }
 
     #[derive(Debug, Deserialize)]

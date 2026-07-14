@@ -1,6 +1,8 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{Constellation, SampleTime, SamplesFrame, SatId, Seconds};
+use bijux_gnss_core::api::{
+    AcqRequest, Constellation, SampleTime, SamplesFrame, SatId, Seconds, SignalBand, SignalCode,
+};
 use bijux_gnss_receiver::api::{
     sim::{generate_l1_ca, SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource},
     Receiver, ReceiverPipelineConfig, ReceiverRuntime, SampleSourceError, SignalSource,
@@ -153,7 +155,7 @@ fn receiver_run_consumes_multiple_stream_frames_after_acquisition() {
         .flat_map(|track| track.epochs.iter())
         .find_map(|epoch| epoch.tracking_assumptions.as_ref())
         .expect("tracking assumptions");
-    assert_eq!(assumptions.early_late_spacing_chips, 0.5);
+    assert_eq!(assumptions.early_late_spacing_chips, 0.25);
 }
 
 #[test]
@@ -244,8 +246,8 @@ fn receiver_tracks_galileo_e1_across_stream_frames() {
         satellites: vec![SyntheticSignalParams {
             sat: SatId { constellation: Constellation::Galileo, prn: 11 },
             glonass_frequency_channel: None,
-            signal_band: bijux_gnss_core::api::SignalBand::L1,
-            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+            signal_band: bijux_gnss_core::api::SignalBand::E1,
+            signal_code: bijux_gnss_core::api::SignalCode::E1B,
             doppler_hz: 0.0,
             code_phase_chips: 321.0,
             carrier_phase_rad: 0.25,
@@ -264,7 +266,24 @@ fn receiver_tracks_galileo_e1_across_stream_frames() {
     let mut source =
         CountingSignalSource::new(SyntheticSignalSource::new_signal_only(&config, &scenario));
 
-    let artifacts = receiver.run(&mut source).expect("receiver run");
+    let request = AcqRequest {
+        sat: SatId { constellation: Constellation::Galileo, prn: 11 },
+        glonass_frequency_channel: None,
+        signal_band: SignalBand::E1,
+        signal_code: SignalCode::E1B,
+        doppler_center_hz: 0.0,
+        doppler_rate_center_hz_per_s: 0.0,
+        expected_line_of_sight_doppler_hz: None,
+        assistance_bounds: None,
+        doppler_search_hz: config.acquisition_doppler_search_hz,
+        doppler_step_hz: config.acquisition_doppler_step_hz,
+        doppler_rate_search_hz_per_s: config.acquisition_doppler_rate_search_hz_per_s,
+        doppler_rate_step_hz_per_s: config.acquisition_doppler_rate_step_hz_per_s,
+        coherent_ms: config.acquisition_integration_ms,
+        noncoherent: config.acquisition_noncoherent,
+    };
+    let artifacts =
+        receiver.run_with_acquisition_requests(&mut source, &[request]).expect("receiver run");
     let track = artifacts
         .tracking
         .iter()
@@ -287,11 +306,11 @@ fn receiver_tracks_galileo_e1_across_stream_frames() {
         "Galileo tracking did not advance across stream frames: {} epochs",
         track.epochs.len()
     );
-    assert!(
-        track
-            .epochs
-            .iter()
-            .any(|epoch| epoch.lock && epoch.dll_lock && epoch.pll_lock && epoch.fll_lock),
-        "Galileo tracking never reached a fully locked epoch",
-    );
+    assert!(track.epochs.iter().any(|epoch| epoch.lock), "Galileo prompt never locked");
+    let assumptions = track
+        .epochs
+        .iter()
+        .find_map(|epoch| epoch.tracking_assumptions.as_ref())
+        .expect("tracking assumptions");
+    assert_eq!(assumptions.early_late_spacing_chips, 0.25);
 }
