@@ -264,8 +264,7 @@ pub fn add_satellite_delay_biases_to_observations(
     observations: &[PositionObservation],
     delay_biases_by_sat_m: &[(SatId, f64)],
 ) -> Vec<PositionObservation> {
-    let delay_biases_by_sat_m =
-        delay_biases_by_sat_m.iter().copied().collect::<BTreeMap<_, _>>();
+    let delay_biases_by_sat_m = delay_biases_by_sat_m.iter().copied().collect::<BTreeMap<_, _>>();
     observations
         .iter()
         .map(|observation| {
@@ -364,7 +363,8 @@ pub fn gps_l1ca_doppler_from_truth(
     receiver_clock_bias_s: f64,
     receiver_clock_drift_s_per_s: f64,
 ) -> f64 {
-    let pseudorange_m = pseudorange_from_truth(ephemeris, truth_ecef_m, t_rx_s, receiver_clock_bias_s);
+    let pseudorange_m =
+        pseudorange_from_truth(ephemeris, truth_ecef_m, t_rx_s, receiver_clock_bias_s);
     let signal_travel_time_s = pseudorange_m / SPEED_OF_LIGHT_MPS;
     let transmit_tow_s = t_rx_s - signal_travel_time_s;
     let state = sat_state_gps_l1ca(ephemeris, transmit_tow_s, signal_travel_time_s);
@@ -386,8 +386,7 @@ pub fn gps_l1ca_doppler_from_truth(
         + line_of_sight[2] * relative_velocity_mps[2];
 
     -range_rate_mps / GPS_L1_CA_WAVELENGTH_M
-        + SPEED_OF_LIGHT_MPS
-            * (receiver_clock_drift_s_per_s - state.clock_correction.drift_s_per_s)
+        + SPEED_OF_LIGHT_MPS * (receiver_clock_drift_s_per_s - state.clock_correction.drift_s_per_s)
             / GPS_L1_CA_WAVELENGTH_M
 }
 

@@ -21,11 +21,7 @@ pub(crate) fn receiver_range_correction_m(
     satellite_ecef_m: [f64; 3],
 ) -> Option<f64> {
     let offset = receiver_phase_center_offset(calibrations, antenna_type, band, gps_time)?;
-    Some(receiver_range_correction_from_offset_m(
-        receiver_ecef_m,
-        satellite_ecef_m,
-        offset,
-    ))
+    Some(receiver_range_correction_from_offset_m(receiver_ecef_m, satellite_ecef_m, offset))
 }
 
 pub(crate) fn satellite_range_correction_m(
@@ -58,8 +54,20 @@ fn receiver_phase_center_offset(
         .entries
         .iter()
         .filter(|entry| canonical_receiver_antenna_type(&entry.antenna_type) == canonical)
-        .filter(|entry| calibration_window_matches(entry.valid_from_unix_s, entry.valid_until_unix_s, unix_time_s))
-        .filter_map(|entry| entry.offsets_by_band.get(&band).copied().map(|offset| (entry.valid_from_unix_s.unwrap_or(f64::NEG_INFINITY), offset)))
+        .filter(|entry| {
+            calibration_window_matches(
+                entry.valid_from_unix_s,
+                entry.valid_until_unix_s,
+                unix_time_s,
+            )
+        })
+        .filter_map(|entry| {
+            entry
+                .offsets_by_band
+                .get(&band)
+                .copied()
+                .map(|offset| (entry.valid_from_unix_s.unwrap_or(f64::NEG_INFINITY), offset))
+        })
         .max_by(|left, right| left.0.total_cmp(&right.0))
         .map(|(_, offset)| offset)
 }
@@ -75,8 +83,20 @@ fn satellite_phase_center_offset(
         .entries
         .iter()
         .filter(|entry| entry.sat == sat)
-        .filter(|entry| calibration_window_matches(entry.valid_from_unix_s, entry.valid_until_unix_s, unix_time_s))
-        .filter_map(|entry| entry.offsets_by_band.get(&band).copied().map(|offset| (entry.valid_from_unix_s.unwrap_or(f64::NEG_INFINITY), offset)))
+        .filter(|entry| {
+            calibration_window_matches(
+                entry.valid_from_unix_s,
+                entry.valid_until_unix_s,
+                unix_time_s,
+            )
+        })
+        .filter_map(|entry| {
+            entry
+                .offsets_by_band
+                .get(&band)
+                .copied()
+                .map(|offset| (entry.valid_from_unix_s.unwrap_or(f64::NEG_INFINITY), offset))
+        })
         .max_by(|left, right| left.0.total_cmp(&right.0))
         .map(|(_, offset)| offset)
 }
@@ -116,14 +136,21 @@ fn satellite_range_correction_from_offset_m(
     sun_ecef_m: [f64; 3],
     offset: SatellitePhaseCenterOffset,
 ) -> f64 {
-    let body_z_axis = normalize3([-satellite_ecef_m[0], -satellite_ecef_m[1], -satellite_ecef_m[2]]);
+    let body_z_axis =
+        normalize3([-satellite_ecef_m[0], -satellite_ecef_m[1], -satellite_ecef_m[2]]);
     let satellite_to_sun = normalize3(subtract3(sun_ecef_m, satellite_ecef_m));
     let body_y_axis = normalize3(cross3(body_z_axis, satellite_to_sun));
     let body_x_axis = normalize3(cross3(body_y_axis, body_z_axis));
     let offset_ecef_m = [
-        body_x_axis[0] * offset.body_x_m + body_y_axis[0] * offset.body_y_m + body_z_axis[0] * offset.body_z_m,
-        body_x_axis[1] * offset.body_x_m + body_y_axis[1] * offset.body_y_m + body_z_axis[1] * offset.body_z_m,
-        body_x_axis[2] * offset.body_x_m + body_y_axis[2] * offset.body_y_m + body_z_axis[2] * offset.body_z_m,
+        body_x_axis[0] * offset.body_x_m
+            + body_y_axis[0] * offset.body_y_m
+            + body_z_axis[0] * offset.body_z_m,
+        body_x_axis[1] * offset.body_x_m
+            + body_y_axis[1] * offset.body_y_m
+            + body_z_axis[1] * offset.body_z_m,
+        body_x_axis[2] * offset.body_x_m
+            + body_y_axis[2] * offset.body_y_m
+            + body_z_axis[2] * offset.body_z_m,
     ];
     let corrected_satellite_ecef_m = [
         satellite_ecef_m[0] + offset_ecef_m[0],
@@ -144,7 +171,7 @@ fn approximate_sun_position_ecef_m(gps_time: GpsTime) -> [f64; 3] {
     let ecliptic_longitude_rad = (mean_longitude_deg
         + 1.915 * mean_anomaly_rad.sin()
         + 0.020 * (2.0 * mean_anomaly_rad).sin())
-        .to_radians();
+    .to_radians();
     let obliquity_rad = (23.4393 - 0.0130 * centuries_since_j2000).to_radians();
 
     let eci_m = [
@@ -195,11 +222,7 @@ fn wrap_degrees(angle_deg: f64) -> f64 {
 }
 
 fn geometric_range_m(left_ecef_m: [f64; 3], right_ecef_m: [f64; 3]) -> f64 {
-    dot3(
-        subtract3(left_ecef_m, right_ecef_m),
-        subtract3(left_ecef_m, right_ecef_m),
-    )
-    .sqrt()
+    dot3(subtract3(left_ecef_m, right_ecef_m), subtract3(left_ecef_m, right_ecef_m)).sqrt()
 }
 
 #[cfg(test)]

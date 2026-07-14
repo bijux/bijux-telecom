@@ -54,11 +54,7 @@ pub(crate) fn sat_state_gps_l1ca_at_receive_time(
     receive_tow_s: f64,
     signal_travel_time_s: f64,
 ) -> BroadcastGpsState {
-    sat_state_gps_l1ca(
-        ephemeris,
-        receive_tow_s - signal_travel_time_s,
-        signal_travel_time_s,
-    )
+    sat_state_gps_l1ca(ephemeris, receive_tow_s - signal_travel_time_s, signal_travel_time_s)
 }
 
 pub(crate) fn sat_state_gps_l1ca_from_observation(
@@ -88,7 +84,8 @@ pub(crate) fn solve_transmit_state_for_receiver(
     receiver_ecef_m: [f64; 3],
 ) -> SolvedTransmitState {
     let mut signal_travel_time_s = 0.07;
-    let mut transmit_state = sat_state_gps_l1ca_at_receive_time(ephemeris, receive_tow_s, signal_travel_time_s);
+    let mut transmit_state =
+        sat_state_gps_l1ca_at_receive_time(ephemeris, receive_tow_s, signal_travel_time_s);
 
     for _ in 0..10 {
         let next_signal_travel_time_s = geometric_range_m(
@@ -100,7 +97,8 @@ pub(crate) fn solve_transmit_state_for_receiver(
             break;
         }
         signal_travel_time_s = next_signal_travel_time_s;
-        transmit_state = sat_state_gps_l1ca_at_receive_time(ephemeris, receive_tow_s, signal_travel_time_s);
+        transmit_state =
+            sat_state_gps_l1ca_at_receive_time(ephemeris, receive_tow_s, signal_travel_time_s);
     }
 
     SolvedTransmitState { transmit_state, signal_travel_time_s }
@@ -115,10 +113,10 @@ pub(crate) fn pseudorange_from_truth(
     let mut signal_travel_time_s = 0.07;
     let mut pseudorange_m = 0.0;
     for _ in 0..10 {
-        let state = sat_state_gps_l1ca_at_receive_time(ephemeris, receive_tow_s, signal_travel_time_s);
+        let state =
+            sat_state_gps_l1ca_at_receive_time(ephemeris, receive_tow_s, signal_travel_time_s);
         let geometric_range_m = geometric_range_m(truth_ecef_m, [state.x_m, state.y_m, state.z_m]);
-        pseudorange_m = geometric_range_m
-            + receiver_clock_bias_s * SPEED_OF_LIGHT_MPS
+        pseudorange_m = geometric_range_m + receiver_clock_bias_s * SPEED_OF_LIGHT_MPS
             - state.clock_correction.bias_s * SPEED_OF_LIGHT_MPS;
         let next_signal_travel_time_s = pseudorange_m / SPEED_OF_LIGHT_MPS;
         if (next_signal_travel_time_s - signal_travel_time_s).abs() < 1.0e-12 {
@@ -153,8 +151,8 @@ fn orbital_terms(ephemeris: &GpsEphemeris, transmit_tow_s: f64) -> OrbitalTerms 
     let eccentric_anomaly_rad = solve_eccentric_anomaly_rad(mean_anomaly_rad, ephemeris.e);
     let sin_e = eccentric_anomaly_rad.sin();
     let cos_e = eccentric_anomaly_rad.cos();
-    let true_anomaly_rad = ((1.0 - ephemeris.e * ephemeris.e).sqrt() * sin_e)
-        .atan2(cos_e - ephemeris.e);
+    let true_anomaly_rad =
+        ((1.0 - ephemeris.e * ephemeris.e).sqrt() * sin_e).atan2(cos_e - ephemeris.e);
     let argument_of_latitude_rad = true_anomaly_rad + ephemeris.w;
     let twice_argument_rad = 2.0 * argument_of_latitude_rad;
     let du_rad =
@@ -302,8 +300,12 @@ mod tests {
 
     #[test]
     fn pseudorange_from_truth_returns_physical_range_scale() {
-        let pseudorange_m =
-            pseudorange_from_truth(&sample_ephemeris(), [5_000.0, -4_000.0, 3_000.0], 504_018.07, 0.0);
+        let pseudorange_m = pseudorange_from_truth(
+            &sample_ephemeris(),
+            [5_000.0, -4_000.0, 3_000.0],
+            504_018.07,
+            0.0,
+        );
 
         assert!((20_000_000.0..30_000_000.0).contains(&pseudorange_m));
     }

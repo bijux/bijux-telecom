@@ -69,11 +69,8 @@ pub struct GpsL1RtkAntennaEffectCase {
 
 /// Build a deterministic GPS L1 PPP antenna-effect scenario.
 pub fn gps_l1_ppp_antenna_effect_case() -> GpsL1PppAntennaEffectCase {
-    let receiver_ecef_m = geodetic_to_ecef_m(GeodeticPoint {
-        lat_deg: 37.0,
-        lon_deg: -122.0,
-        alt_m: 15.0,
-    });
+    let receiver_ecef_m =
+        geodetic_to_ecef_m(GeodeticPoint { lat_deg: 37.0, lon_deg: -122.0, alt_m: 15.0 });
     let receive_gps_time = GpsTime { week: 2200, tow_s: 345_600.25 };
     let ephemerides = test_ephemerides(receive_gps_time);
     let (receiver_calibrations, satellite_calibrations) = test_calibrations(&ephemerides);
@@ -103,11 +100,8 @@ pub fn gps_l1_ppp_antenna_effect_case() -> GpsL1PppAntennaEffectCase {
 pub fn gps_l1_rtk_antenna_effect_case() -> GpsL1RtkAntennaEffectCase {
     let base_geodetic = GeodeticPoint { lat_deg: 37.0, lon_deg: -122.0, alt_m: 10.0 };
     let base_ecef_m = geodetic_to_ecef_m(base_geodetic);
-    let rover_ecef_m = geodetic_to_ecef_m(GeodeticPoint {
-        lat_deg: 37.0001,
-        lon_deg: -121.9999,
-        alt_m: 12.0,
-    });
+    let rover_ecef_m =
+        geodetic_to_ecef_m(GeodeticPoint { lat_deg: 37.0001, lon_deg: -121.9999, alt_m: 12.0 });
     let rover_enu_m = {
         let enu = ecef_to_enu_m(rover_ecef_m, base_geodetic);
         [enu.east_m, enu.north_m, enu.up_m]
@@ -253,8 +247,11 @@ fn make_obs_epoch(
     let sats = ephemerides
         .iter()
         .map(|ephemeris| {
-            let solved =
-                solve_transmit_state_for_receiver(ephemeris, receive_gps_time.tow_s, receiver_ecef_m);
+            let solved = solve_transmit_state_for_receiver(
+                ephemeris,
+                receive_gps_time.tow_s,
+                receiver_ecef_m,
+            );
             let sat = solved.transmit_state;
             let sat_ecef_m = [sat.x_m, sat.y_m, sat.z_m];
             let unbiased_pseudorange_m =
@@ -268,7 +265,7 @@ fn make_obs_epoch(
                 sat_ecef_m,
                 receiver_ecef_m,
             )
-                .expect("satellite antenna correction");
+            .expect("satellite antenna correction");
             let receiver_correction_m = receiver_antenna_type
                 .and_then(|antenna_type| {
                     receiver_range_correction_m(

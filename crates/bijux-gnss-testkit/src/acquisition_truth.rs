@@ -9,8 +9,12 @@ pub fn gps_l1ca_expected_acquisition_code_phase_samples(
     sample_index: u64,
     code_phase_chips: f64,
 ) -> usize {
-    gps_l1ca_expected_acquisition_code_phase_samples_f64(sample_rate_hz, sample_index, code_phase_chips)
-        .round() as usize
+    gps_l1ca_expected_acquisition_code_phase_samples_f64(
+        sample_rate_hz,
+        sample_index,
+        code_phase_chips,
+    )
+    .round() as usize
 }
 
 pub fn gps_l1ca_expected_acquisition_code_phase_samples_f64(
@@ -57,11 +61,7 @@ pub fn wrapped_code_phase_error_samples_f64(
     forward_error.min(wrapped_error)
 }
 
-pub fn samples_per_code(
-    sample_rate_hz: f64,
-    code_rate_hz: f64,
-    code_length_chips: usize,
-) -> usize {
+pub fn samples_per_code(sample_rate_hz: f64, code_rate_hz: f64, code_length_chips: usize) -> usize {
     (sample_rate_hz / (code_rate_hz / code_length_chips as f64)).round() as usize
 }
 

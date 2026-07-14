@@ -28,7 +28,8 @@ pub(crate) fn single_differences_from_epochs(
         differences.push(RtkSingleDifferenceObservation {
             sig: rover_observation.signal_id,
             min_cn0_dbhz: rover_observation.cn0_dbhz.min(base_observation.cn0_dbhz),
-            multipath_suspect: rover_observation.multipath_suspect || base_observation.multipath_suspect,
+            multipath_suspect: rover_observation.multipath_suspect
+                || base_observation.multipath_suspect,
             rover_pseudorange_m: rover_observation.pseudorange_m.0,
             rover_signal_timing: rover_observation.timing,
             base_pseudorange_m: base_observation.pseudorange_m.0,
@@ -37,7 +38,8 @@ pub(crate) fn single_differences_from_epochs(
             phase_cycles: rover_observation.carrier_phase_cycles.0
                 - base_observation.carrier_phase_cycles.0,
             doppler_hz: rover_observation.doppler_hz.0 - base_observation.doppler_hz.0,
-            code_variance_m2: rover_observation.pseudorange_var_m2 + base_observation.pseudorange_var_m2,
+            code_variance_m2: rover_observation.pseudorange_var_m2
+                + base_observation.pseudorange_var_m2,
             phase_variance_cycles2: rover_observation.carrier_phase_var_cycles2
                 + base_observation.carrier_phase_var_cycles2,
             ambiguity_rover: ambiguity_id(rover_observation),
@@ -66,7 +68,8 @@ pub(crate) fn double_differences_from_single_differences(
     observations: &[RtkSingleDifferenceObservation],
     reference_signal: SigId,
 ) -> Vec<RtkDoubleDifferenceObservation> {
-    let Some(reference) = observations.iter().find(|observation| observation.sig == reference_signal)
+    let Some(reference) =
+        observations.iter().find(|observation| observation.sig == reference_signal)
     else {
         return Vec::new();
     };
@@ -140,7 +143,12 @@ mod tests {
         single_differences_from_epochs,
     };
 
-    fn obs_satellite(prn: u8, pseudorange_m: f64, carrier_cycles: f64, cn0_dbhz: f64) -> ObsSatellite {
+    fn obs_satellite(
+        prn: u8,
+        pseudorange_m: f64,
+        carrier_cycles: f64,
+        cn0_dbhz: f64,
+    ) -> ObsSatellite {
         ObsSatellite {
             signal_id: SigId {
                 sat: SatId { constellation: Constellation::Gps, prn },
@@ -207,8 +215,10 @@ mod tests {
 
     #[test]
     fn reference_differences_preserve_rover_minus_base_sign() {
-        let base = epoch(vec![obs_satellite(3, 20.0, 100.0, 42.0), obs_satellite(7, 30.0, 200.0, 48.0)]);
-        let rover = epoch(vec![obs_satellite(3, 24.0, 103.0, 40.0), obs_satellite(7, 34.0, 205.0, 45.0)]);
+        let base =
+            epoch(vec![obs_satellite(3, 20.0, 100.0, 42.0), obs_satellite(7, 30.0, 200.0, 48.0)]);
+        let rover =
+            epoch(vec![obs_satellite(3, 24.0, 103.0, 40.0), obs_satellite(7, 34.0, 205.0, 45.0)]);
 
         let singles = single_differences_from_epochs(&base, &rover);
         let reference = choose_reference_signal(&singles).expect("reference signal");

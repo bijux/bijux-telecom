@@ -3,10 +3,8 @@
 const WGS84_SEMI_MAJOR_AXIS_M: f64 = 6_378_137.0;
 const WGS84_FLATTENING: f64 = 1.0 / 298.257_223_563;
 const WGS84_SEMI_MINOR_AXIS_M: f64 = WGS84_SEMI_MAJOR_AXIS_M * (1.0 - WGS84_FLATTENING);
-const WGS84_FIRST_ECCENTRICITY_SQUARED: f64 =
-    WGS84_FLATTENING * (2.0 - WGS84_FLATTENING);
-const WGS84_SECOND_ECCENTRICITY_SQUARED: f64 = (WGS84_SEMI_MAJOR_AXIS_M
-    * WGS84_SEMI_MAJOR_AXIS_M
+const WGS84_FIRST_ECCENTRICITY_SQUARED: f64 = WGS84_FLATTENING * (2.0 - WGS84_FLATTENING);
+const WGS84_SECOND_ECCENTRICITY_SQUARED: f64 = (WGS84_SEMI_MAJOR_AXIS_M * WGS84_SEMI_MAJOR_AXIS_M
     - WGS84_SEMI_MINOR_AXIS_M * WGS84_SEMI_MINOR_AXIS_M)
     / (WGS84_SEMI_MINOR_AXIS_M * WGS84_SEMI_MINOR_AXIS_M);
 
@@ -48,17 +46,15 @@ pub(crate) fn ecef_to_geodetic_point(ecef_m: [f64; 3]) -> GeodeticPoint {
     let z_m = ecef_m[2];
     let longitude_rad = y_m.atan2(x_m);
     let horizontal_radius_m = (x_m * x_m + y_m * y_m).sqrt().max(f64::EPSILON);
-    let parametric_latitude_rad = (z_m * WGS84_SEMI_MAJOR_AXIS_M)
-        .atan2(horizontal_radius_m * WGS84_SEMI_MINOR_AXIS_M);
+    let parametric_latitude_rad =
+        (z_m * WGS84_SEMI_MAJOR_AXIS_M).atan2(horizontal_radius_m * WGS84_SEMI_MINOR_AXIS_M);
     let sin_parametric = parametric_latitude_rad.sin();
     let cos_parametric = parametric_latitude_rad.cos();
     let latitude_rad = (z_m
         + WGS84_SECOND_ECCENTRICITY_SQUARED * WGS84_SEMI_MINOR_AXIS_M * sin_parametric.powi(3))
     .atan2(
         horizontal_radius_m
-            - WGS84_FIRST_ECCENTRICITY_SQUARED
-                * WGS84_SEMI_MAJOR_AXIS_M
-                * cos_parametric.powi(3),
+            - WGS84_FIRST_ECCENTRICITY_SQUARED * WGS84_SEMI_MAJOR_AXIS_M * cos_parametric.powi(3),
     );
     let sin_latitude = latitude_rad.sin();
     let prime_vertical_radius_m = WGS84_SEMI_MAJOR_AXIS_M
@@ -113,8 +109,7 @@ pub(crate) fn enu_to_ecef_m(
             - sin_longitude * enu_m.east_m
             - sin_latitude * cos_longitude * enu_m.north_m
             + cos_latitude * cos_longitude * enu_m.up_m,
-        reference_ecef_m[1]
-            + cos_longitude * enu_m.east_m
+        reference_ecef_m[1] + cos_longitude * enu_m.east_m
             - sin_latitude * sin_longitude * enu_m.north_m
             + cos_latitude * sin_longitude * enu_m.up_m,
         reference_ecef_m[2] + cos_latitude * enu_m.north_m + sin_latitude * enu_m.up_m,
@@ -128,9 +123,8 @@ pub(crate) fn elevation_azimuth_deg(
     let receiver_geodetic = ecef_to_geodetic_point(receiver_ecef_m);
     let local = ecef_to_enu_m(satellite_ecef_m, receiver_geodetic);
     let azimuth_deg = local.east_m.atan2(local.north_m).to_degrees().rem_euclid(360.0);
-    let elevation_deg = (local.up_m / norm3([local.east_m, local.north_m, local.up_m]))
-        .asin()
-        .to_degrees();
+    let elevation_deg =
+        (local.up_m / norm3([local.east_m, local.north_m, local.up_m])).asin().to_degrees();
     (azimuth_deg, elevation_deg)
 }
 
@@ -177,7 +171,8 @@ mod tests {
 
     #[test]
     fn ecef_to_geodetic_round_trips_known_station() {
-        let original = GeodeticPoint { lat_deg: 58.19884205, lon_deg: -136.64080781, alt_m: 26.9246 };
+        let original =
+            GeodeticPoint { lat_deg: 58.19884205, lon_deg: -136.64080781, alt_m: 26.9246 };
         let ecef_m = geodetic_to_ecef_m(original);
         let recovered = ecef_to_geodetic_point(ecef_m);
 

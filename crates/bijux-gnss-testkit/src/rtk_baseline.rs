@@ -114,11 +114,7 @@ fn gps_l1_short_baseline_case(environment: RtkObservationEnvironment) -> GpsL1Rt
     let rover_ecef_m = enu_to_ecef_m(
         base_ecef_m,
         base_geodetic,
-        EnuVector {
-            east_m: truth_enu_m[0],
-            north_m: truth_enu_m[1],
-            up_m: truth_enu_m[2],
-        },
+        EnuVector { east_m: truth_enu_m[0], north_m: truth_enu_m[1], up_m: truth_enu_m[2] },
     );
     let receive_gps_time = GpsTime { week: 2200, tow_s: 345_600.25 };
     let ephemerides = vec![
@@ -309,8 +305,11 @@ fn make_obs_epoch(
         .iter()
         .enumerate()
         .map(|(index, ephemeris)| {
-            let solved =
-                solve_transmit_state_for_receiver(ephemeris, receive_gps_time.tow_s, receiver_ecef_m);
+            let solved = solve_transmit_state_for_receiver(
+                ephemeris,
+                receive_gps_time.tow_s,
+                receiver_ecef_m,
+            );
             let sat = solved.transmit_state;
             let range_m = geometric_range_m(receiver_ecef_m, [sat.x_m, sat.y_m, sat.z_m]);
             let pseudorange_m = range_m - sat.clock_correction.bias_s * SPEED_OF_LIGHT_MPS

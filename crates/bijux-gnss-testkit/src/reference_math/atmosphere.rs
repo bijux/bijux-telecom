@@ -31,15 +31,15 @@ pub(crate) fn klobuchar_delay_m(
     let latitude_semicircles = receiver.lat_deg / 180.0;
     let longitude_semicircles = receiver.lon_deg / 180.0;
     let earth_centered_angle = 0.0137 / (elevation_semicircles + 0.11) - 0.022;
-    let subionospheric_latitude = (latitude_semicircles + earth_centered_angle * azimuth_rad.cos())
-        .clamp(-0.416, 0.416);
+    let subionospheric_latitude =
+        (latitude_semicircles + earth_centered_angle * azimuth_rad.cos()).clamp(-0.416, 0.416);
     let subionospheric_longitude = longitude_semicircles
         + earth_centered_angle * azimuth_rad.sin()
             / (subionospheric_latitude * std::f64::consts::PI).cos();
     let geomagnetic_latitude = subionospheric_latitude
         + 0.064 * ((subionospheric_longitude - 1.617) * std::f64::consts::PI).cos();
-    let local_time_s = (43_200.0 * subionospheric_longitude + receive_time_s)
-        .rem_euclid(SECONDS_PER_DAY);
+    let local_time_s =
+        (43_200.0 * subionospheric_longitude + receive_time_s).rem_euclid(SECONDS_PER_DAY);
     let slant_factor = 1.0 + 16.0 * (0.53 - elevation_semicircles).powi(3);
     let amplitude_s = cubic(coefficients.alpha, geomagnetic_latitude).max(0.0);
     let period_s = cubic(coefficients.beta, geomagnetic_latitude).max(MIN_KLOBUCHAR_PERIOD_S);

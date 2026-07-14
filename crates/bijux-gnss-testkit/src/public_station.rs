@@ -5,9 +5,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::reference_math::coordinates::{
-    ecef_to_enu_m, geodetic_to_ecef_m, GeodeticPoint,
-};
+use crate::reference_math::coordinates::{ecef_to_enu_m, geodetic_to_ecef_m, GeodeticPoint};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PublicStationTruth {
@@ -61,11 +59,7 @@ pub fn station_enu_error_m(
 ) -> EnuError {
     let enu = ecef_to_enu_m(
         [solution_ecef_m.0, solution_ecef_m.1, solution_ecef_m.2],
-        GeodeticPoint {
-            lat_deg: truth.lat_deg,
-            lon_deg: truth.lon_deg,
-            alt_m: truth.alt_m,
-        },
+        GeodeticPoint { lat_deg: truth.lat_deg, lon_deg: truth.lon_deg, alt_m: truth.alt_m },
     );
     EnuError {
         east_m: enu.east_m,
