@@ -917,7 +917,7 @@ pub fn normalize_dll_discriminator(discriminator: f32, early_late_spacing_chips:
         return 0.0;
     }
     let normalized = discriminator as f64
-        * ((1.0 - early_late_spacing_chips) / DLL_REFERENCE_EARLY_LATE_SPACING_CHIPS);
+        * ((2.0 - early_late_spacing_chips) / (2.0 - DLL_REFERENCE_EARLY_LATE_SPACING_CHIPS));
     normalized.clamp(-1.0, 1.0) as f32
 }
 
@@ -2203,7 +2203,7 @@ mod tests {
             narrow > standard,
             "narrow spacing must compensate discriminator gain: standard={standard} narrow={narrow}",
         );
-        assert_eq!(narrow, 0.15);
+        assert!((narrow - 0.116_666_67).abs() <= f32::EPSILON);
     }
 
     #[test]
