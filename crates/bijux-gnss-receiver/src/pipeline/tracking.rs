@@ -2029,8 +2029,15 @@ impl Tracking {
         }
 
         let apply_fll = fll_bw > 0.0 && should_apply_fll(state.state, raw_fll_lock);
+        let tracked_center_hz =
+            tracked_signal_center_hz(self.config.intermediate_freq_hz, signal_model.signal_spec);
+        let current_carrier_doppler_hz = tracked_signal_doppler_hz(
+            self.config.intermediate_freq_hz,
+            state.carrier_hz,
+            signal_model.signal_spec,
+        );
         let carrier_loop = apply_carrier_loop(CarrierLoopInput {
-            current_carrier_hz: state.carrier_hz,
+            current_carrier_hz: current_carrier_doppler_hz,
             current_carrier_phase_cycles: state.carrier_phase_cycles,
             current_carrier_rate_hz_per_s: state.carrier_rate_hz_per_s,
             epoch_len_samples,
@@ -2044,10 +2051,11 @@ impl Tracking {
             apply_pll_frequency: !apply_fll
                 || (matches!(state.state, ChannelState::PullIn) && !raw_fll_lock),
         });
+        let tracked_carrier_hz = tracked_center_hz + carrier_loop.carrier_hz;
         let code_rate_reference_hz = next_code_rate_reference_hz(
             &self.config,
             signal_model,
-            carrier_loop.carrier_hz,
+            tracked_carrier_hz,
             state.code_rate_reference_hz,
             raw_fll_lock || sustained_pll_lock,
         );
@@ -2064,7 +2072,7 @@ impl Tracking {
             samples_per_chip,
             samples_per_code,
         });
-        state.carrier_hz = carrier_loop.carrier_hz;
+        state.carrier_hz = tracked_carrier_hz;
         state.carrier_phase_cycles = carrier_loop.carrier_phase_cycles;
         state.carrier_rate_hz_per_s = carrier_loop.carrier_rate_hz_per_s;
         state.code_rate_hz = code_loop.code_rate_hz;
