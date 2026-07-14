@@ -2733,7 +2733,8 @@ mod tests {
     use crate::sim::synthetic::{generate_l1_ca, SyntheticSignalParams};
     use bijux_gnss_core::api::{
         AcqHypothesis, AcqUncertainty, Chips, Constellation, Epoch, Hertz, ReceiverSampleTrace,
-        SampleTime, SamplesFrame, SatId, Seconds, SignalBand, TrackEpoch,
+        SampleTime, SamplesFrame, SatId, Seconds, SignalBand, SignalCode,
+        SignalComponentRole, TrackEpoch,
     };
     use bijux_gnss_signal::api::{
         advance_code_phase_seconds, discriminators, first_order_angular_loop_coefficients,
@@ -3172,7 +3173,12 @@ mod tests {
 
     #[test]
     fn classify_prompt_phase_recovers_continuity_across_nav_bit_flip() {
-        let decision = super::classify_prompt_phase(-0.39, Some(0.11), 0.0);
+        let decision = super::classify_prompt_phase(
+            -0.39,
+            Some(0.11),
+            0.0,
+            super::TrackingPhaseTransitionSource::DataSymbol,
+        );
 
         assert!(decision.nav_bit_transition);
         assert!(!decision.cycle_slip);
@@ -3183,12 +3189,31 @@ mod tests {
 
     #[test]
     fn classify_prompt_phase_preserves_cycle_slip_for_non_nav_jump() {
-        let decision = super::classify_prompt_phase(0.36, Some(0.0), 0.0);
+        let decision = super::classify_prompt_phase(
+            0.36,
+            Some(0.0),
+            0.0,
+            super::TrackingPhaseTransitionSource::DataSymbol,
+        );
 
         assert!(!decision.nav_bit_transition);
         assert!(decision.cycle_slip);
         assert!((decision.aligned_phase_delta_cycles - 0.36).abs() <= 1.0e-9);
         assert!((decision.nav_bit_phase_offset_cycles - 0.0).abs() <= f64::EPSILON);
+    }
+
+    #[test]
+    fn classify_prompt_phase_keeps_half_cycle_jump_as_slip_without_transition_metadata() {
+        let decision = super::classify_prompt_phase(
+            -0.39,
+            Some(0.11),
+            0.0,
+            super::TrackingPhaseTransitionSource::None,
+        );
+
+        assert!(!decision.nav_bit_transition);
+        assert!(decision.cycle_slip);
+        assert!(decision.aligned_phase_delta_cycles.abs() > 0.35);
     }
 
     #[test]
@@ -3265,6 +3290,7 @@ mod tests {
                 raw_phase_cycles,
                 previous_aligned_phase_cycles,
                 nav_bit_phase_offset_cycles,
+                super::TrackingPhaseTransitionSource::DataSymbol,
             );
             if decision.nav_bit_transition {
                 transition_epochs.push(epoch_index);
@@ -4495,6 +4521,80 @@ mod tests {
         assert_eq!(channel_state.state.carrier_hz, carrier_hz);
         assert!((channel_state.signal_model.code_rate_hz - 511_000.0).abs() <= f64::EPSILON);
         assert_eq!(channel_state.signal_model.code_length, 511);
+    }
+
+    #[test]
+    fn tracking_signal_model_uses_registry_metadata_for_gps_l5q() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig {
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..crate::engine::receiver_config::ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Gps, prn: 18 };
+
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            sat,
+            SignalBand::L5,
+            SignalCode::L5Q,
+            None,
+        );
+
+        assert_eq!(signal_model.component_role, SignalComponentRole::Pilot);
+        assert!(signal_model.secondary_code.is_some());
+        assert_eq!(
+            signal_model.phase_transition_source,
+            super::TrackingPhaseTransitionSource::SecondaryCode
+        );
+        assert_eq!(
+            signal_model.discriminator_family,
+            super::TrackingDiscriminatorFamily::EarlyPromptLate
+        );
+        assert!((signal_model.nominal_carrier_hz() - 1_176_450_000.0).abs() <= f64::EPSILON);
+        assert!(!signal_model.supports_navigation_bit_sign_recovery());
+    }
+
+    #[test]
+    fn tracking_signal_model_uses_registry_metadata_for_galileo_e1b() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig::default();
+        let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            sat,
+            SignalBand::E1,
+            SignalCode::E1B,
+            None,
+        );
+
+        assert_eq!(signal_model.component_role, SignalComponentRole::Data);
+        assert!(signal_model.secondary_code.is_none());
+        assert_eq!(
+            signal_model.discriminator_family,
+            super::TrackingDiscriminatorFamily::CbocEarlyPromptLate
+        );
+        assert_eq!(
+            signal_model.phase_transition_source,
+            super::TrackingPhaseTransitionSource::DataSymbol
+        );
+    }
+
+    #[test]
+    fn tracking_assumptions_follow_signal_metadata() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig::default();
+        let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+        let tracking_params = config.tracking_params(SignalBand::E1);
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            sat,
+            SignalBand::E1,
+            SignalCode::E1B,
+            None,
+        );
+
+        let assumptions = super::tracking_assumptions(&signal_model, tracking_params);
+
+        assert_eq!(assumptions.discriminator_family, "cboc_early_prompt_late");
     }
 
     #[derive(Debug, Deserialize)]
