@@ -830,7 +830,7 @@ impl Tracking {
             ),
             tracking_assumptions: Some(default_tracking_assumptions(
                 &self.config,
-                signal_model.signal_band,
+                signal_model,
             )),
             tracking_uncertainty: None,
             signal_delay_alignment: None,
@@ -1186,7 +1186,7 @@ impl Tracking {
             .map(|mut channel| {
                 for epoch in &mut channel.epochs {
                     epoch.tracking_provenance = format!(
-                        "acq_hypothesis={} acq_score={:.6} acq_signal_band={:?} acq_doppler_hz={:.3} acq_carrier_hz={:.3} acq_code_phase_samples={} acq_resolved_code_phase_samples={:.6} acq_start_sample_index={}",
+                        "acq_hypothesis={} acq_score={:.6} acq_signal_band={:?} acq_doppler_hz={:.3} acq_carrier_hz={:.3} acq_code_phase_samples={} acq_resolved_code_phase_samples={:.6} acq_start_sample_index={} track_component_role={:?} nominal_carrier_hz={:.3} secondary_code={} discriminator_family={} phase_transition_source={}",
                         channel.acquisition_hypothesis,
                         channel.acquisition_score,
                         channel.signal_band,
@@ -1195,6 +1195,11 @@ impl Tracking {
                         channel.acquisition_code_phase_samples,
                         channel.acquisition_resolved_code_phase_samples,
                         channel.start_source_time.sample_index,
+                        channel.signal_model.component_role,
+                        channel.signal_model.nominal_carrier_hz(),
+                        channel.signal_model.secondary_code.is_some(),
+                        channel.signal_model.discriminator_family.label(),
+                        channel.signal_model.phase_transition_source.label(),
                     );
                 }
                 self.apply_sample_rate_mismatch_diagnostic(
@@ -1202,7 +1207,7 @@ impl Tracking {
                     channel.acquisition_uncertainty.as_ref(),
                     &mut channel.epochs,
                 );
-                annotate_navigation_bit_signs(channel.sat, &mut channel.epochs);
+                annotate_navigation_bit_signs(&channel.signal_model, &mut channel.epochs);
                 let stability_signature = tracking_stability_signature(&channel.epochs);
                 let outcome = if channel.epochs.is_empty() { "not_tracked" } else { "tracked" };
                 self.runtime.trace.record(TraceRecord {
@@ -1316,6 +1321,7 @@ impl Tracking {
             phase_cycles,
             state.prev_prompt_phase_cycles,
             state.nav_bit_phase_offset_cycles,
+            signal_model.phase_transition_source,
         );
         state.prev_prompt_phase_cycles = Some(phase_decision.aligned_phase_cycles);
         state.nav_bit_phase_offset_cycles = phase_decision.nav_bit_phase_offset_cycles;
@@ -1628,7 +1634,8 @@ impl Tracking {
             dll_lock,
             fll_lock,
             cycle_slip,
-            nav_bit_lock: state.nav_bit_transition_count > 0,
+            nav_bit_lock: signal_model.phase_transition_source.reports_navigation_bit_lock()
+                && state.nav_bit_transition_count > 0,
             navigation_bit_sign: None,
             dll_err,
             pll_err,
@@ -1637,7 +1644,7 @@ impl Tracking {
             cycle_slip_reason,
             lock_state,
             lock_state_reason,
-            tracking_assumptions: Some(tracking_assumptions(tracking_params)),
+            tracking_assumptions: Some(tracking_assumptions(signal_model, tracking_params)),
             signal_delay_alignment: state.signal_delay_alignment.clone(),
             tracking_uncertainty,
             ..track_epoch
@@ -1646,8 +1653,8 @@ impl Tracking {
 }
 
 #[cfg(feature = "nav")]
-fn annotate_navigation_bit_signs(sat: SatId, epochs: &mut [TrackEpoch]) {
-    if sat.constellation != Constellation::Gps || epochs.is_empty() {
+fn annotate_navigation_bit_signs(signal_model: &TrackingSignalModel, epochs: &mut [TrackEpoch]) {
+    if !signal_model.supports_navigation_bit_sign_recovery() || epochs.is_empty() {
         return;
     }
 
@@ -1661,7 +1668,7 @@ fn annotate_navigation_bit_signs(sat: SatId, epochs: &mut [TrackEpoch]) {
 }
 
 #[cfg(not(feature = "nav"))]
-fn annotate_navigation_bit_signs(_sat: SatId, _epochs: &mut [TrackEpoch]) {}
+fn annotate_navigation_bit_signs(_signal_model: &TrackingSignalModel, _epochs: &mut [TrackEpoch]) {}
 
 fn acq_to_track_state(hypothesis: &AcqHypothesis) -> &'static str {
     match hypothesis {
@@ -2132,19 +2139,22 @@ fn project_reacquisition_code_phase_samples(
 
 fn default_tracking_assumptions(
     config: &ReceiverPipelineConfig,
-    signal_band: SignalBand,
+    signal_model: &TrackingSignalModel,
 ) -> TrackingAssumptions {
-    tracking_assumptions(config.tracking_params(signal_band))
+    tracking_assumptions(signal_model, config.tracking_params(signal_model.signal_band))
 }
 
-fn tracking_assumptions(params: TrackingParams) -> TrackingAssumptions {
+fn tracking_assumptions(
+    signal_model: &TrackingSignalModel,
+    params: TrackingParams,
+) -> TrackingAssumptions {
     TrackingAssumptions {
         integration_ms: params.integration_ms,
         early_late_spacing_chips: params.early_late_spacing_chips,
         dll_bw_hz: params.dll_bw_hz,
         pll_bw_hz: params.pll_bw_hz,
         fll_bw_hz: params.fll_bw_hz,
-        discriminator_family: "early_prompt_late".to_string(),
+        discriminator_family: signal_model.discriminator_family.label().to_string(),
         aiding_mode: "none".to_string(),
     }
 }
@@ -2189,6 +2199,7 @@ fn classify_prompt_phase(
     raw_phase_cycles: f64,
     previous_aligned_phase_cycles: Option<f64>,
     nav_bit_phase_offset_cycles: f64,
+    phase_transition_source: TrackingPhaseTransitionSource,
 ) -> PromptPhaseDecision {
     let same_offset_phase =
         wrap_phase_cycles_signed(raw_phase_cycles - nav_bit_phase_offset_cycles);
@@ -2208,7 +2219,8 @@ fn classify_prompt_phase(
     let flipped_phase = wrap_phase_cycles_signed(raw_phase_cycles - flipped_offset);
     let flipped_delta = wrapped_phase_delta_cycles(flipped_phase, previous_aligned_phase_cycles);
 
-    let nav_bit_transition = same_delta.abs() > CYCLE_SLIP_PHASE_DELTA_CYCLES
+    let nav_bit_transition = phase_transition_source.allows_half_cycle_transition()
+        && same_delta.abs() > CYCLE_SLIP_PHASE_DELTA_CYCLES
         && (same_delta.abs() - NAV_BIT_PHASE_STEP_CYCLES).abs()
             <= NAV_BIT_PHASE_STEP_TOLERANCE_CYCLES
         && flipped_delta.abs() <= NAV_BIT_PHASE_STEP_TOLERANCE_CYCLES
