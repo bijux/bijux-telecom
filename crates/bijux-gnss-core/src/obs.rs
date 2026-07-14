@@ -347,7 +347,7 @@ impl SamplesFrame {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct AcqAssistanceBounds {
     pub expected_code_phase_samples: f64,
     pub time_uncertainty_s: f64,

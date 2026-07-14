@@ -8,9 +8,8 @@ use crate::engine::signal_selection::{
     default_signal_code_for_band, resolved_acquisition_signal_band,
 };
 use bijux_gnss_core::api::{
-    acq_result_stability_key, stable_acq_result_keys, AcqAssistanceBounds, AcqAssumptions,
-    AcqCodePhaseRefinement, AcqComponentCombinationMode, AcqComponentProvenance,
-    AcqComponentStatistic,
+    acq_result_stability_key, stable_acq_result_keys, AcqAssumptions, AcqCodePhaseRefinement,
+    AcqComponentCombinationMode, AcqComponentProvenance, AcqComponentStatistic,
     AcqDopplerRefinement, AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqRequest,
     AcqResult, AcqThresholdProvenance, AcqUncertainty, Hertz, ReceiverSampleTrace, SamplesFrame,
     SatId, SignalBand, SignalCode, SignalComponentRole,
@@ -23,6 +22,9 @@ use crate::engine::receiver_config::{
     AcquisitionThresholdMode, ReceiverPipelineConfig,
 };
 use crate::engine::runtime::{ReceiverRuntime, TraceRecord};
+use crate::pipeline::acquisition_assistance::{
+    resolve_acquisition_search_bounds, ResolvedAcquisitionSearchBounds,
+};
 use crate::pipeline::acquisition_components::{
     acquisition_strategies_for_signal, AcquisitionComponentPlan, AcquisitionStrategyPlan,
 };
@@ -601,32 +603,27 @@ impl Acquisition {
         self
     }
 
-    fn full_code_search_assumptions(
+    fn search_assumptions(
         &self,
         frame_samples: usize,
-        doppler_center_hz: f64,
-        expected_line_of_sight_doppler_hz: Option<f64>,
-        assistance_bounds: Option<AcqAssistanceBounds>,
-        doppler_search_hz: i32,
-        doppler_step_hz: i32,
-        coherent_ms: u32,
-        noncoherent: u32,
+        request: AcqRequest,
+        resolved_bounds: &ResolvedAcquisitionSearchBounds,
         samples_per_code: usize,
     ) -> AcqAssumptions {
         AcqAssumptions {
-            doppler_center_hz,
-            expected_line_of_sight_doppler_hz,
-            assistance_bounds,
-            doppler_search_hz,
-            doppler_step_hz,
-            coherent_ms,
-            noncoherent,
+            doppler_center_hz: request.doppler_center_hz,
+            expected_line_of_sight_doppler_hz: request.expected_line_of_sight_doppler_hz,
+            assistance_bounds: request.assistance_bounds,
+            doppler_search_hz: resolved_bounds.doppler_search_hz,
+            doppler_step_hz: request.doppler_step_hz.max(1),
+            coherent_ms: request.coherent_ms,
+            noncoherent: request.noncoherent,
             samples_per_code,
             frame_samples,
-            code_phase_search_start_sample: 0,
-            code_phase_search_step_samples: 1,
-            code_phase_search_bins: samples_per_code,
-            code_phase_search_mode: "full_code".to_string(),
+            code_phase_search_start_sample: resolved_bounds.code_phase_search_start_sample,
+            code_phase_search_step_samples: resolved_bounds.code_phase_search_step_samples,
+            code_phase_search_bins: resolved_bounds.code_phase_search_bins,
+            code_phase_search_mode: resolved_bounds.code_phase_search_mode.clone(),
         }
     }
 
@@ -1018,22 +1015,19 @@ impl Acquisition {
                 .collect::<Vec<_>>();
             let search_center_hz =
                 request_search_center_hz(&signal_model, self.config.intermediate_freq_hz, request);
-            self.with_stats(|stats| {
-                stats.doppler_bins +=
-                    doppler_bin_count(request.doppler_search_hz, request.doppler_step_hz.max(1));
-            });
             let samples_per_code = signal_model.samples_per_code(self.config.sampling_freq_hz);
-            let assumptions = self.full_code_search_assumptions(
-                frame.len(),
-                request.doppler_center_hz,
-                request.expected_line_of_sight_doppler_hz,
-                request.assistance_bounds,
-                request.doppler_search_hz,
-                request.doppler_step_hz.max(1),
-                request.coherent_ms,
-                request.noncoherent,
-                samples_per_code,
-            );
+            let resolved_bounds =
+                resolve_acquisition_search_bounds(&self.config, &signal_model, request);
+            let resolved_request =
+                AcqRequest { doppler_search_hz: resolved_bounds.doppler_search_hz, ..request };
+            self.with_stats(|stats| {
+                stats.doppler_bins += doppler_bin_count(
+                    resolved_request.doppler_search_hz,
+                    resolved_request.doppler_step_hz.max(1),
+                );
+            });
+            let assumptions =
+                self.search_assumptions(frame.len(), request, &resolved_bounds, samples_per_code);
             if !acquisition_integration_ms_is_supported(request.coherent_ms) {
                 sat_evaluations.push(AcquisitionSatEvaluation {
                     sat,
@@ -1095,7 +1089,8 @@ impl Acquisition {
                 });
                 continue;
             }
-            let resolved_thresholds = self.resolve_thresholds_for_request(request, &signal_model);
+            let resolved_thresholds =
+                self.resolve_thresholds_for_request(resolved_request, &signal_model);
             self.runtime.trace.record(TraceRecord {
                 name: "acquisition_sat_start",
                 fields: vec![
@@ -1104,8 +1099,9 @@ impl Acquisition {
                 ],
             });
             self.with_stats(|stats| {
-                stats.code_search_bins =
-                    stats.code_search_bins.saturating_add(samples_per_code as u64);
+                stats.code_search_bins = stats
+                    .code_search_bins
+                    .saturating_add(resolved_bounds.code_phase_search_bins as u64);
             });
             let fft = planner.plan_fft_forward(samples_per_code);
             let ifft = planner.plan_fft_inverse(samples_per_code);
@@ -1126,8 +1122,8 @@ impl Acquisition {
                 .collect::<Vec<_>>();
             let mut grid_candidates = Vec::new();
 
-            let mut doppler = -request.doppler_search_hz;
-            while doppler <= request.doppler_search_hz {
+            let mut doppler = -resolved_request.doppler_search_hz;
+            while doppler <= resolved_request.doppler_search_hz {
                 let absolute_doppler_hz = request.doppler_center_hz + doppler as f64;
                 let carrier = carrier_hz_from_doppler_hz(search_center_hz, doppler as f64);
                 let mut component_accumulations = Vec::with_capacity(strategy_components.len());
@@ -1185,7 +1181,12 @@ impl Acquisition {
                         }
                     };
 
-                    let correlation_metrics = correlation_metrics(&combined_accumulator);
+                    let correlation_metrics = correlation_metrics_in_window(
+                        &combined_accumulator,
+                        resolved_bounds.code_phase_search_start_sample,
+                        resolved_bounds.code_phase_search_step_samples,
+                        resolved_bounds.code_phase_search_bins,
+                    );
                     let peak_mean_ratio =
                         correlation_metrics.peak / (correlation_metrics.mean + 1e-6);
                     let peak_second_ratio =
@@ -1236,14 +1237,14 @@ impl Acquisition {
                     });
                 }
 
-                doppler += request.doppler_step_hz.max(1);
+                doppler += resolved_request.doppler_step_hz.max(1);
             }
 
             let search_window_diagnostic = signal_outside_search_range(
                 &grid_candidates,
                 search_center_hz,
-                request.doppler_search_hz,
-                request.doppler_step_hz.max(1),
+                resolved_request.doppler_search_hz,
+                resolved_request.doppler_step_hz.max(1),
                 resolved_thresholds.peak_mean_threshold,
             );
 
@@ -3222,9 +3223,9 @@ mod tests {
         generate_l1_ca, SyntheticScenario, SyntheticSignalParams, SyntheticSignalSource,
     };
     use bijux_gnss_core::api::{
-        AcqComponentCombinationMode, AcqComponentProvenance, AcqComponentStatistic, Constellation,
-        GlonassFrequencyChannel, ReceiverSampleTrace, SampleTime, SamplesFrame, SatId, Seconds,
-        SignalComponentRole, GPS_L1_CA_CARRIER_HZ,
+        AcqAssistanceBounds, AcqComponentCombinationMode, AcqComponentProvenance,
+        AcqComponentStatistic, Constellation, GlonassFrequencyChannel, ReceiverSampleTrace,
+        SampleTime, SamplesFrame, SatId, Seconds, SignalComponentRole, GPS_L1_CA_CARRIER_HZ,
     };
     use bijux_gnss_signal::api::{
         glonass_l1_carrier_hz, sample_glonass_l1_st_code, samples_per_code, SignalSource,
@@ -4416,6 +4417,79 @@ mod tests {
     }
 
     #[test]
+    fn assisted_bounds_reduce_reported_search_domain() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            acquisition_doppler_search_hz: 2_000,
+            acquisition_doppler_step_hz: 250,
+            ..ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Gps, prn: 9 };
+        let true_doppler_hz = 0.0;
+        let code_phase_chips = 147.25;
+        let frame = generate_l1_ca(
+            &config,
+            SyntheticSignalParams {
+                sat,
+                glonass_frequency_channel: None,
+                signal_band: SignalBand::L1,
+                signal_code: SignalCode::Unknown,
+                doppler_hz: true_doppler_hz,
+                code_phase_chips,
+                carrier_phase_rad: 0.0,
+                cn0_db_hz: 58.0,
+                navigation_data: false.into(),
+            },
+            0xB01D_5E47,
+            0.020,
+        );
+        let request = AcqRequest {
+            sat,
+            glonass_frequency_channel: None,
+            signal_band: SignalBand::L1,
+            signal_code: SignalCode::Unknown,
+            doppler_center_hz: true_doppler_hz,
+            expected_line_of_sight_doppler_hz: Some(true_doppler_hz),
+            assistance_bounds: Some(AcqAssistanceBounds {
+                expected_code_phase_samples: code_phase_chips
+                    * config.sampling_freq_hz
+                    / config.code_freq_basis_hz,
+                time_uncertainty_s: 0.5e-6,
+                position_uncertainty_m: 75.0,
+                oscillator_uncertainty_hz: 120.0,
+                approximate_velocity_uncertainty_mps: 6.0,
+            }),
+            doppler_search_hz: 2_000,
+            doppler_step_hz: 250,
+            coherent_ms: 1,
+            noncoherent: 1,
+        };
+
+        let result = Acquisition::new(config, ReceiverRuntime::default())
+            .run_fft_for_requests(&frame, &[request])
+            .remove(0);
+
+        assert!(
+            matches!(result.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous),
+            "{result:?}"
+        );
+        let assumptions = result
+            .assumptions
+            .as_ref()
+            .expect("assisted acquisition result should preserve assumptions");
+        assert_eq!(assumptions.assistance_bounds, request.assistance_bounds);
+        assert!(assumptions.doppler_search_hz < request.doppler_search_hz, "{assumptions:?}");
+        assert!(
+            assumptions.code_phase_search_bins < assumptions.samples_per_code,
+            "{assumptions:?}"
+        );
+        assert_eq!(assumptions.code_phase_search_mode, "assisted_bounds");
+    }
+
+    #[test]
     fn run_fft_for_requests_preserves_explicit_galileo_e5b_signal_code() {
         let config = ReceiverPipelineConfig {
             sampling_freq_hz: 10_230_000.0,
@@ -5235,6 +5309,51 @@ fn correlation_metrics(corr: &[f32]) -> CorrelationMetrics {
     }
 
     let mean = sum / corr.len().max(1) as f32;
+    CorrelationMetrics { peak_idx, peak, second_idx, second, mean }
+}
+
+fn correlation_metrics_in_window(
+    corr: &[f32],
+    start_sample: usize,
+    step_samples: usize,
+    search_bins: usize,
+) -> CorrelationMetrics {
+    if corr.is_empty() {
+        return CorrelationMetrics {
+            peak_idx: 0,
+            peak: 0.0,
+            second_idx: 0,
+            second: 0.0,
+            mean: 0.0,
+        };
+    }
+    if search_bins == 0 || search_bins >= corr.len() && step_samples <= 1 {
+        return correlation_metrics(corr);
+    }
+
+    let mut peak_idx = start_sample % corr.len();
+    let mut peak = f32::NEG_INFINITY;
+    let mut second_idx = peak_idx;
+    let mut second = f32::NEG_INFINITY;
+    let step_samples = step_samples.max(1);
+    let mut visited = 0usize;
+
+    while visited < search_bins {
+        let idx = (start_sample + visited * step_samples) % corr.len();
+        let mag = corr[idx];
+        if mag > peak {
+            second_idx = peak_idx;
+            second = peak;
+            peak = mag;
+            peak_idx = idx;
+        } else if mag > second {
+            second_idx = idx;
+            second = mag;
+        }
+        visited += 1;
+    }
+
+    let mean = corr.iter().copied().sum::<f32>() / corr.len().max(1) as f32;
     CorrelationMetrics { peak_idx, peak, second_idx, second, mean }
 }
 
