@@ -7,6 +7,7 @@ pub use crate::catalog::{
     carrier_wavelength_m, default_acquisition_sats, default_acquisition_signal,
     first_order_ionosphere_code_delay_m, first_order_ionosphere_phase_advance_m,
     glonass_l1_carrier_hz, registered_signal_registry_entries, resolved_signal_registry_entry,
+    shared_path_doppler_hz,
     signal_cycles_to_meters, signal_id_cycles_to_meters, signal_id_meters_to_cycles,
     signal_id_wavelength_m, signal_meters_to_cycles, signal_registry, signal_spec_beidou_b1i,
     signal_spec_beidou_b2i, signal_spec_galileo_e1b, signal_spec_galileo_e1c,

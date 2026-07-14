@@ -227,6 +227,18 @@ pub fn signal_id_meters_to_cycles(distance_m: Meters, signal_id: SigId) -> Optio
     Some(Cycles(distance_m.0 / signal_id_wavelength_m(signal_id)?.0))
 }
 
+pub fn shared_path_doppler_hz(
+    reference_doppler_hz: f64,
+    reference_signal: SignalSpec,
+    target_signal: SignalSpec,
+) -> Option<f64> {
+    scaled_carrier_quantity_hz(
+        reference_doppler_hz,
+        reference_signal.carrier_hz,
+        target_signal.carrier_hz,
+    )
+}
+
 pub fn first_order_ionosphere_code_delay_m(
     reference_delay_m: Meters,
     reference_signal: SignalSpec,
@@ -269,6 +281,26 @@ fn scaled_inverse_square_delay_m(
     let scaled_delay_m = reference_delay_m * (reference_carrier_hz * reference_carrier_hz)
         / (target_carrier_hz * target_carrier_hz);
     scaled_delay_m.is_finite().then_some(Meters(scaled_delay_m))
+}
+
+fn scaled_carrier_quantity_hz(
+    reference_quantity_hz: f64,
+    reference_carrier_hz: FreqHz,
+    target_carrier_hz: FreqHz,
+) -> Option<f64> {
+    let reference_carrier_hz = reference_carrier_hz.value();
+    let target_carrier_hz = target_carrier_hz.value();
+    if !reference_quantity_hz.is_finite()
+        || !reference_carrier_hz.is_finite()
+        || !target_carrier_hz.is_finite()
+        || reference_carrier_hz <= 0.0
+        || target_carrier_hz <= 0.0
+    {
+        return None;
+    }
+
+    let scaled_quantity_hz = reference_quantity_hz * target_carrier_hz / reference_carrier_hz;
+    scaled_quantity_hz.is_finite().then_some(scaled_quantity_hz)
 }
 
 pub fn glonass_l1_carrier_hz(frequency_channel: GlonassFrequencyChannel) -> FreqHz {
@@ -635,7 +667,7 @@ mod tests {
         signal_id_meters_to_cycles, signal_id_wavelength_m, signal_meters_to_cycles,
         signal_registry, signal_spec_beidou_b2i, signal_spec_galileo_e1b, signal_spec_glonass_l1,
         signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l2c, signal_spec_gps_l5_i,
-        signal_spec_gps_l5_q, signal_wavelength_m,
+        signal_spec_gps_l5_q, signal_wavelength_m, shared_path_doppler_hz, SignalSpec,
     };
     use bijux_gnss_core::api::{
         Constellation, Cycles, FreqHz, GlonassFrequencyChannel, GlonassL1FdmaSignal, GlonassSlot,
@@ -799,6 +831,29 @@ mod tests {
             .expect("phase advance");
 
         assert!((phase_advance_m.0 + code_delay_m.0).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn shared_path_doppler_scales_with_signal_carrier_ratio() {
+        let l1 = signal_spec_gps_l1_ca();
+        let l5 = signal_spec_gps_l5_i();
+        let transferred = shared_path_doppler_hz(-1_250.0, l1, l5).expect("scaled Doppler");
+        let expected = -1_250.0 * l5.carrier_hz.value() / l1.carrier_hz.value();
+
+        assert!((transferred - expected).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn shared_path_doppler_rejects_invalid_carrier_ratio_inputs() {
+        let invalid = SignalSpec {
+            constellation: Constellation::Gps,
+            band: SignalBand::L1,
+            code: SignalCode::Ca,
+            code_rate_hz: 1_023_000.0,
+            carrier_hz: FreqHz::new(0.0),
+        };
+
+        assert!(shared_path_doppler_hz(500.0, invalid, signal_spec_gps_l5_i()).is_none());
     }
 
     #[test]
