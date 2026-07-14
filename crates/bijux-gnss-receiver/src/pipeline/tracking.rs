@@ -10,6 +10,7 @@ use bijux_gnss_core::api::{
     ReceiverSampleTrace, SampleClock, SampleTime, SamplesFrame, SatId, Seconds, SignalBand,
     SignalCode, SignalComponentRole, SignalDelayAlignment, SignalSecondaryCodeSpec, SignalSpec,
     SignalSubcarrierSpec, TrackEpoch, TrackTransition, TrackingAssumptions, TrackingUncertainty,
+    GPS_L1_CA_CARRIER_HZ,
 };
 
 use crate::engine::receiver_config::{ReceiverPipelineConfig, TrackingParams};
@@ -35,7 +36,7 @@ use bijux_gnss_signal::api::{
     push_tracking_uncertainty_sample as signal_push_tracking_uncertainty_sample,
     refresh_lock_reference_cn0_dbhz as signal_refresh_lock_reference_cn0_dbhz,
     refresh_prompt_power_reference as signal_refresh_prompt_power_reference,
-    resolved_signal_registry_entry,
+    resolved_signal_registry_entry, shared_path_code_rate_hz,
     update_windowed_tracking_cn0_estimate as signal_update_windowed_tracking_cn0_estimate,
     wrap_code_phase_samples, wrap_phase_cycles_signed, wrapped_code_phase_delta_samples,
     wrapped_phase_delta_cycles, LocalCodeModel, TrackingQualityClass,
@@ -226,6 +227,7 @@ struct LoopState {
     carrier_phase_cycles: f64,
     carrier_rate_hz_per_s: f64,
     code_rate_hz: f64,
+    code_rate_reference_hz: f64,
     code_phase_samples: f64,
     signal_delay_alignment: Option<SignalDelayAlignment>,
     acquisition_cn0_proxy_dbhz: f64,
@@ -1357,11 +1359,14 @@ impl Tracking {
         tracking_params: TrackingParams,
         epochs: usize,
     ) -> (Vec<TrackEpoch>, Vec<TrackTransition>) {
+        let code_rate_reference_hz =
+            carrier_aided_code_rate_hz(&self.config, signal_model, carrier_hz);
         let mut state = LoopState {
             carrier_hz,
             carrier_phase_cycles: 0.0,
             carrier_rate_hz_per_s: 0.0,
-            code_rate_hz: signal_model.code_rate_hz,
+            code_rate_hz: code_rate_reference_hz,
+            code_rate_reference_hz,
             code_phase_samples,
             acquisition_cn0_proxy_dbhz,
             signal_delay_alignment: None,
@@ -1441,6 +1446,46 @@ impl Tracking {
                     ],
                 });
                 IncrementalTrackingChannel {
+                    state: {
+                        let code_rate_reference_hz = carrier_aided_code_rate_hz(
+                            &self.config,
+                            &signal_model,
+                            context.acquisition_carrier_hz,
+                        );
+                        LoopState {
+                            carrier_hz: context.acquisition_carrier_hz,
+                            carrier_phase_cycles: 0.0,
+                            carrier_rate_hz_per_s: 0.0,
+                            code_rate_hz: code_rate_reference_hz,
+                            code_rate_reference_hz,
+                            code_phase_samples: context.seed.code_phase_samples.0,
+                            signal_delay_alignment: context.seed.signal_delay_alignment.clone(),
+                            acquisition_cn0_proxy_dbhz: context.acquisition_cn0_proxy_dbhz,
+                            lock_reference_cn0_dbhz: context.acquisition_cn0_proxy_dbhz,
+                            prev_prompt: None,
+                            prev_prompt_phase_cycles: None,
+                            nav_bit_phase_offset_cycles: 0.0,
+                            nav_bit_transition_count: 0,
+                            pull_in_stable_epochs: 0,
+                            weak_cn0_epochs: 0,
+                            degraded_epochs: 0,
+                            prompt_power_reference: 0.0,
+                            prompt_cn0_window: VecDeque::new(),
+                            code_error_window_samples: VecDeque::new(),
+                            carrier_phase_error_window_cycles: VecDeque::new(),
+                            doppler_error_window_hz: VecDeque::new(),
+                            cn0_estimate_window_dbhz: VecDeque::new(),
+                            unstable_discriminator_epochs: 0,
+                            state: ChannelState::Acquired,
+                            unlocked_count: 0,
+                            lost_reason: None,
+                            reacquisition_candidate: None,
+                            reacquisition_candidate_streak: 0,
+                            reacquisition_pending: false,
+                            reacquisition_attempt_epochs: 0,
+                            reacquisition_stable_tracking_epochs: 0,
+                        }
+                    },
                     sat: context.seed.sat,
                     channel_id,
                     start_source_time: context.seed.source_time,
@@ -1455,38 +1500,6 @@ impl Tracking {
                     acquisition_carrier_hz: context.acquisition_carrier_hz,
                     acq_to_track_state: context.acq_to_track_state,
                     tracking_params,
-                    state: LoopState {
-                        carrier_hz: context.acquisition_carrier_hz,
-                        carrier_phase_cycles: 0.0,
-                        carrier_rate_hz_per_s: 0.0,
-                        code_rate_hz: signal_model.code_rate_hz,
-                        code_phase_samples: context.seed.code_phase_samples.0,
-                        signal_delay_alignment: context.seed.signal_delay_alignment.clone(),
-                        acquisition_cn0_proxy_dbhz: context.acquisition_cn0_proxy_dbhz,
-                        lock_reference_cn0_dbhz: context.acquisition_cn0_proxy_dbhz,
-                        prev_prompt: None,
-                        prev_prompt_phase_cycles: None,
-                        nav_bit_phase_offset_cycles: 0.0,
-                        nav_bit_transition_count: 0,
-                        pull_in_stable_epochs: 0,
-                        weak_cn0_epochs: 0,
-                        degraded_epochs: 0,
-                        prompt_power_reference: 0.0,
-                        prompt_cn0_window: VecDeque::new(),
-                        code_error_window_samples: VecDeque::new(),
-                        carrier_phase_error_window_cycles: VecDeque::new(),
-                        doppler_error_window_hz: VecDeque::new(),
-                        cn0_estimate_window_dbhz: VecDeque::new(),
-                        unstable_discriminator_epochs: 0,
-                        state: ChannelState::Acquired,
-                        unlocked_count: 0,
-                        lost_reason: None,
-                        reacquisition_candidate: None,
-                        reacquisition_candidate_streak: 0,
-                        reacquisition_pending: false,
-                        reacquisition_attempt_epochs: 0,
-                        reacquisition_stable_tracking_epochs: 0,
-                    },
                     epochs: Vec::new(),
                     transitions: Vec::new(),
                 }
@@ -1974,18 +1987,6 @@ impl Tracking {
             ));
         }
 
-        let code_loop = apply_dll_code_loop(CodeLoopInput {
-            current_code_rate_hz: state.code_rate_hz,
-            current_code_phase_samples: state.code_phase_samples,
-            epoch_len_samples,
-            coherent_integration_s,
-            nominal_code_rate_hz: signal_model.code_rate_hz,
-            dll_bw_hz: dll_bw,
-            dll_err,
-            samples_per_chip,
-            samples_per_code,
-        });
-        state.code_rate_hz = code_loop.code_rate_hz;
         let apply_fll = fll_bw > 0.0 && should_apply_fll(state.state, raw_fll_lock);
         let carrier_loop = apply_carrier_loop(CarrierLoopInput {
             current_carrier_hz: state.carrier_hz,
@@ -2002,9 +2003,26 @@ impl Tracking {
             apply_pll_frequency: !apply_fll
                 || (matches!(state.state, ChannelState::PullIn) && !raw_fll_lock),
         });
+        let code_rate_reference_hz =
+            carrier_aided_code_rate_hz(&self.config, signal_model, carrier_loop.carrier_hz);
+        let code_loop = apply_dll_code_loop(CodeLoopInput {
+            current_code_rate_hz: state.code_rate_hz,
+            previous_reference_code_rate_hz: state.code_rate_reference_hz,
+            reference_code_rate_hz: code_rate_reference_hz,
+            current_code_phase_samples: state.code_phase_samples,
+            epoch_len_samples,
+            coherent_integration_s,
+            nominal_code_rate_hz: signal_model.code_rate_hz,
+            dll_bw_hz: dll_bw,
+            dll_err,
+            samples_per_chip,
+            samples_per_code,
+        });
         state.carrier_hz = carrier_loop.carrier_hz;
         state.carrier_phase_cycles = carrier_loop.carrier_phase_cycles;
         state.carrier_rate_hz_per_s = carrier_loop.carrier_rate_hz_per_s;
+        state.code_rate_hz = code_loop.code_rate_hz;
+        state.code_rate_reference_hz = code_rate_reference_hz;
         state.code_phase_samples = code_loop.code_phase_samples;
 
         if state.state != from_state {
@@ -2578,6 +2596,35 @@ fn tracking_frame_start_offset(
     Some((start_sample_index - frame_start) as usize)
 }
 
+fn tracked_signal_center_hz(intermediate_freq_hz: f64, signal: SignalSpec) -> f64 {
+    intermediate_freq_hz + (signal.carrier_hz.value() - GPS_L1_CA_CARRIER_HZ.value())
+}
+
+fn tracked_signal_doppler_hz(
+    intermediate_freq_hz: f64,
+    tracked_carrier_hz: f64,
+    signal: SignalSpec,
+) -> f64 {
+    tracked_carrier_hz - tracked_signal_center_hz(intermediate_freq_hz, signal)
+}
+
+fn carrier_aided_code_rate_hz(
+    config: &ReceiverPipelineConfig,
+    signal_model: &TrackingSignalModel,
+    tracked_carrier_hz: f64,
+) -> f64 {
+    shared_path_code_rate_hz(
+        tracked_signal_doppler_hz(
+            config.intermediate_freq_hz,
+            tracked_carrier_hz,
+            signal_model.signal_spec,
+        ),
+        signal_model.signal_spec,
+        signal_model.signal_spec,
+    )
+    .unwrap_or(signal_model.code_rate_hz)
+}
+
 fn frame_slice(frame: &SamplesFrame, start: usize, end: usize) -> SamplesFrame {
     SamplesFrame::new(
         SampleTime {
@@ -2678,6 +2725,8 @@ fn recover_epoch_navigation_bit_sign(
 fn apply_dll_code_loop(input: CodeLoopInput) -> CodeLoopUpdate {
     let update = signal_apply_code_loop(bijux_gnss_signal::api::CodeLoopInput {
         current_code_rate_hz: input.current_code_rate_hz,
+        previous_reference_code_rate_hz: input.previous_reference_code_rate_hz,
+        reference_code_rate_hz: input.reference_code_rate_hz,
         current_code_phase_samples: input.current_code_phase_samples,
         epoch_len_samples: input.epoch_len_samples,
         coherent_integration_s: input.coherent_integration_s,
@@ -3055,11 +3104,14 @@ impl Tracking {
             return ReacquisitionOutcome::Failed;
         }
 
+        let code_rate_reference_hz =
+            carrier_aided_code_rate_hz(&self.config, &channel.signal_model, seed.carrier_hz);
         channel.state = LoopState {
             carrier_hz: seed.carrier_hz,
             carrier_phase_cycles: 0.0,
             carrier_rate_hz_per_s: 0.0,
-            code_rate_hz: self.config.code_freq_basis_hz,
+            code_rate_hz: code_rate_reference_hz,
+            code_rate_reference_hz,
             code_phase_samples: seed.code_phase_samples,
             signal_delay_alignment: channel.state.signal_delay_alignment.clone(),
             acquisition_cn0_proxy_dbhz: seed.cn0_dbhz,
@@ -3170,12 +3222,12 @@ mod tests {
     use bijux_gnss_core::api::{
         AcqHypothesis, AcqUncertainty, Chips, Constellation, Epoch, Hertz, ReceiverSampleTrace,
         SampleTime, SamplesFrame, SatId, Seconds, SignalBand, SignalCode, SignalComponentRole,
-        TrackEpoch,
+        TrackEpoch, GPS_L1_CA_CARRIER_HZ,
     };
     use bijux_gnss_signal::api::{
         advance_code_phase_seconds, delay_lock_loop_coefficients, discriminators,
         first_order_angular_loop_coefficients, phase_lock_loop_coefficients, sample_ca_code,
-        samples_per_code, Prn,
+        samples_per_code, signal_spec_gps_l5_i, Prn,
     };
     use num_complex::Complex;
     use serde::Deserialize;
@@ -3746,6 +3798,8 @@ mod tests {
     fn advance_code_phase_samples_wraps_nominal_epoch_step() {
         let next = super::apply_dll_code_loop(super::CodeLoopInput {
             current_code_rate_hz: 1_023_000.0,
+            previous_reference_code_rate_hz: 1_023_000.0,
+            reference_code_rate_hz: 1_023_000.0,
             current_code_phase_samples: 137.5,
             epoch_len_samples: 5_000,
             coherent_integration_s: 5_000.0 / 4_092_000.0,
@@ -3763,6 +3817,8 @@ mod tests {
     fn advance_code_phase_samples_applies_dll_correction() {
         let next = super::apply_dll_code_loop(super::CodeLoopInput {
             current_code_rate_hz: 1_023_000.0,
+            previous_reference_code_rate_hz: 1_023_000.0,
+            reference_code_rate_hz: 1_023_000.0,
             current_code_phase_samples: 250.0,
             epoch_len_samples: 5_000,
             coherent_integration_s: 5_000.0 / 4_092_000.0,
@@ -3798,6 +3854,7 @@ mod tests {
             carrier_phase_cycles: 0.0,
             carrier_rate_hz_per_s: 0.0,
             code_rate_hz: 0.0,
+            code_rate_reference_hz: 0.0,
             code_phase_samples: 0.0,
             signal_delay_alignment: None,
             acquisition_cn0_proxy_dbhz: 45.0,
@@ -3946,6 +4003,8 @@ mod tests {
         let coherent_integration_s = 5_000.0 / 1_023_000.0;
         let update = super::apply_dll_code_loop(super::CodeLoopInput {
             current_code_rate_hz: 1_023_000.0,
+            previous_reference_code_rate_hz: 1_023_000.0,
+            reference_code_rate_hz: 1_023_000.0,
             current_code_phase_samples: 250.0,
             epoch_len_samples: 5_000,
             coherent_integration_s,
@@ -3963,9 +4022,30 @@ mod tests {
     }
 
     #[test]
+    fn apply_dll_code_loop_follows_reference_code_rate_step_without_dll_error() {
+        let update = super::apply_dll_code_loop(super::CodeLoopInput {
+            current_code_rate_hz: 1_023_000.0,
+            previous_reference_code_rate_hz: 1_023_000.0,
+            reference_code_rate_hz: 1_023_450.0,
+            current_code_phase_samples: 250.0,
+            epoch_len_samples: 5_000,
+            coherent_integration_s: 5_000.0 / 1_023_000.0,
+            nominal_code_rate_hz: 1_023_000.0,
+            dll_bw_hz: 2.0,
+            dll_err: 0.0,
+            samples_per_chip: 4.887585532746823,
+            samples_per_code: 5_000,
+        });
+
+        assert!((update.code_rate_hz - 1_023_450.0).abs() < 1.0e-9, "{update:?}");
+    }
+
+    #[test]
     fn apply_dll_code_loop_uses_coherent_interval_to_scale_gain() {
         let short = super::apply_dll_code_loop(super::CodeLoopInput {
             current_code_rate_hz: 1_023_000.0,
+            previous_reference_code_rate_hz: 1_023_000.0,
+            reference_code_rate_hz: 1_023_000.0,
             current_code_phase_samples: 250.0,
             epoch_len_samples: 4_092,
             coherent_integration_s: 0.001,
@@ -3977,6 +4057,8 @@ mod tests {
         });
         let long = super::apply_dll_code_loop(super::CodeLoopInput {
             current_code_rate_hz: 1_023_000.0,
+            previous_reference_code_rate_hz: 1_023_000.0,
+            reference_code_rate_hz: 1_023_000.0,
             current_code_phase_samples: 250.0,
             epoch_len_samples: 40_920,
             coherent_integration_s: 0.010,
@@ -3998,6 +4080,8 @@ mod tests {
         let current_code_phase_samples = 250.0;
         let update = super::apply_dll_code_loop(super::CodeLoopInput {
             current_code_rate_hz: 1_023_000.0,
+            previous_reference_code_rate_hz: 1_023_000.0,
+            reference_code_rate_hz: 1_023_000.0,
             current_code_phase_samples,
             epoch_len_samples: 5_000,
             coherent_integration_s: 5_000.0 / 1_023_000.0,
@@ -4016,6 +4100,8 @@ mod tests {
         let current_code_phase_samples = 250.0;
         let update = super::apply_dll_code_loop(super::CodeLoopInput {
             current_code_rate_hz: 1_023_000.0,
+            previous_reference_code_rate_hz: 1_023_000.0,
+            reference_code_rate_hz: 1_023_000.0,
             current_code_phase_samples,
             epoch_len_samples: 5_000,
             coherent_integration_s: 5_000.0 / 1_023_000.0,
@@ -4468,6 +4554,8 @@ mod tests {
             discriminators(correlator.early, correlator.prompt, correlator.late, None);
         let code_loop = super::apply_dll_code_loop(super::CodeLoopInput {
             current_code_rate_hz: config.code_freq_basis_hz,
+            previous_reference_code_rate_hz: config.code_freq_basis_hz,
+            reference_code_rate_hz: config.code_freq_basis_hz,
             current_code_phase_samples: code_phase_samples,
             epoch_len_samples: samples_per_epoch,
             coherent_integration_s: samples_per_epoch as f64 / config.sampling_freq_hz,
@@ -5004,6 +5092,54 @@ mod tests {
         );
         assert!((signal_model.nominal_carrier_hz() - 1_176_450_000.0).abs() <= f64::EPSILON);
         assert!(!signal_model.supports_navigation_bit_sign_recovery());
+    }
+
+    #[test]
+    fn tracked_signal_center_hz_rebases_non_l1_signals_into_receiver_if() {
+        let signal = signal_spec_gps_l5_i();
+        let center_hz = super::tracked_signal_center_hz(0.0, signal);
+
+        assert!(
+            (center_hz - (signal.carrier_hz.value() - GPS_L1_CA_CARRIER_HZ.value())).abs()
+                <= f64::EPSILON
+        );
+    }
+
+    #[test]
+    fn tracked_signal_doppler_hz_removes_signal_specific_center_offset() {
+        let signal = signal_spec_gps_l5_i();
+        let tracked_carrier_hz = super::tracked_signal_center_hz(0.0, signal) + 875.0;
+
+        assert!(
+            (super::tracked_signal_doppler_hz(0.0, tracked_carrier_hz, signal) - 875.0).abs()
+                <= f64::EPSILON
+        );
+    }
+
+    #[test]
+    fn carrier_aided_code_rate_hz_uses_tracked_signal_center_and_code_rate() {
+        let config = crate::engine::receiver_config::ReceiverPipelineConfig {
+            code_freq_basis_hz: 10_230_000.0,
+            code_length: 10_230,
+            ..crate::engine::receiver_config::ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Gps, prn: 18 };
+        let signal_model = super::TrackingSignalModel::for_sat_signal_band(
+            &config,
+            sat,
+            SignalBand::L5,
+            SignalCode::L5I,
+            None,
+        );
+        let tracked_carrier_hz =
+            super::tracked_signal_center_hz(config.intermediate_freq_hz, signal_model.signal_spec)
+                + 875.0;
+        let aided_code_rate_hz =
+            super::carrier_aided_code_rate_hz(&config, &signal_model, tracked_carrier_hz);
+        let expected = signal_model.code_rate_hz
+            + (875.0 * signal_model.code_rate_hz / signal_model.signal_spec.carrier_hz.value());
+
+        assert!((aided_code_rate_hz - expected).abs() <= 1.0e-9);
     }
 
     #[test]

@@ -70,6 +70,10 @@ pub struct EarlyPromptLateCorrelation {
 pub struct CodeLoopInput {
     /// Current code rate estimate in Hz.
     pub current_code_rate_hz: f64,
+    /// Previous code-rate reference in Hz.
+    pub previous_reference_code_rate_hz: f64,
+    /// Current code-rate reference in Hz.
+    pub reference_code_rate_hz: f64,
     /// Current receiver code phase in samples.
     pub current_code_phase_samples: f64,
     /// Coherent interval length in samples.
@@ -920,8 +924,11 @@ pub fn estimate_tracking_uncertainty(
 pub fn apply_code_loop(input: CodeLoopInput) -> CodeLoopUpdate {
     let coefficients = delay_lock_loop_coefficients(input.dll_bw_hz, input.coherent_integration_s);
     let dll_error_chips = input.dll_err as f64;
-    let code_rate_hz =
-        input.current_code_rate_hz + coefficients.rate_gain_hz_per_chip * dll_error_chips;
+    let reference_rate_delta_hz =
+        input.reference_code_rate_hz - input.previous_reference_code_rate_hz;
+    let code_rate_hz = input.current_code_rate_hz
+        + reference_rate_delta_hz
+        + coefficients.rate_gain_hz_per_chip * dll_error_chips;
     let predicted_code_phase_samples = predict_code_phase_samples(
         input.current_code_phase_samples,
         input.epoch_len_samples,
@@ -1411,6 +1418,8 @@ mod tests {
         let coherent_integration_s = coherent_integration_seconds(5_000, 1_023_000.0);
         let update = apply_code_loop(CodeLoopInput {
             current_code_rate_hz: 1_023_000.0,
+            previous_reference_code_rate_hz: 1_023_000.0,
+            reference_code_rate_hz: 1_023_000.0,
             current_code_phase_samples: 250.0,
             epoch_len_samples: 5_000,
             coherent_integration_s,
@@ -1432,6 +1441,8 @@ mod tests {
         let coherent_integration_s = 0.001;
         let input = CodeLoopInput {
             current_code_rate_hz: 1_023_000.0,
+            previous_reference_code_rate_hz: 1_023_000.0,
+            reference_code_rate_hz: 1_023_000.0,
             current_code_phase_samples: 250.0,
             epoch_len_samples: 4_092,
             coherent_integration_s,
@@ -1455,6 +1466,26 @@ mod tests {
             corrected.code_phase_samples > predicted,
             "coefficients={coefficients:?} corrected={corrected:?} predicted={predicted}",
         );
+    }
+
+    #[test]
+    fn apply_code_loop_follows_reference_code_rate_step_without_dll_error() {
+        let coherent_integration_s = coherent_integration_seconds(5_000, 1_023_000.0);
+        let update = apply_code_loop(CodeLoopInput {
+            current_code_rate_hz: 1_023_000.0,
+            previous_reference_code_rate_hz: 1_023_000.0,
+            reference_code_rate_hz: 1_023_450.0,
+            current_code_phase_samples: 250.0,
+            epoch_len_samples: 5_000,
+            coherent_integration_s,
+            nominal_code_rate_hz: 1_023_000.0,
+            dll_bw_hz: 2.0,
+            dll_err: 0.0,
+            samples_per_chip: 4.887585532746823,
+            samples_per_code: 5_000,
+        });
+
+        assert!((update.code_rate_hz - 1_023_450.0).abs() < 1.0e-9, "{update:?}");
     }
 
     #[test]
