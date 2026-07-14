@@ -238,12 +238,19 @@ fn threshold_provenance_for_request(
     request: AcqRequest,
 ) -> AcqThresholdProvenance {
     AcqThresholdProvenance {
+        mode: "fixed_ratio".to_string(),
         coherent_ms: request.coherent_ms,
         noncoherent: request.noncoherent,
         doppler_search_hz: request.doppler_search_hz,
         doppler_step_hz: request.doppler_step_hz.max(1),
         peak_mean_threshold: config.acquisition_peak_mean_threshold,
         peak_second_threshold: config.acquisition_peak_second_threshold,
+        false_alarm_probability: None,
+        calibration_trial_count: None,
+        calibration_confidence_level: None,
+        calibration_false_alarm_rate: None,
+        calibration_false_alarm_interval_low: None,
+        calibration_false_alarm_interval_high: None,
     }
 }
 

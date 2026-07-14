@@ -68,6 +68,8 @@ pub struct ReceiverPipelineConfig {
     pub acquisition_peak_mean_threshold: f32,
     /// Minimum accepted peak-to-second-peak acquisition ratio.
     pub acquisition_peak_second_threshold: f32,
+    /// Acquisition threshold policy configuration.
+    pub acquisition_threshold_policy: AcquisitionThresholdPolicyConfig,
     /// Default early/late spacing, in chips.
     pub early_late_spacing_chips: f64,
     /// DLL noise bandwidth, in Hz.
@@ -128,6 +130,7 @@ impl Default for ReceiverPipelineConfig {
             acquisition_noncoherent: 1,
             acquisition_peak_mean_threshold: 2.5,
             acquisition_peak_second_threshold: 1.5,
+            acquisition_threshold_policy: AcquisitionThresholdPolicyConfig::default(),
             early_late_spacing_chips: 0.5,
             dll_bw_hz: 2.0,
             pll_bw_hz: 15.0,
@@ -336,6 +339,60 @@ pub struct AcquisitionConfig {
     pub peak_mean_threshold: f32,
     /// Peak-to-second-peak threshold.
     pub peak_second_threshold: f32,
+    /// Threshold policy used to derive acceptance thresholds.
+    #[serde(default)]
+    pub threshold_policy: AcquisitionThresholdPolicyConfig,
+}
+
+/// Threshold-derivation policy for acquisition acceptance.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AcquisitionThresholdMode {
+    /// Use the configured ratio thresholds directly.
+    #[default]
+    FixedRatio,
+    /// Calibrate the peak-to-mean threshold against a declared false-alarm probability.
+    CalibratedFalseAlarm,
+}
+
+/// Acquisition threshold policy parameters.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AcquisitionThresholdPolicyConfig {
+    /// Threshold derivation mode.
+    #[serde(default)]
+    pub mode: AcquisitionThresholdMode,
+    /// Target accepted false-alarm probability for calibrated acquisition thresholds.
+    #[serde(default = "default_acquisition_false_alarm_probability")]
+    pub false_alarm_probability: f64,
+    /// Number of deterministic noise-only trials used during calibration.
+    #[serde(default = "default_acquisition_threshold_calibration_trial_count")]
+    pub calibration_trial_count: usize,
+    /// Confidence level used to report the calibration interval.
+    #[serde(default = "default_acquisition_threshold_confidence_level")]
+    pub confidence_level: f64,
+}
+
+impl Default for AcquisitionThresholdPolicyConfig {
+    fn default() -> Self {
+        Self {
+            mode: AcquisitionThresholdMode::FixedRatio,
+            false_alarm_probability: default_acquisition_false_alarm_probability(),
+            calibration_trial_count: default_acquisition_threshold_calibration_trial_count(),
+            confidence_level: default_acquisition_threshold_confidence_level(),
+        }
+    }
+}
+
+pub fn default_acquisition_false_alarm_probability() -> f64 {
+    0.01
+}
+
+pub fn default_acquisition_threshold_calibration_trial_count() -> usize {
+    128
+}
+
+pub fn default_acquisition_threshold_confidence_level() -> f64 {
+    0.95
 }
 
 /// Tracking configuration parameters.

@@ -82,6 +82,29 @@ impl ValidateConfig for ReceiverConfig {
                 message: "acquisition.peak_second_threshold must be > 1".to_string(),
             });
         }
+        if self.acquisition.threshold_policy.false_alarm_probability <= 0.0
+            || self.acquisition.threshold_policy.false_alarm_probability >= 1.0
+        {
+            report.errors.push(ConfigError {
+                message:
+                    "acquisition.threshold_policy.false_alarm_probability must be within (0, 1)"
+                        .to_string(),
+            });
+        }
+        if self.acquisition.threshold_policy.calibration_trial_count == 0 {
+            report.errors.push(ConfigError {
+                message: "acquisition.threshold_policy.calibration_trial_count must be > 0"
+                    .to_string(),
+            });
+        }
+        if self.acquisition.threshold_policy.confidence_level <= 0.0
+            || self.acquisition.threshold_policy.confidence_level >= 1.0
+        {
+            report.errors.push(ConfigError {
+                message: "acquisition.threshold_policy.confidence_level must be within (0, 1)"
+                    .to_string(),
+            });
+        }
         if self.tracking.early_late_spacing_chips <= 0.0 {
             report.errors.push(ConfigError {
                 message: "tracking.early_late_spacing_chips must be > 0".to_string(),
@@ -284,6 +307,7 @@ impl ReceiverConfig {
             acquisition_noncoherent: self.acquisition.noncoherent_integration,
             acquisition_peak_mean_threshold: self.acquisition.peak_mean_threshold,
             acquisition_peak_second_threshold: self.acquisition.peak_second_threshold,
+            acquisition_threshold_policy: self.acquisition.threshold_policy.clone(),
             early_late_spacing_chips: self.tracking.early_late_spacing_chips,
             dll_bw_hz: self.tracking.dll_bw_hz,
             pll_bw_hz: self.tracking.pll_bw_hz,
@@ -327,7 +351,8 @@ impl ReceiverConfig {
 mod tests {
     use super::*;
     use crate::engine::receiver_config::{
-        ConstellationSelectionPolicy, NavigationMotionClass, NavigationWeightingMode,
+        AcquisitionThresholdMode, ConstellationSelectionPolicy, NavigationMotionClass,
+        NavigationWeightingMode,
     };
     use bijux_gnss_core::api::Constellation;
     use schemars::schema_for;
@@ -386,6 +411,28 @@ mod tests {
 
         assert!(report.errors.iter().any(|error| {
             error.message == "acquisition.integration_ms must be one of [1, 2, 5, 10, 20]"
+        }));
+    }
+
+    #[test]
+    fn validation_rejects_invalid_calibrated_acquisition_threshold_policy() {
+        let mut config = ReceiverConfig::default();
+        config.acquisition.threshold_policy.mode = AcquisitionThresholdMode::CalibratedFalseAlarm;
+        config.acquisition.threshold_policy.false_alarm_probability = 1.0;
+        config.acquisition.threshold_policy.calibration_trial_count = 0;
+        config.acquisition.threshold_policy.confidence_level = 0.0;
+
+        let report = <ReceiverConfig as ValidateConfig>::validate(&config);
+
+        assert!(report.errors.iter().any(|error| {
+            error.message
+                == "acquisition.threshold_policy.false_alarm_probability must be within (0, 1)"
+        }));
+        assert!(report.errors.iter().any(|error| {
+            error.message == "acquisition.threshold_policy.calibration_trial_count must be > 0"
+        }));
+        assert!(report.errors.iter().any(|error| {
+            error.message == "acquisition.threshold_policy.confidence_level must be within (0, 1)"
         }));
     }
 
@@ -463,6 +510,34 @@ mod tests {
             assert!(
                 raw.contains(value),
                 "receiver config schema missing navigation weighting mode value {value}: {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn acquisition_threshold_mode_round_trips_through_toml() {
+        let mut config = ReceiverConfig::default();
+        config.acquisition.threshold_policy.mode = AcquisitionThresholdMode::CalibratedFalseAlarm;
+
+        let raw = toml::to_string(&config).expect("serialize receiver config");
+        let reparsed: ReceiverConfig = toml::from_str(&raw).expect("parse receiver config");
+
+        assert_eq!(
+            reparsed.acquisition.threshold_policy.mode,
+            AcquisitionThresholdMode::CalibratedFalseAlarm
+        );
+        assert!(raw.contains("mode = \"calibrated_false_alarm\""));
+    }
+
+    #[test]
+    fn receiver_config_schema_lists_acquisition_threshold_modes() {
+        let schema = schema_for!(ReceiverConfig);
+        let raw = serde_json::to_string(&schema).expect("serialize receiver config schema");
+
+        for value in ["fixed_ratio", "calibrated_false_alarm"] {
+            assert!(
+                raw.contains(value),
+                "receiver config schema missing acquisition threshold mode value {value}: {raw}"
             );
         }
     }

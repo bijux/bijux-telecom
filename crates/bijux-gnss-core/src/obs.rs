@@ -115,12 +115,30 @@ pub struct SupportMatrix {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcqThresholdProvenance {
+    #[serde(default = "default_acquisition_threshold_mode")]
+    pub mode: String,
     pub coherent_ms: u32,
     pub noncoherent: u32,
     pub doppler_search_hz: i32,
     pub doppler_step_hz: i32,
     pub peak_mean_threshold: f32,
     pub peak_second_threshold: f32,
+    #[serde(default)]
+    pub false_alarm_probability: Option<f64>,
+    #[serde(default)]
+    pub calibration_trial_count: Option<usize>,
+    #[serde(default)]
+    pub calibration_confidence_level: Option<f64>,
+    #[serde(default)]
+    pub calibration_false_alarm_rate: Option<f64>,
+    #[serde(default)]
+    pub calibration_false_alarm_interval_low: Option<f64>,
+    #[serde(default)]
+    pub calibration_false_alarm_interval_high: Option<f64>,
+}
+
+fn default_acquisition_threshold_mode() -> String {
+    "fixed_ratio".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
