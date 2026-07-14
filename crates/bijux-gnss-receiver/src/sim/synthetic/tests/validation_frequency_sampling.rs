@@ -229,6 +229,157 @@
     }
 
     #[test]
+    fn truth_guided_common_oscillator_bias_follow_up_recovers_bias_and_rescues_missed_signal() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            acquisition_doppler_search_hz: 2_000,
+            acquisition_doppler_step_hz: 250,
+            ..ReceiverPipelineConfig::default()
+        };
+        let scenario = SyntheticScenario {
+            sample_rate_hz: config.sampling_freq_hz,
+            intermediate_freq_hz: config.intermediate_freq_hz,
+            receiver_clock_frequency_bias_hz: 500.0,
+            duration_s: 0.04,
+            seed: 24071987,
+            satellites: vec![
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 3 },
+                    glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
+                    signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+                    doppler_hz: 750.0,
+                    code_phase_chips: 200.25,
+                    carrier_phase_rad: 0.0,
+                    cn0_db_hz: 58.0,
+                    navigation_data: true.into(),
+                },
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 7 },
+                    glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
+                    signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+                    doppler_hz: -1_000.0,
+                    code_phase_chips: 321.5,
+                    carrier_phase_rad: 0.2,
+                    cn0_db_hz: 60.0,
+                    navigation_data: false.into(),
+                },
+                SyntheticSignalParams {
+                    sat: SatId { constellation: Constellation::Gps, prn: 11 },
+                    glonass_frequency_channel: None,
+                    signal_band: bijux_gnss_core::api::SignalBand::L1,
+                    signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+                    doppler_hz: 250.0,
+                    code_phase_chips: 420.5,
+                    carrier_phase_rad: 0.3,
+                    cn0_db_hz: 60.0,
+                    navigation_data: false.into(),
+                },
+            ],
+            ephemerides: Vec::new(),
+            id: "common-oscillator-bias-follow-up".to_string(),
+        };
+        let frame = generate_l1_ca_multi_signal_only(&config, &scenario);
+        let bundle = build_iq16_capture_bundle(
+            &scenario.id,
+            &scenario,
+            &frame,
+            "2026-07-14T00:00:00Z",
+            Some("synthetic common oscillator bias follow-up".to_string()),
+        );
+        let scaled_frame = SamplesFrame::new(
+            frame.t0,
+            frame.dt_s,
+            frame.iq.iter().map(|sample| *sample * bundle.truth.output_scale_applied).collect(),
+        );
+        let requests = vec![
+            bijux_gnss_core::api::AcqRequest {
+                sat: scenario.satellites[0].sat,
+                glonass_frequency_channel: None,
+                signal_band: bijux_gnss_core::api::SignalBand::L1,
+                signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+                doppler_center_hz: 750.0,
+                expected_line_of_sight_doppler_hz: Some(750.0),
+                doppler_search_hz: 750,
+                doppler_step_hz: 250,
+                coherent_ms: 1,
+                noncoherent: 1,
+            },
+            bijux_gnss_core::api::AcqRequest {
+                sat: scenario.satellites[1].sat,
+                glonass_frequency_channel: None,
+                signal_band: bijux_gnss_core::api::SignalBand::L1,
+                signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+                doppler_center_hz: -1_000.0,
+                expected_line_of_sight_doppler_hz: Some(-1_000.0),
+                doppler_search_hz: 750,
+                doppler_step_hz: 250,
+                coherent_ms: 1,
+                noncoherent: 1,
+            },
+            bijux_gnss_core::api::AcqRequest {
+                sat: scenario.satellites[2].sat,
+                glonass_frequency_channel: None,
+                signal_band: bijux_gnss_core::api::SignalBand::L1,
+                signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+                doppler_center_hz: 250.0,
+                expected_line_of_sight_doppler_hz: Some(250.0),
+                doppler_search_hz: 250,
+                doppler_step_hz: 250,
+                coherent_ms: 1,
+                noncoherent: 1,
+            },
+        ];
+
+        let report = validate_truth_guided_common_oscillator_bias_follow_up(
+            &config,
+            &scaled_frame,
+            &bundle.truth,
+            &requests,
+            1,
+        );
+
+        assert!(report.pass, "{report:#?}");
+        assert_eq!(report.injected_receiver_clock_frequency_bias_hz, 500.0);
+        assert_eq!(report.support_count, 2);
+        assert_eq!(report.follow_up_count, 1);
+        assert_eq!(report.improved_follow_up_count, 1);
+        assert!(
+            report
+                .estimated_common_oscillator_bias_hz
+                .is_some_and(|estimated_bias_hz| (estimated_bias_hz - 500.0).abs() <= 250.0),
+            "{report:#?}"
+        );
+
+        let rescued_satellite = report
+            .satellites
+            .iter()
+            .find(|satellite| satellite.sat == scenario.satellites[2].sat)
+            .expect("rescued satellite row");
+        assert_eq!(rescued_satellite.initial_hypothesis, "rejected", "{rescued_satellite:#?}");
+        assert!(rescued_satellite.follow_up_requested, "{rescued_satellite:#?}");
+        assert_eq!(rescued_satellite.follow_up_doppler_search_hz, Some(250));
+        assert!(
+            rescued_satellite
+                .follow_up_doppler_center_hz
+                .is_some_and(|center_hz| (center_hz - 750.0).abs() <= 250.0),
+            "{rescued_satellite:#?}"
+        );
+        assert!(
+            rescued_satellite
+                .follow_up_hypothesis
+                .as_deref()
+                .is_some_and(|hypothesis| matches!(hypothesis, "accepted" | "ambiguous")),
+            "{rescued_satellite:#?}"
+        );
+        assert!(rescued_satellite.improved, "{rescued_satellite:#?}");
+    }
+
+    #[test]
     fn acquisition_sample_rate_validation_passes_with_distinct_low_and_high_rate_profiles() {
         let low_rate = synthetic_acquisition_sample_rate_case_fixture(
             2_046_000.0,
