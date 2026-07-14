@@ -302,6 +302,66 @@ pub struct SyntheticAcquisitionReceiverClockOffsetValidationReport {
     pub satellites: Vec<SyntheticAcquisitionReceiverClockOffsetSatellite>,
 }
 
+/// Per-satellite result row for oscillator-bias-assisted acquisition follow-up.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticCommonOscillatorBiasFollowUpSatellite {
+    /// Satellite identifier.
+    pub sat: SatId,
+    /// Expected line-of-sight Doppler used to separate common bias from per-satellite motion.
+    pub expected_line_of_sight_doppler_hz: Option<f64>,
+    /// Initial request Doppler center in Hz.
+    pub initial_doppler_center_hz: f64,
+    /// Initial request half-search width in Hz.
+    pub initial_doppler_search_hz: i32,
+    /// Initial primary acquisition hypothesis.
+    pub initial_hypothesis: String,
+    /// Initial measured Doppler in Hz when a primary candidate exists.
+    pub initial_measured_doppler_hz: Option<f64>,
+    /// Whether this satellite received a follow-up request centered by the estimated common bias.
+    pub follow_up_requested: bool,
+    /// Follow-up Doppler center in Hz when a follow-up request was issued.
+    pub follow_up_doppler_center_hz: Option<f64>,
+    /// Follow-up Doppler half-search width in Hz when a follow-up request was issued.
+    pub follow_up_doppler_search_hz: Option<i32>,
+    /// Follow-up primary acquisition hypothesis when a follow-up request was issued.
+    pub follow_up_hypothesis: Option<String>,
+    /// Follow-up measured Doppler in Hz when a follow-up request was issued.
+    pub follow_up_measured_doppler_hz: Option<f64>,
+    /// Whether the follow-up improved this satellite from unacquired to acquired.
+    pub improved: bool,
+}
+
+/// Truth-guided report for common oscillator bias estimation and assisted follow-up acquisition.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SyntheticCommonOscillatorBiasFollowUpReport {
+    /// Stable scenario identifier for this capture.
+    pub scenario_id: String,
+    /// Receiver clock frequency bias injected into the synthetic capture, in Hz.
+    pub injected_receiver_clock_frequency_bias_hz: f64,
+    /// Allowed common-bias estimation error in acquisition bins.
+    pub tolerance_bins: usize,
+    /// Allowed common-bias estimation error in Hz.
+    pub tolerance_hz: f64,
+    /// Effective acquisition Doppler bin width in Hz.
+    pub doppler_step_hz: i32,
+    /// Estimated common oscillator bias in Hz when estimation succeeded.
+    pub estimated_common_oscillator_bias_hz: Option<f64>,
+    /// Absolute error between the estimated and injected common bias, in Hz.
+    pub common_oscillator_bias_error_hz: Option<f64>,
+    /// Number of supporting satellites used for the estimate.
+    pub support_count: usize,
+    /// Spread across the supporting per-satellite implied biases, in Hz.
+    pub support_bias_spread_hz: Option<f64>,
+    /// Number of satellites that received assisted follow-up requests.
+    pub follow_up_count: usize,
+    /// Number of satellites improved from unacquired to acquired by the follow-up pass.
+    pub improved_follow_up_count: usize,
+    /// Whether the estimate matched truth and at least one narrowed follow-up search improved.
+    pub pass: bool,
+    /// Per-satellite validation rows.
+    pub satellites: Vec<SyntheticCommonOscillatorBiasFollowUpSatellite>,
+}
+
 /// Per-satellite acquisition validation row for a specific coherent integration profile.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyntheticAcquisitionCoherentIntegrationSatellite {
