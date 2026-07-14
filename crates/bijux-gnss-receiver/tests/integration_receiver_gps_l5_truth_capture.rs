@@ -401,13 +401,11 @@ fn receiver_run_emits_gps_l5q_artifacts_from_truth_capture() {
         "{acquisition:#?}"
     );
 
-    let tracking =
-        artifacts.tracking.iter().find(|track| track.sat == sat).expect("L5-Q tracking");
+    let tracking = artifacts.tracking.iter().find(|track| track.sat == sat).expect("L5-Q tracking");
     assert!(
-        tracking
-            .epochs
-            .iter()
-            .any(|epoch| epoch.signal_band == SignalBand::L5 && epoch.signal_code == SignalCode::L5Q),
+        tracking.epochs.iter().any(
+            |epoch| epoch.signal_band == SignalBand::L5 && epoch.signal_code == SignalCode::L5Q
+        ),
         "{tracking:#?}"
     );
     assert!(
@@ -420,7 +418,9 @@ fn receiver_run_emits_gps_l5q_artifacts_from_truth_capture() {
     );
     assert!(
         tracking.epochs.iter().any(|epoch| {
-            epoch.signal_band == SignalBand::L5 && epoch.signal_code == SignalCode::L5Q && epoch.dll_lock
+            epoch.signal_band == SignalBand::L5
+                && epoch.signal_code == SignalCode::L5Q
+                && epoch.dll_lock
         }),
         "{tracking:#?}"
     );
@@ -468,6 +468,7 @@ fn receiver_run_tracks_gps_l5q_across_secondary_code_boundaries() {
         candidate_rank: 1,
         is_primary_candidate: true,
         doppler_hz: Hertz(scenario.satellites[0].doppler_hz),
+        doppler_rate_hz_per_s: 0.0,
         carrier_hz: Hertz(scenario.satellites[0].doppler_hz),
         code_phase_samples,
         peak: 1.0,
