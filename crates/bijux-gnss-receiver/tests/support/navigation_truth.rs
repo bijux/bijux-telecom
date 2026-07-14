@@ -163,7 +163,12 @@ pub fn truth_seeded_acquisition_results(
                     right_correlation_norm: 1.0,
                 }),
                 signal_delay_alignment: None,
-                uncertainty: Some(AcqUncertainty { doppler_hz: 1.0, code_phase_samples: 0.25 }),
+                uncertainty: Some(AcqUncertainty {
+                    doppler_hz: 1.0,
+                    code_phase_samples: 0.25,
+                    doppler_rate_hz_per_s: None,
+                    covariance: None,
+                }),
             }
         })
         .collect()

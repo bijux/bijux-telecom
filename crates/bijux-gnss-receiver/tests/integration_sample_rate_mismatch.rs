@@ -47,7 +47,12 @@ fn accepted_acquisition(
 }
 
 fn tight_tracking_uncertainty() -> Option<AcqUncertainty> {
-    Some(AcqUncertainty { doppler_hz: 250.0, code_phase_samples: 0.25 })
+    Some(AcqUncertainty {
+        doppler_hz: 250.0,
+        code_phase_samples: 0.25,
+        doppler_rate_hz_per_s: None,
+        covariance: None,
+    })
 }
 
 fn synthetic_frame(
@@ -135,7 +140,12 @@ fn tracking_does_not_claim_sample_rate_mismatch_when_acquisition_uncertainty_is_
         sat,
         declared_config.intermediate_freq_hz,
         0,
-        Some(AcqUncertainty { doppler_hz: 1_000.0, code_phase_samples: 2.0 }),
+        Some(AcqUncertainty {
+            doppler_hz: 1_000.0,
+            code_phase_samples: 2.0,
+            doppler_rate_hz_per_s: None,
+            covariance: None,
+        }),
     )];
 
     let tracks = tracking.track_from_acquisition(&frame, &acquisitions);

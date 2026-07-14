@@ -2938,7 +2938,12 @@ mod tests {
     #[test]
     fn reacquisition_seed_matches_respects_acquisition_uncertainty_tolerances() {
         let tracking = Tracking::new(ReceiverPipelineConfig::default(), ReceiverRuntime::default());
-        let uncertainty = AcqUncertainty { doppler_hz: 250.0, code_phase_samples: 0.75 };
+        let uncertainty = AcqUncertainty {
+            doppler_hz: 250.0,
+            code_phase_samples: 0.75,
+            doppler_rate_hz_per_s: None,
+            covariance: None,
+        };
 
         assert!(tracking.reacquisition_seed_matches(
             super::ReacquisitionSeed {

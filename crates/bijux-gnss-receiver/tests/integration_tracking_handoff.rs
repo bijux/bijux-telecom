@@ -11,7 +11,12 @@ use bijux_gnss_receiver::api::{
 };
 
 fn tight_uncertainty() -> Option<AcqUncertainty> {
-    Some(AcqUncertainty { doppler_hz: 250.0, code_phase_samples: 0.25 })
+    Some(AcqUncertainty {
+        doppler_hz: 250.0,
+        code_phase_samples: 0.25,
+        doppler_rate_hz_per_s: None,
+        covariance: None,
+    })
 }
 
 fn accepted_acquisition(

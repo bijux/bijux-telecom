@@ -512,9 +512,26 @@ pub struct AcqCodePhaseRefinement {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcqUncertaintyCovariance {
+    pub doppler_variance_hz2: f64,
+    pub doppler_code_phase_covariance_hz_samples: f64,
+    pub code_phase_variance_samples2: f64,
+    #[serde(default)]
+    pub doppler_rate_variance_hz2_per_s2: Option<f64>,
+    #[serde(default)]
+    pub doppler_doppler_rate_covariance_hz2_per_s: Option<f64>,
+    #[serde(default)]
+    pub code_phase_doppler_rate_covariance_samples_hz_per_s: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcqUncertainty {
     pub doppler_hz: f64,
     pub code_phase_samples: f64,
+    #[serde(default)]
+    pub doppler_rate_hz_per_s: Option<f64>,
+    #[serde(default)]
+    pub covariance: Option<AcqUncertaintyCovariance>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -675,7 +692,36 @@ pub fn acq_result_stability_key(result: &AcqResult) -> String {
         .uncertainty
         .as_ref()
         .map(|uncertainty| {
-            format!("|{:.6}|{:.6}", uncertainty.doppler_hz, uncertainty.code_phase_samples)
+            let covariance_key = uncertainty
+                .covariance
+                .as_ref()
+                .map(|covariance| {
+                    format!(
+                        "|{:.6}|{:.6}|{:.6}|{}|{}|{}",
+                        covariance.doppler_variance_hz2,
+                        covariance.doppler_code_phase_covariance_hz_samples,
+                        covariance.code_phase_variance_samples2,
+                        covariance
+                            .doppler_rate_variance_hz2_per_s2
+                            .map_or_else(|| "none".to_string(), |value| format!("{value:.6}")),
+                        covariance
+                            .doppler_doppler_rate_covariance_hz2_per_s
+                            .map_or_else(|| "none".to_string(), |value| format!("{value:.6}")),
+                        covariance
+                            .code_phase_doppler_rate_covariance_samples_hz_per_s
+                            .map_or_else(|| "none".to_string(), |value| format!("{value:.6}")),
+                    )
+                })
+                .unwrap_or_default();
+            format!(
+                "|{:.6}|{:.6}|{}{}",
+                uncertainty.doppler_hz,
+                uncertainty.code_phase_samples,
+                uncertainty
+                    .doppler_rate_hz_per_s
+                    .map_or_else(|| "none".to_string(), |value| format!("{value:.6}")),
+                covariance_key,
+            )
         })
         .unwrap_or_default();
     let signal_delay_alignment_key = result
@@ -1397,10 +1443,11 @@ mod tests {
     use crate::api::{
         trackable_acq_tracking_seeds, AcqCodePhaseRefinement, AcqComponentCombinationMode,
         AcqComponentProvenance, AcqComponentStatistic, AcqEvidence, AcqHypothesis, AcqResult,
-        AcqSearchSummary, AcqUncertainty, Constellation, Cycles, GlonassFrequencyChannel, Hertz,
-        LeapSeconds, LockFlags, NavLifecycleState, NavQualityFlag, ObservationEpochDecision,
-        ObservationStatus, ReceiverRole, ReceiverSampleTrace, SatId, SignalBand, SignalCode,
-        SignalComponentRole, SolutionStatus, UtcTime,
+        AcqSearchSummary, AcqUncertainty, AcqUncertaintyCovariance, Constellation, Cycles,
+        GlonassFrequencyChannel, Hertz, LeapSeconds, LockFlags, NavLifecycleState,
+        NavQualityFlag, ObservationEpochDecision, ObservationStatus, ReceiverRole,
+        ReceiverSampleTrace, SatId, SignalBand, SignalCode, SignalComponentRole, SolutionStatus,
+        UtcTime,
     };
     use crate::time::utc_to_gps;
 
@@ -1554,7 +1601,19 @@ mod tests {
                 sample_delay_samples: 0,
                 source: "synthetic_truth".to_string(),
             }),
-            uncertainty: Some(AcqUncertainty { doppler_hz: 125.0, code_phase_samples: 0.25 }),
+            uncertainty: Some(AcqUncertainty {
+                doppler_hz: 125.0,
+                code_phase_samples: 0.25,
+                doppler_rate_hz_per_s: None,
+                covariance: Some(AcqUncertaintyCovariance {
+                    doppler_variance_hz2: 15_625.0,
+                    doppler_code_phase_covariance_hz_samples: -3.0,
+                    code_phase_variance_samples2: 0.0625,
+                    doppler_rate_variance_hz2_per_s2: None,
+                    doppler_doppler_rate_covariance_hz2_per_s: None,
+                    code_phase_doppler_rate_covariance_samples_hz_per_s: None,
+                }),
+            }),
         };
 
         let seed = result.tracking_seed();

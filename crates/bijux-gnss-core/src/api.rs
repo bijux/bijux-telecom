@@ -57,6 +57,7 @@ pub use crate::obs::{
     AcqComponentCombinationMode, AcqComponentProvenance, AcqComponentStatistic,
     AcqDopplerRefinement, AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqRequest,
     AcqResult, AcqSearchSummary, AcqThresholdProvenance, AcqTrackingSeed, AcqUncertainty,
+    AcqUncertaintyCovariance,
     AmbiguityId, AmbiguityState, AmbiguityStatus, DoubleDifference, LockFlags,
     MeasurementErrorModel, MeasurementRejectReason, NavAssumptions, NavHealthEvent,
     NavLifecycleState, NavProvenance, NavQualityFlag, NavRefusalClass, NavUncertaintyClass,

@@ -704,6 +704,8 @@ mod tests {
                 uncertainty: Some(AcqUncertainty {
                     doppler_hz: 125.0,
                     code_phase_samples: 0.5,
+                    doppler_rate_hz_per_s: None,
+                    covariance: None,
                 }),
             }],
             vec![result_for_bias_test(9, AcqHypothesis::Rejected, 0.0)],
@@ -842,6 +844,8 @@ mod tests {
                 uncertainty: Some(AcqUncertainty {
                     doppler_hz: 50.0,
                     code_phase_samples: 0.5,
+                    doppler_rate_hz_per_s: None,
+                    covariance: None,
                 }),
             }],
         ];
@@ -930,6 +934,8 @@ mod tests {
             uncertainty: Some(AcqUncertainty {
                 doppler_hz: 50.0,
                 code_phase_samples: 0.5,
+                doppler_rate_hz_per_s: None,
+                covariance: None,
             }),
         }
     }
