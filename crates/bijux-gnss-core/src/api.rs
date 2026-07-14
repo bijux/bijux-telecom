@@ -53,7 +53,7 @@ pub use crate::nav_solution::{
 /// Observation and tracking contracts.
 pub use crate::obs::{
     acq_result_stability_key, obs_epoch_stability_key, stable_acq_result_keys,
-    trackable_acq_tracking_seeds, AcqAssumptions, AcqCodePhaseRefinement,
+    trackable_acq_tracking_seeds, AcqAssistanceBounds, AcqAssumptions, AcqCodePhaseRefinement,
     AcqComponentCombinationMode, AcqComponentProvenance, AcqComponentStatistic,
     AcqDopplerRefinement, AcqEvidence, AcqExplain, AcqExplainCandidate, AcqHypothesis, AcqRequest,
     AcqResult, AcqSearchSummary, AcqThresholdProvenance, AcqTrackingSeed, AcqUncertainty,

@@ -9,6 +9,7 @@ fn truth_guided_acquisition_request(
         signal_code: sat_truth.signal_code,
         doppler_center_hz: 0.0,
         expected_line_of_sight_doppler_hz: Some(sat_truth.doppler_hz),
+        assistance_bounds: None,
         doppler_search_hz: config.acquisition_doppler_search_hz,
         doppler_step_hz: config.acquisition_doppler_step_hz,
         coherent_ms: config.acquisition_integration_ms,

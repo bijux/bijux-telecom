@@ -222,6 +222,7 @@ mod tests {
             signal_code: SignalCode::Ca,
             doppler_center_hz,
             expected_line_of_sight_doppler_hz,
+            assistance_bounds: None,
             doppler_search_hz,
             doppler_step_hz: 250,
             coherent_ms: 1,

@@ -348,6 +348,15 @@ impl SamplesFrame {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct AcqAssistanceBounds {
+    pub expected_code_phase_samples: f64,
+    pub time_uncertainty_s: f64,
+    pub position_uncertainty_m: f64,
+    pub oscillator_uncertainty_hz: f64,
+    pub approximate_velocity_uncertainty_mps: f64,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct AcqRequest {
     pub sat: SatId,
     #[serde(default)]
@@ -360,6 +369,8 @@ pub struct AcqRequest {
     pub doppler_center_hz: f64,
     #[serde(default)]
     pub expected_line_of_sight_doppler_hz: Option<f64>,
+    #[serde(default)]
+    pub assistance_bounds: Option<AcqAssistanceBounds>,
     pub doppler_search_hz: i32,
     pub doppler_step_hz: i32,
     pub coherent_ms: u32,
@@ -399,6 +410,8 @@ pub struct AcqAssumptions {
     pub doppler_center_hz: f64,
     #[serde(default)]
     pub expected_line_of_sight_doppler_hz: Option<f64>,
+    #[serde(default)]
+    pub assistance_bounds: Option<AcqAssistanceBounds>,
     pub doppler_search_hz: i32,
     pub doppler_step_hz: i32,
     pub coherent_ms: u32,
