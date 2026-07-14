@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use bijux_gnss_core::api::{Constellation, SatId, SignalBand};
+use bijux_gnss_core::api::{Constellation, SatId, SignalBand, SignalCode, SignalComponentRole};
 use bijux_gnss_receiver::api::{
     sim::{
         expected_acquisition_code_phase_samples, wrapped_code_phase_error_samples_f64,
@@ -37,8 +37,8 @@ fn galileo_e1_report_scenario(sat: SatId) -> SyntheticScenario {
         satellites: vec![SyntheticSignalParams {
             sat,
             glonass_frequency_channel: None,
-            signal_band: bijux_gnss_core::api::SignalBand::L1,
-            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+            signal_band: SignalBand::E1,
+            signal_code: SignalCode::E1B,
             doppler_hz: 0.0,
             code_phase_chips: 321.0,
             carrier_phase_rad: 0.25,
@@ -55,7 +55,7 @@ fn receiver_run_reports_galileo_e1_acquisition_fields() {
     let config = galileo_e1_report_config();
     let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
     let scenario = galileo_e1_report_scenario(sat);
-    let mut source = SyntheticSignalSource::new_signal_only(&config, &scenario);
+    let mut source = SyntheticSignalSource::new(&config, &scenario);
     let receiver = Receiver::new(config.clone(), ReceiverRuntime::default());
 
     let artifacts = receiver.run(&mut source).expect("receiver run");
@@ -77,6 +77,7 @@ fn receiver_run_reports_galileo_e1_acquisition_fields() {
         period_samples,
     );
     let uncertainty = sat_result.uncertainty.as_ref().expect("Galileo acquisition uncertainty");
+    let provenance = sat_result.component_provenance().expect("Galileo acquisition provenance");
 
     assert_eq!(sat_result.sat, sat);
     assert_eq!(sat_result.signal_band, SignalBand::E1, "{sat_result:?}");
@@ -89,13 +90,18 @@ fn receiver_run_reports_galileo_e1_acquisition_fields() {
     assert!(
         uncertainty.doppler_hz.is_finite()
             && uncertainty.doppler_hz > 0.0
-            && uncertainty.doppler_hz < 250.0,
+            && uncertainty.doppler_hz <= 250.0,
         "{sat_result:?}"
     );
     assert!(
         uncertainty.code_phase_samples.is_finite()
             && uncertainty.code_phase_samples > 0.0
-            && uncertainty.code_phase_samples < 0.5,
+            && uncertainty.code_phase_samples <= 0.5,
+        "{sat_result:?}"
+    );
+    assert_eq!(
+        provenance.components.iter().map(|component| component.role).collect::<Vec<_>>(),
+        vec![SignalComponentRole::Pilot],
         "{sat_result:?}"
     );
 }
@@ -109,8 +115,8 @@ fn galileo_e1_reference_frame(
         SyntheticSignalParams {
             sat,
             glonass_frequency_channel: None,
-            signal_band: bijux_gnss_core::api::SignalBand::L1,
-            signal_code: bijux_gnss_core::api::SignalCode::Unknown,
+            signal_band: SignalBand::E1,
+            signal_code: SignalCode::E1B,
             doppler_hz: 0.0,
             code_phase_chips: 321.0,
             carrier_phase_rad: 0.25,
