@@ -10,7 +10,6 @@ use crate::dsp::signal::{
 use bijux_gnss_core::api::TrackingUncertainty;
 use num_complex::Complex;
 
-const DLL_CODE_PHASE_CORRECTION_GAIN: f64 = 0.5;
 const DLL_LOCK_MAX_CODE_ERROR: f32 = 0.2;
 const DLL_HOLD_MAX_CODE_ERROR: f32 = 0.4;
 const DLL_LOW_RESOLUTION_LOCK_MAX_CODE_ERROR: f32 = 0.6;
@@ -33,7 +32,16 @@ pub struct FirstOrderLoopCoefficients {
     pub rate_gain_hz: f64,
 }
 
-/// Second-order PLL coefficients derived from noise bandwidth and coherent integration time.
+/// Second-order DLL coefficients derived from noise bandwidth and coherent integration time.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DelayLockLoopCoefficients {
+    /// Dimensionless fraction of the code-phase error to blend into the prompt alignment.
+    pub phase_blend: f64,
+    /// Effective gain in Hz applied to one chip of DLL error.
+    pub rate_gain_hz_per_chip: f64,
+}
+
+/// Phase-lock loop coefficients derived from noise bandwidth and coherent integration time.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PhaseLockLoopCoefficients {
     /// Dimensionless phase correction applied to the phase accumulator.
@@ -319,8 +327,7 @@ fn loop_observer_design(
     for _ in 0..LOOP_FILTER_BANDWIDTH_SOLVER_ITERATIONS {
         let pole = (low_pole + high_pole) * 0.5;
         let gains = loop_observer_gains(order, pole, coherent_integration_s);
-        let measured_bandwidth_hz =
-            loop_noise_bandwidth_hz(order, coherent_integration_s, gains);
+        let measured_bandwidth_hz = loop_noise_bandwidth_hz(order, coherent_integration_s, gains);
         if measured_bandwidth_hz > noise_bandwidth_hz {
             low_pole = pole;
         } else {
@@ -345,21 +352,18 @@ fn loop_observer_gains(
     let output = loop_output_matrix();
     let transition_transpose = transpose_square_matrix(transition, dimension);
     let input = output;
-    let controllability =
-        controllability_matrix(transition_transpose, input, dimension);
+    let controllability = controllability_matrix(transition_transpose, input, dimension);
     let controllability_inverse = invert_square_matrix(controllability, dimension)
         .expect("integrator-chain observer design must remain controllable");
     let characteristic = repeated_pole_characteristic_coefficients(closed_loop_pole, dimension);
-    let desired_matrix = evaluate_matrix_polynomial(
-        transition_transpose,
-        characteristic,
-        dimension,
-    );
+    let desired_matrix =
+        evaluate_matrix_polynomial(transition_transpose, characteristic, dimension);
     let mut gain = [0.0; 3];
     for column in 0..dimension {
         let mut projected = 0.0;
         for index in 0..dimension {
-            projected += controllability_inverse[dimension - 1][index] * desired_matrix[index][column];
+            projected +=
+                controllability_inverse[dimension - 1][index] * desired_matrix[index][column];
         }
         gain[column] = projected;
     }
@@ -432,10 +436,7 @@ fn corrected_loop_transition(
     corrected
 }
 
-fn loop_state_transition(
-    order: LoopFilterOrder,
-    coherent_integration_s: f64,
-) -> [[f64; 3]; 3] {
+fn loop_state_transition(order: LoopFilterOrder, coherent_integration_s: f64) -> [[f64; 3]; 3] {
     let mut transition = identity_square_matrix(order.as_usize());
     match order {
         LoopFilterOrder::First => {}
@@ -455,10 +456,7 @@ fn loop_output_matrix() -> [f64; 3] {
     [1.0, 0.0, 0.0]
 }
 
-fn repeated_pole_characteristic_coefficients(
-    closed_loop_pole: f64,
-    dimension: usize,
-) -> [f64; 4] {
+fn repeated_pole_characteristic_coefficients(closed_loop_pole: f64, dimension: usize) -> [f64; 4] {
     match dimension {
         1 => [1.0, -closed_loop_pole, 0.0, 0.0],
         2 => [1.0, -2.0 * closed_loop_pole, closed_loop_pole * closed_loop_pole, 0.0],
@@ -552,11 +550,7 @@ fn add_square_matrices(
     result
 }
 
-fn scale_square_matrix(
-    matrix: [[f64; 3]; 3],
-    scale: f64,
-    dimension: usize,
-) -> [[f64; 3]; 3] {
+fn scale_square_matrix(matrix: [[f64; 3]; 3], scale: f64, dimension: usize) -> [[f64; 3]; 3] {
     let mut result = [[0.0; 3]; 3];
     for row in 0..dimension {
         for column in 0..dimension {
@@ -658,7 +652,20 @@ pub fn first_order_angular_loop_coefficients(
     first_order_loop_coefficients(noise_bandwidth_hz, coherent_integration_s)
 }
 
-/// Derive a second-order PLL filter from loop bandwidth and coherent integration time.
+/// Derive second-order DLL coefficients from loop bandwidth and coherent integration time.
+pub fn delay_lock_loop_coefficients(
+    noise_bandwidth_hz: f64,
+    coherent_integration_s: f64,
+) -> DelayLockLoopCoefficients {
+    let design =
+        loop_observer_design(LoopFilterOrder::Second, noise_bandwidth_hz, coherent_integration_s);
+    DelayLockLoopCoefficients {
+        phase_blend: design.correction_gains[0],
+        rate_gain_hz_per_chip: design.correction_gains[1],
+    }
+}
+
+/// Derive a phase-lock filter from loop bandwidth and coherent integration time.
 pub fn phase_lock_loop_coefficients(
     noise_bandwidth_hz: f64,
     coherent_integration_s: f64,
@@ -919,16 +926,20 @@ pub fn estimate_tracking_uncertainty(
 
 /// Apply the code loop update for one coherent interval.
 pub fn apply_code_loop(input: CodeLoopInput) -> CodeLoopUpdate {
-    let coefficients = first_order_loop_coefficients(input.dll_bw_hz, input.coherent_integration_s);
+    let coefficients = delay_lock_loop_coefficients(input.dll_bw_hz, input.coherent_integration_s);
+    let dll_error_chips = input.dll_err as f64;
     let code_rate_hz =
-        input.current_code_rate_hz - coefficients.rate_gain_hz * input.dll_err as f64;
-    let code_phase_samples = advance_code_phase_samples(
+        input.current_code_rate_hz + coefficients.rate_gain_hz_per_chip * dll_error_chips;
+    let predicted_code_phase_samples = predict_code_phase_samples(
         input.current_code_phase_samples,
         input.epoch_len_samples,
         code_rate_hz,
         input.nominal_code_rate_hz,
-        input.dll_err,
-        input.samples_per_chip,
+        input.samples_per_code,
+    );
+    let code_phase_samples = wrap_code_phase_samples(
+        predicted_code_phase_samples
+            + coefficients.phase_blend * dll_error_chips * input.samples_per_chip,
         input.samples_per_code,
     );
     CodeLoopUpdate { code_rate_hz, code_phase_samples }
@@ -970,13 +981,11 @@ pub fn code_at(code: &[i8], samples_per_chip: f64, sample_index: f64) -> Complex
 }
 
 /// Advance receiver-aligned code phase across one coherent interval.
-pub fn advance_code_phase_samples(
+fn predict_code_phase_samples(
     current_code_phase_samples: f64,
     epoch_len_samples: usize,
     tracked_code_rate_hz: f64,
     nominal_code_rate_hz: f64,
-    dll_err: f32,
-    samples_per_chip: f64,
     samples_per_code: usize,
 ) -> f64 {
     let nominal_code_rate_hz = nominal_code_rate_hz.max(1.0);
@@ -986,10 +995,8 @@ pub fn advance_code_phase_samples(
     );
     let code_period_advance_samples =
         epoch_len_samples as f64 * (tracked_code_rate_hz / nominal_code_rate_hz);
-    let dll_correction_samples =
-        -(dll_err as f64) * samples_per_chip * DLL_CODE_PHASE_CORRECTION_GAIN;
     let next_epoch_start_code_phase_samples = wrap_code_phase_samples(
-        epoch_start_code_phase_samples + code_period_advance_samples + dll_correction_samples,
+        epoch_start_code_phase_samples + code_period_advance_samples,
         samples_per_code,
     );
     receiver_code_phase_samples_from_epoch_start_phase(
@@ -1057,8 +1064,8 @@ mod tests {
     use super::{
         anti_false_lock_detected, apply_carrier_tracking_loop, apply_code_loop,
         carrier_frequency_error_hz_from_phase_delta, carrier_phase_offset_radians,
-        coherent_integration_seconds, correlate_early_prompt_late, discriminators,
-        dll_lock_threshold, estimate_cn0_dbhz, estimate_tracking_uncertainty,
+        coherent_integration_seconds, correlate_early_prompt_late, delay_lock_loop_coefficients,
+        discriminators, dll_lock_threshold, estimate_cn0_dbhz, estimate_tracking_uncertainty,
         first_order_angular_loop_coefficients, first_order_loop_coefficients,
         phase_lock_loop_coefficients, wrap_phase_cycles_signed, wrap_phase_radians_positive,
         wrapped_phase_delta_cycles, CarrierTrackingLoopInput, CodeLoopInput, TrackingQualityClass,
@@ -1243,11 +1250,8 @@ mod tests {
     #[test]
     fn first_order_loop_design_places_requested_closed_loop_pole() {
         let coherent_integration_s = 0.001;
-        let design = super::loop_observer_design(
-            super::LoopFilterOrder::First,
-            8.0,
-            coherent_integration_s,
-        );
+        let design =
+            super::loop_observer_design(super::LoopFilterOrder::First, 8.0, coherent_integration_s);
         let transition = super::corrected_loop_transition(
             super::LoopFilterOrder::First,
             coherent_integration_s,
@@ -1358,10 +1362,7 @@ mod tests {
                 <= 1.0e-9,
             "{transition:?}",
         );
-        assert!(
-            (determinant - design.closed_loop_pole.powi(3)).abs() <= 1.0e-9,
-            "{transition:?}",
-        );
+        assert!((determinant - design.closed_loop_pole.powi(3)).abs() <= 1.0e-9, "{transition:?}",);
     }
 
     #[test]
@@ -1387,6 +1388,17 @@ mod tests {
     }
 
     #[test]
+    fn delay_lock_loop_coefficients_are_finite_and_stronger_for_wider_bandwidths() {
+        let narrow = delay_lock_loop_coefficients(2.0, 0.001);
+        let wide = delay_lock_loop_coefficients(8.0, 0.001);
+
+        assert!(narrow.phase_blend.is_finite());
+        assert!(narrow.rate_gain_hz_per_chip.is_finite());
+        assert!(wide.phase_blend > narrow.phase_blend, "{wide:?} {narrow:?}");
+        assert!(wide.rate_gain_hz_per_chip > narrow.rate_gain_hz_per_chip, "{wide:?} {narrow:?}");
+    }
+
+    #[test]
     fn dll_lock_threshold_relaxes_for_subsample_early_late_spacing() {
         assert_eq!(dll_lock_threshold(1.0, 0.5), 0.6);
         assert_eq!(dll_lock_threshold(4.0, 0.5), 0.2);
@@ -1408,8 +1420,39 @@ mod tests {
         });
 
         let expected = 1_023_000.0
-            - first_order_loop_coefficients(2.0, coherent_integration_s).rate_gain_hz * 0.25;
+            + delay_lock_loop_coefficients(2.0, coherent_integration_s).rate_gain_hz_per_chip
+                * 0.25;
         assert!((update.code_rate_hz - expected).abs() < 1.0e-9, "{update:?}");
+    }
+
+    #[test]
+    fn delay_lock_loop_step_response_reduces_prompt_misalignment() {
+        let coherent_integration_s = 0.001;
+        let input = CodeLoopInput {
+            current_code_rate_hz: 1_023_000.0,
+            current_code_phase_samples: 250.0,
+            epoch_len_samples: 4_092,
+            coherent_integration_s,
+            nominal_code_rate_hz: 1_023_000.0,
+            dll_bw_hz: 4.0,
+            dll_err: 0.25,
+            samples_per_chip: 4.0,
+            samples_per_code: 4_092,
+        };
+        let coefficients = delay_lock_loop_coefficients(input.dll_bw_hz, coherent_integration_s);
+        let predicted = super::predict_code_phase_samples(
+            input.current_code_phase_samples,
+            input.epoch_len_samples,
+            input.current_code_rate_hz,
+            input.nominal_code_rate_hz,
+            input.samples_per_code,
+        );
+        let corrected = apply_code_loop(input);
+
+        assert!(
+            corrected.code_phase_samples > predicted,
+            "coefficients={coefficients:?} corrected={corrected:?} predicted={predicted}",
+        );
     }
 
     #[test]

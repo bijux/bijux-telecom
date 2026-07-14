@@ -7,13 +7,12 @@ pub use crate::catalog::{
     carrier_wavelength_m, default_acquisition_sats, default_acquisition_signal,
     first_order_ionosphere_code_delay_m, first_order_ionosphere_phase_advance_m,
     glonass_l1_carrier_hz, registered_signal_registry_entries, resolved_signal_registry_entry,
-    shared_path_doppler_hz,
-    signal_cycles_to_meters, signal_id_cycles_to_meters, signal_id_meters_to_cycles,
-    signal_id_wavelength_m, signal_meters_to_cycles, signal_registry, signal_spec_beidou_b1i,
-    signal_spec_beidou_b2i, signal_spec_galileo_e1b, signal_spec_galileo_e1c,
-    signal_spec_galileo_e5a, signal_spec_galileo_e5b, signal_spec_glonass_l1,
-    signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l2c, signal_spec_gps_l5,
-    signal_spec_gps_l5_i, signal_spec_gps_l5_q, signal_wavelength_m,
+    shared_path_doppler_hz, signal_cycles_to_meters, signal_id_cycles_to_meters,
+    signal_id_meters_to_cycles, signal_id_wavelength_m, signal_meters_to_cycles, signal_registry,
+    signal_spec_beidou_b1i, signal_spec_beidou_b2i, signal_spec_galileo_e1b,
+    signal_spec_galileo_e1c, signal_spec_galileo_e5a, signal_spec_galileo_e5b,
+    signal_spec_glonass_l1, signal_spec_gps_l1_ca, signal_spec_gps_l2_py, signal_spec_gps_l2c,
+    signal_spec_gps_l5, signal_spec_gps_l5_i, signal_spec_gps_l5_q, signal_wavelength_m,
 };
 /// Spreading code generators.
 pub use crate::codes::beidou_b1i::{
@@ -130,8 +129,7 @@ pub use crate::dsp::replica::{
     default_signal_carrier_hz_for_band, default_signal_carrier_hz_for_signal,
     sample_modulated_replica_at_sample_index, sample_modulated_replica_at_time,
     signal_amplitude_from_cn0_db_hz, wipeoff_carrier_with_linear_rate, AcquisitionSignalModel,
-    ReplicaCodeModel,
-    UNIT_VARIANCE_COMPLEX_NOISE_POWER,
+    ReplicaCodeModel, UNIT_VARIANCE_COMPLEX_NOISE_POWER,
 };
 /// Absolute sample-index timing helpers for chunk-stable generation.
 pub use crate::dsp::sample_timing::{code_sample_position_at_index, CodeSamplePosition};
@@ -157,15 +155,17 @@ pub use crate::dsp::spectrum::{
 pub use crate::dsp::tracking::{
     adaptive_bandwidth, anti_false_lock_detected, apply_carrier_tracking_loop, apply_code_loop,
     carrier_frequency_error_hz_from_phase_delta, carrier_phase_offset_radians, code_at,
-    coherent_integration_seconds, correlate_early_prompt_late, discriminators, dll_hold_threshold,
-    dll_lock_threshold, estimate_cn0_dbhz, estimate_tracking_uncertainty,
-    first_order_angular_loop_coefficients, first_order_loop_coefficients, fll_lock_threshold_hz,
-    phase_lock_loop_coefficients, prompt_power_ratio, push_tracking_uncertainty_sample,
-    refresh_lock_reference_cn0_dbhz, refresh_prompt_power_reference, update_prompt_power_reference,
+    coherent_integration_seconds, correlate_early_prompt_late, delay_lock_loop_coefficients,
+    discriminators, dll_hold_threshold, dll_lock_threshold, estimate_cn0_dbhz,
+    estimate_tracking_uncertainty, first_order_angular_loop_coefficients,
+    first_order_loop_coefficients, fll_lock_threshold_hz, phase_lock_loop_coefficients,
+    prompt_power_ratio, push_tracking_uncertainty_sample, refresh_lock_reference_cn0_dbhz,
+    refresh_prompt_power_reference, update_prompt_power_reference,
     update_windowed_tracking_cn0_estimate, wrap_phase_cycles_signed, wrap_phase_radians_positive,
     wrapped_phase_delta_cycles, CarrierTrackingLoopInput, CarrierTrackingLoopUpdate, CodeLoopInput,
-    CodeLoopUpdate, EarlyPromptLateCorrelation, FirstOrderLoopCoefficients,
-    PhaseLockLoopCoefficients, TrackingQualityClass, TrackingUncertaintyInputs,
+    CodeLoopUpdate, DelayLockLoopCoefficients, EarlyPromptLateCorrelation,
+    FirstOrderLoopCoefficients, PhaseLockLoopCoefficients, TrackingQualityClass,
+    TrackingUncertaintyInputs,
 };
 /// Error types.
 pub use crate::error::SignalError;
