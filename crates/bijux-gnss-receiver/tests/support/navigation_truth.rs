@@ -135,6 +135,7 @@ pub fn truth_seeded_acquisition_results(
                 candidate_rank: 1,
                 is_primary_candidate: true,
                 doppler_hz: Hertz(signal.doppler_hz),
+                doppler_rate_hz_per_s: 0.0,
                 carrier_hz: Hertz(carrier_hz_from_doppler_hz(
                     config.intermediate_freq_hz,
                     signal.doppler_hz,

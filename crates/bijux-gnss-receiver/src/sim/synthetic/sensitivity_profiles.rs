@@ -397,6 +397,7 @@ fn seeded_tracking_acquisition(
         candidate_rank: 1,
         is_primary_candidate: true,
         doppler_hz: Hertz(doppler_hz),
+        doppler_rate_hz_per_s: 0.0,
         carrier_hz: Hertz(synthetic_carrier_hz(
             intermediate_freq_hz,
             sat,

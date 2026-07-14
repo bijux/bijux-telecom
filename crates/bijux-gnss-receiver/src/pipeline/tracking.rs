@@ -369,10 +369,10 @@ impl TrackingSignalModel {
                 signal_code,
                 glonass_frequency_channel,
             )
-                .ok()
-                .flatten()
-                .and_then(|entry| entry.default_component().copied())
-                .is_some()
+            .ok()
+            .flatten()
+            .and_then(|entry| entry.default_component().copied())
+            .is_some()
     }
 
     fn samples_per_code(&self, sample_rate_hz: f64) -> usize {
@@ -4040,6 +4040,7 @@ mod tests {
                 candidate_rank: 1,
                 is_primary_candidate: true,
                 doppler_hz: bijux_gnss_core::api::Hertz(-750.0),
+                doppler_rate_hz_per_s: 0.0,
                 carrier_hz: bijux_gnss_core::api::Hertz(-750.0),
                 code_phase_samples,
                 peak: 1.0,
@@ -4169,6 +4170,7 @@ mod tests {
             candidate_rank: 1,
             is_primary_candidate: true,
             doppler_hz: bijux_gnss_core::api::Hertz(1_000.0),
+            doppler_rate_hz_per_s: 0.0,
             carrier_hz: bijux_gnss_core::api::Hertz(1_000.0),
             code_phase_samples: 10,
             peak: 10.0,
@@ -4244,6 +4246,7 @@ mod tests {
                 candidate_rank: 1,
                 is_primary_candidate: true,
                 doppler_hz: Hertz(0.0),
+                doppler_rate_hz_per_s: 0.0,
                 carrier_hz: Hertz(0.0),
                 code_phase_samples: 0,
                 peak: 1.0,
@@ -4272,6 +4275,7 @@ mod tests {
                 candidate_rank: 1,
                 is_primary_candidate: true,
                 doppler_hz: Hertz(0.0),
+                doppler_rate_hz_per_s: 0.0,
                 carrier_hz: Hertz(0.0),
                 code_phase_samples: 0,
                 peak: 1.0,
@@ -4300,6 +4304,7 @@ mod tests {
                 candidate_rank: 1,
                 is_primary_candidate: true,
                 doppler_hz: Hertz(0.0),
+                doppler_rate_hz_per_s: 0.0,
                 carrier_hz: Hertz(0.0),
                 code_phase_samples: 0,
                 peak: 1.0,
@@ -4348,6 +4353,7 @@ mod tests {
             candidate_rank: 1,
             is_primary_candidate: true,
             doppler_hz: Hertz(125.0),
+            doppler_rate_hz_per_s: 0.0,
             carrier_hz: Hertz(carrier_hz),
             code_phase_samples: 37,
             peak: 1.0,

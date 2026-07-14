@@ -166,6 +166,7 @@ fn accepted_acquisition(
         candidate_rank: 1,
         is_primary_candidate: true,
         doppler_hz: Hertz(doppler_hz),
+        doppler_rate_hz_per_s: 0.0,
         carrier_hz: Hertz(doppler_hz),
         code_phase_samples,
         peak: 1.0,

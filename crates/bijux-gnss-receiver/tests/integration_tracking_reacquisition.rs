@@ -27,6 +27,7 @@ fn accepted_acquisition(sat: SatId, code_phase_samples: usize) -> AcqResult {
         candidate_rank: 1,
         is_primary_candidate: true,
         doppler_hz: Hertz(0.0),
+        doppler_rate_hz_per_s: 0.0,
         carrier_hz: Hertz(0.0),
         code_phase_samples,
         peak: 1.0,
