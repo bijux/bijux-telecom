@@ -393,6 +393,8 @@ pub struct AcqComponentStatistic {
     pub mean: f32,
     pub peak_mean_ratio: f32,
     pub peak_second_ratio: f32,
+    #[serde(default)]
+    pub secondary_code_phase_periods: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -630,14 +632,19 @@ pub fn acq_result_stability_key(result: &AcqResult) -> String {
                 .components
                 .iter()
                 .map(|component| {
+                    let secondary_code_phase_periods = component
+                        .secondary_code_phase_periods
+                        .map(|phase| phase.to_string())
+                        .unwrap_or_else(|| "none".to_string());
                     format!(
-                        "{:?}:{:.6}:{:.6}:{:.6}:{:.6}:{:.6}",
+                        "{:?}:{:.6}:{:.6}:{:.6}:{:.6}:{:.6}:{}",
                         component.role,
                         component.peak,
                         component.second_peak,
                         component.mean,
                         component.peak_mean_ratio,
-                        component.peak_second_ratio
+                        component.peak_second_ratio,
+                        secondary_code_phase_periods
                     )
                 })
                 .collect::<Vec<_>>()
@@ -1570,6 +1577,7 @@ mod tests {
                         mean: 1.5,
                         peak_mean_ratio: 8.0,
                         peak_second_ratio: 4.0,
+                        secondary_code_phase_periods: None,
                     },
                     AcqComponentStatistic {
                         role: SignalComponentRole::Pilot,
@@ -1578,6 +1586,7 @@ mod tests {
                         mean: 1.4,
                         peak_mean_ratio: 7.857143,
                         peak_second_ratio: 4.4,
+                        secondary_code_phase_periods: None,
                     },
                 ],
             }),
@@ -1614,6 +1623,7 @@ mod tests {
                     mean: 1.5,
                     peak_mean_ratio: 8.0,
                     peak_second_ratio: 4.0,
+                    secondary_code_phase_periods: None,
                 }],
             }),
         }];
@@ -1627,8 +1637,46 @@ mod tests {
                 mean: 1.5,
                 peak_mean_ratio: 8.0,
                 peak_second_ratio: 4.0,
+                secondary_code_phase_periods: None,
             }],
         });
+
+        assert_ne!(acq_result_stability_key(&base), acq_result_stability_key(&changed));
+    }
+
+    #[test]
+    fn acq_result_stability_key_includes_component_secondary_code_phase() {
+        let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
+        let mut base = acq_result_for_summary(sat, AcqHypothesis::Accepted);
+        base.evidence = vec![AcqEvidence {
+            rank: 1,
+            code_phase_samples: base.code_phase_samples,
+            doppler_hz: base.carrier_hz.0,
+            peak: base.peak,
+            second_peak: base.second_peak,
+            peak_mean_ratio: base.peak_mean_ratio,
+            peak_second_ratio: base.peak_second_ratio,
+            mean: base.mean,
+            component_provenance: Some(AcqComponentProvenance {
+                combination_mode: AcqComponentCombinationMode::CoherentComponentSum,
+                components: vec![AcqComponentStatistic {
+                    role: SignalComponentRole::Pilot,
+                    peak: 12.0,
+                    second_peak: 3.0,
+                    mean: 1.5,
+                    peak_mean_ratio: 8.0,
+                    peak_second_ratio: 4.0,
+                    secondary_code_phase_periods: Some(17),
+                }],
+            }),
+        }];
+        let mut changed = base.clone();
+        changed.evidence[0]
+            .component_provenance
+            .as_mut()
+            .expect("component provenance must exist")
+            .components[0]
+            .secondary_code_phase_periods = Some(18);
 
         assert_ne!(acq_result_stability_key(&base), acq_result_stability_key(&changed));
     }

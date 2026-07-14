@@ -328,6 +328,7 @@ fn strategy_component_provenance(
                     mean: metrics.mean,
                     peak_mean_ratio: metrics.peak / (metrics.mean + 1e-6),
                     peak_second_ratio: metrics.peak / (metrics.second + 1e-6),
+                    secondary_code_phase_periods: None,
                 }
             })
             .collect(),
@@ -2568,6 +2569,7 @@ mod tests {
                         mean: 2.0,
                         peak_mean_ratio: 5.0,
                         peak_second_ratio: 2.0,
+                        secondary_code_phase_periods: None,
                     }],
                 }),
             }],
