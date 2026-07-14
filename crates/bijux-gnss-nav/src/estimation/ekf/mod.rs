@@ -2,8 +2,8 @@
 
 pub mod filter;
 pub mod models;
-pub mod statistics;
 pub mod state;
+pub mod statistics;
 pub mod traits;
 
 #[cfg(test)]

@@ -690,10 +690,7 @@ mod tests {
 
         assert_eq!(decision.status, "degraded");
         assert!(decision.downgraded);
-        assert_eq!(
-            decision.downgrade_reason.as_deref(),
-            Some("missing_integrity_evidence")
-        );
+        assert_eq!(decision.downgrade_reason.as_deref(), Some("missing_integrity_evidence"));
         assert_eq!(decision.claim, AdvancedSolutionClaim::FallbackNav);
     }
 

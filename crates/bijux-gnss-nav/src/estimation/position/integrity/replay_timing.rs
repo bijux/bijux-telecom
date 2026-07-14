@@ -84,10 +84,8 @@ pub fn detect_replay_timing_anomaly(
         (delay_steps_m.iter().map(|step_m| (step_m - common_delay_step_m).powi(2)).sum::<f64>()
             / delay_steps_m.len() as f64)
             .sqrt();
-    let max_centered_delay_m = delay_steps_m
-        .iter()
-        .map(|step_m| (step_m - common_delay_step_m).abs())
-        .fold(0.0, f64::max);
+    let max_centered_delay_m =
+        delay_steps_m.iter().map(|step_m| (step_m - common_delay_step_m).abs()).fold(0.0, f64::max);
     if centered_delay_rms_m < CENTERED_DELAY_RMS_THRESHOLD_M
         || max_centered_delay_m < MAX_CENTERED_DELAY_THRESHOLD_M
     {

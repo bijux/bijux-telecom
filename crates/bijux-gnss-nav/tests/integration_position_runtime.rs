@@ -2,9 +2,7 @@
 
 mod support;
 
-use bijux_gnss_nav::api::{
-    PositionBroadcastNavigation, PositionRuntime, PositionRuntimeConfig,
-};
+use bijux_gnss_nav::api::{PositionBroadcastNavigation, PositionRuntime, PositionRuntimeConfig};
 use support::public_spp_case::ab43_public_spp_case;
 use support::public_station_truth::station_enu_error_m;
 
@@ -30,10 +28,9 @@ fn position_runtime_solves_public_broadcast_navigation_near_station_truth() {
     let mut best_error_m = f64::INFINITY;
     let mut best_enu_error = None;
     for epoch in &case.observations.epochs {
-        let Some(solution) = runtime.solve_epoch_with_gps_broadcast_navigation(
-            epoch,
-            &case.navigation,
-        ) else {
+        let Some(solution) =
+            runtime.solve_epoch_with_gps_broadcast_navigation(epoch, &case.navigation)
+        else {
             continue;
         };
 
@@ -54,10 +51,7 @@ fn position_runtime_solves_public_broadcast_navigation_near_station_truth() {
         solved_epochs += 1;
     }
 
-    assert!(
-        solved_epochs > 0,
-        "public dataset should yield at least one runtime solution"
-    );
+    assert!(solved_epochs > 0, "public dataset should yield at least one runtime solution");
     assert!(best_error_m < 50.0, "best runtime error {best_error_m:.3} m exceeds tolerance");
 
     let best_enu_error = best_enu_error.expect("best runtime ENU error");
@@ -92,8 +86,8 @@ fn position_runtime_matches_equivalent_navigation_entry_route() {
         .epochs
         .iter()
         .find_map(|epoch| {
-            let broadcast_solution =
-                broadcast_runtime.solve_epoch_with_gps_broadcast_navigation(epoch, &case.navigation)?;
+            let broadcast_solution = broadcast_runtime
+                .solve_epoch_with_gps_broadcast_navigation(epoch, &case.navigation)?;
             let entry_solution = entry_runtime
                 .solve_epoch_with_navigation_data_and_broadcast_ionosphere(
                     epoch,
@@ -109,12 +103,9 @@ fn position_runtime_matches_equivalent_navigation_entry_route() {
     assert!((broadcast_solution.ecef_x_m.0 - entry_solution.ecef_x_m.0).abs() < 1.0e-6);
     assert!((broadcast_solution.ecef_y_m.0 - entry_solution.ecef_y_m.0).abs() < 1.0e-6);
     assert!((broadcast_solution.ecef_z_m.0 - entry_solution.ecef_z_m.0).abs() < 1.0e-6);
-    assert!(
-        (broadcast_solution.clock_bias_s.0 - entry_solution.clock_bias_s.0).abs() < 1.0e-12
-    );
+    assert!((broadcast_solution.clock_bias_s.0 - entry_solution.clock_bias_s.0).abs() < 1.0e-12);
     assert_eq!(broadcast_solution.residuals.len(), entry_solution.residuals.len());
-    let broadcast_provenance =
-        broadcast_solution.provenance.expect("broadcast runtime provenance");
+    let broadcast_provenance = broadcast_solution.provenance.expect("broadcast runtime provenance");
     let entry_provenance = entry_solution.provenance.expect("entry runtime provenance");
     assert_eq!(broadcast_provenance.solver_family, entry_provenance.solver_family);
     assert_eq!(broadcast_provenance.weighting_mode, entry_provenance.weighting_mode);

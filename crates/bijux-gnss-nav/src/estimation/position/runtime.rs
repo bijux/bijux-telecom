@@ -1,29 +1,28 @@
 #![allow(missing_docs)]
 
+use crate::api::{
+    advance_residual_whiteness_suspect_streak, advance_satellite_clock_suspect_streak,
+    classify_residual_temporal_correlation, detect_common_code_doppler_anomaly,
+    detect_constellation_clock_inconsistencies, detect_replay_timing_anomaly,
+    detect_residual_temporal_correlation, detect_satellite_clock_anomaly, ecef_to_geodetic,
+    elevation_azimuth_deg, formal_protection_levels,
+    position_broadcast_navigation_from_galileo_navigations,
+    position_broadcast_navigation_from_gps_ephemerides, position_measurement_weight,
+    position_observation_has_valid_satellite_time, position_satellite_state_from_observation,
+    residual_temporal_correlation_is_persistent, ConstellationClockInconsistency,
+    GalileoBroadcastNavigationData, GpsBroadcastNavigationData, GpsEphemeris,
+    ImpossibleGeometryEvidence, KlobucharCoefficients, PositionBroadcastNavigation,
+    PositionFilterDivergenceReason, PositionFilterMotionClass, PositionObservation,
+    PositionRobustWeighting, PositionSolutionSmoother, PositionSolutionSmootherConfig,
+    PositionSolveRefusalKind, PositionSolver, PositionWeightingModel, RaimFaultDetectionStatus,
+    ResidualTemporalCorrelation, WeightingConfig,
+};
 use bijux_gnss_core::api::{
     check_nav_solution_sanity, is_solution_valid, obs_epoch_stability_key, Constellation,
     MeasurementRejectReason, Meters, NavAssumptions, NavLifecycleState, NavProvenance,
     NavRefusalClass, NavResidual, NavSolutionEpoch, NavUncertaintyClass, ObsEpoch, ObsSatellite,
     Seconds, SolutionStatus, SolutionValidity, NAV_OUTPUT_STABILITY_SIGNATURE_VERSION,
     NAV_SOLUTION_MODEL_VERSION,
-};
-use crate::api::{
-    advance_residual_whiteness_suspect_streak, advance_satellite_clock_suspect_streak,
-    classify_residual_temporal_correlation, detect_common_code_doppler_anomaly,
-    detect_constellation_clock_inconsistencies, detect_replay_timing_anomaly,
-    detect_residual_temporal_correlation, detect_satellite_clock_anomaly,
-    ecef_to_geodetic, elevation_azimuth_deg, formal_protection_levels,
-    position_satellite_state_from_observation,
-    position_broadcast_navigation_from_galileo_navigations,
-    position_broadcast_navigation_from_gps_ephemerides, position_measurement_weight,
-    position_observation_has_valid_satellite_time, GalileoBroadcastNavigationData,
-    GpsBroadcastNavigationData, GpsEphemeris, ImpossibleGeometryEvidence, KlobucharCoefficients,
-    PositionBroadcastNavigation, PositionFilterDivergenceReason, PositionFilterMotionClass,
-    PositionObservation, PositionRobustWeighting, PositionSolutionSmoother,
-    PositionSolutionSmootherConfig, PositionSolveRefusalKind, PositionSolver,
-    PositionWeightingModel, RaimFaultDetectionStatus, ResidualTemporalCorrelation,
-    WeightingConfig, residual_temporal_correlation_is_persistent,
-    ConstellationClockInconsistency,
 };
 
 const FIXED_VALIDATED_SIGMA_H_FLOOR_M: f64 = 0.02;
@@ -2531,4 +2530,3 @@ impl ClockModel {
         (self.bias_s, self.drift_s)
     }
 }
-

@@ -136,25 +136,21 @@ mod tests {
 
     #[test]
     fn innovation_consistency_bounds_reject_invalid_probability_ranges() {
-        assert!(
-            innovation_consistency_bounds(
-                1,
-                InnovationConsistencyConfig {
-                    lower_tail_probability: 0.9,
-                    upper_tail_probability: 0.1,
-                },
-            )
-            .is_none()
-        );
-        assert!(
-            innovation_consistency_bounds(
-                1,
-                InnovationConsistencyConfig {
-                    lower_tail_probability: 0.0,
-                    upper_tail_probability: 0.99,
-                },
-            )
-            .is_none()
-        );
+        assert!(innovation_consistency_bounds(
+            1,
+            InnovationConsistencyConfig {
+                lower_tail_probability: 0.9,
+                upper_tail_probability: 0.1,
+            },
+        )
+        .is_none());
+        assert!(innovation_consistency_bounds(
+            1,
+            InnovationConsistencyConfig {
+                lower_tail_probability: 0.0,
+                upper_tail_probability: 0.99,
+            },
+        )
+        .is_none());
     }
 }

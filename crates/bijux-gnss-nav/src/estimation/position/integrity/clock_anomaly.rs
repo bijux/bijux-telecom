@@ -2,7 +2,9 @@
 
 use bijux_gnss_core::api::SatId;
 
-use crate::estimation::position::raim::{RaimFaultDetection, RaimFaultDetectionStatus, RaimFaultExclusion};
+use crate::estimation::position::raim::{
+    RaimFaultDetection, RaimFaultDetectionStatus, RaimFaultExclusion,
+};
 
 const MIN_PERSISTENT_SUSPECT_EPOCHS: usize = 2;
 

@@ -3,10 +3,6 @@
 use std::collections::BTreeMap;
 
 use super::quality::{jitter_summary, BaselineSolution, JitterSummary};
-use bijux_gnss_core::api::{
-    Constellation, Cycles, DoubleDifference, Hertz, Meters, ObsEpoch, ReceiverRole, SigId,
-    SingleDifference,
-};
 use crate::api::{
     choose_rtk_single_difference_reference_signal,
     choose_rtk_single_difference_reference_signals_by_constellation,
@@ -14,6 +10,10 @@ use crate::api::{
     rtk_float_baseline_from_double_differences, rtk_single_differences_from_obs_epochs,
     GpsEphemeris, RtkDoubleDifferenceObservation, RtkFloatBaselineSolution,
     RtkSingleDifferenceObservation,
+};
+use bijux_gnss_core::api::{
+    Constellation, Cycles, DoubleDifference, Hertz, Meters, ObsEpoch, ReceiverRole, SigId,
+    SingleDifference,
 };
 
 #[derive(Debug, Clone)]

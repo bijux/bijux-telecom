@@ -177,9 +177,8 @@ impl Ekf {
         }
 
         self.health.normalized_innovation_squared = Some(chi);
-        self.health.peak_normalized_innovation_squared = Some(
-            self.health.peak_normalized_innovation_squared.unwrap_or(0.0).max(chi),
-        );
+        self.health.peak_normalized_innovation_squared =
+            Some(self.health.peak_normalized_innovation_squared.unwrap_or(0.0).max(chi));
         if let Some(config) = self.config.innovation_consistency {
             if let Some(bounds) = innovation_consistency_bounds(m, config) {
                 self.health.innovation_consistency_lower_bound = Some(bounds.lower_bound);

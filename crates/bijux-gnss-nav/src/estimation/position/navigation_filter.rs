@@ -1,19 +1,20 @@
 #![allow(missing_docs)]
 
+use crate::api::{
+    clamp_ztd, compute_corrections, ecef_to_geodetic, is_ephemeris_valid,
+    position_dops_from_satellite_positions, position_measurement_weight,
+    sat_state_gps_l1ca_at_receive_time, AmbiguityManager, AtmosphereConfig,
+    CarrierPhaseMeasurement, CodeBiasProvider, CorrectionContext, DopplerMeasurement, Ekf,
+    EkfConfig, GpsEphemeris, GpsSatState, InnovationConsistencyConfig, InterSystemBiasManager,
+    KlobucharCoefficients, Matrix, NavClockModel, PhaseBiasProvider, PositionDops,
+    PositionObservation, PositionSolver, PositionWeightingModel, ProcessNoiseConfig,
+    PseudorangeMeasurement, WeightingConfig, ZeroBiases,
+};
 use bijux_gnss_core::api::{
     elevation_azimuth_deg, obs_epoch_stability_key, Constellation, Epoch, Llh, Meters,
     NavHealthEvent, NavLifecycleState, NavRefusalClass, NavSolutionEpoch, NavUncertaintyClass,
     ObsEpoch, ObsSatellite, Seconds, SolutionStatus, SolutionValidity,
     NAV_OUTPUT_STABILITY_SIGNATURE_VERSION, NAV_SOLUTION_MODEL_VERSION,
-};
-use crate::api::{
-    clamp_ztd, compute_corrections, ecef_to_geodetic, is_ephemeris_valid,
-    position_dops_from_satellite_positions, position_measurement_weight,
-    sat_state_gps_l1ca_at_receive_time, AmbiguityManager, AtmosphereConfig, CarrierPhaseMeasurement,
-    CodeBiasProvider, CorrectionContext, DopplerMeasurement, Ekf, EkfConfig, GpsEphemeris,
-    GpsSatState, InnovationConsistencyConfig, InterSystemBiasManager, KlobucharCoefficients,
-    Matrix, NavClockModel, PhaseBiasProvider, PositionDops, PositionObservation, PositionSolver,
-    PositionWeightingModel, ProcessNoiseConfig, PseudorangeMeasurement, WeightingConfig, ZeroBiases,
 };
 use bijux_gnss_signal::api::signal_wavelength_m;
 
@@ -142,11 +143,7 @@ impl NavigationFilter {
     }
 
     pub fn new_with_config(config: NavigationFilterConfig) -> Self {
-        Self::new_with_troposphere(
-            config.tropo_enabled,
-            config.tropo_ztd_m,
-            config.thresholds,
-        )
+        Self::new_with_troposphere(config.tropo_enabled, config.tropo_ztd_m, config.thresholds)
     }
 
     pub fn solve_epoch(
@@ -279,7 +276,8 @@ impl NavigationFilter {
 
         let mut explain_reasons = vec![format!("usable_satellites={used}")];
         if stale_ephemeris_rejections > 0 {
-            explain_reasons.push(format!("stale_ephemeris_rejections={stale_ephemeris_rejections}"));
+            explain_reasons
+                .push(format!("stale_ephemeris_rejections={stale_ephemeris_rejections}"));
         }
         explain_reasons.push(if klobuchar.is_some() {
             "ionosphere_correction=klobuchar_broadcast".to_string()
@@ -605,9 +603,9 @@ fn refusal_status(refusal_class: Option<NavRefusalClass>) -> SolutionStatus {
     match refusal_class {
         Some(
             NavRefusalClass::UnsupportedConstellation
-                | NavRefusalClass::MixedConstellationInput
-                | NavRefusalClass::InvalidEphemeris
-                | NavRefusalClass::PartialDecodedNavigationState,
+            | NavRefusalClass::MixedConstellationInput
+            | NavRefusalClass::InvalidEphemeris
+            | NavRefusalClass::PartialDecodedNavigationState,
         ) => SolutionStatus::Unavailable,
         Some(_) => SolutionStatus::Refused,
         None => SolutionStatus::Unavailable,
@@ -650,16 +648,15 @@ fn prime_state_from_wls(
     if observations.len() < 4 {
         return;
     }
-    let Some(solution) = PositionSolver {
-        apply_troposphere: tropo_enabled,
-        ..PositionSolver::new()
-    }
-    .solve_wls_with_broadcast_ionosphere(
-        &observations,
-        ephemerides,
-        obs.gps_time().map(|gps_time| gps_time.tow_s).unwrap_or(obs.t_rx_s.0),
-        klobuchar,
-    ) else {
+    let Some(solution) =
+        PositionSolver { apply_troposphere: tropo_enabled, ..PositionSolver::new() }
+            .solve_wls_with_broadcast_ionosphere(
+                &observations,
+                ephemerides,
+                obs.gps_time().map(|gps_time| gps_time.tow_s).unwrap_or(obs.t_rx_s.0),
+                klobuchar,
+            )
+    else {
         return;
     };
     filter.ekf.x[0] = solution.ecef_x_m;
