@@ -232,6 +232,68 @@ fn acquisition_supports_gps_l1_twenty_millisecond_integration_across_bit_boundar
     assert!(matches!(report.satellites[0].hypothesis.as_str(), "accepted" | "ambiguous"));
 }
 
+#[test]
+fn acquisition_supports_galileo_e5b_twenty_millisecond_integration_across_symbol_boundary() {
+    let config = ReceiverPipelineConfig {
+        sampling_freq_hz: 10_230_000.0,
+        intermediate_freq_hz: 0.0,
+        code_freq_basis_hz: 10_230_000.0,
+        code_length: 10_230,
+        acquisition_doppler_search_hz: 10_000,
+        acquisition_doppler_step_hz: 500,
+        ..ReceiverPipelineConfig::default()
+    };
+    let scenario = SyntheticScenario {
+        sample_rate_hz: config.sampling_freq_hz,
+        intermediate_freq_hz: config.intermediate_freq_hz,
+        receiver_clock_frequency_bias_hz: 0.0,
+        duration_s: 0.03,
+        seed: 2_407_1988,
+        satellites: vec![SyntheticSignalParams {
+            sat: SatId { constellation: Constellation::Galileo, prn: 11 },
+            glonass_frequency_channel: None,
+            signal_band: bijux_gnss_core::api::SignalBand::E5,
+            signal_code: bijux_gnss_core::api::SignalCode::E5b,
+            doppler_hz: -750.0,
+            code_phase_chips: 278.625,
+            carrier_phase_rad: 0.15,
+            cn0_db_hz: 54.0,
+            navigation_data: true.into(),
+        }],
+        ephemerides: Vec::new(),
+        id: "acquisition_coherent_integration_galileo_e5b_boundary_crossing".to_string(),
+    };
+    let frame = generate_l1_ca_multi(&config, &scenario);
+    let bundle = build_iq16_capture_bundle(
+        &scenario.id,
+        &scenario,
+        &frame,
+        "2026-07-09T00:00:00Z",
+        Some(
+            "integration acquisition coherent integration galileo e5b boundary crossing"
+                .to_string(),
+        ),
+    );
+    let scaled_frame = scaled_frame(&frame, bundle.truth.output_scale_applied);
+    let samples_per_code = (config.sampling_freq_hz / 1_000.0).round() as usize;
+    let shifted_frame = windowed_frame(&scaled_frame, 3 * samples_per_code, 20 * samples_per_code);
+
+    let report = validate_truth_guided_acquisition_coherent_integration(
+        &config,
+        &shifted_frame,
+        &bundle.truth,
+        20,
+        1,
+        2,
+        5,
+    );
+
+    assert!(report.pass, "{report:?}");
+    assert_eq!(report.satellites.len(), 1);
+    assert!(report.satellites[0].pass, "{report:?}");
+    assert!(matches!(report.satellites[0].hypothesis.as_str(), "accepted" | "ambiguous"));
+}
+
 fn scaled_frame(frame: &SamplesFrame, output_scale_applied: f32) -> SamplesFrame {
     SamplesFrame::new(
         frame.t0,
