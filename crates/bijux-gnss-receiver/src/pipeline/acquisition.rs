@@ -28,7 +28,7 @@ use crate::pipeline::acquisition_components::{
 use crate::pipeline::acquisition_symbol_hypotheses::{
     coherent_data_sign_hypotheses, coherent_secondary_code_phase_hypotheses,
 };
-use crate::pipeline::doppler::carrier_hz_from_doppler_hz;
+use crate::pipeline::doppler::{carrier_hz_from_doppler_hz, doppler_hz_from_carrier_hz};
 use bijux_gnss_signal::api::{
     measure_iq_front_end_metrics, samples_per_code, wipeoff_carrier, AcquisitionSignalModel,
     SignalError,
@@ -207,6 +207,8 @@ fn acquisition_signal_model_for_sat(
             glonass_frequency_channel,
             signal_band,
             signal_code,
+            doppler_center_hz: 0.0,
+            expected_line_of_sight_doppler_hz: None,
             doppler_search_hz: 0,
             doppler_step_hz: 1,
             coherent_ms: 1,
@@ -236,6 +238,17 @@ fn acquisition_signal_model_for_request(
             request.signal_code,
         )),
     }
+}
+
+fn request_search_center_hz(
+    signal_model: &AcquisitionSignalModel,
+    intermediate_freq_hz: f64,
+    request: AcqRequest,
+) -> f64 {
+    carrier_hz_from_doppler_hz(
+        signal_model.search_center_hz(intermediate_freq_hz),
+        request.doppler_center_hz,
+    )
 }
 
 fn threshold_provenance_for_request(
@@ -589,6 +602,8 @@ impl Acquisition {
     fn full_code_search_assumptions(
         &self,
         frame_samples: usize,
+        doppler_center_hz: f64,
+        expected_line_of_sight_doppler_hz: Option<f64>,
         doppler_search_hz: i32,
         doppler_step_hz: i32,
         coherent_ms: u32,
@@ -596,6 +611,8 @@ impl Acquisition {
         samples_per_code: usize,
     ) -> AcqAssumptions {
         AcqAssumptions {
+            doppler_center_hz,
+            expected_line_of_sight_doppler_hz,
             doppler_search_hz,
             doppler_step_hz,
             coherent_ms,
@@ -618,6 +635,8 @@ impl Acquisition {
                 sat.constellation,
                 resolved_acquisition_signal_band(&self.config, sat),
             ),
+            doppler_center_hz: 0.0,
+            expected_line_of_sight_doppler_hz: None,
             doppler_search_hz: self.doppler_search_hz,
             doppler_step_hz: self.doppler_step_hz,
             coherent_ms,
@@ -992,7 +1011,8 @@ impl Acquisition {
                 .iter()
                 .map(|strategy| strategy_component_indexes(strategy, &strategy_components))
                 .collect::<Vec<_>>();
-            let search_center_hz = signal_model.search_center_hz(self.config.intermediate_freq_hz);
+            let search_center_hz =
+                request_search_center_hz(&signal_model, self.config.intermediate_freq_hz, request);
             self.with_stats(|stats| {
                 stats.doppler_bins +=
                     doppler_bin_count(request.doppler_search_hz, request.doppler_step_hz.max(1));
@@ -1000,6 +1020,8 @@ impl Acquisition {
             let samples_per_code = signal_model.samples_per_code(self.config.sampling_freq_hz);
             let assumptions = self.full_code_search_assumptions(
                 frame.len(),
+                request.doppler_center_hz,
+                request.expected_line_of_sight_doppler_hz,
                 request.doppler_search_hz,
                 request.doppler_step_hz.max(1),
                 request.coherent_ms,
@@ -1100,6 +1122,7 @@ impl Acquisition {
 
             let mut doppler = -request.doppler_search_hz;
             while doppler <= request.doppler_search_hz {
+                let absolute_doppler_hz = request.doppler_center_hz + doppler as f64;
                 let carrier = carrier_hz_from_doppler_hz(search_center_hz, doppler as f64);
                 let mut component_accumulations = Vec::with_capacity(strategy_components.len());
 
@@ -1175,7 +1198,7 @@ impl Acquisition {
                         source_time: ReceiverSampleTrace::from_sample_time(frame.t0),
                         candidate_rank: 1,
                         is_primary_candidate: true,
-                        doppler_hz: Hertz(doppler as f64),
+                        doppler_hz: Hertz(absolute_doppler_hz),
                         carrier_hz: Hertz(carrier),
                         code_phase_samples: correlation_metrics.peak_idx,
                         peak: correlation_metrics.peak,
@@ -1190,7 +1213,7 @@ impl Acquisition {
                         evidence: vec![AcqEvidence {
                             rank: 1,
                             code_phase_samples: correlation_metrics.peak_idx,
-                            doppler_hz: carrier,
+                            doppler_hz: absolute_doppler_hz,
                             peak: correlation_metrics.peak,
                             second_peak: correlation_metrics.second,
                             peak_mean_ratio,
@@ -1262,7 +1285,7 @@ impl Acquisition {
                 if let Some(evidence) = candidate.evidence.first_mut() {
                     evidence.rank = candidate.candidate_rank;
                     evidence.code_phase_samples = candidate.code_phase_samples;
-                    evidence.doppler_hz = candidate.carrier_hz.0;
+                    evidence.doppler_hz = candidate.doppler_hz.0;
                     evidence.peak = candidate.peak;
                     evidence.second_peak = candidate.second_peak;
                     evidence.peak_mean_ratio = candidate.peak_mean_ratio;
@@ -1914,9 +1937,12 @@ fn zero_signal_run(
                 continue;
             }
         };
-        let search_center_hz = signal_model.search_center_hz(config.intermediate_freq_hz);
+        let search_center_hz =
+            request_search_center_hz(&signal_model, config.intermediate_freq_hz, request);
         let signal_code = resolved_request_signal_code(request);
         let assumptions = AcqAssumptions {
+            doppler_center_hz: request.doppler_center_hz,
+            expected_line_of_sight_doppler_hz: request.expected_line_of_sight_doppler_hz,
             doppler_search_hz: threshold_provenance.doppler_search_hz,
             doppler_step_hz: threshold_provenance.doppler_step_hz,
             coherent_ms: threshold_provenance.coherent_ms,
@@ -2021,6 +2047,8 @@ fn acquisition_request_error_candidates(
     let samples_per_code =
         samples_per_code(config.sampling_freq_hz, config.code_freq_basis_hz, config.code_length);
     let assumptions = AcqAssumptions {
+        doppler_center_hz: request.doppler_center_hz,
+        expected_line_of_sight_doppler_hz: request.expected_line_of_sight_doppler_hz,
         doppler_search_hz: threshold_provenance.doppler_search_hz,
         doppler_step_hz: threshold_provenance.doppler_step_hz,
         coherent_ms: threshold_provenance.coherent_ms,
@@ -2048,8 +2076,11 @@ fn acquisition_request_error_candidates(
         source_time,
         candidate_rank: 1,
         is_primary_candidate: true,
-        doppler_hz: Hertz(0.0),
-        carrier_hz: Hertz(config.intermediate_freq_hz),
+        doppler_hz: Hertz(request.doppler_center_hz),
+        carrier_hz: Hertz(carrier_hz_from_doppler_hz(
+            config.intermediate_freq_hz,
+            request.doppler_center_hz,
+        )),
         code_phase_samples: 0,
         peak: 0.0,
         second_peak: 0.0,
@@ -2105,7 +2136,7 @@ fn zero_signal_candidate(
         source_time,
         candidate_rank: 1,
         is_primary_candidate: true,
-        doppler_hz: Hertz(0.0),
+        doppler_hz: Hertz(assumptions.doppler_center_hz),
         carrier_hz: Hertz(intermediate_freq_hz),
         code_phase_samples: 0,
         peak: 0.0,
@@ -2170,7 +2201,7 @@ fn unsupported_coherent_integration_candidate(
         source_time,
         candidate_rank: 1,
         is_primary_candidate: true,
-        doppler_hz: Hertz(0.0),
+        doppler_hz: Hertz(assumptions.doppler_center_hz),
         carrier_hz: Hertz(intermediate_freq_hz),
         code_phase_samples: 0,
         peak: 0.0,
@@ -2776,6 +2807,10 @@ fn refine_acquisition_candidates(
             candidate.carrier_hz = Hertz(
                 coarse_carrier_hz + (refinement.doppler_offset_bins * doppler_step_hz as f64),
             );
+            candidate.doppler_hz = Hertz(doppler_hz_from_carrier_hz(
+                acquisition.config.intermediate_freq_hz,
+                candidate.carrier_hz.0,
+            ));
             candidate.doppler_refinement = Some(AcqDopplerRefinement {
                 method: JOINT_ACQUISITION_REFINEMENT_METHOD.to_string(),
                 coarse_carrier_hz: Hertz(coarse_carrier_hz),
@@ -2801,6 +2836,10 @@ fn refine_acquisition_candidates(
             doppler_step_hz,
         ) {
             candidate.carrier_hz = Hertz(coarse_carrier_hz + refinement.offset_hz);
+            candidate.doppler_hz = Hertz(doppler_hz_from_carrier_hz(
+                acquisition.config.intermediate_freq_hz,
+                candidate.carrier_hz.0,
+            ));
             candidate.doppler_refinement = Some(refinement);
         }
         candidate.code_phase_refinement = acquisition.estimate_acquisition_code_phase_refinement(
@@ -3411,6 +3450,8 @@ mod tests {
                 glonass_frequency_channel: None,
                 signal_band: SignalBand::L1,
                 signal_code: SignalCode::Unknown,
+                doppler_center_hz: 0.0,
+                expected_line_of_sight_doppler_hz: None,
                 doppler_search_hz: 2_000,
                 doppler_step_hz: 250,
                 coherent_ms: 1,
@@ -3441,6 +3482,8 @@ mod tests {
                 glonass_frequency_channel: None,
                 signal_band: SignalBand::L2,
                 signal_code: SignalCode::L2C,
+                doppler_center_hz: 0.0,
+                expected_line_of_sight_doppler_hz: None,
                 doppler_search_hz: 2_000,
                 doppler_step_hz: 250,
                 coherent_ms: 1,
@@ -3477,6 +3520,8 @@ mod tests {
                 glonass_frequency_channel: Some(channel),
                 signal_band: SignalBand::L1,
                 signal_code: SignalCode::Unknown,
+                doppler_center_hz: 0.0,
+                expected_line_of_sight_doppler_hz: None,
                 doppler_search_hz: 2_000,
                 doppler_step_hz: 250,
                 coherent_ms: 1,
@@ -3521,6 +3566,8 @@ mod tests {
                 glonass_frequency_channel: Some(channel),
                 signal_band: SignalBand::L1,
                 signal_code: SignalCode::Unknown,
+                doppler_center_hz: 0.0,
+                expected_line_of_sight_doppler_hz: None,
                 doppler_search_hz: 2_000,
                 doppler_step_hz: 250,
                 coherent_ms: 1,
@@ -3547,6 +3594,8 @@ mod tests {
             glonass_frequency_channel: None,
             signal_band: SignalBand::L2,
             signal_code: SignalCode::L2C,
+            doppler_center_hz: 0.0,
+            expected_line_of_sight_doppler_hz: None,
             doppler_search_hz: 2_000,
             doppler_step_hz: 250,
             coherent_ms: 1,
@@ -3592,6 +3641,8 @@ mod tests {
             glonass_frequency_channel: None,
             signal_band: SignalBand::L5,
             signal_code: SignalCode::L5Q,
+            doppler_center_hz: 0.0,
+            expected_line_of_sight_doppler_hz: None,
             doppler_search_hz: 2_000,
             doppler_step_hz: 250,
             coherent_ms: 1,
@@ -3631,6 +3682,8 @@ mod tests {
             glonass_frequency_channel: None,
             signal_band: SignalBand::E5,
             signal_code: SignalCode::E5b,
+            doppler_center_hz: 0.0,
+            expected_line_of_sight_doppler_hz: None,
             doppler_search_hz: 2_000,
             doppler_step_hz: 250,
             coherent_ms: 1,
@@ -4089,6 +4142,8 @@ mod tests {
             glonass_frequency_channel: None,
             signal_band: SignalBand::L5,
             signal_code: SignalCode::L5Q,
+            doppler_center_hz: 0.0,
+            expected_line_of_sight_doppler_hz: None,
             doppler_search_hz: 2_000,
             doppler_step_hz: 250,
             coherent_ms: 3,
@@ -4268,6 +4323,8 @@ mod tests {
             glonass_frequency_channel: None,
             signal_band: SignalBand::L5,
             signal_code: SignalCode::L5Q,
+            doppler_center_hz: 0.0,
+            expected_line_of_sight_doppler_hz: None,
             doppler_search_hz: 0,
             doppler_step_hz: 1,
             coherent_ms: 1,
@@ -4279,6 +4336,65 @@ mod tests {
         let result = run.results[0].first().expect("acquisition result");
         assert_eq!(result.signal_band, SignalBand::L5);
         assert_eq!(result.signal_code, SignalCode::L5Q);
+    }
+
+    #[test]
+    fn centered_doppler_requests_report_absolute_doppler_and_assumptions() {
+        let config = ReceiverPipelineConfig {
+            sampling_freq_hz: 4_092_000.0,
+            intermediate_freq_hz: 0.0,
+            code_freq_basis_hz: 1_023_000.0,
+            code_length: 1023,
+            acquisition_doppler_search_hz: 0,
+            acquisition_doppler_step_hz: 1,
+            ..ReceiverPipelineConfig::default()
+        };
+        let sat = SatId { constellation: Constellation::Gps, prn: 7 };
+        let true_doppler_hz = 750.0;
+        let frame = generate_l1_ca(
+            &config,
+            SyntheticSignalParams {
+                sat,
+                glonass_frequency_channel: None,
+                signal_band: SignalBand::L1,
+                signal_code: SignalCode::Unknown,
+                doppler_hz: true_doppler_hz,
+                code_phase_chips: 147.25,
+                carrier_phase_rad: 0.0,
+                cn0_db_hz: 58.0,
+                navigation_data: false.into(),
+            },
+            0xC3E1_7EAD,
+            0.020,
+        );
+        let request = AcqRequest {
+            sat,
+            glonass_frequency_channel: None,
+            signal_band: SignalBand::L1,
+            signal_code: SignalCode::Unknown,
+            doppler_center_hz: true_doppler_hz,
+            expected_line_of_sight_doppler_hz: Some(true_doppler_hz),
+            doppler_search_hz: 0,
+            doppler_step_hz: 1,
+            coherent_ms: 1,
+            noncoherent: 1,
+        };
+
+        let result = Acquisition::new(config, ReceiverRuntime::default())
+            .run_fft_for_requests(&frame, &[request])
+            .remove(0);
+
+        assert!(
+            matches!(result.hypothesis, AcqHypothesis::Accepted | AcqHypothesis::Ambiguous),
+            "{result:?}"
+        );
+        assert!((result.doppler_hz.0 - true_doppler_hz).abs() <= 1.0e-6, "{result:?}");
+        let assumptions = result
+            .assumptions
+            .as_ref()
+            .expect("centered acquisition result should preserve assumptions");
+        assert_eq!(assumptions.doppler_center_hz, true_doppler_hz);
+        assert_eq!(assumptions.expected_line_of_sight_doppler_hz, Some(true_doppler_hz));
     }
 
     #[test]
@@ -4310,6 +4426,8 @@ mod tests {
             glonass_frequency_channel: None,
             signal_band: SignalBand::E5,
             signal_code: SignalCode::E5b,
+            doppler_center_hz: 0.0,
+            expected_line_of_sight_doppler_hz: None,
             doppler_search_hz: 0,
             doppler_step_hz: 1,
             coherent_ms: 1,
@@ -4352,6 +4470,8 @@ mod tests {
             glonass_frequency_channel: None,
             signal_band: SignalBand::E5,
             signal_code: SignalCode::E5a,
+            doppler_center_hz: 0.0,
+            expected_line_of_sight_doppler_hz: None,
             doppler_search_hz: 0,
             doppler_step_hz: 1,
             coherent_ms: 1,
@@ -4390,6 +4510,8 @@ mod tests {
             glonass_frequency_channel: None,
             signal_band: SignalBand::E5,
             signal_code: SignalCode::E5a,
+            doppler_center_hz: 0.0,
+            expected_line_of_sight_doppler_hz: None,
             doppler_search_hz: 0,
             doppler_step_hz: 1,
             coherent_ms: 1,
@@ -4463,6 +4585,8 @@ mod tests {
             glonass_frequency_channel: None,
             signal_band: SignalBand::E5,
             signal_code: SignalCode::E5a,
+            doppler_center_hz: 0.0,
+            expected_line_of_sight_doppler_hz: None,
             doppler_search_hz: 0,
             doppler_step_hz: 1,
             coherent_ms: 2,
@@ -4496,6 +4620,8 @@ mod tests {
             glonass_frequency_channel: None,
             signal_band: SignalBand::L5,
             signal_code: SignalCode::L5Q,
+            doppler_center_hz: 0.0,
+            expected_line_of_sight_doppler_hz: None,
             doppler_search_hz: 0,
             doppler_step_hz: 1,
             coherent_ms: 1,
@@ -4801,6 +4927,8 @@ mod tests {
             glonass_frequency_channel: None,
             signal_band: SignalBand::E5,
             signal_code: SignalCode::E5b,
+            doppler_center_hz: 0.0,
+            expected_line_of_sight_doppler_hz: None,
             doppler_search_hz: 2_000,
             doppler_step_hz: 250,
             coherent_ms: 1,
@@ -4912,6 +5040,8 @@ mod tests {
             glonass_frequency_channel: None,
             signal_band: SignalBand::E1,
             signal_code: SignalCode::E1B,
+            doppler_center_hz: 0.0,
+            expected_line_of_sight_doppler_hz: None,
             doppler_search_hz: config.acquisition_doppler_search_hz,
             doppler_step_hz: config.acquisition_doppler_step_hz,
             coherent_ms: config.acquisition_integration_ms,
@@ -4998,6 +5128,8 @@ mod tests {
             glonass_frequency_channel: None,
             signal_band: SignalBand::E1,
             signal_code: SignalCode::E1B,
+            doppler_center_hz: 0.0,
+            expected_line_of_sight_doppler_hz: None,
             doppler_search_hz: config.acquisition_doppler_search_hz,
             doppler_step_hz: config.acquisition_doppler_step_hz,
             coherent_ms: config.acquisition_integration_ms,

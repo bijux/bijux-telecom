@@ -71,6 +71,8 @@ fn acquisition_engine_detects_beidou_b1i_requests_across_prns() {
             glonass_frequency_channel: None,
             signal_band: bijux_gnss_core::api::SignalBand::B1,
             signal_code: bijux_gnss_core::api::SignalCode::B1I,
+            doppler_center_hz: 0.0,
+            expected_line_of_sight_doppler_hz: None,
             doppler_search_hz: 0,
             doppler_step_hz: 250,
             coherent_ms: 1,

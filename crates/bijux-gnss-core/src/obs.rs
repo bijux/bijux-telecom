@@ -37,6 +37,10 @@ fn default_signal_code() -> SignalCode {
     SignalCode::Unknown
 }
 
+fn default_doppler_center_hz() -> f64 {
+    0.0
+}
+
 fn default_cycles_zero() -> Cycles {
     Cycles(0.0)
 }
@@ -352,6 +356,10 @@ pub struct AcqRequest {
     pub signal_band: SignalBand,
     #[serde(default = "default_signal_code")]
     pub signal_code: SignalCode,
+    #[serde(default = "default_doppler_center_hz")]
+    pub doppler_center_hz: f64,
+    #[serde(default)]
+    pub expected_line_of_sight_doppler_hz: Option<f64>,
     pub doppler_search_hz: i32,
     pub doppler_step_hz: i32,
     pub coherent_ms: u32,
@@ -387,6 +395,10 @@ impl std::fmt::Display for AcqHypothesis {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcqAssumptions {
+    #[serde(default = "default_doppler_center_hz")]
+    pub doppler_center_hz: f64,
+    #[serde(default)]
+    pub expected_line_of_sight_doppler_hz: Option<f64>,
     pub doppler_search_hz: i32,
     pub doppler_step_hz: i32,
     pub coherent_ms: u32,
