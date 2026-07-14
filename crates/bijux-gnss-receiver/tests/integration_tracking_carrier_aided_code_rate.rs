@@ -4,7 +4,7 @@ mod support;
 
 use bijux_gnss_core::api::{
     AcqHypothesis, AcqResult, Constellation, Hertz, ReceiverSampleTrace, SatId, SignalBand,
-    SignalCode, BEIDOU_B1_CARRIER_HZ, GPS_L1_CA_CARRIER_HZ, GPS_L5_CARRIER_HZ,
+    SignalCode, SignalSpec, BEIDOU_B1_CARRIER_HZ, GPS_L1_CA_CARRIER_HZ, GPS_L5_CARRIER_HZ,
 };
 use bijux_gnss_receiver::api::{
     sim::{
@@ -15,7 +15,8 @@ use bijux_gnss_receiver::api::{
     ReceiverPipelineConfig, ReceiverRuntime, TrackingEngine,
 };
 use bijux_gnss_signal::api::{
-    shared_path_code_rate_hz, signal_spec_beidou_b1i, signal_spec_gps_l5_i,
+    receiver_search_code_phase_samples, shared_path_code_rate_hz, signal_spec_beidou_b1i,
+    signal_spec_gps_l5_i,
 };
 
 use support::tracking_truth::{post_lock_code_phase_errors_samples, stable_tracking_window};
@@ -25,6 +26,8 @@ const CARRIER_AID_CN0_DB_HZ: f32 = 75.0;
 const CARRIER_AID_MIN_STABLE_EPOCHS: usize = 20;
 const CARRIER_AID_CODE_PHASE_ERROR_MAX_SAMPLES: f64 = 2.0;
 const CARRIER_AID_CODE_RATE_ERROR_MAX_HZ: f64 = 2.0;
+const CARRIER_AID_DRIFT_CODE_PHASE_ERROR_MAX_SAMPLES: f64 = 2.5;
+const CARRIER_AID_DRIFT_CODE_RATE_ERROR_MAX_HZ: f64 = 3.0;
 
 fn accepted_acquisition(
     sat: SatId,
@@ -114,6 +117,56 @@ fn synthetic_signal_with_carrier_aided_code_rate(
         },
         receiver_oscillator,
     )
+}
+
+fn oscillator_effective_elapsed_s(
+    sample_index: u64,
+    sample_rate_hz: f64,
+    receiver_oscillator: &SyntheticReceiverOscillatorModel,
+) -> f64 {
+    let nominal_elapsed_s = sample_index as f64 / sample_rate_hz;
+    nominal_elapsed_s * (1.0 + receiver_oscillator.sampling_clock_fractional_error)
+        + 0.5
+            * receiver_oscillator.sampling_clock_fractional_drift_per_s
+            * nominal_elapsed_s
+            * nominal_elapsed_s
+}
+
+fn dynamic_expected_code_rate_hz(
+    sample_index: u64,
+    sample_rate_hz: f64,
+    signal: SignalSpec,
+    receiver_oscillator: &SyntheticReceiverOscillatorModel,
+) -> f64 {
+    signal.code_rate_hz
+        * (1.0
+            + receiver_oscillator.sampling_clock_fractional_error
+            + receiver_oscillator.sampling_clock_fractional_drift_per_s
+                * (sample_index as f64 / sample_rate_hz))
+}
+
+fn dynamic_expected_code_phase_samples(
+    config: &ReceiverPipelineConfig,
+    sample_index: u64,
+    initial_code_phase_chips: f64,
+    signal: SignalSpec,
+    receiver_oscillator: &SyntheticReceiverOscillatorModel,
+) -> f64 {
+    let code_phase_chips = initial_code_phase_chips
+        + signal.code_rate_hz
+            * oscillator_effective_elapsed_s(
+                sample_index,
+                config.sampling_freq_hz,
+                receiver_oscillator,
+            );
+    receiver_search_code_phase_samples(
+        config.sampling_freq_hz,
+        config.code_freq_basis_hz,
+        config.code_length,
+        sample_index,
+        code_phase_chips,
+    )
+    .expect("dynamic carrier-aided tracking scenario requires a valid code phase")
 }
 
 #[test]
@@ -267,5 +320,205 @@ fn tracking_holds_beidou_b1i_code_lock_with_carrier_aided_code_rate() {
             .iter()
             .all(|error_hz| *error_hz <= CARRIER_AID_CODE_RATE_ERROR_MAX_HZ),
         "BeiDou B1I code rate did not follow carrier-aided expectation {expected_code_rate_hz}: errors={stable_code_rate_errors_hz:?} epochs={stable_epochs:?}",
+    );
+}
+
+#[test]
+fn tracking_follows_dynamic_gps_l5_code_rate_from_common_oscillator_drift() {
+    let config = gps_l5_tracking_config();
+    let sat = SatId { constellation: Constellation::Gps, prn: 18 };
+    let signal = signal_spec_gps_l5_i();
+    let carrier_doppler_hz = 1_500.0;
+    let carrier_drift_hz_per_s = 350.0;
+    let code_phase_chips = 1_537.25;
+    let receiver_oscillator = SyntheticReceiverOscillatorModel {
+        carrier_frequency_bias_hz: carrier_doppler_hz,
+        carrier_frequency_drift_hz_per_s: carrier_drift_hz_per_s,
+        sampling_clock_fractional_error: carrier_doppler_hz / signal.carrier_hz.value(),
+        sampling_clock_fractional_drift_per_s: carrier_drift_hz_per_s / signal.carrier_hz.value(),
+        ..SyntheticReceiverOscillatorModel::default()
+    };
+    let frame = synthetic_signal_with_carrier_aided_code_rate(
+        &config,
+        SyntheticSignalParams {
+            sat,
+            glonass_frequency_channel: None,
+            signal_band: SignalBand::L5,
+            signal_code: SignalCode::L5I,
+            doppler_hz: 0.0,
+            code_phase_chips,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: CARRIER_AID_CN0_DB_HZ,
+            navigation_data: SyntheticNavigationData::from(false),
+        },
+        &receiver_oscillator,
+    );
+    let seeded_code_phase_samples =
+        expected_acquisition_code_phase_samples(&config, &frame, code_phase_chips);
+    let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
+    let tracks = tracking.track_from_acquisition(
+        &frame,
+        &[accepted_acquisition(
+            sat,
+            SignalBand::L5,
+            SignalCode::L5I,
+            carrier_doppler_hz,
+            carrier_doppler_hz,
+            seeded_code_phase_samples,
+        )],
+    );
+    let epochs = &tracks.first().expect("track").epochs;
+    let stable_epochs = stable_tracking_window(epochs, CARRIER_AID_MIN_STABLE_EPOCHS);
+    let stable_code_rate_errors_hz = stable_epochs
+        .iter()
+        .map(|epoch| {
+            (epoch.code_rate_hz.0
+                - dynamic_expected_code_rate_hz(
+                    epoch.sample_index,
+                    config.sampling_freq_hz,
+                    signal,
+                    &receiver_oscillator,
+                ))
+            .abs()
+        })
+        .collect::<Vec<_>>();
+    let stable_code_phase_errors_samples = stable_epochs
+        .iter()
+        .map(|epoch| {
+            (
+                epoch.code_phase_samples.0
+                    - dynamic_expected_code_phase_samples(
+                        &config,
+                        epoch.sample_index,
+                        code_phase_chips,
+                        signal,
+                        &receiver_oscillator,
+                    )
+            )
+            .abs()
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        stable_epochs.len() >= CARRIER_AID_MIN_STABLE_EPOCHS,
+        "tracking did not sustain enough dynamic GPS L5 lock epochs: epochs={epochs:?}",
+    );
+    assert!(
+        stable_epochs
+            .iter()
+            .all(|epoch| epoch.lock && epoch.dll_lock && epoch.pll_lock && epoch.fll_lock),
+        "GPS L5 dynamic tracking window lost lock flags: epochs={epochs:?}",
+    );
+    assert!(
+        stable_code_rate_errors_hz
+            .iter()
+            .all(|error_hz| *error_hz <= CARRIER_AID_DRIFT_CODE_RATE_ERROR_MAX_HZ),
+        "GPS L5 dynamic code rate did not follow the common oscillator drift: errors={stable_code_rate_errors_hz:?} epochs={stable_epochs:?}",
+    );
+    assert!(
+        stable_code_phase_errors_samples
+            .iter()
+            .all(|error_samples| *error_samples <= CARRIER_AID_DRIFT_CODE_PHASE_ERROR_MAX_SAMPLES),
+        "GPS L5 dynamic code phase drifted under common oscillator drift: errors={stable_code_phase_errors_samples:?} epochs={stable_epochs:?}",
+    );
+}
+
+#[test]
+fn tracking_follows_dynamic_beidou_b1i_code_rate_from_common_oscillator_drift() {
+    let config = beidou_b1_tracking_config();
+    let sat = SatId { constellation: Constellation::Beidou, prn: 11 };
+    let signal = signal_spec_beidou_b1i();
+    let carrier_doppler_hz = 1_250.0;
+    let carrier_drift_hz_per_s = 280.0;
+    let code_phase_chips = 768.5;
+    let receiver_oscillator = SyntheticReceiverOscillatorModel {
+        carrier_frequency_bias_hz: carrier_doppler_hz,
+        carrier_frequency_drift_hz_per_s: carrier_drift_hz_per_s,
+        sampling_clock_fractional_error: carrier_doppler_hz / signal.carrier_hz.value(),
+        sampling_clock_fractional_drift_per_s: carrier_drift_hz_per_s / signal.carrier_hz.value(),
+        ..SyntheticReceiverOscillatorModel::default()
+    };
+    let frame = synthetic_signal_with_carrier_aided_code_rate(
+        &config,
+        SyntheticSignalParams {
+            sat,
+            glonass_frequency_channel: None,
+            signal_band: SignalBand::B1,
+            signal_code: SignalCode::B1I,
+            doppler_hz: 0.0,
+            code_phase_chips,
+            carrier_phase_rad: 0.0,
+            cn0_db_hz: CARRIER_AID_CN0_DB_HZ,
+            navigation_data: SyntheticNavigationData::from(false),
+        },
+        &receiver_oscillator,
+    );
+    let seeded_code_phase_samples =
+        expected_acquisition_code_phase_samples(&config, &frame, code_phase_chips);
+    let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
+    let tracks = tracking.track_from_acquisition(
+        &frame,
+        &[accepted_acquisition(
+            sat,
+            SignalBand::B1,
+            SignalCode::B1I,
+            carrier_doppler_hz,
+            carrier_doppler_hz,
+            seeded_code_phase_samples,
+        )],
+    );
+    let epochs = &tracks.first().expect("track").epochs;
+    let stable_epochs = stable_tracking_window(epochs, CARRIER_AID_MIN_STABLE_EPOCHS);
+    let stable_code_rate_errors_hz = stable_epochs
+        .iter()
+        .map(|epoch| {
+            (epoch.code_rate_hz.0
+                - dynamic_expected_code_rate_hz(
+                    epoch.sample_index,
+                    config.sampling_freq_hz,
+                    signal,
+                    &receiver_oscillator,
+                ))
+            .abs()
+        })
+        .collect::<Vec<_>>();
+    let stable_code_phase_errors_samples = stable_epochs
+        .iter()
+        .map(|epoch| {
+            (
+                epoch.code_phase_samples.0
+                    - dynamic_expected_code_phase_samples(
+                        &config,
+                        epoch.sample_index,
+                        code_phase_chips,
+                        signal,
+                        &receiver_oscillator,
+                    )
+            )
+            .abs()
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        stable_epochs.len() >= CARRIER_AID_MIN_STABLE_EPOCHS,
+        "tracking did not sustain enough dynamic BeiDou B1I lock epochs: epochs={epochs:?}",
+    );
+    assert!(
+        stable_epochs
+            .iter()
+            .all(|epoch| epoch.lock && epoch.dll_lock && epoch.pll_lock && epoch.fll_lock),
+        "BeiDou B1I dynamic tracking window lost lock flags: epochs={epochs:?}",
+    );
+    assert!(
+        stable_code_rate_errors_hz
+            .iter()
+            .all(|error_hz| *error_hz <= CARRIER_AID_DRIFT_CODE_RATE_ERROR_MAX_HZ),
+        "BeiDou B1I dynamic code rate did not follow the common oscillator drift: errors={stable_code_rate_errors_hz:?} epochs={stable_epochs:?}",
+    );
+    assert!(
+        stable_code_phase_errors_samples
+            .iter()
+            .all(|error_samples| *error_samples <= CARRIER_AID_DRIFT_CODE_PHASE_ERROR_MAX_SAMPLES),
+        "BeiDou B1I dynamic code phase drifted under common oscillator drift: errors={stable_code_phase_errors_samples:?} epochs={stable_epochs:?}",
     );
 }
