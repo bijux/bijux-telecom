@@ -882,13 +882,13 @@ struct SubcarrierAmbiguityGuard {
     prompt_power: f32,
     strongest_alternate_power: f32,
     strongest_alternate_offset_chips: f64,
-    prompt_dominance_ratio: f32,
+    prompt_relative_power: f32,
 }
 
 impl SubcarrierAmbiguityGuard {
     fn detected(self) -> bool {
-        !self.prompt_dominance_ratio.is_finite()
-            || self.prompt_dominance_ratio < SUBCARRIER_AMBIGUITY_MIN_PROMPT_RELATIVE_POWER
+        !self.prompt_relative_power.is_finite()
+            || self.prompt_relative_power < SUBCARRIER_AMBIGUITY_MIN_PROMPT_RELATIVE_POWER
     }
 }
 
@@ -1311,7 +1311,7 @@ fn subcarrier_ambiguity_guard(
             prompt_power,
             strongest_alternate_power: f32::INFINITY,
             strongest_alternate_offset_chips: 0.0,
-            prompt_dominance_ratio: 0.0,
+            prompt_relative_power: 0.0,
         });
     }
 
@@ -1336,7 +1336,7 @@ fn subcarrier_ambiguity_guard(
         }
     }
 
-    let prompt_dominance_ratio = if strongest_alternate_power > f32::EPSILON {
+    let prompt_relative_power = if strongest_alternate_power > f32::EPSILON {
         prompt_power / strongest_alternate_power
     } else if prompt_power.is_finite() {
         f32::INFINITY
@@ -1348,7 +1348,7 @@ fn subcarrier_ambiguity_guard(
         prompt_power,
         strongest_alternate_power,
         strongest_alternate_offset_chips,
-        prompt_dominance_ratio,
+        prompt_relative_power,
     })
 }
 
@@ -1359,8 +1359,8 @@ fn subcarrier_ambiguity_detected(guard: Option<SubcarrierAmbiguityGuard>) -> boo
 fn subcarrier_ambiguity_provenance(guard: Option<SubcarrierAmbiguityGuard>) -> Option<String> {
     let guard = guard?;
     Some(format!(
-        " subcarrier_ambiguity_guard=side_peak_guard prompt_dominance_ratio={:.6} strongest_alternate_offset_chips={:.6} strongest_alternate_power={:.6}",
-        guard.prompt_dominance_ratio,
+        " subcarrier_ambiguity_guard=side_peak_guard prompt_relative_power={:.6} strongest_alternate_offset_chips={:.6} strongest_alternate_power={:.6}",
+        guard.prompt_relative_power,
         guard.strongest_alternate_offset_chips,
         guard.strongest_alternate_power,
     ))
@@ -7376,7 +7376,7 @@ mod tests {
 
         assert!(!guard.detected(), "guard={guard:?}");
         assert!(
-            guard.prompt_dominance_ratio >= super::SUBCARRIER_AMBIGUITY_MIN_PROMPT_RELATIVE_POWER,
+            guard.prompt_relative_power >= super::SUBCARRIER_AMBIGUITY_MIN_PROMPT_RELATIVE_POWER,
             "guard={guard:?}",
         );
     }

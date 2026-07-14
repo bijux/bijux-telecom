@@ -389,7 +389,7 @@ fn galileo_e1_side_peak_seed_does_not_report_biased_code_lock() {
     assert!(
         epochs.iter().any(|epoch| {
             epoch.tracking_provenance.contains("subcarrier_ambiguity_guard=side_peak_guard")
-                && epoch.tracking_provenance.contains("prompt_dominance_ratio=")
+                && epoch.tracking_provenance.contains("prompt_relative_power=")
         }),
         "Galileo E1 side-peak seed did not report subcarrier ambiguity guard evidence: epochs={epochs:?}",
     );
