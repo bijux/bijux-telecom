@@ -314,6 +314,7 @@ impl ReceiverConfig {
             dll_bw_hz: self.tracking.dll_bw_hz,
             pll_bw_hz: self.tracking.pll_bw_hz,
             fll_bw_hz: self.tracking.fll_bw_hz,
+            adaptive_tracking_enabled: self.tracking.adaptive_tracking_enabled,
             tracking_per_band: self
                 .tracking
                 .per_band
@@ -476,6 +477,18 @@ mod tests {
             ConstellationSelectionPolicy::GalileoOnly
         );
         assert!(raw.contains("constellation_policy = \"galileo_only\""));
+    }
+
+    #[test]
+    fn adaptive_tracking_toggle_round_trips_through_toml() {
+        let mut config = ReceiverConfig::default();
+        config.tracking.adaptive_tracking_enabled = false;
+
+        let raw = toml::to_string(&config).expect("serialize receiver config");
+        let reparsed: ReceiverConfig = toml::from_str(&raw).expect("parse receiver config");
+
+        assert!(!reparsed.tracking.adaptive_tracking_enabled);
+        assert!(raw.contains("adaptive_tracking_enabled = false"));
     }
 
     #[test]

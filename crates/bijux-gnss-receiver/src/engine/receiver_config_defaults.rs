@@ -3,6 +3,7 @@
 use bijux_gnss_core::api::SchemaVersion;
 
 use crate::engine::receiver_config::{
+    default_adaptive_tracking_enabled,
     default_acquisition_false_alarm_probability,
     default_acquisition_threshold_calibration_trial_count,
     default_acquisition_threshold_confidence_level, default_tracking_integration_ms,
@@ -58,6 +59,7 @@ impl Default for TrackingConfig {
             dll_bw_hz: 2.0,
             pll_bw_hz: 15.0,
             fll_bw_hz: 10.0,
+            adaptive_tracking_enabled: default_adaptive_tracking_enabled(),
             max_channels: 8,
             per_epoch_budget_ms: 0.7,
             over_budget_action: "drop_epochs".to_string(),

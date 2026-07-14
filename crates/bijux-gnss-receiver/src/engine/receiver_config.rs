@@ -82,6 +82,8 @@ pub struct ReceiverPipelineConfig {
     pub pll_bw_hz: f64,
     /// FLL noise bandwidth, in Hz.
     pub fll_bw_hz: f64,
+    /// Whether tracking loop and coherent integration adaptation are enabled.
+    pub adaptive_tracking_enabled: bool,
     /// Integration time for tracking, in milliseconds.
     pub tracking_integration_ms: u32,
     /// Target per-epoch budget, in milliseconds.
@@ -141,6 +143,7 @@ impl Default for ReceiverPipelineConfig {
             dll_bw_hz: 2.0,
             pll_bw_hz: 15.0,
             fll_bw_hz: 10.0,
+            adaptive_tracking_enabled: default_adaptive_tracking_enabled(),
             tracking_integration_ms: 1,
             tracking_budget_ms: 1.0,
             tracking_over_budget_action: "drop_epochs".to_string(),
@@ -418,6 +421,9 @@ pub struct TrackingConfig {
     pub pll_bw_hz: f64,
     /// FLL noise bandwidth, in Hz.
     pub fll_bw_hz: f64,
+    /// Whether tracking loop and coherent integration adaptation are enabled.
+    #[serde(default = "default_adaptive_tracking_enabled")]
+    pub adaptive_tracking_enabled: bool,
     /// Maximum tracking channels.
     pub max_channels: usize,
     /// Per-epoch CPU budget, in milliseconds.
@@ -453,6 +459,10 @@ pub struct BandTrackingConfig {
 
 pub fn default_tracking_integration_ms() -> u32 {
     1
+}
+
+pub fn default_adaptive_tracking_enabled() -> bool {
+    true
 }
 
 pub const SUPPORTED_ACQUISITION_INTEGRATION_MS: [u32; 5] = [1, 2, 5, 10, 20];
