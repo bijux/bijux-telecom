@@ -740,6 +740,18 @@ pub fn carrier_hz_at_time(
     initial_carrier_hz + carrier_rate_hz_per_s * elapsed_s
 }
 
+/// Carrier frequency at elapsed time for a constant carrier-jerk model.
+pub fn carrier_hz_at_time_with_jerk(
+    initial_carrier_hz: f64,
+    carrier_rate_hz_per_s: f64,
+    carrier_jerk_hz_per_s2: f64,
+    elapsed_s: f64,
+) -> f64 {
+    initial_carrier_hz
+        + carrier_rate_hz_per_s * elapsed_s
+        + 0.5 * carrier_jerk_hz_per_s2 * elapsed_s * elapsed_s
+}
+
 /// Carrier phase in radians at elapsed time for a linear Doppler-rate model.
 pub fn carrier_phase_radians_at_time(
     initial_phase_radians: f64,
@@ -750,6 +762,21 @@ pub fn carrier_phase_radians_at_time(
     initial_phase_radians
         + std::f64::consts::TAU
             * (initial_carrier_hz * elapsed_s + 0.5 * carrier_rate_hz_per_s * elapsed_s * elapsed_s)
+}
+
+/// Carrier phase in radians at elapsed time for a constant carrier-jerk model.
+pub fn carrier_phase_radians_at_time_with_jerk(
+    initial_phase_radians: f64,
+    initial_carrier_hz: f64,
+    carrier_rate_hz_per_s: f64,
+    carrier_jerk_hz_per_s2: f64,
+    elapsed_s: f64,
+) -> f64 {
+    initial_phase_radians
+        + std::f64::consts::TAU
+            * (initial_carrier_hz * elapsed_s
+                + 0.5 * carrier_rate_hz_per_s * elapsed_s * elapsed_s
+                + carrier_jerk_hz_per_s2 * elapsed_s * elapsed_s * elapsed_s / 6.0)
 }
 
 /// Mix a linear-rate carrier down to baseband from a frame-relative sample origin.
@@ -856,7 +883,8 @@ pub fn sample_modulated_replica_at_time(
 #[cfg(test)]
 mod tests {
     use super::{
-        carrier_hz_at_time, carrier_phase_radians_at_time, default_signal_carrier_hz,
+        carrier_hz_at_time, carrier_hz_at_time_with_jerk, carrier_phase_radians_at_time,
+        carrier_phase_radians_at_time_with_jerk, default_signal_carrier_hz,
         default_signal_carrier_hz_for_band, sample_modulated_replica_at_sample_index,
         sample_modulated_replica_at_time, signal_amplitude_from_cn0_db_hz,
         wipeoff_carrier_with_linear_rate, AcquisitionSignalModel, ReplicaCodeModel,
@@ -898,6 +926,34 @@ mod tests {
         let phase = carrier_phase_radians_at_time(0.25, 1_000.0, 20.0, 0.5);
         let expected = 0.25 + std::f64::consts::TAU * (1_000.0 * 0.5 + 0.5 * 20.0 * 0.25);
         assert!((phase - expected).abs() < 1.0e-12, "phase={phase}");
+    }
+
+    #[test]
+    fn carrier_hz_at_time_with_jerk_applies_quadratic_frequency() {
+        let carrier_hz = carrier_hz_at_time_with_jerk(1_350.0, 40.0, 120.0, 0.5);
+
+        assert!((carrier_hz - 1_385.0).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn carrier_phase_radians_at_time_with_jerk_integrates_quadratic_frequency() {
+        let phase = carrier_phase_radians_at_time_with_jerk(0.25, 1_000.0, 20.0, 120.0, 0.5);
+        let expected = 0.25
+            + std::f64::consts::TAU * (1_000.0 * 0.5 + 0.5 * 20.0 * 0.25 + 120.0 * 0.125 / 6.0);
+
+        assert!((phase - expected).abs() < 1.0e-12, "phase={phase}");
+    }
+
+    #[test]
+    fn zero_jerk_carrier_model_matches_linear_model() {
+        let carrier_hz = carrier_hz_at_time_with_jerk(750.0, -35.0, 0.0, 0.25);
+        let carrier_phase = carrier_phase_radians_at_time_with_jerk(0.1, 750.0, -35.0, 0.0, 0.25);
+
+        assert!((carrier_hz - carrier_hz_at_time(750.0, -35.0, 0.25)).abs() < 1.0e-12);
+        assert!(
+            (carrier_phase - carrier_phase_radians_at_time(0.1, 750.0, -35.0, 0.25)).abs()
+                < 1.0e-12
+        );
     }
 
     #[test]
