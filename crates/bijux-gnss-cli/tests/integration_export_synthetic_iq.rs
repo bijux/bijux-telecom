@@ -309,18 +309,18 @@ fn acquire_report_exposes_refined_doppler_for_fractional_synthetic_truth() {
     let scenario_path = temp.join("fractional_acquisition_refinement.toml");
     fs::write(
         &scenario_path,
-        r#"id = "fractional_acquisition_refinement"
+r#"id = "fractional_acquisition_refinement"
 sample_rate_hz = 4092000.0
 intermediate_freq_hz = 0.0
 duration_s = 0.08
 seed = 24071985
 
 [[satellites]]
-sat = { constellation = "Gps", prn = 3 }
+sat = { constellation = "Gps", prn = 7 }
 doppler_hz = 875.0
-code_phase_chips = 200.25
-carrier_phase_rad = 0.0
-cn0_db_hz = 65.0
+code_phase_chips = 321.0
+carrier_phase_rad = 0.2
+cn0_db_hz = 58.0
 navigation_data = "constant_positive"
 "#,
     )
@@ -357,7 +357,7 @@ navigation_data = "constant_positive"
     let acquire_config_path = temp.join("receiver_acquisition_refinement.toml");
     fs::write(
         &acquire_config_path,
-        r#"schema_version = 1
+r#"schema_version = 1
 sample_rate_hz = 4_092_000.0
 intermediate_freq_hz = 0.0
 quantization_bits = 16
@@ -368,7 +368,7 @@ seed = 1
 [acquisition]
 doppler_search_hz = 10_000
 doppler_step_hz = 500
-integration_ms = 10
+integration_ms = 1
 noncoherent_integration = 1
 peak_mean_threshold = 3.0
 peak_second_threshold = 1.8
@@ -418,7 +418,7 @@ tracking_mode_vector_weight = 1.2
             "--config",
             acquire_config_path.to_str().expect("acquire config"),
             "--prn",
-            "3",
+            "7",
             "--report",
             "json",
             "--out",
@@ -467,7 +467,7 @@ tracking_mode_vector_weight = 1.2
     assert_eq!(artifact_row["payload"]["source_time"]["sample_index"], 0, "{artifact_row}");
     assert_eq!(artifact_doppler_hz, reported_doppler_hz);
     assert_eq!(
-        artifact_row["payload"]["doppler_refinement"]["method"], "quadratic_likelihood_surface",
+        artifact_row["payload"]["doppler_refinement"]["method"], "parabolic_peak",
         "acquisition artifact should expose doppler refinement provenance: {artifact_row}"
     );
 
