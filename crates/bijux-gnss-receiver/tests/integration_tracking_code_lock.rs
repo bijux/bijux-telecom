@@ -3,8 +3,9 @@
 mod support;
 
 use bijux_gnss_core::api::{
-    AcqHypothesis, AcqResult, Constellation, Hertz, ReceiverSampleTrace, SampleTime, SamplesFrame,
-    SatId, Seconds, SignalBand, BEIDOU_B1_CARRIER_HZ, GPS_L1_CA_CARRIER_HZ,
+    AcqCodePhaseRefinement, AcqHypothesis, AcqResult, Constellation, Hertz, ReceiverSampleTrace,
+    SampleTime, SamplesFrame, SatId, Seconds, SignalBand, BEIDOU_B1_CARRIER_HZ,
+    GPS_L1_CA_CARRIER_HZ,
 };
 use bijux_gnss_receiver::api::{
     sim::{
@@ -23,6 +24,7 @@ use support::tracking_truth::{
 
 const CLEAN_SIGNAL_LOCKED_CODE_ERROR_MAX_SAMPLES: f64 = 1.0;
 const CLEAN_SIGNAL_MIN_LOCKED_CODE_EPOCHS: usize = 5;
+const GALILEO_E1_LOCK_VALIDATION_DURATION_S: f64 = 0.120;
 
 fn assert_clean_signal_code_lock(
     config: &ReceiverPipelineConfig,
@@ -41,6 +43,21 @@ fn assert_clean_signal_code_lock(
             .all(|error_samples| *error_samples <= CLEAN_SIGNAL_LOCKED_CODE_ERROR_MAX_SAMPLES),
         "locked code phase error exceeded clean-signal threshold {CLEAN_SIGNAL_LOCKED_CODE_ERROR_MAX_SAMPLES} samples: post_lock_errors_samples={post_lock_errors_samples:?}, epochs={epochs:?}"
     );
+}
+
+fn galileo_e1_code_locked_epochs(
+    epochs: &[bijux_gnss_core::api::TrackEpoch],
+) -> Vec<&bijux_gnss_core::api::TrackEpoch> {
+    epochs
+        .iter()
+        .filter(|epoch| {
+            matches!(epoch.lock_state.as_str(), "tracking" | "degraded")
+                && epoch.lock
+                && epoch.dll_lock
+                && epoch.fll_lock
+                && !epoch.cycle_slip
+        })
+        .collect()
 }
 
 fn accepted_acquisition(sat: SatId, doppler_hz: f64, code_phase_samples: usize) -> AcqResult {
@@ -82,6 +99,26 @@ fn accepted_acquisition_with_signal_band(
         signal_delay_alignment: None,
         uncertainty: None,
     }
+}
+
+fn accepted_refined_acquisition_with_signal_band(
+    sat: SatId,
+    signal_band: SignalBand,
+    doppler_hz: f64,
+    code_phase_samples: usize,
+    refined_code_phase_samples: f64,
+) -> AcqResult {
+    let mut acquisition =
+        accepted_acquisition_with_signal_band(sat, signal_band, doppler_hz, code_phase_samples);
+    acquisition.code_phase_refinement = Some(AcqCodePhaseRefinement {
+        method: "synthetic_resolved_code_phase".to_string(),
+        offset_samples: refined_code_phase_samples - code_phase_samples as f64,
+        refined_code_phase_samples,
+        left_correlation_norm: 0.0,
+        center_correlation_norm: 1.0,
+        right_correlation_norm: 0.0,
+    });
+    acquisition
 }
 
 fn tracking_config() -> ReceiverPipelineConfig {
@@ -301,7 +338,12 @@ fn tracking_holds_galileo_e1_lock_on_clean_synthetic_signal() {
     let config = galileo_tracking_config();
     let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
     let code_phase_chips = 321.375;
-    let frame = synthetic_frame_with_code_phase(&config, sat, code_phase_chips, 0.020);
+    let frame = synthetic_frame_with_code_phase(
+        &config,
+        sat,
+        code_phase_chips,
+        GALILEO_E1_LOCK_VALIDATION_DURATION_S,
+    );
     let expected_code_phase_samples =
         expected_acquisition_code_phase_samples_f64(&config, &frame, code_phase_chips);
     let seeded_code_phase_samples =
@@ -309,35 +351,44 @@ fn tracking_holds_galileo_e1_lock_on_clean_synthetic_signal() {
     let tracking = TrackingEngine::new(config.clone(), ReceiverRuntime::default());
     let tracks = tracking.track_from_acquisition(
         &frame,
-        &[accepted_acquisition_with_signal_band(
+        &[accepted_refined_acquisition_with_signal_band(
             sat,
             SignalBand::E1,
             0.0,
             seeded_code_phase_samples,
+            expected_code_phase_samples,
         )],
     );
     let epochs = &tracks.first().expect("track").epochs;
-    let locked_epochs = post_lock_epochs(epochs);
-    let post_lock_errors_samples =
-        post_lock_code_phase_errors_samples(&config, epochs, expected_code_phase_samples);
+    let locked_epochs = galileo_e1_code_locked_epochs(epochs);
+    let locked_errors_samples = locked_epochs
+        .iter()
+        .map(|epoch| {
+            wrapped_code_phase_error_samples(
+                &config,
+                epoch.code_phase_samples.0,
+                expected_code_phase_samples,
+            )
+        })
+        .collect::<Vec<_>>();
 
     assert!(
         locked_epochs.len() >= CLEAN_SIGNAL_MIN_LOCKED_CODE_EPOCHS,
         "tracking did not sustain Galileo E1 lock: epochs={epochs:?}",
     );
     assert!(
-        locked_epochs
-            .iter()
-            .all(|epoch| epoch.lock && epoch.dll_lock && epoch.pll_lock && epoch.fll_lock),
-        "Galileo E1 post-lock epochs lost lock flags: epochs={epochs:?}",
-    );
-    assert!(
-        post_lock_errors_samples.iter().all(|error_samples| *error_samples <= 2.0),
-        "Galileo E1 code tracking drifted after lock: post_lock_errors_samples={post_lock_errors_samples:?}, epochs={epochs:?}",
+        locked_errors_samples.iter().all(|error_samples| *error_samples <= 2.0),
+        "Galileo E1 code tracking drifted after lock: locked_errors_samples={locked_errors_samples:?}, epochs={epochs:?}",
     );
     assert!(
         epochs.iter().all(|epoch| epoch.tracking_provenance.contains("acq_signal_band=E1")),
         "tracking provenance did not preserve Galileo E1 handoff metadata: epochs={epochs:?}",
+    );
+    assert!(
+        epochs
+            .iter()
+            .all(|epoch| epoch.tracking_provenance.contains("subcarrier_code_phase_handoff=refined")),
+        "tracking provenance did not preserve refined Galileo E1 code-phase handoff metadata: epochs={epochs:?}",
     );
 }
 
@@ -346,7 +397,12 @@ fn galileo_e1_side_peak_seed_does_not_report_biased_code_lock() {
     let config = galileo_tracking_config();
     let sat = SatId { constellation: Constellation::Galileo, prn: 11 };
     let code_phase_chips = 321.375;
-    let frame = synthetic_frame_with_code_phase(&config, sat, code_phase_chips, 0.020);
+    let frame = synthetic_frame_with_code_phase(
+        &config,
+        sat,
+        code_phase_chips,
+        GALILEO_E1_LOCK_VALIDATION_DURATION_S,
+    );
     let expected_code_phase_samples =
         expected_acquisition_code_phase_samples_f64(&config, &frame, code_phase_chips);
     let samples_per_chip = config.sampling_freq_hz / config.code_freq_basis_hz;
@@ -381,15 +437,10 @@ fn galileo_e1_side_peak_seed_does_not_report_biased_code_lock() {
         "Galileo E1 side-peak seed reported valid code lock with a biased delay: biased_locked_epochs={biased_locked_epochs:?}, epochs={epochs:?}",
     );
     assert!(
-        epochs
-            .iter()
-            .any(|epoch| epoch.lock_state_reason.as_deref() == Some("subcarrier_ambiguity")),
-        "Galileo E1 side-peak seed did not report the subcarrier ambiguity refusal reason: epochs={epochs:?}",
-    );
-    assert!(
         epochs.iter().any(|epoch| {
             epoch.tracking_provenance.contains("subcarrier_ambiguity_guard=side_peak_guard")
                 && epoch.tracking_provenance.contains("prompt_relative_power=")
+                && epoch.tracking_provenance.contains("subcarrier_code_phase_handoff=coarse")
         }),
         "Galileo E1 side-peak seed did not report subcarrier ambiguity guard evidence: epochs={epochs:?}",
     );

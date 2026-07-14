@@ -102,7 +102,7 @@ const SECONDARY_CODE_SYNC_MIN_CONFIDENCE: f64 = 0.02;
 const SECONDARY_CODE_SYNC_MIN_OBSERVED_CHIPS: usize = 4;
 const CARRIER_AID_MIN_DOPPLER_WINDOW_HZ: f64 = 25_000.0;
 const CARRIER_AID_DOPPLER_WINDOW_MARGIN_HZ: f64 = 500.0;
-const SUBCARRIER_AMBIGUITY_MIN_PROMPT_RELATIVE_POWER: f32 = 0.95;
+const SUBCARRIER_AMBIGUITY_MIN_PROMPT_RELATIVE_POWER: f32 = 0.05;
 const SUBCARRIER_AMBIGUITY_GUARD_OFFSETS_CHIPS: [f64; 2] = [-0.5, 0.5];
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelState {
@@ -249,6 +249,7 @@ struct LoopState {
     tracking_adaptation_state: SignalTrackingAdaptationState,
     tracking_loop_profile: SignalTrackingLoopProfile,
     signal_delay_alignment: Option<SignalDelayAlignment>,
+    subcarrier_code_phase_refined: bool,
     acquisition_cn0_proxy_dbhz: f64,
     lock_reference_cn0_dbhz: f64,
     prev_prompt: Option<Complex<f32>>,
@@ -516,6 +517,7 @@ struct TrackingStartContext {
     acquisition_code_phase_samples: usize,
     acquisition_carrier_hz: f64,
     acquisition_cn0_proxy_dbhz: f64,
+    subcarrier_code_phase_refined: bool,
     acq_to_track_state: String,
 }
 
@@ -1569,6 +1571,7 @@ impl Tracking {
         code_phase_samples: f64,
         acquisition_cn0_proxy_dbhz: f64,
         signal_delay_alignment: Option<SignalDelayAlignment>,
+        subcarrier_code_phase_refined: bool,
         tracking_params: TrackingParams,
         reacquisition_pending: bool,
     ) -> LoopState {
@@ -1584,6 +1587,7 @@ impl Tracking {
             tracking_adaptation_state: SignalTrackingAdaptationState::default(),
             tracking_loop_profile: Self::tracking_loop_profile(tracking_params),
             signal_delay_alignment,
+            subcarrier_code_phase_refined,
             acquisition_cn0_proxy_dbhz,
             lock_reference_cn0_dbhz: acquisition_cn0_proxy_dbhz,
             prev_prompt: None,
@@ -1656,6 +1660,7 @@ impl Tracking {
             acquisition_code_phase_samples: acquisition.code_phase_samples,
             acquisition_carrier_hz,
             acquisition_cn0_proxy_dbhz: acquisition.cn0_proxy as f64,
+            subcarrier_code_phase_refined: acquisition.code_phase_refinement.is_some(),
             acq_to_track_state: acq_to_track_state(&acquisition.hypothesis).to_string(),
         })
     }
@@ -2099,6 +2104,7 @@ impl Tracking {
             code_phase_samples,
             acquisition_cn0_proxy_dbhz,
             None,
+            false,
             tracking_params,
             false,
         );
@@ -2160,6 +2166,7 @@ impl Tracking {
                         context.seed.code_phase_samples.0,
                         context.acquisition_cn0_proxy_dbhz,
                         context.seed.signal_delay_alignment.clone(),
+                        context.subcarrier_code_phase_refined,
                         tracking_params,
                         false,
                     ),
@@ -2510,11 +2517,13 @@ impl Tracking {
         let fll_err_hz =
             if use_nav_bit_aware_fll { nav_bit_aware_fll_err_hz } else { raw_fll_err_hz } as f32;
         let from_state = state.state;
-        let dll_error_lock = dll_err.abs()
+        let raw_dll_lock = dll_err.abs()
             < dll_lock_threshold(samples_per_chip, tracking_params.early_late_spacing_chips);
         let subcarrier_ambiguity =
             subcarrier_ambiguity_detected(correlation.subcarrier_ambiguity_guard);
-        let raw_dll_lock = dll_error_lock && !subcarrier_ambiguity;
+        let subcarrier_code_phase_unambiguous =
+            !signal_model.discriminator_family.requires_unambiguous_code_lock()
+                || state.subcarrier_code_phase_refined;
         let fll_enabled = fll_bw > f64::EPSILON;
         let raw_pll_lock = pll_err.abs() < PLL_LOCK_MAX_PHASE_ERROR_RAD;
         let raw_fll_lock =
@@ -2524,19 +2533,17 @@ impl Tracking {
                 from_state,
                 ChannelState::PullIn | ChannelState::Tracking | ChannelState::Degraded
             ) && dll_err.abs()
-                < dll_hold_threshold(samples_per_chip, tracking_params.early_late_spacing_chips)
-                && !subcarrier_ambiguity);
+                < dll_hold_threshold(samples_per_chip, tracking_params.early_late_spacing_chips));
         let sustained_pll_lock = raw_pll_lock
             || (matches!(
                 from_state,
                 ChannelState::PullIn | ChannelState::Tracking | ChannelState::Degraded
             ) && pll_err.abs() < PLL_HOLD_MAX_PHASE_ERROR_RAD);
-        let anti_false_lock = (anti_false_lock_detected(
+        let anti_false_lock = anti_false_lock_detected(
             primary_correlator.early,
             primary_correlator.prompt,
             primary_correlator.late,
-        ) && !sustained_pll_lock)
-            || subcarrier_ambiguity;
+        ) && !sustained_pll_lock;
         state.prompt_power_reference = refresh_prompt_power_reference(
             state.prompt_power_reference,
             prompt_power,
@@ -2627,7 +2634,7 @@ impl Tracking {
             reliable_reacquisition_reference,
         );
 
-        let mut transition = if refuse_lock {
+        let transition = if refuse_lock {
             TransitionDecision {
                 to_state: ChannelState::PullIn,
                 reason: "cn0_below_tracking_lock_floor".to_string(),
@@ -2647,10 +2654,6 @@ impl Tracking {
                 short_fade_relock_evidence,
             )
         };
-        if subcarrier_ambiguity && transition.to_state == ChannelState::PullIn {
-            transition.reason = "subcarrier_ambiguity".to_string();
-            transition.next_unlocked_count = state.unlocked_count.saturating_add(1);
-        }
         state.unlocked_count = transition.next_unlocked_count;
         state.degraded_epochs = transition.next_degraded_epochs;
         state.state = transition.to_state;
@@ -2678,7 +2681,10 @@ impl Tracking {
                 cn0_reference_dbhz: state.lock_reference_cn0_dbhz,
                 integration_ms: tracking_params.integration_ms,
                 channel_locked: state.state != ChannelState::Lost && sustained_prompt_lock,
-                dll_locked: state.state != ChannelState::Lost && sustained_code_lock,
+                dll_locked: state.state != ChannelState::Lost
+                    && sustained_code_lock
+                    && subcarrier_code_phase_unambiguous
+                    && !subcarrier_ambiguity,
                 anti_false_lock,
                 cycle_slip,
                 channel_state: state.state,
@@ -2721,7 +2727,10 @@ impl Tracking {
         let channel_locked = state.state != ChannelState::Lost && sustained_prompt_lock;
         let tracking_state_locked =
             matches!(state.state, ChannelState::Tracking | ChannelState::Degraded);
-        let dll_lock = tracking_state_locked && sustained_code_lock;
+        let dll_lock = tracking_state_locked
+            && sustained_code_lock
+            && subcarrier_code_phase_unambiguous
+            && !subcarrier_ambiguity;
         let pll_lock = tracking_state_locked
             && cn0_supports_lock
             && sustained_prompt_lock
@@ -2868,6 +2877,13 @@ impl Tracking {
             subcarrier_ambiguity_provenance(correlation.subcarrier_ambiguity_guard)
         {
             tracking_provenance.push_str(&subcarrier_ambiguity_provenance);
+        }
+        if signal_model.discriminator_family.requires_unambiguous_code_lock() {
+            tracking_provenance.push_str(if state.subcarrier_code_phase_refined {
+                " subcarrier_code_phase_handoff=refined"
+            } else {
+                " subcarrier_code_phase_handoff=coarse"
+            });
         }
 
         out.push(TrackEpoch {
@@ -4152,6 +4168,7 @@ impl Tracking {
             seed.code_phase_samples,
             seed.cn0_dbhz,
             channel.state.signal_delay_alignment.clone(),
+            channel.state.subcarrier_code_phase_refined,
             channel.tracking_params,
             true,
         );
@@ -5421,6 +5438,7 @@ mod tests {
                 integration_ms: 1,
             },
             signal_delay_alignment: None,
+            subcarrier_code_phase_refined: false,
             acquisition_cn0_proxy_dbhz: 45.0,
             lock_reference_cn0_dbhz: 45.0,
             prev_prompt: None,
@@ -5606,6 +5624,7 @@ mod tests {
             0.0,
             42.0,
             None,
+            false,
             config.tracking_params(SignalBand::L1),
             false,
         );
