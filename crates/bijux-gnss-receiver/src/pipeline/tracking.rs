@@ -32,7 +32,8 @@ use bijux_gnss_signal::api::{
     fll_lock_threshold_hz as signal_fll_lock_threshold_hz, galileo_e5a_q_epoch_symbol,
     galileo_e5a_q_secondary_code, galileo_e5b_q_epoch_symbol, galileo_e5b_q_secondary_code,
     generate_galileo_e5a_q_code, generate_galileo_e5b_q_code, generate_gps_l2c_cl_code,
-    gps_l5_q_epoch_symbol, prompt_power_ratio as signal_prompt_power_ratio,
+    gps_l5_q_epoch_symbol, normalize_dll_discriminator,
+    prompt_power_ratio as signal_prompt_power_ratio,
     push_tracking_uncertainty_sample as signal_push_tracking_uncertainty_sample,
     refresh_lock_reference_cn0_dbhz as signal_refresh_lock_reference_cn0_dbhz,
     refresh_prompt_power_reference as signal_refresh_prompt_power_reference,
@@ -2465,6 +2466,8 @@ impl Tracking {
             primary_correlator.late,
             None,
         );
+        let dll_err =
+            normalize_dll_discriminator(dll_err, tracking_params.early_late_spacing_chips);
         let (_raw_pll_err, raw_fll_err, lock) =
             carrier_prompt_discriminators(carrier_prompt, state.prev_prompt);
         state.prev_prompt = Some(carrier_prompt);

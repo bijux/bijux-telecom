@@ -13,6 +13,7 @@ use num_complex::Complex;
 const DLL_LOCK_MAX_CODE_ERROR: f32 = 0.2;
 const DLL_HOLD_MAX_CODE_ERROR: f32 = 0.4;
 const DLL_LOW_RESOLUTION_LOCK_MAX_CODE_ERROR: f32 = 0.6;
+const DLL_REFERENCE_EARLY_LATE_SPACING_CHIPS: f64 = 0.5;
 const ANTI_FALSE_LOCK_MAX_EARLY_LATE_TO_PROMPT_RATIO: f32 = 0.9;
 const FLL_PULL_IN_MAX_CORRECTION_BW_MULTIPLIER: f64 = 4.0;
 const TRACKING_UNCERTAINTY_MIN_CODE_PHASE_SAMPLES: f64 = 0.01;
@@ -904,6 +905,20 @@ pub fn discriminators(
     };
     let lock = p > 0.1 && dll.abs() < 0.5;
     (dll, pll, fll, lock)
+}
+
+/// Normalize a noncoherent early-minus-late DLL discriminator to the legacy 0.5-chip loop gain.
+pub fn normalize_dll_discriminator(discriminator: f32, early_late_spacing_chips: f64) -> f32 {
+    if !discriminator.is_finite()
+        || !early_late_spacing_chips.is_finite()
+        || early_late_spacing_chips <= 0.0
+        || early_late_spacing_chips >= 1.0
+    {
+        return 0.0;
+    }
+    let normalized = discriminator as f64
+        * ((1.0 - early_late_spacing_chips) / DLL_REFERENCE_EARLY_LATE_SPACING_CHIPS);
+    normalized.clamp(-1.0, 1.0) as f32
 }
 
 /// Estimate CN0 in dB-Hz from coherent prompt energy and a signal-free noise proxy.
@@ -2171,6 +2186,24 @@ mod tests {
             Complex::new(8.0, 0.0),
             Complex::new(1.0, 0.0),
         ));
+    }
+
+    #[test]
+    fn normalize_dll_discriminator_preserves_reference_spacing_gain() {
+        assert_eq!(super::normalize_dll_discriminator(0.25, 0.5), 0.25);
+    }
+
+    #[test]
+    fn normalize_dll_discriminator_scales_narrow_correlator_gain() {
+        let raw = 0.10;
+        let standard = super::normalize_dll_discriminator(raw, 0.5);
+        let narrow = super::normalize_dll_discriminator(raw, 0.25);
+
+        assert!(
+            narrow > standard,
+            "narrow spacing must compensate discriminator gain: standard={standard} narrow={narrow}",
+        );
+        assert_eq!(narrow, 0.15);
     }
 
     #[test]
